@@ -33,7 +33,7 @@ The header shows:
 - **Tasks** - Total, running, sleeping, stopped, zombie
 - **CPU** - User, system, nice, idle, wait, hardware interrupt, software interrupt, steal
 - **Memory** - Total, free, used, buff/cache
-- **Swap** - Total, free, used, available memory
+- **Swap** - Total, free, used, plus available memory estimate
 
 ### Useful top Commands
 
@@ -69,6 +69,8 @@ top -bn1 -p 1234,5678
 htop provides a more user-friendly, colorized interface with mouse support.
 
 ### Installing htop
+
+If `htop` is available from your enabled repositories, install it with:
 
 ```bash
 sudo dnf install htop -y

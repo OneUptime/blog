@@ -35,10 +35,11 @@ Make sure nftables is installed and running:
 
 ```bash
 dnf install nftables -y
+systemctl disable --now firewalld
 systemctl enable --now nftables
 ```
 
-Check the current ruleset (should be mostly empty on a fresh install):
+Check the current ruleset:
 
 ```bash
 nft list ruleset

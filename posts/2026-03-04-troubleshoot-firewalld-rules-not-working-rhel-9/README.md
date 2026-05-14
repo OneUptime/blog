@@ -39,7 +39,7 @@ systemctl status firewalld
 firewall-cmd --state
 ```
 
-If firewalld is not running, no rules are enforced:
+If firewalld is not running, firewalld-managed rules are not enforced:
 
 ```bash
 # Start and enable firewalld
@@ -158,10 +158,10 @@ SELinux can block network access independently of the firewall:
 ausearch -m avc --start recent
 
 # Check SELinux port labels
-semanage port -l | grep 8080
+semanage port -l | grep http_port_t
 
-# If your app uses a non-standard port, you may need to add it
-semanage port -a -t http_port_t -p tcp 8080
+# If your HTTP app uses an unassigned non-standard port, you may need to add it
+semanage port -a -t http_port_t -p tcp 9876
 ```
 
 ## Step 9: Test with Firewalld Disabled
@@ -179,7 +179,7 @@ curl http://your-server:8080
 systemctl start firewalld
 ```
 
-If it works with firewalld stopped, the issue is definitely in your firewall rules.
+If it works with firewalld stopped, the issue is very likely in your firewalld rules.
 
 ## Step 10: Check Source-Based Zone Rules
 

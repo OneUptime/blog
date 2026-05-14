@@ -8,11 +8,11 @@ Description: Learn how to use Memory Cgroups to Limit and Monitor Application Me
 
 ---
 
-Memory cgroups (control groups) let you set hard and soft limits on memory usage for applications, preventing any single process or group from consuming all available RAM. On RHEL with cgroup v2, memory control is integrated with systemd.
+Memory cgroups (control groups) let you set hard and soft limits on memory usage for applications, preventing any single process or group from consuming all available RAM. On RHEL 9 with cgroup v2, memory control is integrated with systemd.
 
 ## Prerequisites
 
-- RHEL with cgroup v2 (default)
+- RHEL 9 with cgroup v2 (default), or RHEL 8 configured to use cgroup v2
 - Root or sudo access
 
 ## Step 1: Set Memory Limits via systemd
@@ -39,10 +39,10 @@ sudo systemctl restart myapp.service
 
 | Property | Behavior |
 |----------|----------|
-| `MemoryMin` | Hard reservation (guaranteed minimum) |
-| `MemoryLow` | Best-effort reservation (soft minimum) |
+| `MemoryMin` | Hard memory protection |
+| `MemoryLow` | Best-effort memory protection |
 | `MemoryHigh` | Throttling threshold (slows down allocation) |
-| `MemoryMax` | Hard limit (OOM kill if exceeded) |
+| `MemoryMax` | Absolute limit (OOM killer is invoked if usage cannot be contained) |
 | `MemorySwapMax` | Maximum swap usage |
 
 ## Step 3: Monitor Memory Usage
@@ -79,7 +79,7 @@ cat /sys/fs/cgroup/system.slice/myapp.service/memory.events
 ```
 
 Fields include:
-- `low` - Times memory went below MemoryLow
+- `low` - Times memory was reclaimed despite being below MemoryLow
 - `high` - Times memory exceeded MemoryHigh (throttled)
 - `max` - Times memory hit MemoryMax (reclaim attempted)
 - `oom` - OOM events

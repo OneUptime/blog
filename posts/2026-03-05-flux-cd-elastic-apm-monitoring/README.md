@@ -1,8 +1,8 @@
-# How to Configure Flux CD with Elastic APM for Monitoring
+# How to Configure Flux CD with the Elastic Stack for Monitoring
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Monitoring, Elastic, APM, Elasticsearch, Kibana, Observability
+Tags: Flux CD, GitOps, Kubernetes, Monitoring, Elastic, Elasticsearch, Kibana, Observability
 
 Description: Learn how to integrate Flux CD with the Elastic Stack to monitor reconciliation metrics, collect controller logs, and visualize GitOps pipeline health in Kibana.
 
@@ -79,9 +79,24 @@ data:
             target: ""
             fields:
               service.name: flux-helm-controller
+
+    - module: prometheus
+      period: 30s
+      metricsets: ["collector"]
+      hosts:
+        - "kube-state-metrics.monitoring.svc.cluster.local:8080"
+      metrics_path: /metrics
+      metrics_filters:
+        include:
+          - "gotk_resource_info"
+      processors:
+        - add_fields:
+            target: ""
+            fields:
+              service.name: flux-resource-state
 ```
 
-Install Metricbeat with the Elastic Helm chart:
+For new Kubernetes deployments, Elastic recommends Elastic Agent or Elastic Cloud on Kubernetes (ECK). If you still deploy Metricbeat with the archived standalone Elastic Helm chart, pin the chart version:
 
 ```bash
 helm repo add elastic https://helm.elastic.co
@@ -90,6 +105,7 @@ helm repo update
 helm install metricbeat elastic/metricbeat \
   -n elastic-system \
   --create-namespace \
+  --version 8.5.1 \
   -f metricbeat-values.yaml
 ```
 
@@ -141,7 +157,7 @@ GET /metricbeat-*/_search
   "query": {
     "bool": {
       "must": [
-        { "exists": { "field": "prometheus.metrics.gotk_reconcile_condition" } }
+        { "exists": { "field": "prometheus.metrics.gotk_reconcile_duration_seconds_count" } }
       ]
     }
   }
@@ -173,16 +189,16 @@ Create visualizations in Kibana for Flux CD monitoring.
 Use a Lens visualization with:
 
 - Index pattern: `metricbeat-*`.
-- Filter: `prometheus.labels.type: "Ready"`.
-- Metric: Count of documents where `prometheus.metrics.gotk_reconcile_condition` equals 1.
-- Break down by: `prometheus.labels.status` (True/False).
+- Filter: `prometheus.metrics.gotk_resource_info: 1`.
+- Metric: Count of documents.
+- Break down by: `prometheus.labels.ready` (True/False).
 
 **Reconciliation Duration Over Time:**
 
 Create a TSVB (Time Series Visual Builder) panel:
 
 - Index pattern: `metricbeat-*`.
-- Metric: Average of `prometheus.metrics.gotk_reconcile_duration_seconds`.
+- Metric: Sum of `prometheus.metrics.gotk_reconcile_duration_seconds_sum` divided by sum of `prometheus.metrics.gotk_reconcile_duration_seconds_count`.
 - Group by: `prometheus.labels.kind`.
 - Time range: Last 6 hours.
 
@@ -197,7 +213,8 @@ Create a data table:
 **Reconciliation Error Rate:**
 
 - Index pattern: `metricbeat-*`.
-- Metric: Derivative of Max on `prometheus.metrics.controller_runtime_reconcile_errors_total`.
+- Metric: Derivative of Max on `prometheus.metrics.controller_runtime_reconcile_total`.
+- Filter: `prometheus.labels.result: "error"`.
 - Split by: `prometheus.labels.controller`.
 
 ## Step 5: Set Up Kibana Alerting Rules
@@ -208,7 +225,7 @@ Create alerting rules in Kibana for Flux CD issues. Navigate to **Kibana > Stack
 
 - Rule type: Elasticsearch query.
 - Index: `metricbeat-*`.
-- Query: `prometheus.metrics.gotk_reconcile_condition: 1 AND prometheus.labels.type: "Ready" AND prometheus.labels.status: "False"`.
+- Query: `prometheus.metrics.gotk_resource_info: 1 AND prometheus.labels.ready: "False"`.
 - Condition: Above 0 results over the last 10 minutes.
 - Action: Send to Slack, email, or PagerDuty connector.
 
@@ -225,7 +242,16 @@ Create alerting rules in Kibana for Flux CD issues. Navigate to **Kibana > Stack
 Send Flux reconciliation events directly to Elasticsearch using the notification controller:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: v1
+kind: Secret
+metadata:
+  name: elastic-credentials
+  namespace: flux-system
+stringData:
+  username: elastic
+  password: your-elasticsearch-password
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: elastic-provider
@@ -236,7 +262,7 @@ spec:
   secretRef:
     name: elastic-credentials
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: elastic-events
@@ -266,11 +292,13 @@ Combine metrics and logs in a single Kibana dashboard. The unified dashboard sho
 Export the dashboard for version control:
 
 ```bash
-curl -X POST "http://kibana.elastic-system.svc:5601/api/saved_objects/_import" \
+curl -X POST "http://kibana.elastic-system.svc:5601/api/saved_objects/_export" \
   -H "kbn-xsrf: true" \
-  --form file=@flux-dashboard.ndjson
+  -H "Content-Type: application/json" \
+  -d '{"type":["dashboard"],"includeReferencesDeep":true,"excludeExportDetails":true}' \
+  -o flux-dashboard.ndjson
 ```
 
 ## Summary
 
-Integrating Flux CD with the Elastic Stack involves configuring Metricbeat to scrape Prometheus metrics from Flux controllers and Filebeat to collect structured logs. The key metrics -- `gotk_reconcile_condition`, `gotk_reconcile_duration_seconds`, and `gotk_suspend_status` -- are ingested into Elasticsearch and visualized in Kibana dashboards. Kibana alerting rules provide notifications when reconciliations fail or error rates spike. Combining metrics, logs, and events in a single Kibana dashboard gives you comprehensive visibility into your Flux CD GitOps pipeline.
+Integrating Flux CD with the Elastic Stack involves configuring Metricbeat to scrape Prometheus metrics from Flux controllers and Filebeat to collect structured logs. The key metrics -- `gotk_resource_info`, `gotk_reconcile_duration_seconds_sum`, `gotk_reconcile_duration_seconds_count`, and `controller_runtime_reconcile_total` -- are ingested into Elasticsearch and visualized in Kibana dashboards. Kibana alerting rules provide notifications when reconciliations fail or error rates spike. Combining metrics, logs, and events in a single Kibana dashboard gives you comprehensive visibility into your Flux CD GitOps pipeline.

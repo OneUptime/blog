@@ -35,14 +35,13 @@ sudo journalctl -u httpd --since "1 hour ago" | grep -i "ssl\|tls"
 # Test the connection with verbose output
 openssl s_client -connect server:443 -debug < /dev/null 2>&1 | grep -A2 "error"
 
-# Check which ciphers the server offers
-openssl s_client -connect server:443 -cipher 'ALL' < /dev/null 2>&1 | grep "Cipher"
+# Check the negotiated cipher
+openssl s_client -connect server:443 -servername server -cipher 'ALL' < /dev/null 2>&1 | grep "Cipher"
 
-# Compare ciphers between policies
-# Save current policy ciphers
+# Save the current policy's OpenSSL cipher list
 openssl ciphers -v > /tmp/current_ciphers.txt
-# Temporarily check what DEFAULT would allow
-update-crypto-policies --show
+# Check the generated OpenSSL crypto policy
+grep -E "CipherString|MinProtocol|SignatureAlgorithms" /etc/crypto-policies/back-ends/opensslcnf.config
 ```
 
 ## Diagnosing SSH Failures
@@ -62,9 +61,10 @@ Instead of reverting the entire policy, create a module that allows just the nee
 ```bash
 # Example: application needs SHA-1 certificates
 sudo tee /etc/crypto-policies/policies/modules/APP-COMPAT.pmod << 'EOF'
-# Allow SHA-1 for certificate verification
-hash = SHA1+
-sign = RSA-SHA1+ ECDSA-SHA1+
+# Allow SHA-1 for signature verification
+hash = +SHA1
+sign = +*-SHA1
+sha1_in_certs = 1
 EOF
 
 sudo update-crypto-policies --set DEFAULT:APP-COMPAT

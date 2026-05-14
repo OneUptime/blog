@@ -4,28 +4,29 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Kustomize, Timeout, Reconciliation
 
-Description: Learn how to configure the spec.timeout field in a Flux Kustomization to control how long Flux waits for apply and health check operations to complete.
+Description: Learn how to configure the spec.timeout field in a Flux Kustomization to control how long Flux waits for reconciliation operations to complete.
 
 ---
 
 ## Introduction
 
-The `spec.timeout` field in a Flux Kustomization controls how long the Kustomize controller waits for the apply operation and any subsequent health checks to complete before marking the reconciliation as failed. Setting the right timeout is critical: too short and legitimate deployments may be flagged as failures; too long and you delay detection of real problems. This guide covers how to configure timeouts, choose appropriate values, and handle timeout-related failures.
+The `spec.timeout` field in a Flux Kustomization controls how long the Kustomize controller waits for operations such as validation, apply, and health checks to complete before marking the reconciliation as failed. Setting the right timeout is critical: too short and legitimate deployments may be flagged as failures; too long and you delay detection of real problems. This guide covers how to configure timeouts, choose appropriate values, and handle timeout-related failures.
 
 ## How Timeout Works
 
-The timeout governs two phases of the reconciliation:
+The timeout governs key operations during reconciliation:
 
-1. **Apply phase**: The time it takes to apply all manifests to the cluster
-2. **Health check phase**: The time it takes for monitored resources to become healthy
+1. **Build and validation**: The time it takes to build manifests and validate them against the Kubernetes API
+2. **Apply phase**: The time it takes to apply all manifests to the cluster
+3. **Health check phase**: The time it takes for monitored resources to become healthy
 
-The timeout is a total budget for both phases combined. If either phase exceeds the timeout, the Kustomization is marked as not ready.
+The timeout value is used by these operations during reconciliation. Apply and health checking can each take up to the configured timeout, so a reconciliation that includes health checks can take longer than a single timeout value. If an operation exceeds the timeout, the Kustomization is marked as not ready.
 
 ```mermaid
 graph LR
     A[Start reconciliation] --> B[Apply manifests]
     B --> C[Run health checks]
-    C --> D{Total time < timeout?}
+    C --> D{Operations finish within timeout?}
     D -->|Yes| E[Ready=True]
     D -->|No| F[Ready=False, timeout exceeded]
 ```
@@ -49,7 +50,7 @@ spec:
     name: my-repo
   path: ./deploy
   prune: true
-  # Total time allowed for apply + health checks
+  # Timeout used by reconciliation operations
   timeout: 5m
   wait: true
 ```
@@ -182,8 +183,8 @@ When a Kustomization times out, you need to determine which phase caused the tim
 # Check the Kustomization status for timeout details
 kubectl describe kustomization my-app -n flux-system
 
-# Look for events related to the timeout
-kubectl get events -n flux-system --field-selector reason=ReconciliationFailed
+# Look for events related to this Kustomization
+kubectl events -n flux-system --for kustomization/my-app
 
 # Check if the resources are being applied correctly
 kubectl get all -n default -l kustomize.toolkit.fluxcd.io/name=my-app
@@ -201,7 +202,7 @@ Common causes of timeout failures include:
 
 ## Default Timeout Behavior
 
-If you do not specify a `spec.timeout`, the Kustomize controller uses a default timeout. However, it is a best practice to always set an explicit timeout so that the behavior is predictable and documented in your configuration.
+If you do not specify a `spec.timeout`, the Kustomize controller defaults the timeout to the `spec.interval` duration. However, it is a best practice to always set an explicit timeout so that the behavior is predictable and documented in your configuration.
 
 ```yaml
 # explicit-timeout.yaml - Always set an explicit timeout
@@ -231,4 +232,4 @@ spec:
 
 ## Conclusion
 
-The `spec.timeout` field gives you control over how long Flux waits for your resources to be applied and become healthy. By setting appropriate timeouts for each Kustomization, you balance the need for fast failure detection with the reality that some applications need time to start. Combine timeouts with health checks and retry intervals for a robust deployment pipeline that handles both fast and slow applications gracefully.
+The `spec.timeout` field gives you control over how long Flux waits for reconciliation operations such as apply and health checking. By setting appropriate timeouts for each Kustomization, you balance the need for fast failure detection with the reality that some applications need time to start. Combine timeouts with health checks and retry intervals for a robust deployment pipeline that handles both fast and slow applications gracefully.

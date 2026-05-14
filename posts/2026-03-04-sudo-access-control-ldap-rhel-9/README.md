@@ -14,7 +14,7 @@ Managing sudo rules across dozens or hundreds of servers by editing local sudoer
 
 ```mermaid
 graph TD
-    A[User runs sudo command] --> B[sudo checks local rules]
+    A[User runs sudo command] --> B[sudo checks local sudoers file]
     B --> C{Local rule found?}
     C -->|Yes| D[Apply local rule]
     C -->|No| E[Query SSSD/LDAP for sudo rules]
@@ -32,24 +32,8 @@ You need a working SSSD + LDAP setup (see the LDAP authentication guide) and an 
 First, add the sudo schema to your LDAP server. On an OpenLDAP server:
 
 ```bash
-# Download the sudo schema if not already present
-
-sudo cp /usr/share/doc/sudo/schema.OpenLDAP /etc/openldap/schema/sudo.schema
-
-# Convert to LDIF format and add to the server
-cat > /tmp/sudo_schema.ldif << 'EOF'
-dn: cn=sudo,cn=schema,cn=config
-objectClass: olcSchemaConfig
-cn: sudo
-olcAttributeTypes: ( 1.3.6.1.4.1.15953.9.1.1 NAME 'sudoUser' SUP name )
-olcAttributeTypes: ( 1.3.6.1.4.1.15953.9.1.2 NAME 'sudoHost' SUP name )
-olcAttributeTypes: ( 1.3.6.1.4.1.15953.9.1.3 NAME 'sudoCommand' SUP name )
-olcAttributeTypes: ( 1.3.6.1.4.1.15953.9.1.4 NAME 'sudoRunAs' SUP name )
-olcAttributeTypes: ( 1.3.6.1.4.1.15953.9.1.5 NAME 'sudoOption' SUP name )
-olcObjectClasses: ( 1.3.6.1.4.1.15953.9.2.1 NAME 'sudoRole' SUP top STRUCTURAL MUST cn MAY ( sudoUser $ sudoHost $ sudoCommand $ sudoRunAs $ sudoOption ) )
-EOF
-
-sudo ldapadd -Y EXTERNAL -H ldapi:/// -f /tmp/sudo_schema.ldif
+# For OpenLDAP servers that use cn=config, load the OLC sudo schema
+sudo ldapadd -Y EXTERNAL -H ldapi:/// -f /usr/share/doc/sudo/schema.olcSudo
 ```
 
 ## Creating Sudo Rules in LDAP
@@ -69,15 +53,18 @@ sudo ldapadd -x -D "cn=admin,dc=example,dc=com" -W -f /tmp/sudo_ou.ldif
 # Create a sudo rule allowing the sysadmins group to run all commands
 cat > /tmp/sudo_rule.ldif << 'EOF'
 dn: cn=sysadmins,ou=SUDOers,dc=example,dc=com
+objectClass: top
 objectClass: sudoRole
 cn: sysadmins
 sudoUser: %sysadmins
 sudoHost: ALL
 sudoCommand: ALL
-sudoRunAs: ALL
+sudoRunAsUser: ALL
+sudoRunAsGroup: ALL
 sudoOption: !authenticate
 
 dn: cn=webadmins,ou=SUDOers,dc=example,dc=com
+objectClass: top
 objectClass: sudoRole
 cn: webadmins
 sudoUser: %webadmins
@@ -85,7 +72,7 @@ sudoHost: ALL
 sudoCommand: /usr/bin/systemctl restart httpd
 sudoCommand: /usr/bin/systemctl reload httpd
 sudoCommand: /usr/bin/systemctl status httpd
-sudoRunAs: root
+sudoRunAsUser: root
 EOF
 
 sudo ldapadd -x -D "cn=admin,dc=example,dc=com" -W -f /tmp/sudo_rule.ldif
@@ -98,9 +85,12 @@ Update the SSSD configuration to include sudo:
 ```bash
 sudo tee /etc/sssd/sssd.conf > /dev/null << 'EOF'
 [sssd]
+config_file_version = 2
 # Add sudo to the list of services
 services = nss, pam, sudo
 domains = example.com
+
+[sudo]
 
 [domain/example.com]
 id_provider = ldap
@@ -133,7 +123,8 @@ Tell sudo to look up rules through SSSD:
 
 ```bash
 # Add SSSD as a sudo rule source
-echo "sudoers: files sss" | sudo tee -a /etc/nsswitch.conf
+sudo sed -i '/^sudoers:/c\sudoers: files sss' /etc/nsswitch.conf
+grep -q '^sudoers:' /etc/nsswitch.conf || echo "sudoers: files sss" | sudo tee -a /etc/nsswitch.conf
 ```
 
 Restart SSSD:
@@ -156,7 +147,7 @@ sudo -l -U sysadmin1
 
 ```bash
 # Enable debug logging for sudo in SSSD
-# Add to the domain section: debug_level = 9
+# Add to the [sudo] section and the domain section: debug_level = 9
 sudo sss_cache -E
 sudo systemctl restart sssd
 
@@ -170,4 +161,3 @@ ldapsearch -x -H ldaps://ldap.example.com -b "ou=SUDOers,dc=example,dc=com" -D "
 ## Summary
 
 Centralizing sudo rules in LDAP eliminates the need to maintain individual sudoers files on every server. Combined with SSSD caching, this approach gives you consistent, auditable access control with resilience against temporary network issues.
-

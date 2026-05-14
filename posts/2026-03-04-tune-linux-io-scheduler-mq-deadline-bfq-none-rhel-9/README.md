@@ -8,13 +8,13 @@ Description: Learn how to select and tune the Linux I/O scheduler on RHEL to opt
 
 ---
 
-The Linux I/O scheduler determines how read and write requests are ordered and dispatched to storage devices. RHEL uses the multi-queue block layer, which offers three I/O schedulers: mq-deadline, bfq, and none. Choosing the right scheduler for your workload and storage type can significantly improve performance.
+The Linux I/O scheduler determines how read and write requests are ordered and dispatched to storage devices. RHEL uses the multi-queue block layer, which supports mq-deadline, bfq, kyber, and none; this guide focuses on mq-deadline, bfq, and none. Choosing the right scheduler for your workload and storage type can significantly improve performance.
 
 ## Understanding the Three Schedulers
 
 ### mq-deadline
 
-The mq-deadline scheduler ensures that I/O requests are served within a deadline. It prevents starvation by guaranteeing that no request waits longer than a configurable timeout. This is the default scheduler for most devices on RHEL.
+The mq-deadline scheduler attempts to provide a guaranteed latency for requests from the point where they reach the scheduler. It prevents starvation by using read and write batches and configurable expiration times. The kernel selects the default scheduler based on the device type; for NVMe devices, the default is none.
 
 Best for:
 - Database workloads
@@ -31,14 +31,14 @@ Best for:
 - Systems with many competing processes
 - Scenarios where I/O fairness matters more than raw throughput
 
-### none (No-op)
+### none (No Scheduler)
 
-The none scheduler passes requests directly to the device with minimal processing. It relies on the storage device's own command queuing (like NVMe or hardware RAID controllers) to optimize I/O order.
+The none scheduler uses a simple FIFO approach with minimal scheduler processing. It relies on the storage device's own command queuing (like NVMe or hardware RAID controllers) to optimize I/O order.
 
 Best for:
 - NVMe SSDs (which have their own internal schedulers)
 - Hardware RAID controllers with write-back cache
-- Virtual machine guests (the hypervisor handles scheduling)
+- Virtual machine guests with multi-queue-capable host bus adapters
 - High-performance SSDs
 
 ## Checking the Current Scheduler
@@ -82,31 +82,25 @@ Set mq-deadline for HDDs and none for NVMe:
 ```text
 # Set mq-deadline for rotational disks
 
-ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="1", ATTR{queue/scheduler}="mq-deadline"
+ACTION=="add|change", SUBSYSTEM=="block", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="1", ATTR{queue/scheduler}="mq-deadline"
 
 # Set none for SSDs
-ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="0", ATTR{queue/scheduler}="none"
+ACTION=="add|change", SUBSYSTEM=="block", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="0", ATTR{queue/scheduler}="none"
 
 # Set none for NVMe
-ACTION=="add|change", KERNEL=="nvme[0-9]*", ATTR{queue/scheduler}="none"
+ACTION=="add|change", SUBSYSTEM=="block", KERNEL=="nvme[0-9]*", ATTR{queue/scheduler}="none"
 ```
 
 Reload udev rules:
 
 ```bash
 sudo udevadm control --reload-rules
-sudo udevadm trigger
+sudo udevadm trigger --type=devices --action=change
 ```
 
 ## Making the Change Persistent with Kernel Parameters
 
-Add a kernel parameter in GRUB:
-
-```bash
-sudo grubby --update-kernel=ALL --args="elevator=mq-deadline"
-```
-
-Note that this sets the scheduler for all devices. Udev rules offer more granular control.
+Do not use the `elevator=` kernel parameter on RHEL 9. It no longer changes the I/O scheduler. Use udev rules or TuneD instead; udev rules offer per-device control.
 
 ## Tuning mq-deadline Parameters
 
@@ -177,9 +171,9 @@ done
 | HDD | mq-deadline | Minimizes seek time with deadlines |
 | SATA SSD | mq-deadline or none | Either works well |
 | NVMe SSD | none | Device has internal scheduler |
-| Virtual disk | none | Hypervisor handles scheduling |
+| Virtual disk | mq-deadline, or none with a multi-queue-capable HBA | RHEL recommends mq-deadline for virtual guests, with none as an option for multi-queue-capable HBA drivers |
 | HW RAID | none | Controller has write-back cache |
 
 ## Summary
 
-Choosing the right I/O scheduler on RHEL is a straightforward but impactful optimization. Use mq-deadline for HDDs and latency-sensitive workloads, bfq for interactive fairness, and none for NVMe and virtual disks. Make changes persistent with udev rules for per-device control, and benchmark with fio to validate your choice for your specific workload.
+Choosing the right I/O scheduler on RHEL is a straightforward but impactful optimization. Use mq-deadline or bfq for HDDs, bfq for interactive fairness, none for NVMe, and mq-deadline for most virtual guests unless a multi-queue-capable HBA makes none appropriate. Make changes persistent with udev rules for per-device control, and benchmark with fio to validate your choice for your specific workload.

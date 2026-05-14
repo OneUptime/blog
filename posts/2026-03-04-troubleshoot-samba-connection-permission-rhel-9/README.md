@@ -107,7 +107,7 @@ groups username
 ls -la /srv/samba/shared
 
 # Test file creation as the Samba user
-sudo -u smbuser touch /srv/samba/shared/test-perm
+sudo -u username touch /srv/samba/shared/test-perm
 ```
 
 ### Check SELinux
@@ -169,17 +169,17 @@ Log levels:
 
 If the problem is on the Windows client:
 
-```cmd
-REM Clear cached credentials
+```powershell
+# Clear cached credentials
 net use * /delete /yes
 
-REM Check SMB connectivity
+# Check SMB connectivity
 Test-NetConnection -ComputerName 192.168.1.10 -Port 445
 
-REM View current SMB connections
+# View current SMB connections
 net use
 
-REM Try connecting with explicit credentials
+# Try connecting with explicit credentials
 net use \\192.168.1.10\shared /user:username password
 ```
 
@@ -192,14 +192,14 @@ net use \\192.168.1.10\shared /user:username password
 sudo smbpasswd username
 
 # Verify the account is enabled
-sudo pdbedit -L -v | grep -A5 username
+sudo pdbedit -L -v -u username | grep -A5 username
 ```
 
 ### Account Locked or Disabled
 
 ```bash
 # Check account status
-sudo pdbedit -L -v username | grep -i "account"
+sudo pdbedit -L -v -u username | grep -i "account"
 
 # Enable a disabled account
 sudo smbpasswd -e username
@@ -233,11 +233,11 @@ dd if=/dev/zero of=/mnt/smb-share/speedtest bs=1M count=100
 | Problem | Quick Fix |
 |---------|-----------|
 | Connection refused | `sudo systemctl start smb` |
-| Port blocked | `sudo firewall-cmd --add-service=samba --permanent` |
+| Port blocked | `sudo firewall-cmd --permanent --add-service=samba && sudo firewall-cmd --reload` |
 | Auth failure | `sudo smbpasswd -a username` |
 | Permission denied | Check `valid users` in smb.conf |
-| SELinux denial | `sudo setsebool -P samba_export_all_rw on` |
-| Wrong file context | `restorecon -Rv /path/to/share` |
+| SELinux denial | `sudo semanage fcontext -a -t samba_share_t "/path/to/share(/.*)?" && sudo restorecon -Rv /path/to/share` |
+| Wrong file context | `sudo restorecon -Rv /path/to/share` |
 | Stale credentials (Windows) | `net use * /delete /yes` |
 
 ## Wrap-Up

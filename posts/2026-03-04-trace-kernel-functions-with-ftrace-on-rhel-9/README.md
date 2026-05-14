@@ -16,7 +16,7 @@ ftrace is a kernel tracing framework built directly into the Linux kernel. It le
 - Root or sudo access
 - A terminal session
 
-## Step 2: Configure the Service
+## Step 2: Trace Kernel Functions
 
 Use ftrace to trace kernel functions:
 
@@ -44,37 +44,44 @@ cat /sys/kernel/debug/tracing/trace | head -50
 echo 0 | sudo tee /sys/kernel/debug/tracing/tracing_on
 ```
 
-## Step 3: Enable and Start the Service
+## Step 3: Review the Trace
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Check the active tracer
+cat /sys/kernel/debug/tracing/current_tracer
 
-# Start the service
-sudo systemctl start <service-name>
+# Check the active function filter
+cat /sys/kernel/debug/tracing/set_ftrace_filter
 
-# Check the status
-sudo systemctl status <service-name>
+# Review captured trace output
+cat /sys/kernel/debug/tracing/trace | head -50
 ```
 
 
 ## Verification
 
-Confirm everything is working by checking the status and logs:
+Confirm tracing has stopped and reset ftrace when you are finished:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
+# Confirm tracing is stopped
+cat /sys/kernel/debug/tracing/tracing_on
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# Return to the default tracer
+echo nop | sudo tee /sys/kernel/debug/tracing/current_tracer
+
+# Clear the function filter
+echo | sudo tee /sys/kernel/debug/tracing/set_ftrace_filter
+
+# Clear the trace buffer
+echo | sudo tee /sys/kernel/debug/tracing/trace
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If `/sys/kernel/debug/tracing` is missing, mount debugfs with `sudo mount -t debugfs none /sys/kernel/debug`.
+- If no functions are traced, confirm the function names exist in `/sys/kernel/debug/tracing/available_filter_functions`.
+- If a wildcard filter does not match as expected, quote the pattern so the shell does not expand it before writing to `set_ftrace_filter`.
 
 ## Conclusion
 
-You have successfully completed the setup described in this guide. Remember to monitor the service and review logs regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
+You have successfully completed the tracing described in this guide. Remember to disable tracing and reset filters when you are done to avoid unnecessary overhead. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.

@@ -8,17 +8,17 @@ Description: Use Red Hat Satellite's remote execution feature to run commands, s
 
 ---
 
-Satellite Remote Execution (REX) lets you run arbitrary commands, shell scripts, and Ansible playbooks on managed RHEL hosts directly from the Satellite interface or CLI. It uses SSH to connect to hosts and execute tasks.
+Satellite Remote Execution (REX) lets you run arbitrary commands, shell scripts, and Ansible playbooks on managed RHEL hosts directly from the Satellite interface or CLI. In the default push-based transport mode, it uses SSH to connect to hosts and execute tasks.
 
 ## Enable Remote Execution
 
 ```bash
-# Verify remote execution is enabled on the Satellite or Capsule
+# Ensure SSH push mode is configured on the Satellite or Capsule
 
-satellite-installer --enable-foreman-proxy-plugin-remote-execution-script
+satellite-installer --foreman-proxy-plugin-remote-execution-script-mode ssh
 
 # Check that the REX SSH key exists
-ls /var/lib/foreman-proxy/ssh/id_rsa_foreman_proxy.pub
+ls ~foreman-proxy/.ssh/id_rsa_foreman_proxy.pub
 ```
 
 ## Distribute the SSH Key to Hosts
@@ -27,7 +27,7 @@ Hosts need the Satellite REX SSH key in their authorized_keys:
 
 ```bash
 # Copy the key to a host manually
-ssh-copy-id -i /var/lib/foreman-proxy/ssh/id_rsa_foreman_proxy.pub root@webserver1.example.com
+ssh-copy-id -i ~foreman-proxy/.ssh/id_rsa_foreman_proxy.pub root@webserver1.example.com
 
 # Or use the global registration template to add it automatically during registration
 # The key is distributed when hosts register via the registration URL
@@ -90,13 +90,13 @@ hammer job-invocation create \
     --search-query "hostgroup = Production"
 ```
 
-## Run an Ansible Playbook
+## Run an Ansible Role
 
 ```bash
 # Import Ansible roles first
 hammer ansible roles sync --proxy-id 1
 
-# Run an Ansible role on a host
+# Run assigned Ansible roles on a host
 hammer job-invocation create \
     --job-template "Ansible Roles - Ansible Default" \
     --search-query "name = webserver1.example.com"

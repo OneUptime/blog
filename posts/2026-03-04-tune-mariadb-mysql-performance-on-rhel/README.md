@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, MariaDB, MySQL, Performance Tuning, InnoDB, Database
 
-Description: Optimize MariaDB and MySQL performance on RHEL by tuning InnoDB buffer pool, query cache, connection settings, and identifying slow queries.
+Description: Optimize MariaDB and MySQL performance on RHEL by tuning InnoDB buffer pool, connection settings, and identifying slow queries.
 
 ---
 
@@ -23,15 +23,15 @@ sudo tee /etc/my.cnf.d/performance.cnf << 'EOF'
 # For a 16GB server:
 innodb_buffer_pool_size = 12G
 
-# Split the buffer pool into instances (one per GB, max 64)
-innodb_buffer_pool_instances = 12
+# MariaDB 10.5+ uses a single buffer pool instance.
+# MySQL can auto-size buffer pool instances for large buffer pools.
 
-# InnoDB log file size - larger means better write performance
-# but longer crash recovery
+# InnoDB redo log size - larger means less checkpoint flushing
+# but longer crash recovery. MariaDB uses innodb_log_file_size.
 innodb_log_file_size = 512M
 
-# Number of InnoDB log files
-innodb_log_files_in_group = 2
+# MySQL 8.0.30+/8.4 uses innodb_redo_log_capacity instead:
+# innodb_redo_log_capacity = 1G
 
 # Flush method - O_DIRECT avoids double buffering with OS cache
 innodb_flush_method = O_DIRECT
@@ -97,11 +97,11 @@ sudo systemctl restart mariadb
 ## Analyze Slow Queries
 
 ```bash
-# Use mysqldumpslow to analyze the slow query log
-sudo mysqldumpslow -s t /var/log/mariadb/slow-query.log | head -30
+# Use mariadb-dumpslow to analyze the slow query log
+sudo mariadb-dumpslow -s t /var/log/mariadb/slow-query.log | head -30
 
 # Show the top 10 slowest queries sorted by total time
-sudo mysqldumpslow -s t -t 10 /var/log/mariadb/slow-query.log
+sudo mariadb-dumpslow -s t -t 10 /var/log/mariadb/slow-query.log
 ```
 
 ## Check Current Buffer Pool Usage
@@ -144,11 +144,14 @@ EOF
 
 sudo sysctl --system
 
-# Set ulimits for the mysql user
-sudo tee /etc/security/limits.d/mysql.conf << 'EOF'
-mysql soft nofile 65536
-mysql hard nofile 65536
+# Set open file limits for the systemd service
+sudo mkdir -p /etc/systemd/system/mariadb.service.d
+sudo tee /etc/systemd/system/mariadb.service.d/limits.conf << 'EOF'
+[Service]
+LimitNOFILE=65536
 EOF
+
+sudo systemctl daemon-reload
 ```
 
 ## Apply and Verify

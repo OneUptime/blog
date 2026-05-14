@@ -75,7 +75,7 @@ Check inode (file count) usage:
 repquota -us /home | grep jsmith
 ```
 
-The output shows both. A `+` next to the block or inode column indicates which limit was exceeded.
+The output shows both. In the two-character status field after the user name, a `+` in the first position indicates a block limit issue, and a `+` in the second position indicates an inode limit issue.
 
 ## Step 3: Find What Is Using the Space
 
@@ -172,11 +172,11 @@ xfs_quota -x -c 'limit bsoft=20g bhard=24g jsmith' /data
 If the user just needs more time to clean up:
 
 ```bash
-# On ext4 - temporarily raise their soft limit, then set it back after they clean up
-# This resets the grace timer
-setquota -u jsmith 20971520 25165824 0 0 /home
-# After cleanup, restore original limits
-setquota -u jsmith 10485760 12582912 0 0 /home
+# On ext4 - edit the default grace periods for quota-enabled filesystems
+edquota -t
+
+# Or, set grace times for one user on /home, in seconds
+setquota -T -u jsmith 604800 604800 /home
 ```
 
 ## Step 6: Investigate Root Causes

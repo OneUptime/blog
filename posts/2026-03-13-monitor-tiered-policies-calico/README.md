@@ -30,7 +30,7 @@ kubectl patch felixconfiguration default --type=merge -p '{"spec":{"prometheusMe
 
 ## Step 2: Key Metrics
 
-Felix exposes its metrics on port `9091`. The metrics below are all available in open source Calico (per the Felix Prometheus reference). Note that open source Calico does not expose a per-policy denied-packet counter — those metrics (`calico_denied_packets`, `cnx_policy_rule_packets`) are only available in Calico Cloud / Enterprise.
+Felix exposes its metrics on port `9091`. The metrics below are all available in open source Calico (per the Felix Prometheus reference). Note that open source Calico does not expose a per-policy denied-packet counter - those metrics (`calico_denied_packets`, `cnx_policy_rule_packets`) are only available in Calico Cloud / Enterprise.
 
 ```promql
 # Total policies in the cluster (across all tiers)
@@ -65,21 +65,21 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "Cluster-wide Calico policy count dropped sharply — possible accidental delete"
+            summary: "Cluster-wide Calico policy count dropped sharply - possible accidental delete"
         - alert: TierCountDropped
           expr: delta(felix_cluster_num_tiers[10m]) < 0
           for: 2m
           labels:
             severity: warning
           annotations:
-            summary: "A Calico tier was removed — verify this was intentional"
+            summary: "A Calico tier was removed - verify this was intentional"
         - alert: FelixIptablesSaveErrors
           expr: rate(felix_iptables_save_errors[5m]) > 0
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "Felix is failing to program iptables — policy enforcement may be stale"
+            summary: "Felix is failing to program iptables - policy enforcement may be stale"
 ```
 
 ## Step 4: Grafana Dashboard

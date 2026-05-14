@@ -20,7 +20,8 @@ sudo vi /var/lib/pgsql/data/postgresql.conf
 
 ```bash
 # shared_buffers: Main memory cache for PostgreSQL
-# Set to 25% of total RAM (do not exceed 8GB on most systems)
+# Set to 25% of total RAM as a starting point on dedicated database servers
+# PostgreSQL also relies on the OS cache, so values above 40% of RAM are rarely useful
 # For a server with 16GB RAM:
 shared_buffers = 4GB
 
@@ -42,8 +43,8 @@ maintenance_work_mem = 512MB
 
 ```bash
 # wal_buffers: Memory for WAL data before writing to disk
-# Set to 64MB for busy servers
-wal_buffers = 64MB
+# Auto-tuning is usually reasonable; set to a few MB for busy servers only if needed
+wal_buffers = 16MB
 
 # checkpoint_completion_target: Spread checkpoint I/O over time
 # Higher value = more spread = less I/O spikes
@@ -103,10 +104,11 @@ autovacuum_vacuum_cost_limit = 1000
 ## Apply and Verify Changes
 
 ```bash
-# Restart PostgreSQL to apply shared_buffers changes
+# Restart PostgreSQL to apply server-start settings such as shared_buffers,
+# wal_buffers, max_connections, and max_worker_processes
 sudo systemctl restart postgresql
 
-# Most other settings can be reloaded without restart
+# Reload settings that do not require a restart
 sudo -u postgres psql -c "SELECT pg_reload_conf();"
 
 # Verify settings
@@ -118,13 +120,13 @@ sudo -u postgres psql -c "SHOW work_mem;"
 ## Identify Slow Queries
 
 ```bash
-# Enable the pg_stat_statements extension
-sudo -u postgres psql -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
-
-# Add to postgresql.conf:
+# Add to postgresql.conf, then restart because pg_stat_statements requires shared memory:
 # shared_preload_libraries = 'pg_stat_statements'
 
-# After restart, find the slowest queries
+# Enable the pg_stat_statements extension in each database you want to query
+sudo -u postgres psql -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
+
+# Find the slowest queries
 sudo -u postgres psql -c "
 SELECT query, calls, mean_exec_time, total_exec_time
 FROM pg_stat_statements
@@ -136,9 +138,10 @@ LIMIT 10;
 ## Kernel Tuning for PostgreSQL
 
 ```bash
-# Increase shared memory limits
+# Only raise System V shared memory limits if you explicitly set shared_memory_type = sysv
+# or PostgreSQL fails to start with shared memory allocation errors
 sudo tee /etc/sysctl.d/postgresql.conf << 'EOF'
-# Allow large shared memory segments
+# Allow an 8GB System V shared memory segment when sysv shared memory is used
 kernel.shmmax = 8589934592
 kernel.shmall = 2097152
 

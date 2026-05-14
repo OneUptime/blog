@@ -45,12 +45,14 @@ Create a `.sops.yaml` file in your repository root to define encryption rules:
 ```yaml
 creation_rules:
   - path_regex: .*\.enc\.yaml$
+    encrypted_regex: '^(data|stringData)$'
     age: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
   - path_regex: clusters/.*/secrets/.*\.yaml$
+    encrypted_regex: '^(data|stringData)$'
     age: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
 ```
 
-Replace the age public key with your own. The `path_regex` patterns determine which files get encrypted.
+Replace the age public key with your own. The `path_regex` patterns determine which files use each rule, and `encrypted_regex` keeps Kubernetes object metadata readable while encrypting only the Secret data fields.
 
 ## Step 3: Create and Encrypt Database Credentials
 
@@ -145,7 +147,13 @@ metadata:
   name: my-app
   namespace: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: my-app
@@ -172,7 +180,7 @@ To rotate credentials, decrypt the file locally, update the values, and re-encry
 
 ```bash
 # Decrypt for editing
-sops clusters/my-cluster/secrets/database-credentials.yaml
+sops edit clusters/my-cluster/secrets/database-credentials.yaml
 
 # Or decrypt in place, edit, then re-encrypt
 sops --decrypt --in-place clusters/my-cluster/secrets/database-credentials.yaml
@@ -189,6 +197,7 @@ For production environments, use a cloud KMS provider. Update your `.sops.yaml`:
 ```yaml
 creation_rules:
   - path_regex: clusters/.*/secrets/.*\.yaml$
+    encrypted_regex: '^(data|stringData)$'
     kms: arn:aws:kms:us-east-1:123456789:key/your-key-id
 ```
 

@@ -89,7 +89,7 @@ Now all DNS resolution goes through BIND.
 
 ## Option 2: Use systemd-resolved with BIND as Upstream
 
-If you want systemd-resolved handling local resolution (mDNS, caching) and forwarding to BIND for your zones:
+If you want systemd-resolved handling local resolution (mDNS, caching) and using BIND as an upstream DNS server:
 
 Configure systemd-resolved to use BIND as its DNS server:
 
@@ -104,7 +104,7 @@ FallbackDNS=8.8.8.8
 EOF
 ```
 
-This tells systemd-resolved to forward queries for `example.com` and `internal.corp` to BIND on 127.0.0.1, and use 8.8.8.8 as a fallback for everything else.
+This tells systemd-resolved to use BIND on 127.0.0.1 as a global DNS server and marks `example.com` and `internal.corp` as route-only domains. Because `DNS=` in `resolved.conf` is global, BIND can still be used for other multi-label DNS queries too. `FallbackDNS` is only used if systemd-resolved has no other DNS servers from `DNS=`, NetworkManager, systemd-networkd, or `/etc/resolv.conf`.
 
 Make sure BIND listens on a different interface or port to avoid conflict. Configure BIND to listen only on 127.0.0.1:
 
@@ -144,9 +144,11 @@ options {
 };
 ```
 
-Configure systemd-resolved to use BIND for domain-specific queries:
+Configure systemd-resolved to use BIND as an upstream resolver:
 
 ```bash
+mkdir -p /etc/systemd/resolved.conf.d
+
 cat > /etc/systemd/resolved.conf.d/local.conf << 'EOF'
 [Resolve]
 DNS=192.168.1.10
@@ -156,6 +158,8 @@ EOF
 
 systemctl restart systemd-resolved
 ```
+
+This marks `example.com` as a route-only domain for the BIND server. Because this is a global `DNS=` setting, systemd-resolved can still use that BIND server for other multi-label DNS queries too. As above, `FallbackDNS` is not a general catch-all resolver; it is only used when no other DNS server information is available.
 
 Check the configuration:
 
@@ -212,8 +216,8 @@ resolvectl query www.example.com
 **NetworkManager overwriting resolv.conf:**
 
 ```bash
-# Check NetworkManager's DNS mode
-nmcli general | grep -i dns
+# Check NetworkManager's effective DNS mode
+NetworkManager --print-config | grep -E '^(dns|rc-manager)='
 ```
 
 Set NetworkManager to not manage DNS:

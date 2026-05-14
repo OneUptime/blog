@@ -51,11 +51,6 @@ cat > flux-sops-policy.hcl <<EOF
 path "transit/decrypt/flux-sops" {
   capabilities = ["update"]
 }
-
-# Allow reading the key metadata (required by SOPS)
-path "transit/keys/flux-sops" {
-  capabilities = ["read"]
-}
 EOF
 
 # Write the policy to Vault
@@ -68,10 +63,11 @@ Generate a Vault token with the decryption policy attached. For production, cons
 
 ```bash
 # Create a token with the flux-sops policy
-vault token create \
+FLUX_VAULT_TOKEN=$(vault token create \
+  -field=token \
   -policy=flux-sops \
   -period=720h \
-  -display-name="flux-kustomize-controller"
+  -display-name="flux-kustomize-controller")
 ```
 
 Store the token as a Kubernetes secret for the kustomize-controller.
@@ -80,12 +76,12 @@ Store the token as a Kubernetes secret for the kustomize-controller.
 # Create a Kubernetes secret with the Vault token
 kubectl create secret generic sops-vault \
   --namespace=flux-system \
-  --from-literal=sops.vault-token=<vault-token>
+  --from-literal=sops.vault-token="$FLUX_VAULT_TOKEN"
 ```
 
 ## Step 5: Configure Vault Kubernetes Authentication (Production)
 
-For production environments, use Vault's Kubernetes auth method instead of static tokens.
+For production environments, Vault's Kubernetes auth method can issue scoped Vault tokens bound to the kustomize-controller service account. Flux still expects a Vault token through `sops.vault-token` or the controller's `VAULT_TOKEN` environment variable, so use the token returned by the Kubernetes auth login when creating the secret in Step 4.
 
 ```bash
 # Enable Kubernetes auth in Vault
@@ -101,6 +97,11 @@ vault write auth/kubernetes/role/flux-sops \
   bound_service_account_namespaces=flux-system \
   policies=flux-sops \
   ttl=1h
+
+# Exchange the kustomize-controller service account token for a Vault token
+FLUX_VAULT_TOKEN=$(vault write -field=token auth/kubernetes/login \
+  role=flux-sops \
+  jwt="$(kubectl create token kustomize-controller -n flux-system)")
 ```
 
 ## Step 6: Create and Encrypt a Secret
@@ -124,7 +125,8 @@ stringData:
 Set the Vault address and encrypt the secret.
 
 ```bash
-# Set the Vault address environment variable
+# Set the Vault address environment variable.
+# SOPS uses VAULT_TOKEN or ~/.vault-token for Vault authentication.
 export VAULT_ADDR=https://vault.example.com
 
 # Encrypt using Vault Transit

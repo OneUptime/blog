@@ -12,7 +12,7 @@ Disk encryption is great until you need to reboot a server at 3 AM and someone h
 
 ## How NBDE Works
 
-NBDE uses a client-server model. Tang is the server that holds encryption keys. Clevis is the client-side framework that talks to Tang during boot. The clever part is that Tang never stores or learns the encryption key for any client. Instead, it performs a key exchange that allows the client to derive its own key only when Tang is reachable.
+NBDE uses a client-server model. Tang is the server that holds its own asymmetric keys for network-bound unlocking. Clevis is the client-side framework that talks to Tang during boot. The clever part is that Tang never stores or learns the encryption key for any client. Instead, it performs a key exchange that allows the client to derive its own key only when Tang is reachable.
 
 ```mermaid
 flowchart LR
@@ -89,21 +89,24 @@ You will see files with `.jwk` extensions. These are JSON Web Keys. There are ty
 Periodically rotate Tang keys for security:
 
 ```bash
-# Generate new keys (old keys remain for existing clients)
+# Hide existing keys from new advertisements first
+sudo sh -c 'cd /var/db/tang && for key in *.jwk; do mv "$key" ".$key"; done'
+
+# Generate new keys
 sudo /usr/libexec/tangd-keygen /var/db/tang
 
-# List all keys including old ones
+# List advertised and hidden keys
 sudo ls -la /var/db/tang/
 ```
 
-Old keys are kept so that existing Clevis bindings continue to work. To decommission old keys, rename them with a leading dot:
+Old keys are kept with a leading dot so existing Clevis bindings can continue to work while you update clients. To disable advertisement for a specific old key manually, rename it with a leading dot:
 
 ```bash
 # Disable an old key by hiding it (replace with your actual key filename)
 sudo mv /var/db/tang/old-key-id.jwk /var/db/tang/.old-key-id.jwk
 ```
 
-After hiding old keys, clients bound to those keys will need to re-bind. Plan key rotation carefully to avoid locking out clients.
+After rotating keys, clients bound to the old advertised keys should be updated with `clevis luks regen`. Plan key rotation carefully to avoid locking out clients, and do not delete hidden old keys until clients have migrated.
 
 ## Testing Tang from a Remote Client
 

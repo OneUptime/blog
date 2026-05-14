@@ -23,7 +23,7 @@ graph LR
     D[Manifest with namespace: default] --> B
 ```
 
-Cluster-scoped resources (like ClusterRole, ClusterRoleBinding, and Namespace objects) are not affected by `targetNamespace` because they do not belong to any namespace.
+Cluster-scoped resources (like ClusterRole, ClusterRoleBinding, and Namespace objects) do not get a `metadata.namespace` value because they do not belong to any namespace. However, because Flux uses Kustomize namespace behavior, some namespace reference fields that Kustomize knows about, such as ServiceAccount subjects in RoleBinding or ClusterRoleBinding resources, may still be updated.
 
 ## Basic targetNamespace Configuration
 
@@ -240,11 +240,11 @@ spec:
 
 ### Cross-Namespace References
 
-If your manifests contain references to resources in other namespaces (such as a ServiceAccount referencing a Secret in a different namespace), `targetNamespace` will not update those cross-namespace references. You will need to handle these manually or through variable substitution.
+If your manifests contain references to resources in other namespaces, especially in custom resources or fields that Kustomize does not know how to transform, `targetNamespace` will not update those cross-namespace references. You will need to handle these manually or through variable substitution.
 
 ### Cluster-Scoped Resources
 
-`targetNamespace` only affects namespaced resources. If your manifests include cluster-scoped resources like ClusterRole or ClusterRoleBinding, those are applied as-is without namespace modification.
+`targetNamespace` does not add `metadata.namespace` to cluster-scoped resources. If your manifests include cluster-scoped resources like ClusterRole or Namespace, those are applied as-is without a resource namespace. Be aware that Kustomize may still update known namespace reference fields inside cluster-scoped resources, such as ServiceAccount subjects in ClusterRoleBinding resources.
 
 ### Health Checks with targetNamespace
 
@@ -281,10 +281,10 @@ spec:
 kubectl get all -n tenant-a
 
 # Preview the Kustomization output to see namespace overrides
-flux build kustomization app-tenant-a
+flux build kustomization app-tenant-a --path ./deploy/app
 
 # Verify the Kustomization status
-flux get kustomization app-tenant-a
+flux get kustomizations app-tenant-a
 ```
 
 ## Best Practices

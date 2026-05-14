@@ -34,11 +34,11 @@ If CPUs 0-1 are your housekeeping cores and CPUs 2-7 are isolated for real-time:
 for irq_dir in /proc/irq/[0-9]*; do
     irq=$(basename "$irq_dir")
     # Skip IRQs that cannot be moved (e.g., IRQ 0, 2)
-    echo 03 > /proc/irq/$irq/smp_affinity 2>/dev/null
+    echo 03 | sudo tee "/proc/irq/$irq/smp_affinity" > /dev/null 2>&1
 done
 ```
 
-## Use irqbalance with a Policy Script
+## Use irqbalance with Banned CPUs
 
 The `irqbalance` daemon distributes IRQs across CPUs by default. On real-time systems, configure it to avoid isolated cores.
 
@@ -46,7 +46,7 @@ The `irqbalance` daemon distributes IRQs across CPUs by default. On real-time sy
 # Edit the irqbalance configuration
 sudo tee /etc/sysconfig/irqbalance > /dev/null << 'EOF'
 # Ban CPUs 2-7 from receiving IRQs
-IRQBALANCE_BANNED_CPULIST=2-7
+IRQBALANCE_BANNED_CPUS=000000fc
 EOF
 
 # Restart irqbalance to apply
@@ -71,7 +71,7 @@ sudo tee /usr/local/bin/set-irq-affinity.sh > /dev/null << 'SCRIPT'
 # Move all movable IRQs to housekeeping CPUs 0-1
 for irq_dir in /proc/irq/[0-9]*; do
     irq=$(basename "$irq_dir")
-    echo 03 > /proc/irq/$irq/smp_affinity 2>/dev/null
+    echo 03 > "/proc/irq/$irq/smp_affinity" 2>/dev/null
 done
 SCRIPT
 
@@ -102,17 +102,35 @@ sudo systemctl enable set-irq-affinity.service
 sudo dnf install -y tuna
 
 # Move all IRQs away from CPUs 2-7
-sudo tuna --irqs=\* --cpus=0,1 --move
+sudo tuna move --irqs='*' --cpus=0,1
 
 # Verify the new IRQ distribution
-sudo tuna --irqs --show
+sudo tuna show_irqs --irqs='*'
 ```
 
 ## Verify IRQs Are Off Isolated CPUs
 
 ```bash
-# Check that no IRQs are assigned to CPUs 2-7
-cat /proc/interrupts | awk '{for(i=4;i<=9;i++) if($i+0 > 0) print}'
+# Check that no IRQs are currently effective on CPUs 2-7
+for affinity_file in /proc/irq/[0-9]*/effective_affinity_list; do
+    irq=${affinity_file%/*}
+    irq=${irq##*/}
+    cpu_list=$(cat "$affinity_file")
+    awk -v cpu_list="$cpu_list" '
+        BEGIN {
+            split(cpu_list, ranges, ",")
+            for (i in ranges) {
+                split(ranges[i], bounds, "-")
+                start = bounds[1]
+                end = bounds[2] == "" ? bounds[1] : bounds[2]
+                for (cpu = start; cpu <= end; cpu++) {
+                    if (cpu >= 2 && cpu <= 7) found = 1
+                }
+            }
+            exit found ? 0 : 1
+        }
+    ' && echo "IRQ $irq still effective on CPU(s): $cpu_list"
+done
 ```
 
 Properly steering IRQs away from real-time cores is one of the most effective ways to reduce worst-case latency on RHEL real-time systems.

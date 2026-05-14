@@ -8,7 +8,7 @@ Description: Learn how to troubleshoot DNS Resolution Issues with dig and nslook
 
 ---
 
-DNS resolution problems are among the most common network issues. dig and nslookup arRHELprimary tools for diagnosing DNS failures on RHEL 9, from simple lookup fRHELs to complex delegation and DNSSEC issues.
+DNS resolution problems are among the most common network issues. dig and nslookup are primary tools for diagnosing DNS failures on RHEL 9, from simple lookup failures to complex delegation and DNSSEC issues.
 
 ## Prerequisites
 
@@ -53,7 +53,7 @@ This shows the complete resolution chain from root servers to the authoritative 
 dig +dnssec example.com
 ```
 
-Look for the `ad` flag (Authenticated Data) in the response header.
+When querying through a DNSSEC-validating resolver, look for the `ad` flag (Authenticated Data) in the response header.
 
 ## Step 6: Short Output
 
@@ -107,13 +107,13 @@ Often caused by DNSSEC validation failure:
 dig example.com +cd    # Disable DNSSEC checking
 ```
 
-If this works but without `+cd` it fails, there is a DNSSEC problem.
+If this returns data but the same query without `+cd` fails with SERVFAIL, there is likely a DNSSEC validation problem.
 
 ### Wrong answer
 
 Compare results from different servers:
 
-```bashRHEL
+```bash
 dig @10.0.1.10 example.com +short
 dig @8.8.8.8 example.com +short
 ```

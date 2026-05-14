@@ -108,7 +108,7 @@ pasv_max_port=30100
 
 # Logging
 xferlog_enable=YES
-xferlog_file=/var/log/vsftpd.log
+vsftpd_log_file=/var/log/vsftpd.log
 
 # Security
 local_umask=022
@@ -134,6 +134,8 @@ USERCONF
 # Configuration for uploaduser - upload only
 sudo tee /etc/vsftpd/user_conf/uploaduser << 'USERCONF'
 write_enable=YES
+download_enable=NO
+cmds_denied=DELE,RNFR,RNTO,RMD
 local_root=/var/ftp/virtual/uploaduser
 USERCONF
 
@@ -159,7 +161,7 @@ sudo firewall-cmd --permanent --add-port=30000-30100/tcp
 sudo firewall-cmd --reload
 
 # SELinux
-sudo setsebool -P ftpd_full_access 1
+sudo setsebool -P ftpd_anon_write 1
 sudo chcon -R -t public_content_rw_t /var/ftp/virtual
 ```
 

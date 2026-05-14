@@ -191,7 +191,7 @@ spec:
 
 ## Step 6: Pin Repository References
 
-For production tenants, consider pinning to a specific tag or commit rather than tracking a branch.
+For production tenants, consider pinning to a specific tag or commit rather than tracking a branch or SemVer range.
 
 ```yaml
 # tenants/team-alpha/git-repo-pinned.yaml
@@ -204,8 +204,8 @@ spec:
   interval: 1m
   url: https://github.com/org/team-alpha-apps
   ref:
-    # Pin to a specific semver tag
-    semver: ">=1.0.0 <2.0.0"
+    # Pin to a specific tag
+    tag: v1.2.3
 ```
 
 ## Step 7: Verify Repository Assignment

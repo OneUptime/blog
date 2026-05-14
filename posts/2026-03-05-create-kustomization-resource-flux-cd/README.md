@@ -90,7 +90,7 @@ The `sourceRef` field points to the source that contains your Kubernetes manifes
 
 ### spec.path
 
-The `path` field defines which directory inside the source repository contains the manifests to apply. It is relative to the root of the repository.
+The `path` field defines which directory inside the source artifact contains the manifests to apply. For a GitRepository source, it is relative to the root of the repository.
 
 ### spec.prune
 
@@ -118,11 +118,11 @@ spec:
     name: production-repo
   path: ./clusters/production
   prune: true
-  # Wait for resources to become healthy after apply
-  wait: true
-  # Force apply resources even if they have immutable field changes
+  # Disable automatic health checks for all reconciled resources; use explicit healthChecks below
+  wait: false
+  # Recreate resources when patching fails due to immutable field changes
   force: false
-  # Target namespace for all resources without an explicit namespace
+  # Target namespace to set or override for all resources
   targetNamespace: production
   # Health checks to run after applying
   healthChecks:

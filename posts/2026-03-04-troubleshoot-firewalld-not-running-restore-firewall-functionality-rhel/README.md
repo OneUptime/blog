@@ -8,7 +8,7 @@ Description: Diagnose and fix firewalld startup failures on RHEL, restore firewa
 
 ---
 
-When firewalld is not running on RHEL, your system either has no active firewall or is falling back to raw iptables/nftables rules. This leaves your server potentially exposed. Here is how to diagnose the problem and get firewalld running again.
+When firewalld is not running on RHEL, your system is not applying firewalld-managed rules and may only have raw iptables/nftables rules from another service or manual configuration. This leaves your server potentially exposed. Here is how to diagnose the problem and get firewalld running again.
 
 ## Checking Firewalld Status
 
@@ -82,20 +82,20 @@ sudo systemctl start firewalld
 ## Verifying Firewall Rules After Restart
 
 ```bash
-# List the active zone and its rules
+# List the active zones and their rules
 sudo firewall-cmd --get-active-zones
-sudo firewall-cmd --list-all
+sudo firewall-cmd --list-all-zones
 
 # Verify that permanent rules are loaded
-sudo firewall-cmd --list-all --permanent
+sudo firewall-cmd --list-all-zones --permanent
 ```
 
 ## Restoring Default Configuration
 
-If the configuration is beyond repair, reset to defaults:
+If the zone and service configuration is beyond repair, reset those files to defaults:
 
 ```bash
-# Remove all custom configuration
+# Remove custom zone, service, and direct rule configuration
 sudo rm -rf /etc/firewalld/zones/*
 sudo rm -rf /etc/firewalld/services/*
 sudo rm -rf /etc/firewalld/direct.xml

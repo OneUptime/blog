@@ -18,11 +18,11 @@ The vm.swappiness parameter controls how aggressively the kernel moves memory pa
 
 ## Understanding vm.swappiness
 
-The swappiness value ranges from 0 to 200 (with cgroup v2):
-- `0` - Kernel avoids swapping as much as possible
+The swappiness value ranges from 0 to 200 on current kernels:
+- `0` - Kernel will not initiate swap until free and file-backed pages fall below the high watermark
 - `60` - Default value, moderate swapping
-- `100` - Kernel treats swap and RAM equally
-- `200` - Maximum swap aggressiveness (cgroup v2 only)
+- `100` - Kernel treats swap and filesystem paging as having equal I/O cost
+- `200` - Maximum swap aggressiveness, useful only when swap I/O is much cheaper than filesystem paging
 
 ## Step 1: Check Current Swappiness
 
@@ -60,8 +60,8 @@ vmstat 1 5
 ```
 
 Key columns:
-- `si` - Swap in (pages read from swap)
-- `so` - Swap out (pages written to swap)
+- `si` - Swap in (memory swapped in from disk per second)
+- `so` - Swap out (memory swapped to disk per second)
 
 If `si` and `so` are consistently high, your system is thrashing.
 
@@ -114,4 +114,4 @@ swapon --show
 
 ## Conclusion
 
-Tuning vm.swappiness on RHEL lets you control the tradeoff between keeping applications in RAM and using swap for less active pages. Lower values suit latency-sensitive workloads, while higher values work for systems that need to maximize the number of running processes. Consider zram for compressed in-memory swap as a high-performance alternative.
+Tuning vm.swappiness on RHEL lets you control the tradeoff between reclaiming filesystem cache and using swap for less active pages. Lower values suit latency-sensitive workloads, while higher values can make sense when swap is faster than filesystem paging, such as with zram. Consider zram for compressed in-memory swap as a high-performance alternative on RHEL 9 or newer.

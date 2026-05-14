@@ -34,6 +34,7 @@ Create a `.sops.yaml` in your repository root:
 ```yaml
 creation_rules:
   - path_regex: .*secrets.*\.yaml$
+    encrypted_regex: '^(data|stringData)$'
     age: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
 ```
 
@@ -138,7 +139,13 @@ metadata:
   name: my-app
   namespace: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       imagePullSecrets:
         - name: ghcr-pull-secret
@@ -147,7 +154,7 @@ spec:
           image: ghcr.io/my-org/my-app:v1.0.0
 ```
 
-Alternatively, attach the pull secret to a service account so all pods in the namespace use it automatically:
+Alternatively, attach the pull secret to a service account so all pods using that service account use it automatically:
 
 ```yaml
 apiVersion: v1
@@ -181,6 +188,8 @@ kubectl create secret docker-registry ecr-pull-secret \
   --namespace=my-app \
   --dry-run=client -o yaml > clusters/my-cluster/secrets/ecr-pull-secret.yaml
 ```
+
+For ECR, remember that the password returned by `aws ecr get-login-password` is valid for 12 hours, so this secret needs automated refresh or frequent rotation.
 
 Encrypt both:
 
@@ -234,10 +243,16 @@ kubectl get secret ghcr-pull-secret -n my-app
 kubectl get secret ghcr-pull-secret -n my-app -o jsonpath='{.type}'
 ```
 
-The type should be `kubernetes.io/dockerconfigjson`. Test that images can be pulled:
+The type should be `kubernetes.io/dockerconfigjson`. A server-side dry run only validates the API request, so create a disposable pod to test that the image can actually be pulled:
 
 ```bash
-kubectl run test-pull --image=ghcr.io/my-org/my-app:v1.0.0 -n my-app --dry-run=server
+kubectl run test-pull \
+  --image=ghcr.io/my-org/my-app:v1.0.0 \
+  --image-pull-policy=Always \
+  --restart=Never \
+  -n my-app
+kubectl describe pod test-pull -n my-app
+kubectl delete pod test-pull -n my-app
 ```
 
 ## Summary

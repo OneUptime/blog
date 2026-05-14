@@ -51,7 +51,7 @@ sudo sysctl -w net.core.netdev_max_backlog=5000
 
 ## Enabling TCP Optimizations
 
-Enable TCP Fast Open for faster connection setup:
+Enable TCP Fast Open client support and server support for applications that use the `TCP_FASTOPEN` socket option:
 
 ```bash
 sudo sysctl -w net.ipv4.tcp_fastopen=3
@@ -115,6 +115,9 @@ net.core.netdev_max_backlog=5000
 net.ipv4.tcp_fastopen=3
 net.core.default_qdisc=fq
 net.ipv4.tcp_congestion_control=bbr
+net.ipv4.tcp_keepalive_time=600
+net.ipv4.tcp_keepalive_intvl=60
+net.ipv4.tcp_keepalive_probes=5
 net.ipv4.ip_local_port_range=1024 65535
 net.ipv4.tcp_tw_reuse=1
 SYSCTL
@@ -148,7 +151,7 @@ ethtool -g eth0
 sudo ethtool -G eth0 rx 4096 tx 4096
 ```
 
-Enable multi-queue (RSS):
+Adjust multi-queue channels:
 
 ```bash
 ethtool -l eth0

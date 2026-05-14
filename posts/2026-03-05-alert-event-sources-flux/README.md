@@ -18,11 +18,11 @@ The `spec.eventSources` field in a Flux Alert resource defines which Flux resour
 
 ## Understanding Event Sources
 
-Each entry in the `spec.eventSources` array specifies a resource to watch using three fields:
+Each entry in the `spec.eventSources` array specifies a resource to watch using these fields:
 
 - **kind** - The type of Flux resource (e.g., Kustomization, HelmRelease, GitRepository)
 - **name** - The name of the resource, or `*` to match all resources of that kind
-- **namespace** - The namespace where the resource lives
+- **namespace** - The namespace where the resource lives. When omitted, Flux uses the Alert's namespace
 
 The alert will forward events from all matched resources to the referenced notification provider.
 
@@ -33,7 +33,7 @@ The simplest configuration watches a single named resource.
 ```yaml
 # Alert watching a single Kustomization resource
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: single-source-alert
@@ -55,7 +55,7 @@ Use a wildcard (`*`) for the name to match all resources of a given kind in a na
 
 ```yaml
 # Alert watching all HelmRelease resources in flux-system
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: all-helmreleases-alert
@@ -77,7 +77,7 @@ Combine different resource kinds in a single alert for broader coverage.
 
 ```yaml
 # Alert watching multiple resource kinds
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: multi-kind-alert
@@ -112,11 +112,11 @@ kubectl apply -f multi-kind-alert.yaml
 
 ## Step 4: Monitor Resources Across Namespaces
 
-Add entries for the same kind in different namespaces to monitor cross-namespace resources.
+Add entries for the same kind in different namespaces to monitor cross-namespace resources. This works when the notification controller allows cross-namespace references; platform administrators can disable this with the `--no-cross-namespace-refs=true` flag.
 
 ```yaml
 # Alert watching resources across multiple namespaces
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: cross-namespace-alert
@@ -151,7 +151,7 @@ You can mix wildcard and named entries to create targeted monitoring.
 
 ```yaml
 # Alert combining wildcard and specific resource names
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: mixed-sources-alert
@@ -184,7 +184,7 @@ For complete pipeline monitoring, include all relevant source and deployment res
 
 ```yaml
 # Comprehensive alert covering the full GitOps pipeline
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: full-pipeline-alert
@@ -263,8 +263,8 @@ The following Flux resource kinds can be used as event sources:
 ## Common Mistakes
 
 - **Wrong kind name**: Resource kinds are case-sensitive. Use `Kustomization`, not `kustomization`
-- **Missing namespace**: Always specify the namespace where the watched resource lives
-- **Alert namespace vs source namespace**: The alert itself lives in one namespace but can watch resources in other namespaces via the event source namespace field
+- **Missing namespace**: If you omit the event source namespace, Flux uses the Alert's namespace
+- **Alert namespace vs source namespace**: The alert itself lives in one namespace but can watch resources in other namespaces via the event source namespace field, unless the notification controller has cross-namespace references disabled
 - **Non-existent resources**: If the named resource does not exist, the alert will not error, but it will never fire
 
 ## Summary

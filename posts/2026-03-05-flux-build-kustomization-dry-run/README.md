@@ -14,7 +14,7 @@ This guide covers how to use `flux build kustomization` for validation, CI/CD in
 
 ## Prerequisites
 
-- The `flux` CLI installed (version 2.1 or later)
+- The `flux` CLI installed
 - `kubectl` access to the cluster where the Kustomization exists (for fetching substitution variables)
 - A Git repository with Flux Kustomization resources
 
@@ -23,11 +23,11 @@ This guide covers how to use `flux build kustomization` for validation, CI/CD in
 The `flux build kustomization` command simulates what the kustomize-controller does during reconciliation:
 
 1. It reads the Kustomization resource spec (either from the cluster or from a local file)
-2. It runs `kustomize build` on the specified path
+2. It runs `kustomize build` on the specified path, generating a local `kustomization.yaml` if one does not already exist
 3. It applies any variable substitutions defined in `spec.postBuild`
 4. It outputs the fully rendered manifests to stdout
 
-This gives you the exact YAML that Flux would apply, allowing you to inspect it for correctness.
+This gives you the YAML that Flux would apply, allowing you to inspect it for correctness.
 
 ## Basic Usage
 
@@ -111,7 +111,15 @@ flux build kustomization my-app \
   --kustomization-file ./clusters/production/my-app.yaml
 ```
 
-When using `--kustomization-file`, the CLI reads the Kustomization spec from the file rather than the cluster. However, `substituteFrom` references to ConfigMaps and Secrets will not be resolved since there is no cluster to fetch them from. You can work around this by providing substitution values directly:
+When using `--kustomization-file`, the CLI reads the Kustomization spec from the file rather than the cluster. If you also use `--dry-run`, the command does not connect to the cluster, and `substituteFrom` references to ConfigMaps and Secrets are skipped. You can work around this by putting the required values in `spec.postBuild.substitute` in the local Kustomization file:
+
+```yaml
+spec:
+  postBuild:
+    substitute:
+      CLUSTER_ENV: production
+      APP_REPLICAS: "3"
+```
 
 ```bash
 flux build kustomization my-app \
@@ -184,13 +192,13 @@ This pipeline runs on every pull request and fails if the Kustomization produces
 
 ## Common Build Errors
 
-**Missing kustomization.yaml**:
+**Invalid manifest in the build path**:
 
 ```text
-Error: kustomization path './apps/my-app' does not contain a kustomization.yaml file
+Error: accumulating resources: accumulating resources from 'deployment.yaml': MalformedYAMLError
 ```
 
-Ensure the path contains a `kustomization.yaml` file that references your resources.
+Ensure the path contains valid Kubernetes YAML. Flux can generate a local `kustomization.yaml` if one does not already exist, but the YAML files under the path must still be valid manifests.
 
 **Invalid patch target**:
 
@@ -200,13 +208,13 @@ Error: no matches for OriginalId Deployment.v1.apps/my-app
 
 A strategic merge patch or JSON patch references a resource that does not exist in the base. Check the patch target names and kinds.
 
-**Unresolved variable substitution**:
+**Unresolved variable substitution in strict mode**:
 
 ```text
 Error: variable 'CLUSTER_ENV' not found in substitution map
 ```
 
-A `${VARIABLE}` placeholder in your manifests does not have a corresponding entry in the substitution map. Add the variable to `spec.postBuild.substitute` or to the referenced ConfigMap/Secret.
+A `${VARIABLE}` placeholder in your manifests does not have a corresponding entry in the substitution map while `--strict-substitute` is enabled. Add the variable to `spec.postBuild.substitute` or to the referenced ConfigMap/Secret. Without strict substitution, undefined variables are replaced with an empty string unless a default value is provided.
 
 ## Comparing Builds Across Environments
 

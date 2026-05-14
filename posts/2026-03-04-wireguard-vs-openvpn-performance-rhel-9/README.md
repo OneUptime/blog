@@ -17,11 +17,12 @@ For a fair comparison, you need identical conditions. Two RHEL machines connecte
 ```bash
 # Install both VPN solutions
 
-sudo dnf install -y epel-release
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 sudo dnf install -y wireguard-tools openvpn easy-rsa
 
 # Install benchmarking tools
-sudo dnf install -y iperf3
+sudo dnf install -y iperf3 sysstat
 ```
 
 ## WireGuard Configuration for Benchmarking
@@ -35,14 +36,15 @@ sudo tee /etc/wireguard/wg0.conf > /dev/null << 'EOF'
 PrivateKey = SERVER_PRIVATE_KEY
 Address = 10.0.0.1/24
 ListenPort = 51820
+MTU = 1420
 
 [Peer]
 PublicKey = CLIENT_PUBLIC_KEY
 AllowedIPs = 10.0.0.2/32
 EOF
 
-# Set the MTU explicitly for consistent testing
-sudo ip link set wg0 mtu 1420
+# Start the interface
+sudo systemctl enable --now wg-quick@wg0
 ```
 
 ## OpenVPN Configuration for Benchmarking
@@ -54,7 +56,7 @@ Use OpenVPN with UDP and AES-256-GCM (the recommended cipher):
 port 1194
 proto udp
 dev tun
-cipher AES-256-GCM
+data-ciphers AES-256-GCM
 auth SHA256
 # ... (standard cert and key config)
 ```
@@ -95,11 +97,8 @@ VPN encryption consumes CPU. Measure it during throughput tests.
 ```bash
 # Monitor CPU usage during a benchmark
 # In one terminal, run the iperf3 test
-# In another terminal, capture CPU usage
-pidstat -u 1 30 -p $(pgrep -f "wireguard") > /tmp/wg_cpu.log 2>/dev/null
-
-# For OpenVPN (runs as a process, easier to track)
-pidstat -u 1 30 -p $(pgrep openvpn) > /tmp/ovpn_cpu.log
+# In another terminal, capture OpenVPN process CPU usage
+pidstat -u 1 30 -C openvpn > /tmp/ovpn_cpu.log
 ```
 
 Since WireGuard runs in the kernel, you won't see a WireGuard process. Instead, measure overall system CPU:
@@ -148,7 +147,7 @@ Performance isn't everything. OpenVPN has advantages in other areas:
 | Feature | WireGuard | OpenVPN |
 |---------|-----------|---------|
 | TCP transport | No | Yes |
-| Works on port 443 | No (UDP only) | Yes (can blend with HTTPS) |
+| TCP/443 HTTPS-like transport | No (UDP only) | Yes (can blend with HTTPS) |
 | LDAP/RADIUS auth | No | Yes |
 | Per-client config | AllowedIPs only | Full push/pull config |
 | Client platforms | Good | Excellent (every OS) |
@@ -205,13 +204,13 @@ cat $RESULTS
 
 ## Connection Establishment Time
 
-This is often overlooked. WireGuard establishes a connection almost instantly because there's no multi-round handshake. OpenVPN's TLS negotiation takes several round trips.
+This is often overlooked. WireGuard interface activation is usually almost instant, and the first traffic triggers a short NoiseIK handshake. OpenVPN's TLS negotiation takes several round trips.
 
 ```bash
-# Time WireGuard connection
+# Time WireGuard interface activation
 time sudo wg-quick up wg0
 
-# Time OpenVPN connection
+# Time OpenVPN tunnel startup
 time sudo openvpn --config /etc/openvpn/client.ovpn --connect-timeout 30
 ```
 

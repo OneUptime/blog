@@ -56,13 +56,13 @@ sudo bpftool map lookup id 5 key 0x01 0x00 0x00 0x00
 Create a minimal eBPF program that traces system calls:
 
 ```c
-/* trace_open.bpf.c - traces open() syscalls */
+/* trace_open.bpf.c - traces openat() syscalls */
 #include <linux/bpf.h>
 #include <bpf/bpf_helpers.h>
 
 /* Define a tracepoint program that fires on sys_enter_openat */
 SEC("tracepoint/syscalls/sys_enter_openat")
-int trace_openat(struct trace_event_raw_sys_enter *ctx)
+int trace_openat(void *ctx)
 {
     /* Get the PID and TID of the calling process */
     __u64 pid_tgid = bpf_get_current_pid_tgid();
@@ -82,7 +82,6 @@ char LICENSE[] SEC("license") = "GPL";
 ```bash
 # Compile to eBPF bytecode
 clang -O2 -target bpf -D__TARGET_ARCH_x86 \
-    -I/usr/include/x86_64-linux-gnu \
     -c trace_open.bpf.c -o trace_open.bpf.o
 
 # Verify the compiled object
@@ -92,14 +91,12 @@ llvm-objdump -d trace_open.bpf.o
 ## Load and Attach with bpftool
 
 ```bash
-# Load the program
-sudo bpftool prog load trace_open.bpf.o /sys/fs/bpf/trace_open
+# Load and auto-attach the program
+sudo bpftool prog load trace_open.bpf.o /sys/fs/bpf/trace_open autoattach
 
-# Verify it is loaded
+# Verify the program and link are loaded
 sudo bpftool prog list
-
-# Attach to the tracepoint
-sudo bpftool prog attach pinned /sys/fs/bpf/trace_open tracepoint syscalls sys_enter_openat
+sudo bpftool link list
 ```
 
 ## View Output
@@ -118,7 +115,7 @@ sudo bpftool prog pin id 42 /sys/fs/bpf/my_prog
 # List pinned programs
 ls /sys/fs/bpf/
 
-# Unpin (unload) a program
+# Unpin the program or link, releasing the pinned reference
 sudo rm /sys/fs/bpf/trace_open
 ```
 

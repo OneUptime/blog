@@ -44,7 +44,7 @@ sequenceDiagram
     CLI->>Cluster: Create SSH key pair (deploy key)
     CLI->>Git: Register public key as deploy key
     Cluster->>Git: Source controller connects via SSH
-    Git->>Cluster: Pulls manifests on each reconciliation
+    Git-->>Cluster: Returns manifests on each reconciliation
 ```
 
 Flux generates an SSH key pair during bootstrap. The private key is stored as a Kubernetes secret in the `flux-system` namespace. The public key is registered as a deploy key on your Git repository. The source controller uses the private key to authenticate when pulling manifests.
@@ -62,7 +62,7 @@ Even with SSH authentication, Flux needs a GitHub token during bootstrap to crea
 export GITHUB_TOKEN=<your-github-personal-access-token>
 ```
 
-The token needs the `repo` scope for private repositories or `public_repo` for public repositories, plus `admin:public_key` to register deploy keys.
+For a classic personal access token, Flux recommends granting the `repo` scope so it can create or update the repository and configure its deploy key. For a fine-grained personal access token on a repository that already exists, grant `Administration` read and write access, `Contents` read and write access, and `Metadata` read-only access.
 
 ### Step 2: Run the Bootstrap Command
 
@@ -157,39 +157,22 @@ Copy the public key and add it as a deploy key on your repository.
 cat ~/.ssh/flux-deploy-key.pub
 ```
 
-On GitHub, go to your repository Settings > Deploy keys > Add deploy key. Paste the public key and enable "Allow write access" if Flux needs to push changes (required for image automation).
+On GitHub, go to your repository Settings > Deploy keys > Add deploy key. Paste the public key and enable "Allow write access" so the bootstrap command can push the Flux manifests. Write access is also required later if you use image automation.
 
-### Step 3: Create the Kubernetes Secret
+### Step 3: Bootstrap with the Existing Key
 
-Create a secret in the `flux-system` namespace with the private key before bootstrapping.
-
-```bash
-# Create the flux-system namespace
-kubectl create namespace flux-system
-
-# Create the SSH key secret
-kubectl create secret generic flux-system \
-  --namespace=flux-system \
-  --from-file=identity=~/.ssh/flux-deploy-key \
-  --from-file=identity.pub=~/.ssh/flux-deploy-key.pub \
-  --from-file=known_hosts=<(ssh-keyscan github.com 2>/dev/null)
-```
-
-### Step 4: Bootstrap with the Existing Key
-
-Run the bootstrap command with the `--ssh-key-algorithm` flag to indicate SSH should be used.
+Run the generic Git bootstrap command with the SSH repository URL and the private key file.
 
 ```bash
-# Bootstrap using the pre-existing secret
-flux bootstrap github \
-  --owner=<your-github-username> \
-  --repository=fleet-infra \
+# Bootstrap using the existing key
+flux bootstrap git \
+  --url=ssh://git@github.com/<your-github-username>/fleet-infra.git \
   --branch=main \
   --path=./clusters/production \
-  --personal
+  --private-key-file=~/.ssh/flux-deploy-key
 ```
 
-Flux detects the existing secret and uses it instead of generating a new key pair.
+Flux stores the private key in the `flux-system` secret and configures the cluster to use it for Git access.
 
 ## Verifying the Bootstrap
 
@@ -247,13 +230,13 @@ Periodically rotating SSH keys is a good security practice. Here is how to rotat
 # Generate a new SSH key pair
 ssh-keygen -t ed25519 -C "flux-deploy-key-rotated" -f ~/.ssh/flux-deploy-key-new -N ""
 
-# Update the Kubernetes secret with the new key
-kubectl create secret generic flux-system \
-  --namespace=flux-system \
-  --from-file=identity=~/.ssh/flux-deploy-key-new \
-  --from-file=identity.pub=~/.ssh/flux-deploy-key-new.pub \
-  --from-file=known_hosts=<(ssh-keyscan github.com 2>/dev/null) \
-  --dry-run=client -o yaml | kubectl apply -f -
+# Delete the existing secret so Flux can recreate it
+kubectl -n flux-system delete secret flux-system
+
+# Recreate the Kubernetes secret with the new key
+flux create secret git flux-system \
+  --url=ssh://git@github.com/<owner>/fleet-infra.git \
+  --private-key-file=~/.ssh/flux-deploy-key-new
 
 # Update the deploy key on GitHub with the new public key
 cat ~/.ssh/flux-deploy-key-new.pub

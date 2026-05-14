@@ -117,7 +117,7 @@ Here is a practical workflow for using permissive mode to diagnose SELinux issue
 First, try the operation that is failing and check the audit log:
 
 ```bash
-# Clear the audit log to get a clean starting point
+# Check recent AVC denials
 sudo ausearch -m avc -ts recent
 ```
 
@@ -131,7 +131,7 @@ sudo setenforce 0
 
 ### Step 3: Reproduce the Operation
 
-Run the operation again. This time it should succeed because SELinux is not blocking anything.
+Run the operation again. If SELinux enforcement was the cause, it should succeed because SELinux is no longer blocking that access.
 
 ### Step 4: Collect All Denials
 
@@ -139,7 +139,7 @@ Run the operation again. This time it should succeed because SELinux is not bloc
 # View all AVC denials that were logged
 sudo ausearch -m avc -ts recent
 
-# Generate a human-readable report
+# Generate a human-readable report if setroubleshoot-server is installed
 sudo sealert -a /var/log/audit/audit.log
 ```
 
@@ -178,7 +178,7 @@ If you need permissive mode to persist across reboots for extended troubleshooti
 
 ```bash
 # Edit the SELinux config file
-sudo sed -i 's/^SELINUX=enforcing/SELINUX=permissive/' /etc/selinux/config
+sudo sed -i 's/^SELINUX=.*/SELINUX=permissive/' /etc/selinux/config
 
 # Verify the change
 grep ^SELINUX= /etc/selinux/config
@@ -188,7 +188,7 @@ Remember to change it back when you are done:
 
 ```bash
 # Restore enforcing mode in the config
-sudo sed -i 's/^SELINUX=permissive/SELINUX=enforcing/' /etc/selinux/config
+sudo sed -i 's/^SELINUX=.*/SELINUX=enforcing/' /etc/selinux/config
 ```
 
 ## Setting SELinux Mode via GRUB (Boot Parameter)

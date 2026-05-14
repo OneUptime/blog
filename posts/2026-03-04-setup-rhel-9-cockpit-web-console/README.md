@@ -31,16 +31,15 @@ You can also install additional modules for managing containers (Podman), virtua
 On a minimal RHEL installation, Cockpit is not installed by default. Let's fix that.
 
 ```bash
-# Install the cockpit package and common modules
+# Install the cockpit package and common add-ons
 
-sudo dnf install -y cockpit cockpit-storaged cockpit-networkmanager cockpit-packagekit
+sudo dnf install -y cockpit cockpit-storaged cockpit-packagekit
 ```
 
 Here is what each package provides:
 
 - `cockpit` - Core web console and system overview
 - `cockpit-storaged` - Disk and storage management UI
-- `cockpit-networkmanager` - Network configuration UI
 - `cockpit-packagekit` - Software update management UI
 
 If you want the full set of modules available in the RHEL repos:
@@ -72,7 +71,7 @@ sudo systemctl enable --now cockpit.socket
 sudo systemctl status cockpit.socket
 ```
 
-You should see the socket is active and listening. The actual `cockpit.service` will start when the first connection comes in.
+You should see the socket is active and listening. Cockpit's web service starts on demand when the first connection comes in.
 
 ```bash
 # Confirm port 9090 is listening
@@ -106,7 +105,7 @@ https://your-server-ip:9090
 
 You will see a certificate warning because Cockpit uses a self-signed certificate by default. Accept the warning for now (we will fix this in the next section).
 
-Log in with your regular system credentials. Any user who is a member of the `wheel` group can log in and perform administrative tasks. Non-wheel users can log in but will have limited access.
+Log in with your regular system credentials. The default PAM configuration allows local users to log in. Users who can escalate privileges with `sudo` or PolicyKit can perform administrative tasks; other users will have limited access.
 
 ### The "Reuse my password for privileged tasks" Option
 
@@ -120,23 +119,23 @@ The self-signed certificate works for testing, but for production use you should
 
 ### Using a Certificate from a Certificate Authority
 
-Cockpit looks for certificate files in `/etc/cockpit/ws-certs.d/`. The file must have a `.cert` extension and contain both the certificate and the private key in PEM format, or you can split them.
+Cockpit looks for certificate files in `/etc/cockpit/ws-certs.d/`. Current Cockpit versions load the last file with a `.cert` or `.crt` extension in alphabetical order. Put the certificate chain in that file, and put the unencrypted private key in a separate file with the same base name and a `.key` suffix.
 
 ```bash
 # Create the directory if it doesn't exist
 sudo mkdir -p /etc/cockpit/ws-certs.d
 
-# Combine your certificate and key into a single file
-# The cert file must come first, then the key
-sudo cat /path/to/your-cert.pem /path/to/your-key.pem > /tmp/cockpit-combined.cert
-sudo mv /tmp/cockpit-combined.cert /etc/cockpit/ws-certs.d/50-custom.cert
+# Install the certificate chain and matching private key
+sudo cp /path/to/your-fullchain.pem /etc/cockpit/ws-certs.d/50-custom.crt
+sudo cp /path/to/your-key.pem /etc/cockpit/ws-certs.d/50-custom.key
 
 # Set proper permissions (key material must be protected)
-sudo chmod 640 /etc/cockpit/ws-certs.d/50-custom.cert
-sudo chown root:cockpit-ws /etc/cockpit/ws-certs.d/50-custom.cert
+sudo chown root:root /etc/cockpit/ws-certs.d/50-custom.crt /etc/cockpit/ws-certs.d/50-custom.key
+sudo chmod 644 /etc/cockpit/ws-certs.d/50-custom.crt
+sudo chmod 600 /etc/cockpit/ws-certs.d/50-custom.key
 
 # Restart cockpit to pick up the new certificate
-sudo systemctl restart cockpit
+sudo systemctl try-restart cockpit
 ```
 
 Cockpit loads certificate files in alphabetical order and uses the last one it successfully parses. The `50-` prefix ensures your certificate takes priority over the default `0-self-signed.cert`.
@@ -155,12 +154,15 @@ sudo certbot certonly --standalone -d cockpit.example.com
 # Create a deploy hook to copy certs to Cockpit's directory
 sudo tee /etc/letsencrypt/renewal-hooks/deploy/cockpit.sh << 'SCRIPT'
 #!/bin/bash
-cat /etc/letsencrypt/live/cockpit.example.com/fullchain.pem \
-    /etc/letsencrypt/live/cockpit.example.com/privkey.pem \
-    > /etc/cockpit/ws-certs.d/50-letsencrypt.cert
-chmod 640 /etc/cockpit/ws-certs.d/50-letsencrypt.cert
-chown root:cockpit-ws /etc/cockpit/ws-certs.d/50-letsencrypt.cert
-systemctl restart cockpit
+cp /etc/letsencrypt/live/cockpit.example.com/fullchain.pem \
+    /etc/cockpit/ws-certs.d/50-letsencrypt.crt
+cp /etc/letsencrypt/live/cockpit.example.com/privkey.pem \
+    /etc/cockpit/ws-certs.d/50-letsencrypt.key
+chown root:root /etc/cockpit/ws-certs.d/50-letsencrypt.crt \
+    /etc/cockpit/ws-certs.d/50-letsencrypt.key
+chmod 644 /etc/cockpit/ws-certs.d/50-letsencrypt.crt
+chmod 600 /etc/cockpit/ws-certs.d/50-letsencrypt.key
+systemctl try-restart cockpit
 SCRIPT
 
 # Make the hook executable
@@ -189,7 +191,7 @@ IdleTimeout = 30
 EOF
 
 # Restart cockpit to apply
-sudo systemctl restart cockpit
+sudo systemctl try-restart cockpit
 ```
 
 ### Changing the Listening Port
@@ -212,6 +214,9 @@ ListenStream=443
 The first empty `ListenStream=` clears the default, and the second sets the new port.
 
 ```bash
+# Allow Cockpit to bind to port 443 under SELinux
+sudo semanage port -m -t websm_port_t -p tcp 443
+
 # Reload and restart
 sudo systemctl daemon-reload
 sudo systemctl restart cockpit.socket
@@ -228,29 +233,30 @@ Note: if you are also running a web server on port 443, this will conflict. Only
 
 ```mermaid
 flowchart LR
-    A[Browser] -->|HTTPS :9090| B[cockpit-ws]
-    B --> C[cockpit-session]
-    C --> D[PAM Authentication]
-    C --> E[System APIs]
-    E --> F[systemd]
-    E --> G[NetworkManager]
-    E --> H[storaged/udisks2]
-    E --> I[PackageKit]
+    A[Browser] -->|HTTPS :9090| B[cockpit-tls]
+    B --> C[cockpit-ws]
+    C --> D[cockpit-session]
+    D --> E[PAM Authentication]
+    D --> F[System APIs]
+    F --> G[systemd]
+    F --> H[NetworkManager]
+    F --> I[storaged/udisks2]
+    F --> J[PackageKit]
 ```
 
-Cockpit's architecture is straightforward. The `cockpit-ws` process handles the HTTPS connection. It spawns `cockpit-session` for each authenticated user, which communicates with the system through standard Linux APIs and D-Bus interfaces. There is no database, no separate user management, and no agent to install.
+Cockpit's architecture is straightforward. The `cockpit-tls` process terminates HTTPS and proxies requests to `cockpit-ws`. Cockpit then starts a `cockpit-session` for each authenticated user, which communicates with the system through standard Linux APIs and D-Bus interfaces. There is no database, no separate user management, and no agent to install.
 
 ## Managing Multiple Servers
 
 One of Cockpit's underrated features is its ability to manage multiple servers from a single dashboard. You can add remote servers in the web interface, and Cockpit will connect to them via SSH.
 
-On the remote servers, you just need Cockpit installed and the socket enabled. The primary server handles the web interface.
+On the remote servers, you need the Cockpit system package and SSH access. The primary server handles the web interface and reaches the other systems over SSH, so you do not need to open Cockpit's HTTPS port on every managed host.
 
 ```bash
-# On each remote server, install and enable cockpit
-sudo dnf install -y cockpit
-sudo systemctl enable --now cockpit.socket
-sudo firewall-cmd --permanent --add-service=cockpit
+# On each remote server, install the Cockpit system package and make sure SSH is reachable
+sudo dnf install -y cockpit-system
+sudo systemctl enable --now sshd
+sudo firewall-cmd --permanent --add-service=ssh
 sudo firewall-cmd --reload
 ```
 
@@ -285,7 +291,7 @@ sudo journalctl -u cockpit -f
 
 ```bash
 # List certificates Cockpit sees
-sudo remotectl certificate
+sudo /usr/libexec/cockpit-certificate-ensure --check
 
 # Check file permissions
 ls -la /etc/cockpit/ws-certs.d/

@@ -14,7 +14,7 @@ Wake-on-LAN (WoL) allows you to power on a server remotely by sending a special 
 
 - Network adapter that supports WoL (most modern NICs do)
 - WoL enabled in the BIOS/UEFI firmware
-- Server connected via Ethernet (WoL does not work over Wi-Fi)
+- Server connected via Ethernet (standard WoL is for wired Ethernet; Wake on Wireless LAN depends on hardware and firmware support)
 
 ## Enable WoL in BIOS
 
@@ -59,13 +59,14 @@ Using NetworkManager:
 
 ```bash
 # Set WoL via nmcli for the active connection
-sudo nmcli connection modify ens192 802-3-ethernet.wake-on-lan magic
+CONNECTION=$(nmcli -g GENERAL.CONNECTION device show ens192)
+sudo nmcli connection modify "$CONNECTION" 802-3-ethernet.wake-on-lan magic
 
 # Verify the setting
-nmcli connection show ens192 | grep wake-on-lan
+nmcli connection show "$CONNECTION" | grep wake-on-lan
 
 # Reactivate the connection to apply
-sudo nmcli connection up ens192
+sudo nmcli connection up "$CONNECTION"
 ```
 
 ## Record the MAC Address
@@ -84,15 +85,11 @@ From another machine on the same network:
 
 ```bash
 # Install a WoL utility on the sending machine
-sudo dnf install -y wol
-# or
-sudo dnf install -y nmap-ncat
+sudo dnf install -y net-tools
 
-# Send a magic packet using the wol command
-wol aa:bb:cc:dd:ee:ff
-
-# Or using etherwake (another common tool)
-sudo etherwake -i ens192 aa:bb:cc:dd:ee:ff
+# Send a magic packet using ether-wake
+# Replace ens192 with the sending machine's outbound interface
+sudo ether-wake -i ens192 aa:bb:cc:dd:ee:ff
 
 # Or using Python (works on any system with Python)
 python3 -c "
@@ -109,11 +106,20 @@ print('Magic packet sent')
 
 ## WoL Across Subnets
 
-Magic packets are broadcast frames and do not cross routers by default. To wake a server on a different subnet:
+Magic packets are commonly sent as broadcast packets and do not cross routers by default. To wake a server on a different subnet:
 
 ```bash
-# Send a directed broadcast to the target subnet
-wol -i 192.168.2.255 aa:bb:cc:dd:ee:ff
+# Send a directed broadcast to the target subnet using Python
+python3 -c "
+import socket
+mac = 'aa:bb:cc:dd:ee:ff'
+mac_bytes = bytes.fromhex(mac.replace(':', ''))
+magic = b'\xff' * 6 + mac_bytes * 16
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+sock.sendto(magic, ('192.168.2.255', 9))
+print('Magic packet sent')
+"
 
 # Or configure your router to forward UDP port 9 broadcasts
 # to the target subnet
@@ -126,7 +132,8 @@ wol -i 192.168.2.255 aa:bb:cc:dd:ee:ff
 sudo poweroff
 
 # From another machine, send the magic packet
-wol aa:bb:cc:dd:ee:ff
+# Replace ens192 with the sending machine's outbound interface
+sudo ether-wake -i ens192 aa:bb:cc:dd:ee:ff
 
 # The server should power on within a few seconds
 # Verify by pinging it after boot

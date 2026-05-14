@@ -8,7 +8,7 @@ Description: Use the Cockpit web console's built-in terminal to manage RHEL syst
 
 ---
 
-Cockpit is a web-based management interface included with RHEL. Its built-in terminal provides a full shell in your browser, which is useful when you do not have an SSH client available or when managing systems behind firewalls with only HTTPS access.
+Cockpit is a web-based management interface included with RHEL. Its built-in terminal provides a shell in your browser, which is useful when you do not have an SSH client available or when managing systems behind firewalls with only HTTPS access.
 
 ## Install and Enable Cockpit
 
@@ -44,7 +44,7 @@ Open a browser and navigate to:
 https://your-server-ip:9090
 ```
 
-Log in with your RHEL system credentials. Once logged in, click "Terminal" in the left navigation menu. You get a full bash shell running in the browser.
+Log in with your RHEL system credentials. Once logged in, click "Terminal" in the left navigation menu. You get a shell running in the browser.
 
 ## Using the Terminal
 
@@ -73,21 +73,23 @@ vim /etc/hosts
 For security, limit which networks can access Cockpit:
 
 ```bash
-# Create a Cockpit configuration to restrict access
+# Remove the broad Cockpit firewall allowance
+sudo firewall-cmd --permanent --remove-service=cockpit
+
+# Allow Cockpit only from the management network
+sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.1.0/24" service name="cockpit" accept'
+sudo firewall-cmd --reload
+
+# Create a Cockpit configuration to set the idle timeout
 sudo mkdir -p /etc/cockpit
 sudo tee /etc/cockpit/cockpit.conf << 'CONF'
-[WebService]
-# Only allow connections from the management network
-AllowUnencrypted = false
-Origins = https://192.168.1.0:9090
-
 [Session]
 # Set idle timeout to 15 minutes
 IdleTimeout = 15
 CONF
 
-# Restart Cockpit to apply
-sudo systemctl restart cockpit.socket
+# Restart Cockpit to apply the timeout change to new sessions
+sudo systemctl try-restart cockpit.service
 ```
 
 ## Install Additional Cockpit Modules
@@ -96,8 +98,8 @@ sudo systemctl restart cockpit.socket
 # Install storage management module
 sudo dnf install -y cockpit-storaged
 
-# Install network manager module (usually already installed)
-sudo dnf install -y cockpit-networkmanager
+# Ensure system management pages, including network settings, are installed
+sudo dnf install -y cockpit-system
 
 # Install Podman container management
 sudo dnf install -y cockpit-podman

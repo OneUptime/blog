@@ -12,7 +12,7 @@ cgroups v2 on RHEL provides fine-grained resource control for individual process
 
 ## Prerequisites
 
-- RHEL (cgroups v2 enabled by default)
+- RHEL 9 or later (cgroups v2 enabled by default). On RHEL 8, enable cgroups v2 first.
 - Root or sudo access
 
 ## Step 1: Verify cgroups v2

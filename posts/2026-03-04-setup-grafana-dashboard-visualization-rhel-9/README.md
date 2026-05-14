@@ -25,6 +25,10 @@ graph LR
 ## Step 1: Add the Grafana Repository
 
 ```bash
+# Import the Grafana RPM repository GPG key
+wget -q -O gpg.key https://rpm.grafana.com/gpg.key
+sudo rpm --import gpg.key
+
 # Create the Grafana repository file
 
 sudo vi /etc/yum.repos.d/grafana.repo
@@ -112,6 +116,7 @@ root_url = %(protocol)s://%(domain)s:%(http_port)s/
 # Secret key for signing cookies and tokens
 secret_key = your-secret-key-here
 
+[users]
 # Disable user sign-up
 allow_sign_up = false
 
@@ -139,11 +144,10 @@ sudo systemctl restart grafana-server
 
 ### Via the Web UI
 
-1. Go to **Configuration** (gear icon) then **Data Sources**
-2. Click **Add data source**
-3. Select **Prometheus**
-4. Set the URL to `http://localhost:9090` (or your Prometheus server address)
-5. Click **Save & Test**
+1. Click **Connections** in the left-side menu
+2. Search for and select **Prometheus**
+3. Set the URL to `http://localhost:9090` (or your Prometheus server address)
+4. Click **Save & Test**
 
 ### Via Provisioning (Automated)
 
@@ -220,61 +224,75 @@ sudo vi /var/lib/grafana/dashboards/system-overview.json
 
 ```json
 {
-  "dashboard": {
-    "title": "System Overview",
-    "panels": [
-      {
-        "title": "CPU Usage",
-        "type": "timeseries",
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-        "targets": [
-          {
-            "expr": "100 - (avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
-            "legendFormat": "{{instance}}"
-          }
-        ]
-      },
-      {
-        "title": "Memory Usage",
-        "type": "timeseries",
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-        "targets": [
-          {
-            "expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100",
-            "legendFormat": "{{instance}}"
-          }
-        ]
-      },
-      {
-        "title": "Disk Usage",
-        "type": "gauge",
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
-        "targets": [
-          {
-            "expr": "(1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) * 100",
-            "legendFormat": "{{instance}}"
-          }
-        ]
-      },
-      {
-        "title": "Network Traffic",
-        "type": "timeseries",
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
-        "targets": [
-          {
-            "expr": "rate(node_network_receive_bytes_total{device!=\"lo\"}[5m]) * 8",
-            "legendFormat": "{{instance}} - {{device}} RX"
-          },
-          {
-            "expr": "rate(node_network_transmit_bytes_total{device!=\"lo\"}[5m]) * 8",
-            "legendFormat": "{{instance}} - {{device}} TX"
-          }
-        ]
-      }
-    ],
-    "time": {"from": "now-1h", "to": "now"},
-    "refresh": "30s"
-  }
+  "id": null,
+  "uid": "system-overview",
+  "title": "System Overview",
+  "tags": [],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "id": 1,
+      "title": "CPU Usage",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "100 - (avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+          "legendFormat": "{{instance}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Memory Usage",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100",
+          "legendFormat": "{{instance}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Disk Usage",
+      "type": "gauge",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {
+          "expr": "(1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) * 100",
+          "legendFormat": "{{instance}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Network Traffic",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "expr": "rate(node_network_receive_bytes_total{device!=\"lo\"}[5m]) * 8",
+          "legendFormat": "{{instance}} - {{device}} RX"
+        },
+        {
+          "expr": "rate(node_network_transmit_bytes_total{device!=\"lo\"}[5m]) * 8",
+          "legendFormat": "{{instance}} - {{device}} TX"
+        }
+      ]
+    }
+  ],
+  "time": {"from": "now-1h", "to": "now"},
+  "timepicker": {"refresh_intervals": ["5s", "10s", "30s", "1m", "5m"]},
+  "templating": {"list": []},
+  "annotations": {"list": []},
+  "refresh": "30s",
+  "schemaVersion": 17,
+  "version": 0,
+  "links": []
 }
 ```
 

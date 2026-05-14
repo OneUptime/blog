@@ -61,15 +61,16 @@ sudo perf stat ./myapp
 Output includes:
 - Instructions executed
 - CPU cycles
-- Cache misses
-- Branch mispredictions
+- Branches
+- Branch misses
 - Context switches
 
 ```bash
 Performance counter stats for './myapp':
      1,234,567,890  instructions
        456,789,012  cycles
-         1,234,567  cache-misses
+        12,345,678  branches
+           123,456  branch-misses
 ```
 
 ## Step 6: Real-Time Top-Like View

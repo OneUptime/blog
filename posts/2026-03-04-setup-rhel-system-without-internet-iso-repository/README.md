@@ -185,8 +185,10 @@ If you have multiple air-gapped systems on the same local network, share the rep
 # Install Apache from the local repo
 sudo dnf install -y httpd
 
-# Create a symlink to serve the repo
-sudo ln -s /mnt/rhel9-iso /var/www/html/rhel9-repo
+# Copy the ISO contents under the Apache web root
+sudo mkdir -p /var/www/html/rhel9-repo
+sudo cp -a /mnt/rhel9-iso/. /var/www/html/rhel9-repo/
+sudo restorecon -R /var/www/html/rhel9-repo
 
 # Start and enable Apache
 sudo systemctl enable --now httpd

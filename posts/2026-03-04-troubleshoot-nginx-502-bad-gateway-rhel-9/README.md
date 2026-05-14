@@ -32,7 +32,7 @@ Common messages and what they mean:
 |--------------|-------|
 | `connect() failed (111: Connection refused)` | Backend is not running |
 | `connect() failed (113: No route to host)` | Backend server is unreachable |
-| `connect() failed (13: Permission denied)` | SELinux is blocking the connection |
+| `connect() failed (13: Permission denied)` | SELinux or socket permissions are blocking the connection |
 | `upstream timed out` | Backend took too long to respond |
 | `recv() failed (104: Connection reset by peer)` | Backend crashed or dropped the connection |
 
@@ -43,7 +43,7 @@ Common messages and what they mean:
 sudo systemctl status your-app-service
 
 # Or check if something is listening on the expected port
-ss -tlnp | grep 3000
+sudo ss -tlnp | grep 3000
 ```
 
 If nothing is listening on the expected port, start the backend:
@@ -95,7 +95,7 @@ sudo ausearch -m avc -ts recent | grep nginx
 If the backend is on a different server, make sure the firewall allows the connection:
 
 ```bash
-# Check if the backend port is open
+# On the backend server, check if the backend port is open
 sudo firewall-cmd --list-all
 
 # Test connectivity to a remote backend
@@ -204,7 +204,7 @@ ls -la /run/php-fpm/www.sock
 stat /run/php-fpm/www.sock
 ```
 
-The Nginx user needs read/write access to the socket:
+The Nginx user needs permission to write to the socket:
 
 ```bash
 # Verify Nginx can access the socket

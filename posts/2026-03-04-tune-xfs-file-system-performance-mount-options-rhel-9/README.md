@@ -29,7 +29,7 @@ XFS performance is influenced by several layers:
 
 ### noatime and relatime
 
-By default, Linux updates the access time (atime) of files every time they are read. This generates unnecessary writes.
+By default, Linux usually mounts filesystems with `relatime`, which reduces access time (atime) updates compared with strict atime while preserving compatibility for most applications.
 
 ```bash
 /dev/vg_data/lv_data /data xfs noatime 0 0
@@ -37,7 +37,7 @@ By default, Linux updates the access time (atime) of files every time they are r
 
 Options:
 - `noatime`: Never update access times (best performance)
-- `relatime`: Update access times only if the modification time is newer (default, good compromise)
+- `relatime`: Update access times only if the previous atime is older than the modification/change time or is more than 24 hours old (default, good compromise)
 - `nodiratime`: Disable access time updates for directories only
 
 For most workloads, `noatime` provides the best performance improvement.
@@ -69,7 +69,7 @@ For workloads that write many large files, increasing `allocsize` reduces fragme
 allocsize=1m
 ```
 
-For workloads with many small files, a smaller value is better:
+For workloads with many small files, leaving the default dynamic behavior is usually better; use a smaller fixed value only after benchmarking:
 
 ```bash
 allocsize=4k
@@ -99,25 +99,19 @@ The `discard` option sends TRIM commands to the storage when blocks are freed. F
 sudo systemctl enable --now fstrim.timer
 ```
 
-### nobarrier
+### Write Barriers
 
-Write barriers ensure data integrity by flushing the disk cache at critical points:
-
-```bash
-/dev/vg_data/lv_data /data xfs defaults,nobarrier 0 0
-```
-
-**Only disable barriers** if your storage has battery-backed write cache. Disabling barriers on storage without write protection risks data corruption on power loss.
+Write barriers ensure data integrity by flushing the disk cache at critical points. On RHEL 9, XFS no longer supports the `barrier` or `nobarrier` mount options; adding `nobarrier` can prevent the filesystem from mounting.
 
 ### largeio
 
-Optimizes for large sequential I/O patterns:
+Reports larger optimal I/O sizes for aligned filesystems:
 
 ```bash
 /dev/vg_data/lv_data /data xfs defaults,largeio 0 0
 ```
 
-This hints the filesystem to prefer larger I/O operations. Combine with appropriate `allocsize`.
+This changes the optimal I/O size reported by `stat(2)` for filesystems created with a stripe width, or for filesystems mounted with `allocsize`. It does not by itself force larger physical I/O operations.
 
 ## Filesystem Creation Options
 
@@ -129,7 +123,7 @@ These settings are specified at `mkfs.xfs` time and cannot be changed afterward.
 sudo mkfs.xfs -b size=4096 /dev/sdb1
 ```
 
-The default 4096 bytes works well for most workloads. Larger block sizes (up to 65536) can benefit workloads with very large files.
+The default 4096 bytes works well for most workloads. Although `mkfs.xfs` accepts block sizes up to 65536 bytes, XFS on Linux can only mount filesystems with block sizes no larger than the system page size, which is typically 4096 bytes on x86_64 RHEL systems.
 
 ### Allocation Group Count
 
@@ -137,7 +131,7 @@ The default 4096 bytes works well for most workloads. Larger block sizes (up to 
 sudo mkfs.xfs -d agcount=32 /dev/sdb1
 ```
 
-More allocation groups improve parallelism for concurrent operations. The default is typically 4 per filesystem, but for large filesystems with many concurrent users, increasing this helps.
+More allocation groups improve parallelism for concurrent operations. The default is scaled automatically based on the underlying device size, but for large filesystems with many concurrent users, increasing this can help.
 
 ### Log Configuration
 
@@ -171,7 +165,7 @@ Check the current I/O scheduler:
 cat /sys/block/sda/queue/scheduler
 ```
 
-For SSDs, `none` (also called `noop`) is typically best:
+For high-performance SSDs or CPU-bound systems with fast storage, `none` is often best:
 
 ```bash
 echo none | sudo tee /sys/block/sda/queue/scheduler

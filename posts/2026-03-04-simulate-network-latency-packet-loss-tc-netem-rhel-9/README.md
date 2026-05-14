@@ -40,7 +40,7 @@ ping -c 10 8.8.8.8
 Real networks don't have perfectly consistent latency. Add variation:
 
 ```bash
-# 100ms delay with 20ms jitter (uniform distribution)
+# 100ms delay with 20ms jitter
 sudo tc qdisc add dev ens192 root netem delay 100ms 20ms
 
 # 100ms delay with 20ms jitter, normal distribution (more realistic)
@@ -64,10 +64,7 @@ sudo tc qdisc add dev ens192 root netem delay 100ms 20ms 25%
 
 ```bash
 # 5% random packet loss
-sudo tc qdisc add dev ens192 root netem loss 5%
-
-# 5% loss with 25% correlation (bursty loss, more realistic)
-sudo tc qdisc add dev ens192 root netem loss 5% 25%
+sudo tc qdisc add dev ens192 root netem loss random 5%
 
 # Gilbert-Elliott model for bursty loss (more realistic for wireless)
 sudo tc qdisc add dev ens192 root netem loss gemodel 1% 10% 70% 0.1%
@@ -79,7 +76,7 @@ You can stack multiple impairments:
 
 ```bash
 # 50ms latency with 10ms jitter AND 2% packet loss
-sudo tc qdisc add dev ens192 root netem delay 50ms 10ms loss 2%
+sudo tc qdisc add dev ens192 root netem delay 50ms 10ms loss random 2%
 ```
 
 ## Simulating Packet Duplication
@@ -92,7 +89,7 @@ sudo tc qdisc add dev ens192 root netem duplicate 1%
 ## Simulating Packet Reordering
 
 ```bash
-# 25% of packets are reordered with 50ms delay
+# 25% of packets are reordered, with 50% correlation and 50ms delay
 sudo tc qdisc add dev ens192 root netem delay 50ms reorder 25% 50%
 ```
 
@@ -108,25 +105,25 @@ sudo tc qdisc add dev ens192 root netem corrupt 0.1%
 ### Satellite Link
 ```bash
 # High latency, low jitter, occasional loss
-sudo tc qdisc add dev ens192 root netem delay 600ms 50ms loss 0.5%
+sudo tc qdisc add dev ens192 root netem delay 600ms 50ms loss random 0.5%
 ```
 
 ### Mobile 3G Connection
 ```bash
 # Variable latency, some loss
-sudo tc qdisc add dev ens192 root netem delay 150ms 50ms distribution normal loss 1.5% 25%
+sudo tc qdisc add dev ens192 root netem delay 150ms 50ms distribution normal loss gemodel 1.5% 10% 70% 0.1%
 ```
 
 ### Poor WiFi
 ```bash
 # Moderate latency, significant jitter, noticeable loss
-sudo tc qdisc add dev ens192 root netem delay 20ms 30ms distribution pareto loss 3% 50%
+sudo tc qdisc add dev ens192 root netem delay 20ms 30ms distribution pareto loss gemodel 3% 10% 70% 0.1%
 ```
 
 ### Intercontinental Link
 ```bash
 # High latency, low loss
-sudo tc qdisc add dev ens192 root netem delay 200ms 10ms distribution normal loss 0.1%
+sudo tc qdisc add dev ens192 root netem delay 200ms 10ms distribution normal loss random 0.1%
 ```
 
 ## Modifying Existing Rules
@@ -138,7 +135,7 @@ You can change netem rules without removing them first:
 sudo tc qdisc change dev ens192 root netem delay 200ms 30ms
 
 # Add loss to existing delay rule
-sudo tc qdisc change dev ens192 root netem delay 200ms 30ms loss 5%
+sudo tc qdisc change dev ens192 root netem delay 200ms 30ms loss random 5%
 ```
 
 ## Applying netem to Specific Traffic
@@ -156,7 +153,7 @@ sudo tc class add dev ens192 parent 1: classid 1:10 htb rate 1gbit
 sudo tc class add dev ens192 parent 1: classid 1:20 htb rate 1gbit
 
 # Add netem to the impaired class
-sudo tc qdisc add dev ens192 parent 1:20 handle 20: netem delay 100ms loss 5%
+sudo tc qdisc add dev ens192 parent 1:20 handle 20: netem delay 100ms loss random 5%
 
 # Filter: traffic to port 5432 (PostgreSQL) gets impaired
 sudo tc filter add dev ens192 parent 1: protocol ip prio 1 u32 match ip dport 5432 0xffff flowid 1:20
@@ -181,7 +178,7 @@ For isolated testing, combine with namespaces:
 
 ```bash
 # Apply netem inside a namespace
-sudo ip netns exec testns tc qdisc add dev eth0 root netem delay 100ms loss 2%
+sudo ip netns exec testns tc qdisc add dev eth0 root netem delay 100ms loss random 2%
 
 # Run your test inside the namespace
 sudo ip netns exec testns your-application
@@ -214,16 +211,16 @@ curl -o /dev/null -s -w "Time: %{time_total}s, Code: %{http_code}\n" http://$TAR
 sudo tc qdisc del dev ens192 root
 
 echo "=== Testing with 5% Packet Loss ==="
-sudo tc qdisc add dev ens192 root netem loss 5%
+sudo tc qdisc add dev ens192 root netem loss random 5%
 curl -o /dev/null -s -w "Time: %{time_total}s, Code: %{http_code}\n" http://$TARGET/health
 sudo tc qdisc del dev ens192 root
 
 echo "=== Testing with 500ms Latency + 10% Loss ==="
-sudo tc qdisc add dev ens192 root netem delay 500ms loss 10%
+sudo tc qdisc add dev ens192 root netem delay 500ms loss random 10%
 curl -o /dev/null -s -w "Time: %{time_total}s, Code: %{http_code}\n" --max-time 30 http://$TARGET/health
 sudo tc qdisc del dev ens192 root
 ```
 
 ## Wrapping Up
 
-tc netem on RHEL is the standard tool for simulating network impairments. Start with simple latency tests, add jitter for realism, and include packet loss for resilience testing. Use the normal distribution for latency jitter, add correlation for bursty patterns, and always remove the rules when done. Combined with network namespaces, you can create isolated test environments that simulate any network condition without affecting your production traffic.
+tc netem on RHEL is the standard tool for simulating network impairments. Start with simple latency tests, add jitter for realism, and include packet loss for resilience testing. Use the normal distribution for latency jitter, use state or Gilbert-Elliott loss models for bursty patterns, and always remove the rules when done. Combined with network namespaces, you can create isolated test environments that simulate any network condition without affecting your production traffic.

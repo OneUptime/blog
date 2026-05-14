@@ -76,7 +76,7 @@ flux check
 
 ## Step 5: Create the Git Authentication Secret
 
-Create a Kubernetes secret with the SSH private key and known hosts file.
+Create a Kubernetes secret with the SSH private key. The Flux CLI gathers the SSH host key from the Git server and stores it in the secret.
 
 ```bash
 # Create the SSH authentication secret for Flux
@@ -163,7 +163,7 @@ flux get kustomizations
 
 ## Step 8: Push Initial Configuration to Bitbucket Server
 
-Commit the Flux configuration files to your Bitbucket Server repository so they are tracked in Git.
+Commit the Flux configuration files to your Bitbucket Server repository so they are tracked in Git. Run these commands from the directory where you created the local `flux-system/gotk-sync.yaml` and `flux-system/kustomization-sync.yaml` files.
 
 ```bash
 # Clone the repository
@@ -177,8 +177,8 @@ mkdir -p clusters/production/flux-system
 flux install --export > clusters/production/flux-system/gotk-components.yaml
 
 # Copy the sync manifests
-cp flux-system/gotk-sync.yaml clusters/production/flux-system/
-cp flux-system/kustomization-sync.yaml clusters/production/flux-system/
+cp ../flux-system/gotk-sync.yaml clusters/production/flux-system/
+cp ../flux-system/kustomization-sync.yaml clusters/production/flux-system/
 
 # Create a kustomization.yaml for the flux-system directory
 cat > clusters/production/flux-system/kustomization.yaml << 'EOF'

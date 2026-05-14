@@ -19,9 +19,9 @@ TuneD dynamic tuning on RHEL monitors system activity in real time and automatic
 
 When dynamic tuning is enabled, TuneD periodically monitors system metrics and adjusts parameters accordingly. For example:
 
-- CPU governor changes based on load
-- Disk readahead adjusts based on I/O patterns
-- Network parameters tune based on traffic
+- CPU latency settings adjust based on load
+- Disk power management adjusts based on I/O activity
+- Network interface speed adjusts based on traffic
 
 ## Enabling Dynamic Tuning
 
@@ -69,21 +69,21 @@ TuneD uses monitor plugins to gather system data and adjust settings:
 
 ### CPU Monitor
 
-Tracks CPU utilization and adjusts the CPU governor:
-- High load: switches to `performance` governor
-- Low load: switches to `powersave` governor
+Tracks CPU utilization and adjusts PM QoS CPU DMA latency:
+- High load: uses the lower latency value configured in the profile
+- Low load: uses the higher latency value configured in the profile
 
 ### Disk Monitor
 
 Tracks disk activity and adjusts settings:
-- Active disk: increases readahead, adjusts ALPM to performance mode
-- Idle disk: decreases readahead, enables power saving
+- Active disk: uses more performance-oriented drive power settings
+- Idle disk: uses more power-saving drive power settings, such as APM and spindown values
 
 ### Network Monitor
 
 Tracks network activity and adjusts interface parameters:
-- High traffic: disables power saving features
-- Low traffic: enables wake-on-LAN and power management
+- High traffic: sets the interface speed to maximum when supported
+- Low traffic: lowers interface speed when supported to reduce power usage
 
 ## Customizing Dynamic Tuning Behavior
 
@@ -100,20 +100,23 @@ summary=Custom dynamic tuning profile
 include=balanced
 
 [cpu]
+dynamic=1
 governor=performance|powersave
-energy_perf_bias=performance|powersave
+latency_low=0
+latency_high=1000
+load_threshold=0.2
 
 [disk]
 dynamic=1
-readahead=>128
-readahead=<4096
+apm=128
+spindown=6
 
 [net]
 dynamic=1
 CONF
 ```
 
-The pipe syntax (e.g., `performance|powersave`) defines the range of values that dynamic tuning can select between.
+The pipe syntax (e.g., `performance|powersave`) defines fallback alternatives. TuneD tries the first value and uses the next one if the previous value is not available.
 
 ## Adjusting the Update Interval
 
@@ -142,7 +145,7 @@ dynamic=1
 
 ## Monitoring Dynamic Tuning Changes
 
-Enable verbose logging to see what changes TuneD makes:
+Review TuneD logging to see what changes TuneD makes:
 
 ```bash
 sudo tuned-adm profile my-dynamic

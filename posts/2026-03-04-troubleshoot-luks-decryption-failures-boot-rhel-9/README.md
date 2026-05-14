@@ -179,7 +179,7 @@ exit
 lsinitrd /boot/initramfs-$(uname -r).img | grep cryptsetup
 
 # If missing, rebuild with explicit inclusion
-dracut --force --install cryptsetup
+dracut --force --install /usr/sbin/cryptsetup
 ```
 
 ## Step 4: Manual Unlock and Boot
@@ -221,10 +221,12 @@ cryptsetup luksDump /dev/sda3 | grep UUID
 vi /etc/default/grub
 # Add to GRUB_CMDLINE_LINUX: rd.luks.uuid=luks-YOUR-UUID-HERE
 
-# Regenerate GRUB config
-grub2-mkconfig -o /boot/grub2/grub.cfg
-# For UEFI systems:
-# grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
+# Update the kernel command line for all boot entries on RHEL 9
+grubby --update-kernel=ALL --args="rd.luks.uuid=luks-YOUR-UUID-HERE"
+
+# If you changed /etc/default/grub directly, regenerate /boot/grub2/grub.cfg.
+# On RHEL 9 UEFI systems, /boot/efi/EFI/redhat/grub.cfg is a stub.
+grub2-mkconfig -o /boot/grub2/grub.cfg --update-bls-cmdline
 ```
 
 ## Step 6: Prevent Future Issues

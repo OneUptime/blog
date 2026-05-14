@@ -40,7 +40,7 @@ sudo ss -tlnp | grep 2049
 ## Problem 2 - Mount Fails with "Permission Denied"
 
 ```bash
-# On the client, check what the server exports
+# On the client, check what the server exports for NFSv3 or mixed-version servers
 showmount -e 192.168.1.10
 
 # Common causes:
@@ -120,14 +120,14 @@ ping 192.168.1.10
 
 ### Preventing Hung Mounts
 
-Use the `soft` mount option or set reasonable timeouts:
+Use the `soft` mount option only when the application can safely handle I/O errors, or set reasonable retry logging timeouts on hard mounts:
 
 ```bash
-# Soft mount with timeout (returns error instead of hanging)
+# Soft mount with timeout (returns an error after retries, but can risk data integrity)
 sudo mount -t nfs -o soft,timeo=30,retrans=3 192.168.1.10:/srv/nfs/data /mnt/nfs-data
 
-# Or use hard with intr (allows interrupt with Ctrl+C)
-sudo mount -t nfs -o hard,intr 192.168.1.10:/srv/nfs/data /mnt/nfs-data
+# Or use hard with explicit timeout and retransmission settings
+sudo mount -t nfs -o hard,timeo=600,retrans=2 192.168.1.10:/srv/nfs/data /mnt/nfs-data
 ```
 
 ## Problem 5 - "No Route to Host"
@@ -225,17 +225,17 @@ Look for high retransmission counts, which indicate network issues.
 Files show the wrong owner or "nobody" on the client:
 
 ```bash
-# Check if idmapd is running (required for NFSv4 ID mapping)
-sudo systemctl status nfs-idmapd
+# On clients, verify the nfsidmap helper configuration used for NFSv4 ID mapping
+cat /etc/request-key.d/id_resolver.conf
 
 # Verify the domain in /etc/idmapd.conf matches on server and client
 grep Domain /etc/idmapd.conf
 
-# Restart idmapd after changes
-sudo systemctl restart nfs-idmapd
+# Clear cached ID mappings after changes
+sudo nfsidmap -c
 ```
 
-The Domain value in /etc/idmapd.conf must be identical on server and all clients.
+When the Domain value is explicitly set in /etc/idmapd.conf, it must be identical on the server and all clients.
 
 ## Wrap-Up
 

@@ -82,7 +82,7 @@ bridge fdb show dev vxlan42
 
 ## Step 4: Set Up VXLAN with Multicast
 
-For environments with more than two hosts, use multicast instead of specifying individual remote addresses.
+For environments with more than two hosts, multicast is one option if the underlay network supports multicast routing.
 
 ```bash
 # On all participating hosts, create the VXLAN interface with a multicast group
@@ -109,6 +109,7 @@ sudo ip link set vxlan42 up
 
 ```bash
 # Create a persistent VXLAN connection using NetworkManager
+# Run this on Host A; on Host B, set vxlan.remote to 10.0.0.1 and use 192.168.100.2/24.
 sudo nmcli connection add type vxlan \
     con-name vxlan42 \
     ifname vxlan42 \
@@ -135,7 +136,8 @@ sudo ip link add br-vxlan type bridge
 # Add the VXLAN interface to the bridge
 sudo ip link set vxlan42 master br-vxlan
 
-# Assign an IP to the bridge (optional, for host access)
+# Move the host overlay IP from vxlan42 to the bridge (optional, for host access)
+sudo ip addr flush dev vxlan42
 sudo ip addr add 192.168.100.1/24 dev br-vxlan
 
 # Bring everything up

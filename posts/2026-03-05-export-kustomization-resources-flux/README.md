@@ -48,7 +48,7 @@ spec:
   wait: true
 ```
 
-Notice that the output contains only the spec -- no status, no runtime annotations, no managed fields. This is a clean, reusable definition.
+Notice that the output contains the resource definition -- no status, no managed fields, and no generated runtime metadata. This is a clean, reusable definition.
 
 ## Saving the Export to a File
 
@@ -98,10 +98,10 @@ done
 
 ## Exporting All Flux Resources
 
-For a complete backup, export all Flux resources (not just Kustomizations):
+For a broader backup, export the Flux resources you use (not just Kustomizations):
 
 ```bash
-# Export all Flux resources (sources, kustomizations, receivers, alerts, etc.)
+# Export common Flux resources (sources, kustomizations, receivers, alerts, etc.)
 flux export source git --all > git-sources.yaml
 flux export ks --all > kustomizations.yaml
 flux export alert --all > alerts.yaml 2>/dev/null
@@ -142,7 +142,7 @@ Before applying to the target cluster, make sure that:
 
 1. Flux controllers are installed on the target cluster
 2. Any referenced Secrets (Git credentials, decryption keys) exist on the target
-3. Namespaces referenced in sourceRef and path exist
+3. Namespaces referenced by the exported resources exist, and the configured paths exist in the referenced sources
 
 ### Use Case 2: Auditing Current Configuration
 
@@ -195,12 +195,12 @@ The exported YAML is a clean Kubernetes resource definition. Here is what is inc
 **Included:**
 - `apiVersion` and `kind`
 - `metadata.name` and `metadata.namespace`
+- Configured `metadata.labels` and `metadata.annotations`
 - Complete `spec` with all configured fields
 
 **Excluded:**
 - `metadata.resourceVersion`, `metadata.uid`, `metadata.creationTimestamp`
 - `metadata.managedFields`
-- `metadata.annotations` (runtime annotations from Flux)
 - `status` section
 
 This makes the exported YAML directly reusable -- you can apply it to another cluster or store it in version control without cleanup.
@@ -239,7 +239,7 @@ spec:
           serviceAccountName: flux-backup-sa
           containers:
             - name: backup
-              image: ghcr.io/fluxcd/flux-cli:v2.4.0
+              image: ghcr.io/fluxcd/flux-cli:v2.8.7
               command:
                 - /bin/sh
                 - -c

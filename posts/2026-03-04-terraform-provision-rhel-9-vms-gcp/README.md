@@ -14,13 +14,13 @@ Use Terraform to provision RHEL 9 VMs on GCP. RHEL 9 is fully supported on major
 
 ## Prerequisites
 
-- A RHEL 9 subscription or cloud marketplace entitlement
-- An account on the target cloud platform (AWS, Azure, or GCP)
-- CLI tools installed: aws-cli, az-cli, or gcloud
+- A Google Cloud project with billing enabled for RHEL on-demand images, or a Red Hat Cloud Access subscription for BYOS images
+- Permission to create Compute Engine resources in the Google Cloud project
+- Terraform and the Google Cloud CLI installed
 
 ## Step 1 - Choose Your Deployment Method
 
-You can deploy RHEL 9 in the cloud using:
+You can deploy RHEL 9 on Google Cloud using:
 
 1. **Marketplace images** - pre-built, official Red Hat images
 2. **Custom images** - built with Image Builder and uploaded
@@ -29,34 +29,63 @@ You can deploy RHEL 9 in the cloud using:
 
 ## Step 2 - Launch a RHEL 9 Instance
 
-For AWS:
+Create a Terraform configuration:
 
-```bash
-aws ec2 run-instances --image-id ami-rhel9-xxxxx --instance-type m5.large --key-name mykey
-```
+```hcl
+terraform {
+  required_providers {
+    google = {
+      source = "hashicorp/google"
+    }
+  }
+}
 
-For Azure:
+variable "project_id" {
+  type = string
+}
 
-```bash
-az vm create --resource-group myRG --name myVM --image RedHat:RHEL:9:latest --size Standard_D2s_v3
-```
+provider "google" {
+  project = var.project_id
+  region  = "us-central1"
+  zone    = "us-central1-a"
+}
 
-For GCP:
+resource "google_compute_instance" "rhel9" {
+  name         = "my-rhel-server"
+  machine_type = "e2-medium"
+  zone         = "us-central1-a"
 
-```bash
-gcloud compute instances create myvm --image-project=rhel-cloud --image-family=rhel-9 --machine-type=e2-medium
+  boot_disk {
+    initialize_params {
+      image = "projects/rhel-cloud/global/images/family/rhel-9"
+    }
+  }
+
+  network_interface {
+    network = "default"
+
+    access_config {
+    }
+  }
+
+  metadata = {
+    "user-data" = file("cloud-config.yaml")
+  }
+}
 ```
 
 ## Step 3 - Configure cloud-init
 
-RHEL 9 cloud images use cloud-init for first-boot customization. Create a user-data script:
+RHEL 9 cloud images use cloud-init for first-boot customization. Create a `cloud-config.yaml` user-data file:
 
 ```yaml
 #cloud-config
 hostname: my-rhel-server
 users:
+  - default
   - name: admin
     groups: wheel
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
     ssh_authorized_keys:
       - ssh-rsa AAAA...your-key-here
 packages:
@@ -65,6 +94,8 @@ packages:
 ```
 
 ## Step 4 - Register with Red Hat
+
+For bring-your-own-subscription images, register the system with Red Hat:
 
 ```bash
 sudo subscription-manager register --auto-attach
@@ -75,7 +106,7 @@ sudo insights-client --register
 
 ## Step 5 - Configure Security and Networking
 
-Set up security groups, NSGs, or firewall rules to allow only necessary traffic. Enable SELinux (it is on by default) and configure firewalld.
+Set up Google Cloud firewall rules to allow only necessary traffic. Enable SELinux (it is on by default) and configure firewalld.
 
 ## Step 6 - Set Up Monitoring
 

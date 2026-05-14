@@ -8,7 +8,7 @@ Description: Learn how to install and optimize RHEL as a guest operating system 
 
 ---
 
-RHEL is a fully supported guest operating system on VMware vSphere and Microsoft Hyper-V. Running RHEL as a guest requires installing the appropriate drivers and tools to get optimal performance and management integration.
+RHEL is a fully supported guest operating system on VMware vSphere and Microsoft Hyper-V. Running RHEL as a guest benefits from the appropriate guest tools and integration services to get optimal performance and management integration.
 
 ## RHEL on VMware vSphere
 
@@ -114,9 +114,8 @@ sudo tuned-adm profile virtual-guest
 sudo tuned-adm active
 
 # This profile optimizes:
-# - Disk I/O scheduler (none/noop for virtual disks)
-# - Memory management
-# - Network settings
+# - Throughput-oriented system settings
+# - Virtual memory swappiness
 ```
 
 ## Common Configuration for Both

@@ -8,7 +8,7 @@ Description: Use perf and SystemTap on RHEL to profile CPU usage, trace system c
 
 ---
 
-RHEL provides powerful profiling tools for diagnosing performance issues. `perf` is a hardware-level profiler, while SystemTap allows custom kernel probes without modifying source code.
+RHEL provides powerful profiling tools for diagnosing performance issues. `perf` profiles hardware and software events, while SystemTap allows custom kernel probes without modifying source code.
 
 ## Using perf
 
@@ -67,9 +67,9 @@ git clone https://github.com/brendangregg/FlameGraph.git
 ### Install SystemTap
 
 ```bash
-# Install SystemTap and kernel debug info
-sudo dnf install -y systemtap systemtap-runtime
-sudo dnf debuginfo-install -y kernel-$(uname -r)
+# Install SystemTap and matching kernel support packages
+sudo dnf install -y systemtap
+sudo stap-prep
 
 # Test the installation
 sudo stap -e 'probe begin { printf("SystemTap works\n"); exit() }'
@@ -78,10 +78,10 @@ sudo stap -e 'probe begin { printf("SystemTap works\n"); exit() }'
 ### Trace Disk I/O
 
 ```bash
-# Trace block I/O with latency
+# Trace block I/O requests
 sudo stap -e '
 probe ioblock.request {
-  printf("%s %s %d sectors on %s\n",
+  printf("%s %s %d bytes on %s\n",
     execname(), bio_rw_str(rw), size, devname)
 }
 ' -T 10
@@ -90,7 +90,7 @@ probe ioblock.request {
 ### Trace System Calls by Process
 
 ```bash
-# Count system calls made by a specific process
+# Trace system calls made by a specific process
 sudo stap -e '
 probe syscall.* {
   if (pid() == target())

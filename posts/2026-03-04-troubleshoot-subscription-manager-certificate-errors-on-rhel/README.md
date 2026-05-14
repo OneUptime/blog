@@ -22,7 +22,9 @@ Check the certificate dates:
 # List entitlement certificates and their expiry dates
 
 sudo ls -la /etc/pki/entitlement/
-sudo openssl x509 -in /etc/pki/entitlement/*.pem -noout -dates 2>/dev/null | head -10
+for cert in /etc/pki/entitlement/*.pem; do
+    sudo openssl x509 -in "$cert" -noout -dates 2>/dev/null
+done | head -10
 
 # Check the identity certificate
 sudo openssl x509 -in /etc/pki/consumer/cert.pem -noout -dates
@@ -79,7 +81,7 @@ sudo subscription-manager attach --auto
 sudo dnf reinstall -y ca-certificates
 
 # Update the CA trust
-sudo update-ca-trust
+sudo update-ca-trust extract
 
 # If using a Satellite server, reinstall its CA cert
 sudo rpm -e katello-ca-consumer-satellite.example.com

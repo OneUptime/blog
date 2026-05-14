@@ -8,7 +8,7 @@ Description: Step-by-step guide on set up template units with systemd instantiat
 
 ---
 
-Setting up Template Units with systemd Instantiated Services on RHEL requires proper planning and configuration. This guide walks through each step from initial installation to verification.
+Setting up Template Units with systemd Instantiated Services on RHEL requires proper planning and configuration. This guide walks through each step from unit file creation to verification.
 
 ## Prerequisites
 
@@ -18,32 +18,45 @@ Setting up Template Units with systemd Instantiated Services on RHEL requires pr
 
 ## Step 2: Configure the Service
 
-Edit the configuration file to match your environment:
+Create a template unit file. Template unit names include `@` before the unit type suffix, and each running instance supplies the value between `@` and `.service`.
 
 ```bash
-# Open the configuration file
+# Open the template unit file
 
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/systemd/system/example-worker@.service
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Add the service definition and use `%i` where the instance name should be inserted:
+
+```ini
+[Unit]
+Description=Example worker instance %i
+
+[Service]
+ExecStart=/usr/bin/sleep infinity
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Adjust the settings according to your requirements. Key parameters to configure include the `ExecStart` command, environment files, dependencies, and logging options.
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Reload systemd to read the new unit file
+sudo systemctl daemon-reload
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable example-worker@alpha.service
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start example-worker@alpha.service
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status example-worker@alpha.service
 ```
 
 
@@ -53,15 +66,15 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Verify the configuration was applied
-systemctl show <service-name> | grep -i <setting>
+systemctl show example-worker@alpha.service -p ActiveState -p SubState
 
 # Check for errors in the journal
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u example-worker@alpha.service --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
+- If the service fails to start, check the logs with `journalctl -u example-worker@alpha.service -e --no-pager`.
 - Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
 
 ## Conclusion

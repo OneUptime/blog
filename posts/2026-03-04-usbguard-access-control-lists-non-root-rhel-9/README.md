@@ -12,7 +12,7 @@ By default, only root can interact with USBGuard. But in many environments, you 
 
 ## Understanding USBGuard IPC Access
 
-USBGuard uses a local IPC (Inter-Process Communication) interface for management commands. Access to this interface is controlled through the IPC access control file at `/etc/usbguard/IPCAccessControl.d/`.
+USBGuard uses a local IPC (Inter-Process Communication) interface for management commands. Access to this interface can be controlled through IPC access control files in `/etc/usbguard/IPCAccessControl.d/` when `IPCAccessControlFiles=/etc/usbguard/IPCAccessControl.d/` is set in the daemon configuration.
 
 The IPC interface supports these permission sections:
 
@@ -42,14 +42,13 @@ grep -i ipc /etc/usbguard/usbguard-daemon.conf
 
 ## Creating Access Control Files
 
-Each file in `/etc/usbguard/IPCAccessControl.d/` defines access for a user or group. The filename determines who gets access.
+Each file in `/etc/usbguard/IPCAccessControl.d/` defines access for a user or group. The file basename determines who gets access: `helpdesk` applies to the `helpdesk` user, while `:usbmanagers` applies to the `usbmanagers` group.
 
 ### Grant a User Permission to List Devices
 
 ```bash
 # Create an ACL file for user "helpdesk"
 sudo tee /etc/usbguard/IPCAccessControl.d/helpdesk << 'EOF'
-user=helpdesk
 Devices=list
 Policy=list
 EOF
@@ -62,8 +61,7 @@ This allows the `helpdesk` user to list connected devices and view the policy, b
 ```bash
 # Create an ACL file for user "secadmin"
 sudo tee /etc/usbguard/IPCAccessControl.d/secadmin << 'EOF'
-user=secadmin
-Devices=list,modify,listen
+Devices=list modify listen
 Policy=list
 EOF
 ```
@@ -74,10 +72,9 @@ The `secadmin` user can now list devices, allow/block them, and receive event no
 
 ```bash
 # Create an ACL file for the "usbmanagers" group
-sudo tee /etc/usbguard/IPCAccessControl.d/usbmanagers << 'EOF'
-group=usbmanagers
-Devices=list,modify,listen
-Policy=list,modify
+sudo tee /etc/usbguard/IPCAccessControl.d/:usbmanagers << 'EOF'
+Devices=list modify listen
+Policy=list modify
 EOF
 ```
 
@@ -172,12 +169,11 @@ flowchart TD
 
 ## Practical ACL Examples
 
-### Help Desk - Can view and temporarily allow devices
+### Help Desk - Can view and allow or block devices
 
 ```bash
-sudo tee /etc/usbguard/IPCAccessControl.d/helpdesk-role << 'EOF'
-group=helpdesk
-Devices=list,modify
+sudo tee /etc/usbguard/IPCAccessControl.d/:helpdesk << 'EOF'
+Devices=list modify
 Policy=list
 EOF
 ```
@@ -185,9 +181,8 @@ EOF
 ### Security Auditor - Read-only access to everything
 
 ```bash
-sudo tee /etc/usbguard/IPCAccessControl.d/auditor-role << 'EOF'
-group=auditors
-Devices=list,listen
+sudo tee /etc/usbguard/IPCAccessControl.d/:auditors << 'EOF'
+Devices=list listen
 Policy=list
 Parameters=list
 Exceptions=listen
@@ -197,11 +192,10 @@ EOF
 ### Security Admin - Full management access
 
 ```bash
-sudo tee /etc/usbguard/IPCAccessControl.d/secadmin-role << 'EOF'
-group=secadmins
-Devices=list,modify,listen
-Policy=list,modify
-Parameters=list,modify
+sudo tee /etc/usbguard/IPCAccessControl.d/:secadmins << 'EOF'
+Devices=list modify listen
+Policy=list modify
+Parameters=list modify
 Exceptions=listen
 EOF
 ```

@@ -40,12 +40,14 @@ graph TD
 
 You need at least two unused disks for RAID. Make sure the disks have no existing partitions or data you want to keep.
 
-Install mdadm if not present:
+Install mdadm and the Cockpit storage add-on if not present:
 
 ```bash
-# Install the RAID management tool
+# Install the RAID management tool and Cockpit storage UI
+sudo dnf install mdadm cockpit cockpit-storaged -y
 
-sudo dnf install mdadm -y
+# Enable the web console
+sudo systemctl enable --now cockpit.socket
 ```
 
 Identify available disks:
@@ -154,11 +156,10 @@ sudo mdadm --detail /dev/md0 | grep "State"
 Set up email alerts for RAID events:
 
 ```bash
-# Configure mdadm monitoring
-sudo tee /etc/mdadm.conf << 'EOF'
-MAILADDR root@localhost
-PROGRAM /usr/sbin/mdadm
-EOF
+# Add the notification address if it is not already configured
+if ! sudo grep -q '^MAILADDR ' /etc/mdadm.conf; then
+    echo "MAILADDR root@localhost" | sudo tee -a /etc/mdadm.conf
+fi
 
 # Enable the monitoring daemon
 sudo systemctl enable --now mdmonitor

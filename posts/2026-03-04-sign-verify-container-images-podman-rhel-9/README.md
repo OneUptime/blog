@@ -12,7 +12,7 @@ Container image signing is one of those things that everyone knows they should d
 
 ## Why Sign Container Images?
 
-Without signature verification, you are trusting that the registry has not been compromised, that no one tampered with the image in transit, and that the image actually came from who you think it did. Signing solves all three problems.
+Without signature verification, you are trusting that the registry has not been compromised, that no one tampered with the image in transit, and that the image actually came from who you think it did. Signing helps address these risks by letting clients verify the image against a trusted signing key before accepting it.
 
 ```mermaid
 graph LR
@@ -26,7 +26,7 @@ graph LR
 
 ## Prerequisites
 
-You need a GPG key pair. If you do not have one:
+You need a GPG key pair. For GPG signature verification, you also need a lookaside web server that verification hosts can use to read the detached signatures. If you do not have a key:
 
 ## Generate a GPG key pair
 ```bash
@@ -49,17 +49,20 @@ gpg --armor --export your-email@example.com > my-signing-key.pub
 
 When you push an image to a registry, you can sign it at the same time:
 
-## First, configure where signatures should be stored
+## First, configure where signatures should be written and read
 ```bash
 sudo mkdir -p /var/lib/containers/sigstore
 ```
 
 ## Create a signature storage configuration
 ```bash
-sudo cat > /etc/containers/registries.d/default.yaml << 'EOF'
-default-docker:
-  sigstore: file:///var/lib/containers/sigstore
-  sigstore-staging: file:///var/lib/containers/sigstore
+sudo tee /etc/containers/registries.d/registry.example.com.yaml > /dev/null << 'EOF'
+docker:
+  registry.example.com:
+    lookaside: https://registry-lookaside.example.com
+    lookaside-staging: file:///var/lib/containers/sigstore
+  registry.access.redhat.com:
+    lookaside: https://access.redhat.com/webassets/docker/content/sigstore
 EOF
 ```
 
@@ -68,7 +71,7 @@ EOF
 podman push --sign-by your-email@example.com localhost/my-app:latest docker://registry.example.com/my-app:latest
 ```
 
-Podman creates a detached GPG signature and stores it in the sigstore directory.
+Podman creates a detached GPG signature and stores it in the local lookaside staging directory. Copy the signatures from that directory to the configured lookaside web server so verification servers can read them.
 
 ## Configuring Signature Verification Policies
 
@@ -103,7 +106,7 @@ The default policy on RHEL looks like:
 To require signatures from your registry, update the policy:
 
 ```bash
-sudo cat > /etc/containers/policy.json << 'EOF'
+sudo tee /etc/containers/policy.json > /dev/null << 'EOF'
 {
     "default": [
         {
@@ -140,7 +143,7 @@ EOF
 This policy:
 - Rejects unsigned images by default
 - Requires GPG signature for images from `registry.example.com`
-- Trusts Red Hat signed images
+- Trusts Red Hat signed images when the Red Hat signature lookaside locations are also configured under `/etc/containers/registries.d/`
 - Allows Docker Hub images without signatures
 
 ## Distributing the Public Key
@@ -170,7 +173,9 @@ Modern container signing often uses Sigstore/Cosign instead of GPG:
 
 ## Install cosign
 ```bash
-sudo dnf install -y cosign
+LATEST_VERSION=$(curl -s https://api.github.com/repos/sigstore/cosign/releases/latest | grep tag_name | cut -d : -f2 | tr -d 'v", ')
+curl -O -L "https://github.com/sigstore/cosign/releases/latest/download/cosign-${LATEST_VERSION}-1.x86_64.rpm"
+sudo rpm -ivh "cosign-${LATEST_VERSION}-1.x86_64.rpm"
 ```
 
 ## Generate a cosign key pair
@@ -192,6 +197,14 @@ cosign verify --key cosign.pub registry.example.com/my-app:latest
 
 For cosign/sigstore signatures, update the policy:
 
+```bash
+sudo tee /etc/containers/registries.d/registry.example.com.yaml > /dev/null << 'EOF'
+docker:
+  registry.example.com:
+    use-sigstore-attachments: true
+EOF
+```
+
 ```json
 {
     "transports": {
@@ -199,7 +212,10 @@ For cosign/sigstore signatures, update the policy:
             "registry.example.com": [
                 {
                     "type": "sigstoreSigned",
-                    "keyPath": "/etc/pki/containers/cosign.pub"
+                    "keyPath": "/etc/pki/containers/cosign.pub",
+                    "signedIdentity": {
+                        "type": "matchRepository"
+                    }
                 }
             ]
         }
@@ -218,7 +234,7 @@ podman image trust show
 
 ## Set trust for a specific registry
 ```bash
-sudo podman image trust set --type signedBy --pubkeysfile /etc/pki/containers/my-signing-key.pub registry.example.com
+sudo podman image trust set --signature-policy /etc/containers/policy.json --type signedBy --pubkeysfile /etc/pki/containers/my-signing-key.pub registry.example.com
 ```
 
 ## Automating Image Signing in CI/CD
@@ -246,7 +262,7 @@ This section covers troubleshooting signature issues.
 
 ## Check if an image has a signature
 ```bash
-skopeo inspect --raw docker://registry.example.com/my-app:latest | jq .
+find /var/lib/containers/sigstore -type f -name 'signature-*' -print
 ```
 
 ## Debug signature verification failures

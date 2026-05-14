@@ -16,85 +16,80 @@ Upgrade PostgreSQL versions on RHEL 9 using pg_upgrade for major version migrati
 
 - A RHEL 9 system with a valid subscription or configured repositories
 - Root or sudo access
-- Sufficient disk space for database storage
+- A supported source PostgreSQL version and target RHEL 9 PostgreSQL stream
+- A tested backup of your PostgreSQL databases and configuration files
+- Sufficient disk space for database storage and upgrade work
 
-## Step 1 - Install the Database Packages
+## Step 1 - Install the PostgreSQL Upgrade Packages
 
-For PostgreSQL:
-
-```bash
-sudo dnf install -y postgresql-server postgresql
-sudo postgresql-setup --initdb
-sudo systemctl enable --now postgresql
-```
-
-For MariaDB:
+Install the target PostgreSQL server packages and the upgrade package. For PostgreSQL 13 from the RHEL 9 RPM package:
 
 ```bash
-sudo dnf install -y mariadb-server
-sudo systemctl enable --now mariadb
-sudo mysql_secure_installation
+sudo dnf install -y postgresql-server postgresql-upgrade
 ```
 
-For MySQL 8.0:
+For PostgreSQL 15 or PostgreSQL 16, select the target module stream and install the upgrade package. For example, to use PostgreSQL 16:
 
 ```bash
-sudo dnf install -y mysql-community-server
-sudo systemctl enable --now mysqld
+sudo dnf module install postgresql:16/server
+sudo dnf install -y postgresql-upgrade
 ```
 
-Choose the appropriate commands for your database engine.
+Install any PostgreSQL server extensions you used on the old cluster for the target PostgreSQL version as well.
 
 ## Step 2 - Perform Initial Configuration
 
-Edit the main configuration file:
-
-- PostgreSQL: `/var/lib/pgsql/data/postgresql.conf` and `pg_hba.conf`
-- MariaDB/MySQL: `/etc/my.cnf.d/server.cnf`
-
-Adjust memory settings, connection limits, and authentication methods to match your workload.
-
-## Step 3 - Create Users and Databases
-
-For PostgreSQL:
+Before running the upgrade, stop PostgreSQL and make sure the old cluster data is in the default RHEL location, `/var/lib/pgsql/data/`:
 
 ```bash
-sudo -u postgres createuser myappuser
-sudo -u postgres createdb myappdb -O myappuser
+sudo systemctl stop postgresql.service
 ```
 
-For MariaDB/MySQL:
+Check the following configuration files before the upgrade:
 
-```sql
-CREATE DATABASE myappdb;
-CREATE USER 'myappuser'@'localhost' IDENTIFIED BY 'secure-password';
-GRANT ALL PRIVILEGES ON myappdb.* TO 'myappuser'@'localhost';
-FLUSH PRIVILEGES;
+- `/var/lib/pgsql/data/postgresql.conf`
+- `/var/lib/pgsql/data/pg_hba.conf`
+- `/var/lib/pgsql/data/pg_ident.conf`
+
+The fast upgrade creates fresh configuration files for the new cluster. Keep the old files available so you can copy or merge settings after the upgrade.
+
+## Step 3 - Run the Upgrade
+
+Run the RHEL upgrade helper as root. It starts the `pg_upgrade` process in the background:
+
+```bash
+sudo postgresql-setup --upgrade
 ```
+
+If the command fails, review the error message, fix the reported issue, and rerun the upgrade before starting the new server.
 
 ## Step 4 - Configure Network Access
 
-If remote connections are needed, update the listen address and authentication rules, then open the firewall:
+After the upgrade, copy or merge the prior configuration from `/var/lib/pgsql/data-old/` into the new cluster configuration in `/var/lib/pgsql/data/`.
+
+If remote connections are needed, update `listen_addresses` and `pg_hba.conf`, then open the firewall:
 
 ```bash
 sudo firewall-cmd --permanent --add-service=postgresql
-# or
-
-sudo firewall-cmd --permanent --add-service=mysql
 sudo firewall-cmd --reload
 ```
 
 ## Step 5 - Verify the Setup
 
+Start and enable PostgreSQL, then analyze the upgraded cluster:
+
+```bash
+sudo systemctl start postgresql.service
+sudo systemctl enable postgresql.service
+sudo -u postgres vacuumdb --all --analyze-in-stages
+```
+
 Connect to the database and run a test query:
 
 ```bash
-# PostgreSQL
-psql -h localhost -U myappuser myappdb -c "SELECT version();"
-# MariaDB/MySQL
-mysql -u myappuser -p myappdb -e "SELECT VERSION();"
+sudo -u postgres psql -d postgres -c "SELECT version();"
 ```
 
 ## Summary
 
-You have learned how to upgrade postgresql versions using pg_upgrade. Always secure your database with strong passwords, restricted network access, and regular backups.
+You have learned how to upgrade PostgreSQL versions using `pg_upgrade` through the RHEL `postgresql-setup --upgrade` helper. Always secure your database with strong passwords, restricted network access, and regular backups.

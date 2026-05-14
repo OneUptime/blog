@@ -53,7 +53,7 @@ sudo mkdir -p /root/module-signing
 cd /root/module-signing
 
 # Generate a private key and certificate
-sudo openssl req -new -x509 -newkey rsa:2048 -keyout MOK.priv -outform DER -out MOK.der -nodes -days 36500 -subj "/CN=Custom Module Signing Key/"
+sudo openssl req -new -x509 -newkey rsa:2048 -keyout MOK.priv -outform DER -out MOK.der -nodes -days 36500 -subj "/CN=Custom Module Signing Key/" -addext "extendedKeyUsage=codeSigning"
 ```
 
 ### Enroll the Key with MOK
@@ -98,24 +98,14 @@ sudo modprobe vboxdrv
 
 ## Solution 2: Automate Signing with DKMS
 
-For DKMS modules that rebuild on kernel updates, automate the signing:
-
-```bash
-# Create a DKMS signing script
-sudo tee /etc/dkms/sign_helper.sh << 'SCRIPT'
-#!/bin/bash
-/usr/src/kernels/$1/scripts/sign-file sha256 /root/module-signing/MOK.priv /root/module-signing/MOK.der "$2"
-SCRIPT
-
-sudo chmod 755 /etc/dkms/sign_helper.sh
-```
-
-Configure DKMS to use the signing script:
+For DKMS modules that rebuild on kernel updates, configure DKMS to use the same MOK key and certificate:
 
 ```bash
 # Add to DKMS configuration
 sudo tee /etc/dkms/framework.conf.d/signing.conf << 'EOF'
-sign_tool="/etc/dkms/sign_helper.sh"
+mok_signing_key="/root/module-signing/MOK.priv"
+mok_certificate="/root/module-signing/MOK.der"
+sign_file="/lib/modules/${kernelver}/build/scripts/sign-file"
 EOF
 ```
 
@@ -191,14 +181,14 @@ sudo /usr/src/kernels/$(uname -r)/scripts/sign-file sha256 /root/module-signing/
 
 ## Checking Key Expiration
 
-The signing certificate has an expiration date. Check it:
+The signing certificate has validity dates. Check them:
 
 ```bash
 # Check certificate expiration
 openssl x509 -in /root/module-signing/MOK.der -inform DER -noout -dates
 ```
 
-When it expires, generate a new key pair, re-enroll, and re-sign your modules.
+On RHEL 9, the module must be signed within the certificate's validity period, and `sign-file` will not warn you if the dates are wrong. If the certificate is no longer valid for signing new modules, generate a new key pair, re-enroll the public key, and sign newly built modules with the new key.
 
 ## Security Considerations
 

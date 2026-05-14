@@ -8,13 +8,13 @@ Description: Learn how to use the systemd credentials framework on RHEL to secur
 
 ---
 
-systemd credentials provide a secure way to pass secrets (API keys, passwords, certificates) to services. Credentials are encrypted at rest, mounted read-only in a temporary filesystem, and automatically cleaned up when the service stops. This is far more secure than storing secrets in unit files or environment variables.
+systemd credentials provide a secure way to pass secrets (API keys, passwords, certificates) to services. Encrypted credentials are encrypted at rest, exposed to the service through a read-only credentials directory, and automatically cleaned up when the service stops. This is far more secure than storing secrets in unit files or environment variables.
 
 ## How Credentials Work
 
 ```mermaid
 graph LR
-    A[Encrypted Credential<br>/etc/credstore/] --> B[systemd]
+    A[Encrypted Credential<br>/etc/credstore.encrypted/] --> B[systemd]
     B -->|Decrypted at runtime| C[Service Process]
     C -->|Reads from| D[$CREDENTIALS_DIRECTORY/secret]
     E[TPM2 or Host Key] --> B
@@ -25,16 +25,17 @@ graph LR
 ```bash
 # Create a credential encrypted with the host key
 
-echo "my-secret-api-key-12345" | sudo systemd-creds encrypt - /etc/credstore/myapp.api-key
+sudo mkdir -p /etc/credstore.encrypted
+echo "my-secret-api-key-12345" | sudo systemd-creds encrypt --with-key=host --name=api-key - /etc/credstore.encrypted/api-key
 
 # Create a credential from a file
-sudo systemd-creds encrypt /path/to/db-password.txt /etc/credstore/myapp.db-password
+sudo systemd-creds encrypt --with-key=host --name=db-password /path/to/db-password.txt /etc/credstore.encrypted/db-password
 
 # List stored credentials
-ls /etc/credstore/
+ls /etc/credstore.encrypted/
 
 # Verify a credential can be decrypted
-sudo systemd-creds decrypt /etc/credstore/myapp.api-key -
+sudo systemd-creds decrypt --name=api-key /etc/credstore.encrypted/api-key -
 ```
 
 ## Step 2: Configure a Service to Use Credentials
@@ -48,8 +49,8 @@ Description=My Application with Credentials
 [Service]
 ExecStart=/usr/local/bin/myapp
 # Load credentials from the credential store
-LoadCredentialEncrypted=api-key:/etc/credstore/myapp.api-key
-LoadCredentialEncrypted=db-password:/etc/credstore/myapp.db-password
+LoadCredentialEncrypted=api-key:/etc/credstore.encrypted/api-key
+LoadCredentialEncrypted=db-password:/etc/credstore.encrypted/db-password
 # The CREDENTIALS_DIRECTORY environment variable points to the secrets
 
 [Install]
@@ -109,11 +110,11 @@ DB_PASS=$(cat "$CREDENTIALS_DIRECTORY/db-password")
 
 ```bash
 # For development, you can use unencrypted credentials
-sudo mkdir -p /etc/credstore.plain
-echo "dev-api-key" | sudo tee /etc/credstore.plain/myapp.api-key
+sudo mkdir -p /etc/credstore
+echo "dev-api-key" | sudo tee /etc/credstore/api-key
 
 # Reference with LoadCredential (not LoadCredentialEncrypted)
-# The service will look in /etc/credstore.plain/ automatically
+# The service will look in /etc/credstore/ automatically
 ```
 
 ## Step 5: TPM2-Bound Credentials
@@ -121,12 +122,12 @@ echo "dev-api-key" | sudo tee /etc/credstore.plain/myapp.api-key
 ```bash
 # Encrypt credentials bound to the TPM2 chip
 # These can only be decrypted on this specific machine
-echo "tpm-bound-secret" | sudo systemd-creds encrypt --with-key=tpm2 - /etc/credstore/myapp.tpm-secret
+echo "tpm-bound-secret" | sudo systemd-creds encrypt --with-key=tpm2 --name=tpm-secret - /etc/credstore.encrypted/tpm-secret
 
 # Use in a service
-# LoadCredentialEncrypted=tpm-secret:/etc/credstore/myapp.tpm-secret
+# LoadCredentialEncrypted=tpm-secret:/etc/credstore.encrypted/tpm-secret
 ```
 
 ## Summary
 
-You have configured systemd credentials on RHEL for secure secret injection. Credentials are encrypted at rest, decrypted only at service runtime, and automatically cleaned up when the service stops. This approach eliminates the need for secrets in environment variables, configuration files, or unit files.
+You have configured systemd credentials on RHEL for secure secret injection. Encrypted credentials are encrypted at rest, decrypted only at service runtime, and automatically cleaned up when the service stops. This approach eliminates the need for secrets in environment variables, configuration files, or unit files.

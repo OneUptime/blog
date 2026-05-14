@@ -15,15 +15,16 @@ Cloud-init is the standard tool for automating the initial configuration of clou
 ```mermaid
 graph TB
     A[Instance Boots] --> B[cloud-init runs]
-    B --> C[Network Stage]
-    C --> D[Config Stage]
-    D --> E[Final Stage]
-    C --> C1[Set hostname]
-    C --> C2[Configure network]
-    D --> D1[Create users]
-    D --> D2[Write files]
-    E --> E1[Install packages]
-    E --> E2[Run scripts]
+    B --> C[Local Stage]
+    C --> D[Network Stage]
+    D --> E[Config Stage]
+    E --> F[Final Stage]
+    C --> C1[Configure network]
+    D --> D1[Set hostname]
+    E --> E1[Create users]
+    E --> E2[Write files]
+    F --> F1[Install packages]
+    F --> F2[Run scripts]
 ```
 
 ## Step 1: Basic Cloud-Init Configuration
@@ -137,7 +138,7 @@ aws ec2 run-instances \
 az vm create \
   --resource-group rg-rhel9 \
   --name rhel9-vm \
-  --image RedHat:RHEL:9_3:latest \
+  --image RedHat:RHEL:9-lvm-gen2:latest \
   --custom-data cloud-init-config.yaml \
   --admin-username azureuser \
   --generate-ssh-keys
@@ -177,9 +178,8 @@ cloud-init status
 cat /var/log/cloud-init.log
 cat /var/log/cloud-init-output.log
 
-# Re-run cloud-init (for testing)
-sudo cloud-init clean
-sudo cloud-init init
+# Reset cloud-init state and reboot to re-run all stages (for testing)
+sudo cloud-init clean --logs --reboot
 ```
 
 ## Conclusion

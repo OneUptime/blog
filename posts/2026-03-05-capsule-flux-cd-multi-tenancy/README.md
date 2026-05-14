@@ -18,7 +18,7 @@ Capsule introduces a Tenant custom resource that groups namespaces and enforces 
 - Enforces resource quotas across all tenant namespaces combined
 - Applies network policies automatically
 - Restricts which storage classes, ingress classes, and registries tenants can use
-- Provides hierarchical quota management
+- Provides tenant-scoped resource quota management
 
 ## Step 1: Install Capsule with Flux CD
 
@@ -53,7 +53,7 @@ spec:
   chart:
     spec:
       chart: capsule
-      version: "0.7.x"
+      version: "0.12.4"
       sourceRef:
         kind: HelmRepository
         name: capsule
@@ -84,9 +84,9 @@ spec:
   # Maximum number of namespaces the tenant can create
   namespaceOptions:
     quota: 5
-    additionalMetadata:
-      labels:
-        toolkit.fluxcd.io/tenant: team-alpha
+    additionalMetadataList:
+      - labels:
+          toolkit.fluxcd.io/tenant: team-alpha
   # Resource quotas applied across all tenant namespaces combined
   resourceQuotas:
     scope: Tenant
@@ -97,40 +97,61 @@ spec:
           requests.memory: 16Gi
           limits.memory: 32Gi
           pods: "100"
-  # Limit ranges applied to every namespace
-  limitRanges:
-    items:
-      - limits:
-          - type: Container
-            default:
-              cpu: 250m
-              memory: 256Mi
-            defaultRequest:
-              cpu: 100m
-              memory: 128Mi
-  # Network policies applied to every namespace
-  networkPolicies:
-    items:
-      - policyTypes:
-          - Ingress
-          - Egress
-        ingress:
-          - from:
-              - namespaceSelector:
-                  matchLabels:
-                    capsule.clastix.io/tenant: team-alpha
-        egress:
-          - to:
-              - namespaceSelector:
-                  matchLabels:
-                    capsule.clastix.io/tenant: team-alpha
-          - to:
-              - namespaceSelector:
-                  matchLabels:
-                    kubernetes.io/metadata.name: kube-system
-            ports:
-              - protocol: UDP
-                port: 53
+---
+# Limit ranges and network policies distributed to every tenant namespace
+apiVersion: capsule.clastix.io/v1beta2
+kind: TenantResource
+metadata:
+  name: team-alpha-defaults
+  namespace: team-alpha
+spec:
+  resyncPeriod: 60s
+  resources:
+    - namespaceSelector:
+        matchLabels:
+          capsule.clastix.io/tenant: team-alpha
+      rawItems:
+        - apiVersion: v1
+          kind: LimitRange
+          metadata:
+            name: default-container-limits
+          spec:
+            limits:
+              - type: Container
+                default:
+                  cpu: 250m
+                  memory: 256Mi
+                defaultRequest:
+                  cpu: 100m
+                  memory: 128Mi
+        - apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          metadata:
+            name: tenant-isolation
+          spec:
+            podSelector: {}
+            policyTypes:
+              - Ingress
+              - Egress
+            ingress:
+              - from:
+                  - namespaceSelector:
+                      matchLabels:
+                        capsule.clastix.io/tenant: team-alpha
+            egress:
+              - to:
+                  - namespaceSelector:
+                      matchLabels:
+                        capsule.clastix.io/tenant: team-alpha
+              - to:
+                  - namespaceSelector:
+                      matchLabels:
+                        kubernetes.io/metadata.name: kube-system
+                ports:
+                  - protocol: UDP
+                    port: 53
+                  - protocol: TCP
+                    port: 53
 ```
 
 ## Step 3: Restrict Allowed Registries
@@ -149,11 +170,12 @@ spec:
       kind: ServiceAccount
       namespace: team-alpha
   # Only allow images from approved registries
-  containerRegistries:
-    allowed:
-      - registry.example.com/team-alpha
-      - docker.io/library
-    allowedRegex: "^registry\\.example\\.com/shared/.*$"
+  rules:
+    - enforce:
+        registries:
+          - url: "^registry\\.example\\.com/team-alpha/.*$"
+          - url: "^docker\\.io/library/.*$"
+          - url: "^registry\\.example\\.com/shared/.*$"
   # Restrict storage classes
   storageClasses:
     allowed:

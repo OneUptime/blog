@@ -25,11 +25,13 @@ graph LR
 ```bash
 # Install Terraform
 
+sudo dnf install -y dnf-plugins-core
 sudo dnf config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
 sudo dnf install -y terraform
 
 # Install Ansible
 sudo dnf install -y ansible-core
+ansible-galaxy collection install community.general ansible.posix
 ```
 
 ## Terraform: Provision Infrastructure
@@ -43,6 +45,14 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    local = {
+      source  = "hashicorp/local"
+      version = "~> 2.5"
+    }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.2"
+    }
   }
 }
 
@@ -52,6 +62,15 @@ provider "aws" {
 
 variable "server_count" {
   default = 3
+}
+
+variable "admin_cidr" {
+  description = "CIDR block allowed to connect over SSH"
+  default     = "0.0.0.0/0"
+}
+
+data "aws_vpc" "default" {
+  default = true
 }
 
 data "aws_ami" "rhel9" {
@@ -64,11 +83,44 @@ data "aws_ami" "rhel9" {
   }
 }
 
+resource "aws_security_group" "rhel_servers" {
+  name        = "rhel9-ansible-demo"
+  description = "Allow SSH and HTTP access to RHEL servers"
+  vpc_id      = data.aws_vpc.default.id
+
+  tags = {
+    Name = "rhel9-ansible-demo"
+  }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "ssh" {
+  security_group_id = aws_security_group.rhel_servers.id
+  cidr_ipv4         = var.admin_cidr
+  from_port         = 22
+  ip_protocol       = "tcp"
+  to_port           = 22
+}
+
+resource "aws_vpc_security_group_ingress_rule" "http" {
+  security_group_id = aws_security_group.rhel_servers.id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 80
+  ip_protocol       = "tcp"
+  to_port           = 80
+}
+
+resource "aws_vpc_security_group_egress_rule" "all_ipv4" {
+  security_group_id = aws_security_group.rhel_servers.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1"
+}
+
 resource "aws_instance" "rhel_servers" {
-  count         = var.server_count
-  ami           = data.aws_ami.rhel9.id
-  instance_type = "t3.medium"
-  key_name      = "my-keypair"
+  count                  = var.server_count
+  ami                    = data.aws_ami.rhel9.id
+  instance_type          = "t3.medium"
+  key_name               = "my-keypair"
+  vpc_security_group_ids = [aws_security_group.rhel_servers.id]
 
   tags = {
     Name = "rhel9-server-${count.index + 1}"

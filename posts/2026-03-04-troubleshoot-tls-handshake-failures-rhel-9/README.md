@@ -14,7 +14,7 @@ This guide walks through the most common causes and the tools you need on RHEL.
 
 ## The TLS Handshake Process
 
-Before diving into troubleshooting, it helps to understand what actually happens during a TLS handshake:
+Before diving into troubleshooting, it helps to understand what actually happens during a TLS handshake. A TLS 1.2 handshake looks roughly like this:
 
 ```mermaid
 sequenceDiagram
@@ -48,10 +48,10 @@ The `-servername` flag sends the SNI (Server Name Indication) header, which is i
 
 Key things to look for in the output:
 
-- **Verify return code:** 0 means the certificate chain is valid
+- **Verify return code:** 0 means the certificate chain validates against the local trust store; use `-verify_hostname` if you also want `s_client` to check the hostname
 - **Protocol:** Which TLS version was negotiated
 - **Cipher:** Which cipher suite was chosen
-- **Certificate chain:** The full chain from server cert to root
+- **Certificate chain:** The server certificate and any intermediate certificates the server sent
 
 ## Tool #2: gnutls-cli
 
@@ -73,7 +73,7 @@ The `-vvv` flag shows the TLS handshake details mixed with the HTTP conversation
 
 ## Common Cause #1: Protocol Version Mismatch
 
-RHEL's DEFAULT crypto policy requires TLS 1.2 minimum. If a client only supports TLS 1.0 or 1.1, the handshake fails immediately.
+RHEL 9's system crypto policies allow TLS 1.2 and 1.3. If a client only supports TLS 1.0 or 1.1, the handshake fails immediately.
 
 Diagnose it:
 
@@ -82,7 +82,7 @@ Diagnose it:
 openssl s_client -connect myserver.example.com:443 -tls1 </dev/null 2>&1 | head -5
 ```
 
-If you see "no protocols available" or "handshake failure," the server correctly rejects old TLS versions.
+If you see "no protocols available," the local OpenSSL policy refused to offer TLS 1.0 before a handshake could start. If you see "handshake failure," the peer rejected the old protocol.
 
 Check the server's crypto policy:
 
@@ -91,10 +91,10 @@ Check the server's crypto policy:
 update-crypto-policies --show
 ```
 
-If a legacy client must connect and you cannot update it, you can temporarily lower the policy:
+If a legacy client must connect and you cannot update it, do not expect `LEGACY` to re-enable TLS 1.0 or 1.1 on RHEL 9. It can help with some older algorithms, such as SHA-1 signatures, but RHEL 9 still supports only TLS 1.2 and 1.3.
 
 ```bash
-# Switch to LEGACY policy to allow older TLS versions (not recommended long-term)
+# Switch to LEGACY policy for older algorithms, not TLS 1.0 or 1.1 (not recommended long-term)
 sudo update-crypto-policies --set LEGACY
 sudo systemctl restart httpd
 ```
@@ -103,10 +103,10 @@ sudo systemctl restart httpd
 
 The client and server must agree on at least one cipher suite. If their lists do not overlap, the handshake fails.
 
-Check what the server offers:
+Check the cipher negotiated by the server:
 
 ```bash
-# List the cipher suites the server accepts
+# Show the cipher suite negotiated for this connection
 openssl s_client -connect myserver.example.com:443 </dev/null 2>&1 | grep "Cipher  "
 ```
 
@@ -114,7 +114,7 @@ Check what your system allows:
 
 ```bash
 # List ciphers enabled by the current crypto policy
-openssl ciphers -v
+openssl ciphers -v -s
 ```
 
 If a specific cipher is needed but your policy blocks it, create a sub-policy or adjust your application config.
@@ -156,7 +156,7 @@ This is probably the most common TLS issue I see in production. The server sends
 openssl s_client -connect myserver.example.com:443 </dev/null 2>&1 | grep -A2 "Certificate chain"
 ```
 
-If you see only one certificate (depth 0) and verification fails, the intermediate is missing. Fix it by concatenating the certificates:
+If the chain output shows only the leaf certificate and verification fails with an issuer error, the intermediate is probably missing. Fix it by concatenating the certificates:
 
 ```bash
 # Create a full chain file with server cert + intermediate

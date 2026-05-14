@@ -86,11 +86,17 @@ Alternatively, if not using IRSA, you can create a Kubernetes secret with AWS cr
 
 ```bash
 # Alternative: Store AWS credentials as a Kubernetes secret
+cat > sops-aws-kms.yaml <<EOF
+aws_access_key_id: AKIAIOSFODNN7EXAMPLE
+aws_secret_access_key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+# aws_session_token: optional-session-token
+EOF
+
 kubectl create secret generic sops-aws \
   --namespace=flux-system \
-  --from-literal=aws_access_key_id=AKIAIOSFODNN7EXAMPLE \
-  --from-literal=aws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY \
-  --from-literal=aws_region=us-east-1
+  --from-file=sops.aws-kms=sops-aws-kms.yaml
+
+rm sops-aws-kms.yaml
 ```
 
 ## Step 4: Create and Encrypt a Secret
@@ -220,9 +226,11 @@ Common issues and how to resolve them.
 # Check if the kustomize-controller has the correct IAM role annotation
 kubectl get sa kustomize-controller -n flux-system -o yaml | grep eks.amazonaws.com
 
-# Verify KMS key access from the controller pod
-kubectl exec -n flux-system deployment/kustomize-controller -- \
-  aws kms describe-key --key-id arn:aws:kms:us-east-1:123456789012:key/<key-id>
+# Verify KMS key access with the controller service account
+kubectl run aws-cli-test -n flux-system --rm -it \
+  --image=amazon/aws-cli:2 \
+  --overrides='{"spec":{"serviceAccountName":"kustomize-controller"}}' -- \
+  kms describe-key --key-id arn:aws:kms:us-east-1:123456789012:key/<key-id>
 
 # Check controller logs for decryption errors
 kubectl logs -n flux-system deployment/kustomize-controller | grep -i "kms\|decrypt\|sops"

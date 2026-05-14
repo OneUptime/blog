@@ -39,8 +39,9 @@ sudo mysql_secure_installation
 For MySQL 8.0:
 
 ```bash
-sudo dnf install -y mysql-community-server
+sudo dnf install -y mysql-server
 sudo systemctl enable --now mysqld
+sudo mysql_secure_installation
 ```
 
 Choose the appropriate commands for your database engine.
@@ -78,6 +79,7 @@ If remote connections are needed, update the listen address and authentication r
 
 ```bash
 sudo firewall-cmd --permanent --add-service=postgresql
+sudo firewall-cmd --reload
 # or
 
 sudo firewall-cmd --permanent --add-service=mysql

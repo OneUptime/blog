@@ -64,7 +64,7 @@ patches:
   - path: patches/resource-limits.yaml
     target:
       kind: Deployment
-      namespace: flux-system
+      labelSelector: "app.kubernetes.io/part-of=flux"
 ```
 
 Create the resource limits patch file:
@@ -75,7 +75,7 @@ Create the resource limits patch file:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: not-used
+  name: all
   namespace: flux-system
 spec:
   template:
@@ -164,82 +164,92 @@ patches:
 
 ## Step 4: Increase Controller Concurrency
 
-Flux controllers process reconciliation requests sequentially by default with limited concurrency. Increasing the concurrent reconciliation count allows controllers to process more resources in parallel.
+Flux controllers process reconciliation requests with limited concurrency by default. Increasing the concurrent reconciliation count allows controllers to process more resources in parallel.
 
 ```yaml
 # Patch to increase concurrency for the kustomize-controller
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kustomize-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
-            - --watch-all-namespaces=true
-            - --log-level=info
-            - --log-encoding=json
-            - --enable-leader-election
-            # Increase concurrent reconciliations from default (4) to 20
-            - --concurrent=20
-            # Increase requeue dependency interval
-            - --requeue-dependency=10s
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+patches:
+  - patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --concurrent=20
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --requeue-dependency=10s
+    target:
+      kind: Deployment
+      name: kustomize-controller
 ```
 
 Apply a similar concurrency patch to the source-controller and helm-controller:
 
 ```yaml
-# Patch to increase concurrency for the source-controller
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: source-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
-            - --watch-all-namespaces=true
-            - --log-level=info
-            - --log-encoding=json
-            - --enable-leader-election
-            - --storage-path=/data
-            - --storage-adv-addr=source-controller.$(RUNTIME_NAMESPACE).svc.cluster.local.
-            # Increase concurrent reconciliations
-            - --concurrent=20
+# Patch to increase concurrency for the source-controller and helm-controller
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+patches:
+  - patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --concurrent=20
+    target:
+      kind: Deployment
+      name: "(source-controller|helm-controller)"
 ```
 
 ## Step 5: Configure Storage for Source Controller
 
-The source-controller stores downloaded artifacts on disk. For clusters with many large repositories, you may need to increase the volume size.
+The source-controller stores downloaded artifacts on disk. By default, this cache uses an `emptyDir` volume and is rebuilt after a restart. For clusters with many large repositories, configure a persistent volume for the cache.
 
 ```yaml
-# Patch to increase source-controller storage volume
-apiVersion: apps/v1
-kind: Deployment
+# clusters/my-cluster/flux-system/gotk-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
 metadata:
-  name: source-controller
+  name: gotk-pvc
   namespace: flux-system
 spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          volumeMounts:
-            - name: data
-              mountPath: /data
-      volumes:
-        - name: data
-          emptyDir:
-            # Increase the storage limit from default to 5Gi
-            sizeLimit: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+```yaml
+# Add gotk-pvc.yaml to resources and patch source-controller to mount it at /data
+# clusters/my-cluster/flux-system/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+  - gotk-pvc.yaml
+patches:
+  - patch: |
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: persistent-data
+          persistentVolumeClaim:
+            claimName: gotk-pvc
+      - op: replace
+        path: /spec/template/spec/containers/0/volumeMounts/0
+        value:
+          name: persistent-data
+          mountPath: /data
+    target:
+      kind: Deployment
+      name: source-controller
 ```
 
 ## Step 6: Apply and Verify Changes
@@ -277,8 +287,8 @@ kubectl top pods -n flux-system --containers
 # Check reconciliation durations from controller logs
 kubectl logs -n flux-system deployment/kustomize-controller | grep "duration"
 
-# Verify no OOMKilled events
-kubectl get events -n flux-system --field-selector reason=OOMKilling
+# Verify no containers were OOMKilled
+kubectl get pods -n flux-system -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .status.containerStatuses[*]}{.lastState.terminated.reason}{"\n"}{end}{end}' | grep OOMKilled
 ```
 
 Resource Sizing Guidelines
@@ -287,7 +297,7 @@ The following table provides general starting points based on cluster size:
 
 | Cluster Size | source-controller Memory | kustomize-controller CPU | helm-controller Memory | Concurrency |
 |---|---|---|---|---|
-| Small (< 50 resources) | 256Mi | 250m | 256Mi | 4 (default) |
+| Small (< 50 resources) | 256Mi | 250m | 256Mi | Defaults |
 | Medium (50-200 resources) | 1Gi | 500m | 512Mi | 10 |
 | Large (200-1000 resources) | 2Gi | 1000m | 1Gi | 20 |
 | Very Large (1000+ resources) | 4Gi | 2000m | 2Gi | 30+ |

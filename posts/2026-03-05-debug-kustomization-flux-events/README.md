@@ -120,7 +120,7 @@ flux events --for Kustomization/apps --namespace flux-system
 
 # Check the dependency status
 flux events --for Kustomization/infrastructure --namespace flux-system
-flux get ks infrastructure --namespace flux-system
+flux get kustomizations --namespace flux-system
 ```
 
 ### Pruning Events
@@ -146,24 +146,24 @@ A thorough debugging session typically involves multiple Flux CLI commands. Here
 
 ```bash
 # Step 1: Get an overview of all Kustomization statuses
-flux get ks --all-namespaces
+flux get kustomizations --all-namespaces
 
 # Step 2: Identify the failing Kustomization and check its events
 flux events --for Kustomization/app-backend --namespace flux-system
 
 # Step 3: Check the source to ensure it has the latest revision
-flux get sources git flux-system --namespace flux-system
+flux get sources git --namespace flux-system
 flux events --for GitRepository/flux-system --namespace flux-system
 
-# Step 4: View the dependency tree to understand relationships
-flux tree ks app-backend --namespace flux-system
+# Step 4: View the managed resource inventory
+flux tree kustomization app-backend --namespace flux-system
 
 # Step 5: If events show a specific resource failing, inspect it
 kubectl describe deployment api-server -n production
 kubectl logs -n production deployment/api-server --tail=50
 
 # Step 6: Force a reconciliation to trigger a fresh attempt
-flux reconcile ks app-backend --namespace flux-system --with-source
+flux reconcile kustomization app-backend --namespace flux-system --with-source
 
 # Step 7: Watch events during the reconciliation
 flux events --for Kustomization/app-backend --namespace flux-system --watch
@@ -177,11 +177,11 @@ You can combine `flux events` with standard command-line tools to filter for spe
 # Show only warning events (failures)
 flux events --for Kustomization/app-backend --namespace flux-system | grep Warning
 
-# Show only recent events (last 5 minutes)
+# Show the first 20 lines of event output
 flux events --for Kustomization/app-backend --namespace flux-system | head -20
 
 # Show events across all Kustomizations in flux-system
-flux events --namespace flux-system --types=Warning
+flux events --for Kustomization --namespace flux-system --types=Warning
 ```
 
 ## Using kubectl for Additional Event Context
@@ -205,7 +205,7 @@ Flux can send events to external systems for alerting and audit logging. While n
 
 ```yaml
 # Alert provider configuration for Slack notifications
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -213,11 +213,12 @@ metadata:
 spec:
   type: slack
   channel: flux-alerts
+  address: https://slack.com/api/chat.postMessage
   secretRef:
-    name: slack-webhook-url
+    name: slack-bot-token
 ---
 # Alert that triggers on Kustomization failures
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: kustomization-failures
@@ -242,8 +243,8 @@ spec:
 
 **Look at the full chain**: If a Kustomization depends on others, check events for the entire dependency chain. The root cause is often in a parent Kustomization.
 
-**Force reconciliation for testing**: After fixing an issue, use `flux reconcile ks <name> --with-source` to trigger an immediate reconciliation instead of waiting for the next interval.
+**Force reconciliation for testing**: After fixing an issue, use `flux reconcile kustomization <name> --with-source` to trigger an immediate reconciliation instead of waiting for the next interval.
 
 ## Summary
 
-The `flux events` command is the most important debugging tool in the Flux CLI for Kustomization troubleshooting. Use `flux events --for Kustomization/<name>` to see reconciliation history, apply errors, health check failures, and pruning activity. Combine it with `--watch` for real-time monitoring, and pair it with `flux get ks`, `flux tree ks`, and kubectl for a complete debugging workflow. Setting up Flux Alerts for automated failure notifications ensures you catch issues even when you are not actively watching.
+The `flux events` command is the most important debugging tool in the Flux CLI for Kustomization troubleshooting. Use `flux events --for Kustomization/<name>` to see reconciliation history, apply errors, health check failures, and pruning activity. Combine it with `--watch` for real-time monitoring, and pair it with `flux get kustomizations`, `flux tree kustomization`, and kubectl for a complete debugging workflow. Setting up Flux Alerts for automated failure notifications ensures you catch issues even when you are not actively watching.

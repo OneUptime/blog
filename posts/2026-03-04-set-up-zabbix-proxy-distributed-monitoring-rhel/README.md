@@ -50,13 +50,13 @@ Hostname=proxy-site-b
 # Database type and location
 DBName=/var/lib/zabbix/zabbix_proxy.db
 
-# How often proxy sends data to the server (seconds)
+# How long the proxy keeps local data (hours)
 ProxyLocalBuffer=0
 ProxyOfflineBuffer=1
 
-# Data collection frequency
+# Data and configuration sync frequency (seconds)
 DataSenderFrequency=10
-ConfigFrequency=60
+ProxyConfigFrequency=60
 
 # Logging
 LogFile=/var/log/zabbix/zabbix_proxy.log

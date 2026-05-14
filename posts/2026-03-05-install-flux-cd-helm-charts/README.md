@@ -8,11 +8,11 @@ Description: A complete guide to installing Flux CD using Helm charts instead of
 
 ---
 
-While the `flux bootstrap` command is the recommended way to install Flux CD, there are scenarios where installing via Helm charts is preferable. Helm-based installation gives you fine-grained control over component configuration, integrates with existing Helm-based infrastructure management workflows, and works well in air-gapped environments. This guide covers installing Flux CD using the official Helm chart, configuring individual components, and connecting the installation to a Git repository.
+While the `flux bootstrap` command is the recommended way to install Flux CD, there are scenarios where installing via Helm charts is preferable. Helm-based installation gives you fine-grained control over component configuration, integrates with existing Helm-based infrastructure management workflows, and works well in air-gapped environments. This guide covers installing Flux CD using the community-maintained Helm chart referenced by the Flux documentation, configuring individual components, and connecting the installation to a Git repository.
 
 ## Prerequisites
 
-- A running Kubernetes cluster (v1.26 or later)
+- A running Kubernetes cluster supported by your Flux version (current Flux v2.8 documentation lists Kubernetes v1.33 or later)
 - `kubectl` configured to access your cluster
 - Helm v3.10 or later installed
 - (Optional) Flux CLI for verification and management
@@ -29,21 +29,21 @@ The Flux CLI bootstrap is idempotent and manages the full lifecycle, but Helm in
 
 ## Step 1: Add the Flux Helm Repository
 
-Add the official Flux CD Helm repository to your Helm configuration.
+Add the Flux CD community Helm repository to your Helm configuration.
 
 ```bash
 # Add the Flux CD Helm repository
 
-helm repo add fluxcd https://fluxcd-community.github.io/helm-charts
+helm repo add fluxcd-community https://fluxcd-community.github.io/helm-charts
 
 # Update the Helm repository index
 helm repo update
 
 # Search for available Flux charts
-helm search repo fluxcd
+helm search repo fluxcd-community
 ```
 
-The main chart you will use is `fluxcd/flux2`, which installs all Flux controllers as a single release.
+The main chart you will use is `fluxcd-community/flux2`, which installs Flux controllers as a single release.
 
 ## Step 2: Review Default Values
 
@@ -51,10 +51,10 @@ Inspect the chart's default values to understand the available configuration opt
 
 ```bash
 # Show all configurable values for the Flux chart
-helm show values fluxcd/flux2
+helm show values fluxcd-community/flux2
 
 # Save the values to a file for customization
-helm show values fluxcd/flux2 > flux-values.yaml
+helm show values fluxcd-community/flux2 > flux-values.yaml
 ```
 
 ## Step 3: Create a Custom Values File
@@ -125,7 +125,7 @@ notificationController:
       memory: 256Mi
 
 # Image Reflector Controller - scans container registries (optional)
-imageReflectorController:
+imageReflectionController:
   create: false
 
 # Image Automation Controller - automates image updates (optional)
@@ -136,7 +136,7 @@ imageAutomationController:
 watchAllNamespaces: true
 
 # Network policies
-networkPolicy:
+policies:
   create: true
 
 # Log level for all controllers
@@ -157,7 +157,7 @@ Install the Flux controllers using your custom values.
 kubectl create namespace flux-system
 
 # Install Flux CD using Helm
-helm install flux2 fluxcd/flux2 \
+helm install flux2 fluxcd-community/flux2 \
   --namespace flux-system \
   --values flux-values.yaml \
   --wait
@@ -260,10 +260,10 @@ Upgrading Flux is straightforward with Helm.
 helm repo update
 
 # Check available versions
-helm search repo fluxcd/flux2 --versions
+helm search repo fluxcd-community/flux2 --versions
 
 # Upgrade to the latest version
-helm upgrade flux2 fluxcd/flux2 \
+helm upgrade flux2 fluxcd-community/flux2 \
   --namespace flux-system \
   --values flux-values.yaml \
   --wait
@@ -280,7 +280,7 @@ Enable the optional image automation controllers for automated container image u
 ```yaml
 # flux-values-image-automation.yaml
 # Enable image automation controllers
-imageReflectorController:
+imageReflectionController:
   create: true
   resources:
     requests:
@@ -303,7 +303,7 @@ imageAutomationController:
 
 ```bash
 # Upgrade with image automation enabled
-helm upgrade flux2 fluxcd/flux2 \
+helm upgrade flux2 fluxcd-community/flux2 \
   --namespace flux-system \
   --values flux-values.yaml \
   --values flux-values-image-automation.yaml \
@@ -316,7 +316,7 @@ For air-gapped environments, pull the chart and images ahead of time.
 
 ```bash
 # Download the Helm chart archive
-helm pull fluxcd/flux2 --version <version> --destination ./charts/
+helm pull fluxcd-community/flux2 --version <version> --destination ./charts/
 
 # List the container images used by Flux
 helm template flux2 ./charts/flux2-<version>.tgz \
@@ -324,9 +324,9 @@ helm template flux2 ./charts/flux2-<version>.tgz \
 
 # Push images to your internal registry
 # Example for source-controller:
-docker pull ghcr.io/fluxcd/source-controller:v1.2.0
-docker tag ghcr.io/fluxcd/source-controller:v1.2.0 registry.internal/fluxcd/source-controller:v1.2.0
-docker push registry.internal/fluxcd/source-controller:v1.2.0
+docker pull ghcr.io/fluxcd/source-controller:<source-controller-tag>
+docker tag ghcr.io/fluxcd/source-controller:<source-controller-tag> registry.internal/fluxcd/source-controller:<source-controller-tag>
+docker push registry.internal/fluxcd/source-controller:<source-controller-tag>
 ```
 
 Override the image registry in your values file:
@@ -344,6 +344,10 @@ helmController:
   image: registry.internal/fluxcd/helm-controller
 notificationController:
   image: registry.internal/fluxcd/notification-controller
+imageReflectionController:
+  image: registry.internal/fluxcd/image-reflector-controller
+imageAutomationController:
+  image: registry.internal/fluxcd/image-automation-controller
 ```
 
 Install from the local chart:

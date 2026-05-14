@@ -35,10 +35,6 @@ graph LR
 ### For PostgreSQL
 
 ```bash
-# Connect to PostgreSQL and configure WAL settings
-
-sudo -u postgres psql
-
 # Enable logical replication in PostgreSQL
 # Edit postgresql.conf
 sudo tee -a /var/lib/pgsql/data/postgresql.conf <<EOF
@@ -53,10 +49,11 @@ EOF
 sudo systemctl restart postgresql
 
 # Create a replication user for Debezium
-sudo -u postgres psql <<EOF
+sudo -u postgres psql -d myapp <<EOF
 CREATE ROLE debezium WITH LOGIN REPLICATION PASSWORD 'DebeziumPass123';
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO debezium;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO debezium;
+CREATE PUBLICATION debezium_pub FOR TABLE public.orders, public.customers, public.products;
 EOF
 ```
 
@@ -70,7 +67,7 @@ server-id = 1
 log_bin = mysql-bin
 binlog_format = ROW
 binlog_row_image = FULL
-expire_logs_days = 7
+binlog_expire_logs_seconds = 604800
 EOF
 
 # Restart MySQL
@@ -140,6 +137,7 @@ curl -X POST http://localhost:8083/connectors \
         "plugin.name": "pgoutput",
         "slot.name": "debezium_slot",
         "publication.name": "debezium_pub",
+        "publication.autocreate.mode": "disabled",
         "snapshot.mode": "initial",
         "tombstones.on.delete": true,
         "decimal.handling.mode": "string",
@@ -188,7 +186,7 @@ curl -s http://localhost:8083/connectors/postgres-cdc/status | python3 -m json.t
     --bootstrap-server localhost:9092 \
     --topic myapp.public.orders \
     --from-beginning \
-    --max-messages 5 | python3 -m json.tool
+    --max-messages 1 | python3 -m json.tool
 ```
 
 ## Step 7: Understand the Change Event Format
@@ -243,6 +241,8 @@ curl -X PUT http://localhost:8083/connectors/postgres-cdc/config \
     "table.include.list": "public.orders,public.customers",
     "plugin.name": "pgoutput",
     "slot.name": "debezium_slot",
+    "publication.name": "debezium_pub",
+    "publication.autocreate.mode": "disabled",
     "snapshot.mode": "initial",
     "tasks.max": 1,
     "transforms": "unwrap,route",

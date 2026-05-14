@@ -30,7 +30,7 @@ A UUID (Universally Unique Identifier) is a 128-bit identifier assigned to a fil
 a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ```
 
-Every file system has a unique UUID that does not change unless you reformat the partition.
+Most file systems have a UUID that normally does not change unless you reformat the partition or deliberately change it with a file-system-specific tool.
 
 ## Finding UUIDs
 
@@ -87,6 +87,8 @@ For XFS file systems:
 ```bash
 sudo xfs_admin -L "data" /dev/sdb1
 ```
+
+Unmount the XFS file system before changing its label with `xfs_admin`.
 
 For ext4 file systems:
 
@@ -165,7 +167,7 @@ blkid -s PARTUUID /dev/sdb1
 Use it in fstab:
 
 ```text
-PARTUUID=12345678-01  /data  xfs  defaults  0 0
+PARTUUID=12345678-1234-1234-1234-123456789012  /data  xfs  defaults  0 0
 ```
 
 PARTUUID is useful when the file system has not been created yet or for identifying partitions independently of their content.
@@ -174,11 +176,11 @@ PARTUUID is useful when the file system has not been created yet or for identify
 
 | Feature | UUID | Label |
 |---------|------|-------|
-| Uniqueness | Guaranteed unique | Must be manually kept unique |
+| Uniqueness | Automatically generated and expected to be unique | Must be manually kept unique |
 | Readability | Hard to read | Easy to read |
-| Persistence | Survives everything except reformat | Survives everything except reformat |
+| Persistence | Survives reboots and device reordering unless reformatted or manually changed | Survives reboots and device reordering unless reformatted or manually changed |
 | Default in RHEL | Yes | No |
-| Risk of collision | None | Possible if labels are duplicated |
+| Risk of collision | Very low, but possible after cloning or manual duplication | Possible if labels are duplicated |
 
 For most production systems, UUIDs are the recommended choice because they are automatically unique and require no manual management.
 

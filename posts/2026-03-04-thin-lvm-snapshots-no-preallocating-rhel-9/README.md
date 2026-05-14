@@ -30,7 +30,7 @@ Key differences:
 | Feature | Traditional Snapshot | Thin Snapshot |
 |---------|---------------------|---------------|
 | Space allocation | Fixed at creation | On-demand from pool |
-| Can overflow | Yes, becomes invalid | No, uses pool space |
+| Can overflow | Yes, becomes invalid | Not individually, but the thin pool can run out of space |
 | Performance impact | Higher COW overhead | Lower, more efficient |
 | Multiple snapshots | Each needs own space | All share pool |
 | Snapshot of snapshot | Not supported | Supported |
@@ -150,16 +150,16 @@ By default, thin snapshots are not activated automatically. To access one:
 lvchange -ay -K vg_data/app_data_snap
 ```
 
-To set a snapshot to auto-activate:
+To allow normal activation commands to activate the snapshot:
 
 ```bash
-# Enable auto-activation
-lvchange -pr vg_data/app_data_snap
+# Remove the activation skip flag
+lvchange -kn vg_data/app_data_snap
 ```
 
 ## Monitoring Pool Usage with Snapshots
 
-Snapshots consume pool space as the origin changes. Monitor carefully:
+Snapshots consume pool space as the origin or snapshot changes. Monitor carefully:
 
 ```bash
 # Detailed view of pool, volumes, and snapshots
@@ -181,21 +181,30 @@ Merge reverts the origin to the snapshot's state:
 # Unmount the origin first
 umount /data/app
 
+# Deactivate the origin
+lvchange -an vg_data/app_data
+
 # Merge snapshot back into origin
-lvconvert --merge /dev/vg_data/app_data_snap
+lvconvert --mergethin vg_data/app_data_snap
+
+# Reactivate the origin
+lvchange -ay vg_data/app_data
 
 # Remount
 mount /dev/vg_data/app_data /data/app
 ```
 
-### Method 2: Promote the Snapshot
+### Method 2: Use the Snapshot Independently
 
-Instead of merging, you can disconnect the snapshot from the origin and use it independently:
+Instead of merging, you can activate and mount the writable snapshot as its own volume:
 
 ```bash
-# Disconnect snapshot from its origin
-# This makes app_data_snap an independent thin volume
-lvconvert --merge /dev/vg_data/app_data_snap
+# Activate the snapshot even if it has the activation skip flag
+lvchange -ay -K vg_data/app_data_snap
+
+# Mount the snapshot as a writable volume
+mkdir -p /mnt/app_restored
+mount -o nouuid /dev/vg_data/app_data_snap /mnt/app_restored
 ```
 
 ### Method 3: Copy Specific Files
@@ -224,9 +233,9 @@ The pool space used by the snapshot is immediately returned.
 1. **Monitor pool usage** - Snapshots consume pool space silently as data changes
 2. **Remove old snapshots promptly** - Every snapshot adds overhead
 3. **Do not keep dozens of snapshots** - Even thin snapshots have metadata overhead
-4. **Set up pool extension alerts** - If the pool fills, all volumes freeze
+4. **Set up pool extension alerts** - If the pool fills, writes to thin volumes can stall or fail
 5. **Use naming conventions** - Include dates in snapshot names for easy management
 
 ## Summary
 
-Thin LVM snapshots on RHEL are a major improvement over traditional snapshots. They require no space prealocation, share pool storage, and support recursive snapshots. Create them before risky changes, use them for daily backup points, and remove them when no longer needed. The critical requirement is monitoring your thin pool - when the pool is full, everything stops.
+Thin LVM snapshots on RHEL are a major improvement over traditional snapshots. They require no space preallocation, share pool storage, and support recursive snapshots. Create them before risky changes, use them for daily backup points, and remove them when no longer needed. The critical requirement is monitoring your thin pool - when the pool is full, writes can stall or fail.

@@ -26,7 +26,7 @@ Start by checking the GitRepository status for the specific error message.
 ```bash
 # Get the status of the failing GitRepository
 
-flux get source git my-app
+flux get sources git
 
 # Get the detailed error message
 kubectl get gitrepository my-app -n flux-system \
@@ -106,7 +106,7 @@ kubectl get secret git-credentials -n flux-system \
 # Update the secret with a new token
 kubectl create secret generic git-credentials \
   --namespace=flux-system \
-  --from-literal=username=git \
+  --from-literal=username=<github-username> \
   --from-literal=password=<new-token> \
   --dry-run=client -o yaml | kubectl apply -f -
 
@@ -116,7 +116,7 @@ flux reconcile source git my-app
 
 **Insufficient token permissions**: The token must have read access to the repository. For GitHub, the token needs at least the `repo` scope (classic tokens) or `Contents: read` permission (fine-grained tokens).
 
-**Wrong username**: For GitHub, the username should be `git` or your GitHub username. For GitLab, use `oauth2` as the username when using an access token.
+**Wrong username**: For GitHub, use your GitHub username with a personal access token. For GitLab personal access tokens, use your GitLab username or another non-blank value. For GitLab OAuth tokens, use `oauth2` as the username.
 
 ```yaml
 # Correct secret format for GitHub
@@ -127,12 +127,12 @@ metadata:
   namespace: flux-system
 type: Opaque
 stringData:
-  username: git
+  username: your-github-username
   password: ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 ```yaml
-# Correct secret format for GitLab with access token
+# Correct secret format for GitLab with a personal access token
 apiVersion: v1
 kind: Secret
 metadata:
@@ -140,7 +140,7 @@ metadata:
   namespace: flux-system
 type: Opaque
 stringData:
-  username: oauth2
+  username: your-gitlab-username
   password: glpat-xxxxxxxxxxxxxxxxxxxx
 ```
 
@@ -221,7 +221,7 @@ flux create source git test-auth \
   --interval=5m
 
 # Check if it succeeds
-flux get source git test-auth
+flux get sources git
 
 # Clean up the test source
 flux delete source git test-auth

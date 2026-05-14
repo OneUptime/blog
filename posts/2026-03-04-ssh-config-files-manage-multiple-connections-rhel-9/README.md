@@ -51,7 +51,7 @@ ssh db01
 
 ## Wildcards and Pattern Matching
 
-### Apply settings to all hosts in a domain
+### Apply settings to hostnames you type in a domain
 
 ```bash
 Host *.prod.example.com

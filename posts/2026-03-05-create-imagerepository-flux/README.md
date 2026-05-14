@@ -8,7 +8,7 @@ Description: Learn how to create an ImageRepository resource in Flux to scan con
 
 ---
 
-The ImageRepository resource in Flux tells the image reflector controller to scan a specific container image in a registry and track available tags. This is the first step in setting up automated image updates with Flux. In this guide, you will learn how to create and configure an ImageRepository resource.
+The ImageRepository resource in Flux tells the image reflector controller to scan a specific container image repository in a registry and track available tags. This is the first step in setting up automated image updates with Flux. In this guide, you will learn how to create and configure an ImageRepository resource.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ Before proceeding, ensure you have:
 
 ## What Is an ImageRepository?
 
-An ImageRepository is a Flux custom resource that instructs the image reflector controller to periodically scan a container image repository for available tags. The controller stores the discovered tags in the status of the ImageRepository object, which can then be used by ImagePolicy resources to select the appropriate tag.
+An ImageRepository is a Flux custom resource that instructs the image reflector controller to periodically scan a container image repository for available tags. The controller stores the discovered tags in its internal database and reports scan details in the ImageRepository status, which can then be used by ImagePolicy resources to select the appropriate tag.
 
 ## Step 1: Create a Basic ImageRepository
 
@@ -122,7 +122,7 @@ flux get image repository -n flux-system
 
 ## Step 5: Create an ImageRepository with Tag Exclusions
 
-You may want to exclude certain tags from being scanned. Use the `exclusionList` field.
+You may want to exclude certain tags from being stored in the scan results. Use the `exclusionList` field.
 
 ```yaml
 # imagerepository-exclusions.yaml

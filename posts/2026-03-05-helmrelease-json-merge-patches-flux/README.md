@@ -1,20 +1,20 @@
-# How to Use HelmRelease with JSON Merge Patches in Flux
+# How to Use HelmRelease with Strategic Merge Patches in Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, JSON Merge Patch, Post Rendering, Kustomize
+Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Strategic Merge Patch, Post Rendering, Kustomize
 
-Description: Learn how to apply JSON Merge Patches to HelmRelease resources in Flux CD using post-renderers for fine-grained control over Helm chart output.
+Description: Learn how to apply strategic merge patches to HelmRelease resources in Flux CD using post-renderers for fine-grained control over Helm chart output.
 
 ---
 
-When deploying Helm charts through Flux CD, you often need to modify rendered manifests without forking the upstream chart. JSON Merge Patches, defined in RFC 7386, provide a straightforward way to merge changes into existing resources. Flux supports these patches through the `spec.postRenderers` field on a HelmRelease, allowing you to apply Kustomize-style patches after Helm renders the templates.
+When deploying Helm charts through Flux CD, you often need to modify rendered manifests without forking the upstream chart. Strategic merge patches provide a straightforward way to merge changes into existing Kubernetes resources. Flux supports these patches through the `spec.postRenderers` field on a HelmRelease, allowing you to apply Kustomize-style patches after Helm renders the templates.
 
-## What Are JSON Merge Patches?
+## What Are Strategic Merge Patches?
 
-JSON Merge Patches work by merging a patch document into a target document. If a key exists in both the patch and the target, the patch value replaces the target value. If the patch sets a key to `null`, the key is removed from the target. This is simpler than JSON 6902 patches because you describe the desired state rather than individual operations.
+Strategic merge patches work by merging a partial Kubernetes manifest into a target resource. If a key exists in both the patch and the target, the patch value replaces or merges with the target value according to Kubernetes merge rules. If the patch sets a map key to `null`, the key is removed from the target. This is simpler than JSON 6902 patches because you describe the desired state rather than individual operations.
 
-In Flux, JSON Merge Patches are specified under `spec.postRenderers[].kustomize.patches`, which uses the strategic merge patch format supported by Kustomize.
+In Flux, strategic merge patches are specified under `spec.postRenderers[].kustomize.patches`, which supports strategic merge patches and JSON 6902 patches through Kustomize.
 
 ## Prerequisites
 
@@ -39,12 +39,12 @@ graph LR
     E --> F[Apply to Cluster]
 ```
 
-## Basic Example: Adding Labels with a JSON Merge Patch
+## Basic Example: Adding Labels with a Strategic Merge Patch
 
 Suppose you are deploying an nginx chart and need to add custom labels to the Deployment resource. Here is how you configure the HelmRelease with a post-renderer patch:
 
 ```yaml
-# HelmRelease with a JSON Merge Patch to add labels to the Deployment
+# HelmRelease with a strategic merge patch to add labels to the Deployment
 
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -63,7 +63,7 @@ spec:
         namespace: flux-system
   postRenderers:
     - kustomize:
-        # patches uses strategic merge patch / JSON merge patch format
+        # patches supports strategic merge patch and JSON 6902 patch formats
         patches:
           - target:
               kind: Deployment
@@ -78,7 +78,7 @@ spec:
                   environment: production
 ```
 
-The `target` field selects which resources to patch by kind, name, namespace, group, version, or label selector. The `patch` field contains the JSON Merge Patch as inline YAML.
+The `target` field selects which resources to patch by kind, name, namespace, group, version, label selector, or annotation selector. The `patch` field contains the strategic merge patch as inline YAML.
 
 ## Modifying Container Resources
 
@@ -181,7 +181,7 @@ postRenderers:
               LOG_LEVEL: "debug"
 ```
 
-## Removing a Field with JSON Merge Patch
+## Removing a Field with a Strategic Merge Patch
 
 To remove a field, set its value to `null` in the patch. For example, to remove an annotation:
 
@@ -223,10 +223,10 @@ If a patch fails to apply, Flux will report the error in the HelmRelease status 
 
 1. **Use specific targets.** Always specify the `kind` and `name` in the `target` field to avoid accidentally patching the wrong resource.
 2. **Prefer chart values first.** Only use post-renderer patches when the chart does not expose the configuration you need as Helm values.
-3. **Keep patches minimal.** Include only the fields you want to change. The merge patch will preserve all other fields.
-4. **Test locally.** Use `flux debug helmrelease` or `helm template` combined with `kustomize` to preview the output before pushing to your Git repository.
+3. **Keep patches minimal.** Include only the fields you want to change. The strategic merge patch will preserve all other fields.
+4. **Test locally.** Use `helm template` combined with a local Kustomize workflow, or inspect the applied resources in a test cluster, before pushing to your Git repository.
 5. **Document your patches.** Add comments in your HelmRelease manifest explaining why each patch is necessary, especially for future maintainers.
 
 ## Conclusion
 
-JSON Merge Patches in Flux post-renderers give you a clean, declarative way to customize Helm chart output without maintaining chart forks. By leveraging the `spec.postRenderers[].kustomize.patches` field, you can add labels, annotations, resource limits, and any other modifications directly in your HelmRelease manifest. This approach keeps your GitOps workflow simple while providing the flexibility needed for production deployments.
+Strategic merge patches in Flux post-renderers give you a clean, declarative way to customize Helm chart output without maintaining chart forks. By leveraging the `spec.postRenderers[].kustomize.patches` field, you can add labels, annotations, resource limits, and many other modifications directly in your HelmRelease manifest. This approach keeps your GitOps workflow simple while providing the flexibility needed for production deployments.

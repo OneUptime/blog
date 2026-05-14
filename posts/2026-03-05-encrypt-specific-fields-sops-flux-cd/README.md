@@ -21,7 +21,7 @@ When you encrypt an entire Kubernetes manifest, the Git diff becomes unreadable.
 
 ## Using encrypted_regex
 
-The `encrypted_regex` flag matches top-level YAML keys by regular expression. Only matching keys have their values encrypted.
+The `encrypted_regex` flag matches YAML keys by regular expression. Only matching keys have their values encrypted.
 
 ```bash
 # Encrypt only data and stringData fields using encrypted_regex
@@ -80,9 +80,9 @@ creation_rules:
     encrypted_regex: ^(data|stringData)$
     age: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
 
-  # For HelmRelease values, encrypt only the values section
+  # For HelmRelease values, encrypt only values fields
   - path_regex: .*helmrelease.*\.enc\.yaml$
-    encrypted_regex: ^(spec)$
+    encrypted_regex: ^(values)$
     age: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
 ```
 
@@ -175,9 +175,9 @@ sops --encrypt \
   configmap.yaml > configmap.enc.yaml
 ```
 
-### Encrypting Specific Nested Fields
+### Editing Partially Encrypted Files
 
-For more granular control, use SOPS in-place editing to encrypt specific paths.
+To update encrypted values without writing plaintext to disk, edit the file with SOPS.
 
 ```bash
 # Edit a file with SOPS (opens in $EDITOR with decrypted view)

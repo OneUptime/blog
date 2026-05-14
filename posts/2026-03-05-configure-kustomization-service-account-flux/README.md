@@ -103,7 +103,7 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: tenant-a-app
-  namespace: flux-system
+  namespace: tenant-a
 spec:
   interval: 10m
   sourceRef:
@@ -166,7 +166,7 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: tenant-a-app
-  namespace: flux-system
+  namespace: tenant-a
 spec:
   interval: 10m
   sourceRef:
@@ -183,32 +183,33 @@ This ensures that tenant A's Kustomization cannot modify resources in tenant B's
 
 ## Granting Impersonation Permissions
 
-The Flux Kustomize controller needs permission to impersonate the specified service accounts. This is typically configured during Flux installation. If you need to add impersonation permissions manually, create a ClusterRole and ClusterRoleBinding.
+The Flux Kustomize controller needs permission to impersonate the specified service accounts. This is typically configured during Flux installation. If you need to add impersonation permissions manually, create a Role and RoleBinding in the namespace that contains the tenant service account.
 
 ```yaml
 # impersonation-rbac.yaml - Allow the controller to impersonate tenant service accounts
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
   name: flux-impersonate-tenant-sa
+  namespace: tenant-a
 rules:
   - apiGroups: [""]
     resources: ["serviceaccounts"]
     verbs: ["impersonate"]
     resourceNames:
       - tenant-a-reconciler
-      - tenant-b-reconciler
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
   name: flux-impersonate-tenant-sa
+  namespace: tenant-a
 subjects:
   - kind: ServiceAccount
     name: kustomize-controller
     namespace: flux-system
 roleRef:
-  kind: ClusterRole
+  kind: Role
   name: flux-impersonate-tenant-sa
   apiGroup: rbac.authorization.k8s.io
 ```
@@ -219,7 +220,7 @@ When a Kustomization fails because the service account lacks permissions, Flux r
 
 ```bash
 # Check for RBAC-related errors
-kubectl describe kustomization tenant-a-app -n flux-system
+kubectl describe kustomization tenant-a-app -n tenant-a
 
 # Verify the service account exists
 kubectl get serviceaccount tenant-a-reconciler -n tenant-a

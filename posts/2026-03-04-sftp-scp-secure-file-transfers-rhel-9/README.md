@@ -113,13 +113,13 @@ For users who need file transfer access but should not get a shell.
 
 ```bash
 sudo groupadd sftponly
-sudo useradd -g sftponly -s /sbin/nologin sftpuser
+sudo useradd -g sftponly -d /uploads -s /sbin/nologin sftpuser
 sudo passwd sftpuser
 ```
 
 ### Set up the chroot directory
 
-The chroot directory must be owned by root:
+The chroot directory and its parent path components must be owned by root and not writable by other users:
 
 ```bash
 sudo mkdir -p /data/sftp/sftpuser/uploads
@@ -240,16 +240,23 @@ sudo grep "sftp" /var/log/secure | tail -20
 ### Enable detailed SFTP logging
 
 ```bash
-sudo vi /etc/ssh/sshd_config.d/40-sftp.conf
+sudo vi /etc/ssh/sshd_config
 ```
 
-Change the subsystem line:
+Change the global subsystem line:
 
 ```bash
+# In the global sshd configuration, outside any Match block:
 Subsystem sftp internal-sftp -l INFO
 ```
 
 This logs file operations (open, close, read, write) to syslog.
+
+For the SFTP-only group above, add the logging option to the forced command in `/etc/ssh/sshd_config.d/40-sftp.conf`:
+
+```bash
+ForceCommand internal-sftp -l INFO
+```
 
 ## Wrapping Up
 

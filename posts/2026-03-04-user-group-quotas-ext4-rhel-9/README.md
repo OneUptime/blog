@@ -12,7 +12,7 @@ While XFS is the default filesystem on RHEL, plenty of environments still run ex
 
 ## How ext4 Quotas Work
 
-ext4 quotas rely on external quota files (or, with newer kernels, internal quota inodes) to track usage. The Linux quota subsystem intercepts filesystem operations and enforces limits based on these records.
+On RHEL 9, ext4 quotas should use the ext4 `quota` filesystem feature, which stores quota data in internal quota inodes. The Linux quota subsystem intercepts filesystem operations and enforces limits based on these records.
 
 ```mermaid
 graph LR
@@ -50,11 +50,13 @@ Add `usrquota` and `grpquota` to the options field:
 /dev/vg_data/lv_home  /home  ext4  defaults,usrquota,grpquota  0 2
 ```
 
-Remount the filesystem:
+Before mounting with those options, make sure the ext4 quota feature is enabled. For an existing filesystem, unmount it and enable the feature with `tune2fs`:
 
 ```bash
-# Remount to apply new options
-mount -o remount /home
+# Unmount the filesystem and enable the ext4 quota feature
+umount /home
+tune2fs -O quota /dev/vg_data/lv_home
+mount /home
 ```
 
 Verify the mount options took effect:
@@ -64,23 +66,22 @@ Verify the mount options took effect:
 mount | grep /home
 ```
 
-## Step 2: Create Quota Database Files
+## Step 2: Verify Quota Initialization
 
-ext4 quotas need database files to be initialized. Run `quotacheck` to scan the filesystem and build these files:
+With the ext4 quota feature enabled, quota data is initialized in hidden quota inodes. You do not need to create visible `aquota.user` or `aquota.group` files.
+
+If you are creating a new filesystem instead of enabling quotas on an existing one, enable the quota feature at creation time:
 
 ```bash
-# Create quota files - scan the entire /home filesystem
-# -c creates new files, -u for user, -g for group, -m skips remount
-quotacheck -cugm /home
+# Enable quotas when creating a new ext4 filesystem
+mkfs.ext4 -O quota /dev/vg_data/lv_home
 ```
 
-This creates `aquota.user` and `aquota.group` in the root of `/home`.
-
-Verify the files were created:
+Verify the feature on an existing filesystem:
 
 ```bash
-# Check that quota database files exist
-ls -la /home/aquota.*
+# Confirm the quota feature is enabled
+tune2fs -l /dev/vg_data/lv_home | grep 'Filesystem features'
 ```
 
 ## Step 3: Turn On Quota Enforcement
@@ -88,15 +89,15 @@ ls -la /home/aquota.*
 Enable quota enforcement:
 
 ```bash
-# Turn on both user and group quotas
-quotaon /home
+# Turn on both user and group quota enforcement
+quotaon -vug /home
 ```
 
 Check the status:
 
 ```bash
-# Verify quotas are active
-quotaon -p /home
+# Verify user and group quotas are active
+quotaon -pug /home
 ```
 
 You should see output confirming that user and group quotas are enabled.
@@ -118,14 +119,14 @@ Disk quotas for user jsmith (uid 1001):
   /dev/vg_data/lv_home  0   5242880  6291456  0   0   0
 ```
 
-Block values are in kilobytes. So 5242880 KB = 5 GB soft, 6291456 KB = 6 GB hard.
+Block values are in 1024-byte blocks. So 5242880 KiB = 5 GiB soft, 6291456 KiB = 6 GiB hard.
 
 For non-interactive scripting, use `setquota`:
 
 ```bash
 # Set quotas non-interactively
 # Format: setquota -u USER BLOCK_SOFT BLOCK_HARD INODE_SOFT INODE_HARD FILESYSTEM
-# Set 5 GB soft, 6 GB hard block limits, no inode limits
+# Set 5 GiB soft, 6 GiB hard block limits, no inode limits
 setquota -u jsmith 5242880 6291456 0 0 /home
 ```
 
@@ -134,7 +135,7 @@ setquota -u jsmith 5242880 6291456 0 0 /home
 Group quotas are similar:
 
 ```bash
-# Set group quota - 20 GB soft, 25 GB hard for 'engineering'
+# Set group quota - 20 GiB soft, 25 GiB hard for 'engineering'
 setquota -g engineering 20971520 26214400 0 0 /home
 ```
 
@@ -200,11 +201,14 @@ edquota -t
 Or set them for specific durations:
 
 ```bash
-# Set block grace period to 7 days, inode grace to 7 days
-setquota -t 604800 604800 /home
+# Set user block grace period to 7 days and inode grace to 7 days
+setquota -u -t 604800 604800 /home
+
+# Set group block grace period to 7 days and inode grace to 7 days
+setquota -g -t 604800 604800 /home
 ```
 
-The values are in seconds. 604800 seconds = 7 days.
+The `setquota -t` values are in seconds. 604800 seconds = 7 days.
 
 ## Automating Quota Setup for New Users
 
@@ -216,25 +220,25 @@ Here is a script that sets up quotas when creating new users:
 # Creates a user and applies standard quota limits
 
 USERNAME=$1
-QUOTA_SOFT_GB=${2:-5}   # Default 5 GB soft limit
-QUOTA_HARD_GB=${3:-6}   # Default 6 GB hard limit
+QUOTA_SOFT_GIB=${2:-5}   # Default 5 GiB soft limit
+QUOTA_HARD_GIB=${3:-6}   # Default 6 GiB hard limit
 
 if [ -z "$USERNAME" ]; then
-    echo "Usage: $0 <username> [soft_gb] [hard_gb]"
+    echo "Usage: $0 <username> [soft_gib] [hard_gib]"
     exit 1
 fi
 
 # Create the user
 useradd "$USERNAME"
 
-# Convert GB to KB for setquota
-SOFT_KB=$((QUOTA_SOFT_GB * 1048576))
-HARD_KB=$((QUOTA_HARD_GB * 1048576))
+# Convert GiB to KiB for setquota
+SOFT_KB=$((QUOTA_SOFT_GIB * 1048576))
+HARD_KB=$((QUOTA_HARD_GIB * 1048576))
 
 # Apply quota
 setquota -u "$USERNAME" "$SOFT_KB" "$HARD_KB" 0 0 /home
 
-echo "User $USERNAME created with ${QUOTA_SOFT_GB}G soft / ${QUOTA_HARD_GB}G hard quota on /home"
+echo "User $USERNAME created with ${QUOTA_SOFT_GIB}GiB soft / ${QUOTA_HARD_GIB}GiB hard quota on /home"
 
 # Verify
 quota -u "$USERNAME"
@@ -261,20 +265,20 @@ EOF
 
 ## Using Journaled Quotas (Recommended)
 
-For better crash recovery, use journaled quotas instead of the older format. Change your fstab options:
+For better crash recovery, use the ext4 quota filesystem feature instead of the older external quota file format. The feature uses journaled quotas automatically, so keep the user and group enforcement options in fstab:
 
 ```bash
-/dev/vg_data/lv_home  /home  ext4  defaults,usrjquota=aquota.user,grpjquota=aquota.group,jqfmt=vfsv1  0 2
+/dev/vg_data/lv_home  /home  ext4  defaults,usrquota,grpquota  0 2
 ```
 
-Then remount and re-initialize:
+If the feature is not already enabled, unmount the filesystem, enable it, and mount it again:
 
 ```bash
-# Remount and reinitialize with journaled quotas
-mount -o remount /home
-quotaoff /home
-quotacheck -cugm /home
-quotaon /home
+# Enable internal journaled ext4 quotas
+umount /home
+tune2fs -O quota /dev/vg_data/lv_home
+mount /home
+quotaon -vug /home
 ```
 
 Journaled quotas recover automatically after a crash, so you do not need to run `quotacheck` after unclean shutdowns.
@@ -282,26 +286,28 @@ Journaled quotas recover automatically after a crash, so you do not need to run 
 ## Troubleshooting
 
 **Quotas not enforcing after reboot:**
-Make sure `quotaon` runs at boot. On systemd systems, create a simple service or confirm that the `quota_nld` service is running:
+Make sure the ext4 quota feature is enabled and that the filesystem is mounted with `usrquota` and `grpquota` enforcement options:
 
 ```bash
-# Check if quota services are running
-systemctl status quota_nld
+# Check quota state and mount options
+quotaon -pug /home
+findmnt -no OPTIONS /home
 ```
 
 **"Cannot find filesystem to check" error:**
-This usually means fstab does not have quota options. Double-check your fstab entry and remount.
+This usually means the target is not mounted where expected or the filesystem is not listed with quota options. Double-check your fstab entry and mount state.
 
-**Quota files corrupted:**
-Turn off quotas, rebuild the database, and turn them back on:
+**Quota metadata needs a consistency check:**
+Turn off quota enforcement and check the filesystem while it is unmounted:
 
 ```bash
-quotaoff /home
-rm /home/aquota.user /home/aquota.group
-quotacheck -cugm /home
-quotaon /home
+quotaoff -vug /home
+umount /home
+e2fsck -f /dev/vg_data/lv_home
+mount /home
+quotaon -vug /home
 ```
 
 ## Summary
 
-ext4 quotas on RHEL require a bit more setup than XFS, but they work reliably once configured. The key steps are: add mount options, create quota databases with `quotacheck`, enable enforcement with `quotaon`, and set limits with `setquota` or `edquota`. Use journaled quotas for resilience, and automate reporting so you catch issues early.
+ext4 quotas on RHEL require a bit more setup than XFS, but they work reliably once configured. The key steps are: enable the ext4 quota feature, add mount options, enable enforcement with `quotaon`, and set limits with `setquota` or `edquota`. Use journaled quotas for resilience, and automate reporting so you catch issues early.

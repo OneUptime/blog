@@ -78,7 +78,7 @@ sudo sysctl -w vm.swappiness=10
 
 ### vm.dirty_ratio
 
-Maximum percentage of system memory for dirty pages before writes are forced:
+Maximum percentage of available memory for dirty pages before writeback is forced:
 
 ```bash
 sudo sysctl -w vm.dirty_ratio=15
@@ -86,7 +86,7 @@ sudo sysctl -w vm.dirty_ratio=15
 
 ### vm.dirty_background_ratio
 
-Percentage of memory at which background writeback starts:
+Percentage of available memory at which background writeback starts:
 
 ```bash
 sudo sysctl -w vm.dirty_background_ratio=5

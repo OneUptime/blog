@@ -59,7 +59,7 @@ spec:
           labels:
             severity: critical
           annotations:
-            summary: "Felix is failing to program iptables — SA-based policy enforcement may be stale"
+            summary: "Felix is failing to program iptables - SA-based policy enforcement may be stale"
 ```
 
 ## Step 3: SA Coverage Dashboard

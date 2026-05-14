@@ -13,7 +13,7 @@ Traefik can serve as a Kubernetes Ingress controller, automatically discovering 
 ## Prerequisites
 
 - RHEL 9 with kubectl configured
-- A running Kubernetes cluster
+- A running Kubernetes cluster with LoadBalancer support if using `service.type=LoadBalancer`
 - Helm installed
 
 ## Step 1: Install Traefik with Helm
@@ -78,8 +78,11 @@ spec:
       port: 80
     middlewares:
     - name: rate-limit
-  tls:
-    certResolver: letsencrypt
+  tls: {}
+```
+
+```bash
+kubectl apply -f ingressroute.yaml
 ```
 
 ## Step 5: Add Middleware
@@ -95,6 +98,10 @@ spec:
     burst: 50
 ```
 
+```bash
+kubectl apply -f middleware.yaml
+```
+
 ## Step 6: Access the Dashboard
 
 ```bash
@@ -105,4 +112,4 @@ Open `http://localhost:9000/dashboard/`.
 
 ## Conclusion
 
-Traefik as a Kubernetes Ingress controller on RHEL 9 provides automatic service discovery, Let's Encrypt TLS, and powerful middleware capabilities. Its CRD-based IngressRoute resources offer more flexibility than standard Kubernetes Ingress resources.
+Traefik as a Kubernetes Ingress controller on RHEL 9 provides automatic service discovery, TLS termination, and powerful middleware capabilities. Its CRD-based IngressRoute resources offer more flexibility than standard Kubernetes Ingress resources.

@@ -52,6 +52,8 @@ systemctl status postgresql
 
 ```bash
 # Run pg_upgrade in check mode first (does not make changes)
+cd /var/lib/pgsql
+
 sudo -u postgres /usr/pgsql-16/bin/pg_upgrade \
     --old-datadir=/var/lib/pgsql/data \
     --new-datadir=/var/lib/pgsql/16/data \
@@ -60,19 +62,22 @@ sudo -u postgres /usr/pgsql-16/bin/pg_upgrade \
     --check
 
 # Review the output for any errors or required actions
+# If you plan to use --link for the upgrade, run the check with --link too
 ```
 
 ## Run the Upgrade
 
 ```bash
 # Perform the actual upgrade
+cd /var/lib/pgsql
+
 sudo -u postgres /usr/pgsql-16/bin/pg_upgrade \
     --old-datadir=/var/lib/pgsql/data \
     --new-datadir=/var/lib/pgsql/16/data \
     --old-bindir=/usr/bin \
     --new-bindir=/usr/pgsql-16/bin
 
-# For large databases, use link mode (faster, but old cluster becomes unusable)
+# For large databases, use link mode (faster, but the old cluster becomes unsafe to use after the new cluster starts)
 # sudo -u postgres /usr/pgsql-16/bin/pg_upgrade \
 #     --old-datadir=/var/lib/pgsql/data \
 #     --new-datadir=/var/lib/pgsql/16/data \
@@ -84,9 +89,11 @@ sudo -u postgres /usr/pgsql-16/bin/pg_upgrade \
 ## Copy Configuration Files
 
 ```bash
-# Copy your customized configuration from the old cluster
-sudo cp /var/lib/pgsql/data/postgresql.conf /var/lib/pgsql/16/data/postgresql.conf
-sudo cp /var/lib/pgsql/data/pg_hba.conf /var/lib/pgsql/16/data/pg_hba.conf
+# Compare your old configuration with the new cluster configuration
+sudo -u postgres diff -u /var/lib/pgsql/data/postgresql.conf /var/lib/pgsql/16/data/postgresql.conf
+sudo -u postgres diff -u /var/lib/pgsql/data/pg_hba.conf /var/lib/pgsql/16/data/pg_hba.conf
+
+# Merge your required custom settings into the new cluster configuration
 sudo chown postgres:postgres /var/lib/pgsql/16/data/postgresql.conf
 sudo chown postgres:postgres /var/lib/pgsql/16/data/pg_hba.conf
 

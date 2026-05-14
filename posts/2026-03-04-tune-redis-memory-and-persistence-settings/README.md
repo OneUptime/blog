@@ -28,23 +28,18 @@ Update your system to ensure all packages are current:
 sudo dnf update -y
 ```
 
-Install any required dependencies:
-
-```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
-```
+Redis is available from RHEL repositories, so EPEL and build tools are not required for the packaged service.
 
 ## Step 2: Install Required Packages
 
 ```bash
-sudo dnf install -y <package-name>
+sudo dnf install -y redis
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+rpm -qi redis
 ```
 
 ## Step 3: Configure the Service
@@ -52,16 +47,30 @@ rpm -qi <package-name>
 Create or edit the main configuration file:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/redis/redis.conf
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware. For a cache-oriented Redis instance, set a memory limit, choose an eviction policy, and configure persistence explicitly:
+
+```conf
+maxmemory 2gb
+maxmemory-policy allkeys-lru
+
+appendonly yes
+appendfsync everysec
+
+save 900 1
+save 300 10
+save 60 10000
+```
+
+Set `maxmemory` below the total RAM available to Redis so the operating system, Redis overhead, replication buffers, and AOF buffers have headroom.
 
 ## Step 4: Start and Enable the Service
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo systemctl enable --now redis
+sudo systemctl status redis
 ```
 
 ## Step 5: Verify the Configuration
@@ -69,13 +78,20 @@ sudo systemctl status <service>
 Test the setup:
 
 ```bash
-sudo <service> --test
+redis-cli PING
+redis-cli CONFIG GET maxmemory
+redis-cli CONFIG GET maxmemory-policy
+redis-cli CONFIG GET appendonly
+redis-cli CONFIG GET appendfsync
+redis-cli CONFIG GET save
+redis-cli INFO memory
+redis-cli INFO persistence
 ```
 
 Check the logs for any errors:
 
 ```bash
-journalctl -u <service> -f
+journalctl -u redis -f
 ```
 
 ## Step 6: Configure Firewall Rules
@@ -83,7 +99,7 @@ journalctl -u <service> -f
 If the service needs network access:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo firewall-cmd --permanent --add-port=6379/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -92,8 +108,8 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+systemctl show redis --property=MemoryCurrent
+top -p $(pidof redis-server)
 ```
 
 ## Security Considerations
@@ -107,9 +123,9 @@ top -p $(pidof <service>)
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
+1. **Service fails to start**: Check `journalctl -u redis -xe` for error messages
 2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
-3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
+3. **Port conflicts**: Use `ss -tlnp 'sport = :6379'` to identify processes using the port
 
 ## Conclusion
 

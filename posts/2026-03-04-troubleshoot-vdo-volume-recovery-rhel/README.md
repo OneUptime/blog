@@ -8,7 +8,7 @@ Description: Learn how to diagnose and recover VDO volumes on RHEL when they ent
 
 ---
 
-VDO volumes can enter a degraded state after power failures, kernel panics, or storage hardware issues. RHEL provides recovery tools to bring VDO volumes back online. Understanding the recovery process helps minimize downtime.
+VDO volumes can require recovery after power failures, kernel panics, or storage hardware issues. RHEL normally performs VDO recovery automatically when the volume starts, but failed recovery or fatal errors can leave a volume in read-only mode. Understanding the recovery process helps minimize downtime.
 
 ## Common VDO Failure Symptoms
 
@@ -36,18 +36,18 @@ sudo dmesg | grep -i vdo
 
 ## Recovering a VDO Volume in Read-Only Mode
 
-When VDO detects inconsistencies, it switches to read-only mode to protect data:
+When VDO cannot recover successfully or encounters a fatal internal error, it can switch to read-only mode to protect the volume from further writes:
 
 ```bash
 # Check if the volume is in read-only mode
 sudo vdo status --name=vdo0 | grep "Operating mode"
 # Output: Operating mode: read-only
 
-# Force recovery by stopping and restarting the volume
+# Force an offline metadata rebuild only if the read-only state persists
 sudo vdo stop --name=vdo0
 sudo vdo start --name=vdo0 --forceRebuild
 
-# The forceRebuild option rebuilds the VDO metadata
+# The forceRebuild option rebuilds VDO metadata and can cause data loss
 # This may take time depending on volume size
 ```
 
@@ -60,22 +60,22 @@ sudo vdo status --name=vdo0 2>&1
 # Verify the underlying block device is accessible
 sudo dd if=/dev/sdb of=/dev/null bs=4k count=1
 
-# Try starting with force rebuild
+# If recovery fails and the volume remains read-only, try an offline rebuild
 sudo vdo start --name=vdo0 --forceRebuild
 
 # If that fails, check if the VDO config is intact
-cat /etc/vdoconf.yml
+sudo cat /etc/vdoconf.yml
 ```
 
-## Rebuilding the UDS Index
+## Forcing an Offline Metadata Rebuild
 
-The deduplication index can be rebuilt without losing data:
+If the volume remains in read-only mode and the risk of data loss is acceptable, force an offline metadata rebuild:
 
 ```bash
 # Stop the VDO volume
 sudo vdo stop --name=vdo0
 
-# Start with index rebuild
+# Start with a forced metadata rebuild
 sudo vdo start --name=vdo0 --forceRebuild
 
 # Monitor rebuild progress
@@ -104,4 +104,4 @@ sudo systemctl enable vdo
 sudo vdostats --human-readable
 ```
 
-Always maintain backups of data on VDO volumes. While the forceRebuild option recovers the volume in most cases, it rebuilds the deduplication index from scratch, which temporarily reduces deduplication efficiency until the index is repopulated.
+Always maintain backups of data on VDO volumes. While the forceRebuild option can bring a read-only VDO volume back online, Red Hat warns that it might cause data loss and that the integrity of rebuilt data cannot be guaranteed.

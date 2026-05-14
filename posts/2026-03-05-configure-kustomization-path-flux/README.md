@@ -14,7 +14,7 @@ The `spec.path` field in a Flux Kustomization resource defines which directory w
 
 ## How spec.path Works
 
-When Flux reconciles a Kustomization, it fetches the artifact from the referenced source (such as a GitRepository), then looks inside the directory specified by `spec.path` for Kubernetes manifests. If a `kustomization.yaml` file exists in that directory, Flux uses Kustomize to build the manifests. If no `kustomization.yaml` file is present, Flux applies all YAML files in the directory.
+When Flux reconciles a Kustomization, it fetches the artifact from the referenced source (such as a GitRepository), then looks inside the directory specified by `spec.path` for Kubernetes manifests. If a `kustomization.yaml` file exists in that directory, Flux uses Kustomize to build the manifests. If no `kustomization.yaml` file is present, Flux generates one for the Kubernetes manifests in the directory tree under `spec.path`.
 
 ```mermaid
 graph TD
@@ -120,10 +120,10 @@ This assumes a repository structure like:
 # │   └── kustomization.yaml
 # ├── environments/
 # │   ├── staging/
-# │   │   ├── kustomization.yaml   <-- references ../base with patches
+# │   │   ├── kustomization.yaml   <-- references ../../base with patches
 # │   │   └── patch-replicas.yaml
 # │   └── production/
-# │       ├── kustomization.yaml   <-- references ../base with patches
+# │       ├── kustomization.yaml   <-- references ../../base with patches
 # │       └── patch-replicas.yaml
 ```
 
@@ -196,13 +196,13 @@ If your Kustomization fails to reconcile, the path is one of the first things to
 
 ```bash
 # Check the Kustomization status for path-related errors
-flux get kustomization my-app
+flux get kustomizations
 
 # Get detailed error messages
 kubectl describe kustomization my-app -n flux-system
 
-# Preview what Flux would apply from the configured path
-flux build kustomization my-app
+# Preview local manifests as Flux would build them for the Kustomization
+flux build kustomization my-app --path ./deploy
 ```
 
 Common error messages related to path misconfiguration include "path not found" or "no Kubernetes manifests found." These indicate that the configured path does not exist in the source repository or contains no valid YAML files.

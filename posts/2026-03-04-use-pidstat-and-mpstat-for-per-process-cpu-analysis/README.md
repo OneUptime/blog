@@ -39,7 +39,7 @@ Output columns:
 ## Step 3: Filter pidstat by Process
 
 ```bash
-pidstat -p $(pidof httpd) 1
+pidstat -p "$(pidof httpd | tr ' ' ',')" 1
 ```
 
 Or by command name:
@@ -66,7 +66,7 @@ This shows memory statistics:
 pidstat -d 1 5
 ```
 
-Shows read/write bytes per second for each process.
+Shows read/write kilobytes per second for each process.
 
 ## Step 6: Per-CPU Analysis with mpstat
 
@@ -83,14 +83,14 @@ This shows utilization for every CPU core. Key columns:
 ## Step 7: Identify CPU Imbalance
 
 ```bash
-mpstat -P ALL 1 | awk '/^[0-9]/ && $NF < 50 {print "CPU " $3 " is busy: " 100-$NF "% used"}'
+mpstat -P ALL 1 | awk '$2 ~ /^[0-9]+$/ && $NF < 50 {print "CPU " $2 " is busy: " 100-$NF "% used"}'
 ```
 
 If one core is at 100% while others are idle, your application may not be parallelized properly.
 
-## Step 8: Combine pidstat and mpstat
+## Step 8: Combine pidstat Reports
 
-Monitor both together:
+Monitor CPU, memory, and I/O together:
 
 ```bash
 pidstat -u -r -d 1 5

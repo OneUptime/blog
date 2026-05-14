@@ -17,8 +17,8 @@ fwupd is a daemon and command-line tool that manages firmware updates for hardwa
 
 sudo dnf install -y fwupd
 
-# Enable and start the service
-sudo systemctl enable --now fwupd
+# Start the service if it is not already running
+sudo systemctl start fwupd
 ```
 
 ## Check for Available Firmware Updates
@@ -38,7 +38,7 @@ sudo fwupdmgr get-updates
 
 ```bash
 # Get detailed information about all managed devices
-sudo fwupdmgr get-devices --show-all-devices
+sudo fwupdmgr get-devices --show-all
 
 # Each device entry shows:
 # - Device name and ID
@@ -95,8 +95,11 @@ sudo mount /boot/efi
 # List available firmware versions for a device
 sudo fwupdmgr get-releases <device-id>
 
-# Install a specific older version
-sudo fwupdmgr install <firmware-file.cab>
+# Downgrade to an older available version
+sudo fwupdmgr downgrade <device-id>
+
+# Or install a specific local firmware cabinet file
+sudo fwupdmgr local-install <firmware-file.cab>
 ```
 
 ## Security Attributes
@@ -115,18 +118,11 @@ sudo fwupdmgr security
 # - SPI write protection
 ```
 
-## Configure Automatic Updates
+## Configure Metadata Refresh
 
 ```bash
-# Enable automatic firmware updates
-sudo vi /etc/fwupd/daemon.conf
-
-# Set:
-# OnlyTrusted=true
-# ApprovalRequired=false
-
-# fwupd uses a systemd timer for periodic checks
-sudo systemctl enable fwupd-refresh.timer
+# fwupd uses a systemd timer for periodic metadata refresh
+sudo systemctl enable --now fwupd-refresh.timer
 sudo systemctl status fwupd-refresh.timer
 ```
 

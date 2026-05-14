@@ -8,7 +8,7 @@ Description: Learn when and how to properly unregister a RHEL system from Red Ha
 
 ---
 
-There are plenty of legitimate reasons to unregister a RHEL system and register it again. Maybe you cloned a VM and ended up with a duplicate system UUID. Maybe you are migrating from one Red Hat account to another. Or maybe your registration is just broken and you need to start fresh. Whatever the reason, here is how to do it correctly without leaving orphaned entries in Red Hat's systems.
+There are plenty of legitimate reasons to unregister a RHEL system and register it again. Maybe you cloned a VM and ended up with a duplicate RHSM consumer identity. Maybe you are migrating from one Red Hat account to another. Or maybe your registration is just broken and you need to start fresh. Whatever the reason, here is how to do it correctly without leaving orphaned entries in Red Hat's systems.
 
 ## When to Unregister and Re-register
 
@@ -106,7 +106,7 @@ sudo subscription-manager register --activationkey=my-key --org=my-org
 
 ## Handling Cloned VMs
 
-VM cloning is one of the most common reasons for re-registration. When you clone a VM, the clone has the same system UUID as the original, which causes conflicts in Red Hat's records.
+VM cloning is one of the most common reasons for re-registration. When you clone a VM, the clone can have the same RHSM consumer identity as the original, which causes conflicts in Red Hat's records.
 
 On the cloned system:
 
@@ -121,7 +121,7 @@ sudo rm -f /etc/pki/consumer/cert.pem /etc/pki/consumer/key.pem
 sudo subscription-manager register --username=your_username --password=your_password
 ```
 
-The new registration generates a fresh UUID, and Red Hat treats it as a new system.
+The new registration generates a fresh RHSM consumer ID, and Red Hat treats it as a new system.
 
 ## Switching Between Organizations
 
@@ -178,7 +178,7 @@ If a system is already registered and you want to re-register it (for example, w
 sudo subscription-manager register --username=your_username --password=your_password --force
 ```
 
-The `--force` flag unregisters the system and re-registers it in a single step. This is convenient but be aware that it removes the existing registration record.
+The `--force` flag attempts to unregister the system first, then registers it with the new options. This is convenient but be aware that it can remove the existing registration record if the unregister step succeeds.
 
 ## Cleaning Up Orphaned Systems
 
@@ -230,4 +230,4 @@ sudo dnf check-update
 
 ## Summary
 
-Unregistering and re-registering RHEL systems is a routine task for any sysadmin managing a dynamic environment. The key points to remember: use `unregister` when possible to clean both local and remote records, use `clean` only when the system cannot reach the server, and always verify registration after re-registering. For cloned VMs, always clean and re-register to avoid UUID conflicts. And if you are doing this across many systems, Ansible makes the process painless.
+Unregistering and re-registering RHEL systems is a routine task for any sysadmin managing a dynamic environment. The key points to remember: use `unregister` when possible to clean both local and remote records, use `clean` only when the system cannot reach the server, and always verify registration after re-registering. For cloned VMs, always clean and re-register to avoid RHSM identity conflicts. And if you are doing this across many systems, Ansible makes the process painless.

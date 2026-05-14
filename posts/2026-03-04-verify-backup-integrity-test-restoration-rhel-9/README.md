@@ -35,7 +35,7 @@ Select the tool that best matches your recovery requirements.
 Using tar for a full backup:
 
 ```bash
-sudo tar czf /backups/full-backup-$(date +%Y%m%d).tar.gz --exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run --exclude=/tmp --exclude=/backups /
+sudo tar --acls --xattrs --selinux -czf /backups/full-backup-$(date +%Y%m%d).tar.gz --exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run --exclude=/tmp --exclude=/backups /
 ```
 
 Using rsync for incremental backup:
@@ -56,8 +56,8 @@ Always verify that backups are readable:
 
 ```bash
 # For tar
-
-tar tzf /backups/full-backup-*.tar.gz | head -20
+BACKUP_FILE=/backups/full-backup-$(date +%Y%m%d).tar.gz
+tar --acls --xattrs --selinux -tzf "$BACKUP_FILE" | head -20
 
 # For rsync
 ls -la /backups/latest/
@@ -69,7 +69,8 @@ Periodically restore backups to a test environment to confirm they work:
 
 ```bash
 # Restore a single file from tar
-tar xzf /backups/full-backup-*.tar.gz -C /tmp/restore-test etc/hostname
+BACKUP_FILE=/backups/full-backup-$(date +%Y%m%d).tar.gz
+tar --acls --xattrs --selinux -xzf "$BACKUP_FILE" -C /tmp/restore-test etc/hostname
 ```
 
 ## Summary

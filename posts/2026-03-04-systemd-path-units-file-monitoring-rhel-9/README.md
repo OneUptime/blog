@@ -32,7 +32,7 @@ sudo tee /etc/systemd/system/process-uploads.path << 'UNITEOF'
 Description=Watch for new uploaded files
 
 [Path]
-# Trigger when any file changes in this directory
+# Trigger when this directory contains at least one file
 DirectoryNotEmpty=/var/spool/incoming
 # Also available: PathExists, PathChanged, PathModified
 
@@ -83,7 +83,8 @@ sudo chmod +x /usr/local/bin/process-uploads.sh
 
 ```bash
 # Create required directories
-sudo mkdir -p /var/spool/incoming /var/spool/processed
+id -u processor >/dev/null 2>&1 || sudo useradd --system --no-create-home --shell /sbin/nologin processor
+sudo install -d -o processor -g processor -m 0750 /var/spool/incoming /var/spool/processed
 
 # Reload and enable
 sudo systemctl daemon-reload

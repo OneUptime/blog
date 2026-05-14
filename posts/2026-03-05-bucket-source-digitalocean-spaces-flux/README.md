@@ -16,23 +16,30 @@ DigitalOcean Spaces is an S3-compatible object storage service that integrates w
 
 - Flux CD v2.0 or later installed on your Kubernetes cluster
 - A DigitalOcean account with Spaces enabled
-- `doctl` CLI or DigitalOcean API access
+- DigitalOcean API access or an S3-compatible CLI tool that can create buckets
 - An S3-compatible CLI tool (e.g., `s3cmd` or `aws` CLI)
 - `kubectl` access to your cluster
 
 ## Creating a DigitalOcean Space
 
-Create a Space through the DigitalOcean console or CLI.
+Create a Space through the DigitalOcean console or an S3-compatible CLI. If you use the CLI, generate a Spaces key first and configure it as the `spaces` profile.
 
 ```bash
-# Create a Space using doctl
-
-doctl spaces create flux-manifests --region nyc3
+# Create a Space using the AWS CLI with the Spaces endpoint
+aws s3api create-bucket \
+  --bucket flux-manifests \
+  --endpoint-url https://nyc3.digitaloceanspaces.com \
+  --profile spaces
 ```
 
 ## Generating Spaces Access Keys
 
-DigitalOcean Spaces uses access keys that are separate from your DigitalOcean API token. Generate them from the DigitalOcean console under API > Spaces Keys, or use the API.
+DigitalOcean Spaces uses access keys that are separate from your DigitalOcean API token. Generate them from the DigitalOcean console under API > Spaces Keys, or use the API. You can also create a limited-access key with `doctl`.
+
+```bash
+doctl spaces keys create flux-key \
+  --grants 'bucket=flux-manifests;permission=read'
+```
 
 Once you have your access key and secret key, configure your S3 client.
 
@@ -219,7 +226,7 @@ jobs:
 
 ## Using with DigitalOcean Kubernetes (DOKS)
 
-When running Flux on DigitalOcean Kubernetes, the Spaces endpoint is accessible over the public internet. For better performance, use the internal network endpoint if available.
+When running Flux on DigitalOcean Kubernetes, use the regional Spaces endpoint for the Space. Keep the DOKS cluster and Space in the same region where possible to reduce latency.
 
 ```yaml
 # flux-system/spaces-internal.yaml
@@ -232,7 +239,7 @@ spec:
   interval: 5m
   provider: generic
   bucketName: flux-manifests
-  # Use the internal endpoint for DOKS clusters in the same region
+  # Use the regional endpoint for the Space
   endpoint: nyc3.digitaloceanspaces.com
   region: nyc3
   secretRef:
@@ -264,12 +271,14 @@ The bucket name is incorrect or the Space does not exist in the specified region
 
 ```bash
 # List your Spaces
-doctl spaces list
+aws s3api list-buckets \
+  --endpoint-url https://nyc3.digitaloceanspaces.com \
+  --profile spaces
 ```
 
 **Error: connection refused or timeout**
 
-The endpoint URL may be incorrect. Ensure it follows the format `{region}.digitaloceanspaces.com` without the `https://` prefix (Flux adds it automatically).
+The endpoint URL may be incorrect. Ensure it follows the format `{region}.digitaloceanspaces.com` for DigitalOcean Spaces and leave `insecure` unset unless you are connecting to a non-TLS HTTP endpoint.
 
 ## Best Practices
 

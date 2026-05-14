@@ -41,7 +41,7 @@ Verify that the HelmRelease is in the retries exhausted state:
 ```bash
 # Check the HelmRelease status
 
-flux get helmrelease my-app -n default
+flux get helmreleases -n default
 
 # View the detailed conditions
 kubectl get helmrelease my-app -n default -o jsonpath='{.status.conditions[?(@.type=="Ready")]}' | jq .
@@ -146,31 +146,31 @@ spec:
 
 After fixing the underlying issue, you need to reset the retry counter. There are several ways to do this:
 
-### Method 1: Suspend and Resume
+### Method 1: Reset with the Flux CLI
 
 ```bash
-# Suspend the HelmRelease to stop reconciliation
-flux suspend helmrelease my-app -n default
-
 # Clean up any failed Helm release secrets
 kubectl delete secret -n default -l name=my-app,owner=helm,status=failed
 
-# Resume the HelmRelease to reset the counter and trigger a fresh install
-flux resume helmrelease my-app -n default
+# Reset the failure counter and trigger a fresh reconciliation
+flux reconcile helmrelease my-app -n default --reset
 
 # Watch for the new install attempt
-flux get helmrelease my-app -n default --watch
+flux get helmreleases -n default --watch
 ```
 
-### Method 2: Force Reconciliation with Annotation
+### Method 2: Reset with Annotations
 
 ```bash
-# Add or update the reconcile annotation to force a fresh reconciliation
+# Add matching reset and reconcile annotations to reset the failure counter
+TOKEN="$(date +%s)"
 kubectl annotate helmrelease my-app -n default \
-  reconcile.fluxcd.io/requestedAt="$(date +%s)" --overwrite
+  reconcile.fluxcd.io/requestedAt="$TOKEN" \
+  reconcile.fluxcd.io/resetAt="$TOKEN" \
+  --overwrite
 
 # Monitor the result
-flux get helmrelease my-app -n default --watch
+flux get helmreleases -n default --watch
 ```
 
 ### Method 3: Delete and Recreate
@@ -239,7 +239,7 @@ Configure Flux alerts to notify you when install failures occur, before retries 
 
 ```yaml
 # Alert provider for Slack notifications
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -251,7 +251,7 @@ spec:
     name: slack-webhook
 ---
 # Alert for HelmRelease failures
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: helmrelease-alerts
@@ -276,4 +276,4 @@ spec:
 
 ## Conclusion
 
-The `install retries exhausted` error in Flux means all configured install attempts have failed and the HelmRelease is stuck. To recover, identify the root cause from controller logs and events, fix the underlying issue, clean up any leftover state, and reset the HelmRelease through suspend/resume or forced reconciliation. Proper retry configuration and early alerting help minimize the impact of install failures.
+The `install retries exhausted` error in Flux means all configured install attempts have failed and the HelmRelease is stuck. To recover, identify the root cause from controller logs and events, fix the underlying issue, clean up any leftover state, and reset the HelmRelease through the Flux CLI or reset annotations. Proper retry configuration and early alerting help minimize the impact of install failures.

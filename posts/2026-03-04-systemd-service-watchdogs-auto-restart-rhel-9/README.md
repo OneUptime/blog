@@ -19,6 +19,9 @@ sudo tee /etc/systemd/system/myapp.service << 'UNITEOF'
 [Unit]
 Description=My Application
 After=network.target
+# Give up after 5 failures within 60 seconds
+StartLimitBurst=5
+StartLimitIntervalSec=60
 
 [Service]
 ExecStart=/usr/local/bin/myapp
@@ -26,9 +29,6 @@ ExecStart=/usr/local/bin/myapp
 Restart=on-failure
 # Wait 5 seconds between restart attempts
 RestartSec=5
-# Give up after 5 failures within 60 seconds
-StartLimitBurst=5
-StartLimitIntervalSec=60
 
 [Install]
 WantedBy=multi-user.target
@@ -47,13 +47,14 @@ sudo systemctl enable --now myapp.service
 | on-failure | Non-zero exit, signal, timeout, watchdog |
 | on-abnormal | Signal, timeout, watchdog |
 | on-watchdog | Watchdog timeout only |
-| on-abort | Signal only |
-| always | Any exit |
+| on-abort | Unclean signal only |
+| always | Any exit, signal, timeout, or watchdog |
 
 ## Step 3: Configure the Watchdog
 
 ```bash
 # Add watchdog to a service
+sudo install -d /etc/systemd/system/myapp.service.d
 sudo tee /etc/systemd/system/myapp.service.d/watchdog.conf << 'UNITEOF'
 [Service]
 # The service must notify systemd every 30 seconds
@@ -112,6 +113,7 @@ if __name__ == '__main__':
 Update the service to use Type=notify:
 
 ```bash
+sudo install -d /etc/systemd/system/myapp.service.d
 sudo tee /etc/systemd/system/myapp.service.d/notify.conf << 'UNITEOF'
 [Service]
 Type=notify
@@ -123,12 +125,15 @@ UNITEOF
 
 ```bash
 # Configure failure actions that escalate
+sudo install -d /etc/systemd/system/myapp.service.d
 sudo tee /etc/systemd/system/myapp.service.d/escalate.conf << 'UNITEOF'
-[Service]
+[Unit]
 # After exhausting restart attempts, reboot the system
-FailureAction=reboot-force
+StartLimitAction=reboot-force
 # Or just log and stop
-# FailureAction=none
+# StartLimitAction=none
+
+[Service]
 # Execute a custom command on failure
 ExecStopPost=/usr/local/bin/alert-on-failure.sh %n
 UNITEOF

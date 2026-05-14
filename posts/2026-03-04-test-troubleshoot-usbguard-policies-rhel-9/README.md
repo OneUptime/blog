@@ -12,15 +12,15 @@ USBGuard policies can be tricky to get right. A rule that looks correct on paper
 
 ## Testing Policies Before Deployment
 
-Before applying a new policy, test it without enforcement:
+Before applying a new policy, stage it carefully and be ready to roll back:
 
 ```bash
 # Back up the current working policy
 
 sudo cp /etc/usbguard/rules.conf /etc/usbguard/rules.conf.known-good
 
-# Apply the new policy
-sudo cp /path/to/new/rules.conf /etc/usbguard/rules.conf
+# Apply the new policy with the expected ownership and permissions
+sudo install -m 0600 -o root -g root /path/to/new/rules.conf /etc/usbguard/rules.conf
 
 # Restart USBGuard
 sudo systemctl restart usbguard
@@ -33,7 +33,7 @@ If something goes wrong, restore immediately:
 
 ```bash
 # Restore the known-good policy
-sudo cp /etc/usbguard/rules.conf.known-good /etc/usbguard/rules.conf
+sudo install -m 0600 -o root -g root /etc/usbguard/rules.conf.known-good /etc/usbguard/rules.conf
 sudo systemctl restart usbguard
 ```
 
@@ -42,14 +42,14 @@ sudo systemctl restart usbguard
 When a device is not matching your rules, get its full details:
 
 ```bash
-# List all devices with full attributes
-sudo usbguard list-devices -b
+# List all devices with attributes
+sudo usbguard list-devices
 
 # List only blocked devices
-sudo usbguard list-devices | grep block
+sudo usbguard list-devices -b
 
 # List only allowed devices
-sudo usbguard list-devices | grep allow
+sudo usbguard list-devices -a
 ```
 
 Compare the device attributes with your rules to find mismatches.
@@ -62,7 +62,7 @@ The most common issue is interface class mismatches. A USB keyboard might presen
 
 ```bash
 # Check what interface class a device actually presents
-sudo usbguard list-devices -b | grep -A5 "keyboard"
+sudo usbguard list-devices | grep -i "keyboard"
 ```
 
 Fix by using a broader interface match:
@@ -238,7 +238,7 @@ To prevent lockout in the first place, always make sure your current keyboard an
 
 ```bash
 # Generate policy including all current devices before any changes
-sudo usbguard generate-policy > /etc/usbguard/rules.conf
+sudo sh -c 'usbguard generate-policy > /etc/usbguard/rules.conf'
 ```
 
 ## Checking Daemon Configuration

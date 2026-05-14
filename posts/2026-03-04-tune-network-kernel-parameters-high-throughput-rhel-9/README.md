@@ -65,10 +65,10 @@ flowchart LR
 
 ## Connection Backlog and Queue Tuning
 
-High-traffic servers need larger connection backlogs to avoid dropping incoming connections during bursts.
+High-traffic servers need larger connection backlogs to avoid dropping incoming connections during bursts. The application must also request a backlog high enough for the larger kernel limit to matter.
 
 ```bash
-# Maximum number of connections queued for acceptance
+# Maximum listen backlog allowed by the kernel
 sudo sysctl -w net.core.somaxconn=65535
 
 # Maximum SYN backlog for half-open connections
@@ -91,12 +91,13 @@ sudo sysctl -w net.ipv4.tcp_timestamps=1
 sudo sysctl -w net.ipv4.tcp_sack=1
 
 # Use the BBR congestion control algorithm
+sudo sysctl -w net.core.default_qdisc=fq
 sudo sysctl -w net.ipv4.tcp_congestion_control=bbr
 
 # Expand the local port range for outbound connections
 sudo sysctl -w net.ipv4.ip_local_port_range="1024 65535"
 
-# Allow reusing TIME_WAIT sockets for new connections
+# Allow reusing TIME_WAIT sockets for new connections when safe
 sudo sysctl -w net.ipv4.tcp_tw_reuse=1
 
 # Reduce FIN_WAIT2 timeout
@@ -105,7 +106,7 @@ sudo sysctl -w net.ipv4.tcp_fin_timeout=15
 
 ## BBR Congestion Control
 
-BBR (Bottleneck Bandwidth and Round-trip propagation time) is a modern congestion control algorithm from Google. It performs significantly better than the default CUBIC on long-distance or lossy links.
+BBR (Bottleneck Bandwidth and Round-trip propagation time) is a modern congestion control algorithm from Google. It can perform better than the default CUBIC on long-distance or lossy links in many scenarios. On RHEL, use the `fq` queuing discipline with BBR so TCP pacing works as intended.
 
 ```bash
 # Load the BBR kernel module
@@ -115,6 +116,7 @@ sudo modprobe tcp_bbr
 echo "tcp_bbr" | sudo tee /etc/modules-load.d/bbr.conf
 
 # Set BBR as the congestion control algorithm
+sudo sysctl -w net.core.default_qdisc=fq
 sudo sysctl -w net.ipv4.tcp_congestion_control=bbr
 
 # Verify it is active
@@ -148,6 +150,7 @@ net.core.netdev_max_backlog = 65535
 net.ipv4.tcp_window_scaling = 1
 net.ipv4.tcp_timestamps = 1
 net.ipv4.tcp_sack = 1
+net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
 net.ipv4.ip_local_port_range = 1024 65535
 net.ipv4.tcp_tw_reuse = 1
@@ -166,7 +169,7 @@ Kernel parameters are only half the picture. The network interface card itself h
 # Check current ring buffer settings
 ethtool -g eth0
 
-# Increase ring buffers to their maximum
+# Example: increase ring buffers if 4096 is within the pre-set maximums
 sudo ethtool -G eth0 rx 4096 tx 4096
 
 # Check offload features
@@ -175,7 +178,7 @@ ethtool -k eth0
 # Enable generic receive offload if not already on
 sudo ethtool -K eth0 gro on
 
-# Enable large receive offload
+# Enable large receive offload only on endpoint hosts where the driver supports it
 sudo ethtool -K eth0 lro on
 ```
 

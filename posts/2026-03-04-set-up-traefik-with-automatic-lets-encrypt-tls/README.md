@@ -109,10 +109,21 @@ certificatesResolvers:
         provider: cloudflare
 ```
 
-Set environment variables for the DNS provider:
+Set environment variables for the DNS provider. For Cloudflare, the token needs Zone:Read and DNS:Edit permissions, and it must be available to the Traefik service:
 
 ```bash
-export CF_DNS_API_TOKEN=your-api-token
+sudo systemctl edit traefik
+```
+
+```ini
+[Service]
+Environment="CF_DNS_API_TOKEN=your-api-token"
+```
+
+Then restart Traefik:
+
+```bash
+sudo systemctl restart traefik
 ```
 
 ## Conclusion

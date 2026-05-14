@@ -61,6 +61,8 @@ sudo virsh edit rhel9-vm
 # <disk type='file' device='disk'>
 #   <target dev='vda' bus='virtio'/>
 # </disk>
+# If the disk entry has an <address> tag, remove it so libvirt can regenerate
+# the correct address for the new bus type on the next start.
 
 # Change network model to virtio:
 # <interface type='network'>
@@ -111,8 +113,8 @@ sudo fio --name=test --ioengine=libaio --iodepth=32 \
   --rw=randread --bs=4k --size=1G --numjobs=4 \
   --filename=/tmp/fio-test --direct=1
 
-# virtio-blk typically achieves 2-3x higher IOPS
-# and 30-50% lower latency compared to emulated IDE
+# virtio storage should provide higher throughput and lower latency than
+# emulated IDE, but exact results depend on the host, guest, and workload.
 ```
 
 ## Verifying virtio Drivers Inside the Guest

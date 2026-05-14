@@ -71,7 +71,7 @@ kubectl logs <nginx-pod> | grep "client_ip\|remote_addr"
 
 ## Method 2: X-Forwarded-For Header
 
-For HTTP routes, Cilium's Envoy proxy automatically appends the visible client address to the `X-Forwarded-For` header and exposes the trusted client address in `X-Envoy-External-Address` — no filter configuration is required. Your application reads these headers to identify the original client:
+For HTTP routes, Cilium's Envoy proxy automatically appends the visible client address to the `X-Forwarded-For` header and exposes the trusted client address in `X-Envoy-External-Address` - no filter configuration is required. Your application reads these headers to identify the original client:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1

@@ -62,7 +62,7 @@ metadata:
   name: nginx
   namespace: default
 spec:
-  # How often Flux checks for drift and reconciles
+  # How often Flux reconciles the release
   interval: 10m
   chart:
     spec:
@@ -177,7 +177,7 @@ You can also create a HelmRelease using the Flux CLI.
 ```bash
 # Create a HelmRelease using the Flux CLI
 flux create helmrelease nginx \
-  --source=HelmRepository/bitnami \
+  --source=HelmRepository/bitnami.flux-system \
   --chart=nginx \
   --chart-version=">=15.0.0" \
   --values=values.yaml \

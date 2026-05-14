@@ -16,14 +16,14 @@ tar and gzip are the most basic and universal backup tools on Linux. They are in
 # Create a compressed backup of /etc
 
 # c = create, z = gzip compression, v = verbose, f = filename
-# p = preserve permissions
-sudo tar -czvpf /backup/etc-backup-$(date +%Y%m%d).tar.gz /etc
+# --acls, --xattrs, and --selinux preserve RHEL file metadata
+sudo tar --acls --xattrs --selinux -czvpf /backup/etc-backup-$(date +%Y%m%d).tar.gz /etc
 
 # Create a backup of /home
-sudo tar -czvpf /backup/home-backup-$(date +%Y%m%d).tar.gz /home
+sudo tar --acls --xattrs --selinux -czvpf /backup/home-backup-$(date +%Y%m%d).tar.gz /home
 
 # Create a backup of multiple directories
-sudo tar -czvpf /backup/system-backup-$(date +%Y%m%d).tar.gz \
+sudo tar --acls --xattrs --selinux -czvpf /backup/system-backup-$(date +%Y%m%d).tar.gz \
     /etc /home /var/www /opt/app
 ```
 
@@ -47,7 +47,10 @@ echo "$(date): Starting full system backup" >> "$LOG"
 
 # Create the archive
 # Exclude directories that should not be backed up
-sudo tar -czvpf "$ARCHIVE" \
+# --one-file-system keeps tar on the root filesystem. Add other local mount
+# points explicitly, or remove this option, if /home, /var, or /boot are
+# separate file systems that should be included.
+sudo tar --acls --xattrs --selinux -czvpf "$ARCHIVE" \
     --exclude='/proc' \
     --exclude='/sys' \
     --exclude='/dev' \
@@ -78,10 +81,10 @@ For smaller archive sizes at the cost of slower compression:
 
 ```bash
 # Use xz compression (slower but smaller)
-sudo tar -cJvpf /backup/etc-backup-$(date +%Y%m%d).tar.xz /etc
+sudo tar --acls --xattrs --selinux -cJvpf /backup/etc-backup-$(date +%Y%m%d).tar.xz /etc
 
 # Use zstd compression (fast and good compression)
-sudo tar -I zstd -cvpf /backup/etc-backup-$(date +%Y%m%d).tar.zst /etc
+sudo tar --acls --xattrs --selinux -I zstd -cvpf /backup/etc-backup-$(date +%Y%m%d).tar.zst /etc
 ```
 
 Compression comparison:
@@ -127,7 +130,7 @@ mkdir -p "$DEST_DIR"
 ARCHIVE="$DEST_DIR/backup-${DATE}.tar.gz"
 echo "Creating $TYPE backup: $ARCHIVE"
 
-sudo tar -czpf "$ARCHIVE" \
+sudo tar --acls --xattrs --selinux -czpf "$ARCHIVE" \
     --exclude='/proc' \
     --exclude='/sys' \
     --exclude='/dev' \
@@ -169,16 +172,16 @@ tar -tzvf /backup/etc-backup-20260304.tar.gz > /dev/null && echo "Archive OK"
 
 ```bash
 # Restore everything to the original location
-sudo tar -xzvpf /backup/system-backup-20260304.tar.gz -C /
+sudo tar --acls --xattrs --selinux -xzvpf /backup/system-backup-20260304.tar.gz -C /
 
 # Restore to a different directory (for review before overwriting)
-sudo tar -xzvpf /backup/system-backup-20260304.tar.gz -C /tmp/restore/
+sudo tar --acls --xattrs --selinux -xzvpf /backup/system-backup-20260304.tar.gz -C /tmp/restore/
 
 # Restore a specific file
-sudo tar -xzvpf /backup/etc-backup-20260304.tar.gz -C / etc/ssh/sshd_config
+sudo tar --acls --xattrs --selinux -xzvpf /backup/etc-backup-20260304.tar.gz -C / etc/ssh/sshd_config
 
 # Restore a specific directory
-sudo tar -xzvpf /backup/system-backup-20260304.tar.gz -C /tmp/restore/ home/jdoe/
+sudo tar --acls --xattrs --selinux -xzvpf /backup/system-backup-20260304.tar.gz -C /tmp/restore/ home/jdoe/
 ```
 
 ## Splitting Large Archives
@@ -187,10 +190,10 @@ For very large backups that need to fit on limited media:
 
 ```bash
 # Create a split archive (1GB chunks)
-sudo tar -czpf - /home | split -b 1G - /backup/home-backup-
+sudo tar --acls --xattrs --selinux -czpf - /home | sudo split -b 1G - /backup/home-backup-
 
 # Restore from split archive
-cat /backup/home-backup-* | tar -xzpf - -C /
+cat /backup/home-backup-* | sudo tar --acls --xattrs --selinux -xzpf - -C /
 ```
 
 ## Scheduling with Cron

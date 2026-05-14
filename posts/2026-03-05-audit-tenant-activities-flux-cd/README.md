@@ -42,7 +42,7 @@ Set up Flux notifications to send audit events to an external system. This creat
 
 ```yaml
 # infrastructure/audit/notification-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: audit-webhook
@@ -58,7 +58,7 @@ Create an Alert that captures events from all tenant Kustomizations.
 
 ```yaml
 # infrastructure/audit/audit-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: tenant-audit
@@ -91,7 +91,7 @@ Create separate audit alerts for each tenant so events are routed to the right t
 
 ```yaml
 # tenants/team-alpha/audit-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: team-alpha-audit
@@ -99,10 +99,11 @@ metadata:
 spec:
   type: slack
   channel: team-alpha-audit-log
+  address: https://slack.com/api/chat.postMessage
   secretRef:
-    name: team-alpha-slack-webhook
+    name: team-alpha-slack-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: team-alpha-audit
@@ -122,7 +123,7 @@ spec:
 
 ## Step 4: Enable Kubernetes Audit Logging
 
-Configure Kubernetes API server audit logging to capture all API calls made by tenant service accounts.
+Configure Kubernetes API server audit logging to capture relevant API calls made by tenant service accounts.
 
 ```yaml
 # audit-policy.yaml for the Kubernetes API server
@@ -170,7 +171,7 @@ flux get all -n team-alpha
 flux events --for Kustomization/team-alpha-apps -n team-alpha
 
 # Check the last applied revision (Git commit)
-flux get kustomizations -n team-alpha -o wide
+flux get kustomizations -n team-alpha
 ```
 
 ## Step 6: Track Git Commit Metadata
@@ -209,10 +210,8 @@ data:
     [INPUT]
         Name              tail
         Tag               flux.*
-        Path              /var/log/containers/kustomize-controller*.log
-        Path              /var/log/containers/source-controller*.log
-        Path              /var/log/containers/helm-controller*.log
-        Parser            docker
+        Path              /var/log/containers/kustomize-controller*.log,/var/log/containers/source-controller*.log,/var/log/containers/helm-controller*.log
+        multiline.parser  docker, cri
         Refresh_Interval  5
     [OUTPUT]
         Name              es
@@ -228,7 +227,7 @@ data:
 Use the collected audit data to generate reports on tenant activity.
 
 ```bash
-# Count reconciliations per tenant in the last 24 hours
+# Count retained successful reconciliation events per tenant
 kubectl get events --all-namespaces \
   --field-selector reason=ReconciliationSucceeded \
   --sort-by=.metadata.creationTimestamp | \

@@ -128,8 +128,8 @@ flux get sources git
 If you prefer SSH authentication, configure SSH keys for Azure DevOps.
 
 ```bash
-# Generate a dedicated SSH key for Flux
-ssh-keygen -t ed25519 -C "flux-cd-azure" -f ~/.ssh/flux-azure -N ""
+# Generate a dedicated RSA SHA-2 SSH key for Flux
+ssh-keygen -t rsa-sha2-512 -C "flux-cd-azure" -f ~/.ssh/flux-azure -N ""
 
 # Display the public key
 cat ~/.ssh/flux-azure.pub
@@ -148,6 +148,19 @@ flux create secret git flux-system \
   --url=ssh://git@ssh.dev.azure.com/v3/<org>/<project>/fleet-infra \
   --private-key-file=~/.ssh/flux-azure \
   --namespace=flux-system
+```
+
+Azure DevOps SSH requires RSA SHA-2 host key algorithms. Add the following patch to `clusters/production/flux-system/kustomization.yaml` so the Flux source controller can connect to Azure DevOps over SSH:
+
+```yaml
+patches:
+  - patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --ssh-hostkey-algos=rsa-sha2-512,rsa-sha2-256
+    target:
+      kind: Deployment
+      name: source-controller
 ```
 
 Update the GitRepository to use the SSH URL:
@@ -191,6 +204,14 @@ resources:
   - gotk-components.yaml
   - gotk-sync.yaml
   - kustomization-sync.yaml
+patches:
+  - patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --ssh-hostkey-algos=rsa-sha2-512,rsa-sha2-256
+    target:
+      kind: Deployment
+      name: source-controller
 EOF
 
 # Commit and push
@@ -281,6 +302,9 @@ az k8s-configuration flux create \
   --name flux-system \
   --url https://dev.azure.com/$AZURE_DEVOPS_ORG/$AZURE_DEVOPS_PROJECT/_git/fleet-infra \
   --branch main \
+  --namespace flux-system \
+  --https-user git \
+  --https-key $AZURE_DEVOPS_PAT \
   --kustomization name=infra path=./clusters/production prune=true
 ```
 

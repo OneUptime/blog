@@ -8,7 +8,7 @@ Description: Use the Advisor service in Red Hat Insights to identify and resolve
 
 ---
 
-Red Hat Insights Advisor analyzes your registered RHEL systems and provides recommendations based on known issues, security advisories, and best practices. Each recommendation includes a description of the risk and step-by-step resolution instructions.
+Red Hat Insights Advisor analyzes your registered RHEL systems and provides recommendations based on known issues, configuration risks, and best practices. Each recommendation includes a description of the risk and step-by-step resolution instructions.
 
 ## Accessing Advisor
 
@@ -23,7 +23,7 @@ You can also check recommendations from the command line.
 
 sudo insights-client
 
-# Check the number of recommendations for this system
+# Fetch the analysis results for this system
 sudo insights-client --check-results
 ```
 
@@ -41,13 +41,13 @@ Advisor organizes findings into four categories:
 In the web console, use the filter sidebar to focus on specific risk levels.
 
 ```bash
-# From the CLI, view detailed system information sent to Insights
+# From the CLI, display analysis results fetched by --check-results
 sudo insights-client --show-results
 ```
 
 ## Applying a Remediation
 
-Each recommendation in the Advisor console includes a "Remediate" button. You can either:
+Advisor recommendations with a remediation type of Playbook can be added to a remediation plan. You can either:
 
 1. Follow the manual steps provided in the recommendation
 2. Generate an Ansible remediation playbook
@@ -64,7 +64,7 @@ rpm -q openssl
 
 ## Generate an Ansible Playbook for Bulk Remediation
 
-From the Advisor web interface, select multiple recommendations and click "Remediate". This creates an Ansible playbook you can download and execute.
+From the Advisor web interface, select affected systems for a recommendation with a remediation type of Playbook, then click "Plan remediation". This creates an Ansible playbook you can download and execute.
 
 ```bash
 # Download the generated playbook from the Insights console
@@ -76,16 +76,6 @@ ansible-playbook -i inventory.ini insights-remediation.yml --become
 
 If a recommendation does not apply to your environment:
 
-```bash
-# You can disable specific rules in the Insights client configuration
-# Add the rule ID to the deny list
-sudo tee -a /etc/insights-client/remove.conf > /dev/null << 'EOF'
-[remove]
-commands=/bin/some_command
-EOF
-
-# Re-run the client to update
-sudo insights-client
-```
+Open the Advisor recommendations page, locate the recommendation, click the more-options menu at the end of the row, and select "Disable recommendation". To re-enable it later, filter recommendations by Status, select Disabled, and choose "Enable recommendation" from the same menu.
 
 Advisor continuously monitors your systems and updates recommendations as new issues are discovered or patches are released. Review the dashboard regularly to keep your RHEL fleet in optimal condition.

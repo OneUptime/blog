@@ -16,6 +16,33 @@ Setting up syslog-ng for Advanced Log Processing on RHEL requires proper plannin
 - Root or sudo access
 - A terminal session
 
+## Step 1: Install syslog-ng
+
+syslog-ng is available for RHEL 9 through Fedora EPEL. Enable the required repository, then install the package:
+
+```bash
+# On RHEL 9, enable CodeReady Linux Builder first
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+
+# Enable EPEL
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+```
+
+On CentOS Stream 9, use the CRB and EPEL packages instead:
+
+```bash
+# On CentOS Stream 9
+sudo dnf config-manager --set-enabled crb
+sudo dnf install -y epel-release epel-next-release
+```
+
+Then install syslog-ng:
+
+```bash
+# Install syslog-ng
+sudo dnf install -y syslog-ng
+```
+
 ## Step 2: Configure the Service
 
 Edit the configuration file to match your environment:
@@ -23,27 +50,47 @@ Edit the configuration file to match your environment:
 ```bash
 # Open the configuration file
 
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/syslog-ng/syslog-ng.conf
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include sources, filters, destinations, and log paths.
 
 ```bash
+# Example: collect local system logs and write them to /var/log/messages
+source s_local {
+    system();
+    internal();
+};
+
+destination d_messages {
+    file("/var/log/messages");
+};
+
+log {
+    source(s_local);
+    destination(d_messages);
+};
+```
+
+```bash
+# Check the configuration syntax
+sudo syslog-ng --syntax-only
+
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart syslog-ng
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable syslog-ng
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start syslog-ng
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status syslog-ng
 ```
 
 
@@ -53,16 +100,16 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status syslog-ng
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u syslog-ng --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u syslog-ng -e --no-pager`.
+- Ensure all required packages are installed: `rpm -qa | grep syslog-ng`.
 
 ## Conclusion
 

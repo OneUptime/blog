@@ -15,7 +15,9 @@ Enabling FIPS mode is one thing. Proving it is actually working is another. Audi
 ### Check the fips-mode-setup tool
 
 ```bash
-# The primary method to check FIPS status
+# Supported method to check FIPS status
+# Note: fips-mode-setup is deprecated for switching systems to FIPS mode
+# in current RHEL 9 releases, but Red Hat still supports it for this check.
 
 fips-mode-setup --check
 # Expected output: FIPS mode is enabled.
@@ -106,19 +108,22 @@ openssl s_client -connect example.com:443 -tls1_2 2>&1 | head -10
 ### Check available SSH ciphers
 
 ```bash
-# List SSH ciphers available in FIPS mode
-ssh -Q cipher
-# Should only show FIPS-approved ciphers like:
+# List SSH ciphers allowed by the effective client configuration
+ssh -G localhost | grep '^ciphers '
+# Should show FIPS policy-compatible ciphers like:
 # aes128-ctr, aes192-ctr, aes256-ctr
 # aes128-gcm@openssh.com, aes256-gcm@openssh.com
 
-# List SSH MACs
-ssh -Q mac
-# Should show FIPS-approved MACs like:
+# List SSH MACs allowed by the effective client configuration
+ssh -G localhost | grep '^macs '
+# Should show FIPS policy-compatible MACs like:
 # hmac-sha2-256, hmac-sha2-512
 
-# List SSH key exchange algorithms
-ssh -Q kex
+# List SSH key exchange algorithms allowed by the effective client configuration
+ssh -G localhost | grep '^kexalgorithms '
+
+# For the SSH server's effective configuration, use:
+sshd -T | grep -E '^(ciphers|macs|kexalgorithms) '
 ```
 
 ### Verify SSH host key algorithms
@@ -139,7 +144,7 @@ ls /etc/ssh/ssh_host_dsa_key 2>/dev/null && echo "WARNING: DSA key found" || ech
 
 ```bash
 # List loaded crypto modules and their FIPS status
-cat /proc/crypto | grep -E "^name|^module|^fips" | paste - - - | head -20
+grep -E "^(name|module|fips)" /proc/crypto | head -40
 
 # Check that FIPS self-tests passed at boot
 journalctl -b -k | grep -i fips

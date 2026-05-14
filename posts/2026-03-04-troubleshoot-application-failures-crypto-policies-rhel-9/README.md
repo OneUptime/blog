@@ -64,7 +64,7 @@ curl: (35) error:0A000152:SSL routines::unsafe legacy renegotiation disabled
 
 ### Quick Test
 
-The fastest way to determine if the crypto policy is causing the failure is to temporarily switch to the LEGACY policy:
+For SHA-1, SSH CBC, and other compatibility issues covered by the LEGACY policy, a quick test is to temporarily switch to the LEGACY policy. On RHEL 9, LEGACY still does not allow TLS 1.0, TLS 1.1, or RSA/DH keys smaller than 2048 bits, so those failures require a more targeted test or policy module.
 
 ```bash
 # Check current policy
@@ -76,6 +76,9 @@ sudo update-crypto-policies --set LEGACY
 
 # Restart the affected service
 sudo systemctl restart affected-service
+
+# If you are not sure which processes use the policy, reboot instead
+# sudo reboot
 
 # Test the operation
 # If it works now, the crypto policy was the cause
@@ -119,7 +122,7 @@ ssh -vvv user@remote-server 2>&1 | grep "peer server"
 
 ```bash
 # See what ciphers are currently allowed
-openssl ciphers -v 2>/dev/null
+openssl ciphers -s -v 2>/dev/null
 
 # See what cipher the remote server wants
 openssl s_client -connect remote-server:443 < /dev/null 2>&1 | grep "Cipher is"
@@ -179,7 +182,7 @@ EOF
 
 ```bash
 # Allow insecure TLS for a specific request
-curl --tls-max 1.0 --ciphers DEFAULT@SECLEVEL=0 https://legacy-server/
+curl --tlsv1.0 --tls-max 1.0 --ciphers 'DEFAULT:@SECLEVEL=0' https://legacy-server/
 ```
 
 **For Python applications:**
@@ -191,6 +194,7 @@ import urllib.request
 # Create a custom SSL context that allows legacy settings
 ctx = ssl.create_default_context()
 ctx.set_ciphers('DEFAULT:@SECLEVEL=0')
+# TLSv1 is deprecated in current Python/OpenSSL stacks; use only as a temporary exception.
 ctx.minimum_version = ssl.TLSVersion.TLSv1
 
 response = urllib.request.urlopen('https://legacy-server/', context=ctx)
@@ -201,7 +205,7 @@ response = urllib.request.urlopen('https://legacy-server/', context=ctx)
 Create a targeted policy module that only loosens what is needed:
 
 ```bash
-# Example: Allow SHA-1 and TLS 1.0 for a specific need
+# Example: Allow SHA-1, TLS 1.0, and 1024-bit RSA for a specific need
 sudo tee /etc/crypto-policies/policies/modules/COMPAT-FIX.pmod << 'EOF'
 # Targeted compatibility fix
 # Document: needed for legacy-server.example.com
@@ -209,11 +213,12 @@ sudo tee /etc/crypto-policies/policies/modules/COMPAT-FIX.pmod << 'EOF'
 
 hash = SHA1+
 sign = RSA-SHA1+
-protocol = TLS1.0+
+protocol@TLS = TLS1.0+
 min_rsa_size = 1024
 EOF
 
 sudo update-crypto-policies --set DEFAULT:COMPAT-FIX
+# Reboot, or fully restart all affected applications, for the change to take effect.
 ```
 
 ### Option D: LEGACY Policy (Last Resort)
@@ -253,7 +258,7 @@ cat /etc/crypto-policies/back-ends/java.config
 sudo tee /etc/crypto-policies/policies/modules/JAVA-COMPAT.pmod << 'EOF'
 # Allow algorithms needed by Java application
 sign = RSA-SHA1+
-protocol = TLS1.0+
+protocol@TLS = TLS1.0+
 EOF
 
 sudo update-crypto-policies --set DEFAULT:JAVA-COMPAT
@@ -286,7 +291,7 @@ openssl s_client -connect ldapserver:636 < /dev/null 2>&1
 | Check | Command |
 |-------|---------|
 | Current policy | `update-crypto-policies --show` |
-| Allowed TLS ciphers | `openssl ciphers -v` |
+| Allowed TLS ciphers | `openssl ciphers -s -v` |
 | Remote server cipher | `openssl s_client -connect host:port` |
 | SSH algorithms | `ssh -Q cipher; ssh -Q kex; ssh -Q key` |
 | Service errors | `journalctl -u service-name` |
@@ -295,4 +300,4 @@ openssl s_client -connect ldapserver:636 < /dev/null 2>&1
 
 ## Summary
 
-When applications fail due to crypto policies on RHEL 9, the troubleshooting process involves identifying the error, determining if the crypto policy is the cause (by temporarily testing with LEGACY), finding the specific algorithm that is needed, and applying the most targeted fix possible. Prefer per-application overrides or custom policy modules over switching the entire system to LEGACY. Always document why exceptions are needed and plan for their removal when the legacy dependency is resolved.
+When applications fail due to crypto policies on RHEL 9, the troubleshooting process involves identifying the error, determining if the crypto policy is the cause (for example, by temporarily testing with LEGACY for issues that LEGACY covers), finding the specific algorithm that is needed, and applying the most targeted fix possible. Prefer per-application overrides or custom policy modules over switching the entire system to LEGACY. Always document why exceptions are needed and plan for their removal when the legacy dependency is resolved.

@@ -15,7 +15,7 @@ ReaR (Relax-and-Recover) is a disaster recovery framework included in RHEL repos
 ```bash
 # Install ReaR
 
-sudo dnf install -y rear genisoimage syslinux-extlinux
+sudo dnf install -y rear
 
 # Verify installation
 rear --version
@@ -36,11 +36,11 @@ BACKUP=NETFS
 BACKUP_URL=nfs://backup-server.example.com/backup/rear
 BACKUP_OPTIONS="nfsvers=4"
 
-# Keep multiple old backups
-NETFS_KEEP_OLD_BACKUP_COPY=2
+# Keep the previous backup copy
+NETFS_KEEP_OLD_BACKUP_COPY=y
 
 # Exclude temporary directories
-EXCLUDE_MOUNTPOINTS=( /tmp /media )
+BACKUP_PROG_EXCLUDE+=( '/tmp/*' '/media/*' )
 
 # Include specific programs in the rescue image
 PROGS+=( vim less )
@@ -96,4 +96,4 @@ cat /var/log/rear/rear-$(hostname).log | tail -20
 rear recover
 ```
 
-ReaR will recreate the disk layout (partitions, LVM, filesystems) and restore all files from the backup. After recovery, reboot the system. The entire process is designed to be straightforward, restoring the server to its exact pre-failure state.
+ReaR will recreate the disk layout (partitions, LVM, filesystems) and restore files from the backup. After recovery, reboot the system. The entire process is designed to be straightforward, restoring the server to its backed-up state.

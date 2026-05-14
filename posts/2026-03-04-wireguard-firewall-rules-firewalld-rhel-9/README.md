@@ -53,17 +53,27 @@ sudo firewall-cmd --get-active-zones
 
 ## Configuring Masquerading for Client VPN
 
-When WireGuard clients need internet access through the server, you need masquerading (NAT).
+When WireGuard clients need internet access through the server, you need kernel forwarding, a policy that allows forwarding from the VPN zone to the public zone, and masquerading (NAT).
 
 ```bash
+# Enable IPv4 forwarding in the kernel
+echo "net.ipv4.ip_forward=1" | sudo tee /etc/sysctl.d/95-wireguard-forwarding.conf
+sudo sysctl -p /etc/sysctl.d/95-wireguard-forwarding.conf
+
+# Allow VPN clients to forward traffic to the public zone
+sudo firewall-cmd --permanent --new-policy=vpn-to-internet
+sudo firewall-cmd --permanent --policy=vpn-to-internet --add-ingress-zone=vpn
+sudo firewall-cmd --permanent --policy=vpn-to-internet --add-egress-zone=public
+sudo firewall-cmd --permanent --policy=vpn-to-internet --set-target=ACCEPT
+
 # Enable masquerading on the public zone
 sudo firewall-cmd --permanent --zone=public --add-masquerade
 
-# Verify masquerading is active
-sudo firewall-cmd --zone=public --query-masquerade
-
 # Reload
 sudo firewall-cmd --reload
+
+# Verify masquerading is active
+sudo firewall-cmd --zone=public --query-masquerade
 ```
 
 ## Forwarding Between Zones
@@ -144,8 +154,8 @@ For auditing purposes, you can log VPN-related traffic:
 # Log new connections through the VPN
 sudo firewall-cmd --permanent --zone=vpn --add-rich-rule='rule family="ipv4" service name="ssh" log prefix="VPN-SSH: " level="info" accept'
 
-# Log dropped traffic from VPN
-sudo firewall-cmd --permanent --zone=vpn --add-rich-rule='rule family="ipv4" log prefix="VPN-DROP: " level="warning" drop'
+# Log dropped traffic from VPN after other rules have been evaluated
+sudo firewall-cmd --permanent --zone=vpn --add-rich-rule='rule family="ipv4" priority="32767" log prefix="VPN-DROP: " level="warning" drop'
 
 # Reload
 sudo firewall-cmd --reload

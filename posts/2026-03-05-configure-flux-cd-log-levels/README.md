@@ -10,16 +10,16 @@ Description: Learn how to configure and adjust log levels for Flux CD controller
 
 ## Understanding Flux CD Logging
 
-Flux CD controllers use structured logging powered by the Go `logr` library with `klog` as the backend. By default, controllers log at a standard verbosity level that includes errors, warnings, and key informational messages. When troubleshooting issues, increasing the log verbosity reveals detailed information about reconciliation cycles, API calls, and internal decision-making.
+Flux CD controllers follow Kubernetes structured logging conventions. By default, controllers write JSON logs to `stderr` at the `info` log level, including errors and key informational messages. When troubleshooting issues, increasing the log verbosity reveals detailed information about reconciliation cycles and internal decision-making.
 
-Flux CD uses numeric log levels where higher numbers mean more verbose output:
+Flux CD uses named log levels:
 
 | Level | Description |
 |-------|-------------|
-| 0 | Errors and critical information only (least verbose) |
-| 1 | Standard operational messages (default) |
-| 2 | Detailed reconciliation information |
-| 3+ | Debug-level information including API calls |
+| `error` | Errors only (least verbose) |
+| `info` | Standard operational messages (default) |
+| `debug` | Detailed troubleshooting information |
+| `trace` | Most verbose diagnostic information |
 
 ## Prerequisites
 
@@ -29,7 +29,7 @@ Flux CD uses numeric log levels where higher numbers mean more verbose output:
 
 ## Method 1: Change Log Level via Controller Arguments
 
-Each Flux controller accepts a `--log-level` argument. The valid values are `debug`, `info`, `warn`, and `error`.
+Each Flux controller accepts a `--log-level` argument. The valid values are `trace`, `debug`, `info`, and `error`.
 
 ### Temporary Change (Direct Patch)
 
@@ -196,7 +196,7 @@ kubectl logs -n flux-system deployment/source-controller | head -20
 ```
 
 Typical debug output includes:
-- Git fetch/clone progress and authentication details
+- Git fetch/clone progress and authentication errors
 - Helm chart download and verification steps
 - OCI artifact pull operations
 - Cache hit/miss information

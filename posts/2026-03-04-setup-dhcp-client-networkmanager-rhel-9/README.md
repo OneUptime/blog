@@ -8,7 +8,7 @@ Description: Configure and tune DHCP client behavior on RHEL through NetworkMana
 
 ---
 
-DHCP is the default network configuration method for most RHEL installations. While it "just works" in many cases, there are plenty of situations where you need to customize how the DHCP client behaves. Maybe you need to send a specific hostname to the DHCP server, request additional options, or override certain DHCP-provided settings. NetworkManager gives you full control over all of this.
+DHCP is the default network configuration method for most RHEL installations. While it "just works" in many cases, there are plenty of situations where you need to customize how the DHCP client behaves. Maybe you need to send a specific hostname to the DHCP server, send supported client options, or override certain DHCP-provided settings. NetworkManager gives you control over these common DHCP behaviors.
 
 ## How DHCP Works with NetworkManager
 
@@ -44,10 +44,10 @@ nmcli connection up dhcp-primary
 
 ## Choosing the DHCP Client
 
-NetworkManager on RHEL supports two DHCP clients:
+NetworkManager on RHEL can be configured to use two DHCP clients:
 
 - **internal** (default) - NetworkManager's built-in DHCP client
-- **dhclient** - The ISC DHCP client (must be installed separately)
+- **dhclient** - The ISC DHCP client (must be installed separately; deprecated in RHEL 9.5 and later)
 
 To check which client is in use:
 
@@ -72,7 +72,7 @@ EOF
 systemctl restart NetworkManager
 ```
 
-For most use cases, the internal client works fine and is the recommended option.
+For most use cases, the internal client works fine and is the recommended option. On RHEL 9.5 and later, the `dhclient` option is deprecated and NetworkManager displays a warning at startup if you use it.
 
 ## Sending a Hostname to the DHCP Server
 
@@ -109,14 +109,13 @@ nmcli connection modify dhcp-primary ipv4.dhcp-client-id "webserver01"
 nmcli connection up dhcp-primary
 ```
 
-## Requesting Specific DHCP Options
+## Sending Supported DHCP Options
 
-You can configure which DHCP options the client requests:
+NetworkManager does not provide an `ipv4.dhcp-request-options` profile property on RHEL 9 for arbitrary DHCP option request lists. Configure the supported DHCP-related profile properties instead:
 
 ```bash
-# Request specific DHCP options (by number)
-# Option 42 = NTP servers, Option 119 = domain search list
-nmcli connection modify dhcp-primary ipv4.dhcp-request-options "1,3,6,15,42,119"
+# Send the vendor class identifier (DHCP option 60)
+nmcli connection modify dhcp-primary ipv4.dhcp-vendor-class-identifier "RHEL-webserver"
 
 # Apply changes
 nmcli connection up dhcp-primary
@@ -156,22 +155,25 @@ nmcli connection up dhcp-primary
 If your network is slow to provide DHCP leases, you can adjust the timeout:
 
 ```bash
-# Set DHCP timeout (in seconds, 0 = infinite)
+# Set DHCP timeout (in seconds; use "infinity" to never time out)
 nmcli connection modify dhcp-primary ipv4.dhcp-timeout 60
 
 # Apply changes
 nmcli connection up dhcp-primary
 ```
 
-The default timeout depends on the DHCP client being used. The internal client defaults to a reasonable timeout.
+The default timeout depends on the DHCP client being used. On RHEL, NetworkManager waits 45 seconds by default for DHCP to complete.
 
 ## Configuring DHCP for IPv6
 
 IPv6 DHCP (DHCPv6) configuration follows a similar pattern:
 
 ```bash
-# Enable DHCPv6
+# Use IPv6 autoconfiguration. NetworkManager uses DHCPv6 if router advertisements request it.
 nmcli connection modify dhcp-primary ipv6.method auto
+
+# For stateful DHCPv6-only address assignment, use:
+# nmcli connection modify dhcp-primary ipv6.method dhcp
 
 # Send hostname in DHCPv6 requests
 nmcli connection modify dhcp-primary ipv6.dhcp-send-hostname yes
@@ -195,40 +197,23 @@ nmcli device show ens192
 # Check specific DHCP-related fields
 nmcli -f DHCP4 device show ens192
 
-# View the lease file directly (for internal DHCP client)
-ls /var/lib/NetworkManager/internal-*
-cat /var/lib/NetworkManager/internal-$(nmcli -t -f UUID connection show --active | head -1)-ens192.lease
+# Internal lease files are private data; use nmcli instead of parsing them
+nmcli -f ALL device show ens192
 ```
 
 ## DHCP with Static Fallback
 
-If you want DHCP but need a fallback static IP when no DHCP server is available:
+If you want DHCP but need local addressing when no DHCP server is available, RHEL 9 does not provide a "static address only if DHCP fails" profile setting. You can enable IPv4 link-local addressing alongside DHCP:
 
 ```bash
-# This is not a built-in NM feature, but you can use a dispatcher script
-cat > /etc/NetworkManager/dispatcher.d/99-dhcp-fallback << 'SCRIPT'
-#!/bin/bash
-# If DHCP fails, assign a fallback static IP
+# Enable IPv4 link-local addressing in addition to DHCP
+nmcli connection modify dhcp-primary ipv4.link-local enabled
 
-INTERFACE="ens192"
-FALLBACK_IP="169.254.1.100/16"
+# Allow the connection to continue if DHCP times out and another IP configuration succeeds
+nmcli connection modify dhcp-primary ipv4.may-fail yes
 
-if [ "$1" = "$INTERFACE" ] && [ "$2" = "dhcp4-change" ]; then
-    # DHCP succeeded, nothing to do
-    exit 0
-fi
-
-if [ "$1" = "$INTERFACE" ] && [ "$2" = "down" ]; then
-    # Check if DHCP failed
-    STATE=$(nmcli -t -f GENERAL.STATE device show "$INTERFACE" | cut -d: -f2)
-    if [ "$STATE" != "100 (connected)" ]; then
-        ip addr add "$FALLBACK_IP" dev "$INTERFACE"
-        ip link set "$INTERFACE" up
-    fi
-fi
-SCRIPT
-
-chmod +x /etc/NetworkManager/dispatcher.d/99-dhcp-fallback
+# Apply changes
+nmcli connection up dhcp-primary
 ```
 
 ## Troubleshooting DHCP Issues

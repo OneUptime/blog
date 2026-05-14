@@ -43,7 +43,11 @@ Create a Google Cloud service account with read access to the bucket.
 gcloud iam service-accounts create flux-gcs-reader \
   --display-name="Flux GCS Reader"
 
-# Grant read access to the bucket
+# Grant read access to the bucket and its objects
+gcloud storage buckets add-iam-policy-binding gs://my-app-flux-manifests \
+  --member="serviceAccount:flux-gcs-reader@my-project.iam.gserviceaccount.com" \
+  --role="roles/storage.bucketViewer"
+
 gcloud storage buckets add-iam-policy-binding gs://my-app-flux-manifests \
   --member="serviceAccount:flux-gcs-reader@my-project.iam.gserviceaccount.com" \
   --role="roles/storage.objectViewer"
@@ -102,11 +106,21 @@ gcloud container clusters update my-cluster \
   --workload-pool=my-project.svc.id.goog \
   --zone=us-central1-a
 
+# For existing GKE Standard node pools, enable the GKE metadata server
+gcloud container node-pools update my-node-pool \
+  --cluster=my-cluster \
+  --workload-metadata=GKE_METADATA \
+  --zone=us-central1-a
+
 # Create a GCP service account for Flux
 gcloud iam service-accounts create flux-source-controller \
   --display-name="Flux Source Controller"
 
-# Grant read access to the GCS bucket
+# Grant read access to the GCS bucket and its objects
+gcloud storage buckets add-iam-policy-binding gs://my-app-flux-manifests \
+  --member="serviceAccount:flux-source-controller@my-project.iam.gserviceaccount.com" \
+  --role="roles/storage.bucketViewer"
+
 gcloud storage buckets add-iam-policy-binding gs://my-app-flux-manifests \
   --member="serviceAccount:flux-source-controller@my-project.iam.gserviceaccount.com" \
   --role="roles/storage.objectViewer"

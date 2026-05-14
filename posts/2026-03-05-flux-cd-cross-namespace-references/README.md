@@ -8,7 +8,7 @@ Description: Learn how Flux CD handles cross-namespace references, enabling you 
 
 ---
 
-In multi-tenant Kubernetes environments, resources are often organized across multiple namespaces. Flux CD supports cross-namespace references, allowing Kustomizations and HelmReleases in one namespace to reference sources, secrets, and other Flux resources in another namespace. In this post, we will explore how cross-namespace references work, how to configure them, and the security considerations involved.
+In multi-tenant Kubernetes environments, resources are often organized across multiple namespaces. Flux CD supports cross-namespace references, allowing Kustomizations and HelmReleases in one namespace to reference sources and other supported Flux resources in another namespace. In this post, we will explore how cross-namespace references work, how to configure them, and the security considerations involved.
 
 ## What Are Cross-Namespace References
 
@@ -74,26 +74,24 @@ spec:
 
 ## Controlling Cross-Namespace Access
 
-By default, Flux allows cross-namespace references. However, you can restrict this behavior using the `--no-cross-namespace-refs` flag on the Flux controllers. When this flag is set, all references must be within the same namespace.
+By default, Flux allows cross-namespace references for sources and other supported Flux custom resources. However, you can restrict this behavior using the `--no-cross-namespace-refs` flag on the Flux controllers. When this flag is set on a controller, the Flux custom resources handled by that controller can only refer to supported resources in the same namespace.
 
-To enable this restriction, modify the controller deployment:
+To enable this restriction for Kustomizations, modify the kustomize-controller deployment:
 
 ```yaml
-# Kustomize controller deployment with cross-namespace refs disabled
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kustomize-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            - --watch-all-namespaces
-            # Disable cross-namespace references for security
-            - --no-cross-namespace-refs=true
+# Kustomize patch for the kustomize-controller deployment
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+patches:
+  - patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --no-cross-namespace-refs=true
+    target:
+      kind: Deployment
+      name: kustomize-controller
 ```
 
 When cross-namespace references are disabled and a Kustomization tries to reference a source in another namespace, the reconciliation will fail with an error:
@@ -134,12 +132,12 @@ spec:
     replicaCount: 2
 ```
 
-## Cross-Namespace Secret References
+## Namespace-Local Secret References
 
-Kustomizations and HelmReleases sometimes need to reference Secrets in other namespaces, for example for decryption keys or Helm values.
+Not all Flux references can cross namespace boundaries. Flux follows Kubernetes RBAC best practices for sensitive data and does not support cross-namespace references to Secrets or ConfigMaps in fields such as HelmRelease `spec.valuesFrom` or Kustomization decryption references.
 
 ```yaml
-# HelmRelease using a values secret from another namespace
+# HelmRelease using a values secret from the same namespace
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -158,8 +156,7 @@ spec:
   valuesFrom:
     - kind: Secret
       name: shared-values
-      # Reference a secret in another namespace
-      # Note: This requires the controller to have read access to that namespace
+      # This Secret must be in the same namespace as the HelmRelease
       targetPath: global.secrets
 ```
 
@@ -272,7 +269,7 @@ rules:
   - apiGroups: [""]
     resources: ["services", "configmaps", "secrets"]
     verbs: ["*"]
-  # Explicitly deny namespace-level operations
+  # No permissions are granted for cluster-scoped Namespace objects
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -291,16 +288,23 @@ subjects:
 
 ### Disabling Cross-Namespace Refs in Production
 
-For high-security environments, consider disabling cross-namespace references entirely and requiring each namespace to maintain its own sources:
+For high-security environments, consider disabling cross-namespace references entirely and requiring each namespace to maintain its own sources. Flux does not expose this as a `flux bootstrap github` flag; configure it in the bootstrap manifests with a Kustomize patch:
 
-```bash
-# During Flux bootstrap, disable cross-namespace references
-flux bootstrap github \
-  --owner=my-org \
-  --repository=fleet-config \
-  --path=clusters/production \
-  --components-extra=image-reflector-controller,image-automation-controller \
-  --no-cross-namespace-refs
+```yaml
+# clusters/production/flux-system/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+patches:
+  - patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --no-cross-namespace-refs=true
+    target:
+      kind: Deployment
+      name: "(kustomize-controller|helm-controller|notification-controller|image-reflector-controller|image-automation-controller)"
 ```
 
 ## Troubleshooting Cross-Namespace References

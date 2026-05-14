@@ -34,10 +34,13 @@ Sometimes you want to enter the emergency shell on purpose to debug boot issues:
 # At the GRUB menu, press 'e' to edit, find the linux line, and add:
 rd.break
 
-# This drops you into the shell before the root FS is mounted
-# The root filesystem will be available at /sysroot (if it can be found)
+# This drops you into a shell near the end of the initramfs stage
+# The root filesystem is usually mounted read-only at /sysroot if it can be found
 
-# For the emergency shell after timeout, add:
+# To stop before dracut tries to mount the root filesystem, use:
+rd.break=pre-mount
+
+# To allow an emergency shell if root mounting fails, add:
 rd.shell
 
 # To enable verbose dracut debug output during boot:
@@ -83,15 +86,21 @@ blkid
 # If the UUID does not match, you need to fix GRUB
 # Mount the root filesystem
 mount /dev/mapper/rhel-root /sysroot
+mount /dev/sda1 /sysroot/boot   # if /boot is a separate filesystem
 mount -o bind /dev /sysroot/dev
 mount -o bind /proc /sysroot/proc
 mount -o bind /sys /sysroot/sys
+mount -o bind /run /sysroot/run
 
 # Chroot into the real system
 chroot /sysroot
 
-# Fix the GRUB configuration
-grub2-mkconfig -o /boot/grub2/grub.cfg
+# Fix the persistent kernel command line for RHEL 9 BLS entries
+grubby --update-kernel=ALL --remove-args="root"
+grubby --update-kernel=ALL --args="root=UUID=<correct-root-uuid>"
+
+# If you changed /etc/default/grub instead, propagate it to BLS entries
+grub2-mkconfig -o /boot/grub2/grub.cfg --update-bls-cmdline
 
 # Exit chroot and reboot
 exit
@@ -104,7 +113,7 @@ reboot
 # Check which modules are loaded
 lsmod
 
-# Check if the storage controller is detected
+# Check if the storage controller is detected, if lspci is available
 lspci -k
 
 # Try loading the missing module manually
@@ -117,13 +126,18 @@ ls /dev/sd* /dev/nvme*
 # If loading the module fixes it, you need to add it to the initramfs
 # Mount root and chroot
 mount /dev/mapper/rhel-root /sysroot
+mount /dev/sda1 /sysroot/boot   # if /boot is a separate filesystem
+mount -o bind /dev /sysroot/dev
+mount -o bind /proc /sysroot/proc
+mount -o bind /sys /sysroot/sys
+mount -o bind /run /sysroot/run
 chroot /sysroot
 
 # Add the module to dracut config
 echo 'force_drivers+=" mpt3sas "' > /etc/dracut.conf.d/storage.conf
 
 # Rebuild the initramfs
-dracut --force
+dracut --force --regenerate-all
 
 exit
 reboot
@@ -165,6 +179,7 @@ cat /run/initramfs/rdsosreport.txt
 # - Error messages
 
 # Save it to a USB drive for analysis
+mkdir -p /mnt
 mount /dev/sdb1 /mnt
 cp /run/initramfs/rdsosreport.txt /mnt/
 umount /mnt
@@ -172,20 +187,21 @@ umount /mnt
 
 ## Network Debugging from the Emergency Shell
 
-If you need network access to download tools or copy files:
+If you need network access to copy logs or reach a network root, request networking on the kernel command line:
 
 ```bash
+# Add these to the kernel command line for DHCP:
+rd.neednet=1 ip=dhcp
+
+# Or use a static IP:
+rd.neednet=1 ip=192.168.1.100::192.168.1.1:255.255.255.0::eth0:none nameserver=192.168.1.1
+
 # Check if network interfaces are available
 ip link show
 
-# Bring up an interface with DHCP
-ip link set eth0 up
-dhclient eth0
-
-# Or set a static IP
-ip addr add 192.168.1.100/24 dev eth0
-ip link set eth0 up
-ip route add default via 192.168.1.1
+# Check the configured addresses and routes
+ip addr show
+ip route show
 ```
 
 ## Preventing Future Boot Failures
@@ -193,12 +209,13 @@ ip route add default via 192.168.1.1
 ```bash
 # After fixing the immediate problem, take preventive steps:
 
-# Always keep a rescue initramfs
-sudo dracut --force /boot/initramfs-rescue.img $(uname -r)
+# Re-create the rescue kernel and initramfs if they are missing
+sudo /usr/lib/kernel/install.d/51-dracut-rescue.install add "$(uname -r)" /boot "/boot/vmlinuz-$(uname -r)"
 
-# Enable dracut's fallback mechanism
+# Store host-specific boot information in the initramfs
 echo 'hostonly="yes"' | sudo tee /etc/dracut.conf.d/hostonly.conf
 echo 'hostonly_cmdline="yes"' | sudo tee -a /etc/dracut.conf.d/hostonly.conf
+sudo dracut --force --regenerate-all
 
 # Verify the initramfs contains all needed drivers
 lsinitrd /boot/initramfs-$(uname -r).img | grep -E "\.ko" | sort

@@ -30,17 +30,26 @@ sudo vi /opt/ansible-automation-platform/installer/inventory
 controller.example.com
 
 [automationcontroller:vars]
+node_type=control
 peers=hop_nodes
 
 [execution_nodes]
 exec1.dc1.example.com node_type=execution
 exec2.dc2.example.com node_type=execution
-
-[hop_nodes]
 hop1.example.com node_type=hop
 
+[hop_nodes]
+hop1.example.com
+
+[remote_execution_nodes]
+exec1.dc1.example.com
+exec2.dc2.example.com
+
 [hop_nodes:vars]
-peers=execution_nodes
+peers=automationcontroller
+
+[remote_execution_nodes:vars]
+peers=hop_nodes
 
 [all:vars]
 admin_password='SecurePassword'
@@ -62,11 +71,11 @@ sudo ./setup.sh
 # Check the mesh topology from the controller
 awx-manage list_instances
 
-# View the mesh graph
-awx-manage receptor_ctl status
+# View the mesh status
+receptorctl --socket /var/run/receptor/receptor.sock status
 
 # Check specific node connectivity
-awx-manage receptor_ctl ping exec1.dc1.example.com
+receptorctl --socket /var/run/receptor/receptor.sock ping exec1.dc1.example.com
 ```
 
 ## Assigning Instance Groups
@@ -79,9 +88,17 @@ Create instance groups to control where jobs execute.
 awx instance_groups create --name "DC1"
 awx instance_groups create --name "DC2"
 
-# Associate execution nodes with instance groups
-awx instance_groups associate --name "DC1" --instance "exec1.dc1.example.com"
-awx instance_groups associate --name "DC2" --instance "exec2.dc2.example.com"
+# Associate execution nodes with instance groups through the controller API
+# Replace the instance group IDs and instance IDs with values from your controller
+curl -k -u admin:SecurePassword \
+  -H "Content-Type: application/json" \
+  -X POST https://controller.example.com/api/v2/instance_groups/1/instances/ \
+  -d '{"id": 2}'
+
+curl -k -u admin:SecurePassword \
+  -H "Content-Type: application/json" \
+  -X POST https://controller.example.com/api/v2/instance_groups/2/instances/ \
+  -d '{"id": 3}'
 ```
 
 ## Configuring Receptor
@@ -96,7 +113,7 @@ cat /etc/receptor/receptor.conf
 sudo systemctl status receptor
 
 # View receptor connections
-receptorctl status
+receptorctl --socket /var/run/receptor/receptor.sock status
 ```
 
 ## Firewall Configuration

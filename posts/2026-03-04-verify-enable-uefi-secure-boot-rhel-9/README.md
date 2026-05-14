@@ -26,7 +26,7 @@ You can also check through the kernel:
 
 ```bash
 # Alternative check through sysfs
-cat /sys/firmware/efi/efivars/SecureBoot-* 2>/dev/null | od -An -t u1 | tail -1
+cat /sys/firmware/efi/efivars/SecureBoot-* 2>/dev/null | od -An -t u1 | awk '{print $NF}'
 ```
 
 If the last byte is `1`, Secure Boot is enabled. If it is `0`, it is disabled.
@@ -40,7 +40,7 @@ Secure Boot only works in UEFI mode, not legacy BIOS. Verify your system is boot
 ls /sys/firmware/efi
 ```
 
-If this directory exists, you are running in UEFI mode. If it does not exist, the system is using legacy BIOS and Secure Boot is not available without a reinstall in UEFI mode.
+If this directory exists, you are running in UEFI mode. If it does not exist, the system is using legacy BIOS and Secure Boot is not available until the system is configured and booted in UEFI mode.
 
 ## Enabling Secure Boot
 
@@ -62,11 +62,12 @@ When Secure Boot is enabled, the firmware verifies the digital signature of each
 flowchart TD
     A[UEFI Firmware] -->|Verifies signature| B[Shim Bootloader]
     B -->|Verifies signature| C[GRUB2]
-    C -->|Verifies signature| D[Linux Kernel]
+    B -->|Authenticates| D[Linux Kernel]
+    C -->|Loads| D[Linux Kernel]
     D -->|Verifies signature| E[Kernel Modules]
 ```
 
-RHEL uses a "shim" bootloader that is signed by Microsoft's UEFI CA. The shim then verifies GRUB2, which verifies the kernel. This chain of trust ensures nothing unauthorized runs during boot.
+RHEL uses a "shim" bootloader that is signed by Microsoft's UEFI CA. The shim authenticates GRUB2 and the kernel, and the kernel verifies drivers and modules. This chain of trust ensures nothing unauthorized runs during boot.
 
 ## Checking the Secure Boot Certificate Chain
 
@@ -76,13 +77,13 @@ View the enrolled certificates:
 # List enrolled Machine Owner Keys (MOK)
 mokutil --list-enrolled
 
-# List the UEFI Secure Boot keys
-mokutil --list-enrolled | grep "Subject:"
+# List certificates in the UEFI allowed signature database
+mokutil --db | grep "Subject:"
 ```
 
 ## Verifying Kernel Module Signatures
 
-With Secure Boot enabled, the kernel only loads signed modules:
+With Secure Boot enabled, the kernel only loads signed modules that authenticate against trusted keys:
 
 ```bash
 # Check if a specific module is signed

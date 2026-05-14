@@ -50,7 +50,7 @@ journalctl -xeu httpd.service
 
 The flags break down like this:
 - `-x` adds explanatory text (catalog entries) where available
-- `-e` jumps to the end of the log so you see the most recent entries first
+- `-e` jumps to the end of the log so you land on the most recent entries
 - `-u httpd.service` filters to just that unit
 
 If you want to see what happened during the last boot specifically:
@@ -86,9 +86,9 @@ Common causes:
 - The package is not installed
 - SELinux is blocking execution (check with `ausearch -m avc -ts recent`)
 
-### Exit Code 217/USER - Bad User/Group
+### Exit Code 217/USER or 216/GROUP - Bad User/Group
 
-The unit file specifies a `User=` or `Group=` that does not exist on the system.
+The unit file specifies a `User=` or `Group=` that does not exist on the system. A bad `User=` usually shows as `217/USER`; a bad `Group=` usually shows as `216/GROUP`.
 
 ```bash
 # Check if the user specified in the unit file exists
@@ -104,9 +104,9 @@ The `WorkingDirectory=` in the unit file points to a directory that does not exi
 systemctl cat myapp.service | grep WorkingDirectory
 ```
 
-### Exit Codes 1-255 - Application-Level Failures
+### Exit Codes 1-199 - Application-Level Failures
 
-These come from the application itself. The service started but crashed. You need the application logs, not just the systemd journal.
+These usually come from the application itself. The service started but crashed. You need the application logs, not just the systemd journal. Exit codes 200 and above are commonly reserved for the service manager and other system-level failures.
 
 ```bash
 # Check if the application writes its own log file
@@ -138,7 +138,7 @@ systemctl show httpd.service -p ExecStart -p ExecStartPre -p User -p Group
 
 ## Step 5: ExecStartPre Issues
 
-This is one that trips people up. If your unit file has `ExecStartPre` directives, any failure there prevents the main service from starting.
+This is one that trips people up. If your unit file has `ExecStartPre` directives, any failure there prevents the main service from starting unless the command is explicitly prefixed with `-` to ignore failure.
 
 ```bash
 # Look for ExecStartPre in the unit configuration
@@ -186,7 +186,7 @@ ausearch -m avc -ts recent
 sealert -a /var/log/audit/audit.log
 ```
 
-If SELinux is the problem, do not just disable it. Use the suggestion from `sealert` to create a proper policy module:
+If SELinux is the problem, do not just disable it. Use `sealert` to find the root cause, then fix the labeling, boolean, or port type if that is what the denial points to. Only create a local policy module when that is the right fix for the denial:
 
 ```bash
 # Generate and install a policy module to allow the denied action
@@ -196,16 +196,18 @@ semodule -i myapp-fix.pp
 
 ### Port Binding
 
-If a service needs to bind to a privileged port (below 1024) and runs as a non-root user:
+If a service fails while binding to a port, first check whether another process already has it:
 
 ```bash
 # Check if the port is already in use
 ss -tlnp | grep :80
 ```
 
+If the port is privileged (below 1024) and the service runs as a non-root user, the service also needs permission such as `CAP_NET_BIND_SERVICE`.
+
 ## Step 7: Reset the Failed State
 
-After you fix the problem, systemd still remembers the failure. You need to clear it before restarting.
+After you fix the problem, systemd still remembers the failure until the unit is restarted successfully or the failed state is reset. You can clear the failed state explicitly before restarting.
 
 ```bash
 # Reset the failed state for a specific unit
@@ -232,9 +234,9 @@ flowchart TD
     B --> C[systemctl status unit.service]
     C --> D{Exit Code?}
     D -->|203/EXEC| E[Check binary path and permissions]
-    D -->|217/USER| F[Check User/Group exists]
+    D -->|217/USER or 216/GROUP| F[Check User/Group exists]
     D -->|200/CHDIR| G[Check WorkingDirectory exists]
-    D -->|1-255| H[Check application logs]
+    D -->|1-199| H[Check application logs]
     E --> I[journalctl -xeu unit.service]
     F --> I
     G --> I

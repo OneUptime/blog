@@ -100,7 +100,7 @@ sudo subscription-manager list --consumed
 sudo subscription-manager status
 ```
 
-**Fix**: The fix depends on whether you are using SCA or traditional entitlements.
+**Fix**: The fix depends on whether you are using SCA or traditional entitlement mode.
 
 With SCA:
 
@@ -141,7 +141,7 @@ flowchart TD
 
 ## Problem: "No Subscriptions Are Available"
 
-**Symptom**: `subscription-manager attach --auto` says no subscriptions are available, or `subscription-manager list --available` returns nothing.
+**Symptom**: In a non-SCA environment, `subscription-manager attach --auto` says no subscriptions are available, or `subscription-manager list --available` returns nothing.
 
 **Diagnosis**: This usually means all subscriptions in your account are already consumed, or the subscription does not match the system's architecture.
 
@@ -192,7 +192,7 @@ sudo subscription-manager attach --auto
 
 ## Problem: Duplicate System UUIDs (Cloned VMs)
 
-**Symptom**: Two systems in the Customer Portal share the same UUID, causing one to lose its subscription when the other checks in.
+**Symptom**: Two systems in the Hybrid Cloud Console inventory share the same UUID, causing one to lose its subscription when the other checks in.
 
 **Diagnosis**:
 
@@ -247,7 +247,7 @@ sudo subscription-manager config \
 Check firewall rules if direct connectivity is expected:
 
 ```bash
-# Verify the firewall is not blocking outbound HTTPS
+# Review local firewalld zone configuration
 sudo firewall-cmd --list-all
 ```
 
@@ -265,7 +265,7 @@ sudo subscription-manager status
 
 ## Problem: Subscription Expired
 
-**Symptom**: System shows "Invalid" status and repositories return 403 errors.
+**Symptom**: In a non-SCA environment, the system shows "Invalid" status and repositories return 403 errors.
 
 **Diagnosis**:
 
@@ -282,6 +282,8 @@ sudo subscription-manager status
 ```bash
 # Refresh to pick up the renewed subscription
 sudo subscription-manager refresh
+
+# If not using SCA, re-attach
 sudo subscription-manager attach --auto
 ```
 
@@ -313,8 +315,12 @@ sudo subscription-manager clean
 sudo rm -rf /etc/pki/consumer/*
 sudo rm -rf /etc/pki/entitlement/*
 
-# Reset the RHSM configuration to defaults
-sudo subscription-manager config --remove-all
+# Review RHSM configuration and remove incorrect proxy settings if present
+sudo subscription-manager config --list
+sudo subscription-manager config --remove=server.proxy_hostname
+sudo subscription-manager config --remove=server.proxy_port
+sudo subscription-manager config --remove=server.proxy_user
+sudo subscription-manager config --remove=server.proxy_password
 
 # Start fresh
 sudo subscription-manager register --username=your_username --password=your_password

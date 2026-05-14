@@ -19,8 +19,8 @@ graph TD
     A --> D[Built-in JSON Support]
     A --> E[Pattern Matching]
     A --> F[Message Rewriting]
-    A --> G[Database Output]
-    A --> H[HTTP/REST Output]
+    A --> G[Database Output Modules]
+    A --> H[HTTP/REST Output Modules]
 ```
 
 Key differences from rsyslog:
@@ -37,8 +37,8 @@ Syslog-ng is available from the EPEL repository:
 
 ```bash
 # Enable EPEL if not already enabled
-
-sudo dnf install epel-release -y
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 
 # Install syslog-ng
 sudo dnf install syslog-ng -y
@@ -74,7 +74,7 @@ sudo vi /etc/syslog-ng/syslog-ng.conf
 Here is a complete configuration for a RHEL server:
 
 ```bash
-@version: 4.0
+@version: 3.35
 @include "scl.conf"
 
 # Global options
@@ -157,6 +157,7 @@ destination d_cron {
     file("/var/log/cron");
 };
 
+# Additional kernel log file
 destination d_kern {
     file("/var/log/kern.log");
 };
@@ -379,7 +380,7 @@ tail -5 /var/log/messages
 tail -5 /var/log/secure
 
 # Check JSON output
-tail -5 /var/log/structured/all.json | python3 -m json.tool
+tail -n 1 /var/log/structured/all.json | python3 -m json.tool
 
 # Monitor incoming logs
 tail -f /var/log/messages

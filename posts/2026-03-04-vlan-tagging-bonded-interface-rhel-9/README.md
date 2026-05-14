@@ -40,13 +40,13 @@ The physical interfaces feed into a bond, and VLANs sit on top of that bond. The
 If you do not already have a bond set up, create one:
 
 ```bash
-# Create a bond with 802.3ad (LACP) mode for maximum throughput
+# Create a bond with 802.3ad (LACP) mode for link aggregation and redundancy
 
 nmcli connection add type bond con-name bond0 ifname bond0 bond.options "mode=802.3ad,miimon=100,lacp_rate=fast"
 
-# Add slave interfaces
-nmcli connection add type ethernet con-name bond0-slave1 ifname eth0 master bond0
-nmcli connection add type ethernet con-name bond0-slave2 ifname eth1 master bond0
+# Add port interfaces
+nmcli connection add type ethernet port-type bond con-name bond0-port1 ifname eth0 controller bond0
+nmcli connection add type ethernet port-type bond con-name bond0-port2 ifname eth1 controller bond0
 ```
 
 Do not assign an IP directly to bond0 if you only want traffic on the VLANs. You can leave it without an address:
@@ -181,7 +181,7 @@ The process is the same. Just add another VLAN connection:
 ```bash
 # Add VLAN 300
 nmcli connection add type vlan con-name bond0.300 ifname bond0.300 vlan.parent bond0 vlan.id 300
-nmcli connection modify bond0.300 ipv4.addresses 10.10.300.10/24
+nmcli connection modify bond0.300 ipv4.addresses 10.10.30.10/24
 nmcli connection modify bond0.300 ipv4.method manual
 nmcli connection up bond0.300
 ```

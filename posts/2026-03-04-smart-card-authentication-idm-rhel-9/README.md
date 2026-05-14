@@ -60,14 +60,11 @@ cat /tmp/sc-server-config.sh
 sudo bash /tmp/sc-server-config.sh /etc/ipa/ca.crt
 ```
 
-If the smart card certificates are signed by an external CA, import that CA certificate first:
+If the smart card certificates are signed by an external CA, install that CA certificate into IdM first:
 
 ```bash
-# Import the external CA certificate into IdM
-ipa certmap-add external_ca --certificate="$(cat /path/to/external-ca.pem)"
-
-# Or add it as a trusted CA
-ipa-cacert-manage install /path/to/external-ca.pem -n "External Smart Card CA" -t CT,C,C
+# Add the external CA as a trusted CA
+ipa-cacert-manage -n "External Smart Card CA" -t CT,C,C install /path/to/external-ca.pem
 ipa-certupdate
 ```
 
@@ -81,13 +78,13 @@ Certificate mapping rules tell IdM how to match a certificate on a smart card to
 # Create a mapping rule that matches the certificate subject email to the IdM user
 ipa certmaprule-add smart_card_rule \
   --matchrule='<ISSUER>CN=Smart Card CA,O=Example Corp' \
-  --maprule='(mail={subject_rfc822name})'
+  --maprule='(mail={subject_rfc822_name})'
 ```
 
-### Map by Certificate Serial Number
+### Map by Full Certificate
 
 ```bash
-# Map specific certificates to users by storing the certificate in the user entry
+# Map specific certificates to users by storing the full certificate in the user entry
 ipa certmaprule-add cert_exact_match \
   --matchrule='<ISSUER>CN=Smart Card CA' \
   --maprule='(userCertificate;binary={cert!bin})'
@@ -97,7 +94,8 @@ ipa certmaprule-add cert_exact_match \
 
 ```bash
 # Add a certificate to a user's IdM entry
-ipa user-add-cert jsmith --certificate="$(cat /path/to/jsmith-cert.pem | grep -v '^---' | tr -d '\n')"
+export CERT="$(openssl x509 -outform der -in /path/to/jsmith-cert.pem | base64 -w0 -)"
+ipa user-add-cert jsmith --certificate="$CERT"
 
 # Verify the certificate is associated
 ipa user-show jsmith --all | grep -i cert
@@ -189,7 +187,7 @@ klist
 
 ```bash
 # SSH using smart card authentication
-ssh -o PKCS11Provider=/usr/lib64/opensc-pkcs11.so jsmith@server.example.com
+ssh -I /usr/lib64/pkcs11/opensc-pkcs11.so -l jsmith server.example.com
 ```
 
 ## Step 8 - Verify Smart Card Reader and Certificate
@@ -201,7 +199,7 @@ If authentication fails, verify the hardware and certificate chain.
 pcsc_scan
 
 # List certificates on the smart card
-pkcs11-tool --list-objects --type cert
+pkcs11-tool --list-objects --type cert --login
 
 # List available PKCS#11 slots
 pkcs11-tool --list-slots
@@ -210,7 +208,8 @@ pkcs11-tool --list-slots
 pkcs11-tool --read-object --type cert --id 01 -o /tmp/card-cert.der
 
 # Convert and view the certificate
-openssl x509 -inform der -in /tmp/card-cert.der -text -noout
+openssl x509 -inform der -in /tmp/card-cert.der -out /tmp/card-cert.pem -outform pem
+openssl x509 -in /tmp/card-cert.pem -text -noout
 ```
 
 ## Step 9 - Configure GDM for Smart Card Login
@@ -242,11 +241,10 @@ opensc-tool -l
 
 ```bash
 # Test certificate mapping manually
-sudo sss_debuglevel 6
-sudo dbus-send --system --dest=org.freedesktop.sssd.infopipe \
-  /org/freedesktop/sssd/infopipe/Users \
-  org.freedesktop.sssd.infopipe.Users.FindByCertificate \
-  string:"$(cat /tmp/card-cert.pem)"
+ipa certmap-match /tmp/card-cert.pem
+
+# Test PAM authentication for a GDM smart card login
+sudo sssctl user-checks -s gdm-smartcard "jsmith" -a auth
 ```
 
 ### Check SSSD Logs

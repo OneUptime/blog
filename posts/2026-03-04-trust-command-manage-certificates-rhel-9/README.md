@@ -8,7 +8,7 @@ Description: A practical guide to using the p11-kit trust command on RHEL for li
 
 ---
 
-RHEL includes the `trust` command (part of the p11-kit package) as a higher-level interface for managing the system certificate trust store. While `update-ca-trust` handles the bundle regeneration, `trust` gives you finer control over individual certificates, including the ability to set specific trust purposes and inspect what is actually in your store.
+RHEL includes the `trust` command (part of the p11-kit package) as a higher-level interface for managing the system certificate trust store. While `update-ca-trust` handles the bundle regeneration, `trust` gives you finer control over individual certificates, including the ability to filter by specific trust purposes and inspect what is actually in your store.
 
 ## What is the trust Command?
 
@@ -17,8 +17,8 @@ The `trust` command is part of `p11-kit-trust`, which provides a PKCS#11 trust m
 - List all trusted certificates
 - Add or remove certificates
 - Extract certificates in various formats
-- Modify trust flags on individual certificates
-- Block specific certificates
+- Change trust anchors
+- Inspect blocklisted certificates
 
 ```bash
 # Verify the trust command is available
@@ -32,7 +32,7 @@ rpm -qf $(which trust)
 The most basic operation, see what your system trusts:
 
 ```bash
-# List all trusted CA certificates
+# List trust policy entries
 trust list
 ```
 
@@ -91,7 +91,7 @@ While you can manually copy files to the anchors directory, `trust anchor` provi
 sudo trust anchor --store /path/to/my-ca-cert.pem
 ```
 
-This copies the certificate into the appropriate directory and updates the trust store automatically. No need to run `update-ca-trust` separately.
+This stores the certificate as a trust anchor and refreshes the system trust outputs. No need to run `update-ca-trust` separately.
 
 Verify it was added:
 
@@ -178,7 +178,7 @@ If you want to explicitly distrust a certificate (maybe a CA was compromised or 
 ```bash
 # Copy the certificate to the blocklist directory
 sudo cp distrusted-ca.pem /etc/pki/ca-trust/source/blocklist/
-sudo update-ca-trust
+sudo update-ca-trust extract
 ```
 
 Verify it is blocked:
@@ -188,12 +188,7 @@ Verify it is blocked:
 trust list --filter=blocklist
 ```
 
-You can also set more granular trust. For example, trust a CA for email but not for server authentication:
-
-```bash
-# Create a trust override file
-sudo trust anchor --store --purpose=email my-ca-cert.pem
-```
+For more granular trust, such as trusting a CA for email but not for server authentication, use an OpenSSL trusted certificate or p11-kit trust policy file in `/etc/pki/ca-trust/source/` and then run `sudo update-ca-trust extract`.
 
 ## Inspecting a Specific Certificate
 
@@ -207,8 +202,8 @@ trust list --filter=ca-anchors | grep -A10 "DigiCert Global Root G2"
 For even more detail, extract it and use openssl:
 
 ```bash
-# Extract a single CA and inspect it
-trust extract --format=pem-bundle --filter="pkcs11:id=%....." /tmp/single-ca.pem
+# Extract a single CA by PKCS#11 URI and inspect it
+trust extract --format=pem-bundle --filter="pkcs11:id=%AA%BB%CC...;type=cert" /tmp/single-ca.pem
 openssl x509 -in /tmp/single-ca.pem -noout -text
 ```
 
@@ -268,13 +263,13 @@ These two commands complement each other:
 - `trust` is the PKCS#11 interface for querying and modifying the store
 - `update-ca-trust` regenerates the output bundles from the source directory
 
-When you use `trust anchor --store`, it handles both the file placement and the update. When you manually copy files, you need to run `update-ca-trust` yourself.
+When you use `trust anchor --store`, it handles both storing the anchor and refreshing the trust outputs. When you manually copy files, you need to run `update-ca-trust extract` yourself.
 
 ```mermaid
 graph LR
-    A[trust anchor --store] --> B[Copies cert to anchors dir]
-    B --> C[Runs update-ca-trust]
-    D[Manual cp to anchors] --> E[Must run update-ca-trust manually]
+    A[trust anchor --store] --> B[Stores trust anchor]
+    B --> C[Refreshes trust outputs]
+    D[Manual cp to anchors] --> E[Must run update-ca-trust extract manually]
     C --> F[Bundles regenerated]
     E --> F
 ```

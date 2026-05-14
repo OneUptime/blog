@@ -47,10 +47,10 @@ Key changes from PHP 7.4 to 8.x:
 
 ```php
 <?php
-// 1. Named arguments (new feature, but can break if you have
-//    functions with parameters named like reserved words)
+// 1. Named arguments (new feature, but can break code that
+//    relies on call_user_func_array() with associative arrays)
 
-// 2. Union types now enforced strictly
+// 2. Union types are enforced when you add them to signatures
 // Old: function foo($bar) -- accepted anything
 // New: function foo(string|int $bar) -- type checked
 
@@ -62,7 +62,8 @@ if (str_contains($haystack, $needle)) { }
 
 // 4. match expression replaces switch in many cases
 // 5. Null-safe operator ?->
-// 6. Many functions now throw TypeError instead of returning false
+// 6. Many internal functions now throw TypeError or ValueError
+//    for invalid arguments instead of raising warnings
 ```
 
 ## Perform the Upgrade
@@ -75,8 +76,8 @@ sudo systemctl stop php-fpm
 sudo dnf module reset php -y
 sudo dnf module enable php:remi-8.2 -y
 
-# Remove old PHP packages and install new ones
-sudo dnf swap php-\* php-\* --allowerasing -y
+# Synchronize installed PHP packages to the enabled stream
+sudo dnf distro-sync --allowerasing -y
 
 # Or more explicitly:
 sudo dnf remove -y php php-cli php-common php-fpm

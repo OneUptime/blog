@@ -13,9 +13,9 @@ Xdebug is the standard PHP debugging extension. Version 3 introduced a simplifie
 ## Install Xdebug
 
 ```bash
-# Install Xdebug via dnf (if available from Remi)
+# Install Xdebug 3 via dnf (if available from Remi)
 
-sudo dnf install -y php-xdebug
+sudo dnf install -y php-pecl-xdebug3
 
 # Or install via PECL
 sudo dnf install -y php-devel php-pear
@@ -26,7 +26,7 @@ sudo pecl install xdebug
 
 ```bash
 # Create the Xdebug configuration file
-sudo tee /etc/php.d/15-xdebug.ini << 'INI'
+sudo tee /etc/php.d/99-xdebug.ini << 'INI'
 [xdebug]
 zend_extension=xdebug
 
@@ -34,7 +34,7 @@ zend_extension=xdebug
 ; Other modes: profile, trace, coverage
 xdebug.mode=debug
 
-; Start debugging on every request (use trigger for production-like environments)
+; Start debugging only when a trigger is present
 xdebug.start_with_request=trigger
 
 ; Host where your IDE is listening
@@ -93,7 +93,7 @@ For VS Code, install the "PHP Debug" extension and create `.vscode/launch.json`:
 Use one of these methods to trigger a debug session:
 
 ```bash
-# Via browser: add the trigger cookie
+# Via browser: add the XDEBUG_SESSION trigger cookie
 # Install the "Xdebug Helper" browser extension and set it to VSCODE
 
 # Via command line
@@ -106,8 +106,8 @@ curl -b "XDEBUG_TRIGGER=VSCODE" http://localhost/index.php
 ## Firewall Configuration
 
 ```bash
-# If debugging remotely, allow the Xdebug port from the IDE host
-sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.1.100/32" port port="9003" protocol="tcp" accept'
+# If the IDE host uses firewalld, allow the Xdebug port from the PHP server
+sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.1.10/32" port port="9003" protocol="tcp" accept'
 sudo firewall-cmd --reload
 ```
 

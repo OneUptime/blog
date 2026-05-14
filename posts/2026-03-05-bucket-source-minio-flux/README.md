@@ -119,13 +119,21 @@ openssl req -x509 -nodes -days 365 \
   -newkey rsa:2048 \
   -keyout minio-tls.key \
   -out minio-tls.crt \
-  -subj "/CN=minio.default.svc.cluster.local"
+  -subj "/CN=minio.default.svc.cluster.local" \
+  -addext "subjectAltName=DNS:minio.default.svc.cluster.local,DNS:minio.default.svc,DNS:minio"
 
 # Create a TLS secret for MinIO
-kubectl create secret tls minio-tls \
+kubectl create secret generic minio-tls \
   --namespace default \
-  --cert=minio-tls.crt \
-  --key=minio-tls.key
+  --from-file=private.key=minio-tls.key \
+  --from-file=public.crt=minio-tls.crt
+
+# Enable TLS in the MinIO Helm release
+helm upgrade minio minio/minio \
+  --namespace default \
+  --reuse-values \
+  --set tls.enabled=true \
+  --set tls.certSecret=minio-tls
 
 # Create a CA cert secret for Flux to trust the self-signed cert
 kubectl create secret generic minio-ca \
@@ -243,8 +251,9 @@ jobs:
 
       - name: Install MinIO client
         run: |
-          curl -sL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc
-          chmod +x /usr/local/bin/mc
+          curl -sL https://dl.min.io/client/mc/release/linux-amd64/mc -o mc
+          chmod +x mc
+          sudo mv mc /usr/local/bin/mc
 
       - name: Upload manifests
         run: |

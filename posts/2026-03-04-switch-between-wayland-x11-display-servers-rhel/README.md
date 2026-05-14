@@ -1,14 +1,16 @@
-# How to Switch Between Wayland and X11 Display Servers on RHEL
+# How to Switch Between Wayland and X11 Display Servers on RHEL 8 and 9
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Wayland, X11, GNOME, Display Server, Linux
 
-Description: Switch between Wayland and X11 display servers on RHEL to resolve compatibility issues or meet specific application requirements.
+Description: Switch between Wayland and X11 display servers on RHEL 8 and 9 to resolve compatibility issues or meet specific application requirements.
 
 ---
 
-RHEL uses Wayland as the default display server for GNOME. While Wayland offers better security and performance, some applications (screen sharing tools, remote desktop software, certain graphics drivers) may still require X11. Switching between them is straightforward.
+RHEL 8 and 9 use Wayland as the default display server for GNOME. While Wayland offers better security and performance, some applications (screen sharing tools, remote desktop software, certain graphics drivers) may still require X11. Switching between them is straightforward.
+
+Note: RHEL 10 removed the X.Org server. X11 applications can still run through XWayland, but the GNOME X11 session described in this post applies to RHEL 8 and 9.
 
 ## Check the Current Display Server
 
@@ -19,10 +21,10 @@ echo $XDG_SESSION_TYPE
 # Output: wayland or x11
 
 # Alternative method
-loginctl show-session $(loginctl | grep $(whoami) | awk '{print $1}') -p Type
+loginctl show-session "$XDG_SESSION_ID" -p Type --value
 ```
 
-## Switch at the Login Screen (Per Session)
+## Switch at the Login Screen
 
 On the GDM login screen:
 1. Click your username
@@ -47,8 +49,8 @@ WaylandEnable=false
 ```
 
 ```bash
-# Restart GDM to apply the change
-sudo systemctl restart gdm
+# Reboot to apply the change
+sudo systemctl reboot
 
 # After logging back in, verify
 echo $XDG_SESSION_TYPE
@@ -61,17 +63,17 @@ echo $XDG_SESSION_TYPE
 # Edit the GDM configuration
 sudo vi /etc/gdm/custom.conf
 
-# Set WaylandEnable to true or comment out the line:
+# Comment out or remove the WaylandEnable=false line:
 ```
 
 ```ini
 [daemon]
-WaylandEnable=true
+#WaylandEnable=false
 ```
 
 ```bash
-# Restart GDM
-sudo systemctl restart gdm
+# Reboot
+sudo systemctl reboot
 
 # Verify
 echo $XDG_SESSION_TYPE
@@ -80,19 +82,17 @@ echo $XDG_SESSION_TYPE
 
 ## NVIDIA Driver Considerations
 
-NVIDIA proprietary drivers have specific Wayland requirements:
+NVIDIA proprietary drivers have specific Wayland support considerations:
 
 ```bash
 # Check if NVIDIA driver is blocking Wayland
 cat /usr/lib/udev/rules.d/61-gdm.rules
 
-# For newer NVIDIA drivers (515+), Wayland may work
-# Ensure the driver supports GBM
+# Check the installed NVIDIA driver version
 modinfo nvidia | grep version
 
-# If NVIDIA is forcing X11, you can override by editing the udev rule
-sudo cp /usr/lib/udev/rules.d/61-gdm.rules /etc/udev/rules.d/61-gdm.rules
-# Edit the copy to remove or comment out the NVIDIA Wayland disable rule
+# On RHEL, check Red Hat's support guidance before changing GDM rules.
+# If proprietary NVIDIA drivers prevent Wayland, use GNOME on Xorg instead.
 ```
 
 ## Running X11 Applications Under Wayland
@@ -136,4 +136,4 @@ Use Wayland when:
 - You need smoother multi-monitor and HiDPI support
 - Your applications are compatible with Wayland or XWayland
 
-Both display servers are fully supported on RHEL, giving you flexibility to choose what works best for your environment.
+RHEL 8 and 9 give you flexibility to choose the display server that works best for your environment.

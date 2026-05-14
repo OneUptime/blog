@@ -10,7 +10,7 @@ Description: An in-depth look at how Flux CD's independent controllers communica
 
 ## Controllers Are Independent Processes
 
-Each Flux CD controller runs as a separate Kubernetes Deployment with its own binary, its own set of watched custom resources, and its own reconciliation loops. There is no shared message bus, no direct RPC between controllers, and no shared database. Instead, all communication flows through the Kubernetes API server.
+Each Flux CD controller runs as a separate Kubernetes Deployment with its own binary, its own set of watched custom resources, and its own reconciliation loops. There is no shared message bus, no direct RPC between controllers, and no shared database. Instead, coordination flows through the Kubernetes API server, while source artifacts are retrieved from the source-controller's in-cluster HTTP server.
 
 This design is intentional. By using Kubernetes itself as the communication layer, Flux CD inherits the reliability, scalability, and access control mechanisms that Kubernetes provides.
 
@@ -74,7 +74,8 @@ status:
   artifact:
     revision: "main@sha1:abc123def"
     digest: "sha256:9f86d081884c7d659a2feaa..."
-    url: "http://source-controller.flux-system.svc.cluster.local./gitrepository/flux-system/fleet-infra/latest.tar.gz"
+    path: "gitrepository/flux-system/fleet-infra/abc123def.tar.gz"
+    url: "http://source-controller.flux-system.svc.cluster.local./gitrepository/flux-system/fleet-infra/abc123def.tar.gz"
     lastUpdateTime: "2026-03-05T10:00:00Z"
     size: 45678
 ```
@@ -119,15 +120,15 @@ graph LR
     end
 
     subgraph "Helm Controller Pod"
-        HDownloader[Chart Downloader] -->|GET /helmchart/...tar.gz| HTTP
+        HDownloader[Chart Downloader] -->|GET /helmchart/...tgz| HTTP
     end
 ```
 
-The URL for each artifact follows a predictable pattern:
+The URL for each GitRepository artifact follows a predictable pattern:
 
 ```text
 http://source-controller.flux-system.svc.cluster.local./
-  {source-kind}/{namespace}/{name}/latest.tar.gz
+  {source-kind}/{namespace}/{name}/{artifact-file}.tar.gz
 ```
 
 This is an in-cluster HTTP call - it never leaves the cluster network. The consuming controller downloads the tarball, extracts it to a temporary directory, and processes the contents.
@@ -171,7 +172,7 @@ The notification-controller matches events against `Alert` resources to determin
 
 ```yaml
 # Alert configuration that filters events by source and severity
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: production-alerts
@@ -230,25 +231,23 @@ spec:
 
 When the notification-controller receives a valid webhook, it annotates the referenced resources with `reconcile.fluxcd.io/requestedAt`. The owning controller (source-controller in this case) watches for this annotation and triggers an immediate reconciliation, bypassing the normal interval wait.
 
-## Communication Mechanism 5: Owner References and Finalizers
+## Communication Mechanism 5: Owner Labels and Finalizers
 
-Flux also uses standard Kubernetes ownership mechanisms. For example, the helm-controller creates `HelmChart` resources that are owned by `HelmRelease` resources. This creates an automatic lifecycle link.
+Flux also uses Kubernetes metadata and finalizers for lifecycle management. For example, when a `HelmRelease` uses a chart template, the helm-controller creates and manages an associated `HelmChart` resource, records it in the `HelmRelease` status, and marks it with owner labels.
 
 ```yaml
-# The helm-controller creates HelmCharts with an owner reference to the HelmRelease
+# The helm-controller creates HelmCharts associated with the HelmRelease
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmChart
 metadata:
   name: flux-system-ingress-nginx
   namespace: flux-system
-  ownerReferences:
-    - apiVersion: helm.toolkit.fluxcd.io/v2
-      kind: HelmRelease
-      name: ingress-nginx
-      uid: "abc-123-def"
+  labels:
+    helm.toolkit.fluxcd.io/name: ingress-nginx
+    helm.toolkit.fluxcd.io/namespace: flux-system
 ```
 
-When a `HelmRelease` is deleted, Kubernetes garbage collection automatically deletes the associated `HelmChart`. The source-controller then cleans up the stored artifact.
+When a `HelmRelease` is deleted or its generated chart reference changes, the helm-controller deletes the associated `HelmChart`. The source-controller then cleans up stored artifacts according to its artifact retention settings.
 
 ## The Complete Communication Flow
 
@@ -268,8 +267,8 @@ graph TD
     J --> K[Notification Controller sends Slack alert]
 ```
 
-Every arrow in this diagram goes through the Kubernetes API server. No controller communicates directly with another controller's process. This is what makes the architecture resilient - if one controller restarts, the others continue operating, and reconciliation resumes from the last known state stored in the custom resources.
+Most coordination arrows in this diagram go through the Kubernetes API server. The exception is artifact transfer: consuming controllers download artifact content directly from the source-controller's in-cluster HTTP server using the URL recorded in source status. This API-centered coordination is what makes the architecture resilient - if one controller restarts, the others continue operating, and reconciliation resumes from the last known state stored in the custom resources.
 
 ## Summary
 
-Flux CD controllers communicate through five mechanisms, all mediated by the Kubernetes API: custom resource status fields for state propagation, an internal HTTP server for artifact transfer, Kubernetes events for observability, inbound webhooks for external triggers, and owner references for lifecycle management. This design eliminates direct coupling between controllers while maintaining a coherent delivery pipeline. Each controller can be independently scaled, restarted, or upgraded without disrupting the others.
+Flux CD controllers communicate through five mechanisms: custom resource status fields for state propagation, an internal HTTP server for artifact transfer, Kubernetes events for observability, inbound webhooks for external triggers, and owner labels and finalizers for lifecycle management. This design avoids tight coupling between controllers while maintaining a coherent delivery pipeline. Each controller can be independently scaled, restarted, or upgraded without disrupting the others.

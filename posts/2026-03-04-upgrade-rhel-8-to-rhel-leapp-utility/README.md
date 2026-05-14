@@ -1,10 +1,10 @@
-# How to Upgrade from RHEL 8 to RHEL Using the Leapp Utility
+# How to Upgrade from RHEL 8 to RHEL 9 Using the Leapp Utility
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Leapp, Upgrade, Migration, System Administration, Linux
 
-Description: Perform an in-place upgrade from RHEL 8 to RHEL using the Leapp utility, including pre-upgrade assessment, remediation, and the upgrade process.
+Description: Perform an in-place upgrade from RHEL 8 to RHEL 9 using the Leapp utility, including pre-upgrade assessment, remediation, and the upgrade process.
 
 ---
 
@@ -12,12 +12,15 @@ The Leapp utility performs in-place upgrades between major RHEL versions. It ana
 
 ## Prerequisites
 
-Ensure your RHEL 8 system is fully updated and subscribed:
+Ensure your RHEL 8.10 system is fully updated and subscribed:
 
 ```bash
 # Update the system to the latest RHEL 8 packages
 
 sudo dnf update -y
+
+# Reboot if the update installed a new kernel or system libraries
+sudo reboot
 
 # Verify the current version
 cat /etc/redhat-release
@@ -42,7 +45,7 @@ Run the assessment to identify issues before upgrading:
 
 ```bash
 # Run the pre-upgrade report
-sudo leapp preupgrade --target 9.4
+sudo leapp preupgrade --target 9.6
 
 # Review the report
 cat /var/log/leapp/leapp-report.txt
@@ -57,16 +60,16 @@ The report categorizes issues by severity:
 
 ```bash
 # Remove packages that block the upgrade
-sudo dnf remove -y make-devel
+sudo dnf remove -y PACKAGE_NAME
 
-# If the report mentions the "Permit root login" inhibitor
-sudo leapp answer --section remove_pam_pkcs11_module_check.confirm=True
+# If the report requires an answer file confirmation
+sudo leapp answer --section check_vdo.confirm=True
 
 # Handle custom kernel modules
 # Remove any third-party kernel modules that are not compatible with RHEL
-sudo rmmod <module_name>
+sudo rmmod MODULE_NAME
 
-# Ensure enough disk space (at least 5 GB free in /var/lib/leapp)
+# Ensure enough disk space in /var/lib/leapp
 df -h /var/lib/leapp
 ```
 
@@ -76,10 +79,11 @@ After resolving all inhibitors:
 
 ```bash
 # Start the upgrade process
-sudo leapp upgrade --target 9.4
+sudo leapp upgrade --target 9.6
 
 # The system will download packages, prepare the upgrade,
-# and then reboot into a special upgrade initramfs
+# and then require a reboot into a special upgrade initramfs
+sudo reboot
 ```
 
 The system reboots multiple times during the upgrade. Do not interrupt this process.
@@ -92,11 +96,17 @@ After the upgrade completes:
 # Verify the new RHEL version
 cat /etc/redhat-release
 
-# Check for remaining Leapp packages to clean up
-sudo dnf list installed | grep leapp
+# Verify that Leapp has finished all upgrade actions
+[ -e "/etc/systemd/system/leapp_resume.service" ] || ps -e | grep -q leapp && echo "Leapp has not finished the execution yet!"
 
-# Remove leftover RHEL 8 packages
-sudo dnf remove -y leapp-upgrade-el8toel9 leapp-deps-el8
+# List leftover RHEL 8 packages
+rpm -qa | grep -e '\.el[78]' | grep -vE '^(gpg-pubkey|libmodulemd|katello-ca-consumer)' | sort
+
+# Remove leftover RHEL 8 packages after reviewing the transaction
+sudo dnf remove $(rpm -qa | grep \.el[78] | grep -vE 'gpg-pubkey|libmodulemd|katello-ca-consumer')
+
+# Remove remaining Leapp dependency packages
+sudo dnf remove -y leapp-deps-el9 leapp-repository-deps-el9
 
 # Verify all services are running
 systemctl list-units --state=failed

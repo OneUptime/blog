@@ -94,12 +94,12 @@ sudo blockdev --setra 256 /dev/sda
 Make persistent with a udev rule:
 
 ```bash
-echo 'ACTION=="add|change", KERNEL=="sda", ATTR{bdi/read_ahead_kb}="4096"' | sudo tee /etc/udev/rules.d/61-readahead.rules
+echo 'ACTION=="add|change", KERNEL=="sda", ATTR{queue/read_ahead_kb}="4096"' | sudo tee /etc/udev/rules.d/61-readahead.rules
 ```
 
 ## Tuning Queue Depth
 
-Adjust the number of outstanding I/O requests:
+Adjust the number of block-layer requests that can be allocated for reads or writes:
 
 ```bash
 # View current queue depth
@@ -124,7 +124,7 @@ echo 100 | sudo tee /sys/block/sda/queue/iosched/read_expire
 # Write expiry time
 echo 5000 | sudo tee /sys/block/sda/queue/iosched/write_expire
 
-# Batch size for reads before switching to writes
+# Maximum number of requests per batch
 echo 16 | sudo tee /sys/block/sda/queue/iosched/fifo_batch
 ```
 
@@ -155,13 +155,13 @@ sudo iotop
 Test sequential read performance:
 
 ```bash
-sudo fio --name=seqread --rw=read --bs=1m --size=1g --numjobs=1 --runtime=30 --group_reporting
+sudo fio --name=seqread --rw=read --bs=1m --size=1g --numjobs=1 --time_based --runtime=30 --group_reporting
 ```
 
 Test random read performance:
 
 ```bash
-sudo fio --name=randread --rw=randread --bs=4k --size=1g --numjobs=4 --runtime=30 --group_reporting
+sudo fio --name=randread --rw=randread --bs=4k --size=1g --numjobs=4 --time_based --runtime=30 --group_reporting
 ```
 
 Install fio if needed:

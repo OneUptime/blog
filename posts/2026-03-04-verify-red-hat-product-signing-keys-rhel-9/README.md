@@ -8,7 +8,7 @@ Description: Verify the authenticity of Red Hat product signing keys on RHEL to 
 
 ---
 
-Red Hat signs all its RPM packages and repository metadata with GPG keys to guarantee their authenticity and integrity. Verifying these signing keys is an important security practice that helps you confirm you are installing genuine, untampered software. This guide explains how to find, verify, and manage Red Hat product signing keys on RHEL.
+Red Hat signs its RPM packages with GPG keys to guarantee their authenticity and integrity. Verifying these signing keys is an important security practice that helps you confirm you are installing genuine, untampered software. This guide explains how to find, verify, and manage Red Hat product signing keys on RHEL.
 
 ## Why Verify Signing Keys?
 
@@ -48,7 +48,7 @@ rpm -qa gpg-pubkey* --qf '%{NAME}-%{VERSION}-%{RELEASE}\t%{SUMMARY}\n'
 # View detailed information about a specific imported key
 rpm -qi gpg-pubkey-fd431d51-4ae0493b
 
-# Show the full key details including fingerprint
+# Show the imported key details
 rpm -qa gpg-pubkey* --qf '%{NAME}-%{VERSION}-%{RELEASE}\n' | while read key; do
     echo "=== $key ==="
     rpm -qi "$key" | grep -E "Summary|Packager|Description"
@@ -64,10 +64,10 @@ The most reliable way to verify a signing key is to compare its fingerprint with
 
 ```bash
 # View the fingerprint of the Red Hat release key
-gpg --with-fingerprint /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+gpg --show-keys --with-fingerprint /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
 ```
 
-Compare the fingerprint with what Red Hat publishes on their security page. The RHEL signing key fingerprint should match the officially documented value.
+Compare the fingerprint with what Red Hat publishes on their security page. For the current RHEL 9 release key, the fingerprint should match the officially documented value `567E 347A D004 4ADE 55BA 8A5F 199E 2F91 FD43 1D51`.
 
 ```bash
 # Import the key into your personal GPG keyring for inspection
@@ -111,14 +111,14 @@ Bad output (unsigned or bad signature):
 kernel-5.14.0-362.el9.x86_64.rpm: DIGESTS SIGNATURES NOT OK
 ```
 
-### Verify All Installed Packages
+### Inspect Installed Package Signature Metadata
 
 ```bash
-# Check signatures of all installed packages
+# Show recorded signature metadata for installed packages
 rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH} %{SIGPGP:pgpsig}\n' | head -30
 
-# Find packages without valid signatures
-rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH} %{SIGPGP:pgpsig}\n' | grep -v "Key ID"
+# Find packages without recorded PGP signature metadata
+rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH} %{SIGPGP:pgpsig}\n' | grep -vi "key id"
 ```
 
 ### Verify Packages During Installation
@@ -135,14 +135,14 @@ cat /etc/yum.repos.d/redhat.repo | grep -A5 "\[rhel-"
 
 ## Verifying Repository Metadata Signatures
 
-Red Hat also signs repository metadata (repodata) to prevent metadata manipulation:
+DNF can verify repository metadata when a repository publishes a signed `repomd.xml.asc` file. Red Hat CDN, RHUI, and Satellite repositories do not currently support `repo_gpgcheck`, so leave it disabled for Red Hat-managed repositories unless Red Hat documents support for your specific repository. For custom repositories that you sign yourself:
 
 ```bash
 # Check if repo_gpgcheck is enabled
 grep repo_gpgcheck /etc/yum.repos.d/*.repo
 
-# Enable repo metadata verification if not already set
-sudo dnf config-manager --setopt=repo_gpgcheck=1 --save
+# Enable repo metadata verification for a specific custom repo
+sudo dnf config-manager --save --setopt=custom-repo.repo_gpgcheck=1 custom-repo
 ```
 
 ## Handling Key Rotation
@@ -172,7 +172,7 @@ When adding third-party repositories, always verify their signing keys:
 curl -O https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-9
 
 # View the key details
-gpg --with-fingerprint RPM-GPG-KEY-EPEL-9
+gpg --show-keys --with-fingerprint RPM-GPG-KEY-EPEL-9
 
 # Compare with the officially published fingerprint
 # Then import if verified
@@ -193,7 +193,7 @@ echo ""
 echo "=== Key Fingerprints ==="
 for key_file in /etc/pki/rpm-gpg/RPM-GPG-KEY-*; do
     echo "--- $key_file ---"
-    gpg --with-fingerprint "$key_file" 2>/dev/null | grep -E "pub|uid|fingerprint"
+    gpg --show-keys --with-fingerprint "$key_file" 2>/dev/null
     echo ""
 done
 
@@ -206,12 +206,12 @@ for repo_file in /etc/yum.repos.d/*.repo; do
 done
 
 echo ""
-echo "=== Packages Without Valid Signatures ==="
-UNSIGNED=$(rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH} %{SIGPGP:pgpsig}\n' 2>/dev/null | grep -v "Key ID" | head -20)
+echo "=== Packages Without Recorded PGP Signature Metadata ==="
+UNSIGNED=$(rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH} %{SIGPGP:pgpsig}\n' 2>/dev/null | grep -vi "key id" | head -20)
 if [ -n "$UNSIGNED" ]; then
     echo "$UNSIGNED"
 else
-    echo "All packages have valid signatures."
+    echo "All packages have recorded PGP signature metadata."
 fi
 ```
 
@@ -229,4 +229,4 @@ sudo rpm -e gpg-pubkey-KEY_VERSION-KEY_RELEASE
 
 ## Summary
 
-Verifying Red Hat product signing keys on RHEL is a fundamental security practice. Check key fingerprints against officially published values, ensure `gpgcheck=1` is set for all repositories, verify package signatures with `rpm --checksig`, and regularly audit your installed keys. This ensures that every package on your system comes from a verified and trusted source.
+Verifying Red Hat product signing keys on RHEL is a fundamental security practice. Check key fingerprints against officially published values, ensure `gpgcheck=1` is set for all repositories, verify package signatures with `rpm --checksig`, and regularly audit your installed keys. This helps ensure that packages installed from Red Hat repositories come from a verified and trusted source.

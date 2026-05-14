@@ -79,7 +79,7 @@ There are times when firewalld's zone model doesn't fit your needs. Maybe you ne
 - Complex set-based matching
 - Custom chain jumping logic
 - Rate limiting per source IP with meters
-- NAT rules that firewalld can't express
+- NAT rules that firewalld can't express cleanly
 
 In these cases, you can add custom nftables rules alongside firewalld.
 
@@ -98,12 +98,11 @@ By using a different priority (like -10), your chain runs before firewalld's cha
 
 ## Using firewalld's Direct Interface
 
-firewalld has a "direct" interface that lets you insert raw rules. However, this is deprecated in favor of policies and rich rules. If you must use it:
+firewalld has a "direct" interface that lets you insert iptables-style rules. However, this is deprecated in favor of policies and rich rules, and on RHEL with the nftables backend it is not the right way to pass custom nftables rules to firewalld.
 
 ```bash
-# Add a direct rule (deprecated but still works)
-
-firewall-cmd --permanent --direct --add-rule inet filter INPUT 0 -s 203.0.113.0/24 -j DROP
+# Prefer a rich rule instead of a direct rule
+firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="203.0.113.0/24" drop'
 firewall-cmd --reload
 ```
 
@@ -138,8 +137,8 @@ table inet custom_filter {
     chain input_custom {
         type filter hook input priority 10; policy accept;
 
-        # Rate limit SSH connections per source
-        tcp dport 22 ct state new meter ssh_limit { ip saddr limit rate 5/minute } accept
+        # Drop SSH connection attempts over the per-source rate
+        tcp dport 22 ct state new meter ssh_limit { ip saddr limit rate over 5/minute } drop
 
         # Drop known scanner IPs
         ip saddr @rate_limited_ips drop
@@ -222,4 +221,4 @@ systemctl disable firewalld
 systemctl enable --now nftables
 ```
 
-The two tools can coexist, but keeping things simple by choosing one approach and sticking with it saves headaches down the road.
+Separate nftables tables can coexist in the kernel, but Red Hat recommends running only one firewall service (`firewalld` or `nftables`) on a RHEL host. Keeping things simple by choosing one approach and sticking with it saves headaches down the road.

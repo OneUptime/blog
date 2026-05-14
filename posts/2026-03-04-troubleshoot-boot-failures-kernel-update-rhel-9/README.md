@@ -12,7 +12,7 @@ Description: A systematic guide to diagnosing and fixing boot failures that occu
 
 Most kernel updates on RHEL are uneventful. But occasionally, a new kernel introduces a problem: a driver regression, a missing module in the initramfs, an incompatibility with your hardware, or a conflict with third-party kernel modules like NVIDIA drivers. When this happens, the system either fails to boot entirely or boots into a degraded state.
 
-The good news is that RHEL keeps the previous kernel installed, so you always have a fallback.
+The good news is that RHEL normally keeps previous kernels installed, so you usually have a fallback.
 
 ## Immediate Recovery: Boot the Old Kernel
 
@@ -51,8 +51,8 @@ Once you are booted on the old kernel, investigate why the new kernel fails.
 
 ```bash
 # Compare modules between the working and broken kernels
-ls /lib/modules/<old-version>/kernel/ > /tmp/old-modules.txt
-ls /lib/modules/<new-version>/kernel/ > /tmp/new-modules.txt
+find /lib/modules/<old-version>/kernel/ -type f -name '*.ko*' | sed 's#^/lib/modules/<old-version>/kernel/##' | sort > /tmp/old-modules.txt
+find /lib/modules/<new-version>/kernel/ -type f -name '*.ko*' | sed 's#^/lib/modules/<new-version>/kernel/##' | sort > /tmp/new-modules.txt
 diff /tmp/old-modules.txt /tmp/new-modules.txt
 ```
 
@@ -130,8 +130,8 @@ sudo grubby --update-kernel=/boot/vmlinuz-<new-version> --args="modprobe.blackli
 
 ```bash
 # The initramfs may be missing the storage driver
-# Rebuild the initramfs with force-add for your storage driver
-sudo dracut --force --add-drivers "megaraid_sas mpt3sas" /boot/initramfs-<new-version>.img <new-version>
+# Rebuild the initramfs with the storage driver loaded early
+sudo dracut --force --force-drivers "megaraid_sas mpt3sas" /boot/initramfs-<new-version>.img <new-version>
 ```
 
 ### Scenario 4: System Boots but Network Is Down
@@ -168,7 +168,7 @@ sudo sed -i 's/installonly_limit=.*/installonly_limit=5/' /etc/dnf/dnf.conf
 
 # Exclude specific kernel versions if needed
 # Add to /etc/dnf/dnf.conf:
-# exclude=kernel-core-<broken-version>
+# excludepkgs=kernel-core-<broken-version>,kernel-modules-<broken-version>,kernel-<broken-version>
 
 # Use dnf-automatic to download but not install automatically
 sudo dnf install dnf-automatic -y
@@ -181,9 +181,9 @@ If you cannot access the GRUB menu (both kernels are broken):
 ```bash
 # Boot from RHEL installation media
 # Select Troubleshooting > Rescue
-# Mount the system under /mnt/sysimage
+# Mount the system under /mnt/sysroot
 
-chroot /mnt/sysimage
+chroot /mnt/sysroot
 
 # Set the working kernel as default
 grubby --set-default=/boot/vmlinuz-<working-version>

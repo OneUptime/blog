@@ -24,13 +24,13 @@ Stratis caching works by:
 1. Adding fast devices as a separate cache tier within the pool
 2. Automatically caching frequently read data on the fast tier
 3. Transparently serving cached reads from the fast device
-4. Writing data through to the data tier (the HDDs)
+4. Writing data through to the data tier (the HDDs) while keeping cached blocks consistent
 
 The caching mechanism is based on `dm-cache` (device-mapper cache), which is a well-established Linux kernel technology.
 
 Key characteristics:
 - Cache improves read performance primarily
-- Writes go to the data tier (write-through cache)
+- Stratis configures the cache in write-through mode
 - Cache is transparent to applications
 - Loss of cache devices does not cause data loss (data is on the data tier)
 
@@ -139,6 +139,10 @@ Compare the I/O load on HDD and SSD devices. As the cache warms up, you should s
 
 To measure the caching benefit:
 
+```bash
+sudo dnf install fio -y
+```
+
 ### Before Adding Cache
 
 ```bash
@@ -176,13 +180,13 @@ The optimal cache size depends on your working set:
 
 General recommendations:
 - 10-20% of data tier size is a good starting point
-- Monitor cache hit rates and adjust
+- Monitor workload performance and adjust
 
 ### Cache Device Selection
 
 - **NVMe**: Best performance, highest cache hit benefit
 - **SATA SSD**: Good performance, more cost-effective
-- **Multiple smaller SSDs**: Stratis stripes across cache devices for additional throughput
+- **Multiple smaller SSDs**: Stratis concatenates cache devices to increase cache capacity
 
 ## Important Considerations
 
@@ -193,14 +197,14 @@ If a cache device fails:
 - Performance returns to data-tier levels
 - Replace the failed cache device and reinitialize caching
 
-### Cannot Remove Cache Devices
+### Cache Device Removal
 
-Currently, Stratis does not support removing cache devices from a pool. Plan your cache tier carefully.
+Stratis does not support removing individual cache devices from an active cache tier. In newer Stratis releases, a pool can be started without setting up its cache by using `stratis pool start --remove-cache`, after which you can add new cache devices. Plan your cache tier carefully.
 
-### No Write Caching
+### No Write-Back Caching
 
-Stratis uses write-through caching. Writes go directly to the data tier. This means:
-- Write performance is determined by the data tier (HDDs)
+Stratis uses write-through caching. Writes are committed to the data tier rather than being acknowledged from cache alone. This means:
+- Write performance is primarily determined by the data tier (HDDs)
 - Data is always safe on the data tier
 - Cache failure never causes data loss
 

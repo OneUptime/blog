@@ -73,19 +73,21 @@ Output for a valid configuration:
 sudo visudo -c -f /etc/sudoers.d/webadmins
 ```
 
+This checks that file as a standalone sudoers policy. Use `sudo visudo -c` to validate the full policy, including `/etc/sudoers` and all included files.
+
 ## Changing the Default Editor
 
 By default, visudo uses vi. If you prefer a different editor:
 
 ```bash
-# Use nano for this session
-sudo EDITOR=nano visudo
+# Use nano for this session, if sudoers allows setting EDITOR
+sudo EDITOR=/usr/bin/nano visudo
 
-# Or set it permanently for your user
-echo 'export EDITOR=nano' >> ~/.bashrc
+# Or set it for root shells and direct visudo invocations
+echo 'export EDITOR=/usr/bin/nano' >> ~/.bashrc
 ```
 
-You can also configure it system-wide in `/etc/sudoers`:
+When `visudo` is invoked through `sudo`, the `EDITOR` environment variable may be filtered by the sudoers policy. You can also configure it system-wide in `/etc/sudoers`:
 
 ```bash
 Defaults editor=/usr/bin/nano
@@ -111,11 +113,11 @@ Options are:
 Common mistakes:
 
 ```bash
-# Missing colon separator - WRONG
-%webadmins ALL=(root) /usr/bin/systemctl
+# Missing command - WRONG
+%webadmins ALL=(root)
 
-# Trailing whitespace after backslash continuation - WRONG
-%webadmins ALL=(root) /usr/bin/systemctl start httpd, \
+# Missing backslash continuation - WRONG
+%webadmins ALL=(root) /usr/bin/systemctl start httpd,
                        /usr/bin/systemctl stop httpd
 
 # Misspelled keyword - WRONG
@@ -225,9 +227,8 @@ visudo -c -f /tmp/new-sudoers-rule
 
 # If valid, move it into place
 if [ $? -eq 0 ]; then
-    cp /tmp/new-sudoers-rule /etc/sudoers.d/webadmins
-    chmod 0440 /etc/sudoers.d/webadmins
-    chown root:root /etc/sudoers.d/webadmins
+    install -o root -g root -m 0440 /tmp/new-sudoers-rule /etc/sudoers.d/webadmins
+    visudo -c
 fi
 
 rm -f /tmp/new-sudoers-rule

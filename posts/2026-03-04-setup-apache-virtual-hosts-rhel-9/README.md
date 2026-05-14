@@ -117,7 +117,7 @@ sudo systemctl reload httpd
 
 ## Step 4 - Fix SELinux Labels
 
-If you created the document roots outside `/var/www/html`, you need to make sure the SELinux context is correct:
+If you created the document roots under `/var/www` but outside the default `/var/www/html`, make sure the SELinux context is correct:
 
 ```bash
 # Restore SELinux labels on both document roots
@@ -125,7 +125,7 @@ sudo restorecon -Rv /var/www/site-a.example.com/
 sudo restorecon -Rv /var/www/site-b.example.com/
 ```
 
-Since we used paths under `/var/www/`, the labels should already be correct, but it does not hurt to verify.
+Since we used paths under `/var/www/`, the labels should already be correct, but it does not hurt to verify. If you use document roots outside `/var/www/`, add a persistent `httpd_sys_content_t` file context with `semanage fcontext` before running `restorecon`.
 
 ## Step 5 - Test the Virtual Hosts
 

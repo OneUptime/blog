@@ -209,7 +209,7 @@ spec:
 # Create a secret with a SAS token
 kubectl create secret generic azure-sas-creds \
   --namespace flux-system \
-  --from-literal=sasToken=YOUR_SAS_TOKEN
+  --from-literal=sasKey=YOUR_SAS_TOKEN
 ```
 
 ```yaml

@@ -16,6 +16,16 @@ Setting up Typesense Search Engine on RHEL requires proper planning and configur
 - Root or sudo access
 - A terminal session
 
+## Step 1: Install Typesense
+
+Download and install the Typesense RPM package:
+
+```bash
+# Download and install the x86_64 RPM package
+curl -O https://dl.typesense.org/releases/v30.2/typesense-server-v30.2-1.x86_64.rpm
+sudo yum install ./typesense-server-v30.2-1.x86_64.rpm
+```
+
 ## Step 2: Configure the Service
 
 Edit the configuration file to match your environment:
@@ -23,27 +33,27 @@ Edit the configuration file to match your environment:
 ```bash
 # Open the configuration file
 
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/typesense/typesense-server.ini
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include `api-address`, `api-port`, `api-key`, `data-dir`, and `log-dir`.
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart typesense-server.service
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable typesense-server.service
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start typesense-server.service
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status typesense-server.service
 ```
 
 
@@ -53,16 +63,19 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status typesense-server.service
+
+# Check the Typesense health endpoint
+curl http://localhost:8108/health
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u typesense-server.service --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u typesense-server.service -e --no-pager`.
+- Ensure the Typesense package is installed: `rpm -qa | grep typesense-server`.
 
 ## Conclusion
 

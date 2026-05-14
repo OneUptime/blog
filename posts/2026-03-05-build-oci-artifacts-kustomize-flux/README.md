@@ -16,7 +16,7 @@ This guide covers structuring Kustomize overlays, building and pushing them as O
 
 ## Prerequisites
 
-- A Kubernetes cluster with Flux CD installed (v0.35 or later)
+- A Kubernetes cluster with Flux CD installed (v2.6 or later)
 - The `flux` CLI installed
 - The `kustomize` CLI installed
 - An OCI-compatible container registry
@@ -182,7 +182,7 @@ kubectl apply -f kustomization-raw-overlay.yaml
 
 ## Step 5: Automate with CI
 
-Here is a CI script that builds and pushes all overlays as separate artifacts.
+Here is a CI script that pushes all overlays as separate artifacts.
 
 ```bash
 #!/bin/bash

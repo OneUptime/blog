@@ -10,7 +10,7 @@ Description: Learn how to use the Flux CLI to diff OCI artifacts and compare cha
 
 ## Introduction
 
-When managing Kubernetes deployments through OCI artifacts in Flux CD, understanding what changed between artifact versions is critical. The `flux diff artifact` command lets you compare the contents of an OCI artifact against local files or another artifact, giving you visibility into exactly what will change before you apply updates. This is especially useful in CI/CD pipelines, code reviews, and pre-deployment validations.
+When managing Kubernetes deployments through OCI artifacts in Flux CD, understanding what changed between artifact versions is critical. The `flux diff artifact` command lets you compare the contents of an OCI artifact against local files, giving you visibility into exactly what will change before you apply updates. This is especially useful in CI/CD pipelines, code reviews, and pre-deployment validations.
 
 In this guide, you will learn how to use `flux diff artifact` effectively, integrate it into your workflow, and automate diffing in CI/CD pipelines.
 
@@ -21,7 +21,6 @@ Before you begin, make sure you have the following:
 - Flux CLI v2.1.0 or later installed
 - Access to an OCI-compatible container registry (e.g., GitHub Container Registry, Docker Hub, AWS ECR)
 - An existing OCI artifact pushed to your registry
-- `kubectl` configured with cluster access
 
 Verify your Flux CLI version supports OCI artifact diffing.
 
@@ -49,7 +48,7 @@ The `--path` flag specifies the local directory to compare against. The command 
 
 ## Diffing Specific Tags and Versions
 
-You can compare artifacts at specific tags or digests to review changes between versions.
+You can compare your local files against artifacts at specific tags or digests to review changes from a known version.
 
 ```bash
 # Diff against a specific tagged version
@@ -114,6 +113,10 @@ on:
 jobs:
   diff:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      issues: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -139,13 +142,16 @@ jobs:
       - name: Post diff as PR comment
         if: steps.diff.outputs.diff != ''
         uses: actions/github-script@v7
+        env:
+          DIFF_OUTPUT: ${{ steps.diff.outputs.diff }}
         with:
           script: |
+            const diff = process.env.DIFF_OUTPUT || '';
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '### Flux Artifact Diff\n```diff\n' + '${{ steps.diff.outputs.diff }}' + '\n```'
+              body: '### Flux Artifact Diff\n```diff\n' + diff + '\n```'
             })
 ```
 

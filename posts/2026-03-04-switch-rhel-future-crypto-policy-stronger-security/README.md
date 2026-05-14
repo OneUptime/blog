@@ -8,7 +8,7 @@ Description: Learn how to switch RHEL to the FUTURE crypto policy to enforce str
 
 ---
 
-The FUTURE crypto policy on RHEL enforces stricter cryptographic standards than the DEFAULT policy. It requires TLS 1.2 or higher, 2048-bit minimum RSA keys (3072-bit recommended), and disables older algorithms like SHA-1 for signatures. This is useful when you want to proactively harden your systems.
+The FUTURE crypto policy on RHEL enforces stricter cryptographic standards than the DEFAULT policy. It requires TLS 1.2 or higher, 3072-bit minimum RSA keys, and disables older algorithms like SHA-1 for signatures. This is useful when you want to proactively harden your systems.
 
 ## What the FUTURE Policy Enforces
 

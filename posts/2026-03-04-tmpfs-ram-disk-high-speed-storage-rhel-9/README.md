@@ -98,7 +98,7 @@ For databases that create temporary tables during queries:
 ```bash
 # Create tmpfs for MySQL/MariaDB temp tables
 mkdir -p /var/lib/mysql/tmp
-mount -t tmpfs -o size=2G,uid=mysql,gid=mysql tmpfs /var/lib/mysql/tmp
+mount -t tmpfs -o size=2G,uid=$(id -u mysql),gid=$(id -g mysql) tmpfs /var/lib/mysql/tmp
 ```
 
 Configure the database to use this directory for temporary tables.
@@ -118,7 +118,7 @@ mount -t tmpfs -o size=1G tmpfs /tmp/testdata
 ```bash
 # Fast session storage for PHP/Python/Ruby apps
 mkdir -p /var/lib/sessions
-mount -t tmpfs -o size=512M,mode=0700,uid=apache,gid=apache tmpfs /var/lib/sessions
+mount -t tmpfs -o size=512M,mode=0700,uid=$(id -u apache),gid=$(id -g apache) tmpfs /var/lib/sessions
 ```
 
 ## Mount Options
@@ -127,9 +127,9 @@ mount -t tmpfs -o size=512M,mode=0700,uid=apache,gid=apache tmpfs /var/lib/sessi
 |--------|-------------|
 | `size=` | Maximum size (e.g., 2G, 512M) |
 | `mode=` | Permission mode (e.g., 1777, 0755) |
-| `uid=` | Owner user ID or name |
-| `gid=` | Owner group ID or name |
-| `noexec` | Prevent execution of binaries |
+| `uid=` | Owner user ID |
+| `gid=` | Owner group ID |
+| `noexec` | Prevent direct execution of binaries |
 | `nosuid` | Ignore SUID bits |
 | `nodev` | Ignore device files |
 | `noatime` | Skip access time updates |
@@ -167,7 +167,7 @@ dd if=/dev/zero of=/mnt/ramdisk/testfile bs=1M count=1024
 dd if=/dev/zero of=/data/testfile bs=1M count=1024 oflag=direct
 ```
 
-tmpfs is typically 10-100x faster than SSDs and 100-1000x faster than HDDs.
+tmpfs is often much faster than SSDs and HDDs for temporary write-heavy workloads, but the exact difference depends on the hardware, workload, RAM pressure, and whether swap is used.
 
 ## Memory Management
 
@@ -202,7 +202,7 @@ This is live and does not affect existing data.
 
 ```bash
 # Remove all data from tmpfs
-rm -rf /mnt/ramdisk/*
+find /mnt/ramdisk -mindepth 1 -delete
 
 # Unmount
 umount /mnt/ramdisk

@@ -25,17 +25,17 @@ grep "^permissive" /etc/fapolicyd/fapolicyd.conf
 
 ## Reading the Denial Logs
 
-fapolicyd logs all deny decisions to the system journal.
+The default fapolicyd rules generate audit events for denials. You can also review the service journal for fapolicyd messages.
 
 ```bash
-# View recent fapolicyd denials
-sudo journalctl -u fapolicyd --since "1 hour ago" | grep "deny"
-
-# Get more detail with audit logs
-sudo ausearch -m FANOTIFY --start recent
+# View recent fapolicyd audit denials
+sudo ausearch -ts recent -m fanotify
 
 # Filter for a specific binary path
-sudo journalctl -u fapolicyd | grep "/path/to/blocked/binary"
+sudo ausearch -ts recent -m fanotify | grep "/path/to/blocked/binary"
+
+# Review fapolicyd service messages
+sudo journalctl -u fapolicyd --since "1 hour ago"
 ```
 
 ## Temporarily Switching to Permissive Mode
@@ -51,7 +51,7 @@ sudo systemctl restart fapolicyd
 /path/to/blocked/binary
 
 # Review what was logged
-sudo journalctl -u fapolicyd --since "5 minutes ago"
+sudo ausearch -ts recent -m fanotify
 ```
 
 ## Common Causes and Fixes
@@ -70,7 +70,8 @@ sudo fapolicyd-cli --update
 **Binary was updated but trust database is stale:**
 
 ```bash
-# Refresh the trust database after package updates
+# Refresh the file trust entry after a trusted file changes
+sudo fapolicyd-cli --file update /path/to/binary
 sudo fapolicyd-cli --update
 sudo systemctl restart fapolicyd
 ```
@@ -79,7 +80,7 @@ sudo systemctl restart fapolicyd
 
 ```bash
 # Check if the denial is for a library, not the binary itself
-sudo journalctl -u fapolicyd | grep "deny" | grep ".so"
+sudo ausearch -ts recent -m fanotify | grep '\.so'
 
 # Add the library to trust
 sudo fapolicyd-cli --file add /path/to/library.so

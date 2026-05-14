@@ -39,8 +39,11 @@ sudo dnf install -y azure-cli
 
 # Log in to Azure
 az login
+export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+az vm image terms accept --urn RedHat:RHEL:9-lvm-gen2:latest
 
 # Install Terraform
+sudo dnf install -y dnf-plugins-core
 sudo dnf config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
 sudo dnf install -y terraform
 ```
@@ -55,7 +58,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.0"
     }
   }
 }
@@ -209,7 +212,7 @@ resource "azurerm_linux_virtual_machine" "rhel" {
     version   = "latest"
   }
 
-  # Accept the marketplace plan
+  # Provide the marketplace plan information
   plan {
     name      = "9-lvm-gen2"
     publisher = "redhat"

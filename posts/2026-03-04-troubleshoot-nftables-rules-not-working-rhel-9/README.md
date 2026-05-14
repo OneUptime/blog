@@ -34,18 +34,17 @@ journalctl -u nftables --no-pager -n 50
 
 ## Step 2: Check for firewalld Conflicts
 
-On RHEL, firewalld is enabled by default and it uses nftables as its backend. If firewalld is running alongside your custom nftables rules, they'll conflict.
+On RHEL, firewalld is enabled by default and it uses nftables as its backend. If firewalld is running alongside your custom nftables rules, both services can affect the same packets in ways that are hard to reason about.
 
 ```mermaid
 flowchart TD
     A[Traffic arrives] --> B{firewalld running?}
-    B -->|Yes| C[firewalld nftables rules evaluated first]
+    B -->|Yes| C[firewalld nftables rules active]
     B -->|No| D[Your custom nftables rules evaluated]
-    C --> E{Match?}
-    E -->|Yes| F[firewalld verdict]
-    E -->|No| G[Your custom rules evaluated]
-    G --> H[Your verdict]
+    C --> E[firewalld and custom base chains may both run]
+    E --> F[Combined verdict depends on hooks, priorities, and policies]
     D --> H
+    F --> H[Final packet decision]
 ```
 
 Check if firewalld is running:
@@ -118,11 +117,11 @@ nft list chain inet firewall input
 
 Look at the counter values. If a rule shows zero packets, traffic isn't reaching it.
 
-You can also add counters to every rule temporarily for debugging:
+You can also add counters to existing rules temporarily for debugging. List the rule handles, then replace each rule with the same expression plus `counter`:
 
 ```bash
-nft list ruleset | sed 's/accept/counter accept/g; s/drop/counter drop/g' > /tmp/debug-rules.nft
-nft -f /tmp/debug-rules.nft
+nft -a list chain inet firewall input
+nft replace rule inet firewall input handle <number> ip saddr 10.0.0.50 counter drop
 ```
 
 ## Step 6: Check for the Wrong Address Family
@@ -148,7 +147,8 @@ nftables has built-in packet tracing. Enable it for specific traffic to see exac
 Enable tracing for traffic from a specific IP:
 
 ```bash
-nft add rule inet firewall input ip saddr 10.0.0.50 meta nftrace set 1
+nft add chain inet firewall trace_chain { type filter hook prerouting priority -301 \; }
+nft add rule inet firewall trace_chain ip saddr 10.0.0.50 meta nftrace set 1
 ```
 
 Then monitor the trace output:
@@ -162,9 +162,7 @@ This shows you every rule the packet hits and the verdict at each step. It's the
 When you're done, remove the trace rule:
 
 ```bash
-nft -a list chain inet firewall input
-# Find the handle of the trace rule
-nft delete rule inet firewall input handle <number>
+nft delete chain inet firewall trace_chain
 ```
 
 ## Step 8: Check for SELinux Blocking

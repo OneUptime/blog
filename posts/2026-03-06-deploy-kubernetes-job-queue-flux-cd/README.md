@@ -16,7 +16,7 @@ Deploying Kueue with Flux CD gives you GitOps-managed job queues where quota pol
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.27 or later, Kueue requires recent versions)
+- A Kubernetes cluster (v1.29 or later, Kueue requires recent versions)
 - Flux CD installed and bootstrapped
 - kubectl access to the cluster
 
@@ -34,9 +34,13 @@ clusters/
         local-queues.yaml
         resource-flavors.yaml
         workload-priority.yaml
+        team-namespaces.yaml
+        kustomization.yaml
       examples/
         batch-job.yaml
       kustomization.yaml
+    kueue-kustomization.yaml
+    kueue-config-kustomization.yaml
 ```
 
 ## Step 1: Create the Namespace
@@ -59,13 +63,18 @@ Kueue can be installed from its official release manifests or via Helm.
 ```yaml
 # clusters/production/kueue/source.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+kind: OCIRepository
 metadata:
   name: kueue
   namespace: flux-system
 spec:
-  # Kueue Helm chart repository
-  url: https://kubernetes-sigs.github.io/kueue/charts
+  # Kueue Helm chart OCI repository
+  url: oci://registry.k8s.io/kueue/charts/kueue
+  ref:
+    semver: "0.17.x"
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
   interval: 1h
 ```
 
@@ -80,15 +89,10 @@ metadata:
   namespace: kueue-system
 spec:
   interval: 30m
-  chart:
-    spec:
-      chart: kueue
-      version: "0.x"
-      sourceRef:
-        kind: HelmRepository
-        name: kueue
-        namespace: flux-system
-      interval: 12h
+  chartRef:
+    kind: OCIRepository
+    name: kueue
+    namespace: flux-system
   install:
     createNamespace: false
     crds: CreateReplace
@@ -103,28 +107,14 @@ spec:
     # Controller manager configuration
     controllerManager:
       replicas: 2
-      resources:
-        requests:
-          cpu: 200m
-          memory: 256Mi
-        limits:
-          cpu: 500m
-          memory: 512Mi
-      # Manager configuration
       manager:
-        # Enable batch/job integration
-        integrations:
-          frameworks:
-            - "batch/job"
-            - "jobset.x-k8s.io/v1alpha2"
-        # Pod visibility for better resource tracking
-        podVisibilityOnDemand: true
-    # Webhook configuration
-    webhook:
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
 ```
 
 ## Step 4: Define Resource Flavors
@@ -133,7 +123,7 @@ Resource flavors describe the types of resources available in your cluster.
 
 ```yaml
 # clusters/production/kueue/config/resource-flavors.yaml
-apiVersion: kueue.x-k8s.io/v1beta1
+apiVersion: kueue.x-k8s.io/v1beta2
 kind: ResourceFlavor
 metadata:
   name: default-flavor
@@ -148,7 +138,7 @@ spec:
       value: "general"
       effect: "NoSchedule"
 ---
-apiVersion: kueue.x-k8s.io/v1beta1
+apiVersion: kueue.x-k8s.io/v1beta2
 kind: ResourceFlavor
 metadata:
   name: gpu-flavor
@@ -162,7 +152,7 @@ spec:
       operator: "Exists"
       effect: "NoSchedule"
 ---
-apiVersion: kueue.x-k8s.io/v1beta1
+apiVersion: kueue.x-k8s.io/v1beta2
 kind: ResourceFlavor
 metadata:
   name: spot-flavor
@@ -184,7 +174,7 @@ Cluster queues define the total resource capacity available for batch workloads.
 
 ```yaml
 # clusters/production/kueue/config/cluster-queue.yaml
-apiVersion: kueue.x-k8s.io/v1beta1
+apiVersion: kueue.x-k8s.io/v1beta2
 kind: ClusterQueue
 metadata:
   name: production-cluster-queue
@@ -194,7 +184,7 @@ spec:
     reclaimWithinCohort: Any
     withinClusterQueue: LowerPriority
   # Cohort groups cluster queues that can borrow from each other
-  cohort: production
+  cohortName: production
   # Queueing strategy: BestEffortFIFO or StrictFIFO
   queueingStrategy: BestEffortFIFO
   # Namespace selector restricts which namespaces can use this queue
@@ -228,7 +218,7 @@ spec:
               borrowingLimit: 4
 ---
 # Separate cluster queue for low-priority batch jobs
-apiVersion: kueue.x-k8s.io/v1beta1
+apiVersion: kueue.x-k8s.io/v1beta2
 kind: ClusterQueue
 metadata:
   name: batch-cluster-queue
@@ -236,7 +226,7 @@ spec:
   preemption:
     reclaimWithinCohort: Any
     withinClusterQueue: LowerPriority
-  cohort: production
+  cohortName: production
   queueingStrategy: BestEffortFIFO
   namespaceSelector:
     matchLabels:
@@ -261,7 +251,7 @@ Local queues are namespace-scoped and point to a cluster queue.
 
 ```yaml
 # clusters/production/kueue/config/local-queues.yaml
-apiVersion: kueue.x-k8s.io/v1beta1
+apiVersion: kueue.x-k8s.io/v1beta2
 kind: LocalQueue
 metadata:
   name: team-a-queue
@@ -270,7 +260,7 @@ spec:
   # Reference the cluster queue this local queue belongs to
   clusterQueue: production-cluster-queue
 ---
-apiVersion: kueue.x-k8s.io/v1beta1
+apiVersion: kueue.x-k8s.io/v1beta2
 kind: LocalQueue
 metadata:
   name: team-b-queue
@@ -278,7 +268,7 @@ metadata:
 spec:
   clusterQueue: production-cluster-queue
 ---
-apiVersion: kueue.x-k8s.io/v1beta1
+apiVersion: kueue.x-k8s.io/v1beta2
 kind: LocalQueue
 metadata:
   name: batch-queue
@@ -294,30 +284,27 @@ Define priority classes to control job scheduling order.
 
 ```yaml
 # clusters/production/kueue/config/workload-priority.yaml
-apiVersion: kueue.x-k8s.io/v1beta1
+apiVersion: kueue.x-k8s.io/v1beta2
 kind: WorkloadPriorityClass
 metadata:
   name: high-priority
-spec:
-  # Higher value means higher priority
-  value: 1000
-  description: "High priority jobs that should be scheduled first"
+# Higher value means higher priority
+value: 1000
+description: "High priority jobs that should be scheduled first"
 ---
-apiVersion: kueue.x-k8s.io/v1beta1
+apiVersion: kueue.x-k8s.io/v1beta2
 kind: WorkloadPriorityClass
 metadata:
   name: normal-priority
-spec:
-  value: 500
-  description: "Normal priority for standard batch jobs"
+value: 500
+description: "Normal priority for standard batch jobs"
 ---
-apiVersion: kueue.x-k8s.io/v1beta1
+apiVersion: kueue.x-k8s.io/v1beta2
 kind: WorkloadPriorityClass
 metadata:
   name: low-priority
-spec:
-  value: 100
-  description: "Low priority jobs that run when resources are available"
+value: 100
+description: "Low priority jobs that run when resources are available"
 ```
 
 ## Step 8: Create Example Batch Jobs
@@ -428,10 +415,32 @@ metadata:
     purpose: batch
 ```
 
-## Step 10: Create the Flux Kustomization
+## Step 10: Create the Kustomize and Flux Kustomizations
 
 ```yaml
 # clusters/production/kueue/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - source.yaml
+  - release.yaml
+```
+
+```yaml
+# clusters/production/kueue/config/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - team-namespaces.yaml
+  - resource-flavors.yaml
+  - cluster-queue.yaml
+  - local-queues.yaml
+  - workload-priority.yaml
+```
+
+```yaml
+# clusters/production/kueue-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -449,6 +458,22 @@ spec:
       kind: Deployment
       name: kueue-controller-manager
       namespace: kueue-system
+  timeout: 10m
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: kueue-config
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./clusters/production/kueue/config
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: kueue
   timeout: 10m
 ```
 

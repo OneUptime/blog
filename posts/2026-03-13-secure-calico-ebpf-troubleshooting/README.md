@@ -22,7 +22,7 @@ The security model for eBPF troubleshooting tools should be: authorized on-call 
 
 ## Security Control 1: RBAC for Troubleshooting Access
 
-Kubernetes `PolicyRule` does not have a `namespaces` field — to scope permissions to specific namespaces you either use a `Role` (namespace-scoped) or a `ClusterRole` bound via a `RoleBinding` in the target namespace. We split the permissions so cluster-wide read-only access to Calico CRDs uses a `ClusterRole`, while exec and pod management permissions are scoped per-namespace.
+Kubernetes `PolicyRule` does not have a `namespaces` field - to scope permissions to specific namespaces you either use a `Role` (namespace-scoped) or a `ClusterRole` bound via a `RoleBinding` in the target namespace. We split the permissions so cluster-wide read-only access to Calico CRDs uses a `ClusterRole`, while exec and pod management permissions are scoped per-namespace.
 
 ```yaml
 # calico-ebpf-troubleshoot-role.yaml

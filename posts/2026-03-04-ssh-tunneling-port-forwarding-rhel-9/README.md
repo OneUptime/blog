@@ -43,7 +43,7 @@ Now connect to `localhost:5432` on your workstation, and the traffic goes throug
 ssh -L 8080:localhost:9090 admin@server.example.com
 ```
 
-Open `http://localhost:8080` in your browser to access the Cockpit panel running on port 9090 on the remote server.
+Open `https://localhost:8080` in your browser to access the Cockpit panel running on port 9090 on the remote server.
 
 ### Forward to a different host on the remote network
 

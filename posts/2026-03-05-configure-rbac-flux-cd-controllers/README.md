@@ -8,9 +8,9 @@ Description: Learn how to configure Role-Based Access Control (RBAC) for Flux CD
 
 ---
 
-Flux CD deploys several controllers into your Kubernetes cluster, each responsible for different reconciliation tasks. By default, these controllers run with broad permissions. In production environments, you should configure RBAC to limit what each controller can do, following the principle of least privilege.
+Flux CD deploys several controllers into your Kubernetes cluster, each responsible for different reconciliation tasks. By default, Kustomization and HelmRelease reconciliation runs with broad permissions through the controller service accounts. In production environments, you should configure RBAC to limit what each reconciliation can do, following the principle of least privilege.
 
-This guide walks you through configuring RBAC for Flux CD controllers, including creating custom ClusterRoles, ClusterRoleBindings, and scoping permissions per controller.
+This guide walks you through configuring RBAC for Flux CD controllers, including creating custom Roles, RoleBindings, and scoping permissions with service account impersonation.
 
 ## Understanding Flux CD Controllers
 
@@ -30,30 +30,38 @@ Each controller has a corresponding service account in the `flux-system` namespa
 Before customizing RBAC, inspect the existing roles and bindings that Flux installs.
 
 ```bash
-# List all ClusterRoles related to Flux
+# List all ClusterRoles installed by Flux
+kubectl get clusterroles -l app.kubernetes.io/part-of=flux
 
-kubectl get clusterroles | grep flux
+# List all ClusterRoleBindings installed by Flux
+kubectl get clusterrolebindings -l app.kubernetes.io/part-of=flux
 
-# List all ClusterRoleBindings related to Flux
-kubectl get clusterrolebindings | grep flux
-
-# Inspect a specific ClusterRole
-kubectl describe clusterrole kustomize-controller
+# Inspect the ClusterRoles and ClusterRoleBindings used by Flux
+kubectl describe clusterrole crd-controller
+kubectl describe clusterrolebinding cluster-reconciler
+kubectl describe clusterrolebinding crd-controller
 ```
 
-## Creating a Custom ClusterRole for Kustomize Controller
+## Creating a Custom Role for Kustomize Controller
 
-The kustomize-controller is the most powerful controller because it applies arbitrary Kubernetes manifests. You should restrict what resource types it can manage.
+The kustomize-controller is powerful because it applies arbitrary Kubernetes manifests. You should restrict what resource types each Kustomization can manage by reconciling it under a dedicated service account.
 
-The following ClusterRole limits the kustomize-controller to managing only Deployments, Services, ConfigMaps, and Secrets:
+The following Role limits a Kustomization in the `apps` namespace to managing only Deployments, Services, ConfigMaps, and Secrets:
 
 ```yaml
-# clusterrole-kustomize-restricted.yaml
-# Restricts kustomize-controller to only manage common workload resources
+# role-kustomize-restricted.yaml
+# Restricts Kustomization reconciliation to only manage common workload resources
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flux-kustomize-reconciler
+  namespace: apps
+---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
   name: flux-kustomize-restricted
+  namespace: apps
 rules:
   # Allow managing Deployments
   - apiGroups: ["apps"]
@@ -71,48 +79,61 @@ rules:
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  # Allow reading namespaces (required for reconciliation)
-  - apiGroups: [""]
-    resources: ["namespaces"]
-    verbs: ["get", "list", "watch"]
-  # Allow managing Flux Kustomization status
-  - apiGroups: ["kustomize.toolkit.fluxcd.io"]
-    resources: ["kustomizations", "kustomizations/status"]
-    verbs: ["get", "list", "watch", "update", "patch"]
 ```
 
-## Binding the ClusterRole to the Controller Service Account
+## Binding the Role to the Reconciliation Service Account
 
-Create a ClusterRoleBinding that associates the restricted ClusterRole with the kustomize-controller service account:
+Create a RoleBinding that associates the restricted Role with the service account that the Kustomization will impersonate:
 
 ```yaml
-# clusterrolebinding-kustomize-restricted.yaml
-# Binds the restricted ClusterRole to the kustomize-controller service account
+# rolebinding-kustomize-restricted.yaml
+# Binds the restricted Role to the Kustomization impersonation service account
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
   name: flux-kustomize-restricted
+  namespace: apps
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
+  kind: Role
   name: flux-kustomize-restricted
 subjects:
   - kind: ServiceAccount
-    name: kustomize-controller
-    namespace: flux-system
+    name: flux-kustomize-reconciler
+    namespace: apps
 ```
 
-## Creating a ClusterRole for Helm Controller
-
-The helm-controller needs permissions to manage Helm releases and the resources they create:
+Then set `.spec.serviceAccountName` on the Kustomization that should run with these permissions:
 
 ```yaml
-# clusterrole-helm-restricted.yaml
-# Restricts helm-controller to manage Helm-related resources
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: apps
+  namespace: apps
+spec:
+  serviceAccountName: flux-kustomize-reconciler
+  # other fields omitted
+```
+
+## Creating a Role for Helm Controller
+
+The helm-controller can also impersonate a service account for each HelmRelease. Create a Role and RoleBinding in the namespace where the Helm release is reconciled:
+
+```yaml
+# role-helm-restricted.yaml
+# Restricts HelmRelease reconciliation to common namespaced resources
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flux-helm-reconciler
+  namespace: apps
+---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
   name: flux-helm-restricted
+  namespace: apps
 rules:
   # Allow managing Deployments, StatefulSets, DaemonSets
   - apiGroups: ["apps"]
@@ -126,29 +147,55 @@ rules:
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["roles", "rolebindings"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  # Allow managing HelmRelease status
-  - apiGroups: ["helm.toolkit.fluxcd.io"]
-    resources: ["helmreleases", "helmreleases/status"]
-    verbs: ["get", "list", "watch", "update", "patch"]
-  # Allow reading HelmCharts from source-controller
-  - apiGroups: ["source.toolkit.fluxcd.io"]
-    resources: ["helmcharts", "helmcharts/status"]
-    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: flux-helm-restricted
+  namespace: apps
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: flux-helm-restricted
+subjects:
+  - kind: ServiceAccount
+    name: flux-helm-reconciler
+    namespace: apps
 ```
 
-## Creating a ClusterRole for Source Controller
-
-The source-controller needs minimal cluster-level permissions since it primarily manages its own CRDs:
+Set `.spec.serviceAccountName` on the HelmRelease that should run with these permissions:
 
 ```yaml
-# clusterrole-source-restricted.yaml
-# Restricts source-controller to managing source CRDs only
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
 metadata:
-  name: flux-source-restricted
+  name: app
+  namespace: apps
+spec:
+  serviceAccountName: flux-helm-reconciler
+  # other fields omitted
+```
+
+## Creating a Role for Source Controller
+
+The source-controller primarily reconciles Flux source objects and stores artifacts. Avoid replacing the default `crd-controller` binding unless you have audited all source-controller requirements for your Flux version. To limit who can create or update sources in an application namespace, grant access to the source CRDs with namespace-scoped RBAC:
+
+```yaml
+# role-source-writer.yaml
+# Allows managing Flux source objects in the apps namespace
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flux-source-writer
+  namespace: apps
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: flux-source-writer
+  namespace: apps
 rules:
-  # Allow managing all source CRDs
+  # Allow managing source CRDs in this namespace
   - apiGroups: ["source.toolkit.fluxcd.io"]
     resources: ["*"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
@@ -156,33 +203,40 @@ rules:
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get", "list", "watch"]
-  # Allow reading namespaces
-  - apiGroups: [""]
-    resources: ["namespaces"]
-    verbs: ["get", "list", "watch"]
-  # Allow creating events
-  - apiGroups: [""]
-    resources: ["events"]
-    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: flux-source-writer
+  namespace: apps
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: flux-source-writer
+subjects:
+  - kind: ServiceAccount
+    name: flux-source-writer
+    namespace: apps
 ```
 
 ## Applying the Custom RBAC Configuration
 
-Apply the custom RBAC resources and remove the default broad permissions:
+Apply the custom RBAC resources and configure Flux workloads to impersonate the restricted service accounts:
 
 ```bash
-# Apply the custom ClusterRoles and ClusterRoleBindings
-kubectl apply -f clusterrole-kustomize-restricted.yaml
-kubectl apply -f clusterrolebinding-kustomize-restricted.yaml
-kubectl apply -f clusterrole-helm-restricted.yaml
-kubectl apply -f clusterrole-source-restricted.yaml
+# Apply the custom Roles and RoleBindings
+kubectl apply -f role-kustomize-restricted.yaml
+kubectl apply -f rolebinding-kustomize-restricted.yaml
+kubectl apply -f role-helm-restricted.yaml
+kubectl apply -f role-source-writer.yaml
 
-# Remove the default cluster-admin binding if it exists
-kubectl delete clusterrolebinding flux-kustomize-controller --ignore-not-found
-kubectl delete clusterrolebinding flux-helm-controller --ignore-not-found
+# In multi-tenant clusters, enforce impersonation on kustomize-controller and helm-controller
+# with the --default-service-account flag during Flux bootstrap or controller customization.
+# Do not delete the cluster-reconciler binding unless your platform-admin Kustomizations
+# and HelmReleases have been moved to explicit service accounts with the required permissions.
 
-# Verify the new bindings
-kubectl get clusterrolebindings | grep flux
+# Verify the new namespace-scoped bindings
+kubectl get rolebindings -n apps
 ```
 
 ## Verifying RBAC is Working
@@ -200,8 +254,8 @@ kubectl logs -n flux-system deployment/helm-controller | grep -i "forbidden\|una
 flux reconcile kustomization flux-system
 
 # Use kubectl auth to verify what the service account can do
-kubectl auth can-i create deployments --as=system:serviceaccount:flux-system:kustomize-controller
-kubectl auth can-i create clusterroles --as=system:serviceaccount:flux-system:kustomize-controller
+kubectl auth can-i create deployments -n apps --as=system:serviceaccount:apps:flux-kustomize-reconciler
+kubectl auth can-i create clusterroles --as=system:serviceaccount:apps:flux-kustomize-reconciler
 ```
 
 ## Best Practices

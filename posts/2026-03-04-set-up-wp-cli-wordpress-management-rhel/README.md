@@ -32,7 +32,7 @@ wp --info
 
 ```bash
 # Download the completion script
-curl -O https://raw.githubusercontent.com/wp-cli/wp-cli/v2.9.0/utils/wp-completion.bash
+curl -O https://raw.githubusercontent.com/wp-cli/wp-cli/master/utils/wp-completion.bash
 
 # Install it
 sudo mv wp-completion.bash /etc/bash_completion.d/wp-cli
@@ -71,7 +71,7 @@ wp plugin delete hello
 # List all users
 wp user list
 
-# Create a new admin user
+# Create a new editor user
 wp user create editor editor@example.com --role=editor --user_pass=SecurePass123
 
 # Reset a user password
@@ -102,7 +102,7 @@ wp db optimize
 
 ```bash
 # Create an update script
-cat > /opt/wp-update.sh << 'SCRIPT'
+sudo tee /opt/wp-update.sh > /dev/null << 'SCRIPT'
 #!/bin/bash
 cd /var/www/html
 wp core update --quiet
@@ -111,7 +111,9 @@ wp theme update --all --quiet
 wp cache flush
 SCRIPT
 
-chmod +x /opt/wp-update.sh
+sudo chmod +x /opt/wp-update.sh
+sudo touch /var/log/wp-update.log
+sudo chown apache:apache /var/log/wp-update.log
 
 # Schedule weekly updates (as the web server user)
 sudo -u apache crontab -e

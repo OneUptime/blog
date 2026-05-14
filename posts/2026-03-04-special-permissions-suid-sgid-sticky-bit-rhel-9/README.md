@@ -132,7 +132,7 @@ flowchart TD
     A --> C["bob creates style.css"]
     B --> D["file.html owned by alice:webteam"]
     C --> E["style.css owned by bob:webteam"]
-    D --> F["Both alice and bob can edit both files"]
+    D --> F["Both files keep the webteam group"]
     E --> F
 ```
 

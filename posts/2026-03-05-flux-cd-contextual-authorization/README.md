@@ -22,7 +22,7 @@ Flux achieves this through a combination of service account impersonation, sourc
 
 ## Step 1: Map Git Sources to Service Accounts
 
-Create separate GitRepository sources for each team, each mapped to a dedicated service account:
+Create separate GitRepository sources for each team. The dedicated service account is bound later on the Kustomization that reconciles the source:
 
 ```yaml
 # team-sources.yaml
@@ -231,6 +231,8 @@ rules:
 
 Add a policy layer that enforces contextual rules beyond RBAC:
 
+Apply the ConstraintTemplate first, then apply the Constraint after Gatekeeper creates the `K8sTeamOwnership` CRD:
+
 ```yaml
 # contextual-gatekeeper-policy.yaml
 # Ensure resources in a namespace match the team label
@@ -246,9 +248,6 @@ spec:
       validation:
         openAPIV3Schema:
           type: object
-          properties:
-            team:
-              type: string
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -256,12 +255,23 @@ spec:
 
         violation[{"msg": msg}] {
           ns := input.review.object.metadata.namespace
-          ns_labels := data.inventory.cluster.v1.Namespace[ns].metadata.labels
+          ns != ""
+          ns_labels := object.get(input.review.namespaceObject.metadata, "labels", {})
           required_team := ns_labels["team"]
-          resource_team := input.review.object.metadata.labels["team"]
+          required_team != ""
+          resource_labels := object.get(input.review.object.metadata, "labels", {})
+          resource_team := object.get(resource_labels, "team", "")
           required_team != resource_team
           msg := sprintf("Resource team label '%v' does not match namespace team '%v'", [resource_team, required_team])
         }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sTeamOwnership
+metadata:
+  name: resources-match-namespace-team
+spec:
+  match:
+    scope: Namespaced
 ```
 
 ## Step 6: Verify Contextual Authorization

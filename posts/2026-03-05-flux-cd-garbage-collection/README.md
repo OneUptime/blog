@@ -52,11 +52,11 @@ spec:
     name: my-repo
 ```
 
-When `spec.prune` is set to `false` (the default), Flux will not remove resources that are no longer present in the source. This is the safer option for initial setup and testing.
+When `spec.prune` is set to `false`, Flux will not remove resources that are no longer present in the source. This is the safer option for initial setup and testing.
 
 ## How Flux Tracks Managed Resources
 
-Flux uses labels and an inventory to track which resources it manages. When Flux applies a resource, it adds a set of labels and annotations to mark ownership:
+Flux uses labels and an inventory to track which resources it manages. When Flux applies a resource, it adds a set of labels to mark ownership:
 
 ```yaml
 # Labels Flux adds to managed resources
@@ -74,11 +74,11 @@ Flux also maintains an inventory in the Kustomization status that records all re
 status:
   inventory:
     entries:
-      - id: my-app_default_apps_Deployment
+      - id: default_my-app_apps_Deployment
         v: v1
-      - id: my-app-svc_default__Service
+      - id: default_my-app-svc__Service
         v: v1
-      - id: my-app-config_default__ConfigMap
+      - id: default_my-app-config__ConfigMap
         v: v1
 ```
 
@@ -96,7 +96,7 @@ flowchart TD
     D --> E{Resources in inventory but not in manifests?}
     E -->|No| F[Apply manifests normally]
     E -->|Yes| G{spec.prune enabled?}
-    G -->|No| H[Log warning, skip deletion]
+    G -->|No| H[Skip deletion]
     G -->|Yes| I[Delete orphaned resources]
     I --> J[Update inventory]
     F --> J
@@ -149,12 +149,12 @@ spec:
     name: my-repo
 ```
 
-### Use Force for Stuck Resources
+### Use Force for Immutable Field Changes
 
-Sometimes garbage collection can fail if a resource has a finalizer that is stuck. You can use `spec.force` to handle this:
+Sometimes reconciliation can fail when a resource has immutable field changes, such as a changed Deployment selector. You can temporarily use `spec.force` to let Flux replace those resources:
 
 ```yaml
-# Force apply can help with stuck resources
+# Force apply can help with immutable field changes
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -164,7 +164,7 @@ spec:
   interval: 10m
   path: ./deploy
   prune: true
-  # Force apply - use with caution
+  # Force apply - use temporarily and with caution
   force: true
   sourceRef:
     kind: GitRepository
@@ -227,7 +227,7 @@ kubectl get kustomization my-app -n flux-system -o jsonpath='{.status.inventory.
 kubectl events -n flux-system --for kustomization/my-app
 
 # Use the Flux CLI to see reconciliation details
-flux get kustomization my-app
+flux get kustomizations my-app
 ```
 
 ## Common Pitfalls

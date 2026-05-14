@@ -50,7 +50,7 @@ cd fleet-infra
 
 ### Step 3: Add Patches to kustomization.yaml
 
-Edit the `flux-system/kustomization.yaml` file to include your patches.
+Edit the `clusters/production/flux-system/kustomization.yaml` file to include your patches.
 
 ```yaml
 # clusters/production/flux-system/kustomization.yaml
@@ -64,7 +64,7 @@ patches:
   # Add resource limits to all Flux controllers
   - target:
       kind: Deployment
-      namespace: flux-system
+      labelSelector: "app.kubernetes.io/part-of=flux"
     patch: |
       apiVersion: apps/v1
       kind: Deployment
@@ -104,7 +104,7 @@ Control the CPU and memory allocated to Flux controllers.
 patches:
   - target:
       kind: Deployment
-      namespace: flux-system
+      labelSelector: "app.kubernetes.io/part-of=flux"
     patch: |
       apiVersion: apps/v1
       kind: Deployment
@@ -133,7 +133,7 @@ Schedule Flux controllers on specific nodes, such as infrastructure nodes.
 patches:
   - target:
       kind: Deployment
-      namespace: flux-system
+      labelSelector: "app.kubernetes.io/part-of=flux"
     patch: |
       apiVersion: apps/v1
       kind: Deployment
@@ -160,7 +160,7 @@ Allow Flux controllers to run on tainted nodes.
 patches:
   - target:
       kind: Deployment
-      namespace: flux-system
+      labelSelector: "app.kubernetes.io/part-of=flux"
     patch: |
       apiVersion: apps/v1
       kind: Deployment
@@ -184,7 +184,7 @@ Apply labels for monitoring, cost allocation, or organizational purposes.
 patches:
   - target:
       kind: Deployment
-      namespace: flux-system
+      labelSelector: "app.kubernetes.io/part-of=flux"
     patch: |
       apiVersion: apps/v1
       kind: Deployment
@@ -212,7 +212,7 @@ Ensure Flux controllers get scheduling priority over regular workloads.
 patches:
   - target:
       kind: Deployment
-      namespace: flux-system
+      labelSelector: "app.kubernetes.io/part-of=flux"
     patch: |
       apiVersion: apps/v1
       kind: Deployment
@@ -261,7 +261,7 @@ Inject environment variables into controllers, such as proxy settings or custom 
 patches:
   - target:
       kind: Deployment
-      namespace: flux-system
+      labelSelector: "app.kubernetes.io/part-of=flux"
     patch: |
       apiVersion: apps/v1
       kind: Deployment
@@ -281,7 +281,7 @@ patches:
 
 ### Increase Replica Count
 
-Run multiple replicas of controllers for high availability.
+Run an additional replica of a controller for leader-election failover.
 
 ```yaml
 # Replica count patch - run source-controller with 2 replicas
@@ -340,7 +340,7 @@ patches:
   - path: resource-limits-patch.yaml
     target:
       kind: Deployment
-      namespace: flux-system
+      labelSelector: "app.kubernetes.io/part-of=flux"
 ```
 
 ## Combining Multiple Patches
@@ -360,7 +360,7 @@ patches:
   - path: resource-limits-patch.yaml
     target:
       kind: Deployment
-      namespace: flux-system
+      labelSelector: "app.kubernetes.io/part-of=flux"
   # Extra memory for source-controller
   - path: source-controller-memory-patch.yaml
     target:
@@ -370,7 +370,7 @@ patches:
   # Node affinity for all controllers
   - target:
       kind: Deployment
-      namespace: flux-system
+      labelSelector: "app.kubernetes.io/part-of=flux"
     patch: |
       apiVersion: apps/v1
       kind: Deployment

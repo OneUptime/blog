@@ -18,7 +18,7 @@ This guide walks you through creating a HelmRepository source in Flux CD, coveri
 
 Before you begin, make sure you have:
 
-- A running Kubernetes cluster (v1.26 or later recommended)
+- A running Kubernetes cluster supported by your Flux version
 - Flux CD installed on the cluster (v2.x)
 - kubectl configured to access the cluster
 - A Helm chart repository URL (public or private)
@@ -37,7 +37,7 @@ The HelmRepository custom resource belongs to the `source.toolkit.fluxcd.io/v1` 
 
 Key fields in the HelmRepository spec include:
 
-- **spec.url** -- The URL of the Helm chart repository index
+- **spec.url** -- The URL of the Helm chart repository
 - **spec.interval** -- How often Flux should check the repository for updates
 - **spec.timeout** -- Maximum time allowed for fetching the repository index
 - **spec.provider** -- Cloud provider for authentication (generic, aws, azure, gcp)
@@ -216,4 +216,4 @@ kubectl delete helmrepository -n flux-system bitnami
 
 ## Summary
 
-Creating a HelmRepository source in Flux CD is the foundation for managing Helm charts through GitOps. By declaring your chart repositories as Kubernetes resources, you gain version control, auditability, and automated reconciliation. Start by defining a simple HelmRepository with a URL and interval, then build on it with authentication and OCI support as your needs grow.
+Creating a HelmRepository source in Flux CD is the foundation for managing Helm charts through GitOps. By declaring your chart repositories as Kubernetes resources, you gain version control, auditability, and automated reconciliation. Start by defining a simple HelmRepository with a URL and interval, then build on it with authentication as your needs grow. For OCI Helm charts, Flux recommends using the OCIRepository API for improved support.

@@ -36,7 +36,7 @@ The three phases are:
 
 ## Finding the Slowest Services
 
-The `blame` subcommand ranks every unit by how long it took to start, slowest first.
+The `blame` subcommand ranks measured units by how long they spent starting, slowest first.
 
 ```bash
 # List services sorted by startup time (slowest first)
@@ -57,11 +57,11 @@ Output looks like:
 
 A few things to keep in mind:
 - Services that start in parallel do not necessarily add to your total boot time. Two services that each take 3 seconds but run simultaneously only add 3 seconds, not 6.
-- `NetworkManager-wait-online.service` is almost always at the top. It waits for a network connection, and on servers with slow DHCP or multiple interfaces, it can take a while. More on this later.
+- `NetworkManager-wait-online.service` is a common item near the top. It waits for NetworkManager startup to complete before `network-online.target` is reached, and on servers with slow DHCP, missing carrier, or multiple interfaces, it can take a while. More on this later.
 
 ## Understanding the Critical Chain
 
-The `blame` list shows wall clock time per service, but it does not show dependencies. The `critical-chain` subcommand shows the actual chain of units that determined your boot time, similar to finding the critical path in project management.
+The `blame` list shows startup time per measured unit, but it does not show dependencies. The `critical-chain` subcommand shows the time-critical chain of units leading to the default target, similar to finding the critical path in project management.
 
 ```bash
 # Show the critical chain of dependencies that determined boot time
@@ -82,7 +82,7 @@ graphical.target @8.103s
               └─...
 ```
 
-The `@` time is when the unit started (relative to boot), and the `+` time is how long it took. This tells you the actual bottleneck chain. In this example, `firewalld` took 2.4 seconds, then `NetworkManager` started, then `NetworkManager-wait-online` spent nearly 5 seconds waiting.
+The `@` time is when the unit became active or started (relative to boot), and the `+` time is how long it took. This helps identify the likely bottleneck chain, though socket activation, parallel startup, and jobs that timed out can make the output incomplete. In this example, `firewalld` took 2.4 seconds, then `NetworkManager` started, then `NetworkManager-wait-online` spent nearly 5 seconds waiting.
 
 You can also check the critical chain for a specific target:
 
@@ -100,7 +100,7 @@ This is my favorite feature. You can generate an SVG image showing every service
 systemd-analyze plot > /tmp/boot-chart.svg
 ```
 
-Transfer the file to your workstation and open it in a browser. You will see a Gantt-style chart where each service is a horizontal bar. Services that started in parallel are stacked vertically. The critical path stands out because it is the longest unbroken chain from left to right.
+Transfer the file to your workstation and open it in a browser. You will see a Gantt-style chart where each service is a horizontal bar. Services that started in parallel are stacked vertically, and long-running units or startup gaps are easy to spot.
 
 This is especially useful when presenting to management or when you need to justify why a particular service should be disabled or optimized.
 
@@ -124,7 +124,7 @@ flowchart TD
 
 ### NetworkManager-wait-online
 
-This is the number one offender on almost every RHEL system. It blocks the `network-online.target`, and many services depend on having a network connection.
+This is a common offender on RHEL systems. It delays `network-online.target` until NetworkManager reports startup complete, and many services depend on having a network connection.
 
 If your server has a static IP and you know the network will be up quickly:
 
@@ -166,10 +166,10 @@ cat /etc/fstab
 Some services do not need to start at boot. You can disable them and start them later or on-demand:
 
 ```bash
-# Disable a service that does not need to start at boot
+# Disable a timer that does not need to start at boot
 sudo systemctl disable dnf-makecache.timer
 
-# Or mask it to prevent any activation
+# Or mask it to prevent timer activation
 sudo systemctl mask dnf-makecache.timer
 ```
 
@@ -178,7 +178,7 @@ sudo systemctl mask dnf-makecache.timer
 `systemd-analyze` can also check your unit files for errors:
 
 ```bash
-# Check all unit files for potential issues
+# Check local service unit files for potential issues
 systemd-analyze verify /etc/systemd/system/*.service
 ```
 
@@ -200,7 +200,7 @@ Run this after each reboot and you will have a history of how your boot performa
 You can also profile how long a specific service takes during startup:
 
 ```bash
-# Show detailed timing for a specific service
+# Show recorded startup timing for a specific service
 systemd-analyze blame | grep sshd
 
 # Check what a service is waiting for

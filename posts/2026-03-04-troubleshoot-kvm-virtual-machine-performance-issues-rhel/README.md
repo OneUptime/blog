@@ -47,8 +47,8 @@ top -p $(pgrep -d, -f qemu)
 sudo virsh vcpupin rhel9-vm
 
 # Check for CPU overcommitment
-# Total vCPUs across all VMs vs physical cores
-echo "Physical CPUs: $(nproc)"
+# Total vCPUs across all VMs vs host logical CPUs
+echo "Host logical CPUs: $(nproc)"
 for vm in $(sudo virsh list --name); do
     echo "$vm: $(sudo virsh vcpucount $vm --current) vCPUs"
 done
@@ -65,7 +65,7 @@ vmstat 1 5
 cat /sys/kernel/mm/ksm/pages_shared
 cat /sys/kernel/mm/ksm/pages_sharing
 
-# Check balloon driver status inside the VM
+# Check balloon driver statistics from the host
 sudo virsh dommemstat rhel9-vm | grep balloon
 
 # Check for memory overcommitment
@@ -89,7 +89,8 @@ sudo virsh dumpxml rhel9-vm | grep -A3 '<disk' | grep bus
 
 # Check disk cache mode
 sudo virsh dumpxml rhel9-vm | grep -A5 '<driver' | grep cache
-# Recommended: cache='none' or cache='writeback' for best performance
+# For intensive I/O, cache='none' is usually the safest high-performance choice.
+# cache='writeback' can improve performance over writethrough, but can lose data on host failure.
 
 # Inside the guest, check I/O wait
 top
@@ -124,7 +125,8 @@ sudo tuned-adm profile virtual-guest
 # Enable I/O threading for the VM
 sudo virsh edit rhel9-vm
 # Add: <iothreads>2</iothreads>
-# Map disks to iothreads for better I/O performance
+# Map a disk to one IOThread in its driver element, for example:
+# <driver name='qemu' type='raw' cache='none' io='native' iothread='1'/>
 ```
 
 Always check the host first before investigating inside the guest. An overloaded host affects all VMs. Use virtio drivers, proper tuned profiles, and avoid overcommitting resources beyond what your workload can tolerate.

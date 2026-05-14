@@ -19,11 +19,11 @@ This guide covers the fundamentals of creating and configuring a Bucket source i
 - Flux CD v2.0 or later installed on your cluster
 - `kubectl` access to the cluster running Flux
 - An object storage bucket containing your Kubernetes manifests
-- Credentials to access the bucket
+- Credentials to access the bucket, unless it is publicly readable
 
 ## How Bucket Sources Work
 
-The Flux source-controller periodically checks the bucket for changes by computing a checksum of the bucket contents. When a change is detected, it downloads the updated files and makes them available to Kustomization or HelmRelease resources.
+The Flux source-controller periodically checks the bucket for changes by compiling a list of object keys and ETags, then computing a digest that becomes the artifact revision. When a change is detected, it downloads the matching objects, archives them as an artifact, and makes them available to Kustomization or HelmRelease resources.
 
 ```mermaid
 flowchart LR
@@ -96,7 +96,7 @@ flux get sources bucket -n flux-system
 
 ## Configuring the Bucket Path
 
-By default, Flux downloads all files from the bucket root. You can use the `prefix` field to limit which files are downloaded, filtering by key prefix.
+By default, Flux downloads files from the bucket root, subject to its default exclusion rules. You can use the `prefix` field to limit which files are downloaded, filtering by key prefix.
 
 ```yaml
 # flux-system/bucket-source-prefix.yaml
@@ -237,7 +237,7 @@ kubectl describe bucket my-app -n flux-system
 kubectl logs -n flux-system deployment/source-controller | grep -i bucket
 ```
 
-A healthy Bucket source will show "Ready" status with an artifact revision based on the content checksum.
+A healthy Bucket source will show "Ready" status with an artifact revision based on the digest of object keys and ETags.
 
 ## Suspending and Resuming
 

@@ -56,7 +56,7 @@ network --bootproto=static --device=ens192 --ip=192.168.1.100 --netmask=255.255.
 # For DHCP instead, use:
 # network --bootproto=dhcp --device=ens192 --hostname=server01.example.com --activate
 
-# Root password (encrypted) - generate with: python3 -c 'import crypt; print(crypt.crypt("YourPassword", crypt.mksalt(crypt.METHOD_SHA512)))'
+# Root password (encrypted) - generate with: openssl passwd -6
 rootpw --iscrypted $6$rounds=4096$randomsalt$hashedpasswordhere
 
 # Create a regular admin user
@@ -176,17 +176,10 @@ echo "Selected disk: $DISK" >> /tmp/ks-pre.log
 
 ## Generating an Encrypted Password
 
-The Kickstart file should never contain plain-text passwords. Generate encrypted passwords using Python:
+The Kickstart file should never contain plain-text passwords. Generate SHA-512 password hashes using `openssl`:
 
 ```bash
 # Generate a SHA-512 encrypted password
-python3 -c 'import crypt; print(crypt.crypt("YourSecurePassword", crypt.mksalt(crypt.METHOD_SHA512)))'
-```
-
-Or use `openssl`:
-
-```bash
-# Alternative: use openssl to generate the hash
 openssl passwd -6 -salt $(openssl rand -hex 8)
 ```
 
@@ -201,7 +194,7 @@ Before using your Kickstart file in production, validate it:
 sudo dnf install -y pykickstart
 
 # Validate the file
-ksvalidator kickstart.cfg
+ksvalidator -v RHEL9 kickstart.cfg
 ```
 
 This catches syntax errors, deprecated directives, and invalid options before you waste time on a failed installation.
@@ -215,8 +208,8 @@ There are several ways to tell the Anaconda installer where to find the Kickstar
 If you have embedded the Kickstart file in the ISO or placed it on a USB drive:
 
 1. Boot from the installation media
-2. At the GRUB boot menu, press `Tab` (BIOS) or `e` (UEFI) to edit the boot options
-3. Append the Kickstart location to the kernel line:
+2. At the boot menu, press `Tab` (BIOS) or `e` (UEFI) to edit the boot options
+3. Append the Kickstart location to the boot options or kernel line:
 
 ```bash
 inst.ks=hd:LABEL=RHEL-9-BaseOS:/kickstart.cfg

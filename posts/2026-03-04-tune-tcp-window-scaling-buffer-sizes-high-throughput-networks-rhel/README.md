@@ -19,8 +19,8 @@ TCP window size limits how much data can be in flight before waiting for an ackn
 # Example: 10 Gbps link with 50ms RTT
 # BDP = 10,000,000,000 * 0.050 = 500,000,000 bits = 62.5 MB
 
-# The TCP buffer should be at least as large as the BDP
-# to fully utilize the link
+# Size TCP maximum buffers from the BDP; on RHEL, a maximum
+# of roughly 2-3x the BDP is often sufficient
 ```
 
 ## Checking Current Settings
@@ -86,11 +86,11 @@ sudo sysctl -p /etc/sysctl.d/99-tcp-tuning.conf
 # On the server
 iperf3 -s
 
-# On the client (use -w to set the window size)
+# On the client (use -w to set the socket buffer/window size)
 iperf3 -c server.example.com -t 30 -w 64M
 
 # Check the actual window size in use
-ss -ti | grep -A1 "server.example.com"
+ss -tin dst server.example.com
 # Look for "rcv_space" and "snd_wnd" values
 ```
 
@@ -100,7 +100,7 @@ ss -ti | grep -A1 "server.example.com"
 # Enable TCP SACK (Selective Acknowledgment)
 sudo sysctl -w net.ipv4.tcp_sack=1
 
-# Increase the connection tracking table for busy servers
+# Increase the connection tracking table for busy servers that use conntrack
 sudo sysctl -w net.netfilter.nf_conntrack_max=1048576
 ```
 

@@ -49,8 +49,8 @@ This means the Kerberos client cannot locate a KDC for the realm.
 dig _kerberos._tcp.EXAMPLE.COM SRV
 dig _kerberos._udp.EXAMPLE.COM SRV
 
-# Look for the KDC SRV record
-dig _kerberos-master._tcp.EXAMPLE.COM SRV
+# Look for the master KDC SRV record
+dig _kerberos-master._udp.EXAMPLE.COM SRV
 ```
 
 ### Check /etc/krb5.conf
@@ -68,7 +68,7 @@ grep -A5 "EXAMPLE.COM" /etc/krb5.conf
 # Verify the KDC is reachable on port 88
 nc -zv kdc.example.com 88
 
-# Check with both TCP and UDP
+# Basic UDP probe (lack of a response does not always prove the port is closed)
 nc -zuv kdc.example.com 88
 ```
 
@@ -178,7 +178,7 @@ For a standalone KDC:
 
 ```bash
 # On the KDC
-kadmin.local: ktadd -k /tmp/host.keytab host/server.example.com
+sudo kadmin.local -q "ktadd -k /tmp/host.keytab host/server.example.com"
 # Copy to the server
 ```
 
@@ -253,7 +253,7 @@ KRB5_TRACE=/dev/stderr ssh server.example.com 2>&1 | grep "Principal"
 ipa service-find
 
 # For standalone KDC:
-kadmin.local: listprincs | grep host/server
+sudo kadmin.local -q "listprincs" | grep host/server
 ```
 
 ### Fix
@@ -265,8 +265,8 @@ Create the missing service principal:
 ipa service-add host/server.example.com
 
 # For standalone KDC
-kadmin.local: addprinc -randkey host/server.example.com
-kadmin.local: ktadd -k /tmp/server.keytab host/server.example.com
+sudo kadmin.local -q "addprinc -randkey host/server.example.com"
+sudo kadmin.local -q "ktadd -k /tmp/server.keytab host/server.example.com"
 ```
 
 ## Problem: Ticket Delegation Not Working

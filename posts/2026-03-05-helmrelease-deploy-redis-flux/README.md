@@ -73,8 +73,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: redis
-  namespace: cache  # Target namespace for Redis
+  namespace: flux-system
 spec:
+  releaseName: redis  # Keep service names like redis-master and redis-replicas
+  targetNamespace: cache  # Target namespace for Redis
   interval: 30m  # How often Flux reconciles this release
   chart:
     spec:
@@ -145,8 +147,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: redis
-  namespace: cache
+  namespace: flux-system
 spec:
+  releaseName: redis
+  targetNamespace: cache
   interval: 30m
   chart:
     spec:
@@ -174,16 +178,16 @@ spec:
 
 ## Securing the Redis Password
 
-Rather than storing the password in plain text, use a Kubernetes Secret and reference it with `valuesFrom`:
+Rather than setting the password inline in the HelmRelease values, use a Kubernetes Secret and reference it with `valuesFrom`. If you commit this Secret to Git, encrypt it first with a tool such as SOPS.
 
 ```yaml
 # redis-secret.yaml
-# Kubernetes Secret for Redis authentication
+# Kubernetes Secret used by Flux as a Helm values source
 apiVersion: v1
 kind: Secret
 metadata:
   name: redis-credentials
-  namespace: cache
+  namespace: flux-system
 type: Opaque
 stringData:
   redis-password: "your-secure-redis-password"
@@ -206,7 +210,7 @@ Commit the manifests and push them to your Flux-connected repository:
 
 ```bash
 # Stage and commit the Redis manifests
-git add redis-helmrepository.yaml redis-helmrelease.yaml
+git add redis-helmrepository.yaml redis-helmrelease.yaml redis-secret.yaml
 git commit -m "Add Redis HelmRelease for Flux CD deployment"
 git push origin main
 ```
@@ -218,7 +222,7 @@ Monitor the deployment:
 flux get sources helm
 
 # Check HelmRelease status
-flux get helmreleases -n cache
+flux get helmreleases -n flux-system
 
 # Watch pods in the cache namespace
 kubectl get pods -n cache -w

@@ -46,7 +46,7 @@ kubectl get helmrelease my-app -n default -o jsonpath='{.status.conditions}' | j
 kubectl describe helmrelease my-app -n default
 ```
 
-Look for conditions with `reason: UpgradeFailed` or `reason: UpgradeStrategyFailed`.
+Look for conditions with `reason: UpgradeFailed`, `reason: RollbackFailed`, or `reason: UninstallFailed`.
 
 ## Step 2: Examine the Helm Controller Logs
 
@@ -91,7 +91,7 @@ Common immutable fields include:
 - `spec.clusterIP` on Services
 - `spec.volumeName` on PersistentVolumeClaims
 
-To resolve, you may need to delete the resource and let the upgrade recreate it, or use the `force` option:
+To resolve, you may need to delete the resource and let the upgrade recreate it, or use the `force` option with client-side apply:
 
 ```yaml
 # Enable force upgrade to handle immutable field changes
@@ -112,10 +112,12 @@ spec:
   upgrade:
     # Force resource updates by deleting and recreating when needed
     force: true
+    # force is ignored when server-side apply is used
+    serverSideApply: disabled
     timeout: 5m
 ```
 
-**Warning:** Using `force: true` causes downtime because resources are deleted and recreated. Use it carefully.
+**Warning:** Using `force: true` with client-side apply can cause downtime because resources may be deleted and recreated. Use it carefully.
 
 Resource Validation Errors
 
@@ -135,7 +137,7 @@ Helm hooks that run before the upgrade can cause failures:
 kubectl logs -n flux-system deployment/helm-controller | grep "hook" | grep "my-app"
 
 # Check hook job status
-kubectl get jobs -n default -l helm.sh/hook
+kubectl get jobs -n default -o json | jq '.items[] | select(.metadata.annotations["helm.sh/hook"] != null) | {name: .metadata.name, hook: .metadata.annotations["helm.sh/hook"], status: .status}'
 ```
 
 Resource Quota and Limits
@@ -203,9 +205,9 @@ helm status my-app -n default
 flux resume helmrelease my-app -n default
 ```
 
-## Step 7: Reset the Release History
+## Step 7: Limit the Release History
 
-If the Helm release history is corrupted or too large, clean it up:
+If the Helm release history is too large, limit how many revisions Helm keeps:
 
 ```bash
 # View current history length
@@ -236,7 +238,7 @@ spec:
   upgrade:
     cleanupOnFail: true
   # Maximum number of release versions stored as secrets
-  historyLimit: 5
+  maxHistory: 5
 ```
 
 ## Common Upgrade Failure Patterns
@@ -254,8 +256,8 @@ spec:
 
 1. **Always configure rollback.** Set `upgrade.remediation.remediateLastFailure: true` to automatically roll back on failure.
 2. **Use cleanupOnFail.** Enable `upgrade.cleanupOnFail: true` to remove resources created by a failed upgrade.
-3. **Limit release history.** Set `historyLimit` to prevent the release history from growing unbounded.
-4. **Test chart upgrades locally.** Use `helm diff upgrade` to preview changes before pushing to Git.
+3. **Limit release history.** Set `maxHistory` to prevent the release history from growing unbounded.
+4. **Test chart upgrades locally.** Use the helm-diff plugin's `helm diff upgrade` command to preview changes before pushing to Git.
 5. **Stage upgrades through environments.** Test in staging before promoting to production.
 
 ## Conclusion

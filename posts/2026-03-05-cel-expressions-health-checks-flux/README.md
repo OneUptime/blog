@@ -8,7 +8,7 @@ Description: Learn how to define custom health checks using CEL expressions in F
 
 ---
 
-Flux CD includes built-in health checking for common Kubernetes resource types like Deployments, StatefulSets, and Services. However, when you deploy custom resources (CRDs) or need more nuanced health assessment, the built-in checks may not be sufficient. Flux supports custom health checks using `spec.healthChecks` that allow you to specify which resources to monitor and define readiness criteria. This guide covers how to configure these health checks in your Kustomization resources.
+Flux CD includes built-in health checking for common Kubernetes resource types like Deployments, StatefulSets, and Services. However, when you deploy custom resources (CRDs) or need more nuanced health assessment, the built-in checks may not be sufficient. Flux supports custom health checks using `spec.healthChecks` to specify which resources to monitor and `spec.healthCheckExprs` to define readiness criteria with CEL expressions. This guide covers how to configure these health checks in your Kustomization resources.
 
 ## Built-in Health Checking with wait
 
@@ -34,11 +34,11 @@ spec:
   wait: true
 ```
 
-With `wait: true`, Flux knows how to check the health of Deployments (all replicas ready), StatefulSets (all pods running), Jobs (completed successfully), and other standard resources. The Kustomization is marked as ready only when all applied resources pass their health checks within the `timeout` period.
+With `wait: true`, Flux knows how to check the health of Deployments (all replicas ready), StatefulSets (all pods running), Jobs (completed successfully), and other standard resources. The Kustomization is marked as ready only when all applied resources pass their health checks within the `timeout` period. When `wait: true` is set, Flux checks all reconciled resources and ignores `spec.healthChecks`.
 
 ## Using spec.healthChecks for Custom Resources
 
-When you need to check resources that Flux does not natively understand -- such as custom CRDs from operators -- you can use `spec.healthChecks` to explicitly list the resources to monitor and define how to evaluate their health.
+When you need to check resources that Flux does not natively understand -- such as custom CRDs from operators -- you can use `spec.healthChecks` to explicitly list the resources to monitor and `spec.healthCheckExprs` to define how to evaluate their health.
 
 ```yaml
 # Kustomization with custom health checks for CRDs
@@ -65,13 +65,18 @@ spec:
       kind: PostgresCluster
       name: main-db
       namespace: production
+  healthCheckExprs:
+    - apiVersion: databases.example.com/v1
+      kind: PostgresCluster
+      failed: status.conditions.exists(e, e.type == 'Ready' && e.status == 'False')
+      current: status.conditions.exists(e, e.type == 'Ready' && e.status == 'True')
 ```
 
-In this example, Flux will check both the operator Deployment and the custom PostgresCluster resource. For the Deployment, Flux uses its built-in logic. For the custom resource, Flux looks at the resource's `.status.conditions` for a condition of type `Ready` with status `True`.
+In this example, Flux will check both the operator Deployment and the custom PostgresCluster resource. For the Deployment, Flux uses its built-in logic. For the custom resource, the CEL expressions look at the resource's `.status.conditions` for a condition of type `Ready` with status `True`.
 
 ## How Flux Evaluates Custom Resource Health
 
-By default, when Flux encounters a custom resource in `healthChecks`, it follows a standard convention: it looks for a `Ready` condition in the resource's `.status.conditions` array. Most well-designed Kubernetes operators follow this pattern.
+By default, when Flux encounters a custom resource in `healthChecks`, it uses the Kubernetes kstatus conventions. For custom resources without a type-specific rule, kstatus looks for a `Ready` condition in the resource's `.status.conditions` array. Most well-designed Kubernetes operators follow this pattern.
 
 ```yaml
 # Example: what Flux expects to see on a healthy custom resource
@@ -89,7 +94,7 @@ status:
       message: "PostgreSQL cluster is running and accepting connections"
 ```
 
-If the custom resource has a `Ready` condition with status `True`, Flux considers it healthy. If the condition is `False` or missing, Flux considers it unhealthy and will continue checking until the timeout expires.
+If the custom resource has a `Ready` condition with status `True`, Flux considers it healthy. If the condition is `False`, Flux considers it still reconciling and will continue checking until the timeout expires. If the condition is missing or the resource uses a different status shape, define `healthCheckExprs` so Flux can evaluate the correct fields.
 
 ## Health Checks with Multiple Resources
 
@@ -126,11 +131,16 @@ spec:
       kind: RedisCluster
       name: cache-replica
       namespace: production
-    # Check that the Redis Service has endpoints
+    # Check that the Redis Service exists and is healthy according to Flux's built-in status rules
     - apiVersion: v1
       kind: Service
       name: redis-primary
       namespace: production
+  healthCheckExprs:
+    - apiVersion: redis.example.com/v1
+      kind: RedisCluster
+      failed: status.conditions.exists(e, e.type == 'Ready' && e.status == 'False')
+      current: status.conditions.exists(e, e.type == 'Ready' && e.status == 'True')
 ```
 
 Flux will wait for all four resources to become healthy before marking the Kustomization as ready. If any one resource fails to become healthy within 15 minutes, the entire Kustomization is marked as failed.
@@ -155,11 +165,6 @@ spec:
   path: ./infrastructure/redis-operator
   prune: true
   wait: true
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: redis-operator-controller
-      namespace: redis-system
 ---
 # Step 2: Deploy custom resources after operator is ready
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -183,6 +188,11 @@ spec:
       kind: RedisCluster
       name: cache-primary
       namespace: production
+  healthCheckExprs:
+    - apiVersion: redis.example.com/v1
+      kind: RedisCluster
+      failed: status.conditions.exists(e, e.type == 'Ready' && e.status == 'False')
+      current: status.conditions.exists(e, e.type == 'Ready' && e.status == 'True')
 ```
 
 This pattern ensures the operator and its CRDs are fully available before Flux attempts to create the custom resources.
@@ -209,9 +219,9 @@ Common reasons for health check failures include:
 - The resource's controller is not running or has errors
 - The resource is in a permanent error state (e.g., invalid configuration)
 
-## Combining wait and healthChecks
+## Combining wait and healthCheckExprs
 
-You can use both `wait: true` and `healthChecks` together. When both are specified, Flux checks the health of all applied resources (via `wait`) and additionally checks the explicitly listed resources in `healthChecks`. This is useful when you want built-in checking for standard resources plus explicit checks for specific custom resources.
+You can use `wait: true` and `healthCheckExprs` together. When both are specified, Flux checks the health of all applied resources and applies the CEL expressions for matching custom resource kinds. This is useful when you want built-in checking for standard resources plus custom CEL logic for specific custom resources.
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -229,14 +239,14 @@ spec:
   prune: true
   # Built-in health checks for standard resources
   wait: true
-  # Additional explicit health checks for custom resources
-  healthChecks:
+  # Custom CEL health checks for matching custom resources
+  healthCheckExprs:
     - apiVersion: databases.example.com/v1
       kind: PostgresCluster
-      name: app-db
-      namespace: production
+      failed: status.conditions.exists(e, e.type == 'Ready' && e.status == 'False')
+      current: status.conditions.exists(e, e.type == 'Ready' && e.status == 'True')
 ```
 
 ## Summary
 
-Custom health checks in Flux Kustomizations give you control over how Flux determines whether your deployments are truly ready. Use `spec.healthChecks` to explicitly list custom resources that Flux should monitor, and ensure those resources follow the standard Kubernetes condition convention with a `Ready` condition. Combined with `dependsOn`, `timeout`, and `retryInterval`, health checks ensure your GitOps pipeline only progresses when each layer of your infrastructure is genuinely operational.
+Custom health checks in Flux Kustomizations give you control over how Flux determines whether your deployments are truly ready. Use `spec.healthChecks` to explicitly list custom resources that Flux should monitor, use `spec.healthCheckExprs` when you need CEL-based custom logic, and ensure those resources expose status fields that your expressions can evaluate. Combined with `dependsOn`, `timeout`, and `retryInterval`, health checks ensure your GitOps pipeline only progresses when each layer of your infrastructure is genuinely operational.

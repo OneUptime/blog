@@ -40,7 +40,7 @@ mount -t tmpfs -o size=25% tmpfs /mnt/ramdisk
 
 ### Inode Limits
 
-By default, tmpfs calculates inode count from the size. You can override this:
+By default, tmpfs sets the inode limit based on physical RAM pages, not from the `size=` limit. You can override this:
 
 ```bash
 # Mount with a specific inode limit (max number of files)
@@ -92,24 +92,15 @@ systemctl restart tmp.mount
 
 ### /run
 
-The `/run` tmpfs is managed by systemd. To change its size:
+The top-level `/run` tmpfs is an API filesystem managed by systemd and is not normally customized with a `run-user-1000.mount` override. To change the size limit for per-user runtime directories such as `/run/user/1000`, use the `RuntimeDirectorySize` setting in `logind.conf`:
 
 ```bash
-# Edit the runtime directory configuration
-mkdir -p /etc/systemd/system/run-user-1000.mount.d
-```
-
-Or use the `RuntimeDirectorySize` setting in `logind.conf`:
-
-```bash
-# Set user runtime directory size
-vi /etc/systemd/logind.conf
-```
-
-Set:
-
-```bash
+# Create a logind drop-in
+mkdir -p /etc/systemd/logind.conf.d
+cat > /etc/systemd/logind.conf.d/runtime-directory-size.conf << 'EOF'
+[Login]
 RuntimeDirectorySize=512M
+EOF
 ```
 
 ## Security Mount Options
@@ -125,7 +116,7 @@ mount -t tmpfs -o size=2G,mode=1777,noexec,nosuid,nodev tmpfs /mnt/ramdisk
 |--------|---------|
 | `noexec` | Prevents executing binaries from tmpfs |
 | `nosuid` | Ignores SUID/SGID bits on files |
-| `nodev` | Prevents device file creation |
+| `nodev` | Prevents character or block device files from being interpreted |
 | `mode=1777` | Sticky bit - users can only delete their own files |
 | `mode=0700` | Only owner can access |
 
@@ -158,11 +149,11 @@ Set ownership at mount time:
 mount -t tmpfs -o size=1G,uid=1000,gid=1000,mode=0750 tmpfs /mnt/userdata
 ```
 
-Or by name:
+Mount options expect numeric user and group IDs. To use account names, resolve them first:
 
 ```bash
 # Mount owned by the 'webserver' user
-mount -t tmpfs -o size=1G,uid=apache,gid=apache,mode=0750 tmpfs /var/cache/webapp
+mount -t tmpfs -o size=1G,uid=$(id -u apache),gid=$(id -g apache),mode=0750 tmpfs /var/cache/webapp
 ```
 
 ## Monitoring tmpfs Usage

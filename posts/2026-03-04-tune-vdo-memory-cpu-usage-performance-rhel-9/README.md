@@ -37,27 +37,28 @@ For detailed settings:
 sudo lvs --all -o +vdo_block_map_cache_size,vdo_index_memory_size vg_vdo
 ```
 
-## Step 2: Tune UDS Index Memory
+## Step 2: Choose UDS Index Memory
 
-The UDS index stores fingerprints of all data blocks for deduplication lookup.
+The UDS index stores fingerprints of all data blocks for deduplication lookup. Index type and index memory are set when the LVM-VDO volume is created and cannot be changed later.
 
 ### Dense Index (Default)
 
-Uses approximately 1 GB of memory per 1 TB of physical storage:
+Uses approximately 1 GB of memory per 1 TB deduplication window:
 
 ```bash
-sudo lvchange --vdosettings 'index_memory=1' vg_vdo/lv_vdo
+sudo lvcreate --type vdo --name lv_vdo --size 1T --virtualsize 2T \
+  --vdosettings 'vdo_index_memory_size_mb=1024' vg_vdo
 ```
 
-The value is in gigabytes. For a 2 TB physical volume, 2 GB is appropriate.
+The value is in mebibytes. For a 2 TB deduplication window, 2048 MB is appropriate.
 
 ### Sparse Index
 
-Uses approximately 1 GB per 10 TB of physical storage:
+Uses approximately 1 GB per 10 TB deduplication window:
 
 ```bash
 sudo lvcreate --type vdo --name lv_sparse --size 500G --virtualsize 2T \
-  --vdosettings 'index_memory=0.25' vg_vdo
+  --vdosettings 'vdo_use_sparse_index=1 vdo_index_memory_size_mb=256' vg_vdo
 ```
 
 The sparse index uses less memory but relies on data locality for effective deduplication. It works best when duplicate data arrives in temporal proximity.
@@ -66,7 +67,7 @@ The sparse index uses less memory but relies on data locality for effective dedu
 
 | Factor | Dense Index | Sparse Index |
 |--------|------------|--------------|
-| Memory per TB | ~1 GB | ~0.1 GB |
+| Memory per deduplication window | ~1 GB per 1 TB | ~1 GB per 10 TB |
 | Deduplication accuracy | Very high | Good (locality dependent) |
 | Best for | General workloads | Very large volumes |
 | Physical size limit | Depends on RAM | Supports multi-TB with low RAM |
@@ -76,10 +77,12 @@ The sparse index uses less memory but relies on data locality for effective dedu
 The block map cache stores virtual-to-physical address mappings in memory. A larger cache improves random I/O performance.
 
 ```bash
+sudo lvchange -an vg_vdo/lv_vdo
 sudo lvchange --vdosettings 'block_map_cache_size_mb=256' vg_vdo/lv_vdo
+sudo lvchange -ay vg_vdo/lv_vdo
 ```
 
-Default is 128 MB. Recommendations:
+Default is 128 MB. The cache size must be at least 128 MB, a multiple of 4096, and at least 16 MB per logical thread. Recommendations:
 
 | Workload | Cache Size |
 |----------|-----------|
@@ -94,12 +97,16 @@ More cache reduces the need to read block map pages from disk, improving random 
 
 VDO uses several types of threads for processing:
 
+Deactivate the LVM-VDO volume before changing thread counts, and activate it again after the change.
+
 ### Bio Threads
 
 Handle incoming and outgoing block I/O:
 
 ```bash
+sudo lvchange -an vg_vdo/lv_vdo
 sudo lvchange --vdosettings 'bio_threads=4' vg_vdo/lv_vdo
+sudo lvchange -ay vg_vdo/lv_vdo
 ```
 
 Default is 4. Increase for high-throughput workloads. Maximum is limited by available CPU cores.
@@ -109,7 +116,9 @@ Default is 4. Increase for high-throughput workloads. Maximum is limited by avai
 Handle hashing and compression:
 
 ```bash
+sudo lvchange -an vg_vdo/lv_vdo
 sudo lvchange --vdosettings 'cpu_threads=4' vg_vdo/lv_vdo
+sudo lvchange -ay vg_vdo/lv_vdo
 ```
 
 Default is 2. Increase if you have available CPU cores and compression is enabled.
@@ -119,17 +128,21 @@ Default is 2. Increase if you have available CPU cores and compression is enable
 Handle deduplication index lookups:
 
 ```bash
+sudo lvchange -an vg_vdo/lv_vdo
 sudo lvchange --vdosettings 'hash_zone_threads=2' vg_vdo/lv_vdo
+sudo lvchange -ay vg_vdo/lv_vdo
 ```
 
-Default is 1. Increase for workloads with many unique blocks that require frequent index lookups.
+Default is 1. A single hash zone thread is usually sufficient; increase only if benchmarking shows it is a bottleneck.
 
 ### Logical Threads
 
 Handle logical block address mapping:
 
 ```bash
+sudo lvchange -an vg_vdo/lv_vdo
 sudo lvchange --vdosettings 'logical_threads=2' vg_vdo/lv_vdo
+sudo lvchange -ay vg_vdo/lv_vdo
 ```
 
 ### Physical Threads
@@ -137,7 +150,9 @@ sudo lvchange --vdosettings 'logical_threads=2' vg_vdo/lv_vdo
 Handle physical block allocation:
 
 ```bash
+sudo lvchange -an vg_vdo/lv_vdo
 sudo lvchange --vdosettings 'physical_threads=2' vg_vdo/lv_vdo
+sudo lvchange -ay vg_vdo/lv_vdo
 ```
 
 ### Combined Thread Tuning
@@ -145,17 +160,21 @@ sudo lvchange --vdosettings 'physical_threads=2' vg_vdo/lv_vdo
 Set multiple thread parameters at once:
 
 ```bash
-sudo lvchange --vdosettings 'bio_threads=4,cpu_threads=4,hash_zone_threads=2,logical_threads=2,physical_threads=2' vg_vdo/lv_vdo
+sudo lvchange -an vg_vdo/lv_vdo
+sudo lvchange --vdosettings 'bio_threads=4 cpu_threads=4 hash_zone_threads=2 logical_threads=2 physical_threads=2' vg_vdo/lv_vdo
+sudo lvchange -ay vg_vdo/lv_vdo
 ```
 
 ## Step 5: Tune Write Policy
 
 The write policy affects both performance and data safety:
 
-### Synchronous Mode (Default)
+### Synchronous Mode
 
 ```bash
+sudo lvchange -an vg_vdo/lv_vdo
 sudo lvchange --vdosettings 'write_policy=sync' vg_vdo/lv_vdo
+sudo lvchange -ay vg_vdo/lv_vdo
 ```
 
 Data is confirmed written only after it reaches persistent storage. Safest but slowest.
@@ -163,7 +182,9 @@ Data is confirmed written only after it reaches persistent storage. Safest but s
 ### Asynchronous Mode
 
 ```bash
+sudo lvchange -an vg_vdo/lv_vdo
 sudo lvchange --vdosettings 'write_policy=async' vg_vdo/lv_vdo
+sudo lvchange -ay vg_vdo/lv_vdo
 ```
 
 Writes are acknowledged before reaching persistent storage. Faster but risks data loss on power failure. Suitable for:
@@ -174,10 +195,12 @@ Writes are acknowledged before reaching persistent storage. Faster but risks dat
 ### Auto Mode
 
 ```bash
+sudo lvchange -an vg_vdo/lv_vdo
 sudo lvchange --vdosettings 'write_policy=auto' vg_vdo/lv_vdo
+sudo lvchange -ay vg_vdo/lv_vdo
 ```
 
-VDO automatically chooses based on the underlying device's flush support.
+Auto is the default. VDO automatically chooses based on the underlying device's flush support.
 
 ## Step 6: Benchmark After Tuning
 
@@ -217,13 +240,13 @@ sudo vdostats --verbose /dev/mapper/vg_vdo-vpool | grep -i "memory"
 Monitor during I/O operations:
 
 ```bash
-top -H -p $(pgrep -d',' kvdo)
+top -H
 ```
 
 Or use:
 
 ```bash
-sudo pidstat -p $(pgrep kvdo) 1
+sudo pidstat -C kvdo 1
 ```
 
 ## Tuning Profiles
@@ -233,7 +256,9 @@ sudo pidstat -p $(pgrep kvdo) 1
 For backup targets and large file storage:
 
 ```bash
-sudo lvchange --vdosettings 'bio_threads=4,cpu_threads=4,block_map_cache_size_mb=256,write_policy=async' vg_vdo/lv_vdo
+sudo lvchange -an vg_vdo/lv_vdo
+sudo lvchange --vdosettings 'bio_threads=4 cpu_threads=4 block_map_cache_size_mb=256 write_policy=async' vg_vdo/lv_vdo
+sudo lvchange -ay vg_vdo/lv_vdo
 ```
 
 ### Low-Latency Profile
@@ -241,7 +266,9 @@ sudo lvchange --vdosettings 'bio_threads=4,cpu_threads=4,block_map_cache_size_mb
 For database storage:
 
 ```bash
-sudo lvchange --vdosettings 'bio_threads=2,cpu_threads=2,block_map_cache_size_mb=1024,write_policy=sync' vg_vdo/lv_vdo
+sudo lvchange -an vg_vdo/lv_vdo
+sudo lvchange --vdosettings 'bio_threads=2 cpu_threads=2 block_map_cache_size_mb=1024 write_policy=sync' vg_vdo/lv_vdo
+sudo lvchange -ay vg_vdo/lv_vdo
 ```
 
 ### Memory-Constrained Profile
@@ -249,7 +276,9 @@ sudo lvchange --vdosettings 'bio_threads=2,cpu_threads=2,block_map_cache_size_mb
 For systems with limited RAM:
 
 ```bash
-sudo lvchange --vdosettings 'index_memory=0.25,block_map_cache_size_mb=64,bio_threads=1,cpu_threads=1' vg_vdo/lv_vdo
+sudo lvchange -an vg_vdo/lv_vdo
+sudo lvchange --vdosettings 'block_map_cache_size_mb=128 bio_threads=1 cpu_threads=1' vg_vdo/lv_vdo
+sudo lvchange -ay vg_vdo/lv_vdo
 ```
 
 ### Maximum Deduplication Profile
@@ -257,7 +286,9 @@ sudo lvchange --vdosettings 'index_memory=0.25,block_map_cache_size_mb=64,bio_th
 For VM storage with maximum deduplication:
 
 ```bash
-sudo lvchange --vdosettings 'index_memory=2,block_map_cache_size_mb=512,hash_zone_threads=2' vg_vdo/lv_vdo
+sudo lvchange -an vg_vdo/lv_vdo
+sudo lvchange --vdosettings 'block_map_cache_size_mb=512 hash_zone_threads=2' vg_vdo/lv_vdo
+sudo lvchange -ay vg_vdo/lv_vdo
 ```
 
 ## Conclusion

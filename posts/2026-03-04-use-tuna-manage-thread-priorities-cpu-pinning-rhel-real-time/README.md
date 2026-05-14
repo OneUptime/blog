@@ -8,7 +8,7 @@ Description: Use the tuna utility on RHEL to manage thread scheduling priorities
 
 ---
 
-The `tuna` tool is a utility designed for real-time systems on RHEL. It provides both a command-line interface and a text-based UI for managing thread priorities, CPU affinity, and IRQ placement. It simplifies tasks that would otherwise require multiple low-level commands.
+The `tuna` tool is a utility designed for real-time systems on RHEL. It provides both a command-line interface and a graphical UI for managing thread priorities, CPU affinity, and IRQ placement. It simplifies tasks that would otherwise require multiple low-level commands.
 
 ## Install tuna
 
@@ -22,81 +22,82 @@ sudo dnf install -y tuna
 
 ```bash
 # Display all threads and their current CPU assignments
-sudo tuna --threads --show
+sudo tuna show_threads
 
 # Display all IRQs and their CPU assignments
-sudo tuna --irqs --show
+sudo tuna show_irqs
 
-# Show both threads and IRQs together
-sudo tuna --show_threads --show_irqs
+# Show both threads and IRQs
+sudo tuna show_threads
+sudo tuna show_irqs
 ```
 
 ## Isolate CPUs from General Workloads
 
 ```bash
 # Isolate CPUs 2-7: move all threads and IRQs off these cores
-sudo tuna --cpus=2-7 --isolate
+sudo tuna isolate --cpus=2-7
 
 # Verify that threads have been moved
-sudo tuna --threads --show | grep -E "^\s+[0-9]"
+sudo tuna show_threads | grep -E "^[[:space:]]*[0-9]"
 ```
 
 ## Pin a Specific Process to a CPU
 
 ```bash
 # Pin process with PID 5678 to CPU 3
-sudo tuna --threads=5678 --cpus=3 --move
+sudo tuna move --threads=5678 --cpus=3
 
 # Pin a process by name to CPUs 4-5
-sudo tuna --threads=my_rt_app --cpus=4,5 --move
+sudo tuna move --threads=my_rt_app --cpus=4,5
 
 # Verify the assignment
-sudo tuna --threads=5678 --show
+sudo tuna show_threads --threads=5678
 ```
 
 ## Set Thread Scheduling Priority
 
 ```bash
 # Set PID 5678 to FIFO real-time scheduling with priority 90
-sudo tuna --threads=5678 --priority=FIFO:90
+sudo tuna priority FIFO:90 --threads=5678
 
 # Set a thread to round-robin scheduling with priority 50
-sudo tuna --threads=5678 --priority=RR:50
+sudo tuna priority RR:50 --threads=5678
 
 # Verify the priority change
-sudo tuna --threads=5678 --show
+sudo tuna show_threads --threads=5678
 ```
 
 ## Move IRQs to Housekeeping CPUs
 
 ```bash
 # Move all IRQs to CPUs 0 and 1
-sudo tuna --irqs=\* --cpus=0,1 --move
+sudo tuna move --irqs='*' --cpus=0,1
 
 # Move a specific IRQ (e.g., eth0) to CPU 0
-sudo tuna --irqs=eth0 --cpus=0 --move
+sudo tuna move --irqs=eth0 --cpus=0
 
 # Verify the IRQ assignments
-sudo tuna --irqs --show
+sudo tuna show_irqs
 ```
 
-## Use the Interactive Text UI
+## Use the Interactive GUI
 
 ```bash
 # Launch the tuna interactive interface
-sudo tuna --gui
+sudo tuna gui
 ```
 
-The text UI shows threads and IRQs in a table format. You can select items and change their CPU affinity and priority interactively.
+The GUI shows threads and IRQs in a table format. You can select items and change their CPU affinity and priority interactively.
 
 ## Save and Restore Configuration
 
 ```bash
 # Save the current tuna configuration
-sudo tuna --save=/etc/tuna/rt-config.conf
+sudo tuna save /etc/tuna/rt-config.conf
 
-# Restore a saved configuration (useful at boot)
-sudo tuna --load=/etc/tuna/rt-config.conf
+# Apply a saved configuration (useful at boot)
+sudo tuna apply /etc/tuna/rt-config.conf
 ```
 
 ## Create a Systemd Service for Boot-Time Configuration
@@ -110,7 +111,7 @@ After=multi-user.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/tuna --load=/etc/tuna/rt-config.conf
+ExecStart=/usr/bin/tuna apply /etc/tuna/rt-config.conf
 
 [Install]
 WantedBy=multi-user.target

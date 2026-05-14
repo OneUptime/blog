@@ -13,7 +13,7 @@ Description: Learn how to install and run Flux CD controllers in a custom namesp
 By default, Flux CD installs all its controllers into the `flux-system` namespace. While this works for most setups, there are situations where you might want to use a different namespace:
 
 - **Naming conventions**: Your organization enforces specific namespace naming patterns.
-- **Multi-tenancy**: You run multiple Flux installations on the same cluster.
+- **Multi-tenancy**: You run multiple scoped Flux installations on the same cluster.
 - **Security policies**: Your cluster policies restrict what can run in certain namespaces.
 - **Organizational clarity**: You want Flux to live alongside other platform tools in a shared namespace.
 
@@ -21,7 +21,7 @@ Flux CD fully supports running in a custom namespace. This guide covers both the
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.20+)
+- A Kubernetes cluster that is supported by your Flux version
 - `flux` CLI installed (v2.0+)
 - `kubectl` configured to access your cluster
 - A GitHub or GitLab personal access token (for bootstrap)
@@ -113,9 +113,9 @@ source-controller-7d6e9f8c5a-ghi78        1/1     Running   0          2m
 
 ## Important Considerations for Custom Namespaces
 
-### All Flux Resources Must Reference the Custom Namespace
+### Flux Resources and Namespace Scope
 
-When using a custom namespace, all Flux custom resources (GitRepository, Kustomization, HelmRelease, etc.) that interact with Flux controllers must be created in or reference the correct namespace. The controllers only watch resources in their own namespace by default.
+When using a custom namespace, place the bootstrap GitRepository and Kustomization resources in that namespace. By default, Flux controllers watch custom resources in all namespaces. If you install Flux with `--watch-all-namespaces=false`, the controllers only watch resources in the namespace where they are installed.
 
 Here is an example GitRepository and Kustomization in the custom namespace:
 
@@ -152,7 +152,7 @@ spec:
 
 ### Cross-Namespace References
 
-Flux controllers can deploy resources into any namespace, but the Flux custom resources themselves need to be in the controller's namespace. The `targetNamespace` field in Kustomization and `spec.targetNamespace` in HelmRelease allow you to specify where the workloads are deployed.
+Flux controllers can deploy resources into any namespace that their service accounts are authorized to manage. Flux custom resources can also live in other namespaces when the controllers are watching all namespaces. The `targetNamespace` field in Kustomization and `spec.targetNamespace` in HelmRelease allow you to specify where the workloads are deployed.
 
 ### Using the --namespace Flag Consistently
 
@@ -188,7 +188,7 @@ kubectl get clusterrolebindings -o json | \
 
 ### Secrets and ConfigMaps
 
-Secrets referenced by Flux resources (e.g., Git credentials, Helm repository credentials) must be in the same namespace as the Flux controllers:
+Secrets referenced by Flux resources (e.g., Git credentials, Helm repository credentials) must be in the same namespace as the Flux resource that references them:
 
 ```bash
 # Create a Git credentials secret in the custom namespace
@@ -223,9 +223,10 @@ flux install --namespace=gitops
 sed -i 's/namespace: flux-system/namespace: gitops/g' sources.yaml kustomizations.yaml
 kubectl apply -f sources.yaml
 kubectl apply -f kustomizations.yaml
+kubectl apply -f helmreleases.yaml
 ```
 
-Note that this approach causes brief downtime in reconciliation. For production clusters, consider running both namespaces temporarily during migration.
+Note that this approach causes brief downtime in reconciliation. For production clusters, consider a staged migration and avoid running two default installations that reconcile the same Flux resources at the same time.
 
 ## Architecture Overview
 
@@ -252,4 +253,4 @@ graph TB
 
 ## Summary
 
-Running Flux CD in a custom namespace is fully supported and straightforward. The key is to consistently use the `--namespace` flag during bootstrap or install, and to ensure all Flux custom resources and secrets are created in the same custom namespace. The controllers can still manage resources across all namespaces in the cluster, so the custom namespace only affects where Flux itself runs, not what it can manage.
+Running Flux CD in a custom namespace is fully supported and straightforward. The key is to consistently use the `--namespace` flag during bootstrap or install, and to ensure bootstrap resources and referenced secrets are created in the correct namespace. The controllers can still manage resources across all namespaces in the cluster, so the custom namespace only affects where Flux itself runs, not what it can manage.

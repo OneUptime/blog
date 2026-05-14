@@ -13,15 +13,15 @@ The `ss` command replaced `netstat` as the standard socket investigation tool on
 ## Basic Usage
 
 ```bash
-# Show all connections
+# Show default non-listening sockets
 
 ss
 
-# Show all TCP connections
-ss -t
+# Show all TCP sockets
+ss -ta
 
 # Show all UDP sockets
-ss -u
+ss -ua
 
 # Show listening sockets only
 ss -l
@@ -63,7 +63,7 @@ sudo ss -tlnp | grep :80
 # Find what's listening on port 443
 sudo ss -tlnp | grep :443
 
-# Find all ports a specific process is using
+# Find listening TCP ports a specific process is using
 sudo ss -tlnp | grep nginx
 ```
 
@@ -85,7 +85,7 @@ ss -t state close-wait
 ss -t state syn-recv
 
 # Count connections by state
-ss -t -a | awk '{print $1}' | sort | uniq -c | sort -rn
+ss -H -t -a | awk '{print $1}' | sort | uniq -c | sort -rn
 ```
 
 ## Filtering by Address and Port
@@ -176,18 +176,18 @@ ss -temi
 # All connections from a specific IP
 sudo ss -tnp src 203.0.113.50
 
-# Count connections per source IP (find heavy hitters)
-ss -tn state established | awk '{print $5}' | cut -d: -f1 | sort | uniq -c | sort -rn | head -20
+# Count established IPv4 connections per peer IP (find heavy hitters)
+ss -H -4tn state established | awk '{print $4}' | cut -d: -f1 | sort | uniq -c | sort -rn | head -20
 ```
 
 **Checking for port exhaustion:**
 
 ```bash
 # Count TIME-WAIT connections (high numbers indicate port exhaustion risk)
-ss -t state time-wait | wc -l
+ss -H -t state time-wait | wc -l
 
 # Count all connections per state
-ss -tan | awk '{print $1}' | sort | uniq -c | sort -rn
+ss -H -tan | awk '{print $1}' | sort | uniq -c | sort -rn
 ```
 
 **Finding which process has a port open:**
@@ -204,7 +204,7 @@ sudo ss -tlnp | grep :8080
 watch -n 2 'ss -s'
 
 # Watch established connection count
-watch -n 2 'ss -t state established | wc -l'
+watch -n 2 'ss -H -t state established | wc -l'
 ```
 
 ## ss vs netstat Comparison
@@ -227,7 +227,7 @@ sudo ss -tlnp | awk '{print $4}' | rev | cut -d: -f1 | rev | sort | uniq -c | so
 ss -tnp > /tmp/connections_$(date +%Y%m%d_%H%M%S).txt
 
 # Combine with watch for monitoring
-watch -n 5 'ss -t state established | wc -l'
+watch -n 5 'ss -H -t state established | wc -l'
 ```
 
 ## Wrapping Up

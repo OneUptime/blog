@@ -28,7 +28,7 @@ This shows a continuously updating display similar to `top`, but for disk I/O:
 
 ```text
 Total DISK READ:       5.23 M/s | Total DISK WRITE:      12.45 M/s
-Current DISK READ:     5.23 M/s | Current DISK WRITE:    12.45 M/s
+Actual DISK READ:      5.23 M/s | Actual DISK WRITE:     12.45 M/s
     TID  PRIO  USER     DISK READ  DISK WRITE  SWAPIN     IO>    COMMAND
   12345 be/4  mysql       3.21 M/s    8.76 M/s  0.00 %  45.23 %  mysqld
   23456 be/4  root        1.98 M/s    3.45 M/s  0.00 %  22.11 %  rsync --archive
@@ -98,10 +98,10 @@ This updates every 5 seconds, which gives more meaningful averages.
 
 ## Filtering by User
 
-While iotop does not have a built-in user filter, you can pipe batch mode output:
+iotop has a built-in user filter:
 
 ```bash
-sudo iotop -botP --iter=10 | grep mysql
+sudo iotop -u mysql
 ```
 
 ## Accumulative Mode
@@ -151,7 +151,7 @@ THRESHOLD_MB=50
 LOG="/var/log/io_monitor.log"
 
 while true; do
-    TOP_IO=$(iotop -botPqqq --iter=1 | head -5)
+    TOP_IO=$(iotop -botPqqqk --iter=1 | head -5)
     TOTAL_WRITE=$(echo "$TOP_IO" | awk '{sum += $6} END {print sum/1024}')
 
     if (( $(echo "$TOTAL_WRITE > $THRESHOLD_MB" | bc -l) )); then

@@ -38,13 +38,14 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: external-secrets
-  namespace: external-secrets
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: external-secrets
   chart:
     spec:
       chart: external-secrets
-      version: "0.10.x"
+      version: "2.x"
       sourceRef:
         kind: HelmRepository
         name: external-secrets
@@ -65,9 +66,15 @@ Configure it to connect to the Kubernetes API:
 
 ```bash
 vault write auth/kubernetes/config \
-  kubernetes_host="https://kubernetes.default.svc" \
-  token_reviewer_jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
-  kubernetes_ca_cert="$(cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt)"
+  kubernetes_host="https://kubernetes.default.svc"
+```
+
+If Vault is running in Kubernetes and uses its local service account token as the reviewer JWT, grant that Vault service account access to the Kubernetes TokenReview API:
+
+```bash
+kubectl create clusterrolebinding vault-tokenreview \
+  --clusterrole=system:auth-delegator \
+  --serviceaccount=vault:vault
 ```
 
 If configuring from outside the cluster:
@@ -75,12 +82,18 @@ If configuring from outside the cluster:
 ```bash
 K8S_HOST=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
 K8S_CA=$(kubectl config view --minify --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' | base64 -d)
-SA_TOKEN=$(kubectl create token external-secrets -n external-secrets --duration=8760h)
 
 vault write auth/kubernetes/config \
   kubernetes_host="$K8S_HOST" \
-  kubernetes_ca_cert="$K8S_CA" \
-  token_reviewer_jwt="$SA_TOKEN"
+  kubernetes_ca_cert="$K8S_CA"
+```
+
+When you omit `token_reviewer_jwt` for an external Vault instance, Vault uses the client JWT as the reviewer JWT. Grant the ESO service account access to the Kubernetes TokenReview API:
+
+```bash
+kubectl create clusterrolebinding external-secrets-tokenreview \
+  --clusterrole=system:auth-delegator \
+  --serviceaccount=external-secrets:external-secrets
 ```
 
 ## Step 3: Create a Vault Policy and Role
@@ -105,6 +118,7 @@ vault write auth/kubernetes/role/external-secrets \
   bound_service_account_names=external-secrets \
   bound_service_account_namespaces=external-secrets \
   policies=external-secrets \
+  audience=vault \
   ttl=1h
 ```
 
@@ -131,7 +145,7 @@ vault kv put secret/myapp/api-key \
 
 ```yaml
 # infrastructure/external-secrets/clustersecretstore.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend
@@ -148,6 +162,8 @@ spec:
           serviceAccountRef:
             name: external-secrets
             namespace: external-secrets
+            audiences:
+              - vault
 ```
 
 For Vault with a self-signed certificate, add the CA bundle:
@@ -167,6 +183,8 @@ spec:
           serviceAccountRef:
             name: external-secrets
             namespace: external-secrets
+            audiences:
+              - vault
 ```
 
 ## Step 6: Create ExternalSecret Resources
@@ -175,7 +193,7 @@ For the database credentials:
 
 ```yaml
 # apps/my-app/external-secret-db.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -215,7 +233,7 @@ For the API key:
 
 ```yaml
 # apps/my-app/external-secret-api.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: api-key
@@ -240,7 +258,7 @@ spec:
 If you want all keys from a Vault secret mapped into the Kubernetes Secret:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials-all
@@ -284,4 +302,4 @@ Common issues:
 
 ## Summary
 
-Integrating External Secrets with HashiCorp Vault in Flux CD provides enterprise-grade secrets management with a GitOps workflow. Vault's Kubernetes authentication eliminates the need for static credentials, and the ExternalSecret resources managed by Flux define a clear mapping between Vault paths and Kubernetes Secrets. This approach supports secret versioning, dynamic secrets, and centralized access control while keeping your Git repository free of sensitive values.
+Integrating External Secrets with HashiCorp Vault in Flux CD provides enterprise-grade secrets management with a GitOps workflow. Vault's Kubernetes authentication eliminates the need for static credentials, and the ExternalSecret resources managed by Flux define a clear mapping between Vault paths and Kubernetes Secrets. This approach supports Vault-backed secret versioning and centralized access control while keeping your Git repository free of sensitive values.

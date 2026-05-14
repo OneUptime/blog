@@ -18,7 +18,7 @@ This guide walks you through creating an OCIRepository source from scratch, cove
 
 Before you begin, ensure you have:
 
-- A Kubernetes cluster with Flux CD installed (v0.35 or later)
+- A Kubernetes cluster with Flux CD installed (v2.6 or later for the `source.toolkit.fluxcd.io/v1` API shown here)
 - The `flux` CLI installed
 - Access to an OCI-compliant container registry with at least one pushed artifact
 - `kubectl` configured to communicate with your cluster
@@ -41,7 +41,7 @@ Here is a diagram showing how OCIRepository fits into the Flux reconciliation pi
 graph LR
     A[OCI Registry] -->|Pull artifact| B[OCIRepository]
     B -->|Provide source| C[Kustomization]
-    B -->|Provide source| D[HelmRelease]
+    B -->|Provide chartRef for Helm charts| D[HelmRelease]
     C -->|Apply manifests| E[Kubernetes Cluster]
     D -->|Apply chart| E
 ```
@@ -64,7 +64,7 @@ spec:
   # The OCI artifact URL (must use the oci:// scheme)
   url: oci://ghcr.io/my-org/my-app-manifests
   ref:
-    # Pull the latest tagged version using semver
+    # Pull the latest tag
     tag: latest
 ```
 
@@ -120,7 +120,7 @@ spec:
     digest: sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
 ```
 
-Using `semver` is recommended for production environments because it lets Flux automatically pick up patch and minor updates while preventing unexpected major version changes.
+Using `semver` is a common choice when you want Flux to automatically pick up patch and minor updates while preventing unexpected major version changes. Use `digest` when you need an exact immutable artifact.
 
 ## Consuming the OCIRepository with a Kustomization
 
@@ -224,7 +224,7 @@ The OCIRepository source in Flux CD provides a robust way to store and distribut
 
 - Use the `oci://` URL scheme to point to artifacts in any OCI-compliant registry
 - Choose between `tag`, `semver`, or `digest` references depending on your update strategy
-- Combine OCIRepository with Kustomization or HelmRelease resources to apply manifests to your cluster
+- Combine OCIRepository with Kustomization resources for manifests, or use it as a HelmRelease `chartRef` for Helm charts
 - Use `flux get sources oci` and `kubectl describe` to monitor reconciliation status
 
 OCI artifacts offer advantages over Git-based sources in scenarios where you want to decouple your deployment artifacts from source code repositories or leverage existing container registry infrastructure for distribution and access control.

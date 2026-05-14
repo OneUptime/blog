@@ -29,7 +29,7 @@ sudo systemctl status httpd.service
 # View all logs for the service
 sudo journalctl -u httpd.service --no-pager
 
-# View only the most recent startup attempt
+# View the most recent log entries for the service
 sudo journalctl -u httpd.service -n 50
 
 # Follow logs in real time while trying to start the service
@@ -84,8 +84,8 @@ sudo ausearch -m avc --start recent | grep httpd
 # Check what the service requires
 systemctl list-dependencies httpd.service
 
-# Ensure required services are running
-sudo systemctl start network.target
+# For network-dependent services, check that NetworkManager is running
+sudo systemctl status NetworkManager.service
 ```
 
 ## Step 4: Inspect the Unit File
@@ -94,8 +94,8 @@ sudo systemctl start network.target
 # View the unit file
 systemctl cat httpd.service
 
-# Check for override files
-systemctl show httpd.service | grep FragmentPath
+# Check the main unit file path and any drop-in override files
+systemctl show httpd.service | grep -E 'FragmentPath|DropInPaths'
 ls /etc/systemd/system/httpd.service.d/
 ```
 
@@ -112,17 +112,14 @@ sudo systemctl start httpd.service
 ## Step 6: Debug with Increased Verbosity
 
 ```bash
-# For services that support debug mode, create an override
-sudo systemctl edit httpd.service
+# For Apache startup debugging, test configuration with a higher startup log level
+sudo httpd -t -e debug
 
-# Add environment variables for debugging
-# [Service]
-# Environment=HTTPD_LOG_LEVEL=debug
+# For persistent Apache verbosity, set LogLevel debug in /etc/httpd/conf/httpd.conf
 ```
 
 ```bash
-# Reload and restart
-sudo systemctl daemon-reload
+# Restart after changing service configuration
 sudo systemctl restart httpd.service
 ```
 

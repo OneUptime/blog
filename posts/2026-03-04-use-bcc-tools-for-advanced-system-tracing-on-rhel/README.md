@@ -8,7 +8,7 @@ Description: Use BCC (BPF Compiler Collection) tools on RHEL for advanced system
 
 ---
 
-BCC (BPF Compiler Collection) provides a rich set of pre-built eBPF-based tracing tools for analyzing system performance. These tools cover disk I/O, networking, CPU scheduling, memory allocation, and more, all with minimal overhead.
+BCC (BPF Compiler Collection) provides a rich set of pre-built eBPF-based tracing tools for analyzing system performance. These tools cover disk I/O, networking, CPU scheduling, memory allocation, and more, all with low overhead.
 
 ## Install BCC Tools
 
@@ -76,7 +76,7 @@ sudo /usr/share/bcc/tools/offcputime 5
 
 ```bash
 # memleak - trace memory allocations and detect leaks
-sudo /usr/share/bcc/tools/memleak -p $(pgrep myapp)
+sudo /usr/share/bcc/tools/memleak -p $(pgrep -n myapp)
 
 # cachestat - page cache hit/miss statistics
 sudo /usr/share/bcc/tools/cachestat
@@ -124,4 +124,4 @@ sudo /usr/share/bcc/tools/biosnoop | awk '$NF > 100 {print}'
 sudo /usr/share/bcc/tools/bitesize
 ```
 
-BCC tools provide deep visibility into RHEL system behavior with negligible overhead, making them essential for performance analysis and troubleshooting.
+BCC tools provide deep visibility into RHEL system behavior with low overhead, making them essential for performance analysis and troubleshooting.

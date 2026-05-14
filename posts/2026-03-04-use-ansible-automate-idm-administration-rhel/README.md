@@ -35,8 +35,10 @@ idm2.example.com
 client1.example.com
 client2.example.com
 
-[ipaserver:vars]
+[all:vars]
 ipaadmin_password=AdminPassword123
+
+[ipaserver:vars]
 ipadm_password=DirectoryManagerPassword123
 ```
 
@@ -49,7 +51,7 @@ ipadm_password=DirectoryManagerPassword123
   hosts: ipaclients
   become: true
   roles:
-    - role: ipaclient
+    - role: freeipa.ansible_freeipa.ipaclient
       state: present
       ipaclient_domain: example.com
       ipaclient_realm: EXAMPLE.COM
@@ -132,7 +134,8 @@ ansible-playbook -i inventory/hosts playbooks/enroll-clients.yml
         ipaadmin_password: "{{ ipaadmin_password }}"
         zone_name: example.com
         name: webserver
-        a_rec: 192.168.1.50
+        a_rec:
+          - 192.168.1.50
         state: present
 ```
 

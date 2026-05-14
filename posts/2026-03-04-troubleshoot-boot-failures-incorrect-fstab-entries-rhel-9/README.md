@@ -77,11 +77,11 @@ If you cannot access emergency mode, boot from RHEL installation media:
 3. Select "Troubleshooting" from the boot menu
 4. Select "Rescue a Red Hat Enterprise Linux system"
 
-The rescue environment will attempt to find your installation and mount it under `/mnt/sysimage`:
+The rescue environment will attempt to find your installation and mount it under `/mnt/sysroot`:
 
 ```bash
 # Change root into your installation
-chroot /mnt/sysimage
+chroot /mnt/sysroot
 
 # Edit fstab
 vi /etc/fstab
@@ -91,7 +91,7 @@ exit
 reboot
 ```
 
-## Recovery Using GRUB and Single User Mode
+## Recovery Using GRUB and Emergency Mode
 
 You can also access a recovery shell through GRUB:
 

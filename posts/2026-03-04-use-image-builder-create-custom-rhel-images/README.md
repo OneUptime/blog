@@ -108,7 +108,7 @@ composer-cli compose status
 composer-cli compose info <uuid>
 
 # View build logs
-composer-cli compose log <uuid>
+composer-cli compose logs <uuid>
 
 # Download the completed image
 composer-cli compose image <uuid>

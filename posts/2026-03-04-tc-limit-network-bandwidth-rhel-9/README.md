@@ -31,7 +31,7 @@ The Token Bucket Filter (tbf) is the simplest way to cap bandwidth on an interfa
 ```bash
 # Limit ens192 to 100 Mbits/sec
 
-sudo tc qdisc add dev ens192 root tbf rate 100mbit burst 32kbit latency 400ms
+sudo tc qdisc add dev ens192 root tbf rate 100mbit burst 128kb latency 400ms
 
 # Verify
 tc qdisc show dev ens192
@@ -39,7 +39,7 @@ tc qdisc show dev ens192
 
 Parameters:
 - **rate** - Maximum sustained bandwidth
-- **burst** - Maximum burst size (should be at least rate/HZ)
+- **burst** - Maximum burst size (should be at least rate/HZ, expressed as a data size)
 - **latency** - Maximum time a packet can wait in the queue
 
 ```bash
@@ -53,13 +53,13 @@ Common bandwidth limits:
 
 ```bash
 # Limit to 10 Mbits/sec (simulate a basic broadband connection)
-sudo tc qdisc add dev ens192 root tbf rate 10mbit burst 10kbit latency 400ms
+sudo tc qdisc add dev ens192 root tbf rate 10mbit burst 16kb latency 400ms
 
 # Limit to 1 Mbit/sec (simulate a slow connection)
-sudo tc qdisc add dev ens192 root tbf rate 1mbit burst 10kbit latency 400ms
+sudo tc qdisc add dev ens192 root tbf rate 1mbit burst 10kb latency 400ms
 
 # Limit to 50 Mbits/sec
-sudo tc qdisc add dev ens192 root tbf rate 50mbit burst 32kbit latency 400ms
+sudo tc qdisc add dev ens192 root tbf rate 50mbit burst 64kb latency 400ms
 ```
 
 ## Per-Application Bandwidth Limiting with HTB
@@ -80,7 +80,8 @@ sudo tc class add dev ens192 parent 1:1 classid 1:10 htb rate 50mbit ceil 50mbit
 sudo tc class add dev ens192 parent 1:1 classid 1:99 htb rate 950mbit ceil 1gbit
 
 # Filter: traffic to port 873 (rsync) goes to the limited class
-sudo tc filter add dev ens192 parent 1: protocol ip prio 1 u32 match ip dport 873 0xffff flowid 1:10
+sudo tc filter add dev ens192 parent 1: protocol ip prio 1 u32 \
+    match ip protocol 6 0xff match ip dport 873 0xffff flowid 1:10
 
 # Verify
 tc -s class show dev ens192
@@ -113,10 +114,10 @@ sudo tc filter add dev ens192 parent 1: protocol ip prio 1 u32 \
 
 ```bash
 # Limit WireGuard tunnel to 50 Mbits
-sudo tc qdisc add dev wg0 root tbf rate 50mbit burst 32kbit latency 400ms
+sudo tc qdisc add dev wg0 root tbf rate 50mbit burst 64kb latency 400ms
 
 # Or limit OpenVPN tunnel
-sudo tc qdisc add dev tun0 root tbf rate 50mbit burst 32kbit latency 400ms
+sudo tc qdisc add dev tun0 root tbf rate 50mbit burst 64kb latency 400ms
 ```
 
 ## Testing Your Bandwidth Limits
@@ -153,7 +154,7 @@ tc -s -d qdisc show dev ens192
 
 ```bash
 # Change the rate on an existing tbf qdisc
-sudo tc qdisc change dev ens192 root tbf rate 200mbit burst 32kbit latency 400ms
+sudo tc qdisc change dev ens192 root tbf rate 200mbit burst 256kb latency 400ms
 
 # Change a class rate
 sudo tc class change dev ens192 parent 1:1 classid 1:10 htb rate 75mbit ceil 100mbit
@@ -173,7 +174,7 @@ sudo tee /usr/local/bin/tc-setup.sh > /dev/null << 'EOF'
 tc qdisc del dev ens192 root 2>/dev/null
 
 # Set a 100 Mbit limit
-tc qdisc add dev ens192 root tbf rate 100mbit burst 32kbit latency 400ms
+tc qdisc add dev ens192 root tbf rate 100mbit burst 128kb latency 400ms
 EOF
 
 sudo chmod +x /usr/local/bin/tc-setup.sh
@@ -215,9 +216,9 @@ tc qdisc show dev ens192
 
 2. **burst must be large enough.** If burst is too small relative to the rate, you'll get lower throughput than expected.
 
-3. **Don't forget the default class.** Without a default in HTB, unmatched traffic gets dropped.
+3. **Don't forget the default class.** Without a default in HTB, unclassified traffic uses the qdisc's default minor ID of 0, which is usually not what you want.
 
-4. **Units matter.** `mbit` is megabits, `mbps` is megabytes. Use `mbit` for bandwidth and `kbit` for burst sizes.
+4. **Units matter.** `mbit` is megabits per second, `mbps` is megabytes per second. Use rate units such as `mbit` for bandwidth and size units such as `kb` for burst sizes.
 
 ## Wrapping Up
 

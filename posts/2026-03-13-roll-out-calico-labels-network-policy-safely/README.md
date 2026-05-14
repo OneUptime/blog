@@ -46,7 +46,7 @@ for pod in data["items"]:
 ```bash
 # Dry-run preview: show the patch that would set tier=unknown on every deployment
 kubectl get deployments --all-namespaces -o json | jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' | while read ns name; do
-  # Preview only — drop --dry-run=client and replace "unknown" with the real value to apply
+  # Preview only - drop --dry-run=client and replace "unknown" with the real value to apply
   kubectl patch deployment "$name" -n "$ns" --type=merge -p '{
     "spec": {"template": {"metadata": {"labels": {"tier": "unknown"}}}}
   }' --dry-run=client

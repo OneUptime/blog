@@ -35,6 +35,7 @@ Install the troubleshooting tools:
 # Install SELinux troubleshooting tools
 
 sudo dnf install -y setroubleshoot-server setools-console
+sudo dnf install -y policycoreutils-python-utils
 ```
 
 ## Using ausearch
@@ -50,8 +51,8 @@ sudo ausearch -m avc -ts recent
 # Show all denials from today
 sudo ausearch -m avc -ts today
 
-# Show denials from the last hour
-sudo ausearch -m avc -ts "1 hour ago"
+# Show denials since a specific time today
+sudo ausearch -m avc -ts 13:00:00
 ```
 
 ### Filter by Service
@@ -98,8 +99,8 @@ sudo sealert -a /var/log/audit/audit.log
 ### Analyze Recent Denials
 
 ```bash
-# Look at denials from a specific time range
-sudo ausearch -m avc -ts recent | sudo sealert -a -
+# Look up alerts that setroubleshoot has already processed
+sudo sealert -l "*"
 ```
 
 ### Understanding sealert Output
@@ -134,8 +135,8 @@ setsebool -P httpd_read_user_content 1
 The `setroubleshootd` service monitors the audit log in real time and generates alerts:
 
 ```bash
-# Enable the setroubleshoot service
-sudo systemctl enable --now setroubleshootd
+# Start the setroubleshoot service if it is not already active
+sudo systemctl start setroubleshootd
 ```
 
 When a denial happens, you can check:
@@ -154,7 +155,7 @@ sudo journalctl -t setroubleshoot --since "1 hour ago"
 sudo ausearch -m avc -c httpd -ts recent
 
 # 2. Get the fix suggestion
-sudo ausearch -m avc -c httpd -ts recent | sudo sealert -a -
+sudo sealert -l "*"
 
 # 3. If it is a file context issue
 sudo restorecon -Rv /var/www/html/

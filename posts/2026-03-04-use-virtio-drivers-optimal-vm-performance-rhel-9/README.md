@@ -14,7 +14,7 @@ Virtio drivers are paravirtualized device drivers that provide significantly bet
 
 Traditional emulated devices require the hypervisor to translate guest I/O operations into real hardware operations, adding multiple layers of overhead. Virtio bypasses this by using a shared memory ring buffer for direct guest-host communication:
 
-- **virtio-blk/virtio-scsi** - Block device access up to 5x faster than IDE emulation
+- **virtio-blk/virtio-scsi** - Block device access with much lower overhead than IDE emulation
 - **virtio-net** - Network throughput approaching native speeds
 - **virtio-balloon** - Dynamic memory management
 - **virtio-rng** - Hardware random number generation
@@ -83,9 +83,9 @@ For VMs with multiple vCPUs:
 </interface>
 ```
 
-Set queues equal to the number of vCPUs (up to the host's limit).
+Set queues equal to the number of vCPUs as a starting point, up to 16 queues in the RHEL 9 guidance, and test which value works best for your workload.
 
-Inside the guest, enable multi-queue:
+If the Linux guest does not activate all queues automatically, enable multi-queue inside the guest:
 
 ```bash
 sudo ethtool -L eth0 combined 4
@@ -135,12 +135,14 @@ lsmod | grep virtio
 
 ## Performance Comparison
 
+Exact results depend on the host hardware, storage backend, guest workload, queue configuration, and benchmark method, but the expected direction is:
+
 | Component | Emulated | virtio | Improvement |
 |-----------|---------|--------|-------------|
-| Disk (sequential) | ~200 MB/s | ~1000+ MB/s | 5x |
-| Disk (random IOPS) | ~5000 | ~50000+ | 10x |
-| Network throughput | ~1 Gbps | ~9.5 Gbps | 9.5x |
-| Network latency | ~500 us | ~100 us | 5x |
+| Disk (sequential) | Higher overhead | Higher throughput | Often substantial |
+| Disk (random IOPS) | Lower IOPS | Higher IOPS | Often substantial |
+| Network throughput | Lower throughput | Can approach native speeds | Workload-dependent |
+| Network latency | Higher latency | Lower latency | Workload-dependent |
 
 ## Summary
 

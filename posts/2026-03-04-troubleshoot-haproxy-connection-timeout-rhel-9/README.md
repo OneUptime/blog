@@ -58,18 +58,19 @@ sudo journalctl -u haproxy --since "10 minutes ago" | grep -i timeout
 sudo tail -100 /var/log/haproxy.log | grep -i -E "timeout|503|504"
 ```
 
-HAProxy log entries include timing information. The format includes fields like `Tw/Tc/Tr/Tt`:
+HAProxy log entries include timing information. In HTTP mode, the default log format includes fields like `Tq/Tw/Tc/Tr/Ta`:
 
+- **Tq**: Total time to receive the client request
 - **Tw**: Time waiting in queue
 - **Tc**: Time to connect to the backend
 - **Tr**: Time for the backend to send the response headers
-- **Tt**: Total session time
+- **Ta**: Total active time for the HTTP request
 
-A value of `-1` means a timeout occurred at that stage.
+A value of `-1` means that stage did not complete. Confirm the actual timeout by checking the termination state in the same log entry, such as `sC` for `timeout connect`, `sH` or `sD` for `timeout server`, `cD` or `cH` for `timeout client`, `cR` for `timeout http-request`, and `sQ` for `timeout queue`.
 
 ## Step 2 - Identify Which Timeout Is Firing
 
-### timeout connect (-1 in Tc)
+### timeout connect (`sC`, often with `-1` in `Tc`)
 
 HAProxy cannot reach the backend server:
 
@@ -97,7 +98,7 @@ sudo setsebool -P haproxy_connect_any on
 sudo firewall-cmd --list-all
 ```
 
-### timeout server (-1 in Tr)
+### timeout server (`sH` or `sD`, often with `-1` in `Tr`)
 
 The backend accepted the connection but did not respond in time:
 
@@ -119,7 +120,7 @@ backend web_servers
     server web1 192.168.1.11:8080 check
 ```
 
-### timeout client (-1 in Tw or client-related)
+### timeout client (`cD` or `cH`)
 
 The client stopped sending data:
 
@@ -244,10 +245,10 @@ echo "show info" | sudo socat stdio /var/lib/haproxy/stats | \
 
 ```mermaid
 flowchart TD
-    A[Timeout Error] --> B{Check log, which field is -1?}
-    B -->|Tc connect| C[Backend unreachable]
-    B -->|Tr server| D[Backend too slow]
-    B -->|Client| E[Client issue]
+    A[Timeout Error] --> B{Check log termination state}
+    B -->|sC connect| C[Backend unreachable]
+    B -->|sH or sD server| D[Backend too slow]
+    B -->|cD or cH client| E[Client issue]
     C --> F[Check backend health]
     C --> G[Check SELinux/firewall]
     D --> H[Increase timeout server]
@@ -273,4 +274,4 @@ These defaults work for most web applications. Increase `timeout server` if your
 
 ## Wrap-Up
 
-Timeout troubleshooting in HAProxy comes down to reading the logs and understanding which timeout is firing. The timing fields in the log tell you exactly where the delay is. Most issues are either a backend that is too slow (increase `timeout server` or fix the application), a backend that is unreachable (check connectivity, SELinux, firewall), or too many connections overwhelming the system (increase `maxconn` or add more backends).
+Timeout troubleshooting in HAProxy comes down to reading the logs and understanding which timeout is firing. The timing fields and termination state in the log tell you where the delay is. Most issues are either a backend that is too slow (increase `timeout server` or fix the application), a backend that is unreachable (check connectivity, SELinux, firewall), or too many connections overwhelming the system (increase `maxconn` or add more backends).

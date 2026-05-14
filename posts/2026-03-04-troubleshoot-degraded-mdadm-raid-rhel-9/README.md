@@ -110,7 +110,7 @@ sudo mdadm --examine /dev/sdc
 sudo mdadm --manage /dev/md5 --re-add /dev/sdc
 ```
 
-The `--re-add` flag is important here. It tells mdadm to try a fast resync using the bitmap, which is much faster than a full rebuild.
+The `--re-add` flag is important here. If the device metadata still matches the array, mdadm can put it back in the same slot, and the recovery may only need the regions tracked by the write-intent bitmap instead of a full rebuild.
 
 ```bash
 # Verify the re-add triggered a resync
@@ -129,7 +129,7 @@ sudo mdadm --assemble --scan
 sudo mdadm --assemble --force /dev/md5 /dev/sdb /dev/sdc /dev/sdd
 ```
 
-The `--force` flag tells mdadm to assemble with whatever devices are available, even if the array is incomplete. Use this cautiously.
+The `--force` flag tells mdadm to assemble when the metadata is not clean or some devices are not fully up to date, as long as enough members are available for the RAID level. Use this cautiously.
 
 ## Scenario 4 - Bitmap Out of Sync
 
@@ -150,6 +150,7 @@ Once you have identified and resolved the root cause:
 
 ```bash
 # If the failed disk needs replacement
+sudo mdadm --manage /dev/md5 --fail /dev/sdc
 sudo mdadm --manage /dev/md5 --remove /dev/sdc
 
 # Add the replacement
@@ -176,7 +177,7 @@ Reduce the I/O priority of other workloads if possible. The longer a rebuild tak
 
 1. Verify the array is fully synced: `cat /proc/mdstat`
 2. Check the state is "clean": `sudo mdadm --detail /dev/md5`
-3. Update mdadm.conf: `sudo mdadm --detail --scan | sudo tee /etc/mdadm.conf`
+3. Update mdadm.conf: `sudo mdadm --detail --scan | sudo tee -a /etc/mdadm.conf`
 4. Regenerate initramfs: `sudo dracut --regenerate-all --force`
 5. Run a SMART self-test on all remaining disks: `sudo smartctl -t short /dev/sdX`
 6. Verify backups are current

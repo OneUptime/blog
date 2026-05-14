@@ -8,7 +8,7 @@ Description: Set up AWS Systems Manager on RHEL instances for remote management,
 
 ---
 
-AWS Systems Manager (SSM) provides agentless-like management for RHEL instances through the SSM Agent. It enables remote command execution, automated patching, inventory collection, and compliance checking without opening SSH ports. This guide covers setting up and using SSM with RHEL.
+AWS Systems Manager (SSM) provides agent-based management for RHEL instances through the SSM Agent. It enables remote command execution, automated patching, inventory collection, and compliance checking without opening SSH ports. This guide covers setting up and using SSM with RHEL.
 
 ## SSM Architecture
 
@@ -24,7 +24,10 @@ graph LR
 ## Step 1: Install the SSM Agent
 
 ```bash
-# The SSM Agent is pre-installed on official AWS RHEL AMIs
+# AWS-provided RHEL 8 and 9 AMIs do not include SSM Agent by default
+
+# Ensure Python 2 or Python 3 is installed
+python3 --version || python --version
 
 # Verify it is running
 sudo systemctl status amazon-ssm-agent

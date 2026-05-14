@@ -18,7 +18,7 @@ In this guide, you will learn how to create a basic GitRepository source, unders
 
 Before you begin, make sure you have:
 
-- A Kubernetes cluster running version 1.26 or later
+- A Kubernetes cluster running a Flux-supported Kubernetes version
 - Flux CD installed on your cluster (you can bootstrap with `flux bootstrap`)
 - `kubectl` configured to communicate with your cluster
 - The `flux` CLI installed locally
@@ -105,7 +105,7 @@ spec:
   interval: 10m
   # Timeout for Git operations like clone and fetch
   timeout: 60s
-  # The Git repository URL (HTTPS or SSH)
+  # The Git repository URL (HTTP/S or ssh://)
   url: https://github.com/my-org/my-app
   ref:
     # Track the main branch
@@ -125,8 +125,8 @@ Let us walk through each important field:
 
 - **spec.interval**: Controls how frequently the Source Controller checks the repository for new commits. Common values range from `1m` for fast feedback to `30m` for stable environments.
 - **spec.timeout**: Sets the maximum duration for Git operations. The default is 60 seconds. Increase this if you have a large repository.
-- **spec.url**: The clone URL of the repository. Supports both HTTPS (`https://`) and SSH (`ssh://`) protocols.
-- **spec.ref**: Specifies which Git reference to track. You can set `branch`, `tag`, `commit`, or `semver`. If omitted, Flux defaults to the `main` branch.
+- **spec.url**: The clone URL of the repository. Supports HTTP/S (`https://`) and SSH (`ssh://`) addresses.
+- **spec.ref**: Specifies which Git reference to track. You can set `branch`, `tag`, `commit`, or `semver`. If omitted, Flux defaults to the `master` branch.
 - **spec.secretRef**: References a Kubernetes Secret containing credentials for private repositories.
 - **spec.ignore**: A multi-line string following `.gitignore` syntax to exclude files from the artifact.
 

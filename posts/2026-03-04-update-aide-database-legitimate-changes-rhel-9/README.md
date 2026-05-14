@@ -161,15 +161,15 @@ sudo chmod 700 /usr/local/sbin/aide-post-patch.sh
 
 ## Partial Updates: When You Cannot Update Everything
 
-Sometimes you want to accept changes in one area but not another. AIDE does not support partial database updates directly, but you can work around this:
+Sometimes you want to accept changes in one area but not another. AIDE does not support partial database updates directly. A temporary config can help you narrow investigation to a smaller set of paths, but do not activate the database produced from that limited config as your full system baseline:
 
 ```bash
-# Check with a limited scope using a temporary config
+# Check a limited scope using a temporary config
 sudo cp /etc/aide.conf /tmp/aide-partial.conf
 
-# Edit the temporary config to only include the paths you want to update
-# Then run update with the modified config
-sudo aide --update --config=/tmp/aide-partial.conf
+# Edit the temporary config to only include the paths you want to inspect
+# Then run a check with the modified config
+sudo aide --check --config=/tmp/aide-partial.conf
 ```
 
 In practice, most admins just review the full output and accept all verified changes at once. If you have unresolved suspicious changes, fix those before running the update.

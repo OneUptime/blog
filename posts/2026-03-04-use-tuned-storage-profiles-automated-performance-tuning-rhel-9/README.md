@@ -62,19 +62,18 @@ tuned-adm verify
 
 ### throughput-performance
 
-- Sets I/O scheduler based on device type
-- Increases read-ahead for sequential workloads
-- Disables transparent huge pages defragmentation
-- Sets vm.dirty_ratio to 40
-- Sets vm.dirty_background_ratio to 10
-- Enables disk write-back caching
+- Increases disk read-ahead for sequential workloads
+- Sets CPU governor and platform power settings for performance
+- Sets vm.dirty_ratio to 40 through the TuneD vm plug-in
+- Sets vm.dirty_background_ratio to 10 through the TuneD vm plug-in
+- Reduces vm.swappiness
 
 ### latency-performance
 
 - Minimizes I/O latency by reducing buffering
 - Sets CPU governor to performance
 - Disables power management features that add latency
-- Optimizes interrupt handling
+- Sets lower dirty page limits for more deterministic writeback
 
 ## Viewing Profile Details
 
@@ -108,20 +107,22 @@ summary=Custom storage profile for database workloads
 include=throughput-performance
 
 [disk]
-# I/O scheduler based on device type
-
-devices_udev_regex=ATTR{queue/rotational}=="0"
+# NVMe devices commonly support the "none" scheduler
+devices=nvme*
 elevator=none
 
 [disk_rotational]
-devices_udev_regex=ATTR{queue/rotational}=="1"
+type=disk
+devices=sd*
 elevator=mq-deadline
 readahead=4096
 
-[sysctl]
+[vm]
 # Increase dirty page limits for write-heavy workloads
-vm.dirty_ratio=60
-vm.dirty_background_ratio=20
+dirty_bytes=60%
+dirty_background_bytes=20%
+
+[sysctl]
 vm.dirty_expire_centisecs=6000
 vm.dirty_writeback_centisecs=500
 
@@ -132,7 +133,7 @@ vm.swappiness=10
 fs.file-max=2097152
 
 [script]
-script=tuning.sh
+script=${i:PROFILE_DIR}/tuning.sh
 ```
 
 Create the tuning script for per-device settings:
@@ -150,8 +151,9 @@ start() {
     # Set NVMe queue depth
     for dev in /sys/block/nvme*; do
         [ -d "$dev" ] || continue
-        echo 1023 > "$dev/queue/nr_requests"
-        echo 128 > "$dev/queue/read_ahead_kb"
+        name=$(basename "$dev")
+        save_set_sys "${name}_nr_requests" "$dev/queue/nr_requests" 1023
+        save_set_sys "${name}_read_ahead_kb" "$dev/queue/read_ahead_kb" 128
     done
 
     # Set HDD settings
@@ -159,8 +161,9 @@ start() {
         [ -d "$dev" ] || continue
         ROTATIONAL=$(cat "$dev/queue/rotational")
         if [ "$ROTATIONAL" = "1" ]; then
-            echo 128 > "$dev/queue/nr_requests"
-            echo 1024 > "$dev/queue/read_ahead_kb"
+            name=$(basename "$dev")
+            save_set_sys "${name}_nr_requests" "$dev/queue/nr_requests" 128
+            save_set_sys "${name}_read_ahead_kb" "$dev/queue/read_ahead_kb" 1024
         fi
     done
 
@@ -168,10 +171,17 @@ start() {
 }
 
 stop() {
+    for dev in /sys/block/nvme* /sys/block/sd*; do
+        [ -d "$dev" ] || continue
+        name=$(basename "$dev")
+        restore_sys "${name}_nr_requests" "$dev/queue/nr_requests"
+        restore_sys "${name}_read_ahead_kb" "$dev/queue/read_ahead_kb"
+    done
+
     return 0
 }
 
-process $@
+process "$@"
 ```
 
 Make the script executable:

@@ -14,7 +14,7 @@ One of the core principles of GitOps is that your Git repository is the single s
 
 ## How Pruning Works
 
-When Flux applies manifests from a Kustomization, it labels every resource it creates with metadata that ties it back to the Kustomization. During subsequent reconciliations, Flux compares the set of resources in the source with the set of labeled resources in the cluster. If a resource exists in the cluster but is no longer in the source, and pruning is enabled, Flux deletes it.
+When Flux applies manifests from a Kustomization, it tracks every successfully applied resource in the Kustomization's `.status.inventory` and applies ownership labels that tie resources back to the Kustomization. During subsequent reconciliations, Flux compares the set of resources in the current source revision with the inventory from the previous successful apply. If a previously applied resource is no longer in the source, and pruning is enabled, Flux deletes it.
 
 ```mermaid
 graph TD
@@ -77,7 +77,7 @@ This is useful during initial setup or migration phases when you want full contr
 
 ## Protecting Resources from Pruning
 
-Sometimes you want pruning enabled for most resources but need to protect specific resources from being deleted. You can annotate individual resources to prevent Flux from pruning them.
+Sometimes you want pruning enabled for most resources but need to protect specific resources from being deleted. You can annotate or label individual resources to prevent Flux from pruning them.
 
 ```yaml
 # protected-configmap.yaml - Prevent this resource from being pruned
@@ -155,8 +155,8 @@ On the next reconciliation, Flux detects that the Service resource is no longer 
 kubectl get service web-app -n default
 # Expected: Error from server (NotFound): services "web-app" not found
 
-# Check Flux events for pruning activity
-kubectl get events -n flux-system --field-selector reason=Prune
+# Check Flux events for reconciliation activity
+flux events --for Kustomization/my-app
 ```
 
 ## What Happens When a Kustomization Is Deleted
@@ -168,7 +168,7 @@ If you delete the Kustomization resource itself while `spec.prune` is `true`, Fl
 kubectl delete kustomization my-app -n flux-system
 ```
 
-If you want to delete the Kustomization without removing its managed resources, first set `spec.prune` to `false`, wait for a reconciliation, and then delete the Kustomization.
+If you want to delete the Kustomization without removing its managed resources, set `spec.prune` to `false`, wait for a reconciliation, and then delete the Kustomization. On Flux versions that support `spec.deletionPolicy`, setting `deletionPolicy: Orphan` is the explicit way to leave managed resources behind when deleting the Kustomization.
 
 ```bash
 # Step 1: Disable pruning first

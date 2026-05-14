@@ -68,7 +68,9 @@ If your HelmRepository resources are spread across multiple namespaces, you can 
 
 ```bash
 # Export all HelmRepository resources from every namespace
-flux export source helm --all --all-namespaces
+for namespace in $(kubectl get helmrepositories.source.toolkit.fluxcd.io --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"\n"}{end}' | sort -u); do
+  flux export source helm --all --namespace="$namespace"
+done
 ```
 
 ## Exporting HelmChart Resources
@@ -114,7 +116,9 @@ flux export source chart --all --namespace=flux-system
 
 ```bash
 # Export all HelmChart resources from every namespace
-flux export source chart --all --all-namespaces
+for namespace in $(kubectl get helmcharts.source.toolkit.fluxcd.io --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"\n"}{end}' | sort -u); do
+  flux export source chart --all --namespace="$namespace"
+done
 ```
 
 ## Saving Exports to Files
@@ -142,9 +146,10 @@ You can use a script to export each resource into its own file, which is useful 
 
 ```bash
 # Export each HelmRepository into its own YAML file
-for name in $(flux get sources helm --all-namespaces -o json | jq -r '.[] | .name'); do
-  flux export source helm "$name" --namespace=flux-system > "helmrepository-${name}.yaml"
-  echo "Exported HelmRepository: $name"
+kubectl get helmrepositories.source.toolkit.fluxcd.io --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' |
+while read -r namespace name; do
+  flux export source helm "$name" --namespace="$namespace" > "helmrepository-${namespace}-${name}.yaml"
+  echo "Exported HelmRepository: $namespace/$name"
 done
 ```
 
@@ -157,9 +162,20 @@ When migrating an entire Flux installation, you can combine exports of all sourc
 mkdir -p flux-backup/sources
 
 # Export all source types
-flux export source helm --all --all-namespaces > flux-backup/sources/helm-repositories.yaml
-flux export source chart --all --all-namespaces > flux-backup/sources/helm-charts.yaml
-flux export source git --all --all-namespaces > flux-backup/sources/git-repositories.yaml
+: > flux-backup/sources/helm-repositories.yaml
+for namespace in $(kubectl get helmrepositories.source.toolkit.fluxcd.io --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"\n"}{end}' | sort -u); do
+  flux export source helm --all --namespace="$namespace" >> flux-backup/sources/helm-repositories.yaml
+done
+
+: > flux-backup/sources/helm-charts.yaml
+for namespace in $(kubectl get helmcharts.source.toolkit.fluxcd.io --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"\n"}{end}' | sort -u); do
+  flux export source chart --all --namespace="$namespace" >> flux-backup/sources/helm-charts.yaml
+done
+
+: > flux-backup/sources/git-repositories.yaml
+for namespace in $(kubectl get gitrepositories.source.toolkit.fluxcd.io --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"\n"}{end}' | sort -u); do
+  flux export source git --all --namespace="$namespace" >> flux-backup/sources/git-repositories.yaml
+done
 
 echo "Backup complete. Files saved to flux-backup/sources/"
 ```

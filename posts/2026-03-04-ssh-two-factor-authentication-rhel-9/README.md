@@ -24,8 +24,8 @@ There are several ways to combine factors:
 
 ```bash
 # Enable EPEL repository
-
-sudo dnf install epel-release -y
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 
 # Install the PAM module
 sudo dnf install google-authenticator -y
@@ -48,7 +48,7 @@ Flags explained:
 - `-R 30` - Rate limit window of 30 seconds
 - `-w 3` - Allow 3 window codes (1 before and 1 after current)
 
-The output includes a QR code and emergency scratch codes. Users should scan the QR code with their authenticator app.
+The output includes a QR code if QR support is available, an otpauth URL, and emergency scratch codes. Users should scan the QR code or enter the URL/secret with their authenticator app.
 
 ## Method 1: Password + TOTP
 
@@ -99,7 +99,10 @@ Comment out the password auth substack and add the TOTP module:
 ```bash
 # auth       substack     password-auth
 auth       required     pam_google_authenticator.so nullok
+auth       required     pam_permit.so
 ```
+
+The `pam_permit.so` line gives PAM a successful result for users who do not have a TOTP secret yet while `nullok` is enabled. After enrollment is complete, remove `nullok`; the `pam_google_authenticator.so` line will then enforce TOTP.
 
 ### Configure SSH
 
@@ -129,11 +132,12 @@ sudo vi /etc/ssh/sshd_config.d/30-2fa.conf
 ```
 
 ```bash
-AuthenticationMethods publickey,keyboard-interactive:pam
-KbdInteractiveAuthentication yes
+AuthenticationMethods publickey,password
 PubkeyAuthentication yes
 PasswordAuthentication yes
 ```
+
+Leave the normal `auth substack password-auth` line enabled in `/etc/pam.d/sshd` for this method, and do not add the Google Authenticator PAM line.
 
 ## Handling the Transition Period
 
@@ -142,6 +146,8 @@ Use `nullok` in the PAM configuration during rollout. This allows users who have
 ```bash
 auth    required    pam_google_authenticator.so nullok
 ```
+
+If you removed the password auth substack for SSH key + TOTP, keep the `pam_permit.so` line shown earlier during the `nullok` rollout.
 
 Once all users have enrolled, remove `nullok` to enforce 2FA for everyone:
 
@@ -190,6 +196,8 @@ An admin can temporarily disable 2FA for a user by removing their config:
 ```bash
 sudo mv /home/username/.google_authenticator /home/username/.google_authenticator.bak
 ```
+
+This only bypasses TOTP while `nullok` is still enabled. After `nullok` is removed, use a temporary PAM exemption instead.
 
 ## Testing
 

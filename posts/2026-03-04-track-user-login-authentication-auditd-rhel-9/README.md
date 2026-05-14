@@ -8,7 +8,7 @@ Description: Set up auditd rules on RHEL to monitor user logins, failed authenti
 
 ---
 
-Knowing who logged into your systems and when is fundamental to security. On RHEL, auditd gives you fine-grained control over what authentication events get recorded. Unlike basic utmp/wtmp logs, auditd captures the full context around each event, including the exact syscalls, processes, and user IDs involved.
+Knowing who logged into your systems and when is fundamental to security. On RHEL, auditd gives you fine-grained control over what authentication events get recorded. Unlike basic utmp/wtmp logs, auditd can capture fuller context around each event, including related syscalls, processes, and user IDs involved.
 
 This guide covers setting up audit rules specifically for login and authentication tracking.
 
@@ -51,25 +51,24 @@ Add these rules:
 
 ```bash
 # Monitor changes to user account files
--w /etc/passwd -p wa -k user_accounts
--w /etc/shadow -p wa -k user_accounts
--w /etc/group -p wa -k group_changes
--w /etc/gshadow -p wa -k group_changes
+-a always,exit -F arch=b64 -F path=/etc/passwd -F perm=wa -k user_accounts
+-a always,exit -F arch=b64 -F path=/etc/shadow -F perm=wa -k user_accounts
+-a always,exit -F arch=b64 -F path=/etc/group -F perm=wa -k group_changes
+-a always,exit -F arch=b64 -F path=/etc/gshadow -F perm=wa -k group_changes
 
 # Monitor PAM configuration changes
--w /etc/pam.d/ -p wa -k pam_config
--w /etc/security/ -p wa -k security_config
+-a always,exit -F arch=b64 -F dir=/etc/pam.d/ -F perm=wa -k pam_config
+-a always,exit -F arch=b64 -F dir=/etc/security/ -F perm=wa -k security_config
 
 # Monitor SSH configuration
--w /etc/ssh/sshd_config -p wa -k sshd_config
+-a always,exit -F arch=b64 -F path=/etc/ssh/sshd_config -F perm=wa -k sshd_config
 
 # Monitor sudoers changes
--w /etc/sudoers -p wa -k sudoers_change
--w /etc/sudoers.d/ -p wa -k sudoers_change
+-a always,exit -F arch=b64 -F path=/etc/sudoers -F perm=wa -k sudoers_change
+-a always,exit -F arch=b64 -F dir=/etc/sudoers.d/ -F perm=wa -k sudoers_change
 
 # Monitor login configuration
--w /etc/login.defs -p wa -k login_config
--w /etc/securetty -p wa -k login_config
+-a always,exit -F arch=b64 -F path=/etc/login.defs -F perm=wa -k login_config
 ```
 
 ### Load the rules
@@ -93,9 +92,9 @@ sudo vi /etc/audit/rules.d/login-syscalls.rules
 ```
 
 ```bash
-# Track all user login and logout events
--a always,exit -F arch=b64 -S execve -F path=/usr/bin/login -k user_login
--a always,exit -F arch=b64 -S execve -F path=/usr/sbin/sshd -k ssh_login
+# Track execution of login-related programs
+-a always,exit -F arch=b64 -S execve -F path=/usr/bin/login -k login_program
+-a always,exit -F arch=b64 -S execve -F path=/usr/sbin/sshd -k login_program
 
 # Track su and sudo usage
 -a always,exit -F arch=b64 -S execve -F path=/usr/bin/su -k privilege_escalation
@@ -133,7 +132,7 @@ PAM generates specific audit event types. The key event types to watch for:
 ### Search for authentication events
 
 ```bash
-# Find all failed authentication attempts in the last hour
+# Find recent failed authentication attempts
 sudo ausearch -m USER_AUTH --success no --start recent
 
 # Find all successful logins today
@@ -225,10 +224,10 @@ SSH logins are usually the primary concern for remote servers.
 
 ```bash
 # Find all SSH login attempts
-sudo ausearch -m USER_LOGIN -x sshd --interpret
+sudo ausearch -m USER_LOGIN -x /usr/sbin/sshd --interpret
 
 # Find SSH logins from a specific IP
-sudo ausearch -m USER_LOGIN -x sshd --interpret | grep "addr=192.168.1.100"
+sudo ausearch -m USER_LOGIN -x /usr/sbin/sshd --interpret | grep "addr=192.168.1.100"
 
 # Count logins per user
 sudo aureport --login --summary -i
@@ -239,13 +238,13 @@ sudo aureport --login --summary -i
 Failed privilege escalation attempts are a red flag worth watching closely.
 
 ```bash
-# Find failed sudo attempts
-sudo ausearch -k privilege_escalation --success no --interpret
+# Find failed sudo authentication attempts
+sudo ausearch -m USER_AUTH,USER_ERR -x /usr/bin/sudo --success no --interpret --start today
 
 # Find all su attempts
 sudo ausearch -x /usr/bin/su --interpret --start today
 
-# Watch for real-time authentication events
+# Check recent authentication events
 sudo ausearch -m USER_AUTH,USER_ERR,USER_LOGIN --start recent -i
 ```
 
@@ -274,6 +273,24 @@ done
 sudo chmod 700 /usr/local/bin/auth-alert.sh
 ```
 
+Create an auditd plugin configuration so auditd sends events to the script:
+
+```bash
+sudo vi /etc/audit/plugins.d/auth-alert.conf
+```
+
+```ini
+active = yes
+path = /usr/local/bin/auth-alert.sh
+type = always
+args =
+format = string
+```
+
+```bash
+sudo auditctl --signal reload
+```
+
 ## Protecting the Audit Trail
 
 It is important to make sure nobody can tamper with the audit logs themselves.
@@ -289,4 +306,4 @@ With immutable rules (`-e 2`), nobody can modify or disable audit rules without 
 
 ## Wrapping Up
 
-Tracking authentication events with auditd on RHEL gives you a solid foundation for security monitoring. The combination of file watches on critical auth files, syscall tracking for login-related binaries, and regular reporting with aureport covers most compliance requirements. The key is to review these logs regularly, whether manually or through automated SIEM integration, so you catch suspicious activity before it becomes a breach.
+Tracking authentication events with auditd on RHEL gives you a solid foundation for security monitoring. The combination of file and directory rules on critical auth files, syscall tracking for login-related binaries, and regular reporting with aureport covers most compliance requirements. The key is to review these logs regularly, whether manually or through automated SIEM integration, so you catch suspicious activity before it becomes a breach.

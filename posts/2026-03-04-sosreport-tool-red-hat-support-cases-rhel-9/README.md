@@ -27,7 +27,7 @@ sudo dnf install sos -y
 rpm -q sos
 ```
 
-Note that the command changed from `sosreport` (the old name) to `sos report` (with a space) in newer versions. On RHEL, both work, but `sos report` is the current syntax.
+Note that the command changed from `sosreport` (the old name) to `sos report` (with a space) in newer versions. On RHEL 9, use `sos report` with the same arguments that older examples used with `sosreport`.
 
 ## Running a Basic sos report
 
@@ -119,8 +119,8 @@ If a plugin is causing problems or collecting data you do not want to include, d
 # Skip the yum and rpm plugins (can be slow on systems with many packages)
 sudo sos report --batch --skip-plugins=yum,rpm
 
-# Skip plugins that collect sensitive data
-sudo sos report --batch --skip-plugins=passwords
+# Skip a specific plugin after reviewing the plugin list
+sudo sos report --batch --skip-plugins=<plugin_name>
 ```
 
 ## Plugin Options
@@ -132,10 +132,10 @@ Some plugins accept additional options for more control over what gets collected
 sudo sos report --list-plugins | grep -A5 "networking"
 
 # Pass options to a plugin
-sudo sos report --batch --plugin-option=logs.all_logs=true
+sudo sos report --batch --plugin-option=logs.timeout=600
 
 # Increase the log size limit (default is 25MB per log)
-sudo sos report --batch --plugin-option=logs.log_size=100
+sudo sos report --batch --log-size=100
 ```
 
 ## Filtering Sensitive Data
@@ -154,15 +154,15 @@ The `--clean` option obfuscates:
 - IP addresses (replaced with consistent dummy addresses)
 - Hostnames
 - MAC addresses
-- Domain names
+- User names or additional user-specified keywords
 
 ```mermaid
 flowchart TD
     A[sos report generated] --> B[sos clean runs]
     B --> C[IP addresses obfuscated]
     B --> D[Hostnames masked]
-    B --> E[MAC addresses randomized]
-    B --> F[Domain names replaced]
+    B --> E[MAC addresses obfuscated]
+    B --> F[Usernames or keywords replaced]
     C --> G[Cleaned report ready for upload]
     D --> G
     E --> G
@@ -190,28 +190,25 @@ Once you have the report, there are several ways to get it to Red Hat.
 
 The most common method is uploading through the support case on the customer portal at `access.redhat.com`. Navigate to your case and use the file attachment option.
 
-### Using redhat-support-tool
+### Using sos upload
 
-RHEL provides a command-line tool for interacting with support cases.
+RHEL 9 uses the `sos upload` command to upload an existing report or other file to Red Hat.
 
 ```bash
-# Install the support tool
-sudo dnf install redhat-support-tool -y
-
 # Upload the sosreport to an existing case
-redhat-support-tool addattachment -c 03456789 /var/tmp/sosreport-hostname-2026-03-04-abc1234.tar.xz
+sudo sos upload /var/tmp/sosreport-hostname-2026-03-04-abc1234.tar.xz --case-id=03456789
 ```
 
 ### Using sos report with Direct Upload
 
-The sos tool can upload directly to Red Hat's SFTP server.
+The sos tool can upload directly to Red Hat while generating the report. With a case ID and successful authentication, the upload is attached to the case; otherwise, sos can fall back to Red Hat's SFTP upload path.
 
 ```bash
 # Generate and upload in one step
 sudo sos report --batch --case-id=03456789 --upload
 
 # Upload an existing report
-sudo sos report --upload /var/tmp/sosreport-hostname-2026-03-04-abc1234.tar.xz
+sudo sos upload /var/tmp/sosreport-hostname-2026-03-04-abc1234.tar.xz --case-id=03456789
 ```
 
 ## Collecting from Multiple Systems
@@ -237,12 +234,12 @@ On systems with large log files or many packages, the sosreport can get very lar
 
 ```bash
 # Limit log file collection size (per file, in MB)
-sudo sos report --batch --plugin-option=logs.log_size=10
+sudo sos report --batch --log-size=10
 
 # Skip large, less-useful plugins
 sudo sos report --batch --skip-plugins=rpm,yum,dnf
 
-# Set overall size limit with compression
+# Use xz compression to keep the archive smaller
 sudo sos report --batch --compression-type=xz
 ```
 

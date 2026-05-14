@@ -34,8 +34,8 @@ Key columns:
 
 | Column | Description |
 |--------|-------------|
-| `r` | Processes waiting for CPU |
-| `b` | Processes in uninterruptible sleep |
+| `r` | Runnable processes (running or waiting for CPU time) |
+| `b` | Processes blocked waiting for I/O |
 | `swpd` | Virtual memory used (swap) |
 | `free` | Free memory |
 | `buff` | Buffer cache |
@@ -88,27 +88,27 @@ sar -B
 ```
 
 Key fields:
-- `pgpgin/s` - Pages paged in from disk
-- `pgpgout/s` - Pages paged out to disk
+- `pgpgin/s` - Kilobytes paged in from disk per second
+- `pgpgout/s` - Kilobytes paged out to disk per second
 - `fault/s` - Page faults per second
 - `majflt/s` - Major faults (required disk I/O)
 
 ## Step 7: Set Up Custom Collection Intervals
 
-Edit the sysstat cron:
+Edit the sysstat configuration:
 
 ```bash
-sudo vi /etc/sysstat/sysstat
+sudo vi /etc/sysconfig/sysstat
 ```
 
-Change collection interval:
+Adjust retention and collector options as needed:
 
 ```bash
 HISTORY=28
 SADC_OPTIONS="-S ALL"
 ```
 
-Edit the timer for more frequent collection:
+On RHEL 8 and later, edit the timer for more frequent collection:
 
 ```bash
 sudo systemctl edit sysstat-collect.timer

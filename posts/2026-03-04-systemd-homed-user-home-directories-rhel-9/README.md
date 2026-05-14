@@ -8,7 +8,7 @@ Description: Learn how to use systemd-homed on RHEL to manage portable, encrypte
 
 ---
 
-systemd-homed is a service that manages user accounts and home directories as self-contained, portable, and optionally encrypted units. Unlike traditional user management with useradd, homed stores all user metadata inside the home directory itself, making accounts truly portable between machines.
+systemd-homed is a service that manages user accounts and home directories as self-contained, portable, and optionally encrypted units. Unlike traditional user management with useradd, homed stores the user record with the home directory itself, making accounts easier to move between machines that trust the record's signing key.
 
 ## How systemd-homed Works
 
@@ -20,13 +20,13 @@ graph TD
     C --> E[btrfs subvolume]
     C --> F[Plain directory]
     C --> G[CIFS network share]
-    D --> H[~/.identity file<br>Portable between hosts]
+    D --> H[User record in LUKS2 header<br>and ~/.identity file]
 ```
 
 ## Step 1: Enable systemd-homed
 
 ```bash
-# Install and start systemd-homed
+# Start systemd-homed
 
 sudo systemctl enable --now systemd-homed
 
@@ -86,22 +86,26 @@ sudo homectl deactivate devuser
 # Check if a home directory is active
 homectl inspect devuser | grep State
 
-# Home directories are automatically activated on login
-# and deactivated on logout
+# With pam_systemd_home configured, home directories are
+# automatically activated on login and deactivated on logout
 ```
 
 ## Step 5: Portability
 
 ```bash
-# The home directory image can be moved to another machine
-# Copy the LUKS image file
+# The home directory image can be moved to another trusted machine
+# Copy the LUKS image file and public signing key to removable media
 sudo cp /home/devuser.home /media/usb/
+sudo cp /var/lib/systemd/home/local.public /media/usb/source.public
 
-# On the new machine, import the user
-sudo homectl activate --identity=/media/usb/devuser.home
+# On the new machine
+sudo cp /media/usb/devuser.home /home/
+sudo install -D -m 0644 /media/usb/source.public /var/lib/systemd/home/source.public
+sudo systemctl enable --now systemd-homed
+sudo homectl activate devuser
 
-# The user record is stored inside the encrypted image
-# No need to manually create the user on the new machine
+# The user record is stored with the home area
+# The new machine must trust the signing key for the record
 ```
 
 ## Step 6: Remove a User

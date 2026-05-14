@@ -22,8 +22,8 @@ Linux supports several scheduling policies:
 - **SCHED_OTHER** (CFS) - Default time-sharing policy
 - **SCHED_FIFO** - Real-time first-in-first-out
 - **SCHED_RR** - Real-time round-robin
-- **SCHED_BATCH** - Batch processing, lower priority than SCHED_OTHER
-- **SCHED_IDLE** - Very low priority, runs only when system is idle
+- **SCHED_BATCH** - Batch processing for CPU-intensive, non-interactive workloads
+- **SCHED_IDLE** - Very low priority policy for jobs that should only run when higher-priority work does not need the CPU
 - **SCHED_DEADLINE** - Deadline-based scheduling
 
 View a process's current scheduling policy:
@@ -80,7 +80,6 @@ Pin a process to specific CPUs:
 
 ```bash
 # Pin to CPU 0 and 1
-
 sudo taskset -cp 0,1 $(pgrep my-app | head -1)
 ```
 
@@ -99,32 +98,30 @@ taskset 0x5 ./my-application
 
 ## Tuning CFS Scheduler Parameters
 
-The Completely Fair Scheduler (CFS) has tunable parameters:
+On RHEL 9, use TuneD's `scheduler` plugin to tune CFS scheduler parameters because recent kernels moved several scheduler runtime tunables from `/proc/sys/kernel` to debugfs:
 
 ```bash
-# Minimum granularity (time slice) in nanoseconds
-cat /proc/sys/kernel/sched_min_granularity_ns
-
-# Target latency for CFS scheduling period
-cat /proc/sys/kernel/sched_latency_ns
-
-# Wake-up granularity
-cat /proc/sys/kernel/sched_wakeup_granularity_ns
+sudo dnf install tuned
+sudo systemctl enable --now tuned
+sudo mkdir -p /etc/tuned/low-latency-scheduler
 ```
 
-Reduce latency for interactive workloads:
+Create `/etc/tuned/low-latency-scheduler/tuned.conf`:
 
-```bash
-sudo sysctl -w kernel.sched_latency_ns=6000000
-sudo sysctl -w kernel.sched_min_granularity_ns=750000
+```ini
+[main]
+summary=Custom scheduler latency tuning
+include=throughput-performance
+
+[scheduler]
+sched_latency_ns=6000000
+sched_min_granularity_ns=750000
 ```
 
-Make persistent:
+Apply the profile:
 
 ```bash
-echo "kernel.sched_latency_ns=6000000" | sudo tee -a /etc/sysctl.d/scheduler.conf
-echo "kernel.sched_min_granularity_ns=750000" | sudo tee -a /etc/sysctl.d/scheduler.conf
-sudo sysctl -p /etc/sysctl.d/scheduler.conf
+sudo tuned-adm profile low-latency-scheduler
 ```
 
 ## Using systemd for CPU Affinity
@@ -159,7 +156,7 @@ Isolate CPUs from the general scheduler so only assigned processes run on them. 
 sudo grubby --update-kernel=ALL --args="isolcpus=2,3"
 ```
 
-Reboot for the change to take effect. After isolation, only processes explicitly assigned to CPUs 2 and 3 via taskset will run on them.
+Reboot for the change to take effect. After isolation, CPUs 2 and 3 are removed from general scheduler load balancing, and you can move processes onto or off those CPUs with CPU affinity tools such as `taskset` or cpusets.
 
 ## Conclusion
 

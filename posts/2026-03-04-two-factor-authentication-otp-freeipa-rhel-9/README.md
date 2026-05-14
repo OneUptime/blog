@@ -62,11 +62,10 @@ The admin can create a token and share the QR code or secret with the user.
 # Create a TOTP token for a user
 ipa otptoken-add --owner=jsmith --type=totp
 
-# The command outputs a URI that can be converted to a QR code
-# Example output includes the otpauth:// URI
+# The command displays a QR code and may show an otpauth:// URI
 ```
 
-The output will include an `otpauth://` URI. The user scans this as a QR code in their authenticator app.
+The output displays a QR code, and some versions also show an `otpauth://` URI. The user scans the QR code in their authenticator app.
 
 ```bash
 # Generate a QR code from the URI (install qrencode first)
@@ -90,13 +89,17 @@ Users can add their own tokens through the FreeIPA web UI:
 After the token is configured, test the login. The user enters their password immediately followed by the OTP code.
 
 ```bash
-# Authenticate with password + OTP (no space between them)
+# RHEL 9.1 and later use FAST armor for OTP kinit
+kinit -n @EXAMPLE.COM -c FILE:armor.ccache
+
+# Authenticate with password + OTP using the armor cache
+kinit -T FILE:armor.ccache jsmith@EXAMPLE.COM
+
 # If password is "MyPassword" and OTP is "123456":
-kinit jsmith
 # Enter: MyPassword123456
 
 # Verify the ticket was issued
-klist
+klist -C
 ```
 
 ## Step 4 - Configure SSSD for OTP on Clients
@@ -175,11 +178,11 @@ If a user's token gets out of sync, they can resynchronize by providing two cons
 
 ## Step 7 - Configure OTP for SSH Access
 
-SSH logins also use OTP when configured properly. Make sure the SSH server supports challenge-response authentication.
+SSH logins also use OTP when configured properly. Make sure the SSH server supports keyboard-interactive PAM authentication.
 
 ```bash
-# Verify SSH configuration on the client
-sudo grep -E "ChallengeResponseAuthentication|KbdInteractiveAuthentication" /etc/ssh/sshd_config
+# Verify SSH configuration on the SSH server
+sudo sshd -T | grep -E "kbdinteractiveauthentication|usepam"
 ```
 
 SSSD handles the OTP prompting for SSH sessions. The user will see a combined password+OTP prompt or two separate prompts depending on the SSSD version and configuration.

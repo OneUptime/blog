@@ -80,25 +80,33 @@ sudo lvremove vg_data/lv_unused
 
 ## Error 3: "Device /dev/sdX excluded by a filter"
 
-This means the LVM device filter in `/etc/lvm/lvm.conf` is blocking the device.
+This means LVM device visibility rules are blocking the device. On RHEL 9, the `/etc/lvm/devices/system.devices` file is enabled by default and replaces the traditional LVM device filter unless the devices file has been disabled.
 
 ### Diagnosis
 
 Check the current filter:
 
 ```bash
-sudo grep "filter" /etc/lvm/lvm.conf | grep -v "^#"
+sudo lvmdevices
+sudo lvmconfig devices/use_devicesfile devices/filter
 ```
 
 ### Solution
 
-Edit `/etc/lvm/lvm.conf` and adjust the filter to include the device:
+If the devices file is enabled, add the device with `lvmdevices`:
+
+```bash
+sudo lvmdevices --adddev /dev/sdX
+sudo pvscan --cache
+```
+
+If you have deliberately disabled the devices file and are using the LVM filter, edit `/etc/lvm/lvm.conf` and adjust the filter to include the device:
 
 ```bash
 sudo vi /etc/lvm/lvm.conf
 ```
 
-Change the filter to accept the device:
+For example, change the filter to accept SCSI disk devices:
 
 ```bash
 filter = [ "a|/dev/sd.*|", "r|.*|" ]
@@ -137,16 +145,11 @@ Activate manually:
 sudo lvchange -ay vg_data/lv_data
 ```
 
-If that fails, check for lock files:
+If that fails on a shared-storage or clustered VG, check the locking services and logs:
 
 ```bash
-sudo ls -la /run/lock/lvm/
-```
-
-Remove stale locks if present:
-
-```bash
-sudo rm /run/lock/lvm/V_vg_data
+sudo systemctl status lvmlockd
+sudo journalctl -u lvmlockd --since "1 hour ago"
 sudo lvchange -ay vg_data/lv_data
 ```
 
@@ -165,14 +168,15 @@ sudo pvck /dev/sdb
 Restore metadata from backup:
 
 ```bash
-sudo vgcfgrestore vg_data
+sudo vgcfgrestore --list vg_data
+sudo vgcfgrestore --file /etc/lvm/backup/vg_data vg_data
 sudo vgchange -ay vg_data
 ```
 
-If no backup exists, try repairing:
+If `pvcreate` and `vgcfgrestore` do not work, try repairing with a metadata file from `/etc/lvm/backup` or metadata extracted with `pvck --dump`:
 
 ```bash
-sudo pvck --repair /dev/sdb
+sudo pvck --repair -f /etc/lvm/backup/vg_data /dev/sdb
 ```
 
 ## Error 6: "Can't open /dev/sdX exclusively"
@@ -215,15 +219,16 @@ sudo vgck vg_data
 Write consistent metadata to all physical volumes:
 
 ```bash
-sudo vgcfgrestore vg_data
+sudo vgcfgrestore --list vg_data
+sudo vgcfgrestore --file /etc/lvm/backup/vg_data vg_data
 sudo vgck vg_data
 ```
 
 If that does not resolve it:
 
 ```bash
-sudo vgcfgbackup vg_data
-sudo vgcfgrestore vg_data
+sudo vgcfgrestore --list vg_data
+sudo vgcfgrestore --file /etc/lvm/archive/vg_data_00000-0000000000.vg vg_data
 ```
 
 ## Error 8: "Duplicate PV detected"
@@ -246,7 +251,15 @@ sudo mpathconf --enable --with_multipathd y
 sudo systemctl restart multipathd
 ```
 
-Then update the LVM filter to use only multipath devices:
+On RHEL 9 systems using the default devices file, make sure LVM tracks the multipath device rather than the individual paths:
+
+```bash
+sudo lvmdevices --adddev /dev/mapper/mpatha
+sudo lvmdevices --deldev /dev/sdX
+sudo pvscan --cache
+```
+
+If you are using the traditional LVM filter, update it to use only multipath devices:
 
 ```bash
 filter = [ "a|/dev/mapper/mpath.*|", "a|/dev/sda|", "r|/dev/sd.*|" ]

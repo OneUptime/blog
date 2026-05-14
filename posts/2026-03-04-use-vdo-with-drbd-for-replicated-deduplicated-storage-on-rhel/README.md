@@ -8,11 +8,11 @@ Description: Combine VDO deduplication and compression with DRBD block-level rep
 
 ---
 
-VDO (Virtual Data Optimizer) provides inline deduplication and compression, while DRBD provides synchronous block-level replication between servers. Layering VDO on top of DRBD gives you replicated, deduplicated storage.
+VDO (Virtual Data Optimizer) provides inline deduplication and compression through LVM, while DRBD provides synchronous block-level replication between servers. Layering LVM-VDO on top of DRBD gives you replicated, deduplicated storage.
 
 ## Architecture
 
-The stack is: Physical Disk -> DRBD (replication) -> VDO (deduplication) -> Filesystem. VDO sits on top of the DRBD device so both replicas benefit from deduplication.
+The stack is: Physical Disk -> DRBD (replication) -> LVM-VDO (deduplication) -> Filesystem. VDO sits on top of the DRBD device so both replicas benefit from deduplication.
 
 ## Install Packages on Both Nodes
 
@@ -35,7 +35,7 @@ resource data {
     protocol C;
 
     disk {
-        # Align with VDO block size
+        # Activity log size; tune for your recovery and resync requirements
         al-extents 6433;
     }
 
@@ -77,19 +77,23 @@ sudo drbdadm status data
 On the primary node:
 
 ```bash
-# Create a VDO volume on the DRBD device
-sudo vdo create \
+# Create an LVM volume group on the DRBD device
+sudo pvcreate /dev/drbd0
+sudo vgcreate vg-drbd /dev/drbd0
+
+# Create an LVM-VDO volume
+sudo lvcreate --type vdo \
   --name=vdo-data \
-  --device=/dev/drbd0 \
-  --vdoLogicalSize=100G \
-  --writePolicy=auto
+  --size=20G \
+  --virtualsize=100G \
+  vg-drbd
 
 # Create a filesystem on the VDO volume
-sudo mkfs.xfs -K /dev/mapper/vdo-data
+sudo mkfs.xfs -K /dev/vg-drbd/vdo-data
 
 # Mount it
 sudo mkdir -p /mnt/replicated-data
-sudo mount /dev/mapper/vdo-data /mnt/replicated-data
+sudo mount /dev/vg-drbd/vdo-data /mnt/replicated-data
 ```
 
 ## Verify the Stack
@@ -113,11 +117,11 @@ If node1 fails, promote node2:
 # On node2: promote to primary
 sudo drbdadm primary data
 
-# Start VDO
-sudo vdo start --name=vdo-data
+# Activate the replicated LVM volume group
+sudo vgchange -ay vg-drbd
 
 # Mount the filesystem
-sudo mount /dev/mapper/vdo-data /mnt/replicated-data
+sudo mount /dev/vg-drbd/vdo-data /mnt/replicated-data
 ```
 
 This combination is useful for environments that need both data reduction and high availability, such as backup servers or virtual machine storage.

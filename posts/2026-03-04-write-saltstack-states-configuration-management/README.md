@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SaltStack, Configuration Management, Linux
 
-Description: Learn how to write SaltStack States Configuration Management on RHEL with step-by-step instructions, configuration examples, and best practices.
+Description: Learn how to write SaltStack states for configuration management on RHEL with step-by-step instructions, configuration examples, and best practices.
 
 ---
 
-This guide covers how to Write SaltStack States for RHEL Configuration Management. Following these steps will help you set up a reliable configuration on RHEL.
+This guide covers how to write SaltStack states for RHEL configuration management. Following these steps will help you set up a reliable configuration on RHEL.
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ This guide covers how to Write SaltStack States for RHEL Configuration Managemen
 
 ## Overview
 
-Write SaltStack States Configuration Management requires careful planning and execution. This guide walks through the complete process from installation to verification.
+Writing SaltStack states for configuration management requires careful planning and execution. This guide walks through the complete process from installation to verification.
 
 ## Step 1: Prepare the System
 
@@ -31,20 +31,20 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y curl
 ```
 
 ## Step 2: Install Required Packages
 
 ```bash
-sudo dnf install -y <package-name>
+curl -fsSLo bootstrap-salt.sh https://github.com/saltstack/salt-bootstrap/releases/latest/download/bootstrap-salt.sh
+sudo sh bootstrap-salt.sh stable 3006.25
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+salt-call --versions-report
 ```
 
 ## Step 3: Configure the Service
@@ -52,16 +52,35 @@ rpm -qi <package-name>
 Create or edit the main configuration file:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/salt/minion
+```
+
+For a masterless RHEL setup, add the local file client setting:
+
+```yaml
+file_client: local
 ```
 
 Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
 
 ## Step 4: Start and Enable the Service
 
+Create a Salt state tree and a simple RHEL web server state:
+
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo mkdir -p /srv/salt/webserver
+sudo vi /srv/salt/webserver/init.sls
+```
+
+Add the state:
+
+```yaml
+httpd:
+  pkg.installed: []
+  service.running:
+    - enable: True
+    - require:
+      - pkg: httpd
 ```
 
 ## Step 5: Verify the Configuration
@@ -69,13 +88,14 @@ sudo systemctl status <service>
 Test the setup:
 
 ```bash
-sudo <service> --test
+sudo salt-call --local state.apply webserver test=True
+sudo salt-call --local state.apply webserver
 ```
 
 Check the logs for any errors:
 
 ```bash
-journalctl -u <service> -f
+journalctl -u httpd -f
 ```
 
 ## Step 6: Configure Firewall Rules
@@ -83,7 +103,7 @@ journalctl -u <service> -f
 If the service needs network access:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo firewall-cmd --permanent --add-service=http
 sudo firewall-cmd --reload
 ```
 
@@ -92,8 +112,8 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+systemctl show httpd --property=MemoryCurrent
+top -p $(pidof httpd)
 ```
 
 ## Security Considerations
@@ -107,10 +127,10 @@ top -p $(pidof <service>)
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
+1. **Service fails to start**: Check `journalctl -u httpd -xe` for error messages
 2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
 3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
 
 ## Conclusion
 
-You have successfully configured write saltstack states configuration management on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
+You have successfully configured SaltStack states for configuration management on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.

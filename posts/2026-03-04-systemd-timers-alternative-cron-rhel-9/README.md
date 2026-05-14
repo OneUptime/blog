@@ -133,14 +133,14 @@ The general format is `DayOfWeek Year-Month-Day Hour:Minute:Second`. Wildcards (
 To test your expression without creating a timer, use `systemd-analyze`:
 
 ```bash
-# Test a calendar expression - shows the next 5 trigger times
+# Test a calendar expression - shows the next trigger time
 systemd-analyze calendar "*-*-* 02:00:00"
 
 # Test a more complex expression
 systemd-analyze calendar "Mon..Fri *-*-* 09:00:00"
 ```
 
-This prints the normalized form and the next matching timestamps. Very handy for verifying your expression does what you think.
+This prints the normalized form and the next matching timestamp. Add `--iterations=5` if you want to see the next five trigger times. Very handy for verifying your expression does what you think.
 
 ---
 
@@ -153,7 +153,7 @@ Besides calendar-based scheduling, systemd timers support monotonic timers that 
 # Run 15 minutes after the system boots
 OnBootSec=15min
 
-# Run 1 hour after the timer was last activated
+# Run 1 hour after the service was last activated
 OnUnitActiveSec=1h
 
 # Run 30 minutes after the timer unit itself was started
@@ -201,7 +201,7 @@ RandomizedDelaySec=900
 Persistent=true
 ```
 
-This adds a random delay of up to 900 seconds (15 minutes) before executing. Each system picks its own random offset, spreading the load across your fleet.
+This adds a random delay of up to 900 seconds (15 minutes) before executing. By default, systemd chooses a new random delay for each firing, spreading the load across your fleet.
 
 ---
 

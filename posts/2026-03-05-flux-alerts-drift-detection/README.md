@@ -14,22 +14,23 @@ Configuration drift occurs when the live state of your Kubernetes cluster diverg
 
 - A Kubernetes cluster with Flux CD installed, including the notification controller
 - A notification provider configured
-- Kustomization resources with `spec.force` or `spec.prune` enabled for drift correction
+- Kustomization resources managed by Flux, with `spec.prune` enabled if you want Flux to delete resources removed from Git
+- HelmRelease resources with `.spec.driftDetection.mode: enabled` if you want Helm drift correction events
 
 ## Understanding Drift Detection in Flux
 
-Flux detects drift during its regular reconciliation cycle. When the kustomize-controller applies resources and finds differences between the desired state (Git) and the live state (cluster), it corrects the drift and emits an event. These drift correction events are informational (`info` severity) when successful and error-level when the correction fails.
+Flux detects drift during its regular reconciliation cycle. The kustomize-controller runs a server-side apply dry-run to compare the desired state (Git) with the live state (cluster), then corrects differences with server-side apply. These reconciliation events are informational (`info` severity) when successful, and failed reconciliations are emitted as error events.
 
 Drift detection events typically contain messages about resources being updated, created, or deleted to match the desired state.
 
 ## Step 1: Create a Drift Detection Alert
 
-Create an alert that captures Kustomization events where drift was detected and corrected.
+Create an alert that captures Kustomization info events where resources were applied. Flux Alerts do not have a dedicated "drift only" event severity, so use message filters to reduce routine reconciliation noise.
 
 ```yaml
 # Alert for drift detection on Kustomization resources
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: drift-detection-alert
@@ -45,7 +46,7 @@ spec:
       namespace: flux-system
   # Exclude no-change events to focus on actual drift corrections
   exclusionList:
-    - "^Reconciliation finished.*no changes$"
+    - "^Reconciliation finished.*next run"
     - "^artifact up-to-date.*"
     - "^stored artifact.*same revision$"
     - ".*is not ready$"
@@ -65,7 +66,7 @@ Track drift detection across multiple namespaces and environments.
 
 ```yaml
 # Drift detection alert across all environments
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: cluster-drift-alert
@@ -86,7 +87,7 @@ spec:
       namespace: staging
   exclusionList:
     # Only exclude truly routine events
-    - "^Reconciliation finished.*no changes$"
+    - "^Reconciliation finished.*next run"
     - "^artifact up-to-date.*"
     - ".*waiting for.*"
 ```
@@ -97,7 +98,7 @@ Create a dedicated drift alert that goes to a security or compliance channel, se
 
 ```yaml
 # Drift alert sent to a security-focused channel
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: security-drift-alert
@@ -118,17 +119,17 @@ spec:
       name: network-policies
       namespace: flux-system
   exclusionList:
-    - "^Reconciliation finished.*no changes$"
+    - "^Reconciliation finished.*next run"
     - ".*is not ready$"
 ```
 
 ## Step 4: Monitor HelmRelease Drift
 
-HelmRelease resources can also experience drift when someone manually modifies Helm-managed resources.
+HelmRelease resources can also experience drift when someone manually modifies Helm-managed resources. Flux emits and corrects Helm drift events when `.spec.driftDetection.mode` is set to `enabled` on the HelmRelease.
 
 ```yaml
 # Drift alert for HelmRelease-managed resources
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: helm-drift-alert
@@ -145,7 +146,7 @@ spec:
       name: "*"
       namespace: production
   exclusionList:
-    - "^Reconciliation finished.*no changes$"
+    - "^Reconciliation finished.*next run"
     - ".*is not ready$"
     - ".*waiting for.*"
 ```
@@ -156,7 +157,7 @@ Combine drift detection with error alerts for complete visibility.
 
 ```yaml
 # Combined drift and error alert
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: drift-and-errors-alert
@@ -175,17 +176,17 @@ spec:
       namespace: flux-system
   # Only exclude genuinely routine events
   exclusionList:
-    - "^Reconciliation finished.*no changes$"
+    - "^Reconciliation finished.*next run"
     - "^stored artifact.*same revision$"
     - "^artifact up-to-date.*"
 ```
 
-## Step 6: Enable Drift Detection with Force Reconciliation
+## Step 6: Configure Drift Correction
 
-To ensure Flux corrects drift on every reconciliation, enable the `force` option on your Kustomization.
+Kustomizations correct drift during their regular reconciliation interval. Enable `prune` if you also want Flux to delete resources that were removed from Git.
 
 ```yaml
-# Kustomization with force enabled for strict drift correction
+# Kustomization with prune enabled for garbage collection
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -195,14 +196,12 @@ spec:
   interval: 10m
   path: ./infrastructure/controllers
   prune: true
-  # Force re-applies resources on every reconciliation
-  force: true
   sourceRef:
     kind: GitRepository
     name: flux-system
 ```
 
-With `force: true`, Flux will re-apply all resources during each reconciliation, ensuring any manual changes are overwritten. This generates events whenever resources are updated.
+With the default server-side apply behavior, Flux overwrites manual changes to fields declared in Git during reconciliation. The `force` option is only needed when Flux must recreate resources because patching fails due to immutable field changes.
 
 ## Step 7: Verify Drift Detection Alerts
 
@@ -233,11 +232,11 @@ Drift can indicate several issues:
 ## Best Practices
 
 1. **Route drift alerts to security and compliance channels** for audit purposes
-2. **Enable `force` and `prune`** on Kustomizations to ensure drift is always corrected
+2. **Enable `prune`** on Kustomizations when resources removed from Git should be deleted from the cluster
 3. **Track drift on infrastructure and security resources** separately from application deployments
 4. **Investigate frequent drift** as it may indicate a deeper issue in your workflow
 5. **Combine with error alerts** to know when drift correction itself fails
 
 ## Summary
 
-Configuring Flux alerts for drift detection gives you visibility into when the live state of your cluster diverges from the desired state in Git. By using info-level severity with exclusion rules to filter out no-change events, you receive notifications specifically when Flux detects and corrects drift. Route these alerts to security or compliance channels, monitor both Kustomization and HelmRelease resources, and investigate recurring drift patterns to improve your GitOps workflow.
+Configuring Flux alerts for drift detection gives you visibility into when the live state of your cluster diverges from the desired state in Git. By using info-level severity with exclusion rules to filter out routine reconciliation events, you can focus notifications on events where Flux applies changes. Route these alerts to security or compliance channels, monitor both Kustomization and HelmRelease resources, and investigate recurring drift patterns to improve your GitOps workflow.

@@ -17,7 +17,8 @@ Perform an in-place upgrade from RHEL 8 to RHEL 9 using Leapp. Careful planning 
 - A RHEL system with an active subscription
 - Root or sudo access
 - A full backup of the system before any migration or upgrade
-- For Leapp upgrades: the leapp and leapp-upgrade packages
+- A supported RHEL 8 source release for the target RHEL 9 release
+- For Leapp upgrades: the leapp-upgrade package
 
 ## Step 1 - Prepare the System
 
@@ -26,26 +27,27 @@ Before any migration:
 1. Create a full backup (see backup guides in this series)
 2. Document current system configuration
 3. Verify subscription status: `subscription-manager status`
-4. Check disk space: `df -h` (at least 5 GB free in `/`)
+4. Check disk space: `df -h` (the pre-upgrade assessment can require up to 4 GB in `/var/lib/leapp`)
 
 ## Step 2 - Install Migration Tools
 
 For Leapp-based upgrades:
 
 ```bash
-sudo dnf install -y leapp leapp-upgrade
+sudo dnf install -y leapp-upgrade
 ```
 
 For CentOS conversions:
 
 ```bash
+sudo curl -o /etc/yum.repos.d/convert2rhel.repo https://cdn-public.redhat.com/content/public/repofiles/convert2rhel-for-rhel-8-x86_64.repo
 sudo dnf install -y convert2rhel
 ```
 
 ## Step 3 - Run Pre-Migration Assessment
 
 ```bash
-sudo leapp preupgrade
+sudo -r unconfined_r -t unconfined_t leapp preupgrade
 ```
 
 Review the report:
@@ -61,7 +63,8 @@ Address all inhibitors before proceeding.
 Once all inhibitors are resolved:
 
 ```bash
-sudo leapp upgrade
+sudo -r unconfined_r -t unconfined_t leapp upgrade
+sudo reboot
 ```
 
 The system will reboot into a special initramfs to complete the upgrade.
@@ -82,8 +85,8 @@ systemctl list-units --failed
 Remove old packages and kernels:
 
 ```bash
-sudo dnf remove leapp leapp-upgrade
-sudo dnf autoremove
+sudo dnf config-manager --save --setopt exclude=''
+sudo dnf remove leapp-deps-el9 leapp-repository-deps-el9
 ```
 
 ## Rollback Plan

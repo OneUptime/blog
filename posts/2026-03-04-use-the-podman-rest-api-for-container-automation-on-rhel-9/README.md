@@ -19,32 +19,46 @@ The Podman REST API provides a Docker-compatible API endpoint for container mana
 
 ## Step 2: Configure the Service
 
-Edit the configuration file to match your environment:
+Podman provides systemd socket units for the API service. The rootful socket listens at `/run/podman/podman.sock`, and the rootless socket listens at `$XDG_RUNTIME_DIR/podman/podman.sock`.
 
 ```bash
-# Open the configuration file
-
-sudo vi /etc/<service>/config.conf
+# Optional: adjust the API service inactivity timeout
+sudo vi /etc/containers/containers.conf
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Add or update the `service_timeout` value under the `[engine]` section if you need a timeout other than the default:
+
+```toml
+[engine]
+service_timeout=0
+```
+
+The value `0` disables the inactivity timeout. Access to the default Unix socket is controlled by normal filesystem permissions; avoid exposing the API on a TCP socket unless you also configure mutual TLS.
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart podman.socket
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable podman.socket
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start podman.socket
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status podman.socket
+```
+
+For a rootless user, use the user systemd unit instead:
+
+```bash
+systemctl --user enable --now podman.socket
+systemctl --user status podman.socket
+export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
 ```
 
 
@@ -53,8 +67,8 @@ sudo systemctl status <service-name>
 Confirm everything is working by checking the status and logs:
 
 ```bash
-# Verify Podman is working
-podman info
+# Verify the rootful API socket
+curl --unix-socket /run/podman/podman.sock http://d/v1.0.0/libpod/info
 
 # Run a test container
 podman run --rm docker.io/library/alpine echo "Hello from Podman"
@@ -62,8 +76,8 @@ podman run --rm docker.io/library/alpine echo "Hello from Podman"
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u podman.socket -u podman.service -e --no-pager`.
+- Ensure all required packages are installed: `rpm -qa | grep -E 'podman|podman-remote'`.
 - For container issues, check container logs with `podman logs <container-name>`.
 
 ## Conclusion

@@ -12,7 +12,7 @@ Description: Learn how to install and configure Squid as a forward caching proxy
 
 If you run a network with dozens or hundreds of machines all hitting the same websites and repositories, you are burning bandwidth for no good reason. A caching proxy sits between your clients and the internet, storing frequently requested content locally so subsequent requests get served from cache instead of fetching everything fresh each time.
 
-Squid has been the go-to caching proxy for Linux environments for over two decades. It handles HTTP, HTTPS, and FTP traffic, supports access control lists, and its cache management is battle-tested. On RHEL, setting it up is straightforward.
+Squid has been the go-to caching proxy for Linux environments for over two decades. It handles HTTP, HTTPS, and FTP traffic, supports access control lists, and its cache management is battle-tested. HTTPS traffic is normally tunneled with CONNECT, so Squid does not cache encrypted HTTPS content unless you configure TLS interception separately. On RHEL, setting it up is straightforward.
 
 ## Prerequisites
 
@@ -58,7 +58,7 @@ sudo vi /etc/squid/squid.conf
 
 ### Define Your Local Network
 
-Add your network range so internal clients can use the proxy:
+Add your network range so internal clients can use the proxy. Place the `acl localnet` lines before the `http_access allow localnet` rule, and keep the allow rule before the final `http_access deny all` line:
 
 ```bash
 # Define the local network ACL
@@ -156,7 +156,7 @@ Open the Squid port in firewalld:
 
 ```bash
 # Allow squid traffic through the firewall
-sudo firewall-cmd --permanent --add-service=squid
+sudo firewall-cmd --permanent --add-port=3128/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -202,7 +202,7 @@ Squid ACLs give you fine-grained control over who can access what.
 # Define blocked sites
 acl blocked_sites dstdomain .facebook.com .twitter.com .youtube.com
 
-# Deny access to blocked sites
+# Deny access to blocked sites before allowing localnet
 http_access deny blocked_sites
 ```
 
@@ -214,12 +214,15 @@ acl business_hours time MTWHF 08:00-18:00
 http_access allow localnet business_hours
 ```
 
+Use this in place of the broader `http_access allow localnet` rule if you want the time restriction to apply.
+
 ### Restrict by Content Type
 
 ```bash
 # Block large file downloads
 acl large_downloads rep_mime_type -i video/
-http_access deny large_downloads
+http_reply_access deny large_downloads
+http_reply_access allow all
 ```
 
 ## Monitoring Cache Performance
@@ -283,9 +286,6 @@ For high-traffic environments, consider these tweaks:
 ```bash
 # Increase the number of file descriptors
 max_filedescriptors 65535
-
-# Adjust the number of helper processes
-dns_children 32 startup=10 idle=5
 
 # Set a realistic connection timeout
 connect_timeout 30 seconds

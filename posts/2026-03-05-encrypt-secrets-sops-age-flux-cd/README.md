@@ -168,7 +168,7 @@ When working with SOPS and Age in a Flux CD workflow, keep these best practices 
 ```yaml
 # .sops.yaml - Repository-level SOPS configuration
 creation_rules:
-  - path_regex: .*\.enc\.yaml$
+  - path_regex: .*\.ya?ml$
     encrypted_regex: ^(data|stringData)$
     age: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
 ```

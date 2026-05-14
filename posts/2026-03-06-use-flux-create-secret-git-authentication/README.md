@@ -51,7 +51,7 @@ graph TD
 # Create a secret with username and password for HTTPS access
 # This creates a Kubernetes secret in the flux-system namespace
 flux create secret git my-repo-auth \
-  --url=https://github.com/myorg/myrepo \
+  --url=https://git.example.com/myorg/myrepo \
   --username=myuser \
   --password=mypassword \
   --namespace=flux-system
@@ -61,7 +61,7 @@ flux create secret git my-repo-auth \
 
 ```bash
 # Create a secret using a GitHub Personal Access Token
-# The username can be anything for token-based auth; "git" is conventional
+# Use a non-empty username; GitHub authenticates with the token as the password
 flux create secret git github-auth \
   --url=https://github.com/myorg/myrepo \
   --username=git \
@@ -99,7 +99,7 @@ flux create secret git bitbucket-auth \
 # Create a secret using an existing SSH private key file
 flux create secret git ssh-auth \
   --url=ssh://git@github.com/myorg/myrepo \
-  --private-key-file=~/.ssh/id_ed25519 \
+  --private-key-file=$HOME/.ssh/id_ed25519 \
   --namespace=flux-system
 ```
 
@@ -129,7 +129,7 @@ rm ./flux-deploy-key ./flux-deploy-key.pub
 # Create a secret with a password-protected SSH key
 flux create secret git ssh-protected \
   --url=ssh://git@github.com/myorg/myrepo \
-  --private-key-file=~/.ssh/id_ed25519_protected \
+  --private-key-file=$HOME/.ssh/id_ed25519_protected \
   --password="${SSH_KEY_PASSPHRASE}" \
   --namespace=flux-system
 ```
@@ -166,7 +166,7 @@ flux create secret git github-pat \
 # Using SSH with GitHub
 flux create secret git github-ssh \
   --url=ssh://git@github.com/myorg/myrepo \
-  --private-key-file=~/.ssh/github_deploy_key \
+  --private-key-file=$HOME/.ssh/github_deploy_key \
   --namespace=flux-system
 ```
 
@@ -184,7 +184,7 @@ flux create secret git gitlab-deploy-token \
 # Using SSH with GitLab
 flux create secret git gitlab-ssh \
   --url=ssh://git@gitlab.com/myorg/myrepo \
-  --private-key-file=~/.ssh/gitlab_deploy_key \
+  --private-key-file=$HOME/.ssh/gitlab_deploy_key \
   --namespace=flux-system
 ```
 
@@ -201,7 +201,7 @@ flux create secret git self-hosted-auth \
 # For self-hosted with SSH on a custom port
 flux create secret git self-hosted-ssh \
   --url=ssh://git@git.internal.company.com:2222/myorg/myrepo \
-  --private-key-file=~/.ssh/internal_deploy_key \
+  --private-key-file=$HOME/.ssh/internal_deploy_key \
   --namespace=flux-system
 ```
 
@@ -309,7 +309,7 @@ kubectl describe gitrepository myapp -n flux-system
 # Solution: For SSH, ensure the known_hosts are configured correctly
 flux create secret git ssh-auth \
   --url=ssh://git@github.com/myorg/myrepo \
-  --private-key-file=~/.ssh/deploy_key \
+  --private-key-file=$HOME/.ssh/deploy_key \
   --namespace=flux-system
 ```
 

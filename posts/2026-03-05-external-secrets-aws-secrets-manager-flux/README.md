@@ -52,13 +52,15 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: external-secrets
-  namespace: external-secrets
+  namespace: flux-system
 spec:
   interval: 30m
+  releaseName: external-secrets
+  targetNamespace: external-secrets
   chart:
     spec:
       chart: external-secrets
-      version: "0.10.x"
+      version: "2.4.x"
       sourceRef:
         kind: HelmRepository
         name: external-secrets
@@ -67,6 +69,7 @@ spec:
     createNamespace: true
   values:
     serviceAccount:
+      name: external-secrets
       annotations:
         eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/external-secrets-role
 ```
@@ -82,6 +85,7 @@ Create an IAM policy that allows reading secrets:
     {
       "Effect": "Allow",
       "Action": [
+        "secretsmanager:GetResourcePolicy",
         "secretsmanager:GetSecretValue",
         "secretsmanager:DescribeSecret",
         "secretsmanager:ListSecretVersionIds"
@@ -100,11 +104,18 @@ aws iam create-policy \
   --policy-name ExternalSecretsPolicy \
   --policy-document file://policy.json
 
+# Associate the IAM OIDC provider if it is not already configured
+eksctl utils associate-iam-oidc-provider \
+  --cluster my-cluster \
+  --approve
+
 # Create the role with OIDC trust
 eksctl create iamserviceaccount \
   --name external-secrets \
   --namespace external-secrets \
   --cluster my-cluster \
+  --role-name external-secrets-role \
+  --role-only \
   --attach-policy-arn arn:aws:iam::123456789012:policy/ExternalSecretsPolicy \
   --approve
 ```
@@ -115,7 +126,7 @@ The ClusterSecretStore defines the connection to AWS Secrets Manager and can be 
 
 ```yaml
 # infrastructure/external-secrets/clustersecretstore.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -175,7 +186,7 @@ For a JSON secret with multiple keys:
 
 ```yaml
 # apps/my-app/external-secret-db.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -215,7 +226,7 @@ For a simple string secret:
 
 ```yaml
 # apps/my-app/external-secret-api.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: api-key

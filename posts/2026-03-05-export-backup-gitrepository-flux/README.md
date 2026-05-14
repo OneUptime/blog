@@ -60,17 +60,18 @@ spec:
 
 Notice that the export omits `status`, `creationTimestamp`, `resourceVersion`, and other cluster-specific fields, making the output directly re-applicable.
 
-## Step 2: Export All Flux Resources Together
+## Step 2: Export More Flux Resources Together
 
-For a comprehensive backup, export all Flux resources, not just GitRepository sources.
+For a broader backup, export the Flux resource types you use, not just GitRepository sources.
 
-Export the entire Flux configuration:
+Export common Flux configuration:
 
 ```bash
 # Export all sources (Git, Helm, OCI, Bucket)
 flux export source git --all > backup/git-sources.yaml
 flux export source helm --all > backup/helm-sources.yaml
 flux export source oci --all > backup/oci-sources.yaml
+flux export source bucket --all > backup/bucket-sources.yaml
 
 # Export all Kustomizations
 flux export kustomization --all > backup/kustomizations.yaml
@@ -88,7 +89,7 @@ cat backup/*.yaml > backup/flux-full-export.yaml
 
 ## Step 3: Backup Authentication Secrets
 
-Authentication secrets are not included in `flux export` output because they contain sensitive data. You must back them up separately.
+Authentication secrets are not included in the `flux export` commands shown above because they contain sensitive data. You must back them up separately, or explicitly use `--with-credentials` for supported Flux export commands.
 
 Export secrets referenced by GitRepository resources:
 
@@ -98,8 +99,25 @@ kubectl get gitrepository -n flux-system -o jsonpath='{range .items[*]}{.spec.se
 
 # Export each referenced secret
 # WARNING: This contains sensitive credentials -- encrypt before storing
-kubectl get secret my-app-credentials -n flux-system -o yaml > backup/secrets/my-app-credentials.yaml
-kubectl get secret github-token -n flux-system -o yaml > backup/secrets/github-token.yaml
+kubectl get secret my-app-credentials -n flux-system -o go-template='apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .metadata.name }}
+  namespace: {{ .metadata.namespace }}
+type: {{ .type }}
+data:
+{{ range $key, $value := .data }}  {{ $key }}: {{ $value }}
+{{ end }}' > backup/secrets/my-app-credentials.yaml
+
+kubectl get secret github-token -n flux-system -o go-template='apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .metadata.name }}
+  namespace: {{ .metadata.namespace }}
+type: {{ .type }}
+data:
+{{ range $key, $value := .data }}  {{ $key }}: {{ $value }}
+{{ end }}' > backup/secrets/github-token.yaml
 ```
 
 For a scripted approach that backs up all referenced secrets:
@@ -120,7 +138,15 @@ SECRETS=$(kubectl get gitrepository -n "$NAMESPACE" \
 for SECRET in $SECRETS; do
   if [ -n "$SECRET" ]; then
     echo "Backing up secret: $SECRET"
-    kubectl get secret "$SECRET" -n "$NAMESPACE" -o yaml > "$BACKUP_DIR/$SECRET.yaml"
+    kubectl get secret "$SECRET" -n "$NAMESPACE" -o go-template='apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .metadata.name }}
+  namespace: {{ .metadata.namespace }}
+type: {{ .type }}
+data:
+{{ range $key, $value := .data }}  {{ $key }}: {{ $value }}
+{{ end }}' > "$BACKUP_DIR/$SECRET.yaml"
   fi
 done
 
@@ -156,7 +182,7 @@ sops --encrypt --kms "arn:aws:kms:us-east-1:123456789012:key/your-key-id" \
 
 Create a CronJob that runs inside your cluster to periodically export Flux resources.
 
-A Kubernetes CronJob for automated Flux backups:
+A Kubernetes CronJob for automated Flux backups, assuming the ServiceAccount, RBAC permissions, and PersistentVolumeClaim already exist:
 
 ```yaml
 apiVersion: batch/v1
@@ -173,7 +199,7 @@ spec:
           serviceAccountName: flux-backup-sa
           containers:
             - name: backup
-              image: ghcr.io/fluxcd/flux-cli:v2.4.0
+              image: ghcr.io/fluxcd/flux-cli:v2.8.7
               command:
                 - /bin/sh
                 - -c

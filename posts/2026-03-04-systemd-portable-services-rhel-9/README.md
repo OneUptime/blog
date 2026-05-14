@@ -8,13 +8,13 @@ Description: Learn how to use systemd portable services on RHEL to deploy self-c
 
 ---
 
-systemd portable services are a lightweight alternative to containers. They bundle an application and its dependencies into a disk image that can be attached and detached from a host system. The service runs with systemd integration but is isolated from the host filesystem.
+systemd portable services are a lightweight alternative to containers. They bundle an application and its dependencies into a filesystem image that can be attached and detached from a host system. The service runs with systemd integration but is isolated from the host filesystem.
 
 ## How Portable Services Work
 
 ```mermaid
 graph LR
-    A[Portable Service Image<br>.raw file] -->|portablectl attach| B[Host systemd]
+    A[Portable Service Image<br>SquashFS file] -->|portablectl attach| B[Host systemd]
     B --> C[Service runs with<br>host systemd integration]
     C --> D[Journals, socket activation<br>resource control]
     A -->|portablectl detach| E[Image removed cleanly]
@@ -23,14 +23,20 @@ graph LR
 ## Step 1: Create a Portable Service Image
 
 ```bash
-# Install tools for creating images
+# Install tools for creating and attaching images
 
-sudo dnf install -y systemd-container
+sudo dnf install -y systemd-container squashfs-tools
 
 # Create a directory tree for the portable service
 mkdir -p myservice/usr/lib/systemd/system
 mkdir -p myservice/usr/local/bin
 mkdir -p myservice/etc
+mkdir -p myservice/run myservice/tmp myservice/var/tmp
+
+# Install the runtime dependencies used by the script into the image
+sudo dnf --installroot="$PWD/myservice" --releasever=9 \
+    --setopt=install_weak_deps=False --nodocs \
+    install -y bash coreutils
 
 # Create the service binary
 cat > myservice/usr/local/bin/myservice.sh << 'SCRIPT'
@@ -54,12 +60,12 @@ DynamicUser=yes
 UNITEOF
 
 # Create an os-release file (required for portable services)
-cat > myservice/etc/os-release << 'OSEOF'
+sudo tee myservice/etc/os-release > /dev/null << 'OSEOF'
 ID=myservice
 VERSION_ID=1.0
 OSEOF
 
-# Build the raw disk image
+# Build the SquashFS image
 mksquashfs myservice myservice.raw -noappend
 ```
 
@@ -119,9 +125,9 @@ sudo portablectl attach --profile=trusted myservice.raw
 portablectl inspect myservice.raw
 
 # List the unit files inside the image
-portablectl inspect myservice.raw --cat
+portablectl --cat inspect myservice.raw
 
-# Check image integrity
+# Check whether the image is attached
 portablectl is-attached myservice.raw
 ```
 

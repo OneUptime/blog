@@ -14,8 +14,8 @@ When packets aren't reaching their destination, you need to know where they're g
 
 | Feature | traceroute | tracepath |
 |---------|------------|-----------|
-| Root required | Yes (for ICMP) | No |
-| MTU discovery | No | Yes |
+| Root required | No for default UDP; may be needed for some methods | No |
+| MTU discovery | Yes (`--mtu`) | Yes |
 | Protocol options | ICMP, UDP, TCP | UDP only |
 | Max hops control | Yes | Yes |
 | Pre-installed | No | Yes |
@@ -69,7 +69,7 @@ sudo traceroute -T -p 80 example.com
 # Use TCP SYN to port 443
 sudo traceroute -T -p 443 example.com
 
-# Use UDP (default)
+# Use UDP to a fixed destination port (default 53)
 traceroute -U 8.8.8.8
 
 # Specify a starting UDP port
@@ -78,7 +78,7 @@ traceroute -p 33434 8.8.8.8
 
 ## tracepath for MTU Discovery
 
-tracepath's unique advantage is Path MTU Discovery. It tells you the MTU at each hop.
+tracepath's advantage is built-in Path MTU Discovery. It reports the Path MTU when it changes and in the summary.
 
 ```bash
 # Trace with MTU discovery

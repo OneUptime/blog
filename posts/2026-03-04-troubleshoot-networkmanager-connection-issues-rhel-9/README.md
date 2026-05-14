@@ -8,7 +8,7 @@ Description: A practical troubleshooting guide for diagnosing and resolving Netw
 
 ---
 
-When networking breaks on a RHEL server, the pressure is on. You need to find the problem and fix it fast. NetworkManager handles all the network configuration on RHEL, so knowing how to extract useful diagnostic information from it is a critical skill. This post covers the tools and techniques I use when things go wrong.
+When networking breaks on a RHEL server, the pressure is on. You need to find the problem and fix it fast. NetworkManager handles the default network configuration on RHEL, so knowing how to extract useful diagnostic information from it is a critical skill. This post covers the tools and techniques I use when things go wrong.
 
 ## Start with the Basics
 
@@ -62,7 +62,7 @@ stateDiagram-v2
 
 **connecting** - A profile activation is in progress.
 
-**connected** - Everything is working.
+**connected** - A connection profile is active on the device.
 
 **failed** - The last activation attempt failed.
 
@@ -178,8 +178,9 @@ Look for CRC errors, dropped packets, or carrier state changes. These often poin
 # Show the current routing table
 ip route show
 
-# Show routes with metrics
-ip route show | sort -t ' ' -k 7 -n
+# Show IPv4 and IPv6 routes, including metric values when present
+ip -4 route show
+ip -6 route show
 
 # Check what routes the connection profile defines
 nmcli connection show office-static | grep route

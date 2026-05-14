@@ -8,7 +8,7 @@ Description: Learn to write Ansible playbooks for the RHCE exam, including inven
 
 ---
 
-The RHCE exam is based on Ansible. You need to write playbooks from scratch under time pressure. This guide covers the core patterns you should master.
+The Ansible-focused Red Hat exam associated with RHCE preparation is based on writing playbooks to manage systems. You need to write playbooks from scratch under time pressure. This guide covers the core patterns you should master.
 
 ## Inventory Setup
 
@@ -92,14 +92,14 @@ ansible_become=true
       ansible.builtin.copy:
         src: rhel9-config.conf
         dest: /etc/myapp/config.conf
-      when: ansible_distribution_major_version == "9"
+      when: ansible_facts['distribution_major_version'] == "9"
 ```
 
 ## Using Roles
 
 ```bash
 # Create a role skeleton
-ansible-galaxy role init roles/webserver
+ansible-galaxy role init webserver --init-path roles
 ```
 
 ```yaml
@@ -131,13 +131,13 @@ ansible-galaxy role init roles/webserver
 
 ```bash
 # Syntax check
-ansible-playbook --syntax-check -i inventory site.yml
+ansible-navigator run site.yml -m stdout --syntax-check -i inventory
 
 # Dry run
-ansible-playbook --check -i inventory site.yml
+ansible-navigator run site.yml -m stdout --check -i inventory
 
 # Execute
-ansible-playbook -i inventory site.yml
+ansible-navigator run site.yml -m stdout -i inventory
 ```
 
-Practice writing playbooks from memory. On the exam, you will not have internet access but you can use `ansible-doc` for module documentation.
+Practice writing playbooks from memory. On the exam, you will not have internet access but you can use the provided product documentation, including module documentation.

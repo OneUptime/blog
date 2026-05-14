@@ -52,7 +52,7 @@ vmware-toolbox-cmd --version
 ### VMware-Specific Optimizations
 
 ```bash
-# Disable unnecessary services
+# Disable crash dump collection only if you do not need kdump
 
 sudo systemctl disable kdump
 
@@ -116,6 +116,7 @@ Install the hyperv-daemons package:
 sudo dnf install hyperv-daemons
 sudo systemctl enable --now hypervkvpd
 sudo systemctl enable --now hypervvssd
+sudo systemctl enable --now hypervfcopyd
 ```
 
 ### Hyper-V-Specific Optimizations
@@ -124,8 +125,8 @@ sudo systemctl enable --now hypervvssd
 # Apply virtual-guest tuned profile
 sudo tuned-adm profile virtual-guest
 
-# Enable dynamic memory support
-sudo systemctl enable --now hypervballoon
+# Verify the dynamic memory balloon driver is loaded
+lsmod | grep hv_balloon
 ```
 
 ## Common Optimizations for Both Platforms
@@ -145,7 +146,7 @@ This optimizes:
 
 ### Disable Unnecessary Hardware Emulation
 
-Since virtual hardware does not need firmware updates:
+If you do not manage firmware from inside the guest:
 
 ```bash
 sudo systemctl disable fwupd
@@ -153,7 +154,7 @@ sudo systemctl disable fwupd
 
 ### Time Synchronization
 
-Both VMware and Hyper-V provide time synchronization. Verify chrony is using the hypervisor clock:
+Both VMware and Hyper-V provide time synchronization. Verify chrony has valid time sources and avoid enabling conflicting time synchronization methods:
 
 ```bash
 chronyc sources

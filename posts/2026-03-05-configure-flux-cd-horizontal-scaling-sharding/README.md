@@ -63,172 +63,113 @@ For this guide, we will create two additional shards alongside the default contr
 
 ## Step 2: Create a Shard Controller Deployment
 
-Each shard requires its own set of controller Deployments. Create them by duplicating and modifying the default controller manifests.
+Each shard requires its own set of controller Deployments. The recommended way to create them is to reuse `gotk-components.yaml` and patch the generated manifests for the shard.
 
-Here is a kustomization that creates a shard of the source-controller:
-
-```yaml
-# shards/shard1/source-controller.yaml
-
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: source-controller-shard1
-  namespace: flux-system
-  labels:
-    app: source-controller-shard1
-    sharding.fluxcd.io/role: shard
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: source-controller-shard1
-  template:
-    metadata:
-      labels:
-        app: source-controller-shard1
-    spec:
-      serviceAccountName: source-controller
-      containers:
-        - name: manager
-          image: ghcr.io/fluxcd/source-controller:v1.4.1
-          args:
-            - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
-            - --watch-all-namespaces=true
-            - --log-level=info
-            - --log-encoding=json
-            - --enable-leader-election
-            - --storage-path=/data
-            - --storage-adv-addr=source-controller-shard1.$(RUNTIME_NAMESPACE).svc.cluster.local.
-            # This flag tells the controller to only watch resources with this shard label
-            - --watch-label-selector=sharding.fluxcd.io/key=shard1
-            - --concurrent=10
-          env:
-            - name: RUNTIME_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-          resources:
-            requests:
-              cpu: 250m
-              memory: 512Mi
-            limits:
-              cpu: 1000m
-              memory: 2Gi
-          volumeMounts:
-            - name: data
-              mountPath: /data
-      volumes:
-        - name: data
-          emptyDir:
-            sizeLimit: 2Gi
-```
-
-Create a corresponding Service for the shard's source-controller so that other controllers can download artifacts from it:
+Here is a kustomization that creates a shard of the source-controller, kustomize-controller, and helm-controller:
 
 ```yaml
-# shards/shard1/source-controller-service.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: source-controller-shard1
-  namespace: flux-system
-spec:
-  selector:
-    app: source-controller-shard1
-  ports:
-    - name: http
-      port: 80
-      targetPort: http
+# clusters/my-cluster/flux-system/shard1/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: flux-system
+resources:
+  - ../gotk-components.yaml
+nameSuffix: "-shard1"
+commonAnnotations:
+  sharding.fluxcd.io/role: "shard"
+patches:
+  - target:
+      kind: (Namespace|CustomResourceDefinition|ClusterRole|ClusterRoleBinding|ServiceAccount|NetworkPolicy|ResourceQuota)
+      labelSelector: "app.kubernetes.io/part-of=flux"
+    patch: |
+      apiVersion: v1
+      kind: all
+      metadata:
+        name: all
+      $patch: delete
+  - target:
+      labelSelector: "app.kubernetes.io/component=notification-controller"
+    patch: |
+      apiVersion: v1
+      kind: all
+      metadata:
+        name: all
+      $patch: delete
+  - target:
+      labelSelector: "app.kubernetes.io/component=source-watcher"
+    patch: |
+      apiVersion: v1
+      kind: all
+      metadata:
+        name: all
+      $patch: delete
+  - target:
+      kind: Deployment
+      name: (image-reflector-controller|image-automation-controller)
+    patch: |
+      apiVersion: v1
+      kind: Deployment
+      metadata:
+        name: all
+      $patch: delete
+  - target:
+      kind: Service
+      name: source-controller
+    patch: |
+      - op: replace
+        path: /spec/selector/app
+        value: source-controller-shard1
+  - target:
+      kind: Deployment
+      name: source-controller
+    patch: |
+      - op: replace
+        path: /spec/selector/matchLabels/app
+        value: source-controller-shard1
+      - op: replace
+        path: /spec/template/metadata/labels/app
+        value: source-controller-shard1
+      - op: replace
+        path: /spec/template/spec/containers/0/args/6
+        value: --storage-adv-addr=source-controller-shard1.$(RUNTIME_NAMESPACE).svc.cluster.local.
+  - target:
+      kind: Deployment
+      name: kustomize-controller
+    patch: |
+      - op: replace
+        path: /spec/selector/matchLabels/app
+        value: kustomize-controller-shard1
+      - op: replace
+        path: /spec/template/metadata/labels/app
+        value: kustomize-controller-shard1
+  - target:
+      kind: Deployment
+      name: helm-controller
+    patch: |
+      - op: replace
+        path: /spec/selector/matchLabels/app
+        value: helm-controller-shard1
+      - op: replace
+        path: /spec/template/metadata/labels/app
+        value: helm-controller-shard1
+  - target:
+      kind: Deployment
+      name: (source-controller|kustomize-controller|helm-controller)
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --watch-label-selector=sharding.fluxcd.io/key=shard1
 ```
+
+This overlay generates `source-controller-shard1`, `kustomize-controller-shard1`, and `helm-controller-shard1`. It also patches the shard's source-controller Service selector so that other controllers can download artifacts from the sharded source-controller.
 
 ## Step 3: Create Kustomize Controller Shard
 
-```yaml
-# shards/shard1/kustomize-controller.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kustomize-controller-shard1
-  namespace: flux-system
-  labels:
-    app: kustomize-controller-shard1
-    sharding.fluxcd.io/role: shard
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: kustomize-controller-shard1
-  template:
-    metadata:
-      labels:
-        app: kustomize-controller-shard1
-    spec:
-      serviceAccountName: kustomize-controller
-      containers:
-        - name: manager
-          image: ghcr.io/fluxcd/kustomize-controller:v1.4.0
-          args:
-            - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
-            - --watch-all-namespaces=true
-            - --log-level=info
-            - --log-encoding=json
-            - --enable-leader-election
-            # Only process resources labeled for shard1
-            - --watch-label-selector=sharding.fluxcd.io/key=shard1
-            - --concurrent=10
-          resources:
-            requests:
-              cpu: 500m
-              memory: 512Mi
-            limits:
-              cpu: 2000m
-              memory: 2Gi
-```
+The shard kustomization above patches the generated kustomize-controller Deployment to use the `kustomize-controller-shard1` selector and the `--watch-label-selector=sharding.fluxcd.io/key=shard1` argument. You do not need to maintain a separate hand-written kustomize-controller Deployment.
 
 ## Step 4: Create Helm Controller Shard
 
-```yaml
-# shards/shard1/helm-controller.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: helm-controller-shard1
-  namespace: flux-system
-  labels:
-    app: helm-controller-shard1
-    sharding.fluxcd.io/role: shard
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: helm-controller-shard1
-  template:
-    metadata:
-      labels:
-        app: helm-controller-shard1
-    spec:
-      serviceAccountName: helm-controller
-      containers:
-        - name: manager
-          image: ghcr.io/fluxcd/helm-controller:v1.1.0
-          args:
-            - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
-            - --watch-all-namespaces=true
-            - --log-level=info
-            - --log-encoding=json
-            - --enable-leader-election
-            # Only process resources labeled for shard1
-            - --watch-label-selector=sharding.fluxcd.io/key=shard1
-            - --concurrent=10
-          resources:
-            requests:
-              cpu: 250m
-              memory: 512Mi
-            limits:
-              cpu: 1000m
-              memory: 2Gi
-```
+The same shard kustomization patches the generated helm-controller Deployment to use the `helm-controller-shard1` selector and the `--watch-label-selector=sharding.fluxcd.io/key=shard1` argument. Keep HelmRelease resources and their generated HelmChart source labels on the same shard.
 
 ## Step 5: Label Resources for Sharding
 
@@ -274,36 +215,27 @@ Resources without the shard label continue to be processed by the default contro
 To prevent the default controllers from processing sharded resources, configure them to skip resources that have shard labels. Add the `--watch-label-selector` flag with a negation.
 
 ```yaml
-# Patch for the default kustomize-controller to exclude sharded resources
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kustomize-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
-            - --watch-all-namespaces=true
-            - --log-level=info
-            - --log-encoding=json
-            - --enable-leader-election
-            # Exclude resources that have any shard label
-            - --watch-label-selector=!sharding.fluxcd.io/key
+# Patch for the default controllers to exclude sharded resources
+patches:
+  - target:
+      kind: Deployment
+      name: "(source-controller|kustomize-controller|helm-controller)"
+      annotationSelector: "!sharding.fluxcd.io/role"
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/0
+        value: --watch-label-selector=!sharding.fluxcd.io/key
 ```
 
-Apply the same exclusion to the default source-controller and helm-controller.
+Apply this exclusion to the default source-controller, kustomize-controller, and helm-controller.
 
 ## Step 7: Apply and Verify
 
 Apply the shard configurations and verify that controllers are running.
 
 ```bash
-# Apply the shard manifests
-kubectl apply -f shards/shard1/
+# Build and apply the shard manifests
+kubectl apply -k clusters/my-cluster/flux-system/shard1/
 
 # Verify all shard controllers are running
 kubectl get deployments -n flux-system
@@ -326,26 +258,18 @@ kind: Kustomization
 resources:
   - gotk-components.yaml
   - gotk-sync.yaml
-  - shards/shard1/
-  - shards/shard2/
+  - shard1
+  - shard2
 patches:
   # Patch default controllers to exclude sharded resources
-  - patch: |
-      apiVersion: apps/v1
+  - target:
       kind: Deployment
-      metadata:
-        name: source-controller
-      spec:
-        template:
-          spec:
-            containers:
-              - name: manager
-                args:
-                  - --watch-label-selector=!sharding.fluxcd.io/key
-    target:
-      kind: Deployment
-      name: "(source|kustomize|helm)-controller"
-      namespace: flux-system
+      name: "(source-controller|kustomize-controller|helm-controller)"
+      annotationSelector: "!sharding.fluxcd.io/role"
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/0
+        value: --watch-label-selector=!sharding.fluxcd.io/key
 ```
 
 ## Summary

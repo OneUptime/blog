@@ -95,10 +95,10 @@ RHEL uses the `installonly_limit` setting in dnf to control how many kernel vers
 
 ```bash
 # Check the current limit
-grep installonly_limit /etc/dnf/dnf.conf
+sudo dnf config-manager --dump | grep '^installonly_limit'
 
 # Default is 3 - you can change it
-sudo sed -i 's/installonly_limit=3/installonly_limit=5/' /etc/dnf/dnf.conf
+sudo dnf config-manager --save --setopt=installonly_limit=5
 ```
 
 Keeping more kernels gives you more rollback options. The tradeoff is disk space in `/boot`.
@@ -156,8 +156,8 @@ For environments where you want automatic kernel updates but with control:
 # Install dnf-automatic
 sudo dnf install dnf-automatic -y
 
-# Configure it to download but not install automatically
-sudo sed -i 's/apply_updates = no/apply_updates = no/' /etc/dnf/automatic.conf
+# Configure it not to install updates automatically
+sudo sed -i 's/^apply_updates = .*/apply_updates = no/' /etc/dnf/automatic.conf
 
 # Enable the download timer
 sudo systemctl enable --now dnf-automatic-download.timer

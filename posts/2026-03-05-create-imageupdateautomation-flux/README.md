@@ -18,7 +18,7 @@ The image automation pipeline in Flux involves three custom resources:
 2. **ImagePolicy** - Selects the latest image tag based on a policy (semver, alphabetical, numerical)
 3. **ImageUpdateAutomation** - Commits the selected image tags back to the Git repository
 
-When a new image is pushed to your registry, the ImageRepository detects it, the ImagePolicy selects it based on your criteria, and the ImageUpdateAutomation writes the updated tag to your manifests and pushes the change to Git.
+When a new image is pushed to your registry, the ImageRepository detects it during a scan, the ImagePolicy selects it based on your criteria, and the ImageUpdateAutomation writes the updated tag to your manifests and pushes the change to Git.
 
 ## Prerequisites
 
@@ -187,7 +187,7 @@ Key fields explained:
 - **git.checkout.ref.branch** - The branch to read from
 - **git.push.branch** - The branch to push updates to (can differ from checkout branch for PR-based workflows)
 - **update.path** - The directory to scan for image policy markers
-- **update.strategy** - Must be `Setters` (the only supported strategy in v1beta2)
+- **update.strategy** - Must be `Setters` (the only supported strategy in v1)
 - **git.commit.messageTemplate** - Go template for the commit message
 
 ## Step 5: Push to a Different Branch for PR Workflows
@@ -214,7 +214,7 @@ Check the status of the ImageUpdateAutomation:
 flux get image update my-app-automation
 ```
 
-You should see output showing the last automation run and any images that were updated. Check the Git log:
+You should see output showing the automation status and last run time. Check the Git log:
 
 ```bash
 git log --oneline -5
@@ -247,4 +247,4 @@ flux get image update my-app-automation
 
 ## Summary
 
-The ImageUpdateAutomation resource in Flux (`image.toolkit.fluxcd.io/v1`) automates the process of updating container image tags in your Git repository. By combining ImageRepository scanning, ImagePolicy selection, and ImageUpdateAutomation commits, you create a fully automated pipeline where pushing a new container image triggers an automatic update to your Kubernetes manifests. Use PR-based workflows for production environments to maintain human oversight over automated changes.
+The ImageUpdateAutomation resource in Flux (`image.toolkit.fluxcd.io/v1`) automates the process of updating container image tags in your Git repository. By combining ImageRepository scanning, ImagePolicy selection, and ImageUpdateAutomation commits, you create a fully automated pipeline where a newly scanned container image triggers an automatic update to your Kubernetes manifests. Use PR-based workflows for production environments to maintain human oversight over automated changes.

@@ -77,13 +77,13 @@ sudo systemctl status stratisd
 Ensure fstab entries include the systemd dependency:
 
 ```bash
-UUID=your-uuid /data xfs defaults,x-systemd.requires=stratisd.service 0 0
+/dev/stratis/poolname/fsname /data xfs defaults,x-systemd.requires=stratis-fstab-setup@pool-uuid.service,x-systemd.after=stratis-fstab-setup@pool-uuid.service 0 0
 ```
 
-Use UUID rather than device path:
+Use the Stratis-maintained symlink rather than an underlying device mapper path:
 
 ```bash
-sudo blkid /dev/stratis/poolname/fsname
+ls -l /dev/stratis/poolname/fsname
 ```
 
 Regenerate systemd mount units:
@@ -231,19 +231,26 @@ sudo stratis key list
 Set the encryption key:
 
 ```bash
-sudo stratis key set --capture-key keyname
+sudo stratis key set --capture-key key-description
 ```
 
-Unlock the pool:
+Verify that the pool is visible:
 
 ```bash
-sudo stratis pool unlock keyring
+sudo stratis pool list
+```
+
+If the pool was stopped, start it with the keyring unlock method:
+
+```bash
+sudo stratis pool start --unlock-method keyring --name poolname
 ```
 
 For automatic unlocking, configure Tang or TPM2 binding:
 
 ```bash
-sudo stratis pool bind nbde poolname keyname --trust-url http://tang-server
+sudo stratis pool bind nbde --trust-url poolname http://tang-server
+sudo stratis pool bind tpm poolname
 ```
 
 ## Issue 7: Device Mapper Conflicts
@@ -261,12 +268,13 @@ sudo dmsetup status
 
 ### Solution
 
-Clear stale device mapper entries:
+Restart Stratis and inspect the remaining mappings. Do not remove all device mapper entries on a running system, because Stratis shares device mapper with other storage stacks such as LVM and dm-crypt:
 
 ```bash
-sudo systemctl stop stratisd
-sudo dmsetup remove_all --force
-sudo systemctl start stratisd
+sudo systemctl restart stratisd
+sudo dmsetup ls | grep stratis
+sudo stratis pool list
+sudo stratis blockdev list
 ```
 
 ## Issue 8: Stratis Commands Hanging

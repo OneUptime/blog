@@ -13,7 +13,7 @@ The `fio` (Flexible I/O Tester) tool is the industry standard for storage benchm
 ## Installing fio
 
 ```bash
-sudo dnf install fio
+sudo dnf install fio fio-engine-libaio
 ```
 
 ## Basic Concepts
@@ -51,8 +51,8 @@ fio --name=seq-write --filename=/data/fio_test \
 ```bash
 fio --name=rand-read --filename=/data/fio_test \
     --rw=randread --bs=4k --size=4G --direct=1 \
-    --numjobs=4 --iodepth=32 --runtime=60 \
-    --time_based --group_reporting
+    --numjobs=4 --iodepth=32 --ioengine=libaio \
+    --runtime=60 --time_based --group_reporting
 ```
 
 ## Random Write Test (IOPS)
@@ -60,8 +60,8 @@ fio --name=rand-read --filename=/data/fio_test \
 ```bash
 fio --name=rand-write --filename=/data/fio_test \
     --rw=randwrite --bs=4k --size=4G --direct=1 \
-    --numjobs=4 --iodepth=32 --runtime=60 \
-    --time_based --group_reporting
+    --numjobs=4 --iodepth=32 --ioengine=libaio \
+    --runtime=60 --time_based --group_reporting
 ```
 
 ## Mixed Random Read/Write Test
@@ -71,7 +71,7 @@ Simulates a typical database workload with 70% reads and 30% writes:
 ```bash
 fio --name=mixed-rw --filename=/data/fio_test \
     --rw=randrw --rwmixread=70 --bs=4k --size=4G \
-    --direct=1 --numjobs=4 --iodepth=16 \
+    --direct=1 --numjobs=4 --iodepth=16 --ioengine=libaio \
     --runtime=60 --time_based --group_reporting
 ```
 
@@ -114,7 +114,9 @@ For complex or repeatable tests, use job files:
 cat > /tmp/database_workload.fio << 'FIOEOF'
 [global]
 filename=/data/fio_test
+size=4G
 direct=1
+ioengine=libaio
 time_based
 runtime=120
 group_reporting
@@ -162,7 +164,7 @@ fio --name=webserver --filename=/data/fio_test \
 ```bash
 fio --name=streaming --filename=/data/fio_test \
     --rw=read --bs=256k --size=10G \
-    --direct=1 --numjobs=4 --iodepth=4 \
+    --direct=1 --numjobs=4 --iodepth=4 --ioengine=libaio \
     --runtime=120 --time_based --group_reporting
 ```
 
@@ -171,8 +173,8 @@ fio --name=streaming --filename=/data/fio_test \
 ```bash
 fio --name=test --filename=/data/fio_test \
     --rw=randread --bs=4k --size=1G --direct=1 \
-    --numjobs=4 --iodepth=32 --runtime=30 \
-    --time_based --output-format=json --output=results.json
+    --numjobs=4 --iodepth=32 --ioengine=libaio \
+    --runtime=30 --time_based --output-format=json --output=results.json
 ```
 
 ## Best Practices for Accurate Results

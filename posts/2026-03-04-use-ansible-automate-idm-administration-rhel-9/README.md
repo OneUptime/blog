@@ -24,6 +24,8 @@ Or install from Ansible Galaxy:
 ansible-galaxy collection install freeipa.ansible_freeipa
 ```
 
+If you install from Ansible Galaxy, either use fully qualified module names such as `freeipa.ansible_freeipa.ipauser` or add `freeipa.ansible_freeipa` to the play's `collections` list.
+
 ## Configuring the Inventory
 
 ```ini
@@ -218,11 +220,11 @@ ansible-vault encrypt_string 'AdminPassword' --name 'ipaadmin_password'
         ipaadmin_password: "{{ ipaadmin_password }}"
         name: developers-sudo
         description: "Sudo access for developers"
-        user:
+        group:
           - developers
-        host:
+        hostgroup:
           - devservers
-        sudocmd:
+        allow_sudocmd:
           - /usr/bin/systemctl
           - /usr/bin/journalctl
         runasuser:

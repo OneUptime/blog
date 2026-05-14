@@ -21,15 +21,15 @@ VDO memory usage has two main parts:
 ```bash
 # View current VDO configuration
 
-sudo vdo status --name=vdo0 | grep -E "index|memory|thread"
+sudo vdo status --name=vdo0 | grep -Ei "index|cache|thread"
 
-# Check actual memory consumption
-sudo vdostats --verbose /dev/mapper/vdo0 | grep "memory"
+# Check VDO block map cache statistics
+sudo vdostats --verbose /dev/mapper/vdo0 | grep -i "block map"
 ```
 
 ## Tuning the UDS Index
 
-The index memory setting controls how many blocks VDO can track for deduplication:
+The index memory setting controls the size of the deduplication window that VDO can check for matching blocks:
 
 ```bash
 # Create a VDO volume with a sparse index and more memory
@@ -46,8 +46,8 @@ sudo vdo create --name=vdo-tuned \
 ```
 
 Memory guidelines for the UDS index:
-- Dense index: ~1 GB per 1 TB of physical storage
-- Sparse index: ~1 GB per 10 TB of physical storage
+- Dense index: ~1 TB of deduplication window per 1 GB of RAM
+- Sparse index: ~10 TB of deduplication window per 1 GB of RAM
 
 ## Tuning Thread Counts
 

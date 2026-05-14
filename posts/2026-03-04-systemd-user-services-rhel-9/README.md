@@ -81,6 +81,8 @@ loginctl show-user $USER --property=Linger
 
 ```bash
 # Set environment variables for user services
+mkdir -p ~/.config/systemd/user/mydev.service.d
+
 cat > ~/.config/systemd/user/mydev.service.d/env.conf << 'UNITEOF'
 [Service]
 Environment="NODE_ENV=development"
@@ -88,6 +90,8 @@ Environment="PORT=3000"
 UNITEOF
 
 # Or use an environment file
+mkdir -p ~/.config/environment.d
+
 cat > ~/.config/environment.d/mydev.conf << 'ENVEOF'
 NODE_ENV=development
 PORT=3000

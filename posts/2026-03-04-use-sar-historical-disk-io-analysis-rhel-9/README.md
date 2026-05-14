@@ -49,6 +49,7 @@ This shows block device statistics for today:
 - **tps** - Transfers per second
 - **rkB/s** - Read kilobytes per second
 - **wkB/s** - Write kilobytes per second
+- **dkB/s** - Discarded kilobytes per second
 - **areq-sz** - Average request size in kilobytes
 - **aqu-sz** - Average queue length
 - **await** - Average wait time in milliseconds
@@ -131,13 +132,13 @@ sadf -j /var/log/sa/sa04 -- -dp > disk_io_data.json
 To change from the default 10-minute interval to 1-minute:
 
 ```bash
-sudo vi /etc/systemd/system/sysstat-collect.timer.d/override.conf
+sudo systemctl edit sysstat-collect.timer
 ```
 
 ```ini
 [Timer]
 OnCalendar=
-OnCalendar=*:0/1
+OnCalendar=*:00/1
 ```
 
 Reload:
@@ -152,7 +153,7 @@ sudo systemctl restart sysstat-collect.timer
 By default, sysstat keeps 28 days of data. Change this in:
 
 ```bash
-sudo vi /etc/sysstat/sysstat
+sudo vi /etc/sysconfig/sysstat
 ```
 
 Set the `HISTORY` variable:
@@ -166,7 +167,7 @@ HISTORY=90
 Find the busiest times for disk I/O:
 
 ```bash
-sar -dp -f /var/log/sa/sa04 | sort -k5 -rn | head -10
+sar -dp -f /var/log/sa/sa04 | sort -k6 -rn | head -10
 ```
 
 This sorts by write throughput and shows the top 10 periods.

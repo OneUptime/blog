@@ -50,11 +50,11 @@ rpm -q amazon-efs-utils
 sudo mkdir -p /mnt/efs
 
 # Mount using the EFS mount helper (recommended)
-# This uses TLS encryption by default
+# The tls option enables encryption in transit
 sudo mount -t efs -o tls $EFS_ID:/ /mnt/efs
 
 # For persistent mounting, add to /etc/fstab
-echo "$EFS_ID:/ /mnt/efs efs _netdev,tls,iam 0 0" | sudo tee -a /etc/fstab
+echo "$EFS_ID:/ /mnt/efs efs _netdev,tls 0 0" | sudo tee -a /etc/fstab
 
 # Verify the mount
 df -hT /mnt/efs
@@ -71,23 +71,19 @@ AP_ID=$(aws efs create-access-point \
   --query 'AccessPointId' --output text)
 
 # Mount using the access point
+sudo mkdir -p /mnt/app-data
 sudo mount -t efs -o tls,accesspoint=$AP_ID $EFS_ID:/ /mnt/app-data
 ```
 
 ## Step 5: Optimize NFS Performance
 
 ```bash
-# Tune NFS client settings for better performance
-sudo tee /etc/sysctl.d/nfs-performance.conf > /dev/null <<'SYSCTL'
-# Increase NFS read-ahead
-vm.dirty_ratio = 15
-vm.dirty_background_ratio = 3
-
-# Increase the number of NFS client threads
-sunrpc.tcp_slot_table_entries = 128
-SYSCTL
-
-sudo sysctl --system
+# The EFS mount helper version 1.33.2 and later sets read_ahead_kb automatically.
+# If you are not using that version, set read_ahead_kb to 15 MB after mounting.
+device_number=$(stat -c '%d' /mnt/efs)
+((major = ($device_number & 0xFFF00) >> 8))
+((minor = ($device_number & 0xFF) | (($device_number >> 12) & 0xFFF00)))
+sudo bash -c "echo 15000 > /sys/class/bdi/$major:$minor/read_ahead_kb"
 
 # Verify NFS mount options
 nfsstat -m

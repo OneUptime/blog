@@ -14,7 +14,7 @@ VDO volumes can encounter issues due to hardware failures, unclean shutdowns, or
 
 - A RHEL 9 system with root or sudo access
 - Familiarity with LVM and VDO concepts
-- The `lvm2` and `kmod-kvdo` packages installed
+- The `lvm2`, `kmod-kvdo`, and `vdo` packages installed
 
 ## Issue 1: VDO Volume in Read-Only Mode
 
@@ -52,11 +52,11 @@ For physical space exhaustion, add more storage:
 sudo pvcreate /dev/sdc
 sudo vgextend vg_vdo /dev/sdc
 
-# Extend the VDO volume
-sudo lvextend --size +100G vg_vdo/lv_vdo
+# Extend the VDO pool
+sudo lvextend --size +100G vg_vdo/vpool0
 ```
 
-After adding space, the volume should return to read-write mode. If not:
+After adding physical space to the VDO pool, the volume should return to read-write mode after reactivation. If not:
 
 ```bash
 sudo lvchange -an vg_vdo/lv_vdo
@@ -90,17 +90,16 @@ sudo journalctl -k | grep -i "uds\|index"
 
 ### Recovery
 
-Rebuild the UDS index:
+There is no supported `lvchange` option to rebuild only the UDS index on an LVM-VDO volume. If the index is in an error state, disable and re-enable deduplication on the VDO pool:
 
 ```bash
-sudo lvchange -an vg_vdo/lv_vdo
-sudo lvchange --rebuild-full vg_vdo/lv_vdo
-sudo lvchange -ay vg_vdo/lv_vdo
+sudo lvchange --deduplication n vg_vdo/vpool0
+sudo lvchange --deduplication y vg_vdo/vpool0
 ```
 
-The `--rebuild-full` option creates a new, empty deduplication index. Existing data is not affected, but deduplication of already-stored data will not occur until the same blocks are written again.
+This creates a new deduplication window for future writes. Existing data is not affected, but deduplication of already-stored data will not occur until the same blocks are written again.
 
-After rebuilding, verify:
+After re-enabling deduplication, verify:
 
 ```bash
 sudo lvs -o name,vdo_index_state vg_vdo
@@ -142,7 +141,7 @@ sudo lvchange -ay vg_vdo/lv_vdo
 If the module is not available:
 
 ```bash
-sudo dnf install kmod-kvdo -y
+sudo dnf install lvm2 kmod-kvdo vdo -y
 sudo modprobe kvdo
 ```
 
@@ -184,16 +183,20 @@ Increase VDO resources:
 
 ```bash
 # More CPU threads
-sudo lvchange --vdosettings 'cpu_threads=4,bio_threads=4' vg_vdo/lv_vdo
+sudo lvchange -an vg_vdo/lv_vdo
+sudo lvchange --vdosettings 'cpu_threads=4 bio_threads=4' vg_vdo/vpool0
+sudo lvchange -ay vg_vdo/lv_vdo
 
 # Larger block map cache
-sudo lvchange --vdosettings 'block_map_cache_size_mb=512' vg_vdo/lv_vdo
+sudo lvchange -an vg_vdo/lv_vdo
+sudo lvchange --vdosettings 'block_map_cache_size_mb=512' vg_vdo/vpool0
+sudo lvchange -ay vg_vdo/lv_vdo
 ```
 
 If deduplication is causing overhead without benefit:
 
 ```bash
-sudo lvchange --deduplication n vg_vdo/lv_vdo
+sudo lvchange --deduplication n vg_vdo/vpool0
 ```
 
 ## Issue 5: Filesystem Corruption on VDO Volume
@@ -222,6 +225,8 @@ If the log is dirty:
 ```bash
 sudo xfs_repair -L /dev/vg_vdo/lv_vdo
 ```
+
+Use `-L` only when mounting the file system to replay the log is not possible, because it clears the XFS log and can cause data loss.
 
 After repair:
 
@@ -319,7 +324,7 @@ sudo vdostats --verbose /dev/mapper/vg_vdo-vpool | grep -i "overhead\|metadata"
 Grow the physical size of the VDO volume, which also increases metadata capacity:
 
 ```bash
-sudo lvextend --size +50G vg_vdo/lv_vdo
+sudo lvextend --size +50G vg_vdo/vpool0
 ```
 
 ## Collecting Diagnostic Information
@@ -330,7 +335,7 @@ When contacting support, gather this information:
 # System info
 cat /etc/redhat-release
 uname -r
-rpm -q lvm2 kmod-kvdo
+rpm -q lvm2 kmod-kvdo vdo
 
 # VDO state
 sudo lvs -a -o +vdo_operating_mode,vdo_compression_state,vdo_index_state
@@ -360,4 +365,4 @@ sudo dmsetup table
 
 ## Conclusion
 
-Most VDO issues on RHEL 9 stem from physical space exhaustion, unclean shutdowns, or resource constraints. The recovery procedures are well-defined: add space for exhaustion, rebuild the index for corruption, and retune settings for performance issues. By maintaining proper monitoring and keeping backups, you can minimize the impact of VDO problems and recover quickly when they occur.
+Most VDO issues on RHEL 9 stem from physical space exhaustion, unclean shutdowns, or resource constraints. The recovery procedures are well-defined: add physical space to the VDO pool for exhaustion, reset deduplication for index problems, and retune settings for performance issues. By maintaining proper monitoring and keeping backups, you can minimize the impact of VDO problems and recover quickly when they occur.

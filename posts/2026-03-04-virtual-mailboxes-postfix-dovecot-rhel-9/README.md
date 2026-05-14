@@ -48,6 +48,8 @@ sudo useradd -u 5000 -g vmail -s /sbin/nologin -d /var/mail/vhosts -m vmail
 sudo mkdir -p /var/mail/vhosts/example.com
 sudo mkdir -p /var/mail/vhosts/example.org
 sudo chown -R vmail:vmail /var/mail/vhosts
+sudo chmod 700 /var/mail/vhosts
+sudo restorecon -Rv /var/mail/vhosts
 ```
 
 ## Step 3: Configure Postfix for Virtual Delivery
@@ -154,14 +156,14 @@ Generate passwords and add users to `/etc/dovecot/users`:
 sudo doveadm pw -s BLF-CRYPT
 ```
 
-Enter the password when prompted. Then add the entry to `/etc/dovecot/users`:
+Enter the password when prompted. Then add the entry to `/etc/dovecot/users`, using the full output from `doveadm pw` after the username:
 
 ```bash
-john@example.com:{BLF-CRYPT}$2y$05$abc123hashedpasswordhere
-jane@example.com:{BLF-CRYPT}$2y$05$def456hashedpasswordhere
-admin@example.com:{BLF-CRYPT}$2y$05$ghi789hashedpasswordhere
-info@example.org:{BLF-CRYPT}$2y$05$jkl012hashedpasswordhere
-support@example.org:{BLF-CRYPT}$2y$05$mno345hashedpasswordhere
+john@example.com:FULL_DOVEADM_PW_OUTPUT
+jane@example.com:FULL_DOVEADM_PW_OUTPUT
+admin@example.com:FULL_DOVEADM_PW_OUTPUT
+info@example.org:FULL_DOVEADM_PW_OUTPUT
+support@example.org:FULL_DOVEADM_PW_OUTPUT
 ```
 
 Secure the file:
@@ -215,8 +217,11 @@ service auth {
 ## Step 5: Start Everything
 
 ```bash
-# Reload Postfix
-sudo postfix reload
+# Enable and start both services
+sudo systemctl enable --now postfix dovecot
+
+# Reload Postfix after main.cf/map changes
+sudo systemctl reload postfix
 
 # Restart Dovecot
 sudo systemctl restart dovecot

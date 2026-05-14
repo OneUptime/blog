@@ -8,7 +8,7 @@ Description: Learn how to reduce notification noise in Flux by using exclusion r
 
 ---
 
-In busy Kubernetes clusters, Flux can generate a high volume of events, leading to notification fatigue if every event triggers an alert. While Flux does not have a dedicated rate limiting field on the Alert resource, there are several effective strategies to control notification volume. This guide covers practical approaches to limit the rate and volume of Flux alerts.
+In busy Kubernetes clusters, Flux can generate a high volume of events, leading to notification fatigue if every event triggers an alert. Flux notification-controller has controller-level duplicate event rate limiting, but the Alert resource does not have a dedicated per-alert rate limiting field. There are several effective strategies to control notification volume. This guide covers practical approaches to limit the rate and volume of Flux alerts.
 
 ## Prerequisites
 
@@ -27,7 +27,7 @@ The most effective way to limit alert volume is to use `spec.exclusionList` to f
 ```yaml
 # Alert with aggressive exclusion rules to reduce volume
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: rate-limited-alert
@@ -75,7 +75,7 @@ Switching to error severity dramatically reduces notification volume by only sen
 
 ```yaml
 # Error-only alert for minimal notification volume
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: errors-only-alert
@@ -103,7 +103,7 @@ Reduce volume by watching only specific resources instead of using wildcards.
 
 ```yaml
 # Alert watching only critical resources instead of all
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: targeted-alert
@@ -147,7 +147,7 @@ Create a tiered alert system where high-volume events go to low-priority destina
 
 ```yaml
 # High-volume, low-priority: all info events to a webhook/log
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: high-volume-log
@@ -165,7 +165,7 @@ spec:
       namespace: flux-system
 ---
 # Low-volume, high-priority: errors only to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: low-volume-critical
@@ -183,7 +183,7 @@ spec:
       namespace: flux-system
 ---
 # Medium-volume: filtered info events to general Slack
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: medium-volume-info
@@ -211,22 +211,23 @@ spec:
 
 ## Step 6: Use a Custom Webhook for Server-Side Rate Limiting
 
-For true rate limiting, use a generic provider that points to a custom webhook service with rate limiting built in.
+For custom per-destination rate limiting beyond Flux's controller-level duplicate event rate limiting, use a generic provider that points to a custom webhook service with rate limiting built in.
 
 ```yaml
 # Provider pointing to a rate-limiting proxy
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: rate-limited-webhook
   namespace: flux-system
 spec:
   type: generic
+  address: https://rate-limiter.flux-system.svc.cluster.local/events
   secretRef:
     name: rate-limiter-secret
 ---
 # Alert using the rate-limited proxy
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: rate-limited-via-proxy
@@ -251,17 +252,17 @@ The proxy service can implement features like deduplication, batching, and time-
 Track how many notifications are being generated to assess if your rate limiting is effective.
 
 ```bash
-# Count events in the last hour
-kubectl get events -n flux-system --sort-by='.lastTimestamp' | wc -l
+# Count currently retained events in the namespace
+kubectl get events -n flux-system --no-headers | wc -l
 
-# Count events by type
+# Count events by reason
 kubectl get events -n flux-system -o json | jq -r '.items[].reason' | sort | uniq -c | sort -rn
 
 # Check notification controller logs for delivery count
-kubectl logs -n flux-system deploy/notification-controller | grep -c "dispatch"
+kubectl logs -n flux-system deploy/notification-controller --since=1h | grep -c "dispatch"
 
 # View event generation rate
-kubectl get events -n flux-system --sort-by='.lastTimestamp' | tail -20
+kubectl get events -n flux-system --sort-by='.metadata.creationTimestamp' | tail -20
 ```
 
 ## Volume Reduction Strategies Summary
@@ -286,4 +287,4 @@ kubectl get events -n flux-system --sort-by='.lastTimestamp' | tail -20
 
 ## Summary
 
-While Flux does not have a built-in rate limiting field on Alert resources, you can effectively control notification volume through several strategies: aggressive exclusion rules, error-only severity, targeted event sources, temporary suspension, tiered alert architectures, and custom rate-limiting proxies. The most practical approach for most teams is combining error severity for critical channels with well-filtered info severity for general channels, ensuring important notifications are never missed while routine events are handled quietly.
+While Flux does not have a built-in per-alert rate limiting field on Alert resources, you can effectively control notification volume through several strategies: aggressive exclusion rules, error-only severity, targeted event sources, temporary suspension, tiered alert architectures, and custom rate-limiting proxies. The most practical approach for most teams is combining error severity for critical channels with well-filtered info severity for general channels, ensuring important notifications are never missed while routine events are handled quietly.

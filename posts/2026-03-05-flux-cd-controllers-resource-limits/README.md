@@ -131,7 +131,7 @@ If you install Flux with the CLI, you can patch resources at install time:
 flux install --export > gotk-components.yaml
 ```
 
-Then edit the exported manifests directly, or use `flux install` with component-specific flags during bootstrap.
+Then edit the exported manifests directly, or use the Kustomize patching approach shown above in the manifests committed during bootstrap.
 
 ## Step 4: Set Limits for Image Automation Controllers
 
@@ -281,8 +281,8 @@ spec:
       rules:
         - alert: FluxControllerMemoryHigh
           expr: |
-            container_memory_working_set_bytes{namespace="flux-system"}
-            / on(pod) kube_pod_container_resource_limits{namespace="flux-system", resource="memory"}
+            container_memory_working_set_bytes{namespace="flux-system", container!="", image!=""}
+            / on(namespace, pod, container) kube_pod_container_resource_limits{namespace="flux-system", resource="memory", unit="byte"}
             > 0.85
           for: 10m
           labels:
@@ -291,11 +291,11 @@ spec:
             summary: "Flux controller {{ $labels.pod }} is using more than 85% of memory limit"
         - alert: FluxControllerOOMKilled
           expr: |
-            increase(kube_pod_container_status_restarts_total{namespace="flux-system"}[1h]) > 0
+            kube_pod_container_status_last_terminated_reason{namespace="flux-system", reason="OOMKilled"} == 1
           labels:
             severity: critical
           annotations:
-            summary: "Flux controller {{ $labels.pod }} has restarted"
+            summary: "Flux controller {{ $labels.pod }} was OOMKilled"
 ```
 
 ## Summary

@@ -12,9 +12,9 @@ Enabling FIPS mode on RHEL is the easy part. The hard part comes when applicatio
 
 ## Understanding Why Applications Break
 
-FIPS mode disables all non-approved cryptographic algorithms system-wide. Applications that worked fine before will fail if they:
+FIPS mode switches RHEL core cryptographic components and system-provided configurations to FIPS-approved behavior. Applications that worked fine before can fail if they:
 
-- Use MD5 for checksums or hashing
+- Use MD5 for security-sensitive hashing, or use MD5 through libraries that block it in FIPS mode
 - Use SHA-1 for digital signatures
 - Use DES or 3DES encryption
 - Use RC4 ciphers
@@ -54,8 +54,12 @@ ausearch -m CRYPTO_KEY_USER -ts recent
 # Trace the application to see what crypto calls it makes
 strace -e trace=openat -f your-application 2>&1 | grep -i ssl
 
-# Check if OpenSSL is throwing FIPS errors
-openssl errstr 0x00000000
+# Check the active RHEL crypto policy and OpenSSL providers
+update-crypto-policies --show
+openssl list -providers
+
+# Reproduce a TLS failure and inspect the negotiated protocol and cipher
+openssl s_client -connect example.com:443 -servername example.com -tls1_2 </dev/null
 ```
 
 ## Java Application Failures
@@ -150,7 +154,7 @@ grep -i ssl /etc/my.cnf.d/mariadb-server.cnf
 
 # Ensure FIPS-compatible ciphers
 # Add or modify in the [mysqld] section:
-# ssl-cipher = AES256-SHA256:AES128-SHA256
+# ssl-cipher = PROFILE=SYSTEM
 ```
 
 ## Web Server Issues
@@ -182,7 +186,8 @@ systemctl restart httpd
 # Update Nginx SSL configuration
 # In your server block:
 # ssl_protocols TLSv1.2 TLSv1.3;
-# ssl_ciphers PROFILE=SYSTEM;
+# Avoid hard-coded legacy cipher lists; if you set ssl_ciphers,
+# use an OpenSSL cipher string that is allowed by the active RHEL crypto policy.
 
 nginx -t
 systemctl restart nginx

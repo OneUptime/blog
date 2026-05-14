@@ -8,7 +8,7 @@ Description: Learn how to use systemd-nspawn for Lightweight Container Testing o
 
 ---
 
-systemd-nspawn is a lightweight container tool built into systemd. It runs a full operating system tree in an isolated namespace, similar to chroot but with proper process, network, and file system isolation. It is ideal for testing, building packages, and running lightweight services.
+systemd-nspawn is a lightweight container tool built into systemd. It runs a full operating system tree in an isolated namespace, similar to chroot but with proper process, optional network, and file system isolation. It is ideal for testing, building packages, and running lightweight services.
 
 ## Prerequisites
 
@@ -51,7 +51,7 @@ sudo systemd-nspawn -D /var/lib/machines/testcontainer /bin/bash
 
 ## Step 5: Network Configuration
 
-By default, nspawn creates a private network namespace. For host networking:
+By default, an interactive nspawn container has access to the host network. For a private network namespace with a virtual Ethernet link:
 
 ```bash
 sudo systemd-nspawn -D /var/lib/machines/testcontainer --network-veth -b
@@ -70,9 +70,9 @@ sudo machinectl login testcontainer
 sudo machinectl poweroff testcontainer
 ```
 
-## Step 7: Resource Limits
+## Step 7: Persistent Configuration
 
-Apply resource limits via a nspawn configuration file:
+Persist boot, bind mount, and network settings via a nspawn configuration file:
 
 ```bash
 sudo vi /etc/systemd/nspawn/testcontainer.nspawn

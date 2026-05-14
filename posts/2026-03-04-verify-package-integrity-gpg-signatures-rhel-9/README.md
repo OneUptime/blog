@@ -85,7 +85,7 @@ Before importing a third-party key, verify its fingerprint against the value pub
 curl -o /tmp/RPM-GPG-KEY-vendor https://vendor.example.com/RPM-GPG-KEY-vendor
 
 # Check the fingerprint
-gpg --with-fingerprint /tmp/RPM-GPG-KEY-vendor
+gpg --show-keys --with-fingerprint /tmp/RPM-GPG-KEY-vendor
 
 # Compare the fingerprint with the one published on the vendor's website
 # If it matches, import it
@@ -124,7 +124,7 @@ For more detail about what checks passed or failed:
 rpm -Kv package-name.rpm
 ```
 
-This breaks down the individual checks: MD5 digest, SHA256 digest, RSA signature, and header-only signature.
+This breaks down the individual checks, such as package digests and header or payload signatures.
 
 ## Verifying Installed Package Integrity
 
@@ -151,7 +151,7 @@ Each character in the output represents a specific check:
 |-----------|---------|
 | S | File size differs |
 | M | Mode (permissions) differs |
-| 5 | MD5 checksum differs |
+| 5 | File digest differs (formerly MD5 checksum) |
 | D | Device major/minor number mismatch |
 | L | Symlink path mismatch |
 | U | User ownership differs |

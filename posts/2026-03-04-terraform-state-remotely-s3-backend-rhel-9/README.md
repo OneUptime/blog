@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Terraform, S3, State Management, AWS, Linux
 
-Description: Configure Terraform to store its state file remotely in an AWS S3 bucket with DynamoDB locking on RHEL.
+Description: Configure Terraform to store its state file remotely in an AWS S3 bucket with state locking on RHEL.
 
 ---
 
-By default, Terraform stores its state in a local file called `terraform.tfstate`. This works fine for solo projects, but breaks down when multiple people work on the same infrastructure. Remote state with S3 and DynamoDB locking solves this problem.
+By default, Terraform stores its state in a local file called `terraform.tfstate`. This works fine for solo projects, but breaks down when multiple people work on the same infrastructure. Remote state with S3 locking solves this problem.
 
 ## Why Remote State Matters
 
@@ -16,7 +16,7 @@ By default, Terraform stores its state in a local file called `terraform.tfstate
 graph LR
     A[Developer 1] --> C[S3 State Backend]
     B[Developer 2] --> C
-    C --> D[DynamoDB Lock Table]
+    C --> D[S3 Lock File]
     D --> E[Only one apply at a time]
 ```
 
@@ -25,7 +25,7 @@ Local state files create several problems:
 - The state file can be lost if a laptop dies
 - Sensitive data in the state has no access controls
 
-## Create the S3 Bucket and DynamoDB Table
+## Create the S3 Bucket
 
 First, set up the backend infrastructure. You can do this manually or with a bootstrap Terraform config:
 
@@ -60,13 +60,6 @@ aws s3api put-public-access-block \
   --public-access-block-configuration \
     BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
 
-# Create the DynamoDB table for state locking
-aws dynamodb create-table \
-  --table-name terraform-state-lock \
-  --attribute-definitions AttributeName=LockID,AttributeType=S \
-  --key-schema AttributeName=LockID,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST \
-  --region us-east-1
 ```
 
 ## Configure the S3 Backend
@@ -80,7 +73,7 @@ terraform {
     key            = "rhel9/infrastructure/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-state-lock"
+    use_lockfile   = true
   }
 }
 ```
@@ -127,14 +120,14 @@ Create environment-specific backend config files:
 # backend-dev.hcl
 bucket         = "my-terraform-state-dev"
 region         = "us-east-1"
-dynamodb_table = "terraform-state-lock-dev"
+use_lockfile   = true
 ```
 
 ```ini
 # backend-prod.hcl
 bucket         = "my-terraform-state-prod"
 region         = "us-east-1"
-dynamodb_table = "terraform-state-lock-prod"
+use_lockfile   = true
 ```
 
 Initialize with the appropriate backend:
@@ -149,7 +142,7 @@ terraform init -backend-config=backend-prod.hcl
 
 ## State Locking in Action
 
-When someone runs `terraform apply`, DynamoDB creates a lock entry. If another person tries to apply at the same time, they get an error:
+When someone runs `terraform apply`, Terraform creates an S3 lock file. If another person tries to apply at the same time, they get an error:
 
 ```bash
 Error: Error acquiring the state lock
@@ -198,4 +191,4 @@ aws s3api put-bucket-policy \
   }'
 ```
 
-Remote state with S3 and DynamoDB gives your team safe, shared access to Terraform state on RHEL workstations. Versioning protects against accidental corruption, and locking prevents concurrent modifications.
+Remote state with S3 gives your team safe, shared access to Terraform state on RHEL workstations. Versioning protects against accidental corruption, and locking prevents concurrent modifications.

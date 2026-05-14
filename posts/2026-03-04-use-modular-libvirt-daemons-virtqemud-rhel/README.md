@@ -8,7 +8,7 @@ Description: Learn how to use the modular libvirt daemon architecture on RHEL, w
 
 ---
 
-RHEL introduces modular libvirt daemons as the default architecture, replacing the monolithic `libvirtd`. Instead of a single daemon handling everything, individual daemons handle specific drivers. The primary daemon for KVM is `virtqemud`. This improves security, isolation, and resource management.
+RHEL 9 uses modular libvirt daemons by default on fresh installations, replacing the monolithic `libvirtd`. If you upgraded from RHEL 8, the host may still use `libvirtd`. Instead of a single daemon handling everything, individual daemons handle specific drivers. The primary daemon for KVM is `virtqemud`. This improves isolation and resource management.
 
 ## Understanding the Modular Architecture
 
@@ -21,6 +21,7 @@ The monolithic `libvirtd` is replaced by several specialized daemons:
 # virtnetworkd - Virtual network management
 # virtstoraged - Storage pool and volume management
 # virtnodedevd - Host device management (USB, PCI passthrough)
+# virtnwfilterd - Network filter management
 # virtsecretd  - Secret/credential management
 # virtinterfaced - Host network interface management
 # virtproxyd   - Proxy daemon for remote connections
@@ -30,37 +31,44 @@ The monolithic `libvirtd` is replaced by several specialized daemons:
 
 ```bash
 # Check if the monolithic libvirtd is running
-sudo systemctl status libvirtd
+sudo systemctl is-active libvirtd.service
+sudo systemctl is-active libvirtd.socket
 
 # Check if modular daemons are running
-sudo systemctl status virtqemud
-sudo systemctl status virtnetworkd
-sudo systemctl status virtstoraged
+sudo systemctl is-active virtqemud.service
+sudo systemctl is-active virtqemud.socket
+sudo systemctl is-active virtnetworkd.socket
+sudo systemctl is-active virtstoraged.socket
 
-# On RHEL, modular daemons should be the default
+# On a fresh RHEL 9 installation, modular daemons should be the default
 ```
 
 ## Switching from Monolithic to Modular Daemons
 
 ```bash
+# Shut down or live migrate running VMs before switching daemon modes
+
 # Stop the monolithic daemon
-sudo systemctl stop libvirtd
-sudo systemctl stop libvirtd.socket
-sudo systemctl stop libvirtd-ro.socket
-sudo systemctl stop libvirtd-admin.socket
+sudo systemctl stop libvirtd.service
+sudo systemctl stop libvirtd{,-ro,-admin,-tcp,-tls}.socket
 
 # Disable it
-sudo systemctl disable libvirtd
+sudo systemctl disable libvirtd.service
+sudo systemctl disable libvirtd{,-ro,-admin,-tcp,-tls}.socket
 
 # Enable and start the modular daemons
-sudo systemctl enable --now virtqemud.socket
-sudo systemctl enable --now virtnetworkd.socket
-sudo systemctl enable --now virtstoraged.socket
-sudo systemctl enable --now virtnodedevd.socket
-sudo systemctl enable --now virtsecretd.socket
+for drv in qemu interface network nodedev nwfilter secret storage; do
+  sudo systemctl unmask virt${drv}d.service
+  sudo systemctl unmask virt${drv}d{,-ro,-admin}.socket
+  sudo systemctl enable virt${drv}d.service
+  sudo systemctl enable --now virt${drv}d{,-ro,-admin}.socket
+done
 
 # Enable the proxy daemon for remote connections
-sudo systemctl enable --now virtproxyd.socket
+sudo systemctl unmask virtproxyd.service
+sudo systemctl unmask virtproxyd{,-ro,-admin}.socket
+sudo systemctl enable virtproxyd.service
+sudo systemctl enable --now virtproxyd{,-ro,-admin}.socket
 ```
 
 ## Verifying the Modular Daemons
@@ -72,7 +80,7 @@ sudo systemctl list-units 'virt*' --all
 # Verify VM management works
 sudo virsh list --all
 
-# Test creating a storage pool
+# List storage pools
 sudo virsh pool-list --all
 
 # Test network management
@@ -88,7 +96,7 @@ sudo cat /etc/libvirt/virtqemud.conf
 # Common settings to adjust:
 # max_clients - maximum number of client connections
 # max_workers - number of worker threads
-# log_level - logging verbosity (1=debug, 2=info, 3=warning, 4=error)
+# log_filters and log_outputs - logging verbosity and destinations
 
 # Edit the configuration
 sudo vi /etc/libvirt/virtqemud.conf
@@ -106,23 +114,29 @@ sudo journalctl -u virtqemud --since "1 hour ago"
 # Check virtual network daemon logs
 sudo journalctl -u virtnetworkd --since "1 hour ago"
 
-# Enable debug logging for troubleshooting
-sudo tee /etc/libvirt/virtqemud.conf.d/debug.conf << 'EOF'
-log_level = 1
-log_outputs = "1:file:/var/log/libvirt/virtqemud-debug.log"
-EOF
+# Enable temporary debug logging for troubleshooting
+sudo virt-admin -c virtqemud:///system daemon-log-outputs "3:journald 1:file:/var/log/libvirt/virtqemud-debug.log"
+sudo virt-admin -c virtqemud:///system daemon-log-filters "3:remote 4:event 3:util.json 3:util.object 3:util.dbus 3:util.netlink 3:node_device 3:rpc 3:access 1:*"
 
-sudo systemctl restart virtqemud
+# For persistent logging changes, edit /etc/libvirt/virtqemud.conf
 ```
 
 ## Reverting to Monolithic libvirtd
 
 ```bash
 # If needed, you can revert to the monolithic daemon
-sudo systemctl stop virtqemud.socket virtnetworkd.socket virtstoraged.socket
-sudo systemctl disable virtqemud.socket virtnetworkd.socket virtstoraged.socket
+for drv in qemu interface network nodedev nwfilter secret storage; do
+  sudo systemctl stop virt${drv}d{,-ro,-admin}.socket
+  sudo systemctl disable virt${drv}d.service
+  sudo systemctl disable virt${drv}d{,-ro,-admin}.socket
+done
 
-sudo systemctl enable --now libvirtd
+sudo systemctl stop virtproxyd{,-ro,-admin}.socket
+sudo systemctl disable virtproxyd.service
+sudo systemctl disable virtproxyd{,-ro,-admin}.socket
+
+sudo systemctl enable libvirtd.service
+sudo systemctl enable --now libvirtd{,-ro,-admin}.socket
 ```
 
-The modular daemon architecture is the recommended approach on RHEL. It provides better security through isolation - a bug in the storage daemon cannot affect the QEMU daemon, and each daemon can be restarted independently without impacting running VMs.
+The modular daemon architecture is the recommended approach on RHEL 9. It provides better isolation - a daemon failure in the storage daemon does not necessarily take down the QEMU daemon, and each daemon can be restarted independently. Restarting `virtqemud` does not interrupt running VMs, although it is still best to avoid daemon restarts while VMs are running when practical.

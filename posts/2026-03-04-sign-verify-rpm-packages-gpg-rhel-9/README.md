@@ -75,11 +75,7 @@ Create or edit the RPM macros file to tell RPM which key to use for signing:
 # Create the macros file
 cat >> ~/.rpmmacros << 'EOF'
 # GPG signing configuration
-%_signature gpg
-%_gpg_path ~/.gnupg
 %_gpg_name packages@example.com
-%_gpgbin /usr/bin/gpg2
-%__gpg_sign_cmd %{__gpg} gpg --force-v3-sigs --batch --verbose --no-armor --no-secmem-warning -u "%{_gpg_name}" -sbo %{__signature_filename} --digest-algo sha256 %{__plaintext_filename}'
 EOF
 ```
 
@@ -129,8 +125,9 @@ Or configure gpg-agent for non-interactive use:
 echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
 gpg-connect-agent reloadagent /bye
 
-# Sign with passphrase from a file
-echo "your-passphrase" | rpm --addsign mypackage-1.0-1.el9.x86_64.rpm
+# Sign with passphrase from a secured file
+rpm --define "_gpg_sign_cmd_extra_args --batch --pinentry-mode loopback --passphrase-file /path/to/passphrase-file" \
+    --addsign mypackage-1.0-1.el9.x86_64.rpm
 ```
 
 ## Step 5: Verify Package Signatures
@@ -151,11 +148,11 @@ Expected output for a properly signed package:
 mypackage-1.0-1.el9.x86_64.rpm: digests signatures OK
 ```
 
-### Verify All Installed Packages
+### Verify Installed Package Files
 
 ```bash
-# Verify signatures of all installed packages
-rpm -Va --nofiles --nodigest 2>/dev/null
+# Verify installed package files against the RPM database
+rpm -Va
 
 # Check a specific installed package
 rpm -V mypackage
@@ -222,7 +219,7 @@ echo "Signing RPMs in $BUILD_DIR..."
 for rpm_file in "$BUILD_DIR"/*.rpm; do
     if [ -f "$rpm_file" ]; then
         echo "Signing: $rpm_file"
-        rpm --addsign "$rpm_file"
+        rpm --define "_gpg_name $GPG_NAME" --addsign "$rpm_file"
         if [ $? -eq 0 ]; then
             echo "  Signed successfully"
             # Verify the signature

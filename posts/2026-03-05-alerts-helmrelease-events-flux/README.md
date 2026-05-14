@@ -35,7 +35,7 @@ The following alert monitors all HelmRelease resources in the `flux-system` name
 ```yaml
 # Alert that watches all HelmRelease events in the flux-system namespace
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: helmrelease-alerts
@@ -66,7 +66,7 @@ For production environments, you may want to receive notifications only when som
 
 ```yaml
 # Alert that only captures HelmRelease errors
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: helmrelease-error-alerts
@@ -88,7 +88,7 @@ When you need to track a critical application closely, target a specific HelmRel
 
 ```yaml
 # Alert for a specific HelmRelease named "nginx-ingress"
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: nginx-ingress-alert
@@ -109,7 +109,7 @@ In a multi-tenant or multi-namespace setup, you can aggregate HelmRelease alerts
 
 ```yaml
 # Alert monitoring HelmRelease events across multiple namespaces
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: all-helmrelease-alerts
@@ -139,7 +139,7 @@ HelmRelease resources can generate many events during normal operation. Use excl
 
 ```yaml
 # Alert with exclusion rules to reduce HelmRelease event noise
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: filtered-helmrelease-alerts
@@ -165,7 +165,7 @@ For complete Helm workflow visibility, you can monitor both HelmRelease and Helm
 
 ```yaml
 # Combined alert for both HelmRelease and HelmRepository events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: helm-workflow-alerts

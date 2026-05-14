@@ -157,10 +157,10 @@ ls -la /var/spool/cron/
 
 ## Step 6: Check for User Restrictions
 
-RHEL uses `/etc/cron.allow` and `/etc/cron.deny` to control who can use cron.
+RHEL uses `/etc/cron.allow` and `/etc/cron.deny` to control who can use the `crontab` command.
 
 ```bash
-# Check if cron.allow exists (if it does, only listed users can use cron)
+# Check if cron.allow exists (if it does, only listed users can use crontab)
 ls -la /etc/cron.allow 2>/dev/null
 
 # Check if cron.deny exists
@@ -170,7 +170,7 @@ ls -la /etc/cron.deny 2>/dev/null
 cat /etc/cron.allow 2>/dev/null
 ```
 
-If `/etc/cron.allow` exists and your user is not listed, cron will silently refuse to run your jobs.
+If `/etc/cron.allow` exists and your user is not listed, `crontab` will refuse to let that user list, install, or edit their crontab. This does not stop already-installed cron jobs by itself, so if an existing job is still present, keep checking the cron log and the crontab content.
 
 ## Step 7: SELinux Denials
 
@@ -187,18 +187,19 @@ sudo sealert -a /var/log/audit/audit.log | grep cron
 If you find denials, you have a few options:
 
 ```bash
-# Check what SELinux booleans are available for cron
-sudo getsebool -a | grep cron
+# Check what SELinux booleans are available and what they actually allow
+sudo semanage boolean -l | grep cron
 
-# Common fix: allow cron to access user home directories
-sudo setsebool -P cron_userdomain_transition on
+# Check labels on the script and directories it uses
+ls -Z /usr/local/bin/backup.sh
+ls -Zd /usr/local/bin /var/log
 
-# If your script accesses network resources
-sudo setsebool -P cron_can_relabel off
+# Restore default labels if files were copied or moved into place
+sudo restorecon -v /usr/local/bin/backup.sh
 
-# Generate a custom policy module from the denial
-sudo ausearch -m AVC -ts recent | audit2allow -M mycronfix
-sudo semodule -i mycronfix.pp
+# Generate a custom policy module only after checking labels and matching booleans
+sudo ausearch -m AVC -ts recent --raw | audit2allow -M mycronfix
+sudo semodule -X 300 -i mycronfix.pp
 ```
 
 Before disabling SELinux or setting it to permissive, always try to create a targeted policy first. Running in permissive mode temporarily can help confirm whether SELinux is the problem.

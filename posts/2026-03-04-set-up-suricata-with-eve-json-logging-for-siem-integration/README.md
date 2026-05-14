@@ -31,20 +31,21 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y epel-release dnf-plugins-core
+sudo dnf copr enable @oisf/suricata-8.0
 ```
 
 ## Step 2: Install Required Packages
 
 ```bash
-sudo dnf install -y <package-name>
+sudo dnf install -y suricata
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+rpm -qi suricata
+suricata --build-info
 ```
 
 ## Step 3: Configure the Service
@@ -52,16 +53,43 @@ rpm -qi <package-name>
 Create or edit the main configuration file:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/suricata/suricata.yaml
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+Enable EVE JSON output in the `outputs` section:
+
+```yaml
+outputs:
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: eve.json
+      types:
+        - alert
+        - http
+        - dns
+        - tls
+        - flow
+```
+
+The RPM package stores logs in `/var/log/suricata`, so the EVE file is written to `/var/log/suricata/eve.json` when `default-log-dir` keeps its packaged default. Configure the capture interface in `/etc/sysconfig/suricata`:
+
+```bash
+sudo vi /etc/sysconfig/suricata
+```
+
+For example, to capture on `eth0`:
+
+```bash
+OPTIONS="--af-packet=eth0 --user=suricata"
+```
 
 ## Step 4: Start and Enable the Service
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo suricata-update
+sudo systemctl enable --now suricata
+sudo systemctl status suricata
 ```
 
 ## Step 5: Verify the Configuration
@@ -69,21 +97,22 @@ sudo systemctl status <service>
 Test the setup:
 
 ```bash
-sudo <service> --test
+sudo suricata -T -c /etc/suricata/suricata.yaml
 ```
 
 Check the logs for any errors:
 
 ```bash
-journalctl -u <service> -f
+sudo journalctl -u suricata -f
+sudo tail -f /var/log/suricata/eve.json
 ```
 
 ## Step 6: Configure Firewall Rules
 
-If the service needs network access:
+Suricata in passive IDS mode captures packets from an interface and does not require an inbound firewalld service rule. If you forward EVE logs to a SIEM over syslog, allow the SIEM destination port from your log shipper or syslog service as appropriate:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo firewall-cmd --permanent --add-port=6514/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -92,8 +121,8 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+systemctl show suricata --property=MemoryCurrent
+top -p $(pidof suricata)
 ```
 
 ## Security Considerations
@@ -107,7 +136,7 @@ top -p $(pidof <service>)
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
+1. **Service fails to start**: Check `journalctl -u suricata -xe` for error messages
 2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
 3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
 

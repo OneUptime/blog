@@ -17,6 +17,8 @@ Set up zero-touch provisioning for edge devices running MicroShift on RHEL 9. RH
 - A RHEL 9 system for building edge images (with Image Builder)
 - Root or sudo access
 - For MicroShift: a system with at least 2 CPU cores and 2 GB RAM
+- An active MicroShift subscription, access to the required RHEL 9 and OpenShift RPM repositories, and a Red Hat pull secret
+- For zero-touch installation: a Kickstart file that automates the RHEL installation and MicroShift setup
 
 ## Step 1 - Understand the Edge Architecture
 
@@ -24,7 +26,7 @@ RHEL for Edge uses rpm-ostree to deliver immutable OS images:
 
 - The OS is deployed as a single atomic unit
 - Updates are applied as new image versions
-- Rollback is automatic if a health check fails (Greenboot)
+- Rollback is automatic if required Greenboot health checks keep failing and a previous deployment is available
 - Applications run in containers on Podman or MicroShift (Kubernetes)
 
 ## Step 2 - Build an Edge Image
@@ -38,25 +40,32 @@ composer-cli compose start my-edge-blueprint edge-commit
 For an installer image:
 
 ```bash
-composer-cli compose start my-edge-blueprint edge-installer
+composer-cli compose start-ostree \
+  --ref rhel/9/x86_64/edge \
+  --url http://10.0.2.2:8080/repo/ \
+  my-edge-blueprint edge-installer
 ```
 
 ## Step 3 - Deploy to Edge Devices
 
-Write the installer to a USB drive or serve it over the network:
+Write the downloaded installer ISO to a USB drive or serve it over the network with a Kickstart file for unattended provisioning:
 
 ```bash
-sudo dd if=edge-installer.iso of=/dev/sdX bs=4M status=progress
+sudo dd if=UUID-installer.iso of=/dev/sdX bs=4M status=progress
 ```
 
 ## Step 4 - Configure Automatic Updates
 
-RHEL for Edge supports automatic OS updates with Greenboot health checks:
+RHEL for Edge supports automatic OS updates with rpm-ostreed and Greenboot health checks:
 
 ```bash
+# In /etc/rpm-ostreed.conf, set AutomaticUpdatePolicy=stage
+sudo systemctl reload rpm-ostreed
+sudo systemctl enable --now rpm-ostreed-automatic.timer
+
 # Greenboot scripts in /etc/greenboot/check/required.d/
 
-# If any script fails, the system rolls back to the previous version
+# If required scripts keep failing after retries, Greenboot rolls back when a previous deployment is available
 ```
 
 ## Step 5 - Deploy Workloads
@@ -70,7 +79,13 @@ podman run -d --name myapp registry.example.com/myapp:latest
 For Kubernetes workloads, install MicroShift:
 
 ```bash
+sudo subscription-manager repos \
+  --enable rhocp-4.20-for-rhel-9-$(uname -m)-rpms \
+  --enable fast-datapath-for-rhel-9-$(uname -m)-rpms
 sudo dnf install -y microshift
+sudo cp $HOME/openshift-pull-secret /etc/crio/openshift-pull-secret
+sudo chown root:root /etc/crio/openshift-pull-secret
+sudo chmod 600 /etc/crio/openshift-pull-secret
 sudo systemctl enable --now microshift
 ```
 

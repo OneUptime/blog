@@ -28,7 +28,7 @@ BIND on RHEL uses these key files and directories:
 |------|---------|
 | `/etc/named.conf` | Main configuration file |
 | `/var/named/` | Zone data files |
-| `/var/log/named/` | Log files (if configured) |
+| `/var/named/log/` | Log files (if configured) |
 | `/etc/named/` | Additional configuration files |
 
 ## Configuring named.conf
@@ -73,7 +73,7 @@ options {
 // Logging configuration
 logging {
     channel default_log {
-        file "/var/log/named/default.log" versions 3 size 5m;
+        file "/var/named/log/default.log" versions 3 size 5m;
         severity info;
         print-time yes;
         print-severity yes;
@@ -172,16 +172,19 @@ REVZONE
 
 ## Setting Permissions
 
-BIND runs as the `named` user. Set ownership accordingly:
+Set secure permissions so the `named` group can read the zone files:
 
 ```bash
-chown named:named /var/named/example.com.zone
-chown named:named /var/named/192.168.1.rev
+chown root:named /var/named/example.com.zone
+chown root:named /var/named/192.168.1.rev
+chmod 640 /var/named/example.com.zone
+chmod 640 /var/named/192.168.1.rev
 
 # Create log directory
 
-mkdir -p /var/log/named
-chown named:named /var/log/named
+mkdir -p /var/named/log
+chown named:named /var/named/log
+chmod 700 /var/named/log
 ```
 
 ## Validating the Configuration
@@ -272,10 +275,10 @@ Check BIND statistics:
 rndc status
 ```
 
-View query logs:
+View BIND logs:
 
 ```bash
-tail -f /var/log/named/default.log
+tail -f /var/named/log/default.log
 ```
 
 That's a working DNS server. From here, you can add more zones, configure secondary servers for redundancy, set up DNSSEC, or enable recursion if you also need it as a resolver.

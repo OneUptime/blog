@@ -12,23 +12,23 @@ RHEL 9 KVM virtualization provides a comprehensive set of features, but understa
 
 ## Supported Machine Types
 
-RHEL 9 supports two machine types:
+RHEL 9 supports architecture-specific machine types:
 
-- **q35** (recommended) - Modern machine type with PCIe, AHCI, and better device support
-- **i440fx** - Legacy machine type, being phased out
+- **q35** (recommended on AMD64 and Intel 64) - Modern machine type with PCIe, AHCI, and better device support
+- **i440fx** - Older x86 machine types are still supported only for certain RHEL 7.6 and later variants; RHEL 7.5-based and earlier machine types are unsupported
 
 Always use q35 for new VMs:
 
 ```bash
-sudo virt-install --machine q35 ...
+sudo virt-install --machine=q35 ...
 ```
 
 ## Maximum VM Limits
 
 | Resource | Maximum |
 |----------|---------|
-| vCPUs per VM | 710 |
-| Memory per VM | 12 TB |
+| vCPUs per VM | 4096 on AMD64 and Intel 64 with RHEL 9.6 or later; 710 on RHEL 9.5 and earlier |
+| Memory per VM | 16 TB on AMD64 and Intel 64 |
 | Virtual disks per VM | Depends on bus type |
 | VMs per host | Limited by host resources |
 | virtio-blk disks | 28 |
@@ -52,8 +52,8 @@ Check the full compatibility matrix in Red Hat documentation.
 ### Fully Supported
 
 - Live migration between compatible hosts
-- VM snapshots (internal and external)
-- CPU and memory hot-add
+- External VM snapshots on RHEL 9.4 or later when support requirements are met
+- CPU hot-add on supported architectures and memory hot-plug with virtio-mem
 - PCI device passthrough
 - SR-IOV
 - UEFI boot with Secure Boot
@@ -66,9 +66,9 @@ Check the full compatibility matrix in Red Hat documentation.
 
 Some features are available but not fully supported:
 
-- virtiofs (shared file system)
+- Nested KVM virtualization
 - Intel SGX for VMs
-- AMD SEV (Secure Encrypted Virtualization)
+- AMD SEV, SEV-ES, and SEV-SNP for VMs
 
 Check the release notes for the current list.
 
@@ -77,15 +77,15 @@ Check the release notes for the current list.
 ### Live Migration
 
 - Requires compatible CPU features on source and destination
-- VM disk images must be on shared storage
+- VM disk images normally use shared storage unless using a supported migration mode that copies storage
 - PCI passthrough devices prevent live migration
 - Large memory VMs take longer to migrate
 
 ### Snapshots
 
-- Internal snapshots have performance overhead
-- Raw format disks do not support internal snapshots
-- External snapshots require manual management
+- Red Hat supports VM snapshots only when they are external snapshots
+- External snapshots require RHEL 9.4 or later, file-based storage, and supported snapshot options
+- Internal snapshots are deprecated and should not be used in production environments
 
 ### CPU
 
@@ -94,19 +94,20 @@ Check the release notes for the current list.
 
 ### Memory
 
-- Memory hot-remove is not supported
-- Memory hot-add requires guest OS support
+- Memory hot-unplug requires virtio-mem and guest OS support
+- Memory hot-add requires virtio-mem and guest OS support
 
 ### Storage
 
-- Live storage migration has limitations with certain configurations
+- Moving a VM disk to another location while the VM is running on a single host is not supported
 - iSCSI multipath requires careful configuration
 
 ## Deprecated Features in RHEL 9
 
 - virt-manager (use Cockpit instead)
-- virtio-transitional devices (use virtio non-transitional)
-- Legacy BIOS boot for new VMs (UEFI recommended)
+- libvirtd (use modular libvirt daemons instead)
+- qcow2-v2 disk image format (use qcow2-v3 instead)
+- Virtual floppy devices
 
 ## Getting Support Information
 

@@ -61,7 +61,7 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "Felix is failing to program iptables rules on this node — policy (including Log rules) may not be enforced as written"
+            summary: "Felix is failing to program iptables rules on this node - policy (including Log rules) may not be enforced as written"
 ```
 
 ## Step 4: Grafana Dashboard

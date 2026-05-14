@@ -25,6 +25,10 @@ The tradeoff is performance - SSHFS is slower than NFS for heavy workloads becau
 ```bash
 # Install SSHFS
 
+# Enable EPEL first if it is not already enabled on RHEL 9
+subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+
 dnf install -y fuse-sshfs
 ```
 
@@ -87,16 +91,14 @@ What these do:
 
 ## Performance Tuning
 
-SSHFS performance can be improved with compression and buffer settings:
+SSHFS performance can be improved with compression and SSH settings:
 
 ```bash
 # Mount with performance optimizations
 sshfs user@remotehost:/data /mnt/remote \
     -o Compression=yes \
     -o Ciphers=aes128-gcm@openssh.com \
-    -o reconnect \
-    -o max_read=131072 \
-    -o max_write=131072
+    -o reconnect
 ```
 
 - `Compression=yes` - compress data in transit (helps on slow links, hurts on fast LANs)
@@ -115,10 +117,10 @@ sshfs user@remotehost:/data /mnt/remote \
 
 ```bash
 # Unmount SSHFS
-fusermount -u /mnt/remote
+fusermount3 -u /mnt/remote
 
-# Force unmount if busy
-fusermount -uz /mnt/remote
+# Lazy unmount if busy
+fusermount3 -uz /mnt/remote
 ```
 
 ## Making It Persistent with fstab
@@ -212,7 +214,7 @@ sshfs myuser@remotehost:/home/myuser ~/remote
 To unmount:
 
 ```bash
-fusermount -u ~/remote
+fusermount3 -u ~/remote
 ```
 
 ## Troubleshooting
@@ -222,7 +224,7 @@ fusermount -u ~/remote
 The SSH connection dropped. Unmount and remount:
 
 ```bash
-fusermount -uz /mnt/remote
+fusermount3 -uz /mnt/remote
 sshfs user@remotehost:/data /mnt/remote -o reconnect
 ```
 
@@ -249,9 +251,8 @@ For large directories, listing files can be slow:
 ```bash
 # Use cache to speed up directory listings
 sshfs user@remotehost:/data /mnt/remote \
-    -o cache=yes \
-    -o cache_timeout=600 \
-    -o dir_cache=yes
+    -o dir_cache=yes \
+    -o dcache_timeout=600
 ```
 
 ## Summary

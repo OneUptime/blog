@@ -16,6 +16,7 @@ Google Secret Manager provides a secure and convenient way to store API keys, pa
 - Flux CD bootstrapped on the cluster
 - Google Cloud project with Secret Manager API enabled
 - gcloud CLI installed and configured
+- For GKE Workload Identity, Workload Identity Federation for GKE enabled on the cluster
 
 Enable the Secret Manager API:
 
@@ -44,13 +45,14 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: external-secrets
-  namespace: external-secrets
+  namespace: flux-system
 spec:
+  targetNamespace: external-secrets
   interval: 30m
   chart:
     spec:
       chart: external-secrets
-      version: "0.10.x"
+      version: "2.4.x"
       sourceRef:
         kind: HelmRepository
         name: external-secrets
@@ -98,6 +100,15 @@ values:
 Create a service account key and store it as a Kubernetes Secret:
 
 ```bash
+PROJECT_ID=$(gcloud config get-value project)
+
+gcloud iam service-accounts create external-secrets \
+  --display-name="External Secrets Operator"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:external-secrets@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+
 gcloud iam service-accounts keys create sa-key.json \
   --iam-account=external-secrets@${PROJECT_ID}.iam.gserviceaccount.com
 
@@ -115,7 +126,7 @@ For Workload Identity:
 
 ```yaml
 # infrastructure/external-secrets/clustersecretstore.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: gcp-secret-manager
@@ -128,7 +139,7 @@ spec:
 For service account key:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: gcp-secret-manager
@@ -164,7 +175,7 @@ For simple secrets:
 
 ```yaml
 # apps/my-app/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-secrets
@@ -189,7 +200,7 @@ spec:
 For extracting fields from a JSON secret:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials

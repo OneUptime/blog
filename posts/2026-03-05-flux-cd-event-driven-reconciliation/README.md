@@ -265,7 +265,7 @@ Flux emits Kubernetes events during reconciliation. You can forward these events
 
 ```yaml
 # Provider for sending notifications to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -277,7 +277,7 @@ spec:
     name: slack-webhook-url
 ---
 # Alert that sends notifications for reconciliation events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: reconciliation-alerts
@@ -313,8 +313,8 @@ kubectl logs -n flux-system deployment/notification-controller
 kubectl logs -n flux-system deployment/source-controller | grep "reconciling"
 
 # Monitor reconciliation frequency with Prometheus metrics
-# The source_controller_reconcile_duration_seconds metric
-# tracks how often and how long reconciliations take
+# The gotk_reconcile_duration_seconds metric family
+# tracks how long Flux resource reconciliations take
 ```
 
 ## Best Practices

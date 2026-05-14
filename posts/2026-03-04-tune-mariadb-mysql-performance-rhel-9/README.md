@@ -20,14 +20,6 @@ Tune MariaDB and MySQL performance on RHEL 9 with optimized buffer pool settings
 
 ## Step 1 - Install the Database Packages
 
-For PostgreSQL:
-
-```bash
-sudo dnf install -y postgresql-server postgresql
-sudo postgresql-setup --initdb
-sudo systemctl enable --now postgresql
-```
-
 For MariaDB:
 
 ```bash
@@ -39,29 +31,36 @@ sudo mysql_secure_installation
 For MySQL 8.0:
 
 ```bash
-sudo dnf install -y mysql-community-server
+sudo dnf install -y mysql-server
 sudo systemctl enable --now mysqld
+sudo mysql_secure_installation
 ```
 
-Choose the appropriate commands for your database engine.
+Choose the appropriate commands for your database engine. On RHEL 9, MariaDB and MySQL packages conflict and should not be installed on the same host.
 
 ## Step 2 - Perform Initial Configuration
 
 Edit the main configuration file:
 
-- PostgreSQL: `/var/lib/pgsql/data/postgresql.conf` and `pg_hba.conf`
-- MariaDB/MySQL: `/etc/my.cnf.d/server.cnf`
+- MariaDB: `/etc/my.cnf.d/mariadb-server.cnf`
+- MySQL: `/etc/my.cnf.d/mysql-server.cnf`
 
-Adjust memory settings, connection limits, and authentication methods to match your workload.
+Adjust memory settings, connection limits, and authentication methods to match your workload. For InnoDB-heavy workloads, set `innodb_buffer_pool_size` in the `[mysqld]` section to a value appropriate for the server memory and workload:
 
-## Step 3 - Create Users and Databases
+```ini
+[mysqld]
+innodb_buffer_pool_size=2G
+```
 
-For PostgreSQL:
+Restart the database service after changing the configuration:
 
 ```bash
-sudo -u postgres createuser myappuser
-sudo -u postgres createdb myappdb -O myappuser
+sudo systemctl restart mariadb
+# or
+sudo systemctl restart mysqld
 ```
+
+## Step 3 - Create Users and Databases
 
 For MariaDB/MySQL:
 
@@ -77,9 +76,6 @@ FLUSH PRIVILEGES;
 If remote connections are needed, update the listen address and authentication rules, then open the firewall:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=postgresql
-# or
-
 sudo firewall-cmd --permanent --add-service=mysql
 sudo firewall-cmd --reload
 ```
@@ -89,8 +85,6 @@ sudo firewall-cmd --reload
 Connect to the database and run a test query:
 
 ```bash
-# PostgreSQL
-psql -h localhost -U myappuser myappdb -c "SELECT version();"
 # MariaDB/MySQL
 mysql -u myappuser -p myappdb -e "SELECT VERSION();"
 ```

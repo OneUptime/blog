@@ -8,7 +8,7 @@ Description: Learn how to use systemd Slice Units to Organize Resource Allocatio
 
 ---
 
-systemd slice units organize services into a hierarchy for resource allocation. Slices let you set CPU, memory, and I/O limits on groups of services, ensuring fair resource sharing across different workloads.
+systemd slice units organize services into a hierarchy for resource allocation. Slices let you set CPU and I/O weights and memory limits on groups of services, ensuring fair resource sharing across different workloads.
 
 ## Prerequisites
 

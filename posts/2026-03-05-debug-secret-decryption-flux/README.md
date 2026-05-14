@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix common secret decryption failures in 
 
 ---
 
-Secret decryption is a critical part of many Flux CD deployments. When you store encrypted secrets in Git using SOPS, Flux's kustomize-controller decrypts them during reconciliation. When decryption fails, your applications cannot access database credentials, API keys, or TLS certificates. This guide covers systematic debugging of secret decryption issues across all supported providers.
+Secret decryption is a critical part of many Flux CD deployments. When you store encrypted secrets in Git using SOPS, Flux's kustomize-controller decrypts them during reconciliation. When decryption fails, your applications cannot access database credentials, API keys, or TLS certificates. This guide covers systematic debugging of secret decryption issues across common key types and KMS providers.
 
 ## How Flux Decrypts Secrets
 
@@ -32,7 +32,7 @@ spec:
       name: sops-age
 ```
 
-The `decryption.provider` must be `sops`, and the `secretRef` points to a Kubernetes Secret containing the decryption key.
+The `decryption.provider` must be `sops`, and the `secretRef` points to a Kubernetes Secret in the same namespace as the Kustomization containing the decryption key or cloud provider credentials.
 
 ## Step 1: Check Kustomization Status
 
@@ -65,21 +65,21 @@ kubectl get secret sops-age -n flux-system
 kubectl get secret sops-age -n flux-system -o jsonpath='{.data}' | jq 'keys'
 ```
 
-For age keys, the secret must contain a key named `age.agekey` (or the key name you configured):
+For age keys, the secret must contain an entry whose key ends with `.agekey`, such as `age.agekey`:
 
 ```bash
 # Verify age key content
 kubectl get secret sops-age -n flux-system \
-  -o jsonpath='{.data.age\.agekey}' | base64 -d | head -2
+  -o jsonpath='{.data.age\.agekey}' | base64 -d | head -3
 ```
 
-The output should start with `# created:` followed by `AGE-SECRET-KEY-`.
+The output should include `# created:`, `# public key:`, and an `AGE-SECRET-KEY-` private key line.
 
-For GPG keys, the secret should contain the private key:
+For GPG keys, the secret should contain an OpenPGP keyring in armor format under a key ending with `.asc`:
 
 ```bash
 kubectl get secret sops-gpg -n flux-system \
-  -o jsonpath='{.data.sops\.asc}' | base64 -d | head -5
+  -o jsonpath='{.data.identity\.asc}' | base64 -d | head -5
 ```
 
 ## Step 3: Verify Key Matches the Encrypted File
@@ -129,25 +129,25 @@ kubectl get secret sops-age -n flux-system \
 sops --decrypt my-secret.sops.yaml
 ```
 
-If local decryption works but Flux fails, the issue is in how the secret is mounted or referenced.
+If local decryption works but Flux fails, the issue is in how the secret is loaded or referenced.
 
 ## Step 6: Debug Cloud KMS Issues
 
-When using AWS KMS, GCP KMS, or Azure Key Vault for SOPS encryption, the kustomize-controller needs cloud credentials.
+When using AWS KMS, GCP KMS, or Azure Key Vault for SOPS encryption, the kustomize-controller needs cloud credentials. Flux can use static credentials from `spec.decryption.secretRef` or secret-less authentication from `spec.decryption.serviceAccountName`.
 
 ### AWS KMS
 
 ```bash
-# Verify the kustomize-controller has AWS credentials
+# Verify the kustomize-controller has AWS credential-related environment variables
 kubectl get deployment kustomize-controller -n flux-system \
   -o jsonpath='{.spec.template.spec.containers[0].env}' | jq .
 
 # Check for IRSA annotation on the service account
 kubectl get sa kustomize-controller -n flux-system -o yaml | grep eks.amazonaws.com
 
-# Test KMS access
-kubectl run aws-test --rm -it --image=amazon/aws-cli -- \
-  kms decrypt --ciphertext-blob fileb://test --key-id alias/sops-key --region us-east-1
+# If using static credentials, verify the expected SOPS key exists
+kubectl get secret sops-keys -n flux-system \
+  -o jsonpath='{.data.sops\.aws-kms}' | base64 -d
 ```
 
 ### GCP KMS
@@ -157,22 +157,20 @@ kubectl run aws-test --rm -it --image=amazon/aws-cli -- \
 kubectl get sa kustomize-controller -n flux-system \
   -o jsonpath='{.metadata.annotations}'
 
-# Verify GCP credentials environment variable
-kubectl get deployment kustomize-controller -n flux-system \
-  -o jsonpath='{.spec.template.spec.containers[0].env}' | \
-  grep GOOGLE_APPLICATION_CREDENTIALS
+# If using static credentials, verify the expected SOPS key exists
+kubectl get secret sops-keys -n flux-system \
+  -o jsonpath='{.data.sops\.gcp-kms}' | base64 -d | head -5
 ```
 
 ### Azure Key Vault
 
 ```bash
-# Check for Azure Workload Identity labels
+# Check for Azure Workload Identity annotations
 kubectl get sa kustomize-controller -n flux-system -o yaml | grep azure
 
-# Verify Azure environment variables
-kubectl get deployment kustomize-controller -n flux-system \
-  -o jsonpath='{.spec.template.spec.containers[0].env}' | \
-  grep -i azure
+# If using static credentials, verify the expected SOPS key exists
+kubectl get secret sops-keys -n flux-system \
+  -o jsonpath='{.data.sops\.azure-kv}' | base64 -d
 ```
 
 ## Step 7: Common Issues and Fixes
@@ -206,7 +204,7 @@ spec:
 
 ### Wrong secret key name
 
-The age key must be stored under the correct key in the Kubernetes secret. The default expected key is `age.agekey`:
+The age key must be stored under a key ending with `.agekey` in the Kubernetes secret:
 
 ```bash
 # Correct way to create the age secret

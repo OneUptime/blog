@@ -38,7 +38,12 @@ data "aws_ami" "rhel9" {
 
   filter {
     name   = "name"
-    values = ["RHEL-9.*_HVM-*-x86_64-*-Hourly*"]
+    values = ["RHEL-9*"]
+  }
+
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
   }
 
   filter {
@@ -51,20 +56,22 @@ data "aws_ami" "rhel9" {
 resource "aws_security_group" "rhel_sg" {
   name        = "rhel-ssh-access"
   description = "Allow SSH inbound"
+}
 
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # Restrict this in production
-  }
+resource "aws_vpc_security_group_ingress_rule" "ssh" {
+  security_group_id = aws_security_group.rhel_sg.id
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  cidr_ipv4   = "0.0.0.0/0" # Restrict this in production
+  from_port   = 22
+  ip_protocol = "tcp"
+  to_port     = 22
+}
+
+resource "aws_vpc_security_group_egress_rule" "all" {
+  security_group_id = aws_security_group.rhel_sg.id
+
+  cidr_ipv4   = "0.0.0.0/0"
+  ip_protocol = "-1"
 }
 
 # Launch the RHEL instance

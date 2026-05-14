@@ -8,24 +8,19 @@ Description: A complete walkthrough for setting up a WireGuard VPN server on RHE
 
 ---
 
-WireGuard has become the go-to VPN for Linux. It's fast, the codebase is small enough to actually audit, and the configuration is refreshingly simple compared to IPsec or OpenVPN. On RHEL, WireGuard is supported in the kernel, so there's no need for DKMS or third-party kernel modules.
+WireGuard has become the go-to VPN for Linux. It's fast, the codebase is small enough to actually audit, and the configuration is refreshingly simple compared to IPsec or OpenVPN. On RHEL 9, WireGuard runs in the kernel and is provided as a Technology Preview, so there's no need for DKMS or third-party kernel modules.
 
 ## Prerequisites
 
 - RHEL server with a public IP address (or at least reachable from your clients)
 - Root or sudo access
-- EPEL repository enabled (for WireGuard tools)
 - A UDP port available for WireGuard (default is 51820)
 
 ## Installing WireGuard
 
-WireGuard kernel support is built into the RHEL kernel. You just need the userspace tools.
+WireGuard kernel support is available in RHEL 9. You just need the userspace tools.
 
 ```bash
-# Enable EPEL if not already done
-
-sudo dnf install -y epel-release
-
 # Install WireGuard tools
 sudo dnf install -y wireguard-tools
 ```
@@ -40,7 +35,7 @@ sudo mkdir -p /etc/wireguard
 sudo chmod 700 /etc/wireguard
 
 # Generate the server private key
-wg genkey | sudo tee /etc/wireguard/server_private.key
+wg genkey | sudo tee /etc/wireguard/server_private.key > /dev/null
 sudo chmod 600 /etc/wireguard/server_private.key
 
 # Derive the public key from the private key
@@ -80,6 +75,7 @@ For each client that will connect, generate a key pair.
 
 ```bash
 # Generate keys for the first client
+umask 077
 wg genkey | tee /tmp/client1_private.key | wg pubkey > /tmp/client1_public.key
 
 # Display the keys (you'll need these)

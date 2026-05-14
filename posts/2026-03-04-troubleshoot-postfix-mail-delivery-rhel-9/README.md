@@ -57,7 +57,7 @@ The mail queue is the first place to look:
 # Show all messages in the queue
 sudo postqueue -p
 
-# Show queue summary (count and size)
+# Show queue age and destination distribution
 sudo qshape deferred
 ```
 
@@ -72,7 +72,7 @@ sudo postcat -q <QUEUE_ID>
 
 ## Step 2: Read the Log Entry
 
-Every message gets a unique queue ID. Find it in the logs:
+Every queued message gets a unique queue ID. Find it in the logs:
 
 ```bash
 # Search for a specific recipient in the logs
@@ -140,8 +140,8 @@ status=deferred (Host or domain name not found)
 # Look up MX records for the destination domain
 dig MX remote.com
 
-# Check if Postfix can resolve it
-postmap -q "remote.com" dns:mx
+# Check the address records for the selected MX host
+dig A mx.remote.com
 ```
 
 **Check the DNS resolver:**
@@ -231,7 +231,7 @@ sudo postconf smtp_tls_security_level
 # Flush the entire queue (retry all deferred messages)
 sudo postqueue -f
 
-# Retry messages for a specific domain
+# Schedule delivery for a fast-flush eligible site/domain
 sudo postqueue -s example.com
 ```
 

@@ -38,7 +38,7 @@ sudo dnf install nvme-cli
 
 ## Setting the I/O Scheduler to none
 
-NVMe devices have sophisticated internal command queuing. The Linux I/O scheduler adds unnecessary overhead:
+NVMe devices have sophisticated internal command queuing. On RHEL 9, the default scheduler for NVMe devices is `none`, and Red Hat recommends leaving it that way:
 
 ```bash
 cat /sys/block/nvme0n1/queue/scheduler
@@ -49,21 +49,23 @@ Make it persistent with a udev rule:
 
 ```bash
 sudo tee /etc/udev/rules.d/60-nvme-scheduler.rules << 'UDEV'
-ACTION=="add|change", KERNEL=="nvme[0-9]*n[0-9]*", ATTR{queue/scheduler}="none"
+ACTION=="add|change", SUBSYSTEM=="block", KERNEL=="nvme[0-9]*n[0-9]*", ATTR{queue/scheduler}="none"
 UDEV
+sudo udevadm control --reload-rules
+sudo udevadm trigger --type=devices --action=change
 ```
 
 ## Optimizing Queue Depth
 
-NVMe supports deep hardware queues. Ensure the software queue matches:
+NVMe supports deep hardware queues. Check the software request limit and raise it only if benchmarks show that your workload benefits:
 
 ```bash
 # Check current setting
 
 cat /sys/block/nvme0n1/queue/nr_requests
 
-# Set to maximum
-echo 1023 | sudo tee /sys/block/nvme0n1/queue/nr_requests
+# Example: increase the per-direction request limit
+echo 1024 | sudo tee /sys/block/nvme0n1/queue/nr_requests
 ```
 
 Check the number of hardware queues:
@@ -72,7 +74,7 @@ Check the number of hardware queues:
 cat /sys/block/nvme0n1/queue/nr_hw_queues
 ```
 
-NVMe creates one hardware queue per CPU core by default, enabling true parallel I/O.
+NVMe commonly exposes multiple hardware queues, often up to one per CPU when the controller and interrupt resources support it, enabling parallel I/O.
 
 ## Tuning Read-Ahead
 
@@ -91,7 +93,7 @@ echo 2048 | sudo tee /sys/block/nvme0n1/queue/read_ahead_kb
 
 ## Configuring IRQ Affinity
 
-NVMe uses MSI-X interrupts, one per queue. Proper CPU affinity ensures interrupts are handled by the right cores:
+NVMe devices typically use MSI-X interrupts associated with their queues. Proper CPU affinity ensures interrupts are handled by the right cores:
 
 ```bash
 # View current IRQ assignments
@@ -119,10 +121,10 @@ echo 1 | sudo tee /proc/irq/45/smp_affinity
 ### XFS on NVMe
 
 ```bash
-sudo mkfs.xfs -f -d agcount=32 /dev/nvme0n1p1
+sudo mkfs.xfs -f /dev/nvme0n1p1
 ```
 
-Using multiple allocation groups (`agcount`) allows parallel metadata operations.
+XFS creates multiple allocation groups automatically, which helps parallel metadata operations.
 
 ### ext4 on NVMe
 
@@ -181,7 +183,7 @@ sudo nvme smart-log /dev/nvme0
 Key metrics:
 
 - **temperature** - Should stay within device specifications
-- **percentage_used** - SSD wear level (100% means end of life)
+- **percentage_used** - Estimated SSD endurance consumed (100% means the device has used its estimated endurance, and values can exceed 100)
 - **data_units_read/written** - Total I/O volume
 - **host_read_commands/write_commands** - Total operations
 
@@ -193,7 +195,7 @@ iostat -x /dev/nvme0n1 1
 
 ## Using the tuned Profile
 
-The `throughput-performance` profile includes NVMe optimizations:
+The `throughput-performance` profile applies throughput-oriented system settings that can help storage-heavy workloads:
 
 ```bash
 sudo tuned-adm profile throughput-performance
@@ -213,4 +215,4 @@ fio --name=nvme-test --filename=/dev/nvme0n1 \
 
 ## Summary
 
-Tuning NVMe on RHEL involves setting the I/O scheduler to none, maximizing queue depth, optimizing IRQ affinity, using appropriate file system settings, and enabling TRIM. NVMe devices deliver their best performance when the software stack stays out of the way. Monitor health with `nvme smart-log` and benchmark with fio using io_uring to validate your tuning.
+Tuning NVMe on RHEL involves setting the I/O scheduler to none, validating queue depth, optimizing IRQ affinity, using appropriate file system settings, and enabling TRIM. NVMe devices deliver their best performance when the software stack stays out of the way. Monitor health with `nvme smart-log` and benchmark with fio using io_uring to validate your tuning.

@@ -28,11 +28,12 @@ graph TD
 - Console access (IPMI, iLO, or physical) in case you lose network
 - A peer server to test connectivity
 - iperf3 installed on both servers for throughput testing
+- tc available from the iproute-tc package if you want to simulate packet loss without dropping carrier
 
 ```bash
 # Install testing tools
 
-dnf install -y iperf3 tcpdump
+dnf install -y iperf3 tcpdump iproute-tc
 ```
 
 ## Test 1: Baseline Verification
@@ -64,7 +65,7 @@ Write down the throughput number. You will compare it after failover.
 
 ## Test 2: Simulate Slave Failure
 
-There are several ways to simulate a NIC failure without physically pulling cables.
+There are several ways to exercise failover behavior without physically pulling cables. For a true physical link failure test, pull the cable or disable the switch port; software disconnects only prove that the bond handles port state changes correctly.
 
 ### Method A: Software Disconnect
 
@@ -80,14 +81,13 @@ nmcli device disconnect eth0
 ip link set eth0 down
 ```
 
-### Method C: Block Traffic with iptables
+### Method C: Drop Traffic with tc
 
-This simulates a network failure without dropping the link:
+This simulates packet loss on the active slave without dropping the link:
 
 ```bash
-# Block all traffic on eth0 (link stays up, but no traffic flows)
-iptables -A INPUT -i eth0 -j DROP
-iptables -A OUTPUT -o eth0 -j DROP
+# Drop outbound traffic on eth0 (link stays up, but traffic fails)
+tc qdisc add dev eth0 root netem loss 100%
 ```
 
 This is useful for testing ARP-based monitoring since MII monitoring will not detect this type of failure.
@@ -97,8 +97,8 @@ This is useful for testing ARP-based monitoring since MII monitoring will not de
 Start a continuous ping with timestamps before triggering the failure:
 
 ```bash
-# Continuous ping with 100ms interval and timestamps
-ping -D -i 0.1 10.0.1.1 > /tmp/failover-test.log 2>&1 &
+# Continuous ping with 100ms interval, timestamps, and missed-reply reporting
+ping -D -O -i 0.1 10.0.1.1 > /tmp/failover-test.log 2>&1 &
 PID=$!
 echo "Ping running as PID $PID"
 ```
@@ -117,11 +117,11 @@ Wait for traffic to resume, then stop the ping:
 kill $PID
 
 # Analyze the results
-grep -c "icmp_seq" /tmp/failover-test.log    # Total pings sent
-grep -c "bytes from" /tmp/failover-test.log   # Successful replies
+grep -c "bytes from" /tmp/failover-test.log       # Successful replies
+grep -c "no answer yet" /tmp/failover-test.log    # Missed replies reported by ping -O
 ```
 
-The difference between total pings and successful replies, multiplied by the ping interval (0.1s), gives you the approximate failover duration.
+The missed reply count multiplied by the ping interval (0.1s) gives you the approximate failover duration.
 
 ## Test 4: Verify Failover Behavior
 
@@ -141,7 +141,7 @@ ping -c 4 10.0.1.1
 iperf3 -c 10.0.1.100 -t 10
 ```
 
-Throughput should be at least as good as a single NIC (it should not be less than one slave's capacity).
+Throughput should roughly match the expected single-NIC capacity, allowing for normal protocol and test overhead.
 
 ## Test 5: Test Failback
 
@@ -218,10 +218,10 @@ Define what "pass" means before you start testing:
 
 | Test | Pass Criteria |
 |---|---|
-| Slave failure detection | Bond detects failure within 200ms (2x miimon) |
+| Slave failure detection | Bond detects failure within about 2x the configured monitoring interval, for example 200ms with miimon=100 |
 | Failover duration | Less than 500ms of packet loss |
-| Connectivity after failover | All pings succeed, ARP resolves |
-| Throughput after failover | At least single-NIC throughput |
+| Connectivity after failover | Traffic resumes automatically, ARP resolves |
+| Throughput after failover | Roughly expected single-NIC throughput |
 | Failback behavior | Matches configured primary_reselect |
 | Both slaves down | Bond recovers when slave returns |
 | Load during failover | iperf3 sessions survive with brief dip |
@@ -232,7 +232,7 @@ Create a simple test report:
 
 ```bash
 # Log all test results
-cat <<'REPORT' > /tmp/bond-test-report.txt
+cat <<REPORT > /tmp/bond-test-report.txt
 Bond Failover Test Report
 Date: $(date)
 Bond: bond0
@@ -264,8 +264,8 @@ Make sure you restore everything after testing:
 nmcli device connect eth0
 nmcli device connect eth1
 
-# Remove any iptables rules you added
-iptables -F
+# Remove any tc packet-loss rule you added
+tc qdisc del dev eth0 root 2>/dev/null
 
 # Confirm bond is healthy
 cat /proc/net/bonding/bond0

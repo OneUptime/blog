@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Crypto Policies, TLS, Encryption, Security, Linux
 
-Description: Manage system-wide cryptographic policies on RHEL 9 to control which ciphers, key sizes, and protocols are allowed across all applications.
+Description: Manage system-wide cryptographic policies on RHEL 9 to control which ciphers, key sizes, and protocols are allowed by default for supported applications.
 
 ---
 
-RHEL 9 provides a centralized system-wide crypto policy mechanism that controls which cryptographic algorithms, ciphers, key sizes, and protocols are allowed. Instead of configuring each application individually, you can set a single policy that applies to OpenSSL, GnuTLS, NSS, OpenSSH, and other crypto libraries. This guide explains how to view and change these policies.
+RHEL 9 provides a centralized system-wide crypto policy mechanism that controls which cryptographic algorithms, ciphers, key sizes, and protocols are allowed by default. Instead of configuring each application individually, you can set a single policy that applies to OpenSSL, GnuTLS, NSS, OpenSSH, and other crypto libraries when applications use the system-provided configuration. This guide explains how to view and change these policies.
 
 ## How Crypto Policies Work
 
@@ -25,10 +25,10 @@ flowchart TD
     I[Policy Levels] --> J[LEGACY - Most compatible]
     I --> K[DEFAULT - Balanced]
     I --> L[FUTURE - Most secure]
-    I --> M[FIPS - FIPS 140 compliant]
+    I --> M[FIPS - FIPS 140 requirements]
 ```
 
-When you set a crypto policy, it automatically configures all these libraries to use only the allowed algorithms. This eliminates the need to manually edit TLS settings in each application.
+When you set a crypto policy, it automatically generates configuration for supported back ends so applications reject algorithms outside the selected policy by default. Applications can still override the system policy if they are explicitly configured to do so.
 
 ## Viewing the Current Policy
 
@@ -38,8 +38,8 @@ When you set a crypto policy, it automatically configures all these libraries to
 update-crypto-policies --show
 # Output: DEFAULT
 
-# Show the currently applied policy with details
-update-crypto-policies --show --is-applied
+# Check whether the configured policy has been applied
+update-crypto-policies --is-applied
 ```
 
 ## Available Built-in Policies
@@ -48,10 +48,10 @@ RHEL 9 ships with four built-in policies:
 
 | Policy | Description |
 |--------|-------------|
-| `DEFAULT` | Balanced security. Suitable for most deployments. TLS 1.2+, RSA 2048+, SHA-256+. |
-| `LEGACY` | Maximum backward compatibility. Allows older protocols and algorithms. |
-| `FUTURE` | Forward-looking security. Requires TLS 1.3+ for most protocols, 256-bit ciphers, SHA-384+. |
-| `FIPS` | Compliant with FIPS 140-2/140-3. Only FIPS-validated algorithms allowed. |
+| `DEFAULT` | Balanced security. Suitable for most deployments. Allows TLS 1.2 and TLS 1.3, IKEv2, SSH2, and RSA/DH keys of at least 2048 bits. |
+| `LEGACY` | Maximum backward compatibility for RHEL 6-era systems. Less secure, allows SHA-1 for signatures and CBC-mode ciphers in SSH, but still requires TLS 1.2+ and RSA/DH keys of at least 2048 bits on RHEL 9. |
+| `FUTURE` | Forward-looking security. Allows TLS 1.2 and TLS 1.3, requires RSA/DH keys of at least 3072 bits, disables 128-bit symmetric ciphers, and rejects SHA-1 in additional uses. |
+| `FIPS` | Conforms with FIPS 140 requirements and is used internally by `fips-mode-setup`. Setting this policy alone does not make the system FIPS compliant. |
 
 ## Viewing Policy Details
 
@@ -61,6 +61,7 @@ cat /etc/crypto-policies/back-ends/opensslcnf.config
 
 # View the SSH-specific policy
 cat /etc/crypto-policies/back-ends/openssh.config
+cat /etc/crypto-policies/back-ends/opensshserver.config
 
 # View the full policy definition
 cat /usr/share/crypto-policies/policies/DEFAULT.pol
@@ -77,7 +78,7 @@ sudo update-crypto-policies --set FUTURE
 # Switch to LEGACY policy (more compatible)
 sudo update-crypto-policies --set LEGACY
 
-# Switch to FIPS policy
+# Switch to FIPS policy. This is not the same as enabling full FIPS mode.
 sudo update-crypto-policies --set FIPS
 
 # Return to DEFAULT
@@ -104,7 +105,7 @@ sudo systemctl restart nginx
 - TLS versions: 1.2, 1.3
 - Minimum RSA key: 2048 bits
 - Minimum DH parameter: 2048 bits
-- Allowed hashes: SHA-256, SHA-384, SHA-512
+- SHA-1 digital signatures and certificates: disabled
 - Allowed symmetric ciphers: AES-128, AES-256, ChaCha20-Poly1305
 - SSH: RSA (2048+), ECDSA, Ed25519
 ```
@@ -115,20 +116,20 @@ sudo systemctl restart nginx
 - TLS versions: 1.2 (only with strong ciphers), 1.3
 - Minimum RSA key: 3072 bits
 - Minimum DH parameter: 3072 bits
-- Allowed hashes: SHA-384, SHA-512
-- Allowed symmetric ciphers: AES-256, ChaCha20-Poly1305
-- SSH: ECDSA (P-384+), Ed25519 (no RSA)
+- SHA-1 in DNSSEC and HMAC: disabled
+- Allowed symmetric ciphers: 256-bit ciphers such as AES-256 and ChaCha20-Poly1305
+- SSH: RSA (3072+), ECDSA, Ed25519
 ```
 
 ### LEGACY Policy Highlights
 
 ```bash
-- TLS versions: 1.0, 1.1, 1.2, 1.3
-- Minimum RSA key: 1024 bits
-- Minimum DH parameter: 1024 bits
-- Allowed hashes: SHA-1, SHA-256, SHA-384, SHA-512
-- Allowed symmetric ciphers: 3DES, AES-128, AES-256, RC4 (limited)
-- SSH: RSA (1024+), DSA, ECDSA, Ed25519
+- TLS versions: 1.2, 1.3
+- Minimum RSA key: 2048 bits
+- Minimum DH parameter: 2048 bits
+- SHA-1 digital signatures and certificates: enabled
+- Allowed symmetric ciphers: AES-128, AES-256, and other policy-supported ciphers, but not RC4 or 3DES
+- SSH: RSA (2048+), ECDSA, Ed25519; CBC-mode ciphers are allowed
 ```
 
 ## Checking What the Policy Controls
@@ -144,7 +145,8 @@ ls /etc/crypto-policies/back-ends/
 # libreswan.config  - IPsec/VPN
 # libssh.config     - libssh
 # nss.config        - NSS library
-# openssh.config    - OpenSSH client and server
+# openssh.config    - OpenSSH client
+# opensshserver.config - OpenSSH server
 # opensslcnf.config - OpenSSL
 ```
 
@@ -182,11 +184,11 @@ You can apply modifiers on top of a base policy:
 # Set DEFAULT policy but disable SHA-1
 sudo update-crypto-policies --set DEFAULT:NO-SHA1
 
-# Set DEFAULT but allow only TLS 1.3 for SSH
-sudo update-crypto-policies --set DEFAULT:NO-CBC
+# Set DEFAULT but enforce ECDHE-based key exchange
+sudo update-crypto-policies --set DEFAULT:ECDHE-ONLY
 
 # Multiple modifiers
-sudo update-crypto-policies --set DEFAULT:NO-SHA1:NO-CBC
+sudo update-crypto-policies --set DEFAULT:NO-SHA1:ECDHE-ONLY
 ```
 
 Available sub-policies can be listed:
@@ -204,7 +206,7 @@ update-crypto-policies --check
 
 # Verify specific back-ends
 # OpenSSL
-openssl version -a | grep -i policy
+cat /etc/crypto-policies/back-ends/opensslcnf.config
 
 # SSH - check the effective configuration
 sshd -T | grep -E "^ciphers|^macs|^kexalgorithms|^hostkeyalgorithms"
@@ -212,4 +214,4 @@ sshd -T | grep -E "^ciphers|^macs|^kexalgorithms|^hostkeyalgorithms"
 
 ## Summary
 
-System-wide crypto policies on RHEL 9 provide a centralized way to manage cryptographic settings across all applications. Use `update-crypto-policies --show` to view the current policy and `update-crypto-policies --set POLICY` to change it. Choose DEFAULT for balanced security, FUTURE for maximum security, LEGACY for backward compatibility, or FIPS for compliance. Sub-policies let you fine-tune restrictions on top of a base policy.
+System-wide crypto policies on RHEL 9 provide a centralized way to manage cryptographic settings for supported applications. Use `update-crypto-policies --show` to view the current policy and `update-crypto-policies --set POLICY` to change it. Choose DEFAULT for balanced security, FUTURE for stricter forward-looking settings, LEGACY for backward compatibility, or FIPS when configuring a system for FIPS mode. Sub-policies let you fine-tune restrictions on top of a base policy.

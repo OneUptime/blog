@@ -14,12 +14,12 @@ The `spec.patches` field in a Flux Kustomization lets you apply patches to resou
 
 ## How Patches Work in Flux
 
-Flux supports inline patches through the `spec.patches` field. Each patch entry consists of a `patch` (the modification to apply) and a `target` (the resource to modify). The patch format follows the standard Kubernetes strategic merge patch or JSON patch syntax.
+Flux supports inline patches through the `spec.patches` field. Each patch entry consists of a `patch` (the modification to apply) and a `target` (the resource to modify). The patch format follows the standard Kubernetes strategic merge patch or JSON6902 patch syntax.
 
 ```mermaid
 graph LR
-    A[Fetch source] --> B[Build with Kustomize]
-    B --> C[Apply spec.patches]
+    A[Fetch source] --> B[Generate Kustomize config]
+    B --> C[Build with Kustomize, including spec.patches]
     C --> D[Post-build variable substitution]
     D --> E[Apply to cluster]
 ```
@@ -59,7 +59,7 @@ spec:
         name: web-app
 ```
 
-The `patch` field contains a YAML document that is merged with the target resource. Only the fields you specify are modified; all other fields remain unchanged.
+The `patch` field contains a YAML document that is merged with the target resource. For maps and Kubernetes lists with merge keys, only the fields you specify are modified; lists without merge semantics may be replaced by the patch.
 
 ## Targeting Resources
 
@@ -248,7 +248,7 @@ spec:
         name: web-app
 ```
 
-### Adding Tolerations and Node Affinity
+### Adding Tolerations and Node Selectors
 
 ```yaml
 # kustomization-scheduling.yaml - Add scheduling constraints
@@ -325,30 +325,27 @@ spec:
             environment: production
       target:
         kind: Service
-    # Patch 3: Set image pull policy for all containers
+    # Patch 3: Set image pull policy for the first two containers
     - patch: |
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: not-used
-        spec:
-          template:
-            spec:
-              containers:
-                - name: "*"
-                  imagePullPolicy: Always
+        - op: add
+          path: /spec/template/spec/containers/0/imagePullPolicy
+          value: Always
+        - op: add
+          path: /spec/template/spec/containers/1/imagePullPolicy
+          value: Always
       target:
         kind: Deployment
+        name: web-app
 ```
 
 ## Verifying Patches
 
 ```bash
 # Preview how patches will modify the manifests
-flux build kustomization my-app
+flux build kustomization my-app --path ./deploy
 
 # Check the Kustomization status for patch-related errors
-kubectl describe kustomization my-app -n flux-system
+kubectl describe kustomization.kustomize.toolkit.fluxcd.io my-app -n flux-system
 ```
 
 ## Best Practices

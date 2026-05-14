@@ -8,7 +8,7 @@ Description: Diagnose and fix SSH 'Connection refused' errors on RHEL by checkin
 
 ---
 
-"Connection refused" for SSH means the client reached the server's IP address, but nothing is listening on the SSH port. This is different from a timeout (which usually means a firewall or routing issue).
+"Connection refused" for SSH usually means the client reached the server's IP address, but nothing is listening on the SSH port or the connection was actively rejected. This is different from a timeout (which usually means a firewall drop or routing issue).
 
 ## Step 1: Check if sshd is Running
 
@@ -35,8 +35,8 @@ sudo ss -tlnp | grep sshd
 # you need to connect with: ssh -p 2222 user@host
 
 # Check the sshd config for the port
-grep "^Port" /etc/ssh/sshd_config
-grep "^Port" /etc/ssh/sshd_config.d/*.conf 2>/dev/null
+sudo sshd -T | grep "^port "
+grep -R "^[[:space:]]*Port[[:space:]]" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf 2>/dev/null
 ```
 
 ## Step 3: Check the Firewall
@@ -85,10 +85,11 @@ sudo ssh-keygen -A
 sudo systemctl restart sshd
 ```
 
-## Step 6: Check TCP Wrappers
+## Step 6: Check TCP Wrappers (RHEL 7 Only)
 
 ```bash
-# Check if /etc/hosts.deny is blocking connections
+# TCP Wrappers are removed in RHEL 8 and later.
+# On RHEL 7, check if /etc/hosts.deny is blocking connections
 cat /etc/hosts.deny
 
 # Check if /etc/hosts.allow permits SSH
@@ -102,10 +103,11 @@ cat /etc/hosts.allow
 
 ```bash
 # sshd may be configured to listen on a specific IP only
-grep "^ListenAddress" /etc/ssh/sshd_config
+sudo sshd -T | grep "^listenaddress "
+grep -R "^[[:space:]]*ListenAddress[[:space:]]" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf 2>/dev/null
 
 # If set to a specific IP, sshd will not accept connections on other IPs
-# Set to 0.0.0.0 to listen on all interfaces
+# Remove ListenAddress to use the default, or set 0.0.0.0 for all IPv4 interfaces
 # ListenAddress 0.0.0.0
 
 sudo systemctl restart sshd

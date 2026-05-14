@@ -15,7 +15,7 @@ VDO (Virtual Data Optimizer) provides inline deduplication and compression for b
 ```bash
 # Install VDO and its dependencies
 
-sudo dnf install -y vdo kmod-kvdo
+sudo dnf install -y lvm2 vdo kmod-kvdo
 ```
 
 ## Understanding VDO Sizing
@@ -23,19 +23,18 @@ sudo dnf install -y vdo kmod-kvdo
 VDO creates a logical volume that appears larger than the physical storage. The ratio depends on how much deduplication and compression your data allows:
 
 - **Object storage with mixed data**: 3:1 ratio is a reasonable starting point
-- **VM images or container layers**: 6:1 or higher is common
+- **VM images or container layers**: up to 10:1 is common
 - **Already-compressed data (media, archives)**: 1:1 to 1.5:1
 
 ## Creating a VDO Volume for Object Storage
 
 ```bash
-# Create a VDO volume on /dev/sdb
+# Create a VDO volume on a persistent block device path
 # Physical size: 100GB, Logical size: 300GB (3:1 ratio)
 sudo vdo create \
   --name=vdo-objectstore \
-  --device=/dev/sdb \
-  --vdoLogicalSize=300G \
-  --vdoSlabSize=2G
+  --device=/dev/disk/by-id/scsi-3600508b1001c264ad2af21e903ad031f \
+  --vdoLogicalSize=300G
 
 # Check the VDO volume status
 sudo vdo status --name=vdo-objectstore
@@ -63,8 +62,8 @@ echo "/dev/mapper/vdo-objectstore /mnt/objectstore xfs defaults,x-systemd.requir
 sudo vdostats --human-readable
 
 # Output shows:
-# Device              Size   Used  Available  Use%  Space saving%
-# /dev/mapper/vdo-objectstore  100.0G  10.0G   90.0G   10%   65%
+# Device                       1K-blocks  Used   Available  Use%  Space saving%
+# /dev/mapper/vdo-objectstore  100.0G     10.0G  90.0G     10%   65%
 ```
 
 ## Capacity Planning Tips
@@ -75,4 +74,4 @@ sudo vdostats --human-readable
 echo '*/30 * * * * root vdostats --human-readable >> /var/log/vdo-stats.log' | sudo tee /etc/cron.d/vdo-monitor
 ```
 
-Start conservatively with a 2:1 or 3:1 logical-to-physical ratio. Monitor actual deduplication and compression rates for a few weeks before increasing the logical size. Running out of physical space on a VDO volume causes I/O errors, so leave headroom.
+Start conservatively with a 2:1 or 3:1 logical-to-physical ratio. Monitor actual deduplication and compression rates for a few weeks before increasing the logical size. Running out of physical space on a VDO volume can make file systems and applications unexpectedly run out of space and can risk recently written, unacknowledged data, so leave headroom.

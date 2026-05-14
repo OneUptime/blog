@@ -40,6 +40,7 @@ dnf install -y scap-security-guide
 ls /usr/share/scap-security-guide/kickstart/ssg-rhel9-stig*
 
 # Copy it as your starting point
+mkdir -p /var/www/html/ks
 cp /usr/share/scap-security-guide/kickstart/ssg-rhel9-stig-ks.cfg \
   /var/www/html/ks/rhel9-stig.cfg
 ```
@@ -55,6 +56,7 @@ text
 
 # Installation source
 url --url=http://repo.example.com/rhel9/BaseOS/
+repo --name=AppStream --baseurl=http://repo.example.com/rhel9/AppStream/
 
 # Accept EULA
 eula --agreed
@@ -79,6 +81,9 @@ timezone America/New_York --utc
 %addon com_redhat_kdump --disable
 %end
 
+# Configure the installed system to boot in FIPS mode
+bootloader --location=mbr --append="fips=1"
+
 # Disk partitioning - STIG requires separate partitions
 clearpart --all --initlabel
 part /boot/efi --fstype=efi --size=600
@@ -94,9 +99,6 @@ logvol /var/log/audit --vgname=rhel --fstype=xfs --size=5120 --name=var_log_audi
 logvol /var/tmp --vgname=rhel --fstype=xfs --size=5120 --name=var_tmp --fsoptions="nodev,nosuid,noexec"
 logvol /home --vgname=rhel --fstype=xfs --size=10240 --name=home --fsoptions="nodev,nosuid"
 logvol swap --vgname=rhel --fstype=swap --size=4096 --name=swap
-
-# Enable FIPS mode during installation (STIG CAT I)
-fips --enable
 
 # SELinux enforcing (STIG requirement)
 selinux --enforcing
@@ -123,7 +125,7 @@ libpwquality
 %end
 
 # Apply STIG profile via OpenSCAP addon
-%addon org_fedora_oscap
+%addon com_redhat_oscap
   content-type = scap-security-guide
   profile = xccdf_org.ssgproject.content_profile_stig
 %end
@@ -177,12 +179,12 @@ Make the Kickstart file available to servers during installation:
 ```bash
 # Via HTTP (most common)
 dnf install -y httpd
+mkdir -p /var/www/html/ks
 systemctl enable --now httpd
-cp /var/www/html/ks/rhel9-stig.cfg /var/www/html/ks/
 
 # Boot the server with the Kickstart URL
 # At the boot menu, press Tab and add:
-# inst.ks=http://buildserver.example.com/ks/rhel9-stig.cfg
+# fips=1 inst.ks=http://buildserver.example.com/ks/rhel9-stig.cfg
 ```
 
 ## Test the Kickstart File
@@ -216,8 +218,8 @@ oscap xccdf eval \
   --report /tmp/stig-verify.html \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml || true
 
-echo "Pass: $(grep -c 'result="pass"' /tmp/stig-verify.xml)"
-echo "Fail: $(grep -c 'result="fail"' /tmp/stig-verify.xml)"
+echo "Pass: $(grep -c '<result>pass</result>' /tmp/stig-verify.xml)"
+echo "Fail: $(grep -c '<result>fail</result>' /tmp/stig-verify.xml)"
 ```
 
 ## Handle Remaining Findings

@@ -208,27 +208,27 @@ chronyc sources
 
 ## Setting Up a Redundant NTP Server
 
-For production environments, run at least two NTP servers. Configure them identically for upstream sources, and have them peer with each other:
+For production environments, run at least two NTP servers. Configure them identically for upstream sources, and configure each one to use the other as an additional server:
 
 On NTP server 1 (10.0.0.1):
 
 ```bash
-# Peer with NTP server 2
-peer 10.0.0.2
+# Use NTP server 2 as an additional source
+server 10.0.0.2 iburst
 ```
 
 On NTP server 2 (10.0.0.2):
 
 ```bash
-# Peer with NTP server 1
-peer 10.0.0.1
+# Use NTP server 1 as an additional source
+server 10.0.0.1 iburst
 ```
 
 This way, if one server loses its upstream connection, the other can help keep it in sync.
 
 ```mermaid
 graph LR
-    A[NTP Server 1] <-->|peer| B[NTP Server 2]
+    A[NTP Server 1] <-->|server| B[NTP Server 2]
     C[Public NTP] --> A
     C --> B
     A --> D[Clients]
@@ -272,7 +272,7 @@ If you serve many clients, consider rate limiting to prevent abuse:
 
 ```bash
 # Limit NTP responses to prevent amplification attacks
-ratelimit interval 1 burst 16
+ratelimit interval 0 burst 16
 ```
 
 This limits each client to 1 request per second on average, with bursts of up to 16 packets.
@@ -299,4 +299,4 @@ Monitor the stratum value. If it jumps to 10 (local clock), you have lost upstre
 
 ## Wrapping Up
 
-Setting up an NTP server with chrony on RHEL is straightforward. The key additions to a basic client config are the `allow` directive for client access and opening UDP port 123 in the firewall. For production, always run two servers in a peering arrangement and use the `local stratum 10` fallback to maintain internal consistency during upstream outages.
+Setting up an NTP server with chrony on RHEL is straightforward. The key additions to a basic client config are the `allow` directive for client access and opening UDP port 123 in the firewall. For production, always run two servers, configure them to use each other as additional sources, and use the `local stratum 10` fallback to maintain internal consistency during upstream outages.

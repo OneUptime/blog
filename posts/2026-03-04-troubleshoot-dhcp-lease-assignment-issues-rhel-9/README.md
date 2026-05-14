@@ -34,6 +34,8 @@ Start with the basics:
 systemctl status dhcpd
 ```
 
+On RHEL 9, the ISC DHCP server and client packages are deprecated and will not be shipped in a later major RHEL release. The `dhcpd` service is still available in RHEL 9, but plan a migration path to an alternative such as ISC Kea for new deployments.
+
 If it's not running, check why:
 
 ```bash
@@ -110,10 +112,10 @@ The most common reason for "no free leases":
 ```bash
 # Check the lease file
 
-cat /var/lib/dhcpd/dhcpd.leases | grep "^lease" | wc -l
+awk '/^lease / {ip=$2} /binding state/ {state[ip]=$3} END {for (ip in state) if (state[ip]=="active;") count++; print count+0}' /var/lib/dhcpd/dhcpd.leases
 ```
 
-Compare the number of active leases to your pool size. If you have `range 192.168.1.100 192.168.1.200`, that's only 101 addresses.
+Compare the number of active leases to your pool size. The lease file can contain older records for the same address, so count the latest binding state for each lease instead of just counting every `lease` block. If you have `range 192.168.1.100 192.168.1.200`, that's only 101 addresses.
 
 Quick fix: expand the range or shorten lease times so addresses recycle faster.
 
@@ -123,7 +125,7 @@ Check for abandoned leases:
 grep -c "binding state abandoned" /var/lib/dhcpd/dhcpd.leases
 ```
 
-Abandoned leases happen when the server detects a conflict (another device already using the IP). They take up pool space.
+Abandoned leases happen when the server detects a conflict (another device already using the IP). They reduce the immediately available pool; if no free addresses remain, `dhcpd` can try to reclaim an abandoned address after checking that it is no longer in use.
 
 ## Step 7: Duplicate IP Addresses
 
@@ -174,8 +176,8 @@ If it's corrupted, you can recreate it from the backup:
 
 ```bash
 systemctl stop dhcpd
-cp /var/lib/dhcpd/dhcpd.leases /var/lib/dhcpd/dhcpd.leases.corrupt
-cp /var/lib/dhcpd/dhcpd.leases~ /var/lib/dhcpd/dhcpd.leases
+mv /var/lib/dhcpd/dhcpd.leases /var/lib/dhcpd/dhcpd.leases.corrupt
+cp -p /var/lib/dhcpd/dhcpd.leases~ /var/lib/dhcpd/dhcpd.leases
 systemctl start dhcpd
 ```
 
@@ -191,11 +193,11 @@ chown dhcpd:dhcpd /var/lib/dhcpd/dhcpd.leases
 systemctl start dhcpd
 ```
 
-This means all clients will get new leases, which may cause temporary disruption.
+This removes the server's record of existing allocations. Clients will request leases again, and addresses that are still in use can be reassigned, causing temporary disruption or IP conflicts.
 
 ## Step 10: Client-Side Troubleshooting
 
-On the client, you can run dhclient in verbose mode:
+On the client, if the deprecated `dhclient` package is installed and in use, you can run it in verbose mode:
 
 ```bash
 dhclient -v eth0

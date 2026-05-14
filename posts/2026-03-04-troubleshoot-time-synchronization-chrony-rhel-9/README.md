@@ -22,9 +22,8 @@ timedatectl
 
 What to look for:
 
-- `NTP service: active` - chrony is running
+- `NTP service: active` - a time sync service is running (on RHEL, normally chronyd)
 - `System clock synchronized: yes` - the clock is actually in sync
-- `NTP enabled: yes` - NTP is enabled
 
 If `System clock synchronized` shows `no`, you have a problem to investigate.
 
@@ -83,8 +82,8 @@ If all sources show `?`, the system cannot reach any NTP server.
 The `Reach` column in `chronyc sources` is an octal bitmask of the last 8 polling attempts. A value of `377` means all 8 were successful. A value of `0` means none were.
 
 ```bash
-# Show source statistics including reach
-chronyc sourcestats -v
+# Show source reachability
+chronyc sources -v
 ```
 
 If reach is 0 for all sources:
@@ -99,7 +98,7 @@ sudo nc -vzu 0.rhel.pool.ntp.org 123
 
 ## Step 4: Check DNS Resolution
 
-If chrony cannot resolve NTP server hostnames, it will silently fail to add them:
+If chrony cannot resolve NTP server hostnames, those sources will not have usable addresses until resolution succeeds:
 
 ```bash
 # Test DNS resolution for NTP pool
@@ -123,15 +122,15 @@ Outbound UDP port 123 must be allowed:
 sudo firewall-cmd --list-all
 ```
 
-For outbound access, the default zone usually allows it. But if you have strict egress rules:
+For an NTP client, the default firewalld zone usually does not block outbound requests. If this host also serves NTP to other clients, allow inbound NTP:
 
 ```bash
-# Explicitly allow NTP
+# Allow inbound NTP for clients using this host as a time server
 sudo firewall-cmd --permanent --add-service=ntp
 sudo firewall-cmd --reload
 ```
 
-Also check if there is an external firewall or network ACL blocking UDP 123.
+If you have strict egress rules, check firewalld policies, direct rules, or an external firewall or network ACL blocking outbound UDP 123 and the replies.
 
 ## Step 6: Check for Large Clock Offset
 
@@ -174,8 +173,8 @@ If either is running, stop and disable them:
 
 ```bash
 # Disable conflicting time services
-sudo systemctl stop systemd-timesyncd
-sudo systemctl disable systemd-timesyncd
+sudo systemctl disable --now ntpd 2>/dev/null
+sudo systemctl disable --now systemd-timesyncd 2>/dev/null
 ```
 
 RHEL should only have chronyd, but custom installations or third-party repos sometimes introduce conflicts.

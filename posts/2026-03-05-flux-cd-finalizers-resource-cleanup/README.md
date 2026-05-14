@@ -81,7 +81,7 @@ kubectl patch kustomization my-app -n flux-system \
 
 After removing the finalizer, deleting the Kustomization will not trigger cleanup of managed resources. The resources remain in the cluster but are no longer managed by Flux.
 
-Alternatively, set `spec.prune` to false before deletion:
+Alternatively, set `spec.deletionPolicy` to `Orphan` before deletion:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -90,7 +90,7 @@ metadata:
   name: my-app
   namespace: flux-system
 spec:
-  prune: false
+  deletionPolicy: Orphan
   # ... rest of spec
 ```
 
@@ -136,7 +136,7 @@ Be aware that this skips cleanup, leaving managed resources orphaned in the clus
 
 ## Finalizers During Flux Uninstallation
 
-When uninstalling Flux entirely with `flux uninstall`, the CLI handles finalizers in the correct order:
+When uninstalling Flux entirely with `flux uninstall`, the CLI removes Flux components and Flux custom resources:
 
 ```bash
 flux uninstall
@@ -144,30 +144,33 @@ flux uninstall
 
 The uninstallation process:
 
-1. Suspends all Flux resources to prevent new reconciliations
-2. Deletes Kustomizations (triggering garbage collection of managed resources)
-3. Deletes HelmReleases (triggering Helm uninstalls)
-4. Deletes source resources (cleaning up artifacts)
-5. Removes Flux controllers and CRDs
+1. Deletes Flux components such as deployments and services
+2. Deletes Flux network policies and RBAC resources
+3. Removes Kubernetes finalizers from Flux custom resources
+4. Deletes Flux custom resources and CRDs
+5. Deletes the namespace where Flux was installed, unless you use `--keep-namespace`
 
-If you delete the Flux CRDs manually before removing the custom resources, the finalizers cannot be processed and managed resources become orphaned. Always use `flux uninstall` for a clean removal.
+The `flux uninstall` command does not remove Kubernetes objects or Helm releases that were reconciled by Flux. If you want those managed resources removed, delete the relevant Kustomizations or HelmReleases first and wait for their finalizers to finish before uninstalling Flux. If you delete the Flux CRDs manually before removing the custom resources, the finalizers cannot be processed and managed resources become orphaned. Always use `flux uninstall` for a clean removal of Flux itself.
 
 ## Controlling Finalizer Behavior
 
-You can prevent Flux from adding finalizers to specific resources by suspending them before creation or by patching after creation. However, the recommended approach is to use `spec.prune` to control cleanup behavior:
+For Kustomizations, the recommended approach is to use `spec.deletionPolicy` to control cleanup behavior when the Kustomization itself is deleted:
 
 ```yaml
 # Resources will NOT be deleted when this Kustomization is removed
 spec:
-  prune: false
+  deletionPolicy: Orphan
 
 # Resources WILL be deleted when this Kustomization is removed
 spec:
   prune: true
+  deletionPolicy: Delete
 ```
+
+If `deletionPolicy` is not set, Flux uses the default `MirrorPrune` behavior: managed resources are deleted when `prune` is `true` and orphaned when `prune` is `false`.
 
 For HelmReleases, you cannot disable the finalizer through spec configuration. The helm-controller always adds a finalizer to ensure proper Helm release cleanup. If you want to keep Helm-managed resources after deleting the HelmRelease, remove the finalizer manually before deletion.
 
 ## Summary
 
-Flux CD finalizers ensure that deleting a Flux resource also cleans up the Kubernetes resources it manages. The kustomize-controller uses finalizers to garbage collect resources from the inventory, and the helm-controller uses them to run `helm uninstall`. When finalizers cause stuck deletions, check that the responsible controller is running and has the necessary permissions. For cases where you want to delete a Flux resource without cleaning up managed resources, remove the finalizer before deletion. Always use `flux uninstall` for complete removal to ensure finalizers are processed in the correct order.
+Flux CD finalizers ensure that controllers can run cleanup before Flux custom resources disappear. The kustomize-controller uses finalizers to garbage collect resources from the inventory when deletion policy requires it, and the helm-controller uses them to run `helm uninstall`. When finalizers cause stuck deletions, check that the responsible controller is running and has the necessary permissions. For cases where you want to delete a Flux resource without cleaning up managed resources, use the supported deletion policy when available or remove the finalizer before deletion. Always use `flux uninstall` for complete removal of Flux itself, and delete managed workloads first if you want them cleaned up too.

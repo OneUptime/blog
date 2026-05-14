@@ -111,7 +111,7 @@ SAS_TOKEN=$(az storage container generate-sas \
 # Create a Kubernetes secret with the SAS token
 kubectl create secret generic azure-sas-creds \
   --namespace flux-system \
-  --from-literal=sasToken="${SAS_TOKEN}"
+  --from-literal=sasKey="${SAS_TOKEN}"
 ```
 
 ```yaml
@@ -141,11 +141,16 @@ az aks update \
   --name my-aks-cluster \
   --enable-managed-identity
 
-# Get the managed identity's client ID
+# Get the kubelet managed identity's client and object IDs
 IDENTITY_CLIENT_ID=$(az aks show \
   --resource-group flux-rg \
   --name my-aks-cluster \
   --query "identityProfile.kubeletidentity.clientId" -o tsv)
+
+IDENTITY_OBJECT_ID=$(az aks show \
+  --resource-group flux-rg \
+  --name my-aks-cluster \
+  --query "identityProfile.kubeletidentity.objectId" -o tsv)
 
 # Get the storage account resource ID
 STORAGE_ID=$(az storage account show \
@@ -155,12 +160,18 @@ STORAGE_ID=$(az storage account show \
 
 # Assign Storage Blob Data Reader role to the managed identity
 az role assignment create \
-  --assignee "${IDENTITY_CLIENT_ID}" \
+  --assignee-object-id "${IDENTITY_OBJECT_ID}" \
+  --assignee-principal-type ServicePrincipal \
   --role "Storage Blob Data Reader" \
   --scope "${STORAGE_ID}"
+
+# Tell Flux which managed identity to use
+kubectl create secret generic azure-managed-identity \
+  --namespace flux-system \
+  --from-literal=clientId="${IDENTITY_CLIENT_ID}"
 ```
 
-With Managed Identity configured, the Bucket source does not need a `secretRef`.
+With Managed Identity configured, reference the secret containing the managed identity's client ID.
 
 ```yaml
 # flux-system/azure-bucket-managed-identity.yaml
@@ -175,15 +186,16 @@ spec:
   provider: azure
   bucketName: my-app-manifests
   endpoint: https://fluxmanifests.blob.core.windows.net
-  # No secretRef needed -- Managed Identity handles authentication
+  secretRef:
+    name: azure-managed-identity
 ```
 
-## Using Prefixes
+## Using Ignore Rules
 
-Scope the downloaded files to a specific path prefix within the container.
+Scope the downloaded files to a specific path within the container.
 
 ```yaml
-# flux-system/azure-bucket-prefix.yaml
+# flux-system/azure-bucket-ignore.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
@@ -194,8 +206,12 @@ spec:
   provider: azure
   bucketName: deployment-artifacts
   endpoint: https://fluxmanifests.blob.core.windows.net
-  # Only download files under the production/my-app/ prefix
-  prefix: production/my-app/
+  # Only include files under the production/my-app/ path
+  ignore: |
+    /*
+    !/production
+    !/production/my-app
+    !/production/my-app/**
   secretRef:
     name: azure-bucket-creds
 ```

@@ -70,11 +70,11 @@ Here is what each field means:
 | RMS offset | Long-term average offset |
 | Frequency | How fast/slow the system clock runs (in PPM) |
 | Skew | Estimated error bound on the frequency |
-| Root delay | Network round-trip time to the reference clock |
-| Root dispersion | Estimated error of the reference clock |
+| Root delay | Total network path delay to the stratum-1 source |
+| Root dispersion | Total accumulated dispersion back to the stratum-1 source |
 | Leap status | Normal, or indicates an upcoming leap second |
 
-For a healthy system, `System time` should be well under 1 millisecond, and `Leap status` should be `Normal`.
+For a healthy system, `System time` should be within your tolerance, and `Leap status` should be `Normal`. LAN systems are often below 1 millisecond; Internet-synchronized systems can be a few milliseconds.
 
 ## The sources Command
 
@@ -91,7 +91,7 @@ The columns:
 - **S**: State (`*` = current best, `+` = combined, `-` = not combined, `?` = unreachable, `x` = falseticker)
 - **Name**: Server hostname or IP
 - **Stratum**: The server's stratum level
-- **Poll**: Current polling interval in seconds (as a power of 2)
+- **Poll**: Current polling interval as a base-2 logarithm of seconds
 - **Reach**: Octal bitmask of the last 8 attempts (377 = all successful)
 - **LastRx**: Time since last good response
 - **Last sample**: Measured offset and error bounds
@@ -195,7 +195,7 @@ Force an immediate clock step (for when the offset is too large for gradual slew
 sudo chronyc makestep
 ```
 
-This requires root or chrony group membership. Use it sparingly, as applications may not handle time jumps well.
+This requires access to chronyd through the local Unix domain socket, which is normally available to root or the chrony user. Use it sparingly, as applications may not handle time jumps well.
 
 ## The waitsync Command
 
@@ -203,7 +203,7 @@ Wait until the clock is synchronized, useful in startup scripts:
 
 ```bash
 # Wait up to 60 seconds for synchronization with max offset of 0.1 seconds
-chronyc waitsync 30 0.1
+chronyc waitsync 6 0.1
 ```
 
 The arguments are:
@@ -245,7 +245,7 @@ chronyc tracking | grep "System time" | awk '{print $4}'
 
 ```bash
 # Check reachability of sources
-chronyc sources | grep -v "^\=" | awk '$2 == "?" {print "UNREACHABLE:", $3}'
+chronyc sources | awk '$1 ~ /\?/ {print "UNREACHABLE:", $2}'
 ```
 
 ### Monitor Offset Over Time

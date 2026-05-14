@@ -52,28 +52,37 @@ For existing OSDs, you need to recreate them with the new layout.
 
 ## Tune BlueStore Cache
 
-Increase the cache size for read-heavy workloads:
+Modern Ceph enables BlueStore cache autotuning by default. Increase the OSD memory target for read-heavy workloads:
 
 ```bash
-# Set cache size to 4 GB for all OSDs (default is 1 GB for HDD, 3 GB for SSD)
+# Set the OSD memory target to 8 GB for all OSDs
+sudo ceph config set osd osd_memory_target 8589934592
+
+# If you intentionally use manual cache sizing, disable autotuning first
+sudo ceph config set osd bluestore_cache_autotune false
+
+# Set manual cache sizes (default is 1 GB for HDD, 3 GB for SSD)
 sudo ceph config set osd bluestore_cache_size_hdd 4294967296
 sudo ceph config set osd bluestore_cache_size_ssd 8589934592
 
 # Adjust cache ratios for metadata vs data
-# Give more cache to metadata (kv) for random read workloads
+# Give more cache to metadata and RocksDB (kv) for random read workloads
+# The data cache is the remaining fraction: 1 - meta_ratio - kv_ratio
 sudo ceph config set osd bluestore_cache_meta_ratio 0.5
 sudo ceph config set osd bluestore_cache_kv_ratio 0.3
-sudo ceph config set osd bluestore_cache_data_ratio 0.2
 ```
 
 ## Tune Allocation Size
 
 ```bash
-# Set minimum allocation size (default 4K for SSD, 64K for HDD)
-# Increase for sequential workloads
+# Set minimum allocation size before creating or redeploying OSDs
+# Current Ceph defaults are 4 KiB for both HDD and SSD OSDs
+# Larger values can reduce metadata overhead for sequential workloads
 sudo ceph config set osd bluestore_min_alloc_size_hdd 65536
 sudo ceph config set osd bluestore_min_alloc_size_ssd 4096
 ```
+
+The BlueStore minimum allocation size is baked into an OSD at creation time, so existing OSDs must be rebuilt to use a different value.
 
 ## Kernel and OS Tuning
 
@@ -96,11 +105,13 @@ echo none | sudo tee /sys/block/nvme0n1/queue/scheduler
 Prevent recovery operations from consuming all OSD bandwidth:
 
 ```bash
-# Limit recovery and backfill operations
-sudo ceph config set osd osd_recovery_max_active 3
+# Limit recovery and backfill operations when overriding mClock recovery defaults
+sudo ceph config set osd osd_mclock_override_recovery_settings true
+sudo ceph config set osd osd_recovery_max_active_hdd 3
 sudo ceph config set osd osd_max_backfills 1
-sudo ceph config set osd osd_recovery_sleep_hdd 0.1
 ```
+
+If your cluster uses the mClock scheduler, recovery sleep options such as `osd_recovery_sleep_hdd` are disabled; use mClock profiles or the recovery override setting instead.
 
 ## Benchmark Your Changes
 

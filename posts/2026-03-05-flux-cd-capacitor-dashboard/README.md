@@ -12,9 +12,9 @@ Flux CD Capacitor is a lightweight web dashboard for Flux CD that provides a vis
 
 ## What is Flux Capacitor?
 
-Capacitor is an open-source web UI for Flux CD developed by the Flux community. It reads Flux custom resources from the Kubernetes API and displays them in an organized dashboard. It shows GitRepositories, HelmRepositories, Kustomizations, HelmReleases, and other Flux resources with their reconciliation status, last applied revision, and error messages when present.
+Capacitor is an open-source web UI for Flux CD backed by Gimlet and listed in the Flux ecosystem. It reads Flux custom resources from the Kubernetes API and displays them in an organized dashboard. It shows GitRepositories, HelmRepositories, Kustomizations, HelmReleases, and other Flux resources with their reconciliation status, last applied revision, and error messages when present.
 
-Capacitor is read-only by design. It does not modify any cluster resources, making it safe to expose to development teams who need visibility into GitOps state without cluster-admin access.
+Capacitor can be deployed with read-only Kubernetes RBAC. The example below only grants read access, making it safe to expose to development teams who need visibility into GitOps state without cluster-admin access.
 
 ## Prerequisites
 
@@ -260,7 +260,15 @@ When a resource shows a failed status in Capacitor, click on it to see the detai
 Capacitor is great for at-a-glance monitoring, but pair it with Flux notifications for active alerting:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: v1
+kind: Secret
+metadata:
+  name: slack-bot-token
+  namespace: flux-system
+stringData:
+  token: xoxb-YOUR-TOKEN
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -268,10 +276,11 @@ metadata:
 spec:
   type: slack
   channel: flux-alerts
+  address: https://slack.com/api/chat.postMessage
   secretRef:
-    name: slack-webhook
+    name: slack-bot-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: flux-errors

@@ -69,7 +69,7 @@ patches:
       spec:
         template:
           spec:
-            # Use custom DNS settings alongside cluster DNS
+            # Include both custom DNS and the cluster DNS service IP
             dnsPolicy: "None"
             dnsConfig:
               nameservers:
@@ -124,7 +124,7 @@ kubectl apply -k .
 
 ## Method 2: Configure CoreDNS for Custom Domains
 
-Instead of patching Flux pods directly, you can configure the cluster's CoreDNS to forward specific domains to custom DNS servers. This approach affects all pods in the cluster, not just Flux.
+Instead of patching Flux pods directly, you can configure the cluster's CoreDNS to forward specific domains to custom DNS servers. This approach affects all pods that use the cluster DNS service, not just Flux.
 
 Edit the CoreDNS ConfigMap:
 
@@ -223,9 +223,9 @@ patches:
                   - "registry.internal.company.com"
 ```
 
-## Method 4: Environment Variable Configuration
+## Method 4: Go Resolver Configuration
 
-Some DNS-related behaviors can be configured through environment variables on the Flux controller containers:
+Flux controllers are Go binaries, so you can use Go's `GODEBUG` settings to change resolver selection. Use `dnsConfig` for DNS servers, search domains, timeouts, and attempts.
 
 ```yaml
 # Patch to add DNS-related environment variables to source-controller
@@ -249,12 +249,9 @@ patches:
             containers:
               - name: manager
                 env:
-                  # Set custom DNS resolver timeout
+                  # Force the pure Go DNS resolver instead of cgo
                   - name: GODEBUG
                     value: "netdns=go"
-                  # Force pure Go DNS resolver instead of cgo
-                  - name: RES_OPTIONS
-                    value: "timeout:2 attempts:3"
 ```
 
 ## Verifying DNS Resolution

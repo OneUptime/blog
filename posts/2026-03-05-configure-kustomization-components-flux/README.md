@@ -88,6 +88,25 @@ spec:
             - containerPort: 8080
 ```
 
+Add a Service with a named port so the monitoring component can select it.
+
+```yaml
+# apps/myapp/base/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp
+  labels:
+    app: myapp
+spec:
+  selector:
+    app: myapp
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+```
+
 ## Step 2: Create a Component
 
 Define a component that adds a logging sidecar container. Note the `kind: Component` declaration.

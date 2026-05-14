@@ -14,7 +14,7 @@ Custom Resource Definitions (CRDs) present a classic chicken-and-egg problem in 
 
 When you apply a Kubernetes manifest that references a custom resource type, the API server must already know about that type via its CRD. If the CRD has not been installed yet, the apply fails with an error like:
 
-```json
+```text
 error: unable to recognize "resource.yaml": no matches for kind "MyCustomResource" in version "example.com/v1"
 ```
 
@@ -22,7 +22,7 @@ In a manual workflow, you apply CRDs first, wait for them to register, then appl
 
 ## Using dependsOn for CRD Ordering
 
-The `spec.dependsOn` field on Kustomization and HelmRelease resources tells Flux to wait for one resource to become ready before reconciling another. This is the primary mechanism for CRD ordering.
+The `spec.dependsOn` field on Kustomization and HelmRelease resources tells Flux to wait for another resource of the same kind to become ready before reconciling. A Kustomization depends on other Kustomizations, and a HelmRelease depends on other HelmReleases. This is the primary mechanism for CRD ordering when you split CRDs and the resources that use them into separate Kustomizations.
 
 Here is a typical pattern where CRDs are installed by one Kustomization, and the resources that depend on those CRDs are installed by another.
 
@@ -37,7 +37,7 @@ metadata:
 spec:
   interval: 10m
   path: ./infrastructure/cert-manager/crds
-  prune: false  # Never prune CRDs - they contain data
+  prune: false  # Never prune CRDs - deleting one deletes its custom resources
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -75,7 +75,7 @@ spec:
     name: flux-system
 ```
 
-The dependency chain ensures that CRDs are installed first, then the controller that processes those CRDs, and finally the custom resources themselves. Flux will not start reconciling a Kustomization until all resources in its `dependsOn` list report a Ready status.
+The dependency chain ensures that CRDs are installed first, then the controller that processes those CRDs, and finally the custom resources themselves. Flux will not start reconciling a Kustomization until all Kustomizations in its `dependsOn` list report a Ready status.
 
 ## CRDs in Helm Charts
 
@@ -132,7 +132,23 @@ spec:
     kind: GitRepository
     name: flux-system
 ---
-# Helm chart with CRDs skipped since they are managed above
+# Kustomization that applies the HelmRelease below after CRDs are ready
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: kube-prometheus-stack
+  namespace: flux-system
+spec:
+  interval: 10m
+  dependsOn:
+    - name: prometheus-crds
+  path: ./infrastructure/prometheus/helmrelease
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+---
+# HelmRelease manifest stored under ./infrastructure/prometheus/helmrelease
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -140,8 +156,6 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1h
-  dependsOn:
-    - name: prometheus-crds
   chart:
     spec:
       chart: kube-prometheus-stack
@@ -240,10 +254,10 @@ flowchart TD
 
 ## Handling CRD Version Upgrades
 
-When upgrading CRDs, new fields may be added and old fields deprecated. Flux handles this by applying the updated CRD manifest, which updates the stored version in etcd. However, there are important considerations:
+When upgrading CRDs, new fields may be added and old fields deprecated. Flux handles this by applying the updated CRD manifest. However, changing the CRD storage version does not automatically rewrite existing custom resources in etcd, so there are important considerations:
 
 1. CRD upgrades that remove fields can break existing resources. Always review CRD changelogs before upgrading.
-2. If a CRD introduces a new storage version, existing resources need to be migrated. This is usually handled by the operator that owns the CRD.
+2. If a CRD introduces a new storage version, existing resources need to be migrated with a storage-version migration procedure, such as the Kubernetes Storage Version Migrator or a manual rewrite of existing objects.
 3. Apply CRD upgrades before upgrading the controller that uses them. The `dependsOn` chain naturally enforces this ordering.
 
 ```bash

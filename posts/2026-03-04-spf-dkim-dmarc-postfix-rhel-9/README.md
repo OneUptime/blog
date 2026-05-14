@@ -10,23 +10,22 @@ Description: Implement SPF, DKIM, and DMARC email authentication mechanisms with
 
 ## Why You Need All Three
 
-SPF, DKIM, and DMARC work together as a layered defense against email spoofing. Without them, anyone can send email pretending to be from your domain. Major email providers like Gmail and Outlook now require these for reliable delivery. If your domain lacks these records, expect your mail to land in spam or get rejected outright.
+SPF, DKIM, and DMARC work together as a layered defense against email spoofing. Without them, anyone can send email pretending to be from your domain. Major email providers increasingly expect these records for reliable delivery. If your domain lacks them, expect your mail to land in spam or get rejected outright.
 
 Here is what each one does:
 
 - **SPF** - Tells receiving servers which IP addresses are allowed to send mail for your domain
 - **DKIM** - Adds a cryptographic signature to each outgoing message, proving it came from your server
-- **DMARC** - Ties SPF and DKIM together with a policy that tells receivers what to do when checks fail
+- **DMARC** - Ties SPF and DKIM to the visible From domain with a policy that tells receivers what to do when neither check passes with alignment
 
 ## Authentication Flow
 
 ```mermaid
 graph TD
-    A[Incoming Email] --> B{SPF Check}
-    B -->|Pass| C{DKIM Check}
-    B -->|Fail| D{DMARC Policy}
-    C -->|Pass| E[Accept Email]
-    C -->|Fail| D
+    A[Incoming Email] --> B[Run SPF and DKIM Checks]
+    B --> C{SPF or DKIM Passes with From Alignment?}
+    C -->|Yes| E[Accept or Apply Normal Filtering]
+    C -->|No| D{DMARC Policy}
     D -->|none| E
     D -->|quarantine| F[Spam Folder]
     D -->|reject| G[Reject Email]
@@ -45,10 +44,10 @@ example.com.  IN  TXT  "v=spf1 mx a ip4:203.0.113.10 -all"
 ```
 
 This record says:
-- `mx` - Allow servers listed in MX records
-- `a` - Allow the IP from the domain's A record
+- `mx` - Allow IP addresses of servers listed in MX records
+- `a` - Allow the IP addresses from the domain's A or AAAA records
 - `ip4:203.0.113.10` - Explicitly allow this IP
-- `-all` - Reject everything else (hard fail)
+- `-all` - Mark everything else as not authorized (hard fail)
 
 Use `~all` (soft fail) during testing, then switch to `-all` when you are confident.
 
@@ -57,8 +56,10 @@ Use `~all` (soft fail) during testing, then switch to `-all` when you are confid
 To check SPF on incoming mail, install pypolicyd-spf:
 
 ```bash
-# Install SPF policy daemon
+# Enable EPEL for pypolicyd-spf, OpenDKIM, and OpenDMARC
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 
+# Install SPF policy daemon
 sudo dnf install -y pypolicyd-spf
 ```
 
@@ -122,9 +123,6 @@ LogWhy          yes
 # Signing and verification
 Mode            sv
 Canonicalization relaxed/simple
-Domain          example.com
-Selector        default
-KeyFile         /etc/opendkim/keys/example.com/default.private
 
 # Socket for Postfix communication
 Socket          inet:8891@localhost
@@ -212,8 +210,8 @@ Start with `p=none` to monitor without affecting delivery. The parameters:
 Move through these stages:
 
 1. `p=none` - Monitor for a few weeks, review reports
-2. `p=quarantine` - Failed messages go to spam
-3. `p=reject` - Failed messages are rejected
+2. `p=quarantine` - Ask receivers to treat failed messages as suspicious, often by placing them in spam
+3. `p=reject` - Ask receivers to reject failed messages
 
 ### Install OpenDMARC for Verification
 

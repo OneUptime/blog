@@ -19,7 +19,7 @@ This is the right approach when you want to properly confine an application rath
 ```bash
 # Install required tools
 
-sudo dnf install -y policycoreutils-devel rpm-build
+sudo dnf install -y policycoreutils-devel selinux-policy-devel rpm-build
 ```
 
 ## How sepolicy generate Works
@@ -71,7 +71,7 @@ sepolicy generate --cgi /var/www/cgi-bin/myscript.cgi
 sepolicy generate --application /usr/local/bin/myapp
 
 # For a confined user role
-sepolicy generate --confined_admin myapp_admin
+sepolicy generate --confined_admin -n myapp_admin
 
 # For an inetd service
 sepolicy generate --inetd /usr/local/bin/myapp
@@ -92,7 +92,7 @@ After running `sepolicy generate`, you get several files in the current director
 | `myapp.fc` | File context definitions |
 | `myapp.if` | Interface definitions for other modules |
 | `myapp.sh` | Build and install script |
-| `myapp_selinux.8` | Man page for the policy |
+| `myapp_selinux.spec` | RPM spec file for packaging the policy |
 
 ### The Type Enforcement File (myapp.te)
 
@@ -107,6 +107,7 @@ policy_module(myapp, 1.0.0)
 type myapp_t;
 type myapp_exec_t;
 init_daemon_domain(myapp_t, myapp_exec_t)
+permissive myapp_t;
 
 type myapp_log_t;
 logging_log_file(myapp_log_t)
@@ -149,6 +150,8 @@ Edit `myapp.te` to add rules your application needs.
 
 ```bash
 # Allow binding to a specific port
+type myapp_port_t;
+corenet_port(myapp_port_t)
 allow myapp_t myapp_port_t:tcp_socket name_bind;
 
 # Or use existing port types
@@ -156,14 +159,25 @@ corenet_tcp_bind_http_port(myapp_t)
 corenet_tcp_connect_http_port(myapp_t)
 ```
 
+If you create a new port type, map the actual port number to it after installing the policy:
+
+```bash
+sudo semanage port -a -t myapp_port_t -p tcp 12345
+```
+
 ### Allow File Access
 
 ```bash
 # Allow reading configuration files
-read_files_pattern(myapp_t, etc_t, etc_t)
+type myapp_etc_t;
+files_config_file(myapp_etc_t)
+read_files_pattern(myapp_t, myapp_etc_t, myapp_etc_t)
 
 # Allow writing to a specific directory
-manage_files_pattern(myapp_t, myapp_data_t, myapp_data_t)
+type myapp_var_lib_t;
+files_type(myapp_var_lib_t)
+manage_dirs_pattern(myapp_t, myapp_var_lib_t, myapp_var_lib_t)
+manage_files_pattern(myapp_t, myapp_var_lib_t, myapp_var_lib_t)
 ```
 
 ### Allow Database Connections
@@ -232,6 +246,7 @@ The iterative process:
 4. Add rules to the `.te` file
 5. Rebuild and reinstall
 6. Repeat until no denials remain
+7. Remove the generated `permissive myapp_t;` line when the domain is ready to enforce
 
 ## Using sepolicy with Existing Services
 

@@ -146,13 +146,15 @@ flux bootstrap git \
   --ca-file=./internal-ca.crt
 ```
 
-Alternatively, create the CA secret manually:
+Alternatively, add the CA certificate to the Git authentication secret that the `GitRepository` references. With the default bootstrap secret name, use:
 
 ```bash
-# Create a secret with the CA certificate
-kubectl create secret generic flux-system-ca \
-  --from-file=ca.crt=./internal-ca.crt \
-  -n flux-system
+# Add the CA certificate to the default Flux Git credentials secret
+CA_BUNDLE=$(base64 < ./internal-ca.crt | tr -d '\n')
+kubectl patch secret flux-system \
+  -n flux-system \
+  --type=merge \
+  -p "{\"data\":{\"ca.crt\":\"${CA_BUNDLE}\"}}"
 ```
 
 ## Step 6: Verify the Bootstrap

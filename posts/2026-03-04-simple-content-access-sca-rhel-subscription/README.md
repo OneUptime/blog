@@ -32,14 +32,14 @@ flowchart LR
 
 ## How SCA Works Under the Hood
 
-When SCA is enabled, the `subscription-manager` client receives a content access certificate instead of individual entitlement certificates. This certificate grants access to all content in your subscription portfolio without specifying which subscription covers which system.
+When SCA is enabled, the `subscription-manager` client uses a content access certificate rather than per-subscription entitlement certificates tied to attached pools. This certificate grants access to the Red Hat content covered by your active subscriptions without specifying which subscription covers which system.
 
 ```bash
 # View the content access certificate
 
-ls -la /etc/pki/entitlement/
+sudo ls -la /etc/pki/entitlement/
 
-# With SCA, you will see a single certificate rather than multiple per-subscription certs
+# With SCA, entitlement certificates are not tied to individual attached subscriptions
 ```
 
 The certificate is refreshed automatically by `subscription-manager` during regular check-ins. The default check-in interval is every 4 hours, controlled by the `rhsmcertd` daemon:
@@ -49,7 +49,7 @@ The certificate is refreshed automatically by `subscription-manager` during regu
 sudo systemctl status rhsmcertd
 
 # View the check-in configuration
-sudo grep -E "certCheckInterval|autoAttachInterval" /etc/rhsm/rhsm.conf
+sudo grep -E "certcheckinterval|autoattachinterval" /etc/rhsm/rhsm.conf
 ```
 
 ## Day-to-Day Operations with SCA
@@ -108,25 +108,25 @@ The "Disabled" status is expected. It means traditional entitlement compliance c
 
 A common concern with SCA is: "If we are not attaching specific subscriptions, how do we know if we are compliant?"
 
-Red Hat tracks subscription consumption at the account level. You can view this in the Customer Portal:
+Red Hat tracks subscription usage at the account level. You can view this in the Red Hat Hybrid Cloud Console:
 
-1. Log in to access.redhat.com
-2. Go to Subscriptions
-3. View the subscription inventory
+1. Log in to console.redhat.com
+2. Go to Subscriptions and Spend
+3. View your subscription usage and utilization
 
-The inventory shows total subscription quantities, how many systems are registered, and whether you are within your entitlement limits.
+The subscriptions service shows account-wide subscription usage and utilization so you can self-govern your subscription profile.
 
 ```mermaid
 flowchart TD
-    A[Red Hat Customer Portal] --> B[Subscription Inventory]
-    B --> C[Total Entitlements: 100]
-    B --> D[Registered Systems: 85]
-    B --> E[Compliance: Within Limits]
+    A[Red Hat Hybrid Cloud Console] --> B[Subscriptions Service]
+    B --> C[Subscription Quantities]
+    B --> D[Reported Usage]
+    B --> E[Utilization Trends]
 ```
 
 ## SCA with Different Registration Methods
 
-SCA works with all registration methods:
+SCA works with the supported `subscription-manager` registration methods:
 
 **Username/Password**:
 
@@ -137,24 +137,20 @@ sudo subscription-manager register --username=user --password=pass
 **Activation Key**:
 
 ```bash
-sudo subscription-manager register --activationkey=my-key --org=my-org
+sudo subscription-manager register --activation-key=my-key --organization=my-org
 ```
 
-**Token**:
+Token-based registration with `subscription-manager register --token` is deprecated and is no longer supported by the default Red Hat entitlement server. Use username/password or an activation key instead.
 
-```bash
-sudo subscription-manager register --token=my-token
-```
-
-In all cases, the system gets content access immediately after registration.
+In both supported cases, the system gets content access immediately after registration.
 
 ## SCA with Satellite Server
 
-If you use Red Hat Satellite, SCA is configured at the manifest level:
+If you use Red Hat Satellite, the SCA workflow depends on your Satellite version:
 
-1. In Satellite, go to Content, then Subscriptions
-2. Click "Manage Manifest"
-3. Enable Simple Content Access
+1. Satellite 6.16 and later versions support only the SCA workflow
+2. For supported Satellite 6.15 and earlier environments, follow the current Red Hat SCA guidance for your manifest or organization setting
+3. In Satellite, use Content, then Subscriptions, then "Manage Manifest" to import or refresh the manifest as needed
 
 Systems registered to Satellite will automatically use SCA. Content views and lifecycle environments still control what content is available, but subscription attachment is not needed.
 
@@ -177,15 +173,15 @@ sudo subscription-manager syspurpose usage --set="Production"
 
 When you enable SCA on an account that previously used traditional entitlements:
 
-1. Existing registered systems will transition on their next check-in
-2. Individual entitlement certificates are replaced with the content access certificate
+1. Existing registered systems will transition when their subscription data is refreshed
+2. Per-subscription entitlement certificates are replaced by content access certificates
 3. No system re-registration is required
 4. No downtime or service interruption occurs
 
-Force an immediate transition on a specific system:
+Refresh subscription data on a specific system:
 
 ```bash
-# Force the system to pick up the SCA change
+# Refresh local subscription data
 sudo subscription-manager refresh
 ```
 

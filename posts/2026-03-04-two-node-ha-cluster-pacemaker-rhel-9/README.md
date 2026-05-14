@@ -32,13 +32,14 @@ Install packages:
 
 ```bash
 sudo subscription-manager repos --enable=rhel-9-for-x86_64-highavailability-rpms
-sudo dnf install pcs pacemaker fence-agents-all -y
+sudo dnf install pcs pacemaker fence-agents-all httpd -y
 ```
 
 Configure firewall:
 
 ```bash
 sudo firewall-cmd --permanent --add-service=high-availability
+sudo firewall-cmd --permanent --add-service=http
 sudo firewall-cmd --reload
 ```
 
@@ -113,6 +114,17 @@ sudo pcs resource create VirtualIP ocf:heartbeat:IPaddr2 \
 ## Step 6: Add a Service Resource
 
 Add an Apache web server resource:
+
+On both nodes, enable the Apache status URL that the resource agent monitors:
+
+```bash
+sudo tee /etc/httpd/conf.d/status.conf << 'HTTPD_STATUS'
+<Location /server-status>
+    SetHandler server-status
+    Require local
+</Location>
+HTTPD_STATUS
+```
 
 ```bash
 sudo pcs resource create WebServer ocf:heartbeat:apache \

@@ -15,43 +15,81 @@ Use Terraform to provision RHEL 9 VMs on AWS. RHEL 9 is fully supported on major
 ## Prerequisites
 
 - A RHEL 9 subscription or cloud marketplace entitlement
-- An account on the target cloud platform (AWS, Azure, or GCP)
-- CLI tools installed: aws-cli, az-cli, or gcloud
+- An AWS account with permission to create EC2 resources
+- Terraform and the AWS CLI installed and configured
 
 ## Step 1 - Choose Your Deployment Method
 
-You can deploy RHEL 9 in the cloud using:
+You can deploy RHEL 9 on AWS using:
 
-1. **Marketplace images** - pre-built, official Red Hat images
-2. **Custom images** - built with Image Builder and uploaded
-3. **Terraform** - infrastructure as code provisioning
-4. **Red Hat Hybrid Cloud Console** - centralized management
+1. **AWS Marketplace images** - pre-built, official Red Hat images
+2. **Custom AMIs** - built with Image Builder and uploaded
+3. **Red Hat Gold Images** - Cloud Access images for existing Red Hat subscriptions
+4. **Terraform** - infrastructure as code provisioning
 
 ## Step 2 - Launch a RHEL 9 Instance
 
-For AWS:
+Create a Terraform configuration that looks up the latest official RHEL 9 AMI from Red Hat's AWS account and launches an EC2 instance:
 
-```bash
-aws ec2 run-instances --image-id ami-rhel9-xxxxx --instance-type m5.large --key-name mykey
+```hcl
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = "us-east-1"
+}
+
+data "aws_ami" "rhel9" {
+  most_recent = true
+  owners      = ["309956199498"]
+
+  filter {
+    name   = "name"
+    values = ["RHEL-9*_HVM-*-x86_64-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
+  }
+}
+
+resource "aws_instance" "rhel9" {
+  ami           = data.aws_ami.rhel9.id
+  instance_type = "m5.large"
+  key_name      = "mykey"
+
+  tags = {
+    Name = "my-rhel-server"
+  }
+}
 ```
 
-For Azure:
+Apply the configuration:
 
 ```bash
-az vm create --resource-group myRG --name myVM --image RedHat:RHEL:9:latest --size Standard_D2s_v3
-```
-
-For GCP:
-
-```bash
-gcloud compute instances create myvm --image-project=rhel-cloud --image-family=rhel-9 --machine-type=e2-medium
+terraform init
+terraform plan
+terraform apply
 ```
 
 ## Step 3 - Configure cloud-init
 
-RHEL 9 cloud images use cloud-init for first-boot customization. Create a user-data script:
+RHEL 9 cloud images use cloud-init for first-boot customization. Add user data to the Terraform instance resource:
 
-```yaml
+```hcl
+user_data = <<-EOF
 #cloud-config
 hostname: my-rhel-server
 users:
@@ -62,12 +100,15 @@ users:
 packages:
   - vim
   - tmux
+EOF
 ```
 
 ## Step 4 - Register with Red Hat
 
+AWS Marketplace RHEL images are pay-as-you-go images and receive updates through Red Hat Update Infrastructure (RHUI). For BYOS or custom images, register the system with Subscription Manager:
+
 ```bash
-sudo subscription-manager register --auto-attach
+sudo subscription-manager register --activationkey=<activation_key_name> --org=<organization_ID>
 # Or connect to Red Hat Insights:
 
 sudo insights-client --register
@@ -75,7 +116,7 @@ sudo insights-client --register
 
 ## Step 5 - Configure Security and Networking
 
-Set up security groups, NSGs, or firewall rules to allow only necessary traffic. Enable SELinux (it is on by default) and configure firewalld.
+Set up security groups and firewall rules to allow only necessary traffic. Enable SELinux (it is on by default) and configure firewalld.
 
 ## Step 6 - Set Up Monitoring
 
@@ -89,4 +130,4 @@ sudo insights-client
 
 ## Summary
 
-You have learned how to use terraform to provision rhel 9 vms on aws. RHEL 9 on cloud platforms benefits from official support, pre-configured images, and integration with Red Hat management tools.
+You have learned how to use Terraform to provision RHEL 9 VMs on AWS. RHEL 9 on AWS benefits from official support, pre-configured images, and integration with Red Hat management tools.

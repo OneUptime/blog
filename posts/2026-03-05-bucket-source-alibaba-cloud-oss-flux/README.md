@@ -27,10 +27,10 @@ Create a bucket using the Alibaba Cloud console or CLI.
 ```bash
 # Create an OSS bucket using ossutil
 
-ossutil mb oss://flux-manifests --region cn-hangzhou
+ossutil mb oss://flux-manifests -e oss-cn-hangzhou.aliyuncs.com
 
 # Or using the aliyun CLI
-aliyun oss mb oss://flux-manifests --region cn-hangzhou
+aliyun ossutil mb oss://flux-manifests -e oss-cn-hangzhou.aliyuncs.com
 ```
 
 ## Uploading Manifests
@@ -39,18 +39,21 @@ Upload your Kubernetes manifests to the OSS bucket.
 
 ```bash
 # Upload manifests using ossutil
-ossutil cp -r ./manifests/ oss://flux-manifests/ --region cn-hangzhou
+ossutil cp -r ./manifests/ oss://flux-manifests/ -e oss-cn-hangzhou.aliyuncs.com
 
 # Verify the upload
-ossutil ls oss://flux-manifests/ --region cn-hangzhou
+ossutil ls oss://flux-manifests/ -e oss-cn-hangzhou.aliyuncs.com
 ```
 
 Alternatively, use the AWS CLI with the OSS S3-compatible endpoint.
 
 ```bash
+# Configure virtual-hosted-style requests for OSS
+aws configure set default.s3.addressing_style virtual
+
 # Upload using the AWS CLI with Alibaba Cloud OSS endpoint
 aws s3 sync ./manifests/ s3://flux-manifests/ \
-  --endpoint-url https://oss-cn-hangzhou.aliyuncs.com
+  --endpoint-url https://s3.oss-cn-hangzhou.aliyuncs.com
 ```
 
 ## Creating an AccessKey for Flux
@@ -128,8 +131,8 @@ spec:
   # Use generic provider for S3-compatible storage
   provider: generic
   bucketName: flux-manifests
-  # Alibaba Cloud OSS endpoint format: oss-{region}.aliyuncs.com
-  endpoint: oss-cn-hangzhou.aliyuncs.com
+  # Alibaba Cloud OSS S3-compatible endpoint format: s3.oss-{region}.aliyuncs.com
+  endpoint: s3.oss-cn-hangzhou.aliyuncs.com
   region: cn-hangzhou
   secretRef:
     name: oss-bucket-creds
@@ -161,7 +164,7 @@ spec:
   provider: generic
   bucketName: flux-manifests
   # Use the internal endpoint for clusters on Alibaba Cloud
-  endpoint: oss-cn-hangzhou-internal.aliyuncs.com
+  endpoint: s3.oss-cn-hangzhou-internal.aliyuncs.com
   region: cn-hangzhou
   secretRef:
     name: oss-bucket-creds
@@ -182,7 +185,7 @@ spec:
   interval: 5m
   provider: generic
   bucketName: flux-manifests
-  endpoint: oss-cn-hangzhou.aliyuncs.com
+  endpoint: s3.oss-cn-hangzhou.aliyuncs.com
   region: cn-hangzhou
   # Only download files under the production prefix
   prefix: production/my-app/

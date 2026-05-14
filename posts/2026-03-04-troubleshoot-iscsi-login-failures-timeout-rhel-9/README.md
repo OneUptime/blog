@@ -163,14 +163,14 @@ node.conn[0].timeo.noop_out_interval = 10
 node.conn[0].timeo.noop_out_timeout = 15
 ```
 
-### Connection Recovery
+### Connection Rescan
 
 ```bash
 # Check current session status
 sudo iscsiadm -m session -P 3
 
-# Force session recovery
-sudo iscsiadm -m session -r <session_id> --rescan
+# Rescan a session by its sid
+sudo iscsiadm -m session -r <sid> --rescan
 ```
 
 ## Step 7: Check SELinux
@@ -179,13 +179,13 @@ SELinux may block iSCSI operations:
 
 ```bash
 # Check for denials
-sudo ausearch -m avc -ts recent | grep iscsi
+sudo ausearch -m AVC,USER_AVC,SELINUX_ERR,USER_SELINUX_ERR -ts recent | grep -i iscsi
 
-# If SELinux is blocking, check the boolean
-sudo getsebool -a | grep iscsi
+# If SELinux is blocking, check for a relevant boolean
+sudo semanage boolean -l | grep -i iscsi
 
-# Enable iSCSI booleans if needed
-sudo setsebool -P iscsi_use_fusefs on
+# Enable a relevant boolean only if one matches the denial
+sudo setsebool -P <boolean_name> on
 ```
 
 ## Step 8: Log Analysis

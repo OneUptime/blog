@@ -78,7 +78,7 @@ sudo cryptsetup isLuks /dev/sda3 && echo "LUKS device" || echo "Not LUKS"
 sudo cryptsetup luksDump /dev/sda3
 
 # Check available key slots
-sudo cryptsetup luksDump /dev/sda3 | grep "Key Slot"
+sudo cryptsetup luksDump /dev/sda3 | grep -E "Key Slot|Keyslots|^[[:space:]]+[0-9]+:"
 ```
 
 If all 8 LUKS key slots are in use (LUKS1) or all slots are occupied (LUKS2), you need to free one before Clevis can add a binding:
@@ -120,7 +120,7 @@ sudo journalctl -b | grep -i tang
 
 ```bash
 # Check if Clevis modules are in the initramfs
-lsinitrd | grep clevis
+lsinitrd | grep clevis-luks
 
 # Check for network modules
 lsinitrd | grep network-manager
@@ -129,8 +129,11 @@ lsinitrd | grep network-manager
 If Clevis is missing from the initramfs:
 
 ```bash
+# Make sure the dracut unlocker is installed
+sudo dnf install clevis-dracut
+
 # Rebuild the initramfs with Clevis support
-sudo dracut -fv --regenerate-all
+sudo dracut -fv --regenerate-all --hostonly-cmdline
 ```
 
 ### Verify Network Configuration in initramfs
@@ -146,13 +149,11 @@ cat /proc/cmdline | grep neednet
 If `rd.neednet=1` is missing:
 
 ```bash
-# Add it to the dracut configuration
-sudo tee /etc/dracut.conf.d/nbde-network.conf << 'EOF'
-kernel_cmdline="rd.neednet=1"
-EOF
+# Add it to the kernel command line
+sudo grubby --update-kernel=ALL --args="rd.neednet=1"
 
 # Rebuild initramfs
-sudo dracut -fv
+sudo dracut -fv --regenerate-all --hostonly-cmdline
 ```
 
 ### Verify the Binding is Intact
@@ -178,9 +179,9 @@ flowchart TD
     A[Boot unlock fails] --> B{Can you reach Tang from booted system?}
     B -->|No| C[Fix network/firewall/Tang service]
     B -->|Yes| D{Is Clevis in initramfs?}
-    D -->|No| E[Run: dracut -fv]
+    D -->|No| E[Install clevis-dracut and rebuild initramfs]
     D -->|Yes| F{Is rd.neednet=1 set?}
-    F -->|No| G[Add to dracut.conf.d and rebuild]
+    F -->|No| G[Add rd.neednet with grubby and rebuild]
     F -->|Yes| H{Is binding intact?}
     H -->|No| I[Re-bind and rebuild initramfs]
     H -->|Yes| J[Check early boot network config]
@@ -211,9 +212,10 @@ To fix clients after key removal:
 
 ```bash
 # On each affected client
-sudo clevis luks unbind -d /dev/sda3 -s 1
-sudo clevis luks bind -d /dev/sda3 tang '{"url":"http://tang.example.com"}'
-sudo dracut -fv
+sudo clevis luks list -d /dev/sda3
+sudo clevis luks report -d /dev/sda3 -s 1
+sudo clevis luks regen -d /dev/sda3 -s 1
+sudo dracut -fv --regenerate-all --hostonly-cmdline
 ```
 
 ## SSS Pin Troubleshooting
@@ -235,10 +237,10 @@ curl -sf http://10.0.1.11/adv > /dev/null && echo "Tang B: OK" || echo "Tang B: 
 
 ## Debugging with Verbose Output
 
-For deeper debugging, run Clevis with verbose output:
+For deeper debugging, capture the output from the binding attempt:
 
 ```bash
-# Verbose binding attempt
+# Capture binding attempt output
 sudo clevis luks bind -d /dev/sda3 tang '{"url":"http://tang.example.com"}' 2>&1 | tee /tmp/clevis-debug.log
 ```
 

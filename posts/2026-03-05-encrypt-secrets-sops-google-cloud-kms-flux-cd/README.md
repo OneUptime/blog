@@ -16,6 +16,7 @@ Google Cloud KMS provides a fully managed encryption key service that integrates
 - `sops` CLI installed (v3.7+)
 - `gcloud` CLI configured and authenticated
 - A Google Cloud project with Cloud KMS API enabled
+- KMS encrypt permission on the key for the identity running `sops`
 - `kubectl` access to your cluster
 
 ## Step 1: Enable the Cloud KMS API
@@ -98,7 +99,7 @@ gcloud iam service-accounts keys create gcp-sa-key.json \
 # Store the key as a Kubernetes secret
 kubectl create secret generic sops-gcp \
   --namespace=flux-system \
-  --from-file=gcp-sa-key.json=gcp-sa-key.json
+  --from-file=sops.gcp-kms=gcp-sa-key.json
 
 # Clean up the local key file
 rm gcp-sa-key.json

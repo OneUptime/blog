@@ -241,8 +241,8 @@ terraform output
 # Get a specific output
 terraform output instance_ids
 
-# Get raw value (useful for scripts)
-terraform output -raw instance_ids
+# Get the first value from a list (useful for scripts)
+terraform output -json instance_ids | jq -r '.[0]'
 
 # Get JSON output (useful for piping to jq)
 terraform output -json server_info

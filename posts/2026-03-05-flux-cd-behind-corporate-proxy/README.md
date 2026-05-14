@@ -38,7 +38,7 @@ If your workstation also sits behind the proxy, configure the proxy before insta
 
 export HTTP_PROXY=http://proxy.corp.example.com:8080
 export HTTPS_PROXY=http://proxy.corp.example.com:8080
-export NO_PROXY=localhost,127.0.0.1,10.0.0.0/8,.cluster.local
+export NO_PROXY=localhost,127.0.0.1,10.0.0.0/8,.cluster.local.,.cluster.local,.svc
 
 # Install the Flux CLI
 curl -s https://fluxcd.io/install.sh | sudo bash
@@ -56,11 +56,12 @@ export GITHUB_USER=<your-github-username>
 
 ## Step 3: Bootstrap with Proxy Environment Variables
 
-The recommended approach is to bootstrap Flux and then patch the controller deployments to include proxy environment variables. First, run the standard bootstrap.
+The recommended approach is to configure the Flux manifests with proxy environment variables as part of the bootstrap repository. Use `--token-auth` so Flux accesses GitHub over HTTPS with the token instead of using an SSH deploy key, which is not covered by `HTTP_PROXY` and `HTTPS_PROXY`. If the cluster cannot reach GitHub without the proxy, add the patch in Step 4 before the first successful bootstrap, or rerun bootstrap after adding it.
 
 ```bash
 # Bootstrap Flux CD
 flux bootstrap github \
+  --token-auth \
   --owner=$GITHUB_USER \
   --repository=fleet-infra \
   --branch=main \
@@ -72,7 +73,7 @@ If the bootstrap fails because the Flux CLI cannot reach GitHub through the prox
 
 ## Step 4: Patch Flux Controllers with Proxy Settings
 
-After bootstrapping, create a patch file that injects proxy environment variables into all Flux controllers. Add this file to your `fleet-infra` repository in the `flux-system` directory.
+Create a patch file that injects proxy environment variables into the Flux controller deployments. Add this file to your `fleet-infra` repository in the `flux-system` directory.
 
 ```yaml
 # flux-system/proxy-patch.yaml
@@ -80,8 +81,7 @@ After bootstrapping, create a patch file that injects proxy environment variable
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: source-controller
-  namespace: flux-system
+  name: all
 spec:
   template:
     spec:
@@ -94,61 +94,7 @@ spec:
               value: "http://proxy.corp.example.com:8080"
             - name: NO_PROXY
               # Exclude internal cluster traffic from the proxy
-              value: ".cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,localhost,127.0.0.1"
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kustomize-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          env:
-            - name: HTTPS_PROXY
-              value: "http://proxy.corp.example.com:8080"
-            - name: HTTP_PROXY
-              value: "http://proxy.corp.example.com:8080"
-            - name: NO_PROXY
-              value: ".cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,localhost,127.0.0.1"
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: helm-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          env:
-            - name: HTTPS_PROXY
-              value: "http://proxy.corp.example.com:8080"
-            - name: HTTP_PROXY
-              value: "http://proxy.corp.example.com:8080"
-            - name: NO_PROXY
-              value: ".cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,localhost,127.0.0.1"
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: notification-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          env:
-            - name: HTTPS_PROXY
-              value: "http://proxy.corp.example.com:8080"
-            - name: HTTP_PROXY
-              value: "http://proxy.corp.example.com:8080"
-            - name: NO_PROXY
-              value: ".cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,localhost,127.0.0.1"
+              value: ".cluster.local.,.cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,localhost,127.0.0.1"
 ```
 
 Update the `flux-system/kustomization.yaml` file to include this patch.
@@ -165,6 +111,7 @@ patches:
   - path: proxy-patch.yaml
     target:
       kind: Deployment
+      labelSelector: app.kubernetes.io/part-of=flux
 ```
 
 Commit and push these changes. Flux will apply the proxy configuration to its own controllers.
@@ -182,7 +129,7 @@ kubectl create configmap corporate-ca \
   -n flux-system
 ```
 
-Then mount the CA certificate into the source-controller (which handles all outbound Git and Helm connections) by adding a volume mount patch.
+Then mount the CA certificate into the source-controller (which handles GitRepository, HelmRepository, HelmChart, Bucket, and OCIRepository fetches) by adding a volume mount patch. If you use image automation or outbound notifications through the same TLS-intercepting proxy, apply the same CA mount to those controllers as well.
 
 ```yaml
 # flux-system/ca-patch.yaml
@@ -212,6 +159,20 @@ spec:
             name: corporate-ca
 ```
 
+Include this CA patch in the same `flux-system/kustomization.yaml` file.
+
+```yaml
+patches:
+  - path: proxy-patch.yaml
+    target:
+      kind: Deployment
+      labelSelector: app.kubernetes.io/part-of=flux
+  - path: ca-patch.yaml
+    target:
+      kind: Deployment
+      name: source-controller
+```
+
 ## Step 6: Configure NO_PROXY Correctly
 
 The `NO_PROXY` variable is critical. Incorrect configuration can cause Flux controllers to route internal Kubernetes traffic through the proxy, leading to failures.
@@ -220,6 +181,7 @@ Always include these in your `NO_PROXY` setting:
 
 | Entry | Purpose |
 |-------|---------|
+| `.cluster.local.` | Internal Kubernetes DNS with a trailing dot |
 | `.cluster.local` | Internal Kubernetes DNS |
 | `.svc` | Kubernetes service DNS |
 | `10.0.0.0/8` | Common pod/service CIDR |

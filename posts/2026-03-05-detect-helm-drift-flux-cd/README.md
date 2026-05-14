@@ -16,12 +16,12 @@ Drift is a serious problem because it means your cluster state no longer matches
 
 ## How Flux CD Detects Helm Drift
 
-Flux CD introduced `spec.driftDetection` in the HelmRelease API (v2beta2 and later). When enabled, the helm-controller periodically compares the live state of Kubernetes resources owned by a Helm release against the desired state from the last successful Helm release. If differences are found, Flux reports the drift and can optionally correct it.
+Flux CD provides `spec.driftDetection` in the HelmRelease API. When enabled, the helm-controller periodically compares the manifest stored for the Helm release against the live state of Kubernetes resources in the cluster. If differences are found, Flux reports the drift and can optionally correct it.
 
 ## Prerequisites
 
 - A Kubernetes cluster (v1.20+)
-- Flux CD v2.1+ installed (drift detection requires helm-controller v0.36+)
+- Flux CD v2.2+ installed (drift detection requires helm-controller v0.37+)
 - `flux` CLI installed
 - A working HelmRelease managed by Flux
 
@@ -90,7 +90,7 @@ spec:
     mode: warn
 ```
 
-When drift is detected in warn mode, the HelmRelease status will include a condition showing the drifted resources, and the helm-controller will emit events.
+When drift is detected in warn mode, the helm-controller will emit Kubernetes events and can log a detailed JSON Patch summary when debug logging is enabled.
 
 ### Enabled Mode
 
@@ -192,7 +192,7 @@ Configure Flux alerts to send notifications when drift is detected:
 
 ```yaml
 # Alert provider for sending drift notifications to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -200,11 +200,12 @@ metadata:
 spec:
   type: slack
   channel: gitops-alerts
+  address: https://slack.com/api/chat.postMessage
   secretRef:
-    name: slack-webhook-url
+    name: slack-bot-token
 ---
 # Alert that triggers on drift detection events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: helm-drift-alert
@@ -217,9 +218,9 @@ spec:
     - kind: HelmRelease
       name: "*"
       namespace: flux-system
-  # Match events that include drift-related information
-  eventMetadata:
-    summary: "*drift*"
+  # Match event messages that include drift-related information
+  inclusionList:
+    - ".*drift.*"
 ```
 
 ## Simulating Drift for Testing
@@ -243,7 +244,7 @@ If drift detection is in `enabled` mode, Flux will detect the change and restore
 
 ```mermaid
 flowchart TD
-    A[Helm Controller Reconciliation] --> B[Render Desired State from Helm Chart]
+    A[Helm Controller Reconciliation] --> B[Read Manifest from Helm Storage]
     B --> C[Compare with Live Cluster State]
     C --> D{Drift Detected?}
     D -->|No| E[No Action - Status Healthy]

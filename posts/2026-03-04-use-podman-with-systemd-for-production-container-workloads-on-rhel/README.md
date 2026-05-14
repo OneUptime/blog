@@ -17,10 +17,11 @@ Podman integrates directly with systemd, making it the preferred way to run prod
 
 sudo podman run -d \
   --name web-app \
-  -p 8080:80 \
-  -v /srv/web-data:/usr/share/nginx/html:Z \
+  -p 8080:8080 \
+  -v /srv/web-data:/opt/app-root/src:Z \
   --restart=no \
-  registry.access.redhat.com/ubi9/nginx-122:latest
+  registry.access.redhat.com/ubi9/nginx-124:latest \
+  nginx -g "daemon off;"
 ```
 
 Now generate a systemd unit file from the running container:
@@ -31,7 +32,7 @@ sudo podman generate systemd --new --name web-app \
   --files --restart-policy=always
 
 # Move the generated file to the systemd directory
-sudo mv container-web-app.service /etc/systemd/system/
+sudo mv -Z container-web-app.service /etc/systemd/system/
 
 # Reload systemd and enable the service
 sudo systemctl daemon-reload
@@ -40,9 +41,9 @@ sudo systemctl enable --now container-web-app.service
 
 The `--new` flag means systemd will create a fresh container each time (rather than restarting the old one), which is cleaner for production.
 
-## Quadlet - The Modern Approach (RHEL 9.2+)
+## Quadlet - The Modern Approach (RHEL 9.3+)
 
-RHEL 9.2 and later support Quadlet, which lets you write container definitions as systemd-native unit files:
+RHEL 9.3 and later support Quadlet, which lets you write container definitions as systemd-native unit files:
 
 ```ini
 # /etc/containers/systemd/webapp.container
@@ -50,10 +51,10 @@ RHEL 9.2 and later support Quadlet, which lets you write container definitions a
 Description=Production Web Application
 
 [Container]
-Image=registry.access.redhat.com/ubi9/nginx-122:latest
-PublishPort=8080:80
-Volume=/srv/web-data:/usr/share/nginx/html:Z
-Environment=NGINX_LOG_TO_STDOUT=1
+Image=registry.access.redhat.com/ubi9/nginx-124:latest
+Exec=nginx -g "daemon off;"
+PublishPort=8080:8080
+Volume=/srv/web-data:/opt/app-root/src:Z
 
 [Service]
 Restart=always
@@ -92,7 +93,7 @@ sudo journalctl -u webapp.service --since "10 minutes ago"
 ```bash
 # Add a health check to your Quadlet file
 # [Container]
-# HealthCmd=/usr/bin/curl -f http://localhost:80/ || exit 1
+# HealthCmd=/usr/bin/curl -f http://localhost:8080/ || exit 1
 # HealthInterval=30s
 # HealthRetries=3
 ```

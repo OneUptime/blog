@@ -32,6 +32,8 @@ graph LR
 
 ## Installing SpamAssassin
 
+Note: SpamAssassin is available in RHEL 9, but Red Hat deprecated the `spamassassin` package in RHEL 9.4 and does not plan to distribute it in later major RHEL releases.
+
 ```bash
 # Install SpamAssassin
 
@@ -65,7 +67,7 @@ bayes_auto_learn_threshold_nonspam 0.1
 # Skip RBL checks if you handle them in Postfix already
 # skip_rbl_checks 1
 
-# Trusted networks (do not scan internal mail)
+# Trusted networks (relays considered trusted for message path analysis)
 trusted_networks 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
 
 # Whitelist specific senders
@@ -84,17 +86,17 @@ There are two main ways to connect SpamAssassin with Postfix: using spamass-milt
 
 ```bash
 # Install the milter interface
-sudo dnf install -y spamass-milter
+sudo dnf install -y spamass-milter spamass-milter-postfix
 ```
 
 Configure the milter. Edit `/etc/sysconfig/spamass-milter`:
 
 ```bash
-# Pass messages to spamc for scanning
-EXTRA_FLAGS="-m -r 15"
+# Reject messages with very high spam scores
+EXTRA_FLAGS="-r 15"
 ```
 
-The `-m` flag tells the milter to modify messages (add headers), and `-r 15` rejects messages with a score above 15.
+The `-r 15` flag rejects messages with a score of 15 or higher. If you add `-m`, spamass-milter will not rewrite the subject or message body, though SpamAssassin headers can still be added.
 
 Add the milter to Postfix. Edit `/etc/postfix/main.cf`:
 
@@ -103,6 +105,7 @@ Add the milter to Postfix. Edit `/etc/postfix/main.cf`:
 smtpd_milters = unix:/run/spamass-milter/postfix/sock
 non_smtpd_milters = unix:/run/spamass-milter/postfix/sock
 milter_default_action = accept
+milter_connect_macros = j {daemon_name} v _
 ```
 
 Start the services:
@@ -122,10 +125,10 @@ Add to `/etc/postfix/master.cf`:
 ```bash
 # SpamAssassin content filter
 smtp      inet  n       -       n       -       -       smtpd
-    -o content_filter=spamassassin
+    -o content_filter=spamassassin:
 
 spamassassin unix -     n       n       -       -       pipe
-    user=spamd argv=/usr/bin/spamc -f -e /usr/sbin/sendmail -oi -f ${sender} ${recipient}
+    flags=Rq user=spamd argv=/usr/bin/spamc -f -e /usr/sbin/sendmail -oi -f ${sender} -- ${recipient}
 ```
 
 Start SpamAssassin:
@@ -150,7 +153,7 @@ Set up automatic daily updates:
 
 ```bash
 # Enable the automatic update timer
-sudo systemctl enable --now spamassassin-update.timer
+sudo systemctl enable --now sa-update.timer
 ```
 
 Or add a cron job:

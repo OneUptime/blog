@@ -32,7 +32,7 @@ This prints every system call made by `ls`, including file opens, reads, and wri
 ## Step 3: Trace a Running Process
 
 ```bash
-strace -p $(pidof myapp)
+strace -p "$(pidof myapp)"
 ```
 
 Press `Ctrl+C` to stop tracing.
@@ -42,25 +42,25 @@ Press `Ctrl+C` to stop tracing.
 Trace only file-related calls:
 
 ```bash
-strace -e trace=file ls /tmp
+strace -e trace=%file ls /tmp
 ```
 
 Trace only network calls:
 
 ```bash
-strace -e trace=network curl http://example.com
+strace -e trace=%network curl http://example.com
 ```
 
 Common trace filters:
 
 | Filter | Description |
 |--------|-------------|
-| `file` | File operations (open, stat, unlink) |
-| `network` | Network operations (socket, connect, send) |
-| `process` | Process operations (fork, exec, wait) |
-| `signal` | Signal operations |
-| `memory` | Memory operations (mmap, brk) |
-| `ipc` | IPC operations |
+| `%file` | File operations (open, stat, unlink) |
+| `%network` | Network operations (socket, connect, send) |
+| `%process` | Process operations (fork, exec, wait) |
+| `%signal` | Signal operations |
+| `%memory` | Memory operations (mmap, brk) |
+| `%ipc` | IPC operations |
 
 ## Step 5: Show Timestamps
 

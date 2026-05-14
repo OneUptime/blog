@@ -46,7 +46,7 @@ top -p 1234,5678
 ## htop - Interactive Process Viewer
 
 ```bash
-# Install htop
+# Install htop (enable EPEL if your RHEL repositories do not provide it)
 sudo dnf install -y htop
 
 # Launch htop
@@ -114,7 +114,7 @@ iostat -x 2 5
 # rkB/s   - kilobytes read per second
 # wkB/s   - kilobytes written per second
 # await   - average wait time in ms (important for latency)
-# %util   - device utilization (100% means saturated)
+# %util   - device utilization (near 100% can indicate saturation on serial devices)
 
 # Show stats for specific devices only
 iostat -x sda nvme0n1 2 5
@@ -144,4 +144,4 @@ iostat -x 1 5
 top -b -n 1 | head -30
 ```
 
-These tools are available on every RHEL system and require no additional infrastructure. They are your first line of defense when diagnosing performance problems.
+These tools are available for RHEL systems and require no additional infrastructure beyond the relevant packages. They are your first line of defense when diagnosing performance problems.

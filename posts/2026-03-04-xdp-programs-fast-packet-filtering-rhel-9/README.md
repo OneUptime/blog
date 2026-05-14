@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, XDP, eBPF, Networking, Packet Filtering, Linux
 
-Description: Learn how to write, compile, and load XDP (eXpress Data Path) programs on RHEL for ultra-fast packet filtering at the network driver level.
+Description: Learn how to write, compile, and load XDP (eXpress Data Path) programs on RHEL for ultra-fast packet filtering at the earliest packet-processing hooks.
 
 ---
 
-XDP (eXpress Data Path) lets you run eBPF programs directly inside the network driver, processing packets before they even reach the kernel network stack. This makes XDP one of the fastest packet filtering technologies available on Linux.
+XDP (eXpress Data Path) lets you run eBPF programs at a very early packet-processing hook, before packets reach the normal kernel network stack. In native mode, the program runs in the network driver; in generic mode, it runs in the kernel stack as a compatibility fallback. This makes XDP one of the fastest packet filtering technologies available on Linux.
 
 In this guide, you will write a simple XDP program, compile it, and load it onto a network interface on RHEL.
 
@@ -27,7 +27,7 @@ graph LR
 
 - RHEL with kernel 5.14 or later
 - Root or sudo access
-- A network interface that supports XDP native mode
+- A network interface that supports XDP native mode if you want native XDP performance
 
 ## Step 1: Install Development Tools
 
@@ -49,6 +49,7 @@ Create a simple XDP program that drops all ICMP (ping) packets and passes everyt
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/ip.h>
+#include <bpf/bpf_endian.h>
 #include <bpf/bpf_helpers.h>
 
 /* XDP program entry point */
@@ -64,7 +65,7 @@ int xdp_drop_icmp_func(struct xdp_md *ctx) {
         return XDP_PASS;  /* Packet too short, let it through */
 
     /* Only process IPv4 packets */
-    if (eth->h_proto != __constant_htons(ETH_P_IP))
+    if (eth->h_proto != bpf_htons(ETH_P_IP))
         return XDP_PASS;
 
     /* Parse the IP header */
@@ -102,7 +103,8 @@ llvm-objdump -h xdp_drop_icmp.o
 ```bash
 # Load the XDP program onto interface ens3 using ip link
 # "xdpgeneric" works on all interfaces but is slower
-# "xdp" attempts native mode first (fastest)
+# Use "xdp" instead of "xdpgeneric" to try native mode with generic fallback
+# On RHEL, use libxdp-based loaders for Red Hat-supported production deployments
 sudo ip link set dev ens3 xdpgeneric obj xdp_drop_icmp.o sec xdp
 
 # Verify the program is attached
@@ -131,7 +133,7 @@ ssh user@192.168.1.100
 # View XDP statistics for the interface
 sudo bpftool net show
 
-# Check per-CPU packet counts
+# Check driver-specific XDP counters, if the NIC driver exposes them
 ethtool -S ens3 | grep xdp
 
 # Watch real-time XDP drop counts
@@ -157,6 +159,7 @@ Here is a more advanced example that uses a BPF map to count dropped packets:
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/ip.h>
+#include <bpf/bpf_endian.h>
 #include <bpf/bpf_helpers.h>
 
 /* BPF map to store packet counters */
@@ -178,7 +181,7 @@ int xdp_counter_func(struct xdp_md *ctx) {
     if ((void *)(eth + 1) > data_end)
         return XDP_PASS;
 
-    if (eth->h_proto != __constant_htons(ETH_P_IP))
+    if (eth->h_proto != bpf_htons(ETH_P_IP))
         return XDP_PASS;
 
     struct iphdr *ip = (void *)(eth + 1);
@@ -215,4 +218,4 @@ sudo bpftool map dump name pkt_count
 
 ## Summary
 
-You have written and loaded XDP programs on RHEL for ultra-fast packet filtering. XDP processes packets at the earliest possible point in the network stack, making it ideal for DDoS mitigation, load balancing, and high-speed firewalling. For production use, consider using libbpf for program loading and BPF maps for dynamic configuration.
+You have written and loaded XDP programs on RHEL for ultra-fast packet filtering. XDP processes packets at an early point before the normal kernel network stack, making it ideal for DDoS mitigation, load balancing, and high-speed firewalling. For production use on RHEL, use libxdp for supported program loading and BPF maps for dynamic configuration.

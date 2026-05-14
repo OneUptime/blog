@@ -34,7 +34,7 @@ EOF
 
 ```bash
 sudo tee /etc/auto.data << 'EOF'
-* -rw,soft,intr nfsserver:/export/data/&
+* -rw,soft nfsserver:/export/data/&
 EOF
 ```
 
@@ -77,14 +77,14 @@ EOF
 You can use the `&` substitution in more complex paths:
 
 ```bash
-# Mount user data organized by department
-# NFS exports: /export/dept/engineering/alice, /export/dept/sales/bob, etc.
+# Mount user data from a deeper NFS export path
+# NFS exports: /export/dept/users/alice, /export/dept/users/bob, etc.
 sudo tee /etc/auto.master.d/users.autofs << 'EOF'
 /users /etc/auto.users
 EOF
 
 sudo tee /etc/auto.users << 'EOF'
-* -rw,soft nfsserver:/export/users/&
+* -rw,soft nfsserver:/export/dept/users/&
 EOF
 ```
 
@@ -107,9 +107,9 @@ Mount multiple subdirectories from the same NFS server for each key:
 
 ```bash
 sudo tee /etc/auto.projects << 'EOF'
-* -rw,soft nfsserver:/export/projects/&/code \
-           nfsserver:/export/projects/&/docs \
-           nfsserver:/export/projects/&/builds
+* -rw,soft /code nfsserver:/export/projects/&/code \
+           /docs nfsserver:/export/projects/&/docs \
+           /builds nfsserver:/export/projects/&/builds
 EOF
 ```
 
@@ -121,7 +121,7 @@ The most common wildcard use case:
 
 ```bash
 # /etc/auto.home
-* -rw,soft,intr nfsserver:/export/home/&
+* -rw,soft nfsserver:/export/home/&
 ```
 
 Every user's home directory is mounted on demand. No need to add new entries when creating new users.

@@ -28,11 +28,11 @@ openssl x509 -in /etc/pki/tls/certs/server.crt -noout -dates
 # Verify certificate chain
 openssl verify -CAfile /etc/pki/tls/certs/ca-bundle.crt /etc/pki/tls/certs/server.crt
 
-# Test TLS connection
-openssl s_client -connect localhost:443 -tls1_2
+# Test TLS connection and certificate validation
+openssl s_client -connect <hostname>:443 -servername <hostname> -verify_return_error -CAfile /etc/pki/tls/certs/ca-bundle.crt -tls1_2
 
 # Check for weak ciphers
-nmap --script ssl-enum-ciphers -p 443 localhost
+nmap -sV --script ssl-enum-ciphers -p 443 <hostname>
 
 # View system crypto policy
 update-crypto-policies --show

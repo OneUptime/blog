@@ -31,7 +31,7 @@ sequenceDiagram
 - A working Kerberos realm (IdM, AD, or standalone KDC)
 - The SSH server has a `host/` principal and keytab
 - The SSH client has a valid TGT
-- DNS forward and reverse resolution works for both client and server
+- DNS forward resolution works, and reverse DNS is correct if clients use the default Kerberos reverse-DNS canonicalization
 
 ## Step 1 - Configure the SSH Server
 
@@ -186,7 +186,7 @@ klist
 # 2. Verify DNS forward resolution
 host server.example.com
 
-# 3. Verify DNS reverse resolution (critical for GSSAPI)
+# 3. Verify DNS reverse resolution if clients use Kerberos reverse-DNS canonicalization
 host <server-ip>
 
 # 4. Check the SSH server has GSSAPI enabled
@@ -200,9 +200,9 @@ sudo klist -kt /etc/krb5.keytab
 timedatectl
 ```
 
-### Reverse DNS Is Critical
+### Reverse DNS and Kerberos Canonicalization
 
-GSSAPI authentication relies on reverse DNS to determine the correct service principal name. If reverse DNS does not match forward DNS, authentication fails silently.
+By default, MIT Kerberos uses reverse DNS as part of hostname canonicalization when determining the service principal name. If reverse DNS does not match forward DNS, GSSAPI authentication can fail because the client requests a ticket for the wrong host principal.
 
 ```bash
 # Check forward and reverse DNS consistency
@@ -210,10 +210,10 @@ host server.example.com
 # Returns: 10.0.0.50
 
 host 10.0.0.50
-# Must return: server.example.com
+# Should return: server.example.com
 ```
 
-If reverse DNS is not available or incorrect, you can disable reverse DNS lookups in `/etc/krb5.conf`:
+If reverse DNS is not available or incorrect, you can disable reverse DNS lookups on client machines in `/etc/krb5.conf`:
 
 ```ini
 [libdefaults]
@@ -230,7 +230,7 @@ ssh -vvv server.example.com 2>&1 | grep -i -E "gssapi|kerberos|auth"
 Look for lines like:
 - `Offering GSSAPI proposal` - client is trying GSSAPI
 - `GSSAPI Error` - something went wrong
-- `Accepted GSSAPI key exchange` - success
+- `Authenticated to server.example.com ... using "gssapi-with-mic"` - GSSAPI user authentication succeeded
 
 ### Debug with Kerberos Tracing
 

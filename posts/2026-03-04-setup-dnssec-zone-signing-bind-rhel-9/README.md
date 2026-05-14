@@ -16,9 +16,9 @@ DNSSEC uses public key cryptography to sign DNS records. Each zone has signing k
 
 ```mermaid
 flowchart TD
-    A[Root Zone - signed] --> B[.com TLD - signed]
-    B --> C[example.com - signed by you]
-    C --> D[DS record in parent zone]
+    A[Root Zone trust anchor] --> B[Root signs DS for .com]
+    B --> C[.com signs DS for example.com]
+    C --> D[example.com publishes DNSKEY and RRSIG records]
     D --> E[Resolver validates chain]
     E --> F{Signature valid?}
     F -->|Yes| G[Accept answer]
@@ -91,7 +91,8 @@ $INCLUDE "/var/named/keys/Kexample.com.+013+67890.key"
 Sign the zone file using `dnssec-signzone`:
 
 ```bash
-dnssec-signzone -A -3 $(head -c 16 /dev/urandom | od -A n -t x1 | tr -d ' \n') \
+cd /var/named
+dnssec-signzone -3 - -H 0 \
     -N INCREMENT \
     -o example.com \
     -t \
@@ -100,8 +101,8 @@ dnssec-signzone -A -3 $(head -c 16 /dev/urandom | od -A n -t x1 | tr -d ' \n') \
 ```
 
 The flags mean:
-- `-A` - Generate NSEC3 records for all sets
-- `-3` - Use NSEC3 with the provided salt
+- `-3 -` - Use NSEC3 with no salt
+- `-H 0` - Use zero extra NSEC3 hash iterations
 - `-N INCREMENT` - Automatically increment the serial
 - `-o` - Origin (zone name)
 - `-t` - Print statistics
@@ -120,12 +121,10 @@ zone "example.com" IN {
     type primary;
     file "example.com.zone.signed";
     allow-update { none; };
-    auto-dnssec maintain;
-    inline-signing yes;
 };
 ```
 
-With `inline-signing yes`, BIND can manage re-signing automatically.
+When you use a pre-signed zone file, re-run `dnssec-signzone` after zone changes so signatures and the SOA serial stay current.
 
 ## Reload BIND
 
@@ -157,7 +156,7 @@ Verify the signatures:
 dig @localhost example.com A +dnssec
 ```
 
-Look for the `ad` (Authenticated Data) flag in the response header and RRSIG records in the answer section.
+Look for RRSIG records in the answer section. The `ad` (Authenticated Data) flag is set by a validating resolver, not by a plain authoritative-only response.
 
 ## Submitting DS Records to Your Registrar
 
@@ -219,7 +218,9 @@ The RRSIG record shows the expiration date. Make sure re-signing happens before 
 Check DNSSEC validation with an external tool:
 
 ```bash
-dig @8.8.8.8 example.com +dnssec +cd
+dig @8.8.8.8 example.com A +dnssec
 ```
+
+After your DS record has been published in the parent zone and propagated, look for the `ad` flag in the response header.
 
 DNSSEC takes some initial effort to set up, but once it's running with inline signing and automated key management, it mostly takes care of itself. The important thing is to monitor signature expiration and plan your key rollovers ahead of time.

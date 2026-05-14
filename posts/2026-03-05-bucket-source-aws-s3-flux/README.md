@@ -246,9 +246,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
-          role-to-assume: arn:aws:iam::123456789:role/github-actions-s3
+          role-to-assume: arn:aws:iam::123456789012:role/github-actions-s3
           aws-region: us-east-1
 
       - name: Sync manifests to S3

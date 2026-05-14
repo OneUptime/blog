@@ -15,10 +15,12 @@ This guide covers how to Set Up VirtualBox Guest Additions for Shared Folders an
 - RHEL with a minimal or standard installation
 - Root or sudo access
 - A stable network connection
+- A RHEL virtual machine running in Oracle VM VirtualBox
+- Access to the VirtualBox host to insert the Guest Additions ISO and configure shared folders or clipboard settings
 
 ## Overview
 
-Set Up VirtualBox Guest Additions for Shared Folders and Clipboard requires careful planning and execution. This guide walks through the complete process from installation to verification.
+Set Up VirtualBox Guest Additions for Shared Folders and Clipboard requires installing the Guest Additions inside the RHEL guest, then enabling the VirtualBox features on the VM. This guide walks through the complete process from installation to verification.
 
 ## Step 1: Prepare the System
 
@@ -31,86 +33,107 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf group install -y "Development Tools"
+sudo dnf install -y kernel-devel kernel-headers elfutils-libelf-devel perl
 ```
 
 ## Step 2: Install Required Packages
 
+From the VirtualBox window for the running RHEL VM, select **Devices > Insert Guest Additions CD Image**. If the CD image is not mounted automatically, create a mount point and mount it:
+
 ```bash
-sudo dnf install -y <package-name>
+sudo mkdir -p /mnt/cdrom
+sudo mount /dev/cdrom /mnt/cdrom
 ```
 
-Verify the installation:
+Run the Linux Guest Additions installer from the mounted ISO:
 
 ```bash
-rpm -qi <package-name>
+cd /mnt/cdrom
+sudo sh ./VBoxLinuxAdditions.run
 ```
 
-## Step 3: Configure the Service
-
-Create or edit the main configuration file:
+Reboot the guest after the installer completes:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo reboot
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+## Step 3: Configure the Shared Folder
 
-## Step 4: Start and Enable the Service
+Create a shared folder from the VirtualBox Manager with **Settings > Shared Folders**, or from the host command line. Replace `RHEL-VM` with the VM name and `/home/user/rhel-share` with the host folder path:
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+VBoxManage sharedfolder add "RHEL-VM" --name "rhelshare" --hostpath "/home/user/rhel-share" --automount
+```
+
+For Linux guests, automatically mounted shared folders are available to `root` and members of the `vboxsf` group. Add your RHEL user to that group:
+
+```bash
+sudo usermod -aG vboxsf "$USER"
+```
+
+Log out and back in, or reboot, so the new group membership applies.
+
+## Step 4: Enable Shared Clipboard
+
+From the VirtualBox VM window, select **Devices > Shared Clipboard > Bidirectional**. You can also set it from the host command line while the VM is running:
+
+```bash
+VBoxManage controlvm "RHEL-VM" clipboard mode bidirectional
+```
+
+If the VM is powered off, you can make the same setting persistent with:
+
+```bash
+VBoxManage modifyvm "RHEL-VM" --clipboard-mode=bidirectional
 ```
 
 ## Step 5: Verify the Configuration
 
-Test the setup:
+Check that the Guest Additions kernel modules are loaded:
 
 ```bash
-sudo <service> --test
+lsmod | grep -E 'vboxguest|vboxsf|vboxvideo'
 ```
 
-Check the logs for any errors:
+Verify that the shared folder is mounted. With automatic mounting, Linux guests commonly mount the folder under `/media` with an `sf_` prefix:
 
 ```bash
-journalctl -u <service> -f
+findmnt -t vboxsf
+ls /media/sf_rhelshare
+```
+
+You can also mount the share manually if needed:
+
+```bash
+sudo mkdir -p /mnt/rhelshare
+sudo mount -t vboxsf rhelshare /mnt/rhelshare
 ```
 
 ## Step 6: Configure Firewall Rules
 
-If the service needs network access:
-
-```bash
-sudo firewall-cmd --permanent --add-service=<service>
-sudo firewall-cmd --reload
-```
+VirtualBox shared folders and the shared clipboard do not require opening guest firewall ports because they are provided by Guest Additions integration, not by a network service in RHEL.
 
 ## Step 7: Performance Tuning
 
-Monitor resource usage and adjust configuration parameters based on your workload:
-
-```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
-```
+For best results, keep the Guest Additions version aligned with the VirtualBox version installed on the host. After upgrading VirtualBox on the host, reinstall or update Guest Additions in the RHEL guest.
 
 ## Security Considerations
 
-- Run the service with a dedicated non-root user when possible
-- Enable TLS/SSL for network communication
-- Restrict access with firewall rules
+- Enable bidirectional clipboard only when you need it
+- Share only the host folders that the guest needs
+- Use read-only shared folders when the guest does not need write access
 - Keep packages updated with `dnf update`
 
 ## Troubleshooting
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
-2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
-3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
+1. **Guest Additions installer fails**: Make sure the running kernel has matching development packages installed, then reboot into the updated kernel and rerun the installer
+2. **Permission denied on shared folders**: Verify that your user is a member of the `vboxsf` group with `id`
+3. **Shared clipboard does not work**: Confirm Guest Additions are installed and the VM's Shared Clipboard mode is set to `Bidirectional`
 
 ## Conclusion
 
-You have successfully configured set up virtualbox guest additions for shared folders and clipboard on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
+You have successfully configured set up virtualbox guest additions for shared folders and clipboard on RHEL. Keep Guest Additions aligned with the VirtualBox host version and limit shared folders and clipboard access to what you need.

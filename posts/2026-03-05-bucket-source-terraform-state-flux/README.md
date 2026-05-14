@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Terraform, Bucket, Infrastructure as Code
 
-Description: Learn how to use Flux CD Bucket sources to read Terraform state from object storage and use infrastructure outputs to configure Kubernetes deployments.
+Description: Learn how to use Flux CD Bucket sources to read Terraform-generated manifests from object storage and use infrastructure outputs to configure Kubernetes deployments.
 
 ---
 
@@ -16,7 +16,7 @@ This guide covers the patterns for integrating Terraform state and outputs with 
 
 ## Prerequisites
 
-- Flux CD v2.0 or later installed on your cluster
+- Flux CD v2.4 or later installed on your cluster
 - Terraform configured with a remote state backend (S3, GCS, or Azure Blob Storage)
 - `kubectl` access to your cluster
 - A CI/CD pipeline running Terraform
@@ -243,7 +243,7 @@ spec:
 
 ## Using Azure Blob Storage as the Backend
 
-And with Azure Blob Storage.
+And with Azure Blob Storage. Because Flux Bucket `prefix` filtering is not supported for the Azure provider, use a dedicated container for the application manifests.
 
 ```yaml
 # flux-system/terraform-outputs-azure.yaml
@@ -255,9 +255,8 @@ metadata:
 spec:
   interval: 5m
   provider: azure
-  bucketName: terraform-outputs
+  bucketName: terraform-outputs-my-app
   endpoint: https://fluxmanifests.blob.core.windows.net
-  prefix: my-app/
   secretRef:
     name: azure-bucket-creds
 ```
@@ -286,8 +285,8 @@ For sensitive outputs like database passwords, use Kubernetes Secrets instead of
       DB_PASSWORD: "${DB_PASSWORD}"
     EOF
 
-    # Encrypt with SOPS before uploading
-    sops --encrypt --in-place ../generated-manifests/db-secret.yaml
+    # Encrypt only the Secret data with SOPS before uploading
+    sops --encrypt --encrypted-regex '^(data|stringData)$' --in-place ../generated-manifests/db-secret.yaml
 ```
 
 Configure the Kustomization to decrypt SOPS-encrypted secrets.

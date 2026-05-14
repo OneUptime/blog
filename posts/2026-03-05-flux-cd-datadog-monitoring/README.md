@@ -45,12 +45,10 @@ patches:
                         "openmetrics_endpoint": "http://%%host%%:8080/metrics",
                         "namespace": "flux",
                         "metrics": [
-                          "gotk_reconcile_condition",
                           "gotk_reconcile_duration_seconds.*",
-                          "gotk_suspend_status",
-                          "controller_runtime_reconcile_total",
-                          "controller_runtime_reconcile_errors_total"
-                        ]
+                          "controller_runtime_reconcile"
+                        ],
+                        "histogram_buckets_as_distributions": true
                       }
                     ]
                   }
@@ -76,12 +74,10 @@ patches:
                         "openmetrics_endpoint": "http://%%host%%:8080/metrics",
                         "namespace": "flux",
                         "metrics": [
-                          "gotk_reconcile_condition",
                           "gotk_reconcile_duration_seconds.*",
-                          "gotk_suspend_status",
-                          "controller_runtime_reconcile_total",
-                          "controller_runtime_reconcile_errors_total"
-                        ]
+                          "controller_runtime_reconcile"
+                        ],
+                        "histogram_buckets_as_distributions": true
                       }
                     ]
                   }
@@ -107,12 +103,10 @@ patches:
                         "openmetrics_endpoint": "http://%%host%%:8080/metrics",
                         "namespace": "flux",
                         "metrics": [
-                          "gotk_reconcile_condition",
                           "gotk_reconcile_duration_seconds.*",
-                          "gotk_suspend_status",
-                          "controller_runtime_reconcile_total",
-                          "controller_runtime_reconcile_errors_total"
-                        ]
+                          "controller_runtime_reconcile"
+                        ],
+                        "histogram_buckets_as_distributions": true
                       }
                     ]
                   }
@@ -140,31 +134,31 @@ In the Datadog UI, create a new dashboard with widgets using these queries:
 **Reconciliation Failures:**
 
 ```text
-sum:flux.gotk_reconcile_condition{type:ready,status:false}
+sum:flux.controller_runtime_reconcile.count{result:error}.as_rate() by {controller}
 ```
 
-**Ready Reconciliations:**
+**Successful Reconciliations:**
 
 ```text
-sum:flux.gotk_reconcile_condition{type:ready,status:true}
+sum:flux.controller_runtime_reconcile.count{result:success}.as_rate() by {controller}
 ```
 
 **P95 Reconciliation Duration:**
 
 ```text
-p95:flux.gotk_reconcile_duration_seconds.quantile{*} by {kind,name}
+p95:flux.gotk_reconcile_duration_seconds{*} by {kind,name,namespace}
 ```
 
 **Reconciliation Error Rate:**
 
 ```text
-sum:flux.controller_runtime_reconcile_errors_total{*}.as_rate() by {controller}
+sum:flux.controller_runtime_reconcile.count{result:error}.as_rate() by {controller}
 ```
 
-**Suspended Resources:**
+**Requeued Reconciliations:**
 
 ```text
-sum:flux.gotk_suspend_status{*} by {kind}
+sum:flux.controller_runtime_reconcile.count{result:requeue} by {controller}
 ```
 
 ## Step 4: Set Up Datadog Monitors
@@ -179,7 +173,7 @@ curl -X POST "https://api.datadoghq.com/api/v1/monitor" \
   -d '{
     "name": "Flux Reconciliation Failure",
     "type": "metric alert",
-    "query": "sum(last_10m):sum:flux.gotk_reconcile_condition{type:ready,status:false} > 0",
+    "query": "sum(last_10m):sum:flux.controller_runtime_reconcile.count{result:error}.as_rate() > 0",
     "message": "Flux CD has failing reconciliations. Check the Flux dashboard for details. @slack-flux-alerts",
     "tags": ["service:flux-cd", "team:platform"],
     "priority": 2
@@ -188,26 +182,34 @@ curl -X POST "https://api.datadoghq.com/api/v1/monitor" \
 
 Additional monitors to configure:
 
-- **High reconciliation error rate**: Alert when `sum:flux.controller_runtime_reconcile_errors_total{*}.as_rate()` is above 0.1 for 5 minutes.
-- **Reconciliation duration spike**: Alert when `avg:flux.gotk_reconcile_duration_seconds.quantile{quantile:0.95}` is above 120 seconds for 15 minutes.
+- **High reconciliation error rate**: Alert when `sum:flux.controller_runtime_reconcile.count{result:error}.as_rate()` is above 0.1 for 5 minutes.
+- **Reconciliation duration spike**: Alert when `p95:flux.gotk_reconcile_duration_seconds{*}` is above 120 seconds for 15 minutes.
 
 ## Step 5: Forward Flux Events to Datadog
 
 In addition to metrics, send Flux events to Datadog for correlation:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: v1
+kind: Secret
+metadata:
+  name: datadog-api-key
+  namespace: flux-system
+stringData:
+  token: <Datadog API Key>
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: datadog-provider
   namespace: flux-system
 spec:
-  type: generic
-  address: https://http-intake.logs.datadoghq.com/v1/input
+  type: datadog
+  address: https://api.datadoghq.com
   secretRef:
     name: datadog-api-key
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: datadog-events
@@ -227,4 +229,4 @@ spec:
 
 ## Summary
 
-Integrating Flux CD with Datadog involves annotating Flux controller pods with Datadog OpenMetrics scraping configuration, creating dashboards to visualize reconciliation health and duration, and setting up monitors to alert on failures. Key metrics to track include `gotk_reconcile_condition`, `gotk_reconcile_duration_seconds`, and `controller_runtime_reconcile_errors_total`. Forward Flux events to Datadog Logs for correlation between deployment events and metric changes.
+Integrating Flux CD with Datadog involves annotating Flux controller pods with Datadog OpenMetrics scraping configuration, creating dashboards to visualize reconciliation health and duration, and setting up monitors to alert on failures. Key metrics to track include `gotk_reconcile_duration_seconds` and `controller_runtime_reconcile_total`, which Datadog submits as `flux.gotk_reconcile_duration_seconds` and `flux.controller_runtime_reconcile.count`. Forward Flux events to Datadog for correlation between deployment events and metric changes.

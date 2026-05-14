@@ -8,7 +8,7 @@ Description: Learn how to use the modular libvirt daemon architecture on RHEL 9,
 
 ---
 
-RHEL 9 introduces a modular daemon architecture for libvirt, replacing the monolithic `libvirtd` with specialized daemons for each virtualization driver. The primary daemon for KVM/QEMU is `virtqemud`. This modular approach provides better security isolation and allows running only the components you need.
+RHEL 9 introduces a modular daemon architecture for libvirt, using specialized daemons for each virtualization driver instead of the monolithic `libvirtd` on fresh installations. The primary daemon for KVM/QEMU is `virtqemud`. This modular approach provides better security isolation and allows running only the components you need.
 
 ## Monolithic vs Modular Architecture
 
@@ -49,26 +49,31 @@ systemctl list-units 'virt*' --type=service
 Check if monolithic or modular:
 
 ```bash
-systemctl is-active libvirtd
-systemctl is-active virtqemud
+systemctl is-active libvirtd.socket
+systemctl is-active libvirtd.service
+systemctl is-active virtqemud.socket
+systemctl is-active virtqemud.service
 ```
 
 ## Switching from Monolithic to Modular
 
-If your system is still using libvirtd:
+If your system is still using libvirtd, shut down or live migrate your VMs first:
 
 ```bash
 # Stop and disable the monolithic daemon
 
-sudo systemctl stop libvirtd
-sudo systemctl disable libvirtd
-sudo systemctl stop libvirtd.socket
-sudo systemctl disable libvirtd.socket
+sudo systemctl stop libvirtd.service
+sudo systemctl stop libvirtd{,-ro,-admin,-tcp,-tls}.socket
+sudo systemctl disable libvirtd.service
+sudo systemctl disable libvirtd{,-ro,-admin,-tcp,-tls}.socket
 
 # Enable modular daemons
-for drv in qemu network storage nodedev secret nwfilter interface proxy; do
-    sudo systemctl enable --now virt${drv}d.socket
-    sudo systemctl enable --now virt${drv}d-ro.socket
+for drv in qemu interface network nodedev nwfilter secret storage; do
+    sudo systemctl unmask virt${drv}d.service
+    sudo systemctl unmask virt${drv}d{,-ro,-admin}.socket
+    sudo systemctl enable virt${drv}d.service
+    sudo systemctl enable virt${drv}d{,-ro,-admin}.socket
+    sudo systemctl start virt${drv}d{,-ro,-admin}.socket
 done
 ```
 
@@ -107,7 +112,7 @@ sudo systemctl restart virtnetworkd
 sudo systemctl status virtqemud
 ```
 
-One key advantage: restarting `virtqemud` does not affect running VMs because QEMU processes are independent.
+One key advantage: restarting `virtqemud` does not interrupt running VMs because QEMU processes are independent, although it is still best to avoid restarting it with running guests whenever practical.
 
 ## Socket Activation
 
@@ -124,7 +129,11 @@ The daemon starts on demand when a connection arrives, saving resources on idle 
 For remote management, `virtproxyd` handles incoming connections and routes them to the appropriate modular daemon:
 
 ```bash
-sudo systemctl enable --now virtproxyd.socket
+sudo systemctl unmask virtproxyd.service
+sudo systemctl unmask virtproxyd{,-ro,-admin}.socket
+sudo systemctl enable virtproxyd.service
+sudo systemctl enable virtproxyd{,-ro,-admin}.socket
+sudo systemctl start virtproxyd{,-ro,-admin}.socket
 ```
 
 Connect remotely:
@@ -146,10 +155,16 @@ journalctl -u virtqemud -f
 If needed:
 
 ```bash
-for drv in qemu network storage nodedev secret nwfilter interface proxy; do
-    sudo systemctl stop virt${drv}d.socket
-    sudo systemctl disable virt${drv}d.socket
+for drv in qemu interface network nodedev nwfilter secret storage; do
+    sudo systemctl stop virt${drv}d.service
+    sudo systemctl stop virt${drv}d{,-ro,-admin}.socket
+    sudo systemctl disable virt${drv}d.service
+    sudo systemctl disable virt${drv}d{,-ro,-admin}.socket
 done
+sudo systemctl stop virtproxyd.service
+sudo systemctl stop virtproxyd{,-ro,-admin}.socket
+sudo systemctl disable virtproxyd.service
+sudo systemctl disable virtproxyd{,-ro,-admin}.socket
 
 sudo systemctl enable --now libvirtd.socket
 ```

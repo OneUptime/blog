@@ -35,7 +35,7 @@ sudo mkdir -p /etc/alertmanager /var/lib/alertmanager
 sudo chown alertmanager:alertmanager /etc/alertmanager /var/lib/alertmanager
 
 # Download Alertmanager
-AM_VERSION="0.27.0"
+AM_VERSION="0.32.1"
 cd /tmp
 curl -LO "https://github.com/prometheus/alertmanager/releases/download/v${AM_VERSION}/alertmanager-${AM_VERSION}.linux-amd64.tar.gz"
 tar xf "alertmanager-${AM_VERSION}.linux-amd64.tar.gz"
@@ -91,31 +91,31 @@ route:
 
   # Child routes for specific alert routing
   routes:
-    # Critical alerts go to PagerDuty and Slack
-    - match:
-        severity: critical
+    # Critical alerts go to Slack and email
+    - matchers:
+        - severity="critical"
       receiver: "critical-alerts"
       group_wait: 10s
       repeat_interval: 1h
 
     # Warning alerts go to Slack
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: "slack-warnings"
       repeat_interval: 4h
 
     # Info alerts go to email only
-    - match:
-        severity: info
+    - matchers:
+        - severity="info"
       receiver: "email-team"
       repeat_interval: 12h
 
 # Inhibition rules - suppress less severe alerts when critical is firing
 inhibit_rules:
-  - source_match:
-      severity: "critical"
-    target_match:
-      severity: "warning"
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
     equal: ["alertname", "instance"]
 
 # Receiver definitions
@@ -225,7 +225,7 @@ alerting:
 
 # Add rule files
 rule_files:
-  - "alert_rules.yml"
+  - "/etc/prometheus/alert_rules.yml"
 ```
 
 ## Step 5: Create Prometheus Alert Rules

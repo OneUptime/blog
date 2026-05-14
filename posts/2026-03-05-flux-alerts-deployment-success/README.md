@@ -18,7 +18,7 @@ Knowing when deployments succeed is just as important as knowing when they fail.
 
 ## Understanding Success Events in Flux
 
-Flux generates informational events when reconciliations succeed. These events have an `info` severity level and contain messages about successful operations. To capture success notifications, you need to set `eventSeverity` to `info` and optionally use exclusion rules to filter out non-success events.
+Flux generates informational events when reconciliations succeed. These events have an `info` severity level and contain messages about successful operations. To capture success notifications, you need to set `eventSeverity` to `info` and optionally use inclusion and exclusion rules to filter the event messages.
 
 ## Step 1: Create a Basic Success Alert
 
@@ -27,7 +27,7 @@ The simplest approach is to create an info-level alert that captures all events,
 ```yaml
 # Alert that captures all events including success notifications
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-success-alert
@@ -48,11 +48,11 @@ spec:
 
 ## Step 2: Filter for Success-Only Notifications
 
-To receive only success events and suppress noise from routine non-change reconciliations, add exclusion rules.
+To receive only success events and suppress noise from routine non-change reconciliations, add inclusion and exclusion rules.
 
 ```yaml
 # Alert focused on meaningful success events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: success-only-alert
@@ -68,7 +68,11 @@ spec:
     - kind: HelmRelease
       name: "*"
       namespace: flux-system
-  # Exclude non-success events to focus on actual deployments
+  # Include success message patterns, then exclude noisy matches
+  inclusionList:
+    - ".*succeeded.*"
+    - "^Applied revision:.*"
+    - "^Reconciliation finished.*"
   exclusionList:
     # Exclude no-change reconciliations
     - "^Reconciliation finished.*no changes$"
@@ -92,11 +96,11 @@ kubectl apply -f success-alert.yaml
 
 ## Step 3: Track Deployment Success Across Environments
 
-Create separate success alerts for different environments.
+Create separate success alerts for different environments. This requires cross-namespace references to be enabled on the notification controller, which is the default.
 
 ```yaml
 # Success alert for staging deployments
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: staging-success-alert
@@ -112,13 +116,17 @@ spec:
     - kind: HelmRelease
       name: "*"
       namespace: staging
+  inclusionList:
+    - ".*succeeded.*"
+    - "^Applied revision:.*"
+    - "^Reconciliation finished.*"
   exclusionList:
     - "^Reconciliation finished.*no changes$"
     - ".*is not ready$"
     - ".*waiting for.*"
 ---
 # Success alert for production deployments
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: production-success-alert
@@ -134,6 +142,10 @@ spec:
     - kind: HelmRelease
       name: "*"
       namespace: production
+  inclusionList:
+    - ".*succeeded.*"
+    - "^Applied revision:.*"
+    - "^Reconciliation finished.*"
   exclusionList:
     - "^Reconciliation finished.*no changes$"
     - ".*is not ready$"
@@ -146,7 +158,7 @@ Track the full deployment pipeline from source update through successful deploym
 
 ```yaml
 # Alert covering source updates and deployment success
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: pipeline-success-alert
@@ -167,6 +179,10 @@ spec:
     - kind: HelmRelease
       name: "*"
       namespace: flux-system
+  inclusionList:
+    - ".*succeeded.*"
+    - "^Applied revision:.*"
+    - "^Reconciliation finished.*"
   exclusionList:
     # Only exclude truly noisy events
     - "^stored artifact.*same revision$"
@@ -181,7 +197,7 @@ For critical applications, create a dedicated success alert that tracks a specif
 
 ```yaml
 # Success alert for a specific critical application
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: critical-app-success
@@ -197,6 +213,8 @@ spec:
     - kind: HelmRelease
       name: auth-service
       namespace: production
+  inclusionList:
+    - ".*succeeded.*"
   exclusionList:
     - "^Reconciliation finished.*no changes$"
     - ".*is not ready$"

@@ -8,49 +8,60 @@ Description: Step-by-step guide on set up tftp server for network boot using Red
 
 ---
 
-Setting up TFTP Server for Network Boot on RHEL requires proper planning and configuration. This guide walks through each step from initial installation to verification.
+Setting up a TFTP server for network boot on RHEL requires proper planning and configuration. This guide walks through each step from initial installation to verification.
 
 ## Prerequisites
 
 - RHEL with a valid subscription or CentOS Stream 9
 - Root or sudo access
 - A terminal session
+- Boot files prepared for your client firmware, and a DHCP server configured to point clients to those files
 
-## Step 2: Configure the Service
+## Step 2: Install and Prepare the TFTP Service
 
-Edit the configuration file to match your environment:
+Install the TFTP server package:
 
 ```bash
-# Open the configuration file
-
-sudo vi /etc/<service>/config.conf
+# Install the TFTP server package
+sudo dnf install tftp-server
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Create the TFTP root directory and copy your network boot files into it. On RHEL 9, the default TFTP root is `/var/lib/tftpboot`.
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Create the TFTP root directory
+sudo mkdir -p /var/lib/tftpboot
+
+# Example for BIOS PXE boot files
+sudo mkdir -p /var/lib/tftpboot/pxelinux/pxelinux.cfg
+```
+
+Adjust the files according to your requirements. Common items to configure include boot loader files, kernel and initramfs paths, and PXE or GRUB menu entries.
+
+```bash
+# Restore the default SELinux context after copying files
+sudo restorecon -Rv /var/lib/tftpboot
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable tftp.socket
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start tftp.socket
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status tftp.socket
 ```
 
 ## Step 4: Configure the Firewall
 
 ```bash
-# Open the required port
-sudo firewall-cmd --permanent --add-port=<PORT>/tcp
+# Open the TFTP service in the firewall
+sudo firewall-cmd --add-service=tftp
+sudo firewall-cmd --permanent --add-service=tftp
 sudo firewall-cmd --reload
 
 # Verify the rule
@@ -64,19 +75,22 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status tftp.socket
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+sudo journalctl -u tftp.socket --no-pager -n 20
+
+# From another host with a TFTP client installed, try downloading a known file
+tftp <server-ip> -c get pxelinux/pxelinux.0
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- SELinux may block access. Check for denials with `ausearch -m avc -ts recent` and apply appropriate policies.
-- Verify firewall rules allow traffic on the required ports: `firewall-cmd --list-all`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
-- Test network connectivity with `ss -tlnp` to verify listening ports and `curl` to test endpoints.
+- If the service fails to start, check the logs with `journalctl -u tftp.socket -e --no-pager`.
+- SELinux may block access if files have the wrong context. Check for denials with `ausearch -m avc -ts recent` and restore contexts with `restorecon -Rv /var/lib/tftpboot`.
+- Verify firewall rules allow TFTP traffic: `firewall-cmd --list-services`.
+- Ensure the TFTP server package is installed: `rpm -q tftp-server`.
+- Test network connectivity with `ss -lunp` to verify UDP listeners and `tftp <server-ip> -c get <file>` to test file downloads.
 
 ## Conclusion
 

@@ -78,6 +78,9 @@ npm install -g configurable-http-proxy
 # Install JupyterLab as the default notebook interface
 pip install jupyterlab notebook
 
+# Install the idle culler used later in the JupyterHub configuration
+pip install jupyterhub-idle-culler
+
 # Install common data science packages for all users
 pip install numpy pandas matplotlib scikit-learn seaborn
 ```
@@ -111,25 +114,26 @@ c.Spawner.default_url = '/lab'
 # Set the data directory for JupyterHub runtime files
 c.JupyterHub.data_files_path = '/opt/jupyterhub/share/jupyterhub'
 
-# Cookie secret and proxy auth token files
+# Cookie secret file
 c.JupyterHub.cookie_secret_file = '/etc/jupyterhub/jupyterhub_cookie_secret'
-c.ConfigurableHTTPProxy.auth_token = '/etc/jupyterhub/proxy_auth_token'
 
 # Use PAM authentication (system users)
 c.JupyterHub.authenticator_class = 'jupyterhub.auth.PAMAuthenticator'
 
-# Define admin users who can manage the hub
-c.Authenticator.admin_users = {'admin', 'datascientist'}
+# Define an existing user who can manage the hub
+c.Authenticator.admin_users = {'user1'}
 
-# Allow users to create their own accounts (disable in production)
+# Allow only these system users to log in
 c.Authenticator.allowed_users = {'user1', 'user2', 'user3'}
 
 # Spawner settings - use the local process spawner
 c.JupyterHub.spawner_class = 'jupyterhub.spawner.LocalProcessSpawner'
 
-# Set resource limits per user
-c.Spawner.cpu_limit = 2              # Max 2 CPU cores per user
-c.Spawner.mem_limit = '4G'           # Max 4 GB RAM per user
+# Document desired resource limits per user
+# LocalProcessSpawner does not enforce these limits; use a spawner with
+# cgroup/container support, such as SystemdSpawner, DockerSpawner, or KubeSpawner.
+c.Spawner.cpu_limit = 2
+c.Spawner.mem_limit = '4G'
 
 # Set the notebook directory for each user
 c.Spawner.notebook_dir = '~/notebooks'
@@ -148,6 +152,17 @@ c.JupyterHub.services = [
             '--timeout=3600',         # Cull after 1 hour of inactivity
             '--max-age=0',            # No max age limit
             '--cull-every=300',       # Check every 5 minutes
+        ],
+    }
+]
+c.JupyterHub.load_roles = [
+    {
+        'name': 'idle-culler-role',
+        'services': ['idle-culler'],
+        'scopes': [
+            'list:users',
+            'read:users:activity',
+            'admin:servers',
         ],
     }
 ]
@@ -195,6 +210,7 @@ RestartSec=10
 
 # Environment variables
 Environment="PATH=/opt/jupyterhub/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="CONFIGPROXY_AUTH_TOKEN=replace-with-a-long-random-token"
 
 [Install]
 WantedBy=multi-user.target
@@ -222,13 +238,33 @@ sudo firewall-cmd --reload
 For production, put JupyterHub behind Nginx with SSL.
 
 ```bash
-# Install Nginx and certbot
-sudo dnf install -y nginx certbot python3-certbot-nginx
+# Install Nginx
+sudo dnf install -y nginx
+
+# Install Certbot from the official snap package
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+sudo dnf install -y snapd
+sudo systemctl enable --now snapd.socket
+sudo ln -s /var/lib/snapd/snap /snap
+sudo snap install --classic certbot
+sudo ln -s /snap/bin/certbot /usr/local/bin/certbot
+
+# Allow HTTP and HTTPS traffic through the firewall
+sudo firewall-cmd --permanent --add-port={80/tcp,443/tcp}
+sudo firewall-cmd --reload
+
+# Obtain an SSL certificate before enabling the HTTPS server block below
+sudo certbot certonly --standalone -d jupyter.example.com
 ```
 
 ```nginx
 # /etc/nginx/conf.d/jupyterhub.conf
 # Nginx reverse proxy configuration for JupyterHub
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
 
 upstream jupyterhub {
     server 127.0.0.1:8000;
@@ -255,35 +291,39 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    # WebSocket support is required for Jupyter notebooks
-    location ~* /(api/kernels/[^/]+/(channels|iopub|shell|stdin)|terminals/websocket)/? {
-        proxy_pass http://jupyterhub;
-        proxy_set_header Host $host;
+        proxy_set_header X-Scheme $scheme;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection $connection_upgrade;
+        proxy_buffering off;
     }
 }
+```
+
+```bash
+# Allow Nginx to proxy traffic to JupyterHub on SELinux-enabled systems
+sudo dnf install -y policycoreutils-python-utils
+sudo semanage port -a -t http_port_t -p tcp 8000
+sudo setsebool -P httpd_can_network_relay 1
+sudo setsebool -P httpd_can_network_connect 1
 ```
 
 ```bash
 # Enable and start Nginx
 sudo systemctl enable --now nginx
 
-# Obtain an SSL certificate
-sudo certbot --nginx -d jupyter.example.com
+# Test automatic certificate renewal
+sudo certbot renew --dry-run
 ```
 
-## Step 9: Install the Idle Culler
+## Step 9: Verify the Idle Culler
 
 The idle culler shuts down notebook servers that are not in use, saving resources.
 
 ```bash
-# Install the idle culler package
+# Verify the idle culler package installed earlier
 source /opt/jupyterhub/venv/bin/activate
-pip install jupyterhub-idle-culler
+python -m jupyterhub_idle_culler --help
 ```
 
 ## Troubleshooting
@@ -301,4 +341,4 @@ which configurable-http-proxy
 
 ## Conclusion
 
-You now have JupyterHub running on RHEL, providing each user with their own isolated Jupyter notebook environment. The setup includes PAM authentication, resource limits per user, idle server culling, and an Nginx reverse proxy with SSL. For larger deployments, consider using the Docker or Kubernetes spawner to provide better isolation and scalability.
+You now have JupyterHub running on RHEL, providing each user with their own Jupyter notebook environment. The setup includes PAM authentication, idle server culling, and an Nginx reverse proxy with SSL. For larger deployments, consider using SystemdSpawner, DockerSpawner, or KubeSpawner to provide enforceable resource limits, better isolation, and scalability.

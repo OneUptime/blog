@@ -8,7 +8,7 @@ Description: Use Terraform workspaces to manage multiple environments like dev, 
 
 ---
 
-Running separate copies of your Terraform configuration for each environment leads to drift and duplication. Workspaces let you use one configuration to manage multiple environments, each with its own state file.
+Running separate copies of your Terraform configuration for each environment can lead to drift and duplication. Workspaces let you use one configuration to manage multiple environments, each with its own state file.
 
 ## How Workspaces Work
 
@@ -103,6 +103,26 @@ locals {
   }
 }
 
+data "aws_ami" "rhel9" {
+  most_recent = true
+  owners      = ["309956199498"] # Red Hat
+
+  filter {
+    name   = "name"
+    values = ["RHEL-9*"]
+  }
+
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
 resource "aws_instance" "rhel_servers" {
   count         = local.instance_count
   ami           = data.aws_ami.rhel9.id
@@ -130,7 +150,7 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "rhel9/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-lock"
+    use_lockfile   = true
 
     # Workspaces store state in:
     # s3://my-terraform-state/env:/dev/rhel9/terraform.tfstate
@@ -177,17 +197,18 @@ terraform workspace select "$ENV" 2>/dev/null || terraform workspace new "$ENV"
 
 # Plan and apply
 echo "Deploying to $ENV..."
-terraform plan -out="tfplan-${ENV}"
 
 if [ "$ENV" = "prod" ]; then
   echo "Production deployment requires confirmation."
-  terraform apply "tfplan-${ENV}"
+  terraform plan
+  terraform apply
 else
-  terraform apply -auto-approve "tfplan-${ENV}"
+  terraform plan -out="tfplan-${ENV}"
+  terraform apply "tfplan-${ENV}"
 fi
 
 echo "Deployment to $ENV complete."
 terraform output
 ```
 
-Workspaces provide a clean way to manage multiple environments from a single Terraform codebase on RHEL. Each workspace gets its own isolated state, so dev changes never accidentally affect production.
+Workspaces provide a clean way to manage simple, similar environments from a single Terraform codebase on RHEL. Each workspace gets its own state, so Terraform operations in dev do not modify production state unless you select the production workspace. For deployments that need separate credentials or strict access controls, use separate configurations and backends instead.

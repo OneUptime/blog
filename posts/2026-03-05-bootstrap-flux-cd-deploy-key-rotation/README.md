@@ -12,16 +12,18 @@ When Flux CD is bootstrapped with a Git repository over SSH, it creates a deploy
 
 ## How Flux CD Deploy Keys Work
 
-When you bootstrap Flux CD using SSH, the bootstrap process generates an Ed25519 SSH key pair. The private key is stored as a Kubernetes Secret in the `flux-system` namespace. The public key is registered as a deploy key on the Git repository.
+When you bootstrap Flux CD using SSH, the bootstrap process generates an SSH key pair. Flux defaults to ECDSA P-384, or you can choose another algorithm such as Ed25519 with `--ssh-key-algorithm=ed25519`. The private key is stored as a Kubernetes Secret in the `flux-system` namespace. The public key is registered as a deploy key on the Git repository.
 
 ```bash
-# Bootstrap Flux with SSH (default behavior for GitHub)
+# Bootstrap Flux with SSH and an Ed25519 deploy key
 
 flux bootstrap github \
   --owner=your-org \
   --repository=fleet-infra \
   --branch=main \
   --path=clusters/my-cluster \
+  --token-auth=false \
+  --ssh-key-algorithm=ed25519 \
   --personal
 ```
 
@@ -47,24 +49,29 @@ Deploy key rotation is a security best practice for several reasons:
 
 ## Method 1: Manual Key Rotation Using the Flux CLI
 
-The simplest way to rotate a deploy key is to re-run the bootstrap command. Flux generates a new key pair and replaces the old one.
+The simplest way to rotate a deploy key is to delete the existing `flux-system` Secret and re-run the bootstrap command. Flux generates a new key pair and, for GitHub, registers the new public key as a deploy key.
 
 ```bash
+# Delete the existing deploy key secret
+kubectl -n flux-system delete secret flux-system
+
 # Re-bootstrap to generate a new deploy key
 flux bootstrap github \
   --owner=your-org \
   --repository=fleet-infra \
   --branch=main \
   --path=clusters/my-cluster \
+  --token-auth=false \
+  --ssh-key-algorithm=ed25519 \
   --personal
 ```
 
-The bootstrap command is idempotent. When re-run, it:
+The bootstrap command is idempotent, but Flux does not overwrite the existing `flux-system` Secret. After deleting the Secret and re-running bootstrap, it:
 
 1. Generates a new SSH key pair
-2. Updates the Kubernetes Secret with the new private key
+2. Creates the Kubernetes Secret with the new private key
 3. Registers the new public key as a deploy key on the Git repository
-4. Removes the old deploy key from the Git repository
+4. Leaves you to remove the old deploy key from the Git repository if it is still present
 
 After re-bootstrapping, verify that the new key is working:
 
@@ -167,6 +174,10 @@ rules:
     resources: ["secrets"]
     resourceNames: ["flux-system"]
     verbs: ["get", "update", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["source-controller"]
+    verbs: ["get", "patch", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -186,7 +197,7 @@ roleRef:
 Create a Secret containing the GitHub token for deploy key management:
 
 ```bash
-# Create a secret with the GitHub token (requires admin:repo_hook and repo permissions)
+# Create a secret with the GitHub token (requires repository administration permission)
 kubectl create secret generic github-token \
   --namespace=flux-system \
   --from-literal=token=ghp_your_github_token
@@ -211,7 +222,7 @@ spec:
           serviceAccountName: flux-key-rotator
           containers:
             - name: key-rotator
-              image: bitnami/kubectl:latest
+              image: your-registry/flux-key-rotator:latest # include kubectl, bash, ssh-keygen, ssh-keyscan, curl, and jq
               command:
                 - /bin/bash
                 - -c
@@ -221,6 +232,17 @@ spec:
                   # Generate new SSH key pair
                   ssh-keygen -t ed25519 -C "flux-deploy-key-$(date +%Y%m%d)" \
                     -f /tmp/flux-key -N ""
+
+                  # Register the new public key with GitHub before updating the cluster secret
+                  curl -fsSL -X POST \
+                    -H "Accept: application/vnd.github+json" \
+                    -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                    -H "X-GitHub-Api-Version: 2022-11-28" \
+                    "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPOSITORY}/keys" \
+                    -d "$(jq -n \
+                      --arg title "flux-system-$(date +%Y%m%d)" \
+                      --arg key "$(cat /tmp/flux-key.pub)" \
+                      '{title: $title, key: $key, read_only: true}')"
 
                   # Update the Kubernetes secret with the new key
                   kubectl create secret generic flux-system \
@@ -234,7 +256,7 @@ spec:
                   kubectl rollout restart deployment/source-controller -n flux-system
                   kubectl rollout status deployment/source-controller -n flux-system --timeout=60s
 
-                  echo "Key rotation complete. Remember to update the deploy key on GitHub."
+                  echo "Key rotation complete. Verify reconciliation, then remove the old deploy key from GitHub."
 
                   # Clean up temporary files
                   rm -f /tmp/flux-key /tmp/flux-key.pub
@@ -244,10 +266,14 @@ spec:
                     secretKeyRef:
                       name: github-token
                       key: token
+                - name: GITHUB_OWNER
+                  value: your-org
+                - name: GITHUB_REPOSITORY
+                  value: fleet-infra
           restartPolicy: OnFailure
 ```
 
-Note: This CronJob handles the Kubernetes side of the rotation. To fully automate the process including updating the deploy key on the Git provider, you would need to add API calls to your Git provider within the script, or use a tool like External Secrets Operator with a secrets manager.
+Note: This CronJob registers the new key on GitHub before updating the Kubernetes Secret. To complete the rotation, verify reconciliation and remove the old deploy key from GitHub after the new key is working.
 
 ## Monitoring Key Rotation
 
@@ -301,10 +327,11 @@ flux bootstrap github \
   --repository=fleet-infra \
   --branch=main \
   --path=clusters/my-cluster \
+  --token-auth=false \
   --read-write-key=false \
   --personal
 ```
 
 ## Summary
 
-Deploy key rotation is a critical security practice for Flux CD deployments. The simplest approach is to re-run `flux bootstrap`, which handles key generation and registration automatically. For manual control, generate new keys with `ssh-keygen`, update the Kubernetes Secret, and register the new public key with your Git provider. For automated rotation, use a Kubernetes CronJob that handles the Kubernetes side and integrate with your Git provider's API to complete the process. Regardless of the method, always verify that reconciliation works with the new key before removing the old one.
+Deploy key rotation is a critical security practice for Flux CD deployments. The simplest approach is to delete the `flux-system` Secret and re-run `flux bootstrap`, which handles key generation and registration automatically. For manual control, generate new keys with `ssh-keygen`, update the Kubernetes Secret, and register the new public key with your Git provider. For automated rotation, use a Kubernetes CronJob that handles the Kubernetes side and integrate with your Git provider's API to complete the process. Regardless of the method, always verify that reconciliation works with the new key before removing the old one.

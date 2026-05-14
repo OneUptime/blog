@@ -68,24 +68,40 @@ Here's what this looks like in practice with OpenTelemetry:
 ```yaml
 # OpenTelemetry Collector config for trace-based topology
 
-processors:
-  spanmetrics:
-    metrics_exporter: prometheus
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
+connectors:
+  # Service graph connector builds dependency maps from traces
+  service_graph:
     dimensions:
-      - name: service.name
-      - name: peer.service
-  
-  # Service graph processor builds dependency maps from traces
-  servicegraph:
-    metrics_exporter: prometheus
+      - db.system
+      - messaging.system
     store:
       ttl: 2s
       max_items: 1000
     cache_loop: 2m
     store_expiration_loop: 10s
+
+exporters:
+  prometheus/servicegraph:
+    endpoint: 0.0.0.0:9090
+    namespace: servicegraph
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [service_graph]
+    metrics/servicegraph:
+      receivers: [service_graph]
+      exporters: [prometheus/servicegraph]
 ```
 
-The service graph processor in the OpenTelemetry Collector builds a live dependency map from your traces. When alert correlation uses this topology, it can determine that your 33 alerts all trace back to the database layer-without any manual configuration of service dependencies.
+The service graph connector in the OpenTelemetry Collector builds a live dependency map from your traces. When alert correlation uses this topology, it can determine that your 33 alerts all trace back to the database layer-without any manual configuration of service dependencies.
 
 ### 2. Anomaly Detection Over Static Thresholds
 
@@ -206,7 +222,7 @@ Instrument your services with OpenTelemetry SDKs. The traces, metrics, and logs 
 
 ### Step 2: Build a Service Dependency Graph
 
-Use the OpenTelemetry service graph processor (shown earlier) to automatically build and maintain a live topology of your services. This graph is the foundation for:
+Use the OpenTelemetry service graph connector (shown earlier) to automatically build and maintain a live topology of your services. This graph is the foundation for:
 
 - Alert correlation (symptoms vs. root cause)
 - Blast radius estimation

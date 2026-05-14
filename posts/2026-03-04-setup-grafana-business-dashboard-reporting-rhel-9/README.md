@@ -12,7 +12,7 @@ Grafana is widely known for infrastructure monitoring, but it is also a powerful
 
 ## Prerequisites
 
-- RHEL with at least 2 GB RAM
+- RHEL with at least 2 GB RAM for Grafana, plus separate renderer capacity if you plan to generate reports
 - PostgreSQL or MySQL as a data source
 - Root or sudo access
 
@@ -20,6 +20,9 @@ Grafana is widely known for infrastructure monitoring, but it is also a powerful
 
 ```bash
 # Add the official Grafana repository
+
+wget -q -O gpg.key https://rpm.grafana.com/gpg.key
+sudo rpm --import gpg.key
 
 sudo tee /etc/yum.repos.d/grafana.repo <<EOF
 [grafana]
@@ -33,7 +36,7 @@ sslverify=1
 sslcacert=/etc/pki/tls/certs/ca-bundle.crt
 EOF
 
-# Install Grafana Enterprise (includes reporting features)
+# Install Grafana Enterprise (reporting requires a Grafana Enterprise license or Grafana Cloud)
 sudo dnf install -y grafana-enterprise
 
 # Start and enable Grafana
@@ -76,9 +79,9 @@ allow_org_create = false
 auto_assign_org = true
 auto_assign_org_role = Viewer
 
-[auth]
+[auth.anonymous]
 # Disable anonymous access
-disable_login_form = false
+enabled = false
 
 [smtp]
 # Configure email for scheduled reports and alerts
@@ -92,6 +95,12 @@ from_name = Grafana Reports
 [reporting]
 # Enable scheduled PDF report delivery (Enterprise feature)
 enabled = true
+
+[rendering]
+# Required for dashboard images and PDF reports
+server_url = http://localhost:8081/render
+callback_url = http://localhost:3000/
+renderer_token = change-this-renderer-token
 ```
 
 ```bash
@@ -111,7 +120,7 @@ Log in to Grafana at `http://your-server:3000` and add data sources.
 
 ### PostgreSQL Data Source
 
-Navigate to Configuration > Data Sources > Add Data Source > PostgreSQL.
+Navigate to Connections > Add new connection > PostgreSQL, then click Add new data source.
 
 ```bash
 Host: db-server.example.com:5432
@@ -122,6 +131,8 @@ TLS/SSL Mode: require
 ```
 
 ### MySQL Data Source
+
+Navigate to Connections > Add new connection > MySQL, then click Add new data source.
 
 ```bash
 Host: mysql-server.example.com:3306
@@ -193,7 +204,7 @@ Type: Query
 Query: SELECT DISTINCT category FROM products ORDER BY category;
 ```
 
-Then use these in your panel queries with `WHERE region = '$region'`.
+Then use these in your panel queries with `WHERE region IN (${region:sqlstring})`.
 
 ## Step 6: Set Up Scheduled Reports
 
@@ -208,31 +219,38 @@ graph LR
 For Grafana Enterprise, configure scheduled email reports:
 
 1. Open any dashboard
-2. Click the Share icon
-3. Select the "Report" tab
-4. Configure the schedule (daily, weekly, monthly)
-5. Add recipient email addresses
-6. Choose the time zone and format (PDF or CSV)
+2. Click the Share drop-down
+3. Click Schedule report
+4. Click Create a new report
+5. Configure the schedule (daily, weekly, monthly)
+6. Add recipient email addresses
+7. Choose the attachment format (PDF or CSV)
 
-For the open-source edition, use the Grafana Image Renderer and a cron job:
+For the open-source edition, use the Grafana Image Renderer service and a cron job to send rendered dashboard images:
 
 ```bash
-# Install the image renderer plugin
-sudo grafana-cli plugins install grafana-image-renderer
+# Start the image renderer service
+podman run -d --name grafana-image-renderer \
+    -p 8081:8081 \
+    -e AUTH_TOKEN=change-this-renderer-token \
+    docker.io/grafana/grafana-image-renderer:latest
+
 sudo systemctl restart grafana-server
 
 # Create a script to generate and email dashboard snapshots
+sudo mkdir -p /opt/grafana
 sudo tee /opt/grafana/send_report.sh <<'SCRIPT'
 #!/bin/bash
-# Generate a dashboard PDF and send it via email
+# Generate a dashboard image and send it via email
 
 GRAFANA_URL="http://localhost:3000"
-API_KEY="your-grafana-api-key"
+SERVICE_ACCOUNT_TOKEN="your-grafana-service-account-token"
 DASHBOARD_UID="your-dashboard-uid"
+DASHBOARD_SLUG="business-dashboard"
 
 # Render the dashboard as a PNG
-curl -H "Authorization: Bearer $API_KEY" \
-    "$GRAFANA_URL/render/d/$DASHBOARD_UID?orgId=1&width=1200&height=800" \
+curl -H "Authorization: Bearer $SERVICE_ACCOUNT_TOKEN" \
+    "$GRAFANA_URL/render/d/$DASHBOARD_UID/$DASHBOARD_SLUG?orgId=1&width=1200&height=800&kiosk" \
     -o /tmp/dashboard_report.png
 
 # Send via email using mailx
@@ -242,7 +260,7 @@ echo "Daily Business Report - $(date +%Y-%m-%d)" | \
     team@example.com
 SCRIPT
 
-chmod +x /opt/grafana/send_report.sh
+sudo chmod +x /opt/grafana/send_report.sh
 
 # Schedule the report to run every weekday at 8 AM
 echo "0 8 * * 1-5 root /opt/grafana/send_report.sh" | sudo tee /etc/cron.d/grafana-report
@@ -265,10 +283,10 @@ Configure alerts to notify when business metrics cross thresholds.
 In the Grafana UI:
 
 1. Open a panel with your revenue query
-2. Click the Alert tab
+2. Open the panel menu and select More > New alert rule
 3. Set conditions (e.g., "When avg() of query A is below 10000")
-4. Choose notification channels
-5. Set evaluation frequency
+4. Choose a contact point or notification policy
+5. Set the evaluation group and interval
 
 ## Conclusion
 

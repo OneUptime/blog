@@ -132,9 +132,9 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # Wait for cert-manager to be fully ready before creating issuers
+  # Wait for the controller layer to be ready before creating issuers
   dependsOn:
-    - name: cert-manager
+    - name: infrastructure-controllers
   # Health check ensures CRDs are available
   wait: true
   timeout: 5m
@@ -221,9 +221,9 @@ spec:
         podMonitorSelectorNilUsesHelmValues: false
     # Grafana configuration
     grafana:
-      adminPassword:
+      admin:
         existingSecret: grafana-admin
-        key: password
+        passwordKey: password
       persistence:
         enabled: true
         size: 10Gi
@@ -490,7 +490,7 @@ spec:
 #   version: "v1.15.x"
 
 # 2. Verify in staging
-flux get helmrelease cert-manager --context staging
+flux get helmreleases cert-manager --context staging
 kubectl get pods -n cert-manager --context staging
 
 # 3. Test that existing certificates still work

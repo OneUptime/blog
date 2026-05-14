@@ -8,17 +8,18 @@ Description: Learn how to use RHEL CodeReady Linux Builder Repository for Develo
 
 ---
 
-This guide covers how to Use RHEL CodeReady Linux Builder Repository for Development Headers. Following these steps will help you set up a reliable configuration on RHEL.
+This guide covers how to use the RHEL CodeReady Linux Builder repository for development headers. Following these steps will help you enable the repository and install development packages on RHEL 9.
 
 ## Prerequisites
 
-- RHEL with a minimal or standard installation
+- RHEL 9 with a minimal or standard installation
 - Root or sudo access
 - A stable network connection
+- A registered system with an active Red Hat subscription
 
 ## Overview
 
-Use RHEL CodeReady Linux Builder Repository for Development Headers requires careful planning and execution. This guide walks through the complete process from installation to verification.
+The CodeReady Linux Builder repository provides additional packages for developers, including many `-devel` packages. It is available with RHEL subscriptions, but packages in this repository are not supported by Red Hat for runtime deployments.
 
 ## Step 1: Prepare the System
 
@@ -31,86 +32,82 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf group install -y "Development Tools"
 ```
 
-## Step 2: Install Required Packages
+## Step 2: Enable the CodeReady Linux Builder Repository
 
 ```bash
-sudo dnf install -y <package-name>
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(uname -m)-rpms
 ```
 
-Verify the installation:
+Verify that the repository is enabled:
 
 ```bash
-rpm -qi <package-name>
+sudo dnf repolist | grep codeready-builder
 ```
 
-## Step 3: Configure the Service
+## Step 3: Install Development Headers
 
-Create or edit the main configuration file:
+Install the development package you need. For example, to install Python development headers:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo dnf install -y python3-devel
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+Replace `python3-devel` with the specific `-devel` package required by your build.
 
-## Step 4: Start and Enable the Service
+## Step 4: Verify the Package
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+rpm -qi python3-devel
 ```
 
-## Step 5: Verify the Configuration
+## Step 5: Verify the Repository Configuration
 
-Test the setup:
+List enabled repositories:
 
 ```bash
-sudo <service> --test
+sudo dnf repolist
 ```
 
-Check the logs for any errors:
+Check package availability from the CodeReady Linux Builder repository:
 
 ```bash
-journalctl -u <service> -f
+sudo dnf repository-packages codeready-builder-for-rhel-9-$(uname -m)-rpms list | grep -- '-devel'
 ```
 
-## Step 6: Configure Firewall Rules
+## Step 6: Install a Package from the Repository Temporarily
 
-If the service needs network access:
+If you do not want to leave the repository enabled permanently, install a package by enabling it for a single transaction:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
-sudo firewall-cmd --reload
+sudo dnf install --enablerepo=codeready-builder-for-rhel-9-$(uname -m)-rpms python3-devel
 ```
 
-## Step 7: Performance Tuning
+## Step 7: Disable the Repository When Not Needed
 
-Monitor resource usage and adjust configuration parameters based on your workload:
+You can disable the repository after installing the required packages:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+sudo subscription-manager repos --disable codeready-builder-for-rhel-9-$(uname -m)-rpms
 ```
 
 ## Security Considerations
 
-- Run the service with a dedicated non-root user when possible
-- Enable TLS/SSL for network communication
-- Restrict access with firewall rules
+- Enable CodeReady Linux Builder only when you need packages from it
+- Use packages from BaseOS and AppStream when they are available there
+- Remember that Red Hat does not support packages included in CodeReady Linux Builder
 - Keep packages updated with `dnf update`
 
 ## Troubleshooting
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
-2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
-3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
+1. **Repository not found**: Verify that the system is registered with `subscription-manager status`
+2. **Package not found**: Check the exact package name with `dnf search <name>` or `dnf list '*-devel'`
+3. **Wrong architecture**: Confirm the repository ID matches your architecture with `uname -m`
 
 ## Conclusion
 
-You have successfully configured use RHEL codeready linux builder repository for development headers on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
+You have successfully configured the RHEL CodeReady Linux Builder repository for development headers on RHEL 9. Monitor enabled repositories regularly and keep packages updated to maintain security and stability.

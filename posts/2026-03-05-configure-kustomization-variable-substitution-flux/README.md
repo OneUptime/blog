@@ -23,7 +23,7 @@ graph LR
     C --> D[Apply to cluster]
 ```
 
-Variables must follow the pattern `${VAR_NAME}`. The variable name can contain uppercase letters, lowercase letters, digits, and underscores.
+Variables must follow the pattern `${VAR_NAME}`. The variable name can contain uppercase letters, lowercase letters, digits, and underscores, and it must start with a letter or underscore.
 
 ## Basic Variable Substitution
 
@@ -200,13 +200,13 @@ You can preview the result of variable substitution before it is applied to the 
 
 ```bash
 # Build the Kustomization locally to see substituted output
-flux build kustomization my-app
+flux build kustomization my-app --path ./deploy --kustomization-file ./kustomization-vars.yaml --dry-run
 
 # Check the Kustomization status for substitution errors
 kubectl describe kustomization my-app -n flux-system
 ```
 
-If a variable is referenced in a manifest but not defined in `spec.postBuild.substitute` (and has no default value), the variable reference `${VAR_NAME}` will remain as-is in the applied manifest. This can cause unexpected behavior, so always verify your substitutions.
+If a variable is referenced in a manifest but not defined in `spec.postBuild.substitute` or `substituteFrom` (and has no default value), Flux substitutes it with an empty string by default. To make missing variables fail reconciliation instead, enable the `StrictPostBuildSubstitutions` feature gate on the kustomize-controller. Always verify your substitutions before applying them.
 
 ## Best Practices
 

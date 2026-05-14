@@ -8,7 +8,7 @@ Description: Learn how to bootstrap Flux CD on a Kubernetes cluster using person
 
 ---
 
-Personal access tokens (PATs) provide a straightforward way to authenticate Flux CD with your Git repository over HTTPS. While SSH keys are another common option, PATs are often easier to set up in environments where SSH traffic is restricted or when working with Git providers that have robust token management features. This guide covers bootstrapping Flux CD with personal access tokens for GitHub, GitLab, and Bitbucket.
+Personal access tokens (PATs) provide a straightforward way to authenticate Flux CD with your Git repository over HTTPS. While SSH keys are another common option, PATs are often easier to set up in environments where SSH traffic is restricted or when working with Git providers that have robust token management features. This guide covers bootstrapping Flux CD with personal access tokens for GitHub, GitLab, and generic Git servers.
 
 ## Prerequisites
 
@@ -17,7 +17,7 @@ Before you begin, ensure you have:
 - A Kubernetes cluster up and running
 - `kubectl` configured to communicate with your cluster
 - The Flux CLI installed (verify with `flux --version`)
-- A GitHub, GitLab, or Bitbucket account
+- A GitHub, GitLab, or other Git server account
 
 Run the pre-flight checks to verify cluster compatibility.
 
@@ -40,7 +40,7 @@ sequenceDiagram
     CLI->>Cluster: Install Flux controllers
     CLI->>Cluster: Store PAT as Kubernetes secret
     Cluster->>Git: Source controller authenticates via HTTPS + PAT
-    Git->>Cluster: Pulls manifests on each reconciliation
+    Git-->>Cluster: Returns manifests on each reconciliation
 ```
 
 The token is stored as a Kubernetes secret in the `flux-system` namespace. The source controller includes it in HTTPS requests when pulling from your Git repository. Unlike SSH keys, there is no key pair management involved.
@@ -54,12 +54,11 @@ Go to GitHub > Settings > Developer settings > Personal access tokens > Tokens (
 Create a new token with the following scopes:
 
 - `repo` (full control of private repositories)
-- `admin:public_key` (only needed if you plan to switch to SSH later)
 
-For fine-grained tokens (recommended), select:
+For fine-grained tokens, use a repository that already exists and select:
 
 - **Repository access:** Select the specific repository or all repositories
-- **Permissions:** Contents (read and write), Metadata (read)
+- **Permissions:** Administration (read-only), Contents (read and write), Metadata (read-only)
 
 Copy the token immediately as it is shown only once.
 
@@ -127,10 +126,9 @@ flux get sources git
 
 Go to GitLab > User Settings > Access Tokens.
 
-Create a token with the following scopes:
+Create a token with the following scope:
 
-- `api` (full API access)
-- `read_repository` and `write_repository`
+- `api` (full API access, including repository access over Git HTTP)
 
 ### Step 2: Export and Bootstrap
 
@@ -252,7 +250,7 @@ Once you have verified that Flux is working with the new token, revoke the old o
 
 ## Using Fine-Grained Tokens (GitHub)
 
-GitHub fine-grained tokens are more secure because they can be scoped to specific repositories and have expiration dates.
+GitHub fine-grained tokens are more secure because they can be scoped to specific repositories and have expiration dates. Flux supports fine-grained tokens for repositories that are created ahead of time.
 
 When creating a fine-grained token:
 
@@ -260,6 +258,7 @@ When creating a fine-grained token:
 2. Set an **Expiration** date (e.g., 90 days)
 3. Under **Repository access**, select "Only select repositories" and choose your fleet repository
 4. Under **Permissions**, set:
+   - **Administration:** Read-only
    - **Contents:** Read and write
    - **Metadata:** Read-only
 
@@ -296,7 +295,7 @@ flux bootstrap github \
 
 ## Security Best Practices
 
-1. **Use fine-grained tokens** when available. They offer repository-level scoping and mandatory expiration.
+1. **Use fine-grained tokens** when available. They offer repository-level scoping and support expiration dates.
 2. **Set token expiration dates.** Never create tokens that do not expire. Use 90-day rotation as a baseline.
 3. **Scope tokens minimally.** Only grant the permissions Flux actually needs (repository read/write).
 4. **Use separate tokens per cluster.** If one cluster is compromised, only its token needs to be revoked.
@@ -306,7 +305,7 @@ flux bootstrap github \
 
 ## Troubleshooting
 
-**"Authentication failed" error during bootstrap:** Verify your token has the correct scopes. For GitHub, the `repo` scope is required. For GitLab, the `api` scope is required.
+**"Authentication failed" error during bootstrap:** Verify your token has the correct scopes. For GitHub classic PATs, the `repo` scope is required; for fine-grained PATs, use the permissions listed above. For GitLab, the `api` scope is required.
 
 **"Repository not found" error:** Check that the repository exists (or that your token has permission to create it) and that the owner name is correct.
 

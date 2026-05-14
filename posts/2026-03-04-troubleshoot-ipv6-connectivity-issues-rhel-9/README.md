@@ -112,7 +112,7 @@ You need a default route for external connectivity. If it's missing and you are 
 
 ```bash
 # Check if Router Advertisements are arriving
-sudo tcpdump -i ens192 -n icmp6 and 'ip6[40] == 134' -c 3
+sudo tcpdump -i ens192 -n -c 3 'icmp6 and ip6[40] == 134'
 # Type 134 is Router Advertisement
 ```
 
@@ -136,8 +136,8 @@ If the gateway doesn't respond, check:
 ## Step 6: Test External Connectivity
 
 ```bash
-# Ping a well-known IPv6 address
-ping6 -c 4 2600::
+# Ping a well-known public IPv6 address
+ping6 -c 4 2606:4700:4700::1111
 
 # Try Google's public DNS over IPv6
 ping6 -c 4 2001:4860:4860::8888
@@ -158,7 +158,7 @@ cat /etc/resolv.conf
 resolvectl status
 ```
 
-If DNS is not resolving AAAA records, your DNS servers might not support IPv6 queries, or your resolv.conf might only list IPv4 DNS servers.
+If DNS is not resolving AAAA records, your DNS servers might be filtering AAAA responses or your resolv.conf might list servers that are unreachable from the current network.
 
 ```bash
 # Add an IPv6 DNS server
@@ -204,7 +204,7 @@ IPv6 doesn't allow fragmentation by routers, so Path MTU Discovery must work. If
 ```bash
 # Test with different packet sizes
 ping6 -c 4 -s 1400 2001:4860:4860::8888
-ping6 -c 4 -s 1500 2001:4860:4860::8888
+ping6 -c 4 -s 1452 2001:4860:4860::8888
 
 # Check interface MTU
 ip link show dev ens192 | grep mtu

@@ -67,7 +67,7 @@ Important rules for `/etc/cron.d/` files:
 - The filename must not contain dots (.) in it, or crond will skip it
 - The file must be owned by root
 - Permissions should be 0644
-- Each line must include the username field
+- Each job line must include the username field
 
 ```bash
 # Set correct ownership and permissions
@@ -219,7 +219,7 @@ START_HOURS_RANGE=3-22
 @monthly 45 cron.monthly nice run-parts /etc/cron.monthly
 ```
 
-The numbers mean: period in days, delay in minutes, job identifier, and then the command. So `cron.daily` runs every 1 day, with a 5-minute delay after the `START_HOURS_RANGE` begins.
+The fields mean: period in days, delay in minutes, job identifier, and then the command. So `cron.daily` runs every 1 day, with a 5-minute base delay plus the configured `RANDOM_DELAY` of 0 to 45 minutes, within the `START_HOURS_RANGE`.
 
 ## Checking the /etc/crontab File
 

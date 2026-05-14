@@ -40,13 +40,14 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: external-secrets
-  namespace: external-secrets
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: external-secrets
   chart:
     spec:
       chart: external-secrets
-      version: "0.10.x"
+      version: "2.x"
       sourceRef:
         kind: HelmRepository
         name: external-secrets
@@ -102,8 +103,8 @@ values:
   serviceAccount:
     annotations:
       azure.workload.identity/client-id: "<CLIENT_ID>"
-    labels:
-      azure.workload.identity/use: "true"
+  podLabels:
+    azure.workload.identity/use: "true"
 ```
 
 ### Option B: Service Principal
@@ -135,7 +136,7 @@ For Workload Identity:
 
 ```yaml
 # infrastructure/external-secrets/clustersecretstore.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: azure-key-vault
@@ -152,7 +153,7 @@ spec:
 For Service Principal:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: azure-key-vault
@@ -191,7 +192,7 @@ For individual secrets:
 
 ```yaml
 # apps/my-app/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-secrets
@@ -219,7 +220,7 @@ spec:
 For extracting properties from a JSON secret:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -272,7 +273,7 @@ If secrets are not syncing, check ESO logs:
 kubectl logs -n external-secrets deploy/external-secrets -f
 ```
 
-Common issues include incorrect vault URLs, missing Key Vault access policies, and Workload Identity misconfiguration. Verify the ClusterSecretStore status:
+Common issues include incorrect vault URLs, missing Key Vault access policies or RBAC role assignments, and Workload Identity misconfiguration. Verify the ClusterSecretStore status:
 
 ```bash
 kubectl get clustersecretstore azure-key-vault -o jsonpath='{.status}'

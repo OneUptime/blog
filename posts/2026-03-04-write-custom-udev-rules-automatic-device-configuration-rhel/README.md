@@ -8,11 +8,11 @@ Description: Write custom udev rules on RHEL to automatically configure devices 
 
 ---
 
-udev is the device manager for the Linux kernel. It manages device nodes in `/dev` and handles all user-space actions when devices are added or removed. Custom udev rules let you automate tasks like setting permissions, renaming devices, or running scripts when specific hardware is connected.
+udev is the device manager for the Linux kernel. It manages device nodes in `/dev` and handles configured user-space actions when devices are added or removed. Custom udev rules let you automate tasks like setting permissions, renaming devices, or running scripts when specific hardware is connected.
 
 ## Understanding udev Rules
 
-udev rules are stored in `/etc/udev/rules.d/` (local rules) and `/usr/lib/udev/rules.d/` (system defaults). Rules in `/etc/udev/rules.d/` override system defaults. Rules are processed in lexical order by filename.
+udev rules are stored in `/etc/udev/rules.d/` (local rules) and `/usr/lib/udev/rules.d/` (system defaults). Rules are processed in lexical order by filename, and a rule file in `/etc/udev/rules.d/` overrides a system default only when it has the same filename.
 
 ## Find Device Attributes
 
@@ -39,7 +39,7 @@ udevadm info --query=all --name=/dev/sdb
 sudo tee /etc/udev/rules.d/99-usb-permissions.rules > /dev/null << 'EOF'
 # Set permissions for a specific USB serial adapter
 # Match by vendor ID (0403) and product ID (6001) for FTDI USB-Serial
-SUBSYSTEM=="usb", ATTR{idVendor}=="0403", ATTR{idProduct}=="6001", MODE="0666", GROUP="dialout"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", MODE="0660", GROUP="dialout"
 EOF
 ```
 
@@ -66,10 +66,21 @@ rsync -a /home/ /mnt/backup/home-backup/
 SCRIPT
 sudo chmod +x /usr/local/bin/usb-backup.sh
 
-# Create the udev rule to trigger the script
+# Create a systemd service for the long-running backup task
+sudo tee /etc/systemd/system/usb-backup.service > /dev/null << 'SERVICE'
+[Unit]
+Description=Run USB backup
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/usb-backup.sh
+SERVICE
+sudo systemctl daemon-reload
+
+# Create the udev rule to trigger the service
 sudo tee /etc/udev/rules.d/99-auto-backup.rules > /dev/null << 'EOF'
-# Run backup script when the specific USB drive is connected
-ACTION=="add", SUBSYSTEM=="block", ATTRS{serial}=="AA00000000000489", RUN+="/usr/local/bin/usb-backup.sh"
+# Start the backup service when the specific USB drive is connected
+ACTION=="add", SUBSYSTEM=="block", ATTRS{serial}=="AA00000000000489", TAG+="systemd", ENV{SYSTEMD_WANTS}+="usb-backup.service"
 EOF
 ```
 

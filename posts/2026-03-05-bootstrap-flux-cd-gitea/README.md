@@ -32,8 +32,8 @@ helm repo update
 helm install gitea gitea-charts/gitea \
   --namespace gitea \
   --create-namespace \
-  --set gitea.admin.username=admin \
-  --set gitea.admin.password=admin123 \
+  --set gitea.admin.username=gitea_admin \
+  --set gitea.admin.password='replace-with-a-strong-password' \
   --set service.http.type=LoadBalancer
 ```
 
@@ -53,7 +53,7 @@ Log in to your Gitea web interface and create a personal access token:
 
 1. Navigate to Settings > Applications
 2. Under "Manage Access Tokens", enter a token name (e.g., `flux-cd`)
-3. Select permissions: `repo` (full control) and `admin:org` (if using organizations)
+3. Select permissions: `read:misc` and `write:repository`; add `write:user` if Flux should create a personal repository, or `write:organization` if Flux should create an organization repository
 4. Click "Generate Token" and save the token
 
 ```bash
@@ -259,9 +259,9 @@ flux get helmreleases
 kubectl get pods -l app.kubernetes.io/name=podinfo
 ```
 
-## Step 10: Using Codeberg (Gitea-Based Hosting)
+## Step 10: Using Codeberg (Forgejo-Based Hosting)
 
-Codeberg is a public Gitea instance that you can use with Flux CD in the same way. Simply set the hostname to `codeberg.org`.
+Codeberg is a public Forgejo instance that you can use with Flux CD through the Gitea-compatible bootstrap command. Simply set the hostname to `codeberg.org`.
 
 ```bash
 # Bootstrap Flux with Codeberg
@@ -282,7 +282,7 @@ Common issues when using Gitea with Flux:
 # Verify connectivity to the Gitea instance
 curl -s https://$GITEA_HOST/api/v1/version
 
-# Check if the deploy key was created
+# If using SSH deploy-key authentication, check if the deploy key was created
 curl -s -H "Authorization: token $GITEA_TOKEN" \
   https://$GITEA_HOST/api/v1/repos/$GITEA_USER/fleet-infra/keys
 

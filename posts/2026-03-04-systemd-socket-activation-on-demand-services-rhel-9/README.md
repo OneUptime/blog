@@ -8,7 +8,7 @@ Description: Learn how to configure systemd socket activation on RHEL to start s
 
 ---
 
-systemd socket activation allows you to defer starting a service until a client actually connects. The systemd init system listens on the socket, and when a connection arrives, it starts the corresponding service and hands off the socket. This reduces boot time and saves resources for infrequently used services.
+systemd socket activation allows you to defer starting a service until a client actually connects. The systemd init system listens on the socket, and when a connection arrives, it starts the corresponding service and passes the socket file descriptor to it. This reduces boot time and saves resources for infrequently used services.
 
 ## How Socket Activation Works
 
@@ -35,8 +35,8 @@ sudo tee /etc/systemd/system/myapp.socket << 'UNITEOF'
 Description=MyApp Socket
 
 [Socket]
-# Listen on TCP port 8080
-ListenStream=8080
+# Listen on TCP port 8080 on IPv4
+ListenStream=0.0.0.0:8080
 # Accept connections and pass them to the service
 Accept=false
 
@@ -80,6 +80,11 @@ def main():
     fd = 3
 
     # Check if systemd passed us a socket
+    listen_pid = os.environ.get('LISTEN_PID')
+    if listen_pid and int(listen_pid) != os.getpid():
+        print("Socket was not passed to this process", file=sys.stderr)
+        sys.exit(1)
+
     listen_fds = int(os.environ.get('LISTEN_FDS', '0'))
     if listen_fds < 1:
         print("No socket passed by systemd", file=sys.stderr)
@@ -87,7 +92,8 @@ def main():
 
     # Create a socket object from the file descriptor
     server = socket.fromfd(fd, socket.AF_INET, socket.SOCK_STREAM)
-    server.settimeout(30)  # Idle timeout
+    idle_timeout = int(os.environ.get('MYAPP_IDLE_TIMEOUT', '30'))
+    server.settimeout(idle_timeout)
 
     print("Service started, waiting for connections...")
 
@@ -132,7 +138,7 @@ sudo systemctl status myapp.service
 
 ```bash
 # Connect to the socket - this will trigger service start
-nc localhost 8080
+nc 127.0.0.1 8080
 # You should see: Hello from socket-activated service!
 
 # Now check the service status - it should be active
@@ -169,6 +175,12 @@ StandardInput=socket
 StandardOutput=socket
 UNITEOF
 
+sudo tee /usr/local/bin/myapp-handler << 'HANDLEREOF'
+#!/usr/bin/env bash
+printf 'Hello from per-connection socket service!\n'
+HANDLEREOF
+sudo chmod +x /usr/local/bin/myapp-handler
+
 sudo systemctl daemon-reload
 sudo systemctl enable --now myapp-accept.socket
 ```
@@ -176,16 +188,15 @@ sudo systemctl enable --now myapp-accept.socket
 ## Step 6: Configure Idle Timeout
 
 ```bash
-# Add idle timeout to automatically stop the service
+# Set the application's idle timeout to 60 seconds
 sudo mkdir -p /etc/systemd/system/myapp.service.d
 sudo tee /etc/systemd/system/myapp.service.d/timeout.conf << 'UNITEOF'
 [Service]
-# Stop the service after 60 seconds of inactivity
-TimeoutStopSec=60
-# The socket unit will restart the service when needed
+Environment=MYAPP_IDLE_TIMEOUT=60
 UNITEOF
 
 sudo systemctl daemon-reload
+sudo systemctl stop myapp.service
 ```
 
 ## Monitoring
@@ -194,7 +205,7 @@ sudo systemctl daemon-reload
 # List all active sockets
 systemctl list-sockets
 
-# Check socket activation timestamps
+# Check socket connection counters
 systemctl show myapp.socket --property=NAccepted
 systemctl show myapp.socket --property=NConnections
 

@@ -63,25 +63,15 @@ sudo vi /etc/rsyslog.d/siem-forward.conf
 
 ```bash
 # JSON template for SIEM ingestion
-template(name="SIEMJson" type="list") {
-    constant(value="{")
-    constant(value="\"@timestamp\":\"")
-    property(name="timestamp" dateFormat="rfc3339")
-    constant(value="\",\"host\":\"")
-    property(name="hostname")
-    constant(value="\",\"source_ip\":\"")
-    property(name="fromhost-ip")
-    constant(value="\",\"facility\":\"")
-    property(name="syslogfacility-text")
-    constant(value="\",\"severity\":\"")
-    property(name="syslogseverity-text")
-    constant(value="\",\"program\":\"")
-    property(name="programname")
-    constant(value="\",\"pid\":\"")
-    property(name="procid")
-    constant(value="\",\"message\":\"")
-    property(name="msg" format="json")
-    constant(value="\"}\n")
+template(name="SIEMJson" type="list" option.jsonf="on") {
+    property(outname="@timestamp" name="timestamp" dateFormat="rfc3339" format="jsonf")
+    property(outname="host" name="hostname" format="jsonf")
+    property(outname="source_ip" name="fromhost-ip" format="jsonf")
+    property(outname="facility" name="syslogfacility-text" format="jsonf")
+    property(outname="severity" name="syslogseverity-text" format="jsonf")
+    property(outname="program" name="programname" format="jsonf")
+    property(outname="pid" name="procid" format="jsonf")
+    property(outname="message" name="msg" format="jsonf")
 }
 
 # CEF (Common Event Format) template for SIEMs that prefer it
@@ -174,21 +164,13 @@ template(name="ElasticIndex" type="string"
     string="syslog-%$year%.%$month%.%$day%"
 )
 
-template(name="ElasticDoc" type="list") {
-    constant(value="{")
-    constant(value="\"@timestamp\":\"")
-    property(name="timestamp" dateFormat="rfc3339")
-    constant(value="\",\"host\":\"")
-    property(name="hostname")
-    constant(value="\",\"severity\":\"")
-    property(name="syslogseverity-text")
-    constant(value="\",\"facility\":\"")
-    property(name="syslogfacility-text")
-    constant(value="\",\"program\":\"")
-    property(name="programname")
-    constant(value="\",\"message\":\"")
-    property(name="msg" format="json")
-    constant(value="\"}")
+template(name="ElasticDoc" type="list" option.jsonf="on") {
+    property(outname="@timestamp" name="timestamp" dateFormat="rfc3339" format="jsonf")
+    property(outname="host" name="hostname" format="jsonf")
+    property(outname="severity" name="syslogseverity-text" format="jsonf")
+    property(outname="facility" name="syslogfacility-text" format="jsonf")
+    property(outname="program" name="programname" format="jsonf")
+    property(outname="message" name="msg" format="jsonf")
 }
 
 # Forward to Elasticsearch

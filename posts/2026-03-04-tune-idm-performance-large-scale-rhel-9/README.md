@@ -28,22 +28,18 @@ The main bottlenecks in a large IdM deployment are: Directory Server cache misse
 
 The Directory Server is the heart of IdM. Most performance tuning starts here.
 
-### Increase the Database Cache
+### Increase the Database Index Cache
 
-The database cache (also called the DB cache or nsslapd-dbcachesize) should be large enough to hold the entire database in memory.
+The database index cache (also called the DB cache or nsslapd-dbcachesize) should be sized with the entry cache so both fit in memory. On RHEL 9, IdM Directory Server uses cache auto-sizing by default, and Red Hat recommends only changing these values when you have a strong reason to override auto-sizing.
 
 ```bash
-# Check the current database size
-
-sudo du -sh /var/lib/dirsrv/slapd-EXAMPLE-COM/db/
-
 # Check current cache settings
 sudo dsconf -D "cn=Directory Manager" ldap://localhost \
   backend config get
 
 # Increase the database cache to 1 GB
 sudo dsconf -D "cn=Directory Manager" ldap://localhost \
-  backend config set --db-cache-size=1073741824
+  backend config set --cache-autosize=0 --dbcachesize=1073741824
 ```
 
 ### Increase the Entry Cache
@@ -51,19 +47,25 @@ sudo dsconf -D "cn=Directory Manager" ldap://localhost \
 The entry cache stores parsed LDAP entries in memory. For large directories, increase it.
 
 ```bash
+# List suffixes and backend names
+sudo dsconf -D "cn=Directory Manager" ldap://localhost \
+  backend suffix list
+
 # Check current entry cache size
 sudo dsconf -D "cn=Directory Manager" ldap://localhost \
-  backend suffix get "dc=example,dc=com" | grep "Entry Cache"
+  backend suffix get userroot | grep "Entry Cache"
 
 # Set entry cache to 500 MB
 sudo dsconf -D "cn=Directory Manager" ldap://localhost \
-  backend suffix set "dc=example,dc=com" \
+  backend config set --cache-autosize=0
+sudo dsconf -D "cn=Directory Manager" ldap://localhost \
+  backend suffix set userroot \
   --cache-memsize=524288000
 
-# Set entry cache max entries (set to 0 for unlimited)
+# Set entry cache max entries (set to -1 for unlimited)
 sudo dsconf -D "cn=Directory Manager" ldap://localhost \
-  backend suffix set "dc=example,dc=com" \
-  --cache-entries=-1
+  backend suffix set userroot \
+  --cache-size=-1
 ```
 
 ### Increase Connection and Thread Limits
@@ -93,7 +95,7 @@ sudo dsconf -D "cn=Directory Manager" ldap://localhost \
 
 # Add a new index if needed (example: adding an index on employeeNumber)
 sudo dsconf -D "cn=Directory Manager" ldap://localhost \
-  backend index create --index-type eq --attr employeeNumber \
+  backend index add --index-type eq --attr employeeNumber \
   "dc=example,dc=com"
 
 # Reindex after adding new indexes
@@ -111,7 +113,7 @@ sudo grep "etime=" /var/log/dirsrv/slapd-EXAMPLE-COM/access | \
 
 ## Tuning the Kerberos KDC
 
-### Adjust KDC Worker Processes
+### Adjust the KDC Listen Queue
 
 On busy servers, the default KDC configuration may not handle the authentication load.
 
@@ -131,12 +133,33 @@ Add or modify under the `[kdcdefaults]` section:
 
 ```ini
 [kdcdefaults]
- kdc_tcp_listen_backlog = 10
+ kdc_tcp_listen_backlog = 7
+```
+
+On RHEL 9, valid values are 1 through 10. Setting this value too high can degrade performance.
+
+### Adjust KDC Worker Processes
+
+The IdM installer normally sets the number of KDC worker processes to the number of CPU cores in `/etc/sysconfig/krb5kdc`. In virtualized environments, you might need to adjust this after changing vCPU counts.
+
+```bash
+# Check current worker configuration
+sudo grep '^KRB5KDC_ARGS' /etc/sysconfig/krb5kdc
+
+# Edit worker configuration
+sudo vi /etc/sysconfig/krb5kdc
+```
+
+Set the worker count with the `-w` option:
+
+```bash
+KRB5KDC_ARGS='-w 10'
 ```
 
 Restart the KDC after changes:
 
 ```bash
+sudo systemctl daemon-reload
 sudo systemctl restart krb5kdc
 ```
 
@@ -161,7 +184,8 @@ enumerate = False
 # How long cached entries are valid (default 5400 seconds)
 entry_cache_timeout = 14400
 
-# How long to cache negative lookups
+# Percentage of entry_cache_timeout after which cached entries are
+# returned immediately while SSSD refreshes them in the background
 entry_cache_nowait_percentage = 50
 
 # DNS resolver cache timeout
@@ -174,7 +198,7 @@ If most users should not have access to most machines, use access filters to lim
 
 ```ini
 [domain/example.com]
-# Only resolve users who are members of a specific group
+# Use IdM HBAC rules to control who can log in to a host
 access_provider = ipa
 ipa_hbac_refresh = 120
 ```
@@ -252,7 +276,7 @@ ipa-replica-manage list -v
 
 | Component | Setting | Small (<1K users) | Large (10K+ users) |
 |-----------|---------|-------------------|---------------------|
-| 389-ds | DB Cache | 256 MB | 1+ GB |
+| 389-ds | DB Cache | 256 MB | 1-1.5 GB |
 | 389-ds | Entry Cache | 100 MB | 500+ MB |
 | 389-ds | Threads | 16 | 32-64 |
 | SSSD | Enumerate | False | False |

@@ -70,9 +70,8 @@ If the above works but `dig google.com` doesn't, your configured resolver is the
 Verify you can reach the DNS server on port 53:
 
 ```bash
-# Test TCP
-
-ss -tlnp | grep :53
+# Test TCP reachability
+dig @your-dns-server example.com +tcp +timeout=5
 
 # Test UDP reachability
 dig @your-dns-server example.com +timeout=5
@@ -84,10 +83,10 @@ Check if the firewall is blocking DNS:
 firewall-cmd --list-all | grep dns
 ```
 
-Test with nc (netcat) to verify port reachability:
+Test with nc (netcat) to verify TCP port reachability:
 
 ```bash
-nc -zvu your-dns-server 53
+nc -zv your-dns-server 53
 ```
 
 ## Step 4: Check the DNS Service
@@ -205,7 +204,9 @@ firewall-cmd --list-all
 The domain doesn't exist in DNS. Verify the name is correct:
 
 ```bash
-dig example.com ANY
+dig example.com A
+dig example.com AAAA
+dig example.com SOA
 ```
 
 Check if the authoritative servers have the record:

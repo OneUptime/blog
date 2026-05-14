@@ -22,7 +22,7 @@ Flux organizes its APIs into several groups, each managed by a dedicated control
 | `notification.toolkit.fluxcd.io` | notification-controller | Handles alerts and event providers |
 | `image.toolkit.fluxcd.io` | image-reflector-controller, image-automation-controller | Automates image updates |
 
-Each API group has its own version that evolves independently. A source API might be at `v1` while the image API is at `v1beta2`.
+Each API group has its own version that evolves independently. A source API might be at `v1` while the notification API is at `v1beta3`.
 
 ## Kubernetes API Versioning Conventions
 
@@ -30,13 +30,13 @@ Flux follows the standard Kubernetes versioning levels.
 
 **Alpha (v1alpha1, v1alpha2):** Experimental APIs that may change without notice. Not recommended for production use. Features may be incomplete.
 
-**Beta (v1beta1, v1beta2):** APIs that are feature-complete but may still undergo breaking changes between beta versions. Suitable for non-critical environments.
+**Beta (v1beta1, v1beta2):** APIs that are well-tested and safe to use in production, but may still undergo breaking changes between beta versions.
 
 **Stable (v1, v2):** APIs with strong backward compatibility guarantees. Breaking changes require a new major version. Safe for production.
 
 ## Current Flux API Versions
 
-As of Flux v2.x, the stable API versions are as follows.
+As of Flux v2.8, the current API versions are as follows.
 
 ```yaml
 # Source API - v1 is stable
@@ -53,10 +53,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 
 # Notification API - v1beta3 is the latest
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 
-# Image Automation API - v1 is stable
+# Image API - v1 is stable
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 ```
@@ -87,10 +87,10 @@ Before upgrading Flux, you should check whether your manifests use deprecated AP
 
 ```bash
 # Search for deprecated v1beta2 source API usage in your manifests
-grep -r "source.toolkit.fluxcd.io/v1" ./clusters/
+grep -r "source.toolkit.fluxcd.io/v1beta2" ./clusters/
 
 # Search for deprecated v2beta1 helm API usage
-grep -r "helm.toolkit.fluxcd.io/v2" ./clusters/
+grep -r "helm.toolkit.fluxcd.io/v2beta1" ./clusters/
 
 # Use flux to check the overall system health
 flux check
@@ -100,13 +100,13 @@ Flux's notification controller can also alert you when deprecated APIs are in us
 
 ## Migrating Between API Versions
 
-Migration between API versions typically involves updating the `apiVersion` field and adjusting any fields that changed between versions. Here is an example of migrating a HelmRelease from `v2beta1` to `v2`.
+Migration between API versions typically involves updating the `apiVersion` field and adjusting any fields that changed between versions. Here is an example of migrating a HelmRelease from `v2beta2` to `v2`.
 
-The old `v2beta1` format.
+The old `v2beta2` format.
 
 ```yaml
-# Deprecated v2beta1 HelmRelease format
-apiVersion: helm.toolkit.fluxcd.io/v2
+# Deprecated v2beta2 HelmRelease format
+apiVersion: helm.toolkit.fluxcd.io/v2beta2
 kind: HelmRelease
 metadata:
   name: my-app
@@ -120,7 +120,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: my-repo
-  # v2beta1 used spec.targetNamespace at this level
+      valuesFile: values-prod.yaml
   targetNamespace: production
 ```
 
@@ -142,7 +142,8 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: my-repo
-  # v2 still supports targetNamespace at the same level
+      valuesFiles:
+        - values-prod.yaml
   targetNamespace: production
 ```
 
@@ -164,7 +165,7 @@ flux version
 # notification-controller: v1.2.0
 ```
 
-The general rule is that the CLI version should be greater than or equal to the controller versions. Using an older CLI with newer controllers may work but is not guaranteed.
+The general rule is to keep the CLI within one minor version of the Flux controllers. Using a much older CLI with newer controllers may work but is not supported.
 
 ## Handling Multi-Cluster API Version Differences
 
@@ -183,21 +184,21 @@ kind: Kustomization
 resources:
   - ../../base
 patches:
-  # Patch API version for older cluster
+  # Patch API version for an older cluster that still serves v2beta2
   - target:
       kind: HelmRelease
       name: my-app
     patch: |
       - op: replace
         path: /apiVersion
-        value: helm.toolkit.fluxcd.io/v2
+        value: helm.toolkit.fluxcd.io/v2beta2
 ```
 
 ## Best Practices for API Version Management
 
 1. Always use the latest stable API version in new manifests. Avoid using beta versions in production unless the stable version is not yet available for that resource type.
 
-2. Monitor Flux release notes for API deprecation announcements. Flux typically provides at least two minor release cycles before removing a deprecated API version.
+2. Monitor Flux release notes for API deprecation announcements. Flux deprecated beta APIs are subject to removal after a six-month period, and deprecated alpha APIs are subject to removal after a three-month period.
 
 3. Run periodic checks on your manifests for deprecated API usage. Automate this in CI.
 
@@ -206,10 +207,13 @@ patches:
 #!/bin/bash
 DEPRECATED_APIS=(
   "source.toolkit.fluxcd.io/v1beta1"
-  "source.toolkit.fluxcd.io/v1"
-  "helm.toolkit.fluxcd.io/v2"
+  "source.toolkit.fluxcd.io/v1beta2"
+  "helm.toolkit.fluxcd.io/v2beta1"
+  "helm.toolkit.fluxcd.io/v2beta2"
   "kustomize.toolkit.fluxcd.io/v1beta1"
-  "kustomize.toolkit.fluxcd.io/v1"
+  "kustomize.toolkit.fluxcd.io/v1beta2"
+  "image.toolkit.fluxcd.io/v1beta1"
+  "notification.toolkit.fluxcd.io/v1beta1"
 )
 
 for api in "${DEPRECATED_APIS[@]}"; do

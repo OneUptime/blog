@@ -18,7 +18,7 @@ Red Hat publishes official minimum requirements for RHEL, and they are higher th
 
 RHEL requires a 64-bit processor. The days of 32-bit RHEL are over. More specifically:
 
-- **x86_64**: Requires x86-64-v2 microarchitecture level or later. This means your CPU needs SSE4.2, POPCNT, and related instruction sets. In practical terms, Intel Nehalem (2008) or AMD Bulldozer (2011) and newer are supported. Older Core 2 Duo or Opteron chips will not work.
+- **x86_64**: Requires x86-64-v2 microarchitecture level or later. This means your CPU needs SSE3, SSSE3, SSE4.1, SSE4.2, POPCNT, CMPXCHG16B, LAHF/SAHF, and related instruction sets. In practical terms, Intel Nehalem (2008) or AMD Bulldozer (2011) and newer are supported. Older Core 2 Duo or Opteron chips will not work.
 - **aarch64 (ARM 64-bit)**: ARMv8.0-A and later.
 - **ppc64le (IBM POWER)**: POWER9 and later processors.
 - **s390x (IBM Z)**: z14 and later mainframes.
@@ -33,18 +33,19 @@ uname -m
 # Show detailed CPU info including flags
 lscpu
 
-# Check for x86-64-v2 required flags on x86_64
-grep -o 'sse4_2\|popcnt\|ssse3\|cx16' /proc/cpuinfo | sort -u
+# Check for key x86-64-v2 flags on x86_64
+grep -m1 '^flags' /proc/cpuinfo | grep -Eow 'cx16|lahf_lm|pni|popcnt|sse4_1|sse4_2|ssse3' | sort -u
 ```
 
-You need all four flags (cx16, popcnt, sse4_2, ssse3) present for x86-64-v2 compliance. If any are missing, RHEL will refuse to boot.
+You need all seven flags (cx16, lahf_lm, pni, popcnt, sse4_1, sse4_2, ssse3) present for x86-64-v2 compliance. If any are missing, RHEL will refuse to boot.
 
 ### RAM Requirements
 
 | Installation Type | Minimum RAM | Recommended RAM |
 |---|---|---|
-| Minimal install (text mode) | 1.5 GB | 2 GB |
-| Graphical installer (Anaconda) | 1.5 GB | 4 GB |
+| Local media or NFS install (x86_64, aarch64, s390x) | 1.5 GiB | 2 GiB |
+| Local media or NFS install (ppc64le) | 3 GiB | 4 GiB |
+| HTTP, HTTPS, or FTP network install | 3 GiB to 4 GiB, depending on architecture | 4 GiB+ |
 | Production server workloads | 2 GB | 8 GB+ |
 
 To check available RAM from an existing system or live environment:
@@ -184,13 +185,13 @@ uname -m
 # Expected output: x86_64, aarch64, ppc64le, or s390x
 
 # 2. Check CPU meets x86-64-v2 (x86_64 only)
-grep -c -o 'sse4_2\|popcnt\|ssse3\|cx16' /proc/cpuinfo | head -1
-# Expected: 4 (one for each required flag)
+grep -m1 '^flags' /proc/cpuinfo | grep -Eow 'cx16|lahf_lm|pni|popcnt|sse4_1|sse4_2|ssse3' | sort -u | wc -l
+# Expected: 7 (one for each key required flag)
 
-# 3. Verify minimum RAM (should be >= 1.5 GB)
+# 3. Verify minimum RAM (1.5 GiB minimum for x86_64 local media or NFS installs)
 awk '/MemTotal/ {printf "%.1f GB\n", $2/1024/1024}' /proc/meminfo
 
-# 4. Check available disk space (need at least 10 GB)
+# 4. Check available disk space (need at least 10 GiB)
 lsblk -d -o NAME,SIZE,TYPE | grep disk
 
 # 5. Verify network interfaces are detected
@@ -205,7 +206,7 @@ ip link show
 If you are installing RHEL as a virtual machine, the hypervisor handles most hardware abstraction, but you still need to ensure:
 
 - **KVM/libvirt**: Use the `q35` machine type for UEFI support. Allocate at least 2 GB RAM and 20 GB disk.
-- **VMware**: ESXi 7.0 U2 or later is recommended for RHEL. Use the `vmxnet3` NIC driver and `pvscsi` storage controller for best performance.
+- **VMware**: Check the Red Hat Ecosystem Catalog for certified ESXi versions for your RHEL release. Use the `vmxnet3` NIC driver and `pvscsi` storage controller for best performance.
 - **Hyper-V**: Windows Server 2019 or later, with Generation 2 VMs for UEFI.
 
 ```bash

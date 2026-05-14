@@ -118,12 +118,11 @@ ProxyTimeout 120
 
 ## Step 7 - Pass Client IP to the Backend
 
-By default, the backend sees Apache's IP as the client. Use mod_remoteip or set headers:
+By default, the backend connection comes from Apache, but `mod_proxy_http` adds `X-Forwarded-For`, `X-Forwarded-Host`, and `X-Forwarded-Server` headers. If your backend also needs the original scheme, set it explicitly:
 
 ```apache
-# Forward the real client IP to the backend
-RequestHeader set X-Forwarded-For "%{REMOTE_ADDR}s"
-RequestHeader set X-Forwarded-Proto "%{REQUEST_SCHEME}s"
+# Forward the original request scheme to the backend
+RequestHeader set X-Forwarded-Proto "expr=%{REQUEST_SCHEME}"
 ```
 
 Your backend application should be configured to trust these headers from Apache's IP.

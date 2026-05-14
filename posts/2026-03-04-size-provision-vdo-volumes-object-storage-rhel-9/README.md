@@ -8,14 +8,14 @@ Description: Learn how to properly size and provision VDO volumes on RHEL 9 for 
 
 ---
 
-Object storage systems like Ceph, MinIO, and OpenStack Swift benefit significantly from VDO's deduplication and compression capabilities. Object storage often contains duplicate data from versioned files, backup copies, and shared content. This guide covers how to properly size and provision VDO volumes for object storage on RHEL 9.
+Object storage systems like MinIO and OpenStack Swift can benefit from VDO's deduplication and compression capabilities when they run on a supported file system layout. Object storage often contains duplicate data from versioned files, backup copies, and shared content. This guide covers how to properly size and provision VDO volumes for object storage on RHEL 9.
 
 ## Prerequisites
 
 - A RHEL 9 system with root or sudo access
 - Understanding of your object storage workload characteristics
 - Available block storage
-- The `lvm2` and `kmod-kvdo` packages installed
+- The `lvm2`, `kmod-kvdo`, and `vdo` packages installed
 
 ## Understanding Object Storage on VDO
 
@@ -80,24 +80,24 @@ Add 15-20% overhead for:
 
 ## Step 3: Calculate Memory Requirements
 
-VDO's UDS (Universal Deduplication Service) index requires RAM:
+VDO has two memory components: the VDO module itself and the UDS (Universal Deduplication Service) index. The UDS index memory depends on the deduplication window, which is the amount of previously written data VDO can check for matching blocks.
 
 ### Dense Index (Default)
 
-- 1 GB RAM per 1 TB of physical storage
+- 1 GB RAM per 1 TB deduplication window, with a 250 MB minimum/default
 - Suitable for most workloads
-- Uses less memory but may have slightly lower deduplication for very large datasets
+- Provides more deduplication advice than a sparse index for the same window size
 
 ### Sparse Index
 
-- 1 GB RAM per 10 TB of physical storage
+- 1 GB RAM per 10 TB deduplication window
 - Suitable for large-scale deployments
-- Uses less memory but deduplication effectiveness depends on data locality
+- Uses less RAM for the same deduplication window, but requires more on-disk index space and depends on temporal locality
 
-For a 2 TB physical VDO volume with dense index:
-- UDS index memory: approximately 2 GB
+For a 2 TB physical VDO volume configured with a 2 TB dense-index deduplication window:
+- UDS index memory: approximately 2 GB, or 250 MB if you keep the default index size
 - Block map cache: 128 MB (default)
-- Total VDO memory: approximately 2.2 GB
+- VDO module memory: approximately 38 MB fixed, 1.15 MB per 1 MB of block map cache, 1.6 MB per 1 TB of logical space, and 268 MB per 1 TB of physical storage
 
 Ensure your system has sufficient RAM beyond normal operating requirements.
 
@@ -115,7 +115,7 @@ Create the VDO volume with appropriate sizing:
 ```bash
 sudo lvcreate --type vdo --name lv_objects \
   --size 2T \
-  --virtualsize 10T \
+  --virtualsize 6T \
   vg_objstore
 ```
 
@@ -133,13 +133,14 @@ sudo lvcreate --type vdo --name lv_backup \
 ```bash
 sudo mkfs.xfs -K /dev/vg_objstore/lv_objects
 sudo mkdir -p /srv/object-storage
-sudo mount -o discard /dev/vg_objstore/lv_objects /srv/object-storage
+sudo mount /dev/vg_objstore/lv_objects /srv/object-storage
+sudo systemctl enable --now fstrim.timer
 ```
 
 Add to `/etc/fstab`:
 
 ```bash
-/dev/vg_objstore/lv_objects /srv/object-storage xfs defaults,discard 0 0
+/dev/vg_objstore/lv_objects /srv/object-storage xfs defaults 0 0
 ```
 
 ## Step 6: Configure Object Storage Software
@@ -154,12 +155,7 @@ sudo mkdir -p /srv/object-storage/minio-data
 
 ### For Ceph OSD
 
-When using VDO as the backing store for Ceph OSD:
-
-```bash
-# Use the VDO volume as the OSD device
-sudo ceph-volume lvm create --data vg_objstore/lv_objects
-```
+Do not deploy Ceph Storage on LVM-VDO on RHEL 9. Red Hat lists Ceph on LVM-VDO as an unsupported configuration.
 
 ## Step 7: Tune VDO for Object Storage
 
@@ -168,7 +164,11 @@ sudo ceph-volume lvm create --data vg_objstore/lv_objects
 Increase the block map cache for better random access performance:
 
 ```bash
+sudo umount /srv/object-storage
+sudo lvchange -an vg_objstore/lv_objects
 sudo lvchange --vdosettings 'block_map_cache_size_mb=512' vg_objstore/lv_objects
+sudo lvchange -ay vg_objstore/lv_objects
+sudo mount /srv/object-storage
 ```
 
 ### Thread Count
@@ -176,22 +176,16 @@ sudo lvchange --vdosettings 'block_map_cache_size_mb=512' vg_objstore/lv_objects
 For high-throughput object storage:
 
 ```bash
+sudo umount /srv/object-storage
+sudo lvchange -an vg_objstore/lv_objects
 sudo lvchange --vdosettings 'bio_threads=4,cpu_threads=4' vg_objstore/lv_objects
+sudo lvchange -ay vg_objstore/lv_objects
+sudo mount /srv/object-storage
 ```
 
 ### Write Policy
 
-For object storage that prioritizes throughput over strict durability guarantees:
-
-```bash
-sudo lvchange --vdosettings 'write_policy=async' vg_objstore/lv_objects
-```
-
-For production environments requiring durability:
-
-```bash
-sudo lvchange --vdosettings 'write_policy=sync' vg_objstore/lv_objects
-```
+RHEL 9 uses the VDO `async` write policy exclusively. The older `sync` and `async-unsafe` write policies are not available, so do not try to change write policy on RHEL 9.
 
 ## Step 8: Monitor and Adjust
 
@@ -226,12 +220,12 @@ If savings are worse than expected, add physical storage:
 ```bash
 sudo pvcreate /dev/sdd
 sudo vgextend vg_objstore /dev/sdd
-sudo lvextend --size +1T vg_objstore/lv_objects
+sudo lvextend --size +1T vg_objstore/vpool0
 ```
 
 ## Sizing Reference Table
 
-| Scenario | Physical | Virtual | Ratio | RAM for UDS |
+| Scenario | Physical | Virtual | Ratio | Example UDS RAM (dense window) |
 |----------|----------|---------|-------|-------------|
 | Small backup target | 500 GB | 2.5 TB | 5:1 | 512 MB |
 | Medium object store | 2 TB | 6 TB | 3:1 | 2 GB |

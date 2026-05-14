@@ -57,7 +57,12 @@ Export HelmReleases from all namespaces.
 
 ```bash
 # Export all HelmReleases across all namespaces
-flux export hr --all -A > all-helmreleases.yaml
+: > all-helmreleases.yaml
+kubectl get helmreleases.helm.toolkit.fluxcd.io -A \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' |
+while read -r ns name; do
+  flux export hr "$name" -n "$ns" >> all-helmreleases.yaml
+done
 ```
 
 ## Example Export Output
@@ -110,9 +115,8 @@ Notice that the export removes:
 - `metadata.creationTimestamp`
 - `metadata.generation`
 - `status` section
-- `metadata.annotations` (managed-by annotations)
 
-This makes the output ready to commit directly to a Git repository.
+Labels and annotations are preserved. This makes the output ready to commit directly to a Git repository.
 
 ## Export for Migration
 
@@ -120,7 +124,12 @@ When migrating HelmReleases to a new cluster, export from the source and apply t
 
 ```bash
 # On the source cluster: export all HelmReleases
-flux export hr --all -A > helmreleases-backup.yaml
+: > helmreleases-backup.yaml
+kubectl get helmreleases.helm.toolkit.fluxcd.io -A \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' |
+while read -r ns name; do
+  flux export hr "$name" -n "$ns" >> helmreleases-backup.yaml
+done
 
 # On the destination cluster: apply the exported manifests
 kubectl apply -f helmreleases-backup.yaml
@@ -130,9 +139,26 @@ For a complete migration, you also need to export sources and other Flux resourc
 
 ```bash
 # Export a complete set of Flux resources for migration
-flux export source helm --all -A > helm-sources.yaml
-flux export source git --all -A > git-sources.yaml
-flux export hr --all -A > helmreleases.yaml
+: > helm-sources.yaml
+kubectl get helmrepositories.source.toolkit.fluxcd.io -A \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' |
+while read -r ns name; do
+  flux export source helm "$name" -n "$ns" >> helm-sources.yaml
+done
+
+: > git-sources.yaml
+kubectl get gitrepositories.source.toolkit.fluxcd.io -A \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' |
+while read -r ns name; do
+  flux export source git "$name" -n "$ns" >> git-sources.yaml
+done
+
+: > helmreleases.yaml
+kubectl get helmreleases.helm.toolkit.fluxcd.io -A \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' |
+while read -r ns name; do
+  flux export hr "$name" -n "$ns" >> helmreleases.yaml
+done
 ```
 
 ## Export for GitOps Bootstrapping
@@ -203,16 +229,36 @@ BACKUP_DIR="flux-backup-$(date +%Y%m%d)"
 mkdir -p "$BACKUP_DIR"
 
 echo "Exporting Helm sources..."
-flux export source helm --all -A > "$BACKUP_DIR/helm-repositories.yaml"
+: > "$BACKUP_DIR/helm-repositories.yaml"
+kubectl get helmrepositories.source.toolkit.fluxcd.io -A \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' |
+while read -r ns name; do
+  flux export source helm "$name" -n "$ns" >> "$BACKUP_DIR/helm-repositories.yaml"
+done
 
 echo "Exporting Git sources..."
-flux export source git --all -A > "$BACKUP_DIR/git-repositories.yaml"
+: > "$BACKUP_DIR/git-repositories.yaml"
+kubectl get gitrepositories.source.toolkit.fluxcd.io -A \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' |
+while read -r ns name; do
+  flux export source git "$name" -n "$ns" >> "$BACKUP_DIR/git-repositories.yaml"
+done
 
 echo "Exporting HelmReleases..."
-flux export hr --all -A > "$BACKUP_DIR/helmreleases.yaml"
+: > "$BACKUP_DIR/helmreleases.yaml"
+kubectl get helmreleases.helm.toolkit.fluxcd.io -A \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' |
+while read -r ns name; do
+  flux export hr "$name" -n "$ns" >> "$BACKUP_DIR/helmreleases.yaml"
+done
 
 echo "Exporting Kustomizations..."
-flux export kustomization --all -A > "$BACKUP_DIR/kustomizations.yaml"
+: > "$BACKUP_DIR/kustomizations.yaml"
+kubectl get kustomizations.kustomize.toolkit.fluxcd.io -A \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' |
+while read -r ns name; do
+  flux export kustomization "$name" -n "$ns" >> "$BACKUP_DIR/kustomizations.yaml"
+done
 
 echo "Backup complete: $BACKUP_DIR"
 ls -la "$BACKUP_DIR"
@@ -234,7 +280,12 @@ AUDIT_DIR="audit-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$AUDIT_DIR"
 
 # Export all HelmReleases with their current configuration
-flux export hr --all -A > "$AUDIT_DIR/helmreleases.yaml"
+: > "$AUDIT_DIR/helmreleases.yaml"
+kubectl get helmreleases.helm.toolkit.fluxcd.io -A \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' |
+while read -r ns name; do
+  flux export hr "$name" -n "$ns" >> "$AUDIT_DIR/helmreleases.yaml"
+done
 
 # Also capture the live status for context
 kubectl get helmreleases -A -o wide > "$AUDIT_DIR/helmrelease-status.txt"

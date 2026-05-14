@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Notification, Alert, Template
 
-Description: Learn how to customize Flux notification messages using the summary field, provider configurations, and event metadata for more informative alerts.
+Description: Learn how to customize Flux notification messages using event metadata, provider configurations, and event metadata from source objects for more informative alerts.
 
 ---
 
@@ -20,26 +20,26 @@ By default, Flux notifications contain standard event information including the 
 
 Flux provides several ways to customize notification content:
 
-- The `spec.summary` field on Alert resources adds a prefix to notifications
+- The `spec.eventMetadata.summary` field on Alert resources adds summary context to notifications
 - Provider-level channel configuration controls where messages go
-- The generic provider type gives you full control over the JSON payload sent to webhooks
+- The generic provider type sends Flux event JSON to webhooks that can transform the payload
 - Event metadata from the source resources is automatically included
 
 ## Step 1: Add Context with the Summary Field
 
-The `spec.summary` field on the Alert resource prepends a custom message to every notification.
+The `spec.eventMetadata.summary` field on the Alert resource adds a custom summary to the event metadata included in notifications.
 
 ```yaml
-# Alert with a summary field for environment context
+# Alert with event metadata for environment context
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: production-alert
   namespace: flux-system
 spec:
-  # Custom summary prepended to every notification
-  summary: "Production Cluster (us-east-1)"
+  eventMetadata:
+    summary: "Production Cluster (us-east-1)"
   providerRef:
     name: slack-provider
   eventSeverity: info
@@ -60,13 +60,14 @@ Create multiple alerts with distinct summaries to differentiate notifications.
 
 ```yaml
 # Staging alert with environment context
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: staging-context-alert
   namespace: flux-system
 spec:
-  summary: "Staging Environment"
+  eventMetadata:
+    summary: "Staging Environment"
   providerRef:
     name: slack-provider
   eventSeverity: info
@@ -78,13 +79,14 @@ spec:
     - "^Reconciliation finished.*no changes$"
 ---
 # Production alert with cluster and region context
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: production-context-alert
   namespace: flux-system
 spec:
-  summary: "PRODUCTION - US East Cluster"
+  eventMetadata:
+    summary: "PRODUCTION - US East Cluster"
   providerRef:
     name: slack-critical
   eventSeverity: error
@@ -107,13 +109,14 @@ The generic webhook provider sends a JSON payload containing all event metadata.
 
 ```yaml
 # Generic provider that sends raw event data to a custom endpoint
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: custom-webhook
   namespace: flux-system
 spec:
   type: generic
+  address: https://custom-webhook.example.com/flux-events
   secretRef:
     name: custom-webhook-secret
 ```
@@ -133,8 +136,10 @@ The generic provider sends a JSON payload with the following structure to your e
   "message": "Reconciliation finished in 5s",
   "reason": "ReconciliationSucceeded",
   "metadata": {
-    "revision": "main@sha1:abc123"
-  }
+    "kustomize.toolkit.fluxcd.io/revision": "main@sha1:abc123"
+  },
+  "reportingController": "kustomize-controller",
+  "reportingInstance": "kustomize-controller-7c7b47f5f-abcde"
 }
 ```
 
@@ -144,13 +149,14 @@ Create a simple webhook handler that formats notifications with custom templates
 
 ```yaml
 # Alert routing events to the custom webhook handler
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: custom-formatted-alert
   namespace: flux-system
 spec:
-  summary: "GitOps Pipeline"
+  eventMetadata:
+    summary: "GitOps Pipeline"
   providerRef:
     name: custom-webhook
   eventSeverity: info
@@ -172,7 +178,7 @@ Use different Slack channels for different types of notifications by creating se
 
 ```yaml
 # Provider for deployment notifications
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-deployments
@@ -184,7 +190,7 @@ spec:
     name: slack-webhook
 ---
 # Provider for security notifications
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-security
@@ -196,7 +202,7 @@ spec:
     name: slack-webhook
 ---
 # Provider for infrastructure notifications
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-infra
@@ -214,13 +220,14 @@ Create alerts with summaries that include team ownership information.
 
 ```yaml
 # Alert for the platform team
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: platform-team-alert
   namespace: flux-system
 spec:
-  summary: "[Platform Team] Infrastructure Updates"
+  eventMetadata:
+    summary: "[Platform Team] Infrastructure Updates"
   providerRef:
     name: slack-infra
   eventSeverity: info
@@ -235,13 +242,14 @@ spec:
     - "^Reconciliation finished.*no changes$"
 ---
 # Alert for the application team
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: app-team-alert
   namespace: flux-system
 spec:
-  summary: "[App Team] Application Deployments"
+  eventMetadata:
+    summary: "[App Team] Application Deployments"
   providerRef:
     name: slack-deployments
   eventSeverity: info
@@ -265,7 +273,7 @@ flux reconcile kustomization flux-system --with-source
 kubectl logs -n flux-system deploy/notification-controller --tail=20
 
 # Verify alert summaries
-kubectl get alerts -n flux-system -o custom-columns=NAME:.metadata.name,SUMMARY:.spec.summary,PROVIDER:.spec.providerRef.name
+kubectl get alerts -n flux-system -o custom-columns=NAME:.metadata.name,SUMMARY:.spec.eventMetadata.summary,PROVIDER:.spec.providerRef.name
 ```
 
 ## What Event Metadata Is Available
@@ -283,4 +291,4 @@ Flux notifications automatically include this information:
 
 ## Summary
 
-Customizing Flux notification content is achieved through the summary field on Alert resources, provider channel configuration, and the generic webhook provider for fully custom payloads. While Flux does not support Go template-based message formatting directly in the Alert resource, the combination of descriptive summaries, targeted provider routing, and custom webhook handlers gives you flexibility in how notifications are presented. Use summaries to add environment context, create separate providers for different channels, and leverage the generic provider when you need complete control over the notification format.
+Customizing Flux notification content is achieved through event metadata on Alert resources, provider channel configuration, and the generic webhook provider for custom downstream formatting. While Flux does not support Go template-based message formatting directly in the Alert resource, the combination of descriptive summaries, targeted provider routing, and custom webhook handlers gives you flexibility in how notifications are presented. Use summaries to add environment context, create separate providers for different channels, and leverage the generic provider when you need complete control over the notification format.

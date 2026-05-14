@@ -1,19 +1,21 @@
-# How to Use the LEGACY Crypto Policy on RHEL for Backward Compatibility
+# How to Use the LEGACY Crypto Policy on RHEL 8 for Backward Compatibility
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Crypto Policies, LEGACY, TLS, Compatibility, Linux
 
-Description: Learn when and how to use the LEGACY crypto policy on RHEL to maintain backward compatibility with older systems and applications that require deprecated cryptographic algorithms.
+Description: Learn when and how to use the LEGACY crypto policy on RHEL 8 to maintain backward compatibility with older systems and applications that require deprecated cryptographic algorithms.
 
 ---
 
-The LEGACY crypto policy on RHEL enables older algorithms such as SHA-1, TLS 1.0, TLS 1.1, and smaller key sizes. You should only use this policy when you must interoperate with systems that do not support modern cryptography. It trades security strength for compatibility.
+The LEGACY crypto policy on RHEL 8 enables older protocols and algorithms such as TLS 1.0, TLS 1.1, 3DES, RC4, DSA, and smaller key sizes. SHA-1 signatures are also allowed under LEGACY, but they are not unique to LEGACY on RHEL 8. You should only use this policy when you must interoperate with systems that do not support modern cryptography. It trades security strength for compatibility.
+
+On RHEL 9 and RHEL 10, the LEGACY policy is stricter than it is on RHEL 8. Do not assume that enabling LEGACY on newer RHEL releases enables TLS 1.0, TLS 1.1, 3DES, or 1024-bit RSA/DH keys.
 
 ## When to Use the LEGACY Policy
 
 - Connecting to legacy systems that only support TLS 1.0 or 1.1
-- Working with older applications that require SHA-1 signed certificates
+- Working with older applications that require SHA-1 signatures and other LEGACY-only settings
 - Integrating with hardware that uses older firmware with limited crypto support
 - Temporary workaround while upgrading legacy infrastructure
 
@@ -49,30 +51,25 @@ sudo systemctl status sshd httpd
 # See the expanded list of ciphers now available
 openssl ciphers -v | wc -l
 
-# You will see TLS 1.0 and 1.1 are now permitted
+# On RHEL 8, TLS 1.0 is now permitted if the server also supports it
 openssl s_client -connect legacy-server:443 -tls1 < /dev/null 2>/dev/null | grep "Protocol"
 ```
 
-Compared to DEFAULT, the LEGACY policy adds:
+Compared to DEFAULT on RHEL 8, the LEGACY policy adds:
 - TLS 1.0 and 1.1 support
-- SHA-1 for signatures
+- DSA and RC4 support
 - Minimum 1024-bit RSA/DH keys
 - 3DES cipher support
 
+On RHEL 9, LEGACY does not enable TLS 1.1 or older, 3DES, or 1024-bit RSA/DH keys. On RHEL 10, LEGACY also no longer allows SHA-1 signatures in TLS contexts.
+
 ## A Safer Alternative: Scoped Exceptions
 
-Instead of switching the entire system to LEGACY, consider using a custom module to relax only specific settings:
+Instead of switching the entire system to LEGACY, consider using a narrower subpolicy to relax only specific settings:
 
 ```bash
-# Create a module that allows SHA-1 but keeps everything else at DEFAULT
-sudo tee /etc/crypto-policies/policies/modules/ALLOW-SHA1.pmod << 'EOF'
-# Allow SHA-1 for signature verification only
-hash = SHA1+
-sign = RSA-SHA1+ ECDSA-SHA1+
-EOF
-
-# Apply DEFAULT with just the SHA-1 exception
-sudo update-crypto-policies --set DEFAULT:ALLOW-SHA1
+# On RHEL 9, apply the built-in SHA1 subpolicy instead of switching to LEGACY
+sudo update-crypto-policies --set DEFAULT:SHA1
 ```
 
 ## Returning to DEFAULT

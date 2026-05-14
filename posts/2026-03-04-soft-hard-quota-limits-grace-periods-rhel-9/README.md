@@ -79,7 +79,7 @@ xfs_quota -x -c 'limit isoft=50000 ihard=60000 jsmith' /data
 
 ## Configuring Grace Periods on ext4
 
-Grace periods are set per filesystem, not per user. All users share the same grace period on a given filesystem.
+Default grace periods are set per filesystem and quota type. All users share the same default grace period on a given filesystem unless you explicitly alter an individual user's grace time.
 
 Interactive method:
 
@@ -189,8 +189,8 @@ repquota -us /home | grep '+'
 ```
 
 ```bash
-# On XFS - check for users over soft limit
-xfs_quota -x -c 'report -ubh' /data | awk '$2 ~ /\*/'
+# On XFS - check for users with an active or expired grace timer
+xfs_quota -x -c 'report -ubh' /data | awk '$0 !~ /\[------\]/ && $0 !~ /User quota|Blocks|User ID|^-/'
 ```
 
 ## What Happens When Grace Expires
@@ -205,7 +205,22 @@ When the grace period runs out and the user is still over the soft limit:
 
 ## Resetting Grace Periods
 
-Sometimes you need to give a user more time. The only way to reset a grace period is to have the user drop below the soft limit momentarily:
+Sometimes you need to give a user more time. For ext4, use `setquota -T` to alter the individual user's current grace time:
+
+```bash
+# Give jsmith another 7 days for block and inode soft-limit enforcement
+# Values are in seconds: 7 days = 604800 seconds
+setquota -T -u jsmith 604800 604800 /home
+```
+
+On XFS, pass the user name to the `timer` command:
+
+```bash
+# Give jsmith another 7 days before the block soft limit is enforced
+xfs_quota -x -c 'timer -u -b 7days jsmith' /data
+```
+
+You can also have the user drop below the soft limit momentarily:
 
 ```bash
 # As root, temporarily raise the soft limit to reset the timer

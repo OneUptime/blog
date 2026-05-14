@@ -46,7 +46,7 @@ Look for:
 - `MII Polling Interval (ms)`: Should not be 0
 - `MII Status`: Should reflect the actual link state
 
-If `miimon` is set to 0, no link monitoring happens:
+If `miimon` is set to 0, no MII link monitoring happens:
 
 ```bash
 # Fix: set miimon to 100ms
@@ -78,18 +78,18 @@ The bond switches slaves, but traffic stops flowing. This usually means the netw
 
 ### Gratuitous ARP Issues
 
-When a failover occurs, the bond sends gratuitous ARP packets to notify switches that the MAC address has moved to a different port. If these ARPs do not work:
+When a failover occurs, the bond sends peer notifications, including gratuitous ARP packets for IPv4 addresses on the bond, so peers can refresh their neighbor information and switches can learn traffic from the MAC address on the new port. If these notifications do not work:
 
 ```bash
 # Check if gratuitous ARPs are being sent
 # Watch for ARP packets during a failover test
 tcpdump -i bond0 arp -n
 
-# In another terminal, force a failover
+# In another terminal, force a configuration-level failover
 nmcli device disconnect eth0
 ```
 
-You should see gratuitous ARP broadcast frames after the failover. If not, check:
+You should see gratuitous ARP broadcast frames after the failover if the bond has an IPv4 address. If not, check:
 
 ```bash
 # Verify num_grat_arp setting (default is 1)
@@ -158,7 +158,7 @@ In another terminal, pull the active slave:
 nmcli device disconnect eth0
 ```
 
-Count the missed ping replies to calculate the failover duration.
+Count the missed ping replies to calculate the failover duration. For a real link failure test, physically disconnect the active NIC; deactivating a connection with `nmcli` only tests how the bond handles port configuration changes.
 
 ## Problem 4: Failback Causes Outage
 
@@ -172,7 +172,7 @@ nmcli connection modify bond0 bond.options "mode=active-backup,miimon=100,primar
 nmcli connection down bond0 && nmcli connection up bond0
 ```
 
-With `primary_reselect=failure`, the bond only uses the primary on initial boot. Once a failover happens, the current active slave remains active even after the primary recovers.
+With `primary_reselect=failure`, the primary becomes active when it is initially enslaved, or when the current active slave fails while the primary is up. Once a failover happens, the current active slave remains active after the primary recovers.
 
 ## Checking Bond Events in Logs
 

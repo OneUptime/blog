@@ -1,20 +1,20 @@
-# How to Perform an In-Place Upgrade from RHEL 8 to RHEL Using Leapp
+# How to Perform an In-Place Upgrade from RHEL 8 to RHEL 9 Using Leapp
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, Leapp, Upgrade, Linux, Migration
 
-Description: A practical guide to upgrading RHEL 8 to RHEL in place using the Leapp framework, covering pre-upgrade assessment, resolving inhibitors, performing the upgrade, and post-upgrade verification.
+Description: A practical guide to upgrading RHEL 8 to RHEL 9 in place using the Leapp framework, covering pre-upgrade assessment, resolving inhibitors, performing the upgrade, and post-upgrade verification.
 
 ---
 
-Rebuilding servers from scratch is clean but not always practical. Sometimes you have a running RHEL 8 system with services, configurations, and data that would take significant effort to migrate. That is where Leapp comes in. It is Red Hat's supported tool for performing in-place major version upgrades, taking your RHEL 8 system to RHEL without reinstalling.
+Rebuilding servers from scratch is clean but not always practical. Sometimes you have a running RHEL 8 system with services, configurations, and data that would take significant effort to migrate. That is where Leapp comes in. It is Red Hat's supported tool for performing in-place major version upgrades, taking your RHEL 8 system to RHEL 9 without reinstalling.
 
 Fair warning: in-place upgrades always carry some risk. Test this on a non-production system first, have backups, and have a rollback plan. That said, Leapp has matured significantly and works well when you follow the process.
 
 ## How Leapp Works
 
-Leapp performs the upgrade in stages. It analyzes the current system, identifies potential problems, downloads new packages, and then reboots into a special upgrade environment where it replaces RHEL 8 packages with RHEL equivalents.
+Leapp performs the upgrade in stages. It analyzes the current system, identifies potential problems, downloads new packages, and then reboots into a special upgrade environment where it replaces RHEL 8 packages with RHEL 9 equivalents.
 
 ```mermaid
 flowchart LR
@@ -23,7 +23,7 @@ flowchart LR
     C --> D[Run Upgrade]
     D --> E[Reboot into Upgrade Environment]
     E --> F[Package Replacement]
-    F --> G[Reboot into RHEL]
+    F --> G[Reboot into RHEL 9]
     G --> H[Post-upgrade Tasks]
 ```
 
@@ -31,9 +31,9 @@ flowchart LR
 
 Before starting, make sure your system meets these requirements:
 
-- RHEL 8.8 or later (ideally the latest RHEL 8 minor release)
+- RHEL 8.10 on a supported RHEL 8 to RHEL 9 upgrade path
 - An active Red Hat subscription
-- At least 2 GB of free space in `/var/lib/leapp`
+- Enough free space in `/var/lib/leapp` (the pre-upgrade assessment can require up to 4 GB)
 - A full backup of the system (or a VM snapshot if virtualized)
 
 Update your RHEL 8 system to the latest packages first:
@@ -65,7 +65,7 @@ Install the Leapp packages from the Red Hat repository:
 sudo dnf install -y leapp-upgrade
 ```
 
-This installs the `leapp` command-line tool and the upgrade data files that contain the rules and mappings for the RHEL 8 to RHEL transition.
+This installs the `leapp` command-line tool and the upgrade data files that contain the rules and mappings for the RHEL 8 to RHEL 9 transition.
 
 ## Running the Pre-Upgrade Assessment
 
@@ -73,8 +73,10 @@ The pre-upgrade check analyzes your system and reports anything that would block
 
 ```bash
 # Run the pre-upgrade assessment
-sudo leapp preupgrade --target 9.4
+sudo leapp preupgrade --target 9.7
 ```
+
+If you are targeting an EUS, AUS, or E4S release instead, use the supported target version for your subscription and add the matching `--channel` option, such as `--channel eus`.
 
 This takes several minutes. When it finishes, it generates a report at `/var/log/leapp/leapp-report.txt` and a JSON version at `/var/log/leapp/leapp-report.json`.
 
@@ -98,22 +100,22 @@ Here are the issues you will most likely encounter:
 
 ### Unsigned or Third-Party Packages
 
-Leapp flags packages that are not signed by Red Hat because it cannot guarantee they will work on RHEL.
+Leapp can flag packages that are not signed by Red Hat because it cannot guarantee they will work on RHEL 9. The upgrade is inhibited if a third-party package has the same name as a Red Hat-provided package.
 
 ```bash
 # List installed packages not from Red Hat repositories
 sudo rpm -qa --qf '%{NAME} %{VENDOR}\n' | grep -v "Red Hat"
 ```
 
-For each third-party package, you have two options: remove it before the upgrade and reinstall the RHEL version afterward, or tell Leapp to allow it.
+For each conflicting third-party package, remove it before the upgrade or replace it with the package provided by Red Hat.
 
 ### Removed PAM Modules
 
-Some PAM modules from RHEL 8 do not exist in RHEL. The report will tell you which ones. Remove references to them from `/etc/pam.d/` configuration files.
+Some PAM modules from RHEL 8 do not exist in RHEL 9. The report will tell you which ones. Remove references to them from `/etc/pam.d/` configuration files.
 
 ### Deprecated Kernel Drivers
 
-If your system uses hardware drivers that were removed in RHEL, the upgrade will be blocked. Check the report for details and plan for alternative drivers.
+If your system uses Red Hat-provided hardware drivers that were removed in RHEL 9, the upgrade will be blocked. Check the report for details and plan for alternative drivers. Leapp might not detect unsupported third-party drivers, so verify those separately.
 
 ### Answer Files
 
@@ -121,16 +123,16 @@ Some inhibitors require you to confirm a decision by creating an answer file. Le
 
 ```bash
 # Example: confirm you want to proceed despite a known issue
-sudo leapp answer --section check_vdo.confirm --answer True
+sudo leapp answer --section check_vdo.confirm=True
 ```
 
 ### Custom Repository Configuration
 
-If you have custom repositories enabled, Leapp needs to know how to map them to RHEL equivalents. You may need to create custom repository mappings or disable repos that are not needed during the upgrade.
+If you have custom repositories enabled, Leapp needs to know how to map them to RHEL 9 equivalents. You may need to create custom repository mappings or disable repos that are not needed during the upgrade.
 
 ```bash
 # Disable a repository that is causing issues
-sudo dnf config-manager --disable problematic-repo
+sudo dnf config-manager --set-disabled problematic-repo
 ```
 
 ## Performing the Upgrade
@@ -139,8 +141,10 @@ Once all inhibitors are resolved and the pre-upgrade report is clean (or at leas
 
 ```bash
 # Run the upgrade
-sudo leapp upgrade --target 9.4
+sudo leapp upgrade --target 9.7
 ```
+
+Use the same target version and `--channel` option, if any, that you used for `leapp preupgrade`.
 
 This downloads all the RHEL packages and prepares the upgrade environment. Depending on your internet speed and the number of packages, this can take 20 to 60 minutes.
 
@@ -155,7 +159,7 @@ After the reboot, the system boots into a special Leapp upgrade environment. You
 
 This phase typically takes 15 to 45 minutes depending on the number of installed packages and disk speed.
 
-When it finishes, the system reboots again, this time into RHEL.
+When it finishes, the system reboots again, this time into RHEL 9.
 
 ## Post-Upgrade Verification
 
@@ -166,7 +170,7 @@ Log in and verify the upgrade:
 cat /etc/redhat-release
 ```
 
-You should see "Red Hat Enterprise Linux release 9.4 (Plow)" or similar.
+You should see "Red Hat Enterprise Linux release 9.7 (Plow)" or similar, depending on the supported target version you selected.
 
 Run through these checks:
 
@@ -180,23 +184,25 @@ getenforce
 # Check for any failed services
 systemctl --failed
 
-# Verify subscription status
-sudo subscription-manager status
+# Verify subscription and release status
+sudo subscription-manager list --installed
+sudo subscription-manager release
 
 # Verify network connectivity
 ip addr show
 ping -c 3 8.8.8.8
 ```
 
-### Fix SELinux Relabeling
+### Restore SELinux Enforcement
 
-The upgrade triggers an SELinux relabel on the next boot. If it did not happen automatically, force it:
+During the upgrade, Leapp sets SELinux to permissive mode. After checking for SELinux denials, switch it back to enforcing mode:
 
 ```bash
-# Force SELinux relabeling on next boot
-sudo fixfiles -F onboot
+# Check for SELinux denials since boot
+sudo ausearch -m AVC,USER_AVC -ts boot
 
-# Reboot to apply the relabel
+# Edit /etc/selinux/config and set SELINUX=enforcing, then reboot
+sudo vi /etc/selinux/config
 sudo reboot
 ```
 
@@ -206,10 +212,11 @@ After confirming everything works, remove the Leapp packages and leftover data:
 
 ```bash
 # Remove Leapp packages and data
-sudo dnf remove -y leapp-upgrade-el8toel9 leapp-deps-el9 leapp-repository-deps-el9
+sudo dnf config-manager --save --setopt exclude=''
+sudo dnf remove -y leapp-deps-el9 leapp-repository-deps-el9
 
 # Remove leftover Leapp data
-sudo rm -rf /var/log/leapp /var/lib/leapp
+sudo rm -rf /var/log/leapp /root/tmp_leapp_py3 /var/lib/leapp
 ```
 
 ### Remove Old RHEL 8 Kernels
@@ -220,8 +227,11 @@ The upgrade may leave old RHEL 8 kernels in the boot menu. Remove them:
 # List installed kernels
 rpm -qa kernel-core
 
-# Remove old RHEL 8 kernels (replace with actual version)
-sudo dnf remove -y kernel-core-4.18.0*
+# List remaining RHEL 8 packages
+rpm -qa | grep -e '\.el[78]' | grep -vE '^(gpg-pubkey|libmodulemd|katello-ca-consumer)' | sort
+
+# Remove remaining RHEL 8 packages after reviewing the transaction
+sudo dnf remove $(rpm -qa | grep \.el[78] | grep -vE 'gpg-pubkey|libmodulemd|katello-ca-consumer')
 ```
 
 ### Update Remaining Packages
@@ -233,13 +243,13 @@ sudo dnf update -y
 
 ## Rollback Options
 
-If the upgrade fails during the reboot phase, Leapp creates a rollback snapshot (if your system uses LVM with enough free space). You can boot into the old kernel from the GRUB menu.
+Leapp does not create a full rollback for you. Before upgrading, create a full backup, an LVM snapshot, or a VM snapshot that lets you restore the system to its pre-upgrade state. LVM snapshots are not a substitute for a full backup, but they can be useful in environments that already use them.
 
 If you are running VMs, always take a snapshot before starting:
 
 ```bash
 # Take a VM snapshot before upgrading (on the hypervisor)
-sudo virsh snapshot-create-as rhel8-server pre-leapp-upgrade "Before RHEL upgrade"
+sudo virsh snapshot-create-as rhel8-server pre-leapp-upgrade "Before RHEL 9 upgrade"
 ```
 
 To restore from a snapshot if the upgrade goes wrong:
@@ -266,8 +276,8 @@ flowchart TD
     E -->|No| G[Run leapp upgrade]
     G --> H[Reboot]
     H --> I[Wait for Upgrade to Complete]
-    I --> J[Verify RHEL]
-    J --> K[Fix SELinux Labels]
+    I --> J[Verify RHEL 9]
+    J --> K[Restore SELinux Enforcement]
     K --> L[Clean Up Leapp Data]
     L --> M[Remove Old Kernels]
     M --> N[Run dnf update]
@@ -276,10 +286,10 @@ flowchart TD
 
 ## Things to Watch Out For
 
-- **Third-party software**: Applications installed from non-Red Hat repos may not have RHEL builds. Check with vendors before upgrading.
-- **Custom kernel modules**: If you compile kernel modules (like NVIDIA drivers from source), they will break after the upgrade. Plan to rebuild them for the RHEL kernel.
+- **Third-party software**: Applications installed from non-Red Hat repos may not have RHEL 9 builds. Check with vendors before upgrading.
+- **Custom kernel modules**: If you compile kernel modules (like NVIDIA drivers from source), they will break after the upgrade. Plan to rebuild them for the RHEL 9 kernel.
 - **Application compatibility**: Python 3.6 is the default in RHEL 8, while RHEL ships Python 3.9. If your applications depend on the exact Python version, test them beforehand.
-- **Deprecated features**: Some RHEL 8 features are removed in RHEL (like iptables in favor of nftables). Check the RHEL release notes for the full list.
-- **Network interface naming**: Interface names might change between major versions. Verify your network configuration after the upgrade.
+- **Deprecated features**: Some RHEL 8 features are removed in RHEL 9, such as legacy network scripts and some unsupported Netfilter modules. Check the RHEL release notes for the full list.
+- **Network interface naming**: Leapp usually preserves NIC names during the upgrade, but you should still verify your network configuration after the upgrade.
 
 Leapp is not magic. It is a well-engineered automation tool that handles the tedious parts of a major version upgrade. But it still requires preparation, testing, and verification. Treat it like any other significant infrastructure change: plan it, test it, have a rollback strategy, and do not run it in production on a Friday afternoon.

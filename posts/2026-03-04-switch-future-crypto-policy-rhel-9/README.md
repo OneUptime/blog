@@ -17,10 +17,10 @@ flowchart TD
     A[FUTURE Crypto Policy] --> B[TLS 1.2+ only with strong ciphers]
     A --> C[TLS 1.3 preferred]
     A --> D[RSA 3072-bit minimum]
-    A --> E[No SHA-1 anywhere]
+    A --> E[No SHA-1 signatures, certificates, DNSSEC, or HMAC]
     A --> F[256-bit symmetric ciphers only]
-    A --> G[No CBC mode ciphers]
-    A --> H[Ed25519/ECDSA for SSH]
+    A --> G[No CBC mode ciphers except Kerberos]
+    A --> H[Ed25519/ECDSA and 3072-bit+ RSA for SSH]
 ```
 
 ## Detailed Policy Comparison
@@ -30,10 +30,10 @@ flowchart TD
 | TLS versions | 1.2, 1.3 | 1.2 (restricted), 1.3 |
 | Minimum RSA key | 2048 bits | 3072 bits |
 | Minimum DH parameter | 2048 bits | 3072 bits |
-| SHA-1 | Allowed for some uses | Completely disabled |
+| SHA-1 | Restricted; HMAC is still allowed | Disabled for signatures, certificates, DNSSEC, and HMAC |
 | 128-bit ciphers | Allowed | Disabled |
-| CBC mode | Allowed | Disabled |
-| SSH RSA keys | 2048+ bits | Disabled (only ECDSA/Ed25519) |
+| CBC mode | Disabled for SSH | Disabled except in Kerberos |
+| SSH RSA keys | 2048+ bits | 3072+ bits with SHA-2 signatures |
 | 3DES | Disabled | Disabled |
 | DSA keys | Disabled | Disabled |
 
@@ -44,8 +44,8 @@ flowchart TD
 
 update-crypto-policies --show
 
-# View what would change
-diff <(update-crypto-policies --show --no-reload) <(echo "FUTURE")
+# Inspect the FUTURE policy definition
+less /usr/share/crypto-policies/policies/FUTURE.pol
 ```
 
 ## Pre-Switch Assessment
@@ -58,9 +58,8 @@ Before switching, check for potential compatibility issues:
 # Check what SSH host keys are available
 ls -la /etc/ssh/ssh_host_*_key
 
-# FUTURE policy only allows Ed25519 and ECDSA
-# RSA keys will be rejected
-# Ensure Ed25519 host keys exist
+# FUTURE policy requires RSA keys to be at least 3072 bits
+# Ensure Ed25519 host keys exist for maximum compatibility
 ls /etc/ssh/ssh_host_ed25519_key
 
 # If missing, generate them
@@ -123,7 +122,7 @@ sudo systemctl restart nginx 2>/dev/null
 sudo systemctl restart postfix 2>/dev/null
 sudo systemctl restart dovecot 2>/dev/null
 
-# Or simply reboot for a clean state
+# Red Hat recommends rebooting so all running processes pick up the new policy
 sudo systemctl reboot
 ```
 
@@ -132,15 +131,13 @@ sudo systemctl reboot
 ### Check SSH
 
 ```bash
-# Verify allowed SSH algorithms
-ssh -Q cipher
-# Should show only AES-256-GCM and ChaCha20-Poly1305
+# Verify effective SSH client algorithms
+ssh -G localhost | grep -E '^(ciphers|kexalgorithms|hostkeyalgorithms|pubkeyacceptedalgorithms)'
 
-ssh -Q kex
-# Should show ECDH and limited DHE
+# Verify effective SSH server algorithms
+sudo sshd -T | grep -E '^(ciphers|kexalgorithms|hostkeyalgorithms|pubkeyacceptedalgorithms)'
 
-ssh -Q key
-# Should show Ed25519 and ECDSA (no RSA)
+# RSA keys are still allowed if they meet the minimum size and use SHA-2 signatures
 ```
 
 ### Check TLS
@@ -158,7 +155,7 @@ openssl s_client -connect localhost:443 < /dev/null 2>/dev/null | \
 
 ### SSH Connections to Older Servers
 
-If you need to connect to a server that only supports RSA:
+If you need to connect to a server that only supports the older `ssh-rsa` SHA-1 signature algorithm:
 
 ```bash
 # Per-connection override (not recommended for regular use)
@@ -166,6 +163,8 @@ ssh -o PubkeyAcceptedAlgorithms=+ssh-rsa \
     -o HostKeyAlgorithms=+ssh-rsa \
     user@old-server
 ```
+
+If the server also uses an RSA key smaller than 3072 bits, use a temporary custom crypto-policy subpolicy instead of relying on SSH command-line options alone.
 
 ### Application-Specific Overrides
 
@@ -234,4 +233,4 @@ It is not recommended when:
 
 ## Summary
 
-The FUTURE crypto policy on RHEL 9 provides the strongest available cryptographic protections by disabling SHA-1, requiring 3072-bit minimum key sizes, and preferring TLS 1.3. Before switching, audit your SSH keys, TLS certificates, and application dependencies. Apply with `update-crypto-policies --set FUTURE`, restart services, and monitor for compatibility issues. Keep the DEFAULT policy as a fallback if problems arise.
+The FUTURE crypto policy on RHEL 9 provides the strongest available cryptographic protections by disabling SHA-1 for signatures, certificates, DNSSEC, and HMAC, requiring 3072-bit minimum key sizes, and preferring TLS 1.3. Before switching, audit your SSH keys, TLS certificates, and application dependencies. Apply with `update-crypto-policies --set FUTURE`, restart services, and monitor for compatibility issues. Keep the DEFAULT policy as a fallback if problems arise.

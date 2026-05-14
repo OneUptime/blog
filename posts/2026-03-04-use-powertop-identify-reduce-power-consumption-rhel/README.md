@@ -27,10 +27,10 @@ sudo powertop
 
 The interactive interface has several tabs:
 
-- **Overview** - Shows processes sorted by wakeups per second
+- **Overview** - Shows processes, devices, interrupts, and other components by utilization
 - **Idle Stats** - Displays CPU C-state residency
 - **Frequency Stats** - Shows CPU frequency distribution
-- **Device Stats** - Lists device power usage
+- **Device Stats** - Lists device-specific power and activity information
 - **Tunables** - Lists power-saving settings you can toggle
 
 Navigate between tabs using the Tab key.
@@ -38,7 +38,7 @@ Navigate between tabs using the Tab key.
 ## Calibrate powertop for Accurate Readings
 
 ```bash
-# Run calibration to improve power estimates
+# On laptops running on battery power, run calibration to improve power estimates
 # This takes several minutes and cycles through brightness levels
 sudo powertop --calibrate
 ```
@@ -70,32 +70,16 @@ sudo powertop --auto-tune
 # - PCI runtime power management
 ```
 
-## Make Tunings Persistent with a systemd Service
+## Make Tunings Persistent with the powertop Service
 
-The `--auto-tune` changes are lost after reboot. Create a service to apply them at boot.
+The `--auto-tune` changes are lost after reboot. On RHEL, enable the packaged `powertop` service to apply them at boot.
 
 ```bash
-# Create a systemd service for powertop auto-tune
-sudo tee /etc/systemd/system/powertop-auto-tune.service > /dev/null << 'EOF'
-[Unit]
-Description=Apply powertop auto-tune settings
-After=multi-user.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/sbin/powertop --auto-tune
-RemainAfterExit=true
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
 # Enable the service
-sudo systemctl daemon-reload
-sudo systemctl enable powertop-auto-tune.service
+sudo systemctl enable powertop.service
 
 # Start it now
-sudo systemctl start powertop-auto-tune.service
+sudo systemctl start powertop.service
 ```
 
 ## Identify Specific Power Issues

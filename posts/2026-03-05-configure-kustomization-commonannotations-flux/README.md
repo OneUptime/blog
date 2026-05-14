@@ -152,7 +152,7 @@ commonAnnotations:
   prometheus.io/scrape: "true"
   prometheus.io/port: "3000"
   prometheus.io/path: "/metrics"
-  # Production-specific: enable PodDisruptionBudget awareness
+  # Production-specific: tell Cluster Autoscaler not to evict matching pods
   cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
 ```
 
@@ -316,4 +316,4 @@ commonAnnotations:
 
 ## Conclusion
 
-The `commonAnnotations` field in `kustomization.yaml` is a simple and effective way to attach consistent metadata across all resources in a Flux-managed deployment. Because annotations do not affect selectors, they are safe to add, modify, or remove at any time without causing reconciliation errors. Use them for ownership information, monitoring configuration, documentation links, and deployment tracking.
+The `commonAnnotations` field in `kustomization.yaml` is a simple and effective way to attach consistent metadata across all resources in a Flux-managed deployment. Because annotations do not affect selectors, they are safe to add, modify, or remove without causing selector immutability errors. Use them for ownership information, monitoring configuration, documentation links, and deployment tracking.

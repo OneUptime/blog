@@ -12,7 +12,7 @@ Bootstrapping is the process of installing Flux CD on a Kubernetes cluster and c
 
 ## Prerequisites
 
-- A running Kubernetes cluster (v1.26 or later)
+- A running Kubernetes cluster on a currently supported Kubernetes version
 - `kubectl` configured to access your cluster
 - Flux CLI installed (v2.0 or later)
 - A GitHub personal access token with appropriate permissions
@@ -38,12 +38,12 @@ flowchart TD
 
 ## Step 1: Create a GitHub Personal Access Token
 
-Navigate to GitHub Settings > Developer settings > Personal access tokens > Fine-grained tokens and create a token with the following permissions:
+Navigate to GitHub Settings > Developer settings > Personal access tokens > Fine-grained tokens and create a token for an existing repository with the following permissions:
 
 - **Repository access**: All repositories (or select specific ones)
 - **Repository permissions**: Administration (Read and write), Contents (Read and write), Metadata (Read)
 
-For classic tokens, ensure the `repo` scope is selected.
+Fine-grained tokens are intended for repositories that already exist. To let Flux create repositories, use a classic token and ensure the `repo` scope is selected.
 
 ```bash
 # Export the token as an environment variable
@@ -114,7 +114,7 @@ flux bootstrap github \
 
 ## Step 5: Customize the Flux Components
 
-You can control which Flux components are installed and configure resource limits.
+You can control which Flux components are installed and configure controller settings.
 
 ```bash
 # Bootstrap with specific components and custom settings
@@ -191,7 +191,7 @@ flux get kustomizations
 # Check that all pods are running in flux-system
 kubectl get pods -n flux-system
 
-# View the deploy key added to your repository
+# View the GitRepository Secret reference used by Flux
 flux get sources git flux-system -o yaml | grep -A5 secretRef
 ```
 
@@ -202,7 +202,7 @@ Set up GitHub commit status notifications so you can see the sync status directl
 ```yaml
 # clusters/production/notifications/github-provider.yaml
 # Configure Flux to report status to GitHub
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: github-status
@@ -213,7 +213,7 @@ spec:
   secretRef:
     name: github-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: github-status

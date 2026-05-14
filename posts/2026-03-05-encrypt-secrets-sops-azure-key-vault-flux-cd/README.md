@@ -83,26 +83,78 @@ export IDENTITY_CLIENT_ID=$(az identity show \
   --resource-group rg-flux-sops \
   --query clientId -o tsv)
 
-# Grant the identity access to unwrap (decrypt) keys
+export AZURE_TENANT_ID=$(az account show --query tenantId --output tsv)
+
+# Get the managed identity principal ID and AKS OIDC issuer
+export IDENTITY_PRINCIPAL_ID=$(az identity show \
+  --name flux-kustomize-identity \
+  --resource-group rg-flux-sops \
+  --query principalId -o tsv)
+
+export AKS_OIDC_ISSUER=$(az aks show \
+  --resource-group rg-flux-sops \
+  --name my-aks-cluster \
+  --query oidcIssuerProfile.issuerUrl \
+  --output tsv)
+
+# Grant the identity access to decrypt with the key
 az keyvault set-policy \
   --name flux-sops-vault \
-  --object-id $(az identity show --name flux-kustomize-identity --resource-group rg-flux-sops --query principalId -o tsv) \
-  --key-permissions decrypt unwrapKey
+  --object-id $IDENTITY_PRINCIPAL_ID \
+  --key-permissions decrypt
+
+# Federate the managed identity with the kustomize-controller service account
+az identity federated-credential create \
+  --name flux-kustomize-federated \
+  --identity-name flux-kustomize-identity \
+  --resource-group rg-flux-sops \
+  --issuer $AKS_OIDC_ISSUER \
+  --subject system:serviceaccount:flux-system:kustomize-controller \
+  --audience api://AzureADTokenExchange
+
+# Attach the workload identity to the Flux kustomize-controller
+kubectl annotate serviceaccount kustomize-controller \
+  --namespace flux-system \
+  azure.workload.identity/client-id=$IDENTITY_CLIENT_ID \
+  azure.workload.identity/tenant-id=$AZURE_TENANT_ID \
+  --overwrite
+
+kubectl patch deployment kustomize-controller \
+  --namespace flux-system \
+  --type merge \
+  --patch '{"spec":{"template":{"metadata":{"labels":{"azure.workload.identity/use":"true"}}}}}'
+
+kubectl rollout restart deployment/kustomize-controller \
+  --namespace flux-system
 ```
 
 Alternatively, store Azure credentials as a Kubernetes secret for non-AKS clusters.
 
 ```bash
 # Alternative: Create a service principal and store credentials
-az ad sp create-for-rbac --name flux-sops-sp --role "Key Vault Crypto User" \
-  --scopes /subscriptions/<sub-id>/resourceGroups/rg-flux-sops/providers/Microsoft.KeyVault/vaults/flux-sops-vault
+export AZURE_CLIENT_SECRET=$(az ad sp create-for-rbac \
+  --name flux-sops-sp \
+  --query password \
+  --output tsv)
+
+export AZURE_CLIENT_ID=$(az ad sp list \
+  --display-name flux-sops-sp \
+  --query '[0].appId' \
+  --output tsv)
+
+export AZURE_TENANT_ID=$(az account show --query tenantId --output tsv)
+
+az keyvault set-policy \
+  --name flux-sops-vault \
+  --spn $AZURE_CLIENT_ID \
+  --key-permissions decrypt
 
 # Create Kubernetes secret with service principal credentials
 kubectl create secret generic sops-azure \
   --namespace=flux-system \
-  --from-literal=tenantId=<tenant-id> \
-  --from-literal=clientId=<client-id> \
-  --from-literal=clientSecret=<client-secret>
+  --from-literal=sops.azure-kv="tenantId: $AZURE_TENANT_ID
+clientId: $AZURE_CLIENT_ID
+clientSecret: $AZURE_CLIENT_SECRET"
 ```
 
 ## Step 4: Create and Encrypt a Secret
@@ -156,7 +208,7 @@ spec:
       name: sops-azure
 ```
 
-When using Workload Identity on AKS, you can omit the `secretRef` since the kustomize-controller service account already has the necessary permissions through the managed identity binding.
+When using Workload Identity on AKS with the kustomize-controller service account configured as shown above, you can omit the `secretRef` since the controller obtains Azure credentials from the managed identity binding.
 
 ```yaml
 # Using Workload Identity (no secretRef needed)
@@ -221,6 +273,6 @@ kubectl get secret sops-azure -n flux-system -o yaml
 
 Common failures include expired service principal credentials, missing Key Vault access policies, or network restrictions preventing the cluster from reaching the Key Vault endpoint. Ensure that if your Key Vault has a firewall enabled, the cluster's outbound IPs are allowed.
 
-If you see permission denied errors, verify the access policy grants both `decrypt` and `unwrapKey` permissions. The `unwrapKey` permission is required because SOPS uses envelope encryption, where the data encryption key itself is wrapped (encrypted) using the Key Vault key.
+If you see permission denied errors, verify the access policy grants `decrypt` permission to the identity that Flux uses. SOPS uses envelope encryption, where the data encryption key itself is encrypted using the Key Vault key.
 
 Azure Key Vault integration with SOPS provides a managed, auditable approach to secret encryption that aligns with Azure security best practices and works seamlessly with Flux CD on AKS clusters.

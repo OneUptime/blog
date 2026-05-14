@@ -288,7 +288,7 @@ echo "=== Domain Membership ==="
 realm list 2>/dev/null | head -5
 
 echo "=== DNS Resolution ==="
-host _ldap._tcp.example.com 2>&1 | head -3
+host -t SRV _ldap._tcp.example.com 2>&1 | head -3
 
 echo "=== Time Sync ==="
 chronyc tracking 2>/dev/null | grep "System time"

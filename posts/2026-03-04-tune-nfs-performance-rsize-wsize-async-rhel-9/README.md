@@ -29,20 +29,20 @@ These control the maximum read and write buffer sizes in bytes. Larger values me
 - `async` - The server acknowledges the write before data hits disk. Faster but risky if the server crashes.
 
 **Client-side** (mount option):
-- The client-side `sync` mount option forces all writes to be synchronous, regardless of the server setting.
+- The client-side `sync` mount option forces writes to be flushed to the server before the write system call returns. If the export is `async`, the server can still acknowledge before data reaches stable storage.
 
 ## Tuning Client Mount Options
 
 ```bash
 # Mount with tuned buffer sizes
 
-sudo mount -t nfs -o rsize=65536,wsize=65536,hard,noatime 192.168.1.10:/srv/nfs/data /mnt/nfs-data
+sudo mount -t nfs -o rsize=65536,wsize=65536,hard 192.168.1.10:/srv/nfs/data /mnt/nfs-data
 ```
 
 For persistent mounts in /etc/fstab:
 
 ```bash
-192.168.1.10:/srv/nfs/data  /mnt/nfs-data  nfs  rw,hard,rsize=65536,wsize=65536,noatime,_netdev  0 0
+192.168.1.10:/srv/nfs/data  /mnt/nfs-data  nfs  rw,hard,rsize=65536,wsize=65536,_netdev  0 0
 ```
 
 ## Checking Current Mount Parameters
@@ -128,7 +128,7 @@ graph TD
     A --> C[Server Side]
     A --> D[Network]
     B --> B1[rsize/wsize]
-    B --> B2[noatime]
+    B --> B2[attribute caching]
     B --> B3[nocto]
     C --> C1[async/sync]
     C --> C2[Thread count]
@@ -141,19 +141,17 @@ graph TD
 
 ```bash
 # Full optimization mount
-sudo mount -t nfs -o rsize=1048576,wsize=1048576,hard,noatime,nocto,nodiratime,_netdev \
+sudo mount -t nfs -o rsize=1048576,wsize=1048576,hard,nocto \
     192.168.1.10:/srv/nfs/data /mnt/nfs-data
 ```
 
 | Option | Effect |
 |--------|--------|
-| `noatime` | Skip updating access times on reads |
-| `nodiratime` | Skip access time updates for directories |
-| `nocto` | Disable close-to-open cache consistency checks (for read-heavy workloads) |
+| `nocto` | Use a non-standard close-to-open cache consistency heuristic (best for read-only or rarely changed data) |
 | `ac` | Enable attribute caching (default) |
 | `actimeo=60` | Cache file attributes for 60 seconds |
 
-Use `nocto` only when files are not being modified by multiple clients simultaneously.
+On Linux NFS mounts, `noatime` and `nodiratime` have no effect. Use `nocto` only when files are not being modified by multiple clients simultaneously.
 
 ## Network-Level Tuning
 
@@ -185,4 +183,4 @@ sudo sysctl -p
 
 ## Wrap-Up
 
-NFS performance tuning on RHEL involves client mount options, server configuration, and network optimization. Start with rsize/wsize at 65536 or higher, increase server threads to match your client count, and add noatime for read-heavy workloads. Benchmark before and after each change to measure the impact. The biggest gains usually come from increasing rsize/wsize and adding more server threads, so start there.
+NFS performance tuning on RHEL involves client mount options, server configuration, and network optimization. Start with rsize/wsize at 65536 or higher, increase server threads to match your client count, and tune cache consistency options only for workloads that can tolerate weaker freshness guarantees. Benchmark before and after each change to measure the impact. The biggest gains usually come from increasing rsize/wsize and adding more server threads, so start there.

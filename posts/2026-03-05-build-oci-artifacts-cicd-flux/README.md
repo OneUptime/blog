@@ -76,6 +76,7 @@ on:
       - 'manifests/**'
 
 permissions:
+  contents: read
   packages: write
 
 jobs:
@@ -89,10 +90,11 @@ jobs:
         uses: fluxcd/flux2/action@main
 
       - name: Login to GHCR
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | flux oci login ghcr.io \
-            --username flux \
-            --password-stdin
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push artifact
         run: |
@@ -101,7 +103,7 @@ jobs:
             oci://ghcr.io/${{ github.repository }}/manifests:$(git rev-parse --short HEAD) \
             --path ./manifests \
             --source="$(git config --get remote.origin.url)" \
-            --revision="main/$(git rev-parse HEAD)"
+            --revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)"
 
       - name: Tag as latest
         run: |
@@ -125,20 +127,19 @@ push-artifact:
         - manifests/**
       if: $CI_COMMIT_BRANCH == "main"
   script:
-    # Login to the GitLab container registry
-    - flux oci login ${CI_REGISTRY} --username gitlab-ci-token --password ${CI_JOB_TOKEN}
-
     # Push the manifests as an OCI artifact
     - flux push artifact
         oci://${CI_REGISTRY_IMAGE}/manifests:${CI_COMMIT_SHORT_SHA}
         --path ./manifests
         --source="${CI_PROJECT_URL}"
-        --revision="main/${CI_COMMIT_SHA}"
+        --revision="${CI_COMMIT_BRANCH}@sha1:${CI_COMMIT_SHA}"
+        --creds gitlab-ci-token:${CI_JOB_TOKEN}
 
     # Tag the artifact as latest
     - flux tag artifact
         oci://${CI_REGISTRY_IMAGE}/manifests:${CI_COMMIT_SHORT_SHA}
         --tag latest
+        --creds gitlab-ci-token:${CI_JOB_TOKEN}
 ```
 
 ## Building OCI Artifacts for AWS ECR
@@ -146,18 +147,16 @@ push-artifact:
 When using AWS ECR, you need to authenticate using the AWS CLI or an OIDC provider before pushing.
 
 ```bash
-# Authenticate to ECR using the AWS CLI
-aws ecr get-login-password --region us-east-1 | \
-  flux oci login 123456789.dkr.ecr.us-east-1.amazonaws.com \
-    --username AWS \
-    --password-stdin
+# Authenticate to AWS before pushing, for example with the AWS CLI
+aws sts get-caller-identity
 
 # Push the artifact to ECR
 flux push artifact \
   oci://123456789.dkr.ecr.us-east-1.amazonaws.com/my-app/manifests:v1.0.0 \
   --path ./manifests \
   --source="https://github.com/my-org/my-app" \
-  --revision="main/abc123"
+  --revision="main@sha1:abc123" \
+  --provider aws
 ```
 
 ## Adding Diff Checks Before Pushing
@@ -177,7 +176,7 @@ if [ "$DIFF_EXIT" -ne 0 ]; then
     oci://ghcr.io/my-org/my-app/manifests:${COMMIT_SHA} \
     --path ./manifests \
     --source="${REPO_URL}" \
-    --revision="main/${COMMIT_SHA}"
+    --revision="main@sha1:${COMMIT_SHA}"
 
   flux tag artifact \
     oci://ghcr.io/my-org/my-app/manifests:${COMMIT_SHA} \
@@ -241,7 +240,7 @@ flux push artifact \
   oci://ghcr.io/my-org/manifests:v1.2.3 \
   --path ./manifests \
   --source="https://github.com/my-org/my-app" \
-  --revision="main/abc123"
+  --revision="main@sha1:abc123"
 
 flux tag artifact oci://ghcr.io/my-org/manifests:v1.2.3 --tag latest
 flux tag artifact oci://ghcr.io/my-org/manifests:v1.2.3 --tag main-abc123

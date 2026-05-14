@@ -146,13 +146,15 @@ You can test firewall configurations in this simulated environment.
 
 ```bash
 # Block traffic on router1 and see if host1 can still reach host2
-sudo ip netns exec router1 iptables -A FORWARD -s 10.0.1.0/24 -d 10.0.3.0/24 -j DROP
+sudo ip netns exec router1 nft add table ip lab_filter
+sudo ip netns exec router1 nft 'add chain ip lab_filter forward { type filter hook forward priority 0; policy accept; }'
+sudo ip netns exec router1 nft add rule ip lab_filter forward ip saddr 10.0.1.0/24 ip daddr 10.0.3.0/24 drop
 
 # Test - this should fail now
 sudo ip netns exec host1 ping -c 2 10.0.3.10
 
-# Remove the rule
-sudo ip netns exec router1 iptables -D FORWARD -s 10.0.1.0/24 -d 10.0.3.0/24 -j DROP
+# Remove the test table and rule
+sudo ip netns exec router1 nft delete table ip lab_filter
 ```
 
 ## Simulating Network Issues

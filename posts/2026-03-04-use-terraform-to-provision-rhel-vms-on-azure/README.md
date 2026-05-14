@@ -21,12 +21,18 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
 
+variable "subscription_id" {
+  description = "Azure subscription ID"
+  type        = string
+}
+
 provider "azurerm" {
+  subscription_id = var.subscription_id
   features {}
 }
 
@@ -52,6 +58,34 @@ resource "azurerm_subnet" "subnet" {
   address_prefixes     = ["10.0.1.0/24"]
 }
 
+# Public IP
+resource "azurerm_public_ip" "public_ip" {
+  name                = "rhel-public-ip"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}
+
+# Network security group
+resource "azurerm_network_security_group" "nsg" {
+  name                = "rhel-nsg"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+
+  security_rule {
+    name                       = "SSH"
+    priority                   = 1001
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "22"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+}
+
 # Network interface
 resource "azurerm_network_interface" "nic" {
   name                = "rhel-nic"
@@ -62,7 +96,13 @@ resource "azurerm_network_interface" "nic" {
     name                          = "internal"
     subnet_id                     = azurerm_subnet.subnet.id
     private_ip_address_allocation = "Dynamic"
+    public_ip_address_id          = azurerm_public_ip.public_ip.id
   }
+}
+
+resource "azurerm_network_interface_security_group_association" "nic_nsg" {
+  network_interface_id      = azurerm_network_interface.nic.id
+  network_security_group_id = azurerm_network_security_group.nsg.id
 }
 
 # RHEL 9 Virtual Machine
@@ -76,7 +116,7 @@ resource "azurerm_linux_virtual_machine" "rhel" {
 
   admin_ssh_key {
     username   = "azureuser"
-    public_key = file("~/.ssh/id_rsa.pub")
+    public_key = file(pathexpand("~/.ssh/id_rsa.pub"))
   }
 
   os_disk {
@@ -92,6 +132,10 @@ resource "azurerm_linux_virtual_machine" "rhel" {
     version   = "latest"
   }
 }
+
+output "public_ip_address" {
+  value = azurerm_public_ip.public_ip.ip_address
+}
 ```
 
 ## Deploy
@@ -99,8 +143,8 @@ resource "azurerm_linux_virtual_machine" "rhel" {
 ```bash
 # Initialize, plan, and apply
 terraform init
-terraform plan
-terraform apply -auto-approve
+terraform plan -var "subscription_id=<subscription-id>"
+terraform apply -var "subscription_id=<subscription-id>" -auto-approve
 ```
 
 ## Verify
@@ -108,9 +152,9 @@ terraform apply -auto-approve
 After provisioning, SSH into the VM:
 
 ```bash
-ssh azureuser@<vm-ip-address>
+ssh azureuser@<public-ip-address>
 cat /etc/redhat-release
 # Red Hat Enterprise Linux release 9.x (Plow)
 ```
 
-To tear down all resources, run `terraform destroy`.
+To tear down all resources, run `terraform destroy -var "subscription_id=<subscription-id>"`.

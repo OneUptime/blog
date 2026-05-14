@@ -21,7 +21,7 @@ curl -L https://omnitruck.chef.io/install.sh | bash -s -- -P inspec
 inspec version
 
 # Accept the license (required for first run)
-inspec --chef-license=accept
+export CHEF_LICENSE=accept
 ```
 
 ## Get the RHEL STIG InSpec Profile
@@ -30,11 +30,11 @@ The MITRE SAF team publishes InSpec profiles on GitHub:
 
 ```bash
 # Clone the RHEL STIG InSpec profile
-git clone https://github.com/CMSgov/redhat-enterprise-linux-9-stig-baseline.git \
+git clone https://github.com/mitre/redhat-enterprise-linux-9-stig-baseline.git \
   /opt/rhel9-stig-inspec
 
 # Or use the profile directly from GitHub without cloning
-inspec exec https://github.com/CMSgov/redhat-enterprise-linux-9-stig-baseline \
+inspec exec https://github.com/mitre/redhat-enterprise-linux-9-stig-baseline/archive/main.tar.gz \
   --reporter cli json:/tmp/stig-results.json
 ```
 
@@ -65,7 +65,7 @@ inspec exec . --reporter cli --show-progress
 
 # Save results in multiple formats
 inspec exec . \
-  --reporter cli json:/tmp/stig-inspec.json html:/tmp/stig-inspec.html
+  --reporter cli json:/tmp/stig-inspec.json html2:/tmp/stig-inspec.html
 ```
 
 ## Run Against Remote Systems
@@ -92,17 +92,18 @@ inspec exec /opt/rhel9-stig-inspec \
 Each STIG control is written as a readable test:
 
 ```ruby
-# Example InSpec control for STIG V-257987 (no root SSH login)
-control 'V-257987' do
-  title 'RHEL must not allow direct root login via SSH'
+# Example InSpec control for STIG SV-257985 (no root SSH login)
+control 'SV-257985' do
+  title 'RHEL 9 must not permit direct logons to the root account using remote access via SSH'
   desc 'Even though root login is disabled by default, explicitly
         setting this prevents accidental re-enablement.'
-  impact 0.7
-  tag severity: 'high'
-  tag stig_id: 'RHEL-09-255040'
+  impact 0.5
+  tag severity: 'medium'
+  tag gid: 'V-257985'
+  tag stig_id: 'RHEL-09-255045'
 
   describe sshd_config do
-    its('PermitRootLogin') { should cmp 'no' }
+    its('PermitRootLogin') { should cmp input('permit_root_login') }
   end
 end
 ```
@@ -115,10 +116,11 @@ Override default values without modifying the profile:
 # Create an inputs file
 cat > /opt/rhel9-stig-inspec/inputs.yml << 'EOF'
 # Customize thresholds and expected values
-password_min_length: 15
-password_max_age: 60
-ssh_client_alive_interval: 600
-failed_login_attempts: 3
+pass_min_len: 15
+pass_max_days: 60
+sshd_config_values:
+  ClientAliveInterval: '600'
+unsuccessful_attempts: 3
 lockout_time: 0
 exempt_home_users:
   - sysadmin
@@ -136,12 +138,12 @@ inspec exec /opt/rhel9-stig-inspec \
 ```bash
 # Create a waiver file for non-applicable controls
 cat > /opt/rhel9-stig-inspec/waivers.yml << 'EOF'
-V-257844:
+SV-257844:
   expiration_date: '2027-01-01'
   run: false
   justification: 'FIPS mode breaks legacy application XYZ - POA&M 2024-001'
 
-V-258000:
+SV-258000:
   run: false
   justification: 'Smart card authentication not used in this environment'
 EOF
@@ -164,7 +166,7 @@ npm install -g @mitre/saf
 saf summary --input /tmp/stig-inspec.json
 
 # Generate a detailed HTML report
-saf view summary --input /tmp/stig-inspec.json --output /tmp/stig-report.html
+saf convert hdf2html --input /tmp/stig-inspec.json --output /tmp/stig-report.html
 
 # Convert to checklist format (CKL) for STIG Viewer
 saf convert hdf2ckl --input /tmp/stig-inspec.json --output /tmp/stig-checklist.ckl
@@ -180,15 +182,20 @@ Add STIG validation to your server build pipeline:
 set -e
 
 echo "Running STIG compliance check..."
+set +e
 inspec exec /opt/rhel9-stig-inspec \
   --reporter json:/tmp/stig-ci.json cli \
   --input-file /opt/rhel9-stig-inspec/inputs.yml \
   --waiver-file /opt/rhel9-stig-inspec/waivers.yml
+INSPEC_STATUS=$?
+set -e
+
+if [ "$INSPEC_STATUS" -ne 0 ] && [ "$INSPEC_STATUS" -ne 100 ] && [ "$INSPEC_STATUS" -ne 101 ]; then
+    exit "$INSPEC_STATUS"
+fi
 
 # Check for CAT I failures (exit code handling)
-FAILURES=$(inspec exec /opt/rhel9-stig-inspec \
-  --reporter json:/dev/stdout 2>/dev/null | \
-  python3 -c "import sys,json; d=json.load(sys.stdin); print(sum(1 for c in d.get('profiles',[{}])[0].get('controls',[]) if c.get('results',[{}])[0].get('status')=='failed' and c.get('impact',0)>=0.7))")
+FAILURES=$(python3 -c "import sys,json; d=json.load(open(sys.argv[1])); print(sum(1 for c in d.get('profiles',[{}])[0].get('controls',[]) if c.get('impact',0)>=0.7 and any(r.get('status')=='failed' for r in c.get('results',[]))))" /tmp/stig-ci.json)
 
 if [ "$FAILURES" -gt 0 ]; then
     echo "FAILED: $FAILURES high-severity STIG findings"

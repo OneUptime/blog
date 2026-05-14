@@ -34,38 +34,15 @@ rules:
   - level: RequestResponse
     resources:
       - group: "kustomize.toolkit.fluxcd.io"
-        resources: ["kustomizations", "kustomizations/status"]
+        resources: ["*"]
       - group: "helm.toolkit.fluxcd.io"
-        resources: ["helmreleases", "helmreleases/status"]
+        resources: ["*"]
       - group: "source.toolkit.fluxcd.io"
-        resources: ["gitrepositories", "helmrepositories", "helmcharts", "ocirepositories", "buckets"]
+        resources: ["*"]
       - group: "notification.toolkit.fluxcd.io"
-        resources: ["alerts", "providers", "receivers"]
+        resources: ["*"]
       - group: "image.toolkit.fluxcd.io"
-        resources: ["imagepolicies", "imagerepositories", "imageupdateautomations"]
-
-  # Log all create, update, delete operations by Flux service accounts
-  - level: Request
-    users:
-      - "system:serviceaccount:flux-system:kustomize-controller"
-      - "system:serviceaccount:flux-system:helm-controller"
-      - "system:serviceaccount:flux-system:source-controller"
-      - "system:serviceaccount:flux-system:notification-controller"
-    verbs: ["create", "update", "patch", "delete"]
-    resources:
-      - group: ""
-        resources: ["configmaps", "secrets", "services", "serviceaccounts"]
-      - group: "apps"
-        resources: ["deployments", "statefulsets", "daemonsets"]
-      - group: "networking.k8s.io"
-        resources: ["ingresses"]
-
-  # Log impersonation events (important for multi-tenant setups)
-  - level: RequestResponse
-    users:
-      - "system:serviceaccount:flux-system:kustomize-controller"
-      - "system:serviceaccount:flux-system:helm-controller"
-    verbs: ["impersonate"]
+        resources: ["*"]
 
   # Log Secret access by Flux controllers (metadata only to avoid logging secret values)
   - level: Metadata
@@ -75,6 +52,36 @@ rules:
     users:
       - "system:serviceaccount:flux-system:source-controller"
       - "system:serviceaccount:flux-system:kustomize-controller"
+      - "system:serviceaccount:flux-system:helm-controller"
+      - "system:serviceaccount:flux-system:image-reflector-controller"
+      - "system:serviceaccount:flux-system:image-automation-controller"
+
+  # Log all create, update, delete operations by Flux service accounts
+  - level: Request
+    users:
+      - "system:serviceaccount:flux-system:kustomize-controller"
+      - "system:serviceaccount:flux-system:helm-controller"
+      - "system:serviceaccount:flux-system:source-controller"
+      - "system:serviceaccount:flux-system:notification-controller"
+      - "system:serviceaccount:flux-system:image-reflector-controller"
+      - "system:serviceaccount:flux-system:image-automation-controller"
+    verbs: ["create", "update", "patch", "delete"]
+    resources:
+      - group: ""
+        resources: ["configmaps", "services", "serviceaccounts"]
+      - group: "apps"
+        resources: ["deployments", "statefulsets", "daemonsets"]
+      - group: "networking.k8s.io"
+        resources: ["ingresses"]
+
+  # Log other requests from controllers that can impersonate service accounts
+  - level: RequestResponse
+    users:
+      - "system:serviceaccount:flux-system:kustomize-controller"
+      - "system:serviceaccount:flux-system:helm-controller"
+    resources:
+      - group: "*"
+        resources: ["*"]
 
   # Default: log metadata for everything else
   - level: Metadata
@@ -115,6 +122,22 @@ spec:
         - --audit-log-maxage=30
         - --audit-log-maxbackup=10
         - --audit-log-maxsize=100
+      volumeMounts:
+        - name: audit-policy
+          mountPath: /etc/kubernetes/audit-policy.yaml
+          readOnly: true
+        - name: audit-log
+          mountPath: /var/log/kubernetes/audit
+          readOnly: false
+  volumes:
+    - name: audit-policy
+      hostPath:
+        path: /etc/kubernetes/audit-policy.yaml
+        type: File
+    - name: audit-log
+      hostPath:
+        path: /var/log/kubernetes/audit
+        type: DirectoryOrCreate
 ```
 
 ## Step 3: Query Audit Logs for Flux Operations
@@ -125,8 +148,8 @@ Search the audit logs for specific Flux controller activities:
 # Find all resources created by the kustomize-controller
 cat /var/log/kubernetes/audit/audit.log | jq -r 'select(.user.username == "system:serviceaccount:flux-system:kustomize-controller" and .verb == "create") | "\(.requestReceivedTimestamp) \(.verb) \(.objectRef.resource)/\(.objectRef.name) in \(.objectRef.namespace)"'
 
-# Find all impersonation events
-cat /var/log/kubernetes/audit/audit.log | jq -r 'select(.verb == "impersonate") | "\(.requestReceivedTimestamp) \(.user.username) impersonated \(.impersonatedUser.username)"'
+# Find all impersonated requests
+cat /var/log/kubernetes/audit/audit.log | jq -r 'select(.impersonatedUser.username != null) | "\(.requestReceivedTimestamp) \(.user.username) impersonated \(.impersonatedUser.username) for \(.verb) \(.objectRef.resource)/\(.objectRef.name)"'
 
 # Find all failed operations (403 Forbidden)
 cat /var/log/kubernetes/audit/audit.log | jq -r 'select(.responseStatus.code == 403 and (.user.username | startswith("system:serviceaccount:flux-system"))) | "\(.requestReceivedTimestamp) \(.user.username) \(.verb) \(.objectRef.resource)/\(.objectRef.name) - FORBIDDEN"'
@@ -159,7 +182,7 @@ data:
     [FILTER]
         Name    grep
         Match   kube.audit.*
-        Regex   user.username system:serviceaccount:flux-system
+        Regex   $user['username'] ^system:serviceaccount:flux-system:
 
     [OUTPUT]
         Name              es
@@ -167,7 +190,7 @@ data:
         Host              elasticsearch.logging.svc
         Port              9200
         Index             k8s-audit-flux
-        Type              _doc
+        Suppress_Type_Name On
 ```
 
 ## Step 5: Create Alerts for Suspicious Flux Activity
@@ -182,11 +205,11 @@ cat /var/log/kubernetes/audit/audit.log | jq -r 'select(
   (.objectRef.namespace != "flux-system")
 ) | "\(.requestReceivedTimestamp) WARNING: \(.user.username) accessed secret/\(.objectRef.name) in \(.objectRef.namespace)"'
 
-# Alert: Failed impersonation attempts
+# Alert: Failed impersonated requests
 cat /var/log/kubernetes/audit/audit.log | jq -r 'select(
-  .verb == "impersonate" and
+  .impersonatedUser.username != null and
   .responseStatus.code >= 400
-) | "\(.requestReceivedTimestamp) ALERT: Failed impersonation by \(.user.username)"'
+) | "\(.requestReceivedTimestamp) ALERT: Failed impersonated request by \(.user.username) as \(.impersonatedUser.username)"'
 ```
 
 ## Best Practices

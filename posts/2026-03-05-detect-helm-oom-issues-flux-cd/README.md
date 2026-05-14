@@ -22,7 +22,7 @@ When the helm-controller exceeds its memory limit, Kubernetes kills the pod with
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.20+)
+- A Kubernetes cluster supported by your Flux version (current Flux releases require Kubernetes v1.33+)
 - Flux CD installed with `flux` CLI
 - `kubectl` access to the cluster
 - Basic understanding of Kubernetes resource limits
@@ -155,21 +155,20 @@ By default, the helm-controller may run multiple reconciliations in parallel. Re
 
 ```yaml
 # Patch to limit concurrent reconciliations
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: helm-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
-            - --watch-all-namespaces=true
-            # Reduce concurrent reconciliations from default to 2
-            - --concurrent=2
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+patches:
+  - target:
+      kind: Deployment
+      name: helm-controller
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        # Reduce concurrent reconciliations from default to 2
+        value: --concurrent=2
 ```
 
 ### Reduce Helm Release History
@@ -242,8 +241,8 @@ spec:
         kind: HelmRepository
         name: prometheus-community
   driftDetection:
-    # Use warn mode instead of enabled to reduce memory overhead
-    mode: warn
+    # Disable drift detection to avoid the extra server-side dry-run comparison
+    mode: disabled
 ```
 
 ## Step 5: Set Up OOM Monitoring and Alerts
@@ -271,7 +270,7 @@ spec:
               container="manager",
               pod=~"helm-controller.*"
             } > 0
-            and
+            and on(namespace, pod, container)
             kube_pod_container_status_last_terminated_reason{
               namespace="flux-system",
               container="manager",
@@ -311,7 +310,7 @@ Configure Flux alerts to notify you when HelmReleases fail due to controller iss
 
 ```yaml
 # Alert for HelmRelease failures that may indicate OOM
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: helmrelease-failures
@@ -332,7 +331,7 @@ When troubleshooting OOM issues, work through this checklist:
 
 ```bash
 # 1. Check for OOMKilled events
-kubectl get events -n flux-system --field-selector reason=OOMKilling
+kubectl get events -n flux-system --sort-by=.lastTimestamp | grep -Ei "oom|killed"
 
 # 2. Check current memory usage
 kubectl top pod -n flux-system -l app=helm-controller

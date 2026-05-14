@@ -20,15 +20,13 @@ The OOM (Out of Memory) Killer is a kernel mechanism that terminates processes w
 When the kernel cannot allocate memory and all reclaim attempts fail, it calculates an "OOM score" for each process. The process with the highest score gets killed first.
 
 The score is based on:
-- Memory usage (RSS)
-- Process age
-- CPU time consumed
+- Estimated current memory and swap use relative to the memory allowed in the OOM context
 - The `oom_score_adj` value set by the administrator
 
 ## Step 1: View OOM Scores
 
 ```bash
-ps -eo pid,oom_score,oom_score_adj,comm --sort=-oom_score | head -20
+ps -eo pid,oom,oomadj,comm --sort=-oom | head -20
 ```
 
 ## Step 2: Protect Critical Services
@@ -36,10 +34,10 @@ ps -eo pid,oom_score,oom_score_adj,comm --sort=-oom_score | head -20
 Lower the OOM score adjustment to make a process less likely to be killed:
 
 ```bash
-echo -500 | sudo tee /proc/$(pidof sshd)/oom_score_adj
+echo -500 | sudo tee /proc/$(pidof -s sshd)/oom_score_adj
 ```
 
-Range: -1000 (never kill) to 1000 (always kill first).
+Range: -1000 (disable OOM killing for that process) to 1000 (make it very likely to be killed under memory pressure).
 
 For systemd services:
 
@@ -51,7 +49,7 @@ OOMScoreAdjust=-500
 ## Step 3: Make a Process Immune
 
 ```bash
-echo -1000 | sudo tee /proc/$(pidof critical-app)/oom_score_adj
+echo -1000 | sudo tee /proc/$(pidof -s critical-app)/oom_score_adj
 ```
 
 Or in the service unit:
@@ -73,7 +71,7 @@ cat /proc/sys/vm/overcommit_memory
 
 Values:
 - `0` - Heuristic overcommit (default)
-- `1` - Always overcommit (never deny malloc)
+- `1` - Always overcommit address space
 - `2` - Strict overcommit (deny if exceeding commit limit)
 
 For stricter memory accounting:

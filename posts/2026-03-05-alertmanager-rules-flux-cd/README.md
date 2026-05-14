@@ -17,6 +17,7 @@ You need the following in your cluster:
 - Flux CD installed and running.
 - Prometheus Operator (kube-prometheus-stack) with Alertmanager configured.
 - PodMonitor resources scraping Flux controller metrics.
+- Kube-state-metrics configured to export Flux custom resource metrics such as `gotk_resource_info` with `ready`, `stalled`, and `suspended` labels.
 
 If you have not yet configured Prometheus to scrape Flux metrics, create a PodMonitor:
 
@@ -61,7 +62,7 @@ spec:
     - name: flux-reconciliation-health
       rules:
         - alert: FluxReconciliationFailure
-          expr: gotk_reconcile_condition{type="Ready", status="False"} == 1
+          expr: gotk_resource_info{ready="False"} == 1
           for: 10m
           labels:
             severity: warning
@@ -72,7 +73,7 @@ spec:
             runbook_url: "https://fluxcd.io/flux/monitoring/alerts/"
 
         - alert: FluxReconciliationStalled
-          expr: gotk_reconcile_condition{type="Stalled", status="True"} == 1
+          expr: gotk_resource_info{stalled="True"} == 1
           for: 5m
           labels:
             severity: critical
@@ -82,7 +83,7 @@ spec:
             description: "{{ $labels.kind }}/{{ $labels.name }} in namespace {{ $labels.namespace }} is stalled. The controller has stopped retrying reconciliation."
 
         - alert: FluxSuspendedResource
-          expr: gotk_suspend_status == 1
+          expr: gotk_resource_info{suspended="true"} == 1
           for: 24h
           labels:
             severity: info
@@ -192,7 +193,7 @@ spec:
 Flux also has a built-in notification system through the notification-controller. You can use it to complement Alertmanager-based alerts:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: flux-errors
@@ -209,7 +210,7 @@ spec:
     - kind: GitRepository
       name: '*'
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-provider
@@ -242,4 +243,4 @@ flux delete source git test-alert
 
 ## Summary
 
-Setting up Alertmanager rules for Flux CD involves creating PrometheusRule resources that watch the `gotk_reconcile_condition`, `gotk_suspend_status`, and `gotk_reconcile_duration_seconds` metrics. Route alerts through Alertmanager based on severity, and complement them with Flux native notifications for immediate event-driven alerts. This combination ensures you are notified of reconciliation failures, stalled resources, and performance issues across your entire GitOps pipeline.
+Setting up Alertmanager rules for Flux CD involves creating PrometheusRule resources that watch the `gotk_resource_info` and `gotk_reconcile_duration_seconds` metrics. Route alerts through Alertmanager based on severity, and complement them with Flux native notifications for immediate event-driven alerts. This combination ensures you are notified of reconciliation failures, stalled resources, and performance issues across your entire GitOps pipeline.

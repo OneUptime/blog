@@ -29,10 +29,12 @@ ltrace ls /tmp
 
 You will see calls to libc functions like `opendir`, `readdir`, `strcmp`, and `printf`.
 
+On RHEL 8, a known issue prevents `ltrace` from tracing system executables such as `/usr/bin/ls`; use it with user-built executables on those systems.
+
 ## Step 3: Trace a Running Process
 
 ```bash
-ltrace -p $(pidof myapp)
+ltrace -p $(pidof -s myapp)
 ```
 
 ## Step 4: Filter by Library

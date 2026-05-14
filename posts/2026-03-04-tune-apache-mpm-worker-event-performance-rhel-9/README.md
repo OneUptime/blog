@@ -98,8 +98,8 @@ The event MPM is the default on RHEL. Here are the key settings:
     # Number of threads per child process
     ThreadsPerChild          25
 
-    # Maximum number of simultaneous connections
-    # This equals ServerLimit * ThreadsPerChild
+    # Maximum number of simultaneous request worker threads
+    # This should not exceed ServerLimit * ThreadsPerChild
     MaxRequestWorkers        400
 
     # Maximum number of child processes
@@ -115,18 +115,20 @@ The event MPM is the default on RHEL. Here are the key settings:
 
 ### Calculating MaxRequestWorkers
 
-The formula is: `MaxRequestWorkers = ServerLimit * ThreadsPerChild`
+For worker and event, `MaxRequestWorkers` limits the total request worker threads available to serve clients. It should be an integer multiple of `ThreadsPerChild`, and `ServerLimit` must be high enough for the chosen value:
+
+`ServerLimit >= MaxRequestWorkers / ThreadsPerChild`
 
 For a server with 4 GB of RAM:
 
 ```bash
 # Check current memory usage per Apache process
-ps aux | grep httpd | awk '{sum += $6} END {print sum/NR/1024 " MB average per process"}'
+ps -C httpd -o rss= | awk '{sum += $1; count++} END {if (count > 0) print sum/count/1024 " MB average per process"}'
 
 # Example: if each process uses ~50MB and you have 4GB available for Apache
 # Available memory / memory per process = max processes
 # 3072MB / 50MB = ~60 processes
-# With 25 threads each = 1500 MaxRequestWorkers
+# With 25 threads each, choose MaxRequestWorkers up to 1500 and set ServerLimit to at least 60
 ```
 
 ## Step 4: Tune the Worker MPM
@@ -249,8 +251,8 @@ ab -n 1000 -c 50 http://localhost/
 # Check if Apache is hitting MaxRequestWorkers
 sudo grep "MaxRequestWorkers" /var/log/httpd/error_log
 
-# Monitor process and thread count
-ps aux | grep httpd | wc -l
+# Monitor process count
+pgrep -c httpd
 
 # Check memory usage
 free -h
@@ -261,4 +263,4 @@ free -h
 
 ## Summary
 
-The event MPM is the best choice for most Apache workloads on RHEL. It handles keepalive connections efficiently without tying up worker threads. Key tuning parameters are MaxRequestWorkers (total concurrent connections), ThreadsPerChild (threads per process), and KeepAliveTimeout (how long idle connections persist). Monitor your server's memory usage and connection patterns to find the right balance.
+The event MPM is the best choice for most Apache workloads on RHEL. It handles keepalive connections efficiently without tying up worker threads. Key tuning parameters are MaxRequestWorkers (total request worker threads), ThreadsPerChild (threads per process), and KeepAliveTimeout (how long idle connections persist). Monitor your server's memory usage and connection patterns to find the right balance.

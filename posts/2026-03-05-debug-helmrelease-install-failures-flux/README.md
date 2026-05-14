@@ -12,7 +12,7 @@ When a HelmRelease fails to install in Flux CD, the release gets stuck in a fail
 
 ## Understanding Install Failure States
 
-When a HelmRelease install fails, Flux sets the Ready condition to `False` and records the failure reason. The HelmRelease will attempt remediation based on your configuration (retries, rollback) or remain in the failed state until the issue is resolved.
+When a HelmRelease install fails, Flux sets the Ready condition to `False` and records the failure reason. The HelmRelease will attempt install remediation based on your configuration (for example, retries with uninstall between attempts) or remain in the failed state until the issue is resolved.
 
 ```mermaid
 graph TD
@@ -47,7 +47,7 @@ kubectl describe helmrelease my-app -n default
 
 The status conditions will contain the failure message. Common condition types include:
 - `Ready: False` with a reason like `InstallFailed`
-- `Released: False` indicating the Helm release was not created
+- `Released: False` indicating the Helm install or upgrade action failed
 
 ## Step 2: Check the Helm Chart Source
 
@@ -159,9 +159,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
-  namespace: new-namespace
+  namespace: default
 spec:
   interval: 10m
+  targetNamespace: new-namespace
   chart:
     spec:
       chart: my-app
@@ -188,17 +189,14 @@ flux get helmrelease my-app -n default --watch
 
 ## Step 6: Reset a Stuck HelmRelease
 
-If the HelmRelease is stuck and retries are exhausted, you may need to suspend and resume it:
+If the HelmRelease is stuck because remediation retries are exhausted, reset the failure counters and trigger another reconciliation:
 
 ```bash
-# Suspend the HelmRelease
-flux suspend helmrelease my-app -n default
+# Reset failure counters and trigger another reconcile
+flux reconcile helmrelease my-app -n default --reset
 
-# Optionally, delete the failed Helm release secret to start fresh
-kubectl delete secret -n default -l name=my-app,owner=helm
-
-# Resume the HelmRelease to trigger a fresh install
-flux resume helmrelease my-app -n default
+# Force a one-off install or upgrade if the desired chart and values did not change
+flux reconcile helmrelease my-app -n default --force
 ```
 
 ## Common Install Failure Patterns

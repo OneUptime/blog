@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, TPM, LUKS, Auto-Unlock, Linux
 
-Description: Configure TPM 2.0-based automatic LUKS volume unlocking on RHEL using Clevis, so encrypted disks unlock only when the system's boot chain is trusted.
+Description: Configure TPM 2.0-based automatic LUKS volume unlocking on RHEL using Clevis, so encrypted disks unlock only when the selected TPM policy matches.
 
 ---
 
-TPM-based LUKS unlocking ties your disk encryption to the physical hardware and its boot state. The encrypted volume only unlocks if the system boots with the expected firmware, bootloader, and kernel. If someone tampers with the boot chain or moves the disk to a different machine, the TPM refuses to release the key and the data stays encrypted.
+TPM-based LUKS unlocking ties your disk encryption to the physical hardware and the PCR policy you choose. The encrypted volume only unlocks if the TPM can satisfy that policy. If someone tampers with measured boot components covered by your PCR selection or moves the disk to a different machine, the TPM refuses to release the key and the data stays encrypted.
 
 ## How TPM LUKS Unlocking Works
 
@@ -43,10 +43,10 @@ sudo tpm2_pcrread sha256:7
 
 ## Binding LUKS to TPM 2.0
 
-The simplest binding uses the default PCR set:
+One common binding uses PCR 7, which tracks the Secure Boot policy:
 
 ```bash
-# Bind LUKS volume to TPM with default PCRs (7 = Secure Boot state)
+# Bind LUKS volume to TPM with PCR 7 (Secure Boot state)
 sudo clevis luks bind -d /dev/sda3 tpm2 '{"pcr_bank":"sha256","pcr_ids":"7"}'
 ```
 
@@ -84,7 +84,7 @@ Rebuild the initramfs to include Clevis and TPM support:
 
 ```bash
 # Rebuild initramfs with Clevis TPM support
-sudo dracut -fv
+sudo dracut -fv --regenerate-all
 ```
 
 Verify the modules are included:
@@ -117,10 +117,10 @@ You can require both TPM and Tang for maximum security:
 
 ```bash
 # Bind with SSS requiring both TPM and Tang
-sudo clevis luks bind -d /dev/sda3 sss '{"t":2,"pins":{"tpm2":{"pcr_bank":"sha256","pcr_ids":"7"},"tang":{"url":"http://tang.example.com"}}}'
+sudo clevis luks bind -d /dev/sda3 sss '{"t":2,"pins":{"tpm2":{"pcr_bank":"sha256","pcr_ids":"7"},"tang":[{"url":"http://tang.example.com"}]}}'
 ```
 
-This means the volume only unlocks if the boot chain is trusted (TPM) AND the server is on the correct network (Tang).
+This means the volume only unlocks if the TPM policy matches AND the server is on the correct network (Tang).
 
 ## Handling Kernel Updates
 
@@ -128,9 +128,10 @@ If you bind to PCRs that change on kernel update (like PCR 9), you need to re-bi
 
 ```bash
 # After kernel update, re-bind to TPM
+# Replace 1 with the Clevis slot from clevis luks list
 sudo clevis luks unbind -d /dev/sda3 -s 1
-sudo clevis luks bind -d /dev/sda3 tpm2 '{"pcr_bank":"sha256","pcr_ids":"7"}'
-sudo dracut -fv
+sudo clevis luks bind -d /dev/sda3 tpm2 '{"pcr_bank":"sha256","pcr_ids":"0,7,9"}'
+sudo dracut -fv --regenerate-all
 ```
 
 This is why binding to PCR 7 only is recommended for most cases - it does not change on kernel updates.
@@ -142,7 +143,7 @@ This is why binding to PCR 7 only is recommended for most cases - it does not ch
 sudo clevis luks list -d /dev/sda3
 
 # Check LUKS key slot usage
-sudo cryptsetup luksDump /dev/sda3 | grep "Key Slot"
+sudo cryptsetup luksDump /dev/sda3
 ```
 
 ## Removing the TPM Binding
@@ -167,10 +168,10 @@ sudo journalctl -b | grep -iE "clevis|tpm"
 sudo tpm2_pcrread sha256:7
 
 # Verify TPM device is accessible
-ls -la /dev/tpm0
+ls -la /dev/tpm*
 
-# Check if tpm2-abrmd is running
-sudo systemctl status tpm2-abrmd
+# Check whether the kernel TPM resource manager device exists
+ls -la /dev/tpmrm0
 ```
 
 Common causes of failure:

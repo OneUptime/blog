@@ -181,17 +181,20 @@ flowchart TD
 
 ## Step 7 - Common Gotcha: Home Directory Content
 
-If you copy files from your home directory, they often carry the wrong SELinux label:
+If you move files from your home directory, or copy them while preserving context, they can carry the wrong SELinux label:
 
 ```bash
-# Files copied from home will have the wrong context
-cp ~/mysite/* /var/www/html/
+# Moved files keep their original SELinux context
+sudo mv ~/mysite/* /var/www/html/
+
+# Copying with preserved context can have the same problem
+sudo cp --preserve=context ~/mysite/* /var/www/html/
 
 # Fix it
 sudo restorecon -Rv /var/www/html/
 ```
 
-Always use `restorecon` after copying or moving files into the web directory.
+Use `restorecon` after moving files into the web directory, or after copying files with preserved context.
 
 ## Step 8 - Verify the Fix
 

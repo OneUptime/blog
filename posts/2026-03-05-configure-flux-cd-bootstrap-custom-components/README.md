@@ -48,10 +48,11 @@ flux bootstrap github \
   --branch=main \
   --path=./clusters/production \
   --personal \
+  --read-write-key=true \
   --components-extra=image-reflector-controller,image-automation-controller
 ```
 
-This installs all four default controllers plus the two image automation controllers.
+This installs all four default controllers plus the two image automation controllers. When using the default SSH deploy key authentication with GitHub bootstrap, `--read-write-key=true` gives image automation permission to push commits back to the repository.
 
 After bootstrap, verify all six controllers are running.
 
@@ -105,6 +106,7 @@ flux bootstrap github \
   --branch=main \
   --path=./clusters/image-auto \
   --personal \
+  --read-write-key=true \
   --components=source-controller,kustomize-controller \
   --components-extra=image-reflector-controller,image-automation-controller
 ```
@@ -147,10 +149,10 @@ flux bootstrap github \
 
 ### Set the Watch Namespace
 
-By default, Flux controllers watch all namespaces. Restrict this to specific namespaces for multi-tenant clusters.
+By default, Flux controllers watch all namespaces. You can restrict them to the namespace where the Flux controllers are installed.
 
 ```bash
-# Bootstrap with controllers watching only the production namespace
+# Bootstrap with controllers watching only the flux-system namespace
 flux bootstrap github \
   --owner=$GITHUB_USER \
   --repository=fleet-infra \
@@ -164,7 +166,7 @@ When `--watch-all-namespaces=false` is set, Flux controllers only reconcile reso
 
 ### Set the Network Policy
 
-Flux can install network policies to restrict traffic to and from its controllers.
+Flux can install network policies to restrict ingress access to its controllers.
 
 ```bash
 # Bootstrap with network policies enabled
@@ -177,7 +179,7 @@ flux bootstrap github \
   --network-policy=true
 ```
 
-The network policies allow the controllers to reach the Kubernetes API server and external Git/Helm/OCI sources while blocking unnecessary inbound traffic.
+The default network policies deny ingress access to the `flux-system` namespace from other namespaces, except for the notification-controller webhook receiver.
 
 ### Set the Secret Name for Git Authentication
 
@@ -227,12 +229,13 @@ flux bootstrap github \
   --branch=main \
   --path=./clusters/production \
   --personal \
+  --read-write-key=true \
   --components-extra=image-reflector-controller,image-automation-controller
 ```
 
 The bootstrap command is idempotent. It will add the new controllers without affecting existing ones.
 
-After adding the image automation controllers, configure them with an ImageRepository and ImagePolicy.
+After adding the image automation controllers, configure them with an ImageRepository, ImagePolicy, and ImageUpdateAutomation.
 
 ```yaml
 # image-repo.yaml
@@ -294,7 +297,7 @@ spec:
 
 ## Removing Components
 
-To remove an extra component, re-run bootstrap with only the components you want. Alternatively, manually delete the deployment.
+To remove an extra component, re-run bootstrap with only the components you want. Alternatively, remove the component manifests from Git; manually deleted deployments will be recreated if they are still declared in the bootstrapped repository.
 
 ```bash
 # Remove the image automation controllers
@@ -315,9 +318,10 @@ The following diagram shows how Flux components interact.
 graph TD
     A[source-controller] -->|provides artifacts| B[kustomize-controller]
     A -->|provides artifacts| C[helm-controller]
-    A -->|provides artifacts| D[image-reflector-controller]
+    I[Container Registry] -->|image tags| D[image-reflector-controller]
+    A -->|provides GitRepository source| E[image-automation-controller]
     D -->|image metadata| E[image-automation-controller]
-    E -->|git commit| A
+    E -->|git commit| J[Git Repository]
     B -->|applies manifests| F[Kubernetes API]
     C -->|installs charts| F
     G[notification-controller] -->|receives events| F
@@ -328,7 +332,7 @@ graph TD
 
 - **Start minimal**: Install only the components you need. You can always add more later with a re-bootstrap.
 - **Use --components-extra for optional controllers**: Keep the default components intact and add extras on top. This makes upgrades predictable.
-- **Enable network policies in production**: Use `--network-policy=true` to restrict controller network access according to the principle of least privilege.
+- **Keep network policies enabled in production**: The default `--network-policy=true` setting restricts ingress access to the Flux controllers.
 - **Match components across clusters**: Use the same set of components across staging and production clusters to avoid configuration drift.
 - **Document your component choices**: Add a comment in your `kustomization.yaml` or a team wiki explaining why certain components are included or excluded.
 

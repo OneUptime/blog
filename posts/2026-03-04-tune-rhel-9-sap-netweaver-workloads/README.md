@@ -39,11 +39,14 @@ graph TB
 # Enable the SAP-specific repositories
 
 sudo subscription-manager repos \
-  --enable=rhel-9-for-x86_64-sap-solutions-rpms \
-  --enable=rhel-9-for-x86_64-sap-netweaver-rpms
+  --enable=rhel-$(rpm -E %rhel)-for-$(uname -m)-sap-solutions-rpms \
+  --enable=rhel-$(rpm -E %rhel)-for-$(uname -m)-sap-netweaver-rpms
+
+# Install Ansible Core
+sudo dnf install -y ansible-core
 
 # Install the RHEL System Roles for SAP
-sudo dnf install -y rhel-system-roles-sap
+sudo dnf install -y rhel-system-roles-sap rhel-system-roles
 
 # Install the SAP NetWeaver tuned profile
 sudo dnf install -y tuned-profiles-sap
@@ -57,6 +60,7 @@ cat <<'EOF' > /tmp/sap-netweaver-prepare.yml
 ---
 - name: Prepare RHEL for SAP NetWeaver
   hosts: localhost
+  connection: local
   become: true
   vars:
     sap_general_preconfigure_modify_etc_hosts: true
@@ -172,13 +176,11 @@ cat /sys/kernel/mm/transparent_hugepage/enabled
 
 ## Step 7: Configure Swap Space
 
-SAP recommends specific swap sizes based on RAM.
+The RHEL System Roles for SAP require a minimum of 20480 MB of swap space for SAP NetWeaver. Check the current SAP Note for your exact workload before choosing a larger value.
 
 ```bash
-# SAP swap recommendation:
-# RAM up to 32 GB: swap = RAM size
-# RAM 32-64 GB: swap = 32 GB minimum
-# RAM > 64 GB: swap = 32 GB minimum
+# Minimum swap required by the SAP NetWeaver preconfigure role: 20480 MB
+# Use SAP Note 1597355 for current SAP swap sizing recommendations.
 
 # Create a swap file if needed (example: 32 GB)
 sudo dd if=/dev/zero of=/swapfile bs=1G count=32

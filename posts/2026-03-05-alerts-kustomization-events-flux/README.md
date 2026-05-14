@@ -22,7 +22,7 @@ If you have not yet set up a notification provider, you will need one before ale
 
 ## Understanding the Alert Resource
 
-The Flux Alert resource (apiVersion: `notification.toolkit.fluxcd.io/v1`) connects event sources to notification providers. For Kustomization alerts, you specify the Kustomization kind in the `spec.eventSources` field. The alert will then forward matching events to your configured provider.
+The Flux Alert resource (apiVersion: `notification.toolkit.fluxcd.io/v1beta3`) connects event sources to notification providers. For Kustomization alerts, you specify the Kustomization kind in the `spec.eventSources` field. The alert will then forward matching events to your configured provider.
 
 Key fields in the Alert spec include:
 
@@ -39,7 +39,7 @@ First, confirm that you have a notification provider configured. Here is an exam
 ```yaml
 # Provider resource that sends notifications to Slack
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-provider
@@ -47,8 +47,9 @@ metadata:
 spec:
   type: slack
   channel: flux-alerts
+  address: https://slack.com/api/chat.postMessage
   secretRef:
-    name: slack-webhook-url
+    name: slack-bot-token
 ```
 
 ## Step 2: Create an Alert for All Kustomization Events
@@ -57,7 +58,7 @@ The following alert watches all Kustomization resources in the `flux-system` nam
 
 ```yaml
 # Alert that monitors all Kustomization events in flux-system namespace
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: kustomization-alerts
@@ -88,7 +89,7 @@ If you want to monitor only a specific Kustomization resource, replace the wildc
 
 ```yaml
 # Alert targeting a single Kustomization resource named "app-deployment"
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: app-deployment-alert
@@ -110,7 +111,7 @@ You can specify multiple event sources to watch Kustomization resources across d
 
 ```yaml
 # Alert that monitors Kustomizations across multiple namespaces
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: multi-namespace-kustomization-alert
@@ -140,7 +141,7 @@ You can exclude noisy or unimportant events using regex patterns in the `spec.ex
 
 ```yaml
 # Alert with exclusion rules to reduce noise
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: filtered-kustomization-alert
@@ -186,7 +187,7 @@ When monitoring Kustomization events, you will typically see the following types
 - **Reconciliation failed** - An error occurred while applying the Kustomization
 - **Health check passed** - All health checks for the Kustomization resources passed
 - **Health check failed** - One or more health checks failed
-- **Source artifact updated** - A new artifact was detected from the source
+- **Artifact revision applied** - The Kustomization applied the latest revision from its referenced source
 
 ## Troubleshooting
 

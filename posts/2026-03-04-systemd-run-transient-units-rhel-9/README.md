@@ -50,7 +50,7 @@ sudo systemd-run \
 sudo systemd-run --on-active=30min /usr/local/bin/cleanup.sh
 
 # Run a command at a specific time
-sudo systemd-run --on-calendar="2026-03-05 02:00:00" /usr/local/bin/maintenance.sh
+sudo systemd-run --on-calendar="2030-03-05 02:00:00" /usr/local/bin/maintenance.sh
 
 # Run a recurring task
 sudo systemd-run --on-calendar="*:0/15" --timer-property=Persistent=true \

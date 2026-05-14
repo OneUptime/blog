@@ -81,7 +81,7 @@ sudo dnf install -y tigervnc
 # Connect to the VNC server
 vncviewer your-server-ip:1
 # Or
-vncviewer your-server-ip:5901
+vncviewer your-server-ip::5901
 ```
 
 ## Secure VNC with SSH Tunneling
@@ -93,7 +93,7 @@ VNC traffic is unencrypted by default. Use SSH tunneling for security.
 ssh -L 5901:localhost:5901 your_username@your-server-ip
 
 # Then connect VNC viewer to the local tunnel
-vncviewer localhost:5901
+vncviewer localhost::5901
 ```
 
 ## Configure Multiple VNC Sessions
@@ -125,11 +125,11 @@ journalctl -u vncserver@:1 -f
 # Check the user-specific log
 cat ~/.vnc/*.log
 
-# Kill a stuck VNC session
-vncserver -kill :1
+# Stop a VNC session
+sudo systemctl stop vncserver@:1
 
 # List running VNC sessions
-vncserver -list
+systemctl list-units 'vncserver@*'
 
 # If the session shows a black screen, verify the desktop session type
 # Edit ~/.vnc/config and set: session=gnome

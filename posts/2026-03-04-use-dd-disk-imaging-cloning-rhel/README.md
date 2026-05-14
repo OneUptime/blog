@@ -22,7 +22,7 @@ Clone an entire disk to an image file:
 sudo dd if=/dev/sda of=/backup/sda-image.img bs=4M status=progress
 
 # Create a compressed image to save space
-sudo dd if=/dev/sda bs=4M status=progress | gzip -c > /backup/sda-image.img.gz
+sudo sh -c 'dd if=/dev/sda bs=4M status=progress | gzip -c > /backup/sda-image.img.gz'
 ```
 
 Important: the source disk should be unmounted or the system should be booted from rescue media to avoid inconsistencies.
@@ -33,7 +33,7 @@ Copy one disk directly to another:
 
 ```bash
 # Clone /dev/sda to /dev/sdb (both disks should be the same size or sdb larger)
-sudo dd if=/dev/sda of=/dev/sdb bs=4M status=progress conv=sync,noerror
+sudo dd if=/dev/sda of=/dev/sdb bs=4M status=progress conv=noerror,sync iflag=fullblock
 ```
 
 Flags:
@@ -61,7 +61,7 @@ Write the image back to a disk:
 sudo dd if=/backup/sda-image.img of=/dev/sda bs=4M status=progress
 
 # Restore from a compressed image
-gunzip -c /backup/sda-image.img.gz | sudo dd of=/dev/sda bs=4M status=progress
+sudo sh -c 'gunzip -c /backup/sda-image.img.gz | dd of=/dev/sda bs=4M status=progress'
 ```
 
 ## Creating a Bootable USB from an ISO

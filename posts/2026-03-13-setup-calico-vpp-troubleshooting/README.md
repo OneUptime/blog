@@ -108,7 +108,7 @@ flowchart LR
 ```yaml
 # Enable debug logging for the calico-vpp agent and vpp-manager.
 # Patch the existing ConfigMap (it already contains CALICOVPP_INTERFACES,
-# CALICOVPP_INITIAL_CONFIG, and CALICOVPP_CONFIG_TEMPLATE) — do not replace it.
+# CALICOVPP_INITIAL_CONFIG, and CALICOVPP_CONFIG_TEMPLATE) - do not replace it.
 #
 #   kubectl patch configmap calico-vpp-config -n calico-vpp-dataplane \
 #     --type merge -p '{"data":{"CALICOVPP_LOG_LEVEL":"debug"}}'

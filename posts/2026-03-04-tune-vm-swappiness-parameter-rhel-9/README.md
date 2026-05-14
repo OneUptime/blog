@@ -19,9 +19,9 @@ The kernel constantly makes decisions about memory management. When it needs to 
 
 The `vm.swappiness` value influences this decision:
 
-- **Higher values** (closer to 100) - The kernel more aggressively swaps anonymous pages
+- **Higher values** (closer to 200) - The kernel more aggressively swaps anonymous pages
 - **Lower values** (closer to 0) - The kernel prefers to drop filesystem cache instead of swapping
-- **Value of 0** - The kernel avoids swapping as much as possible, but will still swap to prevent OOM conditions
+- **Value of 0** - The kernel avoids swapping as much as possible, but can still swap under severe memory pressure
 
 ```mermaid
 graph LR
@@ -122,7 +122,7 @@ If running Kubernetes with swap support, keep swappiness low:
 
 ```bash
 # Minimal swapping for Kubernetes
-echo "vm.swappiness = 0" > /etc/sysctl.d/99-swappiness.conf
+echo "vm.swappiness = 10" > /etc/sysctl.d/99-swappiness.conf
 sysctl -p /etc/sysctl.d/99-swappiness.conf
 ```
 
@@ -132,7 +132,7 @@ sysctl -p /etc/sysctl.d/99-swappiness.conf
 | Web server | 20-40 | Balance between cache and app memory |
 | General purpose | 40-60 | RHEL default works fine |
 | File server | 50-70 | Keep filesystem cache warm |
-| Minimal swap use | 0-5 | Avoid swapping except in emergencies |
+| Minimal swap use | 0-5 | Avoid swapping except under severe memory pressure; 0 can increase OOM-killer risk |
 
 ## Monitoring the Impact
 
@@ -147,7 +147,7 @@ Key columns to watch:
 - `si` - swap in (pages read from swap)
 - `so` - swap out (pages written to swap)
 - `free` - free memory
-- `buff/cache` - buffer and page cache
+- `buff` and `cache` - buffer and page cache
 
 ```bash
 # Check swap I/O over time

@@ -46,7 +46,6 @@ Run this on both Site A and Site B gateways.
 ```bash
 # Install WireGuard tools
 
-sudo dnf install -y epel-release
 sudo dnf install -y wireguard-tools
 ```
 
@@ -140,8 +139,10 @@ echo "net.ipv4.ip_forward = 1" | sudo tee /etc/sysctl.d/99-wireguard-forward.con
 # Allow WireGuard port
 sudo firewall-cmd --permanent --add-port=51820/udp
 
-# Allow forwarding between the LAN interface and WireGuard
-sudo firewall-cmd --permanent --add-interface=wg0 --zone=trusted
+# Allow forwarding between the local LAN and WireGuard
+LAN_SUBNET=192.168.10.0/24  # Use 192.168.20.0/24 on Site B.
+sudo firewall-cmd --permanent --zone=trusted --add-interface=wg0
+sudo firewall-cmd --permanent --zone=trusted --add-source=${LAN_SUBNET}
 
 # Reload
 sudo firewall-cmd --reload
@@ -213,7 +214,7 @@ flowchart LR
 **Handshake not completing:**
 
 ```bash
-# Check that both sides can reach each other on UDP 51820
+# Check that WireGuard is listening on UDP 51820
 # From Gateway A:
 ss -ulnp | grep 51820
 

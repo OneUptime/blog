@@ -81,7 +81,7 @@ diff -r /documents/ /mnt/documents-snap/
 
 ## Step 4: Restore from a Snapshot
 
-Stratis does not have a direct "restore" command. To restore a filesystem to a snapshot's state, you have several options:
+Stratis can revert a filesystem to a previous snapshot by scheduling the snapshot to replace its origin the next time the pool starts. To restore data from a snapshot, you have several options:
 
 ### Option A: Replace Files from Snapshot
 
@@ -92,26 +92,32 @@ sudo mount /dev/stratis/datapool/documents-snap-20260304 /mnt/documents-snap
 sudo cp -a /mnt/documents-snap/path/to/file /documents/path/to/file
 ```
 
-### Option B: Swap the Filesystem
+### Option B: Revert the Filesystem
 
-For a complete restoration, create a new snapshot of the snapshot and swap:
+For a complete restoration, schedule the snapshot to replace its origin filesystem:
 
 ```bash
-# Unmount the original
+# Optional: back up the current state before reverting
+sudo stratis filesystem snapshot datapool documents documents-before-revert
 
+# Schedule the revert
+sudo stratis filesystem schedule-revert datapool documents-snap-20260304
+
+# Verify that the revert is scheduled
+sudo stratis filesystem list datapool --name documents-snap-20260304
+
+# Unmount Stratis filesystems from the pool and restart the pool to apply the revert
 sudo umount /documents
-
-# Create a new filesystem from the snapshot
-sudo stratis filesystem snapshot datapool documents-snap-20260304 documents-restored
-
-# Mount the restored version
-sudo mount /dev/stratis/datapool/documents-restored /documents
+sudo umount /mnt/documents-snap
+sudo stratis pool stop --name datapool
+sudo stratis pool start --name datapool
+sudo mount /dev/stratis/datapool/documents /documents
 ```
 
-Update `/etc/fstab` with the UUID of the new filesystem:
+If you change persistent mounts in `/etc/fstab`, use the UUID of the filesystem and include the Stratis systemd dependency for the pool:
 
 ```bash
-sudo blkid /dev/stratis/datapool/documents-restored
+sudo blkid /dev/stratis/datapool/documents
 ```
 
 ### Option C: Full Copy Restore
@@ -121,6 +127,7 @@ sudo blkid /dev/stratis/datapool/documents-restored
 sudo umount /documents
 
 # Mount snapshot and new target
+sudo mkdir -p /mnt/snap-source /documents
 sudo mount /dev/stratis/datapool/documents-snap-20260304 /mnt/snap-source
 
 # Destroy the original
@@ -211,7 +218,7 @@ Check how much pool space snapshots consume:
 
 ```bash
 sudo stratis filesystem list datapool
-sudo stratis pool list datapool
+sudo stratis pool list --name datapool
 ```
 
 As data diverges between the original filesystem and its snapshots, both consume more pool space.

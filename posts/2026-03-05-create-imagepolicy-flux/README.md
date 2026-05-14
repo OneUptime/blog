@@ -8,7 +8,7 @@ Description: Learn how to create an ImagePolicy resource in Flux to select the c
 
 ---
 
-The ImagePolicy resource in Flux selects a specific image tag from the tags discovered by an ImageRepository. It defines rules for choosing the right tag based on semantic versioning, alphabetical order, numerical order, or timestamp. This guide walks you through creating your first ImagePolicy resource.
+The ImagePolicy resource in Flux selects a specific image tag from the tags discovered by an ImageRepository. It defines rules for choosing the right tag based on semantic versioning, alphabetical order, or numerical order. This guide walks you through creating your first ImagePolicy resource.
 
 ## Prerequisites
 
@@ -59,7 +59,7 @@ kubectl apply -f imagepolicy-semver.yaml
 
 ## Step 2: Understand the Key Fields
 
-- **imageRepositoryRef** -- References the ImageRepository resource that provides the scanned tags. Must be in the same namespace.
+- **imageRepositoryRef** -- References the ImageRepository resource that provides the scanned tags. For an ImageRepository in the same namespace, only the name is needed. For a different namespace, specify the namespace and allow the cross-namespace reference on the ImageRepository.
 - **policy** -- Defines the selection strategy. Only one of `semver`, `alphabetical`, or `numerical` can be specified.
 - **filterTags** -- An optional field to pre-filter tags using a regex pattern before applying the policy.
 

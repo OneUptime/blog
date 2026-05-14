@@ -8,7 +8,7 @@ Description: Enable FIPS mode on an already-running RHEL system, including key r
 
 ---
 
-Ideally, you enable FIPS during installation. But real life does not always work that way. Sometimes you inherit a system, sometimes requirements change, and sometimes FIPS was simply missed during the build process. The good news is that RHEL makes it straightforward to switch to FIPS mode post-installation. The bad news is that you need to do some extra work afterward to make sure everything is using FIPS-compliant cryptography.
+Ideally, you enable FIPS during installation. But real life does not always work that way. Sometimes you inherit a system, sometimes requirements change, and sometimes FIPS was simply missed during the build process. RHEL provides a way to switch to FIPS mode post-installation, although Red Hat recommends installing with FIPS enabled when you need FIPS compliance. The bad news is that you need to do some extra work afterward to make sure everything is using FIPS-compliant cryptography.
 
 ## Check Current FIPS Status
 
@@ -34,8 +34,10 @@ fips-mode-setup --enable
 # 1. Sets the crypto policy to FIPS
 # 2. Adds fips=1 to the kernel boot parameters
 # 3. Rebuilds the initramfs with FIPS support
-# 4. Installs the crypto-policies-scripts package if needed
+# 4. Ensures the FIPS dracut module is installed by using fips-finish-install
 ```
+
+On RHEL 9.5 and later, Red Hat documents `fips-mode-setup` as deprecated for switching systems to FIPS mode. You can still use it to check FIPS status, and existing RHEL 9 documentation still describes it for post-installation switching, but new compliant builds should be installed with FIPS enabled.
 
 The command will output something like:
 
@@ -146,11 +148,11 @@ systemctl restart httpd
 ### Database Connections
 
 ```bash
-# PostgreSQL - verify it connects with FIPS ciphers
-psql -h localhost -U postgres -c "SHOW ssl_cipher;"
+# PostgreSQL - verify the current connection uses TLS and view the cipher
+psql -h localhost -U postgres -c "SELECT ssl, version, cipher FROM pg_stat_ssl WHERE pid = pg_backend_pid();"
 
-# MariaDB - check SSL status
-mysql -e "SHOW GLOBAL STATUS LIKE 'Ssl_cipher';"
+# MariaDB - check SSL status for the current connection
+mysql -e "SHOW SESSION STATUS LIKE 'Ssl_cipher';"
 ```
 
 ## Handle Common Post-FIPS Issues
@@ -202,7 +204,7 @@ If `/boot` is not on a separate partition, you have a problem. This is one of th
 
 ## Reverting FIPS Mode
 
-If you need to disable FIPS mode (for example, during testing):
+Red Hat warns that after FIPS mode has been set up, switching it off leaves the system in an inconsistent state. If you need a non-FIPS system, the correct approach is to reinstall the system without FIPS mode. On a disposable test system, the disable command is:
 
 ```bash
 # Disable FIPS mode

@@ -18,6 +18,7 @@ The simplest way to apply most settings is through the tuned profile:
 # Install tuned profiles for SAP
 
 sudo dnf install -y tuned-profiles-sap-hana
+sudo systemctl enable --now tuned
 
 # Activate the SAP HANA profile
 sudo tuned-adm profile sap-hana
@@ -35,6 +36,7 @@ Configure the parameters required by SAP HANA:
 # /etc/sysctl.d/sap-hana.conf
 # Memory management
 vm.max_map_count = 2147483647
+kernel.pid_max = 4194304
 vm.memory_failure_early_kill = 1
 vm.swappiness = 10
 
@@ -67,20 +69,27 @@ sysctl vm.max_map_count
 sysctl kernel.numa_balancing
 ```
 
-## Disabling Transparent Huge Pages
+## Configuring Transparent Huge Pages
 
-SAP HANA manages its own huge pages. Disable THP:
+SAP HANA has version-specific THP recommendations. On RHEL 9.2 and later with current SAP HANA revisions, set THP to `madvise`. On older operating system releases, set THP to `never`:
 
 ```bash
 # Check current THP status
 cat /sys/kernel/mm/transparent_hugepage/enabled
 
-# Disable THP at runtime
-echo never > /sys/kernel/mm/transparent_hugepage/enabled
-echo never > /sys/kernel/mm/transparent_hugepage/defrag
+# RHEL 9.2 and later with current SAP HANA revisions
+echo madvise | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
+echo defer+madvise | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
 
-# Make it persistent via GRUB
-sudo grubby --update-kernel=ALL --args="transparent_hugepage=never"
+# Older operating system releases use this instead
+# echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
+# echo never | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
+
+# Make the RHEL 9.2+ setting persistent via GRUB
+sudo grubby --update-kernel=ALL --remove-args="transparent_hugepage=never" --args="transparent_hugepage=madvise"
+
+# Or make the older setting persistent via GRUB instead
+# sudo grubby --update-kernel=ALL --remove-args="transparent_hugepage=madvise" --args="transparent_hugepage=never"
 ```
 
 ## Configuring Process Limits
@@ -122,6 +131,7 @@ Run a comprehensive check:
 # /usr/local/bin/check-hana-params.sh
 echo "=== SAP HANA Kernel Parameter Check ==="
 echo "vm.max_map_count: $(sysctl -n vm.max_map_count)"
+echo "kernel.pid_max: $(sysctl -n kernel.pid_max)"
 echo "kernel.numa_balancing: $(sysctl -n kernel.numa_balancing)"
 echo "vm.swappiness: $(sysctl -n vm.swappiness)"
 echo "THP: $(cat /sys/kernel/mm/transparent_hugepage/enabled)"

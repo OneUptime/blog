@@ -8,16 +8,15 @@ Description: Learn how to extend Flux CD's default Prometheus metrics with custo
 
 ---
 
-While Flux CD controllers expose a comprehensive set of built-in metrics, you often need custom metrics that combine or transform these into more actionable indicators. This guide covers how to create custom Prometheus recording rules, derive business-relevant metrics, and build custom exporters that complement Flux CD's native metrics.
+While Flux CD controllers and kube-state-metrics can expose a comprehensive set of metrics, you often need custom metrics that combine or transform these into more actionable indicators. This guide covers how to create custom Prometheus recording rules, derive business-relevant metrics, and build custom exporters that complement Flux CD's native metrics.
 
 ## Built-In Flux CD Metrics
 
-Before creating custom metrics, understand what Flux already provides at the `/metrics` endpoint on each controller:
+Before creating custom metrics, understand what Flux already provides at the `/metrics` endpoint on each controller and what the Flux monitoring example exposes through kube-state-metrics:
 
-- `gotk_reconcile_condition` - Gauge with labels `type`, `status`, `kind`, `name`, `namespace`
 - `gotk_reconcile_duration_seconds` - Histogram with labels `kind`, `name`, `namespace`
-- `gotk_suspend_status` - Gauge (1 = suspended, 0 = active)
-- `controller_runtime_reconcile_total` - Counter with label `result` (success/error/requeue)
+- `gotk_resource_info` - Info metric from kube-state-metrics with labels such as `customresource_kind`, `name`, `exported_namespace`, `ready`, and `suspended`
+- `controller_runtime_reconcile_total` - Counter with label `result` (success/error/requeue/requeue_after)
 - `controller_runtime_reconcile_errors_total` - Counter of reconciliation errors
 - `controller_runtime_reconcile_time_seconds` - Histogram of controller reconciliation time
 
@@ -41,11 +40,11 @@ spec:
         # Total count of ready vs not-ready resources
         - record: flux:resources:ready_total
           expr: |
-            sum by (kind) (gotk_reconcile_condition{type="Ready", status="True"})
+            sum by (customresource_kind) (gotk_resource_info{ready="True"})
 
         - record: flux:resources:not_ready_total
           expr: |
-            sum by (kind) (gotk_reconcile_condition{type="Ready", status="False"})
+            sum by (customresource_kind) (gotk_resource_info{ready!="True"})
 
         # Reconciliation success rate over the last 5 minutes
         - record: flux:reconciliation:success_rate_5m
@@ -57,11 +56,9 @@ spec:
         # Average reconciliation duration by kind
         - record: flux:reconciliation:avg_duration_seconds
           expr: |
-            avg by (kind, namespace) (
-              rate(gotk_reconcile_duration_seconds_sum[5m])
-              /
-              rate(gotk_reconcile_duration_seconds_count[5m])
-            )
+            sum by (kind, namespace) (rate(gotk_reconcile_duration_seconds_sum[5m]))
+            /
+            sum by (kind, namespace) (rate(gotk_reconcile_duration_seconds_count[5m]))
 
         # P95 reconciliation duration by kind
         - record: flux:reconciliation:p95_duration_seconds
@@ -75,14 +72,14 @@ spec:
         # Per-namespace resource health score (0-1)
         - record: flux:namespace:health_score
           expr: |
-            sum by (namespace) (gotk_reconcile_condition{type="Ready", status="True"})
+            sum by (exported_namespace) (gotk_resource_info{ready="True"})
             /
-            count by (namespace) (gotk_reconcile_condition{type="Ready"})
+            count by (exported_namespace) (gotk_resource_info)
 
         # Suspended resource count per namespace
         - record: flux:namespace:suspended_count
           expr: |
-            sum by (namespace) (gotk_suspend_status)
+            sum by (exported_namespace) (gotk_resource_info{suspended="true"})
 ```
 
 ## Step 2: Create Alerting Rules Based on Custom Metrics
@@ -107,8 +104,8 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "Namespace {{ $labels.namespace }} health is {{ $value | humanizePercentage }}"
-            description: "More than 20% of Flux resources in namespace {{ $labels.namespace }} are not ready."
+            summary: "Namespace {{ $labels.exported_namespace }} health is {{ $value | humanizePercentage }}"
+            description: "More than 20% of Flux resources in namespace {{ $labels.exported_namespace }} are not ready."
 
         # Alert when reconciliation success rate drops
         - alert: FluxReconciliationSuccessRateLow
@@ -136,6 +133,34 @@ For metrics not covered by Flux's built-in exporters, create a custom exporter t
 
 ```yaml
 # infrastructure/monitoring/flux-custom-exporter.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flux-custom-exporter
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: flux-custom-exporter
+rules:
+  - apiGroups: ["kustomize.toolkit.fluxcd.io"]
+    resources: ["kustomizations"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: flux-custom-exporter
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: flux-custom-exporter
+subjects:
+  - kind: ServiceAccount
+    name: flux-custom-exporter
+    namespace: monitoring
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -158,7 +183,9 @@ spec:
       containers:
         - name: exporter
           image: python:3.11-slim
-          command: ["python", "/app/exporter.py"]
+          command: ["sh", "-c"]
+          args:
+            - "pip install --no-cache-dir kubernetes prometheus-client && python /app/exporter.py"
           ports:
             - containerPort: 9090
           volumeMounts:
@@ -193,15 +220,8 @@ data:
         ['namespace', 'kind']
     )
 
-    TENANT_LAST_RECONCILE_AGE = Gauge(
-        'flux_tenant_last_reconcile_age_seconds',
-        'Seconds since last successful reconciliation',
-        ['namespace', 'kind', 'name']
-    )
-
     def collect_metrics():
         """Collect custom Flux metrics from the Kubernetes API."""
-        config.load_incluster_config()
         custom_api = client.CustomObjectsApi()
 
         # Count Kustomizations per namespace
@@ -215,12 +235,14 @@ data:
             ns = ks["metadata"]["namespace"]
             ns_counts[ns] = ns_counts.get(ns, 0) + 1
 
+        TENANT_RESOURCE_COUNT.clear()
         for ns, count in ns_counts.items():
             TENANT_RESOURCE_COUNT.labels(
                 namespace=ns, kind="Kustomization"
             ).set(count)
 
     if __name__ == "__main__":
+        config.load_incluster_config()
         start_http_server(9090)
         while True:
             collect_metrics()
@@ -235,11 +257,14 @@ Ensure that custom metrics include namespace labels so they can be filtered by t
 # Recording rule that adds tenant labels
 - record: flux:tenant:resource_status
   expr: |
-    gotk_reconcile_condition{type="Ready"}
-      * on(namespace) group_left(tenant)
+    gotk_resource_info
+      * on(exported_namespace) group_left(tenant)
     label_replace(
-      kube_namespace_labels{label_toolkit_fluxcd_io_tenant!=""},
-      "tenant", "$1", "label_toolkit_fluxcd_io_tenant", "(.*)"
+      label_replace(
+        kube_namespace_labels{label_toolkit_fluxcd_io_tenant!=""},
+        "tenant", "$1", "label_toolkit_fluxcd_io_tenant", "(.*)"
+      ),
+      "exported_namespace", "$1", "namespace", "(.*)"
     )
 ```
 

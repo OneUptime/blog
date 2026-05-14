@@ -247,7 +247,7 @@ For Secrets, consider using SOPS or Sealed Secrets to encrypt sensitive data in 
 
 ```bash
 # Encrypt a secret with SOPS before committing to Git
-sops --encrypt --in-place config/app-credentials.yaml
+sops --encrypt --encrypted-regex '^(data|stringData)$' --in-place config/app-credentials.yaml
 ```
 
 ## Optional References
@@ -325,7 +325,7 @@ Common errors include:
 1. **Separate configuration from secrets**: Use ConfigMaps for non-sensitive data and Secrets for credentials. This makes access control clearer.
 2. **Use the same namespace**: Ensure ConfigMaps and Secrets are in the same namespace as the Kustomization.
 3. **Use optional for environment-specific resources**: Mark references as optional when they may not exist everywhere.
-4. **Encrypt secrets in Git**: Use SOPS or Sealed Secrets to store encrypted secrets in your repository and let Flux decrypt them.
+4. **Encrypt secrets in Git**: Use SOPS or Sealed Secrets to store encrypted secrets in your repository and let Flux decrypt SOPS-encrypted Secrets or the Sealed Secrets controller decrypt SealedSecrets.
 5. **Use dependsOn**: If ConfigMaps and Secrets are managed by another Kustomization, declare a dependency to ensure they exist before being referenced.
 
 ## Conclusion

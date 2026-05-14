@@ -53,8 +53,10 @@ ping -c 4 SERVER_IP
 # On the server, verify WireGuard is listening
 ss -ulnp | grep 51820
 
-# Check the firewall allows the port
-sudo firewall-cmd --list-ports | grep 51820
+# Check the firewall allows the port in the active zone
+sudo firewall-cmd --get-active-zones
+sudo firewall-cmd --zone=YOUR_ACTIVE_ZONE --list-all
+# Look for 51820/udp in ports or wireguard in services
 ```
 
 **Check 3: Are the keys correct?**
@@ -146,7 +148,7 @@ grep DNS /etc/wireguard/wg0.conf
 nmcli connection show "wg-vpn" | grep dns
 ```
 
-When using wg-quick, the DNS setting modifies `/etc/resolv.conf`. If you have systemd-resolved running, there might be conflicts:
+When using wg-quick, the DNS setting is applied through `resolvconf`, which may update the system resolver configuration. If you have systemd-resolved running, configure DNS through the proper channel instead of assuming `/etc/resolv.conf` is managed directly:
 
 ```bash
 # Check if systemd-resolved is managing DNS
@@ -164,8 +166,8 @@ WireGuard should be fast. If it's not, check these:
 # Check the MTU - WireGuard overhead is 60 bytes for IPv4, 80 for IPv6
 ip link show wg0
 
-# The WireGuard interface MTU should be your physical MTU minus overhead
-# For a 1500-byte physical MTU: WireGuard MTU should be 1420
+# The WireGuard interface MTU must fit within the physical path MTU minus overhead
+# wg-quick auto-detects this if MTU is not set; for a 1500-byte path MTU, 1420 is a conservative value
 
 # Set the MTU if needed
 sudo ip link set wg0 mtu 1420
@@ -206,9 +208,9 @@ sudo systemctl status wg-quick@wg0
 journalctl -u wg-quick@wg0 --since "5 minutes ago"
 
 # Common issues:
-# - Config file permissions too open
+# - Invalid config syntax or unreadable config file
 # - IP address conflict with existing interface
-# - Missing wireguard kernel module (unlikely on RHEL)
+# - Missing wireguard tools or kernel support
 ```
 
 ```bash

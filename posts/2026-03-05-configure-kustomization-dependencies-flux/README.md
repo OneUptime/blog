@@ -14,7 +14,7 @@ In real-world Kubernetes deployments, resources often depend on each other. A da
 
 ## How Dependencies Work
 
-When a Kustomization has a `spec.dependsOn` entry, Flux will not start reconciling it until all referenced Kustomizations have a `Ready` status of `True`. If a dependency fails or is not yet ready, the dependent Kustomization waits.
+When a Kustomization has a `spec.dependsOn` entry, Flux will not apply its manifests until all referenced Kustomizations have a `Ready` status of `True`. If a dependency fails or is not yet ready, the dependent Kustomization waits.
 
 ```mermaid
 graph TD
@@ -98,7 +98,7 @@ spec:
 
 ## Cross-Namespace Dependencies
 
-If the dependency is in a different namespace, specify it in the `dependsOn` entry.
+If the dependency is in a different namespace, specify it in the `dependsOn` entry. This requires cross-namespace references to be allowed in the kustomize-controller configuration.
 
 ```yaml
 # cross-namespace-dependency.yaml - Depend on a Kustomization in another namespace
@@ -241,7 +241,7 @@ kubectl describe kustomization infrastructure -n flux-system
 # Force reconciliation of a stuck dependency
 flux reconcile kustomization infrastructure
 
-# View the dependency graph
+# View the resource inventory reconciled by the Kustomization
 flux tree kustomization apps
 ```
 
@@ -260,7 +260,7 @@ Flux does not support circular dependencies. If Kustomization A depends on B and
 2. **Always use health checks or wait on dependency targets** so that dependent Kustomizations only start when upstream resources are truly ready.
 3. **Set appropriate timeouts** on dependencies. If a dependency times out, all downstream Kustomizations will also be blocked.
 4. **Avoid circular dependencies**. Plan your dependency graph as a DAG before implementing it.
-5. **Use the Flux CLI** to visualize your dependency graph with `flux tree kustomization` to verify the structure is correct.
+5. **Use the Flux CLI** to inspect Kustomization status with `flux get kustomizations` and reconciled resource inventory with `flux tree kustomization`.
 
 ## Conclusion
 

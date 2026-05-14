@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Samba, Window, File Sharing, Linux
+Tags: RHEL, Samba, Windows, File Sharing, Linux
 
 Description: Configure Samba on RHEL to share directories with Windows clients, covering share types, permissions mapping, and Windows-specific considerations.
 
@@ -69,22 +69,25 @@ The setgid bit (2) ensures new files inherit the group ownership.
 
 ## Permission Mapping
 
-Samba maps Windows permissions to Linux permissions using masks:
+Samba uses masks to limit the Unix permissions it creates for new files and directories:
 
 ```ini
 [projects]
     path = /srv/samba/projects
     writable = yes
-    create mask = 0664    # New files get rw-rw-r--
-    directory mask = 0775  # New dirs get rwxrwxr-x
-    force group = dev_team # All files owned by this group
+    # New files can get up to rw-rw-r--
+    create mask = 0664
+    # New directories can get up to rwxrwxr-x
+    directory mask = 0775
+    # File operations use this group for permission checks
+    force group = dev_team
 ```
 
 ```mermaid
 graph LR
     W[Windows Permission] --> S[Samba Mapping]
     S --> L[Linux Permission]
-    W2[Windows ACL] --> S2[vfs_acl_xattr]
+    W2[Windows ACL] --> S2[acl_xattr VFS Module]
     S2 --> X[Extended Attributes]
 ```
 
@@ -156,9 +159,6 @@ The `map to guest = Bad User` setting maps failed login attempts to the guest ac
 # Set the Samba context on shared directories
 sudo semanage fcontext -a -t samba_share_t "/srv/samba(/.*)?"
 sudo restorecon -Rv /srv/samba
-
-# Enable necessary booleans
-sudo setsebool -P samba_export_all_rw on
 ```
 
 ## Hiding Files from Windows
@@ -175,15 +175,16 @@ You can hide Linux-specific files that confuse Windows users:
 
 ## Performance Settings for Windows Clients
 
+Only tune these after testing on your workload:
+
 ```ini
 [global]
-    socket options = TCP_NODELAY IPTOS_LOWDELAY
-    read raw = yes
-    write raw = yes
     use sendfile = yes
     min receivefile size = 16384
-    aio read size = 16384
-    aio write size = 16384
+
+[projects]
+    aio read size = 1
+    aio write size = 1
 ```
 
 ## Troubleshooting Windows Connections
@@ -212,4 +213,4 @@ cmdkey /delete:192.168.1.10
 
 ## Wrap-Up
 
-Sharing directories from RHEL to Windows clients via Samba works well once you get the permission mapping, SELinux context, and firewall configuration right. Use `create mask` and `directory mask` to control how Windows operations translate to Linux permissions, and consider Windows ACL support via `vfs_acl_xattr` for environments that need fine-grained access control.
+Sharing directories from RHEL to Windows clients via Samba works well once you get the permission mapping, SELinux context, and firewall configuration right. Use `create mask` and `directory mask` to control the Unix modes Samba creates for new files and directories, and consider Windows ACL support via the `acl_xattr` VFS module for environments that need fine-grained access control.

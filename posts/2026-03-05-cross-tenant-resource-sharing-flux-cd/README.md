@@ -8,7 +8,7 @@ Description: Learn how to safely share resources like Helm repositories, ConfigM
 
 ---
 
-While tenant isolation is the default in multi-tenant Flux CD, there are legitimate cases where tenants need to share resources. Shared Helm repositories, common configuration, or inter-service communication between teams are all common scenarios. This guide covers how to configure cross-tenant resource sharing while maintaining security boundaries.
+When tenant isolation is configured in multi-tenant Flux CD, there are legitimate cases where tenants need to share resources. Shared Helm repositories, common configuration, or inter-service communication between teams are all common scenarios. This guide covers how to configure cross-tenant resource sharing while maintaining security boundaries.
 
 ## When to Share Resources
 
@@ -79,7 +79,7 @@ spec:
   chart:
     spec:
       chart: nginx
-      version: "15.x"
+      version: "24.x"
       sourceRef:
         kind: HelmRepository
         name: bitnami
@@ -91,7 +91,7 @@ spec:
 
 ## Step 4: Share Configuration via ConfigMaps
 
-Create shared ConfigMaps in a common namespace and copy them to tenant namespaces using Flux.
+Define shared ConfigMaps in a common directory and copy them to tenant namespaces using Flux.
 
 ```yaml
 # infrastructure/shared-config/common-config.yaml
@@ -99,14 +99,13 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: shared-endpoints
-  namespace: shared-config
 data:
   DATABASE_HOST: db.internal.example.com
   REDIS_HOST: redis.internal.example.com
   LOG_COLLECTOR: logs.internal.example.com:9200
 ```
 
-Use a Kustomization to copy the shared config into tenant namespaces.
+Use a Kustomization to copy the shared config into tenant namespaces. The `targetNamespace` field sets the namespace of the objects applied by this Kustomization, and that namespace must already exist or be included in the Kustomization.
 
 ```yaml
 # tenants/team-alpha/shared-config-sync.yaml
@@ -131,7 +130,7 @@ For sharing secrets like TLS certificates, use a tool like Sealed Secrets or Ext
 
 ```yaml
 # infrastructure/shared-secrets/tls-cert.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: wildcard-tls
@@ -156,7 +155,23 @@ spec:
 
 ## Step 6: Enable Cross-Tenant Service Communication
 
-When two tenant applications need to communicate, configure network policies to allow specific traffic flows.
+When two tenant applications need to communicate, label the tenant namespaces and configure network policies to allow specific traffic flows.
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-alpha
+  labels:
+    toolkit.fluxcd.io/tenant: team-alpha
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-beta
+  labels:
+    toolkit.fluxcd.io/tenant: team-beta
+```
 
 ```yaml
 # tenants/team-alpha/network-policy-allow-beta.yaml
@@ -236,7 +251,7 @@ spec:
   chart:
     spec:
       chart: redis
-      version: "18.x"
+      version: "25.x"
       sourceRef:
         kind: HelmRepository
         name: bitnami
@@ -286,7 +301,7 @@ flux get helmreleases -n team-alpha
 
 # Test network connectivity to shared services
 kubectl run test-pod --rm -it --image=busybox -n team-alpha \
-  -- wget -qO- --timeout=3 http://shared-redis.shared-services.svc.cluster.local:6379
+  -- nc -vz -w 3 shared-redis-master.shared-services.svc.cluster.local 6379
 ```
 
 ## Security Best Practices

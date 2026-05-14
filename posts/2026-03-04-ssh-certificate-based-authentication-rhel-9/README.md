@@ -34,20 +34,20 @@ Pick a secure machine to act as your CA. This could be a dedicated box or your e
 ### Generate the CA key pair
 
 ```bash
-# Generate the user CA key
-
-ssh-keygen -t ed25519 -f /etc/ssh/ca/user_ca -C "User CA"
-
-# Generate the host CA key
-ssh-keygen -t ed25519 -f /etc/ssh/ca/host_ca -C "Host CA"
-```
-
-Protect these keys carefully. Anyone with the CA private key can grant SSH access to your entire infrastructure.
-
-```bash
 sudo mkdir -p /etc/ssh/ca
 sudo chmod 700 /etc/ssh/ca
 ```
+
+```bash
+# Generate the user CA key
+
+sudo ssh-keygen -t ed25519 -f /etc/ssh/ca/user_ca -C "User CA"
+
+# Generate the host CA key
+sudo ssh-keygen -t ed25519 -f /etc/ssh/ca/host_ca -C "Host CA"
+```
+
+Protect these keys carefully. Anyone with the CA private key can grant SSH access to your entire infrastructure.
 
 ## Signing User Keys
 
@@ -116,10 +116,12 @@ ssh-keygen -s /etc/ssh/ca/host_ca \
     -h \
     -n server01.example.com,server01,10.0.1.10 \
     -V +52w \
-    /etc/ssh/ssh_host_ed25519_key.pub
+    /tmp/ssh_host_ed25519_key.pub
 ```
 
 The `-h` flag indicates this is a host certificate.
+
+Copy the generated `/tmp/ssh_host_ed25519_key-cert.pub` file back to the server as `/etc/ssh/ssh_host_ed25519_key-cert.pub`.
 
 ### Configure sshd to present the host certificate
 
@@ -197,7 +199,7 @@ ssh-keygen -s /etc/ssh/ca/user_ca \
 
 ```bash
 # Revoke a specific certificate
-ssh-keygen -k -f /etc/ssh/revoked_keys -s /etc/ssh/ca/user_ca /path/to/compromised-cert.pub
+sudo ssh-keygen -k -f /etc/ssh/revoked_keys /path/to/compromised-cert.pub
 ```
 
 Configure sshd to check the revocation list:

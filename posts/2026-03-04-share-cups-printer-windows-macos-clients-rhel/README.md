@@ -78,7 +78,7 @@ On the Windows client:
 1. Go to Settings > Devices > Printers & Scanners
 2. Click "Add a printer or scanner"
 3. Click "The printer that I want isn't listed"
-4. Select "Add a printer using a TCP/IP address or hostname"
+4. Select "Select a shared printer by name"
 5. Enter: `http://rhel-server-ip:631/printers/Office-Printer`
 
 ## Share with Windows Clients via Samba
@@ -96,6 +96,11 @@ sudo vi /etc/samba/smb.conf
 Add the following section:
 
 ```ini
+[global]
+   load printers = yes
+   printing = cups
+   printcap name = cups
+
 [printers]
    comment = All Printers
    path = /var/tmp
@@ -103,8 +108,6 @@ Add the following section:
    browseable = yes
    public = yes
    guest ok = yes
-   printing = cups
-   printcap name = cups
 
 [print$]
    comment = Printer Drivers
@@ -118,12 +121,18 @@ Add the following section:
 # Enable and start Samba
 sudo systemctl enable --now smb
 
+# Verify the Samba configuration
+testparm
+
 # Open Samba firewall ports
 sudo firewall-cmd --permanent --add-service=samba
 sudo firewall-cmd --reload
 
-# Set SELinux boolean for Samba printing
-sudo setsebool -P samba_enable_home_dirs on
+# Label the optional printer driver share for SELinux
+sudo dnf install -y policycoreutils-python-utils
+sudo mkdir -p /var/lib/samba/drivers
+sudo semanage fcontext -a -t samba_share_t "/var/lib/samba/drivers(/.*)?"
+sudo restorecon -Rv /var/lib/samba/drivers
 ```
 
 ## Test from Clients
@@ -140,7 +149,7 @@ lpstat -o
 
 ```bash
 # Check CUPS logs for connection issues
-sudo tail -f /var/log/cups/error_log
+sudo journalctl -u cups -f
 
 # Verify the printer is visible via mDNS
 avahi-browse -rt _ipp._tcp

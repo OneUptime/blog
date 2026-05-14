@@ -17,7 +17,7 @@ graph TD
     A[Bridge Not Working] --> B{Bridge interface up?}
     B -->|No| C[Check nmcli connection]
     B -->|Yes| D{Ports attached?}
-    D -->|No| E[Check slave connections]
+    D -->|No| E[Check port connections]
     D -->|Yes| F{IP assigned?}
     F -->|No| G[Check IP config]
     F -->|Yes| H{Can ping gateway?}
@@ -59,8 +59,11 @@ If your physical NIC is not listed as a bridge port:
 # Check if the port connection exists
 nmcli connection show | grep br0
 
-# If missing, add the port
-nmcli connection add type ethernet con-name br0-port ifname eth0 master br0
+# If missing, add the port (RHEL 9.4 and later)
+nmcli connection add type ethernet port-type bridge con-name br0-port ifname eth0 controller br0
+
+# On earlier RHEL 9 releases, use:
+# nmcli connection add type ethernet con-name br0-port ifname eth0 master br0
 nmcli connection up br0
 ```
 
@@ -149,7 +152,7 @@ firewall-cmd --reload
 
 ## Step 7: Check Kernel Bridge Netfilter
 
-This is a common gotcha. By default, the Linux kernel passes bridge traffic through iptables/nftables. This means firewall rules intended for routed traffic can accidentally block bridged traffic.
+This is a common gotcha. If the `br_netfilter` module is loaded and bridge netfilter hooks are enabled, bridged IPv4, IPv6, or ARP traffic can pass through iptables/ip6tables/arptables hooks. This means firewall rules intended for routed traffic can accidentally block bridged traffic.
 
 ```bash
 # Check bridge netfilter settings
@@ -161,7 +164,7 @@ sysctl net.bridge.bridge-nf-call-arptables
 If these are set to 1 and you do not intend to filter bridge traffic:
 
 ```bash
-# Disable bridge netfilter (allows all bridge traffic to pass)
+# Disable bridge netfilter hooks for iptables/ip6tables/arptables
 cat > /etc/sysctl.d/99-bridge.conf << 'EOF'
 net.bridge.bridge-nf-call-iptables = 0
 net.bridge.bridge-nf-call-ip6tables = 0

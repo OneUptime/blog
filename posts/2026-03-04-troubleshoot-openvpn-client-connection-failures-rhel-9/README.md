@@ -49,8 +49,8 @@ First, get more information from both sides.
 # Restart to apply
 sudo systemctl restart openvpn-server@server
 
-# Watch the log
-sudo tail -f /var/log/openvpn/openvpn.log
+# Watch the systemd journal
+sudo journalctl -u openvpn-server@server -f
 ```
 
 On the client:
@@ -83,7 +83,8 @@ Common causes:
 
 ```bash
 # On the server, verify OpenVPN is listening
-ss -ulnp | grep 1194
+ss -lunp | grep 1194   # UDP
+ss -ltnp | grep 1194   # TCP, if your server uses TCP
 ```
 
 ## Problem 2: TLS Handshake Failed
@@ -177,7 +178,7 @@ sysctl net.ipv4.ip_forward
 sudo firewall-cmd --query-masquerade
 
 # Check for SELinux denials
-sudo ausearch -m avc --start recent | grep openvpn
+sudo ausearch -m AVC,USER_AVC -ts recent | grep openvpn
 ```
 
 ## Problem 6: DNS Not Working Through the VPN
@@ -198,17 +199,17 @@ dig @1.1.1.1 example.com
 grep "dhcp-option" /etc/openvpn/server/server.conf
 ```
 
-On RHEL with NetworkManager, the DNS push might not work automatically. You may need:
+On Linux clients, OpenVPN stores pushed DNS options in `foreign_option_*` environment variables unless a client integration handles them. On RHEL with NetworkManager, you may need:
 
 ```bash
-# Install the OpenVPN NetworkManager plugin
+# Install the OpenVPN NetworkManager plugin if it is available from your enabled repositories
 sudo dnf install -y NetworkManager-openvpn
 
-# Or use a custom script to update DNS
+# Or use a custom up/down script that exists on your system to update DNS
 # In client.ovpn:
 # script-security 2
-# up /etc/openvpn/update-resolv-conf
-# down /etc/openvpn/update-resolv-conf
+# up /path/to/update-dns-script
+# down /path/to/update-dns-script
 ```
 
 ## Problem 7: Connection Drops Frequently
@@ -222,10 +223,10 @@ grep keepalive /etc/openvpn/server/server.conf
 top -bn1 | head -5
 
 # Check connection status
-sudo cat /var/log/openvpn/openvpn-status.log
+sudo cat /run/openvpn-server/status-server.log
 
 # Look for patterns in the log
-sudo grep "Connection reset" /var/log/openvpn/openvpn.log | tail -20
+sudo journalctl -u openvpn-server@server | grep "Connection reset" | tail -20
 ```
 
 ## Problem 8: SELinux Blocking OpenVPN
@@ -234,7 +235,7 @@ RHEL's SELinux can interfere with OpenVPN, especially with custom paths.
 
 ```bash
 # Check for SELinux denials
-sudo ausearch -m avc -ts recent | grep openvpn
+sudo ausearch -m AVC,USER_AVC -ts recent | grep openvpn
 
 # If SELinux is blocking, check the boolean settings
 getsebool -a | grep openvpn
@@ -256,7 +257,8 @@ echo "=== OpenVPN Service ==="
 sudo systemctl status openvpn-server@server --no-pager
 
 echo "=== Listening ==="
-ss -ulnp | grep 1194
+ss -lunp | grep 1194
+ss -ltnp | grep 1194
 
 echo "=== IP Forwarding ==="
 sysctl net.ipv4.ip_forward
@@ -271,11 +273,11 @@ echo "=== TUN Interface ==="
 ip addr show tun0 2>/dev/null || echo "tun0 not found"
 
 echo "=== Recent Log Entries ==="
-sudo tail -20 /var/log/openvpn/openvpn.log
+sudo journalctl -u openvpn-server@server -n 20 --no-pager
 
 echo "=== SELinux ==="
 getenforce
-sudo ausearch -m avc -ts recent 2>/dev/null | grep openvpn | tail -5
+sudo ausearch -m AVC,USER_AVC -ts recent 2>/dev/null | grep openvpn | tail -5
 ```
 
 ## Wrapping Up

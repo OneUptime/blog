@@ -10,13 +10,13 @@ Description: Learn how Flux CD automatically generates a kustomization.yaml for 
 
 ## Introduction
 
-One of the most convenient features of Flux CD is its ability to deploy plain Kubernetes YAML manifests without requiring you to write a `kustomization.yaml` file. When Flux's kustomize-controller encounters a directory that does not contain a `kustomization.yaml`, it automatically generates one that includes all YAML files in the directory.
+One of the most convenient features of Flux CD is its ability to deploy plain Kubernetes YAML manifests without requiring you to write a `kustomization.yaml` file. When Flux's kustomize-controller encounters a directory that does not contain a `kustomization.yaml`, it automatically generates one that includes the Kubernetes YAML files under that path.
 
 This makes Flux an excellent choice for teams that want to start with GitOps without learning Kustomize first. You can simply put your Kubernetes manifests in a directory, point a Flux Kustomization at it, and Flux handles the rest.
 
 ## How Auto-Generation Works
 
-When Flux reconciles a Kustomization resource and the specified `path` does not contain a `kustomization.yaml` (or `Kustomization` file), the kustomize-controller automatically generates one at runtime. The generated `kustomization.yaml` includes all files with `.yaml` and `.yml` extensions found in that directory.
+When Flux reconciles a Kustomization resource and the specified `path` does not contain a `kustomization.yaml` (or `Kustomization` file), the kustomize-controller automatically generates one at runtime. The generated `kustomization.yaml` includes YAML manifests found in the directory tree under that path, excluding files ignored by `.sourceignore` or the Source object's `spec.ignore` rules.
 
 This behavior is equivalent to Flux running the following internally:
 
@@ -24,11 +24,11 @@ This behavior is equivalent to Flux running the following internally:
 # Flux essentially does this behind the scenes
 
 cd /path/to/your/manifests
-kustomize create --autodetect
+kustomize create --autodetect --recursive
 kustomize build .
 ```
 
-The `kustomize create --autodetect` command generates a `kustomization.yaml` that lists all YAML files in the current directory as resources.
+The `kustomize create --autodetect --recursive` command generates a `kustomization.yaml` that lists YAML manifests under the current directory as resources.
 
 ## Repository Structure
 
@@ -166,7 +166,7 @@ spec:
     name: flux-system
 ```
 
-That is all you need. Flux will discover all YAML files in the `manifests/app/` directory and apply them.
+That is all you need. Flux will discover YAML manifests under the `manifests/app/` directory and apply them.
 
 ## Step 3: Apply and Verify
 
@@ -295,13 +295,13 @@ spec:
 
 While Flux's auto-generation is convenient, there are situations where you should create an explicit `kustomization.yaml`:
 
-1. **Ordering matters.** The auto-generated file includes resources in alphabetical order. If you need a specific application order (for example, namespace before deployment), write a `kustomization.yaml` with resources listed in the correct order.
+1. **Dependencies matter.** A single auto-generated Kustomization is not a substitute for explicitly modeling dependencies. If one set of resources must be reconciled before another (for example, CRDs before custom resources), use separate Flux Kustomizations with `dependsOn`, and use a `kustomization.yaml` where you need precise composition.
 
 2. **You need Kustomize transformers.** Features like `commonLabels`, `commonAnnotations`, `namePrefix`, `images`, and `replicas` require a `kustomization.yaml`.
 
-3. **You want to exclude files.** If the directory contains YAML files that should not be applied (such as example files or documentation), the auto-generated `kustomization.yaml` will include them. An explicit `kustomization.yaml` lets you list only the files you want.
+3. **You want to exclude files.** If the directory contains YAML files that should not be applied (such as example files or documentation), the auto-generated `kustomization.yaml` will include them unless they are excluded by `.sourceignore` or the Source object's `spec.ignore` rules. An explicit `kustomization.yaml` lets you list only the files you want.
 
-4. **You use subdirectories.** Auto-generation only includes files in the specified directory, not subdirectories. If you organize manifests into subdirectories, you need a `kustomization.yaml` to reference them.
+4. **You want subdirectories to be explicit.** Auto-generation includes YAML manifests in subdirectories under the specified path. If you organize manifests into subdirectories and want tighter control over what is deployed, create a `kustomization.yaml` to reference only the resources you want.
 
 ## Migrating from Plain YAML to Kustomize
 
@@ -310,7 +310,7 @@ When you outgrow plain YAML, the migration path is straightforward.
 ```bash
 # Step 1: Generate a kustomization.yaml from existing files
 cd manifests/app
-kustomize create --autodetect
+kustomize create --autodetect --recursive
 
 # Step 2: The generated file will look like this
 cat kustomization.yaml
@@ -335,16 +335,16 @@ From here, you can add any Kustomize features you need. The Flux Kustomization r
 
 Here is exactly what Flux includes when auto-generating a `kustomization.yaml`:
 
-- Files ending in `.yaml` or `.yml` in the specified directory
-- Only files in the top-level directory (not subdirectories)
-- All matching files are included -- there is no exclusion mechanism
+- Files ending in `.yaml` or `.yml` under the specified path
+- Files in subdirectories under the specified path
+- Matching files are included unless excluded by `.sourceignore` or the Source object's `spec.ignore` rules
 
 ```mermaid
 graph TD
     A[Flux Kustomization] -->|path: ./manifests/app| B{kustomization.yaml exists?}
     B -->|Yes| C[Use existing kustomization.yaml]
     B -->|No| D[Auto-generate kustomization.yaml]
-    D -->|Include all .yaml/.yml files| E[Apply to cluster]
+    D -->|Include YAML manifests under path| E[Apply to cluster]
     C --> E
 ```
 

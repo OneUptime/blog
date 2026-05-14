@@ -28,7 +28,7 @@ Start by excluding the most common noisy event, which is a reconciliation that f
 ```yaml
 # Alert with a single exclusion rule
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: alert-with-exclusions
@@ -59,7 +59,7 @@ Add multiple patterns to filter out various types of routine events.
 
 ```yaml
 # Alert with a comprehensive set of exclusion rules
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: comprehensive-exclusions
@@ -98,7 +98,7 @@ Use regex to exclude events that mention specific resource names.
 
 ```yaml
 # Alert excluding events related to specific resources
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: resource-filtered-alert
@@ -126,7 +126,7 @@ Filter out events that reference resources in certain namespaces within their me
 
 ```yaml
 # Alert excluding events referencing specific namespaces
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: namespace-filtered-alert
@@ -152,7 +152,7 @@ Go regex supports flags for case-insensitive matching using the `(?i)` prefix.
 
 ```yaml
 # Alert with case-insensitive exclusion patterns
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: case-insensitive-exclusions
@@ -187,20 +187,44 @@ kubectl logs -n flux-system deploy/notification-controller -f
 kubectl get alert comprehensive-exclusions -n flux-system -o jsonpath='{.spec.exclusionList}'
 ```
 
-You can also test regex patterns locally before applying them.
+You can also test regex patterns locally before applying them. Save this as `flux_exclusion_test.go`.
+
+```go
+package main
+
+import (
+	"regexp"
+	"testing"
+)
+
+func TestFluxExclusionPatterns(t *testing.T) {
+	patterns := []string{
+		"^Reconciliation finished.*no changes$",
+		"^stored artifact.*same revision$",
+	}
+	messages := []string{
+		"Reconciliation finished, no changes",
+		"Reconciliation failed",
+		"stored artifact for revision main@sha1:abc123, same revision",
+	}
+
+	for _, msg := range messages {
+		excluded := false
+		for _, pattern := range patterns {
+			if regexp.MustCompile(pattern).MatchString(msg) {
+				excluded = true
+				break
+			}
+		}
+		t.Logf("excluded=%t message=%q", excluded, msg)
+	}
+}
+```
+
+Run the test with Go so it uses the same regex syntax as Flux.
 
 ```bash
-# Test a regex pattern against a sample event message
-echo "Reconciliation finished, no changes" | grep -P "^Reconciliation finished.*no changes$"
-
-# Test multiple messages against your patterns
-for msg in "Reconciliation finished, no changes" "Reconciliation failed" "stored artifact for revision main@sha1:abc123, same revision"; do
-  if echo "$msg" | grep -qP "^Reconciliation finished.*no changes$|^stored artifact.*same revision$"; then
-    echo "EXCLUDED: $msg"
-  else
-    echo "INCLUDED: $msg"
-  fi
-done
+go test -run TestFluxExclusionPatterns -count=1 flux_exclusion_test.go
 ```
 
 ## Step 7: Iterative Refinement
@@ -230,7 +254,7 @@ kubectl get events -n flux-system -o json | jq -r '.items[].message' | sort | un
 
 ## Important Considerations
 
-- Exclusion patterns match against the full event message string
+- Exclusion patterns are evaluated against the event message string; unanchored patterns can match substrings
 - Each pattern is evaluated independently; if any pattern matches, the event is excluded
 - An empty exclusion list or omitting the field means no events are excluded
 - Be careful not to create overly broad patterns that might exclude important error messages

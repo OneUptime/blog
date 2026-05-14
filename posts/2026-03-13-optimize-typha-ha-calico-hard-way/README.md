@@ -35,7 +35,7 @@ kubectl set env deployment/calico-typha -n calico-system \
   TYPHA_CONNECTIONREBALANCINGMODE=kubernetes
 ```
 
-`TYPHA_MAXCONNECTIONSLOWERLIMIT` (default 400) is the minimum value the dynamic per-replica connection cap will be lowered to during rebalancing — picking a value below the default lets the rebalancer drive each replica's cap closer to an even share when there are many Typha replicas relative to Felix clients.
+`TYPHA_MAXCONNECTIONSLOWERLIMIT` (default 400) is the minimum value the dynamic per-replica connection cap will be lowered to during rebalancing - picking a value below the default lets the rebalancer drive each replica's cap closer to an even share when there are many Typha replicas relative to Felix clients.
 
 ## Step 3: Optimize Connection Rebalancing After Failure
 

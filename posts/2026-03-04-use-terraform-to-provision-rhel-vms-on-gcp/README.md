@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Terraform, GCP, IaC, Automation, Cloud
 
-Description: Provision RHEL virtual machines on Google Cloud Platform using Terraform with the Google provider, including firewall rules and startup scripts.
+Description: Provision RHEL virtual machines on Google Cloud Platform using Terraform with the Google provider, including firewall rules.
 
 ---
 
@@ -19,7 +19,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.0"
+      version = "~> 7.0"
     }
   }
 }

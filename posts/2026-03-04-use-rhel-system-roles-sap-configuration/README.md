@@ -26,14 +26,19 @@ graph LR
 
 - RHEL with an SAP Solutions subscription
 - Ansible installed on a control node
+- Control node locale set to `C` or `en_US.UTF-8`
 - SSH access to target SAP hosts
+- Target SAP hosts registered with access to the required RHEL for SAP repositories
 
 ## Step 1: Install the System Roles
 
 ```bash
 # Install the SAP system roles package
 
-sudo dnf install -y rhel-system-roles-sap ansible-core
+sudo dnf install -y ansible-core
+sudo subscription-manager repos \
+  --enable=rhel-$(rpm -E %rhel)-for-$(uname -m)-sap-solutions-rpms
+sudo dnf install -y rhel-system-roles-sap
 
 # Verify the roles are available
 ansible-galaxy list | grep sap

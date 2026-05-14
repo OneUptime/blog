@@ -21,7 +21,7 @@ flowchart TD
     A --> F[Kickstart Files]
     A --> G[OVAL Definitions]
     B --> H[OpenSCAP Scanner]
-    C --> I[Ansible Engine]
+    C --> I[Ansible]
     D --> I
     E --> J[Direct Execution]
     F --> K[Automated Installs]
@@ -141,8 +141,10 @@ for PROFILE in cis_server_l1 cis stig pci-dss ospp; do
       --report "${REPORT_DIR}/${PROFILE}.html" \
       "$CONTENT" 2>/dev/null || true
 
-    PASS=$(grep -c 'result="pass"' "${REPORT_DIR}/${PROFILE}.xml" 2>/dev/null || echo 0)
-    FAIL=$(grep -c 'result="fail"' "${REPORT_DIR}/${PROFILE}.xml" 2>/dev/null || echo 0)
+    PASS=$(grep -Ec '<[^>]*result>pass</[^>]*result>' "${REPORT_DIR}/${PROFILE}.xml" 2>/dev/null)
+    FAIL=$(grep -Ec '<[^>]*result>fail</[^>]*result>' "${REPORT_DIR}/${PROFILE}.xml" 2>/dev/null)
+    PASS=${PASS:-0}
+    FAIL=${FAIL:-0}
     TOTAL=$((PASS + FAIL))
     if [ "$TOTAL" -gt 0 ]; then
         SCORE=$((PASS * 100 / TOTAL))
@@ -164,11 +166,15 @@ chmod +x /usr/local/bin/validate-all-frameworks.sh
 ### Ansible remediation
 
 ```bash
+# Install Ansible remediation prerequisites
+dnf install -y ansible-core rhc-worker-playbook
+
 # Use the pre-built Ansible playbooks
 ls /usr/share/scap-security-guide/ansible/rhel9-playbook-*.yml
 
 # Apply CIS Level 1 remediation
-ansible-playbook -i localhost, -c local \
+ANSIBLE_COLLECTIONS_PATH=/usr/share/rhc-worker-playbook/ansible/collections/ansible_collections/ \
+  ansible-playbook -i localhost, -c local \
   /usr/share/scap-security-guide/ansible/rhel9-playbook-cis_server_l1.yml
 ```
 
@@ -185,10 +191,13 @@ bash /usr/share/scap-security-guide/bash/rhel9-script-stig.sh
 ### Targeted remediation from scan results
 
 ```bash
+# Find the result ID in the scan results
+oscap info /var/log/compliance/stig.xml
+
 # Generate fixes for only the failed rules
 oscap xccdf generate fix \
   --fix-type ansible \
-  --result-id "" \
+  --result-id xccdf_org.open-scap_testresult_xccdf_org.ssgproject.content_profile_stig \
   --output /tmp/targeted-remediation.yml \
   /var/log/compliance/stig.xml
 ```
@@ -250,8 +259,8 @@ fi
 for PROFILE in cis_server_l1 stig pci-dss; do
     RESULT="/var/log/compliance/${DATE}/${PROFILE}.xml"
     if [ -f "$RESULT" ]; then
-        PASS=$(grep -c 'result="pass"' "$RESULT")
-        FAIL=$(grep -c 'result="fail"' "$RESULT")
+        PASS=$(grep -Ec '<[^>]*result>pass</[^>]*result>' "$RESULT")
+        FAIL=$(grep -Ec '<[^>]*result>fail</[^>]*result>' "$RESULT")
         TOTAL=$((PASS + FAIL))
         [ "$TOTAL" -gt 0 ] && SCORE=$((PASS * 100 / TOTAL)) || SCORE=0
         echo "${DATE},$(hostname),${PROFILE},${PASS},${FAIL},${SCORE}" >> "$HISTORY"

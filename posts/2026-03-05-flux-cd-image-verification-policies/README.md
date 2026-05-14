@@ -8,7 +8,7 @@ Description: Learn how to configure image verification policies in Flux CD to en
 
 ---
 
-Image verification policies ensure that container images deployed through Flux CD have been signed by trusted parties. By enforcing signature verification, you prevent tampered or unauthorized images from running in your cluster. This guide shows you how to configure image verification at both the Flux level and the cluster admission level.
+Image verification policies ensure that container images deployed through Flux CD have been signed by trusted parties. By enforcing signature verification, you prevent tampered or unauthorized images from running in your cluster. This guide shows you how to configure image selection in Flux and image verification at the cluster admission level.
 
 ## Why Verify Container Images
 
@@ -22,18 +22,22 @@ Image verification policies ensure that container images deployed through Flux C
 Before setting up verification, sign your images using Cosign:
 
 ```bash
-# Sign an image using Cosign keyless signing (recommended)
+# Sign an image using Cosign keyless signing (recommended).
+# Prefer signing immutable digest references in production.
 
-cosign sign ghcr.io/myorg/webapp:v1.0.0
+cosign sign ghcr.io/myorg/webapp@sha256:<image-digest>
 
 # Or sign with a key pair
 cosign generate-key-pair
-cosign sign --key cosign.key ghcr.io/myorg/webapp:v1.0.0
+cosign sign --key cosign.key ghcr.io/myorg/webapp@sha256:<image-digest>
 
-# Verify the signature was attached
-cosign verify ghcr.io/myorg/webapp:v1.0.0 \
+# Verify a keyless signature
+cosign verify ghcr.io/myorg/webapp@sha256:<image-digest> \
   --certificate-identity-regexp="^https://github.com/myorg/.*" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
+
+# Or verify a key-pair signature
+cosign verify --key cosign.pub ghcr.io/myorg/webapp@sha256:<image-digest>
 ```
 
 ## Step 2: Configure Kyverno Image Verification Policy
@@ -51,9 +55,9 @@ metadata:
     policies.kyverno.io/title: Verify Image Signatures
     policies.kyverno.io/description: Verifies that all container images are signed with Cosign
 spec:
-  validationFailureAction: Enforce
   background: false
-  webhookTimeoutSeconds: 30
+  webhookConfiguration:
+    timeoutSeconds: 30
   rules:
     # Verify internal application images
     - name: verify-internal-images
@@ -62,13 +66,17 @@ spec:
           - resources:
               kinds:
                 - Pod
+      exclude:
+        any:
+          - resources:
               namespaces:
-                - "!kube-system"
-                - "!flux-system"
-                - "!kyverno"
+                - kube-system
+                - flux-system
+                - kyverno
       verifyImages:
         - imageReferences:
             - "ghcr.io/myorg/*"
+          failureAction: Enforce
           attestors:
             - entries:
                 - keyless:
@@ -86,12 +94,16 @@ spec:
           - resources:
               kinds:
                 - Pod
+      exclude:
+        any:
+          - resources:
               namespaces:
-                - "!kube-system"
-                - "!flux-system"
+                - kube-system
+                - flux-system
       verifyImages:
         - imageReferences:
             - "docker.io/bitnami/*"
+          failureAction: Audit
           attestors:
             - entries:
                 - keys:
@@ -99,12 +111,12 @@ spec:
                       -----BEGIN PUBLIC KEY-----
                       MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...
                       -----END PUBLIC KEY-----
-          required: false  # Warn but do not block for third-party images
+          required: false  # Do not require every matching image to have Kyverno's verified annotation
 ```
 
 ## Step 3: Configure OPA Gatekeeper Image Verification
 
-Alternatively, use OPA Gatekeeper for image verification:
+Alternatively, use OPA Gatekeeper to enforce trusted registries and digest references. Gatekeeper does not verify Cosign signatures with this Rego example; use Kyverno or another admission controller with signature-verification support for cryptographic signature checks.
 
 ```yaml
 # gatekeeper-image-verification.yaml
@@ -134,16 +146,28 @@ spec:
         package k8strustedimages
 
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
-          not trusted_registry(container.image)
-          msg := sprintf("Image %v is not from a trusted registry", [container.image])
+          image := images[_]
+          not trusted_registry(image)
+          msg := sprintf("Image %v is not from a trusted registry", [image])
         }
 
         violation[{"msg": msg}] {
           input.parameters.requireDigest == true
-          container := input.review.object.spec.containers[_]
-          not contains(container.image, "@sha256:")
-          msg := sprintf("Image %v must use a digest reference (@sha256:...)", [container.image])
+          image := images[_]
+          not contains(image, "@sha256:")
+          msg := sprintf("Image %v must use a digest reference (@sha256:...)", [image])
+        }
+
+        images[image] {
+          image := input.review.object.spec.containers[_].image
+        }
+
+        images[image] {
+          image := input.review.object.spec.initContainers[_].image
+        }
+
+        images[image] {
+          image := input.review.object.spec.ephemeralContainers[_].image
         }
 
         trusted_registry(image) {
@@ -159,8 +183,8 @@ spec:
   enforcementAction: deny
   match:
     kinds:
-      - apiGroups: ["apps"]
-        kinds: ["Deployment", "StatefulSet"]
+      - apiGroups: [""]
+        kinds: ["Pod"]
     excludedNamespaces:
       - kube-system
       - flux-system
@@ -173,7 +197,7 @@ spec:
 
 ## Step 4: Configure Flux Image Automation with Verification
 
-When using Flux image automation, add verification to ensure only signed images are promoted:
+When using Flux image automation, constrain which tags Flux can select. Flux `ImagePolicy` selects tags and can reflect digests; signature verification still needs to happen in CI and at admission time.
 
 ```yaml
 # image-policy-with-verification.yaml
@@ -186,6 +210,7 @@ metadata:
 spec:
   imageRepositoryRef:
     name: webapp
+  digestReflectionPolicy: IfNotPresent
   policy:
     semver:
       range: ">=1.0.0"
@@ -195,7 +220,7 @@ spec:
     extract: '$version'
 ```
 
-Add a CI step that verifies signatures before Flux promotes images:
+Add a CI step that signs and verifies the image before the tag is made available for Flux image automation:
 
 ```yaml
 # .github/workflows/verify-before-promote.yaml
@@ -210,14 +235,16 @@ jobs:
     permissions:
       id-token: write
       packages: write
+    env:
+      IMAGE_REF: ghcr.io/myorg/webapp@sha256:<image-digest>
     steps:
       - name: Sign image
         run: |
-          cosign sign ghcr.io/myorg/webapp:${{ github.ref_name }}
+          cosign sign --yes "$IMAGE_REF"
 
       - name: Verify signature
         run: |
-          cosign verify ghcr.io/myorg/webapp:${{ github.ref_name }} \
+          cosign verify "$IMAGE_REF" \
             --certificate-identity-regexp="^https://github.com/myorg/.*" \
             --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
 ```
@@ -234,7 +261,6 @@ kind: ClusterPolicy
 metadata:
   name: require-image-digest
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: require-digest
       match:
@@ -245,10 +271,15 @@ spec:
               namespaces:
                 - production
       validate:
+        failureAction: Enforce
         message: "Images must use digest references (@sha256:...) in production."
         pattern:
           spec:
             containers:
+              - image: "*@sha256:*"
+            =(initContainers):
+              - image: "*@sha256:*"
+            =(ephemeralContainers):
               - image: "*@sha256:*"
 ```
 
@@ -283,7 +314,7 @@ Track image verification failures across the cluster:
 # Check Kyverno policy reports for verification failures
 kubectl get clusterpolicyreport -o json | jq '.results[] | select(.policy=="verify-image-signatures" and .result=="fail")'
 
-# Check Flux reconciliation failures due to image verification
+# Check Flux reconciliation failures after admission policies reject a workload
 flux get kustomizations -A | grep False
 
 # View Kyverno admission reports

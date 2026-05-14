@@ -78,15 +78,16 @@ sudo gluster volume heal repvol
 For automatic resolution, configure a favorite child policy:
 
 ```bash
-# Always prefer a specific brick
+# Prefer the copy with the latest modification time
 sudo gluster volume set repvol cluster.favorite-child-policy mtime
 ```
 
 Available policies:
 - `none`: No automatic resolution (default)
+- `ctime`: Prefer the file with the latest change time
 - `mtime`: Prefer the file with the latest modification time
 - `size`: Prefer the larger file
-- `majority`: Prefer the version that exists on the majority of bricks
+- `majority`: Prefer a file with identical size and mtime on more than half of the replica bricks
 
 ### Method 5: Manual Resolution with getfattr
 
@@ -99,12 +100,18 @@ sudo getfattr -d -m . -e hex /data/glusterfs/replica/brick1/data/file.txt
 
 Look at the `trusted.afr.*` attributes. Non-zero values indicate pending changes that could not be synced.
 
-To manually clear split-brain by resetting extended attributes:
+To inspect and resolve data or metadata split-brain from a GlusterFS FUSE mount, use the documented `replica.split-brain-*` extended attributes:
 
 ```bash
-# On the brick you want to discard (the "wrong" copy)
-sudo setfattr -x trusted.afr.repvol-client-0 /data/glusterfs/replica/brick1/data/file.txt
-sudo setfattr -x trusted.afr.repvol-client-1 /data/glusterfs/replica/brick1/data/file.txt
+# From the mounted volume, list the available source choices
+sudo getfattr -n replica.split-brain-status /mnt/repvol/file.txt
+
+# Temporarily read from one candidate source to inspect it
+sudo setfattr -n replica.split-brain-choice -v repvol-client-0 /mnt/repvol/file.txt
+cat /mnt/repvol/file.txt
+
+# Finalize the heal using the chosen source
+sudo setfattr -n replica.split-brain-heal-finalize -v repvol-client-0 /mnt/repvol/file.txt
 
 # Trigger heal
 sudo gluster volume heal repvol
@@ -134,11 +141,11 @@ sudo gluster volume set repvol cluster.server-quorum-type server
 sudo gluster volume set repvol cluster.server-quorum-ratio 51%
 ```
 
-This prevents writes when less than 51% of the storage pool is available.
+Server-side quorum protects Gluster management and brick processes from running without enough peers, but it is not the client I/O quorum mechanism and does not by itself prevent every file split-brain scenario.
 
 ### Use 3-Way Replication
 
-With 3 replicas, GlusterFS can determine the majority version and automatically heal:
+With 3 replicas, client quorum can allow writes only when a majority of bricks in the replica set is available:
 
 ```bash
 sudo gluster volume set repvol cluster.quorum-type auto
@@ -149,7 +156,7 @@ sudo gluster volume set repvol cluster.quorum-type auto
 An arbiter brick stores only metadata, providing tie-breaking without full storage overhead:
 
 ```bash
-sudo gluster volume create arbvol replica 3 arbiter 1 \
+sudo gluster volume create arbvol replica 2 arbiter 1 \
     node1:/brick/data node2:/brick/data node3:/brick/arbiter
 ```
 

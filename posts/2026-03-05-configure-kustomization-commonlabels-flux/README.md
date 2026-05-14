@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Kustomize, Kustomization, Labels
 
-Description: Learn how to use the commonLabels field in kustomization.yaml to automatically apply consistent labels across all Kubernetes resources managed by Flux.
+Description: Learn how the commonLabels field in kustomization.yaml applies consistent labels across Kubernetes resources managed by Flux, and when to prefer the newer labels transformer.
 
 ---
 
@@ -13,6 +13,8 @@ Description: Learn how to use the commonLabels field in kustomization.yaml to au
 Labels in Kubernetes serve as the primary mechanism for organizing, selecting, and querying resources. When managing many resources through Flux CD, manually adding labels to every manifest is tedious and error-prone. The `commonLabels` field in `kustomization.yaml` solves this by automatically injecting a set of labels into all resources and their selectors.
 
 This guide shows you how to configure `commonLabels` within a Kustomize overlay that Flux manages through its Kustomization custom resource.
+
+Recent Kustomize versions still support `commonLabels`, but warn that it is deprecated in favor of the `labels` transformer with `includeSelectors: true`.
 
 ## How CommonLabels Works
 
@@ -227,7 +229,7 @@ kubectl get all -l environment=staging --all-namespaces
 
 Once a Deployment is created, Kubernetes does not allow changes to `spec.selector.matchLabels`. Because `commonLabels` injects labels into selectors, changing or removing a common label after the initial deployment will cause an error.
 
-If you need labels that you might change later, use the `labels` transformer instead of `commonLabels`. The `labels` transformer (available in Kustomize v5+) lets you control whether labels are added to selectors.
+If you need labels that you might change later, use the `labels` transformer instead of `commonLabels`. The `labels` transformer (available in Kustomize v4.1.0+) lets you control whether labels are added to selectors.
 
 ```yaml
 # Using the labels transformer for more control
@@ -299,4 +301,4 @@ spec:
 
 ## Conclusion
 
-The `commonLabels` field in `kustomization.yaml` provides a straightforward way to apply consistent labels across all resources in a Flux-managed deployment. Use it for labels that are stable and should be included in selectors. For labels that might change over time, prefer the `labels` transformer with `includeSelectors: false` to avoid issues with Kubernetes selector immutability.
+The `commonLabels` field in `kustomization.yaml` provides a straightforward way to apply consistent labels across all resources in a Flux-managed deployment, but newer Kustomize versions prefer the `labels` transformer. Use selector-including labels only for labels that are stable and should be included in selectors. For labels that might change over time, prefer the `labels` transformer with `includeSelectors: false` to avoid issues with Kubernetes selector immutability.

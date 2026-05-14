@@ -102,7 +102,7 @@ This is a sneaky one. When a process has a file open and you delete the file, th
 sudo lsof +L1 2>/dev/null | head -20
 ```
 
-This shows files with a link count of 0 (deleted) that are still open. The SIZE column tells you how much space they are holding.
+This shows files with a link count of 0 (deleted) that are still open. The SIZE/OFF column tells you how much space they are holding.
 
 ```bash
 # If you find a large deleted file held by a process, you have options:
@@ -211,14 +211,14 @@ find /var/log -name "*.gz" -mtime +30 -exec ls -lh {} \;
 
 ```bash
 # Check for core dumps
-find / -name "core.*" -o -name "core" -type f 2>/dev/null
+find / \( -name "core.*" -o -name "core" \) -type f 2>/dev/null
 
 # Check systemd-coredump storage
 sudo coredumpctl list
 du -sh /var/lib/systemd/coredump/
 
 # Clean old core dumps
-sudo journalctl --vacuum-time=3d
+sudo systemd-tmpfiles --clean /usr/lib/tmpfiles.d/systemd.conf
 ```
 
 ## Step 6: When /boot Is Full

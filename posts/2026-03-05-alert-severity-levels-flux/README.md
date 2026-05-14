@@ -32,7 +32,7 @@ An info-level alert captures every event from the specified sources, including s
 ```yaml
 # Info-level alert that captures all events
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: all-events-alert
@@ -60,7 +60,7 @@ An error-level alert only fires when something goes wrong, making it ideal for o
 
 ```yaml
 # Error-only alert for critical failure notifications
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: errors-only-alert
@@ -88,7 +88,7 @@ A common pattern is to create separate alerts for different severity levels, sen
 
 ```yaml
 # Info-level alert sent to a general Slack channel
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: info-alert
@@ -103,7 +103,7 @@ spec:
       namespace: flux-system
 ---
 # Error-level alert sent to a critical alerts channel
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: error-alert
@@ -131,7 +131,7 @@ You can further refine info-level alerts by adding exclusion rules that filter o
 
 ```yaml
 # Info-level alert with exclusion rules to reduce noise
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: refined-info-alert
@@ -159,7 +159,7 @@ A practical approach is to vary severity levels based on the environment.
 
 ```yaml
 # Development environment: info-level for visibility
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: dev-alert
@@ -177,7 +177,7 @@ spec:
       namespace: dev
 ---
 # Production environment: error-only for actionable alerts
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: prod-error-alert

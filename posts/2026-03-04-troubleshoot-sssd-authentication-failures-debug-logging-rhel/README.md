@@ -111,4 +111,4 @@ sudo sssctl domain-status example.com
 sudo sssctl config-check
 ```
 
-After resolving the issue, reduce the debug level back to 0 or remove the debug_level line entirely. High debug levels produce large volumes of log data and can impact performance.
+After resolving the issue, reduce the debug level back to 2 or remove the debug_level line entirely. High debug levels produce large volumes of log data and can impact performance.

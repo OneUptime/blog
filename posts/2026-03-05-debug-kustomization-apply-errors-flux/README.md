@@ -131,32 +131,36 @@ Or use the Flux CLI to build the Kustomization:
 flux build ks my-app --path ./path/to/kustomization/
 ```
 
-### Error: Resource Conflict (Field Manager)
+### Error: Resource Conflict (Field Ownership)
 
-This happens when another controller or manual edit conflicts with Flux-managed fields.
+This can happen when another controller manages the same fields, or when manual changes overlap with fields defined in Git.
 
 ```text
-apply failed: Deployment/my-app server-side apply failed: conflict with "kubectl-client-side-apply"
+apply failed: Deployment/my-app server-side apply failed: conflict with another field manager
 ```
 
-Resolution -- force Flux to take ownership by setting `spec.force` to `true`:
+Resolution -- make the Git manifest the source of truth for the conflicting field, or remove the overlapping field from Git if another controller should own it. For partial patches where Flux should preserve non-overlapping fields owned by other tools, annotate the resource with `kustomize.toolkit.fluxcd.io/ssa: merge`:
 
 ```yaml
-# kustomization.yaml - Enable force apply to resolve field manager conflicts
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
+# deployment-patch.yaml - Preserve non-overlapping fields owned by other managers
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: my-app
-  namespace: flux-system
+  namespace: production
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: merge
 spec:
-  interval: 10m
-  # Force apply to take ownership of conflicting fields
-  force: true
-  sourceRef:
-    kind: GitRepository
-    name: my-repo
-  path: ./clusters/production
-  prune: true
+  replicas: 3
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers: []
 ```
 
 ### Error: Namespace Not Found

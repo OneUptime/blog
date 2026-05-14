@@ -26,7 +26,7 @@ Key concepts:
 - **Rate** - Guaranteed bandwidth. Even under full congestion, this class gets at least this much.
 - **Ceil** - Maximum bandwidth, including borrowed capacity from idle siblings.
 - **Prio** - Priority for borrowing. Lower numbers get to borrow first.
-- **Burst** - How much data can be sent at line rate before the rate limiter kicks in.
+- **Burst** - How many bytes can be sent above the configured rate at up to the `ceil` speed before the rate limiter catches up.
 
 ## Basic HTB Setup
 
@@ -40,19 +40,19 @@ sudo tc qdisc add dev ens192 root handle 1: htb default 30
 sudo tc class add dev ens192 parent 1: classid 1:1 htb rate 1gbit
 
 # Step 3: Child classes
-# Web traffic: guaranteed 400 Mbit, can burst to 800 Mbit
-sudo tc class add dev ens192 parent 1:1 classid 1:10 htb rate 400mbit ceil 800mbit prio 1 burst 15k
+# Web traffic: guaranteed 400 Mbit, can borrow up to 800 Mbit
+sudo tc class add dev ens192 parent 1:1 classid 1:10 htb rate 400mbit ceil 800mbit prio 1 burst 64k
 
 # Database traffic: guaranteed 400 Mbit, limited to 600 Mbit max
-sudo tc class add dev ens192 parent 1:1 classid 1:20 htb rate 400mbit ceil 600mbit prio 2 burst 15k
+sudo tc class add dev ens192 parent 1:1 classid 1:20 htb rate 400mbit ceil 600mbit prio 2 burst 64k
 
-# Default: guaranteed 200 Mbit, can burst to 400 Mbit
-sudo tc class add dev ens192 parent 1:1 classid 1:30 htb rate 200mbit ceil 400mbit prio 3 burst 15k
+# Default: guaranteed 200 Mbit, can borrow up to 400 Mbit
+sudo tc class add dev ens192 parent 1:1 classid 1:30 htb rate 200mbit ceil 400mbit prio 3 burst 32k
 ```
 
 ## Adding Leaf Qdiscs
 
-Each leaf class needs its own qdisc to handle queueing within the class. fq_codel is the best choice.
+Each leaf class gets a queueing discipline to store packets within the class. HTB uses a simple FIFO qdisc by default, but explicitly adding `fq_codel` gives fair queueing and active queue management within each class.
 
 ```bash
 # Fair queueing within each class
@@ -165,13 +165,13 @@ watch -n 1 'tc -s class show dev ens192'
 
 Key statistics to watch:
 - **rate** - Current throughput
-- **overlimits** - Times the class needed more than its rate (borrowed or waited)
+- **overlimits** - Times packets hit the configured HTB token limits and had to wait
 - **lended/borrowed** - Bandwidth sharing activity
 - **tokens** - Available burst tokens
 
 ## Calculating Burst Values
 
-The `burst` parameter determines how much data can be sent at line rate before the rate limiter activates. Too small and you get throughput below the configured rate. The minimum recommended burst:
+The `burst` parameter determines how much data can be sent above the configured rate at up to the `ceil` speed before the rate limiter activates. Too small and you get throughput below the configured rate. The minimum recommended burst:
 
 ```bash
 # Burst should be at least: rate / HZ

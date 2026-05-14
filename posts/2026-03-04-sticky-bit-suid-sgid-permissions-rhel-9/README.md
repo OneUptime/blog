@@ -16,7 +16,7 @@ Beyond the standard read, write, and execute permissions, Linux has three specia
 |-----|---------|----------------|----------------------|
 | SUID | 4000 | Runs as file owner | No effect |
 | SGID | 2000 | Runs as file group | New files inherit directory group |
-| Sticky | 1000 | No effect | Only file owner can delete their files |
+| Sticky | 1000 | No effect | Only the file owner, directory owner, or root can delete or rename files |
 
 ## SUID - Set User ID
 
@@ -64,7 +64,7 @@ SUID binaries are one of the most common privilege escalation vectors. A vulnera
 sudo find / -xdev -type f -perm -4000 2>/dev/null
 ```
 
-On a default RHEL system, legitimate SUID files include:
+On a RHEL system, legitimate SUID files commonly include:
 
 - `/usr/bin/passwd`
 - `/usr/bin/su`
@@ -72,9 +72,16 @@ On a default RHEL system, legitimate SUID files include:
 - `/usr/bin/mount`
 - `/usr/bin/umount`
 - `/usr/bin/newgrp`
+- `/usr/bin/chage`
+- `/usr/bin/gpasswd`
+- `/usr/bin/chfn`
+- `/usr/bin/chsh`
+- `/usr/bin/crontab`
+- `/usr/bin/pkexec`
 - `/usr/sbin/pam_timestamp_check`
+- `/usr/sbin/unix_chkpwd`
 
-Any SUID file not on this list deserves investigation.
+The exact list depends on the installed package set. Any unexpected SUID file deserves investigation.
 
 ## SGID - Set Group ID
 
@@ -124,7 +131,7 @@ This is essential for shared directories where multiple users need to access eac
 
 ## Sticky Bit
 
-The sticky bit on a directory prevents users from deleting or renaming files they do not own:
+The sticky bit on a directory prevents unprivileged users from deleting or renaming files unless they own the file or the directory:
 
 ```bash
 # Set sticky bit
@@ -145,7 +152,7 @@ ls -ld /tmp
 # drwxrwxrwt. 10 root root 4096 ... /tmp
 ```
 
-Everyone can create files in `/tmp`, but you can only delete your own files.
+Everyone can create files in `/tmp`, but unprivileged users can only delete their own files.
 
 ## Practical Example: Shared Project Directory
 

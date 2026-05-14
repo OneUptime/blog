@@ -20,7 +20,7 @@ The GitOps Toolkit was designed with these principles:
 
 ## The Controllers
 
-Flux CD consists of four core controllers and one optional controller:
+Flux CD consists of four core controllers and two optional image automation controllers:
 
 ```mermaid
 graph TB
@@ -84,6 +84,9 @@ spec:
     matchLabels:
       app: source-controller
   template:
+    metadata:
+      labels:
+        app: source-controller
     spec:
       containers:
         - name: manager
@@ -303,7 +306,7 @@ spec:
       author:
         name: fluxcdbot
         email: flux@my-org.com
-      messageTemplate: "Update image to {{.NewImage}}"
+      messageTemplate: "Update images"
     push:
       branch: main
   update:

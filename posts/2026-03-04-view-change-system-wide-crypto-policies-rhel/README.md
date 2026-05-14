@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Crypto Policies, TLS, Security, Encryption, Linux
 
-Description: Learn how to view, change, and manage system-wide cryptographic policies on RHEL to control which ciphers, protocols, and key sizes are permitted across all applications.
+Description: Learn how to view, change, and manage system-wide cryptographic policies on RHEL to control which ciphers, protocols, and key sizes are permitted across supported applications.
 
 ---
 
-RHEL provides system-wide crypto policies that let you control the minimum security standards for all cryptographic libraries (OpenSSL, GnuTLS, NSS, etc.) from a single location. This eliminates the need to configure each application individually.
+RHEL provides system-wide crypto policies that let you control the minimum security standards for supported cryptographic back ends (OpenSSL, GnuTLS, NSS, etc.) from a single location. This reduces the need to configure each application individually, as long as the application uses the system-provided configuration and does not override the policy.
 
 ## Viewing the Current Policy
 
@@ -27,7 +27,7 @@ RHEL ships with four predefined policies:
 - **DEFAULT** - Balanced security suitable for most workloads
 - **LEGACY** - Permits older algorithms for backward compatibility (e.g., SHA-1, TLS 1.0)
 - **FUTURE** - Stricter settings anticipating near-future security requirements
-- **FIPS** - Enforces FIPS 140 compliance
+- **FIPS** - Applies restrictions aligned with FIPS 140 requirements. Full FIPS mode requires configuring RHEL for FIPS mode, not just setting this policy.
 
 ## Changing the Crypto Policy
 
@@ -35,24 +35,24 @@ RHEL ships with four predefined policies:
 # Switch to the FUTURE policy for stronger security
 sudo update-crypto-policies --set FUTURE
 
-# The change takes effect immediately for new connections
-# Some running services may need a restart
+# Restart the system for the change to fully take effect.
+# At minimum, restart affected long-running services.
 sudo systemctl restart sshd
 sudo systemctl restart httpd
 ```
 
 ## Checking What a Policy Allows
 
-You can inspect the details of any policy:
+You can inspect the details of the active policy:
 
 ```bash
-# Show the effective settings for a given policy
-update-crypto-policies --show --is-applied
+# Show the active policy name
+update-crypto-policies --show
 
-# List the cipher strings that a policy generates for OpenSSL
-openssl ciphers -v | head -20
+# Inspect the effective policy settings after wildcard expansion
+cat /etc/crypto-policies/state/CURRENT.pol
 
-# Check minimum TLS version allowed
+# Check that the generated backend files match the configured policy
 update-crypto-policies --check
 ```
 
@@ -64,7 +64,7 @@ After switching policies, verify that applications respect the new settings:
 # Test an SSL connection to verify TLS version and cipher
 openssl s_client -connect localhost:443 -tls1_2 < /dev/null 2>/dev/null | grep "Protocol\|Cipher"
 
-# Check which policy backends were updated
+# Check which policy back ends were generated
 ls /etc/crypto-policies/back-ends/
 ```
 
@@ -74,8 +74,9 @@ ls /etc/crypto-policies/back-ends/
 # Revert back to the default policy if needed
 sudo update-crypto-policies --set DEFAULT
 
-# Restart affected services
+# Restart the system for the change to fully take effect.
+# At minimum, restart affected long-running services.
 sudo systemctl restart sshd
 ```
 
-System-wide crypto policies simplify security management on RHEL. Instead of editing configuration files for each service, you set one policy and all compliant applications follow it. This makes auditing and compliance significantly easier to manage across your fleet.
+System-wide crypto policies simplify security management on RHEL. Instead of editing configuration files for each service, you set one policy and supported applications that use the system defaults follow it. This makes auditing and compliance significantly easier to manage across your fleet.

@@ -72,7 +72,6 @@ The response includes ciphertext prefixed with the key version:
 Key           Value
 ---           -----
 ciphertext    vault:v1:AbCdEfGhIjKlMnOpQrStUvWxYz123456789...
-key_version   1
 ```
 
 ## Decrypting Data
@@ -96,12 +95,15 @@ Encrypt multiple items in a single request:
 
 ```bash
 # Batch encrypt
-vault write transit/encrypt/myapp-key \
-  batch_input='[
-    {"plaintext":"'$(echo -n "record1" | base64)'"},
-    {"plaintext":"'$(echo -n "record2" | base64)'"},
-    {"plaintext":"'$(echo -n "record3" | base64)'"}
-  ]'
+vault write transit/encrypt/myapp-key - << EOF
+{
+  "batch_input": [
+    {"plaintext": "$(echo -n "record1" | base64)"},
+    {"plaintext": "$(echo -n "record2" | base64)"},
+    {"plaintext": "$(echo -n "record3" | base64)"}
+  ]
+}
+EOF
 ```
 
 ## Key Rotation
@@ -238,7 +240,7 @@ vault write transit/keys/searchable-key \
   derived=true
 ```
 
-With convergent encryption, the same plaintext always produces the same ciphertext, allowing you to build indexes on encrypted fields.
+With convergent encryption, the same plaintext with the same derivation context produces the same ciphertext, allowing you to build exact-match indexes on encrypted fields.
 
 ## Performance Considerations
 
@@ -246,8 +248,8 @@ Transit operations add a network round trip per encryption or decryption. To min
 
 - Use batch operations for multiple items
 - Keep Vault close to your application (same network, same datacenter)
-- Use Vault Agent for caching and connection pooling
-- Consider using derived keys for client-side encryption when latency is critical
+- Reuse a long-lived Vault client so connections can be reused
+- Consider Transit data keys for envelope encryption when client-side encryption is needed
 
 ## Conclusion
 

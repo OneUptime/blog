@@ -12,7 +12,7 @@ Hardware refreshes, system migrations, decommissions - there are plenty of reaso
 
 ## Understanding RHEL Subscription Licensing
 
-Before getting into the mechanics, it helps to understand how RHEL subscriptions work. A RHEL subscription is tied to your Red Hat account, not permanently locked to a specific system. When you register a system and attach a subscription, you are consuming one unit from your subscription pool. When you remove that subscription or unregister the system, the unit goes back to the pool and can be used elsewhere.
+Before getting into the mechanics, it helps to understand how RHEL subscriptions work. A RHEL subscription is tied to your Red Hat account, not permanently locked to a specific system. In traditional entitlement-based environments, when you register a system and attach a subscription, you are consuming one unit from your subscription pool. When you remove that subscription or unregister the system, the unit goes back to the pool and can be used elsewhere.
 
 ```mermaid
 flowchart LR
@@ -25,7 +25,7 @@ flowchart LR
 
 The transfer process differs slightly depending on your subscription mode:
 
-- **With SCA**: Systems do not have individually attached subscriptions. You just unregister the old system and register the new one. Subscription consumption is tracked at the account level.
+- **With SCA**: Systems do not have individually attached subscriptions. You just unregister the old system and register the new one. Subscription usage is reported at the account level instead of being enforced by per-system attachment.
 - **Without SCA (traditional)**: You need to explicitly remove the subscription from the old system before it becomes available for the new one.
 
 ## Transferring with Simple Content Access (SCA)
@@ -40,7 +40,7 @@ If SCA is enabled on your account, the process is straightforward:
 sudo subscription-manager unregister
 ```
 
-This removes the system from your Red Hat account and frees up one registration slot.
+This removes the system from Red Hat subscription management services and deletes its local identity and subscription certificates.
 
 ### Step 2 - Register the New System
 
@@ -123,8 +123,8 @@ flowchart TD
     B -->|Yes| C[Unregister old system]
     B -->|No| D[Remove subscription from old system]
     D --> E[Subscription returns to pool]
-    C --> E
-    E --> F[New System]
+    C --> F[New System]
+    E --> F
     F --> G{SCA Enabled?}
     G -->|Yes| H[Register new system]
     G -->|No| I[Register and attach subscription]
@@ -134,20 +134,20 @@ flowchart TD
 
 ## Transferring When the Old System Is Gone
 
-Sometimes you need to transfer a subscription from a system that no longer exists, maybe it suffered a hardware failure, or it was decommissioned without being unregistered. In this case, remove the system from the Customer Portal manually:
+Sometimes you need to transfer a subscription from a system that no longer exists, maybe it suffered a hardware failure, or it was decommissioned without being unregistered. In this case, remove the system from the Red Hat Hybrid Cloud Console inventory manually:
 
-1. Log in to access.redhat.com
-2. Navigate to Subscriptions, then Systems
-3. Find the old system in the list
-4. Click on it and select "Delete"
+1. Log in to console.redhat.com
+2. Navigate to Red Hat Lightspeed, then RHEL, then Inventory, then Systems
+3. Select the old system in the list
+4. Click "Delete" and confirm the deletion
 
-This frees up the subscription slot. Then register the new system normally.
+For traditional entitlement-based environments, this helps remove the stale registered system from subscription reporting. Then register the new system normally.
 
 If you use Satellite Server, remove the host from the Satellite web UI:
 
 1. Go to Hosts, then All Hosts
-2. Find the old system
-3. Select "Delete Host"
+2. Select the old system
+3. From the options or action menu, select "Delete" or "Delete Hosts"
 
 ## Transferring Subscriptions Between Organizations
 
@@ -160,11 +160,11 @@ If the old and new systems belong to different Red Hat organizations, a direct s
 
 For virtual environments, RHEL subscriptions come in different flavors:
 
-- **Per-socket subscriptions**: Cover a physical host and its guests
-- **Virtual data center subscriptions**: Cover all guests on a physical host with unlimited VMs
+- **Per-socket subscriptions**: Cover the physical attributes of a physical system, such as sockets or cores
+- **Virtual data center subscriptions**: Cover a hypervisor and its guest VMs when the host-guest mapping is reported, typically with virt-who
 - **Individual VM subscriptions**: Cover a single virtual machine
 
-When transferring subscriptions for VMs, make sure the new system matches the subscription type. A per-socket subscription tied to a physical host's socket count cannot be moved to a host with a different socket configuration.
+When transferring subscriptions for VMs, make sure the new system matches the subscription type. A socket- or core-based subscription must cover all sockets or cores on the target system, and host-based virtual data center subscriptions require the new hypervisor to be reported correctly.
 
 ```bash
 # Check the number of sockets on the system
@@ -220,10 +220,10 @@ Keep these records as part of your change management process.
 
 ## Timing Considerations
 
-Subscription transfers are not instantaneous in the Customer Portal. After unregistering the old system:
+Subscription and inventory updates are not always instantaneous in Red Hat hosted services. After unregistering the old system:
 
 - The subscription may take a few minutes to appear back in the available pool
-- If you do not see it immediately, wait 5-10 minutes and refresh the portal
+- If you do not see it immediately, wait 5-10 minutes and refresh the console
 - Use `subscription-manager refresh` on the new system to force a data update
 
 ## Common Mistakes to Avoid
@@ -234,4 +234,4 @@ Subscription transfers are not instantaneous in the Customer Portal. After unreg
 
 ## Summary
 
-Transferring a RHEL subscription between systems boils down to: unregister (or remove the subscription from) the old system, then register the new one. With SCA, it is as simple as running two commands. Without SCA, you need to handle pool IDs and attachment. For decommissioned systems that were not properly unregistered, clean them up through the Customer Portal. And for bulk migrations, Ansible makes the process manageable at scale.
+Transferring a RHEL subscription between systems boils down to: unregister (or remove the subscription from) the old system, then register the new one. With SCA, it is as simple as running two commands. Without SCA, you need to handle pool IDs and attachment. For decommissioned systems that were not properly unregistered, clean them up through the Red Hat Hybrid Cloud Console inventory. And for bulk migrations, Ansible makes the process manageable at scale.

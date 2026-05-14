@@ -72,7 +72,7 @@ sequenceDiagram
     Note over Cluster: Actual: 3 replicas (consistent again)
 ```
 
-Flux corrects this drift on every reconciliation cycle. With `spec.force: false` (the default), Flux uses server-side apply, which respects field ownership. Only fields that Flux manages are corrected.
+Flux corrects this drift on every reconciliation cycle using server-side apply. With `spec.force: false` (the default), Flux will not replace resources when a patch fails because of immutable field changes.
 
 ### 2. Partial Application Failures
 
@@ -85,13 +85,11 @@ status:
   conditions:
     - type: Ready
       status: "False"
-      reason: BuildError
+      reason: ReconciliationFailed
       message: "Service/my-app dry-run failed: admission webhook denied the request"
   inventory:
     entries:
       - id: default_my-app_apps_Deployment
-        v: v1
-      - id: default_my-app__Service
         v: v1
 ```
 
@@ -162,7 +160,7 @@ spec:
   path: ./apps/critical
   prune: true
   wait: true
-  force: false                # Use server-side apply (respects field ownership)
+  force: false                # Do not replace resources on immutable field changes
 ```
 
 The drift detection respects field ownership. If an HPA (Horizontal Pod Autoscaler) changes the replica count on a Deployment, and Flux does not manage the `replicas` field, Flux will not revert the HPA's changes. Only fields that Flux has set through server-side apply are tracked and corrected.
@@ -218,10 +216,10 @@ flux reconcile kustomization apps
 
 ## Handling Conflicts with Other Controllers
 
-In a Kubernetes cluster, multiple controllers may want to modify the same resources. Flux handles this through server-side apply's field ownership model.
+In a Kubernetes cluster, multiple controllers may want to modify the same resources. Flux handles this through server-side apply and its apply policies.
 
 ```yaml
-# Flux manages these fields; other controllers manage other fields
+# Excerpt from a live Deployment's metadata
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -244,7 +242,7 @@ metadata:
             f:custom-annotation: {}
 ```
 
-Flux will only correct fields it owns. Custom annotations added by other tools remain untouched unless Flux explicitly sets the same field.
+By default, Flux uses the `Override` server-side apply policy and reconciles resources back to the desired YAML in Git. If you want Flux to preserve non-overlapping fields added by other tools, use the `kustomize.toolkit.fluxcd.io/ssa: Merge` policy or apply those fields with the field manager Flux documents for preserving client-side changes. Fields defined in the Flux manifests are still corrected on reconciliation.
 
 ## Eventual Consistency Is a Feature
 

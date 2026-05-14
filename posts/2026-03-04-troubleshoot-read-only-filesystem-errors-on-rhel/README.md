@@ -15,14 +15,14 @@ A "Read-only file system" error means the kernel or mount configuration is preve
 ```bash
 # Check which filesystems are read-only
 
-mount | grep "ro,"
+findmnt -O ro
 
 # Check kernel messages for filesystem errors
 dmesg | grep -iE "readonly|read.only|EXT4-fs error|XFS.*error|remount"
 
 # Try to write and confirm the error
-touch /tmp/testfile
-# touch: cannot touch '/tmp/testfile': Read-only file system
+touch /data/testfile
+# touch: cannot touch '/data/testfile': Read-only file system
 ```
 
 ## Step 2: Check Disk Health
@@ -61,7 +61,7 @@ sudo umount /data
 sudo xfs_repair /dev/sda2
 
 # For ext4
-sudo fsck -y /dev/sda2
+sudo fsck.ext4 -f -y /dev/sda2
 
 # Remount
 sudo mount /data
@@ -72,10 +72,11 @@ For the root filesystem:
 ```bash
 # You cannot unmount the root filesystem while running
 # Reboot into rescue mode or use:
-sudo touch /forcefsck
+sudo grubby --update-kernel=ALL --args="fsck.mode=force fsck.repair=yes"
 sudo reboot
+sudo grubby --update-kernel=ALL --remove-args="fsck.mode fsck.repair"
 
-# This creates a flag file that triggers fsck at next boot
+# This forces systemd-fsck to run at next boot, then removes the boot arguments
 ```
 
 ## Step 5: Check fstab for Wrong Mount Options
@@ -127,7 +128,7 @@ sudo badblocks -sv /dev/sda
 # /dev/sda2 /data ext4 defaults 0 2
 
 # For XFS, run periodic scrubs
-sudo xfs_scrub /dev/sda2
+sudo xfs_scrub /data
 
 # Monitor disk health with smartd
 sudo systemctl enable --now smartd

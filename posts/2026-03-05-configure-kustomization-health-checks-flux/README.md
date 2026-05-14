@@ -14,12 +14,12 @@ When Flux applies manifests to your cluster, it is not enough to know that the r
 
 ## How Health Checks Work
 
-After Flux applies the manifests from a Kustomization, it evaluates the health of specified resources by checking their status conditions. Different resource types have different health criteria:
+After Flux applies the manifests from a Kustomization, it evaluates the health of specified resources using Kubernetes status information and Flux's kstatus-compatible health assessment. Different resource types have different health criteria:
 
 - **Deployments**: All replicas are available and up to date
 - **StatefulSets**: All replicas are ready
 - **DaemonSets**: The desired number of pods are scheduled and ready
-- **Services**: Endpoints are available (for ClusterIP/LoadBalancer types)
+- **Services**: The Service has been accepted by Kubernetes; for LoadBalancer Services, a cluster IP has been assigned
 - **Custom Resources**: The `Ready` condition is `True`
 
 ```mermaid
@@ -64,12 +64,12 @@ spec:
       namespace: default
 ```
 
-Each entry in `healthChecks` requires:
+Each entry in `healthChecks` includes:
 
-- `apiVersion`: The API version of the resource
+- `apiVersion`: The API version of the resource. If omitted, Flux uses the Kubernetes preferred version.
 - `kind`: The resource kind
 - `name`: The resource name
-- `namespace`: The namespace where the resource lives
+- `namespace`: The namespace where the resource lives. If omitted, Flux looks in the Kustomization's namespace.
 
 ## Health Checks for Different Resource Types
 
@@ -108,7 +108,7 @@ spec:
       namespace: production
 ```
 
-### Services and Ingresses
+### Services and ConfigMaps
 
 ```yaml
 # health-checks-networking.yaml - Health checks for networking resources
@@ -131,10 +131,10 @@ spec:
       kind: Service
       name: api-gateway
       namespace: production
-    # Check that an Ingress is configured
-    - apiVersion: networking.k8s.io/v1
-      kind: Ingress
-      name: api-ingress
+    # Check that a ConfigMap exists
+    - apiVersion: v1
+      kind: ConfigMap
+      name: api-config
       namespace: production
 ```
 
@@ -191,7 +191,7 @@ spec:
 The difference is:
 
 - `healthChecks`: You explicitly list which resources to monitor. Only those resources are checked.
-- `wait`: Flux waits for every resource applied by the Kustomization to become ready.
+- `wait`: Flux waits for every resource applied by the Kustomization to become ready. When `wait: true` is set, Flux ignores `healthChecks`.
 
 Use `healthChecks` when you want fine-grained control. Use `wait` when you want all resources checked without listing them individually.
 
@@ -228,7 +228,7 @@ When health checks fail, use the following commands to diagnose the issue.
 
 ```bash
 # Check the Kustomization status for health check failures
-flux get kustomization my-app
+flux get kustomizations my-app
 
 # Get detailed status including health check results
 kubectl describe kustomization my-app -n flux-system
@@ -242,7 +242,7 @@ kubectl get events -n default --field-selector involvedObject.name=frontend
 
 ## Best Practices
 
-1. **Always set a timeout** when using health checks. Without a timeout, Flux may wait indefinitely for resources that will never become healthy.
+1. **Set an explicit timeout** when using health checks. Without one, Flux defaults the timeout to the Kustomization interval, which may not match how long your resources need to become healthy.
 2. **Start with critical resources** in your health checks rather than listing every resource. Focus on Deployments and StatefulSets that indicate the application is truly running.
 3. **Use `wait: true`** for simple setups where you want all resources checked. Switch to explicit `healthChecks` when you need to exclude certain resources.
 4. **Set appropriate timeouts** based on how long your application takes to start. Applications with large container images or slow initialization may need longer timeouts.

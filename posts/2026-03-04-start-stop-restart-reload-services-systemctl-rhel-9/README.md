@@ -33,7 +33,7 @@ To confirm it is actually running:
 sudo systemctl is-active httpd
 ```
 
-This prints `active` or `inactive`, which is useful in scripts:
+This prints the current active state, commonly `active` or `inactive`, which is useful in scripts:
 
 ```bash
 # Use is-active in a script to check before proceeding
@@ -49,7 +49,7 @@ fi
 
 ## Stopping a Service
 
-Stopping a service shuts it down immediately. Any active connections or processes managed by that service will be terminated.
+Stopping a service asks systemd to shut it down in the current session. Active connections or processes managed by that service may be closed as the service stops.
 
 ```bash
 # Stop the httpd service
@@ -89,14 +89,14 @@ This is handy in update scripts where you do not want to accidentally start a se
 
 ## Reloading a Service
 
-Reload tells the service to re-read its configuration files without stopping. The process keeps running, active connections stay alive, and the new configuration takes effect. Not every service supports reload.
+Reload tells the service to re-read its configuration files without stopping. The process usually keeps running, existing connections are not intentionally interrupted, and the new configuration takes effect. Not every service supports reload.
 
 ```bash
 # Reload httpd configuration without stopping the service
 sudo systemctl reload httpd
 ```
 
-If you are not sure whether a service supports reload, you can use `reload-or-restart`. This tries to reload first, and falls back to a full restart if reload is not supported:
+If you are not sure whether a service supports reload, you can use `reload-or-restart`. This tries to reload first, falls back to a full restart if reload is not supported, and starts the service if it is not already running:
 
 ```bash
 # Reload if possible, restart if not
@@ -131,14 +131,14 @@ flowchart TD
 - The configuration change requires a full restart (some services have settings that are only read at startup)
 - You want a clean slate
 
-To check if a service supports reload, look at its unit file:
+To check if a service supports reload, ask systemd for the unit's `CanReload` property:
 
 ```bash
-# Check if the unit file defines an ExecReload command
-systemctl cat httpd | grep ExecReload
+# Check whether systemd considers the unit reloadable
+systemctl show -p CanReload httpd
 ```
 
-If `ExecReload` is defined, the service supports reload. If it is not there, reload will fail.
+If this prints `CanReload=yes`, the service supports reload. If it prints `CanReload=no`, use restart or `reload-or-restart` instead.
 
 ---
 
@@ -204,7 +204,7 @@ sudo systemctl stop httpd mariadb php-fpm
 sudo systemctl restart httpd mariadb php-fpm
 ```
 
-The services are processed in the order you list them, but systemd will handle dependencies automatically. If mariadb needs to be running before your app, and you have set that up in the unit file, systemd takes care of the ordering.
+systemd queues jobs for the services you list and handles dependencies automatically. If mariadb needs to be running before your app, and you have set that up in the unit files, systemd takes care of the ordering.
 
 ---
 

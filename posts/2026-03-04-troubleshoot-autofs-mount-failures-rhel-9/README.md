@@ -129,6 +129,7 @@ ping nfsserver
 showmount -e nfsserver
 
 # Can we mount manually?
+sudo mkdir -p /tmp/test-mount
 sudo mount -t nfs nfsserver:/export/data /tmp/test-mount
 ls /tmp/test-mount
 sudo umount /tmp/test-mount
@@ -156,7 +157,7 @@ data -rw,soft 192.168.1.10:/export/data
 ### On the Client
 
 ```bash
-# NFS requires several ports
+# Check local firewall policy if outbound traffic is restricted
 sudo firewall-cmd --list-all
 ```
 
@@ -164,7 +165,7 @@ sudo firewall-cmd --list-all
 
 ```bash
 sudo firewall-cmd --list-services
-# Should include nfs, mountd, rpc-bind
+# NFSv4 requires nfs; NFSv3 also needs rpc-bind and mountd
 ```
 
 ## Step 8: Check SELinux

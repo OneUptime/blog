@@ -12,9 +12,9 @@ GitLab is a popular choice for teams that want an all-in-one DevOps platform, an
 
 ## Prerequisites
 
-- A running Kubernetes cluster (v1.26 or later)
+- A running Kubernetes cluster supported by your Flux release
 - `kubectl` configured to access your cluster
-- Flux CLI installed (v2.0 or later)
+- Flux CLI installed, compatible with your Flux controllers
 - A GitLab account with a personal access token
 
 ## Step 1: Create a GitLab Personal Access Token
@@ -86,6 +86,7 @@ flux bootstrap gitlab \
   --branch=main \
   --path=./clusters/production \
   --personal \
+  --token-auth \
   --ca-file=./gitlab-ca.crt
 ```
 
@@ -111,7 +112,7 @@ flux bootstrap gitlab \
 
 When using groups, omit the `--personal` flag. The token must have permission to create projects in the specified group.
 
-## Step 6: Configure Read-Write Deploy Keys
+## Step 6: Configure Deploy Keys
 
 By default, Flux creates an SSH deploy key for accessing the repository. You can verify and manage these keys.
 
@@ -119,13 +120,16 @@ By default, Flux creates an SSH deploy key for accessing the repository. You can
 # View the deploy key secret
 kubectl get secret flux-system -n flux-system -o yaml
 
-# If you need to rotate the deploy key
-flux create secret git flux-system \
-  --url=ssh://git@gitlab.com/<owner>/fleet-infra.git \
-  --namespace=flux-system
+# If you need to rotate the deploy key, delete the secret and re-run bootstrap
+kubectl delete secret flux-system -n flux-system
+flux bootstrap gitlab \
+  --owner=<owner> \
+  --repository=fleet-infra \
+  --branch=main \
+  --path=./clusters/production
 ```
 
-The deploy key is automatically added to the GitLab project with read-write access during bootstrapping.
+The deploy key is automatically added to the GitLab project during bootstrapping. By default, the GitLab deploy key is read-only; if you need Flux image automation to push changes back to the repository, add `--read-write-key=true` when bootstrapping.
 
 ## Step 7: Set Up a Multi-Cluster Repository Structure
 
@@ -228,7 +232,7 @@ metadata:
   namespace: flux-system
 spec:
   type: gitlab
-  address: https://gitlab.com/<owner>/fleet-infra
+  address: https://gitlab.com/<project-id>
   secretRef:
     name: gitlab-token
 ---

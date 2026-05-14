@@ -43,7 +43,7 @@ Create a repository with your playbooks:
 # Create the configuration repository
 
 mkdir rhel-config && cd rhel-config
-git init
+git init -b main
 
 # Create the main playbook that ansible-pull will run
 cat > local.yml << 'PLAYBOOK'
@@ -63,6 +63,8 @@ cat > local.yml << 'PLAYBOOK'
           - curl
           - bind-utils
           - bash-completion
+          - chrony
+          - firewalld
         state: present
 
     - name: Ensure chronyd is running
@@ -110,6 +112,7 @@ git push -u origin main
 ```bash
 # Install Ansible on each server that will use pull mode
 sudo dnf install ansible-core git
+sudo ansible-galaxy collection install community.general
 ```
 
 ## Step 3: Test ansible-pull Manually
@@ -139,7 +142,7 @@ Add:
 
 ```bash
 # Create the service unit
-sudo cat > /etc/systemd/system/ansible-pull.service << 'SERVICE'
+sudo tee /etc/systemd/system/ansible-pull.service > /dev/null << 'SERVICE'
 [Unit]
 Description=Ansible Pull Configuration
 After=network-online.target
@@ -161,7 +164,7 @@ SyslogIdentifier=ansible-pull
 SERVICE
 
 # Create the timer unit
-sudo cat > /etc/systemd/system/ansible-pull.timer << 'TIMER'
+sudo tee /etc/systemd/system/ansible-pull.timer > /dev/null << 'TIMER'
 [Unit]
 Description=Run Ansible Pull every 30 minutes
 

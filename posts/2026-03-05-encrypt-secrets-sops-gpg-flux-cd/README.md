@@ -194,12 +194,13 @@ With this file in place, team members can encrypt without specifying the key fin
 
 ```bash
 # Encrypt using rules from .sops.yaml (no flags needed)
-sops --encrypt secret.yaml > secret.enc.yaml
+cp secret.yaml clusters/production/secret.enc.yaml
+sops --encrypt --in-place clusters/production/secret.enc.yaml
 ```
 
 ## Decrypting Locally for Editing
 
-When you need to edit an encrypted secret, use `sops` to decrypt it in place.
+When you need to edit an encrypted secret, use `sops` to decrypt it in your editor and re-encrypt it when you save.
 
 ```bash
 # Open the encrypted file in your editor for editing
@@ -240,8 +241,8 @@ kubectl get secret sops-gpg -n flux-system
 # Check kustomize-controller logs for decryption errors
 kubectl logs -n flux-system deployment/kustomize-controller | grep -i "decryption"
 
-# Verify the key fingerprint matches what was used for encryption
-sops --decrypt --extract '["sops"]["pgp"][0]["fp"]' secret.enc.yaml
+# Verify the key fingerprint stored in the encrypted file metadata
+grep -A2 "fp:" secret.enc.yaml
 ```
 
 GPG-based SOPS encryption works reliably with Flux CD and is a strong choice for organizations already invested in PGP key infrastructure. For new setups without existing GPG infrastructure, consider Age as a simpler alternative.

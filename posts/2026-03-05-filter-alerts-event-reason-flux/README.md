@@ -51,7 +51,7 @@ Exclude routine reconciliation events that indicate no changes were made.
 
 ```yaml
 # Alert that filters out no-change reconciliation events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: filtered-alerts
@@ -76,7 +76,7 @@ Add multiple patterns to the exclusion list to filter out several types of event
 
 ```yaml
 # Alert with multiple exclusion patterns
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: targeted-alerts
@@ -121,7 +121,7 @@ You can use more sophisticated regex patterns for precise filtering.
 
 ```yaml
 # Alert using advanced regex patterns for filtering
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: regex-filtered-alerts
@@ -151,7 +151,7 @@ Sometimes you want info severity to catch certain informational events but filte
 
 ```yaml
 # Info-level alert that filters most routine events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: meaningful-events-only

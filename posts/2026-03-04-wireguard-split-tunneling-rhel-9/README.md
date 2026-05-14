@@ -55,7 +55,7 @@ With this configuration, traffic to `10.0.0.0/24` and `192.168.100.0/24` goes th
 
 ## Split Tunnel with DNS
 
-One challenge with split tunneling is DNS. You probably want internal DNS names to resolve through the VPN, but everything else should use your local DNS.
+One challenge with split tunneling is DNS. You probably want internal DNS names to resolve through the VPN, but everything else should use your local DNS. On RHEL, the `resolvectl` example requires `systemd-resolved` to be installed, running, and configured as NetworkManager's DNS backend.
 
 ```bash
 # Don't set DNS in the WireGuard config
@@ -93,13 +93,15 @@ sudo nmcli connection modify "wg-split" ipv4.method manual ipv4.addresses "10.0.
 # Don't set the default route through the VPN
 sudo nmcli connection modify "wg-split" ipv4.never-default yes
 
-# Add specific routes through the VPN
-sudo nmcli connection modify "wg-split" +ipv4.routes "192.168.100.0/24"
-sudo nmcli connection modify "wg-split" +ipv4.routes "10.10.0.0/16"
+# Set the WireGuard private key
+sudo nmcli connection modify "wg-split" wireguard.private-key "CLIENT_PRIVATE_KEY_HERE"
 
-# Set split DNS
+# Add the server peer and the subnets that should route through the VPN
+sudo nmcli connection modify "wg-split" wireguard.peers "SERVER_PUBLIC_KEY_HERE endpoint=vpn.example.com:51820 allowed-ips=192.168.100.0/24;10.10.0.0/16 persistent-keepalive=25"
+
+# Set split DNS if NetworkManager uses a split-DNS backend such as systemd-resolved or dnsmasq
 sudo nmcli connection modify "wg-split" ipv4.dns "10.0.0.1"
-sudo nmcli connection modify "wg-split" ipv4.dns-search "internal.company.com"
+sudo nmcli connection modify "wg-split" ipv4.dns-search "~internal.company.com"
 sudo nmcli connection modify "wg-split" ipv4.dns-priority -50
 ```
 

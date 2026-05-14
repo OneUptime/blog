@@ -1,47 +1,47 @@
-# How to Set SSH Idle Timeout and MaxAuthTries on RHEL
+# How to Set SSH Client Alive Timeout and MaxAuthTries on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SSH, Timeout, Security, Linux
 
-Description: Configure SSH idle session timeout and maximum authentication attempts on RHEL to reduce the attack surface and meet compliance requirements.
+Description: Configure SSH client-alive timeout and maximum authentication attempts on RHEL to reduce the attack surface and meet compliance requirements.
 
 ---
 
-Idle SSH sessions and unlimited authentication attempts are two easy-to-fix security gaps. An unattended terminal with a root session is an open door, and unlimited auth tries give attackers all the time they need for brute-force attacks. Here is how to set sensible limits.
+Unresponsive SSH sessions and excessive authentication attempts are two easy-to-fix security gaps. An unattended terminal with a root session is an open door, and too many auth tries per connection give attackers more room for brute-force attempts. Here is how to set sensible limits.
 
-## Configuring Idle Session Timeout
+## Configuring Client Alive Timeout
 
-SSH idle timeout is controlled by two directives that work together:
+SSH client-alive timeout is controlled by two directives that work together:
 
 ```bash
 ClientAliveInterval 300
-ClientAliveCountMax 0
+ClientAliveCountMax 1
 ```
 
 - **ClientAliveInterval** - Number of seconds between keep-alive messages sent to the client.
 - **ClientAliveCountMax** - Number of keep-alive messages that can go unanswered before disconnecting.
 
-The total timeout is `ClientAliveInterval * (ClientAliveCountMax + 1)` when ClientAliveCountMax is 0, the connection drops after one interval with no response.
+The approximate timeout for an unresponsive client is `ClientAliveInterval * ClientAliveCountMax`. Setting `ClientAliveCountMax 0` disables connection termination.
 
-### Set a 5-minute idle timeout
+### Set a 5-minute client-alive timeout
 
 ```bash
 sudo vi /etc/ssh/sshd_config.d/15-timeout.conf
 ```
 
 ```bash
-# Disconnect after 5 minutes of inactivity
+# Disconnect after 5 minutes without a client-alive response
 
 ClientAliveInterval 300
-ClientAliveCountMax 0
+ClientAliveCountMax 1
 ```
 
 ### Set a 15-minute timeout with some tolerance
 
 ```bash
 # Send keep-alive every 5 minutes, disconnect after 3 missed responses
-# Total timeout: 5 * 3 = 15 minutes
+# Approximate timeout: 5 * 3 = 15 minutes
 ClientAliveInterval 300
 ClientAliveCountMax 3
 ```
@@ -123,9 +123,9 @@ sudo vi /etc/ssh/sshd_config.d/15-timeout.conf
 ```
 
 ```bash
-# Idle timeout: disconnect after 5 minutes of inactivity
+# Client-alive timeout: disconnect after 5 minutes without a response
 ClientAliveInterval 300
-ClientAliveCountMax 0
+ClientAliveCountMax 1
 
 # Maximum authentication attempts per connection
 MaxAuthTries 3
@@ -159,14 +159,14 @@ MaxAuthTries 4
 
 ```bash
 ClientAliveInterval 600
-ClientAliveCountMax 0
+ClientAliveCountMax 1
 ```
 
 ### PCI DSS
 
 ```bash
 ClientAliveInterval 900
-ClientAliveCountMax 0
+ClientAliveCountMax 1
 ```
 
 ## Verifying the Configuration
@@ -176,11 +176,11 @@ ClientAliveCountMax 0
 sudo sshd -T | grep -i -E "clientalive|maxauth|logingrace|maxstartups|maxsessions"
 ```
 
-### Test the idle timeout
+### Test the client-alive timeout
 
-1. Open an SSH session and do nothing.
+1. Open an SSH session and make the client stop responding, for example by disconnecting the client from the network.
 2. Wait for the timeout period.
-3. The session should disconnect with: `packet_write_wait: Connection to x.x.x.x port 22: Broken pipe`
+3. The session should disconnect. The client may report: `packet_write_wait: Connection to x.x.x.x port 22: Broken pipe`
 
 ### Test MaxAuthTries
 
@@ -192,4 +192,4 @@ ssh -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=5 user@server
 
 ## Wrapping Up
 
-Setting idle timeouts and authentication limits is low-effort, high-impact security hardening. A 5-to-15-minute idle timeout prevents unattended sessions from being hijacked, MaxAuthTries limits brute-force attempts per connection, and LoginGraceTime prevents auth-stage connection hoarding. These settings work alongside key-based authentication and fail2ban to create multiple layers of SSH protection.
+Setting client-alive timeouts and authentication limits is low-effort, high-impact security hardening. A 5-to-15-minute client-alive timeout clears unresponsive connections, MaxAuthTries limits brute-force attempts per connection, and LoginGraceTime prevents auth-stage connection hoarding. These settings work alongside key-based authentication and fail2ban to create multiple layers of SSH protection.
