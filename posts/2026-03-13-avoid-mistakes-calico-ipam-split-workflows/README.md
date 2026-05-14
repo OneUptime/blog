@@ -45,29 +45,23 @@ Never continue with a split if `calicoctl ipam check` reports problems. Fix the 
 
 ## Step 2: Mistake - Sub-Pool CIDRs That Don't Cover All Existing Allocations
 
-If you plan to split `10.0.0.0/16` into `10.0.0.0/17` and `10.0.128.0/17`, but pods already have IPs in both halves, you cannot cleanly assign all existing allocations to a single sub-pool.
+If you plan to replace `192.168.0.0/16` with target pools such as `10.0.0.0/17` and `10.0.128.0/17`, but pods still have IPs in the old range, you cannot safely delete the old pool until those pods have been restarted onto the target pools. Calico also rejects overlapping IPPools in API server mode, and marks overlapping pools disabled when using native v3 CRDs, so do not create replacement pools whose CIDRs overlap a pool that still exists.
 
 ```bash
-# List all currently allocated IPs before planning sub-pool CIDRs
+# List all currently allocated blocks before planning target CIDRs
 calicoctl ipam show --show-blocks
 
-# Check whether any allocations fall in the upper half of a /16
-# (indicating they would need to move to the second sub-pool)
-calicoctl ipam show --show-all-ips 2>/dev/null | awk '{print $1}' | while read ip; do
-  THIRD_OCTET=$(echo "$ip" | cut -d. -f3)
-  if [ -n "$THIRD_OCTET" ] && [ "$THIRD_OCTET" -ge 128 ] 2>/dev/null; then
-    echo "Upper half IP in use: $ip"
-  fi
-done
+# Print every IP checked by Calico IPAM, then filter for old-range addresses
+calicoctl ipam check --show-all-ips | grep '192\.168\.'
 ```
 
-If both halves have allocations, you must drain the nodes in one half first before the split can proceed safely.
+If the old range still has allocations, you must restart or drain the affected workloads before deleting the old pool.
 
 ---
 
 ## Step 3: Mistake - Deleting the Source Pool Too Early
 
-After creating sub-pools, you must keep the source pool in place - even if disabled - until all pods have been restarted onto addresses from the new sub-pools. Deleting it early removes the allocation records for any pods still using addresses from it.
+After creating non-overlapping target pools, you must keep the source pool in place - even if disabled - until all pods have been restarted onto addresses from the new pools. Deleting it early can affect connectivity for pods still using addresses from that pool.
 
 ```yaml
 # Correct: disable the source pool first; do NOT delete it yet
@@ -77,7 +71,7 @@ kind: IPPool
 metadata:
   name: original-pool
 spec:
-  cidr: 10.0.0.0/16
+  cidr: 192.168.0.0/16
   # disabled=true stops new allocations from this pool
   # but does NOT invalidate existing pod IPs in this range
   disabled: true
@@ -89,9 +83,9 @@ spec:
 ```bash
 calicoctl apply -f ippool-source-disable.yaml
 
-# Only delete the source pool after confirming zero blocks remain allocated in it
-calicoctl ipam show --show-blocks | grep "10.0.0.0/16"
-# When all blocks show "0 allocations", deletion is safe
+# Only delete the source pool after confirming no workloads still use it
+calicoctl get wep --all-namespaces | grep '192\.168\.'
+# When no workload endpoints show old-range addresses, deletion is safe
 ```
 
 ---
@@ -109,7 +103,7 @@ calicoctl apply -f ippool-zone-b.yaml
 
 # 2. Confirm both pools are active before relabeling any nodes
 calicoctl get ippool -o wide | grep -E "zone-a|zone-b"
-# Both should show disabled=false
+# Both should show DISABLED as false
 
 # 3. Only then label nodes to match the sub-pool selectors
 kubectl label nodes worker-01 worker-02 zone=zone-a
@@ -138,7 +132,8 @@ kind: IPPool
 metadata:
   name: fallback-pool
 spec:
-  cidr: 10.1.0.0/16
+  # Use a CIDR inside the Kubernetes pod CIDR that does not overlap any existing IPPool
+  cidr: 10.0.192.0/18
   # No nodeSelector means this pool is available to all nodes
   ipipMode: Never
   vxlanMode: Always
@@ -158,9 +153,9 @@ calicoctl patch ippool fallback-pool --patch '{"spec":{"disabled":true}}'
 ## Best Practices
 
 - Run `calicoctl ipam check` before the split, after each step, and 24 hours after completion.
-- Perform splits during low-traffic periods; while the split itself does not affect running pods, subsequent node relabeling triggers pod IP reallocation.
+- Perform pool migrations during low-traffic periods; while disabling a pool does not affect running pods, deleting and recreating pods to move them to a target pool can temporarily affect applications.
 - Keep the original pool disabled for at least 24 hours before deleting it to allow time to detect any allocation problems.
-- Never split a pool that is more than 80% utilized; the remaining 20% provides headroom for pods to restart onto sub-pool addresses.
+- Avoid migrating a heavily utilized pool without spare capacity in the target pools; pods need headroom to restart onto replacement addresses.
 - Document every step in a change management record before starting - this ensures you have a rollback procedure if something goes wrong.
 
 ---
