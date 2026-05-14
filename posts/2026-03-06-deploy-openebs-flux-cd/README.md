@@ -10,7 +10,7 @@ Description: A comprehensive guide to deploying OpenEBS container-attached stora
 
 ## Introduction
 
-OpenEBS is a leading open-source container-attached storage (CAS) solution for Kubernetes. It provides multiple storage engines including Mayastor (high-performance NVMe-based), cStor (feature-rich), and LocalPV (for local persistent volumes). OpenEBS turns available storage on Kubernetes worker nodes into local or distributed persistent volumes.
+OpenEBS is a leading open-source container-attached storage (CAS) solution for Kubernetes. It provides multiple storage engines including Mayastor (high-performance NVMe-oF-based replicated storage), LocalPV (for local persistent volumes), and legacy engines such as cStor. OpenEBS turns available storage on Kubernetes worker nodes into local or distributed persistent volumes.
 
 This guide walks through deploying OpenEBS with Flux CD, covering both the LocalPV and Mayastor storage engines for different use cases.
 
@@ -19,7 +19,7 @@ This guide walks through deploying OpenEBS with Flux CD, covering both the Local
 Before you begin, ensure you have:
 
 - A Kubernetes cluster (v1.25 or later)
-- For Mayastor: nodes with NVMe-capable disks and HugePages enabled
+- For Mayastor: at least three worker nodes with raw block devices, the `nvme-tcp` kernel module loaded, and 2 GiB of 2 MiB HugePages available on each IO engine node
 - Flux CD installed and bootstrapped on your cluster
 - kubectl configured to access your cluster
 - A Git repository connected to Flux CD
@@ -35,6 +35,9 @@ clusters/
         helmrepository.yaml
         helmrelease.yaml
         storageclasses.yaml
+        kustomization.yaml
+      openebs-pools/
+        diskpools.yaml
         kustomization.yaml
 ```
 
@@ -81,7 +84,7 @@ spec:
   chart:
     spec:
       chart: openebs
-      version: "4.0.x"
+      version: "4.4.x"
       sourceRef:
         kind: HelmRepository
         name: openebs
@@ -89,22 +92,25 @@ spec:
   timeout: 15m
   values:
     # Enable LocalPV hostpath provisioner
+    engines:
+      local:
+        lvm:
+          enabled: false
+        zfs:
+          enabled: false
+      replicated:
+        mayastor:
+          enabled: true
     localpv-provisioner:
-      enabled: true
+      localpv:
+        enabled: true
       hostpathClass:
         # Set as default storage class for simple local volumes
+        enabled: true
         isDefaultClass: false
         basePath: /var/openebs/local
-      deviceClass:
-        enabled: true
     # Enable Mayastor for high-performance replicated storage
     mayastor:
-      enabled: true
-      csi:
-        node:
-          # Topology-aware volume scheduling
-          topology:
-            nodeSelector: true
       etcd:
         # Replicas for the etcd cluster used by Mayastor
         replicaCount: 3
@@ -117,60 +123,33 @@ spec:
           requests:
             cpu: "1"
             memory: 1Gi
-            hugepages-2Mi: 2Gi
+            hugepages2Mi: 2Gi
           limits:
             cpu: "2"
             memory: 2Gi
-            hugepages-2Mi: 2Gi
+            hugepages2Mi: 2Gi
         # Target nodes for IO engine deployment
-        nodeSelector: {}
-    # Disable legacy engines if not needed
-    cstor:
-      enabled: false
-    jiva:
-      enabled: false
+        nodeSelector:
+          openebs.io/engine: mayastor
+          kubernetes.io/arch: amd64
 ```
 
 ## Step 4: Configure HugePages for Mayastor
 
-Mayastor requires HugePages on the worker nodes. Create a DaemonSet to configure them.
+Mayastor requires HugePages on the worker nodes that run IO engine pods. Configure HugePages on each Mayastor node and restart kubelet or reboot the node so Kubernetes reports the updated HugePage capacity.
 
-```yaml
-# clusters/my-cluster/storage/openebs/hugepages-setup.yaml
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: hugepages-setup
-  namespace: openebs
-  labels:
-    app: hugepages-setup
-spec:
-  selector:
-    matchLabels:
-      app: hugepages-setup
-  template:
-    metadata:
-      labels:
-        app: hugepages-setup
-    spec:
-      # Run on all nodes that will host Mayastor
-      hostPID: true
-      containers:
-        - name: hugepages
-          image: busybox:1.36
-          # Allocate 1024 HugePages of 2MB each
-          command:
-            - sh
-            - -c
-            - |
-              echo 1024 > /proc/sys/vm/nr_hugepages
-              sleep infinity
-          securityContext:
-            privileged: true
-          resources:
-            requests:
-              cpu: 10m
-              memory: 16Mi
+```bash
+# Run on each Mayastor IO engine node
+echo 1024 | sudo tee /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
+echo "vm.nr_hugepages = 1024" | sudo tee -a /etc/sysctl.conf
+sudo modprobe nvme-tcp
+echo nvme-tcp | sudo tee /etc/modules-load.d/openebs-mayastor.conf
+sudo systemctl restart kubelet
+
+# Label each node that will run an IO engine pod
+kubectl label node worker-1 openebs.io/engine=mayastor
+kubectl label node worker-2 openebs.io/engine=mayastor
+kubectl label node worker-3 openebs.io/engine=mayastor
 ```
 
 ## Step 5: Create Storage Classes
@@ -204,8 +183,6 @@ parameters:
   thin: "true"
   # Protocol for data replication
   protocol: nvmf
-  # IO timeout in seconds
-  ioTimeout: "30"
 provisioner: io.openebs.csi-mayastor
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
@@ -233,8 +210,8 @@ allowVolumeExpansion: true
 Define disk pools on each node for Mayastor to use.
 
 ```yaml
-# clusters/my-cluster/storage/openebs/diskpools.yaml
-apiVersion: openebs.io/v1beta2
+# clusters/my-cluster/storage/openebs-pools/diskpools.yaml
+apiVersion: openebs.io/v1beta3
 kind: DiskPool
 metadata:
   name: pool-worker-1
@@ -243,10 +220,10 @@ spec:
   # Node where the disk pool will be created
   node: worker-1
   disks:
-    # Use the raw block device path
-    - uring:///dev/sdb
+    # Use a stable disk-by-id path for the raw block device
+    - uring:///dev/disk/by-id/<worker-1-disk-id>
 ---
-apiVersion: openebs.io/v1beta2
+apiVersion: openebs.io/v1beta3
 kind: DiskPool
 metadata:
   name: pool-worker-2
@@ -254,9 +231,9 @@ metadata:
 spec:
   node: worker-2
   disks:
-    - uring:///dev/sdb
+    - uring:///dev/disk/by-id/<worker-2-disk-id>
 ---
-apiVersion: openebs.io/v1beta2
+apiVersion: openebs.io/v1beta3
 kind: DiskPool
 metadata:
   name: pool-worker-3
@@ -264,7 +241,7 @@ metadata:
 spec:
   node: worker-3
   disks:
-    - uring:///dev/sdb
+    - uring:///dev/disk/by-id/<worker-3-disk-id>
 ```
 
 ## Step 7: Create the Kustomization
@@ -277,8 +254,14 @@ resources:
   - namespace.yaml
   - helmrepository.yaml
   - helmrelease.yaml
-  - hugepages-setup.yaml
   - storageclasses.yaml
+```
+
+```yaml
+# clusters/my-cluster/storage/openebs-pools/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
   - diskpools.yaml
 ```
 
@@ -304,6 +287,23 @@ spec:
       name: openebs
       namespace: openebs
   timeout: 20m
+---
+# clusters/my-cluster/storage/openebs-pools-kustomization.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: openebs-pools
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./clusters/my-cluster/storage/openebs-pools
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: openebs
+  timeout: 10m
 ```
 
 ## Step 9: Verify the Deployment
@@ -311,6 +311,7 @@ spec:
 ```bash
 # Check Flux reconciliation
 flux get kustomizations openebs
+flux get kustomizations openebs-pools
 
 # Check the HelmRelease
 flux get helmreleases -n openebs
@@ -319,13 +320,13 @@ flux get helmreleases -n openebs
 kubectl get pods -n openebs
 
 # Check Mayastor disk pools
-kubectl get diskpools -n openebs
+kubectl get dsp -n openebs
 
 # Verify storage classes
 kubectl get storageclass
 
-# Check Mayastor nodes
-kubectl get msn -n openebs
+# Check Mayastor IO engine pods
+kubectl get pods -n openebs -l app=io-engine
 ```
 
 ## Step 10: Test Storage Provisioning
@@ -409,9 +410,9 @@ kubectl logs -n openebs -l app=api-rest --tail=100
 kubectl logs -n openebs -l app=io-engine --tail=100
 
 # Verify disk pool capacity
-kubectl get diskpools -n openebs -o wide
+kubectl get dsp -n openebs -o wide
 ```
 
 ## Conclusion
 
-You have successfully deployed OpenEBS on Kubernetes using Flux CD. With Mayastor providing high-performance NVMe-based replicated storage and LocalPV available for simpler use cases, you have a flexible storage platform managed entirely through GitOps. All configuration changes can be tracked, reviewed, and rolled back through your Git repository.
+You have successfully deployed OpenEBS on Kubernetes using Flux CD. With Mayastor providing high-performance NVMe-oF-based replicated storage and LocalPV available for simpler use cases, you have a flexible storage platform managed entirely through GitOps. All configuration changes can be tracked, reviewed, and rolled back through your Git repository.
