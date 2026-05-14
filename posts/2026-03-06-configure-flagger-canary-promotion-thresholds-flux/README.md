@@ -10,7 +10,7 @@ Description: A practical guide to configuring Flagger canary promotion threshold
 
 ## Introduction
 
-Flagger is a progressive delivery operator that works with Flux CD to automate canary deployments. One of its most powerful features is the ability to configure promotion thresholds -- the conditions that must be met before a canary version is promoted to production.
+Flagger is a progressive delivery operator that can be managed with Flux CD to automate canary deployments. One of its most powerful features is the ability to configure promotion thresholds -- the conditions that must be met before a canary version is promoted to production.
 
 Getting these thresholds right is critical. Too lenient, and you risk promoting broken releases. Too strict, and deployments stall unnecessarily. This guide walks through how to configure promotion thresholds effectively in a Flux-managed cluster.
 
@@ -27,10 +27,10 @@ Before you begin, make sure you have:
 
 Flagger uses a `Canary` custom resource to define how deployments are promoted. The promotion thresholds live inside the `analysis` section and control:
 
-- **Threshold**: The number of failed metric checks before a rollback is triggered
+- **Threshold**: The number of failed analysis checks before a rollback is triggered
 - **Max Weight**: The maximum percentage of traffic routed to the canary
 - **Step Weight**: The increment of traffic shift per analysis interval
-- **Iterations**: The number of successful checks required before promotion
+- **Iterations**: The number of analysis iterations used for A/B testing and blue/green deployments
 
 ## Step 1: Install Flagger with Flux
 
@@ -54,7 +54,8 @@ metadata:
   namespace: flagger-system
 spec:
   interval: 1h
-  url: https://flagger.app
+  url: oci://ghcr.io/fluxcd/charts
+  type: oci
 ```
 
 ```yaml
@@ -66,14 +67,19 @@ metadata:
   namespace: flagger-system
 spec:
   interval: 1h
+  releaseName: flagger
+  install:
+    crds: CreateReplace
+  upgrade:
+    crds: CreateReplace
   chart:
     spec:
       chart: flagger
-      version: "1.x"
+      version: 1.x
       sourceRef:
         kind: HelmRepository
         name: flagger
-      interval: 1h
+      interval: 6h
   values:
     # Use Istio as the mesh provider
     meshProvider: istio
@@ -103,9 +109,6 @@ spec:
     port: 80
     targetPort: 8080
   analysis:
-    # Number of analysis intervals to run before promotion
-    # The canary must pass this many consecutive checks
-    iterations: 10
     # Time between each analysis check
     interval: 1m
     # Maximum number of failed checks before rollback
@@ -119,7 +122,7 @@ spec:
 
 ## Step 3: Configure Metric-Based Thresholds
 
-Flagger supports custom metric templates for fine-grained promotion control.
+Flagger supports built-in and custom metrics for fine-grained promotion control.
 
 ```yaml
 # apps/my-app/canary.yaml
@@ -137,7 +140,6 @@ spec:
     port: 80
     targetPort: 8080
   analysis:
-    iterations: 10
     interval: 1m
     threshold: 2
     maxWeight: 50
@@ -177,12 +179,12 @@ spec:
   query: |
     # Calculate the error rate for the canary version
     # This query returns the percentage of 5xx responses
-    100 - sum(
+    100 * sum(
       rate(
         http_requests_total{
           namespace="{{ namespace }}",
           pod=~"{{ target }}-canary-[0-9a-zA-Z]+",
-          status!~"5.*"
+          status=~"5.*"
         }[{{ interval }}]
       )
     )
@@ -264,8 +266,6 @@ metadata:
   namespace: staging
 spec:
   analysis:
-    # Fewer iterations in staging
-    iterations: 5
     interval: 30s
     # Higher failure tolerance in staging
     threshold: 5
@@ -289,8 +289,6 @@ metadata:
   namespace: production
 spec:
   analysis:
-    # More iterations in production for confidence
-    iterations: 15
     interval: 2m
     # Very low failure tolerance in production
     threshold: 1
@@ -327,7 +325,7 @@ spec:
     name: my-app
   path: ./environments/production
   prune: true
-  # Health checks ensure Flux waits for canary completion
+  # Health checks ensure Flux waits for deployment readiness
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
@@ -359,9 +357,9 @@ Here is a reference table for common threshold patterns:
 
 | Scenario | iterations | threshold | stepWeight | maxWeight | Success Rate |
 |----------|-----------|-----------|------------|-----------|-------------|
-| Conservative | 15 | 1 | 2 | 30 | 99.9% |
-| Balanced | 10 | 2 | 5 | 50 | 99% |
-| Aggressive | 5 | 5 | 10 | 80 | 95% |
+| Conservative | - | 1 | 2 | 30 | 99.9% |
+| Balanced | - | 2 | 5 | 50 | 99% |
+| Aggressive | - | 5 | 10 | 80 | 95% |
 | Blue/Green | 10 | 1 | - | - | 99.5% |
 
 ## Troubleshooting
