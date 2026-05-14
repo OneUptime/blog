@@ -10,7 +10,7 @@ Description: Learn how to use namePrefix and nameSuffix in kustomization.yaml to
 
 ## Introduction
 
-When deploying the same application to multiple environments or tenants within a single cluster, resource name collisions are a real problem. Kustomize provides `namePrefix` and `nameSuffix` fields that automatically prepend or append strings to the names of all resources. This includes updating internal references so that Services still point to the correct Deployments, and ConfigMap references in volumes still resolve correctly.
+When deploying the same application to multiple environments or tenants within a single cluster, resource name collisions are a real problem. Kustomize provides `namePrefix` and `nameSuffix` fields that automatically prepend or append strings to the names of all resources. This includes updating known name references so that ConfigMap and Secret references still resolve correctly.
 
 This guide demonstrates how to use `namePrefix` and `nameSuffix` in `kustomization.yaml` files that Flux CD manages through its Kustomization custom resource.
 
@@ -19,11 +19,12 @@ This guide demonstrates how to use `namePrefix` and `nameSuffix` in `kustomizati
 When you set `namePrefix` or `nameSuffix` in a `kustomization.yaml`, Kustomize modifies:
 
 - The `metadata.name` of every resource
-- All references to those resources, including:
-  - Service selectors do **not** change (they match on labels, not names)
-  - ConfigMap and Secret references in volume mounts
+- Known name references to those resources, including:
+  - ConfigMap and Secret references in volumes, `envFrom`, and environment variables
   - ServiceAccount references in pod specs
   - Role and ClusterRole binding subjects
+
+Service selectors do **not** change when you use `namePrefix` or `nameSuffix`, because they match labels rather than resource names.
 
 This automatic reference updating is what makes `namePrefix` and `nameSuffix` safe to use without manually fixing cross-references.
 
@@ -127,8 +128,10 @@ resources:
 namePrefix: tenant-a-
 
 # Also add tenant-specific labels so selectors are unique
-commonLabels:
-  tenant: tenant-a
+labels:
+  - pairs:
+      tenant: tenant-a
+    includeSelectors: true
 ```
 
 ```yaml
@@ -142,8 +145,10 @@ resources:
 # Prefix all resource names with "tenant-b-"
 namePrefix: tenant-b-
 
-commonLabels:
-  tenant: tenant-b
+labels:
+  - pairs:
+      tenant: tenant-b
+    includeSelectors: true
 ```
 
 ## Step 3: Use NameSuffix for Environment Variants
@@ -221,7 +226,7 @@ nameSuffix: -v2
 
 ## Step 6: Configure Flux Kustomization Resources
 
-Create Flux Kustomization resources for each tenant.
+Create Flux Kustomization resources for each tenant. The `shared-workers` namespace must already exist, or it must be included in the manifests applied by the Kustomization.
 
 ```yaml
 # clusters/my-cluster/worker-tenant-a.yaml
@@ -297,9 +302,9 @@ graph TD
 
 ## Important Considerations
 
-1. **Label selectors are not changed.** `namePrefix` and `nameSuffix` do not modify label selectors. If you deploy multiple instances of the same app in one namespace, you also need `commonLabels` to differentiate selector matching.
+1. **Label selectors are not changed by name transformers.** `namePrefix` and `nameSuffix` do not modify label selectors. If you deploy multiple instances of the same app in one namespace, also add tenant-specific labels with `labels` and `includeSelectors: true` to differentiate selector matching.
 
-2. **Name length limits.** Kubernetes resource names must be 253 characters or fewer. If your prefix or suffix combined with the base name exceeds this limit, the resource will fail to create.
+2. **Name length limits.** Many Kubernetes resource names must be 253 characters or fewer, while some resource types use a 63-character DNS label limit. If your prefix or suffix combined with the base name exceeds the applicable limit, the resource will fail to create.
 
 3. **CRDs and custom references.** Kustomize only updates references it knows about (built-in Kubernetes types). If you use custom resources with name references, you may need to configure the Kustomize `nameReference` transformer.
 
@@ -307,4 +312,4 @@ graph TD
 
 ## Conclusion
 
-The `namePrefix` and `nameSuffix` fields in `kustomization.yaml` are effective tools for deploying multiple instances of the same application in a Flux-managed cluster. They automatically update resource names and internal references, making multi-tenant and multi-environment deployments straightforward. Combine them with `commonLabels` to ensure selector uniqueness when sharing namespaces.
+The `namePrefix` and `nameSuffix` fields in `kustomization.yaml` are effective tools for deploying multiple instances of the same application in a Flux-managed cluster. They automatically update resource names and known name references, making multi-tenant and multi-environment deployments straightforward. Combine them with selector-aware labels to ensure selector uniqueness when sharing namespaces.
