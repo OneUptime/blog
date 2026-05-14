@@ -10,7 +10,7 @@ Description: A practical guide to automating load tests in your GitOps pipeline 
 
 ## Introduction
 
-Load testing is essential for understanding how your application behaves under stress. By integrating load testing into your Flux CD GitOps pipeline, you can automatically validate performance after every deployment. This guide shows how to use the k6-operator with Flux CD to run load tests declaratively from Git.
+Load testing is essential for understanding how your application behaves under stress. By integrating load testing into your Flux CD GitOps pipeline, you can run performance checks after deployments or on a schedule. This guide shows how to use the k6-operator with Flux CD to run load tests declaratively from Git.
 
 ## Prerequisites
 
@@ -44,13 +44,14 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: k6-operator
-  namespace: k6-operator-system
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: k6-operator-system
   chart:
     spec:
       chart: k6-operator
-      version: "3.x"
+      version: "4.x"
       sourceRef:
         kind: HelmRepository
         name: grafana
@@ -102,11 +103,10 @@ data:
       ],
       thresholds: {
         // 95th percentile response time must be under 500ms
-        http_req_duration: ['p(95)<500'],
+        // 99% of requests must complete under 1500ms
+        http_req_duration: ['p(95)<500', 'p(99)<1500'],
         // Error rate must be below 1%
         errors: ['rate<0.01'],
-        // 99% of requests must complete under 1500ms
-        http_req_duration: ['p(99)<1500'],
       },
     };
 
@@ -146,7 +146,7 @@ metadata:
 data:
   api-load-test.js: |
     import http from 'k6/http';
-    import { check, group, sleep } from 'k6';
+    import { check, sleep } from 'k6';
     import { Counter, Trend } from 'k6/metrics';
 
     // Custom metrics for detailed tracking
@@ -269,7 +269,7 @@ spec:
       # Prometheus remote write endpoint
       - name: K6_PROMETHEUS_RW_SERVER_URL
         value: "http://prometheus.monitoring.svc:9090/api/v1/write"
-      # Prefix for k6 metrics in Prometheus
+      # Trend statistics exported for k6 trend metrics
       - name: K6_PROMETHEUS_RW_TREND_STATS
         value: "p(95),p(99),min,max,avg"
     resources:
@@ -305,6 +305,11 @@ spec:
       kind: TestRun
       name: basic-load-test
       namespace: load-testing
+  healthCheckExprs:
+    - apiVersion: k6.io/v1alpha1
+      kind: TestRun
+      current: status.stage == 'finished'
+      failed: status.stage == 'error'
   timeout: 30m
 ```
 
@@ -317,7 +322,7 @@ kind: Namespace
 metadata:
   name: load-testing
   labels:
-    # Prevent load testing pods from being disrupted
+    # Enforce the Kubernetes Pod Security Standards baseline profile
     pod-security.kubernetes.io/enforce: baseline
 ```
 
@@ -347,6 +352,29 @@ Use a CronJob to trigger load tests periodically:
 
 ```yaml
 # load-tests/scheduled-test.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: daily-test-run-config
+  namespace: load-testing
+data:
+  test-run.yaml: |
+    apiVersion: k6.io/v1alpha1
+    kind: TestRun
+    metadata:
+      name: daily-load-test
+      namespace: load-testing
+    spec:
+      parallelism: 4
+      script:
+        configMap:
+          name: k6-test-scripts
+          file: basic-load-test.js
+      runner:
+        env:
+          - name: TARGET_URL
+            value: "http://my-web-app.default.svc:8080"
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -371,7 +399,7 @@ spec:
                   kubectl delete testrun daily-load-test \
                     -n load-testing --ignore-not-found
                   # Apply a fresh test run
-                  kubectl apply -f /config/test-run.yaml
+                  kubectl create -f /config/test-run.yaml
               volumeMounts:
                 - name: test-config
                   mountPath: /config
@@ -460,4 +488,4 @@ Keep test scripts in the same Git repository as your application code. This ensu
 
 ## Conclusion
 
-Automating load tests with Flux CD and the k6-operator ensures that every deployment is validated for performance before it reaches users. By managing test configurations declaratively in Git, you get reproducible, auditable, and automated performance testing as part of your GitOps workflow.
+Automating load tests with Flux CD and the k6-operator gives you reproducible, auditable performance checks as part of your GitOps workflow. By managing test configurations declaratively in Git, you can keep load tests versioned alongside your application and run them consistently after deployments or on a schedule.
