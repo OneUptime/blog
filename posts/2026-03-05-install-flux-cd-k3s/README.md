@@ -14,9 +14,10 @@ K3s is a lightweight, certified Kubernetes distribution built for edge computing
 
 Before you begin, make sure you have the following:
 
-- A Linux machine (bare metal or VM) with at least 1 CPU and 512 MB of RAM
+- A Linux machine (bare metal or VM) with at least 2 CPU cores and 2 GB of RAM for the K3s server
 - A GitHub personal access token with `repo` permissions
 - `kubectl` installed on your local machine
+- Cluster-admin access to the K3s cluster and a Kubernetes version supported by your Flux release
 - Internet access for pulling images and connecting to GitHub
 
 ## Step 1: Install K3s
@@ -80,7 +81,7 @@ Before bootstrapping, run the `flux check --pre` command to verify that your K3s
 flux check --pre
 ```
 
-This command checks for Kubernetes version compatibility, cluster connectivity, and required API resources. You should see output indicating all checks have passed. K3s ships with Traefik and CoreDNS by default, so networking requirements are typically met out of the box.
+This command checks for Kubernetes version compatibility, cluster connectivity, and required API resources. You should see output indicating all checks have passed. K3s deploys CoreDNS and Traefik by default, while Flux itself primarily requires access to the Kubernetes API and the supported API resources.
 
 ## Step 5: Export Your GitHub Credentials
 
