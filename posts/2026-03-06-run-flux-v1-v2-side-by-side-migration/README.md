@@ -126,16 +126,11 @@ spec:
             - --sync-garbage-collection
 ```
 
-```yaml
-# Option 2: Use .flux.yaml to ignore specific directories
-# Place this in directories you want Flux v1 to skip
-
-# workloads/migrated/.flux.yaml
-version: 1
-commandUpdated:
-  generators: []
-  updaters: []
-# This effectively makes Flux v1 skip this directory
+```bash
+# Option 2: Move migrated manifests outside every Flux v1 --git-path
+# Flux v1 only scans the configured target paths, so keep Flux v2-only
+# directories outside those paths and point the Flux v2 Kustomization there.
+git mv workloads/migrated flux-v2-workloads/migrated
 ```
 
 ## Step 5: Migrate Workloads One at a Time
@@ -154,7 +149,7 @@ metadata:
 spec:
   interval: 5m
   # Point to the manifests in your repository
-  path: ./workloads/worker-service
+  path: ./workloads/migrated/worker-service
   prune: true
   sourceRef:
     kind: GitRepository
@@ -243,7 +238,9 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  releaseName: nginx-ingress
   targetNamespace: ingress
+  storageNamespace: ingress
   chart:
     spec:
       chart: ingress-nginx
@@ -264,19 +261,22 @@ spec:
 ```bash
 # Migration steps for Helm releases:
 
-# 1. Delete the Flux v1 HelmRelease CR (but NOT the deployed resources)
+# 1. Stop the Helm Operator so deleting the v1 HelmRelease CR does not uninstall the release
+kubectl scale deployment helm-operator -n flux --replicas=0
+
+# 2. Delete the Flux v1 HelmRelease CR after the operator is stopped
 kubectl delete helmrelease nginx-ingress -n ingress
 
-# 2. Ensure the Helm release still exists in the cluster
+# 3. Ensure the Helm release still exists in the cluster
 helm list -n ingress
 
-# 3. Apply the Flux v2 HelmRelease
+# 4. Apply the Flux v2 HelmRelease
 # Flux v2 will adopt the existing Helm release
 git add clusters/my-cluster/flux-v2/releases/nginx-ingress.yaml
 git commit -m "Migrate nginx-ingress HelmRelease to Flux v2"
 git push origin main
 
-# 4. Verify Flux v2 has adopted the release
+# 5. Verify Flux v2 has adopted the release
 flux get helmreleases -A
 ```
 
@@ -366,8 +366,7 @@ spec:
     spec:
       containers:
         - name: my-app
-          # {"$imagepolicy": "flux-system:my-app"}
-          image: registry.example.com/my-app:1.0.5
+          image: registry.example.com/my-app:1.0.5 # {"$imagepolicy": "flux-system:my-app"}
 ```
 
 ## Step 8: Decommission Flux v1
