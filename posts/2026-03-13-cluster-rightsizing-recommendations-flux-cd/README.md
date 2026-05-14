@@ -21,6 +21,7 @@ This guide shows how to build a rightsizing workflow: VPA generates recommendati
 - `flux` CLI v2.0+
 - A GitOps repository for your workload manifests
 - `kubectl` with cluster access
+- `jq` available in the environment that runs the extraction script
 
 ## Step 1: Install VPA in Recommendation Mode
 
@@ -71,46 +72,64 @@ mkdir -p "${OUTPUT_DIR}"
 VPAS=$(kubectl get vpa -n "${NAMESPACE}" --no-headers -o custom-columns=NAME:.metadata.name)
 
 for VPA in ${VPAS}; do
-  # Extract the target workload name
-  TARGET=$(kubectl get vpa "${VPA}" -n "${NAMESPACE}" \
+  # Extract the target workload details
+  TARGET_NAME=$(kubectl get vpa "${VPA}" -n "${NAMESPACE}" \
     -o jsonpath='{.spec.targetRef.name}')
+  TARGET_KIND=$(kubectl get vpa "${VPA}" -n "${NAMESPACE}" \
+    -o jsonpath='{.spec.targetRef.kind}')
+  TARGET_API_VERSION=$(kubectl get vpa "${VPA}" -n "${NAMESPACE}" \
+    -o jsonpath='{.spec.targetRef.apiVersion}')
 
-  # Get VPA recommendations
-  CPU_REC=$(kubectl get vpa "${VPA}" -n "${NAMESPACE}" \
-    -o jsonpath='{.status.recommendation.containerRecommendations[0].target.cpu}')
-  MEM_REC=$(kubectl get vpa "${VPA}" -n "${NAMESPACE}" \
-    -o jsonpath='{.status.recommendation.containerRecommendations[0].target.memory}')
+  # Get VPA recommendations for all containers
+  RECOMMENDATIONS=$(kubectl get vpa "${VPA}" -n "${NAMESPACE}" -o json | jq -r '
+    .status.recommendation.containerRecommendations[]? |
+    [
+      .containerName,
+      .target.cpu,
+      .target.memory,
+      (.upperBound.cpu // .target.cpu),
+      (.upperBound.memory // .target.memory)
+    ] | @tsv
+  ')
 
-  if [ -z "${CPU_REC}" ] || [ -z "${MEM_REC}" ]; then
+  if [ -z "${RECOMMENDATIONS}" ]; then
     echo "No recommendation yet for ${VPA}, skipping"
     continue
   fi
 
-  echo "VPA recommendation for ${TARGET}: CPU=${CPU_REC}, Memory=${MEM_REC}"
+  echo "VPA recommendation for ${TARGET_NAME}:"
 
   # Generate a Kustomize patch file with the recommended resources
-  cat > "${OUTPUT_DIR}/${TARGET}-rightsizing-patch.yaml" << EOF
+  PATCH_FILE="${OUTPUT_DIR}/${TARGET_NAME}-rightsizing-patch.yaml"
+  cat > "${PATCH_FILE}" << EOF
 # Auto-generated rightsizing patch from VPA recommendations
 # Review and approve via PR before Flux applies this
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: ${TARGET_API_VERSION}
+kind: ${TARGET_KIND}
 metadata:
-  name: ${TARGET}
+  name: ${TARGET_NAME}
   namespace: ${NAMESPACE}
 spec:
   template:
     spec:
       containers:
-        - name: ${TARGET}
+EOF
+
+  echo "${RECOMMENDATIONS}" | while IFS=$'\t' read -r CONTAINER CPU_REC MEM_REC CPU_LIMIT MEM_LIMIT; do
+    echo "  ${CONTAINER}: requests CPU=${CPU_REC}, Memory=${MEM_REC}; limits CPU=${CPU_LIMIT}, Memory=${MEM_LIMIT}"
+    cat >> "${PATCH_FILE}" << EOF
+        - name: ${CONTAINER}
           resources:
             requests:
               cpu: "${CPU_REC}"      # VPA recommended
               memory: "${MEM_REC}"   # VPA recommended
             limits:
-              cpu: "$(echo ${CPU_REC} | awk '{print $1 * 2}')"  # 2x request for limits
-              memory: "$(echo ${MEM_REC} | awk '{print $1 * 1.5}')"
+              cpu: "${CPU_LIMIT}"      # VPA upper bound
+              memory: "${MEM_LIMIT}"   # VPA upper bound
 EOF
-  echo "Generated patch: ${OUTPUT_DIR}/${TARGET}-rightsizing-patch.yaml"
+  done
+
+  echo "Generated patch: ${PATCH_FILE}"
 done
 ```
 
@@ -155,8 +174,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Configure kubectl
-        uses: azure/k8s-set-context@v3
+        uses: azure/k8s-set-context@v4
         with:
+          method: kubeconfig
           kubeconfig: ${{ secrets.KUBECONFIG }}
 
       - name: Extract VPA recommendations
@@ -170,10 +190,15 @@ jobs:
             cp ./rightsizing-patches/* apps/myapp/
             git config user.email "bot@example.com"
             git config user.name "Rightsizing Bot"
-            git checkout -b rightsizing/$(date +%Y-%m-%d)
+            BRANCH="rightsizing/$(date +%Y-%m-%d)"
+            git checkout -b "${BRANCH}"
             git add apps/myapp/*-rightsizing-patch.yaml
+            if git diff --cached --quiet; then
+              echo "No rightsizing changes to commit"
+              exit 0
+            fi
             git commit -m "chore: apply VPA rightsizing recommendations $(date +%Y-%m-%d)"
-            git push origin rightsizing/$(date +%Y-%m-%d)
+            git push origin "${BRANCH}"
             gh pr create --title "Rightsizing: Apply VPA recommendations" \
               --body "Auto-generated from VPA recommendations. Review resource changes before merging."
           fi
