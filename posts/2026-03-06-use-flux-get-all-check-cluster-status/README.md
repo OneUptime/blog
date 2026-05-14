@@ -42,7 +42,7 @@ flux check
 
 ## Step 2: Run flux get all
 
-The basic command shows all Flux resources across all namespaces.
+The basic command shows Flux resources in the `flux-system` namespace by default.
 
 ```bash
 # Get all Flux resources in the flux-system namespace (default)
@@ -51,7 +51,7 @@ flux get all
 # Get all Flux resources across all namespaces
 flux get all -A
 
-# Get all resources with additional status details
+# Get all resources that are not ready
 flux get all -A --status-selector ready=false
 ```
 
@@ -113,8 +113,8 @@ Quickly find resources that are not ready.
 # List all resources that are not ready
 flux get all -A --status-selector ready=false
 
-# Pipe through grep for quick filtering
-flux get all -A | grep "False"
+# Print only resources whose READY column is False
+flux get all -A --no-header | awk '$4 == "False"'
 
 # Get detailed information about a specific failing resource
 flux get kustomizations monitoring -n flux-system
@@ -151,13 +151,13 @@ Suspended resources do not reconcile automatically. Find them with:
 
 ```bash
 # List all suspended resources
-flux get all -A | grep "True" | grep -v "READY"
+flux get all -A --no-header | awk '$3 == "True"'
 
-# More precise: check for suspended sources
-flux get sources all -A --status-selector suspended=true
+# Check for suspended sources
+flux get sources all -A --no-header | awk '$3 == "True"'
 
 # Check for suspended kustomizations
-flux get kustomizations -A --status-selector suspended=true
+flux get kustomizations -A --no-header | awk '$3 == "True"'
 ```
 
 To resume a suspended resource:
@@ -212,12 +212,12 @@ flux get all -A
 echo ""
 
 # Count unhealthy resources
-UNHEALTHY=$(flux get all -A 2>/dev/null | grep -c "False")
+UNHEALTHY=$(flux get all -A --status-selector ready=false --no-header 2>/dev/null | awk 'NF' | wc -l)
 
 if [ "$UNHEALTHY" -gt 0 ]; then
     echo "WARNING: $UNHEALTHY resource(s) are not ready:"
     echo ""
-    flux get all -A | grep "False"
+    flux get all -A --status-selector ready=false
     exit 1
 else
     echo "All resources are healthy."
@@ -230,19 +230,13 @@ fi
 Generate reports from `flux get all` output.
 
 ```bash
-# Export to JSON format for programmatic processing
-flux get all -A -o json > flux-status.json
-
-# Export as YAML
-flux get all -A -o yaml > flux-status.yaml
-
 # Create a summary report
 echo "Flux Status Report - $(date)" > flux-report.txt
 echo "" >> flux-report.txt
 flux get all -A >> flux-report.txt
 echo "" >> flux-report.txt
 echo "Unhealthy Resources:" >> flux-report.txt
-flux get all -A | grep "False" >> flux-report.txt
+flux get all -A --status-selector ready=false >> flux-report.txt
 ```
 
 ## Quick Reference: flux get all Flags
@@ -252,8 +246,6 @@ flux get all -A | grep "False" >> flux-report.txt
 | `-A` | All namespaces | `flux get all -A` |
 | `-n` | Specific namespace | `flux get all -n production` |
 | `--status-selector` | Filter by status | `flux get all --status-selector ready=false` |
-| `-o json` | JSON output | `flux get all -o json` |
-| `-o yaml` | YAML output | `flux get all -o yaml` |
 | `--no-header` | Suppress header row | `flux get all --no-header` |
 
 ## Troubleshooting
@@ -283,8 +275,8 @@ flux reconcile source git flux-system
 # Force reconciliation of a kustomization
 flux reconcile kustomization my-app
 
-# Force reconciliation of all sources
-flux reconcile source git --all
+# Force reconciliation of a git source in a specific namespace
+flux reconcile source git my-app -n production
 ```
 
 ### Output Too Wide for Terminal
