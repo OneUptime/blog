@@ -19,32 +19,142 @@ This guide walks you through deploying Loki, configuring log collection from Flu
 - `kubectl` access to the cluster
 - Grafana deployed (or willingness to deploy it alongside Loki)
 
-## Step 1: Deploy Loki and Promtail Using Helm
+## Step 1: Deploy Loki and Alloy Using Helm
 
-Add the Grafana Helm repository and install Loki along with Promtail, which collects logs from all pods and ships them to Loki:
+Add the Grafana Helm repository and install Loki. Then deploy the Kubernetes Monitoring Helm chart, which uses Grafana Alloy to collect pod logs and ship them to Loki:
+
+```yaml
+# loki-values.yaml
+
+loki:
+  commonConfig:
+    replication_factor: 1
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: s3
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  pattern_ingester:
+    enabled: true
+  limits_config:
+    allow_structured_metadata: true
+    volume_enabled: true
+  ruler:
+    enable_api: true
+
+minio:
+  enabled: true
+
+deploymentMode: Monolithic
+singleBinary:
+  replicas: 1
+
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+ingester:
+  replicas: 0
+querier:
+  replicas: 0
+queryFrontend:
+  replicas: 0
+queryScheduler:
+  replicas: 0
+distributor:
+  replicas: 0
+compactor:
+  replicas: 0
+indexGateway:
+  replicas: 0
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
+  replicas: 0
+bloomGateway:
+  replicas: 0
+```
+
+```yaml
+# k8s-monitoring-values.yaml
+
+cluster:
+  name: flux-cluster
+
+destinations:
+  - name: loki
+    type: loki
+    url: http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push
+
+clusterEvents:
+  enabled: true
+  collector: alloy-logs
+
+nodeLogs:
+  enabled: false
+
+podLogs:
+  enabled: true
+  gatherMethod: kubernetesApi
+  collector: alloy-logs
+  labelsToKeep:
+    - app
+    - app_kubernetes_io_component
+    - container
+    - job
+    - namespace
+    - service_name
+  namespaces:
+    - flux-system
+
+alloy-singleton:
+  enabled: false
+alloy-metrics:
+  enabled: false
+alloy-logs:
+  enabled: true
+  alloy:
+    mounts:
+      varlog: false
+    clustering:
+      enabled: true
+alloy-profiles:
+  enabled: false
+alloy-receiver:
+  enabled: false
+```
 
 ```bash
 helm repo add grafana https://grafana.github.io/helm-charts
 helm repo update
 
-helm install loki grafana/loki-stack \
+helm install loki grafana/loki \
   --namespace monitoring \
   --create-namespace \
-  --set promtail.enabled=true \
-  --set grafana.enabled=true
+  --values loki-values.yaml
+
+helm install k8s-monitoring grafana/k8s-monitoring \
+  --namespace monitoring \
+  --values k8s-monitoring-values.yaml
 ```
 
-This deploys Loki as the log backend, Promtail as the log collector (running as a DaemonSet), and Grafana for querying. Promtail automatically discovers and collects logs from all containers running in the cluster, including Flux controllers.
+This deploys Loki as the log backend and Alloy as the log collector. The Kubernetes Monitoring chart collects pod logs from the `flux-system` namespace and forwards them to Loki. Use an existing Grafana instance, or install Grafana separately and configure a Loki data source that points to `http://loki-gateway.monitoring.svc.cluster.local:80`.
 
 ## Step 2: Verify Log Collection from Flux Controllers
 
-Flux controllers run in the `flux-system` namespace by default. Check that Promtail is collecting logs from these pods:
+Flux controllers run in the `flux-system` namespace by default. Check that the Flux pods are running:
 
 ```bash
 kubectl get pods -n flux-system
 ```
 
-You should see controllers like `source-controller`, `kustomize-controller`, `helm-controller`, and `notification-controller`. Promtail picks up their logs automatically through Kubernetes service discovery.
+You should see controllers like `source-controller`, `kustomize-controller`, `helm-controller`, and `notification-controller`. Alloy picks up their logs through the Kubernetes Monitoring chart's pod log collection.
 
 To verify in Grafana, open the Explore tab, select the Loki data source, and run a basic query:
 
@@ -78,22 +188,22 @@ This shows only error-level log entries from Flux controllers, which typically i
 
 ## Step 4: Filter Logs by Controller and Resource
 
-To focus on a specific controller, filter by the pod label:
+To focus on a specific controller, filter by the controller label:
 
 ```logql
-{namespace="flux-system", app="kustomize-controller"}
+{namespace="flux-system", app_kubernetes_io_component="kustomize-controller"}
 ```
 
 To find logs related to a specific Kustomization resource, search for its name:
 
 ```logql
-{namespace="flux-system", app="kustomize-controller"} |= "my-app"
+{namespace="flux-system", app_kubernetes_io_component="kustomize-controller"} |= "my-app"
 ```
 
 For HelmRelease issues:
 
 ```logql
-{namespace="flux-system", app="helm-controller"} |= "my-helm-release" | json | level="error"
+{namespace="flux-system", app_kubernetes_io_component="helm-controller"} |= "my-helm-release" | json | level="error"
 ```
 
 These targeted queries help you quickly isolate problems with specific resources rather than sifting through the entire log stream.
@@ -103,13 +213,13 @@ These targeted queries help you quickly isolate problems with specific resources
 In Grafana, create a new dashboard with panels that show key Flux log metrics. Add a panel with the following LogQL query to track reconciliation error rates:
 
 ```logql
-sum(count_over_time({namespace="flux-system"} |= "ReconciliationFailed" [5m])) by (app)
+sum by (app_kubernetes_io_component) (count_over_time({namespace="flux-system"} |= "ReconciliationFailed" [5m]))
 ```
 
 Add another panel for source fetch errors:
 
 ```logql
-count_over_time({namespace="flux-system", app="source-controller"} | json | level="error" [5m])
+count_over_time({namespace="flux-system", app_kubernetes_io_component="source-controller"} | json | level="error" [5m])
 ```
 
 A useful dashboard layout includes:
@@ -125,7 +235,7 @@ Loki supports alerting through the Loki ruler component or through Grafana alert
 
 In Grafana, navigate to **Alerting > Alert Rules** and create a new rule:
 
-- **Query**: `count_over_time({namespace="flux-system"} |= "ReconciliationFailed" [15m])`
+- **Query**: `sum(count_over_time({namespace="flux-system"} |= "ReconciliationFailed" [15m]))`
 - **Condition**: When the query result is above 5
 - **Evaluation interval**: 5 minutes
 - **For**: 10 minutes
@@ -140,16 +250,19 @@ Flux controllers can produce a significant volume of logs, especially in cluster
 # loki-values.yaml
 
 loki:
-  config:
-    table_manager:
-      retention_deletes_enabled: true
-      retention_period: 168h  # 7 days
+  limits_config:
+    retention_period: 168h  # 7 days
+    max_query_lookback: 168h
+  compactor:
+    working_directory: /var/loki/retention
+    retention_enabled: true
+    delete_request_store: s3
 ```
 
 Apply the updated values:
 
 ```bash
-helm upgrade loki grafana/loki-stack \
+helm upgrade loki grafana/loki \
   --namespace monitoring \
   --values loki-values.yaml
 ```
@@ -163,7 +276,7 @@ Flux controllers emit logs in JSON format by default, which Loki can parse nativ
 - `level`: The log severity (info, error, debug)
 - `ts`: The timestamp
 - `msg`: The human-readable message
-- `controller`: The controller name
+- `controllerGroup`: The controller API group
 - `name`: The resource name
 - `namespace`: The resource namespace
 - `revision`: The source revision being reconciled
@@ -172,4 +285,4 @@ These fields make it straightforward to build precise LogQL queries that filter 
 
 ## Summary
 
-Grafana Loki provides a scalable and cost-effective way to aggregate logs from Flux CD controllers. By deploying Loki with Promtail, you get automatic log collection from all Flux components. LogQL queries allow you to filter by controller, resource name, log level, and message content. Combined with Grafana dashboards and alert rules, this setup gives you comprehensive visibility into your GitOps pipeline, enabling fast detection and resolution of reconciliation issues.
+Grafana Loki provides a scalable and cost-effective way to aggregate logs from Flux CD controllers. By deploying Loki with Alloy, you get automatic log collection from Flux components. LogQL queries allow you to filter by controller, resource name, log level, and message content. Combined with Grafana dashboards and alert rules, this setup gives you comprehensive visibility into your GitOps pipeline, enabling fast detection and resolution of reconciliation issues.
