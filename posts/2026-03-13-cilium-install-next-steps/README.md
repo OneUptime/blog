@@ -37,7 +37,8 @@ cilium connectivity test
 # Enable Hubble on existing installation
 cilium hubble enable
 
-# Enable with Hubble UI (optional)
+# Enable with Hubble UI instead; if Hubble is already enabled, disable and re-enable it with --ui
+cilium hubble disable
 cilium hubble enable --ui
 
 # Verify Hubble is running
@@ -101,11 +102,18 @@ EOF
 ## Step 5: Configure Monitoring Integration
 
 ```bash
-# Expose Cilium metrics for Prometheus
-kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/HEAD/examples/kubernetes/addons/prometheus/monitoring-example.yaml
+# Enable Cilium and Hubble metrics on an existing Helm-managed installation
+cilium upgrade --reuse-values \
+  --set prometheus.enabled=true \
+  --set operator.prometheus.enabled=true \
+  --set hubble.metrics.enableOpenMetrics=true \
+  --set hubble.metrics.enabled="{dns,drop,tcp,flow,port-distribution,icmp,httpV2}"
 
-# Add Hubble to Grafana
-# Import dashboard ID 15513 (Hubble) from grafana.com
+# Deploy the example Prometheus/Grafana stack
+kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/1.19.3/examples/kubernetes/addons/prometheus/monitoring-example.yaml
+
+# Add Cilium and Hubble to Grafana
+# The example stack includes Cilium and Hubble dashboards; otherwise import version-matching dashboards from grafana.com
 
 # Verify metrics endpoint
 kubectl port-forward -n kube-system ds/cilium 9962:9962 &
@@ -115,14 +123,19 @@ curl http://localhost:9962/metrics | grep cilium_
 ## Step 6: (Optional) Enable Encryption
 
 ```bash
-# Enable WireGuard encryption (kernel 5.6+)
-cilium encrypt enable --type wireguard
+# Enable WireGuard encryption on an existing Helm-managed installation (kernel 5.6+)
+cilium upgrade --reuse-values \
+  --set encryption.enabled=true \
+  --set encryption.type=wireguard
 
-# Or IPsec
-cilium encrypt enable --type ipsec
+# Or IPsec; create the key first
+cilium encryption create-key --auth-algo rfc4106-gcm-aes
+cilium upgrade --reuse-values \
+  --set encryption.enabled=true \
+  --set encryption.type=ipsec
 
 # Verify encryption is active
-kubectl exec -n kube-system ds/cilium -- cilium status | grep Encryption
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status | grep Encryption
 ```
 
 ## Step 7: Review and Adjust IPAM
@@ -132,7 +145,7 @@ kubectl exec -n kube-system ds/cilium -- cilium status | grep Encryption
 kubectl get CiliumNode -o wide
 
 # Review pod CIDR allocation
-kubectl exec -n kube-system ds/cilium -- cilium ip list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg ip list
 ```
 
 ## Post-Installation Checklist
