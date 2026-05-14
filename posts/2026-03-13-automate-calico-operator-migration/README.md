@@ -12,13 +12,14 @@ Description: Automate the Calico manifest-to-operator migration process using sc
 
 When migrating multiple Kubernetes clusters from manifest-based Calico to the Tigera Operator, manual execution of migration steps across each cluster is error-prone and time-consuming. Automation ensures each cluster follows identical migration steps, capture pre-migration state, and validate success consistently.
 
-The migration automation workflow needs to handle: pre-migration configuration extraction, Installation resource generation from existing config, migration execution with health monitoring, post-migration validation, and rollback capability if validation fails. Scripting each of these phases makes the process repeatable and auditable.
+The migration automation workflow needs to handle: pre-migration configuration extraction, Installation resource generation, migration execution with health monitoring, post-migration validation, and clear rollback handoff if validation fails. Scripting each of these phases makes the process repeatable and auditable.
 
 ## Prerequisites
 
 - `kubectl`, `calicoctl`, and `jq` installed
 - Access to all target clusters
-- Calico v3.15+ on target clusters
+- Manifest-based Calico installed with the Kubernetes datastore
+- Target clusters running the same Calico version as `CALICO_VERSION`
 
 ## Automation Architecture
 
@@ -32,7 +33,7 @@ flowchart TD
     F --> G[Monitor Migration]
     G --> H{Migration Healthy?}
     H -->|Yes| I[Run Post-migration Validation]
-    H -->|No| J[Auto Rollback + Alert]
+    H -->|No| J[Alert + Manual Rollback]
     I --> K{Validation Passed?}
     K -->|Yes| L[Mark Migration Complete]
     K -->|No| M[Manual Review Required]
@@ -46,7 +47,7 @@ flowchart TD
 
 set -euo pipefail
 
-CALICO_VERSION="${CALICO_VERSION:-v3.27.0}"
+CALICO_VERSION="${CALICO_VERSION:-v3.32.0}"
 BACKUP_DIR="calico-migration-backup-$(date +%Y%m%d-%H%M%S)"
 TIMEOUT="${TIMEOUT:-600}"  # 10 minutes
 
@@ -75,6 +76,7 @@ backup() {
   mkdir -p "${BACKUP_DIR}"
 
   calicoctl get ippools -o yaml > "${BACKUP_DIR}/ippools.yaml"
+  calicoctl get ippools -o json > "${BACKUP_DIR}/ippools.json"
   calicoctl get felixconfiguration -o yaml > "${BACKUP_DIR}/felixconfig.yaml"
   calicoctl get globalnetworkpolicies -o yaml > "${BACKUP_DIR}/gnps.yaml"
   calicoctl get networkpolicies --all-namespaces -o yaml > "${BACKUP_DIR}/netpols.yaml"
@@ -83,43 +85,16 @@ backup() {
   log "Backup complete: ${BACKUP_DIR}"
 }
 
-# Generate Installation CR from existing config
+# Generate Installation CR
 generate_installation() {
-  log "Generating Installation CR from existing configuration..."
-
-  CIDR=$(calicoctl get ippool default-ipv4-ippool \
-    -o jsonpath='{.spec.cidr}' 2>/dev/null || echo "192.168.0.0/16")
-
-  IPIP_MODE=$(calicoctl get ippool default-ipv4-ippool \
-    -o jsonpath='{.spec.ipipMode}' 2>/dev/null || echo "Never")
-
-  VXLAN_MODE=$(calicoctl get ippool default-ipv4-ippool \
-    -o jsonpath='{.spec.vxlanMode}' 2>/dev/null || echo "Never")
-
-  # Determine encapsulation
-  if [[ "${IPIP_MODE}" == "Always" ]]; then
-    ENCAP="IPIP"
-  elif [[ "${VXLAN_MODE}" == "Always" ]]; then
-    ENCAP="VXLAN"
-  elif [[ "${IPIP_MODE}" == "CrossSubnet" ]]; then
-    ENCAP="IPIPCrossSubnet"
-  else
-    ENCAP="None"
-  fi
+  log "Generating Installation CR..."
 
   cat > "${BACKUP_DIR}/installation.yaml" <<EOF
 apiVersion: operator.tigera.io/v1
 kind: Installation
 metadata:
   name: default
-spec:
-  calicoNetwork:
-    ipPools:
-      - cidr: ${CIDR}
-        encapsulation: ${ENCAP}
-        natOutgoing: Enabled
-        nodeSelector: "all()"
-  variant: Calico
+spec: {}
 EOF
 
   log "Installation CR generated: ${BACKUP_DIR}/installation.yaml"
@@ -129,7 +104,10 @@ EOF
 # Execute migration
 migrate() {
   log "Installing Tigera Operator ${CALICO_VERSION}..."
-  kubectl create -f "https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml"
+  kubectl apply --server-side --force-conflicts \
+    -f "https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/v1_crd_projectcalico_org.yaml"
+  kubectl apply --server-side --force-conflicts \
+    -f "https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml"
 
   log "Waiting for operator to be ready..."
   kubectl rollout status deploy/tigera-operator -n tigera-operator --timeout="${TIMEOUT}s"
@@ -159,15 +137,15 @@ validate() {
 
   # Check all calico-system pods are running
   not_running=$(kubectl get pods -n calico-system \
-    --no-headers | grep -v Running | wc -l)
+    --no-headers | awk '$3 != "Running" { count++ } END { print count + 0 }')
 
   if [[ "${not_running}" -gt 0 ]]; then
     fail "${not_running} pods not in Running state after migration"
   fi
 
   # Verify IP pools are intact
-  pool_count=$(calicoctl get ippools --no-headers | wc -l)
-  backup_count=$(grep "^- " "${BACKUP_DIR}/ippools.yaml" | wc -l)
+  pool_count=$(calicoctl get ippools -o json | jq '.items | length')
+  backup_count=$(jq '.items | length' "${BACKUP_DIR}/ippools.json")
 
   log "IP Pools: found ${pool_count}, backed up ${backup_count}"
   log "Post-migration validation passed."
@@ -184,4 +162,4 @@ log "Migration complete!"
 
 ## Conclusion
 
-Automating the Calico operator migration ensures consistent execution across multiple clusters and eliminates the risk of manual errors during a time-sensitive maintenance window. The script handles pre-flight checks, automatic configuration extraction, Installation resource generation, migration execution with timeout monitoring, and post-migration validation. Pair this automation with a communication plan for stakeholders and a clear rollback procedure based on the backup files created at the start of each migration.
+Automating the Calico operator migration ensures consistent execution across multiple clusters and eliminates the risk of manual errors during a time-sensitive maintenance window. The script handles pre-flight checks, automatic configuration backup, Installation resource generation, migration execution with timeout monitoring, and post-migration validation. Pair this automation with a communication plan for stakeholders and a clear rollback procedure based on the backup files created at the start of each migration.
