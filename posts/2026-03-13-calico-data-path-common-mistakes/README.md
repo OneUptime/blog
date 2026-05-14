@@ -40,11 +40,14 @@ kubectl exec test-pod -- ip link show eth0
 # IP-in-IP: node MTU - 20 bytes
 ```
 
-**Fix**: Update MTU in the Calico ConfigMap:
+**Fix**: Update the Calico MTU configuration. For operator-based installs, set `spec.calicoNetwork.mtu` on the `Installation` resource. For manifest-based installs, update the Calico ConfigMap:
 ```bash
-kubectl get configmap calico-config -n kube-system -o yaml
-# Update the veth_mtu value to node_mtu - encap_overhead
+kubectl patch configmap/calico-config -n kube-system --type merge \
+  -p '{"data":{"veth_mtu":"1450"}}'
+# Set veth_mtu to node_mtu - encap_overhead
 ```
+
+Restart `calico-node` after changing the ConfigMap. The updated MTU applies to newly created workloads.
 
 ## Mistake 2: Stale iptables Rules After Node Restart
 
@@ -58,11 +61,11 @@ In some environments, iptables rules created by Calico can persist across node r
 sudo iptables -L | grep cali | wc -l
 # If count is much higher than expected (> 3 * pods_on_node), stale rules may exist
 
-# Check rule timestamps (requires iptables-restore with --noflush capability)
-sudo iptables -L -n -v | head -50
+# Check packet and byte counters on Calico chains
+sudo iptables -L -n -v --line-numbers | grep cali | head -50
 ```
 
-**Fix**: Restart the calico-node pod on the affected node - Felix will clean up stale rules and reprogram the correct state:
+**Fix**: Restart the calico-node pod on the affected node - Felix will clean up stale rules and reprogram the correct state. Use the namespace where Calico is installed (`calico-system` for operator installs, commonly `kube-system` for manifest installs):
 ```bash
 kubectl delete pod -n calico-system -l k8s-app=calico-node \
   --field-selector spec.nodeName=<node-name>
@@ -91,7 +94,7 @@ echo 'net.netfilter.nf_conntrack_max=524288' | sudo tee -a /etc/sysctl.conf
 
 ## Mistake 4: eBPF Programs Not Loading After Kernel Upgrade
 
-After upgrading the kernel, eBPF programs compiled for the previous kernel version may fail to load on the new kernel.
+After upgrading the kernel, eBPF programs may need to be reloaded for the running kernel, and a kernel that does not meet Calico's eBPF requirements can cause load failures.
 
 **Symptom**: After node kernel upgrade, pods on that node lose connectivity. Felix logs show BPF program load failures.
 
@@ -101,7 +104,7 @@ kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | \
   grep -i "bpf\|ebpf\|failed"
 ```
 
-**Fix**: Restart calico-node on the affected node - Felix will recompile and reload the eBPF programs for the new kernel version:
+**Fix**: Restart calico-node on the affected node - Felix will reload the eBPF programs for the running kernel:
 ```bash
 kubectl delete pod -n calico-system -l k8s-app=calico-node \
   --field-selector spec.nodeName=<upgraded-node>
