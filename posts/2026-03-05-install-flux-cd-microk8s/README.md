@@ -15,7 +15,7 @@ MicroK8s is a lightweight Kubernetes distribution from Canonical, installed via 
 - Ubuntu 20.04 or later (MicroK8s also works on other Linux distros, macOS, and Windows)
 - Snap package manager installed
 - A GitHub personal access token with `repo` permissions
-- At least 2 CPU cores and 2 GB of RAM
+- At least 2 CPU cores and 4 GB of RAM
 
 ## Step 1: Install MicroK8s
 
@@ -24,11 +24,13 @@ Install MicroK8s using Snap.
 ```bash
 # Install MicroK8s from the stable channel
 
-sudo snap install microk8s --classic --channel=1.28/stable
+sudo snap install microk8s --classic --channel=1.35/stable
 
 # Add your user to the microk8s group to avoid using sudo
 sudo usermod -a -G microk8s $USER
-sudo chown -R $USER ~/.kube
+mkdir -p ~/.kube
+sudo chown -f -R $USER ~/.kube
+chmod 0700 ~/.kube
 
 # Apply group membership (or log out and back in)
 newgrp microk8s
@@ -43,7 +45,7 @@ microk8s status --wait-ready
 
 ## Step 2: Enable Required Add-ons
 
-MicroK8s uses an add-on system for optional components. Flux CD requires DNS and storage at a minimum. Enable the essentials.
+MicroK8s uses an add-on system for optional components. Flux CD needs working cluster DNS for its controllers, and storage is useful for many workloads you may deploy later. Enable the essentials.
 
 ```bash
 # Enable DNS for service discovery (required by Flux)
@@ -52,7 +54,7 @@ microk8s enable dns
 # Enable storage for persistent volume claims
 microk8s enable storage
 
-# Enable Helm 3 support (useful for Flux HelmRelease resources)
+# Enable Helm 3 support (useful for manual Helm commands)
 microk8s enable helm3
 ```
 
@@ -111,10 +113,11 @@ Bootstrap Flux CD onto your MicroK8s cluster.
 ```bash
 # Bootstrap Flux CD with GitHub
 flux bootstrap github \
+  --token-auth \
   --owner=$GITHUB_USER \
   --repository=fleet-infra \
   --branch=main \
-  --path=./clusters/microk8s-cluster \
+  --path=clusters/microk8s-cluster \
   --personal
 ```
 
@@ -195,7 +198,7 @@ When running Flux CD on MicroK8s, keep the following in mind:
 - **Snap confinement**: MicroK8s runs within Snap confinement, which means file paths and permissions may behave differently from standard Kubernetes installations. The kubeconfig export step above addresses the most common issue.
 - **Add-on dependencies**: Always enable the `dns` add-on before bootstrapping Flux. Without it, pods cannot resolve service names and Flux controllers will fail to start properly.
 - **Multi-node clusters**: MicroK8s supports clustering with `microk8s add-node`. Flux CD works seamlessly across multi-node MicroK8s clusters without additional configuration.
-- **Registry add-on**: If you want to use a local container registry with Flux, enable it with `microk8s enable registry`. You can then configure Flux image automation to work with the local registry at `localhost:32000`.
+- **Registry add-on**: If you want to use a local container registry with Flux, enable it with `microk8s enable registry`. You can then configure Flux image automation to work with the local registry at `localhost:32000`; remember that image automation requires the optional `image-reflector-controller` and `image-automation-controller` components.
 - **Resource usage**: MicroK8s with Flux CD running all four controllers typically consumes around 500-700 MB of RAM. On constrained systems, consider disabling controllers you do not need using custom bootstrap components.
 
 ## Upgrading Flux CD on MicroK8s
@@ -208,10 +211,11 @@ curl -s https://fluxcd.io/install.sh | sudo bash
 
 # Re-run bootstrap to upgrade Flux components in the cluster
 flux bootstrap github \
+  --token-auth \
   --owner=$GITHUB_USER \
   --repository=fleet-infra \
   --branch=main \
-  --path=./clusters/microk8s-cluster \
+  --path=clusters/microk8s-cluster \
   --personal
 ```
 
