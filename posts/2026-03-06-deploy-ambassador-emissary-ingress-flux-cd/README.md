@@ -67,36 +67,29 @@ metadata:
 
 ## Installing Emissary CRDs
 
-Emissary Ingress requires custom resource definitions to be installed first. Create a separate HelmRelease for the CRDs.
+Emissary Ingress requires custom resource definitions to be installed first. Commit the official `emissary-crds.yaml` for the Emissary version you install to your Git repository, then apply it with a separate Flux Kustomization before the HelmRelease.
 
 ```yaml
-# clusters/my-cluster/helm-releases/emissary-crds.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
-kind: HelmRelease
+# clusters/my-cluster/emissary-crds-kustomization.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
 metadata:
   name: emissary-crds
-  namespace: emissary
+  namespace: flux-system
 spec:
   interval: 1h
-  chart:
-    spec:
-      chart: emissary-crds
-      version: "8.9.x"
-      sourceRef:
-        kind: HelmRepository
-        name: datawire
-        namespace: flux-system
-      interval: 12h
-  # CRDs should not be pruned
-  install:
-    crds: CreateReplace
-  upgrade:
-    crds: CreateReplace
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./clusters/my-cluster/emissary-crds
+  prune: false
+  wait: true
+  timeout: 5m
 ```
 
 ## Deploying Emissary Ingress
 
-Now deploy Emissary Ingress itself, with a dependency on the CRDs installation.
+Now deploy Emissary Ingress itself after the CRDs Kustomization is ready.
 
 ```yaml
 # clusters/my-cluster/helm-releases/emissary-helmrelease.yaml
@@ -107,10 +100,7 @@ metadata:
   namespace: emissary
 spec:
   interval: 30m
-  # Wait for CRDs to be installed first
-  dependsOn:
-    - name: emissary-crds
-      namespace: emissary
+  # Apply this from a Flux Kustomization that depends on the emissary-crds Kustomization.
   chart:
     spec:
       chart: emissary-ingress
@@ -146,8 +136,14 @@ spec:
         cpu: 1000m
         memory: 600Mi
 
-    # Enable prometheus metrics
-    createDevPortalMappings: false
+    # Enable Prometheus Operator ServiceMonitor
+    metrics:
+      serviceMonitor:
+        enabled: true
+
+    # Disable Ambassador Cloud agent
+    agent:
+      enabled: false
 
     # Envoy log level
     env:
@@ -245,7 +241,8 @@ spec:
   rewrite: /
   # Add request headers
   add_request_headers:
-    X-Gateway: "emissary"
+    X-Gateway:
+      value: "emissary"
   # Enable CORS
   cors:
     origins:
@@ -284,11 +281,12 @@ metadata:
 spec:
   service: ratelimit.emissary:8081
   protocol_version: v3
+  domain: ambassador
 ```
 
 ## Flux Kustomization
 
-Tie everything together with a Flux Kustomization.
+Tie everything together with a Flux Kustomization. This assumes you have a separate Flux Kustomization named `emissary-ingress-install` that applies the namespace, CRDs, HelmRepository, and HelmRelease.
 
 ```yaml
 # clusters/my-cluster/emissary-kustomization.yaml
@@ -305,7 +303,7 @@ spec:
   path: ./clusters/my-cluster/emissary-config
   prune: true
   dependsOn:
-    - name: emissary-helm
+    - name: emissary-ingress-install
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
