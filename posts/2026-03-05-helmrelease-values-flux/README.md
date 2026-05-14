@@ -41,7 +41,8 @@ spec:
     replicaCount: 3
     service:
       type: LoadBalancer
-      port: 80
+      ports:
+        http: 80
     resources:
       requests:
         cpu: 100m
@@ -224,7 +225,7 @@ The merge order is:
 2. Each entry in `spec.valuesFrom` (in the order listed)
 3. `spec.values` (inline values override everything above)
 
-This means inline `spec.values` always take the highest priority.
+This means inline `spec.values` take the highest priority for normal value merges. If a `valuesFrom` entry uses `targetPath`, that targeted value overwrites everything before it, including inline values at that path.
 
 ## Validating Values Before Applying
 
@@ -238,11 +239,11 @@ helm template nginx bitnami/nginx \
   --namespace default
 ```
 
-Alternatively, use the `--dry-run` option with the Flux CLI.
+For HelmReleases that are already applied, you can ask Flux to reconcile the resource and report controller-side errors.
 
 ```bash
-# Dry-run a HelmRelease to check for errors
-flux reconcile helmrelease nginx --dry-run -n default
+# Reconcile a HelmRelease to check for controller-side errors
+flux reconcile helmrelease nginx -n default
 ```
 
 ## Updating Values
@@ -297,4 +298,4 @@ values:
 
 ## Conclusion
 
-The `spec.values` field in a HelmRelease is the primary way to customize Helm chart deployments in Flux CD. It supports all YAML data types including maps, lists, and multi-line strings. Inline values take the highest merge priority, making them ideal for environment-specific overrides. For externalized configuration, combine `spec.values` with `spec.valuesFrom` to pull values from ConfigMaps and Secrets, which is covered in separate guides.
+The `spec.values` field in a HelmRelease is the primary way to customize Helm chart deployments in Flux CD. It supports all YAML data types including maps, lists, and multi-line strings. Inline values take the highest merge priority for normal value merges, making them ideal for environment-specific overrides. For externalized configuration, combine `spec.values` with `spec.valuesFrom` to pull values from ConfigMaps and Secrets, which is covered in separate guides.
