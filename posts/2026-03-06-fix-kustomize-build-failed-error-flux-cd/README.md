@@ -105,7 +105,7 @@ kubectl apply --dry-run=client -f my-deployment.yaml
 
 ## Cause 2: Missing kustomization.yaml File
 
-Flux requires a `kustomization.yaml` file in the target directory.
+Kustomize overlays require a `kustomization.yaml` file in the target directory. Flux can also reconcile a directory of plain Kubernetes YAMLs by generating a kustomization automatically, but if your directory is meant to be a Kustomize overlay, the file must be present.
 
 ### Diagnosing
 
@@ -208,7 +208,7 @@ metadata:
 spec:
   interval: 10m
   # The path is relative to the repository root
-  # Use ./ prefix and no trailing slash
+  # Use a path that matches the repository directory
   path: ./deploy/overlays/production
   sourceRef:
     kind: GitRepository
@@ -275,9 +275,6 @@ patches:
       - op: replace
         path: /spec/replicas
         value: 5
-      - op: add
-        path: /metadata/labels/environment
-        value: production
 ```
 
 ## Cause 6: Duplicate Resource Definitions
@@ -324,9 +321,7 @@ Flux uses a specific version of kustomize. Some newer or deprecated features mig
 ### Diagnosing
 
 ```bash
-# Check which version of kustomize the kustomize-controller uses
-kubectl exec -n flux-system deploy/kustomize-controller -- kustomize version 2>/dev/null
-# Or check the controller image version
+# Check the controller image version, then compare it with the Flux release notes
 kubectl get deploy kustomize-controller -n flux-system -o jsonpath='{.spec.template.spec.containers[0].image}'
 ```
 
