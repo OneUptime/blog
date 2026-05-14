@@ -75,7 +75,7 @@ metadata:
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/warn: restricted
 ---
-# Default deny-all network policy applied to every namespace
+# Default deny-all network policy applied to the apps namespace
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -144,6 +144,15 @@ resources:
 ```yaml
 # common/monitoring/prometheus-stack.yaml
 # Kube-prometheus-stack deployed consistently across all clusters
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: prometheus-community
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://prometheus-community.github.io/helm-charts
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -249,7 +258,7 @@ spec:
       rules:
         # Alert when pods are in CrashLoopBackOff
         - alert: PodCrashLooping
-          expr: rate(kube_pod_container_status_restarts_total[15m]) > 0
+          expr: kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"} == 1
           for: 5m
           labels:
             severity: critical
@@ -302,10 +311,6 @@ rules:
   - apiGroups: [""]
     resources: ["pods/log", "pods/exec"]
     verbs: ["get", "create"]
-  # Developers cannot access secrets directly
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get", "list"]
 ```
 
 ```yaml
