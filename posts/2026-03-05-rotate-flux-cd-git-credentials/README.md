@@ -41,11 +41,8 @@ Generate a new token from your Git provider.
 For GitHub Personal Access Token:
 
 ```bash
-# Create a new fine-grained PAT using GitHub CLI
-# Required permissions: Contents (read/write), Metadata (read)
-gh auth token  # Shows current token - create a new one via GitHub UI
-
-# Or use the GitHub API to create a fine-grained token
+# Create a new fine-grained PAT in the GitHub UI
+# Required permissions: Contents (read for pull-only, read/write if Flux needs to push), Metadata (read)
 # Navigate to: GitHub > Settings > Developer settings > Fine-grained tokens > Generate new token
 ```
 
@@ -72,7 +69,7 @@ Update the Flux secret with the new credentials:
 # For GitHub HTTPS authentication
 kubectl create secret generic flux-system \
   --from-literal=username=git \
-  --from-literal=password=ghp_NEW_TOKEN_HERE \
+  --from-literal=password=github_pat_NEW_TOKEN_HERE \
   --namespace=flux-system \
   --dry-run=client -o yaml | kubectl apply -f -
 
@@ -85,7 +82,7 @@ kubectl create secret generic flux-system \
 
 # For Bitbucket HTTPS authentication
 kubectl create secret generic flux-system \
-  --from-literal=username=x-token-auth \
+  --from-literal=username=BITBUCKET_USERNAME \
   --from-literal=password=NEW_APP_PASSWORD_HERE \
   --namespace=flux-system \
   --dry-run=client -o yaml | kubectl apply -f -
@@ -101,7 +98,7 @@ If you have multiple GitRepository sources using different credentials:
 # Rotate Git credentials for all Flux GitRepository sources
 
 # Define the new token
-NEW_TOKEN="ghp_NEW_TOKEN_HERE"
+NEW_TOKEN="github_pat_NEW_TOKEN_HERE"
 
 # Find all secrets referenced by GitRepository resources
 SECRETS=$(kubectl get gitrepositories -A -o json | \
@@ -125,7 +122,7 @@ done
 Trigger a reconciliation and verify the credentials are accepted:
 
 ```bash
-# Force reconciliation of all Git sources
+# Force reconciliation of the flux-system Git source
 flux reconcile source git flux-system
 
 # Check the status
@@ -144,11 +141,6 @@ After confirming the new token works, revoke the old one:
 
 ```bash
 # For GitHub: Revoke via Settings > Developer settings > Personal access tokens
-# Or use the API:
-curl -X DELETE \
-  -H "Authorization: Bearer $OLD_TOKEN" \
-  "https://api.github.com/applications/$CLIENT_ID/token" \
-  -d '{"access_token":"'"$OLD_TOKEN"'"}'
 
 # For GitLab: Revoke via API
 curl --request DELETE \
@@ -170,6 +162,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
+  provider: github
   url: https://github.com/myorg/fleet-repo.git
   secretRef:
     name: github-app-credentials
