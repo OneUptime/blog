@@ -12,7 +12,7 @@ Description: A comprehensive troubleshooting guide for Cilium IPAM allocation er
 
 IPAM allocation errors in Cilium manifest as pods stuck in `ContainerCreating` or `Pending` state, with events showing "failed to allocate IP" or similar messages. These errors can stem from multiple causes: the IP pool on a specific node is exhausted, the cluster-wide CIDR pool is full, stale allocations from terminated pods are not being released, or IPAM configuration is incorrect. Because IP allocation is on the critical path of pod creation, allocation errors directly impact workload availability.
 
-Understanding the difference between node-level IP exhaustion (all IPs in a node's CIDR are in use) and cluster-level pool exhaustion (the Operator can't allocate a CIDR to a new node) is critical for applying the correct fix. Node-level exhaustion is addressed by scaling down workloads or increasing the per-node CIDR size, while cluster-level exhaustion requires pool expansion. Stale allocations are addressed through Cilium's garbage collection mechanisms.
+Understanding the difference between node-level IP exhaustion (all IPs in a node's CIDR are in use) and cluster-level pool exhaustion (the Operator can't allocate a CIDR to a new node) is critical for applying the correct fix. Node-level exhaustion is addressed by scaling down workloads or using a larger per-node CIDR size for newly allocated node CIDRs, while cluster-level exhaustion requires pool expansion. Stale allocations are addressed through Cilium's garbage collection mechanisms.
 
 This guide focuses on diagnosing and resolving IPAM allocation errors of all types, with specific recovery procedures for each scenario.
 
@@ -28,7 +28,7 @@ This guide focuses on diagnosing and resolving IPAM allocation errors of all typ
 Proactively configure IPAM to minimize allocation errors:
 
 ```bash
-# Set generously sized per-node CIDRs
+# Set generously sized per-node CIDRs before Cilium allocates node CIDRs
 
 # /22 = 1022 usable IPs per node (supports very dense pod deployments)
 helm upgrade cilium cilium/cilium \
@@ -36,19 +36,21 @@ helm upgrade cilium cilium/cilium \
   --reuse-values \
   --set ipam.operator.clusterPoolIPv4MaskSize=22
 
-# Configure generous cluster pool to avoid exhaustion
+# Configure generous cluster pool to avoid exhaustion.
+# On an existing cluster, add a new CIDR to this list instead of changing
+# or removing existing CIDRs.
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
   --set "ipam.operator.clusterPoolIPv4PodCIDRList={10.244.0.0/14}"
 
-# Configure pre-allocation threshold for cloud IPAM modes
-# (AWS ENI, Azure) to have IPs ready before pods need them
+# Configure pre-allocation threshold for AWS ENI IPAM
+# to have IPs ready before pods need them
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set eni.awsEnablePrefixDelegation=true \
-  --set ipam.operator.eksDisableNodeGroupTags=false
+  --set eni.enabled=true \
+  --set ipam.nodeSpec.ipamMinAllocate=10
 ```
 
 ## Troubleshoot IPAM Allocation Errors
@@ -56,25 +58,26 @@ helm upgrade cilium cilium/cilium \
 **Scenario 1: Node-level IP exhaustion**
 
 ```bash
-# Identify nodes with zero available IPs
+# Identify nodes and their allocated PodCIDRs in cluster-pool mode
 kubectl get ciliumnodes -o json | \
-  jq '.items[] | select((.status.ipam.available | length) == 0) | .metadata.name'
+  jq '.items[] | {node: .metadata.name, pod_cidrs: .spec.ipam.podCIDRs}'
 
-# Check IP allocation on the exhausted node
-kubectl get ciliumnode <exhausted-node> -o json | \
-  jq '{
-    allocated: (.status.ipam.allocated | length),
-    available: (.status.ipam.available | length),
-    pod_cidr: .spec.ipam.podCIDRs
-  }'
+# In kubernetes IPAM mode, inspect the Kubernetes Node PodCIDRs instead
+kubectl get nodes -o json | \
+  jq '.items[] | {node: .metadata.name, pod_cidrs: .spec.podCIDRs}'
+
+# Check IP allocation on the exhausted node from the local Cilium agent
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
+  --field-selector spec.nodeName=<exhausted-node> -o jsonpath='{.items[0].metadata.name}')
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg status --all-addresses
 
 # Find pods on that node consuming IPs
 kubectl get pods -A --field-selector spec.nodeName=<exhausted-node> | wc -l
 
-# Check for stale endpoints consuming IPs
-kubectl get cep -A | grep <exhausted-node>
-kubectl get pods -A | grep <exhausted-node>
-# If CEP count >> pod count, stale endpoints are consuming IPs
+# Compare pods on the node with their CiliumEndpoint objects
+kubectl get pods -A --field-selector spec.nodeName=<exhausted-node> \
+  -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,IP:.status.podIP
+kubectl get ciliumendpoints -A
 ```
 
 **Scenario 2: Stale IP allocations**
@@ -82,11 +85,14 @@ kubectl get pods -A | grep <exhausted-node>
 ```bash
 # Find IPs that are allocated but have no corresponding pod
 NODE="worker-1"
-ALLOCATED_IPS=$(kubectl get ciliumnode $NODE \
-  -o jsonpath='{.status.ipam.allocated}' | jq -r 'keys[]')
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
+  --field-selector spec.nodeName=$NODE -o jsonpath='{.items[0].metadata.name}')
+ALLOCATED_IPS=$(kubectl -n kube-system exec "$CILIUM_POD" -- \
+  cilium-dbg status --all-addresses | \
+  awk '/^[[:space:]]+[0-9]+\./ && $2 !~ /\((router|health)\)/ {print $1}')
 
 for ip in $ALLOCATED_IPS; do
-  POD=$(kubectl get pods -A -o wide | grep $ip | awk '{print $2}')
+  POD=$(kubectl get pods -A -o wide --no-headers | awk -v ip="$ip" '$6 == ip {print $2}')
   if [ -z "$POD" ]; then
     echo "Stale allocation: $ip has no associated pod"
   fi
@@ -106,9 +112,12 @@ kubectl -n kube-system delete pod $CILIUM_POD
 kubectl get ciliumnodes -o json | \
   jq '[.items[].spec.ipam.podCIDRs[]] | length'
 
-# Check pool capacity
+# Check configured cluster pool
 kubectl -n kube-system get configmap cilium-config \
   -o jsonpath='{.data.cluster-pool-ipv4-cidr}'
+
+# Check for allocation errors recorded by the operator
+kubectl get ciliumnodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.ipam.operator-status}{"\n"}{end}'
 
 # Operator error about pool exhaustion
 kubectl -n kube-system logs -l name=cilium-operator | grep -i "pool.*exhaust\|no.*cidr\|cannot.*alloc"
@@ -119,9 +128,9 @@ kubectl -n kube-system logs -l name=cilium-operator | grep -i "pool.*exhaust\|no
 After resolving allocation errors, validate recovery:
 
 ```bash
-# Confirm IPs are now available
+# Confirm each node has an allocated PodCIDR
 kubectl get ciliumnodes -o json | \
-  jq '.items[] | {node: .metadata.name, available: (.status.ipam.available | length)}'
+  jq '.items[] | {node: .metadata.name, pod_cidrs: .spec.ipam.podCIDRs}'
 
 # Test pod creation on previously exhausted node
 kubectl run recovery-test --image=nginx --restart=Never \
@@ -151,16 +160,17 @@ graph TD
 Monitor IPAM allocation metrics:
 
 ```bash
-# Watch available IPs across all nodes
+# Watch allocated PodCIDRs across all nodes
 watch -n30 "kubectl get ciliumnodes -o json | \
-  jq '[.items[] | {node: .metadata.name, available: (.status.ipam.available | length), allocated: (.status.ipam.allocated | length)}]'"
+  jq '[.items[] | {node: .metadata.name, pod_cidrs: .spec.ipam.podCIDRs, operator_status: .status.ipam[\"operator-status\"]}]'"
 
 # Prometheus queries for IPAM monitoring
-# cilium_ipam_available_ips - IPs available for allocation
-# cilium_ipam_allocated_ips - IPs currently allocated
 # cilium_ipam_capacity - total IPAM capacity
+# cilium_ip_addresses - allocated IP addresses
+# cilium_operator_ipam_available_ips - available IPs on a node for cloud IPAM modes
+# cilium_operator_ipam_used_ips - used IPs on a node for cloud IPAM modes
 
-# Alert when available IPs drops below threshold
+# Alert when available IPs drops below threshold in cloud IPAM modes
 kubectl apply -f - <<EOF
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
@@ -172,12 +182,12 @@ spec:
   - name: ipam-errors
     rules:
     - alert: CiliumNodeIPExhausted
-      expr: cilium_ipam_available_ips{instance=~".*"} == 0
+      expr: cilium_operator_ipam_available_ips == 0
       for: 1m
       labels:
         severity: critical
       annotations:
-        summary: "Node {{ \$labels.instance }} has exhausted its IP allocation pool"
+        summary: "Node {{ \$labels.target_node }} has exhausted its IP allocation pool"
 EOF
 ```
 
