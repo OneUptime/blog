@@ -18,7 +18,7 @@ The generic webhook receiver in Flux is a versatile option that accepts webhooks
 
 ## Step 1: Create the Webhook Secret
 
-Create a Kubernetes secret for token-based authentication.
+Create a Kubernetes secret with a token that Flux uses to generate the webhook path.
 
 ```bash
 # Generate a random token
@@ -30,7 +30,7 @@ kubectl create secret generic generic-webhook-secret \
   --namespace=flux-system \
   --from-literal=token=$TOKEN
 
-# Save the token for configuring the webhook sender
+# Save the token until the Receiver reports its generated webhook path
 echo "Webhook token: $TOKEN"
 ```
 
@@ -48,14 +48,12 @@ metadata:
 spec:
   # Generic type accepts any webhook payload
   type: generic
-  # Secret for token-based authentication
+  # Secret used to generate the webhook path
   secretRef:
     name: generic-webhook-secret
   # Resources to reconcile when the webhook is received
   resources:
     - kind: GitRepository
-      name: flux-system
-    - kind: Kustomization
       name: flux-system
 ```
 
@@ -78,7 +76,7 @@ Retrieve the webhook path.
 kubectl get receiver generic-receiver -n flux-system -o jsonpath='{.status.webhookPath}'
 ```
 
-The full URL will be `https://flux-webhook.example.com/<webhook-path>`.
+The full URL will be `https://flux-webhook.example.com<webhook-path>`.
 
 ## Step 4: Expose the Receiver Endpoint
 
@@ -102,7 +100,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
   tls:
@@ -113,17 +111,17 @@ spec:
 
 ## Step 5: Send Webhooks to the Generic Receiver
 
-The generic receiver validates requests using a token passed in the HTTP headers. Send a POST request with an empty body and the token in the header.
+The generic receiver responds to requests sent to its generated webhook path. Send a POST request with an empty JSON body.
 
 ```bash
 # Trigger reconciliation by sending a webhook
 curl -X POST \
-  https://flux-webhook.example.com/<webhook-path> \
+  https://flux-webhook.example.com<webhook-path> \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
 
-The generic receiver authenticates using the token from the secret. The token should be included as part of the webhook path that Flux generates.
+The generic receiver does not validate incoming requests. The token from the secret is used to salt the webhook path that Flux generates. If you need HMAC validation for a custom sender, use the `generic-hmac` receiver type instead.
 
 ## Step 6: Integrate with CI/CD Pipelines
 
@@ -173,12 +171,6 @@ spec:
     # Trigger source refresh
     - kind: GitRepository
       name: app-source
-    # Trigger deployment
-    - kind: Kustomization
-      name: app-deployment
-    # Trigger Helm release
-    - kind: HelmRelease
-      name: app-release
 ```
 
 ## Step 8: Create Multiple Generic Receivers
@@ -199,8 +191,6 @@ spec:
   resources:
     - kind: GitRepository
       name: infra-source
-    - kind: Kustomization
-      name: infra-controllers
 ---
 # Receiver for application deployments
 apiVersion: notification.toolkit.fluxcd.io/v1
@@ -215,8 +205,6 @@ spec:
   resources:
     - kind: GitRepository
       name: apps-source
-    - kind: Kustomization
-      name: apps
 ```
 
 ## Step 9: Verify and Test
@@ -258,7 +246,7 @@ kubectl get secret generic-webhook-secret -n flux-system
 
 # Test from within the cluster
 kubectl run curl-test --image=curlimages/curl --rm -it -- \
-  curl -X POST "http://notification-controller.flux-system.svc/$(kubectl get receiver generic-receiver -n flux-system -o jsonpath='{.status.webhookPath}')"
+  curl -X POST "http://webhook-receiver.flux-system.svc$(kubectl get receiver generic-receiver -n flux-system -o jsonpath='{.status.webhookPath}')"
 ```
 
 ## Summary
