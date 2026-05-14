@@ -49,7 +49,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: discord-webhook-url
-  namespace: flagger-system
+  namespace: default
 type: Opaque
 stringData:
   # Your Discord webhook URL
@@ -146,7 +146,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: discord-webhook-deployments
-  namespace: flagger-system
+  namespace: default
 type: Opaque
 stringData:
   # Webhook for the #deployments channel
@@ -156,7 +156,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: discord-webhook-alerts
-  namespace: flagger-system
+  namespace: default
 type: Opaque
 stringData:
   # Webhook for the #alerts channel
@@ -211,12 +211,12 @@ spec:
     maxWeight: 50
     stepWeight: 10
     alerts:
-      # Progress updates go to #deployments
+      # All canary alerts go to #deployments
       - name: deployment-updates
         severity: info
         providerRef:
           name: discord-deployments
-      # Errors and rollbacks go to #alerts
+      # Failures and rollbacks also go to #alerts
       - name: critical-alerts
         severity: error
         providerRef:
@@ -230,7 +230,19 @@ spec:
 
 ## Step 6: Configure Cluster-Wide Discord Alerting
 
-Set up a shared AlertProvider in the flagger-system namespace for use across all namespaces.
+Set up a shared AlertProvider in the flagger-system namespace for use across all namespaces. The secret referenced by an AlertProvider must be in the same namespace as the AlertProvider, so create or copy the webhook secret into flagger-system first.
+
+```yaml
+# cluster-discord-webhook-secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: discord-webhook-url
+  namespace: flagger-system
+type: Opaque
+stringData:
+  address: "https://discord.com/api/webhooks/1234567890/abcdefghijklmnopqrstuvwxyz"
+```
 
 ```yaml
 # cluster-discord-alert.yaml
@@ -283,43 +295,39 @@ spec:
 
 ## Step 7: Understanding Discord Alert Messages
 
-Flagger sends rich embed messages to Discord with color-coded status:
+Flagger sends Slack-compatible attachment payloads to Discord with color-coded status:
 
-- **Green (success)**: Canary initialized, promoted successfully
-- **Yellow/Orange (progress)**: Canary analysis in progress, weight advancing
+- **Green (success/info)**: Canary initialized, new revision detected, promoted successfully
 - **Red (failure)**: Canary failed, rolling back
 
-Each message contains:
+Depending on the event, messages can contain:
 
 - Canary name and namespace
 - Current status and phase
 - Traffic weight information
-- Metric analysis results
-- Timestamp
+- Canary analysis configuration metadata
 
-Example Discord notifications:
+Example Flagger events and related Discord notifications:
 
 - "Initialization done! my-app.default"
 - "New revision detected! Scaling up my-app.default"
-- "Advance my-app.default canary weight 20"
 - "Promotion completed! my-app.default"
 - "Rolling back my-app.default failed checks threshold reached 5"
 
-## Step 8: Set Up a Dedicated Discord Bot (Alternative)
+## Step 8: Customize the Discord Webhook Identity
 
-For more control over message formatting, you can use a Discord bot instead of a webhook. The webhook approach shown above is simpler, but a bot allows for interactive features.
+Flagger's Discord provider sends notifications through incoming webhooks, not the Discord bot API. For more control over the displayed sender, set the webhook name and avatar in Discord, or set the optional username in the AlertProvider. Interactive bot features require a separate integration outside Flagger.
 
 ```yaml
-# discord-bot-alert-provider.yaml
+# discord-custom-alert-provider.yaml
 apiVersion: flagger.app/v1beta1
 kind: AlertProvider
 metadata:
-  name: discord-bot-alert
+  name: discord-custom-alert
   namespace: default
 spec:
   type: discord
-  # When using a bot, the webhook URL format is the same
-  # The bot token is not needed for incoming webhooks
+  username: flagger
   secretRef:
     name: discord-webhook-url
 ```
@@ -352,9 +360,8 @@ kubectl logs -n flagger-system deployment/flagger --tail=100 | grep -i "alert\|d
 
 ## Step 10: Rate Limiting Considerations
 
-Discord webhooks have rate limits. Flagger respects these limits, but be aware:
+Discord webhooks have rate limits. Discord returns rate-limit headers and HTTP 429 responses when a limit is exceeded; avoid generating more alerts than your webhook can handle.
 
-- Discord allows 30 messages per 60 seconds per webhook
 - If you have many canaries, consider using separate webhooks for different services
 - Use higher severity levels (warn or error) to reduce message volume
 
