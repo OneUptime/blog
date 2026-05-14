@@ -12,7 +12,7 @@ Every time Flux installs or upgrades a HelmRelease, Helm creates a new revision 
 
 ## How Helm Stores Revision History
 
-Helm stores each release revision as a Kubernetes Secret in the release's namespace. The Secret name follows the pattern `sh.helm.release.v1.<release-name>.v<revision>`. Each Secret contains:
+Helm stores each release revision as a Kubernetes Secret in the release's storage namespace. For a Flux HelmRelease, this defaults to the HelmRelease namespace unless `spec.storageNamespace` is set. The Secret name follows the pattern `sh.helm.release.v1.<release-name>.v<revision>`. Each Secret contains:
 
 - The rendered manifests (compressed and base64-encoded)
 - The chart metadata
@@ -61,16 +61,16 @@ helm history my-app -n default -o yaml
 
 ## Viewing the Current Revision via HelmRelease Status
 
-The HelmRelease status tracks the last applied and last attempted revision:
+The HelmRelease status tracks recent release snapshots and the last chart revision it attempted to install or upgrade:
 
 ```bash
 # View the current revision information from the HelmRelease status
 kubectl get helmrelease my-app -n default -o jsonpath='{.status.history}' | jq .
 
-# View the last applied revision
-kubectl get helmrelease my-app -n default -o jsonpath='{.status.lastAppliedRevision}'
+# View the latest observed Helm release revision from the history
+kubectl get helmrelease my-app -n default -o jsonpath='{.status.history}' | jq -r 'max_by(.version).version'
 
-# View the last attempted revision
+# View the last attempted chart revision
 kubectl get helmrelease my-app -n default -o jsonpath='{.status.lastAttemptedRevision}'
 ```
 
@@ -136,7 +136,7 @@ diff -u /tmp/values-v2.yaml /tmp/values-v3.yaml
 
 ## Controlling History Length
 
-Flux provides the `historyLimit` field to control how many revisions are kept:
+Flux provides the `maxHistory` field to control how many revisions are kept:
 
 ```yaml
 # HelmRelease with history limit configured
@@ -148,7 +148,7 @@ metadata:
 spec:
   interval: 10m
   # Keep only the last 5 revisions
-  historyLimit: 5
+  maxHistory: 5
   chart:
     spec:
       chart: my-app
@@ -159,7 +159,7 @@ spec:
         namespace: flux-system
 ```
 
-When the number of revisions exceeds `historyLimit`, Flux instructs Helm to delete the oldest revisions.
+When the number of revisions exceeds `maxHistory`, Helm prunes the oldest saved revisions. Setting this to `0` keeps an unlimited number of revisions.
 
 ## Understanding Revision Statuses
 
@@ -256,12 +256,12 @@ kubectl get secrets -n default -l name=my-app,owner=helm -o name | \
 
 ## Best Practices
 
-1. **Set a reasonable historyLimit.** Keep 3-10 revisions depending on your rollback needs and chart size.
+1. **Set a reasonable maxHistory.** Keep 3-10 revisions depending on your rollback needs and chart size.
 2. **Audit history regularly.** Review deployment history as part of your operations routine.
 3. **Use revision comparisons for debugging.** When something breaks after an upgrade, compare the current and previous revision's manifests and values.
-4. **Monitor history size.** Large charts with many revisions can hit the Secret size limit. Set historyLimit to prevent this.
+4. **Monitor history size.** Large charts with many revisions can hit the Secret size limit. Set maxHistory to prevent this.
 5. **Export history for compliance.** If you need long-term deployment records, export the history to an external system before old revisions are cleaned up.
 
 ## Conclusion
 
-HelmRelease revision history in Flux provides a detailed audit trail of every deployment. By using `helm history`, inspecting release Secrets, and comparing revisions, you can track changes, diagnose issues, and make informed rollback decisions. Setting an appropriate `historyLimit` ensures the history remains manageable while retaining enough context for troubleshooting and auditing.
+HelmRelease revision history in Flux provides a detailed audit trail of every deployment. By using `helm history`, inspecting release Secrets, and comparing revisions, you can track changes, diagnose issues, and make informed rollback decisions. Setting an appropriate `maxHistory` ensures the history remains manageable while retaining enough context for troubleshooting and auditing.
