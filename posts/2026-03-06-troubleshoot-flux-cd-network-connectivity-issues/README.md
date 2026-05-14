@@ -71,19 +71,31 @@ If DNS resolution fails, check the CoreDNS ConfigMap:
 kubectl get configmap coredns -n kube-system -o yaml
 ```
 
-For private DNS zones, add a forward rule:
+For private DNS zones, add a forward rule to the CoreDNS Corefile:
 
 ```yaml
-# coredns-custom.yaml
+# coredns-configmap.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: coredns-custom
+  name: coredns
   namespace: kube-system
 data:
-  internal.server: |
+  Corefile: |
     internal.company.com:53 {
         forward . 10.0.0.2
+    }
+    .:53 {
+        errors
+        health
+        ready
+        kubernetes cluster.local in-addr.arpa ip6.arpa
+        prometheus :9153
+        forward . /etc/resolv.conf
+        cache 30
+        loop
+        reload
+        loadbalance
     }
 ```
 
@@ -216,7 +228,7 @@ patches:
                   - name: HTTP_PROXY
                     value: "http://proxy.corp.com:3128"
                   - name: NO_PROXY
-                    value: ".cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+                    value: ".cluster.local.,.cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
   # Add proxy to kustomize-controller
   - target:
       kind: Deployment
@@ -237,7 +249,7 @@ patches:
                   - name: HTTP_PROXY
                     value: "http://proxy.corp.com:3128"
                   - name: NO_PROXY
-                    value: ".cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+                    value: ".cluster.local.,.cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
   # Add proxy to helm-controller
   - target:
       kind: Deployment
@@ -258,7 +270,7 @@ patches:
                   - name: HTTP_PROXY
                     value: "http://proxy.corp.com:3128"
                   - name: NO_PROXY
-                    value: ".cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+                    value: ".cluster.local.,.cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 ```
 
 ### Testing Proxy Connectivity
@@ -280,12 +292,12 @@ If your Git server or registry uses a self-signed certificate or a private CA:
 
 ```bash
 # Create a secret with the CA certificate
-kubectl create secret generic custom-ca \
+kubectl create secret generic git-credentials \
   -n flux-system \
   --from-file=ca.crt=/path/to/ca-certificate.pem
 ```
 
-Reference the CA in your GitRepository:
+Reference that secret in your GitRepository:
 
 ```yaml
 # git-repo.yaml
@@ -298,11 +310,9 @@ spec:
   interval: 1m
   url: https://git.internal.company.com/my-org/my-repo.git
   secretRef:
-    name: git-credentials
+    name: git-credentials  # Contains ca.crt and any required Git credentials
   ref:
     branch: main
-  certSecretRef:
-    name: custom-ca  # Reference the CA certificate secret
 ```
 
 For Helm repositories with custom CA:
@@ -318,7 +328,7 @@ spec:
   interval: 10m
   url: https://charts.internal.company.com
   certSecretRef:
-    name: custom-ca
+    name: git-credentials
 ```
 
 ## Step 6: Debug Inter-Cluster Communication
@@ -329,16 +339,17 @@ Flux controllers need to communicate with the Kubernetes API server and with eac
 # Check if source-controller service is accessible
 kubectl get svc -n flux-system
 
-# Test connectivity to source-controller from another pod
+# Test connectivity to source-controller's artifact service from another pod
 kubectl run svc-test --rm -it --restart=Never \
   -n flux-system \
   --image=busybox:1.36 \
-  -- wget -qO- --timeout=5 http://source-controller.flux-system.svc.cluster.local./healthz
+  -- wget -qO- --timeout=5 http://source-controller.flux-system.svc.cluster.local./
 
-# Check if the Kubernetes API server is reachable from Flux pods
-kubectl exec -n flux-system deployment/source-controller -- \
-  wget -qO- --timeout=5 https://kubernetes.default.svc.cluster.local/healthz \
-  --no-check-certificate 2>&1
+# Check if the Kubernetes API server is reachable from the flux-system namespace
+kubectl run api-test --rm -it --restart=Never \
+  -n flux-system \
+  --image=curlimages/curl:latest \
+  -- curl -k --max-time 5 https://kubernetes.default.svc.cluster.local/readyz
 ```
 
 ## Network Diagnostic Script
@@ -389,4 +400,4 @@ done
 
 ## Summary
 
-Network connectivity issues in Flux CD can stem from DNS resolution failures, firewall rules, missing proxy configuration, or TLS certificate problems. Start by testing DNS and TCP connectivity from within the flux-system namespace using test pods. Check for NetworkPolicies that might block egress traffic. For corporate environments, configure proxy settings via environment variables on each controller deployment. For private infrastructure with custom CAs, use `certSecretRef` on your source resources.
+Network connectivity issues in Flux CD can stem from DNS resolution failures, firewall rules, missing proxy configuration, or TLS certificate problems. Start by testing DNS and TCP connectivity from within the flux-system namespace using test pods. Check for NetworkPolicies that might block egress traffic. For corporate environments, configure proxy settings via environment variables on each controller deployment. For private infrastructure with custom CAs, include `ca.crt` in the `secretRef` for GitRepository resources and use `certSecretRef` for HelmRepository resources.
