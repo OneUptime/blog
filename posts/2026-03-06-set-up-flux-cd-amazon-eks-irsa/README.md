@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, AWS, EKS, IRSA, IAM, Kubernetes, GitOps, ECR
 
-Description: Learn how to set up Flux CD on Amazon EKS with IAM Roles for Service Accounts (IRSA) to securely access AWS services like ECR, S3, and CodeCommit.
+Description: Learn how to set up Flux CD on Amazon EKS with IAM Roles for Service Accounts (IRSA) to securely access AWS services like ECR, S3, and KMS.
 
 ---
 
@@ -14,11 +14,11 @@ IAM Roles for Service Accounts (IRSA) is the recommended way to grant AWS permis
 
 Before you begin, ensure you have:
 
-- An Amazon EKS cluster (version 1.24+)
+- An Amazon EKS cluster running a Kubernetes version supported by your Flux release
 - AWS CLI configured with appropriate permissions
 - `eksctl` installed
 - `flux` CLI installed
-- An OIDC provider associated with your EKS cluster
+- An OIDC provider associated with your EKS cluster, or permission to associate one
 
 ## Step 1: Enable the OIDC Provider for Your EKS Cluster
 
@@ -70,9 +70,14 @@ cat > /tmp/flux-ecr-policy.json << 'EOF'
         "ecr:BatchCheckLayerAvailability",
         "ecr:GetDownloadUrlForLayer",
         "ecr:BatchGetImage",
+        "ecr:GetRepositoryPolicy",
         "ecr:DescribeRepositories",
         "ecr:ListImages",
-        "ecr:DescribeImages"
+        "ecr:DescribeImages",
+        "ecr:GetLifecyclePolicy",
+        "ecr:GetLifecyclePolicyPreview",
+        "ecr:ListTagsForResource",
+        "ecr:DescribeImageScanFindings"
       ],
       "Resource": "*"
     }
@@ -85,32 +90,33 @@ aws iam create-policy \
   --policy-document file:///tmp/flux-ecr-policy.json
 ```
 
-### CodeCommit Read-Only Policy (for source-controller)
+### S3 Read-Only Policy (for source-controller, if using Bucket sources)
 
 ```bash
-# Create the CodeCommit policy if using CodeCommit as Git source
-cat > /tmp/flux-codecommit-policy.json << 'EOF'
+# Create the S3 read-only policy if using S3 Bucket sources
+cat > /tmp/flux-s3-policy.json << 'EOF'
 {
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "FluxCodeCommitReadOnly",
+      "Sid": "FluxS3ReadOnly",
       "Effect": "Allow",
       "Action": [
-        "codecommit:GitPull",
-        "codecommit:GetRepository",
-        "codecommit:GetBranch",
-        "codecommit:ListBranches"
+        "s3:Get*",
+        "s3:List*",
+        "s3:Describe*",
+        "s3-object-lambda:Get*",
+        "s3-object-lambda:List*"
       ],
-      "Resource": "arn:aws:codecommit:us-east-1:123456789012:fleet-infra"
+      "Resource": "*"
     }
   ]
 }
 EOF
 
 aws iam create-policy \
-  --policy-name FluxCodeCommitReadOnly \
-  --policy-document file:///tmp/flux-codecommit-policy.json
+  --policy-name FluxS3ReadOnly \
+  --policy-document file:///tmp/flux-s3-policy.json
 ```
 
 ### KMS Policy (for kustomize-controller, if using SOPS)
@@ -183,6 +189,11 @@ aws iam create-role \
 aws iam attach-role-policy \
   --role-name flux-source-controller \
   --policy-arn arn:aws:iam::${ACCOUNT_ID}:policy/FluxECRReadOnly
+
+# Attach the S3 policy if using S3 Bucket sources
+aws iam attach-role-policy \
+  --role-name flux-source-controller \
+  --policy-arn arn:aws:iam::${ACCOUNT_ID}:policy/FluxS3ReadOnly
 ```
 
 ### Kustomize Controller Role (for SOPS)
@@ -232,8 +243,7 @@ eksctl create iamserviceaccount \
   --namespace flux-system \
   --cluster my-cluster \
   --region us-east-1 \
-  --role-name flux-source-controller \
-  --attach-policy-arn arn:aws:iam::${ACCOUNT_ID}:policy/FluxECRReadOnly \
+  --attach-role-arn arn:aws:iam::${ACCOUNT_ID}:role/flux-source-controller \
   --override-existing-serviceaccounts \
   --approve
 ```
@@ -270,17 +280,6 @@ patches:
         name: kustomize-controller
         annotations:
           eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/flux-kustomize-controller
-  # Annotate helm-controller service account with IRSA role
-  - target:
-      kind: ServiceAccount
-      name: helm-controller
-    patch: |
-      apiVersion: v1
-      kind: ServiceAccount
-      metadata:
-        name: helm-controller
-        annotations:
-          eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/flux-helm-controller
 ```
 
 ## Step 5: Bootstrap Flux on EKS
@@ -290,8 +289,7 @@ patches:
 flux bootstrap github \
   --owner=my-org \
   --repository=fleet-infra \
-  --path=clusters/production \
-  --personal
+  --path=clusters/production
 
 # After bootstrap, apply the kustomization patches
 # by pushing the updated kustomization.yaml to the repo
@@ -304,15 +302,17 @@ flux bootstrap github \
 kubectl get serviceaccount source-controller -n flux-system -o yaml | grep -A2 annotations
 
 # Verify the pod has the AWS environment variables injected
-kubectl exec -n flux-system deployment/source-controller -- env | grep AWS
+kubectl get pod -n flux-system \
+  -l app.kubernetes.io/name=source-controller \
+  -o jsonpath='{.items[0].spec.containers[0].env[?(@.name=="AWS_ROLE_ARN")].value}{"\n"}{.items[0].spec.containers[0].env[?(@.name=="AWS_WEB_IDENTITY_TOKEN_FILE")].value}{"\n"}'
 
 # Expected output:
 # AWS_ROLE_ARN=arn:aws:iam::123456789012:role/flux-source-controller
 # AWS_WEB_IDENTITY_TOKEN_FILE=/var/run/secrets/eks.amazonaws.com/serviceaccount/token
 
-# Test ECR access from the source-controller pod
-kubectl exec -n flux-system deployment/source-controller -- \
-  aws ecr get-login-password --region us-east-1 2>&1 | head -1
+# After applying the OCIRepository in Step 7, test ECR access by reconciling it
+flux reconcile source oci my-app-manifests -n flux-system
+flux get sources oci my-app-manifests -n flux-system
 ```
 
 ## Step 7: Configure Flux Resources to Use IRSA
