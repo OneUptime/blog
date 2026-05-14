@@ -43,7 +43,7 @@ graph TD
 
 ## Setting Up Automated Diff Previews
 
-Generate human-readable diffs showing exactly what will change in the cluster when a PR is merged.
+Generate human-readable diffs showing how the rendered cluster manifests will change when a PR is merged.
 
 ```yaml
 # .github/workflows/diff-preview.yaml
@@ -83,9 +83,11 @@ jobs:
       - name: Generate diff for each cluster
         id: diff
         run: |
-          DIFF_OUTPUT=""
+          : > /tmp/diff-output.md
+
           # Iterate over each cluster directory
           for cluster_dir in pr-branch/clusters/*/; do
+            [ -d "$cluster_dir" ] || continue
             cluster=$(basename "$cluster_dir")
             echo "Generating diff for cluster: $cluster"
 
@@ -103,12 +105,13 @@ jobs:
               "/tmp/pr-${cluster}.yaml" || true)
 
             if [ -n "$CLUSTER_DIFF" ]; then
-              DIFF_OUTPUT="${DIFF_OUTPUT}\n### Cluster: ${cluster}\n```diff\n${CLUSTER_DIFF}\n```\n"
+              {
+                printf '### Cluster: %s\n\n```diff\n' "$cluster"
+                printf '%s\n' "$CLUSTER_DIFF"
+                printf '```\n\n'
+              } >> /tmp/diff-output.md
             fi
           done
-
-          # Write diff to file for the comment step
-          echo "$DIFF_OUTPUT" > /tmp/diff-output.md
 
       - name: Post diff as PR comment
         uses: actions/github-script@v7
@@ -117,7 +120,7 @@ jobs:
             const fs = require('fs');
             const diff = fs.readFileSync('/tmp/diff-output.md', 'utf8');
             const body = `## Flux CD Diff Preview\n\n${diff || 'No changes detected in cluster manifests.'}\n\n---\n*Generated automatically by CI*`;
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
@@ -145,19 +148,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
       - name: Validate YAML syntax
         run: |
           # Check all YAML files for syntax errors
-          find . -name '*.yaml' -o -name '*.yml' | while read file; do
-            python3 -c "
-          import yaml, sys
+          python3 -m pip install pyyaml
+
+          find . \( -name '*.yaml' -o -name '*.yml' \) -print | while IFS= read -r file; do
+            FILE="$file" python3 - <<'PY'
+          import os
+          import sys
+          import yaml
+
+          file = os.environ["FILE"]
           try:
-              with open('$file') as f:
+              with open(file) as f:
                   list(yaml.safe_load_all(f))
           except yaml.YAMLError as e:
-              print(f'ERROR in $file: {e}')
+              print(f"ERROR in {file}: {e}")
               sys.exit(1)
-          "
+          PY
           done
 
       - name: Validate against Kubernetes schemas
@@ -196,11 +209,19 @@ jobs:
       - name: Install Kyverno CLI
         uses: kyverno/action-install-cli@v0.2
 
+      - name: Setup Kustomize
+        uses: imranismail/setup-kustomize@v2
+
       - name: Check policy compliance
         run: |
           # Run Kyverno policies against the built manifests
+          mkdir -p /tmp/kyverno-resources
+          for dir in clusters/*/; do
+            kustomize build "$dir" > "/tmp/kyverno-resources/$(basename "$dir").yaml"
+          done
+
           kyverno apply infrastructure/policies/ \
-            --resource clusters/ \
+            --resource /tmp/kyverno-resources/ \
             --detailed-results \
             --policy-report
 
@@ -224,34 +245,35 @@ jobs:
 
 Different types of changes require different levels of review. Use CODEOWNERS and PR templates to guide this.
 
-```yaml
+```markdown
 # .github/pull_request_template.md
 # Template content rendered as markdown in the PR description
 
-# Description:
-# ## Change Type
-# - [ ] Application deployment update
-# - [ ] Infrastructure component change
-# - [ ] Policy modification
-# - [ ] Flux CD system configuration
-# - [ ] New application onboarding
-#
-# ## Environments Affected
-# - [ ] Development
-# - [ ] Staging
-# - [ ] Production
-#
-# ## Risk Assessment
-# - [ ] Low - No production impact expected
-# - [ ] Medium - Limited production impact, rollback plan ready
-# - [ ] High - Significant production impact, requires change window
-#
-# ## Checklist
-# - [ ] Manifests validated locally with `kustomize build`
-# - [ ] Changes tested in development environment
-# - [ ] Resource limits and requests are set appropriately
-# - [ ] No secrets or sensitive data in plain text
-# - [ ] Rollback procedure documented if high risk
+## Description
+
+## Change Type
+- [ ] Application deployment update
+- [ ] Infrastructure component change
+- [ ] Policy modification
+- [ ] Flux CD system configuration
+- [ ] New application onboarding
+
+## Environments Affected
+- [ ] Development
+- [ ] Staging
+- [ ] Production
+
+## Risk Assessment
+- [ ] Low - No production impact expected
+- [ ] Medium - Limited production impact, rollback plan ready
+- [ ] High - Significant production impact, requires change window
+
+## Checklist
+- [ ] Manifests validated locally with `kustomize build`
+- [ ] Changes tested in development environment
+- [ ] Resource limits and requests are set appropriately
+- [ ] No secrets or sensitive data in plain text
+- [ ] Rollback procedure documented if high risk
 ```
 
 ## Implementing Approval Gates for Production Changes
@@ -271,6 +293,9 @@ jobs:
   check-production-approval:
     runs-on: ubuntu-latest
     if: github.event.review.state == 'approved'
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
 
@@ -296,7 +321,7 @@ jobs:
           # Production changes require at least 2 approvals
           APPROVALS=$(gh pr view ${{ github.event.pull_request.number }} \
             --json reviews \
-            --jq '[.reviews[] | select(.state == "APPROVED")] | length')
+            --jq '[.reviews | group_by(.author.login)[] | max_by(.submittedAt) | select(.state == "APPROVED")] | length')
 
           if [ "$APPROVALS" -lt 2 ]; then
             echo "Production changes require at least 2 approvals."
@@ -326,6 +351,7 @@ jobs:
   add-checklist:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
@@ -397,6 +423,16 @@ jobs:
   verify-reconciliation:
     runs-on: ubuntu-latest
     steps:
+      - name: Setup Flux CLI
+        uses: fluxcd/flux2/action@main
+
+      - name: Configure kubeconfig
+        run: |
+          printf '%s' "$KUBECONFIG_DATA" > "$RUNNER_TEMP/kubeconfig"
+          chmod 600 "$RUNNER_TEMP/kubeconfig"
+        env:
+          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
+
       - name: Wait for Flux reconciliation
         run: |
           echo "Waiting 60 seconds for Flux to detect changes..."
@@ -415,14 +451,14 @@ jobs:
           fi
           echo "All reconciliations are healthy"
         env:
-          KUBECONFIG: ${{ secrets.KUBECONFIG }}
+          KUBECONFIG: ${{ runner.temp }}/kubeconfig
 ```
 
 ## Summary
 
 Effective code review workflows for Flux CD changes combine automated validation with human judgment. The practices covered in this guide include:
 
-- Generating diff previews that show exactly what will change in the cluster
+- Generating diff previews that show how rendered cluster manifests will change
 - Running multi-stage validation including syntax checks, schema validation, and policy compliance
 - Enforcing different review requirements based on change type and target environment
 - Providing resource-type-specific review checklists for reviewers
