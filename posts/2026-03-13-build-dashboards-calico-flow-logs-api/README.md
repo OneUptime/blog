@@ -1,36 +1,57 @@
-# How to Build Dashboards for the Calico Flow Logs API
+# How to Build Dashboards for Calico Felix Metrics
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Build automated compliance and security dashboards using the Calico Flow Logs API to report on denied traffic trends, cross-namespace connections, and policy enforcement effectiveness.
+Description: Build operational dashboards using Calico Felix Prometheus metrics to report on dataplane failures, policy calculation latency, and Felix health.
 
 ---
 
 ## Introduction
 
-Flow Logs API dashboards automate reporting that would otherwise require manual log analysis. Security dashboards show denied traffic rates and top denied sources. Compliance dashboards show all connections to regulated services with timestamps and policy decisions. Both types benefit from the API's ability to filter by time range and namespace.
+Felix metrics dashboards automate reporting that would otherwise require manual metrics checks. Operational dashboards show dataplane failure rates, policy calculation latency, and node-level Felix health. These dashboards benefit from Prometheus labels for filtering by cluster, namespace, pod, and node.
 
 ## Key Commands
 
 ```bash
 # Enable Felix metrics (if not already enabled)
 
-kubectl patch felixconfiguration default   --type=merge   -p '{"spec":{"prometheusMetricsEnabled":true,"prometheusMetricsPort":9091}}'
+kubectl patch felixconfiguration default \
+  --type=merge \
+  -p '{"spec":{"prometheusMetricsEnabled":true,"prometheusMetricsPort":9091}}'
 
 # Test Felix metrics endpoint
-CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node   -o jsonpath='{.items[0].metadata.name}')
+CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
+  -o jsonpath='{.items[0].metadata.name}')
 
-kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   wget -qO- http://localhost:9091/metrics | head -30
+kubectl exec -n calico-system "${CALICO_POD}" -c calico-node -- \
+  wget -qO- http://localhost:9091/metrics | head -30
 
 # Key Felix metrics to check:
-kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   wget -qO- http://localhost:9091/metrics | grep -E   "^felix_int_dataplane_failures|^felix_calc_graph"
+kubectl exec -n calico-system "${CALICO_POD}" -c calico-node -- \
+  wget -qO- http://localhost:9091/metrics | grep -E "^felix_int_dataplane_failures|^felix_calc_graph"
 ```
 
 ## ServiceMonitor for Felix
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: felix-metrics-svc
+  namespace: calico-system
+  labels:
+    k8s-app: calico-node
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-node
+  ports:
+    - name: http-metrics
+      port: 9091
+      targetPort: 9091
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
