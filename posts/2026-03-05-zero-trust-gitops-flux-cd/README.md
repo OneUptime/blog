@@ -37,9 +37,8 @@ spec:
   ref:
     branch: main
   verify:
-    # Verify GPG or Sigstore commit signatures
+    # Verify PGP commit signatures
     mode: HEAD
-    provider: github
     secretRef:
       name: git-signing-public-keys
 ```
@@ -109,7 +108,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: webapp-sa
-  namespace: production
+  namespace: flux-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -152,7 +151,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: webapp-sa
-    namespace: production
+    namespace: flux-system
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -175,8 +174,8 @@ spec:
 Use SOPS with age encryption for all secrets in Git:
 
 ```yaml
-# sops-encrypted-secret.yaml (before encryption)
-# This file should be encrypted with SOPS before committing
+# sops-encrypted-secret.yaml (after encryption)
+# Only commit this file after encrypting it with SOPS
 apiVersion: v1
 kind: Secret
 metadata:
@@ -240,14 +239,15 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
-        - podSelector:
+          podSelector:
             matchLabels:
               k8s-app: kube-dns
       ports:
         - protocol: UDP
           port: 53
 ---
-# Source controller: only specific Git hosts
+# Source controller: allow Git transport ports. Use CNI-specific FQDN
+# policies or an egress firewall to restrict this to specific Git hosts.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -273,7 +273,7 @@ Implement continuous verification through monitoring:
 ```yaml
 # zero-trust-monitoring.yaml
 # Alert on any reconciliation failure or security event
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: security-alerts
@@ -284,7 +284,7 @@ spec:
   secretRef:
     name: security-slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: zero-trust-alerts
