@@ -55,7 +55,7 @@ spec:
   type: oci
   # Bitnami OCI registry for Helm charts
   url: oci://registry-1.docker.io/bitnamicharts
-  interval: 1h  # Poll interval for new versions
+  interval: 1h  # Required by the API; ignored for OCI HelmRepository sources
 ```
 
 ## Creating the HelmRelease
@@ -71,13 +71,15 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: mysql
-  namespace: database
+  namespace: flux-system
 spec:
   interval: 30m  # Reconciliation interval
+  releaseName: mysql
+  targetNamespace: database
   chart:
     spec:
       chart: mysql
-      version: "12.x"  # Semver version constraint
+      version: "14.x"  # Semver version constraint
       sourceRef:
         kind: HelmRepository
         name: bitnami
@@ -114,13 +116,8 @@ spec:
           memory: 512Mi
           cpu: 500m
 
-      # Custom MySQL configuration
-      configuration: |-
-        [mysqld]
-        max_connections=200
-        innodb_buffer_pool_size=256M
-        character-set-server=utf8mb4
-        collation-server=utf8mb4_unicode_ci
+      # Additional MySQL server flags
+      extraFlags: "--max-connections=200 --innodb-buffer-pool-size=256M --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci"
 
     # Metrics exporter for monitoring
     metrics:
@@ -140,13 +137,15 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: mysql
-  namespace: database
+  namespace: flux-system
 spec:
   interval: 30m
+  releaseName: mysql
+  targetNamespace: database
   chart:
     spec:
       chart: mysql
-      version: "12.x"
+      version: "14.x"
       sourceRef:
         kind: HelmRepository
         name: bitnami
@@ -187,7 +186,7 @@ spec:
 
 ## Securing Credentials
 
-Store sensitive values in a Kubernetes Secret rather than in plain text:
+Store sensitive values in a Kubernetes Secret rather than directly in the HelmRelease values. For GitOps, encrypt this manifest with a tool like SOPS or Sealed Secrets before committing it:
 
 ```yaml
 # mysql-secret.yaml
@@ -196,7 +195,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: mysql-credentials
-  namespace: database
+  namespace: flux-system
 type: Opaque
 stringData:
   mysql-root-password: "your-secure-root-password"
@@ -241,7 +240,7 @@ Monitor the rollout:
 flux get sources helm
 
 # Check HelmRelease reconciliation
-flux get helmreleases -n database
+flux get helmreleases -n flux-system
 
 # Watch MySQL pods
 kubectl get pods -n database -w
@@ -267,7 +266,8 @@ kubectl run mysql-client --rm -it --restart=Never \
 
 Applications in the same cluster can connect to MySQL using the internal service DNS:
 
-- **Primary (read/write):** `mysql-primary.database.svc.cluster.local:3306`
+- **Standalone (read/write):** `mysql.database.svc.cluster.local:3306`
+- **Primary (read/write, when using replication):** `mysql-primary.database.svc.cluster.local:3306`
 - **Secondary (read-only):** `mysql-secondary.database.svc.cluster.local:3306` (when using replication)
 
 ## Conclusion
