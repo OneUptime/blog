@@ -26,21 +26,25 @@ This guide covers deploying cert-manager with Flux CD, configuring issuers for d
 ```text
 infrastructure/
   cert-manager/
-    namespace.yaml
-    helmrepository.yaml
-    helmrelease.yaml
-    issuers/
-      letsencrypt-staging.yaml
-      letsencrypt-production.yaml
-      self-signed.yaml
-    certificates/
-      wildcard-cert.yaml
+    controller/
+      namespace.yaml
+      helmrepository.yaml
+      helmrelease.yaml
+    config/
+      issuers/
+        letsencrypt-staging.yaml
+        letsencrypt-production.yaml
+        self-signed.yaml
+      certificates/
+        wildcard-cert.yaml
+      monitoring/
+        alerts.yaml
 ```
 
 ## Creating the Namespace
 
 ```yaml
-# infrastructure/cert-manager/namespace.yaml
+# infrastructure/cert-manager/controller/namespace.yaml
 
 apiVersion: v1
 kind: Namespace
@@ -53,7 +57,7 @@ metadata:
 ## Adding the Helm Repository
 
 ```yaml
-# infrastructure/cert-manager/helmrepository.yaml
+# infrastructure/cert-manager/controller/helmrepository.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -67,7 +71,7 @@ spec:
 ## Deploying cert-manager
 
 ```yaml
-# infrastructure/cert-manager/helmrelease.yaml
+# infrastructure/cert-manager/controller/helmrelease.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -78,7 +82,7 @@ spec:
   chart:
     spec:
       chart: cert-manager
-      version: "1.15.x"
+      version: "1.20.x"
       sourceRef:
         kind: HelmRepository
         name: jetstack
@@ -94,7 +98,8 @@ spec:
       retries: 3
   values:
     # Install CRDs as part of the Helm release
-    installCRDs: true
+    crds:
+      enabled: true
     # Enable Prometheus metrics
     prometheus:
       enabled: true
@@ -117,6 +122,11 @@ spec:
         limits:
           cpu: 100m
           memory: 128Mi
+    # Service account annotations for AWS Route53 ambient credentials
+    # Uncomment and configure when using EKS IRSA
+    # serviceAccount:
+    #   annotations:
+    #     eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/cert-manager-route53
     # CA injector configuration
     cainjector:
       resources:
@@ -138,7 +148,7 @@ spec:
 Use the staging issuer for testing to avoid rate limits.
 
 ```yaml
-# infrastructure/cert-manager/issuers/letsencrypt-staging.yaml
+# infrastructure/cert-manager/config/issuers/letsencrypt-staging.yaml
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -159,10 +169,9 @@ spec:
             ingressClassName: nginx
       # DNS01 solver for wildcard certificates (AWS Route53)
       - dns01:
-          route53:
-            region: us-east-1
-            # Use IRSA for authentication
-            # role: arn:aws:iam::123456789012:role/cert-manager-route53
+          # With EKS IRSA, credentials and region come from the cert-manager ServiceAccount
+          # Add explicit credentials here if you are not using ambient credentials
+          route53: {}
         selector:
           dnsZones:
             - "example.com"
@@ -171,7 +180,7 @@ spec:
 ## Let's Encrypt Production Issuer
 
 ```yaml
-# infrastructure/cert-manager/issuers/letsencrypt-production.yaml
+# infrastructure/cert-manager/config/issuers/letsencrypt-production.yaml
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -190,8 +199,9 @@ spec:
             ingressClassName: nginx
       # DNS01 for wildcard certificates
       - dns01:
-          route53:
-            region: us-east-1
+          # With EKS IRSA, credentials and region come from the cert-manager ServiceAccount
+          # Add explicit credentials here if you are not using ambient credentials
+          route53: {}
         selector:
           dnsZones:
             - "example.com"
@@ -200,7 +210,7 @@ spec:
 ## Self-Signed Issuer for Internal Services
 
 ```yaml
-# infrastructure/cert-manager/issuers/self-signed.yaml
+# infrastructure/cert-manager/config/issuers/self-signed.yaml
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -242,7 +252,7 @@ spec:
 Request a wildcard certificate for your domain.
 
 ```yaml
-# infrastructure/cert-manager/certificates/wildcard-cert.yaml
+# infrastructure/cert-manager/config/certificates/wildcard-cert.yaml
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -319,8 +329,6 @@ metadata:
   annotations:
     # Tell cert-manager to issue a certificate
     cert-manager.io/cluster-issuer: letsencrypt-production
-    # Optional: use HTTP01 solver
-    cert-manager.io/acme-challenge-type: http01
 spec:
   ingressClassName: nginx
   tls:
@@ -352,7 +360,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 15m
-  path: ./infrastructure/cert-manager
+  path: ./infrastructure/cert-manager/controller
   prune: true
   sourceRef:
     kind: GitRepository
@@ -367,6 +375,22 @@ spec:
       name: cert-manager-webhook
       namespace: cert-manager
   timeout: 5m
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cert-manager-config
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: cert-manager
+  interval: 15m
+  path: ./infrastructure/cert-manager/config
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  timeout: 5m
 ```
 
 ## Monitoring Certificate Expiry
@@ -374,7 +398,7 @@ spec:
 Set up Prometheus alerts for certificate expiration.
 
 ```yaml
-# infrastructure/cert-manager/monitoring/alerts.yaml
+# infrastructure/cert-manager/config/monitoring/alerts.yaml
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
