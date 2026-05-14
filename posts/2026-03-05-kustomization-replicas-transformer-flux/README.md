@@ -16,9 +16,9 @@ The `replicas` field in `kustomization.yaml` lets you override the replica count
 
 ## How the Replicas Transformer Works
 
-The `replicas` transformer matches resources by `name` and `kind` (defaulting to Deployment if kind is not specified), then overrides their `spec.replicas` field. This is cleaner than writing strategic merge patches for simple replica changes.
+The `replicas` transformer matches scalable resources by `name`, then overrides their `spec.replicas` field. This is cleaner than writing strategic merge patches for simple replica changes.
 
-The field was introduced in Kustomize v5.0 and is supported by Flux's built-in Kustomize engine.
+The field has been available in Kustomize for multiple releases and is supported by Flux's built-in Kustomize engine.
 
 ## Repository Structure
 
@@ -325,7 +325,7 @@ graph TD
 
 ## Replicas Transformer vs Strategic Merge Patch
 
-Before the `replicas` field was available, you had to use patches to override replica counts. Here is a comparison.
+Without the `replicas` field, you would use patches to override replica counts. Here is a comparison.
 
 Using the `replicas` field (recommended):
 
@@ -358,7 +358,7 @@ If you use a Horizontal Pod Autoscaler (HPA), the HPA will manage the actual rep
 
 - It defines the initial replica count when the Deployment is first created
 - It serves as the fallback if the HPA is removed or misconfigured
-- Flux will reset it on each reconciliation unless you suspend the Kustomization or exclude the replicas field
+- Flux will reset it on reconciliation if the generated manifest still declares `spec.replicas`
 
 If you want Flux to not overwrite HPA-managed replica counts, you can remove the `replicas` field from your base manifests entirely and not set it in the `replicas` transformer.
 
