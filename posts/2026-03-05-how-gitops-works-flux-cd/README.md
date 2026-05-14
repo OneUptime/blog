@@ -30,7 +30,7 @@ graph LR
     A[Developer] -->|git push| B[Git Repository]
     B -->|watches| C[Flux CD in Cluster]
     C -->|applies| D[Kubernetes Cluster]
-    C -->|reports status| B
+    C -->|reports Kubernetes status and events| D
     D -->|actual state| C
     C -->|compares desired vs actual| C
 ```
@@ -137,7 +137,7 @@ This loop runs indefinitely. Even if no new commits are detected, Flux still che
 
 ### Step 5: Observe and React
 
-Flux provides status conditions on every resource it manages. You can observe the state using standard Kubernetes tooling.
+Flux provides status conditions on its custom resources. You can observe the state using standard Kubernetes tooling.
 
 ```bash
 # Check the status of all Flux resources
@@ -174,7 +174,7 @@ In the push model, the CI server needs direct access to the cluster API, which m
 Flux CD handles failures gracefully:
 
 - **Git is unavailable** - Flux retries on the next interval. The cluster continues running with the last known good state.
-- **Manifests have errors** - Flux reports the error in the Kustomization status and sends alerts via the notification-controller. The cluster retains the previous working state.
+- **Manifests have errors** - Flux reports the error in the Kustomization status and emits Kubernetes events. If Flux alerts are configured, notification-controller can forward those errors to external systems. Resources that were already applied remain in their last applied state when reconciliation fails before applying the new desired state.
 - **Someone manually changes a resource** - Flux detects the drift and reverts it on the next reconciliation, enforcing the Git-defined state.
 
 ## Getting Started with Flux CD
