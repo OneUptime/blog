@@ -41,7 +41,7 @@ spec:
     strategy: Setters
 ```
 
-This is the fastest path to production. When Flux detects a new image tag, it updates the manifest, commits the change, and pushes directly to `main`. The source-controller then detects the new commit and reconciles the cluster.
+This is the fastest path to production. When Flux detects a new image tag, it updates the manifest, commits the change, and pushes directly to `main`. The source-controller then detects the new commit, and the Flux controllers that consume that source reconcile the cluster.
 
 ## Pushing to a Separate Branch
 
@@ -86,35 +86,42 @@ When the push branch differs from the checkout branch, the controller:
 3. Commits the changes
 4. Pushes to the `flux-image-updates` branch
 
-If the `flux-image-updates` branch does not exist, the controller creates it from the checkout branch. If it already exists, the controller rebases the changes onto it.
+If the `flux-image-updates` branch does not exist, the controller creates it from the checkout branch. If it already exists, the controller overwrites it with the checked-out branch plus the new automation changes by default. If the image-automation-controller is started with `--feature-gates=GitForcePushBranch=false`, updates are calculated on top of the existing push branch instead.
 
 ## Automating Pull Request Creation
 
-Pushing to a separate branch is most useful when combined with automated pull request creation. Flux's notification controller can trigger a webhook or create alerts, but for pull request creation, you need to use the Flux notification provider with a Git platform webhook or a separate tool.
+Pushing to a separate branch is most useful when combined with automated pull request creation. Flux's notification controller can receive webhooks and send alerts, but for pull request creation, you need to use a Git platform workflow, a custom webhook handler, or a separate tool.
 
-One approach is to use a GitHub Actions workflow triggered by branch pushes:
+One approach is to use a GitHub Actions workflow triggered when Flux creates the branch:
 
 ```yaml
 # .github/workflows/auto-pr.yml
 
 name: Auto PR for Flux Image Updates
 on:
-  push:
-    branches:
-      - flux-image-updates
+  create:
 jobs:
   create-pr:
     runs-on: ubuntu-latest
+    if: |
+      github.event.ref_type == 'branch' &&
+      github.event.ref == 'flux-image-updates'
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v6
         with:
-          branch: flux-image-updates
-          base: main
-          title: "Automated image update"
-          body: "This PR was automatically created by Flux image automation."
-          delete-branch: true
+          fetch-depth: 0
+      - name: Create Pull Request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create \
+            --head=flux-image-updates \
+            --base=main \
+            --title="Automated image update" \
+            --body="This PR was automatically created by Flux image automation."
 ```
 
 ## Environment-Specific Push Branches
@@ -189,9 +196,9 @@ For GitHub, you can add the bot user or the deploy key to the bypass list in bra
 
 ## Handling Merge Conflicts
 
-When using a separate push branch, merge conflicts can occur if the main branch changes between automation runs. The controller handles this by rebasing onto the latest checkout branch state on each run.
+When using a separate push branch, pull request merge conflicts can occur if the main branch changes between automation runs. By default, the controller refreshes the push branch from the latest checkout branch state plus the new automation changes on each run. If force push has been disabled with `--feature-gates=GitForcePushBranch=false`, a stale push branch can cause the controller to fail until the branch is updated or deleted.
 
-If conflicts persist, you may see errors in the controller logs:
+If the controller cannot update the push branch, you may see errors in the controller logs:
 
 ```bash
 kubectl -n flux-system logs deployment/image-automation-controller --tail=30
@@ -224,6 +231,6 @@ git log origin/flux-image-updates --oneline -5
 
 **Branch not created**: The controller only creates the branch when there are actual changes to push. If no image policies have new tags, no commit or branch will be created.
 
-**Stale branch with old changes**: If the push branch accumulates many unmerged commits, it may diverge significantly from the main branch. Regularly merge or delete the push branch to keep it current.
+**Stale branch with old changes**: If force push is disabled or the push branch is changed outside Flux, it may diverge significantly from the main branch. Regularly merge or delete the push branch to keep it current.
 
 Choosing the right push branch strategy depends on your team's review requirements and risk tolerance. Direct pushes provide faster deployments, while separate branches with pull requests add a review step that can catch configuration issues before they reach production.
