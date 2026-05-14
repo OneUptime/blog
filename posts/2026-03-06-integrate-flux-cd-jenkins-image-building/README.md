@@ -16,9 +16,9 @@ Jenkins is one of the most widely adopted CI/CD tools in enterprise environments
 
 Before getting started, ensure you have:
 
-- A Kubernetes cluster with Flux CD installed
-- A Jenkins server (version 2.387 or later recommended)
-- Docker Pipeline and Kubernetes plugins installed on Jenkins
+- A Kubernetes cluster with Flux CD installed, including the image-reflector-controller and image-automation-controller components
+- A supported Jenkins LTS release
+- Docker Pipeline plugin installed on Jenkins, and the Kubernetes plugin if you run Jenkins agents on Kubernetes
 - A container registry (Docker Hub, ECR, GCR, or any OCI-compatible registry)
 - `kubectl` and `flux` CLI tools installed locally
 
@@ -52,7 +52,7 @@ import com.cloudbees.plugins.credentials.CredentialsScope
 import com.cloudbees.plugins.credentials.domains.Domain
 import jenkins.model.Jenkins
 
-def store = Jenkins.instance.getExtensionList(
+def store = Jenkins.get().getExtensionList(
     'com.cloudbees.plugins.credentials.SystemCredentialsProvider'
 )[0].getStore()
 
@@ -82,8 +82,8 @@ pipeline {
         // Container registry configuration
         REGISTRY = 'docker.io'
         IMAGE_NAME = 'my-org/my-app'
-        // Use the Git commit SHA as the image tag
-        IMAGE_TAG = "${GIT_COMMIT.take(7)}"
+        // Set after checkout from the Git commit SHA and Jenkins build number
+        IMAGE_TAG = ''
         // Jenkins credential ID for Docker registry
         REGISTRY_CREDENTIALS = 'docker-registry-creds'
     }
@@ -91,15 +91,18 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                // Clone the application repository
-                checkout scm
+                script {
+                    // Clone the application repository and create a sortable tag
+                    def scmVars = checkout scm
+                    env.IMAGE_TAG = "${scmVars.GIT_COMMIT.take(7)}-${BUILD_NUMBER}"
+                }
             }
         }
 
         stage('Run Tests') {
             steps {
                 // Run unit tests before building the image
-                sh 'make test || echo "No tests configured"'
+                sh 'if [ -f Makefile ]; then make test; else echo "No Makefile found; skipping tests"; fi'
             }
         }
 
@@ -107,7 +110,7 @@ pipeline {
             steps {
                 script {
                     // Build the Docker image
-                    docker.build("${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}")
+                    docker.build("${REGISTRY}/${IMAGE_NAME}:${env.IMAGE_TAG}")
                 }
             }
         }
@@ -117,8 +120,8 @@ pipeline {
                 script {
                     // Authenticate and push to the container registry
                     docker.withRegistry("https://${REGISTRY}", REGISTRY_CREDENTIALS) {
-                        def appImage = docker.image("${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}")
-                        // Push the commit SHA tag
+                        def appImage = docker.image("${REGISTRY}/${IMAGE_NAME}:${env.IMAGE_TAG}")
+                        // Push the commit SHA plus build number tag
                         appImage.push()
                         // Also push as latest for convenience
                         appImage.push('latest')
@@ -130,14 +133,14 @@ pipeline {
 
     post {
         success {
-            echo "Image ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} pushed successfully"
+            echo "Image ${REGISTRY}/${IMAGE_NAME}:${env.IMAGE_TAG} pushed successfully"
         }
         failure {
             echo "Pipeline failed. Check the logs for details."
         }
         always {
             // Clean up Docker images to save disk space
-            sh "docker rmi ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} || true"
+            sh "docker rmi ${REGISTRY}/${IMAGE_NAME}:${env.IMAGE_TAG} || true"
         }
     }
 }
@@ -163,10 +166,10 @@ pipeline {
         stage('Determine Version') {
             steps {
                 script {
-                    // Read version from a file or generate from Git tags
-                    def baseVersion = readFile('VERSION').trim()
-                    // Append build number for unique identification
-                    env.IMAGE_TAG = "${baseVersion}.${BUILD_NUMBER}"
+                    // Read a major.minor version prefix or generate one from Git tags
+                    def versionPrefix = readFile('VERSION').trim()
+                    // Append build number as the patch version for unique identification
+                    env.IMAGE_TAG = "${versionPrefix}.${BUILD_NUMBER}"
                     echo "Building version: ${env.IMAGE_TAG}"
                 }
             }
@@ -177,9 +180,9 @@ pipeline {
                 script {
                     docker.withRegistry("https://${REGISTRY}", REGISTRY_CREDENTIALS) {
                         def appImage = docker.build(
-                            "${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}",
+                            "${REGISTRY}/${IMAGE_NAME}:${env.IMAGE_TAG}",
                             // Pass build arguments
-                            "--build-arg VERSION=${IMAGE_TAG} ."
+                            "--build-arg VERSION=${env.IMAGE_TAG} ."
                         )
                         appImage.push()
                         appImage.push('latest')
@@ -244,10 +247,10 @@ spec:
       range: ">=1.0.0"
 ```
 
-For commit SHA-based tags, use an alphabetical policy instead:
+For commit SHA-based tags, include a sortable build number or timestamp in the tag and use a numerical policy instead:
 
 ```yaml
-# Alternative: commit SHA-based policy
+# Alternative: commit SHA plus build-number policy
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
@@ -257,10 +260,11 @@ spec:
   imageRepositoryRef:
     name: my-app
   filterTags:
-    # Match 7-character hex strings (short commit SHAs)
-    pattern: '^[a-f0-9]{7}$'
+    # Match tags like a1b2c3d-42 and sort by the build number
+    pattern: '^[a-f0-9]{7}-(?P<build>[0-9]+)$'
+    extract: '$build'
   policy:
-    alphabetical:
+    numerical:
       order: asc
 ```
 
@@ -346,7 +350,7 @@ metadata:
   namespace: flux-system
 spec:
   type: generic
-  # Secret containing the webhook token
+  # Secret used by Flux to generate the webhook path
   secretRef:
     name: webhook-token
   resources:
@@ -358,7 +362,7 @@ spec:
 Create the webhook token secret:
 
 ```bash
-# Generate a random token for webhook authentication
+# Generate a random token for webhook path generation
 TOKEN=$(head -c 32 /dev/urandom | base64 | tr -d '=+/')
 
 # Create the secret in the flux-system namespace
@@ -366,7 +370,12 @@ kubectl -n flux-system create secret generic webhook-token \
   --from-literal=token=$TOKEN
 ```
 
-Add a post-build step in your Jenkinsfile to trigger the webhook:
+After applying the `Receiver`, get the generated webhook path and add a post-build step in your Jenkinsfile to trigger it:
+
+```bash
+kubectl -n flux-system get receiver jenkins-receiver \
+  -o jsonpath='{.status.webhookPath}'
+```
 
 ```groovy
 // Add this stage after Push Image
@@ -374,11 +383,11 @@ stage('Notify Flux') {
     steps {
         script {
             // Trigger Flux to scan for the new image immediately
-            def webhookUrl = "https://flux-webhook.example.com/hook/jenkins-receiver"
+            def webhookUrl = "https://flux-webhook.example.com<generated-webhook-path>"
             sh """
                 curl -s -X POST ${webhookUrl} \
                   -H 'Content-Type: application/json' \
-                  -d '{"image": "${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"}'
+                  -d '{"image": "${REGISTRY}/${IMAGE_NAME}:${env.IMAGE_TAG}"}'
             """
         }
     }
