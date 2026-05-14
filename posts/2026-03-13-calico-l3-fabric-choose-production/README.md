@@ -28,7 +28,7 @@ L3 BGP native routing requires specific network capabilities:
 | Requirement | Check |
 |---|---|
 | BGP-capable switches or routers | Ask your network team |
-| TCP port 179 allowed between nodes | Test with `nc -zv <peer-ip> 179` |
+| TCP port 179 allowed between BGP peers | Test with `nc -zv <peer-ip> 179` |
 | Pod CIDR routable externally (optional) | Network team can add static or BGP routes |
 | Network team comfortable with Kubernetes BGP | Training or documentation needed |
 
@@ -77,12 +77,13 @@ Decide whether pod routes should be advertised beyond the cluster:
 Configure external route advertisement:
 ```yaml
 apiVersion: projectcalico.org/v3
-kind: BGPConfiguration
+kind: BGPPeer
 metadata:
-  name: default
+  name: rack1-tor
 spec:
-  serviceExternalIPs:
-  - cidr: 10.0.0.0/16  # Advertise pod CIDR externally
+  peerIP: 192.0.2.1
+  asNumber: 64567
+  nodeSelector: rack == 'rack-1'
 ```
 
 ## Decision 5: Route Reflector Placement
@@ -95,6 +96,8 @@ Route reflectors should be:
 
 Label route reflector nodes:
 ```bash
+kubectl annotate node rr-node-1 projectcalico.org/RouteReflectorClusterID=244.0.0.1
+kubectl annotate node rr-node-2 projectcalico.org/RouteReflectorClusterID=244.0.0.2
 kubectl label node rr-node-1 calico-route-reflector=true
 kubectl label node rr-node-2 calico-route-reflector=true
 ```
@@ -106,13 +109,13 @@ kind: BGPPeer
 metadata:
   name: peer-with-route-reflectors
 spec:
+  nodeSelector: all()
   peerSelector: calico-route-reflector == 'true'
-  asNumber: 64512
 ```
 
 ## Best Practices
 
-- Always deploy route reflectors in HA pairs - a single route reflector is a SPOF for all routing
+- Always deploy route reflectors in HA pairs - a single route reflector is a control-plane SPOF for routing updates
 - Coordinate your BGP AS number with your network team to avoid conflicts with existing enterprise BGP infrastructure
 - Document the full BGP topology (which nodes peer with which) in your cluster runbook
 - Test BGP session recovery (simulate route reflector failure) before production rollout
