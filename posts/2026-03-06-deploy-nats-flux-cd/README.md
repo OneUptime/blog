@@ -90,32 +90,67 @@ spec:
     spec:
       chart: nats
       # Pin to a specific version for reproducibility
-      version: "1.2.x"
+      version: "2.14.0"
       sourceRef:
         kind: HelmRepository
         name: nats
         namespace: nats-system
       interval: 12h
   values:
-    # Configure the NATS cluster with 3 replicas for high availability
-    cluster:
-      enabled: true
-      replicas: 3
-
-    # Enable JetStream for persistence and streaming
-    jetstream:
-      enabled: true
-      # Configure storage for JetStream
-      fileStore:
+    config:
+      # Configure the NATS cluster with 3 replicas for high availability
+      cluster:
         enabled: true
-        storageDirectory: /data
-        pvc:
+        replicas: 3
+
+      # Enable JetStream for persistence and streaming
+      jetstream:
+        enabled: true
+        # Configure storage for JetStream
+        fileStore:
           enabled: true
-          size: 10Gi
-          storageClassName: standard
+          dir: /data
+          pvc:
+            enabled: true
+            size: 10Gi
+            storageClassName: standard
+
+      merge:
+        authorization:
+          default_permissions:
+            publish:
+              - public.>
+            subscribe:
+              - public.>
+          users:
+            - user: admin
+              password: << $NATS_ADMIN_PASSWORD >>
+              permissions:
+                publish: ">"
+                subscribe: ">"
+            - user: client
+              password: << $NATS_CLIENT_PASSWORD >>
+              permissions:
+                publish:
+                  - events.>
+                  - requests.>
+                subscribe:
+                  - events.>
+                  - replies.>
 
     # Resource limits and requests for NATS pods
-    nats:
+    container:
+      env:
+        NATS_ADMIN_PASSWORD:
+          valueFrom:
+            secretKeyRef:
+              name: nats-auth
+              key: admin-password
+        NATS_CLIENT_PASSWORD:
+          valueFrom:
+            secretKeyRef:
+              name: nats-auth
+              key: client-password
       resources:
         requests:
           cpu: 200m
@@ -125,27 +160,24 @@ spec:
           memory: 512Mi
 
     # Enable monitoring via Prometheus
-    exporter:
+    promExporter:
       enabled: true
-      resources:
-        requests:
-          cpu: 50m
-          memory: 64Mi
-        limits:
-          cpu: 100m
-          memory: 128Mi
+      podMonitor:
+        enabled: true
+      merge:
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
 
-    # Authentication configuration
-    auth:
-      enabled: true
-      # Use a Kubernetes secret for credentials
-      resolver:
-        type: full
 ```
 
 ## Step 4: Configure NATS Authentication
 
-Create a Kubernetes secret to store NATS authentication credentials.
+Create a Kubernetes secret to store NATS authentication credentials referenced by the HelmRelease.
 
 ```yaml
 # nats-auth-secret.yaml
@@ -158,32 +190,8 @@ metadata:
   namespace: nats-system
 type: Opaque
 stringData:
-  # NATS server configuration for authentication
-  nats.conf: |
-    authorization {
-      default_permissions = {
-        publish = ["public.>"]
-        subscribe = ["public.>"]
-      }
-      users = [
-        {
-          user: "admin"
-          password: "$NATS_ADMIN_PASSWORD"
-          permissions: {
-            publish: ">"
-            subscribe: ">"
-          }
-        },
-        {
-          user: "client"
-          password: "$NATS_CLIENT_PASSWORD"
-          permissions: {
-            publish: ["events.>", "requests.>"]
-            subscribe: ["events.>", "replies.>"]
-          }
-        }
-      ]
-    }
+  admin-password: "change-me-admin"
+  client-password: "change-me-client"
 ```
 
 ## Step 5: Add a Network Policy
@@ -222,6 +230,14 @@ spec:
       ports:
         - protocol: TCP
           port: 6222
+    # Allow Prometheus to scrape NATS exporter metrics
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 7777
   egress:
     # Allow DNS resolution
     - to: []
@@ -240,27 +256,15 @@ spec:
 
 ## Step 6: Configure Monitoring
 
-Create a ServiceMonitor to enable Prometheus to scrape NATS metrics.
+Enable the chart's PodMonitor to let Prometheus scrape NATS metrics from the exporter sidecar.
 
 ```yaml
-# nats-servicemonitor.yaml
+# This is already enabled in the HelmRelease values:
 # Enables Prometheus to scrape NATS metrics
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: nats-monitor
-  namespace: nats-system
-  labels:
-    release: prometheus
-spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: nats
-  endpoints:
-    # Scrape the metrics exporter endpoint
-    - port: metrics
-      interval: 30s
-      path: /metrics
+promExporter:
+  enabled: true
+  podMonitor:
+    enabled: true
 ```
 
 ## Step 7: Set Up the Kustomization
@@ -283,12 +287,9 @@ spec:
     name: flux-system
   path: ./clusters/my-cluster/nats
   prune: true
-  # Ensure resources are applied in the correct order
-  dependsOn:
-    - name: flux-system
   healthChecks:
-    - apiVersion: apps/v1
-      kind: StatefulSet
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: nats
       namespace: nats-system
   timeout: 5m
@@ -309,14 +310,18 @@ kubectl get pods -n nats-system
 kubectl exec -n nats-system nats-0 -- nats-server --help
 
 # Test publishing a message
-kubectl run nats-client --rm -it --image=natsio/nats-tools -- \
-  nats pub test.subject "Hello from Flux CD" \
-  --server nats://nats.nats-system.svc:4222
+kubectl run nats-client --rm -it --image=natsio/nats-box --restart=Never -- \
+  nats pub events.test "Hello from Flux CD" \
+  --server nats://nats.nats-system.svc:4222 \
+  --user client \
+  --password change-me-client
 
 # Test subscribing to messages
-kubectl run nats-sub --rm -it --image=natsio/nats-tools -- \
-  nats sub "test.>" \
-  --server nats://nats.nats-system.svc:4222
+kubectl run nats-sub --rm -it --image=natsio/nats-box --restart=Never -- \
+  nats sub "events.>" \
+  --server nats://nats.nats-system.svc:4222 \
+  --user client \
+  --password change-me-client
 ```
 
 ## Step 9: Configure JetStream Streams
@@ -336,7 +341,13 @@ spec:
     spec:
       containers:
         - name: nats-setup
-          image: natsio/nats-tools:latest
+          image: natsio/nats-box:latest
+          env:
+            - name: NATS_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nats-auth
+                  key: admin-password
           command:
             - /bin/sh
             - -c
@@ -352,13 +363,18 @@ spec:
                 --max-age 72h \
                 --storage file \
                 --replicas 3 \
-                --server nats://nats.nats-system.svc:4222
+                --server nats://nats.nats-system.svc:4222 \
+                --user admin \
+                --password "$NATS_ADMIN_PASSWORD"
               # Create a consumer for the events stream
               nats consumer add EVENTS event-processor \
                 --deliver all \
                 --ack explicit \
+                --pull \
                 --max-deliver 5 \
-                --server nats://nats.nats-system.svc:4222
+                --server nats://nats.nats-system.svc:4222 \
+                --user admin \
+                --password "$NATS_ADMIN_PASSWORD"
       restartPolicy: OnFailure
   backoffLimit: 3
 ```
@@ -377,7 +393,9 @@ kubectl logs -n nats-system -l app.kubernetes.io/name=nats
 
 # Verify JetStream is enabled
 kubectl exec -n nats-system nats-0 -- nats server info \
-  --server nats://localhost:4222
+  --server nats://localhost:4222 \
+  --user admin \
+  --password change-me-admin
 
 # Check persistent volume claims
 kubectl get pvc -n nats-system
