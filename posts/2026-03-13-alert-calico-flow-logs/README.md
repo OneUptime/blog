@@ -15,7 +15,7 @@ Flow log-based alerts complement Prometheus metric alerts by providing connectio
 ## Key Commands
 
 ```bash
-# View flow logs directly from a calico-node pod
+# View file-based flow logs directly from a calico-node pod when they are enabled
 
 CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node   -o jsonpath='{.items[0].metadata.name}')
 
@@ -30,20 +30,21 @@ kubectl get felixconfiguration default -o yaml |   grep -i "flowLog"
 
 ## Flow Log Format
 
+Example flow log entry after parsing/indexing:
+
 ```json
-// Example flow log entry (JSON format):
 {
-  "start_time": "2026-03-13T10:00:00Z",
-  "end_time": "2026-03-13T10:00:15Z",
+  "start_time": 1773396000,
+  "end_time": 1773396015,
   "source_ip": "192.168.1.5",
   "dest_ip": "192.168.2.10",
-  "proto": "TCP",
+  "proto": "tcp",
   "source_port": 54321,
   "dest_port": 8080,
   "num_flows": 12,
   "bytes_in": 1500,
   "bytes_out": 3200,
-  "action": "Allow",
+  "action": "allow",
   "source_namespace": "default",
   "source_name": "frontend-abc",
   "dest_namespace": "production",
@@ -65,4 +66,4 @@ flowchart LR
 
 ## Conclusion
 
-Calico flow logs provide the connection-level detail that no other Calico diagnostic can offer. The most valuable operational use case is denied traffic analysis - flow logs show exactly which connections are being blocked, by which policy, enabling rapid policy debugging. Validate the flow log pipeline periodically by generating known test connections and verifying they appear with the correct attributes in your aggregation system.
+Calico flow logs provide connection-level detail for network activity. The most valuable operational use case is denied traffic analysis - flow logs show which connections are being blocked, and can include policy details when policy information is enabled in the flow log configuration, enabling rapid policy debugging. Validate the flow log pipeline periodically by generating known test connections and verifying they appear with the correct attributes in your aggregation system.
