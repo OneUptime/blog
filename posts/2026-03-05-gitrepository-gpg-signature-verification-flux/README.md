@@ -115,7 +115,7 @@ spec:
       name: git-gpg-public-keys
 ```
 
-The `mode: HEAD` setting tells Flux to verify the signature on the HEAD commit of the specified branch. This is currently the only supported mode.
+The `mode: HEAD` setting tells Flux to verify the signature on the commit that HEAD points to after checking out the specified reference. Flux also supports `Tag` and `TagAndHEAD` when you want to verify signed tag objects.
 
 ```bash
 # Apply the GitRepository with verification
@@ -201,28 +201,26 @@ kubectl create secret generic git-gpg-public-keys \
 flux reconcile source git my-app
 ```
 
-## Using Cosign for Keyless Verification
+## Using Cosign for OCI Artifact Verification
 
-Flux also supports Cosign for signature verification, which can work with keyless signing via Sigstore. This is configured through the same `spec.verify` field but with a different mode.
+Flux also supports Cosign for OCI artifact signature verification, which can work with keyless signing via Sigstore. Cosign verification is configured on an `OCIRepository`; GitRepository commit verification uses trusted PGP public keys.
 
 ```yaml
-# gitrepository-cosign-verified.yaml
-# GitRepository with Cosign signature verification
+# ocirepository-cosign-verified.yaml
+# OCIRepository with Cosign keyless signature verification
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: GitRepository
+kind: OCIRepository
 metadata:
   name: my-app
   namespace: flux-system
 spec:
   interval: 5m
-  url: https://github.com/your-org/my-app.git
-  ref:
-    branch: main
+  url: oci://ghcr.io/your-org/my-app
   verify:
-    mode: HEAD
     provider: cosign
-    secretRef:
-      name: cosign-public-keys
+    matchOIDCIdentity:
+      - issuer: "^https://token.actions.githubusercontent.com$"
+        subject: "^https://github.com/your-org/my-app.*$"
 ```
 
 ## Troubleshooting
