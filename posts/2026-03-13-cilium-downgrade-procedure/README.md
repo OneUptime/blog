@@ -12,7 +12,7 @@ Description: Learn the safe procedure for downgrading Cilium to a previous versi
 
 While Cilium upgrades follow a well-documented path, sometimes a new version introduces regressions, performance degradations, or incompatibilities with your workloads. Having a tested downgrade procedure is as important as having an upgrade procedure. Cilium downgrade carries additional complexity because eBPF programs compiled for a newer version may have different map layouts than older versions expect.
 
-Cilium supports downgrading within the same minor version (patch releases) and, in some cases, to the previous minor version. Downgrading across multiple minor versions is not officially supported and risks data plane inconsistencies. Always consult the Cilium compatibility table before attempting a downgrade.
+Cilium's tested rollback path is between consecutive minor releases. Patch release rollbacks within the same minor release are lower risk, but rollbacks across multiple minor versions are not tested and risk data plane inconsistencies. Always consult the Cilium upgrade notes for the versions involved before attempting a downgrade.
 
 This guide covers how to configure a safe downgrade path, troubleshoot issues encountered during the process, validate a successful rollback, and monitor your cluster's health afterward.
 
@@ -35,7 +35,7 @@ cilium version
 kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].spec.containers[0].image}'
 
 # Export current Helm values
-helm get values cilium -n kube-system > cilium-current-values.yaml
+helm get values cilium -n kube-system -o yaml > cilium-current-values.yaml
 
 # Check available previous versions
 helm search repo cilium/cilium --versions | head -20
@@ -60,6 +60,7 @@ helm upgrade cilium cilium/cilium \
   --values cilium-previous-values.yaml \
   --wait \
   --timeout 10m
+# Do not use --reuse-values when changing Cilium chart versions.
 
 # Monitor the rollout
 kubectl -n kube-system rollout status ds/cilium
@@ -69,16 +70,16 @@ kubectl -n kube-system rollout status deploy/cilium-operator
 Handle CRD downgrade if needed:
 
 ```bash
-# Check if CRDs need to be downgraded
-kubectl get crd | grep cilium | awk '{print $1}' | while read crd; do
-  kubectl get crd $crd -o jsonpath='{.metadata.annotations.meta\.helm\.sh/release-name}' 2>/dev/null
-  echo ""
-done
+# Check installed Cilium CRDs and served versions
+kubectl get crd | grep cilium
+kubectl get crd ciliumnetworkpolicies.cilium.io -o jsonpath='{.spec.versions[*].name}{"\n"}'
 
-# Apply previous version CRDs if required
-# Download CRDs from target version's release
+# Apply target-version CRDs only if they were installed outside the operator
+# or the target version's notes require it. Apply each affected CRD from the
+# target release, not just one policy CRD.
 CILIUM_VERSION="1.14.6"
 kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/v${CILIUM_VERSION}/pkg/k8s/apis/cilium.io/client/crds/v2/ciliumnetworkpolicies.yaml
+kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/v${CILIUM_VERSION}/pkg/k8s/apis/cilium.io/client/crds/v2/ciliumclusterwidenetworkpolicies.yaml
 ```
 
 ## Troubleshoot Downgrade Issues
@@ -94,7 +95,7 @@ kubectl -n kube-system describe pods -l k8s-app=cilium | grep -A 10 "Events:"
 kubectl -n kube-system logs ds/cilium --tail=100 | grep -i "map\|bpf\|error"
 
 # Verify Cilium endpoints are regenerating correctly
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list | grep -v ready
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list --no-headers | grep -v "ready" || true
 
 # Check for CRD version mismatch
 kubectl -n kube-system logs ds/cilium | grep -i "unknown\|schema\|version"
@@ -104,8 +105,21 @@ Fix common downgrade issues:
 
 ```bash
 # Issue: eBPF maps from new version incompatible with old agent
-# Solution: Delete and recreate Cilium pods to flush maps
+# Solution: restart once with cleanBpfState enabled, then immediately disable it
+helm upgrade cilium cilium/cilium \
+  --version 1.14.6 \
+  --namespace kube-system \
+  --values cilium-previous-values.yaml \
+  --set cleanBpfState=true \
+  --wait
 kubectl -n kube-system delete pods -l k8s-app=cilium
+kubectl -n kube-system rollout status ds/cilium
+helm upgrade cilium cilium/cilium \
+  --version 1.14.6 \
+  --namespace kube-system \
+  --values cilium-previous-values.yaml \
+  --set cleanBpfState=false \
+  --wait
 
 # Issue: CiliumNetworkPolicy fields not recognized by older version
 # Check which fields were added in the newer version
@@ -116,7 +130,8 @@ kubectl -n kube-system logs -l name=cilium-operator --tail=100
 kubectl -n kube-system delete pods -l name=cilium-operator
 
 # Issue: Endpoints stuck in regenerating state
-kubectl -n kube-system exec ds/cilium -- cilium endpoint regenerate --all
+kubectl -n kube-system logs ds/cilium --tail=200 | grep -i "regenerat\|endpoint\|policy"
+kubectl -n kube-system delete pods -l k8s-app=cilium
 ```
 
 ## Validate Downgrade Success
@@ -126,14 +141,14 @@ Confirm the downgraded version is functioning correctly:
 ```bash
 # Verify version matches target
 cilium version
-kubectl -n kube-system exec ds/cilium -- cilium version
+kubectl -n kube-system exec ds/cilium -- cilium-dbg version
 
 # Check all Cilium pods are running the correct image
 kubectl -n kube-system get pods -l k8s-app=cilium \
   -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[0].image}{"\n"}{end}'
 
 # Validate all endpoints are healthy
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list | grep -v "ready"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list --no-headers | grep -v "ready" || true
 # Should show no endpoints in non-ready state
 
 # Run connectivity test
@@ -152,7 +167,7 @@ kubectl run test-pod --image=curlimages/curl -it --rm -- \
 
 # Verify network policies still enforced
 kubectl get cnp -A
-kubectl -n kube-system exec ds/cilium -- cilium policy get
+kubectl -n kube-system exec ds/cilium -- cilium-dbg policy get
 ```
 
 ## Monitor Post-Downgrade
@@ -176,8 +191,8 @@ Monitor cluster health after downgrade:
 # Watch Cilium health for 30 minutes after downgrade
 watch -n30 "cilium status --brief && kubectl -n kube-system get pods -l k8s-app=cilium"
 
-# Monitor for increased error rates
-kubectl -n kube-system port-forward svc/cilium-operator 9963:9963 &
+# Monitor for increased error rates if operator.prometheus.enabled=true
+kubectl -n kube-system port-forward deploy/cilium-operator 9963:9963 &
 curl -s http://localhost:9963/metrics | grep -E "error|drop|fail" | grep -v "# "
 
 # Check Hubble for unexpected dropped flows
