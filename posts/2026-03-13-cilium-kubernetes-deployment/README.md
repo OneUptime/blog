@@ -21,7 +21,7 @@ This guide covers deploying Cilium across different environments, resolving depl
 - Kubernetes cluster with cluster admin access
 - Helm 3.x installed
 - `kubectl` configured
-- Linux kernel 4.19.57+ on all nodes (5.10+ recommended)
+- Linux kernel 5.10+ on all nodes, or an equivalent distribution kernel
 - BPF filesystem available on nodes
 
 ## Configure Cilium Deployment
@@ -36,13 +36,13 @@ helm repo update
 
 # Basic deployment for managed Kubernetes (GKE, EKS, AKS)
 helm install cilium cilium/cilium \
-  --version 1.15.6 \
+  --version 1.19.4 \
   --namespace kube-system \
   --set ipam.mode=kubernetes
 
 # Deployment for bare-metal with kube-proxy replacement
 helm install cilium cilium/cilium \
-  --version 1.15.6 \
+  --version 1.19.4 \
   --namespace kube-system \
   --set kubeProxyReplacement=true \
   --set k8sServiceHost=<control-plane-ip> \
@@ -53,13 +53,17 @@ helm install cilium cilium/cilium \
 
 # Production deployment with full observability
 helm install cilium cilium/cilium \
-  --version 1.15.6 \
+  --version 1.19.4 \
   --namespace kube-system \
+  --set hubble.enabled=true \
   --set hubble.relay.enabled=true \
   --set hubble.ui.enabled=true \
-  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,http}" \
+  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,httpV2}" \
   --set prometheus.enabled=true \
-  --set operator.prometheus.enabled=true
+  --set operator.prometheus.enabled=true \
+  --set prometheus.serviceMonitor.enabled=true \
+  --set operator.prometheus.serviceMonitor.enabled=true \
+  --set hubble.metrics.serviceMonitor.enabled=true
 ```
 
 Verify deployment components:
@@ -130,11 +134,7 @@ Comprehensive deployment validation:
 cilium status
 
 # Check all components report healthy
-cilium status --output json | jq '{
-  cilium: .cilium.state,
-  controllers: (.controllers | map(select(.status.last_failure_msg != "")) | length),
-  endpoints: .cilium.endpoint_count
-}'
+cilium status --wait
 
 # Validate CNI is active
 kubectl get pods -A | grep ContainerCreating
@@ -143,8 +143,8 @@ kubectl get pods -A | grep ContainerCreating
 # Run full connectivity test
 cilium connectivity test
 
-# Verify eBPF programs loaded
-kubectl -n kube-system exec ds/cilium -- cilium bpf perf list
+# Verify BPF datapath maps are accessible
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf metrics list
 ```
 
 ## Monitor Deployment Health
