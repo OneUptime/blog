@@ -43,13 +43,13 @@ calicoctl validate -f resource.yaml
 
 ```bash
 # Step 1: Backup current state
-calicoctl get <resource> -o yaml > backup-$(date +%Y%m%d).yaml
+calicoctl get <resource> <name> -o yaml --export > backup-$(date +%Y%m%d).yaml
 
 # Step 2: Make the change
 calicoctl apply -f new-config.yaml
 
 # Step 3: Verify
-calicoctl get <resource> -o yaml
+calicoctl get <resource> <name> -o yaml
 
 # Step 4: Test connectivity
 # Run your standard connectivity validation test
