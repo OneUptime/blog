@@ -24,15 +24,15 @@ This guide covers how to configure `spec.include`, practical use cases like shar
 
 The `spec.include` field is a list of references to other GitRepository sources. When the Source Controller reconciles a GitRepository with `spec.include`, it:
 
-1. Clones the main repository
-2. Fetches the artifacts from each included GitRepository
+1. Verifies that each included GitRepository has an artifact available
+2. Clones the main repository
 3. Copies the included files into a specified directory within the main repository's artifact
 4. Packages everything into a single composite artifact
 
-Each include entry has two fields:
+Each include entry has these fields:
 - `repository`: A reference to another GitRepository resource
-- `fromPath`: The path within the included repository to copy from
-- `toPath`: The destination path in the composite artifact
+- `fromPath`: The optional path within the included repository to copy from, defaulting to the root of the artifact
+- `toPath`: The optional destination path in the composite artifact, defaulting to the referenced GitRepository name
 
 ## Basic Include Configuration
 
@@ -311,7 +311,7 @@ The composite GitRepository reconciles whenever either the main repository or an
 
 ```bash
 # Check the composite artifact status
-flux get sources git my-app -n flux-system
+flux get sources git -n flux-system
 
 # The artifact revision shows the main repo's commit
 # Included source changes also trigger a new artifact build
@@ -337,7 +337,7 @@ kubectl describe gitrepository my-app -n flux-system
 Common issues include:
 
 - **Included GitRepository not ready**: The main GitRepository cannot reconcile if any included source is not ready. Ensure all referenced GitRepositories exist and are in a ready state.
-- **Path conflicts**: If `toPath` overlaps with existing paths in the main repository, included files may overwrite local files. Choose distinct paths.
+- **Path conflicts**: If `toPath` overlaps with existing paths in the main repository, the copy may fail or replace a file at the target path. Choose distinct paths.
 - **Cross-namespace references**: The included GitRepository must be in the same namespace as the main GitRepository. Cross-namespace references are not supported.
 - **Circular includes**: Do not create circular include references where repository A includes B and B includes A. This will cause reconciliation failures.
 
