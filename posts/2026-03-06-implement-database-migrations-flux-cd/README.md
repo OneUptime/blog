@@ -169,7 +169,7 @@ spec:
           image: registry.example.com/my-app:1.5.0
           ports:
             - containerPort: 8080
-          # Init container to verify migration was applied
+          # Readiness probe verifies the app is ready after startup
           readinessProbe:
             httpGet:
               path: /ready
@@ -185,10 +185,25 @@ spec:
             - -c
             - |
               # Verify the expected migration version is applied
-              current_version=$(migrate -path /migrations \
+              current_version_output=$(migrate -path /migrations \
                 -database "postgres://$DB_USER:$DB_PASSWORD@$DB_HOST:$DB_PORT/$DB_NAME?sslmode=require" \
                 version 2>&1)
-              echo "Current migration version: $current_version"
+              echo "Current migration version: $current_version_output"
+
+              case "$current_version_output" in
+                *dirty*)
+                  echo "ERROR: Database migration state is dirty"
+                  exit 1
+                  ;;
+              esac
+
+              current_version=$(echo "$current_version_output" | awk '{print $1}')
+              case "$current_version" in
+                ''|*[!0-9]*)
+                  echo "ERROR: Could not parse migration version: $current_version_output"
+                  exit 1
+                  ;;
+              esac
 
               # The app expects at least migration version 15
               expected_version="15"
@@ -330,7 +345,7 @@ When a migration fails, the deployment should be blocked and alerts should fire.
 
 ```yaml
 # clusters/production/notifications/migration-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: migration-failures
@@ -342,9 +357,10 @@ spec:
   eventSources:
     - kind: Kustomization
       name: "my-app-migration"
-  summary: "Database migration failed. Deployment is blocked."
+  eventMetadata:
+    summary: "Database migration failed. Deployment is blocked."
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -477,18 +493,6 @@ spec:
           args:
             - migrate
           env:
-            - name: FLYWAY_URL
-              value: "jdbc:postgresql://$(DB_HOST):$(DB_PORT)/$(DB_NAME)"
-            - name: FLYWAY_USER
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: username
-            - name: FLYWAY_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: password
             - name: DB_HOST
               valueFrom:
                 secretKeyRef:
@@ -504,6 +508,18 @@ spec:
                 secretKeyRef:
                   name: db-credentials
                   key: name
+            - name: FLYWAY_URL
+              value: "jdbc:postgresql://$(DB_HOST):$(DB_PORT)/$(DB_NAME)"
+            - name: FLYWAY_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: username
+            - name: FLYWAY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: password
           volumeMounts:
             - name: migrations
               mountPath: /flyway/sql
@@ -534,11 +550,11 @@ spec:
         - name: liquibase
           image: liquibase/liquibase:4.25
           args:
+            - update
             - --url=jdbc:postgresql://$(DB_HOST):$(DB_PORT)/$(DB_NAME)
             - --username=$(DB_USER)
             - --password=$(DB_PASSWORD)
-            - --changelog-file=changelog.xml
-            - update
+            - --changelog-file=/liquibase/changelog/changelog.xml
           env:
             - name: DB_HOST
               valueFrom:
