@@ -20,6 +20,7 @@ OVHcloud Managed Kubernetes provides a CNCF-certified Kubernetes service with Eu
 - Flux CLI installed (`flux` version 2.x)
 - A GitHub account and personal access token
 - Helm installed (for initial Harbor setup)
+- cert-manager installed with a `letsencrypt-prod` ClusterIssuer if you use the TLS Ingress example
 
 ## Step 1: Create an OVHcloud Managed Kubernetes Cluster
 
@@ -36,12 +37,12 @@ export OVH_REGION="GRA7"
 # Navigate to: Public Cloud > Managed Kubernetes > Create a cluster
 # Select:
 #   - Region: GRA7 (Gravelines, France)
-#   - Version: 1.29
+#   - Version: 1.34
 #   - Node pool: 3x b2-7 instances
 
 # After creation, download the kubeconfig from the Control Panel
 # Or use the OVH API:
-# GET /cloud/project/{serviceName}/kube/{kubeId}/kubeconfig
+# POST /cloud/project/{serviceName}/kube/{kubeId}/kubeconfig
 
 # Save the kubeconfig
 export KUBECONFIG=~/.kube/ovh-config
@@ -53,7 +54,7 @@ kubectl cluster-info
 
 ## Step 2: Set Up Harbor Container Registry
 
-OVHcloud does not have a native container registry, so deploy Harbor on the cluster or use the OVHcloud managed Harbor offering.
+OVHcloud provides Managed Private Registry, a managed Harbor-based registry. You can use it or deploy Harbor on the cluster.
 
 ### Option A: Use OVHcloud Managed Private Registry
 
@@ -63,8 +64,8 @@ OVHcloud does not have a native container registry, so deploy Harbor on the clus
 # This provisions a Harbor instance managed by OVHcloud
 
 # Once created, get the registry URL and credentials from the Control Panel
-export REGISTRY_URL="xxxxxxxx.c1.gra9.container-registry.ovh.net"
-export REGISTRY_USER="admin"
+export REGISTRY_URL="xxxxxxxx.gra9.container-registry.ovh.net"
+export REGISTRY_USER="your-registry-user"
 export REGISTRY_PASS="your-registry-password"
 
 # Log in to the registry
@@ -140,9 +141,9 @@ kubectl create secret docker-registry harbor-credentials \
   --docker-password=${REGISTRY_PASS}
 
 # Also create in application namespaces as needed
-kubectl create namespace my-app 2>/dev/null || true
+kubectl create namespace web-app 2>/dev/null || true
 kubectl create secret docker-registry harbor-credentials \
-  --namespace=my-app \
+  --namespace=web-app \
   --docker-server=${REGISTRY_URL} \
   --docker-username=${REGISTRY_USER} \
   --docker-password=${REGISTRY_PASS}
@@ -164,7 +165,8 @@ flux bootstrap github \
   --repository=fleet-infra \
   --branch=main \
   --path=clusters/ovh-cluster \
-  --personal
+  --personal \
+  --read-write-key=true
 ```
 
 Verify the bootstrap.
