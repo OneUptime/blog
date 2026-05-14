@@ -191,7 +191,7 @@ spec:
     - kind: Secret
       name: my-app-secrets
       valuesKey: values.yaml
-  # Inline values have the HIGHEST priority and override everything above
+  # Inline values override the valuesFrom entries above
   values:
     replicaCount: 5
 ```
@@ -205,9 +205,11 @@ flowchart TD
     C --> D[Final merged values]
 ```
 
+When a `valuesFrom` entry uses `targetPath`, that targeted value overwrites everything before it, including inline values at the same path.
+
 ## Optional Value References
 
-If a ConfigMap or Secret might not exist yet, mark the reference as optional to prevent the HelmRelease from failing:
+If a ConfigMap or Secret might not exist yet, mark the reference as optional to ignore a not-found error for that reference:
 
 ```yaml
 # HelmRelease with optional valuesFrom reference
@@ -370,7 +372,7 @@ To see the final merged values that Flux passes to Helm, inspect the HelmRelease
 
 ```bash
 # Check what values Flux computed for the HelmRelease
-kubectl get helmrelease my-app -n default -o jsonpath='{.status.lastAppliedRevision}'
+flux debug hr my-app -n default --show-values
 
 # Get the Helm release values as Helm sees them
 helm get values my-app -n default
