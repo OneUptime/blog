@@ -50,7 +50,7 @@ kubectl apply -f gitrepository-tag.yaml
 flux get sources git my-app -n flux-system
 ```
 
-The artifact revision will appear as `v1.2.3@sha1:abc1234def5678`, indicating both the tag name and the commit SHA it resolves to.
+The artifact revision will appear as `v1.2.3@sha1:abcdef1234567890abcdef1234567890abcdef12`, indicating both the tag name and the commit SHA it resolves to.
 
 ## How Tag Tracking Differs from Branch Tracking
 
