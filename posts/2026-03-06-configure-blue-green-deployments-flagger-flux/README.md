@@ -4,21 +4,22 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flagger, Flux CD, Blue-Green Deployment, Progressive Delivery, Kubernetes, GitOps, Zero Downtime
 
-Description: A practical guide to configuring blue-green deployments with Flagger and Flux CD for zero-downtime releases with instant traffic switching.
+Description: A practical guide to configuring blue-green deployments with Flagger and Flux CD for zero-downtime releases with promotion after validation.
 
 ---
 
 ## Introduction
 
-Blue-green deployments maintain two identical environments: a "blue" environment running the current production version and a "green" environment running the new version. Once the green environment passes all health checks and tests, traffic is instantly switched from blue to green. Unlike canary deployments that gradually shift traffic, blue-green switches all traffic at once after validation.
+Blue-green deployments maintain two identical environments: a "blue" environment running the current production version and a "green" environment running the new version. Once the green environment passes all health checks and tests, the validated version is promoted to production. Unlike canary deployments that gradually shift traffic, blue-green promotes the release after validation instead of increasing traffic weight step by step.
 
-Flagger automates blue-green deployments by managing the creation of the green environment, running tests against it, and switching traffic when everything passes.
+Flagger automates blue-green deployments by managing the creation of the green environment, running tests against it, and promoting it when everything passes.
 
 ## Prerequisites
 
 - A running Kubernetes cluster (v1.26 or later)
 - Flux CD installed and bootstrapped
-- Flagger installed with a supported mesh provider
+- Flagger installed with the Kubernetes provider (`meshProvider=kubernetes`) or another supported provider
+- Flagger load tester installed in the namespace used by the webhook URLs
 - Prometheus for metrics collection
 - kubectl configured to access your cluster
 
@@ -36,14 +37,14 @@ sequenceDiagram
     F->>G: Run acceptance tests
     F->>G: Run load tests
     Note over F,G: Validation period
-    F->>T: Switch 100% traffic to Green
-    F->>B: Scale down Blue
-    Note over G: Green becomes new Blue
+    F->>T: Promote validated version to production
+    F->>G: Scale down Green
+    Note over B,G: Validated version becomes stable
 ```
 
 ## Step 1: Deploy the Application
 
-Create the base deployment that Flagger will manage in blue-green mode.
+Create the base deployment that Flagger will manage in blue-green mode. Flagger creates and manages the application services from the Canary resource, so do not define the same Service separately in Flux.
 
 ```yaml
 # apps/webapp/namespace.yaml
@@ -106,24 +107,6 @@ spec:
               memory: 128Mi
 ```
 
-```yaml
-# apps/webapp/service.yaml
-# Service for the application
-apiVersion: v1
-kind: Service
-metadata:
-  name: webapp
-  namespace: webapp
-spec:
-  selector:
-    app: webapp
-  ports:
-    - port: 80
-      targetPort: 9898
-      name: http
-  type: ClusterIP
-```
-
 ## Step 2: Create the Blue-Green Canary Resource
 
 The key difference from a canary deployment is setting the analysis to use iterations instead of traffic weight stepping.
@@ -137,6 +120,8 @@ metadata:
   name: webapp
   namespace: webapp
 spec:
+  provider: kubernetes
+
   # Reference to the deployment Flagger will manage
   targetRef:
     apiVersion: apps/v1
@@ -276,7 +261,6 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - deployment.yaml
-  - service.yaml
   - hpa.yaml
   - canary.yaml
   - alert-provider.yaml
@@ -309,8 +293,10 @@ When the Canary resource is applied, Flagger creates several resources automatic
 # After applying, Flagger creates these resources:
 # 1. webapp-primary (Deployment) - the current stable version
 # 2. webapp (Deployment) - scaled to zero, acts as the template
-# 3. webapp-primary (Service) - routes to the primary deployment
-# 4. webapp-canary (Service) - routes to the green deployment during testing
+# 3. webapp-primary (HorizontalPodAutoscaler) - scales the primary deployment
+# 4. webapp (Service) - routes to the primary deployment
+# 5. webapp-primary (Service) - routes to the primary deployment
+# 6. webapp-canary (Service) - routes to the green deployment during testing
 
 # View the resources Flagger created
 kubectl get deployments -n webapp
@@ -318,9 +304,14 @@ kubectl get deployments -n webapp
 # webapp            0/0     0            0
 # webapp-primary    3/3     3            3
 
+kubectl get hpa -n webapp
+# NAME             REFERENCE                   TARGETS   MINPODS   MAXPODS
+# webapp           Deployment/webapp           0%/80%    3         10
+# webapp-primary   Deployment/webapp-primary   0%/80%    3         10
+
 kubectl get services -n webapp
 # NAME              TYPE        CLUSTER-IP      PORT(S)
-# webapp            ClusterIP   10.96.100.1     80/TCP
+# webapp            ClusterIP   10.96.100.1     9898/TCP
 # webapp-primary    ClusterIP   10.96.100.2     9898/TCP
 # webapp-canary     ClusterIP   10.96.100.3     9898/TCP
 ```
@@ -353,7 +344,7 @@ kubectl get canary webapp -n webapp --watch
 # webapp  Succeeded     0        2026-03-06T10:13:00Z
 
 # Note: weight stays at 0 during blue-green because traffic is not gradually shifted.
-# Instead, the green deployment is tested in isolation, then traffic switches instantly.
+# Instead, the green deployment is tested in isolation, then Flagger promotes it to primary.
 
 # Check detailed events
 kubectl describe canary webapp -n webapp
@@ -361,7 +352,7 @@ kubectl describe canary webapp -n webapp
 
 ## Step 8: Blue-Green with Manual Gating
 
-For critical applications, you may want manual approval before the traffic switch.
+For critical applications, you may want manual approval before promotion.
 
 ```yaml
 # apps/webapp/canary-gated.yaml
@@ -372,6 +363,7 @@ metadata:
   name: webapp
   namespace: webapp
 spec:
+  provider: kubernetes
   targetRef:
     apiVersion: apps/v1
     kind: Deployment
@@ -383,11 +375,6 @@ spec:
     interval: 1m
     threshold: 3
     iterations: 10
-    # Require manual confirmation before promoting
-    match:
-      - headers:
-          x-canary:
-            exact: "true"
     metrics:
       - name: request-success-rate
         thresholdRange:
@@ -398,10 +385,10 @@ spec:
       - name: promotion-gate
         type: confirm-promotion
         url: http://flagger-loadtester.flagger-system/gate/check
-      # Rollback gate - confirm before rolling back
+      # Rollback gate - trigger rollback when opened
       - name: rollback-gate
-        type: confirm-rollback
-        url: http://flagger-loadtester.flagger-system/gate/check
+        type: rollback
+        url: http://flagger-loadtester.flagger-system/rollback/check
 ```
 
 To approve the promotion:
@@ -409,14 +396,14 @@ To approve the promotion:
 ```bash
 # Open the gate (approve promotion)
 kubectl exec -n flagger-system deployment/flagger-loadtester -- \
-  curl -s -X POST http://localhost:8080/gate/open
+  curl -s -d '{"name":"webapp","namespace":"webapp"}' http://localhost:8080/gate/open
 
 # Close the gate (block promotion)
 kubectl exec -n flagger-system deployment/flagger-loadtester -- \
-  curl -s -X POST http://localhost:8080/gate/close
+  curl -s -d '{"name":"webapp","namespace":"webapp"}' http://localhost:8080/gate/close
 ```
 
-## Step 9: Test the Green Environment Before Switching
+## Step 9: Test the Green Environment Before Promotion
 
 During a blue-green deployment, you can test the green environment directly:
 
@@ -426,9 +413,9 @@ kubectl port-forward svc/webapp-canary -n webapp 8080:9898 &
 
 # Run manual tests against the green version
 curl http://localhost:8080/healthz
-curl http://localhost:8080/api/info
+curl http://localhost:8080/version
 
-# Or use header-based routing (if configured with match headers)
+# Or use header-based routing if you are using a mesh or ingress provider with match headers configured
 curl -H "x-canary: true" http://webapp.example.com/
 ```
 
@@ -473,13 +460,13 @@ kubectl port-forward svc/prometheus-server -n monitoring 9090:80 &
 
 | Aspect | Blue-Green | Canary |
 |--------|-----------|--------|
-| Traffic switching | Instant (all at once) | Gradual (percentage-based) |
+| Traffic switching | Promotion after validation | Gradual (percentage-based) |
 | Resource usage | Higher (two full environments) | Lower (small canary) |
-| Risk | Higher per switch | Lower due to gradual rollout |
+| Risk | Higher per promotion | Lower due to gradual rollout |
 | Testing | Full load testing possible | Tested with real traffic |
 | Rollback speed | Instant | Instant |
 | Best for | Database migrations, breaking changes | Incremental feature releases |
 
 ## Summary
 
-You now have blue-green deployments configured with Flagger and Flux CD. When you update the container image in Git, Flagger creates a green environment, runs tests against it for a configured number of iterations, and then instantly switches all traffic from blue to green. If any metric check fails during the validation period, the green environment is discarded and traffic stays on the blue environment. This approach gives you the safety of pre-production testing with the simplicity of a single traffic switch.
+You now have blue-green deployments configured with Flagger and Flux CD. When you update the container image in Git, Flagger creates a green environment, runs tests against it for a configured number of iterations, and then promotes it to primary. If any metric check fails during the validation period, the green environment is discarded and traffic stays on the blue environment. This approach gives you the safety of pre-production testing with the simplicity of a single promotion after validation.
