@@ -22,7 +22,8 @@ Before starting, ensure you have:
 - Flux CD installed and bootstrapped
 - kubectl configured for your cluster
 - A Git repository connected to Flux CD
-- An Aqua Security license key (obtain from Aqua Security)
+- An Aqua Security license token (obtain from Aqua Security)
+- Aqua registry credentials and an image pull secret named `aqua-registry-secret`
 - A PostgreSQL database for the Aqua server (or use the bundled one)
 
 ## Architecture Overview
@@ -87,16 +88,6 @@ Set up secrets for the Aqua Security deployment.
 # aqua-secrets.yaml
 # Secrets for Aqua Security platform
 # Use sealed-secrets or SOPS in production
-apiVersion: v1
-kind: Secret
-metadata:
-  name: aqua-license
-  namespace: aqua-security
-type: Opaque
-stringData:
-  # Your Aqua Security license key
-  license: "your-aqua-license-key-here"
----
 # Database credentials
 apiVersion: v1
 kind: Secret
@@ -107,7 +98,7 @@ type: Opaque
 stringData:
   # PostgreSQL connection details
   db-password: "your-secure-db-password"
-  db-username: "aqua_admin"
+  audit-db-password: "your-secure-audit-db-password"
 ---
 # Aqua admin credentials
 apiVersion: v1
@@ -118,6 +109,7 @@ metadata:
 type: Opaque
 stringData:
   admin-password: "your-secure-admin-password"
+  license-token: "your-aqua-license-token-here"
 ---
 # Enforcer token for agent authentication
 apiVersion: v1
@@ -148,7 +140,7 @@ spec:
   chart:
     spec:
       chart: server
-      version: "2024.4.x"
+      version: "2022.4.x"
       sourceRef:
         kind: HelmRepository
         name: aqua-security
@@ -158,6 +150,33 @@ spec:
     # Global image settings
     imageCredentials:
       create: false
+
+    # Required platform setting; use aks, eks, gke, k8s, openshift, and so on
+    global:
+      platform: k8s
+      db:
+        # Use external PostgreSQL database
+        external:
+          enabled: true
+          host: "postgres.database.svc"
+          port: "5432"
+          name: aqua_db
+          user: aqua_admin
+          auditName: aqua_audit
+          auditHost: "postgres.database.svc"
+          auditPort: "5432"
+          auditUser: aqua_admin
+        passwordFromSecret:
+          enabled: true
+          dbPasswordName: aqua-db-credentials
+          dbPasswordKey: db-password
+          dbAuditPasswordName: aqua-db-credentials
+          dbAuditPasswordKey: audit-db-password
+        ssl: true
+
+    admin:
+      createSecret: false
+      secretName: aqua-admin
 
     # Aqua Server (Console) configuration
     web:
@@ -171,15 +190,21 @@ spec:
           memory: 2Gi
       service:
         type: ClusterIP
-        port: 8080
+        ports:
+          - name: aqua-web
+            port: 8080
+            targetPort: 8080
+            protocol: TCP
+          - name: aqua-web-ssl
+            port: 443
+            targetPort: 8443
+            protocol: TCP
       # TLS configuration
-      tls:
+      TLS:
         enabled: true
         secretName: aqua-web-tls
-      # Admin password from secret
-      adminPassword:
-        secretName: aqua-admin
-        secretKey: admin-password
+        publicKey_fileName: tls.crt
+        privateKey_fileName: tls.key
 
     # Aqua Gateway configuration
     gateway:
@@ -193,42 +218,19 @@ spec:
           memory: 1Gi
       service:
         type: ClusterIP
-        port: 8443
-
-    # Database configuration
-    db:
-      # Use external PostgreSQL database
-      external:
-        enabled: true
-        host: "postgres.database.svc"
-        port: 5432
-        name: aqua_db
-        passwordSecret: aqua-db-credentials
-        passwordSecretKey: db-password
-        usernameSecret: aqua-db-credentials
-        usernameSecretKey: db-username
-        ssl: true
-
-    # Scanner component
-    scanner:
-      enabled: true
-      replicaCount: 2
-      resources:
-        requests:
-          cpu: 200m
-          memory: 512Mi
-        limits:
-          cpu: "1"
-          memory: 1Gi
-
-    # License from secret
-    license:
-      secretName: aqua-license
-      secretKey: license
-
-    # Aqua CyberCenter for vulnerability data
-    cyberCenter:
-      enabled: true
+        ports:
+          - name: aqua-gate
+            port: 3622
+            targetPort: 3622
+            protocol: TCP
+          - name: aqua-gate-ssl
+            port: 8443
+            targetPort: 8443
+            protocol: TCP
+          - name: aqua-health
+            port: 8082
+            targetPort: 8082
+            protocol: TCP
 ```
 
 ## Step 5: Deploy the Aqua Enforcer
@@ -251,25 +253,28 @@ spec:
   chart:
     spec:
       chart: enforcer
-      version: "2024.4.x"
+      version: "2022.4.x"
       sourceRef:
         kind: HelmRepository
         name: aqua-security
         namespace: aqua-security
       interval: 12h
   values:
-    # Enforcer group name
-    enforcerGroup: production-enforcers
-
     # Gateway connection
-    gate:
-      host: aqua-gateway.aqua-security.svc
-      port: 8443
+    global:
+      platform: k8s
+      gateway:
+        address: aqua-server-gateway-svc.aqua-security
+        port: 8443
+      imageCredentials:
+        create: false
 
     # Token for authenticating with the server
-    token:
-      secretName: aqua-enforcer-token
-      secretKey: token
+    enforcerTokenSecretName: aqua-enforcer-token
+    enforcerTokenSecretKey: token
+
+    securityContext:
+      privileged: true
 
     # Resource configuration
     resources:
@@ -287,34 +292,17 @@ spec:
       - effect: NoExecute
         operator: Exists
 
-    # Enforcer capabilities
-    enforcerConfig:
-      # Enable runtime protection
-      runtimeProtection: true
-      # Enable network control
-      networkControl: true
-      # Enable drift prevention
-      driftPrevention: true
-      # Container runtime
-      containerRuntime: containerd
-      runtimeSocketPath: /var/run/containerd/containerd.sock
-
-    # Host protection settings
-    hostProtection:
-      enabled: true
-      # Monitor host processes
-      hostProcesses: true
-      # Monitor host network
-      hostNetwork: true
+    # Run with host process visibility
+    hostPID: "true"
 ```
 
-## Step 6: Configure Runtime Policies
+## Step 6: Store Runtime Policy Configuration
 
-Define runtime security policies as ConfigMaps.
+Store a runtime security policy payload as a ConfigMap for your automation to apply through the Aqua Console or API.
 
 ```yaml
 # aqua-runtime-policies.yaml
-# Runtime security policy configuration
+# Runtime security policy payload for external automation
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -379,7 +367,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: aqua-web
+      app: aqua-server-console
   policyTypes:
     - Ingress
     - Egress
@@ -398,10 +386,12 @@ spec:
     - from:
         - podSelector:
             matchLabels:
-              app: aqua-gateway
+              app: aqua-server-gateway
       ports:
         - protocol: TCP
           port: 8080
+        - protocol: TCP
+          port: 8443
   egress:
     # Allow DNS
     - ports:
@@ -429,7 +419,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: aqua-gateway
+      app: aqua-server-gateway
   policyTypes:
     - Ingress
     - Egress
@@ -438,7 +428,7 @@ spec:
     - from:
         - podSelector:
             matchLabels:
-              app: aqua-enforcer
+              app: aqua-enforcer-ds
       ports:
         - protocol: TCP
           port: 8443
@@ -451,10 +441,12 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              app: aqua-web
+              app: aqua-server-console
       ports:
         - protocol: TCP
           port: 8080
+        - protocol: TCP
+          port: 8443
 ```
 
 ## Step 8: Configure Monitoring
@@ -474,9 +466,9 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: aqua-web
+      app: aqua-server-console
   endpoints:
-    - port: http
+    - port: aqua-web
       interval: 30s
       path: /api/v1/metrics
 ---
@@ -534,15 +526,15 @@ spec:
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
-      name: aqua-web
+      name: aqua-server-console
       namespace: aqua-security
     - apiVersion: apps/v1
       kind: Deployment
-      name: aqua-gateway
+      name: aqua-server-gateway
       namespace: aqua-security
     - apiVersion: apps/v1
       kind: DaemonSet
-      name: aqua-enforcer
+      name: aqua-enforcer-ds
       namespace: aqua-security
   timeout: 15m
 ```
@@ -559,20 +551,20 @@ flux get helmreleases -n aqua-security
 kubectl get pods -n aqua-security
 
 # Check server health
-kubectl logs -n aqua-security -l app=aqua-web --tail=20
+kubectl logs -n aqua-security -l app=aqua-server-console --tail=20
 
 # Verify gateway is connected
-kubectl logs -n aqua-security -l app=aqua-gateway --tail=20
+kubectl logs -n aqua-security -l app=aqua-server-gateway --tail=20
 
 # Check enforcers on all nodes
-kubectl get pods -n aqua-security -l app=aqua-enforcer -o wide
+kubectl get pods -n aqua-security -l app=aqua-enforcer-ds -o wide
 
 # Access the Aqua console via port-forward
-kubectl port-forward -n aqua-security svc/aqua-web 8080:8080
+kubectl port-forward -n aqua-security svc/aqua-server-console-svc 8080:8080
 
 # Verify enforcer connectivity
-kubectl exec -n aqua-security deploy/aqua-gateway -- \
-  curl -s localhost:8443/health
+kubectl exec -n aqua-security deploy/aqua-server-gateway -- \
+  curl -s localhost:8082/
 ```
 
 ## Troubleshooting
@@ -581,13 +573,13 @@ Common issues and solutions:
 
 ```bash
 # Check server logs for database connectivity
-kubectl logs -n aqua-security -l app=aqua-web --tail=100 | grep -i "database\|error"
+kubectl logs -n aqua-security -l app=aqua-server-console --tail=100 | grep -i "database\|error"
 
 # Verify enforcer can reach gateway
-kubectl logs -n aqua-security ds/aqua-enforcer --tail=50
+kubectl logs -n aqua-security ds/aqua-enforcer-ds --tail=50
 
 # Check license validity
-kubectl logs -n aqua-security -l app=aqua-web | grep -i license
+kubectl logs -n aqua-security -l app=aqua-server-console | grep -i license
 
 # Verify secrets are mounted
 kubectl get secrets -n aqua-security
@@ -602,4 +594,4 @@ flux reconcile helmrelease aqua-server -n aqua-security
 
 ## Conclusion
 
-You have successfully deployed Aqua Security on Kubernetes using Flux CD. Your cluster now has enterprise-grade container security including runtime protection, vulnerability scanning, drift prevention, network micro-segmentation, and admission control. All security configurations are managed as code through GitOps, providing full auditability and reproducibility across environments.
+You have successfully deployed Aqua Security on Kubernetes using Flux CD. Your cluster now has enterprise-grade container security components including the Aqua Console, Gateway, and Enforcer runtime protection. All deployment configurations are managed as code through GitOps, providing full auditability and reproducibility across environments.
