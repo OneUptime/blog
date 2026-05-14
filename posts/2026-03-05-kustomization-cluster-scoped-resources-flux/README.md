@@ -45,11 +45,11 @@ spec:
   path: ./clusters/production/cluster-resources
   prune: true
   wait: true
-  # Do NOT set targetNamespace -- it would incorrectly try to
-  # set namespace on cluster-scoped resources
+  # Do NOT set targetNamespace for a Kustomization that is meant
+  # to manage only cluster-scoped resources
 ```
 
-The key point: do not set `spec.targetNamespace` on a Kustomization that manages cluster-scoped resources. While `targetNamespace` only affects namespaced resources, it is cleaner to keep cluster-scoped and namespaced resources in separate Kustomizations to avoid confusion.
+The key point: do not set `spec.targetNamespace` on a Kustomization that is meant only for cluster-scoped resources. `targetNamespace` configures or overrides the namespace used by namespaced resources in the build, so it is cleaner to keep cluster-scoped and namespaced resources in separate Kustomizations to avoid confusion.
 
 ## Managing Namespaces
 
@@ -213,7 +213,7 @@ volumeBindingMode: WaitForFirstConsumer
 
 ## Mixing Cluster-Scoped and Namespaced Resources
 
-Sometimes a Kustomization needs to manage both cluster-scoped and namespaced resources -- for example, a ClusterRole and a RoleBinding that references it. This works fine as long as you do not use `targetNamespace`.
+Sometimes a Kustomization needs to manage both cluster-scoped and namespaced resources -- for example, a ClusterRole and a RoleBinding that references it. This works fine as long as the namespaced resources have the correct namespace set.
 
 ```yaml
 # Kustomization managing both scopes
@@ -229,7 +229,7 @@ spec:
     name: flux-system
   path: ./infrastructure/monitoring/rbac
   prune: true
-  # No targetNamespace -- cluster-scoped resources must not have one set
+  # No targetNamespace -- the RoleBinding declares its namespace explicitly
 ```
 
 ```yaml
@@ -244,11 +244,12 @@ rules:
     resources: ["nodes", "nodes/metrics", "services", "endpoints", "pods"]
     verbs: ["get", "list", "watch"]
 ---
-# Namespaced: ClusterRoleBinding references the ClusterRole
+# Namespaced: RoleBinding references the ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
   name: prometheus-reader-binding
+  namespace: monitoring
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -316,7 +317,7 @@ Use these commands to verify your cluster-scoped resources are being managed cor
 
 ```bash
 # View all resources managed by the cluster-resources Kustomization
-flux tree ks cluster-resources --namespace flux-system
+flux tree kustomization cluster-resources --namespace flux-system
 
 # Check for any issues with cluster-scoped resources
 flux events --for Kustomization/cluster-resources --namespace flux-system
