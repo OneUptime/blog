@@ -79,7 +79,7 @@ git push origin main
 ### Step 3: Trigger Flux Reconciliation
 
 ```bash
-# Wait for Flux to detect the change automatically (default: 1-10 min)
+# Wait for Flux to detect the change automatically based on your configured intervals
 # Or force immediate reconciliation:
 flux reconcile source git flux-system -n flux-system
 
@@ -96,9 +96,9 @@ kubectl get deployment my-app -n default -o jsonpath='{.spec.template.spec.conta
 When several commits need to be undone.
 
 ```bash
-# Revert a range of commits (oldest to newest order)
+# Revert a range of commits
 # This reverts commits from b7e9d3a through f8a2c1d
-git revert --no-commit b7e9d3a..f8a2c1d
+git revert --no-commit b7e9d3a^..f8a2c1d
 
 # Review the staged changes before committing
 git diff --staged
@@ -128,12 +128,12 @@ git commit -m "Rollback: restore state from commit a1c5f2e"
 git push origin main
 
 # Option B: Use a temporary branch (safer for teams)
-git checkout -b rollback-20260306 a1c5f2e
 git checkout main
-git merge rollback-20260306 --strategy-option theirs \
-  -m "Rollback: merge state from a1c5f2e to fix broken deployment"
-git push origin main
-git branch -d rollback-20260306
+git checkout -b rollback-20260306
+git checkout a1c5f2e -- .
+git commit -m "Rollback: restore state from a1c5f2e to fix broken deployment"
+git push origin rollback-20260306
+# Open and merge a pull request from rollback-20260306 into main
 ```
 
 ## Method 4: Pin Flux to a Specific Git Commit
@@ -372,7 +372,7 @@ kubectl rollout restart deployment/my-app -n default
 Rolling back to a previous Git commit with Flux CD follows these steps:
 
 1. **Identify** the bad commit using `git log`
-2. **Revert** using `git revert`, branch merge, or tag checkout
+2. **Revert** using `git revert`, a rollback branch, or tag checkout
 3. **Push** the revert commit to trigger Flux reconciliation
 4. **Verify** that all Kustomizations, HelmReleases, and workloads are healthy
 5. **Validate** application health with smoke tests
