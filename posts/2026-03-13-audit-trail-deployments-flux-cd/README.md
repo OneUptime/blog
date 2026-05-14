@@ -30,7 +30,7 @@ Flux emits Kubernetes Events and also sends notifications via its alerting syste
 ```yaml
 # clusters/production/monitoring/audit-provider.yaml
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: audit-log
@@ -42,32 +42,37 @@ spec:
     name: audit-webhook-secret
 ---
 # clusters/production/monitoring/audit-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-audit-trail
   namespace: flux-system
 spec:
-  summary: "Deployment event"
+  eventMetadata:
+    summary: "Deployment event"
   providerRef:
     name: audit-log
   # Capture both successes and failures for a complete trail
   eventSeverity: info
   eventSources:
     - kind: Kustomization    # All Kustomization reconciliation events
+      name: '*'
     - kind: HelmRelease      # All HelmRelease reconciliation events
+      name: '*'
     - kind: GitRepository    # Source fetch events
+      name: '*'
 ```
 
-Each event sent by Flux includes:
+Each webhook event sent by Flux includes:
 - `involvedObject.name` - which Kustomization or HelmRelease changed
 - `reason` - ReconciliationSucceeded, ReconciliationFailed, etc.
-- `message` - what revision was applied
-- `lastTimestamp` - when it happened
+- `message` - the reconciliation status message
+- `metadata` - Flux metadata such as the reconciled source revision
+- `timestamp` - when it happened
 
 ## Step 2: Enrich Events with Git Commit Metadata
 
-Flux events include the Git commit SHA in the message. Use a Lambda function, Logstash pipeline, or similar to enrich events with the full commit metadata from the Git API:
+Flux events include the reconciled Git revision in the event metadata. Use a Lambda function, Logstash pipeline, or similar to enrich events with the full commit metadata from the Git API:
 
 ```yaml
 # infrastructure/audit/event-enricher.yaml
@@ -108,7 +113,7 @@ spec:
               memory: 256Mi
 ```
 
-The enricher reads Flux events, extracts the commit SHA from the message, calls the GitHub API to get commit details (author, PR number, reviewers), and writes an enriched record to Elasticsearch.
+The enricher reads Flux events, extracts the commit SHA from the event metadata, calls the GitHub API to get commit details and the associated pull request and review records, and writes an enriched record to Elasticsearch.
 
 ## Step 3: Query the Audit Trail
 
@@ -124,19 +129,19 @@ curl -X GET "http://elasticsearch.logging:9200/flux-events-*/_search" \
         "filter": [
           {"term": {"involvedObject.kind": "Kustomization"}},
           {"term": {"reason": "ReconciliationSucceeded"}},
-          {"range": {"lastTimestamp": {"gte": "2026-03-01", "lte": "2026-03-31"}}}
+          {"range": {"timestamp": {"gte": "2026-03-01", "lte": "2026-03-31"}}}
         ]
       }
     },
-    "sort": [{"lastTimestamp": "desc"}],
-    "_source": ["lastTimestamp", "involvedObject.name", "message", "git.author", "git.pr_number"]
+    "sort": [{"timestamp": "desc"}],
+    "_source": ["timestamp", "involvedObject.name", "message", "metadata", "git.author", "git.pr_number"]
   }'
 ```
 
 For a quick audit trail from the Kubernetes API (ephemeral but useful for recent events):
 
 ```bash
-# View all reconciliation events from the past 24 hours
+# View retained reconciliation events from the Kubernetes API
 kubectl get events -n flux-system \
   --sort-by='.lastTimestamp' \
   --field-selector reason=ReconciliationSucceeded \
@@ -175,7 +180,7 @@ git log --merges \
   -- apps/ clusters/
 
 echo ""
-echo "## Flux Reconciliation Events (last 24h from cluster)"
+echo "## Flux Reconciliation Events (recent retained events from cluster)"
 kubectl get events -n flux-system \
   --sort-by='.lastTimestamp' \
   | grep -E "Reconciliation(Succeeded|Failed)"
@@ -183,7 +188,7 @@ kubectl get events -n flux-system \
 
 ## Step 5: Implement Tamper Detection
 
-Flux's Git-based model provides tamper detection: if someone modifies the cluster directly (bypassing Flux), Flux detects drift on the next reconciliation and either corrects it (if `prune: true`) or alerts on it:
+Flux's Git-based model provides tamper detection for managed resources: if someone modifies a resource managed by a Flux Kustomization directly (bypassing Git), Flux detects and corrects drift on the next reconciliation. If a previously applied object is removed from the source revision, Flux deletes it when `prune: true` is set. Flux does not automatically delete arbitrary objects that were never managed by the Kustomization.
 
 ```yaml
 # clusters/production/apps/my-app.yaml
@@ -194,7 +199,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m         # Check every 5 minutes for drift
-  prune: true          # Remove unauthorized resources automatically
+  prune: true          # Remove stale managed resources automatically
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -202,21 +207,23 @@ spec:
 ```
 
 ```yaml
-# Alert when Flux detects and corrects drift
-apiVersion: notification.toolkit.fluxcd.io/v1
+# Alert when Flux reports apply or pruning changes
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: drift-correction-alert
   namespace: flux-system
 spec:
-  summary: "AUDIT: Unauthorized change detected and corrected by Flux"
+  eventMetadata:
+    summary: "AUDIT: Flux corrected drift or pruned managed resources"
   providerRef:
     name: audit-log
-  eventSeverity: warning
+  eventSeverity: info
   eventSources:
     - kind: Kustomization
+      name: '*'
   inclusionList:
-    - ".*pruned.*"      # Flux pruned an unauthorized resource
+    - ".*(configured|created|pruned|deleted).*"
 ```
 
 ## Step 6: Visualize the Audit Trail
@@ -227,7 +234,7 @@ flowchart TD
     A --> PR[PR Review - approval recorded]
     PR --> Merge[Merge to main]
     Merge --> Flux[Flux detects new commit]
-    Flux -->|Reconciliation event: who/what/when/outcome| K8sEvents[Kubernetes Events]
+    Flux -->|Reconciliation event: what/when/outcome/revision| K8sEvents[Kubernetes Events]
     K8sEvents --> Enricher[Event Enricher]
     Git -->|Commit metadata| Enricher
     Enricher --> SIEM[Audit Log / SIEM]
