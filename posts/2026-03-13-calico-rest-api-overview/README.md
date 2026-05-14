@@ -10,7 +10,7 @@ Description: A comprehensive guide to Calico's REST API for programmatic access,
 
 ## Introduction
 
-Calico exposes a REST API that allows programmatic management of Calico resources without using `kubectl` or `calicoctl`. This API is the foundation that `calicoctl` itself uses under the hood, and it enables automation scenarios like dynamically managing network policies from CI/CD pipelines, monitoring tools, or custom controllers.
+Calico exposes a REST API that allows programmatic management of Calico resources without using `kubectl` or `calicoctl`. The API server exposes the same `projectcalico.org/v3` API semantics that `calicoctl` uses for Calico resources, and it enables automation scenarios like dynamically managing network policies from CI/CD pipelines, monitoring tools, or custom controllers.
 
 Understanding the Calico REST API means understanding the API server endpoint structure, authentication, and how the `projectcalico.org/v3` API group is accessed via standard HTTP calls.
 
@@ -23,7 +23,7 @@ Understanding the Calico REST API means understanding the API server endpoint st
 
 ## The Calico REST API Structure
 
-The Calico REST API is exposed through the Kubernetes API aggregation layer. All Calico v3 resources are accessible at:
+The Calico REST API is exposed through the Kubernetes API. On clusters using the Calico API server, this is done through the Kubernetes API aggregation layer; on clusters using native v3 CRDs, the same `projectcalico.org/v3` resources are served directly as CRDs. Calico v3 resources are accessible at:
 
 ```plaintext
 https://<kubernetes-api-server>/apis/projectcalico.org/v3/
@@ -59,7 +59,7 @@ Common endpoints:
 
 The Calico REST API uses the same authentication as the Kubernetes API server. The most common approaches:
 
-**Using kubeconfig token**:
+**Using a kubeconfig bearer token**:
 ```bash
 TOKEN=$(kubectl config view --raw -o jsonpath='{.users[0].user.token}')
 APISERVER=$(kubectl config view --raw -o jsonpath='{.clusters[0].cluster.server}')
@@ -102,7 +102,7 @@ curl -s -k -X POST \
     "metadata": {"name": "api-created-policy"},
     "spec": {
       "order": 500,
-      "selector": "test == true",
+      "selector": "test == 'true'",
       "ingress": [{"action": "Pass"}]
     }
   }' \
@@ -152,4 +152,4 @@ curl -s -X POST \
 
 ## Conclusion
 
-The Calico REST API provides programmatic access to all Calico resources through the standard Kubernetes API aggregation layer. It uses Kubernetes authentication and RBAC, making it secure and consistent with the rest of your Kubernetes tooling. For automation scenarios - CI/CD policy management, monitoring integrations, or custom controllers - the REST API is the foundation for building Calico-aware tooling.
+The Calico REST API provides programmatic access to Calico resources through the standard Kubernetes API. It uses Kubernetes authentication and RBAC, making it secure and consistent with the rest of your Kubernetes tooling. For automation scenarios - CI/CD policy management, monitoring integrations, or custom controllers - the REST API is the foundation for building Calico-aware tooling.
