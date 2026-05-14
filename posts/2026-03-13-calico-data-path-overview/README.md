@@ -12,7 +12,7 @@ Description: A deep dive into how packets flow through Calico's dataplane, cover
 
 The Calico data path is the sequence of processing stages that every packet traverses from source pod to destination pod. Understanding this path - which kernel hooks are involved, what processing happens at each stage, and where policy is enforced - is essential for diagnosing connectivity issues and understanding the performance characteristics of different Calico configurations.
 
-Calico supports three dataplanes: standard Linux (iptables/nftables), eBPF, and Windows HNS. This post focuses on the two Linux dataplanes because they represent the choice most production clusters make.
+Calico supports several dataplanes, including standard Linux (iptables/nftables), eBPF, Windows HNS, and VPP. This post focuses on the two Linux dataplanes because they represent the choice most production clusters make.
 
 ## Prerequisites
 
@@ -64,14 +64,13 @@ Each leaf chain contains the actual allow/deny rules derived from the Calico Net
 
 ## The eBPF Data Path
 
-In eBPF mode, Calico bypasses netfilter entirely and attaches programs at TC (Traffic Control) hook points:
+In eBPF mode, Calico handles workload traffic with eBPF programs attached at TC (Traffic Control) hook points, bypassing iptables and much of the normal kernel packet-processing path:
 
 ```mermaid
 graph LR
-    Pod[Source Pod] --> VethPodSide[veth pod-side\nTC Egress Hook]
-    VethPodSide --> VethHostSide[veth host-side\nTC Ingress Hook]
-    VethHostSide --> Routing[Kernel routing table]
-    Routing --> DestVeth[Destination veth\nTC Egress Hook]
+    Pod[Source Pod] --> VethHostSide[host-side cali veth\nTC egress for workload egress]
+    VethHostSide --> Routing[Fast path or kernel routing]
+    Routing --> DestVeth[Destination host-side cali veth\nTC egress for workload ingress]
     DestVeth --> DestPod[Destination Pod]
 ```
 
@@ -87,8 +86,8 @@ eBPF programs at TC hooks handle:
 | Hook point | netfilter (FORWARD chain) | TC (per-interface hooks) |
 | Connection tracking | Kernel conntrack | eBPF maps |
 | Service routing | kube-proxy | Calico eBPF |
-| Rule lookup | O(n) linear scan | O(1) hash map |
-| Kernel version required | Any | 5.3+ |
+| Policy representation | iptables chains with IP sets | BPF instructions with maps for selector/IP set data |
+| Kernel version required | Calico-supported Linux kernel with iptables/nftables dependencies | 5.10+ for the base eBPF dataplane |
 | Debugging tools | iptables -L, conntrack -L | bpftool, Felix metrics |
 
 ## The VXLAN Encapsulation Stage
