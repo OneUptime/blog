@@ -14,9 +14,9 @@ When teams use branch-based tagging strategies for container images, each enviro
 
 A common CI convention is to tag container images with the branch name followed by a build identifier. For example:
 
-- `main-20260305-a1b2c3d` for production
-- `staging-20260305-d4e5f6a` for staging
-- `develop-20260305-b7c8d9e` for development
+- `main-20260305143012-a1b2c3d` for production
+- `staging-20260305121530-d4e5f6a` for staging
+- `develop-20260305104500-b7c8d9e` for development
 
 This tagging strategy lets you control which images reach each environment by filtering on the branch prefix.
 
@@ -55,14 +55,14 @@ spec:
   imageRepositoryRef:
     name: myapp
   filterTags:
-    pattern: '^main-(?P<timestamp>[0-9]{8})-[a-f0-9]{7}$'
+    pattern: '^main-(?P<timestamp>[0-9]{14})-[a-f0-9]{7}$'
     extract: '$timestamp'
   policy:
     alphabetical:
       order: asc
 ```
 
-This policy filters for tags starting with `main-`, extracts the date portion, and selects the latest one by alphabetical ordering. Since the timestamp format `YYYYMMDD` is lexicographically sortable, the highest value corresponds to the most recent build.
+This policy filters for tags starting with `main-`, extracts the timestamp portion, and selects the latest one by alphabetical ordering. Since the timestamp format `YYYYMMDDHHMMSS` is lexicographically sortable, the highest value corresponds to the most recent build.
 
 ## Creating Separate Policies Per Environment
 
@@ -78,7 +78,7 @@ spec:
   imageRepositoryRef:
     name: myapp
   filterTags:
-    pattern: '^staging-(?P<timestamp>[0-9]{8})-[a-f0-9]{7}$'
+    pattern: '^staging-(?P<timestamp>[0-9]{14})-[a-f0-9]{7}$'
     extract: '$timestamp'
   policy:
     alphabetical:
@@ -97,7 +97,7 @@ spec:
   imageRepositoryRef:
     name: myapp
   filterTags:
-    pattern: '^develop-(?P<timestamp>[0-9]{8})-[a-f0-9]{7}$'
+    pattern: '^develop-(?P<timestamp>[0-9]{14})-[a-f0-9]{7}$'
     extract: '$timestamp'
   policy:
     alphabetical:
@@ -142,7 +142,7 @@ spec:
     spec:
       containers:
         - name: myapp
-          image: docker.io/myorg/myapp:main-20260305-a1b2c3d # {"$imagepolicy": "flux-system:myapp-production"}
+          image: docker.io/myorg/myapp:main-20260305143012-a1b2c3d # {"$imagepolicy": "flux-system:myapp-production"}
 ```
 
 In the staging cluster directory:
@@ -158,7 +158,7 @@ spec:
     spec:
       containers:
         - name: myapp
-          image: docker.io/myorg/myapp:staging-20260305-d4e5f6a # {"$imagepolicy": "flux-system:myapp-staging"}
+          image: docker.io/myorg/myapp:staging-20260305121530-d4e5f6a # {"$imagepolicy": "flux-system:myapp-staging"}
 ```
 
 Each environment's manifests reference the corresponding ImagePolicy, so Flux updates them independently based on the branch filter.
@@ -236,7 +236,7 @@ The output for each policy should show the latest tag matching that branch prefi
 kubectl -n flux-system describe imagerepository myapp
 ```
 
-Look at the `Last Scan Result` section to see which tags were discovered.
+Look at the `Last Scan Result` section to see the tag count and a sample of the discovered tags.
 
 ## Troubleshooting Common Issues
 
@@ -244,6 +244,6 @@ Look at the `Last Scan Result` section to see which tags were discovered.
 
 **Wrong tag selected**: Verify that the extracted portion is truly sortable. If you extract a commit SHA instead of a timestamp, alphabetical sorting will not produce the correct chronological order.
 
-**Multiple branches matching**: If branch names overlap (for example, `main` and `main-feature`), make your regex more specific. Use `^main-(?P<ts>[0-9]{8})` rather than `main` without the anchor.
+**Multiple branches matching**: If branch names overlap (for example, `main` and `main-feature`), make your regex more specific. Use `^main-(?P<ts>[0-9]{14})` rather than `main` without the anchor.
 
 Branch-based image policies give you fine-grained control over which builds reach each environment, all while maintaining the GitOps principle of declarative, version-controlled configuration.
