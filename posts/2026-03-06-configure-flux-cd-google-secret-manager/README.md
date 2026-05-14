@@ -52,6 +52,16 @@ gcloud secrets create redis-url \
 echo -n "redis://10.0.1.50:6379/0" | \
   gcloud secrets versions add redis-url --data-file=-
 
+gcloud secrets create database-host \
+  --replication-policy="automatic"
+echo -n "postgres.production.svc.cluster.local" | \
+  gcloud secrets versions add database-host --data-file=-
+
+gcloud secrets create database-port \
+  --replication-policy="automatic"
+echo -n "5432" | \
+  gcloud secrets versions add database-port --data-file=-
+
 # List all secrets
 gcloud secrets list
 
@@ -112,7 +122,7 @@ spec:
   chart:
     spec:
       chart: external-secrets
-      version: "0.x"
+      version: "2.x"
       sourceRef:
         kind: HelmRepository
         name: external-secrets
@@ -135,7 +145,7 @@ Create a ClusterSecretStore that connects to Google Secret Manager.
 ```yaml
 # cluster-secret-store.yaml
 # Configures ESO to use Google Secret Manager as the secret backend
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: gcp-secret-manager
@@ -155,12 +165,12 @@ spec:
             namespace: external-secrets
 ```
 
-Alternatively, create a namespace-scoped SecretStore:
+Alternatively, create a namespace-scoped SecretStore that references a Kubernetes service account in the same namespace:
 
 ```yaml
 # secret-store-production.yaml
 # Namespace-scoped SecretStore for the production namespace
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: gcp-secret-manager
@@ -175,8 +185,7 @@ spec:
           clusterName: flux-gke-cluster
           clusterProjectID: PROJECT_ID
           serviceAccountRef:
-            name: external-secrets
-            namespace: external-secrets
+            name: production-external-secrets
 ```
 
 ## Step 5: Create ExternalSecret Resources
@@ -186,7 +195,7 @@ Define ExternalSecret resources that map Google Secret Manager secrets to Kubern
 ```yaml
 # external-secret-database.yaml
 # Syncs database credentials from Google Secret Manager to Kubernetes
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -229,7 +238,7 @@ spec:
 ```yaml
 # external-secret-api-keys.yaml
 # Syncs API keys from Google Secret Manager
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: api-keys
@@ -260,7 +269,7 @@ Sync multiple secrets at once using the find pattern.
 ```yaml
 # external-secret-bulk.yaml
 # Syncs all secrets matching a pattern from Google Secret Manager
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: all-app-secrets
@@ -348,18 +357,17 @@ Set up automatic secret rotation with Google Secret Manager and ESO.
 ```bash
 # Enable automatic rotation for a secret
 gcloud secrets update database-password \
-  --add-rotation \
-  --rotation-period=30d \
+  --rotation-period=2592000s \
   --next-rotation-time=$(date -u -d "+30 days" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v+30d +%Y-%m-%dT%H:%M:%SZ)
 
-# Create a Cloud Function for secret rotation logic
+# Configure a Pub/Sub topic on the secret and create a Cloud Function for secret rotation logic
 # The function generates a new password and updates the database
 ```
 
 ```yaml
 # external-secret-with-rotation.yaml
 # ExternalSecret that tracks the latest version for automatic rotation
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: rotating-credentials
@@ -373,7 +381,7 @@ spec:
   target:
     name: rotating-credentials
     creationPolicy: Owner
-    # Delete the K8s secret if the ExternalSecret is deleted
+    # Delete the K8s secret if all referenced provider secrets are deleted
     deletionPolicy: Delete
   data:
     - secretKey: DB_PASSWORD
@@ -390,7 +398,7 @@ Monitor External Secrets synchronization status.
 ```yaml
 # alert-external-secrets.yaml
 # Flux alert for ExternalSecret sync failures
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: external-secrets-alert
@@ -404,7 +412,8 @@ spec:
       name: app-secrets
     - kind: HelmRelease
       name: external-secrets
-  summary: "External Secrets synchronization issue"
+  eventMetadata:
+    summary: "External Secrets synchronization issue"
 ```
 
 ```bash
@@ -442,7 +451,7 @@ rm eso-key.json
 ```yaml
 # cluster-secret-store-with-key.yaml
 # Uses a static service account key instead of Workload Identity
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: gcp-secret-manager
