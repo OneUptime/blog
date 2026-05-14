@@ -24,7 +24,8 @@ Before starting the migration, ensure you have the following in place:
 - Access to your Git repository managed by Flux
 - SOPS installed locally (`brew install sops` or equivalent)
 - An encryption key (age key or cloud KMS key)
-- `kubeseal` CLI for extracting current secrets
+- `kubectl` access to read the current Kubernetes Secrets
+- Optional: `kubectl-neat` for cleaning exported manifests
 
 ## Step 1: Generate an Age Key Pair
 
@@ -51,8 +52,10 @@ Create a `.sops.yaml` file in your repository root to define encryption rules:
 ```yaml
 creation_rules:
   - path_regex: .*\.sops\.yaml$
+    encrypted_regex: '^(data|stringData)$'
     age: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
   - path_regex: .*secrets.*\.yaml$
+    encrypted_regex: '^(data|stringData)$'
     age: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
 ```
 
@@ -148,7 +151,7 @@ For production environments, migrate one namespace or application at a time:
 1. Create the SOPS-encrypted secret for one application.
 2. Commit and push. Let Flux reconcile.
 3. Verify the application works with the new secret.
-4. Remove the old SealedSecret resource.
+4. Remove the old SealedSecret resource in the same change, or before applying the SOPS-managed Secret if the generated Secret is owned by the SealedSecret.
 5. Repeat for the next application.
 
 Monitor the kustomize-controller logs during each step:
