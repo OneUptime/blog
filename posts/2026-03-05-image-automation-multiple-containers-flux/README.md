@@ -20,7 +20,7 @@ Many Kubernetes workloads run more than one container per pod. A typical example
 
 ## Step 1: Create ImageRepository Resources for Each Image
 
-Every container image that you want to automate needs its own ImageRepository.
+Every distinct container image repository that you want to automate needs its own ImageRepository.
 
 ```yaml
 # image-repositories.yaml
@@ -56,7 +56,7 @@ spec:
 
 ## Step 2: Create ImagePolicy Resources for Each Image
 
-Each image needs its own ImagePolicy to select the appropriate tag.
+Each independently automated image needs its own ImagePolicy to select the appropriate tag.
 
 ```yaml
 # image-policies.yaml
