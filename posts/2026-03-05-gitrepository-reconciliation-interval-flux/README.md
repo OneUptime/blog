@@ -155,22 +155,22 @@ This is especially useful after pushing an urgent change when you do not want to
 
 ```bash
 # Reconcile and wait for the result
-flux reconcile source git my-app --with-source
+flux reconcile source git my-app
 ```
 
 ## Step 5: Monitor Reconciliation Timing
 
-Check when the last reconciliation occurred and when the next one is scheduled.
+Check the GitRepository status and latest artifact revision.
 
 ```bash
-# View reconciliation status including last update time
-flux get source git my-app
+# View GitRepository status
+flux get sources git my-app
 ```
 
 For detailed timing information, examine the resource status.
 
 ```bash
-# Get the last reconciliation timestamp
+# Get the last Ready condition transition timestamp
 kubectl get gitrepository my-app -n flux-system \
   -o jsonpath='{.status.conditions[?(@.type=="Ready")].lastTransitionTime}'
 ```
@@ -187,7 +187,7 @@ kubectl get gitrepository my-app -n flux-system \
 
 The reconciliation interval directly affects resource consumption on your cluster.
 
-**API rate limits**: If you host your Git repository on a service like GitHub, frequent polling can consume your API rate limit. GitHub allows 5,000 authenticated requests per hour. Each reconciliation uses at least one API call. With many GitRepository sources at short intervals, you can approach this limit.
+**Provider request limits**: If you host your Git repository on a service like GitHub, frequent polling can increase Git fetch traffic and may run into provider-side request, abuse, or secondary rate limits. With many GitRepository sources at short intervals, you can generate a large number of remote requests.
 
 ```bash
 # Calculate requests per hour
@@ -197,25 +197,10 @@ The reconciliation interval directly affects resource consumption on your cluste
 
 **Source controller resources**: Each reconciliation consumes CPU and memory in the source controller. For clusters with many GitRepository sources, use longer intervals or ensure the source controller has adequate resources.
 
-```yaml
-# Ensure source controller has enough resources for frequent reconciliations
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: source-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-      - name: manager
-        resources:
-          requests:
-            cpu: 100m
-            memory: 256Mi
-          limits:
-            cpu: 500m
-            memory: 512Mi
+```bash
+# Patch source-controller resources for frequent reconciliations
+kubectl -n flux-system patch deployment source-controller --type=strategic \
+  -p '{"spec":{"template":{"spec":{"containers":[{"name":"manager","resources":{"requests":{"cpu":"100m","memory":"256Mi"},"limits":{"cpu":"500m","memory":"512Mi"}}}]}}}}'
 ```
 
 ## Using Webhooks to Reduce Polling
@@ -248,4 +233,4 @@ flux create receiver github-receiver \
 
 ## Summary
 
-The `spec.interval` field on a Flux GitRepository controls how often the source controller polls for new commits. Choose shorter intervals (1-2 minutes) for development environments where fast feedback matters, and longer intervals (10-30 minutes) for production or stable infrastructure repositories. Use `flux reconcile` to trigger immediate checks when needed, and consider webhook receivers to get instant notifications without aggressive polling. Balancing the interval correctly keeps your deployments responsive while minimizing resource consumption and API rate limit usage.
+The `spec.interval` field on a Flux GitRepository controls how often the source controller polls for new commits. Choose shorter intervals (1-2 minutes) for development environments where fast feedback matters, and longer intervals (10-30 minutes) for production or stable infrastructure repositories. Use `flux reconcile` to trigger immediate checks when needed, and consider webhook receivers to get instant notifications without aggressive polling. Balancing the interval correctly keeps your deployments responsive while minimizing resource consumption and provider-side request load.
