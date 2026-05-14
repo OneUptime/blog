@@ -34,7 +34,7 @@ metadata:
   name: default-deny-all
 spec:
   order: 1000
-  selector: all()
+  namespaceSelector: kubernetes.io/metadata.name not in {"calico-system", "kube-public", "kube-system", "tigera-operator"}
   types:
     - Ingress
     - Egress
@@ -50,14 +50,17 @@ metadata:
 spec:
   order: 100
   selector: all()
+  namespaceSelector: kubernetes.io/metadata.name not in {"calico-system", "kube-public", "kube-system", "tigera-operator"}
   egress:
     - action: Allow
       protocol: UDP
       destination:
+        selector: 'k8s-app == "kube-dns"'
         ports: [53]
     - action: Allow
       protocol: TCP
       destination:
+        selector: 'k8s-app == "kube-dns"'
         ports: [53]
   types:
     - Egress
@@ -65,12 +68,12 @@ spec:
 
 ## Mistake 2: Wrong Policy Order
 
-Calico evaluates policies in ascending order (lower number = higher priority). A deny policy with order 100 will block traffic that an allow policy with order 200 tries to permit.
+Within a tier, Calico evaluates policies in ascending order (lower number = higher priority). A deny policy with order 100 will block traffic that an allow policy with order 200 tries to permit.
 
 ```bash
 # Verify order before applying
 
-calicoctl get globalnetworkpolicies -o wide | sort -k3 -n
+calicoctl get globalnetworkpolicies -o wide | sort -k2 -n
 ```
 
 ## Mistake 3: Selector Typos That Miss All Pods
@@ -96,20 +99,16 @@ spec:
 
 ## Mistake 5: Forgetting Calico System Pods
 
-Your default deny policy will also apply to Calico's own pods if `selector: all()` is used without exception:
+Your default deny policy will also apply to Calico's own pods if `selector: all()` is used without exception. Prefer scoping the default deny policy to non-system namespaces:
 
 ```yaml
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
-  name: allow-calico-system
+  name: default-deny-apps
 spec:
-  order: 1
-  namespaceSelector: kubernetes.io/metadata.name == 'calico-system'
-  ingress:
-    - action: Allow
-  egress:
-    - action: Allow
+  order: 1000
+  namespaceSelector: kubernetes.io/metadata.name not in {"calico-system", "kube-public", "kube-system", "tigera-operator"}
   types:
     - Ingress
     - Egress
