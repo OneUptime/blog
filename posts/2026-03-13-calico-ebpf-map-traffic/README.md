@@ -35,31 +35,31 @@ sequenceDiagram
     VethClient->>TC_Egress: Packet arrives at TC egress
     TC_Egress-->>TC_Egress: Lookup policy map\nAllow if policy permits
     TC_Egress->>TC_Ingress: Forward via host network
-    TC_Ingress-->>TC_Ingress: Lookup conntrack map\nAllow established
+    TC_Ingress-->>TC_Ingress: Lookup conntrack and policy maps\nAllow if policy permits
     TC_Ingress->>ServerPod: Deliver packet
 ```
 
-For same-node pod-to-pod traffic, Calico's eBPF programs intercept the packet at the TC egress hook on the sending pod's veth interface, apply network policy from the eBPF policy map, and forward directly without any iptables involvement. Return traffic is matched against the eBPF connection tracking map.
+For same-node pod-to-pod traffic, Calico's eBPF programs intercept the packet on the workload egress path from the sending pod and the workload ingress path toward the receiving pod. They apply the relevant egress and ingress network policy from BPF policy data, update connection tracking, and forward directly without any iptables involvement. Return traffic is matched against the eBPF connection tracking map.
 
 ## Scenario 2: Pod-to-ClusterIP Service (Cross-Node)
 
 This is where eBPF's advantage over kube-proxy is most visible. In iptables mode, the packet path is:
 
-1. Pod → iptables PREROUTING (DNAT to a backend pod IP) → routing → iptables POSTROUTING (SNAT) → network
+1. Pod → iptables service chains (DNAT to a backend pod IP) → routing → network
 
 In eBPF mode:
 
 ```mermaid
 graph LR
-    ClientPod[Client Pod] --> TCEgress[TC Egress Hook]
-    TCEgress --> ServiceMap[eBPF Service Map\nClusterIP → Backend IP]
+    ClientPod[Client Pod] --> BPFService[BPF Service Handling\nSocket or TC Path]
+    BPFService --> ServiceMap[eBPF Service Maps\nClusterIP → Backend IP]
     ServiceMap --> TCIngress[TC Ingress Hook on Backend Node]
     TCIngress --> BackendPod[Backend Pod]
     BackendPod --> TCRET[TC Egress Hook on Backend]
     TCRET --> ClientPod
 ```
 
-The eBPF program at the TC egress hook on the client pod performs the DNAT directly using a map lookup - no iptables rule traversal. The result is a single NAT operation instead of the double NAT that iptables + SNAT requires.
+Calico's eBPF kube-proxy replacement uses BPF programs and service maps to select the backend - no iptables rule traversal. For TCP traffic that originates inside the cluster, Calico can also use connect-time load balancing so the socket connects directly to the backend pod IP, removing per-packet service NAT for that connection. In contrast, kube-proxy in iptables mode normally DNATs ClusterIP traffic without rewriting the client pod's source IP.
 
 ## Scenario 3: External Traffic via NodePort (DSR Mode)
 
@@ -77,24 +77,27 @@ The backend pod receives the packet with the original client IP intact and sends
 
 ## Inspecting eBPF Maps at Runtime
 
-You can observe Calico's eBPF maps directly on a node:
+You can observe Calico's eBPF dataplane state from a `calico-node` pod:
 
 ```bash
-# List all Calico eBPF maps
+# Find a calico-node pod
 
-sudo bpftool map list | grep calico
+kubectl get pod -n calico-system -o wide
 
-# Inspect the service map
-sudo bpftool map dump name cali_v4_svc_ports
+# Inspect the service NAT table
+kubectl exec -n calico-system <calico-node-name> -- calico-node -bpf nat dump
+
+# Inspect the connection tracking table
+kubectl exec -n calico-system <calico-node-name> -- calico-node -bpf conntrack dump
 ```
 
-Felix also exposes eBPF-specific metrics via Prometheus that let you observe map hit rates, program execution counts, and error rates.
+Felix also exposes Prometheus metrics for dataplane update timing, failures, BPF endpoint counts, and related runtime state. For packet-level dataplane diagnostics, Calico's `calico-node -bpf` tool can dump counters, policy, NAT, conntrack, and profiling data.
 
 ## Best Practices
 
 - Use `bpftool prog show` on nodes to verify that Calico's eBPF programs are loaded after enabling eBPF mode
-- Monitor Felix's eBPF map update rate in Prometheus - spikes indicate rapid policy or endpoint changes
-- Enable DSR only after verifying your upstream load balancer can handle asymmetric return paths
+- Monitor Felix dataplane apply time and failure metrics in Prometheus - spikes can indicate rapid policy, endpoint, or service churn
+- Enable DSR only after verifying your underlying network can handle asymmetric return paths; some cloud load balancers expect the response to return through the same node and are not compatible with DSR
 - When debugging a connectivity issue, check both the TC egress hook (on the sender) and the TC ingress hook (on the receiver) to isolate where the packet is dropped
 
 ## Conclusion
