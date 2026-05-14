@@ -14,14 +14,14 @@ By default, Flux CD controllers operate cluster-wide, managing resources across 
 
 There are several ways to limit Flux's scope:
 
-1. **Kustomization targetNamespace**: Force all resources from a Kustomization to deploy into a specific namespace.
+1. **Kustomization targetNamespace**: Force namespaced resources from a Kustomization to deploy into a specific namespace.
 2. **Kustomization serviceAccountName**: Use a namespace-scoped service account with limited RBAC.
 3. **Multi-tenancy lockdown**: Deploy separate Flux instances per tenant namespace.
 4. **Network policies**: Restrict controller network access.
 
 ## Using targetNamespace
 
-The simplest approach is to use the `targetNamespace` field on a Kustomization to override the namespace of all resources it manages:
+The simplest approach is to use the `targetNamespace` field on a Kustomization to override the namespace of the namespaced resources it manages:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -39,7 +39,7 @@ spec:
   targetNamespace: team-a
 ```
 
-Every resource applied by this Kustomization will be placed in the `team-a` namespace, regardless of what namespace is specified in the manifest. This prevents a team from accidentally or intentionally deploying resources outside their namespace.
+Every namespaced resource applied by this Kustomization will be placed in the `team-a` namespace, regardless of what namespace is specified in the manifest. This prevents a team from accidentally or intentionally deploying namespaced resources outside their namespace, but RBAC is still needed to block cluster-scoped resources.
 
 ## Using serviceAccountName for RBAC Isolation
 
@@ -69,7 +69,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: team-a-deployer
-  namespace: team-a
+  namespace: flux-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -89,14 +89,14 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: team-a-deployer
-    namespace: team-a
+    namespace: flux-system
 roleRef:
   kind: Role
   name: team-a-deployer
   apiGroup: rbac.authorization.k8s.io
 ```
 
-With this configuration, even if team-a's manifests contain resources targeting other namespaces, the kustomize-controller will fail to apply them because the service account lacks permissions outside `team-a`.
+With this configuration, even if team-a's manifests contain resources targeting other namespaces, the kustomize-controller will fail to apply them because the service account lacks permissions outside `team-a`. The `team-a-deployer` service account is in `flux-system` because `serviceAccountName` is resolved in the same namespace as the Kustomization.
 
 ## Restricting Resource Types
 
@@ -190,26 +190,36 @@ spec:
 
 ## Cross-Namespace References
 
-When restricting namespaces, be aware of cross-namespace references. A Kustomization in `flux-system` referencing a service account in `team-a` requires the kustomize-controller to have permission to impersonate that service account. This is granted by default but can be restricted.
+When restricting namespaces, be aware of cross-namespace references. The `serviceAccountName` field does not include a namespace; the service account must exist in the same namespace as the Kustomization. If the Kustomization is in `flux-system`, create the service account in `flux-system` and use RoleBindings in tenant namespaces to grant only the permissions it needs.
 
-To explicitly allow impersonation:
+The kustomize-controller also needs permission to impersonate the service account. A default Flux bootstrap grants broad controller permissions, but in locked-down installations you can grant impersonation explicitly:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: flux-tenant-impersonation
+rules:
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    resourceNames: ["team-a-deployer", "team-b-deployer"]
+    verbs: ["impersonate"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: flux-kustomize-controller
+  name: flux-tenant-impersonation
 subjects:
   - kind: ServiceAccount
     name: kustomize-controller
     namespace: flux-system
 roleRef:
   kind: ClusterRole
-  name: cluster-admin
+  name: flux-tenant-impersonation
   apiGroup: rbac.authorization.k8s.io
 ```
 
-For tighter security, replace `cluster-admin` with a custom ClusterRole that only allows impersonation of specific service accounts.
+This grants impersonation for only the listed service accounts; the tenant service account's own RoleBindings still determine what Flux can apply.
 
 ## HelmRelease Namespace Restrictions
 
