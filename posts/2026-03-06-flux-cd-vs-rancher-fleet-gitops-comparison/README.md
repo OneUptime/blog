@@ -41,9 +41,9 @@ This centralized model is designed for managing hundreds or thousands of cluster
 | Application CRD | Kustomization / HelmRelease | Bundle / BundleDeployment |
 | Drift Detection | Yes | Yes |
 | Auto-remediation | Yes (configurable) | Yes |
-| Image Automation | Built-in controllers | Not built-in |
+| Image Automation | Available through Flux image controllers | Experimental imageScans feature, disabled by default |
 | Notification System | Built-in controller | Via Rancher alerts |
-| OCI Registry Support | Yes | Limited |
+| OCI Registry Support | OCI artifact sources and Helm OCI support | Helm OCI chart support |
 | SOPS Encryption | Native support | Not built-in |
 | Dependency Management | Kustomization dependencies | Fleet dependency ordering |
 | Health Checks | Built-in | Built-in |
@@ -51,7 +51,7 @@ This centralized model is designed for managing hundreds or thousands of cluster
 | Standalone Usage | Yes | Possible but designed for Rancher |
 | Edge/IoT Support | Via lightweight install | Purpose-built for fleet management |
 | Cluster Registration | Manual setup | Automated via Rancher |
-| Resource Footprint | ~200 MB | ~300 MB (agent) + manager |
+| Resource Footprint | Multiple controllers, configurable resources | Manager plus per-cluster agent, configurable resources |
 
 ## Configuration Comparison
 
@@ -408,19 +408,20 @@ spec:
         matchExpressions:
           - key: management.cattle.io/cluster-display-name
             operator: Exists
-    # Target specific Rancher-provisioned clusters
+    # Target clusters with user-applied labels
     - name: rke2-clusters
       clusterSelector:
         matchLabels:
-          provider.cattle.io: rke2
+          cluster-type: rke2
 ```
 
 ## Flux CD Unique Features
 
-Features available in Flux CD but not in Fleet:
+Examples of Flux-native features that differ from Fleet's model:
 
 ```yaml
-# 1. Image Automation (not available in Fleet)
+# 1. Flux image automation (Fleet has an experimental imageScans feature,
+#    disabled by default, rather than the same Flux image controller model)
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
@@ -499,7 +500,7 @@ spec:
 ### Choose Flux CD If
 
 - You want a standalone GitOps tool independent of any platform
-- You need image automation for continuous deployment workflows
+- You need mature image automation for continuous deployment workflows
 - You require SOPS-encrypted secrets in Git
 - You prefer a decentralized multi-cluster model where each cluster is autonomous
 - You want CNCF Graduated project maturity and broad community support
