@@ -29,6 +29,23 @@ If you do not already have Graphite running, you can deploy it in your cluster. 
 ```yaml
 # graphite-deployment.yaml
 
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: graphite-pvc
+  namespace: monitoring
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -127,7 +144,7 @@ spec:
   provider:
     # Specify Graphite as the provider
     type: graphite
-    # URL of your Graphite instance render API
+    # Base URL of your Graphite instance
     address: http://graphite.monitoring.svc.cluster.local
     # Optional: reference to auth credentials
     secretRef:
@@ -135,7 +152,7 @@ spec:
   # Graphite render API query
   # The {{ target }} variable is replaced with the canary target name
   query: |
-    averageSeries(app.{{ target }}.request.duration.mean)
+    target=averageSeries(app.{{ target }}.request.duration.mean)
 ```
 
 The query uses Graphite functions to calculate the average request duration. Graphite has a rich set of functions including `averageSeries`, `sumSeries`, `maxSeries`, and many more.
@@ -161,7 +178,7 @@ spec:
   # divideSeries divides error count by total request count
   # scale multiplies the result by 100 to get a percentage
   query: |
-    scale(divideSeries(sumSeries(app.{{ target }}.request.status.5xx), sumSeries(app.{{ target }}.request.count)), 100)
+    target=scale(divideSeries(sumSeries(app.{{ target }}.request.status.5xx), sumSeries(app.{{ target }}.request.count)), 100)
 ```
 
 ## Step 5: Create a Graphite MetricTemplate for Throughput
@@ -181,9 +198,9 @@ spec:
     address: http://graphite.monitoring.svc.cluster.local
     secretRef:
       name: graphite-credentials
-  # Query for requests per second over the last minute
+  # Query for requests per minute over one-minute buckets
   query: |
-    summarize(sumSeries(app.{{ target }}.request.count), '1min', 'sum')
+    target=summarize(sumSeries(app.{{ target }}.request.count), '1min', 'sum')
 ```
 
 ## Step 6: Reference Graphite Metrics in the Canary Resource
@@ -265,7 +282,7 @@ spec:
       name: graphite-credentials
   # Query the 99th percentile latency
   query: |
-    nPercentile(app.{{ target }}.request.duration, 99)
+    target=nPercentile(app.{{ target }}.request.duration, 99)
 ```
 
 ### Comparison with Baseline
@@ -286,7 +303,7 @@ spec:
   # Compare canary latency against the primary
   # Returns the ratio of canary to primary latency
   query: |
-    divideSeries(averageSeries(app.{{ target }}-canary.request.duration.mean), averageSeries(app.{{ target }}-primary.request.duration.mean))
+    target=divideSeries(averageSeries(app.{{ target }}-canary.request.duration.mean), averageSeries(app.{{ target }}-primary.request.duration.mean))
 ```
 
 ## Step 8: Verify and Test
