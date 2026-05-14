@@ -15,14 +15,25 @@ Grafana Loki is a horizontally scalable, multi-tenant log aggregation system ins
 - A Kubernetes cluster with Flux CD installed
 - A GitOps repository connected to Flux
 - Object storage (S3, GCS, or MinIO) for production deployments
-- Grafana for querying logs (Loki has no built-in UI)
+- Grafana for querying logs with a full UI
 
 ## Creating the HelmRepository
 
-Loki is published through the Grafana Helm chart repository.
+Loki is published through the Grafana Community Helm chart repository. Grafana Alloy is published through the Grafana Helm chart repository.
 
 ```yaml
-# helmrepository-grafana.yaml - Grafana Helm chart repository (shared with Grafana charts)
+# helmrepository-grafana-community.yaml - Grafana Community Helm chart repository for Loki
+
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: grafana-community
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://grafana-community.github.io/helm-charts
+---
+# helmrepository-grafana.yaml - Grafana Helm chart repository for Alloy and Grafana charts
 
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -36,7 +47,7 @@ spec:
 
 ## Deploying Loki with HelmRelease
 
-The following HelmRelease deploys Loki in single-binary mode, suitable for small to medium workloads. For large-scale deployments, use the microservices mode instead.
+The following HelmRelease deploys Loki in monolithic mode, suitable for small to medium workloads. For large-scale deployments, use the distributed mode instead.
 
 ```yaml
 # helmrelease-loki.yaml - Loki deployment via Flux using the loki chart
@@ -50,10 +61,10 @@ spec:
   chart:
     spec:
       chart: loki
-      version: "6.x"
+      version: "13.x"
       sourceRef:
         kind: HelmRepository
-        name: grafana
+        name: grafana-community
         namespace: flux-system
       interval: 15m
   install:
@@ -70,10 +81,10 @@ spec:
       retries: 3
       strategy: rollback
   values:
-    # Deploy in single-binary mode for simplicity
-    deploymentMode: SingleBinary
+    # Deploy in monolithic mode for simplicity
+    deploymentMode: Monolithic
 
-    # Single binary configuration
+    # Monolithic configuration
     singleBinary:
       replicas: 1
       resources:
@@ -121,7 +132,13 @@ spec:
         ingestion_rate_mb: 10
         ingestion_burst_size_mb: 20
 
-    # Disable components not needed in single-binary mode
+      # Compactor configuration required for retention enforcement
+      compactor:
+        working_directory: /var/loki/compactor
+        retention_enabled: true
+        delete_request_store: filesystem
+
+    # Gateway configuration
     gateway:
       enabled: true
       replicas: 1
@@ -161,23 +178,23 @@ spec:
       enabled: false
 ```
 
-## Deploying Promtail for Log Collection
+## Deploying Grafana Alloy for Log Collection
 
-Loki needs a log shipper to send logs from your cluster nodes. Promtail is the default choice.
+Loki needs a log collector to send logs from your cluster. Grafana Alloy is the recommended choice for new deployments.
 
 ```yaml
-# helmrelease-promtail.yaml - Promtail deployment for shipping logs to Loki
+# helmrelease-alloy.yaml - Alloy deployment for shipping logs to Loki
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: promtail
+  name: alloy
   namespace: monitoring
 spec:
   interval: 15m
   chart:
     spec:
-      chart: promtail
-      version: "6.x"
+      chart: alloy
+      version: "1.x"
       sourceRef:
         kind: HelmRepository
         name: grafana
@@ -192,23 +209,42 @@ spec:
       retries: 3
       strategy: rollback
   values:
-    # Loki endpoint configuration
-    config:
-      clients:
-        - url: http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push
+    alloy:
+      mounts:
+        varlog: true
+      configMap:
+        content: |
+          logging {
+            level  = "info"
+            format = "logfmt"
+          }
 
-    # Resource requests and limits
-    resources:
-      requests:
-        cpu: 50m
-        memory: 128Mi
-      limits:
-        cpu: 200m
-        memory: 256Mi
+          discovery.kubernetes "pods" {
+            role = "pod"
+          }
 
-    # Tolerate all taints so Promtail runs on every node
-    tolerations:
-      - operator: Exists
+          loki.source.kubernetes "pods" {
+            targets    = discovery.kubernetes.pods.targets
+            forward_to = [loki.write.endpoint.receiver]
+          }
+
+          loki.write "endpoint" {
+            endpoint {
+              url = "http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push"
+            }
+          }
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+
+    # Tolerate all taints so Alloy can run across the cluster
+    controller:
+      tolerations:
+        - operator: Exists
 ```
 
 ## Production Configuration with Object Storage
@@ -232,13 +268,21 @@ loki:
     s3:
       endpoint: s3.amazonaws.com
       region: us-east-1
-      bucketnames: loki-chunks
-      access_key_id: "${AWS_ACCESS_KEY_ID}"
-      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      accessKeyId: "<AWS_ACCESS_KEY_ID>"
+      secretAccessKey: "<AWS_SECRET_ACCESS_KEY>"
     bucketNames:
       chunks: loki-chunks
       ruler: loki-ruler
       admin: loki-admin
+  storage_config:
+    aws:
+      region: us-east-1
+      bucketnames: loki-chunks
+      s3forcepathstyle: false
+  compactor:
+    working_directory: /var/loki/compactor
+    retention_enabled: true
+    delete_request_store: s3
 ```
 
 ## Configuring Grafana Data Source
@@ -264,13 +308,13 @@ datasources:
 ```bash
 # Check HelmRelease status
 flux get helmrelease loki -n monitoring
-flux get helmrelease promtail -n monitoring
+flux get helmrelease alloy -n monitoring
 
 # Verify Loki pods are running
 kubectl get pods -n monitoring -l app.kubernetes.io/name=loki
 
-# Verify Promtail is running on all nodes
-kubectl get pods -n monitoring -l app.kubernetes.io/name=promtail
+# Verify Alloy is running
+kubectl get pods -n monitoring -l app.kubernetes.io/name=alloy
 
 # Test Loki is accepting logs
 kubectl port-forward -n monitoring svc/loki-gateway 3100:80
@@ -282,4 +326,4 @@ curl -G http://localhost:3100/loki/api/v1/query --data-urlencode 'query={namespa
 
 ## Summary
 
-Deploying Loki with Promtail through Flux HelmRelease from `https://grafana.github.io/helm-charts` provides a GitOps-managed, cost-effective logging solution. Loki's label-based indexing keeps storage costs low compared to full-text indexing solutions, while its tight integration with Grafana gives you a unified observability platform for both metrics and logs.
+Deploying Loki with Alloy through Flux HelmRelease from `https://grafana-community.github.io/helm-charts` and `https://grafana.github.io/helm-charts` provides a GitOps-managed, cost-effective logging solution. Loki's label-based indexing keeps storage costs low compared to full-text indexing solutions, while its tight integration with Grafana gives you a unified observability platform for both metrics and logs.
