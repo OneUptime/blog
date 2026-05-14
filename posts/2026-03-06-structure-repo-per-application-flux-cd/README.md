@@ -322,12 +322,25 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Login to container registry
+        env:
+          REGISTRY: registry.example.com
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+        run: |
+          echo "${REGISTRY_PASSWORD}" | docker login "${REGISTRY}" \
+            --username "${REGISTRY_USERNAME}" \
+            --password-stdin
 
       - name: Build and push Docker image
         env:
@@ -406,7 +419,11 @@ spec:
       author:
         name: flux-bot
         email: flux@example.com
-      messageTemplate: "Update image to {{.NewTag}}"
+      messageTemplate: |
+        Update image
+        {{- range .Changed.Changes }}
+        {{ .OldValue }} -> {{ .NewValue }}
+        {{- end }}
     push:
       branch: main
   update:
