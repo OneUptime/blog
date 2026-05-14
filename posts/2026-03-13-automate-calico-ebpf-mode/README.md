@@ -10,14 +10,14 @@ Description: Automate Calico eBPF mode enablement across multiple clusters using
 
 ## Introduction
 
-Automating Calico eBPF mode enablement across multiple clusters requires handling both infrastructure concerns (kernel version requirements, kube-proxy configuration) and Kubernetes configuration (Installation CR, FelixConfiguration). Manual enablement across many clusters is error-prone and doesn't scale.
+Automating Calico eBPF mode enablement across multiple clusters requires handling both infrastructure concerns (kernel version requirements, kube-proxy configuration) and Kubernetes configuration (Installation CR, API server endpoint ConfigMap). Manual enablement across many clusters is error-prone and doesn't scale.
 
-The automation strategy combines node provisioning (ensuring the right kernel version), cluster bootstrapping (kube-proxy configuration), and GitOps delivery (Installation and FelixConfiguration changes). By automating each layer independently, you ensure eBPF mode is consistently enabled across all target clusters.
+The automation strategy combines node provisioning (ensuring the right kernel version), cluster bootstrapping (kube-proxy configuration), and GitOps delivery (Installation and API server endpoint changes). By automating each layer independently, you ensure eBPF mode is consistently enabled across all target clusters.
 
 ## Prerequisites
 
 - Calico v3.20+ with Tigera Operator
-- Nodes with kernel 5.3+ (ideally 5.10+)
+- Nodes with kernel 5.10+ (or RHEL 8.4+ with the documented 4.18 backports)
 - Terraform or similar for infrastructure
 - Flux CD or ArgoCD for GitOps
 
@@ -56,7 +56,7 @@ resource "aws_launch_template" "ebpf_node" {
     KERNEL_MAJOR=$(uname -r | cut -d. -f1)
     KERNEL_MINOR=$(uname -r | cut -d. -f2)
     if [[ "${KERNEL_MAJOR}" -lt 5 ]] || \
-       ([[ "${KERNEL_MAJOR}" -eq 5 ]] && [[ "${KERNEL_MINOR}" -lt 3 ]]); then
+       ([[ "${KERNEL_MAJOR}" -eq 5 ]] && [[ "${KERNEL_MINOR}" -lt 10 ]]); then
       echo "ERROR: Kernel $(uname -r) does not support Calico eBPF"
       exit 1
     fi
@@ -93,7 +93,7 @@ metadata:
 spec:
   calicoNetwork:
     linuxDataplane: BPF
-    hostPorts: Disabled
+    hostPorts: null
     ipPools:
       - cidr: 192.168.0.0/16
         encapsulation: VXLAN
@@ -120,7 +120,6 @@ set -euo pipefail
 
 CLUSTER="${1:?Provide cluster context}"
 API_SERVER_IP="${2:?Provide API server IP}"
-CALICO_CIDR="${3:-192.168.0.0/16}"
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
 
@@ -131,9 +130,12 @@ kubectl config use-context "${CLUSTER}"
 log "Checking kernel versions..."
 KERNEL_FAILURES=0
 for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-  kernel_major=$(kubectl debug node/${node} --image=alpine -it --quiet -- \
-    sh -c 'uname -r | cut -d. -f1' 2>/dev/null | tr -d '\r')
-  if [[ "${kernel_major}" -lt 5 ]]; then
+  kernel_version=$(kubectl debug "node/${node}" --image=alpine --quiet -- \
+    sh -c 'uname -r' 2>/dev/null | tr -d '\r')
+  kernel_major=$(echo "${kernel_version}" | cut -d. -f1)
+  kernel_minor=$(echo "${kernel_version}" | cut -d. -f2 | cut -d- -f1)
+  if [[ "${kernel_major}" -lt 5 ]] || \
+     ([[ "${kernel_major}" -eq 5 ]] && [[ "${kernel_minor}" -lt 10 ]]); then
     log "FAIL: Node ${node} kernel version too old"
     KERNEL_FAILURES=$((KERNEL_FAILURES + 1))
   fi
@@ -164,7 +166,7 @@ kubectl patch installation default --type=merge -p '{
   "spec": {
     "calicoNetwork": {
       "linuxDataplane": "BPF",
-      "hostPorts": "Disabled"
+      "hostPorts": null
     }
   }
 }'
