@@ -10,17 +10,16 @@ Description: Evaluate Calico API server deployment options and choose the right 
 
 ## Introduction
 
-The Calico API server exposes Calico resources as native Kubernetes API extensions, allowing you to manage NetworkPolicy, BGPPeer, IPPool, and other Calico resources using standard `kubectl` commands. Choosing the right configuration for production requires balancing high availability, RBAC security, and resource overhead.
+The Calico API server exposes Calico resources through the Kubernetes aggregated API server, allowing you to manage NetworkPolicy, BGPPeer, IPPool, and other Calico resources using standard `kubectl` commands. Choosing the right configuration for production requires balancing high availability, RBAC security, and resource overhead.
 
-Many teams deploy the Calico API server with default settings that work for development but are insufficient for production. The default configuration may run a single replica, use permissive RBAC, and lack resource limits - all of which must be addressed before the API server handles production traffic.
+For new Calico installations, consider native `projectcalico.org/v3` CRDs because the aggregated `calico-apiserver` is deprecated and will be removed in a future release. For existing clusters that still use the Calico API server, review the operator-managed defaults before the API server handles production traffic.
 
-This post walks through the decision points for a production Calico API server deployment, covering replica count, RBAC configuration, and TLS settings.
+This post walks through the decision points for a production Calico API server deployment, covering replica count, RBAC configuration, and resource settings.
 
 ## Prerequisites
 
 - Kubernetes cluster with Calico installed via the Tigera operator
 - `kubectl` with cluster-admin access
-- `calicoctl` CLI configured
 - Understanding of Kubernetes RBAC
 
 ## Step 1: Evaluate the Default API Server Deployment
@@ -30,10 +29,10 @@ Start by understanding what the Tigera operator deploys by default and identify 
 ```bash
 # Check the current Calico API server deployment
 
-kubectl get deployment calico-apiserver -n calico-apiserver
+kubectl get deployment calico-apiserver -n calico-system
 
 # Review replica count and resource limits
-kubectl describe deployment calico-apiserver -n calico-apiserver
+kubectl describe deployment calico-apiserver -n calico-system
 
 # Check current RBAC configuration
 kubectl get clusterroles | grep calico
@@ -46,7 +45,15 @@ For production, run at least two API server replicas to survive node failures.
 
 ```yaml
 # calico-apiserver-ha.yaml
-# Patch the APIServer resource to enable HA configuration
+# Set the replica count for operator-managed control plane components.
+apiVersion: operator.tigera.io/v1
+kind: Installation
+metadata:
+  name: default
+spec:
+  controlPlaneReplicas: 2
+---
+# Configure APIServer pod resources.
 apiVersion: operator.tigera.io/v1
 kind: APIServer
 metadata:
@@ -55,11 +62,18 @@ spec:
   # Set resource limits appropriate for production load
   apiServerDeployment:
     spec:
-      replicas: 2
       template:
         spec:
           containers:
             - name: calico-apiserver
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "128Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"
+            - name: tigera-queryserver
               resources:
                 requests:
                   cpu: "100m"
@@ -76,7 +90,7 @@ Apply the configuration using kubectl.
 kubectl apply -f calico-apiserver-ha.yaml
 
 # Verify both replicas are running and ready
-kubectl get pods -n calico-apiserver -w
+kubectl get pods -n calico-system -l k8s-app=calico-apiserver -w
 ```
 
 ## Step 3: Configure Production RBAC
@@ -130,11 +144,11 @@ Run a comprehensive validation to confirm the API server is ready for production
 # Verify the API server is registered as an API extension
 kubectl api-resources | grep projectcalico.org
 
-# Test creating and reading a Calico resource through the API server
-calicoctl get networkpolicies --all-namespaces
+# Test reading a Calico resource through the Kubernetes API server
+kubectl get networkpolicies.projectcalico.org --all-namespaces
 
-# Check API server audit logs are enabled
-kubectl logs -n calico-apiserver \
+# Review Calico API server logs for errors
+kubectl logs -n calico-system \
   -l k8s-app=calico-apiserver --tail=50
 
 # Confirm TigeraStatus shows API server as Available
