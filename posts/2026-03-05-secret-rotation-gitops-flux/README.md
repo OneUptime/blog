@@ -25,9 +25,12 @@ The safest approach supports both old and new credentials simultaneously during 
 Configure your database or service to accept both the old and new passwords. For PostgreSQL:
 
 ```sql
-ALTER USER app_user SET PASSWORD 'new-password-here';
--- The old password remains valid until explicitly revoked
+CREATE USER app_user_next WITH PASSWORD 'new-password-here';
+GRANT app_role TO app_user_next;
+-- Keep app_user active until the application has switched to app_user_next
 ```
+
+PostgreSQL stores one password per role, so changing `app_user` with `ALTER USER app_user WITH PASSWORD 'new-password-here';` invalidates the old password. To keep both credentials valid during the transition, use a second login role with the same application privileges, then revoke or drop the old role after the rollout.
 
 ### Step 2: Update the Encrypted Secret in Git
 
@@ -72,7 +75,7 @@ Most applications read secrets at startup. Trigger a rollout:
 kubectl rollout restart deployment/my-app
 ```
 
-Alternatively, use Reloader or Stakater to automate pod restarts when secrets change.
+Alternatively, use Stakater Reloader to automate pod restarts when secrets change.
 
 ### Step 5: Revoke the Old Credential
 
@@ -83,7 +86,7 @@ After confirming the application is healthy with the new credential, revoke the 
 For fully automated rotation, combine Flux with the External Secrets Operator (ESO). ESO pulls secrets from external stores like AWS Secrets Manager, where rotation can be automated.
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-credentials
@@ -152,24 +155,27 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install SOPS
         run: |
-          curl -LO https://github.com/getsops/sops/releases/download/v3.8.1/sops-v3.8.1.linux.amd64
-          chmod +x sops-v3.8.1.linux.amd64
-          sudo mv sops-v3.8.1.linux.amd64 /usr/local/bin/sops
+          SOPS_VERSION=v3.13.0
+          curl -LO "https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.linux.amd64"
+          chmod +x "sops-${SOPS_VERSION}.linux.amd64"
+          sudo mv "sops-${SOPS_VERSION}.linux.amd64" /usr/local/bin/sops
       - name: Generate new credentials
         run: |
           NEW_PASSWORD=$(openssl rand -base64 32)
           echo "NEW_PASSWORD=$NEW_PASSWORD" >> $GITHUB_ENV
       - name: Update database password
+        env:
+          DB_ADMIN_PASSWORD: ${{ secrets.DB_ADMIN_PASSWORD }}
         run: |
           # Update the external service first
-          PGPASSWORD=$OLD_PASSWORD psql -h db.example.com -U admin \
+          PGPASSWORD=$DB_ADMIN_PASSWORD psql -h db.example.com -U admin \
             -c "ALTER USER app_user PASSWORD '${{ env.NEW_PASSWORD }}';"
       - name: Update encrypted secret
         env:
           SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
         run: |
           sops --decrypt secrets/db-credentials.sops.yaml > /tmp/secret.yaml
-          sed -i "s|password:.*|password: $(echo -n $NEW_PASSWORD | base64)|" /tmp/secret.yaml
+          sed -i "s|password:.*|password: $(printf %s "$NEW_PASSWORD" | base64 -w0)|" /tmp/secret.yaml
           sops --encrypt /tmp/secret.yaml > secrets/db-credentials.sops.yaml
           rm /tmp/secret.yaml
       - name: Commit and push
@@ -183,7 +189,7 @@ jobs:
 
 ## Handling Application Restarts
 
-Kubernetes does not restart pods when a mounted secret changes. You have three options to handle this.
+Kubernetes does not restart pods when a Secret changes. Secret volumes are updated eventually unless they are mounted with `subPath`, but environment variables sourced from Secrets and applications that only read files at startup still require a restart or runtime reload. You have three options to handle this.
 
 **Option 1: Stakater Reloader**
 
@@ -209,6 +215,8 @@ spec:
       annotations:
         checksum/secret: '{{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}'
 ```
+
+This pattern applies when the workload is rendered by Helm. For plain manifests reconciled by Flux Kustomization, use an external automation step to update the pod template annotation or use a reloader controller.
 
 **Option 3: Application-Level Reload**
 
