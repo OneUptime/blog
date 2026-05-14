@@ -22,7 +22,7 @@ This guide covers multiple methods to verify and monitor Flux CD controller heal
 ## Prerequisites
 
 - A Kubernetes cluster with Flux CD installed
-- `flux` CLI installed (v2.0+)
+- `flux` CLI installed (v2.8.x, or a version compatible with your installed controllers)
 - `kubectl` configured to access your cluster
 
 ## Method 1: flux check Command
@@ -45,16 +45,16 @@ Sample output for a healthy installation:
 
 ```text
 -> checking prerequisites
--> Kubernetes 1.28.0 >=1.20.6-0
+-> Kubernetes 1.33.0 >=1.32.0
 -> checking controllers
 -> helm-controller: deployment ready
--> helm-controller: v2.1.0
+-> helm-controller: v1.5.4
 -> kustomize-controller: deployment ready
--> kustomize-controller: v1.1.0
+-> kustomize-controller: v1.8.5
 -> notification-controller: deployment ready
--> notification-controller: v1.1.0
+-> notification-controller: v1.8.4
 -> source-controller: deployment ready
--> source-controller: v1.1.0
+-> source-controller: v1.8.4
 -> all checks passed
 ```
 
@@ -167,33 +167,42 @@ Each Flux controller exposes `/healthz` and `/readyz` endpoints. You can query t
 
 ```bash
 # Port-forward to source-controller and check health
-kubectl port-forward -n flux-system deployment/source-controller 8080:8080 &
-curl -s http://localhost:8080/healthz
-# Expected: {"status":"ok"}
-curl -s http://localhost:8080/readyz
-# Expected: {"status":"ok"}
+kubectl port-forward -n flux-system deployment/source-controller 9440:9440 &
+curl -s http://localhost:9440/healthz
+# Expected: ok
+curl -s http://localhost:9440/readyz
+# Expected: ok
 kill %1
 
 # Check readiness via the Kubernetes API (without port-forward)
-kubectl get --raw /api/v1/namespaces/flux-system/pods/$(kubectl get pod -n flux-system -l app=source-controller -o jsonpath='{.items[0].metadata.name}')/proxy/healthz
+kubectl get --raw /api/v1/namespaces/flux-system/pods/$(kubectl get pod -n flux-system -l app=source-controller -o jsonpath='{.items[0].metadata.name}'):9440/proxy/readyz
 ```
 
 ## Method 7: Monitor with Prometheus Metrics
 
-Flux controllers expose Prometheus metrics on port 8080. Set up a ServiceMonitor to scrape them:
+Flux controllers expose Prometheus metrics on port 8080. Set up a PodMonitor to scrape them:
 
 ```yaml
-# ServiceMonitor to scrape Flux controller metrics
+# PodMonitor to scrape Flux controller metrics
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: flux-controllers
   namespace: flux-system
 spec:
+  namespaceSelector:
+    matchNames:
+      - flux-system
   selector:
-    matchLabels:
-      app.kubernetes.io/part-of: flux
-  endpoints:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - helm-controller
+          - kustomize-controller
+          - notification-controller
+          - source-controller
+  podMetricsEndpoints:
     - port: http-prom
       interval: 30s
       path: /metrics
@@ -206,7 +215,7 @@ Key metrics to monitor:
 kubectl port-forward -n flux-system deployment/source-controller 8080:8080 &
 
 # Check reconciliation duration
-curl -s http://localhost:8080/metrics | grep controller_runtime_reconcile_time
+curl -s http://localhost:8080/metrics | grep controller_runtime_reconcile_time_seconds
 
 # Check reconciliation errors
 curl -s http://localhost:8080/metrics | grep controller_runtime_reconcile_errors_total
@@ -243,12 +252,12 @@ echo ""
 
 # Check 2: All pods running
 echo "--- Checking pod status ---"
-NOT_RUNNING=$(kubectl get pods -n flux-system --no-headers | grep -v Running | wc -l | tr -d ' ')
+NOT_RUNNING=$(kubectl get pods -n flux-system --field-selector=status.phase!=Running --no-headers 2>/dev/null | wc -l | tr -d ' ')
 if [ "$NOT_RUNNING" -eq "0" ]; then
     echo "PASS: All pods are running"
 else
     echo "FAIL: $NOT_RUNNING pods are not running"
-    kubectl get pods -n flux-system --no-headers | grep -v Running
+    kubectl get pods -n flux-system --field-selector=status.phase!=Running
     exit 1
 fi
 echo ""
@@ -264,10 +273,20 @@ else
 fi
 echo ""
 
-# Check 4: Sources reconciling
-echo "--- Checking source reconciliation ---"
-flux get sources git --all-namespaces --status-selector ready=false 2>/dev/null || true
-flux get sources helm --all-namespaces --status-selector ready=false 2>/dev/null || true
+# Check 4: Flux resources reconciling
+echo "--- Checking reconciliation status ---"
+if ! NOT_READY=$(flux get all --all-namespaces --status-selector ready=false --no-header 2>&1); then
+    echo "FAIL: Unable to query Flux resources"
+    echo "$NOT_READY"
+    exit 1
+fi
+if [ -z "$NOT_READY" ]; then
+    echo "PASS: All Flux resources are ready"
+else
+    echo "FAIL: Some Flux resources are not ready"
+    echo "$NOT_READY"
+    exit 1
+fi
 echo ""
 
 echo "=== Health check complete ==="
@@ -320,14 +339,18 @@ spec:
           serviceAccountName: flux-health-checker
           containers:
             - name: health-check
-              image: ghcr.io/fluxcd/flux-cli:v2.1.0
+              image: ghcr.io/fluxcd/flux-cli:v2.8.6
               command:
                 - /bin/sh
                 - -c
                 - |
-                  flux check && \
-                  flux get all --all-namespaces --status-selector ready=false | \
-                  grep -c "False" && exit 1 || exit 0
+                  flux check || exit 1
+                  NOT_READY="$(flux get all --all-namespaces --status-selector ready=false --no-header)" || exit 1
+                  if [ -n "$NOT_READY" ]; then
+                    echo "$NOT_READY"
+                    exit 1
+                  fi
+                  exit 0
           restartPolicy: Never
       backoffLimit: 1
 ```
