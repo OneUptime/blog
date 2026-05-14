@@ -15,7 +15,7 @@ TLS certificates and their private keys are essential for securing communication
 Use this approach when:
 
 - You receive certificates from an enterprise certificate authority
-- You need wildcard certificates that cert-manager cannot issue
+- You need wildcard certificates that cert-manager cannot issue in your environment
 - You manage client certificates for mTLS between services
 - You need certificates for non-HTTP protocols
 - You want full Git history of certificate changes
@@ -38,7 +38,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: wildcard-tls
-  namespace: istio-system
+  namespace: default
 type: kubernetes.io/tls
 stringData:
   tls.crt: |
@@ -87,7 +87,7 @@ apiVersion: v1
 kind: Secret
 metadata:
     name: wildcard-tls
-    namespace: istio-system
+    namespace: default
 type: kubernetes.io/tls
 stringData:
     tls.crt: ENC[AES256_GCM,data:long-encrypted-string...,type:str]
@@ -221,7 +221,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: wildcard-tls
-  namespace: istio-system
+  namespace: default
 type: kubernetes.io/tls
 stringData:
   tls.crt: |
@@ -234,7 +234,7 @@ stringData:
     -----END PRIVATE KEY-----
 EOF
 
-sops --encrypt /tmp/wildcard-cert.yaml > infrastructure/tls/wildcard-cert.sops.yaml
+sops encrypt --filename-override infrastructure/tls/wildcard-cert.sops.yaml /tmp/wildcard-cert.yaml > infrastructure/tls/wildcard-cert.sops.yaml
 rm /tmp/wildcard-cert.yaml
 ```
 
