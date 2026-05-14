@@ -105,8 +105,8 @@ grafana:
     dashboards:
       enabled: true
 
-# Resource requests and limits for cost-analyzer
-costAnalyzer:
+# Resource requests and limits for the cost-model container
+kubecostModel:
   resources:
     requests:
       cpu: 200m
@@ -127,10 +127,6 @@ networkCosts:
   # Track costs per pod for network traffic
   podMonitor:
     enabled: true
-
-# Savings recommendations
-savings:
-  enabled: true
 ```
 
 ## Step 4: Create the HelmRelease
@@ -197,6 +193,30 @@ data:
       clusterName: "production-cluster"
       currencyCode: "USD"
       sharedNamespaces: "kube-system,flux-system,monitoring"
+      discount: "30"
+      cloudIntegrationSecret: "cloud-integration"
+    global:
+      notifications:
+        alertConfigs:
+          frontendUrl: http://localhost:9090
+          alerts:
+            - type: budget
+              threshold: 1000
+              window: 7d
+              aggregation: namespace
+              filter: default
+              slackWebhookUrl: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+            - type: efficiency
+              efficiencyThreshold: 0.3
+              spendThreshold: 100
+              window: 24h
+              aggregation: cluster
+              slackWebhookUrl: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+            - type: recurringUpdate
+              window: weekly
+              aggregation: namespace
+              filter: '*'
+              slackWebhookUrl: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
     prometheus:
       server:
         retention: 15d
@@ -207,6 +227,8 @@ data:
       size: 32Gi
     networkCosts:
       enabled: true
+      podMonitor:
+        enabled: true
 ```
 
 ## Step 6: Configure Cloud Integration
@@ -225,60 +247,47 @@ stringData:
   # AWS cloud integration configuration
   cloud-integration.json: |
     {
-      "aws": {
-        "athena": [
-          {
-            "bucket": "s3://your-cur-bucket",
-            "region": "us-east-1",
-            "database": "athenacurcfn_cost_report",
-            "table": "cost_report",
-            "workgroup": "primary",
-            "account": "123456789012"
-          }
-        ]
-      }
+      "aws": [
+        {
+          "athenaBucketName": "s3://your-athena-results-bucket",
+          "athenaRegion": "us-east-1",
+          "athenaDatabase": "athenacurcfn_cost_report",
+          "athenaTable": "cost_report",
+          "athenaWorkgroup": "primary",
+          "projectID": "123456789012"
+        }
+      ]
     }
 ```
 
 ## Step 7: Set Up Cost Alerts
 
-Configure alerts to notify your team when spending exceeds thresholds.
+Configure alerts to notify your team when spending exceeds thresholds. Add the alert configuration under `global.notifications.alertConfigs` in the Kubecost values ConfigMap.
 
 ```yaml
-# clusters/production/kubecost/config/alerts-configmap.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubecost-alerts
-  namespace: kubecost
-data:
-  alerts.json: |
-    {
-      "alerts": [
-        {
-          "type": "budget",
-          "threshold": 1000,
-          "window": "7d",
-          "aggregation": "namespace",
-          "filter": "default",
-          "slackWebhookUrl": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
-        },
-        {
-          "type": "efficiency",
-          "threshold": 0.3,
-          "window": "48h",
-          "aggregation": "cluster",
-          "slackWebhookUrl": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
-        },
-        {
-          "type": "recurringUpdate",
-          "window": "weekly",
-          "aggregation": "namespace",
-          "filter": "",
-          "slackWebhookUrl": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
-        }
-      ]
-    }
+# values.yaml fragment inside clusters/production/kubecost/config/values-configmap.yaml
+global:
+  notifications:
+    alertConfigs:
+      frontendUrl: http://localhost:9090
+      alerts:
+        - type: budget
+          threshold: 1000
+          window: 7d
+          aggregation: namespace
+          filter: default
+          slackWebhookUrl: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+        - type: efficiency
+          efficiencyThreshold: 0.3
+          spendThreshold: 100
+          window: 24h
+          aggregation: cluster
+          slackWebhookUrl: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+        - type: recurringUpdate
+          window: weekly
+          aggregation: namespace
+          filter: '*'
+          slackWebhookUrl: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
 ```
 
 ## Step 8: Add a Kustomization
@@ -335,12 +344,14 @@ Kubecost exposes a REST API for programmatic access to cost data.
 ```bash
 # Get allocation data for the last 7 days grouped by namespace
 curl http://localhost:9090/model/allocation \
+  -G \
   -d window=7d \
   -d aggregate=namespace \
   -d accumulate=true
 
 # Get savings recommendations
-curl http://localhost:9090/model/savings/requestSizing \
+curl http://localhost:9090/model/savings/requestSizingV2 \
+  -G \
   -d window=48h \
   -d targetCPUUtilization=0.65 \
   -d targetRAMUtilization=0.65
