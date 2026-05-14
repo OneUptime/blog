@@ -26,10 +26,10 @@ Before offboarding, suspend the tenant's Flux reconciliation to prevent new depl
 ```bash
 # Suspend all Kustomizations in the tenant namespace
 
-flux suspend kustomization team-alpha-apps -n team-alpha
+flux suspend kustomization --all -n team-alpha
 
-# Suspend source reconciliation
-flux suspend source git team-alpha-apps -n team-alpha
+# Suspend GitRepository source reconciliation
+flux suspend source git --all -n team-alpha
 
 # Verify suspension
 flux get all -n team-alpha
@@ -67,8 +67,8 @@ kubectl get pvc -n team-alpha
 # Create snapshots of persistent volumes if supported
 kubectl get volumesnapshot -n team-alpha
 
-# Export all tenant resources for backup
-kubectl get all -n team-alpha -o yaml > team-alpha-backup.yaml
+# Export common tenant workload resources for backup
+kubectl get all -n team-alpha -o yaml > team-alpha-workloads.yaml
 
 # Export ConfigMaps and Secrets
 kubectl get configmaps -n team-alpha -o yaml > team-alpha-configmaps.yaml
@@ -229,8 +229,8 @@ echo "Suspending Flux reconciliation..."
 flux suspend kustomization --all -n "${TENANT}" 2>/dev/null
 
 # Step 2: Backup resources
-echo "Backing up tenant resources..."
-kubectl get all -n "${TENANT}" -o yaml > "${TENANT}-backup-$(date +%Y%m%d).yaml"
+echo "Backing up common tenant workload resources..."
+kubectl get all -n "${TENANT}" -o yaml > "${TENANT}-workloads-$(date +%Y%m%d).yaml"
 
 # Step 3: Remove from Git
 echo "Removing tenant from fleet repository..."
