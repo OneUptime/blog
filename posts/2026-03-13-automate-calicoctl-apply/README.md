@@ -10,7 +10,7 @@ Description: Practical guide for using calicoctl commands safely and effectively
 
 ## Introduction
 
-calicoctl is the primary CLI for managing Calico resources. This guide covers safe usage patterns for calicoctl commands in production environments.
+calicoctl is a CLI for managing Calico resources and administrative workflows. In newer Calico releases, the Calico API server lets you use `kubectl` for most resource operations, while `calicoctl` remains required for commands such as `node`, `ipam`, `convert`, and `version`. This guide covers safe usage patterns for calicoctl commands in production environments.
 
 ## Key Commands
 
@@ -85,4 +85,4 @@ mindmap
 
 ## Conclusion
 
-calicoctl commands form the foundation of Calico resource management. Follow the backup-change-verify-rollback pattern for all write operations. Use `calicoctl apply` as the default for declarative management, `calicoctl get` for diagnostics, and `calicoctl delete` only with explicit intent and a verified backup. In production clusters, require change tickets for all write operations and integrate calicoctl with GitOps workflows for audit trails.
+calicoctl commands form an important part of Calico resource management and administrative diagnostics. Follow the backup-change-verify-rollback pattern for all write operations. When using calicoctl for file-based resource changes, use `calicoctl apply` for declarative management, `calicoctl get` for diagnostics, and `calicoctl delete` only with explicit intent and a verified backup. In production clusters, require change tickets for all write operations and integrate Calico resource changes with GitOps workflows for audit trails.
