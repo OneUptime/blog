@@ -80,8 +80,8 @@ virsh list --all
 virsh net-list --all
 
 # If default network is inactive, start it
-virsh net-start default
-virsh net-autostart default
+sudo virsh net-start default
+sudo virsh net-autostart default
 ```
 
 ## Create Virtual Machine
