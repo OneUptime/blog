@@ -47,7 +47,7 @@ flux get helmreleases -A
 
 # 5. Check for suspended resources
 echo "=== Suspended Resources ==="
-flux get all -A --status-selector ready=false
+flux get all -A --status-selector suspended=true
 
 # 6. Check Flux controller pods
 echo "=== Controller Pods ==="
@@ -69,7 +69,7 @@ kubectl get pods -n flux-system
 flux get kustomizations -A --status-selector ready=false
 
 # Step 2: Get detailed error message
-kubectl describe kustomization <name> -n flux-system | grep -A 5 "Message"
+kubectl describe kustomization <name> -n <namespace> | grep -A 5 "Message"
 
 # Step 3: Check controller logs for details
 kubectl logs -n flux-system deploy/kustomize-controller \
@@ -80,7 +80,7 @@ kubectl logs -n flux-system deploy/kustomize-controller \
 # Cause A: Invalid YAML in the Git repository
 # Fix: Check recent commits for syntax errors
 # Look at the error message - it usually points to the file
-flux logs --kind=Kustomization --name=<name> --level=error
+flux logs --kind=Kustomization --name=<name> -n <namespace> --level=error
 
 # Cause B: Missing dependency
 # Fix: Check if dependent Kustomizations are healthy
@@ -91,10 +91,10 @@ flux get kustomizations -A
 kubectl get <resource> -n <namespace> -o yaml | grep -A 5 "ownerReferences"
 
 # Step 5: Force reconciliation after fixing
-flux reconcile kustomization <name> --with-source
+flux reconcile kustomization <name> -n <namespace> --with-source
 
 # Step 6: Verify it recovers
-flux get kustomization <name> --watch
+flux get kustomization <name> -n <namespace> --watch
 ```
 
 ### Incident 2: Helm Release Stuck
@@ -133,7 +133,7 @@ helm get values <name> -n <namespace>
 # State C: Chart not found
 # Check if the HelmRepository is accessible
 flux get sources helm -A
-flux reconcile source helm <repo-name>
+flux reconcile source helm <repo-name> -n <namespace>
 
 # Step 5: Force reconciliation
 flux reconcile helmrelease <name> -n <namespace>
@@ -159,13 +159,15 @@ kubectl describe gitrepository flux-system -n flux-system
 # Cause A: Git authentication failure
 # Check if the deploy key or token has expired
 kubectl get secret flux-system -n flux-system
-# Verify the secret contains valid credentials
+# For SSH deploy keys, verify the identity key exists without printing the full secret
 kubectl get secret flux-system -n flux-system -o jsonpath='{.data.identity}' | base64 -d | head -1
+# For HTTPS credentials, check for username/password or bearerToken keys
+kubectl get secret flux-system -n flux-system -o json | jq -r '.data | keys[]'
 
 # Cause B: Git host unreachable
 # Test connectivity from within the cluster
-kubectl run -it --rm debug --image=curlimages/curl -n flux-system -- \
-  curl -sI https://github.com 2>&1 | head -5
+kubectl run -it --rm debug --image=curlimages/curl -n flux-system \
+  --restart=Never --command -- curl -sI https://github.com 2>&1 | head -5
 
 # Cause C: Branch deleted or force-pushed
 # Check if the configured branch exists
@@ -205,7 +207,7 @@ kubectl describe imageupdateautomation fleet-infra -n flux-system
 # Check registry credentials
 kubectl get secret regcred -n flux-system
 # Test registry access
-flux reconcile image repository <name>
+flux reconcile image repository <name> -n <namespace>
 
 # Cause B: No new images matching the policy
 # Check what images are available
@@ -217,8 +219,8 @@ kubectl logs -n flux-system deploy/image-automation-controller \
   --since=30m | grep -i "push\|auth\|permission"
 
 # Step 4: Force scan and update
-flux reconcile image repository <name>
-flux reconcile image update fleet-infra
+flux reconcile image repository <name> -n <namespace>
+flux reconcile image update fleet-infra -n flux-system
 ```
 
 ### Incident 5: Resource Drift Detected
@@ -239,15 +241,17 @@ kubectl get <resource> -n <namespace> -o yaml | \
   grep -A 3 "last-applied-configuration"
 
 # Step 3: Force reconciliation to restore desired state
-flux reconcile kustomization <name> --with-source
+flux reconcile kustomization <name> -n <namespace> --with-source
 
-# Step 4: Verify state matches Git
-flux diff kustomization <name>
+# Step 4: Verify reconciliation completed
+flux get kustomization <name> -n <namespace> --watch
+
+# Optional: compare a local checkout of the manifests against the cluster
+flux diff kustomization <name> -n <namespace> --path ./path/to/local/manifests
 
 # Step 5: Investigate who made the manual change
-# Check audit logs if available
-kubectl logs -n kube-system deploy/kube-apiserver \
-  --since=1h | grep "<resource-name>"
+# Check your Kubernetes audit log backend for <resource-name>
+# On managed clusters, this is usually in the cloud provider's control-plane logs.
 ```
 
 ## Emergency Procedures
@@ -261,15 +265,15 @@ Use this when Flux is causing cascading failures:
 # This stops Flux from making any changes to the cluster
 
 # Suspend all Kustomizations
-flux get kustomizations -A -o json | \
-  jq -r '.[] | "\(.metadata.name) \(.metadata.namespace)"' | \
+kubectl get kustomizations.kustomize.toolkit.fluxcd.io -A -o json | \
+  jq -r '.items[] | "\(.metadata.name) \(.metadata.namespace)"' | \
   while read name ns; do
     flux suspend kustomization "$name" -n "$ns"
   done
 
 # Suspend all HelmReleases
-flux get helmreleases -A -o json | \
-  jq -r '.[] | "\(.metadata.name) \(.metadata.namespace)"' | \
+kubectl get helmreleases.helm.toolkit.fluxcd.io -A -o json | \
+  jq -r '.items[] | "\(.metadata.name) \(.metadata.namespace)"' | \
   while read name ns; do
     flux suspend helmrelease "$name" -n "$ns"
   done
@@ -293,7 +297,7 @@ git revert <bad-commit-hash> --no-edit
 git push
 
 # Step 4: Force reconciliation
-flux reconcile kustomization <name> --with-source
+flux reconcile kustomization <name> -n <namespace> --with-source
 
 # Step 5: Monitor the rollback
 kubectl rollout status deployment/<name> -n <namespace> --timeout=300s
@@ -334,12 +338,10 @@ kubectl scale deployment/<controller-name> \
 panels:
   - title: "Reconciliation Success Rate"
     query: >
-      sum(rate(gotk_reconcile_condition{
-        status="True",type="Ready"
-      }[5m])) /
-      sum(rate(gotk_reconcile_condition{
-        type="Ready"
-      }[5m])) * 100
+      sum(gotk_resource_info{
+        ready="True"
+      }) /
+      sum(gotk_resource_info) * 100
     alert_threshold: "< 95%"
 
   - title: "Reconciliation Duration (p99)"
@@ -352,14 +354,14 @@ panels:
 
   - title: "Source Sync Failures"
     query: >
-      sum(gotk_reconcile_condition{
-        status="False",type="Ready",kind="GitRepository"
+      sum(gotk_resource_info{
+        ready="False",customresource_kind="GitRepository"
       })
     alert_threshold: "> 0"
 
   - title: "Suspended Resources"
     query: >
-      sum(gotk_suspend_status{suspended="true"})
+      sum(gotk_resource_info{suspended="true"})
     alert_threshold: "> 0 (unexpected)"
 ```
 
@@ -414,8 +416,10 @@ flux get all -A --status-selector ready=false
 
 # 2. Resume any suspended resources
 flux get all -A --status-selector suspended=true
-# Resume each one
+# Resume each one with the matching resource type
 flux resume kustomization <name> -n <namespace>
+flux resume helmrelease <name> -n <namespace>
+flux resume source git <name> -n <namespace>
 
 # 3. Verify no drift exists
 flux get kustomizations -A
@@ -448,9 +452,9 @@ flux reconcile source git <name>
 
 # Kustomizations
 flux get kustomizations -A
-flux reconcile kustomization <name>
-flux suspend kustomization <name>
-flux resume kustomization <name>
+flux reconcile kustomization <name> -n <ns>
+flux suspend kustomization <name> -n <ns>
+flux resume kustomization <name> -n <ns>
 
 # Helm releases
 flux get helmreleases -A
