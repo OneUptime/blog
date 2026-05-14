@@ -19,25 +19,30 @@ This guide demonstrates how to deploy and manage Longhorn using Flux CD, enablin
 Before starting, ensure you have:
 
 - A Kubernetes cluster (v1.25 or later) with at least three worker nodes
-- Each node should have open-iscsi installed (required by Longhorn)
+- Each node should have open-iscsi installed and the iscsid daemon running (required by Longhorn)
+- Each node should have an NFSv4 client installed if you plan to use backups or ReadWriteMany volumes
 - Flux CD installed and bootstrapped on your cluster
 - kubectl configured to access your cluster
 - A Git repository connected to Flux CD
 
 ## Preparing Nodes for Longhorn
 
-Longhorn requires open-iscsi on every node. You can verify and install it using the following commands:
+Longhorn requires open-iscsi on every node. You can verify and install prerequisites using `longhornctl`:
 
 ```bash
 # Check if open-iscsi is installed on nodes
 
 kubectl get nodes -o wide
 
-# Deploy the Longhorn environment check script
-kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.6.0/scripts/environment_check.yaml
+# Download longhornctl for Linux AMD64
+curl -sSfL -o longhornctl https://github.com/longhorn/cli/releases/download/v1.11.2/longhornctl-linux-amd64
+chmod +x longhornctl
 
-# View results
-kubectl logs -l app=longhorn-environment-check -n default
+# Check prerequisites
+./longhornctl check preflight
+
+# Install missing prerequisites when appropriate for your node OS
+./longhornctl install preflight
 ```
 
 ## Repository Structure
@@ -52,6 +57,10 @@ clusters/
         helmrelease.yaml
         storageclass.yaml
         kustomization.yaml
+      longhorn-config/
+        recurring-jobs.yaml
+        kustomization.yaml
+      longhorn-kustomization.yaml
 ```
 
 ## Step 1: Create the Namespace
@@ -97,19 +106,24 @@ spec:
   chart:
     spec:
       chart: longhorn
-      version: "1.6.x"
+      version: "1.11.x"
       sourceRef:
         kind: HelmRepository
         name: longhorn
         namespace: longhorn-system
+  install:
+    crds: CreateReplace
+  upgrade:
+    crds: CreateReplace
   timeout: 15m
   values:
     # Default settings for Longhorn
     defaultSettings:
       # Number of replicas for each volume
       defaultReplicaCount: 3
-      # Percentage of storage to reserve on each node
+      # Percentage of storage that can be allocated relative to disk capacity
       storageOverProvisioningPercentage: 200
+      # Minimum available disk capacity percentage before a disk becomes unschedulable
       storageMinimalAvailablePercentage: 15
       # Automatic salvage of volumes after node failure
       autoSalvage: true
@@ -117,13 +131,14 @@ spec:
       createDefaultDiskLabeledNodes: false
       # Default data path on the host
       defaultDataPath: /var/lib/longhorn/
-      # Backup target configuration (S3 example)
-      # backupTarget: s3://longhorn-backups@us-east-1/
-      # backupTargetCredentialSecret: longhorn-s3-secret
-      # Guaranteed engine manager CPU allocation
+      # Guaranteed instance manager CPU reservation percentage
       guaranteedInstanceManagerCPU: 12
       # Node drain policy
       nodeDrainPolicy: block-if-contains-last-replica
+    # Backup target configuration (S3 example)
+    # defaultBackupStore:
+    #   backupTarget: s3://longhorn-backups@us-east-1/
+    #   backupTargetCredentialSecret: longhorn-s3-secret
     persistence:
       # Set Longhorn as the default storage class
       defaultClass: true
@@ -180,7 +195,7 @@ allowVolumeExpansion: true
 ## Step 5: Configure Recurring Snapshots and Backups
 
 ```yaml
-# clusters/my-cluster/storage/longhorn/recurring-jobs.yaml
+# clusters/my-cluster/storage/longhorn-config/recurring-jobs.yaml
 apiVersion: longhorn.io/v1beta2
 kind: RecurringJob
 metadata:
@@ -225,6 +240,15 @@ resources:
   - helmrepository.yaml
   - helmrelease.yaml
   - storageclass.yaml
+```
+
+Create a separate Kustomization for Longhorn custom resources that require the Longhorn CRDs to exist first.
+
+```yaml
+# clusters/my-cluster/storage/longhorn-config/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
   - recurring-jobs.yaml
 ```
 
@@ -250,6 +274,22 @@ spec:
       name: longhorn
       namespace: longhorn-system
   timeout: 20m
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: longhorn-config
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: longhorn
+  interval: 10m
+  path: ./clusters/my-cluster/storage/longhorn-config
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  timeout: 10m
 ```
 
 ## Step 8: Verify the Deployment
@@ -326,14 +366,13 @@ stringData:
   # Replace with your actual credentials
   AWS_ACCESS_KEY_ID: "your-access-key"
   AWS_SECRET_ACCESS_KEY: "your-secret-key"
-  AWS_ENDPOINTS: "https://s3.amazonaws.com"
-  AWS_REGION: "us-east-1"
+  AWS_ENDPOINTS: "https://s3-compatible.example.com"
 ```
 
-Then update the `defaultSettings` in your HelmRelease values:
+Then update the `defaultBackupStore` in your HelmRelease values:
 
 ```yaml
-defaultSettings:
+defaultBackupStore:
   backupTarget: s3://longhorn-backups@us-east-1/
   backupTargetCredentialSecret: longhorn-s3-secret
 ```
@@ -350,11 +389,14 @@ metadata:
   name: longhorn-prometheus
   namespace: longhorn-system
   labels:
-    release: prometheus
+    name: longhorn-prometheus-servicemonitor
 spec:
   selector:
     matchLabels:
       app: longhorn-manager
+  namespaceSelector:
+    matchNames:
+      - longhorn-system
   endpoints:
     - port: manager
       interval: 30s
