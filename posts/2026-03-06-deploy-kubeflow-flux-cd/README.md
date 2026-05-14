@@ -16,9 +16,9 @@ This guide covers deploying Kubeflow's core components including Pipelines, Note
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.25 or later) with at least 16GB RAM and 4 CPUs per node
+- A Kubernetes cluster (v1.27 to v1.29 for Kubeflow manifests v1.9.0) with at least 16GB RAM and 4 CPUs per node
 - Flux CD installed and bootstrapped
-- kubectl and kustomize installed
+- kubectl and kustomize 5.2.1 or later installed
 - A default StorageClass configured in the cluster
 - cert-manager installed for TLS certificate management
 
@@ -32,16 +32,21 @@ clusters/
       sources/
         kubeflow-manifests.yaml
       components/
-        cert-manager.yaml
         istio.yaml
+        oauth2-proxy.yaml
         dex.yaml
-        kubeflow-namespace.yaml
         kubeflow-roles.yaml
+        kubeflow-istio-resources.yaml
+        profiles.yaml
         pipelines.yaml
         notebooks.yaml
         kserve.yaml
         training-operator.yaml
+      profiles/
+        kustomization.yaml
+        data-science-team.yaml
       kustomization.yaml
+    kubeflow.yaml
 ```
 
 ## Step 1: Create Required Namespaces
@@ -58,22 +63,6 @@ metadata:
   labels:
     # Istio sidecar injection for service mesh
     istio-injection: enabled
-    app.kubernetes.io/part-of: kubeflow
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: kubeflow-user
-  labels:
-    istio-injection: enabled
-    # Default user profile namespace
-    app.kubernetes.io/part-of: kubeflow
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: istio-system
-  labels:
     app.kubernetes.io/part-of: kubeflow
 ---
 apiVersion: v1
@@ -118,10 +107,26 @@ Kubeflow requires Istio for networking and security.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: kubeflow-istio
+  name: kubeflow-istio-namespace
   namespace: flux-system
 spec:
   interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: kubeflow-manifests
+  path: ./common/istio-1-22/istio-namespace/base
+  prune: true
+  timeout: 5m
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: kubeflow-istio-crds
+  namespace: flux-system
+spec:
+  interval: 10m
+  dependsOn:
+    - name: kubeflow-istio-namespace
   sourceRef:
     kind: GitRepository
     name: kubeflow-manifests
@@ -138,13 +143,30 @@ metadata:
 spec:
   interval: 10m
   dependsOn:
-    - name: kubeflow-istio
+    - name: kubeflow-istio-crds
   sourceRef:
     kind: GitRepository
     name: kubeflow-manifests
-  path: ./common/istio-1-22/istio-install/overlays/helm
+  path: ./common/istio-1-22/istio-install/overlays/oauth2-proxy
   prune: true
   timeout: 10m
+---
+# clusters/production/kubeflow/components/kubeflow-istio-resources.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: kubeflow-istio-resources
+  namespace: flux-system
+spec:
+  interval: 10m
+  dependsOn:
+    - name: kubeflow-istio-install
+  sourceRef:
+    kind: GitRepository
+    name: kubeflow-manifests
+  path: ./common/istio-1-22/kubeflow-istio-resources/base
+  prune: true
+  timeout: 5m
 ```
 
 ## Step 4: Deploy Dex for Authentication
@@ -152,6 +174,23 @@ spec:
 Configure Dex as the identity provider for Kubeflow.
 
 ```yaml
+# clusters/production/kubeflow/components/oauth2-proxy.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: kubeflow-oauth2-proxy
+  namespace: flux-system
+spec:
+  interval: 10m
+  dependsOn:
+    - name: kubeflow-istio-install
+  sourceRef:
+    kind: GitRepository
+    name: kubeflow-manifests
+  path: ./common/oidc-client/oauth2-proxy/overlays/m2m-self-signed
+  prune: true
+  timeout: 10m
+---
 # clusters/production/kubeflow/components/dex.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -161,43 +200,26 @@ metadata:
 spec:
   interval: 10m
   dependsOn:
-    - name: kubeflow-istio-install
+    - name: kubeflow-oauth2-proxy
   sourceRef:
     kind: GitRepository
     name: kubeflow-manifests
-  path: ./common/dex/overlays/istio
+  path: ./common/dex/overlays/oauth2-proxy
   prune: true
   timeout: 5m
-  # Patch Dex configuration with custom settings
+  # Patch the default user's password hash with your own bcrypt hash
   patches:
     - patch: |
         apiVersion: v1
-        kind: ConfigMap
+        kind: Secret
         metadata:
-          name: dex
+          name: dex-passwords
           namespace: auth
-        data:
-          config.yaml: |
-            issuer: https://kubeflow.example.com/dex
-            storage:
-              type: kubernetes
-              config:
-                inCluster: true
-            web:
-              http: 0.0.0.0:5556
-            staticClients:
-              - id: kubeflow-oidc-authservice
-                redirectURIs:
-                  - https://kubeflow.example.com/login/oidc
-                name: Kubeflow
-                secret: your-oidc-secret
-            staticPasswords:
-              - email: admin@example.com
-                hash: "$2y$12$hash-here"
-                username: admin
+        stringData:
+          DEX_USER_PASSWORD: "REPLACE_WITH_BCRYPT_HASH"
       target:
-        kind: ConfigMap
-        name: dex
+        kind: Secret
+        name: dex-passwords
 ```
 
 ## Step 5: Deploy Kubeflow Pipelines
@@ -205,6 +227,21 @@ spec:
 Kubeflow Pipelines is the core component for building ML workflows.
 
 ```yaml
+# clusters/production/kubeflow/components/kubeflow-roles.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: kubeflow-roles
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: kubeflow-manifests
+  path: ./common/kubeflow-roles/base
+  prune: true
+  timeout: 5m
+---
 # clusters/production/kubeflow/components/pipelines.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -216,6 +253,7 @@ spec:
   dependsOn:
     - name: kubeflow-dex
     - name: kubeflow-roles
+    - name: kubeflow-profiles
   sourceRef:
     kind: GitRepository
     name: kubeflow-manifests
@@ -275,10 +313,42 @@ spec:
 
 ## Step 7: Deploy KServe for Model Serving
 
-KServe enables serverless model inference on Kubernetes.
+KServe enables model inference on Kubernetes. Install Knative first if you want KServe's serverless deployment mode.
 
 ```yaml
 # clusters/production/kubeflow/components/kserve.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: kubeflow-knative-serving
+  namespace: flux-system
+spec:
+  interval: 10m
+  dependsOn:
+    - name: kubeflow-istio-install
+  sourceRef:
+    kind: GitRepository
+    name: kubeflow-manifests
+  path: ./common/knative/knative-serving/overlays/gateways
+  prune: true
+  timeout: 10m
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: kubeflow-cluster-local-gateway
+  namespace: flux-system
+spec:
+  interval: 10m
+  dependsOn:
+    - name: kubeflow-knative-serving
+  sourceRef:
+    kind: GitRepository
+    name: kubeflow-manifests
+  path: ./common/istio-1-22/cluster-local-gateway/base
+  prune: true
+  timeout: 10m
+---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -287,7 +357,7 @@ metadata:
 spec:
   interval: 10m
   dependsOn:
-    - name: kubeflow-istio-install
+    - name: kubeflow-cluster-local-gateway
   sourceRef:
     kind: GitRepository
     name: kubeflow-manifests
@@ -341,6 +411,47 @@ spec:
 Create user profiles for multi-tenancy.
 
 ```yaml
+# clusters/production/kubeflow/components/profiles.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: kubeflow-profiles
+  namespace: flux-system
+spec:
+  interval: 10m
+  dependsOn:
+    - name: kubeflow-dex
+    - name: kubeflow-roles
+  sourceRef:
+    kind: GitRepository
+    name: kubeflow-manifests
+  path: ./apps/profiles/upstream/overlays/kubeflow
+  prune: true
+  timeout: 10m
+---
+# Reconcile Profile resources only after the Profile CRD and controller exist
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: kubeflow-user-profiles
+  namespace: flux-system
+spec:
+  interval: 10m
+  dependsOn:
+    - name: kubeflow-profiles
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./clusters/production/kubeflow/profiles
+  prune: true
+  timeout: 5m
+---
+# clusters/production/kubeflow/profiles/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - data-science-team.yaml
+---
 # clusters/production/kubeflow/profiles/data-science-team.yaml
 apiVersion: kubeflow.org/v1
 kind: Profile
@@ -382,6 +493,23 @@ Tie all components together with dependency ordering.
 
 ```yaml
 # clusters/production/kubeflow/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - sources/kubeflow-manifests.yaml
+  - components/istio.yaml
+  - components/oauth2-proxy.yaml
+  - components/dex.yaml
+  - components/kubeflow-roles.yaml
+  - components/kubeflow-istio-resources.yaml
+  - components/profiles.yaml
+  - components/pipelines.yaml
+  - components/notebooks.yaml
+  - components/kserve.yaml
+  - components/training-operator.yaml
+---
+# clusters/production/kubeflow.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -410,7 +538,7 @@ kubectl get pods -n kubeflow
 kubectl get gateway -n kubeflow
 
 # Verify Kubeflow Pipelines API
-kubectl port-forward -n kubeflow svc/ml-pipeline-ui 8080:80
+kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80
 
 # Check user profiles
 kubectl get profiles
