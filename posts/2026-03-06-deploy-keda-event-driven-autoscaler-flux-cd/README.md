@@ -47,7 +47,8 @@ clusters/
       namespace.yaml
       helmrepository.yaml
       helmrelease.yaml
-      kustomization.yaml
+    flux-system/
+      keda-kustomization.yaml
     apps/
       scaled-objects/
         rabbitmq-consumer.yaml
@@ -109,29 +110,31 @@ spec:
     operator:
       # Number of operator replicas for HA
       replicaCount: 2
-      resources:
+
+    # Metrics server configuration
+    metricsServer:
+      replicaCount: 2
+
+    # Admission webhooks for validation
+    webhooks:
+      enabled: true
+
+    resources:
+      operator:
         requests:
           cpu: 100m
           memory: 128Mi
         limits:
           cpu: 1000m
           memory: 512Mi
-
-    # Metrics server configuration
-    metricsServer:
-      replicaCount: 2
-      resources:
+      metricServer:
         requests:
           cpu: 100m
           memory: 128Mi
         limits:
           cpu: 500m
           memory: 256Mi
-
-    # Admission webhooks for validation
-    webhooks:
-      enabled: true
-      resources:
+      webhooks:
         requests:
           cpu: 50m
           memory: 64Mi
@@ -192,12 +195,12 @@ spec:
       metadata:
         # RabbitMQ queue to monitor
         queueName: orders-queue
-        # Host connection string
-        host: amqp://guest:guest@rabbitmq.default.svc:5672/
         # Scale when queue length exceeds this value per replica
-        queueLength: "10"
-        # Use the ready message count
+        value: "10"
+        # Use queue length mode
         mode: QueueLength
+        # Use the AMQP protocol for the connection string from TriggerAuthentication
+        protocol: amqp
       # Authentication reference for RabbitMQ credentials
       authenticationRef:
         name: rabbitmq-auth
@@ -251,7 +254,7 @@ spec:
       authenticationRef:
         name: kafka-auth
 ---
-# TLS authentication for Kafka
+# SASL authentication for Kafka
 apiVersion: keda.sh/v1alpha1
 kind: TriggerAuthentication
 metadata:
@@ -380,7 +383,7 @@ spec:
     backoffLimit: 3
   # How many jobs to run in parallel
   maxReplicaCount: 10
-  # How many messages each job should process
+  # Use an accurate strategy when messages are deleted as jobs consume them
   scalingStrategy:
     strategy: accurate
   pollingInterval: 10
@@ -390,7 +393,10 @@ spec:
     - type: rabbitmq
       metadata:
         queueName: batch-queue
-        queueLength: "5"
+        # How many messages each job should process
+        value: "5"
+        mode: QueueLength
+        protocol: amqp
       authenticationRef:
         name: rabbitmq-auth
 ```
@@ -398,7 +404,7 @@ spec:
 ## Step 9: Flux Kustomization
 
 ```yaml
-# clusters/my-cluster/keda/kustomization.yaml
+# clusters/my-cluster/flux-system/keda-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -411,16 +417,11 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  wait: true
   timeout: 5m
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: keda-operator
-      namespace: keda
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: keda-operator-metrics-apiserver
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: keda
       namespace: keda
 ```
 
@@ -462,7 +463,8 @@ kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1" | jq .
 kubectl describe triggerauthentication rabbitmq-auth -n default
 
 # Verify the external metric value
-kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/default/s0-rabbitmq-orders-queue" | jq .
+kubectl get scaledobject rabbitmq-consumer -n default -o jsonpath='{.status.externalMetricNames}'
+kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/default/YOUR_METRIC_NAME?labelSelector=scaledobject.keda.sh%2Fname%3Drabbitmq-consumer" | jq .
 
 # Debug a ScaledObject that is not scaling
 kubectl describe scaledobject rabbitmq-consumer -n default | grep -A5 "Conditions"
