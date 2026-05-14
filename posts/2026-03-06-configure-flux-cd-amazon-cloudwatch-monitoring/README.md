@@ -21,7 +21,7 @@ Before starting, ensure you have:
 - An Amazon EKS cluster running Kubernetes 1.25 or later
 - Flux CD installed and bootstrapped
 - AWS CLI configured with appropriate permissions
-- An OIDC provider associated with your EKS cluster
+- The EKS Pod Identity Agent installed on your cluster
 - kubectl access to the cluster
 
 ## Step 1: Create IAM Role for CloudWatch Agent
@@ -30,10 +30,6 @@ The CloudWatch agent needs permissions to push metrics and logs.
 
 ```bash
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-OIDC_PROVIDER=$(aws eks describe-cluster \
-  --name my-cluster \
-  --query "cluster.identity.oidc.issuer" \
-  --output text | sed 's|https://||')
 
 # Create trust policy
 
@@ -44,15 +40,12 @@ cat > cw-trust-policy.json <<EOF
     {
       "Effect": "Allow",
       "Principal": {
-        "Federated": "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/${OIDC_PROVIDER}"
+        "Service": "pods.eks.amazonaws.com"
       },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "${OIDC_PROVIDER}:sub": "system:serviceaccount:amazon-cloudwatch:cloudwatch-agent",
-          "${OIDC_PROVIDER}:aud": "sts.amazonaws.com"
-        }
-      }
+      "Action": [
+        "sts:AssumeRole",
+        "sts:TagSession"
+      ]
     }
   ]
 }
@@ -67,11 +60,18 @@ aws iam create-role \
 aws iam attach-role-policy \
   --role-name EKSCloudWatchAgentRole \
   --policy-arn arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+
+# Associate the role with the CloudWatch agent service account
+aws eks create-pod-identity-association \
+  --cluster-name my-cluster \
+  --namespace amazon-cloudwatch \
+  --service-account cloudwatch-agent \
+  --role-arn arn:aws:iam::${ACCOUNT_ID}:role/EKSCloudWatchAgentRole
 ```
 
 ## Step 2: Deploy the CloudWatch Agent via Flux
 
-Create a HelmRelease to deploy the Amazon CloudWatch Observability add-on.
+Create a HelmRelease to deploy the Amazon CloudWatch Observability Helm chart.
 
 ```yaml
 # infrastructure/monitoring/cloudwatch-namespace.yaml
@@ -88,11 +88,11 @@ metadata:
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
-  name: aws-cloudwatch
+  name: aws-observability
   namespace: flux-system
 spec:
   interval: 1h
-  url: https://aws.github.io/eks-charts
+  url: https://aws-observability.github.io/helm-charts
 ```
 
 ```yaml
@@ -107,28 +107,76 @@ spec:
   chart:
     spec:
       chart: amazon-cloudwatch-observability
-      version: "1.5.x"
+      version: "5.x"
       sourceRef:
         kind: HelmRepository
-        name: aws-cloudwatch
+        name: aws-observability
         namespace: flux-system
   values:
     # Cluster name for CloudWatch metrics
     clusterName: my-cluster
     region: us-east-1
-    # Service account with IRSA
-    serviceAccount:
-      create: true
-      name: cloudwatch-agent
-      annotations:
-        eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/EKSCloudWatchAgentRole
-    # Enable Container Insights
-    containerInsights:
+    # Enable Fluent Bit container log collection
+    containerLogs:
       enabled: true
-      # Enhanced observability with detailed metrics
-      enhanced: true
     # CloudWatch agent configuration
     agent:
+      serviceAccount:
+        name: cloudwatch-agent
+      # Keep enhanced Container Insights enabled and add Flux Prometheus metrics
+      config:
+        logs:
+          metrics_collected:
+            kubernetes:
+              enhanced_container_insights: true
+            application_signals: {}
+            prometheus:
+              cluster_name: my-cluster
+              log_group_name: /aws/containerinsights/my-cluster/prometheus
+              prometheus_config_path: env:PROMETHEUS_CONFIG_CONTENT
+              emf_processor:
+                metric_declaration:
+                  - source_labels: ["job"]
+                    label_matcher: "^flux-.*"
+                    dimensions:
+                      - ["ClusterName"]
+                      - ["ClusterName", "job"]
+                      - ["ClusterName", "job", "kind", "name", "namespace"]
+                    metric_selectors:
+                      - "^gotk_reconcile_duration_seconds.*"
+                      - "^gotk_reconcile_condition.*"
+                      - "^gotk_suspend_status$"
+                      - "^controller_runtime_reconcile_total$"
+                      - "^controller_runtime_reconcile_errors_total$"
+        traces:
+          traces_collected:
+            application_signals: {}
+      prometheus:
+        config:
+          global:
+            scrape_interval: 1m
+            scrape_timeout: 10s
+          scrape_configs:
+            - job_name: flux-source-controller
+              metrics_path: /metrics
+              static_configs:
+                - targets:
+                    - source-controller.flux-system.svc.cluster.local:8080
+            - job_name: flux-kustomize-controller
+              metrics_path: /metrics
+              static_configs:
+                - targets:
+                    - kustomize-controller.flux-system.svc.cluster.local:8080
+            - job_name: flux-helm-controller
+              metrics_path: /metrics
+              static_configs:
+                - targets:
+                    - helm-controller.flux-system.svc.cluster.local:8080
+            - job_name: flux-notification-controller
+              metrics_path: /metrics
+              static_configs:
+                - targets:
+                    - notification-controller.flux-system.svc.cluster.local:8080
       resources:
         requests:
           cpu: 200m
@@ -136,142 +184,69 @@ spec:
         limits:
           cpu: 400m
           memory: 400Mi
-    # Fluent Bit for log collection
-    fluentBit:
-      enabled: true
-      resources:
-        requests:
-          cpu: 100m
-          memory: 100Mi
-        limits:
-          cpu: 200m
-          memory: 200Mi
 ```
 
-## Step 3: Deploy Prometheus for Flux Metrics
+## Step 3: Configure Prometheus Scraping for Flux Metrics
 
-Flux CD exposes Prometheus metrics by default. Deploy Prometheus to scrape and forward them.
-
-```yaml
-# infrastructure/monitoring/prometheus-repo.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
-metadata:
-  name: prometheus-community
-  namespace: flux-system
-spec:
-  interval: 1h
-  url: https://prometheus-community.github.io/helm-charts
-```
+Flux CD exposes Prometheus metrics by default. The CloudWatch agent uses the Prometheus scrape configuration in the HelmRelease to scrape Flux controller metrics directly.
 
 ```yaml
-# infrastructure/monitoring/prometheus.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
-kind: HelmRelease
-metadata:
-  name: prometheus
-  namespace: amazon-cloudwatch
-spec:
-  interval: 15m
-  chart:
-    spec:
-      chart: prometheus
-      version: "25.x"
-      sourceRef:
-        kind: HelmRepository
-        name: prometheus-community
-        namespace: flux-system
-  values:
-    # Disable components we do not need
-    alertmanager:
-      enabled: false
-    pushgateway:
-      enabled: false
-    nodeExporter:
-      enabled: false
-    # Configure Prometheus server
-    server:
-      retention: 2h
-      resources:
-        requests:
-          cpu: 200m
-          memory: 512Mi
-        limits:
-          cpu: 500m
-          memory: 1Gi
-      # Remote write to CloudWatch via the agent
-      remoteWrite:
-        - url: "http://cloudwatch-agent.amazon-cloudwatch:4315/v1/metrics"
-    # Scrape Flux CD controller metrics
-    serverFiles:
-      prometheus.yml:
-        scrape_configs:
-          # Scrape Flux source controller
-          - job_name: flux-source-controller
-            metrics_path: /metrics
-            static_configs:
-              - targets:
-                  - source-controller.flux-system:8080
-          # Scrape Flux kustomize controller
-          - job_name: flux-kustomize-controller
-            metrics_path: /metrics
-            static_configs:
-              - targets:
-                  - kustomize-controller.flux-system:8080
-          # Scrape Flux helm controller
-          - job_name: flux-helm-controller
-            metrics_path: /metrics
-            static_configs:
-              - targets:
-                  - helm-controller.flux-system:8080
-          # Scrape Flux notification controller
-          - job_name: flux-notification-controller
-            metrics_path: /metrics
-            static_configs:
-              - targets:
-                  - notification-controller.flux-system:8080
+agent:
+  prometheus:
+    config:
+      global:
+        scrape_interval: 1m
+        scrape_timeout: 10s
+      scrape_configs:
+        - job_name: flux-source-controller
+          metrics_path: /metrics
+          static_configs:
+            - targets:
+                - source-controller.flux-system.svc.cluster.local:8080
+        - job_name: flux-kustomize-controller
+          metrics_path: /metrics
+          static_configs:
+            - targets:
+                - kustomize-controller.flux-system.svc.cluster.local:8080
+        - job_name: flux-helm-controller
+          metrics_path: /metrics
+          static_configs:
+            - targets:
+                - helm-controller.flux-system.svc.cluster.local:8080
+        - job_name: flux-notification-controller
+          metrics_path: /metrics
+          static_configs:
+            - targets:
+                - notification-controller.flux-system.svc.cluster.local:8080
 ```
 
 ## Step 4: Configure CloudWatch Agent for Prometheus Metrics
 
-Configure the CloudWatch agent to collect Prometheus metrics from Flux controllers.
+Configure the CloudWatch agent to convert the scraped Flux metrics into CloudWatch embedded metric format events.
 
 ```yaml
-# infrastructure/monitoring/cwagent-prometheus-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: prometheus-cwagentconfig
-  namespace: amazon-cloudwatch
-data:
-  cwagentconfig.json: |
-    {
-      "logs": {
-        "metrics_collected": {
-          "prometheus": {
-            "cluster_name": "my-cluster",
-            "log_group_name": "/aws/containerinsights/my-cluster/prometheus",
-            "prometheus_config_path": "/etc/prometheusconfig/prometheus.yaml",
-            "emf_processor": {
-              "metric_declaration": [
-                {
-                  "source_labels": ["job"],
-                  "label_matcher": "^flux-.*",
-                  "dimensions": [["job", "kind", "name", "namespace"]],
-                  "metric_selectors": [
-                    "^gotk_reconcile_duration_seconds.*",
-                    "^gotk_reconcile_condition.*",
-                    "^gotk_suspend_status$",
-                    "^controller_runtime_reconcile_total$",
-                    "^controller_runtime_reconcile_errors_total$"
-                  ]
-                }
-              ]
-            }
-          }
-        }
-      }
-    }
+agent:
+  config:
+    logs:
+      metrics_collected:
+        prometheus:
+          cluster_name: my-cluster
+          log_group_name: /aws/containerinsights/my-cluster/prometheus
+          prometheus_config_path: env:PROMETHEUS_CONFIG_CONTENT
+          emf_processor:
+            metric_declaration:
+              - source_labels: ["job"]
+                label_matcher: "^flux-.*"
+                dimensions:
+                  - ["ClusterName"]
+                  - ["ClusterName", "job"]
+                  - ["ClusterName", "job", "kind", "name", "namespace"]
+                metric_selectors:
+                  - "^gotk_reconcile_duration_seconds.*"
+                  - "^gotk_reconcile_condition.*"
+                  - "^gotk_suspend_status$"
+                  - "^controller_runtime_reconcile_total$"
+                  - "^controller_runtime_reconcile_errors_total$"
 ```
 
 ## Step 5: Create CloudWatch Dashboard for Flux CD
@@ -335,10 +310,10 @@ aws cloudwatch put-dashboard \
       "properties": {
         "title": "Flux Controller CPU Usage",
         "metrics": [
-          ["ContainerInsights", "pod_cpu_utilization", "ClusterName", "my-cluster", "Namespace", "flux-system", "PodName", "source-controller"],
-          ["...", "PodName", "kustomize-controller"],
-          ["...", "PodName", "helm-controller"],
-          ["...", "PodName", "notification-controller"]
+          ["ContainerInsights", "pod_cpu_utilization", "ClusterName", "my-cluster", "Namespace", "flux-system", "Service", "source-controller"],
+          ["...", "Service", "kustomize-controller"],
+          ["...", "Service", "helm-controller"],
+          ["...", "Service", "notification-controller"]
         ],
         "region": "us-east-1",
         "period": 300,
@@ -355,10 +330,10 @@ aws cloudwatch put-dashboard \
       "properties": {
         "title": "Flux Controller Memory Usage",
         "metrics": [
-          ["ContainerInsights", "pod_memory_utilization", "ClusterName", "my-cluster", "Namespace", "flux-system", "PodName", "source-controller"],
-          ["...", "PodName", "kustomize-controller"],
-          ["...", "PodName", "helm-controller"],
-          ["...", "PodName", "notification-controller"]
+          ["ContainerInsights", "pod_memory_utilization", "ClusterName", "my-cluster", "Namespace", "flux-system", "Service", "source-controller"],
+          ["...", "Service", "kustomize-controller"],
+          ["...", "Service", "helm-controller"],
+          ["...", "Service", "notification-controller"]
         ],
         "region": "us-east-1",
         "period": 300,
@@ -465,9 +440,6 @@ resources:
   - cloudwatch-namespace.yaml
   - cloudwatch-repo.yaml
   - cloudwatch-agent.yaml
-  - prometheus-repo.yaml
-  - prometheus.yaml
-  - cwagent-prometheus-config.yaml
 ```
 
 ```yaml
@@ -519,15 +491,18 @@ aws cloudwatch list-dashboards \
 ```bash
 # Issue: No metrics appearing in CloudWatch
 # Check CloudWatch agent logs
-kubectl logs -n amazon-cloudwatch -l app=cloudwatch-agent --tail=50
+kubectl logs -n amazon-cloudwatch daemonset/cloudwatch-agent --tail=50
 
 # Issue: Flux metrics not being scraped
 # Verify the metrics endpoints are accessible
 kubectl get svc -n flux-system
 
 # Issue: Container Insights not showing data
-# Verify IRSA is configured correctly
-kubectl describe sa cloudwatch-agent -n amazon-cloudwatch | grep eks.amazonaws.com
+# Verify the EKS Pod Identity association exists
+aws eks list-pod-identity-associations \
+  --cluster-name my-cluster \
+  --namespace amazon-cloudwatch \
+  --service-account cloudwatch-agent
 
 # Issue: High CloudWatch costs
 # Review metric filters and reduce cardinality
