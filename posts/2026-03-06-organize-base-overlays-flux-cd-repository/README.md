@@ -121,6 +121,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: my-app
+  labels:
+    app: my-app
 spec:
   selector:
     app: my-app
@@ -319,12 +321,12 @@ resources:
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: placeholder
+  name: my-app
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: placeholder
+    name: my-app
   minReplicas: 3
   maxReplicas: 10
   metrics:
@@ -449,8 +451,7 @@ for overlay in "${OVERLAYS[@]}"; do
     echo "Validating overlay: ${overlay}"
 
     # Build the kustomization
-    OUTPUT=$(kustomize build "$OVERLAY_DIR" 2>&1)
-    if [ $? -ne 0 ]; then
+    if ! OUTPUT=$(kustomize build "$OVERLAY_DIR" 2>&1); then
       echo "FAIL: ${overlay}"
       echo "$OUTPUT"
       exit 1
