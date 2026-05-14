@@ -196,8 +196,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
-patchesStrategicMerge:
-  - patch.yaml
+patches:
+  - path: patch.yaml
 ```
 
 ## Production Environment Overlay
@@ -254,8 +254,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
-patchesStrategicMerge:
-  - patch.yaml
+patches:
+  - path: patch.yaml
 ```
 
 ## Flux Kustomization for Deployment
@@ -276,12 +276,12 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # Apply to all development namespaces using patches
+  # Apply to a development namespace using patches
   patches:
     - target:
         kind: LimitRange
       patch: |
-        - op: replace
+        - op: add
           path: /metadata/namespace
           value: dev-team-alpha
 ```
@@ -450,8 +450,20 @@ kubectl run test-pod --image=nginx -n dev-team-alpha
 kubectl get pod test-pod -n dev-team-alpha -o jsonpath='{.spec.containers[0].resources}'
 
 # Test by creating a pod that exceeds limits (should be rejected)
-kubectl run big-pod --image=nginx -n dev-team-alpha \
-  --requests='cpu=100,memory=999Ti' --dry-run=server
+kubectl apply -n dev-team-alpha --dry-run=server -f - <<'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: big-pod
+spec:
+  containers:
+    - name: nginx
+      image: nginx
+      resources:
+        requests:
+          cpu: "100"
+          memory: 999Ti
+EOF
 ```
 
 ## Troubleshooting
