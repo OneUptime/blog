@@ -17,13 +17,14 @@ This guide covers how to collect Flux CD Prometheus metrics and ship them to Clo
 - An EKS cluster (or self-managed Kubernetes on AWS) with Flux CD installed
 - AWS IAM permissions to write CloudWatch metrics
 - `kubectl` and `aws` CLI access
-- Helm CLI installed
+- `eksctl` installed if you plan to use IRSA
+- kube-state-metrics configured for Flux custom resource metrics if you want Ready-state dashboards or alarms
 
 ## Architecture Overview
 
-Flux CD controllers expose metrics in Prometheus format. CloudWatch does not natively scrape Prometheus endpoints, so you need a collector that bridges the two. There are two common approaches:
+Flux CD controllers expose metrics in Prometheus format. CloudWatch does not natively scrape Prometheus endpoints, so you need a collector that bridges the two. Flux readiness state is usually exported through kube-state-metrics custom resource metrics such as `gotk_resource_info`. There are two common approaches:
 
-1. **CloudWatch Agent with Prometheus support**: The containerized CloudWatch Agent can scrape Prometheus endpoints and publish metrics to CloudWatch
+1. **CloudWatch Agent with Prometheus support**: The containerized CloudWatch Agent can scrape Prometheus endpoints and publish supported Prometheus metric types to CloudWatch. The CloudWatch Agent drops Prometheus histograms, so use ADOT if you need Flux reconciliation duration histograms.
 2. **AWS Distro for OpenTelemetry (ADOT)**: The ADOT Collector can scrape Prometheus metrics and export them to CloudWatch via the AWS EMF exporter
 
 This guide demonstrates both approaches.
@@ -54,10 +55,11 @@ Attach this policy to the node IAM role or use IRSA (IAM Roles for Service Accou
 
 ```bash
 eksctl create iamserviceaccount \
-  --name cloudwatch-agent \
-  --namespace monitoring \
+  --name cwagent-prometheus \
+  --namespace amazon-cloudwatch \
   --cluster my-cluster \
   --attach-policy-arn arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy \
+  --override-existing-serviceaccounts \
   --approve
 ```
 
@@ -69,46 +71,62 @@ Create a ConfigMap for the CloudWatch Agent that defines Prometheus scraping for
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: cwagent-prometheus-config
-  namespace: monitoring
+  name: prometheus-config
+  namespace: amazon-cloudwatch
 data:
-  prometheus-config: |
+  prometheus.yaml: |
     global:
       scrape_interval: 60s
     scrape_configs:
       - job_name: "flux-controllers"
+        metrics_path: /metrics
         kubernetes_sd_configs:
           - role: pod
             namespaces:
               names:
                 - flux-system
         relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+          - source_labels: [__meta_kubernetes_pod_phase]
             action: keep
-            regex: true
-          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
-            action: replace
-            target_label: __address__
-            regex: (.+)
-            replacement: ${1}:8080
-  cwagent-config: |
+            regex: Running
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: (source-controller|kustomize-controller|helm-controller|notification-controller|image-automation-controller|image-reflector-controller)
+          - source_labels: [__meta_kubernetes_pod_container_port_number]
+            action: keep
+            regex: "8080"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-cwagentconfig
+  namespace: amazon-cloudwatch
+data:
+  cwagentconfig.json: |
     {
       "logs": {
         "metrics_collected": {
           "prometheus": {
             "cluster_name": "my-cluster",
             "log_group_name": "/aws/containerinsights/my-cluster/prometheus",
-            "prometheus_config_path": "/etc/prometheusconfig/prometheus-config",
+            "prometheus_config_path": "/etc/prometheusconfig/prometheus.yaml",
             "emf_processor": {
               "metric_namespace": "FluxCD",
               "metric_declaration": [
                 {
-                  "source_labels": ["kind"],
+                  "source_labels": ["controller"],
                   "label_matcher": ".*",
-                  "dimensions": [["kind", "name", "namespace"]],
+                  "dimensions": [["controller", "result"]],
                   "metric_selectors": [
-                    "^gotk_reconcile_condition$",
-                    "^gotk_reconcile_duration_seconds.*"
+                    "^controller_runtime_reconcile_total$"
+                  ]
+                },
+                {
+                  "source_labels": ["ready"],
+                  "label_matcher": ".*",
+                  "dimensions": [["ready"], ["customresource_kind", "exported_namespace", "name", "ready"]],
+                  "metric_selectors": [
+                    "^gotk_resource_info$"
                   ]
                 }
               ]
@@ -119,13 +137,11 @@ data:
     }
 ```
 
-Deploy the CloudWatch Agent as a Deployment:
+Deploy the CloudWatch Agent with Prometheus support. Download the AWS sample manifest, replace its `prometheus-config` and `prometheus-cwagentconfig` ConfigMaps with the Flux scrape and CloudWatch Agent config above, then apply it:
 
 ```bash
-helm repo add aws https://aws.github.io/eks-charts
-helm install cloudwatch-agent aws/aws-cloudwatch-metrics \
-  --namespace monitoring \
-  --create-namespace
+curl -O https://raw.githubusercontent.com/aws-samples/amazon-cloudwatch-container-insights/latest/k8s-deployment-manifest-templates/deployment-mode/service/cwagent-prometheus/prometheus-eks.yaml
+kubectl apply -f prometheus-eks.yaml
 ```
 
 ## Step 3: Deploy the ADOT Collector (Option B)
@@ -161,8 +177,16 @@ data:
           - dimensions:
               - [kind, name, namespace]
             metric_name_selectors:
-              - "gotk_reconcile_condition"
-              - "gotk_reconcile_duration_seconds"
+              - "^gotk_reconcile_duration_seconds.*$"
+          - dimensions:
+              - [controller, result]
+            metric_name_selectors:
+              - "^controller_runtime_reconcile_total$"
+          - dimensions:
+              - [ready]
+              - [customresource_kind, exported_namespace, name, ready]
+            metric_name_selectors:
+              - "^gotk_resource_info$"
     service:
       pipelines:
         metrics:
@@ -187,23 +211,23 @@ Verify with the AWS CLI:
 aws cloudwatch list-metrics --namespace FluxCD
 ```
 
-You should see metrics like `gotk_reconcile_condition` and `gotk_reconcile_duration_seconds` with appropriate dimensions.
+With the CloudWatch Agent, you should see supported metrics like `controller_runtime_reconcile_total` with appropriate dimensions. With ADOT, you should also see histogram components such as `gotk_reconcile_duration_seconds_bucket`, `gotk_reconcile_duration_seconds_sum`, and `gotk_reconcile_duration_seconds_count`. If you also export Flux custom resource metrics from kube-state-metrics, you should see `gotk_resource_info`.
 
 ## Step 5: Create CloudWatch Dashboards
 
 In the CloudWatch console, create a dashboard with widgets that display Flux metrics:
 
-**Widget 1 - Reconciliation Status**: A number widget showing the count of resources with Ready=False:
+**Widget 1 - Reconciliation Status**: A number widget showing the count of resources with Ready=False. This requires kube-state-metrics Flux custom resource metrics:
 
-- Metric: `FluxCD > gotk_reconcile_condition`
-- Filter: `status=False, type=Ready`
+- Metric: `FluxCD > gotk_resource_info`
+- Filter: `ready=False`
 - Statistic: Sum
 
-**Widget 2 - Reconciliation Duration**: A line chart showing reconciliation duration over time:
+**Widget 2 - Reconciliation Duration**: A line chart showing average reconciliation duration over time. Use this with ADOT-exported histogram components:
 
-- Metric: `FluxCD > gotk_reconcile_duration_seconds`
+- Metric math: `gotk_reconcile_duration_seconds_sum / gotk_reconcile_duration_seconds_count`
 - Group by: kind
-- Statistic: p95
+- Statistic: Average
 
 **Widget 3 - Source Health**: A status widget showing whether sources are healthy across all resource types.
 
@@ -214,9 +238,9 @@ Create CloudWatch alarms that trigger when Flux reconciliation fails:
 ```bash
 aws cloudwatch put-metric-alarm \
   --alarm-name "FluxReconciliationFailed" \
-  --metric-name "gotk_reconcile_condition" \
+  --metric-name "gotk_resource_info" \
   --namespace "FluxCD" \
-  --dimensions Name=type,Value=Ready Name=status,Value=False \
+  --dimensions Name=ready,Value=False \
   --statistic Sum \
   --period 300 \
   --threshold 1 \
@@ -226,7 +250,7 @@ aws cloudwatch put-metric-alarm \
   --treat-missing-data notBreaching
 ```
 
-This alarm fires when any Flux resource remains in a non-ready state for three consecutive 5-minute periods and sends a notification to an SNS topic.
+This alarm requires kube-state-metrics Flux custom resource metrics. It fires when any Flux resource remains in a non-ready state for three consecutive 5-minute periods and sends a notification to an SNS topic.
 
 ## Step 7: Integrate with AWS Services
 
@@ -239,4 +263,4 @@ CloudWatch metrics from Flux CD can integrate with other AWS services:
 
 ## Summary
 
-Exporting Flux CD metrics to CloudWatch integrates your GitOps monitoring into the AWS ecosystem. Whether you use the CloudWatch Agent or the ADOT Collector, both approaches scrape Prometheus metrics from Flux controllers and publish them as custom CloudWatch metrics. Once in CloudWatch, you can build dashboards, set up alarms, and leverage the full suite of AWS monitoring and notification services to keep your team informed about the health of your Flux CD deployment pipeline.
+Exporting Flux CD metrics to CloudWatch integrates your GitOps monitoring into the AWS ecosystem. Whether you use the CloudWatch Agent or the ADOT Collector, both approaches scrape Prometheus metrics from Flux controllers and publish supported metrics as custom CloudWatch metrics. Once in CloudWatch, you can build dashboards, set up alarms, and leverage the full suite of AWS monitoring and notification services to keep your team informed about the health of your Flux CD deployment pipeline.
