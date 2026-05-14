@@ -18,7 +18,7 @@ This guide walks through converting common ArgoCD notification configurations to
 
 - ArgoCD Notifications configured on your cluster
 - Flux CD with Notification Controller bootstrapped
-- Slack webhook URLs or other notification provider credentials
+- Slack bot tokens or other notification provider credentials
 
 ## Step 1: Export ArgoCD Notification Configuration
 
@@ -76,11 +76,11 @@ data:
 # clusters/production/notifications/slack.yaml
 
 # Create the secret first
-# kubectl create secret generic slack-url \
-#   --from-literal=address=https://hooks.slack.com/services/xxx \
+# kubectl create secret generic slack-token \
+#   --from-literal=token=xoxb-YOUR-TOKEN \
 #   --namespace=flux-system
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -88,10 +88,11 @@ metadata:
 spec:
   type: slack
   channel: '#deployments'
+  address: https://slack.com/api/chat.postMessage
   secretRef:
-    name: slack-url
+    name: slack-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-success
@@ -109,7 +110,7 @@ spec:
     - ".*succeeded.*"
   summary: "Deployment succeeded"
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-failure
@@ -137,12 +138,14 @@ spec:
 
 ```yaml
 data:
-  service.pagerduty: |
-    token: $pagerduty-token
+  service.pagerdutyv2: |
+    serviceKeys:
+      my-service: $pagerduty-key-my-service
   template.app-health-degraded: |
-    pagerduty:
+    pagerdutyv2:
       summary: "Application {{.app.metadata.name}} is degraded"
       severity: critical
+      source: "{{.app.metadata.name}}"
   trigger.on-health-degraded: |
     - when: app.status.health.status == 'Degraded'
       send: [app-health-degraded]
@@ -151,17 +154,17 @@ data:
 **Flux Equivalent**:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: pagerduty
   namespace: flux-system
 spec:
   type: pagerduty
-  secretRef:
-    name: pagerduty-key
+  address: https://events.pagerduty.com
+  channel: <integrationKey>
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: critical-failures
@@ -185,7 +188,7 @@ spec:
 **Flux**:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: github-status
@@ -196,7 +199,7 @@ spec:
   secretRef:
     name: github-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: github-commit-status
@@ -218,7 +221,7 @@ spec:
 flux reconcile kustomization myapp -n flux-system --with-source
 
 # Check Provider status
-flux get providers -n flux-system
+flux get alert-providers -n flux-system
 
 # Check Alert status
 flux get alerts -n flux-system
@@ -240,4 +243,4 @@ kubectl describe alert deployment-success -n flux-system
 
 ## Conclusion
 
-Migrating from ArgoCD Notifications to Flux Notification Controller is straightforward: the conceptual mapping between triggers/templates and Alert/Provider is direct. The main operational difference is that Flux's event model is simpler-severity and inclusion patterns replace ArgoCD's Lua-like trigger conditions. For complex custom message templates, Flux is less flexible, but for standard operational alerting, both systems are functionally equivalent.
+Migrating from ArgoCD Notifications to Flux Notification Controller is straightforward: the conceptual mapping between triggers/templates and Alert/Provider is direct. The main operational difference is that Flux's event model is simpler-severity and inclusion patterns replace ArgoCD's expression-based trigger conditions. For complex custom message templates, Flux is less flexible, but for standard operational alerting, both systems are functionally equivalent.
