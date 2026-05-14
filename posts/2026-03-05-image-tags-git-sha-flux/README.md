@@ -35,7 +35,7 @@ Prepend a Unix timestamp or sortable date to the SHA. The timestamp provides the
 
 # This produces tags like: 1709654400-a1b2c3d
 TIMESTAMP=$(date +%s)
-SHA=$(git rev-parse --short HEAD)
+SHA=$(git rev-parse --short=7 HEAD)
 TAG="${TIMESTAMP}-${SHA}"
 
 docker build -t ghcr.io/my-org/my-app:${TAG} .
@@ -53,11 +53,15 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set image tag
         run: |
@@ -65,8 +69,15 @@ jobs:
           SHA=$(echo ${{ github.sha }} | cut -c1-7)
           echo "IMAGE_TAG=${TIMESTAMP}-${SHA}" >> $GITHUB_ENV
 
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           push: true
           tags: ghcr.io/my-org/my-app:${{ env.IMAGE_TAG }}
@@ -107,7 +118,7 @@ Include the branch name for additional context, useful when building from multip
 # Build and tag with branch-sha-timestamp format
 # This produces tags like: main-a1b2c3d-1709654400
 BRANCH=$(git rev-parse --abbrev-ref HEAD | sed 's/\//-/g')
-SHA=$(git rev-parse --short HEAD)
+SHA=$(git rev-parse --short=7 HEAD)
 TIMESTAMP=$(date +%s)
 TAG="${BRANCH}-${SHA}-${TIMESTAMP}"
 
@@ -149,7 +160,7 @@ Use the CI build number as the primary sort key with the SHA for reference.
 ```bash
 # Build and tag with build number and SHA
 # This produces tags like: 142-a1b2c3d
-TAG="${BUILD_NUMBER}-$(git rev-parse --short HEAD)"
+TAG="${BUILD_NUMBER}-$(git rev-parse --short=7 HEAD)"
 
 docker build -t ghcr.io/my-org/my-app:${TAG} .
 docker push ghcr.io/my-org/my-app:${TAG}
@@ -222,7 +233,7 @@ spec:
             - containerPort: 8080
 ```
 
-When Flux updates the tag, the entire tag value is replaced with the new one, for example `1709740800-e4f5g6h`.
+When Flux updates the tag, the entire tag value is replaced with the new one, for example `1709740800-e4f5a6b`.
 
 ## Verifying the Configuration
 
@@ -246,10 +257,10 @@ One of the main benefits of including the Git SHA in the tag is traceability. Yo
 ```bash
 # Find the Git SHA from the running container's image tag
 kubectl get deployment my-app -o jsonpath='{.spec.template.spec.containers[0].image}'
-# Output: ghcr.io/my-org/my-app:1709740800-e4f5g6h
+# Output: ghcr.io/my-org/my-app:1709740800-e4f5a6b
 
 # Look up the commit
-git show e4f5g6h
+git show e4f5a6b
 ```
 
 ## Conclusion
