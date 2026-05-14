@@ -18,7 +18,7 @@ In this guide, you will learn how to install the Flux Operator, create and manag
 
 Before you begin, ensure you have:
 
-- A running Kubernetes cluster (v1.26 or later)
+- A running Kubernetes cluster supported by your target Flux version (for the latest Flux 2.x release, use a currently supported Kubernetes minor version)
 - kubectl configured to access your cluster
 - Helm v3 installed
 - Cluster admin permissions
@@ -39,9 +39,9 @@ The Flux Operator is a Kubernetes operator that manages Flux CD installations th
 - **FluxInstance** CRD for declaring Flux installations
 - Automated installation and upgrades of Flux controllers
 - Configuration management for Flux components
-- Multi-instance support for different tenants or environments
+- Fleet-wide management of Flux installations across clusters
 - Consistent Flux configuration across clusters
-- Automated rollback on failed upgrades
+- Health checks and status reporting for Flux upgrades
 
 ## Installing the Flux Operator
 
@@ -75,7 +75,7 @@ kubectl get crd | grep fluxcd.controlplane.io
 
 ### Basic Flux Instance
 
-Create a FluxInstance resource to deploy Flux CD:
+Create a FluxInstance resource named `flux` in the same namespace as the operator to deploy Flux CD:
 
 ```yaml
 # flux-instance.yaml
@@ -261,6 +261,8 @@ spec:
     domain: cluster.local
     # Enable multi-tenant lockdown
     multitenant: true
+    # Default service account used for tenant reconciliations
+    tenantDefaultServiceAccount: flux-reconciler
     # Restrict cross-namespace references
     networkPolicy: true
   kustomize:
@@ -281,7 +283,7 @@ spec:
                   - name: manager
                     args:
                       - --no-cross-namespace-refs=true
-                      - --default-service-account=default
+                      - --default-service-account=flux-reconciler
                       - --watch-all-namespaces=true
       # Disable cross-namespace references for helm-controller
       - target:
@@ -299,7 +301,7 @@ spec:
                   - name: manager
                     args:
                       - --no-cross-namespace-refs=true
-                      - --default-service-account=default
+                      - --default-service-account=flux-reconciler
                       - --watch-all-namespaces=true
 ```
 
@@ -358,7 +360,7 @@ metadata:
 spec:
   distribution:
     # Pin to a specific minor version
-    version: "2.4.x"
+    version: "2.8.x"
     registry: ghcr.io/fluxcd
   components:
     - source-controller
@@ -381,8 +383,8 @@ metadata:
   namespace: flux-system
 spec:
   distribution:
-    # Allow any patch version in the 2.4.x range
-    version: ">=2.4.0 <2.5.0"
+    # Allow any patch version in the 2.8.x range
+    version: ">=2.8.0 <2.9.0"
     registry: ghcr.io/fluxcd
   components:
     - source-controller
@@ -417,7 +419,10 @@ spec:
   cluster:
     domain: cluster.local
     multitenant: true
+    tenantDefaultServiceAccount: flux-reconciler
     networkPolicy: true
+  kustomize:
+    patches: []
 ```
 
 ```yaml
@@ -426,7 +431,7 @@ spec:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ../base
+  - ../base/flux-instance.yaml
 patches:
   - target:
       kind: FluxInstance
@@ -465,7 +470,7 @@ kubectl get fluxinstance flux -n flux-system \
 ```yaml
 # flux-operator-alert.yaml
 # Alert for FluxInstance reconciliation failures
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: flux-operator-alert
@@ -497,8 +502,12 @@ To remove the operator itself:
 # Remove the operator
 helm uninstall flux-operator -n flux-system
 
-# Remove CRDs
-kubectl delete crd fluxinstances.fluxcd.controlplane.io
+# Remove Flux Operator CRDs
+kubectl delete crd \
+  fluxinstances.fluxcd.controlplane.io \
+  fluxreports.fluxcd.controlplane.io \
+  resourcesets.fluxcd.controlplane.io \
+  resourcesetinputproviders.fluxcd.controlplane.io
 ```
 
 ## Troubleshooting
@@ -536,7 +545,7 @@ kubectl top pods -n flux-system
 kubectl get fluxinstance flux -n flux-system \
   -o jsonpath='{.status.lastAppliedRevision}'
 
-# List available versions
+# Check the installed Flux Operator chart version
 helm show chart oci://ghcr.io/controlplaneio-fluxcd/charts/flux-operator
 ```
 
