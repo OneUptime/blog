@@ -16,7 +16,7 @@ This guide covers how to deploy Velero via Flux CD, configure backup schedules f
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.24+)
+- A Kubernetes cluster compatible with your Velero release
 - Flux CD v2 installed and bootstrapped
 - An object storage backend (AWS S3, GCS, or Azure Blob Storage)
 - kubectl configured to access your cluster
@@ -65,7 +65,7 @@ spec:
   chart:
     spec:
       chart: velero
-      version: "5.4.0"
+      version: "12.0.1"
       sourceRef:
         kind: HelmRepository
         name: vmware-tanzu
@@ -77,10 +77,10 @@ spec:
         - name: default
           provider: aws
           bucket: my-velero-backups
+          # Use a prefix to separate clusters
+          prefix: production-cluster
           config:
             region: us-east-1
-            # Use a prefix to separate clusters
-            prefix: production-cluster
       volumeSnapshotLocation:
         - name: default
           provider: aws
@@ -94,7 +94,7 @@ spec:
           [default]
           aws_access_key_id=${AWS_ACCESS_KEY_ID}
           aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}
-    # Install the CSI snapshot plugin
+    # Deploy the node-agent for file system backups
     deployNodeAgent: true
     # Resource limits for Velero server
     resources:
@@ -112,7 +112,7 @@ spec:
     # Install plugins
     initContainers:
       - name: velero-plugin-for-aws
-        image: velero/velero-plugin-for-aws:v1.9.0
+        image: velero/velero-plugin-for-aws:v1.13.1
         volumeMounts:
           - mountPath: /target
             name: plugins
@@ -133,7 +133,7 @@ metadata:
 spec:
   # Run every hour
   schedule: "0 * * * *"
-  # Use server-side encryption for backups
+  # Do not attach schedule owner references to created Backup resources
   useOwnerReferencesInBackup: false
   template:
     # Include only namespaces with critical workloads
@@ -297,10 +297,47 @@ spec:
 
 ## Implementing Backup Verification
 
-Create a CronJob to verify that backups are completing successfully and are restorable.
+Create a CronJob to verify backup health and report schedule and storage-location status.
 
 ```yaml
 # infrastructure/velero/verification/backup-check.yaml
+# ServiceAccount and RBAC for backup verification
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backup-verifier
+  namespace: velero
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: backup-verifier
+  namespace: velero
+rules:
+  - apiGroups:
+      - velero.io
+    resources:
+      - backups
+      - schedules
+      - backupstoragelocations
+    verbs:
+      - get
+      - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: backup-verifier
+  namespace: velero
+subjects:
+  - kind: ServiceAccount
+    name: backup-verifier
+    namespace: velero
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: backup-verifier
+---
 # CronJob to verify backup health and send reports
 apiVersion: batch/v1
 kind: CronJob
@@ -326,42 +363,30 @@ spec:
                   echo "Date: $(date -u)"
                   echo ""
 
-                  # Check for failed backups in the last 24 hours
-                  echo "--- Failed Backups (last 24h) ---"
+                  # Check for failed backups
+                  echo "--- Failed Backups ---"
                   kubectl get backups -n velero \
-                    -o json | jq -r '
-                    .items[] |
-                    select(.status.phase == "Failed" or
-                           .status.phase == "PartiallyFailed") |
-                    select(.status.completionTimestamp |
-                      fromdateiso8601 > (now - 86400)) |
-                    "FAILED: \(.metadata.name) - Phase: \(.status.phase) - Errors: \(.status.errors)"'
+                    -o custom-columns=NAME:.metadata.name,PHASE:.status.phase,ERRORS:.status.errors \
+                    --no-headers | awk '$2 == "Failed" || $2 == "PartiallyFailed"'
 
                   echo ""
                   # Check for schedules that have not run
                   echo "--- Schedule Status ---"
                   kubectl get schedules -n velero \
-                    -o json | jq -r '
-                    .items[] |
-                    "Schedule: \(.metadata.name) - Last: \(.status.lastBackup) - Phase: \(.status.phase)"'
+                    -o custom-columns=NAME:.metadata.name,LAST:.status.lastBackup,PHASE:.status.phase
 
                   echo ""
                   # Check backup storage location status
                   echo "--- Storage Location Status ---"
                   kubectl get backupstoragelocations -n velero \
-                    -o json | jq -r '
-                    .items[] |
-                    "Location: \(.metadata.name) - Phase: \(.status.phase) - Last Validated: \(.status.lastValidationTime)"'
+                    -o custom-columns=NAME:.metadata.name,PHASE:.status.phase,LAST_VALIDATED:.status.lastValidationTime
 
                   echo ""
                   # Count backups by status
                   echo "--- Backup Summary ---"
                   kubectl get backups -n velero \
-                    -o json | jq -r '
-                    [.items[] | .status.phase] |
-                    group_by(.) |
-                    map({phase: .[0], count: length}) |
-                    .[] | "\(.phase): \(.count)"'
+                    -o custom-columns=PHASE:.status.phase \
+                    --no-headers | awk '{ counts[$1]++ } END { for (phase in counts) print phase ": " counts[phase] }'
           restartPolicy: OnFailure
 ```
 
@@ -372,7 +397,7 @@ Configure Flux CD notifications for backup-related events.
 ```yaml
 # clusters/production/notifications/backup-alerts.yaml
 # Alert configuration for backup events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: backup-slack
@@ -383,7 +408,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: velero-alerts
@@ -433,7 +458,11 @@ spec:
         # Alert when no successful backup in 25 hours (for daily schedules)
         - alert: VeleroBackupMissing
           expr: |
-            time() - velero_backup_last_successful_timestamp{schedule!=""} > 90000
+            (
+              (time() - velero_backup_last_successful_timestamp{schedule!=""}) > bool 90000
+              or
+              absent(velero_backup_last_successful_timestamp{schedule!=""})
+            ) == 1
           for: 15m
           labels:
             severity: warning
