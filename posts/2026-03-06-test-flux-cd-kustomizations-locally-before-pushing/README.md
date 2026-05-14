@@ -84,13 +84,13 @@ done
 ### Validate with Flux CLI
 
 ```bash
-# Validate Flux custom resources
-# This checks that Flux-specific fields are correct
+# Check that the local environment meets Flux prerequisites
 flux check --pre
 
-# Validate a specific Kustomization file
+# Build a local Flux Kustomization without connecting to the cluster
 flux build kustomization my-app \
   --path ./apps/overlays/production \
+  --kustomization-file ./clusters/production/my-app-kustomization.yaml \
   --dry-run
 ```
 
@@ -113,13 +113,15 @@ kustomize build apps/overlays/production 2>&1 | head -20
 ### Build with Flux CLI
 
 ```bash
-# The flux build command validates Flux-specific features
-# like variable substitution and decryption
+# The flux build command applies Flux-specific build features
+# like postBuild variable substitution from inline values
 flux build kustomization my-app \
   --path ./apps/overlays/production \
+  --kustomization-file ./clusters/production/my-app-kustomization.yaml \
   --dry-run 2>&1
 
 # Build with variable substitution (postBuild)
+# Note: dry-run skips substituteFrom values from in-cluster Secrets and ConfigMaps
 flux build kustomization my-app \
   --path ./apps/overlays/production \
   --dry-run \
@@ -136,32 +138,34 @@ kustomize build apps/overlays/production | kubeconform \
   -strict \
   -summary \
   -output json \
-  -kubernetes-version 1.29.0
+  -kubernetes-version 1.34.1
 
 # Validate with Flux CD CRD schemas
 kustomize build apps/overlays/production | kubeconform \
   -strict \
   -summary \
   -schema-location default \
-  -schema-location 'https://raw.githubusercontent.com/fluxcd/flux2/main/manifests/crds/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
-  -kubernetes-version 1.29.0
+  -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+  -kubernetes-version 1.34.1
 ```
 
 ### Download Flux CRD Schemas for Offline Validation
 
 ```bash
 # Download Flux CRD schemas for offline validation
-mkdir -p /tmp/flux-schemas
+mkdir -p /tmp/flux-schemas/kustomize.toolkit.fluxcd.io
 
-# Extract CRDs from Flux installation manifests
-flux install --export | yq eval-all 'select(.kind == "CustomResourceDefinition")' - > /tmp/flux-crds.yaml
+# Download the JSON schema used by kubeconform for Flux Kustomizations
+curl -L \
+  -o /tmp/flux-schemas/kustomize.toolkit.fluxcd.io/kustomization_v1.json \
+  https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/kustomize.toolkit.fluxcd.io/kustomization_v1.json
 
 # Use kubeconform with local schemas
 kustomize build apps/overlays/production | kubeconform \
   -strict \
   -summary \
   -schema-location default \
-  -schema-location '/tmp/flux-schemas/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json'
+  -schema-location '/tmp/flux-schemas/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
 ```
 
 ## Step 4: Test Variable Substitution
@@ -202,12 +206,12 @@ flux build kustomization my-app \
   --kustomization-file ./clusters/staging/my-app-kustomization.yaml \
   --dry-run
 
-# Manually test substitution with envsubst
+# Manually test Flux-compatible substitution
 export ENVIRONMENT=staging
 export REPLICAS=2
 export IMAGE_TAG=latest
 
-kustomize build apps/overlays/staging | envsubst
+kustomize build apps/overlays/staging | flux envsubst --strict
 ```
 
 ### Validate Substitution Results
@@ -318,8 +322,8 @@ nodes:
 # Create the local cluster
 kind create cluster --config kind-config.yaml --name flux-test
 
-# Install Flux CRDs (without full Flux installation)
-flux install --components-extra="" --export | \
+# Install Flux CRDs (without installing the controllers)
+flux install --export | \
   yq eval-all 'select(.kind == "CustomResourceDefinition")' - | \
   kubectl apply -f -
 
@@ -414,7 +418,7 @@ jobs:
             echo "Validating cluster: $dir"
             flux build kustomization flux-system \
               --path "$dir" \
-              --dry-run 2>&1 || true
+              --dry-run 2>&1
           done
 ```
 
