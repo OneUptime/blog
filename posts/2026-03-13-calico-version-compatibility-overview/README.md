@@ -22,19 +22,21 @@ Understanding version compatibility means knowing the supported ranges, how to c
 
 ## The Version Compatibility Model
 
-Calico follows a N-2 compatibility policy with Kubernetes: each Calico release supports the current Kubernetes version and the two previous minor versions. For example, Calico 3.27 supports Kubernetes 1.27, 1.26, and 1.25.
+Calico documents the Kubernetes versions that each Calico release is actively tested against. The tested range can vary between releases, so you should always check the published requirements for your exact Calico release rather than assuming a fixed rule. For example, Calico 3.27 was tested with Kubernetes 1.29, 1.28, and 1.27.
 
 ```mermaid
 graph LR
-    C327[Calico 3.27] --> K127[Kubernetes 1.27]
-    C327 --> K126[Kubernetes 1.26]
-    C327 --> K125[Kubernetes 1.25]
-    C326[Calico 3.26] --> K126
-    C326 --> K125
+    C327[Calico 3.27] --> K129[Kubernetes 1.29]
+    C327 --> K128[Kubernetes 1.28]
+    C327 --> K127[Kubernetes 1.27]
+    C326[Calico 3.26] --> K128
+    C326 --> K127
+    C326 --> K126[Kubernetes 1.26]
+    C326 --> K125[Kubernetes 1.25]
     C326 --> K124[Kubernetes 1.24]
 ```
 
-This means: if you are running Kubernetes 1.28, you need Calico 3.28 or later.
+This means: if you are running Kubernetes 1.28, you should check the Calico requirements and use a Calico release that is tested against Kubernetes 1.28.
 
 ## Checking Current Versions
 
@@ -50,7 +52,7 @@ calicoctl version
 # Expected: Client version, and if API server is available, Server version
 
 # Check Kubernetes version
-kubectl version --short
+kubectl version
 # Expected: Client and Server versions
 
 # Check if versions are compatible
@@ -80,11 +82,11 @@ When using the Calico operator (the recommended installation method), the operat
 kubectl get deployment tigera-operator -n tigera-operator \
   -o jsonpath='{.spec.template.spec.containers[0].image}'
 
-# Check the Installation resource for the configured Calico version
-kubectl get installation default -o jsonpath='{.spec.variant}'
+# Check the Installation resource for the running Calico version
+kubectl get installation default -o jsonpath='{.status.calicoVersion}'
 ```
 
-The operator ensures all components are updated together when you change the version, preventing version skew between components.
+The operator reconciles the Calico components that belong to the operator-managed installation, preventing version skew between components during operator-managed upgrades.
 
 ## Upgrade Order
 
@@ -120,4 +122,4 @@ chmod +x calicoctl
 
 ## Conclusion
 
-Calico's N-2 Kubernetes compatibility model means you must upgrade Calico before upgrading to Kubernetes versions that fall outside the supported range. All Calico components share the same version number and must be upgraded together. Using the Calico operator simplifies version management by updating all components atomically. Maintaining version compatibility is the most important operational practice for avoiding unexpected Calico failures after Kubernetes upgrades.
+Calico's Kubernetes compatibility guidance means you must check whether your Calico release is tested with the Kubernetes version you plan to run, and upgrade Calico first when the target Kubernetes version requires it. All Calico components share the same version number and must be upgraded together. Using the Calico operator simplifies version management by reconciling the managed components together. Maintaining version compatibility is the most important operational practice for avoiding unexpected Calico failures after Kubernetes upgrades.
