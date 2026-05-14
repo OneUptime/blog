@@ -96,17 +96,15 @@ metadata:
     app: postgres
 spec:
   serviceName: postgres
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: postgres
   # OrderedReady ensures pods are created and deleted sequentially
   podManagementPolicy: OrderedReady
-  # RollingUpdate strategy with partition for staged rollouts
+  # RollingUpdate strategy for staged rollouts
   updateStrategy:
     type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 1
   template:
     metadata:
       labels:
@@ -131,15 +129,30 @@ spec:
           ports:
             - containerPort: 5432
               name: postgres
-          envFrom:
-            - configMapRef:
-                name: postgres-config
           env:
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: postgres-config
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: postgres-config
+                  key: POSTGRES_USER
+            - name: PGDATA
+              valueFrom:
+                configMapKeyRef:
+                  name: postgres-config
+                  key: PGDATA
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: postgres-credentials
                   key: password
+          args:
+            - -c
+            - config_file=/etc/postgresql/postgresql.conf
           # Resource limits appropriate for a database workload
           resources:
             requests:
@@ -216,20 +229,6 @@ spec:
     - port: 5432
       targetPort: 5432
       name: postgres
----
-# Read-write service pointing to the primary
-apiVersion: v1
-kind: Service
-metadata:
-  name: postgres-primary
-  namespace: postgres
-spec:
-  selector:
-    app: postgres
-    role: primary
-  ports:
-    - port: 5432
-      targetPort: 5432
 ```
 
 ## Flux Kustomization for Stateful Apps
@@ -248,7 +247,6 @@ spec:
     name: flux-system
   path: ./apps/postgres
   prune: false  # Do not prune stateful workloads automatically
-  wait: true
   timeout: 10m  # Longer timeout for stateful apps
   # Health checks specific to StatefulSets
   healthChecks:
@@ -258,9 +256,22 @@ spec:
       namespace: postgres
 ```
 
-## Deploying Redis with Sentinel
+## Deploying Redis with Replication
 
 ```yaml
+# apps/redis/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: redis
+data:
+  redis-primary.conf: |
+    appendonly yes
+  redis-replica.conf: |
+    appendonly yes
+    replicaof redis-0.redis.redis.svc.cluster.local 6379
+---
 # apps/redis/statefulset.yaml
 apiVersion: apps/v1
 kind: StatefulSet
@@ -278,15 +289,15 @@ spec:
       labels:
         app: redis
     spec:
-      # Init container to configure redis role based on ordinal index
+      # Init container to configure the initial Redis role based on ordinal index
       initContainers:
         - name: config
           image: redis:7.2
           command: ["sh", "-c"]
           args:
             - |
-              # Determine if this is the primary or a replica
-              # Pod ordinal 0 is always the primary
+              # Determine if this is the initial primary or a replica
+              # Pod ordinal 0 starts as the primary in this basic replication example
               ORDINAL=$(echo $HOSTNAME | rev | cut -d'-' -f1 | rev)
               if [ "$ORDINAL" = "0" ]; then
                 echo "Setting up as primary"
@@ -449,8 +460,8 @@ Use the partition-based rolling update to safely upgrade stateful applications:
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: postgres
-  namespace: postgres
+  name: redis
+  namespace: redis
 spec:
   updateStrategy:
     type: RollingUpdate
@@ -476,7 +487,8 @@ spec:
   eventSources:
     - kind: Kustomization
       name: stateful-apps
-  summary: "Stateful application deployment alert"
+  eventMetadata:
+    summary: "Stateful application deployment alert"
 ```
 
 ## Summary
