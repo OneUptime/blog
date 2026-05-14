@@ -22,7 +22,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: typha-autoscaler
-  namespace: calico-system
+  namespace: kube-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -35,6 +35,12 @@ rules:
 - apiGroups: [apps]
   resources: [deployments/scale, deployments]
   verbs: [get, patch, update]
+- apiGroups: [""]
+  resources: [pods]
+  verbs: [get, list, delete]
+- apiGroups: [""]
+  resources: [pods/exec]
+  verbs: [create]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -47,13 +53,13 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: typha-autoscaler
-  namespace: calico-system
+  namespace: kube-system
 ---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: typha-autoscaler
-  namespace: calico-system
+  namespace: kube-system
 spec:
   schedule: "*/30 * * * *"  # Every 30 minutes
   jobTemplate:
@@ -69,17 +75,23 @@ spec:
             - -c
             - |
               NODE_COUNT=$(kubectl get nodes --no-headers | wc -l)
-              if [ "$NODE_COUNT" -lt 200 ]; then
-                REPLICAS=2
-              elif [ "$NODE_COUNT" -lt 500 ]; then
-                REPLICAS=2
-              else
+              REPLICAS=$(( (NODE_COUNT + 199) / 200 ))
+              if [ "$NODE_COUNT" -gt 3 ] && [ "$REPLICAS" -lt 3 ]; then
                 REPLICAS=3
               fi
-              CURRENT=$(kubectl get deployment calico-typha -n calico-system -o jsonpath='{.spec.replicas}')
+              if [ "$REPLICAS" -gt 20 ]; then
+                REPLICAS=20
+              fi
+              if [ "$REPLICAS" -ge "$NODE_COUNT" ]; then
+                REPLICAS=$(( NODE_COUNT - 1 ))
+              fi
+              if [ "$REPLICAS" -lt 1 ]; then
+                REPLICAS=1
+              fi
+              CURRENT=$(kubectl get deployment calico-typha -n kube-system -o jsonpath='{.spec.replicas}')
               if [ "$CURRENT" -ne "$REPLICAS" ]; then
                 echo "Scaling Typha from $CURRENT to $REPLICAS replicas for $NODE_COUNT nodes"
-                kubectl scale deployment calico-typha -n calico-system --replicas=$REPLICAS
+                kubectl scale deployment calico-typha -n kube-system --replicas=$REPLICAS
               else
                 echo "Typha at correct replica count: $REPLICAS"
               fi
@@ -89,7 +101,7 @@ EOF
 
 ## Horizontal Pod Autoscaler Based on Custom Metrics
 
-For clusters with dynamic workloads, use HPA with a custom metric for connection count per replica.
+For clusters with dynamic workloads, use HPA with a custom metric for connection count per replica. Typha Prometheus metrics must be enabled, and the metric must be available through the Kubernetes custom metrics API.
 
 ```bash
 kubectl apply -f - <<EOF
@@ -97,13 +109,13 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: calico-typha-hpa
-  namespace: calico-system
+  namespace: kube-system
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
     name: calico-typha
-  minReplicas: 1
+  minReplicas: 3
   maxReplicas: 5
   metrics:
   - type: Pods
@@ -120,7 +132,7 @@ This scales Typha up when the average connections per replica exceeds 200.
 
 ## Automated Failover Test CronJob
 
-Run a weekly automated test to confirm Typha HA is functioning.
+Run a weekly automated test to confirm Typha HA is functioning. This assumes Typha Prometheus metrics are enabled.
 
 ```bash
 kubectl apply -f - <<EOF
@@ -128,7 +140,7 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: typha-ha-test
-  namespace: calico-system
+  namespace: kube-system
 spec:
   schedule: "0 2 * * 0"  # Sundays at 2am
   jobTemplate:
@@ -143,29 +155,29 @@ spec:
             - bash
             - -c
             - |
-              REPLICAS=$(kubectl get deployment calico-typha -n calico-system -o jsonpath='{.spec.replicas}')
+              REPLICAS=$(kubectl get deployment calico-typha -n kube-system -o jsonpath='{.spec.replicas}')
               if [ "$REPLICAS" -lt 2 ]; then
                 echo "SKIP: HA test requires at least 2 Typha replicas"
                 exit 0
               fi
 
               # Record baseline connection count
-              BEFORE=$(kubectl get pods -n calico-system -l k8s-app=calico-typha -o name | \
-                xargs -I{} kubectl exec -n calico-system {} -- \
-                wget -qO- http://localhost:9091/metrics | grep typha_connections_active | \
-                awk '{sum += $2} END {print sum}')
+              BEFORE=$(kubectl get pods -n kube-system -l k8s-app=calico-typha -o name | \
+                xargs -I{} kubectl exec -n kube-system {} -- \
+                wget -qO- http://localhost:9091/metrics | \
+                awk '/^typha_connections_active($|{)/ {sum += $2} END {print sum}')
 
               # Delete one Typha pod
-              kubectl delete pod -n calico-system \
-                $(kubectl get pods -n calico-system -l k8s-app=calico-typha -o name | head -1 | sed 's|pod/||')
+              kubectl delete pod -n kube-system \
+                $(kubectl get pods -n kube-system -l k8s-app=calico-typha -o name | head -1 | sed 's|pod/||')
 
               sleep 60
 
               # Check connections recovered
-              AFTER=$(kubectl get pods -n calico-system -l k8s-app=calico-typha -o name | \
-                xargs -I{} kubectl exec -n calico-system {} -- \
-                wget -qO- http://localhost:9091/metrics | grep typha_connections_active | \
-                awk '{sum += $2} END {print sum}')
+              AFTER=$(kubectl get pods -n kube-system -l k8s-app=calico-typha -o name | \
+                xargs -I{} kubectl exec -n kube-system {} -- \
+                wget -qO- http://localhost:9091/metrics | \
+                awk '/^typha_connections_active($|{)/ {sum += $2} END {print sum}')
 
               if [ "$AFTER" -ge "$((BEFORE * 9 / 10))" ]; then
                 echo "HA PASS: Connections recovered to $AFTER (baseline: $BEFORE)"
@@ -187,18 +199,23 @@ EOF
   hosts: control_plane
   tasks:
     - name: Get node count
-      command: kubectl get nodes --no-headers | wc -l
+      ansible.builtin.shell: kubectl get nodes --no-headers | wc -l
       register: node_count
+      changed_when: false
 
     - name: Calculate replica count
       set_fact:
         typha_replicas: >-
-          {{ 1 if (node_count.stdout | int) < 200 else
-             2 if (node_count.stdout | int) < 500 else 3 }}
+          {% set nodes = node_count.stdout | int %}
+          {% set calculated = ((nodes + 199) // 200) %}
+          {% set min_ha = 3 if nodes > 3 else 1 %}
+          {% set replicas = [calculated, min_ha] | max %}
+          {% set capped = [replicas, 20] | min %}
+          {{ [capped, nodes - 1] | min if nodes > 1 else 1 }}
 
     - name: Scale Typha
       kubernetes.core.k8s_scale:
-        namespace: calico-system
+        namespace: kube-system
         name: calico-typha
         kind: Deployment
         replicas: "{{ typha_replicas }}"
@@ -211,7 +228,7 @@ EOF
           kind: PodDisruptionBudget
           metadata:
             name: calico-typha-pdb
-            namespace: calico-system
+            namespace: kube-system
           spec:
             minAvailable: 1
             selector:
