@@ -16,7 +16,7 @@ Flux CD's HelmRelease controller includes a built-in drift detection mechanism t
 
 ## How Drift Detection Works
 
-When drift detection is enabled, the Flux Helm controller periodically compares the live state of resources managed by a Helm release against the last applied state. If differences are found, Flux can either log a warning or actively correct the drift by re-applying the desired state.
+When drift detection is enabled and the HelmRelease is in sync with the Helm release object in storage, the Flux Helm controller compares the manifest from Helm storage with the live state of resources in the cluster using a server-side dry-run apply. If differences are found, Flux can either emit an event and log details or actively correct the drift by patching or creating resources from the dry-run apply result.
 
 The following diagram illustrates the drift detection flow:
 
@@ -29,14 +29,14 @@ flowchart TD
     E -->|No| F[No Action Needed]
     E -->|Yes| G{Mode?}
     G -->|warn| H[Log Warning Event]
-    G -->|enabled| I[Correct Drift - Re-apply]
+    G -->|enabled| I[Correct Drift - Patch/Create Resources]
 ```
 
 ## Drift Detection Modes
 
 Flux supports two drift detection modes via the `spec.driftDetection.mode` field:
 
-- **`enabled`**: Flux detects drift and automatically corrects it by re-applying the Helm release values. This is the recommended mode for production environments where you want to enforce GitOps strictly.
+- **`enabled`**: Flux detects drift and automatically corrects it by patching or creating resources back to the Helm release's desired manifest. This is the recommended mode for production environments where you want to enforce GitOps strictly.
 - **`warn`**: Flux detects drift and emits Kubernetes events and log entries, but does not take corrective action. This is useful during an initial rollout or when you want visibility without enforcement.
 
 ## Enabling Drift Detection
@@ -102,21 +102,21 @@ spec:
 
 ## Verifying Drift Detection
 
-After applying your HelmRelease, you can verify that drift detection is active by checking the HelmRelease status.
+After applying your HelmRelease, you can verify that drift detection is configured by inspecting the HelmRelease spec.
 
-Use the following command to inspect the HelmRelease and look for drift-related conditions:
+Use the following command to confirm the configured drift detection mode on the HelmRelease:
 
 ```bash
-# Check the HelmRelease status for drift detection information
+# Check the configured drift detection mode
 
-kubectl get helmrelease my-application -n default -o yaml | grep -A 5 driftDetection
+kubectl get helmrelease my-application -n default -o jsonpath='{.spec.driftDetection.mode}{"\n"}'
 ```
 
 You can also watch for drift-related Kubernetes events:
 
 ```bash
 # Watch for events related to drift detection on the HelmRelease
-kubectl events --for helmrelease/my-application -n default
+kubectl events --for helmrelease/my-application -n default --watch
 ```
 
 When drift is detected in `warn` mode, you will see events like:
@@ -124,7 +124,7 @@ When drift is detected in `warn` mode, you will see events like:
 ```bash
 # Example output showing a drift warning event
 # LAST SEEN   TYPE      REASON          OBJECT                          MESSAGE
-# 2m          Warning   DriftDetected   helmrelease/my-application      Drift detected: Deployment/default/my-application
+# 2m          Warning   DriftDetected   helmrelease/my-application      Cluster state of release my-application has drifted from the desired state
 ```
 
 ## Testing Drift Detection
