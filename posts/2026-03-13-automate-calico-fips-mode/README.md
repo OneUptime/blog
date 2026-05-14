@@ -10,18 +10,18 @@ Description: Automate Calico FIPS mode deployment and compliance verification us
 
 ## Introduction
 
-Manually configuring FIPS mode across multiple Kubernetes clusters is error-prone and time-consuming. A missed FIPS configuration on even one node or component can invalidate your compliance posture. Automating FIPS mode setup ensures consistency across environments, makes compliance audits straightforward, and reduces the risk of misconfiguration.
+Manually configuring FIPS mode across multiple Kubernetes clusters is error-prone and time-consuming. A missed FIPS configuration on even one node or component can invalidate your compliance posture. Automating FIPS mode setup ensures consistency across environments, makes compliance audits straightforward, and reduces the risk of misconfiguration. Calico FIPS mode is deprecated in current Calico documentation and will be removed in a future release, so verify that it is still supported for the Calico version you plan to deploy.
 
 Automation for Calico FIPS mode spans multiple layers: OS-level FIPS configuration (typically via Ansible or Terraform), Kubernetes cluster bootstrapping with FIPS options, and Calico operator configuration via GitOps. Each layer must be automated independently and then validated together.
 
-This guide provides automation patterns for each layer, culminating in a fully automated FIPS-compliant Calico deployment pipeline.
+This guide provides automation patterns for each layer, culminating in a fully automated Calico FIPS-mode deployment pipeline.
 
 ## Prerequisites
 
 - Ansible (for OS-level FIPS)
 - Terraform or Cluster API (for cluster provisioning)
 - Flux CD or ArgoCD (for GitOps delivery)
-- Access to FIPS-enabled Calico images
+- Access to a Calico release and image source that supports Calico FIPS mode
 
 ## Automation Architecture
 
@@ -44,7 +44,7 @@ flowchart TD
 
 ---
 - name: Check if FIPS is already enabled
-  command: fips-mode-setup --check
+  command: cat /proc/sys/crypto/fips_enabled
   register: fips_check
   changed_when: false
   failed_when: false
@@ -53,15 +53,18 @@ flowchart TD
   command: fips-mode-setup --enable
   when:
     - ansible_os_family == "RedHat"
-    - "'FIPS mode is enabled' not in fips_check.stdout"
+    - fips_check.stdout != "1"
   notify: reboot host
 
 - name: Enable FIPS mode (Ubuntu)
-  command: pro enable fips
+  command: pro enable fips-updates --assume-yes
   when:
     - ansible_distribution == "Ubuntu"
-    - "'1' not in fips_check.stdout"
+    - fips_check.stdout != "1"
   notify: reboot host
+
+- name: Reboot immediately if FIPS was enabled
+  meta: flush_handlers
 
 - name: Verify FIPS after reboot
   command: cat /proc/sys/crypto/fips_enabled
@@ -88,13 +91,18 @@ resource "aws_launch_template" "fips_node" {
   instance_type = var.instance_type
 
   metadata_options {
-    http_tokens = "required"  # IMDSv2 required for FIPS compliance
+    http_tokens = "required"  # Require IMDSv2 as a node hardening baseline
   }
 }
 
 # fips-userdata.sh.tpl
-# fips-mode-setup --enable
-# reboot
+#!/bin/bash
+set -euo pipefail
+
+if [[ "$(cat /proc/sys/crypto/fips_enabled 2>/dev/null || echo 0)" != "1" ]]; then
+  fips-mode-setup --enable
+  reboot
+fi
 ```
 
 ## Step 3: GitOps Configuration for Calico FIPS
@@ -107,7 +115,7 @@ metadata:
   name: default
 spec:
   fipsMode: Enabled
-  registry: ${FIPS_REGISTRY}
+  registry: ${FIPS_REGISTRY} # Must end with /
   calicoNetwork:
     ipPools:
       - cidr: 192.168.0.0/16
@@ -142,16 +150,18 @@ spec:
 set -euo pipefail
 
 echo "=== FIPS Compliance Validation ==="
+failures=0
 
 # 1. Check OS FIPS
 echo "Checking OS FIPS..."
 for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-  fips_status=$(kubectl debug node/${node} -it --image=alpine -- \
-    cat /proc/sys/crypto/fips_enabled 2>/dev/null | tr -d '\r')
+  fips_status=$(kubectl debug node/${node} --attach=true --quiet --image=busybox -- \
+    cat /host/proc/sys/crypto/fips_enabled 2>/dev/null | tr -d '\r')
   if [[ "${fips_status}" == "1" ]]; then
     echo "  OK: Node ${node} FIPS enabled"
   else
     echo "  FAIL: Node ${node} FIPS NOT enabled"
+    failures=$((failures + 1))
   fi
 done
 
@@ -162,14 +172,16 @@ if [[ "${fips_mode}" == "Enabled" ]]; then
   echo "  OK: Installation fipsMode=Enabled"
 else
   echo "  FAIL: Installation fipsMode=${fips_mode}"
+  failures=$((failures + 1))
 fi
 
-# 3. Check Calico pods are FIPS images
-echo "Checking Calico images..."
+# 3. Record Calico pod images for audit evidence
+echo "Recording Calico images..."
 kubectl get pods -n calico-system \
   -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.containers[*]}{.image}{"\n"}{end}{end}'
 
 echo "=== Validation Complete ==="
+exit "${failures}"
 ```
 
 ## Step 5: CI/CD Pipeline Integration
@@ -190,10 +202,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Configure kubectl
-        uses: azure/setup-kubectl@v3
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${KUBECONFIG_B64}" | base64 -d > ~/.kube/config
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
       - name: Run FIPS validation
         run: |
+          set -o pipefail
           chmod +x validate-fips-compliance.sh
           ./validate-fips-compliance.sh | tee compliance-report.txt
       - name: Upload compliance report
@@ -205,4 +224,4 @@ jobs:
 
 ## Conclusion
 
-Automating Calico FIPS mode deployment eliminates the risk of manual misconfiguration and ensures consistent compliance across all clusters. By combining Ansible for OS-level FIPS, Terraform for infrastructure provisioning, GitOps for Calico configuration, and automated validation pipelines, you can maintain FIPS compliance as a continuous property of your infrastructure rather than a point-in-time audit result. Run the validation pipeline daily to detect any drift from the compliant state.
+Automating Calico FIPS mode deployment reduces the risk of manual misconfiguration and helps keep FIPS-related settings consistent across clusters. By combining Ansible for OS-level FIPS, Terraform for infrastructure provisioning, GitOps for Calico configuration, and automated validation pipelines, you can monitor FIPS-related configuration as a continuous property of your infrastructure rather than a point-in-time audit result. Run the validation pipeline daily to detect any drift from the expected state.
