@@ -18,44 +18,28 @@ Without source restrictions, a tenant could create a GitRepository pointing to a
 
 By default, Flux CD resources can only reference sources within the same namespace. A Kustomization in the `team-alpha` namespace can only reference GitRepository objects also in the `team-alpha` namespace. This namespace scoping is the first layer of restriction.
 
-However, Flux CD supports cross-namespace references, which allow a resource in one namespace to reference a source in another namespace. This feature must be explicitly enabled and can be controlled by the platform admin.
+However, Flux CD supports cross-namespace references, which allow a resource in one namespace to reference a source in another namespace when the reference includes the source namespace. This behavior can be disabled by the platform admin.
 
 ## Step 2: Disable Cross-Namespace References
 
-To prevent tenants from referencing sources in other namespaces (including `flux-system`), ensure that cross-namespace references are not allowed. This is controlled by the `--no-cross-namespace-refs` flag on Flux controllers.
-
-```yaml
-# clusters/my-cluster/flux-system/kustomize-controller-patch.yaml
-
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kustomize-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            # Prevent cross-namespace source references
-            - --no-cross-namespace-refs=true
-```
-
-Apply this patch through your Flux system kustomization.
+To prevent tenants from referencing sources in other namespaces (including `flux-system`), ensure that cross-namespace references are not allowed. This is controlled by the `--no-cross-namespace-refs` flag on the Flux controllers that consume cross-namespace references, such as kustomize-controller and helm-controller.
 
 ```yaml
 # clusters/my-cluster/flux-system/kustomization.yaml
+
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - gotk-components.yaml
   - gotk-sync.yaml
 patches:
-  - path: kustomize-controller-patch.yaml
+  - patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --no-cross-namespace-refs=true
     target:
       kind: Deployment
-      name: kustomize-controller
+      name: "(kustomize-controller|helm-controller)"
 ```
 
 ## Step 3: Platform-Managed Sources in Tenant Namespaces
@@ -135,11 +119,11 @@ subjects:
 
 With this setup, the tenant's Kustomization can deploy workloads from the platform-managed sources, but the tenant cannot create new GitRepository or HelmRepository resources.
 
-## Step 5: Allow Cross-Namespace References Selectively
+## Step 5: Be Careful with Cross-Namespace Sharing
 
-If you want to share a common source across tenants without duplicating it, you can use cross-namespace references with an access control list (ACL).
+If you want to share a common source across tenants without duplicating it, you can use cross-namespace references, but Flux source objects such as GitRepository, HelmRepository, and OCIRepository do not provide a `spec.accessFrom` ACL.
 
-First, allow cross-namespace references on the controllers but use the `spec.accessFrom` field on source resources to control which namespaces can reference them.
+First, allow cross-namespace references on the controllers. Then use Kubernetes RBAC or an admission policy to control which tenants can create Kustomization or HelmRelease resources that reference shared sources in another namespace.
 
 ```yaml
 # flux-system/shared-helm-repo.yaml
@@ -151,16 +135,9 @@ metadata:
 spec:
   interval: 10m
   url: https://charts.example.com/stable
-  accessFrom:
-    namespaceSelectors:
-      # Only namespaces with this label can reference this source
-      - matchLabels:
-          toolkit.fluxcd.io/tenant: team-alpha
-      - matchLabels:
-          toolkit.fluxcd.io/tenant: team-beta
 ```
 
-Tenants with the matching label can then reference this source.
+Tenants that are allowed by your RBAC or admission policy can then reference this source.
 
 ```yaml
 # tenants/team-alpha/helm-release.yaml
