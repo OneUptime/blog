@@ -126,8 +126,10 @@ resources:
 # Prefix all resource names with the environment
 namePrefix: prod-
 # Common labels for identification
-commonLabels:
-  environment: production
+labels:
+  - pairs:
+      environment: production
+    includeSelectors: true
 ```
 
 ```yaml
@@ -140,8 +142,10 @@ resources:
   - ../../base/worker
   - ../../base/cache
 namePrefix: stg-
-commonLabels:
-  environment: staging
+labels:
+  - pairs:
+      environment: staging
+    includeSelectors: true
 ```
 
 ## Enforcing Naming Conventions with Kyverno Policies
@@ -161,7 +165,6 @@ metadata:
       Deployments must follow the pattern: <app>-<component>
       using only lowercase alphanumeric characters and hyphens.
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: validate-deployment-name
       match:
@@ -170,16 +173,18 @@ spec:
               kinds:
                 - Deployment
       validate:
+        failureAction: Enforce
         message: >-
           Deployment name '{{request.object.metadata.name}}' does not
           follow the naming convention. Names must match the pattern
           <app>-<component>, use only lowercase letters, numbers, and
           hyphens, and be between 3 and 63 characters.
-        pattern:
-          metadata:
-            # Regex: starts with letter, allows alphanumeric and hyphens,
-            # must contain at least one hyphen (to enforce app-component pattern)
-            name: "?*-?*"
+        deny:
+          conditions:
+            any:
+              - key: "{{ regex_match('^[a-z][a-z0-9]*(-[a-z0-9]+)+$', '{{request.object.metadata.name}}') }}"
+                operator: Equals
+                value: false
     - name: validate-name-length
       match:
         any:
@@ -189,6 +194,7 @@ spec:
                 - StatefulSet
                 - Service
       validate:
+        failureAction: Enforce
         message: >-
           Resource name '{{request.object.metadata.name}}' exceeds
           the maximum allowed length of 63 characters.
@@ -208,7 +214,6 @@ kind: ClusterPolicy
 metadata:
   name: enforce-namespace-naming
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: validate-namespace-name
       match:
@@ -220,20 +225,24 @@ spec:
         any:
           - resources:
               # Exclude system namespaces from the naming policy
-              namespaces:
+              names:
                 - kube-system
                 - kube-public
                 - kube-node-lease
                 - flux-system
                 - default
       validate:
+        failureAction: Enforce
         message: >-
           Namespace '{{request.object.metadata.name}}' does not follow
           the naming convention <team>-<environment>. Allowed environments
           are: production, staging, development, sandbox.
-        pattern:
-          metadata:
-            name: "?*-?*"
+        deny:
+          conditions:
+            any:
+              - key: "{{ regex_match('^[a-z][a-z0-9-]*-(production|staging|development|sandbox)$', '{{request.object.metadata.name}}') }}"
+                operator: Equals
+                value: false
 ```
 
 ## Enforcing Service Naming Standards
@@ -248,7 +257,6 @@ kind: ClusterPolicy
 metadata:
   name: enforce-service-naming
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: validate-service-name-format
       match:
@@ -257,15 +265,19 @@ spec:
               kinds:
                 - Service
       validate:
+        failureAction: Enforce
         message: >-
           Service name '{{request.object.metadata.name}}' must use only
           lowercase alphanumeric characters and hyphens, start with a
           letter, and not exceed 63 characters. Service names become
           DNS records and must be DNS-compliant.
-        pattern:
-          metadata:
-            # Service names become DNS entries, so strict validation is needed
-            name: "?*"
+        deny:
+          conditions:
+            any:
+              # Service names become DNS entries, so strict validation is needed
+              - key: "{{ regex_match('^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$', '{{request.object.metadata.name}}') }}"
+                operator: Equals
+                value: false
     - name: service-must-match-app-label
       match:
         any:
@@ -273,13 +285,16 @@ spec:
               kinds:
                 - Service
       validate:
+        failureAction: Enforce
         message: >-
           Service name should match the app.kubernetes.io/name label
           of the pods it selects for consistency.
-        pattern:
-          spec:
-            selector:
-              app.kubernetes.io/name: "?*"
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.selector.\"app.kubernetes.io/name\" || '' }}"
+                operator: NotEquals
+                value: "{{ request.object.metadata.name }}"
 ```
 
 ## Naming Flux CD Resources Consistently
