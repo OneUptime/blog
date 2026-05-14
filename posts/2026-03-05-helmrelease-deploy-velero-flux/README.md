@@ -41,6 +41,11 @@ Create a Secret with your cloud provider credentials for backup storage. This ex
 ```yaml
 # secret-velero-aws.yaml - AWS credentials for Velero
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: velero
+---
+apiVersion: v1
 kind: Secret
 metadata:
   name: velero-aws-credentials
@@ -71,7 +76,7 @@ spec:
   chart:
     spec:
       chart: velero
-      version: "7.x"
+      version: "12.x"
       sourceRef:
         kind: HelmRepository
         name: vmware-tanzu
@@ -105,7 +110,7 @@ spec:
     # Init containers for installing plugins
     initContainers:
       - name: velero-plugin-for-aws
-        image: velero/velero-plugin-for-aws:v1.10.0
+        image: velero/velero-plugin-for-aws:v1.14.0
         volumeMounts:
           - mountPath: /target
             name: plugins
@@ -177,7 +182,7 @@ For Google Cloud Storage, adjust the values accordingly.
 values:
   initContainers:
     - name: velero-plugin-for-gcp
-      image: velero/velero-plugin-for-gcp:v1.10.0
+      image: velero/velero-plugin-for-gcp:v1.14.0
       volumeMounts:
         - mountPath: /target
           name: plugins
@@ -220,7 +225,7 @@ spec:
 
 ```bash
 # Check HelmRelease status
-flux get helmrelease velero -n velero
+flux get helmreleases -n velero
 
 # Verify Velero pods are running
 kubectl get pods -n velero
