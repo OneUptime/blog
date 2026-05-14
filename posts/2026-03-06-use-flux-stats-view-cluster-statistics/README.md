@@ -10,7 +10,7 @@ Description: A practical guide to using the flux stats command to view reconcili
 
 ## Introduction
 
-Understanding the health and performance of your Flux CD deployment requires visibility into reconciliation statistics. The `flux stats` command provides a summary of resource counts, reconciliation status, and readiness across all Flux resource types in your cluster.
+Understanding the health and performance of your Flux CD deployment requires visibility into reconciliation statistics. The `flux stats` command provides a summary of Flux custom resource counts, reconciliation status, and artifact storage usage in your cluster.
 
 This guide covers how to use `flux stats` to monitor your cluster, identify issues, and maintain a healthy GitOps pipeline.
 
@@ -32,10 +32,10 @@ flux check
 
 ## What flux stats Shows
 
-The `flux stats` command provides an overview of all Flux-managed resources, including:
+The `flux stats` command provides an overview of Flux custom resources, including:
 
 - Total number of resources by type
-- Number of ready resources
+- Number of non-suspended resources
 - Number of suspended resources
 - Number of failing resources
 
@@ -50,6 +50,7 @@ graph TB
     FS --> IR[Image Repositories]
     FS --> IP[Image Policies]
     FS --> IU[Image Updates]
+    FS --> N[Notification Resources]
 ```
 
 ## Basic Usage
@@ -81,8 +82,8 @@ Each column in the stats output provides specific information:
 | Column | Description |
 |--------|-------------|
 | `RECONCILERS` | The type of Flux resource |
-| `RUNNING` | Number of resources actively reconciling |
-| `FAILING` | Number of resources in a failed state |
+| `RUNNING` | Number of resources that are not suspended |
+| `FAILING` | Number of resources with a `Ready=False` condition |
 | `SUSPENDED` | Number of resources that have been suspended |
 | `STORAGE` | Total storage used by artifacts (for source types) |
 
@@ -183,9 +184,9 @@ git push origin main
 After completing cluster maintenance, verify that all resources have recovered:
 
 ```bash
-# Step 1: Resume any suspended resources
-flux resume kustomization --all --all-namespaces
-flux resume helmrelease --all --all-namespaces
+# Step 1: Resume suspended resources in the affected namespace
+flux resume kustomization --all --namespace production
+flux resume helmrelease --all --namespace production
 
 # Step 2: Wait for reconciliation to complete
 sleep 60
@@ -259,10 +260,10 @@ fi
 echo ""
 echo "--- Suspended Resources ---"
 echo "Kustomizations:"
-flux get kustomizations --all-namespaces 2>/dev/null | grep "True" || echo "  None suspended"
+flux get kustomizations --all-namespaces 2>/dev/null | awk 'NR>1 && $NF=="True" {found=1; print} END {exit !found}' || echo "  None suspended"
 echo ""
 echo "Helm Releases:"
-flux get helmreleases --all-namespaces 2>/dev/null | grep "True" || echo "  None suspended"
+flux get helmreleases --all-namespaces 2>/dev/null | awk 'NR>1 && $NF=="True" {found=1; print} END {exit !found}' || echo "  None suspended"
 ```
 
 ## Interpreting Statistics
