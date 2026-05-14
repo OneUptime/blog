@@ -22,7 +22,7 @@ Verify your CNI supports network policies before proceeding.
 
 ## Step 1: Create a Default Deny Policy
 
-Start with a default deny policy that blocks all ingress and egress traffic in the tenant namespace. Then selectively allow what is needed.
+Start with a default deny policy that blocks all pod ingress and egress traffic governed by NetworkPolicy in the tenant namespace. Then selectively allow what is needed.
 
 ```yaml
 # tenants/team-alpha/network-policies/default-deny.yaml
@@ -39,7 +39,7 @@ spec:
     - Egress
 ```
 
-This policy applies to all pods in the `team-alpha` namespace and blocks all inbound and outbound traffic.
+This policy applies to all pods in the `team-alpha` namespace and blocks inbound and outbound pod traffic unless another NetworkPolicy allows it.
 
 ## Step 2: Allow DNS Resolution
 
@@ -151,7 +151,7 @@ spec:
 
 ## Step 6: Create a Network Policy Template
 
-Create a reusable base that platform admins apply to every tenant namespace.
+Create a reusable base that platform admins apply to every tenant namespace. When using these policies as a base, omit any hard-coded `metadata.namespace` from the policy manifests and set the namespace in each tenant's Kustomization.
 
 ```yaml
 # tenants/base/network-policies/kustomization.yaml
@@ -171,6 +171,7 @@ Include this in each tenant's configuration.
 # tenants/team-alpha/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+namespace: team-alpha
 resources:
   - namespace.yaml
   - service-account.yaml
