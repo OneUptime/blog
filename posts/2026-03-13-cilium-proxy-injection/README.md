@@ -10,17 +10,17 @@ Description: Understand how Cilium injects and manages a per-node Envoy proxy fo
 
 ## Introduction
 
-When Cilium detects that an L7 policy (HTTP, gRPC, Kafka) applies to a pod, it needs a proxy to parse and enforce application-layer rules. Unlike Istio or Linkerd which inject a sidecar Envoy container into every pod that participates in the mesh, Cilium uses a single shared Envoy proxy per node. This shared proxy handles L7 traffic from all pods on that node, dramatically reducing resource consumption.
+When Cilium detects that an L7 policy (HTTP, DNS, Kafka) applies to a pod, it needs a proxy to parse and enforce application-layer rules. Unlike meshes which inject a sidecar proxy container into every pod that participates in the mesh, Cilium uses a node-local Envoy proxy. This shared proxy handles matching L7 traffic from pods on that node, dramatically reducing resource consumption.
 
-The proxy injection in Cilium is transparent and happens without adding any containers to your pod specifications. The Cilium DaemonSet manages the per-node Envoy instance, and eBPF programs in the kernel selectively redirect traffic to the proxy only when L7 policies exist for the connection. Pods without L7 policies bypass the proxy entirely, maintaining the performance characteristics of eBPF-only networking.
+The proxy injection in Cilium is transparent and happens without adding any containers to your pod specifications. Cilium can run Envoy as a process in the Cilium agent pod or as the dedicated `cilium-envoy` DaemonSet shown below, and eBPF programs in the kernel selectively redirect traffic to the proxy only when L7 policies exist for the connection. Pods without L7 policies bypass the proxy entirely, maintaining the performance characteristics of eBPF-only networking.
 
 This guide explains the Cilium proxy injection model, how to configure it, how to verify proxy state, and how to troubleshoot proxy-related issues.
 
 ## Prerequisites
 
-- Cilium v1.12+ with Envoy integration enabled
+- Cilium with L7 proxy support enabled
 - `kubectl` installed
-- `cilium` CLI installed
+- Access to the `cilium-dbg` CLI inside Cilium agent pods
 - At least one L7 CiliumNetworkPolicy applied
 
 ## Step 1: Enable Per-Node Envoy Proxy
@@ -40,60 +40,73 @@ Verify the Envoy DaemonSet is running:
 
 ```bash
 kubectl get daemonset -n kube-system cilium-envoy
-kubectl get pods -n kube-system -l app.kubernetes.io/name=cilium-envoy
+kubectl get pods -n kube-system -l k8s-app=cilium-envoy
 ```
 
 ## Step 2: Verify Proxy is Active for L7 Policies
 
 ```bash
-# Check if proxy visibility is configured for an endpoint
+# Pick a Cilium agent pod on the node you want to inspect
+CILIUM_POD=$(kubectl get pods -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
 
-cilium endpoint list | grep -i proxy
+# List local endpoints managed by that agent
+kubectl exec -n kube-system "$CILIUM_POD" -- cilium-dbg endpoint list
 
-# Get detailed proxy state for specific endpoint
-cilium endpoint get <id> | grep -i proxy
+# Get detailed policy state for a specific local endpoint
+kubectl exec -n kube-system "$CILIUM_POD" -- cilium-dbg endpoint get <id> \
+  -o jsonpath='{.status.policy.realized.l4}'
 
-# List active proxy redirects
-cilium proxy list
+# List configured Envoy listeners
+kubectl exec -n kube-system "$CILIUM_POD" -- cilium-dbg envoy admin listeners
 ```
 
-## Step 3: Configure Visibility Annotations
+## Step 3: Configure L7 Visibility Policy
 
-Trigger L7 visibility for specific pods:
+Trigger L7 visibility with a CiliumNetworkPolicy:
 
 ```bash
-# Enable HTTP visibility for ingress on port 80
-kubectl annotate pod my-pod \
-  "policy.cilium.io/proxy-visibility"="+ingress:80/TCP/HTTP,+egress:80/TCP/HTTP"
-
-# Enable for entire namespace
-kubectl annotate namespace production \
-  "policy.cilium.io/proxy-visibility"="+ingress:8080/TCP/HTTP"
+kubectl apply -f - <<'EOF'
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: "http-l7-visibility"
+  namespace: production
+spec:
+  endpointSelector: {}
+  egress:
+  - toEndpoints:
+    - matchLabels:
+        "k8s:io.kubernetes.pod.namespace": production
+    toPorts:
+    - ports:
+      - port: "80"
+        protocol: TCP
+      rules:
+        http: [{}]
+EOF
 ```
 
 ## Step 4: Inspect Envoy Configuration
 
 ```bash
-# Check Envoy admin interface on a node
-kubectl port-forward -n kube-system cilium-envoy-xxxxx 9901:9901
-curl -s http://localhost:9901/config_dump | jq '.configs[] | .["@type"]'
+# Check Envoy configuration through the Cilium debug CLI
+kubectl exec -n kube-system "$CILIUM_POD" -- cilium-dbg envoy admin config
 
 # Check Envoy listener configuration
-curl -s http://localhost:9901/config_dump | jq '.configs[] | select(.["@type"] | contains("ListenersConfigDump"))'
+kubectl exec -n kube-system "$CILIUM_POD" -- cilium-dbg envoy admin config listeners
 
-# Check Envoy cluster (backend) configuration
-curl -s http://localhost:9901/config_dump | jq '.configs[] | select(.["@type"] | contains("ClustersConfigDump"))'
+# Check Envoy cluster configuration
+kubectl exec -n kube-system "$CILIUM_POD" -- cilium-dbg envoy admin config clusters
 ```
 
 ## Step 5: Monitor Proxy Resource Usage
 
 ```bash
 # Check Envoy resource consumption per node
-kubectl top pod -n kube-system -l app.kubernetes.io/name=cilium-envoy
+kubectl top pod -n kube-system -l k8s-app=cilium-envoy
 
 # View Envoy-specific metrics
-kubectl port-forward -n kube-system cilium-envoy-xxxxx 9901:9901
-curl -s http://localhost:9901/stats/prometheus | grep envoy_http
+kubectl exec -n kube-system "$CILIUM_POD" -- cilium-dbg envoy admin metrics --filter envoy_http
 ```
 
 ## Proxy Injection Model Comparison
