@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Performance, Large Repositories, Optimization
 
-Description: A practical guide to configuring Flux CD for efficient operation with large Git repositories, covering shallow clones, sparse checkouts, include/exclude filters, and OCI alternatives.
+Description: A practical guide to configuring Flux CD for efficient operation with large Git repositories, covering shallow branch checkouts, sparse checkouts, exclude filters, and OCI alternatives.
 
 ---
 
-As organizations adopt GitOps at scale, their configuration repositories can grow to contain thousands of manifests across hundreds of directories. Large repositories create challenges for Flux CD: longer clone times, higher memory usage, and slower reconciliation cycles. Flux provides several mechanisms to handle large repositories efficiently, from shallow clones to sparse checkouts to alternative source types that bypass Git entirely.
+As organizations adopt GitOps at scale, their configuration repositories can grow to contain thousands of manifests across hundreds of directories. Large repositories create challenges for Flux CD: longer clone times, higher memory usage, and slower reconciliation cycles. Flux provides several mechanisms to handle large repositories efficiently, from shallow branch checkouts to sparse checkouts to alternative source types that bypass Git entirely.
 
 ## Understanding the Performance Impact
 
@@ -22,12 +22,12 @@ When Flux reconciles a GitRepository source, it performs several operations:
 
 For a small repository, this process takes seconds. For a repository with tens of thousands of files, a deep Git history, or large binary files, it can take minutes and consume significant memory.
 
-## Shallow Clones
+## Shallow Branch Checkouts
 
-By default, Flux clones the full Git history. For most GitOps use cases, you only need the latest commit. Configuring a shallow clone drastically reduces clone time and bandwidth.
+For most GitOps use cases, you only need the latest commit on a branch. When you configure a `GitRepository` with `spec.ref.branch`, Flux performs a shallow clone of that branch.
 
 ```yaml
-# GitRepository with shallow clone - only fetches the latest commit
+# GitRepository using a branch reference
 
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
@@ -39,16 +39,13 @@ spec:
   url: https://github.com/myorg/large-monorepo
   ref:
     branch: main
-  # Clone only the latest commit instead of full history
-  clone:
-    depth: 1
 ```
 
-Setting `clone.depth: 1` tells Flux to perform a shallow clone with only one commit of history. This can reduce clone times from minutes to seconds for repositories with long histories.
+Using a branch reference avoids fetching unrelated refs and can reduce clone times for repositories with long histories.
 
-## Include and Exclude Filters
+## Sparse Checkout and Exclude Filters
 
-If your repository contains manifests for multiple clusters or environments, each cluster only needs a subset of the files. The `spec.include` field lets you specify which directories to extract from the repository.
+If your repository contains manifests for multiple clusters or environments, each cluster only needs a subset of the files. The `spec.sparseCheckout` field lets you specify which directories to check out from the repository.
 
 ```yaml
 # GitRepository that only extracts specific directories
@@ -62,17 +59,13 @@ spec:
   url: https://github.com/myorg/platform-config
   ref:
     branch: main
-  clone:
-    depth: 1
   # Only include files matching these paths
-  include:
-    - fromPath: deploy/production
-      toPath: production
-    - fromPath: deploy/shared
-      toPath: shared
+  sparseCheckout:
+    - deploy/production
+    - deploy/shared
 ```
 
-The `include` field creates a filtered artifact. Only files from the specified `fromPath` directories are included, mapped to the `toPath` in the artifact. This reduces the artifact size and speeds up subsequent Kustomization reconciliation.
+The `sparseCheckout` field creates a filtered artifact. Only files from the specified directories are included in the artifact. This reduces the artifact size and speeds up subsequent Kustomization reconciliation.
 
 The `spec.ignore` field lets you exclude files using `.gitignore` syntax.
 
@@ -117,8 +110,6 @@ spec:
   url: https://github.com/myorg/large-monorepo
   ref:
     branch: main
-  clone:
-    depth: 1
 ```
 
 For faster change detection without frequent polling, use webhooks. Flux's notification controller can receive webhook events from GitHub, GitLab, or Bitbucket and trigger reconciliation immediately.
@@ -172,7 +163,7 @@ patches:
 
 ## Splitting Monorepos into Multiple Sources
 
-Instead of having one GitRepository source for a large monorepo, you can create multiple sources, each targeting a different part of the repository using include filters. Alternatively, you can restructure into multiple repositories.
+Instead of having one GitRepository source for a large monorepo, you can create multiple sources, each targeting a different part of the repository using sparse checkouts. Alternatively, you can restructure into multiple repositories.
 
 ```yaml
 # Split approach: multiple GitRepository sources for different teams
@@ -186,11 +177,8 @@ spec:
   url: https://github.com/myorg/platform-config
   ref:
     branch: main
-  clone:
-    depth: 1
-  include:
-    - fromPath: teams/team-a
-      toPath: .
+  sparseCheckout:
+    - teams/team-a
 ---
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
@@ -202,25 +190,22 @@ spec:
   url: https://github.com/myorg/platform-config
   ref:
     branch: main
-  clone:
-    depth: 1
-  include:
-    - fromPath: teams/team-b
-      toPath: .
+  sparseCheckout:
+    - teams/team-b
 ```
 
-This approach allows each team's Kustomizations to reference their own source, and the include filter ensures only the relevant files are processed.
+This approach allows each team's Kustomizations to reference their own source, and the sparse checkout ensures only the relevant files are processed.
 
 ## Using OCI Artifacts for Large Codebases
 
-For very large repositories where Git cloning remains a bottleneck even with shallow clones, OCI artifacts offer an alternative. A CI pipeline can build and push only the relevant manifests as an OCI artifact, eliminating the Git clone entirely.
+For very large repositories where Git cloning remains a bottleneck even with shallow branch checkouts, OCI artifacts offer an alternative. A CI pipeline can build and push only the relevant manifests as an OCI artifact, eliminating the Git clone entirely.
 
 ```bash
 # In CI: push only the relevant manifests as an OCI artifact
 flux push artifact oci://ghcr.io/myorg/production-manifests:$(git rev-parse --short HEAD) \
   --path=./deploy/production \
   --source="$(git config --get remote.origin.url)" \
-  --revision="main/$(git rev-parse HEAD)"
+  --revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)"
 ```
 
 ```yaml
@@ -234,7 +219,7 @@ spec:
   interval: 5m
   url: oci://ghcr.io/myorg/production-manifests
   ref:
-    semver: ">=0.0.1"
+    tag: "<git-short-sha>"
 ```
 
 OCI artifacts are typically much smaller than a full Git clone because they contain only the manifests, not the repository history or unrelated files.
@@ -244,7 +229,7 @@ OCI artifacts are typically much smaller than a full Git clone because they cont
 You can monitor how long Flux takes to fetch and process repositories.
 
 ```bash
-# Check the last fetch duration for a GitRepository
+# Check the last artifact update time for a GitRepository
 kubectl get gitrepository large-repo -n flux-system \
   -o jsonpath='{.status.artifact.lastUpdateTime}'
 
@@ -261,14 +246,14 @@ kubectl top pod -n flux-system -l app=source-controller
 
 | Strategy | Impact | Use When |
 |----------|--------|----------|
-| Shallow clone (`depth: 1`) | Reduces clone time significantly | Always, unless you need Git history |
-| Include filters | Reduces artifact size | Monorepo with multiple environments |
+| Branch reference | Uses a shallow branch checkout | Always, unless you need a tag, SemVer range, named ref, or commit |
+| Sparse checkout | Reduces artifact size | Monorepo with multiple environments |
 | Ignore rules | Excludes non-manifest files | Repository contains docs, tests, CI config |
 | Longer intervals + webhooks | Reduces clone frequency | Large repos that do not change constantly |
-| Multiple sources | Parallelizes fetching | Multiple teams sharing a monorepo |
+| Multiple sources | Creates independent artifacts | Multiple teams sharing a monorepo |
 | OCI artifacts | Eliminates Git clone entirely | Very large repos, air-gapped environments |
 | Resource limit increases | Prevents OOM kills | Large artifacts that exceed default memory |
 
 ## Conclusion
 
-Flux CD provides multiple mechanisms to handle large repositories efficiently. Shallow clones, include/exclude filters, and longer reconciliation intervals with webhook triggers are the primary tools. For the most demanding scenarios, OCI artifacts eliminate the Git bottleneck entirely by pre-packaging manifests in CI. Monitoring fetch durations and source-controller resource usage helps you identify when optimization is needed and measure the impact of changes.
+Flux CD provides multiple mechanisms to handle large repositories efficiently. Shallow branch checkouts, sparse checkout, exclude filters, and longer reconciliation intervals with webhook triggers are the primary tools. For the most demanding scenarios, OCI artifacts eliminate the Git bottleneck entirely by pre-packaging manifests in CI. Monitoring reconciliation durations and source-controller resource usage helps you identify when optimization is needed and measure the impact of changes.
