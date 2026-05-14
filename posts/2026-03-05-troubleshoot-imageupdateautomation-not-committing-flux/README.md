@@ -25,7 +25,7 @@ ImageUpdateAutomation depends on both ImageRepository and ImagePolicy. If either
 ```bash
 # Check all image resources in one view
 
-flux get image all -n flux-system
+flux get images all -n flux-system
 ```
 
 Confirm that:
@@ -124,7 +124,7 @@ Ensure the referenced secret has credentials with push permissions.
 kubectl get secret flux-system -n flux-system -o jsonpath='{.data}' | jq 'keys'
 ```
 
-For SSH authentication, the secret should contain `identity` and `known_hosts`. For HTTPS, it should contain `username` and `password` (or a personal access token).
+For SSH authentication, the secret should contain `identity` and `known_hosts`. For HTTPS basic authentication, it should contain `username` and `password` (with a personal access token commonly used as the password), or `bearerToken` for bearer token authentication.
 
 ### Branch Protection Rules
 
@@ -170,7 +170,7 @@ The ImageUpdateAutomation references a GitRepository source. If that source is n
 
 ```bash
 # Check the referenced GitRepository
-flux get source git flux-system -n flux-system
+flux get sources git flux-system -n flux-system
 ```
 
 ### No Actual Change Detected
@@ -179,7 +179,7 @@ If the image tag in your manifest already matches the tag resolved by the ImageP
 
 ```bash
 # Compare the policy's resolved tag with what is in your manifests
-flux get image policy my-app -n flux-system
+kubectl get imagepolicy my-app -n flux-system -o jsonpath='{.status.latestRef}'
 ```
 
 ## Step 4: Force a Reconciliation
