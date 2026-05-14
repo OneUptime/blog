@@ -49,7 +49,7 @@ kubectl get gitrepository <name> -n flux-system -o jsonpath='{.spec.url}'
 
 Look for common mistakes such as:
 - Using `git@` prefix with HTTPS authentication
-- Missing `.git` suffix
+- Incorrect organization, repository name, or path
 - Incorrect hostname
 
 ### Fix
@@ -126,6 +126,9 @@ kubectl patch gitrepository <name> -n flux-system \
 ```bash
 # Generate a new SSH key pair if needed
 ssh-keygen -t ed25519 -f identity -C "flux" -q -N ""
+
+# Populate known_hosts for the Git server
+ssh-keyscan github.com > known_hosts
 
 # Create the secret from the key files
 kubectl create secret generic git-ssh-credentials \
@@ -232,7 +235,7 @@ If your Git server uses a self-signed certificate:
 ```bash
 # Create a secret with the CA certificate
 kubectl create secret generic git-ca-cert \
-  --from-file=caFile=./ca.crt \
+  --from-file=ca.crt=./ca.crt \
   -n flux-system
 ```
 
@@ -245,8 +248,8 @@ metadata:
 spec:
   interval: 1m
   url: https://git.internal.example.com/my-org/my-repo.git
-  # Reference the CA certificate secret
-  certSecretRef:
+  # Reference the secret containing the CA certificate
+  secretRef:
     name: git-ca-cert
   ref:
     branch: main
