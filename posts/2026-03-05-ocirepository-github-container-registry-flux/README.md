@@ -18,7 +18,7 @@ This guide walks you through setting up authentication, pushing OCI artifacts to
 
 Before you begin, make sure you have the following:
 
-- A Kubernetes cluster with Flux CD installed (v0.35 or later)
+- A Kubernetes cluster with Flux CD installed (v2.6 or later)
 - The `flux` CLI installed
 - A GitHub account with a personal access token (PAT) that has `read:packages` and `write:packages` scopes
 - `kubectl` configured to access your cluster
@@ -35,16 +35,16 @@ Save the token securely. You will use it in the next steps.
 
 ## Step 2: Push an OCI Artifact to GHCR
 
-First, authenticate the Flux CLI with GHCR.
+First, authenticate to GHCR, then push the artifact with the Flux CLI.
 
 ```bash
 # Log in to GHCR using your GitHub username and personal access token
+echo "$GITHUB_TOKEN" | docker login ghcr.io --username YOUR_USERNAME --password-stdin
 
-echo $GITHUB_TOKEN | flux push artifact oci://ghcr.io/YOUR_ORG/manifests/app:latest \
+flux push artifact oci://ghcr.io/YOUR_ORG/manifests/app:latest \
   --path=./deploy \
   --source="$(git config --get remote.origin.url)" \
-  --revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)" \
-  --creds=YOUR_USERNAME:$GITHUB_TOKEN
+  --revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)"
 ```
 
 This command packages the contents of the `./deploy` directory into an OCI artifact and pushes it to GHCR under your organization's namespace. The `--source` and `--revision` flags attach Git metadata to the artifact for traceability.
@@ -53,7 +53,7 @@ You can verify the artifact was pushed successfully by listing tags.
 
 ```bash
 # List available tags for the artifact in GHCR
-flux list artifacts oci://ghcr.io/YOUR_ORG/manifests/app --creds=YOUR_USERNAME:$GITHUB_TOKEN
+flux list artifacts oci://ghcr.io/YOUR_ORG/manifests/app
 ```
 
 ## Step 3: Create a Kubernetes Secret for GHCR Authentication
@@ -174,21 +174,26 @@ jobs:
       - name: Setup Flux CLI
         uses: fluxcd/flux2/action@main
 
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Push artifact to GHCR
         run: |
           flux push artifact \
             oci://ghcr.io/${{ github.repository }}/manifests:${{ github.sha }} \
             --path=./deploy \
             --source="${{ github.repositoryUrl }}" \
-            --revision="${{ github.ref_name }}@sha1:${{ github.sha }}" \
-            --creds=flux:${{ secrets.GITHUB_TOKEN }}
+            --revision="${{ github.ref_name }}@sha1:${{ github.sha }}"
 
       - name: Tag as latest
         run: |
           flux tag artifact \
             oci://ghcr.io/${{ github.repository }}/manifests:${{ github.sha }} \
-            --tag=latest \
-            --creds=flux:${{ secrets.GITHUB_TOKEN }}
+            --tag=latest
 ```
 
 ## Troubleshooting
