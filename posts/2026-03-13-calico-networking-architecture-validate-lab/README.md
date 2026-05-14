@@ -42,11 +42,16 @@ kubectl get pods -n calico-system -l k8s-app=calico-node
 # Expected: One pod per node, all in Running state
 
 # Check Felix's self-reported liveness
-kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
-  -- calico-node -felix-live-logging 2>&1 | head -20
+CALICO_NODE_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n calico-system "$CALICO_NODE_POD" -c calico-node \
+  -- /bin/calico-node -felix-live
+# Expected: Felix is live
 
-# Check Felix metrics endpoint
-kubectl port-forward -n calico-system daemonset/calico-node 9091 &
+# Check Felix metrics endpoint (metrics are disabled by default)
+kubectl patch felixconfiguration default --type merge \
+  --patch '{"spec":{"prometheusMetricsEnabled": true}}'
+kubectl port-forward -n calico-system pod/"$CALICO_NODE_POD" 9091:9091 &
 curl http://localhost:9091/metrics | grep felix_cluster_num_hosts
 # Expected: Count matching your node count
 ```
@@ -59,8 +64,14 @@ Typha runs as a Deployment:
 kubectl get pods -n calico-system -l k8s-app=calico-typha
 # Expected: At least one pod Running (count varies by cluster size)
 
-# Check Typha connection count (should equal Felix pod count)
-kubectl logs -n calico-system -l k8s-app=calico-typha | grep "connection"
+# Check Typha client connections (metrics are disabled by default)
+kubectl patch installation default --type=merge \
+  -p '{"spec": {"typhaMetricsPort":9093}}'
+TYPHA_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-typha \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl port-forward -n calico-system pod/"$TYPHA_POD" 9093:9093 &
+curl http://localhost:9093/metrics | grep typha_connections_streaming
+# Expected: Streaming connections from calico-node clients; baseline this for your cluster
 ```
 
 ## Validation 4: BIRD BGP Sessions (BGP mode only)
@@ -69,11 +80,13 @@ If using BGP routing mode, verify BIRD sessions are established:
 
 ```bash
 # Check BGP session status via Felix
-kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
+CALICO_NODE_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n calico-system "$CALICO_NODE_POD" -c calico-node \
   -- birdcl show protocols
 # Expected: All sessions show "Established"
 
-# Check using calicoctl
+# Check using calicoctl on each node being validated
 calicoctl node status
 # Expected: BGP peer state shows "Established" for all configured peers
 ```
@@ -102,7 +115,7 @@ calicoctl ipam show
 # Expected: Block allocations visible, utilization > 0 if pods are running
 
 calicoctl get workloadendpoints --all-namespaces
-# Expected: One entry per running pod
+# Expected: One entry per Calico-networked running pod (hostNetwork pods are excluded)
 ```
 
 ## Validation 7: End-to-End Architecture Test
@@ -123,10 +136,10 @@ spec:
   - action: Pass
 EOF
 
-# Verify Felix received and applied the policy
-kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | \
-  grep "arch-validation-test"
-# Expected: Log entry showing policy was programmed
+# Verify the policy exists and Felix has received cluster policy state
+calicoctl get globalnetworkpolicy arch-validation-test -o yaml
+curl http://localhost:9091/metrics | grep felix_cluster_num_policies
+# Expected: Policy is present and Felix reports the current cluster policy count
 
 # Clean up
 calicoctl delete globalnetworkpolicy arch-validation-test
