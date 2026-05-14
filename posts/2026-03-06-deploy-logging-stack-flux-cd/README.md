@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Logging, Loki, Promtail, Grafana, Kubernetes, GitOps, Observability
+Tags: Flux CD, Logging, Loki, Grafana Alloy, Grafana, Kubernetes, GitOps, Observability
 
-Description: Learn how to deploy a production-grade logging stack with Loki, Promtail, and Grafana using Flux CD and GitOps workflows.
+Description: Learn how to deploy a production-grade logging stack with Loki, Grafana Alloy, and Grafana using Flux CD and GitOps workflows.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Learn how to deploy a production-grade logging stack with Loki, Pro
 
 Centralized logging is a cornerstone of Kubernetes observability. The Grafana Loki stack provides a lightweight, cost-effective alternative to Elasticsearch-based solutions. Loki is designed to index only metadata (labels) rather than full log content, making it significantly cheaper to operate at scale.
 
-This guide covers deploying a complete logging stack using Loki for log aggregation, Promtail for log collection, and Grafana for visualization, all managed through Flux CD.
+This guide covers deploying a complete logging stack using Loki for log aggregation, Grafana Alloy for log collection, and Grafana for visualization, all managed through Flux CD.
 
 ## Prerequisites
 
@@ -27,13 +27,13 @@ The logging stack consists of three main components:
 
 ```mermaid
 graph LR
-    A[Pods] -->|stdout/stderr| B[Promtail DaemonSet]
+    A[Pods] -->|stdout/stderr| B[Grafana Alloy DaemonSet]
     B -->|Push logs| C[Loki]
     C -->|Store| D[Object Storage / S3]
     C -->|Query| E[Grafana]
 ```
 
-- **Promtail** runs as a DaemonSet on every node, tailing container logs and shipping them to Loki
+- **Grafana Alloy** runs as a DaemonSet on every node, tailing container logs and shipping them to Loki
 - **Loki** receives, indexes, and stores log data
 - **Grafana** provides the query interface for exploring logs
 
@@ -43,9 +43,9 @@ graph LR
 infrastructure/
   logging/
     namespace.yaml
-    helmrepository.yaml
+    helmrepositories.yaml
     loki-helmrelease.yaml
-    promtail-helmrelease.yaml
+    alloy-helmrelease.yaml
     grafana-datasource.yaml
 ```
 
@@ -65,7 +65,16 @@ metadata:
 ## Adding the Helm Repository
 
 ```yaml
-# infrastructure/logging/helmrepository.yaml
+# infrastructure/logging/helmrepositories.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: grafana-community
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://grafana-community.github.io/helm-charts
+---
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -78,7 +87,7 @@ spec:
 
 ## Deploying Loki
 
-Deploy Loki in single-binary mode for smaller clusters or microservices mode for production.
+Deploy Loki in monolithic mode for smaller clusters or microservices mode for production.
 
 ```yaml
 # infrastructure/logging/loki-helmrelease.yaml
@@ -92,10 +101,10 @@ spec:
   chart:
     spec:
       chart: loki
-      version: "6.x"
+      version: "13.x"
       sourceRef:
         kind: HelmRepository
-        name: grafana
+        name: grafana-community
         namespace: flux-system
   install:
     remediation:
@@ -104,8 +113,8 @@ spec:
     remediation:
       retries: 3
   values:
-    # Deployment mode: single binary for simplicity
-    deploymentMode: SingleBinary
+    # Deployment mode: monolithic for simplicity
+    deploymentMode: Monolithic
     singleBinary:
       replicas: 1
       resources:
@@ -167,32 +176,52 @@ spec:
     gateway:
       enabled: true
       replicas: 1
-    # Disable components not needed in single-binary mode
+    # Disable components not needed in monolithic mode
     read:
       replicas: 0
     write:
       replicas: 0
     backend:
       replicas: 0
+    ingester:
+      replicas: 0
+    querier:
+      replicas: 0
+    queryFrontend:
+      replicas: 0
+    queryScheduler:
+      replicas: 0
+    distributor:
+      replicas: 0
+    compactor:
+      replicas: 0
+    indexGateway:
+      replicas: 0
+    bloomPlanner:
+      replicas: 0
+    bloomBuilder:
+      replicas: 0
+    bloomGateway:
+      replicas: 0
 ```
 
-## Deploying Promtail
+## Deploying Grafana Alloy
 
-Promtail collects logs from all pods on each node and ships them to Loki.
+Grafana Alloy collects logs from all pods on each node and ships them to Loki.
 
 ```yaml
-# infrastructure/logging/promtail-helmrelease.yaml
+# infrastructure/logging/alloy-helmrelease.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: promtail
+  name: alloy
   namespace: logging
 spec:
   interval: 30m
   chart:
     spec:
-      chart: promtail
-      version: "6.x"
+      chart: alloy
+      version: "1.x"
       sourceRef:
         kind: HelmRepository
         name: grafana
@@ -201,63 +230,95 @@ spec:
     remediation:
       retries: 3
   values:
-    # Loki endpoint configuration
-    config:
-      clients:
-        - url: http://loki-gateway.logging.svc.cluster.local/loki/api/v1/push
-          # Tenant ID (only needed if multi-tenancy is enabled)
-          # tenant_id: default
-      snippets:
-        # Pipeline stages for log processing
-        pipelineStages:
-          # Extract Docker/CRI container log format
-          - cri: {}
-          # Drop debug-level logs to save storage
-          - match:
-              selector: '{app="debug-app"}'
-              stages:
-                - drop:
-                    expression: ".*DEBUG.*"
-          # Add custom labels based on log content
-          - match:
-              selector: '{namespace="production"}'
-              stages:
-                - regex:
-                    expression: '.*level=(?P<level>\w+).*'
-                - labels:
-                    level:
-        # Additional scrape configs for system logs
-        extraScrapeConfigs: |
-          # Scrape systemd journal logs
-          - job_name: journal
-            journal:
-              max_age: 12h
-              labels:
-                job: systemd-journal
-            relabel_configs:
-              - source_labels: ['__journal__systemd_unit']
-                target_label: unit
-    # Resource allocation for Promtail
-    resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        cpu: 200m
-        memory: 256Mi
-    # Tolerations to run on all nodes including masters
-    tolerations:
-      - effect: NoSchedule
-        operator: Exists
-    # Mount additional paths for system logs
-    extraVolumes:
-      - name: journal
-        hostPath:
-          path: /var/log/journal
-    extraVolumeMounts:
-      - name: journal
-        mountPath: /var/log/journal
-        readOnly: true
+    controller:
+      type: daemonset
+      # Tolerations to run on all nodes including masters
+      tolerations:
+        - effect: NoSchedule
+          operator: Exists
+    alloy:
+      mounts:
+        varlog: true
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+      configMap:
+        content: |
+          logging {
+            level  = "info"
+            format = "logfmt"
+          }
+
+          discovery.kubernetes "pods" {
+            role = "pod"
+
+            selectors {
+              role  = "pod"
+              field = "spec.nodeName=" + coalesce(sys.env("HOSTNAME"), constants.hostname)
+            }
+          }
+
+          discovery.relabel "pod_logs" {
+            targets = discovery.kubernetes.pods.targets
+
+            rule {
+              source_labels = ["__meta_kubernetes_namespace"]
+              action        = "replace"
+              target_label  = "namespace"
+            }
+
+            rule {
+              source_labels = ["__meta_kubernetes_pod_name"]
+              action        = "replace"
+              target_label  = "pod"
+            }
+
+            rule {
+              source_labels = ["__meta_kubernetes_pod_container_name"]
+              action        = "replace"
+              target_label  = "container"
+            }
+
+            rule {
+              source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_container_name"]
+              action        = "replace"
+              target_label  = "job"
+              separator     = "/"
+            }
+          }
+
+          loki.source.kubernetes "pod_logs" {
+            targets    = discovery.relabel.pod_logs.output
+            forward_to = [loki.process.pod_logs.receiver]
+          }
+
+          loki.process "pod_logs" {
+            stage.drop {
+              expression = ".*DEBUG.*"
+            }
+
+            stage.regex {
+              expression = ".*level=(?P<level>\\w+).*"
+            }
+
+            stage.labels {
+              values = {
+                level = "",
+              }
+            }
+
+            forward_to = [loki.write.default.receiver]
+          }
+
+          loki.write "default" {
+            endpoint {
+              url = "http://loki-gateway.logging.svc.cluster.local/loki/api/v1/push"
+            }
+          }
 ```
 
 ## Grafana Datasource Configuration
@@ -295,9 +356,9 @@ data:
               url: "$${__value.raw}"
 ```
 
-## Log-Based Alerting Rules
+## Loki Health Alerting Rules
 
-Create alerting rules based on log patterns.
+Create alerting rules based on Loki metrics. Log-based alerting rules should be created in Grafana or Loki's ruler because PrometheusRule resources evaluate PromQL, not LogQL.
 
 ```yaml
 # infrastructure/logging/alert-rules.yaml
@@ -320,15 +381,15 @@ spec:
           annotations:
             summary: "Loki is not receiving any logs"
             description: "No logs have been ingested for 15 minutes."
-        # Alert on high error rate in logs
-        - alert: HighErrorRate
+        # Alert when Loki reports request errors
+        - alert: LokiRequestErrors
           expr: |
-            sum(rate(loki_distributor_lines_received_total{level="error"}[5m])) > 100
+            sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[5m])) > 0
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "High error log rate detected"
+            summary: "Loki is returning 5xx responses"
 ```
 
 ## Flux Kustomization
@@ -359,7 +420,7 @@ spec:
       namespace: logging
     - apiVersion: apps/v1
       kind: DaemonSet
-      name: promtail
+      name: alloy
       namespace: logging
   timeout: 10m
 ```
@@ -378,12 +439,14 @@ metadata:
 spec:
   values:
     deploymentMode: Distributed
-    # Disable single binary
+    # Disable monolithic mode
     singleBinary:
       replicas: 0
     # Ingester - writes incoming log data
     ingester:
       replicas: 3
+      zoneAwareReplication:
+        enabled: false
       resources:
         requests:
           cpu: 500m
@@ -409,6 +472,12 @@ spec:
         requests:
           cpu: 200m
           memory: 256Mi
+    # Query scheduler - schedules query execution
+    queryScheduler:
+      replicas: 2
+    # Index gateway - serves TSDB index queries
+    indexGateway:
+      replicas: 2
     # Compactor - handles retention and compaction
     compactor:
       replicas: 1
@@ -416,6 +485,19 @@ spec:
         requests:
           cpu: 200m
           memory: 512Mi
+    # Disable simple scalable and experimental bloom components
+    backend:
+      replicas: 0
+    read:
+      replicas: 0
+    write:
+      replicas: 0
+    bloomPlanner:
+      replicas: 0
+    bloomBuilder:
+      replicas: 0
+    bloomGateway:
+      replicas: 0
 ```
 
 ## Verifying the Deployment
@@ -428,8 +510,8 @@ flux get helmreleases -n logging
 # Verify all logging pods are running
 kubectl get pods -n logging
 
-# Check Promtail is running on all nodes
-kubectl get pods -n logging -l app.kubernetes.io/name=promtail -o wide
+# Check Alloy is running on all nodes
+kubectl get pods -n logging -l app.kubernetes.io/name=alloy -o wide
 
 # Test Loki by querying logs
 kubectl port-forward -n logging svc/loki-gateway 3100:80
@@ -443,11 +525,11 @@ curl -G "http://localhost:3100/loki/api/v1/query_range" \
 
 ## Troubleshooting
 
-- **Promtail not collecting logs**: Check that the /var/log/pods path is mounted correctly. Verify with `kubectl logs <promtail-pod> -n logging`
+- **Alloy not collecting logs**: Check that the Alloy DaemonSet is running on each node and can watch pods. Verify with `kubectl logs <alloy-pod> -n logging`
 - **Loki rejecting logs**: Check rate limits in loki configuration. Look for "rate limit" errors in Loki logs
-- **High storage costs**: Adjust retention period, enable compaction, and filter out noisy logs in Promtail pipeline stages
+- **High storage costs**: Adjust retention period, enable compaction, and filter out noisy logs in Alloy processing stages
 - **Query timeout**: For large log volumes, increase query timeout and consider deploying query-frontend for caching
 
 ## Conclusion
 
-Deploying a logging stack with Flux CD provides a GitOps-managed, centralized logging solution. The Loki-Promtail-Grafana stack offers excellent performance at lower cost than Elasticsearch-based alternatives. By managing the entire stack through Flux CD, you ensure consistency, reproducibility, and easy rollback of logging configuration changes across all your clusters.
+Deploying a logging stack with Flux CD provides a GitOps-managed, centralized logging solution. The Loki-Alloy-Grafana stack offers excellent performance at lower cost than Elasticsearch-based alternatives. By managing the entire stack through Flux CD, you ensure consistency, reproducibility, and easy rollback of logging configuration changes across all your clusters.
