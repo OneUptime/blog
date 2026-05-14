@@ -130,8 +130,7 @@ auth_param basic program /usr/lib64/squid/basic_ldap_auth \
   -D "cn=binduser,dc=example,dc=com" \
   -w "BindPassword123" \
   -f "(uid=%s)" \
-  -H ldaps://ldap.example.com \
-  -Z
+  -H ldaps://ldap.example.com:636
 
 # If using a self-signed CA
 # Set the LDAP TLS CA certificate
