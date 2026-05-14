@@ -47,10 +47,10 @@ One of the most common issues is a policy that appears applied but isn't enforce
 kubectl get cnp,ccnp -A
 
 # Check endpoint policy enforcement status
-cilium endpoint list
+kubectl -n kube-system exec -ti <cilium-pod> -- cilium-dbg endpoint list
 
 # Inspect a specific endpoint's policy
-cilium endpoint get <endpoint-id>
+kubectl -n kube-system exec -ti <cilium-pod> -- cilium-dbg endpoint get <endpoint-id>
 ```
 
 ## Step 3: Common FAQ - Pod Cannot Reach External Services
@@ -76,8 +76,8 @@ Hubble is Cilium's observability layer. If flows aren't visible, check these set
 # Confirm Hubble is enabled
 cilium status | grep Hubble
 
-# Enable Hubble if not already enabled
-cilium hubble enable
+# Enable Hubble and Hubble UI if not already enabled
+cilium hubble enable --ui
 
 # Port-forward to access the Hubble UI locally
 cilium hubble ui
@@ -91,11 +91,14 @@ Upgrading Cilium requires careful sequencing to avoid downtime.
 # Check current Cilium version
 cilium version
 
-# Upgrade using Helm, ensuring you review the upgrade notes first
+# Save current values, review the upgrade notes, and check for renamed or deprecated values
+helm get values cilium --namespace kube-system -o yaml > old-values.yaml
+
+# Upgrade using Helm with reviewed values
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
-  --reuse-values \
-  --version 1.15.0
+  -f old-values.yaml \
+  --version <target-version>
 
 # Verify the upgrade completed successfully
 cilium status
@@ -106,7 +109,7 @@ cilium status
 - Always run `cilium connectivity test` after installation or upgrades to validate the data plane
 - Enable Hubble from the start - observability is essential for debugging
 - Subscribe to Cilium release notes to stay ahead of breaking changes
-- Use `cilium debuginfo` to gather a comprehensive diagnostic bundle when filing issues
+- Use `cilium sysdump` to gather a comprehensive diagnostic bundle when filing issues
 - Review the Cilium compatibility matrix before upgrading Kubernetes versions
 
 ## Conclusion
