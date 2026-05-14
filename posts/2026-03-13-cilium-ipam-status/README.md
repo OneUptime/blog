@@ -10,9 +10,9 @@ Description: Learn how to read and interpret Cilium's IPAM status fields in Cili
 
 ## Introduction
 
-The IPAM status in Cilium's CiliumNode CRD is the real-time record of IP address allocation state on each node. While the IPAM spec describes what IPAM parameters are requested, the IPAM status reflects what is actually happening: which IPs are allocated to which pods, how many IPs are available for new pods, and what the current CIDR allocation state is. Correctly interpreting IPAM status is essential for capacity planning, troubleshooting IP allocation failures, and auditing IP assignment.
+The IPAM status in Cilium's CiliumNode CRD is the real-time record of IP address allocation state on each node. While the IPAM spec describes what IPAM parameters are requested, the IPAM status reflects what is actually happening: which IPs are currently allocated and what the current CIDR allocation state is. Correctly interpreting IPAM status is essential for capacity planning, troubleshooting IP allocation failures, and auditing IP assignment.
 
-The `status.ipam` section of a CiliumNode is primarily written by the Cilium Agent running on that node. As pods are created and deleted, the Agent updates the `used` and `available` maps. The Cilium Operator also interacts with status to record the outcome of CIDR allocation requests. For cloud IPAM modes (aws-eni, azure), additional status fields track ENI/interface assignments and cloud-specific allocation state.
+The `status.ipam` section of a CiliumNode is primarily written by the Cilium Agent running on that node. As pods are created and deleted, the Agent updates the `used` map. The Cilium Operator also interacts with status to record CIDR allocation errors in `operator-status`. For cloud IPAM modes such as AWS ENI and Azure, additional top-level status fields such as `status.eni` or `status.azure` track interface assignments and cloud-specific allocation state.
 
 This guide covers how to read and interpret all IPAM status fields, configure alerting based on status, troubleshoot status inconsistencies, and validate that status accurately reflects the actual networking state.
 
@@ -38,15 +38,15 @@ kubectl get ciliumnodes -o json | \
 
 # View status for a specific node (cleaner format)
 NODE="worker-1"
-kubectl get ciliumnode $NODE -o json | jq '.status.ipam | {
-  used_count: (.used | length),
-  available_count: (.available | length),
-  sample_used: (.used | to_entries[:3] | map({ip: .key, pod: .value.owner}))
+kubectl get ciliumnode "$NODE" -o json | jq '{
+  used_count: (.status.ipam.used // {} | length),
+  pool_count: (.spec.ipam.pool // {} | length),
+  free_count: (((.spec.ipam.pool // {}) | length) - ((.status.ipam.used // {}) | length)),
+  sample_used: (.status.ipam.used // {} | to_entries[:3] | map({ip: .key, pod: .value.owner}))
 }'
 
 # Enable verbose IPAM logging for detailed status updates
-kubectl -n kube-system exec ds/cilium -- \
-  cilium config set debug true
+cilium config set debug true
 kubectl -n kube-system logs ds/cilium -f | grep -i "ipam\|alloc\|status"
 ```
 
@@ -65,21 +65,27 @@ status:
         owner: "kube-system/coredns-74ff55c5b-qr8s2"
         resource: "kube-system/coredns-74ff55c5b-qr8s2"
 
-    # Map of available IPs (empty value = available)
-    available:
-      "10.244.1.7": {}
-      "10.244.1.8": {}
-
-    # Operator-managed status (CIDR allocation outcome)
+    # Operator-managed status (CIDR allocation errors)
     operator-status:
-      "10.244.1.0/24": "allocated"
+      error: ""
 
     # For cloud IPAM modes (aws-eni): ENI allocation status
-    # enis:
-    #   eni-abc123:
-    #     id: eni-abc123
-    #     ip: 10.0.1.5 (primary)
-    #     ips: [10.0.1.6, 10.0.1.7, ...]
+    # ENIs are tracked under status.eni, not status.ipam:
+    # status:
+    #   eni:
+    #     enis:
+    #       eni-abc123:
+    #         id: eni-abc123
+    #         ip: 10.0.1.5 (primary)
+    #         ips: [10.0.1.6, 10.0.1.7, ...]
+spec:
+  ipam:
+    # Map of allocatable IPs for CRD-backed/cloud IPAM pools
+    pool:
+      "10.244.1.5": {}
+      "10.244.1.6": {}
+      "10.244.1.7": {}
+      "10.244.1.8": {}
 ```
 
 ## Troubleshoot IPAM Status Issues
@@ -87,13 +93,15 @@ status:
 Diagnose status inconsistencies:
 
 ```bash
-# Find nodes with no available IPs in status
+# Find nodes with no free IPv4 addresses in the CiliumNode IPAM pool
 kubectl get ciliumnodes -o json | \
-  jq '.items[] | select((.status.ipam.available | length) == 0) | .metadata.name'
+  jq '.items[] |
+  select(((.spec.ipam.pool // {}) | length) - ((.status.ipam.used // {}) | length) == 0) |
+  .metadata.name'
 
 # Find used IPs with no corresponding running pod
 kubectl get ciliumnodes -o json | \
-  jq -r '.items[] | .metadata.name as $node | .status.ipam.used // {} | to_entries[] |
+  jq -r '.items[] | .metadata.name as $node | (.status.ipam.used // {}) | to_entries[] |
   "\($node) \(.key) \(.value.owner // "unknown")"' | \
   while IFS=' ' read -r node ip owner; do
     if [ "$owner" != "unknown" ]; then
@@ -108,10 +116,9 @@ kubectl get ciliumnodes -o json | \
 
 # Check for operator-status showing allocation failures
 kubectl get ciliumnodes -o json | \
-  jq '.items[] | .metadata.name as $node |
-  .status.ipam."operator-status" // {} | to_entries[] |
-  select(.value != "allocated") |
-  "\($node): CIDR \(.key) status=\(.value)"'
+  jq -r '.items[] |
+  select(.status.ipam."operator-status".error? != null and .status.ipam."operator-status".error != "") |
+  "\(.metadata.name): \(.status.ipam."operator-status".error)"'
 ```
 
 Fix status issues:
@@ -122,14 +129,14 @@ Fix status issues:
 kubectl -n kube-system delete pod -l k8s-app=cilium \
   --field-selector spec.nodeName=<node-with-stale-status>
 
-# Issue: Available IPs not replenished after pod deletion
+# Issue: Free IPs not replenished after pod deletion
 # Check agent logs for release errors
 kubectl -n kube-system logs ds/cilium | grep -i "release\|available\|ipam"
 
-# Issue: operator-status showing "released" instead of "allocated"
-# Re-trigger Operator CIDR allocation
-kubectl annotate ciliumnode <node-name> \
-  "cilium.io/ipam-refresh=$(date +%s)" --overwrite
+# Issue: operator-status contains an allocation error
+# Check operator logs and restart the operator after fixing the underlying cause
+kubectl -n kube-system logs deployment/cilium-operator | grep -i "ipam\|cidr\|alloc"
+kubectl -n kube-system rollout restart deployment/cilium-operator
 ```
 
 ## Validate IPAM Status Accuracy
@@ -144,22 +151,27 @@ for node in $(kubectl get ciliumnodes -o jsonpath='{.items[*].metadata.name}'); 
   echo "--- Node: $node ---"
 
   # Get IPAM status
-  STATUS=$(kubectl get ciliumnode $node -o json | jq '.status.ipam')
-  USED_COUNT=$(echo $STATUS | jq '.used | length')
-  AVAIL_COUNT=$(echo $STATUS | jq '.available | length')
+  CNODE=$(kubectl get ciliumnode $node -o json)
+  USED_COUNT=$(echo "$CNODE" | jq '.status.ipam.used // {} | length')
+  POOL_COUNT=$(echo "$CNODE" | jq '.spec.ipam.pool // {} | length')
+  FREE_COUNT=$((POOL_COUNT - USED_COUNT))
 
-  # Get actual pod count on node
+  # Get running, non-hostNetwork pod count on node
   POD_COUNT=$(kubectl get pods -A \
     --field-selector spec.nodeName=$node \
-    --no-headers 2>/dev/null | grep -v "hostNetwork" | wc -l)
+    -o json 2>/dev/null | \
+    jq '[.items[] | select(.spec.hostNetwork != true and .status.phase == "Running")] | length')
 
-  echo "  IPAM used: $USED_COUNT, IPAM available: $AVAIL_COUNT"
-  echo "  Running pods: $POD_COUNT"
+  POD_OWNER_COUNT=$(echo "$CNODE" | jq '[(.status.ipam.used // {}) | to_entries[] |
+    select((.value.owner // "") | test("^[^/]+/[^/]+$"))] | length')
 
-  if [ "$USED_COUNT" -ne "$POD_COUNT" ]; then
-    echo "  WARNING: IPAM used ($USED_COUNT) != running pods ($POD_COUNT)"
+  echo "  IPAM used: $USED_COUNT, IPAM pool: $POOL_COUNT, IPAM free: $FREE_COUNT"
+  echo "  Running non-hostNetwork pods: $POD_COUNT"
+
+  if [ "$POD_OWNER_COUNT" -ne "$POD_COUNT" ]; then
+    echo "  WARNING: pod-like IPAM owners ($POD_OWNER_COUNT) != running pods ($POD_COUNT)"
   else
-    echo "  OK: IPAM status consistent with running pods"
+    echo "  OK: pod-like IPAM status consistent with running pods"
   fi
 done
 ```
@@ -170,8 +182,8 @@ done
 graph TD
     A[Pod created] -->|Agent allocates IP| B[Added to status.ipam.used]
     C[Pod deleted] -->|Agent releases IP| D[Removed from status.ipam.used]
-    D -->|Added to| E[status.ipam.available]
-    F[Operator CIDR alloc] -->|Records| G[status.ipam.operator-status]
+    D -->|Reusable if still present in| E[spec.ipam.pool]
+    F[Operator CIDR alloc] -->|Records errors in| G[status.ipam.operator-status]
     H[Monitor: compare used to pods] -->|Detect| I{Status == Actual?}
     I -->|No| J[Stale IPAM entry detected]
     I -->|Yes| K[Status healthy]
@@ -184,26 +196,27 @@ Set up IPAM status monitoring:
 kubectl get ciliumnodes -o json | jq '[.items[] | {
   node: .metadata.name,
   cidr: .spec.ipam.podCIDRs[0],
-  used: (.status.ipam.used | length),
-  available: (.status.ipam.available | length),
+  used: (.status.ipam.used // {} | length),
+  pool: (.spec.ipam.pool // {} | length),
+  free: (((.spec.ipam.pool // {}) | length) - ((.status.ipam.used // {}) | length)),
   utilization_pct: (
-    if ((.status.ipam.used | length) + (.status.ipam.available | length)) > 0
-    then ((.status.ipam.used | length) /
-      ((.status.ipam.used | length) + (.status.ipam.available | length)) * 100 | floor)
+    if (.spec.ipam.pool // {} | length) > 0
+    then (((.status.ipam.used // {}) | length) /
+      ((.spec.ipam.pool // {}) | length) * 100 | floor)
     else 0
     end
   )
 }]'
 
 # Prometheus metrics
-# cilium_ipam_allocated_ips{node="worker-1"}
-# cilium_ipam_available_ips{node="worker-1"}
+# cilium_operator_ipam_used_ips{target_node="worker-1"}
+# cilium_operator_ipam_available_ips{target_node="worker-1"}
 
 # Alert on IPAM status inconsistency
 watch -n60 "kubectl get ciliumnodes -o json | \
-  jq '.items[] | {node: .metadata.name, available: (.status.ipam.available | length)}'"
+  jq '.items[] | {node: .metadata.name, free: (((.spec.ipam.pool // {}) | length) - ((.status.ipam.used // {}) | length))}'"
 ```
 
 ## Conclusion
 
-Cilium's IPAM status provides a real-time view of IP allocation state that is essential for capacity planning and operational troubleshooting. The `used` map shows exactly which IP is assigned to which pod, making IP assignment auditing straightforward. Regular validation that the `used` count matches the actual running pod count catches stale IPAM entries that consume IPs without corresponding workloads. Monitor the `available` count per node as your primary IPAM capacity metric, and ensure pre-allocation settings keep it at a healthy level to support pod startup without latency.
+Cilium's IPAM status provides a real-time view of IP allocation state that is essential for capacity planning and operational troubleshooting. The `used` map shows which IPs are assigned to pods or internal Cilium owners such as router and health endpoints, making IP assignment auditing straightforward. Regular validation that pod-like `used` owners still match actual running pods catches stale IPAM entries that consume IPs without corresponding workloads. Monitor the free capacity derived from `spec.ipam.pool` minus `status.ipam.used` per node as your primary IPAM capacity metric, and ensure pre-allocation settings keep it at a healthy level to support pod startup without latency.
