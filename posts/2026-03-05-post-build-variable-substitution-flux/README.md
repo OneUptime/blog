@@ -257,6 +257,7 @@ data:
 
 # On the production cluster, create:
 # kubectl apply -f - <<EOF
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -295,14 +296,14 @@ spec:
 
 ```bash
 # Preview the rendered manifests with substitutions applied
-flux build kustomization my-app
+flux build kustomization my-app --path ./deploy
 
 # Check if the ConfigMap or Secret exists
 kubectl get configmap cluster-vars -n flux-system
 kubectl get secret app-secrets -n flux-system
 
 # Check the Kustomization status for substitution errors
-kubectl describe kustomization my-app -n flux-system
+kubectl describe kustomization.kustomize.toolkit.fluxcd.io my-app -n flux-system
 ```
 
 ## Best Practices
