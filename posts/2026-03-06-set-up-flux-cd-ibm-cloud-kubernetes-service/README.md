@@ -20,6 +20,7 @@ This guide covers creating an IKS cluster, bootstrapping Flux CD, and configurin
 - IBM Cloud CLI installed with the container-service and container-registry plugins
 - kubectl installed
 - Flux CLI installed
+- jq installed
 - A GitHub account and personal access token
 
 ## Step 1: Set Up the IBM Cloud CLI
@@ -54,7 +55,7 @@ ibmcloud ks cluster create vpc-gen2 \
   --subnet-id $SUBNET_ID \
   --flavor bx2.4x16 \
   --workers 3 \
-  --version 1.28
+  --version 1.34
 
 # Wait for the cluster to be ready
 ibmcloud ks cluster ls
@@ -116,10 +117,12 @@ export GITHUB_USER=<your-github-username>
 
 # Bootstrap Flux CD
 flux bootstrap github \
+  --components-extra=image-reflector-controller,image-automation-controller \
   --owner=$GITHUB_USER \
   --repository=flux-iks-config \
   --branch=main \
   --path=clusters/iks-production \
+  --read-write-key \
   --personal
 ```
 
@@ -137,6 +140,8 @@ Expected output:
 
 ```text
 NAME                                       READY   STATUS    RESTARTS   AGE
+image-automation-controller-xxx            1/1     Running   0          2m
+image-reflector-controller-xxx             1/1     Running   0          2m
 helm-controller-xxx                        1/1     Running   0          2m
 kustomize-controller-xxx                   1/1     Running   0          2m
 notification-controller-xxx                1/1     Running   0          2m
@@ -237,6 +242,13 @@ spec:
 Install an ingress controller via Helm:
 
 ```yaml
+# infrastructure/ingress-nginx/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ingress-nginx
+
+---
 # infrastructure/ingress-nginx/helmrepository.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -274,6 +286,21 @@ spec:
 ```
 
 ## Step 7: Deploy an Application
+
+Create the application namespace and pull secret for workloads:
+
+```bash
+# Create the my-app namespace first if it does not exist
+kubectl create namespace my-app --dry-run=client -o yaml | kubectl apply -f -
+
+# Create a docker-registry secret for application pods
+kubectl create secret docker-registry icr-secret \
+  --namespace my-app \
+  --docker-server=us.icr.io \
+  --docker-username=iamapikey \
+  --docker-password="$(jq -r .apikey flux-icr-key.json)" \
+  --docker-email=your-email@example.com
+```
 
 Create the application manifests:
 
@@ -315,7 +342,7 @@ spec:
               cpu: 500m
               memory: 256Mi
       imagePullSecrets:
-        - name: icr-pull-secret
+        - name: icr-secret
 
 ---
 # apps/my-app/service.yaml
@@ -362,19 +389,18 @@ Configure Flux notifications for deployment events:
 
 ```yaml
 # clusters/iks-production/notifications.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-provider
   namespace: flux-system
 spec:
   type: slack
-  channel: iks-deployments
   secretRef:
     name: slack-webhook
 
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: iks-alerts
