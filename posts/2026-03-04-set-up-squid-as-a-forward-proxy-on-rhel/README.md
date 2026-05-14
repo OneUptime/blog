@@ -56,7 +56,7 @@ cache_dir ufs /var/spool/squid 10000 16 256
 maximum_object_size 100 MB
 
 # Access log location
-access_log /var/log/squid/access.log squid
+access_log daemon:/var/log/squid/access.log squid
 
 # Visible hostname in error pages
 visible_hostname proxy.example.com
@@ -98,7 +98,7 @@ echo 'https_proxy="http://192.168.1.10:3128"' | sudo tee -a /etc/environment
 ## Block Specific Sites
 
 ```squid
-# Add to squid.conf
+# Add to squid.conf before the http_access allow localnet rule
 acl blocked_sites dstdomain .facebook.com .twitter.com
 http_access deny blocked_sites
 ```
@@ -110,7 +110,7 @@ http_access deny blocked_sites
 sudo tail -f /var/log/squid/access.log
 
 # Check cache hit rate
-sudo squidclient -h localhost mgr:info | grep "Hit Ratios"
+sudo squidclient -h localhost mgr:info | grep "Hits as %"
 ```
 
 Squid can significantly reduce bandwidth usage by caching frequently accessed content. Monitor the cache hit ratio to verify it is providing value.
