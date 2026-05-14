@@ -10,7 +10,7 @@ Description: A comprehensive guide to checking all Cilium requirements on a gene
 
 ## Introduction
 
-Installing Cilium on a generic Kubernetes cluster - one created with kubeadm, k3s, or directly on bare metal - requires checking a broader set of prerequisites than managed cloud clusters. Without the managed node image standardization of EKS or AKS, you have more control but also more responsibility. Kernel versions, BPF filesystem mount, iptables/nftables configuration, and IPAM planning all require explicit verification.
+Installing Cilium on a generic Kubernetes cluster - one created with kubeadm, k3s, or directly on bare metal - requires checking a broader set of prerequisites than managed cloud clusters. Without the managed node image standardization of EKS or AKS, you have more control but also more responsibility. Kernel versions, BPF filesystem availability, iptables/nftables configuration, and IPAM planning all require explicit verification.
 
 This guide covers every requirement check for generic Kubernetes deployments. It is applicable to kubeadm-initialized clusters, k3s clusters, RKE2 installations, and bare metal Kubernetes. The checks are organized from most likely to cause installation failure (kernel version, BPF mount) to less common but important prerequisites (IPAM CIDR planning, kube-proxy configuration for replacement mode).
 
@@ -32,12 +32,18 @@ uname -a
 uname -r
 
 # Minimum requirements:
-# Cilium core: 4.9.17
-# Recommended: 5.10+
-# Full feature set (BPF host routing, WireGuard): 5.15+
+# Cilium current releases: 5.10+ or an equivalent distribution kernel
+# (for example, 4.18 on RHEL 8.10)
+# Some features have newer kernel requirements, such as BIG TCP on 6.8+
 
 # Check available kernel features
-zcat /proc/config.gz | grep -E "CONFIG_BPF=|CONFIG_BPF_SYSCALL=|CONFIG_NET_CLS_BPF=|CONFIG_NET_ACT_BPF="
+CONFIG_FILE=/proc/config.gz
+[ -r "$CONFIG_FILE" ] || CONFIG_FILE=/boot/config-$(uname -r)
+if [ "$CONFIG_FILE" = "/proc/config.gz" ]; then
+  zcat "$CONFIG_FILE"
+else
+  cat "$CONFIG_FILE"
+fi | grep -E "CONFIG_BPF=|CONFIG_BPF_SYSCALL=|CONFIG_NET_CLS_BPF=|CONFIG_NET_ACT_BPF=|CONFIG_NET_CLS_ACT=|CONFIG_BPF_JIT="
 ```
 
 ## Step 2: BPF Filesystem Check
@@ -47,8 +53,9 @@ zcat /proc/config.gz | grep -E "CONFIG_BPF=|CONFIG_BPF_SYSCALL=|CONFIG_NET_CLS_B
 mount | grep bpf
 # Expected: bpffs on /sys/fs/bpf type bpf (rw,nosuid,nodev,noexec,relatime)
 
-# If not mounted, add to /etc/fstab
-echo 'none /sys/fs/bpf bpf rw,nosuid,nodev,noexec,relatime 0 0' | sudo tee -a /etc/fstab
+# Cilium can mount bpffs automatically. To mount it persistently yourself,
+# add the official fstab entry and mount it once.
+echo 'bpffs /sys/fs/bpf bpf defaults 0 0' | sudo tee -a /etc/fstab
 sudo mount /sys/fs/bpf
 
 # Verify mount
@@ -64,11 +71,12 @@ ls -la /opt/cni/bin/
 
 # Check if another CNI is already installed
 ls /etc/cni/net.d/
-# If other CNI configs exist, they must be removed before Cilium installation
+# If other CNI configs exist, remove them before a normal Cilium installation,
+# unless you are intentionally using CNI chaining.
 
-# Remove old CNI config (replace with Cilium)
-sudo rm /etc/cni/net.d/*.conflist
-sudo rm /etc/cni/net.d/*.conf
+# Move old CNI config aside (replace with Cilium)
+sudo mkdir -p /etc/cni/net.d/backup
+sudo mv /etc/cni/net.d/*.conflist /etc/cni/net.d/*.conf /etc/cni/net.d/backup/ 2>/dev/null || true
 ```
 
 ## Step 4: kube-proxy Configuration
@@ -76,13 +84,16 @@ sudo rm /etc/cni/net.d/*.conf
 ```bash
 # Check kube-proxy mode
 kubectl get configmap -n kube-system kube-proxy -o yaml | grep mode
-# Options: iptables, ipvs, nftables
+# Common options: iptables, ipvs, nftables
 
-# For kube-proxy replacement mode, check kube-proxy is running
+# For the default Cilium mode, kube-proxy can remain running
 kubectl get pods -n kube-system -l k8s-app=kube-proxy
 
-# If using strict kube-proxy replacement, kube-proxy must be removed
-kubectl delete daemonset -n kube-system kube-proxy
+# If using full kube-proxy replacement, remove kube-proxy before or during
+# Cilium installation and clean up existing kube-proxy iptables rules.
+kubectl -n kube-system delete daemonset kube-proxy
+kubectl -n kube-system delete configmap kube-proxy
+sudo iptables-save | grep -v KUBE | sudo iptables-restore
 ```
 
 ## Step 5: Pod CIDR Planning
@@ -99,8 +110,8 @@ kubectl get configmap -n kube-system kubeadm-config -o yaml | grep podSubnet
 # - Service CIDR
 # - Any other network ranges in use
 
-# Check node IPs
-kubectl get nodes -o wide | awk '{print $6, $7}'
+# Check node PodCIDRs and IPs
+kubectl get nodes -o custom-columns=NAME:.metadata.name,PODCIDR:.spec.podCIDR,INTERNAL-IP:.status.addresses[?(@.type=="InternalIP")].address
 ```
 
 ## Step 6: Network Requirements
@@ -111,18 +122,19 @@ kubectl get nodes -o wide | awk '{print $6, $7}'
 NODE_IPS=$(kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}')
 
 for ip in $NODE_IPS; do
-  # Test VXLAN port (Cilium overlay mode)
-  nc -zu $ip 8472 && echo "$ip: UDP 8472 open" || echo "$ip: UDP 8472 blocked"
-  # Test health check port
+  # Test VXLAN port (Cilium overlay mode). UDP checks with nc can only
+  # confirm that the packet was sent; validate firewall rules separately.
+  nc -zvu $ip 8472 && echo "$ip: UDP 8472 reachable or no ICMP rejection" || echo "$ip: UDP 8472 blocked or rejected"
+  # Test health check port (cilium-health)
   nc -z $ip 4240 && echo "$ip: TCP 4240 open" || echo "$ip: TCP 4240 blocked"
 done
 ```
 
 ## Requirements Checklist
 
-- [ ] Kernel >= 4.9.17 (5.10+ recommended)
-- [ ] BPF filesystem mounted at `/sys/fs/bpf`
-- [ ] No conflicting CNI plugin installed
+- [ ] Kernel >= 5.10 or equivalent distribution kernel (for example, RHEL 8.10 4.18)
+- [ ] BPF filesystem mounted at `/sys/fs/bpf`, or Cilium allowed to mount it
+- [ ] No conflicting CNI plugin installed, unless using CNI chaining
 - [ ] Pod CIDR defined and non-overlapping
 - [ ] Required ports open between nodes (UDP 8472, TCP 4240)
 - [ ] Privileged containers allowed (for CNI installation)
