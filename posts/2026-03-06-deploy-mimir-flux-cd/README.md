@@ -22,7 +22,7 @@ Before you begin, ensure you have:
 - Flux CD installed and bootstrapped
 - A Git repository connected to Flux CD
 - kubectl configured for your cluster
-- An S3-compatible object storage bucket
+- S3-compatible object storage buckets and a Kubernetes Secret with the object storage credentials
 - Prometheus already deployed (see the Prometheus Operator guide)
 
 ## Setting Up the Helm Repository
@@ -59,7 +59,7 @@ metadata:
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: mimir-distributed
+  name: mimir
   namespace: mimir
 spec:
   interval: 30m
@@ -81,11 +81,20 @@ spec:
     remediation:
       retries: 3
   values:
+    # Use external object storage instead of the chart's built-in MinIO
+    minio:
+      enabled: false
+
+    global:
+      extraEnvFrom:
+        - secretRef:
+            name: mimir-s3-credentials
+
     # Global configuration
     mimir:
       structuredConfig:
         # Multi-tenancy configuration
-        multitenancy_enabled: false
+        multitenancy_enabled: true
 
         # Ingester configuration
         ingester:
@@ -101,6 +110,8 @@ spec:
             bucket_name: my-mimir-blocks
             endpoint: s3.amazonaws.com
             region: us-east-1
+            access_key_id: ${AWS_ACCESS_KEY_ID}
+            secret_access_key: ${AWS_SECRET_ACCESS_KEY}
           tsdb:
             dir: /data/tsdb
             # How long to keep data in memory before flushing
@@ -116,6 +127,8 @@ spec:
             bucket_name: my-mimir-ruler
             endpoint: s3.amazonaws.com
             region: us-east-1
+            access_key_id: ${AWS_ACCESS_KEY_ID}
+            secret_access_key: ${AWS_SECRET_ACCESS_KEY}
 
         # Alertmanager storage
         alertmanager_storage:
@@ -124,13 +137,13 @@ spec:
             bucket_name: my-mimir-alertmanager
             endpoint: s3.amazonaws.com
             region: us-east-1
+            access_key_id: ${AWS_ACCESS_KEY_ID}
+            secret_access_key: ${AWS_SECRET_ACCESS_KEY}
 
         # Compactor configuration
         compactor:
-          # How long to retain data in object storage
+          # How long to delay deletion of marked blocks
           deletion_delay: 2h
-          # Data retention period
-          blocks_retention_period: 365d
 
         # Limits configuration
         limits:
@@ -321,24 +334,23 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  targetNamespace: mimir
   sourceRef:
     kind: GitRepository
     name: flux-system
   path: ./clusters/my-cluster/mimir
   prune: true
-  wait: true
+  wait: false
   timeout: 15m
   dependsOn:
     - name: monitoring-stack
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
-      name: mimir-distributed-distributor
+      name: mimir-distributor
       namespace: mimir
     - apiVersion: apps/v1
       kind: Deployment
-      name: mimir-distributed-query-frontend
+      name: mimir-query-frontend
       namespace: mimir
 ```
 
@@ -346,31 +358,33 @@ spec:
 
 ```yaml
 # clusters/my-cluster/mimir/recording-rules.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: mimir-recording-rules
-  namespace: mimir
-data:
-  rules.yaml: |
-    groups:
-      - name: aggregated_metrics
-        interval: 1m
-        rules:
-          # Pre-compute namespace CPU usage
-          - record: namespace:container_cpu_usage:sum_rate5m
-            expr: |
-              sum(rate(container_cpu_usage_seconds_total{container!=""}[5m])) by (namespace)
+namespace: aggregated_metrics
+groups:
+  - name: aggregated_metrics
+    interval: 1m
+    rules:
+      # Pre-compute namespace CPU usage
+      - record: namespace:container_cpu_usage:sum_rate5m
+        expr: |
+          sum(rate(container_cpu_usage_seconds_total{container!=""}[5m])) by (namespace)
 
-          # Pre-compute namespace memory usage
-          - record: namespace:container_memory_usage:sum
-            expr: |
-              sum(container_memory_working_set_bytes{container!=""}) by (namespace)
+      # Pre-compute namespace memory usage
+      - record: namespace:container_memory_usage:sum
+        expr: |
+          sum(container_memory_working_set_bytes{container!=""}) by (namespace)
 
-          # Pre-compute request rate by service
-          - record: service:http_requests:rate5m
-            expr: |
-              sum(rate(http_requests_total[5m])) by (service, method, status_code)
+      # Pre-compute request rate by service
+      - record: service:http_requests:rate5m
+        expr: |
+          sum(rate(http_requests_total[5m])) by (service, method, status_code)
+```
+
+Load the rules into Mimir:
+
+```bash
+mimirtool rules load clusters/my-cluster/mimir/recording-rules.yaml \
+  --address=http://mimir-nginx.mimir.svc:80 \
+  --id=my-tenant
 ```
 
 ## Configuring Grafana Data Source for Mimir
