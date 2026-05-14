@@ -96,7 +96,7 @@ spec:
 
 ## Step 2: Install Flux v2 Components
 
-Bootstrap Flux v2 alongside the existing Flux v1 installation. The two versions can coexist temporarily during migration.
+Install Flux v2 components, then stop the Flux v1 Helm Operator before applying converted HelmReleases. The old Helm Operator and the new Helm Controller ignore each other's custom resources, but if both controllers manage the same Helm release at the same time they can fight over it.
 
 ```bash
 # Bootstrap Flux v2 into the cluster
@@ -106,6 +106,9 @@ flux install \
 
 # Verify Flux v2 components are running
 flux check
+
+# Stop the v1 Helm Operator before applying converted HelmReleases
+kubectl scale deployment helm-operator -n flux --replicas=0
 ```
 
 ## Step 3: Create HelmRepository Sources
@@ -157,7 +160,7 @@ metadata:
 spec:
   # Reconciliation interval
   interval: 5m
-  # Optional: explicit release name (defaults to metadata.name)
+  # Optional: explicit release name (defaults to metadata.name unless targetNamespace is set)
   releaseName: my-app
   chart:
     spec:
@@ -203,9 +206,9 @@ metadata:
   namespace: default
 spec:
   chart:
-    git: git@github.com:org/charts-repo
+    git: ssh://git@github.com/org/charts-repo
     ref: main
-    path: charts/my-app
+    path: ./charts/my-app
 ```
 
 Convert this to use a `GitRepository` source with Flux v2:
@@ -237,7 +240,7 @@ spec:
   interval: 5m
   chart:
     spec:
-      chart: charts/my-app
+      chart: ./charts/my-app
       sourceRef:
         kind: GitRepository
         name: charts-repo
@@ -277,7 +280,7 @@ spec:
       retries: 3
   # Upgrade configuration
   upgrade:
-    # Clean up old resources on upgrade
+    # Clean up new resources created during a failed upgrade
     cleanupOnFail: true
     # Remediation settings for failed upgrades
     remediation:
@@ -286,7 +289,7 @@ spec:
       strategy: rollback
   # Rollback configuration
   rollback:
-    # Keep rollback history
+    # Clean up new resources created during a failed rollback
     cleanupOnFail: true
   # Uninstall configuration
   uninstall:
@@ -297,7 +300,7 @@ spec:
 
 ## Step 7: Test the Migration
 
-Apply the new v2 HelmRelease and verify it works correctly before removing the v1 version.
+Apply the new v2 HelmRelease while the v1 Helm Operator is stopped, and verify it works correctly before removing the v1 version. When the Helm Controller first sees an existing release, it performs an upgrade to bring its bookkeeping in line with the v2 API.
 
 ```bash
 # Apply the v2 HelmRelease
@@ -315,11 +318,10 @@ kubectl logs -n flux-system deploy/helm-controller --tail=50
 
 ## Step 8: Remove Flux v1 HelmReleases
 
-Once the v2 HelmRelease is working, remove the old v1 resource.
+Once the v2 HelmRelease is working, remove the old v1 resource while the v1 Helm Operator is still stopped.
 
 ```bash
 # Delete the v1 HelmRelease
-# The --cascade=orphan flag prevents the underlying resources from being deleted
 kubectl delete helmrelease.helm.fluxcd.io my-app -n default
 
 # Verify the v1 HelmRelease is gone
@@ -328,14 +330,14 @@ kubectl get helmreleases.helm.fluxcd.io --all-namespaces
 
 ## Step 9: Uninstall Flux v1 Helm Operator
 
-After all HelmReleases have been migrated, remove the Flux v1 Helm Operator.
+After all HelmReleases have been migrated, remove the Flux v1 Helm Operator and the old HelmRelease CRD.
 
 ```bash
-# Delete the Helm Operator deployment
-kubectl delete deployment flux-helm-operator -n flux
-
 # Remove the v1 HelmRelease CRD
 kubectl delete crd helmreleases.helm.fluxcd.io
+
+# Delete the stopped Helm Operator deployment
+kubectl delete deployment helm-operator -n flux
 
 # Clean up the old flux namespace if no longer needed
 kubectl delete namespace flux
@@ -347,14 +349,15 @@ Use this checklist to track your migration progress:
 
 1. Export all Flux v1 HelmReleases
 2. Install Flux v2 controllers
-3. Create HelmRepository and GitRepository sources
-4. Convert each HelmRelease to v2 format
-5. Configure upgrade and rollback policies
-6. Test each converted HelmRelease
-7. Delete Flux v1 HelmReleases
-8. Uninstall Flux v1 Helm Operator
-9. Update CI/CD pipelines to use Flux v2 CLI
-10. Update documentation and runbooks
+3. Stop the Flux v1 Helm Operator before applying converted HelmReleases
+4. Create HelmRepository and GitRepository sources
+5. Convert each HelmRelease to v2 format
+6. Configure upgrade and rollback policies
+7. Test each converted HelmRelease
+8. Delete Flux v1 HelmReleases
+9. Uninstall Flux v1 Helm Operator
+10. Update CI/CD pipelines to use Flux v2 CLI
+11. Update documentation and runbooks
 
 ## Troubleshooting Common Issues
 
@@ -372,13 +375,13 @@ flux reconcile source helm example-charts -n flux-system
 
 ### Release Already Exists
 
-If you see a "release already exists" error, it means the Helm release was already created by the v1 operator. The v2 controller should adopt it automatically if the release name matches.
+If you see a "release already exists" error, the Helm release may have been created by the v1 operator but the v2 HelmRelease does not match it. Make sure `spec.releaseName`, and `spec.targetNamespace` or `spec.storageNamespace` if you use them, match the existing release.
 
 ```bash
 # Verify existing Helm releases
 helm list -n default
 
-# Check if release names match between v1 and v2 HelmRelease specs
+# Check if the release name matches between v1 and v2 HelmRelease specs
 kubectl get helmrelease.helm.toolkit.fluxcd.io my-app -n default -o jsonpath='{.spec.releaseName}'
 ```
 
