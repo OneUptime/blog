@@ -14,7 +14,7 @@ Specific IP Assignment with Calico IPAM provides important IP address management
 
 ## Prerequisites
 
-- Calico v3.20+ installed
+- Calico installed with Calico IPAM enabled
 - kubectl and calicoctl access
 - IP pools configured
 
@@ -36,6 +36,20 @@ spec:
   cidr: 10.48.0.0/16
   blockSize: 26
   natOutgoing: true
+  nodeSelector: "!all()"
+```
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: example-static-ip
+  annotations:
+    cni.projectcalico.org/ipAddrs: '["10.48.0.10"]'
+spec:
+  containers:
+    - name: nginx
+      image: nginx:1.25
 ```
 
 ## Verification
