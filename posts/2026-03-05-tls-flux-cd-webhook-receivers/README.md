@@ -34,7 +34,6 @@ metadata:
 spec:
   secretName: webhook-receiver-tls
   dnsNames:
-    - webhook-receiver.flux-system.svc.cluster.local
     - flux-webhook.example.com  # External DNS name
   issuerRef:
     name: letsencrypt-prod
@@ -51,7 +50,8 @@ openssl req -x509 -nodes -days 365 \
   -newkey rsa:2048 \
   -keyout webhook-tls.key \
   -out webhook-tls.crt \
-  -subj "/CN=webhook-receiver.flux-system.svc.cluster.local"
+  -subj "/CN=flux-webhook.example.com" \
+  -addext "subjectAltName=DNS:flux-webhook.example.com,DNS:webhook-receiver.flux-system.svc.cluster.local"
 
 # Create a Kubernetes TLS Secret
 kubectl create secret tls webhook-receiver-tls \
@@ -62,7 +62,7 @@ kubectl create secret tls webhook-receiver-tls \
 
 ## Step 2: Configure the Flux Webhook Receiver
 
-Create a Flux Receiver resource that references the TLS secret:
+Create a Flux Receiver resource that references the webhook token secret:
 
 ```yaml
 # receiver-github.yaml
@@ -81,7 +81,8 @@ spec:
     # Secret containing the webhook token for payload validation
     name: github-webhook-token
   resources:
-    - kind: GitRepository
+    - apiVersion: source.toolkit.fluxcd.io/v1
+      kind: GitRepository
       name: flux-system
       namespace: flux-system
 ```
@@ -132,7 +133,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: notification-controller
+                name: webhook-receiver
                 port:
                   number: 80
 ```
@@ -160,16 +161,18 @@ kubectl get receiver github-receiver -n flux-system \
 Set up the webhook in your GitHub repository:
 
 ```bash
-# Using the GitHub CLI to create the webhook
+# Using the GitHub CLI and GitHub REST API to create the webhook
 WEBHOOK_URL="https://flux-webhook.example.com$(kubectl get receiver github-receiver -n flux-system -o jsonpath='{.status.webhookPath}')"
 WEBHOOK_SECRET=$(kubectl get secret github-webhook-token -n flux-system -o jsonpath='{.data.token}' | base64 -d)
 
-gh webhook create \
-  --repo myorg/myrepo \
-  --events push \
-  --url "$WEBHOOK_URL" \
-  --secret "$WEBHOOK_SECRET" \
-  --content-type json
+gh api repos/myorg/myrepo/hooks \
+  -f name=web \
+  -F active=true \
+  -f 'events[]=push' \
+  -f "config[url]=$WEBHOOK_URL" \
+  -f 'config[content_type]=json' \
+  -f "config[secret]=$WEBHOOK_SECRET" \
+  -f 'config[insecure_ssl]=0'
 ```
 
 ## Step 6: Verify TLS Configuration
@@ -183,11 +186,15 @@ openssl s_client -connect flux-webhook.example.com:443 -servername flux-webhook.
 # Test the webhook endpoint
 curl -v https://flux-webhook.example.com/hook/test-path 2>&1 | grep "SSL"
 
-# Send a test webhook request
+PAYLOAD='{"ref":"refs/heads/main"}'
+SIGNATURE=$(printf "%s" "$PAYLOAD" | openssl dgst -sha1 -hmac "$WEBHOOK_SECRET" | awk '{print $2}')
+
+# Send a signed test webhook request
 curl -X POST https://flux-webhook.example.com$(kubectl get receiver github-receiver -n flux-system -o jsonpath='{.status.webhookPath}') \
   -H "Content-Type: application/json" \
-  -H "X-Hub-Signature-256: sha256=test" \
-  -d '{"ref":"refs/heads/main"}' \
+  -H "X-GitHub-Event: push" \
+  -H "X-Hub-Signature: sha1=$SIGNATURE" \
+  -d "$PAYLOAD" \
   -v
 
 # Check notification-controller logs for incoming webhooks
