@@ -8,11 +8,11 @@ Description: Learn how to set up tenant-specific notification channels in Flux C
 
 ---
 
-In a multi-tenant Flux CD environment, each tenant team needs visibility into their own deployment status without seeing events from other tenants. Flux CD's notification controller supports per-namespace notification providers and alerts, making it straightforward to route events to the right teams. This guide covers how to configure tenant-specific notification channels.
+In a multi-tenant Flux CD environment, each tenant team needs visibility into their own deployment status without seeing events from other tenants. With multi-tenancy lockdown enabled, Flux CD's notification controller supports per-namespace notification providers and alerts, making it straightforward to route events to the right teams. This guide covers how to configure tenant-specific notification channels.
 
 ## How Flux Notifications Work
 
-Flux's notification controller watches for events from Flux resources (Kustomizations, HelmReleases, GitRepositories) and forwards them to configured providers. Providers and Alerts are namespace-scoped, so each tenant namespace can have its own notification configuration.
+Flux's notification controller watches for events from Flux resources (Kustomizations, HelmReleases, GitRepositories) and forwards them to configured providers. Providers and Alerts are namespace-scoped, and event sources default to the Alert's namespace when no namespace is specified, so each tenant namespace can have its own notification configuration.
 
 ## Step 1: Create a Notification Provider for the Tenant
 
@@ -21,7 +21,7 @@ Define a notification provider in the tenant's namespace. This example uses Slac
 ```yaml
 # tenants/team-alpha/notification-provider.yaml
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: team-alpha-slack
@@ -29,16 +29,17 @@ metadata:
 spec:
   type: slack
   channel: team-alpha-deployments
+  address: https://slack.com/api/chat.postMessage
   secretRef:
     name: team-alpha-slack-token
 ```
 
-Create the secret containing the Slack webhook URL.
+Create the secret containing the Slack bot token.
 
 ```bash
-# Create the Slack webhook secret for the tenant
+# Create the Slack bot token secret for the tenant
 kubectl create secret generic team-alpha-slack-token \
-  --from-literal=address=https://hooks.slack.com/services/T00/B00/XXXX \
+  --from-literal=token=xoxb-1234567890-1234567890-1234567890 \
   -n team-alpha
 ```
 
@@ -48,7 +49,7 @@ Create an Alert that watches the tenant's Flux resources and sends events to the
 
 ```yaml
 # tenants/team-alpha/alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: team-alpha-deployment-alerts
@@ -75,7 +76,7 @@ Tenants may want different channels for different severity levels or different a
 
 ```yaml
 # tenants/team-alpha/providers.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: team-alpha-slack-info
@@ -83,10 +84,11 @@ metadata:
 spec:
   type: slack
   channel: team-alpha-deployments
+  address: https://slack.com/api/chat.postMessage
   secretRef:
     name: team-alpha-slack-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: team-alpha-slack-errors
@@ -94,27 +96,27 @@ metadata:
 spec:
   type: slack
   channel: team-alpha-alerts
+  address: https://slack.com/api/chat.postMessage
   secretRef:
     name: team-alpha-slack-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: team-alpha-pagerduty
   namespace: team-alpha
 spec:
-  type: generic
-  address: https://events.pagerduty.com/v2/enqueue
-  secretRef:
-    name: team-alpha-pagerduty-key
+  type: pagerduty
+  address: https://events.pagerduty.com
+  channel: <integrationKey>
 ```
 
 Create alerts routed to the appropriate channels.
 
 ```yaml
 # tenants/team-alpha/multi-alerts.yaml
-# Info-level deployments go to the deployments channel
-apiVersion: notification.toolkit.fluxcd.io/v1
+# Deployment events go to the deployments channel
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: team-alpha-info-alerts
@@ -132,7 +134,7 @@ spec:
     - ".*error.*"
 ---
 # Errors go to the alerts channel and PagerDuty
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: team-alpha-error-alerts
@@ -147,7 +149,7 @@ spec:
     - kind: GitRepository
       name: team-alpha-apps
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: team-alpha-pagerduty-alerts
@@ -167,16 +169,23 @@ For teams using Microsoft Teams instead of Slack.
 
 ```yaml
 # tenants/team-beta/teams-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: team-beta-teams
   namespace: team-beta
 spec:
   type: msteams
-  address: https://outlook.office.com/webhook/XXXX
   secretRef:
     name: team-beta-teams-webhook
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: team-beta-teams-webhook
+  namespace: team-beta
+stringData:
+  address: https://prod-xxx.yyy.logic.azure.com:443/workflows/zzz/triggers/manual/paths/invoke?...
 ```
 
 ## Step 5: Use Generic Webhooks for Custom Integrations
@@ -185,7 +194,7 @@ For custom audit systems or logging platforms, use the generic webhook provider.
 
 ```yaml
 # tenants/team-alpha/webhook-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: team-alpha-webhook
@@ -193,11 +202,18 @@ metadata:
 spec:
   type: generic
   address: https://api.example.com/flux-events
-  headers:
-    X-Tenant: team-alpha
-    Content-Type: application/json
   secretRef:
     name: team-alpha-webhook-auth
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: team-alpha-webhook-auth
+  namespace: team-alpha
+stringData:
+  headers: |
+    X-Tenant: team-alpha
+    Authorization: Bearer <token>
 ```
 
 ## Step 6: Platform Admin Global Alerts
@@ -206,7 +222,7 @@ In addition to tenant-specific alerts, the platform admin should have alerts tha
 
 ```yaml
 # infrastructure/notifications/global-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: platform-alerts
@@ -214,10 +230,11 @@ metadata:
 spec:
   type: slack
   channel: platform-alerts
+  address: https://slack.com/api/chat.postMessage
   secretRef:
     name: platform-slack-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: global-reconciliation-errors
@@ -240,17 +257,18 @@ Add notification setup to your tenant onboarding template so every tenant gets n
 
 ```yaml
 # tenants/base/notification-template.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: tenant-slack
 spec:
   type: slack
   channel: tenant-placeholder-deployments
+  address: https://slack.com/api/chat.postMessage
   secretRef:
     name: tenant-slack-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: tenant-alerts
@@ -287,4 +305,4 @@ flux reconcile kustomization team-alpha-apps -n team-alpha --with-source
 
 ## Summary
 
-Tenant-specific notification channels in Flux CD are configured using namespace-scoped Provider and Alert resources. Each tenant can have multiple providers (Slack, Teams, PagerDuty, webhooks) with alerts routed by severity level. The platform admin should maintain global alerts for cluster-wide monitoring while tenants manage their own notification preferences within their namespaces. Include notification setup in your tenant onboarding template to ensure consistent alerting across all tenants.
+Tenant-specific notification channels in Flux CD are configured using namespace-scoped Provider and Alert resources. Each tenant can have multiple providers (Slack, Teams, PagerDuty, webhooks) with alerts routed by severity level and event source filters. The platform admin should maintain global alerts for cluster-wide monitoring while tenants manage their own notification preferences within their namespaces. Include notification setup in your tenant onboarding template to ensure consistent alerting across all tenants.
