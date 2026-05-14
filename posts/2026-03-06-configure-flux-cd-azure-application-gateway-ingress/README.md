@@ -26,11 +26,11 @@ This guide covers deploying AGIC via Flux CD, configuring ingress annotations, s
 ```mermaid
 graph TD
     A[Internet Traffic] --> B[Azure Application Gateway]
-    B --> C[AGIC Pod in AKS]
-    C --> D[Ingress Resources]
-    D --> E[Service A]
-    D --> F[Service B]
-    D --> G[Service C]
+    B --> E[Service A]
+    B --> F[Service B]
+    B --> G[Service C]
+    C[AGIC Pod in AKS] --> D[Ingress Resources]
+    C --> B
     H[Flux CD] --> I[Git Repository]
     I --> H
     H --> J[Deploy AGIC]
@@ -64,7 +64,7 @@ az network application-gateway create \
   --resource-group rg-flux-demo \
   --name flux-app-gateway \
   --location eastus \
-  --sku Standard_v2 \
+  --sku WAF_v2 \
   --public-ip-address agw-public-ip \
   --vnet-name vnet-agw \
   --subnet subnet-agw \
@@ -87,16 +87,21 @@ az aks enable-addons \
 If you prefer to manage AGIC through Flux instead of the AKS addon, use a Helm release.
 
 ```yaml
-# helm-repo-agic.yaml
-# Adds the AGIC Helm chart repository
+# oci-repo-agic.yaml
+# Adds the AGIC OCI Helm chart repository
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+kind: OCIRepository
 metadata:
-  name: application-gateway-kubernetes-ingress
+  name: ingress-azure
   namespace: flux-system
 spec:
   interval: 1h
-  url: https://appgwingress.blob.core.windows.net/ingress-azure-helm-package/
+  url: oci://mcr.microsoft.com/azure-application-gateway/charts/ingress-azure
+  ref:
+    semver: "1.7.x"
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
 ---
 # helm-release-agic.yaml
 # Deploys AGIC via Helm managed by Flux
@@ -107,27 +112,19 @@ metadata:
   namespace: flux-system
 spec:
   interval: 30m
-  chart:
-    spec:
-      chart: ingress-azure
-      version: "1.7.x"
-      sourceRef:
-        kind: HelmRepository
-        name: application-gateway-kubernetes-ingress
+  chartRef:
+    kind: OCIRepository
+    name: ingress-azure
   values:
     # Verbosity level for AGIC logs (1-5)
     verbosityLevel: 3
     appgw:
-      # Application Gateway subscription ID
-      subscriptionId: "<subscription-id>"
-      # Resource group containing the Application Gateway
-      resourceGroup: "rg-flux-demo"
-      # Application Gateway name
-      name: "flux-app-gateway"
+      # Application Gateway resource ID
+      applicationGatewayID: "/subscriptions/<subscription-id>/resourceGroups/rg-flux-demo/providers/Microsoft.Network/applicationGateways/flux-app-gateway"
       # Enable shared mode if multiple clusters use the same gateway
       shared: false
     armAuth:
-      # Use AAD Pod Identity or Workload Identity
+      # Use Workload Identity
       type: workloadIdentity
       identityClientID: "<managed-identity-client-id>"
     rbac:
@@ -313,8 +310,8 @@ metadata:
     appgw.ingress.kubernetes.io/health-probe-interval: "30"
     appgw.ingress.kubernetes.io/health-probe-timeout: "30"
     appgw.ingress.kubernetes.io/health-probe-unhealthy-threshold: "3"
-    # Override backend protocol to HTTPS
-    appgw.ingress.kubernetes.io/backend-protocol: "https"
+    # Use HTTP when the backend service terminates cleartext traffic
+    appgw.ingress.kubernetes.io/backend-protocol: "http"
     # Set backend hostname override
     appgw.ingress.kubernetes.io/backend-hostname: "api-internal.example.com"
 spec:
@@ -356,15 +353,19 @@ metadata:
   namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: cert-manager
+  install:
+    createNamespace: true
   chart:
     spec:
       chart: cert-manager
-      version: "1.x"
+      version: "v1.x"
       sourceRef:
         kind: HelmRepository
         name: jetstack
   values:
-    installCRDs: true
+    crds:
+      enabled: true
 ---
 # cluster-issuer.yaml
 # Let's Encrypt issuer for automatic certificate provisioning
@@ -529,7 +530,7 @@ spec:
 
 ```bash
 # Check AGIC pod logs
-kubectl logs -n kube-system -l app=ingress-azure
+kubectl logs -A -l app=ingress-azure
 
 # Verify AGIC has permission to update the Application Gateway
 az role assignment list \
