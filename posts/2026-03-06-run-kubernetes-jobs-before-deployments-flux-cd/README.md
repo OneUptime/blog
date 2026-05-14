@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes jobs, Pre-Deployment, Hook, GitOps, Kubernetes
 
-Description: A practical guide to running Kubernetes Jobs as pre-deployment tasks using Flux CD dependencies and health checks.
+Description: A practical guide to running Kubernetes Jobs as pre-deployment tasks using Flux CD dependencies and readiness checks.
 
 ---
 
@@ -177,14 +177,9 @@ spec:
   wait: true
   # Timeout should be longer than the Job's activeDeadlineSeconds
   timeout: 10m
-  # Force recreate the Job on each reconciliation
+  # Allow Flux to recreate the Job when immutable fields change
   # This is important because Jobs are immutable
   force: true
-  healthChecks:
-    - apiVersion: batch/v1
-      kind: Job
-      name: my-app-pre-deploy
-      namespace: production
 ```
 
 ```yaml
@@ -206,20 +201,15 @@ spec:
   # This is the critical dependency: wait for pre-deploy to succeed
   dependsOn:
     - name: my-app-pre-deploy
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: my-app
-      namespace: production
 ```
 
 ## Step 4: Handle Job Immutability
 
-Kubernetes Jobs are immutable once created. To rerun a pre-deploy Job on each deployment, you need to handle cleanup.
+Kubernetes Jobs are immutable once created. To rerun a pre-deploy Job on each deployment, make sure each deployment changes the Job manifest, such as by updating the migration image tag or the Job name.
 
 ```yaml
 # Option 1: Use force: true in the Kustomization (shown above)
-# This deletes and recreates the Job on each reconciliation
+# This deletes and recreates the Job when immutable fields, such as the Pod template image, change
 
 # Option 2: Use a unique job name with a hash or timestamp
 # apps/my-app/pre-deploy/job.yaml
@@ -242,8 +232,8 @@ spec:
 ```
 
 ```yaml
-# Option 3: Use a CronJob-like pattern with suspend
-# This creates a Job template that Flux manages
+# Option 3: Use the per-resource force annotation
+# This limits force replacement to this Job instead of the whole Kustomization
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -386,7 +376,7 @@ spec:
 
 ```bash
 # Check the pre-deploy Kustomization status
-flux get kustomization my-app-pre-deploy
+flux get kustomizations
 
 # Watch the Job execution
 kubectl get jobs -n production -l phase=pre-deploy --watch
@@ -395,7 +385,7 @@ kubectl get jobs -n production -l phase=pre-deploy --watch
 kubectl logs -n production job/my-app-pre-deploy -f
 
 # Check if the main deployment is waiting
-flux get kustomization my-app-deploy
+flux get kustomizations
 # Status should show "dependency 'flux-system/my-app-pre-deploy' is not ready"
 ```
 
@@ -499,4 +489,4 @@ spec:
 
 ## Summary
 
-Running Kubernetes Jobs before deployments with Flux CD relies on the Kustomization dependency system. Create separate Kustomizations for pre-deployment Jobs and main deployments, link them with `dependsOn`, and use `wait: true` with health checks to ensure Jobs complete successfully before the deployment proceeds. Use `force: true` to handle Job immutability, and set up alerts for pre-deployment failures to catch issues early.
+Running Kubernetes Jobs before deployments with Flux CD relies on the Kustomization dependency system. Create separate Kustomizations for pre-deployment Jobs and main deployments, link them with `dependsOn`, and use `wait: true` to ensure Jobs complete successfully before the deployment proceeds. Use `force: true` or the per-resource force annotation to handle Job immutability when immutable fields change, and set up alerts for pre-deployment failures to catch issues early.
