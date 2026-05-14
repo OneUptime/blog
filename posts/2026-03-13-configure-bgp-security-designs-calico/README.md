@@ -12,12 +12,11 @@ Description: Configure BGP security designs in Calico including authentication, 
 
 BGP security in Calico extends beyond basic session authentication to encompass a comprehensive security architecture for the routing control plane. BGP route injection attacks, where a compromised or misconfigured peer advertises incorrect routes, can cause widespread traffic misdirection or network blackholes. Implementing defense-in-depth for BGP security protects the entire cluster's network connectivity.
 
-Key BGP security controls include: MD5 session authentication, prefix length limits (rejecting unusually short or long prefixes), AS path filtering (rejecting routes with unexpected AS paths), and RPKI (Resource Public Key Infrastructure) validation for public internet routing. For internal Kubernetes clusters, the first two are most relevant.
+Key BGP security controls include: MD5 session authentication, prefix length limits (rejecting unusually short or long prefixes), Calico BGPFilters for route import/export control, router-side AS path filtering (rejecting routes with unexpected AS paths), and RPKI (Resource Public Key Infrastructure) validation for public internet routing. For internal Kubernetes clusters, the first three are most relevant.
 
 ## Prerequisites
 
-- Calico with BGP mode
-- calicoctl v3.26+
+- Calico v3.26+ with BGP mode
 - BGP peer routers supporting authentication
 
 ## Configure BGP MD5 Authentication
@@ -42,6 +41,35 @@ kubectl create secret generic bgp-secrets \
   -n calico-system
 ```
 
+Create the secret in the namespace where `calico-node` runs, and grant the `calico-node` service account permission to read it:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: bgp-secrets-reader
+  namespace: calico-system
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["bgp-secrets"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: calico-node-read-bgp-secrets
+  namespace: calico-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: bgp-secrets-reader
+subjects:
+- kind: ServiceAccount
+  name: calico-node
+  namespace: calico-system
+```
+
 ## Configure Prefix Length Filters
 
 ```yaml
@@ -52,11 +80,13 @@ metadata:
 spec:
   importV4:
   - action: Reject
+    matchOperator: In
     cidr: 0.0.0.0/0
     prefixLength:
       min: 0
       max: 7  # Reject excessively broad routes
   - action: Reject
+    matchOperator: In
     cidr: 0.0.0.0/0
     prefixLength:
       min: 25
@@ -89,7 +119,7 @@ graph TB
     subgraph BGP Security Controls
         L1[MD5 Authentication\nPrevents session hijacking]
         L2[Prefix Length Filter\nPrevents route injection]
-        L3[AS Path Filter\nPrevents route leaks]
+        L3[BGPFilter Rules\nControls route import/export]
         L4[Session Logging\nAudit trail]
     end
     subgraph Protected Infrastructure
