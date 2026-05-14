@@ -104,7 +104,7 @@ spec:
   timeout: 5m
 ```
 
-The `spec.timeout` field determines how long Flux waits for all health checks to pass. If the timeout expires before all resources are healthy, the Kustomization is marked as unhealthy.
+The `spec.timeout` field determines how long Flux waits for health checks and other reconciliation operations such as validation and apply. If the timeout expires before all resources are healthy, the Kustomization is marked as unhealthy.
 
 ## Built-in Health Assessment
 
@@ -204,7 +204,7 @@ You can use Flux's notification controller to send alerts when health checks fai
 
 ```yaml
 # Alert configuration to notify on health check failures
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: health-check-alerts
@@ -218,14 +218,14 @@ spec:
       name: "*"
     - kind: HelmRelease
       name: "*"
-  # Only alert on specific event reasons
+  # Exclude matching event messages
   exclusionList:
     - ".*Progressing.*"
 ```
 
 ## Best Practices
 
-1. **Always set a timeout**: Without a timeout, health checks could wait indefinitely. Set a reasonable timeout based on how long your application takes to start.
+1. **Always set an explicit timeout**: Flux defaults the timeout to the Kustomization interval, but setting it explicitly makes the health check behavior clearer. Set a reasonable timeout based on how long your application takes to start.
 
 2. **Use spec.wait for simplicity**: Instead of listing every resource in `spec.healthChecks`, use `spec.wait: true` to automatically track all applied resources.
 
