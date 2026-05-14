@@ -40,6 +40,24 @@ fi
 
 ERRORS=0
 
+check_section_encrypted() {
+  local file=$1
+  local section=$2
+
+  awk -v section="$section" '
+    $0 ~ "^" section ":" { in_section = 1; next }
+    in_section && /^[^[:space:]]/ { in_section = 0 }
+    in_section && /^[[:space:]]+[A-Za-z0-9._-]+:[[:space:]]*/ {
+      value = $0
+      sub(/^[[:space:]]+[^:]+:[[:space:]]*/, "", value)
+      if (value != "" && value !~ /^#/ && value !~ /ENC\[AES256_GCM/) {
+        found_plaintext = 1
+      }
+    }
+    END { exit found_plaintext ? 1 : 0 }
+  ' "$file"
+}
+
 for file in $STAGED_ENC_FILES; do
   # Check 1: File must contain the sops metadata key
   if ! grep -q "^sops:" "$file"; then
@@ -51,7 +69,7 @@ for file in $STAGED_ENC_FILES; do
   # Check 2: File must contain ENC[] markers in data fields
   if grep -q "^stringData:" "$file"; then
     # Check that stringData values are encrypted
-    if ! grep -A 100 "^stringData:" "$file" | grep -q "ENC\[AES256_GCM"; then
+    if ! check_section_encrypted "$file" "stringData"; then
       echo "ERROR: $file has unencrypted values in stringData."
       ERRORS=$((ERRORS + 1))
     fi
@@ -59,15 +77,15 @@ for file in $STAGED_ENC_FILES; do
 
   if grep -q "^data:" "$file"; then
     # For base64-encoded data fields, check for ENC markers
-    if ! grep -A 100 "^data:" "$file" | grep -q "ENC\[AES256_GCM"; then
+    if ! check_section_encrypted "$file" "data"; then
       echo "ERROR: $file has unencrypted values in data."
       ERRORS=$((ERRORS + 1))
     fi
   fi
 
-  # Check 3: Verify SOPS can parse the file
-  if ! sops --decrypt --extract '["sops"]["version"]' "$file" > /dev/null 2>&1; then
-    echo "ERROR: $file has invalid SOPS metadata."
+  # Check 3: Verify SOPS recognizes the file as encrypted
+  if ! sops filestatus "$file" 2>/dev/null | grep -q '"encrypted":true'; then
+    echo "ERROR: $file is not recognized by SOPS as encrypted."
     ERRORS=$((ERRORS + 1))
   fi
 
@@ -100,14 +118,15 @@ repos:
     hooks:
       - id: verify-sops-encryption
         name: Verify SOPS encryption
-        entry: bash -c '
+        entry: >
+          bash -c '
           for file in "$@"; do
-            if ! grep -q "^sops:" "$file"; then
-              echo "ERROR: $file is not encrypted with SOPS"
+            if ! sops filestatus "$file" 2>/dev/null | grep -q "\"encrypted\":true"; then
+              echo "ERROR: $file is not recognized by SOPS as encrypted"
               exit 1
             fi
           done
-        '
+          ' --
         language: system
         files: '\.enc\.yaml$'
         types: [file]
@@ -143,16 +162,16 @@ jobs:
 
       - name: Install SOPS
         run: |
-          curl -LO https://github.com/getsops/sops/releases/download/v3.8.1/sops-v3.8.1.linux.amd64
-          chmod +x sops-v3.8.1.linux.amd64
-          sudo mv sops-v3.8.1.linux.amd64 /usr/local/bin/sops
+          curl -LO https://github.com/getsops/sops/releases/download/v3.13.0/sops-v3.13.0.linux.amd64
+          sudo mv sops-v3.13.0.linux.amd64 /usr/local/bin/sops
+          sudo chmod +x /usr/local/bin/sops
 
       - name: Verify all .enc.yaml files are encrypted
         run: |
           ERRORS=0
           for file in $(find . -name "*.enc.yaml" -type f); do
-            if ! grep -q "^sops:" "$file"; then
-              echo "::error file=$file::File is not SOPS encrypted"
+            if ! sops filestatus "$file" 2>/dev/null | grep -q '"encrypted":true'; then
+              echo "::error file=$file::File is not recognized by SOPS as encrypted"
               ERRORS=$((ERRORS + 1))
             else
               echo "OK: $file"
@@ -213,13 +232,19 @@ for file in $ENC_FILES; do
     fi
   fi
 
-  # Check 3: Verify mac (Message Authentication Code) is present
+  # Check 3: Verify SOPS recognizes the file as encrypted
+  if ! sops filestatus "$file" 2>/dev/null | grep -q '"encrypted":true'; then
+    echo "ERROR: [$REL_PATH] File is not recognized by SOPS as encrypted"
+    ERRORS=$((ERRORS + 1))
+  fi
+
+  # Check 4: Verify mac (Message Authentication Code) is present
   if ! grep -q "mac:" "$file"; then
     echo "ERROR: [$REL_PATH] Missing MAC in SOPS metadata - file may be tampered"
     ERRORS=$((ERRORS + 1))
   fi
 
-  # Check 4: lastmodified timestamp exists
+  # Check 5: lastmodified timestamp exists
   if ! grep -q "lastmodified:" "$file"; then
     echo "WARNING: [$REL_PATH] Missing lastmodified timestamp"
     WARNINGS=$((WARNINGS + 1))
