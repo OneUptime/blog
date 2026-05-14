@@ -31,11 +31,12 @@ Understand the current default behavior:
 # Check if allow-localhost behavior is enabled
 
 kubectl -n kube-system get configmap cilium-config -o yaml | grep allow-localhost
-# Default: allow-localhost=policy (allows when policy is enforced)
-# Options: allow-localhost=always | policy | false
+# Default: allow-localhost=auto (defaults to always in Kubernetes)
+# Options: allow-localhost=auto | always | policy
 
 # View the current policy enforcement mode
-kubectl -n kube-system exec ds/cilium -- cilium config view | grep -E "allow-localhost|policy-enforcement"
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg config --all | grep -E "allow-localhost|enable-policy"
 ```
 
 Configure different localhost allow modes:
@@ -45,15 +46,17 @@ Configure different localhost allow modes:
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set allowLocalhost=always
+  --set extraConfig.allow-localhost=always \
+  --set rollOutCiliumPods=true
 
-# Mode 2: policy - only allow if an explicit policy permits host traffic
+# Mode 2: policy - require policy to permit host traffic when policy is enforced
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set allowLocalhost=policy
+  --set extraConfig.allow-localhost=policy \
+  --set rollOutCiliumPods=true
 
-# Mode 3: When allowLocalhost=policy, create explicit host-allow policy
+# Mode 3: When allow-localhost=policy, create explicit host-allow policy
 kubectl apply -f - <<EOF
 apiVersion: "cilium.io/v2"
 kind: CiliumNetworkPolicy
@@ -83,18 +86,19 @@ Diagnose unexpected allow/deny behavior from the host:
 # Verify if host traffic is being allowed despite restrictive policy
 # Monitor for traffic from the host entity
 cilium hubble port-forward &
-hubble observe --from-host -f
+hubble observe --from-identity host -f
 
 # Check if probes are failing due to policy
 kubectl describe pod <pod-name> | grep -A 10 "Liveness\|Readiness"
 kubectl get events -n <namespace> | grep -i "probe\|health"
 
-# Check policy trace for host traffic
-kubectl -n kube-system exec ds/cilium -- \
-  cilium policy trace --src-endpoint-id 1 --dst-endpoint-id <pod-endpoint-id>
+# Check the destination endpoint's policy map for host traffic
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg bpf policy get <pod-endpoint-id>
 
 # Identify the current allow-localhost configuration
-kubectl -n kube-system exec ds/cilium -- cilium config view | grep allow-localhost
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg config --all | grep allow-localhost
 ```
 
 Fix common localhost policy issues:
@@ -112,19 +116,16 @@ spec:
   ingress:
   - fromEntities:
     - host
-    toPorts:
-    - ports:
-      - port: "0"
-        protocol: TCP
-        # Allows probes on any port from the host
+    # Add toPorts here if you want to restrict this to specific probe ports.
 EOF
 
 # Issue: Unexpected traffic from host reaching pods
-# Switch to policy mode and add explicit denies
+# Switch to policy mode so host traffic must be explicitly allowed
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set allowLocalhost=policy
+  --set extraConfig.allow-localhost=policy \
+  --set rollOutCiliumPods=true
 ```
 
 ## Validate Localhost Policy Behavior
@@ -136,19 +137,16 @@ Test and confirm localhost allow/deny behavior:
 NODE_IP=$(kubectl get nodes worker-1 -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
 POD_IP=$(kubectl get pod my-app -o jsonpath='{.status.podIP}')
 
-# From the node, attempt connection (should succeed with allowLocalhost=always)
+# From the node, attempt connection (should succeed with allow-localhost=always)
 kubectl debug node/worker-1 -it --image=curlimages/curl -- \
   curl -v http://$POD_IP:8080
 
 # Verify via Hubble
-hubble observe --from-host --to-pod my-app --last 50
+hubble observe --from-identity host --to-pod default/my-app --last 50
 
-# Check policy trace result for host entity
-kubectl -n kube-system exec ds/cilium -- \
-  cilium policy trace \
-  --src-label "reserved:host" \
-  --dst-label "app=my-app" \
-  --dport 8080
+# Check the policy map for the destination endpoint
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg bpf policy get <pod-endpoint-id>
 ```
 
 ## Monitor Host-to-Pod Traffic
@@ -170,36 +168,36 @@ Monitor host-to-pod flows:
 
 ```bash
 # Watch all traffic from the host entity
-hubble observe --from-host --verdict FORWARDED -f
+hubble observe --from-identity host --verdict FORWARDED -f
 
 # Monitor dropped host traffic (indicates policy mode is blocking)
-hubble observe --from-host --verdict DROPPED -f
+hubble observe --from-identity host --verdict DROPPED -f
 
 # Count host flows by destination
-hubble observe --from-host --last 1000 --json | \
+hubble observe --from-identity host --last 1000 --json | \
   jq -r '.flow.destination.pod_name' | sort | uniq -c | sort -rn
 
-# Create Prometheus alert for blocked host probes
+# Create Prometheus alert for policy drops that may include blocked host probes
 kubectl apply -f - <<EOF
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: cilium-host-probe-drops
+  name: cilium-policy-drops
   namespace: kube-system
 spec:
   groups:
   - name: cilium-host
     rules:
-    - alert: KubeletProbeBlocked
-      expr: rate(hubble_drop_total{reason="POLICY_DENIED", source_workload="host"}[5m]) > 0
+    - alert: CiliumPolicyDrops
+      expr: rate(hubble_drop_total{reason="POLICY_DENIED"}[5m]) > 0
       for: 1m
       labels:
         severity: critical
       annotations:
-        summary: "Host probe traffic is being dropped by Cilium policy"
+        summary: "Traffic is being dropped by Cilium policy"
 EOF
 ```
 
 ## Conclusion
 
-Cilium's default behavior of allowing host ingress is a pragmatic choice that ensures Kubernetes health probes work without explicit policy configuration. For security-hardened environments, switching to `allowLocalhost=policy` mode and creating explicit host-allow policies for required ports provides tighter isolation while maintaining health check functionality. Always test localhost policy changes carefully in staging environments, as blocking kubelet probes will cause cascading pod failures across your cluster.
+Cilium's default behavior of allowing host ingress is a pragmatic choice that ensures Kubernetes health probes work without explicit policy configuration. For security-hardened environments, switching to `allow-localhost=policy` mode and creating explicit host-allow policies for required ports provides tighter isolation while maintaining health check functionality. Always test localhost policy changes carefully in staging environments, as blocking kubelet probes will cause cascading pod failures across your cluster.
