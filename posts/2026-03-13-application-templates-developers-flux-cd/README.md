@@ -12,7 +12,7 @@ Description: Create reusable application templates for developers using Flux CD 
 
 One of the most common complaints from developers working with Kubernetes is the amount of boilerplate they must write before deploying a service. Deployments, Services, Ingresses, HorizontalPodAutoscalers, ServiceMonitors - the list grows quickly. Platform engineering teams solve this by providing application templates: curated, opinionated starting points that encode organizational best practices.
 
-Flux CD's Kustomize integration makes it straightforward to build a template library. Developers reference a base template from the platform repository, provide a handful of values through Kustomize patches, and Flux reconciles the rest. The platform team updates templates centrally, and all applications that reference them pick up improvements automatically.
+Flux CD's Kustomize integration makes it straightforward to build a template library. Developers reference a base template from the platform repository, provide a handful of values through Kustomize patches, and Flux reconciles the rest. The platform team updates templates centrally, and applications that update to a newer template tag pick up those improvements in a controlled way.
 
 In this guide you will build a layered template system with a generic web application base, environment-specific overlays, and a developer workflow that requires minimal Kubernetes knowledge.
 
@@ -54,12 +54,11 @@ platform-gitops/
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: app           # Overridden by developer patch
+  name: app           # Transformed by developer overlay
   labels:
     app: app
     version: latest
 spec:
-  replicas: 2
   selector:
     matchLabels:
       app: app
@@ -71,7 +70,7 @@ spec:
     spec:
       containers:
         - name: app
-          image: nginx:latest   # Overridden by developer patch
+          image: nginx:latest   # Replaced by developer overlay
           ports:
             - containerPort: 8080
           resources:
@@ -137,9 +136,6 @@ resources:
 patches:
   - patch: |-
       - op: replace
-        path: /spec/replicas
-        value: 3
-      - op: replace
         path: /spec/template/spec/containers/0/resources/requests/memory
         value: 256Mi
     target:
@@ -166,14 +162,17 @@ kind: Kustomization
 resources:
   # Reference the platform template via remote URL
   - https://github.com/acme/platform-gitops//templates/web-app/overlays/production?ref=v1.3.0
+namePrefix: my-service-
+labels:
+  - pairs:
+      app.kubernetes.io/name: my-service
+    includeSelectors: true
+images:
+  - name: nginx
+    newName: ghcr.io/acme/my-service
+    newTag: v2.1.0
 patches:
   - patch: |-
-      - op: replace
-        path: /metadata/name
-        value: my-service
-      - op: replace
-        path: /spec/template/spec/containers/0/image
-        value: ghcr.io/acme/my-service:v2.1.0
       - op: replace
         path: /spec/template/spec/containers/0/name
         value: my-service
@@ -185,7 +184,6 @@ patches:
         value: my-service.acme.example.com
     target:
       kind: Ingress
-namePrefix: ""
 namespace: team-alpha
 ```
 
@@ -240,4 +238,4 @@ git push origin v1.4.0
 
 ## Conclusion
 
-Application templates combined with Flux CD remove the majority of Kubernetes complexity from developers while keeping platform teams in control of organizational defaults. Developers reference a versioned template, apply a handful of patches for their service-specific values, and merge a PR - Flux handles everything else. As your platform matures, templates become the primary lever for rolling out operational improvements across every team simultaneously.
+Application templates combined with Flux CD remove the majority of Kubernetes complexity from developers while keeping platform teams in control of organizational defaults. Developers reference a versioned template, apply a handful of patches for their service-specific values, and merge a PR - Flux handles everything else. As your platform matures, templates become the primary lever for rolling out operational improvements as teams adopt new template versions.
