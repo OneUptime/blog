@@ -10,11 +10,12 @@ Description: Avoid common mistakes when implementing floating IPs in Calico incl
 
 ## Introduction
 
-Floating IPs with Calico provides important IP address management capabilities in Calico. This feature allows for fine-grained control over how IP addresses are assigned to pods in your Kubernetes cluster.
+Floating IPs with Calico provide additional IP addresses that can be used to reach Kubernetes pods. The floating IP is assigned to the pod workload endpoint, and the host uses NAT to deliver incoming traffic to the pod's real IP address.
 
 ## Prerequisites
 
-- Calico v3.20+ installed
+- Calico v3.20+ installed with the Calico CNI plugin
+- A manifest-managed Calico installation, because floating IPs for Kubernetes pods are not currently supported for operator-managed Calico clusters
 - kubectl and calicoctl access
 - IP pools configured
 
@@ -24,6 +25,8 @@ Floating IPs with Calico provides important IP address management capabilities i
 calicoctl get ippools -o yaml
 calicoctl ipam show --show-blocks
 ```
+
+Floating IPs must also be enabled in the Calico CNI network configuration by setting `feature_control.floating_ips` to `true`.
 
 ## Example
 
@@ -36,6 +39,19 @@ spec:
   cidr: 10.48.0.0/16
   blockSize: 26
   natOutgoing: true
+```
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: floating-ip-example
+  annotations:
+    cni.projectcalico.org/floatingIPs: '["10.48.0.10"]'
+spec:
+  containers:
+  - name: web
+    image: nginx
 ```
 
 ## Verification
