@@ -39,21 +39,21 @@ ArgoCD includes **Argo CD Notifications** (formerly a separate project, now inte
 | Configuration Method | CRDs (Alert, Provider, Receiver) | ConfigMap + Annotations |
 | Slack | Yes | Yes |
 | Microsoft Teams | Yes | Yes |
-| Discord | Yes | Yes |
+| Discord | Yes | No (use webhook) |
 | PagerDuty | Yes | Yes |
 | Opsgenie | Yes | Yes |
 | Generic Webhook | Yes | Yes |
 | GitHub Status | Yes | Yes (via webhook) |
-| GitLab | Yes | Yes |
-| Grafana | Yes | No (use webhook) |
-| AWS SNS | Yes | No (use webhook) |
+| GitLab | Yes | No (use webhook) |
+| Grafana | Yes | Yes |
+| AWS SNS | No (use webhook) | No (AWS SQS supported) |
 | Azure Event Hub | Yes | No (use webhook) |
 | Google Chat | Yes | Yes |
 | Telegram | Yes | Yes |
-| Rocket.Chat | Yes | No (use webhook) |
-| Matrix | Yes | Yes |
+| Rocket.Chat | Yes | Yes |
+| Matrix | Yes | No (use webhook) |
 | Email | No (use webhook) | Yes |
-| Inbound Webhooks | Yes (Receiver CRD) | No (uses webhook triggers) |
+| Inbound Webhooks | Yes (Receiver CRD) | Yes (API server Git/OCI webhooks) |
 | Custom Templates | Limited (event metadata) | Full Go template support |
 | Severity Filtering | Yes (info, error) | Via trigger conditions |
 | Event Filtering | By resource and type | By Application state |
@@ -68,7 +68,7 @@ Flux CD uses CRDs to define notification providers and alert rules.
 ```yaml
 # Step 1: Define the notification provider
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-engineering
@@ -93,7 +93,7 @@ stringData:
   address: https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX
 ---
 # Step 2: Define an alert that references the provider
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-alerts
@@ -118,30 +118,29 @@ spec:
     - kind: GitRepository
       name: "*"
       namespace: flux-system
-  # Optional: filter events by metadata
+  # Optional: add custom metadata to outgoing events
   eventMetadata:
     env: production
-  # Optional: summary template
-  summary: "Flux event in production cluster"
+    summary: "Flux event in production cluster"
 ```
 
 Multiple providers for different severity levels:
 
 ```yaml
 # Provider for critical alerts via PagerDuty
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: pagerduty-oncall
   namespace: flux-system
 spec:
   type: pagerduty
-  channel: flux-alerts
-  secretRef:
-    name: pagerduty-token
+  address: https://events.pagerduty.com
+  # PagerDuty Events API v2 routing key
+  channel: <pagerduty-routing-key>
 ---
 # Alert for errors only
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: critical-alerts
@@ -223,12 +222,17 @@ data:
           ]
         }]
 
+  template.app-sync-failed: |
+    message: |
+      Application {{.app.metadata.name}} sync has failed.
+      Sync Phase: {{.app.status.operationState.phase}}
+
   # Trigger definitions
   trigger.on-deployed: |
     - description: Application is synced and healthy
       send:
         - app-deployed
-      when: app.status.operationState.phase in ['Succeeded'] and
+      when: app.status?.operationState.phase in ['Succeeded'] and
             app.status.health.status == 'Healthy'
 
   trigger.on-health-degraded: |
@@ -241,7 +245,7 @@ data:
     - description: Application sync has failed
       send:
         - app-sync-failed
-      when: app.status.operationState.phase in ['Error', 'Failed']
+      when: app.status?.operationState.phase in ['Error', 'Failed']
 ---
 # Secret for notification service credentials
 apiVersion: v1
@@ -346,13 +350,14 @@ spec:
 ArgoCD handles inbound webhooks differently, primarily through its API server:
 
 ```yaml
-# ArgoCD webhook configuration in argocd-cm ConfigMap
+# ArgoCD webhook configuration in argocd-secret Secret
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cm
+  name: argocd-secret
   namespace: argocd
-data:
+type: Opaque
+stringData:
   # Configure webhook shared secret for GitHub
   webhook.github.secret: my-github-webhook-secret
 
@@ -368,7 +373,7 @@ data:
 ### Flux CD: Teams Provider
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: teams-notifications
@@ -379,7 +384,15 @@ spec:
   secretRef:
     name: teams-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: v1
+kind: Secret
+metadata:
+  name: teams-webhook-url
+  namespace: flux-system
+stringData:
+  address: https://api.powerautomate.com/webhook/...
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: teams-alerts
@@ -395,7 +408,7 @@ spec:
       name: "*"
 ```
 
-### ArgoCD: Teams Service
+### ArgoCD: Teams Workflows Service
 
 ```yaml
 apiVersion: v1
@@ -404,13 +417,13 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
-  service.teams: |
+  service.teams-workflows: |
     recipientUrls:
-      deployments: https://outlook.office.com/webhook/xxx
-      alerts: https://outlook.office.com/webhook/yyy
+      deployments: $teams-workflows-deployments
+      alerts: $teams-workflows-alerts
 
   template.teams-app-deployed: |
-    teams:
+    teams-workflows:
       title: "Deployment Notification"
       text: |
         Application **{{.app.metadata.name}}** has been deployed successfully.
@@ -425,6 +438,15 @@ data:
           "name": "Revision",
           "value": "{{.app.status.sync.revision}}"
         }]
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-notifications-secret
+  namespace: argocd
+stringData:
+  teams-workflows-deployments: https://api.powerautomate.com/webhook/xxx
+  teams-workflows-alerts: https://api.powerautomate.com/webhook/yyy
 ```
 
 ## Generic Webhook Integration
@@ -433,7 +455,7 @@ data:
 
 ```yaml
 # Send notifications to any HTTP endpoint
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: custom-webhook
@@ -497,7 +519,7 @@ data:
 - You prefer a CRD-based, declarative notification configuration
 - You need inbound webhook receivers for triggering reconciliation
 - You want namespace-scoped notification management for multi-tenancy
-- You need built-in support for cloud-native services like AWS SNS or Azure Event Hub
+- You need built-in support for cloud-native services like Azure Event Hub or Google Pub/Sub
 - You want simple severity-based filtering without complex trigger logic
 - You need to notify on source changes, not just application state
 
