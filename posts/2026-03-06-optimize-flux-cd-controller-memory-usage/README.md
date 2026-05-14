@@ -21,16 +21,14 @@ Flux CD runs several controllers, each with its own memory footprint:
 - **image-reflector-controller**: Scans container registries for image tags
 - **image-automation-controller**: Updates Git repositories with new image tags
 
-The source-controller and kustomize-controller typically consume the most memory because they cache fetched artifacts and rendered manifests.
+The source-controller and kustomize-controller often consume more memory because the source-controller packages and serves artifacts while the kustomize-controller renders and applies manifests.
 
 ## Setting Appropriate Resource Limits
 
-Start by setting explicit resource requests and limits for each controller. Create a patch file to override the default resource allocations.
+Start by setting explicit resource requests and limits for each controller. Create patch files to override the default resource allocations.
 
 ```yaml
-# memory-patches.yaml
-
-# Patch for source-controller with tuned memory limits
+# memory-patch-source-controller.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -53,7 +51,7 @@ spec:
 ```
 
 ```yaml
-# Patch for kustomize-controller with tuned memory limits
+# memory-patch-kustomize-controller.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -76,7 +74,7 @@ spec:
 ```
 
 ```yaml
-# Patch for helm-controller with tuned memory limits
+# memory-patch-helm-controller.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -108,15 +106,15 @@ resources:
   - gotk-components.yaml
   - gotk-sync.yaml
 patches:
-  - path: memory-patches.yaml
+  - path: memory-patch-source-controller.yaml
     target:
       kind: Deployment
       name: source-controller
-  - path: memory-patches.yaml
+  - path: memory-patch-kustomize-controller.yaml
     target:
       kind: Deployment
       name: kustomize-controller
-  - path: memory-patches.yaml
+  - path: memory-patch-helm-controller.yaml
     target:
       kind: Deployment
       name: helm-controller
@@ -154,7 +152,7 @@ Apply this pattern to each controller, adjusting `GOMEMLIMIT` to approximately 8
 
 ## Reducing Artifact Storage Size
 
-The source-controller stores fetched artifacts on disk and in memory. Reduce the artifact size by excluding unnecessary files.
+The source-controller stores fetched artifacts in its artifact storage. Reduce the artifact size by excluding unnecessary files.
 
 ```yaml
 # GitRepository with ignore patterns to reduce fetched content size
@@ -170,7 +168,7 @@ spec:
     branch: main
   ignore: |
     # Exclude non-deployment files to reduce artifact size
-    # This directly reduces memory used by source-controller
+    # This can reduce storage, transfer, and processing overhead
     /*
     !/deploy/
     !/base/
@@ -196,12 +194,10 @@ spec:
           args:
             - --storage-path=/data
             - --storage-adv-addr=source-controller.$(RUNTIME_NAMESPACE).svc.cluster.local.
-            # Limit concurrent git fetches to reduce peak memory
+            # Limit concurrent source reconciliations to reduce peak memory
             - --concurrent=2
-            # Limit how long artifacts are cached
-            - --artifact-retention-ttl=60m
-            # Set max artifact size to prevent memory spikes
-            - --storage-max-artifact-size=50000000
+            # Keep the retention window for older artifacts short
+            - --artifact-retention-ttl=1m
 ```
 
 ## Monitoring Memory Usage
@@ -225,7 +221,7 @@ spec:
             container_memory_working_set_bytes{
               namespace="flux-system",
               container="manager"
-            } / container_spec_memory_limit_bytes{
+            } / on(namespace, pod, container) container_spec_memory_limit_bytes{
               namespace="flux-system",
               container="manager"
             } > 0.8
@@ -269,7 +265,7 @@ spec:
     name: source-controller
   updatePolicy:
     # Use "Off" mode first to get recommendations without applying them
-    # Switch to "Auto" once you trust the recommendations
+    # Switch to "Recreate" once you trust the recommendations
     updateMode: "Off"
   resourcePolicy:
     containerPolicies:
