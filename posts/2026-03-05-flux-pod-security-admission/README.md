@@ -53,13 +53,12 @@ metadata:
     pod-security.kubernetes.io/audit-version: v1.28
 ---
 # namespaces/development.yaml
-# Development namespace with Baseline warnings only
+# Development namespace with Baseline warnings and Restricted audit
 apiVersion: v1
 kind: Namespace
 metadata:
   name: development
   labels:
-    pod-security.kubernetes.io/enforce: baseline
     pod-security.kubernetes.io/warn: baseline
     pod-security.kubernetes.io/audit: restricted
 ```
@@ -87,7 +86,7 @@ spec:
 
 ## Step 3: Ensure Flux-Deployed Workloads Comply
 
-All workloads deployed by Flux into PSA-enforced namespaces must comply with the Restricted profile. Here is a compliant Deployment:
+All workloads deployed by Flux into Restricted-enforced namespaces must comply with the Restricted profile. Here is a compliant Deployment:
 
 ```yaml
 # deployment-compliant.yaml
@@ -197,16 +196,16 @@ spec:
     # Override security contexts to comply with Restricted PSA
     master:
       podSecurityContext:
+        fsGroup: 1001
+      containerSecurityContext:
         runAsNonRoot: true
         runAsUser: 1001
-        fsGroup: 1001
-        seccompProfile:
-          type: RuntimeDefault
-      containerSecurityContext:
         allowPrivilegeEscalation: false
         capabilities:
           drop: ["ALL"]
         readOnlyRootFilesystem: true
+        seccompProfile:
+          type: RuntimeDefault
 ```
 
 ## Step 6: Monitor PSA Violations
