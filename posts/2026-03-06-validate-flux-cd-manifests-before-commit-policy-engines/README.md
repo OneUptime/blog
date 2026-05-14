@@ -46,9 +46,9 @@ Kyverno provides a CLI tool that can validate manifests locally without a runnin
 brew install kyverno
 
 # Or download the binary directly
-curl -LO https://github.com/kyverno/kyverno/releases/download/v1.12.0/kyverno-cli_v1.12.0_linux_amd64.tar.gz
-tar -xzf kyverno-cli_v1.12.0_linux_amd64.tar.gz
-sudo mv kyverno /usr/local/bin/
+curl -LO https://github.com/kyverno/kyverno/releases/download/v1.12.0/kyverno-cli_v1.12.0_linux_x86_64.tar.gz
+tar -xvf kyverno-cli_v1.12.0_linux_x86_64.tar.gz
+sudo cp kyverno /usr/local/bin/
 ```
 
 ### Creating a Pre-Commit Hook
@@ -109,10 +109,13 @@ repos:
         args: [-c, .yamllint.yaml]
 
   # Validate Kubernetes manifests
-  - repo: https://github.com/yannh/kubeconform
-    rev: v0.6.6
+  - repo: local
     hooks:
       - id: kubeconform
+        name: Kubeconform Kubernetes Schema Validation
+        entry: kubeconform
+        language: system
+        files: '\.ya?ml$'
         args:
           - -strict
           - -summary
@@ -124,7 +127,7 @@ repos:
     hooks:
       - id: kyverno-validate
         name: Kyverno Policy Validation
-        entry: bash -c 'kyverno apply policies/ --resource "$@"' --
+        entry: bash -c 'for file in "$@"; do kyverno apply policies/ --resource "$file" || exit 1; done' --
         language: system
         files: '\.ya?ml$'
         pass_filenames: true
@@ -154,28 +157,23 @@ jobs:
       - name: Setup Flux CLI
         uses: fluxcd/flux2/action@main
 
-      - name: Validate Flux manifests
-        # Verify that all Flux custom resources are valid
+      - name: Verify Flux CLI
+        # Verify that the Flux CLI was installed by the action
         run: |
-          find . -name '*.yaml' -o -name '*.yml' | while read file; do
-            if grep -q 'toolkit.fluxcd.io' "$file"; then
-              echo "Validating Flux resource: $file"
-              flux check --pre 2>/dev/null || true
-            fi
-          done
+          flux --version
 
       - name: Install Kyverno CLI
         run: |
-          curl -LO https://github.com/kyverno/kyverno/releases/download/v1.12.0/kyverno-cli_v1.12.0_linux_amd64.tar.gz
-          tar -xzf kyverno-cli_v1.12.0_linux_amd64.tar.gz
-          sudo mv kyverno /usr/local/bin/
+          curl -LO https://github.com/kyverno/kyverno/releases/download/v1.12.0/kyverno-cli_v1.12.0_linux_x86_64.tar.gz
+          tar -xvf kyverno-cli_v1.12.0_linux_x86_64.tar.gz
+          sudo cp kyverno /usr/local/bin/
 
       - name: Build Kustomize overlays
         # Render all Kustomize overlays to validate the final output
         run: |
           for dir in clusters/*/; do
             echo "Building kustomize overlay: $dir"
-            kustomize build "$dir" > "/tmp/rendered-$(basename $dir).yaml" 2>/dev/null || true
+            kustomize build "$dir" > "/tmp/rendered-$(basename "$dir").yaml"
           done
 
       - name: Validate against Kyverno policies
@@ -186,11 +184,12 @@ jobs:
               echo "Checking: $rendered"
               kyverno apply policies/ \
                 --resource "$rendered" \
+                --policy-report \
                 --detailed-results \
-                --output json | tee /tmp/policy-results.json
+                --output-format json | tee /tmp/policy-results.json
 
               # Fail if any violations found
-              VIOLATIONS=$(jq '.results[] | select(.status == "fail")' /tmp/policy-results.json)
+              VIOLATIONS=$(jq '.results[] | select(.result == "fail" or .result == "error")' /tmp/policy-results.json)
               if [ -n "$VIOLATIONS" ]; then
                 echo "Policy violations found!"
                 echo "$VIOLATIONS" | jq .
@@ -210,7 +209,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## Policy Validation Failed\n```json\n${results}\n````
+              body: ['## Policy Validation Failed', '```json', results, '```'].join('\n')
             });
 ```
 
@@ -225,8 +224,11 @@ Gatekeeper policies written in Rego can be validated offline using Conftest.
 brew install conftest
 
 # Or download directly
-curl -LO https://github.com/open-policy-agent/conftest/releases/download/v0.52.0/conftest_0.52.0_Linux_x86_64.tar.gz
-tar -xzf conftest_0.52.0_Linux_x86_64.tar.gz
+LATEST_VERSION=$(curl -s https://api.github.com/repos/open-policy-agent/conftest/releases/latest | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+ARCH=$(arch)
+SYSTEM=$(uname)
+curl -LO "https://github.com/open-policy-agent/conftest/releases/download/v${LATEST_VERSION}/conftest_${LATEST_VERSION}_${SYSTEM}_${ARCH}.tar.gz"
+tar -xzf "conftest_${LATEST_VERSION}_${SYSTEM}_${ARCH}.tar.gz"
 sudo mv conftest /usr/local/bin/
 ```
 
@@ -237,10 +239,11 @@ sudo mv conftest /usr/local/bin/
 package main
 
 # Deny resources without required labels
-deny[msg] {
+deny contains msg if {
   input.kind == "Deployment"
   required := {"app.kubernetes.io/name", "team", "environment"}
-  provided := {label | input.metadata.labels[label]}
+  labels := object.get(input.metadata, "labels", {})
+  provided := {label | labels[label]}
   missing := required - provided
   count(missing) > 0
   msg := sprintf(
@@ -250,7 +253,7 @@ deny[msg] {
 }
 
 # Deny resources without resource limits
-deny[msg] {
+deny contains msg if {
   input.kind == "Deployment"
   container := input.spec.template.spec.containers[_]
   not container.resources.limits
@@ -279,8 +282,11 @@ jobs:
 
       - name: Install Conftest
         run: |
-          curl -LO https://github.com/open-policy-agent/conftest/releases/download/v0.52.0/conftest_0.52.0_Linux_x86_64.tar.gz
-          tar -xzf conftest_0.52.0_Linux_x86_64.tar.gz
+          LATEST_VERSION=$(curl -s https://api.github.com/repos/open-policy-agent/conftest/releases/latest | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+          ARCH=$(arch)
+          SYSTEM=$(uname)
+          curl -LO "https://github.com/open-policy-agent/conftest/releases/download/v${LATEST_VERSION}/conftest_${LATEST_VERSION}_${SYSTEM}_${ARCH}.tar.gz"
+          tar -xzf "conftest_${LATEST_VERSION}_${SYSTEM}_${ARCH}.tar.gz"
           sudo mv conftest /usr/local/bin/
 
       - name: Run Conftest validation
@@ -303,17 +309,18 @@ Kubewarden policies can be validated offline using the kwctl CLI.
 
 ```bash
 # Install kwctl
-curl -LO https://github.com/kubewarden/kwctl/releases/download/v1.14.0/kwctl-linux-amd64
-chmod +x kwctl-linux-amd64
-sudo mv kwctl-linux-amd64 /usr/local/bin/kwctl
+curl -LO https://github.com/kubewarden/kwctl/releases/latest/download/kwctl-linux-x86_64.zip
+unzip kwctl-linux-x86_64.zip
+chmod +x kwctl-linux-x86_64
+sudo mv kwctl-linux-x86_64 /usr/local/bin/kwctl
 
 # Pull a policy for local testing
-kwctl pull registry://ghcr.io/kubewarden/policies/pod-privileged:v0.8.0
+kwctl pull registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.10
 
-# Validate a manifest against the policy
+# Validate an AdmissionReview request against the policy
 kwctl run \
-  registry://ghcr.io/kubewarden/policies/pod-privileged:v0.8.0 \
-  --request-path test-pod.json \
+  registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.10 \
+  --request-path test-pod-admission-review.json \
   --settings-json '{}'
 ```
 
@@ -335,25 +342,24 @@ jobs:
 
       - name: Install kwctl
         run: |
-          curl -LO https://github.com/kubewarden/kwctl/releases/download/v1.14.0/kwctl-linux-amd64
-          chmod +x kwctl-linux-amd64
-          sudo mv kwctl-linux-amd64 /usr/local/bin/kwctl
+          curl -LO https://github.com/kubewarden/kwctl/releases/latest/download/kwctl-linux-x86_64.zip
+          unzip kwctl-linux-x86_64.zip
+          chmod +x kwctl-linux-x86_64
+          sudo mv kwctl-linux-x86_64 /usr/local/bin/kwctl
 
       - name: Pull policies
         run: |
-          kwctl pull registry://ghcr.io/kubewarden/policies/pod-privileged:v0.8.0
-          kwctl pull registry://ghcr.io/kubewarden/policies/trusted-repos:v0.3.0
+          kwctl pull registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.10
+          kwctl pull registry://ghcr.io/kubewarden/policies/trusted-repos:v0.2.0
 
-      - name: Validate manifests
+      - name: Validate AdmissionReview requests
         run: |
-          # Convert YAML manifests to admission review requests
-          # and validate against Kubewarden policies
-          for file in clusters/*/apps/*.yaml; do
-            echo "Validating: $file"
-            # Convert to AdmissionReview format and test
+          # kwctl evaluates AdmissionReview requests, not raw Kubernetes manifests.
+          for request in admission-reviews/*.json; do
+            echo "Validating: $request"
             kwctl run \
-              registry://ghcr.io/kubewarden/policies/pod-privileged:v0.8.0 \
-              --request-path "$file" \
+              registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.10 \
+              --request-path "$request" \
               --settings-json '{}' || exit 1
           done
 ```
@@ -398,7 +404,7 @@ fi
 echo ""
 echo "--- Conftest ---"
 if command -v conftest &>/dev/null; then
-  find "$MANIFEST_DIR" -name '*.yaml' -exec conftest test {} --policy policy/ + || ERRORS=$((ERRORS + 1))
+  find "$MANIFEST_DIR" -name '*.yaml' -exec sh -c 'for file do conftest test "$file" --policy policy/ || exit 1; done' sh {} + || ERRORS=$((ERRORS + 1))
 else
   echo "conftest not found, skipping."
 fi
