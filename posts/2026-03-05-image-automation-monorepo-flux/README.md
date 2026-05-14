@@ -279,6 +279,33 @@ spec:
   update:
     path: ./apps/backend
     strategy: Setters
+---
+# image-update-automation-worker.yaml
+# Automation scoped to the worker directory only
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageUpdateAutomation
+metadata:
+  name: worker
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  git:
+    checkout:
+      ref:
+        branch: main
+    commit:
+      author:
+        email: flux@example.com
+        name: Flux
+      messageTemplate: "Update worker image: {{range .Changed.Changes}}{{.NewValue}}{{end}}"
+    push:
+      branch: main
+  update:
+    path: ./apps/worker
+    strategy: Setters
 ```
 
 ### Choosing Between the Options
@@ -300,9 +327,10 @@ kubectl apply -f image-repositories.yaml
 kubectl apply -f image-policies.yaml
 kubectl apply -f image-update-automation-frontend.yaml
 kubectl apply -f image-update-automation-backend.yaml
+kubectl apply -f image-update-automation-worker.yaml
 
 # Check the status of all image automation resources
-flux get image all -n flux-system
+flux get images all -n flux-system
 ```
 
 ## Handling Git Conflicts
