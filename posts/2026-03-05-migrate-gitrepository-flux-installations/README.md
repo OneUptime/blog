@@ -40,15 +40,15 @@ kubectl get kustomization -A -o jsonpath='{range .items[*]}{"Kustomization: "}{.
 
 ## Step 2: Export GitRepository Resources
 
-Use the Flux CLI to export clean, reapplicable manifests from the source cluster.
+Use the Flux CLI to export clean, reapplicable manifests from the source cluster. The `--all` flag exports resources from the selected namespace, which defaults to `flux-system`; repeat the commands with `--namespace=<namespace>` for GitRepository resources stored in other namespaces.
 
 Export all GitRepository resources:
 
 ```bash
-# Export all Git sources
+# Export all Git sources in the selected namespace
 flux export source git --all > migration/git-sources.yaml
 
-# Export related Kustomizations
+# Export related Kustomizations in the selected namespace
 flux export kustomization --all > migration/kustomizations.yaml
 
 # Export HelmReleases that may reference these sources
@@ -72,7 +72,7 @@ done
 
 ## Step 3: Export Authentication Secrets
 
-Secrets are not included in `flux export` output. Export them separately.
+The examples above do not include credentials. Export secrets separately, or use `flux export source git <name> --with-credentials` for individual GitRepository exports when appropriate.
 
 Export all secrets referenced by GitRepository resources:
 
@@ -80,32 +80,33 @@ Export all secrets referenced by GitRepository resources:
 #!/bin/bash
 # export-flux-secrets.sh
 
-NAMESPACE="flux-system"
 OUTPUT_DIR="migration/secrets"
 mkdir -p "$OUTPUT_DIR"
 
-# Get unique secret names from GitRepository resources
-SECRETS=$(kubectl get gitrepository -n "$NAMESPACE" \
-  -o jsonpath='{range .items[*]}{.spec.secretRef.name}{"\n"}{end}' \
-  | sort -u | grep -v '^$')
+# Get unique namespace/secret pairs from GitRepository resources
+SECRETS=$(kubectl get gitrepository -A \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.spec.secretRef.name}{"\n"}{end}' \
+  | sort -u | grep -v '/$')
 
-for SECRET_NAME in $SECRETS; do
-  echo "Exporting secret: $SECRET_NAME"
+for SECRET_REF in $SECRETS; do
+  NAMESPACE="${SECRET_REF%%/*}"
+  SECRET_NAME="${SECRET_REF##*/}"
+  echo "Exporting secret: $NAMESPACE/$SECRET_NAME"
   # Export the secret, removing cluster-specific metadata
   kubectl get secret "$SECRET_NAME" -n "$NAMESPACE" -o yaml \
     | kubectl neat \
-    > "$OUTPUT_DIR/$SECRET_NAME.yaml"
+    > "$OUTPUT_DIR/$NAMESPACE-$SECRET_NAME.yaml"
 done
 
 echo "Exported $(echo "$SECRETS" | wc -l) secrets to $OUTPUT_DIR/"
 ```
 
-If you do not have `kubectl neat` installed, manually strip the metadata:
+If you do not have `kubectl neat` installed, strip the metadata with `yq`:
 
 ```bash
 # Export and clean up metadata manually
 kubectl get secret my-secret -n flux-system -o yaml \
-  | grep -v "resourceVersion\|uid\|creationTimestamp\|selfLink\|managedFields" \
+  | yq 'del(.metadata.resourceVersion, .metadata.uid, .metadata.creationTimestamp, .metadata.selfLink, .metadata.managedFields)' \
   > migration/secrets/my-secret.yaml
 ```
 
@@ -191,8 +192,8 @@ kubectl apply -f migration/kustomizations.yaml
 kubectl apply -f migration/helmreleases.yaml
 
 # Step 6: Apply notification resources
-kubectl apply -f migration/alerts.yaml
 kubectl apply -f migration/alert-providers.yaml
+kubectl apply -f migration/alerts.yaml
 kubectl apply -f migration/receivers.yaml
 ```
 
@@ -273,10 +274,10 @@ kubectl get gitrepository -n flux-system -o jsonpath='{.items[0].apiVersion}'
 kubectl get crd gitrepositories.source.toolkit.fluxcd.io -o jsonpath='{.spec.versions[*].name}'
 ```
 
-If the source uses `source.toolkit.fluxcd.io/v1` and the target expects `v1`, update the apiVersion in your exported manifests:
+If the source uses an older API version such as `source.toolkit.fluxcd.io/v1beta2` and the target expects `v1`, update the apiVersion in your exported manifests:
 
 ```bash
-sed -i 's|source.toolkit.fluxcd.io/v1|source.toolkit.fluxcd.io/v1|g' migration/git-sources.yaml
+sed -i 's|source.toolkit.fluxcd.io/v1beta2|source.toolkit.fluxcd.io/v1|g' migration/git-sources.yaml
 ```
 
 ## Troubleshooting
@@ -291,4 +292,4 @@ sed -i 's|source.toolkit.fluxcd.io/v1|source.toolkit.fluxcd.io/v1|g' migration/g
 
 ## Summary
 
-Migrating GitRepository resources between Flux installations follows a structured process: inventory and export from the source using `flux export source git --all`, separately back up authentication secrets, prepare the target cluster with a fresh Flux installation, apply resources in dependency order (secrets then sources then consumers), and verify reconciliation. The Flux CLI's export command produces clean manifests ready for reapplication, making the migration process predictable and repeatable.
+Migrating GitRepository resources between Flux installations follows a structured process: inventory and export from the source using `flux export source git --all` for each relevant namespace, separately back up authentication secrets, prepare the target cluster with a fresh Flux installation, apply resources in dependency order (secrets then sources then consumers), and verify reconciliation. The Flux CLI's export command produces clean manifests ready for reapplication, making the migration process predictable and repeatable.
