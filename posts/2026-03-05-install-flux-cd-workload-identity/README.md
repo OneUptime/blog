@@ -241,11 +241,16 @@ az identity create \
   --name flux-source-controller \
   --resource-group my-rg
 
-# Get the managed identity client ID
+# Get the managed identity client ID and principal ID
 export IDENTITY_CLIENT_ID=$(az identity show \
   --name flux-source-controller \
   --resource-group my-rg \
   --query clientId -o tsv)
+
+export IDENTITY_PRINCIPAL_ID=$(az identity show \
+  --name flux-source-controller \
+  --resource-group my-rg \
+  --query principalId -o tsv)
 
 # Create a federated credential linking the Kubernetes ServiceAccount
 az identity federated-credential create \
@@ -258,7 +263,8 @@ az identity federated-credential create \
 
 # Grant the identity access to Azure Container Registry
 az role assignment create \
-  --assignee "$IDENTITY_CLIENT_ID" \
+  --assignee-object-id "$IDENTITY_PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
   --role "AcrPull" \
   --scope /subscriptions/SUBSCRIPTION_ID/resourceGroups/my-rg/providers/Microsoft.ContainerRegistry/registries/myacr
 ```
@@ -280,9 +286,22 @@ patches:
         name: source-controller
         namespace: flux-system
         annotations:
-          azure.workload.identity/client-id: <IDENTITY_CLIENT_ID>
+          azure.workload.identity/client-id: <AZURE_CLIENT_ID>
         labels:
           azure.workload.identity/use: "true"
+  - patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: source-controller
+        namespace: flux-system
+        labels:
+          azure.workload.identity/use: "true"
+      spec:
+        template:
+          metadata:
+            labels:
+              azure.workload.identity/use: "true"
 ```
 
 ### Step 4: Use Azure Provider for OCI Sources
@@ -322,4 +341,4 @@ kubectl logs -n flux-system deployment/source-controller | grep -i "auth\|identi
 
 ## Summary
 
-Workload identity eliminates the need for long-lived credentials in your Flux CD installation. On AWS, use IRSA to map Kubernetes ServiceAccounts to IAM roles. On GCP, use GKE Workload Identity to bind to Google Cloud service accounts. On Azure, use Azure Workload Identity with federated credentials. In all cases, the pattern is the same: annotate the Flux controller ServiceAccount with the cloud identity reference and set `provider` on your source resources. This approach is more secure, easier to audit, and aligns with cloud-native best practices.
+Workload identity eliminates the need for long-lived credentials in your Flux CD installation. On AWS, use IRSA to map Kubernetes ServiceAccounts to IAM roles. On GCP, use GKE Workload Identity to bind to Google Cloud service accounts. On Azure, use Azure Workload Identity with federated credentials and label the Flux controller Deployment for the workload identity webhook. In all cases, the pattern is the same: annotate the Flux controller ServiceAccount with the cloud identity reference and set `provider` on your source resources. This approach is more secure, easier to audit, and aligns with cloud-native best practices.
