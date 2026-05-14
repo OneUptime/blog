@@ -37,7 +37,7 @@ spec:
   prune: true
 ```
 
-In this configuration, Flux will reconcile every 10 minutes under normal conditions. If a reconciliation fails, Flux will retry after just 2 minutes instead of waiting the full 10 minutes. The `timeout` field sets the maximum duration Flux will wait for a single apply operation to complete before marking it as failed.
+In this configuration, Flux will reconcile every 10 minutes under normal conditions. If a reconciliation fails, Flux will retry after just 2 minutes instead of waiting the full 10 minutes. The `timeout` field sets the maximum duration Flux will wait for operations in a reconciliation, including building, applying, and health checking, before marking it as failed.
 
 ## How retryInterval Interacts with interval
 
@@ -91,7 +91,7 @@ spec:
   wait: true
 ```
 
-When `wait: true` is set, Flux waits for all applied resources to become ready (Deployments fully rolled out, Services with endpoints, etc.) before marking the Kustomization as ready. The `timeout` applies to this entire process -- both the apply and the health checking.
+When `wait: true` is set, Flux performs health checks for all reconciled resources before marking the Kustomization as ready. The `timeout` applies to this entire process -- both the apply and the health checking.
 
 ## Handling Dependencies with Retry
 
@@ -155,7 +155,7 @@ flux events --for Kustomization/app-backend --namespace flux-system --watch
 You can also inspect the Kustomization status conditions directly with kubectl.
 
 ```bash
-# View detailed status conditions including retry information
+# View detailed status conditions including failure messages
 kubectl get kustomization app-backend -n flux-system -o yaml | grep -A 20 "status:"
 ```
 
