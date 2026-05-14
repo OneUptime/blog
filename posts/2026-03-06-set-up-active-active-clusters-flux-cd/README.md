@@ -21,17 +21,17 @@ In an active-active configuration:
 
 ```mermaid
 graph TB
-    GLB[Global Load Balancer] --> C1[Cluster A - Region US-East]
-    GLB --> C2[Cluster B - Region US-West]
     subgraph Git["Git Repository"]
         G[fleet-infra]
     end
-    G --> C1
-    G --> C2
-    subgraph C1
+    GLB[Global Load Balancer] --> W1
+    GLB --> W2
+    G --> F1
+    G --> F2
+    subgraph C1["Cluster A - Region US-East"]
         F1[Flux CD] --> W1[Workloads]
     end
-    subgraph C2
+    subgraph C2["Cluster B - Region US-West"]
         F2[Flux CD] --> W2[Workloads]
     end
 ```
@@ -290,7 +290,7 @@ flux bootstrap github \
 
 ## Step 4: Configure Global Load Balancing
 
-### AWS Global Accelerator with Route53
+### Route53 with ExternalDNS
 
 ```yaml
 # clusters/base/infrastructure/external-dns/helmrelease.yaml
@@ -304,17 +304,22 @@ spec:
   chart:
     spec:
       chart: external-dns
-      version: "1.14.x"
+      version: "1.20.x"
       sourceRef:
         kind: HelmRepository
         name: external-dns
         namespace: flux-system
   values:
-    provider: aws
-    aws:
-      zoneType: public
+    provider:
+      name: aws
+    extraArgs:
+      aws-zone-type: public
     domainFilters:
       - example.com
+    sources:
+      - service
+      - ingress
+      - crd
     policy: upsert-only
 ```
 
@@ -453,6 +458,18 @@ spec:
             name: health-nginx-config
 ---
 apiVersion: v1
+kind: Service
+metadata:
+  name: health-endpoint
+  namespace: default
+spec:
+  selector:
+    app: health-endpoint
+  ports:
+    - port: 80
+      targetPort: 80
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: health-nginx-config
@@ -542,8 +559,8 @@ done
 
 # If a cluster needs maintenance, drain it gradually
 # Step 1: Reduce DNS weight to shift traffic
-kubectl patch dnsendpoint app-cluster-a -n default \
-  --type=merge -p '{"spec":{"endpoints":[{"dnsName":"app.example.com","providerSpecific":[{"name":"aws/weight","value":"10"}]}]}}'
+KUBECONFIG=~/.kube/cluster-a.yaml kubectl patch dnsendpoint app-cluster-a -n default \
+  --type=json -p='[{"op":"replace","path":"/spec/endpoints/0/providerSpecific/0/value","value":"10"}]'
 
 # Step 2: Wait for connections to drain (based on your TTL)
 sleep 120
@@ -552,8 +569,8 @@ sleep 120
 # ...
 
 # Step 4: Restore DNS weight
-kubectl patch dnsendpoint app-cluster-a -n default \
-  --type=merge -p '{"spec":{"endpoints":[{"dnsName":"app.example.com","providerSpecific":[{"name":"aws/weight","value":"50"}]}]}}'
+KUBECONFIG=~/.kube/cluster-a.yaml kubectl patch dnsendpoint app-cluster-a -n default \
+  --type=json -p='[{"op":"replace","path":"/spec/endpoints/0/providerSpecific/0/value","value":"50"}]'
 ```
 
 ## Verification Checklist
