@@ -12,7 +12,7 @@ Helm releases maintain a revision history, making it possible to roll back to a 
 
 ## How HelmRelease Revisions Work in Flux CD
 
-Every time Flux upgrades a HelmRelease, Helm creates a new revision. These revisions are stored as Kubernetes Secrets in the release namespace.
+Every time Flux upgrades a HelmRelease, Helm creates a new revision. These revisions are stored as Kubernetes Secrets in the release storage namespace, which defaults to the release namespace unless `spec.storageNamespace` is set.
 
 ```bash
 # View Helm release history
@@ -159,7 +159,7 @@ spec:
   # Configure upgrade remediation
   upgrade:
     remediation:
-      # Number of retries before rolling back
+      # Number of retry attempts; rollback remediation is performed between attempts
       retries: 3
       # Strategy: rollback to last successful release
       strategy: rollback
@@ -172,13 +172,11 @@ spec:
   rollback:
     # Timeout for the rollback operation
     timeout: 5m
-    # Recreate resources if needed during rollback
-    recreate: false
     # Run hooks during rollback
     disableHooks: false
     # Wait for rollback to complete
     disableWait: false
-    # Clean up resources created during failed upgrade
+    # Clean up resources created during a failed rollback
     cleanupOnFail: true
 
   # Test hooks run after install/upgrade
@@ -272,7 +270,7 @@ flux reconcile helmrelease my-app -n default
 
 ```yaml
 # alerts/helmrelease-rollback-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-helm
@@ -283,7 +281,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: helmrelease-rollback
@@ -365,9 +363,9 @@ spec:
 ```yaml
 # Increase Helm history limit for more rollback options
 spec:
-  # Keep last 10 releases (default is 10)
+  # Keep last 10 releases (Flux defaults to 5)
   # Decrease only if you have storage concerns
-  historyLimit: 10
+  maxHistory: 10
 ```
 
 ### Use Version Constraints
