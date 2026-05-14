@@ -24,18 +24,18 @@ OpenStack-specific Calico upgrade mistakes often involve the Neutron ML2 plugin 
 ```bash
 # WRONG - upgrading Kubernetes Calico without upgrading OpenStack agents
 
-kubectl patch installation default --type=merge -p '{"spec":{"version":"v3.28.0"}}'
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/tigera-operator.yaml
 # calico-felix on compute nodes still on old version = version mismatch = breakage!
 
 # CORRECT - coordinate both upgrades
 # 1. Upgrade Kubernetes Calico
-# 2. Immediately upgrade calico-felix on compute nodes
+# 2. Immediately upgrade calico-felix (and networking-calico) on compute nodes
 # 3. Verify both layers before closing the maintenance window
 
-# WRONG - not checking Neutron ML2 compatibility matrix
+# WRONG - not checking the networking-calico compatibility matrix
 # CORRECT - always verify:
-# https://docs.openstack.org/networking-calico/latest/
-# Check that new Calico version is compatible with your Neutron ML2 calico plugin version
+# https://docs.tigera.io/calico/latest/getting-started/openstack/
+# Check that the new Calico version is compatible with your networking-calico (Neutron ML2) plugin version
 ```
 
 ## Conclusion
