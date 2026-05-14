@@ -12,7 +12,7 @@ Description: Manage Amazon EKS add-ons lifecycle through Flux CD for consistent,
 
 Amazon EKS add-ons provide operational software for Kubernetes clusters, including networking (VPC CNI), DNS (CoreDNS), and proxy (kube-proxy) components. Managing these add-ons through Flux CD ensures consistent configurations across clusters and enables version-controlled upgrades.
 
-This guide covers managing EKS add-ons through GitOps, including both AWS-managed add-ons via ACK and self-managed add-ons via Helm.
+This guide covers managing EKS add-ons through GitOps as self-managed Helm releases.
 
 ## Prerequisites
 
@@ -22,7 +22,7 @@ Before starting, ensure you have:
 - Flux CD installed and bootstrapped on the cluster
 - AWS CLI configured with appropriate permissions
 - kubectl access to the cluster
-- eksctl installed for add-on management
+- IAM roles for service accounts configured for add-ons that need AWS API permissions
 
 ## Step 1: Understand EKS Add-on Types
 
@@ -72,18 +72,18 @@ spec:
   chart:
     spec:
       chart: aws-vpc-cni
-      version: "1.16.x"
+      version: "1.21.x"
       sourceRef:
         kind: HelmRepository
         name: eks-charts
         namespace: flux-system
-  # Use existing CRDs to avoid conflicts
+  # Install and update the PolicyEndpoint CRD required by network policy support
   install:
-    crds: Skip
+    crds: CreateReplace
     remediation:
       retries: 3
   upgrade:
-    crds: Skip
+    crds: CreateReplace
     remediation:
       retries: 3
   values:
@@ -91,8 +91,8 @@ spec:
     env:
       ENABLE_PREFIX_DELEGATION: "true"
       WARM_PREFIX_TARGET: "1"
-      # Enable network policy support
-      ENABLE_NETWORK_POLICY: "true"
+    # Enable network policy support
+    enableNetworkPolicy: "true"
     # IRSA configuration for VPC CNI
     serviceAccount:
       create: true
@@ -119,7 +119,7 @@ spec:
   chart:
     spec:
       chart: coredns
-      version: "1.29.x"
+      version: "1.45.x"
       sourceRef:
         kind: HelmRepository
         name: coredns-charts
@@ -202,7 +202,7 @@ spec:
   chart:
     spec:
       chart: aws-ebs-csi-driver
-      version: "2.27.x"
+      version: "2.60.x"
       sourceRef:
         kind: HelmRepository
         name: ebs-csi-charts
@@ -269,7 +269,7 @@ spec:
   chart:
     spec:
       chart: aws-efs-csi-driver
-      version: "2.5.x"
+      version: "4.2.x"
       sourceRef:
         kind: HelmRepository
         name: efs-csi-charts
@@ -308,7 +308,7 @@ spec:
 
 ## Step 6: Organize Add-ons with Dependencies
 
-Create a Kustomization that ensures add-ons are installed in the correct order.
+Create a Kustomization that groups the add-on sources and releases together.
 
 ```yaml
 # infrastructure/eks-addons/kustomization.yaml
@@ -369,7 +369,7 @@ spec:
   chart:
     spec:
       # Pin to exact version in production
-      version: "1.16.2"
+      version: "1.21.1"
 ---
 apiVersion: helm.toolkit.fluxcd.io/v1
 kind: HelmRelease
@@ -379,7 +379,7 @@ metadata:
 spec:
   chart:
     spec:
-      version: "2.27.1"
+      version: "2.60.0"
 ```
 
 ```yaml
@@ -394,7 +394,7 @@ spec:
   chart:
     spec:
       # Allow minor version updates in staging
-      version: ">=1.16.0 <1.17.0"
+      version: ">=1.21.0 <1.22.0"
 ---
 apiVersion: helm.toolkit.fluxcd.io/v1
 kind: HelmRelease
@@ -404,7 +404,7 @@ metadata:
 spec:
   chart:
     spec:
-      version: ">=2.27.0 <2.28.0"
+      version: ">=2.60.0 <2.61.0"
 ```
 
 ## Step 8: Configure Add-on Notifications
@@ -473,7 +473,7 @@ kubectl run dns-test --image=busybox:1.36 --rm -it --restart=Never -- nslookup k
 ```bash
 # Issue: VPC CNI pods crashing
 # Check CNI logs
-kubectl logs -n kube-system -l app.kubernetes.io/name=aws-node --tail=50
+kubectl logs -n kube-system -l k8s-app=aws-node --tail=50
 
 # Issue: EBS volumes not provisioning
 # Check CSI driver controller logs
