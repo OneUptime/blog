@@ -78,9 +78,7 @@ phases:
     commands:
       # Log in to Amazon ECR
       - echo "Logging in to Amazon ECR..."
-      - aws ecr get-login-password --region $AWS_DEFAULT_REGION |
-          docker login --username AWS --password-stdin
-          $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
 
       # Set the image tag to the commit SHA
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
@@ -93,12 +91,13 @@ phases:
       - echo "Build started on $(date)"
 
       # Build the container image
-      - docker build
-          --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          --build-arg VCS_REF=$CODEBUILD_RESOLVED_SOURCE_VERSION
-          -t $FULL_IMAGE:$IMAGE_TAG
-          -t $FULL_IMAGE:latest
-          .
+      - >-
+        docker build
+        --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        --build-arg VCS_REF=$CODEBUILD_RESOLVED_SOURCE_VERSION
+        -t $FULL_IMAGE:$IMAGE_TAG
+        -t $FULL_IMAGE:latest
+        .
 
   post_build:
     commands:
@@ -136,9 +135,7 @@ env:
 phases:
   pre_build:
     commands:
-      - aws ecr get-login-password --region $AWS_DEFAULT_REGION |
-          docker login --username AWS --password-stdin
-          $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
       - FULL_IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME"
 
       # Determine version from Git tag or generate one
@@ -153,10 +150,11 @@ phases:
   build:
     commands:
       # Build with semantic version tag
-      - docker build
-          --build-arg APP_VERSION=$VERSION
-          -t $FULL_IMAGE:$VERSION
-          .
+      - >-
+        docker build
+        --build-arg APP_VERSION=$VERSION
+        -t $FULL_IMAGE:$VERSION
+        .
 
   post_build:
     commands:
@@ -185,6 +183,9 @@ Parameters:
   GitHubBranch:
     Type: String
     Default: main
+  ConnectionArn:
+    Type: String
+    Description: CodeStar connection ARN for GitHub
 
 Resources:
   # CodeBuild project
@@ -214,6 +215,9 @@ Resources:
     Properties:
       Name: my-app-pipeline
       RoleArn: !GetAtt PipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
       Stages:
         # Source stage - pull from GitHub
         - Name: Source
@@ -221,14 +225,13 @@ Resources:
             - Name: GitHubSource
               ActionTypeId:
                 Category: Source
-                Owner: ThirdParty
-                Provider: GitHub
+                Owner: AWS
+                Provider: CodeStarSourceConnection
                 Version: '1'
               Configuration:
-                Owner: !Ref GitHubOwner
-                Repo: !Ref GitHubRepo
-                Branch: !Ref GitHubBranch
-                OAuthToken: '{{resolve:secretsmanager:github-token}}'
+                ConnectionArn: !Ref ConnectionArn
+                FullRepositoryId: !Sub '${GitHubOwner}/${GitHubRepo}'
+                BranchName: !Ref GitHubBranch
               OutputArtifacts:
                 - Name: SourceOutput
 
@@ -247,6 +250,9 @@ Resources:
                 - Name: SourceOutput
               OutputArtifacts:
                 - Name: BuildOutput
+
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
 
   # IAM role for CodeBuild
   CodeBuildRole:
@@ -304,6 +310,10 @@ Resources:
                   - 'codebuild:BatchGetBuilds'
                   - 's3:*'
                 Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'codestar-connections:UseConnection'
+                Resource: !Ref ConnectionArn
 ```
 
 ## Step 5: Configure Flux to Access ECR
@@ -332,14 +342,13 @@ cat > flux-ecr-policy.json <<EOF
 }
 EOF
 
-# For EKS with IRSA (IAM Roles for Service Accounts)
-# Associate the policy with the Flux service account
-eksctl create iamserviceaccount \
-  --name image-reflector-controller \
+# For EKS with IRSA (IAM Roles for Service Accounts), annotate the Flux
+# image-reflector-controller service account with the IAM role ARN.
+kubectl annotate serviceaccount image-reflector-controller \
   --namespace flux-system \
-  --cluster my-eks-cluster \
-  --attach-policy-arn arn:aws:iam::$AWS_ACCOUNT_ID:policy/FluxECRReadPolicy \
-  --approve
+  eks.amazonaws.com/role-arn=arn:aws:iam::$AWS_ACCOUNT_ID:role/FluxECRReadRole
+
+kubectl rollout restart deployment -n flux-system image-reflector-controller
 ```
 
 Alternatively, create a Kubernetes secret with ECR credentials:
@@ -370,12 +379,15 @@ spec:
   # ECR image URI
   image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app
   interval: 1m0s
-  # Use ECR credentials secret
-  secretRef:
-    name: ecr-credentials
+  # Use the AWS provider for ECR authentication with IRSA or node IAM
+  provider: aws
 ```
 
+For static ECR credentials, omit `provider: aws` and use a `secretRef` that points to `ecr-credentials`.
+
 ## Step 7: Set Up Image Policy and Automation
+
+The semver policy below matches images produced by the semantic versioning buildspec in Step 3.
 
 ```yaml
 # clusters/my-cluster/image-policies/app-image-policy.yaml
@@ -462,10 +474,40 @@ spec:
 
 ## Step 9: Handle ECR Token Rotation
 
-ECR tokens expire every 12 hours. Set up a CronJob to rotate the credentials automatically.
+If you use a static ECR credentials secret instead of `provider: aws`, ECR tokens expire every 12 hours. Set up a CronJob to rotate the credentials automatically.
 
 ```yaml
 # clusters/my-cluster/ecr-token-rotation.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ecr-token-refresher
+  namespace: flux-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ecr-token-refresher
+  namespace: flux-system
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ecr-token-refresher
+  namespace: flux-system
+subjects:
+  - kind: ServiceAccount
+    name: ecr-token-refresher
+    namespace: flux-system
+roleRef:
+  kind: Role
+  name: ecr-token-refresher
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -481,11 +523,18 @@ spec:
           serviceAccountName: ecr-token-refresher
           containers:
             - name: ecr-token-refresh
-              image: amazon/aws-cli:latest
+              image: public.ecr.aws/aws-cli/aws-cli:2
+              env:
+                - name: AWS_ACCOUNT_ID
+                  value: "123456789012"
               command:
                 - /bin/sh
                 - -c
                 - |
+                  curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.30.14/2026-04-08/bin/linux/amd64/kubectl
+                  chmod +x ./kubectl
+                  mv ./kubectl /usr/local/bin/kubectl
+
                   # Get a fresh ECR token
                   TOKEN=$(aws ecr get-login-password --region us-east-1)
 
