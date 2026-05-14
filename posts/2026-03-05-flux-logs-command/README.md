@@ -8,17 +8,23 @@ Description: Learn how to use the flux logs command to view, filter, and analyze
 
 ---
 
-The `flux logs` command provides a streamlined way to view logs from all Flux CD controllers without needing to identify individual pod names or use complex kubectl log queries. It aggregates logs across controllers and supports filtering by resource kind, name, namespace, and log level. This makes it an indispensable tool for daily GitOps operations and debugging.
+The `flux logs` command provides a streamlined way to view Flux CD controller logs without needing to identify individual pod names or use complex kubectl log queries. It aggregates logs across controllers and supports filtering by resource kind, name, namespace, and log level. This makes it an indispensable tool for daily GitOps operations and debugging.
 
 ## Basic Usage
 
-The simplest invocation shows logs from all Flux CD controllers:
+The simplest invocation shows formatted Flux logs for the current namespace scope, which defaults to `flux-system`:
 
 ```bash
 flux logs
 ```
 
-This streams the most recent logs from source-controller, kustomize-controller, helm-controller, and notification-controller, all interleaved and sorted by timestamp.
+To view reconciliation logs for Flux custom resources across all namespaces, use:
+
+```bash
+flux logs --all-namespaces
+```
+
+This fetches logs from Flux components such as source-controller, kustomize-controller, helm-controller, and notification-controller, then formats the matching log entries.
 
 ## Filter Logs by Log Level
 
@@ -28,7 +34,7 @@ Flux controllers emit logs at different levels. Filter to see only errors or spe
 flux logs --level=error
 ```
 
-Show info-level and above:
+Show info-level logs:
 
 ```bash
 flux logs --level=info
@@ -139,7 +145,7 @@ flux logs --follow --kind=HelmRelease --name=my-app --namespace=production --lev
 All logs for GitRepository resources in the last 30 minutes:
 
 ```bash
-flux logs --kind=GitRepository --since=30m
+flux logs --kind=GitRepository --since=30m --all-namespaces
 ```
 
 ## Export Logs for Analysis
@@ -150,7 +156,7 @@ Redirect logs to a file for deeper analysis or sharing with your team:
 flux logs --level=error --since=24h > flux-errors-$(date +%Y%m%d).log
 ```
 
-Save logs in a parseable format:
+Save the formatted output while also printing it to the terminal:
 
 ```bash
 flux logs --since=1h 2>&1 | tee flux-debug.log
