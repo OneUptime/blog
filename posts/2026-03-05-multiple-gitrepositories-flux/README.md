@@ -347,7 +347,7 @@ flux export source git --all
 Set up alerts for failed reconciliations:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: git-source-alerts
