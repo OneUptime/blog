@@ -75,13 +75,14 @@ Extract the list of container images from the manifests.
 
 ```bash
 # Extract all container image references from the manifests
-grep -oP 'image:\s*\K\S+' gotk-components.yaml | sort -u
+grep -oP 'image:\s*\K\S+' gotk-components.yaml | sort -u > flux-images.txt
+cat flux-images.txt
 ```
 
 The output will look similar to this (versions will vary):
 
 ```text
-ghcr.io/fluxcd/helm-controller:v2.x.x
+ghcr.io/fluxcd/helm-controller:v1.x.x
 ghcr.io/fluxcd/kustomize-controller:v1.x.x
 ghcr.io/fluxcd/notification-controller:v1.x.x
 ghcr.io/fluxcd/source-controller:v1.x.x
@@ -98,28 +99,21 @@ Using crane (recommended for its simplicity):
 go install github.com/google/go-containerregistry/cmd/crane@latest
 
 # Pull and save each Flux image as a tar file
-crane pull ghcr.io/fluxcd/source-controller:v1.4.1 source-controller.tar
-crane pull ghcr.io/fluxcd/kustomize-controller:v1.4.0 kustomize-controller.tar
-crane pull ghcr.io/fluxcd/helm-controller:v1.1.0 helm-controller.tar
-crane pull ghcr.io/fluxcd/notification-controller:v1.4.0 notification-controller.tar
+while read -r image; do
+  name="${image#ghcr.io/fluxcd/}"
+  controller="${name%%:*}"
+  crane pull "$image" "${controller}.tar"
+done < flux-images.txt
 ```
 
 Alternatively, using docker:
 
 ```bash
 # Pull images with docker
-docker pull ghcr.io/fluxcd/source-controller:v1.4.1
-docker pull ghcr.io/fluxcd/kustomize-controller:v1.4.0
-docker pull ghcr.io/fluxcd/helm-controller:v1.1.0
-docker pull ghcr.io/fluxcd/notification-controller:v1.4.0
+xargs -r -n1 docker pull < flux-images.txt
 
 # Save all images to a single tar archive
-docker save \
-  ghcr.io/fluxcd/source-controller:v1.4.1 \
-  ghcr.io/fluxcd/kustomize-controller:v1.4.0 \
-  ghcr.io/fluxcd/helm-controller:v1.1.0 \
-  ghcr.io/fluxcd/notification-controller:v1.4.0 \
-  -o flux-images.tar
+docker save -o flux-images.tar $(cat flux-images.txt)
 ```
 
 ## Step 5: Transfer Artifacts to the Air-Gapped Network
@@ -127,12 +121,14 @@ docker save \
 Transfer the following files to the air-gapped network using your approved transfer mechanism:
 
 - `gotk-components.yaml` (Flux manifests)
+- `flux-images.txt` (the image list used for mirroring)
 - Image tar files (or the combined `flux-images.tar`)
 - The `flux` CLI binary (download from https://github.com/fluxcd/flux2/releases)
 
 ```bash
 # Download the Flux CLI binary for transfer
-curl -sLO https://github.com/fluxcd/flux2/releases/latest/download/flux_2.4.0_linux_amd64.tar.gz
+FLUX_VERSION=2.8.7
+curl -sLO "https://github.com/fluxcd/flux2/releases/download/v${FLUX_VERSION}/flux_${FLUX_VERSION}_linux_amd64.tar.gz"
 ```
 
 ## Step 6: Push Images to the Internal Registry
@@ -143,10 +139,11 @@ Using crane:
 
 ```bash
 # Push images to the internal registry
-crane push source-controller.tar registry.internal.corp/fluxcd/source-controller:v1.4.1
-crane push kustomize-controller.tar registry.internal.corp/fluxcd/kustomize-controller:v1.4.0
-crane push helm-controller.tar registry.internal.corp/fluxcd/helm-controller:v1.1.0
-crane push notification-controller.tar registry.internal.corp/fluxcd/notification-controller:v1.4.0
+while read -r image; do
+  name="${image#ghcr.io/fluxcd/}"
+  controller="${name%%:*}"
+  crane push "${controller}.tar" "registry.internal.corp/fluxcd/${name}"
+done < flux-images.txt
 ```
 
 Using docker:
@@ -156,16 +153,14 @@ Using docker:
 docker load -i flux-images.tar
 
 # Tag images for the internal registry
-docker tag ghcr.io/fluxcd/source-controller:v1.4.1 registry.internal.corp/fluxcd/source-controller:v1.4.1
-docker tag ghcr.io/fluxcd/kustomize-controller:v1.4.0 registry.internal.corp/fluxcd/kustomize-controller:v1.4.0
-docker tag ghcr.io/fluxcd/helm-controller:v1.1.0 registry.internal.corp/fluxcd/helm-controller:v1.1.0
-docker tag ghcr.io/fluxcd/notification-controller:v1.4.0 registry.internal.corp/fluxcd/notification-controller:v1.4.0
+while read -r image; do
+  docker tag "$image" "registry.internal.corp/fluxcd/${image#ghcr.io/fluxcd/}"
+done < flux-images.txt
 
 # Push to the internal registry
-docker push registry.internal.corp/fluxcd/source-controller:v1.4.1
-docker push registry.internal.corp/fluxcd/kustomize-controller:v1.4.0
-docker push registry.internal.corp/fluxcd/helm-controller:v1.1.0
-docker push registry.internal.corp/fluxcd/notification-controller:v1.4.0
+while read -r image; do
+  docker push "registry.internal.corp/fluxcd/${image#ghcr.io/fluxcd/}"
+done < flux-images.txt
 ```
 
 ## Step 7: Update Manifests to Use Internal Registry
@@ -190,7 +185,7 @@ Apply the modified manifests to your air-gapped cluster.
 
 ```bash
 # Install the Flux CLI on the air-gapped workstation
-tar xzf flux_2.4.0_linux_amd64.tar.gz
+tar xzf flux_2.8.7_linux_amd64.tar.gz
 sudo mv flux /usr/local/bin/
 
 # Apply the Flux components to the cluster
@@ -267,16 +262,18 @@ kubectl apply -f flux-system/gotk-sync.yaml
 
 ## Step 11: Handle Internal TLS Certificates
 
-If your internal Git server or registry uses certificates signed by an internal CA, create a Secret with the CA certificate.
+If your internal Git server uses certificates signed by an internal CA, include the CA certificate in the Git authentication Secret.
 
 ```bash
-# Create a Secret with the internal CA certificate for Git
-kubectl create secret generic internal-ca \
-  --from-file=ca.crt=/path/to/internal-ca.crt \
-  -n flux-system
+# Create or update the Secret with the internal CA certificate for Git
+flux create secret git internal-git-auth \
+  --url=https://git.internal.corp/team/fleet-infra \
+  --username=flux \
+  --password=<your-git-token> \
+  --ca-crt-file=/path/to/internal-ca.crt
 ```
 
-Reference the CA in your GitRepository resource.
+Reference the Secret in your GitRepository resource.
 
 ```yaml
 # GitRepository with custom CA certificate
@@ -292,8 +289,6 @@ spec:
     branch: main
   secretRef:
     name: internal-git-auth
-  certSecretRef:
-    name: internal-ca
 ```
 
 ## Upgrading Flux in an Air-Gapped Environment
