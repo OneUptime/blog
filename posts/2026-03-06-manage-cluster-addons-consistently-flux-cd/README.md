@@ -29,10 +29,7 @@ graph TD
     A --> C[ingress-nginx]
     A --> D[kube-prometheus-stack]
     A --> E[fluent-bit]
-    A --> F[external-secrets]
-    A --> G[kyverno]
-    A --> H[metrics-server]
-    A --> I[external-dns]
+    A --> F[kyverno]
     J[Cluster Overlay] --> A
     J --> K[Cluster-Specific Values]
 ```
@@ -49,6 +46,9 @@ fleet-config/
         namespace.yaml
         helm-repo.yaml
         helm-release.yaml
+        kustomization.yaml
+      cert-manager-issuers/
+        cluster-issuer.yaml
         kustomization.yaml
       ingress-nginx/
         namespace.yaml
@@ -70,10 +70,8 @@ fleet-config/
         helm-repo.yaml
         helm-release.yaml
         kustomization.yaml
-      metrics-server/
-        namespace.yaml
-        helm-repo.yaml
-        helm-release.yaml
+      policy-engine-policies/
+        policies.yaml
         kustomization.yaml
     kustomization.yaml
   clusters/
@@ -123,13 +121,8 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: jetstack
-  # Install CRDs before the chart
-  install:
-    crds: CreateReplace
-  upgrade:
-    crds: CreateReplace
   values:
-    # Install CRDs as part of the Helm release
+    # cert-manager v1.14 manages its CRDs through chart templates
     installCRDs: true
     # High availability configuration
     replicaCount: 2
@@ -153,7 +146,7 @@ spec:
 ```
 
 ```yaml
-# addons/base/cert-manager/cluster-issuer.yaml
+# addons/base/cert-manager-issuers/cluster-issuer.yaml
 # Default ClusterIssuer for Let's Encrypt
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
@@ -169,6 +162,14 @@ spec:
       - http01:
           ingress:
             class: nginx
+```
+
+```yaml
+# addons/base/cert-manager-issuers/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - cluster-issuer.yaml
 ```
 
 ## Step 3: Define Ingress Controller Addon
@@ -425,16 +426,46 @@ spec:
         kind: HelmRepository
         name: kyverno
   values:
-    replicaCount: 3
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
----
-# addons/base/policy-engine/policies.yaml
+    admissionController:
+      replicas: 3
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+    backgroundController:
+      replicas: 2
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+    cleanupController:
+      replicas: 2
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+    reportsController:
+      replicas: 2
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+```
+
+```yaml
+# addons/base/policy-engine-policies/policies.yaml
 # Require resource limits on all containers
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
@@ -482,6 +513,14 @@ spec:
               owner: "?*"
 ```
 
+```yaml
+# addons/base/policy-engine-policies/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - policies.yaml
+```
+
 ## Step 7: Create the Base Addon Kustomization
 
 ```yaml
@@ -494,7 +533,6 @@ resources:
   - monitoring/
   - logging/
   - policy-engine/
-  - metrics-server/
 ```
 
 ## Step 8: Create Flux Kustomizations with Dependencies
@@ -527,6 +565,27 @@ spec:
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
+  name: addons-cert-manager-issuers
+  namespace: flux-system
+spec:
+  interval: 30m
+  path: ./addons/base/cert-manager-issuers
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  # Apply cert-manager custom resources only after the CRDs and controller are ready
+  dependsOn:
+    - name: addons-cert-manager
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-vars
+  wait: true
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
   name: addons-ingress-nginx
   namespace: flux-system
 spec:
@@ -536,9 +595,9 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # Ingress needs cert-manager for TLS
+  # Install after cert-manager issuer resources are available for TLS-enabled workloads
   dependsOn:
-    - name: addons-cert-manager
+    - name: addons-cert-manager-issuers
   postBuild:
     substituteFrom:
       - kind: ConfigMap
@@ -579,11 +638,28 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # Install policies after all other addons are ready
+  # Install the policy engine after all other addons are ready
   dependsOn:
     - name: addons-cert-manager
     - name: addons-ingress-nginx
     - name: addons-monitoring
+  wait: true
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: addons-policy-engine-policies
+  namespace: flux-system
+spec:
+  interval: 30m
+  path: ./addons/base/policy-engine-policies
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  # Apply Kyverno policies only after Kyverno has installed its CRDs
+  dependsOn:
+    - name: addons-policy-engine
   wait: true
 ```
 
@@ -624,17 +700,16 @@ patches:
 # Check addon versions across all clusters
 for cluster in cluster-1 cluster-2 cluster-3; do
   echo "=== $cluster ==="
-  flux get helmreleases --context=$cluster -A --no-header | \
-    awk '{printf "  %-30s %-15s %s\n", $2, $6, $4}'
+  kubectl --context="$cluster" get helmreleases.helm.toolkit.fluxcd.io -A \
+    -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,CHART:.spec.chart.spec.chart,VERSION:.spec.chart.spec.version,READY:.status.conditions[?(@.type=="Ready")].status'
 done
 
 # Check for addon health issues
 for cluster in cluster-1 cluster-2 cluster-3; do
-  failed=$(flux get helmreleases --context=$cluster -A --no-header | \
-    grep -c "False" || true)
-  if [ "$failed" -gt 0 ]; then
-    echo "WARNING: $cluster has $failed unhealthy addons"
-    flux get helmreleases --context=$cluster -A | grep False
+  unhealthy=$(flux get helmreleases --context="$cluster" -A --status-selector ready=false --no-header)
+  if [ -n "$unhealthy" ]; then
+    echo "WARNING: $cluster has unhealthy addons"
+    printf "%s\n" "$unhealthy"
   fi
 done
 ```
@@ -651,7 +726,7 @@ flux get sources helm -A
 kubectl describe helmrelease cert-manager -n cert-manager
 ```
 
-**CRD conflicts during upgrade**: When upgrading addons that install CRDs (cert-manager, Prometheus), ensure the `install.crds` and `upgrade.crds` settings are set to `CreateReplace`.
+**CRD conflicts during upgrade**: When upgrading charts that package CRDs in Helm's `crds/` directory, set the Flux `install.crds` and `upgrade.crds` policies to `CreateReplace`. For cert-manager v1.14, CRDs are managed through the chart's `installCRDs: true` value.
 
 **Dependency deadlock**: Avoid circular dependencies between addon Kustomizations. Use a clear dependency hierarchy.
 
