@@ -37,8 +37,9 @@ graph LR
     A[flux create secret helm] --> B[Kubernetes Secret]
     B --> C[HelmRepository CR]
     C -->|Authenticated Request| D[Helm Chart Repository]
-    D -->|Charts| E[Flux Helm Controller]
-    E --> F[HelmRelease]
+    D -->|Index and charts| E[Flux Source Controller]
+    E --> F[Flux Helm Controller]
+    F --> G[HelmRelease]
 ```
 
 ## Basic Authentication
@@ -207,11 +208,9 @@ flux create secret helm acr-auth \
 # Create a secret with TLS client certificate authentication
 # This is used when the Helm repository requires mutual TLS
 flux create secret helm tls-helm-auth \
-  --username=admin \
-  --password=password \
-  --cert-file=./client.crt \
-  --key-file=./client.key \
-  --ca-file=./ca.crt \
+  --tls-crt-file=./client.crt \
+  --tls-key-file=./client.key \
+  --ca-crt-file=./ca.crt \
   --namespace=flux-system
 ```
 
@@ -222,7 +221,7 @@ flux create secret helm tls-helm-auth \
 flux create secret helm custom-ca-auth \
   --username=deploy \
   --password=${DEPLOY_PASSWORD} \
-  --ca-file=./internal-ca.crt \
+  --ca-crt-file=./internal-ca.crt \
   --namespace=flux-system
 ```
 
@@ -249,7 +248,7 @@ flux get sources helm
 
 # Step 4: Create a HelmRelease using a chart from the private repo
 flux create helmrelease my-app \
-  --source=HelmRepository/private-charts \
+  --source=HelmRepository/private-charts.flux-system \
   --chart=my-application \
   --chart-version="1.2.x" \
   --namespace=default \
@@ -368,7 +367,7 @@ kubectl get secret private-charts-auth -n flux-system -o jsonpath='{.data.userna
 flux create secret helm private-charts-auth \
   --username=deploy \
   --password=${TOKEN} \
-  --ca-file=./ca.crt \
+  --ca-crt-file=./ca.crt \
   --namespace=flux-system
 
 # Common error: "dial tcp: lookup charts.company.com: no such host"
@@ -384,7 +383,8 @@ kubectl get secret private-charts-auth -n flux-system -o json | \
   jq '.data | keys'
 
 # Expected keys for basic auth: ["password", "username"]
-# Expected keys with TLS: ["ca.crt", "certFile", "keyFile", "password", "username"]
+# Expected keys with basic auth and custom CA: ["ca.crt", "password", "username"]
+# Expected keys with client TLS: ["ca.crt", "tls.crt", "tls.key"]
 ```
 
 ## Best Practices
