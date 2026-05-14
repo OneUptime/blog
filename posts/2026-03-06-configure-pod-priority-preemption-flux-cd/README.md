@@ -10,7 +10,7 @@ Description: A practical guide to configuring Pod Priority and Preemption on Kub
 
 ## Introduction
 
-Pod Priority and Preemption is a Kubernetes scheduling feature that allows you to assign importance levels to pods. When cluster resources are scarce, the scheduler can evict (preempt) lower-priority pods to make room for higher-priority pods. This ensures that critical workloads like production APIs and databases always get the resources they need, even during resource contention.
+Pod Priority and Preemption is a Kubernetes scheduling feature that allows you to assign importance levels to pods. When cluster resources are scarce, the scheduler can preempt lower-priority pods to make room for higher-priority pods. This helps critical workloads like production APIs and databases get the resources they need during resource contention.
 
 By managing PriorityClasses and pod configurations through Flux CD, you maintain consistent scheduling policies across clusters via GitOps.
 
@@ -19,6 +19,7 @@ By managing PriorityClasses and pod configurations through Flux CD, you maintain
 - A Kubernetes cluster (v1.25+)
 - Flux CD installed and bootstrapped
 - kubectl and flux CLI tools installed
+- Prometheus Operator installed if you apply the PrometheusRule example
 - Understanding of Kubernetes scheduling concepts
 
 ## How Priority and Preemption Works
@@ -44,12 +45,15 @@ clusters/
       application-priority-classes.yaml
       example-workloads.yaml
       resource-quota.yaml
-      kustomization.yaml
+      priority-expander.yaml
+      monitoring.yaml
+    flux-system/
+      priority-classes-kustomization.yaml
 ```
 
 ## Step 1: Define System-Level PriorityClasses
 
-Create PriorityClasses for system components that must always run.
+Create PriorityClasses for system components that should be scheduled ahead of application workloads.
 
 ```yaml
 # clusters/my-cluster/priority-classes/system-priority-classes.yaml
@@ -57,12 +61,12 @@ Create PriorityClasses for system components that must always run.
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
-  name: system-cluster-critical
+  name: platform-cluster-critical
   labels:
     app.kubernetes.io/managed-by: flux
 # Highest priority for cluster-critical system components
 # Built-in system-cluster-critical has value 2000000000
-# We define custom levels below that
+# Custom PriorityClass names cannot use the reserved system- prefix
 value: 1000000
 # Setting globalDefault to false means pods without a priorityClassName
 # will use the default priority (0)
@@ -75,7 +79,7 @@ preemptionPolicy: PreemptLowerPriority
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
-  name: system-monitoring
+  name: platform-monitoring
   labels:
     app.kubernetes.io/managed-by: flux
 # High priority for monitoring and observability
@@ -87,7 +91,7 @@ preemptionPolicy: PreemptLowerPriority
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
-  name: system-security
+  name: platform-security
   labels:
     app.kubernetes.io/managed-by: flux
 # High priority for security components
@@ -113,7 +117,7 @@ metadata:
 # Production-critical services (APIs, databases)
 value: 500000
 globalDefault: false
-description: "Production-critical workloads that must always be running (APIs, databases, payment systems)."
+description: "Production-critical workloads with the highest application priority (APIs, databases, payment systems)."
 preemptionPolicy: PreemptLowerPriority
 ---
 apiVersion: scheduling.k8s.io/v1
@@ -175,11 +179,11 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: flux
     tier: best-effort
-# Best-effort workloads that run only when resources are available
+# Low-priority workloads that should not preempt other pods
 value: 10000
 globalDefault: false
-description: "Best-effort workloads. First to be evicted during resource pressure."
-# Never preempt - these pods wait for resources to become available
+description: "Best-effort workloads. Lower priority than other application workloads."
+# Never preempt - these pods wait for resources to become available instead of preempting lower-priority pods
 preemptionPolicy: Never
 ---
 apiVersion: scheduling.k8s.io/v1
@@ -300,7 +304,7 @@ spec:
               cpu: 4000m
               memory: 8Gi
 ---
-# Best-effort workload that runs only when spare capacity exists
+# Low-priority workload that should not preempt other pods
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -318,7 +322,7 @@ spec:
       labels:
         app: ml-training
     spec:
-      # Best-effort: never preempts others, first to be evicted
+      # Best-effort: never preempts others, but can still be preempted by higher-priority pods
       priorityClassName: best-effort
       containers:
         - name: trainer
@@ -379,7 +383,7 @@ spec:
 
 ## Step 5: Use Priority with Cluster Autoscaler
 
-Configure the Cluster Autoscaler to respect priority during scaling decisions.
+If Cluster Autoscaler is running with the `--expander=priority` flag, configure the priority expander to prefer specific node groups during scale-up.
 
 ```yaml
 # clusters/my-cluster/priority-classes/priority-expander.yaml
@@ -387,15 +391,16 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: cluster-autoscaler-priority-expander
+  # Use the namespace where Cluster Autoscaler runs
   namespace: cluster-autoscaler
 data:
-  # When scaling up, prioritize node groups based on workload priority
+  # When scaling up, prioritize node groups whose names match these regular expressions
   priorities: |
     100:
-      # Scale up on-demand nodes first for critical workloads
+      # Prefer on-demand node groups when several expansion options can fit pending pods
       - .*on-demand.*
     50:
-      # Use spot nodes for lower-priority workloads
+      # Use spot node groups as a lower-priority expansion option
       - .*spot.*
 ```
 
@@ -418,7 +423,7 @@ spec:
             kube_pod_status_phase{phase="Pending"} *
             on(namespace, pod)
             group_left(priority_class)
-            kube_pod_info{priority_class=~"production-critical|system-cluster-critical"}
+            kube_pod_info{priority_class=~"production-critical|platform-cluster-critical|system-cluster-critical"}
             > 0
           for: 5m
           labels:
@@ -429,12 +434,12 @@ spec:
         # Alert on excessive preemptions
         - alert: ExcessivePreemptions
           expr: |
-            increase(kube_pod_preemption_victims[1h]) > 10
+            increase(scheduler_preemption_attempts_total[1h]) > 10
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "More than 10 pods preempted in the last hour, consider adding capacity"
+            summary: "More than 10 scheduler preemption attempts in the last hour, consider adding capacity"
 
         # Track resource usage by priority class
         - record: pod_resource_requests_by_priority
@@ -450,7 +455,7 @@ spec:
 ## Step 7: Flux Kustomization
 
 ```yaml
-# clusters/my-cluster/priority-classes/kustomization.yaml
+# clusters/my-cluster/flux-system/priority-classes-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -484,7 +489,7 @@ kubectl get pods -A -o json | jq -r '.items | sort_by(.spec.priority) | reverse[
 kubectl describe resourcequota -n default
 
 # Verify Flux reconciliation
-flux get kustomization priority-classes
+flux get kustomizations priority-classes
 ```
 
 ## Troubleshooting
@@ -513,7 +518,7 @@ kubectl get resourcequota -n default -o yaml
 
 - Define a clear priority hierarchy with well-separated values (gaps of 100000+)
 - Set a sensible `globalDefault` PriorityClass to prevent pods from having zero priority
-- Use `preemptionPolicy: Never` for workloads that should not evict others
+- Use `preemptionPolicy: Never` for workloads that should not preempt others
 - Combine priority with PodDisruptionBudgets to protect minimum availability
 - Use ResourceQuotas with priority scopes to prevent priority abuse
 - Monitor preemption events and set alerts for unusual preemption rates
@@ -524,4 +529,4 @@ kubectl get resourcequota -n default -o yaml
 
 ## Conclusion
 
-Pod Priority and Preemption with Flux CD provides a GitOps-managed scheduling policy that ensures critical workloads always get the resources they need. By defining PriorityClasses as code and assigning them to workloads declaratively, you create a predictable resource allocation hierarchy. Combined with ResourceQuotas and monitoring, this approach gives you fine-grained control over how cluster resources are distributed during contention, all managed through the Flux CD GitOps pipeline.
+Pod Priority and Preemption with Flux CD provides a GitOps-managed scheduling policy that helps critical workloads get scheduling preference when resources are constrained. By defining PriorityClasses as code and assigning them to workloads declaratively, you create a predictable resource allocation hierarchy. Combined with ResourceQuotas and monitoring, this approach gives you fine-grained control over how cluster resources are distributed during contention, all managed through the Flux CD GitOps pipeline.
