@@ -4,68 +4,74 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking, eBPF, Service
 
-Description: Understand how Cilium manages Kubernetes service endpoints using eBPF maps, replacing kube-proxy for load balancing and connection tracking at kernel speed.
+Description: Understand how Cilium manages Kubernetes service endpoints using eBPF maps, replacing kube-proxy for service load balancing at kernel speed.
 
 ---
 
 ## Introduction
 
-Kubernetes services traditionally rely on kube-proxy to manage iptables rules that load balance traffic across pod endpoints. As clusters scale to thousands of services and tens of thousands of endpoints, kube-proxy's iptables approach creates performance bottlenecks: iptables rules are evaluated linearly, updates require full rule rebuilds, and each new service adds to the latency of every subsequent packet traversal.
+Kubernetes services traditionally rely on kube-proxy to manage iptables rules that load balance traffic across pod endpoints. As clusters scale to thousands of services and tens of thousands of endpoints, kube-proxy's iptables approach can create performance bottlenecks: packet traversal depends on the programmed iptables chains, and large service or endpoint changes require kube-proxy to resync rules across nodes.
 
-Cilium replaces kube-proxy entirely using eBPF maps for service endpoint management. eBPF hash maps provide O(1) lookup regardless of cluster size - looking up a service with 50,000 endpoints takes the same time as looking up one with 10. When a pod is added or removed, Cilium updates only the relevant eBPF map entry, not the entire rule set. This architecture also enables features that iptables simply cannot provide, like per-service load balancing algorithms, service topology awareness, and session affinity without conntrack tables.
+Cilium can replace kube-proxy using eBPF maps for service endpoint management. eBPF maps provide constant-time service lookups regardless of cluster size, while backend selection is handled by Cilium's load-balancing logic. When a pod is added or removed, Cilium updates the relevant eBPF map entries on each node, not an iptables rule set. This architecture also enables features such as per-service load balancing algorithms, topology-aware routing, and Kubernetes session affinity using Cilium's eBPF load-balancer state.
 
 This guide explains how Cilium manages service endpoints, how to inspect the endpoint state, and how to troubleshoot endpoint-related connectivity issues.
 
 ## Prerequisites
 
-- Cilium v1.10+ with kube-proxy replacement (or compatibility mode)
+- Cilium with kube-proxy replacement enabled
+- `loadBalancer.serviceTopology=true` if you want Cilium to honor topology-aware routing hints
 - `kubectl` installed
-- `cilium` CLI installed
+- Access to a Cilium agent pod with `cilium-dbg`
 
 ## Step 1: Check Service Endpoint State
 
 ```bash
 # List all services Cilium is managing
 
-cilium service list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg service list
 
-# Show detailed endpoint state for a specific service
-cilium service get <service-id>
+# Filter the service list for a specific ClusterIP or service port
+kubectl exec -n kube-system ds/cilium -- \
+  cilium-dbg service list | grep "10.96.0.1"
 
 # Show load balancing backends
-cilium bpf lb list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf lb list
 ```
 
 ## Step 2: Inspect eBPF Load Balancer Maps
 
 ```bash
 # List all load balancer service entries
-cilium bpf lb list --frontend
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf lb list --frontends
 
 # List all backend endpoints
-cilium bpf lb list --backend
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf lb list --backends
 
 # Inspect a specific service entry
-kubectl exec -n kube-system cilium-xxxxx -- \
-  cilium bpf lb list | grep "10.96.0.1"
+kubectl exec -n kube-system ds/cilium -- \
+  cilium-dbg bpf lb list | grep "10.96.0.1"
 ```
 
 ## Step 3: Verify Endpoint Health
 
 ```bash
-# List all endpoints and their health
-cilium endpoint list
+# List all endpoints and their state
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list
 
 # Get detailed endpoint information
-cilium endpoint get <endpoint-id>
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint get <endpoint-id>
+
+# View health for a specific endpoint
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint health <endpoint-id>
 
 # Check endpoint policy enforcement state
-cilium endpoint list | grep -E "ID|POLICY|STATE"
+kubectl exec -n kube-system ds/cilium -- \
+  cilium-dbg endpoint list | grep -E "ID|POLICY|STATE"
 ```
 
 ## Step 4: Service Topology Awareness
 
-Configure topology-aware routing to prefer local endpoints:
+Configure topology-aware routing to prefer same-zone endpoints:
 
 ```yaml
 apiVersion: v1
@@ -104,7 +110,8 @@ Verify session affinity in Cilium:
 
 ```bash
 # Check session affinity configuration
-cilium bpf lb list | grep -A 5 "stateful-service"
+kubectl exec -n kube-system ds/cilium -- \
+  cilium-dbg service list | grep "8080"
 
 # Verify connections are going to same backend
 for i in {1..5}; do
@@ -116,15 +123,15 @@ done
 
 ```mermaid
 flowchart TD
-    A[Pod makes connection\nto Service VIP] --> B[eBPF Hook\nat connect() syscall]
+    A[Pod makes connection\nto Service VIP] --> B[eBPF Hook\nsocket or packet path]
     B --> C[Lookup Service\nin eBPF LB map]
-    C --> D[Select Backend\nRound-robin/affinity]
+    C --> D[Select Backend\nRandom/Maglev/affinity]
     D --> E[Replace VIP with\nPod IP in-place]
     E --> F[Direct connection\nto Backend Pod]
-    G[kube-apiserver] -->|EndpointSlice update| H[Cilium Operator]
-    H -->|Update| I[eBPF LB map]
+    G[kube-apiserver] -->|Service/EndpointSlice update| H[Cilium Agent]
+    H -->|Update node-local maps| I[eBPF LB map]
 ```
 
 ## Conclusion
 
-Cilium's eBPF-based service endpoint management provides O(1) lookup performance for any scale of Kubernetes service deployment, eliminates the kube-proxy iptables bottleneck, and enables advanced features like topology-aware routing and efficient session affinity. The `cilium service list` and `cilium bpf lb list` commands give you direct visibility into how Cilium is handling your service traffic, which is invaluable for debugging connectivity issues that standard Kubernetes tools cannot expose.
+Cilium's eBPF-based service endpoint management provides constant-time service lookups, eliminates the kube-proxy iptables bottleneck, and enables advanced features like topology-aware routing and efficient session affinity. The `cilium-dbg service list` and `cilium-dbg bpf lb list` commands give you direct visibility into how Cilium is handling your service traffic, which is invaluable for debugging connectivity issues that standard Kubernetes tools cannot expose.
