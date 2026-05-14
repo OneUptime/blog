@@ -10,24 +10,25 @@ Description: Build custom network visibility dashboards using Whisker's built-in
 
 ## Introduction
 
-Whisker provides a built-in visual dashboard that requires no configuration to display current traffic flows. For historical trend analysis and SLO dashboards, Whisker flow data can be exported to Prometheus or Elasticsearch for Grafana dashboard building. The combination of real-time Whisker views and historical Grafana dashboards provides complete network observability.
+Whisker provides a built-in visual dashboard that requires no configuration on new Calico Open Source 3.30+ installations to display current traffic flows. For historical trend analysis and SLO dashboards, aggregated flow data can be retrieved from the Goldmane flow logs API and fed into your own storage or metrics pipeline for Grafana dashboard building. The combination of real-time Whisker views and historical Grafana dashboards provides complete network observability.
 
 ## Key Operations
 
 ```bash
 # Verify Whisker is running
 
-kubectl get pods -n calico-system | grep whisker
+kubectl get pods -n calico-system -l k8s-app=whisker
 
 # Access Whisker UI
 kubectl port-forward -n calico-system svc/whisker 8081:8081
 # Open: http://localhost:8081
 
 # Check Whisker logs for issues
-kubectl logs -n calico-system -l app=whisker --tail=50
+kubectl logs -n calico-system -l k8s-app=whisker --tail=50
 
-# Check flow log configuration (affects what Whisker shows)
-kubectl get felixconfiguration default -o jsonpath='{.spec.flowLogsFlushInterval}'
+# Check that the flow logs API and Whisker custom resources exist
+kubectl get goldmane default
+kubectl get whisker default
 ```
 
 ## Architecture
@@ -35,11 +36,12 @@ kubectl get felixconfiguration default -o jsonpath='{.spec.flowLogsFlushInterval
 ```mermaid
 flowchart LR
     A[Applications] -->|connections| B[Felix flow logs]
-    B --> C[Whisker backend]
-    C --> D[Whisker UI]
-    D --> E[Allowed traffic view]
-    D --> F[Denied traffic view]
-    D --> G[Policy decision view]
+    B --> C[Goldmane flow logs API]
+    C --> D[Whisker backend]
+    D --> E[Whisker UI]
+    E --> F[Allowed traffic view]
+    E --> G[Denied traffic view]
+    E --> H[Policy decision view]
 ```
 
 ## Common Whisker Queries
@@ -48,16 +50,16 @@ flowchart LR
 # In Whisker UI - common investigation patterns:
 
 # Find all denied connections to a service:
-# Filter: destination=<service-name>, action=Deny
+# Filter: dest_name=<service-name>, action=deny
 
 # Find all traffic from a specific pod:
-# Filter: source=<pod-name>
+# Filter: source_name=<pod-name>
 
 # Find recently started connections:
-# Sort by: timestamp descending
+# Sort by: start_time descending
 
 # Find policy drop sources:
-# Filter: action=Deny, group by: source namespace
+# Filter: action=deny, source_namespace=<namespace>
 ```
 
 ## Conclusion
