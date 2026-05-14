@@ -25,13 +25,13 @@ This post gives you a structured framework for making that decision with confide
 
 ## Decision Factor 1: Kernel Version
 
-eBPF mode requires Linux kernel 5.3 as a minimum, with 5.8+ recommended for full feature support including DSR (Direct Server Return):
+eBPF mode requires a supported Linux distribution with Linux kernel 5.10 or newer, except for supported RHEL builds where Tigera documents the required backports. Some eBPF features require newer kernels, and Tigera recommends kernel 6.6 or newer for access to all eBPF features:
 
 | Kernel Version | eBPF Mode Support |
 |---|---|
-| < 5.3 | Not supported |
-| 5.3 – 5.7 | Basic support, no DSR |
-| 5.8+ | Full support including DSR |
+| < 5.10 | Not supported, except documented RHEL backport builds |
+| 5.10+ | Base eBPF dataplane support |
+| 6.6+ | Recommended for access to all eBPF features |
 
 Check your kernel version:
 
@@ -39,7 +39,7 @@ Check your kernel version:
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.nodeInfo.kernelVersion}{"\n"}{end}'
 ```
 
-If any nodes run kernels below 5.3, you cannot use eBPF mode cluster-wide without first upgrading the node images.
+If any nodes run unsupported kernels, you cannot use eBPF mode cluster-wide without first upgrading the node images.
 
 ## Decision Factor 2: Cluster Scale
 
@@ -55,11 +55,11 @@ For small clusters (fewer than 50 services), iptables overhead is negligible. Fo
 
 ## Decision Factor 3: Source IP Requirements
 
-If your applications need to see the original client IP for external traffic (load balancer or NodePort), eBPF provides this natively through DSR without requiring `externalTrafficPolicy: Local` on every service. With iptables mode, you must configure each service individually and accept that only nodes receiving the request directly can see the source IP.
+If your applications need to see the original client IP for external traffic (load balancer or NodePort), eBPF preserves external client source IP addresses without requiring `externalTrafficPolicy: Local` on every service. DSR can reduce the return-path hop for external service traffic, but it must be enabled separately and requires a compatible underlying network. With iptables mode, you must configure each service individually with `externalTrafficPolicy: Local` and accept that only nodes with local endpoints can receive the traffic.
 
 ## Decision Factor 4: Windows Nodes
 
-Calico's eBPF dataplane is Linux-only. If you have Windows nodes in the same cluster, you need a hybrid approach: eBPF on Linux nodes, HNS on Windows nodes. This is supported but requires more careful configuration and testing.
+Calico's eBPF dataplane is Linux-only, and Tigera lists clusters with a mix of eBPF nodes and Windows nodes as unsupported. If you have Windows nodes in the same cluster, use the standard Linux dataplane on Linux nodes and Windows HNS on Windows nodes.
 
 ## Decision Factor 5: Operational Familiarity
 
@@ -69,8 +69,8 @@ iptables has decades of tooling (`iptables -L`, `iptables-save`). eBPF requires 
 
 | Situation | Recommended Dataplane |
 |---|---|
-| Kernel < 5.3 on any node | iptables |
-| Windows nodes present | iptables (or hybrid) |
+| Unsupported kernel on any node | iptables |
+| Windows nodes present | iptables on Linux nodes plus Windows HNS |
 | < 50 services, small team | iptables |
 | > 200 services, modern kernel | eBPF |
 | Source IP preservation required | eBPF |
@@ -78,11 +78,11 @@ iptables has decades of tooling (`iptables -L`, `iptables-save`). eBPF requires 
 
 ## Best Practices
 
-- Never switch dataplanes without a full lab validation first - the switch requires restarting all calico-node pods
+- Never switch dataplanes without a full lab validation first - the operator rolls out the change across calico-node pods, and some nodes can enter eBPF mode before others
 - Keep your kernel version documented and aligned with your eBPF decision in your cluster runbook
 - Monitor CPU usage on nodes after enabling eBPF to confirm the expected reduction in `kube-proxy` and `calico-node` CPU overhead
-- Plan for kube-proxy removal before enabling eBPF - leaving kube-proxy running causes duplicate service processing
+- Plan your kube-proxy approach before enabling eBPF - disable kube-proxy where supported, or configure Calico to avoid kube-proxy conflicts on platforms where kube-proxy cannot be disabled
 
 ## Conclusion
 
-Choosing eBPF over iptables in Calico is the right decision for clusters with modern kernels, more than 50 services, source IP preservation requirements, or high-performance latency goals. The iptables dataplane remains appropriate for smaller clusters, mixed OS environments, or teams with limited eBPF debugging experience. Use the decision matrix to make the choice explicit and document it in your cluster's operational runbook.
+Choosing eBPF over iptables in Calico is the right decision for clusters with supported modern kernels, more than 50 services, source IP preservation requirements, or high-performance latency goals. The iptables dataplane remains appropriate for smaller clusters, mixed OS environments, unsupported kernels, or teams with limited eBPF debugging experience. Use the decision matrix to make the choice explicit and document it in your cluster's operational runbook.
