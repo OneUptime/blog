@@ -12,7 +12,7 @@ Description: A practical guide to managing Kubernetes ConfigMaps with Flux CD, i
 
 ConfigMaps store non-confidential configuration data in Kubernetes as key-value pairs. When managed through Flux CD, your application configuration becomes version-controlled, auditable, and consistently deployed across environments.
 
-This guide covers practical patterns for managing ConfigMaps with Flux CD, including environment-specific configurations, automatic pod restarts on config changes, and advanced templating techniques.
+This guide covers practical patterns for managing ConfigMaps with Flux CD, including environment-specific configurations, automatic rolling updates on config changes, and advanced templating techniques.
 
 ## Prerequisites
 
@@ -34,13 +34,18 @@ apps/
       kustomization.yaml
       configmap.yaml
       deployment.yaml
+      namespace.yaml
+      configs/
+        app.yaml
     overlays/
       production/
         kustomization.yaml
-        configmap-patch.yaml
+        configs/
+          app-production.yaml
       staging/
         kustomization.yaml
-        configmap-patch.yaml
+        configs/
+          app-staging.yaml
 ```
 
 ## Basic ConfigMap Management
@@ -82,6 +87,20 @@ data:
       caching: true
       rateLimit: true
       metrics: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: myapp-env
+  namespace: myapp
+  labels:
+    app: myapp
+    app.kubernetes.io/managed-by: flux
+data:
+  DATABASE_HOST: "postgres.database.svc.cluster.local"
+  DATABASE_PORT: "5432"
+  REDIS_HOST: "redis.cache.svc.cluster.local"
+  REDIS_PORT: "6379"
 ```
 
 ## Using ConfigMaps in Deployments
@@ -468,7 +487,7 @@ data:
 
 ```yaml
 # clusters/my-cluster/notifications.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: config-change-alerts
@@ -480,7 +499,8 @@ spec:
   eventSources:
     - kind: Kustomization
       name: myapp
-  summary: "Application configuration change detected"
+  eventMetadata:
+    summary: "Application configuration change detected"
 ```
 
 ## Summary
