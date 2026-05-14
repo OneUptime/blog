@@ -12,7 +12,7 @@ Description: Learn how to build a complete CI/CD pipeline using GitHub Actions f
 
 Modern Kubernetes deployments benefit greatly from separating the build and deploy concerns. GitHub Actions excels at building, testing, and pushing container images, while Flux CD handles the GitOps reconciliation loop that keeps your cluster state synchronized with your Git repository. Together they form a robust, auditable pipeline.
 
-The key insight of this architecture is that GitHub Actions never directly touches the cluster. Instead, it updates image tags in your Git repository, and Flux CD detects those changes and reconciles them into the cluster. This separation means your deployment mechanism is not tied to your CI system, and you retain a full Git history of every deployment.
+The key insight of this architecture is that GitHub Actions never directly touches the cluster. Instead, it pushes container images, Flux image automation updates image tags in your Git repository, and Flux CD reconciles those changes into the cluster. This separation means your deployment mechanism is not tied to your CI system, and you retain a full Git history of every deployment.
 
 This guide walks through configuring both systems end to end: from a developer pushing code, through GitHub Actions building and pushing an image, to Flux CD detecting the new tag and rolling it out to your cluster.
 
@@ -34,10 +34,12 @@ flux bootstrap github \
   --repository=your-fleet-repo \
   --branch=main \
   --path=clusters/production \
+  --components-extra=image-reflector-controller,image-automation-controller \
+  --read-write-key \
   --personal
 ```
 
-This creates the `flux-system` namespace and installs all Flux controllers. The `clusters/production` path is where Flux reads its configuration.
+This creates the `flux-system` namespace and installs the default Flux controllers plus the image automation controllers. The `clusters/production` path is where Flux reads its configuration. The `--read-write-key` flag gives Flux permission to commit image updates back to the repository.
 
 ## Step 2: Define the Application GitRepository and Kustomization
 
@@ -53,7 +55,9 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1m
-  url: https://github.com/your-org/your-fleet-repo
+  url: ssh://git@github.com/your-org/your-fleet-repo
+  secretRef:
+    name: flux-system
   ref:
     branch: main
 ---
@@ -100,7 +104,7 @@ spec:
             - containerPort: 8080
 ```
 
-The `# {"$imagepolicy": "flux-system:myapp"}` comment tells the Image Reflector Controller which policy governs this image field.
+The `# {"$imagepolicy": "flux-system:myapp"}` comment tells the Image Automation Controller which policy governs this image field.
 
 ## Step 4: Configure Flux Image Automation
 
@@ -162,6 +166,8 @@ name: Build and Push
 on:
   push:
     branches: [main]
+    tags:
+      - "v*.*.*"
   pull_request:
     branches: [main]
 
@@ -178,10 +184,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Log in to Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -189,7 +195,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -197,7 +203,7 @@ jobs:
             type=sha,prefix=sha-
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
@@ -207,7 +213,7 @@ jobs:
 
 ## Step 6: Verify the End-to-End Flow
 
-After pushing a commit with a new semantic version tag, verify Flux picks it up:
+After pushing a new semantic version tag, verify Flux picks it up:
 
 ```bash
 # Watch the image policy status
