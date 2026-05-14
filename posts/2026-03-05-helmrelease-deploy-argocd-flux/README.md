@@ -49,7 +49,7 @@ spec:
   chart:
     spec:
       chart: argo-cd
-      version: "7.x"
+      version: "9.x"
       sourceRef:
         kind: HelmRepository
         name: argo
@@ -57,12 +57,10 @@ spec:
       interval: 15m
   install:
     createNamespace: true
-    atomic: true
     timeout: 10m
     remediation:
       retries: 3
   upgrade:
-    atomic: true
     timeout: 10m
     cleanupOnFail: true
     remediation:
@@ -95,10 +93,9 @@ spec:
           nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
         tls: true
 
-      # Configure ArgoCD to run in insecure mode behind TLS-terminating proxy
-      # Uncomment the next line if your ingress handles TLS termination
-      # extraArgs:
-      #   - --insecure
+      # For TLS termination at the ingress, remove the ssl-passthrough and
+      # backend-protocol annotations above, then set configs.params.server.insecure
+      # to "true".
 
     # Application Controller
     controller:
@@ -172,7 +169,7 @@ spec:
         application.resourceTrackingMethod: annotation
         # Status badge for repositories
         statusbadge.enabled: "true"
-        # OIDC configuration (example for Dex)
+        # ArgoCD external URL for SSO callbacks
         url: "https://argocd.example.com"
 
       # RBAC configuration
@@ -190,8 +187,8 @@ spec:
 
       # Parameters and secrets
       params:
-        # Server-side diff for better performance
-        server.enable.gzip: true
+        # Gzip compression for API responses
+        server.enable.gzip: "true"
         # Number of application operation processors
         controller.operation.processors: "10"
         controller.status.processors: "20"
@@ -259,6 +256,9 @@ configs:
         - openid
         - profile
         - email
+  secret:
+    extra:
+      oidc.keycloak.clientSecret: "<client-secret>"
 ```
 
 ## Verifying the Deployment
