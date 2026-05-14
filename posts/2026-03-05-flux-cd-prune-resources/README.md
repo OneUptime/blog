@@ -16,28 +16,28 @@ Pruning and garbage collection are closely related terms in the Flux CD context.
 
 ## How Flux Detects Removed Resources
 
-Flux maintains an inventory of every resource it has applied. This inventory is stored in the `.status.inventory` field of the Kustomization resource. During each reconciliation cycle, Flux compares the current set of manifests from the Git source against this inventory.
+Flux maintains an inventory of every resource it has applied. This inventory is stored in the `.status.inventory` field of the Kustomization resource. During each reconciliation cycle, Flux builds and applies the current manifests, then compares the new inventory against the previous inventory.
 
 ```mermaid
 flowchart TD
     A[Reconciliation Cycle Begins] --> B[Fetch manifests from Git source]
     B --> C[Build list of resources from manifests]
-    C --> D[Load inventory from Kustomization status]
-    D --> E[Compute difference:<br/>inventory - current manifests]
-    E --> F{Orphaned resources found?}
-    F -->|No| G[Apply current manifests]
-    F -->|Yes| H{spec.prune is true?}
-    H -->|No| I[Log warning about orphaned resources]
-    H -->|Yes| J[Delete orphaned resources from cluster]
-    I --> G
-    J --> G
-    G --> K[Update inventory with current resources]
+    C --> D[Load previous inventory from Kustomization status]
+    D --> E[Apply current manifests]
+    E --> F[Build new inventory from applied resources]
+    F --> G[Compute difference:<br/>previous inventory - new inventory]
+    G --> H{Stale resources found?}
+    H -->|No| K[Update status with new inventory]
+    H -->|Yes| I{spec.prune is true?}
+    I -->|No| K
+    I -->|Yes| J[Delete stale resources from cluster]
+    J --> K
     K --> L[Reconciliation Complete]
 ```
 
 ## Enabling Pruning
 
-Pruning is not enabled by default. You must explicitly set `spec.prune: true` on your Kustomization.
+The `spec.prune` field is a required boolean on current Flux Kustomizations. Set it to `true` to enable garbage collection; set it to `false` to leave stale resources in the cluster.
 
 ```yaml
 # Kustomization with pruning enabled
@@ -104,20 +104,20 @@ On the next reconciliation, Flux detects that the Ingress resource is in the inv
 
 ## Controlling Prune Order
 
-Flux prunes resources in reverse dependency order. This means that dependent resources are deleted before the resources they depend on. For example, if you remove both a Namespace and resources within it, Flux deletes the namespaced resources first.
+Flux prunes resources in the reverse of its server-side apply reconcile order. This helps delete resources that usually depend on earlier-applied resources before deleting those earlier-applied resources. For example, if you remove both a Namespace and resources within it, Flux deletes the namespaced resources before the Namespace.
 
 The general prune order (from first to last deleted) is:
 
-1. Custom Resources
-2. Workloads (Deployments, StatefulSets, DaemonSets)
-3. Services, Ingresses
-4. ConfigMaps, Secrets
-5. RBAC resources
-6. Namespaces, CRDs
+1. Webhook configurations
+2. Workloads such as Deployments, StatefulSets, and CronJobs
+3. Services, Secrets, and ConfigMaps
+4. Namespaced RBAC and service accounts
+5. Cluster-scoped classes and RBAC resources
+6. Namespaces and CustomResourceDefinitions
 
 ## Preventing Pruning of Specific Resources
 
-There are cases where you want pruning enabled globally but need to exclude certain resources. Flux supports a per-resource annotation to disable pruning.
+There are cases where you want pruning enabled globally but need to exclude certain resources. Flux supports a per-resource annotation or label to disable pruning.
 
 ```yaml
 # This ConfigMap will not be pruned even if removed from Git
@@ -154,11 +154,11 @@ kustomize build ./deploy/my-app | \
   grep -E "^kind:|^  name:|^  namespace:" | paste - - -
 ```
 
-You can also temporarily set `spec.prune: false`, reconcile, and check the Flux logs for warnings about orphaned resources:
+You can also temporarily set `spec.prune: false`, reconcile, and inspect Flux status while you compare the inventory manually:
 
 ```bash
-# Watch Flux logs for prune-related messages
-kubectl logs -n flux-system deployment/kustomize-controller | grep -i prune
+# Check the Kustomization status after reconciliation
+flux get kustomization my-app
 ```
 
 ## Pruning and Resource Moves
@@ -221,7 +221,7 @@ flux logs --kind=Kustomization --name=my-app
 
 1. **Enable pruning from the start**: It is easier to enable pruning when setting up a new Kustomization than to enable it later on an existing one with many managed resources.
 
-2. **Protect stateful resources**: Always add the `kustomize.toolkit.fluxcd.io/prune: disabled` annotation to PersistentVolumeClaims and other stateful resources.
+2. **Protect stateful resources**: Add the `kustomize.toolkit.fluxcd.io/prune: disabled` annotation to PersistentVolumeClaims and other stateful resources that should survive removal from Git.
 
 3. **Use separate Kustomizations for different lifecycles**: Keep resources with different pruning requirements in separate Kustomizations. For example, infrastructure resources (namespaces, CRDs) in one Kustomization and application workloads in another.
 
