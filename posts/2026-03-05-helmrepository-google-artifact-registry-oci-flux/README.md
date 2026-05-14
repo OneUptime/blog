@@ -109,7 +109,7 @@ kubectl rollout restart deployment/source-controller -n flux-system
 
 ## Step 4: Create the OCI HelmRepository
 
-Create a HelmRepository with `type: oci` and `provider: gcp`.
+Create a HelmRepository with `type: oci` and `provider: gcp`. For OCI HelmRepository resources, Flux treats the object as a data container for the registry repository; it does not fetch an index artifact, and the `interval` field is ignored.
 
 ```yaml
 # helmrepository-gar.yaml
@@ -132,8 +132,8 @@ Apply the resource.
 # Apply the HelmRepository
 kubectl apply -f helmrepository-gar.yaml
 
-# Verify the status
-flux get sources helm -n flux-system
+# Verify the object exists
+kubectl get helmrepository my-gar-charts -n flux-system
 ```
 
 ## Step 5: Create a HelmRelease
