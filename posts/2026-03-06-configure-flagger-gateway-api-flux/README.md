@@ -41,15 +41,15 @@ The Gateway API CRDs must be installed before any implementation.
 # gateway-api-crds.yaml
 
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: OCIRepository
+kind: GitRepository
 metadata:
   name: gateway-api
   namespace: flux-system
 spec:
   interval: 1h
-  url: oci://ghcr.io/fluxcd/manifests/gateway-api
+  url: https://github.com/kubernetes-sigs/gateway-api
   ref:
-    tag: v1.1.0
+    tag: v1.5.1
 ```
 
 ```yaml
@@ -62,16 +62,16 @@ metadata:
 spec:
   interval: 1h
   sourceRef:
-    kind: OCIRepository
+    kind: GitRepository
     name: gateway-api
   prune: true
-  path: ./standard
+  path: ./config/crd
 ```
 
 Alternatively, install CRDs directly:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.1.0/standard-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
 ```
 
 ## Step 3: Install a Gateway API Implementation
@@ -86,8 +86,17 @@ metadata:
   name: envoy-gateway
   namespace: flux-system
 spec:
+  type: oci
   interval: 1h
-  url: https://gateway.envoyproxy.io/charts
+  url: oci://docker.io/envoyproxy
+```
+
+```yaml
+# envoy-gateway-namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: envoy-gateway-system
 ```
 
 ```yaml
@@ -102,7 +111,7 @@ spec:
   chart:
     spec:
       chart: gateway-helm
-      version: "1.x"
+      version: "v1.8.0"
       sourceRef:
         kind: HelmRepository
         name: envoy-gateway
@@ -111,7 +120,25 @@ spec:
     createNamespace: true
 ```
 
-## Step 4: Create a Gateway Resource
+## Step 4: Create the Namespace and Gateway Resource
+
+```yaml
+# namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo
+```
+
+```yaml
+# gatewayclass.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+```
 
 ```yaml
 # gateway.yaml
@@ -144,6 +171,14 @@ metadata:
 spec:
   interval: 1h
   url: https://prometheus-community.github.io/helm-charts
+```
+
+```yaml
+# prometheus-namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
 ```
 
 ```yaml
@@ -208,7 +243,7 @@ spec:
         namespace: flux-system
   values:
     # Use Gateway API as the provider
-    meshProvider: gatewayapi
+    meshProvider: gatewayapi:v1
     metricsServer: http://prometheus-server.monitoring:80
 ```
 
@@ -221,14 +256,6 @@ flux reconcile kustomization flux-system --with-source
 ```
 
 ## Step 8: Deploy the Application
-
-```yaml
-# namespace.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: demo
-```
 
 ```yaml
 # deployment.yaml
@@ -276,12 +303,12 @@ spec:
       targetPort: http
 ```
 
-## Step 9: Create the HTTPRoute
+## Step 9: Let Flagger Create the HTTPRoute
 
-Define an HTTPRoute that Flagger will manage for traffic splitting.
+With the Gateway API provider, Flagger creates and manages the HTTPRoute for traffic splitting based on the Canary service configuration.
 
 ```yaml
-# httproute.yaml
+# generated httproute.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -291,6 +318,8 @@ spec:
   parentRefs:
     - name: demo-gateway
       namespace: demo
+      group: gateway.networking.k8s.io
+      kind: Gateway
   hostnames:
     - podinfo.example.com
   rules:
@@ -322,14 +351,16 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: podinfo
-  # Reference the Gateway API HTTPRoute
-  routeRef:
-    apiVersion: gateway.networking.k8s.io/v1
-    kind: HTTPRoute
-    name: podinfo
   service:
     port: 9898
     targetPort: http
+    # Gateway API HTTPRoute host names
+    hosts:
+      - podinfo.example.com
+    # Reference to the Gateway that the generated HTTPRoute attaches to
+    gatewayRefs:
+      - name: demo-gateway
+        namespace: demo
   analysis:
     interval: 30s
     threshold: 5
@@ -346,7 +377,7 @@ spec:
         interval: 1m
 ```
 
-Note the `routeRef` field, which is specific to the Gateway API provider and tells Flagger which HTTPRoute to manage.
+Note the `gatewayRefs` field, which is specific to the Gateway API provider and tells Flagger which Gateway the generated HTTPRoute should attach to.
 
 ## Step 11: Deploy and Verify
 
@@ -461,7 +492,7 @@ kubectl get gateway demo-gateway -n demo -o yaml
 
 ### Canary not detecting route
 
-Ensure the `routeRef` in the Canary spec matches the HTTPRoute name exactly and that both are in the same namespace.
+Ensure the `gatewayRefs` in the Canary spec match the Gateway name and namespace, and that the Gateway allows routes from the Canary namespace.
 
 ### Weight changes not taking effect
 
