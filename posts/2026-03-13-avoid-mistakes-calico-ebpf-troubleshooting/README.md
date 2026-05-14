@@ -34,7 +34,7 @@ kubectl delete pod -n calico-system "${AFFECTED_POD}"
 
 ```bash
 # WRONG - switching to iptables to "resolve" an eBPF issue
-kubectl patch installation default --type=merge \
+kubectl patch installation.operator.tigera.io default --type=merge \
   -p '{"spec":{"calicoNetwork":{"linuxDataplane":"Iptables"}}}'
 # This is not a fix! This causes rolling restarts on ALL nodes
 # AND you lose all eBPF performance benefits
@@ -54,25 +54,25 @@ kubectl logs -n calico-system ds/calico-node -c calico-node | \
 
 ```bash
 # WRONG diagnostic approach - checking iptables in eBPF mode
-iptables -L -n  # Will show no calico rules in eBPF mode (this is CORRECT behavior!)
+iptables -L -n  # Will not show the normal Calico iptables dataplane rules in eBPF mode
 # New engineer may think "no calico rules = calico broken" but this is wrong!
 
 # CORRECT diagnostic approach for eBPF mode
 # Check BPF programs (these replace iptables rules)
 kubectl exec -n calico-system ds/calico-node -c calico-node -- \
   bpftool prog list | grep calico | wc -l
-# Expected: 15-30+ programs
+# Expected: non-zero output; the exact count varies by Calico version and node configuration
 
-# Check Felix status via BPF mode indicator
+# Check that Calico's BPF helper is available
 kubectl exec -n calico-system ds/calico-node -c calico-node -- \
-  calico-node -bpf-list-progs 2>/dev/null | head -5
+  calico-node -bpf help | head -10
 ```
 
 ## Mistake 4: Making Configuration Changes During Active Troubleshooting
 
 ```bash
 # WRONG - changing multiple configs while diagnosing
-kubectl patch installation default --type=merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF"}}}'
+kubectl patch installation.operator.tigera.io default --type=merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF"}}}'
 kubectl patch felixconfiguration default --type=merge -p '{"spec":{"logSeverityScreen":"Debug"}}'
 kubectl delete configmap kubernetes-services-endpoint -n tigera-operator
 # Multiple simultaneous changes make it impossible to know what "fixed" it
@@ -93,12 +93,12 @@ kubectl exec -n calico-system ds/calico-node -c calico-node -- \
 
 # CORRECT - for connectivity issues in eBPF mode, check conntrack
 kubectl exec -n calico-system ds/calico-node -c calico-node -- \
-  calico-node -bpf-conntrack-dump 2>/dev/null | \
+  calico-node -bpf conntrack dump 2>/dev/null | \
   grep "${PROBLEM_POD_IP}" | head -10
 
 # Also check NAT table for service issues
 kubectl exec -n calico-system ds/calico-node -c calico-node -- \
-  calico-node -bpf-nat-dump 2>/dev/null | \
+  calico-node -bpf nat dump 2>/dev/null | \
   grep "${SERVICE_IP}" | head -10
 ```
 
@@ -123,4 +123,4 @@ mindmap
 
 ## Conclusion
 
-The most dangerous eBPF troubleshooting mistakes are those that cause additional disruption: restarting all calico-node pods unnecessarily, disabling eBPF mode as a "quick fix," or making multiple simultaneous configuration changes. Always collect a diagnostic bundle before making any changes, isolate your investigation to the affected node(s), and remember that in eBPF mode the absence of iptables rules is correct behavior - not a sign of problems. When a change needs to be made, make exactly one change and observe the effect before proceeding.
+The most dangerous eBPF troubleshooting mistakes are those that cause additional disruption: restarting all calico-node pods unnecessarily, disabling eBPF mode as a "quick fix," or making multiple simultaneous configuration changes. Always collect a diagnostic bundle before making any changes, isolate your investigation to the affected node(s), and remember that in eBPF mode the absence of the normal Calico iptables dataplane rules is correct behavior - not a sign of problems. When a change needs to be made, make exactly one change and observe the effect before proceeding.
