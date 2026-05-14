@@ -8,7 +8,7 @@ Description: Learn how to configure Kubernetes secrets encryption at rest to pro
 
 ---
 
-Flux CD stores sensitive data such as Git credentials, deploy keys, and webhook tokens in Kubernetes Secrets. By default, Kubernetes stores Secrets in etcd as base64-encoded plaintext. Enabling encryption at rest ensures that Secret data is encrypted in etcd, protecting it from unauthorized access to the etcd datastore.
+Flux CD stores sensitive data such as Git credentials, deploy keys, and webhook tokens in Kubernetes Secrets. By default, Kubernetes stores Secrets unencrypted in the API server's backing datastore; Secret values are base64-encoded in the API object, but base64 is not encryption. Enabling encryption at rest ensures that Secret data is encrypted in etcd, protecting it from unauthorized access to the etcd datastore.
 
 ## Why Encrypt Secrets at Rest
 
@@ -31,7 +31,7 @@ resources:
   - resources:
       - secrets
     providers:
-      # AES-CBC encryption (recommended for most use cases)
+      # AES-CBC encryption (simple local provider example)
       - aescbc:
           keys:
             - name: flux-key-1
@@ -139,7 +139,7 @@ For production environments, use a Key Management Service (KMS) instead of local
 
 ```yaml
 # encryption-config-kms.yaml
-# Use AWS KMS for secret encryption (production recommended)
+# Use a KMS plugin for secret encryption (production recommended)
 apiVersion: apiserver.config.k8s.io/v1
 kind: EncryptionConfiguration
 resources:
@@ -148,7 +148,7 @@ resources:
     providers:
       - kms:
           apiVersion: v2
-          name: aws-kms
+          name: kms-plugin
           endpoint: unix:///var/run/kmsplugin/socket.sock
           timeout: 3s
       - identity: {}
@@ -162,6 +162,8 @@ For managed Kubernetes services, encryption at rest is typically a configuration
 # AWS EKS: Enable envelope encryption
 aws eks create-cluster \
   --name flux-cluster \
+  --role-arn arn:aws:iam::123456789:role/eks-cluster-role \
+  --resources-vpc-config subnetIds=subnet-abc123,subnet-def456 \
   --encryption-config '[{
     "resources": ["secrets"],
     "provider": {
@@ -181,12 +183,17 @@ aws eks associate-encryption-config \
 
 # GKE: Enable application-layer secret encryption
 gcloud container clusters create flux-cluster \
-  --database-encryption-key=projects/myproject/locations/us-central1/keyRings/my-ring/cryptoKeys/my-key
+  --location=us-central1 \
+  --database-encryption-key=projects/myproject/locations/us-central1/keyRings/my-ring/cryptoKeys/my-key \
+  --project=myproject
 
-# AKS: Enable encryption at rest (enabled by default with platform-managed keys)
+# AKS: Enable KMS data encryption for Kubernetes Secrets with platform-managed keys
 az aks create \
   --name flux-cluster \
-  --enable-encryption-at-host
+  --resource-group flux-rg \
+  --kubernetes-version 1.33.0 \
+  --kms-infrastructure-encryption Enabled \
+  --generate-ssh-keys
 ```
 
 ## Step 7: Key Rotation
@@ -196,6 +203,7 @@ Periodically rotate the encryption key:
 ```bash
 # Generate a new encryption key
 NEW_KEY=$(head -c 32 /dev/urandom | base64)
+OLD_KEY=<PREVIOUS_BASE64_ENCODED_32_BYTE_KEY>
 
 # Update the encryption config with the new key as the first provider
 # and keep the old key for decrypting existing secrets
