@@ -24,7 +24,7 @@ Azure DevOps Repos is a popular choice for teams already using the Azure ecosyst
 
 Azure DevOps supports two URL formats for Git operations:
 
-```json
+```text
 # SSH format
 
 git@ssh.dev.azure.com:v3/{organization}/{project}/{repository}
@@ -35,13 +35,13 @@ https://dev.azure.com/{organization}/{project}/_git/{repository}
 
 ## Method 1: SSH Key Authentication
 
-SSH authentication is the preferred method for Flux CD as it avoids token expiration issues.
+SSH authentication avoids token expiration issues. For Azure DevOps, use RSA SHA-2 keys and configure Flux to allow the Azure DevOps SSH host key algorithms.
 
 ### Step 1: Generate an SSH Key Pair
 
 ```bash
-# Generate an ED25519 SSH key pair for Flux CD
-ssh-keygen -t ed25519 -C "flux-cd" -f ~/.ssh/flux-azure-devops -N ""
+# Generate an RSA SHA-2 SSH key pair for Flux CD
+ssh-keygen -t rsa-sha2-512 -b 4096 -C "flux-cd" -f ~/.ssh/flux-azure-devops -N ""
 
 # Display the public key (you will add this to Azure DevOps)
 cat ~/.ssh/flux-azure-devops.pub
@@ -70,6 +70,7 @@ flux bootstrap git \
   --branch=main \
   --path=clusters/my-cluster \
   --private-key-file=~/.ssh/flux-azure-devops \
+  --ssh-hostkey-algos=rsa-sha2-512,rsa-sha2-256 \
   --silent
 ```
 
@@ -99,7 +100,7 @@ HTTPS with PAT authentication is simpler to set up but requires token rotation b
    - Name: `flux-cd-gitops`
    - Expiration: Set to maximum (1 year) or your organization's policy
    - Scopes: Select "Custom defined" and grant:
-     - Code: Read & Write (Read is sufficient if Flux does not need to push)
+     - Code: Read & Write for bootstrap (Read is sufficient for an existing GitRepository that only pulls)
 
 ```bash
 # Store the PAT securely
@@ -177,8 +178,8 @@ spec:
   interval: 5m
   url: ssh://git@ssh.dev.azure.com/v3/my-org/my-project/app-config
   ref:
-    # Track a specific tag pattern for production
-    tag: "v1.*"
+    # Track the latest v1 release tag for production
+    semver: ">=1.0.0 <2.0.0"
   secretRef:
     name: flux-system
 ```
@@ -282,7 +283,7 @@ steps:
 
 ## PAT Token Rotation Strategy
 
-Personal Access Tokens expire and must be rotated. Here is a strategy using Azure DevOps service connections.
+Personal Access Tokens expire and must be rotated. Here is a strategy using the Kubernetes secret consumed by Flux.
 
 ```bash
 # Create a script for PAT rotation
@@ -290,8 +291,8 @@ Personal Access Tokens expire and must be rotated. Here is a strategy using Azur
 
 # Step 1: Generate a new PAT in Azure DevOps UI
 
-# Step 2: Update the Kubernetes secret
-kubectl create secret generic azure-devops-credentials \
+# Step 2: Update the Kubernetes secret used by the bootstrapped GitRepository
+kubectl create secret generic flux-system \
   --namespace flux-system \
   --from-literal=username=git \
   --from-literal=password="${NEW_AZURE_DEVOPS_PAT}" \
@@ -306,11 +307,11 @@ flux get sources git
 
 ## Notification Integration
 
-Configure Flux to send notifications to Azure DevOps pull requests:
+Configure Flux to update Azure DevOps commit statuses:
 
 ```yaml
 # File: clusters/my-cluster/notifications/azure-devops-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: azure-devops
@@ -321,7 +322,7 @@ spec:
   secretRef:
     name: azure-devops-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: flux-alerts
