@@ -180,7 +180,7 @@ After generating and validating manifests, push them as OCI artifacts for Flux.
             oci://${{ env.REGISTRY }}/${{ env.ARTIFACT_REPO }}:$(git rev-parse --short HEAD) \
             --path=./generated \
             --source="$(git config --get remote.origin.url)" \
-            --revision="main/$(git rev-parse HEAD)" \
+            --revision="main@sha1:$(git rev-parse HEAD)" \
             --creds ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}
 
       - name: Tag as latest
@@ -320,7 +320,7 @@ patches:
       kind: Deployment
       name: my-app
     patch: |
-      - op: replace
+      - op: add
         path: /spec/replicas
         value: 5
       - op: add
@@ -380,7 +380,7 @@ patches:
       kind: Deployment
       name: my-app
     patch: |
-      - op: replace
+      - op: add
         path: /spec/replicas
         value: 2
       - op: add
@@ -424,6 +424,7 @@ jobs:
   diff:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pull-requests: write
     steps:
       - name: Checkout PR branch
@@ -474,7 +475,7 @@ jobs:
             const diff = fs.readFileSync('manifest-diff.txt', 'utf8');
 
             const body = diff
-              ? `### Manifest Changes\n```diff\n${diff.substring(0, 60000)}\n````
+              ? `### Manifest Changes\n\`\`\`diff\n${diff.substring(0, 60000)}\n\`\`\``
               : '### Manifest Changes\nNo changes detected in generated manifests.';
 
             // Find existing comment
