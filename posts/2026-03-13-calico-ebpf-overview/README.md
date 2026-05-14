@@ -18,20 +18,20 @@ Understanding Calico's eBPF dataplane requires understanding both why iptables b
 
 ## Prerequisites
 
-- Linux kernel 5.3 or later (5.8+ recommended for full feature support)
-- Calico v3.13 or later
+- A Calico-supported Linux distribution with kernel 5.10 or later, or a distribution kernel with the required eBPF features backported (for example, supported Red Hat 8 kernels)
+- A Calico version that supports the eBPF dataplane
 - Understanding of basic Linux networking (netfilter, conntrack)
 - Familiarity with Calico's standard networking model
 
 ## Why iptables Becomes a Bottleneck
 
-In the iptables dataplane, every pod, service, and network policy creates netfilter rules. A cluster with 500 services and 5,000 pods can accumulate tens of thousands of iptables rules. Every packet must traverse these rules linearly (in non-nftables modes), creating O(n) performance degradation as the rule count grows.
+In the iptables dataplane, pods, services, and network policies are represented through netfilter rules and ipsets. A cluster with 500 services and 5,000 pods can accumulate large rule sets. Packets may need to traverse rule chains linearly (in non-nftables modes), creating performance degradation as the rule count grows.
 
 eBPF solves this by using hash maps and direct packet manipulation instead of linear rule traversal. Lookup time for a connection in an eBPF map is O(1) regardless of the number of entries.
 
 ## How Calico's eBPF Programs Work
 
-Calico's eBPF dataplane attaches programs at two key hook points:
+Calico's eBPF dataplane attaches programs at `tc` hooks on Calico interfaces as well as data and tunnel interfaces, and it also uses socket BPF hooks for connect-time service load balancing:
 
 ```mermaid
 graph LR
@@ -41,11 +41,11 @@ graph LR
     TC_EGRESS --> NIC2[Network Interface]
 ```
 
-1. **TC (Traffic Control) hooks**: Calico attaches eBPF programs at the TC ingress and egress hooks on each network interface. This gives Calico visibility into every packet before and after it enters the pod network namespace.
+1. **TC (Traffic Control) hooks**: Calico attaches eBPF programs at the TC ingress and egress hooks on Calico workload interfaces and host data or tunnel interfaces. This gives Calico visibility into workload packets early in the packet path.
 
-2. **eBPF maps**: Calico uses kernel eBPF maps (hash tables and LPM tries) to store connection state, policy rules, and routing information. These maps are updated by the control plane (Felix) when configuration changes.
+2. **eBPF maps**: Calico uses kernel eBPF maps to store connection state, NAT frontend and backend information, and IP sets used by policy selectors. These maps are updated by the control plane (Felix) when configuration changes.
 
-3. **XDP (eXpress Data Path)**: For host endpoints, Calico can optionally attach eBPF programs at the XDP hook, which runs even before the kernel network stack processes the packet - enabling very high performance DDoS mitigation.
+3. **XDP (eXpress Data Path)**: For eligible host endpoint deny-list policies, Calico can enforce drops at XDP when the NIC, driver, and kernel support it, enabling very high performance DoS mitigation.
 
 ## Key Performance Advantages
 
@@ -58,7 +58,7 @@ The eBPF dataplane provides measurable improvements:
 ## Enabling eBPF in Calico
 
 ```bash
-# Disable kube-proxy (required before enabling eBPF)
+# Disable kube-proxy for kubeadm-style clusters that run it as a DaemonSet
 
 kubectl patch ds -n kube-system kube-proxy \
   -p '{"spec":{"template":{"spec":{"nodeSelector":{"non-calico":"true"}}}}}'
@@ -66,15 +66,20 @@ kubectl patch ds -n kube-system kube-proxy \
 # Enable eBPF dataplane
 kubectl patch installation.operator.tigera.io default \
   --type merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF"}}}'
+
+# For supported self-managed kubeadm-style clusters, the operator can also
+# configure API server access and manage kube-proxy automatically:
+kubectl patch installation.operator.tigera.io default \
+  --type merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF","bpfNetworkBootstrap":"Enabled","kubeProxyManagement":"Enabled"}}}'
 ```
 
 ## Best Practices
 
 - Always test eBPF on your specific kernel version in a lab before enabling in production - some kernel versions have known eBPF bugs
 - Monitor kernel memory usage when enabling eBPF - eBPF maps consume kernel memory proportional to cluster size
-- Keep kube-proxy disabled after enabling eBPF mode - running both simultaneously causes policy enforcement conflicts
-- Use `calicoctl node status` to verify the eBPF dataplane is active on all nodes after enabling
+- Keep kube-proxy disabled after enabling eBPF mode when possible - if kube-proxy must remain running, set `bpfKubeProxyIptablesCleanupEnabled` to `false` and disable Calico's BPF kube-proxy health check port to avoid iptables flapping and port conflicts
+- Verify the eBPF dataplane by checking the `calico-node` logs for `BPF enabled, starting BPF endpoint manager and map manager`, or by inspecting the dataplane with `calico-node -bpf` from a `calico-node` pod
 
 ## Conclusion
 
-Calico's eBPF dataplane provides a fundamentally more scalable packet processing model than iptables by leveraging kernel-space programs and hash map lookups. The key benefits - O(1) connection lookups, kube-proxy replacement, DSR, and preserved source IP - make eBPF mode the preferred dataplane for high-performance production clusters running Kubernetes 1.20+ on modern Linux kernels.
+Calico's eBPF dataplane provides a fundamentally more scalable packet processing model than iptables by leveraging kernel-space programs and map lookups. The key benefits - efficient connection lookups, kube-proxy replacement, DSR, and preserved source IP - make eBPF mode a strong dataplane option for high-performance production clusters running supported Kubernetes and Linux kernel versions.
