@@ -14,7 +14,7 @@ Timestamp-based image tags are a common pattern in CI/CD pipelines. Tags like `2
 
 ## Prerequisites
 
-- Flux CD v2.0 or later installed on your Kubernetes cluster
+- Flux CD v2.7 or later installed on your Kubernetes cluster
 - Flux image-reflector-controller and image-automation-controller installed
 - A container registry with images tagged using timestamps
 - `kubectl` and `flux` CLI access to your cluster
@@ -195,7 +195,7 @@ spec:
         name: fluxcdbot
         email: fluxcdbot@example.com
       messageTemplate: |
-        Automated image update to {{ range .Changed.Objects }}{{ .Name }}{{ end }}
+        Automated image update{{ range $resource, $_ := .Changed.Objects }} {{ $resource.Name }}{{ end }}
     push:
       branch: main
   update:
