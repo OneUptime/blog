@@ -10,7 +10,7 @@ Description: Learn how to enable and configure the Cilium Operator's identity ma
 
 ## Introduction
 
-In standard Cilium deployments, each Cilium Agent participates in identity allocation - creating, updating, and garbage collecting CiliumIdentity resources. At large scale, this distributed allocation creates significant API server load as hundreds of agents simultaneously reconcile identity state. The Cilium Operator Identity Management feature (currently in Beta) addresses this by centralizing all identity lifecycle management in the Cilium Operator, reducing the number of API server writes and providing a single authoritative source for identity state.
+In standard Cilium deployments, each Cilium Agent participates in identity allocation - creating and updating CiliumIdentity resources while the Cilium Operator garbage collects stale identities. At large scale, this distributed allocation creates significant API server load as hundreds of agents simultaneously reconcile identity state. The Cilium Operator Identity Management feature (currently in Beta) addresses this by centralizing identity creation in the Cilium Operator, reducing duplicate identity creation and providing a single authoritative source for identity state.
 
 When Operator Identity Management is enabled, Cilium Agents become consumers of identity information rather than producers. The Operator watches for pod label changes, computes new identities, creates CiliumIdentity CRDs, and garbage collects stale identities. Agents simply watch these CRDs and update their local eBPF maps accordingly. This separation of concerns improves scalability and makes identity state easier to reason about and debug.
 
@@ -18,7 +18,7 @@ This guide covers how to enable this Beta feature, configure it correctly, troub
 
 ## Prerequisites
 
-- Cilium 1.14 or later (feature added in 1.13, stabilizing in 1.14+)
+- A Cilium version that supports `identityManagementMode` (operator-managed identities are still Beta in the current Cilium documentation)
 - Kubernetes cluster with Cilium Operator running
 - `kubectl` with cluster admin access
 - Helm 3.x for configuration management
@@ -29,7 +29,7 @@ This guide covers how to enable this Beta feature, configure it correctly, troub
 Enable the Operator Identity Management Beta feature:
 
 ```bash
-# Check current Cilium version (requires 1.13+)
+# Check current Cilium version and confirm it supports identityManagementMode
 
 cilium version
 
@@ -38,10 +38,10 @@ helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
   --set identityAllocationMode=crd \
-  --set operator.identityManagementEnabled=true
+  --set identityManagementMode=operator
 
 # Verify the feature is enabled
-kubectl -n kube-system get configmap cilium-config -o yaml | grep identity-management
+kubectl -n kube-system get configmap cilium-config -o yaml | grep identity-management-mode
 kubectl -n kube-system logs -l name=cilium-operator | grep -i "identity management\|operator identity"
 ```
 
@@ -54,11 +54,9 @@ helm upgrade cilium cilium/cilium \
   --reuse-values \
   --set operator.identityGCInterval=15m \
   --set operator.identityHeartbeatTimeout=30m \
-  --set operator.identityGCRateInterval=1m \
-  --set operator.identityGCRateLimit=2500
+  --set operator.extraArgs="{--identity-gc-rate-interval=1m,--identity-gc-rate-limit=2500}"
 
-# Configure batch processing for large clusters
-# (Process more identity allocations per reconciliation loop)
+# Verify the rendered identity and Operator settings
 kubectl -n kube-system get configmap cilium-config -o yaml | \
   grep -E "identity|operator"
 ```
@@ -69,14 +67,22 @@ Monitor the transition when enabling on existing cluster:
 # Before enabling: capture current identity count
 kubectl get ciliumidentities --no-headers | wc -l
 
-# Enable the feature
+# Allow both Agents and the Operator to create identities during migration
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set operator.identityManagementEnabled=true
+  --set identityManagementMode=both
+kubectl -n kube-system rollout restart deployment/cilium-operator
 
 # Monitor Operator taking over identity management
 kubectl -n kube-system logs -l name=cilium-operator -f | grep identity
+
+# Complete the migration so Agents consume identities created by the Operator
+helm upgrade cilium cilium/cilium \
+  --namespace kube-system \
+  --reuse-values \
+  --set identityManagementMode=operator
+kubectl -n kube-system rollout restart daemonset/cilium
 ```
 
 ## Troubleshoot Operator Identity Management
@@ -130,13 +136,12 @@ Verify the Operator is correctly managing identities:
 # Deploy a test workload and verify identity creation
 kubectl run id-test --image=nginx --labels="app=id-test,env=validation"
 
-# Check that Operator created the identity (not the agent)
+# Check that an identity exists for the test labels
 kubectl get ciliumidentities -o json | \
   jq '.items[] | select(.["security-labels"]["k8s:app"] == "id-test")'
 
-# Verify the agent's identity came from Operator
-kubectl -n kube-system exec ds/cilium -- \
-  cilium endpoint list | grep id-test
+# Verify the endpoint has an allocated identity
+kubectl get ciliumendpoint id-test -o jsonpath='{.status.identity.id}{"\n"}'
 
 # Check Operator identity GC is working
 # Create and delete pods, verify identity is cleaned up after GC interval
@@ -167,13 +172,13 @@ Monitor Operator identity management workload:
 
 ```bash
 # Monitor identity creation/deletion rate
-kubectl -n kube-system port-forward svc/cilium-operator 9963:9963 &
-curl -s http://localhost:9963/metrics | grep -E "identity|cilium_operator"
+kubectl -n kube-system port-forward deployment/cilium-operator 9963:9963 &
+curl -s http://localhost:9963/metrics | grep -E "cid_controller_work_queue|workqueue"
 
 # Key metrics
-# cilium_operator_identity_gc_runs_total - GC run count
-# cilium_operator_identity_gc_entries - entries processed per GC run
-# cilium_identity_count - total active identities
+# cilium_operator_cid_controller_work_queue_event_count - processed CID controller work queue events
+# cilium_operator_cid_controller_work_queue_latency - CID controller queue and processing latency
+# cilium_operator_workqueue_depth - current depth of reported Operator work queues
 
 # Watch for unexpected identity churn
 watch -n30 "kubectl get ciliumidentities --no-headers | wc -l"
@@ -184,4 +189,4 @@ kubectl -n kube-system top pods -l name=cilium-operator
 
 ## Conclusion
 
-The Cilium Operator Identity Management Beta feature provides a more scalable approach to identity lifecycle management by centralizing it in a single Operator instance rather than distributing it across all agents. This reduces API server load significantly in large clusters and provides clearer operational semantics. While still in Beta, this feature is suitable for testing in staging environments and gradually rolling out to production. Monitor identity creation rates and Operator resource usage closely after enabling to catch any edge cases specific to your workload patterns.
+The Cilium Operator Identity Management Beta feature provides a more scalable approach to identity creation by centralizing it in a single Operator instance rather than distributing it across all agents. This can reduce duplicate identity creation in large clusters and provides clearer operational semantics. While still in Beta, this feature is suitable for testing in staging environments and gradually rolling out to production. Monitor identity creation rates and Operator resource usage closely after enabling to catch any edge cases specific to your workload patterns.
