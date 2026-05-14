@@ -61,7 +61,7 @@ flux export alert --all > audit/alerts.yaml
 flux export alert-provider --all > audit/providers.yaml
 
 # Check for deprecated API versions in your manifests
-grep -rn "v1beta1\|v1beta2" audit/
+grep -rn "v1beta1\|v1beta2\|v2beta1\|v2beta2" audit/
 ```
 
 ### Automated Deprecation Scanning
@@ -80,8 +80,10 @@ echo "Scanning $REPO_PATH for deprecated Flux CD fields..."
 echo "=== Deprecated API Versions ==="
 grep -rn "source.toolkit.fluxcd.io/v1beta1" "$REPO_PATH" --include="*.yaml"
 grep -rn "kustomize.toolkit.fluxcd.io/v1beta1" "$REPO_PATH" --include="*.yaml"
-grep -rn "helm.toolkit.fluxcd.io/v2" "$REPO_PATH" --include="*.yaml"
-grep -rn "notification.toolkit.fluxcd.io/v1" "$REPO_PATH" --include="*.yaml"
+grep -rn "helm.toolkit.fluxcd.io/v2beta1" "$REPO_PATH" --include="*.yaml"
+grep -rn "helm.toolkit.fluxcd.io/v2beta2" "$REPO_PATH" --include="*.yaml"
+grep -rn "notification.toolkit.fluxcd.io/v1beta1" "$REPO_PATH" --include="*.yaml"
+grep -rn "notification.toolkit.fluxcd.io/v1beta2" "$REPO_PATH" --include="*.yaml"
 
 # Check for deprecated fields
 echo "=== Deprecated Fields ==="
@@ -100,7 +102,7 @@ The most common breaking change is the graduation of API versions from beta to s
 
 ```yaml
 # BEFORE: Using deprecated v1beta2 API
-apiVersion: kustomize.toolkit.fluxcd.io/v1
+apiVersion: kustomize.toolkit.fluxcd.io/v1beta2
 kind: Kustomization
 metadata:
   name: my-app
@@ -156,8 +158,8 @@ spec:
 ### Example: HelmRelease API Migration
 
 ```yaml
-# BEFORE: Using v2beta1 API
-apiVersion: helm.toolkit.fluxcd.io/v2
+# BEFORE: Using v2beta2 API
+apiVersion: helm.toolkit.fluxcd.io/v2beta2
 kind: HelmRelease
 metadata:
   name: nginx
@@ -172,11 +174,8 @@ spec:
         kind: HelmRepository
         name: bitnami
         namespace: flux-system
-  # Deprecated: valuesFrom format changed
-  valuesFrom:
-    - kind: ConfigMap
-      name: nginx-values
-      valuesKey: values.yaml
+      # Deprecated: valuesFile replaced with valuesFiles
+      valuesFile: values-production.yaml
 ```
 
 ```yaml
@@ -196,19 +195,16 @@ spec:
         kind: HelmRepository
         name: bitnami
         namespace: flux-system
-  # Updated valuesFrom format
-  valuesFrom:
-    - kind: ConfigMap
-      name: nginx-values
-      valuesKey: values.yaml
-      targetPath: ""
+      # valuesFile replaced with valuesFiles
+      valuesFiles:
+        - values-production.yaml
 ```
 
 ### Example: Source API Migration
 
 ```yaml
 # BEFORE: GitRepository with deprecated fields
-apiVersion: source.toolkit.fluxcd.io/v1
+apiVersion: source.toolkit.fluxcd.io/v1beta2
 kind: GitRepository
 metadata:
   name: flux-config
@@ -241,10 +237,10 @@ spec:
 
 Some upgrades change how controllers behave, even if the API surface stays the same.
 
-### Drift Detection Changes
+### Reconciliation Behavior Changes
 
 ```yaml
-# New drift detection behavior in newer versions
+# Reconciliation behavior in newer versions
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -257,10 +253,9 @@ spec:
     name: flux-config
   path: ./apps/my-app
   prune: true
-  # Force reconciliation to correct drift
-  # Behavior may differ between versions
+  # Recreate resources when patching fails due to an immutable field change
   force: false
-  # Configure how drift is handled
+  # Configure health checking behavior
   wait: true
   timeout: 5m
 ```
@@ -280,25 +275,25 @@ kubectl get kustomization -A -o yaml | grep -A2 "timeout\|interval\|retries"
 
 ## Step 5: Update RBAC Permissions
 
-New versions may require additional RBAC permissions for controllers.
+New versions may require additional RBAC permissions if you maintain custom restricted roles for controllers.
 
 ```yaml
-# Additional ClusterRole rules that may be needed
-# after a breaking change upgrade
+# Example ClusterRole rules to verify when you maintain
+# custom restricted controller permissions
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: flux-custom-permissions
 rules:
-  # New permission required for cross-namespace references
+  # Permission used when controllers need to read namespaces
   - apiGroups: [""]
     resources: ["namespaces"]
     verbs: ["get", "list", "watch"]
-  # New permission for status subresource access
+  # Permission for status subresource access
   - apiGroups: ["kustomize.toolkit.fluxcd.io"]
     resources: ["kustomizations/status"]
     verbs: ["get", "patch", "update"]
-  # New permission for finalizer management
+  # Permission for finalizer management
   - apiGroups: ["helm.toolkit.fluxcd.io"]
     resources: ["helmreleases/finalizers"]
     verbs: ["update"]
@@ -310,9 +305,9 @@ For upgrades with breaking changes, use a staged approach to minimize risk.
 
 ```mermaid
 graph TD
-    A[Review Breaking Changes] --> B[Update CRDs First]
-    B --> C[Upgrade Controllers]
-    C --> D[Update Resources in Git]
+    A[Review Breaking Changes] --> B[Generate Target Flux Manifests]
+    B --> C[Update Resources in Git]
+    C --> D[Upgrade Controllers]
     D --> E[Verify Reconciliation]
     E --> F{All Healthy?}
     F -->|Yes| G[Proceed to Next Cluster]
@@ -321,8 +316,8 @@ graph TD
 ```
 
 ```bash
-# Stage 1: Update CRDs to support both old and new API versions
-flux install --crds=CreateReplace --version=v2.4.0
+# Stage 1: Generate the target Flux manifests and commit them to Git
+flux install --version=v2.4.0 --export > flux-system/gotk-components.yaml
 
 # Stage 2: Verify CRDs support the new API versions
 kubectl get crd kustomizations.kustomize.toolkit.fluxcd.io -o yaml | grep -A10 "versions:"
@@ -330,7 +325,7 @@ kubectl get crd kustomizations.kustomize.toolkit.fluxcd.io -o yaml | grep -A10 "
 # Stage 3: Update your manifests to use new API versions
 # Do this in Git before upgrading controllers
 
-# Stage 4: Upgrade the controllers
+# Stage 4: Upgrade the controllers if you manage Flux directly on the cluster
 flux install --version=v2.4.0
 
 # Stage 5: Verify everything reconciles correctly
