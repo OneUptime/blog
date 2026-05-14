@@ -21,7 +21,7 @@ Before you begin, make sure you have:
 
 ## Understanding Proxy Support in Flux
 
-The Flux source controller supports HTTP and HTTPS proxies for GitRepository resources that use HTTPS URLs. When you configure `spec.proxySecretRef`, the source controller reads the proxy settings from a Kubernetes Secret and routes all Git operations through the specified proxy.
+The Flux source controller supports HTTP/S and SOCKS5 proxies for GitRepository resources. When you configure `spec.proxySecretRef`, the source controller reads the proxy settings from a Kubernetes Secret and routes all Git operations through the specified proxy.
 
 This is particularly useful in environments where:
 
@@ -31,7 +31,7 @@ This is particularly useful in environments where:
 
 ## Step 1: Create a Secret with Proxy Configuration
 
-The proxy Secret must contain an `address` key with the full proxy URL. If your proxy requires authentication, include the credentials in the URL.
+The proxy Secret must contain an `address` key with the full proxy URL. If your proxy requires authentication, include the credentials in the `username` and `password` keys.
 
 ```yaml
 # proxy-secret.yaml
@@ -48,7 +48,7 @@ stringData:
   address: http://proxy.corporate.example.com:8080
 ```
 
-For proxies that require authentication, embed the username and password in the URL.
+For proxies that require authentication, add the username and password to the Secret.
 
 ```yaml
 # proxy-secret-with-auth.yaml
@@ -60,8 +60,9 @@ metadata:
   namespace: flux-system
 type: Opaque
 stringData:
-  # Proxy address with embedded credentials
-  address: http://proxy-user:proxy-password@proxy.corporate.example.com:8080
+  address: http://proxy.corporate.example.com:8080
+  username: proxy-user
+  password: proxy-password
 ```
 
 Apply the secret to your cluster.
@@ -155,7 +156,7 @@ After applying the resources, check that the GitRepository reconciles successful
 
 ```bash
 # Check GitRepository status
-flux get source git my-app
+flux get sources git
 
 # For detailed status information
 kubectl describe gitrepository my-app -n flux-system
@@ -200,7 +201,7 @@ stringData:
   username: git
   password: <your-token>
   # CA certificate for TLS inspection proxy
-  caFile: |
+  ca.crt: |
     -----BEGIN CERTIFICATE-----
     <your-proxy-ca-certificate-here>
     -----END CERTIFICATE-----
@@ -217,15 +218,16 @@ kubectl logs -n flux-system deployment/source-controller | grep -i "proxy\|conne
 # Verify the proxy secret exists and has the correct data
 kubectl get secret git-proxy -n flux-system -o jsonpath='{.data.address}' | base64 -d
 
-# Check network connectivity from the source controller pod
-kubectl exec -n flux-system deployment/source-controller -- curl -x http://proxy.corporate.example.com:8080 -I https://github.com
+# Check network connectivity from a temporary pod in the same namespace
+kubectl run curl-proxy-test -n flux-system --rm -it --image=curlimages/curl --restart=Never -- \
+  -x http://proxy.corporate.example.com:8080 -I https://github.com
 ```
 
 Common issues include:
 
 - **Connection refused**: The proxy address or port is incorrect. Verify the proxy URL in the secret.
-- **407 Proxy Authentication Required**: Your proxy requires credentials but they are missing or incorrect. Update the secret with the correct username and password in the URL.
-- **TLS certificate errors**: Your proxy performs TLS inspection. Provide the proxy CA certificate in the Git credentials secret via the `caFile` field.
+- **407 Proxy Authentication Required**: Your proxy requires credentials but they are missing or incorrect. Update the secret with the correct `username` and `password` values.
+- **TLS certificate errors**: Your proxy performs TLS inspection. Provide the proxy CA certificate in the Git credentials secret via the `ca.crt` field.
 - **Timeout errors**: The proxy may be unreachable from the cluster network. Verify that the source controller pods can reach the proxy address.
 
 ## Environment-Level Proxy Configuration
