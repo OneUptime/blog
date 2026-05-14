@@ -1,10 +1,10 @@
-# How to Use CEL Expressions for Job Completion Health in Flux
+# How to Use Job Completion Health Checks in Flux
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Flux CD, CEL, Job, Health Check, Kubernetes, GitOps, Batch Processing
+Tags: Flux CD, Job, Health Check, Kubernetes, GitOps, Batch Processing
 
-Description: A practical guide to writing CEL health check expressions for Kubernetes Jobs and CronJobs in Flux CD to validate batch workload completion.
+Description: A practical guide to configuring health checks for Kubernetes Jobs in Flux CD to validate batch workload completion.
 
 ---
 
@@ -109,16 +109,19 @@ kind: Job
 metadata:
   name: db-migrate
   namespace: default
-  # Use annotations to force recreation on each deployment
   annotations:
-    # Unique identifier tied to the migration version
-    migration-version: "v2026030601"
+    # Allow Flux to recreate the Job when immutable fields change
+    kustomize.toolkit.fluxcd.io/force: enabled
 spec:
   # Do not retry failed migrations automatically
   backoffLimit: 0
   # Clean up after 1 hour
   ttlSecondsAfterFinished: 3600
   template:
+    metadata:
+      annotations:
+        # Unique identifier tied to the migration version
+        migration-version: "v2026030601"
     spec:
       containers:
         - name: migrate
@@ -154,7 +157,7 @@ spec:
   completions: 10
   # Run 3 pods in parallel
   parallelism: 3
-  # Retry each pod up to 2 times
+  # Allow up to 6 failed Pods before marking the Job failed
   backoffLimit: 6
   ttlSecondsAfterFinished: 7200
   template:
@@ -317,7 +320,7 @@ spec:
 
 ## Handling Job Idempotency
 
-Jobs are immutable once created. To re-run a Job, you need to delete and recreate it. Use these strategies with Flux:
+Job pod templates are immutable once created. To re-run a Job with a changed pod template, use a unique Job name or let Flux replace the Job. Use these strategies with Flux:
 
 ### Using Unique Job Names
 
@@ -331,37 +334,30 @@ resources:
 nameSuffix: "-v3"
 ```
 
-### Pre-Delete Hook Pattern
+### Force Replace Pattern
 
-Use a pre-apply script to delete the old Job:
+Use the Flux force annotation to recreate a Job when immutable fields, such as the pod template, change:
 
 ```yaml
-# migrations/cleanup-job.yaml
+# migrations/db-migrate-job.yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: cleanup-old-migration
+  name: db-migrate
   namespace: default
   annotations:
-    # Run before the main migration
-    kustomize.toolkit.fluxcd.io/prune: "disabled"
+    kustomize.toolkit.fluxcd.io/force: enabled
 spec:
-  backoffLimit: 1
-  ttlSecondsAfterFinished: 300
+  backoffLimit: 0
   template:
+    metadata:
+      annotations:
+        migration-version: "v2026030602"
     spec:
-      serviceAccountName: job-manager
       containers:
-        - name: cleanup
-          image: bitnami/kubectl:latest
-          command:
-            - /bin/sh
-            - -c
-            - |
-              # Delete the previous migration job if it exists
-              kubectl delete job db-migrate -n default \
-                --ignore-not-found=true
-              echo "Cleanup complete"
+        - name: migrate
+          image: ghcr.io/myorg/db-migrate:v1.2.4
+          command: ["./migrate", "up"]
       restartPolicy: Never
 ```
 
@@ -369,7 +365,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/job-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: job-failure-alert
@@ -385,7 +381,8 @@ spec:
     - kind: Kustomization
       name: data-migration
       namespace: flux-system
-  summary: "Job health check failed - migration may have failed"
+  eventMetadata:
+    summary: "Job health check failed - migration may have failed"
 ```
 
 ## Debugging Job Health Checks
@@ -410,7 +407,7 @@ kubectl get jobs -A -o custom-columns=\
 
 ### Set backoffLimit Appropriately
 
-For idempotent Jobs like migrations, set `backoffLimit: 0` to fail fast. For batch processing, allow retries.
+For migration Jobs where retries could be unsafe, set `backoffLimit: 0` to fail fast. For batch processing, allow retries.
 
 ### Use ttlSecondsAfterFinished
 
@@ -418,7 +415,7 @@ Always set `ttlSecondsAfterFinished` to clean up completed Jobs automatically. T
 
 ### Disable Pruning for Jobs
 
-Set `prune: false` on Kustomizations that manage Jobs, or use the annotation `kustomize.toolkit.fluxcd.io/prune: disabled` on individual Jobs. This prevents Flux from deleting Jobs that may still be needed for log inspection.
+If you need to keep Job objects after removing or renaming their manifests, set `prune: false` on Kustomizations that manage Jobs, or use the annotation `kustomize.toolkit.fluxcd.io/prune: disabled` on individual Jobs. This prevents Flux garbage collection from deleting Jobs that may still be needed for log inspection.
 
 ### Set Timeouts Based on Job Duration
 
