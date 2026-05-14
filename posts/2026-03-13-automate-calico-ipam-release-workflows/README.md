@@ -27,8 +27,10 @@ ALLOCATED_IPS=$(calicoctl ipam check --show-all-ips 2>/dev/null | \
   grep -oP '\d+\.\d+\.\d+\.\d+' | sort -u)
 
 # Get all pod IPs currently running
-RUNNING_IPS=$(kubectl get pods --all-namespaces -o wide --no-headers | \
-  awk '{print $7}' | grep -oP '\d+\.\d+\.\d+\.\d+' | sort -u)
+RUNNING_IPS=$(kubectl get pods --all-namespaces \
+  --field-selector=status.phase=Running \
+  -o jsonpath='{range .items[*].status.podIPs[*]}{.ip}{"\n"}{end}' | \
+  grep -oP '\d+\.\d+\.\d+\.\d+' | sort -u)
 
 # Find IPs in IPAM but not in running pods
 LEAKED_IPS=$(comm -23 \
@@ -42,12 +44,13 @@ fi
 
 echo "Potential leaked IPs:"
 echo "${LEAKED_IPS}" | while read ip; do
-  # Verify against endpoints too
-  IN_ENDPOINTS=$(kubectl get endpoints --all-namespaces | grep -c "${ip}" || echo 0)
-  if [ "${IN_ENDPOINTS}" -eq 0 ]; then
-    echo "  RELEASE CANDIDATE: ${ip}"
+  # Verify against EndpointSlices too
+  if kubectl get endpointslices.discovery.k8s.io --all-namespaces \
+    -o jsonpath='{range .items[*].endpoints[*].addresses[*]}{.}{"\n"}{end}' | \
+    grep -Fxq "${ip}"; then
+    echo "  IN USE (EndpointSlice): ${ip}"
   else
-    echo "  IN USE (endpoint): ${ip}"
+    echo "  RELEASE CANDIDATE: ${ip}"
   fi
 done
 ```
