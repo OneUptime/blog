@@ -64,6 +64,7 @@ metadata:
   namespace: tracing
 spec:
   interval: 30m
+  releaseName: tempo-distributed
   chart:
     spec:
       chart: tempo-distributed
@@ -155,10 +156,6 @@ spec:
         limits:
           cpu: 1000m
           memory: 1Gi
-      config:
-        search:
-          # Maximum duration for search queries
-          max_duration: 12h
 
     # Querier executes trace lookups
     querier:
@@ -214,18 +211,24 @@ spec:
       zipkin:
         enabled: true
 
-    # Global overrides for limits
-    global_overrides:
+    # Overrides for limits and metrics-generator processors
+    overrides:
       defaults:
+        metrics_generator:
+          processors:
+            - service-graphs
+            - span-metrics
         ingestion:
-          # Maximum bytes per trace
-          max_bytes_per_trace: 5000000
-          # Rate limit for spans per second
+          # Rate limit strategy and byte limits
           rate_strategy: local
           rate_limit_bytes: 15000000
           burst_size_bytes: 20000000
-        # Maximum number of search attributes per span
-        max_search_duration: 12h
+        read:
+          # Maximum duration for search queries
+          max_search_duration: 12h
+        global:
+          # Maximum bytes per trace
+          max_bytes_per_trace: 5000000
 
     # Gateway configuration
     gateway:
@@ -250,7 +253,7 @@ metadata:
   name: otel-config
   namespace: my-app
 data:
-  OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo-distributor.tracing.svc:4317"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo-distributed-distributor.tracing.svc:4317"
   OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
   OTEL_SERVICE_NAME: "my-application"
   OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=production,service.version=1.0.0"
@@ -286,7 +289,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: tempo-distributor
+                name: tempo-distributed-distributor
                 port:
                   number: 4317
 ```
@@ -325,7 +328,6 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  targetNamespace: tracing
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -360,7 +362,7 @@ kubectl exec -n tracing deploy/tempo-distributed-distributor -- wget -qO- http:/
 
 # Send a test trace using curl (OTLP HTTP)
 kubectl run test-trace --rm -it --image=curlimages/curl --restart=Never -- \
-  curl -X POST http://tempo-distributor.tracing.svc:4318/v1/traces \
+  curl -X POST http://tempo-distributed-distributor.tracing.svc:4318/v1/traces \
   -H "Content-Type: application/json" \
   -d '{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"test"}}]},"scopeSpans":[{"spans":[{"traceId":"01020304050607080910111213141516","spanId":"0102030405060708","name":"test-span","startTimeUnixNano":"1700000000000000000","endTimeUnixNano":"1700000001000000000"}]}]}]}'
 
