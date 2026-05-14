@@ -8,7 +8,7 @@ Description: Learn how to install and configure Flux CD optional components incl
 
 ---
 
-A default Flux CD installation includes four core controllers: source-controller, kustomize-controller, helm-controller, and notification-controller. However, Flux CD also offers optional components that extend its capabilities. This guide covers how to install and configure these optional components, including the image automation controllers, additional notification integrations, and the S3-compatible bucket source.
+A default Flux CD installation includes four core controllers: source-controller, kustomize-controller, helm-controller, and notification-controller. However, Flux CD also offers optional components that extend its capabilities. This guide covers how to install and configure these optional components, including the image automation controllers and additional notification integrations.
 
 ## Flux CD Component Architecture
 
@@ -54,6 +54,7 @@ flux bootstrap github \
   --branch=main \
   --path=clusters/my-cluster \
   --components-extra=image-reflector-controller,image-automation-controller \
+  --read-write-key \
   --personal
 ```
 
@@ -154,7 +155,13 @@ metadata:
   name: my-app
   namespace: default
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: my-app
@@ -171,7 +178,7 @@ Slack notification provider:
 
 ```yaml
 # slack-provider.yaml - Sends Flux alerts to a Slack channel
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -196,7 +203,7 @@ Create an Alert resource to define which events trigger notifications:
 
 ```yaml
 # alert.yaml - Defines which Flux events should trigger Slack notifications
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: on-call-alerts
@@ -276,7 +283,7 @@ If Flux is already installed and you want to add optional components, simply re-
 flux install --components-extra=image-reflector-controller,image-automation-controller
 ```
 
-This is safe to run on an existing installation. It will add the new controllers without disrupting the existing ones.
+This is safe to run on an existing installation. It will add the new controllers without disrupting the existing ones. If you are using `flux bootstrap` with GitHub deploy keys, also include `--read-write-key` so the image-automation-controller can push commits back to the repository.
 
 ## Summary
 
