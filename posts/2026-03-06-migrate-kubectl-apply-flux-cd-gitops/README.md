@@ -248,7 +248,6 @@ spec:
     name: flux-system
   path: ./apps/database
   prune: true
-  wait: true
   timeout: 5m
   # Ensure database is deployed before the app
   # The my-app Kustomization can depend on this
@@ -298,7 +297,7 @@ kubectl annotate deployment my-app -n default \
   kubectl.kubernetes.io/last-applied-configuration-
 ```
 
-For resources with field conflicts, use server-side apply:
+Flux uses server-side apply by default. If adoption fails because you are changing immutable fields, set `force: true` temporarily so Flux can replace the affected resources:
 
 ```yaml
 # clusters/production/apps/my-app.yaml
@@ -315,7 +314,7 @@ spec:
   path: ./apps/my-app
   prune: true
   wait: true
-  # Use server-side apply for clean adoption of existing resources
+  # Temporarily replace resources when immutable field changes block the apply
   force: true
 ```
 
@@ -338,7 +337,13 @@ Expire-Date: 0
 EOF
 
 # Export the public key fingerprint
-gpg --list-keys flux@example.com
+gpg --list-secret-keys flux@example.com
+
+# Create the Kubernetes Secret Flux uses for decryption
+gpg --export-secret-keys --armor YOUR_GPG_KEY_FINGERPRINT |
+  kubectl create secret generic sops-gpg \
+    --namespace=flux-system \
+    --from-file=sops.asc=/dev/stdin
 ```
 
 ```yaml
@@ -346,6 +351,7 @@ gpg --list-keys flux@example.com
 # SOPS configuration file at the root of your repository
 creation_rules:
   - path_regex: .*\.encrypted\.yaml$
+    encrypted_regex: ^(data|stringData)$
     pgp: YOUR_GPG_KEY_FINGERPRINT
 ```
 
@@ -364,8 +370,9 @@ stringData:
 ```
 
 ```bash
-# Encrypt the secret before committing
-sops --encrypt --in-place apps/my-app/secret.encrypted.yaml
+# Encrypt the secret data before committing
+sops --encrypt --encrypted-regex '^(data|stringData)$' \
+  --in-place apps/my-app/secret.encrypted.yaml
 
 # Configure Flux decryption
 flux create kustomization my-app \
@@ -397,6 +404,8 @@ on:
   push:
     branches: [main]
     paths: ["apps/**"]
+permissions:
+  contents: write
 jobs:
   update-image:
     runs-on: ubuntu-latest
@@ -428,8 +437,7 @@ flux get sources git -A
 flux get kustomizations -A
 
 # Verify specific resources are managed by Flux
-kubectl get deployment my-app -n default \
-  -o jsonpath='{.metadata.labels.kustomize\.toolkit\.fluxcd\.io/name}'
+flux trace -n default deployment my-app
 
 # Force a reconciliation to test
 flux reconcile kustomization my-app -n flux-system --with-source
