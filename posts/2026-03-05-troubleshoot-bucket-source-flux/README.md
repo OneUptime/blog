@@ -61,7 +61,7 @@ This indicates an authentication failure. The credentials are either incorrect, 
 
 ```bash
 # Verify the secret exists and has the expected keys
-kubectl get secret bucket-creds -n flux-system -o jsonpath='{.data}' | jq -r 'keys'
+kubectl get secret bucket-creds -n flux-system -o json | jq -r '.data | keys'
 
 # Decode and verify the access key (be careful with secret values)
 kubectl get secret bucket-creds -n flux-system \
@@ -170,7 +170,7 @@ The storage endpoint uses a TLS certificate that the source-controller does not 
 kubectl get bucket my-app -n flux-system -o jsonpath='{.spec.certSecretRef}'
 
 # If configured, verify the secret exists and contains a valid certificate
-kubectl get secret registry-ca -n flux-system -o jsonpath='{.data.ca\.crt}' | \
+kubectl get secret bucket-ca -n flux-system -o jsonpath='{.data.ca\.crt}' | \
   base64 -d | openssl x509 -text -noout
 ```
 
