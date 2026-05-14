@@ -110,7 +110,7 @@ metadata:
 spec:
   type: oci                    # Required for OCI registries
   provider: aws                # Enables automatic ECR token refresh via IRSA
-  interval: 5m
+  interval: 5m                 # Ignored for OCI HelmRepository, but accepted by the API
   url: oci://123456789012.dkr.ecr.us-east-1.amazonaws.com/helm-charts
 ```
 
@@ -121,7 +121,7 @@ Apply the resource.
 kubectl apply -f helmrepository-ecr.yaml
 ```
 
-The `provider: aws` field tells Flux to use the AWS SDK to obtain short-lived ECR authentication tokens automatically. This eliminates the need to manage static credentials or rotate tokens manually.
+The `provider: aws` field tells Flux to use the AWS SDK to obtain short-lived ECR authentication tokens automatically. This eliminates the need to manage static credentials or rotate tokens manually. For OCI Helm repositories, the HelmRepository object is a static data container; chart polling is controlled by the HelmChart that Flux creates from the HelmRelease.
 
 ## Step 4: Create a HelmRelease
 
@@ -161,17 +161,21 @@ kubectl apply -f helmrelease-my-app.yaml
 
 ## Step 5: Verify the Configuration
 
-Check that both the HelmRepository and HelmRelease are reconciling successfully.
+Check that the HelmRepository exists and that the generated HelmChart and HelmRelease are reconciling successfully.
 
 ```bash
-# Check the HelmRepository status
-flux get sources helm --all-namespaces
+# Confirm the OCI HelmRepository exists
+kubectl get helmrepository my-ecr-charts -n flux-system
+
+# Check the generated HelmChart artifact
+flux get sources chart --all-namespaces
 
 # Check the HelmRelease status
 flux get helmreleases --all-namespaces
 
 # View detailed events for troubleshooting
-kubectl events -n flux-system --for helmrepository/my-ecr-charts
+kubectl events -n flux-system --for helmchart/default-my-app
+kubectl events -n default --for helmrelease/my-app
 ```
 
 ## Architecture Overview
@@ -211,7 +215,7 @@ metadata:
   namespace: flux-system
 spec:
   type: oci
-  interval: 5m
+  interval: 5m                 # Ignored for OCI HelmRepository, but accepted by the API
   url: oci://123456789012.dkr.ecr.us-east-1.amazonaws.com/helm-charts
   secretRef:
     name: ecr-credentials    # Static credentials - must be rotated before expiry
