@@ -12,7 +12,7 @@ Description: Configure Cilium's cluster-wide BGP settings using CiliumBGPCluster
 
 Cilium v1.16 introduced `CiliumBGPClusterConfig`, a cluster-scoped resource that provides a more scalable and modular approach to BGP configuration compared to the original `CiliumBGPPeeringPolicy`. Instead of embedding peer configuration directly in the peering policy, the new model separates cluster topology (which nodes peer with which routers) from peer parameters (timers, authentication, address families), enabling reuse across hundreds of nodes.
 
-The `CiliumBGPClusterConfig` resource defines BGP instances at the cluster level and references `CiliumBGPNodeConfig` (auto-generated per node) and `CiliumBGPPeerConfig` objects. This separation follows the same principle as Kubernetes Ingress controllers - the cluster admin defines the policy, and the operator handles instance-level details. For large clusters with many nodes and peers, this dramatically reduces configuration duplication.
+The `CiliumBGPClusterConfig` resource defines BGP instances at the cluster level and references `CiliumBGPPeerConfig` objects. The Cilium operator then creates `CiliumBGPNodeConfig` resources for matching nodes. This separation follows the same principle as Kubernetes Ingress controllers - the cluster admin defines the policy, and the operator handles instance-level details. For large clusters with many nodes and peers, this dramatically reduces configuration duplication.
 
 This guide walks through a complete BGP cluster configuration using the newer API, from defining the cluster config to validating per-node BGP instance state.
 
@@ -28,7 +28,7 @@ This guide walks through a complete BGP cluster configuration using the newer AP
 Define reusable peer parameters:
 
 ```yaml
-apiVersion: cilium.io/v2alpha1
+apiVersion: cilium.io/v2
 kind: CiliumBGPPeerConfig
 metadata:
   name: standard-peer
@@ -55,7 +55,7 @@ spec:
 Define what to advertise:
 
 ```yaml
-apiVersion: cilium.io/v2alpha1
+apiVersion: cilium.io/v2
 kind: CiliumBGPAdvertisement
 metadata:
   name: bgp-advertisements
@@ -76,7 +76,7 @@ spec:
 ## Step 3: Create CiliumBGPClusterConfig
 
 ```yaml
-apiVersion: cilium.io/v2alpha1
+apiVersion: cilium.io/v2
 kind: CiliumBGPClusterConfig
 metadata:
   name: cilium-bgp-cluster
@@ -126,7 +126,7 @@ cilium bgp peers
 flowchart TD
     A[CiliumBGPClusterConfig] -->|nodeSelector| B[Matched Nodes]
     A -->|peerConfigRef| C[CiliumBGPPeerConfig]
-    A -->|advertisementRef| D[CiliumBGPAdvertisement]
+    C -->|advertisements selector| D[CiliumBGPAdvertisement]
     B --> E[CiliumBGPNodeConfig\nauto-generated per node]
     E --> F[GoBGP Instance]
     F -->|eBGP Session| G[Spine Router]
