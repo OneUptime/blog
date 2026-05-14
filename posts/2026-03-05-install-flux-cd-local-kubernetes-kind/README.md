@@ -90,7 +90,7 @@ Before installing Flux CD, run the pre-flight checks to verify that your cluster
 flux check --pre
 
 # Expected output should show all checks passed:
-# - kubernetes version >= 1.26.0
+# - kubernetes version is supported by the Flux release you installed
 # - prerequisites checks passed
 ```
 
@@ -98,7 +98,7 @@ If any checks fail, make sure your Kind cluster is running a supported Kubernete
 
 ```bash
 # Create a Kind cluster with a specific Kubernetes version
-kind create cluster --name flux-demo --image kindest/node:v1.30.0
+kind create cluster --name flux-demo --image kindest/node:v1.35.0
 ```
 
 ## Step 4: Export Your GitHub Token
@@ -161,6 +161,26 @@ You should see the following controllers running in the `flux-system` namespace:
 ## Step 7: Deploy a Sample Application
 
 Test your Flux CD installation by creating a simple deployment manifest in your Git repository.
+
+```yaml
+# clusters/kind-flux-demo/kustomization.yaml
+# Include the Flux system manifests and the sample app
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./flux-system
+  - ./podinfo
+```
+
+```yaml
+# clusters/kind-flux-demo/podinfo/kustomization.yaml
+# Include all manifests for the sample app
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - deployment.yaml
+```
 
 ```yaml
 # clusters/kind-flux-demo/podinfo/namespace.yaml
