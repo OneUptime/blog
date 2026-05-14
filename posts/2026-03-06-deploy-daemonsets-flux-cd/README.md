@@ -51,7 +51,6 @@ spec:
     name: flux-system
   path: ./infrastructure/daemonsets
   prune: true
-  wait: true
   timeout: 10m
   # DaemonSets can take time to roll out across all nodes
   healthChecks:
@@ -214,8 +213,8 @@ data:
         Name              tail
         Tag               kube.*
         Path              /var/log/containers/*.log
-        Parser            docker
-        DB                /var/log/flb_kube.db
+        Parser            cri
+        DB                /fluent-bit/tail/flb_kube.db
         Mem_Buf_Limit     5MB
         Skip_Long_Lines   On
         Refresh_Interval  10
@@ -242,11 +241,11 @@ data:
 
   parsers.conf: |
     [PARSER]
-        Name        docker
-        Format      json
+        Name        cri
+        Format      regex
+        Regex       ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<message>.*)$
         Time_Key    time
-        Time_Format %Y-%m-%dT%H:%M:%S.%L
-        Time_Keep   On
+        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -289,18 +288,16 @@ spec:
             - name: varlog
               mountPath: /var/log
               readOnly: true
-            - name: containers
-              mountPath: /var/lib/docker/containers
-              readOnly: true
+            - name: positions
+              mountPath: /fluent-bit/tail
             - name: config
               mountPath: /fluent-bit/etc/
       volumes:
         - name: varlog
           hostPath:
             path: /var/log
-        - name: containers
-          hostPath:
-            path: /var/lib/docker/containers
+        - name: positions
+          emptyDir: {}
         - name: config
           configMap:
             name: fluent-bit-config
