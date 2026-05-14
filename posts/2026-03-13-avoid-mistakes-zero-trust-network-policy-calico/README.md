@@ -12,7 +12,7 @@ Description: Avoid Mistakes zero trust network policies in Calico to enforce the
 
 Zero Trust Network Policy in Calico implements the principle of never trust, always verify at the Kubernetes network layer. Every connection is evaluated against explicit policy rules, and nothing is permitted by default. This eliminates implicit trust that allows compromised workloads to move laterally through the cluster.
 
-Calico's `projectcalico.org/v3` GlobalNetworkPolicy and NetworkPolicy resources provide the building blocks for zero trust: default deny at the cluster level, explicit allow rules for each required communication path, and comprehensive logging of every traffic decision.
+Calico's `projectcalico.org/v3` GlobalNetworkPolicy and NetworkPolicy resources provide the building blocks for zero trust: default deny at the cluster level, explicit allow rules for each required communication path, and optional log rules to observe selected traffic before or after enforcement.
 
 This guide covers avoid mistakes zero trust network policies in Calico, including the full policy stack from global defaults to workload-specific microsegmentation.
 
@@ -89,15 +89,15 @@ spec:
 
 ```bash
 # Verify default deny is active
-kubectl exec -n production test-pod -- curl -s --max-time 5 http://random-ip:8080
-echo "Should timeout (default deny): $?"
+kubectl exec -n production test-pod -- curl -s --max-time 5 http://disallowed-service:8080
+echo "Should timeout when no allow rule exists: $?"
 
 # Verify explicit allows work
 kubectl exec -n production frontend-pod -- curl -s --max-time 5 http://backend-api:8080
 echo "Should succeed (explicit allow): $?"
 
 # Verify lateral movement is blocked
-kubectl exec -n production frontend-pod -- curl -s --max-time 5 http://database:5432
+kubectl exec -n production frontend-pod -- nc -zvw5 database 5432
 echo "Should timeout (no frontend->DB allow): $?"
 ```
 
