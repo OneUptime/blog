@@ -141,7 +141,7 @@ spec:
   url: https://charts.jetstack.io
 ```
 
-Tenants reference shared repositories by specifying the namespace.
+Tenants can reference shared repositories by specifying the namespace if cross-namespace references are enabled in the Flux controllers.
 
 ```yaml
 # In the tenant's repository
