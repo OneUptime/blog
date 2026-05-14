@@ -14,9 +14,9 @@ Flux CD and ArgoCD are the two leading GitOps tools for Kubernetes. Both are CNC
 
 Before comparing features, it helps to understand how each tool is built.
 
-Flux CD follows a composable, controller-based architecture. Each component (source-controller, kustomize-controller, helm-controller, notification-controller, image-automation-controller) runs independently. You can install only what you need.
+Flux CD follows a composable, controller-based architecture. Its components (source-controller, kustomize-controller, helm-controller, notification-controller, image-reflector-controller, image-automation-controller) run as separate controllers. You can install only what you need.
 
-ArgoCD follows a monolithic application-server architecture. It provides a unified API server, a repo server, and a UI - all tightly coupled.
+ArgoCD follows a centralized control-plane architecture. It provides an API server, a repo server, an application controller, and a UI that work together around the Argo CD Application model.
 
 ```mermaid
 graph TD
@@ -76,7 +76,7 @@ spec:
       remediateLastFailure: true
 ```
 
-ArgoCD supports Helm too, but it renders Helm templates and applies the output as plain manifests. This means you lose Helm lifecycle hooks and native Helm rollback capabilities.
+ArgoCD supports Helm too, but it renders Helm templates and applies the output as Kubernetes manifests. Argo CD maps many Helm hooks to Argo CD hooks, but the application lifecycle is handled by Argo CD rather than Helm, so you do not get native Helm release rollback behavior.
 
 ## Choose Flux CD When You Want a CLI-First, No-UI Approach
 
@@ -243,7 +243,7 @@ spec:
 
 ## Choose Flux CD When Security Is a Priority
 
-Flux CD has a minimal attack surface. It runs inside the cluster with no externally exposed API server or UI. There are no stored credentials for cluster access - Flux uses in-cluster service accounts.
+Flux CD has a minimal attack surface. It runs inside the cluster with no built-in externally exposed API server or UI. In the default in-cluster model, Flux uses Kubernetes service accounts for reconciliation instead of a central store of credentials for multiple clusters.
 
 ```yaml
 # Restrict Flux's permissions using a service account
@@ -261,7 +261,7 @@ spec:
   prune: true
   # Run reconciliation as a specific service account
   serviceAccountName: team-alpha-reconciler
-  # Limit which namespaces Flux can manage
+  # Apply namespace-scoped resources into this namespace
   targetNamespace: team-alpha
 ```
 
@@ -269,14 +269,14 @@ spec:
 
 | Criteria | Choose Flux CD | Choose ArgoCD |
 |---|---|---|
-| Helm lifecycle support | Yes | No |
+| Helm lifecycle support | Native HelmRelease lifecycle | Renders charts; lifecycle handled by Argo CD |
 | Web UI required | No | Yes |
 | Image automation | Built-in | External |
 | Multi-cluster scale | Decentralized | Centralized |
-| Kustomize native | Yes | Partial |
-| Security posture | Minimal surface | API server exposed |
+| Kustomize native | Yes | Yes |
+| Security posture | Minimal built-in surface | API server and UI available |
 | Team prefers CLI | Yes | Prefers UI |
-| Composable architecture | Yes | Monolithic |
+| Composable architecture | Yes | Centralized control plane |
 
 ## Getting Started with Your Decision
 
