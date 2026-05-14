@@ -14,7 +14,7 @@ Flux CD supports webhook receivers for GitLab, enabling push-based reconciliatio
 
 - A Kubernetes cluster with Flux CD installed, including the notification controller
 - A GitLab repository configured as a Flux GitRepository source
-- Admin or maintainer access to the GitLab project for webhook configuration
+- Maintainer or Owner access to the GitLab project for webhook configuration
 - An ingress controller or load balancer to expose the receiver endpoint
 
 ## Step 1: Create the Webhook Secret
@@ -120,11 +120,12 @@ Set up the webhook in your GitLab project.
 
 1. Navigate to your GitLab project
 2. Go to Settings > Webhooks
-3. Set the **URL** to `https://flux-webhook.example.com/<webhook-path>` (use the path from Step 3)
-4. Set the **Secret token** to the token value generated in Step 1
-5. Under **Trigger**, select **Push events** and optionally **Tag push events**
-6. Check **Enable SSL verification** if using a valid TLS certificate
-7. Click **Add webhook**
+3. Select **Add new webhook**
+4. Set the **URL** to `https://flux-webhook.example.com/<webhook-path>` (use the path from Step 3)
+5. Set the **Secret token** to the token value generated in Step 1
+6. Under **Trigger**, select **Push events** and optionally **Tag push events**
+7. Check **Enable SSL verification** if using a valid TLS certificate
+8. Click **Add webhook**
 
 ## Step 6: Configure for Multiple Resources
 
