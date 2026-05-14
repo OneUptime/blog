@@ -71,55 +71,69 @@ spec:
   interval: 30m
   chart:
     spec:
-      chart: kong
-      version: "2.38.x"
+      chart: ingress
+      version: "0.23.x"
       sourceRef:
         kind: HelmRepository
         name: kong
         namespace: flux-system
       interval: 12h
   values:
-    # Enable the ingress controller
-    ingressController:
-      enabled: true
-      # Install custom resource definitions
-      installCRDs: false
-
-    # Proxy service configuration
-    proxy:
-      enabled: true
-      type: LoadBalancer
-      annotations:
-        # Add cloud provider annotations as needed
-        service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-      http:
+    controller:
+      ingressController:
         enabled: true
-        containerPort: 8000
-        servicePort: 80
-      tls:
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 100m
+            memory: 256Mi
+
+    gateway:
+      # Proxy service configuration
+      proxy:
         enabled: true
-        containerPort: 8443
-        servicePort: 443
+        type: LoadBalancer
+        annotations:
+          # Add cloud provider annotations as needed
+          service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+        http:
+          enabled: true
+          containerPort: 8000
+          servicePort: 80
+        tls:
+          enabled: true
+          containerPort: 8443
+          servicePort: 443
 
-    # Admin API configuration
-    admin:
-      enabled: false
+      # Admin API configuration for the controller; keep it internal.
+      admin:
+        enabled: true
+        type: ClusterIP
+        clusterIP: None
 
-    # Resource limits
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
+      # Resource limits
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
 
-    # Enable autoscaling
-    autoscaling:
-      enabled: true
-      minReplicas: 2
-      maxReplicas: 5
-      targetCPUUtilizationPercentage: 75
+      # Enable autoscaling
+      autoscaling:
+        enabled: true
+        minReplicas: 2
+        maxReplicas: 5
+        metrics:
+          - type: Resource
+            resource:
+              name: cpu
+              target:
+                type: Utilization
+                averageUtilization: 75
 ```
 
 ## Configuring an Ingress Resource
@@ -134,12 +148,11 @@ metadata:
   name: my-app-ingress
   namespace: default
   annotations:
-    # Specify Kong as the ingress class
-    kubernetes.io/ingress.class: kong
     # Enable HTTPS redirect
     konghq.com/protocols: "https"
     konghq.com/https-redirect-status-code: "302"
 spec:
+  ingressClassName: kong
   rules:
     - host: app.example.com
       http:
@@ -220,10 +233,10 @@ metadata:
   name: my-app-ingress
   namespace: default
   annotations:
-    kubernetes.io/ingress.class: kong
     # Apply multiple plugins (comma-separated)
     konghq.com/plugins: rate-limiting,cors-plugin
 spec:
+  ingressClassName: kong
   rules:
     - host: app.example.com
       http:
@@ -257,9 +270,9 @@ spec:
   path: ./clusters/my-cluster/kong
   prune: true
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: kong-kong
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: kong
       namespace: kong
   timeout: 5m
 ```
@@ -295,7 +308,7 @@ spec:
   chart:
     spec:
       # Update to the new version
-      version: "2.39.x"
+      version: "0.24.x"
 ```
 
 Commit and push the change. Flux will handle the upgrade automatically.
@@ -312,7 +325,7 @@ kubectl logs -n kong -l app.kubernetes.io/component=controller
 kubectl logs -n kong -l app.kubernetes.io/component=app
 
 # Check Kong's internal configuration
-kubectl exec -n kong deploy/kong-kong -- kong config dump
+kubectl exec -n kong deploy/kong-gateway -- kong config dump
 
 # Verify the IngressClass is available
 kubectl get ingressclass
