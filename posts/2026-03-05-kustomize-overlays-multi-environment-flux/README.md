@@ -169,8 +169,10 @@ resources:
   - ../../base
 
 # Identify this as the dev environment
-commonLabels:
-  environment: dev
+labels:
+  - pairs:
+      environment: dev
+    includeSelectors: true
 
 # Override replica count
 replicas:
@@ -185,9 +187,7 @@ images:
 # Apply configuration patches
 patches:
   - path: config-patch.yaml
-
-# Remove the HPA in dev (not needed with 1 replica)
-patches:
+  # Remove the HPA in dev (not needed with 1 replica)
   - target:
       kind: HorizontalPodAutoscaler
       name: webapp
@@ -224,8 +224,10 @@ kind: Kustomization
 resources:
   - ../../base
 
-commonLabels:
-  environment: staging
+labels:
+  - pairs:
+      environment: staging
+    includeSelectors: true
 
 replicas:
   - name: webapp
@@ -274,8 +276,10 @@ resources:
   # Add production-only resources
   - pdb.yaml
 
-commonLabels:
-  environment: production
+labels:
+  - pairs:
+      environment: production
+    includeSelectors: true
 
 replicas:
   - name: webapp
@@ -393,7 +397,7 @@ spec:
     kind: GitRepository
     name: flux-system
   targetNamespace: production
-  # Require manual approval for production changes
+  # Check production deployment health
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
