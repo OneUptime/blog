@@ -16,6 +16,7 @@ MetalLB provides a network load balancer implementation for bare-metal Kubernete
 - A GitOps repository connected to Flux
 - A pool of IP addresses available for MetalLB to assign
 - If using kube-proxy in IPVS mode, strict ARP must be enabled
+- If Pod Security Admission is enforced, the MetalLB namespace must allow privileged pods
 
 ## Preparing the Cluster
 
@@ -55,9 +56,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: metallb
-  namespace: metallb-system
+  namespace: flux-system
 spec:
   interval: 15m
+  targetNamespace: metallb-system
   chart:
     spec:
       chart: metallb
@@ -69,13 +71,11 @@ spec:
       interval: 15m
   install:
     createNamespace: true
-    atomic: true
     timeout: 10m
     remediation:
       retries: 3
     crds: CreateReplace
   upgrade:
-    atomic: true
     timeout: 10m
     cleanupOnFail: true
     remediation:
@@ -109,6 +109,8 @@ spec:
 
     # Prometheus monitoring
     prometheus:
+      namespace: monitoring
+      serviceAccount: prometheus-k8s
       serviceMonitor:
         enabled: true
       prometheusRule:
@@ -185,7 +187,7 @@ metadata:
   namespace: apps
   annotations:
     # Request a specific IP (optional)
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.200"
+    metallb.io/loadBalancerIPs: "192.168.1.200"
 spec:
   type: LoadBalancer
   ports:
@@ -199,7 +201,7 @@ spec:
 
 ```bash
 # Check HelmRelease status
-flux get helmrelease metallb -n metallb-system
+flux get helmrelease metallb -n flux-system
 
 # Verify MetalLB pods are running
 kubectl get pods -n metallb-system
