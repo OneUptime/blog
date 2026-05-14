@@ -47,6 +47,7 @@ infrastructure/
     helmrepository.yaml
     tempo-helmrelease.yaml
     otel-collector-helmrelease.yaml
+    otel-daemonset-helmrelease.yaml
     grafana-datasource.yaml
 ```
 
@@ -150,22 +151,25 @@ spec:
       # Retention settings
       retention: 336h  # 14 days
       # Global rate limits
-      global_overrides:
-        max_traces_per_user: 0  # unlimited
-        max_bytes_per_trace: 5000000  # 5MB per trace
+      overrides:
+        defaults:
+          ingestion:
+            max_traces_per_user: 0  # unlimited
+          global:
+            max_bytes_per_trace: 5000000  # 5MB per trace
+      # Resource allocation
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
     # Persistence for WAL
     persistence:
       enabled: true
       size: 10Gi
       storageClassName: standard
-    # Resource allocation
-    resources:
-      requests:
-        cpu: 200m
-        memory: 512Mi
-      limits:
-        cpu: "1"
-        memory: 1Gi
     # Service account for S3 access
     serviceAccount:
       annotations:
@@ -200,6 +204,31 @@ spec:
     # Deploy as a Deployment (gateway mode)
     mode: deployment
     replicaCount: 2
+    image:
+      repository: otel/opentelemetry-collector-contrib
+    command:
+      name: otelcol-contrib
+    clusterRole:
+      create: true
+      rules:
+        - apiGroups:
+            - ""
+          resources:
+            - pods
+            - namespaces
+          verbs:
+            - get
+            - watch
+            - list
+        - apiGroups:
+            - apps
+            - extensions
+          resources:
+            - replicasets
+          verbs:
+            - get
+            - watch
+            - list
     # Resource allocation
     resources:
       requests:
@@ -264,6 +293,17 @@ spec:
               type: probabilistic
               probabilistic:
                 sampling_percentage: 10
+      # Connectors: generate metrics from trace data
+      connectors:
+        spanmetrics:
+          namespace: traces
+          dimensions:
+            - name: service.name
+            - name: http.method
+            - name: http.status_code
+          histogram:
+            explicit:
+              buckets: [100ms, 250ms, 500ms, 1s, 2s, 5s]
       # Exporters: where the collector sends data
       exporters:
         # Send traces to Tempo
@@ -289,10 +329,12 @@ spec:
               - batch
             exporters:
               - otlp/tempo
+              - spanmetrics
           # Generate metrics from traces (RED metrics)
           metrics:
             receivers:
               - otlp
+              - spanmetrics
             processors:
               - memory_limiter
               - batch
@@ -334,6 +376,10 @@ spec:
   values:
     # Deploy as DaemonSet on every node
     mode: daemonset
+    image:
+      repository: otel/opentelemetry-collector-contrib
+    command:
+      name: otelcol-contrib
     resources:
       requests:
         cpu: 100m
@@ -393,7 +439,7 @@ data:
         type: tempo
         access: proxy
         uid: tempo
-        url: http://tempo.tracing.svc.cluster.local:3100
+        url: http://tempo.tracing.svc.cluster.local:3200
         jsonData:
           # Link to Loki for logs correlation
           tracesToLogsV2:
@@ -466,7 +512,10 @@ flux get helmreleases -n tracing
 # Verify pods are running
 kubectl get pods -n tracing
 
-# Test sending a trace via OTLP HTTP
+# Forward the collector OTLP HTTP service locally
+kubectl port-forward -n tracing svc/otel-collector-opentelemetry-collector 4318:4318
+
+# Test sending a trace via OTLP HTTP from another terminal
 curl -X POST http://localhost:4318/v1/traces \
   -H "Content-Type: application/json" \
   -d '{
