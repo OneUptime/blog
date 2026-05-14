@@ -10,7 +10,7 @@ Description: A practical guide to managing Pod Disruption Budgets through Flux C
 
 ## Introduction
 
-Pod Disruption Budgets (PDBs) are critical Kubernetes resources that protect your applications during voluntary disruptions such as node drains, cluster upgrades, and rolling updates. By defining PDBs through Flux CD, you ensure that availability constraints are version-controlled and consistently applied across all environments.
+Pod Disruption Budgets (PDBs) are critical Kubernetes resources that protect your applications during voluntary disruptions such as node drains and cluster upgrades. By defining PDBs through Flux CD, you ensure that availability constraints are version-controlled and consistently applied across all environments.
 
 This guide walks you through configuring PDBs with Flux CD, covering common patterns, advanced strategies, and multi-environment setups.
 
@@ -246,7 +246,7 @@ Configure Flux to alert you when PDB-related issues occur:
 
 ```yaml
 # clusters/my-cluster/alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: pdb-alerts
@@ -261,7 +261,7 @@ spec:
       name: pod-disruption-budgets
       namespace: flux-system
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-provider
@@ -285,7 +285,7 @@ kubectl get pdb --all-namespaces
 kubectl describe pdb web-app-pdb -n production
 
 # Check Flux reconciliation status
-flux get kustomizations pod-disruption-budgets
+flux get kustomizations --namespace flux-system
 ```
 
 ## Common Pitfalls and Best Practices
@@ -308,13 +308,13 @@ spec:
 ```
 
 ```yaml
-# GOOD: Allow at least one pod to be disrupted
+# GOOD: Allow up to one healthy pod to be disrupted
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: balanced-pdb
 spec:
-  maxUnavailable: 1  # Always allows one disruption
+  maxUnavailable: 1
   selector:
     matchLabels:
       app: my-app
@@ -322,7 +322,7 @@ spec:
 
 ### Coordinate PDBs with Deployment Strategy
 
-Ensure your PDB works with your deployment rolling update strategy:
+PDBs do not limit Deployment rolling updates, but pods that are unavailable during a rollout count against the disruption budget for other voluntary evictions. Ensure your rollout strategy leaves enough healthy pods for your PDB:
 
 ```yaml
 # infrastructure/apps/web-app.yaml
@@ -335,7 +335,7 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      # These values must align with the PDB
+      # These values should leave enough healthy pods for the PDB target
       maxSurge: 1
       maxUnavailable: 1
   selector:
