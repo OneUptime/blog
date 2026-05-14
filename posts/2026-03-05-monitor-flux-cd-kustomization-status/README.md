@@ -12,11 +12,10 @@ Flux CD Kustomizations are the primary mechanism for applying Kubernetes manifes
 
 ## Key Metrics
 
-The kustomize-controller exposes the same Flux toolkit metrics as other controllers:
+The kustomize-controller exposes reconciliation duration metrics, while the Flux monitoring setup uses kube-state-metrics to expose resource state:
 
-- `gotk_reconcile_condition{kind="Kustomization"}` -- Current condition (Ready, Stalled).
+- `gotk_resource_info{customresource_kind="Kustomization"}` -- Current resource state, including readiness and suspension labels.
 - `gotk_reconcile_duration_seconds{kind="Kustomization"}` -- How long reconciliations take.
-- `gotk_suspend_status{kind="Kustomization"}` -- Whether the Kustomization is suspended.
 
 ## Checking Kustomization Status with CLI
 
@@ -38,26 +37,26 @@ View events for a Kustomization:
 flux events --for Kustomization/infrastructure -n flux-system
 ```
 
-Trace the dependency chain of a Kustomization:
+Trace the source and latest reconciliation status for a Kustomization:
 
 ```bash
 flux trace kustomization infrastructure -n flux-system
 ```
 
-The `flux trace` command is particularly useful because it shows the full dependency chain from source to Kustomization, helping you identify whether a failure originates from the source or the Kustomization itself.
+The `flux trace` command is particularly useful because it shows how an object is managed by Flux, including source and reconciliation status, helping you identify whether a failure originates from the source or the Kustomization itself.
 
 ## PromQL Queries for Kustomization Health
 
 ### Count Kustomizations by Status
 
 ```promql
-sum by (status) (gotk_reconcile_condition{kind="Kustomization", type="Ready"})
+count by (ready) (gotk_resource_info{customresource_kind="Kustomization"})
 ```
 
 ### List Failing Kustomizations
 
 ```promql
-gotk_reconcile_condition{kind="Kustomization", type="Ready", status="False"} == 1
+gotk_resource_info{customresource_kind="Kustomization", ready="False"} == 1
 ```
 
 ### Average Reconciliation Duration
@@ -91,11 +90,11 @@ Create a Grafana dashboard with panels for Kustomization monitoring:
       "type": "piechart",
       "targets": [
         {
-          "expr": "count(gotk_reconcile_condition{kind=\"Kustomization\", type=\"Ready\", status=\"True\"} == 1)",
+          "expr": "count(gotk_resource_info{customresource_kind=\"Kustomization\", ready=\"True\"})",
           "legendFormat": "Ready"
         },
         {
-          "expr": "count(gotk_reconcile_condition{kind=\"Kustomization\", type=\"Ready\", status=\"False\"} == 1)",
+          "expr": "count(gotk_resource_info{customresource_kind=\"Kustomization\", ready=\"False\"})",
           "legendFormat": "Not Ready"
         }
       ]
@@ -115,7 +114,7 @@ Create a Grafana dashboard with panels for Kustomization monitoring:
       "type": "stat",
       "targets": [
         {
-          "expr": "sum(gotk_suspend_status{kind=\"Kustomization\"})",
+          "expr": "count(gotk_resource_info{customresource_kind=\"Kustomization\", suspended=\"true\"})",
           "legendFormat": "Suspended"
         }
       ]
@@ -140,35 +139,35 @@ spec:
       rules:
         - alert: FluxKustomizationNotReady
           expr: |
-            gotk_reconcile_condition{kind="Kustomization", type="Ready", status="False"} == 1
+            gotk_resource_info{customresource_kind="Kustomization", ready="False"} == 1
           for: 10m
           labels:
             severity: critical
           annotations:
             summary: "Kustomization {{ $labels.name }} is not ready"
             description: >
-              Kustomization {{ $labels.namespace }}/{{ $labels.name }}
+              Kustomization {{ $labels.exported_namespace }}/{{ $labels.name }}
               has been failing for more than 10 minutes. Check the
               kustomize-controller logs for details.
 
-        - alert: FluxKustomizationStalled
+        - alert: FluxKustomizationSuspended
           expr: |
-            gotk_reconcile_condition{kind="Kustomization", type="Stalled", status="True"} == 1
+            gotk_resource_info{customresource_kind="Kustomization", suspended="true"} == 1
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "Kustomization {{ $labels.name }} is stalled"
+            summary: "Kustomization {{ $labels.name }} is suspended"
             description: >
-              Kustomization {{ $labels.namespace }}/{{ $labels.name }}
-              is stalled and will not be retried automatically.
+              Kustomization {{ $labels.exported_namespace }}/{{ $labels.name }}
+              is suspended and will not reconcile until resumed.
 
         - alert: FluxKustomizationFailureRate
           expr: |
             (
-              sum(gotk_reconcile_condition{kind="Kustomization", type="Ready", status="False"})
+              sum(gotk_resource_info{customresource_kind="Kustomization", ready="False"})
               /
-              count(gotk_reconcile_condition{kind="Kustomization", type="Ready"})
+              count(gotk_resource_info{customresource_kind="Kustomization"})
             ) > 0.1
           for: 15m
           labels:
@@ -188,7 +187,7 @@ kubectl apply -f kustomization-alerts.yaml
 
 ## Monitoring Kustomization Dependencies
 
-Kustomizations can depend on each other via `spec.dependsOn`. When a dependency fails, downstream Kustomizations will not reconcile. Monitor the dependency chain:
+Kustomizations can depend on each other via `spec.dependsOn`. When a dependency fails, downstream Kustomizations will not reconcile. Trace the affected Kustomization and inspect the dependency status:
 
 ```bash
 flux trace kustomization apps -n flux-system
@@ -208,10 +207,10 @@ spec:
       rules:
         - record: flux:kustomization_not_ready:count
           expr: |
-            count(gotk_reconcile_condition{kind="Kustomization", type="Ready", status="False"} == 1)
+            count(gotk_resource_info{customresource_kind="Kustomization", ready="False"})
         - record: flux:kustomization_ready:count
           expr: |
-            count(gotk_reconcile_condition{kind="Kustomization", type="Ready", status="True"} == 1)
+            count(gotk_resource_info{customresource_kind="Kustomization", ready="True"})
 ```
 
 ## Investigating Kustomization Failures
@@ -244,4 +243,4 @@ Common causes of Kustomization failures include:
 
 ## Summary
 
-Monitoring Flux CD Kustomization status is critical for ensuring your GitOps pipeline delivers changes reliably. Use `gotk_reconcile_condition{kind="Kustomization"}` to track readiness, `gotk_reconcile_duration_seconds` for performance, and `gotk_suspend_status` for suspended resources. The `flux trace` command helps debug dependency chains, while `flux events` and `flux logs` provide detailed error information. Combine these signals with Prometheus alerts and Grafana dashboards for complete visibility across all your Kustomization resources.
+Monitoring Flux CD Kustomization status is critical for ensuring your GitOps pipeline delivers changes reliably. Use `gotk_resource_info{customresource_kind="Kustomization"}` to track readiness and suspended resources, and `gotk_reconcile_duration_seconds` for performance. The `flux trace` command helps debug source and reconciliation status, while `flux events` and `flux logs` provide detailed error information. Combine these signals with Prometheus alerts and Grafana dashboards for complete visibility across all your Kustomization resources.
