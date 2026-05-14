@@ -40,11 +40,11 @@ By default, `flux reconcile hr` only reconciles the HelmRelease itself. If you a
 flux reconcile hr my-app -n default --with-source
 ```
 
-This is equivalent to first reconciling the HelmRepository (or GitRepository) source and then reconciling the HelmRelease. It ensures Flux picks up any newly published chart versions.
+This reconciles the HelmRelease's referenced chart source before reconciling the HelmRelease. It ensures Flux picks up any newly published chart versions.
 
 ```mermaid
 graph LR
-    A[flux reconcile hr --with-source] --> B[Refresh HelmRepository]
+    A[flux reconcile hr --with-source] --> B[Refresh Chart Source]
     B --> C[Fetch Latest Chart]
     C --> D[Reconcile HelmRelease]
     D --> E[Install/Upgrade if Changed]
@@ -54,7 +54,7 @@ Without `--with-source`:
 
 ```mermaid
 graph LR
-    A[flux reconcile hr] --> B[Use Cached Chart]
+    A[flux reconcile hr] --> B[Use Current Chart Artifact]
     B --> C[Reconcile HelmRelease]
     C --> D[Install/Upgrade if Changed]
 ```
@@ -66,7 +66,9 @@ When you run `flux reconcile hr`, Flux annotates the HelmRelease with a reconcil
 ```bash
 # Under the hood, this is equivalent to:
 kubectl annotate helmrelease my-app -n default \
-  reconcile.fluxcd.io/requestedAt="$(date +%s)" --overwrite
+  --field-manager=flux-client-side-apply \
+  reconcile.fluxcd.io/requestedAt="$(date +%s)" \
+  --overwrite
 ```
 
 The Flux CLI is the preferred method, but knowing the annotation approach is useful for automation scripts.
@@ -85,6 +87,7 @@ git push
 
 # Force Flux to pick up the change now
 flux reconcile source git flux-system -n flux-system
+flux reconcile kustomization flux-system -n flux-system
 flux reconcile hr my-app -n default
 ```
 
@@ -129,7 +132,7 @@ If a HelmRelease appears stuck or is not reconciling properly, force reconciliat
 # Check current status
 flux get helmreleases -n default
 
-# Force reconciliation to clear any stuck state
+# Force reconciliation to retry the release
 flux reconcile hr my-app -n default
 
 # If still stuck, check the Helm Controller logs
@@ -210,10 +213,7 @@ echo "Triggering reconciliation for $HELMRELEASE..."
 flux reconcile hr "$HELMRELEASE" -n "$NAMESPACE" --with-source
 
 # Wait and check status
-sleep 5
-STATUS=$(flux get helmreleases -n "$NAMESPACE" --no-header | grep "$HELMRELEASE" | awk '{print $2}')
-
-if [ "$STATUS" = "True" ]; then
+if kubectl wait helmrelease/"$HELMRELEASE" -n "$NAMESPACE" --for=condition=ready --timeout=5m; then
   echo "Reconciliation successful"
 else
   echo "Reconciliation may still be in progress or failed"
@@ -229,6 +229,7 @@ For programmatic access (without the Flux CLI), use the reconciliation annotatio
 ```bash
 # Trigger reconciliation via annotation (no Flux CLI needed)
 kubectl annotate helmrelease my-app -n default \
+  --field-manager=flux-client-side-apply \
   reconcile.fluxcd.io/requestedAt="$(date +%s)" \
   --overwrite
 ```
