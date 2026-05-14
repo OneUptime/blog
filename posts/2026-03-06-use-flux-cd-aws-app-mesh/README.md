@@ -12,6 +12,8 @@ Description: Deploy and manage AWS App Mesh with Flux CD, including virtual serv
 
 AWS App Mesh is a service mesh that provides application-level networking, allowing your services to communicate with each other across multiple types of compute infrastructure. By managing App Mesh through Flux CD, you can version-control your mesh configuration and use Flagger for automated canary deployments.
 
+Note: AWS has announced that App Mesh support ends on September 30, 2026. Use this guide for existing App Mesh environments, and plan migrations before that date.
+
 This guide covers deploying the App Mesh controller via Flux, configuring virtual services, and setting up progressive delivery with Flagger.
 
 ## Prerequisites
@@ -123,7 +125,7 @@ spec:
   chart:
     spec:
       chart: appmesh-controller
-      version: "1.12.x"
+      version: "1.13.x"
       sourceRef:
         kind: HelmRepository
         name: eks-charts
@@ -161,6 +163,46 @@ spec:
         limits:
           cpu: 500m
           memory: 512Mi
+```
+
+```yaml
+# infrastructure/appmesh/prometheus.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: appmesh-prometheus
+  namespace: appmesh-system
+spec:
+  interval: 15m
+  chart:
+    spec:
+      chart: appmesh-prometheus
+      version: "1.0.x"
+      sourceRef:
+        kind: HelmRepository
+        name: eks-charts
+        namespace: flux-system
+```
+
+```yaml
+# infrastructure/appmesh-crds/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  # The App Mesh CRDs must exist before the controller and App Mesh resources reconcile.
+  - https://github.com/aws/eks-charts/stable/appmesh-controller/crds?ref=master
+```
+
+```yaml
+# infrastructure/appmesh/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - helm-repo.yaml
+  - controller.yaml
+  - prometheus.yaml
+  - mesh.yaml
 ```
 
 ## Step 3: Create the App Mesh
@@ -272,7 +314,7 @@ spec:
 
 ```yaml
 # apps/mesh-config/virtual-service.yaml
-# Virtual Service routes traffic to the virtual router
+# Virtual Services route traffic to their providers
 apiVersion: appmesh.k8s.aws/v1beta2
 kind: VirtualService
 metadata:
@@ -284,6 +326,18 @@ spec:
     virtualRouter:
       virtualRouterRef:
         name: backend-router
+---
+apiVersion: appmesh.k8s.aws/v1beta2
+kind: VirtualService
+metadata:
+  name: frontend-service
+  namespace: my-app
+spec:
+  awsName: frontend-service.my-app.svc.cluster.local
+  provider:
+    virtualNode:
+      virtualNodeRef:
+        name: frontend-service
 ```
 
 ```yaml
@@ -384,7 +438,7 @@ spec:
   chart:
     spec:
       chart: flagger
-      version: "1.37.x"
+      version: "1.43.x"
       sourceRef:
         kind: HelmRepository
         name: flagger
@@ -393,7 +447,7 @@ spec:
     # Configure Flagger for App Mesh
     meshProvider: appmesh:v1beta2
     # Metrics server for canary analysis
-    metricsServer: http://prometheus.amazon-cloudwatch:9090
+    metricsServer: http://appmesh-prometheus:9090
     resources:
       requests:
         cpu: 50m
@@ -401,6 +455,15 @@ spec:
       limits:
         cpu: 100m
         memory: 128Mi
+```
+
+```yaml
+# infrastructure/flagger/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - helm-repo.yaml
+  - flagger.yaml
 ```
 
 ## Step 8: Create a Canary Deployment
@@ -415,6 +478,8 @@ metadata:
   name: backend-service
   namespace: my-app
 spec:
+  # App Mesh API reference
+  provider: appmesh:v1beta2
   # Target deployment to canary
   targetRef:
     apiVersion: apps/v1
@@ -426,17 +491,14 @@ spec:
     port: 8080
     targetPort: 8080
     # App Mesh specific configuration
-    meshName: my-app-mesh
     backends:
-      - database-service.my-app
+      - database-service
   analysis:
     # Schedule canary analysis every minute
     interval: 1m
     # Maximum number of failed checks before rollback
     threshold: 5
-    # Number of successful checks to promote
-    iterations: 10
-    # Traffic weight step for each iteration
+    # Traffic weight step for each analysis interval
     stepWeight: 10
     # Maximum traffic percentage for canary
     maxWeight: 50
@@ -484,7 +546,7 @@ spec:
     spec:
       containers:
         - name: loadtester
-          image: ghcr.io/fluxcd/flagger-loadtester:0.31.0
+          image: ghcr.io/fluxcd/flagger-loadtester:0.37.0
           ports:
             - containerPort: 8080
           resources:
@@ -508,6 +570,15 @@ spec:
       targetPort: 8080
 ```
 
+```yaml
+# apps/canary/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - backend-canary.yaml
+  - loadtester.yaml
+```
+
 ## Step 10: Organize and Deploy via Flux
 
 ```yaml
@@ -528,10 +599,27 @@ resources:
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
+  name: appmesh-crds
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: fleet-infra
+  path: ./infrastructure/appmesh-crds
+  prune: true
+  wait: true
+  timeout: 5m
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
   name: appmesh-infrastructure
   namespace: flux-system
 spec:
   interval: 10m
+  dependsOn:
+    - name: appmesh-crds
   sourceRef:
     kind: GitRepository
     name: fleet-infra
@@ -553,6 +641,41 @@ spec:
     kind: GitRepository
     name: fleet-infra
   path: ./apps/mesh-config
+  prune: true
+  wait: true
+  timeout: 5m
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: flagger-infrastructure
+  namespace: flux-system
+spec:
+  interval: 10m
+  dependsOn:
+    - name: appmesh-infrastructure
+  sourceRef:
+    kind: GitRepository
+    name: fleet-infra
+  path: ./infrastructure/flagger
+  prune: true
+  wait: true
+  timeout: 5m
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: appmesh-canary
+  namespace: flux-system
+spec:
+  interval: 10m
+  dependsOn:
+    - name: appmesh-apps
+    - name: flagger-infrastructure
+  sourceRef:
+    kind: GitRepository
+    name: fleet-infra
+  path: ./apps/canary
   prune: true
   wait: true
   timeout: 5m
