@@ -24,7 +24,7 @@ oc get clusterversion -o jsonpath='{.items[0].status.conditions[?(@.type=="Progr
 # CORRECT - verify OCP is completely stable first
 # All of these should be clean before starting Calico upgrade:
 oc get clusterversion
-# Progressing=False, Available=True
+# Available=True, Progressing=False, Degraded=False
 
 oc get mcp
 # UPDATED=True, UPDATING=False on ALL MCPs
@@ -37,10 +37,11 @@ oc get mcp
 # Calico Enterprise has OCP-specific requirements beyond K8s support
 
 # CORRECT - always check:
-# https://docs.tigera.io/calico-enterprise/latest/getting-started/openshift/requirements
+# https://docs.tigera.io/calico-enterprise/latest/getting-started/compatibility
+# https://docs.tigera.io/calico-enterprise/latest/getting-started/install-on-clusters/openshift/requirements
 
-# Also verify your SCC API versions haven't changed
-oc get scc --show-api-group
+# Also verify the SCC API group served by the cluster
+oc api-resources --api-group=security.openshift.io | grep securitycontextconstraints
 ```
 
 ## Mistake 3: Not Capturing Pre-Upgrade SCC State
@@ -48,11 +49,13 @@ oc get scc --show-api-group
 ```bash
 # WRONG - no baseline of current SCC state
 # CORRECT - capture before every upgrade
-oc get scc -o yaml > "pre-upgrade-sccs-$(date +%Y%m%d).yaml"
+SCC_SNAPSHOT="pre-upgrade-sccs-$(date +%Y%m%d).yaml"
+oc get scc -o yaml > "$SCC_SNAPSHOT"
+oc get scc calico-node -o yaml > pre-upgrade-calico-node-scc.yaml
 
 # After upgrade, compare to detect any privilege changes
-diff <(oc get scc calico-node -o yaml) \
-     <(grep -A100 "name: calico-node" pre-upgrade-sccs-$(date +%Y%m%d).yaml)
+oc get scc calico-node -o yaml > post-upgrade-calico-node-scc.yaml
+diff -u pre-upgrade-calico-node-scc.yaml post-upgrade-calico-node-scc.yaml
 ```
 
 ## Common Mistakes Summary
