@@ -16,7 +16,7 @@ This guide covers practical patterns for deploying CronJobs with Flux CD, includ
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.26+)
+- A Kubernetes cluster (v1.27+)
 - Flux CD installed and bootstrapped
 - A Git repository connected to Flux
 
@@ -148,7 +148,7 @@ spec:
                     --recursive | \
                     awk '{print $4}' | \
                     while read file; do
-                      file_date=$(echo $file | grep -oP '\d{8}')
+                      file_date=$(echo $file | grep -Eo '[0-9]{8}')
                       if [ $(date -d "$file_date" +%s) -lt $(date -d "30 days ago" +%s) ]; then
                         aws s3 rm s3://${S3_BUCKET}/$file
                         echo "Deleted old backup: $file"
@@ -230,7 +230,7 @@ spec:
 
                   for INDEX in $INDICES; do
                     # Extract date from index name
-                    INDEX_DATE=$(echo $INDEX | grep -oP '\d{4}\.\d{2}\.\d{2}')
+                    INDEX_DATE=$(echo $INDEX | grep -Eo '[0-9]{4}\.[0-9]{2}\.[0-9]{2}')
                     if [ "$INDEX_DATE" \< "$CUTOFF_DATE" ]; then
                       echo "Deleting index: $INDEX"
                       curl -s -X DELETE \
@@ -435,7 +435,7 @@ patches:
       kind: CronJob
       name: health-checker
     patch: |
-      - op: replace
+      - op: add
         path: /spec/suspend
         value: true
 ```
@@ -473,16 +473,20 @@ spec:
       rules:
         - alert: CronJobFailed
           expr: |
-            kube_job_status_failed{job_name=~".*"} > 0
+            kube_job_status_failed > 0
+              * on(namespace, job_name) group_left(owner_name)
+                kube_job_owner{owner_kind="CronJob", owner_is_controller="true"}
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "CronJob {{ $labels.job_name }} has failed"
+            summary: "CronJob {{ $labels.owner_name }} has failed"
         - alert: CronJobNotScheduled
           # Alert if a CronJob has not run in the expected window
           expr: |
-            time() - kube_cronjob_status_last_schedule_time > 2 * kube_cronjob_spec_period
+            (time() > kube_cronjob_next_schedule_time + 600)
+              and on(namespace, cronjob)
+                kube_cronjob_spec_suspend == 0
           for: 10m
           labels:
             severity: critical
@@ -494,7 +498,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/notifications.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: cronjob-alerts
@@ -506,7 +510,8 @@ spec:
   eventSources:
     - kind: Kustomization
       name: cronjobs
-  summary: "CronJob deployment alert"
+  eventMetadata:
+    summary: "CronJob deployment alert"
 ```
 
 ## Summary
