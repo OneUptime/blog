@@ -37,6 +37,8 @@ clusters/
       vault-connection.yaml
       vault-auth.yaml
       static-secret.yaml
+      dynamic-secret.yaml
+      kustomization.yaml
 ```
 
 ## Step 1: Create the Namespace
@@ -88,7 +90,7 @@ spec:
   chart:
     spec:
       chart: vault-secrets-operator
-      version: "0.9.x"
+      version: "1.4.x"
       sourceRef:
         kind: HelmRepository
         name: hashicorp
@@ -106,17 +108,19 @@ spec:
     # Controller configuration
     controller:
       replicas: 2
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 500m
-          memory: 256Mi
+      manager:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
 
-    # Enable leader election for HA
-    controller.manager.leaderElection:
-      enabled: true
+      # Enable leader election for HA
+      controllerConfigMapYaml:
+        leaderElection:
+          leaderElect: true
 
     # Metrics configuration for monitoring
     telemetry:
@@ -138,7 +142,7 @@ metadata:
 spec:
   # The address of the Vault server
   address: "https://vault.example.com:8200"
-  # Path to the CA certificate for TLS verification
+  # Name of the Kubernetes secret containing the CA certificate as ca.crt
   caCertSecretRef: vault-ca-cert
   # Skip TLS verification (not recommended for production)
   skipTLSVerify: false
@@ -157,10 +161,13 @@ apiVersion: secrets.hashicorp.com/v1beta1
 kind: VaultAuth
 metadata:
   name: vault-auth
-  namespace: vault-secrets-operator
+  namespace: default
 spec:
   # Reference to the VaultConnection
-  vaultConnectionRef: vault-connection
+  vaultConnectionRef: vault-secrets-operator/vault-connection
+  # Allow Vault secret resources in this namespace to use this auth method
+  allowedNamespaces:
+    - default
   # Use Kubernetes authentication method
   method: kubernetes
   # Mount path for the Kubernetes auth method in Vault
@@ -169,7 +176,7 @@ spec:
     # Vault role to authenticate as
     role: vault-secrets-operator
     # Service account used for authentication
-    serviceAccount: vault-secrets-operator
+    serviceAccount: default
     # Audiences for the token review
     audiences:
       - vault
@@ -185,12 +192,14 @@ vault auth enable kubernetes
 
 # Configure the Kubernetes auth method with cluster details
 vault write auth/kubernetes/config \
-  kubernetes_host="https://kubernetes.default.svc:443"
+  token_reviewer_jwt="<reviewer-service-account-jwt>" \
+  kubernetes_host="https://<kubernetes-api-server>:6443" \
+  kubernetes_ca_cert=@ca.crt
 
 # Create a policy for the secrets operator
 vault policy write vso-policy - <<EOF
 path "secret/data/*" {
-  capabilities = ["read", "list"]
+  capabilities = ["read"]
 }
 path "secret/metadata/*" {
   capabilities = ["read", "list"]
@@ -199,8 +208,9 @@ EOF
 
 # Create a role for the secrets operator
 vault write auth/kubernetes/role/vault-secrets-operator \
-  bound_service_account_names=vault-secrets-operator \
-  bound_service_account_namespaces=vault-secrets-operator \
+  bound_service_account_names=default \
+  bound_service_account_namespaces=default \
+  audience=vault \
   policies=vso-policy \
   ttl=1h
 ```
@@ -218,7 +228,7 @@ metadata:
   namespace: default
 spec:
   # Reference to the VaultAuth configuration
-  vaultAuthRef: vault-secrets-operator/vault-auth
+  vaultAuthRef: vault-auth
   # Type of Vault secret engine
   type: kv-v2
   # Mount path of the secret engine in Vault
@@ -253,7 +263,7 @@ metadata:
   namespace: default
 spec:
   # Reference to the VaultAuth configuration
-  vaultAuthRef: vault-secrets-operator/vault-auth
+  vaultAuthRef: vault-auth
   # Mount path for the database secret engine
   mount: database
   # Path to generate credentials
@@ -293,10 +303,10 @@ spec:
   # Wait for resources to become ready
   wait: true
   timeout: 5m
-  # Health checks for the deployment
+  # Health checks for the Helm release
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
       name: vault-secrets-operator
       namespace: vault-secrets-operator
 ```
@@ -313,7 +323,7 @@ kubectl get pods -n vault-secrets-operator
 kubectl get vaultconnection -n vault-secrets-operator
 
 # Verify the VaultAuth is configured
-kubectl get vaultauth -n vault-secrets-operator
+kubectl get vaultauth -n default
 
 # Check that secrets are being synced
 kubectl get vaultstaticsecret -A
@@ -331,7 +341,7 @@ Common issues and their solutions:
 kubectl logs -n vault-secrets-operator -l app.kubernetes.io/name=vault-secrets-operator
 
 # Verify the service account token is valid
-kubectl get serviceaccount vault-secrets-operator -n vault-secrets-operator -o yaml
+kubectl get serviceaccount default -n default -o yaml
 
 # Check VaultStaticSecret status for sync errors
 kubectl describe vaultstaticsecret app-database-credentials -n default
