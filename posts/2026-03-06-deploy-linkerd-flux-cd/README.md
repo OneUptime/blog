@@ -14,10 +14,11 @@ Linkerd is a lightweight, security-focused service mesh for Kubernetes. It provi
 
 Before you begin, ensure you have the following:
 
-- A Kubernetes cluster (v1.26 or later)
+- A Kubernetes cluster compatible with your chosen Linkerd release
 - Flux CD installed on your cluster (v2.x)
 - kubectl configured to access your cluster
 - The step CLI for generating TLS certificates (or your own PKI)
+- Gateway API CRDs installed on your cluster
 
 ## Understanding Linkerd Architecture
 
@@ -58,22 +59,41 @@ step certificate create identity.linkerd.cluster.local issuer.crt issuer.key \
   --ca-key ca.key
 ```
 
-## Step 2: Store Certificates as Kubernetes Secrets
+## Step 2: Store Certificates as Kubernetes Resources
 
-Create secrets for the Linkerd certificates:
+Create the Linkerd namespace, trust roots ConfigMap, and identity issuer secret:
 
 ```yaml
 # linkerd-certs-secret.yaml
-# Secret containing Linkerd trust anchor and issuer certificates
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: linkerd
+---
+# Trust roots for the identity service
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: linkerd-identity-trust-roots
+  namespace: linkerd
+data:
+  ca-bundle.crt: |
+    -----BEGIN CERTIFICATE-----
+    <your-trust-anchor-certificate>
+    -----END CERTIFICATE-----
+---
+# Trust anchor certificate and key for cert-manager CA issuer workflows
 apiVersion: v1
 kind: Secret
 metadata:
   name: linkerd-trust-anchor
   namespace: linkerd
-type: Opaque
+type: kubernetes.io/tls
 data:
   # Base64-encoded trust anchor certificate
-  ca.crt: LS0tLS1CRUd...
+  tls.crt: LS0tLS1CRUd...
+  # Base64-encoded trust anchor private key
+  tls.key: LS0tLS1CRUd...
 ---
 # Issuer certificate and key for the identity service
 apiVersion: v1
@@ -87,17 +107,11 @@ data:
   tls.crt: LS0tLS1CRUd...
   # Base64-encoded issuer private key
   tls.key: LS0tLS1CRUd...
-  # Base64-encoded trust anchor (CA) certificate
-  ca.crt: LS0tLS1CRUd...
 ```
 
-Apply the namespace and secrets:
+Apply the namespace, ConfigMap, and secrets:
 
 ```bash
-# Create the linkerd namespace
-kubectl create namespace linkerd
-
-# Apply the certificate secrets
 kubectl apply -f linkerd-certs-secret.yaml
 ```
 
@@ -116,16 +130,6 @@ metadata:
 spec:
   interval: 1h
   url: https://helm.linkerd.io/edge
----
-# HelmRepository for Linkerd extensions
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
-metadata:
-  name: linkerd-buoyant
-  namespace: flux-system
-spec:
-  interval: 1h
-  url: https://helm.buoyant.cloud
 ```
 
 ## Step 4: Install Linkerd CRDs
@@ -145,7 +149,7 @@ spec:
   chart:
     spec:
       chart: linkerd-crds
-      version: "2024.x"
+      version: "2026.4.x"
       sourceRef:
         kind: HelmRepository
         name: linkerd
@@ -177,7 +181,7 @@ spec:
   chart:
     spec:
       chart: linkerd-control-plane
-      version: "2024.x"
+      version: "2026.4.x"
       sourceRef:
         kind: HelmRepository
         name: linkerd
@@ -185,15 +189,10 @@ spec:
   values:
     # Identity configuration using the pre-created certificates
     identity:
-      # Use an external issuer (certificates from secrets)
+      # Use the pre-created trust roots ConfigMap
       externalCA: true
       issuer:
         scheme: kubernetes.io/tls
-    # Trust anchor certificate value
-    identityTrustAnchorsPEM: |
-      -----BEGIN CERTIFICATE-----
-      <your-trust-anchor-certificate>
-      -----END CERTIFICATE-----
     # Proxy configuration
     proxy:
       resources:
@@ -231,6 +230,11 @@ Deploy the Linkerd visualization dashboard:
 
 ```yaml
 # linkerd-viz.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: linkerd-viz
+---
 # HelmRelease for the Linkerd Viz dashboard extension
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -245,7 +249,7 @@ spec:
   chart:
     spec:
       chart: linkerd-viz
-      version: "2024.x"
+      version: "2026.4.x"
       sourceRef:
         kind: HelmRepository
         name: linkerd
@@ -283,54 +287,22 @@ spec:
         memory:
           request: 50Mi
           limit: 250Mi
-    # Default dashboard namespace
-    defaultNamespace: my-app
 ```
 
-## Step 7: Install Linkerd Jaeger Extension
+## Step 7: Enable Distributed Tracing
 
-Add distributed tracing support:
+The Linkerd-Jaeger extension is deprecated in Linkerd 2.19 and later. For distributed tracing, install a supported OpenTelemetry-compatible collector such as Jaeger separately, then configure the Linkerd control plane HelmRelease to export proxy traces:
 
 ```yaml
-# linkerd-jaeger.yaml
-# HelmRelease for the Linkerd Jaeger tracing extension
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: linkerd-jaeger
-  namespace: linkerd-jaeger
-spec:
-  interval: 10m
-  dependsOn:
-    - name: linkerd-control-plane
-      namespace: linkerd
-  chart:
-    spec:
-      chart: linkerd-jaeger
-      version: "2024.x"
-      sourceRef:
-        kind: HelmRepository
-        name: linkerd
-        namespace: flux-system
-  values:
-    # Collector configuration
+# Add these values to linkerd-control-plane.yaml after deploying a meshed collector
+proxy:
+  tracing:
+    enabled: true
     collector:
-      resources:
-        cpu:
-          request: 100m
-          limit: 500m
-        memory:
-          request: 50Mi
-          limit: 250Mi
-    # Jaeger configuration
-    jaeger:
-      resources:
-        cpu:
-          request: 100m
-          limit: 500m
-        memory:
-          request: 50Mi
-          limit: 500Mi
+      endpoint: jaeger-collector.jaeger-system:4317
+      meshIdentity:
+        serviceAccountName: jaeger
+        namespace: jaeger-system
 ```
 
 ## Step 8: Enable Sidecar Injection
@@ -366,10 +338,6 @@ kind: Deployment
 metadata:
   name: web-app
   namespace: my-app
-  annotations:
-    # Linkerd proxy configuration overrides
-    config.linkerd.io/proxy-cpu-request: "50m"
-    config.linkerd.io/proxy-memory-request: "20Mi"
 spec:
   replicas: 3
   selector:
@@ -379,6 +347,10 @@ spec:
     metadata:
       labels:
         app: web-app
+      annotations:
+        # Linkerd proxy configuration overrides
+        config.linkerd.io/proxy-cpu-request: "50m"
+        config.linkerd.io/proxy-memory-request: "20Mi"
     spec:
       containers:
         - name: web-app
@@ -461,7 +433,7 @@ linkerd stat deploy -n my-app
 linkerd viz dashboard
 
 # Check Flux reconciliation
-flux get helmreleases -n linkerd
+flux get helmreleases -A
 
 # View recent events
 kubectl get events -n linkerd --sort-by=.lastTimestamp
@@ -521,4 +493,4 @@ spec:
 
 ## Conclusion
 
-Deploying Linkerd with Flux CD provides a reliable, GitOps-driven approach to service mesh management. Linkerd's lightweight design combined with Flux CD's automated reconciliation creates a powerful platform for securing and observing your microservices. The HelmRelease dependency chain ensures proper installation ordering, and certificate management through cert-manager automates the otherwise complex task of mTLS certificate rotation. This approach makes it straightforward to maintain a consistent Linkerd deployment across multiple clusters.
+Deploying Linkerd with Flux CD provides a reliable, GitOps-driven approach to service mesh management. Linkerd's lightweight design combined with Flux CD's automated reconciliation creates a powerful platform for securing and observing your microservices. The HelmRelease dependency chain ensures proper installation ordering, and certificate management through cert-manager automates the otherwise complex task of identity issuer certificate rotation. This approach makes it straightforward to maintain a consistent Linkerd deployment across multiple clusters.
