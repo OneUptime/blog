@@ -113,20 +113,20 @@ toPorts:
 ## Step 4: Test HTTP Policy Enforcement
 
 ```bash
-# Test allowed request
+# Test allowed request against the read-only policy
 
-kubectl exec -n production client-pod -- \
+kubectl exec -n production read-client-pod -- \
   curl -s -o /dev/null -w "%{http_code}" http://user-service:8080/api/v1/users
 # Expected: 200
 
-# Test blocked method
-kubectl exec -n production client-pod -- \
+# Test blocked method against the read-only policy
+kubectl exec -n production read-client-pod -- \
   curl -s -o /dev/null -w "%{http_code}" -X DELETE http://user-service:8080/api/v1/users/1
 # Expected: 403
 
-# Test blocked path
-kubectl exec -n production client-pod -- \
-  curl -s -o /dev/null -w "%{http_code}" http://user-service:8080/api/v1/admin
+# Test blocked path against the path-based policy
+kubectl exec -n production public-client-pod -- \
+  curl -s -o /dev/null -w "%{http_code}" http://api-server:8080/api/v1/admin
 # Expected: 403
 ```
 
