@@ -15,7 +15,7 @@ GitOps is traditionally defined by having Git as the single source of truth for 
 There are several practical reasons to use OCI artifacts instead of Git repositories as the delivery mechanism:
 
 1. Container registries are already part of most organizations' infrastructure, with established authentication, replication, and caching.
-2. OCI artifacts are immutable and content-addressable, providing strong guarantees about what is being deployed.
+2. OCI artifacts can be addressed immutably by digest, while tags provide convenient version references.
 3. Large monorepos can be slow for Flux to clone. OCI artifacts contain only the relevant manifests, making reconciliation faster.
 4. Air-gapped environments often have container registries available but may restrict Git access.
 5. CI pipelines already push container images. Pushing manifests to the same registry fits naturally into existing workflows.
@@ -46,14 +46,14 @@ The `flux push artifact` command packages a directory of Kubernetes manifests in
 flux push artifact oci://ghcr.io/myorg/app-manifests:$(git rev-parse --short HEAD) \
   --path=./deploy/production \
   --source="$(git config --get remote.origin.url)" \
-  --revision="$(git branch --show-current)/$(git rev-parse HEAD)"
+  --revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)"
 ```
 
 Key points about this command:
 
 - The `--path` flag specifies the directory containing the manifests to package.
 - The `--source` flag records the Git repository URL as metadata on the artifact.
-- The `--revision` flag records the Git branch and commit SHA as metadata.
+- The `--revision` flag records the Git branch and commit SHA as metadata in the `branch@sha1:commit` format.
 - The artifact is tagged with the short Git SHA, providing traceability back to the source commit.
 
 You can also tag artifacts with semantic versions.
@@ -63,7 +63,7 @@ You can also tag artifacts with semantic versions.
 flux push artifact oci://ghcr.io/myorg/app-manifests:1.2.3 \
   --path=./deploy/production \
   --source="$(git config --get remote.origin.url)" \
-  --revision="main/$(git rev-parse HEAD)"
+  --revision="main@sha1:$(git rev-parse HEAD)"
 ```
 
 ## Pulling Artifacts with OCIRepository
@@ -179,7 +179,7 @@ The Flux CLI provides commands to inspect artifacts stored in a registry.
 
 ```bash
 # List tags for an OCI artifact
-flux list artifact oci://ghcr.io/myorg/app-manifests
+flux list artifacts oci://ghcr.io/myorg/app-manifests
 
 # Pull and inspect an artifact locally
 flux pull artifact oci://ghcr.io/myorg/app-manifests:1.2.3 \
@@ -203,7 +203,7 @@ kubectl kustomize ./deploy/production > /dev/null
 flux push artifact oci://ghcr.io/myorg/app-manifests:${CI_COMMIT_SHORT_SHA} \
   --path=./deploy/production \
   --source="${CI_REPOSITORY_URL}" \
-  --revision="${CI_COMMIT_BRANCH}/${CI_COMMIT_SHA}"
+  --revision="${CI_COMMIT_BRANCH}@sha1:${CI_COMMIT_SHA}"
 
 # Step 3: Tag with semver if this is a release
 if [ -n "$CI_COMMIT_TAG" ]; then
@@ -231,7 +231,7 @@ spec:
   url: oci://ghcr.io/myorg/charts
 ```
 
-This is distinct from the OCIRepository source. HelmRepository with `type: oci` is specifically for Helm charts, while OCIRepository is for raw Kubernetes manifests packaged as OCI artifacts.
+This is distinct from the OCIRepository source. HelmRepository with `type: oci` is specifically for Helm chart repositories, while OCIRepository can be used for raw Kubernetes manifests and is also the recommended API for improved OCI Helm chart support.
 
 ## When to Use OCI Artifacts vs Git
 
