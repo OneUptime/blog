@@ -49,7 +49,7 @@ sequenceDiagram
     FluxCLI->>Controller: Set suspend=false
     Controller->>Controller: Trigger immediate reconciliation
     Controller->>Cluster: Apply latest desired state
-    Controller->>User: Report reconciliation result
+    FluxCLI->>User: Report reconciliation result
 ```
 
 The key point is that resuming a resource triggers an immediate reconciliation cycle, which means any changes that accumulated in Git while the resource was suspended will be applied right away.
@@ -67,8 +67,12 @@ The resource types supported by `flux resume` mirror those of `flux suspend`:
 
 - `kustomization`
 - `helmrelease`
+- `alert`
+- `alert-provider`
+- `receiver`
 - `source git`
 - `source helm`
+- `source chart`
 - `source bucket`
 - `source oci`
 - `image repository`
@@ -96,7 +100,7 @@ Verify the resource is no longer suspended:
 
 ```bash
 # Check the status after resuming
-flux get kustomization my-app
+flux get kustomizations
 ```
 
 Output:
@@ -122,7 +126,7 @@ After resuming, the Helm controller will check for any pending chart updates and
 
 ```bash
 # Verify the Helm release status
-flux get helmrelease nginx-ingress --namespace ingress
+flux get helmreleases --namespace ingress
 ```
 
 ## Resuming Source Resources
@@ -135,6 +139,9 @@ flux resume source git my-repo
 
 # Resume a Helm repository source
 flux resume source helm bitnami
+
+# Resume a Helm chart source
+flux resume source chart my-chart
 
 # Resume a Bucket source
 flux resume source bucket my-bucket
@@ -174,16 +181,16 @@ flux resume helmrelease my-service --namespace production
 
 ## Resuming All Resources of a Type
 
-Resume all suspended resources at once:
+Resume all suspended resources of a type in a namespace at once:
 
 ```bash
 # Resume all kustomizations in the flux-system namespace
 flux resume kustomization --all
 
-# Resume all Helm releases across all namespaces
-flux resume helmrelease --all --all-namespaces
+# Resume all Helm releases in the ingress namespace
+flux resume helmrelease --all --namespace ingress
 
-# Resume all Git sources
+# Resume all Git sources in the flux-system namespace
 flux resume source git --all
 ```
 
@@ -201,7 +208,7 @@ git log --oneline -3
 flux resume kustomization my-app
 
 # Step 3: Watch the reconciliation happen
-flux get kustomization my-app --watch
+flux get kustomizations --watch
 
 # Step 4: Confirm the deployment is healthy
 kubectl rollout status deployment my-app -n my-app-namespace
@@ -221,13 +228,13 @@ sleep 30
 flux resume kustomization infrastructure
 
 # Step 3: Verify infrastructure is healthy
-flux get kustomization infrastructure --watch
+flux get kustomizations --watch
 
 # Step 4: Resume application kustomizations
 flux resume kustomization apps
 
 # Step 5: Resume Helm releases last
-flux resume helmrelease --all --all-namespaces
+flux resume helmrelease --all --namespace apps
 ```
 
 ### Use Case 3: Resuming After a Failed Experiment
@@ -240,7 +247,7 @@ flux resume kustomization my-app
 
 # Flux will overwrite any manual changes with what is in Git
 # Monitor the reconciliation
-flux get kustomization my-app --watch
+flux get kustomizations --watch
 ```
 
 ## Checking for Suspended Resources
@@ -278,7 +285,7 @@ flux get sources all --all-namespaces 2>/dev/null | grep "True" || echo "None"
 
 echo ""
 echo "=== Suspended Image Resources ==="
-flux get image all --all-namespaces 2>/dev/null | grep "True" || echo "None"
+flux get images all --all-namespaces 2>/dev/null | grep "True" || echo "None"
 ```
 
 ## What to Expect After Resumption
@@ -298,8 +305,7 @@ Be aware that if many changes accumulated while the resource was suspended, the 
 | Flag | Description |
 |------|-------------|
 | `--namespace` | Target namespace for the resource |
-| `--all` | Resume all resources of the specified type |
-| `--all-namespaces` | Operate across all namespaces |
+| `--all` | Resume all resources of the specified type in the selected namespace |
 
 ## Troubleshooting
 
@@ -309,7 +315,7 @@ If a resource enters a failed state after being resumed:
 
 ```bash
 # Check the detailed status
-flux get kustomization my-app
+flux get kustomizations
 
 # View controller logs for errors
 flux logs --kind=Kustomization --name=my-app
