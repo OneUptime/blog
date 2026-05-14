@@ -52,7 +52,7 @@ Define a Provider resource that tells Flux how to send messages to Slack.
 ```yaml
 # provider-slack.yaml
 # Configures Flux to send notifications to a Slack channel
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-provider
@@ -60,8 +60,6 @@ metadata:
 spec:
   # The type field identifies the notification backend
   type: slack
-  # Channel where messages will be posted (without the # prefix)
-  channel: deployments
   # Reference to the secret containing the webhook URL
   secretRef:
     name: slack-webhook-url
@@ -81,7 +79,7 @@ The Provider on its own does not send anything. You need an Alert resource that 
 ```yaml
 # alert-slack.yaml
 # Sends alerts for Kustomization and HelmRelease events to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: slack-alert
@@ -159,18 +157,18 @@ graph LR
 You can further customize the Provider with additional fields:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-provider-custom
   namespace: flux-system
 spec:
   type: slack
+  address: https://slack.com/api/chat.postMessage
   channel: critical-alerts
-  # Optional: set a custom username for the bot
-  username: flux-bot
+  # Reference to a secret containing a Slack bot token in the token key
   secretRef:
-    name: slack-webhook-url
+    name: slack-bot-token
 ```
 
 ## Filtering Events by Severity
@@ -178,7 +176,7 @@ spec:
 If you only want to receive error notifications (and skip informational messages), set the severity filter in the Alert:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: slack-errors-only
@@ -203,7 +201,7 @@ If notifications are not arriving in Slack, check the following:
 2. **Namespace alignment**: The Provider, Alert, and Secret must all be in the same namespace.
 3. **Notification controller logs**: Inspect the logs for errors with `kubectl logs -n flux-system deploy/notification-controller`.
 4. **Webhook validity**: Make sure the Slack webhook URL has not been revoked or rotated.
-5. **Channel name**: The `channel` field should not include the `#` prefix.
+5. **Webhook channel**: Incoming webhooks post to the channel selected when the webhook was created. Create another webhook if you want to send notifications to a different channel.
 
 ## Conclusion
 
