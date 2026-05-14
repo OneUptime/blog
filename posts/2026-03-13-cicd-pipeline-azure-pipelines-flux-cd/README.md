@@ -12,14 +12,14 @@ Description: Learn how to combine Azure Pipelines for continuous integration wit
 
 Azure Pipelines integrates naturally with Azure Container Registry, Azure Kubernetes Service, and Azure Repos, making it a popular choice for teams on the Azure platform. Combined with Flux CD running on AKS, you get a GitOps pipeline that leverages Azure's native identity and secret management systems while keeping cluster access out of your CI pipelines.
 
-The key to this integration is Azure Workload Identity or a managed identity for Flux CD to pull images from ACR without static credentials. Azure Pipelines builds the image, pushes to ACR, updates the fleet repository tag, and Flux CD detects the change and reconciles it on AKS.
+The key to this integration is using the AKS kubelet managed identity to pull workload images from ACR, and Azure Workload Identity or a kubelet managed identity when Flux scans ACR image tags. Azure Pipelines builds the image, pushes to ACR, updates the fleet repository tag, and Flux CD detects the change and reconciles it on AKS.
 
 This guide covers setting up Azure Pipelines to work with Flux CD, using YAML pipelines, ACR, and Azure Repos or GitHub as the fleet repository.
 
 ## Prerequisites
 
 - An AKS cluster with Flux CD bootstrapped
-- Azure Container Registry (ACR) linked to AKS via managed identity or admin credentials
+- Azure Container Registry (ACR) linked to AKS via managed identity or an appropriate role assignment
 - Azure DevOps organization with a project and pipeline
 - A fleet repository in Azure Repos or GitHub
 - Azure CLI and `flux` CLI installed
@@ -34,6 +34,7 @@ flux bootstrap github \
   --repository=fleet-repo \
   --branch=main \
   --path=clusters/aks-production \
+  --components-extra=image-reflector-controller \
   --personal
 
 # OR using Azure Repos
@@ -42,7 +43,9 @@ flux bootstrap git \
   --branch=main \
   --path=clusters/aks-production \
   --username=git \
-  --password=$AZURE_DEVOPS_PAT
+  --password=$AZURE_DEVOPS_PAT \
+  --token-auth=true \
+  --components-extra=image-reflector-controller
 ```
 
 ## Step 2: Configure ACR Integration with AKS
@@ -109,7 +112,7 @@ variables:
   acrName: 'yourregistry'
   imageName: 'myapp'
   imageTag: '$(Build.SourceBranchName)'
-  fleetRepo: 'https://$(AZURE_DEVOPS_PAT)@github.com/your-org/fleet-repo.git'
+  fleetRepo: 'github.com/your-org/fleet-repo.git'
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -152,7 +155,7 @@ stages:
           - checkout: none
 
           - script: |
-              git clone $(fleetRepo) fleet-repo
+              git clone "https://${FLEET_REPO_USERNAME}:${FLEET_REPO_TOKEN}@$(fleetRepo)" fleet-repo
               cd fleet-repo
               git config user.email "azurepipelines@your-org.com"
               git config user.name "Azure Pipelines"
@@ -162,10 +165,13 @@ stages:
               git push origin main
             displayName: 'Update image tag in fleet repo'
             env:
-              AZURE_DEVOPS_PAT: $(AZURE_DEVOPS_PAT)
+              FLEET_REPO_USERNAME: $(FLEET_REPO_USERNAME)
+              FLEET_REPO_TOKEN: $(FLEET_REPO_TOKEN)
 ```
 
-## Step 5: Configure Flux Image Policy for ACR
+## Step 5: Optionally Configure Flux Image Policy for ACR
+
+This lets Flux scan ACR tags. The pipeline above updates the fleet repository directly; to have Flux update manifests automatically, pair the policy with Flux image automation.
 
 ```yaml
 # clusters/aks-production/apps/myapp-image.yaml
@@ -177,7 +183,8 @@ metadata:
 spec:
   image: yourregistry.azurecr.io/myapp
   interval: 1m
-  # AKS managed identity handles pull access; no secretRef needed
+  provider: azure
+  # Azure Workload Identity or the AKS kubelet managed identity handles ACR access; no secretRef needed
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
@@ -208,7 +215,7 @@ flux events --for Kustomization/myapp -n flux-system
 ## Best Practices
 
 - Use Azure Service Connections for ACR rather than embedding credentials in the pipeline YAML.
-- Leverage Azure Managed Identity for Flux CD to authenticate to ACR on AKS; this eliminates static credentials entirely.
+- Leverage Azure Managed Identity for AKS image pulls and Flux ACR tag scanning; this eliminates static credentials entirely.
 - Store the fleet repository PAT as a secret variable in Azure DevOps library and link it to the pipeline.
 - Use Azure Pipeline environments with approval gates to require manual approval before updating the production fleet.
 - Use `[skip ci]` in fleet repository commits to prevent re-triggering the pipeline on bot commits.
