@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Civo, k3s, Kubernetes, GitOps, Marketplace, Cloud
 
-Description: A practical guide to bootstrapping Flux CD on Civo Kubernetes with K3s, marketplace apps, and GitOps workflows.
+Description: A practical guide to bootstrapping Flux CD on Civo Kubernetes with K3s, platform add-ons, and GitOps workflows.
 
 ---
 
 ## Introduction
 
-Civo is a cloud-native hosting provider that uses K3s as the Kubernetes distribution for its managed service. Civo clusters launch in under 90 seconds and come with a marketplace of pre-configured applications. This guide shows you how to set up Flux CD on Civo Kubernetes, leverage marketplace apps, and build a complete GitOps pipeline.
+Civo is a cloud-native hosting provider that uses K3s as the Kubernetes distribution for its managed service. Civo clusters launch in under 90 seconds and come with a marketplace of pre-configured applications. This guide shows you how to set up Flux CD on Civo Kubernetes, manage platform add-ons through GitOps, and build a complete GitOps pipeline.
 
 ## Prerequisites
 
@@ -25,7 +25,7 @@ Civo is a cloud-native hosting provider that uses K3s as the Kubernetes distribu
 ```bash
 # List available cluster sizes
 
-civo kubernetes size list
+civo kubernetes size
 
 # List available regions
 civo region list
@@ -95,9 +95,9 @@ kubectl get pods -n flux-system
 flux get sources git
 ```
 
-## Step 4: Install Marketplace Apps via Flux
+## Step 4: Install Platform Add-ons via Flux
 
-Civo has a marketplace of pre-configured apps. Instead of installing them through the Civo dashboard, manage them through Flux for consistency.
+Civo has a marketplace of pre-configured apps. For GitOps consistency, install equivalent platform add-ons from their upstream Helm charts through Flux rather than installing them through the Civo dashboard.
 
 ### Install NGINX Ingress Controller
 
@@ -177,7 +177,8 @@ spec:
   upgrade:
     crds: CreateReplace
   values:
-    installCRDs: true
+    crds:
+      enabled: true
 ---
 # infrastructure/cert-manager/cluster-issuer.yaml
 apiVersion: cert-manager.io/v1
@@ -396,7 +397,7 @@ spec:
 
 ```yaml
 # infrastructure/notifications/provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: discord
@@ -407,7 +408,7 @@ spec:
     name: discord-webhook-url
 ---
 # infrastructure/notifications/alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: civo-alerts
