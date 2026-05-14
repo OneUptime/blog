@@ -10,7 +10,7 @@ Description: A packet-level walkthrough of how Calico's BGP routing fabric handl
 
 ## Introduction
 
-In L3 BGP mode, there is no overlay - pod packets travel through the network as native IP traffic. The routing information that makes this possible is distributed by BGP. Understanding the connection between BGP route advertisement and the resulting packet path gives you the mental model needed for debugging and for explaining the system to your team.
+In non-overlay L3 BGP mode, pod packets travel through the network as native IP traffic. The routing information that makes this possible is distributed by BGP. Understanding the connection between BGP route advertisement and the resulting packet path gives you the mental model needed for debugging and for explaining the system to your team.
 
 This post traces three real traffic scenarios through Calico's L3 BGP fabric: cross-node pod-to-pod, pod to external service, and external service to pod (with external BGP peering).
 
@@ -27,24 +27,27 @@ sequenceDiagram
     participant PodA as Pod A (10.0.1.4, Node 1)
     participant BIRD1 as BIRD (Node 1)
     participant Felix1 as Felix (Node 1)
+    participant Kernel1 as Linux dataplane (Node 1)
     participant Network as Physical Network
+    participant Kernel2 as Linux dataplane (Node 2)
     participant Felix2 as Felix (Node 2)
     participant PodB as Pod B (10.0.2.5, Node 2)
 
-    Note over BIRD1,Felix1: BGP phase (happens on startup)
+    Note over BIRD1,Felix1: Control plane phase
+    Felix2->>Felix2: Program local workload route and policy
     BIRD1->>BIRD1: Learn route: 10.0.2.0/26 via Node2-IP
-    Felix1->>Felix1: Program route: 10.0.2.0/26 via Node2-IP (proto bird)
+    BIRD1->>Kernel1: Install route in Linux FIB: 10.0.2.0/26 via Node2-IP (proto bird)
 
     Note over PodA,PodB: Data plane phase (per-packet)
-    PodA->>Felix1: Packet: src=10.0.1.4, dst=10.0.2.5
-    Felix1->>Felix1: Egress policy check\nRoute lookup: 10.0.2.0/26 via Node2-IP
-    Felix1->>Network: Packet: src=10.0.1.4, dst=10.0.2.5\n(NO encapsulation - native IP)
-    Network->>Felix2: Packet arrives at Node 2
-    Felix2->>Felix2: Ingress policy check on Pod B
-    Felix2->>PodB: Deliver packet
+    PodA->>Kernel1: Packet: src=10.0.1.4, dst=10.0.2.5
+    Kernel1->>Kernel1: Felix-programmed egress policy\nRoute lookup: 10.0.2.0/26 via Node2-IP
+    Kernel1->>Network: Packet: src=10.0.1.4, dst=10.0.2.5\n(NO encapsulation - native IP)
+    Network->>Kernel2: Packet arrives at Node 2
+    Kernel2->>Kernel2: Felix-programmed ingress policy on Pod B
+    Kernel2->>PodB: Deliver packet
 ```
 
-The critical difference from overlay: the packet on the physical network has **pod IPs as source and destination** - not node IPs. Every router between Node 1 and Node 2 routes the packet based on the pod IP.
+The critical difference from overlay: the packet on the physical network has **pod IPs as source and destination** - not node IPs. In a fabric that has learned the Calico pod CIDRs, every router between Node 1 and Node 2 routes the packet based on the pod IP.
 
 **Verify the routing artifacts**:
 ```bash
@@ -64,8 +67,8 @@ Even in BGP mode, pods typically use the node IP for egress to external services
 
 ```mermaid
 graph LR
-    Pod[Pod\n10.0.1.4] --> Felix[Felix: SNAT to node IP\n203.0.113.1]
-    Felix --> Router[Physical router\nroutes node IP]
+    Pod[Pod\n10.0.1.4] --> Dataplane[Linux dataplane\nSNAT to node IP\n203.0.113.1]
+    Dataplane --> Router[Physical router\nroutes node IP]
     Router --> External[External service]
 ```
 
@@ -80,8 +83,8 @@ graph LR
     External[External service\n198.51.100.1] --> Router[Enterprise router\nKnows: 10.0.0.0/16 via Cluster]
     Router --> TOR[ToR switch\nKnows: 10.0.1.0/26 via Node1]
     TOR --> Node1[Node 1]
-    Node1 --> Felix[Felix: Ingress policy\nfor pod]
-    Felix --> Pod[Pod\n10.0.1.4]
+    Node1 --> Dataplane[Linux dataplane\nFelix-programmed ingress policy]
+    Dataplane --> Pod[Pod\n10.0.1.4]
 ```
 
 BGP advertisements flow outward from BIRD (on each node) through the ToR switch to the enterprise router and beyond. External services reach pods via the BGP-advertised pod routes, with no NAT required.
@@ -92,7 +95,7 @@ BGP advertisements flow outward from BIRD (on each node) through the ToR switch 
 # show bgp neighbors <node-ip> received-routes
 # Expected: Pod CIDR routes received from each node
 
-# From Felix's perspective:
+# From BIRD's perspective:
 kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
   -- birdcl show route export <tor-peer-name>
 # Expected: Pod CIDR routes being exported to the ToR peer
@@ -100,22 +103,22 @@ kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
 
 ## Observing BGP Route Propagation
 
-Watch BGP routes in real time when a new pod is created:
+Watch BGP routes in real time when a new IPAM block or route is created:
 
 ```bash
 # Watch BIRD's route table update
 kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
   -- birdcl show route
 
-# In another terminal, create a pod on the remote node
+# In another terminal, create pods on the remote node until a new block is needed
 kubectl run new-pod --image=nginx --overrides='{"spec":{"nodeName":"worker-2"}}'
 
-# Watch the new pod's IP appear in the route table
+# Watch the remote node's Calico IPAM block route appear in the route table
 kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
-  -- birdcl show route | grep $(kubectl get pod new-pod -o jsonpath='{.status.podIP}')
+  -- birdcl show route | grep 10.0.2.0/26
 ```
 
-BGP convergence in Calico is typically less than 1 second for new pod routes in small clusters.
+Convergence in Calico can be fast in small clusters, but the timing depends on the BGP topology, peer configuration, and whether a new route actually needs to be advertised.
 
 ## The BGP-to-Routing-Table Pipeline
 
@@ -123,12 +126,12 @@ The complete pipeline from BGP to packet routing:
 
 ```mermaid
 graph LR
-    BIRD[BIRD\nLearns route via BGP] --> Felix[Felix\nTranslates to Linux route]
-    Felix --> RTable[Linux routing table\nip route show proto bird]
+    Felix[Felix\nPrograms local workload routes and policy] --> BIRD[BIRD\nDistributes routes via BGP]
+    BIRD --> RTable[Linux routing table\nBGP-learned routes show as proto bird]
     RTable --> Packet[Packet forwarding\nKernel routes pod packets]
 ```
 
-Each hop in this pipeline can be verified with distinct commands, making the BGP routing system fully inspectable from top to bottom.
+Each hop in this pipeline can be verified with distinct commands, making the BGP routing system inspectable from top to bottom.
 
 ## Best Practices
 
@@ -138,4 +141,4 @@ Each hop in this pipeline can be verified with distinct commands, making the BGP
 
 ## Conclusion
 
-L3 BGP routing maps cleanly to observable artifacts at every stage: BIRD route tables, Linux routing table entries with `proto bird`, and native IP packets on the physical network. Cross-node traffic travels with pod IPs visible to every router - no encapsulation, full network transparency. When external BGP peering is configured, pod routes propagate to enterprise routers, enabling direct external-to-pod connectivity without NAT. This transparency and efficiency is why BGP native routing is the preferred mode for on-premises Kubernetes deployments with BGP-capable infrastructure.
+L3 BGP routing maps cleanly to observable artifacts at every stage: BIRD route tables, Linux routing table entries with `proto bird`, and native IP packets on the physical network. Cross-node traffic travels with pod IPs visible to the routed fabric - no encapsulation, full network transparency. When external BGP peering is configured, pod routes propagate to enterprise routers, enabling direct external-to-pod connectivity without NAT. This transparency and efficiency is why BGP native routing is a common choice for on-premises Kubernetes deployments with BGP-capable infrastructure.
