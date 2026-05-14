@@ -54,7 +54,7 @@ Define a Provider resource using the generic type.
 ```yaml
 # provider-generic-webhook.yaml
 # Configures Flux to send notifications via generic HTTP webhook
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: generic-webhook-provider
@@ -81,7 +81,7 @@ Create an Alert that defines which events are forwarded to the webhook.
 ```yaml
 # alert-generic-webhook.yaml
 # Routes Flux events to the generic webhook provider
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: generic-webhook-alert
@@ -169,7 +169,7 @@ You can include custom headers for authentication or routing by adding them to t
 kubectl create secret generic generic-webhook-auth \
   --namespace=flux-system \
   --from-literal=address=https://your-endpoint.example.com/flux-events \
-  --from-literal=headers="Authorization: Bearer YOUR_TOKEN\nX-Custom-Header: custom-value"
+  --from-literal=headers=$'Authorization: Bearer YOUR_TOKEN\nX-Custom-Header: custom-value'
 ```
 
 ## Example: Sending Events to a Custom API
@@ -178,7 +178,7 @@ Here is an example of a simple receiver application that processes Flux events:
 
 ```yaml
 # provider for a custom deployment tracker
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: deployment-tracker
@@ -189,7 +189,7 @@ spec:
     name: deployment-tracker-secret
 ---
 # Only track deployment-related events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-tracker-alert
@@ -207,7 +207,7 @@ spec:
 
 ## Using Generic Webhook with HMAC Verification
 
-For security, you can configure the generic provider to include an HMAC signature in the request headers. The receiving endpoint can verify this signature to ensure the request came from Flux.
+For security, you can use the `generic-hmac` provider to include an HMAC signature in the request headers. The receiving endpoint can verify this signature to ensure the request came from Flux.
 
 ```bash
 # Create a secret with an HMAC token for payload verification
@@ -219,12 +219,26 @@ kubectl create secret generic generic-webhook-hmac \
 
 The notification controller will include a signature header that can be verified by the receiving endpoint.
 
+Configure the Provider with `type: generic-hmac` to enable the signature header:
+
+```yaml
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: generic-webhook-hmac
+  namespace: flux-system
+spec:
+  type: generic-hmac
+  secretRef:
+    name: generic-webhook-hmac
+```
+
 ## Multiple Endpoints
 
 Create separate providers for different endpoints:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: webhook-analytics
@@ -234,7 +248,7 @@ spec:
   secretRef:
     name: analytics-webhook-secret
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: webhook-audit
