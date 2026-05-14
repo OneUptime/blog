@@ -27,10 +27,10 @@ This post builds a Kubernetes CronJob that periodically checks the node count, c
 
 ## Step 1: Define the Scaling Formula
 
-Calico recommends approximately 1 Typha replica per 200 nodes, with a minimum of 2 (for HA) and a practical maximum of 20. The formula used in this automation:
+Calico recommends at least 1 Typha replica per 200 nodes, with a production minimum of 3 and a maximum of 20. The formula used in this automation:
 
 ```plaintext
-desired_replicas = max(2, ceil(node_count / 200))
+desired_replicas = min(20, max(3, ceil(node_count / 200)))
 ```
 
 For clusters with zone distribution requirements, round up to the nearest multiple of your zone count to ensure one replica per zone.
@@ -56,7 +56,7 @@ kind: ClusterRole
 metadata:
   name: typha-autoscaler
 rules:
-  # Count Ready nodes to determine desired replica count
+  # Count nodes to determine desired replica count
   - apiGroups: [""]
     resources: ["nodes"]
     verbs: ["list", "get"]
@@ -109,7 +109,7 @@ data:
     set -e
 
     # Tunable constants - adjust for your cluster
-    MIN_REPLICAS=2          # Always keep at least 2 Typha pods for HA
+    MIN_REPLICAS=3          # Calico recommends at least 3 Typha pods in production
     MAX_REPLICAS=20         # Never scale beyond 20 (avoids over-provisioning)
     NODES_PER_REPLICA=200   # Target ratio: 1 Typha pod per 200 nodes
     NAMESPACE="kube-system"
@@ -117,11 +117,11 @@ data:
 
     echo "=== Typha Autoscaler: $(date -u) ==="
 
-    # Count only Ready nodes; NotReady nodes don't run Felix
+    # Count nodes registered in the cluster
     NODE_COUNT=$(kubectl get nodes --no-headers 2>/dev/null \
-      | grep -c " Ready " || true)
+      | wc -l | tr -d ' ')
 
-    echo "Ready nodes: $NODE_COUNT"
+    echo "Nodes: $NODE_COUNT"
 
     # Ceiling division: (N + D - 1) / D
     DESIRED=$(( (NODE_COUNT + NODES_PER_REPLICA - 1) / NODES_PER_REPLICA ))
@@ -140,8 +140,9 @@ data:
 
     if [ "$DESIRED" != "$CURRENT" ]; then
       echo "Scaling $DEPLOYMENT: $CURRENT -> $DESIRED"
-      kubectl scale deployment "$DEPLOYMENT" -n "$NAMESPACE" \
-        --replicas="$DESIRED"
+      kubectl patch deployment "$DEPLOYMENT" -n "$NAMESPACE" \
+        --subresource=scale --type=merge \
+        -p "{\"spec\":{\"replicas\":$DESIRED}}"
       echo "Scale applied."
     else
       echo "No change needed."
@@ -226,9 +227,9 @@ kubectl get deployment calico-typha -n kube-system
 ## Best Practices
 
 - Use `concurrencyPolicy: Forbid` to prevent scale race conditions when API responses are slow.
-- Count only `Ready` nodes; `NotReady` nodes do not run Felix and should not inflate the desired replica count.
-- Set `MIN_REPLICAS=2` so the autoscaler never reduces Typha below the minimum HA threshold.
-- Add a Prometheus alert on `kube_cronjob_status_active{cronjob="typha-autoscaler"} == 0` to detect if the CronJob stops running.
+- Count registered nodes rather than only `Ready` nodes so temporary node health changes do not cause unnecessary Typha scale-downs.
+- Set `MIN_REPLICAS=3` so the autoscaler follows Calico's production recommendation.
+- Add a Prometheus alert on `time() - kube_cronjob_status_last_successful_time{namespace="kube-system",cronjob="typha-autoscaler"} > 900` to detect if the CronJob stops completing successfully.
 - Pin the `bitnami/kubectl` image to a specific version tag (e.g., `bitnami/kubectl:1.29`) to prevent unexpected behavior on image updates.
 
 ---
