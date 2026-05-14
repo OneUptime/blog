@@ -18,11 +18,12 @@ This guide walks through deploying Apache Pulsar on Kubernetes using Flux CD, gi
 
 Before starting, ensure you have:
 
-- A Kubernetes cluster (v1.26 or later) with at least 3 worker nodes
+- A Kubernetes cluster (v1.25 or later) with at least 3 worker nodes
 - Flux CD installed and bootstrapped
 - kubectl configured for your cluster
 - A Git repository connected to Flux CD
-- At least 50Gi of available persistent storage
+- At least 270Gi of available persistent storage for the example volume sizes
+- Prometheus Operator CRDs installed if you plan to apply the ServiceMonitor examples
 
 ## Architecture Overview
 
@@ -95,7 +96,7 @@ spec:
   chart:
     spec:
       chart: pulsar
-      version: "3.x"
+      version: ">=4.0.0 <5.0.0"
       sourceRef:
         kind: HelmRepository
         name: apache-pulsar
@@ -112,10 +113,11 @@ spec:
         limits:
           cpu: 500m
           memory: 1Gi
-      persistence:
-        enabled: true
-        size: 20Gi
-        storageClassName: standard
+      volumes:
+        persistence: true
+        data:
+          size: 20Gi
+          storageClassName: standard
 
     # BookKeeper configuration for message storage
     bookkeeper:
@@ -127,13 +129,12 @@ spec:
         limits:
           cpu: "1"
           memory: 2Gi
-      persistence:
+      volumes:
+        persistence: true
         journal:
-          enabled: true
           size: 20Gi
           storageClassName: standard
         ledgers:
-          enabled: true
           size: 50Gi
           storageClassName: standard
 
@@ -150,12 +151,12 @@ spec:
       # Configure broker settings
       configData:
         # Enable transaction support
-        transactionCoordinatorEnabled: "true"
+        PULSAR_PREFIX_transactionCoordinatorEnabled: "true"
         # Message retention settings
-        defaultRetentionTimeInMinutes: "4320"
-        defaultRetentionSizeInMB: "1024"
+        PULSAR_PREFIX_defaultRetentionTimeInMinutes: "4320"
+        PULSAR_PREFIX_defaultRetentionSizeInMB: "1024"
         # Deduplication
-        brokerDeduplicationEnabled: "true"
+        PULSAR_PREFIX_brokerDeduplicationEnabled: "true"
 
     # Pulsar Proxy for client connections
     proxy:
@@ -167,25 +168,26 @@ spec:
         limits:
           cpu: 500m
           memory: 512Mi
+      ports:
+        http: 80
+        pulsar: 6650
       service:
         type: ClusterIP
-        ports:
-          http: 8080
-          pulsar: 6650
 
     # Enable Pulsar Manager UI
+    components:
+      pulsar_manager: true
+
     pulsar_manager:
-      enabled: true
       replicaCount: 1
       resources:
         requests:
           cpu: 100m
           memory: 256Mi
 
-    # Monitoring configuration
-    monitoring:
-      prometheus: true
-      grafana: false
+    # Disable the bundled VictoriaMetrics stack when using your own Prometheus Operator
+    victoria-metrics-k8s-stack:
+      enabled: false
 ```
 
 ## Step 4: Configure Authentication
@@ -193,22 +195,23 @@ spec:
 Set up token-based authentication for Pulsar.
 
 ```yaml
-# pulsar-auth-secret.yaml
-# Secret containing Pulsar authentication tokens
-# Use sealed-secrets or SOPS in production
-apiVersion: v1
-kind: Secret
-metadata:
-  name: pulsar-token-keys
-  namespace: pulsar-system
-type: Opaque
-stringData:
-  # These are placeholder values - generate real keys in production
-  # Use: bin/pulsar tokens create-key-pair
-  PULSAR_PREFIX_tokenSecretKey: "your-secret-key-here"
-  PULSAR_PREFIX_superUserRoles: "admin,proxy"
-  PULSAR_PREFIX_authenticationEnabled: "true"
-  PULSAR_PREFIX_authenticationProviders: "org.apache.pulsar.broker.authentication.AuthenticationProviderToken"
+# Add this under spec.values in pulsar-helmrelease.yaml
+# The chart generates the signing key and per-role token secrets.
+auth:
+  authentication:
+    enabled: true
+    jwt:
+      enabled: true
+      usingSecretKey: false
+      generateSecrets:
+        enabled: true
+  authorization:
+    enabled: true
+  superUsers:
+    broker: "broker-admin"
+    proxy: "proxy-admin"
+    client: "admin"
+    manager: "manager-admin"
 ```
 
 ## Step 5: Create Tenant and Namespace Configuration
@@ -224,46 +227,58 @@ metadata:
   name: pulsar-tenant-setup
   namespace: pulsar-system
   annotations:
-    # Run after the main deployment is complete
-    helm.sh/hook: post-install
+    # Flux will create the Job; the script waits until Pulsar is ready.
+    kustomize.toolkit.fluxcd.io/force: enabled
 spec:
   template:
     spec:
       containers:
         - name: pulsar-admin
-          image: apachepulsar/pulsar:3.3.0
+          image: apachepulsar/pulsar:4.0.10
           command:
             - /bin/bash
             - -c
             - |
+              ADMIN_ARGS="--admin-url http://pulsar-proxy.pulsar-system.svc.cluster.local:80 \
+                --auth-plugin org.apache.pulsar.client.impl.auth.AuthenticationToken \
+                --auth-params file:///pulsar/tokens/admin/token"
+
               # Wait for Pulsar to be ready
-              until bin/pulsar-admin brokers healthcheck; do
+              until bin/pulsar-admin ${ADMIN_ARGS} brokers healthcheck; do
                 echo "Waiting for Pulsar broker..."
                 sleep 10
               done
 
               # Create application tenant
-              bin/pulsar-admin tenants create app-tenant \
+              bin/pulsar-admin ${ADMIN_ARGS} tenants create app-tenant \
                 --admin-roles admin \
-                --allowed-clusters standalone
+                --allowed-clusters pulsar
 
               # Create namespaces for different services
-              bin/pulsar-admin namespaces create app-tenant/events
-              bin/pulsar-admin namespaces create app-tenant/notifications
-              bin/pulsar-admin namespaces create app-tenant/analytics
+              bin/pulsar-admin ${ADMIN_ARGS} namespaces create app-tenant/events
+              bin/pulsar-admin ${ADMIN_ARGS} namespaces create app-tenant/notifications
+              bin/pulsar-admin ${ADMIN_ARGS} namespaces create app-tenant/analytics
 
               # Set retention policies
-              bin/pulsar-admin namespaces set-retention app-tenant/events \
+              bin/pulsar-admin ${ADMIN_ARGS} namespaces set-retention app-tenant/events \
                 --size 10G --time 72h
 
               # Set message TTL
-              bin/pulsar-admin namespaces set-message-ttl app-tenant/events \
+              bin/pulsar-admin ${ADMIN_ARGS} namespaces set-message-ttl app-tenant/events \
                 --messageTTL 86400
 
               echo "Tenant setup complete"
-          env:
-            - name: PULSAR_ADMIN_URL
-              value: "http://pulsar-proxy.pulsar-system.svc:8080"
+          volumeMounts:
+            - name: admin-token
+              mountPath: /pulsar/tokens/admin
+              readOnly: true
+      volumes:
+        - name: admin-token
+          secret:
+            secretName: pulsar-token-admin
+            items:
+              - key: TOKEN
+                path: token
       restartPolicy: OnFailure
   backoffLimit: 5
 ```
@@ -323,7 +338,7 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              component: bookkeeper
+              component: bookie
       ports:
         - protocol: TCP
           port: 3181
@@ -363,7 +378,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      component: bookkeeper
+      component: bookie
   endpoints:
     - port: http
       interval: 30s
@@ -397,7 +412,7 @@ spec:
       namespace: pulsar-system
     - apiVersion: apps/v1
       kind: StatefulSet
-      name: pulsar-bookkeeper
+      name: pulsar-bookie
       namespace: pulsar-system
     - apiVersion: apps/v1
       kind: StatefulSet
@@ -419,21 +434,22 @@ kubectl get pods -n pulsar-system
 
 # Check broker health
 kubectl exec -n pulsar-system pulsar-broker-0 -- \
-  bin/pulsar-admin brokers healthcheck
+  bin/pulsar-admin --auth-plugin org.apache.pulsar.client.impl.auth.AuthenticationToken \
+  --auth-params file:///pulsar/tokens/broker/token brokers healthcheck
 
 # List tenants
-kubectl exec -n pulsar-system pulsar-broker-0 -- \
+kubectl exec -n pulsar-system pulsar-toolset-0 -- \
   bin/pulsar-admin tenants list
 
 # Produce a test message
-kubectl exec -n pulsar-system pulsar-broker-0 -- \
+kubectl exec -n pulsar-system pulsar-toolset-0 -- \
   bin/pulsar-client produce persistent://app-tenant/events/test \
   -m "Hello from Flux CD" -n 1
 
 # Consume test messages
-kubectl exec -n pulsar-system pulsar-broker-0 -- \
+kubectl exec -n pulsar-system pulsar-toolset-0 -- \
   bin/pulsar-client consume persistent://app-tenant/events/test \
-  -s "test-sub" -n 1
+  -s "test-sub" -p Earliest -n 1
 ```
 
 ## Troubleshooting
@@ -455,9 +471,9 @@ kubectl exec -n pulsar-system pulsar-zookeeper-0 -- \
 kubectl get pvc -n pulsar-system
 
 # Check disk usage on BookKeeper nodes
-kubectl exec -n pulsar-system pulsar-bookkeeper-0 -- df -h /pulsar/data
+kubectl exec -n pulsar-system pulsar-bookie-0 -- df -h /pulsar/data
 ```
 
 ## Conclusion
 
-You have successfully deployed Apache Pulsar on Kubernetes using Flux CD. This setup includes a full production-ready stack with ZooKeeper for coordination, BookKeeper for message storage, Pulsar brokers for message processing, and a proxy for client access. The GitOps approach ensures all configuration changes are tracked, reviewed, and automatically applied to your cluster.
+You have successfully deployed Apache Pulsar on Kubernetes using Flux CD. This setup includes a complete Pulsar stack with ZooKeeper for coordination, BookKeeper for message storage, Pulsar brokers for message processing, and a proxy for client access. The GitOps approach ensures all configuration changes are tracked, reviewed, and automatically applied to your cluster.
