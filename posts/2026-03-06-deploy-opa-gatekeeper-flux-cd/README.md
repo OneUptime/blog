@@ -91,16 +91,16 @@ spec:
     # Webhook configuration
     validatingWebhookName: gatekeeper-validating-webhook-configuration
     mutatingWebhookName: gatekeeper-mutating-webhook-configuration
-    # Number of audit controller replicas
+    # Number of controller manager replicas
     replicas: 3
+    # How often to run audit scans
+    auditInterval: 60
+    # Number of violations to report per constraint
+    constraintViolationsLimit: 20
+    # Use the audit cache as the source of truth for audit queries
+    auditFromCache: true
     # Audit configuration
     audit:
-      # How often to run audit scans
-      auditInterval: 60
-      # Number of violations to report per constraint
-      constraintViolationsLimit: 20
-      # Write audit results back to constraint status
-      auditFromCache: true
       resources:
         requests:
           memory: "256Mi"
@@ -117,14 +117,14 @@ spec:
         limits:
           memory: "512Mi"
           cpu: "500m"
-    # Enable mutation support
-    enableMutation: true
-    # Configure which namespaces to exempt from policies
-    exemptNamespaces:
-      - kube-system
-      - gatekeeper-system
-      - flux-system
-    # Enable external data provider support
+      # Configure which namespaces to exempt from the admission webhook
+      exemptNamespaces:
+        - kube-system
+        - gatekeeper-system
+        - flux-system
+    # Keep mutation support enabled
+    disableMutation: false
+    # Disable external data provider support
     enableExternalData: false
     # Log level
     logLevel: INFO
@@ -288,16 +288,25 @@ spec:
 
         # Check all containers in a pod
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
+          container := pod_spec.containers[_]
           not startswith_any(container.image, input.parameters.repos)
           msg := sprintf("Container <%v> image <%v> is not from an allowed repository. Allowed repos: %v", [container.name, container.image, input.parameters.repos])
         }
 
         # Check init containers as well
         violation[{"msg": msg}] {
-          container := input.review.object.spec.initContainers[_]
+          container := pod_spec.initContainers[_]
           not startswith_any(container.image, input.parameters.repos)
           msg := sprintf("Init container <%v> image <%v> is not from an allowed repository", [container.name, container.image])
+        }
+
+        # Support both Pod resources and workload controllers with pod templates
+        pod_spec := input.review.object.spec {
+          input.review.object.kind == "Pod"
+        }
+
+        pod_spec := input.review.object.spec.template.spec {
+          input.review.object.kind != "Pod"
         }
 
         # Helper function to check if image starts with any allowed repo
@@ -355,6 +364,16 @@ spec:
       - group: ""
         version: "v1"
         kind: "Pod"
+      # Sync workload controllers when auditing image policies with auditFromCache
+      - group: "apps"
+        version: "v1"
+        kind: "Deployment"
+      - group: "apps"
+        version: "v1"
+        kind: "StatefulSet"
+      - group: "apps"
+        version: "v1"
+        kind: "DaemonSet"
       # Sync services for network policy validation
       - group: ""
         version: "v1"
