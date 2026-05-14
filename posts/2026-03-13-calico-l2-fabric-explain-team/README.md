@@ -2,17 +2,17 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, L2, Networking, VXLAN, Team Communication, Overlay
+Tags: Calico, Kubernetes, Networking, VXLAN, IP-in-IP, Team Communication, Overlay
 
-Description: A practical guide for explaining Calico's L2 overlay networking (VXLAN, IP-in-IP) to engineering teams, using analogies to make encapsulation intuitive.
+Description: A practical guide for explaining Calico's overlay networking (VXLAN, IP-in-IP) to engineering teams, using analogies to make encapsulation intuitive.
 
 ---
 
 ## Introduction
 
-Explaining L2 overlay networking to a team requires making encapsulation intuitive. Most developers understand sending a letter in an envelope - overlay networking is just putting one envelope inside another. The inner envelope has the pod addresses; the outer envelope has the node addresses that the network knows how to route.
+Explaining overlay networking to a team requires making encapsulation intuitive. Most developers understand sending a letter in an envelope - overlay networking is just putting one envelope inside another. The inner envelope has the pod addresses; the outer envelope has the node addresses that the network knows how to route.
 
-This post gives you the analogies, diagrams, and live demonstrations to explain Calico's L2 interconnect to teams with varying networking backgrounds.
+This post gives you the analogies, diagrams, and live demonstrations to explain Calico's overlay interconnect to teams with varying networking backgrounds.
 
 ## Prerequisites
 
@@ -36,9 +36,9 @@ In Kubernetes overlay networking:
 Show the team what encapsulation looks like with `tcpdump`:
 
 ```bash
-# On a worker node, capture traffic on the VXLAN interface
+# On a worker node, capture encapsulated traffic on the node's underlay interface
 
-sudo tcpdump -i vxlan.calico -n -c 5
+sudo tcpdump -i <node-underlay-interface> -n -vv -c 5 udp port 4789
 
 # In another terminal, generate cross-node pod-to-pod traffic
 kubectl exec pod-on-node-1 -- wget -qO- http://<pod-on-node-2>
@@ -50,7 +50,7 @@ Expected output:
     IP 10.0.1.4 > 10.0.2.5: TCP 80
 ```
 
-Point out: "Two IP addresses in one packet. Outer: node IPs the network knows. Inner: pod IPs only Calico knows."
+Point out: "Two IP addresses in one packet. Outer: node IPs the network knows. Inner: pod IPs the underlay does not route."
 
 ## What to Tell Developers
 
@@ -58,14 +58,14 @@ For developers who want to know why this matters for their applications:
 
 > "The overlay is transparent to your application. Your pod thinks it's talking directly to another pod's IP. The encapsulation happens below the socket layer - your Go, Python, or Java code doesn't know or care about VXLAN."
 
-The only thing developers might notice: slightly higher network latency (a few microseconds for encap/decap) and a reduced effective MTU. If they're sending very large application messages (close to 64KB), they may need to consider the MTU impact.
+The only thing developers might notice: slightly higher network latency from encap/decap and a reduced effective MTU. If they're sending large UDP datagrams or running MTU-sensitive workloads, they may need to consider the MTU impact.
 
 ## What to Tell Network Engineers
 
 Network engineers who manage the underlay infrastructure need to know:
 
 1. **VXLAN uses UDP/4789**: Ensure your firewall/security group rules allow UDP port 4789 between all nodes in the cluster
-2. **IP-in-IP uses protocol 4**: If using IP-in-IP, ensure IP protocol 4 is allowed between nodes
+2. **IP-in-IP uses protocol 4**: If using IP-in-IP, ensure IP protocol 4 is allowed between nodes. In Calico's default IP-in-IP routing model, BGP is also used between nodes to distribute routes
 3. **MTU planning**: The encapsulation reduces the effective payload MTU - coordinate with the application team on expected message sizes
 
 Show the comparison:
@@ -73,7 +73,7 @@ Show the comparison:
 | Protocol | Port/Protocol | What to Allow in Firewall |
 |---|---|---|
 | VXLAN | UDP 4789 | Allow UDP 4789 between all node IPs |
-| IP-in-IP | IP proto 4 | Allow protocol 4 between all node IPs |
+| IP-in-IP | IP proto 4 + BGP (TCP 179) | Allow protocol 4 and TCP 179 between all node IPs |
 | None (BGP) | BGP (TCP 179) | Allow TCP 179 between nodes and BGP peers |
 
 ## What to Tell Platform Engineers
@@ -87,19 +87,19 @@ calicoctl get ippools default-ipv4-ippool -o yaml | grep -E "vxlanMode|ipipMode"
 # Verify VXLAN interface exists on nodes
 ip link show vxlan.calico
 
-# View VXLAN FDB (which node IP handles which pod CIDR)
+# View VXLAN FDB entries (which remote VTEP node IPs are reachable)
 bridge fdb show dev vxlan.calico
 ```
 
-The VXLAN FDB is programmed by Felix and should have one entry per remote node. If entries are missing, Felix may not have established connectivity to remote nodes.
+Felix programs cluster routes for VXLAN IP pools and manages the VXLAN device state. If expected routes or FDB entries are missing, check Felix logs and node connectivity.
 
 ## Common Questions
 
 **Q: Does the overlay add a lot of latency?**
-A: The encapsulation/decapsulation is done in kernel space and adds ~5-15 microseconds per round trip - imperceptible for most applications.
+A: The encapsulation/decapsulation is done in kernel space and is usually imperceptible for most applications, but the exact latency impact depends on the kernel, NIC offload support, packet size, and workload.
 
 **Q: Why not just use BGP instead of overlays?**
-A: BGP requires your network fabric to support and accept BGP sessions from Kubernetes nodes. Cloud VPC networks typically don't support this. Overlays work with any network that can route UDP traffic between VMs.
+A: BGP requires your network fabric to support and accept BGP sessions from Kubernetes nodes, or for your cluster to use a supported route-reflector design. Many cloud VPC networks don't let you peer directly with the underlay. VXLAN overlays work with any network that can route UDP traffic between VMs.
 
 ## Best Practices
 
@@ -109,4 +109,4 @@ A: BGP requires your network fabric to support and accept BGP sessions from Kube
 
 ## Conclusion
 
-Explaining L2 overlay networking with the double envelope analogy makes encapsulation immediately intuitive for any audience. Developers understand their application is unaffected. Network engineers know which ports to open. Platform engineers know how to inspect and debug the VXLAN state. The `tcpdump` live demonstration connects the analogy to observable reality in a way that slides never can.
+Explaining overlay networking with the double envelope analogy makes encapsulation immediately intuitive for any audience. Developers understand their application is unaffected. Network engineers know which ports to open. Platform engineers know how to inspect and debug the VXLAN state. The `tcpdump` live demonstration connects the analogy to observable reality in a way that slides never can.
