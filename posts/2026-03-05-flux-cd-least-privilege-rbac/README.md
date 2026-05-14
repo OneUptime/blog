@@ -27,7 +27,7 @@ kubectl get clusterrolebindings -o json | jq -r '.items[] | select(.subjects[]?.
 kubectl describe clusterrole $(kubectl get clusterrolebinding -o json | jq -r '.items[] | select(.subjects[]?.name=="kustomize-controller") | .roleRef.name')
 
 # List all resource types your Flux Kustomizations actually create
-kubectl get kustomizations -A -o json | jq -r '.items[].status.inventory.entries[]?.id' | cut -d_ -f3 | sort -u
+kubectl get kustomizations -A -o json | jq -r '.items[].status.inventory.entries[]?.id' | cut -d_ -f4 | sort -u
 ```
 
 ## Step 2: Create Minimal ClusterRole for Kustomize Controller
@@ -58,6 +58,10 @@ rules:
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["create", "patch"]
+  # Leader election
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   # Flux CRD status updates
   - apiGroups: ["kustomize.toolkit.fluxcd.io"]
     resources: ["kustomizations", "kustomizations/status", "kustomizations/finalizers"]
@@ -102,12 +106,20 @@ rules:
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["create", "patch"]
+  # Leader election
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   # Flux CRDs
   - apiGroups: ["helm.toolkit.fluxcd.io"]
     resources: ["helmreleases", "helmreleases/status", "helmreleases/finalizers"]
     verbs: ["get", "list", "watch", "update", "patch"]
+  # HelmChart resources created from HelmRelease chart templates
   - apiGroups: ["source.toolkit.fluxcd.io"]
-    resources: ["helmcharts", "helmcharts/status", "helmrepositories"]
+    resources: ["helmcharts"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["source.toolkit.fluxcd.io"]
+    resources: ["helmcharts/status", "helmrepositories", "gitrepositories", "buckets", "ocirepositories"]
     verbs: ["get", "list", "watch"]
   # Impersonation support
   - apiGroups: [""]
@@ -127,16 +139,37 @@ metadata:
 rules:
   # Source CRD management
   - apiGroups: ["source.toolkit.fluxcd.io"]
-    resources: ["*"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+    resources: ["buckets", "gitrepositories", "helmcharts", "helmrepositories", "ocirepositories"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: ["source.toolkit.fluxcd.io"]
+    resources:
+      - "buckets/status"
+      - "buckets/finalizers"
+      - "gitrepositories/status"
+      - "gitrepositories/finalizers"
+      - "helmcharts/status"
+      - "helmcharts/finalizers"
+      - "helmrepositories/status"
+      - "helmrepositories/finalizers"
+      - "ocirepositories/status"
+      - "ocirepositories/finalizers"
+    verbs: ["get", "update", "patch"]
   # Read secrets for source authentication
   - apiGroups: [""]
-    resources: ["secrets"]
+    resources: ["secrets", "configmaps", "serviceaccounts"]
     verbs: ["get", "list", "watch"]
   # Events
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["create", "patch"]
+  # Leader election
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Object-level workload identity, required when source objects use serviceAccountName
+  - apiGroups: [""]
+    resources: ["serviceaccounts/token"]
+    verbs: ["create"]
 ```
 
 ## Step 5: Apply and Bind the ClusterRoles
@@ -193,8 +226,10 @@ kubectl apply -f clusterrole-helm-least-privilege.yaml
 kubectl apply -f clusterrole-source-least-privilege.yaml
 kubectl apply -f clusterrolebindings-least-privilege.yaml
 
-# Remove the default broad ClusterRoleBindings
+# Remove the default broad ClusterRoleBindings after every installed controller has a scoped replacement
+kubectl delete clusterrolebinding cluster-reconciler-flux-system cluster-reconciler --ignore-not-found
 kubectl delete clusterrolebinding crd-controller-flux-system --ignore-not-found
+kubectl delete clusterrolebinding crd-controller --ignore-not-found
 
 # Verify the new bindings are active
 kubectl get clusterrolebindings | grep flux
