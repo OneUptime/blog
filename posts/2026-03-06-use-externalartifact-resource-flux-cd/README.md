@@ -10,17 +10,19 @@ Description: A practical guide to using the ExternalArtifact resource in Flux CD
 
 ## Introduction
 
-Flux CD provides built-in source controllers for Git repositories, Helm charts, OCI registries, and S3 buckets. However, there are scenarios where your deployment artifacts come from external systems that Flux does not natively support. The ExternalArtifact resource bridges this gap by providing a generic API that allows third-party controllers to produce and store artifact objects in the same way as Flux's own source-controller. Flux Kustomizations and HelmReleases can then reference these artifacts as sources.
+Flux CD provides built-in source controllers for Git repositories, Helm charts, OCI registries, and S3 buckets. However, there are scenarios where your deployment artifacts come from external systems that Flux does not natively support. The ExternalArtifact resource bridges this gap by providing a generic API that allows third-party controllers to produce and store artifact objects in the same way as Flux's own source-controller. Flux Kustomizations can reference these artifacts as sources, and HelmReleases can reference them through `chartRef` when the ExternalArtifact feature gate is enabled in helm-controller.
 
 ## Prerequisites
 
-- Flux CD v2.5+ with ExternalArtifact support
+- Flux CD v2.7+ with ExternalArtifact support
 - A Kubernetes cluster with Flux installed
 - An external controller that produces artifacts (or you can manage ExternalArtifact status manually)
+- The `source-watcher` component if you plan to use ArtifactGenerator
+- The helm-controller `ExternalArtifact` feature gate if you plan to use ExternalArtifact with HelmRelease `chartRef`
 
 ## What is ExternalArtifact
 
-ExternalArtifact is a Flux source type whose lifecycle is managed outside of Flux's source-controller. Instead of Flux pulling and reconciling the source, an external controller or process writes artifact metadata into the ExternalArtifact's `.status.artifact` field. Flux then uses this metadata to fetch and apply the artifact from the in-cluster storage URL.
+ExternalArtifact is a Flux source type whose lifecycle is managed outside of Flux's source-controller. Instead of Flux pulling and reconciling the source, an external controller or process writes artifact metadata into the ExternalArtifact's `.status.artifact` field and sets standard Kubernetes conditions. Flux controllers then use this metadata to fetch and apply the artifact from the in-cluster storage URL.
 
 ```mermaid
 graph LR
@@ -64,7 +66,14 @@ status:
     path: source/flux-system/my-app-artifact/35d47c9d.tar.gz
     revision: v1.2.3@sha256:35d47c9db0eee6ffe08a404dfb416bee31b2b79eabc3f2eb26749163ce487f52
     size: 20914
-    url: http://source-controller.flux-system.svc.cluster.internal./source/flux-system/my-app-artifact/35d47c9d.tar.gz
+    url: http://example-controller.flux-system.svc.cluster.local./source/flux-system/my-app-artifact/35d47c9d.tar.gz
+  conditions:
+    - lastTransitionTime: "2026-03-06T10:30:00Z"
+      message: stored artifact for revision v1.2.3
+      observedGeneration: 1
+      reason: Succeeded
+      status: "True"
+      type: Ready
 ```
 
 ### Using ExternalArtifact with Kustomization
@@ -99,22 +108,27 @@ The ArtifactGenerator resource enables generating ExternalArtifacts from multipl
 
 ```yaml
 # clusters/my-cluster/sources/artifact-generator.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: my-app-generator
   namespace: flux-system
 spec:
-  # Generate an ExternalArtifact from a GitRepository sub-path
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  path: ./apps/my-app
+  sources:
+    - alias: repo
+      kind: GitRepository
+      name: flux-system
+  artifacts:
+    - name: my-app-artifact
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/apps/my-app/**"
+          to: "@artifact/"
 ```
 
 ## Updating ExternalArtifact from an External Controller
 
-An external controller manages the ExternalArtifact by writing artifact metadata to its status. Here is an example using kubectl to simulate what an external controller would do:
+An external controller manages the ExternalArtifact by uploading the artifact to storage and writing artifact metadata to its status. Here is an example using kubectl to simulate the status update an external controller would perform after uploading the tarball:
 
 ```bash
 #!/bin/bash
@@ -125,6 +139,8 @@ ARTIFACT_REVISION="v1.2.3"
 ARTIFACT_DIGEST="sha256:$(sha256sum artifact.tar.gz | cut -d' ' -f1)"
 ARTIFACT_PATH="source/flux-system/my-app-artifact/$(echo $ARTIFACT_DIGEST | cut -c8-15).tar.gz"
 ARTIFACT_SIZE=$(stat -f%z artifact.tar.gz 2>/dev/null || stat --printf="%s" artifact.tar.gz)
+ARTIFACT_URL="http://example-controller.flux-system.svc.cluster.local./${ARTIFACT_PATH}"
+NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 # Update the ExternalArtifact status
 kubectl patch externalartifact my-app-artifact \
@@ -135,12 +151,22 @@ kubectl patch externalartifact my-app-artifact \
     \"status\": {
       \"artifact\": {
         \"digest\": \"${ARTIFACT_DIGEST}\",
-        \"lastUpdateTime\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+        \"lastUpdateTime\": \"${NOW}\",
         \"path\": \"${ARTIFACT_PATH}\",
         \"revision\": \"${ARTIFACT_REVISION}@${ARTIFACT_DIGEST}\",
         \"size\": ${ARTIFACT_SIZE},
-        \"url\": \"http://source-controller.flux-system.svc.cluster.internal./${ARTIFACT_PATH}\"
-      }
+        \"url\": \"${ARTIFACT_URL}\"
+      },
+      \"conditions\": [
+        {
+          \"lastTransitionTime\": \"${NOW}\",
+          \"message\": \"stored artifact for revision ${ARTIFACT_REVISION}\",
+          \"observedGeneration\": 1,
+          \"reason\": \"Succeeded\",
+          \"status\": \"True\",
+          \"type\": \"Ready\"
+        }
+      ]
     }
   }"
 
@@ -177,7 +203,7 @@ spec:
 
 ## ExternalArtifact with HelmRelease
 
-Use ExternalArtifact as a source for HelmReleases when charts come from non-standard locations:
+Use ExternalArtifact as a source for HelmReleases when charts come from non-standard locations. This requires the helm-controller `ExternalArtifact` feature gate:
 
 ```yaml
 # clusters/my-cluster/apps/helm-from-external.yaml
@@ -282,7 +308,7 @@ spec:
     - kind: ExternalArtifact
       name: '*'
       namespace: flux-system
-  summary: "ExternalArtifact update detected or failed"
+  summary: "ExternalArtifact reconciliation failed"
 ```
 
 ## Comparison with Other Source Types
@@ -327,7 +353,7 @@ Limit who and what can update ExternalArtifact status. Use Kubernetes RBAC to re
 
 ### Use ArtifactGenerator When Possible
 
-If your source is already a Flux source type (GitRepository, OCIRepository, etc.) but you need to split it into multiple artifacts, use ArtifactGenerator instead of manually managing ExternalArtifact status.
+If your source is already a Flux source type (GitRepository, OCIRepository, etc.) but you need to split it into multiple artifacts, use ArtifactGenerator with the source-watcher component instead of manually managing ExternalArtifact status.
 
 ## Conclusion
 
