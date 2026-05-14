@@ -49,7 +49,7 @@ The Calico issue tracker is at `github.com/projectcalico/calico/issues`. For eff
    ```bash
    kubectl get pods -n calico-system -l k8s-app=calico-node \
      -o jsonpath='{.items[0].spec.containers[0].image}'
-   kubectl version --short
+   kubectl version
    uname -r  # Kernel version
    ```
 3. **Provide minimal reproduction steps**: A script that reproduces the issue on a fresh cluster is ideal
@@ -67,21 +67,22 @@ The Calico issue tracker is at `github.com/projectcalico/calico/issues`. For eff
 git clone git@github.com:<your-github>/calico.git
 cd calico
 
-# Set up Go environment (Calico requires Go 1.21+)
-go version
+# Check that required build tools are available
+docker version
+git --version
+make --version
 
 # Build a specific component
-cd felix
-make build
+make -C felix build
 
 # Run unit tests
-make ut
+make -C felix test
 
 # Build the calico-node container
-make calico/node
+make -C node image
 ```
 
-Calico uses `make` as its primary build tool. Each sub-directory has its own `Makefile` with targets for building, testing, and packaging.
+Calico uses `make` as its primary build tool. Component directories have their own `Makefile` targets for building, testing, and packaging.
 
 ## Running Integration Tests
 
@@ -89,7 +90,7 @@ Integration tests require a local Kubernetes cluster:
 
 ```bash
 # Use kind for integration testing
-kind create cluster --config=test/kind.yaml
+kind create cluster --name dev
 
 # Run integration tests for the CNI plugin
 cd cni-plugin
@@ -110,10 +111,10 @@ graph LR
 ```
 
 Key conventions:
-- Branch names: `feature/<description>` or `fix/<issue-number>-<description>`
-- Commit messages: Follow the conventional commits format: `feat: add X` or `fix: resolve Y`
+- Branch names: create a feature branch from the latest `master`
+- Commit messages: Use clear, descriptive commit messages; reviewers may ask you to squash commits before merge
 - Tests required: Every functional change should include a unit test
-- Signed commits: `git commit -s` for Developer Certificate of Origin (DCO) sign-off
+- Contributor agreement: You must sign Tigera's Contributor License Agreement as part of the PR process
 
 ## Community Resources
 
@@ -130,17 +131,17 @@ Key conventions:
 
 Do NOT file security vulnerabilities as public GitHub issues. Report them privately:
 
-- Email: `security@tigera.io`
+- Email: `psirt@projectcalico.org`
 - GitHub Security Advisories: `github.com/projectcalico/calico/security/advisories/new`
 
-Security reports are acknowledged within 24 hours and coordinated disclosure is used for all CVEs.
+Security reports should include the affected version and steps to reproduce. Tigera follows responsible disclosure for confirmed vulnerabilities.
 
 ## Understanding the Release Cycle
 
 Calico releases follow a regular cadence:
 - Minor releases (3.27, 3.28): Monthly to quarterly
 - Patch releases (3.27.1, 3.27.2): As needed for bug fixes and security patches
-- N-1 support: The previous minor version continues to receive patches
+- Supported versions: Tigera generally supports the most recent two minor versions of Project Calico on a rolling basis
 
 Roadmap discussions happen in GitHub Issues with the `roadmap` label and in community calls.
 
@@ -153,4 +154,4 @@ Roadmap discussions happen in GitHub Issues with the `roadmap` label and in comm
 
 ## Conclusion
 
-The Calico open source community follows standard GitHub-based workflows with specific conventions around DCO sign-off, testing requirements, and secure vulnerability reporting. Engaging effectively means searching issues before filing, providing complete version information and reproduction steps, and participating in design discussions before writing large features. The community is active and responsive - contributing to Calico is an effective way to influence the direction of one of Kubernetes' most widely-used CNI plugins.
+The Calico open source community follows standard GitHub-based workflows with specific conventions around contributor agreements, testing requirements, and secure vulnerability reporting. Engaging effectively means searching issues before filing, providing complete version information and reproduction steps, and participating in design discussions before writing large features. The community is active and responsive - contributing to Calico is an effective way to influence the direction of one of Kubernetes' most widely-used CNI plugins.
