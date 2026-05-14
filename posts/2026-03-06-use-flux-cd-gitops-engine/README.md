@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Gitops engine, Kubernetes, GitOps, Reconciliation, Automation, Library
 
-Description: A practical guide to understanding and using the GitOps Engine library with Flux CD for building custom GitOps controllers and automation.
+Description: A practical guide to understanding GitOps engine patterns with Flux CD for building custom GitOps controllers and automation.
 
 ---
 
 ## Introduction
 
-The GitOps Engine is a library that provides the core reconciliation logic used by GitOps tools. While Flux CD uses its own set of controllers, understanding the GitOps Engine helps you build custom controllers that complement Flux CD or create specialized automation for your specific use cases.
+GitOps engine patterns provide the core reconciliation ideas used by GitOps tools. While Flux CD does not use the Argo Project's GitOps Engine library, understanding reconciliation, drift detection, artifact handling, and health assessment helps you build custom controllers that complement Flux CD or create specialized automation for your specific use cases.
 
-In this guide, you will learn what the GitOps Engine provides, how it relates to Flux CD, and how to build custom controllers and automation that work alongside your Flux CD installation.
+In this guide, you will learn what these GitOps engine patterns provide, how they relate to Flux CD, and how to build custom controllers and automation that work alongside your Flux CD installation.
 
 ## Prerequisites
 
@@ -36,17 +36,17 @@ go version
 
 ### What Is the GitOps Engine
 
-The GitOps Engine is a set of libraries and patterns for implementing GitOps workflows. It provides:
+GitOps engine patterns are a set of reconciliation concepts for implementing GitOps workflows. They provide:
 
 - Reconciliation primitives for syncing desired state to clusters
 - Diff calculation between desired and live state
 - Resource ordering and dependency management
 - Health assessment for Kubernetes resources
-- Sync hooks and lifecycle management
+- Lifecycle management around reconciliation events
 
 ### How It Relates to Flux CD
 
-Flux CD implements its own reconciliation engine through its controllers. The GitOps Engine concept provides a framework for understanding and extending these patterns:
+Flux CD implements its own reconciliation loops through its controllers. GitOps engine concepts provide a framework for understanding and extending these patterns:
 
 ```mermaid
 graph TD
@@ -80,6 +80,7 @@ Add the necessary Flux and Kubernetes dependencies:
 # Add Flux runtime and API dependencies
 go get github.com/fluxcd/pkg/runtime@latest
 go get github.com/fluxcd/pkg/apis/meta@latest
+go get github.com/fluxcd/source-controller/api@latest
 go get sigs.k8s.io/controller-runtime@latest
 go get k8s.io/apimachinery@latest
 go get k8s.io/client-go@latest
@@ -123,7 +124,7 @@ spec:
                   properties:
                     kind:
                       type: string
-                      enum: [GitRepository, OCIRepository, Bucket]
+                      enum: [GitRepository]
                     name:
                       type: string
                     namespace:
@@ -176,7 +177,7 @@ spec:
 
 ### Implementing the Controller
 
-Create a controller that watches Flux sources and performs custom reconciliation:
+Create a controller that watches your custom resources, reads Flux source artifacts, and performs custom reconciliation. This minimal example handles `GitRepository` sources; you can extend the same pattern for other Flux source kinds:
 
 ```go
 // controllers/customdeployment_controller.go
@@ -247,23 +248,28 @@ func (r *CustomDeploymentReconciler) Reconcile(
         if err := r.validateArtifact(ctx, artifactURL,
             customDeploy.Spec.Validation.Rules); err != nil {
             // Update status with validation failure
-            r.updateStatus(ctx, &customDeploy, "ValidationFailed", err.Error())
+            r.updateStatus(ctx, &customDeploy, metav1.ConditionFalse,
+                "ValidationFailed", err.Error())
             return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
         }
     }
 
     // Apply the resources from the artifact
     if err := r.applyResources(ctx, artifactURL, customDeploy.Spec.Path); err != nil {
-        r.updateStatus(ctx, &customDeploy, "ApplyFailed", err.Error())
+        r.updateStatus(ctx, &customDeploy, metav1.ConditionFalse,
+            "ApplyFailed", err.Error())
         return ctrl.Result{RequeueAfter: 5 * time.Minute}, err
     }
 
     // Update status to ready
-    r.updateStatus(ctx, &customDeploy, "ReconciliationSucceeded",
+    r.updateStatus(ctx, &customDeploy, metav1.ConditionTrue, "ReconciliationSucceeded",
         fmt.Sprintf("Applied revision: %s", gitRepo.Status.Artifact.Revision))
 
     // Parse the interval and requeue
-    interval, _ := time.ParseDuration(customDeploy.Spec.Interval)
+    interval, err := time.ParseDuration(customDeploy.Spec.Interval)
+    if err != nil {
+        interval = 10 * time.Minute
+    }
     return ctrl.Result{RequeueAfter: interval}, nil
 }
 
@@ -294,6 +300,7 @@ func (r *CustomDeploymentReconciler) applyResources(
 func (r *CustomDeploymentReconciler) updateStatus(
     ctx context.Context,
     obj *CustomDeployment,
+    status metav1.ConditionStatus,
     reason string,
     message string,
 ) {
@@ -301,7 +308,7 @@ func (r *CustomDeploymentReconciler) updateStatus(
     obj.Status.Conditions = []metav1.Condition{
         {
             Type:               "Ready",
-            Status:             metav1.ConditionTrue,
+            Status:             status,
             Reason:             reason,
             Message:            message,
             LastTransitionTime: metav1.Now(),
@@ -370,10 +377,9 @@ spec:
   url: https://github.com/myorg/my-app
   ref:
     branch: main
-  # Include only the deployment manifests
-  include:
-    - fromPath: deploy/
-      toPath: deploy/
+  # Fetch only the deployment manifests into the source artifact
+  sparseCheckout:
+    - deploy
 ```
 
 ## Building a Reconciliation Pipeline
@@ -415,7 +421,7 @@ spec:
       - "no-latest-tags"
       - "require-resource-limits"
 ---
-# Step 3: Flux applies the validated manifests
+# Step 3: Flux applies the manifests and reports the validation object health
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -428,10 +434,11 @@ spec:
     name: pipeline-source
   path: ./manifests
   prune: true
-  # Depend on validation passing
-  dependsOn:
-    - name: validate-config
   healthChecks:
+    - apiVersion: gitops.example.com/v1alpha1
+      kind: CustomDeployment
+      name: validate-config
+      namespace: flux-system
     - apiVersion: apps/v1
       kind: Deployment
       name: my-app
@@ -442,20 +449,20 @@ spec:
 graph LR
     A[Git Repository] --> B[Source Controller]
     B --> C[Custom Validator]
-    C -->|Pass| D[Kustomize Controller]
+    C --> D[Kustomize Controller]
     C -->|Fail| E[Alert/Notification]
     D --> F[Kubernetes Cluster]
 ```
 
 ## Event-Driven Integration
 
-### Watching Flux Events
+### Triggering Flux Reconciliation with Webhooks
 
-Build a controller that reacts to Flux reconciliation events:
+Use a Flux `Receiver` when an external webhook should trigger reconciliation of Flux resources:
 
 ```yaml
 # event-watcher.yaml
-# Flux notification receiver for custom webhooks
+# Flux notification receiver for inbound custom webhooks
 apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Receiver
 metadata:
@@ -466,14 +473,17 @@ spec:
   secretRef:
     name: receiver-token
   resources:
-    - kind: Kustomization
+    - apiVersion: kustomize.toolkit.fluxcd.io/v1
+      kind: Kustomization
       name: "*"
       namespace: flux-system
+      matchLabels:
+        app.kubernetes.io/part-of: platform
 ```
 
 ### Webhook Handler
 
-Deploy a webhook handler that processes Flux events:
+Deploy a webhook handler that calls the Receiver webhook URL when your custom automation needs Flux to reconcile:
 
 ```yaml
 # webhook-handler.yaml
@@ -499,9 +509,9 @@ spec:
           ports:
             - containerPort: 8080
           env:
-            # Flux notification controller endpoint
-            - name: FLUX_NOTIFICATION_URL
-              value: "http://notification-controller.flux-system.svc.cluster.local./"
+            # Flux Receiver webhook URL, usually read from the Receiver status
+            - name: FLUX_RECEIVER_URL
+              value: "http://notification-controller.flux-system.svc.cluster.local/hook/<receiver-path>"
             # Cluster name for event correlation
             - name: CLUSTER_NAME
               value: "production"
@@ -529,9 +539,9 @@ spec:
 
 ## Custom Health Checks
 
-### Extending Flux Health Assessment
+### Referencing Custom Resources in Health Checks
 
-Create custom health checks that Flux Kustomizations can reference:
+Reference custom resources that expose Kubernetes-style status conditions in Flux Kustomization health checks:
 
 ```yaml
 # custom-healthcheck-kustomization.yaml
@@ -653,4 +663,4 @@ kubectl get gitrepository app-source -n flux-system \
 
 ## Summary
 
-The GitOps Engine concept provides a foundation for building custom controllers that extend Flux CD capabilities. By leveraging Flux source artifacts and reconciliation patterns, you can create specialized automation such as custom validators, policy enforcers, and deployment pipelines that integrate seamlessly with your existing Flux CD installation. This approach lets you maintain the benefits of Flux CD while adding domain-specific logic tailored to your organization's needs.
+GitOps engine patterns provide a foundation for building custom controllers that extend Flux CD capabilities. By leveraging Flux source artifacts and reconciliation patterns, you can create specialized automation such as custom validators, policy enforcers, and deployment pipelines that integrate with your existing Flux CD installation. This approach lets you maintain the benefits of Flux CD while adding domain-specific logic tailored to your organization's needs.
