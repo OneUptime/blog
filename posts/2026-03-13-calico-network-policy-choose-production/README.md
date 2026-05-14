@@ -18,7 +18,7 @@ This post provides a structured framework for network policy strategy selection,
 
 - Documented workload communication requirements
 - Understanding of team structure relative to Kubernetes namespaces
-- Calico edition decision made (Open Source vs. Enterprise for tiers)
+- Calico capabilities decision made (Open Source vs. Enterprise/Cloud features such as staged policy, policy recommendations, and flow logs)
 - Security and compliance requirements for inter-workload communication
 
 ## Decision 1: Kubernetes NetworkPolicy vs. Calico NetworkPolicy
@@ -57,10 +57,9 @@ metadata:
   namespace: {{ .Namespace }}
 spec:
   selector: all()
-  ingress:
-  - action: Deny
-  egress:
-  - action: Deny
+  types:
+  - Ingress
+  - Egress
 ```
 
 ## Decision 3: Policy Authorship Model
@@ -74,10 +73,10 @@ graph TD
     Model2[Distributed\nTeams write their own policies] --> PRO2[Autonomous\nFast]
     Model2 --> CON2[Inconsistent\nMistake-prone]
     Model3[Tiered\nPlatform sets baselines\nTeams write app policies] --> PRO3[Balanced\nScalable]
-    Model3 --> CON3[Requires Enterprise\nMore complex]
+    Model3 --> CON3[Requires careful RBAC\nMore complex]
 ```
 
-For organizations with multiple application teams, the tiered model (requiring Calico Enterprise) is the most scalable. Platform team manages baseline tiers (security, compliance); application teams manage their own tiers.
+For organizations with multiple application teams, the tiered model is the most scalable. Platform team manages baseline tiers (security, compliance); application teams manage their own tiers.
 
 ## Decision 4: Policy Rollout Strategy
 
@@ -102,9 +101,9 @@ Treat network policy like application code:
 
 - Use GlobalNetworkPolicy for all cluster-wide baseline rules (health checks, DNS, known-bad CIDRs)
 - Apply deny-all NetworkPolicy to each namespace at creation time
-- For Enterprise, use tiers to separate platform baselines from application-layer policies
+- Use tiers to separate platform baselines from application-layer policies
 - Never apply policy changes directly to production - always test in staging first
 
 ## Conclusion
 
-Production network policy strategy requires explicit decisions on policy resource type, default posture, authorship model, rollout strategy, and policy lifecycle management. The most effective approach combines Calico NetworkPolicy (for expressiveness), a deny-all default posture, and GitOps-based policy management with code review. For multi-team clusters, Calico Enterprise's tiered policy model provides the organizational structure needed to scale these practices without creating a platform team bottleneck.
+Production network policy strategy requires explicit decisions on policy resource type, default posture, authorship model, rollout strategy, and policy lifecycle management. The most effective approach combines Calico NetworkPolicy (for expressiveness), a deny-all default posture, and GitOps-based policy management with code review. For multi-team clusters, Calico's tiered policy model provides the organizational structure needed to scale these practices without creating a platform team bottleneck.
