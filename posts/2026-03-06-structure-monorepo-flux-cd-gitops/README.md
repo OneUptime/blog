@@ -55,6 +55,17 @@ flux-platform/
 The `clusters/` directory is the entry point for each cluster. It contains the Flux Kustomization resources that bootstrap everything else:
 
 ```yaml
+# clusters/production/kustomization.yaml
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - flux-system
+  - infrastructure.yaml
+  - apps.yaml
+```
+
+```yaml
 # clusters/production/flux-system/kustomization.yaml
 
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -131,13 +142,14 @@ spec:
   chart:
     spec:
       chart: cert-manager
-      version: "1.14.x"
+      version: "v1.20.x"
       sourceRef:
         kind: HelmRepository
         name: jetstack
         namespace: flux-system
   values:
-    installCRDs: true
+    crds:
+      enabled: true
     # Common settings for all environments
     prometheus:
       enabled: true
@@ -268,18 +280,22 @@ For organizations running multiple production clusters, extend the clusters dire
 clusters/
 ├── production-us-east-1/
 │   ├── flux-system/
+│   ├── kustomization.yaml
 │   ├── infrastructure.yaml
 │   └── apps.yaml
 ├── production-eu-west-1/
 │   ├── flux-system/
+│   ├── kustomization.yaml
 │   ├── infrastructure.yaml
 │   └── apps.yaml
 ├── staging/
 │   ├── flux-system/
+│   ├── kustomization.yaml
 │   ├── infrastructure.yaml
 │   └── apps.yaml
 └── development/
     ├── flux-system/
+    ├── kustomization.yaml
     ├── infrastructure.yaml
     └── apps.yaml
 ```
