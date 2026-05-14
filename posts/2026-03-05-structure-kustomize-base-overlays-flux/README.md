@@ -212,14 +212,14 @@ repo/
   apps/
     user-service/
       base/
-        kustomization.yaml      # references ../../bases/microservice
+        kustomization.yaml      # references ../../../bases/microservice
         deployment-patch.yaml   # service-specific overrides
       overlays/
         production/
           kustomization.yaml
     order-service/
       base/
-        kustomization.yaml      # references ../../bases/microservice
+        kustomization.yaml      # references ../../../bases/microservice
         deployment-patch.yaml
       overlays/
         production/
@@ -245,7 +245,7 @@ Each application base references the shared base and applies service-specific pa
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ../../bases/microservice
+  - ../../../bases/microservice
 patches:
   - path: deployment-patch.yaml
 ```
@@ -270,9 +270,9 @@ spec:
 
 Overlays should primarily contain a `kustomization.yaml` with transformer configurations (images, replicas, labels) and small patches. If an overlay has many large files, consider whether some should be moved to the base.
 
-### 3. One Flux Kustomization per Overlay
+### 3. One Flux Kustomization per Deployed Overlay
 
-Each overlay should have exactly one Flux Kustomization resource pointing to it. This gives you independent reconciliation and clear ownership.
+Each deployed overlay should have a Flux Kustomization resource pointing to it. This gives you independent reconciliation and clear ownership. In multi-cluster repositories, multiple clusters may point to the same shared overlay.
 
 ### 4. Use Consistent Naming
 
@@ -293,8 +293,9 @@ Infrastructure resources (namespaces, RBAC, network policies, CRDs) should live 
 Use `kustomize build` to validate each overlay before committing.
 
 ```bash
-# Validate all overlays in the repository
-for overlay in apps/*/overlays/*/; do
+# Validate application and infrastructure overlays in the repository
+for overlay in apps/*/overlays/*/ infrastructure/overlays/*/; do
+  [ -d "$overlay" ] || continue
   echo "Building: $overlay"
   kustomize build "$overlay" > /dev/null || echo "FAILED: $overlay"
 done
