@@ -8,31 +8,32 @@ Description: Learn how to manage Linkerd traffic policies with Flux CD for GitOp
 
 ---
 
-Linkerd provides powerful traffic management capabilities through its policy resources, including traffic splitting for canary deployments, retry budgets, timeouts, and server authorization. Managing these policies with Flux CD ensures consistent, version-controlled traffic management across your service mesh. This guide covers practical patterns for Linkerd traffic policy management.
+Linkerd provides powerful traffic management capabilities through its policy resources, including traffic splitting for canary deployments, retries, timeouts, rate limiting, and server authorization. Managing these policies with Flux CD ensures consistent, version-controlled traffic management across your service mesh. This guide covers practical patterns for Linkerd traffic policy management.
 
 ## Prerequisites
 
 Before you begin, ensure you have the following:
 
 - A Kubernetes cluster with Linkerd installed (see our Linkerd deployment guide)
+- The Linkerd SMI extension installed if you plan to use TrafficSplit
 - Flux CD installed on your cluster (v2.x)
 - kubectl configured to access your cluster
 - Applications deployed in the Linkerd mesh
 
 ## Understanding Linkerd Traffic Policies
 
-Linkerd uses several custom resources for traffic management. The key resources include TrafficSplit for canary deployments, ServiceProfile for retries and timeouts, Server and ServerAuthorization for access control, and HTTPRoute for advanced routing.
+Linkerd uses several custom resources for traffic management. The key resources include TrafficSplit for canary deployments, HTTPRoute and annotations for retries and timeouts, Server and AuthorizationPolicy for access control, and HTTPLocalRateLimitPolicy for rate limiting.
 
 ```mermaid
 graph TD
     A[Flux CD] -->|Reconcile| B[TrafficSplit]
-    A -->|Reconcile| C[ServiceProfile]
+    A -->|Reconcile| C[HTTPRoute]
     A -->|Reconcile| D[Server]
-    A -->|Reconcile| E[HTTPRoute]
+    A -->|Reconcile| E[HTTPLocalRateLimitPolicy]
     B -->|Canary Routing| F[Services]
     C -->|Retries/Timeouts| F
     D -->|Authorization| F
-    E -->|Route Matching| F
+    E -->|Rate Limiting| F
 ```
 
 ## Step 1: Set Up the Git Repository Source
@@ -132,7 +133,7 @@ spec:
 
 ## Step 3: Progressive Canary Rollout
 
-Define multiple TrafficSplit configurations for progressive rollout stages:
+Define TrafficSplit configurations for progressive rollout stages. Only apply one stage for a service at a time, then update the weights in Git as the rollout advances:
 
 ```yaml
 # canary-stage-1.yaml (10% canary)
@@ -187,70 +188,52 @@ spec:
       weight: 1000
 ```
 
-## Step 4: ServiceProfile for Retries and Timeouts
+## Step 4: HTTPRoute for Retries and Timeouts
 
-Create ServiceProfiles to define retry and timeout policies:
+Create HTTPRoutes with Linkerd annotations to define retry and timeout policies for idempotent routes:
 
 ```yaml
-# service-profile.yaml
-# ServiceProfile for the order service with retry and timeout settings
-apiVersion: linkerd.io/v1alpha2
-kind: ServiceProfile
+# order-service-reliability.yaml
+# HTTPRoute for the order service with retry and timeout settings
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
-  name: order-service.my-app.svc.cluster.local
+  name: order-service-read-reliability
   namespace: my-app
+  annotations:
+    # Retry HTTP 5xx responses up to two times
+    retry.linkerd.io/http: 5xx
+    retry.linkerd.io/limit: "2"
+    retry.linkerd.io/timeout: 300ms
+    # Overall request timeout for matching read routes
+    timeout.linkerd.io/request: 5s
 spec:
-  routes:
-    # Route for creating orders
-    - name: POST /api/orders
-      condition:
-        method: POST
-        pathRegex: /api/orders
-      # Timeout for this specific route
-      timeout: 10s
-      # This route is retryable (idempotent)
-      isRetryable: false
-      # Response classes for metrics
-      responseClasses:
-        - condition:
-            status:
-              min: 500
-              max: 599
-          isFailure: true
-
+  parentRefs:
+    - name: order-service
+      kind: Service
+      group: core
+      port: 80
+  rules:
     # Route for listing orders
-    - name: GET /api/orders
-      condition:
-        method: GET
-        pathRegex: /api/orders
-      timeout: 5s
-      # GET requests are safe to retry
-      isRetryable: true
+    - matches:
+        - method: GET
+          path:
+            type: Exact
+            value: /api/orders
 
     # Route for getting a specific order
-    - name: GET /api/orders/{id}
-      condition:
-        method: GET
-        pathRegex: /api/orders/[^/]+
-      timeout: 3s
-      isRetryable: true
+    - matches:
+        - method: GET
+          path:
+            type: PathPrefix
+            value: /api/orders/
 
     # Health check route with short timeout
-    - name: GET /health
-      condition:
-        method: GET
-        pathRegex: /health
-      timeout: 1s
-      isRetryable: true
-
-  # Retry budget for the service
-  retryBudget:
-    # Maximum percentage of requests that can be retries
-    retryRatio: 0.2
-    # Minimum retries per second (even if ratio is exceeded)
-    minRetriesPerSecond: 10
-    # Time window for the retry budget
-    ttl: 10s
+    - matches:
+        - method: GET
+          path:
+            type: Exact
+            value: /health
 ```
 
 ## Step 5: Server Authorization Policies
@@ -274,28 +257,40 @@ spec:
   port: 8080
   proxyProtocol: HTTP/2
 ---
-# server-authorization.yaml
-# ServerAuthorization defines who can access the server
-apiVersion: policy.linkerd.io/v1beta1
-kind: ServerAuthorization
+# meshtls-authentication.yaml
+# MeshTLSAuthentication defines which service accounts can authenticate
+apiVersion: policy.linkerd.io/v1alpha1
+kind: MeshTLSAuthentication
+metadata:
+  name: order-service-clients
+  namespace: my-app
+spec:
+  identityRefs:
+    # Allow the frontend service account
+    - kind: ServiceAccount
+      name: frontend
+    # Allow the API gateway service account
+    - kind: ServiceAccount
+      name: api-gateway
+---
+# authorization-policy.yaml
+# AuthorizationPolicy defines who can access the server
+apiVersion: policy.linkerd.io/v1alpha1
+kind: AuthorizationPolicy
 metadata:
   name: order-service-authz
   namespace: my-app
 spec:
   # Reference to the Server resource
-  server:
+  targetRef:
+    group: policy.linkerd.io
+    kind: Server
     name: order-service-http
   # Client authorization rules
-  client:
-    # Allow traffic from meshed clients in specific namespaces
-    meshTLS:
-      serviceAccounts:
-        # Allow the frontend service account
-        - name: frontend
-          namespace: my-app
-        # Allow the API gateway service account
-        - name: api-gateway
-          namespace: my-app
+  requiredAuthenticationRefs:
+    - name: order-service-clients
+      kind: MeshTLSAuthentication
+      group: policy.linkerd.io
 ```
 
 ## Step 6: Network Authentication Policies
@@ -315,10 +310,6 @@ spec:
   identities:
     - "frontend.my-app.serviceaccount.identity.linkerd.cluster.local"
     - "api-gateway.my-app.serviceaccount.identity.linkerd.cluster.local"
-  identityRefs:
-    - kind: ServiceAccount
-      name: frontend
-      namespace: my-app
 ---
 # authorization-policy.yaml
 # AuthorizationPolicy ties authentication to a server
@@ -340,14 +331,14 @@ spec:
       group: policy.linkerd.io
 ```
 
-## Step 7: HTTPRoute for Advanced Routing
+## Step 7: HTTPRoute for Per-Route Policy
 
-Use Linkerd's HTTPRoute for path-based routing policies:
+Use Linkerd's HTTPRoute for path-based policy matching:
 
 ```yaml
 # httproute.yaml
-# HTTPRoute for fine-grained routing within the mesh
-apiVersion: policy.linkerd.io/v1beta3
+# HTTPRoute for fine-grained policy within the mesh
+apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: order-service-routes
@@ -382,46 +373,41 @@ spec:
       filters: []
 ```
 
-## Step 8: Rate Limiting with HTTPRoute
+## Step 8: Rate Limiting with HTTPLocalRateLimitPolicy
 
 Configure rate limiting policies:
 
 ```yaml
-# rate-limit-httproute.yaml
-# HTTPRoute with per-route authorization for rate limiting
+# rate-limit-policy.yaml
+# Server for the API service
 apiVersion: policy.linkerd.io/v1beta3
-kind: HTTPRoute
+kind: Server
 metadata:
   name: api-rate-limited
   namespace: my-app
 spec:
-  parentRefs:
-    - name: api-service-http
-      kind: Server
-      group: policy.linkerd.io
-  rules:
-    # Public API endpoint with rate limiting
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /api/public
-      filters: []
+  accessPolicy: all-unauthenticated
+  podSelector:
+    matchLabels:
+      app: api-service
+  port: 8080
+  proxyProtocol: HTTP/1
 ---
-# Authorization specific to rate-limited routes
+# Local HTTP rate limiting policy for the server
 apiVersion: policy.linkerd.io/v1alpha1
-kind: AuthorizationPolicy
+kind: HTTPLocalRateLimitPolicy
 metadata:
-  name: api-public-authz
+  name: api-rate-limited
   namespace: my-app
 spec:
   targetRef:
     group: policy.linkerd.io
-    kind: HTTPRoute
+    kind: Server
     name: api-rate-limited
-  requiredAuthenticationRefs:
-    - name: api-mtls-auth
-      kind: MeshTLSAuthentication
-      group: policy.linkerd.io
+  total:
+    requestsPerSecond: 100
+  identity:
+    requestsPerSecond: 10
 ```
 
 ## Step 9: Opaque Protocol Configuration
@@ -430,12 +416,11 @@ Configure opaque ports for non-HTTP protocols:
 
 ```yaml
 # opaque-ports-config.yaml
-# ConfigMap for default opaque ports across the namespace
+# Namespace annotation for default opaque ports across the namespace
 apiVersion: v1
-kind: ConfigMap
+kind: Namespace
 metadata:
-  name: linkerd-config
-  namespace: my-app
+  name: my-app
   annotations:
     # Default opaque ports for the namespace
     config.linkerd.io/opaque-ports: "3306,5432,6379,27017"
@@ -487,16 +472,10 @@ spec:
     name: linkerd-policies
   path: ./policies/production
   prune: true
-  wait: true
   timeout: 5m
   dependsOn:
     # Ensure Linkerd is installed first
     - name: linkerd
-  healthChecks:
-    - apiVersion: split.smi-spec.io/v1alpha2
-      kind: TrafficSplit
-      name: web-app-canary
-      namespace: my-app
 ```
 
 ## Verify Traffic Policies
@@ -507,21 +486,21 @@ Check that policies are applied correctly:
 # List TrafficSplits
 kubectl get trafficsplits -n my-app
 
-# Check ServiceProfiles
-kubectl get serviceprofiles -n my-app
+# Check HTTPRoutes
+kubectl get httproutes -n my-app
 
-# List Servers and ServerAuthorizations
+# List Servers
 kubectl get servers -n my-app
-kubectl get serverauthorizations -n my-app
 
-# Check AuthorizationPolicies
+# Check AuthorizationPolicies and rate limit policies
 kubectl get authorizationpolicies -n my-app
+kubectl get httplocalratelimitpolicies -n my-app
 
 # View traffic stats for a service
 linkerd viz stat deploy -n my-app
 
-# Check route-level statistics
-linkerd viz routes deploy/order-service -n my-app
+# Check HTTPRoute statistics
+linkerd viz stat httproute/order-service-read-reliability -n my-app
 
 # View traffic split status
 linkerd viz stat ts/web-app-canary -n my-app
@@ -559,12 +538,12 @@ spec:
 
 1. **Use short reconciliation intervals** for traffic policies (2-3 minutes)
 2. **Start canary deployments with small traffic percentages** (5-10%)
-3. **Define retry budgets** to prevent retry storms
-4. **Use ServiceProfiles** to set per-route timeouts based on expected latency
-5. **Implement least-privilege authorization** with Server and ServerAuthorization
+3. **Configure retry limits and retry timeouts** to prevent retry storms
+4. **Use HTTPRoutes or Service annotations** to set timeouts based on expected latency
+5. **Implement least-privilege authorization** with Server and AuthorizationPolicy
 6. **Configure opaque ports** for non-HTTP protocols to ensure proper proxying
 7. **Monitor traffic splits** using linkerd viz to verify traffic distribution
 
 ## Conclusion
 
-Managing Linkerd traffic policies with Flux CD provides a robust GitOps workflow for traffic management, authorization, and resilience configuration. By storing policies in Git, you get version control and audit trails for all traffic management changes. Flux CD's automated reconciliation ensures policies are consistently applied and any manual changes are reverted. The combination of TrafficSplit for canary deployments, ServiceProfile for retries and timeouts, and Server/AuthorizationPolicy for access control gives you comprehensive traffic management capabilities with Linkerd's lightweight service mesh.
+Managing Linkerd traffic policies with Flux CD provides a robust GitOps workflow for traffic management, authorization, and resilience configuration. By storing policies in Git, you get version control and audit trails for all traffic management changes. Flux CD's automated reconciliation ensures policies are consistently applied and any manual changes are reverted. The combination of TrafficSplit for canary deployments, HTTPRoute and annotations for retries and timeouts, and Server/AuthorizationPolicy for access control gives you comprehensive traffic management capabilities with Linkerd's lightweight service mesh.
