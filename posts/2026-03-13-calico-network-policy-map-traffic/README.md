@@ -22,17 +22,17 @@ This post maps four real traffic scenarios to their policy evaluation paths, sho
 
 ## How Felix Evaluates Policies
 
-Felix evaluates policies for each packet in this order:
+Felix evaluates Calico policies by tier. Tiers are sorted by `order` from lowest number to highest priority, and policies inside each tier are then processed in order. Kubernetes NetworkPolicy objects are enforced in the default tier with Calico policies that have no explicit tier.
 
 ```mermaid
 graph TD
-    Packet[Packet arrives at\ndestination pod] --> GlobalTiers[GlobalNetworkPolicy\nTiers sorted by order]
-    GlobalTiers --> NSTiers[Namespace NetworkPolicy\nTiers sorted by order]
-    NSTiers --> K8sNP[Kubernetes NetworkPolicy\nEvaluated last]
-    K8sNP --> Result{Final decision}
+    Packet[Packet arrives at\ndestination pod] --> Tiers[Tiers sorted by order]
+    Tiers --> Policies[Calico GlobalNetworkPolicy,\nCalico NetworkPolicy,\nand Kubernetes NetworkPolicy]
+    Policies --> Rules[Rules processed top-to-bottom]
+    Rules --> Result{Final decision}
     Result -->|Allow matched| ALLOW[Allow]
     Result -->|Deny matched| DENY[Deny]
-    Result -->|No match, pod selected| IMPL[Implicit deny]
+    Result -->|Tier applies but no rule matches| IMPL[Implicit deny]
     Result -->|No policy selects pod| OPEN[Allow all]
 ```
 
@@ -41,15 +41,15 @@ graph TD
 A payment service pod communicates with a database pod. The database has a deny-all ingress policy with an explicit allow for the payment service.
 
 **Active policies on the database pod**:
-1. GlobalNetworkPolicy `security-baseline`: Pass (no match on payment service source)
-2. CalicNetworkPolicy `allow-payment-service`: Allow from `app=payment-service`
-3. CalicNetworkPolicy `deny-all`: Deny (catch-all)
+1. GlobalNetworkPolicy `security-baseline`: no matching deny rule for the payment service source
+2. Calico NetworkPolicy `allow-payment-service`: Allow from `app=payment-service`
+3. Calico NetworkPolicy `deny-all`: Deny (catch-all)
 
 **Evaluation for traffic from payment service**:
 ```plaintext
-1. security-baseline: evaluates source selector - no match → Pass to next
+1. security-baseline: evaluates source selector - no matching rule, so evaluation continues within the tier
 2. allow-payment-service: source app=payment-service matches → Allow
-3. Evaluation stops - first match wins
+3. Evaluation stops for Calico policy because Allow and Deny actions are final
 ```
 
 ```bash
@@ -72,6 +72,7 @@ kind: GlobalNetworkPolicy
 metadata:
   name: database-access
 spec:
+  namespaceSelector: projectcalico.org/name == 'data'
   selector: app == 'database'
   ingress:
   - action: Allow
@@ -117,7 +118,7 @@ kubectl get pod -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx --show-
 
 ## Scenario 4: GlobalNetworkPolicy Blocking Known Bad CIDRs
 
-A GlobalNetworkPolicy blocks traffic from a known malicious IP range:
+A GlobalNetworkPolicy blocks traffic from an example CIDR that represents a blocklist entry:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -125,7 +126,8 @@ kind: GlobalNetworkPolicy
 metadata:
   name: block-bad-cidr
 spec:
-  order: 50  # Evaluated before app policies (order 100+)
+  tier: security
+  order: 50  # Evaluated before later policies in the security tier
   selector: all()
   ingress:
   - action: Deny
@@ -135,27 +137,26 @@ spec:
   - action: Pass
 ```
 
-Any packet from `198.51.100.0/24` to any pod in the cluster is denied at order 50, before any application-level policy can allow it. The `Pass` action for non-matching traffic passes evaluation to lower-priority policies.
+Assuming the `security` tier is ordered before the application/default tiers, any packet from `198.51.100.0/24` to any pod in the cluster is denied before any application-level policy can allow it. The `Pass` action for non-matching traffic skips the rest of the current tier and continues with the next tier that contains a policy applying to the endpoint.
 
 ## Tracing Policy Evaluation with Felix Logs
 
-Enable policy logging to see evaluation decisions in the kernel log:
+Add a Calico `Log` action before the rule you want to observe, then watch node logs for matching packets:
 
 ```bash
 # On a specific node
-sudo journalctl -f | grep -i "cali.*policy"
+sudo journalctl -f | grep -i "calico-packet"
 
-# Or use Felix diagnostic output
-kubectl exec -n calico-system -l k8s-app=calico-node -- \
-  calico-node -felix-live-logging
+# Or view the calico/node logs for Felix output
+kubectl logs -n calico-system <calico-node-pod-name>
 ```
 
 ## Best Practices
 
-- Use the GlobalNetworkPolicy ordering field deliberately: security baselines at order 50, compliance at 75, app policies at 100+
+- Use tiers and the GlobalNetworkPolicy ordering field deliberately: security baselines in an earlier tier, then compliance and app policies in later tiers
 - Test policy evaluation by tracing a specific pod pair: which policies select each pod, and do their rules match?
-- Use `calicoctl get workloadendpoint <pod>` to see the full policy list applied to a specific pod
+- Use `calicoctl get workloadendpoint -n <namespace> -o yaml` to inspect the workload endpoint labels and profiles Calico uses for policy matching
 
 ## Conclusion
 
-Policy evaluation in Calico follows a deterministic path: GlobalNetworkPolicies by order, then namespace policies, then Kubernetes NetworkPolicy. For each packet, Felix finds all policies that select the destination pod, evaluates each policy's rules top-to-bottom, and applies the first matching rule's action. Tracing this path for a specific traffic scenario is the most reliable debugging approach for any connectivity issue.
+Policy evaluation in Calico follows a deterministic path: tiers by order, then policies within each tier, with Kubernetes NetworkPolicy enforced in the default tier. For each packet, Felix finds the policies that select the relevant endpoint, evaluates their rules top-to-bottom, and applies final Calico actions such as Allow or Deny when they match. Tracing this path for a specific traffic scenario is the most reliable debugging approach for any connectivity issue.
