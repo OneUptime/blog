@@ -18,7 +18,7 @@ This guide covers automating a complete Cilium installation: Helm chart configur
 
 - Kubernetes cluster with no existing CNI installed (or CNI replacement mode)
 - `helm` v3.12+
-- `cilium` CLI v1.14+
+- Latest stable `cilium` CLI
 - `kubectl` configured with cluster access
 - Access to the Cilium Helm chart (`https://helm.cilium.io/`)
 
@@ -88,7 +88,7 @@ resources:
 prometheus:
   enabled: true
   serviceMonitor:
-    enabled: true                  # Create a Prometheus ServiceMonitor CRD
+    enabled: true                  # Create a ServiceMonitor resource; requires the Prometheus Operator CRD
 ```
 
 ## Step 3: Write the Installation Script
@@ -103,7 +103,7 @@ Create a reproducible installation script that handles both fresh installs and u
 
 set -euo pipefail
 
-CILIUM_VERSION="${1:-1.15.0}"
+CILIUM_VERSION="${1:-1.19.4}"
 CILIUM_NAMESPACE="kube-system"
 VALUES_FILE="cilium-values.yaml"
 WAIT_TIMEOUT="300s"
@@ -135,8 +135,8 @@ cilium status --wait --wait-duration "${WAIT_TIMEOUT}"
 echo ""
 echo "=== Post-Install Validation ==="
 
-# Run a basic connectivity test to confirm the CNI is working
-cilium connectivity test --test pod-to-pod --timeout 120s
+# Run a basic connectivity test suite to confirm the CNI is working
+cilium connectivity test --timeout 120s
 
 echo ""
 echo "=== Cilium v${CILIUM_VERSION} Installation Complete ==="
@@ -169,7 +169,7 @@ spec:
   chart:
     spec:
       chart: cilium
-      version: "1.15.0"              # Pin to a specific version
+      version: "1.19.4"              # Pin to a specific version
       sourceRef:
         kind: HelmRepository
         name: cilium
