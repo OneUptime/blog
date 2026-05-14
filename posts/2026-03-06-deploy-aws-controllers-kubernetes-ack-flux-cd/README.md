@@ -153,7 +153,7 @@ spec:
   chart:
     spec:
       chart: s3-chart
-      version: "1.0.x"
+      version: "1.5.x"
       sourceRef:
         kind: HelmRepository
         name: ack-charts
@@ -200,7 +200,7 @@ spec:
   chart:
     spec:
       chart: rds-chart
-      version: "1.4.x"
+      version: "1.7.x"
       sourceRef:
         kind: HelmRepository
         name: ack-charts
@@ -251,6 +251,23 @@ metadata:
     app.kubernetes.io/managed-by: flux
 ```
 
+```yaml
+# clusters/my-cluster/ack-controllers.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: ack-controllers
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: fleet-infra
+  path: ./infrastructure/ack-controllers
+  prune: true
+  timeout: 10m
+```
+
 ## Step 6: Create an S3 Bucket via ACK
 
 Now that the S3 controller is running, create an S3 bucket using a Kubernetes custom resource.
@@ -275,9 +292,9 @@ spec:
           sseAlgorithm: aws:kms
   # Block all public access
   publicAccessBlock:
-    blockPublicAcls: true
+    blockPublicACLs: true
     blockPublicPolicy: true
-    ignorePublicAcls: true
+    ignorePublicACLs: true
     restrictPublicBuckets: true
   # Tagging for cost allocation
   tagging:
@@ -442,7 +459,7 @@ kubectl describe helmrelease ack-s3-controller -n ack-system
 
 # Issue: AWS resource stuck in "Creating" state
 # Check the controller logs for API errors
-kubectl logs -n ack-system -l app.kubernetes.io/name=ack-s3-controller --tail=50
+kubectl logs -n ack-system -l app.kubernetes.io/instance=ack-s3-controller --tail=50
 
 # Issue: Permission denied errors
 # Verify IRSA is properly configured
