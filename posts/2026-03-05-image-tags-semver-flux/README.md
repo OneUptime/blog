@@ -46,7 +46,7 @@ spec:
 
 ## Configuring ImagePolicy with SemVer
 
-The `semver` policy type lets you define a version range constraint. Flux uses the Go semver library, which follows the SemVer 2.0.0 specification.
+The `semver` policy type lets you define a version range constraint. Flux uses the Masterminds Go semver library with Flux's version parser, which accepts SemVer-style tags with a required major, minor, and patch version, including an optional `v` prefix.
 
 ### Allow All Updates
 
@@ -122,7 +122,7 @@ spec:
 
 ## Handling SemVer Tags with a Prefix
 
-Many registries use a `v` prefix on version tags (e.g., `v1.2.3`). Flux's `filterTags` can strip the prefix before applying the SemVer policy.
+Many registries use a `v` prefix on version tags (e.g., `v1.2.3`). Flux accepts this prefix, but `filterTags` can strip it before applying the SemVer policy if you want to normalize the value used for comparison.
 
 ```yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -211,8 +211,11 @@ spec:
       messageTemplate: |
         Automated image update
 
-        {{ range .Changed.Objects -}}
-        - {{ .Kind }} {{ .Name }}: {{ .OldValue }} -> {{ .NewValue }}
+        {{ range $resource, $changes := .Changed.Objects -}}
+        - {{ $resource.Kind }} {{ $resource.Name }}
+        {{- range $_, $change := $changes }}
+          - {{ $change.OldValue }} -> {{ $change.NewValue }}
+        {{ end -}}
         {{ end -}}
     push:
       branch: main
@@ -264,7 +267,7 @@ flux get image update my-app -n flux-system
 
 **Pre-release versions are not selected.** SemVer ranges exclude pre-releases by default. Include a pre-release lower bound in your range to opt in.
 
-**Tags with a `v` prefix are ignored.** Use `filterTags` with a regex to strip the `v` prefix before SemVer comparison.
+**Tags with a `v` prefix are not selected as expected.** Flux accepts an optional `v` prefix for SemVer tags, but you can use `filterTags` with a regex to strip or normalize prefixes before SemVer comparison.
 
 **Policy selects an unexpected version.** Run `kubectl describe imagepolicy my-app -n flux-system` to see the list of candidate versions and the applied range.
 
