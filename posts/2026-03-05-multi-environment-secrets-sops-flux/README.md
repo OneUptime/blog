@@ -216,8 +216,8 @@ sops clusters/production/secrets/database.yaml
 Alternatively, update a specific key:
 
 ```bash
-sops --set '["stringData"]["password"] "new-password-here"' \
-  clusters/production/secrets/database.yaml
+sops set clusters/production/secrets/database.yaml \
+  '["stringData"]["password"]' '"new-password-here"'
 ```
 
 ## Rotating Encryption Keys
@@ -235,7 +235,7 @@ age-keygen -o new-prod-age-key.txt
 
 ```bash
 for file in clusters/production/secrets/*.yaml; do
-  sops updatekeys --yes "$file"
+  sops updatekeys -y "$file"
 done
 ```
 
@@ -249,6 +249,13 @@ kubectl create secret generic sops-age-key \
 ```
 
 5. Remove the old key from `.sops.yaml`
+6. Re-encrypt all secrets again so the old recipient is removed from the files:
+
+```bash
+for file in clusters/production/secrets/*.yaml; do
+  sops updatekeys -y "$file"
+done
+```
 
 ## Verifying Decryption
 
@@ -256,7 +263,7 @@ Check that Flux can decrypt secrets correctly:
 
 ```bash
 # Check the Kustomization status
-flux get kustomization production-secrets
+flux get kustomizations
 
 # Verify the secret exists in the cluster
 kubectl get secret database-credentials -n default
