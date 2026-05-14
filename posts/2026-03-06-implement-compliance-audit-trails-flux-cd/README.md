@@ -8,9 +8,9 @@ Description: A practical guide to implementing compliance controls and audit tra
 
 ---
 
-Regulated industries need to demonstrate who changed what, when, and why. Traditional compliance approaches rely on ticketing systems and manual audit logs. With Flux CD, Git provides an immutable audit trail, and policy enforcement happens automatically. This guide covers how to implement compliance controls with Flux CD.
+Regulated industries need to demonstrate who changed what, when, and why. Traditional compliance approaches rely on ticketing systems and manual audit logs. With Flux CD, Git provides a tamper-evident audit trail, and policy enforcement happens automatically. This guide covers how to implement compliance controls with Flux CD.
 
-## Git as an Immutable Audit Trail
+## Git as a Tamper-Evident Audit Trail
 
 Every change in a GitOps workflow is a Git commit. Git provides cryptographic integrity - every commit hash depends on the content and all preceding commits. This makes the audit trail tamper-evident.
 
@@ -21,8 +21,8 @@ git log --pretty=format:"%H | %ai | %an | %s" -- apps/production/
 
 # Output:
 # a1b2c3d4 | 2024-01-15 14:30:00 | jane.doe | Deploy my-app v2.1.0 to production
-# e5f6g7h8 | 2024-01-14 10:15:00 | john.smith | Update resource limits for my-app
-# i9j0k1l2 | 2024-01-13 09:00:00 | jane.doe | Add network policy for my-app
+# e5f6a7b8 | 2024-01-14 10:15:00 | john.smith | Update resource limits for my-app
+# c9d0e1f2 | 2024-01-13 09:00:00 | jane.doe | Add network policy for my-app
 
 # View the exact change for any deployment
 git show a1b2c3d4
@@ -47,16 +47,15 @@ git log --show-signature -1
 # gpg: Good signature from "Jane Doe <jane.doe@my-org.com>"
 ```
 
-```yaml
+```bash
 # GitHub branch protection: require signed commits
 # Configure via GitHub API
-# gh api repos/my-org/fleet-infra/branches/main/protection \
-#   --method PUT \
-#   --field required_signatures=true
+gh api repos/my-org/fleet-infra/branches/main/protection/required_signatures \
+  --method POST
 ```
 
 ```yaml
-# Flux can verify signed commits from the Git source
+# Flux can verify PGP-signed commits from the Git source
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
@@ -69,7 +68,7 @@ spec:
     branch: main
   # Verify commit signatures
   verify:
-    mode: head
+    mode: HEAD
     secretRef:
       # Contains the public GPG keys of authorized committers
       name: git-pgp-public-keys
@@ -158,6 +157,9 @@ spec:
     spec:
       names:
         kind: K8sRequiredResources
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -185,7 +187,6 @@ kind: ClusterPolicy
 metadata:
   name: require-compliance-labels
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: require-labels
       match:
@@ -195,6 +196,7 @@ spec:
                 - Deployment
                 - StatefulSet
       validate:
+        failureAction: Enforce
         message: "All workloads must have compliance labels: owner, cost-center, data-classification"
         pattern:
           metadata:
@@ -232,7 +234,7 @@ Capture all Flux reconciliation events for compliance reporting.
 
 ```yaml
 # Forward Flux events to an external audit log system
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: audit-log
@@ -244,7 +246,7 @@ spec:
     name: audit-webhook-secret
 ---
 # Capture all events for the audit trail
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: audit-all-events
@@ -337,7 +339,7 @@ jobs:
           echo "No unencrypted secrets found"
 
       - name: Run Trivy config scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: .
