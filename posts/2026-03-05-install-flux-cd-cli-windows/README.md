@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Window, CLI, Chocolatey
+Tags: Flux CD, GitOps, Kubernetes, Windows, CLI, Chocolatey
 
 Description: Step-by-step instructions for installing the Flux CD command-line interface on Windows using Chocolatey, direct download, and WSL.
 
@@ -75,7 +75,7 @@ Open PowerShell and run the following commands.
 
 ```bash
 # Set the desired Flux version
-$FLUX_VERSION = "2.4.0"
+$FLUX_VERSION = "2.8.7"
 
 # Create a temporary directory for the download
 $TMP_DIR = New-TemporaryFile | ForEach-Object { Remove-Item $_; New-Item -ItemType Directory -Path $_ }
@@ -150,7 +150,7 @@ The Flux CLI supports PowerShell autocompletion. Add it to your PowerShell profi
 
 ```bash
 # Add Flux autocompletion to your PowerShell profile
-Add-Content -Path $PROFILE -Value 'command -v flux | Out-Null; if ($?) { flux completion powershell | Out-String | Invoke-Expression }'
+Add-Content -Path $PROFILE -Value 'if (Get-Command flux -ErrorAction SilentlyContinue) { flux completion powershell | Out-String | Invoke-Expression }'
 ```
 
 If your profile file does not exist yet, create it first.
@@ -158,11 +158,12 @@ If your profile file does not exist yet, create it first.
 ```bash
 # Create the PowerShell profile if it does not exist
 if (!(Test-Path -Path $PROFILE)) {
+    New-Item -ItemType Directory -Path (Split-Path -Parent $PROFILE) -Force
     New-Item -ItemType File -Path $PROFILE -Force
 }
 
 # Add Flux completion
-Add-Content -Path $PROFILE -Value 'flux completion powershell | Out-String | Invoke-Expression'
+Add-Content -Path $PROFILE -Value 'if (Get-Command flux -ErrorAction SilentlyContinue) { flux completion powershell | Out-String | Invoke-Expression }'
 ```
 
 Reload your profile or restart PowerShell.
@@ -215,7 +216,7 @@ Remove-Item -Recurse -Force "$env:LOCALAPPDATA\flux"
 
 # Remove from PATH (edit manually or use the following)
 $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
-$newPath = ($currentPath -split ";" | Where-Object { $_ -notlike "*flux*" }) -join ";"
+$newPath = ($currentPath -split ";" | Where-Object { $_ -ne "$env:LOCALAPPDATA\flux" }) -join ";"
 [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
 ```
 
