@@ -10,7 +10,7 @@ Description: Avoid Mistakes advanced Kubernetes NetworkPolicy patterns using Cal
 
 ## Introduction
 
-Common Mistakes to Avoid with Advanced Kubernetes NetworkPolicy requires careful policy design in Calico to balance security with performance and availability. The `projectcalico.org/v3` API provides the flexibility needed to handle advanced k8s networkpolicy while maintaining strict access controls.
+Common Mistakes to Avoid with Advanced Kubernetes NetworkPolicy requires careful policy design in Calico to balance security with performance and availability. Calico enforces the standard `networking.k8s.io/v1` NetworkPolicy API, and the `projectcalico.org/v3` API provides additional Calico-specific controls when you need them.
 
 This guide covers avoid mistakes Advanced K8s NetworkPolicy in Calico with production-ready configurations.
 
