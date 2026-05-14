@@ -28,7 +28,7 @@ Calico provides three policy resource types:
 |---|---|---|---|
 | `NetworkPolicy` | `networking.k8s.io/v1` | Namespace | Standard Kubernetes policy |
 | `NetworkPolicy` | `projectcalico.org/v3` | Namespace | Calico-extended policy |
-| `GlobalNetworkPolicy` | `projectcalico.org/v3` | Cluster-wide | Applies to all namespaces |
+| `GlobalNetworkPolicy` | `projectcalico.org/v3` | Cluster-wide | Applies across namespaces and can also select host endpoints |
 
 The Calico NetworkPolicy and GlobalNetworkPolicy share the same structure and are stored in the Calico datastore. Both are evaluated by Felix.
 
@@ -49,7 +49,7 @@ Calico uses its own selector expression syntax, which supports:
 - `has(key)` (key existence)
 - `&&` and `||` operators
 
-The `all()` selector matches all pods in scope (all namespaces for GlobalNetworkPolicy).
+The `all()` selector matches all endpoints in scope (for GlobalNetworkPolicy, all endpoints selected by the policy scope).
 
 ## Rule Structure
 
@@ -78,11 +78,11 @@ spec:
   - action: Deny
 ```
 
-The `action` field accepts `Allow`, `Deny`, or `Pass` (pass to next tier without a decision).
+The `action` field accepts `Allow`, `Deny`, `Log`, or `Pass` (in tiered policy, pass to the next tier without a decision).
 
-## Policy Tiers (Enterprise)
+## Policy Tiers
 
-Policy tiers are the most powerful Calico Enterprise feature. They create a hierarchy where platform-managed policies are evaluated before application team policies:
+Policy tiers are one of the most powerful Calico features. They create a hierarchy where platform-managed policies are evaluated before application team policies:
 
 ```mermaid
 graph TD
@@ -103,7 +103,7 @@ spec:
 
 ## The `Pass` Action
 
-The `Pass` action is unique to Calico. When a rule matches with `Pass`, the packet is handed to the next tier for evaluation without a decision:
+The `Pass` action is unique to Calico. In tiered policy, when a rule matches with `Pass`, the packet is handed to the next tier for evaluation without a decision:
 
 ```yaml
 ingress:
@@ -116,7 +116,7 @@ This allows platform teams to "skip" traffic they trust, letting application tea
 
 ## Default Deny Semantics
 
-When any Calico or Kubernetes NetworkPolicy selects a pod, the default behavior changes from allow-all to deny-all for the traffic directions covered by that policy. Calico respects both Kubernetes and Calico policies, merging them.
+When any Calico or Kubernetes NetworkPolicy selects a pod, the default behavior changes from allow-all to deny-all for the traffic directions covered by that policy. Calico enforces both Kubernetes and Calico policies; Kubernetes policies are additive, while Calico policies are evaluated according to their tier and order.
 
 ## Best Practices
 
@@ -127,4 +127,4 @@ When any Calico or Kubernetes NetworkPolicy selects a pod, the default behavior 
 
 ## Conclusion
 
-Calico's network policy fundamentals - resource types, selector model, rule evaluation, and tiers - form a comprehensive framework for implementing zero-trust networking in Kubernetes. The key insights are that rules are evaluated top-to-bottom within a policy, policies in the same tier are evaluated independently with union semantics, and tiers create a strict hierarchy where platform policies are always evaluated first. Mastering these fundamentals enables you to design and debug any Calico network security configuration.
+Calico's network policy fundamentals - resource types, selector model, rule evaluation, and tiers - form a comprehensive framework for implementing zero-trust networking in Kubernetes. The key insights are that rules are evaluated top-to-bottom within a policy, policies in the same tier are evaluated in policy order, and tiers create a strict hierarchy where platform policies can be evaluated first. Mastering these fundamentals enables you to design and debug any Calico network security configuration.
