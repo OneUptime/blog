@@ -71,15 +71,10 @@ spec:
   chart:
     spec:
       chart: submariner-k8s-broker
-      version: "0.17.x"
+      version: "0.24.x"
       sourceRef:
         kind: HelmRepository
         name: submariner
-  values:
-    # Enable service discovery via Lighthouse
-    serviceDiscovery: true
-    # Enable GlobalNet if CIDRs overlap (not recommended)
-    globalnet: false
 ```
 
 ### Step 2: Deploy Submariner on Each Member Cluster
@@ -87,6 +82,22 @@ spec:
 Create a Flux Kustomization for each cluster that installs the Submariner operator and joins the broker.
 
 ```yaml
+# infrastructure/submariner/member/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: submariner-operator
+---
+# infrastructure/submariner/member/helm-repo.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: submariner
+  namespace: submariner-operator
+spec:
+  interval: 1h
+  url: https://submariner-io.github.io/submariner-charts/charts
+---
 # infrastructure/submariner/member/helm-release.yaml
 # Install the Submariner operator on a member cluster
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -99,18 +110,22 @@ spec:
   chart:
     spec:
       chart: submariner-operator
-      version: "0.17.x"
+      version: "0.24.x"
       sourceRef:
         kind: HelmRepository
         name: submariner
         namespace: submariner-operator
   values:
+    ipsec:
+      psk: "${SUBMARINER_PSK}"
     # Broker configuration
     broker:
       server: "broker-api.example.com:6443"
       token: "${BROKER_TOKEN}"
       ca: "${BROKER_CA}"
       namespace: submariner-k8s-broker
+      # Enable GlobalNet if CIDRs overlap (not recommended)
+      globalnet: false
     # Submariner configuration
     submariner:
       clusterId: "cluster-1"
@@ -118,9 +133,14 @@ spec:
       serviceCidr: "10.96.0.0/12"
       # Enable Lighthouse for service discovery
       serviceDiscovery: true
-      # Number of gateway nodes
+      # Set to false only when no NAT happens between gateway nodes
       natEnabled: true
       cableDriver: libreswan
+    serviceAccounts:
+      lighthouseAgent:
+        create: true
+      lighthouseCoreDns:
+        create: true
 ```
 
 ### Step 3: Export Services for Cross-Cluster Discovery
@@ -205,6 +225,23 @@ spec:
   interval: 1h
   url: https://istio-release.storage.googleapis.com/charts
 ---
+# infrastructure/istio/base/base.yaml
+# Install Istio CRDs and cluster-scoped resources before istiod
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: istio-base
+  namespace: istio-system
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: base
+      version: "1.29.x"
+      sourceRef:
+        kind: HelmRepository
+        name: istio
+---
 # infrastructure/istio/base/istiod.yaml
 # Install Istio control plane via Helm
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -217,10 +254,12 @@ spec:
   chart:
     spec:
       chart: istiod
-      version: "1.21.x"
+      version: "1.29.x"
       sourceRef:
         kind: HelmRepository
         name: istio
+  dependsOn:
+    - name: istio-base
   values:
     global:
       # Mesh ID must be the same across all clusters
@@ -228,13 +267,8 @@ spec:
       # Each cluster needs a unique cluster name
       multiCluster:
         clusterName: cluster-1
-        enabled: true
       # Network configuration for multi-cluster
       network: network1
-    pilot:
-      env:
-        # Enable cross-cluster endpoint discovery
-        PILOT_ENABLE_CROSS_CLUSTER_WORKLOAD_ENTRY: "true"
 ```
 
 ### Step 6: Create Remote Secrets for Cross-Cluster Access
