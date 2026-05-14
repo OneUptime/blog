@@ -8,11 +8,11 @@ Description: Learn how to configure the author identity for Git commits created 
 
 ---
 
-When Flux CD's ImageUpdateAutomation controller updates image tags in your Git repository, it creates commits automatically. By default, these commits need an author identity consisting of a name and email address. Configuring this identity correctly is important for audit trails, compliance, and integration with Git hosting platforms.
+When Flux CD's ImageUpdateAutomation controller updates image tags in your Git repository, it creates commits automatically. These commits need an author email address and can include an author name. Configuring this identity correctly is important for audit trails, compliance, and integration with Git hosting platforms.
 
 ## Why Author Identity Matters
 
-Every Git commit requires an author name and email. When Flux creates automated commits, the author identity determines how those commits appear in your Git history. This affects:
+Every Git commit records an author identity. When Flux creates automated commits, the author identity determines how those commits appear in your Git history. This affects:
 
 - **Audit trails**: Security teams need to distinguish automated changes from human changes.
 - **Git platform integration**: GitHub, GitLab, and Bitbucket can link commits to user accounts based on email.
@@ -50,7 +50,7 @@ spec:
     strategy: Setters
 ```
 
-The `author.name` and `author.email` fields are required. Without them, the ImageUpdateAutomation controller will fail to create commits.
+The `author.email` field is required, while `author.name` is optional. Without the required email, the ImageUpdateAutomation controller will fail to create commits.
 
 ## Using a Bot Account
 
@@ -63,8 +63,8 @@ spec:
   git:
     commit:
       author:
-        email: 12345678+flux-bot[bot]@users.noreply.github.com
-        name: flux-bot[bot]
+        email: 12345678+flux-bot@users.noreply.github.com
+        name: flux-bot
 ```
 
 For GitLab, use the bot user's email:
@@ -91,7 +91,7 @@ spec:
         name: my-flux-app[bot]
 ```
 
-Replace `123456` with the GitHub App's ID and `my-flux-app` with the app's slug name. This links the automated commits to the GitHub App in the GitHub UI, showing the app's avatar and badge.
+Replace `123456` with the GitHub App bot user's numeric ID and `my-flux-app` with the app's slug name. This links the automated commits to the GitHub App in the GitHub UI, showing the app's avatar and badge.
 
 ## Per-Environment Author Identity
 
@@ -145,7 +145,7 @@ spec:
 
 ## Combining Author Identity with Commit Signing
 
-If your repository requires signed commits, the author identity works alongside GPG or SSH signing. The signing key is configured separately, but the author identity still determines the displayed author:
+If your repository requires signed commits, the author identity works alongside Flux's PGP commit signing. The signing key is configured separately, but the author identity still determines the displayed author:
 
 ```yaml
 spec:
@@ -159,7 +159,7 @@ spec:
           name: signing-key
 ```
 
-The signing key secret must contain the GPG private key. The author email should match the UID on the GPG key for consistent verification.
+The signing key secret must contain an ASCII-armored PGP private key in a `git.asc` field. The author email should match the UID on the GPG key for consistent verification.
 
 ## Verifying Author Identity in Commits
 
@@ -186,7 +186,7 @@ Flux Bot <fluxbot@example.com> - Automated image update
 
 **GitHub not linking commits to a user**: Ensure the email matches exactly what is configured in the GitHub account settings. GitHub links commits based on the email address.
 
-**Automation failing with author errors**: Both `name` and `email` are required fields. If either is missing, the controller will report an error. Check the controller logs:
+**Automation failing with author errors**: The `email` field is required. If it is missing, the controller will report an error. Check the controller logs:
 
 ```bash
 kubectl -n flux-system logs deployment/image-automation-controller
