@@ -21,82 +21,31 @@ Each Flux CD controller is a Go binary built on the controller-runtime library. 
 - **I/O-bound** - Slow Git clones, registry pulls, or API server responses
 - **Concurrency-bound** - Too few workers for the number of resources to reconcile
 
-## Enabling Go pprof on Flux Controllers
+## Accessing Go pprof on Flux Controllers
 
-### Patch Controllers to Enable pprof
+### Port-Forward to the Metrics Endpoint
 
-```yaml
-# enable-pprof-patch.yaml
+Flux controllers register pprof handlers on the controller metrics server. In the default installation, the metrics endpoint listens on port `8080`.
 
-# Apply this patch to enable the pprof endpoint on Flux controllers
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-resources:
-  - gotk-components.yaml
-  - gotk-sync.yaml
-patches:
-  # Enable pprof on source-controller
-  - target:
-      kind: Deployment
-      name: source-controller
-    patch: |
-      - op: add
-        path: /spec/template/spec/containers/0/args/-
-        value: --enable-pprof=true
-      - op: add
-        path: /spec/template/spec/containers/0/args/-
-        value: --pprof-addr=:6060
-      - op: add
-        path: /spec/template/spec/containers/0/ports/-
-        value:
-          containerPort: 6060
-          name: pprof
-          protocol: TCP
-  # Enable pprof on kustomize-controller
-  - target:
-      kind: Deployment
-      name: kustomize-controller
-    patch: |
-      - op: add
-        path: /spec/template/spec/containers/0/args/-
-        value: --enable-pprof=true
-      - op: add
-        path: /spec/template/spec/containers/0/args/-
-        value: --pprof-addr=:6060
-  # Enable pprof on helm-controller
-  - target:
-      kind: Deployment
-      name: helm-controller
-    patch: |
-      - op: add
-        path: /spec/template/spec/containers/0/args/-
-        value: --enable-pprof=true
-      - op: add
-        path: /spec/template/spec/containers/0/args/-
-        value: --pprof-addr=:6060
+```bash
+# Forward the metrics and pprof port for the source-controller
+kubectl port-forward -n flux-system deploy/source-controller 8080:8080 &
+
+# Verify pprof is accessible
+curl -s http://localhost:8080/debug/pprof/ | head -20
 ```
 
 ## Collecting CPU Profiles
-
-### Port-Forward to the Controller
-
-```bash
-# Forward the pprof port for the source-controller
-kubectl port-forward -n flux-system deploy/source-controller 6060:6060 &
-
-# Verify pprof is accessible
-curl -s http://localhost:6060/debug/pprof/ | head -20
-```
 
 ### Capture a CPU Profile
 
 ```bash
 # Capture a 30-second CPU profile
 # This samples the CPU usage to identify hot functions
-go tool pprof -http=:8081 http://localhost:6060/debug/pprof/profile?seconds=30
+go tool pprof -http=:8081 http://localhost:8080/debug/pprof/profile?seconds=30
 
 # Save the profile to a file for later analysis
-curl -o cpu-profile.pb.gz http://localhost:6060/debug/pprof/profile?seconds=30
+curl -o cpu-profile.pb.gz http://localhost:8080/debug/pprof/profile?seconds=30
 
 # Analyze the saved profile
 go tool pprof -http=:8081 cpu-profile.pb.gz
@@ -107,10 +56,10 @@ go tool pprof -http=:8081 cpu-profile.pb.gz
 ```bash
 # Capture current heap allocation profile
 # Shows where memory is being allocated
-go tool pprof -http=:8081 http://localhost:6060/debug/pprof/heap
+go tool pprof -http=:8081 http://localhost:8080/debug/pprof/heap
 
 # Save heap profile
-curl -o heap-profile.pb.gz http://localhost:6060/debug/pprof/heap
+curl -o heap-profile.pb.gz http://localhost:8080/debug/pprof/heap
 
 # Analyze with focus on in-use memory
 go tool pprof -inuse_space -http=:8081 heap-profile.pb.gz
@@ -124,22 +73,24 @@ go tool pprof -alloc_space -http=:8081 heap-profile.pb.gz
 ```bash
 # Check goroutine count and state
 # High goroutine count may indicate leaks or blocked operations
-curl -s http://localhost:6060/debug/pprof/goroutine?debug=2 | head -100
+curl -s http://localhost:8080/debug/pprof/goroutine?debug=2 | head -100
 
 # Get goroutine profile for visualization
-go tool pprof -http=:8081 http://localhost:6060/debug/pprof/goroutine
+go tool pprof -http=:8081 http://localhost:8080/debug/pprof/goroutine
 ```
 
 ### Capture Block and Mutex Profiles
 
+Block profiles may be empty unless block profiling is enabled in the controller runtime. Mutex profiling is configured by the Flux pprof helper.
+
 ```bash
-# Block profile shows where goroutines are blocked waiting
-# Useful for identifying I/O bottlenecks
-go tool pprof -http=:8081 http://localhost:6060/debug/pprof/block
+# Block profile shows where goroutines are blocked on synchronization primitives
+# Useful for identifying channel and lock contention
+go tool pprof -http=:8081 http://localhost:8080/debug/pprof/block
 
 # Mutex profile shows lock contention
 # Useful for identifying concurrency bottlenecks
-go tool pprof -http=:8081 http://localhost:6060/debug/pprof/mutex
+go tool pprof -http=:8081 http://localhost:8080/debug/pprof/mutex
 ```
 
 ## Using Prometheus Metrics for Performance Analysis
@@ -158,24 +109,24 @@ spec:
     - name: flux-performance
       # Recording rules pre-compute expensive queries
       rules:
-        # Average reconciliation duration by controller
+        # Average reconciliation duration by resource kind, namespace, and name
         - record: flux:reconcile_duration:avg
           expr: |
-            rate(gotk_reconcile_duration_seconds_sum[5m])
+            sum by (kind, namespace, name) (rate(gotk_reconcile_duration_seconds_sum[5m]))
             /
-            rate(gotk_reconcile_duration_seconds_count[5m])
+            sum by (kind, namespace, name) (rate(gotk_reconcile_duration_seconds_count[5m]))
 
-        # P95 reconciliation duration by controller
+        # P95 reconciliation duration by resource kind, namespace, and name
         - record: flux:reconcile_duration:p95
           expr: |
             histogram_quantile(0.95,
-              rate(gotk_reconcile_duration_seconds_bucket[5m])
+              sum by (kind, namespace, name, le) (rate(gotk_reconcile_duration_seconds_bucket[5m]))
             )
 
         # Reconciliation throughput (reconciliations per second)
         - record: flux:reconcile_throughput:rate5m
           expr: |
-            rate(gotk_reconcile_duration_seconds_count[5m])
+            sum by (kind, namespace, name) (rate(gotk_reconcile_duration_seconds_count[5m]))
 
         # Controller memory usage
         - record: flux:controller_memory:bytes
@@ -219,7 +170,7 @@ spec:
           annotations:
             summary: "Flux reconciliation P95 latency exceeds 2 minutes"
             description: >
-              Controller {{ $labels.kind }} has P95 reconciliation latency
+              {{ $labels.kind }} {{ $labels.namespace }}/{{ $labels.name }} has P95 reconciliation latency
               of {{ $value }}s. Investigate with pprof profiling.
 
         # Alert on high memory usage
@@ -243,9 +194,9 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "Flux controller CPU usage above 80%"
+            summary: "Flux controller CPU usage above 0.8 cores"
             description: >
-              {{ $labels.pod }} CPU usage is {{ $value | humanizePercentage }}.
+              {{ $labels.pod }} CPU usage is {{ $value }} cores.
               Consider collecting a CPU profile.
 ```
 
@@ -254,20 +205,20 @@ spec:
 ### Identify Slow Reconciliations
 
 ```bash
-# Find GitRepository objects with slow reconciliation
+# Inspect GitRepository artifact update times
 kubectl get gitrepositories -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: last={.status.artifact.lastUpdateTime}{"\n"}{end}'
 
-# Find Kustomizations that take longest to reconcile
+# Inspect Kustomization readiness messages
 kubectl get kustomizations -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: ready={.status.conditions[?(@.type=="Ready")].status} msg={.status.conditions[?(@.type=="Ready")].message}{"\n"}{end}'
 
-# Check HelmRelease reconciliation times
+# Check HelmRelease readiness status
 kubectl get helmreleases -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: ready={.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}'
 ```
 
-### Benchmark Reconciliation with Trace Logging
+### Benchmark Reconciliation with Debug Logging
 
 ```yaml
-# enable-trace-logging.yaml
+# enable-debug-logging.yaml
 # Temporarily enable verbose logging for performance analysis
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -407,7 +358,7 @@ flowchart TD
     E --> K[Analyze hot functions]
     K --> L[Tune concurrency or resources]
     F --> M[Check for blocked goroutines]
-    M --> N[Identify I/O bottlenecks]
+    M --> N[Identify blocked operations]
     H --> O[Optimize configuration]
     J --> O
     L --> O
@@ -417,7 +368,7 @@ flowchart TD
 
 ## Best Practices Summary
 
-1. **Enable pprof in staging first** - Test profiling configuration before production
+1. **Access pprof in staging first** - Test profiling access before production
 2. **Collect baseline profiles** - Profile when things are working well for comparison
 3. **Use recording rules** - Pre-compute expensive Prometheus queries for dashboards
 4. **Profile one controller at a time** - Isolate the bottleneck before optimizing
