@@ -87,7 +87,7 @@ First, configure a notification provider that targets a webhook endpoint.
 ```yaml
 # notification-provider.yaml
 # Provider that triggers a webhook when Flux pushes image updates
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: pr-creator
@@ -104,7 +104,7 @@ Then create an Alert that fires when the ImageUpdateAutomation pushes.
 ```yaml
 # alert-image-update.yaml
 # Alert that triggers PR creation when image updates are pushed
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: image-update-pr
@@ -112,9 +112,12 @@ metadata:
 spec:
   providerRef:
     name: pr-creator
+  eventSeverity: info
   eventSources:
     - kind: ImageUpdateAutomation
       name: flux-system
+  inclusionList:
+    - ".*pushed commit.*"
 ```
 
 ## Step 4: Create PRs with GitHub Actions
@@ -134,32 +137,37 @@ on:
 jobs:
   create-pr:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: flux-image-updates
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: flux-image-updates
-          base: main
-          title: "Automated image update from Flux"
-          body: |
-            This PR was created automatically by Flux image automation.
-            Please review the image tag changes before merging.
-          labels: |
-            automated
-            image-update
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+        run: |
+          if gh pr list --repo "$GITHUB_REPO" --head flux-image-updates --base main --state open --json number --jq '.[0].number' | grep -q '[0-9]'; then
+            echo "Pull request already exists"
+          else
+            gh pr create \
+              --repo "$GITHUB_REPO" \
+              --base main \
+              --head flux-image-updates \
+              --title "Automated image update from Flux" \
+              --body "This PR was created automatically by Flux image automation. Please review the image tag changes before merging." \
+              --label automated \
+              --label image-update
+          fi
 ```
 
-This workflow triggers whenever Flux pushes to the `flux-image-updates` branch and creates or updates a pull request targeting `main`.
+This workflow triggers whenever Flux pushes to the `flux-image-updates` branch and creates a pull request targeting `main` if one does not already exist. Later Flux pushes update the same PR branch.
 
 ## Step 5: Create PRs with the gh CLI
 
-For GitLab or other providers, you can use a simple script triggered by the webhook.
+For GitHub, you can also use a simple script triggered by the webhook. For GitLab or other providers, adapt the same pattern to their CLI or API.
 
 ```bash
 #!/bin/bash
@@ -177,7 +185,8 @@ if [ -z "$EXISTING_PR" ]; then
     --head flux-image-updates \
     --title "Automated image update from Flux" \
     --body "This PR contains automated image tag updates from Flux." \
-    --label "automated,image-update"
+    --label automated \
+    --label image-update
   echo "Created new PR"
 else
   echo "PR #$EXISTING_PR already exists, Flux will update the branch"
