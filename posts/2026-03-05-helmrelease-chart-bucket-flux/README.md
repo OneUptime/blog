@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Bucket, S3, GCS, MinIO, Chart Source
 
-Description: Learn how to configure a HelmRelease to source Helm charts from an S3-compatible Bucket source in Flux CD.
+Description: Learn how to configure a HelmRelease to source Helm charts from a Bucket source in Flux CD.
 
 ---
 
-Flux CD supports sourcing artifacts from S3-compatible storage through the Bucket source type. This lets you store Helm charts in services like AWS S3, Google Cloud Storage, Azure Blob Storage, or MinIO, and deploy them using HelmRelease. This is particularly useful for organizations that already use object storage for artifact distribution or need an alternative to Git and OCI registries.
+Flux CD supports sourcing artifacts from object storage through the Bucket source type. This lets you store Helm charts in services like AWS S3, Google Cloud Storage, Azure Blob Storage, or S3-compatible storage such as MinIO, and deploy them using HelmRelease. This is particularly useful for organizations that already use object storage for artifact distribution or need an alternative to Git and OCI registries.
 
 ## Why Use Buckets for Helm Charts?
 
@@ -22,7 +22,7 @@ There are several scenarios where bucket-based chart storage makes sense:
 ## Prerequisites
 
 - Kubernetes cluster with Flux CD v2.x or later
-- An S3-compatible bucket containing Helm chart packages (`.tgz` files) or chart directories
+- An object storage bucket containing Helm chart packages (`.tgz` files) or chart directories
 - `kubectl` and `flux` CLI tools
 - Bucket access credentials
 
@@ -40,7 +40,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
-  # S3-compatible provider: aws, gcp, azure, or generic
+  # Provider options: aws, gcp, azure, or generic
   provider: aws
   bucketName: my-helm-charts
   endpoint: s3.amazonaws.com
@@ -201,6 +201,16 @@ spec:
   endpoint: https://myaccount.blob.core.windows.net
   secretRef:
     name: azure-credentials
+---
+# Azure Blob Storage shared key credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: azure-credentials
+  namespace: flux-system
+type: Opaque
+stringData:
+  accountKey: <your-storage-account-key>
 ```
 
 ## Complete End-to-End Example
@@ -257,10 +267,10 @@ After applying the resources:
 
 ```bash
 # Check the Bucket source status
-flux get source bucket charts-bucket -n flux-system
+flux get sources bucket -n flux-system
 
 # Check the HelmRelease status
-flux get helmrelease web-app -n production
+flux get helmreleases -n production
 
 # View detailed Bucket status including last fetched revision
 kubectl describe bucket charts-bucket -n flux-system
@@ -310,4 +320,4 @@ flux reconcile source bucket charts-bucket -n flux-system
 
 ## Conclusion
 
-Bucket sources in Flux provide a flexible way to distribute Helm charts through S3-compatible object storage. By configuring a Bucket source and referencing it in your HelmRelease via `spec.chart.spec.sourceRef`, you can deploy charts from AWS S3, GCS, Azure Blob Storage, MinIO, or any S3-compatible service. This approach is especially valuable in air-gapped environments and CI/CD pipelines where object storage is the primary artifact distribution mechanism.
+Bucket sources in Flux provide a flexible way to distribute Helm charts through object storage. By configuring a Bucket source and referencing it in your HelmRelease via `spec.chart.spec.sourceRef`, you can deploy charts from AWS S3, GCS, Azure Blob Storage, MinIO, or any S3-compatible service. This approach is especially valuable in air-gapped environments and CI/CD pipelines where object storage is the primary artifact distribution mechanism.
