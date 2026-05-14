@@ -8,7 +8,7 @@ Description: Learn how to configure Flux CD GitRepository resources to pull Kube
 
 ---
 
-Azure DevOps Repos is a widely used Git hosting service in enterprise environments, especially those already invested in the Microsoft ecosystem. Flux CD integrates with Azure DevOps through the GitRepository custom resource, supporting both HTTPS with personal access tokens and SSH with deploy keys. This guide covers both authentication methods and common configuration patterns.
+Azure DevOps Repos is a widely used Git hosting service in enterprise environments, especially those already invested in the Microsoft ecosystem. Flux CD integrates with Azure DevOps through the GitRepository custom resource, supporting both HTTPS with personal access tokens and SSH with Azure DevOps SSH public keys. This guide covers both authentication methods and common configuration patterns.
 
 ## Prerequisites
 
@@ -93,8 +93,8 @@ SSH authentication provides a more secure alternative. Azure DevOps SSH uses a u
 Generate an SSH key pair and add the public key to Azure DevOps:
 
 ```bash
-# Generate an RSA key (Azure DevOps requires RSA, not ED25519 for some configurations)
-ssh-keygen -t rsa -b 4096 -f azure-flux-key -N "" -C "flux@cluster"
+# Generate an RSA key using an RSA-SHA2 algorithm supported by Azure DevOps
+ssh-keygen -t rsa-sha2-256 -b 4096 -f azure-flux-key -N "" -C "flux@cluster"
 
 # Scan the Azure DevOps SSH host key
 ssh-keyscan ssh.dev.azure.com > known_hosts
@@ -253,7 +253,7 @@ A successful configuration shows `Ready: True` along with the latest commit hash
 
 **401 Unauthorized:** Your PAT may have expired. Azure DevOps PATs have a maximum lifetime of one year. Regenerate and update the secret.
 
-**SSH connection issues:** Azure DevOps requires RSA keys for some configurations. If ED25519 fails, switch to RSA 4096-bit keys.
+**SSH connection issues:** Azure DevOps supports RSA SSH keys. If authentication fails with key type or `ssh-rsa` warnings, generate an RSA-SHA2 key and make sure your SSH client allows `rsa-sha2-256` or `rsa-sha2-512`.
 
 **URL format errors:** Double-check the URL format. Azure DevOps HTTPS URLs must include the `_git` segment. Missing it will cause a 404 error.
 
