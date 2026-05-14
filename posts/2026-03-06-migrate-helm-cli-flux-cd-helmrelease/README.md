@@ -10,7 +10,7 @@ Description: A practical guide to migrating Helm chart deployments from the Helm
 
 ## Introduction
 
-Using the Helm CLI to install and manage charts is a common starting point for Kubernetes teams. Commands like `helm install` and `helm upgrade` work well for individual deployments, but they lack the consistency and automation that a GitOps workflow provides. By migrating to Flux CD HelmRelease resources, you declare your Helm releases in Git and let Flux handle installation, upgrades, and rollbacks automatically.
+Using the Helm CLI to install and manage charts is a common starting point for Kubernetes teams. Commands like `helm install` and `helm upgrade` work well for individual deployments, but they lack the consistency and automation that a GitOps workflow provides. By migrating to Flux CD HelmRelease resources, you declare your Helm releases in Git and let Flux handle installation, upgrades, and configured rollbacks automatically.
 
 ## Why Migrate from Helm CLI to Flux CD
 
@@ -25,8 +25,8 @@ The Helm CLI approach has limitations at scale:
 Flux CD HelmRelease provides:
 
 - Declarative release management in Git
-- Automatic reconciliation and drift correction
-- Built-in upgrade retries and rollback on failure
+- Automatic reconciliation and optional drift correction
+- Configurable upgrade retries and rollback on failure
 - Full audit trail through Git history
 
 ## Step 1: Inventory Existing Helm Releases
@@ -257,7 +257,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: nginx-ingress-values
-  namespace: flux-system
+  namespace: ingress-nginx
 data:
   values.yaml: |
     controller:
@@ -443,13 +443,13 @@ helm list -A
 
 # Compare values between CLI-installed and Flux-managed releases
 helm get values my-app -n default
-flux get helmrelease my-app -n default -o yaml | grep -A50 "values:"
+kubectl get helmrelease my-app -n default -o yaml | grep -A50 "values:"
 
 # Force a reconciliation
 flux reconcile helmrelease my-app -n default
 
 # Watch for successful reconciliation
-flux get helmrelease my-app -n default -w
+flux get helmreleases -n default -w
 ```
 
 ## Step 9: Decommission CLI-Based Workflows
@@ -461,7 +461,7 @@ After verifying all releases are managed by Flux, update your team processes.
 # Replace them with Git commit workflows
 
 # Document which releases are now managed by Flux
-flux get helmreleases -A -o json | jq '.[].name'
+kubectl get helmreleases -A -o json | jq '.items[].metadata.name'
 
 # Set up alerts for HelmRelease failures
 ```
@@ -469,18 +469,25 @@ flux get helmreleases -A -o json | jq '.[].name'
 ```yaml
 # notifications/helm-alerts.yaml
 # Alert on HelmRelease failures
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: helm-release-alerts
   namespace: flux-system
 spec:
-  summary: "HelmRelease reconciliation alert"
+  eventMetadata:
+    summary: "HelmRelease reconciliation alert"
   eventSeverity: error
   eventSources:
     - kind: HelmRelease
       name: "*"
-      namespace: "*"
+      namespace: default
+    - kind: HelmRelease
+      name: "*"
+      namespace: monitoring
+    - kind: HelmRelease
+      name: "*"
+      namespace: ingress-nginx
   providerRef:
     name: slack-provider
 ```
@@ -502,4 +509,4 @@ spec:
 
 ## Conclusion
 
-Migrating from the Helm CLI to Flux CD HelmRelease resources brings your Helm deployments under GitOps control. Releases are declared in Git, automatically reconciled, and include built-in upgrade and rollback policies. The migration can be done incrementally by converting one release at a time, with Flux adopting existing releases without downtime. Once complete, your team works entirely through Git pull requests instead of running CLI commands against the cluster.
+Migrating from the Helm CLI to Flux CD HelmRelease resources brings your Helm deployments under GitOps control. Releases are declared in Git, automatically reconciled, and can include upgrade and rollback policies. The migration can be done incrementally by converting one release at a time, with Flux adopting existing releases without downtime. Once complete, your team works entirely through Git pull requests instead of running CLI commands against the cluster.
