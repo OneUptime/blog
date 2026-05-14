@@ -50,7 +50,7 @@ graph LR
 | Multi-tenancy | Limited | First-class support |
 | Notifications | None built-in | Notification Controller |
 | Image automation | Built into fluxd | Image Reflector + Image Automation controllers |
-| CRD API group | flux.weave.works | Various *.toolkit.fluxcd.io |
+| CRD API group | helm.fluxcd.io (Helm Operator) | Various *.toolkit.fluxcd.io |
 
 ## Step 1: Audit Your Flux v1 Installation
 
@@ -134,8 +134,8 @@ spec:
 ### HelmRelease Migration
 
 ```yaml
-# Flux v1 HelmRelease (API: flux.weave.works/v1beta1)
-apiVersion: flux.weave.works/v1beta1
+# Flux v1 HelmRelease (API: helm.fluxcd.io/v1)
+apiVersion: helm.fluxcd.io/v1
 kind: HelmRelease
 metadata:
   name: nginx
@@ -348,12 +348,12 @@ spec:
 
 ## Step 5: Convert All HelmReleases
 
-Write a script to automate the conversion of HelmRelease resources.
+Write a helper script to extract Helm repositories before converting HelmRelease manifests.
 
 ```bash
 #!/bin/bash
 # convert-helmreleases.sh
-# Converts Flux v1 HelmRelease resources to Flux v2 format
+# Extracts Flux v1 HelmRelease repositories for Flux v2 HelmRepository resources
 
 INPUT_FILE="flux-v1-helmreleases-backup.yaml"
 OUTPUT_DIR="infrastructure/sources"
@@ -363,7 +363,7 @@ mkdir -p "$OUTPUT_DIR"
 # Extract unique Helm repositories and create HelmRepository resources
 echo "Converting Helm repositories..."
 kubectl get helmreleases -A -o json | \
-  jq -r '.items[].spec.chart.repository' | sort -u | while read repo; do
+jq -r '.items[].spec.chart.repository // empty' | sort -u | while read repo; do
     # Generate a name from the URL
     name=$(echo "$repo" | sed 's|https\?://||;s|/.*||;s|\..*||')
     cat > "${OUTPUT_DIR}/${name}.yaml" << EOF
@@ -405,8 +405,7 @@ flux bootstrap github \
   --owner=your-org \
   --repository=fleet-config \
   --branch=main \
-  --path=clusters/my-cluster \
-  --personal
+  --path=clusters/my-cluster
 
 # 5. Monitor Flux v2 reconciliation
 flux get kustomizations --watch
@@ -445,8 +444,7 @@ After confirming Flux v2 is working correctly, remove Flux v1 components.
 kubectl delete namespace flux
 
 # Remove Flux v1 CRDs
-kubectl delete crd helmreleases.flux.weave.works
-kubectl delete crd fluxhelmreleases.helm.fluxcd.io
+kubectl delete crd helmreleases.helm.fluxcd.io
 
 # Remove Flux v1 RBAC
 kubectl delete clusterrolebinding flux
@@ -475,7 +473,7 @@ Flux v2 has built-in notification support that was not available in v1.
 ```yaml
 # clusters/my-cluster/notifications.yaml
 # Slack notification provider
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -487,7 +485,7 @@ spec:
     name: slack-webhook
 ---
 # Alert on reconciliation events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: on-call-alerts
@@ -495,6 +493,8 @@ metadata:
 spec:
   providerRef:
     name: slack
+  eventMetadata:
+    summary: "Flux reconciliation issue detected"
   eventSeverity: error
   eventSources:
     - kind: Kustomization
@@ -503,7 +503,6 @@ spec:
     - kind: HelmRelease
       namespace: "*"
       name: "*"
-  summary: "Flux reconciliation issue detected"
 ```
 
 ## Step 10: Post-Migration Checklist
@@ -531,7 +530,7 @@ flux get alerts -A
 
 # 6. Flux v1 is completely removed
 kubectl get namespace flux 2>/dev/null && echo "WARNING: Flux v1 namespace still exists" || echo "OK: Flux v1 namespace removed"
-kubectl get crd | grep flux.weave.works && echo "WARNING: Flux v1 CRDs still exist" || echo "OK: Flux v1 CRDs removed"
+kubectl get crd | grep helm.fluxcd.io && echo "WARNING: Flux v1 CRDs still exist" || echo "OK: Flux v1 CRDs removed"
 
 # 7. No orphaned resources
 kubectl get all -A -l "fluxcd.io/sync-gc-mark" 2>/dev/null
@@ -557,7 +556,7 @@ kubectl logs -n flux deployment/flux --tail=20
 
 **HelmRelease not reconciling**: Check that the HelmRepository source is accessible and the chart version exists. Flux v2 requires explicit HelmRepository resources.
 
-**Kustomization path errors**: Ensure the path in your Kustomization spec matches the actual directory structure. Flux v2 requires a `kustomization.yaml` file in the target directory.
+**Kustomization path errors**: Ensure the path in your Kustomization spec matches the actual directory structure. Flux v2 can apply plain YAMLs, but if you use Kustomize features, the target directory should contain a valid `kustomization.yaml` file.
 
 **SSH key issues**: Flux v2 uses a different SSH key format. Re-add the deploy key to your Git repository after bootstrapping.
 
@@ -566,6 +565,8 @@ kubectl logs -n flux deployment/flux --tail=20
 flux create secret git flux-system \
   --url=ssh://git@github.com/your-org/fleet-config \
   --export > deploy-key.yaml
+
+yq eval '.stringData."identity.pub"' deploy-key.yaml
 ```
 
 ## Conclusion
