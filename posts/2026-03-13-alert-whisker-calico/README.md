@@ -1,16 +1,16 @@
-# How to Alert on Whisker in Calico
+# How to Investigate Whisker Flow Logs in Calico
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Configure alerts based on Calico Whisker flow data to detect unusual denied traffic patterns, unexpected new connections, and policy enforcement failures.
+Description: Use Calico Whisker flow data to investigate unusual denied traffic patterns, unexpected new connections, and policy enforcement failures.
 
 ---
 
 ## Introduction
 
-Whisker flow data can drive Prometheus alerts for network security monitoring. High denied traffic rates indicate network policy issues or potential network scanning activity. New connections from unexpected sources indicate policy drift or security incidents. Whisker's flow data makes these patterns detectable without deep packet inspection.
+Whisker flow data supports network security monitoring and investigations. High denied traffic rates indicate network policy issues or potential network scanning activity. New connections from unexpected sources indicate policy drift or security incidents. Whisker's flow data makes these patterns visible without deep packet inspection.
 
 ## Key Operations
 
@@ -35,11 +35,12 @@ kubectl get felixconfiguration default -o jsonpath='{.spec.flowLogsFlushInterval
 ```mermaid
 flowchart LR
     A[Applications] -->|connections| B[Felix flow logs]
-    B --> C[Whisker backend]
-    C --> D[Whisker UI]
-    D --> E[Allowed traffic view]
-    D --> F[Denied traffic view]
-    D --> G[Policy decision view]
+    B --> C[Goldmane flow logs API]
+    C --> D[Whisker backend]
+    D --> E[Whisker UI]
+    E --> F[Allowed traffic view]
+    E --> G[Denied traffic view]
+    E --> H[Policy decision view]
 ```
 
 ## Common Whisker Queries
@@ -47,17 +48,17 @@ flowchart LR
 ```plaintext
 # In Whisker UI - common investigation patterns:
 
-# Find all denied connections to a service:
-# Filter: destination=<service-name>, action=Deny
+# Find all denied connections to a workload:
+# Filter: destination=<pod-name>, action=Deny
 
 # Find all traffic from a specific pod:
 # Filter: source=<pod-name>
 
 # Find recently started connections:
-# Sort by: timestamp descending
+# Sort by: start_time descending
 
 # Find policy drop sources:
-# Filter: action=Deny, group by: source namespace
+# Filter: action=Deny, source_namespace=<namespace>
 ```
 
 ## Conclusion
