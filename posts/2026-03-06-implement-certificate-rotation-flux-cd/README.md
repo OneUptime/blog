@@ -16,10 +16,11 @@ This guide covers how to deploy cert-manager via Flux CD, configure certificate 
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.24+)
+- A Kubernetes cluster supported by the cert-manager version you deploy (cert-manager v1.20 supports Kubernetes v1.32-v1.35)
 - Flux CD v2 installed and bootstrapped
 - A domain name with DNS management access
 - kubectl configured to access your cluster
+- Prometheus Operator CRDs installed if you enable the cert-manager ServiceMonitor
 
 ## Deploying cert-manager via Flux CD
 
@@ -50,15 +51,16 @@ spec:
   chart:
     spec:
       chart: cert-manager
-      version: "1.14.3"
+      version: "v1.20.2"
       sourceRef:
         kind: HelmRepository
         name: jetstack
         namespace: flux-system
   values:
     # Install CRDs with the chart
-    installCRDs: true
-    # Enable Prometheus metrics
+    crds:
+      enabled: true
+    # Enable Prometheus metrics and create a ServiceMonitor
     prometheus:
       enabled: true
       servicemonitor:
@@ -79,15 +81,16 @@ spec:
 
 ```yaml
 # infrastructure/cert-manager/helmrepo.yaml
-# Helm repository for cert-manager charts
+# OCI Helm repository for cert-manager charts
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: jetstack
   namespace: flux-system
 spec:
+  type: oci
   interval: 24h
-  url: https://charts.jetstack.io
+  url: oci://quay.io/jetstack/charts
 ```
 
 ## Configuring Certificate Issuers
@@ -95,7 +98,7 @@ spec:
 Set up ClusterIssuers for different environments and use cases.
 
 ```yaml
-# infrastructure/cert-manager/cluster-issuer-production.yaml
+# infrastructure/cert-manager-issuers/cluster-issuer-production.yaml
 # ClusterIssuer for production certificates using Let's Encrypt
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
@@ -112,7 +115,7 @@ spec:
       # HTTP01 challenge solver for public-facing services
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
         selector:
           dnsZones:
             - "mycompany.com"
@@ -127,8 +130,8 @@ spec:
 ```
 
 ```yaml
-# infrastructure/cert-manager/cluster-issuer-staging.yaml
-# ClusterIssuer for staging certificates (for testing, no rate limits)
+# infrastructure/cert-manager-issuers/cluster-issuer-staging.yaml
+# ClusterIssuer for staging certificates (for testing with higher rate limits)
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -143,11 +146,11 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 ```yaml
-# infrastructure/cert-manager/internal-ca-issuer.yaml
+# infrastructure/cert-manager-issuers/internal-ca-issuer.yaml
 # ClusterIssuer for internal service-to-service mTLS certificates
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
@@ -293,13 +296,13 @@ spec:
                   number: 443
 ```
 
-## Managing Certificate Rotation for Flux CD Components
+## Managing Certificate Rotation for Flux CD Webhook Ingress
 
-Ensure Flux CD's own webhook certificates are properly rotated.
+If you expose Flux CD's webhook receiver over HTTPS, manage the public TLS certificate with cert-manager.
 
 ```yaml
 # clusters/production/flux-system/webhook-cert.yaml
-# Certificate for Flux CD webhook server
+# Certificate for the public Flux CD webhook receiver Ingress
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -310,10 +313,9 @@ spec:
   duration: 2160h
   renewBefore: 720h
   dnsNames:
-    - webhook-receiver.flux-system.svc
-    - webhook-receiver.flux-system.svc.cluster.local
+    - flux-webhook.mycompany.com
   issuerRef:
-    name: internal-ca
+    name: letsencrypt-production
     kind: ClusterIssuer
   privateKey:
     rotationPolicy: Always
@@ -339,6 +341,8 @@ spec:
         - alert: CertificateExpiringSoon
           expr: |
             certmanager_certificate_expiration_timestamp_seconds -
+            time() > 0 and
+            certmanager_certificate_expiration_timestamp_seconds -
             time() < 1209600
           for: 1h
           labels:
@@ -347,12 +351,14 @@ spec:
             summary: "Certificate {{ $labels.name }} expires in less than 14 days"
             description: >-
               Certificate {{ $labels.name }} in namespace
-              {{ $labels.namespace }} will expire in
+              {{ $labels.exported_namespace }} will expire in
               {{ $value | humanizeDuration }}.
 
         # Critical alert when certificate expires within 3 days
         - alert: CertificateExpiringCritical
           expr: |
+            certmanager_certificate_expiration_timestamp_seconds -
+            time() > 0 and
             certmanager_certificate_expiration_timestamp_seconds -
             time() < 259200
           for: 15m
@@ -361,15 +367,15 @@ spec:
           annotations:
             summary: "Certificate {{ $labels.name }} expires in less than 3 days"
 
-        # Alert when certificate renewal fails
-        - alert: CertificateRenewalFailed
+        # Alert when a certificate is not ready
+        - alert: CertificateNotReady
           expr: |
             certmanager_certificate_ready_status{condition="False"} == 1
           for: 30m
           labels:
             severity: critical
           annotations:
-            summary: "Certificate {{ $labels.name }} renewal has failed"
+            summary: "Certificate {{ $labels.name }} is not ready"
 ```
 
 ## Setting Up Flux CD Notifications for Certificate Events
@@ -377,7 +383,7 @@ spec:
 ```yaml
 # clusters/production/notifications/cert-alerts.yaml
 # Notification provider and alerts for certificate-related events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: certs-slack
@@ -388,7 +394,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: certificate-alerts
@@ -442,7 +448,23 @@ spec:
       namespace: cert-manager
   timeout: 5m
 ---
-# Applications depend on cert-manager being ready
+# Certificate issuers depend on cert-manager CRDs and controllers being ready
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cert-manager-issuers
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./infrastructure/cert-manager-issuers
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: cert-manager
+---
+# Applications depend on issuers being ready
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -456,8 +478,8 @@ spec:
     kind: GitRepository
     name: flux-system
   dependsOn:
-    # Ensure cert-manager is healthy before deploying apps with certificates
-    - name: cert-manager
+    # Ensure cert-manager issuers are applied before deploying apps with certificates
+    - name: cert-manager-issuers
 ```
 
 ## Summary
