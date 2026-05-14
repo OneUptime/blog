@@ -33,19 +33,21 @@ Core networking mode configuration:
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set tunnel=vxlan
+  --set routingMode=tunnel \
+  --set tunnelProtocol=vxlan
 
 # Option 2: Geneve tunnel mode
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set tunnel=geneve
+  --set routingMode=tunnel \
+  --set tunnelProtocol=geneve
 
 # Option 3: Direct routing (native routing, best performance)
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set tunnel=disabled \
+  --set routingMode=native \
   --set autoDirectNodeRoutes=true \
   --set ipv4NativeRoutingCIDR=10.244.0.0/16
 
@@ -104,21 +106,21 @@ Diagnose networking configuration problems:
 
 ```bash
 # View active configuration
-kubectl -n kube-system exec ds/cilium -- cilium config view
+kubectl -n kube-system get configmap cilium-config -o yaml
 
-# Check tunnel mode is correctly set
-kubectl -n kube-system exec ds/cilium -- cilium config view | grep -E "tunnel|routing"
+# Check routing mode and tunnel protocol are correctly set
+kubectl -n kube-system get configmap cilium-config -o yaml | grep -E "routing-mode|tunnel-protocol"
 
 # Verify kube-proxy replacement status
-kubectl -n kube-system exec ds/cilium -- cilium status | grep -i "kube-proxy"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep -i "kube-proxy"
 
 # Check for eBPF map errors
-kubectl -n kube-system exec ds/cilium -- cilium bpf lb list
-kubectl -n kube-system exec ds/cilium -- cilium bpf ct list global
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf lb list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf ct list
 
 # Diagnose load balancing issues
-kubectl -n kube-system exec ds/cilium -- cilium service list
-kubectl -n kube-system exec ds/cilium -- cilium bpf lb list | grep <service-ip>
+kubectl -n kube-system exec ds/cilium -- cilium-dbg service list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf lb list | grep <service-ip>
 ```
 
 Fix common configuration errors:
@@ -129,11 +131,11 @@ Fix common configuration errors:
 kubectl -n kube-system rollout restart ds/cilium
 
 # Issue: DSR not working with cloud load balancers
-# DSR requires L2 adjacency - not compatible with all environments
-kubectl -n kube-system exec ds/cilium -- cilium config view | grep loadBalancer
+# DSR requires compatible routing and dispatch settings - not all environments support every mode
+kubectl -n kube-system get configmap cilium-config -o yaml | grep loadbalancer
 
 # Issue: WireGuard keys not rotating
-kubectl -n kube-system exec ds/cilium -- cilium encrypt status
+cilium encryption status
 ```
 
 ## Validate Configuration
@@ -142,7 +144,7 @@ Verify networking configuration is applied correctly:
 
 ```bash
 # Confirm tunnel mode
-kubectl -n kube-system exec ds/cilium -- cilium status --verbose | grep -A 3 "Tunnel"
+kubectl -n kube-system get configmap cilium-config -o yaml | grep -E "routing-mode|tunnel-protocol"
 
 # Test connectivity with current config
 cilium connectivity test
@@ -153,8 +155,8 @@ for i in $(seq 1 10); do
     curl -s http://my-service.default.svc.cluster.local
 done
 
-# Check eBPF programs are loaded
-kubectl -n kube-system exec ds/cilium -- cilium bpf perf list
+# Check eBPF datapath metrics are available
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf metrics list
 ```
 
 ## Monitor Configuration Effectiveness
@@ -162,8 +164,8 @@ kubectl -n kube-system exec ds/cilium -- cilium bpf perf list
 ```mermaid
 graph LR
     A[Pod] -->|eBPF Hook| B[Cilium Datapath]
-    B -->|Tunnel=VXLAN| C[VXLAN Overlay]
-    B -->|Tunnel=disabled| D[Direct Routing]
+    B -->|routingMode=tunnel| C[VXLAN or Geneve Overlay]
+    B -->|routingMode=native| D[Direct Routing]
     B -->|Encryption=WireGuard| E[Encrypted Tunnel]
     C --> F[Remote Pod]
     D --> F
@@ -179,15 +181,15 @@ kubectl run iperf-client --image=networkstatic/iperf3 -it --rm -- \
   iperf3 -c iperf-server.default.svc.cluster.local -t 30
 
 # Monitor eBPF program drop reasons
-kubectl -n kube-system exec ds/cilium -- cilium monitor --type drop
+kubectl -n kube-system exec ds/cilium -- cilium-dbg monitor --type drop
 
 # Check Hubble for forwarding statistics
 cilium hubble port-forward &
 hubble observe --verdict FORWARDED | head -50
 
-# Monitor Cilium metrics
-kubectl -n kube-system port-forward svc/cilium-operator 9963:9963 &
-curl -s http://localhost:9963/metrics | grep cilium_forward
+# Monitor Hubble flow metrics when Hubble metrics are enabled
+kubectl -n kube-system port-forward svc/hubble-metrics 9965:9965 &
+curl -s http://localhost:9965/metrics | grep hubble_flows_processed_total
 ```
 
 ## Conclusion
