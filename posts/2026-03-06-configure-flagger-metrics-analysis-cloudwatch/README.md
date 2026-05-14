@@ -47,15 +47,27 @@ spec:
         name: flagger
         namespace: flagger-system
   values:
-    # Enable the metrics server
-    metricsServer: "https://monitoring.example.com"
+    # Prometheus URL used by Flagger's built-in metrics
+    metricsServer: "http://prometheus.istio-system:9090"
     # Set the mesh provider
     meshProvider: "istio"
+    # Optional static AWS credentials for the CloudWatch provider
+    env:
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: cloudwatch-credentials
+            key: AWS_ACCESS_KEY_ID
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: cloudwatch-credentials
+            key: AWS_SECRET_ACCESS_KEY
 ```
 
 ## Step 2: Create AWS Credentials Secret
 
-Flagger needs AWS credentials to access CloudWatch. Create a Kubernetes secret with your AWS access key and secret key.
+Flagger needs AWS credentials to access CloudWatch. If you are not using IRSA, create a Kubernetes secret with your AWS access key and secret key and expose it to the Flagger pod as environment variables in the HelmRelease values.
 
 ```yaml
 # aws-credentials-secret.yaml
@@ -69,7 +81,6 @@ stringData:
   # Replace with your actual AWS credentials
   AWS_ACCESS_KEY_ID: "your-access-key-id"
   AWS_SECRET_ACCESS_KEY: "your-secret-access-key"
-  AWS_REGION: "us-east-1"
 ```
 
 Apply the secret to your cluster:
@@ -97,9 +108,6 @@ spec:
     type: cloudwatch
     # AWS region where your metrics are stored
     region: us-east-1
-    # Reference to the credentials secret
-    secretRef:
-      name: cloudwatch-credentials
   query: |
     [
       {
@@ -139,10 +147,13 @@ spec:
   provider:
     type: cloudwatch
     region: us-east-1
-    secretRef:
-      name: cloudwatch-credentials
   query: |
     [
+      {
+        "Id": "error_rate",
+        "Expression": "error_count / request_count * 100",
+        "Label": "ErrorRate"
+      },
       {
         "Id": "error_count",
         "MetricStat": {
@@ -158,7 +169,8 @@ spec:
           },
           "Period": 60,
           "Stat": "Sum"
-        }
+        },
+        "ReturnData": false
       },
       {
         "Id": "request_count",
@@ -175,12 +187,8 @@ spec:
           },
           "Period": 60,
           "Stat": "Sum"
-        }
-      },
-      {
-        "Id": "error_rate",
-        "Expression": "error_count / request_count * 100",
-        "Label": "ErrorRate"
+        },
+        "ReturnData": false
       }
     ]
 ```
@@ -208,7 +216,7 @@ spec:
     port: 80
     targetPort: 8080
   analysis:
-    # Total number of analysis iterations
+    # Analysis interval
     interval: 1m
     # Maximum number of failed checks before rollback
     threshold: 5
@@ -277,7 +285,7 @@ metadata:
     eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/flagger-cloudwatch-role
 ```
 
-When using IRSA, you can omit the `secretRef` field in the MetricTemplate since credentials are injected automatically.
+When using IRSA, you do not need to set static AWS credential environment variables in the Flagger HelmRelease. The AWS SDK credential chain uses the projected service account token to assume the annotated role.
 
 ## Step 7: Verify the Configuration
 
@@ -330,7 +338,7 @@ Common errors include:
 
 - **AccessDeniedException**: The IAM user or role lacks the required CloudWatch permissions
 - **InvalidParameterValue**: The metric query JSON format is incorrect
-- **MetricNotFound**: The specified metric namespace or name does not exist in CloudWatch
+- **No values returned**: The specified metric namespace, name, dimensions, or time window does not match any CloudWatch data points
 
 ## Conclusion
 
