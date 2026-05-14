@@ -40,7 +40,8 @@ spec:
   - action: Allow
     source:
       selector: app == 'authorized-client'
-  - action: Deny  # Explicit, visible, loggable
+  - action: Log   # Log before denying
+  - action: Deny  # Explicit and visible
 ```
 
 ## Mistake 2: Empty `namespaceSelector: {}` Matches All Namespaces
@@ -73,12 +74,12 @@ If two NetworkPolicies both select the same pod, their ingress rules are OR'd - 
 
 **Diagnosis**:
 ```bash
-# Find ALL policies that select your pod
-kubectl get networkpolicy -o json | jq '.items[] |
+# Quick check for simple app=your-app selectors in this namespace
+kubectl get networkpolicy -n <namespace> -o json | jq '.items[] |
   select(.spec.podSelector.matchLabels.app == "your-app") | .metadata.name'
 ```
 
-Any policy in this list that has a matching allow rule will grant access, regardless of other policies.
+Any policy in this list that has a matching allow rule will grant access, regardless of other policies. Also inspect policies with an empty `podSelector` or `matchExpressions`, because a quick `jq` filter does not evaluate every valid selector form.
 
 ## Mistake 4: Policy Applied to Wrong Namespace
 
@@ -98,13 +99,16 @@ calicoctl get networkpolicy --all-namespaces
 Kubernetes NetworkPolicy with only `ingress` rules but no `policyTypes` field defaults to only controlling ingress. However, explicitly listing `policyTypes: [Ingress, Egress]` with an empty egress list causes a deny-all egress to also be applied.
 
 ```yaml
-# Applying this policy creates BOTH a deny-all ingress AND deny-all egress
+# Applying this policy controls ingress with the listed rules AND creates deny-all egress
 spec:
   policyTypes:
   - Ingress
   - Egress
   ingress:
-  - from: [...]
+  - from:
+    - podSelector:
+        matchLabels:
+          app: frontend
   egress: []  # Empty list = deny all egress
 ```
 
