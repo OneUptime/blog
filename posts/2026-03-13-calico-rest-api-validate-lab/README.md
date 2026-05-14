@@ -14,10 +14,10 @@ Validating the Calico REST API means confirming that the API server is accessibl
 
 ## Prerequisites
 
-- A Calico lab cluster with the API server deployed
+- A Calico lab cluster with the Calico API server deployed, or native `projectcalico.org/v3` CRDs enabled
 - `curl` and `jq` available
 - `kubectl` configured for proxy mode
-- A test service account with appropriate RBAC
+- `kubectl` credentials with appropriate RBAC for the Calico resources under test
 
 ## Setup: Start kubectl Proxy
 
@@ -25,6 +25,7 @@ For lab validation, use `kubectl proxy` to avoid manual token management:
 
 ```bash
 kubectl proxy --port=8080 &
+PROXY_PID=$!
 APIBASE="http://localhost:8080"
 ```
 
@@ -67,7 +68,7 @@ curl -s -X POST \
     "metadata": {"name": "rest-api-test-policy"},
     "spec": {
       "order": 999,
-      "selector": "rest-api-test == true",
+      "selector": "rest-api-test == 'true'",
       "ingress": [{"action": "Pass"}],
       "egress": [{"action": "Pass"}]
     }
@@ -103,7 +104,7 @@ curl -s -X PUT \
     },
     \"spec\": {
       \"order\": 888,
-      \"selector\": \"rest-api-test == true\",
+      \"selector\": \"rest-api-test == 'true'\",
       \"ingress\": [{\"action\": \"Pass\"}],
       \"egress\": [{\"action\": \"Pass\"}]
     }
@@ -154,8 +155,11 @@ Test that proper service account authentication works (without kubectl proxy):
 ```bash
 # Create service account and RBAC
 kubectl create serviceaccount rest-api-tester
+kubectl create clusterrole rest-api-tester-calico-read \
+  --verb=get,list,watch \
+  --resource=tiers.projectcalico.org,tier.globalnetworkpolicies.projectcalico.org,globalnetworkpolicies.projectcalico.org
 kubectl create clusterrolebinding rest-api-tester \
-  --clusterrole=view \
+  --clusterrole=rest-api-tester-calico-read \
   --serviceaccount=default:rest-api-tester
 
 # Get token and API server address
@@ -170,8 +174,9 @@ curl -s -k -H "Authorization: Bearer $TOKEN" \
 
 # Clean up
 kubectl delete clusterrolebinding rest-api-tester
+kubectl delete clusterrole rest-api-tester-calico-read
 kubectl delete serviceaccount rest-api-tester
-kubectl proxy --stop 2>/dev/null
+kill "$PROXY_PID"
 ```
 
 ## Validation Checklist
