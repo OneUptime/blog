@@ -22,20 +22,20 @@ Flux CD controllers are built on the controller-runtime library, which uses clie
 
 ## Configuring the Kubernetes Client Cache
 
-### Watch Namespaces to Limit Cache Scope
+### Watch the Runtime Namespace to Limit Cache Scope
 
 ```yaml
 # limit-watch-namespaces.yaml
 
 # By default, Flux controllers watch all namespaces
-# Limiting this reduces memory usage significantly
+# Limiting them to the runtime namespace reduces memory usage significantly
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - gotk-components.yaml
   - gotk-sync.yaml
 patches:
-  # Configure source-controller to watch specific namespaces
+  # Configure source-controller to watch only its runtime namespace
   - target:
       kind: Deployment
       name: source-controller
@@ -46,7 +46,7 @@ patches:
           - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
           - --storage-path=/data
           - --storage-adv-addr=source-controller.$(RUNTIME_NAMESPACE).svc.cluster.local.
-          # Only watch these namespaces instead of all
+          # Only watch the runtime namespace instead of all namespaces
           - --watch-all-namespaces=false
   # Configure kustomize-controller similarly
   - target:
@@ -60,11 +60,11 @@ patches:
           - --watch-all-namespaces=false
 ```
 
-### Configure Cache Sync Period
+### Use Label Selectors to Limit Cache Scope
 
 ```yaml
-# cache-sync-period.yaml
-# The cache sync period determines how often the full cache is resynced
+# watch-label-selector.yaml
+# Label selectors restrict which Flux custom resources the controller watches
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -77,9 +77,7 @@ patches:
     patch: |
       - op: add
         path: /spec/template/spec/containers/0/args/-
-        # Resync cache every 10 minutes (default varies by controller)
-        # Lower values increase API server load but improve consistency
-        # Higher values reduce load but may miss changes
+        # Exclude resources assigned to sharded controllers
         value: --watch-label-selector=!sharding.fluxcd.io/key
 ```
 
@@ -140,11 +138,13 @@ spec:
       storage: 5Gi
   storageClassName: fast-ssd
 ---
+# kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - gotk-components.yaml
   - gotk-sync.yaml
+  - source-controller-pvc.yaml
 patches:
   - target:
       kind: Deployment
@@ -221,7 +221,7 @@ spec:
         name: my-charts
         namespace: flux-system
   # Limit the number of Helm release history entries
-  # Default is 10, which stores 10 releases in Kubernetes secrets
+  # Default is 5, which stores 5 releases in Kubernetes secrets
   maxHistory: 3
   install:
     # Clean up on failed install
@@ -243,77 +243,100 @@ spec:
 # For very large clusters, shard controllers to distribute cache load
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+namespace: flux-system
 resources:
-  - gotk-components.yaml
-  - gotk-sync.yaml
+  - ../gotk-components.yaml
+nameSuffix: "-shard-b"
+commonAnnotations:
+  sharding.fluxcd.io/role: "shard"
 patches:
-  # Primary source-controller handles shard-a resources
+  # Keep only the controllers that support sharding in this overlay
+  - target:
+      kind: (Namespace|CustomResourceDefinition|ClusterRole|ClusterRoleBinding|ServiceAccount|NetworkPolicy|ResourceQuota)
+      labelSelector: "app.kubernetes.io/part-of=flux"
+    patch: |
+      apiVersion: v1
+      kind: all
+      metadata:
+        name: all
+      $patch: delete
+  - target:
+      labelSelector: "app.kubernetes.io/component=notification-controller"
+    patch: |
+      apiVersion: v1
+      kind: all
+      metadata:
+        name: all
+      $patch: delete
+  - target:
+      labelSelector: "app.kubernetes.io/component=source-watcher"
+    patch: |
+      apiVersion: v1
+      kind: all
+      metadata:
+        name: all
+      $patch: delete
+  - target:
+      kind: Deployment
+      name: (image-reflector-controller|image-automation-controller)
+    patch: |
+      apiVersion: v1
+      kind: Deployment
+      metadata:
+        name: all
+      $patch: delete
+  - target:
+      kind: Service
+      name: source-controller
+    patch: |
+      - op: replace
+        path: /spec/selector/app
+        value: source-controller-shard-b
   - target:
       kind: Deployment
       name: source-controller
     patch: |
+      - op: replace
+        path: /spec/selector/matchLabels/app
+        value: source-controller-shard-b
+      - op: replace
+        path: /spec/template/metadata/labels/app
+        value: source-controller-shard-b
+      - op: replace
+        path: /spec/template/spec/containers/0/args/6
+        value: --storage-adv-addr=source-controller-shard-b.$(RUNTIME_NAMESPACE).svc.cluster.local.
+  - target:
+      kind: Deployment
+      name: kustomize-controller
+    patch: |
+      - op: replace
+        path: /spec/selector/matchLabels/app
+        value: kustomize-controller-shard-b
+      - op: replace
+        path: /spec/template/metadata/labels/app
+        value: kustomize-controller-shard-b
+  - target:
+      kind: Deployment
+      name: helm-controller
+    patch: |
+      - op: replace
+        path: /spec/selector/matchLabels/app
+        value: helm-controller-shard-b
+      - op: replace
+        path: /spec/template/metadata/labels/app
+        value: helm-controller-shard-b
+  - target:
+      kind: Deployment
+      name: (source-controller|kustomize-controller|helm-controller)
+    patch: |
       - op: add
         path: /spec/template/spec/containers/0/args/-
-        value: --watch-label-selector=sharding.fluxcd.io/key=shard-a
----
-# Deploy a second source-controller for shard-b
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: source-controller-shard-b
-  namespace: flux-system
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: source-controller-shard-b
-  template:
-    metadata:
-      labels:
-        app: source-controller-shard-b
-    spec:
-      containers:
-        - name: manager
-          image: ghcr.io/fluxcd/source-controller:v1.4.0
-          args:
-            - --storage-path=/data
-            - --storage-adv-addr=source-controller-shard-b.flux-system.svc.cluster.local.
-            # This shard only watches resources labeled with shard-b
-            - --watch-label-selector=sharding.fluxcd.io/key=shard-b
-          resources:
-            requests:
-              cpu: 250m
-              memory: 256Mi
-            limits:
-              cpu: "1"
-              memory: 1Gi
-          volumeMounts:
-            - name: data
-              mountPath: /data
-      volumes:
-        - name: data
-          emptyDir:
-            sizeLimit: 2Gi
+        value: --watch-label-selector=sharding.fluxcd.io/key=shard-b
 ```
 
 ### Label Resources for Sharding
 
 ```yaml
-# shard-a-resources.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: GitRepository
-metadata:
-  name: team-a-config
-  namespace: flux-system
-  labels:
-    # Assign to shard-a controller
-    sharding.fluxcd.io/key: shard-a
-spec:
-  interval: 5m
-  url: https://github.com/org/team-a-config
-  ref:
-    branch: main
----
 # shard-b-resources.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
@@ -449,7 +472,7 @@ patches:
 
 ## Best Practices Summary
 
-1. **Limit watch scope** - Only watch namespaces that contain Flux resources
+1. **Limit watch scope** - Watch only the runtime namespace when that matches your tenancy model, or use label selectors for sharding
 2. **Size artifact storage** - Calculate total artifact size and add 50% headroom
 3. **Use PVCs for stability** - Persistent storage prevents re-downloading on restarts
 4. **Limit Helm history** - Reduce maxHistory to 3-5 to save etcd storage
