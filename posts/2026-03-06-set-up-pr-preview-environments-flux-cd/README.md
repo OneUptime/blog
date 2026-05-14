@@ -164,13 +164,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout application code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to container registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: registry.example.com
           username: ${{ secrets.REGISTRY_USERNAME }}
@@ -178,7 +178,7 @@ jobs:
 
       # Build and push with a PR-specific tag
       - name: Build and push image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           push: true
           tags: |
@@ -233,6 +233,22 @@ jobs:
                   value: pr-${PR_NUMBER}.preview.example.com
           EOF
 
+          # Update the top-level kustomization to include active PR overlays
+          cd apps/myapp/previews
+          RESOURCES="resources:"
+          for dir in pr-*/; do
+            if [ -d "$dir" ]; then
+              RESOURCES="${RESOURCES}\n  - ${dir}"
+            fi
+          done
+
+          {
+            printf "apiVersion: kustomize.config.k8s.io/v1beta1\n"
+            printf "kind: Kustomization\n"
+            printf "%b\n" "$RESOURCES"
+          } > kustomization.yaml
+          cd ../../..
+
           # Commit and push
           git config user.email "github-actions@github.com"
           git config user.name "GitHub Actions"
@@ -242,12 +258,12 @@ jobs:
 
       # Post the preview URL as a PR comment
       - name: Comment preview URL
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const prNumber = context.payload.pull_request.number;
             const previewUrl = `https://pr-${prNumber}.preview.example.com`;
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: prNumber,
@@ -271,6 +287,23 @@ jobs:
           PR_DIR="apps/myapp/previews/pr-${PR_NUMBER}"
           if [ -d "${PR_DIR}" ]; then
             rm -rf "${PR_DIR}"
+
+            # Update the top-level kustomization after removing the overlay
+            cd apps/myapp/previews
+            RESOURCES="resources:"
+            for dir in pr-*/; do
+              if [ -d "$dir" ]; then
+                RESOURCES="${RESOURCES}\n  - ${dir}"
+              fi
+            done
+
+            {
+              printf "apiVersion: kustomize.config.k8s.io/v1beta1\n"
+              printf "kind: Kustomization\n"
+              printf "%b\n" "$RESOURCES"
+            } > kustomization.yaml
+            cd ../../..
+
             git config user.email "github-actions@github.com"
             git config user.name "GitHub Actions"
             git add .
@@ -332,7 +365,7 @@ resources: []
 # PR directories are added and removed by the CI workflow
 ```
 
-Update the GitHub Actions workflow to also maintain this file. Add this to the deploy-preview job after creating the overlay:
+The workflow above maintains this file whenever it creates or removes a PR overlay. If you add this logic to an existing workflow, run it before committing changes:
 
 ```bash
 # Update the top-level kustomization to include the new PR overlay
@@ -345,11 +378,11 @@ for dir in pr-*/; do
   fi
 done
 
-cat > kustomization.yaml << EOF
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-$(echo -e "$RESOURCES")
-EOF
+{
+  printf "apiVersion: kustomize.config.k8s.io/v1beta1\n"
+  printf "kind: Kustomization\n"
+  printf "%b\n" "$RESOURCES"
+} > kustomization.yaml
 ```
 
 ## Step 4: Set Up Wildcard DNS and Ingress
@@ -409,39 +442,68 @@ spec:
 
 ## Step 6: Add Automatic Cleanup with TTL
 
-For extra safety, add a CronJob that cleans up stale preview environments.
+For extra safety, add a scheduled workflow that removes stale preview overlays from Git. Flux will then prune the Kubernetes resources.
 
 ```yaml
-# infrastructure/preview-cleanup/cronjob.yaml
-# Clean up preview namespaces older than 7 days
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: preview-cleanup
-  namespace: flux-system
-spec:
-  schedule: "0 2 * * *"
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          serviceAccountName: preview-cleanup
-          containers:
-            - name: cleanup
-              image: bitnami/kubectl:latest
-              command: ["/bin/sh", "-c"]
-              args:
-                - |
-                  # Find preview namespaces older than 7 days
-                  CUTOFF=$(date -d '7 days ago' -u +%Y-%m-%dT%H:%M:%SZ)
-                  kubectl get namespaces -l preview=true -o json | \
-                    jq -r --arg cutoff "$CUTOFF" \
-                    '.items[] | select(.metadata.creationTimestamp < $cutoff) | .metadata.name' | \
-                    while read ns; do
-                      echo "Deleting stale preview namespace: $ns"
-                      kubectl delete namespace "$ns"
-                    done
-          restartPolicy: OnFailure
+# .github/workflows/preview-ttl-cleanup.yaml
+name: Preview TTL Cleanup
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+env:
+  MANIFESTS_REPO: myorg/k8s-manifests
+
+jobs:
+  cleanup-stale-previews:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove stale preview overlays
+        env:
+          GH_TOKEN: ${{ secrets.MANIFESTS_REPO_TOKEN }}
+          TTL_SECONDS: 604800
+        run: |
+          git clone https://${GH_TOKEN}@github.com/${{ env.MANIFESTS_REPO }}.git manifests
+          cd manifests
+
+          NOW=$(date -u +%s)
+          CHANGED=false
+
+          for dir in apps/myapp/previews/pr-*; do
+            if [ -d "$dir" ]; then
+              CREATED_AT=$(git log --diff-filter=A --format=%ct -- "$dir/kustomization.yaml" | tail -n 1)
+              if [ -n "$CREATED_AT" ] && [ $((NOW - CREATED_AT)) -gt "$TTL_SECONDS" ]; then
+                echo "Removing stale preview overlay: $dir"
+                rm -rf "$dir"
+                CHANGED=true
+              fi
+            fi
+          done
+
+          if [ "$CHANGED" = true ]; then
+            cd apps/myapp/previews
+            RESOURCES="resources:"
+            for dir in pr-*/; do
+              if [ -d "$dir" ]; then
+                RESOURCES="${RESOURCES}\n  - ${dir}"
+              fi
+            done
+
+            {
+              printf "apiVersion: kustomize.config.k8s.io/v1beta1\n"
+              printf "kind: Kustomization\n"
+              printf "%b\n" "$RESOURCES"
+            } > kustomization.yaml
+            cd ../../..
+
+            git config user.email "github-actions@github.com"
+            git config user.name "GitHub Actions"
+            git add .
+            git commit -m "Cleanup stale preview environments"
+            git push origin main
+          fi
 ```
 
 ## Step 7: Verify the Setup
