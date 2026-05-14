@@ -22,9 +22,8 @@ sudo dnf install -y squid
 sudo tee /etc/squid/squid.conf << 'CONF'
 # Transparent proxy configuration
 
-# The "intercept" keyword enables transparent mode
+# The "intercept" keyword enables transparent mode for HTTP traffic
 http_port 3128 intercept
-https_port 3129 intercept ssl-bump cert=/etc/squid/ssl/squid-ca.pem
 
 # Define local networks
 acl localnet src 10.0.0.0/8
@@ -74,19 +73,22 @@ sysctl net.ipv4.ip_forward
 # Install iptables-services
 sudo dnf install -y iptables-services
 
-# Redirect HTTP traffic (port 80) to Squid (port 3128)
-sudo iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 80 \
-  -j REDIRECT --to-port 3128
+LAN_IF=eth0
+LAN_NET=192.168.1.0/24
+SQUID_PORT=3128
 
-# If this machine is also a gateway, redirect traffic from other machines
-sudo iptables -t nat -A PREROUTING -s 192.168.1.0/24 -p tcp --dport 80 \
-  -j REDIRECT --to-port 3128
+# Redirect HTTP traffic from the client LAN to Squid
+sudo iptables -t nat -A PREROUTING -i "$LAN_IF" -s "$LAN_NET" -p tcp --dport 80 \
+  -j REDIRECT --to-port "$SQUID_PORT"
+
+# Block direct access to the intercept listener before NAT rules are applied
+sudo iptables -t mangle -A PREROUTING -p tcp --dport "$SQUID_PORT" -j DROP
 
 # Allow established connections
-sudo iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
-# Allow Squid port
-sudo iptables -A INPUT -p tcp --dport 3128 -j ACCEPT
+# Allow redirected LAN traffic to reach Squid
+sudo iptables -A INPUT -i "$LAN_IF" -s "$LAN_NET" -p tcp --dport "$SQUID_PORT" -j ACCEPT
 
 # Save the iptables rules
 sudo iptables-save | sudo tee /etc/sysconfig/iptables
@@ -98,11 +100,13 @@ sudo systemctl enable --now iptables
 ```bash
 # If using nftables instead of iptables
 sudo nft add table ip nat
-sudo nft add chain ip nat prerouting { type nat hook prerouting priority -100 \; }
-sudo nft add rule ip nat prerouting iifname "eth0" tcp dport 80 redirect to :3128
+sudo nft -- add chain ip nat prerouting '{ type nat hook prerouting priority -100; }'
+sudo nft add rule ip nat prerouting iifname "eth0" tcp dport 80 redirect to 3128
 
-# Save nftables rules
+# Save nftables rules and include them at boot
 sudo nft list ruleset | sudo tee /etc/nftables/transparent-proxy.nft
+echo 'include "/etc/nftables/transparent-proxy.nft"' | sudo tee -a /etc/sysconfig/nftables.conf
+sudo systemctl enable --now nftables
 ```
 
 ## Configure Client Default Gateway
@@ -134,8 +138,11 @@ sudo systemctl enable --now squid
 ## SELinux Configuration
 
 ```bash
-# Allow Squid to intercept connections
+# Allow Squid to connect to origin servers on non-standard ports
 sudo setsebool -P squid_connect_any 1
+
+# Allow Squid to run as a transparent proxy if your SELinux policy requires it
+sudo setsebool -P squid_use_tproxy 1
 
 # If SELinux blocks the redirect
 sudo ausearch -m AVC -c squid -ts recent
