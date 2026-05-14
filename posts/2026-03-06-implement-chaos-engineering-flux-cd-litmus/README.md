@@ -18,7 +18,7 @@ This guide walks you through setting up LitmusChaos with Flux CD so that chaos e
 
 Before starting, ensure you have:
 
-- A Kubernetes cluster (v1.25+)
+- A Kubernetes cluster (v1.16+)
 - Flux CD installed and bootstrapped
 - A Git repository connected to Flux
 - kubectl access to your cluster
@@ -54,9 +54,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: litmus
-  namespace: litmus
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: litmus
   chart:
     spec:
       chart: litmus
@@ -79,13 +80,14 @@ spec:
       persistence:
         enabled: true
         storageClass: standard
-        accessMode: ReadWriteOnce
+        accessModes:
+          - ReadWriteOnce
         size: 20Gi
 ```
 
-### Deploy ChaosCenter Agent
+### Deploy Chaos Infrastructure
 
-The ChaosCenter agent connects your cluster to the Litmus control plane:
+The ChaosCenter infrastructure components connect your cluster to the Litmus control plane:
 
 ```yaml
 # clusters/my-cluster/litmus/chaos-agent.yaml
@@ -93,13 +95,14 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: litmus-agent
-  namespace: litmus
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: litmus
   dependsOn:
     # Ensure Litmus control plane is ready first
     - name: litmus
-      namespace: litmus
+      namespace: flux-system
   chart:
     spec:
       chart: litmus-agent
@@ -109,11 +112,15 @@ spec:
         name: litmuschaos
         namespace: flux-system
   values:
-    agent:
-      # Name for this agent as shown in ChaosCenter
-      name: production-agent
-      # Connect to the local Litmus server
-      serverAddress: "http://litmus-server:9002"
+    # Name for this infrastructure as shown in ChaosCenter
+    INFRA_NAME: production-agent
+    # Connect to the local Litmus control plane
+    LITMUS_URL: "http://litmus-frontend-service.litmus.svc.cluster.local:9091"
+    LITMUS_BACKEND_URL: "http://litmus-server-service.litmus.svc.cluster.local:9002"
+    LITMUS_USERNAME: "admin"
+    LITMUS_PASSWORD: "litmus"
+    global:
+      INFRA_MODE: "cluster"
 ```
 
 ## Defining Chaos Experiments as GitOps Resources
@@ -133,10 +140,13 @@ spec:
   definition:
     scope: Namespaced
     permissions:
-      - apiGroups: [""]
-        resources: ["pods"]
-        verbs: ["delete", "list", "get"]
+      - apiGroups: ["", "apps", "apps.openshift.io", "argoproj.io", "batch", "litmuschaos.io"]
+        resources: ["deployments", "jobs", "pods", "pods/log", "replicationcontrollers", "statefulsets", "daemonsets", "replicasets", "deploymentconfigs", "rollouts", "pods/exec", "events", "chaosengines", "chaosexperiments", "chaosresults"]
+        verbs: ["create", "list", "get", "patch", "update", "delete", "deletecollection"]
     image: "litmuschaos/go-runner:latest"
+    imagePullPolicy: Always
+    command:
+      - /bin/bash
     # Arguments for the chaos experiment
     args:
       - -c
@@ -168,10 +178,13 @@ spec:
   definition:
     scope: Namespaced
     permissions:
-      - apiGroups: [""]
-        resources: ["pods"]
-        verbs: ["list", "get", "watch"]
+      - apiGroups: ["", "apps", "apps.openshift.io", "argoproj.io", "batch", "litmuschaos.io"]
+        resources: ["deployments", "jobs", "pods", "pods/log", "replicationcontrollers", "statefulsets", "daemonsets", "replicasets", "deploymentconfigs", "rollouts", "pods/exec", "events", "chaosengines", "chaosexperiments", "chaosresults"]
+        verbs: ["create", "list", "get", "patch", "update", "delete", "deletecollection"]
     image: "litmuschaos/go-runner:latest"
+    imagePullPolicy: Always
+    command:
+      - /bin/bash
     args:
       - -c
       - ./experiments -name pod-network-latency
@@ -209,7 +222,7 @@ spec:
     appns: "default"
     applabel: "app=my-web-app"
     appkind: "deployment"
-  # Abort after this duration if still running
+  # Service account used by the chaos runner and experiment jobs
   chaosServiceAccount: litmus-admin
   experiments:
     - name: pod-delete
@@ -265,53 +278,75 @@ spec:
   # Health checks to validate chaos results
   healthChecks:
     - apiVersion: litmuschaos.io/v1alpha1
-      kind: ChaosEngine
-      name: app-chaos
+      kind: ChaosResult
+      name: app-chaos-pod-delete
       namespace: default
+  healthCheckExprs:
+    - apiVersion: litmuschaos.io/v1alpha1
+      kind: ChaosResult
+      failed: status.experimentStatus.verdict in ['Fail', 'Stopped']
+      current: status.experimentStatus.verdict == 'Pass'
   # Timeout for chaos experiments to complete
   timeout: 10m
 ```
 
 ## Scheduled Chaos with CronWorkflows
 
-Run chaos experiments on a schedule using Litmus CronWorkflows:
+Run chaos experiments on a schedule using an Argo CronWorkflow:
 
 ```yaml
 # chaos-experiments/scheduled-chaos.yaml
-apiVersion: litmuschaos.io/v1alpha1
-kind: ChaosSchedule
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
 metadata:
   name: weekly-pod-chaos
-  namespace: default
+  namespace: litmus
 spec:
-  schedule:
-    # Run every Wednesday at 2 AM UTC
-    now: false
-    once:
-      executionTime: ""
-    repeat:
-      timeRange:
-        startTime: "2026-03-06T00:00:00Z"
-      schedule:
-        type: "repeat"
-        # Cron schedule expression
-        minChaosInterval: "0 2 * * 3"
-  engineTemplateSpec:
-    engineState: "active"
-    appinfo:
-      appns: "default"
-      applabel: "app=my-web-app"
-      appkind: "deployment"
-    chaosServiceAccount: litmus-admin
-    experiments:
-      - name: pod-delete
-        spec:
-          components:
-            env:
-              - name: TOTAL_CHAOS_DURATION
-                value: "120"
-              - name: PODS_AFFECTED_PERC
-                value: "30"
+  # Run every Wednesday at 2 AM UTC
+  schedule: "0 2 * * 3"
+  timezone: UTC
+  concurrencyPolicy: Forbid
+  workflowSpec:
+    entrypoint: pod-chaos
+    serviceAccountName: argo-chaos
+    arguments:
+      parameters:
+        - name: adminModeNamespace
+          value: default
+    templates:
+      - name: pod-chaos
+        inputs:
+          artifacts:
+            - name: chaos-engine
+              path: /tmp/chaosengine.yaml
+              raw:
+                data: |
+                  apiVersion: litmuschaos.io/v1alpha1
+                  kind: ChaosEngine
+                  metadata:
+                    generateName: weekly-pod-chaos-
+                    namespace: "{{workflow.parameters.adminModeNamespace}}"
+                  spec:
+                    engineState: "active"
+                    appinfo:
+                      appns: "default"
+                      applabel: "app=my-web-app"
+                      appkind: "deployment"
+                    chaosServiceAccount: litmus-admin
+                    experiments:
+                      - name: pod-delete
+                        spec:
+                          components:
+                            env:
+                              - name: TOTAL_CHAOS_DURATION
+                                value: "120"
+                              - name: PODS_AFFECTED_PERC
+                                value: "30"
+        container:
+          image: litmuschaos/litmus-checker:latest
+          args:
+            - -file=/tmp/chaosengine.yaml
+            - -saveName=/tmp/engine-name
 ```
 
 ## Setting Up RBAC for Chaos Experiments
@@ -335,10 +370,25 @@ rules:
   # Permissions to manage pods for chaos
   - apiGroups: [""]
     resources: ["pods", "pods/exec", "pods/log"]
-    verbs: ["get", "list", "watch", "delete", "create"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "deletecollection"]
+  # Permissions to read ConfigMaps and replication controllers
+  - apiGroups: [""]
+    resources: ["configmaps", "replicationcontrollers"]
+    verbs: ["get", "list", "watch"]
+  # Permissions to create and monitor experiment jobs
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "delete", "deletecollection"]
   # Permissions to read deployments
   - apiGroups: ["apps"]
-    resources: ["deployments", "replicasets"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  # Permissions to read OpenShift DeploymentConfigs and Argo Rollouts when used
+  - apiGroups: ["apps.openshift.io"]
+    resources: ["deploymentconfigs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["rollouts"]
     verbs: ["get", "list", "watch"]
   # Permissions to manage chaos resources
   - apiGroups: ["litmuschaos.io"]
@@ -382,7 +432,7 @@ Use Flux's notification system to alert on chaos failures:
 
 ```yaml
 # clusters/my-cluster/litmus/chaos-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: chaos-alert
@@ -397,7 +447,7 @@ spec:
       namespace: flux-system
   summary: "Chaos experiment failed - application may not be resilient"
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-provider
