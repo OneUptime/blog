@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Google Cloud, Cloud Source Repositories, Git, GitOps, Kubernetes, SSH, HTTPS, Service Account
 
-Description: A practical guide to configuring Flux CD to use Google Cloud Source Repositories as a Git source with SSH, HTTPS, and service account authentication methods.
+Description: A practical guide to configuring Flux CD to use Google Cloud Source Repositories as a Git source with SSH and HTTPS authentication methods.
 
 ---
 
 ## Introduction
 
-Google Cloud Source Repositories (CSR) is a fully managed Git repository service hosted on Google Cloud. It integrates natively with other GCP services and provides a secure, private Git hosting option for organizations already invested in the Google Cloud ecosystem.
+Google Cloud Source Repositories (CSR) is a fully managed Git repository service hosted on Google Cloud. It integrates natively with other GCP services and provides a secure, private Git hosting option for organizations already invested in the Google Cloud ecosystem. Effective June 17, 2024, Cloud Source Repositories is not available to new customers, but organizations that used Cloud Source Repositories before that date can continue using it.
 
-This guide covers how to configure Flux CD to use Cloud Source Repositories as a Git source, including SSH and HTTPS authentication methods, service account key configuration, and integration patterns for GitOps workflows.
+This guide covers how to configure Flux CD to use Cloud Source Repositories as a Git source, including SSH and HTTPS authentication methods and integration patterns for GitOps workflows.
 
 ## Prerequisites
 
 - A GKE cluster with Flux CD installed
 - gcloud CLI installed and configured
-- A Google Cloud project with Cloud Source Repositories API enabled
+- A Google Cloud project in an organization that already used Cloud Source Repositories before June 17, 2024
 - kubectl and Flux CLI installed
 
 ## Step 1: Enable Cloud Source Repositories API
@@ -53,6 +53,9 @@ Set up the initial repository structure for Flux.
 gcloud source repos clone fleet-infra
 cd fleet-infra
 
+# Use the branch name referenced by the Flux examples
+git checkout -B master
+
 # Create the directory structure for Flux
 mkdir -p clusters/gke-cluster
 mkdir -p infrastructure/base
@@ -77,23 +80,25 @@ Set up SSH-based authentication for Flux to access Cloud Source Repositories.
 
 ```bash
 # Generate an SSH key pair for Flux
-ssh-keygen -t ed25519 -f flux-csr-key -N "" -C "flux-cd@${PROJECT_ID}"
+export USER_EMAIL="user@example.com"
+ssh-keygen -t ed25519 -f flux-csr-key -N "" -C "${USER_EMAIL}"
 
 # Register the public key with Google Cloud
 # Navigate to: https://source.cloud.google.com/user/ssh_keys
-# Or use the gcloud CLI to add the SSH key
 cat flux-csr-key.pub
-# Add this key in the Google Cloud Console under Source Repositories > SSH Keys
+# Add this key in the Google Cloud Console under Source Repositories > SSH Keys.
+# Cloud Source Repositories SSH keys are registered to Google Accounts,
+# not service accounts.
 
 # Create a Kubernetes secret with the SSH private key
 kubectl create secret generic csr-ssh-credentials \
   --namespace flux-system \
   --from-file=identity=flux-csr-key \
   --from-file=identity.pub=flux-csr-key.pub \
-  --from-literal=known_hosts="$(ssh-keyscan -t rsa source.developers.google.com 2>/dev/null)"
+  --from-literal=known_hosts="$(ssh-keyscan -p 2022 source.developers.google.com 2>/dev/null)"
 
-# Clean up local key files
-rm flux-csr-key flux-csr-key.pub
+# Clean up local key files after applying the secret or completing bootstrap
+# rm flux-csr-key flux-csr-key.pub
 ```
 
 Configure the Flux GitRepository resource with SSH:
@@ -109,7 +114,7 @@ metadata:
 spec:
   interval: 5m
   # SSH URL for Cloud Source Repositories
-  url: ssh://source.developers.google.com:2022/p/PROJECT_ID/r/fleet-infra
+  url: ssh://USER_EMAIL@source.developers.google.com:2022/p/PROJECT_ID/r/fleet-infra
   ref:
     branch: master
   # Reference the SSH key secret
@@ -119,31 +124,19 @@ spec:
 
 ## Step 4: Configure HTTPS Authentication for Flux
 
-Set up HTTPS-based authentication using a service account.
+Set up HTTPS-based authentication using manually generated Cloud Source Repositories credentials.
 
 ```bash
-# Create a service account for Flux CSR access
-gcloud iam service-accounts create flux-csr-reader \
-  --display-name "Flux Cloud Source Repositories Reader"
-
-# Grant Source Repository Reader role
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:flux-csr-reader@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --role="roles/source.reader"
-
-# Create a service account key
-gcloud iam service-accounts keys create csr-key.json \
-  --iam-account=flux-csr-reader@${PROJECT_ID}.iam.gserviceaccount.com
+# Generate HTTPS credentials from the Cloud Source Repositories "Clone"
+# dialog under the "Manually generated credentials" tab.
+export CSR_USERNAME="generated-username"
+export CSR_PASSWORD="generated-password"
 
 # Create a Kubernetes secret with HTTPS credentials
-# The username is _json_key and the password is the JSON key content
 kubectl create secret generic csr-https-credentials \
   --namespace flux-system \
-  --from-literal=username=_json_key \
-  --from-file=password=csr-key.json
-
-# Clean up the key file
-rm csr-key.json
+  --from-literal=username="$CSR_USERNAME" \
+  --from-literal=password="$CSR_PASSWORD"
 ```
 
 Configure the Flux GitRepository resource with HTTPS:
@@ -167,34 +160,13 @@ spec:
     name: csr-https-credentials
 ```
 
-## Step 5: Configure Workload Identity for CSR Access
+## Step 5: Understand Workload Identity Limitations
 
-Use Workload Identity for keyless authentication to Cloud Source Repositories.
+GKE Workload Identity is useful for Google Cloud API access, but Flux GitRepository authentication for a generic HTTPS or SSH Git server uses Git credentials from `spec.secretRef`. Flux supports object-level Workload Identity for selected providers such as Azure and GitHub, not for Cloud Source Repositories. For CSR, use the SSH or HTTPS Git credentials shown above.
 
 ```bash
-# Create a Google Service Account
-gcloud iam service-accounts create flux-csr-wi \
-  --display-name "Flux CSR Workload Identity"
-
-# Grant Source Repository Reader role
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:flux-csr-wi@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --role="roles/source.reader"
-
-# Create the Workload Identity binding
-gcloud iam service-accounts add-iam-policy-binding \
-  flux-csr-wi@${PROJECT_ID}.iam.gserviceaccount.com \
-  --member="serviceAccount:${PROJECT_ID}.svc.id.goog[flux-system/source-controller]" \
-  --role="roles/iam.workloadIdentityUser"
-
-# Annotate the source-controller service account
-kubectl annotate serviceaccount source-controller \
-  --namespace flux-system \
-  --overwrite \
-  iam.gke.io/gcp-service-account=flux-csr-wi@${PROJECT_ID}.iam.gserviceaccount.com
-
-# Restart the source-controller
-kubectl rollout restart deployment/source-controller -n flux-system
+# Verify that the GitRepository uses one of the supported Git auth secrets
+kubectl get gitrepository fleet-infra -n flux-system -o yaml
 ```
 
 ## Step 6: Bootstrap Flux Directly with CSR
@@ -204,7 +176,7 @@ Bootstrap Flux using Cloud Source Repositories as the primary Git source.
 ```bash
 # Bootstrap Flux with a CSR repository using SSH
 flux bootstrap git \
-  --url=ssh://source.developers.google.com:2022/p/${PROJECT_ID}/r/fleet-infra \
+  --url=ssh://${USER_EMAIL}@source.developers.google.com:2022/p/${PROJECT_ID}/r/fleet-infra \
   --branch=master \
   --path=clusters/gke-cluster \
   --private-key-file=flux-csr-key
@@ -214,8 +186,8 @@ flux bootstrap git \
   --url=https://source.developers.google.com/p/${PROJECT_ID}/r/fleet-infra \
   --branch=master \
   --path=clusters/gke-cluster \
-  --username=_json_key \
-  --password="$(cat csr-key.json)"
+  --username="$CSR_USERNAME" \
+  --password="$CSR_PASSWORD"
 ```
 
 ## Step 7: Configure Multiple CSR Repositories
@@ -232,7 +204,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
-  url: ssh://source.developers.google.com:2022/p/PROJECT_ID/r/infrastructure
+  url: ssh://USER_EMAIL@source.developers.google.com:2022/p/PROJECT_ID/r/infrastructure
   ref:
     branch: master
   secretRef:
@@ -247,7 +219,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
-  url: ssh://source.developers.google.com:2022/p/PROJECT_ID/r/applications
+  url: ssh://USER_EMAIL@source.developers.google.com:2022/p/PROJECT_ID/r/applications
   ref:
     branch: master
   secretRef:
@@ -323,6 +295,21 @@ echo "Webhook URL: $WEBHOOK_URL"
 # Set up a Cloud Pub/Sub topic for CSR notifications
 gcloud pubsub topics create csr-push-events
 
+# Create a service account that CSR can use to publish notifications
+gcloud iam service-accounts create csr-pubsub-publisher \
+  --display-name "CSR Pub/Sub Publisher"
+
+# Allow the service account to publish to the topic
+gcloud pubsub topics add-iam-policy-binding csr-push-events \
+  --member="serviceAccount:csr-pubsub-publisher@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/pubsub.publisher"
+
+# Associate the CSR repository with the Pub/Sub topic
+gcloud source repos update fleet-infra \
+  --add-topic=csr-push-events \
+  --service-account=csr-pubsub-publisher@${PROJECT_ID}.iam.gserviceaccount.com \
+  --message-format=json
+
 # Create a Cloud Function to relay notifications to Flux
 # This function receives Pub/Sub messages and calls the Flux webhook
 ```
@@ -343,10 +330,9 @@ import os
 def handle_csr_event(cloud_event):
     """Relay Cloud Source Repository push events to Flux webhook."""
     flux_url = os.environ.get("FLUX_WEBHOOK_URL")
-    token = os.environ.get("FLUX_WEBHOOK_TOKEN")
 
-    if not flux_url or not token:
-        print("Missing FLUX_WEBHOOK_URL or FLUX_WEBHOOK_TOKEN")
+    if not flux_url:
+        print("Missing FLUX_WEBHOOK_URL")
         return
 
     headers = {
@@ -354,13 +340,19 @@ def handle_csr_event(cloud_event):
     }
     # Call the Flux receiver webhook
     response = requests.post(
-        f"{flux_url}?token={token}",
+        flux_url,
         headers=headers,
         json=cloud_event.data,
         timeout=10,
     )
     print(f"Flux webhook response: {response.status_code}")
 PYEOF
+
+# Create the Python dependencies file
+cat > cloud-function-csr-webhook/requirements.txt << 'REQEOF'
+functions-framework==3.*
+requests==2.*
+REQEOF
 
 # Deploy the Cloud Function
 gcloud functions deploy csr-to-flux-webhook \
@@ -369,7 +361,7 @@ gcloud functions deploy csr-to-flux-webhook \
   --source=cloud-function-csr-webhook \
   --entry-point=handle_csr_event \
   --trigger-topic=csr-push-events \
-  --set-env-vars="FLUX_WEBHOOK_URL=https://flux.example.com${WEBHOOK_URL},FLUX_WEBHOOK_TOKEN=${WEBHOOK_TOKEN}"
+  --set-env-vars="FLUX_WEBHOOK_URL=https://flux.example.com${WEBHOOK_URL}"
 ```
 
 ## Step 9: Configure CSR Repository Mirroring
@@ -377,13 +369,7 @@ gcloud functions deploy csr-to-flux-webhook \
 Set up Cloud Source Repositories to mirror from GitHub or other Git providers.
 
 ```bash
-# Mirror a GitHub repository to CSR
-gcloud source repos create mirrored-app \
-  --mirror-config-url="https://github.com/org/app.git" \
-  --mirror-config-webhook-id="webhook-id" \
-  --mirror-config-deploy-key-id="deploy-key-id"
-
-# Or configure mirroring via the Cloud Console:
+# Create or select the mirrored repository in the Cloud Console:
 # 1. Go to Cloud Source Repositories
 # 2. Add repository > Connect external repository
 # 3. Select GitHub or Bitbucket
@@ -400,7 +386,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
-  url: ssh://source.developers.google.com:2022/p/PROJECT_ID/r/mirrored-app
+  url: ssh://USER_EMAIL@source.developers.google.com:2022/p/PROJECT_ID/r/mirrored-app
   ref:
     branch: main
   secretRef:
@@ -413,7 +399,7 @@ spec:
 
 ```bash
 # Test SSH connectivity to Cloud Source Repositories
-ssh -T -p 2022 source.developers.google.com
+ssh -T -p 2022 USER_EMAIL@source.developers.google.com
 
 # Verify the SSH key is registered
 gcloud source repos list
@@ -430,12 +416,6 @@ kubectl logs -n flux-system deploy/source-controller | grep -i "ssh\|auth\|clone
 ```bash
 # Test HTTPS access to CSR
 gcloud source repos clone fleet-infra --project=$PROJECT_ID
-
-# Verify the service account has the correct role
-gcloud projects get-iam-policy $PROJECT_ID \
-  --flatten="bindings[].members" \
-  --filter="bindings.members:flux-csr-reader" \
-  --format="table(bindings.role)"
 
 # Check the secret format
 kubectl get secret csr-https-credentials -n flux-system -o yaml
@@ -456,4 +436,4 @@ kubectl logs -n flux-system deploy/source-controller --tail=50 | grep fleet-infr
 
 ## Summary
 
-In this guide, you configured Flux CD to use Google Cloud Source Repositories as a Git source. You set up three authentication methods: SSH keys, HTTPS with service account keys, and Workload Identity for keyless access. You also configured multi-repository setups, webhook notifications for push events using Cloud Pub/Sub and Cloud Functions, and repository mirroring from external Git providers. This integration allows you to leverage Cloud Source Repositories as a secure, GCP-native Git hosting solution for your Flux CD GitOps workflows.
+In this guide, you configured Flux CD to use Cloud Source Repositories as a Git source. You set up SSH keys and HTTPS credentials for Git access, and noted why Workload Identity is not a supported CSR Git authentication method for Flux. You also configured multi-repository setups, webhook notifications for push events using Cloud Pub/Sub and Cloud Functions, and repository mirroring from external Git providers. This integration allows existing CSR customers to leverage Cloud Source Repositories as a secure, GCP-native Git hosting solution for Flux CD GitOps workflows.
