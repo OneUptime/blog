@@ -12,7 +12,7 @@ Description: Learn how to use the flux export command to backup all your Flux CD
 
 Backing up your Flux CD resources is a critical part of any disaster recovery strategy. The `flux export` command allows you to extract all Flux resource definitions from your cluster as YAML manifests. These exported resources can be stored in Git, used for migration, or applied to restore a cluster after a failure.
 
-This guide covers practical usage of `flux export` across all supported Flux resource types.
+This guide covers practical usage of `flux export` across common Flux resource types.
 
 ## Prerequisites
 
@@ -36,18 +36,23 @@ graph TD
 
 ## Exporting All Resources
 
-The quickest way to backup everything is to export all Flux resources at once:
+The quickest way to backup common Flux resources is to export each resource type in the selected namespace. To export another namespace, add `--namespace=<name>` to each command.
 
 ```bash
-# Export all Flux resources across all namespaces
+# Export all GitRepository sources
+flux export source git --all > git-sources-backup.yaml
 
-flux export source all --all-namespaces > sources-backup.yaml
+# Export all HelmRepository sources
+flux export source helm --all > helm-sources-backup.yaml
+
+# Export all OCIRepository sources
+flux export source oci --all > oci-sources-backup.yaml
 
 # Export all Kustomization resources
-flux export kustomization --all-namespaces > kustomizations-backup.yaml
+flux export kustomization --all > kustomizations-backup.yaml
 
 # Export all HelmRelease resources
-flux export helmrelease --all-namespaces > helmreleases-backup.yaml
+flux export helmrelease --all > helmreleases-backup.yaml
 ```
 
 ## Exporting Git Sources
@@ -56,7 +61,7 @@ Git repositories are the foundation of most Flux deployments:
 
 ```bash
 # Export all GitRepository sources
-flux export source git --all-namespaces
+flux export source git --all
 
 # Export a specific GitRepository
 flux export source git my-app-repo --namespace=flux-system
@@ -88,13 +93,13 @@ Helm repositories and charts can be exported similarly:
 
 ```bash
 # Export all HelmRepository sources
-flux export source helm --all-namespaces
+flux export source helm --all
 
 # Export a specific HelmRepository
 flux export source helm bitnami --namespace=flux-system
 
 # Export all HelmChart sources
-flux export source chart --all-namespaces
+flux export source chart --all
 ```
 
 ## Exporting OCI Sources
@@ -103,7 +108,7 @@ For OCI-based artifact sources:
 
 ```bash
 # Export all OCIRepository sources
-flux export source oci --all-namespaces
+flux export source oci --all
 
 # Export a specific OCIRepository
 flux export source oci my-oci-repo --namespace=flux-system
@@ -115,7 +120,7 @@ Kustomizations define how manifests are applied to the cluster:
 
 ```bash
 # Export all Kustomizations
-flux export kustomization --all-namespaces
+flux export kustomization --all
 
 # Export a specific Kustomization
 flux export kustomization my-app --namespace=flux-system
@@ -149,7 +154,7 @@ HelmReleases manage Helm chart deployments:
 
 ```bash
 # Export all HelmReleases
-flux export helmrelease --all-namespaces
+flux export helmrelease --all
 
 # Export a specific HelmRelease
 flux export helmrelease nginx --namespace=default
@@ -164,10 +169,10 @@ Do not forget to backup your alerting configuration:
 
 ```bash
 # Export all Providers (notification destinations)
-flux export alert-provider --all-namespaces > providers-backup.yaml
+flux export alert-provider --all > providers-backup.yaml
 
 # Export all Alerts
-flux export alert --all-namespaces > alerts-backup.yaml
+flux export alert --all > alerts-backup.yaml
 
 # Export a specific alert
 flux export alert critical-alerts --namespace=flux-system
@@ -179,29 +184,29 @@ If you use Flux image automation, export those resources too:
 
 ```bash
 # Export ImageRepository resources
-flux export image repository --all-namespaces > image-repos-backup.yaml
+flux export image repository --all > image-repos-backup.yaml
 
 # Export ImagePolicy resources
-flux export image policy --all-namespaces > image-policies-backup.yaml
+flux export image policy --all > image-policies-backup.yaml
 
 # Export ImageUpdateAutomation resources
-flux export image update --all-namespaces > image-updates-backup.yaml
+flux export image update --all > image-updates-backup.yaml
 ```
 
 ## Complete Backup Script
 
-Here is a comprehensive backup script that exports all Flux resources:
+Here is a comprehensive backup script that exports common Flux resources from one namespace:
 
 ```bash
 #!/bin/bash
 # flux-backup.sh
-# Complete backup of all Flux CD resources
+# Backup common Flux CD resources from one namespace
 
 set -euo pipefail
 
 # Configuration
 BACKUP_DIR="./flux-backup-$(date +%Y%m%d-%H%M%S)"
-NAMESPACE_FLAG="--all-namespaces"
+NAMESPACE="${NAMESPACE:-flux-system}"
 
 # Create backup directory structure
 mkdir -p "${BACKUP_DIR}/sources"
@@ -211,51 +216,52 @@ mkdir -p "${BACKUP_DIR}/notifications"
 mkdir -p "${BACKUP_DIR}/image-automation"
 
 echo "Starting Flux backup to ${BACKUP_DIR}..."
+echo "Exporting resources from namespace ${NAMESPACE}..."
 
 # Export all source types
 echo "Exporting sources..."
-flux export source git ${NAMESPACE_FLAG} \
+flux export source git --namespace="${NAMESPACE}" --all \
   > "${BACKUP_DIR}/sources/git-repositories.yaml" 2>/dev/null || true
 
-flux export source helm ${NAMESPACE_FLAG} \
+flux export source helm --namespace="${NAMESPACE}" --all \
   > "${BACKUP_DIR}/sources/helm-repositories.yaml" 2>/dev/null || true
 
-flux export source oci ${NAMESPACE_FLAG} \
+flux export source oci --namespace="${NAMESPACE}" --all \
   > "${BACKUP_DIR}/sources/oci-repositories.yaml" 2>/dev/null || true
 
-flux export source chart ${NAMESPACE_FLAG} \
+flux export source chart --namespace="${NAMESPACE}" --all \
   > "${BACKUP_DIR}/sources/helm-charts.yaml" 2>/dev/null || true
 
-flux export source bucket ${NAMESPACE_FLAG} \
+flux export source bucket --namespace="${NAMESPACE}" --all \
   > "${BACKUP_DIR}/sources/buckets.yaml" 2>/dev/null || true
 
 # Export Kustomizations
 echo "Exporting kustomizations..."
-flux export kustomization ${NAMESPACE_FLAG} \
+flux export kustomization --namespace="${NAMESPACE}" --all \
   > "${BACKUP_DIR}/kustomizations/kustomizations.yaml" 2>/dev/null || true
 
 # Export HelmReleases
 echo "Exporting helm releases..."
-flux export helmrelease ${NAMESPACE_FLAG} \
+flux export helmrelease --namespace="${NAMESPACE}" --all \
   > "${BACKUP_DIR}/helmreleases/helmreleases.yaml" 2>/dev/null || true
 
 # Export notification resources
 echo "Exporting notification resources..."
-flux export alert-provider ${NAMESPACE_FLAG} \
+flux export alert-provider --namespace="${NAMESPACE}" --all \
   > "${BACKUP_DIR}/notifications/providers.yaml" 2>/dev/null || true
 
-flux export alert ${NAMESPACE_FLAG} \
+flux export alert --namespace="${NAMESPACE}" --all \
   > "${BACKUP_DIR}/notifications/alerts.yaml" 2>/dev/null || true
 
 # Export image automation resources
 echo "Exporting image automation resources..."
-flux export image repository ${NAMESPACE_FLAG} \
+flux export image repository --namespace="${NAMESPACE}" --all \
   > "${BACKUP_DIR}/image-automation/repositories.yaml" 2>/dev/null || true
 
-flux export image policy ${NAMESPACE_FLAG} \
+flux export image policy --namespace="${NAMESPACE}" --all \
   > "${BACKUP_DIR}/image-automation/policies.yaml" 2>/dev/null || true
 
-flux export image update ${NAMESPACE_FLAG} \
+flux export image update --namespace="${NAMESPACE}" --all \
   > "${BACKUP_DIR}/image-automation/update-automations.yaml" 2>/dev/null || true
 
 # Remove empty files (resources that do not exist in the cluster)
@@ -288,7 +294,7 @@ kubectl apply -f ./flux-backup-20260306-120000/image-automation/
 
 Order matters when restoring. Apply resources in this sequence:
 
-1. Sources (GitRepository, HelmRepository, OCIRepository, Bucket)
+1. Sources (GitRepository, HelmRepository, OCIRepository, HelmChart, Bucket)
 2. Kustomizations
 3. HelmReleases
 4. Notification providers and alerts
@@ -305,15 +311,24 @@ A best practice is to commit your backups to a Git repository:
 
 BACKUP_REPO="/path/to/flux-backups"
 CLUSTER_NAME="production"
+NAMESPACE="flux-system"
+
+mkdir -p "${BACKUP_REPO}/${CLUSTER_NAME}"
 
 # Run the export
-flux export source all --all-namespaces \
-  > "${BACKUP_REPO}/${CLUSTER_NAME}/sources.yaml"
+flux export source git --namespace="${NAMESPACE}" --all \
+  > "${BACKUP_REPO}/${CLUSTER_NAME}/git-sources.yaml"
 
-flux export kustomization --all-namespaces \
+flux export source helm --namespace="${NAMESPACE}" --all \
+  > "${BACKUP_REPO}/${CLUSTER_NAME}/helm-sources.yaml"
+
+flux export source oci --namespace="${NAMESPACE}" --all \
+  > "${BACKUP_REPO}/${CLUSTER_NAME}/oci-sources.yaml"
+
+flux export kustomization --namespace="${NAMESPACE}" --all \
   > "${BACKUP_REPO}/${CLUSTER_NAME}/kustomizations.yaml"
 
-flux export helmrelease --all-namespaces \
+flux export helmrelease --namespace="${NAMESPACE}" --all \
   > "${BACKUP_REPO}/${CLUSTER_NAME}/helmreleases.yaml"
 
 # Commit and push
@@ -347,13 +362,17 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  # Export all resources to stdout
-                  echo "--- Sources ---"
-                  flux export source all --all-namespaces
+                  # Export all resources in the flux-system namespace to stdout
+                  echo "--- GitRepository Sources ---"
+                  flux export source git --all
+                  echo "--- HelmRepository Sources ---"
+                  flux export source helm --all
+                  echo "--- OCIRepository Sources ---"
+                  flux export source oci --all
                   echo "--- Kustomizations ---"
-                  flux export kustomization --all-namespaces
+                  flux export kustomization --all
                   echo "--- HelmReleases ---"
-                  flux export helmrelease --all-namespaces
+                  flux export helmrelease --all
           restartPolicy: OnFailure
 ```
 
@@ -365,14 +384,14 @@ Run exports before and after any major cluster changes:
 
 ```bash
 # Before making changes
-flux export source all --all-namespaces > pre-change-sources.yaml
-flux export kustomization --all-namespaces > pre-change-kustomizations.yaml
+flux export source git --all > pre-change-git-sources.yaml
+flux export kustomization --all > pre-change-kustomizations.yaml
 
 # Make your changes...
 
 # After changes are stable
-flux export source all --all-namespaces > post-change-sources.yaml
-flux export kustomization --all-namespaces > post-change-kustomizations.yaml
+flux export source git --all > post-change-git-sources.yaml
+flux export kustomization --all > post-change-kustomizations.yaml
 ```
 
 ### Validate Exported Resources
@@ -392,9 +411,9 @@ When managing multi-tenant clusters, export by namespace:
 
 ```bash
 # Export resources for a specific team namespace
-flux export source all --namespace=team-alpha > team-alpha-sources.yaml
-flux export kustomization --namespace=team-alpha > team-alpha-kustomizations.yaml
-flux export helmrelease --namespace=team-alpha > team-alpha-helmreleases.yaml
+flux export source git --namespace=team-alpha --all > team-alpha-git-sources.yaml
+flux export kustomization --namespace=team-alpha --all > team-alpha-kustomizations.yaml
+flux export helmrelease --namespace=team-alpha --all > team-alpha-helmreleases.yaml
 ```
 
 ## Summary
