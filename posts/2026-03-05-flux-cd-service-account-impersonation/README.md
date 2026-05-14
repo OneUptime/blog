@@ -125,8 +125,7 @@ spec:
   prune: true
   sourceRef:
     kind: GitRepository
-    name: platform-config
-    namespace: flux-system
+    name: team-a-config
   # Impersonate this service account during reconciliation
   serviceAccountName: team-a-reconciler
   targetNamespace: team-a
@@ -134,10 +133,10 @@ spec:
 
 ## Controller Permissions for Impersonation
 
-The kustomize-controller itself needs permission to impersonate service accounts. This is typically configured during Flux bootstrap. The controller's ClusterRole must include impersonation rules:
+The kustomize-controller and helm-controller need permission to impersonate service accounts. This is typically configured during Flux bootstrap. A controller ClusterRole must include impersonation rules:
 
 ```yaml
-# ClusterRole allowing the kustomize-controller to impersonate service accounts
+# ClusterRole allowing a Flux controller to impersonate service accounts
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -175,8 +174,7 @@ spec:
       version: "1.0.0"
       sourceRef:
         kind: HelmRepository
-        name: shared-charts
-        namespace: flux-system
+        name: team-a-charts
   # Impersonate this service account for Helm operations
   serviceAccountName: team-a-reconciler
 ```
@@ -255,8 +253,7 @@ spec:
   prune: true
   sourceRef:
     kind: GitRepository
-    name: platform-config
-    namespace: flux-system
+    name: team-a-config
   serviceAccountName: reconciler
 ---
 # Team B Kustomization - can only deploy to team-b namespace
@@ -271,8 +268,7 @@ spec:
   prune: true
   sourceRef:
     kind: GitRepository
-    name: platform-config
-    namespace: flux-system
+    name: team-b-config
   serviceAccountName: reconciler
 ```
 
@@ -314,7 +310,7 @@ kubectl get kustomization team-a-apps -n team-a \
 
 ## Default Service Account Behavior
 
-When no `spec.serviceAccountName` is specified, the Kustomization runs with the controller's own permissions (typically cluster-admin). You can enforce that all Kustomizations must specify a service account by using the `--default-service-account` flag on the controller:
+When no `spec.serviceAccountName` is specified, the Kustomization runs with the controller's own permissions (typically cluster-admin). You can enforce impersonation for Kustomizations that omit the field by using the `--default-service-account` flag on the controller:
 
 ```yaml
 # Controller configured with a default service account
