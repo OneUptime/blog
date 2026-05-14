@@ -8,13 +8,13 @@ Description: Step-by-step guide to configuring a Flux CD HelmRepository for Bitn
 
 ---
 
-Bitnami maintains one of the largest collections of production-ready Helm charts, covering databases, web servers, messaging systems, and more. Bitnami migrated from a traditional HTTPS Helm repository to an OCI-based registry hosted on Docker Hub. This guide shows you how to set up Bitnami charts in Flux CD using the correct OCI registry URL and deploy applications from it.
+Bitnami maintains one of the largest collections of Helm charts, covering databases, web servers, messaging systems, and more. Bitnami migrated from a traditional HTTPS Helm repository to an OCI-based registry hosted on Docker Hub. As of August 28, 2025, Broadcom no longer publishes new Bitnami Helm charts to Docker Hub in OCI format; use the Docker Hub OCI registry for the versions available there, or use Bitnami Secure Images for continued production updates and support. This guide shows you how to set up Bitnami charts in Flux CD using the correct OCI registry URL and deploy applications from it.
 
 ## Bitnami's OCI Registry
 
-Bitnami charts are published as OCI artifacts at `oci://registry-1.docker.io/bitnamicharts`. This is the official and current distribution method. The older `https://charts.bitnami.com/bitnami` URL is deprecated and no longer updated.
+Bitnami charts on Docker Hub are published as OCI artifacts at `oci://registry-1.docker.io/bitnamicharts`. The older `https://charts.bitnami.com/bitnami` URL has been replaced by OCI distribution and should not be used for current package discovery.
 
-Because Bitnami uses OCI, the HelmRepository resource must have `type: oci` specified.
+Because Bitnami uses OCI, the HelmRepository resource must have `type: oci` specified. Flux supports this for OCI Helm repositories, although the Flux project now documents this mode as maintenance mode and recommends the OCIRepository API for improved OCI support in new configurations.
 
 ## Creating the HelmRepository
 
@@ -218,10 +218,10 @@ clusters/my-cluster/
 
 ## Checking Available Chart Versions
 
-Since Bitnami uses OCI, you cannot browse an `index.yaml` file. Use the Flux CLI or Helm to discover available versions:
+Since Bitnami uses OCI, you cannot browse an `index.yaml` file. Use the registry UI or registry API to discover available tags; Helm can inspect and pull a specific chart version once you know the version:
 
 ```bash
-# List available tags for a Bitnami chart using Helm
+# Show metadata for a specific Bitnami chart version using Helm
 helm show chart oci://registry-1.docker.io/bitnamicharts/postgresql --version 16.0.0
 
 # Pull a specific chart version to inspect its values
@@ -243,4 +243,4 @@ flux reconcile helmrelease postgresql -n default
 kubectl get pods -n default -l app.kubernetes.io/managed-by=Helm
 ```
 
-Bitnami charts are actively maintained and frequently updated. Using Flux CD with semver version ranges ensures your deployments stay current with the latest patches while giving you control over major version upgrades through your Git-based review process.
+Bitnami chart source code remains available on GitHub, but Docker Hub OCI chart packages no longer receive new public updates after August 28, 2025. Using Flux CD with semver version ranges allows Flux to select newer matching chart versions when they exist in the referenced registry while giving you control over major version upgrades through your Git-based review process.
