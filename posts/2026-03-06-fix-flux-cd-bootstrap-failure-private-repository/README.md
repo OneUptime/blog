@@ -26,14 +26,13 @@ Each step can fail differently with a private repository.
 Run the bootstrap command and carefully read the error output.
 
 ```bash
-# SSH bootstrap (most common)
+# SSH bootstrap for an organization repository (most common)
 
 flux bootstrap github \
   --owner=myorg \
   --repository=fleet-infra \
   --branch=main \
-  --path=clusters/production \
-  --personal
+  --path=clusters/production
 
 # HTTPS bootstrap
 flux bootstrap github \
@@ -58,13 +57,11 @@ ssh -T git@github.com
 ssh -T git@gitlab.com
 
 # If using a custom SSH key, specify it
-flux bootstrap github \
-  --owner=myorg \
-  --repository=fleet-infra \
+flux bootstrap git \
+  --url=ssh://git@github.com/myorg/fleet-infra \
   --branch=main \
   --path=clusters/production \
-  --private-key-file=/path/to/private/key \
-  --personal
+  --private-key-file=/path/to/private/key
 ```
 
 ### Error: "Repository not found" with SSH
@@ -80,8 +77,8 @@ flux bootstrap github \
   --path=clusters/production \
   --personal
 
-# For organization repositories, ensure the SSH key has org access
-# GitHub requires SSO authorization for org-level SSH keys
+# For organization repositories, ensure the PAT used by bootstrap
+# can administer the repository and is SSO-authorized if SAML SSO is enforced
 ```
 
 ### Specifying SSH Key Algorithm
@@ -143,8 +140,9 @@ flux bootstrap github \
 # - repo (Full control of private repositories)
 #   This is the minimum required scope
 
-# For organization repositories, also need:
-# - admin:org > read:org (Read organization membership)
+# For organization repositories, the token owner must have admin rights
+# to the repository or organization. If using --team when creating a repo,
+# the token also needs permission to manage organization teams.
 ```
 
 #### GitHub (Fine-Grained Token)
@@ -155,7 +153,8 @@ flux bootstrap github \
 # - Repository permissions:
 #   - Contents: Read and Write
 #   - Metadata: Read-only
-#   - Administration: Read and Write (for deploy key creation)
+#   - Administration: Read-only for HTTPS token auth
+#   - Administration: Read and Write when using SSH deploy keys
 ```
 
 #### GitLab
@@ -163,9 +162,8 @@ flux bootstrap github \
 ```bash
 # Required scopes for GitLab personal access tokens:
 # - api (Full API access)
-# Or more restrictive:
-# - read_repository
-# - write_repository
+# The read_repository and write_repository scopes alone are not enough
+# for bootstrap operations that call the GitLab API.
 
 export GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx
 
@@ -242,9 +240,8 @@ ssh-keygen -t ecdsa -b 521 -f flux-deploy-key -N ""
 # GitHub: Settings > Deploy keys > Add deploy key > Allow write access
 
 # Bootstrap with the private key
-flux bootstrap github \
-  --owner=myorg \
-  --repository=fleet-infra \
+flux bootstrap git \
+  --url=ssh://git@github.com/myorg/fleet-infra \
   --branch=main \
   --path=clusters/production \
   --private-key-file=./flux-deploy-key
@@ -284,10 +281,8 @@ flux bootstrap git \
 For self-hosted providers, you may need custom SSH known hosts:
 
 ```bash
-# Scan the SSH host key
-ssh-keyscan github.mycompany.com > known_hosts
-
-# Bootstrap with custom known hosts
+# Flux gathers the SSH host key automatically. Use --ssh-hostname when the
+# SSH endpoint differs from the HTTPS/API hostname.
 flux bootstrap github \
   --hostname=github.mycompany.com \
   --owner=myorg \
