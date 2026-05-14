@@ -65,8 +65,8 @@ When Tigera publishes a security advisory requiring an immediate Calico upgrade:
 3. **Emergency upgrade procedure**: Have a documented runbook for emergency Calico patch upgrades that bypasses the normal change management timeline
 
 Subscribe to security advisories:
-- Tigera security announcement list: security@tigera.io
-- GitHub security advisories: `github.com/projectcalico/calico/security/advisories`
+- Tigera security bulletins: `https://www.tigera.io/security-bulletins/`
+- GitHub security advisories: `https://github.com/projectcalico/calico/security/advisories`
 
 ## Decision 5: Version Pinning in Infrastructure-as-Code
 
@@ -76,14 +76,15 @@ Production version management requires explicit pinning:
 # Helm values for Calico operator
 
 tigeraOperator:
-  image: quay.io/tigera/operator
-  version: v1.30.5  # Pin to specific patch version
+  registry: quay.io
+  image: tigera/operator
+  version: v1.34.0  # Operator image used by Calico v3.28.0
 
 # Installation resource
 spec:
   calicoNetwork:
     # ... configuration
-  # Version is controlled by the operator image
+  # Calico component versions are controlled by the operator image
 ```
 
 Never use `latest` tags in production - they make rollbacks difficult and hide what version is actually running.
@@ -104,7 +105,7 @@ echo "Check compatibility at: https://docs.tigera.io/calico/latest/getting-start
 ## Best Practices
 
 - Subscribe to Tigera security announcements and have an emergency upgrade procedure ready
-- Never allow more than 2 minor Kubernetes versions of skew without a corresponding Calico upgrade
+- Keep Kubernetes within the versions tested for your Calico release
 - Pin all component versions explicitly in infrastructure-as-code
 - Validate each upgrade in a lab environment that mirrors production before applying to production
 
