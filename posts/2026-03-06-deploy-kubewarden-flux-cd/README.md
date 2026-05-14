@@ -35,11 +35,14 @@ Organize your Git repository to separate Kubewarden infrastructure from policy d
 #     kubewarden/
 #       namespace.yaml
 #       helm-repository.yaml
+#       helm-release-crds.yaml
 #       helm-release-controller.yaml
 #       helm-release-defaults.yaml
+#       policy-server-production.yaml
 #       policies/
 #         pod-privileged.yaml
 #         trusted-registries.yaml
+#         resource-requests.yaml
 ```
 
 ## Creating the Namespace
@@ -73,6 +76,30 @@ spec:
   url: https://charts.kubewarden.io
 ```
 
+## Deploying the Kubewarden CRDs
+
+Kubewarden's CRDs must be installed before the controller and defaults charts.
+
+```yaml
+# clusters/my-cluster/kubewarden/helm-release-crds.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kubewarden-crds
+  namespace: kubewarden
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: kubewarden-crds
+      version: ">=1.0.0 <2.0.0"
+      sourceRef:
+        kind: HelmRepository
+        name: kubewarden
+        namespace: kubewarden
+      interval: 12h
+```
+
 ## Deploying the Kubewarden Controller
 
 The Kubewarden controller is the core component that manages policy servers and cluster admission policies.
@@ -86,10 +113,12 @@ metadata:
   namespace: kubewarden
 spec:
   interval: 30m
+  dependsOn:
+    - name: kubewarden-crds
   chart:
     spec:
       chart: kubewarden-controller
-      version: ">=2.0.0 <3.0.0"
+      version: ">=5.0.0 <6.0.0"
       sourceRef:
         kind: HelmRepository
         name: kubewarden
@@ -98,22 +127,25 @@ spec:
   values:
     # Enable telemetry for monitoring policy decisions
     telemetry:
-      enabled: true
-      metrics:
-        port: 8080
+      mode: sidecar
+      metrics: true
+      sidecar:
+        metrics:
+          port: 8080
     # Configure resource limits for the controller
     resources:
-      limits:
-        cpu: 500m
-        memory: 256Mi
-      requests:
-        cpu: 100m
-        memory: 128Mi
+      controller:
+        limits:
+          cpu: 500m
+          memory: 256Mi
+        requests:
+          cpu: 100m
+          memory: 128Mi
 ```
 
 ## Deploying the Kubewarden Defaults
 
-The defaults chart installs a default PolicyServer and recommended policies.
+The defaults chart installs a default PolicyServer and can also install recommended policies.
 
 ```yaml
 # clusters/my-cluster/kubewarden/helm-release-defaults.yaml
@@ -130,7 +162,7 @@ spec:
   chart:
     spec:
       chart: kubewarden-defaults
-      version: ">=2.0.0 <3.0.0"
+      version: ">=3.0.0 <4.0.0"
       sourceRef:
         kind: HelmRepository
         name: kubewarden
@@ -139,14 +171,13 @@ spec:
   values:
     # Configure the default PolicyServer
     policyServer:
-      replicas: 2
-      resources:
-        limits:
-          cpu: "1"
-          memory: 512Mi
-        requests:
-          cpu: 250m
-          memory: 256Mi
+      replicaCount: 2
+      limits:
+        cpu: "1"
+        memory: 512Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi
 ```
 
 ## Defining a Custom PolicyServer
@@ -161,7 +192,7 @@ metadata:
   name: production
   namespace: kubewarden
 spec:
-  image: ghcr.io/kubewarden/policy-server:v1.15.0
+  image: ghcr.io/kubewarden/policy-server:v1.35.0
   replicas: 3
   # Ensure high availability
   affinity:
@@ -171,15 +202,14 @@ spec:
           podAffinityTerm:
             labelSelector:
               matchLabels:
-                app: kubewarden-policy-server-production
+                kubewarden/policy-server: production
             topologyKey: kubernetes.io/hostname
-  resources:
-    limits:
-      cpu: "2"
-      memory: 1Gi
-    requests:
-      cpu: 500m
-      memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
 ```
 
 ## Creating ClusterAdmissionPolicies
@@ -241,9 +271,10 @@ spec:
   mutating: false
   settings:
     registries:
-      - "ghcr.io/myorg/"
-      - "docker.io/library/"
-      - "registry.k8s.io/"
+      allow:
+        - ghcr.io
+        - docker.io
+        - registry.k8s.io
 ```
 
 ### Enforcing Resource Requests
@@ -265,14 +296,13 @@ spec:
       resources: ["pods"]
       operations:
         - CREATE
-  mutating: false
+        - UPDATE
+  mutating: true
   settings:
-    requireRequests: true
-    requireLimits: false
-    # Set default limits if not specified
-    defaultRequests:
-      cpu: "100m"
-      memory: "128Mi"
+    cpu:
+      defaultRequest: 100m
+    memory:
+      defaultRequest: 128Mi
 ```
 
 ## Wiring Everything Together with Kustomization
@@ -280,7 +310,7 @@ spec:
 Use a Flux Kustomization to manage the deployment order and dependencies.
 
 ```yaml
-# clusters/my-cluster/kubewarden/kustomization.yaml
+# clusters/my-cluster/flux-system/kubewarden-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -296,12 +326,6 @@ spec:
   # Wait for resources to be ready before marking as reconciled
   wait: true
   timeout: 5m
-  # Health checks to verify deployment
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: kubewarden-controller
-      namespace: kubewarden
 ```
 
 ## Monitoring Policy Decisions
@@ -320,7 +344,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: kubewarden-policy-server
+      app: kubewarden-policy-server-production
   endpoints:
     - port: metrics
       interval: 30s
@@ -342,7 +366,7 @@ flux get helmreleases -n kubewarden
 kubectl get pods -n kubewarden
 
 # Check the policy server status
-kubectl get policyservers
+kubectl get policyservers -n kubewarden
 
 # List all cluster admission policies
 kubectl get clusteradmissionpolicies
