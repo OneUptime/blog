@@ -205,8 +205,7 @@ spec:
     secretRef:
       name: spoke-cluster-1-kubeconfig
   timeout: 5m
-  # Wait for resources to become ready on the spoke cluster
-  wait: true
+  # Wait for this resource to become ready on the spoke cluster
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
@@ -312,7 +311,7 @@ Configure Flux notifications on the hub to alert when spoke reconciliation fails
 ```yaml
 # clusters/hub/notifications.yaml
 # Provider for sending alerts to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -320,11 +319,12 @@ metadata:
 spec:
   type: slack
   channel: fleet-alerts
+  address: https://slack.com/api/chat.postMessage
   secretRef:
-    name: slack-webhook-url
+    name: slack-token
 ---
 # Alert that fires when any spoke Kustomization fails
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: spoke-reconciliation-alert
@@ -338,7 +338,8 @@ spec:
     - kind: Kustomization
       namespace: flux-system
       name: "*"
-  summary: "Spoke cluster reconciliation failure detected"
+  eventMetadata:
+    summary: "Spoke cluster reconciliation failure detected"
 ```
 
 ## Step 9: Handle Spoke Cluster Rotation
@@ -348,6 +349,7 @@ When you need to add or remove spoke clusters, follow this process:
 ```bash
 # Adding a new spoke cluster
 # 1. Create RBAC on the new spoke
+kubectl --context=spoke-cluster-3 create namespace flux-system
 kubectl --context=spoke-cluster-3 apply -f spoke-cluster-rbac.yaml
 
 # 2. Create kubeconfig secret on the hub
@@ -389,14 +391,12 @@ kubectl --context=hub-cluster run test-conn --rm -it --image=curlimages/curl \
 
 **Reconciliation timeout**: If resources take too long to become healthy on the spoke, increase the timeout in the Kustomization spec.
 
-**Drift detection**: Enable drift detection to catch out-of-band changes on spoke clusters.
+**Drift detection**: Flux detects and corrects drift during each reconciliation. Set an appropriate interval on spoke Kustomizations to control how often Flux checks for out-of-band changes.
 
 ```yaml
-# Add drift detection to spoke Kustomizations
+# Configure reconciliation frequency for spoke Kustomizations
 spec:
-  force: false
   prune: true
-  # Detect and correct drift every 10 minutes
   interval: 10m
 ```
 
