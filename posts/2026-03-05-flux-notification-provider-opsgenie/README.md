@@ -16,12 +16,12 @@ This guide covers the complete setup from obtaining an Opsgenie API key to verif
 
 - A Kubernetes cluster with Flux CD installed (including the notification controller)
 - `kubectl` access to the cluster
-- An Opsgenie account with permission to create API integrations
+- An existing Opsgenie account with permission to create API integrations
 - The `flux` CLI installed (optional but helpful)
 
 ## Step 1: Create an Opsgenie API Integration
 
-In Opsgenie, go to **Settings** then **Integration list**. Click **Add integration** and search for **API**. Create a new API integration and copy the **API Key**. Note the API URL -- it will be either `https://api.opsgenie.com` for US or `https://api.eu.opsgenie.com` for EU.
+In Opsgenie, go to **Settings** then **Integrations**, or to your team dashboard if your plan does not expose integrations under Settings. Click **Add integration** and search for **API**. Create a new API integration, turn it on, and copy the **API Key**. Note the API URL -- Flux should use the Create Alert endpoint, either `https://api.opsgenie.com/v2/alerts` for US or `https://api.eu.opsgenie.com/v2/alerts` for EU.
 
 ## Step 2: Create a Kubernetes Secret
 
@@ -42,7 +42,7 @@ Define a Provider resource for Opsgenie.
 ```yaml
 # provider-opsgenie.yaml
 # Configures Flux to send notifications to Opsgenie
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: opsgenie-provider
@@ -50,8 +50,8 @@ metadata:
 spec:
   # Use "opsgenie" as the provider type
   type: opsgenie
-  # The Opsgenie API address (use api.eu.opsgenie.com for EU instances)
-  address: https://api.opsgenie.com
+  # The Opsgenie Create Alert API address (use api.eu.opsgenie.com for EU instances)
+  address: https://api.opsgenie.com/v2/alerts
   # Reference to the secret containing the API key
   secretRef:
     name: opsgenie-api-key
@@ -71,7 +71,7 @@ For incident management platforms, you typically want to forward only error even
 ```yaml
 # alert-opsgenie.yaml
 # Routes Flux error events to Opsgenie
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: opsgenie-alert
@@ -142,7 +142,7 @@ The notification controller uses the Opsgenie Alert API to create alerts. Opsgen
 If your Opsgenie instance is in the EU region:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: opsgenie-eu-provider
@@ -150,7 +150,7 @@ metadata:
 spec:
   type: opsgenie
   # Use the EU API endpoint
-  address: https://api.eu.opsgenie.com
+  address: https://api.eu.opsgenie.com/v2/alerts
   secretRef:
     name: opsgenie-api-key
 ```
@@ -161,31 +161,31 @@ You can include all events and let Opsgenie handle routing, or create separate p
 
 ```yaml
 # Provider for the platform team
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: opsgenie-platform
   namespace: flux-system
 spec:
   type: opsgenie
-  address: https://api.opsgenie.com
+  address: https://api.opsgenie.com/v2/alerts
   secretRef:
     name: opsgenie-platform-key
 ---
 # Provider for the application team
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: opsgenie-apps
   namespace: flux-system
 spec:
   type: opsgenie
-  address: https://api.opsgenie.com
+  address: https://api.opsgenie.com/v2/alerts
   secretRef:
     name: opsgenie-apps-key
 ---
 # Route infrastructure errors to platform team
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: opsgenie-platform-alert
@@ -199,7 +199,7 @@ spec:
       name: "infrastructure"
 ---
 # Route application errors to app team
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: opsgenie-apps-alert
@@ -220,12 +220,12 @@ spec:
 If Opsgenie alerts are not being created:
 
 1. **API key**: Verify the secret contains a `token` key with a valid Opsgenie API key that has create alert permissions.
-2. **API endpoint**: Use `https://api.opsgenie.com` for US or `https://api.eu.opsgenie.com` for EU. Using the wrong endpoint will result in authentication errors.
+2. **API endpoint**: Use `https://api.opsgenie.com/v2/alerts` for US or `https://api.eu.opsgenie.com/v2/alerts` for EU. Using the wrong endpoint will result in authentication errors.
 3. **Event severity**: If `eventSeverity` is set to `error`, only error events trigger alerts -- not informational events.
 4. **Namespace alignment**: Provider, Alert, and Secret must be in the same namespace.
 5. **Controller logs**: Check `kubectl logs -n flux-system deploy/notification-controller` for HTTP errors.
 6. **Network access**: The cluster must be able to reach the Opsgenie API on port 443.
-7. **Integration limits**: Free-tier Opsgenie accounts have limited integrations. Verify your plan supports API integrations.
+7. **Plan and API limits**: Opsgenie has plan-specific API request limits, and new Opsgenie sales and signups have ended. Verify that your existing account supports API integrations and has remaining API quota.
 
 ## Conclusion
 
