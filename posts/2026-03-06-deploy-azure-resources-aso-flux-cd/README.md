@@ -39,6 +39,12 @@ Create HelmRelease resources to install ASO:
 ```yaml
 # aso-helm-repo.yaml
 
+# Namespace for the ASO controller
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: azureserviceoperator-system
+---
 # HelmRepository for the ASO Helm chart
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -61,7 +67,7 @@ spec:
   chart:
     spec:
       chart: azure-service-operator
-      version: "2.6.x"
+      version: "2.19.x"
       sourceRef:
         kind: HelmRepository
         name: aso-charts
@@ -69,15 +75,16 @@ spec:
   values:
     # Configure the Azure credentials
     azureSubscriptionID: "your-subscription-id"
-    # Use workload identity for authentication (recommended)
-    useWorkloadIdentityAuth: true
+    azureTenantID: "your-tenant-id"
+    azureClientID: "your-client-id"
+    azureClientSecret: "your-client-secret"
     # Install CRDs for the services you need
-    crdPattern: "resources.azure.com/*;containerservice.azure.com/*;dbforpostgresql.azure.com/*;storage.azure.com/*;network.azure.com/*"
+    crdPattern: "resources.azure.com/*;dbforpostgresql.azure.com/*;storage.azure.com/*;network.azure.com/*"
 ```
 
 ## Step 2: Configure Azure Credentials
 
-Create a secret with Azure service principal credentials:
+For namespace-scoped credentials, create a secret with Azure service principal credentials in the same namespace as your ASO resources:
 
 ```yaml
 # azure-credentials.yaml
@@ -86,7 +93,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: aso-credential
-  namespace: azureserviceoperator-system
+  namespace: default
 type: Opaque
 stringData:
   # Azure Active Directory tenant ID
@@ -127,7 +134,7 @@ Create a storage account within the resource group:
 ```yaml
 # storage-account.yaml
 # ASO StorageAccount custom resource
-apiVersion: storage.azure.com/v1api20230101
+apiVersion: storage.azure.com/v20250601
 kind: StorageAccount
 metadata:
   name: myappstorageaccount
@@ -165,7 +172,7 @@ Provision a managed PostgreSQL database:
 ```yaml
 # postgresql-server.yaml
 # ASO PostgreSQL Flexible Server
-apiVersion: dbforpostgresql.azure.com/v1api20230601
+apiVersion: dbforpostgresql.azure.com/v20250801
 kind: FlexibleServer
 metadata:
   name: my-app-postgres
@@ -203,7 +210,7 @@ spec:
 ---
 # postgresql-database.yaml
 # ASO PostgreSQL Database within the flexible server
-apiVersion: dbforpostgresql.azure.com/v1api20230601
+apiVersion: dbforpostgresql.azure.com/v20250801
 kind: FlexibleServersDatabase
 metadata:
   name: my-app-db
@@ -224,7 +231,7 @@ Create networking resources:
 ```yaml
 # virtual-network.yaml
 # ASO Virtual Network
-apiVersion: network.azure.com/v1api20240101
+apiVersion: network.azure.com/v20250301
 kind: VirtualNetwork
 metadata:
   name: my-app-vnet
@@ -243,7 +250,7 @@ spec:
 ---
 # subnet.yaml
 # ASO Subnet within the virtual network
-apiVersion: network.azure.com/v1api20240101
+apiVersion: network.azure.com/v20250301
 kind: VirtualNetworksSubnet
 metadata:
   name: app-subnet
@@ -260,7 +267,7 @@ spec:
 ---
 # nsg.yaml
 # ASO Network Security Group
-apiVersion: network.azure.com/v1api20240101
+apiVersion: network.azure.com/v20250301
 kind: NetworkSecurityGroup
 metadata:
   name: my-app-nsg
@@ -293,11 +300,7 @@ spec:
   path: ./azure/production
   # Prune resources when removed from Git
   prune: true
-  wait: true
   timeout: 30m
-  # Ensure ASO is installed before deploying resources
-  dependsOn:
-    - name: azure-service-operator
   # Health checks for deployed resources
   healthChecks:
     - apiVersion: resources.azure.com/v1api20200601
@@ -312,8 +315,8 @@ Configure ASO to export connection details to Kubernetes secrets:
 
 ```yaml
 # storage-account-with-secret.yaml
-# Storage account that exports its keys to a Kubernetes secret
-apiVersion: storage.azure.com/v1api20230101
+# Storage account that exports its key and endpoint to a Kubernetes secret
+apiVersion: storage.azure.com/v20250601
 kind: StorageAccount
 metadata:
   name: myappstorageaccount
@@ -332,10 +335,10 @@ spec:
       key1:
         name: storage-account-keys
         key: primary-key
-      # Store the connection string
-      connectionString1:
+      # Store the blob endpoint
+      blobEndpoint:
         name: storage-account-keys
-        key: connection-string
+        key: blob-endpoint
 ```
 
 ## Step 9: Set Up Multi-Environment Deployments
