@@ -96,7 +96,6 @@ kind: Kustomization
 resources:
   - deployment.yaml
   - service.yaml
-  - configmap.yaml
 ```
 
 ```yaml
@@ -366,8 +365,9 @@ spec:
     controller:
       service:
         annotations:
-          service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-          service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+          service.beta.kubernetes.io/aws-load-balancer-type: "external"
+          service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
+          service.beta.kubernetes.io/aws-load-balancer-attributes: "load_balancing.cross_zone.enabled=true"
           service.beta.kubernetes.io/aws-load-balancer-subnets: "subnet-us-east-1a,subnet-us-east-1b"
 ```
 
@@ -378,7 +378,7 @@ spec:
 flux get kustomizations
 
 # View region-specific app status
-flux get kustomization apps
+kubectl -n flux-system get kustomization apps
 
 # Build and verify a region overlay locally
 kustomize build regions/us-east-1/apps
