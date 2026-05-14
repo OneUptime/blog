@@ -238,8 +238,8 @@ spec:
     spec:
       containers:
         - name: payment-service
-          # Development uses the latest image from feature branches
-          image: your-org/payment-service:dev-latest
+          # Development uses timestamped images from feature branches
+          image: your-org/payment-service:dev-202603060900
           env:
             - name: ENVIRONMENT
               value: development
@@ -530,7 +530,7 @@ spec:
 
 ## Progressive Delivery Across Environments
 
-Configure image automation to progressively update environments.
+Configure image policies to progressively select tags for each environment. These examples assume an `ImageRepository` named `payment-service` exists in the `flux-system` namespace; pair the policies with `ImageUpdateAutomation` resources when you want Flux to commit selected tags back to Git.
 
 ```yaml
 # clusters/development/image-policy.yaml
