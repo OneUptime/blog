@@ -10,7 +10,7 @@ Description: Learn how to use the flux delete command to safely remove Flux CD r
 
 ## Introduction
 
-Managing the lifecycle of Flux CD resources includes knowing how to remove them properly. The `flux delete` command provides a safe way to remove Flux resources from your cluster. Unlike raw `kubectl delete`, the Flux CLI understands resource relationships and provides confirmation prompts to prevent accidental deletions.
+Managing the lifecycle of Flux CD resources includes knowing how to remove them properly. The `flux delete` command provides a safe way to remove Flux resources from your cluster. Unlike raw `kubectl delete`, the Flux CLI targets Flux custom resources directly and provides confirmation prompts to prevent accidental deletions.
 
 This guide covers all the ways you can use `flux delete` and the implications of removing different resource types.
 
@@ -32,7 +32,7 @@ graph TD
     B --> D[Kustomization]
     B --> E[HelmRelease]
     C --> F[Stops fetching updates]
-    D --> G{prune enabled?}
+    D --> G{prune/deletionPolicy}
     E --> H[Uninstalls Helm release]
     G -->|Yes| I[Deletes managed resources]
     G -->|No| J[Leaves managed resources]
@@ -41,7 +41,7 @@ graph TD
 Key points to remember:
 
 - Deleting a **GitRepository** stops Flux from fetching updates but does not remove deployed resources.
-- Deleting a **Kustomization** with `prune: true` will also delete all resources it manages.
+- Deleting a **Kustomization** will delete or orphan managed resources based on its `prune` and `deletionPolicy` settings.
 - Deleting a **HelmRelease** will uninstall the Helm chart from the cluster.
 
 ## Basic Syntax
@@ -95,24 +95,24 @@ flux delete source bucket my-bucket --namespace=flux-system
 
 ## Deleting Kustomizations
 
-Deleting Kustomizations requires extra care because of the prune behavior:
+Deleting Kustomizations requires extra care because of the prune and deletion policy behavior:
 
 ```bash
 # Delete a Kustomization
-# If prune is enabled, all managed resources will be deleted
+# If prune is enabled and deletionPolicy mirrors prune, all managed resources will be deleted
 flux delete kustomization my-app --namespace=flux-system
 ```
 
 ### Understanding Prune Behavior
 
-When a Kustomization has `prune: true`, deleting it triggers garbage collection. All resources that the Kustomization manages will be removed from the cluster:
+When a Kustomization has `prune: true` and the default `deletionPolicy: MirrorPrune`, deleting it triggers garbage collection. All resources that the Kustomization manages will be removed from the cluster:
 
 ```bash
 # Check if prune is enabled before deleting
 kubectl get kustomization my-app -n flux-system -o jsonpath='{.spec.prune}'
 # Output: true
 
-# If prune is true, deleting the Kustomization will also delete:
+# With the default deletion policy, if prune is true, deleting the Kustomization will also delete:
 # - Deployments
 # - Services
 # - ConfigMaps
@@ -122,16 +122,16 @@ flux delete kustomization my-app --namespace=flux-system
 
 ### Safe Deletion Without Pruning
 
-If you want to delete the Kustomization without removing the managed resources, first disable pruning:
+If you want to delete the Kustomization without removing the managed resources, set the deletion policy to orphan the resources:
 
 ```bash
 # Step 1: Suspend the Kustomization to prevent reconciliation
 flux suspend kustomization my-app --namespace=flux-system
 
-# Step 2: Patch the Kustomization to disable pruning
+# Step 2: Patch the Kustomization to orphan managed resources on deletion
 kubectl patch kustomization my-app -n flux-system \
   --type=merge \
-  -p '{"spec":{"prune":false}}'
+  -p '{"spec":{"deletionPolicy":"Orphan"}}'
 
 # Step 3: Now safely delete the Kustomization
 # Managed resources will remain in the cluster
@@ -152,18 +152,21 @@ flux delete helmrelease nginx --namespace=default --silent
 
 ### Keeping the Helm Release Installed
 
-If you want to remove Flux management without uninstalling the chart:
+If you want to stop Flux reconciliation without uninstalling the chart, suspend the HelmRelease and leave it in the cluster:
 
 ```bash
-# Step 1: Suspend the HelmRelease
+# Suspend the HelmRelease
 flux suspend helmrelease nginx --namespace=default
+```
 
-# Step 2: Remove the Flux labels from the Helm release
-# This prevents Flux from cleaning up the release
-kubectl annotate helmrelease nginx -n default \
-  kustomize.toolkit.fluxcd.io/prune=disabled --overwrite
+Deleting the HelmRelease triggers a Helm uninstall. If you delete the HelmRelease with orphan deletion propagation, Kubernetes resources created by the chart can be left behind, but the Helm release is not kept as an active installed release:
 
-# Step 3: Delete the HelmRelease resource
+```bash
+# Leave chart-created Kubernetes resources behind during uninstall
+kubectl patch helmrelease nginx -n default \
+  --type=merge \
+  -p '{"spec":{"uninstall":{"deletionPropagation":"orphan"}}}'
+
 flux delete helmrelease nginx --namespace=default --silent
 ```
 
