@@ -34,9 +34,9 @@ graph TB
     C --> F[Workload Pod 2]
     C --> G[Workload Pod 3]
     B -->|Registration Entries| C
-    C -->|SVID Certificates| E
-    C -->|SVID Certificates| F
-    C -->|SVID Certificates| G
+    C -->|Workload API Socket| E
+    C -->|Workload API Socket| F
+    C -->|Workload API Socket| G
 ```
 
 ## Repository Structure
@@ -47,8 +47,7 @@ clusters/
     spire/
       namespace.yaml
       helmrepository.yaml
-      spire-server-helmrelease.yaml
-      spire-agent-helmrelease.yaml
+      helmrelease.yaml
       cluster-spiffe-id.yaml
       kustomization.yaml
 ```
@@ -88,18 +87,18 @@ spec:
 The SPIRE Server is the central authority that manages identities and issues SVIDs.
 
 ```yaml
-# clusters/my-cluster/spire/spire-server-helmrelease.yaml
+# clusters/my-cluster/spire/helmrelease.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: spire-server
+  name: spire
   namespace: spire-system
 spec:
   interval: 30m
   chart:
     spec:
       chart: spire
-      version: "0.21.x"
+      version: "0.28.x"
       sourceRef:
         kind: HelmRepository
         name: spiffe
@@ -119,25 +118,33 @@ spec:
     # SPIRE Server configuration
     spire-server:
       enabled: true
-      replicas: 3
+      replicaCount: 3
 
       # Data store configuration
       dataStore:
         sql:
           # Use PostgreSQL for production deployments
           databaseType: postgres
-          connectionString: "dbname=spire host=postgres.spire-system.svc port=5432 sslmode=require"
+          databaseName: spire
+          host: postgres.spire-system.svc
+          port: 5432
+          username: spire
+          options:
+            - sslmode: require
+          externalSecret:
+            enabled: true
+            name: spire-postgres-credentials
+            key: password
 
       # CA configuration
-      ca:
-        # Key type for the root CA
-        keyType: "ec-p256"
-        # TTL for the CA certificate
-        ttl: "720h"
+      # Key type for the root CA
+      caKeyType: "ec-p256"
+      # TTL for the CA certificate
+      caTTL: "720h"
 
       # Node attestation configuration
       nodeAttestor:
-        k8sPsat:
+        k8sPSAT:
           enabled: true
           # Service account allow list for agent attestation
           serviceAccountAllowList:
@@ -146,10 +153,6 @@ spec:
       # Controller manager for automatic registration
       controllerManager:
         enabled: true
-        # Watch namespaces for workload registration
-        watchedNamespaces:
-          - "default"
-          - "app-namespace"
 
       resources:
         requests:
@@ -161,7 +164,7 @@ spec:
 
       # Persistence for the data store
       persistence:
-        enabled: true
+        type: pvc
         size: 1Gi
         storageClass: standard
 
@@ -182,15 +185,15 @@ spec:
       socketPath: /run/spire/agent-sockets/spire-agent.sock
 
       # Workload attestor configuration
-      workloadAttestor:
+      workloadAttestors:
         k8s:
           enabled: true
           # Disable container selectors if not needed
           disableContainerSelectors: false
-          # Verify the pod service account
-          verifyServiceAccount: true
+          verification:
+            type: apiServerCA
 
-    # SPIFFE CSI Driver for mounting SVID certificates
+    # SPIFFE CSI Driver for mounting the Workload API socket
     spiffe-csi-driver:
       enabled: true
 
@@ -237,6 +240,12 @@ Here is an example workload that consumes SPIFFE identities via the CSI driver.
 
 ```yaml
 # clusters/my-cluster/apps/example-workload.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: my-secure-app
+  namespace: default
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -299,7 +308,7 @@ spec:
   bundleEndpointProfile:
     type: https_spiffe
     endpointSPIFFEID: "spiffe://partner.org/spire/server"
-  # Trust domain bundle refresh interval
+  # Optional bootstrap bundle contents for the foreign trust domain
   trustDomainBundle: ""
 ```
 
@@ -321,26 +330,17 @@ spec:
     name: flux-system
   wait: true
   timeout: 10m
-  # SPIRE components need time to initialize
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: StatefulSet
-      name: spire-server
-      namespace: spire-system
-    - apiVersion: apps/v1
-      kind: DaemonSet
-      name: spire-agent
-      namespace: spire-system
+  # wait: true tells Flux to health-check all reconciled resources
 ```
 
 ## Verifying the Deployment
 
 ```bash
 # Check SPIRE Server pods are running
-kubectl get pods -n spire-system -l app.kubernetes.io/name=spire-server
+kubectl get pods -n spire-system -l app.kubernetes.io/instance=spire,app.kubernetes.io/name=server
 
 # Check SPIRE Agent DaemonSet
-kubectl get daemonset -n spire-system -l app.kubernetes.io/name=spire-agent
+kubectl get daemonset -n spire-system -l app.kubernetes.io/instance=spire,app.kubernetes.io/name=agent
 
 # Verify the SPIRE Server health
 kubectl exec -n spire-system spire-server-0 -- \
@@ -351,10 +351,10 @@ kubectl exec -n spire-system spire-server-0 -- \
   /opt/spire/bin/spire-server entry show
 
 # Check SPIRE Agent health on a node
-kubectl exec -n spire-system $(kubectl get pods -n spire-system -l app.kubernetes.io/name=spire-agent -o jsonpath='{.items[0].metadata.name}') -- \
-  /opt/spire/bin/spire-agent healthcheck
+kubectl exec -n spire-system $(kubectl get pods -n spire-system -l app.kubernetes.io/instance=spire,app.kubernetes.io/name=agent -o jsonpath='{.items[0].metadata.name}') -- \
+  /opt/spire/bin/spire-agent healthcheck -socketPath /run/spire/agent-sockets/spire-agent.sock
 
-# Verify a workload received its SVID
+# Verify a workload can see the Workload API socket
 kubectl exec -n default deploy/my-secure-app -- \
   ls /spiffe-workload-api/
 ```
@@ -363,10 +363,10 @@ kubectl exec -n default deploy/my-secure-app -- \
 
 ```bash
 # Check SPIRE Server logs for registration issues
-kubectl logs -n spire-system -l app.kubernetes.io/name=spire-server --tail=50
+kubectl logs -n spire-system -l app.kubernetes.io/instance=spire,app.kubernetes.io/name=server --tail=50
 
 # Check SPIRE Agent logs for attestation issues
-kubectl logs -n spire-system -l app.kubernetes.io/name=spire-agent --tail=50
+kubectl logs -n spire-system -l app.kubernetes.io/instance=spire,app.kubernetes.io/name=agent --tail=50
 
 # Verify the CSI driver is installed
 kubectl get csidriver csi.spiffe.io
@@ -375,7 +375,7 @@ kubectl get csidriver csi.spiffe.io
 kubectl get clusterspiffeid -o yaml
 
 # Debug workload attestation
-kubectl exec -n spire-system $(kubectl get pods -n spire-system -l app.kubernetes.io/name=spire-agent -o jsonpath='{.items[0].metadata.name}') -- \
+kubectl exec -n spire-system $(kubectl get pods -n spire-system -l app.kubernetes.io/instance=spire,app.kubernetes.io/name=agent -o jsonpath='{.items[0].metadata.name}') -- \
   /opt/spire/bin/spire-agent api fetch x509 -socketPath /run/spire/agent-sockets/spire-agent.sock
 ```
 
@@ -391,4 +391,4 @@ kubectl exec -n spire-system $(kubectl get pods -n spire-system -l app.kubernete
 
 ## Conclusion
 
-Deploying SPIFFE/SPIRE with Flux CD provides a GitOps-managed zero-trust identity layer for your Kubernetes workloads. With automatic workload registration via the controller manager and SVID distribution via the CSI driver, your applications can establish mutual TLS without managing certificates manually. Flux CD ensures the entire identity infrastructure is version-controlled, auditable, and consistently deployed across clusters.
+Deploying SPIFFE/SPIRE with Flux CD provides a GitOps-managed zero-trust identity layer for your Kubernetes workloads. With automatic workload registration via the controller manager and Workload API socket injection via the CSI driver, your applications can establish mutual TLS without managing certificates manually. Flux CD ensures the entire identity infrastructure is version-controlled, auditable, and consistently deployed across clusters.
