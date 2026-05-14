@@ -19,9 +19,9 @@ This guide covers creating Fargate profiles for Flux CD, deploying the controlle
 Before starting, ensure you have:
 
 - AWS CLI configured with appropriate permissions
-- eksctl installed (v0.150.0 or later)
+- A current version of eksctl installed
 - kubectl configured for your cluster
-- Flux CLI installed (v2.0 or later)
+- A current Flux CLI installed
 - An EKS cluster with Fargate enabled
 
 ## Step 1: Create an EKS Cluster with Fargate
@@ -34,7 +34,7 @@ If you do not already have a Fargate-enabled cluster, create one.
 eksctl create cluster \
   --name flux-fargate-cluster \
   --region us-east-1 \
-  --version 1.29 \
+  --version 1.35 \
   --fargate
 ```
 
@@ -75,10 +75,6 @@ metadata:
   name: flux-fargate-cluster
   region: us-east-1
 fargateProfiles:
-  # Profile for Flux CD controllers
-  - name: flux-system-profile
-    selectors:
-      - namespace: flux-system
   # Profile for application workloads
   - name: apps-profile
     selectors:
@@ -155,8 +151,9 @@ Fargate pods have specific resource configurations. Adjust Flux controller resou
 
 ```yaml
 # flux-system-patch.yaml
-# Patch Flux controllers with appropriate resource requests
-# Fargate rounds up to the nearest valid CPU/memory combination
+# Use this as a Kustomize strategic merge patch for the Flux controllers
+# Fargate rounds up to the nearest valid CPU/memory combination and adds 256 MB
+# of memory for Kubernetes components
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -169,12 +166,12 @@ spec:
         - name: manager
           resources:
             requests:
-              # Fargate will allocate 0.5 vCPU and 1GB memory
+              # Fargate will allocate 0.25 vCPU and 1 GB memory
               cpu: 250m
               memory: 512Mi
             limits:
-              cpu: 500m
-              memory: 1Gi
+              cpu: 250m
+              memory: 512Mi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -191,8 +188,8 @@ spec:
               cpu: 250m
               memory: 512Mi
             limits:
-              cpu: 500m
-              memory: 1Gi
+              cpu: 250m
+              memory: 512Mi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -209,8 +206,8 @@ spec:
               cpu: 250m
               memory: 512Mi
             limits:
-              cpu: 500m
-              memory: 1Gi
+              cpu: 250m
+              memory: 512Mi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -228,7 +225,7 @@ spec:
               memory: 256Mi
             limits:
               cpu: 250m
-              memory: 512Mi
+              memory: 256Mi
 ```
 
 ## Step 8: Address Fargate Limitations
@@ -255,16 +252,35 @@ Fargate does not support EBS-backed persistent volumes. Use EFS instead.
 
 ```yaml
 # efs-storage-class.yaml
-# Use EFS for persistent storage on Fargate
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
+# Use static EFS persistent volumes for storage on Fargate
+apiVersion: v1
+kind: PersistentVolume
 metadata:
-  name: efs-sc
-provisioner: efs.csi.aws.com
-parameters:
-  provisioningMode: efs-ap
-  fileSystemId: fs-0123456789abcdef0
-  directoryPerms: "700"
+  name: efs-pv
+spec:
+  capacity:
+    storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: efs-sc
+  csi:
+    driver: efs.csi.aws.com
+    volumeHandle: fs-0123456789abcdef0
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: efs-claim
+  namespace: production
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: efs-sc
+  resources:
+    requests:
+      storage: 5Gi
 ```
 
 ### Pod Startup Latency
@@ -301,65 +317,62 @@ Fargate supports sending container logs to CloudWatch using the built-in Fluent 
 
 ```yaml
 # fargate-logging-config.yaml
+# Dedicated namespace for Fargate logging
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aws-observability
+  labels:
+    aws-observability: enabled
+---
 # ConfigMap for Fargate Fluent Bit logging
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: aws-logging
-  namespace: flux-system
+  namespace: aws-observability
 data:
+  flb_log_cw: "false"
+  filters.conf: |
+    [FILTER]
+        Name parser
+        Match *
+        Key_name log
+        Parser crio
+    [FILTER]
+        Name kubernetes
+        Match kube.*
+        Merge_Log On
+        Keep_Log Off
+        Buffer_Size 0
+        Kube_Meta_Cache_TTL 300s
   output.conf: |
     [OUTPUT]
         Name              cloudwatch_logs
-        Match             *
+        Match             kube.*
         region            us-east-1
         log_group_name    /aws/eks/flux-fargate-cluster/flux-system
         log_stream_prefix flux-
         auto_create_group true
-  filters.conf: |
-    [FILTER]
-        Name              parser
-        Match             *
-        Key_Name          log
-        Parser            json
 ```
 
-## Step 10: Set Up Network Policies
+## Step 10: Set Up Network Controls
 
-Fargate supports Kubernetes network policies for controlling traffic between pods.
+Amazon EKS does not apply Kubernetes network policies to Fargate nodes. Use security groups for pods to control Fargate pod traffic. The security group must allow the Flux controllers to reach CoreDNS, the Kubernetes control plane, and external Git or Helm endpoints.
 
 ```yaml
-# flux-network-policy.yaml
-# Restrict Flux controller network access
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
+# flux-security-group-policy.yaml
+# Apply an existing security group to Flux controller pods
+apiVersion: vpcresources.k8s.aws/v1beta1
+kind: SecurityGroupPolicy
 metadata:
-  name: flux-source-controller
+  name: flux-controllers
   namespace: flux-system
 spec:
-  podSelector:
-    matchLabels:
-      app: source-controller
-  policyTypes:
-    - Egress
-  egress:
-    # Allow DNS resolution
-    - to: []
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
-    # Allow HTTPS for Git and Helm repos
-    - to: []
-      ports:
-        - protocol: TCP
-          port: 443
-    # Allow HTTP for certain registries
-    - to: []
-      ports:
-        - protocol: TCP
-          port: 80
+  podSelector: {}
+  securityGroups:
+    groupIds:
+      - sg-0123456789abcdef0
 ```
 
 ## Troubleshooting
