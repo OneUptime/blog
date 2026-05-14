@@ -88,7 +88,7 @@ Use `flux push artifact` to package and push your manifests to the registry. The
 flux push artifact oci://ghcr.io/my-org/my-app-manifests:1.0.0 \
   --path=./deploy \
   --source="$(git config --get remote.origin.url)" \
-  --revision="$(git branch --show-current)/$(git rev-parse HEAD)"
+  --revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)"
 ```
 
 Here is what each flag does:
@@ -96,7 +96,7 @@ Here is what each flag does:
 - `oci://ghcr.io/my-org/my-app-manifests:1.0.0` -- The full OCI URL including the registry, repository, and tag
 - `--path` -- The local directory containing the files to package
 - `--source` -- Metadata field recording the source repository URL
-- `--revision` -- Metadata field recording the Git branch and commit SHA
+- `--revision` -- Metadata field recording the Git branch and commit SHA in the format `<branch|tag>@sha1:<commit-sha>`
 
 On success, the command outputs the artifact digest.
 
@@ -108,14 +108,14 @@ On success, the command outputs the artifact digest.
 
 ## Pushing with Multiple Tags
 
-You can push the same artifact with multiple tags in a single command by repeating the tag in the URL or by using `flux tag artifact` afterward.
+You can push the artifact with one tag, then add additional tags with `flux tag artifact` afterward.
 
 ```bash
 # Push with the version tag
 flux push artifact oci://ghcr.io/my-org/my-app-manifests:1.0.0 \
   --path=./deploy \
   --source="$(git config --get remote.origin.url)" \
-  --revision="$(git branch --show-current)/$(git rev-parse HEAD)"
+  --revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)"
 
 # Also tag it as "latest"
 flux tag artifact oci://ghcr.io/my-org/my-app-manifests:1.0.0 \
@@ -165,7 +165,7 @@ jobs:
             oci://ghcr.io/${{ github.repository }}/manifests:${{ github.sha }} \
             --path=./deploy \
             --source="${{ github.repositoryUrl }}" \
-            --revision="${{ github.ref_name }}/${{ github.sha }}"
+            --revision="${{ github.ref_name }}@sha1:${{ github.sha }}"
 
       # Tag with "latest" for convenience
       - name: Tag latest
@@ -184,15 +184,15 @@ graph TD
     A[OCI Artifact] --> B[Manifest Layer]
     A --> C[Annotations]
     B --> D[Tarball of your files]
-    C --> E[source.toolkit.fluxcd.io/source]
-    C --> F[source.toolkit.fluxcd.io/revision]
+    C --> E[org.opencontainers.image.source]
+    C --> F[org.opencontainers.image.revision]
 ```
 
 The `--source` and `--revision` flags are stored as OCI annotations, which Flux uses to track provenance. These annotations appear in the OCIRepository status when Flux pulls the artifact.
 
 ## Pushing with a Specific Media Type
 
-By default, Flux pushes artifacts with the media type `application/vnd.oci.image.layer.v1.tar+gzip`. The source-controller in your cluster recognizes this media type when pulling.
+Flux pushes artifacts with the OCI manifest media type `application/vnd.oci.image.manifest.v1+json`, the config media type `application/vnd.cncf.flux.config.v1+json`, and the content media type `application/vnd.cncf.flux.content.v1.tar+gzip`. The source-controller in your cluster recognizes these media types when pulling.
 
 ## Verifying the Push
 
@@ -212,8 +212,8 @@ Common issues when pushing OCI artifacts and how to resolve them.
 **Authentication errors**: Ensure you are logged in to the registry. Run `docker login` or configure credentials for your specific registry.
 
 ```bash
-# Test authentication by pulling a known image
-docker pull ghcr.io/my-org/my-app-manifests:latest
+# Test authentication by listing artifacts in the repository
+flux list artifacts oci://ghcr.io/my-org/my-app-manifests
 ```
 
 **Permission denied**: Verify that your registry credentials have write access to the target repository.
