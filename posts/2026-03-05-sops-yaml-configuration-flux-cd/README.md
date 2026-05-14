@@ -68,7 +68,7 @@ creation_rules:
 
 ### The encrypted_regex Field
 
-The `encrypted_regex` field controls which top-level YAML keys get encrypted. For Kubernetes secrets, you typically want to encrypt only `data` and `stringData`.
+The `encrypted_regex` field controls which YAML keys get encrypted. For Kubernetes secrets, you typically want to encrypt only `data` and `stringData`.
 
 ```yaml
 # .sops.yaml - Different encrypted_regex patterns
@@ -158,21 +158,21 @@ creation_rules:
 
 ## File Placement and Hierarchy
 
-SOPS searches for `.sops.yaml` starting from the encrypted file's directory and walking up to the root. You can place multiple `.sops.yaml` files at different levels for hierarchical configuration.
+SOPS searches for `.sops.yaml` starting from the current working directory and walking up to the root, using the first `.sops.yaml` file it finds. The `path_regex` values are evaluated against the file path relative to that `.sops.yaml` file. You can place multiple `.sops.yaml` files at different levels, but run `sops` from the directory whose configuration you want to use or pass `--config` explicitly.
 
 ```bash
 # Repository layout with multiple .sops.yaml files
 repo/
-  .sops.yaml                    # Default rules (fallback)
+  .sops.yaml                    # Used when running sops from repo/
   clusters/
     production/
-      .sops.yaml                # Production-specific rules
+      .sops.yaml                # Used when running sops from clusters/production/
       secrets/
-        db-secret.enc.yaml      # Uses production rules
+        db-secret.enc.yaml
     staging/
-      .sops.yaml                # Staging-specific rules
+      .sops.yaml                # Used when running sops from clusters/staging/
       secrets/
-        db-secret.enc.yaml      # Uses staging rules
+        db-secret.enc.yaml
 ```
 
 ## Complete Multi-Environment Example
@@ -227,8 +227,8 @@ EOF
 # Encrypt and verify the correct key was applied
 sops --encrypt test-secret.yaml > test-secret.enc.yaml
 
-# Check which keys were used for encryption
-sops --decrypt --extract '["sops"]' test-secret.enc.yaml
+# Check the unencrypted SOPS metadata to see which keys were used
+sed -n '/^sops:/,$p' test-secret.enc.yaml
 
 # Clean up
 rm test-secret.yaml test-secret.enc.yaml
