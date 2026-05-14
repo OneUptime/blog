@@ -26,6 +26,7 @@ This guide covers the full deployment of Argo Workflows, including the server, c
 ```text
 clusters/
   production/
+    argo-workflows-sync.yaml
     argo-workflows/
       namespace.yaml
       source.yaml
@@ -34,6 +35,7 @@ clusters/
       artifact-config.yaml
       workflow-templates/
         ci-pipeline.yaml
+        cron-cleanup.yaml
 ```
 
 ## Step 1: Create the Namespace
@@ -119,7 +121,7 @@ spec:
   chart:
     spec:
       chart: argo-workflows
-      version: "0.x"
+      version: "1.x"
       sourceRef:
         kind: HelmRepository
         name: argo
@@ -163,6 +165,7 @@ spec:
       # Workflow defaults
       workflowDefaults:
         spec:
+          serviceAccountName: argo-workflow-executor
           # Default TTL for completed workflows
           ttlStrategy:
             secondsAfterCompletion: 86400
@@ -175,8 +178,9 @@ spec:
     # Argo Server (UI and API)
     server:
       replicas: 2
-      # Authentication mode: server, client, or sso
-      authMode: "sso"
+      # Authentication modes: server, client, or sso
+      authModes:
+        - server
       resources:
         requests:
           cpu: 100m
@@ -196,7 +200,6 @@ spec:
               - argo-workflows.example.com
 
     # Default artifact repository
-    useDefaultArtifactRepo: true
     artifactRepository:
       s3:
         bucket: argo-artifacts
@@ -221,9 +224,6 @@ kind: ServiceAccount
 metadata:
   name: argo-workflow-executor
   namespace: argo
-  annotations:
-    # Annotate for IRSA on AWS if needed
-    workflows.argoproj.io/rbac-rule: "true"
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -241,6 +241,10 @@ rules:
   - apiGroups: ["argoproj.io"]
     resources: ["workflows", "workflowtemplates", "cronworkflows"]
     verbs: ["get", "list", "watch", "create", "update", "delete"]
+  # Minimum executor permissions for Argo Workflows v3.4 and later
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflowtaskresults"]
+    verbs: ["create", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -283,6 +287,15 @@ spec:
       - name: image-tag
         value: "latest"
 
+  volumeClaimTemplates:
+    - metadata:
+        name: work
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+
   templates:
     # Main DAG template
     - name: ci-steps
@@ -322,7 +335,7 @@ spec:
         args:
           - |
             git clone --branch {{inputs.parameters.branch}} \
-              {{inputs.parameters.repo-url}} /work
+              {{inputs.parameters.repo-url}} /work/src
         volumeMounts:
           - name: work
             mountPath: /work
@@ -334,7 +347,7 @@ spec:
         command: [sh, -c]
         args:
           - |
-            cd /work && npm install && npm test
+            cd /work/src && npm install && npm test
         volumeMounts:
           - name: work
             mountPath: /work
@@ -347,8 +360,8 @@ spec:
       container:
         image: gcr.io/kaniko-project/executor:latest
         args:
-          - --dockerfile=/work/Dockerfile
-          - --context=/work
+          - --dockerfile=/work/src/Dockerfile
+          - --context=/work/src
           - --destination=registry.example.com/app:{{inputs.parameters.image-tag}}
         volumeMounts:
           - name: work
@@ -374,24 +387,23 @@ spec:
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 5
   workflowSpec:
+    serviceAccountName: argo-workflow-executor
     entrypoint: cleanup
     templates:
       - name: cleanup
         container:
-          image: bitnami/kubectl:latest
+          image: quay.io/argoproj/argocli:v4.0.5
           command: [sh, -c]
           args:
             - |
               # Delete completed workflows older than 7 days
-              kubectl delete workflows -n argo \
-                --field-selector status.phase=Succeeded \
-                --timeout=120s || true
+              argo delete -n argo --completed --older 7d || true
 ```
 
 ## Step 8: Create the Flux Kustomization
 
 ```yaml
-# clusters/production/argo-workflows/kustomization.yaml
+# clusters/production/argo-workflows-sync.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
