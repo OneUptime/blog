@@ -39,16 +39,16 @@ graph TB
     style B2 fill:#bbf,stroke:#333
 ```
 
-Flux CD runs entirely inside your cluster as a set of Kubernetes controllers. Codefresh operates as a SaaS platform with an in-cluster Argo CD runtime that connects back to the Codefresh control plane.
+Flux CD runs entirely inside your cluster as a set of Kubernetes controllers. Codefresh operates as a commercial control plane with an in-cluster Argo CD GitOps Runtime that connects back to the Codefresh platform.
 
 ## Feature Comparison
 
 | Feature | Flux CD | Codefresh GitOps |
 |---------|---------|-----------------|
 | **Core Engine** | Custom Flux controllers | Argo CD (managed) |
-| **Deployment Model** | Fully in-cluster | SaaS + in-cluster runtime |
-| **Source Types** | Git, OCI, S3, Helm repos | Git, Helm repos |
-| **Manifest Tools** | Kustomize, Helm (native) | Kustomize, Helm, Jsonnet |
+| **Deployment Model** | Fully in-cluster | Codefresh platform + in-cluster runtime |
+| **Source Types** | Git, OCI, S3-compatible buckets, Helm repos | Git, Helm repos, OCI through Argo CD |
+| **Manifest Tools** | Kustomize, Helm (native) | Directory, Kustomize, Helm, Jsonnet |
 | **CI/CD Integration** | External (any CI system) | Built-in CI pipelines |
 | **Multi-Cluster** | Native multi-cluster | Centralized multi-cluster |
 | **UI/Dashboard** | Weave GitOps or third-party | Built-in commercial dashboard |
@@ -134,7 +134,7 @@ graph TB
     end
 
     subgraph "Codefresh Multi-Cluster"
-        A2[Codefresh SaaS] -->|Runtime| B2[Dev Cluster]
+        A2[Codefresh Platform] -->|Runtime| B2[Dev Cluster]
         A2 -->|Runtime| C2[Staging Cluster]
         A2 -->|Runtime| D2[Prod Cluster]
     end
@@ -145,7 +145,7 @@ graph TB
 
 Flux CD installs independently on each cluster, using Git as the shared coordination point. This means each cluster operates autonomously even if other clusters or the management plane are unavailable.
 
-Codefresh provides a centralized SaaS dashboard where you can see all clusters, trigger syncs, and manage deployments from one place. The tradeoff is a dependency on the Codefresh platform for visibility and management.
+Codefresh provides a centralized platform dashboard where you can see all clusters, trigger syncs, and manage deployments from one place. The tradeoff is a dependency on the Codefresh platform for visibility and management.
 
 ## CI/CD Integration
 
@@ -161,11 +161,27 @@ on:
     branches: [main]
     paths: ["src/**"]
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Kustomize
+        run: |
+          go install sigs.k8s.io/kustomize/kustomize/v5@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Build and push image
         run: |
@@ -204,6 +220,7 @@ steps:
     type: build
     stage: build
     image_name: your-org/app
+    registry: docker
     tag: "${{CF_SHORT_REVISION}}"
 
   report_image:
@@ -211,8 +228,11 @@ steps:
     stage: deploy
     arguments:
       CF_API_KEY: "${{CF_API_KEY}}"
-      CF_IMAGE: "your-org/app:${{CF_SHORT_REVISION}}"
+      CF_IMAGE: "docker.io/your-org/app:${{CF_SHORT_REVISION}}"
+      CF_RUNTIME_NAME: "codefresh-hosted"
+      CF_CONTAINER_REGISTRY_INTEGRATION: "docker"
       CF_GIT_REPO: your-org/app-manifests
+      CF_GIT_BRANCH: "${{CF_BRANCH}}"
 ```
 
 ## When to Choose Flux CD
