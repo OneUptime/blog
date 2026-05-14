@@ -136,7 +136,7 @@ Count events by reason to identify the most common issues:
 
 ```bash
 kubectl get events --all-namespaces -o json | \
-  jq '[.items[] | select(.source.component | test("source-controller|kustomize-controller|helm-controller|notification-controller"))] | group_by(.reason) | map({reason: .[0].reason, count: length}) | sort_by(.count) | reverse'
+  jq '[.items[] | select((.source.component // .reportingComponent // "") | test("source-controller|kustomize-controller|helm-controller|notification-controller"))] | group_by(.reason) | map({reason: .[0].reason, count: length}) | sort_by(.count) | reverse'
 ```
 
 ## Export Events for Analysis
