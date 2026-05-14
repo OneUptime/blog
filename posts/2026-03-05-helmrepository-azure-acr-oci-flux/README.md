@@ -10,14 +10,14 @@ Description: Learn how to configure a Flux HelmRepository to pull Helm charts fr
 
 ## Introduction
 
-Azure Container Registry (ACR) supports storing Helm charts as OCI artifacts. Flux CD can pull these charts using an OCI-type HelmRepository with the `azure` provider, which enables automatic token authentication through Azure Workload Identity (or AAD Pod Identity). This eliminates the need to manage static credentials and handles token renewal automatically.
+Azure Container Registry (ACR) supports storing Helm charts as OCI artifacts. Flux CD can pull these charts using an OCI-type HelmRepository with the `azure` provider, which enables automatic token authentication through Azure Workload Identity or the AKS kubelet managed identity. This eliminates the need to manage static credentials and handles token renewal automatically.
 
 This guide covers the full setup, from pushing a Helm chart to ACR to configuring Flux for automated deployment.
 
 ## Prerequisites
 
 - An AKS cluster with Flux CD v2.x installed
-- Azure Workload Identity configured on the cluster (or AAD Pod Identity)
+- Azure Workload Identity configured on the cluster
 - The `flux` CLI, `kubectl`, `az` CLI, and `helm` CLI installed
 - An Azure Container Registry (ACR) instance
 
@@ -140,7 +140,7 @@ metadata:
 spec:
   type: oci                     # Required for OCI registries
   provider: azure               # Enables automatic Azure token refresh
-  interval: 5m
+  interval: 5m                  # Ignored for OCI HelmRepository objects
   url: oci://myacr.azurecr.io/helm
 ```
 
@@ -153,6 +153,8 @@ kubectl apply -f helmrepository-acr.yaml
 # Verify the status
 flux get sources helm -n flux-system
 ```
+
+For OCI HelmRepository objects, Flux treats the resource as a data container for HelmChart resources, so the object may not report the same Ready status details as an HTTP/S Helm repository.
 
 ## Step 4: Create a HelmRelease
 
@@ -217,7 +219,7 @@ metadata:
   namespace: flux-system
 spec:
   type: oci
-  interval: 5m
+  interval: 5m                  # Ignored for OCI HelmRepository objects
   url: oci://myacr.azurecr.io/helm
   secretRef:
     name: acr-credentials     # Service principal credentials
