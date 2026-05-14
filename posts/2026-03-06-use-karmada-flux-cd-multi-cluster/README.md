@@ -27,7 +27,7 @@ This guide walks you through setting up Karmada alongside Flux CD and deploying 
 
 ```mermaid
 graph TD
-    A[Git Repository] --> B[Flux CD on Karmada Control Plane]
+    A[Git Repository] --> B[Flux CD on Host Control Plane]
     B --> C[Karmada API Server]
     C --> D[PropagationPolicy]
     D --> E[Member Cluster 1]
@@ -39,7 +39,7 @@ graph TD
     H --> G
 ```
 
-Flux CD deploys resources to the Karmada control plane API, and Karmada propagates them to member clusters based on policies.
+Flux CD runs on the host control plane cluster and deploys resources to the Karmada API server using a remote kubeconfig. Karmada then propagates them to member clusters based on policies.
 
 ## Step 1: Install Karmada
 
@@ -86,20 +86,20 @@ spec:
   chart:
     spec:
       chart: karmada
-      version: "1.8.x"
+      version: "v1.17.x"
       sourceRef:
         kind: HelmRepository
         name: karmada
   values:
     # Enable the Karmada API server
     apiServer:
-      replicas: 2
+      replicaCount: 2
     # Enable the scheduler
     scheduler:
-      replicas: 2
+      replicaCount: 2
     # Enable the controller manager
     controllerManager:
-      replicas: 2
+      replicaCount: 2
 ```
 
 ## Step 2: Join Member Clusters
@@ -121,19 +121,24 @@ karmadactl join member-cluster-2 \
 kubectl --kubeconfig=/path/to/karmada-kubeconfig get clusters
 ```
 
-## Step 3: Bootstrap Flux on the Karmada Control Plane
+## Step 3: Bootstrap Flux on the Host Control Plane
 
-Bootstrap Flux targeting the Karmada API server so that all resources Flux creates are managed by Karmada:
+Bootstrap Flux on the host control plane cluster, then store the Karmada API server kubeconfig as a Secret so Flux can apply resources to Karmada:
 
 ```bash
-# Bootstrap Flux on the Karmada control plane
+# Bootstrap Flux on the host control plane cluster
 flux bootstrap github \
   --owner=your-org \
   --repository=fleet-config \
   --branch=main \
   --path=clusters/karmada \
-  --kubeconfig=/path/to/karmada-kubeconfig \
+  --kubeconfig=/path/to/control-plane-kubeconfig \
   --personal
+
+# Store the Karmada API server kubeconfig for Flux remote reconciliation
+kubectl --kubeconfig=/path/to/control-plane-kubeconfig \
+  -n flux-system create secret generic karmada-kubeconfig \
+  --from-file=value.yaml=/path/to/karmada-kubeconfig
 ```
 
 ## Step 4: Create PropagationPolicies
@@ -199,6 +204,7 @@ spec:
         - member-cluster-2
     replicaScheduling:
       replicaSchedulingType: Divided
+      replicaDivisionPreference: Weighted
       # 70% of replicas go to cluster-1, 30% to cluster-2
       weightPreference:
         staticWeightList:
@@ -225,23 +231,30 @@ metadata:
   name: cluster-specific-overrides
   namespace: default
 spec:
-  targetCluster:
-    clusterNames:
-      - member-cluster-1
-  overriders:
-    # Override the container image registry for cluster-1
-    imageOverrider:
-      - component: Registry
-        operator: replace
-        value: registry.cluster-1.example.com
-    # Override specific fields using JSON patch
-    plaintext:
-      - path: /spec/template/spec/containers/0/resources/limits/cpu
-        operator: replace
-        value: "500m"
-      - path: /spec/template/spec/containers/0/resources/limits/memory
-        operator: replace
-        value: "512Mi"
+  resourceSelectors:
+    - apiVersion: apps/v1
+      kind: Deployment
+      labelSelector:
+        matchLabels:
+          fleet/scope: global
+  overrideRules:
+    - targetCluster:
+        clusterNames:
+          - member-cluster-1
+      overriders:
+        # Override the container image registry for cluster-1
+        imageOverrider:
+          - component: Registry
+            operator: replace
+            value: registry.cluster-1.example.com
+        # Override specific fields using JSON patch
+        plaintext:
+          - path: /spec/template/spec/containers/0/resources/limits/cpu
+            operator: replace
+            value: "500m"
+          - path: /spec/template/spec/containers/0/resources/limits/memory
+            operator: replace
+            value: "512Mi"
 ---
 # Different overrides for cluster-2
 apiVersion: policy.karmada.io/v1alpha1
@@ -250,21 +263,28 @@ metadata:
   name: cluster-2-overrides
   namespace: default
 spec:
-  targetCluster:
-    clusterNames:
-      - member-cluster-2
-  overriders:
-    imageOverrider:
-      - component: Registry
-        operator: replace
-        value: registry.cluster-2.example.com
-    plaintext:
-      - path: /spec/template/spec/containers/0/resources/limits/cpu
-        operator: replace
-        value: "1000m"
-      - path: /spec/template/spec/containers/0/resources/limits/memory
-        operator: replace
-        value: "1Gi"
+  resourceSelectors:
+    - apiVersion: apps/v1
+      kind: Deployment
+      labelSelector:
+        matchLabels:
+          fleet/scope: global
+  overrideRules:
+    - targetCluster:
+        clusterNames:
+          - member-cluster-2
+      overriders:
+        imageOverrider:
+          - component: Registry
+            operator: replace
+            value: registry.cluster-2.example.com
+        plaintext:
+          - path: /spec/template/spec/containers/0/resources/limits/cpu
+            operator: replace
+            value: "1000m"
+          - path: /spec/template/spec/containers/0/resources/limits/memory
+            operator: replace
+            value: "1Gi"
 ```
 
 ## Step 6: Deploy Applications Through Flux and Karmada
@@ -289,6 +309,9 @@ spec:
   # Deploy policies before applications
   dependsOn:
     - name: policies
+  kubeConfig:
+    secretRef:
+      name: karmada-kubeconfig
 ---
 # Flux Kustomization for Karmada policies
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -303,6 +326,9 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
+  kubeConfig:
+    secretRef:
+      name: karmada-kubeconfig
 ```
 
 ```yaml
@@ -373,13 +399,13 @@ kubectl --kubeconfig=/path/to/karmada-kubeconfig \
 kubectl --kubeconfig=/path/to/karmada-kubeconfig \
   get events -n default --sort-by='.lastTimestamp'
 
-# Check Flux reconciliation status
-flux get kustomizations --kubeconfig=/path/to/karmada-kubeconfig
+# Check Flux reconciliation status on the host control plane cluster
+flux get kustomizations --kubeconfig=/path/to/control-plane-kubeconfig
 ```
 
 ## Step 8: Set Up Karmada Failover
 
-Configure Karmada to automatically reschedule workloads when a member cluster becomes unavailable.
+Configure Karmada's cluster failover behavior so workloads can be rescheduled when a member cluster is tainted with `NoExecute`. The `Failover` feature gate must be enabled on `karmada-controller-manager`.
 
 ```yaml
 # base/policies/failover-policy.yaml
@@ -409,12 +435,11 @@ spec:
         minGroups: 2
     replicaScheduling:
       replicaSchedulingType: Divided
+      replicaDivisionPreference: Weighted
   # Enable failover so Karmada reschedules when a cluster goes down
   failover:
-    clusterFailoverPolicy:
-      decisionConditions:
-        tolerationSeconds: 300
-      purgeMode: Graciously
+    cluster:
+      purgeMode: Gracefully
 ```
 
 ## Step 9: Git Repository Structure
@@ -451,7 +476,7 @@ fleet-config/
 
 **Member cluster not ready**: Verify the cluster status with `kubectl get clusters` on the Karmada API server. Ensure the cluster agent has network connectivity.
 
-**Flux and Karmada conflict**: Make sure Flux is only deploying to the Karmada API server, not directly to member clusters. All propagation should go through Karmada policies.
+**Flux and Karmada conflict**: Make sure the Flux Kustomizations use the Karmada API server kubeconfig, not member-cluster kubeconfigs. All propagation should go through Karmada policies.
 
 ```bash
 # Debug propagation issues
