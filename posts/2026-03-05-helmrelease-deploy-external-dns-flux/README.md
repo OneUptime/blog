@@ -40,6 +40,11 @@ Before deploying External-DNS, create a Kubernetes Secret containing your DNS pr
 ```yaml
 # secret-external-dns.yaml - AWS credentials for External-DNS
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: external-dns
+---
+apiVersion: v1
 kind: Secret
 metadata:
   name: external-dns-aws
@@ -211,7 +216,7 @@ spec:
 
 ```bash
 # Check HelmRelease status
-flux get helmrelease external-dns -n external-dns
+flux get helmreleases external-dns -n external-dns
 
 # Verify External-DNS is running
 kubectl get pods -n external-dns
