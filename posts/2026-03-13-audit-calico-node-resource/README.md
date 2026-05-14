@@ -36,7 +36,7 @@ for n in json.load(sys.stdin)["items"]:
 
 # Find Calico nodes with no corresponding Kubernetes node
 while IFS= read -r calico_node; do
-  if ! echo "$K8S_NODES" | grep -q "^${calico_node}$"; then
+  if ! echo "$K8S_NODES" | grep -Fxq -- "$calico_node"; then
     echo "ORPHANED: Calico Node '$calico_node' has no matching Kubernetes node"
   fi
 done <<< "$CALICO_NODES"
@@ -76,8 +76,11 @@ data = json.load(sys.stdin)
 seen_ips = {}
 for node in data['items']:
     name = node['metadata']['name']
-    for field in ['ipv4VXLANTunnelAddr', 'ipv4IPIPTunnelAddr']:
-        ip = node['spec'].get(field)
+    tunnel_fields = {
+        'ipv4VXLANTunnelAddr': node['spec'].get('ipv4VXLANTunnelAddr'),
+        'ipv4IPIPTunnelAddr': node['spec'].get('bgp', {}).get('ipv4IPIPTunnelAddr'),
+    }
+    for field, ip in tunnel_fields.items():
         if ip:
             if ip in seen_ips:
                 print(f'CONFLICT: {field} {ip} shared by {name} and {seen_ips[ip]}')
@@ -95,7 +98,7 @@ graph LR
     A --> E[Verify AS number assignments]
     B --> F[Delete orphaned resources]
     C --> G[Update IP autodetection method]
-    D --> H[Delete and recreate conflicting node]
+    D --> H[Decommission stale node resource]
     E --> I[Patch nodes with correct AS]
 ```
 
@@ -139,4 +142,4 @@ for node in data['items']:
 
 ## Conclusion
 
-Node resource audits primarily target configuration drift: orphaned resources from incomplete node decommissioning, IP address mismatches from auto-detection changes, and tunnel IP conflicts from node replacement without cleanup. Schedule audits after any node scaling operation and as part of quarterly security reviews. Orphaned Node resources are harmless to BGP routing but can trigger false alerts in monitoring systems that count expected vs actual node entries.
+Node resource audits primarily target configuration drift: orphaned resources from incomplete node decommissioning, IP address mismatches from auto-detection changes, and tunnel IP conflicts from node replacement without cleanup. Schedule audits after any node scaling operation and as part of quarterly security reviews. Orphaned Node resources do not run BGP by themselves, but stale node references can cause IP-in-use errors, unreachable peer readiness checks, or false alerts in monitoring systems that count expected vs actual node entries.
