@@ -28,7 +28,7 @@ Under normal operation, the kustomize-controller checks each Kustomization at it
 flowchart LR
     A[User runs flux reconcile ks] --> B[Annotation added to Kustomization]
     B --> C[Kustomize Controller detects annotation]
-    C --> D[Fetch latest source revision]
+    C --> D[Read current source artifact]
     D --> E[Build and apply manifests]
     E --> F[Update status and conditions]
 ```
