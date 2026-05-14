@@ -18,7 +18,7 @@ This guide walks you through deploying Rook-Ceph on Kubernetes using Flux CD, co
 
 Before you begin, ensure you have the following:
 
-- A Kubernetes cluster (v1.25 or later) with at least three worker nodes
+- A Kubernetes cluster running a version supported by the Rook-Ceph chart version you deploy (the `1.14.x` examples below support Kubernetes v1.25 through v1.30) with at least three worker nodes
 - Each worker node should have an unformatted, unmounted disk attached
 - Flux CD installed and bootstrapped on your cluster
 - kubectl configured to access your cluster
@@ -37,7 +37,6 @@ clusters/
         helmrepository.yaml
         helmrelease-operator.yaml
         helmrelease-cluster.yaml
-        storageclass.yaml
         kustomization.yaml
 ```
 
@@ -104,9 +103,9 @@ spec:
       enableCephfsDriver: true
       # Resource limits for CSI provisioner pods
       provisionerReplicas: 2
-    # Enable monitoring if Prometheus is available
+    # Set to true only if the Prometheus Operator CRDs are installed
     monitoring:
-      enabled: true
+      enabled: false
     # Resource requests and limits for the operator
     resources:
       requests:
@@ -147,8 +146,9 @@ spec:
     toolbox:
       enabled: true
     monitoring:
-      enabled: true
-      createPrometheusRules: true
+      # Set to true only if the Prometheus Operator CRDs are installed
+      enabled: false
+      createPrometheusRules: false
     cephClusterSpec:
       # Number of Ceph monitors (should be odd: 1, 3, or 5)
       mon:
@@ -354,16 +354,16 @@ ceph df
 
 ## Cleanup
 
-To remove Rook-Ceph from your cluster, remove the manifests from your Git repository. Flux CD will handle the deletion. Note that you may need to manually clean the disks on each node after removal.
+To remove Rook-Ceph from your cluster, first enable the cleanup policy if you want Rook to wipe the host paths and OSD devices, then remove the manifests from your Git repository. Flux CD will handle the deletion. Note that you may need to manually clean the disks on each node after removal.
 
 ```bash
-# After removing from Git, verify cleanup
-kubectl get ns rook-ceph
-
-# If needed, clean up finalizers on CephCluster
+# Before removing the CephCluster from Git, enable data cleanup if needed
 kubectl -n rook-ceph patch cephcluster rook-ceph \
   --type merge \
   -p '{"spec":{"cleanupPolicy":{"confirmation":"yes-really-destroy-data"}}}'
+
+# After removing from Git, verify cleanup
+kubectl get ns rook-ceph
 ```
 
 ## Conclusion
