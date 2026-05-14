@@ -15,10 +15,10 @@ Calico upgrade mistakes range from minor (causing longer-than-expected maintenan
 ## Mistake 1: Skipping the Compatibility Matrix
 
 ```bash
-# WRONG - assuming any Calico version works with any Kubernetes version
+# WRONG - assuming any Calico release works with any Kubernetes version
 
-kubectl patch installation default --type=merge \
-  -p '{"spec":{"version":"v3.28.0"}}'
+kubectl apply --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/tigera-operator.yaml
 # v3.28.0 may require Kubernetes >= 1.27
 # If your cluster is on 1.26, calico-node may fail to start!
 
@@ -81,7 +81,8 @@ git push origin main
 
 # Upgrade flow:
 git checkout -b upgrade/calico-v3.28.0
-# Make changes to ImageSet
+# Add the new ImageSet first if you pin images by digest
+# Update the Calico/Tigera operator manifests to v3.28.0
 git push origin upgrade/calico-v3.28.0
 # Flux deploys to dev cluster
 # After validation, PR to staging branch
@@ -96,12 +97,10 @@ git push origin upgrade/calico-v3.28.0
 
 # CORRECT - run connectivity test throughout upgrade
 # Start BEFORE upgrade begins
-kubectl run baseline-test --image=alpine --restart=Never -- \
+kubectl run baseline-test --image=curlimages/curl:8.7.1 --restart=Never --command -- \
   sh -c 'while true; do
-    START=$(date +%s%N)
-    wget -qO/dev/null http://kubernetes.default.svc --timeout=1
-    END=$(date +%s%N)
-    echo "$(date): $((($END-$START)/1000000))ms"
+    LATENCY=$(curl -ksS -o /dev/null -w "%{time_total}" --max-time 1 https://kubernetes.default.svc/version)
+    echo "$(date): ${LATENCY}s"
     sleep 5
   done'
 
