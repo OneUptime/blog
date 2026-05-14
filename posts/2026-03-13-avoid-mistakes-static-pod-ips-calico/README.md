@@ -10,19 +10,20 @@ Description: Learn how to correctly manage static IP addresses for pods using Ca
 
 ## Introduction
 
-Static pod IPs - assigning the same IP address to a pod every time it restarts or is rescheduled - are sometimes requested for integration with legacy monitoring, firewall rules, or external services that cannot use DNS. While Calico supports requesting specific IPs via annotations, there is no native mechanism to guarantee the same IP across pod restarts for a Deployment or StatefulSet.
+Static pod IPs - assigning the same IP address to a pod every time it is deleted and recreated or rescheduled - are sometimes requested for integration with legacy monitoring, firewall rules, or external services that cannot use DNS. While Calico supports requesting specific IPs via annotations, there is no native mechanism to track pod identity and automatically choose a unique static IP for each replica in a Deployment or StatefulSet.
 
 This post covers the correct and incorrect approaches to static pod IPs, the limitations of each approach, and alternative patterns that achieve the same goal without the operational risks of IP pinning.
 
 ## Prerequisites
 
 - Calico CNI v3.x
+- Calico IPAM enabled
 - `calicoctl` CLI configured
 - `kubectl` with cluster access
 
 ## Step 1: Understand Calico's Specific IP Assignment Support
 
-Calico supports requesting a specific IP at pod creation time, but this does NOT guarantee the same IP on pod restart.
+Calico supports requesting a specific IP at pod creation time, but this does NOT automatically map workload identity to a unique IP across replica lifecycle events.
 
 ```bash
 # What Calico can do:
@@ -51,8 +52,13 @@ metadata:
   name: myapp-wrong
 spec:
   replicas: 3                      # PROBLEM: 3 pods, same IP annotation
+  selector:
+    matchLabels:
+      app: myapp-wrong
   template:
     metadata:
+      labels:
+        app: myapp-wrong
       annotations:
         # THIS WILL FAIL for replicas 2 and 3 - the IP is already taken by replica 1
         cni.projectcalico.org/ipAddrs: '["10.244.1.100"]'
@@ -78,7 +84,7 @@ spec:
   replicas: 1                      # Single replica for static IP to work
   strategy:
     type: Recreate                 # Delete the old pod before creating the new one
-                                   # Ensures the IP is released before the new pod requests it
+                                   # Ensures the IP is released before the new pod requests it during updates
   selector:
     matchLabels:
       app: myapp-static
@@ -87,7 +93,7 @@ spec:
       labels:
         app: myapp-static
       annotations:
-        # Request a specific IP - works reliably with replicas: 1 and Recreate strategy
+        # Request a specific IP - suitable only for a single replica
         cni.projectcalico.org/ipAddrs: '["10.244.1.100"]'
     spec:
       containers:
@@ -103,7 +109,7 @@ Instead of static IPs, use headless Services with StatefulSets for stable DNS na
 # statefulset-stable-dns.yaml
 # Use StatefulSet + headless Service for stable DNS names instead of static IPs
 ---
-# Headless Service provides stable DNS: pod-0.myapp.production.svc.cluster.local
+# Headless Service provides stable DNS: myapp-0.myapp-headless.production.svc.cluster.local
 apiVersion: v1
 kind: Service
 metadata:
@@ -142,21 +148,18 @@ spec:
 
 ## Step 5: Pre-Reserve IPs to Prevent Conflicts
 
-If you must use specific IPs, pre-reserve them in Calico IPAM to prevent other pods from accidentally being assigned those IPs.
+If you must use specific IPs, pre-reserve them with a Calico `IPReservation` to prevent other pods from accidentally being assigned those IPs. Manual assignments using the `cni.projectcalico.org/ipAddrs` annotation can still use reserved IPs.
 
-```bash
+```yaml
 # Reserve the IPs before creating pods that will use them
-calicoctl ipam reserve --ip=10.244.1.100 --handle="myapp-static-reserved"
-calicoctl ipam reserve --ip=10.244.1.101 --handle="myapp-replica-2-reserved"
-
-# Verify reservations
-calicoctl ipam show --show-reserved | grep "10.244.1"
-
-# When the pod is deleted and will be recreated, release and re-reserve
-# (This workflow is complex - which is why static IPs are discouraged)
-calicoctl ipam release --ip=10.244.1.100
-# ... recreate pod ...
-# Pod will reclaim the IP because it's annotated for it
+apiVersion: projectcalico.org/v3
+kind: IPReservation
+metadata:
+  name: myapp-static-ips
+spec:
+  reservedCIDRs:
+    - 10.244.1.100
+    - 10.244.1.101
 ```
 
 ## Best Practices
@@ -169,4 +172,4 @@ calicoctl ipam release --ip=10.244.1.100
 
 ## Conclusion
 
-Static pod IPs with Calico are supported but come with significant operational constraints. They only work reliably for single-replica workloads with `Recreate` update strategy, and they create operational complexity when pods are rescheduled across nodes. In most cases, the correct approach is to eliminate the need for static IPs by using stable DNS names (headless Services + StatefulSets) or Calico network policies (which use pod labels, not IPs).
+Static pod IPs with Calico are supported but come with significant operational constraints. They are only appropriate for single-replica workloads with controls such as a `Recreate` update strategy, and they create operational complexity when pods are recreated or rescheduled. In most cases, the correct approach is to eliminate the need for static IPs by using stable DNS names (headless Services + StatefulSets) or Calico network policies (which use pod labels, not IPs).
