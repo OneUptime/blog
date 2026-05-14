@@ -282,19 +282,17 @@ spec:
         - name: app
           # The marker comment tells the automation controller
           # which ImagePolicy to use for updating this field
-          # {"$imagepolicy": "flux-system:my-app"}
-          image: myregistry/my-app:1.0.5
+          image: myregistry/my-app:1.0.5 # {"$imagepolicy": "flux-system:my-app"}
           ports:
             - containerPort: 8080
 ```
 
-You can also update just the tag portion:
+You can also update just the tag portion when the tag is stored in a separate field:
 
 ```yaml
-containers:
-  - name: app
-    # Update the full image reference (registry/image:tag)
-    image: myregistry/my-app:1.0.5 # {"$imagepolicy": "flux-system:my-app"}
+image:
+  repository: myregistry/my-app # {"$imagepolicy": "flux-system:my-app:name"}
+  tag: 1.0.5 # {"$imagepolicy": "flux-system:my-app:tag"}
 ```
 
 ## Step 5: Create ImageUpdateAutomation Resource
@@ -414,9 +412,9 @@ kubectl annotate deployment my-app -n default fluxcd.io/tag.app-
 |---|---|
 | `fluxcd.io/automated: "true"` | `ImageUpdateAutomation` resource |
 | `fluxcd.io/tag.container: semver:~1.0` | `ImagePolicy` with semver range |
-| `fluxcd.io/tag.container: glob:main-*` | `ImagePolicy` with filterTags pattern |
-| `fluxcd.io/locked: "true"` | Suspend the `ImageUpdateAutomation` |
-| `fluxcd.io/tag.container: regex:^prod-` | `ImagePolicy` with filterTags pattern |
+| `fluxcd.io/tag.container: glob:main-*` | `ImagePolicy` with `filterTags` pattern plus alphabetical or numerical sorting on sortable tags |
+| `fluxcd.io/locked: "true"` | Remove the marker for that field, suspend the relevant `ImageRepository`, or suspend the `ImageUpdateAutomation`, depending on the scope you want |
+| `fluxcd.io/tag.container: regex:^prod-` | `ImagePolicy` with `filterTags` pattern plus alphabetical or numerical sorting on sortable tags |
 
 ## Troubleshooting
 
