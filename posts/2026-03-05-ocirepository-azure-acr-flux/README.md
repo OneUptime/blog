@@ -127,11 +127,17 @@ kubectl annotate serviceaccount source-controller \
   azure.workload.identity/client-id=$IDENTITY_CLIENT_ID \
   --overwrite
 
-# Label the service account to enable Workload Identity injection
+# Label the service account for Flux's Workload Identity configuration
 kubectl label serviceaccount source-controller \
   -n flux-system \
   azure.workload.identity/use=true \
   --overwrite
+
+# Label the source-controller pod template to enable Workload Identity injection
+kubectl patch deployment source-controller \
+  -n flux-system \
+  --type='merge' \
+  -p '{"spec":{"template":{"metadata":{"labels":{"azure.workload.identity/use":"true"}}}}}'
 ```
 
 ### Step 6: Restart the Source Controller
@@ -254,7 +260,7 @@ az acr login --name myregistry
 flux push artifact oci://myregistry.azurecr.io/my-app-manifests:1.0.0 \
   --path=./deploy \
   --source="$(git config --get remote.origin.url)" \
-  --revision="main/$(git rev-parse HEAD)"
+  --revision="main@sha1:$(git rev-parse HEAD)"
 
 # Verify the push
 flux list artifacts oci://myregistry.azurecr.io/my-app-manifests
@@ -296,7 +302,7 @@ az identity federated-credential list \
 az ad sp credential reset --id $SP_APP_ID
 ```
 
-**ACR geo-replication**: If using geo-replicated ACR, use the login server URL for the closest region to reduce latency.
+**ACR geo-replication**: If using geo-replicated ACR, continue using the registry's global login server URL. ACR routes requests to the geo-replica with the best network performance profile, which is usually the closest replica.
 
 **Network restrictions**: If ACR has network rules enabled, ensure the AKS cluster's outbound IP is allowed.
 
