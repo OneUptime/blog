@@ -67,7 +67,7 @@ spec:
       range: "1.x.x"
 ```
 
-If your registry contains tags like `v1.2.3` (with a `v` prefix), the semver policy may not match them. Some container build pipelines produce tags with prefixes that are not valid semver. Check actual tags in your registry.
+Flux's semver parser accepts an optional leading `v`, so tags like `v1.2.3` can match semver ranges. Other prefixes, such as `release-1.2.3`, are not valid semver unless you use `filterTags.extract` to extract the semver portion first. Check actual tags in your registry.
 
 ```bash
 # List tags visible to Flux by checking the ImageRepository status
@@ -76,7 +76,7 @@ kubectl get imagerepository my-app -n flux-system -o yaml | grep -A 5 lastScanRe
 
 ### Incorrect ImageRepository Reference
 
-Verify that the `imageRepositoryRef` points to an existing ImageRepository in the same namespace.
+Verify that the `imageRepositoryRef` points to an existing ImageRepository.
 
 ```yaml
 # Ensure the name matches exactly
@@ -85,7 +85,7 @@ spec:
     name: my-app  # Must match the ImageRepository metadata.name
 ```
 
-If the ImageRepository is in a different namespace, the ImagePolicy cannot reference it. Both resources must be in the same namespace.
+If the ImageRepository is in a different namespace, set `imageRepositoryRef.namespace` and make sure the ImageRepository allows cross-namespace access with `spec.accessFrom`.
 
 ### Filter Pattern Excludes All Tags
 
@@ -188,11 +188,11 @@ Compare these tags against your policy filter and range to confirm at least one 
 
 ## Step 4: Apply the Fix and Reconcile
 
-After updating the ImagePolicy, force a reconciliation.
+After updating the ImagePolicy, reconcile the referenced ImageRepository so the ImagePolicy is re-evaluated with the latest scan results.
 
 ```bash
-# Reconcile the ImagePolicy to apply changes immediately
-flux reconcile image policy my-app -n flux-system
+# Reconcile the ImageRepository to refresh image metadata and trigger the policy
+flux reconcile image repository my-app -n flux-system
 
 # Verify the policy now resolves a tag
 flux get image policy my-app -n flux-system
@@ -214,7 +214,7 @@ Set up notifications to alert when policies fail to resolve.
 ```yaml
 # alert-imagepolicy.yaml
 # Alert when ImagePolicy resources enter a failing state
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: image-policy-failures
