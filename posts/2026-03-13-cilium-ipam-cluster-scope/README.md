@@ -43,7 +43,7 @@ helm upgrade cilium cilium/cilium \
   --set ipam.operator.clusterPoolIPv4PodCIDRList="{10.244.0.0/16}" \
   --set ipam.operator.clusterPoolIPv4MaskSize=24
 
-# For larger pods-per-node requirements, use smaller mask (/23 = 510 IPs):
+# For larger pods-per-node requirements, choose a smaller mask before deployment (/23 = 510 usable IPs):
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
@@ -93,7 +93,8 @@ Diagnose cluster-pool allocation issues:
 ```bash
 # Node not getting CIDR allocation
 kubectl get ciliumnode <node-name> -o json | jq '.spec.ipam'
-# If podCIDRs is empty, Operator has not allocated
+# If podCIDRs is empty, check the Operator status for allocation errors
+kubectl get ciliumnode <node-name> -o jsonpath='{.status.ipam.operator-status}'
 
 # Check Operator IPAM allocation logs
 kubectl -n kube-system logs -l name=cilium-operator | grep -i "cidr\|alloc\|pool" | tail -30
@@ -104,11 +105,9 @@ kubectl get ciliumnodes -o json | \
   jq '[.items[].spec.ipam.podCIDRs[]] | length'
 # If close to pool capacity, expand the pool
 
-# Check for CIDR conflicts
+# List allocated CIDRs for review
 kubectl get ciliumnodes -o json | \
-  jq '[.items[].spec.ipam.podCIDRs[]] | sort | . as $cidrs |
-  [range(length) as $i | range($i+1; length) | {a: $cidrs[$i], b: $cidrs[.]}]' | \
-  head -10
+  jq '.items[] | {node: .metadata.name, cidrs: .spec.ipam.podCIDRs}'
 ```
 
 Fix cluster-pool issues:
@@ -122,12 +121,9 @@ helm upgrade cilium cilium/cilium \
   --set "ipam.operator.clusterPoolIPv4PodCIDRList={10.244.0.0/16,10.245.0.0/16}"
 
 # Issue: Node CIDR mask too small (too few IPs per node)
-# Can't shrink existing CIDRs - plan ahead
-# For new nodes, you can change the mask size
-helm upgrade cilium cilium/cilium \
-  --namespace kube-system \
-  --reuse-values \
-  --set ipam.operator.clusterPoolIPv4MaskSize=22  # 1022 IPs per node
+# You cannot change clusterPoolIPv4MaskSize for an existing cluster pool.
+# Plan the mask size before deployment, or migrate workloads to a new cluster
+# installed with a larger per-node CIDR such as /22.
 
 # Issue: Orphaned CIDRs after node removal
 kubectl get ciliumnodes
@@ -145,7 +141,7 @@ kubectl get ciliumnodes -o json | \
   jq '.items[] | select(.spec.ipam.podCIDRs | length == 0) | .metadata.name'
 # Should return nothing
 
-# Verify no CIDR overlaps between nodes
+# List node CIDRs for review
 kubectl get ciliumnodes -o json | \
   jq '[.items[] | {node: .metadata.name, cidr: .spec.ipam.podCIDRs[0]}]'
 
@@ -195,7 +191,7 @@ USED_SUBNETS=$(kubectl get ciliumnodes -o json | \
   jq '[.items[].spec.ipam.podCIDRs[]] | length')
 echo "Pool capacity: $TOTAL_SUBNETS /${MASK_SIZE}s, Used: $USED_SUBNETS"
 
-# Prometheus alert for pool utilization
+# Prometheus alert for allocated PodCIDR IP utilization
 kubectl apply -f - <<EOF
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
@@ -206,13 +202,13 @@ spec:
   groups:
   - name: ipam
     rules:
-    - alert: CiliumIPAMPoolLow
-      expr: cilium_ipam_available_ips / cilium_ipam_capacity < 0.2
+    - alert: CiliumIPAMAllocatedPodCIDRLow
+      expr: (sum(cilium_ipam_capacity{family="ipv4"}) - sum(cilium_ip_addresses{family="ipv4"})) / sum(cilium_ipam_capacity{family="ipv4"}) < 0.2
       for: 10m
       labels:
         severity: warning
       annotations:
-        summary: "Cilium IPAM pool is running low (<20% available)"
+        summary: "Cilium allocated PodCIDR IP capacity is running low (<20% available)"
 EOF
 ```
 
