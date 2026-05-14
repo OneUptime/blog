@@ -10,7 +10,7 @@ Description: Learn how to configure the storage namespace in a Flux CD HelmRelea
 
 ## Introduction
 
-When Helm installs or upgrades a release, it stores release metadata (including the rendered manifests, chart info, and values) as Kubernetes Secrets. By default, these Secrets are stored in the same namespace as the release's target namespace. The `spec.storageNamespace` field in a Flux CD HelmRelease lets you redirect this metadata to a different namespace, which is useful for centralized release management and access control.
+When Helm installs or upgrades a release, it stores release metadata (including the rendered manifests, chart info, and values) as Kubernetes Secrets. In a Flux CD HelmRelease, these Secrets are stored in the HelmRelease's namespace by default. The `spec.storageNamespace` field lets you redirect this metadata to a different namespace, which is useful for centralized release management and access control.
 
 ## The spec.storageNamespace Field
 
@@ -26,6 +26,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  releaseName: my-app
   targetNamespace: apps
   # Store Helm release metadata in a separate namespace
   storageNamespace: helm-metadata
@@ -43,15 +44,16 @@ spec:
 
 In this configuration:
 - The HelmRelease custom resource lives in `flux-system`
+- The Helm release name is `my-app`
 - Application resources (Deployments, Services, etc.) are deployed to `apps`
 - Helm release Secrets (metadata) are stored in `helm-metadata`
 
 ## Default Behavior
 
-When `spec.storageNamespace` is not set, Helm stores release Secrets in the target namespace. The target namespace is determined by `spec.targetNamespace`, or if that is also not set, the HelmRelease resource's own namespace.
+When `spec.storageNamespace` is not set, Flux stores Helm release Secrets in the HelmRelease resource's own namespace. The target namespace is determined by `spec.targetNamespace`, or if that is also not set, the HelmRelease resource's own namespace.
 
 ```yaml
-# Without storageNamespace - release Secrets go to "apps" (the target namespace)
+# Without storageNamespace - release Secrets go to "flux-system" (the HelmRelease namespace)
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -59,6 +61,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  releaseName: my-app
   targetNamespace: apps
   chart:
     spec:
@@ -112,7 +115,7 @@ helm history my-app -n helm-releases
 
 ### Preventing Namespace Deletion Issues
 
-If the target namespace is deleted (for example, during cleanup), Helm release metadata is preserved in the storage namespace. This prevents orphaned state where Helm thinks a release exists but the metadata is gone.
+If the target namespace is deleted (for example, during cleanup), Helm release metadata is preserved in the storage namespace. This keeps Helm's release history and state separate from the application namespace lifecycle.
 
 ## Setting Up the Storage Namespace
 
