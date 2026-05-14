@@ -10,11 +10,11 @@ Description: Learn how to configure timeout settings in a Flux CD HelmRelease to
 
 ## Introduction
 
-The timeout setting in a Flux CD HelmRelease controls the maximum duration that Helm operations (install, upgrade, rollback, uninstall) are allowed to run before being considered failed. Properly configuring timeouts prevents indefinitely hanging deployments and ensures that failed operations are detected and remediated promptly.
+The timeout setting in a Flux CD HelmRelease controls how long Helm waits for individual Kubernetes operations during Helm actions (install, upgrade, rollback, uninstall) before considering them failed. Properly configuring timeouts prevents indefinitely hanging deployments and ensures that failed operations are detected and remediated promptly.
 
 ## The spec.timeout Field
 
-The `spec.timeout` field sets a global timeout that applies to all Helm actions (install, upgrade, rollback, test, uninstall) unless overridden at the action level.
+The `spec.timeout` field sets a global timeout for individual Kubernetes operations during Helm actions (install, upgrade, rollback, test, uninstall) unless overridden at the action level.
 
 ```yaml
 # helmrelease.yaml - HelmRelease with global timeout
@@ -90,7 +90,7 @@ spec:
 
 ## How Timeout Interacts with Wait
 
-When Helm is configured to wait for resources to become ready (which is the default behavior in Flux), the timeout determines how long Helm will wait for all pods, services, and other resources to reach a ready state.
+When Helm is configured to wait for resources to become ready (which is the default behavior in Flux), the timeout determines how long Helm will wait for supported resources such as Pods, PVCs, Services, and the minimum number of Pods in Deployments, StatefulSets, and ReplicaSets to become ready, and for Jobs to complete.
 
 ```yaml
 # helmrelease.yaml - Timeout with wait behavior
@@ -125,13 +125,13 @@ spec:
         size: 50Gi
 ```
 
-If `disableWait` is set to `true` on an action, the timeout only covers the Helm operation itself (rendering templates and applying resources), not waiting for readiness.
+If `disableWait` is set to `true` on an action, the timeout still applies to the Kubernetes operations performed by Helm, but Helm does not wait for resources to become ready after the action.
 
 ## When to Increase Timeout
 
 Several scenarios require longer timeouts.
 
-**Large applications with many resources.** Applications that create dozens of pods, services, and config maps need more time for all resources to become ready.
+**Large applications with many resources.** Applications that create many Pods, PVCs, Services, Deployments, StatefulSets, ReplicaSets, or Jobs may need more time for resources to become ready.
 
 ```yaml
 spec:
@@ -225,7 +225,7 @@ When a timeout occurs, Flux marks the HelmRelease as failed. Use these commands 
 
 ```bash
 # Check HelmRelease status and conditions
-flux get helmrelease my-app -n default
+flux get helmreleases my-app -n default
 
 # View detailed conditions including timeout errors
 kubectl describe helmrelease my-app -n default
@@ -242,4 +242,4 @@ kubectl logs -n flux-system -l app=helm-controller --tail=100 | grep my-app
 
 ## Summary
 
-The `spec.timeout` field in a Flux CD HelmRelease controls how long Helm operations can run before being marked as failed. Set the global timeout in `spec.timeout` for a default across all actions, and use action-specific timeouts under `spec.install.timeout`, `spec.upgrade.timeout`, `spec.rollback.timeout`, `spec.test.timeout`, or `spec.uninstall.timeout` when individual operations need different limits. Matching timeouts to your application's actual startup and upgrade duration prevents both unnecessary failures from timeouts that are too short and undetected hangs from timeouts that are too long.
+The `spec.timeout` field in a Flux CD HelmRelease controls how long Helm waits for individual Kubernetes operations before marking them as failed. Set the global timeout in `spec.timeout` for a default across all actions, and use action-specific timeouts under `spec.install.timeout`, `spec.upgrade.timeout`, `spec.rollback.timeout`, `spec.test.timeout`, or `spec.uninstall.timeout` when individual operations need different limits. Matching timeouts to your application's actual startup and upgrade duration prevents both unnecessary failures from timeouts that are too short and undetected hangs from timeouts that are too long.
