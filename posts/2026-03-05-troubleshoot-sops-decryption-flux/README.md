@@ -113,8 +113,7 @@ The file was encrypted with a different key than the one available in the cluste
 Inspect the SOPS metadata in the encrypted file to see which recipients are configured:
 
 ```bash
-sops --decrypt --extract '["sops"]' secrets/db.sops.yaml 2>&1 || \
-  grep -A2 'age:' secrets/db.sops.yaml
+grep -A5 -E 'age:|pgp:' secrets/db.sops.yaml
 ```
 
 Compare the recipient public key in the file with the public key derived from the private key in the cluster:
@@ -164,9 +163,13 @@ sops --encrypt secrets/db-credentials.yaml > secrets/db.sops.yaml
 If you do not have the original values, extract the current secret from the cluster:
 
 ```bash
-kubectl get secret db-credentials -o yaml | kubectl neat > /tmp/db-credentials.yaml
-sops --encrypt /tmp/db-credentials.yaml > secrets/db.sops.yaml
-rm /tmp/db-credentials.yaml
+kubectl get secret db-credentials -o json | \
+  jq 'del(.metadata.creationTimestamp, .metadata.resourceVersion, .metadata.uid, .metadata.managedFields)' \
+  > /tmp/db-credentials.json
+sops --input-type json --output-type yaml \
+  --filename-override secrets/db.sops.yaml \
+  --encrypt /tmp/db-credentials.json > secrets/db.sops.yaml
+rm /tmp/db-credentials.json
 ```
 
 ## Cause 5: SOPS Configuration File Issues
@@ -197,17 +200,18 @@ Note that `.sops.yaml` is used during encryption only. At decryption time, SOPS 
 
 ## Cause 6: Namespace Mismatch
 
-The decryption key secret must be in the same namespace as the kustomize-controller, which is typically `flux-system`.
+The decryption key secret referenced by `spec.decryption.secretRef` must be in the same namespace as the Kustomization. In many Flux bootstraps that namespace is `flux-system`, but if your Kustomization is in another namespace, place the secret there.
 
 ### Diagnosis
 
 ```bash
+kubectl get kustomization my-app -n flux-system -o jsonpath='{.metadata.namespace}{"\n"}'
 kubectl get secret sops-age -n flux-system
 ```
 
 ### Resolution
 
-If the secret exists in a different namespace, recreate it in `flux-system`:
+If the secret exists in a different namespace, recreate it in the Kustomization namespace:
 
 ```bash
 kubectl get secret sops-age -n wrong-namespace -o yaml | \
@@ -220,7 +224,7 @@ kubectl get secret sops-age -n wrong-namespace -o yaml | \
 When you encounter a SOPS decryption failure, work through this checklist:
 
 1. **Read the error message** from `flux get kustomizations` or `kubectl describe kustomization`.
-2. **Verify the decryption secret exists** in `flux-system` namespace.
+2. **Verify the decryption secret exists** in the Kustomization namespace.
 3. **Verify the Kustomization** has the `decryption` block with the correct `secretRef`.
 4. **Compare encryption keys**: the public key in the encrypted file must match the private key in the cluster.
 5. **Test local decryption**: run `sops --decrypt` with the same private key to rule out file corruption.
