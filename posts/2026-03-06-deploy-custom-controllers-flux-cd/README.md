@@ -37,6 +37,7 @@ This guide covers deploying custom controllers with Flux CD, managing CRDs safel
 #         namespace.yaml
 #         deployment.yaml
 #         rbac.yaml
+#         service.yaml
 #         service-account.yaml
 #       production/
 #         kustomization.yaml
@@ -298,13 +299,14 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager
-  namespace: cert-manager
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: cert-manager
   chart:
     spec:
       chart: cert-manager
-      version: "1.14.x"
+      version: "1.20.x"
       sourceRef:
         kind: HelmRepository
         name: jetstack
@@ -318,7 +320,8 @@ spec:
     crds: CreateReplace
   values:
     replicaCount: 2
-    installCRDs: true
+    crds:
+      enabled: true
     prometheus:
       enabled: true
       servicemonitor:
@@ -345,12 +348,6 @@ spec:
   # Ensure CRDs are installed before the controller
   dependsOn:
     - name: my-controller-crds
-  # Health check the controller deployment
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: my-controller
-      namespace: my-controller-system
 ```
 
 ## Environment-Specific Configuration
@@ -364,6 +361,7 @@ resources:
   - service-account.yaml
   - rbac.yaml
   - deployment.yaml
+  - service.yaml
 ```
 
 ```yaml
@@ -454,6 +452,24 @@ spec:
 ```
 
 ## Monitoring Controllers
+
+```yaml
+# infrastructure/controllers/my-controller/base/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-controller-metrics
+  namespace: my-controller-system
+  labels:
+    app: my-controller
+spec:
+  selector:
+    app: my-controller
+  ports:
+    - name: metrics
+      port: 8080
+      targetPort: metrics
+```
 
 ```yaml
 # infrastructure/controllers/my-controller/base/servicemonitor.yaml
