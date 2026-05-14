@@ -10,7 +10,7 @@ Description: A comprehensive guide to using the flux reconcile command to force 
 
 ## Introduction
 
-Flux CD reconciles your cluster state with your Git repository on a configured interval. But sometimes you need things to happen immediately -- after pushing a critical fix, during incident response, or when debugging reconciliation issues. The `flux reconcile` command lets you trigger immediate synchronization of any Flux resource without waiting for the next scheduled interval.
+Flux CD reconciles your cluster state with your configured sources on a configured interval. But sometimes you need things to happen immediately -- after pushing a critical fix, during incident response, or when debugging reconciliation issues. The `flux reconcile` command lets you trigger immediate synchronization of supported Flux resources without waiting for the next scheduled interval.
 
 This guide covers all the ways to use `flux reconcile` to force sync resources in your cluster.
 
@@ -114,11 +114,14 @@ Force a Helm release to reconcile.
 # Reconcile a specific helm release
 flux reconcile helmrelease nginx -n flux-system
 
-# Reconcile with source (refreshes the Helm repository first)
+# Reconcile with source (reconciles the HelmRelease's source first)
 flux reconcile helmrelease nginx -n flux-system --with-source
 
-# Force reset of a stuck helm release
+# Force a one-off install or upgrade
 flux reconcile hr nginx -n flux-system --force
+
+# Reset failure counts for a stuck helm release
+flux reconcile hr nginx -n flux-system --reset
 ```
 
 ### Helm Release Reconciliation Scenarios
@@ -135,9 +138,9 @@ flux reconcile source git flux-system -n flux-system
 flux reconcile ks apps -n flux-system
 flux reconcile hr nginx -n flux-system
 
-# Scenario 3: Release stuck in failed state
-# Use --force to reset and retry
-flux reconcile hr nginx -n flux-system --force
+# Scenario 3: Release stuck after retries are exhausted
+# Use --reset to reset failure counts and retry
+flux reconcile hr nginx -n flux-system --reset
 ```
 
 ## Step 5: Reconcile Helm Sources
@@ -340,15 +343,18 @@ Track reconciliation timing and success.
 
 ```bash
 # Check when each resource was last reconciled
-flux get all -A -o json | jq '.[] | {
+for type in gitrepositories helmrepositories helmcharts ocirepositories buckets kustomizations helmreleases imagerepositories imagepolicies imageupdateautomations; do
+  kubectl get "$type" -A -o json 2>/dev/null
+done | jq -s '.[] | .items[] | {
   kind: .kind,
   name: .metadata.name,
-  lastReconcile: .status.lastHandledReconcileAt
+  namespace: .metadata.namespace,
+  lastHandledReconcileAt: .status.lastHandledReconcileAt
 }'
 
 # Check reconciliation duration from Prometheus metrics
 # gotk_reconcile_duration_seconds_bucket
-# gotk_reconcile_condition
+# gotk_resource_info
 
 # Create a simple reconciliation status check
 flux get all -A | while IFS= read -r line; do
@@ -369,8 +375,9 @@ done
 | `flux reconcile ks <name>` | Force kustomization apply |
 | `flux reconcile ks <name> --with-source` | Fetch source then apply |
 | `flux reconcile hr <name>` | Force Helm release reconcile |
-| `flux reconcile hr <name> --with-source` | Refresh chart then reconcile |
-| `flux reconcile hr <name> --force` | Force reset and retry |
+| `flux reconcile hr <name> --with-source` | Reconcile source then release |
+| `flux reconcile hr <name> --force` | Force a one-off install or upgrade |
+| `flux reconcile hr <name> --reset` | Reset failure counts and retry |
 | `flux reconcile image repository <name>` | Force registry scan |
 | `flux reconcile image policy <name>` | Force policy evaluation |
 | `flux reconcile image update <name>` | Force image update run |
