@@ -23,40 +23,39 @@ Calico IP Autodetection is a critical configuration aspect of Calico networking.
 ```bash
 # Check current state
 
-calicoctl get ippools -o yaml
-calicoctl ipam show --show-blocks
-kubectl get pods -A -o wide | head -10
+calicoctl get nodes -o yaml
+kubectl get nodes -o wide
+kubectl get installation.operator.tigera.io default -o yaml
 ```
 
 ## Configuration
 
 ```yaml
-apiVersion: projectcalico.org/v3
-kind: IPPool
+apiVersion: operator.tigera.io/v1
+kind: Installation
 metadata:
-  name: example-pool
+  name: default
 spec:
-  cidr: 10.48.0.0/16
-  blockSize: 26
-  ipipMode: Never
-  vxlanMode: Never
-  natOutgoing: true
+  calicoNetwork:
+    nodeAddressAutodetectionV4:
+      kubernetes: NodeInternalIP
 ```
 
 ## Verify
 
 ```bash
 # Validate changes
-calicoctl ipam check
-kubectl get pods -A -o wide | awk '{print $8}' | sort -u
+kubectl get installation.operator.tigera.io default -o yaml
+calicoctl get nodes -o yaml
+kubectl get nodes -o wide
 ```
 
 ## Architecture
 
 ```mermaid
 graph LR
-    POOL[IP Pool] --> BLOCK[Block Allocation]
-    BLOCK --> POD[Pod IP Assignment]
+    NODE[Kubernetes Node] --> METHOD[Autodetection Method]
+    METHOD --> ADDRESS[Calico Node Address]
 ```
 
 ## Conclusion
