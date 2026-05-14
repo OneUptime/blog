@@ -71,9 +71,11 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: minio
-  namespace: minio
+  namespace: flux-system
 spec:
   interval: 30m  # Reconciliation interval
+  releaseName: minio
+  targetNamespace: minio
   chart:
     spec:
       chart: minio
@@ -158,9 +160,11 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: minio
-  namespace: minio
+  namespace: flux-system
 spec:
   interval: 30m
+  releaseName: minio
+  targetNamespace: minio
   chart:
     spec:
       chart: minio
@@ -203,7 +207,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: minio-credentials
-  namespace: minio
+  namespace: flux-system
 type: Opaque
 stringData:
   rootUser: "your-secure-access-key"
@@ -214,15 +218,16 @@ Reference the secret in the HelmRelease:
 
 ```yaml
 # Inject credentials from a Secret into HelmRelease values
-valuesFrom:
-  - kind: Secret
-    name: minio-credentials
-    valuesKey: rootUser
-    targetPath: rootUser
-  - kind: Secret
-    name: minio-credentials
-    valuesKey: rootPassword
-    targetPath: rootPassword
+spec:
+  valuesFrom:
+    - kind: Secret
+      name: minio-credentials
+      valuesKey: rootUser
+      targetPath: rootUser
+    - kind: Secret
+      name: minio-credentials
+      valuesKey: rootPassword
+      targetPath: rootPassword
 ```
 
 ## Configuring Bucket Policies and Lifecycle Rules
@@ -252,7 +257,7 @@ Commit and push your manifests:
 
 ```bash
 # Commit MinIO manifests
-git add minio-helmrepository.yaml minio-helmrelease.yaml
+git add minio-helmrepository.yaml minio-helmrelease.yaml minio-secret.yaml
 git commit -m "Add MinIO HelmRelease for Flux CD deployment"
 git push origin main
 ```
@@ -261,7 +266,7 @@ Monitor the deployment:
 
 ```bash
 # Check HelmRelease status
-flux get helmreleases -n minio
+flux get helmreleases -n flux-system
 
 # Watch MinIO pods
 kubectl get pods -n minio -w
@@ -276,10 +281,13 @@ Confirm MinIO is running and accessible:
 kubectl get pods -n minio
 
 # Port-forward to access the MinIO console
-kubectl port-forward -n minio svc/minio-console 9001:9001
+kubectl port-forward -n minio svc/minio-console 9001:9001 &
 
 # Open http://localhost:9001 in your browser
 # Login with rootUser and rootPassword
+
+# Port-forward to access the MinIO API
+kubectl port-forward -n minio svc/minio 9000:9000 &
 
 # Test S3 API connectivity with the MinIO client
 mc alias set myminio http://localhost:9000 minio-admin your-password
