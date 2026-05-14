@@ -18,7 +18,7 @@ The generic chart pattern involves creating one Helm chart with highly configura
 
 - A Kubernetes cluster with Flux CD installed
 - A Git repository connected to Flux
-- A container registry or Helm chart repository to host your generic chart
+- A Git repository, Helm chart repository, or OCI registry to host your generic chart
 
 ## Creating the Generic Helm Chart
 
@@ -147,6 +147,7 @@ spec:
         name: platform-charts
         namespace: flux-system
       interval: 10m
+      reconcileStrategy: Revision
   install:
     createNamespace: true
     remediation:
@@ -212,6 +213,7 @@ spec:
         name: platform-charts
         namespace: flux-system
       interval: 10m
+      reconcileStrategy: Revision
   install:
     createNamespace: true
     remediation:
