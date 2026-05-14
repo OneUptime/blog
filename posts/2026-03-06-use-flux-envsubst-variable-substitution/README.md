@@ -114,7 +114,13 @@ metadata:
   name: ${APP_NAME}
 spec:
   replicas: ${APP_REPLICAS:=2}
+  selector:
+    matchLabels:
+      app: ${APP_NAME}
   template:
+    metadata:
+      labels:
+        app: ${APP_NAME}
     spec:
       containers:
         - name: ${APP_NAME}
@@ -147,7 +153,7 @@ metadata:
   namespace: ${MISSING_VAR}
 YAML
 
-# Output: error: variable not set: MISSING_VAR
+# Output: ✗ variable not set (strict mode): "MISSING_VAR"
 ```
 
 Strict mode is essential for CI/CD pipelines where missing variables should cause a build failure:
@@ -418,9 +424,9 @@ metadata:
   name: ${APP_NAME}
   namespace: ${APP_NAMESPACE}
   annotations:
-    kubernetes.io/ingress.class: ${INGRESS_CLASS:=nginx}
     cert-manager.io/cluster-issuer: ${CERT_ISSUER:=letsencrypt-prod}
 spec:
+  ingressClassName: ${INGRESS_CLASS:=nginx}
   tls:
     - hosts:
         - ${DOMAIN}
