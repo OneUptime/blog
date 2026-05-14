@@ -1,18 +1,18 @@
-# How to Configure HelmRelease Atomic Install in Flux
+# How to Configure HelmRelease Failure Remediation in Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Atomic Install, Rollback
+Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Remediation, Rollback
 
-Description: Learn how to configure atomic installs for Flux HelmRelease resources to ensure all-or-nothing Helm deployments with automatic rollback on failure.
+Description: Learn how to configure failure remediation for Flux HelmRelease resources to clean up failed installs and roll back failed upgrades.
 
 ---
 
-Managing Helm releases in production requires confidence that a failed deployment will not leave your cluster in a broken state. Flux CD supports atomic installs through the HelmRelease custom resource, which tells Helm to roll back automatically if any part of the installation fails. This guide walks you through configuring atomic installs, explaining when and why you should use them, and showing practical examples.
+Managing Helm releases in production requires confidence that a failed deployment will not leave your cluster in a broken state. Flux CD supports failure remediation through the HelmRelease custom resource, which can uninstall a failed install or roll back a failed upgrade. This guide walks you through configuring remediation, explaining when and why you should use it, and showing practical examples.
 
 ## What Is an Atomic Install?
 
-When Helm performs an atomic install, it treats the entire release as a single transaction. If any resource fails to deploy or any post-install hook fails, Helm automatically rolls back all changes. Without atomic mode, a partially failed release can leave dangling resources in your cluster that require manual cleanup.
+When Helm performs an atomic install with the Helm CLI, it deletes the installation on failure. Flux HelmRelease does not expose Helm's `--atomic` flag directly. Instead, Flux provides remediation settings: failed installs can be uninstalled between retries, and failed upgrades can be rolled back to the last successful release. Without remediation, a partially failed release can leave dangling resources in your cluster that require manual cleanup.
 
 ## Prerequisites
 
@@ -40,44 +40,39 @@ spec:
   url: https://charts.bitnami.com/bitnami
 ```
 
-## Configuring Atomic Install on a HelmRelease
+## Configuring Remediation on a HelmRelease
 
-The key to atomic installs lies in the `install` and `upgrade` sections of the HelmRelease spec. Here is a complete HelmRelease that deploys an NGINX chart with atomic behavior enabled.
+The key to failure remediation lies in the `install` and `upgrade` sections of the HelmRelease spec. Here is a complete HelmRelease that deploys an NGINX chart with install cleanup and upgrade rollback behavior enabled.
 
 ```yaml
-# helmrelease-atomic.yaml - HelmRelease with atomic install and upgrade enabled
+# helmrelease-remediation.yaml - HelmRelease with install and upgrade remediation enabled
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: nginx-atomic
+  name: nginx-remediated
   namespace: default
 spec:
   interval: 10m
   chart:
     spec:
       chart: nginx
-      version: "18.x"
       sourceRef:
         kind: HelmRepository
         name: bitnami
         namespace: flux-system
       interval: 10m
-  # Install configuration - atomic ensures rollback on install failure
+  # Install configuration - remediation uninstalls a failed install between retries
   install:
-    # When atomic is true, Helm will roll back the entire install if it fails
-    atomic: true
     # Timeout for the install operation
     timeout: 5m
     # Number of install retries before giving up
     remediation:
       retries: 3
-  # Upgrade configuration - atomic ensures rollback on upgrade failure
+  # Upgrade configuration - remediation rolls back on upgrade failure
   upgrade:
-    # When atomic is true, Helm will roll back to the previous release on upgrade failure
-    atomic: true
     # Timeout for the upgrade operation
     timeout: 5m
-    # Clean up custom resources on failed upgrade
+    # Clean up new resources created during a failed upgrade
     cleanupOnFail: true
     # Remediation strategy for failed upgrades
     remediation:
@@ -91,20 +86,20 @@ spec:
       type: ClusterIP
 ```
 
-## Understanding the Atomic Configuration Fields
+## Understanding the Remediation Configuration Fields
 
-The `install.atomic` field ensures that if the initial installation of the chart fails, Helm will automatically delete all resources it created. This prevents partial deployments from polluting your cluster.
+The `install.remediation.retries` field tells Flux how many install retries to attempt before giving up. With the default `RemediateOnFailure` install strategy, Flux performs an uninstall between failed install attempts. This prevents partial deployments from polluting your cluster.
 
-The `upgrade.atomic` field works similarly for upgrades. If an upgrade fails, Helm rolls back to the previous successful release version. Combined with `cleanupOnFail: true`, any new resources created during the failed upgrade are also removed.
+The `upgrade.remediation.strategy: rollback` field tells Flux to roll back to the previous successful release version when an upgrade fails. Combined with `cleanupOnFail: true`, any new resources created during the failed upgrade are also removed.
 
-The `remediation` block tells Flux how many times to retry before giving up. The `strategy: rollback` setting under `upgrade.remediation` instructs Flux to roll back to the last successful release state after exhausting all retries.
+The `remediation` block tells Flux how many times to retry before giving up. The `strategy: rollback` setting under `upgrade.remediation` instructs Flux to roll back to the last successful release state between retries and when the last retry fails.
 
-## Combining Atomic with Other Safety Features
+## Combining Remediation with Other Safety Features
 
-You can combine atomic installs with additional safety mechanisms for maximum reliability.
+You can combine remediation with additional safety mechanisms for maximum reliability.
 
 ```yaml
-# helmrelease-atomic-full.yaml - Full safety configuration with atomic, tests, and force
+# helmrelease-remediation-full.yaml - Full safety configuration with remediation and tests
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -115,24 +110,21 @@ spec:
   chart:
     spec:
       chart: nginx
-      version: "18.x"
       sourceRef:
         kind: HelmRepository
         name: bitnami
         namespace: flux-system
       interval: 10m
   install:
-    atomic: true
     timeout: 5m
     # Create the target namespace if it does not exist
     createNamespace: true
     remediation:
       retries: 3
   upgrade:
-    atomic: true
     timeout: 5m
     cleanupOnFail: true
-    # Force resource updates through delete and recreate if patch fails
+    # Keep force disabled unless replacement updates are required
     force: false
     remediation:
       retries: 3
@@ -145,8 +137,6 @@ spec:
   # Rollback configuration when remediation triggers a rollback
   rollback:
     timeout: 5m
-    # Re-create resources that were deleted during rollback
-    recreate: true
     # Clean up resources created by the failed release
     cleanupOnFail: true
   values:
@@ -155,36 +145,36 @@ spec:
       type: ClusterIP
 ```
 
-## When to Use Atomic Installs
+## When to Use Remediation
 
-Atomic installs are best suited for production environments where consistency is critical. If a chart deploys multiple interdependent resources (Deployments, Services, ConfigMaps, Secrets), a partial failure could leave the application in an inconsistent state. Atomic mode prevents this.
+Failure remediation is best suited for production environments where consistency is critical. If a chart deploys multiple interdependent resources (Deployments, Services, ConfigMaps, Secrets), a partial failure could leave the application in an inconsistent state. Remediation helps prevent this.
 
-However, atomic installs come with a trade-off: they increase deployment time on failure because Helm must perform a full rollback. In development environments where you want fast iteration and can tolerate partial failures, you may choose to leave atomic disabled.
+However, remediation comes with a trade-off: it increases deployment time on failure because Flux must perform an uninstall or rollback. In development environments where you want fast iteration and can tolerate partial failures, you may choose to keep remediation minimal.
 
-## Verifying Atomic Behavior
+## Verifying Remediation Behavior
 
 After applying your HelmRelease, check its status with the Flux CLI.
 
 ```bash
 # Check the status of the HelmRelease
-flux get helmrelease nginx-atomic
+flux get helmreleases nginx-remediated -n default
 
 # View detailed conditions and events
-kubectl describe helmrelease nginx-atomic -n default
+kubectl describe helmrelease nginx-remediated -n default
 
 # Check the Helm release history to see rollback events
-helm history nginx-atomic -n default
+helm history nginx-remediated -n default
 ```
 
-If a deployment fails and atomic is enabled, you will see a rollback event in the Helm history and a corresponding condition on the HelmRelease resource.
+If an upgrade fails and rollback remediation is enabled, you will see a rollback event in the Helm history and a corresponding condition on the HelmRelease resource. For install failures, Flux records the failure and uninstall remediation in the HelmRelease status and Kubernetes events.
 
-## Debugging Failed Atomic Installs
+## Debugging Failed Remediation
 
-When an atomic install fails and rolls back, Flux records the failure reason in the HelmRelease status conditions. Use the following commands to investigate.
+When an install or upgrade fails and remediation runs, Flux records the failure reason in the HelmRelease status conditions. Use the following commands to investigate.
 
 ```bash
 # Get detailed status including failure messages
-kubectl get helmrelease nginx-atomic -n default -o yaml
+kubectl get helmrelease nginx-remediated -n default -o yaml
 
 # Check Flux logs for the helm-controller
 kubectl logs -n flux-system deploy/helm-controller --tail=50
@@ -195,4 +185,4 @@ kubectl get events -n default --sort-by='.lastTimestamp'
 
 ## Summary
 
-Configuring atomic installs on Flux HelmRelease resources provides a robust safety net for Helm deployments. By setting `atomic: true` on both the `install` and `upgrade` sections, combined with proper remediation strategies, you ensure that failed deployments are automatically rolled back, keeping your cluster in a consistent state. This pattern is essential for production GitOps workflows where reliability and consistency are non-negotiable.
+Configuring remediation on Flux HelmRelease resources provides a robust safety net for Helm deployments. By setting install remediation retries and using `strategy: rollback` for upgrades, you ensure that failed deployments are cleaned up or rolled back, keeping your cluster in a consistent state. This pattern is essential for production GitOps workflows where reliability and consistency are non-negotiable.
