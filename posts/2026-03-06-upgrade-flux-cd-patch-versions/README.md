@@ -10,7 +10,7 @@ Description: A practical guide to upgrading Flux CD patch versions for bug fixes
 
 ## Introduction
 
-Patch version upgrades in Flux CD (for example, v2.3.0 to v2.3.1) contain bug fixes and security patches without introducing new features or breaking changes. While these upgrades are generally low-risk, following a structured process ensures a smooth and predictable update experience. This guide covers the end-to-end workflow for applying patch upgrades to your Flux CD installation.
+Patch version upgrades in Flux CD (for example, v2.8.6 to v2.8.7) contain bug fixes and security patches without introducing new features or breaking changes. While these upgrades are generally low-risk, following a structured process ensures a smooth and predictable update experience. This guide covers the end-to-end workflow for applying patch upgrades to your Flux CD installation.
 
 ## Why Patch Upgrades Matter
 
@@ -33,17 +33,17 @@ Check what patch versions are available for your current minor release.
 flux version
 
 # Example output:
-# flux: v2.3.0
-# source-controller: v1.3.0
-# kustomize-controller: v1.3.0
-# helm-controller: v1.0.0
-# notification-controller: v1.3.0
+# flux: v2.8.6
+# source-controller: v1.8.3
+# kustomize-controller: v1.8.4
+# helm-controller: v1.5.4
+# notification-controller: v1.8.4
 
 # List available releases
 gh release list --repo fluxcd/flux2 --limit 15
 
 # View the changelog for a specific patch release
-gh release view v2.3.1 --repo fluxcd/flux2
+gh release view v2.8.7 --repo fluxcd/flux2
 ```
 
 ## Step 2: Review the Patch Release Notes
@@ -52,11 +52,11 @@ Even though patch releases should not contain breaking changes, always review wh
 
 ```bash
 # Download and review the release notes
-gh release view v2.3.1 --repo fluxcd/flux2 --json body -q .body
+gh release view v2.8.7 --repo fluxcd/flux2 --json body -q .body
 
 # Check individual controller changelogs if needed
-gh release view v1.3.1 --repo fluxcd/source-controller --json body -q .body
-gh release view v1.3.1 --repo fluxcd/kustomize-controller --json body -q .body
+gh release view v1.8.4 --repo fluxcd/source-controller --json body -q .body
+gh release view v1.8.5 --repo fluxcd/kustomize-controller --json body -q .body
 ```
 
 ## Step 3: Quick Pre-Upgrade Health Check
@@ -89,14 +89,14 @@ The simplest method is using the Flux CLI to upgrade directly.
 
 ```bash
 # Preview the upgrade without applying
-flux install --version=v2.3.1 --export > patch-upgrade-preview.yaml
+flux install --version=v2.8.7 --export > patch-upgrade-preview.yaml
 
 # Review the differences
 # The diff should only show image tag changes
 kubectl diff -f patch-upgrade-preview.yaml
 
 # Apply the patch upgrade
-flux install --version=v2.3.1
+flux install --version=v2.8.7
 
 # Verify the upgrade was successful
 flux check
@@ -109,7 +109,7 @@ If you manage Flux via GitOps, update the component manifests in your repository
 
 ```bash
 # Generate updated component manifests for the patch version
-flux install --version=v2.3.1 --export \
+flux install --version=v2.8.7 --export \
   > clusters/production/flux-system/gotk-components.yaml
 
 # Check what changed
@@ -121,24 +121,24 @@ git diff clusters/production/flux-system/gotk-components.yaml
 # Example of what changes in a patch upgrade:
 #
 # Before:
-#   image: ghcr.io/fluxcd/source-controller:v1.3.0
+#   image: ghcr.io/fluxcd/source-controller:v1.8.3
 # After:
-#   image: ghcr.io/fluxcd/source-controller:v1.3.1
+#   image: ghcr.io/fluxcd/source-controller:v1.8.4
 ```
 
 ```bash
 # Commit and push the patch upgrade
 git add clusters/production/flux-system/gotk-components.yaml
-git commit -m "Upgrade Flux CD to v2.3.1 (patch release)"
+git commit -m "Upgrade Flux CD to v2.8.7 (patch release)"
 git push origin main
 
 # Watch the reconciliation
 flux get kustomization flux-system -w
 ```
 
-### Method C: Automated Patch Upgrades with Image Automation
+### Method C: Track Patch Updates with Image Automation
 
-You can configure Flux to automatically upgrade its own controller images for patch releases.
+You can configure Flux to identify newer controller images for patch releases, then apply the selected image tags deliberately in your GitOps manifests.
 
 ```yaml
 # image-repo-source-controller.yaml
@@ -165,9 +165,9 @@ spec:
   policy:
     semver:
       # Only match patch updates for the current minor version
-      range: ">=1.3.0 <1.4.0"
+      range: ">=1.8.3 <1.9.0"
 ---
-# Repeat for each controller you want to auto-update
+# Repeat for each controller you want to track
 # image-repo-kustomize-controller.yaml
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
@@ -188,7 +188,7 @@ spec:
     name: kustomize-controller
   policy:
     semver:
-      range: ">=1.3.0 <1.4.0"
+      range: ">=1.8.4 <1.9.0"
 ```
 
 ## Step 5: Verify the Patch Upgrade
@@ -256,12 +256,12 @@ kubectl get events -n flux-system --field-selector type=Warning
 
 ## Automating Patch Upgrade Notifications
 
-Set up notifications to be alerted when new patch versions are available.
+Set up notifications to be alerted when Flux applies controller updates.
 
 ```yaml
 # patch-update-alert.yaml
 # Alert when Flux controllers are updated
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: flux-patch-updates
@@ -276,7 +276,7 @@ spec:
   providerRef:
     name: slack-provider
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-provider
@@ -305,16 +305,16 @@ graph LR
 
 ```bash
 # Upgrade dev cluster first
-KUBECONFIG=~/.kube/dev flux install --version=v2.3.1
-flux check
+KUBECONFIG=~/.kube/dev flux install --version=v2.8.7
+KUBECONFIG=~/.kube/dev flux check
 
 # After verification, upgrade staging
-KUBECONFIG=~/.kube/staging flux install --version=v2.3.1
-flux check
+KUBECONFIG=~/.kube/staging flux install --version=v2.8.7
+KUBECONFIG=~/.kube/staging flux check
 
 # Finally, upgrade production
-KUBECONFIG=~/.kube/production flux install --version=v2.3.1
-flux check
+KUBECONFIG=~/.kube/production flux install --version=v2.8.7
+KUBECONFIG=~/.kube/production flux check
 ```
 
 ## Patch Upgrade Checklist
@@ -357,4 +357,4 @@ kubectl get events -n flux-system --field-selector reason=Failed
 
 ## Conclusion
 
-Patch version upgrades for Flux CD are straightforward and low-risk operations that keep your GitOps platform secure and stable. By following a simple verification process and rolling out changes incrementally across environments, you can maintain confidence in your upgrade process. Consider automating patch upgrades using Flux image automation to reduce manual overhead and stay current with the latest fixes.
+Patch version upgrades for Flux CD are straightforward and low-risk operations that keep your GitOps platform secure and stable. By following a simple verification process and rolling out changes incrementally across environments, you can maintain confidence in your upgrade process. Consider tracking patch updates using Flux image automation to reduce manual overhead and stay current with the latest fixes.
