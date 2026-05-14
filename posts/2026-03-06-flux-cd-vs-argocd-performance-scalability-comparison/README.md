@@ -47,15 +47,15 @@ The Application Controller is the primary bottleneck for scalability, as it hand
 | Minimum Memory (idle) | ~200 MB (all controllers) | ~500 MB (all components) |
 | Memory per 100 apps | ~50-100 MB additional | ~200-400 MB additional |
 | CPU per 100 apps | ~0.1-0.2 cores | ~0.2-0.5 cores |
-| Reconciliation Model | Per-resource intervals | Global sync with per-app override |
-| Default Reconciliation | 10 minutes | 3 minutes |
-| Git Polling | Per GitRepository | Global or per-app |
+| Reconciliation Model | Per-resource intervals | Global polling interval with manual/webhook refreshes |
+| Default Reconciliation | No fixed default; intervals are set per resource | 120s plus up to 60s jitter |
+| Git Polling | Per GitRepository | Global `timeout.reconciliation` setting |
 | Manifest Caching | Source controller cache | Redis + repo server cache |
 | Concurrent Reconciliations | Configurable per controller | Configurable (status/operation processors) |
 | UI Overhead | None (no built-in UI) | Significant (API server + Redis) |
-| Database Requirement | None (CRDs only) | Redis (required for caching) |
+| Database Requirement | None (CRDs only) | Redis cache (disposable, not source of truth) |
 | Webhook Support | Yes (reduces polling) | Yes (reduces polling) |
-| Horizontal Scaling | Sharding by namespace/label | Sharding by cluster |
+| Horizontal Scaling | Sharding by label | Sharding by cluster |
 | Multi-cluster Model | Per-cluster installation | Centralized hub |
 
 Resource Configuration
@@ -135,10 +135,45 @@ patches:
 ### ArgoCD: Component Resource Tuning
 
 ```yaml
-# ArgoCD resource configuration via Helm values
-# or direct manifest patches
+# ArgoCD resource configuration via argocd-cmd-params-cm,
+# argocd-cm, Helm values, or direct manifest patches
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cmd-params-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # Number of application reconciliation workers
+  controller.status.processors: "50"
+  # Number of application sync workers
+  controller.operation.processors: "25"
+  # Increase kubectl parallelism
+  controller.kubectl.parallelism.limit: "40"
+  # Reduce self-heal timeout for faster drift remediation
+  controller.self.heal.timeout.seconds: "2"
+  # Increase repo-server RPC timeout for large manifest generation
+  controller.repo.server.timeout.seconds: "180"
+  # Increase repo-server manifest generation parallelism
+  reposerver.parallelism.limit: "10"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # Git polling interval plus jitter
+  timeout.reconciliation: 120s
+  timeout.reconciliation.jitter: 60s
+---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: argocd-application-controller
   namespace: argocd
@@ -154,19 +189,6 @@ spec:
             requests:
               cpu: "1"
               memory: 2Gi
-          env:
-            # Number of application reconciliation workers
-            - name: ARGOCD_CONTROLLER_STATUS_PROCESSORS
-              value: "50"
-            # Number of application sync workers
-            - name: ARGOCD_CONTROLLER_OPERATION_PROCESSORS
-              value: "25"
-            # Increase kubectl parallelism
-            - name: ARGOCD_CONTROLLER_KUBECTL_PARALLELISM_LIMIT
-              value: "40"
-            # Reduce self-heal timeout for faster drift detection
-            - name: ARGOCD_RECONCILIATION_TIMEOUT
-              value: "180s"
 ---
 # Repo server scaling
 apiVersion: apps/v1
@@ -188,10 +210,6 @@ spec:
             requests:
               cpu: 500m
               memory: 1Gi
-          env:
-            # Increase parallelism limit
-            - name: ARGOCD_EXEC_TIMEOUT
-              value: "180s"
 ---
 # Redis scaling for caching
 apiVersion: apps/v1
@@ -235,6 +253,10 @@ spec:
   sourceRef:
     kind: GitRepository
     name: fleet-repo
+  # KubeConfig for applying and health-checking on the remote cluster
+  kubeConfig:
+    secretRef:
+      name: staging-kubeconfig
   # Health checks for the remote cluster's resources
   healthChecks:
     - apiVersion: apps/v1
@@ -278,6 +300,7 @@ metadata:
   namespace: argocd
   labels:
     argocd.argoproj.io/secret-type: cluster
+    env: production
 stringData:
   # Cluster display name
   name: staging
@@ -326,7 +349,7 @@ spec:
 ### Flux CD: Horizontal Sharding
 
 ```yaml
-# Shard Flux controllers by namespace or label
+# Shard Flux controllers by label
 # Controller deployment with sharding arguments
 apiVersion: apps/v1
 kind: Deployment
@@ -388,12 +411,12 @@ spec:
       containers:
         - name: argocd-application-controller
           env:
-            # Enable dynamic cluster distribution
+            # Declare the expected controller shard count
             - name: ARGOCD_CONTROLLER_REPLICAS
               value: "3"
-            # Sharding algorithm: legacy or round-robin
+            # Sharding algorithm: legacy, round-robin, or consistent-hashing
             - name: ARGOCD_CONTROLLER_SHARDING_ALGORITHM
-              value: round-robin
+              value: consistent-hashing
           resources:
             limits:
               cpu: "2"
@@ -455,7 +478,7 @@ spec:
   retryInterval: 2m
 ```
 
-### ArgoCD: Sync Window and Refresh Tuning
+### ArgoCD: Sync Window and Refresh Requests
 
 ```yaml
 # Configure sync windows to control when syncs occur
@@ -481,14 +504,14 @@ spec:
       applications:
         - "*"
 ---
-# Application-level refresh interval
+# Request a one-time hard refresh for an application
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: my-app
   namespace: argocd
   annotations:
-    # Custom refresh interval for this application
+    # ArgoCD removes this after processing the refresh
     argocd.argoproj.io/refresh: "hard"
 spec:
   project: production
@@ -532,7 +555,7 @@ When evaluating performance, consider the following scenarios:
 - You prefer a decentralized multi-cluster model where each cluster is self-managing
 - You want fine-grained control over reconciliation intervals per resource
 - You need to minimize resource overhead (no Redis, no UI server)
-- You want to shard workloads by namespace or label
+- You want to shard workloads by label
 - You prefer independent controller scaling per function (source, kustomize, helm)
 - You run clusters in air-gapped or edge environments
 
