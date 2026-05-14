@@ -28,7 +28,7 @@ Octopus Deploy works well for multi-platform deployments but can feel heavyweigh
 | Environment | Cluster path or namespace Kustomization |
 | Deployment Process (Steps) | Kustomization dependency chain |
 | Channels | Kustomization per release channel |
-| Lifecycle | Kustomization dependencies across clusters |
+| Lifecycle | Git promotion between cluster paths |
 | Variables / Variable Sets | ConfigMaps, Secrets, Kustomize patches |
 | Feeds (Docker, Helm) | HelmRepository, ImageRepository |
 | Runbooks | Kubernetes Jobs via Kustomization |
@@ -142,8 +142,8 @@ configMapGenerator:
     literals:
       - log-level=debug
       - feature-flag-new-ui=true
-patchesStrategicMerge:
-  - deployment-patch.yaml
+patches:
+  - path: deployment-patch.yaml
 ```
 
 ```yaml
@@ -180,8 +180,8 @@ configMapGenerator:
     literals:
       - log-level=warn
       - feature-flag-new-ui=false
-patchesStrategicMerge:
-  - deployment-patch.yaml
+patches:
+  - path: deployment-patch.yaml
 ```
 
 ## Step 4: Bootstrap Flux and Create Source Resources
@@ -229,11 +229,11 @@ spec:
   interval: 5m
   path: ./apps/web-api/overlays/production
   prune: true
+  targetNamespace: production
   sourceRef:
     kind: GitRepository
     name: app-manifests
   # Health checks replacing Octopus deployment verification
-  wait: true
   timeout: 10m
   healthChecks:
     - apiVersion: apps/v1
@@ -242,9 +242,9 @@ spec:
       namespace: production
 ```
 
-## Step 6: Translate Octopus Lifecycles to Dependencies
+## Step 6: Translate Octopus Lifecycles to Git Promotion
 
-Octopus lifecycles enforce deployment order across environments. Flux CD uses Kustomization dependencies.
+Octopus lifecycles enforce deployment order across environments. Flux CD can use Kustomization dependencies for ordering resources within a cluster, while staging-before-production promotion is usually modeled through Git branches or paths.
 
 ```yaml
 # clusters/staging/apps/web-api.yaml
@@ -257,6 +257,7 @@ spec:
   interval: 5m
   path: ./apps/web-api/overlays/staging
   prune: true
+  targetNamespace: staging
   sourceRef:
     kind: GitRepository
     name: app-manifests
@@ -346,8 +347,8 @@ Octopus Runbooks for operational tasks become Kubernetes Jobs managed by Flux.
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: db-cleanup
-  # Use generateName-like behavior with annotations for reruns
+  name: db-cleanup-20260306
+  # Use a unique Job name for each rerun
   annotations:
     fluxcd.io/description: "Database cleanup job replacing Octopus runbook"
 spec:
@@ -381,7 +382,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: app-manifests
-  # Force apply to rerun the job
+  # Allows Flux to recreate the Job when an immutable field changes
   force: true
 ```
 
@@ -426,7 +427,7 @@ Replace Octopus deployment notifications with Flux alerts.
 
 ```yaml
 # clusters/production/notifications/teams-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: teams
@@ -437,7 +438,7 @@ spec:
   secretRef:
     name: teams-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-status
@@ -458,4 +459,4 @@ spec:
 
 ## Summary
 
-Migrating from Octopus Deploy to Flux CD requires mapping Octopus projects to Kustomizations or HelmReleases, translating environment-scoped variables to Kustomize overlays, converting lifecycles to dependency chains, replacing Helm deploy steps with HelmRelease resources, and modeling runbooks as Kubernetes Jobs. Migrate one project at a time, running Octopus and Flux in parallel until each service is verified under Flux management.
+Migrating from Octopus Deploy to Flux CD requires mapping Octopus projects to Kustomizations or HelmReleases, translating environment-scoped variables to Kustomize overlays, converting lifecycles to Git-based promotion, replacing Helm deploy steps with HelmRelease resources, and modeling runbooks as Kubernetes Jobs. Migrate one project at a time, running Octopus and Flux in parallel until each service is verified under Flux management.
