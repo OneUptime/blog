@@ -117,12 +117,12 @@ flux reconcile source git fleet-infra
 flux reconcile kustomization production-apps --with-source
 ```
 
-## Automated Rollback with Health Checks
+## Automated Failure Detection with Health Checks
 
-Configure Flux Kustomizations with health checks that trigger automatic remediation.
+Configure Flux Kustomizations with health checks that detect failed rollouts for remediation.
 
 ```yaml
-# Kustomization with health-check-based rollback
+# Kustomization with health-check-based failure detection
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -135,7 +135,6 @@ spec:
     name: fleet-infra
   path: ./apps/production
   prune: true
-  wait: true
   # Health checks that must pass
   healthChecks:
     - apiVersion: apps/v1
@@ -191,8 +190,7 @@ spec:
         thresholdRange:
           max: 500
         interval: 1m
-    # Custom metrics from Prometheus
-    metrics:
+      # Custom metric from Prometheus
       - name: error-rate
         templateRef:
           name: error-rate
@@ -236,7 +234,7 @@ Get immediately notified when a rollback occurs.
 
 ```yaml
 # Notification provider
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-rollbacks
@@ -244,11 +242,12 @@ metadata:
 spec:
   type: slack
   channel: production-alerts
+  address: https://slack.com/api/chat.postMessage
   secretRef:
-    name: slack-webhook
+    name: slack-token
 ---
 # Alert on rollback events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: rollback-alerts
@@ -289,7 +288,7 @@ cd "$REPO_PATH"
 git pull origin main
 
 # Verify the commit exists and affects production
-if ! git log --oneline "$COMMIT" -- apps/production/ | head -1; then
+if ! git diff-tree --no-commit-id --name-only -r "$COMMIT" -- apps/production/ | grep -q .; then
   echo "ERROR: Commit $COMMIT does not affect production apps"
   exit 1
 fi
@@ -313,7 +312,7 @@ flux reconcile kustomization production-apps --with-source
 
 # Wait for reconciliation
 echo "Waiting for reconciliation..."
-flux get kustomization production-apps
+flux get kustomizations production-apps
 
 echo ""
 echo "=== Rollback Complete ==="
@@ -381,11 +380,11 @@ Regularly test your rollback procedures to ensure they work.
 
 # Trigger a test rollback in staging
 flux suspend kustomization staging-apps
-# Deploy the bad version manually for testing
+# Commit and push the bad version while reconciliation is suspended
 flux resume kustomization staging-apps
 
 # Verify health checks fail
-flux get kustomization staging-apps
+flux get kustomizations staging-apps
 
 # Execute rollback
 git revert HEAD --no-edit
