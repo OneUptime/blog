@@ -36,11 +36,11 @@ Understand the complete networking control flow sequence:
 # /var/run/cilium/cilium.sock
 
 # Step 3: Agent allocates IP from IPAM pool
-kubectl -n kube-system exec ds/cilium -- cilium ip list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg ip list
 
-# Step 4: Agent creates veth pair and configures pod namespace
+# Step 4: CNI/agent configures the pod namespace and veth pair
 # (View veth pairs on node)
-kubectl debug node/<node-name> -it --image=ubuntu -- \
+kubectl debug node/<node-name> -it --image=nicolaka/netshoot -- \
   ip link show | grep "^[0-9]*: lxc"
 
 # Step 5: Agent creates CiliumEndpoint
@@ -51,23 +51,26 @@ kubectl get ciliumidentities | head -10
 
 # Step 7: Agent programs eBPF maps for this endpoint
 kubectl -n kube-system exec ds/cilium -- \
-  cilium bpf policy get <endpoint-id>
+  cilium-dbg bpf policy get <endpoint-id>
 
 # Configure logging to trace the control flow
-kubectl -n kube-system exec ds/cilium -- \
-  cilium config set debug-verbose kvstore
+helm upgrade cilium cilium/cilium \
+  --namespace kube-system \
+  --reuse-values \
+  --set debug.enabled=true \
+  --set debug.verbose=kvstore
 ```
 
 Configure network control flow optimization:
 
 ```bash
-# Optimize endpoint regeneration for faster control flow
+# Configure endpoint garbage collection interval
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
   --set operator.endpointGCInterval=5m
 
-# Configure BPF host routing for faster intra-node packet path
+# Configure BPF host routing for a faster native-routing packet path
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
@@ -112,21 +115,24 @@ Trace a specific pod's control flow:
 
 ```bash
 # Watch all control flow events for a new pod in real-time
-kubectl -n kube-system exec ds/cilium -- \
-  cilium monitor --type endpoint &
+kubectl get ciliumendpoints -A --watch &
 
 # Create a test pod
 kubectl run control-flow-test --image=nginx --restart=Never
+kubectl wait pod/control-flow-test --for=condition=Ready --timeout=60s
+NODE=$(kubectl get pod control-flow-test -o jsonpath='{.spec.nodeName}')
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
+  --field-selector spec.nodeName=$NODE \
+  -o jsonpath='{.items[0].metadata.name}')
 
 # View endpoint creation event
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list | grep control-flow-test
+kubectl get cep control-flow-test -o wide
 
 # Check endpoint log for control flow details
-EP_ID=$(kubectl -n kube-system exec ds/cilium -- cilium endpoint list | \
+EP_ID=$(kubectl -n kube-system exec $CILIUM_POD -- cilium-dbg endpoint list | \
   grep $(kubectl get pod control-flow-test -o jsonpath='{.status.podIP}') | \
   awk '{print $1}')
-kubectl -n kube-system exec ds/cilium -- cilium endpoint get $EP_ID | \
-  jq '.status.log[-10:]'
+kubectl -n kube-system exec $CILIUM_POD -- cilium-dbg endpoint log $EP_ID | tail -10
 ```
 
 ## Validate Complete Control Flow
@@ -143,6 +149,9 @@ kubectl wait pod/cf-test --for=condition=Ready --timeout=60s
 
 POD_IP=$(kubectl get pod cf-test -o jsonpath='{.status.podIP}')
 NODE=$(kubectl get pod cf-test -o jsonpath='{.spec.nodeName}')
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
+  --field-selector spec.nodeName=$NODE \
+  -o jsonpath='{.items[0].metadata.name}')
 
 echo "Pod IP: $POD_IP on node $NODE"
 
@@ -152,17 +161,17 @@ kubectl get ciliumnode $NODE -o json | \
   jq ".status.ipam.used[\"$POD_IP\"] // \"NOT FOUND\""
 
 echo "Stage 5 - Endpoint created:"
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list | grep $POD_IP
+kubectl -n kube-system exec $CILIUM_POD -- cilium-dbg endpoint list | grep $POD_IP
 
 echo "Stage 6 - Identity assigned:"
-EP_ID=$(kubectl -n kube-system exec ds/cilium -- cilium endpoint list | \
+EP_ID=$(kubectl -n kube-system exec $CILIUM_POD -- cilium-dbg endpoint list | \
   grep $POD_IP | awk '{print $1}')
-kubectl -n kube-system exec ds/cilium -- cilium endpoint get $EP_ID | \
+kubectl -n kube-system exec $CILIUM_POD -- cilium-dbg endpoint get $EP_ID | \
   jq '.status.identity.id'
 
 echo "Stage 7 - eBPF programmed:"
-kubectl -n kube-system exec ds/cilium -- \
-  cilium endpoint list | grep $POD_IP | grep "ready"
+kubectl -n kube-system exec $CILIUM_POD -- \
+  cilium-dbg endpoint list | grep $POD_IP | grep "ready"
 
 # Final connectivity test
 kubectl exec cf-test -- curl -s -o /dev/null -w "%{http_code}" \
@@ -182,7 +191,7 @@ sequenceDiagram
     K->>CNI: ADD (container-id, netns)
     CNI->>CA: Allocate IP request
     CA->>CA: IPAM: allocate IP
-    CA->>BPF: Create veth pair
+    CNI->>BPF: Configure pod namespace and veth pair
     CA->>K8s: Create CiliumEndpoint
     CA->>CA: Compute security identity
     CA->>BPF: Program eBPF maps + programs
@@ -211,4 +220,4 @@ watch -n10 "kubectl get pods -A | grep ContainerCreating"
 
 ## Conclusion
 
-Cilium's container networking control flow is a well-defined sequence from kubelet CNI invocation through eBPF program installation. Each stage has a clear error signature that enables rapid root cause identification. The key insight for troubleshooting is that stages are sequential - if Stage 2 (socket connectivity) fails, Stages 3-7 cannot proceed. The `cilium monitor --type endpoint` command provides real-time visibility into control flow events. Monitoring endpoint regeneration time gives an end-to-end measure of control flow performance, with latency spikes indicating bottlenecks in IPAM allocation, identity computation, or eBPF compilation.
+Cilium's container networking control flow is a well-defined sequence from kubelet CNI invocation through eBPF program installation. Each stage has a clear error signature that enables rapid root cause identification. The key insight for troubleshooting is that stages are sequential - if Stage 2 (socket connectivity) fails, Stages 3-7 cannot proceed. Watching `CiliumEndpoint` resources and checking `cilium-dbg endpoint log <endpoint-id>` provides visibility into endpoint creation and regeneration events. Monitoring endpoint regeneration time gives an end-to-end measure of control flow performance, with latency spikes indicating bottlenecks in IPAM allocation, identity computation, or eBPF compilation.
