@@ -73,13 +73,13 @@ spec:
         name: openfaas
         namespace: flux-system
   values:
-    # Enable scale-to-zero functionality
-    faasIdler:
+    # Required for the Function CRD operator and autoscaler
+    openfaasPro: true
+    autoscaler:
       enabled: true
-      # Scale to zero after 5 minutes of inactivity
-      inactivityDuration: 5m
     gateway:
       replicas: 2
+      scaleFromZero: true
       # Enable direct invocation for lower latency
       directFunctions: true
     operator:
@@ -105,9 +105,11 @@ spec:
   image: ghcr.io/myorg/image-processor:v1.2.0
   # Scale based on demand
   labels:
-    com.openfaas.scale.min: "0"
+    com.openfaas.scale.min: "1"
     com.openfaas.scale.max: "20"
     com.openfaas.scale.zero: "true"
+    # Scale to zero after 5 minutes of inactivity
+    com.openfaas.scale.zero-duration: "5m"
     com.openfaas.scale.target: "50"
     com.openfaas.scale.type: "capacity"
   environment:
@@ -289,7 +291,7 @@ spec:
         name: kafka-auth
 ```
 
-## KEDA with HTTP Trigger for Scale-to-Zero HTTP Services
+## KEDA with Prometheus Trigger for HTTP Metrics
 
 ```yaml
 # apps/serverless/keda/http-service.yaml
@@ -306,7 +308,7 @@ spec:
   triggers:
     - type: prometheus
       metadata:
-        # Scale based on HTTP request rate from Prometheus
+        # Scale based on HTTP request rate metrics from Prometheus
         serverAddress: http://prometheus.monitoring:9090
         query: sum(rate(http_requests_total{service="http-service"}[2m]))
         threshold: "100"
@@ -343,7 +345,7 @@ spec:
   pollingInterval: 30
   # Maximum concurrent jobs
   maxReplicaCount: 10
-  # Minimum time a job runs before being considered for cleanup
+  # Number of completed and failed jobs to retain
   successfulJobsHistoryLimit: 5
   failedJobsHistoryLimit: 3
   triggers:
@@ -363,6 +365,20 @@ spec:
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
+  name: serverless-infrastructure
+  namespace: flux-system
+spec:
+  interval: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/serverless
+  prune: true
+  wait: true
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
   name: serverless-apps
   namespace: flux-system
 spec:
@@ -374,8 +390,7 @@ spec:
   prune: true
   wait: true
   dependsOn:
-    - name: keda
-    - name: openfaas
+    - name: serverless-infrastructure
 ```
 
 ## Monitoring Serverless Workloads
