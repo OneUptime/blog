@@ -8,13 +8,14 @@ Description: Learn how to use the flux diff command to preview changes before th
 
 ---
 
-Before deploying changes to a production Kubernetes cluster, you want to know exactly what will change. The `flux diff` command compares your local Kustomization output against what is currently running in the cluster, giving you a precise preview of every change before it takes effect.
+Before deploying changes to a production Kubernetes cluster, you want to know exactly what will change. The `flux diff` command builds your local Kustomization output, performs a server-side dry-run against the cluster, and prints the resulting diff, giving you a precise preview of every change before it takes effect.
 
 ## Prerequisites
 
 - A running Kubernetes cluster with Flux CD installed
-- Flux CLI v2.0 or later
+- Flux CLI v2.3 or later
 - kubectl configured to access your cluster
+- yq v4 or later for the shell scripts and GitHub Actions examples
 - A Flux CD Git repository with existing deployments
 
 ## Understanding flux diff
@@ -22,8 +23,8 @@ Before deploying changes to a production Kubernetes cluster, you want to know ex
 The `flux diff` command works by:
 
 1. Building your local Kustomization manifests (same as `flux build`)
-2. Fetching the current live state from the cluster
-3. Computing and displaying the differences
+2. Performing a server-side dry-run against the cluster
+3. Computing and displaying the differences returned by the API server
 
 This gives you a clear picture of what will change when Flux reconciles.
 
@@ -199,6 +200,7 @@ jobs:
   diff-preview:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pull-requests: write
     steps:
       - name: Checkout PR branch
@@ -206,6 +208,11 @@ jobs:
 
       - name: Install Flux CLI
         uses: fluxcd/flux2/action@main
+
+      - name: Install yq
+        run: |
+          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
 
       - name: Configure kubectl
         uses: azure/setup-kubectl@v3
@@ -220,8 +227,8 @@ jobs:
         id: diff
         run: |
           export KUBECONFIG=/tmp/kubeconfig
-          DIFF_OUTPUT=""
           HAS_CHANGES=false
+          : > /tmp/diff-output.md
 
           # Process each Kustomization file
           for ks_file in clusters/production/*.yaml; do
@@ -235,21 +242,27 @@ jobs:
             echo "Running diff for $name..."
 
             # Capture the diff output
-            RESULT=$(flux diff kustomization "$name" \
-              --path ".${path}" \
-              --kustomization-file "$ks_file" 2>&1) || true
-
-            if [ -n "$RESULT" ]; then
-              HAS_CHANGES=true
-              DIFF_OUTPUT="${DIFF_OUTPUT}\n### Changes for \`${name}\`\n```diff\n${RESULT}\n```\n"
+            if RESULT=$(flux diff kustomization "$name" \
+              --path "$path" \
+              --kustomization-file "$ks_file" 2>&1); then
+              printf '\n### `%s`: No changes\n' "$name" >> /tmp/diff-output.md
             else
-              DIFF_OUTPUT="${DIFF_OUTPUT}\n### \`${name}\`: No changes\n"
+              status=$?
+              if [ "$status" -ne 1 ]; then
+                echo "$RESULT"
+                exit "$status"
+              fi
+              HAS_CHANGES=true
+              {
+                printf '\n### Changes for `%s`\n```diff\n' "$name"
+                printf '%s\n' "$RESULT"
+                printf '```\n'
+              } >> /tmp/diff-output.md
             fi
           done
 
           # Write output for the comment step
           echo "has_changes=$HAS_CHANGES" >> "$GITHUB_OUTPUT"
-          echo "$DIFF_OUTPUT" > /tmp/diff-output.md
 
       - name: Comment PR with diff results
         uses: actions/github-script@v7
@@ -355,15 +368,18 @@ for ks_file in "$REPO_ROOT/clusters/$CLUSTER"/*.yaml; do
   echo "--- Kustomization: $NAME ---"
 
   # Run the diff
-  DIFF_RESULT=$(flux diff kustomization "$NAME" \
+  if DIFF_RESULT=$(flux diff kustomization "$NAME" \
     --path "$REPO_ROOT/${PATH_FIELD#./}" \
-    --kustomization-file "$ks_file" 2>&1) || true
-
-  if [ -n "$DIFF_RESULT" ]; then
+    --kustomization-file "$ks_file" 2>&1); then
+    echo "No changes detected"
+  else
+    status=$?
+    if [ "$status" -ne 1 ]; then
+      echo "$DIFF_RESULT"
+      exit "$status"
+    fi
     echo "$DIFF_RESULT"
     TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
-  else
-    echo "No changes detected"
   fi
 done
 
@@ -391,16 +407,26 @@ set -euo pipefail
 CLUSTER=${1:-production}
 
 for ks_file in clusters/$CLUSTER/*.yaml; do
+  [ -f "$ks_file" ] || continue
+
   NAME=$(yq '.metadata.name' "$ks_file" 2>/dev/null)
   PATH_FIELD=$(yq '.spec.path' "$ks_file" 2>/dev/null)
 
   [ "$NAME" = "null" ] || [ "$PATH_FIELD" = "null" ] && continue
 
   # Build and filter for Deployments only
-  flux diff kustomization "$NAME" \
-    --path ".${PATH_FIELD}" \
-    --kustomization-file "$ks_file" 2>&1 | \
-    grep -A 20 "kind: Deployment" || true
+  if DIFF_RESULT=$(flux diff kustomization "$NAME" \
+    --path "$PATH_FIELD" \
+    --kustomization-file "$ks_file" 2>&1); then
+    continue
+  else
+    status=$?
+    if [ "$status" -ne 1 ]; then
+      echo "$DIFF_RESULT"
+      exit "$status"
+    fi
+    echo "$DIFF_RESULT" | grep -A 20 "kind: Deployment" || true
+  fi
 done
 ```
 
@@ -435,16 +461,19 @@ jobs:
           export KUBECONFIG=/tmp/kubeconfig
           echo "${{ secrets.KUBECONFIG }}" | base64 -d > /tmp/kubeconfig
 
-          CHANGES=$(flux diff kustomization infrastructure \
+          if CHANGES=$(flux diff kustomization infrastructure \
             --path ./infrastructure/overlays/production \
-            --kustomization-file ./clusters/production/infrastructure.yaml 2>&1) || true
-
-          if [ -n "$CHANGES" ]; then
+            --kustomization-file ./clusters/production/infrastructure.yaml 2>&1); then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            status=$?
+            if [ "$status" -ne 1 ]; then
+              echo "$CHANGES"
+              exit "$status"
+            fi
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
             echo "Changes detected:"
             echo "$CHANGES"
-          else
-            echo "has_changes=false" >> "$GITHUB_OUTPUT"
           fi
 
   approve:
