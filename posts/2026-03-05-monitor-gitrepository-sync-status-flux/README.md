@@ -26,7 +26,7 @@ The Flux CLI provides the quickest way to check the status of all GitRepository 
 ```bash
 # List all GitRepository sources across all namespaces
 
-flux get source git -A
+flux get sources git -A
 ```
 
 Sample output:
@@ -42,14 +42,14 @@ Filter for sources that are not ready.
 
 ```bash
 # Show only GitRepository sources that are not ready
-flux get source git -A --status-selector ready=false
+flux get sources git -A --status-selector ready=false
 ```
 
 Watch for real-time status changes.
 
 ```bash
 # Watch GitRepository status updates in real time
-flux get source git -A --watch
+flux get sources git -A --watch
 ```
 
 ## Step 2: Monitor with kubectl
@@ -62,12 +62,12 @@ kubectl get gitrepositories -A -o custom-columns=\
 'NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,MESSAGE:.status.conditions[?(@.type=="Ready")].message,REVISION:.status.artifact.revision'
 ```
 
-Check the last reconciliation time to detect stale sources.
+Check the last artifact update time to detect stale sources.
 
 ```bash
-# Show last reconciliation time for all GitRepository sources
+# Show last artifact update time for all GitRepository sources
 kubectl get gitrepositories -A -o custom-columns=\
-'NAMESPACE:.metadata.namespace,NAME:.metadata.name,LAST_RECONCILED:.status.conditions[?(@.type=="Ready")].lastTransitionTime'
+'NAMESPACE:.metadata.namespace,NAME:.metadata.name,LAST_ARTIFACT_UPDATE:.status.artifact.lastUpdateTime'
 ```
 
 ## Step 3: Monitor with Kubernetes Events
@@ -97,7 +97,7 @@ The Flux notification controller can send alerts to external systems when GitRep
 ```yaml
 # slack-provider.yaml
 # Notification provider for sending alerts to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -122,7 +122,7 @@ stringData:
 ```yaml
 # gitrepository-alert.yaml
 # Alert configuration for GitRepository status changes
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: gitrepository-alerts
@@ -147,7 +147,7 @@ To receive notifications for all severity levels (including successful reconcili
 
 ## Step 5: Monitor with Prometheus Metrics
 
-Flux exposes Prometheus metrics for all its controllers. The source controller provides metrics about GitRepository reconciliation.
+Flux exposes Prometheus metrics for all its controllers. The source controller provides metrics about reconciliation duration, and kube-state-metrics can expose GitRepository readiness and suspension state.
 
 First, ensure the source controller has metrics enabled and a ServiceMonitor is configured.
 
@@ -171,14 +171,16 @@ spec:
 Key Flux metrics for GitRepository monitoring:
 
 ```bash
-# GitRepository reconciliation condition (1 = condition is true)
-# gotk_reconcile_condition{kind="GitRepository", name="my-app", type="Ready", status="True"}
+# GitRepository state from kube-state-metrics (1 = resource exists with these labels)
+# gotk_resource_info{customresource_kind="GitRepository", name="my-app", ready="True", suspended="False"}
 
-# Reconciliation duration in seconds
-# gotk_reconcile_duration_seconds{kind="GitRepository", name="my-app"}
+# Reconciliation duration histogram from Flux controllers
+# gotk_reconcile_duration_seconds_bucket{kind="GitRepository", name="my-app"}
+# gotk_reconcile_duration_seconds_sum{kind="GitRepository", name="my-app"}
+# gotk_reconcile_duration_seconds_count{kind="GitRepository", name="my-app"}
 
-# Suspension status (1 = suspended)
-# gotk_suspend_status{kind="GitRepository", name="my-app"}
+# Suspension status from kube-state-metrics
+# gotk_resource_info{customresource_kind="GitRepository", name="my-app", suspended="True"}
 ```
 
 ## Step 6: Create Prometheus Alerting Rules
@@ -200,29 +202,29 @@ spec:
     # Alert when a GitRepository is not ready for more than 15 minutes
     - alert: GitRepositoryNotReady
       expr: |
-        gotk_reconcile_condition{kind="GitRepository", type="Ready", status="False"} == 1
+        gotk_resource_info{customresource_kind="GitRepository", ready!="True"} == 1
       for: 15m
       labels:
         severity: critical
       annotations:
-        summary: "GitRepository {{ $labels.name }} in {{ $labels.namespace }} is not ready"
+        summary: "GitRepository {{ $labels.name }} in {{ $labels.exported_namespace }} is not ready"
         description: "The GitRepository has been in a not ready state for more than 15 minutes."
 
-    # Alert when a GitRepository has not been reconciled recently
-    - alert: GitRepositoryStaleArtifact
+    # Alert when GitRepository reconciliation is taking longer than expected
+    - alert: GitRepositoryReconciliationSlow
       expr: |
-        time() - gotk_reconcile_duration_seconds{kind="GitRepository"} > 3600
+        histogram_quantile(0.95, sum(rate(gotk_reconcile_duration_seconds_bucket{kind="GitRepository"}[5m])) by (le, name, namespace)) > 300
       for: 30m
       labels:
         severity: warning
       annotations:
-        summary: "GitRepository {{ $labels.name }} has a stale artifact"
-        description: "The GitRepository has not been successfully reconciled in over an hour."
+        summary: "GitRepository {{ $labels.name }} reconciliation is slow"
+        description: "The 95th percentile reconciliation duration has been above 5 minutes for more than 30 minutes."
 
     # Alert when a GitRepository has been suspended for too long
     - alert: GitRepositorySuspended
       expr: |
-        gotk_suspend_status{kind="GitRepository"} == 1
+        gotk_resource_info{customresource_kind="GitRepository", suspended="True"} == 1
       for: 24h
       labels:
         severity: warning
@@ -259,11 +261,11 @@ data:
           "type": "stat",
           "targets": [
             {
-              "expr": "sum(gotk_reconcile_condition{kind='GitRepository', type='Ready', status='True'})",
+              "expr": "sum(gotk_resource_info{customresource_kind=\"GitRepository\", ready=\"True\"})",
               "legendFormat": "Ready"
             },
             {
-              "expr": "sum(gotk_reconcile_condition{kind='GitRepository', type='Ready', status='False'})",
+              "expr": "sum(gotk_resource_info{customresource_kind=\"GitRepository\", ready!=\"True\"})",
               "legendFormat": "Not Ready"
             }
           ]
@@ -273,7 +275,7 @@ data:
           "type": "graph",
           "targets": [
             {
-              "expr": "gotk_reconcile_duration_seconds{kind='GitRepository'}",
+              "expr": "histogram_quantile(0.95, sum(rate(gotk_reconcile_duration_seconds_bucket{kind=\"GitRepository\"}[5m])) by (le, name, namespace))",
               "legendFormat": "{{ name }}"
             }
           ]
@@ -289,6 +291,38 @@ Create a simple script that can run as a CronJob to check GitRepository health.
 ```yaml
 # gitrepo-health-check.yaml
 # CronJob that checks GitRepository health every 5 minutes
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flux-health-checker
+  namespace: flux-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: flux-health-checker
+rules:
+- apiGroups:
+  - source.toolkit.fluxcd.io
+  resources:
+  - gitrepositories
+  verbs:
+  - get
+  - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: flux-health-checker
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: flux-health-checker
+subjects:
+- kind: ServiceAccount
+  name: flux-health-checker
+  namespace: flux-system
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -310,7 +344,8 @@ spec:
             - |
               # Check for any GitRepository in not ready state
               NOT_READY=$(kubectl get gitrepositories -A \
-                -o jsonpath='{range .items[?(@.status.conditions[0].status=="False")]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}')
+                -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{" "}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' \
+                | awk '$2 != "True" { print $1 }')
               if [ -n "$NOT_READY" ]; then
                 echo "WARNING: The following GitRepositories are not ready:"
                 echo "$NOT_READY"
