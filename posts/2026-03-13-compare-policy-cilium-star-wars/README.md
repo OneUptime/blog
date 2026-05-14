@@ -12,7 +12,7 @@ Description: Compare CiliumNetworkPolicy against standard Kubernetes NetworkPoli
 
 The policy format used in the Cilium Star Wars demo - `CiliumNetworkPolicy` - is one of several policy APIs available in the Kubernetes ecosystem. Understanding how it compares to the standard `NetworkPolicy`, Calico's `GlobalNetworkPolicy`, and service mesh policy formats helps engineers make informed decisions about which policy mechanism to use in different scenarios.
 
-The comparison reveals that `CiliumNetworkPolicy` occupies a unique position: it is more expressive than standard `NetworkPolicy` (which lacks L7 support), more portable than Calico's API (which is tightly coupled to Calico's label syntax), and more operationally simpler than service mesh policy (which requires sidecar injection). For teams running Cilium, `CiliumNetworkPolicy` should be the default policy mechanism.
+The comparison reveals that `CiliumNetworkPolicy` occupies a unique position: it is more expressive than standard `NetworkPolicy` (which lacks L7 support), uses Kubernetes-style label selectors rather than Calico's selector expression syntax, and is operationally simpler than service mesh policy for network security use cases that do not otherwise require a mesh. For teams running Cilium, `CiliumNetworkPolicy` should be the default policy mechanism for Cilium-specific L3-L7 controls, while standard `NetworkPolicy` remains the portable baseline.
 
 ## Prerequisites
 
@@ -64,7 +64,7 @@ spec:
     destination:
       ports: [80]
   - action: Deny
-  # L7 requires Envoy sidecar configuration
+  # HTTP L7 requires Calico application layer policy with sidecar-based enforcement
 ```
 
 ### CiliumNetworkPolicy (Star Wars Demo)
@@ -91,7 +91,7 @@ spec:
         http:
         - method: "POST"
           path: "/v1/request-landing"
-  # L7 native - no sidecar needed
+  # L7 enforced by Cilium's proxy - no application sidecar needed
 ```
 
 ## Feature Matrix
@@ -99,10 +99,10 @@ spec:
 | Feature | K8s NetworkPolicy | Calico NP | CiliumNetworkPolicy |
 |---------|------------------|-----------|---------------------|
 | L3/L4 enforcement | Yes (CNI-dependent) | Yes | Yes |
-| L7 HTTP | No | Via Envoy sidecar | Native |
-| L7 gRPC | No | No | Native |
+| L7 HTTP | No | Via application layer policy sidecars | Native |
+| L7 gRPC | No | Limited HTTP-based matching | Native |
 | L7 Kafka | No | No | Native |
-| DNS-based policy | No | No | Yes |
+| DNS-based policy | No | Enterprise/Cloud domain rules | Yes |
 | CIDR-based | Yes | Yes | Yes |
 | Default deny | Implicit (select all) | Explicit | Via selector |
 | Observability | None | calicoctl | Hubble |
@@ -112,7 +112,7 @@ spec:
 ```mermaid
 graph TD
     Q1{Need L7 policy?} -->|Yes| Q2{Running Cilium?}
-    Q1 -->|No| Q3{Cross-cluster policy?}
+    Q1 -->|No| Q3{Cluster-wide defaults?}
     Q2 -->|Yes| CNP[CiliumNetworkPolicy]
     Q2 -->|No| SM[Service Mesh Policy]
     Q3 -->|Yes| CAL[Calico GlobalNetworkPolicy]
@@ -134,7 +134,7 @@ kubectl get ciliumnetworkpolicies
 
 ## Conclusion
 
-`CiliumNetworkPolicy` is the most capable single-resource policy format in the Kubernetes ecosystem. It subsumes standard `NetworkPolicy` (all K8s NetworkPolicy resources work with Cilium), adds L7 for HTTP/gRPC/Kafka without sidecars, and integrates natively with Hubble for observability. For teams on Cilium, migrating to `CiliumNetworkPolicy` is the right long-term direction, while standard `NetworkPolicy` remains a fully supported fallback for portability requirements.
+`CiliumNetworkPolicy` is one of the most capable single-resource policy formats in the Kubernetes ecosystem. Cilium supports standard `NetworkPolicy` resources alongside `CiliumNetworkPolicy`, adds L7 for HTTP/gRPC/Kafka without application sidecars, and integrates natively with Hubble for observability. For teams on Cilium, migrating Cilium-specific controls to `CiliumNetworkPolicy` is the right long-term direction, while standard `NetworkPolicy` remains a fully supported fallback for portability requirements.
 
 Description: A side-by-side comparison of the different network policy types available in the Cilium Star Wars demo, from no policy to L3/L4 to L7, with analysis of what each protects against.
 
@@ -242,7 +242,7 @@ kubectl apply -f l7-policy.yaml
 
 # Exhaust port is now blocked even from TIE fighter
 kubectl exec tiefighter -- curl -s -XPUT deathstar.default.svc.cluster.local/v1/exhaust-port
-# Returns: 403 Forbidden
+# Returns: Access denied (HTTP 403)
 ```
 
 ## Policy Comparison Matrix
