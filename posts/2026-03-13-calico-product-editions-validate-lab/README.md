@@ -21,15 +21,34 @@ This guide walks through setting up a lab cluster for each edition and the key v
 - A lab Kubernetes cluster (kind, k3d, or three VMs) - at minimum one control plane node and two worker nodes
 - `kubectl` configured and pointing at the lab cluster
 - `calicoctl` installed (matching the Calico version you are testing)
-- Helm v3 for Enterprise/Cloud installation
-- A Tigera trial license if testing Enterprise or Cloud
+- Helm v3 if using Helm-based Enterprise/Cloud installation
+- A Calico Cloud account or Tigera Enterprise trial license if testing Cloud or Enterprise
 
 ## Installing Calico Open Source in the Lab
 
-Remove any default CNI if using kind with no CNI preset:
+If you are using kind, create the cluster with the default CNI disabled and a pod CIDR that matches the Calico manifest:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+cat > values.yaml <<EOF
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+- role: worker
+- role: worker
+networking:
+  disableDefaultCNI: true
+  podSubnet: 192.168.0.0/16
+EOF
+
+kind create cluster --config values.yaml --name calico-lab
+```
+
+Install the Calico version you are validating. For the raw manifest install, make sure `CALICO_IPV4POOL_CIDR` matches your cluster pod CIDR if you are not using `192.168.0.0/16`:
+
+```bash
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/calico.yaml -O
+kubectl apply -f calico.yaml
 ```
 
 Verify all Calico pods are running:
@@ -58,7 +77,7 @@ kubectl exec client -- wget -qO- http://$(kubectl get pod server -o jsonpath='{.
 Apply a Calico GlobalNetworkPolicy and verify it is accepted:
 
 ```bash
-kubectl apply -f - <<EOF
+calicoctl apply -f - <<EOF
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
@@ -81,12 +100,11 @@ calicoctl get globalnetworkpolicy lab-deny-all -o yaml
 
 ## Installing Calico Cloud (Trial)
 
-Calico Cloud installs via a manifest generated in the Tigera portal after signing up for a trial:
+Calico Cloud installs with a unique `kubectl` or Helm command generated in the Tigera portal after signing up for an account. The generated `kubectl` command uses the Calico Cloud operator manifest and an authenticated managed-cluster manifest:
 
 ```bash
-# Apply the install manifest provided by Tigera
-
-kubectl apply -f https://installer.calicocloud.io/<your-trial-token>/install.yaml
+kubectl apply -f https://installer.calicocloud.io/manifests/cc-operator/latest/deploy.yaml && \
+curl -H "Authorization: Bearer <api-token>" "https://www.calicocloud.io/api/managed-cluster/deploy.yaml?version=<calico-cloud-version>" | kubectl apply -f -
 ```
 
 After installation, confirm the Tigera operator and all managed components are healthy:
@@ -105,7 +123,7 @@ Validate flow log collection by generating traffic and checking the Calico Cloud
 | GlobalNetworkPolicy enforcement | Yes | Yes | Yes |
 | FQDN-based egress policy | No | Yes | Yes |
 | Flow logs in UI | No | Yes | Yes |
-| Compliance reports | No | Yes | Yes |
+| Compliance reports | No | Yes, if enabled | Yes, but deprecated in current Enterprise docs |
 | `kubectl get tigerastatus` | No | Yes | Yes |
 
 ## Best Practices
