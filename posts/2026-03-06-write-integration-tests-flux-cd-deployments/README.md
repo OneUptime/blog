@@ -72,12 +72,19 @@ assert_resource_exists() {
   local kind="$1"
   local name="$2"
   local namespace="${3:-default}"
+  local kubectl_args=("$kind" "$name")
+  local location="cluster scope"
 
-  if kubectl get "$kind" "$name" -n "$namespace" > /dev/null 2>&1; then
-    echo "PASS: $kind/$name exists in $namespace"
+  if [ -n "$namespace" ]; then
+    kubectl_args+=("-n" "$namespace")
+    location="namespace $namespace"
+  fi
+
+  if kubectl get "${kubectl_args[@]}" > /dev/null 2>&1; then
+    echo "PASS: $kind/$name exists in $location"
     TESTS_PASSED=$((TESTS_PASSED + 1))
   else
-    echo "FAIL: $kind/$name not found in $namespace"
+    echo "FAIL: $kind/$name not found in $location"
     TESTS_FAILED=$((TESTS_FAILED + 1))
   fi
 }
@@ -139,14 +146,88 @@ package integration
 
 import (
     "context"
+    "os"
     "testing"
     "time"
 
     kustomizev1 "github.com/fluxcd/kustomize-controller/api/v1"
     sourcev1 "github.com/fluxcd/source-controller/api/v1"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/apimachinery/pkg/runtime"
     "k8s.io/apimachinery/pkg/types"
+    "k8s.io/apimachinery/pkg/util/wait"
+    clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+    "k8s.io/client-go/rest"
+    "k8s.io/client-go/tools/clientcmd"
     "sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+func getK8sClient(t *testing.T) client.Client {
+    t.Helper()
+
+    cfg, err := rest.InClusterConfig()
+    if err != nil {
+        kubeconfig := os.Getenv("KUBECONFIG")
+        if kubeconfig == "" {
+            kubeconfig = clientcmd.RecommendedHomeFile
+        }
+        cfg, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+    }
+    if err != nil {
+        t.Fatalf("Failed to load Kubernetes config: %v", err)
+    }
+
+    scheme := runtime.NewScheme()
+    if err := clientgoscheme.AddToScheme(scheme); err != nil {
+        t.Fatalf("Failed to add Kubernetes scheme: %v", err)
+    }
+    if err := sourcev1.AddToScheme(scheme); err != nil {
+        t.Fatalf("Failed to add Flux source scheme: %v", err)
+    }
+    if err := kustomizev1.AddToScheme(scheme); err != nil {
+        t.Fatalf("Failed to add Flux kustomize scheme: %v", err)
+    }
+
+    k8sClient, err := client.New(cfg, client.Options{Scheme: scheme})
+    if err != nil {
+        t.Fatalf("Failed to create Kubernetes client: %v", err)
+    }
+    return k8sClient
+}
+
+func waitForKustomizationCondition(
+    t *testing.T,
+    ctx context.Context,
+    k8sClient client.Client,
+    name types.NamespacedName,
+    conditionType string,
+    expected metav1.ConditionStatus,
+    timeout time.Duration,
+) {
+    t.Helper()
+
+    err := wait.PollUntilContextTimeout(ctx, 5*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+        current := &kustomizev1.Kustomization{}
+        if err := k8sClient.Get(ctx, name, current); err != nil {
+            return false, err
+        }
+        for _, condition := range current.Status.Conditions {
+            if condition.Type == conditionType {
+                if condition.Status == expected {
+                    return true, nil
+                }
+                t.Logf("Kustomization %s condition %s is %s: %s",
+                    name.Name, conditionType, condition.Status, condition.Message)
+                return false, nil
+            }
+        }
+        return false, nil
+    })
+    if err != nil {
+        t.Fatalf("Timed out waiting for Kustomization %s condition %s=%s: %v",
+            name.Name, conditionType, expected, err)
+    }
+}
 
 // TestGitRepositoryReconciliation verifies that a GitRepository
 // resource reconciles successfully
@@ -170,7 +251,7 @@ func TestGitRepositoryReconciliation(t *testing.T) {
     // Verify the Ready condition
     for _, condition := range gitRepo.Status.Conditions {
         if condition.Type == "Ready" {
-            if condition.Status != "True" {
+            if condition.Status != metav1.ConditionTrue {
                 t.Errorf("GitRepository is not Ready: %s", condition.Message)
             }
             return
@@ -198,7 +279,10 @@ func TestKustomizationReconciliation(t *testing.T) {
     }
 
     // Wait for Ready condition
-    waitForCondition(t, ctx, k8sClient, ks, "Ready", "True", 5*time.Minute)
+    waitForKustomizationCondition(t, ctx, k8sClient, types.NamespacedName{
+        Name:      ks.Name,
+        Namespace: ks.Namespace,
+    }, "Ready", metav1.ConditionTrue, 5*time.Minute)
 }
 ```
 
@@ -263,19 +347,19 @@ assert_kustomization_ready "infrastructure" "flux-system"
 # Then apps should be ready (depends on infrastructure)
 assert_kustomization_ready "apps" "flux-system"
 
-# Verify the dependency order was respected
-infra_time=$(kubectl get kustomization infrastructure -n flux-system \
+# Record applied revisions for diagnostics
+infra_revision=$(kubectl get kustomization infrastructure -n flux-system \
   -o jsonpath='{.status.lastAppliedRevision}')
-apps_time=$(kubectl get kustomization apps -n flux-system \
+apps_revision=$(kubectl get kustomization apps -n flux-system \
   -o jsonpath='{.status.lastAppliedRevision}')
 
-echo "Infrastructure revision: $infra_time"
-echo "Apps revision: $apps_time"
+echo "Infrastructure revision: $infra_revision"
+echo "Apps revision: $apps_revision"
 
 # Verify that namespaces created by infrastructure exist
 # before apps try to deploy into them
-assert_resource_exists "namespace" "monitoring"
-assert_resource_exists "namespace" "ingress-nginx"
+assert_resource_exists "namespace" "monitoring" ""
+assert_resource_exists "namespace" "ingress-nginx" ""
 
 print_summary
 ```
@@ -337,23 +421,25 @@ echo "=== Test: Application Health ==="
 assert_deployment_ready "my-app" "default" 120
 assert_deployment_ready "nginx-ingress-controller" "ingress-nginx" 120
 
-# Test that services have endpoints
+# Test that services have EndpointSlices
 for svc in $(kubectl get services -n default -o jsonpath='{.items[*].metadata.name}'); do
-  endpoints=$(kubectl get endpoints "$svc" -n default \
-    -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null)
+  endpoints=$(kubectl get endpointslices.discovery.k8s.io -n default \
+    -l "kubernetes.io/service-name=$svc" \
+    -o jsonpath='{range .items[*].endpoints[*]}{.addresses[*]}{" "}{end}' 2>/dev/null)
 
   if [ -n "$endpoints" ]; then
-    echo "PASS: Service $svc has endpoints: $endpoints"
+    echo "PASS: Service $svc has EndpointSlice addresses: $endpoints"
     TESTS_PASSED=$((TESTS_PASSED + 1))
   else
-    echo "WARN: Service $svc has no endpoints (may be expected for ExternalName/LoadBalancer)"
+    echo "WARN: Service $svc has no EndpointSlice addresses (may be expected for ExternalName/LoadBalancer)"
   fi
 done
 
 # Test pod health via readiness
-not_ready=$(kubectl get pods -n default --field-selector=status.phase!=Running \
-  --no-headers 2>/dev/null | wc -l)
-assert "All pods in default namespace are Running" "echo $not_ready" "0"
+not_ready=$(kubectl get pods -n default \
+  -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .status.conditions[?(@.type=="Ready")]}{.status}{end}{"\n"}{end}' 2>/dev/null \
+  | awk '$2!="True"{count++} END{print count+0}')
+assert "All pods in default namespace are Ready" "echo $not_ready" "0"
 
 # Test connectivity to application
 # Port-forward and make HTTP request
