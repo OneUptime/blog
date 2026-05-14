@@ -280,13 +280,14 @@ spec:
   chart:
     spec:
       chart: cert-manager
-      version: ">=1.14.0 <2.0.0"
+      version: ">=1.15.0 <2.0.0"
       sourceRef:
         kind: HelmRepository
         name: jetstack
         namespace: cert-manager
   values:
-    installCRDs: true
+    crds:
+      enabled: true
     # Enable DNS01 challenge for wildcard certificates
     dns01RecursiveNameserversOnly: true
     resources:
@@ -554,15 +555,15 @@ After the cluster is rebuilt, restore data for stateful services.
 ```bash
 # Restore database from backup
 echo "Restoring PostgreSQL data..."
-kubectl exec -n databases deployment/postgresql -- \
+kubectl exec -i -n databases postgresql-0 -- \
   pg_restore -U postgres -d production \
-  --clean --if-exists \
-  /backup/production-latest.dump
+  --clean --if-exists < backup/production-latest.dump
 
 # Restore Redis data if needed
 echo "Restoring Redis data..."
 kubectl cp backup/dump.rdb databases/redis-master-0:/data/dump.rdb
-kubectl exec -n databases redis-master-0 -- redis-cli BGSAVE
+kubectl exec -n databases redis-master-0 -- redis-cli SHUTDOWN NOSAVE || true
+kubectl delete pod -n databases redis-master-0 --ignore-not-found
 
 # Restore object storage state
 echo "Syncing object storage..."
