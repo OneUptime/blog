@@ -18,13 +18,13 @@ This guide documents known limitations, explains their impact, and describes wor
 
 ## Prerequisites
 
-- Cilium v1.13+ with BGP Control Plane enabled
+- Cilium with BGP Control Plane enabled
 - Understanding of BGP routing concepts
-- Familiarity with CiliumBGPPeeringPolicy
+- Familiarity with `CiliumBGPClusterConfig`, `CiliumBGPPeerConfig`, and `CiliumBGPAdvertisement`
 
 ## Limitation 1: No Route Filtering on Inbound Prefixes
 
-Cilium BGP Control Plane does not support inbound route filtering. Routes received from peers are accepted unconditionally:
+Cilium BGP Control Plane does not expose user-configurable inbound route filtering. Routes received from peers can be inspected, but import policy is not a public configuration surface:
 
 ```bash
 # Verify what routes are being received - no filtering possible
@@ -42,45 +42,53 @@ Cilium nodes can only act as BGP speakers, not as route reflectors. You cannot u
 # This is NOT supported - Cilium cannot act as a route reflector
 # You must use a dedicated route reflector (e.g., BIRD, FRR)
 spec:
-  virtualRouters:
-    - localASN: 65100
+  bgpInstances:
+    - name: "instance-65100"
+      localASN: 65100
       # routeReflectorClusterID: "1.2.3.4"  # Not available
 ```
 
-## Limitation 3: IPv6 BGP Support is Limited
+## Limitation 3: Address Family Support Depends on Cilium Configuration
 
-Full IPv6 BGP (IPv6 unicast AFI/SAFI) support was added incrementally. Verify your specific version supports the features you need:
+Cilium supports IPv4 and IPv6 unicast address families, but the BGP Control Plane can only advertise address families that the Cilium agent is configured to use. You cannot advertise IPv4 routes from an IPv6-only Cilium deployment, or IPv6 routes from an IPv4-only deployment:
 
 ```bash
 cilium version
-# Cross-reference with Cilium changelog for IPv6 BGP status
+# Cross-reference with your Cilium networking mode and BGP address-family configuration
 ```
 
-## Limitation 4: Single BGP Instance Per Node
+## Limitation 4: Overlapping Cluster Configs Per Node Are Rejected
 
-Each Cilium node runs a single GoBGP instance. You cannot run multiple BGP instances with different ASNs on the same node, which limits multi-tenant BGP designs:
+Cilium can define multiple BGP instances in one `CiliumBGPClusterConfig`, but multiple `CiliumBGPClusterConfig` resources cannot select the same node with their `nodeSelector`. If they do, the operator rejects the additional configuration for that node:
 
 ```bash
-# Only one policy applies per node - verify with:
-kubectl get ciliumbgppeeringpolicy -o wide
+# Check for conflicting CiliumBGPClusterConfig status conditions:
+kubectl get ciliumbgpclusterconfigs -o wide
 ```
 
 ## Limitation 5: Service Type Constraints
 
-Only `LoadBalancer` type services are advertised via BGP by default. `ClusterIP` and `NodePort` services require additional configuration:
+No Service VIPs are advertised until a matching `CiliumBGPAdvertisement` is selected by a peer's address-family configuration. Cilium can advertise `LoadBalancerIP`, `ClusterIP`, and `ExternalIP` service addresses; `NodePort` is not advertised as a separate Service VIP:
 
 ```yaml
-apiVersion: cilium.io/v2alpha1
-kind: CiliumBGPPeeringPolicy
+apiVersion: cilium.io/v2
+kind: CiliumBGPAdvertisement
+metadata:
+  name: bgp-advertisements
+  labels:
+    advertise: bgp
 spec:
-  virtualRouters:
-    - localASN: 65100
-      serviceSelector:
+  advertisements:
+    - advertisementType: "Service"
+      service:
+        addresses:
+          - LoadBalancerIP
+          - ClusterIP
+          - ExternalIP
+      selector:
         matchExpressions:
-          # Only LoadBalancer services with an allocated external IP are advertised
-          - key: "somekey"
-            operator: NotIn
-            values: ["never-a-value"]
+          # Select all services; use labels to narrow this in production.
+          - {key: somekey, operator: NotIn, values: ["never-used-value"]}
 ```
 
 ## Limitation 6: No BFD Support
@@ -102,12 +110,13 @@ flowchart TD
     B --> E[Route Communities]
     B --> F[Pod CIDR Advertisement]
     B --> G[Service IP Advertisement]
+    B --> L[Multiple BGP Instances in One Cluster Config]
     C --> H[iBGP Route Reflection]
-    C --> I[Inbound Route Filtering]
+    C --> I[User-Configurable Inbound Route Filtering]
     C --> J[BFD]
-    C --> K[Multiple BGP Instances per Node]
+    C --> K[Overlapping Cluster Config Selectors per Node]
 ```
 
 ## Conclusion
 
-Cilium's BGP Control Plane covers the most common datacenter BGP use cases well but is not a full-featured BGP stack. The most impactful limitations are the lack of inbound route filtering (push filtering to upstream routers), no route reflector mode (use dedicated RR infrastructure), and single-instance-per-node design. Check the Cilium release notes for each version as many of these limitations are being actively addressed in newer releases.
+Cilium's BGP Control Plane covers the most common datacenter BGP use cases well but is not a full-featured BGP stack. The most impactful limitations are the lack of user-configurable inbound route filtering (push filtering to upstream routers), no route reflector mode (use dedicated RR infrastructure), and the restriction that overlapping `CiliumBGPClusterConfig` selectors cannot target the same node. Check the Cilium release notes for each version as many of these limitations are being actively addressed in newer releases.
