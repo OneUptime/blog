@@ -32,7 +32,7 @@ flux get image repository --all-namespaces
 flux get image repository myapp -n flux-system
 ```
 
-The output shows the last scan time, the number of tags discovered, and the latest tag:
+The output shows the last scan time, readiness, and a status message that includes the number of tags discovered:
 
 ```text
 NAME    LAST SCAN                 SUSPENDED   READY   MESSAGE
@@ -68,23 +68,21 @@ myapp   docker.io/myorg/myapp:v1.5.2          True    Latest image tag for 'dock
 
 ## Prometheus Metrics for Image Scanning
 
-The image-reflector-controller exposes Prometheus metrics that provide quantitative monitoring data.
+The image-reflector-controller exposes Prometheus metrics for controller operations. Flux resource status fields such as tag counts and selected tags are not exported by the controller by default; export them with kube-state-metrics custom resource metrics if you need them in Prometheus.
 
 ### Key Metrics
 
 ```promql
-# Number of tags discovered per image repository
-gotk_image_repository_last_scan_tag_count{name="myapp", namespace="flux-system"}
+# Average ImageRepository reconcile duration over 5 minutes
+rate(gotk_reconcile_duration_seconds_sum{kind="ImageRepository", name="myapp"}[5m]) /
+rate(gotk_reconcile_duration_seconds_count{kind="ImageRepository", name="myapp"}[5m])
 
-# Scan duration
-gotk_reconcile_duration_seconds{kind="ImageRepository", name="myapp"}
+# ImageRepository readiness from Flux's kube-state-metrics example
+gotk_resource_info{customresource_kind="ImageRepository", name="myapp", exported_namespace="flux-system", ready="True"}
+gotk_resource_info{customresource_kind="ImageRepository", name="myapp", exported_namespace="flux-system", ready!="True"}
 
-# Scan success/failure
-gotk_reconcile_condition{kind="ImageRepository", type="Ready", status="True"}
-gotk_reconcile_condition{kind="ImageRepository", type="Ready", status="False"}
-
-# Image policy latest selected tag
-gotk_reconcile_condition{kind="ImagePolicy", type="Ready"}
+# ImagePolicy readiness from Flux's kube-state-metrics example
+gotk_resource_info{customresource_kind="ImagePolicy", name="myapp", exported_namespace="flux-system", ready="True"}
 ```
 
 ### Alerting Rules
@@ -102,22 +100,21 @@ spec:
     - name: flux.image.scanning
       rules:
         - alert: FluxImageScanFailing
-          expr: gotk_reconcile_condition{kind="ImageRepository", type="Ready", status="False"} == 1
+          expr: gotk_resource_info{customresource_kind="ImageRepository", ready!="True"} == 1
           for: 15m
           labels:
             severity: warning
           annotations:
             summary: "Image scan failing for {{ $labels.name }}"
-            description: "ImageRepository {{ $labels.namespace }}/{{ $labels.name }} has been failing for 15 minutes."
+            description: "ImageRepository {{ $labels.exported_namespace }}/{{ $labels.name }} has not been ready for 15 minutes."
 
-        - alert: FluxImagePolicyStale
-          expr: |
-            time() - gotk_reconcile_condition{kind="ImagePolicy", type="Ready", status="True"} > 3600
+        - alert: FluxImagePolicyFailing
+          expr: gotk_resource_info{customresource_kind="ImagePolicy", ready!="True"} == 1
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "Image policy {{ $labels.name }} has not been updated in over an hour"
+            summary: "Image policy {{ $labels.name }} is not ready"
 ```
 
 ## Flux Notification Alerts
@@ -125,7 +122,7 @@ spec:
 Use Flux's notification-controller to send alerts about image scan events:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -136,7 +133,7 @@ spec:
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: image-scan-alerts
@@ -162,17 +159,17 @@ Create a Grafana dashboard to visualize image scan data. Here are useful panels:
 
 ### Tag Count Over Time
 
-```promql
-gotk_image_repository_last_scan_tag_count
+```bash
+kubectl get imagerepository myapp -n flux-system -o jsonpath='{.status.lastScanResult.tagCount}'
 ```
 
-This shows the number of discovered tags for each repository, which can indicate whether old images are being cleaned up or accumulating.
+This shows the number of discovered tags for a repository, which can indicate whether old images are being cleaned up or accumulating. To graph it in Grafana, export `.status.lastScanResult.tagCount` as a kube-state-metrics custom resource metric.
 
 ### Scan Success Rate
 
 ```promql
-sum(gotk_reconcile_condition{kind="ImageRepository", type="Ready", status="True"}) /
-sum(gotk_reconcile_condition{kind="ImageRepository", type="Ready"})
+sum(gotk_resource_info{customresource_kind="ImageRepository", ready="True"}) /
+sum(gotk_resource_info{customresource_kind="ImageRepository"})
 ```
 
 ### Policy Selection History
