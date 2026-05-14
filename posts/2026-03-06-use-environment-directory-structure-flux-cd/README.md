@@ -133,6 +133,29 @@ spec:
   type: ClusterIP
 ```
 
+```yaml
+# base/hpa.yaml
+# HorizontalPodAutoscaler for scaling the application by CPU utilization
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: my-app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: my-app
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+```
+
 ## Configuring Environment Overlays
 
 Each environment directory uses Kustomize overlays to customize the base configuration.
