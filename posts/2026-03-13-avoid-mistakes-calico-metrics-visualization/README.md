@@ -20,32 +20,35 @@ Calico visualization mistakes can lead to false confidence (dashboard looks heal
 sum(felix_active_local_policies)
 
 # CORRECT - shows per-node breakdown (critical for identifying outliers)
-sum(felix_active_local_policies) by (node)
+sum by (node) (felix_active_local_policies)
 
-# Even better - ratio to show relative policy density
-felix_active_local_policies / on(node) kube_node_info
+# Even better - ratio to show policy density relative to the cluster average
+felix_active_local_policies / scalar(avg(felix_active_local_policies))
 ```
 
 ## Mistake 2: Wrong Units for Latency Metrics
 
 ```promql
 # WRONG - Felix latency is in seconds, not milliseconds
-# Panel unit set to "ms" with raw seconds value → shows 1000x too high
-felix_int_dataplane_apply_time_seconds_sum / felix_int_dataplane_apply_time_seconds_count
+# Panel unit set to "ms" with raw seconds value → shows 1000x too low
+rate(felix_int_dataplane_apply_time_seconds_sum[5m]) / rate(felix_int_dataplane_apply_time_seconds_count[5m])
 # Panel unit: "milliseconds (ms)" → shows 0.05s as 0.05ms (WRONG)
 
 # CORRECT - either use proper unit OR convert the metric
-felix_int_dataplane_apply_time_seconds_sum / felix_int_dataplane_apply_time_seconds_count * 1000
+rate(felix_int_dataplane_apply_time_seconds_sum[5m]) / rate(felix_int_dataplane_apply_time_seconds_count[5m])
+# Set panel unit to "seconds (s)"
+
+rate(felix_int_dataplane_apply_time_seconds_sum[5m]) / rate(felix_int_dataplane_apply_time_seconds_count[5m]) * 1000
 # Then set panel unit to "milliseconds (ms)"
 
-# OR: use the histogram quantile directly (more accurate)
-histogram_quantile(0.99, rate(felix_int_dataplane_apply_time_seconds_bucket[5m]))
+# OR: use the histogram quantile directly for a cluster-wide P99
+histogram_quantile(0.99, sum by (le) (rate(felix_int_dataplane_apply_time_seconds_bucket[5m])))
 # Set panel unit to "seconds (s)"
 ```
 
 ## Mistake 3: Alert Thresholds Based on Single-Day Baselines
 
-```bash
+```promql
 # WRONG - setting alert threshold based on current value
 # On a quiet Sunday, latency is 5ms
 # Setting threshold at 50ms (10x current) seems reasonable
@@ -54,7 +57,14 @@ histogram_quantile(0.99, rate(felix_int_dataplane_apply_time_seconds_bucket[5m])
 
 # CORRECT - establish baselines over 1-2 weeks including peak days
 # Use Prometheus quantile_over_time:
-quantile_over_time(0.99, felix_int_dataplane_apply_time_seconds_sum[14d])
+quantile_over_time(
+  0.99,
+  (
+    rate(felix_int_dataplane_apply_time_seconds_sum[5m])
+    /
+    rate(felix_int_dataplane_apply_time_seconds_count[5m])
+  )[14d:5m]
+)
 # Set threshold at 3x this value for alerting
 ```
 
@@ -65,8 +75,9 @@ quantile_over_time(0.99, felix_int_dataplane_apply_time_seconds_sum[14d])
 felix_active_local_policies{node="ip-10-0-1-100.us-east-1.compute.internal"}
 
 # CORRECT - use a Grafana variable
-felix_active_local_policies{node="$node"}
-# With variable definition: label_values(kube_node_info, node)
+felix_active_local_policies{node=~"$node"}
+# With a Grafana Prometheus query variable:
+# Query type: Label values, Label: node, Metric: kube_node_info
 ```
 
 ## Mistake 5: Not Using `rate()` for Counters
