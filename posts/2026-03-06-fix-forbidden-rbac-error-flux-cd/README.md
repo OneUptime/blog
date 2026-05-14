@@ -46,7 +46,7 @@ Message: 'clusterroles.rbac.authorization.k8s.io is forbidden: User "system:serv
 
 ## Cause 1: Default Service Account Missing Permissions
 
-By default, Flux controllers run with broad permissions in the flux-system namespace. However, if RBAC policies have been tightened or if you are deploying to namespaces with restricted access, the default permissions may be insufficient.
+By default, the kustomize-controller and helm-controller are bound to the cluster-admin role. However, if RBAC policies have been tightened or if you configure Flux resources to reconcile with a restricted service account, the effective permissions may be insufficient.
 
 ### Diagnosing Permission Issues
 
@@ -63,8 +63,8 @@ kubectl auth can-i create deployments \
 # Check the ClusterRoleBindings for Flux
 kubectl get clusterrolebindings | grep flux
 
-# View the ClusterRole bound to the controller
-kubectl describe clusterrole crd-controller-flux-system
+# View the ClusterRoleBinding that gives the reconciler controllers cluster-admin
+kubectl describe clusterrolebinding cluster-reconciler-flux-system
 ```
 
 ### Fix: Grant Cluster-Admin Permissions (Development Only)
@@ -198,7 +198,7 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: team-alpha-app
-  namespace: flux-system
+  namespace: team-alpha
 spec:
   interval: 10m
   path: ./tenants/team-alpha
@@ -206,8 +206,9 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
+    namespace: flux-system
   targetNamespace: team-alpha
-  # Impersonate the tenant service account
+  # Impersonate the tenant service account from the Kustomization's namespace
   serviceAccountName: team-alpha
 ```
 
@@ -351,7 +352,7 @@ rules:
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["roles", "rolebindings"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  # Some charts create PodSecurityPolicies
+  # Some charts create PodDisruptionBudgets
   - apiGroups: ["policy"]
     resources: ["poddisruptionbudgets"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
@@ -386,10 +387,10 @@ kubectl get rolebindings,clusterrolebindings -A -o json | \
   jq '.items[] | select(.subjects[]? | select(.name=="kustomize-controller")) | {name: .metadata.name, namespace: .metadata.namespace, role: .roleRef.name}'
 
 # 4. Check the Kustomization's service account configuration
-kubectl get kustomization <name> -n flux-system -o jsonpath='{.spec.serviceAccountName}'
+kubectl get kustomization <name> -n <namespace> -o jsonpath='{.spec.serviceAccountName}'
 
-# 5. View RBAC audit events (if audit logging is enabled)
-kubectl logs -n kube-system kube-apiserver-<node> | grep "RBAC DENY"
+# 5. View Kubernetes audit logs for forbidden decisions (if audit logging is enabled)
+# The location depends on how your API server audit backend is configured.
 
 # 6. Force reconciliation after fixing RBAC
 flux reconcile kustomization <name> --with-source
