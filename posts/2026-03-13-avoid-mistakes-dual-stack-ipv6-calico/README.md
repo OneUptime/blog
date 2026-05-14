@@ -31,9 +31,18 @@ calicoctl get bgpconfiguration -o yaml
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
-  name: example-pool
+  name: example-ipv4-pool
 spec:
   cidr: 10.48.0.0/16
+  natOutgoing: true
+---
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: example-ipv6-pool
+spec:
+  cidr: fd00:10:48::/64
+  blockSize: 122
   natOutgoing: true
 ```
 
@@ -48,8 +57,8 @@ calicoctl ipam check
 
 ```mermaid
 graph LR
-    POOL[IP Pool] --> SERVICE[Service IP]
-    SERVICE --> POD[Pod]
+    POOL[IP Pool] --> POD[Pod]
+    SERVICE[Service IP] --> POD
 ```
 
 ## Conclusion
