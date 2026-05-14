@@ -79,6 +79,7 @@ aws iam create-policy \
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 OIDC_ID=$(aws eks describe-cluster \
   --name my-cluster \
+  --region us-east-1 \
   --query "cluster.identity.oidc.issuer" \
   --output text | cut -d'/' -f5)
 
@@ -137,13 +138,14 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: external-secrets
-  namespace: external-secrets
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: external-secrets
   chart:
     spec:
       chart: external-secrets
-      version: "0.12.x"  # Use the latest stable version
+      version: "2.4.x"  # Use the latest stable 2.4 version
       sourceRef:
         kind: HelmRepository
         name: external-secrets
@@ -161,7 +163,7 @@ spec:
       annotations:
         eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/external-secrets-operator"
     # Set the AWS region
-    env:
+    extraEnv:
       - name: AWS_REGION
         value: "us-east-1"
 ```
@@ -200,7 +202,7 @@ The SecretStore tells ESO how to connect to AWS Secrets Manager:
 
 ```yaml
 # clusters/production/apps/my-app/secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-secrets-manager
@@ -221,7 +223,7 @@ For cluster-wide access, use a ClusterSecretStore:
 
 ```yaml
 # infrastructure/configs/cluster-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -243,7 +245,7 @@ spec:
 
 ```yaml
 # clusters/production/apps/my-app/external-secret-db.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-credentials
@@ -280,7 +282,7 @@ spec:
 
 ```yaml
 # clusters/production/apps/my-app/external-secret-api.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: api-keys
@@ -299,11 +301,11 @@ spec:
         key: production/my-app/api-keys
 ```
 
-### Sync a Plain Text Secret
+### Sync a TLS Secret
 
 ```yaml
 # clusters/production/apps/my-app/external-secret-tls.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: tls-cert
@@ -406,7 +408,7 @@ AWS Secrets Manager supports automatic rotation. ESO picks up rotated values bas
 
 ```yaml
 # For frequently rotated secrets, use a shorter refresh interval
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: rotating-credentials
@@ -441,12 +443,15 @@ kubectl describe externalsecret db-credentials -n default
 # Check SecretStore connectivity
 kubectl describe secretstore aws-secrets-manager -n default
 
-# Verify IRSA is working
-kubectl exec -n external-secrets deployment/external-secrets -- env | grep AWS
+# Verify the ESO service account has the IRSA annotation
+kubectl describe sa external-secrets -n external-secrets | grep eks.amazonaws.com/role-arn
 
-# Test Secrets Manager access from the ESO pod
-kubectl exec -n external-secrets deployment/external-secrets -- \
-  aws secretsmanager get-secret-value \
+# Test Secrets Manager access with the ESO service account
+kubectl run aws-cli-test -n external-secrets \
+  --rm -i --restart=Never \
+  --image=amazon/aws-cli:2 \
+  --serviceaccount=external-secrets \
+  -- secretsmanager get-secret-value \
   --secret-id production/my-app/database \
   --region us-east-1 2>&1 | head -5
 ```
