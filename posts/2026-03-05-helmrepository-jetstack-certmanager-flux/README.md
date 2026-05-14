@@ -71,8 +71,9 @@ spec:
     # Enable Prometheus metrics
     prometheus:
       enabled: true
+      # Set this to true only if the Prometheus Operator ServiceMonitor CRD is installed
       servicemonitor:
-        enabled: true
+        enabled: false
     # Resource configuration
     resources:
       requests:
