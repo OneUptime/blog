@@ -114,6 +114,8 @@ spec:
     kind: GitRepository
     name: fleet-repo
   targetNamespace: myapp
+  wait: true
+  timeout: 5m
   dependsOn:
     - name: db-migrate  # Migration must succeed before app deploys
 ```
@@ -131,7 +133,6 @@ metadata:
     app: myapp
     component: migration
 spec:
-  ttlSecondsAfterFinished: 3600
   backoffLimit: 3
   template:
     spec:
@@ -187,7 +188,7 @@ spec:
 
 ## Step 5: Managing Job Idempotency
 
-Since Flux reconciles on a schedule, Jobs must be idempotent or designed to be re-run safely. Use a versioned Job name to prevent re-running completed migrations:
+Since Flux reconciles on a schedule, Jobs must be idempotent or designed to be re-run safely. Use a versioned Job name so each schema migration creates a new Job and the completed Job remains as the record that version has run:
 
 ```yaml
 # apps/myapp/migrations/kustomization.yaml
@@ -197,6 +198,8 @@ resources:
   - db-migrate-job.yaml
 nameSuffix: "-v2-3-0"  # Change on each schema migration version
 ```
+
+Avoid setting `ttlSecondsAfterFinished` on one-shot Jobs that remain in Flux source unless you also remove, suspend, or update the Job after completion. If Kubernetes deletes the finished Job while it is still declared in Git, Flux can recreate it during a later reconciliation.
 
 Or use a Job that checks if migration is needed:
 
@@ -215,7 +218,7 @@ command:
 
 ## Step 6: Handling Sync Window (ArgoCD) vs Flux Suspend
 
-ArgoCD sync windows block syncs during certain time periods. Flux achieves this by temporarily suspending Kustomizations:
+ArgoCD sync windows block syncs during certain time periods. A common Flux approach is to temporarily suspend Kustomizations:
 
 ```bash
 # Suspend Flux during a maintenance window
@@ -232,7 +235,7 @@ flux resume kustomization myapp -n flux-system
 ## Best Practices
 
 - Design Jobs to be idempotent so that Flux's periodic reconciliation does not cause duplicate runs.
-- Use `ttlSecondsAfterFinished` on Jobs so they clean up automatically and do not clutter the namespace.
+- Avoid `ttlSecondsAfterFinished` for Flux-managed one-shot Jobs that remain in Git unless duplicate execution is safe or you remove, suspend, or update the Job after completion.
 - Set meaningful `timeout` values on migration Kustomizations; migrations can take longer than application deployments.
 - Use `backoffLimit` on Jobs to allow retries for transient failures (network issues, database not ready).
 - Test the Job Kustomization independently in staging before wiring it into the dependsOn chain.
