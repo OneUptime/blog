@@ -25,14 +25,14 @@ Cilium's eBPF datapath is designed for high performance, and with kube-proxy rep
 ```bash
 # Deploy server on a specific node
 
-kubectl run netperf-server --image=networkstatic/netperf \
+kubectl run netperf-server --image=networkstatic/netserver \
   --overrides='{"spec":{"nodeName":"<server-node>"}}' \
-  -- netserver -D
+  -- -D
 
 # Deploy client on a different node
 kubectl run netperf-client --image=networkstatic/netperf \
   --overrides='{"spec":{"nodeName":"<client-node>"}}' \
-  -- sleep infinity
+  --command -- sleep infinity
 ```
 
 ## Architecture
@@ -73,24 +73,24 @@ kubectl exec netperf-client -- netperf \
 ## iperf3 Bandwidth Test
 
 ```bash
-kubectl run iperf-server --image=networkstatic/iperf3 -- iperf3 -s
+kubectl run iperf-server --image=networkstatic/iperf3 -- -s
 kubectl wait --for=condition=Ready pod/iperf-server --timeout=60s
 
 SERVER_IP=$(kubectl get pod iperf-server -o jsonpath='{.status.podIP}')
 kubectl run iperf-client --image=networkstatic/iperf3 --rm -it --restart=Never -- \
-  iperf3 -c "$SERVER_IP" -t 30 -P 4
+  -c "$SERVER_IP" -t 30 -P 4
 ```
 
 ## Compare Configurations
 
 Run benchmarks with different Cilium configurations to compare:
 
-| Configuration | Expected Throughput |
-|---------------|---------------------|
-| Tunneling (VXLAN) | ~80% of native |
-| Native routing | ~95% of native |
-| WireGuard encryption | ~70-80% of native |
-| kube-proxy replacement | Improved latency |
+| Configuration | Expected Observation |
+|---------------|----------------------|
+| Tunneling (VXLAN) | Lower than native due to encapsulation overhead |
+| Native routing | Closest to host-network baseline when the underlay supports it |
+| WireGuard encryption | Lower than unencrypted traffic due to encryption overhead |
+| kube-proxy replacement | Can reduce service load-balancing overhead |
 
 ## Record Results
 
@@ -101,4 +101,4 @@ kubectl exec netperf-client -- netperf -H $SERVER_IP -t TCP_STREAM -l 60 | \
 
 ## Conclusion
 
-Benchmarking Cilium CNI provides objective performance data for your specific cluster configuration. Regular benchmark runs after upgrades and configuration changes help detect regressions and validate that optimizations are effective. Native routing with kube-proxy replacement delivers the best performance in most environments.
+Benchmarking Cilium CNI provides objective performance data for your specific cluster configuration. Regular benchmark runs after upgrades and configuration changes help detect regressions and validate that optimizations are effective. Native routing can avoid tunneling overhead where the network underlay supports it, and kube-proxy replacement can reduce service load-balancing overhead.
