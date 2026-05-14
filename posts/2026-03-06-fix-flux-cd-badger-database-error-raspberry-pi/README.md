@@ -1,31 +1,32 @@
-# How to Fix Flux CD Badger Database Error on Raspberry Pi
+# How to Fix Flux CD Artifact Storage Errors on Raspberry Pi
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Raspberry Pi, ARM, Badger, Database, Embedded, GitOps, Kubernetes, Troubleshooting
+Tags: Flux CD, Raspberry Pi, ARM, Artifact Storage, GitOps, Kubernetes, Troubleshooting
 
-Description: A troubleshooting guide for resolving Badger database errors when running Flux CD on Raspberry Pi and other ARM-based or resource-constrained devices.
+Description: A troubleshooting guide for resolving Flux source-controller artifact storage errors when running Flux CD on Raspberry Pi and other ARM-based or resource-constrained devices.
 
 ---
 
-Running Flux CD on Raspberry Pi and other ARM-based single-board computers is a great way to do GitOps at the edge. However, the source-controller's internal Badger database can fail on these resource-constrained devices, causing persistent errors and preventing reconciliation. This guide covers how to diagnose and fix these issues.
+Running Flux CD on Raspberry Pi and other ARM-based single-board computers is a great way to do GitOps at the edge. However, the source-controller's local artifact storage can fail on these resource-constrained devices, causing persistent errors and preventing reconciliation. This guide covers how to diagnose and fix these issues.
 
 ## Understanding the Problem
 
-Flux CD's source-controller uses Badger, an embedded key-value database, to cache downloaded artifacts. On Raspberry Pi and similar ARM devices, Badger can fail due to:
+Flux CD's source-controller writes downloaded artifacts to local filesystem storage under `/data` by default. On Raspberry Pi and similar ARM devices, artifact storage can fail due to:
 
-- **Insufficient memory** - Badger's default settings assume more RAM than a Pi has
+- **Insufficient memory** - fetching and packaging large repositories or Helm indexes can exceed small Pi memory limits
 - **SD card I/O limitations** - SD cards have slow random I/O and limited write endurance
-- **ARM architecture quirks** - memory mapping behavior differs from x86
-- **Storage filesystem issues** - some filesystems on SD cards do not support required operations
+- **Storage filesystem issues** - some filesystems on SD cards do not support Linux file permissions or locking behavior well
+- **Disk pressure** - full or slow node storage can prevent source-controller from writing artifacts
 
 Common error messages:
 
 ```yaml
-badger: Value log truncate required
-badger: MANIFEST has unsupported version
-panic: runtime error: invalid memory address or nil pointer dereference
-source-controller: badger.Open: resource temporarily unavailable
+failed to create artifact directory
+failed to acquire lock for artifact
+unable to archive artifact to storage
+building artifact: disappeared from storage
+StorageOperationFailed
 ```
 
 ## Step 1: Identify the Error
@@ -33,25 +34,25 @@ source-controller: badger.Open: resource temporarily unavailable
 ```bash
 # Check source-controller pod status
 
-kubectl get pods -n flux-system -l app=source-controller
+kubectl get pods -n flux-system -l app.kubernetes.io/name=source-controller
 
 # Look for CrashLoopBackOff or Error status
-kubectl describe pod -n flux-system -l app=source-controller
+kubectl describe pod -n flux-system -l app.kubernetes.io/name=source-controller
 
-# Check logs for Badger errors
-kubectl logs -n flux-system deployment/source-controller | grep -i "badger\|panic\|database"
+# Check logs for storage errors
+kubectl logs -n flux-system deployment/source-controller | grep -i "storage\|artifact\|panic\|permission\|no space"
 
 # If the pod is crash-looping, check previous logs
 kubectl logs -n flux-system deployment/source-controller --previous
 ```
 
-## Step 2: Clear the Badger Database
+## Step 2: Clear the Artifact Storage
 
-The quickest fix is to delete the corrupted Badger database and let it rebuild.
+The quickest fix is to delete the source-controller pod and let the artifact cache rebuild.
 
 ```bash
 # Delete the source-controller pod to restart it
-kubectl delete pod -n flux-system -l app=source-controller
+kubectl delete pod -n flux-system -l app.kubernetes.io/name=source-controller
 
 # If the pod crash-loops again, the data volume needs to be cleared
 # Scale down the deployment first
@@ -60,7 +61,7 @@ kubectl scale deployment source-controller -n flux-system --replicas=0
 # Delete the PVC if one exists
 kubectl get pvc -n flux-system
 
-# If using emptyDir (default), just scaling down and up clears it
+# If using emptyDir (default), deleting the pod clears it
 kubectl scale deployment source-controller -n flux-system --replicas=1
 ```
 
@@ -71,9 +72,9 @@ kubectl scale deployment source-controller -n flux-system --replicas=1
 kubectl get deployment source-controller -n flux-system \
   -o jsonpath='{.spec.template.spec.volumes}' | python3 -m json.tool
 
-# If a PVC exists, delete and recreate it
+# If a PVC exists, delete and recreate the PVC used by source-controller
 kubectl scale deployment source-controller -n flux-system --replicas=0
-kubectl delete pvc source-controller-data -n flux-system
+kubectl delete pvc gotk-pvc -n flux-system
 kubectl scale deployment source-controller -n flux-system --replicas=1
 ```
 
@@ -137,9 +138,9 @@ patches:
       namespace: flux-system
 ```
 
-## Step 4: Use tmpfs for Badger Storage
+## Step 4: Use tmpfs for Artifact Storage
 
-SD cards are slow and wear out with frequent writes. Mount the Badger data directory as a tmpfs (RAM-backed filesystem) for better performance and to avoid SD card wear.
+SD cards are slow and wear out with frequent writes. Mount the source-controller data directory as a tmpfs (RAM-backed filesystem) for better performance and to avoid SD card wear.
 
 ```yaml
 # tmpfs-patch.yaml - Use RAM for temporary storage
@@ -154,19 +155,19 @@ spec:
       containers:
         - name: manager
           volumeMounts:
-            - name: tmp-data
+            - name: tmp
               mountPath: /tmp
-            - name: badger-data
+            - name: data
               mountPath: /data
       volumes:
-        - name: tmp-data
+        - name: tmp
           emptyDir:
             # Use tmpfs (RAM) for temp files
             medium: Memory
             sizeLimit: 128Mi
-        - name: badger-data
+        - name: data
           emptyDir:
-            # Use tmpfs for Badger database
+            # Use tmpfs for artifact storage
             medium: Memory
             sizeLimit: 256Mi
 ```
@@ -254,13 +255,13 @@ kubectl scale deployment notification-controller -n flux-system --replicas=0
 
 ## Step 6: Fix Filesystem Compatibility Issues
 
-Some SD card filesystems (FAT32, exFAT) do not support file locking or memory mapping that Badger requires.
+Some SD card filesystems (FAT32, exFAT) do not support Linux file permissions and locking behavior that Kubernetes workloads commonly rely on.
 
 ```bash
 # Check the filesystem type on the node
 ssh pi@raspberrypi df -T /var/lib/rancher/k3s
 
-# Badger requires ext4 or similar Linux-native filesystem
+# Use ext4 or another Linux-native filesystem for Kubernetes storage
 # If using an SD card, ensure it is formatted as ext4
 ```
 
@@ -358,8 +359,8 @@ ssh pi@raspberrypi df -h
 # 1. Check pod status and restarts
 kubectl get pods -n flux-system -o wide
 
-# 2. Look for Badger errors in logs
-kubectl logs -n flux-system deployment/source-controller | grep -i "badger" | tail -20
+# 2. Look for storage errors in logs
+kubectl logs -n flux-system deployment/source-controller | grep -i "storage\|artifact\|permission\|no space" | tail -20
 
 # 3. Check previous crash logs
 kubectl logs -n flux-system deployment/source-controller --previous 2>/dev/null
@@ -377,8 +378,8 @@ kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}: {.status.condi
 # 7. Verify filesystem type
 kubectl exec -n flux-system deployment/source-controller -- df -T /data 2>/dev/null
 
-# 8. Clear Badger and restart
-kubectl delete pod -n flux-system -l app=source-controller
+# 8. Clear artifact storage and restart
+kubectl delete pod -n flux-system -l app.kubernetes.io/name=source-controller
 
 # 9. Force reconciliation after recovery
 flux reconcile source git flux-system
@@ -386,10 +387,10 @@ flux reconcile source git flux-system
 
 ## Summary
 
-Fixing Badger database errors on Raspberry Pi requires addressing the resource constraints:
+Fixing source-controller artifact storage errors on Raspberry Pi requires addressing the resource constraints:
 
-- **Clear the corrupted database** by deleting the source-controller pod or its PVC
-- **Use tmpfs (RAM)** for Badger storage to avoid SD card I/O issues
+- **Clear the artifact cache** by deleting the source-controller pod or its PVC
+- **Use tmpfs (RAM)** for artifact storage to avoid SD card I/O issues
 - **Reduce memory usage** with appropriate resource limits
 - **Increase reconciliation intervals** to lower CPU and I/O load
 - **Disable unused controllers** to free resources for essential components
