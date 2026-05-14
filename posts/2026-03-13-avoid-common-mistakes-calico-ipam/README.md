@@ -31,7 +31,7 @@ calicoctl ipam show --show-blocks
 calicoctl ipam show --show-configuration
 
 # View node block assignments
-kubectl get ipamhandles -A
+kubectl get blockaffinities.crd.projectcalico.org
 
 # Check for leaked allocations
 calicoctl ipam check
