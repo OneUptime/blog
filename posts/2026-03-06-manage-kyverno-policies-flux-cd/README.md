@@ -23,6 +23,8 @@ Before you begin, ensure you have:
 - kubectl access to one or more clusters
 - Familiarity with Kyverno policy syntax
 
+The examples below use Kyverno's legacy `ClusterPolicy` and `ClusterCleanupPolicy` APIs. These APIs are deprecated in Kyverno v1.18 but remain supported until their planned removal in Kyverno v1.20.
+
 ## Policy Repository Structure
 
 Organize policies into a structured repository layout.
@@ -76,7 +78,6 @@ metadata:
       Restricts container images to approved registries to prevent
       pulling images from untrusted sources.
 spec:
-  validationFailureAction: Audit
   background: true
   rules:
     - name: validate-registries
@@ -93,6 +94,7 @@ spec:
                 - kyverno
                 - flux-system
       validate:
+        failureAction: Audit
         message: >-
           Image '{{ element.image }}' in container '{{ element.name }}'
           is not from an approved registry. Approved registries are:
@@ -124,6 +126,7 @@ spec:
                 - kyverno
                 - flux-system
       validate:
+        failureAction: Audit
         message: >-
           Init container image '{{ element.image }}' is not from an approved registry.
         foreach:
@@ -160,7 +163,6 @@ metadata:
       that is not 'latest'. Using 'latest' leads to unpredictable
       deployments and makes rollbacks difficult.
 spec:
-  validationFailureAction: Audit
   background: true
   rules:
     - name: require-image-tag
@@ -177,20 +179,21 @@ spec:
                 - kyverno
                 - flux-system
       validate:
+        failureAction: Audit
         message: "Container '{{ element.name }}' must specify an image tag. The ':latest' tag is not allowed."
         foreach:
-          - list: "request.object.spec.[containers, initContainers, ephemeralContainers][]"
+          - list: "request.object.spec.[ephemeralContainers, initContainers, containers][]"
             deny:
               conditions:
                 any:
                   # Deny if no tag is specified (implies latest)
-                  - key: "{{ element.image }}"
+                  - key: "{{ regex_match('^(([^/]+/)+)?[^/:]+:[^/:@]+(@.*)?$', '{{ element.image }}') }}"
                     operator: Equals
-                    value: "*/!(*:*)"
+                    value: false
                   # Deny if the tag is explicitly 'latest'
-                  - key: "{{ element.image }}"
+                  - key: "{{ regex_match('^(([^/]+/)+)?[^/:]+:latest(@.*)?$', '{{ element.image }}') }}"
                     operator: Equals
-                    value: "*:latest"
+                    value: true
 ```
 
 ## Policy: Require Health Probes
@@ -211,7 +214,6 @@ metadata:
       Requires all containers in Deployments to have readiness
       and liveness probes configured for reliable health checking.
 spec:
-  validationFailureAction: Audit
   background: true
   rules:
     - name: require-readiness-probe
@@ -228,6 +230,7 @@ spec:
                 - kyverno
                 - flux-system
       validate:
+        failureAction: Audit
         message: "Container '{{element.name}}' in Deployment '{{request.object.metadata.name}}' must have a readinessProbe configured."
         foreach:
           - list: "request.object.spec.template.spec.containers"
@@ -251,6 +254,7 @@ spec:
                 - kyverno
                 - flux-system
       validate:
+        failureAction: Audit
         message: "Container '{{element.name}}' in Deployment '{{request.object.metadata.name}}' must have a livenessProbe configured."
         foreach:
           - list: "request.object.spec.template.spec.containers"
@@ -323,7 +327,7 @@ spec:
             patchStrategicMerge:
               spec:
                 containers:
-                  - name: "{{ element.name }}"
+                  - (name): "{{ element.name }}"
                     securityContext:
                       # Add defaults only if not already set
                       +(allowPrivilegeEscalation): false
@@ -420,7 +424,7 @@ spec:
 
 ## Policy: Cleanup Completed Jobs
 
-Automatically clean up completed and failed jobs.
+Automatically clean up completed jobs.
 
 ```yaml
 # policies/base/cleanup/cleanup-completed-jobs.yaml
@@ -472,13 +476,33 @@ resources:
   - ../../base/mutation/
   - ../../base/generation/
 patches:
-  # Set all validation policies to Audit in staging
+  # Set validation policies to Audit in staging
   - target:
       kind: ClusterPolicy
-      annotationSelector: "policies.kyverno.io/category in (Best Practices, Supply Chain Security, Security)"
+      name: restrict-image-registries
     patch: |
       - op: replace
-        path: /spec/validationFailureAction
+        path: /spec/rules/0/validate/failureAction
+        value: Audit
+      - op: replace
+        path: /spec/rules/1/validate/failureAction
+        value: Audit
+  - target:
+      kind: ClusterPolicy
+      name: disallow-latest-tag
+    patch: |
+      - op: replace
+        path: /spec/rules/0/validate/failureAction
+        value: Audit
+  - target:
+      kind: ClusterPolicy
+      name: require-probes
+    patch: |
+      - op: replace
+        path: /spec/rules/0/validate/failureAction
+        value: Audit
+      - op: replace
+        path: /spec/rules/1/validate/failureAction
         value: Audit
 ```
 
@@ -495,10 +519,30 @@ patches:
   # Enforce validation policies in production
   - target:
       kind: ClusterPolicy
-      annotationSelector: "policies.kyverno.io/category in (Best Practices, Supply Chain Security, Security)"
+      name: restrict-image-registries
     patch: |
       - op: replace
-        path: /spec/validationFailureAction
+        path: /spec/rules/0/validate/failureAction
+        value: Enforce
+      - op: replace
+        path: /spec/rules/1/validate/failureAction
+        value: Enforce
+  - target:
+      kind: ClusterPolicy
+      name: disallow-latest-tag
+    patch: |
+      - op: replace
+        path: /spec/rules/0/validate/failureAction
+        value: Enforce
+  - target:
+      kind: ClusterPolicy
+      name: require-probes
+    patch: |
+      - op: replace
+        path: /spec/rules/0/validate/failureAction
+        value: Enforce
+      - op: replace
+        path: /spec/rules/1/validate/failureAction
         value: Enforce
 ```
 
@@ -576,12 +620,12 @@ kubectl get policyreport -n production -o json | \
   jq '.results[] | select(.result == "fail") | {policy: .policy, rule: .rule, resource: .resources[0].name, message: .message}'
 
 # Check Flux reconciliation status
-flux get kustomizations kyverno-policies
+flux get kustomizations
 
 # List all policies and their actions
 kubectl get clusterpolicies -o custom-columns=\
 NAME:.metadata.name,\
-ACTION:.spec.validationFailureAction,\
+RULE_ACTIONS:.spec.rules[*].validate.failureAction,\
 BACKGROUND:.spec.background,\
 READY:.status.conditions[0].status
 
@@ -595,7 +639,7 @@ Alert on policy deployment changes.
 
 ```yaml
 # infrastructure/notifications/policy-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: kyverno-policy-alert
@@ -607,7 +651,8 @@ spec:
   eventSources:
     - kind: Kustomization
       name: kyverno-policies
-  summary: "Kyverno policy changes detected"
+  eventMetadata:
+    summary: "Kyverno policy changes detected"
 ```
 
 ## Summary
