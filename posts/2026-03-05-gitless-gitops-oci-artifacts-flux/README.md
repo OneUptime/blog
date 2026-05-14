@@ -16,7 +16,7 @@ In a gitless GitOps setup, your CI pipeline builds and pushes OCI artifacts to a
 
 ## Prerequisites
 
-- A Kubernetes cluster with Flux CD installed (v0.35 or later)
+- A Kubernetes cluster with Flux CD installed (v2.6 or later)
 - The `flux` CLI installed
 - An OCI-compatible container registry (GHCR, ECR, ACR, Harbor, Docker Hub, etc.)
 - A CI/CD system (GitHub Actions, GitLab CI, etc.)
@@ -80,6 +80,7 @@ on:
     paths: ["deploy/**"]
 
 permissions:
+  contents: read
   packages: write
 
 jobs:
