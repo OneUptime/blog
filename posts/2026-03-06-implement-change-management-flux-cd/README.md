@@ -75,7 +75,7 @@ Use pull request templates to enforce structured change requests.
 
 ## Categorizing Changes with Labels
 
-Use Git labels and directory structure to categorize changes by risk level.
+Use pull request labels and directory structure to categorize changes by risk level.
 
 ```yaml
 # Repository structure with risk-based organization
@@ -258,9 +258,9 @@ spec:
   sourceRef:
     kind: GitRepository
     name: fleet-infra
-  path: ./emergency
+  path: ./changes/emergency
   prune: false
-  # Emergency changes applied immediately
+  # Do not wait for health checks during emergency application
   wait: false
 ```
 
@@ -332,7 +332,7 @@ Configure Flux notifications to integrate with change management systems.
 
 ```yaml
 # Send deployment events to a change management webhook
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: change-management-system
@@ -343,7 +343,7 @@ spec:
   secretRef:
     name: change-mgmt-webhook-secret
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: change-tracking
