@@ -41,8 +41,8 @@ flux version
 # View the installed component versions
 flux version --client=false
 
-# Check available versions
-flux version --available
+# Check whether a newer Flux version is available
+flux check --pre
 ```
 
 Review release notes at the Flux CD GitHub repository:
@@ -89,8 +89,8 @@ flux export image update --all > backup/image-updates.yaml
 flux export alert --all > backup/alerts.yaml
 flux export alert-provider --all > backup/alert-providers.yaml
 
-# Export CRDs for reference
-kubectl get crds -o yaml | grep -A 5 'fluxcd.io' > backup/crds.yaml
+# Export Flux CRDs for reference
+kubectl get crds -o name | grep 'toolkit.fluxcd.io' | xargs kubectl get -o yaml > backup/crds.yaml
 
 # Take a snapshot of controller deployments
 kubectl get deployments -n flux-system -o yaml > backup/deployments.yaml
@@ -160,8 +160,8 @@ With preparations complete, perform the actual upgrade.
 # The --export flag lets you preview changes before applying
 flux install --export > flux-upgrade-preview.yaml
 
-# Review the changes
-diff <(kubectl get deploy -n flux-system -o yaml) flux-upgrade-preview.yaml
+# Review the generated manifests before applying them
+less flux-upgrade-preview.yaml
 
 # Apply the upgrade
 flux install
@@ -202,8 +202,8 @@ Minor version upgrades may include CRD changes. Ensure CRDs are updated as part 
 kubectl get crds -o custom-columns=NAME:.metadata.name,VERSION:.metadata.labels.app\\.kubernetes\\.io/version \
   | grep fluxcd
 
-# Apply updated CRDs from the new version
-flux install --crds=CreateReplace
+# Apply the generated manifests, including updated CRDs
+kubectl apply --server-side -f flux-upgrade-preview.yaml
 
 # Verify CRD versions after upgrade
 kubectl get crds | grep fluxcd
@@ -245,7 +245,7 @@ Set up monitoring to catch any issues that surface after the upgrade.
 ```yaml
 # alert.yaml
 # Configure alerts for reconciliation failures after upgrade
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: post-upgrade-monitor
@@ -267,16 +267,17 @@ spec:
     name: slack-provider
 ---
 # alert-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-provider
   namespace: flux-system
 spec:
   type: slack
+  address: https://slack.com/api/chat.postMessage
   channel: flux-alerts
   secretRef:
-    name: slack-webhook-url
+    name: slack-bot-token
 ```
 
 ## Step 10: Handle API Version Migrations
@@ -285,7 +286,7 @@ Minor versions may introduce new API versions. Update your resources to use the 
 
 ```yaml
 # Before: using older API version
-apiVersion: source.toolkit.fluxcd.io/v1
+apiVersion: source.toolkit.fluxcd.io/v1beta2
 kind: HelmRepository
 metadata:
   name: bitnami
@@ -349,8 +350,8 @@ kubectl get events -n flux-system --sort-by=.lastTimestamp
 # Identify failing resources
 flux get all --all-namespaces --status-selector ready=false
 
-# Force reconciliation
-flux reconcile kustomization --all -n flux-system
+# Force reconciliation of a specific Kustomization
+flux reconcile kustomization <name> -n <namespace> --with-source
 
 # Check if CRD changes caused schema validation failures
 kubectl describe kustomization <name> -n <namespace>
