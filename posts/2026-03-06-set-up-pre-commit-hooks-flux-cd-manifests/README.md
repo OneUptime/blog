@@ -12,9 +12,9 @@ Pre-commit hooks run validation checks before code is committed to Git, catching
 
 ## Prerequisites
 
-- Python 3.8 or later (for pre-commit framework)
+- Python 3.10 or later (for the current pre-commit framework)
 - Git repository with Flux CD configurations
-- Flux CLI installed locally
+- Kustomize CLI installed locally
 - Basic understanding of Git hooks
 
 ## Installing the Pre-Commit Framework
@@ -106,7 +106,7 @@ rules:
       - id: validate-kustomize
         name: Validate Kustomize builds
         entry: scripts/hooks/validate-kustomize.sh
-        language: script
+        language: unsupported_script
         files: kustomization\.yaml$
         pass_filenames: true
 ```
@@ -152,7 +152,7 @@ fi
       - id: validate-flux-resources
         name: Validate Flux CD resources
         entry: scripts/hooks/validate-flux-resources.sh
-        language: script
+        language: unsupported_script
         files: \.(yaml|yml)$
         pass_filenames: true
 ```
@@ -192,8 +192,8 @@ for file in "$@"; do
           ERRORS=$((ERRORS + 1))
         fi
 
-        if ! grep -q "path:" "$file"; then
-          echo "ERROR: $file - Kustomization missing 'path' field"
+        if ! grep -q "prune:" "$file"; then
+          echo "ERROR: $file - Kustomization missing 'prune' field"
           ERRORS=$((ERRORS + 1))
         fi
 
@@ -203,8 +203,8 @@ for file in "$@"; do
 
     HelmRelease)
       # Validate HelmRelease required fields
-      if ! grep -q "chart:" "$file"; then
-        echo "ERROR: $file - HelmRelease missing 'chart' field"
+      if ! grep -q "chart:" "$file" && ! grep -q "chartRef:" "$file"; then
+        echo "ERROR: $file - HelmRelease missing 'chart' or 'chartRef' field"
         ERRORS=$((ERRORS + 1))
       fi
 
@@ -221,7 +221,7 @@ for file in "$@"; do
       echo "OK: $file (HelmRelease)"
       ;;
 
-    GitRepository|HelmRepository|OCIRepository)
+    GitRepository|OCIRepository)
       # Validate source resources
       if ! grep -q "url:" "$file"; then
         echo "ERROR: $file - $KIND missing 'url' field"
@@ -230,6 +230,16 @@ for file in "$@"; do
 
       if ! grep -q "interval:" "$file"; then
         echo "ERROR: $file - $KIND missing 'interval' field"
+        ERRORS=$((ERRORS + 1))
+      fi
+
+      echo "OK: $file ($KIND)"
+      ;;
+
+    HelmRepository)
+      # Validate Helm repository source resources
+      if ! grep -q "url:" "$file"; then
+        echo "ERROR: $file - $KIND missing 'url' field"
         ERRORS=$((ERRORS + 1))
       fi
 
@@ -252,7 +262,7 @@ fi
       - id: detect-unencrypted-secrets
         name: Detect unencrypted Kubernetes secrets
         entry: scripts/hooks/detect-secrets.sh
-        language: script
+        language: unsupported_script
         files: \.(yaml|yml)$
         pass_filenames: true
 ```
@@ -302,7 +312,7 @@ fi
       - id: validate-namespaces
         name: Validate namespace consistency
         entry: scripts/hooks/validate-namespaces.sh
-        language: script
+        language: unsupported_script
         files: \.(yaml|yml)$
         pass_filenames: true
 ```
@@ -377,28 +387,28 @@ repos:
       - id: validate-kustomize
         name: Validate Kustomize builds
         entry: scripts/hooks/validate-kustomize.sh
-        language: script
+        language: unsupported_script
         files: kustomization\.yaml$
         pass_filenames: true
 
       - id: validate-flux-resources
         name: Validate Flux CD resources
         entry: scripts/hooks/validate-flux-resources.sh
-        language: script
+        language: unsupported_script
         files: \.(yaml|yml)$
         pass_filenames: true
 
       - id: detect-unencrypted-secrets
         name: Detect unencrypted secrets
         entry: scripts/hooks/detect-secrets.sh
-        language: script
+        language: unsupported_script
         files: \.(yaml|yml)$
         pass_filenames: true
 
       - id: validate-namespaces
         name: Validate namespaces
         entry: scripts/hooks/validate-namespaces.sh
-        language: script
+        language: unsupported_script
         files: \.(yaml|yml)$
         pass_filenames: true
 ```
