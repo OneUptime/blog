@@ -188,15 +188,14 @@ patches:
                   - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
                   - --watch-all-namespaces=true
                   - --log-level=info
-                  # Reduce concurrent git clones from default
-                  - --concurrent=2
-                  # Limit artifact storage size
+                  # Reduce concurrent reconciles below the default
+                  - --concurrent=1
                   - --storage-adv-addr=source-controller.flux-system.svc.cluster.local.
 ```
 
 ## Common Cause 4: Large Git Repository with Full Clone
 
-By default, Flux performs a shallow clone. However, certain configurations or tag-based references may trigger a full clone, consuming significantly more memory.
+By default, Flux performs a shallow clone when a branch is specified. However, certain reference configurations may require more Git history, consuming significantly more memory.
 
 ### Fix: Ensure Shallow Clones
 
@@ -211,7 +210,7 @@ spec:
   url: https://github.com/myorg/my-large-repo.git
   ref:
     branch: main
-  # Ignore non-essential paths to reduce clone size
+  # Ignore non-essential paths to reduce artifact size
   ignore: |
     # Exclude docs, tests, and CI files
     /docs/
@@ -220,7 +219,7 @@ spec:
     /*.md
 ```
 
-### Fix: Use Sparse Checkout with include
+### Fix: Use Sparse Checkout
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -233,9 +232,8 @@ spec:
   url: https://github.com/myorg/my-mono-repo.git
   ref:
     branch: main
-  include:
-    - fromPath: deploy/kubernetes
-      toPath: .
+  sparseCheckout:
+    - deploy/kubernetes
 ```
 
 ## Common Cause 5: Kustomize Controller OOM with Complex Overlays
