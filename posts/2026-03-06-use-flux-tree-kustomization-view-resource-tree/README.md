@@ -68,7 +68,7 @@ flux tree kustomization apps
 Sample output:
 
 ```text
-Kustomization/apps
+Kustomization/flux-system/apps
 ├── Namespace/my-app
 ├── ServiceAccount/my-app/my-app-sa
 ├── ConfigMap/my-app/my-app-config
@@ -103,42 +103,39 @@ flux tree kustomization flux-system
 Sample output with nested kustomizations:
 
 ```text
-Kustomization/flux-system
-├── Kustomization/infrastructure
+Kustomization/flux-system/flux-system
+├── Kustomization/flux-system/infrastructure
 │   ├── Namespace/cert-manager
-│   ├── HelmRelease/cert-manager
+│   ├── HelmRelease/cert-manager/cert-manager
 │   ├── Namespace/ingress-nginx
-│   └── HelmRelease/ingress-nginx
-├── Kustomization/apps
+│   └── HelmRelease/ingress-nginx/ingress-nginx
+├── Kustomization/flux-system/apps
 │   ├── Namespace/my-app
 │   ├── Deployment/my-app/my-app
 │   ├── Service/my-app/my-app-svc
 │   └── Ingress/my-app/my-app-ingress
-└── Kustomization/monitoring
+└── Kustomization/flux-system/monitoring
     ├── Namespace/monitoring
-    ├── HelmRelease/prometheus
-    └── HelmRelease/grafana
+    ├── HelmRelease/monitoring/prometheus
+    └── HelmRelease/monitoring/grafana
 ```
 
-## Including Resource Status
+## Viewing Only Flux Resources
 
-View the readiness status alongside the tree:
+View only Flux resources in the tree:
 
 ```bash
-# Show resource tree with status information
+# Show only Flux resources in the tree
 flux tree kustomization apps --compact
 ```
 
-Output with status:
+Compact output:
 
 ```text
-Kustomization/apps
-├── Namespace/my-app - Current
-├── ServiceAccount/my-app/my-app-sa - Current
-├── ConfigMap/my-app/my-app-config - Current
-├── Deployment/my-app/my-app - Current (2/2 ready)
-├── Service/my-app/my-app-svc - Current
-└── Ingress/my-app/my-app-ingress - Current
+Kustomization/flux-system/apps
+├── Kustomization/flux-system/backend
+├── HelmRelease/my-app/my-app
+└── HelmRelease/my-app/redis
 ```
 
 ## Practical Use Cases
@@ -190,10 +187,10 @@ When two Kustomizations might manage the same resource:
 
 ```bash
 # Check tree for kustomization A
-flux tree kustomization team-a | sort > /tmp/tree-a.txt
+flux tree kustomization team-a | sed 's/^[[:space:]│├└─]*//' | sort > /tmp/tree-a.txt
 
 # Check tree for kustomization B
-flux tree kustomization team-b | sort > /tmp/tree-b.txt
+flux tree kustomization team-b | sed 's/^[[:space:]│├└─]*//' | sort > /tmp/tree-b.txt
 
 # Find any overlapping resources
 comm -12 /tmp/tree-a.txt /tmp/tree-b.txt
@@ -223,7 +220,7 @@ flux tree kustomization apps | grep "Deployment"
 flux tree kustomization apps | grep "production/"
 
 # Count resources by type
-flux tree kustomization apps | grep -oP '^\S+' | sort | uniq -c | sort -rn
+flux tree kustomization apps | sed 's/^[[:space:]│├└─]*//' | awk -F'/' '{print $1}' | sort | uniq -c | sort -rn
 ```
 
 ## Comparing Trees Before and After Changes
@@ -267,13 +264,13 @@ echo "Date: $(date)"
 echo ""
 
 # Get all kustomizations
-KUSTOMIZATIONS=$(flux get kustomizations --all-namespaces -o json | jq -r '.[] | .name')
+KUSTOMIZATIONS=$(kubectl get kustomizations.kustomize.toolkit.fluxcd.io --all-namespaces -o json | jq -r '.items[] | [.metadata.namespace, .metadata.name] | @tsv')
 
-for KS in $KUSTOMIZATIONS; do
-    echo "--- Kustomization: $KS ---"
-    flux tree kustomization "$KS" 2>/dev/null
+while IFS=$'\t' read -r NS KS; do
+    echo "--- Kustomization: $NS/$KS ---"
+    flux tree kustomization "$KS" --namespace "$NS" 2>/dev/null
     echo ""
-done
+done <<< "$KUSTOMIZATIONS"
 ```
 
 ## Understanding the Output Format
@@ -319,7 +316,7 @@ flux events --for Kustomization/apps
 | Flag | Description |
 |------|-------------|
 | `--namespace` | Namespace of the Kustomization resource |
-| `--compact` | Show compact tree with status information |
+| `--compact` | List Flux resources only |
 
 ## Troubleshooting
 
