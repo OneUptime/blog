@@ -17,9 +17,9 @@ Flux CD uses Kubernetes server-side apply (SSA) as its default apply strategy. S
 With server-side apply, the Kubernetes API server maintains a list of field managers for each field of every resource. When Flux applies a resource, it registers as a field manager with the name `kustomize-controller`.
 
 ```bash
-# View the field managers for a resource
-
-kubectl get deployment my-app -n production -o yaml | grep -A 20 managedFields
+# View the field managers for a resource.
+# kubectl get hides managed fields unless --show-managed-fields is set.
+kubectl get deployment my-app -n production -o yaml --show-managed-fields | grep -A 20 managedFields
 ```
 
 The output shows which fields are managed by which actor.
@@ -49,11 +49,11 @@ managedFields:
     operation: Update
 ```
 
-In this example, Flux owns the `replicas`, `template`, and `image` fields. The Kubernetes controller manager owns the deployment revision annotation. Each manager can modify only the fields it owns without conflicting with other managers.
+In this example, Flux owns the `replicas`, `template`, and `image` fields. The Kubernetes controller manager owns the deployment revision annotation. Apply operations can modify fields they own without conflicting with other managers; trying to change a field owned by another apply manager causes a conflict unless ownership is transferred or the apply operation forces the change.
 
 ## How Flux Detects Drift
 
-Flux detects drift by comparing the desired state in Git against the live state in the cluster during each reconciliation cycle. With server-side apply, Flux only compares the fields it manages. If another actor changes a field that Flux does not manage, Flux ignores it.
+Flux detects drift by comparing the desired state in Git against the live state in the cluster during each reconciliation cycle. With its default server-side apply policy, Flux reconciles the fields defined in the manifests and will override manual edits to those fields. Fields added by other actors are only preserved when they do not overlap with the desired state and the resource's SSA policy allows that behavior, such as with `kustomize.toolkit.fluxcd.io/ssa: Merge`.
 
 If someone manually changes a field that Flux manages, Flux will revert it on the next reconciliation.
 
@@ -68,12 +68,12 @@ flux reconcile kustomization app --with-source
 
 ## The Inventory System
 
-Flux maintains an inventory of all resources it has applied. This inventory is stored as an annotation on the Kustomization resource itself. It tracks every resource by its group, version, kind, namespace, and name.
+Flux maintains an inventory of all resources it has applied. This inventory is stored in the Kustomization's status under `.status.inventory`. It tracks every resource by its group, version, kind, namespace, and name.
 
 ```bash
 # View the inventory of resources managed by a Kustomization
 kubectl get kustomization app -n flux-system \
-  -o jsonpath='{.status.inventory.entries}' | jq .
+  -o json | jq '.status.inventory.entries'
 ```
 
 The inventory serves several purposes:
@@ -127,10 +127,26 @@ metadata:
 
 ## Force and Field Ownership Conflicts
 
-When two managers try to own the same field, a conflict occurs. Flux can be configured to force-apply, which takes ownership of conflicting fields.
+When two apply managers try to change the same field, a server-side apply conflict can occur. Flux's default `Override` SSA policy reconciles resources to the desired state from Git, while per-resource SSA annotations such as `kustomize.toolkit.fluxcd.io/ssa: Merge` can be used when you want Flux to preserve non-overlapping fields added by other tools.
 
 ```yaml
-# Kustomization with force enabled to resolve conflicts
+# Resource with Merge SSA policy to preserve non-overlapping fields
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: production
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: Merge
+data:
+  config.yaml: |
+    logLevel: info
+```
+
+The `spec.force` setting on a Kustomization is different: it controls whether Flux recreates resources when patching fails because of immutable field changes.
+
+```yaml
+# Kustomization with force enabled to recreate resources after immutable field changes
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -140,13 +156,13 @@ spec:
   interval: 10m
   path: ./deploy
   prune: true
-  force: true  # Force ownership of conflicting fields
+  force: true  # Recreate resources when patching fails on immutable fields
   sourceRef:
     kind: GitRepository
     name: flux-system
 ```
 
-With `force: true`, Flux takes ownership of any field it applies, even if another manager currently owns it. This is useful when migrating resources to Flux management but should be used carefully since it overrides any changes made by other tools.
+With `force: true`, Flux may replace resources instead of patching them, which can cause downtime. Use it temporarily or prefer the per-resource `kustomize.toolkit.fluxcd.io/force: enabled` annotation for targeted immutable-field changes.
 
 ## Coexisting with Other Tools
 
@@ -197,7 +213,7 @@ metadata:
     kustomize.toolkit.fluxcd.io/namespace: flux-system
 ```
 
-These labels help identify which Kustomization owns a resource and are used for garbage collection during pruning.
+These labels help identify which Kustomization manages a resource. During pruning, Flux uses the Kustomization inventory to find stale resources and owner labels to scope deletion to resources managed by that Kustomization.
 
 ## Transferring Ownership Between Kustomizations
 
