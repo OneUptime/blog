@@ -101,6 +101,9 @@ kind: Kustomization
 namespace: dev
 resources:
   - ../base/my-app
+images:
+  - name: ghcr.io/my-org/my-app
+    newTag: dev-latest
 patches:
   - target:
       kind: Deployment
@@ -109,9 +112,6 @@ patches:
       - op: replace
         path: /spec/replicas
         value: 1
-      - op: replace
-        path: /spec/template/spec/containers/0/image
-        value: ghcr.io/my-org/my-app:dev-latest
       - op: add
         path: /spec/template/spec/containers/0/env
         value:
@@ -128,6 +128,9 @@ kind: Kustomization
 namespace: staging
 resources:
   - ../base/my-app
+images:
+  - name: ghcr.io/my-org/my-app
+    newTag: 1.2.0 # {"$imagepolicy": "flux-system:my-app-staging:tag"}
 patches:
   - target:
       kind: Deployment
@@ -136,9 +139,6 @@ patches:
       - op: replace
         path: /spec/replicas
         value: 2
-      - op: replace
-        path: /spec/template/spec/containers/0/image
-        value: ghcr.io/my-org/my-app:1.2.0
       - op: add
         path: /spec/template/spec/containers/0/env
         value:
@@ -155,6 +155,9 @@ kind: Kustomization
 namespace: production
 resources:
   - ../base/my-app
+images:
+  - name: ghcr.io/my-org/my-app
+    newTag: 1.1.0
 patches:
   - target:
       kind: Deployment
@@ -163,9 +166,6 @@ patches:
       - op: replace
         path: /spec/replicas
         value: 5
-      - op: replace
-        path: /spec/template/spec/containers/0/image
-        value: ghcr.io/my-org/my-app:1.1.0
       - op: add
         path: /spec/template/spec/containers/0/env
         value:
@@ -258,6 +258,10 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   promote:
     runs-on: ubuntu-latest
@@ -267,18 +271,24 @@ jobs:
       - name: Verify image exists in dev
         run: |
           # Confirm the image was deployed to dev
-          DEV_TAG=$(grep -oP 'image: ghcr.io/my-org/my-app:\K[^\s]+' apps/dev/kustomization.yaml)
+          DEV_TAG=$(grep -oP 'newTag:\s*\K[^\s]+' apps/dev/kustomization.yaml)
           echo "Current dev tag: $DEV_TAG"
           echo "Promoting tag: ${{ inputs.image_tag }}"
+          if [ "$DEV_TAG" != "${{ inputs.image_tag }}" ]; then
+            echo "ERROR: Image ${{ inputs.image_tag }} is not deployed to dev"
+            exit 1
+          fi
 
       - name: Update staging image tag
         run: |
           # Update the image tag in staging overlay
-          sed -i "s|ghcr.io/my-org/my-app:.*|ghcr.io/my-org/my-app:${{ inputs.image_tag }}|" \
+          sed -i -E "s|(newTag:[[:space:]]*)[^[:space:]]+|\\1${{ inputs.image_tag }}|" \
             apps/staging/kustomization.yaml
 
       - name: Create promotion PR
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b promote/staging-${{ inputs.image_tag }}
           git add apps/staging/kustomization.yaml
           git commit -m "promote: deploy my-app ${{ inputs.image_tag }} to staging"
@@ -311,6 +321,10 @@ on:
         required: true
         type: number
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -327,7 +341,7 @@ jobs:
 
       - name: Verify image is running in staging
         run: |
-          STAGING_TAG=$(grep -oP 'image: ghcr.io/my-org/my-app:\K[^\s]+' apps/staging/kustomization.yaml)
+          STAGING_TAG=$(grep -oP 'newTag:\s*\K[^\s]+' apps/staging/kustomization.yaml)
           if [ "$STAGING_TAG" != "${{ inputs.image_tag }}" ]; then
             echo "ERROR: Image ${{ inputs.image_tag }} is not deployed to staging"
             echo "Staging is running: $STAGING_TAG"
@@ -336,11 +350,13 @@ jobs:
 
       - name: Update production image tag
         run: |
-          sed -i "s|ghcr.io/my-org/my-app:.*|ghcr.io/my-org/my-app:${{ inputs.image_tag }}|" \
+          sed -i -E "s|(newTag:[[:space:]]*)[^[:space:]]+|\\1${{ inputs.image_tag }}|" \
             apps/production/kustomization.yaml
 
       - name: Create promotion PR
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b promote/production-${{ inputs.image_tag }}
           git add apps/production/kustomization.yaml
           git commit -m "promote: deploy my-app ${{ inputs.image_tag }} to production"
