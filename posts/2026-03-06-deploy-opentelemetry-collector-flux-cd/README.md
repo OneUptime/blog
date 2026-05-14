@@ -20,9 +20,10 @@ Before you begin, ensure you have:
 
 - A Kubernetes cluster (v1.25 or later)
 - Flux CD installed and bootstrapped
+- cert-manager installed for the operator admission webhook certificate
 - A Git repository connected to Flux CD
 - kubectl configured for your cluster
-- Backend services (Prometheus, Loki, Tempo) for exporting telemetry
+- Backend services (Prometheus with remote write receiver enabled, Loki, Tempo) for exporting telemetry
 
 ## Setting Up the Helm Repository
 
@@ -93,14 +94,50 @@ spec:
         limits:
           cpu: 500m
           memory: 512Mi
+      collectorImage:
+        repository: otel/opentelemetry-collector-contrib
     # Enable admission webhooks
     admissionWebhooks:
       certManager:
         enabled: true
-    # Watch all namespaces
-    manager:
-      collectorImage:
-        repository: otel/opentelemetry-collector-contrib
+```
+
+## Creating Collector RBAC
+
+The Kubernetes receivers and processors need permission to read metadata and events from the Kubernetes API.
+
+```yaml
+# clusters/my-cluster/otel/collector-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-agent-collector
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces", "nodes", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets", "deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["extensions"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-agent-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-agent-collector
+subjects:
+  - kind: ServiceAccount
+    name: otel-agent-collector
+    namespace: opentelemetry
 ```
 
 ## Deploying the Collector as a DaemonSet (Agent Mode)
@@ -116,7 +153,7 @@ metadata:
   namespace: opentelemetry
 spec:
   mode: daemonset
-  image: otel/opentelemetry-collector-contrib:0.100.0
+  image: otel/opentelemetry-collector-contrib:0.151.0
   resources:
     requests:
       cpu: 100m
@@ -214,6 +251,8 @@ spec:
       k8sattributes:
         auth_type: "serviceAccount"
         passthrough: false
+        filter:
+          node_from_env_var: K8S_NODE_NAME
         extract:
           metadata:
             - k8s.namespace.name
@@ -290,8 +329,8 @@ metadata:
   namespace: opentelemetry
 spec:
   mode: deployment
-  replicas: 3
-  image: otel/opentelemetry-collector-contrib:0.100.0
+  replicas: 1
+  image: otel/opentelemetry-collector-contrib:0.151.0
   resources:
     requests:
       cpu: 500m
@@ -353,14 +392,9 @@ spec:
         resource_to_telemetry_conversion:
           enabled: true
 
-      # Export logs to Loki
-      loki:
-        endpoint: http://loki-gateway.logging.svc:80/loki/api/v1/push
-        default_labels_enabled:
-          exporter: true
-          job: true
-          instance: true
-          level: true
+      # Export logs to Loki using its native OTLP endpoint
+      otlphttp/loki:
+        endpoint: http://loki-gateway.logging.svc:80/otlp
 
     service:
       pipelines:
@@ -375,7 +409,7 @@ spec:
         logs:
           receivers: [otlp]
           processors: [memory_limiter, batch]
-          exporters: [loki]
+          exporters: [otlphttp/loki]
 ```
 
 ## Setting Up Auto-Instrumentation
