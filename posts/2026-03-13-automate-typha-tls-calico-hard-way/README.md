@@ -19,7 +19,7 @@ cert-manager is a Kubernetes operator that manages certificate lifecycle automat
 ### Install cert-manager
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 kubectl wait --for=condition=Available deployment --all -n cert-manager --timeout=120s
 ```
 
@@ -38,11 +38,13 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: calico-typha-ca
-  namespace: calico-system
+  namespace: kube-system
 spec:
   isCA: true
   commonName: calico-typha-ca
   secretName: calico-typha-ca-secret
+  duration: 87600h  # 10 years
+  renewBefore: 720h  # Renew 30 days before expiry
   privateKey:
     algorithm: RSA
     size: 4096
@@ -54,11 +56,15 @@ apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
   name: calico-typha-issuer
-  namespace: calico-system
+  namespace: kube-system
 spec:
   ca:
     secretName: calico-typha-ca-secret
 EOF
+
+kubectl wait --for=condition=Ready certificate/calico-typha-ca -n kube-system --timeout=120s
+kubectl get secret -n kube-system calico-typha-ca-secret -o jsonpath='{.data.ca\.crt}' | base64 -d > typhaca.crt
+kubectl create configmap -n kube-system calico-typha-ca --from-file=typhaca.crt --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 ### Issue Typha Server and Felix Client Certificates
@@ -69,15 +75,17 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: calico-typha-tls
-  namespace: calico-system
+  namespace: kube-system
 spec:
-  secretName: calico-typha-tls
+  secretName: calico-typha-certs
   duration: 2160h  # 90 days
   renewBefore: 360h  # Renew 15 days before expiry
   commonName: calico-typha
   dnsNames:
-  - calico-typha.calico-system.svc
-  - calico-typha.calico-system.svc.cluster.local
+  - calico-typha.kube-system.svc
+  - calico-typha.kube-system.svc.cluster.local
+  usages:
+  - server auth
   issuerRef:
     name: calico-typha-issuer
     kind: Issuer
@@ -86,19 +94,30 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: calico-felix-typha-tls
-  namespace: calico-system
+  namespace: kube-system
 spec:
-  secretName: calico-felix-typha-tls
+  secretName: calico-node-certs
   duration: 2160h
   renewBefore: 360h
-  commonName: calico-felix
+  commonName: calico-node
+  usages:
+  - client auth
   issuerRef:
     name: calico-typha-issuer
     kind: Issuer
 EOF
+
+kubectl wait --for=condition=Ready certificate/calico-typha-tls -n kube-system --timeout=120s
+kubectl wait --for=condition=Ready certificate/calico-felix-typha-tls -n kube-system --timeout=120s
+kubectl set env deployment/calico-typha -n kube-system \
+  TYPHA_SERVERCERTFILE=/calico-typha-certs/tls.crt \
+  TYPHA_SERVERKEYFILE=/calico-typha-certs/tls.key
+kubectl set env daemonset/calico-node -n kube-system \
+  FELIX_TYPHACERTFILE=/calico-node-certs/tls.crt \
+  FELIX_TYPHAKEYFILE=/calico-node-certs/tls.key
 ```
 
-cert-manager will automatically renew these certificates 15 days before expiry and update the Kubernetes Secrets. Typha and Felix will pick up the new certificates on their next reload.
+cert-manager will automatically renew these certificates 15 days before expiry and update the Kubernetes Secrets. Typha and Felix will pick up the new certificates after their Pods are restarted or otherwise reload the mounted Secret data.
 
 ## Option 2: Automate with Ansible and Cron
 
@@ -130,33 +149,62 @@ For environments without cert-manager:
     - name: Regenerate certificates if needed
       when: needs_rotation
       block:
+        - name: Write Typha server certificate extensions
+          copy:
+            dest: "{{ cert_dir }}/typha-server.ext"
+            content: |
+              extendedKeyUsage = serverAuth
+              subjectAltName = DNS:calico-typha
+
+        - name: Write Felix client certificate extensions
+          copy:
+            dest: "{{ cert_dir }}/calico-node.ext"
+            content: |
+              extendedKeyUsage = clientAuth
+
         - name: Generate new Typha server certificate
           command: >
             openssl req -newkey rsa:4096 -keyout {{ cert_dir }}/typha-server-new.key
             -out {{ cert_dir }}/typha-server-new.csr -nodes -subj "/CN=calico-typha"
 
-        - name: Sign new certificate
+        - name: Sign new Typha server certificate
           command: >
             openssl x509 -req -in {{ cert_dir }}/typha-server-new.csr
             -CA {{ cert_dir }}/typha-ca.crt -CAkey {{ cert_dir }}/typha-ca.key
             -CAcreateserial -out {{ cert_dir }}/typha-server-new.crt -days {{ validity_days }}
+            -extfile {{ cert_dir }}/typha-server.ext
 
-        - name: Update Kubernetes secret
-          kubernetes.core.k8s:
-            state: present
-            force: true
-            definition:
-              apiVersion: v1
-              kind: Secret
-              metadata:
-                name: calico-typha-tls
-                namespace: calico-system
-              data:
-                tls.crt: "{{ lookup('file', cert_dir + '/typha-server-new.crt') | b64encode }}"
-                tls.key: "{{ lookup('file', cert_dir + '/typha-server-new.key') | b64encode }}"
+        - name: Generate new Felix client certificate
+          command: >
+            openssl req -newkey rsa:4096 -keyout {{ cert_dir }}/calico-node-new.key
+            -out {{ cert_dir }}/calico-node-new.csr -nodes -subj "/CN=calico-node"
+
+        - name: Sign new Felix client certificate
+          command: >
+            openssl x509 -req -in {{ cert_dir }}/calico-node-new.csr
+            -CA {{ cert_dir }}/typha-ca.crt -CAkey {{ cert_dir }}/typha-ca.key
+            -CAcreateserial -out {{ cert_dir }}/calico-node-new.crt -days {{ validity_days }}
+            -extfile {{ cert_dir }}/calico-node.ext
+
+        - name: Update Typha Kubernetes secret
+          shell: >
+            kubectl create secret generic -n kube-system calico-typha-certs
+            --from-file=typha.crt={{ cert_dir }}/typha-server-new.crt
+            --from-file=typha.key={{ cert_dir }}/typha-server-new.key
+            --dry-run=client -o yaml | kubectl apply -f -
+
+        - name: Update Felix Kubernetes secret
+          shell: >
+            kubectl create secret generic -n kube-system calico-node-certs
+            --from-file=calico-node.crt={{ cert_dir }}/calico-node-new.crt
+            --from-file=calico-node.key={{ cert_dir }}/calico-node-new.key
+            --dry-run=client -o yaml | kubectl apply -f -
 
         - name: Restart Typha
-          command: kubectl rollout restart deployment/calico-typha -n calico-system
+          command: kubectl rollout restart deployment/calico-typha -n kube-system
+
+        - name: Restart calico/node
+          command: kubectl rollout restart daemonset/calico-node -n kube-system
 ```
 
 Schedule with a Kubernetes CronJob that runs the Ansible playbook weekly.
@@ -165,10 +213,10 @@ Schedule with a Kubernetes CronJob that runs the Ansible playbook weekly.
 
 ```bash
 # Check cert-manager Certificate status
-kubectl get certificate -n calico-system
-kubectl describe certificate calico-typha-tls -n calico-system | grep -A5 "Status:"
+kubectl get certificate -n kube-system
+kubectl describe certificate calico-typha-tls -n kube-system | grep -A5 "Status:"
 ```
 
 ## Conclusion
 
-Automating Typha TLS with cert-manager is the preferred approach for Kubernetes-native environments - it handles certificate issuance, renewal, and Secret updates automatically with no manual intervention. For environments where cert-manager is not available, an Ansible playbook with an expiry check and conditional rotation achieves the same result on a scheduled basis. Both approaches eliminate the risk of certificate expiry outages in production Calico clusters.
+Automating Typha TLS with cert-manager is the preferred approach for Kubernetes-native environments - it handles certificate issuance, renewal, and Secret updates automatically, while Pod reloads or rollouts handle consuming the renewed material. For environments where cert-manager is not available, an Ansible playbook with an expiry check and conditional rotation achieves the same result on a scheduled basis. Both approaches eliminate the risk of certificate expiry outages in production Calico clusters.
