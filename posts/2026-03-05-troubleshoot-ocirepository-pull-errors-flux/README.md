@@ -140,7 +140,7 @@ Verify the certificate chain.
 ```bash
 # Test the TLS connection and certificate chain
 kubectl run -n flux-system debug --rm -it --image=curlimages/curl -- \
-  curl -v --cacert /dev/null https://registry.example.com/v2/
+  curl -v https://registry.example.com/v2/
 ```
 
 ## Error 3: Artifact Not Found (404)
@@ -199,7 +199,7 @@ failed to determine artifact tag: no match found for semver: >=1.0.0
 
 - No tags in the repository match the SemVer constraint
 - Tags are not valid SemVer (e.g., `latest`, `dev-build-123`)
-- Tags use a `v` prefix but the constraint does not account for it
+- Tags are prereleases and the constraint does not include a prerelease comparator
 
 ### Resolution
 
@@ -216,7 +216,7 @@ crane ls registry.example.com/manifests/app
 # dev-abc123
 ```
 
-Flux strips the `v` prefix when evaluating SemVer, so both `v1.0.0` and `1.0.0` should work. If none of your tags are valid SemVer, push a properly versioned artifact.
+Flux strips the `v` prefix when evaluating SemVer, so both `v1.0.0` and `1.0.0` should work. SemVer constraints without a prerelease comparator skip prerelease versions; add a `-0` suffix to the range if you want to include them. If none of your tags are valid SemVer, push a properly versioned artifact.
 
 ```bash
 # Push with a valid SemVer tag
@@ -261,12 +261,21 @@ kubectl run -n flux-system debug --rm -it --image=curlimages/curl -- \
   curl -v https://registry.example.com/v2/
 ```
 
-If the artifact is large, increase the timeout on the source controller.
+If the artifact is large, increase the timeout on the OCIRepository.
 
-```bash
-# Check current source controller arguments
-kubectl get deploy source-controller -n flux-system \
-  -o jsonpath='{.spec.template.spec.containers[0].args}'
+```yaml
+# Increase the OCI operation timeout
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: app-manifests
+  namespace: flux-system
+spec:
+  interval: 5m
+  timeout: 2m
+  url: oci://registry.example.com/manifests/app
+  ref:
+    tag: v1.0.0
 ```
 
 ## Error 6: Signature Verification Failure
@@ -293,7 +302,7 @@ Verify the signature exists and matches.
 cosign verify --key cosign.pub registry.example.com/manifests/app:v1.0.0
 
 # For keyless verification, check the identity
-COSIGN_EXPERIMENTAL=1 cosign verify \
+cosign verify \
   --certificate-identity="expected-identity" \
   --certificate-oidc-issuer="expected-issuer" \
   registry.example.com/manifests/app:v1.0.0
