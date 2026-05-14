@@ -18,7 +18,7 @@ This guide explains the reconciliation mechanism for HelmChart resources, how to
 
 When Flux reconciles a HelmChart resource, the source controller performs the following steps:
 
-1. Fetches the chart repository index (for HTTP repositories) or checks the OCI registry for new tags
+1. Checks the referenced source for updates, using the HelmRepository index artifact for HTTP repositories or querying the OCI registry for OCI charts
 2. Resolves the chart version based on the configured version constraint
 3. Downloads the chart archive if a new version is detected
 4. Stores the chart artifact in the source controller's internal storage
@@ -28,7 +28,7 @@ The reconciliation interval controls how often step 1 begins.
 
 ```mermaid
 flowchart LR
-    A[Timer fires] --> B[Fetch repo index]
+    A[Timer fires] --> B[Check chart source]
     B --> C{New version?}
     C -->|Yes| D[Download chart]
     C -->|No| E[No action]
@@ -70,7 +70,7 @@ spec:
 
 The two intervals serve different purposes:
 
-- `spec.interval` (10m): How often the Helm controller reconciles the release (checking for drift, applying values changes)
+- `spec.interval` (10m): How often the Helm controller reconciles the release to ensure it matches the desired state
 - `spec.chart.spec.interval` (5m): How often the source controller checks the repository for a new chart version
 
 ### Interval on a Standalone HelmChart
@@ -116,8 +116,8 @@ spec:
   reconcileStrategy: ChartVersion    # Options: ChartVersion or Revision
 ```
 
-- **ChartVersion** (default): A new artifact is produced only when the chart version changes. This is ideal for semver-based workflows.
-- **Revision**: A new artifact is produced whenever the chart revision changes, even if the version number stays the same. This is useful for development workflows where charts are overwritten with the same version.
+- **ChartVersion** (default): A new artifact is produced when the chart version changes in a `HelmRepository`. This is ideal for semver-based workflows.
+- **Revision**: A new artifact is produced when the source revision changes for charts from a `GitRepository` or `Bucket`. This is useful for development workflows where the chart source changes without bumping the chart version.
 
 ## Choosing the Right Interval
 
@@ -163,7 +163,7 @@ spec:
 
 | Environment | Chart Interval | Release Interval | Reconcile Strategy |
 |-------------|---------------|-----------------|-------------------|
-| Development | 1m            | 1m              | Revision          |
+| Development | 1m            | 1m              | Revision for GitRepository/Bucket sources; ChartVersion for HelmRepository sources |
 | Staging     | 2m            | 5m              | ChartVersion      |
 | Production  | 15m-30m       | 10m             | ChartVersion      |
 
@@ -183,33 +183,43 @@ spec:
   url: https://charts.example.com
 ```
 
-If the HelmRepository interval is longer than the HelmChart interval, the chart check will use a cached index until the repository interval fires. For example, if the HelmRepository interval is 10m and the HelmChart interval is 1m, new chart versions will only be detected after the repository index is refreshed (every 10m).
+If the HelmRepository interval is longer than the HelmChart interval, the chart check will use the latest HelmRepository index artifact until the repository interval fires. For example, if the HelmRepository interval is 10m and the HelmChart interval is 1m, new chart versions will only be detected after the repository index is refreshed (every 10m).
 
 For OCI repositories, there is no index to cache, so the HelmChart interval directly controls how often the registry is queried.
 
 ## Suspending Reconciliation
 
-You can temporarily suspend reconciliation for a HelmChart without deleting the resource.
+You can temporarily suspend reconciliation without deleting the resource.
 
 ```bash
-# Suspend reconciliation for a HelmRelease (suspends both chart and release)
+# Suspend reconciliation for a HelmRelease
 flux suspend helmrelease my-app -n default
 
 # Resume reconciliation
 flux resume helmrelease my-app -n default
 ```
 
+To suspend a standalone HelmChart source directly, use the source subcommand.
+
+```bash
+# Suspend reconciliation for a HelmChart source
+flux suspend source chart my-app -n flux-system
+
+# Resume reconciliation
+flux resume source chart my-app -n flux-system
+```
+
 Or set it declaratively.
 
 ```yaml
-# Suspend a HelmRelease to stop all reconciliation
+# Suspend a HelmRelease to stop release reconciliation
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
   namespace: default
 spec:
-  suspend: true                  # Pauses both chart and release reconciliation
+  suspend: true                  # Pauses HelmRelease reconciliation
   interval: 10m
   chart:
     spec:
