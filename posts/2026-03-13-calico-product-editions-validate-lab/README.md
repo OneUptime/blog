@@ -71,6 +71,8 @@ Test basic pod-to-pod connectivity:
 ```bash
 kubectl run client --image=busybox --restart=Never -- sleep 3600
 kubectl run server --image=nginx --restart=Never
+kubectl wait --for=condition=Ready pod/client --timeout=60s
+kubectl wait --for=condition=Ready pod/server --timeout=60s
 kubectl exec client -- wget -qO- http://$(kubectl get pod server -o jsonpath='{.status.podIP}')
 ```
 
@@ -123,8 +125,8 @@ Validate flow log collection by generating traffic and checking the Calico Cloud
 | GlobalNetworkPolicy enforcement | Yes | Yes | Yes |
 | FQDN-based egress policy | No | Yes | Yes |
 | Flow logs in UI | No | Yes | Yes |
-| Compliance reports | No | Yes, if enabled | Yes, but deprecated in current Enterprise docs |
-| `kubectl get tigerastatus` | No | Yes | Yes |
+| Compliance reports | No | Yes, if enabled, but deprecated in current Cloud docs | Yes, but deprecated in current Enterprise docs |
+| `kubectl get tigerastatus` | Operator install only | Yes | Yes |
 
 ## Best Practices
 

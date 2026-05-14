@@ -24,8 +24,10 @@ Tutorial / Guide
 - Calico Open Source: GlobalNetworkPolicy resource reference: https://docs.tigera.io/calico/latest/reference/resources/globalnetworkpolicy
 - Calico Open Source: calicoctl apply reference: https://docs.tigera.io/calico/latest/reference/calicoctl/apply
 - Calico Open Source: calicoctl get reference: https://docs.tigera.io/calico/latest/reference/calicoctl/get
+- Calico Open Source: Installation API reference: https://docs.tigera.io/calico/latest/reference/installation/api
 - Calico Cloud: Connect a cluster / install cluster: https://docs.tigera.io/calico-cloud/get-started/install-cluster
 - Calico Cloud: Tigera Operator troubleshooting checklist: https://docs.tigera.io/calico-cloud/get-started/operator-checklist
+- Calico Cloud: Compliance reports overview: https://docs.tigera.io/calico-cloud/compliance/overview
 - Calico Enterprise: TigeraStatus reference: https://docs.tigera.io/calico-enterprise/latest/reference/installation/tigerastatus
 - Calico Enterprise: Compliance reports overview: https://docs.tigera.io/calico-enterprise/latest/compliance/overview
 - Calico Enterprise: DNS policy / domain-based policy: https://docs.tigera.io/calico-enterprise/latest/network-policy/domain-based-policy
@@ -38,8 +40,9 @@ Tutorial / Guide
 - The Calico Cloud install URL used a non-current tokenized `install.yaml` pattern. Replaced it with the current generated-command pattern using the Calico Cloud operator manifest and authenticated managed-cluster manifest.
 - The prerequisites implied Helm is required for all Enterprise/Cloud installations. Changed this to specify Helm only when using Helm-based installation because Calico Cloud also supports generated `kubectl` commands.
 - The prerequisites referred to a Tigera trial license for both Enterprise and Cloud. Clarified this as a Calico Cloud account or Tigera Enterprise trial license.
-- The feature matrix listed compliance reports as unconditionally available. Updated Cloud to "Yes, if enabled" and Enterprise to note that compliance reports are deprecated in current Enterprise documentation.
+- The feature matrix listed compliance reports as unconditionally available. Updated Cloud to "Yes, if enabled" and noted that compliance reports are deprecated in current Cloud and Enterprise documentation.
+- The feature matrix said `kubectl get tigerastatus` is not available for Open Source. Updated the Open Source cell to note that it applies to operator installs, since current Open Source operator API documentation includes the `TigeraStatus` resource.
+- The connectivity test ran `wget` immediately after creating pods, which could fail before either pod became Ready. Added `kubectl wait` commands for the client and server pods.
 
 ## Review Notes
-- The connectivity test is syntactically valid, but in a live lab it may need readiness waits before running `wget` against the nginx pod IP.
 - The post still keeps the validation workflow concise and does not cover full Calico Enterprise installation, which is acceptable for a lab-validation checklist but could be expanded in a future post.
