@@ -308,7 +308,7 @@ gh pr create \
 
 ## Handling Merge Conflicts
 
-Branch-specific files (like ConfigMaps with environment values) will cause merge conflicts. Handle this by:
+Branch-specific files (like ConfigMaps with environment values) can cause merge conflicts. Handle this by:
 
 ```bash
 # When merging, keep the target branch version of env-specific files
@@ -331,8 +331,8 @@ flux get sources git
 # Verify reconciliation status
 flux get kustomizations
 
-# See the current commit being reconciled
-flux get source git fleet-repo
+# See the current revisions being reconciled
+flux get sources git
 
 # Force reconciliation after a promotion merge
 flux reconcile source git fleet-repo
