@@ -64,7 +64,8 @@ On success, the command extracts the artifact contents to the specified output d
 ```bash
 # Expected output
 # ► pulling artifact from ghcr.io/my-org/my-app-manifests:1.0.0
-# ✔ artifact successfully pulled to ./pulled-manifests
+# ✔ digest sha256:...
+# ✔ artifact content extracted to ./pulled-manifests
 ```
 
 After pulling, you can inspect the contents.
@@ -88,9 +89,12 @@ Pulling by digest guarantees you get the exact same content every time, regardle
 
 ## Pulling the Latest Artifact
 
-If your workflow uses a `latest` tag, you can pull the most recent version.
+If your workflow uses a `latest` tag, you can pull the artifact currently referenced by that tag.
 
 ```bash
+# Create a directory to store the pulled artifact
+mkdir -p ./latest-manifests
+
 # Pull the artifact tagged "latest"
 flux pull artifact oci://ghcr.io/my-org/my-app-manifests:latest \
   --output=./latest-manifests
@@ -193,9 +197,9 @@ graph LR
     D -->|Apply manifests| E[Kubernetes Cluster]
 ```
 
-## Pulling to Standard Output
+## Processing Without Keeping Files
 
-If you want to pipe the artifact contents to another command without writing to disk, you can use a temporary directory.
+If you want to process the artifact contents without keeping them on disk, you can use a temporary directory.
 
 ```bash
 # Pull to a temp directory, process, and clean up
@@ -223,7 +227,7 @@ flux list artifacts oci://ghcr.io/my-org/my-app-manifests
 
 **Authentication failed**: Ensure your Docker credentials are current. Tokens may have expired, especially with short-lived credentials from cloud providers.
 
-**Empty output directory**: The artifact may have been pushed without any files. Verify by checking the artifact size in `flux list artifacts` output.
+**Empty output directory**: The artifact may have been pushed without any files. Verify by pulling the artifact to a temporary directory and inspecting the extracted contents.
 
 **Permission denied on output directory**: Ensure the output directory exists and is writable.
 
