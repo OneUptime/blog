@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Cluster Provisioning, GitOps, Kubernetes, Multi-Cluster, Application Deployment
 
-Description: A complete guide to using Flux CD as the single control plane for both cluster provisioning and application deployment across your infrastructure.
+Description: A complete guide to using Flux CD as a single GitOps workflow for both cluster provisioning and application deployment across your infrastructure.
 
 ---
 
@@ -17,7 +17,7 @@ This guide demonstrates a complete workflow from cluster creation to running app
 ## Prerequisites
 
 - A management Kubernetes cluster with Flux CD installed
-- Cluster API or Crossplane installed for cluster provisioning
+- Cluster API installed for the examples, or Crossplane if you adapt the provisioning manifests
 - kubectl and flux CLI installed
 - A Git repository for fleet management
 
@@ -34,13 +34,15 @@ fleet-infra/
 │   ├── definitions/          # Workload cluster definitions
 │   │   ├── staging-east.yaml
 │   │   └── production-east.yaml
-│   └── workloads/            # Per-cluster app configs
-│       ├── staging-east/
-│       │   ├── infrastructure.yaml
-│       │   └── apps.yaml
-│       └── production-east/
-│           ├── infrastructure.yaml
-│           └── apps.yaml
+    │   └── workloads/            # Per-cluster app configs
+    │       ├── staging-east/
+    │       │   ├── flux-system/
+    │       │   ├── infrastructure.yaml
+    │       │   └── apps.yaml
+    │       └── production-east/
+    │           ├── flux-system/
+    │           ├── infrastructure.yaml
+    │           └── apps.yaml
 ├── infrastructure/
 │   ├── base/                 # Shared infra components
 │   │   ├── cert-manager/
@@ -103,11 +105,11 @@ apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster
 metadata:
   name: staging-east
-  namespace: default
+  namespace: flux-system
   labels:
     environment: staging
     region: us-east-1
-    # Label used to trigger automatic Flux bootstrap
+    # Optional label for selecting GitOps-managed clusters
     gitops: flux
 spec:
   clusterNetwork:
@@ -128,7 +130,7 @@ apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: AWSCluster
 metadata:
   name: staging-east
-  namespace: default
+  namespace: flux-system
 spec:
   region: us-east-1
   sshKeyName: capi-key
@@ -138,10 +140,10 @@ apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 kind: KubeadmControlPlane
 metadata:
   name: staging-east-cp
-  namespace: default
+  namespace: flux-system
 spec:
   replicas: 1
-  version: v1.31.0
+  version: v1.33.11
   machineTemplate:
     infrastructureRef:
       apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
@@ -158,7 +160,7 @@ apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: AWSMachineTemplate
 metadata:
   name: staging-east-cp
-  namespace: default
+  namespace: flux-system
 spec:
   template:
     spec:
@@ -170,7 +172,7 @@ apiVersion: cluster.x-k8s.io/v1beta1
 kind: MachineDeployment
 metadata:
   name: staging-east-workers
-  namespace: default
+  namespace: flux-system
 spec:
   clusterName: staging-east
   replicas: 2
@@ -179,7 +181,7 @@ spec:
   template:
     spec:
       clusterName: staging-east
-      version: v1.31.0
+      version: v1.33.11
       bootstrap:
         configRef:
           apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
@@ -194,7 +196,7 @@ apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
 kind: KubeadmConfigTemplate
 metadata:
   name: staging-east-workers
-  namespace: default
+  namespace: flux-system
 spec:
   template:
     spec:
@@ -207,7 +209,7 @@ apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: AWSMachineTemplate
 metadata:
   name: staging-east-workers
-  namespace: default
+  namespace: flux-system
 spec:
   template:
     spec:
@@ -217,12 +219,34 @@ spec:
 
 ## Step 3: Auto-Bootstrap Flux on Workload Clusters
 
-Configure the management cluster to automatically set up Flux on each new workload cluster using kubeconfig secrets.
+Configure the management cluster to install Flux on each workload cluster first, then deploy infrastructure and apps using kubeconfig secrets.
 
 ```yaml
 # clusters/management/cluster-workloads.yaml
 # For each workload cluster, create a Kustomization that deploys
 # to that cluster using its kubeconfig Secret
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: staging-east-flux
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  # This path contains the Flux install manifests for the workload cluster
+  path: ./clusters/workloads/staging-east/flux-system
+  prune: true
+  wait: true
+  kubeConfig:
+    secretRef:
+      name: staging-east-kubeconfig
+      key: value
+  dependsOn:
+    - name: cluster-provisioning
+  timeout: "10m"
+---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -242,7 +266,7 @@ spec:
       name: staging-east-kubeconfig
       key: value
   dependsOn:
-    - name: cluster-provisioning
+    - name: staging-east-flux
   timeout: "15m"
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -273,6 +297,15 @@ Create shared infrastructure that gets deployed to every cluster.
 ```yaml
 # infrastructure/base/cert-manager/helmrelease.yaml
 # Install cert-manager for TLS certificate management
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: jetstack
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://charts.jetstack.io
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -283,7 +316,7 @@ spec:
   chart:
     spec:
       chart: cert-manager
-      version: "1.16.x"
+      version: "v1.20.2"
       sourceRef:
         kind: HelmRepository
         name: jetstack
@@ -295,6 +328,9 @@ spec:
   upgrade:
     crds: CreateReplace
   values:
+    # Enable CRD installation for the cert-manager chart
+    crds:
+      enabled: true
     # Enable Prometheus metrics
     prometheus:
       enabled: true
@@ -308,6 +344,15 @@ spec:
 ```yaml
 # infrastructure/base/monitoring/helmrelease.yaml
 # Install Prometheus and Grafana monitoring stack
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: prometheus-community
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://prometheus-community.github.io/helm-charts
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -318,7 +363,7 @@ spec:
   chart:
     spec:
       chart: kube-prometheus-stack
-      version: "65.x"
+      version: "84.5.0"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
@@ -475,10 +520,11 @@ git add clusters/definitions/staging-west.yaml
 git commit -m "Add staging-west cluster"
 git push
 
-# Flux syncs the definition, CAPI provisions the cluster,
-# then Flux deploys infrastructure and apps to the new cluster
+# Flux syncs the definition and CAPI provisions the cluster.
+# Add matching Flux Kustomizations for the new cluster, or generate them
+# with your fleet automation, so Flux deploys infrastructure and apps.
 ```
 
 ## Conclusion
 
-Using Flux CD as the single control plane for both cluster provisioning and application deployment simplifies your operations. Everything is in Git: cluster definitions, infrastructure components, and applications. Adding a new cluster is a pull request. Scaling an application is a pull request. Upgrading Kubernetes is a pull request. This unified approach reduces the number of tools your team needs to learn and gives you a complete audit trail for every change across your entire infrastructure.
+Using Flux CD as a single GitOps workflow for both cluster provisioning and application deployment simplifies your operations. Everything is in Git: cluster definitions, infrastructure components, and applications. Adding a new cluster is a pull request. Scaling an application is a pull request. Upgrading Kubernetes is a pull request. This unified approach reduces the number of tools your team needs to learn and gives you a complete audit trail for every change across your entire infrastructure.
