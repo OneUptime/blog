@@ -55,7 +55,7 @@ spec:
   chart:
     spec:
       chart: external-secrets
-      version: "0.9.11"
+      version: "2.4.1"
       sourceRef:
         kind: HelmRepository
         name: external-secrets
@@ -94,7 +94,7 @@ spec:
 ```yaml
 # infrastructure/external-secrets/cluster-secret-store.yaml
 # ClusterSecretStore connects ESO to AWS Secrets Manager
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -113,7 +113,7 @@ spec:
 ```yaml
 # infrastructure/external-secrets/vault-store.yaml
 # ClusterSecretStore for HashiCorp Vault backend
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: hashicorp-vault
@@ -137,7 +137,7 @@ spec:
 ```yaml
 # apps/production/api-server/external-secret.yaml
 # ExternalSecret syncs database credentials from AWS Secrets Manager
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -170,7 +170,7 @@ spec:
         property: password
 ---
 # ExternalSecret for API keys with more frequent rotation checks
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: api-keys
@@ -218,7 +218,7 @@ spec:
           serviceAccountName: secret-rotator
           containers:
             - name: rotator
-              image: amazon/aws-cli:2.15.0
+              image: amazon/aws-cli:2.34.40
               command:
                 - /bin/sh
                 - -c
@@ -232,10 +232,11 @@ spec:
 
                   # Wait for rotation to complete
                   for i in $(seq 1 30); do
-                    STATUS=$(aws secretsmanager describe-secret \
+                    PENDING=$(aws secretsmanager list-secret-version-ids \
                       --secret-id production/api-server/database \
-                      --query 'RotationEnabled' --output text)
-                    if [ "$STATUS" = "True" ]; then
+                      --query "length(Versions[?contains(VersionStages, 'AWSPENDING') && !contains(VersionStages, 'AWSCURRENT')])" \
+                      --output text)
+                    if [ "$PENDING" = "0" ]; then
                       echo "Rotation completed"
                       exit 0
                     fi
@@ -266,7 +267,7 @@ spec:
   chart:
     spec:
       chart: reloader
-      version: "1.0.63"
+      version: "2.2.11"
       sourceRef:
         kind: HelmRepository
         name: stakater
@@ -277,6 +278,19 @@ spec:
       # Only watch resources with the annotation
       ignoreSecrets: false
       ignoreConfigMaps: true
+```
+
+```yaml
+# infrastructure/reloader/helmrepo.yaml
+# Helm repository source for Stakater Reloader
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: stakater
+  namespace: flux-system
+spec:
+  interval: 24h
+  url: https://stakater.github.io/stakater-charts
 ```
 
 ```yaml
@@ -297,6 +311,9 @@ spec:
     matchLabels:
       app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
         - name: api-server
@@ -333,7 +350,7 @@ spec:
   decryption:
     provider: sops
     secretRef:
-      # Secret containing the age key or AWS KMS reference
+      # Secret containing the age key or cloud provider static credentials
       name: sops-age-key
 ```
 
@@ -359,7 +376,7 @@ Set up alerts for secret rotation failures and expiration warnings.
 ```yaml
 # clusters/production/notifications/secret-alerts.yaml
 # Alert configuration for secret rotation events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: secrets-slack
@@ -370,7 +387,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: secret-rotation-alerts
