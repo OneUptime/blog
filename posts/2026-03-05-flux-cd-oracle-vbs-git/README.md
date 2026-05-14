@@ -8,7 +8,7 @@ Description: A step-by-step guide to configuring Flux CD to work with Oracle Vis
 
 ---
 
-Oracle Visual Builder Studio (VBS), formerly known as Oracle Developer Cloud Service, provides Git repository hosting as part of Oracle Cloud Infrastructure (OCI). While Flux CD has built-in support for GitHub, GitLab, and Bitbucket, you can also use it with any standard Git repository over SSH or HTTPS, including Oracle VBS. This guide explains how to set up Flux CD with Oracle VBS Git repositories for a complete GitOps workflow on Oracle Cloud.
+Oracle Visual Builder Studio (VBS), formerly known as Oracle Developer Cloud Service, provides Git repository hosting as part of Oracle Cloud Infrastructure (OCI). While Flux CD has bootstrap support for several Git providers, including Oracle VBS over HTTPS bearer-token authentication, you can also use it with any standard Git repository over SSH or HTTPS. This guide explains how to set up Flux CD with Oracle VBS Git repositories for a complete GitOps workflow on Oracle Cloud.
 
 ## Prerequisites
 
@@ -25,10 +25,10 @@ Oracle VBS provides Git repository access via both HTTPS and SSH. For Flux CD, S
 The SSH URL format for VBS Git repositories is:
 
 ```text
-ssh://git@vbs.example.com/project-name/repo-name.git
+ssh://your-vbs-ssh-user@vbs.example.com/organization-name/project-name/repo-name.git
 ```
 
-Replace `vbs.example.com` with your VBS instance hostname, which typically follows the pattern `your-instance.developer.ocp.oraclecloud.com`.
+Replace the example URL with the SSH URL copied from the VBS Git repository's Clone menu. VBS SSH URLs include your VBS SSH user before the hostname, not the generic `git` user used by services such as GitHub.
 
 ## Step 1: Generate an SSH Key Pair
 
@@ -63,7 +63,7 @@ Flux needs to know the SSH host key of the VBS server to establish a trusted con
 ```bash
 # Scan the VBS host for its SSH host key
 # Replace with your actual VBS hostname
-ssh-keyscan your-instance.developer.ocp.oraclecloud.com > vbs-known-hosts 2>/dev/null
+ssh-keyscan your-vbs-host > vbs-known-hosts 2>/dev/null
 
 # Verify the contents
 cat vbs-known-hosts
@@ -71,7 +71,7 @@ cat vbs-known-hosts
 
 ## Step 4: Install Flux on the Cluster
 
-Since Flux does not have a built-in bootstrap provider for Oracle VBS, use `flux install` to install the controllers and then configure the Git source manually.
+Although Flux has a documented Oracle VBS bootstrap flow over HTTPS bearer-token authentication, this guide uses `flux install` to install the controllers and then configure the VBS Git source manually.
 
 ```bash
 # Run pre-flight checks
@@ -93,15 +93,14 @@ kubectl get pods -n flux-system
 
 ## Step 5: Create the SSH Secret for VBS
 
-Create a Kubernetes Secret containing the SSH private key and known hosts for VBS authentication.
+Create a Kubernetes Secret containing the SSH private key and known hosts for VBS authentication. The Flux CLI scans the SSH host key from the Git URL automatically; use the kubectl method below if you want to use the pre-scanned `vbs-known-hosts` file.
 
 ```bash
-# Create the secret with the SSH key and known hosts
+# Create the secret with the SSH private key
 flux create secret git vbs-ssh-credentials \
   --namespace=flux-system \
-  --url=ssh://git@your-instance.developer.ocp.oraclecloud.com/project-name/repo-name.git \
-  --private-key-file=flux-vbs-key \
-  --known-hosts-file=vbs-known-hosts
+  --url=ssh://your-vbs-ssh-user@your-vbs-host/organization-name/project-name/repo-name.git \
+  --private-key-file=flux-vbs-key
 ```
 
 Alternatively, create the secret using kubectl:
@@ -135,7 +134,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
-  url: ssh://git@your-instance.developer.ocp.oraclecloud.com/project-name/repo-name.git
+  url: ssh://your-vbs-ssh-user@your-vbs-host/organization-name/project-name/repo-name.git
   ref:
     branch: main
   secretRef:
@@ -191,7 +190,7 @@ In your VBS Git repository, create the directory structure that Flux expects. Th
 
 ```bash
 # Clone your VBS repository
-git clone ssh://git@your-instance.developer.ocp.oraclecloud.com/project-name/repo-name.git
+git clone ssh://your-vbs-ssh-user@your-vbs-host/organization-name/project-name/repo-name.git
 cd repo-name
 
 # Create the directory structure
@@ -283,9 +282,8 @@ If SSH is not available or you prefer HTTPS, create an HTTPS-based secret instea
 # Create an HTTPS secret for VBS
 flux create secret git vbs-https-credentials \
   --namespace=flux-system \
-  --url=https://your-instance.developer.ocp.oraclecloud.com/project-name/repo-name.git \
-  --username=your-vbs-username \
-  --password=your-vbs-password
+  --url=https://your-vbs-host/organization-name/s/project-name/scm/repo-name.git \
+  --bearer-token=your-vbs-auth-token
 ```
 
 Update the GitRepository source to use HTTPS:
@@ -299,7 +297,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
-  url: https://your-instance.developer.ocp.oraclecloud.com/project-name/repo-name.git
+  url: https://your-vbs-host/organization-name/s/project-name/scm/repo-name.git
   ref:
     branch: main
   secretRef:
@@ -341,8 +339,6 @@ metadata:
   namespace: flux-system
 spec:
   type: generic
-  events:
-    - "push"
   secretRef:
     name: webhook-token
   resources:
@@ -362,11 +358,13 @@ kubectl create secret generic webhook-token \
 # Apply the receiver
 kubectl apply -f vbs-receiver.yaml
 
-# Get the webhook URL
-flux get receivers vbs-webhook
+# Get the generated webhook path
+kubectl get receiver vbs-webhook \
+  --namespace=flux-system \
+  -o jsonpath='{.status.webhookPath}'
 ```
 
-Configure the resulting webhook URL in your VBS project settings under the webhook or notification configuration.
+Expose the Flux `webhook-receiver` service with an Ingress, Gateway, or LoadBalancer, then configure the public URL plus the generated webhook path in your VBS project settings under the webhook or notification configuration.
 
 ## Troubleshooting VBS Connectivity
 
@@ -379,11 +377,11 @@ kubectl logs -n flux-system deployment/source-controller | grep -i "error\|fail\
 # Verify the secret has the correct keys
 kubectl get secret vbs-ssh-credentials -n flux-system -o jsonpath='{.data}' | jq 'keys'
 
-# Test SSH connectivity from inside the cluster
+# Test DNS and TCP connectivity from inside the cluster
 kubectl run ssh-test --rm -it --image=alpine --restart=Never -- \
-  sh -c "apk add openssh-client && ssh -T -o StrictHostKeyChecking=no git@your-instance.developer.ocp.oraclecloud.com"
+  sh -c "nc -vz your-vbs-host 22"
 ```
 
 ## Summary
 
-While Flux CD does not have a dedicated bootstrap provider for Oracle VBS, setting up GitOps with VBS repositories is straightforward using the generic Git source configuration. Install Flux with `flux install`, create an SSH or HTTPS secret for VBS authentication, and configure a GitRepository source pointing to your VBS repository. This approach works on any Kubernetes cluster, including Oracle Kubernetes Engine, giving you a complete GitOps workflow within the Oracle Cloud ecosystem.
+While Flux CD has a documented bootstrap flow for Oracle VBS over HTTPS bearer-token authentication, setting up GitOps with VBS repositories is also straightforward using the generic Git source configuration. Install Flux with `flux install`, create an SSH or HTTPS secret for VBS authentication, and configure a GitRepository source pointing to your VBS repository. This approach works on any Kubernetes cluster, including Oracle Kubernetes Engine, giving you a complete GitOps workflow within the Oracle Cloud ecosystem.
