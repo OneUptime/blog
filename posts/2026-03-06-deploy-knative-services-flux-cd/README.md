@@ -16,26 +16,49 @@ This guide covers installing Knative with Flux, deploying services, configuring 
 
 ## Prerequisites
 
-- Kubernetes cluster v1.26 or later
+- A Kubernetes cluster version supported by your chosen Knative release
 - Flux CD v2 installed and bootstrapped
 - A networking layer (Istio, Kourier, or Contour)
 - kubectl access to the cluster
 
 ## Installing Knative with Flux
 
-Deploy Knative Serving and Eventing using Flux:
+Install the Knative Operator, then deploy Knative Serving and Eventing using Flux:
 
 ```yaml
-# infrastructure/knative/serving-source.yaml
+# infrastructure/knative/operator-source.yaml
 
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
-  name: knative
+  name: knative-operator
   namespace: flux-system
 spec:
   interval: 1h
   url: https://knative.github.io/operator
+```
+
+```yaml
+# infrastructure/knative/operator-release.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: knative-operator
+  namespace: flux-system
+spec:
+  interval: 10m
+  targetNamespace: knative-operator
+  install:
+    createNamespace: true
+  chart:
+    spec:
+      chart: knative-operator
+      version: v1.22.1
+      sourceRef:
+        kind: HelmRepository
+        name: knative-operator
+        namespace: flux-system
+      interval: 1h
 ```
 
 ```yaml
@@ -58,13 +81,18 @@ spec:
 
 ```yaml
 # infrastructure/knative/serving/knative-serving.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: knative-serving
+---
 apiVersion: operator.knative.dev/v1beta1
 kind: KnativeServing
 metadata:
   name: knative-serving
   namespace: knative-serving
 spec:
-  version: "1.14.0"
+  version: "1.22.0"
   ingress:
     kourier:
       enabled: true
@@ -183,6 +211,7 @@ spec:
     # Tag the latest revision for direct access
     - revisionName: api-gateway-v2
       tag: canary
+      percent: 0
 ```
 
 ## Flux Kustomization for Knative Apps
@@ -201,7 +230,6 @@ spec:
     name: flux-system
   path: ./apps/knative
   prune: true
-  wait: true
   # Wait for Knative Serving to be installed
   dependsOn:
     - name: knative-serving
@@ -219,13 +247,18 @@ Set up event-driven architectures:
 
 ```yaml
 # infrastructure/knative/eventing/knative-eventing.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: knative-eventing
+---
 apiVersion: operator.knative.dev/v1beta1
 kind: KnativeEventing
 metadata:
   name: knative-eventing
   namespace: knative-eventing
 spec:
-  version: "1.14.0"
+  version: "1.22.0"
 ```
 
 ```yaml
@@ -242,7 +275,7 @@ spec:
   config:
     apiVersion: v1
     kind: ConfigMap
-    name: config-br-defaults
+    name: config-br-default-channel
     namespace: knative-eventing
 ```
 
