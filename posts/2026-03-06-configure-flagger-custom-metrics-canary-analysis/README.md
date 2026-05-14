@@ -19,7 +19,7 @@ This guide shows you how to define custom Prometheus metrics and use them in Fla
 - A Kubernetes cluster with Flux and Flagger installed
 - Prometheus deployed and scraping your application metrics
 - An application that exposes custom Prometheus metrics
-- kubectl and flux CLI tools
+- kubectl, flux, and jq CLI tools
 
 ## Step 1: Instrument Your Application with Custom Metrics
 
@@ -57,24 +57,27 @@ spec:
 
 Example metrics your application might expose:
 
-```json
+```text
 # Application-specific latency histogram
-http_request_duration_seconds_bucket{method="GET",path="/api/v1/items",le="0.1"} 2400
-http_request_duration_seconds_bucket{method="GET",path="/api/v1/items",le="0.5"} 2900
-http_request_duration_seconds_bucket{method="GET",path="/api/v1/items",le="1.0"} 2980
-http_request_duration_seconds_bucket{method="GET",path="/api/v1/items",le="+Inf"} 3000
+http_request_duration_seconds_bucket{app="my-app",namespace="default",method="GET",path="/api/v1/items",le="0.1"} 2400
+http_request_duration_seconds_bucket{app="my-app",namespace="default",method="GET",path="/api/v1/items",le="0.5"} 2900
+http_request_duration_seconds_bucket{app="my-app",namespace="default",method="GET",path="/api/v1/items",le="1.0"} 2980
+http_request_duration_seconds_bucket{app="my-app",namespace="default",method="GET",path="/api/v1/items",le="+Inf"} 3000
+
+# Application request counter
+http_requests_total{app="my-app",namespace="default"} 3000
 
 # Business metric: checkout conversion rate
-checkout_conversion_total{result="success"} 1500
-checkout_conversion_total{result="failure"} 50
+checkout_conversion_total{app="my-app",namespace="default",result="success"} 1500
+checkout_conversion_total{app="my-app",namespace="default",result="failure"} 50
 
 # Custom error counter by type
-app_errors_total{type="validation"} 120
-app_errors_total{type="timeout"} 15
-app_errors_total{type="internal"} 3
+app_errors_total{app="my-app",namespace="default",type="validation"} 120
+app_errors_total{app="my-app",namespace="default",type="timeout"} 15
+app_errors_total{app="my-app",namespace="default",type="internal"} 3
 
 # Queue depth gauge
-message_queue_depth{queue="orders"} 42
+message_queue_depth{app="my-app",namespace="default",queue="orders"} 42
 ```
 
 ## Step 2: Create a Custom Latency Percentile Metric
@@ -235,7 +238,7 @@ spec:
         sum(
           rate(
             http_request_duration_seconds_bucket{
-              app="{{ target }}-canary",
+              app="{{ target }}",
               namespace="{{ namespace }}"
             }[2m]
           )
@@ -279,7 +282,8 @@ spec:
       rate(
         container_cpu_usage_seconds_total{
           container="{{ target }}",
-          namespace="{{ namespace }}"
+          namespace="{{ namespace }}",
+          pod=~"{{ target }}-[^-]+-[^-]+$"
         }[2m]
       )
     ) * 100
