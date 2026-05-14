@@ -16,10 +16,15 @@ Install Trivy on your machine:
 
 ```bash
 # Install Trivy via Homebrew (macOS/Linux)
-
 brew install trivy
 
-# Or install on Linux via apt
+# Or install on Debian/Ubuntu via apt
+sudo apt-get install -y wget gnupg
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | \
+  gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | \
+  sudo tee /etc/apt/sources.list.d/trivy.list
+sudo apt-get update
 sudo apt-get install -y trivy
 
 # Verify the installation
@@ -32,16 +37,16 @@ Scan each Flux controller image for vulnerabilities:
 
 ```bash
 # Scan the source-controller image
-trivy image ghcr.io/fluxcd/source-controller:v1.4.1
+trivy image ghcr.io/fluxcd/source-controller:v1.8.4
 
 # Scan the kustomize-controller image
-trivy image ghcr.io/fluxcd/kustomize-controller:v1.4.0
+trivy image ghcr.io/fluxcd/kustomize-controller:v1.8.5
 
 # Scan the helm-controller image
-trivy image ghcr.io/fluxcd/helm-controller:v1.1.0
+trivy image ghcr.io/fluxcd/helm-controller:v1.5.4
 
 # Scan the notification-controller image
-trivy image ghcr.io/fluxcd/notification-controller:v1.4.0
+trivy image ghcr.io/fluxcd/notification-controller:v1.8.4
 ```
 
 ## Step 2: Filter by Severity
@@ -50,13 +55,13 @@ Focus on critical and high severity vulnerabilities:
 
 ```bash
 # Scan for only CRITICAL and HIGH vulnerabilities
-trivy image --severity CRITICAL,HIGH ghcr.io/fluxcd/source-controller:v1.4.1
+trivy image --severity CRITICAL,HIGH ghcr.io/fluxcd/source-controller:v1.8.4
 
 # Fail the scan if CRITICAL vulnerabilities are found (useful for CI/CD)
-trivy image --severity CRITICAL --exit-code 1 ghcr.io/fluxcd/source-controller:v1.4.1
+trivy image --severity CRITICAL --exit-code 1 ghcr.io/fluxcd/source-controller:v1.8.4
 
 # Ignore unfixed vulnerabilities (show only those with available patches)
-trivy image --ignore-unfixed --severity CRITICAL,HIGH ghcr.io/fluxcd/source-controller:v1.4.1
+trivy image --ignore-unfixed --severity CRITICAL,HIGH ghcr.io/fluxcd/source-controller:v1.8.4
 ```
 
 ## Step 3: Scan All Flux Controllers
@@ -106,20 +111,20 @@ Trivy supports multiple output formats for integration with security tools:
 ```bash
 # Generate a JSON report for programmatic analysis
 trivy image --format json --output source-controller-report.json \
-  ghcr.io/fluxcd/source-controller:v1.4.1
+  ghcr.io/fluxcd/source-controller:v1.8.4
 
 # Generate a SARIF report for GitHub Security tab integration
 trivy image --format sarif --output source-controller-report.sarif \
-  ghcr.io/fluxcd/source-controller:v1.4.1
+  ghcr.io/fluxcd/source-controller:v1.8.4
 
 # Generate a table report (default, human-readable)
 trivy image --format table --output source-controller-report.txt \
-  ghcr.io/fluxcd/source-controller:v1.4.1
+  ghcr.io/fluxcd/source-controller:v1.8.4
 
 # Generate an HTML report for sharing with stakeholders
 trivy image --format template --template "@contrib/html.tpl" \
   --output source-controller-report.html \
-  ghcr.io/fluxcd/source-controller:v1.4.1
+  ghcr.io/fluxcd/source-controller:v1.8.4
 ```
 
 ## Step 5: Scan the Flux CLI Binary
@@ -140,13 +145,13 @@ Use Trivy to scan the running Flux installation in your cluster:
 
 ```bash
 # Scan the flux-system namespace for misconfigured resources
-trivy k8s --namespace flux-system --report summary
+trivy k8s --include-namespaces flux-system --report summary
 
 # Scan with detailed vulnerability information
-trivy k8s --namespace flux-system --report all --severity CRITICAL,HIGH
+trivy k8s --include-namespaces flux-system --report all --severity CRITICAL,HIGH
 
 # Scan only workloads (deployments, pods)
-trivy k8s --namespace flux-system --scanners vuln --report summary
+trivy k8s --include-namespaces flux-system --include-kinds deployment,pod --scanners vuln --report summary
 ```
 
 ## Step 7: Automate Scanning in CI/CD
@@ -167,34 +172,41 @@ on:
 jobs:
   scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: source-controller
+            image: ghcr.io/fluxcd/source-controller:v1.8.4
+          - name: kustomize-controller
+            image: ghcr.io/fluxcd/kustomize-controller:v1.8.5
+          - name: helm-controller
+            image: ghcr.io/fluxcd/helm-controller:v1.5.4
+          - name: notification-controller
+            image: ghcr.io/fluxcd/notification-controller:v1.8.4
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract Flux images
-        id: images
-        run: |
-          IMAGES=$(grep "image:" clusters/production/flux-system/gotk-components.yaml \
-            | awk '{print $2}' | sort -u)
-          echo "images<<EOF" >> $GITHUB_OUTPUT
-          echo "$IMAGES" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
       - name: Run Trivy scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'image'
-          image-ref: 'ghcr.io/fluxcd/source-controller:v1.4.1'
+          image-ref: ${{ matrix.image }}
           severity: 'CRITICAL,HIGH'
           exit-code: '1'
           ignore-unfixed: true
           format: 'sarif'
-          output: 'trivy-results.sarif'
+          output: 'trivy-results-${{ matrix.name }}.sarif'
 
       - name: Upload scan results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
-          sarif_file: 'trivy-results.sarif'
+          sarif_file: 'trivy-results-${{ matrix.name }}.sarif'
+          category: 'trivy-${{ matrix.name }}'
 ```
 
 ## Step 8: Create a Trivy Ignore File
@@ -214,7 +226,7 @@ CVE-2023-YYYYY
 # Run Trivy with the ignore file
 trivy image --ignorefile .trivyignore \
   --severity CRITICAL,HIGH \
-  ghcr.io/fluxcd/source-controller:v1.4.1
+  ghcr.io/fluxcd/source-controller:v1.8.4
 ```
 
 ## Best Practices
