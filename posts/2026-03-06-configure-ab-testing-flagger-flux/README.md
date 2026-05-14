@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flagger, Flux CD, A/B Testing, Progressive Delivery, Kubernetes, GitOps, Traffic Routing, Feature Flag
 
-Description: Learn how to configure A/B testing with Flagger and Flux CD to route traffic based on HTTP headers, cookies, and other request attributes.
+Description: Learn how to configure A/B testing with Flagger and Flux CD to route traffic based on HTTP headers, cookies, and other supported request attributes.
 
 ---
 
 ## Introduction
 
-A/B testing with Flagger lets you route traffic to different versions of your application based on HTTP request attributes such as headers, cookies, or query parameters. Unlike canary deployments that split traffic by percentage, A/B testing routes specific users or user segments to the new version. This is useful for testing features with specific user groups before rolling them out to everyone.
+A/B testing with Flagger lets you route traffic to different versions of your application based on HTTP request attributes such as headers or cookies. Unlike canary deployments that split traffic by percentage, A/B testing routes specific users or user segments to the new version. This is useful for testing features with specific user groups before rolling them out to everyone.
 
-Flagger supports A/B testing with Istio, NGINX, Contour, and other service meshes and ingress controllers.
+Flagger supports A/B testing with Istio, App Mesh, NGINX, Contour, Gloo Edge, and Gateway API-compatible service meshes and ingress controllers.
 
 ## Prerequisites
 
@@ -29,7 +29,7 @@ Flagger supports A/B testing with Istio, NGINX, Contour, and other service meshe
 graph TD
     A[Incoming Request] --> B{Match Criteria}
     B -->|Header: x-user-group=beta| C[Version B - New]
-    B -->|Cookie: canary=true| C
+    B -->|Cookie: canary=always| C
     B -->|No Match| D[Version A - Current]
     C --> E{Metrics Analysis}
     D --> E
@@ -164,10 +164,12 @@ spec:
     # Istio traffic policy settings
     trafficPolicy:
       tls:
-        mode: ISTIO_MUTUAL
+        # Use ISTIO_MUTUAL instead when mesh-wide mTLS is enabled
+        mode: DISABLE
     # Istio gateway reference (if using ingress gateway)
     gateways:
-      - public-gateway.istio-system.svc.cluster.local
+      - istio-system/public-gateway
+      - mesh
     # Hosts for the virtual service
     hosts:
       - frontend.example.com
@@ -190,8 +192,8 @@ spec:
       # Route requests with canary cookie to version B
       - headers:
           cookie:
-            regex: "^(.*?;)?(canary=true)(;.*)?$"
-      # Route requests from specific source IP range (internal testing)
+            regex: "^(.*?;)?(canary=always)(;.*)?$"
+      # Route requests from workloads with specific labels (internal testing)
       - sourceLabels:
           app: internal-testing
 
@@ -260,6 +262,8 @@ metadata:
   name: frontend
   namespace: frontend
 spec:
+  provider: nginx
+
   targetRef:
     apiVersion: apps/v1
     kind: Deployment
@@ -284,7 +288,7 @@ spec:
     interval: 1m
     threshold: 5
     iterations: 10
-    # NGINX A/B testing uses header-based routing
+    # NGINX A/B testing uses header and cookie-based routing
     match:
       # Route based on a custom header
       - headers:
@@ -293,7 +297,7 @@ spec:
       # Route based on cookie
       - headers:
           cookie:
-            regex: "^(.*?;)?(canary=true)(;.*)?$"
+            exact: "canary"
     metrics:
       - name: request-success-rate
         thresholdRange:
@@ -306,7 +310,7 @@ spec:
         timeout: 5s
         metadata:
           type: cmd
-          cmd: "hey -z 1m -q 10 -c 2 -H 'x-user-group: beta' http://frontend-canary.frontend:9898/"
+          cmd: "hey -z 1m -q 10 -c 2 -H 'x-user-group: beta' http://frontend.example.com/"
 ```
 
 ```yaml
@@ -334,42 +338,41 @@ spec:
                   number: 9898
 ```
 
-## Step 4: Create Custom Metrics for A/B Comparison
+## Step 4: Create Custom Metrics for Canary Validation
 
-Define metric templates that compare the performance of version A against version B.
+Define metric templates that validate the performance of version B during the A/B test.
 
 ```yaml
 # apps/frontend/metric-templates.yaml
-# Compare error rates between version A and version B
+# Calculate the canary error rate
 apiVersion: flagger.app/v1beta1
 kind: MetricTemplate
 metadata:
-  name: ab-error-rate-comparison
+  name: canary-error-rate
   namespace: frontend
 spec:
   provider:
     type: prometheus
     address: http://prometheus-server.monitoring:80
   query: |
-    # Calculate the error rate difference between canary (B) and primary (A)
     (
       sum(rate(http_request_duration_seconds_count{
-        namespace="{{ namespace }}",
-        pod=~"{{ target }}-[0-9a-zA-Z]+(-[0-9a-zA-Z]+)",
+        kubernetes_namespace="{{ namespace }}",
+        kubernetes_pod_name=~"{{ target }}-[0-9a-zA-Z]+(-[0-9a-zA-Z]+)",
         status=~"5.*"
       }[{{ interval }}]))
       /
       sum(rate(http_request_duration_seconds_count{
-        namespace="{{ namespace }}",
-        pod=~"{{ target }}-[0-9a-zA-Z]+(-[0-9a-zA-Z]+)"
+        kubernetes_namespace="{{ namespace }}",
+        kubernetes_pod_name=~"{{ target }}-[0-9a-zA-Z]+(-[0-9a-zA-Z]+)"
       }[{{ interval }}]))
     ) * 100
 ---
-# Compare response times between versions
+# Calculate the canary P99 response time
 apiVersion: flagger.app/v1beta1
 kind: MetricTemplate
 metadata:
-  name: ab-latency-comparison
+  name: canary-latency
   namespace: frontend
 spec:
   provider:
@@ -378,8 +381,8 @@ spec:
   query: |
     histogram_quantile(0.99,
       sum(rate(http_request_duration_seconds_bucket{
-        namespace="{{ namespace }}",
-        pod=~"{{ target }}-[0-9a-zA-Z]+(-[0-9a-zA-Z]+)"
+        kubernetes_namespace="{{ namespace }}",
+        kubernetes_pod_name=~"{{ target }}-[0-9a-zA-Z]+(-[0-9a-zA-Z]+)"
       }[{{ interval }}])) by (le)
     ) * 1000
 ```
@@ -465,7 +468,7 @@ curl -H "x-user-group: beta" http://frontend.example.com/api/info
 # Returns: version 6.6.0
 
 # Requests with the canary cookie go to version B
-curl -b "canary=true" http://frontend.example.com/api/info
+curl -b "canary=always" http://frontend.example.com/api/info
 # Returns: version 6.6.0
 ```
 
@@ -497,7 +500,7 @@ To route users to the A/B test from a web application, set the appropriate cooki
 // Example: JavaScript code to opt users into the beta group
 // Set a cookie to route the user to version B
 function enableBetaFeatures() {
-  document.cookie = "canary=true; path=/; max-age=86400";
+  document.cookie = "canary=always; path=/; max-age=86400";
   // Reload to get version B
   window.location.reload();
 }
@@ -541,7 +544,7 @@ kubectl logs -n flagger-system deployment/flagger-loadtester
 # Verify metrics exist in Prometheus
 # Query for canary pod metrics
 kubectl port-forward svc/prometheus-server -n monitoring 9090:80 &
-curl 'http://localhost:9090/api/v1/query?query=http_request_duration_seconds_count{namespace="frontend"}'
+curl 'http://localhost:9090/api/v1/query?query=http_request_duration_seconds_count{kubernetes_namespace="frontend"}'
 ```
 
 ### A/B Test Failing Due to Low Traffic
@@ -556,4 +559,4 @@ If there is not enough traffic to version B, the metrics may be unreliable:
 
 ## Summary
 
-You now have A/B testing configured with Flagger and Flux CD. Specific user segments are routed to the new version based on HTTP headers or cookies, while all other users continue using the current version. Flagger monitors the metrics for both versions and promotes the new version after it passes all checks across the configured number of iterations. This gives you precise control over who sees the new version and solid metrics to validate the change before rolling it out to everyone.
+You now have A/B testing configured with Flagger and Flux CD. Specific user segments are routed to the new version based on HTTP headers or cookies, while all other users continue using the current version. Flagger monitors the canary metrics and promotes the new version after it passes all checks across the configured number of iterations. This gives you precise control over who sees the new version and solid metrics to validate the change before rolling it out to everyone.
