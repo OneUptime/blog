@@ -84,6 +84,7 @@ spec:
   postBuild:
     substitute:
       SERVICE_NAME: "frontend"
+      SERVICE_NAMESPACE: "frontend"
       SERVICE_PORT: "3000"
       ENVIRONMENT: "production"
     substituteFrom:
@@ -106,7 +107,31 @@ spec:
   postBuild:
     substitute:
       SERVICE_NAME: "backend"
+      SERVICE_NAMESPACE: "backend"
       SERVICE_PORT: "8080"
+      ENVIRONMENT: "production"
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-vars
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: worker
+  namespace: flux-system
+spec:
+  interval: 5m
+  path: ./apps/worker
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: fleet-repo
+  targetNamespace: worker
+  postBuild:
+    substitute:
+      SERVICE_NAME: "worker"
+      SERVICE_NAMESPACE: "worker"
+      SERVICE_PORT: "9090"
       ENVIRONMENT: "production"
     substituteFrom:
       - kind: ConfigMap
@@ -137,12 +162,20 @@ spec:
     spec:
       containers:
         - name: ${SERVICE_NAME}
-          image: your-registry/${SERVICE_NAME}:${SERVICE_VERSION}
+          image: your-registry/${SERVICE_NAME}:${SERVICE_VERSION:=latest}
           ports:
-            - containerPort: $SERVICE_PORT
+            - containerPort: ${SERVICE_PORT:=8080}
 ```
 
 Then reference it in each service's kustomization:
+
+```yaml
+# apps/base/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+```
 
 ```yaml
 # apps/frontend/kustomization.yaml
@@ -198,6 +231,7 @@ spec:
   postBuild:
     substitute:
       SERVICE_NAME: "${service}"
+      SERVICE_NAMESPACE: "${service}"
 EOF
   echo "Generated Kustomization for $service"
 done
