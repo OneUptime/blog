@@ -65,36 +65,42 @@ Felix programs the VXLAN Forwarding Database with MAC-to-NodeIP mappings:
 bridge fdb show dev vxlan.calico
 # Expected: One or more entries like:
 # 66:c6:47:b9:04:6a dst 172.16.2.1 self permanent
-# Each entry maps a remote node's pod CIDR MAC to the node's IP
+# Each entry maps a remote node's VXLAN tunnel MAC to the node's IP
 ```
 
-The number of entries should equal the number of other nodes in the cluster minus any that are in the same /26 CIDR block.
+The number of entries should generally match the remote nodes that need VXLAN encapsulation. In `CrossSubnet` mode, nodes in the same node subnet should not require VXLAN encapsulation for each other's workload traffic.
 
 ## Validation 4: Observe Encapsulation with tcpdump
 
 Generate cross-node traffic and capture the encapsulated packets:
 
 ```bash
-# On Node 1, start capturing on the overlay interface
-sudo tcpdump -i vxlan.calico -n -w /tmp/vxlan-capture.pcap &
-
 # Deploy pods on different nodes and generate traffic
 kubectl run pod-node1 --image=nicolaka/netshoot \
-  --overrides='{"spec":{"nodeName":"worker-1"}}' -- sleep 3600
+  --overrides='{"apiVersion":"v1","spec":{"nodeName":"worker-1"}}' -- sleep 3600
 kubectl run pod-node2 --image=nginx \
-  --overrides='{"spec":{"nodeName":"worker-2"}}'
+  --overrides='{"apiVersion":"v1","spec":{"nodeName":"worker-2"}}'
+
+kubectl wait --for=condition=Ready pod/pod-node1 --timeout=120s
+kubectl wait --for=condition=Ready pod/pod-node2 --timeout=120s
+
+# On Node 1, capture on the underlay interface to see the outer VXLAN header
+UNDERLAY_IF=eth0  # Replace with the interface that carries node-to-node traffic.
+sudo tcpdump -i "$UNDERLAY_IF" -n udp port 4789 -w /tmp/vxlan-capture.pcap &
 
 POD2_IP=$(kubectl get pod pod-node2 -o jsonpath='{.status.podIP}')
-kubectl exec pod-node1 -- wget -qO- http://$POD2_IP
+kubectl exec pod-node1 -- curl -s http://$POD2_IP
 
 # Stop capture and analyze
 sudo kill %1
-sudo tcpdump -r /tmp/vxlan-capture.pcap -n | head -10
+sudo tcpdump -r /tmp/vxlan-capture.pcap -n -vv | head -10
 ```
 
 Expected output shows double IP headers:
 - Outer: Node1-IP → Node2-IP (UDP port 4789 for VXLAN)
 - Inner: Pod1-IP → Pod2-IP
+
+For IP-in-IP mode, capture on the underlay interface with `sudo tcpdump -i "$UNDERLAY_IF" -n proto 4 -w /tmp/ipip-capture.pcap` and expect an outer Node1-IP → Node2-IP IP header carrying the inner Pod1-IP → Pod2-IP packet.
 
 ## Validation 5: MTU Verification
 
@@ -121,16 +127,20 @@ kubectl exec pod-node1 -- ping -c 3 -M do -s 1450 $POD2_IP
 If using CrossSubnet mode, verify that same-subnet traffic is not encapsulated:
 
 ```bash
-# Pods on same node/subnet should communicate without VXLAN
-# Deploy two pods on Node 1
+# Pods on the same node subnet should communicate without VXLAN
+# Deploy two pods on nodes that are in the same node subnet
 kubectl run pod-a --image=nicolaka/netshoot \
-  --overrides='{"spec":{"nodeName":"worker-1"}}' -- sleep 3600
+  --overrides='{"apiVersion":"v1","spec":{"nodeName":"worker-1"}}' -- sleep 3600
 kubectl run pod-b --image=nginx \
-  --overrides='{"spec":{"nodeName":"worker-1"}}'
+  --overrides='{"apiVersion":"v1","spec":{"nodeName":"worker-2"}}'
 
-# Capture on vxlan.calico interface while generating same-node traffic
-sudo tcpdump -i vxlan.calico -n -c 5 &
-kubectl exec pod-a -- wget -qO- http://$(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
+kubectl wait --for=condition=Ready pod/pod-a --timeout=120s
+kubectl wait --for=condition=Ready pod/pod-b --timeout=120s
+
+# Capture on the underlay interface while generating same-subnet traffic
+UNDERLAY_IF=eth0  # Replace with the interface that carries node-to-node traffic.
+sudo tcpdump -i "$UNDERLAY_IF" -n udp port 4789 -c 5 &
+kubectl exec pod-a -- curl -s http://$(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
 # Expected: No VXLAN traffic captured (same-subnet, native routing)
 ```
 
@@ -140,16 +150,16 @@ kubectl exec pod-a -- wget -qO- http://$(kubectl get pod pod-b -o jsonpath='{.st
 |---|---|
 | Overlay mode in IPPool | Matches intended mode |
 | Overlay interface exists | vxlan.calico or tunl0 up |
-| VXLAN FDB entries | One per remote node |
+| VXLAN FDB entries | One per remote node that needs VXLAN encapsulation |
 | tcpdump shows double headers | Outer node IPs, inner pod IPs |
 | MTU correctly reduced | pod MTU = node MTU - overhead |
-| CrossSubnet same-node no encap | No VXLAN on same-node traffic |
+| CrossSubnet same-subnet no encap | No VXLAN on same-subnet traffic |
 
 ## Best Practices
 
 - Run MTU validation after any node image update that might change the base MTU
 - Keep `tcpdump` captures of normal encapsulated traffic as a reference for troubleshooting
-- Monitor VXLAN FDB entry count via Prometheus - a missing entry means a node's pods are unreachable
+- Compare VXLAN FDB entries with the remote nodes that should use VXLAN; a missing required entry can make that node's pods unreachable
 
 ## Conclusion
 
