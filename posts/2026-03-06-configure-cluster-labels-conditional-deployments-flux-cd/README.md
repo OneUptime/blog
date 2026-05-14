@@ -10,7 +10,7 @@ Description: Learn how to use cluster labels and metadata to conditionally deplo
 
 ## Introduction
 
-In a multi-cluster environment, not every application or configuration should be deployed to every cluster. Some clusters are GPU-enabled, some are in regulated regions, some run specific workloads. Flux CD allows you to use cluster labels and metadata to control which resources get deployed where. This guide shows you how to configure cluster labels and use them for conditional deployments.
+In a multi-cluster environment, not every application or configuration should be deployed to every cluster. Some clusters are GPU-enabled, some are in regulated regions, some run specific workloads. Flux CD allows you to combine per-cluster Kustomization resources with cluster metadata for variable substitution, giving you explicit control over which resources get deployed where. This guide shows you how to configure cluster metadata and use it for conditional deployments.
 
 ## Use Cases for Conditional Deployments
 
@@ -59,7 +59,7 @@ fleet-repo/
 
 ## Defining Cluster Labels with ConfigMaps
 
-Each cluster stores its metadata in a ConfigMap that Flux uses for variable substitution and conditional logic.
+Each cluster stores its metadata in a ConfigMap that Flux uses for variable substitution. The conditional behavior comes from which Flux Kustomization resources you include in each cluster directory.
 
 ```yaml
 # clusters/prod-us-east-gpu/cluster-config.yaml
@@ -169,6 +169,8 @@ spec:
     kind: GitRepository
     name: flux-system
   postBuild:
+    substitute:
+      quote: '"'
     substituteFrom:
       - kind: ConfigMap
         name: cluster-info
@@ -187,6 +189,8 @@ spec:
     kind: GitRepository
     name: flux-system
   postBuild:
+    substitute:
+      quote: '"'
     substituteFrom:
       - kind: ConfigMap
         name: cluster-info
@@ -224,6 +228,8 @@ spec:
     kind: GitRepository
     name: flux-system
   postBuild:
+    substitute:
+      quote: '"'
     substituteFrom:
       - kind: ConfigMap
         name: cluster-info
@@ -242,6 +248,8 @@ spec:
     kind: GitRepository
     name: flux-system
   postBuild:
+    substitute:
+      quote: '"'
     substituteFrom:
       - kind: ConfigMap
         name: cluster-info
@@ -286,9 +294,9 @@ spec:
               name: grpc
           env:
             - name: CLUSTER_NAME
-              value: ${CLUSTER_NAME}
+              value: ${quote}${CLUSTER_NAME}${quote}
             - name: GPU_TYPE
-              value: ${GPU_TYPE}
+              value: ${quote}${GPU_TYPE}${quote}
             - name: MODEL_CACHE_DIR
               value: /models
           resources:
@@ -328,7 +336,6 @@ metadata:
 spec:
   hard:
     requests.nvidia.com/gpu: ${GPU_COUNT}
-    limits.nvidia.com/gpu: ${GPU_COUNT}
     pods: "20"
 ```
 
@@ -368,9 +375,9 @@ spec:
             - containerPort: 8080
           env:
             - name: CLUSTER_NAME
-              value: ${CLUSTER_NAME}
+              value: ${quote}${CLUSTER_NAME}${quote}
             - name: CLUSTER_REGION
-              value: ${CLUSTER_REGION}
+              value: ${quote}${CLUSTER_REGION}${quote}
             - name: DATA_RETENTION_DAYS
               value: "90"
             - name: PII_ENCRYPTION_ENABLED
@@ -388,7 +395,7 @@ spec:
 
 ```yaml
 # conditional/gdpr-compliance/data-residency-policy.yaml
-# Network policy ensuring data stays within the EU region
+# Network policy example that restricts egress to approved endpoints
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -407,13 +414,11 @@ spec:
     - ports:
         - protocol: UDP
           port: 53
-    # Block all external egress except approved EU endpoints
+    # Allow HTTPS only to approved endpoint CIDRs
     - to:
         - ipBlock:
-            cidr: 0.0.0.0/0
-            except:
-              # Block non-EU AWS regions
-              - 52.0.0.0/8
+            # Replace this documentation CIDR with your approved EU endpoint CIDRs
+            cidr: 203.0.113.0/24
       ports:
         - protocol: TCP
           port: 443
@@ -457,7 +462,7 @@ spec:
             - containerPort: 3000
           env:
             - name: CLUSTER_NAME
-              value: ${CLUSTER_NAME}
+              value: ${quote}${CLUSTER_NAME}${quote}
             - name: FEATURE_FLAGS
               value: "all-experimental"
           resources:
@@ -485,6 +490,8 @@ spec:
     kind: GitRepository
     name: flux-system
   postBuild:
+    substitute:
+      quote: '"'
     substituteFrom:
       - kind: ConfigMap
         name: cluster-info
@@ -503,6 +510,8 @@ spec:
     kind: GitRepository
     name: flux-system
   postBuild:
+    substitute:
+      quote: '"'
     substituteFrom:
       - kind: ConfigMap
         name: cluster-info
@@ -540,17 +549,17 @@ spec:
           image: your-org/web-api:v3.0.0
           env:
             - name: CLUSTER_NAME
-              value: ${CLUSTER_NAME}
+              value: ${quote}${CLUSTER_NAME}${quote}
             - name: CLUSTER_TIER
-              value: ${CLUSTER_TIER}
+              value: ${quote}${CLUSTER_TIER}${quote}
             - name: CLUSTER_REGION
-              value: ${CLUSTER_REGION}
+              value: ${quote}${CLUSTER_REGION}${quote}
             - name: FEATURE_NEW_DASHBOARD
-              value: ${FEATURE_NEW_DASHBOARD:=false}
+              value: ${quote}${FEATURE_NEW_DASHBOARD:=false}${quote}
             - name: FEATURE_ML_PIPELINE
-              value: ${FEATURE_ML_PIPELINE:=false}
+              value: ${quote}${FEATURE_ML_PIPELINE:=false}${quote}
             - name: PII_MASKING_ENABLED
-              value: ${GDPR_REQUIRED:=false}
+              value: ${quote}${GDPR_REQUIRED:=false}${quote}
 ```
 
 ## Verifying Conditional Deployments
@@ -559,7 +568,7 @@ spec:
 # Check which Kustomizations are deployed on each cluster
 for ctx in prod-us-east-gpu prod-eu-west canary-us-west; do
   echo "=== $ctx ==="
-  kubectl --context "$ctx" get kustomizations -n flux-system -o custom-columns='NAME:.metadata.name,READY:.status.conditions[0].status,PATH:.spec.path'
+  flux get kustomizations --context "$ctx" -n flux-system
   echo ""
 done
 
@@ -580,7 +589,7 @@ kubectl --context prod-us-east-gpu get deployment web-api -n apps -o jsonpath='{
 1. **Use cluster directories for inclusion/exclusion**: The simplest conditional is whether a Kustomization file exists in a cluster directory.
 2. **Store cluster metadata in ConfigMaps**: Makes cluster capabilities queryable and usable in variable substitution.
 3. **Group conditional resources by capability**: Organize resources by what they require (GPU, GDPR, canary) not by cluster name.
-4. **Use default values in substitution**: Always provide defaults with `${VAR:=default}` to avoid failures on clusters that lack certain variables.
+4. **Use default values in substitution**: Always provide defaults with `${VAR:=default}` to avoid empty substitutions, or failures when strict post-build substitutions are enabled, on clusters that lack certain variables.
 5. **Document cluster capabilities**: Maintain a table of which clusters have which labels and capabilities.
 6. **Test on canary first**: Always deploy new conditional resource sets to a canary cluster before production.
 7. **Keep conditional sets independent**: Avoid dependencies between conditional resource sets unless necessary.
