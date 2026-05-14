@@ -21,6 +21,7 @@ This guide covers deploying the RabbitMQ Cluster Operator using Flux CD, creatin
 - A Git repository connected to Flux CD
 - kubectl configured for your cluster
 - Persistent storage available
+- Prometheus Operator installed (for the ServiceMonitor)
 
 ## Repository Structure
 
@@ -28,20 +29,26 @@ This guide covers deploying the RabbitMQ Cluster Operator using Flux CD, creatin
 clusters/
   my-cluster/
     rabbitmq/
-      namespace.yaml
-      helmrepository.yaml
-      operator.yaml
-      rabbitmq-cluster.yaml
-      queues.yaml
-      policies.yaml
-      users.yaml
-      kustomization.yaml
+      operator/
+        namespace.yaml
+        helmrepository.yaml
+        operator.yaml
+        kustomization.yaml
+      cluster/
+        rabbitmq-cluster.yaml
+        queues.yaml
+        policies.yaml
+        users.yaml
+        servicemonitor.yaml
+        kustomization.yaml
+    rabbitmq-operator-sync.yaml
+    rabbitmq-sync.yaml
 ```
 
 ## Step 1: Create the Namespace
 
 ```yaml
-# clusters/my-cluster/rabbitmq/namespace.yaml
+# clusters/my-cluster/rabbitmq/operator/namespace.yaml
 
 apiVersion: v1
 kind: Namespace
@@ -54,7 +61,7 @@ metadata:
 ## Step 2: Add the Helm Repository
 
 ```yaml
-# clusters/my-cluster/rabbitmq/helmrepository.yaml
+# clusters/my-cluster/rabbitmq/operator/helmrepository.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -70,7 +77,7 @@ spec:
 Install the operator that will manage RabbitMQ cluster lifecycle.
 
 ```yaml
-# clusters/my-cluster/rabbitmq/operator.yaml
+# clusters/my-cluster/rabbitmq/operator/operator.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -110,7 +117,7 @@ spec:
           cpu: 500m
           memory: 256Mi
 
-    # Install RabbitMQ CRDs
+    # Use chart-generated webhook certificates instead of cert-manager
     useCertManager: false
 ```
 
@@ -119,7 +126,7 @@ spec:
 Define a highly available RabbitMQ cluster using the operator's custom resource.
 
 ```yaml
-# clusters/my-cluster/rabbitmq/rabbitmq-cluster.yaml
+# clusters/my-cluster/rabbitmq/cluster/rabbitmq-cluster.yaml
 apiVersion: rabbitmq.com/v1beta1
 kind: RabbitmqCluster
 metadata:
@@ -149,11 +156,6 @@ spec:
   # RabbitMQ configuration
   rabbitmq:
     additionalConfig: |
-      # Cluster formation settings
-      cluster_formation.peer_discovery_backend = rabbit_peer_discovery_k8s
-      cluster_formation.k8s.host = kubernetes.default.svc.cluster.local
-      cluster_formation.k8s.address_type = hostname
-
       # Memory management
       vm_memory_high_watermark.relative = 0.7
       vm_memory_high_watermark_paging_ratio = 0.85
@@ -179,15 +181,14 @@ spec:
 
     # Enable additional plugins
     additionalPlugins:
-      - rabbitmq_management
-      - rabbitmq_prometheus
       - rabbitmq_shovel
       - rabbitmq_shovel_management
       - rabbitmq_consistent_hash_exchange
 
-  # TLS configuration (optional)
-  tls:
-    secretName: ""
+  # TLS configuration (optional; omit this block unless the secrets already exist)
+  # tls:
+  #   secretName: rabbitmq-server-certs
+  #   caSecretName: rabbitmq-ca-cert
 
   # Pod scheduling
   affinity:
@@ -220,7 +221,7 @@ spec:
 Use the Messaging Topology Operator to declaratively manage queues, exchanges, and bindings.
 
 ```yaml
-# clusters/my-cluster/rabbitmq/queues.yaml
+# clusters/my-cluster/rabbitmq/cluster/queues.yaml
 
 # Create a durable quorum queue for order processing
 apiVersion: rabbitmq.com/v1beta1
@@ -357,7 +358,7 @@ spec:
 Configure RabbitMQ policies for queue management.
 
 ```yaml
-# clusters/my-cluster/rabbitmq/policies.yaml
+# clusters/my-cluster/rabbitmq/cluster/policies.yaml
 apiVersion: rabbitmq.com/v1beta1
 kind: Policy
 metadata:
@@ -380,7 +381,7 @@ spec:
 ## Step 7: Define Users and Permissions
 
 ```yaml
-# clusters/my-cluster/rabbitmq/users.yaml
+# clusters/my-cluster/rabbitmq/cluster/users.yaml
 apiVersion: rabbitmq.com/v1beta1
 kind: User
 metadata:
@@ -440,23 +441,54 @@ spec:
     read: ".*"
 ```
 
-## Step 8: Create the Kustomization
+## Step 8: Create the Kustomizations
 
 ```yaml
-# clusters/my-cluster/rabbitmq/kustomization.yaml
+# clusters/my-cluster/rabbitmq/operator/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - namespace.yaml
   - helmrepository.yaml
   - operator.yaml
+```
+
+```yaml
+# clusters/my-cluster/rabbitmq/cluster/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
   - rabbitmq-cluster.yaml
   - queues.yaml
   - policies.yaml
   - users.yaml
+  - servicemonitor.yaml
 ```
 
-## Step 9: Create the Flux Kustomization
+## Step 9: Create the Flux Kustomizations
+
+```yaml
+# clusters/my-cluster/rabbitmq-operator-sync.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: rabbitmq-operator
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./clusters/my-cluster/rabbitmq/operator
+  prune: true
+  wait: true
+  timeout: 15m
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: rabbitmq-cluster-operator
+      namespace: rabbitmq
+```
 
 ```yaml
 # clusters/my-cluster/rabbitmq-sync.yaml
@@ -468,18 +500,15 @@ metadata:
 spec:
   interval: 10m
   targetNamespace: rabbitmq
+  dependsOn:
+    - name: rabbitmq-operator
   sourceRef:
     kind: GitRepository
     name: flux-system
-  path: ./clusters/my-cluster/rabbitmq
+  path: ./clusters/my-cluster/rabbitmq/cluster
   prune: true
   wait: true
   timeout: 15m
-  healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v2
-      kind: HelmRelease
-      name: rabbitmq-cluster-operator
-      namespace: rabbitmq
 ```
 
 ## Step 10: Configure Monitoring
@@ -487,7 +516,7 @@ spec:
 Set up a ServiceMonitor for Prometheus to scrape RabbitMQ metrics.
 
 ```yaml
-# clusters/my-cluster/rabbitmq/servicemonitor.yaml
+# clusters/my-cluster/rabbitmq/cluster/servicemonitor.yaml
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -509,6 +538,7 @@ spec:
 
 ```bash
 # Check Flux reconciliation
+flux get kustomizations rabbitmq-operator
 flux get kustomizations rabbitmq
 
 # Check operator HelmRelease
