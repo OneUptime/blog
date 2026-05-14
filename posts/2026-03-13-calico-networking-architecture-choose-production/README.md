@@ -10,7 +10,7 @@ Description: A decision framework for selecting the right Calico architectural c
 
 ## Introduction
 
-Calico's architecture has several configurable aspects that significantly impact performance, scalability, and operational complexity: whether to deploy Typha, how to configure BGP peering, which dataplane to use, and how to size Felix's resource allocation. These architectural decisions must be made before or at cluster creation - changing them later is disruptive.
+Calico's architecture has several configurable aspects that significantly impact performance, scalability, and operational complexity: whether to deploy Typha, how to configure BGP peering, which dataplane to use, and how to size Felix's resource allocation. Some architectural decisions are easiest to make before or at cluster creation - changing BGP topology or dataplane mode later can be disruptive.
 
 This post provides a production architecture decision framework organized by cluster scale and infrastructure type.
 
@@ -26,25 +26,34 @@ Typha reduces load on the Kubernetes API server by acting as a proxy for Felix c
 
 | Cluster Size | Typha Recommendation |
 |---|---|
-| < 50 nodes | Not needed (Felix connects directly to API server) |
-| 50-200 nodes | Optional but recommended |
-| > 200 nodes | Required |
+| < 50 nodes | Optional for manifest installs; operator installs include Typha by default |
+| 50-100 nodes | Recommended when using the Kubernetes API datastore |
+| > 100 nodes | Strongly recommended; Typha is essential at high scale |
 
-Configure Typha replica count for high availability:
+Configure Typha scheduling for high availability:
 
 ```yaml
 apiVersion: operator.tigera.io/v1
 kind: Installation
+metadata:
+  name: default
 spec:
-  typhaAffinity:
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-        - matchExpressions:
+  controlPlaneReplicas: 3
+  typhaDeployment:
+    spec:
+      template:
+        spec:
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
+          tolerations:
           - key: node-role.kubernetes.io/control-plane
             operator: Exists
-  typhaPodAnnotations:
-    cluster-autoscaler.kubernetes.io/safe-to-evict: 'false'
+            effect: NoSchedule
 ```
 
 Typha should run on nodes that are not evictable - typically control plane nodes or dedicated infrastructure nodes.
@@ -63,15 +72,19 @@ Set these in the Calico Installation resource:
 
 ```yaml
 spec:
-  componentResources:
-  - componentName: Node
-    resourceRequirements:
-      requests:
-        cpu: 250m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
+  calicoNodeDaemonSet:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: calico-node
+            resources:
+              requests:
+                cpu: 250m
+                memory: 256Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
 ```
 
 ## Decision 3: BGP Topology (for BGP routing mode)
@@ -92,16 +105,16 @@ For production, disable node-to-node mesh at scale and configure route reflector
 # Disable mesh for large clusters
 
 calicoctl patch bgpconfiguration default \
-  -p '{"spec":{"nodeToNodeMeshEnabled":false,"asNumber":65000}}'
+  -p '{"spec":{"nodeToNodeMeshEnabled":false,"asNumber":"65000"}}'
 ```
 
 ## Decision 4: Dataplane Selection
 
 | Cluster Characteristics | Recommended Dataplane |
 |---|---|
-| Kernel < 5.3 | Standard Linux (iptables) |
+| Kernel < 5.10, except supported RHEL 8.4+ backports | Standard Linux (iptables) |
 | Windows nodes | Standard Linux (iptables) for Linux, HNS for Windows |
-| High-performance, modern kernel | eBPF |
+| High-performance, supported modern kernel | eBPF |
 | Large cluster (> 200 services) | eBPF |
 | Mixed kernel versions | Standard Linux (lowest common denominator) |
 
@@ -111,8 +124,8 @@ For production clusters, ensure Calico control plane components are highly avail
 
 - **calico-node**: DaemonSet - HA by default (one per node)
 - **Typha**: Deploy 2+ replicas with pod anti-affinity
-- **calico-kube-controllers**: Deploy on a node with a taint preventing eviction
-- **Calico API server** (Enterprise): Deploy 2+ replicas
+- **calico-kube-controllers**: Use the operator's `controlPlaneReplicas` and schedule control plane components onto reliable infrastructure nodes
+- **Calico API server**: New operator-based installations include API server/webhook components by default; use native v3 CRDs for new installations where available
 
 ## Best Practices
 
