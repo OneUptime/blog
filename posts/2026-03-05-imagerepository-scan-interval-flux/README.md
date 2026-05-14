@@ -12,7 +12,7 @@ The scan interval of a Flux ImageRepository determines how frequently the image 
 
 ## Prerequisites
 
-- A Kubernetes cluster with Flux and image automation controllers installed
+- A Kubernetes cluster with Flux and the image-reflector-controller installed
 - At least one ImageRepository resource configured
 - kubectl access to your cluster
 
@@ -25,7 +25,7 @@ The `interval` field in the ImageRepository spec defines how often the image ref
 - `30m0s` -- every 30 minutes
 - `1h0m0s` -- every 1 hour
 
-The default interval if not specified is `5m0s`.
+The `interval` field is required for ImageRepository resources, so set it explicitly in your manifests.
 
 ## Step 1: Set a Basic Scan Interval
 
@@ -102,25 +102,25 @@ spec:
 
 Setting a very short interval has consequences:
 
-1. **Registry rate limits** -- Many registries enforce API rate limits. Docker Hub limits unauthenticated users to 100 pulls per 6 hours. A 1-minute interval could exhaust this quickly if you have many ImageRepository resources.
+1. **Registry rate limits** -- Many registries enforce API rate limits. Docker Hub limits unauthenticated users to 100 pulls per 6 hours, and registries may also enforce broader request limits. A 1-minute interval can generate frequent registry requests if you have many ImageRepository resources.
 2. **Controller resource usage** -- The image reflector controller uses more CPU and memory when scanning frequently.
 3. **Network bandwidth** -- Each scan requires network calls to the registry API.
 
-## Step 4: Estimate API Call Volume
+## Step 4: Estimate Scan Volume
 
-Calculate the number of API calls per hour based on your scan intervals.
+Calculate the number of scan attempts per hour based on your scan intervals. Each scan can involve multiple registry API requests depending on the registry and repository.
 
 ```bash
-# Formula: API calls per hour = (60 / interval_in_minutes) * number_of_repositories
-# Example: 10 repositories at 5-minute intervals = (60/5) * 10 = 120 calls/hour
-echo "With 10 repos at 5m interval: $((60 / 5 * 10)) calls/hour"
-echo "With 10 repos at 1m interval: $((60 / 1 * 10)) calls/hour"
-echo "With 10 repos at 30m interval: $((60 / 30 * 10)) calls/hour"
+# Formula: scans per hour = (60 / interval_in_minutes) * number_of_repositories
+# Example: 10 repositories at 5-minute intervals = (60/5) * 10 = 120 scans/hour
+echo "With 10 repos at 5m interval: $((60 / 5 * 10)) scans/hour"
+echo "With 10 repos at 1m interval: $((60 / 1 * 10)) scans/hour"
+echo "With 10 repos at 30m interval: $((60 / 30 * 10)) scans/hour"
 ```
 
 ## Step 5: Optimize Scan Intervals with Exclusion Lists
 
-Combine longer intervals with exclusion lists to reduce the processing time for each scan.
+Combine longer intervals with exclusion lists to reduce the tag set stored from each scan. If you configure a custom exclusion list, include the default `.sig` pattern if you still want to exclude Cosign signature tags.
 
 ```yaml
 # imagerepository-optimized.yaml
@@ -135,6 +135,7 @@ spec:
   interval: 5m0s
   exclusionList:
     # Exclude non-release tags to reduce processing
+    - "^.*\\.sig$"
     - "^sha-"
     - "^dev-"
     - "^test-"
