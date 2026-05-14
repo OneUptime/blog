@@ -12,7 +12,7 @@ Description: A practical guide to implementing cost optimization strategies for 
 
 Running Kubernetes clusters at scale can become expensive quickly if resource allocation is not carefully managed. Flux CD, as a GitOps tool, provides an excellent framework for enforcing cost optimization policies declaratively. By codifying resource limits, scaling policies, and cleanup rules in Git, you can ensure consistent cost governance across all environments.
 
-This guide walks through practical strategies for implementing cost optimization with Flux CD, including resource quotas, autoscaling configurations, spot instance scheduling, and idle resource cleanup.
+This guide walks through practical strategies for implementing cost optimization with Flux CD, including resource quotas, autoscaling configurations, scheduled scaling, and idle resource cleanup.
 
 ## Prerequisites
 
@@ -214,7 +214,13 @@ metadata:
   name: api-server
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
         - name: api-server
@@ -271,13 +277,13 @@ spec:
   timeout: 5m
 ```
 
-## Implementing Pod Disruption Budgets for Cost-Aware Rolling Updates
+## Implementing Pod Disruption Budgets for Cost-Aware Maintenance
 
-Pod Disruption Budgets ensure rolling updates do not over-provision resources during deployment.
+Pod Disruption Budgets ensure cost-saving operations such as node drains do not make too many replicas unavailable at once.
 
 ```yaml
 # apps/production/api-server/pdb.yaml
-# PodDisruptionBudget controls how many pods can be unavailable during updates
+# PodDisruptionBudget controls how many pods can be unavailable during voluntary disruptions
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -297,7 +303,7 @@ Use Flux CD's pruning feature combined with custom cleanup jobs to remove unused
 
 ```yaml
 # clusters/production/cleanup/unused-configmaps.yaml
-# CronJob to clean up orphaned ConfigMaps older than 30 days
+# CronJob to clean up labeled ConfigMaps older than 30 days
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -318,14 +324,12 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  # Find ConfigMaps not referenced by any pod
-                  # and delete them to free up etcd storage
+                  # Delete ConfigMaps explicitly labeled for cleanup
+                  # when they are older than 30 days.
+                  cutoff="$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)"
                   kubectl get configmaps --all-namespaces \
                     -l cost-optimization/auto-cleanup=true \
-                    -o json | jq -r '.items[] |
-                    select(.metadata.creationTimestamp |
-                    fromdateiso8601 < (now - 2592000)) |
-                    "\(.metadata.namespace) \(.metadata.name)"' |
+                    -o go-template='{{range .items}}{{if lt .metadata.creationTimestamp "'"${cutoff}"'"}}{{.metadata.namespace}} {{.metadata.name}}{{"\n"}}{{end}}{{end}}' |
                     while read ns name; do
                       kubectl delete configmap "$name" -n "$ns"
                     done
@@ -334,12 +338,12 @@ spec:
 
 ## Monitoring Cost Metrics with Flux CD Notifications
 
-Set up Flux CD alerts to notify your team about cost-related events.
+Set up Flux CD alerts to notify your team about reconciliation events for manifests related to cost controls.
 
 ```yaml
 # clusters/production/notifications/cost-alerts.yaml
-# Provider for sending cost alerts to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1
+# Provider for sending cost-related reconciliation alerts to Slack
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: cost-alerts-slack
@@ -350,8 +354,8 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-# Alert for resource quota and scaling events
-apiVersion: notification.toolkit.fluxcd.io/v1
+# Alert for Flux reconciliation events matching cost-related manifests
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: cost-optimization-alerts
@@ -359,13 +363,13 @@ metadata:
 spec:
   providerRef:
     name: cost-alerts-slack
-  # Trigger on warning and error severity events
+  # Trigger on all Flux events, including errors
   eventSeverity: info
   eventSources:
     - kind: Kustomization
       name: "*"
       namespace: flux-system
-  # Only include events matching cost-related resources
+  # Only include Flux event messages matching cost-related manifests
   inclusionList:
     - ".*resource-quota.*"
     - ".*hpa.*"
