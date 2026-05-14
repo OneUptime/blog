@@ -64,19 +64,21 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager
-  namespace: cert-manager
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: cert-manager
   chart:
     spec:
       chart: cert-manager
-      version: "1.16.x"
+      version: "v1.16.x"
       sourceRef:
         kind: HelmRepository
         name: jetstack
         namespace: flux-system
       interval: 12h
   install:
+    createNamespace: true
     crds: CreateReplace
     remediation:
       retries: 3
@@ -84,7 +86,8 @@ spec:
     crds: CreateReplace
   values:
     # Install CRDs as part of the Helm release
-    installCRDs: true
+    crds:
+      enabled: true
     # Enable Prometheus metrics
     prometheus:
       enabled: true
@@ -212,7 +215,7 @@ metadata:
   namespace: istio-system
 spec:
   # Apply to all services in the mesh
-  host: "*.local"
+  host: "*.svc.cluster.local"
   trafficPolicy:
     tls:
       # Use Istio's mutual TLS mode
@@ -246,6 +249,7 @@ spec:
   renewBefore: 8760h # Renew 1 year before expiry
   secretName: linkerd-trust-anchor
   privateKey:
+    rotationPolicy: Always
     algorithm: ECDSA
     size: 256
   issuerRef:
@@ -254,8 +258,16 @@ spec:
   usages:
     - cert sign
     - crl sign
-    - server auth
-    - client auth
+---
+# Create a CA issuer using the Linkerd trust anchor
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: linkerd-trust-anchor-issuer
+  namespace: linkerd
+spec:
+  ca:
+    secretName: linkerd-trust-anchor
 ```
 
 ```yaml
@@ -273,6 +285,7 @@ spec:
   renewBefore: 25h
   secretName: linkerd-identity-issuer
   privateKey:
+    rotationPolicy: Always
     algorithm: ECDSA
     size: 256
   issuerRef:
@@ -281,8 +294,6 @@ spec:
   usages:
     - cert sign
     - crl sign
-    - server auth
-    - client auth
 ```
 
 ## Issuing Service-Specific Certificates
@@ -351,26 +362,26 @@ spec:
       CERT_RENEW_BEFORE: "8h"
 ```
 
-## Monitoring Certificate Expiry
+## Monitoring Reconciliation Events
 
-Set up alerts for certificate expiration using Flux notifications.
+Set up alerts for reconciliation failures using Flux notifications. Certificate expiry should be monitored with cert-manager metrics, while Flux alerts notify you when the resources that manage certificate configuration fail to reconcile.
 
 ```yaml
 # infrastructure/mtls/certificate-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
-  name: cert-expiry-alert
+  name: mtls-reconciliation-alert
   namespace: flux-system
 spec:
   providerRef:
     name: slack-provider
-  eventSeverity: warning
+  eventSeverity: error
   eventSources:
-    # Monitor cert-manager Certificate resources
+    # Monitor cert-manager Helm release reconciliation
     - kind: HelmRelease
       name: cert-manager
-      namespace: cert-manager
+      namespace: flux-system
     # Monitor Kustomization for mTLS configs
     - kind: Kustomization
       name: mtls-config
@@ -378,7 +389,7 @@ spec:
 
 ```yaml
 # infrastructure/mtls/slack-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-provider
@@ -404,8 +415,8 @@ kubectl describe certificate payment-service-cert -n payment
 # Check Istio mTLS configuration
 kubectl get peerauthentication --all-namespaces
 
-# Verify mTLS is active between services (Istio)
-istioctl authn tls-check <pod-name> <service-name>
+# Inspect Istio TLS settings for a service from a sidecar
+istioctl proxy-config clusters <pod-name> --fqdn <service-name>.<namespace>.svc.cluster.local -o json
 
 # Check Linkerd mTLS status
 linkerd check --proxy
