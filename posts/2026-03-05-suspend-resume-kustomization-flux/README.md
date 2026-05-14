@@ -75,7 +75,7 @@ After suspending, you can verify the status by getting the Kustomization details
 
 ```bash
 # Check the status of the suspended Kustomization
-flux get ks my-app
+flux get ks
 ```
 
 The output will show `True` under the `SUSPENDED` column:
@@ -121,18 +121,18 @@ The resume command not only sets `spec.suspend` back to `false` but also trigger
 
 ## Suspending All Kustomizations
 
-In some scenarios, such as cluster-wide maintenance, you may want to suspend all Kustomizations at once. You can achieve this with a simple loop.
+In some scenarios, such as cluster-wide maintenance, you may want to suspend all Kustomizations at once. You can achieve this with the `--all` flag.
 
 ```bash
 # Suspend all Kustomizations in the flux-system namespace
-flux get ks --no-header | awk '{print $1}' | xargs -I {} flux suspend ks {}
+flux suspend ks --all
 ```
 
 To resume all of them:
 
 ```bash
 # Resume all Kustomizations in the flux-system namespace
-flux get ks --no-header | awk '{print $1}' | xargs -I {} flux resume ks {}
+flux resume ks --all
 ```
 
 ## Suspending via YAML Manifest
@@ -201,7 +201,7 @@ Suspend downstream Kustomizations while verifying an upstream change:
 flux suspend ks production-app
 
 # Verify staging is healthy
-flux get ks staging-app
+flux get ks
 
 # Once staging is confirmed, resume production
 flux resume ks production-app
