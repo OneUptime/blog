@@ -12,7 +12,7 @@ Flux CD continuously reconciles your cluster state with the desired state define
 
 ## What Does Suspending a Flux Resource Mean
 
-When you suspend a Flux resource, you tell Flux to stop reconciling that specific resource. The resource remains in the cluster, but Flux will not fetch new source artifacts, apply changes, or perform health checks for it until it is resumed.
+When you suspend a Flux resource, you tell Flux to stop reconciling that specific resource. The resource remains in the cluster, but the controller responsible for that resource will skip its reconciliation work until it is resumed. For example, suspending a source stops producing new source artifacts, while suspending a Kustomization stops applying manifests and running health checks for that Kustomization.
 
 ```mermaid
 flowchart LR
@@ -30,7 +30,7 @@ flowchart LR
 
 ## The spec.suspend Field
 
-Every Flux resource supports the `spec.suspend` field. When set to `true`, reconciliation is paused for that resource.
+Flux source and workload resources commonly managed by the GitOps Toolkit controllers support the `spec.suspend` field. When set to `true`, reconciliation is paused for that resource.
 
 Here is how it looks on different Flux resource types:
 
@@ -179,8 +179,8 @@ It is important to understand that suspending a source does not automatically su
 flowchart TD
     A[GitRepository: my-repo<br/>suspended: true] -->|No new artifacts| B[Kustomization: infra<br/>suspended: false]
     A -->|No new artifacts| C[Kustomization: apps<br/>suspended: false]
-    B -->|Reconciles with last artifact| D[Cluster resources unchanged]
-    C -->|Reconciles with last artifact| E[Cluster resources unchanged]
+    B -->|Reconciles with last artifact| D[Last known desired state enforced]
+    C -->|Reconciles with last artifact| E[Last known desired state enforced]
 ```
 
 If you want to completely stop reconciliation, suspend both the source and the downstream resources:
@@ -194,20 +194,11 @@ flux suspend kustomization apps
 
 ## Status During Suspension
 
-When a resource is suspended, its status conditions reflect this state:
+When a resource is suspended, the suspension is recorded in `spec.suspend`. Flux CLI status commands also show this in the `SUSPENDED` column. The resource status typically keeps the last observed reconciliation result until the resource is resumed and reconciled again.
 
-```yaml
-# Status of a suspended Kustomization
-status:
-  conditions:
-    - type: Ready
-      status: "True"
-      reason: ReconciliationSucceeded
-      message: "Applied revision: main@sha1:abc123"
-    - type: Reconciling
-      status: "False"
-      reason: Suspended
-      message: "Reconciliation is suspended"
+```text
+NAMESPACE     NAME     REVISION             SUSPENDED  READY  MESSAGE
+flux-system   my-app   main@sha1:abc123     True       True   Applied revision: main@sha1:abc123
 ```
 
 You can check for suspended resources across your cluster:
