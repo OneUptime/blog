@@ -18,9 +18,10 @@ This guide covers deploying Karpenter via Flux CD, configuring NodePools and EC2
 
 Before starting, ensure you have:
 
-- An Amazon EKS cluster running Kubernetes 1.27 or later
+- An Amazon EKS cluster running a Kubernetes version supported by your selected Karpenter release. For Karpenter 1.0.x, use Kubernetes 1.27-1.31 (Kubernetes 1.31 requires Karpenter 1.0.5 or later).
 - Flux CD installed and bootstrapped
 - AWS CLI configured with appropriate permissions
+- jq installed for generating JSON CLI inputs
 - An OIDC provider associated with your EKS cluster
 - At least one managed node group for initial Flux controller scheduling
 
@@ -76,6 +77,17 @@ aws iam create-instance-profile \
 aws iam add-role-to-instance-profile \
   --instance-profile-name KarpenterNodeInstanceProfile-my-cluster \
   --role-name KarpenterNodeRole-my-cluster
+
+# Authorize the node role to join the EKS cluster
+NODE_ROLE_ARN=$(aws iam get-role \
+  --role-name KarpenterNodeRole-my-cluster \
+  --query "Role.Arn" \
+  --output text)
+
+aws eks create-access-entry \
+  --cluster-name my-cluster \
+  --principal-arn "$NODE_ROLE_ARN" \
+  --type EC2_LINUX
 ```
 
 ### Controller IAM Role (IRSA)
@@ -116,7 +128,8 @@ aws iam create-role \
 
 ### Controller IAM Policy
 
-```json
+```bash
+cat > karpenter-controller-policy.json <<EOF
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -146,7 +159,18 @@ aws iam create-role \
       "Sid": "KarpenterPassRole",
       "Effect": "Allow",
       "Action": "iam:PassRole",
-      "Resource": "arn:aws:iam::*:role/KarpenterNodeRole-*"
+      "Resource": "arn:aws:iam::*:role/KarpenterNodeRole-*",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "ec2.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "KarpenterInstanceProfile",
+      "Effect": "Allow",
+      "Action": "iam:GetInstanceProfile",
+      "Resource": "arn:aws:iam::*:instance-profile/KarpenterNodeInstanceProfile-*"
     },
     {
       "Sid": "KarpenterSSM",
@@ -182,9 +206,8 @@ aws iam create-role \
     }
   ]
 }
-```
+EOF
 
-```bash
 # Create and attach the controller policy
 aws iam create-policy \
   --policy-name KarpenterControllerPolicy-my-cluster \
@@ -220,9 +243,71 @@ aws ec2 create-tags \
 
 ```bash
 # Create SQS queue for spot interruption and instance state change events
-aws sqs create-queue \
+QUEUE_URL=$(aws sqs create-queue \
   --queue-name karpenter-my-cluster \
-  --attributes '{"MessageRetentionPeriod":"300","SqsManagedSseEnabled":"true"}'
+  --attributes '{"MessageRetentionPeriod":"300","SqsManagedSseEnabled":"true"}' \
+  --query "QueueUrl" \
+  --output text)
+
+QUEUE_ARN=$(aws sqs get-queue-attributes \
+  --queue-url "$QUEUE_URL" \
+  --attribute-names QueueArn \
+  --query "Attributes.QueueArn" \
+  --output text)
+
+cat > karpenter-queue-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Id": "EC2InterruptionPolicy",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": [
+          "events.amazonaws.com",
+          "sqs.amazonaws.com"
+        ]
+      },
+      "Action": "sqs:SendMessage",
+      "Resource": "${QUEUE_ARN}"
+    }
+  ]
+}
+EOF
+
+jq -n --arg policy "$(cat karpenter-queue-policy.json)" \
+  '{Policy: $policy}' > karpenter-queue-attributes.json
+
+aws sqs set-queue-attributes \
+  --queue-url "$QUEUE_URL" \
+  --attributes file://karpenter-queue-attributes.json
+
+# Route EC2 and AWS Health interruption events to the queue
+aws events put-rule \
+  --name karpenter-scheduled-change-my-cluster \
+  --event-pattern '{"source":["aws.health"],"detail-type":["AWS Health Event"]}'
+
+aws events put-rule \
+  --name karpenter-spot-interruption-my-cluster \
+  --event-pattern '{"source":["aws.ec2"],"detail-type":["EC2 Spot Instance Interruption Warning"]}'
+
+aws events put-rule \
+  --name karpenter-rebalance-my-cluster \
+  --event-pattern '{"source":["aws.ec2"],"detail-type":["EC2 Instance Rebalance Recommendation"]}'
+
+aws events put-rule \
+  --name karpenter-instance-state-change-my-cluster \
+  --event-pattern '{"source":["aws.ec2"],"detail-type":["EC2 Instance State-change Notification"]}'
+
+for RULE in \
+  karpenter-scheduled-change-my-cluster \
+  karpenter-spot-interruption-my-cluster \
+  karpenter-rebalance-my-cluster \
+  karpenter-instance-state-change-my-cluster; do
+  aws events put-targets \
+    --rule "$RULE" \
+    --targets "Id=KarpenterInterruptionQueueTarget,Arn=${QUEUE_ARN}"
+done
 ```
 
 ## Step 4: Deploy Karpenter via Flux HelmRelease
@@ -285,13 +370,14 @@ spec:
     # High availability with two replicas
     replicas: 2
     # Resource allocation
-    resources:
-      requests:
-        cpu: 200m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
+    controller:
+      resources:
+        requests:
+          cpu: 200m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
     # Topology spread for HA
     topologySpreadConstraints:
       - maxSkew: 1
@@ -310,8 +396,8 @@ kind: EC2NodeClass
 metadata:
   name: default
 spec:
-  # IAM role for provisioned nodes
-  role: KarpenterNodeRole-my-cluster
+  # IAM instance profile for provisioned nodes
+  instanceProfile: KarpenterNodeInstanceProfile-my-cluster
   # AMI selector - use the latest EKS-optimized AMI
   amiSelectorTerms:
     - alias: al2023@latest
@@ -558,10 +644,10 @@ kubectl port-forward -n kube-system svc/karpenter 8080:8080
 # Visit http://localhost:8080/metrics
 
 # Key metrics to monitor:
-# karpenter_nodes_created - total nodes provisioned
-# karpenter_nodes_terminated - total nodes removed
+# karpenter_nodes_created_total - total nodes provisioned
+# karpenter_nodes_terminated_total - total nodes removed
 # karpenter_pods_startup_duration_seconds - time from pending to running
-# karpenter_nodeclaims_disrupted - disruption events
+# karpenter_nodeclaims_disrupted_total - disruption events
 ```
 
 ## Troubleshooting
@@ -572,7 +658,8 @@ kubectl port-forward -n kube-system svc/karpenter 8080:8080
 kubectl logs -n kube-system -l app.kubernetes.io/name=karpenter --tail=100 | grep -i error
 
 # Issue: Nodes not joining the cluster
-# Verify the node IAM role is in the aws-auth ConfigMap
+# Verify the node IAM role has an EKS access entry, or is mapped in aws-auth for older clusters
+aws eks list-access-entries --cluster-name my-cluster
 kubectl get configmap aws-auth -n kube-system -o yaml
 
 # Issue: Karpenter not selecting expected instance types
