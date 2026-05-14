@@ -40,9 +40,9 @@ metadata:
     # Audit restricted violations (recorded in audit logs)
     pod-security.kubernetes.io/audit: restricted
     # Pin to a specific Kubernetes version for consistent behavior
-    pod-security.kubernetes.io/enforce-version: v1.28
-    pod-security.kubernetes.io/warn-version: v1.28
-    pod-security.kubernetes.io/audit-version: v1.28
+    pod-security.kubernetes.io/enforce-version: v1.36
+    pod-security.kubernetes.io/warn-version: v1.36
+    pod-security.kubernetes.io/audit-version: v1.36
 ```
 
 Apply the namespace labels:
@@ -61,7 +61,7 @@ Flux controllers should already have proper security contexts, but you can verif
 
 ```yaml
 # patch-security-context.yaml
-# Kustomize patch to set Restricted-compliant security contexts on all Flux controllers
+# Kustomize patch to set Restricted-compliant security contexts on source-controller
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -73,10 +73,10 @@ spec:
       securityContext:
         # Run as non-root user
         runAsNonRoot: true
-        # Use a high UID to avoid conflicts
+        # Use the non-root UID/GID used by Flux controller images
         runAsUser: 65534
         runAsGroup: 65534
-        fsGroup: 65534
+        fsGroup: 1337
         # Set the seccomp profile to RuntimeDefault
         seccompProfile:
           type: RuntimeDefault
@@ -105,73 +105,18 @@ resources:
   - gotk-components.yaml
   - gotk-sync.yaml
 patches:
-  # Apply security context to source-controller
+  # Apply security context to all Flux controller deployments
   - target:
       kind: Deployment
-      name: source-controller
+      labelSelector: app.kubernetes.io/part-of=flux
     patch: |
       - op: add
         path: /spec/template/spec/securityContext
         value:
           runAsNonRoot: true
           runAsUser: 65534
-          seccompProfile:
-            type: RuntimeDefault
-      - op: add
-        path: /spec/template/spec/containers/0/securityContext
-        value:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: ["ALL"]
-          readOnlyRootFilesystem: true
-  # Apply security context to kustomize-controller
-  - target:
-      kind: Deployment
-      name: kustomize-controller
-    patch: |
-      - op: add
-        path: /spec/template/spec/securityContext
-        value:
-          runAsNonRoot: true
-          runAsUser: 65534
-          seccompProfile:
-            type: RuntimeDefault
-      - op: add
-        path: /spec/template/spec/containers/0/securityContext
-        value:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: ["ALL"]
-          readOnlyRootFilesystem: true
-  # Apply security context to helm-controller
-  - target:
-      kind: Deployment
-      name: helm-controller
-    patch: |
-      - op: add
-        path: /spec/template/spec/securityContext
-        value:
-          runAsNonRoot: true
-          runAsUser: 65534
-          seccompProfile:
-            type: RuntimeDefault
-      - op: add
-        path: /spec/template/spec/containers/0/securityContext
-        value:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: ["ALL"]
-          readOnlyRootFilesystem: true
-  # Apply security context to notification-controller
-  - target:
-      kind: Deployment
-      name: notification-controller
-    patch: |
-      - op: add
-        path: /spec/template/spec/securityContext
-        value:
-          runAsNonRoot: true
-          runAsUser: 65534
+          runAsGroup: 65534
+          fsGroup: 1337
           seccompProfile:
             type: RuntimeDefault
       - op: add
