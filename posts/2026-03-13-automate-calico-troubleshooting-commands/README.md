@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting, Automation
 
-Description: Automate Calico diagnostic command execution with scripts that collect BGP state, IPAM usage, Felix status, and policy counts across all cluster nodes for rapid incident triage.
+Description: Automate Calico diagnostic command execution with scripts that collect BGP state, IPAM usage, Felix configuration, and policy resources across all cluster nodes for rapid incident triage.
 
 ---
 
 ## Introduction
 
-Running individual Calico troubleshooting commands manually during an incident is slow and error-prone. Automating the collection of standard diagnostics - BGP peer states, IPAM block usage, Felix error counts, and TigeraStatus - into a single script reduces incident triage from minutes to seconds and ensures consistent data collection regardless of which engineer is on-call.
+Running individual Calico troubleshooting commands manually during an incident is slow and error-prone. Automating the collection of standard diagnostics - BGP peer states, IPAM block usage, Felix configuration, and TigeraStatus - into a single script reduces incident triage from minutes to seconds and ensures consistent data collection regardless of which engineer is on-call.
 
 ## Automated Calico Diagnostic Bundle
 
@@ -31,7 +31,7 @@ kubectl get tigerastatus -o yaml > "${BUNDLE}/tigerastatus.yaml"
 kubectl get pods -n calico-system -o wide > "${BUNDLE}/pods.txt"
 
 # Configuration CRDs
-calicoctl get installation -o yaml > "${BUNDLE}/installation.yaml" 2>/dev/null || true
+kubectl get installation.operator.tigera.io -o yaml > "${BUNDLE}/installation.yaml" 2>/dev/null || true
 calicoctl get felixconfiguration -o yaml > "${BUNDLE}/felixconfiguration.yaml" 2>/dev/null || true
 calicoctl get bgpconfiguration -o yaml > "${BUNDLE}/bgpconfiguration.yaml" 2>/dev/null || true
 
@@ -65,10 +65,15 @@ FAILURES=0
 
 for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{.items[*].metadata.name}'); do
-  STATUS=$(kubectl exec -n calico-system "${pod}" -c calico-node -- \
-    calicoctl node status 2>/dev/null | grep -c "Established" || echo 0)
-  PEERS=$(kubectl exec -n calico-system "${pod}" -c calico-node -- \
-    calicoctl node status 2>/dev/null | grep -c "peer" || echo 0)
+  if ! OUTPUT=$(kubectl exec -n calico-system "${pod}" -c calico-node -- \
+    calicoctl node status 2>/dev/null); then
+    echo "FAIL: unable to read BGP status from ${pod}"
+    FAILURES=$((FAILURES + 1))
+    continue
+  fi
+
+  STATUS=$(printf '%s\n' "${OUTPUT}" | awk '/^\|/ && $0 !~ /PEER ADDRESS/ && /Established/ {count++} END {print count+0}')
+  PEERS=$(printf '%s\n' "${OUTPUT}" | awk '/^\|/ && $0 !~ /PEER ADDRESS/ {count++} END {print count+0}')
 
   if [ "${STATUS}" -lt "${PEERS}" ]; then
     echo "FAIL: ${pod} has ${STATUS}/${PEERS} peers Established"
@@ -115,6 +120,9 @@ spec:
                 - -c
                 - |
                   kubectl get tigerastatus -o yaml > /snapshots/tigerastatus-$(date +%Y%m%d%H).yaml
+              volumeMounts:
+                - name: snapshots
+                  mountPath: /snapshots
           volumes:
             - name: snapshots
               persistentVolumeClaim:
