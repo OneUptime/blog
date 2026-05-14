@@ -8,7 +8,7 @@ Description: Learn how to use Kubernetes Hierarchical Namespace Controller (HNC)
 
 ---
 
-The Hierarchical Namespace Controller (HNC) extends Kubernetes namespaces with parent-child relationships. Child namespaces automatically inherit resources like RBAC roles, network policies, resource quotas, and secrets from their parent. When combined with Flux CD, you can define namespace hierarchies in Git and have policies propagate automatically to all child namespaces. This approach simplifies multi-tenant and multi-environment cluster management.
+The Hierarchical Namespace Controller (HNC) extends Kubernetes namespaces with parent-child relationships. Child namespaces automatically inherit configured resources like RBAC roles, network policies, limit ranges, config maps, and secrets from their parent. When combined with Flux CD, you can define namespace hierarchies in Git and have policies propagate automatically to all child namespaces. This approach simplifies multi-tenant and multi-environment cluster management.
 
 ## What Are Hierarchical Namespaces?
 
@@ -18,7 +18,7 @@ Common use cases include:
 
 - **Multi-tenancy**: A team gets a parent namespace with shared policies; each application gets a child namespace inheriting those policies.
 - **Environment isolation**: A parent namespace defines shared secrets and config; dev, staging, and production child namespaces inherit them.
-- **Resource quota inheritance**: Set quotas on a parent and have them apply to all children.
+- **Hierarchical resource quotas**: Use HNC's HierarchicalResourceQuota support to enforce aggregate quotas across a namespace subtree.
 
 ## Prerequisites
 
@@ -29,48 +29,15 @@ Common use cases include:
 
 ## Step 1: Install HNC with Flux
 
-Deploy HNC using Flux-managed manifests:
+Deploy HNC using Flux-managed manifests. Download the official HNC release manifest from `https://github.com/kubernetes-sigs/hierarchical-namespaces/releases/download/v1.1.0/default.yaml` and commit it as `infrastructure/hnc/default.yaml`.
 
 ```yaml
-# infrastructure/hnc/namespace.yaml
-
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: hnc-system
-```
-
-```yaml
-# infrastructure/hnc/helmrepository.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
-metadata:
-  name: hnc
-  namespace: flux-system
-spec:
-  interval: 1h
-  url: https://kubernetes-sigs.github.io/hierarchical-namespaces/charts
-```
-
-```yaml
-# infrastructure/hnc/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: hnc-manager
-  namespace: hnc-system
-spec:
-  interval: 30m
-  chart:
-    spec:
-      chart: hnc-manager
-      version: "1.1.x"
-      sourceRef:
-        kind: HelmRepository
-        name: hnc
-        namespace: flux-system
-  install:
-    createNamespace: true
+# infrastructure/hnc/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - default.yaml
+  - config.yaml
 ```
 
 Add to your infrastructure Kustomization:
@@ -80,9 +47,7 @@ Add to your infrastructure Kustomization:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - hnc/namespace.yaml
-  - hnc/helmrepository.yaml
-  - hnc/helmrelease.yaml
+  - hnc
 ```
 
 ## Step 2: Configure Resource Propagation
@@ -101,19 +66,14 @@ spec:
       mode: Propagate
     - resource: configmaps
       mode: Propagate
-    - resource: roles.rbac.authorization.k8s.io
-      mode: Propagate
-    - resource: rolebindings.rbac.authorization.k8s.io
-      mode: Propagate
-    - resource: networkpolicies.networking.k8s.io
-      mode: Propagate
-    - resource: resourcequotas
+    - group: networking.k8s.io
+      resource: networkpolicies
       mode: Propagate
     - resource: limitranges
       mode: Propagate
 ```
 
-The `Propagate` mode copies resources from parent to child namespaces. Other modes include `Remove` (delete propagated copies) and `Ignore` (do not manage).
+The `Propagate` mode copies resources from parent to child namespaces. Other modes include `Remove` (delete propagated copies), `Ignore` (do not manage), and `AllowPropagate` (opt-in propagation in HNC v1.1 and later). RBAC Roles and RoleBindings are propagated by default and do not need to be listed in `HNCConfiguration`.
 
 ## Step 3: Create Namespace Hierarchies
 
@@ -255,7 +215,7 @@ spec:
 
 ## Step 6: Deploy Applications to Child Namespaces
 
-Deploy applications to specific child namespaces using `targetNamespace`:
+Deploy applications to specific child namespaces using Kustomize's `namespace` field:
 
 ```yaml
 # tenants/team-alpha/apps/dev/kustomization.yaml
@@ -267,7 +227,7 @@ resources:
 namespace: team-alpha-dev
 ```
 
-Applications in `team-alpha-dev` automatically inherit the RBAC roles, network policies, and image pull secrets from the `team-alpha` parent.
+Applications in `team-alpha-dev` automatically inherit the RBAC roles and network policies from the `team-alpha` parent, and can use secrets propagated into the child namespace.
 
 ## Step 7: Verify the Hierarchy
 
@@ -295,7 +255,7 @@ Propagated resources have labels indicating their origin namespace.
 
 ## Handling Propagation Exceptions
 
-To prevent specific resources from propagating to certain children, use the `propagate.hnc.x-k8s.io/none` annotation:
+To prevent specific resources from propagating to certain children, use a propagation selector annotation such as `propagate.hnc.x-k8s.io/treeSelect`:
 
 ```yaml
 apiVersion: v1
