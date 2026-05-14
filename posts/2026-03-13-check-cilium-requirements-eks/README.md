@@ -24,14 +24,14 @@ This guide covers all requirements for both approaches: the EKS version compatib
 
 ```bash
 # Check EKS cluster version
-
-kubectl version --short | grep Server
+kubectl version -o json
 
 # Or with AWS CLI
 aws eks describe-cluster --name my-cluster --query "cluster.version" --output text
 
-# Cilium supports EKS 1.24+
-# Recommended: EKS 1.27+
+# Check the Cilium Kubernetes support matrix and EKS support lifecycle.
+# As of Cilium 1.19, EKS test coverage includes Kubernetes 1.32-1.35.
+# Recommended: use an EKS version in standard support when possible.
 ```
 
 ## Step 2: Check Node AMI and Kernel Version
@@ -40,12 +40,12 @@ aws eks describe-cluster --name my-cluster --query "cluster.version" --output te
 # Check node kernel versions
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.nodeInfo.kernelVersion}{"\n"}{end}'
 
-# EKS AL2 (Amazon Linux 2) nodes: kernel 5.10
-# EKS AL2023 nodes: kernel 6.1
-# Bottlerocket: kernel 5.15+
+# EKS AL2 (Amazon Linux 2) nodes: kernel 5.10, but AL2 EKS AMIs are legacy
+# EKS AL2023 nodes: kernel 6.1 or newer, depending on the AMI release
+# Bottlerocket: recent kernel versions, depending on the Bottlerocket release
 
-# Bottlerocket provides the newest kernels and is recommended for Cilium
-aws eks list-addons --cluster-name my-cluster
+# Check node groups before moving workloads to a new AMI family
+aws eks list-nodegroups --cluster-name my-cluster
 
 # Create a managed node group with Bottlerocket
 eksctl create nodegroup \
@@ -62,7 +62,7 @@ eksctl create nodegroup \
 # Option A: Cilium + AWS VPC CNI chaining (recommended for existing clusters)
 # - Keeps VPC-native pod IPs
 # - Adds Cilium policy enforcement
-# Requires: AWS VPC CNI v1.11+
+# Requires: AWS VPC CNI v1.11.2+
 
 # Check VPC CNI version
 kubectl get pod -n kube-system -l k8s-app=aws-node -o jsonpath='{.items[0].spec.containers[0].image}'
@@ -108,15 +108,26 @@ aws ec2 authorize-security-group-ingress \
 If using Cilium's ENI IPAM mode, additional IAM permissions are required:
 
 ```bash
-# Required IAM permissions for Cilium ENI mode:
-# ec2:DescribeNetworkInterfaces
-# ec2:AttachNetworkInterface
-# ec2:CreateNetworkInterface
+# Required EC2 permissions for Cilium ENI mode:
 # ec2:DeleteNetworkInterface
+# ec2:DescribeNetworkInterfaces
 # ec2:DescribeSubnets
 # ec2:DescribeVpcs
+# ec2:DescribeRouteTables
+# ec2:DescribeSecurityGroups
+# ec2:CreateNetworkInterface
+# ec2:AttachNetworkInterface
+# ec2:ModifyNetworkInterfaceAttribute
+# ec2:AssignPrivateIpAddresses
+# ec2:CreateTags
+# ec2:DescribeInstanceTypes
 
-# Check node role permissions
+# Conditional permissions, depending on Cilium ENI options:
+# ec2:DescribeTags
+# ec2:UnassignPrivateIpAddresses
+# ec2:DescribeInstances
+
+# Check the IAM role used by Cilium operator; this example checks the node role
 NODE_ROLE=$(aws eks describe-nodegroup \
   --cluster-name my-cluster \
   --nodegroup-name my-nodegroup \
@@ -130,8 +141,13 @@ aws iam list-attached-role-policies --role-name $NODE_ROLE
 
 ```bash
 # Check VPC CIDR for pod IP planning
+VPC_ID=$(aws eks describe-cluster \
+  --name my-cluster \
+  --query "cluster.resourcesVpcConfig.vpcId" \
+  --output text)
+
 aws ec2 describe-vpcs \
-  --vpc-ids $(aws eks describe-cluster --name my-cluster --query "cluster.resourcesVpcConfig.vpcId" --output text) \
+  --vpc-ids $VPC_ID \
   --query "Vpcs[].CidrBlock" \
   --output text
 
@@ -146,12 +162,12 @@ aws ec2 describe-subnets \
 
 | Requirement | Minimum | Recommended |
 |-------------|---------|-------------|
-| EKS version | 1.24 | 1.27+ |
-| Kernel version | 5.4 | 5.15+ |
-| Node AMI | AL2 | AL2023 or Bottlerocket |
-| VPC CNI version | 1.11 (chaining mode) | 1.16+ |
+| EKS version | Supported by both EKS and your Cilium release | EKS standard support |
+| Kernel version | 5.10 | 5.15+ |
+| Node AMI | AL2023 or Bottlerocket for current supported EKS versions | AL2023 or Bottlerocket |
+| VPC CNI version | 1.11.2 (chaining mode) | Current supported add-on version |
 | Subnets | Available IPs in each AZ | 256+ IPs per subnet |
 
 ## Conclusion
 
-EKS provides good support for Cilium through either CNI chaining (for existing clusters) or native Cilium IPAM (for new clusters). The key requirements are node kernel version (Bottlerocket provides the best support), security group configuration (overlay mode needs UDP ports open), and VPC subnet planning (sufficient IP space for your pod density). Verifying each of these before installation ensures a smooth deployment.
+EKS provides good support for Cilium through either CNI chaining (for existing clusters) or native Cilium IPAM (for new clusters). The key requirements are node kernel version (AL2023 and Bottlerocket provide current EKS support), security group configuration (overlay mode needs UDP ports open), and VPC subnet planning (sufficient IP space for your pod density). Verifying each of these before installation ensures a smooth deployment.
