@@ -120,12 +120,14 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
-patchesStrategicMerge:
-  - patches/deployment-patch.yaml
   - patches/hpa.yaml
-  - configmap-values.yaml
-commonLabels:
-  environment: production
+patches:
+  - path: patches/deployment-patch.yaml
+  - path: configmap-values.yaml
+labels:
+  - pairs:
+      environment: production
+    includeSelectors: true
 ```
 
 ```yaml
@@ -207,9 +209,9 @@ ERRORS=0
 echo "Validating Kustomize overlay builds..."
 
 # Find all kustomization.yaml files in overlay directories
-find "$REPO_ROOT" -path "*/overlays/*/kustomization.yaml" | while read -r ks_file; do
+while read -r ks_file; do
   OVERLAY_DIR=$(dirname "$ks_file")
-  OVERLAY_NAME=$(basename "$(dirname "$OVERLAY_DIR")")/$(basename "$OVERLAY_DIR")
+  OVERLAY_NAME=$(basename "$(dirname "$(dirname "$OVERLAY_DIR")")")/$(basename "$OVERLAY_DIR")
 
   echo "Building overlay: $OVERLAY_NAME"
 
@@ -222,7 +224,7 @@ find "$REPO_ROOT" -path "*/overlays/*/kustomization.yaml" | while read -r ks_fil
   else
     echo "  OK: $OVERLAY_NAME"
   fi
-done
+done < <(find "$REPO_ROOT" -path "*/overlays/*/kustomization.yaml")
 
 if [ "$ERRORS" -gt 0 ]; then
   echo ""
@@ -249,18 +251,55 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 ERRORS=0
 
 # Download Flux CRD schemas if not present
-SCHEMA_DIR="/tmp/k8s-schemas"
+SCHEMA_DIR="/tmp/flux-schemas"
 if [ ! -d "$SCHEMA_DIR" ]; then
   mkdir -p "$SCHEMA_DIR"
   curl -sL https://github.com/fluxcd/flux2/releases/latest/download/crd-schemas.tar.gz | \
     tar xz -C "$SCHEMA_DIR"
+  python3 - "$SCHEMA_DIR" <<'PY'
+import pathlib
+import shutil
+import sys
+
+schema_dir = pathlib.Path(sys.argv[1])
+groups = {
+    "helm": "helm.toolkit.fluxcd.io",
+    "image": "image.toolkit.fluxcd.io",
+    "kustomize": "kustomize.toolkit.fluxcd.io",
+    "notification": "notification.toolkit.fluxcd.io",
+    "source": "source.toolkit.fluxcd.io",
+}
+
+for schema in schema_dir.glob("*.json"):
+    name = schema.stem
+    if name in {"all", "_definitions"}:
+        continue
+
+    parts = name.split("-")
+    if len(parts) < 3:
+        continue
+
+    kind = parts[0]
+    group = groups.get(parts[1])
+    version = parts[2]
+
+    if kind == "artifactgenerator":
+        group = "source.extensions.fluxcd.io"
+
+    if not group:
+        continue
+
+    target = schema_dir / group / f"{kind}_{version}.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(schema, target)
+PY
 fi
 
 echo "Validating overlay schemas..."
 
-find "$REPO_ROOT" -path "*/overlays/*/kustomization.yaml" | while read -r ks_file; do
+while read -r ks_file; do
   OVERLAY_DIR=$(dirname "$ks_file")
-  OVERLAY_NAME=$(basename "$(dirname "$OVERLAY_DIR")")/$(basename "$OVERLAY_DIR")
+  OVERLAY_NAME=$(basename "$(dirname "$(dirname "$OVERLAY_DIR")")")/$(basename "$OVERLAY_DIR")
 
   echo "Validating: $OVERLAY_NAME"
 
@@ -270,14 +309,14 @@ find "$REPO_ROOT" -path "*/overlays/*/kustomization.yaml" | while read -r ks_fil
       -strict \
       -ignore-missing-schemas \
       -schema-location default \
-      -schema-location "$SCHEMA_DIR/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json" \
+      -schema-location "$SCHEMA_DIR/{{ .Group }}/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json" \
       -summary 2>&1; then
     echo "  FAILED: $OVERLAY_NAME"
     ERRORS=$((ERRORS + 1))
   else
     echo "  OK: $OVERLAY_NAME"
   fi
-done
+done < <(find "$REPO_ROOT" -path "*/overlays/*/kustomization.yaml")
 
 if [ "$ERRORS" -gt 0 ]; then
   echo "Schema validation failed with $ERRORS error(s)"
@@ -342,7 +381,7 @@ done
 
 ## Validation Method 4: Required Resource Checks
 
-Ensure all environments have required resources like resource limits and health checks.
+Ensure production overlays have required resources like resource limits and autoscaling.
 
 ```bash
 #!/bin/bash
@@ -356,7 +395,7 @@ ERRORS=0
 
 echo "Checking overlay requirements..."
 
-find "$REPO_ROOT" -path "*/overlays/production/kustomization.yaml" | while read -r ks_file; do
+while read -r ks_file; do
   OVERLAY_DIR=$(dirname "$ks_file")
   COMPONENT=$(basename "$(dirname "$(dirname "$OVERLAY_DIR")")")
 
@@ -405,7 +444,7 @@ sys.exit(1 if errors > 0 else 0)
       echo "  WARNING: Deployment has only $REPLICAS replica(s) in production"
     fi
   done
-done
+done < <(find "$REPO_ROOT" -path "*/overlays/production/kustomization.yaml")
 
 if [ "$ERRORS" -gt 0 ]; then
   echo ""
@@ -445,7 +484,8 @@ spec:
 # Validate with Flux variable substitution
 flux build kustomization infrastructure \
   --path ./infrastructure/overlays/production \
-  --kustomization-file ./clusters/production/infrastructure.yaml
+  --kustomization-file ./clusters/production/infrastructure.yaml \
+  --dry-run
 ```
 
 ## CI Pipeline
@@ -476,7 +516,48 @@ jobs:
           sudo mv kustomize /usr/local/bin/
           # Install kubeconform
           curl -sL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | \
-            tar xz -C /usr/local/bin
+            sudo tar xz -C /usr/local/bin kubeconform
+          # Download Flux CRD schemas
+          mkdir -p /tmp/flux-schemas
+          curl -sL https://github.com/fluxcd/flux2/releases/latest/download/crd-schemas.tar.gz | \
+            tar xz -C /tmp/flux-schemas
+          python3 - /tmp/flux-schemas <<'PY'
+          import pathlib
+          import shutil
+          import sys
+
+          schema_dir = pathlib.Path(sys.argv[1])
+          groups = {
+              "helm": "helm.toolkit.fluxcd.io",
+              "image": "image.toolkit.fluxcd.io",
+              "kustomize": "kustomize.toolkit.fluxcd.io",
+              "notification": "notification.toolkit.fluxcd.io",
+              "source": "source.toolkit.fluxcd.io",
+          }
+
+          for schema in schema_dir.glob("*.json"):
+              name = schema.stem
+              if name in {"all", "_definitions"}:
+                  continue
+
+              parts = name.split("-")
+              if len(parts) < 3:
+                  continue
+
+              kind = parts[0]
+              group = groups.get(parts[1])
+              version = parts[2]
+
+              if kind == "artifactgenerator":
+                  group = "source.extensions.fluxcd.io"
+
+              if not group:
+                  continue
+
+              target = schema_dir / group / f"{kind}_{version}.json"
+              target.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copyfile(schema, target)
+          PY
 
       - name: Build all overlays
         run: |
@@ -490,7 +571,12 @@ jobs:
           for overlay_dir in ${{ matrix.component }}/overlays/*/; do
             echo "Validating: $overlay_dir"
             kustomize build "$overlay_dir" | \
-              kubeconform -strict -ignore-missing-schemas -summary
+              kubeconform \
+                -strict \
+                -ignore-missing-schemas \
+                -schema-location default \
+                -schema-location '/tmp/flux-schemas/{{ .Group }}/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json' \
+                -summary
           done
 
       - name: Cross-environment comparison
