@@ -276,7 +276,6 @@ spec:
     name: flux-system
   path: ./infrastructure/production
   prune: true
-  wait: true
   # Health checks with longer timeout for critical services
   healthChecks:
     - apiVersion: apps/v1
