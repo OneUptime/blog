@@ -25,7 +25,7 @@ flowchart LR
 
 ## Basic Post-Renderer Configuration
 
-The post-renderer is configured directly on the HelmRelease resource using `spec.postRenderers`. Here is a basic example that adds labels to all resources produced by a Helm chart.
+The post-renderer is configured directly on the HelmRelease resource using `spec.postRenderers`. Here is a basic example that adds a label to Deployments produced by a Helm chart.
 
 ```yaml
 # HelmRelease with a Kustomize post-renderer that adds labels
@@ -48,11 +48,17 @@ spec:
   # Post-renderers modify the rendered chart output
   postRenderers:
     - kustomize:
-        # Add labels to all resources in the rendered output
-        patches: []
-        patchesStrategicMerge: []
-        # commonLabels are added to all resources
-        images: []
+        # Add labels to Deployments in the rendered output
+        patches:
+          - target:
+              kind: Deployment
+            patch: |
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: placeholder
+                labels:
+                  company.io/managed-by: "flux-gitops"
 ```
 
 ## Adding Labels and Annotations
@@ -90,9 +96,10 @@ spec:
               kind: Deployment
               metadata:
                 name: placeholder
+                labels:
+                  company.io/managed-by: "flux-gitops"
                 annotations:
                   company.io/cost-center: "platform-team"
-                  company.io/managed-by: "flux-gitops"
 ```
 
 ## Patching Specific Resources
@@ -160,6 +167,9 @@ spec:
                         volumeMounts:
                           - name: logs
                             mountPath: /var/log/app
+                    volumes:
+                      - name: logs
+                        emptyDir: {}
 ```
 
 ## Overriding Container Images
@@ -286,8 +296,11 @@ spec:
               kind: Deployment
               metadata:
                 name: placeholder
-                labels:
-                  network-policy: restricted
+              spec:
+                template:
+                  metadata:
+                    labels:
+                      network-policy: restricted
 ```
 
 ## Debugging Post-Renderer Issues
