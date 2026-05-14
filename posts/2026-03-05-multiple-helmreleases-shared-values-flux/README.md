@@ -278,14 +278,14 @@ Use `valuesFrom` with ConfigMaps for non-sensitive shared Helm values that multi
 Check that shared values are correctly merged into your HelmReleases:
 
 ```bash
-# Inspect the rendered values for a specific HelmRelease
+# Inspect the last applied revision for a specific HelmRelease
 kubectl get helmrelease service-a -n apps -o jsonpath='{.status.lastAppliedRevision}'
 
 # Check the actual Helm release values
 helm get values service-a -n apps
 
 # Verify all HelmReleases are healthy
-flux get helmrelease --all-namespaces
+flux get helmreleases --all-namespaces
 ```
 
 ## Summary
