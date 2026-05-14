@@ -176,9 +176,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
-  namespace: my-namespace
+  namespace: flux-system
 spec:
   interval: 10m
+  targetNamespace: my-namespace
   # Tell Flux to create the namespace if it does not exist
   install:
     createNamespace: true
@@ -220,25 +221,22 @@ spec:
     name: my-app
   prune: false  # Never prune CRDs
 ---
-# Step 2: Make HelmRelease depend on CRDs
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
+# Step 2: Make the Kustomization that applies the HelmRelease depend on CRDs
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
 metadata:
-  name: my-app
-  namespace: my-namespace
+  name: my-app-release
+  namespace: flux-system
 spec:
   interval: 10m
+  path: ./my-app
+  sourceRef:
+    kind: GitRepository
+    name: my-app
+  prune: true
+  wait: true
   dependsOn:
     - name: my-app-crds
-      namespace: flux-system
-  chart:
-    spec:
-      chart: my-chart
-      version: "1.2.3"
-      sourceRef:
-        kind: HelmRepository
-        name: my-repo
-        namespace: flux-system
 ```
 
 Or configure the chart's CRD installation method:
@@ -331,31 +329,23 @@ spec:
         namespace: flux-system
   # Configure install retry behavior
   install:
-    # Number of retries before giving up
-    retries: 5
     # Remediation actions
     remediation:
-      # Number of retries (overrides install.retries)
+      # Number of retries before giving up
       retries: 5
-      # Whether to retry on a transient error
-      retryOn: ""
+      # Whether to uninstall the last failed release when no retries remain
+      remediateLastFailure: true
 ```
 
 ## Resetting a Failed HelmRelease
 
 When retries are exhausted, you need to reset the HelmRelease:
 
-### Option 1: Suspend and Resume
+### Option 1: Reset the Failure Count
 
 ```bash
-# Suspend the HelmRelease
-flux suspend helmrelease <name> -n <namespace>
-
-# Resume it to restart the installation process
-flux resume helmrelease <name> -n <namespace>
-
-# Force reconciliation
-flux reconcile helmrelease <name> -n <namespace>
+# Reset retries and force reconciliation
+flux reconcile helmrelease <name> -n <namespace> --reset
 ```
 
 ### Option 2: Delete the Failed Helm Secret
@@ -371,13 +361,15 @@ kubectl delete secret -n <namespace> -l name=<release-name>,owner=helm,status=fa
 flux reconcile helmrelease <name> -n <namespace>
 ```
 
-### Option 3: Patch the Status
+### Option 3: Annotate the HelmRelease
 
 ```bash
-# Remove the failure condition by editing the resource
-kubectl patch helmrelease <name> -n <namespace> \
-  --type=json \
-  -p='[{"op": "remove", "path": "/status/conditions"}]'
+# Reset retries with annotations
+TOKEN="$(date +%s)"
+kubectl annotate --field-manager=flux-client-side-apply --overwrite \
+  helmrelease/<name> -n <namespace> \
+  "reconcile.fluxcd.io/requestedAt=$TOKEN" \
+  "reconcile.fluxcd.io/resetAt=$TOKEN"
 ```
 
 ## Testing Chart Installation Locally
