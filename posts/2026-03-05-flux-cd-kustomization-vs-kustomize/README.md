@@ -46,8 +46,9 @@ resources:
   - configmap.yaml
 
 # Apply a common label to all resources
-commonLabels:
-  app.kubernetes.io/part-of: my-app
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: my-app
 
 # Set the namespace for all resources
 namespace: production
@@ -77,7 +78,7 @@ kustomize build ./deploy/production
 kubectl apply -k ./deploy/production
 ```
 
-Kustomize operates purely on files. It reads YAML, transforms it, and outputs YAML. It has no concept of Git, reconciliation intervals, or health checks.
+Kustomize operates on manifests and kustomization files. It reads YAML, transforms it, and outputs YAML. It can reference remote bases, but it does not manage Flux source objects, reconciliation intervals, pruning, or health checks.
 
 ## Flux CD Kustomization Explained
 
@@ -99,8 +100,8 @@ spec:
     name: fleet-infra
   path: ./apps/production     # Path within the source artifact
   prune: true                 # Remove resources deleted from Git
-  wait: true                  # Wait for resources to be ready
-  force: false                # Do not force apply (avoid overwriting conflicts)
+  wait: false                 # Use the listed healthChecks instead of waiting for all resources
+  force: false                # Do not recreate resources on immutable field patch failures
   targetNamespace: production # Override namespace for all resources
   dependsOn:
     - name: infrastructure    # Wait for infrastructure to be ready first
@@ -126,7 +127,7 @@ This resource has capabilities far beyond what a `kustomization.yaml` file provi
 
 ## How They Work Together
 
-When the kustomize-controller processes a Flux Kustomization, it looks at the `spec.path` within the source artifact. If that path contains a `kustomization.yaml` file, the controller runs `kustomize build` on it. If there is no `kustomization.yaml`, it simply collects all YAML files in that directory.
+When the kustomize-controller processes a Flux Kustomization, it looks at the `spec.path` within the source artifact. If that path contains a `kustomization.yaml` file, the controller runs `kustomize build` on it. If there is no `kustomization.yaml`, it automatically generates one for the Kubernetes manifests in the directory tree under that path.
 
 ```mermaid
 sequenceDiagram
@@ -145,7 +146,7 @@ sequenceDiagram
         KC->>KB: Run kustomize build ./apps/production
         KB-->>KC: Built manifests
     else No kustomization.yaml
-        KC->>KC: Collect all .yaml files in directory
+        KC->>KC: Generate kustomization.yaml for YAMLs under path
     end
 
     KC->>KC: Run post-build variable substitution
@@ -162,12 +163,12 @@ Here is a direct comparison to make the distinction clear:
 | API Group | kustomize.config.k8s.io | kustomize.toolkit.fluxcd.io |
 | Purpose | Compose and transform YAML | Drive continuous reconciliation |
 | Runs where | Locally or in CI | Inside the cluster |
-| Knows about Git | No | Yes (via sourceRef) |
+| Git integration | Can reference remote bases, but no GitOps source binding | Yes (via sourceRef) |
 | Reconciliation | None (one-shot) | Continuous at spec.interval |
 | Pruning | No | Yes (spec.prune) |
 | Dependencies | No | Yes (spec.dependsOn) |
 | Health checks | No | Yes (spec.healthChecks) |
-| Variable substitution | No | Yes (spec.postBuild) |
+| Post-build variable substitution | No | Yes (spec.postBuild) |
 
 ## A Complete Example Using Both
 
@@ -238,10 +239,10 @@ When the kustomize-controller reconciles the Flux Kustomization named `apps`, it
 
 **Mistake 1: Confusing the API versions.** If you put a Flux Kustomization spec inside a `kustomization.yaml` file or vice versa, the tools will not understand it. They are different APIs.
 
-**Mistake 2: Thinking you need a kustomization.yaml file.** You do not. If the path in your Flux Kustomization contains plain YAML files without a `kustomization.yaml`, the controller will still apply them. The Kustomize file is optional.
+**Mistake 2: Thinking you need a kustomization.yaml file.** You do not. If the path in your Flux Kustomization contains plain YAML files without a `kustomization.yaml`, the controller generates one for the Kubernetes manifests under that path and still applies them. The Kustomize file is optional.
 
 **Mistake 3: Assuming the Flux Kustomization replaces Kustomize.** It does not. The Flux Kustomization orchestrates deployment. The Kustomize `kustomization.yaml` handles manifest composition. They are complementary.
 
 ## Summary
 
-The Flux CD Kustomization is a Kubernetes custom resource that drives continuous reconciliation. The Kustomize `kustomization.yaml` is a file that composes and transforms Kubernetes manifests. The Flux kustomize-controller uses the Kustomize tool internally when it finds a `kustomization.yaml` in the specified path, but the Flux Kustomization itself controls the reconciliation lifecycle - the source, the schedule, pruning, dependencies, and health checks. Understanding this distinction is fundamental to working effectively with Flux CD.
+The Flux CD Kustomization is a Kubernetes custom resource that drives continuous reconciliation. The Kustomize `kustomization.yaml` is a file that composes and transforms Kubernetes manifests. The Flux kustomize-controller uses Kustomize internally with either the checked-in `kustomization.yaml` or an automatically generated one, but the Flux Kustomization itself controls the reconciliation lifecycle - the source, the schedule, pruning, dependencies, and health checks. Understanding this distinction is fundamental to working effectively with Flux CD.
