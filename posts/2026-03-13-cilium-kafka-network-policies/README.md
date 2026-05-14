@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Network Policy, Kafka, eBPF
 
-Description: Enforce topic-level access control for Kafka using Cilium network policies that allow or deny produce and consume operations per-topic without Kafka ACLs.
+Description: Enforce topic-level access control for Kafka using Cilium network policies that allow produce and consume operations per-topic without Kafka ACLs on Cilium versions that still include Kafka L7 support.
 
 ---
 
 ## Introduction
 
-Kafka security traditionally relies on Kafka's own ACL system, which requires configuring Kafka brokers with SASL/SSL authentication and managing ACLs through `kafka-acls.sh`. In Kubernetes environments, this adds operational complexity - you need to manage Kafka credentials, configure authentication on both brokers and clients, and keep ACLs synchronized as services scale. Cilium offers a network-layer alternative using its L7 Kafka policy support.
+Kafka security traditionally relies on Kafka's own ACL system, which requires configuring Kafka brokers with SASL/SSL authentication and managing ACLs through `kafka-acls.sh`. In Kubernetes environments, this adds operational complexity - you need to manage Kafka credentials, configure authentication on both brokers and clients, and keep ACLs synchronized as services scale. Cilium offers a network-layer alternative using its L7 Kafka policy support in versions that still include Kafka-aware policy.
 
 Cilium can parse the Kafka protocol and enforce access control based on Kafka API calls. This means you can allow specific pods to produce to topic A but not topic B, allow consumers of topic B but not producers, and block Kafka admin operations entirely - all at the network layer without modifying Kafka configuration. The enforcement is transparent to both Kafka clients and brokers.
 
-This guide covers writing Cilium Kafka policies, configuring topic-level allow and deny rules, and validating enforcement in a running Kafka cluster.
+This guide covers writing Cilium Kafka policies, configuring topic-level allowlist rules, and validating enforcement in a running Kafka cluster.
 
 ## Prerequisites
 
-- Cilium v1.10+ with Kafka L7 support
+- Cilium with Kafka L7 support, such as Cilium v1.19 or earlier. Kafka network policy support is deprecated in Cilium v1.18/v1.19 and removed in Cilium v1.20.
 - Apache Kafka deployed in Kubernetes
 - `kafka-console-producer.sh` and `kafka-console-consumer.sh` for testing
 - `hubble` CLI for observability
@@ -105,9 +105,10 @@ spec:
               protocol: TCP
           rules:
             kafka:
-              - apiKey: 3   # Metadata
-              - apiKey: 19  # CreateTopics
-              - apiKey: 20  # DeleteTopics
+              - apiKey: "apiversions"
+              - apiKey: "metadata"
+              - apiKey: "createtopics"
+              - apiKey: "deletetopics"
 ```
 
 ## Step 4: Validate Kafka Policy Enforcement
@@ -125,7 +126,7 @@ kubectl exec -n data-pipeline producer-pod -- \
   kafka-console-producer.sh \
   --bootstrap-server kafka:9092 \
   --topic billing
-# Expected: Network error - connection reset by Cilium
+# Expected: Kafka authorization error, such as TOPIC_AUTHORIZATION_FAILED
 
 # Observe Kafka policy enforcement in Hubble
 hubble observe --namespace data-pipeline \
@@ -158,9 +159,9 @@ flowchart TD
     D --> E
     E -->|Check Kafka policy\ntopic + role| F{Allowed?}
     F -->|events + produce\nAllowed| G[Kafka Broker]
-    F -->|billing + consume\nDenied| H[Connection Reset]
+    F -->|billing + consume\nDenied| H[Kafka Authorization Error]
 ```
 
 ## Conclusion
 
-Cilium Kafka policies provide network-layer topic-level access control without requiring Kafka ACL configuration or authentication setup. By declaring which pods can produce or consume which topics directly in Kubernetes network policy, you bring Kafka access control into the same declarative GitOps workflow as the rest of your security policy. This is especially valuable during early development when Kafka ACLs may not be configured yet, or in environments where operational simplicity is more important than Kafka's native ACL granularity.
+Cilium Kafka policies provide network-layer topic-level access control without requiring Kafka ACL configuration on Cilium versions that still support Kafka-aware policies. By declaring which pods can produce or consume which topics directly in Kubernetes network policy, you bring Kafka access control into the same declarative GitOps workflow as the rest of your security policy. This is especially valuable during early development when Kafka ACLs may not be configured yet, or in environments where operational simplicity is more important than Kafka's native ACL granularity.
