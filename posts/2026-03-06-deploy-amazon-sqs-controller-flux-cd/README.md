@@ -131,7 +131,7 @@ Deploy the ACK SQS Controller using a HelmRelease.
 ```yaml
 # ack-sqs-helmrelease.yaml
 # Deploys the ACK SQS Controller via Flux CD
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ack-sqs-controller
@@ -141,13 +141,20 @@ spec:
   chart:
     spec:
       chart: sqs-chart
-      version: "1.0.x"
+      version: "1.4.x"
       sourceRef:
         kind: HelmRepository
         name: ack-sqs
         namespace: ack-system
       interval: 12h
+  install:
+    crds: CreateReplace
+  upgrade:
+    crds: CreateReplace
   values:
+    # Align chart labels and Deployment name with the release name
+    nameOverride: ack-sqs-controller
+
     # AWS configuration
     aws:
       region: us-east-1
@@ -176,17 +183,13 @@ spec:
     # Logging configuration
     log:
       level: info
-      # Enable JSON logging for structured output
-      enableDevelopmentLogging: false
-
-    # Install CRDs
-    installCRDs: true
+      # Keep development logging disabled
+      enable_development_logging: false
 
     # Metrics configuration
     metrics:
       service:
-        enabled: true
-        port: 8080
+        create: true
 ```
 
 ## Step 5: Create SQS Queue Resources
@@ -201,9 +204,6 @@ kind: Queue
 metadata:
   name: app-events-queue
   namespace: ack-system
-  annotations:
-    # Flux annotation for tracking
-    kustomize.toolkit.fluxcd.io/prune: "true"
 spec:
   queueName: app-events-queue
   # Message retention period (4 days in seconds)
@@ -403,9 +403,8 @@ kubectl describe serviceaccount ack-sqs-controller -n ack-system
 # Check queue sync status
 kubectl get queues -n ack-system -o wide
 
-# Verify IAM permissions
-kubectl exec -n ack-system deploy/ack-sqs-controller -- \
-  aws sts get-caller-identity
+# Check controller logs for AWS authorization errors
+kubectl logs -n ack-system -l app.kubernetes.io/name=ack-sqs-controller | grep -i "accessdenied"
 
 # Check Flux Kustomization errors
 flux get kustomizations -n flux-system | grep ack-sqs
