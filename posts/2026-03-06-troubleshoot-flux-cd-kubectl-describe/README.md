@@ -71,7 +71,7 @@ kubectl describe kustomization my-app -n flux-system
 
 Example output with a failure:
 
-```python
+```yaml
 Status:
   Conditions:
     Last Transition Time:  2026-03-06T10:05:00Z
@@ -160,7 +160,7 @@ Events:
 
 ## Describing HelmChart Resources
 
-Flux automatically creates HelmChart resources for each HelmRelease:
+Flux automatically creates HelmChart resources for HelmReleases that use `spec.chart`. The generated HelmChart is created in the same namespace as the chart source reference, with a name matching the HelmRelease's `<namespace>-<name>`:
 
 ```bash
 # List HelmCharts to find the auto-generated name
@@ -208,7 +208,9 @@ Status:
     Reason:                Succeeded
     Status:                True
     Type:                  Ready
-  Latest Image:  docker.io/myorg/my-app:v1.5.2
+  Latest Ref:
+    Image:  docker.io/myorg/my-app
+    Tag:    v1.5.2
 ```
 
 ## Describing Alert and Provider Resources
@@ -241,18 +243,18 @@ kubectl describe helmreleases -A
 kubectl describe helmrepositories -n flux-system
 ```
 
-## Using describe with JSON Output for Scripting
+## Using kubectl get with JSON Output for Scripting
 
-For automated troubleshooting, extract conditions programmatically:
+For automated troubleshooting, use `kubectl get -o json` to extract conditions programmatically:
 
 ```bash
 # Get the Ready condition message for all Kustomizations
 kubectl get kustomizations -n flux-system -o json \
-  | jq -r '.items[] | "\(.metadata.name): \(.status.conditions[] | select(.type == "Ready") | .message)"'
+  | jq -r '.items[] | "\(.metadata.name): \(.status.conditions[]? | select(.type == "Ready") | .message)"'
 
 # Get all resources that are not Ready
 kubectl get kustomizations -n flux-system -o json \
-  | jq -r '.items[] | select(.status.conditions[] | select(.type == "Ready" and .status == "False")) | .metadata.name'
+  | jq -r '.items[] | select(.status.conditions[]? | select(.type == "Ready" and .status == "False")) | .metadata.name'
 ```
 
 ## Quick Diagnostic Script
