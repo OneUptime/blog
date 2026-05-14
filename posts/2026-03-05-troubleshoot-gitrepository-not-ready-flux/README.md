@@ -25,7 +25,7 @@ Start by getting an overview of the problem.
 ```bash
 # Check the status of all GitRepository sources
 
-flux get source git -A
+flux get sources git -A
 ```
 
 Identify which sources are not ready.
@@ -114,13 +114,17 @@ stringData:
 Error messages containing "connection refused", "connection timed out", "no such host", or "dial tcp" point to network problems.
 
 ```bash
-# Test connectivity from the source controller to the Git host
-kubectl exec -n flux-system deployment/source-controller -- \
-  wget -q --spider https://github.com && echo "reachable" || echo "unreachable"
+# Test connectivity from the flux-system namespace using the source-controller labels
+kubectl run source-connectivity-test -n flux-system --rm -i --restart=Never \
+  --image=busybox:1.36 \
+  --labels=app=source-controller,app.kubernetes.io/component=source-controller \
+  -- wget -q --spider https://github.com && echo "reachable" || echo "unreachable"
 
 # Check DNS resolution
-kubectl exec -n flux-system deployment/source-controller -- \
-  nslookup github.com
+kubectl run source-dns-test -n flux-system --rm -i --restart=Never \
+  --image=busybox:1.36 \
+  --labels=app=source-controller,app.kubernetes.io/component=source-controller \
+  -- nslookup github.com
 ```
 
 Verify that network policies are not blocking egress traffic from the flux-system namespace.
@@ -234,7 +238,7 @@ If the source controller is running out of memory, increase its resource limits.
 ```bash
 # Patch source controller resources
 kubectl patch deployment source-controller -n flux-system --type=json \
-  -p='[{"op":"replace","path":"/spec/template/spec/containers/0/resources/limits/memory","value":"512Mi"}]'
+  -p='[{"op":"replace","path":"/spec/template/spec/containers/0/resources/limits/memory","value":"1Gi"}]'
 ```
 
 ## Step 5: Force a Reconciliation
@@ -243,7 +247,7 @@ After fixing the issue, force an immediate reconciliation instead of waiting for
 
 ```bash
 # Force reconciliation and watch for the result
-flux reconcile source git my-app --with-source
+flux reconcile source git my-app
 ```
 
 If the issue persists, you can delete and recreate the GitRepository as a last resort.
@@ -275,10 +279,10 @@ Set up monitoring to catch GitRepository failures early.
 
 ```bash
 # Check all GitRepository sources for issues
-flux get source git -A --status-selector ready=false
+flux get sources git -A --status-selector ready=false
 ```
 
-Consider adding a Prometheus alert for Flux source failures.
+If you use kube-state-metrics to export Flux custom resource state, consider adding a Prometheus alert for Flux source failures.
 
 ```yaml
 # Alert on GitRepository reconciliation failures
@@ -292,7 +296,7 @@ spec:
   - name: flux.rules
     rules:
     - alert: GitRepositoryNotReady
-      expr: gotk_reconcile_condition{kind="GitRepository",type="Ready",status="False"} == 1
+      expr: gotk_resource_info{customresource_kind="GitRepository",ready="False"} == 1
       for: 15m
       labels:
         severity: critical
