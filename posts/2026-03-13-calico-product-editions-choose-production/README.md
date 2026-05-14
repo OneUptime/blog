@@ -29,7 +29,7 @@ Start with compliance - it is usually the most constrained dimension.
 
 | Requirement | Open Source | Cloud | Enterprise |
 |---|---|---|---|
-| Automated audit reports | No | Yes | Yes |
+| Automated audit reports | No | Yes (current reports are deprecated) | Yes (current reports are deprecated) |
 | Data stays on-premises | Yes | No (SaaS) | Yes |
 | FedRAMP authorized | No | No | Consult Tigera |
 | FQDN egress control | No | Yes | Yes |
@@ -49,7 +49,7 @@ graph TD
     Q3 -->|No| OS[Use Calico Open Source\nwith custom observability]
 ```
 
-Small teams (fewer than three platform engineers) benefit significantly from Calico Cloud's managed control plane. The time saved on Calico upgrades, troubleshooting, and observability tooling usually justifies the subscription cost.
+Small teams (fewer than three platform engineers) benefit significantly from Calico Cloud's managed SaaS control plane. The time saved on centralized policy management, troubleshooting, reporting, and observability tooling usually justifies the subscription cost.
 
 ## Decision Dimension 3: Feature Requirements
 
@@ -58,11 +58,11 @@ List your non-negotiable features and map them to editions:
 - **Pod networking and standard Kubernetes NetworkPolicy**: Open Source
 - **DNS/FQDN-based egress control**: Cloud or Enterprise
 - **Real-time threat detection and anomaly alerts**: Cloud or Enterprise
-- **Hierarchical policy tiers with RBAC**: Enterprise
+- **Hierarchical policy tiers with RBAC**: Open Source, Cloud, or Enterprise
 - **On-premises flow log storage**: Enterprise
-- **Multi-cluster federated network policy**: Cloud or Enterprise
+- **Multi-cluster policy management, remote-identity-aware policy, or cluster mesh**: Cloud or Enterprise
 
-If your list contains only the first item, Open Source is the right choice. If your list includes items two through six, you need a commercial edition.
+If your list contains only the first item, Open Source is the right choice. If your list includes DNS/FQDN egress, threat detection, on-premises flow log storage, or multi-cluster management and cluster mesh requirements, you need a commercial edition.
 
 ## Decision Dimension 4: Total Cost of Ownership
 
@@ -79,7 +79,7 @@ Commercial editions consolidate these costs into a predictable subscription but 
 - Do not choose an edition based solely on initial installation simplicity - evaluate the full two-year lifecycle cost
 - Lock in a 90-day trial of Cloud or Enterprise before signing a contract so you can validate the specific compliance features you need
 - Confirm your cloud provider managed Kubernetes service (EKS, GKE, AKS) is supported before purchasing Enterprise
-- Plan for the upgrade path: Open Source → Cloud/Enterprise migrations are supported without re-installing the CNI
+- Plan for the upgrade path: Open Source → Cloud/Enterprise migrations are supported, but prerequisites and limitations vary by installation method and platform
 
 ## Conclusion
 
