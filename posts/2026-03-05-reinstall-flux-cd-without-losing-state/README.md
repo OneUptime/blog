@@ -35,18 +35,19 @@ The key insight is that Flux custom resources and secrets are stored in etcd as 
 Before making any changes, export your existing Flux configuration as a backup.
 
 ```bash
-# Export all Flux custom resources across all namespaces
+# Export Flux custom resources from each namespace that contains Flux resources.
+# Repeat with --namespace for each application namespace you use.
 
-flux export source git --all -A > git-sources.yaml
-flux export source helm --all -A > helm-sources.yaml
-flux export source oci --all -A > oci-sources.yaml
-flux export kustomization --all -A > kustomizations.yaml
-flux export helmrelease --all -A > helmreleases.yaml
-flux export alert --all -A > alerts.yaml
-flux export alert-provider --all -A > providers.yaml
+flux export source git --all --namespace=flux-system > git-sources.yaml
+flux export source helm --all --namespace=flux-system > helm-sources.yaml
+flux export source oci --all --namespace=flux-system > oci-sources.yaml
+flux export kustomization --all --namespace=flux-system > kustomizations.yaml
+flux export helmrelease --all --namespace=flux-system > helmreleases.yaml
+flux export alert --all --namespace=flux-system > alerts.yaml
+flux export alert-provider --all --namespace=flux-system > providers.yaml
 ```
 
-This gives you a complete backup of your Flux resource definitions that can be reapplied if needed.
+This gives you a backup of the Flux resource definitions in that namespace that can be reapplied if needed. If you use Flux resources in other namespaces, or use additional Flux resource types such as Buckets, Receivers, or image automation resources, export those as well.
 
 ## Step 2: Back Up Secrets
 
