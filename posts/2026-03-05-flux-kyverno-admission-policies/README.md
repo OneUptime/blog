@@ -39,9 +39,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kyverno
-  namespace: kyverno
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: kyverno
   chart:
     spec:
       chart: kyverno
@@ -53,17 +54,24 @@ spec:
   install:
     createNamespace: true
   values:
-    replicaCount: 3
+    admissionController:
+      replicas: 3
+    backgroundController:
+      replicas: 2
+    cleanupController:
+      replicas: 2
+    reportsController:
+      replicas: 2
     # Exclude flux-system from Kyverno policies
     config:
       webhooks:
-        - namespaceSelector:
-            matchExpressions:
-              - key: kubernetes.io/metadata.name
-                operator: NotIn
-                values:
-                  - kyverno
-                  - flux-system
+        namespaceSelector:
+          matchExpressions:
+            - key: kubernetes.io/metadata.name
+              operator: NotIn
+              values:
+                - kyverno
+                - flux-system
 ```
 
 ## Step 2: Create a Validation Policy for Required Labels
@@ -81,7 +89,6 @@ metadata:
     policies.kyverno.io/title: Require Labels
     policies.kyverno.io/description: Requires app.kubernetes.io/name and team labels on Deployments
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: require-app-label
@@ -90,10 +97,14 @@ spec:
           - resources:
               kinds:
                 - Deployment
+      exclude:
+        any:
+          - resources:
               namespaces:
-                - "!kube-system"
-                - "!flux-system"
+                - kube-system
+                - flux-system
       validate:
+        failureAction: Enforce
         message: "The label 'app.kubernetes.io/name' is required on Deployments."
         pattern:
           metadata:
@@ -105,10 +116,14 @@ spec:
           - resources:
               kinds:
                 - Deployment
+      exclude:
+        any:
+          - resources:
               namespaces:
-                - "!kube-system"
-                - "!flux-system"
+                - kube-system
+                - flux-system
       validate:
+        failureAction: Enforce
         message: "The label 'team' is required on Deployments."
         pattern:
           metadata:
@@ -157,7 +172,6 @@ kind: ClusterPolicy
 metadata:
   name: require-resource-limits
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: require-requests-and-limits
@@ -167,11 +181,15 @@ spec:
               kinds:
                 - Deployment
                 - StatefulSet
+      exclude:
+        any:
+          - resources:
               namespaces:
-                - "!kube-system"
-                - "!flux-system"
-                - "!kyverno"
+                - kube-system
+                - flux-system
+                - kyverno
       validate:
+        failureAction: Enforce
         message: "All containers must have CPU and memory requests and limits defined."
         pattern:
           spec:
@@ -184,6 +202,7 @@ spec:
                         cpu: "?*"
                       limits:
                         memory: "?*"
+                        cpu: "?*"
 ```
 
 ## Step 5: Create a Policy to Restrict Image Registries
@@ -198,7 +217,6 @@ kind: ClusterPolicy
 metadata:
   name: restrict-image-registries
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: validate-registries
@@ -207,16 +225,25 @@ spec:
           - resources:
               kinds:
                 - Pod
+      exclude:
+        any:
+          - resources:
               namespaces:
-                - "!kube-system"
-                - "!flux-system"
-                - "!kyverno"
+                - kube-system
+                - flux-system
+                - kyverno
       validate:
+        failureAction: Enforce
         message: "Images must be from approved registries (ghcr.io/myorg or registry.mycompany.com)."
-        pattern:
-          spec:
-            containers:
-              - image: "ghcr.io/myorg/* | registry.mycompany.com/*"
+        foreach:
+          - list: request.object.spec.initContainers
+            anyPattern:
+              - image: "ghcr.io/myorg/*"
+              - image: "registry.mycompany.com/*"
+          - list: request.object.spec.containers
+            anyPattern:
+              - image: "ghcr.io/myorg/*"
+              - image: "registry.mycompany.com/*"
 ```
 
 ## Step 6: Create a Policy to Block Privileged Pods
@@ -229,7 +256,6 @@ kind: ClusterPolicy
 metadata:
   name: disallow-privileged-containers
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: deny-privileged
@@ -238,18 +264,25 @@ spec:
           - resources:
               kinds:
                 - Pod
+      exclude:
+        any:
+          - resources:
               namespaces:
-                - "!kube-system"
+                - kube-system
       validate:
+        failureAction: Enforce
         message: "Privileged containers are not allowed."
         pattern:
           spec:
             containers:
-              - securityContext:
-                  privileged: "false"
+              - =(securityContext):
+                  =(privileged): "false"
             =(initContainers):
-              - securityContext:
-                  privileged: "false"
+              - =(securityContext):
+                  =(privileged): "false"
+            =(ephemeralContainers):
+              - =(securityContext):
+                  =(privileged): "false"
 ```
 
 ## Step 7: Deploy Policies with Flux
@@ -272,7 +305,7 @@ spec:
   path: ./policies/kyverno
   prune: true
   dependsOn:
-    - name: kyverno  # Wait for Kyverno to be installed
+    - name: kyverno  # Wait for the Flux Kustomization that installs Kyverno
 ```
 
 ## Handling Policy Violations
@@ -296,7 +329,7 @@ kubectl get policyreport -n production -o json | jq '.results[] | select(.result
 
 ## Best Practices
 
-1. **Start with Audit mode**: Set `validationFailureAction: Audit` first to understand the impact before enforcing.
+1. **Start with Audit mode**: Set `failureAction: Audit` first to understand the impact before enforcing.
 2. **Exclude system namespaces**: Always exclude `flux-system`, `kyverno`, and `kube-system` from policies.
 3. **Use background scanning**: Enable `background: true` to audit existing resources, not just new ones.
 4. **Manage policies via GitOps**: Deploy Kyverno policies through Flux for version control and review.
