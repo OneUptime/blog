@@ -90,11 +90,11 @@ spec:
       defaultRequest:
         cpu: 100m
         memory: 128Mi
-      # Maximum any single container can request
+      # Maximum compute resources for any single container
       max:
         cpu: "2"
         memory: 4Gi
-      # Minimum any single container must request
+      # Minimum compute resources for any single container
       min:
         cpu: 50m
         memory: 64Mi
@@ -159,7 +159,7 @@ subjects:
 
 ## Step 5: Use flux create tenant for Quick Setup
 
-The `flux create tenant` command can create a tenant with multiple namespaces at once.
+The preview `flux create tenant` command can create a tenant with multiple namespaces at once.
 
 ```bash
 # Create a tenant with multiple namespaces
@@ -169,7 +169,7 @@ flux create tenant team-alpha \
   --export > team-alpha-tenant.yaml
 ```
 
-This generates the namespaces, service accounts, and role bindings for all specified namespaces.
+In current Flux releases, this generates the namespaces, service accounts, and role bindings for all specified namespaces.
 
 ## Step 6: Assemble with Kustomization
 
@@ -221,7 +221,7 @@ kubectl describe resourcequota team-alpha-quota -n team-alpha
 # Check limit ranges
 kubectl describe limitrange team-alpha-limits -n team-alpha
 
-# Verify Flux can see the namespace
+# Verify the platform Kustomization reconciled
 flux get kustomizations -n flux-system
 ```
 
@@ -233,7 +233,7 @@ Consistent naming helps with automation and policy enforcement. Consider these p
 - Environment-based: `{tenant-name}-{environment}` (e.g., `team-alpha-production`)
 - Application-based: `{tenant-name}-{app-name}` (e.g., `team-alpha-api`)
 
-Use labels rather than naming conventions for programmatic selection, as labels are queryable while namespace names are not.
+Use labels rather than naming conventions for programmatic selection, as labels are more flexible for grouping namespaces than matching individual namespace names.
 
 ## Handling Namespace Deletion
 
