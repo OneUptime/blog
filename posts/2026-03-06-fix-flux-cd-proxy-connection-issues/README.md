@@ -56,25 +56,25 @@ The standard approach is to set proxy environment variables on the Flux controll
 kubectl set env deployment/source-controller -n flux-system \
   HTTP_PROXY=http://proxy.example.com:8080 \
   HTTPS_PROXY=http://proxy.example.com:8080 \
-  NO_PROXY=".cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+  NO_PROXY=".cluster.local.,.cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 
 # Set on helm-controller
 kubectl set env deployment/helm-controller -n flux-system \
   HTTP_PROXY=http://proxy.example.com:8080 \
   HTTPS_PROXY=http://proxy.example.com:8080 \
-  NO_PROXY=".cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+  NO_PROXY=".cluster.local.,.cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 
 # Set on image-reflector-controller
 kubectl set env deployment/image-reflector-controller -n flux-system \
   HTTP_PROXY=http://proxy.example.com:8080 \
   HTTPS_PROXY=http://proxy.example.com:8080 \
-  NO_PROXY=".cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+  NO_PROXY=".cluster.local.,.cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 
 # Set on notification-controller
 kubectl set env deployment/notification-controller -n flux-system \
   HTTP_PROXY=http://proxy.example.com:8080 \
   HTTPS_PROXY=http://proxy.example.com:8080 \
-  NO_PROXY=".cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+  NO_PROXY=".cluster.local.,.cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 ```
 
 ### Method 2: Use Kustomize Patches (Recommended for GitOps)
@@ -102,7 +102,7 @@ spec:
               value: "http://proxy.example.com:8080"
             # Addresses that should bypass the proxy
             - name: NO_PROXY
-              value: ".cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+              value: ".cluster.local.,.cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 ```
 
 Apply the patch to all controllers via Kustomize:
@@ -171,7 +171,7 @@ spec:
             - name: HTTPS_PROXY
               value: "http://user:password@proxy.example.com:8080"
             - name: NO_PROXY
-              value: ".cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+              value: ".cluster.local.,.cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 ```
 
 ### Using a Secret for Proxy Credentials
@@ -189,7 +189,7 @@ type: Opaque
 stringData:
   HTTP_PROXY: "http://user:password@proxy.example.com:8080"
   HTTPS_PROXY: "http://user:password@proxy.example.com:8080"
-  NO_PROXY: ".cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+  NO_PROXY: ".cluster.local.,.cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 ---
 # Patch to reference the secret
 apiVersion: apps/v1
@@ -214,12 +214,13 @@ The NO_PROXY variable is critical. Incorrect values will cause Flux controllers 
 
 ```bash
 # Essential NO_PROXY entries for Kubernetes clusters
-NO_PROXY=".cluster.local,.svc,localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+NO_PROXY=".cluster.local.,.cluster.local,.svc,localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 ```
 
 Explanation of each entry:
 
 ```yaml
+# .cluster.local. - Kubernetes internal DNS suffix with trailing dot
 # .cluster.local  - Kubernetes internal DNS suffix
 # .svc            - Kubernetes service DNS
 # localhost        - Local loopback
@@ -262,12 +263,10 @@ spec:
     name: flux-system
 ```
 
-If you must use SSH through a proxy, configure a proxy command:
+If you must use SSH through a proxy, configure a SOCKS5 proxy with `ALL_PROXY`:
 
 ```yaml
-# Advanced: SSH proxy via ProxyCommand
-# This requires a custom container image or init container
-# with socat or ncat installed
+# SSH proxy via SOCKS5 for source-controller
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -279,8 +278,8 @@ spec:
       containers:
         - name: manager
           env:
-            - name: GIT_SSH_COMMAND
-              value: "ssh -o ProxyCommand='socat - PROXY:proxy.example.com:%h:%p,proxyport=8080'"
+            - name: ALL_PROXY
+              value: "socks5://proxy.example.com:1080"
 ```
 
 ## Step 6: Configure Proxy for Helm Repositories
@@ -313,7 +312,7 @@ spec:
   interval: 30m
   type: oci
   url: oci://ghcr.io/stefanprodan/charts
-  # Proxy env vars on image-reflector-controller apply here
+  # Proxy env vars on source-controller apply here
 ```
 
 ## Step 7: Verify Proxy Configuration
@@ -343,7 +342,7 @@ When bootstrapping Flux in a proxied environment, the bootstrap command itself n
 # Set proxy variables in your shell before bootstrapping
 export HTTP_PROXY=http://proxy.example.com:8080
 export HTTPS_PROXY=http://proxy.example.com:8080
-export NO_PROXY=".cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+export NO_PROXY=".cluster.local.,.cluster.local,.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 
 # Run the bootstrap
 flux bootstrap github \
@@ -352,7 +351,7 @@ flux bootstrap github \
   --branch=main \
   --path=clusters/production
 
-# After bootstrap, apply the Kustomize proxy patches
+# Include the Kustomize proxy patches in the bootstrap repository
 # so the deployed controllers also use the proxy
 ```
 
