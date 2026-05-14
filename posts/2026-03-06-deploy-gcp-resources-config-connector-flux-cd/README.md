@@ -14,7 +14,7 @@ Google Cloud Config Connector lets you manage GCP resources through Kubernetes c
 
 Before you begin, ensure you have the following:
 
-- A GKE cluster (v1.26 or later) with Config Connector add-on or any Kubernetes cluster
+- A supported GKE cluster with Workload Identity Federation enabled, or another supported Kubernetes cluster with Config Connector authentication configured
 - Flux CD installed on your cluster (v2.x)
 - gcloud CLI configured with appropriate permissions
 - kubectl configured to access your cluster
@@ -34,36 +34,51 @@ graph LR
 
 ## Step 1: Install Config Connector
 
-If you are using GKE, enable the Config Connector add-on. For non-GKE clusters, install it via Flux CD:
+If you are using GKE, enable the Config Connector add-on. For other supported clusters, install the Config Connector operator manually, commit the extracted operator manifest to Git, and have Flux CD reconcile it:
 
 ```yaml
-# config-connector-helmrelease.yaml
-
-# HelmRelease to install Config Connector operator
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+# config-connector-kustomization.yaml
+# Flux CD Kustomization to install the Config Connector operator manifest
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: config-connector-operator
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: gcp-infrastructure
+  path: ./config-connector/operator
+  prune: true
+  wait: true
+---
+# config-connector-config-kustomization.yaml
+# Flux CD Kustomization to configure Config Connector after the operator CRDs exist
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
 metadata:
   name: config-connector
   namespace: flux-system
 spec:
-  interval: 1h
-  url: https://charts.config-connector.io
----
-apiVersion: helm.toolkit.fluxcd.io/v1
-kind: HelmRelease
-metadata:
-  name: config-connector
-  namespace: cnrm-system
-spec:
   interval: 10m
-  chart:
-    spec:
-      chart: config-connector
-      version: "1.x"
-      sourceRef:
-        kind: HelmRepository
-        name: config-connector
-        namespace: flux-system
+  sourceRef:
+    kind: GitRepository
+    name: gcp-infrastructure
+  path: ./config-connector/config
+  prune: true
+  wait: true
+  dependsOn:
+    - name: config-connector-operator
+---
+# configconnector.yaml
+apiVersion: core.cnrm.cloud.google.com/v1beta1
+kind: ConfigConnector
+metadata:
+  name: configconnector.core.cnrm.cloud.google.com
+spec:
+  mode: namespaced
+  stateIntoSpec: Absent
 ```
 
 ## Step 2: Configure Config Connector with Workload Identity
@@ -79,12 +94,10 @@ metadata:
   name: configconnectorcontext.core.cnrm.cloud.google.com
   namespace: default
 spec:
-  # The GCP project to manage resources in
+  # The GCP service account used by Config Connector in this namespace
   googleServiceAccount: config-connector-sa@my-gcp-project.iam.gserviceaccount.com
-  # Request rate limiting
-  requestLimit: 25
-  # State into which absent resources should be brought
-  stateIntoSpec: Merge
+  # Prevent Config Connector from writing unspecified API defaults into resource specs
+  stateIntoSpec: Absent
 ```
 
 Set up workload identity binding:
@@ -103,7 +116,7 @@ gcloud projects add-iam-policy-binding my-gcp-project \
 # Bind the Kubernetes service account to the GCP service account
 gcloud iam service-accounts add-iam-policy-binding \
   config-connector-sa@my-gcp-project.iam.gserviceaccount.com \
-  --member="serviceAccount:my-gcp-project.svc.id.goog[cnrm-system/cnrm-controller-manager]" \
+  --member="serviceAccount:my-gcp-project.svc.id.goog[cnrm-system/cnrm-controller-manager-default]" \
   --role="roles/iam.workloadIdentityUser"
 ```
 
@@ -168,7 +181,8 @@ spec:
         age: 30
   # Encryption with a customer-managed key
   encryption:
-    defaultKmsKeyName: projects/my-gcp-project/locations/us/keyRings/my-keyring/cryptoKeys/my-key
+    kmsKeyRef:
+      external: projects/my-gcp-project/locations/us/keyRings/my-keyring/cryptoKeys/my-key
 ```
 
 ## Step 5: Deploy a Cloud SQL Instance
@@ -296,6 +310,35 @@ spec:
     - rangeName: services
       ipCidrRange: "10.2.0.0/20"
 ---
+# private-service-address.yaml
+# Reserved peering range required for Cloud SQL private IP
+apiVersion: compute.cnrm.cloud.google.com/v1beta1
+kind: ComputeAddress
+metadata:
+  name: google-managed-services-my-app-vpc
+  namespace: default
+spec:
+  addressType: INTERNAL
+  location: global
+  purpose: VPC_PEERING
+  prefixLength: 16
+  networkRef:
+    name: my-app-vpc
+---
+# service-networking-connection.yaml
+# Private services access connection for Cloud SQL private IP
+apiVersion: servicenetworking.cnrm.cloud.google.com/v1beta1
+kind: ServiceNetworkingConnection
+metadata:
+  name: my-app-vpc-service-networking
+  namespace: default
+spec:
+  networkRef:
+    name: my-app-vpc
+  reservedPeeringRanges:
+    - name: google-managed-services-my-app-vpc
+  service: servicenetworking.googleapis.com
+---
 # firewall.yaml
 # Config Connector ComputeFirewall
 apiVersion: compute.cnrm.cloud.google.com/v1beta1
@@ -307,7 +350,7 @@ spec:
   networkRef:
     name: my-app-vpc
   # Allow internal traffic
-  allowed:
+  allow:
     - protocol: tcp
       ports:
         - "0-65535"
@@ -334,6 +377,7 @@ metadata:
   namespace: default
   annotations:
     cnrm.cloud.google.com/project-id: my-gcp-project
+    cnrm.cloud.google.com/remove-default-node-pool: "true"
 spec:
   location: us-central1
   # Use the VPC network
@@ -355,8 +399,6 @@ spec:
     masterIpv4CidrBlock: "172.16.0.0/28"
   # Initial node count (managed by node pools)
   initialNodeCount: 1
-  # Remove default node pool
-  removeDefaultNodePool: true
 ```
 
 ## Step 8: Create the Flux CD Kustomization
@@ -380,11 +422,6 @@ spec:
   timeout: 30m
   dependsOn:
     - name: config-connector
-  healthChecks:
-    - apiVersion: storage.cnrm.cloud.google.com/v1beta1
-      kind: StorageBucket
-      name: my-app-data-bucket
-      namespace: default
 ```
 
 ## Step 9: Verify the Deployment
@@ -414,10 +451,10 @@ flux get kustomizations
 
 1. **Use workload identity** for Config Connector authentication on GKE
 2. **Scope permissions** with per-namespace Config Connector contexts
-3. **Use resource references** (nameRef) instead of hardcoding resource IDs
+3. **Use resource references** instead of hardcoding resource IDs
 4. **Apply labels** consistently across all resources for cost tracking
 5. **Enable pruning** in Flux CD to automatically clean up deleted resources
-6. **Use abandon policy** annotation for resources you want to keep when removing from Git
+6. **Use the `cnrm.cloud.google.com/deletion-policy: abandon` annotation** for resources you want to keep when removing from Git
 7. **Separate infrastructure layers** -- networking, databases, and applications in different paths
 
 ## Conclusion
