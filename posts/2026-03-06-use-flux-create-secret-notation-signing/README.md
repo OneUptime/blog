@@ -4,24 +4,24 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Notation, Signing, Secret, Security, GitOps, Kubernetes
 
-Description: A practical guide to using the flux create secret notation command to configure Notation signing verification for container images in Flux CD.
+Description: A practical guide to using the flux create secret notation command to configure Notation signing verification for OCI artifacts in Flux CD.
 
 ---
 
 ## Introduction
 
-Container image signing is a critical security practice that ensures only trusted images are deployed to your Kubernetes clusters. Notation is an open-source tool from the CNCF that provides a standards-based approach to signing and verifying container images. Flux CD integrates with Notation through the `flux create secret notation` command, allowing you to store verification credentials as Kubernetes secrets.
+Container image and OCI artifact signing is a critical security practice that helps ensure only trusted artifacts are used in your Kubernetes clusters. Notation is an open-source tool from the CNCF that provides a standards-based approach to signing and verifying OCI artifacts. Flux CD integrates with Notation through the `flux create secret notation` command, allowing you to store verification credentials as Kubernetes secrets.
 
-In this guide, you will learn how to set up Notation signing verification with Flux CD, create the necessary secrets, and configure your Flux resources to verify image signatures before deployment.
+In this guide, you will learn how to set up Notation signing verification with Flux CD, create the necessary secrets, and configure supported Flux source resources to verify signatures before reconciliation.
 
 ## Prerequisites
 
 Before getting started, make sure you have the following tools installed and configured:
 
-- Flux CLI v2.2.0 or later
+- Flux CLI v2.3.0 or later
 - kubectl configured with cluster access
 - A Notation-compatible signing certificate
-- An OCI registry that supports image signing
+- An OCI registry that supports OCI artifact signing
 
 ```bash
 # Verify Flux CLI version supports notation secrets
@@ -34,15 +34,15 @@ kubectl cluster-info
 
 ## Understanding Notation Signing in Flux CD
 
-Notation signing verification in Flux CD works by validating container image signatures against trusted certificates before allowing deployments. The verification process follows this flow:
+Notation signing verification in Flux CD works by validating OCI artifact signatures against trusted certificates before the signed source artifact is used by Flux. The verification process follows this flow:
 
 ```mermaid
 graph TD
-    A[Image Push to Registry] --> B[Sign Image with Notation]
-    B --> C[Flux Detects New Image]
+    A[OCI Artifact Push to Registry] --> B[Sign Artifact with Notation]
+    B --> C[Flux Detects New Artifact]
     C --> D[Verify Signature Against Secret]
-    D -->|Valid| E[Deploy to Cluster]
-    D -->|Invalid| F[Reject Deployment]
+    D -->|Valid| E[Reconcile Source Artifact]
+    D -->|Invalid| F[Fail Source Reconciliation]
 ```
 
 ## Generating a Notation Signing Certificate
@@ -97,7 +97,7 @@ Before creating the secret, you need to define a trust policy. Create a `trustpo
     {
       "name": "production-images",
       "registryScopes": [
-        "registry.example.com/production/*"
+        "registry.example.com/production/my-app-manifests"
       ],
       "signatureVerification": {
         "level": "strict"
@@ -152,40 +152,40 @@ sops --encrypt \
   notation-secret.yaml > notation-secret.enc.yaml
 ```
 
-## Configuring ImagePolicy with Notation Verification
+## Configuring HelmChart with Notation Verification
 
-After creating the notation secret, configure your Flux image resources to use it for verification:
+After creating the notation secret, configure supported Flux source resources to use it for verification. For example, you can verify an OCI-backed Helm chart:
 
 ```yaml
-# image-repository.yaml
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImageRepository
+# helm-repository.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
 metadata:
   name: my-app
   namespace: flux-system
 spec:
-  image: registry.example.com/production/my-app
   interval: 5m
-  provider: generic
+  type: oci
+  url: oci://registry.example.com/production/charts
+```
+
+```yaml
+# helm-chart.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmChart
+metadata:
+  name: my-app
+  namespace: flux-system
+spec:
+  chart: my-app
+  version: "1.0.0"
+  sourceRef:
+    kind: HelmRepository
+    name: my-app
   verify:
     provider: notation
     secretRef:
       name: notation-verify-secret
-```
-
-```yaml
-# image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImagePolicy
-metadata:
-  name: my-app
-  namespace: flux-system
-spec:
-  imageRepositoryRef:
-    name: my-app
-  policy:
-    semver:
-      range: ">=1.0.0"
 ```
 
 ## Configuring OCIRepository with Notation Verification
@@ -212,7 +212,7 @@ spec:
 
 ## Verifying the Setup
 
-After applying your configuration, verify that the notation secret and image verification are working correctly:
+After applying your configuration, verify that the notation secret and source verification are working correctly:
 
 ```bash
 # Check the secret was created
@@ -221,8 +221,8 @@ kubectl get secret notation-verify-secret -n flux-system
 # Describe the secret to see its metadata
 kubectl describe secret notation-verify-secret -n flux-system
 
-# Check the ImageRepository status for verification results
-flux get image repository my-app
+# Check the OCIRepository status for verification results
+flux get sources oci
 
 # Check for any verification errors in the source controller logs
 kubectl logs -n flux-system deployment/source-controller \
@@ -238,7 +238,7 @@ If you see signature verification failures, check that the certificate in the se
 ```bash
 # View the certificate details from the secret
 kubectl get secret notation-verify-secret -n flux-system \
-  -o jsonpath='{.data.ca\.crt}' | base64 -d | openssl x509 -text -noout
+  -o jsonpath='{.data.ca-certificate\.crt}' | base64 -d | openssl x509 -text -noout
 
 # Compare with the signing certificate
 openssl x509 -in /path/to/signing-cert.crt -text -noout
@@ -253,7 +253,7 @@ Verify the trust policy is correctly formatted:
 cat trustpolicy.json | python3 -m json.tool
 
 # Check that registry scopes match your actual registry paths
-flux get image repository my-app -o json | jq '.spec.image'
+kubectl get ocirepository my-app-manifests -n flux-system -o json | jq '.spec.url'
 ```
 
 ### Secret Not Found
@@ -265,7 +265,7 @@ Ensure the secret is in the same namespace as the Flux resource referencing it:
 kubectl get secrets --all-namespaces | grep notation
 
 # Verify the namespace matches
-flux get image repository my-app -o json | jq '.spec.verify.secretRef'
+kubectl get ocirepository my-app-manifests -n flux-system -o json | jq '.spec.verify.secretRef'
 ```
 
 ## Rotating Certificates
@@ -280,7 +280,7 @@ flux create secret notation notation-verify-secret \
   --ca-cert-file=./new-ca-certificate.crt
 
 # Reconcile immediately to pick up the changes
-flux reconcile image repository my-app
+flux reconcile source oci my-app-manifests
 ```
 
 ## Best Practices
@@ -289,9 +289,9 @@ flux reconcile image repository my-app
 2. **Separate signing keys per environment** - Use different certificates for staging and production.
 3. **Encrypt secrets in Git** - Always use SOPS or sealed-secrets before committing secret manifests.
 4. **Automate certificate rotation** - Set up alerts for certificate expiry and automate renewal.
-5. **Scope trust policies narrowly** - Use specific registry scopes rather than wildcards when possible.
-6. **Monitor verification failures** - Set up alerts for image verification failures in your monitoring system.
+5. **Scope trust policies narrowly** - Use specific fully qualified repository scopes rather than a global wildcard when possible.
+6. **Monitor verification failures** - Set up alerts for source verification failures in your monitoring system.
 
 ## Conclusion
 
-Using `flux create secret notation` provides a secure and GitOps-native way to verify container image signatures before deployment. By combining Notation signing with Flux CD's automated reconciliation, you can ensure that only trusted and verified images make it to your production clusters. Make sure to follow the best practices outlined above, especially around certificate management and secret encryption, to maintain a strong security posture in your GitOps pipeline.
+Using `flux create secret notation` provides a secure and GitOps-native way to verify OCI artifact signatures before Flux reconciles supported source artifacts. By combining Notation signing with Flux CD's automated reconciliation, you can ensure that only trusted and verified artifacts are used in your production clusters. Make sure to follow the best practices outlined above, especially around certificate management and secret encryption, to maintain a strong security posture in your GitOps pipeline.
