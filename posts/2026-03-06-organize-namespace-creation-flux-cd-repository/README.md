@@ -191,7 +191,7 @@ fleet-repo/
 
 ```yaml
 # infrastructure/cert-manager/kustomization.yaml
-# Namespace is listed first so it is created before other resources
+# Include the namespace manifest with the resources that use it
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -209,13 +209,13 @@ metadata:
     app.kubernetes.io/managed-by: flux
 ```
 
-## Strategy 3: Using targetNamespace with createNamespace
+## Strategy 3: Using targetNamespace
 
-Flux can automatically create namespaces when using `targetNamespace`.
+Flux can target all resources in a Kustomization to a namespace with `targetNamespace`, but the namespace must already exist or be defined by a manifest included in the same Kustomization.
 
 ```yaml
 # clusters/production/apps.yaml
-# Flux will create the target namespace if it does not exist
+# Flux will apply resources to the production namespace
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -229,8 +229,7 @@ spec:
   path: ./apps/api-server
   prune: true
   targetNamespace: production
-  # This annotation tells Flux to create the namespace if missing
-  # Note: the namespace will not have custom labels or annotations
+  # The production namespace must already exist or be included in ./apps/api-server
 ```
 
 For HelmReleases, use `createNamespace`:
@@ -366,8 +365,7 @@ spec:
   policyTypes:
     - Egress
   egress:
-    - to: []
-      ports:
+    - ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
@@ -462,4 +460,4 @@ Always ensure namespaces are created before any resources that target them by us
 
 ## Conclusion
 
-Namespace management in Flux CD requires deliberate organization to avoid ordering issues and ensure security policies are applied consistently. Whether you choose a dedicated namespace directory, colocated namespaces, or automatic namespace creation, the key is to establish the pattern early and apply it consistently across your repository. Always protect namespaces from accidental deletion by setting `prune: false` on namespace Kustomizations.
+Namespace management in Flux CD requires deliberate organization to avoid ordering issues and ensure security policies are applied consistently. Whether you choose a dedicated namespace directory, colocated namespaces, or Helm automatic namespace creation, the key is to establish the pattern early and apply it consistently across your repository. Always protect namespaces from accidental deletion by setting `prune: false` on namespace Kustomizations.
