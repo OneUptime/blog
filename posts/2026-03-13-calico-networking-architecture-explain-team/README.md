@@ -35,9 +35,9 @@ Use job title analogies that map to team mental models:
 | Component | Job Title | Responsibility |
 |---|---|---|
 | Felix | Site Reliability Engineer | "Makes sure every node's network configuration matches the desired state" |
-| BIRD | Border Router | "Advertises our pod routes to the outside world via BGP" |
-| confd | Config Manager | "Keeps BIRD's configuration files in sync with our policy data" |
-| Typha | Message Broker | "Fans out configuration changes from one API server to all Felix instances" |
+| BIRD | Border Router | "Advertises our pod routes to BGP peers when BGP routing is enabled" |
+| confd | Config Manager | "Keeps BIRD's configuration files in sync with BGP configuration data" |
+| Typha | Message Broker | "Fans out datastore updates to Felix and confd instances" |
 | CNI Plugin | Onboarding Agent | "Configures the network for each new pod when it starts" |
 
 ## Visual: The Configuration Flow
@@ -47,22 +47,22 @@ Draw this diagram on a whiteboard:
 ```mermaid
 graph LR
     Admin[Admin: kubectl apply policy] --> K8sAPI[Kubernetes API\nStores in etcd]
-    K8sAPI --> Typha[Typha reads\nfans out]
+    K8sAPI --> Typha[Typha watches datastore\nfans out]
     Typha --> Felix[Felix on each node\nRecalculates rules]
     Felix --> Dataplane[iptables or eBPF\nActual enforcement]
 ```
 
-Walk through: "When you apply a NetworkPolicy, Kubernetes stores it. Typha reads it and sends it to Felix on every node. Felix calculates the new iptables rules and updates them. Now the policy is enforced."
+Walk through: "When you apply a NetworkPolicy, Kubernetes stores it. Typha watches the datastore path and fans the update out to Felix on every node. Felix calculates the new iptables rules or eBPF state and updates the dataplane. Now the policy is enforced."
 
-This sequence makes the "latency" between policy application and enforcement visible - it's the Typha-to-Felix propagation delay (typically sub-second).
+This sequence makes the "latency" between policy application and enforcement visible - it includes datastore watch delivery, Typha fanout (when Typha is in use), and Felix reconciliation.
 
 ## Explain Failure Modes
 
 Give each component a failure mode that the team can recognize:
 
-- **Felix fails**: Policy stops being enforced. New pods don't get routes. Existing connections keep working (kernel routes and iptables rules persist until changed).
-- **BIRD fails**: BGP session drops. Remote nodes lose routes to pods on this node. Cross-node traffic fails. Same-node traffic continues.
-- **Typha fails**: Felix stops receiving updates. Policy changes stop propagating. Everything continues working until the next policy change - then it silently doesn't apply.
+- **Felix fails**: Policy and route programming stop being updated. New pods may not get the required dataplane programming. Previously programmed kernel routes and iptables rules persist until changed.
+- **BIRD fails**: In BGP deployments, BGP sessions drop and peers can stop receiving routes to pods on this node. Same-node traffic continues.
+- **Typha fails**: If Felix cannot connect to any Typha instance, Felix stops receiving datastore updates. Existing dataplane state keeps running, but new policy and endpoint changes do not propagate until connectivity is restored.
 - **confd fails**: BIRD's config stops updating. BGP peer changes don't take effect. Existing BGP sessions continue.
 
 Knowing these failure modes helps the team answer "what is still working if X fails?"
@@ -75,13 +75,15 @@ Map each component to what you should monitor:
 # Felix health
 
 kubectl get pods -n calico-system -l k8s-app=calico-node
-kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | grep -i "error\|warn"
+kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | grep -Ei "error|warn"
 
 # Typha health
 kubectl get pods -n calico-system -l k8s-app=calico-typha
 
 # BIRD BGP sessions
-kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
+CALICO_NODE_POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n calico-system "$CALICO_NODE_POD" -c calico-node \
   -- birdcl show protocols
 ```
 
