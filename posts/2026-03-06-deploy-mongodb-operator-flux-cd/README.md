@@ -18,7 +18,7 @@ This guide walks through deploying the Percona Operator for MongoDB with Flux CD
 
 Before you begin, ensure you have:
 
-- A Kubernetes cluster (v1.25 or later) with at least three worker nodes
+- A Kubernetes cluster supported by the Percona Operator release you deploy (for Operator 1.22.0, Percona tests GKE 1.32-1.33, EKS 1.32-1.35, AKS 1.32-1.34, and OpenShift 4.17-4.21) with at least three worker nodes
 - Flux CD installed and bootstrapped on your cluster
 - A storage class that supports dynamic provisioning
 - kubectl configured to access your cluster
@@ -37,6 +37,7 @@ clusters/
         credentials.yaml
         cluster.yaml
         backup.yaml
+        service.yaml
         kustomization.yaml
 ```
 
@@ -83,7 +84,7 @@ spec:
   chart:
     spec:
       chart: psmdb-operator
-      version: "1.16.x"
+      version: "1.22.0"
       sourceRef:
         kind: HelmRepository
         name: percona
@@ -113,7 +114,7 @@ metadata:
   namespace: mongodb
 type: Opaque
 stringData:
-  # MongoDB internal authentication key
+  # MongoDB system users used by the Operator
   MONGODB_BACKUP_USER: backup
   MONGODB_BACKUP_PASSWORD: "backup-strong-password"
   MONGODB_CLUSTER_ADMIN_USER: clusterAdmin
@@ -138,9 +139,9 @@ metadata:
   namespace: mongodb
 spec:
   # CRD version
-  crVersion: "1.16.0"
+  crVersion: "1.22.0"
   # MongoDB version
-  image: percona/percona-server-mongodb:7.0.8-5
+  image: percona/percona-server-mongodb:8.0.19-7
 
   # Use the credentials secret
   secrets:
@@ -199,11 +200,8 @@ spec:
   pmm:
     enabled: false
     # Uncomment to enable PMM monitoring
-    # image: percona/pmm-client:2
+    # image: percona/pmm-client:3.6.0
     # serverHost: monitoring-service
-
-  # Expose MongoDB service
-  mongod: {}
 ```
 
 ## Step 6: Configure Backups
@@ -220,54 +218,23 @@ type: Opaque
 stringData:
   AWS_ACCESS_KEY_ID: "your-access-key"
   AWS_SECRET_ACCESS_KEY: "your-secret-key"
----
-# Backup configuration as part of the cluster spec
-# This is typically included in the cluster.yaml, shown separately for clarity
-apiVersion: psmdb.percona.com/v1
-kind: PerconaServerMongoDB
-metadata:
-  name: mongodb-cluster
-  namespace: mongodb
-spec:
-  crVersion: "1.16.0"
-  image: percona/percona-server-mongodb:7.0.8-5
-  secrets:
-    users: mongodb-cluster-secrets
+```
 
-  replsets:
-    - name: rs0
-      size: 3
-      volumeSpec:
-        persistentVolumeClaim:
-          storageClassName: standard
-          accessModes:
-            - ReadWriteOnce
-          resources:
-            requests:
-              storage: 20Gi
-      resources:
-        requests:
-          cpu: 500m
-          memory: 1Gi
-        limits:
-          cpu: "2"
-          memory: 4Gi
-      affinity:
-        antiAffinityTopologyKey: kubernetes.io/hostname
+Add the backup configuration to the `spec` section in `cluster.yaml`:
 
-  # Backup configuration
+```yaml
   backup:
     enabled: true
-    image: percona/percona-backup-mongodb:2.4.1
+    image: percona/percona-backup-mongodb:2.12.0
     # Backup storage destinations
     storages:
       s3-backup:
+        main: true
         type: s3
         s3:
           bucket: mongodb-backups
           prefix: mongodb-cluster
           region: us-east-1
-          endpointUrl: https://s3.amazonaws.com
           credentialsSecret: mongodb-s3-credentials
     # Scheduled backup tasks
     tasks:
@@ -275,14 +242,20 @@ spec:
         enabled: true
         # Daily at 2 AM UTC
         schedule: "0 2 * * *"
-        keep: 7
+        retention:
+          count: 7
+          type: count
+          deleteFromStorage: true
         storageName: s3-backup
         type: logical
       - name: weekly-physical-backup
         enabled: true
         # Weekly on Sunday at 3 AM UTC
         schedule: "0 3 * * 0"
-        keep: 4
+        retention:
+          count: 4
+          type: count
+          deleteFromStorage: true
         storageName: s3-backup
         type: physical
 ```
@@ -323,6 +296,7 @@ resources:
   - helmrepository.yaml
   - helmrelease.yaml
   - credentials.yaml
+  - cluster.yaml
   - backup.yaml
   - service.yaml
 ```
@@ -371,9 +345,9 @@ kubectl get pods -n mongodb -l app.kubernetes.io/instance=mongodb-cluster
 
 # Connect to MongoDB
 kubectl run mongo-client --rm -it --restart=Never \
-  --image=percona/percona-server-mongodb:7.0.8-5 \
+  --image=percona/percona-server-mongodb:8.0.19-7 \
   --namespace=mongodb -- \
-  mongosh "mongodb://userAdmin:user-admin-strong-password@mongodb-cluster-rs0.mongodb.svc.cluster.local/admin"
+  mongosh "mongodb+srv://databaseAdmin:db-admin-strong-password@mongodb-cluster-rs0.mongodb.svc.cluster.local/admin?replicaSet=rs0&ssl=false"
 ```
 
 ## Scaling the Replica Set
