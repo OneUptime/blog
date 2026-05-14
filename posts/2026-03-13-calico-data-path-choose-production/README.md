@@ -24,7 +24,7 @@ This post provides a structured decision framework for choosing the right datapl
 ## Dataplane Option 1: Standard Linux (iptables)
 
 **Use when**:
-- Linux kernel version < 5.3
+- Linux nodes do not meet Calico's eBPF kernel requirements
 - Windows nodes are present in the cluster
 - Team has limited Linux networking expertise beyond iptables
 - Cluster has fewer than 100 services and 1,000 pods
@@ -41,7 +41,7 @@ iptables mode is production-ready, well-understood, and has extensive debugging 
 ## Dataplane Option 2: eBPF
 
 **Use when**:
-- Linux kernel 5.3+ (5.8+ for full feature support)
+- Linux nodes meet Calico's eBPF kernel requirements (for example, Ubuntu 22.04+, RHEL 8.4 kernel 4.18.0-305+ with backports, or another supported distribution with kernel 5.10+; kernel 6.6+ is recommended for access to all eBPF features)
 - Cluster has more than 100 services
 - Source IP preservation for external traffic is required
 - High-performance latency-sensitive workloads
@@ -55,7 +55,7 @@ iptables mode is production-ready, well-understood, and has extensive debugging 
 
 ```mermaid
 graph TD
-    Q1{Kernel >= 5.3?}
+    Q1{Meets Calico eBPF\nkernel requirements?}
     Q1 -->|No| IPTABLES[Use iptables]
     Q1 -->|Yes| Q2{> 100 services?}
     Q2 -->|Yes| EBPF[Use eBPF]
@@ -70,12 +70,12 @@ graph TD
 
 **Use when**:
 - Extreme throughput requirements (10+ Gbps per node)
-- Dedicated network hardware (DPDK-compatible NICs)
+- Network interface mode and node preparation have been validated for your hardware (for example, VPP native drivers, AF_XDP, AF_PACKET, or DPDK)
 - Specialized networking use cases (telco, high-frequency trading infrastructure)
 
-VPP (available via Calico VPP) is a high-performance userspace networking framework. It bypasses the kernel entirely for packet processing and provides dramatically higher throughput than either iptables or eBPF mode. However, it requires dedicated hardware, specialized operational knowledge, and is typically used only in telco and HPC environments.
+VPP (available via Calico VPP) is a high-performance userspace networking framework. Depending on the selected interface mode, it can consume the host interface directly with native or DPDK drivers, or interoperate with Linux through options such as AF_PACKET or AF_XDP. It can provide dramatically higher throughput than either iptables or eBPF mode, but it requires specialized operational knowledge and is typically used only in telco and HPC environments.
 
-**Note**: VPP is not part of Calico Open Source - it requires the Calico VPP integration maintained separately.
+**Note**: Calico VPP is available for Calico Open Source, but it is installed from the separate Calico VPP dataplane manifests rather than the default Calico manifests.
 
 ## Production Dataplane Checklist
 
@@ -83,10 +83,10 @@ Before finalizing your dataplane choice, verify:
 
 | Requirement | iptables | eBPF | VPP |
 |---|---|---|---|
-| Kernel version check | Any | 5.3+ | DPDK NIC |
+| Kernel version check | Calico Linux requirements | Calico eBPF kernel requirements | Calico Linux requirements plus validated VPP interface mode |
 | kube-proxy disabled | No | Yes (required) | Yes |
 | Windows nodes supported | Yes | No | No |
-| Source IP for NodePort | `externalTrafficPolicy: Local` | Native (DSR) | Native |
+| Source IP for NodePort | `externalTrafficPolicy: Local` | Native source IP preservation; DSR available | Preserved when possible |
 | Team debugging experience | High | Medium | Low (specialist) |
 
 ## Migration Considerations
