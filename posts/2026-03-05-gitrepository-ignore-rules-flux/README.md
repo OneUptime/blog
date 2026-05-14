@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Source Controller, GitRepository, Ignore Rules, Artifact Optimization
 
-Description: Learn how to configure ignore rules in Flux CD GitRepository sources to exclude unnecessary files from artifacts and prevent unwanted reconciliations.
+Description: Learn how to configure ignore rules in Flux CD GitRepository sources to exclude unnecessary files from artifacts and reduce artifact size.
 
 ---
 
 ## Introduction
 
-When the Flux Source Controller clones a Git repository, it packages the contents into a tarball artifact that downstream resources like Kustomizations consume. By default, every file in the repository is included in the artifact. For repositories that contain documentation, tests, CI configuration, and other non-deployment files alongside Kubernetes manifests, this can lead to unnecessarily large artifacts and spurious reconciliations triggered by changes to irrelevant files.
+When the Flux Source Controller clones a Git repository, it packages the contents into a tarball artifact that downstream resources like Kustomizations consume. Flux excludes several file types and directories by default, such as Git metadata, common CI configuration, and common binary archive or image extensions. For repositories that contain documentation, tests, and other non-deployment files alongside Kubernetes manifests, this can still lead to unnecessarily large artifacts.
 
 The `spec.ignore` field in the GitRepository resource lets you exclude files and directories from the artifact using `.gitignore`-style syntax. This guide explains how to configure ignore rules effectively.
 
@@ -81,7 +81,7 @@ flowchart LR
 Importantly, ignore rules affect two things:
 
 1. **Artifact size**: Excluded files are not packaged into the tarball, reducing its size.
-2. **Change detection**: Changes to excluded files do not trigger new artifacts or downstream reconciliations. If the only changes in a new commit are to ignored files, the artifact checksum remains the same.
+2. **Artifact content**: Excluded files do not contribute to the archived content. A new Git commit still changes the GitRepository artifact revision, but if only ignored files changed, the artifact digest should remain the same.
 
 ## Pattern Syntax Reference
 
@@ -137,7 +137,9 @@ spec:
   ignore: |
     # Ignore everything at the root
     /*
-    # But include the service-a deploy directory
+    # Re-include the service-a deploy directory and its parent
+    !/services/
+    /services/*
     !/services/service-a/
 ```
 
@@ -156,7 +158,9 @@ spec:
   ignore: |
     # Ignore everything at the root
     /*
-    # But include the service-b deploy directory
+    # Re-include the service-b deploy directory and its parent
+    !/services/
+    /services/*
     !/services/service-b/
 ```
 
@@ -230,14 +234,14 @@ spec:
     /.github/
 ```
 
-## Reducing Spurious Reconciliations
+## Reducing Artifact Churn
 
-One of the key benefits of ignore rules is preventing unnecessary reconciliations. Without ignore rules, a commit that only updates a README file would trigger a new artifact and cause all downstream Kustomizations to reconcile. With proper ignore rules, changes to excluded files are invisible to Flux.
+One of the key benefits of ignore rules is reducing artifact size and keeping non-deployment files out of the artifact payload. Without ignore rules, a commit that only updates a file included in the artifact changes both the source revision and the artifact content. With proper ignore rules, changes to excluded files still update the GitRepository revision, but they do not change the archived content digest.
 
-Consider this scenario. You have a Kustomization that runs database migrations on every reconciliation. Without ignore rules, updating documentation in the same repository would trigger the migration Kustomization unnecessarily.
+Consider this scenario. You have a repository that stores Kubernetes manifests and extensive documentation side by side. Ignore rules keep documentation out of the source artifact consumed by the deployment Kustomization.
 
 ```yaml
-# Prevent documentation changes from triggering deployments
+# Keep documentation out of the deployment artifact
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
@@ -249,7 +253,7 @@ spec:
   ref:
     branch: main
   ignore: |
-    # These changes should not trigger deployments
+    # These files should not be packaged into the artifact
     /*.md
     /docs/
     /CHANGELOG.md
@@ -260,23 +264,23 @@ spec:
 
 ## Verifying Ignore Rules
 
-To verify that your ignore rules are working correctly, you can check whether changes to ignored files produce new artifacts.
+To verify that your ignore rules are working correctly, you can check whether changes to ignored files leave the artifact digest and size unchanged.
 
 ```bash
-# Record the current artifact revision
+# Record the current artifact digest and size
 kubectl get gitrepository my-app -n flux-system \
-  -o jsonpath='{.status.artifact.revision}{"\n"}'
+  -o jsonpath='{.status.artifact.digest}{" "}{.status.artifact.size}{"\n"}'
 
 # After pushing a commit that only changes ignored files,
 # force a reconciliation
 flux reconcile source git my-app -n flux-system
 
-# Check the artifact revision again - it should be the same
+# Check the artifact digest and size again - they should be the same
 kubectl get gitrepository my-app -n flux-system \
-  -o jsonpath='{.status.artifact.revision}{"\n"}'
+  -o jsonpath='{.status.artifact.digest}{" "}{.status.artifact.size}{"\n"}'
 ```
 
-If the revision changed despite only modifying ignored files, your ignore patterns may not be matching correctly. Double-check the pattern syntax.
+The artifact revision normally changes when the Git commit changes. If the digest or size changed despite only modifying ignored files, your ignore patterns may not be matching correctly. Double-check the pattern syntax.
 
 ## Troubleshooting
 
@@ -293,4 +297,4 @@ kubectl logs -n flux-system deployment/source-controller | grep "my-app"
 
 ## Conclusion
 
-Configuring ignore rules in your Flux CD GitRepository sources is a best practice that reduces artifact sizes, prevents spurious reconciliations, and makes your GitOps pipeline more efficient. By excluding non-deployment files like documentation, tests, CI configuration, and source code, you ensure that only meaningful changes trigger deployments. Take the time to set up appropriate ignore rules for each of your GitRepository sources, especially in monorepo setups and repositories that mix application code with deployment manifests.
+Configuring ignore rules in your Flux CD GitRepository sources is a best practice that reduces artifact sizes and makes your GitOps pipeline more efficient. By excluding non-deployment files like documentation, tests, CI configuration, and source code, you ensure that only meaningful files are packaged into deployment artifacts. Take the time to set up appropriate ignore rules for each of your GitRepository sources, especially in monorepo setups and repositories that mix application code with deployment manifests.
