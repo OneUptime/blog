@@ -119,16 +119,18 @@ jobs:
   diff:
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: write
+      contents: read
+      issues: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Flux CLI
         uses: fluxcd/flux2/action@main
 
       - name: Configure kubectl
-        uses: azure/k8s-set-context@v3
+        uses: azure/k8s-set-context@v4
         with:
+          method: kubeconfig
           kubeconfig: ${{ secrets.KUBECONFIG }}
 
       - name: Run Flux Diff
@@ -141,7 +143,7 @@ jobs:
 
       - name: Comment on PR
         if: steps.diff.outputs.diff != ''
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             github.rest.issues.createComment({
@@ -197,7 +199,7 @@ The command uses exit codes to indicate the result:
 
 - **0**: No differences found (cluster is up to date)
 - **1**: Differences found (changes would be applied)
-- **2**: An error occurred (build failure, cluster unreachable, etc.)
+- **>1**: An error occurred (build failure, cluster unreachable, etc.)
 
 Use these exit codes in scripts:
 
@@ -222,7 +224,7 @@ While `flux build kustomization` shows you the rendered output, `flux diff kusto
 - `flux build kustomization`: Validate that manifests render correctly
 - `flux diff kustomization`: Preview what will change in the cluster
 
-The build command works without cluster access (useful for CI validation), while the diff command requires cluster access to compare against live state.
+The build command normally fetches the Flux Kustomization from the cluster, but it can run without cluster access when you pass a local Kustomization file with `--kustomization-file` and use `--dry-run`. In dry-run mode, substitutions loaded from cluster Secrets and ConfigMaps are skipped. The diff command requires cluster access to compare against live state.
 
 ## Summary
 
