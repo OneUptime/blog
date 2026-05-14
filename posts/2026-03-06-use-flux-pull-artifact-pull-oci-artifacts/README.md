@@ -20,7 +20,7 @@ Before getting started, make sure you have:
 
 - Flux CLI installed (v2.0 or later)
 - Access to an OCI-compatible container registry with existing artifacts
-- Docker or another container runtime for registry authentication
+- Docker credentials, inline credentials, or a supported cloud provider login for private registries
 
 ```bash
 # Verify Flux CLI is installed
@@ -70,7 +70,7 @@ ls -la ./latest-manifests/
 ```bash
 # Pull a specific artifact by its SHA256 digest
 # This ensures you get exactly the artifact you expect
-flux pull artifact oci://ghcr.io/myorg/app-config@sha256:abc123def456... \
+flux pull artifact oci://ghcr.io/myorg/app-config@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
   --output ./digest-manifests
 ```
 
@@ -198,8 +198,8 @@ kustomize build ./validate/
 ### Auditing Artifact Contents
 
 ```bash
-# Pull and audit artifact contents in a script
 #!/bin/bash
+# Pull and audit artifact contents in a script
 
 ARTIFACT_URL="oci://ghcr.io/myorg/app-config"
 OUTPUT_DIR="/tmp/artifact-audit"
@@ -243,7 +243,7 @@ ARTIFACT_REF="${1:?Usage: verify-artifact.sh <oci-ref>}"
 WORK_DIR=$(mktemp -d)
 
 # Clean up on exit
-trap "rm -rf $WORK_DIR" EXIT
+trap 'rm -rf "$WORK_DIR"' EXIT
 
 echo "Pulling artifact: $ARTIFACT_REF"
 flux pull artifact "$ARTIFACT_REF" --output "$WORK_DIR"
@@ -260,12 +260,12 @@ echo "Found $FILE_COUNT files in artifact"
 # Validate YAML syntax
 echo "Validating YAML syntax..."
 YAML_ERRORS=0
-for file in $(find "$WORK_DIR" -name "*.yaml" -o -name "*.yml"); do
-  if ! python3 -c "import yaml; yaml.safe_load(open('$file'))" 2>/dev/null; then
+while IFS= read -r -d '' file; do
+  if ! python3 -c "import sys, yaml; list(yaml.safe_load_all(open(sys.argv[1])))" "$file" 2>/dev/null; then
     echo "  INVALID: $file"
     YAML_ERRORS=$((YAML_ERRORS + 1))
   fi
-done
+done < <(find "$WORK_DIR" -type f \( -name "*.yaml" -o -name "*.yml" \) -print0)
 
 if [ "$YAML_ERRORS" -gt 0 ]; then
   echo "ERROR: $YAML_ERRORS YAML validation errors"
