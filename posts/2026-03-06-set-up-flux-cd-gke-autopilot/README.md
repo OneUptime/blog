@@ -18,7 +18,7 @@ GKE Autopilot is a fully managed Kubernetes mode where Google manages the nodes,
 - `gcloud` CLI installed and configured
 - `kubectl` installed
 - Flux CLI installed (`flux` version 2.x)
-- A GitHub or GitLab repository for Flux bootstrap
+- A GitHub repository for Flux bootstrap
 
 ## Understanding GKE Autopilot Constraints
 
@@ -26,12 +26,12 @@ GKE Autopilot enforces several restrictions that affect Flux CD.
 
 | Constraint | Impact on Flux CD |
 |---|---|
-| Resource requests are required | All Flux pods must have explicit resource requests |
+| Resource requests are managed by Autopilot | Autopilot adds defaults when requests are omitted, so explicit requests help avoid unexpected mutation |
 | No privileged containers | Flux controllers run unprivileged by default, so this is fine |
 | No host network/PID access | Not needed by Flux |
-| Minimum resource requests | Pods must request at least 50m CPU and 52Mi memory |
+| Minimum resource requests | General-purpose Pods must request at least 50m CPU and 52Mi memory on clusters that support bursting, or 250m CPU and 512Mi memory on clusters that don't |
 | Compute class limitations | Affects scheduling of Flux controller pods |
-| No DaemonSets by default | Not needed by Flux |
+| DaemonSets have separate resource defaults | Not needed by the default Flux controllers |
 
 ## Step 1: Create a GKE Autopilot Cluster
 
@@ -73,11 +73,12 @@ export GITHUB_USER=<your-github-username>
 
 ## Step 3: Bootstrap Flux CD on Autopilot
 
-Bootstrap Flux with resource limits configured for Autopilot.
+Bootstrap Flux with the image automation controllers included, because the Artifact Registry example later in this guide uses the Flux image APIs.
 
 ```bash
 # Bootstrap Flux CD on the Autopilot cluster
 flux bootstrap github \
+  --components-extra=image-reflector-controller,image-automation-controller \
   --owner=${GITHUB_USER} \
   --repository=fleet-infra \
   --branch=main \
@@ -99,15 +100,15 @@ kubectl get pods -n flux-system
 
 GKE Autopilot may scale up resource requests to meet its minimum requirements. To avoid unexpected scaling, explicitly set appropriate resource requests for Flux controllers.
 
-Create patch files in your Flux repository.
+Create a patch file in your Flux repository.
 
 ```yaml
 # clusters/autopilot-cluster/flux-system/patches/resource-patches.yaml
-# Patch source-controller resources for Autopilot
+# Patch Flux controller resources for Autopilot
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: source-controller
+  name: all
   namespace: flux-system
 spec:
   template:
@@ -118,73 +119,10 @@ spec:
             requests:
               # Autopilot rounds up to nearest compute class
               cpu: 250m
-              memory: 256Mi
+              memory: 512Mi
               ephemeral-storage: 1Gi
             limits:
-              cpu: 1000m
-              memory: 1Gi
-              ephemeral-storage: 4Gi
----
-# Patch kustomize-controller resources
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kustomize-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          resources:
-            requests:
               cpu: 250m
-              memory: 256Mi
-              ephemeral-storage: 1Gi
-            limits:
-              cpu: 1000m
-              memory: 1Gi
-              ephemeral-storage: 4Gi
----
-# Patch helm-controller resources
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: helm-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          resources:
-            requests:
-              cpu: 250m
-              memory: 256Mi
-              ephemeral-storage: 1Gi
-            limits:
-              cpu: 1000m
-              memory: 1Gi
-              ephemeral-storage: 4Gi
----
-# Patch notification-controller resources
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: notification-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-              ephemeral-storage: 256Mi
-            limits:
-              cpu: 500m
               memory: 512Mi
               ephemeral-storage: 1Gi
 ```
@@ -204,6 +142,12 @@ patches:
   - path: patches/resource-patches.yaml
     target:
       kind: Deployment
+      name: "(source-controller|kustomize-controller|helm-controller|notification-controller|image-reflector-controller|image-automation-controller)"
+      namespace: flux-system
+  - path: patches/security-patches.yaml
+    target:
+      kind: Deployment
+      name: "(source-controller|kustomize-controller|helm-controller|notification-controller|image-reflector-controller|image-automation-controller)"
       namespace: flux-system
 ```
 
@@ -217,16 +161,17 @@ GKE Autopilot enforces a restricted security profile. Ensure Flux controllers co
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: source-controller
+  name: all
   namespace: flux-system
 spec:
   template:
     spec:
       securityContext:
-        # Run as non-root (required by Autopilot)
+        # Match Flux restricted pod security defaults
         runAsNonRoot: true
         runAsUser: 65534
-        fsGroup: 65534
+        runAsGroup: 65534
+        fsGroup: 1337
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -269,16 +214,16 @@ spec:
       containers:
         - name: app
           image: nginx:1.25
-          # Resource requests are mandatory on Autopilot
+          # Explicit requests prevent Autopilot from applying defaults
           resources:
             requests:
               cpu: 250m
-              memory: 256Mi
+              memory: 512Mi
               ephemeral-storage: 256Mi
             limits:
               cpu: 500m
               memory: 512Mi
-              ephemeral-storage: 512Mi
+              ephemeral-storage: 256Mi
           ports:
             - containerPort: 80
 ---
@@ -320,6 +265,50 @@ spec:
 ## Step 8: Configure Image Automation with Artifact Registry
 
 Set up Flux image automation with Google Artifact Registry.
+
+Grant Artifact Registry read access to an IAM service account and allow the Flux image-reflector-controller Kubernetes service account to use it.
+
+```bash
+gcloud iam service-accounts create flux-image-reflector \
+  --project my-project-id
+
+gcloud artifacts repositories add-iam-policy-binding my-repo \
+  --location us-central1 \
+  --project my-project-id \
+  --member="serviceAccount:flux-image-reflector@my-project-id.iam.gserviceaccount.com" \
+  --role="roles/artifactregistry.reader"
+
+gcloud iam service-accounts add-iam-policy-binding \
+  flux-image-reflector@my-project-id.iam.gserviceaccount.com \
+  --project my-project-id \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="serviceAccount:my-project-id.svc.id.goog[flux-system/image-reflector-controller]"
+```
+
+Add the Workload Identity annotation to the image-reflector-controller service account.
+
+```yaml
+# clusters/autopilot-cluster/flux-system/patches/image-reflector-workload-identity.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: image-reflector-controller
+  namespace: flux-system
+  annotations:
+    iam.gke.io/gcp-service-account: flux-image-reflector@my-project-id.iam.gserviceaccount.com
+```
+
+Include the service account patch in your Flux system kustomization.
+
+```yaml
+# clusters/autopilot-cluster/flux-system/kustomization.yaml
+patches:
+  - path: patches/image-reflector-workload-identity.yaml
+    target:
+      kind: ServiceAccount
+      name: image-reflector-controller
+      namespace: flux-system
+```
 
 ```yaml
 # infrastructure/image-automation/image-repository.yaml
@@ -379,7 +368,8 @@ Reduce Flux resource usage to minimize Autopilot costs.
 ```yaml
 # clusters/autopilot-cluster/flux-system/patches/optimization.yaml
 # Increase reconciliation intervals for less critical resources
-# to reduce controller CPU usage
+# to reduce controller CPU usage. Add this file to the patches list
+# in clusters/autopilot-cluster/flux-system/kustomization.yaml.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -411,15 +401,15 @@ Autopilot needs to provision nodes for your pods. This can take 1-2 minutes.
 
 ```bash
 # Check pod events for scheduling issues
-kubectl describe pod -n flux-system -l app=source-controller
+kubectl describe deployment -n flux-system source-controller
 
 # Verify resource requests are within Autopilot limits
-kubectl get pods -n flux-system -o yaml | grep -A 5 "resources:"
+kubectl get pods -n flux-system -o yaml | grep -A 8 "resources:"
 ```
 
 ### Ephemeral Storage Errors
 
-Autopilot requires explicit ephemeral storage requests.
+Autopilot defaults ephemeral storage requests when they are omitted and requires ephemeral storage limits to match requests.
 
 ```bash
 # Check if pods are being evicted due to storage
@@ -431,14 +421,19 @@ kubectl get events -n flux-system \
 
 ```bash
 # Verify Workload Identity is configured correctly
-kubectl get serviceaccount -n flux-system -o yaml | \
+kubectl get serviceaccount -n flux-system image-reflector-controller -o yaml | \
   grep "iam.gke.io/gcp-service-account"
 
 # Test GCP authentication from a Flux controller pod
-kubectl exec -n flux-system deploy/source-controller -- \
-  cat /var/run/secrets/kubernetes.io/serviceaccount/token
+kubectl run wi-test \
+  --rm -it \
+  --restart=Never \
+  --namespace flux-system \
+  --image=gcr.io/google.com/cloudsdktool/google-cloud-cli:slim \
+  --serviceaccount=image-reflector-controller \
+  -- gcloud auth print-access-token
 ```
 
 ## Summary
 
-You have successfully set up Flux CD on GKE Autopilot. The key considerations are ensuring all pods have explicit resource requests (including ephemeral storage), complying with Autopilot security policies, and using Workload Identity for GCP service authentication. With these adjustments, Flux CD runs reliably on Autopilot while benefiting from its fully managed node infrastructure, automatic scaling, and built-in security hardening.
+You have successfully set up Flux CD on GKE Autopilot. The key considerations are setting explicit resource requests to avoid Autopilot defaulting and mutation, keeping ephemeral storage limits equal to requests, complying with Autopilot security policies, and using Workload Identity for GCP service authentication. With these adjustments, Flux CD runs reliably on Autopilot while benefiting from its fully managed node infrastructure, automatic scaling, and built-in security hardening.
