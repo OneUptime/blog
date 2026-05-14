@@ -122,7 +122,7 @@ Validate that all manifests conform to Kubernetes API schemas.
       - name: Install kubeconform
         run: |
           curl -sL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | \
-            tar xz -C /usr/local/bin
+            sudo tar xz -C /usr/local/bin
 
       - name: Download Flux CD CRD schemas
         run: |
@@ -142,7 +142,7 @@ Validate that all manifests conform to Kubernetes API schemas.
               -strict \
               -ignore-missing-schemas \
               -schema-location default \
-              -schema-location "/tmp/flux-schemas/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json" \
+              -schema-location "/tmp/flux-schemas/{{ .ResourceKind }}{{ .KindSuffix }}.json" \
               -summary
 ```
 
@@ -178,31 +178,23 @@ Use `flux build` to render and validate all Kustomizations.
           for ks_file in clusters/${{ matrix.cluster }}/*.yaml; do
             [ -f "$ks_file" ] || continue
 
-            # Parse the Kustomization metadata
-            KIND=$(yq '.kind' "$ks_file")
-            NAME=$(yq '.metadata.name' "$ks_file")
-            PATH_FIELD=$(yq '.spec.path' "$ks_file")
+            while IFS=$'\t' read -r NAME PATH_FIELD; do
+              echo "Building: $NAME (cluster: ${{ matrix.cluster }})"
 
-            # Only process Kustomization resources
-            if [ "$KIND" != "Kustomization" ] || [ "$PATH_FIELD" = "null" ]; then
-              continue
-            fi
-
-            echo "Building: $NAME (cluster: ${{ matrix.cluster }})"
-
-            # Run flux build
-            if ! flux build kustomization "$NAME" \
-              --path ".${PATH_FIELD}" \
-              --kustomization-file "$ks_file" > /dev/null 2>&1; then
-
-              echo "FAILED: $NAME"
-              flux build kustomization "$NAME" \
+              # Run flux build
+              if ! flux build kustomization "$NAME" \
                 --path ".${PATH_FIELD}" \
-                --kustomization-file "$ks_file" 2>&1 || true
-              ERRORS=$((ERRORS + 1))
-            else
-              echo "OK: $NAME"
-            fi
+                --kustomization-file "$ks_file" > /dev/null 2>&1; then
+
+                echo "FAILED: $NAME"
+                flux build kustomization "$NAME" \
+                  --path ".${PATH_FIELD}" \
+                  --kustomization-file "$ks_file" 2>&1 || true
+                ERRORS=$((ERRORS + 1))
+              else
+                echo "OK: $NAME"
+              fi
+            done < <(yq -r 'select(.kind == "Kustomization" and .spec.path != null) | [.metadata.name, .spec.path] | @tsv' "$ks_file")
           done
 
           if [ "$ERRORS" -gt 0 ]; then
@@ -294,16 +286,9 @@ Validate HelmRelease configurations.
           ERRORS=0
 
           # Find all HelmRelease files
-          find . -name "*.yaml" -type f | while read -r file; do
-            KIND=$(yq '.kind' "$file" 2>/dev/null)
-
-            if [ "$KIND" = "HelmRelease" ]; then
+          while IFS= read -r file; do
+            while IFS=$'\t' read -r CHART_NAME CHART_VERSION SOURCE_KIND; do
               echo "Validating HelmRelease: $file"
-
-              # Check required fields
-              CHART_NAME=$(yq '.spec.chart.spec.chart' "$file")
-              CHART_VERSION=$(yq '.spec.chart.spec.version' "$file")
-              SOURCE_KIND=$(yq '.spec.chart.spec.sourceRef.kind' "$file")
 
               if [ "$CHART_NAME" = "null" ]; then
                 echo "  ERROR: Missing chart name in $file"
@@ -320,8 +305,8 @@ Validate HelmRelease configurations.
               fi
 
               echo "  OK: $file"
-            fi
-          done
+            done < <(yq -r 'select(.kind == "HelmRelease") | [(.spec.chart.spec.chart // "null"), (.spec.chart.spec.version // "null"), (.spec.chart.spec.sourceRef.kind // "null")] | @tsv' "$file")
+          done < <(find clusters/ infrastructure/ apps/ -name "*.yaml" -type f)
 
           if [ "$ERRORS" -gt 0 ]; then
             echo "HelmRelease validation failed"
@@ -337,7 +322,7 @@ Post a summary of all validation results on the PR.
   summary:
     name: Validation Summary
     runs-on: ubuntu-latest
-    needs: [yaml-validation, schema-validation, flux-build, helm-validation]
+    needs: [yaml-validation, schema-validation, flux-build, overlay-consistency, helm-validation]
     if: always()
     permissions:
       pull-requests: write
@@ -350,6 +335,7 @@ Post a summary of all validation results on the PR.
               { name: 'YAML Syntax', status: '${{ needs.yaml-validation.result }}' },
               { name: 'K8s Schema', status: '${{ needs.schema-validation.result }}' },
               { name: 'Flux Build', status: '${{ needs.flux-build.result }}' },
+              { name: 'Overlay Consistency', status: '${{ needs.overlay-consistency.result }}' },
               { name: 'HelmRelease', status: '${{ needs.helm-validation.result }}' },
             ];
 
@@ -403,19 +389,26 @@ Configure branch protection to require all validation checks.
 # Using GitHub CLI to set branch protection rules
 gh api repos/{owner}/{repo}/branches/main/protection \
   --method PUT \
-  --field required_status_checks='{"strict":true,"contexts":["YAML Syntax Check","Kubernetes Schema Validation","Flux Build Validation (staging)","Flux Build Validation (production)","HelmRelease Validation"]}' \
+  --field 'required_status_checks[strict]=true' \
+  --field 'required_status_checks[contexts][]=YAML Syntax Check' \
+  --field 'required_status_checks[contexts][]=Kubernetes Schema Validation' \
+  --field 'required_status_checks[contexts][]=Flux Build Validation (staging)' \
+  --field 'required_status_checks[contexts][]=Flux Build Validation (production)' \
+  --field 'required_status_checks[contexts][]=Overlay Consistency Check' \
+  --field 'required_status_checks[contexts][]=HelmRelease Validation' \
   --field enforce_admins=true \
-  --field required_pull_request_reviews='{"required_approving_review_count":1}'
+  --field 'required_pull_request_reviews[required_approving_review_count]=1' \
+  --field restrictions=null
 ```
 
 ## Local Validation Script
 
-Run the same validation checks locally before pushing.
+Run the core validation checks locally before pushing.
 
 ```bash
 #!/bin/bash
 # scripts/validate-pr.sh
-# Run all PR validation checks locally
+# Run core PR validation checks locally
 
 set -euo pipefail
 
@@ -433,31 +426,40 @@ fi
 # Step 2: Kubernetes schema validation
 echo "2. Kubernetes Schema Validation..."
 if command -v kubeconform &> /dev/null; then
+  SCHEMA_ARGS=(-schema-location default)
+  SCHEMA_DIR=$(mktemp -d)
+  trap 'rm -rf "$SCHEMA_DIR"' EXIT
+
+  if command -v curl &> /dev/null; then
+    curl -sL https://github.com/fluxcd/flux2/releases/latest/download/crd-schemas.tar.gz | \
+      tar xz -C "$SCHEMA_DIR"
+    SCHEMA_ARGS+=(-schema-location "$SCHEMA_DIR/{{ .ResourceKind }}{{ .KindSuffix }}.json")
+  fi
+
   find clusters/ infrastructure/ apps/ -name "*.yaml" -type f | \
-    xargs kubeconform -strict -ignore-missing-schemas -summary && echo "   PASSED" || echo "   FAILED"
+    xargs kubeconform -strict -ignore-missing-schemas "${SCHEMA_ARGS[@]}" -summary && echo "   PASSED" || echo "   FAILED"
 else
   echo "   SKIPPED (kubeconform not installed)"
 fi
 
 # Step 3: Flux build
 echo "3. Flux Build Validation..."
-if command -v flux &> /dev/null; then
+if command -v flux &> /dev/null && command -v yq &> /dev/null; then
   for cluster in staging production; do
     for ks_file in clusters/$cluster/*.yaml; do
       [ -f "$ks_file" ] || continue
-      NAME=$(yq '.metadata.name' "$ks_file" 2>/dev/null)
-      PATH_FIELD=$(yq '.spec.path' "$ks_file" 2>/dev/null)
-      [ "$NAME" = "null" ] || [ "$PATH_FIELD" = "null" ] && continue
-
-      flux build kustomization "$NAME" \
-        --path ".${PATH_FIELD}" \
-        --kustomization-file "$ks_file" > /dev/null 2>&1 && \
-        echo "   OK: $NAME ($cluster)" || \
-        echo "   FAILED: $NAME ($cluster)"
+      yq -r 'select(.kind == "Kustomization" and .spec.path != null) | [.metadata.name, .spec.path] | @tsv' "$ks_file" | \
+        while IFS=$'\t' read -r NAME PATH_FIELD; do
+          flux build kustomization "$NAME" \
+            --path ".${PATH_FIELD}" \
+            --kustomization-file "$ks_file" > /dev/null 2>&1 && \
+            echo "   OK: $NAME ($cluster)" || \
+            echo "   FAILED: $NAME ($cluster)"
+        done
     done
   done
 else
-  echo "   SKIPPED (flux CLI not installed)"
+  echo "   SKIPPED (flux CLI or yq not installed)"
 fi
 
 echo ""
@@ -466,4 +468,4 @@ echo "=== Validation Complete ==="
 
 ## Summary
 
-Pull request validation for Flux CD repositories should be a multi-layered process: YAML syntax checking, Kubernetes schema validation, Flux build verification, HelmRelease validation, and overlay consistency checks. By automating these checks in your CI pipeline and enforcing them through branch protection rules, you create a safety net that prevents misconfigurations from reaching your clusters. Run the same checks locally for fast feedback during development.
+Pull request validation for Flux CD repositories should be a multi-layered process: YAML syntax checking, Kubernetes schema validation, Flux build verification, HelmRelease validation, and overlay consistency checks. By automating these checks in your CI pipeline and enforcing them through branch protection rules, you create a safety net that prevents misconfigurations from reaching your clusters. Run the core checks locally for fast feedback during development.
