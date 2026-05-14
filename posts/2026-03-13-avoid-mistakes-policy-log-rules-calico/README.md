@@ -10,11 +10,11 @@ Description: Avoid the most common pitfalls when implementing Calico Policy Log 
 
 ## Introduction
 
-Calico Policy Log Rules in Calico provides fine-grained network security controls using the `projectcalico.org/v3` API. This guide covers how to avoid mistakes Policy Logging effectively.
+Calico network policies provide fine-grained network security controls using the `projectcalico.org/v3` API, and Policy Log Rules add diagnostic visibility into traffic that matches policy rules. This guide covers how to avoid mistakes when using Policy Logging effectively.
 
-Calico's extensible policy model supports Policy Logging through its `GlobalNetworkPolicy` and `NetworkPolicy` resources, giving you cluster-wide and namespace-scoped control over traffic that matches your Policy Logging criteria.
+Calico's extensible policy model supports Policy Logging through its `GlobalNetworkPolicy` and `NetworkPolicy` resources, giving you cluster-wide and namespace-scoped visibility into traffic that matches your Policy Logging criteria. A `Log` action records the matching traffic and then policy evaluation continues with the next rule.
 
-This guide provides practical techniques for avoid mistakes Policy Logging in your Kubernetes cluster, following security best practices and production-tested patterns.
+This guide provides practical techniques for avoiding mistakes with Policy Logging in your Kubernetes cluster, following security best practices and production-tested patterns.
 
 ## Prerequisites
 
@@ -43,7 +43,7 @@ egress:
 ```bash
 # Check policy order - lower order = higher priority
 
-calicoctl get networkpolicies -n production -o wide | sort -k4 -n
+calicoctl get networkpolicies -n production -o wide | sort -k2 -n
 ```
 
 ## Mistake 3: Selector Typos
@@ -55,7 +55,7 @@ kubectl get pods -n production -l "your-label-key=your-label-value"
 
 ## Mistake 4: Missing Bidirectional Rules
 
-Both ingress on destination AND egress on source must be permitted:
+When policies select both sides of a connection, both ingress on the destination AND egress on the source must be permitted:
 
 ```yaml
 # Source side - egress
