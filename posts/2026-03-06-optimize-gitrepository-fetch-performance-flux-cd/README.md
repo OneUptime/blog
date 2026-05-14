@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kubernetes, GitOps, Git, Performance Tuning, Source Controller, Repository optimization
 
-Description: A practical guide to optimizing GitRepository fetch performance in Flux CD through shallow clones, ignore patterns, caching, authentication tuning, and artifact management.
+Description: A practical guide to optimizing GitRepository fetch performance in Flux CD through shallow clones, sparse checkouts, ignore patterns, authentication tuning, and artifact management.
 
 ---
 
-The source-controller in Flux CD fetches Git repositories on every reconciliation cycle. For large repositories, long histories, or frequent reconciliation intervals, these fetches can become a significant performance bottleneck. This guide covers every technique available to speed up GitRepository operations.
+The source-controller in Flux CD checks Git repositories on every reconciliation cycle and only clones again when the observed revision changes. For large repositories, long histories, or frequent reconciliation intervals, these checks and clones can become a significant performance bottleneck. This guide covers practical techniques available to speed up GitRepository operations.
 
 ## Understanding GitRepository Fetch Lifecycle
 
@@ -32,7 +32,7 @@ The optimization goal is to minimize time spent in each stage and skip unnecessa
 
 ## Using Ignore Patterns to Reduce Artifact Size
 
-The `.sourceignore` pattern and the `spec.ignore` field let you exclude files from the fetched artifact. This is the most impactful optimization for large repositories.
+The `.sourceignore` pattern and the `spec.ignore` field let you exclude files while source-controller builds the artifact from the checked-out repository. This is the most impactful optimization for large artifacts.
 
 ```yaml
 # GitRepository with aggressive ignore patterns
@@ -99,10 +99,10 @@ You can also use a `.sourceignore` file in the repository root:
 
 ## Optimizing Git Authentication
 
-Authentication overhead can slow down fetches, especially with SSH key-based auth. Use HTTPS with token authentication for faster connections.
+Authentication overhead can slow down fetches, especially with SSH key-based auth. Use HTTPS with token authentication when it fits your environment to avoid SSH key exchange and host-key negotiation overhead.
 
 ```yaml
-# GitRepository with HTTPS token authentication (faster than SSH)
+# GitRepository with HTTPS token authentication
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
@@ -174,8 +174,6 @@ spec:
             # Limit artifact retention to reduce storage I/O
             - --artifact-retention-ttl=30m
             - --artifact-retention-records=2
-            # Set max artifact size to fail fast on unexpectedly large repos
-            - --storage-max-artifact-size=100000000
           resources:
             requests:
               # Fast fetches need network and CPU headroom
@@ -250,7 +248,7 @@ spec:
 
 ## Splitting Monorepos into Multiple GitRepositories
 
-If you have a large monorepo, create multiple GitRepository resources pointing to different paths. Each can have its own ignore patterns and reconciliation interval.
+If you have a large monorepo, create multiple GitRepository resources focused on different paths. Each can have its own sparse checkout, ignore patterns, and reconciliation interval.
 
 ```yaml
 # Separate GitRepository for frontend deployments
@@ -264,6 +262,8 @@ spec:
   url: https://github.com/org/monorepo
   ref:
     branch: main
+  sparseCheckout:
+    - deploy/frontend
   ignore: |
     # Only include frontend deployment manifests
     /*
@@ -280,6 +280,8 @@ spec:
   url: https://github.com/org/monorepo
   ref:
     branch: main
+  sparseCheckout:
+    - deploy/backend
   ignore: |
     # Only include backend deployment manifests
     /*
@@ -297,6 +299,8 @@ spec:
   url: https://github.com/org/monorepo
   ref:
     branch: main
+  sparseCheckout:
+    - deploy/infrastructure
   ignore: |
     /*
     !/deploy/infrastructure/
@@ -311,7 +315,7 @@ For maximum fetch performance, pre-build artifacts and push them as OCI images. 
 # flux push artifact oci://registry.example.com/my-app:$(git rev-parse HEAD) \
 #   --path=./deploy \
 #   --source="$(git config --get remote.origin.url)" \
-#   --revision="$(git rev-parse HEAD)"
+#   --revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)"
 
 # OCIRepository for fast artifact delivery
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -329,7 +333,7 @@ spec:
 
 ## Monitoring Fetch Performance
 
-Track GitRepository fetch metrics to identify slow sources.
+Track source-controller reconciliation metrics and kube-state-metrics resource condition metrics to identify slow sources.
 
 ```yaml
 # PrometheusRule for slow Git fetch detection
@@ -342,19 +346,22 @@ spec:
   groups:
     - name: flux-git-fetch
       rules:
-        # Alert when Git fetch takes longer than 60 seconds
+        # Alert when GitRepository reconciliation takes longer than 60 seconds
         - alert: FluxGitFetchSlow
           expr: |
-            gotk_reconcile_duration_seconds{
-              kind="GitRepository",
-              namespace="flux-system"
-            } > 60
+            histogram_quantile(
+              0.95,
+              sum(rate(gotk_reconcile_duration_seconds_bucket{
+                kind="GitRepository",
+                namespace="flux-system"
+              }[5m])) by (le, name, namespace)
+            ) > 60
           for: 5m
           labels:
             severity: warning
           annotations:
             summary: "GitRepository {{ $labels.name }} fetch is slow ({{ $value }}s)"
-            description: "Consider using ignore patterns, shallow clones, or OCI artifacts."
+            description: "Consider using sparse checkouts, ignore patterns, shallow clones, or OCI artifacts."
 
         # Alert on persistent fetch failures
         - alert: FluxGitFetchFailing
@@ -376,11 +383,11 @@ spec:
 Key strategies for optimizing GitRepository fetch performance:
 
 1. Use ignore patterns to exclude non-deployment files and reduce artifact size
-2. Prefer HTTPS with token auth over SSH for faster connections
+2. Use HTTPS with token auth where it reduces SSH handshake overhead
 3. Increase source-controller concurrency for parallel fetches
 4. Use fast storage (SSD or tmpfs) for artifact caching
-5. Split monorepos into multiple focused GitRepository resources
+5. Split monorepos into multiple focused GitRepository resources with sparse checkouts
 6. Consider OCI repositories for pre-built artifacts
 7. Monitor fetch duration and set alerts for slow sources
 
-The most impactful optimization is usually ignore patterns -- reducing what gets fetched and stored dramatically improves fetch times for large repositories.
+The most impactful optimization is usually combining sparse checkouts and ignore patterns -- reducing what gets checked out, archived, and stored dramatically improves processing time for large repositories.
