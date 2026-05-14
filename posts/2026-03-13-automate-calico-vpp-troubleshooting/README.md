@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, VPP, Kubernetes, Networking, Troubleshooting, Automation
 
-Description: Automate Calico VPP diagnostic data collection with scripts that gather VPP state, trace logs, and interface statistics for rapid incident resolution.
+Description: Automate Calico VPP diagnostic data collection with scripts that gather VPP state, logs, and interface data for rapid incident resolution.
 
 ---
 
@@ -26,7 +26,7 @@ mkdir -p "${BUNDLE_DIR}"
 VPP_NAMESPACE="${VPP_NAMESPACE:-calico-vpp-dataplane}"
 
 # Collect from each VPP node
-for pod in $(kubectl get pods -n "${VPP_NAMESPACE}" -l app=calico-vpp-node \
+for pod in $(kubectl get pods -n "${VPP_NAMESPACE}" -l k8s-app=calico-vpp-node \
   -o jsonpath='{.items[*].metadata.name}'); do
 
   NODE=$(kubectl get pod -n "${VPP_NAMESPACE}" "${pod}" \
@@ -55,9 +55,9 @@ for pod in $(kubectl get pods -n "${VPP_NAMESPACE}" -l app=calico-vpp-node \
   kubectl exec -n "${VPP_NAMESPACE}" "${pod}" -c vpp -- \
     vppctl show version > "${NODE_DIR}/vpp-version.txt" 2>/dev/null || true
 
-  # calico-vpp manager logs
-  kubectl logs -n "${VPP_NAMESPACE}" "${pod}" -c calico-vpp-manager \
-    --tail=500 > "${NODE_DIR}/manager-logs.txt" 2>/dev/null || true
+  # calico-vpp agent logs
+  kubectl logs -n "${VPP_NAMESPACE}" "${pod}" -c agent \
+    --tail=500 > "${NODE_DIR}/agent-logs.txt" 2>/dev/null || true
 
 done
 
@@ -76,7 +76,7 @@ VPP_NAMESPACE="${VPP_NAMESPACE:-calico-vpp-dataplane}"
 
 echo "=== Calico VPP Health Check ==="
 
-for pod in $(kubectl get pods -n "${VPP_NAMESPACE}" -l app=calico-vpp-node \
+for pod in $(kubectl get pods -n "${VPP_NAMESPACE}" -l k8s-app=calico-vpp-node \
   -o jsonpath='{.items[*].metadata.name}'); do
 
   NODE=$(kubectl get pod -n "${VPP_NAMESPACE}" "${pod}" \
@@ -102,6 +102,40 @@ exit ${FAILURES}
 ## CronJob for Continuous VPP Health Monitoring
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: calico-vpp-health-check
+  namespace: calico-vpp-dataplane
+data:
+  check-calico-vpp-health.sh: |
+    #!/bin/bash
+    FAILURES=0
+    VPP_NAMESPACE="${VPP_NAMESPACE:-calico-vpp-dataplane}"
+
+    echo "=== Calico VPP Health Check ==="
+
+    for pod in $(kubectl get pods -n "${VPP_NAMESPACE}" -l k8s-app=calico-vpp-node \
+      -o jsonpath='{.items[*].metadata.name}'); do
+
+      NODE=$(kubectl get pod -n "${VPP_NAMESPACE}" "${pod}" \
+        -o jsonpath='{.spec.nodeName}')
+
+      echo -n "Node ${NODE}: "
+
+      if kubectl exec -n "${VPP_NAMESPACE}" "${pod}" -c vpp -- \
+          vppctl show version > /dev/null 2>&1; then
+        echo "VPP healthy"
+      else
+        echo "VPP NOT RESPONDING"
+        FAILURES=$((FAILURES + 1))
+      fi
+    done
+
+    echo ""
+    echo "Health check: ${FAILURES} failures"
+    exit ${FAILURES}
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -118,6 +152,15 @@ spec:
             - name: health-check
               image: bitnami/kubectl:latest
               command: ["/scripts/check-calico-vpp-health.sh"]
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+          volumes:
+            - name: scripts
+              configMap:
+                name: calico-vpp-health-check
+                defaultMode: 0755
           restartPolicy: OnFailure
 ```
 
