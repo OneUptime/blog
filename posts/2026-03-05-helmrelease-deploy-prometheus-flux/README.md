@@ -13,6 +13,7 @@ Prometheus is the de facto standard for monitoring Kubernetes clusters. The kube
 ## Prerequisites
 
 - A Kubernetes cluster with Flux CD installed
+- Kubernetes 1.25 or later for current kube-prometheus-stack releases
 - A GitOps repository connected to Flux
 - Sufficient cluster resources (the full stack requires approximately 2 CPU cores and 4 GB memory)
 
@@ -43,13 +44,15 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kube-prometheus-stack
-  namespace: monitoring
+  namespace: flux-system
 spec:
   interval: 15m
+  releaseName: kube-prometheus-stack
+  targetNamespace: monitoring
   chart:
     spec:
       chart: kube-prometheus-stack
-      version: "65.x"
+      version: "85.x"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
@@ -57,14 +60,12 @@ spec:
       interval: 15m
   install:
     createNamespace: true
-    atomic: true
     timeout: 15m
     # CRDs are managed by the chart
     crds: CreateReplace
     remediation:
       retries: 3
   upgrade:
-    atomic: true
     timeout: 15m
     crds: CreateReplace
     cleanupOnFail: true
@@ -135,8 +136,8 @@ spec:
           repeat_interval: 12h
           receiver: "null"
           routes:
-            - match:
-                severity: critical
+            - matchers:
+                - severity="critical"
               receiver: "null"
         receivers:
           - name: "null"
@@ -174,7 +175,13 @@ spec:
         etcd: true
         configReloaders: true
         general: true
-        k8s: true
+        k8sContainerCpuUsageSecondsTotal: true
+        k8sContainerMemoryCache: true
+        k8sContainerMemoryRss: true
+        k8sContainerMemorySwap: true
+        k8sContainerResource: true
+        k8sContainerMemoryWorkingSetBytes: true
+        k8sPodOwner: true
         kubeApiserverAvailability: true
         kubeApiserverBurnrate: true
         kubeApiserverHistogram: true
@@ -190,6 +197,7 @@ spec:
         kubernetesSystem: true
         kubeSchedulerAlerting: true
         kubeSchedulerRecording: true
+        kubeStateMetrics: true
         network: true
         node: true
         nodeExporterAlerting: true
@@ -200,7 +208,7 @@ spec:
 
 ## Configuring Service Monitors
 
-With `serviceMonitorSelectorNilUsesHelmValues: false`, Prometheus will automatically discover ServiceMonitor resources in all namespaces. Here is an example ServiceMonitor for a custom application.
+With `serviceMonitorSelectorNilUsesHelmValues: false` and the chart's default `serviceMonitorNamespaceSelector: {}`, Prometheus will automatically discover ServiceMonitor resources in all namespaces. Here is an example ServiceMonitor for a custom application.
 
 ```yaml
 # servicemonitor-app.yaml - ServiceMonitor for a custom application
@@ -227,7 +235,7 @@ After Flux reconciles the HelmRelease, verify that all components are running.
 
 ```bash
 # Check HelmRelease status
-flux get helmrelease kube-prometheus-stack -n monitoring
+flux get helmrelease kube-prometheus-stack -n flux-system
 
 # Verify all pods in the monitoring namespace
 kubectl get pods -n monitoring
