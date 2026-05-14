@@ -18,7 +18,7 @@ This guide walks through deploying a Charmed Kubernetes cluster with Juju and se
 
 Before starting, ensure you have:
 
-- An Ubuntu 22.04 or later machine with at least 8 GB RAM and 4 CPU cores (or a cloud substrate like AWS, GCP, or OpenStack)
+- An Ubuntu 22.04 or later machine with at least 32 GB RAM and 128 GB SSD storage for local LXD deployments, or a cloud substrate like AWS, GCP, or OpenStack
 - Juju 3.x installed
 - A Juju cloud configured (LXD for local deployments, or a cloud provider)
 - A GitHub account with a personal access token
@@ -50,61 +50,22 @@ Deploy a Charmed Kubernetes cluster using a Juju bundle:
 
 ```bash
 # Deploy the Charmed Kubernetes bundle
-juju deploy charmed-kubernetes
+juju deploy charmed-kubernetes --channel=1.35/stable
+
+# When deploying into local LXD containers, apply the documented container settings
+juju config calico ignore-loose-rpf=true
+touch $HOME/empty.tgz
+juju attach-resource containerd containerd=$HOME/empty.tgz
 
 # Monitor the deployment progress
 juju status --watch 5s
 ```
 
-For a smaller footprint suitable for testing, use a minimal configuration:
-
-```yaml
-# charmed-k8s-minimal.yaml
-# Minimal Charmed Kubernetes bundle for Flux CD testing
-description: Minimal Charmed Kubernetes for Flux CD
-series: jammy
-applications:
-  kubernetes-control-plane:
-    charm: kubernetes-control-plane
-    channel: "1.30/stable"
-    num_units: 1
-    constraints: cores=2 mem=4G root-disk=40G
-  kubernetes-worker:
-    charm: kubernetes-worker
-    channel: "1.30/stable"
-    num_units: 2
-    constraints: cores=2 mem=4G root-disk=40G
-  etcd:
-    charm: etcd
-    channel: "3.4/stable"
-    num_units: 1
-  easyrsa:
-    charm: easyrsa
-    channel: stable
-    num_units: 1
-  calico:
-    charm: calico
-    channel: "3.28/stable"
-  containerd:
-    charm: containerd
-    channel: stable
-relations:
-  - ["kubernetes-control-plane:etcd", "etcd:db"]
-  - ["kubernetes-control-plane:certificates", "easyrsa:client"]
-  - ["kubernetes-control-plane:containerd", "containerd:containerd"]
-  - ["kubernetes-worker:certificates", "easyrsa:client"]
-  - ["kubernetes-worker:containerd", "containerd:containerd"]
-  - ["kubernetes-worker", "kubernetes-control-plane"]
-  - ["calico:etcd", "etcd:db"]
-  - ["calico:cni", "kubernetes-control-plane:cni"]
-  - ["calico:cni", "kubernetes-worker:cni"]
-```
-
-Deploy the minimal bundle:
+For a smaller footprint suitable for testing, use the Kubernetes Core bundle:
 
 ```bash
-# Deploy using the custom bundle
-juju deploy ./charmed-k8s-minimal.yaml
+# Deploy the Kubernetes Core bundle
+juju deploy kubernetes-core --channel=1.35/stable
 
 # Wait for all units to become active/idle
 juju status --watch 10s
@@ -118,8 +79,8 @@ Once the cluster is ready, fetch the kubeconfig:
 # Create the .kube directory
 mkdir -p ~/.kube
 
-# Retrieve kubeconfig from the control plane
-juju ssh kubernetes-control-plane/0 -- cat /home/ubuntu/config > ~/.kube/charmed-config
+# Retrieve kubeconfig from the control plane leader
+juju ssh kubernetes-control-plane/leader -- cat config > ~/.kube/charmed-config
 
 # Set KUBECONFIG
 export KUBECONFIG=~/.kube/charmed-config
@@ -167,7 +128,7 @@ flux bootstrap github \
   --repository=charmed-k8s-gitops \
   --branch=main \
   --path=./clusters/charmed \
-  --personal
+  --personal=true
 ```
 
 ## Verifying Flux Components
@@ -199,18 +160,30 @@ mkdir -p clusters/charmed/infrastructure
 mkdir -p clusters/charmed/apps
 mkdir -p infrastructure/sources
 mkdir -p infrastructure/storage
+mkdir -p infrastructure/controllers
 mkdir -p apps/base
 mkdir -p apps/production
 ```
 
+Add a cluster-level Kustomize file so Flux includes the application and infrastructure directories under the bootstrap path:
+
+```yaml
+# clusters/charmed/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - flux-system
+  - apps
+  - infrastructure
+```
+
 ## Deploying Infrastructure Components
 
-Set up storage provisioning, which is essential for stateful workloads on Charmed Kubernetes:
+If your Charmed Kubernetes cluster is integrated with Ceph CSI, define a matching StorageClass for stateful workloads:
 
 ```yaml
 # infrastructure/storage/ceph-csi.yaml
-# Charmed Kubernetes often uses Ceph for storage
-# This configures the StorageClass
+# This StorageClass assumes Ceph CSI, its secrets, and the target pool already exist
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -306,6 +279,14 @@ resources:
 Create the Flux Kustomization to deploy the application:
 
 ```yaml
+# clusters/charmed/apps/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - hello-app.yaml
+```
+
+```yaml
 # clusters/charmed/apps/hello-app.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -330,6 +311,15 @@ spec:
 ## Deploying Helm Charts
 
 Deploy an ingress controller using Helm through Flux:
+
+```yaml
+# clusters/charmed/infrastructure/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../infrastructure/sources/ingress-nginx.yaml
+  - ../../../infrastructure/controllers/ingress-nginx.yaml
+```
 
 ```yaml
 # infrastructure/sources/ingress-nginx.yaml
@@ -388,7 +378,7 @@ You can use Juju actions alongside Flux CD for operational tasks that span both 
 # Scale the worker nodes with Juju
 juju add-unit kubernetes-worker -n 1
 
-# Flux automatically schedules workloads on new nodes
+# Kubernetes can schedule reconciled workloads on new nodes
 # Check that Flux is reconciling properly after scaling
 flux get kustomizations
 
@@ -398,7 +388,21 @@ kubectl get pods -o wide -n web-apps
 
 ## Setting Up Multi-Cluster Management
 
-If you manage multiple Charmed Kubernetes clusters, configure Flux for multi-cluster support:
+If you manage multiple Charmed Kubernetes clusters, configure Flux for multi-cluster support by storing the remote cluster kubeconfig in a Secret and referencing it from the Kustomization:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: production-kubeconfig
+  namespace: flux-system
+type: Opaque
+stringData:
+  value.yaml: |
+    apiVersion: v1
+    kind: Config
+    # kubeconfig for the remote Charmed Kubernetes cluster
+```
 
 ```yaml
 # clusters/charmed/apps/remote-cluster.yaml
@@ -414,6 +418,9 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
+  kubeConfig:
+    secretRef:
+      name: production-kubeconfig
   patches:
     - patch: |
         apiVersion: apps/v1
@@ -430,6 +437,19 @@ spec:
 ## Monitoring Flux on Charmed Kubernetes
 
 Deploy monitoring to observe Flux operations:
+
+Update the infrastructure Kustomize file so Flux also applies the monitoring repository and release:
+
+```yaml
+# clusters/charmed/infrastructure/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../infrastructure/sources/ingress-nginx.yaml
+  - ../../../infrastructure/controllers/ingress-nginx.yaml
+  - ../../../infrastructure/sources/prometheus.yaml
+  - ../../../infrastructure/controllers/monitoring.yaml
+```
 
 ```yaml
 # infrastructure/sources/prometheus.yaml
