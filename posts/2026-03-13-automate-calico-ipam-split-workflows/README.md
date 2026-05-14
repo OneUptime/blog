@@ -21,16 +21,16 @@ This post shows how to build a scripted automation for Calico IPAM splits that v
 - Calico v3.x installed with the `projectcalico.org/v3` API
 - `calicoctl` v3.x CLI installed and in your PATH
 - `kubectl` access to the cluster
-- Sufficient unallocated IP space in the pool being split
-- A planned split design (source CIDR, destination sub-CIDRs, target node selectors)
+- A split count that is a power of 2
+- A planned split design (source CIDR or pool name, equal-size destination sub-CIDRs, target node selectors)
 
 ---
 
 ## Step 1: Understand What the Split Does
 
-A Calico IPAM split takes one IP pool and subdivides it into two or more smaller pools. After the split, new IP allocations on nodes matching each sub-pool's `nodeSelector` draw from that sub-pool. Existing allocations in the original pool remain valid and are not moved.
+A Calico IPAM split takes one IP pool and subdivides it into two or more smaller pools with `calicoctl ipam split`. Each child IP pool is the same size, and the split count must be a power of 2. After the split, new IP allocations on nodes matching each sub-pool's `nodeSelector` draw from that sub-pool. Existing allocations in the original pool remain valid and are not moved.
 
-The critical prerequisite is that all currently allocated IPs must fit within one of the planned sub-pool CIDRs. If any allocated IP falls outside all sub-pool CIDRs, the split will create an inconsistent IPAM state.
+The critical prerequisite is that no IPAM data changes while the split is running. Calico requires the datastore to be locked before the split and unlocked after it completes.
 
 ---
 
@@ -41,20 +41,29 @@ The critical prerequisite is that all currently allocated IPs must fit within on
 # pre-split-validate.sh
 
 # Validates that a Calico IPAM split is safe to execute
-# Usage: ./pre-split-validate.sh 10.0.0.0/16 10.0.0.0/17 10.0.128.0/17
+# Usage: ./pre-split-validate.sh 10.0.0.0/16 2
 
 SOURCE_CIDR="$1"
-SUB_POOL_A="$2"
-SUB_POOL_B="$3"
+SPLIT_COUNT="$2"
 
 echo "=== Calico IPAM Pre-Split Validation ==="
 echo "Source pool: $SOURCE_CIDR"
-echo "Target sub-pools: $SUB_POOL_A, $SUB_POOL_B"
+echo "Split count: $SPLIT_COUNT"
 echo ""
+
+if [[ -z "$SOURCE_CIDR" || -z "$SPLIT_COUNT" ]]; then
+  echo "[FAIL] Usage: $0 <source-cidr> <split-count>"
+  exit 1
+fi
+
+if ! [[ "$SPLIT_COUNT" =~ ^[0-9]+$ ]] || (( SPLIT_COUNT < 2 )) || (( SPLIT_COUNT & (SPLIT_COUNT - 1) )); then
+  echo "[FAIL] Split count must be a power of 2"
+  exit 1
+fi
 
 # Step 1: Check current IPAM consistency before making any changes
 echo "Checking IPAM consistency..."
-if ! calicoctl ipam check 2>&1 | grep -q "IPAM is consistent"; then
+if ! calicoctl ipam check; then
   echo "[FAIL] IPAM is not currently consistent. Fix existing issues before splitting."
   exit 1
 fi
@@ -62,15 +71,20 @@ echo "[PASS] IPAM is consistent"
 
 # Step 2: Verify the source pool exists
 echo "Verifying source pool exists..."
-if ! calicoctl get ippool --output=yaml 2>/dev/null | grep -q "$SOURCE_CIDR"; then
+if ! calicoctl get ippool --output=yaml 2>/dev/null | grep -Fq "$SOURCE_CIDR"; then
   echo "[FAIL] Source pool $SOURCE_CIDR does not exist"
   exit 1
 fi
 echo "[PASS] Source pool found"
 
-# Step 3: Check current utilization
+# Step 3: Check current utilization and confirm split support
 echo "Current IP utilization:"
 calicoctl ipam show --show-blocks 2>/dev/null | grep -A2 "$SOURCE_CIDR" || true
+
+if ! calicoctl ipam split --help >/dev/null 2>&1; then
+  echo "[FAIL] This calicoctl version does not support ipam split"
+  exit 1
+fi
 
 echo ""
 echo "[OK] Pre-split validation passed. Proceed with split."
@@ -78,46 +92,24 @@ echo "[OK] Pre-split validation passed. Proceed with split."
 
 ---
 
-## Step 3: Define the New IP Pools as YAML
+## Step 3: Define the Post-Split Node Selector Patches
 
-Prepare the sub-pool definitions before executing the split. This allows you to review them before applying.
+Prepare the node selector patches before executing the split. The split command creates the child pools; these patches apply the routing design after the child pool names are known.
 
-```yaml
-# ippool-sub-a.yaml
-# First sub-pool: assigned to nodes in zone-a
-apiVersion: projectcalico.org/v3
-kind: IPPool
-metadata:
-  name: prod-zone-a
-spec:
-  # First half of the original /16
-  cidr: 10.0.0.0/17
-  # Only nodes with this label will draw from this pool
-  nodeSelector: "zone == 'zone-a'"
-  # Use the same encapsulation as the original pool
-  ipipMode: Never
-  vxlanMode: Always
-  # Block size controls how many IPs are pre-allocated per node
-  blockSize: 26
-  natOutgoing: true
-  disabled: false
+```json
+{
+  "spec": {
+    "nodeSelector": "zone == 'zone-a'"
+  }
+}
 ```
 
-```yaml
-# ippool-sub-b.yaml
-# Second sub-pool: assigned to nodes in zone-b
-apiVersion: projectcalico.org/v3
-kind: IPPool
-metadata:
-  name: prod-zone-b
-spec:
-  cidr: 10.0.128.0/17
-  nodeSelector: "zone == 'zone-b'"
-  ipipMode: Never
-  vxlanMode: Always
-  blockSize: 26
-  natOutgoing: true
-  disabled: false
+```json
+{
+  "spec": {
+    "nodeSelector": "zone == 'zone-b'"
+  }
+}
 ```
 
 ---
@@ -127,32 +119,58 @@ spec:
 ```bash
 #!/bin/bash
 # execute-split.sh
-# Executes an IPAM split: disables the source pool and creates sub-pools
+# Executes an IPAM split and applies node selectors to the new child pools
 # Run pre-split-validate.sh first
+set -euo pipefail
 
-SOURCE_POOL_NAME="$1"   # e.g., default-ipv4-ippool
-SUB_POOL_A_FILE="$2"    # e.g., ippool-sub-a.yaml
-SUB_POOL_B_FILE="$3"    # e.g., ippool-sub-b.yaml
+SOURCE_POOL_NAME="${1:-}"    # e.g., default-ipv4-ippool
+SPLIT_COUNT="${2:-}"         # e.g., 2
+SUB_POOL_A_NAME="${3:-}"     # child pool name from calicoctl get ippool
+SUB_POOL_A_PATCH="${4:-}"    # e.g., zone-a-selector.json
+SUB_POOL_B_NAME="${5:-}"     # child pool name from calicoctl get ippool
+SUB_POOL_B_PATCH="${6:-}"    # e.g., zone-b-selector.json
 
 echo "=== Executing IPAM Split ==="
-echo "Disabling source pool: $SOURCE_POOL_NAME"
+echo "Source pool: $SOURCE_POOL_NAME"
+echo "Split count: $SPLIT_COUNT"
 
-# Step 1: Disable the source pool to stop new allocations from it
-# Existing allocations are unaffected; only new pods stop using it
-calicoctl patch ippool "$SOURCE_POOL_NAME" \
-  --patch '{"spec":{"disabled":true}}'
-echo "[OK] Source pool disabled"
+if [[ -z "$SOURCE_POOL_NAME" || -z "$SPLIT_COUNT" ]]; then
+  echo "[FAIL] Usage: $0 <source-pool-name> <split-count> [child-a-name child-a-patch child-b-name child-b-patch]"
+  exit 1
+fi
 
-# Step 2: Apply the new sub-pools
-echo "Creating sub-pool A..."
-calicoctl apply -f "$SUB_POOL_A_FILE"
-echo "[OK] Sub-pool A created"
+unlock_datastore() {
+  if [[ "${LOCKED:-false}" == "true" ]]; then
+    echo "Unlocking Calico datastore..."
+    calicoctl datastore migrate unlock
+  fi
+}
+trap unlock_datastore EXIT
 
-echo "Creating sub-pool B..."
-calicoctl apply -f "$SUB_POOL_B_FILE"
-echo "[OK] Sub-pool B created"
+# Step 1: Lock the datastore so IPAM data cannot change during the split
+echo "Locking Calico datastore..."
+calicoctl datastore migrate lock
+LOCKED=true
 
-# Step 3: Run post-split consistency check
+# Step 2: Split the source pool into equal-size child pools
+echo "Splitting source pool..."
+calicoctl ipam split --name="$SOURCE_POOL_NAME" "$SPLIT_COUNT"
+echo "[OK] Source pool split"
+
+# Step 3: Apply node selectors to the child pools if patch files were supplied
+if [[ -n "$SUB_POOL_A_NAME" && -n "$SUB_POOL_A_PATCH" ]]; then
+  echo "Patching sub-pool A selector..."
+  calicoctl patch ippool "$SUB_POOL_A_NAME" --patch "$(cat "$SUB_POOL_A_PATCH")"
+  echo "[OK] Sub-pool A selector patched"
+fi
+
+if [[ -n "$SUB_POOL_B_NAME" && -n "$SUB_POOL_B_PATCH" ]]; then
+  echo "Patching sub-pool B selector..."
+  calicoctl patch ippool "$SUB_POOL_B_NAME" --patch "$(cat "$SUB_POOL_B_PATCH")"
+  echo "[OK] Sub-pool B selector patched"
+fi
+
+# Step 4: Run post-split consistency check
 echo "Running post-split IPAM check..."
 calicoctl ipam check
 
@@ -180,8 +198,8 @@ calicoctl ipam show --show-blocks
 ## Best Practices
 
 - Always run `calicoctl ipam check` before and after every split; it is the definitive test of IPAM consistency.
-- Never delete the source pool until all allocations from it have been released (all pods using it have been restarted onto sub-pool addresses).
-- Use `disabled: true` on the source pool rather than deleting it immediately - this prevents new allocations while preserving the record of existing ones.
+- Always lock the datastore before `calicoctl ipam split` and unlock it immediately after the split completes.
+- Use `calicoctl ipam split` instead of manually creating overlapping child IPPools. Calico validates overlapping CIDRs, and the split command performs the supported pool subdivision.
 - Test the split script in a staging cluster before running it in production.
 - Store the split plan (source CIDR, sub-CIDRs, node selectors) in version control alongside the cluster configuration.
 
@@ -189,7 +207,7 @@ calicoctl ipam show --show-blocks
 
 ## Conclusion
 
-Automating Calico IPAM splits removes the risk of human error by enforcing a consistent workflow: pre-split consistency check, YAML-defined sub-pools for review, staged execution (disable then create), and post-split verification. With this automation in place, splits become a low-risk infrastructure operation rather than a manual procedure prone to omissions.
+Automating Calico IPAM splits removes the risk of human error by enforcing a consistent workflow: pre-split consistency check, reviewed node selector patches, datastore locking, `calicoctl ipam split`, and post-split verification. With this automation in place, splits become a low-risk infrastructure operation rather than a manual procedure prone to omissions.
 
 ---
 
