@@ -28,14 +28,15 @@ The requirements fall into three categories: hard requirements (must be met or C
 
 uname -r
 
-# Minimum: 4.9.17 (basic CNI function only)
+# Minimum: 5.10+ or an equivalent distribution kernel (for example, 4.18 on RHEL 8.10)
 # Feature requirements:
-# - Socket LB (kube-proxy replacement): 4.19.57+
-# - BPF NodePort: 5.4+
-# - BPF Host Routing: 5.10+
-# - WireGuard: 5.6+
-# - eBPF Bandwidth Manager: 5.1+
-# Recommended: 5.15+
+# - eBPF Host Routing: 5.10+ with kube-proxy replacement and BPF masquerading
+# - XDP acceleration for NodePort/LoadBalancer/ExternalIP: 4.19.57+, 5.1.16+, or 5.2+
+# - WireGuard: in-kernel WireGuard support (5.6+) or an out-of-tree module
+# - eBPF Bandwidth Manager: CONFIG_NET_SCH_FQ; BBR for Pods requires 5.18+
+# - IPv6 BIG TCP: 5.19+
+# - IPv4 BIG TCP: 6.3+
+# Recommended: 5.10+ or newer
 ```
 
 ### BPF Filesystem
@@ -56,12 +57,15 @@ echo 'bpffs /sys/fs/bpf bpf defaults 0 0' >> /etc/fstab
 
 ```bash
 # Check BPF syscall support
-grep CONFIG_BPF= /boot/config-$(uname -r)
-# Expected: CONFIG_BPF=y
+grep CONFIG_BPF_SYSCALL= /boot/config-$(uname -r)
+# Expected: CONFIG_BPF_SYSCALL=y
 
 # Check BPF JIT
 grep CONFIG_BPF_JIT= /boot/config-$(uname -r)
 # Expected: CONFIG_BPF_JIT=y
+
+# Check core Cilium BPF kernel options
+grep -E 'CONFIG_BPF=|CONFIG_BPF_EVENTS=|CONFIG_NET_CLS_BPF=|CONFIG_NET_CLS_ACT=|CONFIG_NET_SCH_INGRESS=|CONFIG_CGROUP_BPF=' /boot/config-$(uname -r)
 
 # Enable BPF JIT if available (improves performance)
 echo 1 | sudo tee /proc/sys/net/core/bpf_jit_enable
@@ -94,7 +98,7 @@ modinfo cls_bpf 2>/dev/null || echo "cls_bpf module not available (may be built-
 
 # Check iproute2 version (tc)
 ip -V
-# Recommended: iproute2 5.x+
+# Expected: a modern iproute2 build with tc support
 ```
 
 ## Soft Requirements by Feature
@@ -102,16 +106,17 @@ ip -V
 ```bash
 # WireGuard encryption requires:
 modinfo wireguard 2>/dev/null || echo "WireGuard module not available"
-uname -r  # Requires 5.6+
+uname -r  # Requires in-kernel WireGuard support on 5.6+ or an out-of-tree module
 
 # IPsec encryption requires:
 ip xfrm state list 2>/dev/null || echo "IPsec (xfrm) not available"
 
 # Bandwidth Manager requires:
-uname -r  # Requires 5.1+
+modinfo sch_fq 2>/dev/null || echo "sch_fq module not available (may be built-in)"
+uname -r  # BBR for Pods requires 5.18+
 
-# Band routing requires:
-uname -r  # Requires 5.10+
+# BPF host routing requires:
+uname -r  # Requires 5.10+ plus kube-proxy replacement and BPF masquerading
 ```
 
 ## Container Runtime Requirements
@@ -120,10 +125,10 @@ uname -r  # Requires 5.10+
 # Check container runtime
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.nodeInfo.containerRuntimeVersion}{"\n"}{end}'
 
-# Supported runtimes:
-# - containerd 1.3.3+
-# - CRI-O 1.18+
-# - Docker (via cri-dockerd)
+# Use a Kubernetes-supported CRI runtime:
+# - containerd
+# - CRI-O
+# - Docker Engine only through cri-dockerd on Kubernetes 1.24+
 
 # Check containerd version
 containerd --version || docker version
@@ -145,8 +150,8 @@ check() {
   fi
 }
 
-check "Kernel >= 5.10" "uname -r | awk -F. '{if(\$1>5 || (\$1==5 && \$2>=10)) print \"ok\"}'" "ok"
-check "BPF fs mounted" "mount" "bpf"
+check "Kernel >= 5.10 or RHEL 8.10 equivalent" "uname -r | awk -F'[.-]' '{if(\$1>5 || (\$1==5 && \$2>=10) || (\$1==4 && \$2==18 && \$0 ~ /el8_10/)) print \"ok\"}'" "ok"
+check "BPF fs mounted" "mount | grep /sys/fs/bpf" "bpf"
 check "BPF syscall enabled" "grep CONFIG_BPF_SYSCALL /boot/config-\$(uname -r)" "=y"
 check "Architecture supported" "uname -m" "x86_64\|aarch64"
 
@@ -156,4 +161,4 @@ echo "Results: $PASS passed, $FAIL failed"
 
 ## Conclusion
 
-System requirements for Cilium are well-documented and can be verified with standard Linux commands. The most common blocker is kernel version - ensure your nodes are running 5.10+ for the most complete feature support. BPF filesystem mounting and the availability of BPF syscalls are the other critical prerequisites. Once these hard requirements are met, specific features like WireGuard, bandwidth management, and BPF host routing have their own kernel version gates that are easy to verify.
+System requirements for Cilium are well-documented and can be verified with standard Linux commands. The most common blocker is kernel version - ensure your nodes are running 5.10+ or an equivalent distribution kernel for current Cilium releases. BPF filesystem mounting and the availability of BPF syscalls are the other critical prerequisites. Once these hard requirements are met, specific features like WireGuard, bandwidth management, and BPF host routing have their own kernel version gates that are easy to verify.
