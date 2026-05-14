@@ -6,15 +6,15 @@ Tags: Observability, AI, DevOps, Monitoring, SRE
 
 Description: AI agents are making production decisions at scale, but most teams have zero visibility into what they're actually doing. Here's the observability crisis nobody's talking about.
 
-Six months ago, an AI agent at a mid-size fintech company autonomously scaled down a critical database cluster. It had learned from three months of traffic patterns that weekend utilization dropped 40%, so it optimized for cost. Smart move. Except that particular weekend was month-end processing. The agent killed production for 11 hours.
+Consider a realistic failure mode: an AI agent at a mid-size fintech company autonomously scales down a critical database cluster. It has learned from three months of traffic patterns that weekend utilization drops 40%, so it optimizes for cost. Smart move. Except that particular weekend is month-end processing. The agent kills production for 11 hours.
 
 Nobody saw it coming because nobody was watching.
 
-This isn't hypothetical. Variations of this story are playing out at companies everywhere, and most engineering teams don't realize they have a problem until something breaks.
+This isn't far-fetched. Variations of this story are increasingly plausible anywhere teams give automation authority over production systems, and most engineering teams don't realize they have a problem until something breaks.
 
 ## The agent explosion is real
 
-The numbers are staggering. By most estimates, over 60% of production infrastructure changes in 2026 will involve some form of AI-driven automation. Agents are scaling resources, routing traffic, responding to incidents, deploying code, managing configurations, and making thousands of micro-decisions per hour that used to require human approval.
+The trend is hard to miss. In 2026, more production infrastructure changes are starting to involve some form of AI-driven automation. Agents are scaling resources, routing traffic, responding to incidents, deploying code, managing configurations, and making micro-decisions that used to require human approval.
 
 This is genuinely good. AI agents reduce toil, speed up response times, and handle complexity that humans struggle with. The problem isn't that we're using agents. The problem is that we're monitoring them the same way we monitor traditional software, and that's completely wrong.
 
@@ -22,11 +22,11 @@ This is genuinely good. AI agents reduce toil, speed up response times, and hand
 
 Here's why your existing observability stack is blind to agent behavior:
 
-**Agents don't follow deterministic paths.** Traditional monitoring assumes predictable code paths. Service A calls Service B, which queries Database C. You instrument those paths, set up traces, and you're covered. Agents don't work like that. They reason, branch, retry, and take different paths based on context that changes every execution. A trace of one agent run tells you almost nothing about the next one.
+**Agents don't always follow deterministic paths.** Traditional monitoring often assumes predictable code paths. Service A calls Service B, which queries Database C. You instrument those paths, set up traces, and you're covered. Agents don't work like that. They reason, branch, retry, and take different paths based on context that changes every execution. A trace of one agent run may tell you very little about the next one unless you capture the decision context as well.
 
-**Latency is the wrong metric.** When a human-triggered API call takes 200ms vs 2000ms, that's meaningful. When an AI agent takes 45 seconds vs 3 minutes to complete a task, the variance might be totally normal, or it might mean the agent is stuck in a reasoning loop burning tokens and heading toward a bad decision. P99 latency doesn't capture this.
+**Latency alone is the wrong metric.** When a human-triggered API call takes 200ms vs 2000ms, that's meaningful. When an AI agent takes 45 seconds vs 3 minutes to complete a task, the variance might be totally normal, or it might mean the agent is stuck in a reasoning loop burning tokens and heading toward a bad decision. P99 latency doesn't capture this by itself.
 
-**Errors look different.** Agents don't throw 500s when they fail. They confidently execute the wrong action. They hallucinate a valid-looking but incorrect configuration. They optimize for the wrong objective. A green dashboard means nothing when the agent just silently misconfigured your load balancer.
+**Errors look different.** Agents don't always throw 500s when they fail. They can confidently execute the wrong action. They can generate a valid-looking but incorrect configuration. They can optimize for the wrong objective. A green dashboard means nothing when the agent just silently misconfigured your load balancer.
 
 **Cost is unpredictable and invisible.** A single agent decision can trigger a cascade of LLM calls, tool invocations, and resource changes. One "simple" auto-remediation might cost $50 in API calls and spin up $200/hour in cloud resources. Most teams find out when the bill arrives.
 
@@ -39,9 +39,9 @@ If you're running AI agents in production (and you probably are, even if you don
 You need to capture why an agent did something, not just what it did. This means logging:
 
 - The input context the agent received
-- The reasoning chain (if available)
+- The reasoning chain, rationale, or decision summary (if available)
 - Which tools it considered vs. which it chose
-- Confidence scores at decision points
+- Confidence or uncertainty scores at decision points, if your system produces them
 - The final action and its downstream effects
 
 ```text
@@ -53,7 +53,7 @@ Downstream: 4 pod terminations, connection pool resize, 2 dependent service rest
 Cost: $0.03 in LLM calls, -$12.40/hr in compute
 ```
 
-This is a fundamentally different kind of trace than what Jaeger or Zipkin gives you.
+This is a fundamentally different kind of instrumentation than generic request traces give you, even if you still export it to systems like Jaeger or Zipkin.
 
 ### 2. Behavioral baselines, not just performance baselines
 
@@ -62,9 +62,9 @@ You need to know what normal looks like for your agents. Not normal latency. Nor
 - How often does this agent choose to scale down vs. scale up?
 - What's the typical reasoning chain length?
 - How frequently does it override its initial assessment?
-- What's the distribution of confidence scores?
+- What's the distribution of confidence or uncertainty scores, if available?
 
-When an agent that normally operates with 0.9+ confidence suddenly starts making decisions at 0.6 confidence, that's a signal. When an agent that usually takes 3 reasoning steps suddenly needs 12, something changed. These behavioral anomalies are your early warning system.
+When an agent that normally operates with high confidence suddenly starts making lower-confidence decisions, that's a signal. When an agent that usually takes 3 reasoning steps suddenly needs 12, something changed. These behavioral anomalies are your early warning system.
 
 ### 3. Impact radius tracking
 
@@ -75,7 +75,7 @@ Every agent action has a blast radius. You need to map it in real time:
 - How many users are in the path?
 - Is this reversible, and how quickly?
 
-The fintech agent from earlier wouldn't have killed production if someone had set up an impact radius check: "If this action affects a tier-1 database during a known processing window, require human approval."
+The fintech-style agent from earlier would be far less likely to kill production if someone had set up an impact radius check: "If this action affects a tier-1 database during a known processing window, require human approval."
 
 ### 4. Cost attribution per decision
 
@@ -91,7 +91,7 @@ When you can see that Agent X's auto-remediation decisions cost $340 last week b
 
 ### 5. Drift detection
 
-Agents learn and adapt. That's the point. But it's also the risk.
+Some agents learn and adapt. Others change behavior when prompts, tools, model versions, retrieval data, or operating context change. That's the point. But it's also the risk.
 
 You need to detect when an agent's behavior has drifted from its intended operating parameters:
 
@@ -121,7 +121,7 @@ You don't need to build a custom agent observability platform from scratch. Star
 
 **Instrument decision points.** Wrap every agent decision in structured logging that captures input, reasoning, output, and impact. This is the single highest-value thing you can do.
 
-**Set behavioral alerts.** Define what normal looks like for each agent and alert on deviation. Confidence score drops. Unusual action distributions. Reasoning chain length spikes. These behavioral signals catch problems before they become incidents.
+**Set behavioral alerts.** Define what normal looks like for each agent and alert on deviation. Confidence or uncertainty score changes. Unusual action distributions. Reasoning chain length spikes. These behavioral signals catch problems before they become incidents.
 
 **Implement circuit breakers.** Any agent action above a certain impact threshold should require human approval or at minimum a delay window. The cost of a 5-minute delay is almost always less than the cost of an autonomous mistake.
 
