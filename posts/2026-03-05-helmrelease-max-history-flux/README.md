@@ -10,7 +10,7 @@ Description: Learn how to configure the maximum release history retained by Helm
 
 ## Introduction
 
-Every time Helm installs or upgrades a release, it stores a snapshot of the release state as a Kubernetes Secret in the release namespace. Over time, these history entries accumulate and consume etcd storage. The `spec.maxHistory` field in a Flux CD HelmRelease controls how many of these revisions Helm retains, balancing rollback capability against storage consumption.
+Every time Helm installs or upgrades a release, it stores a snapshot of the release state as a Kubernetes Secret in the Helm storage namespace. Over time, these history entries accumulate and consume etcd storage. The `spec.maxHistory` field in a Flux CD HelmRelease controls how many of these revisions Helm retains, balancing rollback capability against storage consumption.
 
 ## The spec.maxHistory Field
 
@@ -44,7 +44,7 @@ When not specified, Flux defaults `maxHistory` to `5`. Helm itself defaults to `
 
 ## How Release History Works
 
-Each Helm release revision is stored as a Kubernetes Secret in the release namespace (or the storage namespace if configured). These Secrets contain the full rendered manifest, chart metadata, and values.
+Each Helm release revision is stored as a Kubernetes Secret in the Helm storage namespace. For Flux, this defaults to the HelmRelease namespace unless `spec.storageNamespace` is configured. These Secrets contain the full rendered manifest, chart metadata, and values.
 
 ```bash
 # List Helm release Secrets for a release
@@ -126,14 +126,14 @@ Consider this calculation for a cluster with 50 HelmReleases:
 
 ## Cleaning Up Existing History
 
-If you reduce `maxHistory` on an existing release, old revisions are not immediately deleted. They are pruned on the next upgrade. To force cleanup, you can manually delete old Secrets.
+If you reduce `maxHistory` on an existing release, old revisions are not immediately deleted. They are pruned on the next upgrade. To force a one-off Helm install or upgrade without changing the spec, use `--force`; otherwise, you can manually delete old Secrets.
 
 ```bash
-# List all release secrets sorted by revision
+# List all release secrets sorted by creation time
 kubectl get secrets -n default -l owner=helm,name=my-app --sort-by=.metadata.creationTimestamp
 
-# Trigger a reconciliation to apply the new maxHistory limit
-flux reconcile helmrelease my-app -n default
+# Force a reconciliation to apply the new maxHistory limit
+flux reconcile helmrelease my-app -n default --force
 ```
 
 ## Production Configuration Example
@@ -171,7 +171,7 @@ spec:
 
 ```bash
 # Check current release history count
-helm history my-app -n default | wc -l
+helm history my-app -n default | tail -n +2 | wc -l
 
 # View current HelmRelease configuration
 kubectl get helmrelease my-app -n default -o jsonpath='{.spec.maxHistory}'
