@@ -104,7 +104,7 @@ pipeline {
 
 ## Jenkins Pipeline with Timestamp Tags
 
-For timestamp-based tagging, configure the Jenkins Build Timestamp plugin with the pattern `yyyyMMddHHmmss` so that lexicographic sorting matches chronological order.
+For timestamp-based tagging, generate a UTC timestamp with the pattern `yyyyMMddHHmmss` so that lexicographic sorting matches chronological order.
 
 ```groovy
 stage('Build and Push') {
@@ -247,8 +247,11 @@ spec:
       messageTemplate: |
         chore: automated image update from Jenkins build
 
-        {{ range .Changed.Objects -}}
-        - {{ .Kind }}/{{ .Name }}: {{ .OldValue }} -> {{ .NewValue }}
+        {{ range $resource, $changes := .Changed.Objects -}}
+        - {{ $resource.Kind }}/{{ $resource.Name }}
+        {{ range $_, $change := $changes }}
+          - {{ $change.OldValue }} -> {{ $change.NewValue }}
+        {{ end -}}
         {{ end -}}
     push:
       branch: main
