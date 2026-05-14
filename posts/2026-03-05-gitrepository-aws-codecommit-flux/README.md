@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, AWS, CodeCommit, EKS
 
-Description: Learn how to configure Flux CD GitRepository resources to pull Kubernetes manifests from AWS CodeCommit using HTTPS, SSH, and IAM-based authentication.
+Description: Learn how to configure Flux CD GitRepository resources to pull Kubernetes manifests from AWS CodeCommit using HTTPS and SSH authentication.
 
 ---
 
-AWS CodeCommit is a managed Git hosting service that integrates tightly with AWS IAM for access control. Flux CD can connect to CodeCommit repositories through the GitRepository custom resource using HTTPS with Git credentials, SSH keys, or IAM roles on EKS. This guide covers all three methods with step-by-step instructions.
+AWS CodeCommit is a managed Git hosting service that integrates tightly with AWS IAM for access control. Flux CD can connect to CodeCommit repositories through the GitRepository custom resource using HTTPS with Git credentials or SSH keys. This guide covers both supported methods with step-by-step instructions.
 
 ## Prerequisites
 
@@ -29,9 +29,9 @@ CodeCommit URL formats:
 https://git-codecommit.{region}.amazonaws.com/v1/repos/{repo-name}
 
 # SSH format
-ssh://git-codecommit.{region}.amazonaws.com/v1/repos/{repo-name}
+ssh://{ssh-key-id}@git-codecommit.{region}.amazonaws.com/v1/repos/{repo-name}
 
-# HTTPS (GRC) format for IAM-based auth
+# HTTPS (GRC) format used by git-remote-codecommit
 codecommit::{region}://{repo-name}
 ```
 
@@ -153,71 +153,19 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
-  # The SSH URL for CodeCommit
-  url: ssh://git-codecommit.us-east-1.amazonaws.com/v1/repos/my-k8s-config
+  # The SSH URL for CodeCommit; replace <SSH-Key-ID> with the SSHPublicKeyId
+  url: ssh://<SSH-Key-ID>@git-codecommit.us-east-1.amazonaws.com/v1/repos/my-k8s-config
   ref:
     branch: main
   secretRef:
     name: codecommit-ssh
 ```
 
-## Step 5: Use IAM Roles for Service Accounts (IRSA) on EKS
+## Step 5: Understand IAM Role Limitations on EKS
 
-On EKS clusters, you can use IAM Roles for Service Accounts to authenticate to CodeCommit without managing credentials. This is the most secure approach for EKS.
+On EKS clusters, IAM Roles for Service Accounts (IRSA) can provide AWS credentials to pods. However, Flux `GitRepository` resources do not support `provider: aws` for AWS CodeCommit Git authentication. The supported `GitRepository` providers are `generic`, `azure`, and `github`, and CodeCommit access should use the HTTPS Git credentials or SSH key methods shown above.
 
-Set up IRSA for the Flux source-controller:
-
-```bash
-# Create an IAM policy for CodeCommit read access
-cat > codecommit-policy.json << 'POLICY'
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "codecommit:GitPull",
-        "codecommit:GetRepository",
-        "codecommit:GetBranch"
-      ],
-      "Resource": "arn:aws:codecommit:us-east-1:123456789012:my-k8s-config"
-    }
-  ]
-}
-POLICY
-
-aws iam create-policy \
-  --policy-name FluxCodeCommitReadOnly \
-  --policy-document file://codecommit-policy.json
-
-# Create the IRSA association using eksctl
-eksctl create iamserviceaccount \
-  --name source-controller \
-  --namespace flux-system \
-  --cluster my-eks-cluster \
-  --attach-policy-arn arn:aws:iam::123456789012:policy/FluxCodeCommitReadOnly \
-  --override-existing-serviceaccounts \
-  --approve
-```
-
-Then configure the GitRepository to use AWS-native authentication:
-
-```yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: GitRepository
-metadata:
-  name: codecommit-irsa
-  namespace: flux-system
-spec:
-  interval: 10m
-  url: https://git-codecommit.us-east-1.amazonaws.com/v1/repos/my-k8s-config
-  ref:
-    branch: main
-  # Use AWS-native authentication via IRSA
-  provider: aws
-```
-
-The `provider: aws` field instructs Flux to use the IAM role attached to the source-controller service account for authentication.
+The AWS `codecommit::` and `codecommit://` URL formats are handled by the `git-remote-codecommit` helper, not directly by Flux source-controller.
 
 ## Step 6: Working with Multiple Regions
 
@@ -276,10 +224,10 @@ kubectl describe gitrepository codecommit-repo -n flux-system
 
 **Repository not found:** CodeCommit repository names are case-sensitive. Verify the exact name with `aws codecommit list-repositories`.
 
-**IRSA not working:** Check that the source-controller pod has the `eks.amazonaws.com/role-arn` annotation on its service account. Restart the source-controller pod after configuring IRSA.
+**IRSA not working:** Flux `GitRepository` does not support `provider: aws` for CodeCommit. Use HTTPS Git credentials or SSH authentication instead.
 
 **Timeout errors:** CodeCommit may be slow for large repositories. Increase the `timeout` field in the GitRepository spec to 120s or higher.
 
 ## Summary
 
-AWS CodeCommit integrates with Flux CD through standard HTTPS and SSH Git protocols. For non-EKS clusters, HTTPS with IAM-generated Git credentials is the simplest path. For EKS environments, IAM Roles for Service Accounts (IRSA) with `provider: aws` provides the most secure, credential-free setup. Remember to use the region-specific URLs and the correct authentication format for each method.
+AWS CodeCommit integrates with Flux CD through standard HTTPS and SSH Git protocols. HTTPS with IAM-generated Git credentials is the simplest path, while SSH works well when you want key-based authentication. Remember to use the region-specific URLs and the correct authentication format for each method.
