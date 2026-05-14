@@ -12,7 +12,7 @@ Description: A comprehensive guide to deploying the Elastic Stack (Elasticsearch
 
 The Elastic Stack, commonly known as ELK (Elasticsearch, Logstash, Kibana), is a widely used platform for log aggregation, search, and visualization. Elasticsearch stores and indexes log data, Logstash processes and transforms logs, and Kibana provides a web interface for exploring and visualizing the data. Deploying the Elastic Stack with Flux CD brings GitOps practices to your logging infrastructure, enabling version-controlled configuration and automated deployments.
 
-This guide walks through deploying each component of the Elastic Stack on Kubernetes using Flux CD and the official Elastic Helm charts.
+This guide walks through deploying each component of the Elastic Stack on Kubernetes using Flux CD and the archived Elastic Helm charts. Elastic recommends Elastic Cloud on Kubernetes (ECK) for new Kubernetes deployments, but the 8.5.1 Elastic Stack Helm charts remain usable for chart-based installations.
 
 ## Prerequisites
 
@@ -34,6 +34,7 @@ clusters/
       logstash.yaml
       kibana.yaml
       kustomization.yaml
+      ilm-policy.yaml
 ```
 
 ## Step 1: Create the Namespace
@@ -79,7 +80,7 @@ spec:
   chart:
     spec:
       chart: elasticsearch
-      version: "8.5.x"
+      version: "8.5.1"
       sourceRef:
         kind: HelmRepository
         name: elastic
@@ -115,19 +116,11 @@ spec:
     # Elasticsearch configuration
     esConfig:
       elasticsearch.yml: |
-        # Cluster settings
-        cluster.name: "elk-cluster"
-        network.host: 0.0.0.0
-
-        # Security settings (enable for production)
-        xpack.security.enabled: true
-        xpack.security.transport.ssl.enabled: true
-        xpack.security.transport.ssl.verification_mode: certificate
-        xpack.security.transport.ssl.keystore.path: /usr/share/elasticsearch/config/certs/elastic-certificates.p12
-        xpack.security.transport.ssl.truststore.path: /usr/share/elasticsearch/config/certs/elastic-certificates.p12
-
         # Index lifecycle management
         xpack.ilm.enabled: true
+
+    # The chart creates HTTP and transport TLS certificates by default
+    protocol: https
 
     # Anti-affinity to spread pods across nodes
     antiAffinity: "hard"
@@ -155,7 +148,7 @@ spec:
   chart:
     spec:
       chart: logstash
-      version: "8.5.x"
+      version: "8.5.1"
       sourceRef:
         kind: HelmRepository
         name: elastic
@@ -176,6 +169,18 @@ spec:
 
     # JVM heap size
     logstashJavaOpts: "-Xmx1g -Xms1g"
+
+    # Read the generated Elasticsearch password and CA certificate
+    extraEnvs:
+      - name: ELASTICSEARCH_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: elasticsearch-master-credentials
+            key: password
+    secretMounts:
+      - name: elasticsearch-certs
+        secretName: elasticsearch-master-certs
+        path: /usr/share/logstash/config/certs
 
     # Logstash pipeline configuration
     logstashConfig:
@@ -231,12 +236,21 @@ spec:
         output {
           # Send processed logs to Elasticsearch
           elasticsearch {
-            hosts => ["http://elasticsearch-master:9200"]
+            hosts => ["https://elasticsearch-master:9200"]
             index => "logs-%{+YYYY.MM.dd}"
             user => "elastic"
             password => "${ELASTICSEARCH_PASSWORD}"
+            ssl_enabled => true
+            ssl_certificate_authorities => ["/usr/share/logstash/config/certs/ca.crt"]
           }
         }
+
+    # Container ports for log input
+    extraPorts:
+      - name: beats
+        containerPort: 5044
+      - name: log-http
+        containerPort: 8080
 
     # Service configuration for accepting log input
     service:
@@ -269,7 +283,7 @@ spec:
   chart:
     spec:
       chart: kibana
-      version: "8.5.x"
+      version: "8.5.1"
       sourceRef:
         kind: HelmRepository
         name: elastic
@@ -288,16 +302,16 @@ spec:
         cpu: "1"
         memory: 1Gi
 
+    # Connect to the secured Elasticsearch service created by the chart
+    elasticsearchHosts: "https://elasticsearch-master:9200"
+    elasticsearchCertificateSecret: elasticsearch-master-certs
+    elasticsearchCertificateAuthoritiesFile: ca.crt
+    elasticsearchCredentialSecret: elasticsearch-master-credentials
+
     # Kibana configuration
     kibanaConfig:
       kibana.yml: |
-        # Elasticsearch connection
-        elasticsearch.hosts: ["http://elasticsearch-master:9200"]
-        elasticsearch.username: "kibana_system"
-        elasticsearch.password: "${ELASTICSEARCH_PASSWORD}"
-
         # Server settings
-        server.host: "0.0.0.0"
         server.name: "kibana"
 
         # Logging settings
@@ -308,7 +322,7 @@ spec:
         xpack.encryptedSavedObjects.encryptionKey: "your-32-character-encryption-key-here"
 
     # Health check configuration
-    healthCheckPath: "/api/status"
+    healthCheckPath: "/app/kibana"
 
     # Ingress configuration for external access
     ingress:
@@ -339,6 +353,7 @@ resources:
   - elasticsearch.yaml
   - logstash.yaml
   - kibana.yaml
+  - ilm-policy.yaml
 ```
 
 ## Step 7: Create the Flux Kustomization
@@ -358,7 +373,6 @@ spec:
     name: flux-system
   path: ./clusters/my-cluster/elastic-stack
   prune: true
-  wait: true
   timeout: 20m
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v2
@@ -382,9 +396,6 @@ kind: Job
 metadata:
   name: setup-ilm-policy
   namespace: elastic-stack
-  annotations:
-    # Run this job after Elasticsearch is deployed
-    helm.toolkit.fluxcd.io/weight: "10"
 spec:
   template:
     spec:
@@ -392,30 +403,36 @@ spec:
       containers:
         - name: setup-ilm
           image: curlimages/curl:latest
+          env:
+            - name: ELASTICSEARCH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: elasticsearch-master-credentials
+                  key: password
+          volumeMounts:
+            - name: elasticsearch-certs
+              mountPath: /certs
+              readOnly: true
           command:
             - /bin/sh
             - -c
             - |
               # Wait for Elasticsearch to be ready
-              until curl -s http://elasticsearch-master:9200/_cluster/health | grep -q '"status":"green\|yellow"'; do
+              until curl -s --cacert /certs/ca.crt -u "elastic:${ELASTICSEARCH_PASSWORD}" https://elasticsearch-master:9200/_cluster/health | grep -q '"status":"green\|yellow"'; do
                 echo "Waiting for Elasticsearch..."
                 sleep 10
               done
 
-              # Create ILM policy for log rotation
-              curl -X PUT "http://elasticsearch-master:9200/_ilm/policy/logs-policy" \
+              # Create ILM policy for log retention
+              curl --fail -X PUT "https://elasticsearch-master:9200/_ilm/policy/logs-policy" \
+                --cacert /certs/ca.crt \
+                -u "elastic:${ELASTICSEARCH_PASSWORD}" \
                 -H 'Content-Type: application/json' \
                 -d '{
                   "policy": {
                     "phases": {
                       "hot": {
-                        "min_age": "0ms",
-                        "actions": {
-                          "rollover": {
-                            "max_size": "10gb",
-                            "max_age": "1d"
-                          }
-                        }
+                        "actions": {}
                       },
                       "warm": {
                         "min_age": "7d",
@@ -431,6 +448,24 @@ spec:
                     }
                   }
                 }'
+
+              # Apply the policy to future daily log indices
+              curl --fail -X PUT "https://elasticsearch-master:9200/_index_template/logs-template" \
+                --cacert /certs/ca.crt \
+                -u "elastic:${ELASTICSEARCH_PASSWORD}" \
+                -H 'Content-Type: application/json' \
+                -d '{
+                  "index_patterns": ["logs-*"],
+                  "template": {
+                    "settings": {
+                      "index.lifecycle.name": "logs-policy"
+                    }
+                  }
+                }'
+      volumes:
+        - name: elasticsearch-certs
+          secret:
+            secretName: elasticsearch-master-certs
 ```
 
 ## Verifying the Deployment
@@ -446,10 +481,10 @@ flux get helmreleases -n elastic-stack
 kubectl get pods -n elastic-stack
 
 # Check Elasticsearch cluster health
-kubectl exec -n elastic-stack elasticsearch-master-0 -- curl -s localhost:9200/_cluster/health?pretty
+kubectl exec -n elastic-stack elasticsearch-master-0 -- sh -c 'curl -s -k -u "elastic:${ELASTIC_PASSWORD}" https://localhost:9200/_cluster/health?pretty'
 
 # Check indices
-kubectl exec -n elastic-stack elasticsearch-master-0 -- curl -s localhost:9200/_cat/indices?v
+kubectl exec -n elastic-stack elasticsearch-master-0 -- sh -c 'curl -s -k -u "elastic:${ELASTIC_PASSWORD}" "https://localhost:9200/_cat/indices?v"'
 
 # Port-forward Kibana for local access
 kubectl port-forward -n elastic-stack svc/kibana-kibana 5601:5601
@@ -460,7 +495,7 @@ kubectl port-forward -n elastic-stack svc/kibana-kibana 5601:5601
 - **Elasticsearch pods not starting**: Check if there is enough memory on the nodes. Each Elasticsearch pod needs at least 2 GB of heap plus overhead.
 - **Split-brain issues**: Ensure `minimumMasterNodes` is set to (replicas / 2) + 1. With 3 replicas, this should be 2.
 - **Logstash pipeline errors**: Check Logstash logs for parsing failures. Test your pipeline configuration locally before deploying.
-- **Kibana connection refused**: Verify Elasticsearch is healthy and the connection URL in Kibana configuration is correct.
+- **Kibana connection refused**: Verify Elasticsearch is healthy and the `elasticsearchHosts` value points to the secured Elasticsearch service.
 - **PVCs stuck in Pending**: Verify storage class exists and the cluster has enough storage capacity.
 
 ## Conclusion
