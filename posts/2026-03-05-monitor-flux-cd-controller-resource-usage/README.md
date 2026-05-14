@@ -45,7 +45,7 @@ Use PromQL to observe CPU usage across Flux CD controllers. The following query 
 ```yaml
 # PromQL query for Flux controller CPU usage (cores)
 # Paste this into your Prometheus or Grafana query editor
-# rate(container_cpu_usage_seconds_total{namespace="flux-system", container!="POD", container!=""}[5m])
+# sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="flux-system", container!="POD", container!=""}[5m]))
 #
 # Example Grafana dashboard panel configuration:
 apiVersion: v1
@@ -62,8 +62,8 @@ data:
           "type": "timeseries",
           "targets": [
             {
-              "expr": "rate(container_cpu_usage_seconds_total{namespace=\"flux-system\", container!=\"POD\", container!=\"\"}[5m])",
-              "legendFormat": "{{ container }}"
+              "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"flux-system\", container!=\"POD\", container!=\"\"}[5m]))",
+              "legendFormat": "{{ pod }}"
             }
           ]
         }
@@ -78,7 +78,7 @@ Memory is often the more critical resource for Flux controllers, especially sour
 ```yaml
 # PromQL queries for Flux controller memory usage
 # Working set memory (what the kernel considers in-use):
-# container_memory_working_set_bytes{namespace="flux-system", container!="POD", container!=""}
+# sum by (pod) (container_memory_working_set_bytes{namespace="flux-system", container!="POD", container!=""})
 #
 # Grafana panel configuration for memory monitoring:
 apiVersion: v1
@@ -95,12 +95,12 @@ data:
           "type": "timeseries",
           "targets": [
             {
-              "expr": "container_memory_working_set_bytes{namespace=\"flux-system\", container!=\"POD\", container!=\"\"}",
-              "legendFormat": "{{ container }} - usage"
+              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"flux-system\", container!=\"POD\", container!=\"\"})",
+              "legendFormat": "{{ pod }} - usage"
             },
             {
-              "expr": "kube_pod_container_resource_limits{namespace=\"flux-system\", resource=\"memory\"}",
-              "legendFormat": "{{ container }} - limit"
+              "expr": "sum by (pod) (kube_pod_container_resource_limits{namespace=\"flux-system\", resource=\"memory\", unit=\"byte\"})",
+              "legendFormat": "{{ pod }} - limit"
             }
           ]
         }
@@ -127,39 +127,50 @@ spec:
         - alert: FluxControllerMemoryHigh
           expr: |
             (
-              container_memory_working_set_bytes{namespace="flux-system", container!="POD", container!=""}
+              sum by (namespace, pod) (
+                container_memory_working_set_bytes{namespace="flux-system", container!="POD", container!=""}
+              )
               /
-              kube_pod_container_resource_limits{namespace="flux-system", resource="memory"}
+              sum by (namespace, pod) (
+                kube_pod_container_resource_limits{namespace="flux-system", resource="memory", unit="byte"} > 0
+              )
             ) > 0.8
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "Flux controller {{ $labels.container }} memory usage above 80%"
+            summary: "Flux controller {{ $labels.pod }} memory usage above 80%"
             description: >
-              Container {{ $labels.container }} in pod {{ $labels.pod }}
-              is using {{ $value | humanizePercentage }} of its memory limit.
+              Pod {{ $labels.pod }} is using {{ $value | humanizePercentage }}
+              of its memory limit.
 
         # Alert when CPU throttling is detected
         - alert: FluxControllerCPUThrottling
           expr: |
-            rate(container_cpu_cfs_throttled_periods_total{namespace="flux-system", container!="POD", container!=""}[5m])
-            /
-            rate(container_cpu_cfs_periods_total{namespace="flux-system", container!="POD", container!=""}[5m])
-            > 0.25
+            (
+              sum by (namespace, pod) (
+                rate(container_cpu_cfs_throttled_periods_total{namespace="flux-system", container!="POD", container!=""}[5m])
+              )
+              /
+              sum by (namespace, pod) (
+                rate(container_cpu_cfs_periods_total{namespace="flux-system", container!="POD", container!=""}[5m])
+              )
+            ) > 0.25
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "Flux controller {{ $labels.container }} is CPU throttled"
+            summary: "Flux controller {{ $labels.pod }} is CPU throttled"
             description: >
-              Container {{ $labels.container }} is being CPU throttled
-              more than 25% of the time.
+              Pod {{ $labels.pod }} is being CPU throttled more than 25%
+              of CFS periods.
 
         # Alert on OOMKilled containers
         - alert: FluxControllerOOMKilled
           expr: |
             kube_pod_container_status_last_terminated_reason{namespace="flux-system", reason="OOMKilled"} == 1
+            and on (namespace, pod, container)
+            increase(kube_pod_container_status_restarts_total{namespace="flux-system"}[5m]) > 0
           for: 0m
           labels:
             severity: critical
@@ -234,14 +245,14 @@ patches:
 
 ## Step 6: Monitor with Grafana Dashboard
 
-Import the Flux CD Grafana dashboard (ID: 16714) which includes controller resource panels, or build a custom dashboard with the queries above:
+Import the Flux CD Grafana dashboard (ID: 21149) which includes controller resource panels, or build a custom dashboard with the queries above:
 
 ```bash
 # Port-forward Grafana to access the dashboard
 kubectl port-forward -n monitoring svc/grafana 3000:80
 ```
 
-Navigate to `http://localhost:3000`, go to Dashboards > Import, and enter dashboard ID **16714**. This community dashboard includes panels for controller resource consumption alongside reconciliation metrics.
+Navigate to `http://localhost:3000`, go to Dashboards > Import, and enter dashboard ID **21149**. This community dashboard includes panels for controller resource consumption alongside reconciliation metrics.
 
 ## Summary
 
