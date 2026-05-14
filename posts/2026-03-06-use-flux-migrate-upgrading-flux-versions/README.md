@@ -38,7 +38,7 @@ When Flux controllers are upgraded, they may stop supporting older API versions.
 
 You need to run migrations when:
 
-- Upgrading Flux to a new minor or major version
+- Upgrading Flux to a new minor version
 - Flux deprecation warnings appear in controller logs
 - `flux check` reports API version incompatibilities
 - You see validation errors after upgrading controllers
@@ -56,7 +56,7 @@ flux check
 kubectl logs -n flux-system deployment/kustomize-controller --tail=100 | grep -i deprecat
 
 # Check for older API versions in your manifests
-grep -r "v1beta1\|v1beta2\|v1alpha1" ./clusters/ --include="*.yaml"
+grep -r "v1alpha1\|v1beta1\|v1beta2\|v2beta1\|v2beta2" ./clusters/ --include="*.yaml"
 ```
 
 ## Basic Migration
@@ -80,7 +80,7 @@ Kustomizations migrated from `v1beta2` to `v1`:
 ```bash
 # Before migration (old API version)
 cat <<'YAML'
-apiVersion: kustomize.toolkit.fluxcd.io/v1
+apiVersion: kustomize.toolkit.fluxcd.io/v1beta2
 kind: Kustomization
 metadata:
   name: my-app
@@ -116,7 +116,7 @@ YAML
 ```bash
 # Before migration
 cat <<'YAML'
-apiVersion: source.toolkit.fluxcd.io/v1
+apiVersion: source.toolkit.fluxcd.io/v1beta2
 kind: GitRepository
 metadata:
   name: my-app
@@ -150,7 +150,7 @@ HelmReleases migrated from `v2beta1` to `v2`:
 ```bash
 # Before migration
 cat <<'YAML'
-apiVersion: helm.toolkit.fluxcd.io/v2
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
 kind: HelmRelease
 metadata:
   name: nginx
@@ -207,9 +207,12 @@ echo ""
 echo "Step 1: Backing up current Flux resources..."
 BACKUP_DIR="./flux-backup-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "${BACKUP_DIR}"
-flux export source all -A > "${BACKUP_DIR}/sources.yaml" 2>/dev/null || true
-flux export kustomization -A > "${BACKUP_DIR}/kustomizations.yaml" 2>/dev/null || true
-flux export helmrelease -A > "${BACKUP_DIR}/helmreleases.yaml" 2>/dev/null || true
+flux export source git --all -A > "${BACKUP_DIR}/git-sources.yaml" 2>/dev/null || true
+flux export source helm --all -A > "${BACKUP_DIR}/helm-sources.yaml" 2>/dev/null || true
+flux export source oci --all -A > "${BACKUP_DIR}/oci-sources.yaml" 2>/dev/null || true
+flux export source bucket --all -A > "${BACKUP_DIR}/bucket-sources.yaml" 2>/dev/null || true
+flux export kustomization --all -A > "${BACKUP_DIR}/kustomizations.yaml" 2>/dev/null || true
+flux export helmrelease --all -A > "${BACKUP_DIR}/helmreleases.yaml" 2>/dev/null || true
 echo "  Backup saved to: ${BACKUP_DIR}"
 echo ""
 
@@ -283,7 +286,7 @@ Notification APIs also undergo version changes:
 # Migrate alert and provider resources
 # Before (v1beta2)
 cat <<'YAML'
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta2
 kind: Alert
 metadata:
   name: my-alert
@@ -299,7 +302,7 @@ YAML
 
 # After (v1beta3)
 cat <<'YAML'
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: my-alert
@@ -366,19 +369,19 @@ For simple API version updates, you can use sed as a fallback:
 ```bash
 # Update Kustomization API version from v1beta2 to v1
 find ./clusters/ -name "*.yaml" -exec \
-  sed -i '' 's|kustomize.toolkit.fluxcd.io/v1|kustomize.toolkit.fluxcd.io/v1|g' {} \;
+  sed -i.bak 's|kustomize.toolkit.fluxcd.io/v1beta2|kustomize.toolkit.fluxcd.io/v1|g' {} \;
 
 # Update GitRepository API version from v1beta2 to v1
 find ./clusters/ -name "*.yaml" -exec \
-  sed -i '' 's|source.toolkit.fluxcd.io/v1|source.toolkit.fluxcd.io/v1|g' {} \;
+  sed -i.bak 's|source.toolkit.fluxcd.io/v1beta2|source.toolkit.fluxcd.io/v1|g' {} \;
 
 # Update HelmRelease API version from v2beta1 to v2
 find ./clusters/ -name "*.yaml" -exec \
-  sed -i '' 's|helm.toolkit.fluxcd.io/v2|helm.toolkit.fluxcd.io/v2|g' {} \;
+  sed -i.bak 's|helm.toolkit.fluxcd.io/v2beta1|helm.toolkit.fluxcd.io/v2|g' {} \;
 
 # Update HelmRepository API version
 find ./clusters/ -name "*.yaml" -exec \
-  sed -i '' 's|source.toolkit.fluxcd.io/v1|source.toolkit.fluxcd.io/v1|g' {} \;
+  sed -i.bak 's|source.toolkit.fluxcd.io/v1beta2|source.toolkit.fluxcd.io/v1|g' {} \;
 ```
 
 Note: The `sed` approach only handles API version strings. The `flux migrate` command is preferred because it can also handle field renames and structural changes.
@@ -410,9 +413,7 @@ If the migration causes issues, roll back:
 
 ```bash
 # Option 1: Restore from backup
-kubectl apply -f ./flux-backup-20260306-120000/sources.yaml
-kubectl apply -f ./flux-backup-20260306-120000/kustomizations.yaml
-kubectl apply -f ./flux-backup-20260306-120000/helmreleases.yaml
+kubectl apply -f ./flux-backup-20260306-120000/
 
 # Option 2: Revert Git changes
 git checkout -- ./clusters/
