@@ -10,9 +10,9 @@ Description: A practical guide to using flux get sources commands to monitor and
 
 ## Introduction
 
-Sources are the foundation of every Flux CD pipeline. They define where Flux fetches configuration from -- Git repositories, Helm chart repositories, OCI registries, and S3-compatible buckets. If a source is unhealthy, nothing downstream can reconcile.
+Sources are the foundation of every Flux CD pipeline. They define where Flux fetches configuration from -- Git repositories, Helm chart repositories, OCI registries, and S3-compatible buckets. If a source is unhealthy, downstream resources that depend on its latest artifact cannot reconcile successfully.
 
-The `flux get sources` family of commands lets you inspect the status of all source types. This guide covers how to use these commands effectively to monitor, debug, and maintain your Flux sources.
+The `flux get sources` family of commands lets you inspect the status of source types. This guide covers how to use these commands effectively to monitor, debug, and maintain your Flux sources.
 
 ## Prerequisites
 
@@ -104,7 +104,7 @@ flux get sources helm -A
 flux get sources helm bitnami -n flux-system
 
 # Get detailed output
-flux get sources helm -A -o yaml
+kubectl get helmrepositories -A -o yaml
 ```
 
 ### Verify Helm Chart Availability
@@ -155,7 +155,7 @@ flux get sources oci -A
 flux get sources oci my-app-oci -n flux-system
 
 # View detailed status
-flux get sources oci my-app-oci -n flux-system -o yaml
+kubectl get ocirepository my-app-oci -n flux-system -o yaml
 ```
 
 ## Step 5: Check Bucket Sources
@@ -182,7 +182,7 @@ watch -n 5 'flux get sources all -A'
 flux get sources git -A -w
 
 # Check the last reconciliation time
-flux get sources git -A -o json | jq '.[] | {name: .metadata.name, lastHandledReconcileAt: .status.lastHandledReconcileAt}'
+kubectl get gitrepositories -A -o json | jq '.items[] | {name: .metadata.name, lastHandledReconcileAt: .status.lastHandledReconcileAt}'
 ```
 
 ## Step 7: Force Source Reconciliation
@@ -202,8 +202,8 @@ flux reconcile source oci my-app-oci -n flux-system
 # Reconcile a bucket
 flux reconcile source bucket config-bucket -n flux-system
 
-# Reconcile with a specific revision (git only)
-flux reconcile source git my-app -n flux-system --revision main
+# Reconcile a source and wait for it to finish
+flux reconcile source git my-app -n flux-system
 ```
 
 ## Step 8: Inspect Source Artifacts
@@ -212,7 +212,7 @@ Every source produces an artifact that downstream resources consume.
 
 ```bash
 # View the artifact details for a git repository
-kubectl get gitrepository flux-system -n flux-system -o jsonpath='{.status.artifact}' | jq .
+kubectl get gitrepository flux-system -n flux-system -o json | jq '.status.artifact'
 
 # Check artifact revision
 kubectl get gitrepository flux-system -n flux-system \
@@ -241,15 +241,15 @@ echo "==================================="
 echo ""
 
 # Check each source type
-for source_type in git helm chart oci bucket; do
+for source_type in git helm chart oci bucket external; do
     echo "--- ${source_type} sources ---"
-    output=$(flux get sources ${source_type} -A 2>/dev/null)
+    output=$(flux get sources ${source_type} -A --status-selector ready=false --no-header 2>/dev/null)
     if [ -z "$output" ]; then
-        echo "  No ${source_type} sources found."
+        echo "  No unhealthy ${source_type} sources found."
     else
         echo "$output"
         # Count failures
-        failures=$(echo "$output" | grep -c "False")
+        failures=$(echo "$output" | grep -c .)
         if [ "$failures" -gt 0 ]; then
             echo "  WARNING: ${failures} ${source_type} source(s) not ready!"
         fi
@@ -258,7 +258,7 @@ for source_type in git helm chart oci bucket; do
 done
 
 # Overall summary
-total_failures=$(flux get sources all -A 2>/dev/null | grep -c "False")
+total_failures=$(flux get sources all -A --status-selector ready=false --no-header 2>/dev/null | grep -c .)
 if [ "$total_failures" -gt 0 ]; then
     echo "RESULT: ${total_failures} source(s) need attention."
     exit 1
@@ -326,9 +326,10 @@ flux get sources all -A --no-header | awk '{print $1}'
 | `flux get sources chart -A` | All Helm charts |
 | `flux get sources oci -A` | All OCI repositories |
 | `flux get sources bucket -A` | All S3 buckets |
+| `flux get sources external -A` | All external artifacts |
 | `flux reconcile source git <name>` | Force Git source sync |
-| `flux get sources all -A -o json` | JSON output for scripting |
+| `flux get sources all -A --status-selector ready=false` | Unhealthy sources across namespaces |
 
 ## Summary
 
-The `flux get sources` commands are essential for monitoring the health of your GitOps pipeline's foundation. Sources must be healthy for any downstream reconciliation to succeed. Regularly checking source status, watching for authentication failures, revision mismatches, and connectivity issues will help you maintain a reliable Flux deployment. Combine these commands with automated health check scripts to catch source problems before they affect your workloads.
+The `flux get sources` commands are essential for monitoring the health of your GitOps pipeline's foundation. Sources must be healthy for dependent resources to consume their latest artifacts. Regularly checking source status, watching for authentication failures, revision mismatches, and connectivity issues will help you maintain a reliable Flux deployment. Combine these commands with automated health check scripts to catch source problems before they affect your workloads.
