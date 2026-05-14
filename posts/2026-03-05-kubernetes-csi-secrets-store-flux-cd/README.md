@@ -38,7 +38,7 @@ spec:
   chart:
     spec:
       chart: secrets-store-csi-driver
-      version: "1.4.x"
+      version: "1.6.x"
       sourceRef:
         kind: HelmRepository
         name: secrets-store-csi
@@ -57,6 +57,15 @@ The `syncSecret.enabled: true` setting allows the driver to create Kubernetes Se
 ### Installing the AWS Provider
 
 ```yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: aws-provider
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://aws.github.io/secrets-store-csi-driver-provider-aws
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -67,11 +76,14 @@ spec:
   chart:
     spec:
       chart: secrets-store-csi-driver-provider-aws
-      version: "0.3.x"
+      version: "3.x"
       sourceRef:
         kind: HelmRepository
         name: aws-provider
         namespace: flux-system
+  values:
+    secrets-store-csi-driver:
+      install: false
 ```
 
 ### Creating a SecretProviderClass for AWS
@@ -150,6 +162,15 @@ The service account must have IAM permissions to access the secret in AWS Secret
 ### Installing the Azure Provider
 
 ```yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: azure-provider
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://azure.github.io/secrets-store-csi-driver-provider-azure/charts
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -160,11 +181,14 @@ spec:
   chart:
     spec:
       chart: csi-secrets-store-provider-azure
-      version: "1.5.x"
+      version: "1.8.x"
       sourceRef:
         kind: HelmRepository
         name: azure-provider
         namespace: flux-system
+  values:
+    secrets-store-csi-driver:
+      install: false
 ```
 
 ### SecretProviderClass for Azure Key Vault
