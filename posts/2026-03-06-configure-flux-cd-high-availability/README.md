@@ -18,7 +18,7 @@ In a standard Flux CD installation, each controller runs as a single replica. If
 - Missed automated image updates
 - Stale cluster state during node failures
 
-HA configuration ensures at least one instance of each controller is always running.
+HA configuration helps ensure at least one instance of each controller remains available when the cluster has enough schedulable capacity.
 
 ## Prerequisites
 
@@ -57,40 +57,27 @@ patches:
   # Scale all controllers to 2 replicas
   - target:
       kind: Deployment
-      name: "(source|kustomize|helm|notification)-controller"
+      name: "(source|kustomize|helm|notification|image-reflector|image-automation)-controller"
     patch: |
       apiVersion: apps/v1
       kind: Deployment
       metadata:
-        name: controller
+        name: all
       spec:
         replicas: 2
-        template:
-          spec:
-            containers:
-              - name: manager
-                args:
-                  # Leader election ensures only one replica
-                  # is actively reconciling at any time
-                  - --enable-leader-election=true
-                  - --log-level=info
-                  - --log-encoding=json
-            # Spread replicas across different nodes
-            affinity:
-              podAntiAffinity:
-                requiredDuringSchedulingIgnoredDuringExecution:
-                  - labelSelector:
-                      matchExpressions:
-                        - key: app
-                          operator: In
-                          values:
-                            - $(CONTROLLER_NAME)
-                    topologyKey: kubernetes.io/hostname
+  # Keep leader election enabled when customizing controller args
+  - target:
+      kind: Deployment
+      name: "(source|kustomize|helm|notification|image-reflector|image-automation)-controller"
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --enable-leader-election=true
 ```
 
 ## Step 2: Configure Leader Election
 
-Leader election ensures only one replica is active while the other is on standby. Flux controllers support leader election natively.
+Leader election ensures only one replica actively reconciles while the other is on standby. Flux controllers support leader election natively. Current Flux install manifests include leader election, but keep the flag present if you replace controller args with a custom patch.
 
 ```yaml
 # clusters/production/flux-system/leader-election-patch.yaml
@@ -176,6 +163,31 @@ patches:
                   - --leader-election-lease-duration=35s
                   - --leader-election-renew-deadline=30s
                   - --leader-election-retry-period=5s
+
+  # Notification controller leader election
+  - target:
+      kind: Deployment
+      name: notification-controller
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: notification-controller
+      spec:
+        replicas: 2
+        template:
+          spec:
+            containers:
+              - name: manager
+                args:
+                  - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
+                  - --watch-all-namespaces=true
+                  - --log-level=info
+                  - --log-encoding=json
+                  - --enable-leader-election=true
+                  - --leader-election-lease-duration=35s
+                  - --leader-election-renew-deadline=30s
+                  - --leader-election-retry-period=5s
 ```
 
 ## Step 3: Configure Pod Anti-Affinity
@@ -215,6 +227,8 @@ patches:
                   matchLabels:
                     app: source-controller
 ```
+
+Repeat the same topology spread constraint pattern for `kustomize-controller`, `helm-controller`, `notification-controller`, and any image automation controllers you install, changing the `app` label value to match each controller.
 
 ## Step 4: Configure Pod Disruption Budgets
 
@@ -266,6 +280,28 @@ spec:
   selector:
     matchLabels:
       app: notification-controller
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: image-reflector-controller
+  namespace: flux-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: image-reflector-controller
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: image-automation-controller
+  namespace: flux-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: image-automation-controller
 ```
 
 ## Step 5: Configure Resource Requests and Limits
@@ -345,7 +381,7 @@ patches:
 
 ## Step 6: Set Up Persistent Storage for Source Controller
 
-Use persistent volumes so the source-controller artifact cache survives pod restarts.
+Use persistent volumes so the source-controller artifact cache survives pod restarts. If you run multiple source-controller replicas on different nodes, use a storage class that supports `ReadWriteMany`; otherwise, leave the default `emptyDir` cache or run only one source-controller replica with the `ReadWriteOnce` PVC pattern from the Flux vertical scaling guide.
 
 ```yaml
 # clusters/production/flux-system/source-pvc.yaml
@@ -356,7 +392,7 @@ metadata:
   namespace: flux-system
 spec:
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   resources:
     requests:
       storage: 10Gi
@@ -368,27 +404,26 @@ spec:
 # clusters/production/flux-system/source-storage-patch.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+  - source-pvc.yaml
 patches:
   - target:
       kind: Deployment
       name: source-controller
     patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: source-controller
-      spec:
-        template:
-          spec:
-            containers:
-              - name: manager
-                volumeMounts:
-                  - name: data
-                    mountPath: /data
-            volumes:
-              - name: data
-                persistentVolumeClaim:
-                  claimName: source-controller-data
+      - op: replace
+        path: /spec/template/spec/volumes/0
+        value:
+          name: data
+          persistentVolumeClaim:
+            claimName: source-controller-data
+      - op: replace
+        path: /spec/template/spec/containers/0/volumeMounts/0
+        value:
+          name: data
+          mountPath: /data
 ```
 
 ## Step 7: Verify the HA Setup
@@ -410,7 +445,10 @@ kubectl get pdb -n flux-system
 flux check
 
 # Simulate a failure by deleting one pod
-kubectl delete pod -n flux-system -l app=source-controller --field-selector=status.phase=Running --wait=false
+SOURCE_POD=$(kubectl get pod -n flux-system -l app=source-controller \
+  --field-selector=status.phase=Running \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl delete pod -n flux-system "$SOURCE_POD" --wait=false
 
 # Verify the remaining replica takes over
 kubectl get pods -n flux-system -l app=source-controller -w
