@@ -216,13 +216,13 @@ spec:
     name: my-app-repo
   interval: 5m
   reconcileStrategy: Revision
-  # Include additional values files from the chart directory
+  # Include additional values files from the GitRepository artifact
   valuesFiles:
-    - values.yaml
-    - values-production.yaml
+    - deploy/helm/values.yaml
+    - deploy/helm/values-production.yaml
 ```
 
-The paths in `valuesFiles` are relative to the chart directory specified in `spec.chart`.
+The paths in `valuesFiles` are relative to the GitRepository artifact, so include the chart directory path when the chart is not at the repository root.
 
 ## Connecting to a HelmRelease
 
