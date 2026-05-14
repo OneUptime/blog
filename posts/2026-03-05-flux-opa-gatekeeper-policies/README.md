@@ -35,9 +35,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: gatekeeper
-  namespace: gatekeeper-system
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: gatekeeper-system
   chart:
     spec:
       chart: gatekeeper
@@ -50,9 +51,7 @@ spec:
     createNamespace: true
   values:
     replicas: 3
-    audit:
-      replicas: 1
-    # Exempt the flux-system namespace from Gatekeeper
+    # Allow flux-system to use Gatekeeper's admission exemption label
     controllerManager:
       exemptNamespaces:
         - flux-system
@@ -140,6 +139,9 @@ spec:
     spec:
       names:
         kind: K8sNoPrivilegedContainers
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -206,6 +208,12 @@ spec:
           msg := sprintf("Container image %v is not from an allowed registry", [container.image])
         }
 
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.template.spec.initContainers[_]
+          not startswith_any(container.image, input.parameters.repos)
+          msg := sprintf("Init container image %v is not from an allowed registry", [container.image])
+        }
+
         startswith_any(str, prefixes) {
           prefix := prefixes[_]
           startswith(str, prefix)
@@ -250,11 +258,7 @@ spec:
   path: ./policies/gatekeeper
   prune: true
   dependsOn:
-    - name: gatekeeper  # Wait for Gatekeeper to be ready
-  healthChecks:
-    - apiVersion: templates.gatekeeper.sh/v1
-      kind: ConstraintTemplate
-      name: k8srequiredlabels
+    - name: gatekeeper  # Wait for the Kustomization that deploys Gatekeeper
 ```
 
 ## Step 7: Handle Policy Violations in Flux
