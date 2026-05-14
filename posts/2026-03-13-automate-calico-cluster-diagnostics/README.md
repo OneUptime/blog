@@ -38,16 +38,17 @@ done
 # IPAM state
 calicoctl ipam show --show-blocks > "${BUNDLE}/ipam-blocks.txt" 2>/dev/null || true
 calicoctl ipam check > "${BUNDLE}/ipam-check.txt" 2>/dev/null || true
+calicoctl cluster diags --since=2h > "${BUNDLE}/calico-cluster-diags.txt" 2>&1 || true
 
 # Component logs
 kubectl logs -n calico-system -l k8s-app=calico-node \
-  -c calico-node --tail=200 --prefix=true > "${BUNDLE}/calico-node.log"
+  -c calico-node --tail=200 --prefix=true > "${BUNDLE}/calico-node.log" 2>/dev/null || true
 kubectl logs -n calico-system -l k8s-app=calico-typha \
-  --tail=200 --prefix=true > "${BUNDLE}/calico-typha.log"
+  --tail=200 --prefix=true > "${BUNDLE}/calico-typha.log" 2>/dev/null || true
 kubectl logs -n calico-system -l k8s-app=calico-kube-controllers \
-  --tail=100 > "${BUNDLE}/calico-kube-controllers.log"
+  --tail=100 > "${BUNDLE}/calico-kube-controllers.log" 2>/dev/null || true
 kubectl logs -n tigera-operator -l k8s-app=tigera-operator \
-  --tail=100 > "${BUNDLE}/tigera-operator.log"
+  --tail=100 > "${BUNDLE}/tigera-operator.log" 2>/dev/null || true
 
 tar -czf "${BUNDLE}.tar.gz" "${BUNDLE}/"
 echo "Cluster diagnostic bundle: ${BUNDLE}.tar.gz"
@@ -62,19 +63,19 @@ EXIT_CODE=0
 
 # Check TigeraStatus
 NOT_AVAILABLE=$(kubectl get tigerastatus --no-headers 2>/dev/null | \
-  awk '$2 != "True"' | wc -l)
-echo "TigeraStatus degraded components: ${NOT_AVAILABLE}"
+  awk '$2 != "True" || $3 != "False" || $4 != "False"' | wc -l)
+echo "TigeraStatus unavailable, progressing, or degraded components: ${NOT_AVAILABLE}"
 [ "${NOT_AVAILABLE}" -gt 0 ] && EXIT_CODE=$((EXIT_CODE + 1))
 
 # Check IPAM consistency
 calicoctl ipam check > /tmp/ipam-check.txt 2>&1
-IPAM_ISSUES=$(grep -c "inconsistency" /tmp/ipam-check.txt || echo 0)
+IPAM_ISSUES=$(grep -ci "inconsistency" /tmp/ipam-check.txt || true)
 echo "IPAM inconsistencies: ${IPAM_ISSUES}"
 [ "${IPAM_ISSUES}" -gt 0 ] && EXIT_CODE=$((EXIT_CODE + 1))
 
 # Check calico-system pod health
 NOT_RUNNING=$(kubectl get pods -n calico-system --no-headers | \
-  grep -cv "Running" || echo 0)
+  awk '$3 != "Running" { count++ } END { print count + 0 }')
 echo "Non-running calico-system pods: ${NOT_RUNNING}"
 [ "${NOT_RUNNING}" -gt 0 ] && EXIT_CODE=$((EXIT_CODE + 1))
 
