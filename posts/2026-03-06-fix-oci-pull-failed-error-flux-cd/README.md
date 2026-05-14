@@ -37,10 +37,10 @@ Status:
         unexpected status code 401: unauthorized"
 ```
 
-Or for Helm charts stored in OCI registries:
+For Helm charts stored in OCI registries through an OCI HelmRepository, check the HelmChart or HelmRelease that uses the repository:
 
 ```bash
-kubectl describe helmrepository <name> -n flux-system
+kubectl describe helmchart <name> -n flux-system
 ```
 
 ```yaml
@@ -119,7 +119,7 @@ kubectl create secret docker-registry ecr-creds \
   -n flux-system
 ```
 
-For long-lived authentication, use an IAM role with the ECR credential provider:
+For long-lived authentication, use Flux provider authentication with an EKS worker node IAM role or IAM Role for Service Accounts (IRSA):
 
 ```yaml
 # ecr-ocirepository.yaml
@@ -150,7 +150,7 @@ spec:
   url: oci://us-docker.pkg.dev/my-project/my-repo/my-app
   ref:
     tag: v1.0.0
-  # Use GCP workload identity for authentication
+  # Use GCP workload identity or node access scopes after configuring source-controller
   provider: gcp
 ```
 
@@ -168,7 +168,7 @@ spec:
   url: oci://myregistry.azurecr.io/my-app
   ref:
     tag: v1.0.0
-  # Use Azure workload identity for authentication
+  # Use Azure workload identity or kubelet managed identity after configuring source-controller
   provider: azure
 ```
 
@@ -226,11 +226,11 @@ flux pull artifact oci://registry.example.com/my-app:v1.0.0 --output /tmp/verify
 ls -la /tmp/verify
 ```
 
-## Cause 3: Digest Mismatch
+## Cause 3: Incorrect Digest Reference
 
-When using digest-based references, a mismatch between the expected digest and the actual artifact digest causes pull failures.
+When using digest-based references, an incorrect or unavailable digest causes pull failures.
 
-### Diagnosing Digest Mismatch
+### Diagnosing Incorrect Digest References
 
 ```bash
 # Check the digest of the remote artifact
@@ -312,7 +312,7 @@ spec:
 
 ### Fix: Allow Insecure Registries (Development Only)
 
-For development environments with self-signed certificates:
+For development environments using plain HTTP registries:
 
 ```yaml
 # ocirepository-insecure.yaml
@@ -400,4 +400,4 @@ kubectl get helmrepository -A -o wide
 
 ## Summary
 
-OCI pull failures in Flux CD are typically caused by authentication issues, missing artifacts, digest mismatches, TLS certificate problems, or network connectivity. The most common fix is to create a properly formatted docker-registry secret and reference it in your OCIRepository or HelmRepository resource. For cloud provider registries, use the built-in provider authentication (aws, gcp, azure) instead of static credentials. Always verify that the artifact exists at the specified URL and tag using tools like the Flux CLI, crane, or oras before investigating more complex network or certificate issues.
+OCI pull failures in Flux CD are typically caused by authentication issues, missing artifacts, incorrect digest references, TLS certificate problems, or network connectivity. The most common fix is to create a properly formatted docker-registry secret and reference it in your OCIRepository or HelmRepository resource. For cloud provider registries, use the built-in provider authentication (aws, gcp, azure) instead of static credentials. Always verify that the artifact exists at the specified URL and tag using tools like the Flux CLI, crane, or oras before investigating more complex network or certificate issues.
