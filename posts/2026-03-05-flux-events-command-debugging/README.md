@@ -22,7 +22,7 @@ The output includes the event timestamp, type (Normal/Warning), reason, object, 
 
 ## View Events for a Specific Resource
 
-The `--for` flag lets you target events for a specific Flux resource:
+The `--for` flag lets you target events for a specific Flux resource. For Kustomizations, Flux also shows events for the related Source object:
 
 ```bash
 flux events --for GitRepository/flux-system -n flux-system
@@ -46,7 +46,7 @@ View events for a HelmRepository:
 flux events --for HelmRepository/bitnami -n flux-system
 ```
 
-This is the most common use case -- when you know which resource is failing and want to see exactly what events it has generated.
+This is the most common use case -- when you know which resource is failing and want to see the events associated with it.
 
 ## Watch Events in Real Time
 
