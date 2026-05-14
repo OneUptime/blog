@@ -8,17 +8,17 @@ Description: A practical guide to reducing Flux CD event noise and log spam by c
 
 ---
 
-Flux CD generates Kubernetes events and log entries for every reconciliation cycle. In clusters with many resources, this can produce an overwhelming volume of events and logs, making it difficult to spot real issues. This guide covers how to reduce the noise while keeping meaningful alerts.
+Flux CD generates Kubernetes events, notification events, and log entries during reconciliation. In clusters with many resources, this can produce an overwhelming volume of events and logs, making it difficult to spot real issues. This guide covers how to reduce the noise while keeping meaningful alerts.
 
 ## Understanding Flux CD Event Generation
 
-Every Flux reconciliation cycle produces events. With default settings:
+Flux resources reconcile on the interval configured in their `spec.interval`. Common bootstrap and example settings are:
 
 - Each GitRepository generates events every 1 minute
 - Each Kustomization generates events every 10 minutes
 - Each HelmRelease generates events every 5 minutes
-- Successful reconciliations generate "info" events
-- Failures generate "error" events
+- Successful reconciliations generate Normal Kubernetes events and "info" notification events
+- Failures generate Warning Kubernetes events and "error" notification events
 
 In a cluster with 50 Kustomizations and 30 HelmReleases, you can get thousands of events per hour, most of which say "no changes."
 
@@ -53,25 +53,11 @@ Flux controllers accept a `--log-level` flag that controls verbosity.
 
 ```yaml
 # log-level-patch.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: source-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            # Reduce log level from "info" (default) to "error"
-            # Available levels: debug, info, error
-            - --log-level=error
-            - --log-encoding=json
-            # Keep other default args
-            - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
-            - --watch-all-namespaces=true
-            - --storage-path=/data
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  # Reduce log level from "info" (default) to "error"
+  # Available levels: trace, debug, info, error
+  value: --log-level=error
 ```
 
 Apply to all controllers via Kustomize:
@@ -90,28 +76,21 @@ patches:
       namespace: flux-system
       name: source-controller
     patch: |
-      - op: replace
-        path: /spec/template/spec/containers/0/args
-        value:
-          - --log-level=error
-          - --log-encoding=json
-          - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
-          - --watch-all-namespaces=true
-          - --storage-path=/data
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --log-level=error
   # Set error-only logging on kustomize-controller
   - target:
       kind: Deployment
       namespace: flux-system
       name: kustomize-controller
     patch: |
-      - op: replace
-        path: /spec/template/spec/containers/0/args
-        value:
-          - --log-level=error
-          - --log-encoding=json
-          - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
-          - --watch-all-namespaces=true
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --log-level=error
 ```
+
+If a controller already has a `--log-level` argument, replace that existing argument instead of adding a duplicate.
 
 ## Step 3: Increase Reconciliation Intervals
 
@@ -173,7 +152,8 @@ spec:
   secretRef:
     name: receiver-token
   resources:
-    - kind: GitRepository
+    - apiVersion: source.toolkit.fluxcd.io/v1
+      kind: GitRepository
       name: flux-system
 ```
 
@@ -183,7 +163,7 @@ If you are using Flux notifications, configure the Alert resource to filter out 
 
 ```yaml
 # Alert with exclusion filtering
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: production-alerts
@@ -280,20 +260,13 @@ Instead of reducing logs, route them to a log aggregation system with proper fil
 
 ```yaml
 # Configure Flux controllers with JSON logging
-# This is the default, but ensure it is set
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: source-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            - --log-encoding=json
-            - --log-level=info
+# JSON at info level is the default; add these only if you need to make it explicit.
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --log-encoding=json
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --log-level=info
 ```
 
 ### Fluentd/Fluent Bit Filter Example
@@ -337,24 +310,8 @@ sum by (container) (count_over_time({namespace="flux-system"} [1h]))
 If you are not using Flux notifications at all, you can stop controllers from sending events to the notification controller.
 
 ```yaml
-# Remove the events-addr argument from controllers
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: source-controller
-  namespace: flux-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            - --log-level=info
-            - --log-encoding=json
-            # Remove this line to stop event forwarding:
-            # - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
-            - --watch-all-namespaces=true
-            - --storage-path=/data
+# Remove the events-addr argument from the generated controller manifests:
+# - --events-addr=http://notification-controller.flux-system.svc.cluster.local./
 ```
 
 ## Step 9: Monitor Event Volume
@@ -465,4 +422,4 @@ Reducing Flux CD event spam and log noise involves a multi-layered approach:
 - **Route logs to aggregation** with proper filtering instead of trying to read raw logs
 - **Scale intervals by cluster size** - larger clusters need longer intervals
 
-The goal is to keep error visibility high while eliminating the "no changes" noise that makes up 90% or more of events in a stable cluster.
+The goal is to keep error visibility high while eliminating the repetitive "no changes" noise that can make up a large share of events in a stable cluster.
