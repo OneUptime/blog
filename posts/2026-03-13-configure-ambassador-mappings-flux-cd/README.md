@@ -46,7 +46,7 @@ spec:
   # Timeout configuration
   timeout_ms: 30000
   idle_timeout_ms: 30000
-  # Enable connection draining during pod restarts
+  # Allow WebSocket upgrade requests on this route
   allow_upgrade:
     - websocket
 ```
@@ -145,10 +145,12 @@ spec:
   labels:
     ambassador:
       # Labels used by the RateLimitService to identify this traffic
-      - string_request_label:
-          label: backend
-      - remote_address_request_label:
-          label: remote_address
+      - public-api:
+        - generic_key:
+            key: backend
+            value: public-api
+        - remote_address:
+            key: remote_address
 ```
 
 ## Step 5: gRPC Service Routing
@@ -165,13 +167,11 @@ metadata:
 spec:
   hostname: grpc.example.com
   prefix: /mypackage.MyService/
+  rewrite: /mypackage.MyService/
   # Enable gRPC mode
   grpc: true
   service: grpc-service:50051
   timeout_ms: 10000
-  # gRPC requires HTTP/2
-  allow_upgrade:
-    - h2c
 ```
 
 ## Step 6: Create the Flux Kustomization for Mappings
@@ -187,7 +187,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
-  path: ./apps
+  path: ./apps/backend/ambassador-mappings
   prune: true
   sourceRef:
     kind: GitRepository
@@ -195,8 +195,6 @@ spec:
   # Ensure Ambassador is deployed before applying Mappings
   dependsOn:
     - name: ambassador
-  # Only process Mapping CRDs
-  patches: []
 ```
 
 ```bash
