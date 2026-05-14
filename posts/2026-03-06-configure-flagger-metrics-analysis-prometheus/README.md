@@ -38,17 +38,19 @@ spec:
 
 ```yaml
 # prometheus-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: prometheus
-  namespace: monitoring
+  namespace: flux-system
 spec:
   interval: 1h
+  releaseName: prometheus
+  targetNamespace: monitoring
   chart:
     spec:
       chart: prometheus
-      version: "25.x"
+      version: "29.x"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
@@ -78,7 +80,7 @@ When installing Flagger, point it to your Prometheus server:
 
 ```yaml
 # flagger-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: flagger
@@ -150,7 +152,7 @@ spec:
     port: 9898
     targetPort: http
   analysis:
-    interval: 30s
+    interval: 1m
     threshold: 5
     maxWeight: 50
     stepWeight: 10
@@ -186,12 +188,12 @@ spec:
     address: http://prometheus-server.monitoring:80
   query: |
     # Calculate the percentage of 5xx responses for the canary
-    # Variables available: namespace, target, ingress, interval
+    # Variables available: name, namespace, target, service, ingress, interval, variables
     100 - sum(
       rate(
         http_requests_total{
           namespace="{{ namespace }}",
-          pod=~"{{ target }}-canary-[a-zA-Z0-9]+-[a-zA-Z0-9]+",
+          pod=~"{{ target }}-[0-9a-zA-Z]+(-[0-9a-zA-Z]+)",
           status!~"5.*"
         }[{{ interval }}]
       )
@@ -200,7 +202,7 @@ spec:
       rate(
         http_requests_total{
           namespace="{{ namespace }}",
-          pod=~"{{ target }}-canary-[a-zA-Z0-9]+-[a-zA-Z0-9]+"
+          pod=~"{{ target }}-[0-9a-zA-Z]+(-[0-9a-zA-Z]+)"
         }[{{ interval }}]
       )
     ) * 100
@@ -226,7 +228,7 @@ spec:
         rate(
           http_request_duration_seconds_bucket{
             namespace="{{ namespace }}",
-            pod=~"{{ target }}-canary-[a-zA-Z0-9]+-[a-zA-Z0-9]+"
+            pod=~"{{ target }}-[0-9a-zA-Z]+(-[0-9a-zA-Z]+)"
           }[{{ interval }}]
         )
       ) by (le)
@@ -252,7 +254,7 @@ spec:
       rate(
         http_requests_total{
           namespace="{{ namespace }}",
-          pod=~"{{ target }}-canary-[a-zA-Z0-9]+-[a-zA-Z0-9]+"
+          pod=~"{{ target }}-[0-9a-zA-Z]+(-[0-9a-zA-Z]+)"
         }[{{ interval }}]
       )
     )
@@ -276,7 +278,7 @@ spec:
     port: 9898
     targetPort: http
   analysis:
-    interval: 30s
+    interval: 1m
     threshold: 5
     maxWeight: 50
     stepWeight: 10
@@ -334,7 +336,7 @@ spec:
         istio_requests_total{
           reporter="destination",
           destination_workload_namespace="{{ namespace }}",
-          destination_workload="{{ target }}-canary",
+          destination_workload="{{ target }}",
           response_code!~"5.*"
         }[{{ interval }}]
       )
@@ -344,7 +346,7 @@ spec:
         istio_requests_total{
           reporter="destination",
           destination_workload_namespace="{{ namespace }}",
-          destination_workload="{{ target }}-canary"
+          destination_workload="{{ target }}"
         }[{{ interval }}]
       )
     ) * 100
@@ -425,7 +427,7 @@ Then open http://localhost:9090 and test your queries. Replace template variable
 # Replace {{ namespace }} with "demo"
 # Replace {{ target }} with "podinfo"
 # Replace {{ interval }} with "1m"
-sum(rate(http_requests_total{namespace="demo", pod=~"podinfo-canary-.*"}[1m]))
+sum(rate(http_requests_total{namespace="demo", pod=~"podinfo-[0-9a-zA-Z]+(-[0-9a-zA-Z]+)"}[1m]))
 ```
 
 ## Step 10: Configure Multiple Prometheus Instances
@@ -459,7 +461,7 @@ spec:
     # Infrastructure Prometheus
     address: http://prometheus-infra.monitoring:80
   query: |
-    avg(container_cpu_usage_seconds_total{namespace="{{ namespace }}", pod=~"{{ target }}-canary-.*"})
+    avg(rate(container_cpu_usage_seconds_total{namespace="{{ namespace }}", pod=~"{{ target }}-[0-9a-zA-Z]+(-[0-9a-zA-Z]+)"}[{{ interval }}]))
 ```
 
 ## Metrics Analysis Flow
@@ -501,8 +503,11 @@ Check that the PromQL query returns a single scalar value, not a vector. Flagger
 The available template variables are:
 - `{{ namespace }}` - canary namespace
 - `{{ target }}` - canary target name
+- `{{ name }}` - canary resource name
+- `{{ service }}` - canary service name
 - `{{ ingress }}` - ingress name (if using ingress provider)
 - `{{ interval }}` - the metric interval value
+- `{{ variables }}` - custom template variables
 
 ## Summary
 
