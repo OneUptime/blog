@@ -10,23 +10,23 @@ Description: Learn how to configure Flux CD's notification controller to send de
 
 Microsoft Teams is one of the most widely used collaboration platforms in enterprise environments. Integrating Flux CD notifications with Teams ensures your operations team stays informed about Kubernetes deployments and reconciliation events without leaving their primary communication tool.
 
-This guide explains how to set up a Flux notification Provider for Microsoft Teams, including creating the webhook connector, configuring secrets, and wiring up alerts.
+This guide explains how to set up a Flux notification Provider for Microsoft Teams, including creating the webhook workflow, configuring secrets, and wiring up alerts.
 
 ## Prerequisites
 
 - A Kubernetes cluster with Flux CD installed (including the notification controller)
 - `kubectl` access to the cluster
-- A Microsoft Teams workspace with permission to add connectors to a channel
+- A Microsoft Teams team with permission to create workflows for a channel
 - The `flux` CLI installed (optional but helpful)
 
-## Step 1: Create a Microsoft Teams Incoming Webhook
+## Step 1: Create a Microsoft Teams Webhook Workflow
 
-In Microsoft Teams, navigate to the channel where you want notifications to appear. Click the three-dot menu next to the channel name and select **Connectors** (or **Manage channel** then **Connectors** depending on your Teams version). Find **Incoming Webhook**, click **Configure**, give it a name like "Flux CD", and click **Create**. Copy the generated webhook URL.
+In Microsoft Teams, navigate to the channel where you want notifications to appear. Click the three-dot menu next to the channel name and select **Workflows**. Search for a webhook template such as **Send webhook alerts to a channel**, configure it for the channel, save it, and copy the generated webhook URL.
 
 The URL will look similar to:
 
 ```text
-https://outlook.office.com/webhook/XXXXXXXX/IncomingWebhook/YYYYYYYY/ZZZZZZZZ
+https://prod-XX.REGION.logic.azure.com:443/workflows/XXXXXXXX/triggers/manual/paths/invoke?api-version=YYYY-MM-DD&sp=...&sv=...&sig=...
 ```
 
 ## Step 2: Create a Kubernetes Secret
@@ -38,7 +38,7 @@ Store the Microsoft Teams webhook URL in a Kubernetes secret.
 
 kubectl create secret generic msteams-webhook-url \
   --namespace=flux-system \
-  --from-literal=address=https://outlook.office.com/webhook/XXXXXXXX/IncomingWebhook/YYYYYYYY/ZZZZZZZZ
+  --from-literal=address='https://prod-XX.REGION.logic.azure.com:443/workflows/XXXXXXXX/triggers/manual/paths/invoke?api-version=YYYY-MM-DD&sp=...&sv=...&sig=...'
 ```
 
 ## Step 3: Create the Flux Notification Provider
@@ -48,7 +48,7 @@ Define a Provider resource that points to Microsoft Teams.
 ```yaml
 # provider-msteams.yaml
 # Configures Flux to send notifications to Microsoft Teams
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: msteams-provider
@@ -76,7 +76,7 @@ Create an Alert that specifies which events should be forwarded to Teams.
 ```yaml
 # alert-msteams.yaml
 # Routes Flux events to the Microsoft Teams provider
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: msteams-alert
@@ -125,7 +125,7 @@ You should see a card appear in your Teams channel within a few seconds, display
 
 ## How It Works
 
-The notification controller formats Flux events into Microsoft Teams Adaptive Card payloads and sends them via HTTP POST to the webhook URL. Teams renders these as rich cards in the channel.
+The notification controller formats Flux events into Microsoft Teams Adaptive Card payloads for webhook workflow URLs and sends them via HTTP POST. Teams renders these as rich cards in the channel.
 
 ```mermaid
 graph LR
@@ -139,7 +139,7 @@ graph LR
 To receive only error notifications in Teams:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: msteams-errors
@@ -161,7 +161,7 @@ spec:
 Rather than watching all resources, you can target specific ones:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: msteams-production
@@ -186,9 +186,9 @@ If notifications are not reaching Microsoft Teams, check the following:
 1. **Secret format**: The secret must contain an `address` key with the full webhook URL.
 2. **Namespace alignment**: Provider, Alert, and Secret must reside in the same namespace.
 3. **Notification controller logs**: Run `kubectl logs -n flux-system deploy/notification-controller` to look for HTTP errors.
-4. **Webhook validity**: Verify the connector has not been removed or disabled in Teams.
-5. **Network access**: Ensure the cluster can reach `outlook.office.com` on HTTPS (port 443).
-6. **Teams connector limits**: Microsoft has rate limits on incoming webhooks. If you send a high volume of events, some may be throttled.
+4. **Webhook validity**: Verify the workflow has not been removed or disabled in Teams.
+5. **Network access**: Ensure the cluster can reach the webhook URL host, such as `prod-*.logic.azure.com`, on HTTPS (port 443).
+6. **Teams webhook limits**: Microsoft has rate limits on webhook requests. If you send a high volume of events, some may be throttled.
 
 ## Multiple Teams Channels
 
@@ -196,7 +196,7 @@ You can create multiple Providers pointing to different Teams channels and route
 
 ```yaml
 # Provider for the development team channel
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: msteams-dev
@@ -207,7 +207,7 @@ spec:
     name: msteams-dev-webhook
 ---
 # Provider for the operations team channel
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: msteams-ops
@@ -220,4 +220,4 @@ spec:
 
 ## Conclusion
 
-Integrating Flux CD notifications with Microsoft Teams brings deployment visibility directly into your team's collaboration workflow. The setup requires only a webhook connector, a Kubernetes secret, and two Flux resources. Combined with alert filtering, you can ensure the right information reaches the right team channel without excessive noise.
+Integrating Flux CD notifications with Microsoft Teams brings deployment visibility directly into your team's collaboration workflow. The setup requires only a webhook workflow, a Kubernetes secret, and two Flux resources. Combined with alert filtering, you can ensure the right information reaches the right team channel without excessive noise.
