@@ -8,12 +8,12 @@ Description: Learn how to configure a Flux ImageRepository to scan Google Contai
 
 ---
 
-Google Container Registry (GCR) and Google Artifact Registry are container image hosting services provided by Google Cloud. Flux supports scanning these registries using the ImageRepository resource with native GCP provider authentication. This guide covers how to configure Flux to scan both GCR and Artifact Registry.
+Google Container Registry (GCR) and Google Artifact Registry are container image hosting services provided by Google Cloud. Container Registry is deprecated and no longer accepts writes, but existing `gcr.io` URLs hosted on Artifact Registry continue to work. Flux supports scanning these registries using the ImageRepository resource with native GCP provider authentication. This guide covers how to configure Flux to scan both `gcr.io` repositories and Artifact Registry.
 
 ## Prerequisites
 
 - A Kubernetes cluster with Flux and image automation controllers installed
-- A Google Cloud project with GCR or Artifact Registry enabled
+- A Google Cloud project with an existing `gcr.io` repository or Artifact Registry enabled
 - gcloud CLI installed and configured
 - kubectl access to your cluster
 
@@ -21,7 +21,7 @@ Google Container Registry (GCR) and Google Artifact Registry are container image
 
 Google Cloud offers two container registry services:
 
-- **Google Container Registry (GCR)**: Uses hostnames like `gcr.io`, `us.gcr.io`, `eu.gcr.io`, `asia.gcr.io`. GCR is based on Google Cloud Storage.
+- **Google Container Registry (GCR)**: Uses hostnames like `gcr.io`, `us.gcr.io`, `eu.gcr.io`, `asia.gcr.io`. Legacy GCR is based on Google Cloud Storage, but Container Registry is deprecated and `gcr.io` URLs should be migrated to Artifact Registry-backed repositories.
 - **Google Artifact Registry**: Uses hostnames like `us-docker.pkg.dev`, `europe-docker.pkg.dev`. This is the newer, recommended service.
 
 Flux supports both through the `provider: gcp` setting.
@@ -142,8 +142,6 @@ kubectl create secret docker-registry gcr-credentials \
   --docker-password="$(cat key.json)" \
   -n flux-system
 
-# Clean up the local key file
-rm key.json
 ```
 
 Reference the Secret in the ImageRepository.
@@ -172,11 +170,14 @@ kubectl create secret docker-registry ar-credentials \
   --docker-username=_json_key \
   --docker-password="$(cat key.json)" \
   -n flux-system
+
+# Clean up the local key file after creating the required secrets
+rm key.json
 ```
 
 ## Step 4: Use Node Identity on GKE (Not Recommended)
 
-On GKE clusters with the default compute service account, nodes may already have GCR access. However, Flux does not use node-level credentials when `provider: gcp` is set. You must configure Workload Identity or provide a Secret.
+On GKE clusters with the default compute service account, nodes may already have GCR or Artifact Registry access. Flux can use node OAuth scopes when `provider: gcp` is set and the image-reflector-controller Pod runs on nodes with the required access, but this couples registry access to the node identity. Workload Identity or a Secret is usually a better choice.
 
 ## Step 5: Verify the ImageRepository
 
