@@ -12,7 +12,7 @@ Some CI/CD pipelines tag container images with timestamps, making it natural to 
 
 ## Prerequisites
 
-- A Kubernetes cluster with Flux and image automation controllers installed
+- A Kubernetes cluster with Flux and the image-reflector-controller installed
 - An ImageRepository scanning an image with timestamp-based tags
 - kubectl access to your cluster
 
@@ -154,7 +154,7 @@ spec:
       order: asc
 ```
 
-## Step 6: Handle Timestamp with Version and Build Number
+## Step 6: Handle Timestamp with Version Number
 
 Some tags combine a version and timestamp.
 
@@ -204,7 +204,7 @@ spec:
 
 ## Step 8: Filter by Date Range
 
-To only consider recent tags, combine timestamp filtering with a pattern that limits the date range.
+To only consider tags from a specific date range, combine timestamp filtering with a pattern that limits the date range.
 
 ```yaml
 # imagepolicy-recent-only.yaml
