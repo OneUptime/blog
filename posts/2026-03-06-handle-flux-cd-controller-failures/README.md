@@ -58,21 +58,19 @@ spec:
         # Alert when reconciliation is stalled
         - alert: FluxReconciliationStalled
           expr: |
-            gotk_reconcile_duration_seconds_count{
-              namespace="flux-system"
-            } == 0
+            increase(gotk_reconcile_duration_seconds_count[15m]) == 0
           for: 15m
           labels:
             severity: warning
           annotations:
-            summary: "Flux reconciliation stalled for {{ $labels.controller }}"
+            summary: "Flux reconciliation stalled for {{ $labels.kind }} {{ $labels.namespace }}/{{ $labels.name }}"
 ```
 
 ### Using Flux Notification Controller for Alerts
 
 ```yaml
 # alerts/slack-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-alert
@@ -80,11 +78,12 @@ metadata:
 spec:
   type: slack
   channel: flux-alerts
+  address: https://slack.com/api/chat.postMessage
   secretRef:
-    name: slack-webhook-url
+    name: slack-token
 ---
 # alerts/controller-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: controller-failure-alert
@@ -94,7 +93,7 @@ spec:
     name: slack-alert
   eventSeverity: error
   eventSources:
-    # Watch all Flux controllers for errors
+    # Watch Flux-managed resources for reconciliation errors
     - kind: Kustomization
       name: "*"
     - kind: HelmRelease
@@ -141,8 +140,7 @@ flux export helmrelease --all > helmreleases-backup.yaml
 
 # Reinstall Flux with the same configuration
 flux install \
-  --components-extra=image-reflector-controller,image-automation-controller \
-  --version=v2.4.0
+  --components-extra=image-reflector-controller,image-automation-controller
 
 # Verify all controllers are running
 flux check
@@ -249,7 +247,7 @@ spec:
 
 ### Set Up Controller Replicas for High Availability
 
-Run multiple replicas with leader election enabled.
+Run multiple replicas. Flux install manifests enable leader election so only one replica actively reconciles at a time.
 
 ```yaml
 # flux-system/ha-patch.yaml
@@ -261,31 +259,20 @@ resources:
 patches:
   - target:
       kind: Deployment
-      name: "(source|kustomize|helm)-controller"
+      name: "(source-controller|kustomize-controller|helm-controller)"
     patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: all-controllers
-      spec:
-        # Run 2 replicas for HA
-        replicas: 2
-        template:
-          spec:
-            containers:
-              - name: manager
-                args:
-                  # Enable leader election so only one replica
-                  # actively reconciles at a time
-                  - --leader-elect=true
-            # Spread across different nodes
-            topologySpreadConstraints:
-              - maxSkew: 1
-                topologyKey: kubernetes.io/hostname
-                whenUnsatisfiable: DoNotSchedule
-                labelSelector:
-                  matchLabels:
-                    app.kubernetes.io/part-of: flux
+      - op: replace
+        path: /spec/replicas
+        value: 2
+      - op: add
+        path: /spec/template/spec/topologySpreadConstraints
+        value:
+          - maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: DoNotSchedule
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/part-of: flux
 ```
 
 ## Handling Specific Failure Scenarios
@@ -296,15 +283,16 @@ When the source-controller runs out of memory processing large Git repositories:
 
 ```bash
 # Check if the pod was OOM-killed
-kubectl get events -n flux-system --field-selector reason=OOMKilled
+kubectl get pods -n flux-system -l app=source-controller \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.containerStatuses[*].lastState.terminated.reason}{"\n"}{end}'
 
 # Increase memory limit (see resource limits section above)
 
-# Configure shallow clones to reduce memory usage
+# Limit checked-out and archived files to reduce memory usage
 ```
 
 ```yaml
-# Use shallow clones to reduce memory pressure
+# Use sparse checkout and ignore rules to reduce memory pressure
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
@@ -315,6 +303,8 @@ spec:
   url: https://github.com/org/large-repo
   ref:
     branch: main
+  sparseCheckout:
+    - deploy
   # Ignore large files that are not needed for deployments
   ignore: |
     # Exclude non-essential directories
@@ -327,7 +317,7 @@ spec:
 
 ```bash
 # Check for stuck HelmReleases
-kubectl get helmrelease -A --field-selector status.conditions[0].reason=InstallFailed
+flux get helmreleases -A --status-selector ready=false
 
 # Force a reconciliation
 flux reconcile helmrelease my-release -n default --force
@@ -350,19 +340,9 @@ patches:
       kind: Deployment
       name: notification-controller
     patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: notification-controller
-      spec:
-        template:
-          spec:
-            containers:
-              - name: manager
-                args:
-                  # Increase concurrent event workers
-                  - --concurrent=10
-                  - --log-level=info
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --concurrent=10
 ```
 
 ## Automated Recovery with Kubernetes
@@ -380,6 +360,36 @@ kubectl get deployment -n flux-system -o jsonpath='{range .items[*]}{.metadata.n
 
 ```yaml
 # monitoring/flux-health-cron.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flux-health-checker
+  namespace: flux-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: flux-health-checker
+  namespace: flux-system
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: flux-health-checker
+  namespace: flux-system
+subjects:
+  - kind: ServiceAccount
+    name: flux-health-checker
+    namespace: flux-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: flux-health-checker
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
