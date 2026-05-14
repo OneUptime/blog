@@ -45,25 +45,28 @@ graph TB
     HC -->|Status events| NC
 ```
 
-Each controller produces its own logs, and `flux logs` aggregates them into a single stream.
+Each controller produces its own logs, and `flux logs` formats and filters them into a single stream.
 
 ## Basic Usage
 
-View logs from all Flux controllers:
+View logs from Flux resources in the default namespace scope:
 
 ```bash
-# Display recent logs from all Flux controllers
+# Display recent logs for Flux resources in flux-system
 flux logs
+
+# Display recent logs for Flux resources across all namespaces
+flux logs --all-namespaces
 ```
 
-This outputs a combined log stream from all controllers running in the `flux-system` namespace. Each log line includes the controller name, timestamp, and message.
+This outputs a combined log stream from Flux controller pods running in the `flux-system` namespace. By default, log entries are filtered to Flux resources in the `flux-system` namespace; use `--all-namespaces` to include resources across the cluster. Each log line includes the timestamp, log level, resource kind and name, namespace, and message.
 
 Sample output:
 
 ```text
-2026-03-06T10:15:32.123Z info source-controller - stored artifact for 'flux-system/my-repo'
-2026-03-06T10:15:33.456Z info kustomize-controller - reconciliation finished in 1.2s
-2026-03-06T10:15:34.789Z info helm-controller - release reconciliation succeeded
+2026-03-06T10:15:32.123Z info GitRepository/my-repo.flux-system - stored artifact for revision 'main@sha1:abc123'
+2026-03-06T10:15:33.456Z info Kustomization/my-app.flux-system - Reconciliation finished in 1.2s, next run in 10m0s
+2026-03-06T10:15:34.789Z info HelmRelease/nginx-ingress.ingress - Release reconciliation succeeded
 ```
 
 ## Filtering by Log Level
@@ -74,7 +77,7 @@ Focus on specific log levels to narrow your investigation:
 # Show only error-level logs
 flux logs --level=error
 
-# Show debug-level logs
+# Show debug-level logs, if the controllers are configured to emit them
 flux logs --level=debug
 
 # Show info-level logs (default)
@@ -84,11 +87,11 @@ flux logs --level=info
 When debugging issues, start with `--level=error` to quickly identify problems:
 
 ```bash
-# Find errors across all controllers
-flux logs --level=error
+# Find errors across all Flux resources
+flux logs --level=error --all-namespaces
 ```
 
-## Filtering by Controller Kind
+## Filtering by Resource Kind
 
 Target logs from a specific Flux resource kind:
 
@@ -141,8 +144,8 @@ flux logs --kind=Kustomization --name=my-app --namespace=my-team
 Use the `--follow` flag to stream logs continuously:
 
 ```bash
-# Stream all Flux controller logs in real time
-flux logs --follow
+# Stream all Flux resource logs in real time
+flux logs --follow --all-namespaces
 
 # Stream logs for a specific resource type
 flux logs --follow --kind=Kustomization
@@ -194,7 +197,7 @@ flux logs --kind=Kustomization --name=my-app --level=error
 # Step 3: If no errors found, check info logs for clues
 flux logs --kind=Kustomization --name=my-app --since=10m
 
-# Step 4: Check source controller logs to see if the source is healthy
+# Step 4: Check GitRepository source logs to see if the source is healthy
 flux logs --kind=GitRepository --name=my-repo --since=10m
 ```
 
@@ -206,7 +209,7 @@ When a Helm release is stuck or failing:
 # Step 1: Check the Helm release status
 flux get helmrelease nginx-ingress --namespace ingress
 
-# Step 2: View Helm controller error logs
+# Step 2: View HelmRelease error logs
 flux logs --kind=HelmRelease --name=nginx-ingress --level=error
 
 # Step 3: Check if the Helm repository source is working
@@ -223,8 +226,8 @@ Watch logs in real time as you push a change to Git:
 
 ```bash
 # Start streaming all relevant logs
-flux logs --follow --kind=GitRepository --name=my-repo &
-flux logs --follow --kind=Kustomization --name=my-app &
+flux logs --follow --kind=GitRepository --name=my-repo --all-namespaces &
+flux logs --follow --kind=Kustomization --name=my-app --all-namespaces &
 
 # Push your change to Git
 # git push origin main
@@ -238,7 +241,7 @@ flux logs --follow --kind=Kustomization --name=my-app &
 Verify that Flux can reach your Git repositories:
 
 ```bash
-# View all source controller logs
+# View GitRepository source logs
 flux logs --kind=GitRepository --since=30m
 
 # Look for authentication or network errors
@@ -297,7 +300,7 @@ Combine multiple filters for precise log queries:
 flux logs --kind=Kustomization --name=my-app --level=error --since=5m
 
 # Stream info logs for all Git sources with a tail of 20
-flux logs --follow --kind=GitRepository --level=info --tail=20
+flux logs --follow --kind=GitRepository --level=info --tail=20 --all-namespaces
 
 # All logs for a specific namespace in the last hour
 flux logs --namespace=production --since=1h --tail=200
@@ -311,8 +314,8 @@ Redirect log output to a file for offline analysis:
 # Save logs to a file
 flux logs --since=1h > /tmp/flux-logs.txt
 
-# Save error logs for all controllers
-flux logs --level=error --since=24h > /tmp/flux-errors.txt
+# Save error logs for Flux resources across all namespaces
+flux logs --level=error --since=24h --all-namespaces > /tmp/flux-errors.txt
 
 # Save logs with timestamps for a specific resource
 flux logs --kind=Kustomization --name=my-app --since=6h > /tmp/my-app-logs.txt
@@ -329,6 +332,7 @@ flux logs --kind=Kustomization --name=my-app --since=6h > /tmp/my-app-logs.txt
 | `--kind` | Filter by resource kind (Kustomization, GitRepository, etc.) |
 | `--name` | Filter by resource name |
 | `--namespace` | Filter by resource namespace |
+| `--all-namespaces`, `-A` | Include logs for Flux resources across all namespaces |
 | `--flux-namespace` | Namespace where Flux is installed (default: flux-system) |
 
 ## Troubleshooting
