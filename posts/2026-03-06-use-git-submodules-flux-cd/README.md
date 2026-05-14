@@ -154,11 +154,6 @@ spec:
   sourceRef:
     kind: GitRepository
     name: fleet-repo
-  targetNamespace: default
-  healthChecks:
-    - apiVersion: v1
-      kind: Namespace
-      name: app-namespace
 ```
 
 ## Layering Application-Specific Configs on Top of Shared Configs
@@ -170,6 +165,7 @@ Use Kustomize overlays to extend the shared base with application-specific setti
 # Overlay that builds on top of the shared base from the submodule
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+namespace: my-service
 resources:
   # Reference the shared base pulled in via submodule
   - ../../shared/base
@@ -177,14 +173,6 @@ resources:
   - deployment.yaml
   - service.yaml
 patches:
-  # Override the namespace name for this specific application
-  - target:
-      kind: Namespace
-      name: app-namespace
-    patch: |
-      - op: replace
-        path: /metadata/name
-        value: my-service
   # Adjust resource quotas for this service
   - target:
       kind: ResourceQuota
@@ -242,7 +230,7 @@ metadata:
   namespace: flux-system
 type: Opaque
 stringData:
-  # Use a personal access token or deploy key with read access
+  # Use a personal access token with read access
   username: flux-bot
   password: <your-token-here>
 ```
@@ -250,11 +238,13 @@ stringData:
 For SSH-based authentication:
 
 ```bash
-# Create a secret from an SSH key that has access to both repositories
+# Create a secret from an SSH key for a bot user that has access to both repositories
 flux create secret git flux-git-credentials \
   --url=ssh://git@github.com/your-org/fleet-repo \
   --private-key-file=/path/to/identity
 ```
+
+For most Git providers, deploy keys cannot be reused across multiple repositories. Use HTTPS token-based authentication or an SSH key that belongs to a bot user with access to the main repository and all submodule repositories.
 
 ## Updating the Submodule Version
 
@@ -322,8 +312,9 @@ kubectl get gitrepository fleet-repo -n flux-system -o yaml | grep recurse
 Ensure the credentials provided to Flux have read access to all submodule repositories, not just the main repository.
 
 ```bash
-# Verify the secret exists and has the right data
-kubectl get secret flux-git-credentials -n flux-system -o jsonpath='{.data}' | base64 -d
+# Verify the secret exists and decode individual fields
+kubectl get secret flux-git-credentials -n flux-system -o jsonpath='{.data.username}' | base64 -d
+kubectl get secret flux-git-credentials -n flux-system -o jsonpath='{.data.password}' | base64 -d
 ```
 
 ### Submodule Pinned to Wrong Commit
