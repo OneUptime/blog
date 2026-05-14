@@ -41,14 +41,17 @@ graph TB
 ```text
 clusters/
   my-cluster/
+    flux-system/
+      goldilocks-kustomization.yaml
     goldilocks/
       namespace.yaml
       helmrepository-fairwinds.yaml
       helmrepository-vpa.yaml
       vpa-helmrelease.yaml
       goldilocks-helmrelease.yaml
+      namespace-labels.yaml
       ingress.yaml
-      kustomization.yaml
+      prometheus-rule.yaml
 ```
 
 ## Step 1: Create the Namespace
@@ -181,8 +184,6 @@ spec:
       flags:
         # Create VPA objects in update mode "Off" (recommendation only)
         on-by-default: false
-        # Exclude certain container names from VPA creation
-        exclude-containers: "istio-proxy,linkerd-proxy"
 
     # Dashboard provides the web UI
     dashboard:
@@ -198,6 +199,8 @@ spec:
       service:
         type: ClusterIP
         port: 80
+      # Exclude certain container names from the dashboard display
+      excludeContainers: "istio-proxy,linkerd-proxy"
 
       # Basic auth for the dashboard (optional)
       # Use an Ingress with authentication instead for production
@@ -233,6 +236,8 @@ metadata:
 ```
 
 ## Step 6: Create an Ingress for the Dashboard
+
+Create the `goldilocks-basic-auth` Secret in the `goldilocks` namespace from an htpasswd file named `auth` before applying this Ingress.
 
 ```yaml
 # clusters/my-cluster/goldilocks/ingress.yaml
@@ -270,7 +275,7 @@ spec:
 
 ## Step 7: Fine-Tune VPA per Deployment
 
-Override VPA behavior for specific deployments using annotations.
+Override VPA behavior for specific deployments using annotations and labels.
 
 ```yaml
 # clusters/my-cluster/apps/annotated-deployment.yaml
@@ -281,11 +286,11 @@ metadata:
   namespace: default
   labels:
     app: web-api
+    # Exclude specific containers from recommendations
+    goldilocks.fairwinds.com/exclude-containers: "sidecar"
   annotations:
     # Override the VPA update mode for this deployment
     goldilocks.fairwinds.com/vpa-update-mode: "Off"
-    # Exclude specific containers from recommendations
-    goldilocks.fairwinds.com/exclude-containers: "sidecar"
 spec:
   replicas: 3
   selector:
@@ -317,24 +322,10 @@ spec:
 
 ## Step 8: Export Recommendations as Prometheus Metrics
 
+If kube-state-metrics is configured to expose VerticalPodAutoscaler custom resource metrics, you can alert on the VPA recommendation metrics directly.
+
 ```yaml
-# clusters/my-cluster/goldilocks/servicemonitor.yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: goldilocks-controller
-  namespace: goldilocks
-spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: goldilocks
-      app.kubernetes.io/component: controller
-  endpoints:
-    - port: http
-      interval: 60s
-      path: /metrics
----
-# PrometheusRule for alerting on resource mismatches
+# clusters/my-cluster/goldilocks/prometheus-rule.yaml
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -348,34 +339,42 @@ spec:
         - alert: CPUOverProvisioned
           expr: |
             (
-              kube_pod_container_resource_requests{resource="cpu"}
-              / on(namespace, pod, container)
-              vpa_containerrecommendations_target{resource="cpu"}
+              sum by (namespace, container) (
+                kube_pod_container_resource_requests{resource="cpu", unit="core"}
+              )
+              /
+              sum by (namespace, container) (
+                kube_verticalpodautoscaler_status_recommendation_containerrecommendations_target_cpu{unit="core"}
+              )
             ) > 3
           for: 24h
           labels:
             severity: info
           annotations:
-            summary: "Container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} is over-provisioned for CPU"
+            summary: "Container {{ $labels.container }} in {{ $labels.namespace }} is over-provisioned for CPU"
         # Alert when memory requests are significantly lower than recommended
         - alert: MemoryUnderProvisioned
           expr: |
             (
-              vpa_containerrecommendations_target{resource="memory"}
-              / on(namespace, pod, container)
-              kube_pod_container_resource_requests{resource="memory"}
+              sum by (namespace, container) (
+                kube_verticalpodautoscaler_status_recommendation_containerrecommendations_target_memory{unit="byte"}
+              )
+              /
+              sum by (namespace, container) (
+                kube_pod_container_resource_requests{resource="memory", unit="byte"}
+              )
             ) > 2
           for: 24h
           labels:
             severity: warning
           annotations:
-            summary: "Container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} is under-provisioned for memory"
+            summary: "Container {{ $labels.container }} in {{ $labels.namespace }} is under-provisioned for memory"
 ```
 
 ## Step 9: Flux Kustomization
 
 ```yaml
-# clusters/my-cluster/goldilocks/kustomization.yaml
+# clusters/my-cluster/flux-system/goldilocks-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -391,13 +390,13 @@ spec:
   wait: true
   timeout: 5m
   healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: goldilocks-controller
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: vpa
       namespace: goldilocks
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: goldilocks-dashboard
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: goldilocks
       namespace: goldilocks
 ```
 
@@ -420,7 +419,7 @@ kubectl port-forward -n goldilocks svc/goldilocks-dashboard 8080:80
 kubectl get vpa -n default -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{.status.recommendation.containerRecommendations[*]}{"\n\n"}{end}'
 
 # Verify Flux reconciliation
-flux get helmrelease -n goldilocks
+flux get helmreleases -n goldilocks
 ```
 
 ## Troubleshooting
@@ -430,7 +429,7 @@ flux get helmrelease -n goldilocks
 kubectl logs -n goldilocks -l app.kubernetes.io/name=goldilocks,app.kubernetes.io/component=controller --tail=30
 
 # Check VPA recommender logs
-kubectl logs -n goldilocks -l app=vpa-recommender --tail=30
+kubectl logs -n goldilocks -l app.kubernetes.io/name=vpa,app.kubernetes.io/instance=vpa,app.kubernetes.io/component=recommender --tail=30
 
 # Verify namespace labeling
 kubectl get namespaces -l goldilocks.fairwinds.com/enabled=true
