@@ -1,16 +1,16 @@
-# How to Use CEL Expressions for StatefulSet Health in Flux
+# How to Use Flux Health Checks for StatefulSet Health
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Flux CD, CEL, StatefulSet, Health Check, Kubernetes, GitOps, Stateful Applications
+Tags: Flux CD, StatefulSet, Health Check, Kubernetes, GitOps, Stateful Applications
 
-Description: A practical guide to writing CEL health check expressions for StatefulSet resources in Flux CD, covering ordered rollouts, partition strategies, and persistent volume considerations.
+Description: A practical guide to configuring health checks for StatefulSet resources in Flux CD, covering ordered rollouts, partition strategies, and persistent volume considerations.
 
 ---
 
 ## Introduction
 
-StatefulSets have unique deployment characteristics compared to Deployments. They provide ordered pod creation, stable network identities, and persistent storage. Flux CD has built-in health check support for StatefulSets through the `.spec.healthChecks` field and the `.spec.wait` option. Flux uses the kstatus library to evaluate StatefulSet health, checking that all replicas are updated, ready, and that the rollout is complete. This guide covers how to configure health checks that account for StatefulSet-specific behaviors.
+StatefulSets have unique deployment characteristics compared to Deployments. They provide ordered pod creation, stable network identities, and persistent storage. Flux CD has built-in health check support for StatefulSets through the `.spec.healthChecks` field and the `.spec.wait` option. Flux uses the kstatus library to evaluate StatefulSet health, checking readiness and rollout status from the StatefulSet's status fields. This guide covers how to configure health checks that account for StatefulSet-specific behaviors.
 
 ## Prerequisites
 
@@ -42,10 +42,10 @@ status:
 Key differences from Deployments:
 
 - `currentRevision` and `updateRevision` indicate rollout progress
-- Pods are created and updated in order (0, 1, 2, ...)
+- Pods are created in ordinal order and, with the default rolling update behavior, updated from the largest ordinal to the smallest
 - `partition` in the update strategy controls which pods get updated
 
-Flux considers a StatefulSet healthy when all replicas are ready and updated, and the observed generation matches the spec generation.
+Flux considers a StatefulSet healthy when the StatefulSet status shows that the controller has observed the latest generation and the expected replicas are ready for the configured rollout strategy.
 
 ## Basic StatefulSet Health Checks
 
@@ -325,7 +325,7 @@ kubectl get kustomization database -n flux-system -o yaml
 
 ### Set Generous Timeouts for StatefulSets
 
-StatefulSets update pods one at a time in order. A 5-replica StatefulSet takes at least 5 times longer than a single pod startup. Set your Kustomization timeout accordingly.
+StatefulSets update pods one at a time by default, from the largest ordinal to the smallest. A 5-replica StatefulSet can take roughly 5 times longer than a single pod startup. Set your Kustomization timeout accordingly.
 
 ### Account for Volume Provisioning
 
