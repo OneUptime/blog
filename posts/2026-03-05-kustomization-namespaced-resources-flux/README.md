@@ -12,12 +12,12 @@ Most Kubernetes resources are namespaced -- they exist within a specific namespa
 
 ## How Flux Handles Namespaces
 
-When Flux applies resources from a Kustomization, it determines the target namespace through a priority chain:
+When Flux applies resources from a Kustomization, the target namespace is determined through this chain:
 
-1. `spec.targetNamespace` on the Kustomization (overrides everything)
+1. `spec.targetNamespace` on the Flux Kustomization (configures or overrides the Kustomize namespace)
 2. The `namespace` field in the Kustomize overlay (`kustomization.yaml`)
-3. The `metadata.namespace` set on individual resources in the manifests
-4. The default namespace of the Flux controller (typically `flux-system`)
+3. The `metadata.namespace` set on individual resources in the rendered manifests
+4. The Kubernetes `default` namespace for namespaced resources that still have no namespace set
 
 Understanding this priority chain is essential for managing namespaced resources correctly.
 
@@ -82,7 +82,7 @@ spec:
 
 ## Creating Namespaces Automatically
 
-Flux does not automatically create the target namespace. You need to ensure it exists before resources are applied. There are several approaches.
+Flux does not automatically create the target namespace. You need to ensure it exists before resources are applied, unless the Namespace manifest is included in the same Kustomization. There are several approaches.
 
 Include the Namespace resource in a prerequisite Kustomization.
 
@@ -145,7 +145,7 @@ Instead of `spec.targetNamespace`, you can use the Kustomize `namespace` transfo
 # apps/my-app/production/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: production    # Sets namespace on all resources during build
+namespace: production    # Sets namespace on namespaced resources during build
 resources:
   - ../base
 patches:
@@ -297,7 +297,7 @@ Use the Flux CLI and kubectl to verify resources are deployed to the correct nam
 
 ```bash
 # View the resource tree to see which namespaces resources are deployed to
-flux tree ks app-production --namespace flux-system
+flux tree kustomization app-production --namespace flux-system
 
 # Check resources in the target namespace
 kubectl get all -n production
