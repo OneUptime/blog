@@ -50,7 +50,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: slack-webhook-url
-  namespace: flagger-system
+  namespace: default
 type: Opaque
 stringData:
   # Your Slack incoming webhook URL
@@ -77,9 +77,9 @@ metadata:
 spec:
   # Provider type
   type: slack
-  # Channel to post messages to (must match the webhook channel)
+  # Channel to post messages to (must match the webhook channel for app-based webhooks)
   channel: deployments
-  # Username that appears as the message sender
+  # Username that appears as the message sender for legacy webhooks or bot-token based Slack notifications
   username: flagger
   # Reference to the secret containing the webhook URL
   secretRef:
@@ -140,7 +140,7 @@ spec:
 
 ## Step 5: Configure Multiple Alert Severity Levels
 
-You can configure different Slack channels for different severity levels.
+You can configure different Slack channels for different severity levels. With app-based Slack incoming webhooks, create one webhook per channel because Slack does not allow the channel or username to be overridden at send time.
 
 ```yaml
 # slack-alert-providers-multi.yaml
@@ -213,6 +213,7 @@ spec:
 ## Step 6: Configure Alert Provider at the Cluster Level
 
 For cluster-wide alerting, configure the AlertProvider in the flagger-system namespace and reference it from any Canary resource.
+The webhook Secret referenced by the AlertProvider must also exist in the flagger-system namespace.
 
 ```yaml
 # cluster-slack-alert.yaml
@@ -314,7 +315,7 @@ kubectl logs -n flagger-system deployment/flagger --tail=100 | grep -i "alert\|s
 Common issues with Slack alerting:
 
 - **No messages appearing**: Verify the webhook URL is correct and the secret is in the right namespace
-- **Channel not found**: Ensure the channel name in the AlertProvider matches an existing Slack channel
+- **Channel not found**: Ensure the channel exists and, for app-based Slack webhooks, that the webhook was created for that channel
 - **Webhook expired**: Slack webhooks can be revoked; check the Slack app configuration
 - **Rate limiting**: Slack has rate limits on incoming webhooks; reduce alert frequency if needed
 
