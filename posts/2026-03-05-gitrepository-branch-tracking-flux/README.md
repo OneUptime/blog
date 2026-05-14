@@ -54,11 +54,10 @@ flux get sources git my-app -n flux-system
 
 ## Default Branch Behavior
 
-If you omit the entire `spec.ref` field, Flux defaults to tracking the `main` branch. The following two configurations are equivalent.
+If you omit the entire `spec.ref` field, Flux defaults to tracking the `master` branch. If you want to track `main`, set it explicitly.
 
 ```yaml
-# These two configurations produce the same result
-# Option 1: Explicit branch
+# Explicitly track the main branch
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
@@ -70,7 +69,7 @@ spec:
   ref:
     branch: main
 ---
-# Option 2: Omit ref entirely (defaults to main)
+# Omit ref entirely to use the Flux default branch (master)
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
@@ -81,7 +80,7 @@ spec:
   url: https://github.com/my-org/my-app
 ```
 
-It is recommended to always be explicit about the branch you are tracking to avoid confusion, especially if the repository's default branch is not `main`.
+It is recommended to always be explicit about the branch you are tracking to avoid confusion, especially if the repository's default branch is not `master`.
 
 ## Multi-Environment Branch Strategy
 
@@ -250,7 +249,7 @@ To set up alerts when a branch tracking source fails, you can use the Flux notif
 
 ```yaml
 # alert-git-failures.yaml - Alert when GitRepository reconciliation fails
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: git-source-failures
@@ -276,7 +275,7 @@ git ls-remote --heads https://github.com/my-org/my-app
 kubectl describe gitrepository my-app -n flux-system
 
 # Force a reconciliation and watch the result
-flux reconcile source git my-app -n flux-system --with-source
+flux reconcile source git my-app -n flux-system
 ```
 
 Common issues include:
