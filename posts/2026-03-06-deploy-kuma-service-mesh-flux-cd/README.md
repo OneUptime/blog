@@ -12,13 +12,13 @@ Description: A step-by-step guide to deploying and managing the Kuma service mes
 
 Kuma is a CNCF service mesh built on top of Envoy proxy that supports both Kubernetes and universal (VM) environments. It offers features like mTLS, traffic routing, observability, and multi-zone deployments. Deploying Kuma through Flux CD allows you to manage the entire mesh lifecycle via Git, providing consistency and traceability.
 
-This guide covers deploying Kuma in standalone mode on Kubernetes, configuring mesh policies, and managing the lifecycle through Flux CD.
+This guide covers deploying Kuma in single-zone mode on Kubernetes, configuring mesh policies, and managing the lifecycle through Flux CD.
 
 ## Prerequisites
 
 Before starting, ensure you have:
 
-- A Kubernetes cluster (v1.25 or later)
+- A Kubernetes cluster supported by the Kuma version you deploy
 - Flux CD bootstrapped and connected to a Git repository
 - kubectl access to the cluster
 - Familiarity with Flux HelmRelease and Kustomization resources
@@ -28,7 +28,7 @@ Before starting, ensure you have:
 Create a HelmRepository resource pointing to the official Kuma chart repository.
 
 ```yaml
-# infrastructure/sources/kuma-helmrepo.yaml
+# infrastructure/kuma/kuma-helmrepo.yaml
 
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -71,7 +71,7 @@ spec:
   chart:
     spec:
       chart: kuma
-      version: "2.9.x"
+      version: "2.13.x"
       sourceRef:
         kind: HelmRepository
         name: kuma
@@ -89,7 +89,7 @@ spec:
   values:
     # Control plane configuration
     controlPlane:
-      mode: standalone
+      mode: zone
       replicas: 1
       resources:
         requests:
@@ -98,24 +98,9 @@ spec:
         limits:
           memory: "512Mi"
           cpu: "500m"
-      # Enable the admin API
-      apiServer:
-        corsAllowedDomains:
-          - "http://localhost:5681"
-    # Configure the CNI plugin for transparent proxying
+    # Use the default init container approach for transparent proxying
     cni:
-      enabled: true
-      # Use the init container approach instead of CNI
-      chained: true
-    # Configure the data plane proxy defaults
-    dataPlane:
-      resources:
-        requests:
-          memory: "64Mi"
-          cpu: "50m"
-        limits:
-          memory: "128Mi"
-          cpu: "100m"
+      enabled: false
     # Enable the ingress for external traffic
     ingress:
       enabled: false
@@ -153,7 +138,7 @@ spec:
 
 ## Enabling Sidecar Injection
 
-Kuma uses namespace annotations to enable automatic sidecar injection.
+Kuma uses namespace labels to enable automatic sidecar injection.
 
 ```yaml
 # apps/demo/namespace.yaml
@@ -161,10 +146,9 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: demo-app
-  annotations:
+  labels:
     # Enable Kuma sidecar injection for all pods in this namespace
     kuma.io/sidecar-injection: enabled
-  labels:
     # Associate this namespace with the default mesh
     kuma.io/mesh: default
 ```
@@ -189,6 +173,7 @@ spec:
     metadata:
       labels:
         app: backend-api
+        version: stable
     spec:
       containers:
         - name: backend-api
@@ -212,6 +197,7 @@ spec:
     - port: 3000
       targetPort: 3000
       protocol: TCP
+      appProtocol: http
 ```
 
 ## Configuring the Default Mesh
@@ -262,59 +248,74 @@ spec:
 
 ## Defining Traffic Permissions
 
-Control service-to-service communication using TrafficPermission resources.
+Control service-to-service communication using MeshTrafficPermission resources.
 
 ```yaml
 # infrastructure/kuma/traffic-permission.yaml
 apiVersion: kuma.io/v1alpha1
-kind: TrafficPermission
+kind: MeshTrafficPermission
 metadata:
   name: allow-frontend-to-backend
-mesh: default
+  namespace: kuma-system
+  labels:
+    kuma.io/mesh: default
 spec:
-  sources:
-    # Allow traffic from the frontend service
-    - match:
-        kuma.io/service: frontend_demo-app_svc_8080
-  destinations:
-    # Route to the backend API service
-    - match:
-        kuma.io/service: backend-api_demo-app_svc_3000
+  targetRef:
+    kind: Dataplane
+    labels:
+      # Apply the policy to the backend API service
+      app: backend-api
+  from:
+    - targetRef:
+        kind: MeshSubset
+        tags:
+          # Allow traffic from the frontend service
+          kuma.io/service: frontend_demo-app_svc_8080
+      default:
+        action: Allow
 ```
 
 ## Setting Up Traffic Routing
 
-Define traffic routing policies for canary deployments and A/B testing.
+Define HTTP routing policies for canary deployments and A/B testing.
 
 ```yaml
 # infrastructure/kuma/traffic-route.yaml
 apiVersion: kuma.io/v1alpha1
-kind: TrafficRoute
+kind: MeshHTTPRoute
 metadata:
   name: backend-api-route
-mesh: default
+  namespace: kuma-system
+  labels:
+    kuma.io/mesh: default
 spec:
-  sources:
-    - match:
-        kuma.io/service: "*"
-  destinations:
-    - match:
-        kuma.io/service: backend-api_demo-app_svc_3000
-  conf:
-    loadBalancer:
-      # Use round-robin load balancing
-      roundRobin: {}
-    split:
-      # Send 90% of traffic to the stable version
-      - weight: 90
-        destination:
-          kuma.io/service: backend-api_demo-app_svc_3000
-          version: stable
-      # Send 10% of traffic to the canary version
-      - weight: 10
-        destination:
-          kuma.io/service: backend-api_demo-app_svc_3000
-          version: canary
+  targetRef:
+    kind: Dataplane
+    labels:
+      app: frontend
+  to:
+    - targetRef:
+        kind: MeshService
+        name: backend-api_demo-app_svc_3000
+      rules:
+        - matches:
+            - path:
+                type: PathPrefix
+                value: "/"
+          default:
+            backendRefs:
+              # Send most traffic to the stable version
+              - kind: MeshServiceSubset
+                name: backend-api_demo-app_svc_3000
+                weight: 90
+                tags:
+                  version: stable
+              # Send a smaller share to the canary version
+              - kind: MeshServiceSubset
+                name: backend-api_demo-app_svc_3000
+                weight: 10
+                tags:
+                  version: canary
 ```
 
 ## Configuring Circuit Breakers
@@ -324,35 +325,36 @@ Add circuit breaker policies to protect services from cascading failures.
 ```yaml
 # infrastructure/kuma/circuit-breaker.yaml
 apiVersion: kuma.io/v1alpha1
-kind: CircuitBreaker
+kind: MeshCircuitBreaker
 metadata:
   name: backend-api-circuit-breaker
-mesh: default
+  namespace: kuma-system
+  labels:
+    kuma.io/mesh: default
 spec:
-  sources:
-    - match:
-        kuma.io/service: "*"
-  destinations:
-    - match:
-        kuma.io/service: backend-api_demo-app_svc_3000
-  conf:
-    # Configure connection limits
-    thresholds:
-      maxConnections: 100
-      maxPendingRequests: 100
-      maxRequests: 100
-      maxRetries: 3
-    # Configure outlier detection
-    outlierDetection:
-      interval: 10s
-      baseEjectionTime: 30s
-      maxEjectionPercent: 50
-      splitExternalAndLocalErrors: false
-      detectors:
-        totalFailures:
-          consecutive: 5
-        localOriginFailures:
-          consecutive: 5
+  targetRef:
+    kind: Dataplane
+    labels:
+      app: backend-api
+  rules:
+    - default:
+        # Configure connection limits
+        connectionLimits:
+          maxConnections: 100
+          maxPendingRequests: 100
+          maxRequests: 100
+          maxRetries: 3
+        # Configure outlier detection
+        outlierDetection:
+          interval: 10s
+          baseEjectionTime: 30s
+          maxEjectionPercent: 50
+          splitExternalAndLocalErrors: false
+          detectors:
+            totalFailures:
+              consecutive: 5
+            localOriginFailures:
+              consecutive: 5
 ```
 
 ## Verifying the Deployment
@@ -373,7 +375,7 @@ kubectl get meshes
 kubectl get dataplaneinsights --all-namespaces
 
 # Verify traffic permissions
-kubectl get trafficpermissions
+kubectl get meshtrafficpermissions -A
 
 # Check sidecar injection is working
 kubectl get pods -n demo-app -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.containers[*]}{.name}{","}{end}{"\n"}{end}'
@@ -384,8 +386,8 @@ kubectl get pods -n demo-app -o jsonpath='{range .items[*]}{.metadata.name}{"\t"
 Common issues and how to resolve them.
 
 ```bash
-# Check if sidecar injection annotation is present
-kubectl get namespace demo-app -o jsonpath='{.metadata.annotations}'
+# Check if sidecar injection label is present
+kubectl get namespace demo-app -o jsonpath='{.metadata.labels}'
 
 # View Kuma control plane logs
 kubectl logs -n kuma-system -l app=kuma-control-plane --tail=100
@@ -399,4 +401,4 @@ flux reconcile kustomization kuma --with-source
 
 ## Summary
 
-Deploying Kuma service mesh with Flux CD provides a GitOps-driven approach to managing your service mesh infrastructure. With Kuma's Kubernetes-native CRDs and Flux's automated reconciliation, you can version-control mesh policies, traffic routes, and circuit breaker configurations. This approach ensures that all mesh changes are tracked, reviewed, and automatically applied to your clusters.
+Deploying Kuma service mesh with Flux CD provides a GitOps-driven approach to managing your service mesh infrastructure. With Kuma's Kubernetes-native CRDs and Flux's automated reconciliation, you can version-control mesh policies, HTTP routes, and circuit breaker configurations. This approach ensures that all mesh changes are tracked, reviewed, and automatically applied to your clusters.
