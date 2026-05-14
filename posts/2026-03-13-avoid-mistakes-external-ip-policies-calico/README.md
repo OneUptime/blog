@@ -10,11 +10,11 @@ Description: Avoid the most common pitfalls when implementing External IP Polici
 
 ## Introduction
 
-External IP Policies in Calico provides fine-grained network security controls using the `projectcalico.org/v3` API. This guide covers how to avoid mistakes External IP effectively.
+External IP rules in Calico provide fine-grained network security controls using the `projectcalico.org/v3` API. This guide covers how to avoid common mistakes with External IP policy rules effectively.
 
-Calico's extensible policy model supports External IP through its `GlobalNetworkPolicy` and `NetworkPolicy` resources, giving you cluster-wide and namespace-scoped control over traffic that matches your External IP criteria.
+Calico's extensible policy model supports External IP matches through `GlobalNetworkPolicy`, `NetworkPolicy`, and network set resources, giving you cluster-wide and namespace-scoped control over traffic that matches your External IP criteria.
 
-This guide provides practical techniques for avoid mistakes External IP in your Kubernetes cluster, following security best practices and production-tested patterns.
+This guide provides practical techniques for avoiding External IP policy mistakes in your Kubernetes cluster, following security best practices and production-tested patterns.
 
 ## Prerequisites
 
@@ -31,10 +31,14 @@ egress:
   - action: Allow
     protocol: UDP
     destination:
+      namespaceSelector: projectcalico.org/name == "kube-system"
+      selector: k8s-app == "kube-dns"
       ports: [53]
   - action: Allow
     protocol: TCP
     destination:
+      namespaceSelector: projectcalico.org/name == "kube-system"
+      selector: k8s-app == "kube-dns"
       ports: [53]
 ```
 
@@ -43,7 +47,7 @@ egress:
 ```bash
 # Check policy order - lower order = higher priority
 
-calicoctl get networkpolicies -n production -o wide | sort -k4 -n
+calicoctl get networkpolicies -n production -o yaml
 ```
 
 ## Mistake 3: Selector Typos
@@ -53,9 +57,9 @@ calicoctl get networkpolicies -n production -o wide | sort -k4 -n
 kubectl get pods -n production -l "your-label-key=your-label-value"
 ```
 
-## Mistake 4: Missing Bidirectional Rules
+## Mistake 4: Missing Rules on Both Isolated Endpoints
 
-Both ingress on destination AND egress on source must be permitted:
+When both endpoints are isolated by ingress and egress policy, ingress on the destination AND egress on the source must be permitted:
 
 ```yaml
 # Source side - egress
@@ -76,11 +80,11 @@ ingress:
 ```mermaid
 flowchart TD
     A[Source Pod] -->|Traffic| B{Calico Policy\nExternal IP}
-    B -->|Allow Rule Matches| C[Destination Pod]
+    B -->|Allow Rule Matches| C[External IP / Network]
     B -->|No Match / Deny| D[BLOCKED]
     E[Policy Controller] -->|Updates| B
 ```
 
 ## Conclusion
 
-Avoid Mistakes External IP policies in Calico requires attention to policy ordering, selector accuracy, and bidirectional rule coverage. Follow the patterns in this guide to ensure your External IP policies are correctly configured, tested, and monitored. Always validate in staging before applying to production, and maintain comprehensive logging for visibility into policy decisions.
+Avoiding External IP policy mistakes in Calico requires attention to policy ordering, selector accuracy, and rule coverage on isolated endpoints. Follow the patterns in this guide to ensure your External IP policy rules are correctly configured, tested, and monitored. Always validate in staging before applying to production, and maintain comprehensive logging for visibility into policy decisions.
