@@ -34,7 +34,7 @@ kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | \
 ```bash
 # Check current versions
 
-kubectl version --short
+kubectl version -o yaml
 kubectl get pods -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{.items[0].spec.containers[0].image}'
 # Cross-reference with https://docs.tigera.io/calico/latest/getting-started/kubernetes/requirements
@@ -44,9 +44,9 @@ For EKS/GKE/AKS managed clusters with auto-upgrade enabled, disable auto-upgrade
 
 ## Mistake 2: Mismatched calicoctl Version
 
-Using a `calicoctl` binary that doesn't match the cluster's Calico version causes silent failures - commands appear to succeed but the resources are created with the wrong API schema.
+Using a `calicoctl` binary that doesn't match the cluster's Calico version causes commands to fail unless version mismatch checks are explicitly bypassed. Older `calicoctl` versions used after an upgrade can also result in unexpected behavior and data.
 
-**Symptom**: `calicoctl get` works but returned resources have unexpected fields. `calicoctl apply` returns success but the resource is not applied correctly.
+**Symptom**: `calicoctl` returns a version mismatch error, or commands run with `--allow-version-mismatch` return resources with unexpected fields.
 
 **Diagnosis**:
 ```bash
@@ -77,12 +77,13 @@ kubectl get pods -n calico-system -o jsonpath='{range .items[*]}{.metadata.name}
 # All should show the same Calico version
 ```
 
-**Prevention**: Use the Calico operator for upgrades - it updates all components atomically, preventing partial upgrades:
+**Prevention**: Use the documented Calico operator upgrade procedure - it updates the CRDs and operator-managed components together, preventing partial manual upgrades:
 ```bash
-# Operator-managed upgrade: update the operator, which updates all components
-kubectl set image deployment/tigera-operator \
-  tigera-operator=quay.io/tigera/operator:v1.30.5 \
-  -n tigera-operator
+# Operator-managed upgrade: apply the CRDs and Tigera operator manifest for the target release
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml -O
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml -O
+kubectl apply --server-side --force-conflicts -f v1_crd_projectcalico_org.yaml
+kubectl apply --server-side --force-conflicts -f tigera-operator.yaml
 ```
 
 ## Mistake 4: Running End-of-Life Calico with Active Security Vulnerabilities
@@ -96,15 +97,16 @@ Calico follows a time-limited support policy. Older versions stop receiving secu
 
 ## Mistake 5: Not Updating the CRD Schema After Upgrades
 
-Calico CRDs are versioned. When upgrading Calico, new CRD features become available but old resources using the old schema may behave unexpectedly until they are re-applied.
+Calico CRDs are versioned. When upgrading Calico, new CRD fields are not available to the Kubernetes API until the CRD manifests for the target Calico release have been applied.
 
-**Symptom**: After upgrade, `calicoctl get` shows resources but new features in the upgraded schema are not available.
+**Symptom**: After upgrade, `calicoctl get` shows resources but new fields from the upgraded schema are rejected or unavailable.
 
 **Fix**: After any Calico upgrade, verify CRDs are updated:
 ```bash
-kubectl get crd | grep calico
-# Verify the creation timestamp is recent (post-upgrade)
-kubectl get crd globalnetworkpolicies.crd.projectcalico.org -o yaml | grep "resourceVersion"
+kubectl get crd | grep projectcalico
+# Verify the served versions on a representative Calico CRD
+kubectl get crd globalnetworkpolicies.crd.projectcalico.org \
+  -o jsonpath='{range .spec.versions[*]}{.name}{"\t"}{.served}{"\n"}{end}'
 ```
 
 The Calico operator handles CRD upgrades automatically. If managing Calico manually, ensure you apply the CRD manifests from the new version before upgrading the components.
