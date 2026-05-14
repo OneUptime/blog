@@ -17,31 +17,30 @@ This guide covers the complete setup of Flagger alerting with Microsoft Teams, i
 ## Prerequisites
 
 - A Kubernetes cluster with Flux and Flagger installed
-- A Microsoft Teams workspace with permissions to add connectors
+- A Microsoft Teams workspace with permissions to create Workflows or manage incoming webhooks
 - An application with a Flagger Canary resource
-- kubectl and flux CLI tools
+- kubectl and, if you are applying the manifests through GitOps, the flux CLI
 
-## Step 1: Create a Microsoft Teams Incoming Webhook
+## Step 1: Create a Microsoft Teams Workflow Webhook
 
-Create an incoming webhook connector in your Microsoft Teams channel.
+Create an incoming webhook for your Microsoft Teams channel. Microsoft 365 Connectors are being retired, so the recommended path is to create a webhook with the Workflows app.
 
 1. Open Microsoft Teams and navigate to the channel where you want alerts
-2. Click the three dots menu next to the channel name
-3. Select "Connectors" (or "Manage channel" then "Connectors")
-4. Find "Incoming Webhook" and click "Configure"
+2. Open Workflows for the channel
+3. Create a workflow using the "When a Teams webhook request is received" trigger
+4. Add a "Post a message in a chat or channel" action for the target channel
 5. Give it a name like "Flagger Canary Alerts"
-6. Optionally upload a custom icon
-7. Click "Create"
-8. Copy the webhook URL
+6. Save the workflow
+7. Copy the webhook URL
 
-The webhook URL will look like:
-```yaml
-https://outlook.office.com/webhook/GUID@GUID/IncomingWebhook/GUID/GUID
-```
-
-For Teams using Workflows (Power Automate), the URL format may differ:
+The Workflows webhook URL will look like:
 ```yaml
 https://prod-XX.westus.logic.azure.com:443/workflows/GUID/triggers/manual/paths/invoke?...
+```
+
+If you are maintaining an existing legacy connector until retirement, the URL may look like:
+```yaml
+https://outlook.office.com/webhook/GUID@GUID/IncomingWebhook/GUID/GUID
 ```
 
 ## Step 2: Create a Kubernetes Secret for the Webhook URL
@@ -55,11 +54,11 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: teams-webhook-url
-  namespace: flagger-system
+  namespace: default
 type: Opaque
 stringData:
-  # Your Microsoft Teams incoming webhook URL
-  address: "https://outlook.office.com/webhook/GUID@GUID/IncomingWebhook/GUID/GUID"
+  # Your Microsoft Teams workflow webhook URL
+  address: "https://prod-XX.westus.logic.azure.com:443/workflows/GUID/triggers/manual/paths/invoke?..."
 ```
 
 Apply the secret:
@@ -179,19 +178,19 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: teams-webhook-dev
-  namespace: flagger-system
+  namespace: default
 type: Opaque
 stringData:
-  address: "https://outlook.office.com/webhook/dev-channel-webhook-url"
+  address: "https://prod-XX.westus.logic.azure.com:443/workflows/dev-channel-workflow-url"
 ---
 apiVersion: v1
 kind: Secret
 metadata:
   name: teams-webhook-sre
-  namespace: flagger-system
+  namespace: default
 type: Opaque
 stringData:
-  address: "https://outlook.office.com/webhook/sre-channel-webhook-url"
+  address: "https://prod-XX.westus.logic.azure.com:443/workflows/sre-channel-workflow-url"
 ```
 
 Reference both in the Canary:
@@ -236,10 +235,19 @@ spec:
 
 ## Step 6: Configure Teams Alerts Across Namespaces
 
-For cluster-wide alerting, create the AlertProvider in the flagger-system namespace.
+For cluster-wide alerting, create the Secret and AlertProvider in the flagger-system namespace.
 
 ```yaml
 # cluster-teams-alert.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: teams-webhook-url
+  namespace: flagger-system
+type: Opaque
+stringData:
+  address: "https://prod-XX.westus.logic.azure.com:443/workflows/GUID/triggers/manual/paths/invoke?..."
+---
 apiVersion: flagger.app/v1beta1
 kind: AlertProvider
 metadata:
@@ -289,12 +297,12 @@ spec:
 
 ## Step 7: Understanding Teams Alert Messages
 
-Flagger sends Adaptive Card messages to Microsoft Teams with structured information:
+Flagger sends Microsoft MessageCard payloads to Microsoft Teams with structured information:
 
-- **Title**: Canary name, namespace, and current status
-- **Color coding**: Green for success, yellow for progress, red for failures
-- **Details**: Traffic weight, metric results, and event messages
-- **Timestamp**: When the event occurred
+- **Activity title**: The Flagger event message
+- **Activity subtitle**: Canary name and namespace
+- **Color coding**: Blue for normal notifications and red for error notifications
+- **Facts**: Additional event fields such as the canary phase, traffic weight, and metric results when available
 
 You will see messages like:
 
@@ -335,15 +343,15 @@ kubectl logs -n flagger-system deployment/flagger --tail=100 | grep -i "alert\|t
 
 Common issues with Microsoft Teams alerting:
 
-- **No messages appearing**: Verify the webhook URL is valid and has not been deleted from the Teams connector settings
+- **No messages appearing**: Verify the webhook URL is valid and has not been deleted from the Teams workflow or connector settings
 - **403 Forbidden**: The webhook may have been disabled or the connector removed from the channel
-- **Webhook URL expired**: Microsoft Teams webhooks can expire; regenerate if needed
+- **Webhook URL retired or disabled**: Legacy Microsoft 365 Connector URLs must be migrated to Workflows before connector retirement, and Workflows can be disabled or orphaned if the owner account is removed
 - **Message format errors**: Ensure you are using the correct provider type (`msteams`)
 
 ```bash
 # Test the webhook directly
 kubectl run -n flagger-system test-teams --rm -it --image=curlimages/curl -- \
-  curl -s -X POST "https://outlook.office.com/webhook/GUID@GUID/IncomingWebhook/GUID/GUID" \
+  curl -s -X POST "https://prod-XX.westus.logic.azure.com:443/workflows/GUID/triggers/manual/paths/invoke?..." \
   -H "Content-Type: application/json" \
   -d '{"@type":"MessageCard","summary":"Test","themeColor":"0076D7","title":"Flagger Test","text":"Test message from Flagger"}'
 
@@ -353,14 +361,14 @@ kubectl get events -n default --field-selector involvedObject.name=my-app --sort
 
 ## Migrating from Connectors to Workflows
 
-Microsoft is deprecating Office 365 Connectors in favor of Power Automate Workflows. If you need to use the new Workflows-based webhooks:
+Microsoft is retiring Office 365 Connectors in favor of Power Automate Workflows. If you still use a legacy connector URL:
 
 1. Create a new Workflow in Power Automate with the "When a Teams webhook request is received" trigger
 2. Add a "Post a message in a chat or channel" action
 3. Copy the workflow HTTP POST URL
 4. Update your Kubernetes secret with the new URL
 
-The Flagger AlertProvider configuration remains the same regardless of which webhook type you use.
+The Flagger AlertProvider configuration remains the same for Workflows because Teams Workflows support MessageCard payloads, but interactive MessageCard buttons are not supported.
 
 ## Conclusion
 
