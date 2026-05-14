@@ -12,11 +12,11 @@ Description: A comprehensive guide to deploying the Strimzi Kafka Operator on Ku
 
 Strimzi is a Kubernetes Operator that simplifies running Apache Kafka on Kubernetes. It provides custom resources for managing Kafka clusters, topics, users, and connectors through the Kubernetes API. Unlike deploying Kafka directly with Helm charts, Strimzi offers a Kubernetes-native approach where Kafka clusters are managed as custom resources, enabling declarative management and automated operations. Deploying Strimzi with Flux CD combines the operator pattern with GitOps for a fully automated Kafka lifecycle.
 
-This guide covers deploying the Strimzi Operator using Flux CD, creating a Kafka cluster, managing topics and users declaratively, and configuring Kafka Connect.
+This guide covers deploying the Strimzi Operator using Flux CD, creating a Kafka cluster, and managing topics and users declaratively.
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.26 or later) with at least 16 GB of available memory
+- A Kubernetes cluster (v1.30 or later) with at least 16 GB of available memory
 - Flux CD installed and bootstrapped
 - A Git repository connected to Flux CD
 - kubectl configured for your cluster
@@ -61,7 +61,8 @@ metadata:
   namespace: strimzi
 spec:
   interval: 1h
-  url: https://strimzi.io/charts/
+  type: oci
+  url: oci://quay.io/strimzi-helm
 ```
 
 ## Step 3: Deploy the Strimzi Operator
@@ -80,7 +81,7 @@ spec:
   chart:
     spec:
       chart: strimzi-kafka-operator
-      version: "0.43.x"
+      version: "1.0.x"
       sourceRef:
         kind: HelmRepository
         name: strimzi
@@ -102,14 +103,11 @@ spec:
     # Log level for the operator
     logLevel: INFO
 
-    # Feature gates for additional functionality
-    featureGates: "+UseKRaft,+KafkaNodePools"
-
     # Dashboard integration
     dashboards:
       enabled: true
-      labels:
-        grafana_dashboard: "true"
+      label: grafana_dashboard
+      labelValue: "true"
 ```
 
 ## Step 4: Create the Kafka Cluster
@@ -118,7 +116,7 @@ Define a Kafka cluster using Strimzi custom resources with KRaft mode.
 
 ```yaml
 # clusters/my-cluster/strimzi/kafka-cluster.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaNodePool
 metadata:
   name: controllers
@@ -135,6 +133,7 @@ spec:
     size: 10Gi
     class: standard
     deleteClaim: false
+    kraftMetadata: shared
   resources:
     requests:
       cpu: 250m
@@ -143,7 +142,7 @@ spec:
       cpu: "1"
       memory: 1Gi
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaNodePool
 metadata:
   name: brokers
@@ -178,17 +177,15 @@ spec:
                   strimzi.io/name: my-kafka-cluster-brokers
               topologyKey: kubernetes.io/hostname
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: my-kafka-cluster
   namespace: strimzi
-  annotations:
-    strimzi.io/node-pools: enabled
-    strimzi.io/kraft: enabled
 spec:
   kafka:
-    version: 3.7.0
+    version: 4.2.0
+    metadataVersion: 4.2-IV1
     # Listeners define how clients connect to Kafka
     listeners:
       # Internal listener for in-cluster access
@@ -208,6 +205,8 @@ spec:
         tls: true
         authentication:
           type: scram-sha-512
+    authorization:
+      type: simple
     # Kafka broker configuration
     config:
       # Replication settings
@@ -294,7 +293,7 @@ Define topics declaratively using Strimzi KafkaTopic resources.
 
 ```yaml
 # clusters/my-cluster/strimzi/topics.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: events
@@ -315,7 +314,7 @@ spec:
     # Maximum message size
     max.message.bytes: "10485760"
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: orders
@@ -333,7 +332,7 @@ spec:
     # Delete tombstone records after 24 hours
     delete.retention.ms: "86400000"
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: dead-letter
@@ -355,7 +354,7 @@ Define Kafka users with specific ACL permissions.
 
 ```yaml
 # clusters/my-cluster/strimzi/users.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaUser
 metadata:
   name: producer-app
@@ -384,7 +383,7 @@ spec:
           - Write
           - Describe
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaUser
 metadata:
   name: consumer-app
@@ -453,12 +452,15 @@ spec:
     name: flux-system
   path: ./clusters/my-cluster/strimzi
   prune: true
-  wait: true
   timeout: 20m
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: strimzi-operator
+      namespace: strimzi
+    - apiVersion: kafka.strimzi.io/v1
+      kind: Kafka
+      name: my-kafka-cluster
       namespace: strimzi
 ```
 
