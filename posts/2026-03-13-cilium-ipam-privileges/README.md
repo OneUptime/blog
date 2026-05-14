@@ -10,7 +10,7 @@ Description: Understand the Linux capabilities, Kubernetes RBAC permissions, and
 
 ## Introduction
 
-Cilium's IPAM subsystem requires specific privileges at both the Linux system level and the Kubernetes RBAC level to function correctly. At the system level, Cilium agents need Linux capabilities to manipulate network namespaces, load eBPF programs, and configure network interfaces. At the Kubernetes level, the Cilium Operator needs RBAC permissions to create, update, and delete CiliumNode CRDs, manage namespaces, and watch pod events for IPAM-related decisions.
+Cilium's IPAM subsystem requires specific privileges at both the Linux system level and the Kubernetes RBAC level to function correctly. At the system level, Cilium agents need Linux capabilities to manipulate network namespaces, load eBPF programs, and configure network interfaces. At the Kubernetes level, the Cilium Operator needs RBAC permissions to manage CiliumNode resources for IPAM modes such as cluster-pool, while Cilium agents need permissions to watch Kubernetes resources and update CiliumNode IPAM status.
 
 Insufficient privileges manifest in specific and often confusing ways: pods may start but have incorrect IP configurations, IPAM state may not be updated after pod deletion causing IP leaks, or the Operator may silently fail to allocate CIDRs to new nodes. Security hardening efforts that remove capabilities or restrict RBAC permissions can inadvertently break IPAM without obvious error messages.
 
@@ -27,7 +27,8 @@ This guide covers the complete privilege requirements for Cilium IPAM, how to di
 Required Linux capabilities for Cilium agents:
 
 ```yaml
-# Cilium requires these Linux capabilities for IPAM:
+# Cilium agents typically require these Linux capabilities for networking,
+# eBPF, and IPAM-related operations:
 
 # NET_ADMIN    - Configure network interfaces and routing
 # SYS_MODULE   - Load kernel modules (optional, for some features)
@@ -47,7 +48,7 @@ Review and configure Kubernetes RBAC:
 kubectl get clusterrole cilium -o yaml
 
 # Key permissions required for IPAM:
-# - ciliumnodes: get, list, watch, create, update, patch, delete
+# - ciliumnodes and ciliumnodes/status: get, list, watch, create, update, patch, delete
 # - ciliumendpoints: get, list, watch, create, update, patch, delete
 # - pods: get, list, watch (for IP allocation tracking)
 # - nodes: get, list, watch (for node CIDR management)
@@ -67,11 +68,20 @@ Configure security context for Cilium pods:
 # cilium-values.yaml snippet
 securityContext:
   capabilities:
-    add:
+    ciliumAgent:
+      - CHOWN
+      - KILL
       - NET_ADMIN
       - NET_RAW
       - IPC_LOCK
+      - SYS_MODULE
       - SYS_ADMIN
+      - SYS_RESOURCE
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+      - SYSLOG
   privileged: false  # Should NOT be fully privileged for security
 ```
 
@@ -87,10 +97,11 @@ kubectl -n kube-system logs -l name=cilium-operator | grep -i "forbidden\|rbac\|
 # Test specific RBAC permissions
 kubectl auth can-i get ciliumnodes --as=system:serviceaccount:kube-system:cilium
 kubectl auth can-i update ciliumnodes --as=system:serviceaccount:kube-system:cilium
-kubectl auth can-i list pods --as=system:serviceaccount:kube-system:cilium-operator
+kubectl auth can-i update ciliumnodes --subresource=status --as=system:serviceaccount:kube-system:cilium
+kubectl auth can-i create ciliumnodes --as=system:serviceaccount:kube-system:cilium-operator
 
 # Check if Cilium agent has required capabilities
-kubectl -n kube-system exec ds/cilium -- capsh --print | grep "cap_net_admin"
+kubectl -n kube-system exec ds/cilium -- sh -c 'grep "^Cap" /proc/1/status'
 
 # Diagnose eBPF permission issues (related to capabilities)
 kubectl -n kube-system logs ds/cilium | grep -i "bpf\|ebpf\|permission\|cap"
@@ -115,10 +126,11 @@ kubectl create clusterrolebinding cilium \
   --serviceaccount=kube-system:cilium \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Issue: PSP (Pod Security Policy) blocking capabilities
-# Check if PSP is blocking Cilium
-kubectl get psp | grep cilium
-kubectl describe psp cilium
+# Issue: PSP (Pod Security Policy) blocking capabilities on legacy Kubernetes clusters before v1.25
+# Check if the removed PSP API is present before querying it
+kubectl api-resources | grep -i podsecuritypolicy
+kubectl get podsecuritypolicies.policy | grep cilium
+kubectl describe podsecuritypolicies.policy cilium
 
 # Issue: Pod Security Standards blocking privileged init containers
 kubectl -n kube-system describe pod <cilium-pod> | grep -i "violat\|secur\|block"
@@ -130,38 +142,45 @@ Verify all required privileges are in place:
 
 ```bash
 # Comprehensive RBAC check for IPAM operations
-PERMISSIONS=(
+AGENT_PERMISSIONS=(
   "get ciliumnodes"
   "update ciliumnodes"
-  "create ciliumnodes"
-  "delete ciliumnodes"
+  "update ciliumnodes --subresource=status"
   "list pods"
   "watch pods"
   "get nodes"
 )
 
+OPERATOR_PERMISSIONS=(
+  "get ciliumnodes"
+  "list ciliumnodes"
+  "watch ciliumnodes"
+  "create ciliumnodes"
+  "update ciliumnodes"
+  "delete ciliumnodes"
+  "list nodes"
+  "watch nodes"
+  "get nodes"
+)
+
 echo "=== Cilium Agent RBAC ==="
-for perm in "${PERMISSIONS[@]}"; do
-  VERB=$(echo $perm | awk '{print $1}')
-  RESOURCE=$(echo $perm | awk '{print $2}')
-  RESULT=$(kubectl auth can-i $VERB $RESOURCE \
+for perm in "${AGENT_PERMISSIONS[@]}"; do
+  RESULT=$(kubectl auth can-i $perm \
     --as=system:serviceaccount:kube-system:cilium 2>&1)
-  echo "$VERB $RESOURCE: $RESULT"
+  echo "$perm: $RESULT"
 done
 
 echo ""
 echo "=== Cilium Operator RBAC ==="
-for perm in "${PERMISSIONS[@]}"; do
-  VERB=$(echo $perm | awk '{print $1}')
-  RESOURCE=$(echo $perm | awk '{print $2}')
-  RESULT=$(kubectl auth can-i $VERB $RESOURCE \
+for perm in "${OPERATOR_PERMISSIONS[@]}"; do
+  RESULT=$(kubectl auth can-i $perm \
     --as=system:serviceaccount:kube-system:cilium-operator 2>&1)
-  echo "$VERB $RESOURCE: $RESULT"
+  echo "$perm: $RESULT"
 done
 
 # Test IPAM operations work
-cilium status | grep -i ipam
-kubectl -n kube-system exec ds/cilium -- cilium ip list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --all-addresses | grep -i ipam
+kubectl -n kube-system exec ds/cilium -- cilium-dbg ip list
 ```
 
 ## Monitor Privilege Health
@@ -170,9 +189,9 @@ kubectl -n kube-system exec ds/cilium -- cilium ip list
 graph TD
     A[Cilium Agent] -->|NET_ADMIN capability| B[Configure pod netns]
     A -->|SYS_ADMIN capability| C[Load eBPF programs]
-    A -->|RBAC: update ciliumnodes| D[Record IP allocations]
+    A -->|RBAC: update ciliumnodes/status| D[Record IP allocations]
     E[Cilium Operator] -->|RBAC: create ciliumnodes| F[Allocate node CIDRs]
-    E -->|RBAC: list pods| G[Track pod lifecycle for IPAM]
+    E -->|RBAC: watch nodes| G[React to node lifecycle for IPAM]
     H[RBAC Error] -->|403 Forbidden| I[IPAM allocation fails]
     J[Missing Capability] -->|Operation fails| K[eBPF/netns error]
 ```
@@ -202,7 +221,7 @@ spec:
   - name: cilium-rbac
     rules:
     - alert: CiliumRBACError
-      expr: increase(cilium_k8s_client_api_calls_total{method=~"GET|POST|PUT|DELETE", status="403"}[5m]) > 0
+      expr: increase(cilium_k8s_client_api_calls_total{method=~"GET|POST|PUT|DELETE", return_code="403"}[5m]) > 0
       for: 1m
       labels:
         severity: critical
@@ -213,4 +232,4 @@ EOF
 
 ## Conclusion
 
-Cilium's IPAM subsystem depends on a specific set of Linux capabilities and Kubernetes RBAC permissions to function correctly. These are automatically configured by the Helm chart, but can be inadvertently broken by security hardening changes, PSP/PSS policies, or manual RBAC modifications. The `kubectl auth can-i` tool is your primary diagnostic for RBAC issues, while `capsh --print` on the Cilium agent pod confirms Linux capabilities. Always validate IPAM privileges after any security policy changes and include RBAC auditing as part of your cluster security review process.
+Cilium's IPAM subsystem depends on a specific set of Linux capabilities and Kubernetes RBAC permissions to function correctly. These are automatically configured by the Helm chart, but can be inadvertently broken by security hardening changes, legacy PSP policies, PSS policies, or manual RBAC modifications. The `kubectl auth can-i` tool is your primary diagnostic for RBAC issues, while the Cilium agent pod's `/proc/1/status` capability fields confirm Linux capabilities. Always validate IPAM privileges after any security policy changes and include RBAC auditing as part of your cluster security review process.
