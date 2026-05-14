@@ -83,10 +83,12 @@ Install Kubernetes components on all nodes:
 sudo apt-get update
 sudo apt-get install -y apt-transport-https ca-certificates curl gpg
 
-curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | \
+sudo mkdir -p -m 755 /etc/apt/keyrings
+
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.35/deb/Release.key | \
   sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
 
-echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | \
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.35/deb/ /' | \
   sudo tee /etc/apt/sources.list.d/kubernetes.list
 
 # Install kubeadm, kubelet, and kubectl
@@ -193,6 +195,7 @@ export GITHUB_USER=<your-github-username>
 
 # Bootstrap Flux CD
 flux bootstrap github \
+  --token-auth \
   --owner=$GITHUB_USER \
   --repository=kubeadm-gitops \
   --branch=main \
@@ -573,30 +576,57 @@ spec:
     - default-pool
 ```
 
+Add the MetalLB Helm source and release to `clusters/kubeadm/infrastructure/kustomization.yaml` first:
+
+```yaml
+resources:
+  - ../../../infrastructure/sources/rancher.yaml
+  - ../../../infrastructure/sources/ingress-nginx.yaml
+  - ../../../infrastructure/sources/metallb.yaml
+  - ../../../infrastructure/storage/local-path.yaml
+  - ../../../infrastructure/controllers/ingress.yaml
+  - ../../../infrastructure/controllers/metallb.yaml
+```
+
+After MetalLB is ready, add `../../../infrastructure/controllers/metallb-config.yaml` to the same resources list and push the change.
+
 ## Upgrading Kubernetes with Kubeadm
 
 When upgrading your kubeadm cluster, Flux continues to reconcile after the upgrade completes:
 
 ```bash
 # On the control plane node
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.36/deb/Release.key | \
+  sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.36/deb/ /' | \
+  sudo tee /etc/apt/sources.list.d/kubernetes.list
+
 sudo apt-mark unhold kubeadm
 sudo apt-get update
-sudo apt-get install -y kubeadm=1.31.0-1.1
+sudo apt-get install -y kubeadm='1.36.x-*'
+sudo apt-mark hold kubeadm
 
 # Plan the upgrade
 sudo kubeadm upgrade plan
 
 # Apply the upgrade
-sudo kubeadm upgrade apply v1.31.0
+sudo kubeadm upgrade apply v1.36.x
+
+# Drain the node before upgrading kubelet
+kubectl drain <node-to-drain> --ignore-daemonsets
 
 # Upgrade kubelet and kubectl
 sudo apt-mark unhold kubelet kubectl
-sudo apt-get install -y kubelet=1.31.0-1.1 kubectl=1.31.0-1.1
-sudo apt-mark hold kubelet kubectl kubeadm
+sudo apt-get install -y kubelet='1.36.x-*' kubectl='1.36.x-*'
+sudo apt-mark hold kubelet kubectl
 
 # Restart kubelet
 sudo systemctl daemon-reload
 sudo systemctl restart kubelet
+
+# Bring the node back online
+kubectl uncordon <node-to-uncordon>
 
 # Verify Flux is still reconciling after upgrade
 flux get kustomizations
