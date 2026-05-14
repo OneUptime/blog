@@ -76,7 +76,7 @@ spec:
   chart:
     spec:
       chart: fluent-bit
-      version: "0.43.x"
+      version: "0.57.x"
       sourceRef:
         kind: HelmRepository
         name: fluent
@@ -88,8 +88,8 @@ spec:
 
     # Container image configuration
     image:
-      repository: fluent/fluent-bit
-      tag: "3.0"
+      repository: cr.fluentbit.io/fluent/fluent-bit
+      tag: "5.0.5"
 
     # Resource allocation (Fluent Bit is very lightweight)
     resources:
@@ -146,10 +146,10 @@ spec:
             Refresh_Interval  10
 
         [INPUT]
-            # Collect node-level system metrics
+            # Collect node-level systemd journal logs
             Name              systemd
             Tag               host.*
-            # Read only kernel and systemd unit messages
+            # Read kubelet and containerd unit messages
             Systemd_Filter    _SYSTEMD_UNIT=kubelet.service
             Systemd_Filter    _SYSTEMD_UNIT=containerd.service
             Read_From_Tail    On
@@ -179,7 +179,7 @@ spec:
             Add                 node_name ${HOSTNAME}
 
         [FILTER]
-            # Nest Kubernetes metadata under a single key
+            # Lift Kubernetes metadata to top-level k8s_* fields
             Name                nest
             Match               kube.*
             Operation           lift
@@ -256,7 +256,7 @@ spec:
         port: http
     readinessProbe:
       httpGet:
-        path: /api/v1/health
+        path: /api/v2/health
         port: http
 ```
 
@@ -289,7 +289,6 @@ spec:
     name: flux-system
   path: ./clusters/my-cluster/fluent-bit
   prune: true
-  wait: true
   timeout: 10m
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v2
@@ -305,7 +304,7 @@ You can configure Fluent Bit to send logs to multiple backends simultaneously by
 ```yaml
 # Additional output configurations
 # Add these to the outputs section of the HelmRelease values
-outputs_additional: |
+outputs: |
   [OUTPUT]
       # Forward to Loki for Grafana integration
       Name                loki
