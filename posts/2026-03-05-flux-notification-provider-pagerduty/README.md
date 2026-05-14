@@ -23,17 +23,9 @@ This guide walks through configuring Flux CD to send notifications to PagerDuty 
 
 In PagerDuty, navigate to **Services** and select the service where you want Flux events to create incidents (or create a new service). Under the service's **Integrations** tab, click **Add Integration**. Select **Events API v2** and click **Add**. Copy the **Integration Key** (also called a routing key).
 
-## Step 2: Create a Kubernetes Secret
+## Step 2: Prepare the PagerDuty Routing Key
 
-Store the PagerDuty integration key in a Kubernetes secret. For PagerDuty, the `token` field is used for the routing key.
-
-```bash
-# Create a secret containing the PagerDuty integration key
-
-kubectl create secret generic pagerduty-integration-key \
-  --namespace=flux-system \
-  --from-literal=token=YOUR_PAGERDUTY_INTEGRATION_KEY
-```
+Keep the PagerDuty integration key available for the Provider manifest. For PagerDuty, Flux uses the `channel` field as the routing key.
 
 ## Step 3: Create the Flux Notification Provider
 
@@ -42,7 +34,7 @@ Define a Provider resource for PagerDuty.
 ```yaml
 # provider-pagerduty.yaml
 # Configures Flux to send notifications to PagerDuty
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: pagerduty-provider
@@ -50,11 +42,10 @@ metadata:
 spec:
   # Use "pagerduty" as the provider type
   type: pagerduty
-  # PagerDuty channel corresponds to the severity of the PagerDuty event
-  channel: critical
-  # Reference to the secret containing the integration key
-  secretRef:
-    name: pagerduty-integration-key
+  # PagerDuty Events API endpoint
+  address: https://events.pagerduty.com
+  # PagerDuty channel is the integration key, also known as the routing key
+  channel: YOUR_PAGERDUTY_INTEGRATION_KEY
 ```
 
 Apply the Provider:
@@ -71,7 +62,7 @@ For PagerDuty, you typically want to forward only error events to avoid creating
 ```yaml
 # alert-pagerduty.yaml
 # Routes Flux error events to PagerDuty to create incidents
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: pagerduty-alert
@@ -139,20 +130,22 @@ The notification controller sends events to the PagerDuty Events API v2 endpoint
 
 ## Configuring Event Severity
 
-The `channel` field in the Provider can be used to set the PagerDuty event severity:
+Flux forwards the original event severity to PagerDuty. Use the Alert `eventSeverity` field to filter which events are sent:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
-kind: Provider
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
 metadata:
-  name: pagerduty-warning
+  name: pagerduty-errors
   namespace: flux-system
 spec:
-  type: pagerduty
-  # Severity can be: critical, error, warning, or info
-  channel: warning
-  secretRef:
-    name: pagerduty-integration-key
+  providerRef:
+    name: pagerduty-provider
+  # Use "error" to send only error events; use "info" or omit the field to send all events.
+  eventSeverity: error
+  eventSources:
+    - kind: Kustomization
+      name: "*"
 ```
 
 ## Separate Services for Different Environments
@@ -161,31 +154,29 @@ Route production and staging alerts to different PagerDuty services:
 
 ```yaml
 # Provider for production service
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: pagerduty-prod
   namespace: flux-system
 spec:
   type: pagerduty
-  channel: critical
-  secretRef:
-    name: pagerduty-prod-key
+  address: https://events.pagerduty.com
+  channel: YOUR_PRODUCTION_PAGERDUTY_INTEGRATION_KEY
 ---
 # Provider for staging service
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: pagerduty-staging
   namespace: flux-system
 spec:
   type: pagerduty
-  channel: warning
-  secretRef:
-    name: pagerduty-staging-key
+  address: https://events.pagerduty.com
+  channel: YOUR_STAGING_PAGERDUTY_INTEGRATION_KEY
 ---
 # Alert for production errors
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: pagerduty-prod-alert
@@ -199,7 +190,7 @@ spec:
       name: "production-*"
 ---
 # Alert for staging errors
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: pagerduty-staging-alert
@@ -217,10 +208,10 @@ spec:
 
 If PagerDuty incidents are not being created:
 
-1. **Integration key**: Verify the secret contains a `token` key with a valid Events API v2 integration key (not a REST API key).
+1. **Integration key**: Verify the Provider `channel` contains a valid Events API v2 integration key (not a REST API key).
 2. **Service configuration**: Ensure the PagerDuty service has the Events API v2 integration enabled.
 3. **Event severity filter**: If you set `eventSeverity: error`, only error events will trigger -- informational events will be skipped.
-4. **Namespace alignment**: Provider, Alert, and Secret must be in the same namespace.
+4. **Namespace alignment**: Provider and Alert must be in the same namespace.
 5. **Controller logs**: Check `kubectl logs -n flux-system deploy/notification-controller` for HTTP errors.
 6. **Network access**: The cluster must be able to reach `events.pagerduty.com` on port 443.
 7. **Deduplication**: PagerDuty deduplicates events with the same dedup key. If an incident already exists for the same resource, new events may be grouped rather than creating a new incident.
