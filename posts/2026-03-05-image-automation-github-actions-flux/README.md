@@ -14,7 +14,7 @@ GitHub Actions and Flux CD form a powerful CI/CD pipeline when combined. GitHub 
 
 ## Prerequisites
 
-- Flux CD v2.0 or later installed on your Kubernetes cluster
+- Flux CD v2.8 or later installed on your Kubernetes cluster
 - Flux image-reflector-controller and image-automation-controller installed
 - A GitHub repository for your application code
 - A separate GitHub repository (or branch) for your Flux GitOps manifests
@@ -57,10 +57,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -68,7 +68,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -77,7 +77,7 @@ jobs:
             type=sha,prefix=,format=short
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -97,7 +97,7 @@ If you prefer build-number-based tags:
         run: echo "TAG=build-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -224,8 +224,11 @@ spec:
       messageTemplate: |
         chore: update image tags
 
-        {{ range .Changed.Objects -}}
-        - {{ .Kind }}/{{ .Name }}: {{ .OldValue }} -> {{ .NewValue }}
+        {{ range $resource, $changes := .Changed.Objects -}}
+        - {{ $resource.Kind }}/{{ $resource.Name }}
+        {{- range $_, $change := $changes }}
+          {{ $change.OldValue }} -> {{ $change.NewValue }}
+        {{- end }}
         {{ end -}}
     push:
       branch: main
@@ -236,15 +239,15 @@ spec:
 
 ## Using GitHub Actions to Trigger Flux Reconciliation
 
-Optionally, you can trigger an immediate Flux reconciliation after pushing an image, rather than waiting for the next scan interval.
+Optionally, you can trigger an immediate Flux reconciliation after pushing an image, rather than waiting for the next scan interval. If you expose a generic Flux Receiver for the ImageRepository, call the generated `.status.webhookPath`.
 
 ```yaml
 # Add to your GitHub Actions workflow
       - name: Trigger Flux reconciliation
         run: |
           curl -X POST \
-            -H "Authorization: Bearer ${{ secrets.FLUX_WEBHOOK_TOKEN }}" \
-            "https://flux-webhook.example.com/hook/image-reflector"
+            -H "Content-Type: application/json" \
+            "https://flux-webhook.example.com/hook/<sha256-token-name-namespace>"
 ```
 
 Alternatively, configure a Flux Receiver to accept GitHub webhooks.
@@ -257,6 +260,9 @@ metadata:
   namespace: flux-system
 spec:
   type: github
+  events:
+    - "ping"
+    - "package"
   secretRef:
     name: webhook-token
   resources:
