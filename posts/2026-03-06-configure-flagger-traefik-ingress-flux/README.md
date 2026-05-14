@@ -51,17 +51,19 @@ spec:
 
 ```yaml
 # traefik-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: traefik
-  namespace: traefik
+  namespace: flux-system
 spec:
   interval: 1h
+  releaseName: traefik
+  targetNamespace: traefik
   chart:
     spec:
       chart: traefik
-      version: "26.x"
+      version: "40.x"
       sourceRef:
         kind: HelmRepository
         name: traefik
@@ -69,6 +71,11 @@ spec:
   install:
     createNamespace: true
   values:
+    deployment:
+      podAnnotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+        prometheus.io/path: "/metrics"
     # Enable Prometheus metrics for Flagger analysis
     metrics:
       prometheus:
@@ -102,17 +109,19 @@ spec:
 
 ```yaml
 # prometheus-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: prometheus
-  namespace: monitoring
+  namespace: flux-system
 spec:
   interval: 1h
+  releaseName: prometheus
+  targetNamespace: monitoring
   chart:
     spec:
       chart: prometheus
-      version: "25.x"
+      version: "29.x"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
@@ -130,13 +139,14 @@ spec:
     # Add a scrape config for Traefik metrics
     extraScrapeConfigs: |
       - job_name: traefik
+        metrics_path: /metrics
         kubernetes_sd_configs:
           - role: pod
         relabel_configs:
           - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
             action: keep
             regex: traefik
-          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+          - source_labels: [__meta_kubernetes_pod_ip]
             action: replace
             target_label: __address__
             regex: (.+)
@@ -159,13 +169,14 @@ spec:
 
 ```yaml
 # flagger-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: flagger
   namespace: flux-system
 spec:
   interval: 1h
+  releaseName: flagger
   chart:
     spec:
       chart: flagger
