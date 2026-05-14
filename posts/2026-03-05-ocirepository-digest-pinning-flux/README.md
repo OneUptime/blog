@@ -16,7 +16,7 @@ Flux CD's OCIRepository supports digest-based references, giving you the stronge
 
 ## Prerequisites
 
-- A Kubernetes cluster with Flux CD installed (v0.35 or later)
+- A Kubernetes cluster with Flux CD installed (v2.6 or later for the `source.toolkit.fluxcd.io/v1` OCIRepository API)
 - The `flux` CLI installed
 - An OCI-compatible container registry
 - `kubectl` configured to access your cluster
@@ -37,18 +37,21 @@ Every OCI artifact has a digest -- a SHA256 hash of its manifest. Unlike tags, d
 Push an OCI artifact and capture the digest from the output.
 
 ```bash
-# Push an artifact and note the digest in the output
+# Push an artifact and print the digest as JSON
 
 flux push artifact oci://registry.example.com/manifests/app:v1.0.0 \
   --path=./deploy \
   --source="$(git config --get remote.origin.url)" \
-  --revision="main@sha1:$(git rev-parse HEAD)"
+  --revision="main@sha1:$(git rev-parse HEAD)" \
+  --output json
 ```
 
 The output will include a line like:
 
-```text
-digest: sha256:3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4
+```json
+{
+  "digest": "sha256:3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4"
+}
 ```
 
 You can also retrieve the digest of an existing artifact.
@@ -101,12 +104,12 @@ Confirm that Flux resolved the correct artifact.
 # Check the OCIRepository status
 flux get sources oci
 
-# Verify the artifact revision matches the expected digest
+# Verify the artifact revision contains the expected digest
 kubectl get ocirepository app-manifests -n flux-system \
   -o jsonpath='{.status.artifact.revision}{"\n"}'
 ```
 
-The revision should match the digest you specified.
+The revision should include the digest you specified, for example `latest@sha256:3b4c5d6e...`.
 
 ## Step 4: Wire Up the Kustomization
 
@@ -145,7 +148,8 @@ Since digests are immutable, updating the deployment requires changing the diges
 flux push artifact oci://registry.example.com/manifests/app:v1.1.0 \
   --path=./deploy-v1.1.0 \
   --source="$(git config --get remote.origin.url)" \
-  --revision="main@sha1:$(git rev-parse HEAD)"
+  --revision="main@sha1:$(git rev-parse HEAD)" \
+  --output json
 
 # Get the new digest from the output, then update the OCIRepository
 kubectl patch ocirepository app-manifests -n flux-system \
@@ -155,7 +159,7 @@ kubectl patch ocirepository app-manifests -n flux-system \
 
 ### Automated Update via CI
 
-Here is a CI pipeline that pushes a new artifact and updates the digest in the cluster.
+Here is a CI pipeline that pushes a new artifact and updates the digest in Git.
 
 ```yaml
 # .github/workflows/deploy-with-digest.yaml
@@ -182,8 +186,9 @@ jobs:
             --path=./deploy \
             --source="${{ github.repositoryUrl }}" \
             --revision="main@sha1:${{ github.sha }}" \
-            --creds=user:${{ secrets.REGISTRY_PASSWORD }} 2>&1)
-          DIGEST=$(echo "$OUTPUT" | grep "digest:" | awk '{print $2}')
+            --creds=user:${{ secrets.REGISTRY_PASSWORD }} \
+            --output json)
+          DIGEST=$(echo "$OUTPUT" | jq -r '.digest')
           echo "digest=$DIGEST" >> $GITHUB_OUTPUT
 
       - name: Update OCIRepository digest
