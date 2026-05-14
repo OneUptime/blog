@@ -178,32 +178,32 @@ Common events to watch for:
 ```bash
 # View the full container spec for source-controller
 kubectl get deployment source-controller -n flux-system \
-  -o jsonpath='{.spec.template.spec.containers[0].args}' | jq .
+  -o json | jq '.spec.template.spec.containers[0].args'
 
 # Check all controller arguments at once
 for dep in source-controller kustomize-controller helm-controller notification-controller; do
   echo "=== $dep ==="
   kubectl get deployment "$dep" -n flux-system \
-    -o jsonpath='{.spec.template.spec.containers[0].args}' | tr ',' '\n'
+    -o json | jq -r '.spec.template.spec.containers[0].args[]'
   echo ""
 done
 ```
 
 ## Step 7: Check Controller Health Endpoints
 
-Flux controllers expose health endpoints. You can check them from inside the cluster:
+Flux controllers expose health endpoints. You can check them through a port-forward:
 
 ```bash
 # Port-forward to the source-controller health endpoint
-kubectl port-forward -n flux-system deployment/source-controller 8080:8080 &
+kubectl port-forward -n flux-system deployment/source-controller 9440:9440 &
 
 # Check the health endpoint
-curl -s http://localhost:8080/healthz
-# Expected: {"status":"ok"}
+curl -s http://localhost:9440/healthz
+# Expected: ok
 
 # Check the readiness endpoint
-curl -s http://localhost:8080/readyz
-# Expected: {"status":"ok"}
+curl -s http://localhost:9440/readyz
+# Expected: ok
 
 # Stop the port-forward
 kill %1
@@ -222,26 +222,33 @@ for dep in source-controller kustomize-controller helm-controller notification-c
 done
 
 # Check ClusterRoleBindings for Flux
-kubectl get clusterrolebindings | grep flux
+kubectl get clusterrolebindings -l app.kubernetes.io/part-of=flux
 
 # Describe a specific ClusterRoleBinding
-kubectl describe clusterrolebinding flux-system-source-controller
+kubectl describe clusterrolebinding crd-controller
 ```
 
 ## Step 9: Check Network Connectivity from Controller Pods
 
 ```bash
-# Exec into the source-controller pod to test network access
-kubectl exec -n flux-system deployment/source-controller -- \
-  wget -qO- --timeout=5 https://github.com 2>&1 | head -5
+# Find a source-controller pod
+POD=$(kubectl get pod -n flux-system -l app=source-controller \
+  -o jsonpath='{.items[0].metadata.name}')
+
+# Add a temporary debug container to test network access from the pod network namespace
+kubectl debug -n flux-system "$POD" -it \
+  --image=nicolaka/netshoot --target=manager -c netcheck-github -- \
+  curl -I -m 5 https://github.com
 
 # Test DNS resolution
-kubectl exec -n flux-system deployment/source-controller -- \
-  nslookup github.com
+kubectl debug -n flux-system "$POD" -it \
+  --image=nicolaka/netshoot --target=manager -c netcheck-dns -- \
+  dig github.com
 
 # Test access to a Helm repository
-kubectl exec -n flux-system deployment/source-controller -- \
-  wget -qO- --timeout=5 https://charts.bitnami.com/bitnami/index.yaml 2>&1 | head -5
+kubectl debug -n flux-system "$POD" -it \
+  --image=nicolaka/netshoot --target=manager -c netcheck-helm -- \
+  curl -I -m 5 https://charts.bitnami.com/bitnami/index.yaml
 ```
 
 ## Step 10: Full Diagnostic Script
