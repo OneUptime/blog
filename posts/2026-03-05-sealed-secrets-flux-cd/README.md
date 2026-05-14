@@ -225,7 +225,7 @@ kubeseal --cert pub-sealed-secrets.pem --scope cluster-wide --format yaml < secr
 | Partial Encryption | No (entire values) | Yes (encrypted_regex) |
 | Git Diff Readability | Limited | Better with encrypted_regex |
 | Cloud KMS Support | No | Yes (AWS, GCP, Azure) |
-| Offline Encryption | Requires cluster access | Works offline |
+| Offline Encryption | Works with a previously fetched certificate | Works offline |
 
 ## Troubleshooting
 
