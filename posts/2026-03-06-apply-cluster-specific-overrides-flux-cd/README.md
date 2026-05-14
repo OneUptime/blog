@@ -10,7 +10,7 @@ Description: Learn how to apply cluster-specific overrides on top of shared conf
 
 ## Introduction
 
-In a multi-cluster Flux CD setup, you share common configurations across all clusters but inevitably need per-cluster customizations. One cluster might need different resource limits, another might need a specific ingress class, and a third might require additional environment variables. Flux CD provides several mechanisms for applying cluster-specific overrides without duplicating the shared base. This guide covers all the techniques available.
+In a multi-cluster Flux CD setup, you share common configurations across all clusters but inevitably need per-cluster customizations. One cluster might need different resource limits, another might need a specific ingress class, and a third might require additional environment variables. Flux CD provides several mechanisms for applying cluster-specific overrides without duplicating the shared base. This guide covers common techniques available.
 
 ## When You Need Cluster-Specific Overrides
 
@@ -230,10 +230,12 @@ metadata:
   namespace: apps
   annotations:
     # GCP-specific annotations
+    kubernetes.io/ingress.class: gce
     kubernetes.io/ingress.global-static-ip-name: web-app-ip
     networking.gke.io/managed-certificates: web-app-cert
 spec:
-  ingressClassName: gce
+  # GKE Ingress uses the kubernetes.io/ingress.class annotation, not ingressClassName.
+  ingressClassName: null
   rules:
     - host: web-app.us-central.example.com
       http:
@@ -403,7 +405,7 @@ spec:
 
 ## Method 4: Helm Values Overrides per Cluster
 
-For Helm-based deployments, use cluster-specific values files.
+For Helm-based deployments, patch the HelmRelease with cluster-specific values.
 
 ```yaml
 # base/infrastructure/ingress-controller/helmrelease.yaml
@@ -505,13 +507,13 @@ spec:
 kustomize build clusters/aws-us-east
 
 # Compare the rendered output between two clusters
-diff <(kustomize build clusters/aws-us-east) <(kustomize build gcp-us-central)
+diff <(kustomize build clusters/aws-us-east) <(kustomize build clusters/gcp-us-central)
 
 # Check applied resources on the actual cluster
 kubectl --context aws-us-east get deployment web-app -n apps -o yaml
 
 # Verify variable substitution worked correctly
-flux get kustomization apps -n flux-system -o json | jq '.status'
+kubectl get kustomizations.kustomize.toolkit.fluxcd.io apps -n flux-system -o json | jq '.status'
 ```
 
 ## Best Practices
