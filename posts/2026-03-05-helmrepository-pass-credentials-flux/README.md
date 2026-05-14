@@ -8,13 +8,13 @@ Description: Learn how to configure the passCredentials option in Flux CD HelmRe
 
 ---
 
-When working with Helm repositories that require authentication not just for the index but also for downloading individual chart archives, you need the `passCredentials` option in Flux CD. By default, Flux only sends credentials when fetching the repository index. The `passCredentials` field tells Flux to also include those credentials when downloading charts from the repository. This guide covers when and how to use this feature.
+When working with Helm repositories that advertise chart download URLs on a different host than the repository index, you may need the `passCredentials` option in Flux CD. By default, Flux does not forward repository credentials to a host that does not match the repository URL. The `passCredentials` field tells Flux to include those credentials even when downloading charts from a different advertised host. This guide covers when and how to use this feature.
 
 ## Why passCredentials Matters
 
 A Helm repository interaction involves two distinct HTTP requests. First, Flux fetches the repository index file (`index.yaml`) to discover available charts and versions. Second, when a HelmRelease references a chart, Flux downloads the actual chart tarball from a URL specified in the index.
 
-Some repository setups serve charts from a different path or even a different host than the index. Without `passCredentials`, the authentication header is only sent with the index request. If the chart download URL also requires authentication, it will fail with a 401 or 403 error.
+Some repository setups serve charts from a different host than the index. Without `passCredentials`, the authentication header is not forwarded to that different host. If the chart download URL also requires the same authentication, it will fail with a 401 or 403 error.
 
 ## Basic Configuration
 
@@ -50,11 +50,11 @@ spec:
   passCredentials: true
 ```
 
-The key field is `passCredentials: true`. Without it, the username and password from `secretRef` would only be used when fetching the index file.
+The key field is `passCredentials: true`. Without it, the username and password from `secretRef` would not be forwarded to chart download URLs whose host differs from the HelmRepository URL.
 
 ## Supported Authentication Methods
 
-Flux supports several authentication methods for HelmRepositories. The `passCredentials` option works with all of them.
+Flux supports several authentication methods for HelmRepositories. The `passCredentials` option applies to HTTP/S Helm repositories and forwards the credentials configured with `secretRef` when chart URLs in the index point at a different host.
 
 ### HTTP Basic Authentication
 
@@ -88,7 +88,7 @@ data:
   # Optional: Base64-encoded CA certificate for verifying the server
   ca.crt: <base64-encoded-ca-cert>
 ---
-# HelmRepository using TLS client authentication with passCredentials
+# HelmRepository using TLS client authentication
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -97,16 +97,13 @@ metadata:
 spec:
   interval: 10m
   url: https://charts.secure-example.com
-  secretRef:
-    name: tls-repo-creds
   certSecretRef:
     name: tls-repo-creds
-  passCredentials: true
 ```
 
 ## Using passCredentials with OCI Repositories
 
-For OCI-based Helm repositories, the authentication model is different. OCI registries use Docker-style credentials, and `passCredentials` is not applicable in the same way because OCI authentication is handled per-registry by the container runtime.
+For OCI-based Helm repositories, the authentication model is different. OCI registries use registry credentials, and `passCredentials` is not applicable because the field only applies to HTTP/S Helm repositories.
 
 For OCI repositories, use `type: oci` and provide Docker config credentials:
 
@@ -136,7 +133,7 @@ spec:
     name: oci-repo-creds
 ```
 
-Note that for OCI repositories, `passCredentials` is not needed because the registry authentication applies to all interactions automatically.
+Note that for OCI repositories, `passCredentials` is not needed because Flux authenticates to the OCI registry using the configured registry credentials.
 
 ## Managing Secrets Securely with SOPS
 
@@ -199,12 +196,12 @@ kubectl logs -n flux-system deployment/source-controller | grep "private-charts"
 
 There are a few mistakes to watch out for when using `passCredentials`:
 
-1. **Forgetting passCredentials**: If chart downloads fail with 401 but the index fetch works, you almost certainly need `passCredentials: true`.
+1. **Forgetting passCredentials**: If chart downloads fail with 401 but the index fetch works and the chart URL uses a different host than the HelmRepository URL, you likely need `passCredentials: true`.
 
-2. **Wrong Secret type**: HTTP basic auth needs an `Opaque` Secret with `username` and `password` fields. Do not use `kubernetes.io/basic-auth` type as Flux does not recognize it.
+2. **Wrong Secret keys**: HTTP basic auth needs a Secret with `username` and `password` fields. The Secret can be `Opaque` or `kubernetes.io/basic-auth`, but the key names must match what Flux expects.
 
 3. **Namespace mismatch**: The Secret must be in the same namespace as the HelmRepository resource, typically `flux-system`.
 
 4. **Secret key names**: The keys in your Secret must be exactly `username` and `password` for basic auth, or `tls.crt` and `tls.key` for TLS authentication.
 
-By using `passCredentials` correctly, you ensure that Flux can authenticate for both repository index fetches and individual chart downloads, keeping your private Helm chart deployments working smoothly.
+By using `passCredentials` correctly, you ensure that Flux can authenticate when private Helm repositories advertise chart download URLs on another host, keeping your private Helm chart deployments working smoothly.
