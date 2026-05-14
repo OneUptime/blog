@@ -49,7 +49,7 @@ Message: "timeout waiting for ready condition on deployments/my-app"
 
 ## Cause 1: Default Timeout Too Short
 
-Flux CD Kustomizations have a default timeout of 5 minutes. For large deployments, complex initialization, or clusters with limited resources, this may not be enough.
+Flux CD Kustomizations use `.spec.timeout` for validation, apply, and health-check operations. If it is not set, the timeout defaults to the Kustomization's `.spec.interval`. For large deployments, complex initialization, or clusters with limited resources, this may not be enough.
 
 ### Fix: Increase the Kustomization Timeout
 
@@ -67,7 +67,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # Increase timeout from default 5m to 15m
+  # Set the reconciliation timeout explicitly
   timeout: 15m
   # Also set a retry interval for transient failures
   retryInterval: 2m
@@ -453,7 +453,7 @@ kubectl top nodes
 # 7. Check PVC status
 kubectl get pvc -n <namespace>
 
-# 8. Force reconciliation with extended timeout
+# 8. Trigger reconciliation and wait up to 15 minutes for the command to complete
 flux reconcile kustomization <name> --with-source --timeout=15m
 ```
 
