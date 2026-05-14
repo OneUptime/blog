@@ -43,14 +43,13 @@ Look for the `chat.id` field in the response. For group chats, the ID will be a 
 
 ## Step 3: Create a Kubernetes Secret
 
-Store the Telegram bot token in a Kubernetes secret. The address should be the Telegram API endpoint with the chat ID.
+Store the Telegram bot token in a Kubernetes secret. Flux's Telegram provider uses the default Telegram Bot API endpoint automatically.
 
 ```bash
 # Create a secret containing the Telegram bot token
 kubectl create secret generic telegram-bot-token \
   --namespace=flux-system \
-  --from-literal=token=YOUR_TELEGRAM_BOT_TOKEN \
-  --from-literal=address=https://api.telegram.org
+  --from-literal=token=YOUR_TELEGRAM_BOT_TOKEN
 ```
 
 ## Step 4: Create the Flux Notification Provider
@@ -60,7 +59,7 @@ Define a Provider resource for Telegram.
 ```yaml
 # provider-telegram.yaml
 # Configures Flux to send notifications to Telegram
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: telegram-provider
@@ -89,7 +88,7 @@ Create an Alert that defines which events are forwarded to Telegram.
 ```yaml
 # alert-telegram.yaml
 # Routes Flux events to Telegram
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: telegram-alert
@@ -151,7 +150,7 @@ The notification controller formats Flux events into messages and sends them to 
 To reduce noise, only receive error notifications:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: telegram-errors
@@ -173,7 +172,7 @@ Route different events to different Telegram chats or groups:
 
 ```yaml
 # Provider for the ops team group
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: telegram-ops
@@ -185,7 +184,7 @@ spec:
     name: telegram-bot-token
 ---
 # Provider for the dev team group
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: telegram-dev
@@ -197,7 +196,7 @@ spec:
     name: telegram-bot-token
 ---
 # Errors go to ops
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: telegram-ops-errors
@@ -213,7 +212,7 @@ spec:
       name: "*"
 ---
 # All events go to dev
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: telegram-dev-all
@@ -234,7 +233,7 @@ spec:
 You can also send notifications to a personal Telegram chat by using your personal chat ID instead of a group chat ID:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: telegram-personal
@@ -252,9 +251,9 @@ spec:
 If messages are not appearing in Telegram:
 
 1. **Bot token**: Verify the secret contains a valid `token` key with the bot token from BotFather.
-2. **Chat ID**: Ensure the `channel` field contains the correct chat ID. Group chat IDs start with `-100`.
-3. **Bot membership**: The bot must be added to the group chat as a member. For groups with privacy mode, the bot needs admin access.
-4. **API address**: The secret must contain `address` set to `https://api.telegram.org`.
+2. **Chat ID**: Ensure the `channel` field contains the correct chat ID. Group chat IDs are negative, and supergroup or channel IDs often start with `-100`.
+3. **Bot membership**: The bot must be added to the group chat as a member and be allowed to send messages. For channels, add the bot as an administrator.
+4. **API address**: Flux ignores the `address` field for Telegram and uses `https://api.telegram.org` automatically.
 5. **Namespace alignment**: Provider, Alert, and Secret must be in the same namespace.
 6. **Controller logs**: Check `kubectl logs -n flux-system deploy/notification-controller` for errors.
 7. **Network access**: The cluster must be able to reach `api.telegram.org` on port 443.
