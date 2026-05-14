@@ -10,22 +10,25 @@ Description: Learn how to configure the rollback action in a Flux CD HelmRelease
 
 ## Introduction
 
-When a Helm upgrade fails in Flux CD, the system can automatically roll back to the last successful release. The `spec.rollback` field controls how this rollback is performed, including whether to clean up failed resources, recreate deleted resources, and force rollbacks. Proper rollback configuration is a key part of making your deployments resilient.
+When a Helm upgrade fails in Flux CD, the system can automatically roll back to the last successful release. The `spec.rollback` field controls how this rollback is performed, including whether to clean up failed rollback resources, wait for resources, and force resource updates. Proper rollback configuration is a key part of making your deployments resilient.
 
 ## How Rollback Works in Flux
 
-Rollback in Flux CD is triggered automatically when an upgrade fails and the `spec.upgrade.remediation.strategy` is set to `rollback`. The rollback reverts the Helm release to the last known good revision. The `spec.rollback` field configures the behavior of this rollback action.
+Rollback in Flux CD is used as the upgrade remediation action when an upgrade fails and the `spec.upgrade.remediation.strategy` is set to `rollback`. Remediation is performed between retry attempts, and after the last failure when `remediateLastFailure` is enabled or defaults to enabled because `retries` is greater than `0`. The rollback reverts the Helm release to the last known good revision. The `spec.rollback` field configures the behavior of this rollback action.
 
 ```mermaid
 graph TD
-    A[Upgrade Fails] --> B{Retries Exhausted?}
-    B -->|No| C[Retry Upgrade]
-    C --> A
-    B -->|Yes| D{Strategy = rollback?}
-    D -->|Yes| E[Execute Rollback]
-    E --> F[Apply spec.rollback settings]
-    F --> G[Release Reverted to Last Good State]
-    D -->|No| H[Uninstall or Stop]
+    A[Upgrade Fails] --> B{Retries Remaining?}
+    B -->|Yes| C[Execute Remediation]
+    C --> D[Retry Upgrade]
+    D --> A
+    B -->|No| E{Remediate Last Failure?}
+    E -->|Yes| F{Strategy = rollback?}
+    F -->|Yes| G[Execute Rollback]
+    G --> H[Apply spec.rollback settings]
+    H --> I[Release Reverted to Last Good State]
+    F -->|No| J[Uninstall]
+    E -->|No| K[Stop]
 ```
 
 ## Basic Rollback Configuration
@@ -57,9 +60,9 @@ spec:
       strategy: rollback
   # Rollback action configuration
   rollback:
-    # Clean up new resources created during the failed upgrade
+    # Clean up new resources created during a failed rollback
     cleanupOnFail: true
-    # Recreate resources that were deleted during the failed upgrade
+    # Keep deprecated pod recreation behavior disabled
     recreate: false
     # Do not force resource updates
     force: false
@@ -88,29 +91,29 @@ spec:
 
 ### recreate
 
-When set to `true`, Helm performs a delete-and-recreate for resources that have changed, rather than patching them.
+In current Flux versions, this option is deprecated and no longer has any effect. Older Helm behavior used it to perform pod restarts when applicable.
 
 ```yaml
 spec:
   rollback:
-    # Delete and recreate changed resources during rollback
+    # Deprecated and no longer effective in current Flux versions
     recreate: true
 ```
 
-This is useful when certain resource fields are immutable and cannot be patched.
+Keep this set to `false` for new configurations.
 
 ### force
 
-When set to `true`, forces the rollback through delete/recreate of all resources, not just changed ones.
+When set to `true`, forces resource updates through a replacement strategy during rollback.
 
 ```yaml
 spec:
   rollback:
-    # Force rollback via delete/recreate of all resources
+    # Force rollback resource updates through replacement
     force: true
 ```
 
-Use `force` with caution as it causes brief downtime for all resources in the release.
+Use `force` with caution as replacement can cause downtime for affected resources in the release.
 
 ### disableHooks
 
@@ -187,7 +190,7 @@ spec:
     # Wait for resources to stabilize after rollback
     disableWait: false
     disableWaitForJobs: false
-    # Do not force or recreate unless necessary
+    # Do not force updates; keep deprecated recreate behavior disabled
     force: false
     recreate: false
   values:
@@ -198,7 +201,7 @@ spec:
 
 ## Rollback with Max History
 
-The `spec.maxHistory` field determines how many Helm release revisions are kept. This affects how far back a rollback can go.
+The `spec.maxHistory` field determines how many Helm release revisions are kept. This affects how much release history is available for rollback.
 
 ```yaml
 # Rollback configuration with history retention
@@ -258,7 +261,7 @@ A successful rollback shows up in the Helm history with the description indicati
 
 ## What Happens After a Rollback
 
-After a rollback, Flux continues to reconcile the HelmRelease on its regular interval. If the HelmRelease manifest still contains the values that caused the failed upgrade, Flux will attempt the upgrade again on the next reconciliation cycle. To prevent a loop:
+After a rollback, Flux continues to reconcile the HelmRelease on its regular interval. Failure counters are reset when a new configuration is applied, the values change, a new chart version is discovered, or the retries are reset manually. If the HelmRelease manifest still contains the values that caused the failed upgrade and retries are reset or still available, Flux can attempt the upgrade again. To prevent repeated failures:
 
 1. Fix the values or chart version in Git
 2. Commit the fix
