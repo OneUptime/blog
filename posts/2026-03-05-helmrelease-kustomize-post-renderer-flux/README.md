@@ -12,7 +12,7 @@ Description: Learn how to use the Kustomize post-renderer in HelmRelease to appl
 
 Flux CD's HelmRelease controller includes a built-in Kustomize post-renderer that processes Helm chart output through Kustomize transformations before applying it to the cluster. This combines the strengths of both Helm (chart packaging and distribution) and Kustomize (declarative resource transformations) in a single workflow.
 
-The Kustomize post-renderer is configured through the `spec.postRenderers[].kustomize` field and supports strategic merge patches, JSON 6902 patches, image transformations, and other Kustomize features. This guide provides a deep dive into configuring the Kustomize post-renderer for common real-world scenarios.
+The Kustomize post-renderer is configured through the `spec.postRenderers[].kustomize` field and supports strategic merge patches, JSON 6902 patches, and image transformations. This guide provides a deep dive into configuring the Kustomize post-renderer for common real-world scenarios.
 
 ## Kustomize Post-Renderer Architecture
 
@@ -34,7 +34,7 @@ flowchart TD
 
 ## Strategic Merge Patches
 
-Strategic merge patches allow you to merge fields into existing resources. Kubernetes uses strategic merge patch semantics, which means lists can be merged by key (like container name) rather than replaced entirely.
+Strategic merge patches allow you to merge fields into existing resources. For supported Kubernetes resource types, strategic merge patch semantics mean lists can be merged by key (like container name) rather than replaced entirely.
 
 The following example uses a strategic merge patch to add environment variables and resource limits to a Deployment:
 
@@ -81,6 +81,13 @@ spec:
                             value: "true"
                           - name: TRACING_ENDPOINT
                             value: "http://jaeger-collector.observability:14268/api/traces"
+                        resources:
+                          limits:
+                            cpu: "500m"
+                            memory: "512Mi"
+                          requests:
+                            cpu: "100m"
+                            memory: "128Mi"
 ```
 
 ## JSON 6902 Patches
@@ -114,10 +121,11 @@ spec:
               kind: Deployment
               name: my-application
             patch: |
-              # Add a new annotation
+              # Set a new annotation
               - op: add
-                path: /metadata/annotations/prometheus.io~1scrape
-                value: "true"
+                path: /metadata/annotations
+                value:
+                  prometheus.io/scrape: "true"
               # Replace the replica count
               - op: replace
                 path: /spec/replicas
@@ -134,7 +142,7 @@ spec:
               kind: Service
               name: my-application
             patch: |
-              # Add a service annotation for AWS load balancer
+              # Set a service annotation for AWS load balancer
               - op: add
                 path: /metadata/annotations
                 value:
@@ -185,7 +193,7 @@ spec:
 
 ## Targeting Resources with Selectors
 
-The `target` field in patches supports selectors that let you apply patches to specific resources based on their kind, name, namespace, group, version, or label selectors.
+The `target` field in patches supports selectors that let you apply patches to specific resources based on their kind, name, namespace, group, version, label selectors, or annotation selectors.
 
 The following example demonstrates different targeting strategies:
 
@@ -310,7 +318,7 @@ spec:
 
 ## Combining Multiple Kustomize Features
 
-You can combine patches, images, and other Kustomize features in a single post-renderer for comprehensive resource customization.
+You can combine patches and images in a single post-renderer for comprehensive resource customization.
 
 The following example combines patches and image transformations:
 
@@ -393,4 +401,4 @@ kubectl get deployment my-application -n default -o yaml
 
 ## Conclusion
 
-The Kustomize post-renderer in Flux's HelmRelease provides a powerful mechanism for customizing Helm chart output without modifying the charts themselves. By leveraging strategic merge patches, JSON 6902 patches, and image transformations, you can enforce organizational standards, redirect images to private registries, add security contexts, and apply any other Kustomize transformation to your Helm-managed resources. This bridge between Helm and Kustomize gives you the best of both ecosystem tools in a single GitOps workflow.
+The Kustomize post-renderer in Flux's HelmRelease provides a powerful mechanism for customizing Helm chart output without modifying the charts themselves. By leveraging strategic merge patches, JSON 6902 patches, and image transformations, you can enforce organizational standards, redirect images to private registries, and add security contexts to your Helm-managed resources. This bridge between Helm and Kustomize gives you the best of both ecosystem tools in a single GitOps workflow.
