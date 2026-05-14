@@ -91,7 +91,6 @@ spec:
     name: webapp
   path: ./deploy/overlays/production
   prune: true
-  wait: true
   # Post-build variable substitution for environment-specific values
   postBuild:
     substituteFrom:
@@ -116,10 +115,10 @@ kind: Application
 metadata:
   name: webapp-production
   namespace: argocd
-  # Harness adds labels for tracking
+  # Harness uses labels for service and environment mapping
   labels:
-    harness.io/project: webapp
-    harness.io/environment: production
+    harness.io/serviceRef: webapp
+    harness.io/envRef: production
 spec:
   project: default
   source:
