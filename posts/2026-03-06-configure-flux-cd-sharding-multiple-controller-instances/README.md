@@ -37,7 +37,7 @@ graph TD
 
 ## Setting Up the Default Controller
 
-First, configure the default controller to only handle resources without a shard label, or resources labeled for the default shard.
+First, configure the default controller to only handle resources without a shard label.
 
 ```yaml
 # default-controller-patch.yaml
@@ -54,8 +54,8 @@ spec:
       containers:
         - name: manager
           args:
-            # Only reconcile resources labeled for the default shard
-            - --watch-label-selector=sharding.fluxcd.io/key=default
+            # Only reconcile resources without a shard label
+            - --watch-label-selector=!sharding.fluxcd.io/key
             - --concurrent=4
             - --kube-api-qps=50
             - --kube-api-burst=100
@@ -92,11 +92,13 @@ spec:
     metadata:
       labels:
         app: kustomize-controller-shard1
+        app.kubernetes.io/name: kustomize-controller
+        app.kubernetes.io/instance: shard1
     spec:
       serviceAccountName: kustomize-controller
       containers:
         - name: manager
-          image: ghcr.io/fluxcd/kustomize-controller:v1.4.0
+          image: ghcr.io/fluxcd/kustomize-controller:v1.8.5
           args:
             # This instance only watches resources labeled shard1
             - --watch-label-selector=sharding.fluxcd.io/key=shard1
@@ -104,9 +106,7 @@ spec:
             - --kube-api-qps=100
             - --kube-api-burst=200
             - --requeue-dependency=5s
-            # Each shard needs its own leader election ID
             - --enable-leader-election=true
-            - --leader-election-id=kustomize-controller-shard1
           resources:
             requests:
               cpu: "500m"
@@ -158,11 +158,13 @@ spec:
     metadata:
       labels:
         app: kustomize-controller-shard2
+        app.kubernetes.io/name: kustomize-controller
+        app.kubernetes.io/instance: shard2
     spec:
       serviceAccountName: kustomize-controller
       containers:
         - name: manager
-          image: ghcr.io/fluxcd/kustomize-controller:v1.4.0
+          image: ghcr.io/fluxcd/kustomize-controller:v1.8.5
           args:
             - --watch-label-selector=sharding.fluxcd.io/key=shard2
             - --concurrent=8
@@ -170,8 +172,6 @@ spec:
             - --kube-api-burst=200
             - --requeue-dependency=5s
             - --enable-leader-election=true
-            # Unique leader election ID per shard
-            - --leader-election-id=kustomize-controller-shard2
           resources:
             requests:
               cpu: "500m"
@@ -215,6 +215,9 @@ kind: Deployment
 metadata:
   name: source-controller-shard1
   namespace: flux-system
+  labels:
+    app.kubernetes.io/name: source-controller
+    app.kubernetes.io/instance: shard1
 spec:
   replicas: 1
   selector:
@@ -224,11 +227,13 @@ spec:
     metadata:
       labels:
         app: source-controller-shard1
+        app.kubernetes.io/name: source-controller
+        app.kubernetes.io/instance: shard1
     spec:
       serviceAccountName: source-controller
       containers:
         - name: manager
-          image: ghcr.io/fluxcd/source-controller:v1.4.1
+          image: ghcr.io/fluxcd/source-controller:v1.8.4
           args:
             - --storage-path=/data
             # Use a unique service address for this shard
@@ -238,7 +243,13 @@ spec:
             - --kube-api-qps=50
             - --kube-api-burst=100
             - --enable-leader-election=true
-            - --leader-election-id=source-controller-shard1
+          ports:
+            - containerPort: 8080
+              name: http-prom
+            - containerPort: 9090
+              name: http-artifact
+            - containerPort: 9440
+              name: healthz
           volumeMounts:
             - name: data
               mountPath: /data
@@ -260,6 +271,9 @@ kind: Service
 metadata:
   name: source-controller-shard1
   namespace: flux-system
+  labels:
+    app.kubernetes.io/name: source-controller
+    app.kubernetes.io/instance: shard1
 spec:
   selector:
     app: source-controller-shard1
@@ -340,9 +354,9 @@ spec:
 Create per-shard monitoring to track workload distribution and identify imbalances.
 
 ```yaml
-# ServiceMonitor for sharded controllers
+# PodMonitor for sharded controllers
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: flux-sharded-controllers
   namespace: flux-system
@@ -355,7 +369,7 @@ spec:
           - kustomize-controller
           - source-controller
           - helm-controller
-  endpoints:
+  podMetricsEndpoints:
     - port: http-prom
       interval: 15s
 ```
@@ -364,13 +378,13 @@ Key metrics to monitor per shard:
 
 ```promql
 # Queue depth per shard - detect imbalanced shards
-workqueue_depth{namespace="flux-system"} by (pod)
+sum by (pod) (workqueue_depth{namespace="flux-system"})
 
 # Reconciliation rate per shard
-rate(gotk_reconcile_duration_seconds_count{namespace="flux-system"}[5m]) by (pod)
+sum by (pod) (rate(gotk_reconcile_duration_seconds_count{namespace="flux-system"}[5m]))
 
-# Resource count per shard
-count(gotk_reconcile_condition{namespace="flux-system"}) by (pod)
+# Flux resource readiness from kube-state-metrics custom resource metrics
+count by (customresource_kind, ready) (gotk_resource_info)
 ```
 
 ## Rebalancing Shards
@@ -402,7 +416,7 @@ Key steps for configuring Flux CD sharding:
 
 1. Decide on a sharding strategy (by team, by namespace, by resource type)
 2. Configure the default controller with a label selector to prevent double processing
-3. Deploy additional controller instances with unique label selectors and leader election IDs
+3. Deploy additional controller instances with unique label selectors
 4. If sharding source-controller, create dedicated services for each shard
 5. Label all Flux resources (GitRepository, Kustomization, HelmRelease) consistently
 6. Monitor each shard independently for queue depth and resource usage
