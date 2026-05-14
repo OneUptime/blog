@@ -17,6 +17,7 @@ This guide shows you how to install Config Connector on GKE, configure it with W
 ## Prerequisites
 
 - A GKE cluster running Kubernetes 1.27 or later
+- Workload Identity Federation for GKE enabled on the cluster and node pools
 - Flux CD v2.x bootstrapped on the cluster
 - `gcloud` CLI authenticated with Owner or Editor role
 - A Git repository connected to Flux CD
@@ -46,6 +47,8 @@ gcloud services enable \
   serviceusage.googleapis.com \
   iam.googleapis.com \
   container.googleapis.com \
+  compute.googleapis.com \
+  servicenetworking.googleapis.com \
   sqladmin.googleapis.com \
   pubsub.googleapis.com \
   storage.googleapis.com
@@ -93,28 +96,42 @@ gcloud projects add-iam-policy-binding ${PROJECT_ID} \
   --role="roles/editor"
 
 # Bind the GCP service account to the Kubernetes service account
+# that Config Connector creates for the config-connector namespace
 gcloud iam service-accounts add-iam-policy-binding \
   ${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com \
-  --member="serviceAccount:${PROJECT_ID}.svc.id.goog[cnrm-system/cnrm-controller-manager]" \
+  --member="serviceAccount:${PROJECT_ID}.svc.id.goog[cnrm-system/cnrm-controller-manager-config-connector]" \
   --role="roles/iam.workloadIdentityUser"
 ```
 
-## Step 4: Configure Config Connector with a ConfigConnectorContext
+## Step 4: Configure Config Connector with Namespaced Mode
 
-Create a `ConfigConnectorContext` resource that tells Config Connector which GCP project to manage.
+Create a `ConfigConnector` resource that configures Config Connector to run in namespaced mode.
+
+```yaml
+# infrastructure/config-connector/config-connector.yaml
+apiVersion: core.cnrm.cloud.google.com/v1beta1
+kind: ConfigConnector
+metadata:
+  name: configconnector.core.cnrm.cloud.google.com
+spec:
+  mode: namespaced
+  stateIntoSpec: Absent
+```
+
+Create a `ConfigConnectorContext` resource that tells Config Connector which service account to use for the namespace.
 
 ```yaml
 # infrastructure/config-connector/config-connector-context.yaml
-# This resource binds Config Connector to a specific
-# GCP project and service account
+# This resource binds Config Connector to a specific service account
 apiVersion: core.cnrm.cloud.google.com/v1beta1
 kind: ConfigConnectorContext
 metadata:
   name: configconnectorcontext.core.cnrm.cloud.google.com
   namespace: config-connector
 spec:
-  # The GCP project to manage resources in
+  # The GCP service account to use for this namespace
   googleServiceAccount: "config-connector-sa@my-project-id.iam.gserviceaccount.com"
+  stateIntoSpec: Absent
 ```
 
 Create the namespace first.
@@ -151,7 +168,6 @@ spec:
   # Config Connector resources can take time to provision
   timeout: 10m
   # Wait for health checks to pass
-  wait: true
   healthChecks:
     - apiVersion: core.cnrm.cloud.google.com/v1beta1
       kind: ConfigConnectorContext
@@ -190,7 +206,7 @@ spec:
         type: Delete
       condition:
         age: 90
-        isLive: false
+        withState: ARCHIVED
   # Uniform bucket-level access
   uniformBucketLevelAccess: true
 ```
@@ -257,6 +273,13 @@ metadata:
 spec:
   # Retain messages for 7 days
   messageRetentionDuration: "604800s"
+---
+# Creates a dead-letter topic for failed messages
+apiVersion: pubsub.cnrm.cloud.google.com/v1beta1
+kind: PubSubTopic
+metadata:
+  name: app-events-dlq
+  namespace: config-connector
 ---
 # Creates a subscription for the topic
 apiVersion: pubsub.cnrm.cloud.google.com/v1beta1
