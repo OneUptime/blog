@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Elasticsearch, Search, Logging
 
-Description: Learn how to deploy Elasticsearch on Kubernetes using a Flux HelmRelease with the official Elastic Helm chart for scalable search and analytics.
+Description: Learn how to deploy Elasticsearch on Kubernetes using a Flux HelmRelease with the Elastic Helm chart for scalable search and analytics.
 
 ---
 
-Elasticsearch is a distributed search and analytics engine used for log analysis, full-text search, and application monitoring. Deploying Elasticsearch on Kubernetes through Flux CD ensures your search infrastructure is version-controlled and reproducible. This guide uses the official Elastic Helm chart to deploy a production-ready Elasticsearch cluster.
+Elasticsearch is a distributed search and analytics engine used for log analysis, full-text search, and application monitoring. Deploying Elasticsearch on Kubernetes through Flux CD ensures your search infrastructure is version-controlled and reproducible. This guide uses Elastic's standalone Helm chart for Elasticsearch 8.5.1. For new production deployments, Elastic recommends Elastic Cloud on Kubernetes (ECK), but the standalone chart is still useful when you need to manage this chart through Flux.
 
 ## Prerequisites
 
@@ -19,7 +19,7 @@ Elasticsearch is a distributed search and analytics engine used for log analysis
 
 ## Creating the HelmRepository
 
-Elastic publishes its official Helm charts through their own repository.
+Elastic publishes Helm charts through their own repository.
 
 ```yaml
 # helmrepository-elastic.yaml - Official Elastic Helm chart repository
@@ -36,7 +36,7 @@ spec:
 
 ## Deploying Elasticsearch with HelmRelease
 
-The official Elastic chart deploys a single node group per HelmRelease. For a production cluster with dedicated master, data, and coordinating nodes, you deploy multiple HelmReleases pointing to the same chart with different roles. The following example deploys a three-node cluster where each node holds all roles.
+Elastic's standalone chart deploys a single node group per HelmRelease. For a production cluster with dedicated master, data, and coordinating nodes, you deploy multiple HelmReleases pointing to the same chart with different roles. The following example deploys a three-node cluster where each node holds the default chart roles.
 
 ```yaml
 # helmrelease-elasticsearch.yaml - Elasticsearch cluster deployment via Flux
@@ -50,7 +50,7 @@ spec:
   chart:
     spec:
       chart: elasticsearch
-      version: "8.5.x"
+      version: "8.5.1"
       sourceRef:
         kind: HelmRepository
         name: elastic
@@ -58,12 +58,10 @@ spec:
       interval: 15m
   install:
     createNamespace: true
-    atomic: true
     timeout: 15m
     remediation:
       retries: 3
   upgrade:
-    atomic: true
     timeout: 15m
     cleanupOnFail: true
     remediation:
@@ -73,9 +71,6 @@ spec:
     # Number of Elasticsearch replicas
     replicas: 3
 
-    # Minimum number of master-eligible nodes for quorum
-    minimumMasterNodes: 2
-
     # Elasticsearch roles for these nodes
     roles:
       - master
@@ -83,7 +78,10 @@ spec:
       - data_content
       - data_hot
       - data_warm
+      - data_cold
       - ingest
+      - ml
+      - remote_cluster_client
       - transform
 
     # Resource requests and limits
@@ -109,14 +107,7 @@ spec:
     # Elasticsearch configuration
     esConfig:
       elasticsearch.yml: |
-        cluster.name: "elasticsearch-cluster"
-        network.host: 0.0.0.0
-        # Disable security for development (enable in production)
-        xpack.security.enabled: true
-        xpack.security.transport.ssl.enabled: true
-        xpack.security.transport.ssl.verification_mode: certificate
-        xpack.security.transport.ssl.keystore.path: /usr/share/elasticsearch/config/certs/elastic-certificates.p12
-        xpack.security.transport.ssl.truststore.path: /usr/share/elasticsearch/config/certs/elastic-certificates.p12
+        action.destructive_requires_name: true
 
     # Pod anti-affinity to spread nodes across hosts
     antiAffinity: "hard"
@@ -153,8 +144,8 @@ spec:
               #!/usr/bin/env bash
               set -e
               # Signal Elasticsearch to exclude this node from allocation
-              curl -s -XPUT -H 'Content-Type: application/json' \
-                'http://localhost:9200/_cluster/settings' \
+              curl -s -k -u "elastic:${ELASTIC_PASSWORD}" -XPUT -H 'Content-Type: application/json' \
+                'https://localhost:9200/_cluster/settings' \
                 -d '{"transient":{"cluster.routing.allocation.exclude._name":"'$HOSTNAME'"}}'
               sleep 20
 ```
@@ -175,7 +166,7 @@ spec:
   chart:
     spec:
       chart: elasticsearch
-      version: "8.5.x"
+      version: "8.5.1"
       sourceRef:
         kind: HelmRepository
         name: elastic
@@ -191,7 +182,6 @@ spec:
       strategy: rollback
   values:
     replicas: 1
-    minimumMasterNodes: 1
     resources:
       requests:
         cpu: 250m
@@ -200,6 +190,8 @@ spec:
         cpu: 1000m
         memory: 2Gi
     esJavaOpts: "-Xmx1g -Xms1g"
+    createCert: false
+    protocol: http
     volumeClaimTemplate:
       accessModes:
         - ReadWriteOnce
@@ -234,7 +226,7 @@ spec:
   chart:
     spec:
       chart: kibana
-      version: "8.5.x"
+      version: "8.5.1"
       sourceRef:
         kind: HelmRepository
         name: elastic
@@ -259,10 +251,11 @@ spec:
       limits:
         cpu: 1000m
         memory: 1Gi
-    elasticsearchHosts: "http://elasticsearch-master:9200"
+    elasticsearchHosts: "https://elasticsearch-master:9200"
     ingress:
       enabled: true
-      ingressClassName: nginx
+      className: nginx
+      pathtype: Prefix
       annotations:
         cert-manager.io/cluster-issuer: "letsencrypt-production"
       hosts:
@@ -288,13 +281,14 @@ kubectl get pods -n elasticsearch -l app=elasticsearch-master
 
 # Check cluster health
 kubectl port-forward -n elasticsearch svc/elasticsearch-master 9200:9200
-curl http://localhost:9200/_cluster/health?pretty
+ELASTIC_PASSWORD=$(kubectl get secret -n elasticsearch elasticsearch-master-credentials -o jsonpath='{.data.password}' | base64 -d)
+curl -k -u "elastic:${ELASTIC_PASSWORD}" https://localhost:9200/_cluster/health?pretty
 
 # Check node status
-curl http://localhost:9200/_cat/nodes?v
+curl -k -u "elastic:${ELASTIC_PASSWORD}" https://localhost:9200/_cat/nodes?v
 
 # Check index status
-curl http://localhost:9200/_cat/indices?v
+curl -k -u "elastic:${ELASTIC_PASSWORD}" https://localhost:9200/_cat/indices?v
 
 # Check persistent volume claims
 kubectl get pvc -n elasticsearch
@@ -305,15 +299,12 @@ kubectl get pvc -n elasticsearch
 Elasticsearch performance depends heavily on proper resource allocation. Key settings to tune include JVM heap size (set to half the container memory limit), file descriptor limits, and virtual memory settings. If your nodes are running on Linux, ensure the `vm.max_map_count` kernel parameter is set to at least 262144.
 
 ```yaml
-# Snippet: Init container to set vm.max_map_count
-extraInitContainers:
-  - name: increase-vm-max-map
-    image: busybox
-    command: ["sysctl", "-w", "vm.max_map_count=262144"]
-    securityContext:
-      privileged: true
+# Snippet: Chart values to set vm.max_map_count
+sysctlInitContainer:
+  enabled: true
+sysctlVmMaxMapCount: 262144
 ```
 
 ## Summary
 
-Deploying Elasticsearch through a Flux HelmRelease from `https://helm.elastic.co` provides GitOps-managed search and analytics infrastructure. The official Elastic chart supports multi-node clusters with configurable roles, persistent storage, security features, and graceful lifecycle management. Combined with Kibana for visualization, this setup gives you a complete search and log analysis platform managed declaratively through your Git repository.
+Deploying Elasticsearch through a Flux HelmRelease from `https://helm.elastic.co` provides GitOps-managed search and analytics infrastructure. Elastic's standalone chart supports multi-node clusters with configurable roles, persistent storage, security features, and graceful lifecycle management. Combined with Kibana for visualization, this setup gives you a complete search and log analysis platform managed declaratively through your Git repository.
