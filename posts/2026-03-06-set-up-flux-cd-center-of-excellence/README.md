@@ -141,7 +141,6 @@ spec:
     name: REPLACE_APP_NAME
   path: REPLACE_DEPLOY_PATH
   prune: true
-  wait: true
   timeout: 10m
   # CoE standard: always use health checks
   healthChecks:
@@ -227,7 +226,7 @@ spec:
 
 ```yaml
 # notifications/slack-alert.yaml -- Standard Slack alert for Flux events
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-coe
@@ -238,7 +237,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: REPLACE_APP_NAME-alerts
@@ -256,7 +255,8 @@ spec:
     - kind: GitRepository
       name: REPLACE_APP_NAME
   # Include metadata in notifications for quick triage
-  summary: "Flux event for REPLACE_APP_NAME in REPLACE_ENVIRONMENT"
+  eventMetadata:
+    summary: "Flux event for REPLACE_APP_NAME in REPLACE_ENVIRONMENT"
 ```
 
 ## Step 6: Build Governance and Compliance
@@ -275,7 +275,6 @@ metadata:
       All Flux resources must include CoE-mandated labels for
       tracking, governance, and team ownership.
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: check-flux-labels
       match:
@@ -288,9 +287,10 @@ spec:
                 - GitRepository
                 - OCIRepository
       validate:
+        failureAction: Enforce
         message: >-
           Flux resources must include coe.example.com/managed,
-          coe.example.com/team, and coe.example.com/pattern labels.
+          and coe.example.com/team labels.
         pattern:
           metadata:
             labels:
@@ -381,16 +381,17 @@ spec:
   groups:
     - name: flux-coe
       rules:
+        # Requires kube-state-metrics custom resource metrics configured for Flux resources and CoE labels
         # Track how many Flux resources follow CoE standards
         - record: coe:flux_resources:total
-          expr: count(gotk_reconcile_condition{type="Ready"})
+          expr: count(gotk_reconcile_condition{type="Ready", status="True"})
         - record: coe:flux_resources:compliant
-          expr: count(gotk_reconcile_condition{type="Ready"} * on(name, namespace) group_left kube_customresource_labels{label_coe_example_com_managed="true"})
+          expr: count(gotk_reconcile_condition{type="Ready", status="True"} * on(name, namespace) group_left kube_customresource_labels{label_coe_example_com_managed="true"})
         # Alert when reconciliation failure rate exceeds threshold
         - alert: FluxReconciliationFailureRate
           expr: |
             sum(gotk_reconcile_condition{type="Ready", status="False"}) /
-            sum(gotk_reconcile_condition{type="Ready"}) > 0.1
+            count(gotk_reconcile_condition{type="Ready", status="True"}) > 0.1
           for: 15m
           labels:
             severity: warning
