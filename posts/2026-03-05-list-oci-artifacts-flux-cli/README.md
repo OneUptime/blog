@@ -18,9 +18,9 @@ This guide covers how to list artifacts across different registries, interpret t
 
 Before you begin, ensure you have:
 
-- The `flux` CLI installed (v0.35 or later)
+- A current `flux` CLI release installed
 - Access to an OCI-compliant container registry containing artifacts
-- Registry credentials configured via `docker login`
+- Registry credentials configured via `docker login`, `--creds`, or a supported `--provider`
 
 Verify your Flux CLI version.
 
@@ -54,17 +54,17 @@ Use `flux list artifacts` with the OCI URL of your repository to see all availab
 flux list artifacts oci://ghcr.io/my-org/my-app-manifests
 ```
 
-The output displays a table with the artifact tag and its corresponding digest.
+The output displays a table with the artifact tag, digest, source, and revision metadata.
 
 ```bash
 # Example output
-# ARTIFACT                                          DIGEST
-# ghcr.io/my-org/my-app-manifests:1.0.0             sha256:abc123...
-# ghcr.io/my-org/my-app-manifests:1.1.0             sha256:def456...
-# ghcr.io/my-org/my-app-manifests:1.2.0             sha256:ghi789...
-# ghcr.io/my-org/my-app-manifests:latest            sha256:ghi789...
-# ghcr.io/my-org/my-app-manifests:staging           sha256:ghi789...
-# ghcr.io/my-org/my-app-manifests:production        sha256:def456...
+# ARTIFACT                                          DIGEST                                                                  SOURCE                              REVISION
+# oci://ghcr.io/my-org/my-app-manifests:staging     sha256:ghi789abc123def456ghi789abc123def456ghi789abc123def456ghi789ab  https://github.com/my-org/my-app    main@sha1:ghi789...
+# oci://ghcr.io/my-org/my-app-manifests:production  sha256:def456abc123def456ghi789abc123def456ghi789abc123def456ghi789ab  https://github.com/my-org/my-app    main@sha1:def456...
+# oci://ghcr.io/my-org/my-app-manifests:latest      sha256:ghi789abc123def456ghi789abc123def456ghi789abc123def456ghi789ab  https://github.com/my-org/my-app    main@sha1:ghi789...
+# oci://ghcr.io/my-org/my-app-manifests:1.2.0       sha256:ghi789abc123def456ghi789abc123def456ghi789abc123def456ghi789ab  https://github.com/my-org/my-app    main@sha1:ghi789...
+# oci://ghcr.io/my-org/my-app-manifests:1.1.0       sha256:def456abc123def456ghi789abc123def456ghi789abc123def456ghi789ab  https://github.com/my-org/my-app    main@sha1:def456...
+# oci://ghcr.io/my-org/my-app-manifests:1.0.0       sha256:abc123abc123def456ghi789abc123def456ghi789abc123def456ghi789ab  https://github.com/my-org/my-app    main@sha1:abc123...
 ```
 
 Notice how `latest` and `staging` share the same digest as `1.2.0`, confirming they point to the same artifact content. Meanwhile, `production` points to `1.1.0`.
@@ -88,8 +88,8 @@ graph TD
 Key observations from the output:
 
 - **Same digest across tags**: Multiple tags pointing to the same digest means those tags reference identical content. This confirms successful promotions.
-- **Tag ordering**: Tags are listed alphabetically, not chronologically. Use semantic versioning to determine the newest version.
-- **Digest prefix**: The SHA256 digest is truncated in the output. Use the full digest when referencing artifacts in scripts.
+- **Tag ordering**: Tags are listed in descending lexicographic order, not chronologically. Use semantic versioning to determine the newest version.
+- **Digest value**: The SHA256 digest is printed as the full digest. Use the full digest when referencing artifacts in scripts.
 
 ## Listing Artifacts Across Different Registries
 
@@ -121,7 +121,7 @@ After pushing an artifact, use `flux list artifacts` to confirm it was stored co
 flux push artifact oci://ghcr.io/my-org/my-app-manifests:2.0.0 \
   --path=./deploy \
   --source="$(git config --get remote.origin.url)" \
-  --revision="main/$(git rev-parse HEAD)"
+  --revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)"
 
 # Verify the push by listing artifacts
 flux list artifacts oci://ghcr.io/my-org/my-app-manifests
@@ -210,7 +210,7 @@ jobs:
 
 ```bash
 # Test registry connectivity
-docker pull ghcr.io/my-org/my-app-manifests:latest
+flux list artifacts oci://ghcr.io/my-org/my-app-manifests --timeout=30s
 ```
 
 **Timeout errors**: Large repositories with many tags may take longer to list. Check your network connectivity and registry health.
@@ -221,8 +221,8 @@ docker pull ghcr.io/my-org/my-app-manifests:latest
 # Push an initial artifact if the repository is empty
 flux push artifact oci://ghcr.io/my-org/my-app-manifests:0.1.0 \
   --path=./deploy \
-  --source="local" \
-  --revision="initial"
+  --source="$(git config --get remote.origin.url)" \
+  --revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)"
 ```
 
 ## Summary
