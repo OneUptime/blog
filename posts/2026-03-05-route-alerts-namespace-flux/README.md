@@ -27,40 +27,43 @@ Create separate providers for each namespace or team channel.
 ```yaml
 # Provider for development team notifications
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-dev-team
   namespace: flux-system
 spec:
   type: slack
+  address: https://slack.com/api/chat.postMessage
   channel: dev-deployments
   secretRef:
-    name: slack-webhook
+    name: slack-bot-token
 ---
 # Provider for staging notifications
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-staging-team
   namespace: flux-system
 spec:
   type: slack
+  address: https://slack.com/api/chat.postMessage
   channel: staging-deployments
   secretRef:
-    name: slack-webhook
+    name: slack-bot-token
 ---
 # Provider for production notifications
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-production-team
   namespace: flux-system
 spec:
   type: slack
+  address: https://slack.com/api/chat.postMessage
   channel: production-critical
   secretRef:
-    name: slack-webhook
+    name: slack-bot-token
 ```
 
 Apply the providers.
@@ -76,13 +79,14 @@ Create separate alerts for each namespace, routing to the appropriate provider.
 
 ```yaml
 # Alert for development namespace
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: dev-namespace-alert
   namespace: flux-system
 spec:
-  summary: "[Development]"
+  eventMetadata:
+    summary: "[Development]"
   providerRef:
     name: slack-dev-team
   eventSeverity: info
@@ -98,13 +102,14 @@ spec:
     - ".*is not ready$"
 ---
 # Alert for staging namespace
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: staging-namespace-alert
   namespace: flux-system
 spec:
-  summary: "[Staging]"
+  eventMetadata:
+    summary: "[Staging]"
   providerRef:
     name: slack-staging-team
   eventSeverity: info
@@ -120,13 +125,14 @@ spec:
     - ".*is not ready$"
 ---
 # Alert for production namespace
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: production-namespace-alert
   namespace: flux-system
 spec:
-  summary: "[Production]"
+  eventMetadata:
+    summary: "[Production]"
   providerRef:
     name: slack-production-team
   eventSeverity: error
@@ -155,13 +161,14 @@ In multi-tenant clusters, route alerts from team-owned namespaces to team-specif
 
 ```yaml
 # Alert for Team Alpha's namespaces
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: team-alpha-alert
   namespace: flux-system
 spec:
-  summary: "[Team Alpha]"
+  eventMetadata:
+    summary: "[Team Alpha]"
   providerRef:
     name: slack-team-alpha
   eventSeverity: info
@@ -188,13 +195,14 @@ spec:
     - "^Reconciliation finished.*no changes$"
 ---
 # Alert for Team Beta's namespaces
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: team-beta-alert
   namespace: flux-system
 spec:
-  summary: "[Team Beta]"
+  eventMetadata:
+    summary: "[Team Beta]"
   providerRef:
     name: slack-team-beta
   eventSeverity: info
@@ -227,13 +235,14 @@ Separate infrastructure alerts from application alerts using namespace-based rou
 
 ```yaml
 # Infrastructure namespace alert
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: infra-namespace-alert
   namespace: flux-system
 spec:
-  summary: "[Infrastructure]"
+  eventMetadata:
+    summary: "[Infrastructure]"
   providerRef:
     name: slack-platform-team
   eventSeverity: info
@@ -254,13 +263,14 @@ spec:
     - "^Reconciliation finished.*no changes$"
 ---
 # Application namespace alert
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: apps-namespace-alert
   namespace: flux-system
 spec:
-  summary: "[Applications]"
+  eventMetadata:
+    summary: "[Applications]"
   providerRef:
     name: slack-app-team
   eventSeverity: info
@@ -284,10 +294,10 @@ Test that alerts are routed to the correct channels.
 
 ```bash
 # List all alerts with their configuration
-kubectl get alerts -n flux-system -o custom-columns=NAME:.metadata.name,SUMMARY:.spec.summary,PROVIDER:.spec.providerRef.name
+kubectl get alerts -n flux-system -o custom-columns=NAME:.metadata.name,SUMMARY:.spec.eventMetadata.summary,PROVIDER:.spec.providerRef.name
 
 # Trigger reconciliation in a specific namespace
-flux reconcile kustomization apps --with-source
+flux reconcile kustomization apps -n apps --with-source
 
 # Check notification controller logs for delivery
 kubectl logs -n flux-system deploy/notification-controller --tail=20
@@ -298,7 +308,7 @@ kubectl get alert production-namespace-alert -n flux-system -o jsonpath='{.spec.
 
 ## Best Practices
 
-1. **Use the summary field** to clearly identify the namespace or environment in notifications
+1. **Use the eventMetadata summary field** to clearly identify the namespace or environment in notifications
 2. **Match severity to environment** - use info for dev/staging and error for production
 3. **Group related namespaces** in a single alert when they belong to the same team
 4. **Include both Kustomization and HelmRelease** sources for complete coverage
