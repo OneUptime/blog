@@ -20,8 +20,8 @@ Automating Calico upgrades on OpenShift builds on the standard Kubernetes automa
 oc version
 
 # Check current OCP cluster state is healthy before automation
-oc get co | grep -E "False|True.*True" | wc -l
-# Should be 0 (no degraded or unavailable operators)
+oc get co --no-headers | awk '$3 != "True" || $4 != "False" || $5 != "False" {print}' | wc -l
+# Should be 0 (no unavailable, progressing, or degraded operators)
 ```
 
 ## OpenShift-Specific Pre-flight Checks
@@ -33,22 +33,22 @@ echo "=== OpenShift Calico Upgrade Pre-flight ==="
 
 # 1. All MachineConfigPools stable
 echo "Checking MachineConfigPools..."
-UPDATING_MCPs=$(oc get mcp -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.conditions[?(@.type=="Updating")].status}{"\n"}{end}' | \
-  grep " True" | wc -l)
+UNREADY_MCPs=$(oc get mcp --no-headers | awk '$3 != "True" || $4 != "False" || $5 != "False" {print}' | wc -l)
 
-if [[ "${UPDATING_MCPs}" -gt 0 ]]; then
-  echo "WAIT: ${UPDATING_MCPs} MCPs still updating. Retry after MCPs complete."
+if [[ "${UNREADY_MCPs}" -gt 0 ]]; then
+  echo "WAIT: ${UNREADY_MCPs} MCPs are not updated, are updating, or are degraded. Retry after MCPs complete."
+  oc get mcp
   exit 1
 fi
 echo "OK: All MCPs stable"
 
 # 2. All cluster operators healthy
-DEGRADED_COS=$(oc get co -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.conditions[?(@.type=="Degraded")].status}{"\n"}{end}' | \
-  grep " True" | wc -l)
+UNHEALTHY_COS=$(oc get co --no-headers | awk '$3 != "True" || $4 != "False" || $5 != "False" {print}' | wc -l)
 
-if [[ "${DEGRADED_COS}" -gt 0 ]]; then
-  echo "WARN: ${DEGRADED_COS} cluster operators degraded"
-  oc get co | grep -v "True.*False.*False"
+if [[ "${UNHEALTHY_COS}" -gt 0 ]]; then
+  echo "FAIL: ${UNHEALTHY_COS} cluster operators are unavailable, progressing, or degraded"
+  oc get co --no-headers | awk '$3 != "True" || $4 != "False" || $5 != "False" {print}'
+  exit 1
 fi
 
 # 3. Calico-system namespace exists and healthy
@@ -69,6 +69,7 @@ on:
     inputs:
       calico_version:
         required: true
+        description: Calico release tag, for example v3.32.0
       cluster_context:
         required: true
 
@@ -80,24 +81,30 @@ jobs:
 
       - name: OCP pre-flight check
         run: |
-          oc --context=${{ github.event.inputs.cluster_context }} \
-            get mcp | grep -v "True.*False" && echo "MCPs ready"
+          test "$(oc --context=${{ github.event.inputs.cluster_context }} get mcp --no-headers | awk '$3 != "True" || $4 != "False" || $5 != "False" {print}' | wc -l)" -eq 0
+          test "$(oc --context=${{ github.event.inputs.cluster_context }} get co --no-headers | awk '$3 != "True" || $4 != "False" || $5 != "False" {print}' | wc -l)" -eq 0
+          echo "OpenShift pre-flight checks passed"
 
       - name: Apply Calico upgrade
         run: |
-          kubectl --context=${{ github.event.inputs.cluster_context }} \
-            patch installation default --type=merge \
-            -p '{"spec":{"version":"${{ github.event.inputs.calico_version }}"}}'
+          oc --context=${{ github.event.inputs.cluster_context }} \
+            apply --server-side --force-conflicts \
+            -f https://raw.githubusercontent.com/projectcalico/calico/${{ github.event.inputs.calico_version }}/manifests/tigera-operator-ocp-upgrade.yaml
 
       - name: Wait for upgrade
         run: |
-          kubectl --context=${{ github.event.inputs.cluster_context }} \
+          oc --context=${{ github.event.inputs.cluster_context }} \
+            rollout status deployment/tigera-operator -n tigera-operator --timeout=600s
+          oc --context=${{ github.event.inputs.cluster_context }} \
             rollout status ds/calico-node -n calico-system --timeout=600s
+          oc --context=${{ github.event.inputs.cluster_context }} \
+            wait --for=condition=Available tigerastatus --all --timeout=600s
 
       - name: Post-upgrade validation
         run: |
           ./scripts/validate-calico-ocp-upgrade.sh \
-            ${{ github.event.inputs.calico_version }}
+            ${{ github.event.inputs.calico_version }} \
+            ${{ github.event.inputs.cluster_context }}
 ```
 
 ## Post-Upgrade OCP Validation Script
@@ -106,12 +113,17 @@ jobs:
 #!/bin/bash
 # validate-calico-ocp-upgrade.sh
 TARGET_VERSION="${1:?Provide target version}"
+CONTEXT="${2:-}"
 FAILURES=0
+OC=(oc)
+if [[ -n "${CONTEXT}" ]]; then
+  OC=(oc --context="${CONTEXT}")
+fi
 
 echo "=== OCP Calico Post-Upgrade Validation ==="
 
 # Standard checks
-RUNNING=$(kubectl get installation default -o jsonpath='{.status.calicoVersion}')
+RUNNING=$("${OC[@]}" get installation.operator.tigera.io default -o jsonpath='{.status.calicoVersion}')
 [[ "${RUNNING}" == "${TARGET_VERSION}" ]] && echo "OK: Version ${TARGET_VERSION}" || \
   { echo "FAIL: Version mismatch"; FAILURES=$((FAILURES + 1)); }
 
@@ -119,11 +131,15 @@ RUNNING=$(kubectl get installation default -o jsonpath='{.status.calicoVersion}'
 echo "--- OCP-Specific Checks ---"
 
 # SCC still in place
-oc get scc calico-node > /dev/null 2>&1 && echo "OK: calico-node SCC exists" || \
+"${OC[@]}" get scc calico-node > /dev/null 2>&1 && echo "OK: calico-node SCC exists" || \
   { echo "FAIL: calico-node SCC missing"; FAILURES=$((FAILURES + 1)); }
 
+# Tigera operator reports Calico components available
+"${OC[@]}" wait --for=condition=Available tigerastatus --all --timeout=600s && echo "OK: TigeraStatus resources available" || \
+  { echo "FAIL: TigeraStatus resources not available"; FAILURES=$((FAILURES + 1)); }
+
 # No cluster operators newly degraded
-DEGRADED=$(oc get co -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Degraded")].status}{"\n"}{end}' | \
+DEGRADED=$("${OC[@]}" get co -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Degraded")].status}{"\n"}{end}' | \
   grep -c True)
 [[ "${DEGRADED}" -eq 0 ]] && echo "OK: No cluster operators degraded" || \
   { echo "WARN: ${DEGRADED} cluster operators degraded"; }
