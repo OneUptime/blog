@@ -10,7 +10,7 @@ Description: A practical guide to integrating security scanning tools into your 
 
 ## Introduction
 
-Security scanning in a GitOps pipeline ensures that every change deployed to your cluster meets your security standards. With Flux CD, you can integrate tools like Trivy, kubeaudit, and Kyverno to scan manifests, enforce policies, and block insecure configurations before they reach your cluster.
+Security scanning in a GitOps pipeline ensures that every change deployed to your cluster meets your security standards. With Flux CD, you can integrate tools like Trivy, kubeaudit, and Kyverno to scan manifests, enforce policies, and block insecure configurations before they are admitted to your cluster.
 
 This guide covers how to set up a multi-layered security scanning approach within your Flux CD pipeline.
 
@@ -28,8 +28,8 @@ A robust security scanning pipeline with Flux CD operates at multiple layers:
 ```mermaid
 graph LR
     A[Git Push] --> B[Flux Detects Change]
-    B --> C[Pre-deployment Scan]
-    C --> D{Policy Check}
+    B --> C[Admission Policy Check]
+    C --> D{Policy Result}
     D -->|Pass| E[Deploy to Cluster]
     D -->|Fail| F[Block & Alert]
     E --> G[Runtime Scanning]
@@ -61,9 +61,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kyverno
-  namespace: kyverno
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: kyverno
   chart:
     spec:
       chart: kyverno
@@ -103,8 +104,6 @@ metadata:
     policies.kyverno.io/severity: high
     policies.kyverno.io/category: Security
 spec:
-  # Block resources that violate this policy
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-containers
@@ -114,6 +113,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Containers must run as non-root. Set securityContext.runAsNonRoot to true."
         pattern:
           spec:
@@ -127,6 +127,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Init containers must run as non-root."
         pattern:
           spec:
@@ -147,7 +148,6 @@ metadata:
     policies.kyverno.io/title: Disallow Privileged Containers
     policies.kyverno.io/severity: critical
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: deny-privileged
@@ -157,6 +157,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Privileged containers are not allowed."
         pattern:
           spec:
@@ -177,7 +178,6 @@ metadata:
     policies.kyverno.io/title: Require Resource Limits
     policies.kyverno.io/severity: medium
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-resource-limits
@@ -187,6 +187,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "All containers must have CPU and memory limits defined."
         pattern:
           spec:
@@ -211,7 +212,6 @@ metadata:
     policies.kyverno.io/title: Require Image Digests
     policies.kyverno.io/severity: high
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: check-image-digest
       match:
@@ -220,6 +220,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Images must use digests instead of tags for immutability."
         pattern:
           spec:
@@ -250,9 +251,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: trivy-operator
-  namespace: trivy-system
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: trivy-system
   chart:
     spec:
       chart: trivy-operator
@@ -291,7 +293,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  # Deploy policies after Kyverno is installed
+  # Deploy policies after a Flux Kustomization named kyverno has installed Kyverno
   dependsOn:
     - name: kyverno
   sourceRef:
@@ -314,7 +316,7 @@ spec:
 
 ## Scanning ConfigMaps and Secrets
 
-Prevent sensitive data from being committed in plain text:
+Prevent direct creation of unmanaged Secrets in the cluster:
 
 ```yaml
 # security-policies/block-plaintext-secrets.yaml
@@ -323,9 +325,9 @@ kind: ClusterPolicy
 metadata:
   name: block-plaintext-secrets
 spec:
-  validationFailureAction: Enforce
+  background: false
   rules:
-    - name: require-sealed-secrets
+    - name: restrict-secret-writers
       match:
         any:
           - resources:
@@ -339,23 +341,26 @@ spec:
                 - kube-system
                 - flux-system
       validate:
+        failureAction: Enforce
         message: >-
-          Plain Kubernetes Secrets are not allowed. Use SealedSecrets
-          or SOPS-encrypted secrets instead.
+          Plain Kubernetes Secrets should be managed by Flux SOPS
+          decryption or the Sealed Secrets controller.
         deny:
           conditions:
             all:
-              # Check if the secret is managed by Flux SOPS
-              - key: "{{request.object.metadata.annotations.\"kustomize.toolkit.fluxcd.io/decryptor\" || ''}}"
-                operator: Equals
-                value: ""
+              - key: "{{request.userInfo.username}}"
+                operator: AnyNotIn
+                value:
+                  - system:serviceaccount:flux-system:kustomize-controller
+                  - system:serviceaccount:kube-system:sealed-secrets-controller
+                  - system:serviceaccount:sealed-secrets:sealed-secrets-controller
 ```
 
 ## Alerting on Security Violations
 
 ```yaml
 # clusters/my-cluster/security/alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: security-alert
@@ -371,9 +376,10 @@ spec:
     - kind: Kustomization
       name: '*'
       namespace: flux-system
-  summary: "Security policy violation detected in GitOps pipeline"
+  eventMetadata:
+    summary: "Security policy violation detected in GitOps pipeline"
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-security
@@ -428,7 +434,7 @@ Use multiple tools at different stages: Kyverno for admission control, Trivy for
 
 ### Start with Audit Mode
 
-When introducing new policies, start with `validationFailureAction: Audit` to understand the impact before switching to `Enforce`. This prevents disrupting existing workloads.
+When introducing new policies, start with `failureAction: Audit` to understand the impact before switching to `Enforce`. This prevents disrupting existing workloads.
 
 ### Exclude System Namespaces
 
