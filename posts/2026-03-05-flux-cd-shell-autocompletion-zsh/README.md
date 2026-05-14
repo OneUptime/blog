@@ -94,17 +94,10 @@ If you already have `compinit` in your `.zshrc`, just add the `fpath` line befor
 If you use Oh My Zsh, place the completion file in the custom completions directory.
 
 ```bash
-# Generate completion for Oh My Zsh
-flux completion zsh > "${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/flux/_flux"
-```
-
-You may need to create the `flux` plugin directory first.
-
-```bash
 # Create the flux plugin directory for Oh My Zsh
 mkdir -p "${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/flux"
 
-# Generate the completion script
+# Generate completion for Oh My Zsh
 flux completion zsh > "${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/flux/_flux"
 ```
 
