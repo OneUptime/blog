@@ -22,7 +22,7 @@ CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node   -o jsonp
 kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   tail -20 /var/log/calico/flowlogs/flows.log 2>/dev/null
 
 # Filter for denied flows
-kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   grep "deny\|Deny" /var/log/calico/flowlogs/flows.log | tail -10
+kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   grep " deny$" /var/log/calico/flowlogs/flows.log | tail -10
 
 # Check flow log configuration
 kubectl get felixconfiguration default -o yaml |   grep -i "flowLog"
@@ -31,17 +31,18 @@ kubectl get felixconfiguration default -o yaml |   grep -i "flowLog"
 ## Flow Log Format
 
 ```plaintext
-# Example flow log entry (abbreviated):
-# StartTime | EndTime | SrcIP | DstIP | Proto | SrcPort | DstPort | 
-# Packets | Bytes | Action | SrcNamespace | SrcPod | DstNamespace | DstSvc
+# Example Calico Enterprise flow log entry (abbreviated):
+# startTime endTime srcType srcNamespace srcName srcLabels dstType dstNamespace dstName
+# dstLabels srcIP dstIP proto srcPort dstPort numFlows numFlowsStarted numFlowsCompleted
+# reporter packetsIn packetsOut bytesIn bytesOut action
 
 # Allowed flow example:
-# 2026-03-13T10:00:00 | 192.168.1.5 | 192.168.2.10 | TCP | 54321 | 8080 | 
-# 12 pkts | 1500 bytes | Allow | default | frontend-abc | production | backend
+# 1773396000 1773396300 wep default frontend-abc - wep production backend -
+# 192.168.1.5 192.168.2.10 6 54321 8080 1 1 1 out 12 10 1500 980 allow
 
 # Denied flow example:
-# 2026-03-13T10:00:05 | 192.168.1.5 | 192.168.3.1 | TCP | 54322 | 5432 |
-# 1 pkt | 60 bytes | Deny | default | frontend-abc | database | postgres
+# 1773396005 1773396305 wep default frontend-abc - wep database postgres -
+# 192.168.1.5 192.168.3.1 6 54322 5432 1 1 1 out 1 0 60 0 deny
 ```
 
 ## Architecture
