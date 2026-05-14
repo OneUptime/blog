@@ -78,7 +78,7 @@ Create a `.sops.yaml` configuration file in the root of your Git repository to d
 # .sops.yaml - SOPS configuration for encrypting Kubernetes secrets
 creation_rules:
   # Encrypt all files matching **/secrets/*.yaml with the age public key
-  - path_regex: .*/secrets/.*\.yaml$
+  - path_regex: (^|.*/)secrets/.*\.yaml$
     encrypted_regex: "^(data|stringData)$"
     age: "age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p"
   # Default rule for any YAML file explicitly encrypted
@@ -205,7 +205,7 @@ For AWS KMS, configure the `.sops.yaml`:
 ```yaml
 # .sops.yaml - SOPS configuration with AWS KMS
 creation_rules:
-  - path_regex: .*/secrets/.*\.yaml$
+  - path_regex: (^|.*/)secrets/.*\.yaml$
     encrypted_regex: "^(data|stringData)$"
     kms: "arn:aws:kms:us-east-1:123456789:key/your-key-id"
 ```
@@ -272,7 +272,7 @@ Common causes:
 
 - The decryption secret (`sops-age`) does not exist or is in the wrong namespace
 - The age key in the secret does not match the key used for encryption
-- The secret key filename must be `age.agekey` (matching what the controller expects)
+- The secret data key name must end with `.agekey` (for example, `age.agekey`) so the controller detects it as an age key
 
 ### Secret Not Created After Reconciliation
 
