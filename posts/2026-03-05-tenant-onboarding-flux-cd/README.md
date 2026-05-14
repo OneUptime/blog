@@ -215,6 +215,19 @@ patches:
         path: /metadata/name
         value: team-delta
   - target:
+      kind: RoleBinding
+      name: tenant-placeholder-reconciler
+    patch: |
+      - op: replace
+        path: /metadata/name
+        value: team-delta-reconciler
+      - op: replace
+        path: /subjects/0/name
+        value: team-delta
+      - op: replace
+        path: /subjects/0/namespace
+        value: team-delta
+  - target:
       kind: GitRepository
       name: tenant-placeholder-repo
     patch: |
@@ -224,6 +237,29 @@ patches:
       - op: replace
         path: /spec/url
         value: https://github.com/org/team-delta-apps
+  - target:
+      kind: Kustomization
+      name: tenant-placeholder-apps
+    patch: |
+      - op: replace
+        path: /metadata/name
+        value: team-delta-apps
+      - op: replace
+        path: /spec/sourceRef/name
+        value: team-delta-repo
+      - op: replace
+        path: /spec/serviceAccountName
+        value: team-delta
+      - op: replace
+        path: /spec/targetNamespace
+        value: team-delta
+  - target:
+      kind: ResourceQuota
+      name: tenant-placeholder-quota
+    patch: |
+      - op: replace
+        path: /metadata/name
+        value: team-delta-quota
 ```
 
 ## Step 4: Write an Onboarding Script
@@ -273,6 +309,19 @@ patches:
         path: /metadata/name
         value: ${TENANT_NAME}
   - target:
+      kind: RoleBinding
+      name: tenant-placeholder-reconciler
+    patch: |
+      - op: replace
+        path: /metadata/name
+        value: ${TENANT_NAME}-reconciler
+      - op: replace
+        path: /subjects/0/name
+        value: ${TENANT_NAME}
+      - op: replace
+        path: /subjects/0/namespace
+        value: ${TENANT_NAME}
+  - target:
       kind: GitRepository
       name: tenant-placeholder-repo
     patch: |
@@ -282,6 +331,29 @@ patches:
       - op: replace
         path: /spec/url
         value: ${GIT_REPO_URL}
+  - target:
+      kind: Kustomization
+      name: tenant-placeholder-apps
+    patch: |
+      - op: replace
+        path: /metadata/name
+        value: ${TENANT_NAME}-apps
+      - op: replace
+        path: /spec/sourceRef/name
+        value: ${TENANT_NAME}-repo
+      - op: replace
+        path: /spec/serviceAccountName
+        value: ${TENANT_NAME}
+      - op: replace
+        path: /spec/targetNamespace
+        value: ${TENANT_NAME}
+  - target:
+      kind: ResourceQuota
+      name: tenant-placeholder-quota
+    patch: |
+      - op: replace
+        path: /metadata/name
+        value: ${TENANT_NAME}-quota
 EOF
 
 echo "Tenant ${TENANT_NAME} onboarding files created at ${BASE_DIR}/${TENANT_NAME}/"
@@ -300,6 +372,7 @@ metadata:
   name: tenants
   namespace: flux-system
 spec:
+  serviceAccountName: kustomize-controller
   interval: 10m
   sourceRef:
     kind: GitRepository
@@ -322,10 +395,15 @@ kubectl get namespace team-delta
 # Verify tenant resources
 flux get all -n team-delta
 
-# Confirm RBAC isolation
+# Confirm RBAC access within the tenant namespace
 kubectl auth can-i create deployments \
   --as=system:serviceaccount:team-delta:team-delta \
   -n team-delta
+
+# Confirm RBAC isolation from other namespaces
+kubectl auth can-i create deployments \
+  --as=system:serviceaccount:team-delta:team-delta \
+  -n default
 ```
 
 ## Summary
