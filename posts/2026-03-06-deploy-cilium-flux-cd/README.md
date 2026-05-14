@@ -19,6 +19,7 @@ This guide covers deploying Cilium using Flux CD, configuring network policies, 
 - A Kubernetes cluster (v1.24 or later) without a CNI plugin installed, or with the ability to replace the existing CNI
 - Flux CD installed and bootstrapped
 - kubectl configured for your cluster
+- Cilium CLI installed for connectivity testing
 - A Git repository connected to Flux CD
 
 ## Adding the Cilium Helm Repository
@@ -72,8 +73,8 @@ spec:
     # Use eBPF-based kube-proxy replacement
     kubeProxyReplacement: true
 
-    # Kubernetes API server address
-    k8sServiceHost: "kubernetes.default.svc.cluster.local"
+    # Kubernetes API server address reachable from the nodes
+    k8sServiceHost: "API_SERVER_IP_OR_DNS"
     k8sServicePort: 443
 
     # Enable Hubble for observability
@@ -208,8 +209,8 @@ spec:
     # Allow DNS resolution
     - toEndpoints:
         - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            "k8s:k8s-app": kube-dns
       toPorts:
         - ports:
             - port: "53"
@@ -239,19 +240,19 @@ metadata:
 spec:
   endpointSelector:
     matchExpressions:
-      - key: io.kubernetes.pod.namespace
+      - key: "k8s:io.kubernetes.pod.namespace"
         operator: NotIn
         values:
           - kube-system
           - flux-system
   egressDeny:
-    - toCIDR:
-        - "0.0.0.0/0"
-      exceptCIDRs:
-        # Allow cluster and private network ranges
-        - "10.0.0.0/8"
-        - "172.16.0.0/12"
-        - "192.168.0.0/16"
+    - toCIDRSet:
+        - cidr: "0.0.0.0/0"
+          except:
+            # Allow cluster and private network ranges
+            - "10.0.0.0/8"
+            - "172.16.0.0/12"
+            - "192.168.0.0/16"
 ```
 
 ## Enabling Cilium Ingress
@@ -330,10 +331,10 @@ spec:
 
 ```bash
 # Check Cilium status
-kubectl -n kube-system exec ds/cilium -- cilium status
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status
 
 # Verify connectivity
-kubectl -n kube-system exec ds/cilium -- cilium connectivity test
+cilium connectivity test
 
 # Check Hubble flows
 kubectl -n kube-system exec ds/cilium -- hubble observe
@@ -342,7 +343,7 @@ kubectl -n kube-system exec ds/cilium -- hubble observe
 kubectl get ciliumnetworkpolicies -A
 
 # Check Cilium endpoints
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list
 
 # Access Hubble UI (port-forward)
 kubectl port-forward -n kube-system svc/hubble-ui 12000:80
@@ -355,13 +356,13 @@ kubectl port-forward -n kube-system svc/hubble-ui 12000:80
 kubectl logs -n kube-system -l k8s-app=cilium
 
 # Check Cilium operator logs
-kubectl logs -n kube-system -l name=cilium-operator
+kubectl logs -n kube-system -l io.cilium/app=operator
 
 # Verify eBPF programs are loaded
-kubectl -n kube-system exec ds/cilium -- cilium bpf ct list global
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf ct list global
 
 # Check policy enforcement
-kubectl -n kube-system exec ds/cilium -- cilium policy get
+kubectl -n kube-system exec ds/cilium -- cilium-dbg policy get
 
 # Monitor dropped packets
 kubectl -n kube-system exec ds/cilium -- hubble observe --type drop
