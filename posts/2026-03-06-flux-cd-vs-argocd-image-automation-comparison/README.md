@@ -25,7 +25,7 @@ This architecture follows the GitOps principle by committing changes back to Git
 
 ### ArgoCD Image Automation
 
-ArgoCD handles image automation primarily through the **Argo CD Image Updater**, which is a separate project (not part of ArgoCD core). It can update images in two ways:
+ArgoCD handles image automation primarily through the **Argo CD Image Updater**, which is a separate project (not part of ArgoCD core). Current v1.x releases use `ImageUpdater` custom resources for configuration; legacy v0.x releases used annotations on the Argo CD `Application` resource. It can update images in two ways:
 
 - Writing back to Git (GitOps-compatible)
 - Using parameter overrides on the Application resource (imperative approach)
@@ -35,7 +35,7 @@ ArgoCD handles image automation primarily through the **Argo CD Image Updater**,
 | Feature | Flux CD | ArgoCD (Image Updater) |
 |---|---|---|
 | Core Integration | Built-in controllers | Separate add-on project |
-| Registry Scanning | Image Reflector Controller | Built-in scanner |
+| Registry Scanning | Image Reflector Controller | Reconciliation loop with registry clients |
 | Git Write-back | Native (Image Automation Controller) | Supported |
 | Parameter Override | Not applicable (Git-only) | Supported |
 | Semver Filtering | Yes | Yes |
@@ -45,8 +45,8 @@ ArgoCD handles image automation primarily through the **Argo CD Image Updater**,
 | Multiple Registries | Yes | Yes |
 | Private Registry Auth | Kubernetes Secrets | Kubernetes Secrets |
 | ECR/GCR/ACR Support | Yes | Yes |
-| Scan Interval | Configurable per image | Global configuration |
-| Update Strategy | Marker-based in YAML | Annotation-based on Application |
+| Scan Interval | Configurable per image | Controller-level interval |
+| Update Strategy | Marker-based in YAML | ImageUpdater CRD (legacy annotations in v0.x) |
 | Multi-file Updates | Yes | Yes |
 | Commit Message Customization | Yes | Yes |
 | GPG Signing Commits | Yes | Yes |
@@ -167,48 +167,46 @@ spec:
       containers:
         - name: my-app
           # The marker comment tells Flux which ImagePolicy to use
-          # {"$imagepolicy": "flux-system:my-app"}
-          image: ghcr.io/my-org/my-app:2.1.0
+          image: ghcr.io/my-org/my-app:2.1.0 # {"$imagepolicy": "flux-system:my-app"}
 ```
 
 ### ArgoCD: Image Updater Setup
 
-ArgoCD Image Updater uses annotations on the Application resource to configure image automation.
+ArgoCD Image Updater v1.x uses `ImageUpdater` custom resources to configure image automation.
 
 ```yaml
 # First, install the ArgoCD Image Updater
-# kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml
+# kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/config/install.yaml
 
-# Then annotate your Application resource
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+# Then create an ImageUpdater resource for your Application
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
 metadata:
   name: my-app
   namespace: argocd
-  annotations:
-    # List of images to track and update
-    argocd-image-updater.argoproj.io/image-list: >
-      myapp=ghcr.io/my-org/my-app
-    # Update strategy: semver, latest, digest, or name
-    argocd-image-updater.argoproj.io/myapp.update-strategy: semver
-    # Semver constraint for version filtering
-    argocd-image-updater.argoproj.io/myapp.semver-constraint: ">=2.0.0 <3.0.0"
-    # Write-back method: git or argocd (parameter override)
-    argocd-image-updater.argoproj.io/write-back-method: git
-    # Git branch for write-back
-    argocd-image-updater.argoproj.io/git-branch: main
-    # Helm parameter to update
-    argocd-image-updater.argoproj.io/myapp.helm.image-name: image.repository
-    argocd-image-updater.argoproj.io/myapp.helm.image-tag: image.tag
 spec:
-  project: default
-  source:
-    repoURL: https://github.com/my-org/my-app-config.git
-    targetRevision: main
-    path: charts/my-app
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: default
+  # Write-back method: git or argocd (parameter override)
+  writeBackConfig:
+    method: git
+    gitConfig:
+      # Git branch for write-back
+      branch: main
+  applicationRefs:
+    # Match the Argo CD Application named my-app
+    - namePattern: my-app
+      images:
+        # Image to track and update
+        - alias: myapp
+          # Semver constraint for version filtering
+          imageName: ghcr.io/my-org/my-app:2.x
+          commonUpdateSettings:
+            # Update strategy: semver, newest-build, digest, or alphabetical
+            updateStrategy: semver
+          # Helm parameters to update
+          manifestTargets:
+            helm:
+              name: image.repository
+              tag: image.tag
 ```
 
 ## Tag Filtering Strategies
@@ -241,7 +239,7 @@ spec:
     name: my-app
   policy:
     alphabetical:
-      # Sort in descending order to get the latest
+      # Sort in ascending order and select the last tag
       order: asc
   # Filter tags using a regex pattern
   filterTags:
@@ -267,23 +265,35 @@ spec:
     extract: "$buildnum"
 ```
 
-### ArgoCD: Image Updater Filter Annotations
+### ArgoCD: Image Updater Filter Configuration
 
 ```yaml
-# Various filtering strategies via annotations
+# Various filtering strategies in an ImageUpdater resource
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
 metadata:
-  annotations:
-    # Regex-based tag filtering
-    argocd-image-updater.argoproj.io/myapp.tag-match: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
-
-    # Ignore specific tags
-    argocd-image-updater.argoproj.io/myapp.ignore-tags: "latest,dev,staging"
-
-    # Use digest strategy for immutable deployments
-    argocd-image-updater.argoproj.io/myapp.update-strategy: digest
-
-    # Allow list for tags
-    argocd-image-updater.argoproj.io/myapp.allow-tags: "regexp:^v2\\."
+  name: my-app
+  namespace: argocd
+spec:
+  applicationRefs:
+    - namePattern: my-app
+      images:
+        - alias: myapp
+          imageName: ghcr.io/my-org/my-app:2.x
+          commonUpdateSettings:
+            updateStrategy: semver
+            # Allow list for tags using a regex match function
+            allowTags: "regexp:^v2\\."
+            # Ignore specific tags using glob patterns
+            ignoreTags:
+              - latest
+              - dev
+              - staging
+        - alias: myappdigest
+          imageName: ghcr.io/my-org/my-app:latest
+          commonUpdateSettings:
+            # Use digest strategy for mutable tag tracking
+            updateStrategy: digest
 ```
 
 ## Private Registry Authentication
@@ -398,15 +408,16 @@ ArgoCD Image Updater supports both Git write-back and parameter overrides:
 
 ```yaml
 # Method 1: Git write-back (recommended for GitOps)
-metadata:
-  annotations:
-    argocd-image-updater.argoproj.io/write-back-method: git
-    argocd-image-updater.argoproj.io/git-branch: main
+spec:
+  writeBackConfig:
+    method: git
+    gitConfig:
+      branch: main
 
 # Method 2: ArgoCD parameter override (faster but not GitOps-pure)
-metadata:
-  annotations:
-    argocd-image-updater.argoproj.io/write-back-method: argocd
+spec:
+  writeBackConfig:
+    method: argocd
     # This modifies the Application resource directly
     # Changes are not reflected in Git
 ```
@@ -425,9 +436,9 @@ metadata:
 ### Choose ArgoCD Image Updater If
 
 - You are already invested in the ArgoCD ecosystem
-- You need a quick setup with annotation-based configuration
+- You need a quick setup with a single ImageUpdater resource
 - You want the option to bypass Git write-back for faster deployments
-- You prefer managing image update rules alongside your Application resource
+- You prefer managing image update rules alongside Argo CD application configuration
 - You need the ArgoCD UI for visibility into image update status
 - You want a simpler setup for straightforward Helm chart image updates
 
