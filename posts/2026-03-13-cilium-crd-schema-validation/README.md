@@ -12,7 +12,7 @@ Description: Learn how to configure, troubleshoot, validate, and monitor Cilium 
 
 Cilium extends Kubernetes with numerous Custom Resource Definitions (CRDs) including CiliumNetworkPolicy, CiliumClusterwideNetworkPolicy, CiliumEndpoint, CiliumNode, and CiliumIdentity. Each CRD has a schema defined using OpenAPI v3 that validates resources before they are persisted to etcd. Proper schema validation prevents invalid policy configurations from being applied, which could either silently allow all traffic or drop legitimate connections.
 
-Starting with Cilium 1.12, CRD schema validation is enforced by default. The schemas are maintained in the Cilium source repository and are updated with each release to reflect new fields and deprecate old ones. When upgrading Cilium, CRD schemas must be updated to match the new agent version, otherwise validation errors will prevent new resources from being created or updated.
+Cilium has shipped CiliumNetworkPolicy CRD validation since the early 1.0 releases, and current Cilium CRDs use Kubernetes OpenAPI v3 schemas. The schemas are maintained in the Cilium source repository and are updated with each release to reflect new fields and deprecate old ones. When upgrading Cilium, CRD schemas must be updated to match the new agent version, otherwise validation errors can prevent new resources from being created or updated.
 
 This guide covers how to configure schema validation, diagnose validation failures, validate CRD schemas, and monitor for schema-related errors in production.
 
@@ -32,23 +32,26 @@ Install and update Cilium CRDs:
 
 kubectl get crds | grep cilium.io
 
-# Check schema validation is enabled (default in Cilium 1.12+)
+# Check the CiliumNetworkPolicy CRD has an OpenAPI v3 schema
 kubectl get crd ciliumnetworkpolicies.cilium.io -o jsonpath='{.spec.versions[0].schema}' | jq '.openAPIV3Schema.type'
 
 # Update CRDs during Cilium upgrade
+# Avoid --reuse-values when upgrading between Cilium minor versions; keep reviewed values in a file
+helm get values cilium --namespace kube-system -o yaml > old-values.yaml
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
-  --reuse-values \
-  --version <new-version>
-# Helm automatically updates CRDs
+  --version <new-version> \
+  -f old-values.yaml
+# Cilium installs or updates its CRDs as part of the supported installation flow
 
-# Manually apply CRDs for a specific version
-CILIUM_VERSION="1.15.6"
-helm pull cilium/cilium --version $CILIUM_VERSION --untar
-kubectl apply -f cilium/crds/
+# Manually apply generated CRD manifests for a specific Cilium source tag
+CILIUM_VERSION="v1.15.6"
+git clone --depth 1 --branch "$CILIUM_VERSION" https://github.com/cilium/cilium.git cilium-src
+kubectl apply -f cilium-src/pkg/k8s/apis/cilium.io/client/crds/v2/
+kubectl apply -f cilium-src/pkg/k8s/apis/cilium.io/client/crds/v2alpha1/
 ```
 
-Configure validation webhook (optional for stricter validation):
+Check CRD schemas and admission webhooks:
 
 ```bash
 # Check if Cilium webhook is configured
@@ -56,7 +59,7 @@ kubectl get validatingwebhookconfigurations | grep cilium
 kubectl get mutatingwebhookconfigurations | grep cilium
 
 # Cilium uses server-side validation via CRD schemas by default
-# No separate webhook is required for basic schema validation
+# No separate webhook is required for CiliumNetworkPolicy schema validation
 kubectl get crd ciliumnetworkpolicies.cilium.io -o jsonpath='{.spec.versions[0].schema.openAPIV3Schema}' | jq '.properties.spec' | head -30
 ```
 
@@ -78,7 +81,7 @@ spec:
   ingress:
   - invalidField: "this should fail"
 EOF
-# Error: ValidationError(CiliumNetworkPolicy.spec.ingress[0]): unknown field "invalidField"
+# Error: strict decoding error: unknown field "spec.ingress[0].invalidField"
 
 # Check full validation error
 kubectl apply -f my-policy.yaml 2>&1
@@ -94,7 +97,7 @@ Common schema errors and fixes:
 # Newer fields not recognized by older CRD schema
 kubectl get cnp my-policy -o yaml | diff - my-policy.yaml
 
-# Issue: Required field missing
+# Issue: Required selector missing
 kubectl apply -f - <<EOF
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -106,7 +109,7 @@ spec:
   - {}
 EOF
 
-# Fix: Always include endpointSelector
+# Fix: Always include endpointSelector for CiliumNetworkPolicy
 kubectl apply -f - <<EOF
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -128,19 +131,25 @@ EOF
 Verify CRDs are correctly installed and schemas match:
 
 ```bash
-# Check all Cilium CRDs are present
+# Check commonly used Cilium CRDs are present and established
 EXPECTED_CRDS=(
   "ciliumnetworkpolicies.cilium.io"
   "ciliumclusterwidenetworkpolicies.cilium.io"
+  "ciliumegressgatewaypolicies.cilium.io"
   "ciliumendpoints.cilium.io"
   "ciliumnodes.cilium.io"
   "ciliumidentities.cilium.io"
+  "ciliumcidrgroups.cilium.io"
   "ciliumendpointslices.cilium.io"
+  "ciliumloadbalancerippools.cilium.io"
 )
 
 for crd in "${EXPECTED_CRDS[@]}"; do
-  STATUS=$(kubectl get crd $crd -o jsonpath='{.status.conditions[-1].type}' 2>/dev/null)
-  echo "$crd: ${STATUS:-MISSING}"
+  if kubectl wait --for=condition=Established "crd/$crd" --timeout=10s >/dev/null 2>&1; then
+    echo "$crd: Established"
+  else
+    echo "$crd: MISSING or not Established"
+  fi
 done
 
 # Validate CRD schema is active
@@ -184,19 +193,17 @@ Monitor for schema validation issues in production:
 
 ```bash
 # Watch Kubernetes audit logs for CRD validation failures
+# On managed Kubernetes, use the provider's control-plane audit log integration instead
 kubectl -n kube-system logs kube-apiserver-<node> | grep -i "validation\|cilium" | tail -50
 
 # Monitor Cilium operator for CRD reconcile errors
-kubectl -n kube-system logs -l name=cilium-operator | grep -i "crd\|schema\|validation"
+kubectl -n kube-system logs -l io.cilium/app=operator | grep -i "crd\|schema\|validation"
 
-# Check for policies that failed to apply
+# Check events for Cilium policy or operator warnings
 kubectl get events -A | grep -i "cilium\|networkpolicy\|validation"
 
-# Periodically validate all existing CiliumNetworkPolicies
-kubectl get cnp -A -o json | jq '.items[].metadata | {name: .name, namespace: .namespace}'
-for ns in $(kubectl get ns -o jsonpath='{.items[*].metadata.name}'); do
-  kubectl get cnp -n $ns 2>/dev/null | grep -v "No resources"
-done
+# Periodically validate policy manifests before reconciling them
+kubectl apply --dry-run=server --validate=strict -f ./policies/
 ```
 
 ## Conclusion
