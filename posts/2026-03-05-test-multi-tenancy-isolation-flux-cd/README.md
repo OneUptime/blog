@@ -145,7 +145,9 @@ for i in $(seq 1 60); do
 done
 
 # Clean up test pods
-kubectl delete pods -l run=pod-test -n ${TENANT} --ignore-not-found
+kubectl get pods -n ${TENANT} -o name | \
+  grep '^pod/pod-test-' | \
+  xargs -r kubectl delete -n ${TENANT} --ignore-not-found
 kubectl delete pod quota-test -n ${TENANT} --ignore-not-found
 ```
 
