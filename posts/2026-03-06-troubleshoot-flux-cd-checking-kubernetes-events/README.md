@@ -200,19 +200,18 @@ By default, Kubernetes retains events for only 1 hour. For longer retention:
 Set up alerts to forward Flux events to external systems:
 
 ```yaml
-# alert.yaml - Send all Flux warnings to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1
+# alert.yaml - Send Flux warnings from the flux-system namespace to Slack
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
   namespace: flux-system
 spec:
   type: slack
-  channel: flux-alerts
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: flux-warnings
@@ -222,7 +221,7 @@ spec:
     name: slack
   eventSeverity: error
   eventSources:
-    # Monitor all Flux resource types
+    # Monitor Flux resource types in the flux-system namespace
     - kind: GitRepository
       name: '*'
     - kind: Kustomization
