@@ -54,11 +54,14 @@ prometheus:
 ipam:
   mode: kubernetes
 
-kubeProxyReplacement: strict
+kubeProxyReplacement: true
 EOF
 
 # Install with production values
+helm repo add cilium https://helm.cilium.io/
+helm repo update
 helm install cilium cilium/cilium \
+  --version 1.15.11 \
   --namespace kube-system \
   --values values-production.yaml
 
@@ -99,11 +102,33 @@ spec:
   project: infrastructure
   source:
     repoURL: https://helm.cilium.io/
-    targetRevision: 1.15.x
+    targetRevision: 1.15.11
     chart: cilium
     helm:
-      valuesFiles:
-      - values-production.yaml
+      valuesObject:
+        hubble:
+          enabled: true
+          relay:
+            enabled: true
+          ui:
+            enabled: true
+          metrics:
+            enabled:
+            - drop
+            - tcp
+            - flow
+            - icmp
+            - http
+        encryption:
+          enabled: true
+          type: wireguard
+        prometheus:
+          enabled: true
+          serviceMonitor:
+            enabled: true
+        ipam:
+          mode: kubernetes
+        kubeProxyReplacement: true
   destination:
     server: https://kubernetes.default.svc
     namespace: kube-system
@@ -117,6 +142,15 @@ spec:
 
 ```yaml
 # cilium-helmrelease.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: cilium
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://helm.cilium.io/
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -127,7 +161,7 @@ spec:
   chart:
     spec:
       chart: cilium
-      version: ">=1.15.0 <2.0.0"
+      version: "1.15.11"
       sourceRef:
         kind: HelmRepository
         name: cilium
@@ -140,6 +174,7 @@ spec:
     encryption:
       enabled: true
       type: wireguard
+    kubeProxyReplacement: true
 ```
 
 ## CI/CD Post-Installation Validation
@@ -186,7 +221,7 @@ resource "helm_release" "cilium" {
   name       = "cilium"
   repository = "https://helm.cilium.io/"
   chart      = "cilium"
-  version    = "1.15.x"
+  version    = "1.15.11"
   namespace  = "kube-system"
 
   set {
@@ -204,6 +239,10 @@ resource "helm_release" "cilium" {
   set {
     name  = "encryption.type"
     value = "wireguard"
+  }
+  set {
+    name  = "kubeProxyReplacement"
+    value = "true"
   }
 }
 ```
