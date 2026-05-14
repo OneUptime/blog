@@ -12,8 +12,8 @@ Docker Hub is the most widely used public container registry. Flux can scan Dock
 
 ## Prerequisites
 
-- A Kubernetes cluster with Flux and image automation controllers installed
-- A Docker Hub account (required for private images and to avoid rate limits)
+- A Kubernetes cluster with Flux and the image-reflector-controller installed
+- A Docker Hub account (required for private images and higher pull rate limits)
 - kubectl access to your cluster
 
 ## Understanding Docker Hub Image References
@@ -23,7 +23,7 @@ Docker Hub images follow these conventions:
 - Official images: `docker.io/library/<image>` (e.g., `docker.io/library/nginx`)
 - User/org images: `docker.io/<namespace>/<image>` (e.g., `docker.io/myorg/myapp`)
 
-When specifying images for Flux, always use the fully qualified image path including `docker.io`.
+Flux can canonicalize shortened Docker Hub image names, but using the fully qualified image path including `docker.io` avoids ambiguity.
 
 ## Step 1: Scan a Public Docker Hub Image
 
@@ -52,7 +52,7 @@ kubectl apply -f imagerepository-nginx.yaml
 
 ## Step 2: Configure Authentication for Docker Hub
 
-To scan private images or to avoid rate limiting, configure Docker Hub credentials.
+To scan private images or use authenticated Docker Hub pull limits, configure Docker Hub credentials.
 
 ```bash
 # Create a Docker Hub credentials secret
@@ -117,11 +117,11 @@ spec:
 
 ## Step 5: Handle Docker Hub Rate Limits
 
-Docker Hub enforces pull rate limits. For unauthenticated users the limit is 100 pulls per 6 hours. For authenticated free users it is 200 pulls per 6 hours. To stay within limits:
+Docker Hub enforces pull rate limits. For unauthenticated users the limit is 100 pulls per 6 hours. For authenticated Docker Personal users it is 200 pulls per 6 hours, while paid Pro, Team, and Business accounts have unlimited pulls subject to Docker's fair use policy. To stay within limits:
 
 1. Increase the scan interval to reduce the number of requests.
 2. Always use authentication even for public images.
-3. Use the exclusion list to reduce the number of tags processed.
+3. Use the exclusion list to reduce the number of tags stored and processed after scanning.
 
 ```yaml
 # imagerepository-rate-limited.yaml
@@ -182,7 +182,7 @@ Commit the generated file to your Git repository for GitOps management.
 
 If you encounter errors scanning Docker Hub images:
 
-- **Rate limit exceeded**: Increase the interval or add authentication.
+- **Rate limit exceeded**: Increase the interval, add authentication, or use an account tier with higher limits.
 - **Unauthorized**: Verify that your Docker Hub credentials are correct and the Secret is in the `flux-system` namespace.
 - **Image not found**: Ensure the image path uses the full Docker Hub format (`docker.io/library/...` for official images).
 
