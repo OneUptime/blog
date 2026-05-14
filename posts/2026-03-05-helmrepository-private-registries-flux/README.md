@@ -170,7 +170,7 @@ Create a secret containing the CA certificate.
 # Create a secret with the CA certificate for the private registry
 kubectl create secret generic registry-ca \
   --namespace flux-system \
-  --from-file=caFile=/path/to/internal-ca.crt
+  --from-file=ca.crt=/path/to/internal-ca.crt
 ```
 
 Reference the CA secret in the HelmRepository.
@@ -186,20 +186,38 @@ metadata:
 spec:
   url: https://charts.internal.example.com
   interval: 30m
-  # This secret contains both credentials and the CA certificate
-  secretRef:
+  # Reference the secret with the CA certificate
+  certSecretRef:
     name: registry-ca
 ```
 
-If you need both authentication and a custom CA, combine them in a single secret.
+If you need both authentication and a custom CA, keep the authentication secret and certificate secret separate.
 
 ```bash
-# Create a combined secret with credentials and CA certificate
-kubectl create secret generic registry-full-creds \
+# Create a secret with registry credentials
+kubectl create secret generic registry-creds \
   --namespace flux-system \
   --from-literal=username=flux-reader \
-  --from-literal=password=your-password \
-  --from-file=caFile=/path/to/internal-ca.crt
+  --from-literal=password=your-password
+```
+
+Then reference the credentials with `secretRef` and the CA certificate with `certSecretRef`.
+
+```yaml
+# helmrepository-auth-and-ca.yaml
+# HelmRepository with basic authentication and a custom CA certificate
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: internal-charts
+  namespace: flux-system
+spec:
+  url: https://charts.internal.example.com
+  interval: 30m
+  secretRef:
+    name: registry-creds
+  certSecretRef:
+    name: registry-ca
 ```
 
 ## Network Considerations
@@ -257,4 +275,4 @@ Common status messages and what they mean:
 
 ## Summary
 
-Connecting Flux CD to private Helm registries requires a HelmRepository resource with appropriate credentials and TLS configuration. Each registry platform (ChartMuseum, Harbor, Artifactory, Nexus) follows the same pattern: create a Kubernetes secret with credentials, optionally include a CA certificate, and reference the secret in the HelmRepository spec. Always verify connectivity after setup and ensure network policies allow traffic from the Flux source controller to your registry.
+Connecting Flux CD to private Helm registries requires a HelmRepository resource with appropriate credentials and TLS configuration. Each registry platform (ChartMuseum, Harbor, Artifactory, Nexus) follows the same pattern: create a Kubernetes secret with credentials, optionally create a certificate secret for custom CA certificates, and reference the secrets in the HelmRepository spec. Always verify connectivity after setup and ensure network policies allow traffic from the Flux source controller to your registry.
