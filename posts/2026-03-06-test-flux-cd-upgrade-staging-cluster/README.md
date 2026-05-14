@@ -72,7 +72,8 @@ flux-old bootstrap github \
   --repository=fleet-infra-staging \
   --branch=main \
   --path=clusters/staging \
-  --personal
+  --personal \
+  --components-extra=image-reflector-controller,image-automation-controller
 ```
 
 ## Step 3: Replicate Production Flux Resources
@@ -107,11 +108,12 @@ Create a script to clean and apply these resources in staging:
 # clean-and-apply.sh
 # Remove metadata that should not be carried over
 
-for file in /tmp/git-repos.yaml /tmp/helm-repos.yaml /tmp/kustomizations.yaml /tmp/helmreleases.yaml; do
+for file in /tmp/git-repos.yaml /tmp/helm-repos.yaml /tmp/helm-charts.yaml /tmp/kustomizations.yaml /tmp/helmreleases.yaml /tmp/image-repos.yaml /tmp/image-policies.yaml /tmp/alerts.yaml /tmp/providers.yaml; do
   # Remove cluster-specific metadata
   yq eval 'del(.items[].metadata.resourceVersion)' -i "$file"
   yq eval 'del(.items[].metadata.uid)' -i "$file"
   yq eval 'del(.items[].metadata.creationTimestamp)' -i "$file"
+  yq eval 'del(.items[].metadata.managedFields)' -i "$file"
   yq eval 'del(.items[].status)' -i "$file"
 
   # Apply to staging cluster
@@ -162,7 +164,7 @@ flux version > "$SNAPSHOT_DIR/version.txt"
 flux get all -A > "$SNAPSHOT_DIR/all-resources.txt"
 
 # Record CRD versions
-kubectl get crds | grep fluxcd > "$SNAPSHOT_DIR/crds.txt"
+kubectl get crds | grep toolkit.fluxcd.io > "$SNAPSHOT_DIR/crds.txt"
 
 # Record controller versions
 kubectl get deployments -n flux-system \
@@ -195,7 +197,7 @@ flux check --pre
 
 # Review what will change before applying
 # Export the new manifests without applying
-flux install --export > /tmp/flux-new-manifests.yaml
+flux install --components-extra=image-reflector-controller,image-automation-controller --export > /tmp/flux-new-manifests.yaml
 
 # Diff against current installation
 kubectl diff -f /tmp/flux-new-manifests.yaml
@@ -204,7 +206,7 @@ kubectl diff -f /tmp/flux-new-manifests.yaml
 ```bash
 # Perform the upgrade
 # Option 1: Using flux install (if not using bootstrap)
-flux install
+flux install --components-extra=image-reflector-controller,image-automation-controller
 
 # Option 2: Using bootstrap (recommended, updates Git repo too)
 flux bootstrap github \
@@ -212,7 +214,8 @@ flux bootstrap github \
   --repository=fleet-infra-staging \
   --branch=main \
   --path=clusters/staging \
-  --personal
+  --personal \
+  --components-extra=image-reflector-controller,image-automation-controller
 ```
 
 ## Step 7: Validate the Upgrade
@@ -257,7 +260,7 @@ fi
 
 echo ""
 echo "=== CRD Changes ==="
-kubectl get crds | grep fluxcd > "$SNAPSHOT_DIR/crds.txt"
+kubectl get crds | grep toolkit.fluxcd.io > "$SNAPSHOT_DIR/crds.txt"
 diff /tmp/flux-upgrade-snapshot/before/crds.txt "$SNAPSHOT_DIR/crds.txt"
 ```
 
@@ -328,7 +331,7 @@ flux get helmrelease upgrade-test-helm --watch
 flux reconcile kustomization flux-system --with-source
 
 # Test 4: Verify image automation still works
-flux get image all -A
+flux get images all -A
 
 # Test 5: Verify notifications still fire
 flux get alerts -A
@@ -346,7 +349,7 @@ curl -sL https://github.com/fluxcd/flux2/releases/download/v2.2.0/flux_2.2.0_lin
 sudo mv flux /usr/local/bin/flux
 
 # Rollback the controllers
-flux install --version=v2.2.0
+flux install --version=v2.2.0 --components-extra=image-reflector-controller,image-automation-controller
 
 # Verify everything still works after rollback
 flux check
@@ -354,7 +357,7 @@ flux get all -A
 
 # If rollback works, re-apply the upgrade
 curl -s https://fluxcd.io/install.sh | sudo bash
-flux install
+flux install --components-extra=image-reflector-controller,image-automation-controller
 ```
 
 ## Step 10: Document and Execute Production Upgrade
@@ -403,7 +406,8 @@ flux bootstrap github \
   --repository=fleet-infra \
   --branch=main \
   --path=clusters/production \
-  --personal
+  --personal \
+  --components-extra=image-reflector-controller,image-automation-controller
 
 # Validate
 flux check
@@ -442,7 +446,7 @@ jobs:
           # Install the version matching production
           curl -sL https://github.com/fluxcd/flux2/releases/download/v2.2.0/flux_2.2.0_linux_amd64.tar.gz | tar xz
           sudo mv flux /usr/local/bin/flux
-          flux install
+          flux install --components-extra=image-reflector-controller,image-automation-controller
 
       - name: Apply test resources
         run: |
@@ -456,7 +460,7 @@ jobs:
       - name: Upgrade to latest Flux
         run: |
           curl -s https://fluxcd.io/install.sh | sudo bash
-          flux install
+          flux install --components-extra=image-reflector-controller,image-automation-controller
 
       - name: Validate upgrade
         run: |
