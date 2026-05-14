@@ -19,7 +19,7 @@ This post is a practical guide to getting the most out of the Cilium Slack commu
 ## Prerequisites
 
 - A Slack account
-- Join the Cilium Slack at: https://cilium.io/slack
+- Open the Cilium Slack workspace at: https://cilium.slack.com
 - Basic familiarity with your Cilium issue or question
 
 ## Step 1: Join the Right Channels
@@ -29,13 +29,12 @@ Different channels serve different purposes. Join the ones relevant to your work
 ```plaintext
 # Core channels to join:
 
-#general          - Announcements, news, general discussion
-#help             - Getting help with issues (most active support channel)
+#general          - General user discussions and questions
 #hubble           - Hubble observability and flow visibility questions
 #networkpolicy    - Network policy design and troubleshooting
-#ebpf             - eBPF internals, BPF program discussion
-#cilium-dev       - Development discussion (for contributors)
-#release          - Release announcements and upgrade discussion
+#ebpf             - General eBPF questions
+#development      - Development discussion (for contributors)
+#release          - Release announcements
 #kubernetes       - Kubernetes-specific integration questions
 ```
 
@@ -50,7 +49,7 @@ Questions with diagnostic context get answered faster and more accurately.
 cilium version
 
 # 2. Kubernetes version and distribution
-kubectl version --short
+kubectl version
 # e.g., "EKS 1.29, us-east-1"
 
 # 3. Cilium status summary
@@ -64,8 +63,8 @@ kubectl -n kube-system logs -l k8s-app=cilium --tail=30 | grep -i error
 
 A well-formatted question dramatically increases response quality and speed.
 
-```plaintext
-# Good question format for #help:
+````plaintext
+# Good question format for #general:
 
 ---
 **Environment:**
@@ -86,14 +85,14 @@ All traffic is allowed instead of only POST /v1/api.
 **Policy:**
 ```yaml
 [paste your YAML here]
-```plaintext
+```
 
 **Cilium status:**
 ```
 [paste cilium status output here]
-```plaintext
----
 ```
+---
+````
 
 ## Step 4: Use Threads to Keep Channels Clean
 
@@ -113,7 +112,7 @@ The health of the community depends on members helping each other.
 
 ```bash
 # Ways to contribute:
-# 1. Answer questions in #help when you know the answer
+# 1. Answer questions in #general when you know the answer
 # 2. Share interesting use cases in #general
 # 3. Report documentation gaps found via Slack discussions as GitHub issues
 # 4. Write up solutions to complex issues as GitHub discussions or blog posts
