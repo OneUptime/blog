@@ -26,6 +26,9 @@ curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 # kubeconform for schema validation
 go install github.com/yannh/kubeconform/cmd/kubeconform@latest
 
+# yq for YAML processing
+go install github.com/mikefarah/yq/v4@latest
+
 # helm-docs for documentation generation (optional)
 go install github.com/norwoodj/helm-docs/cmd/helm-docs@latest
 
@@ -107,7 +110,7 @@ kubeconform \
   -strict \
   -summary \
   -schema-location default \
-  -schema-location 'https://raw.githubusercontent.com/fluxcd/flux2/main/manifests/crds/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+  -schema-location 'https://raw.githubusercontent.com/fluxcd-community/flux2-schemas/main/{{ .ResourceKind }}{{ .KindSuffix }}.json' \
   helmrelease-example.yaml
 ```
 
@@ -139,7 +142,7 @@ rules:
 ```bash
 # Run yamllint on all HelmRelease files
 find . -name "*.yaml" -exec grep -l "kind: HelmRelease" {} \; | \
-  xargs yamllint -c .yamllint.yaml
+  xargs -r yamllint -c .yamllint.yaml
 ```
 
 ## Step 2: Validate Helm Values Locally
@@ -178,8 +181,14 @@ fi
 # Extract chart name and version
 CHART=$(yq eval '.spec.chart.spec.chart' "$HELMRELEASE_FILE")
 VERSION=$(yq eval '.spec.chart.spec.version' "$HELMRELEASE_FILE")
+REPO_NAME=$(yq eval '.spec.chart.spec.sourceRef.name' "$HELMRELEASE_FILE")
+VERSION_ARGS=()
 
-echo "Chart: $CHART, Version: $VERSION"
+if [ "$VERSION" != "null" ]; then
+  VERSION_ARGS=(--version "$VERSION")
+fi
+
+echo "Chart: $CHART, Version: $VERSION, Repository: $REPO_NAME"
 
 # Extract values to a temporary file
 yq eval '.spec.values' "$HELMRELEASE_FILE" > /tmp/hr-values.yaml
@@ -188,10 +197,9 @@ echo "Extracted values:"
 cat /tmp/hr-values.yaml
 
 # Validate by rendering the chart with extracted values
-helm template test-release "$CHART" \
-  --version "$VERSION" \
-  --values /tmp/hr-values.yaml \
-  --validate 2>&1
+helm template test-release "$REPO_NAME/$CHART" \
+  "${VERSION_ARGS[@]}" \
+  --values /tmp/hr-values.yaml 2>&1
 
 if [ $? -eq 0 ]; then
   echo "Values validation passed."
@@ -207,12 +215,11 @@ fi
 
 ```bash
 # Render the chart with your custom values
-# This catches template errors, missing values, and invalid output
+# This catches template errors and missing values
 helm template my-release my-charts/my-app \
   --version 2.1.0 \
   --values my-custom-values.yaml \
-  --namespace default \
-  --validate
+  --namespace default
 
 # Render and validate the output against Kubernetes schemas
 helm template my-release my-charts/my-app \
@@ -220,6 +227,14 @@ helm template my-release my-charts/my-app \
   --values my-custom-values.yaml \
   --namespace default | \
   kubeconform -strict -summary -kubernetes-version 1.29.0
+
+# If you have access to a Kubernetes cluster, Helm can also validate
+# rendered manifests against the current cluster's API server
+helm template my-release my-charts/my-app \
+  --version 2.1.0 \
+  --values my-custom-values.yaml \
+  --namespace default \
+  --validate
 
 # Render with debug output to see all template processing
 helm template my-release my-charts/my-app \
@@ -278,8 +293,7 @@ for values_file in test-values-minimal.yaml test-values-production.yaml; do
   echo "Testing with $values_file..."
   helm template my-release my-charts/my-app \
     --version 2.1.0 \
-    --values "$values_file" \
-    --validate 2>&1
+    --values "$values_file" 2>&1
   echo "---"
 done
 ```
@@ -361,16 +375,16 @@ HELMRELEASE_FILE=$1
 echo "Checking valuesFrom references in $HELMRELEASE_FILE..."
 
 # Extract valuesFrom entries
-yq eval '.spec.valuesFrom[]' "$HELMRELEASE_FILE" 2>/dev/null | while read -r line; do
-  KIND=$(echo "$line" | yq eval '.kind' -)
-  NAME=$(echo "$line" | yq eval '.name' -)
+yq eval -o=json -I=0 '.spec.valuesFrom[]' "$HELMRELEASE_FILE" 2>/dev/null | while read -r ref; do
+  KIND=$(echo "$ref" | yq eval '.kind' -)
+  NAME=$(echo "$ref" | yq eval '.name' -)
   NAMESPACE=$(yq eval '.metadata.namespace' "$HELMRELEASE_FILE")
 
   echo "Checking $KIND/$NAME in namespace $NAMESPACE..."
 
   # Check if the referenced resource exists in the repo
   FOUND=$(find . -name "*.yaml" -exec grep -l "name: $NAME" {} \; | \
-    xargs grep -l "kind: $KIND" 2>/dev/null)
+    xargs -r grep -l "kind: $KIND" 2>/dev/null)
 
   if [ -n "$FOUND" ]; then
     echo "  Found in: $FOUND"
@@ -429,13 +443,16 @@ jobs:
       - name: Install kubeconform
         run: go install github.com/yannh/kubeconform/cmd/kubeconform@latest
 
+      - name: Install yq
+        run: go install github.com/mikefarah/yq/v4@latest
+
       - name: Validate HelmRelease schemas
         run: |
           find . -name "*.yaml" -exec grep -l "kind: HelmRelease" {} \; | while read file; do
             echo "Validating schema: $file"
             kubeconform -strict -summary \
               -schema-location default \
-              -schema-location 'https://raw.githubusercontent.com/fluxcd/flux2/main/manifests/crds/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+              -schema-location 'https://raw.githubusercontent.com/fluxcd-community/flux2-schemas/main/{{ .ResourceKind }}{{ .KindSuffix }}.json' \
               "$file"
           done
 
@@ -446,15 +463,28 @@ jobs:
             CHART=$(yq eval '.spec.chart.spec.chart' "$file")
             VERSION=$(yq eval '.spec.chart.spec.version' "$file")
             REPO_NAME=$(yq eval '.spec.chart.spec.sourceRef.name' "$file")
+            export REPO_NAME
+            REPO_URL=$(find . -name "*.yaml" -exec yq eval 'select(.kind == "HelmRepository" and .metadata.name == strenv(REPO_NAME)) | .spec.url' {} \; | grep -v '^null$' | head -n 1)
+            VERSION_ARGS=()
+
+            if [ "$VERSION" != "null" ]; then
+              VERSION_ARGS=(--version "$VERSION")
+            fi
 
             # Extract and render values
             yq eval '.spec.values // {}' "$file" > /tmp/values.yaml
 
             # Attempt template rendering
-            helm template test "$CHART" \
-              --version "$VERSION" \
-              --values /tmp/values.yaml \
-              --validate 2>&1 || echo "WARNING: Template validation failed for $file"
+            if [ -n "$REPO_URL" ]; then
+              helm template test "$CHART" \
+                --repo "$REPO_URL" \
+                "${VERSION_ARGS[@]}" \
+                --values /tmp/values.yaml 2>&1 || echo "WARNING: Template rendering failed for $file"
+            else
+              helm template test "$REPO_NAME/$CHART" \
+                "${VERSION_ARGS[@]}" \
+                --values /tmp/values.yaml 2>&1 || echo "WARNING: Template rendering failed for $file"
+            fi
           done
 ```
 
@@ -488,22 +518,31 @@ for file in $HR_FILES; do
   echo "  PASS: YAML syntax"
 
   # 2. Schema validation
-  if kubeconform -strict "$file" > /dev/null 2>&1; then
+  if kubeconform -strict \
+    -schema-location default \
+    -schema-location 'https://raw.githubusercontent.com/fluxcd-community/flux2-schemas/main/{{ .ResourceKind }}{{ .KindSuffix }}.json' \
+    "$file" > /dev/null 2>&1; then
     echo "  PASS: Schema validation"
   else
     echo "  WARN: Schema validation (CRD schema may not be available)"
   fi
 
-  # 3. Required fields check
+  # 3. Chart fields check
   CHART=$(yq eval '.spec.chart.spec.chart' "$file")
   VERSION=$(yq eval '.spec.chart.spec.version' "$file")
   SOURCE_REF=$(yq eval '.spec.chart.spec.sourceRef.name' "$file")
 
-  if [ "$CHART" = "null" ] || [ "$VERSION" = "null" ] || [ "$SOURCE_REF" = "null" ]; then
+  if [ "$CHART" = "null" ] || [ "$SOURCE_REF" = "null" ]; then
     echo "  FAIL: Missing required chart spec fields"
     ERRORS=$((ERRORS + 1))
   else
-    echo "  PASS: Required fields (chart=$CHART, version=$VERSION)"
+    echo "  PASS: Required fields (chart=$CHART, sourceRef=$SOURCE_REF)"
+  fi
+
+  if [ "$VERSION" = "null" ]; then
+    echo "  WARN: Chart version is not pinned"
+  else
+    echo "  PASS: Chart version ($VERSION)"
   fi
 
   # 4. Interval format check
