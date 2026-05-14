@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Helm, HelmChart, HelmRepository, Source Controller
 
-Description: Learn how to create a HelmChart source that pulls charts from a HelmRepository in Flux CD, including version pinning, value overrides, and reconciliation configuration.
+Description: Learn how to create a HelmChart source that pulls charts from a HelmRepository in Flux CD, including version pinning, values files, and reconciliation configuration.
 
 ---
 
@@ -92,7 +92,7 @@ The HelmChart spec has several important fields.
 | `spec.version` | Version constraint (exact or semver range) | No (defaults to latest) |
 | `spec.sourceRef` | Reference to a source (HelmRepository, GitRepository, or Bucket) | Yes |
 | `spec.interval` | How often to check for matching new versions | Yes |
-| `spec.reconcileStrategy` | Strategy for detecting new chart versions (`ChartVersion` or `Revision`) | No |
+| `spec.reconcileStrategy` | Strategy that controls when Flux creates a new chart artifact (`ChartVersion` or `Revision`) | No |
 | `spec.valuesFiles` | List of values files to include from the chart | No |
 
 ## Pinning to an Exact Version
@@ -166,7 +166,7 @@ spec:
 
 ## Configuring Reconcile Strategy
 
-The `spec.reconcileStrategy` field controls how Flux detects new chart versions.
+The `spec.reconcileStrategy` field controls what causes Flux to create a new chart artifact.
 
 ```yaml
 # helmchart-reconcile-strategy.yaml
@@ -183,14 +183,14 @@ spec:
     kind: HelmRepository
     name: jetstack
   interval: 15m
-  # ChartVersion triggers reconciliation when the chart version changes
-  # Revision triggers reconciliation when the source revision changes
+  # ChartVersion creates a new artifact when the chart version changes
+  # Revision is mainly used for GitRepository or Bucket sources when the source revision changes
   reconcileStrategy: ChartVersion
 ```
 
 ## HelmChart with an OCI HelmRepository
 
-When your HelmRepository uses the OCI protocol, the HelmChart configuration remains the same. The chart name corresponds to the OCI artifact name.
+When your HelmRepository uses the OCI protocol, the HelmChart configuration remains the same. The chart name corresponds to the OCI artifact name. Flux accepts `spec.interval` on OCI HelmRepository resources, but the field is only used for default HTTP/S Helm repositories and is ignored for OCI repositories.
 
 ```yaml
 # helmrepository-oci.yaml
