@@ -178,13 +178,15 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager
-  namespace: cert-manager
+  namespace: flux-system
 spec:
   interval: 30m
+  releaseName: cert-manager
+  targetNamespace: cert-manager
   chart:
     spec:
       chart: cert-manager
-      version: "1.16.x"
+      version: "v1.20.2"
       sourceRef:
         kind: HelmRepository
         name: jetstack
@@ -196,7 +198,8 @@ spec:
     crds: CreateReplace
   values:
     # Install CRDs with Helm
-    installCRDs: true
+    crds:
+      enabled: true
     # Enable Prometheus metrics
     prometheus:
       enabled: true
@@ -221,13 +224,15 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
-  namespace: ingress-nginx
+  namespace: flux-system
 spec:
   interval: 30m
+  releaseName: ingress-nginx
+  targetNamespace: ingress-nginx
   chart:
     spec:
       chart: ingress-nginx
-      version: "4.11.x"
+      version: "4.15.1"
       sourceRef:
         kind: HelmRepository
         name: ingress-nginx
@@ -268,13 +273,15 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: external-secrets
-  namespace: external-secrets
+  namespace: flux-system
 spec:
   interval: 30m
+  releaseName: external-secrets
+  targetNamespace: external-secrets
   chart:
     spec:
       chart: external-secrets
-      version: "0.12.x"
+      version: "2.4.1"
       sourceRef:
         kind: HelmRepository
         name: external-secrets
@@ -287,7 +294,7 @@ spec:
       port: 9443
     # Enable cert controller
     certController:
-      enabled: true
+      create: true
 ```
 
 ### Infrastructure Kustomization
@@ -297,9 +304,9 @@ spec:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - cert-manager
-  - ingress-nginx
-  - external-secrets
+  - cert-manager/helmrelease.yaml
+  - ingress-nginx/helmrelease.yaml
+  - external-secrets/helmrelease.yaml
 ```
 
 ## Step 4: Infrastructure Configs
@@ -324,7 +331,7 @@ spec:
             className: nginx
 ---
 # infrastructure/configs/secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -336,7 +343,7 @@ spec:
       auth:
         jwt:
           serviceAccountRef:
-            name: external-secrets-sa
+            name: external-secrets
             namespace: external-secrets
 ---
 # infrastructure/configs/kustomization.yaml
@@ -364,13 +371,15 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kube-prometheus-stack
-  namespace: monitoring
+  namespace: flux-system
 spec:
   interval: 30m
+  releaseName: kube-prometheus-stack
+  targetNamespace: monitoring
   chart:
     spec:
       chart: kube-prometheus-stack
-      version: "65.x"
+      version: "85.0.3"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
@@ -414,6 +423,12 @@ spec:
               resources:
                 requests:
                   storage: 10Gi
+---
+# platform/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - monitoring/helmrelease.yaml
 ```
 
 ## Step 6: Flux Notifications
@@ -462,7 +477,7 @@ Create a base tenant template:
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: "" # Patched per tenant
+  name: tenant-placeholder # Patched per tenant
   labels:
     toolkit.fluxcd.io/tenant: "true"
 ---
@@ -471,14 +486,13 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: tenant-admin
-  namespace: "" # Patched per tenant
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: admin
 subjects:
   - kind: Group
-    name: "" # Patched per tenant
+    name: tenant-placeholder # Patched per tenant
     apiGroup: rbac.authorization.k8s.io
 ---
 # tenants/base/resource-quota.yaml
@@ -486,7 +500,6 @@ apiVersion: v1
 kind: ResourceQuota
 metadata:
   name: tenant-quota
-  namespace: "" # Patched per tenant
 spec:
   hard:
     requests.cpu: "4"
@@ -500,7 +513,6 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny
-  namespace: "" # Patched per tenant
 spec:
   podSelector: {}
   policyTypes:
@@ -509,9 +521,16 @@ spec:
   # Allow DNS and within-namespace traffic
   egress:
     - to:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
       ports:
         - protocol: UDP
+          port: 53
+        - protocol: TCP
           port: 53
     - to:
         - podSelector: {}
@@ -532,13 +551,14 @@ resources:
 patches:
   - target:
       kind: Namespace
-      name: ""
+      name: tenant-placeholder
     patch: |
       - op: replace
         path: /metadata/name
         value: team-alpha
   - target:
       kind: RoleBinding
+      name: tenant-admin
     patch: |
       - op: replace
         path: /subjects/0/name
@@ -571,7 +591,7 @@ spec:
             - containerPort: 8080
           env:
             - name: ENV
-              value: "${ENV:=dev}"
+              value: "dev"
           resources:
             requests:
               cpu: 100m
@@ -613,7 +633,7 @@ patches:
       kind: Deployment
       name: sample-app
     patch: |
-      - op: replace
+      - op: add
         path: /spec/replicas
         value: 1
 ```
@@ -655,6 +675,42 @@ spec:
   prune: true
   wait: true
 ---
+# clusters/production/infrastructure-configs.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure-configs
+  namespace: flux-system
+spec:
+  interval: 1h
+  retryInterval: 1m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/configs
+  prune: true
+  dependsOn:
+    - name: infrastructure-controllers
+---
+# clusters/production/platform.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: platform
+  namespace: flux-system
+spec:
+  interval: 1h
+  retryInterval: 1m
+  timeout: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./platform
+  prune: true
+  dependsOn:
+    - name: infrastructure-configs
+---
 # clusters/production/apps.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -663,6 +719,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1h
+  retryInterval: 1m
+  timeout: 10m
   sourceRef:
     kind: GitRepository
     name: flux-system
