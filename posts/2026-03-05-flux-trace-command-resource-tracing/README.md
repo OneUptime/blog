@@ -28,14 +28,17 @@ Status:          Managed by Flux
 Kustomization:   apps
 Namespace:       flux-system
 Path:            ./clusters/production/apps
-Ready:           True
-Status:          Applied revision: main@sha1:abc1234
+Revision:        main@sha1:abc1234
+Status:          Last reconciled at 2026-03-05T12:00:00Z
+Message:         Applied revision: main@sha1:abc1234
 ---
 GitRepository:   flux-system
 Namespace:       flux-system
 URL:             https://github.com/myorg/fleet-infra
-Ready:           True
-Status:          Fetched revision: main@sha1:abc1234
+Branch:          main
+Revision:        main@sha1:abc1234
+Status:          Last reconciled at 2026-03-05T12:00:00Z
+Message:         stored artifact for revision 'main@sha1:abc1234'
 ```
 
 This shows you that the Deployment `my-app` is managed by the Kustomization `apps`, which gets its manifests from the GitRepository `flux-system`.
@@ -63,7 +66,7 @@ flux trace namespace production
 Trace a Custom Resource:
 
 ```bash
-flux trace certificate my-cert -n my-namespace --api-version=cert-manager.io/v1 --kind=Certificate
+flux trace my-cert -n my-namespace --api-version=cert-manager.io/v1 --kind=Certificate
 ```
 
 ## Trace Resources Managed by HelmRelease
@@ -83,16 +86,24 @@ Status:          Managed by Flux
 ---
 HelmRelease:     ingress-nginx
 Namespace:       ingress-nginx
+Revision:        4.7.1
+Status:          Last reconciled at 2026-03-05T12:00:00Z
+Message:         Helm install succeeded
+---
+HelmChart:       ingress-nginx-ingress-nginx
+Namespace:       flux-system
 Chart:           ingress-nginx
 Version:         4.7.1
-Ready:           True
-Status:          Helm install succeeded
+Revision:        4.7.1
+Status:          Last reconciled at 2026-03-05T12:00:00Z
+Message:         pulled 'ingress-nginx' chart with version '4.7.1'
 ---
 HelmRepository:  ingress-nginx
 Namespace:       flux-system
 URL:             https://kubernetes.github.io/ingress-nginx
-Ready:           True
-Status:          Fetched revision: sha256:def5678
+Revision:        sha256:def5678
+Status:          Last reconciled at 2026-03-05T12:00:00Z
+Message:         stored artifact for revision 'sha256:def5678'
 ```
 
 ## Identify Where Failures Originate
@@ -113,14 +124,16 @@ Status:          Managed by Flux
 Kustomization:   production-apps
 Namespace:       flux-system
 Path:            ./clusters/production
-Ready:           False
-Status:          Source is not ready
+Revision:        main@sha1:abc1234
+Status:          Last reconciliation failed at 2026-03-05T12:00:00Z
+Message:         Source is not ready
 ---
 GitRepository:   flux-system
 Namespace:       flux-system
 URL:             https://github.com/myorg/fleet-infra
-Ready:           False
-Status:          failed to checkout: authentication required
+Branch:          main
+Status:          Last reconciliation failed at 2026-03-05T12:00:00Z
+Message:         failed to checkout: authentication required
 ```
 
 This immediately tells you the problem is at the source level -- the Git repository cannot be fetched due to an authentication issue.
@@ -139,7 +152,7 @@ If the trace shows a dependency issue, check the upstream Kustomization:
 flux trace kustomization infrastructure -n flux-system
 ```
 
-You can also use `flux get kustomizations` to see the dependency hierarchy:
+You can also use `flux get kustomizations` to see Kustomization readiness across the namespace:
 
 ```bash
 flux get kustomizations -n flux-system
@@ -214,7 +227,7 @@ for resource in "${RESOURCES[@]}"; do
     OUTPUT=$(flux trace "$kind" "$name" -n "$namespace" 2>&1)
     echo "$OUTPUT"
 
-    if echo "$OUTPUT" | grep -q "Ready:.*False"; then
+    if echo "$OUTPUT" | grep -Eq "Status:.*Last reconciliation failed|failed to trace"; then
         echo "STATUS: FAILING"
         FAILURES=$((FAILURES + 1))
     else
@@ -236,7 +249,7 @@ If `flux trace` reports that a resource is not managed by Flux, there are a few 
 1. The resource was created manually, not through Flux.
 2. The Kustomization or HelmRelease that manages it uses a different name in Git.
 3. The resource was created by a Helm hook, which is not tracked the same way.
-4. Server-side apply labels were modified.
+4. Flux ownership labels were modified.
 
 Check the resource labels to verify Flux management:
 
