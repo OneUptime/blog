@@ -20,13 +20,13 @@ Here is the complete reconciliation loop as it flows through the Flux CD control
 
 ```mermaid
 graph TD
-    A[Timer fires based on spec.interval] --> B[Source Controller fetches latest artifact]
+    A[Timer fires based on spec.interval] --> B[Source Controller fetches latest source state]
     B --> C{New artifact revision?}
     C -->|Yes| D[Update artifact in cluster storage]
     C -->|No| E[Keep existing artifact]
     D --> F[Kustomize/Helm Controller triggered]
     E --> F
-    F --> G[Build manifests from artifact]
+    F --> G[Fetch artifact and build manifests]
     G --> H[Compute diff against live cluster state]
     H --> I{Differences found?}
     I -->|Yes| J[Apply changes via server-side apply]
@@ -42,7 +42,7 @@ graph TD
 
 ## Step 1: The Timer Fires
 
-Every Flux resource has a `spec.interval` field that determines how often the reconciliation loop runs. When the timer fires, the controller picks up the resource and begins processing it.
+Most Flux resources that reconcile external or cluster state, such as `GitRepository`, `Kustomization`, and `HelmRelease`, have a `spec.interval` field that determines how often the reconciliation loop runs. When the object is queued, the controller picks up the resource and begins processing it.
 
 ```yaml
 # The interval field controls how often reconciliation occurs
@@ -59,18 +59,18 @@ spec:
     branch: main
 ```
 
-The interval is not a polling delay between checks. It is the minimum time between the start of one reconciliation and the start of the next. If a reconciliation takes 30 seconds and the interval is 5 minutes, the next reconciliation starts 5 minutes after the previous one began.
+After a successful reconciliation, the controller requeues the object for inspection after the configured interval. Controllers may also apply jitter to the interval to distribute load, and changes to the resource spec or to a referenced source revision can be handled outside the interval window.
 
 ## Step 2: Source Controller Fetches the Latest State
 
-The source-controller is responsible for fetching artifacts from external sources. When reconciling a `GitRepository`, it performs a `git clone` or `git pull` to get the latest commit on the configured branch or tag.
+The source-controller is responsible for fetching artifacts from external sources. When reconciling a `GitRepository`, it fetches the configured Git reference and resolves the latest revision for the configured branch, tag, commit, or semantic version range.
 
 ```mermaid
 sequenceDiagram
     participant Timer
     participant SourceCtrl as Source Controller
     participant Git as Git Repository
-    participant Storage as Local Artifact Storage
+    participant Storage as Artifact Storage
 
     Timer->>SourceCtrl: Interval elapsed
     SourceCtrl->>Git: Fetch latest commit for ref
@@ -84,11 +84,11 @@ sequenceDiagram
     end
 ```
 
-The source-controller packages the repository contents into a tarball artifact and stores it locally. It updates the `status.artifact.revision` field with the latest commit SHA. Other controllers watch for changes to this field.
+The source-controller packages the repository contents into a gzip-compressed tarball artifact and stores it in the controller's artifact storage. It updates the `status.artifact.revision` field with the resolved revision, such as `main@sha1:<commit>`. Other controllers watch Source objects for new artifacts.
 
 ## Step 3: Dependent Controllers Are Triggered
 
-When the source-controller updates an artifact, dependent controllers (kustomize-controller or helm-controller) detect the change and begin their own reconciliation. This happens through Kubernetes watch mechanisms - the controllers watch for changes to Source objects.
+When the source-controller updates an artifact, dependent controllers (kustomize-controller or helm-controller) can detect the change and begin their own reconciliation. This happens through Kubernetes watch mechanisms - the controllers watch for changes to Source objects.
 
 ```yaml
 # A Kustomization references a GitRepository source
@@ -114,7 +114,7 @@ The kustomize-controller reconciles in two scenarios:
 
 ## Step 4: Manifests Are Built
 
-The kustomize-controller downloads the artifact from the source-controller's local storage, extracts the contents, and builds the final Kubernetes manifests. If the path contains a `kustomization.yaml` file, it runs `kustomize build`. Otherwise, it collects all YAML files in the path.
+The kustomize-controller downloads the artifact from the source-controller's artifact storage, extracts the contents, and builds the final Kubernetes manifests. If the path contains a `kustomization.yaml` file, it runs `kustomize build`. Otherwise, it generates a `kustomization.yaml` for the plain YAML files in the path.
 
 Variable substitution can also occur at this stage:
 
@@ -139,7 +139,7 @@ spec:
 
 ## Step 5: Diff Against the Live Cluster
 
-The controller computes a diff between the built manifests and the current state of those resources in the cluster. Flux uses Kubernetes **server-side apply** to perform this comparison. Server-side apply tracks field ownership, so Flux only manages fields it has set, leaving other fields (such as those set by other controllers or autoscalers) untouched.
+The controller detects drift between the built manifests and the current state of those resources in the cluster. Flux uses Kubernetes **server-side apply dry-run** during this stage. Server-side apply tracks field ownership, and Flux's field-management behavior can be tuned with SSA policies such as `Override` and `Merge`.
 
 ```mermaid
 graph LR
@@ -152,18 +152,18 @@ graph LR
 
 ## Step 6: Apply Changes
 
-If differences are detected, Flux applies the changes using server-side apply. This is an atomic operation per resource - each resource is applied individually, and failures on one resource do not prevent others from being applied.
+If differences are detected, Flux applies the changes using server-side apply. Resources are applied individually, and reconciliation reports a failure if an apply operation cannot be completed.
 
 When `spec.prune` is enabled, Flux also deletes resources that exist in the cluster but are no longer present in Git. This is how Flux handles resource removal - you delete the manifest from Git, and Flux removes it from the cluster.
 
 ## Step 7: Health Checks
 
-After applying changes, the controller runs health checks on the affected resources. The health assessment waits for resources to become ready according to their type-specific readiness criteria:
+After applying changes, the controller runs health checks when `spec.wait` is enabled or `spec.healthChecks` is configured. The health assessment waits for resources to become ready according to their type-specific readiness criteria:
 
 - **Deployments** - All replicas are available and updated.
 - **StatefulSets** - All replicas are ready with current revision.
 - **HelmReleases** - The Helm release reports success.
-- **Custom resources** - Status conditions show `Ready: True`.
+- **Custom resources** - Built-in kstatus rules or configured CEL health check expressions report the resource as ready.
 
 ```yaml
 # Health checks are configured via wait and timeout
@@ -180,11 +180,6 @@ spec:
   path: ./deploy
   wait: true       # Wait for all resources to become ready
   timeout: 5m      # Fail if resources are not ready within 5 minutes
-  healthChecks:
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: my-app
-      namespace: default
 ```
 
 ## Step 8: Status Update and Events
@@ -202,9 +197,6 @@ kubectl get kustomization my-app -n flux-system -o yaml
 #       status: "True"
 #       reason: ReconciliationSucceeded
 #       message: "Applied revision: main@sha1:abc123"
-#     - type: Healthy
-#       status: "True"
-#       reason: HealthCheckSucceeded
 #   lastAppliedRevision: main@sha1:abc123
 #   lastAttemptedRevision: main@sha1:abc123
 ```
@@ -239,8 +231,8 @@ You do not have to wait for the interval to elapse. You can trigger an immediate
 # Force an immediate reconciliation
 flux reconcile kustomization my-app
 
-# This is equivalent to:
-kubectl annotate --overwrite kustomization my-app \
+# This queues a reconciliation request without waiting for completion:
+kubectl annotate --field-manager=flux-client-side-apply --overwrite kustomization/my-app \
   reconcile.fluxcd.io/requestedAt="$(date +%s)" \
   -n flux-system
 ```
