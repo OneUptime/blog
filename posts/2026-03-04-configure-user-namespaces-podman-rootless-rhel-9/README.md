@@ -14,7 +14,7 @@ User namespaces are a Linux kernel feature that lets unprivileged users run cont
 
 - A RHEL system with an active subscription
 - A non-root user account
-- Podman installed (included by default on RHEL)
+- Podman installed from the RHEL repositories
 
 Verify Podman is installed:
 
@@ -26,13 +26,13 @@ podman --version
 
 User namespaces allow a process to have a different set of UIDs and GIDs inside the namespace compared to the host. When you run a rootless container, the user inside the container appears to be root (UID 0), but on the host it maps to your unprivileged user.
 
-Check the current user namespace configuration:
+Check the rootless Podman user namespace configuration:
 
 ```bash
-cat /proc/self/uid_map
+podman unshare cat /proc/self/uid_map
 ```
 
-This shows the UID mapping for the current process. For a regular user it typically shows:
+This shows the UID mapping for a command running in Podman's rootless user namespace. For a user with UID 1000, it typically starts with:
 
 ```bash
          0       1000          1
@@ -42,7 +42,7 @@ This means UID 0 in the namespace maps to UID 1000 on the host, with a range of 
 
 ## Configuring Subordinate UID and GID Ranges
 
-User namespaces require subordinate UID and GID ranges defined in `/etc/subuid` and `/etc/subgid`. These files control which host UIDs a user can map into a container namespace.
+Rootless containers commonly require subordinate UID and GID ranges defined in `/etc/subuid` and `/etc/subgid`. These files control which host UIDs a user can map into a container namespace.
 
 Check existing mappings:
 
@@ -101,20 +101,20 @@ You should see a mapping like:
 You can specify a custom UID mapping with the `--uidmap` flag:
 
 ```bash
-podman run --rm --uidmap 0:0:1 --uidmap 1:100000:65536 registry.access.redhat.com/ubi9/ubi:latest id
+podman run --rm --uidmap 0:0:1 --uidmap 1:1:65536 registry.access.redhat.com/ubi9/ubi:latest id
 ```
 
-This maps container UID 0 to your host UID and container UIDs 1-65536 to host UIDs 100000-165535.
+For rootless Podman, the second field is interpreted in Podman's intermediate namespace. This maps container UID 0 to your host UID and container UIDs 1-65536 to your configured subordinate UID range.
 
 For GID mappings, use `--gidmap`:
 
 ```bash
-podman run --rm --gidmap 0:0:1 --gidmap 1:100000:65536 registry.access.redhat.com/ubi9/ubi:latest id
+podman run --rm --gidmap 0:0:1 --gidmap 1:1:65536 registry.access.redhat.com/ubi9/ubi:latest id
 ```
 
-## Resetting the Podman Storage After Changes
+## Applying Mapping Changes
 
-After modifying subuid or subgid mappings, reset the Podman storage:
+After modifying subuid or subgid mappings manually, run:
 
 ```bash
 podman system migrate
@@ -131,8 +131,8 @@ podman system reset
 If you see permission errors, check that the subuid and subgid files have correct entries:
 
 ```bash
-grep $(whoami) /etc/subuid
-grep $(whoami) /etc/subgid
+grep "^$(whoami):" /etc/subuid
+grep "^$(whoami):" /etc/subgid
 ```
 
 Verify that the `newuidmap` and `newgidmap` binaries have the correct setuid permissions:
