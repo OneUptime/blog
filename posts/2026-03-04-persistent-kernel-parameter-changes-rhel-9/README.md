@@ -16,18 +16,23 @@ If you are tuning a production server, you need those changes to stick. RHEL giv
 
 ## Where Persistent sysctl Configuration Lives
 
-RHEL uses systemd-sysctl to apply kernel parameters during boot. It reads configuration from multiple directories in a specific order.
+RHEL uses systemd-sysctl to apply kernel parameters during boot. It reads configuration from the sysctl.d directories and applies precedence by filename and directory priority.
 
 ```mermaid
 flowchart TD
-    A["systemd-sysctl at boot"] --> B["/usr/lib/sysctl.d/<br/>Vendor defaults"]
-    B --> C["/usr/local/lib/sysctl.d/<br/>Local admin packages"]
-    C --> D["/run/sysctl.d/<br/>Runtime overrides"]
-    D --> E["/etc/sysctl.d/<br/>Admin customizations"]
-    E --> F["/etc/sysctl.conf<br/>Legacy main config"]
+    A["systemd-sysctl at boot"] --> B["sysctl.d search paths"]
+    B --> C["/etc/sysctl.d/<br/>Admin customizations"]
+    B --> D["/run/sysctl.d/<br/>Runtime overrides"]
+    B --> E["/usr/local/lib/sysctl.d/<br/>Local admin packages"]
+    B --> F["/usr/lib/sysctl.d/<br/>Vendor defaults"]
+    C --> G["Same filename:<br/>higher-priority directory wins"]
+    D --> G
+    E --> G
+    F --> G
+    G --> H["Different filenames:<br/>lexicographic order decides"]
 ```
 
-Files are processed in lexicographic order within each directory, and later entries override earlier ones. The `/etc/sysctl.d/` directory is where your custom settings belong.
+Files with the same name in `/etc/sysctl.d/` override matching files in `/run/`, `/usr/local/lib/`, and `/usr/lib/`. Across different filenames, all configuration files are sorted lexicographically regardless of directory, and later filenames override earlier settings. The `/etc/sysctl.d/` directory is where your custom settings belong.
 
 ## Creating Persistent Configuration Files
 
@@ -74,7 +79,7 @@ The number prefix controls the load order. Here is a practical scheme.
 | 10-* | Base system defaults (usually vendor-provided) |
 | 50-* | Application-specific settings |
 | 90-* | Site-specific overrides |
-| 99-* | Final overrides that always win |
+| 99-* | Final overrides that should sort late |
 
 Use `.conf` as the file extension. Files without it will be ignored by systemd-sysctl.
 
@@ -94,7 +99,7 @@ The `--system` flag processes all configuration directories in the correct order
 
 ## The Legacy /etc/sysctl.conf File
 
-The `/etc/sysctl.conf` file still works on RHEL and is processed last after all drop-in files. Some admins prefer keeping everything in one place, and that is fine for simple setups.
+The `/etc/sysctl.conf` file still works on RHEL. When you run `sysctl --system`, procps reads it after the sysctl.d files. At boot, systemd-sysctl reads sysctl.d configuration; RHEL keeps legacy `/etc/sysctl.conf` compatibility through sysctl.d packaging rather than because upstream systemd-sysctl reads that path directly. Some admins prefer keeping everything in one place, and that is fine for simple setups.
 
 ```bash
 # Append a setting to the legacy config file
@@ -135,7 +140,7 @@ When a parameter does not have the value you expect, conflicting files are usual
 grep -rn "swappiness" /usr/lib/sysctl.d/ /usr/local/lib/sysctl.d/ /run/sysctl.d/ /etc/sysctl.d/ /etc/sysctl.conf 2>/dev/null
 ```
 
-Remember, the last value wins. If `/usr/lib/sysctl.d/50-default.conf` sets `vm.swappiness = 60` and your `/etc/sysctl.d/90-memory-tuning.conf` sets it to `10`, your value wins because `/etc/sysctl.d/` is processed after `/usr/lib/sysctl.d/`.
+Remember, the last value wins. If `/usr/lib/sysctl.d/50-default.conf` sets `vm.swappiness = 60` and your `/etc/sysctl.d/90-memory-tuning.conf` sets it to `10`, your value wins because `90-memory-tuning.conf` sorts after `50-default.conf`. If two files have the same name, the file in `/etc/sysctl.d/` takes precedence over matching files in lower-priority directories.
 
 ## Using systemd-sysctl Directly
 
@@ -143,10 +148,10 @@ You can also check how systemd-sysctl will process your configuration.
 
 ```bash
 # Show the effective configuration that systemd-sysctl will apply
-systemd-sysctl --cat-config
+/usr/lib/systemd/systemd-sysctl --cat-config
 
 # Check the status of the sysctl service
-systemctl status systemd-sysctl
+systemctl status systemd-sysctl.service
 ```
 
 The `--cat-config` option shows all configuration files concatenated with comment headers indicating which file each block comes from.
