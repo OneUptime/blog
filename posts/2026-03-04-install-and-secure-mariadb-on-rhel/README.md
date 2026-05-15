@@ -8,7 +8,7 @@ Description: Install MariaDB on RHEL, run the security hardening script, configu
 
 ---
 
-MariaDB is the default MySQL-compatible database on RHEL. It is a community-developed fork of MySQL and is included in the base RHEL repositories. This guide covers installation, security hardening, and initial configuration.
+MariaDB is a MySQL-compatible database available on RHEL as an Application Stream. It is a community-developed fork of MySQL and can be installed from the RHEL repositories. This guide covers installation, security hardening, and initial configuration.
 
 ## Install MariaDB
 
@@ -28,10 +28,10 @@ mysql --version
 
 ```bash
 # Run the security script
-sudo mysql_secure_installation
+sudo mariadb-secure-installation
 
 # The script will prompt you to:
-# 1. Set the root password (set a strong one)
+# 1. Change the root password, if you use password-based root login
 # 2. Remove anonymous users (answer Yes)
 # 3. Disallow root login remotely (answer Yes)
 # 4. Remove test database (answer Yes)
@@ -42,7 +42,7 @@ sudo mysql_secure_installation
 
 ```bash
 # Connect as root
-mysql -u root -p
+sudo mariadb
 
 # Create a database
 CREATE DATABASE webapp;
@@ -87,7 +87,7 @@ sudo firewall-cmd --reload
 ## Additional Security Hardening
 
 ```bash
-# Edit /etc/my.cnf.d/mariadb-server.cnf
+# Create a drop-in configuration file
 sudo tee /etc/my.cnf.d/security.cnf << 'EOF'
 [mysqld]
 # Disable loading local files from client
@@ -116,7 +116,7 @@ sudo systemctl restart mariadb
 
 ```bash
 # Connect and check settings
-mysql -u root -p -e "
+sudo mariadb -e "
 SHOW VARIABLES LIKE 'local_infile';
 SHOW VARIABLES LIKE 'symbolic_links';
 SHOW VARIABLES LIKE 'max_connections';
@@ -124,10 +124,10 @@ SHOW VARIABLES LIKE 'slow_query_log';
 "
 
 # List all users and their hosts
-mysql -u root -p -e "SELECT user, host FROM mysql.user;"
+sudo mariadb -e "SELECT user, host FROM mysql.user;"
 
-# Check for accounts without passwords
-mysql -u root -p -e "SELECT user, host FROM mysql.user WHERE password = '';"
+# Check for password-based accounts without passwords
+sudo mariadb -e "SELECT user, host, plugin FROM mysql.user WHERE password = '' AND plugin IN ('', 'mysql_native_password', 'mysql_old_password');"
 ```
 
 ## Test Remote Connectivity
