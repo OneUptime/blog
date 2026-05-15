@@ -167,6 +167,7 @@ This trips people up constantly. Here is the difference:
 # CMD provides default arguments that can be overridden
 cat > Containerfile << 'EOF'
 FROM registry.access.redhat.com/ubi9/ubi-minimal
+RUN microdnf install -y python3 && microdnf clean all
 ENTRYPOINT ["/usr/bin/python3"]
 CMD ["--version"]
 EOF
@@ -228,7 +229,7 @@ podman inspect --format '{{.State.Health.Status}}' healthy-web
 # Build without using cache (clean rebuild)
 podman build --no-cache -t my-app:latest .
 
-# Build and squash all layers into one
+# Build and squash the new layers into one
 podman build --squash -t my-app:squashed .
 
 # Build for a specific platform
@@ -241,7 +242,7 @@ podman build -f Containerfile.production -t my-app:prod .
 podman build -t my-app:latest -t my-app:1.0 .
 
 # Build with resource limits
-podman build --memory 2g --cpus 2 -t my-app:latest .
+podman build --memory 2g --cpu-period 100000 --cpu-quota 200000 -t my-app:latest .
 ```
 
 ## Debugging Failed Builds
@@ -283,7 +284,8 @@ FROM registry.access.redhat.com/ubi9/ubi-minimal:9.3
 
 4. **Scan your images** after building:
 ```bash
-podman image scan my-app:latest
+wget -O - https://www.redhat.com/security/data/oval/v2/RHEL9/rhel-9.oval.xml.bz2 | bzip2 --decompress > rhel-9.oval.xml
+oscap-podman $(podman images -q my-app:latest) oval eval --report vulnerability.html rhel-9.oval.xml
 ```
 
 ## Summary
