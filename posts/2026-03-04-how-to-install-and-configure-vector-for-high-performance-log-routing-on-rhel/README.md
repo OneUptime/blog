@@ -14,26 +14,22 @@ Vector is a high-performance observability data pipeline built in Rust. It colle
 
 ```bash
 # Add the Vector repository
-
-cat << 'REPO' | sudo tee /etc/yum.repos.d/timber-vector.repo
-[timber-vector]
-name=timber-vector
-baseurl=https://repositories.timber.io/public/vector/rpm/el/9/$basearch
-gpgcheck=0
-enabled=1
-REPO
+bash -c "$(curl -L https://setup.vector.dev)"
 
 # Install Vector
 sudo dnf install -y vector
 
 # Or install via script
-curl --proto '=https' --tlsv1.2 -sSfL https://sh.vector.dev | bash -s -- -y
+curl --proto '=https' --tlsv1.2 -sSfL https://sh.vector.dev | bash
 ```
 
 ## Basic Configuration
 
 ```toml
 # /etc/vector/vector.toml
+
+[api]
+enabled = true
 
 # Collect syslog
 [sources.syslog]
