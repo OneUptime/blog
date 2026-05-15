@@ -74,7 +74,7 @@ In Cockpit, the performance profile is shown on the Overview page. You'll see th
 
 Click on the profile name, and a dropdown or dialog appears listing all available profiles. Select the one you want and click "Change profile." TuneD applies the new settings immediately.
 
-That's it. No reboot needed.
+That's it. For these standard profile changes, no reboot is normally needed. Profiles that change kernel boot parameters still require a reboot for those boot-time settings to take effect.
 
 ## Changing Profiles from the CLI
 
@@ -103,7 +103,7 @@ tuned-adm profile_info throughput-performance
 ```
 
 Key settings:
-- CPU governor set to `performance` (max frequency always)
+- CPU governor set to `performance`
 - Transparent huge pages enabled
 - Disk readahead increased
 - Kernel scheduler tuned for throughput
@@ -117,7 +117,7 @@ Key settings:
 
 **virtual-guest** - for VMs:
 
-- Reduced disk readahead
+- Increased disk readahead
 - Virtual disk I/O tuning
 - Memory management optimized for guest behavior
 
@@ -209,13 +209,14 @@ For tuning that goes beyond configuration files, TuneD can run scripts when a pr
 # Create a script in your custom profile directory
 sudo tee /etc/tuned/my-custom-profile/script.sh << 'SCRIPTEOF'
 #!/bin/bash
-# This runs when the profile is activated
-echo "Custom profile activated at $(date)" >> /var/log/tuned-custom.log
-
-# Set CPU frequency governor
-for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
-    echo performance > "$cpu" 2>/dev/null
-done
+case "$1" in
+    start)
+        echo "Custom profile activated at $(date)" >> /var/log/tuned-custom.log
+        ;;
+    stop)
+        echo "Custom profile deactivated at $(date)" >> /var/log/tuned-custom.log
+        ;;
+esac
 SCRIPTEOF
 
 sudo chmod +x /etc/tuned/my-custom-profile/script.sh
@@ -226,7 +227,7 @@ Reference the script in the profile:
 ```bash
 # Add to tuned.conf
 [script]
-script=script.sh
+script=${i:PROFILE_DIR}/script.sh
 ```
 
 ## Monitoring the Impact of Profile Changes
