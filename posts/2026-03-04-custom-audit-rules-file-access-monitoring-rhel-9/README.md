@@ -26,7 +26,7 @@ flowchart TD
 
 ## File Watch Rule Syntax
 
-File watch rules are the simplest way to monitor file access:
+File watch rules are the simplest way to monitor file access and are still shown in RHEL documentation. The `auditctl(8)` man page marks the `-w`/`-p` watch form as deprecated for new rules, so prefer the equivalent system call form with `path` or `dir` and `perm` filters when performance matters.
 
 ```bash
 -w <path> -p <permissions> -k <key_name>
@@ -160,11 +160,11 @@ EOF
 ### Monitoring Access by Specific Users
 
 ```bash
-# Monitor all file operations by a specific user (UID 1001)
--a always,exit -F arch=b64 -S open -S openat -F auid=1001 -k user1001_file_access
+# Monitor file open operations by a specific user (UID 1001)
+-a always,exit -F arch=b64 -S open -S openat -S openat2 -F auid=1001 -k user1001_file_access
 
-# Monitor file operations by users who are not root
--a always,exit -F arch=b64 -S open -S openat -F auid>=1000 -F auid!=4294967295 -k user_file_access
+# Monitor file open operations by regular login users
+-a always,exit -F arch=b64 -S open -S openat -S openat2 -F auid>=1000 -F auid!=unset -k user_file_access
 ```
 
 The `auid` field is the audit user ID (the original login UID), which persists even when a user uses `sudo` or `su`.
@@ -178,7 +178,7 @@ sudo augenrules --load
 # List all currently loaded rules
 sudo auditctl -l
 
-# Check for syntax errors
+# Check whether rules.d changes need to be merged into audit.rules
 sudo augenrules --check
 ```
 
