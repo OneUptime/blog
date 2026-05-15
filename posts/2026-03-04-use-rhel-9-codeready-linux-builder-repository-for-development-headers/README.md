@@ -19,7 +19,7 @@ This guide covers how to use the RHEL CodeReady Linux Builder repository for dev
 
 ## Overview
 
-The CodeReady Linux Builder repository provides additional packages for developers, including many `-devel` packages. It is available with RHEL subscriptions, but packages in this repository are not supported by Red Hat for runtime deployments.
+The CodeReady Linux Builder repository provides additional packages for developers, including many `-devel` packages. It is available with RHEL subscriptions, but packages in this repository are not supported by Red Hat.
 
 ## Step 1: Prepare the System
 
@@ -49,18 +49,18 @@ sudo dnf repolist | grep codeready-builder
 
 ## Step 3: Install Development Headers
 
-Install the development package you need. For example, to install Python development headers:
+Install the development package you need. For example, to install libbpf development headers:
 
 ```bash
-sudo dnf install -y python3-devel
+sudo dnf install -y libbpf-devel
 ```
 
-Replace `python3-devel` with the specific `-devel` package required by your build.
+Replace `libbpf-devel` with the specific `-devel` package required by your build.
 
 ## Step 4: Verify the Package
 
 ```bash
-rpm -qi python3-devel
+rpm -qi libbpf-devel
 ```
 
 ## Step 5: Verify the Repository Configuration
@@ -82,7 +82,7 @@ sudo dnf repository-packages codeready-builder-for-rhel-9-$(uname -m)-rpms list 
 If you do not want to leave the repository enabled permanently, install a package by enabling it for a single transaction:
 
 ```bash
-sudo dnf install --enablerepo=codeready-builder-for-rhel-9-$(uname -m)-rpms python3-devel
+sudo dnf install --enablerepo=codeready-builder-for-rhel-9-$(uname -m)-rpms libbpf-devel
 ```
 
 ## Step 7: Disable the Repository When Not Needed
