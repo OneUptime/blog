@@ -4,27 +4,28 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, 389 Directory Server, OpenLDAP, LDAP, Migration
 
-Description: Migrate your LDAP directory from OpenLDAP to 389 Directory Server on RHEL using the built-in migration tools to preserve users, groups, and schema.
+Description: Migrate your LDAP directory from OpenLDAP to 389 Directory Server on RHEL using the migration tools to preserve users, groups, and schema.
 
 ---
 
-Red Hat recommends 389 Directory Server as the replacement for OpenLDAP on RHEL. The 389 project provides migration tools that help convert OpenLDAP configurations and data to the 389 DS format.
+389 Directory Server is the LDAP server shipped on RHEL systems. The 389 project provides migration tools that help convert OpenLDAP configurations and data to the 389 DS format.
 
 ## Export Data from OpenLDAP
 
-First, export all data from the existing OpenLDAP instance:
+First, copy the OpenLDAP dynamic configuration and export each backend suffix from the existing OpenLDAP instance:
 
 ```bash
-# Export the entire directory to LDIF
+# Copy the dynamic configuration directory used by the migration tool
+sudo cp -a /etc/openldap/slapd.d /tmp/slapd.d
 
-slapcat -l /tmp/openldap-export.ldif
+# Export the directory suffix to LDIF
+sudo slapcat -F /etc/openldap/slapd.d -b "dc=example,dc=com" -l /tmp/dc_example.ldif
 
-# Export just the configuration (cn=config)
-slapcat -n 0 -l /tmp/openldap-config.ldif
+# If your server still uses slapd.conf, create a temporary dynamic configuration
+sudo slaptest -f /etc/openldap/slapd.conf -F /tmp/slapd.d
 
-# Export custom schema files
-cp /etc/openldap/schema/*.schema /tmp/openldap-schemas/
-cp /etc/openldap/schema/*.ldif /tmp/openldap-schemas/
+# Then export from that temporary configuration
+sudo slapcat -F /tmp/slapd.d -b "dc=example,dc=com" -l /tmp/dc_example.ldif
 ```
 
 ## Install 389 Directory Server
@@ -35,25 +36,28 @@ On the target RHEL server:
 # Install 389 DS
 sudo dnf install -y 389-ds-base
 
-# Install the migration tools
+# Install OpenLDAP client utilities for verification commands
 sudo dnf install -y openldap-clients
 ```
 
 ## Use the Migration Tool
 
-389 DS includes `openldap_to_ds` for automated migration:
+389 DS includes `openldap_to_ds` for automated migration. Run this after the 389 DS instance has been created:
 
 ```bash
 # Run the migration analysis (dry run)
-sudo openldap_to_ds ldap.example.com /tmp/openldap-config.ldif /tmp/openldap-export.ldif
+sudo openldap_to_ds localhost /tmp/slapd.d /tmp/dc_example.ldif
 
 # The tool outputs a migration plan and any warnings about incompatible schema
+
+# Apply the migration after reviewing the plan
+sudo openldap_to_ds --confirm localhost /tmp/slapd.d /tmp/dc_example.ldif
 ```
 
 ## Create the 389 DS Instance
 
 ```bash
-# Create a configuration file based on the migration analysis
+# Create an initial configuration file for the target instance
 cat > /tmp/ds-migrate.inf << 'EOF'
 [general]
 config_version = 2
@@ -77,11 +81,10 @@ sudo dscreate from-file /tmp/ds-migrate.inf
 
 ## Import Custom Schema
 
-If you have custom OpenLDAP schema, convert and import them:
+If you have custom OpenLDAP schema, review the migration plan. The `openldap_to_ds` tool attempts to migrate custom schema automatically, but schema that cannot be converted automatically must be fixed and loaded manually:
 
 ```bash
-# Convert .schema files to LDIF format for 389 DS
-# Place converted schema files in the schema directory
+# Place fixed 389 DS schema LDIF files in the schema directory
 sudo cp /tmp/converted-schema.ldif /etc/dirsrv/slapd-localhost/schema/
 
 # Restart to load new schema
@@ -94,13 +97,13 @@ The OpenLDAP LDIF may need adjustments for 389 DS compatibility:
 
 ```bash
 # Remove OpenLDAP-specific operational attributes
-sed -i '/^structuralObjectClass:/d' /tmp/openldap-export.ldif
-sed -i '/^entryUUID:/d' /tmp/openldap-export.ldif
-sed -i '/^creatorsName:/d' /tmp/openldap-export.ldif
-sed -i '/^createTimestamp:/d' /tmp/openldap-export.ldif
-sed -i '/^modifiersName:/d' /tmp/openldap-export.ldif
-sed -i '/^modifyTimestamp:/d' /tmp/openldap-export.ldif
-sed -i '/^entryCSN:/d' /tmp/openldap-export.ldif
+sed -i '/^structuralObjectClass:/d' /tmp/dc_example.ldif
+sed -i '/^entryUUID:/d' /tmp/dc_example.ldif
+sed -i '/^creatorsName:/d' /tmp/dc_example.ldif
+sed -i '/^createTimestamp:/d' /tmp/dc_example.ldif
+sed -i '/^modifiersName:/d' /tmp/dc_example.ldif
+sed -i '/^modifyTimestamp:/d' /tmp/dc_example.ldif
+sed -i '/^entryCSN:/d' /tmp/dc_example.ldif
 ```
 
 ## Import Data
@@ -109,8 +112,12 @@ sed -i '/^entryCSN:/d' /tmp/openldap-export.ldif
 # Stop the instance before importing
 sudo dsctl localhost stop
 
-# Import the LDIF data
-sudo dsctl localhost import /tmp/openldap-export.ldif
+# Copy the LDIF into the instance LDIF directory and restore the SELinux context
+sudo cp /tmp/dc_example.ldif /var/lib/dirsrv/slapd-localhost/ldif/
+sudo restorecon -v /var/lib/dirsrv/slapd-localhost/ldif/dc_example.ldif
+
+# Import the LDIF data into the userRoot backend
+sudo dsctl localhost ldif2db userRoot /var/lib/dirsrv/slapd-localhost/ldif/dc_example.ldif
 
 # Start the instance
 sudo dsctl localhost start
