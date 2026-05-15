@@ -88,7 +88,7 @@ options {
 
 logging {
     channel default_log {
-        file "/var/log/named/default.log" versions 3 size 5m;
+        file "/var/named/log/default.log" versions 3 size 5m;
         severity info;
         print-time yes;
     };
@@ -151,7 +151,7 @@ options {
 
 logging {
     channel default_log {
-        file "/var/log/named/default.log" versions 3 size 5m;
+        file "/var/named/log/default.log" versions 3 size 5m;
         severity info;
         print-time yes;
         print-category yes;
@@ -175,11 +175,6 @@ view "internal" {
         type primary;
         file "views/internal/example.com.zone";
         allow-update { none; };
-    };
-
-    zone "1.168.192.in-addr.arpa" IN {
-        type primary;
-        file "views/internal/192.168.1.rev";
     };
 
     // Internal-only zone
@@ -295,7 +290,7 @@ Set permissions:
 
 ```bash
 chown -R named:named /var/named/views
-mkdir -p /var/log/named && chown named:named /var/log/named
+mkdir -p /var/named/log && chown named:named /var/named/log && chmod 700 /var/named/log
 ```
 
 ## Validating and Starting
@@ -342,7 +337,7 @@ dig @203.0.113.10 db.example.com A +short
 
 3. **Root hints must be in every view that does recursion.** Don't forget to include the root zone.
 
-4. **TSIG keys in views.** If you use TSIG for zone transfers, the key and server statements must be within the appropriate view.
+4. **TSIG keys in views.** If you use TSIG for zone transfers, define key and server statements at the top level when they apply globally, or within a view when they are view-specific.
 
 5. **ACL names are case-sensitive.** Keep your naming consistent.
 
