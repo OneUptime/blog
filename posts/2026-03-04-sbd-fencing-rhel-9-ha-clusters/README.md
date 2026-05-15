@@ -41,7 +41,7 @@ Find the shared storage device on all nodes:
 lsblk
 ```
 
-Use a small dedicated partition or LUN. Example: `/dev/sdc`
+Use a small dedicated partition or LUN. In production, prefer a stable path such as `/dev/disk/by-id/...` instead of a kernel-assigned name like `/dev/sdc`.
 
 Verify it is the same device on all nodes by checking the device serial or WWID:
 
@@ -105,10 +105,11 @@ Do not start SBD manually. It starts with the cluster.
 
 ## Step 7: Configure Pacemaker to Use SBD
 
-Create the cluster with SBD:
+Create the cluster, then enable SBD with `pcs`:
 
 ```bash
-sudo pcs cluster setup my-cluster node1 node2 --watchdog /dev/watchdog
+sudo pcs cluster setup my-cluster node1 node2
+sudo pcs stonith sbd enable watchdog=/dev/watchdog device=/dev/sdc SBD_WATCHDOG_TIMEOUT=5
 ```
 
 Or add SBD to an existing cluster:
@@ -119,7 +120,7 @@ sudo pcs stonith create sbd-fencing fence_sbd \
     op monitor interval=30s
 
 sudo pcs property set stonith-enabled=true
-sudo pcs property set stonith-watchdog-timeout=10
+sudo pcs property set stonith-timeout=20s
 ```
 
 ## Step 8: Start the Cluster
@@ -136,18 +137,11 @@ Check SBD status on each node:
 sudo sbd -d /dev/sdc list
 ```
 
-Check the SBD message slot for each node:
-
-```bash
-sudo sbd -d /dev/sdc message node1
-sudo sbd -d /dev/sdc message node2
-```
-
-Both should show "clear".
+The message slots for running nodes should show "clear".
 
 ## Testing SBD Fencing
 
-Send a test message (this will fence the target node):
+Send a test message. This only writes a log message on the target node and should not be used during production:
 
 ```bash
 sudo sbd -d /dev/sdc message node2 test
@@ -179,7 +173,7 @@ Update the configuration:
 SBD_DEVICE="/dev/sdc;/dev/sdd"
 ```
 
-With two devices, one must agree for fencing. With three, two must agree (majority).
+With two devices, SBD can continue if one device is lost, but it cannot safely fence the other side while only one device is available. With three devices, fencing messages can still be relayed if at least two devices remain accessible.
 
 ## Conclusion
 
