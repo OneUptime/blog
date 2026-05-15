@@ -36,14 +36,15 @@ Red Hat now offers RHEL at no cost for several use cases:
 # Individual Developer Subscription: up to 16 systems, free
 # Register at developers.redhat.com, then:
 sudo subscription-manager register --username your-username
-sudo subscription-manager attach --auto
+# With Simple Content Access, registration is usually enough.
+# Enable additional repositories only when needed.
 ```
 
 This gives you access to the same RHEL packages, errata, and customer portal as a paid subscription, but without support SLAs.
 
 ## Support Differences
 
-RHEL with a paid subscription includes 24/7 support, certified hardware and software, and guaranteed security response times. Rocky Linux has community support through forums, mailing lists, and Mattermost:
+RHEL with a paid subscription includes certified hardware and software and defined support response times. Premium subscriptions include 24/7 coverage for Severity 1 and Severity 2 issues, while Standard subscriptions use standard business hours. Rocky Linux has community support through forums, mailing lists, and Mattermost:
 
 ```bash
 # RHEL: Open a support case through the customer portal or CLI
@@ -61,20 +62,23 @@ curl -O https://raw.githubusercontent.com/rocky-linux/rocky-tools/main/migrate2r
 sudo bash migrate2rocky.sh -r
 
 # Migrate from CentOS to RHEL
-sudo dnf install convert2rhel
+sudo curl -o /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release https://security.access.redhat.com/data/fd431d51.txt
+sudo curl -o /etc/yum.repos.d/convert2rhel.repo https://cdn-public.redhat.com/content/public/repofiles/convert2rhel-for-rhel-8-x86_64.repo
+sudo dnf -y install convert2rhel
 sudo convert2rhel
 ```
 
 ## Repository and Package Availability
 
-Rocky Linux mirrors the RHEL repository structure. Third-party repositories like EPEL work on both:
+Rocky Linux follows the RHEL major-version repository layout closely enough for Enterprise Linux repositories such as EPEL to support both:
 
 ```bash
 # Install EPEL on either Rocky Linux or RHEL
 sudo dnf install epel-release    # Rocky Linux
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms  # RHEL
 sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm  # RHEL
 ```
 
 ## When to Choose Each
 
-Choose RHEL when you need vendor support, ISV software certification, or compliance requirements that mandate a supported OS. Choose Rocky Linux when you want a free, community-supported RHEL-compatible system, your team can handle their own support, and you do not need ISV certifications. For small deployments (under 16 systems), the free RHEL Developer Subscription is worth considering as it gives you actual RHEL with access to the full customer portal.
+Choose RHEL when you need vendor support, ISV software certification, or compliance requirements that mandate a supported OS. Choose Rocky Linux when you want a free, community-supported RHEL-compatible system, your team can handle their own support, and you do not need ISV certifications. For small deployments (up to 16 systems), the free RHEL Developer Subscription is worth considering as it gives you actual RHEL with access to the full customer portal.
