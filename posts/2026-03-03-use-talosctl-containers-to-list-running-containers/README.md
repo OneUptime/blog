@@ -8,13 +8,13 @@ Description: Learn how to use talosctl containers to list and inspect running co
 
 ---
 
-When running Kubernetes on Talos Linux, you sometimes need to see exactly which containers are running on a specific node. Since Talos Linux does not provide SSH access or a shell you can log into, traditional tools like `docker ps` or `crictl ps` are not available directly. The `talosctl containers` command fills this need by giving you a view of all running containers through the Talos API.
+When running Kubernetes on Talos Linux, you sometimes need to see exactly which containers are running on a specific node. Since Talos Linux does not provide SSH access or a shell you can log into, traditional tools like `docker ps` or `crictl ps` are not available directly. The `talosctl containers` command fills this need by giving you a view of containers through the Talos API.
 
 ## How Containers Work in Talos Linux
 
-Talos Linux uses containerd as its container runtime. All containers on a Talos node, whether they are system containers managed by Talos itself or Kubernetes pod containers managed by kubelet, run through containerd. The `talosctl containers` command queries containerd and returns information about every container on the node.
+Talos Linux uses containerd as its container runtime. Kubernetes pod containers managed by kubelet run through containerd, and Talos also exposes containerized system workloads through the containers command. The `talosctl containers` command returns information about containers in the selected containerd namespace on the node.
 
-Containers in Talos Linux fall into two namespaces:
+The two namespaces you usually inspect are:
 
 - **system**: Containers that are part of the Talos Linux operating system itself
 - **k8s.io**: Containers that are part of Kubernetes pods
@@ -23,21 +23,20 @@ Understanding this distinction helps you filter and interpret the output correct
 
 ## Basic Usage
 
-To list all containers on a node:
+To list system containers on a node:
 
 ```bash
-# List all containers on a node
-
+# List system containers on a node
 talosctl containers --nodes 192.168.1.10
 ```
 
 The output includes the container's namespace, ID, image, process ID, and current status:
 
 ```text
-NAMESPACE   ID                                                                 IMAGE                                        PID    STATUS
-k8s.io      0a1b2c3d4e5f                                                      registry.k8s.io/pause:3.9                    1234   RUNNING
-k8s.io      1b2c3d4e5f6a                                                      registry.k8s.io/coredns/coredns:v1.11.1      1235   RUNNING
-system      2c3d4e5f6a7b                                                      ghcr.io/siderolabs/kubelet:v1.30.0           1236   RUNNING
+NODE           NAMESPACE   ID        IMAGE                              PID    STATUS
+192.168.1.10   system      apid                                         1234   RUNNING
+192.168.1.10   system      trustd                                       1235   RUNNING
+192.168.1.10   system      kubelet   ghcr.io/siderolabs/kubelet:v1.30.0 1236   RUNNING
 ```
 
 ## Filtering by Namespace
@@ -58,11 +57,11 @@ To see only system containers:
 talosctl containers --nodes 192.168.1.10
 ```
 
-Without the `-k` flag, you see the system namespace containers by default on some versions. Check your talosctl version for the exact behavior.
+Without the `-k` flag, you see the system namespace containers by default.
 
 ## Identifying Containers
 
-The output from `talosctl containers` shows container IDs, which can be cryptic. To understand what each container is doing, look at the IMAGE column:
+The output from `talosctl containers -k` shows pod sandbox rows and container rows. To understand what each container is doing, look at the ID and IMAGE columns:
 
 ```bash
 # List containers and look at the images
@@ -74,7 +73,6 @@ Common images you will see include:
 - `registry.k8s.io/pause` - The sandbox container for each pod
 - `registry.k8s.io/coredns/coredns` - DNS resolution for the cluster
 - `registry.k8s.io/kube-proxy` - Network proxy on each node
-- `ghcr.io/siderolabs/kubelet` - The Kubernetes node agent
 - Application-specific images from your deployments
 
 ## Comparing with kubectl
@@ -89,7 +87,7 @@ kubectl get pods -A -o wide --field-selector spec.nodeName=worker-1
 talosctl containers --nodes 192.168.1.20 -k
 ```
 
-The container list will always have more entries than the pod list because each pod typically has at least two containers: the pause/sandbox container and the actual application container. Multi-container pods will have even more entries.
+The Kubernetes container list usually has more entries than the pod list because each pod typically has a pause/sandbox container plus the actual application container. Multi-container pods will have even more entries.
 
 ## Debugging Container Issues
 
@@ -98,12 +96,12 @@ The container list will always have more entries than the pod list because each 
 When a pod is in CrashLoopBackOff, you can check the container status directly:
 
 ```bash
-# List containers and look for non-RUNNING status
+# List containers and look for unexpected statuses
 talosctl containers --nodes 192.168.1.20 -k
 
 # You might see entries like:
-# NAMESPACE   ID          IMAGE                          PID    STATUS
-# k8s.io      abc123      myapp:v1.2.3                  0      STOPPED
+# NODE           NAMESPACE   ID                                      IMAGE         PID    STATUS
+# 192.168.1.20   k8s.io      default/my-app:myapp:abc123             myapp:v1.2.3  0      CONTAINER_EXITED
 ```
 
 ### Checking Container Resource Usage
@@ -191,7 +189,7 @@ echo "Pre-upgrade containers:"
 talosctl containers --nodes 192.168.1.20 -k > /tmp/pre-upgrade-containers.txt
 
 # Start the upgrade
-talosctl upgrade --nodes 192.168.1.20 --image ghcr.io/siderolabs/installer:v1.7.0
+talosctl upgrade --nodes 192.168.1.20 --image ghcr.io/siderolabs/installer:<target-talos-version>
 
 # After the node comes back - check containers
 echo "Post-upgrade containers:"
@@ -233,14 +231,14 @@ talosctl logs kubelet --nodes 192.168.1.20 | grep -i "error"
 
 ## Understanding Sandbox Containers
 
-Every Kubernetes pod has a sandbox container (also called the pause container). This container holds the network namespace for the pod and is always present even if the application container is not running:
+Every running Kubernetes pod has a sandbox container (also called the pause container). This container holds the network namespace for the pod and is present even if the application container is not running:
 
 ```bash
 # You will see pause containers alongside application containers
 talosctl containers --nodes 192.168.1.20 -k | grep pause
 
-# Each pause container corresponds to one pod
-# Count pause containers to count pods
+# Each pause container corresponds to one pod sandbox
+# Count pause containers to estimate running pod sandboxes
 talosctl containers --nodes 192.168.1.20 -k | grep pause | wc -l
 ```
 
