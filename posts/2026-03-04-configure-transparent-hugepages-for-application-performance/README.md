@@ -111,7 +111,7 @@ Key metrics:
 ## When to Disable THP
 
 Some applications perform worse with THP due to memory fragmentation and latency from defragmentation. Common cases include:
-- Databases (Redis, MongoDB, Oracle often recommend disabling THP)
+- Databases (Redis, MongoDB 7.0 or earlier, and Oracle often recommend disabling THP)
 - Real-time applications
 - Applications with many small, short-lived memory allocations
 
