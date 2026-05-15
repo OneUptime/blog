@@ -15,6 +15,8 @@ The Leapp utility performs in-place upgrades between major RHEL versions. It ana
 Ensure your RHEL 8.10 system is fully updated and subscribed:
 
 ```bash
+# Ensure you have a full system backup or virtual machine snapshot
+
 # Update the system to the latest RHEL 8 packages
 
 sudo dnf update -y
@@ -45,7 +47,7 @@ Run the assessment to identify issues before upgrading:
 
 ```bash
 # Run the pre-upgrade report
-sudo leapp preupgrade --target 9.6
+sudo -r unconfined_r -t unconfined_t leapp preupgrade --target 9.6
 
 # Review the report
 cat /var/log/leapp/leapp-report.txt
@@ -63,7 +65,7 @@ The report categorizes issues by severity:
 sudo dnf remove -y PACKAGE_NAME
 
 # If the report requires an answer file confirmation
-sudo leapp answer --section check_vdo.confirm=True
+sudo -r unconfined_r -t unconfined_t leapp answer --section check_vdo.confirm=True
 
 # Handle custom kernel modules
 # Remove any third-party kernel modules that are not compatible with RHEL
@@ -79,7 +81,7 @@ After resolving all inhibitors:
 
 ```bash
 # Start the upgrade process
-sudo leapp upgrade --target 9.6
+sudo -r unconfined_r -t unconfined_t leapp upgrade --target 9.6
 
 # The system will download packages, prepare the upgrade,
 # and then require a reboot into a special upgrade initramfs
