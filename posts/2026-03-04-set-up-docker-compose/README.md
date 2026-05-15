@@ -37,8 +37,6 @@ vi docker-compose.yml
 ```
 
 ```yaml
-version: '3.8'
-
 services:
   web:
     image: nginx:alpine
@@ -55,7 +53,7 @@ services:
     working_dir: /app
     volumes:
       - ./api:/app
-    command: node server.js
+    command: node -e "require('http').createServer((req,res)=>res.end('OK')).listen(3000)"
     environment:
       - DB_HOST=db
       - DB_PORT=5432
@@ -108,8 +106,6 @@ docker compose up -d --scale api=3
 Create docker-compose.override.yml:
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     environment:
