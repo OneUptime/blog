@@ -20,6 +20,7 @@ Think of it as the last resort in the SELinux troubleshooting toolkit. Booleans 
 # Install the tools
 
 sudo dnf install -y policycoreutils-python-utils setools-console
+sudo dnf install -y audit checkpolicy
 ```
 
 ## How audit2allow Works
@@ -130,8 +131,8 @@ sudo semodule -i myapp_custom.pp
 ### Be Specific with Time Filters
 
 ```bash
-# Only use denials from the last 5 minutes (after you triggered the issue)
-sudo ausearch -m avc -ts "5 minutes ago" | audit2allow -M myapp_custom
+# Only use recent denials (the last 10 minutes) after you triggered the issue
+sudo ausearch -m avc -ts recent | audit2allow -M myapp_custom
 ```
 
 This avoids including unrelated denials in your custom module.
@@ -188,8 +189,8 @@ Or better, use permissive mode to catch everything in one pass.
 # List all loaded modules
 sudo semodule -l
 
-# Find custom modules
-sudo semodule -l | grep -v "^[a-z]"
+# List modules with priorities; local modules are usually priority 400
+sudo semodule -lfull | grep -v "^100"
 ```
 
 ### Remove a Custom Module
