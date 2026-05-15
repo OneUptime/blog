@@ -17,7 +17,8 @@ Running `talosctl gen config` produces several files:
 - **controlplane.yaml** - The machine configuration for control plane nodes
 - **worker.yaml** - The machine configuration for worker nodes
 - **talosconfig** - The client configuration for talosctl
-- **secrets.yaml** (optional) - The cluster secrets bundle
+
+The cluster secrets bundle, `secrets.yaml`, is generated separately with `talosctl gen secrets` when you want to manage the cluster secrets as a standalone file.
 
 These files contain everything needed to bring up a Talos Linux cluster from bare machines.
 
@@ -110,9 +111,9 @@ Patches let you customize the generated configuration without manually editing Y
 ### Inline Patches
 
 ```bash
-# Set a custom hostname
+# Set a custom install disk
 talosctl gen config my-cluster https://10.0.0.1:6443 \
-    --config-patch '[{"op": "add", "path": "/machine/network/hostname", "value": "talos-cp-1"}]'
+    --config-patch '[{"op": "replace", "path": "/machine/install/disk", "value": "/dev/nvme0n1"}]'
 ```
 
 ### Patch Files
@@ -122,10 +123,11 @@ Create a patch file:
 ```yaml
 # custom-patch.yaml
 machine:
-  network:
-    hostname: talos-cp-1
   install:
     disk: /dev/nvme0n1
+  kubelet:
+    extraArgs:
+      rotate-server-certificates: "true"
 ```
 
 Apply it during generation:
@@ -156,7 +158,7 @@ This is how you handle things like:
 ```bash
 # Specify the Kubernetes version
 talosctl gen config my-cluster https://10.0.0.1:6443 \
-    --kubernetes-version 1.29.0
+    --kubernetes-version 1.35.0
 ```
 
 If not specified, gen config uses the Kubernetes version that corresponds to the talosctl version.
@@ -166,7 +168,7 @@ If not specified, gen config uses the Kubernetes version that corresponds to the
 ```bash
 # Use a specific Talos installer image
 talosctl gen config my-cluster https://10.0.0.1:6443 \
-    --install-image ghcr.io/siderolabs/installer:v1.7.0
+    --install-image ghcr.io/siderolabs/installer:v1.12.1
 ```
 
 This sets which Talos version will be installed on the nodes.
@@ -178,7 +180,7 @@ This sets which Talos version will be installed on the nodes.
 ```bash
 # Set custom DNS servers
 talosctl gen config my-cluster https://10.0.0.1:6443 \
-    --config-patch '[{"op": "add", "path": "/machine/network/nameservers", "value": ["8.8.8.8", "8.8.4.4"]}]'
+    --config-patch $'apiVersion: v1alpha1\nkind: ResolverConfig\nnameservers:\n  - address: 8.8.8.8\n  - address: 8.8.4.4'
 ```
 
 ### Setting the Install Disk
@@ -196,7 +198,7 @@ talosctl gen config my-cluster https://10.0.0.1:6443 \
 Talos supports automatic cluster member discovery:
 
 ```bash
-# Enable cluster discovery with a specific registry
+# Enable cluster discovery
 talosctl gen config my-cluster https://10.0.0.1:6443 \
     --config-patch '[{"op": "add", "path": "/cluster/discovery/enabled", "value": true}]'
 ```
@@ -238,8 +240,9 @@ talosctl gen secrets -o secrets.yaml
 # Generate configurations with production settings
 talosctl gen config production-cluster https://api.prod.example.com:6443 \
     --with-secrets secrets.yaml \
-    --kubernetes-version 1.29.0 \
-    --install-image ghcr.io/siderolabs/installer:v1.7.0 \
+    --kubernetes-version 1.35.0 \
+    --talos-version v1.12.1 \
+    --install-image ghcr.io/siderolabs/installer:v1.12.1 \
     --install-disk /dev/nvme0n1 \
     --config-patch-control-plane @patches/controlplane.yaml \
     --config-patch-worker @patches/worker.yaml \
@@ -273,10 +276,11 @@ If you need to regenerate configurations (for example, to change a setting):
 # Regenerate using the same secrets to maintain compatibility
 talosctl gen config my-cluster https://10.0.0.1:6443 \
     --with-secrets secrets.yaml \
+    --talos-version v1.12.1 \
     --config-patch @patches/all.yaml
 ```
 
-Using the same secrets ensures the new configurations are compatible with the existing cluster. The TLS certificates will match, so you can apply the new configs to running nodes.
+Using the same secrets ensures the new configurations are compatible with the existing cluster. The TLS certificates will match, so you can apply the new configs to running nodes. For reproducible regeneration, keep the Talos version contract fixed with `--talos-version` until you intentionally upgrade Talos.
 
 ## Conclusion
 
