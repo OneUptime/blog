@@ -23,10 +23,10 @@ Control journal disk usage and vacuum old logs on RHEL 9 to prevent storage issu
 Ensure the relevant packages are installed:
 
 ```bash
-sudo dnf install -y rsyslog systemd
+sudo dnf install -y rsyslog
 ```
 
-rsyslog and systemd-journald ship by default on RHEL 9.
+systemd-journald is part of systemd, which is installed by default on RHEL 9. rsyslog also ships with the default RHEL 9 logging stack.
 
 ## Step 2 - Understand the Logging Architecture
 
@@ -39,18 +39,39 @@ The two work together: journald collects everything, and rsyslog can read from t
 
 ## Step 3 - Apply the Configuration
 
-To manage journal disk usage and vacuum old logs, you need to edit the appropriate configuration files. The main files are:
+To manage journal disk usage and vacuum old logs, configure journald limits and use `journalctl` for one-time cleanup. The main files are:
 
 - `/etc/rsyslog.conf` and `/etc/rsyslog.d/*.conf` for rsyslog
-- `/etc/systemd/journald.conf` for journald
+- `/etc/systemd/journald.conf` and `/etc/systemd/journald.conf.d/*.conf` for journald
 
-Make your changes, then restart the relevant service:
+For example, create a journald drop-in that caps persistent journal storage and retention:
 
 ```bash
-sudo systemctl restart rsyslog
-# or
+sudo mkdir -p /etc/systemd/journald.conf.d
+sudo vi /etc/systemd/journald.conf.d/10-size-limits.conf
+```
 
+Add settings like these:
+
+```ini
+[Journal]
+SystemMaxUse=1G
+SystemKeepFree=2G
+MaxRetentionSec=30day
+```
+
+Then restart journald:
+
+```bash
 sudo systemctl restart systemd-journald
+```
+
+To immediately remove old archived journal files, rotate the active journal first, then vacuum by size or time:
+
+```bash
+sudo journalctl --rotate
+sudo journalctl --vacuum-size=1G
+sudo journalctl --vacuum-time=30days
 ```
 
 ## Step 4 - Verify the Setup
@@ -65,13 +86,14 @@ systemctl status systemd-journald
 Review recent logs to confirm your changes are working:
 
 ```bash
+journalctl --disk-usage
 journalctl --since "5 minutes ago"
 tail -20 /var/log/messages
 ```
 
 ## Step 5 - Open Firewall Ports (If Applicable)
 
-If your setup involves remote logging, open the necessary ports:
+If your rsyslog setup receives remote logs over TCP port 514, open the necessary port:
 
 ```bash
 sudo firewall-cmd --permanent --add-port=514/tcp
