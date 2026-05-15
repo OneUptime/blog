@@ -19,7 +19,7 @@ After Flux applies the manifests from a Kustomization, it evaluates the health o
 - **Deployments**: All replicas are available and up to date
 - **StatefulSets**: All replicas are ready
 - **DaemonSets**: The desired number of pods are scheduled and ready
-- **Services**: The Service has been accepted by Kubernetes; for LoadBalancer Services, a cluster IP has been assigned
+- **Services**: The Service is considered ready by the built-in kstatus rule; for LoadBalancer Services, Flux waits for a cluster IP to be assigned, but it does not verify Service endpoints
 - **Custom Resources**: The `Ready` condition is `True`
 
 ```mermaid
@@ -126,7 +126,7 @@ spec:
   prune: true
   timeout: 3m
   healthChecks:
-    # Check that a Service has endpoints
+    # Check that a Service is ready according to the built-in Service health assessment
     - apiVersion: v1
       kind: Service
       name: api-gateway
@@ -227,8 +227,8 @@ spec:
 When health checks fail, use the following commands to diagnose the issue.
 
 ```bash
-# Check the Kustomization status for health check failures
-flux get kustomizations my-app
+# Check Kustomization statuses for health check failures
+flux get kustomizations --namespace flux-system
 
 # Get detailed status including health check results
 kubectl describe kustomization my-app -n flux-system
