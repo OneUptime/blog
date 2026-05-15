@@ -43,8 +43,8 @@ nfsstat -c -4
 ### All Statistics (Both Sides)
 
 ```bash
-# Full dump of all NFS stats
-nfsstat -a
+# Full dump of all NFS/RPC facilities
+nfsstat -v
 ```
 
 ## Reading nfsstat Output
@@ -59,9 +59,9 @@ null         compound     access       close        commit
 
 Key metrics to watch:
 - **read/write counts**: Overall I/O volume
-- **access**: Permission checks (high counts may indicate permission issues)
+- **access**: Permission checks (high counts may indicate permission-heavy workloads)
 - **getattr**: Metadata lookups (high counts suggest lots of small-file operations)
-- **compound**: Total NFSv4 operations
+- **compound**: NFSv4 COMPOUND RPC calls
 
 ## Per-Mount Statistics
 
@@ -90,10 +90,10 @@ RHEL includes a Python-based mountstats tool for better formatting:
 mountstats /mnt/nfs-data
 
 # Show I/O statistics
-mountstats --iostat /mnt/nfs-data
+mountstats iostat /mnt/nfs-data
 
 # Show NFS operation statistics
-mountstats --nfs /mnt/nfs-data
+mountstats nfsstat /mnt/nfs-data
 ```
 
 ## Key Metrics to Watch
@@ -118,7 +118,7 @@ Retransmissions indicate network problems or an overloaded server:
 # Check for retransmissions (client side)
 nfsstat -rc
 
-# Look for the retrans field - anything above 0 needs investigation
+# Look for an increasing retrans field - sustained increases need investigation
 ```
 
 ### Thread Utilization
@@ -139,7 +139,7 @@ Watch NFS statistics in real time:
 
 ```bash
 # Update every 5 seconds, showing deltas
-nfsstat -s -l 5
+nfsstat -s --sleep=5
 
 # Watch specific operations
 watch -n 5 nfsstat -s
@@ -179,13 +179,13 @@ echo "*/5 * * * * root /usr/local/bin/nfs-monitor.sh" | sudo tee /etc/cron.d/nfs
 
 ```bash
 # Show active NFS connections
-ss -tnp | grep 2049
+ss -Htnp sport = :2049
 
 # Count connected clients
-ss -tn | grep 2049 | awk '{print $5}' | cut -d: -f1 | sort -u | wc -l
+ss -Htn sport = :2049 | awk '{print $5}' | sed 's/:[^:]*$//' | sort -u | wc -l
 
 # List connected client IPs
-ss -tn | grep 2049 | awk '{print $5}' | cut -d: -f1 | sort -u
+ss -Htn sport = :2049 | awk '{print $5}' | sed 's/:[^:]*$//' | sort -u
 ```
 
 ## Performance Baseline
@@ -215,11 +215,11 @@ For production environments, feed NFS metrics into your monitoring system:
 
 ```bash
 # Extract specific metrics for monitoring tools
-# Read operations per second
-nfsstat -s | grep read | awk '{print $1}'
+# Read operation count
+nfsstat -s -l | awk '$1 == "read" {print $2}'
 
-# Write operations per second
-nfsstat -s | grep write | awk '{print $1}'
+# Write operation count
+nfsstat -s -l | awk '$1 == "write" {print $2}'
 ```
 
 ## Wrap-Up
