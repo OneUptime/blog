@@ -10,7 +10,7 @@ Description: Learn how to verify Talos Linux image signatures to ensure the inte
 
 Supply chain attacks are a growing threat in the infrastructure world. When you download a Talos Linux image, you need to be confident it has not been tampered with. Image signature verification gives you that confidence by cryptographically proving that the image was built by the Talos team and has not been modified since.
 
-Talos Linux signs its release images using cosign (from the Sigstore project), and this guide shows you how to verify those signatures before deploying images to your cluster.
+Talos Linux signs its release container images using cosign (from the Sigstore project), and this guide shows you how to verify those signatures before deploying images to your cluster.
 
 ## Why Image Verification Matters
 
@@ -25,14 +25,14 @@ Image verification protects against:
 
 ## Understanding Talos Image Signing
 
-Talos Linux uses cosign from the Sigstore project to sign container images and release artifacts. The signing process works like this:
+Talos Linux uses cosign from the Sigstore project to sign container images. The signing process works like this:
 
 1. The Talos CI/CD pipeline builds the release images
-2. Each image is signed with a private key controlled by Sidero Labs
+2. Each image is signed using Sigstore's certificate authority flow by a Sidero Labs identity
 3. The signature is stored alongside the image in the container registry
-4. Users verify the signature using the corresponding public key
+4. Users verify the signature using the expected certificate identity and OIDC issuer
 
-Talos also uses Sigstore's keyless signing with the Rekor transparency log, which provides an additional layer of accountability.
+Talos also uses Sigstore's Rekor transparency log, which provides an additional layer of accountability.
 
 ## Installing Verification Tools
 
@@ -44,7 +44,7 @@ You need cosign to verify Talos image signatures.
 brew install cosign
 
 # Install cosign on Linux
-wget https://github.com/sigstore/cosign/releases/download/v2.4.0/cosign-linux-amd64
+wget https://github.com/sigstore/cosign/releases/download/v3.0.6/cosign-linux-amd64
 chmod +x cosign-linux-amd64
 sudo mv cosign-linux-amd64 /usr/local/bin/cosign
 
@@ -69,8 +69,8 @@ Talos Linux container images (used for installation and upgrades) are published 
 ```bash
 # Verify the Talos installer image signature
 cosign verify \
-  --certificate-identity-regexp "https://github.com/siderolabs/talos" \
-  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  --certificate-identity-regexp '@siderolabs\.com$' \
+  --certificate-oidc-issuer "https://accounts.google.com" \
   ghcr.io/siderolabs/installer:v1.9.0
 
 # If verification succeeds, you will see the signature details
@@ -82,28 +82,25 @@ cosign verify \
 ```bash
 # Verify the main Talos image
 cosign verify \
-  --certificate-identity-regexp "https://github.com/siderolabs/talos" \
-  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  --certificate-identity-regexp '@siderolabs\.com$' \
+  --certificate-oidc-issuer "https://accounts.google.com" \
   ghcr.io/siderolabs/talos:v1.9.0
 ```
 
-### Verify with a Specific Public Key
+### Verify with the Expected Signing Identity
 
-If you prefer to verify against the Talos public key directly:
+For official Talos release images, prefer verifying the expected Sidero Labs signing identity:
 
 ```bash
-# Download the Talos cosign public key
-wget https://github.com/siderolabs/talos/raw/main/cosign.pub
-
-# Verify using the public key
 cosign verify \
-  --key cosign.pub \
+  --certificate-identity-regexp '@siderolabs\.com$' \
+  --certificate-oidc-issuer "https://accounts.google.com" \
   ghcr.io/siderolabs/installer:v1.9.0
 ```
 
 ## Verifying ISO and Raw Images
 
-For bare metal installations, you typically download ISO or raw disk images. These are verified using SHA256 checksums that are themselves signed.
+For bare metal installations, you typically download ISO or raw disk images. These release artifacts are verified using SHA256 checksums published with the release.
 
 ### Download and Verify Checksums
 
@@ -111,14 +108,6 @@ For bare metal installations, you typically download ISO or raw disk images. The
 # Download the image and checksum files
 wget https://github.com/siderolabs/talos/releases/download/v1.9.0/metal-amd64.iso
 wget https://github.com/siderolabs/talos/releases/download/v1.9.0/sha256sum.txt
-wget https://github.com/siderolabs/talos/releases/download/v1.9.0/sha256sum.txt.sig
-
-# Verify the checksum file signature
-cosign verify-blob \
-  --certificate-identity-regexp "https://github.com/siderolabs/talos" \
-  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-  --signature sha256sum.txt.sig \
-  sha256sum.txt
 
 # Verify the image against the checksum
 sha256sum -c sha256sum.txt --ignore-missing
@@ -145,8 +134,8 @@ The Talos Image Factory (factory.talos.dev) builds custom images with your speci
 ```bash
 # Verify an Image Factory image
 cosign verify \
-  --certificate-identity-regexp "https://github.com/siderolabs" \
-  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  --certificate-identity "image-factory-signing@talos-production.iam.gserviceaccount.com" \
+  --certificate-oidc-issuer "https://accounts.google.com" \
   factory.talos.dev/installer/SCHEMATIC_ID:v1.9.0
 ```
 
@@ -163,8 +152,8 @@ Create a script that verifies images before applying upgrades.
 
 set -euo pipefail
 
-IMAGE=$1
-NODE=$2
+IMAGE=${1:-}
+NODE=${2:-}
 
 if [ -z "$IMAGE" ] || [ -z "$NODE" ]; then
   echo "Usage: verify-and-upgrade.sh <image> <node-ip>"
@@ -175,8 +164,8 @@ echo "Verifying image signature: $IMAGE"
 
 # Verify the image signature
 if cosign verify \
-  --certificate-identity-regexp "https://github.com/siderolabs" \
-  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  --certificate-identity-regexp '@siderolabs\.com$' \
+  --certificate-oidc-issuer "https://accounts.google.com" \
   "$IMAGE" > /dev/null 2>&1; then
   echo "Image signature verified successfully"
 else
@@ -199,8 +188,8 @@ Add verification to your CI/CD pipeline before any deployment.
 - name: Verify Talos Image
   run: |
     cosign verify \
-      --certificate-identity-regexp "https://github.com/siderolabs/talos" \
-      --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+      --certificate-identity-regexp '@siderolabs\.com$' \
+      --certificate-oidc-issuer "https://accounts.google.com" \
       ghcr.io/siderolabs/installer:v1.9.0
 
 - name: Upgrade Cluster
@@ -212,15 +201,15 @@ Add verification to your CI/CD pipeline before any deployment.
 
 ## Verifying SBOM (Software Bill of Materials)
 
-Talos Linux also publishes SBOMs for its images, allowing you to inspect the full list of components included.
+Talos Linux also publishes SBOMs for supported releases, allowing you to inspect the full list of components included.
 
 ```bash
-# Download the SBOM for a Talos image
-cosign download sbom ghcr.io/siderolabs/talos:v1.9.0 > talos-sbom.json
+# Download the SBOM for a Talos release
+wget https://github.com/siderolabs/talos/releases/download/v1.11.0/talos-amd64.spdx.json
 
 # Inspect the SBOM
-cat talos-sbom.json | jq '.components | length'
-cat talos-sbom.json | jq '.components[].name'
+jq '.packages | length' talos-amd64.spdx.json
+jq '.packages[].name' talos-amd64.spdx.json
 ```
 
 This helps you audit exactly what software is included in the image and check for known vulnerabilities.
@@ -230,16 +219,16 @@ This helps you audit exactly what software is included in the image and check fo
 Sigstore's Rekor transparency log provides a public, tamper-proof record of all signing events.
 
 ```bash
-# Search for Talos signing events in Rekor
-rekor-cli search --email "talos@siderolabs.com"
+# Search for signing events by artifact hash
+rekor-cli search --rekor_server https://rekor.sigstore.dev --sha sha256:<artifact-sha256>
 
 # Get details about a specific signing event
 rekor-cli get --uuid <log-entry-uuid>
 
 # Verify that a signing event exists in the log
 cosign verify \
-  --certificate-identity-regexp "https://github.com/siderolabs" \
-  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  --certificate-identity-regexp '@siderolabs\.com$' \
+  --certificate-oidc-issuer "https://accounts.google.com" \
   --rekor-url https://rekor.sigstore.dev \
   ghcr.io/siderolabs/installer:v1.9.0
 ```
@@ -254,7 +243,8 @@ If verification fails, do not use the image. Here is how to troubleshoot:
 # 1. Wrong image reference
 # Make sure you are using the exact tag or digest
 cosign verify \
-  --key cosign.pub \
+  --certificate-identity-regexp '@siderolabs\.com$' \
+  --certificate-oidc-issuer "https://accounts.google.com" \
   ghcr.io/siderolabs/installer:v1.9.0@sha256:abc123...
 
 # 2. Outdated cosign version
@@ -262,8 +252,11 @@ cosign version
 # Update if needed
 
 # 3. Network issues preventing access to Rekor
-# Try with the public key directly
-cosign verify --key cosign.pub ghcr.io/siderolabs/installer:v1.9.0
+# Retry after network access to the registry, Rekor, and Sigstore trust services is restored
+cosign verify \
+  --certificate-identity-regexp '@siderolabs\.com$' \
+  --certificate-oidc-issuer "https://accounts.google.com" \
+  ghcr.io/siderolabs/installer:v1.9.0
 
 # 4. Image from an untrusted source
 # Only use images from official sources:
