@@ -59,12 +59,12 @@ The krb5.conf should contain your realm and KDC information:
 
 ## Step 2 - Create Service Principals
 
-On the KDC, create NFS service principals for the server and each client:
+On the KDC, create an NFS service principal for the server and host principals for each client:
 
 ```bash
 # On the KDC (or using kadmin remotely)
 kadmin -q "addprinc -randkey nfs/nfs-server.example.com"
-kadmin -q "addprinc -randkey nfs/client1.example.com"
+kadmin -q "addprinc -randkey host/client1.example.com"
 ```
 
 ## Step 3 - Create Keytab Files
@@ -79,22 +79,26 @@ kadmin -q "ktadd nfs/nfs-server.example.com"
 klist -k /etc/krb5.keytab
 ```
 
-Do the same on each NFS client for its principal.
+Do the same on each NFS client for its host principal.
 
 ## Step 4 - Enable NFS Kerberos Services
 
-On both server and clients:
+On the NFS server:
 
 ```bash
 # Enable the GSS proxy for NFS Kerberos
 sudo systemctl enable --now gssproxy
+```
+
+On NFS clients:
+
+```bash
 
 # Enable and start rpc-gssd (NFS GSS authentication daemon)
 sudo systemctl enable --now rpc-gssd
-
-# On the server, also enable rpc-svcgssd is not needed on RHEL
-# gssproxy handles both sides
 ```
+
+The older `rpc-svcgssd` service is not needed on RHEL; `gssproxy` handles Kerberos authentication for `rpc.nfsd` on the server.
 
 ## Step 5 - Configure the Server Export
 
