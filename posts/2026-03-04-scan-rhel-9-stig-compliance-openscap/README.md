@@ -26,6 +26,9 @@ You should see a profile like `xccdf_org.ssgproject.content_profile_stig` in the
 ## Run a STIG Compliance Scan
 
 ```bash
+# Create a directory for scan output
+mkdir -p /var/log/compliance
+
 # Run the STIG scan with both XML results and HTML report
 oscap xccdf eval \
   --profile xccdf_org.ssgproject.content_profile_stig \
@@ -33,7 +36,7 @@ oscap xccdf eval \
   --report /var/log/compliance/stig-report.html \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
 
-# The command returns exit code 2 if any rules failed
+# The command returns exit code 2 if any rules failed or returned unknown
 echo "Exit code: $?"
 ```
 
@@ -67,10 +70,10 @@ The HTML report organizes findings by STIG ID. Each finding includes:
 ```bash
 # Count results by type
 echo "=== STIG Scan Summary ==="
-echo "Passed:         $(grep -c 'result="pass"' /var/log/compliance/stig-results.xml)"
-echo "Failed:         $(grep -c 'result="fail"' /var/log/compliance/stig-results.xml)"
-echo "Not Applicable: $(grep -c 'result="notapplicable"' /var/log/compliance/stig-results.xml)"
-echo "Error:          $(grep -c 'result="error"' /var/log/compliance/stig-results.xml)"
+echo "Passed:         $(grep -Ec '<[^>]*result>pass</[^>]*result>' /var/log/compliance/stig-results.xml)"
+echo "Failed:         $(grep -Ec '<[^>]*result>fail</[^>]*result>' /var/log/compliance/stig-results.xml)"
+echo "Not Applicable: $(grep -Ec '<[^>]*result>notapplicable</[^>]*result>' /var/log/compliance/stig-results.xml)"
+echo "Error:          $(grep -Ec '<[^>]*result>error</[^>]*result>' /var/log/compliance/stig-results.xml)"
 ```
 
 ## Focus on CAT I (High Severity) Findings
@@ -78,14 +81,15 @@ echo "Error:          $(grep -c 'result="error"' /var/log/compliance/stig-result
 CAT I findings are the most critical. Fix these first:
 
 ```bash
-# Extract failed rules and their severity
+# Extract failed rule titles, then use the HTML report severity column
+# to identify the CAT I / high-severity items
 oscap xccdf eval \
   --profile xccdf_org.ssgproject.content_profile_stig \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml 2>&1 | \
   grep -B1 "^Result.*fail" | grep "^Title"
 ```
 
-Common CAT I findings on a default RHEL installation include:
+Common findings on a default RHEL installation include:
 
 - FIPS mode not enabled
 - Root login permitted via SSH
@@ -95,17 +99,20 @@ Common CAT I findings on a default RHEL installation include:
 ## Generate Remediation Scripts from Results
 
 ```bash
+# Get the TestResult ID from the scan results
+RESULT_ID=$(oscap info /var/log/compliance/stig-results.xml | awk '/Result ID:/ {print $3; exit}')
+
 # Generate a bash script to fix all failures
 oscap xccdf generate fix \
   --fix-type bash \
-  --result-id "" \
+  --result-id "$RESULT_ID" \
   --output /tmp/stig-remediation.sh \
   /var/log/compliance/stig-results.xml
 
 # Generate an Ansible playbook
 oscap xccdf generate fix \
   --fix-type ansible \
-  --result-id "" \
+  --result-id "$RESULT_ID" \
   --output /tmp/stig-remediation.yml \
   /var/log/compliance/stig-results.xml
 
@@ -127,19 +134,19 @@ oscap xccdf eval \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
 ```
 
-## Generate ARF Output for STIG Viewer
+## Generate Output for STIG Viewer
 
-The DISA STIG Viewer and eMASS expect results in Asset Reporting Format (ARF):
+The DISA STIG Viewer can import XCCDF results generated with the OpenSCAP `--stig-viewer` option. If your reporting workflow also requires Asset Reporting Format (ARF), generate it with `--results-arf` in the same scan:
 
 ```bash
-# Generate ARF output
+# Generate STIG Viewer-compatible XCCDF results and ARF output
 oscap xccdf eval \
   --profile xccdf_org.ssgproject.content_profile_stig \
+  --stig-viewer /var/log/compliance/stig-viewer-results.xml \
   --results-arf /var/log/compliance/stig-arf.xml \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml || true
 
-# This ARF file can be imported into STIG Viewer
-# to generate a checklist (CKL) file
+# Import stig-viewer-results.xml into STIG Viewer
 ```
 
 ## Automate STIG Scanning
@@ -164,8 +171,8 @@ oscap xccdf eval \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml 2>/dev/null || true
 
 # Generate summary
-PASS=$(grep -c 'result="pass"' "${REPORT_DIR}/stig-${HOSTNAME}-${DATE}.xml")
-FAIL=$(grep -c 'result="fail"' "${REPORT_DIR}/stig-${HOSTNAME}-${DATE}.xml")
+PASS=$(grep -Ec '<[^>]*result>pass</[^>]*result>' "${REPORT_DIR}/stig-${HOSTNAME}-${DATE}.xml")
+FAIL=$(grep -Ec '<[^>]*result>fail</[^>]*result>' "${REPORT_DIR}/stig-${HOSTNAME}-${DATE}.xml")
 
 echo "${DATE},${HOSTNAME},${PASS},${FAIL}" >> "${REPORT_DIR}/stig-history.csv"
 
