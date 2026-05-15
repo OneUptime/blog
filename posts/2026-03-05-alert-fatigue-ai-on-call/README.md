@@ -12,7 +12,7 @@ This isn't a hypothetical. It's Tuesday.
 
 ## The Alert Fatigue Problem by the Numbers
 
-PagerDuty's 2025 State of Digital Operations report found that the average on-call engineer receives **roughly 50 alerts per week**, but only 2-5% of those require human intervention. That's a signal-to-noise ratio that would make a radio engineer cry.
+Most teams that measure alert quality discover the same pattern: the on-call engineer receives a steady stream of notifications, but only a small fraction require immediate human intervention. That's a signal-to-noise ratio that would make a radio engineer cry.
 
 The consequences compound:
 
@@ -21,7 +21,7 @@ The consequences compound:
 - **Slower response**: When everything is urgent, nothing is urgent-real incidents get buried
 - **Alert suppression**: Teams start muting noisy alerts, creating blind spots
 
-A 2024 Catchpoint study found that **70% of SRE teams** report alert fatigue as a top-three operational concern. And yet, most teams respond by adding *more* alerts when something goes wrong, making the problem progressively worse.
+And yet, many teams respond by adding *more* alerts when something goes wrong, making the problem progressively worse.
 
 ## Why Traditional Approaches Fall Short
 
@@ -101,7 +101,7 @@ service:
       exporters: [prometheus/servicegraph]
 ```
 
-The service graph connector in the OpenTelemetry Collector builds a live dependency map from your traces. When alert correlation uses this topology, it can determine that your 33 alerts all trace back to the database layer-without any manual configuration of service dependencies.
+The service graph connector in the OpenTelemetry Collector, currently an alpha component, emits service-relationship metrics from your traces. When alert correlation uses this topology, it can determine that your 33 alerts all trace back to the database layer-without any manual configuration of service dependencies.
 
 ### 2. Anomaly Detection Over Static Thresholds
 
@@ -184,7 +184,7 @@ async def analyze_incident(incident):
     )
 ```
 
-The key insight: AI doesn't need to be right every time. If it correctly identifies the root cause 60-70% of the time, it's already saving your team hours per incident.
+The key insight: AI doesn't need to be right every time. Even when it only produces a plausible first hypothesis, it can still save your team time during an incident.
 
 ### 4. Smart Alert Routing
 
@@ -236,7 +236,7 @@ Start simple. Group alerts by:
 2. **Service dependency**: If services are connected and alerting simultaneously, group them
 3. **Historical pattern**: If these alerts have co-occurred before, group them
 
-Even rule-based grouping (no ML required) can reduce alert volume by 60-80%.
+Even rule-based grouping (no ML required) can reduce alert volume significantly.
 
 ### Step 4: Add Anomaly Detection Gradually
 
