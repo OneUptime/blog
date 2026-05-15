@@ -8,13 +8,13 @@ Description: Switch RHEL 9 to the LEGACY crypto policy when you need to communic
 
 ---
 
-Sometimes you need your RHEL 9 system to communicate with older systems that do not support modern cryptographic standards. The LEGACY crypto policy enables older algorithms like SHA-1, smaller RSA keys, and older TLS versions that the DEFAULT policy blocks. This guide explains when and how to use it, along with important security considerations.
+Sometimes you need your RHEL 9 system to communicate with older systems that do not support modern cryptographic standards. The LEGACY crypto policy relaxes some defaults, such as allowing SHA-1 in digital signatures and certificates and allowing CBC-mode ciphers for SSH, but it does not re-enable everything that older RHEL releases allowed. RHEL 9 still allows only TLS 1.2 and newer and still requires RSA keys and Diffie-Hellman parameters of at least 2048 bits. This guide explains when and how to use it, along with important security considerations.
 
 ## When You Need the LEGACY Policy
 
 Common scenarios that require the LEGACY policy:
 
-- Connecting to older servers that only support TLS 1.0 or 1.1
+- Connecting to older servers that require SHA-1 signatures or certificates
 - Interacting with legacy hardware devices with outdated firmware
 - Using SSH to connect to systems running older OpenSSH versions
 - Working with older LDAP servers or directory services
@@ -23,9 +23,9 @@ Common scenarios that require the LEGACY policy:
 ```mermaid
 flowchart TD
     A[Connection to legacy system fails] --> B{Error type?}
-    B -->|TLS handshake failure| C[Old TLS version needed]
+    B -->|TLS handshake failure| C[SHA-1 or legacy cipher needed]
     B -->|SSH algorithm mismatch| D[Legacy SSH cipher needed]
-    B -->|Certificate rejected| E[SHA-1 or small key in cert]
+    B -->|Certificate rejected| E[SHA-1 certificate signature]
     C --> F[Consider LEGACY policy]
     D --> F
     E --> F
@@ -38,15 +38,15 @@ flowchart TD
 
 | Setting | DEFAULT | LEGACY |
 |---------|---------|--------|
-| TLS 1.0 | Disabled | Enabled |
-| TLS 1.1 | Disabled | Enabled |
-| SHA-1 | Disabled for most uses | Allowed |
-| Minimum RSA key | 2048 bits | 1024 bits |
-| Minimum DH parameter | 2048 bits | 1024 bits |
-| 3DES | Disabled | Enabled |
-| CBC mode | Allowed | Allowed |
-| DSA keys | Disabled | Enabled |
-| RC4 | Disabled | Limited use |
+| TLS 1.0 | Disabled | Disabled |
+| TLS 1.1 | Disabled | Disabled |
+| SHA-1 in digital signatures and certificates | Disabled | Allowed |
+| Minimum RSA key | 2048 bits | 2048 bits |
+| Minimum DH parameter | 2048 bits | 2048 bits |
+| 3DES | Disabled | Disabled |
+| CBC mode | Disabled for SSH | Allowed |
+| DSA keys | Disabled | Disabled |
+| RC4 | Disabled | Disabled |
 
 ## Switching to the LEGACY Policy
 
@@ -59,8 +59,8 @@ sudo update-crypto-policies --set LEGACY
 update-crypto-policies --show
 # Output: LEGACY
 
-# Restart affected services
-sudo systemctl restart sshd
+# Restart the system so the change fully applies
+sudo reboot
 ```
 
 ## Using LEGACY with Targeted Sub-policies
@@ -70,39 +70,32 @@ Instead of enabling everything in the LEGACY policy, you can use DEFAULT with sp
 ### Allow SHA-1 Only
 
 ```bash
-# Create a module that allows SHA-1
+# Apply DEFAULT with the RHEL-provided SHA1 sub-policy
+sudo update-crypto-policies --set DEFAULT:SHA1
+```
+
+### Allow SSH CBC Ciphers Only
+
+```bash
 sudo mkdir -p /etc/crypto-policies/policies/modules/
 
-sudo tee /etc/crypto-policies/policies/modules/ALLOW-SHA1.pmod << 'EOF'
-hash = SHA1+
-sign = RSA-SHA1+ ECDSA-SHA1+
-mac = HMAC-SHA1+
+sudo tee /etc/crypto-policies/policies/modules/ALLOW-SSH-CBC.pmod << 'EOF'
+cipher@SSH = AES-256-CBC+ AES-128-CBC+
 EOF
 
-# Apply DEFAULT with SHA-1 allowed
-sudo update-crypto-policies --set DEFAULT:ALLOW-SHA1
+sudo update-crypto-policies --set DEFAULT:ALLOW-SSH-CBC
 ```
 
-### Allow TLS 1.0/1.1 Only
+### Set the RHEL 9 RSA Minimum Explicitly
 
 ```bash
-sudo tee /etc/crypto-policies/policies/modules/ALLOW-OLD-TLS.pmod << 'EOF'
-protocol = TLS1.0+ TLS1.1+
-min_tls_version = TLS1.0
-min_dtls_version = DTLS1.0
+sudo mkdir -p /etc/crypto-policies/policies/modules/
+
+sudo tee /etc/crypto-policies/policies/modules/RSA2048.pmod << 'EOF'
+min_rsa_size = 2048
 EOF
 
-sudo update-crypto-policies --set DEFAULT:ALLOW-OLD-TLS
-```
-
-### Allow Smaller RSA Keys Only
-
-```bash
-sudo tee /etc/crypto-policies/policies/modules/ALLOW-RSA1024.pmod << 'EOF'
-min_rsa_size = 1024
-EOF
-
-sudo update-crypto-policies --set DEFAULT:ALLOW-RSA1024
+sudo update-crypto-policies --set DEFAULT:RSA2048
 ```
 
 ## Per-Connection Overrides Instead of System-Wide Change
@@ -130,24 +123,24 @@ EOF
 ### OpenSSL/curl Overrides
 
 ```bash
-# Allow TLS 1.0 for a specific curl request
-curl --tls-max 1.0 --ciphers DEFAULT:@SECLEVEL=0 https://legacy-server/
+# Use a weaker OpenSSL security level for a specific curl request
+curl --ciphers '@SECLEVEL=0:DEFAULT' https://legacy-server/
 
 # Or for a specific openssl connection
-openssl s_client -connect legacy-server:443 -tls1
+openssl s_client -connect legacy-server:443 -cipher '@SECLEVEL=0:DEFAULT'
 ```
 
 ## Security Risks of the LEGACY Policy
 
 Enabling the LEGACY policy exposes your system to several known risks:
 
-1. **TLS 1.0/1.1 vulnerabilities**: These protocol versions have known weaknesses like POODLE, BEAST, and Lucky13.
+1. **Legacy signature support**: Allowing SHA-1 signatures and SHA-1-signed certificates can weaken integrity guarantees.
 
 2. **SHA-1 collision attacks**: SHA-1 is broken for collision resistance, making it possible to forge digital signatures.
 
-3. **Small RSA keys**: 1024-bit RSA keys can potentially be factored with sufficient resources.
+3. **Weaker SSH cipher coverage**: Enabling CBC-mode ciphers for SSH increases the set of algorithms that can be negotiated.
 
-4. **3DES attacks**: Sweet32 attack can recover plaintext from 3DES-encrypted connections.
+4. **Compatibility over hardening**: The LEGACY policy intentionally has a larger attack surface than DEFAULT.
 
 ## Minimizing Exposure
 
@@ -159,10 +152,10 @@ echo "REMINDER: System $(hostname) is on LEGACY crypto policy. Switch back to DE
     at now + 7 days 2>/dev/null
 
 # Document why the LEGACY policy is needed
-sudo tee /etc/crypto-policies/LEGACY_JUSTIFICATION.txt << 'EOF'
+sudo tee /etc/crypto-policies/LEGACY_JUSTIFICATION.txt << EOF
 LEGACY crypto policy enabled on: $(date)
 Reason: Need to communicate with legacy-server.example.com
-which only supports TLS 1.0 and RSA 1024-bit certificates.
+which requires SHA-1 signatures or SSH CBC ciphers.
 Expected remediation date: [date when legacy system will be upgraded]
 Approved by: [approver name]
 EOF
@@ -173,16 +166,18 @@ EOF
 Instead of the full LEGACY policy, create a targeted policy that only loosens what you need:
 
 ```bash
+sudo mkdir -p /etc/crypto-policies/policies/modules/
+
 sudo tee /etc/crypto-policies/policies/modules/MINIMAL-LEGACY.pmod << 'EOF'
 # Only allow what is strictly needed for legacy compatibility
-# Allow SHA-1 for certificate verification only
-sign = RSA-SHA1+
+# Allow SHA-1 signatures
+sign = RSA-SHA1+ ECDSA-SHA1+
 
 # Allow 2048-bit minimum (not 1024)
 min_rsa_size = 2048
 
-# Allow TLS 1.0 but not SSL 3.0
-protocol = TLS1.0+
+# Allow selected SSH CBC ciphers
+cipher@SSH = AES-256-CBC+ AES-128-CBC+
 EOF
 
 sudo update-crypto-policies --set DEFAULT:MINIMAL-LEGACY
@@ -196,8 +191,8 @@ Track security-related events while using weakened crypto:
 # Monitor for use of weak ciphers in SSH
 sudo journalctl -u sshd | grep -i "cipher\|negotiate" | tail -20
 
-# Check what TLS versions are being negotiated
-sudo ss -tlnp | grep ":443"
+# Check the TLS version negotiated with a specific server
+openssl s_client -connect legacy-server:443 -brief </dev/null 2>&1 | grep Protocol
 ```
 
 ## Reverting to DEFAULT
@@ -209,8 +204,7 @@ When the legacy requirement is resolved:
 sudo update-crypto-policies --set DEFAULT
 
 # Restart services
-sudo systemctl restart sshd
-sudo systemctl restart httpd 2>/dev/null
+sudo reboot
 
 # Verify
 update-crypto-policies --show
@@ -218,4 +212,4 @@ update-crypto-policies --show
 
 ## Summary
 
-The LEGACY crypto policy on RHEL 9 should be used only when you genuinely need to communicate with older systems that require deprecated algorithms. Prefer targeted approaches like per-connection SSH overrides or custom sub-policy modules that only loosen specific restrictions. Always document why the LEGACY policy is needed, set a timeline for returning to DEFAULT, and monitor the system while weaker crypto is enabled. The goal is to minimize both the scope and duration of exposure to legacy algorithms.
+The LEGACY crypto policy on RHEL 9 should be used only when you genuinely need to communicate with older systems that require compatibility settings still available in RHEL 9, such as SHA-1 signatures or SSH CBC ciphers. Prefer targeted approaches like per-connection SSH overrides or custom sub-policy modules that only loosen specific restrictions. Always document why the LEGACY policy is needed, set a timeline for returning to DEFAULT, and monitor the system while weaker crypto is enabled. The goal is to minimize both the scope and duration of exposure to legacy algorithms.
