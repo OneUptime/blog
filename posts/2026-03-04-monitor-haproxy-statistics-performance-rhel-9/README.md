@@ -117,22 +117,22 @@ echo "show errors" | sudo socat stdio /var/lib/haproxy/stats
 
 ## Step 6 - Enable CSV Stats Endpoint
 
-You can expose stats as CSV via HTTP for external monitoring tools:
+The stats page can also return CSV for external monitoring tools by adding `;csv` to the stats URI. The listener from Step 1 already supports this:
 
 ```bash
-frontend http_front
-    bind *:80
-
-    # Serve stats as CSV at /haproxy-stats
-    stats uri /haproxy-stats
+listen stats
+    bind *:8404
+    mode http
     stats enable
+    stats uri /stats
+    stats auth admin:your-secure-password
 ```
 
 Then fetch stats programmatically:
 
 ```bash
 # Fetch stats as CSV
-curl -s "http://admin:password@your-haproxy:8404/stats;csv"
+curl -s "http://admin:your-secure-password@your-haproxy:8404/stats;csv"
 ```
 
 ## Step 7 - Monitor Key Metrics
