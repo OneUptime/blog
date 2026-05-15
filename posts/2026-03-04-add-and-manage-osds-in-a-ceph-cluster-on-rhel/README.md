@@ -20,7 +20,7 @@ Before adding OSDs, check which disks are available:
 sudo ceph orch device ls
 
 # Show devices on a specific host
-sudo ceph orch device ls node2
+sudo ceph orch device ls --hostname node2
 ```
 
 A device must be unused (no partitions, no filesystem, no LVM) to be eligible.
@@ -60,18 +60,11 @@ sudo ceph osd df
 Removing an OSD requires draining it first so data migrates to other OSDs:
 
 ```bash
-# Mark the OSD as out (triggers rebalancing)
-sudo ceph osd out osd.5
+# Schedule the OSD for removal and zap the device
+sudo ceph orch osd rm 5 --zap
 
-# Wait for data migration to complete
-sudo ceph -w
-# Watch for "active+clean" on all PGs
-
-# Stop the OSD daemon
-sudo ceph orch daemon rm osd.5
-
-# Remove it from the CRUSH map and auth
-sudo ceph osd purge osd.5 --yes-i-really-mean-it
+# Check the removal status
+sudo ceph orch osd rm status
 ```
 
 ## Replace a Failed Disk
@@ -82,10 +75,13 @@ When a disk fails, the OSD goes down automatically:
 # Check for down OSDs
 sudo ceph osd tree | grep down
 
-# Destroy the failed OSD (preserves the ID for reuse)
-sudo ceph osd destroy osd.5 --yes-i-really-mean-it
+# Schedule the failed OSD for replacement (preserves the ID for reuse)
+sudo ceph orch osd rm 5 --replace
 
-# After replacing the physical disk, recreate the OSD
+# Check the replacement status
+sudo ceph orch osd rm status
+
+# After replacing the physical disk on the same host, recreate the OSD
 sudo ceph orch daemon add osd node2:/dev/sdb
 ```
 
