@@ -259,17 +259,17 @@ nmstatectl apply /tmp/bridge.yaml
 
 ## Rolling Back Changes
 
-Nmstate supports rollback. When you apply a state, it creates a checkpoint. If something goes wrong, the system automatically rolls back after a timeout:
+Nmstate supports rollback. A normal apply verifies the result and rolls back if the state does not match the desired configuration. For manual transaction control, apply the state with `--no-commit`; this creates a checkpoint and automatically rolls back after the timeout unless you commit it:
 
 ```bash
 # Apply with a 60-second auto-rollback timeout
-nmstatectl apply /tmp/new-config.yaml --no-commit
+checkpoint=$(nmstatectl apply /tmp/new-config.yaml --no-commit | tail -n 1)
 
 # If everything looks good within 60 seconds, commit the changes
-nmstatectl commit
+nmstatectl commit "$checkpoint"
 
 # Or explicitly rollback
-nmstatectl rollback
+nmstatectl rollback "$checkpoint"
 ```
 
 This is incredibly useful for remote servers where a bad network change could lock you out. If you do not commit within the timeout period, the changes revert automatically.
@@ -289,25 +289,28 @@ diff /tmp/desired-state.yaml /tmp/current-state.yaml
 
 ## Using Nmstate with Ansible
 
-Nmstate integrates well with Ansible through the `nmstate` role:
+Nmstate integrates well with Ansible through the `network` RHEL system role and its `network_state` variable:
 
 ```yaml
 # Ansible playbook example
 - name: Configure network with Nmstate
   hosts: webservers
-  roles:
-    - role: rhel-system-roles.network
-      network_state:
-        interfaces:
-        - name: ens192
-          type: ethernet
-          state: up
-          ipv4:
-            enabled: true
-            dhcp: false
-            address:
-            - ip: "{{ ansible_host }}"
-              prefix-length: 24
+  tasks:
+    - name: Apply Nmstate network configuration
+      ansible.builtin.include_role:
+        name: redhat.rhel_system_roles.network
+      vars:
+        network_state:
+          interfaces:
+          - name: ens192
+            type: ethernet
+            state: up
+            ipv4:
+              enabled: true
+              dhcp: false
+              address:
+              - ip: "{{ ansible_host }}"
+                prefix-length: 24
 ```
 
 ## Nmstate vs. nmcli
@@ -334,14 +337,14 @@ nmstatectl show > /tmp/before.yaml
 vi /tmp/desired.yaml
 
 # 3. Apply with no-commit for safety
-nmstatectl apply /tmp/desired.yaml --no-commit
+checkpoint=$(nmstatectl apply /tmp/desired.yaml --no-commit | tail -n 1)
 
 # 4. Verify connectivity
 ping -c 3 10.0.1.1
 ssh user@remote-server "echo reachable"
 
 # 5. If everything works, commit
-nmstatectl commit
+nmstatectl commit "$checkpoint"
 
 # 6. Save the applied state for documentation
 nmstatectl show > /etc/nmstate/ens192-config.yaml
