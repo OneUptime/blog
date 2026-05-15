@@ -39,8 +39,8 @@ Generate a restricted key for the client:
 # Create a client key with access to the CephFS filesystem
 sudo ceph fs authorize myfs client.cephfs-user / rw
 
-# Retrieve the key
-sudo ceph auth get client.cephfs-user
+# Retrieve the secret key
+sudo ceph auth get-key client.cephfs-user
 ```
 
 Save the key to use on the client machine.
@@ -54,13 +54,14 @@ On the RHEL client, install the ceph-common package:
 sudo dnf install -y ceph-common
 ```
 
-Copy the Ceph configuration and keyring to the client:
+Copy the Ceph configuration and secret key to the client:
 
 ```bash
 # Copy from admin node
 sudo scp root@node1:/etc/ceph/ceph.conf /etc/ceph/
-# Create the keyring file
-echo "AQBxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx==" | sudo tee /etc/ceph/ceph.client.cephfs-user.keyring
+# Create the secret file
+echo "AQBxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx==" | sudo tee /etc/ceph/cephfs-user.secret
+sudo chmod 600 /etc/ceph/cephfs-user.secret
 ```
 
 Mount the filesystem:
@@ -70,8 +71,8 @@ Mount the filesystem:
 sudo mkdir -p /mnt/cephfs
 
 # Mount using the kernel driver
-sudo mount -t ceph node1:6789,node2:6789:/ /mnt/cephfs \
-    -o name=cephfs-user,secretfile=/etc/ceph/ceph.client.cephfs-user.keyring
+sudo mount -t ceph cephfs-user@.myfs=/ /mnt/cephfs \
+    -o mon_addr=node1:6789/node2:6789,secretfile=/etc/ceph/cephfs-user.secret
 
 # Verify the mount
 df -h /mnt/cephfs
@@ -82,7 +83,7 @@ df -h /mnt/cephfs
 Add an entry to `/etc/fstab`:
 
 ```text
-node1:6789,node2:6789:/   /mnt/cephfs   ceph   name=cephfs-user,secretfile=/etc/ceph/ceph.client.cephfs-user.keyring,_netdev   0 0
+cephfs-user@.myfs=/   /mnt/cephfs   ceph   mon_addr=node1:6789/node2:6789,secretfile=/etc/ceph/cephfs-user.secret,_netdev   0 0
 ```
 
 ## Mount Using ceph-fuse (Alternative)
@@ -93,8 +94,11 @@ If the kernel driver is not available:
 # Install ceph-fuse
 sudo dnf install -y ceph-fuse
 
+# Create the mount point
+sudo mkdir -p /mnt/cephfs
+
 # Mount with ceph-fuse
-sudo ceph-fuse /mnt/cephfs --id cephfs-user
+sudo ceph-fuse -n client.cephfs-user --client_fs myfs /mnt/cephfs
 
 # Verify
 df -h /mnt/cephfs
