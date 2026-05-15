@@ -16,70 +16,117 @@ Install Nagios Core from source on RHEL 9 for comprehensive infrastructure monit
 
 - A RHEL 9 system with a valid subscription or configured repositories
 - Root or sudo access
-- Network access for remote monitoring tools (if applicable)
+- Network access to download Nagios Core and Nagios Plugins source releases
 
 ## Step 1 - Install Required Packages
 
-Install the monitoring tools relevant to this guide:
+Install the build tools and web server packages required for Nagios Core:
 
 ```bash
-sudo dnf install -y pcp pcp-system-tools sysstat net-snmp net-snmp-utils
+sudo dnf install -y gcc glibc glibc-common make perl httpd php wget gd gd-devel s-nail postfix openssl-devel httpd-tools
+sudo dnf update -y
 ```
 
-Select only the packages you need for your specific setup.
-
-## Step 2 - Enable and Start Services
+Nagios Core's source installation guide assumes SELinux is disabled or running in permissive mode. To set permissive mode for the current boot when SELinux is enforcing:
 
 ```bash
-sudo systemctl enable --now pmcd pmlogger
-# or for sysstat:
-
-sudo systemctl enable --now sysstat
+if [ "$(getenforce)" = "Enforcing" ]; then
+  sudo setenforce 0
+fi
 ```
 
-## Step 3 - Configure the Monitoring Tool
+## Step 2 - Download and Compile Nagios Core
 
-Edit the relevant configuration file for your monitoring setup. Common locations include:
-
-- `/etc/pcp/` for PCP configuration
-- `/etc/snmp/snmpd.conf` for SNMP
-- `/etc/prometheus/prometheus.yml` for Prometheus
-- `/etc/grafana/grafana.ini` for Grafana
-
-Apply your changes and restart the service:
+Download the latest Nagios Core source release, extract it, and build it:
 
 ```bash
-sudo systemctl restart <service-name>
+cd /tmp
+wget --output-document="nagioscore.tar.gz" "$(wget -q -O - https://api.github.com/repos/NagiosEnterprises/nagioscore/releases/latest | grep '"browser_download_url":' | grep -o 'https://[^"]*')"
+tar xzf nagioscore.tar.gz
+cd /tmp/nagios-*
+./configure
+make all
 ```
+
+## Step 3 - Install Nagios Core
+
+Create the Nagios user and group, add Apache to the Nagios group, and install the binaries, service files, sample configuration, and Apache configuration:
+
+```bash
+sudo make install-groups-users
+sudo usermod -a -G nagios apache
+sudo make install
+sudo make install-daemoninit
+sudo make install-commandmode
+sudo make install-config
+sudo make install-webconf
+```
+
+Create the `nagiosadmin` web login. You will be prompted to set a password:
+
+```bash
+sudo htpasswd -c /usr/local/nagios/etc/htpasswd.users nagiosadmin
+```
+
+When adding more users later, omit `-c` so the existing password file is not replaced.
 
 ## Step 4 - Open Firewall Ports
 
-```bash
-# Common monitoring ports
-sudo firewall-cmd --permanent --add-port=9090/tcp   # Prometheus
-sudo firewall-cmd --permanent --add-port=9100/tcp   # Node Exporter
-sudo firewall-cmd --permanent --add-port=3000/tcp   # Grafana
-sudo firewall-cmd --permanent --add-service=snmp     # SNMP
-sudo firewall-cmd --reload
-```
-
-## Step 5 - Verify Data Collection
-
-Confirm that metrics are being collected:
+Allow HTTP access to the Nagios Core web interface:
 
 ```bash
-# PCP
-pmstat -s 3
-# sysstat
-sar -u 1 3
-# Prometheus endpoint
-curl -s http://localhost:9090/api/v1/query?query=up
+sudo firewall-cmd --zone=public --add-port=80/tcp
+sudo firewall-cmd --zone=public --add-port=80/tcp --permanent
 ```
 
-## Step 6 - Set Up Alerting (Optional)
+Start Apache and Nagios:
 
-Configure alerts based on thresholds so you are notified before issues become critical. Use Prometheus Alertmanager, Nagios notifications, or Red Hat Insights recommendations depending on your stack.
+```bash
+sudo systemctl enable --now httpd.service
+sudo systemctl enable --now nagios.service
+```
+
+## Step 5 - Verify Nagios Core
+
+Check the Nagios configuration before using the web interface:
+
+```bash
+sudo /usr/local/nagios/bin/nagios -v /usr/local/nagios/etc/nagios.cfg
+sudo systemctl status nagios.service
+```
+
+Then open the Nagios web interface in a browser:
+
+```text
+http://your-server-ip/nagios
+```
+
+Log in as `nagiosadmin` with the password you created earlier.
+
+## Step 6 - Install Nagios Plugins
+
+Nagios Core needs plugins to run the default host and service checks. Enable the required repositories, install plugin build dependencies, and compile the plugins from source:
+
+```bash
+cd /tmp
+sudo dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-x86_64-rpms
+sudo dnf install -y gcc glibc glibc-common make gettext automake autoconf wget openssl-devel net-snmp net-snmp-utils perl-Net-SNMP
+
+wget --output-document="nagios-plugins.tar.gz" "$(wget -q -O - https://api.github.com/repos/nagios-plugins/nagios-plugins/releases/latest | grep '"browser_download_url":' | grep -o 'https://[^"]*')"
+tar zxf nagios-plugins.tar.gz
+cd /tmp/nagios-plugins-*
+./configure
+make
+sudo make install
+```
+
+Restart Nagios after installing the plugins:
+
+```bash
+sudo systemctl restart nagios.service
+```
 
 ## Summary
 
-You now know how to install nagios core from source. Regular monitoring helps you detect performance degradation, plan capacity, and respond to incidents quickly on your RHEL 9 systems.
+You now know how to install Nagios Core from source. Regular monitoring helps you detect performance degradation, plan capacity, and respond to incidents quickly on your RHEL 9 systems.
