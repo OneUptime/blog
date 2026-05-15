@@ -23,16 +23,22 @@ graph TD
     D --> H[kubeadm join]
 ```
 
-## Approach 1: Provision EKS with RHEL Worker Nodes
+## Approach 1: Provision EKS with Managed Worker Nodes
 
 ```hcl
 # eks.tf - Create an EKS cluster with Terraform
 
 terraform {
+  required_version = ">= 1.5.7"
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = ">= 6.28"
+    }
+    local = {
+      source  = "hashicorp/local"
+      version = "~> 2.5"
     }
   }
 }
@@ -45,7 +51,7 @@ provider "aws" {
 
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "~> 5.0"
+  version = "~> 6.0"
 
   name = "k8s-vpc"
   cidr = "10.0.0.0/16"
@@ -70,25 +76,34 @@ module "vpc" {
 # EKS cluster
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "~> 19.0"
+  version = "~> 21.0"
 
-  cluster_name    = "rhel-k8s-cluster"
-  cluster_version = "1.28"
+  name               = "rhel-k8s-cluster"
+  kubernetes_version = "1.35"
+
+  endpoint_public_access                   = true
+  enable_cluster_creator_admin_permissions = true
+
+  addons = {
+    coredns    = {}
+    kube-proxy = {}
+    vpc-cni    = {
+      before_compute = true
+    }
+  }
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
 
   # Worker node configuration
   eks_managed_node_groups = {
-    rhel_workers = {
-      name           = "rhel-workers"
+    managed_workers = {
+      name           = "managed-workers"
+      ami_type       = "AL2023_x86_64_STANDARD"
       instance_types = ["t3.large"]
       min_size       = 2
       max_size       = 5
       desired_size   = 3
-
-      # Use a custom RHEL AMI if available
-      # ami_id = "ami-0123456789abcdef0"
     }
   }
 }
@@ -149,6 +164,10 @@ resource "aws_instance" "control_plane" {
     swapoff -a
     sed -i '/swap/d' /etc/fstab
 
+    # Set SELinux to permissive for kubeadm-managed nodes
+    setenforce 0 || true
+    sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+
     # Load kernel modules
     cat > /etc/modules-load.d/k8s.conf <<MODULES
     overlay
@@ -165,25 +184,32 @@ resource "aws_instance" "control_plane" {
     SYSCTL
     sysctl --system
 
-    # Install containerd
-    dnf install -y containerd
-    containerd config default > /etc/containerd/config.toml
-    sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
-    systemctl enable --now containerd
+    # Add CRI-O repo
+    cat > /etc/yum.repos.d/cri-o.repo <<REPO
+    [cri-o]
+    name=CRI-O
+    baseurl=https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.35/rpm/
+    enabled=1
+    gpgcheck=1
+    gpgkey=https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.35/rpm/repodata/repomd.xml.key
+    REPO
 
     # Add Kubernetes repo
     cat > /etc/yum.repos.d/kubernetes.repo <<REPO
     [kubernetes]
     name=Kubernetes
-    baseurl=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/
+    baseurl=https://pkgs.k8s.io/core:/stable:/v1.35/rpm/
     enabled=1
     gpgcheck=1
-    gpgkey=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/repodata/repomd.xml.key
+    gpgkey=https://pkgs.k8s.io/core:/stable:/v1.35/rpm/repodata/repomd.xml.key
+    exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
     REPO
 
-    # Install kubeadm, kubelet, kubectl
-    dnf install -y kubelet kubeadm kubectl
-    systemctl enable kubelet
+    # Install CRI-O, kubeadm, kubelet, kubectl
+    dnf install -y container-selinux
+    dnf install -y cri-o kubelet kubeadm kubectl --disableexcludes=kubernetes
+    systemctl enable --now crio
+    systemctl enable --now kubelet
   EOF
 }
 
@@ -209,6 +235,8 @@ resource "aws_instance" "workers" {
     #!/bin/bash
     swapoff -a
     sed -i '/swap/d' /etc/fstab
+    setenforce 0 || true
+    sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
 
     cat > /etc/modules-load.d/k8s.conf <<MODULES
     overlay
@@ -224,22 +252,29 @@ resource "aws_instance" "workers" {
     SYSCTL
     sysctl --system
 
-    dnf install -y containerd
-    containerd config default > /etc/containerd/config.toml
-    sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
-    systemctl enable --now containerd
+    cat > /etc/yum.repos.d/cri-o.repo <<REPO
+    [cri-o]
+    name=CRI-O
+    baseurl=https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.35/rpm/
+    enabled=1
+    gpgcheck=1
+    gpgkey=https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v1.35/rpm/repodata/repomd.xml.key
+    REPO
 
     cat > /etc/yum.repos.d/kubernetes.repo <<REPO
     [kubernetes]
     name=Kubernetes
-    baseurl=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/
+    baseurl=https://pkgs.k8s.io/core:/stable:/v1.35/rpm/
     enabled=1
     gpgcheck=1
-    gpgkey=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/repodata/repomd.xml.key
+    gpgkey=https://pkgs.k8s.io/core:/stable:/v1.35/rpm/repodata/repomd.xml.key
+    exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
     REPO
 
-    dnf install -y kubelet kubeadm kubectl
-    systemctl enable kubelet
+    dnf install -y container-selinux
+    dnf install -y cri-o kubelet kubeadm kubectl --disableexcludes=kubernetes
+    systemctl enable --now crio
+    systemctl enable --now kubelet
   EOF
 }
 
@@ -274,7 +309,11 @@ terraform apply -auto-approve
 
 # For kubeadm approach, SSH into the control plane and initialize
 ssh ec2-user@$(terraform output -json control_plane_ips | jq -r '.[0]')
-sudo kubeadm init --pod-network-cidr=10.244.0.0/16
+sudo kubeadm init --pod-network-cidr=10.244.0.0/16 --cri-socket=unix:///var/run/crio/crio.sock
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
 ```
 
 Terraform handles the infrastructure layer, giving you a reproducible foundation for Kubernetes on RHEL regardless of whether you choose managed or self-hosted clusters.
