@@ -44,6 +44,8 @@ If you want to put rewrite rules in `.htaccess` files (common for CMS deployment
 
 For better performance, put rules directly in the virtual host config and leave `AllowOverride None`. Apache has to check for `.htaccess` files on every request when `AllowOverride` is enabled.
 
+The rewrite examples below are written for virtual host or server config. If you put path-matching rules in `.htaccess`, omit the leading `/` in the `RewriteRule` pattern.
+
 ## Step 3 - Basic Redirect Rules
 
 Redirect a single URL to a new location:
@@ -68,7 +70,7 @@ RewriteRule ^/blog/(.*)$ /articles/$1 [R=301,L]
 # Redirect all HTTP traffic to HTTPS
 RewriteEngine On
 RewriteCond %{HTTPS} off
-RewriteRule ^(.*)$ https://%{HTTP_HOST}$1 [R=301,L]
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
 ```
 
 The `RewriteCond` line ensures the rule only fires when the connection is not already encrypted.
@@ -81,7 +83,7 @@ Force the www prefix:
 # Add www prefix if missing
 RewriteEngine On
 RewriteCond %{HTTP_HOST} !^www\. [NC]
-RewriteRule ^(.*)$ https://www.%{HTTP_HOST}$1 [R=301,L]
+RewriteRule ^ https://www.%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
 ```
 
 Remove the www prefix:
@@ -90,7 +92,7 @@ Remove the www prefix:
 # Strip www prefix
 RewriteEngine On
 RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
-RewriteRule ^(.*)$ https://%1$1 [R=301,L]
+RewriteRule ^ https://%1%{REQUEST_URI} [R=301,L]
 ```
 
 ## Step 6 - Clean URLs for Applications
@@ -102,7 +104,7 @@ Many web applications need clean URLs. This is the classic pattern that routes e
 RewriteEngine On
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^(.*)$ /index.php?q=$1 [QSA,L]
+RewriteRule ^/(.*)$ /index.php?q=$1 [QSA,L]
 ```
 
 The `QSA` flag appends any existing query string. The `L` flag stops processing further rules.
