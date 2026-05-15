@@ -99,7 +99,7 @@ On each client machine, the local /home must not contain any local user director
 sudo cp -a /home /home.local.bak
 
 # Add NFS mount to fstab
-echo "192.168.1.10:/export/home  /home  nfs  rw,hard,intr,_netdev,nofail  0 0" | sudo tee -a /etc/fstab
+echo "192.168.1.10:/export/home  /home  nfs  rw,hard,_netdev,nofail  0 0" | sudo tee -a /etc/fstab
 
 # Mount
 sudo mount -a
@@ -136,8 +136,9 @@ The home directory is immediately available on all client machines since they mo
 UIDs and GIDs must match across all machines. With centralized authentication (LDAP, FreeIPA), this is handled automatically. Without it, you must manually ensure consistency:
 
 ```bash
-# Create user with specific UID/GID on each machine
-sudo useradd -u 1500 -g 1500 jdoe
+# Create the group and user with a specific GID/UID on each machine
+sudo groupadd -g 1500 jdoe
+sudo useradd -u 1500 -g 1500 -M -d /home/jdoe jdoe
 ```
 
 For any serious deployment, use FreeIPA or LDAP for centralized identity management.
@@ -148,7 +149,7 @@ Home directories typically have lots of small files (dotfiles, configs, caches).
 
 ```bash
 # Use noatime to reduce metadata operations
-192.168.1.10:/export/home  /home  nfs  rw,hard,intr,noatime,_netdev,nofail  0 0
+192.168.1.10:/export/home  /home  nfs  rw,hard,noatime,_netdev,nofail  0 0
 ```
 
 For better performance with small files, consider:
@@ -170,7 +171,7 @@ If the NFS server goes down, users cannot access their home directories. Use `no
 Set disk quotas on the server to prevent any single user from filling the storage:
 
 ```bash
-# Enable quotas on the /home filesystem (server side)
+# After enabling quotas on the /home filesystem (server side)
 # For XFS:
 sudo xfs_quota -x -c 'limit bsoft=5g bhard=6g jdoe' /home
 
