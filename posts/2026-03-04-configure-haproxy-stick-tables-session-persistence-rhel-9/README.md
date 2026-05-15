@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, HAProxy, Stick Tables, Session Persistence, Linux
 
-Description: Learn how to use HAProxy stick tables on RHEL for session persistence, rate limiting, and connection tracking without relying on cookies.
+Description: Learn how to use HAProxy stick tables on RHEL for session persistence, rate limiting, and connection tracking without relying only on load-balancer-inserted cookies.
 
 ---
 
-Stick tables are HAProxy's built-in key-value store for tracking connections, session persistence, and rate limiting. Unlike cookie-based persistence, stick tables work at the TCP layer and can track any connection attribute. This guide covers practical stick table configurations on RHEL.
+Stick tables are HAProxy's built-in key-value store for tracking connections, session persistence, and rate limiting. Unlike basic cookie-based persistence, stick tables can work at the TCP or HTTP layer and can track many connection or request attributes. This guide covers practical stick table configurations on RHEL.
 
 ## Prerequisites
 
@@ -51,6 +51,7 @@ backend web_servers
 
 ```haproxy
 backend app_servers
+    mode http
     balance roundrobin
 
     # Track sessions by a cookie value
@@ -72,6 +73,7 @@ Track request rates per IP and reject clients that exceed the limit:
 
 ```haproxy
 frontend http_front
+    mode http
     bind *:80
 
     # Define a stick table that tracks HTTP request rate
@@ -95,12 +97,13 @@ backend web_servers
 
 ```haproxy
 frontend http_front
+    mode http
     bind *:80
 
     # Track connection rate per source IP
     stick-table type ip size 100k expire 30s store conn_rate(10s),conn_cur
 
-    http-request track-sc0 src
+    tcp-request connection track-sc0 src
 
     # Reject if more than 50 new connections in 10 seconds
     http-request deny deny_status 429 if { sc_conn_rate(0) gt 50 }
@@ -115,10 +118,11 @@ frontend http_front
 
 ```haproxy
 frontend http_front
+    mode http
     bind *:80
 
     # Track multiple metrics in one table
-    stick-table type ip size 200k expire 5m         store http_req_rate(10s),conn_rate(10s),conn_cur,bytes_out_rate(10s)
+    stick-table type ip size 200k expire 5m store http_req_rate(10s),conn_rate(10s),bytes_out_rate(10s)
 
     http-request track-sc0 src
 
@@ -129,7 +133,7 @@ frontend http_front
     # Block if connection rate is too high
     http-request deny deny_status 429 if { sc_conn_rate(0) gt 50 }
 
-    # Block if bandwidth usage is too high (10MB/s)
+    # Block if bandwidth usage is too high (10MB per 10-second period)
     http-request deny deny_status 429 if { sc_bytes_out_rate(0) gt 10485760 }
 
     default_backend web_servers
@@ -138,6 +142,9 @@ frontend http_front
 ## Step 6: View Stick Table Contents
 
 ```bash
+# These commands require a stats socket configured in the HAProxy global section,
+# for example: stats socket /var/lib/haproxy/stats mode 600 level admin
+
 # Show stick table entries
 
 echo "show table http_front" | sudo socat stdio /var/lib/haproxy/stats
@@ -196,6 +203,9 @@ done | sort | uniq -c
 ## Troubleshooting
 
 ```bash
+# These commands require a stats socket configured in the HAProxy global section,
+# for example: stats socket /var/lib/haproxy/stats mode 600 level admin
+
 # View stick table entries
 echo "show table" | sudo socat stdio /var/lib/haproxy/stats
 
