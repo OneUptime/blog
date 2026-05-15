@@ -8,7 +8,7 @@ Description: A practical migration guide for moving from deprecated network team
 
 ---
 
-Red Hat deprecated network teaming starting with RHEL. If you have been running team interfaces, it is time to migrate to bonding. The teamd package is still available in RHEL but is not getting new features, and it will likely be removed entirely in a future release.
+Red Hat deprecated network teaming starting with RHEL 9. If you have been running team interfaces, it is time to migrate to bonding. The teamd package is still available in RHEL but is not getting new features, and it will likely be removed entirely in a future release.
 
 I recently migrated a fleet of servers from teaming to bonding, and the process is not complicated if you plan it right. Here is how to do it with minimal downtime.
 
@@ -28,6 +28,7 @@ graph LR
     G[lacp] --> H[802.3ad - mode 4]
     I[roundrobin] --> J[balance-rr - mode 0]
     K[broadcast] --> L[broadcast - mode 3]
+    M[random] --> N[No direct bonding equivalent]
 ```
 
 | Team Runner | Bond Mode | Bond Mode Number |
@@ -37,6 +38,7 @@ graph LR
 | loadbalance | balance-xor | 2 |
 | lacp | 802.3ad | 4 |
 | broadcast | broadcast | 3 |
+| random | no direct equivalent | n/a |
 
 ## Step 1: Document the Current Team Configuration
 
@@ -85,9 +87,10 @@ nmcli connection delete team0
 nmcli connection add type bond con-name bond0 ifname bond0 \
   bond.options "mode=active-backup,miimon=100"
 
-# Step 3: Add slaves
-nmcli connection add type ethernet con-name bond0-slave1 ifname eth0 master bond0
-nmcli connection add type ethernet con-name bond0-slave2 ifname eth1 master bond0
+# Step 3: Add ports
+nmcli connection add type ethernet port-type bond con-name bond0-port1 ifname eth0 controller bond0
+nmcli connection add type ethernet port-type bond con-name bond0-port2 ifname eth1 controller bond0
+nmcli connection modify bond0 connection.autoconnect-ports 1
 
 # Step 4: Configure IP (use your actual values)
 nmcli connection modify bond0 ipv4.addresses 192.168.1.50/24
@@ -157,7 +160,7 @@ nmcli connection add type bond con-name bond0 ifname bond0 \
   bond.options "mode=802.3ad,miimon=100,lacp_rate=fast,xmit_hash_policy=layer3+4"
 ```
 
-The `xmit_hash_policy=layer3+4` option provides better traffic distribution across slaves by hashing on both IP and port. Make sure your switch LACP configuration matches.
+The `xmit_hash_policy=layer3+4` option can provide finer traffic distribution across ports by hashing on both IP and port, but it is not 802.3ad compliant for all traffic. Use it only if your environment tolerates that behavior and your switch LACP configuration matches.
 
 ## Handling VLANs on Top of Teams
 
@@ -177,14 +180,15 @@ If something goes wrong, you can recreate the team (at least until the package i
 
 ```bash
 # Recreate team if bond migration fails
-nmcli connection delete bond0-slave1
-nmcli connection delete bond0-slave2
+nmcli connection delete bond0-port1
+nmcli connection delete bond0-port2
 nmcli connection delete bond0
 
 nmcli connection add type team con-name team0 ifname team0 \
   team.runner activebackup
-nmcli connection add type ethernet con-name team0-slave1 ifname eth0 master team0
-nmcli connection add type ethernet con-name team0-slave2 ifname eth1 master team0
+nmcli connection add type ethernet port-type team con-name team0-port1 ifname eth0 controller team0
+nmcli connection add type ethernet port-type team con-name team0-port2 ifname eth1 controller team0
+nmcli connection modify team0 connection.autoconnect-ports 1
 nmcli connection modify team0 ipv4.addresses 192.168.1.50/24
 nmcli connection modify team0 ipv4.gateway 192.168.1.1
 nmcli connection modify team0 ipv4.method manual
