@@ -21,13 +21,13 @@ sudo virt-install \
   --vcpus 2 \
   --disk size=20 \
   --cdrom /var/lib/libvirt/images/rhel-9.4-x86_64-dvd.iso \
-  --os-variant rhel9.4 \
+  --osinfo rhel9.4 \
   --network network=default \
   --graphics vnc,listen=0.0.0.0
 
-# The --os-variant optimizes settings for the specified OS
+# The --osinfo option optimizes settings for the specified OS
 # List available OS variants with:
-osinfo-query os | grep rhel
+virt-install --osinfo list | grep rhel
 ```
 
 ## Network Installation (Kickstart)
@@ -40,7 +40,7 @@ sudo virt-install \
   --vcpus 2 \
   --disk size=30,format=qcow2 \
   --location http://repo.example.com/rhel9/ \
-  --os-variant rhel9.4 \
+  --osinfo rhel9.4 \
   --network network=default \
   --initrd-inject=/path/to/ks.cfg \
   --extra-args "inst.ks=file:/ks.cfg console=ttyS0" \
@@ -58,7 +58,7 @@ sudo virt-install \
   --vcpus 2 \
   --disk path=/var/lib/libvirt/images/vm-disk.qcow2 \
   --import \
-  --os-variant rhel9.4 \
+  --osinfo rhel9.4 \
   --network network=default \
   --graphics vnc
 
@@ -70,7 +70,7 @@ sudo virt-install \
   --disk size=30,format=qcow2,bus=virtio \
   --disk size=100,format=qcow2,bus=virtio \
   --cdrom /var/lib/libvirt/images/rhel-9.4-x86_64-dvd.iso \
-  --os-variant rhel9.4 \
+  --osinfo rhel9.4 \
   --network network=default \
   --graphics vnc
 ```
@@ -85,7 +85,7 @@ sudo virt-install \
   --vcpus 2 \
   --disk size=20 \
   --location http://repo.example.com/rhel9/ \
-  --os-variant rhel9.4 \
+  --osinfo rhel9.4 \
   --network network=default \
   --graphics none \
   --extra-args "console=ttyS0,115200n8"
@@ -110,4 +110,4 @@ sudo virsh shutdown rhel9-vm
 sudo virsh undefine rhel9-vm --remove-all-storage
 ```
 
-The `virt-install` command is highly flexible. Use `virt-install --help` to see all available options, and check `osinfo-query os` to find the correct `--os-variant` for your guest operating system.
+The `virt-install` command is highly flexible. Use `virt-install --help` to see all available options, and check `virt-install --osinfo list` to find the correct `--osinfo` value for your guest operating system.
