@@ -69,10 +69,10 @@ This tells you the source IP, destination IP, protocol, source port, destination
 
 If `LogDenied=all` generates too much noise, use rich rules to log specific traffic:
 
-### Log Dropped SSH Attempts
+### Log SSH Attempts
 
 ```bash
-# Log SSH connection attempts that get dropped
+# Log SSH connection attempts before normal zone handling
 firewall-cmd --zone=public --add-rich-rule='rule family="ipv4" service name="ssh" log prefix="SSH-ATTEMPT: " level="warning" limit value="5/m"' --permanent
 firewall-cmd --reload
 ```
