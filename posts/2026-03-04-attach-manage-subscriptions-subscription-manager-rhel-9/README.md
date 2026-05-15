@@ -52,7 +52,7 @@ The simplest way to attach subscriptions is to let `subscription-manager` choose
 sudo subscription-manager attach --auto
 ```
 
-Auto-attach looks at the system's architecture, installed products, and system purpose attributes to pick the most appropriate subscription. For most single-system deployments, this works perfectly.
+Auto-attach looks at the system's architecture, installed products, and system purpose attributes to pick the most appropriate subscription. For most single-system deployments that still use entitlement-based subscription attachment, this works well. With SCA enabled, auto-attach is not required and may be a no-op or return an error.
 
 ## Attaching a Specific Subscription by Pool ID
 
@@ -84,7 +84,7 @@ flowchart TD
     E -->|Yes| F[subscription-manager attach --auto]
     E -->|No| G[Find Pool ID]
     G --> H[subscription-manager attach --pool=ID]
-    F --> I[Verify with list --consumed]
+    F --> I[Verify with subscription-manager status]
     H --> I
     C --> I
 ```
@@ -134,10 +134,10 @@ This updates the local cache of available subscriptions and entitlement certific
 
 ## Viewing Subscription Details
 
-For a detailed look at a specific attached subscription:
+For a quick list of pool IDs from attached subscriptions:
 
 ```bash
-# Show full details of consumed subscriptions
+# Show only pool IDs from consumed subscriptions
 sudo subscription-manager list --consumed --pool-only
 ```
 
@@ -192,7 +192,7 @@ When a subscription expires, the system will still function, but you will stop r
 sudo subscription-manager status
 ```
 
-If the status shows "Invalid" or "Insufficient", either renew the subscription in the Customer Portal or attach a different valid one.
+In entitlement mode, if the status shows "Invalid" or "Insufficient", either renew the subscription in the Customer Portal or attach a different valid one. With SCA enabled, subscription status is not calculated in the same way, so a "Disabled" status is not an error.
 
 ## Summary
 
