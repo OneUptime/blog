@@ -21,7 +21,7 @@ This guide covers how to configure DNS lookups for Flux CD controllers at both t
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.20+)
+- A Kubernetes cluster version supported by your Flux release (current Flux releases require Kubernetes v1.33+ with the required patch level)
 - `flux` CLI installed (v2.0+)
 - `kubectl` configured to access your cluster
 - Understanding of your cluster's DNS architecture
