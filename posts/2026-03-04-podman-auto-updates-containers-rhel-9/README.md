@@ -8,7 +8,7 @@ Description: Learn how to configure Podman auto-updates on RHEL to automatically
 
 ---
 
-Keeping container images up to date is a constant chore. You build a new image, push it to the registry, then SSH into every server to pull and restart. Podman's auto-update feature automates this. It checks if a newer version of an image is available in the registry and, if so, pulls the new image and restarts the container.
+Keeping container images up to date is a constant chore. You build a new image, push it to the registry, then SSH into every server to pull and restart. Podman's auto-update feature automates this for containers running in systemd units. It checks if a newer version of an image is available in the registry and, if so, pulls the new image and restarts the systemd unit running the container.
 
 ## How Auto-Updates Work
 
@@ -19,14 +19,14 @@ graph TD
     C -->|Yes| D[Pull new image]
     D --> E[Restart container with new image]
     C -->|No| F[Skip - already up to date]
-    E --> G{Health check passes?}
+    E --> G{Systemd restart succeeds?}
     G -->|Yes| H[Keep new version]
     G -->|No| I[Roll back to previous image]
 ```
 
 ## Setting Up a Container for Auto-Updates
 
-The key is the `--label io.containers.autoupdate=registry` label:
+The key is the `--label io.containers.autoupdate=registry` label. The container also needs to run from a systemd unit created with `podman generate systemd --new` or an equivalent unit that creates a new container when restarted.
 
 ## Run a container with auto-update enabled
 ```bash
@@ -64,7 +64,7 @@ EOF
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user start web
+systemctl --user start web.service
 ```
 
 The `AutoUpdate=registry` setting is equivalent to the label.
@@ -75,7 +75,7 @@ There are two auto-update policies:
 
 **registry** - Checks if a newer image is available in the registry by comparing digests:
 ```bash
-podman run -d --label io.containers.autoupdate=registry my-image:latest
+podman run -d --label io.containers.autoupdate=registry registry.example.com/myapp/web:latest
 ```
 
 **local** - Uses a locally available image if it is newer than the one the container is running:
@@ -142,7 +142,7 @@ This runs auto-updates at 3 AM daily.
 
 ## Rollback on Failure
 
-Podman can automatically roll back if the new image fails health checks. Set up health checks in your container:
+Podman can automatically roll back if restarting the updated systemd unit fails. Health checks are still useful for detecting unhealthy containers after an update:
 
 ```bash
 cat > ~/.config/containers/systemd/web.container << 'EOF'
@@ -153,11 +153,12 @@ Description=Auto-updating Web Server with Rollback
 Image=docker.io/library/nginx:latest
 PublishPort=8080:80
 AutoUpdate=registry
-HealthCmd=curl -f http://localhost/ || exit 1
+HealthCmd=nginx -t
 HealthInterval=30s
 HealthTimeout=5s
 HealthRetries=3
 HealthStartPeriod=10s
+HealthOnFailure=kill
 
 [Service]
 Restart=always
@@ -167,7 +168,7 @@ WantedBy=default.target
 EOF
 ```
 
-If the new image fails the health check, Podman rolls back to the previous working image.
+If the systemd restart fails during auto-update, Podman rolls back to the previous working image. For startup failures that happen shortly after the unit restarts, Podman recommends exposing readiness to systemd with `sd_notify` so the unit restart accurately reflects whether the container became ready.
 
 ## Auto-Update for Multiple Containers
 
