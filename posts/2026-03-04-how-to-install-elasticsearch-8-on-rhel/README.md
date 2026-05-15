@@ -24,7 +24,7 @@ name=Elasticsearch repository for 8.x packages
 baseurl=https://artifacts.elastic.co/packages/8.x/yum
 gpgcheck=1
 gpgkey=https://artifacts.elastic.co/GPG-KEY-elasticsearch
-enabled=1
+enabled=0
 autorefresh=1
 type=rpm-md
 REPO
@@ -34,10 +34,10 @@ REPO
 
 ```bash
 # Install Elasticsearch
-sudo dnf install -y elasticsearch
+sudo dnf install --enablerepo=elasticsearch -y elasticsearch
 
 # IMPORTANT: The installation outputs the elastic user password
-# and enrollment token. Save these values!
+# and TLS certificate information. Save these values!
 ```
 
 ## Configuration
@@ -107,7 +107,7 @@ echo "vm.max_map_count = 262144" | sudo tee /etc/sysctl.d/99-elasticsearch.conf
 sudo sysctl -p /etc/sysctl.d/99-elasticsearch.conf
 
 # Increase file descriptors
-# Already handled by the RPM package in /etc/security/limits.d/
+# Already handled by the RPM package's systemd service defaults
 ```
 
 ## Verifying the Installation
