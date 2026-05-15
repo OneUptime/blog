@@ -18,7 +18,7 @@ sudo dnf copr enable @caddy/caddy -y
 sudo dnf install -y caddy
 ```
 
-## Basic Round-Robin Load Balancing
+## Basic Load Balancing
 
 ```bash
 # /etc/caddy/Caddyfile
@@ -38,8 +38,9 @@ app.example.com {
     reverse_proxy {
         to localhost:3001 localhost:3002 localhost:3003
 
-        # Load balancing policy options:
-        # round_robin, random, least_conn, ip_hash, first, header, cookie
+        # Load balancing policy options include:
+        # random, random_choose, first, round_robin, weighted_round_robin,
+        # least_conn, ip_hash, client_ip_hash, uri_hash, query, header, cookie
         lb_policy round_robin
     }
 }
@@ -88,12 +89,12 @@ app.example.com {
 ```bash
 # /etc/caddy/Caddyfile
 app.example.com {
-    # Use handle blocks for weighted routing
     reverse_proxy {
-        to localhost:3001 localhost:3002
+        to localhost:3001 localhost:3002 localhost:3003
 
-        # Header-based routing for canary deployments
-        lb_policy header X-Route-To
+        # Weighted round-robin sends proportionally more requests
+        # to upstreams with higher weights
+        lb_policy weighted_round_robin 3 2 1
     }
 }
 ```
@@ -110,10 +111,9 @@ app.example.com {
         health_uri /health
         health_interval 10s
 
-        # Forward the original client IP
+        # Caddy sets X-Forwarded-For, X-Forwarded-Proto,
+        # and X-Forwarded-Host automatically; add X-Real-IP if needed.
         header_up X-Real-IP {remote_host}
-        header_up X-Forwarded-For {remote_host}
-        header_up X-Forwarded-Proto {scheme}
     }
 }
 ```
@@ -122,10 +122,12 @@ app.example.com {
 
 ```bash
 sudo systemctl enable --now caddy
-sudo systemctl reload caddy
 
 # Verify the configuration
 caddy validate --config /etc/caddy/Caddyfile
+
+# Reload after configuration changes
+sudo systemctl reload caddy
 ```
 
 Caddy's health check system automatically removes unhealthy backends from the pool and re-adds them when they recover. The passive health check (`fail_duration` and `max_fails`) acts as a circuit breaker for immediate failure detection.
