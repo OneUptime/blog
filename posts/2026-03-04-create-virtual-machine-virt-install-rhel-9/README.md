@@ -21,7 +21,7 @@ sudo virt-install \
     --vcpus 2 \
     --disk size=20 \
     --cdrom /var/lib/libvirt/images/rhel-9.3-x86_64-dvd.iso \
-    --os-variant rhel9.3 \
+    --osinfo rhel9.3 \
     --network network=default
 ```
 
@@ -32,7 +32,7 @@ sudo virt-install \
 - `--vcpus` - Number of virtual CPUs
 - `--disk` - Storage configuration
 - `--cdrom` - Installation media
-- `--os-variant` - OS type for optimal defaults
+- `--osinfo` - OS type for optimal defaults
 - `--network` - Network configuration
 
 ## Finding OS Variants
@@ -85,7 +85,7 @@ sudo virt-install \
     --vcpus 4 \
     --disk size=40 \
     --location http://repo.example.com/rhel9/ \
-    --os-variant rhel9.3 \
+    --osinfo rhel9.3 \
     --network network=default
 ```
 
@@ -98,7 +98,7 @@ sudo virt-install \
     --vcpus 2 \
     --disk size=20 \
     --location /var/lib/libvirt/images/rhel-9.3-x86_64-dvd.iso \
-    --os-variant rhel9.3 \
+    --osinfo rhel9.3 \
     --network network=default \
     --initrd-inject=/path/to/ks.cfg \
     --extra-args "inst.ks=file:/ks.cfg console=ttyS0"
@@ -115,7 +115,7 @@ sudo virt-install \
     --vcpus 2 \
     --disk size=20 \
     --location /var/lib/libvirt/images/rhel-9.3-x86_64-dvd.iso \
-    --os-variant rhel9.3 \
+    --osinfo rhel9.3 \
     --network network=default \
     --graphics none \
     --console pty,target_type=serial \
@@ -130,7 +130,7 @@ sudo virt-install \
     --memory 2048 \
     --vcpus 2 \
     --disk /var/lib/libvirt/images/existing.qcow2 \
-    --os-variant rhel9.3 \
+    --osinfo rhel9.3 \
     --import \
     --network network=default
 ```
@@ -143,7 +143,7 @@ sudo virt-install \
     --memory 2048 \
     --vcpus 2 \
     --disk size=20 \
-    --os-variant rhel9.3 \
+    --osinfo rhel9.3 \
     --network network=default \
     --pxe
 ```
@@ -207,7 +207,7 @@ for i in $(seq 1 5); do
         --memory 2048 \
         --vcpus 2 \
         --disk size=20,format=qcow2 \
-        --os-variant rhel9.3 \
+        --osinfo rhel9.3 \
         --location /var/lib/libvirt/images/rhel-9.3-x86_64-dvd.iso \
         --initrd-inject=/path/to/ks.cfg \
         --extra-args "inst.ks=file:/ks.cfg console=ttyS0" \
@@ -221,4 +221,4 @@ echo "All VMs created"
 
 ## Summary
 
-The `virt-install` command on RHEL 9 provides flexible VM creation through ISO, network, PXE, and import methods. Use `--os-variant` for optimal defaults, qcow2 disk format for flexibility, and kickstart files for automated installations. For production deployments, combine with scripting for batch VM provisioning.
+The `virt-install` command on RHEL 9 provides flexible VM creation through ISO, network, PXE, and import methods. Use `--osinfo` for optimal defaults, qcow2 disk format for flexibility, and kickstart files for automated installations. For production deployments, combine with scripting for batch VM provisioning.
