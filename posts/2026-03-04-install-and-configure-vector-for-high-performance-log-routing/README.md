@@ -18,8 +18,7 @@ Vector is a high-performance observability data pipeline built in Rust. It colle
 ## Step 1: Install Vector
 
 ```bash
-curl -1sLf 'https://repositories.timber.io/public/vector/cfg/setup/bash.rpm.sh' | sudo bash
-sudo dnf install -y vector
+sudo dnf install -y https://yum.vector.dev/stable/vector-0/x86_64/vector-0.55.0-1.x86_64.rpm
 ```
 
 ## Step 2: Configure Vector
@@ -57,8 +56,8 @@ sinks:
       - syslog
     endpoints:
       - "http://elasticsearch.local:9200"
-    index: "vector-%Y-%m-%d"
     bulk:
+      index: "vector-%Y-%m-%d"
       action: index
 
   console:
@@ -84,12 +83,12 @@ vector validate /etc/vector/vector.yaml
 
 ## Step 5: Monitor Vector
 
-Vector exposes metrics on a built-in endpoint:
+Vector exposes a built-in observability API that `vector top` can use:
 
 ```yaml
 api:
   enabled: true
-  address: "0.0.0.0:8686"
+  address: "127.0.0.1:8686"
 ```
 
 ```bash
