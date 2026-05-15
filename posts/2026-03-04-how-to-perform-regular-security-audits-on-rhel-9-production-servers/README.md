@@ -13,7 +13,7 @@ Regular security audits on RHEL 9 production servers identify vulnerabilities an
 ## OpenSCAP Compliance Scan
 
 ```bash
-sudo dnf install -y openscap-scanner scap-security-guide
+sudo dnf install -y openscap-scanner scap-security-guide bzip2 wget
 
 # Run CIS benchmark scan
 
@@ -28,10 +28,12 @@ sudo oscap xccdf eval \
 
 ```bash
 # Check for known CVEs
+wget -O - https://www.redhat.com/security/data/oval/v2/RHEL9/rhel-9.oval.xml.bz2 | bzip2 --decompress > rhel-9.oval.xml
+
 sudo oscap oval eval \
   --results /var/log/audit/oval-results.xml \
   --report /var/log/audit/oval-report.html \
-  /usr/share/xml/scap/ssg/content/ssg-rhel9-oval.xml
+  rhel-9.oval.xml
 ```
 
 ## User Account Audit
@@ -106,13 +108,14 @@ Compile findings into a report:
 
 ```bash
 # Combine SCAP results with system audit data
-echo "Security Audit Report - $(date)" > /var/log/audit/audit-report.txt
-echo "OpenSCAP Score: $(grep score /var/log/audit/scap-results.xml)" >> /var/log/audit/audit-report.txt
-echo "Open Ports:" >> /var/log/audit/audit-report.txt
-sudo ss -tlnp >> /var/log/audit/audit-report.txt
+{
+  echo "Security Audit Report - $(date)"
+  echo "OpenSCAP Score: $(grep score /var/log/audit/scap-results.xml)"
+  echo "Open Ports:"
+  sudo ss -tlnp
+} | sudo tee /var/log/audit/audit-report.txt >/dev/null
 ```
 
 ## Conclusion
 
 Regular security audits on RHEL 9 combine compliance scanning with OpenSCAP, file integrity monitoring with AIDE, and manual review of users, network, and logs. Schedule audits monthly and address findings promptly.
-
