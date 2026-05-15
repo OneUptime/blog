@@ -114,7 +114,7 @@ MemoryMax=8G
 
 Resource Inheritance
 
-Child slices inherit limits from their parents. A child cannot exceed its parent's limits. If `webapps.slice` has `MemoryMax=4G`, all services within it combined cannot use more than 4 GB.
+Parent resource limits constrain child slices. A child slice can set its own limits, but its processes are still constrained by the parent slice's limits. If `webapps.slice` has `MemoryMax=4G`, all services within it combined cannot use more than 4 GB.
 
 ## Conclusion
 
