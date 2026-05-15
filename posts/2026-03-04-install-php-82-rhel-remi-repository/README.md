@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, PHP, Remi, Web Development, Linux
 
-Description: Install PHP 8.2 on RHEL using the Remi repository to get the latest PHP features and security updates beyond what the default AppStream provides.
+Description: Install PHP 8.2 on RHEL using the Remi repository to use Remi's PHP module stream and package updates beyond what the default AppStream provides.
 
 ---
 
-RHEL's default AppStream repository may not ship the latest PHP version. The Remi repository maintained by Remi Collet provides up-to-date PHP packages for RHEL. This guide covers installing PHP 8.2 from Remi.
+RHEL's default AppStream repository may not ship the PHP version you need. The Remi repository maintained by Remi Collet provides up-to-date PHP packages for RHEL. This guide covers installing PHP 8.2 from Remi.
 
 ## Enable Required Repositories
 
@@ -19,6 +19,9 @@ sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.
 
 # Install the Remi repository
 sudo dnf install -y https://rpms.remirepo.net/enterprise/remi-release-9.rpm
+
+# Enable CodeReady Builder, required by EPEL/Remi on RHEL 9
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
 ```
 
 ## Install PHP 8.2
@@ -95,7 +98,7 @@ php /var/www/html/info.php | head -5
 
 ```bash
 # Update PHP and all extensions
-sudo dnf update -y php*
+sudo dnf update -y 'php*'
 ```
 
 Remember to remove the `info.php` file after testing, as it exposes sensitive server information. With Remi, you can stay current with PHP releases and receive timely security patches.
