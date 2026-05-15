@@ -20,12 +20,16 @@ sudo dnf install -y ruby ruby-devel rubygem-bundler gcc gcc-c++ make \
   openssl-devel readline-devel zlib-devel libffi-devel \
   nodejs npm sqlite-devel
 
+# Create a deployment user and application directory
+id deploy >/dev/null 2>&1 || sudo useradd --system --create-home --shell /bin/bash deploy
+sudo mkdir -p /var/www
+sudo chown deploy:deploy /var/www
+
 # Install Rails
-gem install rails --user-install
-export PATH="$HOME/.local/share/gem/ruby/3.2.0/bin:$PATH"
+sudo -u deploy -H gem install rails --user-install
 
 # Verify
-rails --version
+sudo -u deploy -H bash -lc 'PATH="$(ruby -r rubygems -e "puts Gem.user_dir")/bin:$PATH" rails --version'
 ```
 
 ## Create a Rails Application
@@ -37,9 +41,8 @@ sudo postgresql-setup --initdb
 sudo systemctl enable --now postgresql
 
 # Create the app
-cd /var/www
-rails new myapp --database=postgresql
-cd myapp
+sudo -u deploy -H bash -lc 'PATH="$(ruby -r rubygems -e "puts Gem.user_dir")/bin:$PATH"; cd /var/www && rails new myapp --database=postgresql'
+cd /var/www/myapp
 
 # Configure database in config/database.yml
 # Set production database credentials
@@ -49,7 +52,8 @@ cd myapp
 
 ```bash
 # Edit config/puma.rb
-cat > /var/www/myapp/config/puma.rb << 'RUBY'
+sudo -u deploy mkdir -p /var/www/myapp/tmp/sockets /var/www/myapp/tmp/pids
+sudo -u deploy tee /var/www/myapp/config/puma.rb > /dev/null << 'RUBY'
 # Set the number of worker processes (match CPU cores)
 workers ENV.fetch("WEB_CONCURRENCY") { 2 }
 
@@ -86,7 +90,7 @@ User=deploy
 WorkingDirectory=/var/www/myapp
 Environment=RAILS_ENV=production
 Environment=RAILS_LOG_TO_STDOUT=1
-ExecStart=/usr/local/bin/bundle exec puma -C config/puma.rb
+ExecStart=/usr/bin/bundle exec puma -C config/puma.rb
 Restart=always
 RestartSec=5
 
@@ -141,8 +145,8 @@ sudo nginx -t && sudo systemctl enable --now nginx
 
 ```bash
 cd /var/www/myapp
-RAILS_ENV=production bundle exec rails db:create db:migrate
-RAILS_ENV=production bundle exec rails assets:precompile
+sudo -u deploy -H bash -lc 'cd /var/www/myapp && RAILS_ENV=production bundle exec rails db:create db:migrate'
+sudo -u deploy -H bash -lc 'cd /var/www/myapp && RAILS_ENV=production SECRET_KEY_BASE_DUMMY=1 bundle exec rails assets:precompile'
 ```
 
 Open the firewall and configure SELinux as needed for your deployment.
