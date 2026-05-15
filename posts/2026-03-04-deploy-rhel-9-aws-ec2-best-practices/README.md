@@ -23,16 +23,17 @@ graph TB
             EC2B[RHEL Instance B]
         end
         subgraph "Data Subnet"
-            EBS[EBS Volumes]
-            EFS[EFS Shared Storage]
+            EFS[EFS Mount Target]
         end
         ALB --> EC2A
         ALB --> EC2B
-        EC2A --> EBS
-        EC2B --> EBS
         EC2A --> EFS
         EC2B --> EFS
     end
+    EBSA[EBS Volume A]
+    EBSB[EBS Volume B]
+    EC2A --> EBSA
+    EC2B --> EBSB
 ```
 
 ## Step 1: Select the Right AMI
@@ -46,7 +47,8 @@ aws ec2 describe-images \
   --query 'Images | sort_by(@, &CreationDate) | [-1].[ImageId,Name]' \
   --output table
 
-# Or use the Gold Image (requires RHEL subscription through RHUI)
+# Or use a Cloud Access Gold Image (requires an eligible Red Hat subscription;
+# AWS Gold Images are configured to use RHUI by default)
 aws ec2 describe-images \
   --owners 309956199498 \
   --filters "Name=name,Values=RHEL-9.*_HVM-*-x86_64-*-Access2-GP3" \
@@ -82,7 +84,7 @@ aws ec2 run-instances \
       }
     }
   ]' \
-  --metadata-options "HttpTokens=required,HttpPutResponseHopLimit=1" \
+  --metadata-options "HttpEndpoint=enabled,HttpTokens=required,HttpPutResponseHopLimit=1" \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=rhel9-prod}]'
 ```
 
@@ -96,7 +98,7 @@ ssh -i rhel9-key.pem ec2-user@<public-ip>
 sudo dnf update -y
 
 # Install useful AWS tools
-sudo dnf install -y awscli2
+sudo dnf install -y awscli
 
 # Configure the timezone
 sudo timedatectl set-timezone America/New_York
@@ -113,12 +115,15 @@ sudo systemctl enable --now dnf-automatic-install.timer
 # Attach and mount additional EBS volumes for data
 # After attaching via AWS Console or CLI:
 
-# Create a filesystem on the data volume
-sudo mkfs.xfs /dev/nvme1n1
+# Identify the data volume and create a filesystem only if it is empty
+sudo lsblk -f
+DATA_DEVICE=/dev/nvme1n1
+sudo mkfs -t xfs "$DATA_DEVICE"
 
 # Create mount point and mount
 sudo mkdir -p /data
-echo '/dev/nvme1n1 /data xfs defaults,noatime 0 0' | sudo tee -a /etc/fstab
+DATA_UUID=$(sudo blkid -s UUID -o value "$DATA_DEVICE")
+echo "UUID=${DATA_UUID} /data xfs defaults,nofail,noatime 0 2" | sudo tee -a /etc/fstab
 sudo mount -a
 
 # Verify the mount
@@ -131,6 +136,7 @@ df -hT /data
 # Ensure IMDSv2 is required (blocks SSRF attacks)
 aws ec2 modify-instance-metadata-options \
   --instance-id i-0123456789abcdef0 \
+  --http-endpoint enabled \
   --http-tokens required \
   --http-put-response-hop-limit 1
 
@@ -141,8 +147,8 @@ sudo firewall-cmd --permanent --add-service=https
 sudo firewall-cmd --reload
 
 # Harden SSH configuration
-sudo sed -i 's/#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
-sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+sudo sed -i -E 's/^#?PermitRootLogin .*/PermitRootLogin no/' /etc/ssh/sshd_config
+sudo sed -i -E 's/^#?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config
 sudo systemctl restart sshd
 ```
 
@@ -150,7 +156,7 @@ sudo systemctl restart sshd
 
 ```bash
 # Install the CloudWatch agent
-sudo dnf install -y amazon-cloudwatch-agent
+sudo dnf install -y https://amazoncloudwatch-agent.s3.amazonaws.com/redhat/amd64/latest/amazon-cloudwatch-agent.rpm
 
 # Create the CloudWatch agent configuration
 sudo tee /opt/aws/amazon-cloudwatch-agent/etc/config.json > /dev/null <<'CWCONFIG'
@@ -163,10 +169,10 @@ sudo tee /opt/aws/amazon-cloudwatch-agent/etc/config.json > /dev/null <<'CWCONFI
         "resources": ["*"]
       },
       "mem": {
-        "measurement": ["mem_used_percent"]
+        "measurement": ["used_percent"]
       },
       "cpu": {
-        "measurement": ["cpu_usage_active"]
+        "measurement": ["usage_active"]
       }
     }
   },
