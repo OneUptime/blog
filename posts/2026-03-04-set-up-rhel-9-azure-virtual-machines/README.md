@@ -41,7 +41,7 @@ az group create --name rg-rhel9 --location eastus
 az vm create \
   --resource-group rg-rhel9 \
   --name rhel9-vm \
-  --image RedHat:RHEL:9_3:latest \
+  --image RedHat:RHEL:9-lvm-gen2:latest \
   --size Standard_D4s_v5 \
   --admin-username azureuser \
   --generate-ssh-keys \
@@ -70,14 +70,18 @@ ssh azureuser@<public-ip>
 sudo dnf update -y
 
 # Install Azure CLI and tools
+sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc
+sudo dnf install -y https://packages.microsoft.com/config/rhel/9.0/packages-microsoft-prod.rpm
 sudo dnf install -y azure-cli
 
 # Format and mount the data disk
-sudo parted /dev/sdc mklabel gpt
-sudo parted -a optimal /dev/sdc mkpart primary xfs 0% 100%
+lsblk -o NAME,HCTL,SIZE,MOUNTPOINT | grep -i "sd"
+sudo parted /dev/sdc --script mklabel gpt mkpart xfspart xfs 0% 100%
+sudo partprobe /dev/sdc
 sudo mkfs.xfs /dev/sdc1
 sudo mkdir -p /data
-echo '/dev/sdc1 /data xfs defaults,noatime 0 0' | sudo tee -a /etc/fstab
+UUID=$(sudo blkid -s UUID -o value /dev/sdc1)
+echo "UUID=$UUID /data xfs defaults,nofail,noatime 1 2" | sudo tee -a /etc/fstab
 sudo mount -a
 ```
 
@@ -132,21 +136,32 @@ az monitor data-collection rule create \
   --resource-group rg-rhel9 \
   --name rhel9-dcr \
   --location eastus \
-  --log-analytics-workspace-id /subscriptions/.../workspaces/myworkspace
+  --kind Linux \
+  --log-analytics name=centralWorkspace resource-id=/subscriptions/<subscription-id>/resourceGroups/rg-rhel9/providers/Microsoft.OperationalInsights/workspaces/myworkspace \
+  --performance-counters name=linuxPerf streams=Microsoft-Perf sampling-frequency=60 counter-specifiers="\\Processor(_Total)\\% Processor Time" counter-specifiers="\\Memory\\Available MBytes" \
+  --syslog name=linuxSyslog streams=Microsoft-Syslog facility-names=syslog log-levels=Warning log-levels=Error log-levels=Critical \
+  --data-flows streams=Microsoft-Perf streams=Microsoft-Syslog destinations=centralWorkspace
+
+# Associate the data collection rule with the VM
+az monitor data-collection rule association create \
+  --name rhel9-dcr-association \
+  --rule-id /subscriptions/<subscription-id>/resourceGroups/rg-rhel9/providers/Microsoft.Insights/dataCollectionRules/rhel9-dcr \
+  --resource /subscriptions/<subscription-id>/resourceGroups/rg-rhel9/providers/Microsoft.Compute/virtualMachines/rhel9-vm
 ```
 
 ## Step 6: Configure Accelerated Networking
 
 ```bash
 # Check if accelerated networking is enabled
-az vm show --resource-group rg-rhel9 --name rhel9-vm \
-  --query 'networkProfile.networkInterfaces[0].id' -o tsv
+nic_id=$(az vm show --resource-group rg-rhel9 --name rhel9-vm \
+  --query 'networkProfile.networkInterfaces[0].id' -o tsv)
+az network nic show --ids "$nic_id" \
+  --query enableAcceleratedNetworking -o tsv
 
 # Enable it on the NIC (VM must be stopped first)
 az vm deallocate --resource-group rg-rhel9 --name rhel9-vm
 az network nic update \
-  --resource-group rg-rhel9 \
-  --name rhel9-vmVMNic \
+  --ids "$nic_id" \
   --accelerated-networking true
 az vm start --resource-group rg-rhel9 --name rhel9-vm
 ```
