@@ -15,6 +15,8 @@ Monitor Podman containers on RHEL 9 using Prometheus for container-level metrics
 ## Prerequisites
 
 - A RHEL 9 system with a valid subscription or configured repositories
+- The EPEL repository enabled for the Podman exporter package
+- A Prometheus server that can scrape the RHEL 9 host
 - Root or sudo access
 - Network access for remote monitoring tools (if applicable)
 
@@ -23,7 +25,7 @@ Monitor Podman containers on RHEL 9 using Prometheus for container-level metrics
 Install the monitoring tools relevant to this guide:
 
 ```bash
-sudo dnf install -y pcp pcp-system-tools sysstat net-snmp net-snmp-utils
+sudo dnf install -y podman prometheus-podman-exporter
 ```
 
 Select only the packages you need for your specific setup.
@@ -31,25 +33,24 @@ Select only the packages you need for your specific setup.
 ## Step 2 - Enable and Start Services
 
 ```bash
-sudo systemctl enable --now pmcd pmlogger
-# or for sysstat:
-
-sudo systemctl enable --now sysstat
+sudo systemctl enable --now prometheus-podman-exporter
 ```
 
 ## Step 3 - Configure the Monitoring Tool
 
-Edit the relevant configuration file for your monitoring setup. Common locations include:
+Edit your Prometheus configuration file, usually `/etc/prometheus/prometheus.yml`, and add the Podman exporter as a scrape target:
 
-- `/etc/pcp/` for PCP configuration
-- `/etc/snmp/snmpd.conf` for SNMP
-- `/etc/prometheus/prometheus.yml` for Prometheus
-- `/etc/grafana/grafana.ini` for Grafana
+```yaml
+scrape_configs:
+  - job_name: "podman"
+    static_configs:
+      - targets: ["rhel9-host.example.com:9882"]
+```
 
 Apply your changes and restart the service:
 
 ```bash
-sudo systemctl restart <service-name>
+sudo systemctl restart prometheus
 ```
 
 ## Step 4 - Open Firewall Ports
@@ -57,9 +58,7 @@ sudo systemctl restart <service-name>
 ```bash
 # Common monitoring ports
 sudo firewall-cmd --permanent --add-port=9090/tcp   # Prometheus
-sudo firewall-cmd --permanent --add-port=9100/tcp   # Node Exporter
-sudo firewall-cmd --permanent --add-port=3000/tcp   # Grafana
-sudo firewall-cmd --permanent --add-service=snmp     # SNMP
+sudo firewall-cmd --permanent --add-port=9882/tcp   # Podman exporter
 sudo firewall-cmd --reload
 ```
 
@@ -68,17 +67,15 @@ sudo firewall-cmd --reload
 Confirm that metrics are being collected:
 
 ```bash
-# PCP
-pmstat -s 3
-# sysstat
-sar -u 1 3
-# Prometheus endpoint
-curl -s http://localhost:9090/api/v1/query?query=up
+# Podman exporter metrics
+curl -s http://localhost:9882/metrics | grep '^podman_container_'
+# Prometheus target status
+curl -s 'http://localhost:9090/api/v1/query?query=up%7Bjob%3D%22podman%22%7D'
 ```
 
 ## Step 6 - Set Up Alerting (Optional)
 
-Configure alerts based on thresholds so you are notified before issues become critical. Use Prometheus Alertmanager, Nagios notifications, or Red Hat Insights recommendations depending on your stack.
+Configure alerts based on thresholds so you are notified before issues become critical. Use Prometheus Alertmanager or Red Hat Insights recommendations depending on your stack.
 
 ## Summary
 
