@@ -13,12 +13,14 @@ Drupal 10 is a robust CMS suitable for enterprise websites. This guide covers in
 ## Install Prerequisites
 
 ```bash
-# Install Apache, PHP 8.2 (via Remi), and MySQL
+# Install Apache, PHP 8.2 (via Remi), MySQL, and SELinux tools
 
-sudo dnf install -y httpd mysql-server
+sudo dnf install -y httpd mysql-server policycoreutils-python-utils
 
 # Enable Remi for PHP 8.2 (Drupal 10 requires PHP 8.1+)
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 sudo dnf install -y https://rpms.remirepo.net/enterprise/remi-release-9.rpm
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
 sudo dnf module reset php -y
 sudo dnf module enable php:remi-8.2 -y
 
@@ -48,11 +50,12 @@ SQL
 ```bash
 # Install Composer
 php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
-php composer-setup.php --install-dir=/usr/local/bin --filename=composer
+sudo php composer-setup.php --install-dir=/usr/local/bin --filename=composer
 
 # Create the Drupal project via Composer
-cd /var/www
-sudo -u apache composer create-project drupal/recommended-project drupal
+sudo mkdir -p /var/www/drupal
+sudo chown apache:apache /var/www/drupal
+sudo -u apache composer create-project drupal/recommended-project /var/www/drupal
 
 # Set file permissions
 sudo chown -R apache:apache /var/www/drupal
@@ -85,7 +88,8 @@ sudo systemctl enable --now httpd
 ```bash
 # Allow Apache to write to Drupal directories
 sudo setsebool -P httpd_unified 1
-sudo chcon -R -t httpd_sys_rw_content_t /var/www/drupal/web/sites
+sudo semanage fcontext -a -t httpd_sys_rw_content_t "/var/www/drupal/web/sites(/.*)?"
+sudo restorecon -Rv /var/www/drupal/web/sites
 
 # Open HTTP port
 sudo firewall-cmd --permanent --add-service=http
