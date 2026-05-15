@@ -8,7 +8,7 @@ Description: Learn how to properly align partitions and filesystems to underlyin
 
 ---
 
-Partition and filesystem alignment is one of those things that, when done right, nobody notices. When done wrong, you get a consistent 10-40% I/O performance penalty on every single operation. Modern tools on RHEL usually handle alignment automatically, but understanding it helps you verify setups and troubleshoot performance issues.
+Partition and filesystem alignment is one of those things that, when done right, nobody notices. When done wrong, it can cause a significant I/O performance penalty, especially for write-heavy workloads on RAID or devices with larger physical blocks. Modern tools on RHEL usually handle alignment automatically, but understanding it helps you verify setups and troubleshoot performance issues.
 
 ## Why Alignment Matters
 
@@ -18,7 +18,7 @@ Storage devices work in fixed-size units:
 - RAID arrays use stripe widths (stripe size times number of data disks)
 - Advanced Format drives use 4096-byte physical sectors
 
-When a partition or filesystem is misaligned, a single logical I/O can cross the boundary between two physical units. This means one write becomes two writes at the hardware level.
+When a partition or filesystem is misaligned, a single logical I/O can cross the boundary between two physical units. This can force extra device I/O or read-modify-write work at the hardware or RAID layer.
 
 ```mermaid
 graph TD
@@ -53,7 +53,7 @@ parted /dev/sda align-check optimal 1
 xfs_info /data
 ```
 
-Look for `sunit` and `swidth` values. If these are 0, the filesystem was not aligned to RAID geometry.
+Look for `sunit` and `swidth` values. If these are 0 on a striped device, RAID geometry was not recorded or detected when the filesystem was created.
 
 ### LVM Alignment
 
@@ -68,15 +68,15 @@ The PE start should be at 1 MiB (the default for LVM on RHEL).
 
 ### Using parted (Recommended)
 
-parted on RHEL aligns to optimal boundaries by default:
+parted on RHEL uses device topology to align partitions. You can make the intended alignment explicit with `-a optimal`:
 
 ```bash
 # Create an aligned partition with parted
-parted /dev/sdb mklabel gpt
-parted /dev/sdb mkpart primary xfs 0% 100%
+parted -a optimal /dev/sdb mklabel gpt
+parted -a optimal /dev/sdb mkpart primary xfs 0% 100%
 ```
 
-Using percentages (`0%` to `100%`) ensures parted uses optimal alignment automatically.
+Using percentages (`0%` to `100%`) with optimal alignment lets parted choose aligned boundaries from the device topology instead of forcing an exact sector.
 
 ### Using fdisk
 
@@ -116,7 +116,7 @@ For an existing XFS filesystem, check the alignment:
 xfs_info /mountpoint
 ```
 
-If `sunit=0` and `swidth=0`, the filesystem is not aligned to RAID. You would need to recreate it to fix this.
+If `sunit=0` and `swidth=0` on a striped device, the filesystem does not have recorded RAID geometry. You would need to recreate it to fix this.
 
 ## Aligning ext4 for RAID
 
@@ -136,8 +136,8 @@ Check an existing ext4 filesystem:
 
 ```bash
 # Show ext4 filesystem parameters
-tune2fs -l /dev/md0 | grep -i stride
-dumpe2fs -h /dev/md0 | grep -i stride
+tune2fs -l /dev/md0 | grep -Ei 'stride|stripe'
+dumpe2fs -h /dev/md0 | grep -Ei 'stride|stripe'
 ```
 
 ## Aligning for SSDs
@@ -151,10 +151,10 @@ To verify:
 parted /dev/nvme0n1 unit MiB print
 ```
 
-Also check that TRIM/discard support is configured:
+Also check whether the device reports discard/TRIM capabilities:
 
 ```bash
-# Verify TRIM support
+# Verify discard/TRIM support
 lsblk -D /dev/nvme0n1
 ```
 
@@ -186,14 +186,14 @@ To verify:
 pvs -o pv_name,pe_start /dev/sdb1
 ```
 
-For RAID-aware LVM:
+For a striped LVM logical volume:
 
 ```bash
 # Create a striped logical volume aligned to RAID
 lvcreate -i 4 -I 64K -L 100G -n lv_data vg_data
 ```
 
-The `-i 4` sets 4 stripes and `-I 64K` sets the stripe size, which also aligns the filesystem properly when you format it.
+The `-i 4` sets 4 stripes and `-I 64K` sets the stripe size. When you format the logical volume, verify that the filesystem detected the stripe geometry or pass the matching geometry to `mkfs`.
 
 ## Diagnosing Alignment Problems
 
@@ -210,7 +210,7 @@ To investigate:
 iostat -x 1 5
 ```
 
-If `w/s` (writes per second) is much higher than expected for your workload, misalignment could be the cause.
+High `w/s`, high write latency, or poor throughput can indicate an I/O layout problem, but `iostat` alone does not prove misalignment. Compare the results with the expected workload and the device's RAID or sector geometry.
 
 ```bash
 # Check partition alignment
