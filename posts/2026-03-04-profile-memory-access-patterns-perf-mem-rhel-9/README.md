@@ -56,7 +56,7 @@ Generate a memory access report:
 perf mem report
 ```
 
-This shows memory access events sorted by latency, data source (L1 cache, L2 cache, L3 cache, local DRAM, remote DRAM), and the responsible code.
+This shows memory access events sorted by overhead, with latency, data source (L1 cache, L2 cache, L3 cache, local DRAM, remote DRAM), and the responsible code.
 
 Generate a text report:
 
@@ -76,15 +76,15 @@ The report shows where each memory access was satisfied:
 
 High numbers of remote DRAM accesses indicate NUMA placement issues.
 
-## Sorting by Latency
+## Sorting by Memory Access Type
 
-Sort memory events by access latency:
+Group memory events by access type, symbol, and shared object:
 
 ```bash
 perf mem report --sort=mem,sym,dso --stdio
 ```
 
-Focus on the highest latency accesses first, as these have the most room for optimization.
+Use the Local Weight column to identify high-latency accesses, and focus first on rows that combine high overhead with high latency.
 
 ## Identifying Cache Miss Hotspots
 
