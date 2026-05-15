@@ -16,7 +16,8 @@ This guide walks you through configuring RBAC for Flux CD controllers, including
 
 Flux CD installs the following controllers, each with its own service account:
 
-- **source-controller**: Manages GitRepository, HelmRepository, OCIRepository, and Bucket sources.
+- **source-controller**: Manages GitRepository, HelmRepository, HelmChart, OCIRepository, Bucket, and ExternalArtifact sources.
+- **source-watcher**: Reconciles ArtifactGenerator resources for source composition and decomposition.
 - **kustomize-controller**: Reconciles Kustomization resources and applies manifests.
 - **helm-controller**: Reconciles HelmRelease resources.
 - **notification-controller**: Handles alerts and webhook receivers.
@@ -197,6 +198,10 @@ metadata:
 rules:
   # Allow managing source CRDs in this namespace
   - apiGroups: ["source.toolkit.fluxcd.io"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Allow managing source extension CRDs in this namespace
+  - apiGroups: ["source.extensions.fluxcd.io"]
     resources: ["*"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   # Allow reading secrets for authentication
