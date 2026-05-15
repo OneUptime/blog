@@ -30,47 +30,33 @@ brew install vagrant
 wget https://releases.hashicorp.com/vagrant/2.4.1/vagrant_2.4.1-1_amd64.deb
 sudo dpkg -i vagrant_2.4.1-1_amd64.deb
 
-# Install a provider (VirtualBox is the most common)
+# Install a provider
 # Download from https://www.virtualbox.org/wiki/Downloads
 
-# Or use libvirt on Linux
+# Or use libvirt on Linux, which is the provider used in this guide
 sudo apt install vagrant-libvirt
 ```
 
 You also need `talosctl` and `kubectl` installed on your host.
 
-## Creating a Talos Vagrant Box
+## Preparing Talos Boot Media
 
-Talos does not have an official Vagrant box, so you need to create one from the Talos image. This is a one-time process:
+Talos does not need a traditional SSH-enabled Vagrant base box. With the libvirt provider, you can boot the Talos ISO as a virtual CD-ROM and attach a disk that Talos will install to after you apply the machine configuration:
 
 ```bash
-# Download the Talos image for your provider
-# For VirtualBox, use the metal ISO or create a VDI
-curl -LO https://github.com/siderolabs/talos/releases/download/v1.7.0/metal-amd64.iso
-
-# Create a VirtualBox VM manually and install Talos
-# Then package it as a Vagrant box
-VBoxManage createvm --name talos-base --ostype Linux_64 --register
-VBoxManage modifyvm talos-base --memory 2048 --cpus 2 --firmware efi
-VBoxManage createmedium disk --filename talos-base.vdi --size 20480 --format VDI
-VBoxManage storagectl talos-base --name "SATA" --add sata
-VBoxManage storageattach talos-base --storagectl "SATA" --port 0 --type hdd --medium talos-base.vdi
-VBoxManage storagectl talos-base --name "IDE" --add ide
-VBoxManage storageattach talos-base --storagectl "IDE" --port 0 --type dvddrive --medium metal-amd64.iso
-
-# Boot and let Talos install to disk, then shut down and remove the ISO
-# Then package the box
-vagrant package --base talos-base --output talos-v1.7.0.box
-
-# Add the box to Vagrant
-vagrant box add talos-linux talos-v1.7.0.box
+# Download the Talos ISO used by the Vagrantfile
+curl -L https://github.com/siderolabs/talos/releases/download/v1.13.0/metal-amd64.iso \
+  -o /tmp/metal-amd64.iso
 ```
 
-Alternatively, if using libvirt, convert the raw metal image:
+If you prefer to build a reusable libvirt box from a disk image, vagrant-libvirt expects a qcow2 image named `box.img` in the box archive:
 
 ```bash
-# For libvirt provider, create a box from the raw image
-qemu-img convert -f raw -O qcow2 metal-amd64.raw talos-v1.7.0.qcow2
+# For libvirt provider, create a box from a raw disk image
+curl -L https://github.com/siderolabs/talos/releases/download/v1.13.0/metal-amd64.raw.xz \
+  -o metal-amd64.raw.xz
+xz -d metal-amd64.raw.xz
+qemu-img convert -f raw -O qcow2 metal-amd64.raw box.img
 
 # Create the box metadata
 cat > metadata.json <<'META'
@@ -90,8 +76,8 @@ end
 VF
 
 # Package the box
-tar czf talos-v1.7.0.box metadata.json Vagrantfile talos-v1.7.0.qcow2
-vagrant box add talos-linux talos-v1.7.0.box
+tar czf talos-v1.13.0.box metadata.json Vagrantfile box.img
+vagrant box add talos-linux talos-v1.13.0.box
 ```
 
 ## Writing the Vagrantfile
@@ -109,11 +95,9 @@ CP_MEMORY = 4096
 CP_CPUS = 2
 WORKER_MEMORY = 8192
 WORKER_CPUS = 4
-NETWORK_PREFIX = "10.10.10"
+TALOS_ISO = "/tmp/metal-amd64.iso"
 
 Vagrant.configure("2") do |config|
-  config.vm.box = "talos-linux"
-
   # Disable default shared folder (Talos does not support it)
   config.vm.synced_folder ".", "/vagrant", disabled: true
 
@@ -125,22 +109,15 @@ Vagrant.configure("2") do |config|
   (1..NUM_CONTROL_PLANES).each do |i|
     config.vm.define "cp#{i}" do |cp|
       cp.vm.hostname = "talos-cp-#{i}"
-      cp.vm.network "private_network", ip: "#{NETWORK_PREFIX}.#{10 + i}"
-
-      cp.vm.provider "virtualbox" do |vb|
-        vb.name = "talos-cp-#{i}"
-        vb.memory = CP_MEMORY
-        vb.cpus = CP_CPUS
-        vb.customize ["modifyvm", :id, "--firmware", "efi"]
-        vb.customize ["modifyvm", :id, "--uart1", "0x3F8", "4"]
-        vb.customize ["modifyvm", :id, "--uartmode1", "file",
-          File.join(Dir.pwd, "logs", "cp-#{i}-serial.log")]
-      end
 
       cp.vm.provider "libvirt" do |lv|
         lv.memory = CP_MEMORY
         lv.cpus = CP_CPUS
-        lv.loader = "/usr/share/OVMF/OVMF_CODE.fd"
+        lv.serial :type => "file", :source => { :path => File.join(Dir.pwd, "logs", "cp-#{i}-serial.log") }
+        lv.storage :file, :device => :cdrom, :path => TALOS_ISO
+        lv.storage :file, :size => "20G", :type => "raw"
+        lv.boot "hd"
+        lv.boot "cdrom"
       end
     end
   end
@@ -149,19 +126,15 @@ Vagrant.configure("2") do |config|
   (1..NUM_WORKERS).each do |i|
     config.vm.define "worker#{i}" do |worker|
       worker.vm.hostname = "talos-worker-#{i}"
-      worker.vm.network "private_network", ip: "#{NETWORK_PREFIX}.#{20 + i}"
-
-      worker.vm.provider "virtualbox" do |vb|
-        vb.name = "talos-worker-#{i}"
-        vb.memory = WORKER_MEMORY
-        vb.cpus = WORKER_CPUS
-        vb.customize ["modifyvm", :id, "--firmware", "efi"]
-      end
 
       worker.vm.provider "libvirt" do |lv|
         lv.memory = WORKER_MEMORY
         lv.cpus = WORKER_CPUS
-        lv.loader = "/usr/share/OVMF/OVMF_CODE.fd"
+        lv.serial :type => "file", :source => { :path => File.join(Dir.pwd, "logs", "worker-#{i}-serial.log") }
+        lv.storage :file, :device => :cdrom, :path => TALOS_ISO
+        lv.storage :file, :size => "20G", :type => "raw"
+        lv.boot "hd"
+        lv.boot "cdrom"
       end
     end
   end
@@ -172,8 +145,8 @@ Key things to notice:
 
 - SSH is disabled because Talos does not have SSH
 - Synced folders are disabled for the same reason
-- Each node gets a static private network IP
-- EFI firmware is configured for UEFI boot
+- Each node gets an IP address from the libvirt network DHCP server
+- Each node boots from disk first and falls back to the Talos ISO
 - Serial console logging captures Talos output for debugging
 
 ## Starting the Cluster
@@ -183,11 +156,17 @@ Key things to notice:
 mkdir -p logs
 
 # Start all VMs
-vagrant up
+vagrant up --provider=libvirt
 
 # Or start specific nodes
 vagrant up cp1 cp2 cp3
 vagrant up worker1 worker2 worker3
+```
+
+Find the IP addresses assigned by libvirt DHCP:
+
+```bash
+virsh list | grep vagrant | awk '{print $2}' | xargs -t -L1 virsh domifaddr
 ```
 
 ## Generating and Applying Talos Config
@@ -196,36 +175,34 @@ Once the VMs are running, configure the cluster:
 
 ```bash
 # Generate Talos configuration
-talosctl gen config vagrant-cluster https://10.10.10.100:6443 \
+talosctl gen config vagrant-cluster https://192.168.121.100:6443 \
+  --install-disk /dev/vda \
   --config-patch='[
     {"op": "add", "path": "/machine/network/interfaces", "value": [
       {
-        "interface": "eth1",
-        "dhcp": false,
+        "interface": "eth0",
+        "dhcp": true,
         "vip": {
-          "ip": "10.10.10.100"
+          "ip": "192.168.121.100"
         }
       }
     ]}
   ]'
 
-# Apply configuration to control plane nodes
-talosctl apply-config --insecure --nodes 10.10.10.11 --file controlplane.yaml
-talosctl apply-config --insecure --nodes 10.10.10.12 --file controlplane.yaml
-talosctl apply-config --insecure --nodes 10.10.10.13 --file controlplane.yaml
+# Apply configuration to the first control plane node
+talosctl apply-config --insecure --nodes 192.168.121.203 --file controlplane.yaml
 
-# Apply configuration to worker nodes
-talosctl apply-config --insecure --nodes 10.10.10.21 --file worker.yaml
-talosctl apply-config --insecure --nodes 10.10.10.22 --file worker.yaml
-talosctl apply-config --insecure --nodes 10.10.10.23 --file worker.yaml
+# Configure Talos endpoints and bootstrap the first control plane node
+talosctl config endpoint 192.168.121.203 192.168.121.119 192.168.121.125
+talosctl bootstrap --nodes 192.168.121.203
 
-# Bootstrap the first control plane node
-talosctl config endpoint 10.10.10.100
-talosctl config node 10.10.10.11
-talosctl bootstrap
+# Apply configuration to the remaining nodes
+talosctl apply-config --insecure --nodes 192.168.121.119 --file controlplane.yaml
+talosctl apply-config --insecure --nodes 192.168.121.125 --file controlplane.yaml
+talosctl apply-config --insecure --nodes 192.168.121.69 --file worker.yaml
 
 # Get kubeconfig
-talosctl kubeconfig
+talosctl kubeconfig --nodes 192.168.121.203 ./kubeconfig
 ```
 
 ## Automating the Setup with a Provisioning Script
@@ -238,17 +215,17 @@ Create a script that handles the entire cluster setup after `vagrant up`:
 
 set -e
 
-NETWORK_PREFIX="10.10.10"
-CP_IPS=("${NETWORK_PREFIX}.11" "${NETWORK_PREFIX}.12" "${NETWORK_PREFIX}.13")
-WORKER_IPS=("${NETWORK_PREFIX}.21" "${NETWORK_PREFIX}.22" "${NETWORK_PREFIX}.23")
-VIP="${NETWORK_PREFIX}.100"
+CP_IPS=("192.168.121.203" "192.168.121.119" "192.168.121.125")
+WORKER_IPS=("192.168.121.69")
+VIP="192.168.121.100"
 
 echo "Generating Talos configuration..."
 talosctl gen config vagrant-cluster "https://${VIP}:6443" \
   --force \
+  --install-disk /dev/vda \
   --config-patch='[
     {"op": "add", "path": "/machine/network/interfaces", "value": [
-      {"interface": "eth1", "dhcp": false, "vip": {"ip": "'$VIP'"}}
+      {"interface": "eth0", "dhcp": true, "vip": {"ip": "'$VIP'"}}
     ]}
   ]'
 
@@ -261,27 +238,28 @@ for ip in "${CP_IPS[@]}" "${WORKER_IPS[@]}"; do
 done
 
 echo "Applying control plane configuration..."
-for ip in "${CP_IPS[@]}"; do
+talosctl apply-config --insecure --nodes "${CP_IPS[0]}" --file controlplane.yaml
+
+echo "Bootstrapping the cluster..."
+talosctl config endpoint "${CP_IPS[@]}"
+sleep 30
+talosctl bootstrap --nodes "${CP_IPS[0]}"
+
+echo "Applying remaining node configurations..."
+for ip in "${CP_IPS[@]:1}"; do
   talosctl apply-config --insecure --nodes "$ip" --file controlplane.yaml
 done
 
-echo "Applying worker configuration..."
 for ip in "${WORKER_IPS[@]}"; do
   talosctl apply-config --insecure --nodes "$ip" --file worker.yaml
 done
 
-echo "Bootstrapping the cluster..."
-talosctl config endpoint "$VIP"
-talosctl config node "${CP_IPS[0]}"
-sleep 30
-talosctl bootstrap
-
 echo "Waiting for cluster to be ready..."
-talosctl kubeconfig --force
-kubectl wait --for=condition=Ready nodes --all --timeout=300s
+talosctl kubeconfig --nodes "${CP_IPS[0]}" --force ./kubeconfig
+kubectl --kubeconfig ./kubeconfig wait --for=condition=Ready nodes --all --timeout=300s
 
 echo "Cluster is ready!"
-kubectl get nodes
+kubectl --kubeconfig ./kubeconfig get nodes
 ```
 
 ## Day-to-Day Workflow
@@ -305,7 +283,7 @@ vagrant reload cp1
 vagrant destroy -f
 
 # Recreate from scratch
-vagrant up && bash setup-cluster.sh
+vagrant up --provider=libvirt && bash setup-cluster.sh
 ```
 
 ## Sharing Your Cluster Configuration
