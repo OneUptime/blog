@@ -271,7 +271,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v4
 
       - name: Login to OCI registry
         run: |
@@ -299,8 +299,14 @@ Check the status of all Flux resources.
 # Check HelmRepository status
 flux get sources helm
 
+# Check OCIRepository status, if using the OCIRepository examples
+flux get sources oci
+
 # Check HelmRelease status
 flux get helmreleases -A
+
+# Check Kustomization status, if using the rendered manifests example
+flux get kustomizations -A
 
 # Check the deployed Helm release
 helm list -n default
