@@ -8,17 +8,19 @@ Description: Step-by-step guide to setting up SSH key-based authentication on RH
 
 ---
 
-SSH keys are the foundation of secure remote access. A key pair provides stronger authentication than any password, and it eliminates the risk of password brute-forcing entirely. Setting up key-based auth on RHEL is straightforward, but the details around file permissions and SELinux matter.
+SSH keys are the foundation of secure remote access. A key pair provides stronger authentication than any password, and once password authentication is disabled, it eliminates the risk of password brute-forcing entirely. Setting up key-based auth on RHEL is straightforward, but the details around file permissions and SELinux matter.
 
 ## Generating an SSH Key Pair
 
 On your local workstation (not the server), generate a key pair:
 
 ```bash
-# Generate an Ed25519 key (recommended for RHEL)
+# Generate an Ed25519 key (recommended for most RHEL systems)
 
 ssh-keygen -t ed25519 -C "jsmith@workstation"
 ```
+
+If the system must run in FIPS mode, use ECDSA or RSA instead because Ed25519 is not FIPS-140-compliant.
 
 When prompted:
 - **File location**: Accept the default (`~/.ssh/id_ed25519`) or specify a custom path.
@@ -80,6 +82,8 @@ scp ~/.ssh/id_ed25519.pub admin@server.example.com:/tmp/
 
 # On the server, append it
 ssh admin@server.example.com
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
 cat /tmp/id_ed25519.pub >> ~/.ssh/authorized_keys
 chmod 600 ~/.ssh/authorized_keys
 rm /tmp/id_ed25519.pub
@@ -107,7 +111,7 @@ Required permissions:
 # Fix permissions if needed
 chmod 700 ~/.ssh
 chmod 600 ~/.ssh/authorized_keys
-chown -R $(whoami):$(whoami) ~/.ssh
+chown -R "$(id -un):$(id -gn)" ~/.ssh
 ```
 
 ## SELinux Context
@@ -119,7 +123,7 @@ On RHEL, SELinux may prevent SSH from reading authorized_keys if the context is 
 ls -laZ ~/.ssh/authorized_keys
 ```
 
-Expected context: `unconfined_u:object_r:ssh_home_t:s0`
+Expected type: `ssh_home_t`. The full SELinux context can vary by user policy, for example `unconfined_u:object_r:ssh_home_t:s0`.
 
 If the context is wrong:
 
