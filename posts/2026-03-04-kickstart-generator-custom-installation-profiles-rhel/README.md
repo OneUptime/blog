@@ -89,10 +89,12 @@ The generated file often references a local mount point. Change it to a network 
 # Before:
 # repo --name="AppStream" --baseurl=file:///run/install/sources/mount-0000-cdrom/AppStream
 
-# After: use your local mirror or Red Hat CDN
+# After: use your local mirror or Satellite-published repository
 url --url="http://repo-server.example.com/rhel9/BaseOS/"
 repo --name="AppStream" --baseurl="http://repo-server.example.com/rhel9/AppStream/"
 ```
+
+For Red Hat CDN installations, use the `rhsm` Kickstart command with an organization ID and activation key instead of a direct `url` source.
 
 ### Step 2: Switch to Text Mode
 
@@ -262,7 +264,7 @@ Always validate your Kickstart files before using them:
 
 ```bash
 # Validate a Kickstart file against RHEL syntax
-ksvalidator --version RHEL9 kickstart.cfg
+ksvalidator -v RHEL9 kickstart.cfg
 ```
 
 If there are no errors, the command produces no output. Errors are printed to stderr with the line number and description.
@@ -297,7 +299,7 @@ Instead of maintaining separate complete Kickstart files for each role, you can 
 # base.cfg - common settings shared across all profiles
 text
 lang en_US.UTF-8
-keyboard us
+keyboard --xlayouts='us'
 timezone UTC --utc
 selinux --enforcing
 firewall --enabled --ssh
@@ -377,7 +379,7 @@ mkdir -p roles/{base,webserver,database,appserver}
 **Document your profiles.** Add comments at the top of each file explaining what the profile is for and when it was last tested.
 
 ```bash
-# Kickstart Profile: Web Server (RHEL.3)
+# Kickstart Profile: Web Server (RHEL 9.3)
 # Last tested: 2026-03-01
 # Author: sysadmin team
 # Purpose: Standard web server with Apache, PHP, and SSL
