@@ -112,7 +112,7 @@ See what a profile configures:
 cat /usr/lib/tuned/throughput-performance/tuned.conf
 ```
 
-Each profile has a configuration file in `/usr/lib/tuned/` that defines kernel parameters, disk scheduler settings, CPU governor preferences, and more.
+Distribution-provided profiles are stored in `/usr/lib/tuned/`, and custom profiles are stored in `/etc/tuned/`. Each profile has a `tuned.conf` file that defines kernel parameters, disk scheduler settings, CPU governor preferences, and more.
 
 ## Disabling TuneD
 
