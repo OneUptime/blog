@@ -144,18 +144,15 @@ PermitEmptyPasswords no
 # Limit authentication attempts per connection
 MaxAuthTries 3
 
-# Disconnect idle sessions after 5 minutes
+# Disconnect unresponsive sessions after about 5 minutes
 ClientAliveInterval 300
-ClientAliveCountMax 0
+ClientAliveCountMax 1
 
 # Disable X11 forwarding (if not needed)
 X11Forwarding no
 
 # Disable TCP forwarding (if not needed)
 AllowTcpForwarding no
-
-# Restrict to SSH protocol 2 (default on RHEL but explicit)
-Protocol 2
 
 # Set a login grace time
 LoginGraceTime 60
