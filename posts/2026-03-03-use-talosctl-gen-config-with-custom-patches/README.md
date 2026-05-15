@@ -19,7 +19,7 @@ At its simplest, `talosctl gen config` takes a cluster name and an endpoint:
 ```bash
 # Generate default configs
 
-talosctl gen config my-cluster https://192.168.1.100:6443 --output-dir ./configs
+talosctl gen config my-cluster https://192.168.1.100:6443 --output ./configs
 ```
 
 This creates several files:
@@ -87,7 +87,7 @@ talosctl gen config my-cluster https://192.168.1.100:6443 \
   --config-patch @patches/common.yaml \
   --config-patch-control-plane @patches/controlplane.yaml \
   --config-patch-worker @patches/worker.yaml \
-  --output-dir ./configs
+  --output ./configs
 ```
 
 Where the patch files contain:
@@ -142,7 +142,7 @@ talosctl gen config my-cluster https://192.168.1.100:6443 \
   --config-patch @patches/security.yaml \
   --config-patch @patches/logging.yaml \
   --config-patch @patches/proxy.yaml \
-  --output-dir ./configs
+  --output ./configs
 ```
 
 Later patches override earlier ones when they affect the same field. This lets you build up your configuration in logical layers.
@@ -166,7 +166,7 @@ talosctl gen config my-cluster https://192.168.1.100:6443 \
 
 # Output to a specific directory
 talosctl gen config my-cluster https://192.168.1.100:6443 \
-  --output-dir ./my-configs
+  --output ./my-configs
 
 # Generate configs with specific DNS domain
 talosctl gen config my-cluster https://192.168.1.100:6443 \
@@ -195,7 +195,7 @@ talosctl gen config prod-cluster https://k8s.company.internal:6443 \
   --config-patch @patches/security.yaml \
   --config-patch-control-plane @patches/controlplane.yaml \
   --config-patch-worker @patches/worker.yaml \
-  --output-dir ./configs/prod
+  --output ./configs/prod
 ```
 
 ```yaml
@@ -285,7 +285,7 @@ for ENV in staging production; do
     --config-patch "@patches/security.yaml" \
     --config-patch-control-plane "@patches/controlplane.yaml" \
     --config-patch-worker "@patches/worker.yaml" \
-    --output-dir "./configs/${ENV}" \
+    --output "./configs/${ENV}" \
     --force
 
   # Validate generated configs
