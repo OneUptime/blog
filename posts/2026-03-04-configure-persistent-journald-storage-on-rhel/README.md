@@ -19,7 +19,7 @@ journalctl --disk-usage
 
 # Check if persistent directory exists
 ls -la /var/log/journal/
-# If this directory does not exist, storage is volatile
+# With the default Storage=auto, if this directory does not exist, storage is volatile
 ```
 
 ## Enable Persistent Storage
@@ -64,7 +64,7 @@ ls -la /var/log/journal/
 
 ## Configure Size Limits
 
-Without limits, the journal can consume a lot of disk space.
+Journald has default space limits, but setting explicit limits helps control how much disk space it can consume.
 
 ```bash
 # Create or update the drop-in config
@@ -106,9 +106,9 @@ journalctl -b -2
 
 ```bash
 # Storage=volatile  -> only in /run/log/journal/ (lost on reboot)
-# Storage=persistent -> stored in /var/log/journal/ (survives reboot)
+# Storage=persistent -> stored preferably in /var/log/journal/ (survives reboot)
 # Storage=auto -> persistent if /var/log/journal/ exists, otherwise volatile
-# Storage=none -> all logs are discarded
+# Storage=none -> journal storage is disabled; forwarding to other targets can still work
 ```
 
 ## Manually Reclaim Space
