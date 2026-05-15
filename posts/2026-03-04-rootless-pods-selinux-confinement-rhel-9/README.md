@@ -40,7 +40,7 @@ Expected output:
 system_u:system_r:container_t:s0:c123,c456
 ```
 
-The `container_t` type and the MCS (Multi-Category Security) labels `c123,c456` ensure process isolation.
+The `container_t` type and the MCS (Multi-Category Security) labels `c123,c456` enforce process isolation between containers with different MCS labels.
 
 ## Creating a Rootless Pod
 
@@ -85,7 +85,7 @@ podman run --rm -v ~/poddata:/data:z registry.access.redhat.com/ubi9/ubi:latest 
 podman run --rm -v ~/poddata:/data:Z registry.access.redhat.com/ubi9/ubi:latest ls /data
 ```
 
-The `:z` option adds the `container_file_t` label with a shared MCS category. The `:Z` option adds a private MCS category.
+The `:z` option labels the content with a shared container label. The `:Z` option labels the content with a private container label. In a pod, all containers share the pod's SELinux label, so a `:Z` volume mounted by one container in the pod can be accessed by the other containers in that pod.
 
 Check the relabeled directory:
 
@@ -98,7 +98,7 @@ ls -laZ ~/poddata
 Override the default SELinux label for a container:
 
 ```bash
-podman run --rm --security-opt label=type:svirt_sandbox_file_t registry.access.redhat.com/ubi9/ubi:latest cat /proc/self/attr/current
+podman run --rm --security-opt label=level:s0:c100,c200 registry.access.redhat.com/ubi9/ubi:latest cat /proc/self/attr/current
 ```
 
 Disable SELinux confinement for debugging (not recommended for production):
@@ -109,15 +109,16 @@ podman run --rm --security-opt label=disable registry.access.redhat.com/ubi9/ubi
 
 ## Writing Custom SELinux Policies for Containers
 
-If your container needs access that `container_t` does not allow, create a custom policy module. First, identify the denials:
+If your container needs access that `container_t` does not allow, create a custom policy module. On RHEL 9, Red Hat provides `udica` to generate custom container SELinux policies from a container inspection. First, identify the denials:
 
 ```bash
 sudo ausearch -m avc -ts recent | grep container_t
 ```
 
-Generate a policy module from the denials:
+Generate a policy module from the denials only after reviewing the rules that `audit2allow` proposes:
 
 ```bash
+sudo ausearch -m avc -ts recent | audit2allow -w
 sudo ausearch -m avc -ts recent | audit2allow -M mycontainer
 ```
 
@@ -148,10 +149,10 @@ If SELinux blocks a legitimate operation, check the suggested fixes from `sealer
 Some container operations require specific SELinux booleans:
 
 ```bash
-# Allow containers to use the host network
+# Allow containers to connect to any TCP port
 sudo setsebool -P container_connect_any 1
 
-# Allow containers to manage all files
+# Allow containers to manage cgroup configuration, for example when running systemd in a container
 sudo setsebool -P container_manage_cgroup 1
 ```
 
