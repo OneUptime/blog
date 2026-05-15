@@ -21,10 +21,10 @@ During measured boot, each component in the boot chain is hashed and the result 
 | 2 | Option ROMs |
 | 3 | Option ROM configuration |
 | 4 | Boot loader (GRUB) |
-| 5 | Boot loader configuration |
+| 5 | Partition table and some boot loader configuration |
 | 7 | Secure Boot state |
-| 8 | Kernel command line (GRUB) |
-| 9 | Kernel and initramfs (GRUB) |
+| 8 | GRUB commands and kernel command line |
+| 9 | Files read by GRUB, including kernel and initramfs |
 
 ```mermaid
 flowchart LR
@@ -55,14 +55,11 @@ If the TPM device does not exist, check your UEFI firmware settings to make sure
 
 ## Installing TPM Tools
 
-Install the TPM 2.0 software stack:
+Install the TPM 2.0 tools:
 
 ```bash
-# Install TPM2 tools and the resource manager
-sudo dnf install tpm2-tools tpm2-tss tpm2-abrmd -y
-
-# Enable and start the TPM resource manager
-sudo systemctl enable --now tpm2-abrmd
+# Install TPM2 tools
+sudo dnf install tpm2-tools -y
 ```
 
 ## Reading PCR Values
@@ -77,7 +74,7 @@ sudo tpm2_pcrread sha256
 sudo tpm2_pcrread sha256:0,4,7,8,9
 ```
 
-The values you see reflect the current boot. If nothing has changed since the last boot, the same boot process will produce the same PCR values.
+The values you see reflect the current boot. If the measured firmware, boot loader, kernel, initramfs, and configuration are unchanged, the same boot path should produce the same PCR values.
 
 ## Creating a PCR Baseline
 
@@ -85,10 +82,8 @@ Record the expected PCR values for your known-good boot:
 
 ```bash
 # Save current PCR values as baseline
-sudo tpm2_pcrread sha256 -o /root/pcr-baseline-$(date +%Y%m%d).bin
-
-# Also save as human-readable text
-sudo tpm2_pcrread sha256 > /root/pcr-baseline-$(date +%Y%m%d).txt
+sudo tpm2_pcrread sha256 > /root/pcr-baseline.txt
+sudo cp /root/pcr-baseline.txt /root/pcr-baseline-$(date +%Y%m%d).txt
 ```
 
 Store this baseline securely. You will compare future measurements against it.
@@ -102,7 +97,7 @@ Compare current PCR values against your baseline:
 sudo tpm2_pcrread sha256 > /tmp/pcr-current.txt
 
 # Compare with baseline
-diff /root/pcr-baseline-*.txt /tmp/pcr-current.txt
+diff /root/pcr-baseline.txt /tmp/pcr-current.txt
 ```
 
 If the values match, the boot chain has not been modified. Differences indicate that something changed, which could be a legitimate update or a tampering attempt.
@@ -165,6 +160,7 @@ After any of these changes, update your baseline:
 ```bash
 # Update baseline after known-good changes
 sudo tpm2_pcrread sha256 > /root/pcr-baseline.txt
+sudo cp /root/pcr-baseline.txt /root/pcr-baseline-$(date +%Y%m%d).txt
 ```
 
 ## TPM and Remote Attestation
@@ -172,11 +168,12 @@ sudo tpm2_pcrread sha256 > /root/pcr-baseline.txt
 For advanced setups, TPM measurements can be used for remote attestation, where a remote server verifies the boot integrity of your system:
 
 ```bash
-# Create an attestation key
-sudo tpm2_createak -C 0x81010001 -G rsa -g sha256 -s rsassa
+# Create an endorsement key and attestation key
+sudo tpm2_createek -c ek.handle -G rsa -u ek.pub
+sudo tpm2_createak -C ek.handle -c ak.ctx -u ak.pub -n ak.name -G rsa -g sha256 -s rsassa
 
 # Quote PCR values (signed by the TPM)
-sudo tpm2_quote -c ak.ctx -l sha256:0,4,7,8,9 -m quote.msg -s quote.sig
+sudo tpm2_quote -c ak.ctx -l sha256:0,4,7,8,9 -m quote.msg -s quote.sig -o quote.pcrs -q "$(openssl rand -hex 16)"
 ```
 
 Remote attestation is complex but provides strong guarantees that a remote system booted with the expected configuration.
