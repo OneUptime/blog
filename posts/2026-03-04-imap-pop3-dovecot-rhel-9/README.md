@@ -137,10 +137,11 @@ Edit `/etc/dovecot/conf.d/20-pop3.conf`:
 
 ```bash
 protocol pop3 {
-  # Show deleted messages as expunged (required by some clients)
+  # Use stable UIDLs so clients do not re-download existing messages
   pop3_uidl_format = %08Xu%08Xv
 
-  # Do not delete messages after download (let clients decide)
+  # Hide POP3-deleted messages with an IMAP keyword instead of expunging them
+  pop3_deleted_flag = $POP3Deleted
   pop3_delete_type = flag
 }
 ```
