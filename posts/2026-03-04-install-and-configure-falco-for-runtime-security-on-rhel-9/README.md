@@ -19,15 +19,20 @@ Falco for Runtime Security can be installed and configured on RHEL to provide ro
 ## Step 1: Install Required Packages
 
 ```bash
-# Update the system first
+# Trust the Falco package signing key
+sudo rpm --import https://falco.org/repo/falcosecurity-packages.asc
 
+# Configure the Falco RPM repository
+sudo curl -L -o /etc/yum.repos.d/falcosecurity.repo https://falco.org/repo/falcosecurity-rpm.repo
+
+# Update the system first
 sudo dnf update -y
 
-# Install the required packages
-sudo dnf install -y <package-name>
+# Install Falco with the modern eBPF driver
+sudo FALCO_FRONTEND=noninteractive FALCO_DRIVER_CHOICE=modern_ebpf dnf install -y falco
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+The modern eBPF driver avoids the need to install kernel headers, DKMS, and compiler packages on RHEL 9.
 
 ## Step 2: Configure the Service
 
@@ -35,27 +40,27 @@ Edit the configuration file to match your environment:
 
 ```bash
 # Open the configuration file
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/falco/falco.yaml
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include `rules_files`, output settings such as `stdout_output` and `syslog_output`, and the minimum alert `priority`.
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart falco
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable falco-modern-bpf.service
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start falco
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status falco
 ```
 
 
@@ -65,17 +70,17 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status falco
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+sudo journalctl -u falco --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
+- If the service fails to start, check the logs with `sudo journalctl -u falco -e --no-pager`.
 - SELinux may block access. Check for denials with `ausearch -m avc -ts recent` and apply appropriate policies.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- Ensure Falco is installed: `rpm -q falco`.
 
 ## Conclusion
 
