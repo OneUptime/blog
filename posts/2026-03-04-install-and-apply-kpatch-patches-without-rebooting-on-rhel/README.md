@@ -18,7 +18,7 @@ When a critical kernel CVE is announced, you can apply the fix immediately using
 uname -r
 # Example output: 5.14.0-362.8.1.el9_3.x86_64
 
-# Get the base kernel release (without architecture)
+# Store the exact kernel release
 KVER=$(uname -r)
 echo $KVER
 ```
@@ -26,8 +26,8 @@ echo $KVER
 ## Find Available kpatch Patches
 
 ```bash
-# Search for kpatch packages for your kernel
-sudo dnf list available kpatch-patch* 2>/dev/null | grep $(uname -r | sed 's/\.[^.]*$//' | sed 's/-/_/g')
+# Search for a kpatch package for your kernel
+sudo dnf search "$(uname -r)"
 
 # List all available kpatch patches
 sudo dnf list available kpatch-patch*
@@ -40,8 +40,7 @@ sudo dnf list available kpatch-patch*
 sudo dnf install -y kpatch
 
 # Install the specific kpatch module for your kernel
-# The package name follows the pattern: kpatch-patch-<kernel_version>
-sudo dnf install -y kpatch-patch-5_14_0-362_8_1-el9_3
+sudo dnf install -y "kpatch-patch = $(uname -r)"
 
 # The kpatch module loads automatically upon installation
 ```
@@ -68,10 +67,10 @@ cat /sys/kernel/livepatch/kpatch_5_14_0_362_8_1_el9_3_1_1/enabled
 
 ```bash
 # View the RPM changelog to see which CVEs are addressed
-rpm -q --changelog kpatch-patch-5_14_0-362_8_1-el9_3
+rpm -q --changelog kpatch-patch-5_14_0-362_8_1
 
 # Check the RPM description
-rpm -qi kpatch-patch-5_14_0-362_8_1-el9_3
+rpm -qi kpatch-patch-5_14_0-362_8_1
 ```
 
 ## Apply Multiple Patches
@@ -80,7 +79,7 @@ When multiple kpatch updates are available, they are cumulative:
 
 ```bash
 # Update all installed kpatch modules to latest
-sudo dnf update kpatch-patch*
+sudo dnf update "kpatch-patch"
 
 # Verify all patches loaded
 kpatch list
@@ -106,7 +105,7 @@ uname -r
 # Shows the new kernel version
 
 # Install the kpatch for the new kernel
-sudo dnf install -y kpatch-patch-$(uname -r | sed 's/\.[^.]*$//' | sed 's/\./_/g' | sed 's/-/_/g')
+sudo dnf install -y "kpatch-patch = $(uname -r)"
 ```
 
 ## Automate with dnf-automatic
@@ -125,7 +124,7 @@ apply_updates = yes
 ```
 
 ```bash
-sudo systemctl enable --now dnf-automatic.timer
+sudo systemctl enable --now dnf-automatic-install.timer
 ```
 
 This workflow lets you patch critical kernel vulnerabilities on RHEL within minutes of a fix being available, without any system downtime.
