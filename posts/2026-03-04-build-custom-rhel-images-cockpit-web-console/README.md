@@ -12,14 +12,20 @@ The Cockpit web console provides a graphical interface for RHEL Image Builder. Y
 
 ## Setting Up Cockpit with Image Builder
 
+Use the commands for your RHEL version:
+
 ```bash
-# Install Cockpit and the Image Builder plugin
+# RHEL 8 and 9: install Cockpit and the Image Builder plugin
 
-sudo dnf install -y cockpit cockpit-composer osbuild-composer composer-cli
+sudo dnf install -y osbuild-composer composer-cli cockpit-composer
 
-# Enable and start both services
-sudo systemctl enable --now cockpit.socket
+# Enable and start both sockets
 sudo systemctl enable --now osbuild-composer.socket
+sudo systemctl enable --now cockpit.socket
+
+# RHEL 10: install Image Builder and the Cockpit plugin
+sudo dnf install -y image-builder cockpit-image-builder
+sudo systemctl enable --now cockpit.socket
 
 # Allow Cockpit through the firewall
 sudo firewall-cmd --permanent --add-service=cockpit
@@ -34,18 +40,19 @@ Open your browser and navigate to:
 https://<your-rhel-ip>:9090
 ```
 
-Log in with your RHEL system credentials. Click on "Image Builder" in the left navigation panel.
+Log in as the root user, or as a user with the required Image Builder privileges. Click on "Image Builder" in the web console.
 
 ## Creating a Blueprint via the Web UI
 
 1. Click "Create Blueprint"
 2. Enter a name (e.g., "database-server") and description
-3. In the packages tab, search for and add packages:
+3. In the packages page, search for and add packages:
    - postgresql-server
    - postgresql-contrib
    - vim-enhanced
    - tmux
-4. Click "Create" to save the blueprint
+4. Step through the optional customization pages
+5. Review the blueprint and click "Create" to save it
 
 ## Adding Customizations
 
@@ -74,16 +81,20 @@ Click on your blueprint name, then "Customizations":
 
 The Images tab shows build progress. Once the build completes:
 
-1. Click the download icon next to the completed image
+1. Open the node options menu next to the completed image and select "Download image"
 2. The image file downloads to your browser
 
 ## Comparing CLI and Web Console
 
-Both methods produce identical images. The CLI is better for:
+For the same blueprint and output type, both methods use the same image-building service. The CLI is better for:
 
 ```bash
 # Automation - script image builds
+# RHEL 8 and 9
 composer-cli compose start my-blueprint qcow2
+
+# RHEL 10
+image-builder build qcow2 --blueprint my-blueprint
 
 # CI/CD pipelines
 # Version-controlled blueprint files (TOML format)
@@ -94,4 +105,4 @@ The web console is better for:
 - Interactive exploration of available packages
 - Quick one-off image builds
 
-Both approaches use the same osbuild-composer backend, so blueprints created in one are visible in the other.
+On RHEL 8 and 9, both approaches use the same osbuild-composer backend, so blueprints created in one are visible in the other. On RHEL 10, both approaches use the Image Builder service and the `image-builder` CLI.
