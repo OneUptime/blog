@@ -28,7 +28,7 @@ cyclictest --help | head -5
 # Requires root for real-time scheduling priorities
 sudo cyclictest --mlockall \
   --threads=4 \
-  --priority=99 \
+  --prio=99 \
   --interval=1000 \
   --distance=0 \
   --duration=60
@@ -50,7 +50,7 @@ sudo cyclictest --mlockall \
 sudo cyclictest --mlockall \
   --threads=4 \
   --affinity=2-5 \
-  --priority=99 \
+  --prio=99 \
   --interval=1000 \
   --duration=300
 ```
@@ -62,7 +62,7 @@ sudo cyclictest --mlockall \
 sudo cyclictest --mlockall \
   --threads=1 \
   --affinity=2 \
-  --priority=99 \
+  --prio=99 \
   --interval=1000 \
   --loops=100000 \
   --histogram=1000 > /tmp/cyclictest-histogram.txt
@@ -86,7 +86,7 @@ sudo taskset -c 0-1 stress-ng --cpu 2 --vm 2 --vm-bytes 512M --timeout 300s &
 sudo cyclictest --mlockall \
   --threads=4 \
   --affinity=2-5 \
-  --priority=99 \
+  --prio=99 \
   --interval=1000 \
   --duration=300
 ```
@@ -97,7 +97,7 @@ Key metrics to evaluate:
 
 - **Max latency** - The worst-case latency observed. For a well-tuned RHEL RT system, this should be under 50 microseconds
 - **Average latency** - Typically in the single-digit microsecond range on isolated CPUs
-- **99th percentile** - Useful for understanding the latency distribution tail
+- **99th percentile** - Useful for understanding the latency distribution tail when calculated from histogram or verbose output
 
 ```bash
 # Compare results between the standard and RT kernel
@@ -113,7 +113,7 @@ Key metrics to evaluate:
 sudo cyclictest --mlockall \
   --threads=4 \
   --affinity=2-5 \
-  --priority=99 \
+  --prio=99 \
   --interval=1000 \
   --duration=600 2>&1 | tee /var/log/cyclictest-$(date +%Y%m%d).log
 ```
