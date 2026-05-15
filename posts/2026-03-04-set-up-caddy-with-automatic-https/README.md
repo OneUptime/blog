@@ -73,7 +73,7 @@ Wildcard certificates require DNS validation. Install the DNS provider plugin:
 caddy add-package github.com/caddy-dns/cloudflare
 ```
 
-## Step 5: Internal HTTPS (Self-Signed)
+## Step 5: Internal HTTPS (Local CA)
 
 For internal services that do not have public DNS:
 
@@ -84,13 +84,13 @@ https://internal.local {
 }
 ```
 
-Caddy generates a self-signed certificate trusted by the local CA.
+Caddy generates a locally trusted certificate signed by its internal CA. Clients must trust Caddy's root CA certificate to avoid certificate warnings.
 
 ## Step 6: Verify Certificates
 
 ```bash
 curl -vI https://example.com 2>&1 | grep -E "issuer|expire"
-caddy trust   # Trust Caddy's root CA locally
+sudo caddy trust   # Install Caddy's local root CA in the system trust store
 ```
 
 ## Step 7: Certificate Storage
