@@ -38,9 +38,9 @@ Output:
 
 Flux controllers add the `finalizers.fluxcd.io` finalizer to the resources they manage. This finalizer is added automatically when the resource is created. The purpose depends on the resource type:
 
-**Kustomization**: When a Kustomization with `spec.prune: true` is deleted, the kustomize-controller uses the finalizer to garbage collect all resources listed in the Kustomization's inventory. This means deleting the Kustomization also deletes all the Kubernetes resources it manages (Deployments, Services, ConfigMaps, etc.).
+**Kustomization**: When a Kustomization is deleted, the kustomize-controller uses the finalizer to apply the configured deletion policy. With the default `MirrorPrune` policy, a Kustomization with `spec.prune: true` garbage collects resources listed in its inventory. This means deleting the Kustomization also deletes the tracked Kubernetes resources it manages (Deployments, Services, ConfigMaps, etc.), unless those resources are excluded from pruning.
 
-**HelmRelease**: When a HelmRelease is deleted, the helm-controller uses the finalizer to uninstall the Helm release from the cluster, removing all resources the chart created.
+**HelmRelease**: When a HelmRelease is deleted, the helm-controller uses the finalizer to uninstall the Helm release from the cluster, normally removing the resources associated with the release.
 
 **Source resources**: When a GitRepository, HelmRepository, or OCIRepository is deleted, the source-controller uses the finalizer to clean up stored artifacts from its local storage.
 
@@ -51,7 +51,7 @@ When you delete a Flux Kustomization, the following sequence occurs:
 1. You run `kubectl delete kustomization my-app -n flux-system`
 2. Kubernetes sets the `deletionTimestamp` on the resource
 3. The kustomize-controller detects the deletion timestamp
-4. If `spec.prune` is true, the controller deletes all resources in the inventory
+4. The controller follows `.spec.deletionPolicy`; with the default `MirrorPrune` policy and `spec.prune: true`, it deletes resources in the inventory
 5. The controller removes the `finalizers.fluxcd.io` finalizer
 6. Kubernetes removes the Kustomization resource
 
