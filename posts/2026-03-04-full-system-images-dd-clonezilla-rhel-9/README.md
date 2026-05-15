@@ -8,15 +8,15 @@ Description: Create full disk images and clones of RHEL systems using dd for raw
 
 ---
 
-Sometimes you need a complete disk image, not just file backups. dd creates byte-for-byte copies of entire disks, while Clonezilla adds intelligence by only copying used blocks. Both have their place in a backup strategy.
+Sometimes you need a complete disk image, not just file backups. dd creates byte-for-byte copies of entire disks, while Clonezilla adds intelligence by only copying used blocks on supported filesystems. Both have their place in a backup strategy.
 
 ## dd vs Clonezilla
 
 | Feature | dd | Clonezilla |
 |---------|---|------------|
-| Copies | Every byte | Only used blocks |
+| Copies | Every byte | Used blocks on supported filesystems |
 | Speed | Slower (copies free space) | Faster |
-| Image size | Equal to disk | Only used space |
+| Image size | Equal to disk | Usually only used space |
 | Complexity | Simple | More options |
 | Filesystem aware | No | Yes |
 
@@ -71,7 +71,7 @@ zstd -d /backup/sda-image-20260304.img.zst --stdout | sudo dd of=/dev/sda bs=64K
 
 ```bash
 #!/bin/bash
-# Use zerofree to zero unused blocks before imaging (ext4 only)
+# Use zerofree to zero unused blocks before imaging (ext2/ext3/ext4)
 # This makes compression much more effective
 
 # Unmount the filesystem first (or use from rescue/live environment)
@@ -89,7 +89,8 @@ Clonezilla runs from its own live environment:
 
 ```bash
 # Download Clonezilla live ISO
-curl -LO https://sourceforge.net/projects/clonezilla/files/clonezilla_live_stable/clonezilla-live-amd64.iso
+curl -L -o clonezilla-live-amd64.iso \
+    https://sourceforge.net/projects/clonezilla/files/clonezilla_live_stable/3.3.1-35/clonezilla-live-3.3.1-35-amd64.iso/download
 
 # Write to USB
 sudo dd if=clonezilla-live-amd64.iso of=/dev/sdc bs=4M status=progress
@@ -101,7 +102,7 @@ sudo dd if=clonezilla-live-amd64.iso of=/dev/sdc bs=4M status=progress
 2. Select "device-image" for disk to image
 3. Choose where to save the image (local disk, SSH, NFS, Samba)
 4. Select the source disk
-5. Clonezilla creates the image, copying only used blocks
+5. Clonezilla creates the image, copying only used blocks on supported filesystems
 
 ### Command-Line Clonezilla
 
@@ -132,7 +133,7 @@ For cloning to multiple machines simultaneously:
 ```bash
 # On the Clonezilla server, set up multicast cloning
 sudo drbl-ocs -b -g auto -e1 auto -e2 -r -x -j2 -sc0 -p reboot \
-    startdisk multicast_restoreparts root-img-20260304 sda2
+    startparts multicast_restore root-img-20260304 sda2
 ```
 
 ## Verifying Images
@@ -152,4 +153,4 @@ gunzip -t /backup/sda-image-20260304.img.gz
 
 ## Wrapping Up
 
-dd is the simplest imaging tool - it copies everything, byte by byte, with no dependencies or special formats. Clonezilla is smarter - it understands filesystems and only copies used blocks, resulting in smaller images and faster operations. Use dd when you need a guaranteed bit-perfect copy (forensics, disk replacement). Use Clonezilla when you need practical disk imaging for backup and deployment. Both should be run from outside the target system (live USB, rescue mode) for best results.
+dd is the simplest imaging tool - it copies everything, byte by byte, with no dependencies or special formats. Clonezilla is smarter - it understands supported filesystems and only copies used blocks, resulting in smaller images and faster operations. Use dd when you need a guaranteed bit-perfect copy (forensics, disk replacement). Use Clonezilla when you need practical disk imaging for backup and deployment. Both should be run from outside the target system (live USB, rescue mode) for best results.

@@ -19,6 +19,9 @@ dnf install -y openscap-scanner scap-security-guide
 
 # Verify the RHEL datastream is available
 ls -la /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
+
+# Create a directory for reports
+mkdir -p /var/log/compliance
 ```
 
 ## Generate a Basic HTML Report
@@ -91,10 +94,10 @@ For quick checks without opening a browser:
 ```bash
 # Get pass/fail counts from results XML
 echo "=== CIS Level 1 Summary ==="
-echo "Passed: $(grep -c 'result="pass"' /var/log/compliance/cis-l1-results.xml)"
-echo "Failed: $(grep -c 'result="fail"' /var/log/compliance/cis-l1-results.xml)"
-echo "Not Applicable: $(grep -c 'result="notapplicable"' /var/log/compliance/cis-l1-results.xml)"
-echo "Not Checked: $(grep -c 'result="notchecked"' /var/log/compliance/cis-l1-results.xml)"
+echo "Passed: $(grep -c '<[^>]*result>pass</[^>]*result>' /var/log/compliance/cis-l1-results.xml)"
+echo "Failed: $(grep -c '<[^>]*result>fail</[^>]*result>' /var/log/compliance/cis-l1-results.xml)"
+echo "Not Applicable: $(grep -c '<[^>]*result>notapplicable</[^>]*result>' /var/log/compliance/cis-l1-results.xml)"
+echo "Not Checked: $(grep -c '<[^>]*result>notchecked</[^>]*result>' /var/log/compliance/cis-l1-results.xml)"
 ```
 
 ## Create Custom Summary Reports
@@ -112,6 +115,10 @@ if [ -z "$RESULTS_FILE" ]; then
     exit 1
 fi
 
+count_results() {
+    grep -c "<[^>]*result>$1</[^>]*result>" "$RESULTS_FILE" 2>/dev/null || true
+}
+
 echo "========================================"
 echo "Compliance Summary Report"
 echo "Host: $(hostname)"
@@ -119,10 +126,14 @@ echo "Date: $(date)"
 echo "========================================"
 echo ""
 
-PASS=$(grep -c 'result="pass"' "$RESULTS_FILE" 2>/dev/null || echo 0)
-FAIL=$(grep -c 'result="fail"' "$RESULTS_FILE" 2>/dev/null || echo 0)
-NA=$(grep -c 'result="notapplicable"' "$RESULTS_FILE" 2>/dev/null || echo 0)
-NC=$(grep -c 'result="notchecked"' "$RESULTS_FILE" 2>/dev/null || echo 0)
+PASS=$(count_results pass)
+FAIL=$(count_results fail)
+NA=$(count_results notapplicable)
+NC=$(count_results notchecked)
+PASS=${PASS:-0}
+FAIL=${FAIL:-0}
+NA=${NA:-0}
+NC=${NC:-0}
 TOTAL=$((PASS + FAIL + NA + NC))
 
 echo "Total Rules: $TOTAL"
@@ -132,19 +143,25 @@ echo "N/A:         $NA"
 echo "Not Checked: $NC"
 echo ""
 
-if [ "$TOTAL" -gt 0 ]; then
+if [ $((PASS + FAIL)) -gt 0 ]; then
     SCORE=$(( (PASS * 100) / (PASS + FAIL) ))
     echo "Compliance Score: ${SCORE}%"
 fi
 
 echo ""
 echo "========================================"
-echo "Failed Rules:"
+echo "Failed Rule IDs:"
 echo "========================================"
 
-# Extract failed rule titles from the results
-oscap xccdf eval --profile "" "$RESULTS_FILE" 2>/dev/null | grep -B1 "fail" | grep "Title" || \
-    echo "(Run oscap to list specific failures)"
+# Extract failed rule IDs from the results
+awk '
+/<[^>]*rule-result([ >]|$)/ { in_rule=1; id="" }
+in_rule && match($0, /idref="[^"]+"/) { id=substr($0, RSTART+7, RLENGTH-8) }
+in_rule && /<[^>]*result>fail<\/[^>]*result>/ {
+    if (id != "") print id
+}
+/<\/[^>]*rule-result>/ { in_rule=0 }
+' "$RESULTS_FILE"
 SCRIPT
 chmod +x /usr/local/bin/compliance-summary.sh
 ```
@@ -162,6 +179,10 @@ HOSTNAME=$(hostname -f)
 
 mkdir -p "$REPORT_DIR"
 
+count_results() {
+    grep -c "<[^>]*result>$1</[^>]*result>" "${REPORT_DIR}/cis-${DATE}.xml" 2>/dev/null || true
+}
+
 # Run the scan
 oscap xccdf eval \
   --profile xccdf_org.ssgproject.content_profile_cis_server_l1 \
@@ -170,8 +191,10 @@ oscap xccdf eval \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml 2>/dev/null || true
 
 # Calculate scores
-PASS=$(grep -c 'result="pass"' "${REPORT_DIR}/cis-${DATE}.xml")
-FAIL=$(grep -c 'result="fail"' "${REPORT_DIR}/cis-${DATE}.xml")
+PASS=$(count_results pass)
+FAIL=$(count_results fail)
+PASS=${PASS:-0}
+FAIL=${FAIL:-0}
 
 # Send email summary
 cat << MAIL | mail -s "CIS Compliance Report - ${HOSTNAME}" sysadmin@example.com
@@ -204,9 +227,10 @@ Track compliance improvement by comparing reports:
 # Compare two scans to see what changed
 echo "=== Compliance Trend ==="
 for f in /var/log/compliance/cis-*.xml; do
+    [ -e "$f" ] || continue
     DATE=$(basename "$f" | sed 's/cis-//' | sed 's/.xml//')
-    PASS=$(grep -c 'result="pass"' "$f" 2>/dev/null)
-    FAIL=$(grep -c 'result="fail"' "$f" 2>/dev/null)
+    PASS=$(grep -c '<[^>]*result>pass</[^>]*result>' "$f" 2>/dev/null)
+    FAIL=$(grep -c '<[^>]*result>fail</[^>]*result>' "$f" 2>/dev/null)
     echo "$DATE: ${PASS} passed, ${FAIL} failed"
 done
 ```
