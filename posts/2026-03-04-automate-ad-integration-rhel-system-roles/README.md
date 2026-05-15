@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Active Directory, Ansible, System Roles, Linux
 
-Description: A practical guide to automating Active Directory domain joins and configuration on RHEL using RHEL System Roles and Ansible, covering the ad_integration and sssd roles.
+Description: A practical guide to automating Active Directory domain joins and configuration on RHEL using RHEL System Roles and Ansible, covering the ad_integration role, SSSD settings, and timesync.
 
 ---
 
@@ -34,10 +34,10 @@ On your Ansible control node:
 sudo dnf install rhel-system-roles -y
 
 # Verify installation
-ls /usr/share/ansible/roles/ | grep -i ad
+ansible-galaxy collection list redhat.rhel_system_roles
 ```
 
-The AD integration role is located at `/usr/share/ansible/roles/rhel-system-roles.ad_integration/`.
+The AD integration role is located in the `redhat.rhel_system_roles` collection, with role files under `/usr/share/ansible/collections/ansible_collections/redhat/rhel_system_roles/roles/ad_integration/`.
 
 ## Step 2 - Set Up the Inventory
 
@@ -76,10 +76,10 @@ Create a playbook that uses the ad_integration role to join systems to AD.
     ad_integration_user: Administrator
     ad_integration_join_to_dc: dc1.example.com
     ad_integration_manage_dns: false
-    ad_integration_timesync: true
+    ad_integration_timesync_source: dc1.example.com
 
   roles:
-    - rhel-system-roles.ad_integration
+    - redhat.rhel_system_roles.ad_integration
 ```
 
 ## Step 4 - Store the AD Password Securely
@@ -123,17 +123,21 @@ After joining the domain, configure SSSD settings consistently across all system
     ad_integration_password: "{{ ad_admin_password }}"
     ad_integration_user: Administrator
     ad_integration_manage_dns: false
+    ad_integration_sssd_custom_settings:
+      - key: access_provider
+        value: ad
+      - key: cache_credentials
+        value: "True"
+      - key: use_fully_qualified_names
+        value: "False"
+      - key: fallback_homedir
+        value: /home/%u
+      - key: default_shell
+        value: /bin/bash
+      - key: ad_gpo_access_control
+        value: permissive
 
   tasks:
-    - name: Configure SSSD settings
-      ansible.builtin.template:
-        src: sssd.conf.j2
-        dest: /etc/sssd/sssd.conf
-        owner: root
-        group: root
-        mode: '0600'
-      notify: restart sssd
-
     - name: Enable mkhomedir
       ansible.builtin.command: authselect enable-feature with-mkhomedir
       changed_when: true
@@ -144,28 +148,14 @@ After joining the domain, configure SSSD settings consistently across all system
         enabled: true
         state: started
 
-  handlers:
-    - name: restart sssd
-      ansible.builtin.systemd:
-        name: sssd
-        state: restarted
-
   roles:
-    - rhel-system-roles.ad_integration
+    - redhat.rhel_system_roles.ad_integration
 ```
 
-Create the SSSD template:
+The role writes these settings into the SSSD domain section:
 
 ```ini
-# sssd.conf.j2
-[sssd]
-domains = {{ ad_integration_realm | lower }}
-services = nss, pam, ssh, sudo
-config_file_version = 2
-
 [domain/{{ ad_integration_realm | lower }}]
-id_provider = ad
-auth_provider = ad
 access_provider = ad
 cache_credentials = True
 use_fully_qualified_names = False
@@ -194,7 +184,7 @@ Limit which AD users and groups can log in to the Linux systems.
     - name: Configure sudo for AD admin group
       ansible.builtin.copy:
         dest: /etc/sudoers.d/ad-admins
-        content: '%linux\ admins ALL=(ALL) ALL'
+        content: "%linux\\ admins ALL=(ALL) ALL\n"
         mode: '0440'
         owner: root
         group: root
@@ -220,7 +210,7 @@ Time synchronization is critical for Kerberos. Use the timesync role to ensure a
         iburst: true
 
   roles:
-    - rhel-system-roles.timesync
+    - redhat.rhel_system_roles.timesync
 ```
 
 ## Step 9 - Verify the Configuration
@@ -245,9 +235,9 @@ Create a verification playbook to check that everything is working.
         var: realm_output.stdout_lines
 
     - name: Check SSSD status
-      ansible.builtin.systemd:
-        name: sssd
+      ansible.builtin.command: systemctl is-active sssd
       register: sssd_status
+      changed_when: false
 
     - name: Verify AD user resolution
       ansible.builtin.command: id administrator@example.com
@@ -280,13 +270,14 @@ Here is a combined playbook that handles the full workflow:
     ad_integration_realm: EXAMPLE.COM
     ad_integration_password: "{{ ad_admin_password }}"
     ad_integration_user: Administrator
+    ad_integration_timesync_source: dc1.example.com
     timesync_ntp_servers:
       - hostname: dc1.example.com
         iburst: true
 
   roles:
-    - rhel-system-roles.timesync
-    - rhel-system-roles.ad_integration
+    - redhat.rhel_system_roles.timesync
+    - redhat.rhel_system_roles.ad_integration
 
   tasks:
     - name: Enable mkhomedir
@@ -306,8 +297,10 @@ Here is a combined playbook that handles the full workflow:
     - name: Configure sudo for AD admins
       ansible.builtin.copy:
         dest: /etc/sudoers.d/ad-admins
-        content: '%linux\ admins ALL=(ALL) ALL'
+        content: "%linux\\ admins ALL=(ALL) ALL\n"
         mode: '0440'
+        owner: root
+        group: root
         validate: 'visudo -cf %s'
 ```
 
