@@ -23,11 +23,11 @@ sudo dnf install httpd
 sudo apt install apache2
 ```
 
-RPM packages are the standard for most enterprise software vendors. SAP, Oracle, and IBM certify their products on RHEL first.
+RPM packages are widely used by enterprise software vendors, and many ISVs certify their products on RHEL.
 
 ## Support and Lifecycle
 
-RHEL provides 10 years of full support plus up to 4 years of Extended Life Support (ELS) per major release. Ubuntu LTS releases get 5 years of free support, with 10 years available through Ubuntu Pro.
+RHEL provides a 10-year life cycle across full support and maintenance support phases for each major release, with optional extended life cycle offerings for eligible releases. Ubuntu LTS releases get 5 years of standard support, with expanded security maintenance available through Ubuntu Pro.
 
 ```bash
 # Check RHEL release and support status
@@ -36,7 +36,8 @@ subscription-manager list --consumed
 
 # Check Ubuntu release and support status
 lsb_release -a
-ubuntu-support-status
+pro status
+pro security-status
 ```
 
 ## Security and Compliance
@@ -73,10 +74,14 @@ Many enterprises run both. A common pattern is RHEL for database and application
 
 ```bash
 # Check which distro you are running in automation scripts
-if [ -f /etc/redhat-release ]; then
+if [ -r /etc/os-release ]; then
+    . /etc/os-release
+fi
+
+if [ "${ID:-}" = "rhel" ] || [[ " ${ID_LIKE:-} " == *" rhel "* ]] || [[ " ${ID_LIKE:-} " == *" fedora "* ]]; then
     echo "RHEL-based system"
     PKG_MGR="dnf"
-elif [ -f /etc/lsb-release ]; then
+elif [ "${ID:-}" = "ubuntu" ] || [ "${ID:-}" = "debian" ] || [[ " ${ID_LIKE:-} " == *" debian "* ]]; then
     echo "Ubuntu/Debian-based system"
     PKG_MGR="apt"
 fi
