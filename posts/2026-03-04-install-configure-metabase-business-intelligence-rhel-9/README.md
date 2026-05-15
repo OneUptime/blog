@@ -13,7 +13,7 @@ Metabase is an open-source business intelligence tool that lets non-technical us
 ## Prerequisites
 
 - RHEL with at least 2 GB RAM
-- Java 11 or later
+- Java 21 or later
 - PostgreSQL for the application database
 - Root or sudo access
 
@@ -30,12 +30,12 @@ graph LR
 
 ## Step 1: Install Java
 
-Metabase runs on the JVM and requires Java 11 or later.
+Metabase runs on the JVM and requires Java 21 or later.
 
 ```bash
-# Install OpenJDK 17
+# Install OpenJDK 21
 
-sudo dnf install -y java-17-openjdk java-17-openjdk-devel
+sudo dnf install -y java-21-openjdk
 
 # Verify the installation
 java -version
@@ -47,7 +47,7 @@ By default, Metabase uses an embedded H2 database, but PostgreSQL is strongly re
 
 ```bash
 # Install PostgreSQL
-sudo dnf install -y postgresql-server postgresql
+sudo dnf module install -y postgresql:16/server
 sudo postgresql-setup --initdb
 sudo systemctl enable --now postgresql
 
@@ -68,7 +68,7 @@ sudo mkdir -p /opt/metabase
 cd /opt/metabase
 
 # Download the latest Metabase JAR file
-sudo curl -L -o metabase.jar https://downloads.metabase.com/v0.48.0/metabase.jar
+sudo curl -L -o metabase.jar https://downloads.metabase.com/latest/metabase.jar
 
 # Set ownership
 sudo chown -R metabase:metabase /opt/metabase
@@ -117,7 +117,7 @@ Type=simple
 User=metabase
 Group=metabase
 EnvironmentFile=/etc/sysconfig/metabase
-ExecStart=/usr/bin/java -jar /opt/metabase/metabase.jar
+ExecStart=/usr/bin/java --add-opens java.base/java.nio=ALL-UNNAMED -jar /opt/metabase/metabase.jar
 WorkingDirectory=/opt/metabase
 Restart=on-failure
 RestartSec=10
@@ -237,14 +237,19 @@ sudo tee /opt/metabase/backup.sh <<'EOF'
 #!/bin/bash
 # Backup script for Metabase PostgreSQL database
 
+set -euo pipefail
+
 BACKUP_DIR="/opt/metabase/backups"
 DATE=$(date +%Y%m%d_%H%M%S)
+
+# Load the Metabase database credentials
+source /etc/sysconfig/metabase
 
 # Create backup directory if it does not exist
 mkdir -p "$BACKUP_DIR"
 
 # Dump the Metabase database
-pg_dump -U metabase -h localhost metabase | gzip > "$BACKUP_DIR/metabase_${DATE}.sql.gz"
+PGPASSWORD="$MB_DB_PASS" pg_dump -U "$MB_DB_USER" -h "$MB_DB_HOST" "$MB_DB_DBNAME" | gzip > "$BACKUP_DIR/metabase_${DATE}.sql.gz"
 
 # Keep only the last 7 backups
 ls -t "$BACKUP_DIR"/metabase_*.sql.gz | tail -n +8 | xargs rm -f
