@@ -98,7 +98,7 @@ machine:
                 - 10.2.0.0/16
                 - 10.244.64.0/18
                 - 10.96.64.0/18
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
             # Azure gateway
             - publicKey: "AZURE_GATEWAY_PUBLIC_KEY"
               endpoint: 52.x.x.x:51820
@@ -107,13 +107,13 @@ machine:
                 - 10.3.0.0/16
                 - 10.244.128.0/18
                 - 10.96.128.0/18
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
   sysctls:
     net.ipv4.ip_forward: "1"
 ```
 
 ```bash
-talosctl -n 10.1.1.10 patch machineconfig --patch-file aws-gateway-wireguard.yaml
+talosctl patch machineconfig --nodes 10.1.1.10 --patch @aws-gateway-wireguard.yaml
 ```
 
 ### GCP Gateway
@@ -153,7 +153,7 @@ machine:
                 - 10.1.0.0/16
                 - 10.244.0.0/18
                 - 10.96.0.0/18
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
             # Azure gateway
             - publicKey: "AZURE_GATEWAY_PUBLIC_KEY"
               endpoint: 52.x.x.x:51820
@@ -162,7 +162,7 @@ machine:
                 - 10.3.0.0/16
                 - 10.244.128.0/18
                 - 10.96.128.0/18
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
   sysctls:
     net.ipv4.ip_forward: "1"
 ```
@@ -177,12 +177,12 @@ az network nsg rule create \
   --resource-group myResourceGroup \
   --nsg-name myNSG \
   --name AllowWireGuard \
-  --protocol udp \
-  --direction inbound \
+  --protocol Udp \
+  --direction Inbound \
   --priority 1000 \
-  --source-address-prefix '*' \
-  --destination-port-range 51820 \
-  --access allow
+  --source-address-prefixes '*' \
+  --destination-port-ranges 51820 \
+  --access Allow
 ```
 
 ## Configuring Routes on Non-Gateway Nodes
@@ -194,23 +194,25 @@ All non-gateway nodes in each cloud need routes to send cross-cloud traffic to t
 # Apply to all non-gateway nodes in AWS
 machine:
   network:
-    routes:
-      # Route GCP traffic through local WireGuard gateway
-      - network: 10.2.0.0/16
-        gateway: 10.1.1.10
-      - network: 10.244.64.0/18
-        gateway: 10.1.1.10
-      # Route Azure traffic through local WireGuard gateway
-      - network: 10.3.0.0/16
-        gateway: 10.1.1.10
-      - network: 10.244.128.0/18
-        gateway: 10.1.1.10
+    interfaces:
+      - interface: eth0
+        routes:
+          # Route GCP traffic through local WireGuard gateway
+          - network: 10.2.0.0/16
+            gateway: 10.1.1.10
+          - network: 10.244.64.0/18
+            gateway: 10.1.1.10
+          # Route Azure traffic through local WireGuard gateway
+          - network: 10.3.0.0/16
+            gateway: 10.1.1.10
+          - network: 10.244.128.0/18
+            gateway: 10.1.1.10
 ```
 
 ```bash
 # Apply routes to all AWS worker nodes
 for node in 10.1.1.11 10.1.1.12 10.1.1.13; do
-  talosctl -n $node patch machineconfig --patch-file routes-for-aws-nodes.yaml
+  talosctl patch machineconfig --nodes $node --patch @routes-for-aws-nodes.yaml
 done
 ```
 
@@ -228,6 +230,7 @@ ipam:
   mode: kubernetes
 routingMode: native
 autoDirectNodeRoutes: true
+ipv4NativeRoutingCIDR: 10.244.0.0/16
 # Enable cluster mesh for cross-cluster service discovery
 clustermesh:
   useAPIServer: true
@@ -240,15 +243,17 @@ With cluster mesh, services in one cloud can discover and communicate with servi
 Inter-cloud traffic goes over the public internet, so latency is higher than within a single cloud region. WireGuard adds minimal overhead on top of this, but you should be aware of the baseline latency between your cloud regions.
 
 ```bash
-# Measure baseline latency between clouds
-# From AWS gateway to GCP gateway through the WireGuard tunnel
-talosctl -n 10.1.1.10 ping 10.10.0.2
+# Measure baseline latency between clouds from a Talos debug container
+talosctl -n 10.1.1.10 debug docker.io/library/alpine:latest --args /bin/sh
+
+# From the debug shell, ping the GCP gateway through the WireGuard tunnel
+/ # ping -c 4 10.10.0.2
 
 # Compare with latency over the public internet (without WireGuard)
-talosctl -n 10.1.1.10 ping 35.x.x.x
+/ # ping -c 4 35.x.x.x
 ```
 
-The WireGuard encryption adds about 0.1-0.5ms of latency per packet on modern hardware. The internet latency between clouds is typically 10-100ms depending on the regions, so the WireGuard overhead is negligible.
+WireGuard encryption overhead is usually small on modern hardware, but the exact impact depends on CPU, MTU, packet size, and throughput. The internet latency between clouds is typically much larger than the tunnel overhead, so measure both paths in your target regions before sizing production workloads.
 
 For bandwidth-intensive cross-cloud workloads, consider the data transfer costs. Cloud providers charge for egress traffic, and all WireGuard tunnel traffic counts as egress. Design your applications to minimize cross-cloud data transfer where possible.
 
@@ -270,7 +275,7 @@ aws ec2 associate-address \
 
 ## Monitoring the Multi-Cloud VPN
 
-Monitor the WireGuard tunnels to detect cross-cloud connectivity issues early.
+Monitor the WireGuard tunnels to detect cross-cloud connectivity issues early. For example, if you use `prometheus_wireguard_exporter` with latest-handshake delay enabled, you can alert on stale handshakes.
 
 ```yaml
 # Prometheus alert for WireGuard tunnel down
@@ -284,7 +289,7 @@ spec:
       rules:
         - alert: WireGuardTunnelDown
           # Alert if no handshake for more than 5 minutes
-          expr: time() - wireguard_latest_handshake_seconds > 300
+          expr: wireguard_latest_handshake_delay_seconds > 300
           for: 2m
           labels:
             severity: critical
