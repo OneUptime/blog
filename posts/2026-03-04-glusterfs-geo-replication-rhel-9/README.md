@@ -8,6 +8,8 @@ Description: Set up GlusterFS geo-replication on RHEL to asynchronously replicat
 
 ---
 
+> **Support note:** Red Hat Gluster Storage reached end of life on December 31, 2024, and Red Hat Gluster Storage 3.5 was the final supported series. These commands are accurate for legacy Red Hat Gluster Storage deployments and upstream/community GlusterFS, but they are not a supported new Red Hat Gluster Storage deployment on RHEL 9.
+
 Geo-replication in GlusterFS provides asynchronous replication between two GlusterFS volumes that can be in different geographic locations. Unlike the synchronous replication in replicated volumes (which requires low-latency links), geo-replication works over WAN connections and is designed for disaster recovery scenarios.
 
 ## How Geo-Replication Works
@@ -62,17 +64,17 @@ This command:
 Before starting, review and set options:
 
 ```bash
-# Set the sync interval (seconds between changelog checks)
+# View all configured options
 sudo gluster volume geo-replication mastervol \
-    slavenode::slavevol config checkpoint now
+    slavenode::slavevol config
 
-# Set changelog mode (default is changelog, alternatives: rsync, tarssh)
+# Set the file synchronization method (default is rsync; alternative: tarssh)
 sudo gluster volume geo-replication mastervol \
-    slavenode::slavevol config use-tarssh true
+    slavenode::slavevol config sync_method tarssh
 
 # Set log level
 sudo gluster volume geo-replication mastervol \
-    slavenode::slavevol config log-level INFO
+    slavenode::slavevol config log_level INFO
 ```
 
 ## Step 4: Start Geo-Replication
@@ -99,9 +101,11 @@ Status output columns:
 - **Master Brick**: Which brick on the master
 - **Slave**: The slave connection
 - **Status**: Active, Passive, Faulty, Stopped
-- **Crawl Status**: Changelog, Hybrid, History
-- **Files Synced**: Count of synced files
-- **Files Pending**: Count of files waiting to sync
+- **Crawl Status**: Changelog Crawl, Hybrid Crawl, History Crawl
+- **Entry**: Count of pending entry operations
+- **Data**: Count of pending data operations
+- **Meta**: Count of pending metadata operations
+- **Failures**: Count of synchronization failures
 
 ## Checkpoint Verification
 
@@ -117,7 +121,7 @@ sudo gluster volume geo-replication mastervol \
     slavenode::slavevol status detail
 ```
 
-Look for the "Checkpoint Status" field. "Completed" means all data up to the checkpoint timestamp has been replicated.
+Look for the "Checkpoint Completed" field. "Yes" means all data up to the checkpoint timestamp has been replicated.
 
 ## Managing Geo-Replication
 
@@ -144,9 +148,10 @@ sudo gluster volume geo-replication mastervol \
 If the master site fails:
 
 ```bash
-# On the slave cluster, stop geo-replication
-sudo gluster volume geo-replication mastervol \
-    slavenode::slavevol stop
+# On the slave cluster, allow writes and enable change tracking for failback
+sudo gluster volume set slavevol features.read-only off
+sudo gluster volume set slavevol geo-replication.indexing on
+sudo gluster volume set slavevol changelog on
 
 # Mount the slave volume on clients
 sudo mount -t glusterfs slavenode:/slavevol /mnt/data
@@ -157,17 +162,36 @@ sudo mount -t glusterfs slavenode:/slavevol /mnt/data
 After the master site is restored:
 
 ```bash
+# Stop the original session, even if some master nodes are unavailable
+sudo gluster volume geo-replication mastervol \
+    slavenode::slavevol stop force
+
 # Reverse geo-replication: sync changes from slave back to master
 sudo gluster volume geo-replication slavevol \
-    masternode::mastervol create push-pem
+    masternode::mastervol create push-pem force
+sudo gluster volume geo-replication slavevol \
+    masternode::mastervol config special-sync-mode recover
+sudo gluster volume geo-replication slavevol \
+    masternode::mastervol config gfid-conflict-resolution false
 sudo gluster volume geo-replication slavevol \
     masternode::mastervol start
 
-# Wait for sync to complete, then reverse back
+# Stop application I/O on the slave, set a checkpoint, and wait for it to complete
+sudo gluster volume geo-replication slavevol \
+    masternode::mastervol config checkpoint now
+sudo touch /mnt/data
+sudo gluster volume geo-replication slavevol \
+    masternode::mastervol status detail
+
+# After the checkpoint completes, reverse back
 sudo gluster volume geo-replication slavevol \
     masternode::mastervol stop
 sudo gluster volume geo-replication slavevol \
     masternode::mastervol delete
+
+# Reset the failover options on the slave
+sudo gluster volume reset slavevol geo-replication.indexing force
+sudo gluster volume reset slavevol changelog
 
 # Restart original geo-replication
 sudo gluster volume geo-replication mastervol \
@@ -190,7 +214,7 @@ sudo gluster volume geo-replication mastervol \
 Common issues:
 
 - **Faulty status**: Usually SSH connectivity problems. Check `/var/log/glusterfs/geo-replication/` logs
-- **Files pending grows**: The slave may be slower or network bandwidth is limited
+- **Entry/Data/Meta pending grows**: The slave may be slower or network bandwidth is limited
 - **Changelogs not processing**: Restart the session
 
 ## Conclusion
