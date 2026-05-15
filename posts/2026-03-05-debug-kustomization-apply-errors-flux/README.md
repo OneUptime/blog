@@ -69,7 +69,7 @@ Use kubectl to get the full status with conditions:
 
 ```bash
 # Get the Kustomization status with full conditions
-kubectl get kustomization my-app -n flux-system -o jsonpath='{.status.conditions[*]}' | jq .
+kubectl get kustomization my-app -n flux-system -o json | jq '.status.conditions'
 ```
 
 If `jq` is not available, use the YAML output:
@@ -160,7 +160,9 @@ spec:
       labels:
         app: my-app
     spec:
-      containers: []
+      containers:
+        - name: my-app
+          image: ghcr.io/example/my-app:1.0.0
 ```
 
 ### Error: Namespace Not Found
