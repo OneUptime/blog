@@ -20,7 +20,7 @@ https://idm1.example.com
 
 Log in with your IdM admin credentials.
 
-If you get a certificate warning, this is because IdM uses a self-signed certificate by default. You can import the IdM CA certificate into your browser from:
+If you get a certificate warning, this is usually because the IdM web server certificate is signed by the IdM CA, which your browser may not trust yet. You can import the IdM CA certificate into your browser from:
 
 ```text
 https://idm1.example.com/ipa/config/ca.crt
@@ -35,8 +35,6 @@ For seamless single sign-on from your workstation:
 1. Navigate to `about:config`
 2. Search for `network.negotiate-auth.trusted-uris`
 3. Set the value to `.example.com`
-4. Search for `network.negotiate-auth.delegation-uris`
-5. Set the value to `.example.com`
 
 Now obtain a Kerberos ticket on your workstation:
 
@@ -127,7 +125,7 @@ The main navigation sections:
 2. Click on the global policy or a group-specific policy
 3. Modify settings:
    - Maximum lifetime (days)
-   - Minimum lifetime (days)
+   - Minimum lifetime (hours)
    - History size
    - Minimum length
    - Character classes required
@@ -141,9 +139,13 @@ The main navigation sections:
 
 ## Viewing Audit Logs
 
-1. Navigate to Identity > Users and select a user
-2. The "Account" tab shows last login times
-3. Use the search bar to find specific actions
+The IdM web UI search bar finds IdM objects, but it is not an audit log viewer. To audit IdM API operations on RHEL 9.5 and later, query the systemd journal on the IdM server:
+
+```bash
+sudo journalctl -g IPA.API
+```
+
+For broader LDAP audit trails, enable and review the Directory Server audit log on the IdM server.
 
 ## Bulk Operations
 
@@ -185,10 +187,10 @@ sudo firewall-cmd --list-services
 
 ### Session Timeout
 
-If sessions expire too quickly, adjust the session timeout in:
+Kerberos web UI sessions expire with the user's Kerberos ticket. The default ticket lifetime is 24 hours. To change the global ticket lifetime, update the IdM Kerberos ticket policy:
 
 ```bash
-sudo vi /etc/httpd/conf.d/ipa.conf
+ipa krbtpolicy-mod --maxlife=86400
 ```
 
 ### Kerberos SSO Not Working
