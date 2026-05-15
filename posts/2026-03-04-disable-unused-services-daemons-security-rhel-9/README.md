@@ -31,7 +31,7 @@ flowchart TD
     A[List All Services] --> B{Service needed?}
     B -->|Yes| C[Keep enabled]
     B -->|No| D{Is it listening on a port?}
-    D -->|Yes| E[High priority - disable immediately]
+    D -->|Yes| E[High priority - investigate first]
     D -->|No| F[Lower priority - disable when convenient]
 ```
 
@@ -106,7 +106,7 @@ systemctl unmask bluetooth.service
 
 ## Identify Services Listening on Ports
 
-This is the most important check. Any service listening on a port is reachable over the network:
+This is the most important check. Any service listening on a port may be reachable over the network, depending on its bind address and firewall rules:
 
 ```bash
 # Show all listening TCP sockets with process info
@@ -124,15 +124,15 @@ A well-hardened server should only have a handful of listening services, typical
 
 ## Disable Unnecessary Timers
 
-Systemd timers are the modern replacement for cron jobs. Some default timers may not be needed:
+Systemd timers are the modern alternative to cron jobs for many scheduled system tasks. Some default timers may not be needed:
 
 ```bash
 # List all active timers
 systemctl list-timers --all
 
 # Disable timers you do not need
-# Example: disable the man-db cache update timer
-systemctl disable --now man-db-cache-update.timer
+# Example: disable automatic DNF metadata refresh if you update metadata manually
+systemctl disable --now dnf-makecache.timer
 ```
 
 ## Disable Unnecessary Socket Units
@@ -164,7 +164,7 @@ For a typical RHEL server, these are the services you generally want to keep:
 # - crond.service        (scheduled tasks)
 
 # Verify these are enabled
-for svc in sshd firewalld chronyd rsyslog auditd crond; do
+for svc in sshd firewalld chronyd rsyslog auditd NetworkManager crond; do
     echo "$svc: $(systemctl is-enabled $svc.service 2>/dev/null)"
 done
 ```
@@ -181,7 +181,7 @@ cat > /usr/local/bin/service-audit.sh << 'SCRIPT'
 APPROVED="auditd chronyd crond dbus-broker firewalld NetworkManager rsyslog sshd systemd-journald"
 
 echo "=== Services enabled but not in approved list ==="
-for svc in $(systemctl list-unit-files --state=enabled --type=service --no-legend | awk '{print $1}' | sed 's/.service//'); do
+for svc in $(systemctl list-unit-files --state=enabled --type=service --no-legend | awk '{print $1}' | sed 's/\.service$//'); do
     if ! echo "$APPROVED" | grep -qw "$svc"; then
         echo "  REVIEW: $svc"
     fi
@@ -189,7 +189,7 @@ done
 
 echo ""
 echo "=== Unexpected listening ports ==="
-ss -tlnp | grep -v -E ":(22|323) " | tail -n +2
+ss -tulnp | awk 'NR > 1 && $5 !~ /:(22|323)$/ { print }'
 SCRIPT
 chmod +x /usr/local/bin/service-audit.sh
 ```
