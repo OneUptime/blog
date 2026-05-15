@@ -86,11 +86,14 @@ iperf3 -s
 iperf3 -c server.example.com -t 30
 
 # Test with simulated packet loss to see BBR's advantage
-# On the server, add artificial packet loss
-sudo tc qdisc add dev ens192 root netem loss 1%
+# On a test host/interface in the direction carrying the iperf3 data, add artificial packet loss
+sudo tc qdisc replace dev ens192 root netem loss 1%
 
-# BBR handles 1% packet loss much better than CUBIC
-# CUBIC throughput drops dramatically, BBR stays near full speed
+# BBR can handle 1% packet loss much better than CUBIC
+# CUBIC throughput often drops dramatically, while BBR may maintain higher throughput
+
+# Restore fq after testing
+sudo tc qdisc replace dev ens192 root fq
 ```
 
 ## Monitoring BBR
@@ -121,4 +124,4 @@ sudo sysctl -w net.ipv4.tcp_congestion_control=cubic
 sudo sysctl -w net.core.default_qdisc=fq_codel
 ```
 
-BBR is safe for production use and is widely deployed on Google's infrastructure. It is included in the RHEL kernel and requires no additional packages.
+BBR is widely deployed on Google's infrastructure and is supported in RHEL 8 and later RHEL releases with kernels that include `tcp_bbr`. Validate it with your workload before enabling it broadly in production.
