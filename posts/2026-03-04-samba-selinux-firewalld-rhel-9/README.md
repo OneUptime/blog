@@ -26,19 +26,17 @@ sudo firewall-cmd --reload
 sudo firewall-cmd --list-services
 ```
 
-The "samba" service opens ports 139/TCP (NetBIOS) and 445/TCP (SMB over TCP).
+The "samba" service opens ports 137/UDP and 138/UDP (NetBIOS name and datagram services), 139/TCP (NetBIOS session service), and 445/TCP (SMB over TCP).
 
 ### Restricting Samba to Specific Networks
 
 ```bash
 # Allow Samba only from a specific subnet
+sudo firewall-cmd --permanent --remove-service=samba
 sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.1.0/24" service name="samba" accept'
 sudo firewall-cmd --reload
 
-# If you also need NetBIOS name resolution
-sudo firewall-cmd --permanent --add-port=137/udp
-sudo firewall-cmd --permanent --add-port=138/udp
-sudo firewall-cmd --reload
+# The samba service includes NetBIOS ports, so no separate 137/udp or 138/udp rules are needed.
 ```
 
 ### Using a Dedicated Zone
@@ -56,21 +54,23 @@ sudo firewall-cmd --zone=samba-clients --list-all
 
 ## SELinux Configuration
 
-### Essential SELinux Booleans
+### Common SELinux Booleans
 
 ```bash
 # Allow Samba to export user home directories
 sudo setsebool -P samba_enable_home_dirs on
 
-# Allow Samba to share any file/directory on the system
+# Allow Samba to share files and directories that are not labeled samba_share_t with read/write access
 sudo setsebool -P samba_export_all_rw on
 
-# For read-only exports
+# For read-only access to files and directories that are not labeled samba_share_t
 sudo setsebool -P samba_export_all_ro on
 
-# Allow Samba to run scripts
+# Allow Samba to run unconfined scripts from /var/lib/samba/scripts/
 sudo setsebool -P samba_run_unconfined on
 ```
+
+For normal shares, prefer labeling the shared directory with `samba_share_t` instead of enabling the broad `samba_export_all_rw` or `samba_export_all_ro` booleans.
 
 View all Samba-related booleans:
 
@@ -204,7 +204,7 @@ sudo -u smbuser touch /srv/samba/shared/test
 | Connection refused | Firewalld blocking | `firewall-cmd --add-service=samba` |
 | Permission denied (SELinux) | Wrong file context | `semanage fcontext` + `restorecon` |
 | Permission denied (Linux) | Filesystem permissions | `chmod`/`chown` on share directory |
-| Can browse but not write | Missing write boolean | `setsebool -P samba_export_all_rw on` |
+| Can browse but not write | Share is read-only or lacks write permission | Set `read only = no` and verify Linux permissions |
 
 ## Wrap-Up
 
