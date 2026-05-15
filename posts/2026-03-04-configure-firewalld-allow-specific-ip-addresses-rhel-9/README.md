@@ -115,6 +115,7 @@ A database server that should only be accessible from specific sources:
 ```bash
 # Remove all default services from public zone
 firewall-cmd --zone=public --remove-service=ssh --permanent
+firewall-cmd --zone=public --remove-service=cockpit --permanent
 firewall-cmd --zone=public --remove-service=dhcpv6-client --permanent
 
 # Allow MySQL from app servers only
