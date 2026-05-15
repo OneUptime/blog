@@ -99,9 +99,10 @@ sudo systemctl stop docker
 sudo mv /var/lib/docker /var/lib/docker.bak
 
 # Mount a dedicated filesystem
-sudo mkfs.xfs /dev/sdb
+sudo mkfs.xfs -n ftype=1 /dev/sdb
 sudo mkdir /var/lib/docker
 sudo mount /dev/sdb /var/lib/docker
+sudo cp -au /var/lib/docker.bak/. /var/lib/docker/
 
 # Add to /etc/fstab for persistence
 echo "/dev/sdb /var/lib/docker xfs defaults 0 0" | sudo tee -a /etc/fstab
@@ -113,9 +114,9 @@ sudo systemctl start docker
 
 ```bash
 # Docker manages iptables rules automatically
-# If using firewalld, add the docker zone
-sudo firewall-cmd --permanent --zone=trusted --add-interface=docker0
-sudo firewall-cmd --reload
+# If using firewalld, Docker creates a docker zone for bridge interfaces
+sudo firewall-cmd --get-zone-of-interface=docker0
+sudo firewall-cmd --zone=docker --list-all
 ```
 
 ## Verifying the Installation
