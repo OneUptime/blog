@@ -42,11 +42,11 @@ sudo systemctl start httpd
 
 ```bash
 # Check if port 80 or 443 is already in use
-sudo ss -tlnp | grep -E ":80|:443"
+sudo ss -tlnp | grep -E ":(80|443)\b"
 
 # If another process is using the port
 # Find and stop the conflicting service
-sudo kill <PID>
+sudo systemctl stop <service-name>
 # Or change Apache to a different port
 
 # Retry starting httpd
@@ -104,8 +104,7 @@ ls -la /var/log/httpd/
 ls -la /var/www/html/
 
 # Fix permissions if needed
-sudo chown -R apache:apache /var/www/html/
-sudo chmod 755 /var/www/html/
+sudo chmod -R a+rX /var/www/html/
 ```
 
 Always check `httpd -t` first. Syntax errors are the most common cause of httpd failing to start, and the error message tells you exactly which file and line to fix.
