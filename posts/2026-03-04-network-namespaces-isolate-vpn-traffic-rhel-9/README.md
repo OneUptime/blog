@@ -76,11 +76,15 @@ sudo ip netns exec vpn ip route add default via 10.200.0.1
 sudo sysctl -w net.ipv4.ip_forward=1
 
 # NAT traffic from the namespace
-sudo iptables -t nat -A POSTROUTING -s 10.200.0.0/24 -o ens192 -j MASQUERADE
+sudo nft add table ip vpn_nat
+sudo nft 'add chain ip vpn_nat postrouting { type nat hook postrouting priority srcnat; policy accept; }'
+sudo nft 'add rule ip vpn_nat postrouting ip saddr 10.200.0.0/24 oifname "ens192" masquerade'
 
 # Allow forwarding
-sudo iptables -A FORWARD -i veth-host -o ens192 -j ACCEPT
-sudo iptables -A FORWARD -i ens192 -o veth-host -m state --state RELATED,ESTABLISHED -j ACCEPT
+sudo nft add table inet vpn_filter
+sudo nft 'add chain inet vpn_filter forward { type filter hook forward priority filter; policy accept; }'
+sudo nft 'add rule inet vpn_filter forward iifname "veth-host" oifname "ens192" accept'
+sudo nft 'add rule inet vpn_filter forward iifname "ens192" oifname "veth-host" ct state related,established accept'
 ```
 
 ### Step 4: Set Up DNS in the Namespace
@@ -106,7 +110,7 @@ Or set it up manually:
 sudo ip netns exec vpn ip link add wg0 type wireguard
 
 # Configure it
-sudo ip netns exec vpn wg setconf wg0 /etc/wireguard/wg0.conf
+sudo wg-quick strip /etc/wireguard/wg0.conf | sudo ip netns exec vpn wg setconf wg0 /dev/stdin
 sudo ip netns exec vpn ip addr add 10.0.0.2/24 dev wg0
 sudo ip netns exec vpn ip link set wg0 up
 
@@ -192,7 +196,8 @@ sudo ip netns exec vpn wg-quick down wg0
 sudo ip netns del vpn
 
 # Remove NAT rules
-sudo iptables -t nat -D POSTROUTING -s 10.200.0.0/24 -o ens192 -j MASQUERADE
+sudo nft delete table ip vpn_nat
+sudo nft delete table inet vpn_filter
 
 # Remove DNS config
 sudo rm -rf /etc/netns/vpn
@@ -210,7 +215,7 @@ sudo ip netns exec vpn ip route show
 ip link show veth-host
 
 # Check NAT is working
-sudo iptables -t nat -L POSTROUTING -v -n
+sudo nft list table ip vpn_nat
 ```
 
 **VPN works but DNS fails:**
