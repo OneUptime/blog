@@ -92,20 +92,21 @@ Here is the step-by-step flow of how garbage collection works during reconciliat
 flowchart TD
     A[Reconciliation Starts] --> B[Fetch latest manifests from source]
     B --> C[Build resource list from manifests]
-    C --> D[Compare with stored inventory]
-    D --> E{Resources in inventory but not in manifests?}
-    E -->|No| F[Apply manifests normally]
-    E -->|Yes| G{spec.prune enabled?}
+    C --> D[Apply current manifests]
+    D --> E[Update inventory and detect stale resources]
+    E --> F{Resources in previous inventory but not in current manifests?}
+    F -->|No| J[Run health checks]
+    F -->|Yes| G{spec.prune enabled?}
     G -->|No| H[Skip deletion]
     G -->|Yes| I[Delete orphaned resources]
-    I --> J[Update inventory]
-    F --> J
+    H --> J
+    I --> J
     J --> K[Reconciliation Complete]
 ```
 
-## Controlling Garbage Collection with Labels
+## Controlling Garbage Collection with Labels or Annotations
 
-You can prevent specific resources from being garbage collected by using the `kustomize.toolkit.fluxcd.io/prune: disabled` annotation. This is useful for resources that should persist even if they are removed from the source.
+You can prevent specific resources from being garbage collected by using the `kustomize.toolkit.fluxcd.io/prune: disabled` label or annotation. This is useful for resources that should persist even if they are removed from the source.
 
 ```yaml
 # Resource that will not be garbage collected even if removed from Git
@@ -120,7 +121,7 @@ metadata:
 
 ## Garbage Collection Order
 
-Flux deletes resources in reverse order of their apply order. This means that resources that depend on other resources are deleted first, reducing the likelihood of errors during cleanup.
+Flux deletes resources in the reverse order of its reconciliation sort order. This means that resources that depend on other resources are deleted first, reducing the likelihood of errors during cleanup.
 
 For example, if Flux manages a Namespace and a Deployment within it, the Deployment is deleted before the Namespace when both are removed from Git.
 
