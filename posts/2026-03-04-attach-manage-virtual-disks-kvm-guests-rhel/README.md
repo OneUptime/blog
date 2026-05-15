@@ -17,7 +17,8 @@ KVM virtual machines need virtual disks for storage. RHEL supports multiple disk
 
 sudo qemu-img create -f qcow2 /var/lib/libvirt/images/data-disk.qcow2 50G
 
-# Create a raw disk image (fixed size, slightly better performance)
+# Create a raw disk image (simple format, slightly better performance;
+# may be sparse unless you preallocate it)
 sudo qemu-img create -f raw /var/lib/libvirt/images/data-disk.raw 50G
 
 # Create a qcow2 disk with preallocation (best performance for qcow2)
@@ -51,7 +52,7 @@ For more control, use an XML definition:
 ```bash
 cat << 'EOF' > /tmp/disk.xml
 <disk type='file' device='disk'>
-  <driver name='qemu' type='qcow2' cache='writeback' io='native'/>
+  <driver name='qemu' type='qcow2' cache='none' io='native'/>
   <source file='/var/lib/libvirt/images/data-disk.qcow2'/>
   <target dev='vdb' bus='virtio'/>
 </disk>
@@ -80,7 +81,7 @@ sudo virsh detach-disk rhel9-vm vdb --live --config
 ## Resizing a Virtual Disk
 
 ```bash
-# Resize the disk image (increase only)
+# Resize the disk image while the VM is shut off or the disk is detached
 sudo qemu-img resize /var/lib/libvirt/images/data-disk.qcow2 +20G
 
 # Alternatively, resize through virsh (works on running VMs)
@@ -96,6 +97,8 @@ sudo virsh blockresize rhel9-vm \
 ## Converting Between Disk Formats
 
 ```bash
+# Shut down the VM or detach the disk before converting an image it uses
+
 # Convert raw to qcow2
 sudo qemu-img convert -f raw -O qcow2 \
   /var/lib/libvirt/images/disk.raw \
