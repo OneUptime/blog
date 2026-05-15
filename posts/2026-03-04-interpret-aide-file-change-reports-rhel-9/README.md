@@ -24,7 +24,7 @@ When AIDE runs a check, it returns an exit code that tells you what happened at 
 | 5 | Files added and changed |
 | 6 | Files removed and changed |
 | 7 | Files added, removed, and changed |
-| 14+ | Write error or configuration issue |
+| 14-19 | Generic error conditions such as write, argument, unimplemented function, configuration, I/O, or version errors |
 
 You can check the exit code after running AIDE:
 
@@ -91,8 +91,8 @@ Changed file entries are the most detailed. They show exactly which attributes c
 ```bash
 Changed entries:
 ---------------------------------------------------
-f   ...    .C... : /etc/ssh/sshd_config
-f >b.....   ...A. : /usr/sbin/httpd
+f =.....mc..C.... : /etc/ssh/sshd_config
+f =.pug......A.S. : /usr/sbin/httpd
 
 Detailed information about changes:
 
@@ -107,26 +107,28 @@ The change indicators use a positional format where each position represents a d
 
 ```mermaid
 flowchart LR
-    A["Position Map"] --> B["1: File type"]
-    A --> C["2: Permissions"]
-    A --> D["3: User"]
-    A --> E["4: Group"]
-    A --> F["5: Size"]
-    A --> G["6: Modification time"]
-    A --> H["7: Change time (inode)"]
-    A --> I["8: Content checksum"]
-    A --> J["9: ACL"]
-    A --> K["10: SELinux context"]
+    A["Format: YlZbpugamcinCAXSE"] --> B["Y: File type"]
+    A --> C["l: Link name"]
+    A --> D["Z: Size status"]
+    A --> E["b: Block count"]
+    A --> F["p/u/g: Permissions, user, group"]
+    A --> G["a/m/c: Access, modification, change time"]
+    A --> H["i/n: Inode, link count"]
+    A --> I["C: Checksum"]
+    A --> J["A/X/S: ACL, extended attributes, SELinux"]
+    A --> K["E: ext filesystem attributes"]
 ```
 
 The symbols at each position mean:
 
 - `.` = no change
-- Letter (like `C`, `S`, `A`) = that attribute changed
-- `>` = size increased
-- `<` = size decreased
+- Letter (like `m`, `c`, `C`, `A`, or `S`) = that attribute changed
+- `=` = size did not change
+- `>` = size increased in the size-status position
+- `<` = size decreased in the size-status position
 - `+` = attribute was added
 - `-` = attribute was removed
+- Space = attribute was not checked
 
 ## Common Change Indicators
 
@@ -134,16 +136,18 @@ Here are the most common attribute change letters:
 
 | Letter | Attribute |
 |--------|-----------|
-| `S` | Size |
-| `M` | Modification time |
-| `C` | Change time (inode change) |
-| `s` | SHA checksum |
+| `>` | Size increased |
+| `<` | Size decreased |
+| `m` | Modification time |
+| `c` | Change time (inode change) |
+| `C` | One or more checksums |
 | `p` | Permissions |
 | `u` | User ownership |
 | `g` | Group ownership |
-| `a` | ACL |
-| `A` | SELinux context |
-| `x` | Extended attributes |
+| `a` | Access time |
+| `A` | ACL |
+| `S` | SELinux context |
+| `X` | Extended attributes |
 
 ## Filtering Reports for Quick Triage
 
@@ -198,7 +202,7 @@ rpm -V httpd
 sudo dnf history info last
 ```
 
-If `rpm -V` shows the same changes as AIDE, the changes are from a package update and can be accepted.
+If the changed file belongs to a recently updated package and the current file verifies cleanly, the change usually matches the package update and can be accepted. If `rpm -V` still reports differences, treat them as local changes and verify that they match an authorized configuration change before accepting them.
 
 ## Investigating Suspicious Changes
 
@@ -218,9 +222,9 @@ ausearch -f /path/to/suspicious/file -ts recent
 rpm -V $(rpm -qf /path/to/suspicious/file)
 ```
 
-## Generating Reports in Different Formats
+## Generating Reports in Different Detail Levels
 
-AIDE can output reports in different levels of detail:
+On RHEL 9's AIDE 0.16 package, AIDE can output reports in different levels of detail:
 
 ```bash
 # Verbose report showing all details
