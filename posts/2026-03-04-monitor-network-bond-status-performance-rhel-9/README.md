@@ -100,7 +100,7 @@ For load-balancing modes (802.3ad, balance-xor, balance-rr), check that traffic 
 watch -n 2 'for i in eth0 eth1; do echo "=== $i ==="; ip -s link show $i | grep -A1 "RX:\|TX:"; done'
 ```
 
-If one slave carries all the traffic in a load-balancing mode, review your hash policy.
+If one slave carries all the traffic in a hash-based load-balancing mode such as 802.3ad or balance-xor, review your hash policy.
 
 ## Automated Monitoring Script
 
@@ -138,7 +138,7 @@ if [ "$SLAVES_UP" -lt "$EXPECTED_SLAVES" ]; then
     exit 1
 fi
 
-# Check for recent link failures
+# Check for recorded link failures
 FAILURES=$(grep "Link Failure Count" "$PROC_FILE" | awk '{sum+=$4} END {print sum}')
 if [ "$FAILURES" -gt 0 ]; then
     echo "OK: Bond $BOND - $SLAVES_UP/$EXPECTED_SLAVES slaves up (total link failures: $FAILURES)"
@@ -182,7 +182,7 @@ Key messages to watch for:
 
 ## Monitoring with SNMP
 
-If you use SNMP-based monitoring (Nagios, Zabbix, etc.), the bond interface appears as a regular network interface in the IF-MIB:
+If you use SNMP-based monitoring (Nagios, Zabbix, etc.), the bond interface appears as a regular network interface in the IF-MIB. Assuming an SNMP agent is already configured and running locally:
 
 ```bash
 # Install SNMP tools if not present
@@ -209,7 +209,7 @@ iperf3 -s
 iperf3 -c 10.0.1.100 -t 30 -P 4
 ```
 
-The `-P 4` flag runs 4 parallel streams, which helps test load-balancing modes since a single stream typically uses one slave.
+The `-P 4` flag runs 4 parallel streams, which helps test hash-based load-balancing modes since a single TCP stream typically uses one slave.
 
 ## Monitoring Bond Speed Changes
 
