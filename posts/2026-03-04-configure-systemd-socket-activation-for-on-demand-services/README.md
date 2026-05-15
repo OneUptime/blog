@@ -74,7 +74,6 @@ Requires=myapp.socket
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/myapp
-StandardInput=socket
 
 [Install]
 WantedBy=multi-user.target
@@ -105,16 +104,16 @@ systemctl status myapp.service
 
 The service should transition from inactive to active when the first connection arrives.
 
-## Step 5: Configure Idle Timeout (Optional)
+## Step 5: Configure Stop Timeout (Optional)
 
-To have the service stop after a period of inactivity, add a timeout:
+To control how long systemd waits for the service to stop after a stop request, add a timeout:
 
 ```ini
 [Service]
 TimeoutStopSec=30
 ```
 
-You can also use a systemd timer or `IdleAction` logic in your application to exit gracefully after idle time.
+This does not stop the service after idle time. To have the service exit after inactivity, implement idle-timeout logic in your application or use a per-connection service design where appropriate.
 
 ## Common Socket Options
 
@@ -124,7 +123,7 @@ You can also use a systemd timer or `IdleAction` logic in your application to ex
 | `ListenDatagram` | UDP socket |
 | `ListenSequentialPacket` | Unix sequential packet socket |
 | `Accept` | If true, spawn a new service per connection |
-| `MaxConnections` | Limit concurrent connections |
+| `MaxConnections` | Limit concurrent per-connection service instances when `Accept=true` |
 | `BindIPv6Only` | Control IPv6 binding behavior |
 
 ## Troubleshooting
