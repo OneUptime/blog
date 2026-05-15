@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Hyper-V, Disk Resize, LVM, Storage, Virtualization, Linux
 
-Description: Expand RHEL virtual hard disks (VHDX) in Hyper-V and grow the filesystem inside the guest without losing data or requiring downtime.
+Description: Expand RHEL virtual hard disks (VHDX) in Hyper-V and grow the filesystem inside the guest without losing data or requiring downtime when online resize requirements are met.
 
 ---
 
-When a RHEL virtual machine on Hyper-V needs more disk space, you can expand the VHDX file and grow the filesystem from within the guest. This process preserves all existing data.
+When a RHEL virtual machine on Hyper-V needs more disk space, you can expand the VHDX file and grow the filesystem from within the guest. This process preserves all existing data when applied to the correct disk and volume.
 
 ## Step 1: Expand the VHDX on the Hyper-V Host
 
-You can resize the disk while the VM is running (online resize) on newer Hyper-V versions.
+You can resize the disk while the VM is running on Hyper-V versions that support online resize, provided the disk is a VHDX attached to a SCSI controller.
 
 ```powershell
 # Check the current disk size
@@ -109,7 +109,7 @@ If you prefer to add a separate disk:
 ```powershell
 # On the Hyper-V host, add a new VHDX
 New-VHD -Path "C:\VMs\RHEL9-Data.vhdx" -SizeBytes 100GB -Dynamic
-Add-VMHardDiskDrive -VMName "RHEL9-Server" -Path "C:\VMs\RHEL9-Data.vhdx"
+Add-VMHardDiskDrive -VMName "RHEL9-Server" -ControllerType SCSI -Path "C:\VMs\RHEL9-Data.vhdx"
 ```
 
 ```bash
