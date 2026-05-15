@@ -25,9 +25,9 @@ graph TD
 ## Install Prerequisites
 
 ```bash
-# Install Git
+# Install Git and required command-line tools
 
-sudo dnf install -y git
+sudo dnf install -y git wget policycoreutils-python-utils
 
 # Install PostgreSQL for the database
 sudo dnf install -y postgresql-server postgresql
@@ -42,13 +42,14 @@ sudo systemctl enable --now postgresql
 ```bash
 # Switch to the postgres user and create a database
 sudo -u postgres psql << 'SQL'
+SET password_encryption = 'scram-sha-256';
 CREATE USER gitea WITH PASSWORD 'your_secure_password';
 CREATE DATABASE giteadb OWNER gitea;
 \q
 SQL
 
-# Allow password authentication for gitea user
-sudo sed -i '/^local/s/peer/md5/' /var/lib/pgsql/data/pg_hba.conf
+# Allow password authentication for the gitea user over localhost
+sudo sed -i '1ihost    giteadb    gitea    127.0.0.1/32    scram-sha-256' /var/lib/pgsql/data/pg_hba.conf
 sudo systemctl restart postgresql
 ```
 
@@ -72,7 +73,7 @@ sudo chmod 770 /etc/gitea
 
 ```bash
 # Download the latest Gitea binary
-GITEA_VERSION="1.21.4"
+GITEA_VERSION="1.26.1"
 sudo wget -O /usr/local/bin/gitea \
   "https://dl.gitea.com/gitea/${GITEA_VERSION}/gitea-${GITEA_VERSION}-linux-amd64"
 
