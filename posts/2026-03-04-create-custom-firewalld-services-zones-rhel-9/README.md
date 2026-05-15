@@ -77,9 +77,9 @@ firewall-cmd --reload
 firewall-cmd --get-services | tr ' ' '\n' | grep myapp
 ```
 
-## Custom Service with Protocols and Modules
+## Custom Service with TCP and UDP Ports
 
-Services can include more than just ports:
+Services can include multiple protocols and port ranges:
 
 ```bash
 # A custom service for a game server
@@ -180,7 +180,7 @@ firewall-cmd --permanent --zone=appservers --set-target=REJECT
 # ACCEPT: allow all unmatched traffic (like the trusted zone)
 firewall-cmd --permanent --zone=appservers --set-target=ACCEPT
 
-# default: use the default behavior (reject)
+# default: similar to REJECT, but implicitly allows ICMP packets
 firewall-cmd --permanent --zone=appservers --set-target=default
 ```
 
