@@ -67,6 +67,7 @@ nats consumer add ORDERS order-processor \
   --ack explicit \
   --deliver all \
   --max-deliver 5 \
+  --target order.processors \
   --deliver-group order-workers
 
 # Create a pull consumer
