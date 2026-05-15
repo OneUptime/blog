@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, Talosctl, Node Management, Kubernetes, Infrastructure
 
-Description: Learn how to use the talosctl shutdown command to gracefully power off Talos Linux nodes for maintenance and decommissioning
+Description: Learn how to use the talosctl shutdown command to gracefully power off Talos Linux nodes for maintenance
 
 ---
 
-Powering off a node is something you will need to do from time to time when managing a Talos Linux cluster. Hardware maintenance, datacenter moves, decommissioning old machines, or simply reducing costs by shutting down idle capacity are all valid reasons. The `talosctl shutdown` command gives you a clean, API-driven way to power off nodes without needing SSH access or physical console access.
+Powering off a node is something you will need to do from time to time when managing a Talos Linux cluster. Hardware maintenance, datacenter moves, or simply reducing costs by shutting down idle capacity are all valid reasons. The `talosctl shutdown` command gives you a clean, API-driven way to power off nodes without needing SSH access or physical console access. For permanent decommissioning, use the Talos scale-down or reset procedure instead.
 
 ## What talosctl shutdown Does
 
-When you run `talosctl shutdown`, the command sends a shutdown request through the Talos API to the target node. Talos then performs a graceful shutdown sequence: it stops Kubernetes workloads, shuts down system services in the correct order, unmounts filesystems, and finally powers off the machine. This is very different from just pulling the power cable. The graceful process ensures data integrity and gives workloads time to terminate properly.
+When you run `talosctl shutdown`, the command sends a shutdown request through the Talos API to the target node. Talos then performs a graceful shutdown sequence: it cordons and drains the node, shuts down system services in the correct order, unmounts filesystems, and finally powers off the machine. This is very different from just pulling the power cable. The graceful process helps protect data integrity and gives workloads time to terminate properly.
 
 One important thing to understand is that after the node is powered off, it will not come back on its own unless you have Wake-on-LAN configured or use an out-of-band management tool like IPMI. You will need to physically power the machine back on or use a remote management interface.
 
@@ -48,7 +48,7 @@ Before powering off a node, run through a series of checks to make sure you are 
 
 ```bash
 # Check what is running on the node
-talosctl services --nodes 192.168.1.20
+talosctl service --nodes 192.168.1.20
 
 # List containers on the node
 talosctl containers --nodes 192.168.1.20
@@ -113,14 +113,14 @@ talosctl etcd status --nodes 192.168.1.10
 If you need to shut down a control plane node for extended maintenance:
 
 ```bash
-# First remove the etcd member if the node will be down for a long time
-talosctl etcd remove-member --nodes 192.168.1.10 <member-id>
+# If intentionally removing the healthy node from etcd, prefer etcd leave
+talosctl etcd leave --nodes 192.168.1.11
 
 # Then shut down the node
 talosctl shutdown --nodes 192.168.1.11
 ```
 
-Removing the etcd member before shutdown prevents etcd from trying to replicate data to a node that is not there. When the node comes back, you will need to re-add it to etcd.
+Use `talosctl etcd remove-member` only for a broken member that cannot be reached or cannot leave etcd itself. For ordinary maintenance, shutting down one healthy control plane node at a time is usually the safer approach.
 
 ## Using the Force Flag
 
@@ -131,7 +131,7 @@ In some situations, you might need to force a shutdown even if the graceful proc
 talosctl shutdown --nodes 192.168.1.20 --force
 ```
 
-The force flag tells Talos to skip some of the graceful shutdown steps and power off more quickly. Use this only when the node is stuck and a normal shutdown is not working. You risk data corruption if processes do not get a chance to flush their buffers.
+The force flag tells Talos to shut down without the normal cordon and drain step. Use this only when the node is stuck and a normal shutdown is not working. You risk workload disruption if pods do not get a chance to terminate cleanly.
 
 ## Scripting Bulk Shutdowns
 
