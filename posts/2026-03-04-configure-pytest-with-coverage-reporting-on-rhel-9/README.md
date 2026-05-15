@@ -109,6 +109,10 @@ def test_divide(calc):
 def test_divide_by_zero(calc):
     with pytest.raises(ZeroDivisionError):
         calc.divide(1, 0)
+
+def test_power(calc):
+    assert calc.power(2, 3) == 8
+    assert calc.power(2, -2) == 0.25
 ```
 
 ## Configuring Coverage in pyproject.toml
@@ -117,6 +121,7 @@ def test_divide_by_zero(calc):
 # pyproject.toml
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 addopts = "--cov=mypackage --cov-report=term-missing"
 
 [tool.coverage.run]
@@ -222,6 +227,7 @@ This is useful in CI/CD to prevent merging code that reduces test coverage.
 ```ini
 # setup.cfg
 [tool:pytest]
+pythonpath = src
 addopts =
     --cov=mypackage
     --cov-report=term-missing
@@ -306,9 +312,10 @@ jobs:
       - run: pip install pytest pytest-cov
       - run: pip install -e .
       - run: pytest --cov=mypackage --cov-report=xml --cov-fail-under=80 tests/
-      - uses: codecov/codecov-action@v3
+      - uses: codecov/codecov-action@v5
         with:
-          file: ./coverage.xml
+          files: ./coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
 ```
 
 ## Conclusion
