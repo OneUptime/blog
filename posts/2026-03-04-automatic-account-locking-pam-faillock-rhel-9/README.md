@@ -46,6 +46,7 @@ unlock_time = 900
 fail_interval = 600
 
 # Directory to store failure records
+# /var/run is usually cleared on reboot
 dir = /var/run/faillock
 
 # Do not print failure information when authenticating
@@ -57,7 +58,7 @@ silent
 # Separate lockout time for root
 # root_unlock_time = 60
 
-# Log failed attempts to syslog
+# Log unknown user names to the system log
 audit
 ```
 
@@ -154,9 +155,15 @@ If you only want faillock to apply to local users (not LDAP or AD users):
 local_users_only
 ```
 
-### Using pam_access for exceptions
+### Using pam_succeed_if for exceptions
 
-You can combine faillock with `pam_access.so` to create more nuanced rules. But the simplest approach for excluding specific accounts is to add them to the `even_deny_root` exception by not using that setting and handling root separately.
+For specific account exceptions, add a `pam_succeed_if.so` rule before the first `pam_faillock.so` line in both `system-auth` and `password-auth`.
+
+```bash
+auth [success=1 default=ignore] pam_succeed_if.so user in svcdeploy:breakglass
+```
+
+On RHEL 9 systems managed by authselect, do this in a custom authselect profile instead of editing the generated `/etc/pam.d/system-auth` and `/etc/pam.d/password-auth` files directly.
 
 ## Testing the Configuration
 
