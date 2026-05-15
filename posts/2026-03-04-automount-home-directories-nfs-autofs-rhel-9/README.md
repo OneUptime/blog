@@ -78,7 +78,7 @@ Using a wildcard to handle any username:
 
 ```bash
 sudo tee /etc/auto.home << 'EOF'
-* -rw,soft,intr nfsserver:/export/home/&
+* -fstype=nfs,rw,hard nfsserver:/export/home/&
 EOF
 ```
 
@@ -159,12 +159,20 @@ When using centralized authentication, SSSD can manage autofs maps from LDAP:
 services = nss, pam, autofs
 domains = example.com
 
+[autofs]
+
 [domain/example.com]
 autofs_provider = ldap
 ldap_autofs_search_base = ou=autofs,dc=example,dc=com
 ```
 
-With LDAP-managed maps, you do not need local map files. SSSD retrieves the mount information from LDAP.
+Also make sure `/etc/nsswitch.conf` includes SSSD for automount lookups:
+
+```bash
+automount: files sss
+```
+
+With LDAP-managed maps, you do not need local map files for the LDAP-provided entries. SSSD retrieves the mount information from LDAP.
 
 ## Handling Multiple NFS Servers
 
@@ -172,9 +180,9 @@ If home directories are spread across multiple servers:
 
 ```bash
 # /etc/auto.home
-alice   -rw,soft  nfsserver1:/export/home/alice
-bob     -rw,soft  nfsserver2:/export/home/bob
-carol   -rw,soft  nfsserver1:/export/home/carol
+alice   -fstype=nfs,rw,hard  nfsserver1:/export/home/alice
+bob     -fstype=nfs,rw,hard  nfsserver2:/export/home/bob
+carol   -fstype=nfs,rw,hard  nfsserver1:/export/home/carol
 ```
 
 Or use LDAP maps for dynamic, per-user server assignment.
