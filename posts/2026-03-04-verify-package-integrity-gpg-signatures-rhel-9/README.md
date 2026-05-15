@@ -12,7 +12,7 @@ Every RPM package you install runs scripts and drops files onto your system. If 
 
 ## How RPM Package Signing Works
 
-RPM packages can be signed with a GPG key by the package maintainer. When you install a signed package, RPM checks the signature against the public key you have imported. If the signature does not match, the installation is rejected.
+RPM packages can be signed with a GPG key by the package maintainer. When you install a signed package with GPG checking enabled, RPM checks the signature against the public key you have imported. If the signature does not match, the installation is rejected.
 
 ```mermaid
 flowchart TD
@@ -20,7 +20,7 @@ flowchart TD
     B --> C[RPM with GPG Signature]
     C --> D[Downloaded to Your System]
     D --> E{Verify with Public Key}
-    E -->|Signature Valid| F[Safe to Install]
+    E -->|Signature Valid| F[Signature OK]
     E -->|Signature Invalid| G[Reject Package]
     E -->|No Key Imported| H[Warning - Cannot Verify]
 ```
@@ -32,7 +32,7 @@ The process relies on asymmetric cryptography:
 
 ## Checking Imported GPG Keys
 
-RHEL ships with Red Hat's GPG key pre-installed. Check what keys are on your system:
+RHEL ships with Red Hat's GPG key files, and systems normally have the required Red Hat keys available for package verification. Check what keys are on your system:
 
 ```bash
 # List all imported RPM GPG keys
@@ -271,6 +271,8 @@ EOF
 ```
 
 ### Sign an RPM Package
+
+Make sure the `rpm-sign` package is installed. It provides the `--addsign` option:
 
 ```bash
 # Sign an RPM with your GPG key
