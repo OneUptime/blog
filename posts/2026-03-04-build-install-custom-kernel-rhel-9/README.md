@@ -29,7 +29,7 @@ sudo dnf groupinstall "Development Tools" -y
 
 # Install kernel-specific build dependencies
 sudo dnf install ncurses-devel openssl-devel elfutils-libelf-devel \
-    bc bison flex perl dwarves rpm-build -y
+    bc bison flex perl dwarves rpm-build dnf-plugins-core -y
 
 # Install additional tools for the menu configuration interface
 sudo dnf install ncurses-devel -y
@@ -43,15 +43,16 @@ You have two options: use the RHEL kernel source RPM or download upstream from k
 
 ```bash
 # Download the RHEL kernel source RPM
-sudo dnf install yum-utils -y
 dnf download --source kernel
 
 # Install the source RPM
-rpm -ivh kernel-*.src.rpm
+rpm -Uvh kernel-*.src.rpm
 
-# The source will be in ~/rpmbuild/SOURCES/
-ls ~/rpmbuild/SOURCES/
+# The source archives and patches will be in SOURCES, and the spec file in SPECS
+ls ~/rpmbuild/SOURCES/ ~/rpmbuild/SPECS/
 ```
+
+For the RHEL source RPM workflow, build through `~/rpmbuild/SPECS/kernel.spec` rather than running `make` directly in `~/rpmbuild/SOURCES/`. The upstream `kernel.org` workflow below gives you a ready source tree for the `make` commands.
 
 ### Option 2: Upstream Kernel from kernel.org
 
@@ -120,9 +121,6 @@ ls ~/rpmbuild/RPMS/x86_64/
 ```bash
 # Compile the kernel (use all available CPU cores)
 make -j$(nproc)
-
-# Build the kernel modules
-make modules -j$(nproc)
 ```
 
 The build can take 30 minutes to over an hour depending on your hardware and configuration. Using `-j$(nproc)` runs parallel jobs to speed things up.
@@ -146,7 +144,7 @@ sudo make modules_install
 sudo make install
 ```
 
-This copies the kernel image to `/boot`, generates an initramfs, and updates the GRUB configuration.
+On RHEL, `make install` normally delegates to the system kernel installer. It can copy the kernel image to `/boot`, create the boot entry, and generate an initramfs, but you should verify those results after installation.
 
 ## Post-Installation Steps
 
@@ -215,8 +213,9 @@ sudo rm /boot/vmlinuz-<custom-version>
 sudo rm /boot/initramfs-<custom-version>.img
 sudo rm /boot/System.map-<custom-version>
 sudo rm -rf /lib/modules/<custom-version>
+sudo rm /boot/loader/entries/*<custom-version>*.conf
 
-# Update GRUB
+# Rebuild GRUB metadata after removing the boot entry
 sudo grub2-mkconfig -o /boot/grub2/grub.cfg
 ```
 
@@ -226,8 +225,11 @@ If you need to apply patches to the RHEL kernel specifically:
 
 ```bash
 # Install the source RPM
-rpm -ivh kernel-*.src.rpm
+rpm -Uvh kernel-*.src.rpm
 cd ~/rpmbuild
+
+# Install the build dependencies declared by the spec file
+sudo dnf builddep SPECS/kernel.spec -y
 
 # Apply your custom patch
 cp /path/to/your-fix.patch SOURCES/
