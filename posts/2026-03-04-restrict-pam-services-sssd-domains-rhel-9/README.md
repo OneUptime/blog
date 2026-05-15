@@ -8,7 +8,7 @@ Description: Configure RHEL to restrict specific PAM services to authenticate ag
 
 ---
 
-When you have multiple identity sources configured in SSSD, say a local LDAP directory and Active Directory, you might not want every service to authenticate against every domain. Maybe SSH should only allow AD users, while a local application should only use the LDAP directory. SSSD on RHEL lets you map PAM services to specific domains.
+When you have multiple identity sources configured in SSSD, say a local LDAP directory and Active Directory, you might not want every service to authenticate against every domain. Maybe SSH should only allow AD users, while a local application should only use the LDAP directory. SSSD on RHEL lets you restrict which domains a PAM service can use for authentication.
 
 ## The Problem
 
@@ -66,11 +66,11 @@ ldap_uri = ldaps://ldap.internal.example.com
 ldap_search_base = dc=internal,dc=example,dc=com
 ```
 
-## Using pam_sss_gss or Domain Restrictions
+## Using pam_sss Domain Restrictions
 
 ### Method 1: Using the domains option in pam_sss
 
-The `pam_sss.so` module accepts a `domains` parameter that restricts which SSSD domains are queried for that particular PAM stack.
+The `pam_sss.so` module accepts a `domains` parameter that restricts which SSSD domains are used for authentication in that particular PAM stack.
 
 Create a custom PAM configuration for a specific service:
 
@@ -81,10 +81,10 @@ sudo vi /etc/pam.d/my-web-app
 ```bash
 # Only authenticate against the LDAP domain for this service
 
-auth    required    pam_sss.so domains=ldap.internal
-account required    pam_sss.so domains=ldap.internal
-password required   pam_sss.so domains=ldap.internal
-session required    pam_sss.so domains=ldap.internal
+auth        sufficient    pam_sss.so forward_pass domains=ldap.internal
+account     [default=bad success=ok user_unknown=ignore] pam_sss.so
+password    sufficient    pam_sss.so use_authtok
+session     optional      pam_sss.so
 ```
 
 For SSH, restrict to the AD domain only:
@@ -96,26 +96,21 @@ sudo vi /etc/pam.d/sshd
 Modify the relevant lines or create a custom include file:
 
 ```bash
-auth       required     pam_sss.so domains=ad.example.com
-auth       required     pam_env.so
-account    required     pam_sss.so domains=ad.example.com
-account    required     pam_nologin.so
-password   include      password-auth
-session    required     pam_selinux.so close
-session    required     pam_loginuid.so
-session    required     pam_selinux.so open env_params
-session    required     pam_sss.so domains=ad.example.com
+auth        sufficient    pam_sss.so forward_pass domains=ad.example.com
+account     [default=bad success=ok user_unknown=ignore] pam_sss.so
+password    sufficient    pam_sss.so use_authtok
+session     optional      pam_sss.so
 ```
 
 ### Method 2: Using SSSD PAM Responder Configuration
 
-SSSD itself supports mapping PAM services to domains in the `[pam]` section:
+If a PAM service does not run as root, use the SSSD PAM responder options together with the `domains=` option in the PAM stack:
 
 ```bash
 sudo vi /etc/sssd/sssd.conf
 ```
 
-Add the `pam_allowed_auth_domains` option:
+For example, if `my-web-app` runs as the `webapp` user and should authenticate only against the LDAP domain:
 
 ```ini
 [sssd]
@@ -123,26 +118,17 @@ services = nss, pam
 domains = ad.example.com, ldap.internal
 
 [pam]
-# Default: allow all domains for all PAM services
-pam_allowed_auth_domains = all
+pam_trusted_users = root, webapp
+pam_public_domains = ldap.internal
 ```
 
-For per-domain restrictions based on the service name, use the domain-level option:
+Then keep the domain restriction in the service's PAM file:
 
-```ini
-[domain/ad.example.com]
-id_provider = ad
-access_provider = ad
-# Only allow this domain to be used by these PAM services
-pam_trusted_users = root
-pam_public_domains = none
-
-[domain/ldap.internal]
-id_provider = ldap
-auth_provider = ldap
-ldap_uri = ldaps://ldap.internal.example.com
-ldap_search_base = dc=internal,dc=example,dc=com
+```bash
+auth    required    pam_sss.so domains=ldap.internal
 ```
+
+By default, `pam_trusted_users = all` and `pam_public_domains = none`, which means root-run system PAM services can use the domains listed in `sssd.conf`. The `pam_public_domains` option does not map services to domains by itself; it controls which domains are visible to untrusted PAM service users.
 
 ### Method 3: Using the access_provider for Domain-Level Control
 
@@ -181,18 +167,21 @@ ldap_search_base = dc=internal,dc=example,dc=com
 
 ### Configure PAM for SSH (AD only)
 
-Create a drop-in file for the sshd PAM service:
+Edit the PAM stack used by the sshd PAM service:
 
 ```bash
 sudo vi /etc/pam.d/sshd
 ```
 
-Make sure the auth lines reference only the AD domain:
+Make sure the `pam_sss.so` authentication line for the stack that sshd uses includes only the AD domain:
 
 ```bash
-auth    substack    password-auth
-auth    required    pam_sss.so domains=ad.example.com
+auth        sufficient    pam_sss.so forward_pass domains=ad.example.com
+account     [default=bad success=ok user_unknown=ignore] pam_sss.so
+password    sufficient    pam_sss.so use_authtok
 ```
+
+On RHEL systems managed by authselect, make this change in a custom authselect profile instead of editing generated files directly.
 
 ### Configure PAM for console login (LDAP only)
 
@@ -201,9 +190,12 @@ sudo vi /etc/pam.d/login
 ```
 
 ```bash
-auth    substack    password-auth
-auth    required    pam_sss.so domains=ldap.internal
+auth        sufficient    pam_sss.so forward_pass domains=ldap.internal
+account     [default=bad success=ok user_unknown=ignore] pam_sss.so
+password    sufficient    pam_sss.so use_authtok
 ```
+
+On RHEL systems managed by authselect, make this change in a custom authselect profile instead of editing generated files directly.
 
 ### Restart SSSD after changes
 
