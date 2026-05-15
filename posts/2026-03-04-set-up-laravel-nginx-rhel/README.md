@@ -13,15 +13,18 @@ Laravel is a popular PHP framework for building web applications. This guide cov
 ## Install Dependencies
 
 ```bash
-# Install Nginx, PHP 8.2 with Laravel-required extensions
+# Enable PHP 8.2 on RHEL 9 and install Nginx with Laravel-required extensions
 
-sudo dnf install -y nginx php-fpm php-cli php-mysqlnd php-pgsql \
-  php-xml php-mbstring php-curl php-zip php-gd php-bcmath \
-  php-intl php-opcache php-tokenizer unzip
+sudo dnf module reset -y php
+sudo dnf module enable -y php:8.2
+sudo dnf install -y nginx php-fpm php-cli php-common php-pdo \
+  php-mysqlnd php-pgsql php-xml php-mbstring php-pecl-zip \
+  php-gd php-bcmath php-intl php-opcache unzip firewalld \
+  policycoreutils-python-utils
 
 # Install Composer
 php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
-php composer-setup.php --install-dir=/usr/local/bin --filename=composer
+sudo php composer-setup.php --install-dir=/usr/local/bin --filename=composer
 rm composer-setup.php
 ```
 
@@ -98,9 +101,10 @@ sudo vi .env
 
 ```bash
 # Allow Nginx to read Laravel files
-sudo chcon -R -t httpd_sys_content_t /var/www/myapp
-sudo chcon -R -t httpd_sys_rw_content_t /var/www/myapp/storage
-sudo chcon -R -t httpd_sys_rw_content_t /var/www/myapp/bootstrap/cache
+sudo semanage fcontext -a -t httpd_sys_content_t "/var/www/myapp(/.*)?"
+sudo semanage fcontext -a -t httpd_sys_rw_content_t "/var/www/myapp/storage(/.*)?"
+sudo semanage fcontext -a -t httpd_sys_rw_content_t "/var/www/myapp/bootstrap/cache(/.*)?"
+sudo restorecon -Rv /var/www/myapp
 
 # Allow Nginx to connect to the database
 sudo setsebool -P httpd_can_network_connect_db 1
