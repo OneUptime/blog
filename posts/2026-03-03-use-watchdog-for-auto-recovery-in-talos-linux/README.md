@@ -47,27 +47,19 @@ Each layer catches failures that the layer above it cannot handle. Together, the
 
 ## Configuring the Complete Watchdog Stack
 
-Here is a production-ready watchdog configuration for Talos Linux:
+Here is a production-ready watchdog configuration for Talos Linux. Use the watchdog device that exists on your hardware, such as `/dev/watchdog0`:
 
 ```yaml
+# watchdog.yaml
+apiVersion: v1alpha1
+kind: WatchdogTimerConfig
+device: /dev/watchdog0
+timeout: 1m
+
+---
 # talos-machine-config.yaml
-
+version: v1alpha1
 machine:
-  install:
-    extraKernelArgs:
-      # Hardware watchdog
-      - iTCO_wdt.heartbeat=60
-      - iTCO_wdt.nowayout=1
-
-      # NMI watchdog for hard lockups
-      - nmi_watchdog=1
-
-      # Kernel panic behavior
-      - panic=10                        # Reboot 10s after panic
-
-      # Soft lockup settings
-      - softlockup_panic=1
-
   kernel:
     modules:
       - name: iTCO_wdt
@@ -80,6 +72,7 @@ machine:
     kernel.watchdog_thresh: "20"
 
     # Hard lockup detection
+    kernel.nmi_watchdog: "1"
     kernel.hardlockup_panic: "1"
 
     # Hung task detection
@@ -96,7 +89,7 @@ machine:
     vm.oom_kill_allocating_task: "1"  # Kill the task that caused OOM
 ```
 
-This configuration creates a chain: soft lockup or hung task triggers a panic, the panic triggers a reboot after 10 seconds, and if the panic handler itself hangs, the hardware watchdog reboots after 60 seconds.
+This configuration creates a chain: soft lockup or hung task triggers a panic, the panic triggers a reboot after 10 seconds, and if the system cannot complete that path, the Talos watchdog configuration lets the hardware watchdog reboot the node after about 60 seconds.
 
 ## Kubernetes-Level Recovery Configuration
 
@@ -111,8 +104,11 @@ cluster:
       node-monitor-period: "5s"
       node-monitor-grace-period: "40s"
 
-      # How quickly to evict pods from unhealthy nodes
-      pod-eviction-timeout: "30s"
+  apiServer:
+    extraArgs:
+      # Default toleration for node not-ready/unreachable taints
+      default-not-ready-toleration-seconds: "30"
+      default-unreachable-toleration-seconds: "30"
 ```
 
 Configure kubelet to report health accurately:
@@ -120,19 +116,25 @@ Configure kubelet to report health accurately:
 ```yaml
 machine:
   kubelet:
-    extraArgs:
+    extraConfig:
       # Node health reporting
-      node-status-update-frequency: "10s"
+      nodeStatusUpdateFrequency: 10s
 
       # Resource monitoring
-      eviction-hard: "memory.available<500Mi,nodefs.available<10%"
-      eviction-soft: "memory.available<1Gi,nodefs.available<15%"
-      eviction-soft-grace-period: "memory.available=1m,nodefs.available=1m"
+      evictionHard:
+        memory.available: 500Mi
+        nodefs.available: 10%
+      evictionSoft:
+        memory.available: 1Gi
+        nodefs.available: 15%
+      evictionSoftGracePeriod:
+        memory.available: 1m
+        nodefs.available: 1m
 ```
 
 ## Pod Disruption Budgets for Safe Recovery
 
-When a watchdog triggers a node reboot, all pods on that node are terminated. Pod Disruption Budgets (PDBs) ensure that your services maintain minimum availability even during unplanned reboots:
+When a watchdog triggers a node reboot, all pods on that node are terminated. Pod Disruption Budgets (PDBs) cannot prevent an involuntary disruption, but they do protect voluntary operations such as drains and count unavailable pods against the budget while the node is down:
 
 ```yaml
 # pdb.yaml
@@ -161,7 +163,7 @@ spec:
 
 ## Ensuring Pods Survive Node Reboots
 
-Configure your deployments with anti-affinity rules to spread replicas across nodes. This way, a watchdog reboot on one node does not take down all replicas:
+Configure your deployments with topology spread constraints to spread replicas across nodes. This way, a watchdog reboot on one node does not take down all replicas:
 
 ```yaml
 # deployment-with-spread.yaml
@@ -171,6 +173,9 @@ metadata:
   name: critical-service
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: critical-service
   template:
     metadata:
       labels:
@@ -205,25 +210,15 @@ spec:
 
 When a node reboots from a watchdog trigger, you want it to rejoin the cluster as quickly as possible. Talos Linux helps here because the immutable OS boots fast and all configuration is already defined.
 
-Optimize the boot process:
-
-```yaml
-# talos-machine-config.yaml
-machine:
-  install:
-    extraKernelArgs:
-      # Faster boot
-      - quiet                           # Reduce console output during boot
-      - loglevel=3                      # Only show errors
-```
+Keep the node configuration declarative and avoid adding unnecessary boot-time customizations. In most environments the biggest recovery-time wins come from fast hardware initialization, healthy control-plane connectivity, and avoiding slow workload startup paths rather than from kernel log verbosity.
 
 Ensure kubelet reconnects quickly:
 
 ```yaml
 machine:
   kubelet:
-    extraArgs:
-      node-status-update-frequency: "5s"  # Report status immediately
+    extraConfig:
+      nodeStatusUpdateFrequency: 5s  # Report node status more frequently
 ```
 
 ## Monitoring Recovery Events
@@ -249,6 +244,8 @@ spec:
       containers:
       - name: monitor
         image: alpine:latest
+        securityContext:
+          privileged: true
         command:
         - /bin/sh
         - -c
@@ -325,7 +322,7 @@ kubectl delete pod critical-service-xxxxx
 kubectl drain node-2 --ignore-daemonsets --delete-emptydir-data
 # Verify: Pods are rescheduled to other nodes
 
-# Test 3: Watchdog-triggered reboot (controlled test on non-production)
+# Test 3: Talos-triggered reboot (controlled simulation on non-production)
 # WARNING: This will reboot the node
 talosctl reboot --nodes staging-node-1
 # Verify: Node comes back, pods are rescheduled or restarted
@@ -342,12 +339,12 @@ echo "Recovery time: $((END - START)) seconds"
 ## Best Practices for Auto-Recovery
 
 1. Always run multiple replicas of critical services across different nodes
-2. Set PDBs to maintain minimum availability during reboots
+2. Set PDBs to protect voluntary maintenance and make involuntary outages visible in availability budgets
 3. Monitor reboot frequency and alert on excessive reboots
 4. Investigate the root cause of every watchdog event
 5. Test recovery procedures regularly in staging
 6. Keep watchdog timeouts reasonable (60-120 seconds for hardware, 120 seconds for hung tasks)
-7. Use `nowayout=1` on production watchdog configurations
+7. Configure a Talos `WatchdogTimerConfig` for production nodes and verify the selected `/dev/watchdog*` device on each hardware platform
 
 ## Conclusion
 
