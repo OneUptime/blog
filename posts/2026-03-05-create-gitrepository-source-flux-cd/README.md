@@ -70,11 +70,11 @@ kubectl apply -f gitrepository.yaml
 After applying the manifest, you should verify that the Source Controller has successfully cloned the repository and produced an artifact.
 
 ```bash
-# Check the status of the GitRepository resource
-flux get sources git my-app -n flux-system
+# Check the status of GitRepository resources
+flux get sources git -n flux-system
 ```
 
-You should see output similar to this.
+You should see output similar to this, including the `my-app` source.
 
 ```bash
 # Expected output showing a successful reconciliation
