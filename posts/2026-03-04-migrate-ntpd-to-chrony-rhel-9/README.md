@@ -8,7 +8,7 @@ Description: A step-by-step guide for migrating from ntpd (ntp) to chrony on RHE
 
 ---
 
-If you are upgrading older RHEL systems (6 or 7) to RHEL, one of the changes you will hit is that ntpd is gone. Red Hat replaced it with chrony starting in RHEL 8, and on RHEL the ntp package is simply not available in the default repositories. The good news is that chrony handles the same job and the migration is straightforward once you know how the configuration maps.
+If you are upgrading older RHEL systems (6 or 7) to RHEL 8 or 9, one of the changes you will hit is that ntpd is gone. Red Hat replaced it with chrony starting in RHEL 8, and on RHEL 8 and 9 the ntp package is simply not available in the default repositories. The good news is that chrony handles the same job and the migration is straightforward once you know how the configuration maps.
 
 ## Why the Switch Happened
 
@@ -118,7 +118,14 @@ ntpd:
 broadcast 192.168.1.255
 ```
 
-chrony does not support NTP broadcast or multicast. You need to configure each client to point to the server individually. This is actually more reliable anyway.
+chronyd does not support acting as an NTP broadcast or multicast client. You need to configure each chrony client to point to the server individually, or use a pool name or DHCP-provided NTP servers. This is actually more reliable anyway.
+
+If this host only needs to send broadcast packets to clients that still support broadcast mode, chrony uses a different syntax:
+
+```bash
+broadcast 64 192.168.1.255
+allow 192.168.1.0/24
+```
 
 ### Authentication Keys
 
@@ -131,6 +138,7 @@ ntpd config:
 ```bash
 keys /etc/ntp/keys
 trustedkey 1
+server ntp1.corp.example.com key 1
 ```
 
 chrony (`/etc/chrony.keys`):
@@ -141,9 +149,10 @@ chrony (`/etc/chrony.keys`):
 chrony config:
 ```bash
 keyfile /etc/chrony.keys
+server ntp1.corp.example.com key 1
 ```
 
-Note that chrony prefers SHA1 over MD5. If you are migrating, consider upgrading to SHA1 at the same time:
+Note that chrony supports SHA1 and stronger algorithms when it is built with crypto library support. Current chrony documentation recommends randomly generated hexadecimal keys at least 128 bits long and avoiding MD5 unless that is the only type supported by both sides. If your NTP servers support SHA1, consider upgrading at the same time:
 
 ```bash
 1 SHA1 HEX:A1B2C3D4E5F6A1B2C3D4E5F6A1B2C3D4E5F6A1B2
@@ -207,7 +216,7 @@ restrict 127.0.0.1
 restrict ::1
 restrict 10.0.0.0 mask 255.0.0.0 nomodify notrap
 
-server ntp1.corp.example.com iburst prefer
+server ntp1.corp.example.com iburst prefer key 1
 server ntp2.corp.example.com iburst
 server 0.rhel.pool.ntp.org iburst
 
@@ -224,7 +233,7 @@ logfile /var/log/ntp.log
 
 ```bash
 # Upstream NTP servers
-server ntp1.corp.example.com iburst prefer
+server ntp1.corp.example.com iburst prefer key 1
 server ntp2.corp.example.com iburst
 pool 0.rhel.pool.ntp.org iburst
 
@@ -279,7 +288,7 @@ sudo vi /etc/chrony.conf
 
 ## Step 6: Disable ntpd (if present)
 
-On RHEL, ntpd should not be installed, but if it is (from a third-party repo or leftover from an upgrade):
+On RHEL 8 and 9, ntpd should not be installed, but if it is (from a third-party repo or leftover from an upgrade):
 
 ```bash
 # Stop and disable ntpd
@@ -290,7 +299,7 @@ sudo systemctl disable ntpd
 sudo dnf remove ntp
 ```
 
-Also check for systemd-timesyncd, which can conflict:
+Also check for systemd-timesyncd if it is installed, which can conflict:
 
 ```bash
 # Make sure systemd-timesyncd is not running
@@ -341,7 +350,7 @@ Here is how common ntpd commands map to chronyc:
 | `ntpq -c rv` | `chronyc tracking` | Detailed status |
 | `ntpq -c "lpeers"` | `chronyc sources -v` | Verbose source list |
 | `ntpdc -c monlist` | `chronyc clients` | Show connected clients |
-| `ntpdate -q server` | `chronyd -Q "server server iburst"` | Query without setting |
+| `ntpdate -q ntp.example.com` | `chronyd -Q "server ntp.example.com iburst"` | Query without setting |
 
 ## Step 10: Update Monitoring
 
@@ -363,7 +372,7 @@ chronyc tracking | grep -q "Leap status.*Normal" && echo "NTP OK" || echo "NTP F
 
 ## Rollback Plan
 
-If something goes wrong and you absolutely need ntpd back (on older RHEL versions, not RHEL):
+If something goes wrong and you absolutely need ntpd back (on older RHEL versions, not RHEL 8 or 9):
 
 ```bash
 # On RHEL 7 - roll back to ntpd
@@ -372,8 +381,8 @@ sudo systemctl disable chronyd
 sudo systemctl enable --now ntpd
 ```
 
-On RHEL, there is no rolling back to ntpd since it is not in the repos. Get chrony working - it will.
+On RHEL 8 and 9, there is no rolling back to ntpd since it is not in the repos. Get chrony working - it will.
 
 ## Wrapping Up
 
-Migrating from ntpd to chrony is mostly a configuration translation exercise. The concepts are the same, the syntax is slightly different, and chrony's defaults are more sensible. Most migrations take under 30 minutes per server, including verification. If you are managing a fleet, script the configuration translation and push it out with your configuration management tool. The biggest gotcha is usually broadcast/multicast mode, which chrony does not support, so plan for that if you relied on it.
+Migrating from ntpd to chrony is mostly a configuration translation exercise. The concepts are the same, the syntax is slightly different, and chrony's defaults are more sensible. Most migrations take under 30 minutes per server, including verification. If you are managing a fleet, script the configuration translation and push it out with your configuration management tool. The biggest gotcha is usually broadcast/multicast client mode, which chronyd does not support, so plan for that if you relied on it.
