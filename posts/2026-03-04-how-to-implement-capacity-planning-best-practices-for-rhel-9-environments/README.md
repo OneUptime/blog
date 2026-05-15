@@ -17,6 +17,7 @@ Capacity planning ensures your RHEL 9 infrastructure can handle growth without p
 
 sudo dnf install -y sysstat
 sudo systemctl enable --now sysstat
+sudo mkdir -p /var/log/capacity
 
 # Record baseline metrics
 sar -u 1 60 > /var/log/capacity/cpu-baseline.txt
@@ -66,10 +67,11 @@ sar -d -f /var/log/sa/sa$(date +%d) | tail -20
 
 ```bash
 # Interface utilization
+IFACE=$(ip route show default | awk '{print $5; exit}')
 sar -n DEV -f /var/log/sa/sa$(date +%d) | tail -20
 
 # Check for packet errors and drops
-ip -s link show eth0
+ip -s link show "$IFACE"
 ```
 
 ## Growth Projections
@@ -79,7 +81,8 @@ Create a simple growth forecast:
 ```bash
 # Collect monthly data points
 echo "Month,CPU%,Memory%,Disk%,Network_Mbps" >> /var/log/capacity/growth.csv
-echo "$(date +%Y-%m),$(sar -u 1 1 | tail -1 | awk '{print 100-$NF}'),$(free | awk '/Mem:/{printf("%.0f", $3/$2*100)}'),$(df / | tail -1 | awk '{print $5}'),$(sar -n DEV 1 1 | grep eth0 | tail -1 | awk '{print $5}')" >> /var/log/capacity/growth.csv
+IFACE=$(ip route show default | awk '{print $5; exit}')
+echo "$(date +%Y-%m),$(sar -u 1 1 | tail -1 | awk '{print 100-$NF}'),$(free | awk '/Mem:/{printf("%.0f", $3/$2*100)}'),$(df / | tail -1 | awk '{print $5}'),$(sar -n DEV 1 1 | awk -v iface="$IFACE" '$2 == iface {mbps=($5+$6)*8/1024} END {printf("%.2f", mbps)}')" >> /var/log/capacity/growth.csv
 ```
 
 Resource Right-Sizing
@@ -103,4 +106,3 @@ EOF
 ## Conclusion
 
 Capacity planning for RHEL 9 requires collecting baseline metrics, tracking growth trends, and setting thresholds for action. Use sysstat for historical data collection and plan scaling actions before resources reach critical levels.
-
