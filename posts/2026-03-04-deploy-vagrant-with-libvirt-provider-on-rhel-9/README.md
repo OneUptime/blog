@@ -32,8 +32,10 @@ sudo dnf install -y @virtualization
 ```
 
 ```bash
-# Start and enable libvirtd
-sudo systemctl enable --now libvirtd
+# Start the libvirt modular daemon sockets
+for drv in qemu network nodedev nwfilter secret storage interface; do
+  sudo systemctl enable --now virt${drv}d.socket virt${drv}d-ro.socket virt${drv}d-admin.socket
+done
 ```
 
 ```bash
@@ -45,8 +47,8 @@ newgrp libvirt
 Verify the setup:
 
 ```bash
-# Check that KVM is working
-virsh list --all
+# Check that the host is ready for virtualization
+virt-host-validate
 ```
 
 ## Installing Vagrant
@@ -139,7 +141,7 @@ echo 'export VAGRANT_DEFAULT_PROVIDER=libvirt' >> ~/.bashrc
 ```ruby
 Vagrant.configure("2") do |config|
   config.vm.box = "generic/centos9s"
-  config.vm.network "private_network", ip: "192.168.121.10"
+  config.vm.network "private_network", ip: "10.20.30.10"
 end
 ```
 
@@ -158,7 +160,10 @@ end
 ```ruby
 Vagrant.configure("2") do |config|
   config.vm.box = "generic/centos9s"
-  config.vm.network "public_network", bridge: "eth0"
+  config.vm.network "public_network",
+    dev: "eth0",
+    mode: "bridge",
+    type: "bridge"
 end
 ```
 
@@ -201,7 +206,7 @@ Vagrant.configure("2") do |config|
   config.vm.define "web" do |web|
     web.vm.box = "generic/centos9s"
     web.vm.hostname = "web-server"
-    web.vm.network "private_network", ip: "192.168.121.10"
+    web.vm.network "private_network", ip: "10.20.30.10"
     web.vm.provider :libvirt do |v|
       v.cpus = 2
       v.memory = 1024
@@ -211,7 +216,7 @@ Vagrant.configure("2") do |config|
   config.vm.define "db" do |db|
     db.vm.box = "generic/centos9s"
     db.vm.hostname = "db-server"
-    db.vm.network "private_network", ip: "192.168.121.11"
+    db.vm.network "private_network", ip: "10.20.30.11"
     db.vm.provider :libvirt do |v|
       v.cpus = 2
       v.memory = 2048
@@ -221,7 +226,7 @@ Vagrant.configure("2") do |config|
   config.vm.define "cache" do |cache|
     cache.vm.box = "generic/centos9s"
     cache.vm.hostname = "cache-server"
-    cache.vm.network "private_network", ip: "192.168.121.12"
+    cache.vm.network "private_network", ip: "10.20.30.12"
     cache.vm.provider :libvirt do |v|
       v.cpus = 1
       v.memory = 512
