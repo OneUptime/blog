@@ -12,40 +12,76 @@ Setting up Sensu Go Monitoring on RHEL requires proper planning and configuratio
 
 ## Prerequisites
 
-- RHEL with a valid subscription or CentOS Stream 9
+- RHEL 9 with a valid subscription or CentOS Stream 9
 - Root or sudo access
 - A terminal session
 
+## Step 1: Install Sensu Go
+
+Add the Sensu stable repository and install the backend, agent, and command-line tool:
+
+```bash
+# Add the Sensu repository
+curl -s https://packagecloud.io/install/repositories/sensu/stable/script.rpm.sh | sudo bash
+
+# Install the Sensu Go packages
+sudo dnf install sensu-go-backend sensu-go-agent sensu-go-cli
+```
+
 ## Step 2: Configure the Service
 
-Edit the configuration file to match your environment:
+Copy the Sensu backend and agent configuration templates:
 
 ```bash
-# Open the configuration file
+# Copy the backend configuration template
+sudo curl -L https://docs.sensu.io/sensu-go/latest/files/backend.yml -o /etc/sensu/backend.yml
 
-sudo vi /etc/<service>/config.conf
+# Copy the agent configuration template
+sudo curl -L https://docs.sensu.io/sensu-go/latest/files/agent.yml -o /etc/sensu/agent.yml
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Edit the configuration files to match your environment:
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Open the backend configuration file
+sudo vi /etc/sensu/backend.yml
+
+# Open the agent configuration file
+sudo vi /etc/sensu/agent.yml
 ```
+
+Adjust the settings according to your requirements. Key parameters to configure include the backend state directory, agent backend URL, subscriptions, authentication settings, and logging options.
 
 ## Step 3: Enable and Start the Service
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Enable services to start on boot
+sudo systemctl enable sensu-backend sensu-agent
 
-# Start the service
-sudo systemctl start <service-name>
+# Start the backend
+sudo systemctl start sensu-backend
+
+# Set up the initial Sensu administrator account
+export SENSU_BACKEND_CLUSTER_ADMIN_USERNAME=admin
+export SENSU_BACKEND_CLUSTER_ADMIN_PASSWORD='ChangeMe123!'
+sensu-backend init
+
+# Start the agent
+sudo systemctl start sensu-agent
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status sensu-backend sensu-agent
 ```
 
+Configure sensuctl to connect to the local backend:
+
+```bash
+sensuctl configure -n \
+  --username 'admin' \
+  --password 'ChangeMe123!' \
+  --namespace default \
+  --url 'http://127.0.0.1:8080'
+```
 
 ## Verification
 
@@ -53,16 +89,24 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status sensu-backend sensu-agent
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u sensu-backend --no-pager -n 20
+journalctl -u sensu-agent --no-pager -n 20
+
+# Check the backend health API
+curl http://127.0.0.1:8080/health
+
+# Verify that the agent is registered
+sensuctl entity list
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the backend fails to start, check the logs with `journalctl -u sensu-backend -e --no-pager`.
+- If the agent fails to start, check the logs with `journalctl -u sensu-agent -e --no-pager`.
+- Ensure all required packages are installed: `rpm -qa | grep sensu-go`.
 
 ## Conclusion
 
