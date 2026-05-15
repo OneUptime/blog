@@ -43,10 +43,10 @@ The main configuration file is located at `/etc/fapolicyd/fapolicyd.conf`.
 cat /etc/fapolicyd/fapolicyd.conf
 
 # Key settings to review:
-# permissive = 0    (set to 1 for testing, 0 for enforcement)
-# nice_val = 14     (process priority)
-# q_size = 640      (internal queue size)
-# db_max_size = 50  (trust database max size in MB)
+# permissive  (set to 1 for testing, 0 for enforcement)
+# nice_val    (process priority)
+# q_size      (internal queue size)
+# db_max_size (trust database max size in MB)
 ```
 
 ## Testing in Permissive Mode First
@@ -60,8 +60,8 @@ sudo sed -i 's/^permissive = 0/permissive = 1/' /etc/fapolicyd/fapolicyd.conf
 # Restart fapolicyd to apply the change
 sudo systemctl restart fapolicyd
 
-# Monitor what would be denied in the logs
-sudo journalctl -u fapolicyd --since "10 minutes ago" | grep "deny"
+# Check Audit logs for fanotify denials
+sudo ausearch -ts recent -m fanotify
 ```
 
 ## Switching to Enforcement Mode
@@ -75,7 +75,10 @@ sudo sed -i 's/^permissive = 1/permissive = 0/' /etc/fapolicyd/fapolicyd.conf
 # Restart the service
 sudo systemctl restart fapolicyd
 
-# Verify enforcement is active
+# Confirm permissive mode is disabled
+grep '^permissive' /etc/fapolicyd/fapolicyd.conf
+
+# List active rules
 sudo fapolicyd-cli --list
 ```
 
@@ -84,10 +87,10 @@ sudo fapolicyd-cli --list
 fapolicyd maintains a trust database of known-good applications.
 
 ```bash
-# Update the trust database from RPM
+# Update the trust database after RPM or trust file changes
 sudo fapolicyd-cli --update
 
-# Dump current trust entries (first 10)
+# Dump current trust entries (first 20)
 sudo fapolicyd-cli --dump-db | head -20
 ```
 
