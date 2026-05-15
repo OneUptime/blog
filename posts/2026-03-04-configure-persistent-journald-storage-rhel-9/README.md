@@ -23,10 +23,10 @@ Configure persistent journald storage on RHEL 9 so logs survive reboots. This gu
 Ensure the relevant packages are installed:
 
 ```bash
-sudo dnf install -y rsyslog systemd
+sudo dnf install -y systemd
 ```
 
-rsyslog and systemd-journald ship by default on RHEL 9.
+systemd-journald ships with systemd and is installed by default on RHEL 9. Install rsyslog only if you also need syslog file output or remote syslog forwarding.
 
 ## Step 2 - Understand the Logging Architecture
 
@@ -39,18 +39,20 @@ The two work together: journald collects everything, and rsyslog can read from t
 
 ## Step 3 - Apply the Configuration
 
-To configure persistent journald storage, you need to edit the appropriate configuration files. The main files are:
+To configure persistent journald storage, edit `/etc/systemd/journald.conf` and set:
 
-- `/etc/rsyslog.conf` and `/etc/rsyslog.d/*.conf` for rsyslog
-- `/etc/systemd/journald.conf` for journald
+```ini
+[Journal]
+Storage=persistent
+```
 
-Make your changes, then restart the relevant service:
+The `Storage=persistent` setting stores journal files under `/var/log/journal`, with a fallback to `/run/log/journal` during early boot or when the disk is not writable.
+
+After saving the file, restart journald and flush any existing volatile logs to persistent storage:
 
 ```bash
-sudo systemctl restart rsyslog
-# or
-
 sudo systemctl restart systemd-journald
+sudo journalctl --flush
 ```
 
 ## Step 4 - Verify the Setup
@@ -58,7 +60,6 @@ sudo systemctl restart systemd-journald
 Check the service status:
 
 ```bash
-systemctl status rsyslog
 systemctl status systemd-journald
 ```
 
@@ -66,7 +67,7 @@ Review recent logs to confirm your changes are working:
 
 ```bash
 journalctl --since "5 minutes ago"
-tail -20 /var/log/messages
+journalctl --list-boots
 ```
 
 ## Step 5 - Open Firewall Ports (If Applicable)
@@ -82,7 +83,7 @@ sudo firewall-cmd --reload
 
 - Check for syntax errors in rsyslog configuration: `rsyslogd -N1`
 - Verify SELinux is not blocking log operations: `ausearch -m AVC -ts recent`
-- Ensure the target directory exists and has correct permissions
+- Ensure `/var/log/journal` exists if you use `Storage=auto`; `Storage=persistent` creates it when needed
 
 ## Summary
 
