@@ -48,7 +48,7 @@ pasv_max_port=30100
 
 # Logging
 xferlog_enable=YES
-xferlog_file=/var/log/vsftpd.log
+vsftpd_log_file=/var/log/vsftpd.log
 
 # User list
 userlist_enable=YES
@@ -147,12 +147,10 @@ sudo chown ftpuser2:ftpuser2 /srv/ftp/user2/uploads
 ## SELinux Configuration
 
 ```bash
-# Allow vsftpd to access custom directories
-sudo setsebool -P ftp_home_dir 1
-
-# If using non-standard directories
+# If using non-standard writable directories
 sudo semanage fcontext -a -t public_content_rw_t "/srv/ftp(/.*)?"
 sudo restorecon -Rv /srv/ftp
+sudo setsebool -P ftpd_anon_write 1
 ```
 
 ## Test the Chroot Jail
@@ -166,7 +164,8 @@ ftp localhost
 # Login as ftpuser1
 # Try: cd /
 # Try: cd /etc
-# Both should keep you within the chroot directory
+# cd / should show the jail root; cd /etc should fail unless
+# an /etc directory exists inside the jail
 
 # Verify with curl
 curl -u ftpuser1:password ftp://localhost/
