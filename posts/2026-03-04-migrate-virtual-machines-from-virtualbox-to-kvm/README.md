@@ -15,10 +15,12 @@ This guide covers how to Migrate Virtual Machines from VirtualBox to KVM on RHEL
 - RHEL with a minimal or standard installation
 - Root or sudo access
 - A stable network connection
+- Hardware virtualization enabled in the system firmware
+- The VirtualBox VM shut down cleanly before converting its disk
 
 ## Overview
 
-Migrate Virtual Machines from VirtualBox to KVM requires careful planning and execution. This guide walks through the complete process from installation to verification.
+Migrating Virtual Machines from VirtualBox to KVM requires careful planning and execution. This guide walks through the complete process from installing KVM packages to importing the converted disk into libvirt.
 
 ## Step 1: Prepare the System
 
@@ -31,37 +33,45 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y qemu-kvm qemu-img libvirt virt-install virt-viewer virt-manager
 ```
 
 ## Step 2: Install Required Packages
 
 ```bash
-sudo dnf install -y <package-name>
+sudo systemctl enable --now libvirtd
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+rpm -q qemu-kvm qemu-img libvirt virt-install
+sudo virsh list --all
 ```
 
 ## Step 3: Configure the Service
 
-Create or edit the main configuration file:
+Shut down the VirtualBox VM and convert its virtual disk to QCOW2:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo qemu-img convert -p -f vdi -O qcow2 ~/VirtualBox\ VMs/example-vm/example-vm.vdi /var/lib/libvirt/images/example-vm.qcow2
+sudo restorecon -v /var/lib/libvirt/images/example-vm.qcow2
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+If the source disk is VMDK, replace `-f vdi` with `-f vmdk`. Apply the recommended settings for your environment. Start with CPU, memory, disk bus, network defaults, and an OS variant that match the guest operating system and adjust based on your workload and hardware.
 
 ## Step 4: Start and Enable the Service
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo virt-install \
+  --name example-vm \
+  --memory 4096 \
+  --vcpus 2 \
+  --disk path=/var/lib/libvirt/images/example-vm.qcow2,format=qcow2,bus=virtio \
+  --os-variant rhel9.0 \
+  --network network=default,model=virtio \
+  --graphics spice \
+  --import
 ```
 
 ## Step 5: Verify the Configuration
@@ -69,21 +79,22 @@ sudo systemctl status <service>
 Test the setup:
 
 ```bash
-sudo <service> --test
+sudo qemu-img info /var/lib/libvirt/images/example-vm.qcow2
+sudo virsh dominfo example-vm
 ```
 
 Check the logs for any errors:
 
 ```bash
-journalctl -u <service> -f
+sudo journalctl -u libvirtd -f
 ```
 
 ## Step 6: Configure Firewall Rules
 
-If the service needs network access:
+If you manage libvirt remotely or expose services from the guest, open only the required services on the host:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo firewall-cmd --permanent --add-service=ssh
 sudo firewall-cmd --reload
 ```
 
@@ -92,25 +103,25 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+sudo virsh domstats example-vm
+sudo virsh vcpuinfo example-vm
 ```
 
 ## Security Considerations
 
-- Run the service with a dedicated non-root user when possible
-- Enable TLS/SSL for network communication
-- Restrict access with firewall rules
+- Use libvirt storage paths with correct SELinux labels, such as `/var/lib/libvirt/images`
+- Use SSH or TLS for remote libvirt administration
+- Restrict host and guest access with firewall rules
 - Keep packages updated with `dnf update`
 
 ## Troubleshooting
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
+1. **VM fails to start**: Check `sudo journalctl -u libvirtd -xe` and `sudo virsh dominfo example-vm` for error messages
 2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
-3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
+3. **Guest does not boot**: Verify the firmware type, disk bus, and guest drivers. Some guests need IDE or SATA for the first boot before switching to virtio.
 
 ## Conclusion
 
-You have successfully configured migrate virtual machines from virtualbox to kvm on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
+You have successfully migrated a virtual machine from VirtualBox to KVM on RHEL. Monitor the VM regularly and keep the host updated to maintain security and performance.
