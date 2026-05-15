@@ -8,7 +8,7 @@ Description: Learn how to configure boot order and select between UEFI and BIOS 
 
 ---
 
-KVM virtual machines on RHEL can use either traditional BIOS (SeaBIOS) or UEFI (OVMF) firmware. UEFI is required for Secure Boot, GPT disk layouts larger than 2TB, and some modern operating systems. You can also control the boot device order.
+KVM virtual machines on RHEL can use either traditional BIOS (SeaBIOS) or UEFI (OVMF) firmware. UEFI is required for Secure Boot and some modern operating systems. It is also commonly used with GPT partitioning for large disks, although BIOS guests can boot from GPT disks when a BIOS boot partition is present. You can also control the boot device order.
 
 ## Checking Current Firmware Type
 
@@ -64,11 +64,12 @@ sudo virt-install \
   --name rhel9-secureboot \
   --memory 4096 \
   --vcpus 2 \
+  --machine q35 \
   --disk size=20 \
   --cdrom /var/lib/libvirt/images/rhel-9.4-x86_64-dvd.iso \
   --os-variant rhel9.4 \
   --network network=default \
-  --boot uefi,loader.secure=yes \
+  --boot uefi,nvram_template=/usr/share/OVMF/OVMF_VARS.secboot.fd \
   --graphics vnc
 ```
 
@@ -115,13 +116,14 @@ sudo virsh edit rhel9-vm
 ## Converting BIOS VM to UEFI
 
 ```bash
-# This requires reinstalling the guest OS
+# This usually requires changing the guest OS bootloader and partitioning.
+# Reinstalling is often the simplest approach.
 # 1. Back up data from the existing VM
-# 2. Delete the old VM
+# 2. Undefine the old VM configuration
 sudo virsh undefine rhel9-vm
 
 # 3. Create a new VM with UEFI pointing to the installation media
-# The guest OS must be reinstalled with UEFI partitioning (GPT + ESP)
+# If reinstalling, install the guest OS with UEFI partitioning (GPT + ESP)
 ```
 
-UEFI firmware is recommended for new VMs on RHEL. It supports Secure Boot, modern partition layouts, and is required by some operating systems. Existing BIOS-based VMs cannot be converted to UEFI without reinstalling the guest OS.
+UEFI firmware is recommended for new VMs on RHEL. It supports Secure Boot, modern partition layouts, and is required by some operating systems. Existing BIOS-based VMs usually require guest bootloader and partitioning changes before they can boot with UEFI; reinstalling the guest OS is often the simplest approach.
