@@ -213,7 +213,7 @@ clevis-dracut
 
 %post
 # Bind LUKS to Tang
-clevis luks bind -d /dev/sda3 -f tang '{"url":"http://10.0.1.10","thp":"key-thumbprint-here"}'
+clevis luks bind -y -k - -d /dev/sda3 tang '{"url":"http://10.0.1.10","thp":"key-thumbprint-here"}' <<< "temporary-luks-passphrase"
 
 # Configure networking in dracut
 cat > /etc/dracut.conf.d/nbde-network.conf << 'NBDE'
@@ -225,7 +225,7 @@ dracut -fv
 %end
 ```
 
-The `-f` flag skips the interactive thumbprint verification by providing it directly, and the `thp` parameter pins the expected thumbprint.
+The `-y` flag answers the Clevis prompts automatically, the `-k -` option reads the existing LUKS passphrase from standard input, and the `thp` parameter pins the expected Tang signing-key thumbprint.
 
 ## Security Considerations for Headless NBDE
 
