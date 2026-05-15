@@ -8,7 +8,7 @@ Description: Use Go's built-in cross-compilation support on RHEL to build binari
 
 ---
 
-Go has excellent built-in support for cross-compilation. You can build binaries for Windows, macOS, ARM, and more directly from your RHEL workstation without any extra toolchains.
+Go has excellent built-in support for cross-compilation. For pure Go applications, you can build binaries for Windows, macOS, ARM, and more directly from your RHEL workstation without any extra C toolchains.
 
 ## Understanding GOOS and GOARCH
 
@@ -40,9 +40,14 @@ import (
     "runtime"
 )
 
+var (
+    version   = "dev"
+    buildDate = "unknown"
+)
+
 func main() {
     http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-        fmt.Fprintf(w, "Running on %s/%s\n", runtime.GOOS, runtime.GOARCH)
+        fmt.Fprintf(w, "Running version %s built %s on %s/%s\n", version, buildDate, runtime.GOOS, runtime.GOARCH)
     })
     fmt.Println("Server starting on :8080")
     http.ListenAndServe(":8080", nil)
@@ -118,8 +123,11 @@ When your code uses CGo (C bindings), cross-compilation requires a cross-compile
 # Disable CGo for pure Go cross-compilation
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o myapp-arm64
 
-# If you need CGo for cross-compilation, install cross-compilers
-sudo dnf install -y gcc-aarch64-linux-gnu
+# If you need CGo for cross-compilation, install a supported cross-compiler
+# and target C library headers for your target platform. Package names vary by
+# RHEL release and enabled repositories; stock RHEL 9 does not provide a
+# supported GCC user-space cross-compilation toolchain.
+# Example once an aarch64 Linux cross-toolchain is available on PATH:
 CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -o myapp-arm64-cgo
 ```
 
@@ -133,4 +141,4 @@ CGO_ENABLED=0 go build -ldflags="-s -w" -o myapp
 go build -ldflags="-X main.version=1.0.0 -X main.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o myapp
 ```
 
-Go's cross-compilation makes it trivial to build and distribute applications for any platform from a single RHEL build server.
+Go's cross-compilation makes it straightforward to build and distribute pure Go applications for many platforms from a single RHEL build server.
