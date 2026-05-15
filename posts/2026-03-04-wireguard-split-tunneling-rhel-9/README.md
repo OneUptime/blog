@@ -97,7 +97,15 @@ sudo nmcli connection modify "wg-split" ipv4.never-default yes
 sudo nmcli connection modify "wg-split" wireguard.private-key "CLIENT_PRIVATE_KEY_HERE"
 
 # Add the server peer and the subnets that should route through the VPN
-sudo nmcli connection modify "wg-split" wireguard.peers "SERVER_PUBLIC_KEY_HERE endpoint=vpn.example.com:51820 allowed-ips=192.168.100.0/24;10.10.0.0/16 persistent-keepalive=25"
+# nmcli on RHEL 9 does not expose peer editing, so add the peer stanza to the profile file
+sudo tee -a /etc/NetworkManager/system-connections/wg-split.nmconnection > /dev/null << 'EOF'
+
+[wireguard-peer.SERVER_PUBLIC_KEY_HERE]
+endpoint=vpn.example.com:51820
+allowed-ips=192.168.100.0/24;10.10.0.0/16;
+persistent-keepalive=25
+EOF
+sudo nmcli connection reload
 
 # Set split DNS if NetworkManager uses a split-DNS backend such as systemd-resolved or dnsmasq
 sudo nmcli connection modify "wg-split" ipv4.dns "10.0.0.1"
