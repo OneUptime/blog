@@ -12,7 +12,9 @@ Encrypting MongoDB connections with TLS/SSL prevents eavesdropping and man-in-th
 
 ## Prerequisites
 
-- RHEL with a valid subscription or CentOS Stream 9
+- RHEL 9 with a valid subscription
+- MongoDB installed from the official MongoDB packages
+- A server certificate and private key in one PEM file, plus the CA certificate used to verify it
 - Root or sudo access
 - A terminal session
 
@@ -21,36 +23,50 @@ Encrypting MongoDB connections with TLS/SSL prevents eavesdropping and man-in-th
 Edit the configuration file to match your environment:
 
 ```bash
-# Open the configuration file
+# Copy the certificate files into a directory readable by mongod
+sudo install -d -o mongod -g mongod -m 0750 /etc/mongodb/tls
+sudo install -o mongod -g mongod -m 0600 mongodb.pem /etc/mongodb/tls/mongodb.pem
+sudo install -o mongod -g mongod -m 0644 ca.pem /etc/mongodb/tls/ca.pem
 
-sudo vi /etc/<service>/config.conf
+# Open the MongoDB configuration file
+sudo vi /etc/mongod.conf
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include the port, listening addresses, and TLS certificate paths.
+
+```yaml
+net:
+  port: 27017
+  bindIp: 127.0.0.1,<server-ip-or-dns-name>
+  tls:
+    mode: requireTLS
+    certificateKeyFile: /etc/mongodb/tls/mongodb.pem
+    CAFile: /etc/mongodb/tls/ca.pem
+```
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart mongod
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable mongod
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start mongod
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status mongod
 ```
 
 ## Step 4: Configure the Firewall
 
 ```bash
-# Open the required port
-sudo firewall-cmd --permanent --add-port=<PORT>/tcp
+# Open the MongoDB port if remote clients need access
+sudo firewall-cmd --permanent --add-port=27017/tcp
 sudo firewall-cmd --reload
 
 # Verify the rule
@@ -66,15 +82,16 @@ Confirm everything is working by checking the status and logs:
 # Check MongoDB status
 sudo systemctl status mongod
 
-# Connect and verify
-mongosh --eval 'db.runCommand({ ping: 1 })'
+# Connect with TLS and verify
+mongosh --host <server-ip-or-dns-name> --tls --tlsCAFile /etc/mongodb/tls/ca.pem --eval 'db.runCommand({ ping: 1 })'
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
+- If the service fails to start, check the logs with `journalctl -u mongod -e --no-pager` and `/var/log/mongodb/mongod.log`.
 - SELinux may block access. Check for denials with `ausearch -m avc -ts recent` and apply appropriate policies.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- Ensure all required MongoDB packages are installed: `rpm -qa | grep mongodb-org`.
+- If `mongosh` fails with a certificate hostname error, connect using a hostname or IP address listed in the certificate SAN.
 
 ## Conclusion
 
