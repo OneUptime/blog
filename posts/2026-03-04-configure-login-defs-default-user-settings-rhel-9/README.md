@@ -10,7 +10,7 @@ Description: A detailed walkthrough of the /etc/login.defs file on RHEL, explain
 
 ## What is /etc/login.defs?
 
-Every time you run `useradd` on RHEL, the system reads `/etc/login.defs` to figure out the defaults: what UID to assign, how long passwords last, what umask to apply, and a bunch of other settings. Most admins never touch this file, which means they are running with defaults that might not match their security policy.
+Every time you run `useradd` on RHEL, the system reads `/etc/login.defs` to figure out account defaults: what UID to assign, how long passwords last for newly created accounts, what permissions to use when creating home directories, and a bunch of other settings. Most admins never touch this file, which means they are running with defaults that might not match their security policy.
 
 This is one of those files that is worth reviewing once, getting right, and then forgetting about. Let me walk through the important parts.
 
@@ -26,7 +26,7 @@ flowchart LR
     B --> E[UID/GID ranges]
     B --> F[Password aging]
     B --> G[UMASK]
-    B --> H[Encryption method]
+    B --> H[Selected shadow-utils defaults]
     C --> I[Default shell, home dir]
     D --> J[Home directory skeleton files]
 ```
@@ -40,7 +40,7 @@ These settings control what user IDs and group IDs get assigned to new accounts.
 ```bash
 # View the current UID/GID range settings
 
-grep -E '^(UID|GID)' /etc/login.defs
+grep -E '^(SYS_)?(UID|GID)' /etc/login.defs
 ```
 
 The relevant settings:
@@ -92,9 +92,6 @@ PASS_MAX_DAYS   99999
 # Minimum number of days allowed between password changes
 PASS_MIN_DAYS   0
 
-# Minimum acceptable password length
-PASS_MIN_LEN    5
-
 # Number of days warning given before a password expires
 PASS_WARN_AGE   7
 ```
@@ -108,12 +105,11 @@ PASS_MAX_DAYS   90
 # Prevent password changes more than once per day (stops rapid cycling)
 PASS_MIN_DAYS   1
 
-# Minimum password length (pam_pwquality handles actual enforcement)
-PASS_MIN_LEN    12
-
 # Warn users 14 days before expiry
 PASS_WARN_AGE   14
 ```
+
+On RHEL 9, password length and complexity are enforced through PAM, normally with `pam_pwquality` and `/etc/security/pwquality.conf`. You might still see `PASS_MIN_LEN` in older examples or compliance content, but it is not the setting that enforces password length for normal password changes on RHEL 9.
 
 **Important:** These settings only apply to accounts created after the change. Existing accounts keep their old aging values. To update existing accounts:
 
@@ -136,7 +132,7 @@ done
 
 ## UMASK Setting
 
-The `UMASK` in login.defs sets the default file creation mask for new users.
+The `UMASK` in login.defs is used by `useradd` and `newusers` when creating home directories if `HOME_MODE` is not set, and it can also be used by `pam_umask` as the default login umask.
 
 ```bash
 # Check the current UMASK setting
@@ -144,7 +140,7 @@ grep -E '^UMASK' /etc/login.defs
 ```
 
 ```bash
-# Default umask for new users
+# Default UMASK value
 UMASK           022
 ```
 
@@ -178,11 +174,11 @@ On RHEL, this is `yes` by default. If you set it to `no`, you need to pass `-m` 
 
 ## ENCRYPT_METHOD
 
-This determines the hashing algorithm used for passwords in `/etc/shadow`.
+This setting is often misunderstood. On RHEL 9, user password hashing is handled through PAM/authselect, not directly by `ENCRYPT_METHOD` in `/etc/login.defs`. The `login.defs` setting is still used by some shadow-utils tools for group passwords and batch-style account tools, so it is worth keeping consistent with the system authentication policy.
 
 ```bash
-# Check the encryption method
-grep ENCRYPT_METHOD /etc/login.defs
+# Check the encryption method setting
+grep -E '^ENCRYPT_METHOD' /etc/login.defs
 ```
 
 ```bash
@@ -190,7 +186,7 @@ grep ENCRYPT_METHOD /etc/login.defs
 ENCRYPT_METHOD SHA512
 ```
 
-RHEL defaults to `SHA512`, which is solid. The options are:
+RHEL 9 uses SHA-512 for system authentication. The common `login.defs` values are:
 
 | Method | Security | Notes |
 |--------|----------|-------|
@@ -198,15 +194,8 @@ RHEL defaults to `SHA512`, which is solid. The options are:
 | MD5 | Weak | Deprecated |
 | SHA256 | Good | Acceptable |
 | SHA512 | Good | RHEL default |
-| YESCRYPT | Strong | Available on RHEL |
 
-If you want the strongest option:
-
-```bash
-ENCRYPT_METHOD YESCRYPT
-```
-
-YESCRYPT is a modern password hashing scheme designed to be resistant to GPU and ASIC attacks. It is available on RHEL and is a good choice for new deployments.
+For RHEL 9, keep this aligned with SHA-512 unless your authentication stack and support requirements explicitly call for something else.
 
 ## USERGROUPS_ENAB
 
@@ -250,11 +239,11 @@ I recommend setting `LOG_OK_LOGINS` to `yes` on production servers. It gives you
 
 ## Viewing the Effective Configuration
 
-After making changes, verify the full effective configuration:
+After making changes, verify the active settings:
 
 ```bash
 # Show all active (non-comment) settings
-grep -v '^#' /etc/login.defs | grep -v '^$'
+awk 'NF && $1 !~ /^#/' /etc/login.defs
 ```
 
 ## A Security-Hardened Configuration
@@ -264,7 +253,6 @@ Here is what I typically set on production RHEL servers:
 ```bash
 PASS_MAX_DAYS   90
 PASS_MIN_DAYS   1
-PASS_MIN_LEN    12
 PASS_WARN_AGE   14
 UID_MIN         1000
 UID_MAX         60000
@@ -284,4 +272,4 @@ The `UMASK 027` is a middle ground - owner gets full access, group gets read/exe
 
 ## Wrapping Up
 
-`/etc/login.defs` is not glamorous, but getting it right means every new account on your system starts with a reasonable security baseline. Review it when you set up a new server, set the password aging policy your organization requires, choose an appropriate umask, and move on. The few minutes you spend here save you from chasing down per-account settings later. And remember, changes only affect new accounts. Use `chage` and `chmod` to bring existing accounts in line.
+`/etc/login.defs` is not glamorous, but getting it right means every new account on your system starts with a reasonable security baseline. Review it when you set up a new server, set the password aging policy your organization requires, choose an appropriate umask, and move on. The few minutes you spend here save you from chasing down per-account settings later. And remember, account-creation defaults only affect new accounts. Use `chage` and `chmod` to bring existing accounts in line.
