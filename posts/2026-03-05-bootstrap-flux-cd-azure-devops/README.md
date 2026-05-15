@@ -191,10 +191,43 @@ git clone https://dev.azure.com/$AZURE_DEVOPS_ORG/$AZURE_DEVOPS_PROJECT/_git/fle
 cd fleet-infra
 
 # Create the directory structure
-mkdir -p clusters/production/flux-system
+mkdir -p clusters/production/flux-system clusters/production/apps apps/production/nginx
 
 # Export Flux component manifests
 flux install --export > clusters/production/flux-system/gotk-components.yaml
+
+# Create the GitRepository source
+cat > clusters/production/flux-system/gotk-sync.yaml << 'EOF'
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: flux-system
+  namespace: flux-system
+spec:
+  interval: 1m0s
+  ref:
+    branch: main
+  secretRef:
+    name: flux-system
+  url: https://dev.azure.com/<org>/<project>/_git/fleet-infra
+EOF
+
+# Create the Flux Kustomization
+cat > clusters/production/flux-system/kustomization-sync.yaml << 'EOF'
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: flux-system
+  namespace: flux-system
+spec:
+  interval: 10m0s
+  path: ./clusters/production
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  wait: true
+EOF
 
 # Create the kustomization.yaml
 cat > clusters/production/flux-system/kustomization.yaml << 'EOF'
@@ -212,6 +245,14 @@ patches:
     target:
       kind: Deployment
       name: source-controller
+EOF
+
+# Create the production root kustomization.yaml
+cat > clusters/production/kustomization.yaml << 'EOF'
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - flux-system
 EOF
 
 # Commit and push
@@ -239,6 +280,25 @@ spec:
     kind: GitRepository
     name: flux-system
   wait: true
+```
+
+Add the apps Kustomization to the production root kustomization:
+
+```yaml
+# clusters/production/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - flux-system
+  - apps
+```
+
+```yaml
+# apps/production/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - nginx/deployment.yaml
 ```
 
 ```yaml
