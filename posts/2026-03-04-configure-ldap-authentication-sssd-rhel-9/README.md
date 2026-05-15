@@ -12,7 +12,7 @@ Managing user authentication centrally is essential for any organization with mo
 
 ## What SSSD Does
 
-SSSD sits between your system and the LDAP server, caching credentials and handling lookups. This means users can still log in even if the LDAP server is temporarily unavailable.
+SSSD sits between your system and the LDAP server, caching credentials and handling lookups. This means users whose credentials are already cached can still log in if the LDAP server is temporarily unavailable.
 
 ```mermaid
 graph LR
@@ -33,7 +33,7 @@ Start by installing SSSD and the LDAP client tools:
 ```bash
 # Install SSSD with LDAP backend support
 
-sudo dnf install sssd sssd-ldap openldap-clients -y
+sudo dnf install sssd sssd-ldap openldap-clients oddjob-mkhomedir -y
 ```
 
 ## Configuring SSSD
@@ -69,7 +69,7 @@ ldap_tls_cacert = /etc/pki/tls/certs/ca-bundle.crt
 # Require TLS certificate verification
 ldap_tls_reqcert = demand
 
-# Enable ID mapping so LDAP users get consistent UIDs
+# Do not use STARTTLS when connecting with ldaps://
 ldap_id_use_start_tls = false
 
 # Cache credentials for offline login
@@ -105,6 +105,9 @@ This command does two things: it tells NSS to look up users and groups through S
 # Enable and start the SSSD service
 sudo systemctl enable --now sssd
 
+# Enable home directory creation for first-time logins
+sudo systemctl enable --now oddjobd
+
 # Check that it started without errors
 sudo systemctl status sssd
 ```
@@ -117,7 +120,7 @@ Verify that LDAP users can be resolved:
 # Look up a specific LDAP user
 id ldapuser1
 
-# List all users from LDAP
+# Confirm the LDAP user appears through NSS
 getent passwd ldapuser1
 
 # Test group resolution
@@ -162,5 +165,4 @@ ldapsearch -x -H ldaps://ldap.example.com -b "dc=example,dc=com" -D "cn=admin,dc
 
 ## Summary
 
-SSSD provides a robust, caching-aware bridge between RHEL and your LDAP directory. With credential caching, users can authenticate even during brief network outages, and the integration with PAM and NSS means LDAP users work seamlessly with standard Linux tools and services.
-
+SSSD provides a robust, caching-aware bridge between RHEL and your LDAP directory. With credential caching, users who have already authenticated can authenticate during brief network outages, and the integration with PAM and NSS means LDAP users work seamlessly with standard Linux tools and services.
