@@ -15,15 +15,15 @@ SNMP-based monitoring lets Nagios check RHEL servers without installing the NRPE
 Ensure SNMP is configured on the target RHEL servers (see the SNMP monitoring guide). On the Nagios server, install the SNMP plugins.
 
 ```bash
-# Install SNMP utilities and Nagios SNMP plugins on the Nagios server
+# Install SNMP utilities and build prerequisites on the Nagios server
 
-sudo dnf install -y net-snmp-utils perl-Net-SNMP
+sudo dnf install -y gcc glibc glibc-common make gettext automake autoconf wget openssl-devel net-snmp net-snmp-utils perl-Net-SNMP
 
 # Download and install additional SNMP plugins for Nagios
 cd /tmp
-wget https://github.com/nagios-plugins/nagios-plugins/releases/download/release-2.4.8/nagios-plugins-2.4.8.tar.gz
-tar xzf nagios-plugins-2.4.8.tar.gz
-cd nagios-plugins-2.4.8
+wget https://nagios-plugins.org/download/nagios-plugins-2.5.tar.gz
+tar xzf nagios-plugins-2.5.tar.gz
+cd nagios-plugins-2.5
 ./configure
 make
 sudo make install
@@ -46,7 +46,7 @@ define command {
 # SNMP check for memory usage
 define command {
     command_name    check_snmp_mem
-    command_line    $USER1$/check_snmp -H $HOSTADDRESS$ -C $ARG1$ -o .1.3.6.1.4.1.2021.4.6.0,.1.3.6.1.4.1.2021.4.5.0 -l "Available RAM,Total RAM"
+    command_line    $USER1$/check_snmp -H $HOSTADDRESS$ -C $ARG1$ -o .1.3.6.1.4.1.2021.4.6.0 -w $ARG2$: -c $ARG3$: -l "Available RAM" -u "kB"
 }
 
 # SNMP check for disk usage
@@ -94,12 +94,12 @@ define service {
     check_command       check_snmp_load!myCommunity!4!8
 }
 
-# Service: Memory via SNMP
+# Service: Available memory via SNMP
 define service {
     use                 generic-service
     host_name           rhel-web01
-    service_description Memory Usage (SNMP)
-    check_command       check_snmp_mem!myCommunity
+    service_description Available Memory (SNMP)
+    check_command       check_snmp_mem!myCommunity!200000!100000
 }
 
 # Service: Disk Usage via SNMP
@@ -108,6 +108,14 @@ define service {
     host_name           rhel-web01
     service_description Disk Usage (SNMP)
     check_command       check_snmp_disk!myCommunity!80!90
+}
+
+# Service: Interface status via SNMP
+define service {
+    use                 generic-service
+    host_name           rhel-web01
+    service_description Interface Status (SNMP)
+    check_command       check_snmp_int!myCommunity!2
 }
 
 # Service: Uptime via SNMP
