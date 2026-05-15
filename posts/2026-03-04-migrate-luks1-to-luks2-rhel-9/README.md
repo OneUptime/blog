@@ -14,10 +14,10 @@ LUKS2 is the default encryption format on RHEL, offering several improvements ov
 
 | Feature | LUKS1 | LUKS2 |
 |---------|-------|-------|
-| Key derivation | PBKDF2 | Argon2id (memory-hard) |
+| Key derivation | PBKDF2 | PBKDF2, Argon2i, or Argon2id |
 | Key slots | 8 | 32 |
-| Metadata redundancy | Single copy | Redundant copies |
-| Authenticated encryption | No | Yes (with integrity) |
+| Metadata redundancy | Single copy | Redundant JSON metadata copies |
+| Authenticated encryption | No | Yes (with dm-integrity) |
 | Token support | No | Yes (for automated unlock) |
 | On-disk format | Binary | JSON-based |
 | Online reencryption | No | Yes |
@@ -48,9 +48,9 @@ Not all LUKS1 configurations can be directly converted:
 sudo cryptsetup luksDump /dev/sdb
 
 # The conversion may fail if:
-# - The device uses a non-standard key slot area size
-# - The PBKDF parameters are incompatible
-# - The device is currently in use by the kernel
+# - The LUKS1 header size is unsupported
+# - The device has Clevis/PBD luksmeta metadata
+# - The device has an active dm-crypt mapping
 ```
 
 ## Step-by-Step Migration
@@ -92,7 +92,7 @@ sudo cryptsetup convert /dev/sdb --type luks2
 # You will be prompted to confirm
 ```
 
-The conversion modifies only the header metadata. It does not re-encrypt the data, so it is fast regardless of device size.
+The conversion modifies the LUKS header and key slot metadata. It does not re-encrypt the bulk data, so it is fast regardless of device size.
 
 ### Step 4: Verify the Conversion
 
@@ -181,12 +181,12 @@ cryptsetup luksHeaderBackup /dev/sda3 \
 # Step 5: Convert to LUKS2
 cryptsetup convert /dev/sda3 --type luks2
 
-# Step 6: Update initramfs after rebooting
-# Boot normally, then:
-sudo dracut --force
+# Step 6: If your initramfs was built without LUKS2 support, rebuild it before rebooting
+# Mount the installed system and chroot as appropriate, then:
+dracut --force
 
 # Step 7: Verify the system boots correctly
-sudo reboot
+reboot
 ```
 
 ## Rolling Back (Converting LUKS2 Back to LUKS1)
