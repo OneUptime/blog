@@ -8,7 +8,7 @@ Description: Step-by-step guide on configure tcp keepalive settings for long-liv
 
 ---
 
-TCP keepalive settings on RHEL 9 maintain long-lived connections and detect dead peers.
+TCP keepalive settings on RHEL 9 maintain long-lived connections and detect dead peers when keepalive is enabled on the socket.
 
 ## View Current Settings
 
@@ -66,5 +66,4 @@ ss -tnoe | grep keepalive
 
 ## Conclusion
 
-TCP keepalive on RHEL 9 prevents idle connection timeouts and detects dead peers. Configure system-wide defaults and allow applications to override as needed for their specific connection patterns.
-
+TCP keepalive on RHEL 9 can help prevent idle connection timeouts and detect dead peers when keepalive is enabled on the socket. Configure system-wide defaults and allow applications to override as needed for their specific connection patterns.
