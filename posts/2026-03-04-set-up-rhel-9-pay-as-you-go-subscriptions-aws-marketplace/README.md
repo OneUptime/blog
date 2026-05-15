@@ -14,9 +14,9 @@ Set up RHEL 9 pay-as-you-go subscriptions on AWS Marketplace. RHEL 9 is fully su
 
 ## Prerequisites
 
-- A RHEL 9 subscription or cloud marketplace entitlement
+- A RHEL 9 cloud marketplace entitlement, or a Red Hat subscription for BYOS/custom images
 - An account on the target cloud platform (AWS, Azure, or GCP)
-- CLI tools installed: aws-cli, az-cli, or gcloud
+- CLI tools installed: AWS CLI, Azure CLI, or Google Cloud CLI
 
 ## Step 1 - Choose Your Deployment Method
 
@@ -32,13 +32,15 @@ You can deploy RHEL 9 in the cloud using:
 For AWS:
 
 ```bash
-aws ec2 run-instances --image-id ami-rhel9-xxxxx --instance-type m5.large --key-name mykey
+aws ec2 run-instances --image-id ami-0abcdef1234567890 --instance-type m5.large --key-name mykey
 ```
+
+Use the AMI ID for the subscribed RHEL 9 Marketplace image in your AWS Region.
 
 For Azure:
 
 ```bash
-az vm create --resource-group myRG --name myVM --image RedHat:RHEL:9:latest --size Standard_D2s_v3
+az vm create --resource-group myRG --name myVM --image RedHat:RHEL:9-lvm-gen2:latest --size Standard_D2s_v3
 ```
 
 For GCP:
@@ -66,8 +68,10 @@ packages:
 
 ## Step 4 - Register with Red Hat
 
+AWS Marketplace pay-as-you-go RHEL images receive package updates through Red Hat Update Infrastructure (RHUI), so you do not need to attach a separate Red Hat subscription for updates. For BYOS/custom images, or to connect the host to Red Hat services, register with Red Hat:
+
 ```bash
-sudo subscription-manager register --auto-attach
+sudo subscription-manager register --org=<org_id> --activationkey=<activation_key>
 # Or connect to Red Hat Insights:
 
 sudo insights-client --register
@@ -84,7 +88,7 @@ Connect your cloud instances to your monitoring infrastructure:
 ```bash
 # Install Node Exporter for Prometheus
 # Or register with Red Hat Insights
-sudo insights-client
+sudo insights-client --register
 ```
 
 ## Summary
