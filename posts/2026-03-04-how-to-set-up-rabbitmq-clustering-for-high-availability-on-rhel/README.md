@@ -46,17 +46,8 @@ sudo systemctl start rabbitmq-server
 On rabbit2 and rabbit3:
 
 ```bash
-# Stop the RabbitMQ application (not the Erlang VM)
-sudo rabbitmqctl stop_app
-
-# Reset the node
-sudo rabbitmqctl reset
-
 # Join the cluster
 sudo rabbitmqctl join_cluster rabbit@rabbit1
-
-# Start the application
-sudo rabbitmqctl start_app
 ```
 
 ## Verifying the Cluster
@@ -72,15 +63,7 @@ sudo rabbitmqctl cluster_status
 
 Quorum queues are Raft-based replicated queues that provide data safety:
 
-```bash
-# Create a quorum queue policy
-sudo rabbitmqctl set_policy ha-all ".*" \
-  '{"queue-type": "quorum"}' \
-  --priority 1 \
-  --apply-to queues
-```
-
-Or declare quorum queues from your application:
+Queue type must be set when the queue is declared; it cannot be changed or set using a policy. Declare quorum queues from your application:
 
 ```python
 import pika
@@ -107,10 +90,12 @@ sudo dnf install -y haproxy
 # Configure HAProxy for RabbitMQ
 cat << 'HAPROXY' | sudo tee /etc/haproxy/haproxy.cfg
 frontend rabbitmq_frontend
+    mode tcp
     bind *:5672
     default_backend rabbitmq_backend
 
 backend rabbitmq_backend
+    mode tcp
     balance roundrobin
     server rabbit1 192.168.1.101:5672 check
     server rabbit2 192.168.1.102:5672 check
