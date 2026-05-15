@@ -21,13 +21,14 @@ cAdvisor (Container Advisor) collects container metrics and exposes them for Pro
 sudo podman run -d \
     --name cadvisor \
     --privileged \
+    --device /dev/kmsg \
     -p 8080:8080 \
     -v /:/rootfs:ro \
     -v /var/run:/var/run:ro \
     -v /sys:/sys:ro \
     -v /var/lib/containers:/var/lib/containers:ro \
     -v /dev/disk/:/dev/disk:ro \
-    gcr.io/cadvisor/cadvisor:latest
+    ghcr.io/google/cadvisor:v0.56.2
 
 # Verify cAdvisor is running
 curl -s http://localhost:8080/metrics | head -20
@@ -47,16 +48,16 @@ scrape_configs:
 sudo systemctl reload prometheus
 ```
 
-## Method 2: Use Podman's Built-in Metrics API
+## Method 2: Use Podman's Docker-Compatible API
 
-Podman 4.x+ supports the Docker-compatible API, which you can query for stats.
+Podman supports a Docker-compatible API, which exporters can query for container information and stats.
 
 ```bash
 # Enable the Podman socket for rootful containers
 sudo systemctl enable --now podman.socket
 
 # Verify the socket
-sudo curl --unix-socket /run/podman/podman.sock http://d/v4.0.0/containers/json
+sudo curl --unix-socket /run/podman/podman.sock http://d/v1.40/containers/json
 
 # For rootless containers
 systemctl --user enable --now podman.socket
@@ -74,27 +75,61 @@ sudo tee /usr/local/bin/podman-metrics.sh << 'SCRIPT'
 # Simple script to generate Prometheus metrics from podman stats
 
 OUTPUT_FILE="/var/lib/node_exporter/textfile_collector/podman.prom"
+TMP_FILE="${OUTPUT_FILE}.$$"
 
-# Clear the file
-> "$OUTPUT_FILE"
+# Clear the temporary file
+> "$TMP_FILE"
 
 # Get container stats in JSON format
 sudo podman stats --no-stream --format json | python3 -c "
 import json, sys
+from decimal import Decimal
+
+UNITS = {
+    'B': Decimal(1),
+    'KB': Decimal(1000),
+    'MB': Decimal(1000) ** 2,
+    'GB': Decimal(1000) ** 3,
+    'TB': Decimal(1000) ** 4,
+    'KIB': Decimal(1024),
+    'MIB': Decimal(1024) ** 2,
+    'GIB': Decimal(1024) ** 3,
+    'TIB': Decimal(1024) ** 4,
+}
+
+def parse_bytes(value):
+    value = value.split('/')[0].strip().replace(' ', '').upper()
+    if not value or value == '--':
+        return None
+    for unit in sorted(UNITS, key=len, reverse=True):
+        if value.endswith(unit):
+            return int(Decimal(value[:-len(unit)]) * UNITS[unit])
+    return int(Decimal(value))
+
+def parse_percent(value):
+    value = str(value).strip().rstrip('%')
+    if not value or value == '--':
+        return None
+    return Decimal(value)
 
 data = json.load(sys.stdin)
 for c in data:
-    name = c['Name'].replace('-', '_')
+    name = c['name']
     # CPU percentage
-    cpu = c.get('CPUPerc', '0%').rstrip('%')
-    print(f'podman_container_cpu_percent{{name=\"{c[\"Name\"]}\"}} {cpu}')
+    cpu = parse_percent(c.get('cpu_percent', '0'))
+    if cpu is not None:
+        print(f'podman_container_cpu_percent{{name=\"{name}\"}} {cpu}')
     # Memory usage
-    mem = c.get('MemUsage', '0B / 0B').split('/')[0].strip()
-    print(f'podman_container_mem_usage_info{{name=\"{c[\"Name\"]}\"}} 1')
+    mem = parse_bytes(c.get('mem_usage', '0B / 0B'))
+    if mem is not None:
+        print(f'podman_container_memory_usage_bytes{{name=\"{name}\"}} {mem}')
     # PIDs
-    pids = c.get('PIDs', '0')
-    print(f'podman_container_pids{{name=\"{c[\"Name\"]}\"}} {pids}')
-" >> "$OUTPUT_FILE"
+    pids = c.get('pids', '0')
+    if str(pids).isdigit():
+        print(f'podman_container_pids{{name=\"{name}\"}} {pids}')
+" >> "$TMP_FILE"
+
+mv "$TMP_FILE" "$OUTPUT_FILE"
 SCRIPT
 
 sudo chmod +x /usr/local/bin/podman-metrics.sh
