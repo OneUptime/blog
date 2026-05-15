@@ -48,6 +48,7 @@ uid: jdoe
 cn: John Doe
 mail: jdoe@example.com
 mailAlternateAddress: john.doe@example.com
+mailMessageStore: example.com/jdoe
 ```
 
 ## Architecture
@@ -63,7 +64,7 @@ graph LR
 
 ## Configuring LDAP Alias Lookups
 
-Create an LDAP configuration file for virtual alias lookups. This maps email addresses to mailbox locations.
+Create an LDAP configuration file for virtual alias lookups. This maps email addresses to other email addresses.
 
 Create `/etc/postfix/ldap-aliases.cf`:
 
@@ -117,9 +118,9 @@ result_attribute = mailMessageStore
 result_format = %s/
 ```
 
-## Configuring LDAP for Recipient Validation
+## Configuring LDAP for Local Recipient Validation
 
-To reject mail for addresses that do not exist in LDAP, create `/etc/postfix/ldap-recipients.cf`:
+To reject mail for local addresses that do not exist in LDAP, create `/etc/postfix/ldap-recipients.cf`:
 
 ```bash
 # LDAP server connection
@@ -151,16 +152,21 @@ Edit `/etc/postfix/main.cf` to use the LDAP lookup tables:
 virtual_alias_maps = ldap:/etc/postfix/ldap-aliases.cf
 
 # Virtual mailbox maps (if using virtual delivery)
+virtual_mailbox_domains = example.com
+virtual_mailbox_base = /var/mail/vhosts
 virtual_mailbox_maps = ldap:/etc/postfix/ldap-vmailbox.cf
+virtual_minimum_uid = 100
+virtual_uid_maps = static:5000
+virtual_gid_maps = static:5000
 
-# Reject recipients not found in LDAP
+# Enable explicit unlisted-recipient checks
 smtpd_recipient_restrictions =
     permit_mynetworks,
     permit_sasl_authenticated,
     reject_unauth_destination,
     reject_unlisted_recipient
 
-# Local recipient maps using LDAP
+# Local recipient maps using LDAP, for domains in mydestination
 local_recipient_maps = ldap:/etc/postfix/ldap-recipients.cf
 ```
 
@@ -173,6 +179,7 @@ For secure LDAP connections, use LDAPS or STARTTLS:
 ```bash
 server_host = ldaps://ldap.example.com
 server_port = 636
+version = 3
 ```
 
 ### STARTTLS (port 389 with encryption)
@@ -180,6 +187,7 @@ server_port = 636
 ```bash
 server_host = ldap://ldap.example.com
 server_port = 389
+version = 3
 start_tls = yes
 tls_ca_cert_file = /etc/pki/tls/certs/ca-bundle.crt
 tls_require_cert = yes
@@ -262,7 +270,7 @@ Double-check the `query_filter` syntax. LDAP filters use prefix notation and par
 
 **Slow mail delivery:**
 
-If LDAP lookups are slow, enable connection caching and increase the number of Postfix processes. Also make sure your LDAP server has proper indexes on the `mail` and `mailAlternateAddress` attributes.
+If LDAP lookups are slow, make sure your LDAP server has proper indexes on the `mail` and `mailAlternateAddress` attributes. For busy systems, consider using a local LDAP replica or reducing unnecessary map lookups.
 
 **SELinux blocking LDAP connections:**
 
