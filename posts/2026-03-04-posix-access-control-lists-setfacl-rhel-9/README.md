@@ -153,11 +153,9 @@ flowchart TD
     B -->|Yes| C[Apply owner permissions]
     B -->|No| D{Named user ACL exists?}
     D -->|Yes| E[Apply named user ACL AND mask]
-    D -->|No| F{Requester in owning group?}
-    F -->|Yes| G[Apply group permissions AND mask]
-    F -->|No| H{Named group ACL exists?}
-    H -->|Yes| I[Apply named group ACL AND mask]
-    H -->|No| J[Apply other permissions]
+    D -->|No| F{Requester in owning group or named group ACL?}
+    F -->|Yes| G[Apply mask and any matching group entry]
+    F -->|No| H[Apply other permissions]
 ```
 
 ## Backing Up and Restoring ACLs
@@ -218,7 +216,7 @@ Find all files with ACLs in a directory:
 
 ```bash
 # Find files with ACLs set
-find /opt -exec getfacl --tabular {} + 2>/dev/null | grep -B1 "user:"
+getfacl -R -s /opt 2>/dev/null
 ```
 
 ACLs give you the granularity that traditional Unix permissions lack. They are essential for shared environments where multiple users and groups need different levels of access to the same files.
