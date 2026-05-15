@@ -71,11 +71,11 @@ append = "console=tty1 console=ttyS0 earlyprintk=ttyS0 rootdelay=300"
 
 [[customizations.filesystem]]
 mountpoint = "/var"
-size = "10 GiB"
+minsize = "10 GiB"
 
 [[customizations.filesystem]]
 mountpoint = "/var/log"
-size = "5 GiB"
+minsize = "5 GiB"
 ```
 
 ## Building the VHD
