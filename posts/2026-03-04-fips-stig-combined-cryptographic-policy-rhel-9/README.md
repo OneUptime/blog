@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, FIPS, STIG, Crypto Policy, Linux
 
-Description: Configure the combined FIPS and STIG cryptographic policy on RHEL to meet both FIPS 140-3 and DISA STIG requirements simultaneously.
+Description: Configure a FIPS-based STIG cryptographic policy on RHEL to meet FIPS 140-3 and DISA STIG cryptographic policy requirements.
 
 ---
 
-RHEL introduced a system-wide cryptographic policy framework that makes it possible to apply a single policy across all crypto libraries at once. When you need to meet both FIPS and STIG requirements, the FIPS:OSPP subpolicy gives you the strictest configuration that satisfies both standards. This guide walks through how to apply it and what it changes.
+RHEL introduced a system-wide cryptographic policy framework that makes it possible to apply a single policy across core cryptographic subsystems at once. When you need to meet both FIPS and STIG requirements, start with FIPS mode and apply a STIG subpolicy for the additional OpenSSH restrictions required by the current RHEL 9 STIG. This guide walks through how to apply it and what it changes.
 
 ## Understanding Crypto Policies on RHEL
 
@@ -23,10 +23,10 @@ ls /usr/share/crypto-policies/policies/
 # DEFAULT - Balanced security and compatibility
 # LEGACY  - Maximum compatibility (less secure)
 # FUTURE  - Forward-looking (more restrictive)
-# FIPS    - FIPS 140-3 compliant
+# FIPS    - Policy used by RHEL FIPS mode
 # EMPTY   - No restrictions (for building custom policies)
 
-# List available subpolicies (modifiers)
+# List available system subpolicies (modifiers)
 ls /usr/share/crypto-policies/policies/modules/
 ```
 
@@ -37,10 +37,10 @@ flowchart TD
     B --> D[FIPS]
     B --> E[FUTURE]
     A --> F[Subpolicies/Modules]
-    F --> G[OSPP]
+    F --> G[STIG custom module]
     F --> H[NO-SHA1]
     F --> I[NO-CAMELLIA]
-    D --> J[FIPS + OSPP = STIG-ready]
+    D --> J[FIPS + STIG = STIG crypto policy]
 ```
 
 ## Apply the FIPS Policy
@@ -62,23 +62,30 @@ update-crypto-policies --show
 fips-mode-setup --check
 ```
 
-## Apply the OSPP Subpolicy for STIG Compliance
+## Apply the STIG Subpolicy
 
-The OSPP (Operating System Protection Profile) subpolicy adds restrictions required by STIG:
+The current RHEL 9 STIG expects the system-wide crypto policy to start with `FIPS`, and allows documented subpolicies in a colon-separated list such as `FIPS:STIG`. Create the STIG subpolicy for the required OpenSSH cipher and MAC restrictions:
 
 ```bash
-# Apply the FIPS policy with the OSPP subpolicy
-update-crypto-policies --set FIPS:OSPP
+# Create the STIG subpolicy module
+cat > /etc/crypto-policies/policies/modules/STIG.pmod << 'EOF'
+# Define ciphers and MACs for OpenSSH and libssh
+cipher@SSH = AES-256-GCM AES-256-CTR AES-128-GCM AES-128-CTR
+mac@SSH = HMAC-SHA2-512 HMAC-SHA2-256
+EOF
 
-# This takes effect immediately for new connections
-# Existing connections use the old policy until restarted
+# Apply the FIPS policy with the STIG subpolicy
+update-crypto-policies --set FIPS:STIG
+
+# Restart to make the policy fully effective for running services
+systemctl reboot
 
 # Verify the policy
 update-crypto-policies --show
-# Expected output: FIPS:OSPP
+# Expected output: FIPS:STIG
 ```
 
-## What FIPS:OSPP Changes
+## What FIPS:STIG Changes
 
 The combined policy applies these additional restrictions over plain FIPS:
 
@@ -87,16 +94,16 @@ The combined policy applies these additional restrictions over plain FIPS:
 ```bash
 # Check available SSH ciphers
 ssh -Q cipher
-# FIPS:OSPP restricts to: aes128-ctr, aes256-ctr, aes128-cbc, aes256-cbc,
-# aes128-gcm@openssh.com, aes256-gcm@openssh.com
+# FIPS:STIG restricts OpenSSH/libssh to AES-256-GCM, AES-256-CTR,
+# AES-128-GCM, and AES-128-CTR
 
 # Check available SSH MACs
 ssh -Q mac
-# Limited to: hmac-sha2-256, hmac-sha2-512
+# Limited to HMAC-SHA2-512 and HMAC-SHA2-256 for OpenSSH/libssh
 
 # Check available key exchange algorithms
 ssh -Q kex
-# Restricted to ECDH and DH with sufficient key sizes
+# Restricted by the FIPS base policy
 ```
 
 ### TLS restrictions
@@ -115,13 +122,12 @@ openssl ciphers -v 'ALL' 2>/dev/null | wc -l
 ### Key size requirements
 
 ```bash
-# RSA minimum key size: 2048 bits (3072 recommended)
+# RSA minimum key size: 2048 bits
 # ECDSA: P-256, P-384, P-521
 # DH: 2048 bits minimum
 
-# Verify RSA key size requirements
-openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:1024 2>&1
-# Should fail - key too small for FIPS:OSPP
+# Verify the active policy values
+grep -E 'rsa_size|hash' /etc/crypto-policies/state/CURRENT.pol
 ```
 
 ## Verify the Combined Policy
@@ -145,7 +151,7 @@ cat /etc/crypto-policies/back-ends/java.config
 
 ## Create a Custom Subpolicy
 
-If FIPS:OSPP is too restrictive or not restrictive enough, create a custom subpolicy:
+If the STIG subpolicy is too restrictive or not restrictive enough for your documented environment, create a custom subpolicy:
 
 ```bash
 # Create a custom subpolicy module
@@ -162,7 +168,7 @@ min_rsa_size = 3072
 min_dh_size = 3072
 
 # Disable CBC mode for SSH (use CTR and GCM only)
-ssh_cipher = -AES-128-CBC -AES-256-CBC
+cipher@SSH = -*-CBC
 EOF
 
 # Apply the custom policy
@@ -200,10 +206,10 @@ strace -e trace=openat service-binary 2>&1 | grep crypto
 update-crypto-policies --set FIPS
 openssl ciphers -v 'ALL' 2>/dev/null > /tmp/fips-ciphers.txt
 
-update-crypto-policies --set FIPS:OSPP
-openssl ciphers -v 'ALL' 2>/dev/null > /tmp/fips-ospp-ciphers.txt
+update-crypto-policies --set FIPS:STIG
+openssl ciphers -v 'ALL' 2>/dev/null > /tmp/fips-stig-ciphers.txt
 
-diff /tmp/fips-ciphers.txt /tmp/fips-ospp-ciphers.txt
+diff /tmp/fips-ciphers.txt /tmp/fips-stig-ciphers.txt
 ```
 
 ## Document the Policy for Auditors
@@ -248,4 +254,4 @@ update-crypto-policies --set FIPS
 systemctl restart sshd
 ```
 
-The FIPS:OSPP policy on RHEL gives you a single command to apply both FIPS and STIG cryptographic requirements. It is the most straightforward way to handle crypto compliance, and the system-wide approach means you do not have to configure each application individually. Set it once, verify it works, and the crypto policy framework handles the rest.
+The FIPS:STIG policy on RHEL gives you a central way to apply FIPS cryptographic policy requirements with the additional STIG OpenSSH restrictions. It is the most straightforward way to handle this part of crypto compliance, and the system-wide approach means you do not have to configure every covered application individually. Set it once, verify it works, and the crypto policy framework handles the rest.
