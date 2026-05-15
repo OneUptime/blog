@@ -73,11 +73,11 @@ If you cannot access GRUB or emergency mode:
 
 ```bash
 # Boot from RHEL installation media
-# Select Troubleshooting > Rescue
-# Let it mount the system under /mnt/sysimage
+# Select Troubleshooting > Rescue a Red Hat Enterprise Linux system
+# Let it mount the system under /mnt/sysroot
 
 # Edit fstab in the mounted system
-vi /mnt/sysimage/etc/fstab
+vi /mnt/sysroot/etc/fstab
 
 # Save and reboot
 reboot
@@ -107,7 +107,7 @@ If fstab references a device that no longer exists (removed disk, detached stora
 # Change:
 # UUID=abcd-1234  /data  xfs  defaults  0  0
 # To:
-# UUID=abcd-1234  /data  xfs  defaults  0  0  # DISABLED - device removed
+#UUID=abcd-1234  /data  xfs  defaults  0  0  # DISABLED - device removed
 ```
 
 Or add the `nofail` option so the system boots even if the device is missing:
@@ -126,11 +126,11 @@ If an NFS mount is causing the system to hang:
 nfs-server:/share  /mnt/nfs  nfs  defaults,nofail,timeo=5,retrans=2,_netdev  0  0
 ```
 
-The `_netdev` option tells systemd to wait for the network before trying to mount, and `nofail` prevents a boot failure if the NFS server is unreachable.
+The `_netdev` option tells systemd to treat the entry as network-dependent, and `nofail` prevents a boot failure if the NFS server is unreachable.
 
 ### Syntax Errors
 
-A common syntax problem is missing fields or extra spaces. Each fstab line needs exactly six fields:
+A common syntax problem is missing fields or unescaped spaces in a mount point. Each fstab line should use six fields:
 
 ```bash
 <device>  <mount-point>  <fs-type>  <options>  <dump>  <pass>
