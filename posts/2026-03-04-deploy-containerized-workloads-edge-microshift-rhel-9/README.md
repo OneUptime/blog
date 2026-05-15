@@ -16,7 +16,7 @@ Deploy containerized workloads at the edge using MicroShift on RHEL 9. RHEL for 
 
 - A RHEL 9 system for building edge images (with Image Builder)
 - Root or sudo access
-- For MicroShift: a system with at least 2 CPU cores and 2 GB RAM
+- For MicroShift: a system with at least 2 CPU cores, 2 GB RAM, and 10 GB storage
 
 ## Step 1 - Understand the Edge Architecture
 
@@ -38,7 +38,7 @@ composer-cli compose start my-edge-blueprint edge-commit
 For an installer image:
 
 ```bash
-composer-cli compose start my-edge-blueprint edge-installer
+composer-cli compose start-ostree --ref rhel/9/$(uname -m)/edge --url http://example.com/repo/ my-edge-blueprint edge-installer
 ```
 
 ## Step 3 - Deploy to Edge Devices
@@ -72,6 +72,17 @@ For Kubernetes workloads, install MicroShift:
 ```bash
 sudo dnf install -y microshift
 sudo systemctl enable --now microshift
+```
+
+On RHEL for Edge, add the MicroShift package to the Image Builder blueprint and enable the service in the blueprint:
+
+```toml
+[[packages]]
+name = "microshift"
+version = "*"
+
+[customizations.services]
+enabled = ["microshift"]
 ```
 
 ## Summary
