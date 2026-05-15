@@ -8,7 +8,7 @@ Description: Deploy RHEL virtual machines on Google Cloud Platform using officia
 
 ---
 
-Google Cloud provides official RHEL images that are optimized for the GCP environment. These images include the Google guest agent and cloud-init for automated configuration at boot time.
+Google Cloud provides official RHEL images that are optimized for the GCP environment. These images include the Google guest environment, including the guest agent, for automated configuration at boot time.
 
 ## Finding RHEL Images on GCP
 
@@ -111,10 +111,11 @@ Format and mount the disk from within the VM:
 gcloud compute ssh rhel-server-01 --zone=us-central1-a
 
 # Format and mount the data disk
-sudo mkfs.xfs /dev/sdb
+sudo mkfs.xfs -s size=4096 /dev/sdb
 sudo mkdir -p /data
-sudo mount /dev/sdb /data
-echo '/dev/sdb /data xfs defaults 0 0' | sudo tee -a /etc/fstab
+sudo mount -o discard,defaults /dev/sdb /data
+DISK_UUID=$(sudo blkid -s UUID -o value /dev/sdb)
+echo "UUID=$DISK_UUID /data xfs discard,nofail 0 2" | sudo tee -a /etc/fstab
 ```
 
 ## Verifying the Deployment
