@@ -8,7 +8,7 @@ Description: Navigate the compatibility challenges of running Samba and FreeIPA 
 
 ---
 
-Samba and FreeIPA are two of the most common services that have trouble in FIPS mode. The root cause is the same for both: they rely on older cryptographic protocols that FIPS does not allow. NTLM authentication, which is fundamental to Windows domain integration, uses MD4 and MD5 internally. These algorithms are not FIPS-approved, so enabling FIPS breaks the most common authentication path between Linux and Windows.
+Samba and FreeIPA can both run into compatibility limits in FIPS mode when they have to interoperate with older Windows authentication paths. NTLM authentication, which is common in Windows domain integration, uses legacy cryptography such as MD4, MD5, and RC4-related Kerberos compatibility paths. These algorithms are not FIPS-approved, so enabling FIPS breaks authentication flows that depend on NTLM or weak AD encryption types.
 
 This guide covers the practical workarounds and configurations you need.
 
@@ -16,14 +16,14 @@ This guide covers the practical workarounds and configurations you need.
 
 ```mermaid
 flowchart TD
-    A[FIPS Mode Enabled] --> B[MD4/MD5 Disabled]
+    A[FIPS Mode Enabled] --> B[MD4/MD5/RC4 Disabled]
     B --> C[NTLM Auth Broken]
     C --> D[Samba File Sharing Issues]
     C --> E[AD Trust Issues]
     C --> F[FreeIPA Cross-Realm Limitations]
 ```
 
-NTLM authentication hashes passwords with MD4 and uses MD5 in the challenge-response exchange. Since FIPS mode disables both algorithms, any authentication flow that relies on NTLM will fail.
+NTLM authentication hashes passwords with MD4 and uses MD5 in the challenge-response exchange. In RHEL 9, Samba in FIPS mode also loses the RC4-based compatibility paths that NTLM and some AD integrations depend on. Any authentication flow that relies on NTLM will fail.
 
 ## Samba in FIPS Mode
 
@@ -36,8 +36,10 @@ NTLM authentication hashes passwords with MD4 and uses MD5 in the challenge-resp
 ### What Does Not Work
 
 - NTLM authentication (NTLMv1 and NTLMv2)
+- Standalone Samba file server mode, because it uses NTLM authentication
 - Samba as an Active Directory Domain Controller
 - Legacy SMB1 connections
+- NT4-style domain controllers or domain members
 
 ### Configure Samba for FIPS Compatibility
 
@@ -60,11 +62,11 @@ cat >> /etc/samba/smb.conf << 'EOF'
     server min protocol = SMB2_10
 
     # Use AES encryption for Kerberos
-    kerberos encryption types = aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96
+    kerberos encryption types = strong
 EOF
 
 # Test the configuration
-testparm
+testparm -s
 
 # Restart Samba
 systemctl restart smb nmb
@@ -82,7 +84,7 @@ cat > /etc/krb5.conf.d/fips-ad.conf << 'EOF'
     default_realm = EXAMPLE.COM
     dns_lookup_realm = true
     dns_lookup_kdc = true
-    permitted_enctypes = aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96
+    # Let RHEL system-wide crypto policies control permitted enctypes in FIPS mode.
 
 [realms]
     EXAMPLE.COM = {
@@ -96,7 +98,7 @@ EOF
 kinit administrator@EXAMPLE.COM
 
 # Join using the Kerberos ticket
-net ads join -k
+net ads join --use-kerberos=required
 
 # Verify the join
 net ads testjoin
@@ -131,7 +133,7 @@ fips-mode-setup --check
 dnf install -y ipa-server ipa-server-dns
 
 # Run the IPA server installation
-# The installer will automatically use FIPS-compatible settings
+# The installer detects FIPS and uses FIPS-compatible IdM key types
 ipa-server-install \
   --realm EXAMPLE.COM \
   --domain example.com \
@@ -157,31 +159,21 @@ ipa-client-install \
 
 ### AD Trust with FreeIPA in FIPS Mode
 
-This is the tricky part. Cross-realm trusts with Active Directory use protocols that include NTLM components:
+This is the tricky part. Cross-forest trusts with Active Directory can require encryption types and trust-establishment flows that conflict with RHEL 9 FIPS defaults:
 
 ```bash
 # Check if AD trust components are installed
 rpm -qa | grep ipa-server-trust
 
 # AD trusts in FIPS mode have limitations:
-# - The trust establishment itself may fail if the AD DC
-#   does not support Kerberos-only trust negotiation
-# - NTLM fallback will not work
-# - Users from the AD side must authenticate via Kerberos
+# - Establishing a trust with a shared secret is not supported in FIPS mode
+# - Two-way cross-forest trust establishment can fail because NTLMSSP is not FIPS-compliant
+# - AD integration can fail when AD only offers RC4 or AES HMAC-SHA1,
+#   while RHEL 9 FIPS mode uses AES HMAC-SHA2 key types by default
 
-# If you need AD trusts in FIPS mode, ensure your AD DCs
-# support AES Kerberos encryption types
-# In AD, enable AES encryption for the trust account
-```
-
-### Configure FreeIPA Kerberos Encryption Types
-
-```bash
-# Verify IPA is using FIPS-approved encryption types
-ipa config-show | grep "encryption types"
-
-# If needed, update the allowed encryption types
-ipa config-mod --ipaconfigstring='KDC:enctypes=aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96'
+# If you need AD trusts in FIPS mode, authenticate with an AD
+# administrative account and verify the supported Kerberos
+# encryption types on both sides before enabling FIPS.
 ```
 
 ## Workarounds for NTLM-Dependent Workflows
@@ -210,7 +202,7 @@ grep -r "ntlm" /etc/samba/ /etc/sssd/ 2>/dev/null
 
 ```bash
 # Test Samba authentication
-smbclient -L //server.example.com -k
+smbclient -L //server.example.com --use-kerberos=required
 
 # Test FreeIPA
 kinit admin
