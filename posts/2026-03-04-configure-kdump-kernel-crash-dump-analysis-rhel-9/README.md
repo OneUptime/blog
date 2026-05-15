@@ -38,8 +38,8 @@ flowchart TD
 
 sudo dnf install kexec-tools crash -y
 
-# Enable the kdump service
-sudo systemctl enable kdump
+# Enable and start the kdump service
+sudo systemctl enable --now kdump
 
 # Check the current kdump status
 systemctl status kdump
@@ -99,7 +99,7 @@ path /var/crash
 core_collector makedumpfile -l --message-level 7 -d 31
 
 # What to do after a dump is saved
-default reboot
+final_action reboot
 ```
 
 ### Remote NFS Target
@@ -194,7 +194,8 @@ ls -la /var/crash/*/
 The `crash` utility lets you examine crash dumps interactively.
 
 ```bash
-# Install the debuginfo kernel package for analysis
+# Enable the debuginfo repository and install the matching debuginfo package for analysis
+sudo subscription-manager repos --enable rhel-9-for-$(uname -m)-baseos-debug-rpms
 sudo dnf install kernel-debuginfo -y
 
 # Open a crash dump for analysis
@@ -240,7 +241,7 @@ du -sh /var/crash/*/
 sudo rm -rf /var/crash/old-timestamp/
 
 # Set up a cron job to clean dumps older than 30 days
-echo "0 3 * * * root find /var/crash -type d -mtime +30 -exec rm -rf {} +" | sudo tee /etc/cron.d/clean-crash-dumps
+echo "0 3 * * * root find /var/crash -mindepth 1 -maxdepth 1 -type d -mtime +30 -exec rm -rf {} +" | sudo tee /etc/cron.d/clean-crash-dumps
 ```
 
 ## Configuring kdump for Specific Scenarios
@@ -256,10 +257,16 @@ core_collector makedumpfile -l --message-level 7 -d 31
 
 ### Handling Systems with Encrypted Disks
 
-If your dump target is on an encrypted volume, kdump needs access to the encryption key during the capture phase.
+If your dump target is on an encrypted volume, kdump may need additional reserved memory so the capture kernel can unlock and mount the target.
 
 ```bash
-# For LUKS-encrypted targets, specify the device and mount
+# Estimate the crashkernel value needed for a LUKS-encrypted target
+sudo kdumpctl estimate
+
+# Then increase crashkernel if the estimate recommends it. For example:
+sudo grubby --update-kernel=ALL --args="crashkernel=652M"
+
+# For LUKS-encrypted targets, specify the unlocked device and mount
 # Add to /etc/kdump.conf:
 ext4 /dev/mapper/rhel-root
 path /var/crash
@@ -274,8 +281,8 @@ systemctl status kdump -l
 # View kdump-related log messages
 journalctl -u kdump
 
-# Verify the capture kernel can be loaded
-kexec -l /boot/vmlinuz-$(uname -r) --initrd=/boot/initramfs-$(uname -r)kdump.img --command-line="$(cat /proc/cmdline) irqpoll nr_cpus=1 reset_devices"
+# Verify the crash kernel is loaded and kdump is operational
+sudo kdumpctl status
 
 # Check if enough memory is reserved
 dmesg | grep -i "crash kernel"
