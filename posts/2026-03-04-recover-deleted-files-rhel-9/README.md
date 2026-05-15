@@ -72,7 +72,7 @@ file /var/log/httpd/access_log.recovered
 # Scenario: Someone accidentally deleted the application log while the app is running
 
 # Find the process and file descriptor
-sudo lsof -p $(pgrep -f myapp) 2>/dev/null | grep deleted
+sudo lsof -p "$(pgrep -d, -f myapp)" 2>/dev/null | grep deleted
 
 # If you see output like:
 # myapp  5678  appuser  5w  REG  253,0  10485760  0  /var/log/myapp/app.log (deleted)
@@ -84,7 +84,7 @@ sudo cp /proc/5678/fd/5 /var/log/myapp/app.log
 sudo chown appuser:appuser /var/log/myapp/app.log
 ```
 
-This method works 100% of the time as long as the process is still running. The moment the process exits or closes the file, the data is gone.
+This method is usually reliable for regular files as long as the process is still running and the file descriptor remains open. The moment the process exits or closes the file, the data is no longer reachable through `/proc`.
 
 ## Method 2: Using extundelete for ext4 Filesystems
 
@@ -138,7 +138,7 @@ ls -la RECOVERED_FILES/
 
 ## Method 3: Using testdisk and photorec
 
-TestDisk and PhotoRec are powerful open-source recovery tools that work across multiple filesystem types, including XFS.
+TestDisk and PhotoRec are powerful open-source recovery tools. TestDisk is especially useful for partition recovery and some filesystem-aware undelete cases, while PhotoRec can recover files by signature across many filesystem types, including XFS.
 
 ```bash
 # Install testdisk (includes both testdisk and photorec)
@@ -174,7 +174,7 @@ sudo photorec /dev/sda2
 
 ### Using testdisk for Partition Recovery
 
-TestDisk is more useful for recovering lost partitions or fixing boot sectors, but it can also recover deleted files from FAT, NTFS, and ext filesystems.
+TestDisk is more useful for recovering lost partitions or fixing boot sectors, but it can also recover deleted files from FAT, exFAT, NTFS, and ext2 filesystems.
 
 ```bash
 # Run testdisk
@@ -186,11 +186,11 @@ Navigate through the menus:
 2. Choose the partition table type
 3. Select "Advanced"
 4. Choose the partition
-5. Select "List" to browse and recover files
+5. Select "Undelete" when available, or "List" to browse and copy files from a damaged or lost partition
 
 ## XFS Recovery Limitations
 
-RHEL uses XFS as the default filesystem, and this is where things get difficult. XFS immediately reuses freed blocks and does not maintain the same kind of journal that ext4 does. This makes traditional undelete tools ineffective.
+RHEL uses XFS as the default filesystem, and this is where things get difficult. XFS marks deleted file space as free for future allocation and journals metadata, not file contents for undelete. This makes traditional undelete tools ineffective.
 
 ```bash
 # Check your filesystem type
@@ -204,7 +204,7 @@ For XFS, your realistic options are:
 1. **The /proc/PID/fd trick** - if the file is still open by a process
 2. **PhotoRec** - can recover files by signature, but you lose filenames and directory structure
 3. **Backups** - this is why backups matter
-4. **XFS metadata dumps** - in rare cases, `xfs_metadump` and `xfs_mdrestore` can help with filesystem-level recovery, but not for individual deleted files
+4. **XFS metadata dumps** - `xfs_metadump` and `xfs_mdrestore` can help with filesystem metadata analysis, but they do not restore individual deleted files
 
 ```bash
 # Check if xfs_undelete is available (it is a community script, not officially supported)
