@@ -173,7 +173,7 @@ Each character in the output means something:
 |---|---|
 | S | File size changed |
 | M | Mode (permissions) changed |
-| 5 | MD5 checksum changed |
+| 5 | File digest changed |
 | D | Device major/minor changed |
 | L | Symlink path changed |
 | U | User ownership changed |
