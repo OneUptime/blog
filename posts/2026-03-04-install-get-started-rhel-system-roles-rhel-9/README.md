@@ -24,7 +24,7 @@ Install and use RHEL System Roles on RHEL for standardized system configuration.
 sudo dnf install -y rhel-system-roles
 ```
 
-The roles are installed to `/usr/share/ansible/roles/`.
+The collection is installed to `/usr/share/ansible/collections/ansible_collections/redhat/rhel_system_roles/`.
 
 ## Step 2 - Create an Inventory File
 
@@ -46,22 +46,25 @@ Create `configure-timesync.yml` (using the timesync role as an example):
 - name: Configure time synchronization with RHEL System Roles
   hosts: managed_hosts
   become: true
-  roles:
-    - role: rhel-system-roles.timesync
-      timesync_ntp_servers:
-        - hostname: pool.ntp.org
-          iburst: yes
+  tasks:
+    - name: Configure time synchronization
+      ansible.builtin.include_role:
+        name: redhat.rhel_system_roles.timesync
+      vars:
+        timesync_ntp_servers:
+          - hostname: pool.ntp.org
+            iburst: yes
 ```
 
 Each role has its own variables. Check the role documentation for available options:
 
 ```bash
-ls /usr/share/ansible/roles/
+ls /usr/share/ansible/collections/ansible_collections/redhat/rhel_system_roles/roles/
 ls /usr/share/doc/rhel-system-roles/timesync/
 cat /usr/share/doc/rhel-system-roles/timesync/README.md
 ```
 
-Available roles include: timesync, network, storage, firewall, selinux, logging, certificate, kdump, cockpit, ha_cluster, podman, bootloader, metrics, sshd, and sudo.
+Available roles include: timesync, network, storage, firewall, selinux, logging, certificate, kdump, cockpit, ha_cluster, podman, bootloader, metrics, ssh, sshd, sudo, systemd, and tlog.
 
 ## Step 4 - Run the Playbook
 
