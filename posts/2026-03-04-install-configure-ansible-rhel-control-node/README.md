@@ -12,21 +12,20 @@ Ansible is an agentless automation tool that lets you manage fleets of servers f
 
 ## Installing Ansible
 
-First, enable the Ansible repository and install:
-
-```bash
-# Enable the Ansible automation platform repository
-
-sudo subscription-manager repos --enable ansible-automation-platform-2.4-for-rhel-9-x86_64-rpms
-
-# Install the ansible-core package
-sudo dnf install -y ansible-core
-```
-
-If you do not have access to the automation platform repo, you can install ansible-core from the standard AppStream:
+On RHEL 9, install `ansible-core` from the standard AppStream repository:
 
 ```bash
 # Install ansible-core from AppStream
+sudo dnf install -y ansible-core
+```
+
+If you use Red Hat Ansible Automation Platform content instead, enable the repository that matches your Automation Platform version, RHEL version, and architecture before installing:
+
+```bash
+# Enable the Ansible Automation Platform repository
+sudo subscription-manager repos --enable ansible-automation-platform-2.5-for-rhel-9-x86_64-rpms
+
+# Install the ansible-core package
 sudo dnf install -y ansible-core
 ```
 
@@ -57,7 +56,7 @@ db1.example.com
 
 [all:vars]
 ansible_user=admin
-ansible_ssh_private_key_file=~/.ssh/id_rsa
+ansible_ssh_private_key_file=~/.ssh/id_ed25519
 INV
 ```
 
@@ -85,12 +84,12 @@ Generate an SSH key pair and distribute it to managed nodes:
 
 ```bash
 # Generate an SSH key pair (skip if you already have one)
-ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_rsa -N ""
+ssh-keygen -t ed25519 -C "ansible-control" -f ~/.ssh/id_ed25519 -N ""
 
 # Copy the public key to each managed host
-ssh-copy-id admin@web1.example.com
-ssh-copy-id admin@web2.example.com
-ssh-copy-id admin@db1.example.com
+ssh-copy-id -i ~/.ssh/id_ed25519.pub admin@web1.example.com
+ssh-copy-id -i ~/.ssh/id_ed25519.pub admin@web2.example.com
+ssh-copy-id -i ~/.ssh/id_ed25519.pub admin@db1.example.com
 ```
 
 ## Testing Connectivity
