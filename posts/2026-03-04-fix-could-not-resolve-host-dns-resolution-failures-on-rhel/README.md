@@ -41,18 +41,23 @@ nmcli device show | grep DNS
 ## Step 3: Fix DNS via NetworkManager
 
 ```bash
+# Find the NetworkManager connection profile name
+nmcli connection show
+
 # Set DNS servers for your connection
-sudo nmcli connection modify ens192 ipv4.dns "8.8.8.8 8.8.4.4"
+sudo nmcli connection modify "ens192" ipv4.dns "8.8.8.8 8.8.4.4"
 
 # Prevent DHCP from overwriting your DNS settings
-sudo nmcli connection modify ens192 ipv4.ignore-auto-dns yes
+sudo nmcli connection modify "ens192" ipv4.ignore-auto-dns yes
 
 # Apply the changes
-sudo nmcli connection up ens192
+sudo nmcli connection up "ens192"
 
 # Verify resolv.conf was updated
 cat /etc/resolv.conf
 ```
+
+Replace `ens192` with the connection profile name from `nmcli connection show`.
 
 ## Step 4: Test DNS Server Connectivity
 
@@ -86,11 +91,11 @@ grep hosts /etc/nsswitch.conf
 # Check if outbound DNS is blocked
 sudo firewall-cmd --list-all
 
-# Allow DNS queries if blocked
+# If this host is a DNS server, allow inbound DNS queries
 sudo firewall-cmd --permanent --add-service=dns
 sudo firewall-cmd --reload
 
-# Or test with firewall temporarily disabled
+# To test whether local firewall rules are affecting outbound DNS
 sudo systemctl stop firewalld
 dig google.com
 sudo systemctl start firewalld
@@ -102,7 +107,7 @@ sudo systemctl start firewalld
 # Restart NetworkManager
 sudo systemctl restart NetworkManager
 
-# Flush DNS cache (if using systemd-resolved)
+# Flush DNS cache (if systemd-resolved is installed and running)
 sudo resolvectl flush-caches
 
 # Or restart systemd-resolved
@@ -116,8 +121,8 @@ sudo systemctl restart systemd-resolved
 echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
 
 # Then fix it properly through NetworkManager
-sudo nmcli connection modify ens192 ipv4.dns "8.8.8.8"
-sudo nmcli connection up ens192
+sudo nmcli connection modify "ens192" ipv4.dns "8.8.8.8"
+sudo nmcli connection up "ens192"
 ```
 
 Editing `/etc/resolv.conf` directly is a temporary fix. NetworkManager will overwrite it. Always configure DNS through `nmcli` for persistent changes.
