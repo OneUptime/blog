@@ -167,6 +167,18 @@ runcmd:
         regexp: '^apply_updates'
         line: 'apply_updates = yes'
 
+    - name: Limit automatic updates to security updates
+      ansible.builtin.lineinfile:
+        path: /etc/dnf/automatic.conf
+        regexp: '^upgrade_type'
+        line: 'upgrade_type = security'
+
+    - name: Enable automatic security update installation
+      ansible.builtin.service:
+        name: dnf-automatic-install.timer
+        state: started
+        enabled: true
+
     - name: Ensure firewalld is running
       ansible.builtin.service:
         name: firewalld
@@ -198,11 +210,11 @@ cd terraform/aws
 terraform apply -var="cloud_provider=aws" -var="instance_name=web-aws"
 
 # Deploy to Azure
-cd terraform/azure
+cd ../azure
 terraform apply -var="cloud_provider=azure" -var="instance_name=web-azure"
 
 # Deploy to GCP
-cd terraform/gcp
+cd ../gcp
 terraform apply -var="cloud_provider=gcp" -var="instance_name=web-gcp"
 
 # Configure all instances with Ansible
