@@ -86,8 +86,8 @@ This gives more detailed output including:
 
 - Current state
 - Health status
-- Events history
-- Container ID (for containerized services)
+- Last state change
+- Last event
 
 ## Viewing Service Logs
 
@@ -124,7 +124,7 @@ Common causes:
 
 ```bash
 # Check disk usage
-talosctl get systemstat --nodes <node-ip>
+talosctl usage --nodes <node-ip>
 ```
 
 ### kubelet Not Healthy
@@ -133,7 +133,7 @@ talosctl get systemstat --nodes <node-ip>
 # Check kubelet logs
 talosctl logs kubelet --nodes <node-ip>
 
-# Check if the API server is reachable from this node
+# Check kubelet status for API server-related health errors
 talosctl services --nodes <node-ip> | grep kubelet
 ```
 
