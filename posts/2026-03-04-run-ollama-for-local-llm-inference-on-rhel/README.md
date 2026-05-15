@@ -18,11 +18,10 @@ Ollama makes it simple to run large language models locally on RHEL. It handles 
 curl -fsSL https://ollama.com/install.sh | sh
 
 # Or install manually
-sudo curl -L https://ollama.com/download/ollama-linux-amd64 -o /usr/local/bin/ollama
-sudo chmod +x /usr/local/bin/ollama
+curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar x -C /usr
 
 # Verify the installation
-ollama --version
+ollama -v
 ```
 
 ## Set Up as a systemd Service
@@ -31,7 +30,8 @@ The install script usually creates this, but if it does not:
 
 ```bash
 # Create a dedicated user
-sudo useradd -r -s /bin/false -m -d /usr/share/ollama ollama
+sudo useradd -r -s /bin/false -U -m -d /usr/share/ollama ollama
+sudo usermod -a -G ollama $(whoami)
 
 # Create the systemd service file
 sudo tee /etc/systemd/system/ollama.service << 'EOF'
@@ -40,15 +40,15 @@ Description=Ollama Service
 After=network-online.target
 
 [Service]
-ExecStart=/usr/local/bin/ollama serve
+ExecStart=/usr/bin/ollama serve
 User=ollama
 Group=ollama
 Restart=always
 RestartSec=3
-Environment="HOME=/usr/share/ollama"
+Environment="PATH=$PATH"
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target
 EOF
 
 # Enable and start the service
@@ -63,7 +63,7 @@ sudo systemctl enable --now ollama
 ollama pull llama3.1:8b
 
 # List downloaded models
-ollama list
+ollama ls
 
 # Run a model interactively
 ollama run llama3.1:8b
@@ -102,11 +102,11 @@ Ollama automatically detects NVIDIA GPUs with CUDA drivers:
 ```bash
 # Verify GPU is being used
 ollama run llama3.1:8b "test" &
-nvidia-smi
-# You should see ollama using GPU memory
+ollama ps
+# The PROCESSOR column should show GPU usage
 
-# For CPU-only inference (if no GPU)
-OLLAMA_NUM_GPU=0 ollama serve
+# For CPU-only inference with NVIDIA GPUs present
+CUDA_VISIBLE_DEVICES=-1 ollama serve
 ```
 
 ## Custom Model Configuration
@@ -142,8 +142,9 @@ sudo systemctl edit ollama
 
 # Add the environment variable
 # [Service]
-# Environment="OLLAMA_HOST=0.0.0.0"
+# Environment="OLLAMA_HOST=0.0.0.0:11434"
 
+sudo systemctl daemon-reload
 sudo systemctl restart ollama
 
 # Open the firewall
