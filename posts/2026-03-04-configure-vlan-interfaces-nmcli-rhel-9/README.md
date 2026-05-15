@@ -128,9 +128,11 @@ nmcli connection up vlan10
 You can set VLAN priority bits (802.1p) for QoS:
 
 ```bash
-# Map socket priority to VLAN priority
-# Format: from:to where 'from' is socket priority and 'to' is VLAN priority (0-7)
+# Map incoming VLAN priority to Linux packet priority
 nmcli connection modify vlan10 vlan.ingress-priority-map "0:0,1:1,2:2,3:3"
+
+# Map Linux packet priority to outgoing VLAN priority
+# Format: from:to where the VLAN priority value is 0-7
 nmcli connection modify vlan10 vlan.egress-priority-map "0:0,1:1,2:2,3:3"
 ```
 
