@@ -13,6 +13,7 @@ Vendor unit files shipped with RHEL packages live in `/usr/lib/systemd/system/`.
 ## Prerequisites
 
 - RHEL with a valid subscription or CentOS Stream 9
+- Apache HTTP Server installed (`sudo dnf install httpd`)
 - Root or sudo access
 - A terminal session
 
