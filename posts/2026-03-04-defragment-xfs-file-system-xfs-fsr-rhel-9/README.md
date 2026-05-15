@@ -71,19 +71,21 @@ Defragment all files on a filesystem:
 sudo xfs_fsr /data
 ```
 
-By default, `xfs_fsr` runs for two hours. You can specify a different time limit:
+When invoked without arguments, `xfs_fsr` runs for two hours across mounted writable XFS filesystems. You can specify a different time limit for that global mode:
 
 ```bash
 # Run for 30 minutes
 
-sudo xfs_fsr -t 1800 /data
+sudo xfs_fsr -t 1800
 ```
+
+When you specify a mount point such as `/data`, `xfs_fsr` makes one pass through that filesystem and the `-t` option does not set a time limit for that run.
 
 The tool works by:
 1. Identifying fragmented files
 2. Allocating new contiguous space
 3. Copying the file data to the new location
-4. Updating the inode to point to the new extents
+4. Atomically swapping the file's data extents with the temporary copy
 5. Freeing the old fragmented extents
 
 This happens online with no downtime.
@@ -120,7 +122,8 @@ After=local-fs.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/sbin/xfs_fsr -t 3600 /data
+ExecStart=/usr/bin/timeout 3600 /usr/sbin/xfs_fsr /data
+SuccessExitStatus=124
 Nice=19
 IOSchedulingClass=idle
 EOF
@@ -146,7 +149,7 @@ This runs defragmentation every Sunday at 2 AM for up to one hour, with low I/O 
 Or use cron:
 
 ```bash
-echo '0 2 * * 0 root /usr/sbin/xfs_fsr -t 3600 /data >> /var/log/xfs_fsr.log 2>&1' | \
+echo '0 2 * * 0 root /usr/bin/timeout 3600 /usr/sbin/xfs_fsr /data >> /var/log/xfs_fsr.log 2>&1' | \
   sudo tee /etc/cron.d/xfs-defrag
 ```
 
@@ -177,18 +180,20 @@ The extent count should be lower than before.
 
 ### Resume from a Previous Run
 
-`xfs_fsr` saves its progress in `/var/tmp/.fsrlast_xfs`. When run again, it can resume where it left off:
+In its no-argument global mode, `xfs_fsr` saves its progress in `/var/tmp/.fsrlast_xfs`. When run again, it can resume where it left off:
 
 ```bash
-sudo xfs_fsr /data
+sudo xfs_fsr
 # (interrupted)
-sudo xfs_fsr /data
+sudo xfs_fsr
 # Continues from where it stopped
 ```
 
+When you specify a filesystem or file on the command line, `xfs_fsr` does not read or write `/var/tmp/.fsrlast_xfs`.
+
 ### Set Priority of Files to Defragment
 
-`xfs_fsr` processes files in inode order by default. To focus on specific directories, run `xfs_fsr` on individual files:
+To focus on specific directories, run `xfs_fsr` on individual files:
 
 ```bash
 find /data/important -type f -exec filefrag {} + 2>/dev/null | \
@@ -220,4 +225,4 @@ This only defragments files with more than 5 extents in the `/data/important` di
 
 ## Conclusion
 
-`xfs_fsr` is an effective tool for defragmenting XFS filesystems on RHEL, and it works online without any downtime. While XFS is designed to minimize fragmentation, long-running filesystems under heavy use benefit from periodic defragmentation. Schedule regular `xfs_fsr` runs during off-peak hours, monitor fragmentation levels, and keep filesystems from becoming too full to maintain optimal performance.
+`xfs_fsr` is an effective tool for defragmenting XFS filesystems on RHEL, and it works online without any downtime. While XFS is designed to minimize fragmentation, long-running filesystems under heavy use can benefit from targeted or occasional defragmentation. Run `xfs_fsr` during off-peak hours when fragmentation measurements show a need, monitor fragmentation levels, and keep filesystems from becoming too full to maintain optimal performance.
