@@ -15,7 +15,7 @@ RHEL fully supports both XFS and ext4 filesystems. XFS is the default, but ext4 
 | Feature | XFS | ext4 |
 |---------|-----|------|
 | Default on RHEL | Yes | No |
-| Maximum filesystem size | 1 EB (exabyte) | 1 EB |
+| Maximum filesystem size | 1024 TiB | 50 TiB |
 | Maximum file size | 8 EB | 16 TB |
 | Online grow | Yes | Yes |
 | Online shrink | No | No |
@@ -26,7 +26,7 @@ RHEL fully supports both XFS and ext4 filesystems. XFS is the default, but ext4 
 | Defragmentation | xfs_fsr (online) | e4defrag (online) |
 | Filesystem repair | xfs_repair (offline) | e2fsck (offline) |
 | Backup tools | xfsdump/xfsrestore | Standard tools |
-| Quota support | User, group, project | User, group |
+| Quota support | User, group, project | User, group, project |
 | Maturity | Since 1993 (SGI) | Since 2008 (Linux) |
 
 ## When to Choose XFS
@@ -66,7 +66,7 @@ This is valuable for:
 
 ### Red Hat's Default and Focus
 
-As the default RHEL filesystem, XFS receives the most testing and optimization from Red Hat. If you want the path of least resistance and best support, choose XFS.
+As the default RHEL filesystem, XFS receives extensive testing and optimization from Red Hat. If you want the path of least resistance and Red Hat's recommended default, choose XFS.
 
 ## When to Choose ext4
 
