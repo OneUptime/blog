@@ -37,9 +37,6 @@ version = "*"
 
 [customizations.services]
 enabled = ["qemu-guest-agent", "cloud-init", "sshd"]
-
-[customizations]
-hostname = ""
 ```
 
 ## Building the QCOW2 Image
@@ -68,11 +65,13 @@ sudo cp <compose-uuid>-disk.qcow2 /var/lib/libvirt/images/rhel-server.qcow2
 sudo qemu-img resize /var/lib/libvirt/images/rhel-server.qcow2 50G
 
 # Create a VM using virt-install
+# If you plan to use cloud-init, create the ISO in the next section before running this command.
 sudo virt-install \
   --name rhel-server \
   --memory 4096 \
   --vcpus 2 \
-  --disk /var/lib/libvirt/images/rhel-server.qcow2,format=qcow2 \
+  --disk /var/lib/libvirt/images/rhel-server.qcow2,device=disk,bus=virtio,format=qcow2 \
+  --disk /var/lib/libvirt/images/cloud-init.iso,device=cdrom \
   --import \
   --os-variant rhel9.4 \
   --network bridge=virbr0 \
@@ -105,14 +104,11 @@ local-hostname: rhel-server
 METADATA
 
 # Create the cloud-init ISO
-genisoimage -output /var/lib/libvirt/images/cloud-init.iso \
+sudo genisoimage -output /var/lib/libvirt/images/cloud-init.iso \
   -volid cidata -joliet -rock \
   /tmp/cloud-init/user-data /tmp/cloud-init/meta-data
 
-# Attach the cloud-init ISO to the VM
-sudo virsh attach-disk rhel-server \
-  /var/lib/libvirt/images/cloud-init.iso \
-  sda --type cdrom --config
+# Use the cloud-init ISO as a CD-ROM disk in the virt-install command above
 ```
 
 ## Managing the VM
