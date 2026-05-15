@@ -15,54 +15,71 @@ Configuring RHEL as a Router with IP Forwarding and NAT on RHEL involves several
 - RHEL with a valid subscription or CentOS Stream 9
 - Root or sudo access
 - A terminal session
+- Two configured network interfaces, for example `enp1s0` for the external network and `enp7s0` for the internal LAN
 
-## Step 2: Configure the Service
+## Step 2: Configure IP Forwarding
 
-Edit the configuration file to match your environment:
-
-```bash
-# Open the configuration file
-
-sudo vi /etc/<service>/config.conf
-```
-
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Enable IPv4 packet forwarding so the host can route packets between interfaces:
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Enable IPv4 forwarding persistently
+echo "net.ipv4.ip_forward=1" | sudo tee /etc/sysctl.d/95-IPv4-forwarding.conf
+
+# Apply the setting immediately
+sudo sysctl -p /etc/sysctl.d/95-IPv4-forwarding.conf
 ```
 
-## Step 3: Enable and Start the Service
+Replace the example interface names with the names on your system. You can list them with `ip link`.
+
+## Step 3: Enable NAT and Forwarding in firewalld
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Enable and start firewalld
+sudo systemctl enable --now firewalld
 
-# Start the service
-sudo systemctl start <service-name>
+# Check active zones and interfaces
+sudo firewall-cmd --get-active-zones
 
-# Check the status
-sudo systemctl status <service-name>
+# Assign interfaces to zones
+sudo firewall-cmd --permanent --zone=external --change-interface=enp1s0
+sudo firewall-cmd --permanent --zone=internal --change-interface=enp7s0
+
+# Enable masquerading on the external zone for NAT
+sudo firewall-cmd --permanent --zone=external --add-masquerade
+
+# Allow forwarded traffic from the internal zone to the external zone
+sudo firewall-cmd --permanent --new-policy internal-to-external
+sudo firewall-cmd --permanent --policy internal-to-external --add-ingress-zone internal
+sudo firewall-cmd --permanent --policy internal-to-external --add-egress-zone external
+sudo firewall-cmd --permanent --policy internal-to-external --set-target ACCEPT
+
+# Reload firewalld to apply permanent changes
+sudo firewall-cmd --reload
 ```
-
 
 ## Verification
 
-Confirm everything is working by checking the status and logs:
+Confirm forwarding, masquerading, and the firewall policy are active:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
+# Check the kernel forwarding setting
+sysctl net.ipv4.ip_forward
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# Confirm masquerading is enabled on the external zone
+sudo firewall-cmd --zone=external --query-masquerade
+
+# Review the forwarding policy
+sudo firewall-cmd --info-policy internal-to-external
+
+# Check the generated nftables rules
+sudo nft list table inet firewalld
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If `firewall-cmd` fails, check that firewalld is running with `sudo systemctl status firewalld`.
+- If forwarding does not work, verify that the internal hosts use the RHEL router as their default gateway.
+- Ensure the required packages are installed: `rpm -q firewalld nftables`.
 
 ## Conclusion
 
