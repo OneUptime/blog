@@ -12,7 +12,7 @@ Nothing kills a weekend faster than getting halfway through a RHEL install only 
 
 ## Minimum Hardware Requirements
 
-Red Hat publishes official minimum requirements for RHEL, and they are higher than previous versions because RHEL is based on Fedora 34 and ships with kernel 5.14+. Here is what you actually need.
+Red Hat publishes official minimum requirements for RHEL 9, and they are higher than previous versions because RHEL 9 is based on Fedora 34 and ships with kernel 5.14. Here is what you actually need.
 
 ### CPU Requirements
 
@@ -45,7 +45,7 @@ You need all seven flags (cx16, lahf_lm, pni, popcnt, sse4_1, sse4_2, ssse3) pre
 |---|---|---|
 | Local media or NFS install (x86_64, aarch64, s390x) | 1.5 GiB | 2 GiB |
 | Local media or NFS install (ppc64le) | 3 GiB | 4 GiB |
-| HTTP, HTTPS, or FTP network install | 3 GiB to 4 GiB, depending on architecture | 4 GiB+ |
+| HTTP, HTTPS, or FTP network install | 3 GiB for s390x, 3.5 GiB for x86_64, 4 GiB for aarch64 and ppc64le | 4 GiB+ |
 | Production server workloads | 2 GB | 8 GB+ |
 
 To check available RAM from an existing system or live environment:
@@ -64,7 +64,7 @@ Keep in mind that IPMI/BMC and firmware can reserve memory. If your server has 2
 
 | Scenario | Minimum Disk Space | Recommended |
 |---|---|---|
-| Minimal install | 10 GB | 20 GB |
+| Any RHEL 9 install | 10 GB | 20 GB |
 | Server with GUI | 20 GB | 40 GB |
 | Production (with /var, /home, logs) | 20 GB | 50 GB+ |
 
@@ -207,7 +207,7 @@ If you are installing RHEL as a virtual machine, the hypervisor handles most har
 
 - **KVM/libvirt**: Use the `q35` machine type for UEFI support. Allocate at least 2 GB RAM and 20 GB disk.
 - **VMware**: Check the Red Hat Ecosystem Catalog for certified ESXi versions for your RHEL release. Use the `vmxnet3` NIC driver and `pvscsi` storage controller for best performance.
-- **Hyper-V**: Windows Server 2019 or later, with Generation 2 VMs for UEFI.
+- **Hyper-V**: Windows Server 2016 or later, with Generation 2 VMs for UEFI.
 
 ```bash
 # Check if you are running inside a virtual machine
