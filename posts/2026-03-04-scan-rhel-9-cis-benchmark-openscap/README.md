@@ -8,14 +8,14 @@ Description: Learn how to use OpenSCAP to scan your RHEL systems against the CIS
 
 ---
 
-The Center for Internet Security (CIS) benchmarks are the gold standard for system hardening. They provide a detailed set of configuration recommendations that have been reviewed by security professionals worldwide. On RHEL, you can check your systems against the CIS benchmark using OpenSCAP, which comes with the SCAP Security Guide that includes CIS profiles out of the box.
+The Center for Internet Security (CIS) benchmarks are the gold standard for system hardening. They provide a detailed set of configuration recommendations that have been reviewed by security professionals worldwide. On RHEL, you can check your systems against the CIS benchmark using OpenSCAP and the SCAP Security Guide, which includes CIS profiles out of the box.
 
 ## Install OpenSCAP and the SCAP Security Guide
 
 ```bash
-# Install the scanner and content
+# Install the scanner, content, and tailoring utilities
 
-dnf install -y openscap-scanner scap-security-guide
+dnf install -y openscap-scanner scap-security-guide openscap-utils
 
 # Verify the installation
 oscap --version
@@ -30,7 +30,7 @@ The SCAP Security Guide ships with multiple CIS profiles:
 
 ```bash
 # List all available profiles for RHEL
-oscap info /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml | grep -A1 "Profile"
+oscap info /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
 ```
 
 The CIS-related profiles you will typically see are:
@@ -52,7 +52,7 @@ oscap xccdf eval \
 
 # The exit code tells you the overall result:
 # 0 = all rules passed
-# 2 = at least one rule failed
+# 2 = at least one rule failed or returned unknown
 echo "Exit code: $?"
 ```
 
@@ -90,23 +90,22 @@ oscap xccdf eval \
 - **pass** - The system meets this requirement
 - **fail** - The system does not meet this requirement and needs remediation
 - **notapplicable** - The rule does not apply to this system configuration
-- **notchecked** - The rule requires manual verification
+- **notchecked** - The rule was not evaluated automatically and may require manual review
 
 ## Extract Specific Failures
 
 To focus on what needs fixing:
 
 ```bash
-# Extract only failed rules from the results XML
+# Generate an HTML report from the results XML
 oscap xccdf generate report \
-  --result-id "" \
   /tmp/cis-l1-results.xml > /tmp/cis-full-report.html
 
 # List just the failed rules
 oscap xccdf eval \
   --profile xccdf_org.ssgproject.content_profile_cis_server_l1 \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml 2>&1 | \
-  grep -B1 "^Result.*fail" | grep "^Title"
+  awk '/^Title/{title=$0} /^Result[[:space:]]+fail/{print title}'
 ```
 
 ## Generate a Fix Script
@@ -114,10 +113,13 @@ oscap xccdf eval \
 OpenSCAP can generate a remediation script based on the scan results:
 
 ```bash
+# Get the TestResult ID from the results file
+oscap info /tmp/cis-l1-results.xml
+
 # Generate a bash remediation script
 oscap xccdf generate fix \
   --fix-type bash \
-  --result-id "" \
+  --result-id xccdf_org.open-scap_testresult_xccdf_org.ssgproject.content_profile_cis_server_l1 \
   --output /tmp/cis-remediation.sh \
   /tmp/cis-l1-results.xml
 
@@ -127,7 +129,7 @@ less /tmp/cis-remediation.sh
 # Generate an Ansible remediation playbook
 oscap xccdf generate fix \
   --fix-type ansible \
-  --result-id "" \
+  --result-id xccdf_org.open-scap_testresult_xccdf_org.ssgproject.content_profile_cis_server_l1 \
   --output /tmp/cis-remediation.yml \
   /tmp/cis-l1-results.xml
 ```
@@ -183,8 +185,8 @@ oscap xccdf eval \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
 
 # Count pass/fail
-PASS=$(grep -c 'result="pass"' "${REPORT_DIR}/cis-l1-${DATE}.xml")
-FAIL=$(grep -c 'result="fail"' "${REPORT_DIR}/cis-l1-${DATE}.xml")
+PASS=$(grep -c '<result>pass</result>' "${REPORT_DIR}/cis-l1-${DATE}.xml")
+FAIL=$(grep -c '<result>fail</result>' "${REPORT_DIR}/cis-l1-${DATE}.xml")
 echo "CIS L1 Scan on $(hostname): $PASS passed, $FAIL failed" | \
   mail -s "CIS Compliance Report - $(hostname)" root
 SCRIPT
@@ -199,12 +201,18 @@ echo "0 3 * * 0 root /usr/local/bin/cis-scan.sh" >> /etc/crontab
 Not every CIS rule applies to every environment. You can create a tailoring file to customize which rules are evaluated:
 
 ```bash
-# Generate a tailoring file that you can customize
-# First, list all rule IDs in the profile
-oscap info --profile xccdf_org.ssgproject.content_profile_cis_server_l1 \
+# Review the profile before creating a tailoring file
+oscap info --profile cis_server_l1 \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
+
+# Example: create a tailoring file that skips one rule
+autotailor --unselect <rule_id> \
+  --output /tmp/cis-tailoring.xml \
+  --new-profile-id cis_server_l1_custom \
+  /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml \
+  cis_server_l1
 ```
 
-For more complex tailoring, use SCAP Workbench (a graphical tool) to create a tailoring file that disables rules that do not apply to your environment.
+For more complex tailoring, use SCAP Workbench (a graphical tool) to create a tailoring file that disables rules that do not apply to your environment. The `autotailor` tool is provided by the `openscap-utils` package.
 
 Running CIS scans with OpenSCAP is one of the most straightforward ways to validate your RHEL hardening. Do it regularly, track the results, and work toward 100% compliance on the rules that matter for your environment.
