@@ -65,7 +65,7 @@ Create the Sentinel configuration on all three nodes:
 ```conf
 # /etc/redis/sentinel.conf
 port 26379
-daemonize yes
+daemonize no
 logfile /var/log/redis/sentinel.log
 dir /tmp
 
@@ -97,6 +97,10 @@ User=redis
 [Install]
 WantedBy=multi-user.target
 SERVICE
+
+# Allow Sentinel to update its configuration and write logs
+sudo chown redis:redis /etc/redis/sentinel.conf
+sudo install -o redis -g redis -d /var/log/redis
 
 # Start Sentinel on all three nodes
 sudo systemctl daemon-reload
@@ -134,4 +138,4 @@ tail -f /var/log/redis/sentinel.log
 redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster
 ```
 
-The quorum value (2 in this setup) means at least 2 Sentinels must agree that the master is down before triggering failover. Always use an odd number of Sentinel instances (3 or 5) for reliable consensus.
+The quorum value (2 in this setup) means at least 2 Sentinels must agree that the master is down before failover is triggered, and a majority of Sentinels must authorize the failover before it is performed. Always use an odd number of Sentinel instances (3 or 5) for reliable consensus.
