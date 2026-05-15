@@ -62,7 +62,9 @@ The `two_node: 1` setting is automatically applied and enables:
 Force the cluster to wait for all nodes on initial startup:
 
 ```bash
+sudo pcs cluster stop --all
 sudo pcs quorum update wait_for_all=1
+sudo pcs cluster start --all
 ```
 
 This prevents the first node to start from running resources before all nodes have joined, avoiding a race condition.
@@ -72,20 +74,24 @@ This prevents the first node to start from running resources before all nodes ha
 Allow quorum to adjust dynamically as nodes leave:
 
 ```bash
-sudo pcs quorum update last_man_standing=1
+sudo pcs cluster stop --all
+sudo pcs quorum update wait_for_all=1 last_man_standing=1
+sudo pcs cluster start --all
 ```
 
-With this enabled, if a 5-node cluster loses 2 nodes, the expected votes adjust to 3 and quorum requires 2. This allows the cluster to survive additional failures.
+With this enabled, if a 5-node cluster loses 2 nodes, the expected votes can adjust to 3 after the `last_man_standing_window` and quorum requires 2. This allows the cluster to survive additional failures. The `last_man_standing` option requires `wait_for_all` and is incompatible with quorum devices.
 
 ## Configuring auto_tie_breaker
 
 For even-numbered clusters, auto_tie_breaker resolves ties:
 
 ```bash
+sudo pcs cluster stop --all
 sudo pcs quorum update auto_tie_breaker=1
+sudo pcs cluster start --all
 ```
 
-When exactly half the nodes fail, the partition containing the node with the lowest node ID retains quorum.
+When exactly half the nodes fail, the partition containing the node configured with `auto_tie_breaker_node`, or the lowest node ID if that is not set, retains quorum. The `auto_tie_breaker` option is incompatible with quorum devices.
 
 ## Setting Expected Votes
 
@@ -112,7 +118,7 @@ sudo pcs property set no-quorum-policy=freeze
 # Ignore quorum (dangerous, can cause split-brain)
 sudo pcs property set no-quorum-policy=ignore
 
-# Suicide (fence the remaining nodes)
+# Suicide (fence all nodes in the inquorate partition)
 sudo pcs property set no-quorum-policy=suicide
 ```
 
@@ -121,7 +127,7 @@ sudo pcs property set no-quorum-policy=suicide
 - **stop** (default) - Safest for most clusters
 - **freeze** - Good when stopping resources is more dangerous than split-brain
 - **ignore** - Only for two-node clusters with proper fencing
-- **suicide** - When it is better to fence yourself than risk split-brain
+- **suicide** - When it is better to fence the inquorate partition than risk split-brain
 
 ## Verifying Quorum During Maintenance
 
