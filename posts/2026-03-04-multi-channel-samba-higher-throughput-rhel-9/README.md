@@ -12,14 +12,14 @@ Description: Enable SMB multi-channel on RHEL to aggregate bandwidth across mult
 
 SMB multi-channel allows a client and server to establish multiple simultaneous connections across different network interfaces or using multiple connections on the same interface. This provides both higher throughput (bandwidth aggregation) and fault tolerance (if one NIC fails, the connection continues over the others).
 
-SMB 3.0 introduced multi-channel, and Samba on RHEL supports it.
+SMB 3.0 introduced multi-channel, and Samba on RHEL supports SMB3 multi-channel.
 
 ## Prerequisites
 
 - RHEL with Samba installed
 - Multiple network interfaces on the server (and ideally the client)
-- SMB 3.0 or later (default on RHEL)
-- Both interfaces on the same network or directly connected
+- SMB 3.0 or later support on the client and server
+- Reachable network paths between the client and server interfaces
 
 ## Step 1 - Verify Network Interfaces
 
@@ -49,8 +49,8 @@ Edit /etc/samba/smb.conf:
     # Enable SMB multi-channel
     server multi channel support = yes
 
-    # Bind to specific interfaces (optional but recommended)
-    interfaces = ens192 ens224
+    # Bind to specific interfaces (optional, when you want to restrict Samba)
+    interfaces = lo ens192 ens224
     bind interfaces only = yes
 ```
 
@@ -78,12 +78,12 @@ Get-SmbClientConfiguration | Select EnableMultichannel
 Set-SmbClientConfiguration -EnableMultichannel $true
 ```
 
-### Linux Client (Samba smbclient)
+### Linux Client (kernel CIFS mount)
 
 ```bash
-# Mount with multi-channel enabled
+# Mount with multi-channel enabled, if the client supports this mount option
 sudo mount -t cifs //192.168.1.10/shared /mnt/smb-share \
-    -o credentials=/root/.smbcredentials,multichannel
+    -o credentials=/root/.smbcredentials,vers=3.0,multichannel
 ```
 
 ## How Multi-Channel Works
@@ -98,21 +98,21 @@ graph LR
         C1[NIC 1 - 192.168.1.20]
         C2[NIC 2 - 192.168.1.21]
     end
-    C1 -->|Session 1| S1
-    C1 -->|Session 2| S2
-    C2 -->|Session 3| S1
-    C2 -->|Session 4| S2
+    C1 -->|Channel 1| S1
+    C1 -->|Channel 2| S2
+    C2 -->|Channel 3| S1
+    C2 -->|Channel 4| S2
 ```
 
-The SMB protocol negotiates multiple connections automatically. Data flows across all available paths simultaneously.
+The SMB protocol negotiates multiple transport connections for a single authenticated session. Data can flow across the selected paths simultaneously.
 
 ## Verifying Multi-Channel Is Active
 
 ### On the Server
 
 ```bash
-# Check active connections and their channels
-sudo smbstatus -b
+# Confirm active sessions are using an SMB3.x dialect
+sudo smbstatus --json
 ```
 
 ### On a Windows Client
@@ -135,7 +135,7 @@ dd if=/dev/zero of=/mnt/smb-share/test1 bs=1M count=1024
 dd if=/dev/zero of=/mnt/smb-share/test2 bs=1M count=1024
 ```
 
-You should see roughly 2x throughput with two NICs compared to one.
+In ideal conditions, you can see up to roughly 2x throughput with two similar NICs compared to one.
 
 ## Network Bonding vs. Multi-Channel
 
@@ -166,8 +166,8 @@ For SMB traffic only, multi-channel is simpler. For general network aggregation,
 ## Troubleshooting
 
 ```bash
-# Check if multi-channel is negotiated
-sudo smbstatus -b | grep -i channel
+# Check the negotiated SMB dialect on active sessions
+sudo smbstatus --json | grep -i session_dialect
 
 # Verify Samba is bound to all interfaces
 sudo ss -tlnp | grep smbd
