@@ -56,7 +56,7 @@ enabled = ["httpd", "firewalld", "sshd"]
 
 # Configure the firewall
 [customizations.firewall]
-ports = ["443:tcp"]
+ports = ["80:tcp", "443:tcp"]
 ```
 
 ## Building the ISO
@@ -74,8 +74,8 @@ composer-cli blueprints depsolve webserver-iso
 # Start an ISO build
 composer-cli compose start webserver-iso image-installer
 
-# For a live ISO without installer
-# composer-cli compose start webserver-iso iso
+# Confirm available image types on your host
+composer-cli compose types
 ```
 
 ## Monitoring the Build
@@ -88,7 +88,7 @@ composer-cli compose status
 watch composer-cli compose status
 
 # View build logs if something goes wrong
-composer-cli compose log <compose-uuid>
+composer-cli compose logs <compose-uuid>
 ```
 
 ## Downloading the ISO
@@ -105,7 +105,7 @@ ls -lh *.iso
 
 ```bash
 # Write the ISO to a USB drive for bare-metal installation
-sudo dd if=<compose-uuid>-image-installer.iso of=/dev/sdc bs=4M status=progress oflag=sync
+sudo dd if=<downloaded-iso-file> of=/dev/sdc bs=4M status=progress oflag=sync
 ```
 
 ## Cleaning Up
@@ -118,4 +118,4 @@ composer-cli compose delete <compose-uuid>
 composer-cli compose list
 ```
 
-The resulting ISO contains a fully automated RHEL installation with your specified packages, users, and services pre-configured.
+The resulting ISO contains a pre-configured RHEL installer image with your specified packages, users, and services included.
