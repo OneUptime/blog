@@ -213,6 +213,12 @@ kubectl create secret generic minio-bucket-creds \
 
 Deploy the manifests from the MinIO Bucket source.
 
+Make sure the target namespace exists before the Kustomization runs, unless your uploaded manifests already include a `Namespace` object for it.
+
+```bash
+kubectl create namespace my-app
+```
+
 ```yaml
 # flux-system/my-app-kustomization.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -258,9 +264,9 @@ jobs:
       - name: Upload manifests
         run: |
           # Configure MinIO client
-          mc alias set myminio ${{ secrets.MINIO_ENDPOINT }} \
-            ${{ secrets.MINIO_ACCESS_KEY }} \
-            ${{ secrets.MINIO_SECRET_KEY }}
+          mc alias set myminio "${{ secrets.MINIO_ENDPOINT }}" \
+            "${{ secrets.MINIO_ACCESS_KEY }}" \
+            "${{ secrets.MINIO_SECRET_KEY }}"
 
           # Sync manifests to MinIO
           mc mirror --overwrite --remove ./manifests/ myminio/flux-manifests/
