@@ -30,7 +30,7 @@ The immutable flag is `-e 2` and it must be the very last rule in your audit con
 
 ### Step 1: Organize Your Rules Files
 
-The rules in `/etc/audit/rules.d/` are loaded in alphabetical order. The immutable flag must be in the last file:
+The rules in `/etc/audit/rules.d/` are processed by `augenrules` in natural sort order. The immutable flag should be in the last file:
 
 ```bash
 # List existing rule files
@@ -62,11 +62,12 @@ EOF
 Before loading, verify the order of all your rules:
 
 ```bash
-# Preview what augenrules will produce
-sudo cat /etc/audit/rules.d/*.rules
+# Preview the files in the same natural sort order augenrules uses
+ls -v /etc/audit/rules.d/*.rules
+sudo awk 'FNR==1 {print "# " FILENAME} {print}' $(ls -v /etc/audit/rules.d/*.rules)
 ```
 
-Make sure `-e 2` appears at the very end. If it appears before other rules, those rules will fail to load.
+Make sure `-e 2` appears only in the final rules file. `augenrules` emits the last processed `-e` directive as the last line of `/etc/audit/audit.rules`.
 
 ### Step 4: Load the Rules
 
@@ -181,7 +182,7 @@ Here is a full example showing the recommended rule file structure:
 
 3. **Document the reboot requirement.** Make sure your team knows that audit rule changes require a reboot when immutable rules are in place.
 
-4. **Do not use -e 2 in the middle of your rules.** It must always be the last line processed. Any rules after it will fail to load.
+4. **Do not use -e 2 in the middle of your rules.** It should be in the final rules file so the lock is applied only after all other rules are processed.
 
 5. **The -D (delete all) flag still works at the start of rules loading during boot.** The immutable lock only applies at runtime, so your rules can still begin with `-D` to clear any stale rules.
 
