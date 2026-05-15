@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SSH, Access Control, Security, Linux
 
-Description: Multiple methods to restrict SSH access on RHEL, including sshd directives, PAM access controls, firewall rules, and TCP wrappers for layered security.
+Description: Multiple methods to restrict SSH access on RHEL, including sshd directives, PAM access controls, and firewall rules for layered security.
 
 ---
 
@@ -66,10 +66,10 @@ sudo vi /etc/security/access.conf
 ```bash
 # Allow admin group from anywhere
 
-+ : @admins : ALL
++ : (admins) : ALL
 
 # Allow developers only from the office network
-+ : @developers : 10.0.0.0/24
++ : (developers) : 10.0.0.0/24
 
 # Allow monitoring from specific IPs
 + : nagios : 10.0.100.50 10.0.100.51
@@ -86,7 +86,7 @@ Before adding the final deny-all rule, test that your access works:
 
 ```bash
 # Temporarily add just the allow rules
-echo "+ : @admins : ALL" | sudo tee -a /etc/security/access.conf
+echo "+ : (admins) : ALL" | sudo tee -a /etc/security/access.conf
 
 # Test SSH access
 ssh admin@localhost
@@ -133,7 +133,7 @@ sudo vi /etc/ssh/sshd_config.d/20-access.conf
 # Default: deny all
 AllowGroups sshusers
 
-# Exception: allow the deploy user only from the CI server
+# Exception: allow the deploy user, if it is also in sshusers, only from the CI server
 Match Address 10.0.100.50
     AllowUsers deploy
 
