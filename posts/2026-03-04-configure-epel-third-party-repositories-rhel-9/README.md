@@ -16,7 +16,7 @@ EPEL stands for Extra Packages for Enterprise Linux. It is maintained by the Fed
 
 Key points about EPEL:
 
-- It never replaces or conflicts with packages in BaseOS or AppStream
+- It is designed not to replace or conflict with packages in BaseOS or AppStream
 - Packages are community-maintained, not supported by Red Hat
 - It is the safest third-party repository for RHEL systems
 - It follows RHEL major version lifecycles
@@ -31,11 +31,11 @@ Many EPEL packages depend on build libraries that live in the CodeReady Builder 
 sudo subscription-manager repos --enable codeready-builder-for-rhel-9-x86_64-rpms
 ```
 
-Alternatively, using DNF config-manager:
+If the repository is managed directly by DNF rather than Red Hat Subscription Management, use DNF config-manager:
 
 ```bash
 # Enable CRB using dnf config-manager
-sudo dnf config-manager --set-enabled crb
+sudo dnf config-manager --set-enabled codeready-builder-for-rhel-9-$(arch)-rpms
 ```
 
 Verify it is enabled:
@@ -120,8 +120,8 @@ gpgcheck=1
 # Path to the GPG key for this repo
 gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-9
 
-# Also verify the repository metadata itself
-repo_gpgcheck=1
+# Verify repository metadata only if the repository publishes signed metadata
+repo_gpgcheck=0
 ```
 
 Setting `gpgcheck=0` is tempting when you just want something installed quickly. Do not do it in production. Ever.
@@ -160,12 +160,12 @@ priority=110
 
 ## Excluding Packages from a Repository
 
-Sometimes a third-party repo ships a package you want to keep from the official RHEL repos. Use the `exclude` directive:
+Sometimes a third-party repo ships a package you want to keep from the official RHEL repos. Use the `excludepkgs` directive:
 
 ```bash
 # Exclude specific packages from the EPEL repo
 # Add this to the [epel] section in /etc/yum.repos.d/epel.repo
-exclude=kernel* httpd*
+excludepkgs=kernel* httpd*
 ```
 
 Or exclude packages at the DNF configuration level for all repos:
