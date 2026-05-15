@@ -30,7 +30,7 @@ LUKS (Linux Unified Key Setup) is the standard format for dm-crypt encryption on
 sudo cryptsetup luksFormat /dev/sdb
 
 # Open (unlock) the encrypted device and map it to a name
-sudo cryptsetup luksOpen /dev/sdb encrypted_data
+sudo cryptsetup open /dev/sdb encrypted_data
 
 # The decrypted device is now available at /dev/mapper/encrypted_data
 # Create a filesystem on the mapped device
@@ -43,7 +43,7 @@ sudo mount /dev/mapper/encrypted_data /mnt/secure
 
 ## Managing LUKS Keys
 
-You can add multiple key slots (up to 8 total) for the same device:
+You can add multiple key slots for the same device. LUKS1 supports eight key slots, while LUKS2 supports up to 32:
 
 ```bash
 # Add a new passphrase to key slot
@@ -77,7 +77,7 @@ echo "/dev/mapper/encrypted_data /mnt/secure xfs defaults 0 0" | sudo tee -a /et
 ```bash
 # Unmount and close the encrypted device
 sudo umount /mnt/secure
-sudo cryptsetup luksClose encrypted_data
+sudo cryptsetup close encrypted_data
 ```
 
 Using dm-crypt with LUKS is the recommended approach for block-level encryption on RHEL. It integrates well with systemd, Clevis for automated unlocking, and Tang for network-bound disk encryption.
