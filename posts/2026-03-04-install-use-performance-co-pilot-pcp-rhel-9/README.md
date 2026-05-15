@@ -23,7 +23,7 @@ Install and use Performance Co-Pilot (PCP) on RHEL 9 for system performance metr
 Install the monitoring tools relevant to this guide:
 
 ```bash
-sudo dnf install -y pcp pcp-system-tools sysstat net-snmp net-snmp-utils
+sudo dnf install -y pcp pcp-system-tools sysstat
 ```
 
 Select only the packages you need for your specific setup.
@@ -42,24 +42,20 @@ sudo systemctl enable --now sysstat
 Edit the relevant configuration file for your monitoring setup. Common locations include:
 
 - `/etc/pcp/` for PCP configuration
-- `/etc/snmp/snmpd.conf` for SNMP
-- `/etc/prometheus/prometheus.yml` for Prometheus
-- `/etc/grafana/grafana.ini` for Grafana
+- `/var/lib/pcp/config/pmlogger/config.default` for `pmlogger` metric logging
+- `/etc/pcp/pmcd/pmcd.options` for `pmcd` listener options
 
 Apply your changes and restart the service:
 
 ```bash
-sudo systemctl restart <service-name>
+sudo systemctl restart pmcd pmlogger
 ```
 
 ## Step 4 - Open Firewall Ports
 
 ```bash
-# Common monitoring ports
-sudo firewall-cmd --permanent --add-port=9090/tcp   # Prometheus
-sudo firewall-cmd --permanent --add-port=9100/tcp   # Node Exporter
-sudo firewall-cmd --permanent --add-port=3000/tcp   # Grafana
-sudo firewall-cmd --permanent --add-service=snmp     # SNMP
+# Only needed when remote systems connect to pmcd
+sudo firewall-cmd --permanent --add-port=44321/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -72,8 +68,8 @@ Confirm that metrics are being collected:
 pmstat -s 3
 # sysstat
 sar -u 1 3
-# Prometheus endpoint
-curl -s http://localhost:9090/api/v1/query?query=up
+# PCP service status
+pcp
 ```
 
 ## Step 6 - Set Up Alerting (Optional)
