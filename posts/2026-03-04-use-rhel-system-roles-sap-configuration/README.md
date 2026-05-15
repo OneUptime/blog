@@ -29,6 +29,7 @@ graph LR
 - Control node locale set to `C` or `en_US.UTF-8`
 - SSH access to target SAP hosts
 - Target SAP hosts registered with access to the required RHEL for SAP repositories
+- DNS domain configured on target SAP hosts, or a `sap_domain` value set in the playbooks
 
 ## Step 1: Install the System Roles
 
@@ -79,6 +80,8 @@ cat <<'PLAYBOOK' > prepare-hana.yml
   hosts: sap_hana
   become: true
   vars:
+    sap_domain: example.com  # Replace with your DNS domain
+
     # General preconfigure settings
     sap_general_preconfigure_modify_etc_hosts: true
     sap_general_preconfigure_update: true
@@ -109,6 +112,8 @@ cat <<'PLAYBOOK' > prepare-netweaver.yml
   hosts: sap_app
   become: true
   vars:
+    sap_domain: example.com  # Replace with your DNS domain
+
     sap_general_preconfigure_modify_etc_hosts: true
     sap_general_preconfigure_update: true
     sap_general_preconfigure_reboot_ok: true
@@ -183,13 +188,13 @@ The `sap_general_preconfigure` role handles:
 - User limit configuration
 - Hostname and /etc/hosts configuration
 - SELinux settings
-- Time synchronization
+- DNS domain validation
 
 The `sap_hana_preconfigure` role adds:
 - HANA-specific kernel parameters
 - THP disabling
 - SAP HANA tuned profile activation
-- Required package groups for HANA
+- Required packages for HANA
 - Memory and CPU governor settings
 
 ## Conclusion
