@@ -75,12 +75,11 @@ sudo parted /dev/sdb mklabel gpt
 After the partition table exists, click "Create partition" to add a new one. Cockpit will ask for:
 
 - **Size** - how large the partition should be
-- **Type** - a regular partition or a special type
-- **Filesystem** - ext4, xfs, or other options
+- **Type** - the filesystem type, such as XFS or ext4
 - **Mount point** - where to mount it
 - **Mount options** - at boot, read-only, etc.
 
-Click "Create partition" and Cockpit handles the partitioning, formatting, and mounting in one step.
+Click "Create and mount" and Cockpit handles the partitioning, formatting, and mounting in one step. If you only want to create the partition, use "Create only."
 
 The equivalent command sequence:
 
@@ -107,7 +106,7 @@ Cockpit does all of that behind the scenes when you fill out the form.
 
 If you need to reformat a partition (destroying all data on it), click on the partition in Cockpit and select "Format." You'll choose the filesystem type and mount point.
 
-Supported filesystems in Cockpit:
+Common filesystem choices in Cockpit:
 
 - **XFS** - the default for RHEL, great for large files and high-throughput workloads
 - **ext4** - a solid general-purpose filesystem, supports shrinking unlike XFS
@@ -149,9 +148,9 @@ cat /etc/fstab
 
 When you change a mount point in Cockpit, it updates `/etc/fstab` automatically so the change persists across reboots.
 
-## Resizing Partitions
+## Resizing Logical Volumes and Filesystems
 
-Cockpit supports resizing partitions and their filesystems. Click on a partition and look for the "Resize" option. XFS filesystems can only be grown (not shrunk), while ext4 can be both grown and shrunk.
+Cockpit supports growing and shrinking logical volumes that contain resizable filesystems. Click on a logical volume and look for the "Grow" or "Shrink" option. XFS filesystems can only be grown (not shrunk), while ext4 can be both grown and shrunk.
 
 The process behind the scenes:
 
@@ -234,7 +233,7 @@ sudo mkfs.xfs /dev/mapper/encrypted_data
 sudo mount /dev/mapper/encrypted_data /secure-data
 ```
 
-Cockpit handles all of this through its UI, including prompting for the passphrase on boot.
+Cockpit handles the encryption and formatting steps through its UI. On boot, the system unlocks the encrypted volume according to the LUKS configuration, which typically includes prompting for the passphrase unless another unlock method is configured.
 
 ## Common Storage Tasks Quick Reference
 
