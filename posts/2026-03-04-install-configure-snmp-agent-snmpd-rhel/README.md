@@ -35,11 +35,8 @@ sysname rhel-server-01
 
 # SNMPv2c community string (read-only access)
 # Restrict to specific network
-rocommunity mySecretCommunity 10.0.0.0/24
-rocommunity mySecretCommunity 127.0.0.1
-
-# Expose the full OID tree
-view systemonly included .1
+rocommunity mySecretCommunity 10.0.0.0/24 .1
+rocommunity mySecretCommunity 127.0.0.1 .1
 
 # Disk monitoring - alert when partitions exceed thresholds
 disk / 10%
@@ -121,8 +118,8 @@ snmpbulkwalk -v2c -c mySecretCommunity -Cr25 10.0.0.50 .1.3.6.1.2.1.2.2
 # If SELinux blocks snmpd, check for denials
 sudo ausearch -m AVC -c snmpd -ts recent
 
-# Allow snmpd to run custom scripts
-sudo setsebool -P snmpd_exec_user_scripts 1
+# Review suggested SELinux fixes before applying them
+sudo ausearch -m AVC -c snmpd -ts recent | audit2allow -w
 ```
 
 ## Troubleshooting
