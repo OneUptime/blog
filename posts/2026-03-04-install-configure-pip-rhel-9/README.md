@@ -8,19 +8,21 @@ Description: Learn how to safely install and configure pip on RHEL while protect
 
 ---
 
-RHEL takes a protective stance toward its system Python. Running `pip install` outside a virtual environment will fail by default, and that is intentional. This guide shows you how to work with pip properly on RHEL.
+RHEL takes a protective stance toward its system Python. Running `pip install` as root at the system level can override RHEL-managed libraries, and Red Hat does not support that use. This guide shows you how to work with pip properly on RHEL.
 
 ## Understanding the RHEL Python Policy
 
-RHEL uses Python 3.9 as the system Python. Many system tools depend on it, so Red Hat introduced PEP 668 support to prevent users from accidentally breaking system packages with pip.
+RHEL uses Python 3.9 as the default Python implementation. Many system tools depend on Python libraries managed by RPM packages, so Red Hat recommends using virtual environments or non-root `--user` installs instead of installing packages with pip at the system level.
 
 ```mermaid
 graph TD
     A[pip install package] --> B{Inside venv?}
     B -->|Yes| C[Installs to venv - Safe]
-    B -->|No| D{--user flag?}
-    D -->|Yes| E[Installs to ~/.local - Safe]
-    D -->|No| F[Blocked by EXTERNALLY-MANAGED marker]
+    B -->|No| D{Running as root?}
+    D -->|Yes| E[System-level install - Unsupported]
+    D -->|No| F{--user flag?}
+    F -->|Yes| G[Installs to ~/.local - Safer]
+    F -->|No| H[Use a venv or be explicit with --user]
 ```
 
 ## Installing pip
@@ -28,7 +30,7 @@ graph TD
 ```bash
 # Install pip for the default Python 3.9
 
-sudo dnf install -y python3-pip
+sudo dnf install -y python3.9-pip
 
 # Verify the installation
 pip3 --version
@@ -43,16 +45,15 @@ sudo dnf install -y python3.12-pip
 python3.12 -m pip --version
 ```
 
-## The EXTERNALLY-MANAGED Error
+## The System-Level pip Risk
 
-If you try to run `pip install` directly on RHEL, you will see this error:
+If you run `pip install` as root on RHEL, pip can place files in system locations:
 
 ```bash
-error: externally-managed-environment
-This environment is externally managed
+sudo pip3 install package
 ```
 
-This is expected behavior. RHEL marks the system Python as externally managed to protect it.
+That can override RHEL libraries and cause system instability or conflicts with supported packages. Use a virtual environment or a non-root `--user` install instead.
 
 ## Safe Way 1: Use Virtual Environments (Recommended)
 
@@ -92,7 +93,7 @@ http --version
 For Python-based command-line tools, pipx is the cleanest option. It installs each tool in its own isolated environment.
 
 ```bash
-# Install pipx
+# Install pipx from an enabled repository such as EPEL
 sudo dnf install -y pipx
 
 # Install CLI tools with pipx
@@ -100,7 +101,7 @@ pipx install httpie
 pipx install black
 pipx install poetry
 
-# Each tool gets its own venv under ~/.local/pipx/venvs/
+# Each tool gets its own venv under ~/.local/share/pipx/venvs/
 ```
 
 ## Configuring pip Defaults
@@ -114,9 +115,6 @@ mkdir -p ~/.config/pip
 # Create the config file
 cat > ~/.config/pip/pip.conf << 'PIPCONF'
 [global]
-# Default to user installs when outside a venv
-user = true
-
 # Set a custom index URL if you use a private PyPI mirror
 # index-url = https://pypi.example.com/simple/
 
@@ -129,6 +127,8 @@ timeout = 60
 [install]
 # Do not install if a compatible version already exists
 # upgrade-strategy = only-if-needed
+
+# Do not set user = true globally if you use virtual environments.
 PIPCONF
 ```
 
@@ -155,15 +155,12 @@ If your organization hosts a private PyPI server, configure pip to use it.
 pip install --index-url https://pypi.example.com/simple/ mypackage
 
 # Or add an extra index alongside the public PyPI
+# Use this carefully for private packages because it can allow dependency confusion.
 pip install --extra-index-url https://pypi.example.com/simple/ mypackage
 
-# Permanent configuration in pip.conf
-cat >> ~/.config/pip/pip.conf << 'PIPCONF'
-
-[global]
-index-url = https://pypi.example.com/simple/
-trusted-host = pypi.example.com
-PIPCONF
+# Permanent configuration in your user pip.conf
+python3 -m pip config set global.index-url https://pypi.example.com/simple/
+python3 -m pip config set global.trusted-host pypi.example.com
 ```
 
 ## Checking for Security Vulnerabilities
@@ -183,4 +180,4 @@ pip-audit
 
 ## Summary
 
-On RHEL, pip is available but intentionally restricted outside virtual environments. Always use venvs for project work, the `--user` flag for personal tools, or pipx for CLI applications. This keeps your system Python healthy and your packages organized.
+On RHEL, pip is available but should not be used for root-level system installs. Always use venvs for project work, the `--user` flag for personal tools, or pipx for CLI applications. This keeps your system Python healthy and your packages organized.
