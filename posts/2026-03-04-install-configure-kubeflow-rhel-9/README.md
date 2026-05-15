@@ -14,8 +14,8 @@ Machine learning workflows involve multiple stages from data preparation to mode
 
 Before getting started, make sure you have:
 
-- A RHEL system with at least 16 GB RAM and 4 CPU cores
-- A running Kubernetes cluster (v1.25 or later)
+- A RHEL system with at least 16 GB RAM and 8 CPU cores
+- A running Kubernetes cluster compatible with your Kubeflow release (Kubeflow manifests 26.03 require Kubernetes v1.34 or later)
 - kubectl configured to interact with your cluster
 - kustomize installed
 - Root or sudo access
@@ -42,14 +42,9 @@ graph TD
 First, install kubectl and kustomize on your RHEL system.
 
 ```bash
-# Install kubectl
-
-sudo dnf install -y kubectl
-
-# If kubectl is not in RHEL repos, download it directly
+# Install kubectl directly
 curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-chmod +x kubectl
-sudo mv kubectl /usr/local/bin/
+sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 
 # Install kustomize (required for Kubeflow deployment)
 curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
@@ -83,10 +78,24 @@ sudo sysctl --system
 
 # Install container runtime (containerd)
 sudo dnf install -y containerd
+sudo mkdir -p /etc/containerd
+containerd config default | sudo tee /etc/containerd/config.toml >/dev/null
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
 sudo systemctl enable --now containerd
 
-# Install kubeadm, kubelet
-sudo dnf install -y kubeadm kubelet
+# Add the Kubernetes package repository
+cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://pkgs.k8s.io/core:/stable:/v1.34/rpm/
+enabled=1
+gpgcheck=1
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1.34/rpm/repodata/repomd.xml.key
+exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
+EOF
+
+# Install kubeadm, kubelet, and kubectl
+sudo dnf install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
 sudo systemctl enable --now kubelet
 
 # Initialize the cluster
@@ -98,7 +107,7 @@ sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
 # Install a CNI plugin (Calico)
-kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/calico.yaml
 
 # Allow scheduling on the control plane (for single-node setups)
 kubectl taint nodes --all node-role.kubernetes.io/control-plane-
@@ -114,7 +123,7 @@ git clone https://github.com/kubeflow/manifests.git
 cd manifests
 
 # Check out a stable release tag
-git checkout v1.8-branch
+git checkout 26.03
 ```
 
 ## Step 4: Deploy Kubeflow
@@ -124,9 +133,9 @@ Use kustomize to build and apply the Kubeflow components.
 ```bash
 # Deploy all Kubeflow components
 # This single command installs the entire Kubeflow stack
-while ! kustomize build example | kubectl apply -f -; do
+while ! kustomize build example | kubectl apply --server-side --force-conflicts -f -; do
     echo "Retrying to apply resources..."
-    sleep 10
+    sleep 20
 done
 ```
 
@@ -147,7 +156,7 @@ kubectl get pods -n kubeflow --watch
 kubectl get deployments -n kubeflow
 ```
 
-Wait until all pods show a Running status. This can take 10 to 15 minutes depending on your cluster resources.
+Wait until all pods show a Running status. This can take 15 to 30 minutes depending on your cluster resources.
 
 ## Step 6: Access the Kubeflow Dashboard
 
@@ -168,7 +177,7 @@ The default credentials are:
 
 ## Step 7: Configure Persistent Storage
 
-For production use, configure a StorageClass for persistent volumes.
+For production use, configure a dynamic CSI-backed StorageClass for persistent volumes before deploying Kubeflow. The local example below is useful for single-node or lab setups, but because it uses `kubernetes.io/no-provisioner`, you must create matching PersistentVolumes yourself.
 
 ```yaml
 # storage-class.yaml
@@ -186,7 +195,7 @@ reclaimPolicy: Retain
 # Apply the storage class
 kubectl apply -f storage-class.yaml
 
-# Set it as the default storage class
+# Set it as the default storage class for future PVCs
 kubectl patch storageclass kubeflow-storage \
   -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
 ```
@@ -218,11 +227,12 @@ def process_greeting(greeting: str) -> str:
 
 # Build the pipeline from the components
 @dsl.pipeline(name="hello-pipeline", description="A simple hello world pipeline")
-def hello_pipeline(recipient: str = "World"):
+def hello_pipeline(recipient: str = "World") -> str:
     # Step 1: Generate a greeting
     hello_task = say_hello(name=recipient)
     # Step 2: Process the greeting from step 1
     process_task = process_greeting(greeting=hello_task.output)
+    return process_task.output
 
 # Compile the pipeline to a YAML file
 compiler.Compiler().compile(
@@ -237,6 +247,7 @@ Change the default credentials for production use.
 
 ```bash
 # Generate a new password hash using Python
+python3 -m pip install --user passlib bcrypt
 python3 -c "from passlib.hash import bcrypt; print(bcrypt.using(rounds=12).hash('YourNewSecurePassword'))"
 
 # Edit the Dex configuration to update credentials
@@ -247,7 +258,7 @@ Update the `staticPasswords` section with your new hash and preferred email addr
 
 ## Firewall Configuration
 
-Open the required ports if you plan to access Kubeflow remotely.
+Open the required ports if you plan to expose Kubernetes or the forwarded Kubeflow dashboard beyond localhost.
 
 ```bash
 # Allow access to the Kubeflow dashboard port
