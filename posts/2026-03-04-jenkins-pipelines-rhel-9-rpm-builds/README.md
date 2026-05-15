@@ -28,7 +28,10 @@ graph LR
 ```bash
 # Install RPM build tools
 
-sudo dnf install -y rpm-build rpmdevtools rpmlint mock createrepo
+# Enable EPEL if mock is not already available on your RHEL host
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+
+sudo dnf install -y rpm-build rpmdevtools rpmlint mock createrepo_c
 
 # Add the jenkins user to the mock group
 sudo usermod -aG mock jenkins
@@ -63,15 +66,15 @@ A sample application packaged as an RPM for RHEL.
 make %{?_smp_mflags}
 
 %install
-make install DESTDIR=%{buildroot}
+make install DESTDIR=%{buildroot} prefix=%{_prefix}
 
 %files
 %license LICENSE
 %doc README.md
-/usr/local/bin/myapp
+%{_bindir}/myapp
 
 %changelog
-* Tue Mar 04 2026 Developer <dev@example.com> - 1.0.0-1
+* Wed Mar 04 2026 Developer <dev@example.com> - 1.0.0-1
 - Initial package
 ```
 
@@ -140,7 +143,7 @@ pipeline {
                 // Build the binary RPM in a clean chroot
                 sh '''
                     SRPM=$(find ${RPM_BUILD_DIR}/SRPMS -name "*.src.rpm" | head -1)
-                    mock -r rocky-9-x86_64 --rebuild "$SRPM" \
+                    mock -r rhel-9-x86_64 --rebuild "$SRPM" \
                         --resultdir=${RPM_BUILD_DIR}/RPMS/
                 '''
             }
@@ -148,7 +151,7 @@ pipeline {
 
         stage('Test RPM') {
             steps {
-                // Verify the RPM can be installed
+                // Inspect the RPM and verify it can be installed in the mock chroot
                 sh '''
                     RPM=$(find ${RPM_BUILD_DIR}/RPMS -name "*.x86_64.rpm" | head -1)
 
@@ -157,6 +160,9 @@ pipeline {
 
                     # List files in the RPM
                     rpm -qpl "$RPM"
+
+                    # Verify package installation in the clean chroot
+                    mock -r rhel-9-x86_64 --install "$RPM"
 
                     # Run rpmlint on the built package
                     rpmlint "$RPM" || true
@@ -176,7 +182,7 @@ pipeline {
 
                     sudo mkdir -p ${REPO_DIR}
                     sudo cp "$RPM" ${REPO_DIR}/
-                    sudo createrepo --update ${REPO_DIR}/
+                    sudo createrepo_c --update ${REPO_DIR}/
                 '''
             }
         }
@@ -214,7 +220,7 @@ sudo dnf install -y httpd
 sudo mkdir -p /var/www/html/rpm-repo
 
 # Initialize the repository metadata
-sudo createrepo /var/www/html/rpm-repo/
+sudo createrepo_c /var/www/html/rpm-repo/
 
 # Start the web server
 sudo systemctl enable --now httpd
