@@ -18,7 +18,7 @@ Red Hat Satellite provides centralized errata management for RHEL hosts. You can
 hammer erratum list --organization "MyOrg"
 
 # Filter by type (security, bugfix, enhancement)
-hammer erratum list --organization "MyOrg" --errata-type security
+hammer erratum list --organization "MyOrg" --search "type = security"
 
 # Search for a specific CVE
 hammer erratum list --organization "MyOrg" --search "cve = CVE-2024-1234"
@@ -31,7 +31,7 @@ hammer erratum list --organization "MyOrg" --search "cve = CVE-2024-1234"
 hammer host errata list --host "webserver1.example.com"
 
 # Filter for security errata only
-hammer host errata list --host "webserver1.example.com" --errata-type security
+hammer host errata list --host "webserver1.example.com" --type security
 
 # View errata details
 hammer erratum info --id "RHSA-2026:0123"
@@ -41,14 +41,21 @@ hammer erratum info --id "RHSA-2026:0123"
 
 ```bash
 # Apply a specific erratum to a host
-hammer host errata apply \
-    --host "webserver1.example.com" \
-    --errata-ids "RHSA-2026:0123"
+hammer job-invocation create \
+    --feature katello_errata_install \
+    --search-query "name = webserver1.example.com" \
+    --inputs "errata=RHSA-2026:0123"
 
 # Apply all applicable security errata
-hammer host errata apply \
+ERRATA_IDS=$(hammer --csv host errata list \
     --host "webserver1.example.com" \
-    --errata-type security
+    --type security \
+    --fields "Erratum id" | tail -n +2 | paste -sd, -)
+
+hammer job-invocation create \
+    --feature katello_errata_install \
+    --search-query "name = webserver1.example.com" \
+    --inputs "errata=${ERRATA_IDS}"
 ```
 
 ## Apply Errata to a Host Group
@@ -59,7 +66,7 @@ hammer host list --search "hostgroup = WebServers and applicable_errata > 0"
 
 # Apply errata to all hosts in a group using remote execution
 hammer job-invocation create \
-    --job-template "Install Errata - Katello Script Default" \
+    --feature katello_errata_install \
     --search-query "hostgroup = WebServers" \
     --inputs "errata=RHSA-2026:0123"
 ```
@@ -68,11 +75,11 @@ hammer job-invocation create \
 
 ```bash
 # View the errata compliance summary for all hosts
-hammer host list --fields "Name,OS,Installable Errata (Security),Installable Errata (Bugfix)"
+hammer host list --fields "Name,Operating system,Security,Bugfix"
 
 # Export errata report as CSV
 hammer --csv host list \
-    --fields "Name,Installable Errata (Security),Installable Errata (Bugfix)" \
+    --fields "Name,Security,Bugfix" \
     > /tmp/errata_report.csv
 ```
 
@@ -99,15 +106,18 @@ hammer content-view filter rule create \
 ## Schedule Automatic Errata Application
 
 ```bash
-# Create a recurring job to apply security errata weekly
-hammer recurring-logic create \
+# Create a recurring job to apply a specific erratum weekly
+hammer job-invocation create \
+    --feature katello_errata_install \
+    --search-query "hostgroup = Production" \
+    --inputs "errata=RHSA-2026:0123" \
     --cron-line "0 2 * * 0"
 
 # Set up a scheduled remote execution job
 hammer job-invocation create \
-    --job-template "Install Errata - Katello Script Default" \
+    --feature katello_errata_install \
     --search-query "hostgroup = Production" \
-    --inputs "errata_type=security" \
+    --inputs "errata=RHSA-2026:0123" \
     --start-at "2026-03-08 02:00:00"
 ```
 
@@ -115,11 +125,11 @@ hammer job-invocation create \
 
 ```bash
 # Find hosts that are behind on patches
-hammer host list --search "applicable_errata_security > 5" \
-    --fields "Name,Applicable Errata (Security)"
+hammer host list --search "errata_status = security_needed" \
+    --fields "Name,Security"
 
 # Check when a host was last patched
-hammer host info --name "webserver1.example.com" --fields "Installed At"
+hammer host info --name "webserver1.example.com" --fields "Installed at"
 ```
 
 Satellite gives you visibility into errata compliance across your entire RHEL fleet and the tools to enforce consistent patching policies.
