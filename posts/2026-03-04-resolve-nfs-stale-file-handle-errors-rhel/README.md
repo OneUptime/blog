@@ -8,7 +8,7 @@ Description: Fix NFS stale file handle errors on RHEL by re-exporting shares, re
 
 ---
 
-The "Stale file handle" (ESTALE) error occurs when an NFS client holds a reference to a file or directory that no longer exists on the server, or when the server-side export has changed. This is a common issue after server restarts, export modifications, or file deletions.
+The "Stale file handle" (ESTALE) error occurs when an NFS client holds a reference to a file or directory that no longer exists on the server, or when the server-side export or underlying filesystem has changed. This is a common issue after server failovers, export modifications, or file deletions.
 
 ## Identifying the Problem
 
@@ -54,7 +54,7 @@ On the NFS server, verify the export configuration:
 sudo exportfs -v
 
 # If the export was modified, re-export all shares
-sudo exportfs -ra
+sudo exportfs -r
 
 # Verify the NFS service is healthy
 systemctl status nfs-server
@@ -64,35 +64,35 @@ If the underlying filesystem on the server was replaced or reformatted (even wit
 
 ```bash
 # Unexport and re-export the share
-sudo exportfs -u nfs-server:/export/share
+sudo exportfs -u 192.168.1.0/24:/export/share
 sudo exportfs -o rw,sync,no_subtree_check 192.168.1.0/24:/export/share
 ```
 
 ## Client-Side Configuration
 
-Add resilient mount options in `/etc/fstab` to handle future issues:
+Add mount options in `/etc/fstab` that fit the workload. Keep the default `hard` behavior for data integrity unless client responsiveness is more important than write reliability:
 
 ```bash
-# Edit fstab with soft mount and timeout options
-# soft = return error instead of hanging; timeo = timeout in tenths of a second
-nfs-server:/export/share  /mnt/nfs-share  nfs4  soft,timeo=50,retrans=3,_netdev  0  0
+# Edit fstab with network-aware mount options
+nfs-server:/export/share  /mnt/nfs-share  nfs4  hard,_netdev  0  0
 ```
 
 ## Clearing the NFS Client Cache
 
-Sometimes the client caches stale metadata. Clear it:
+Sometimes the client caches metadata. Dropping kernel caches can clear clean page cache, dentries, and inodes, but remounting is still the reliable way to replace stale NFS handles:
 
 ```bash
-# Drop all kernel caches (including NFS attribute cache)
+# Drop clean kernel caches
 echo 3 | sudo tee /proc/sys/vm/drop_caches
 
-# Alternatively, remount with the noac option to disable attribute caching
-sudo mount -o remount,noac /mnt/nfs-share
+# Alternatively, unmount and mount with noac to disable attribute caching
+sudo umount /mnt/nfs-share
+sudo mount -t nfs4 -o noac nfs-server:/export/share /mnt/nfs-share
 ```
 
 ## Preventing Stale Handles
 
-Use `actimeo=0` or shorter attribute cache timeouts for frequently changed exports:
+Use `actimeo=0` or shorter attribute cache timeouts when clients need to detect frequent metadata changes quickly:
 
 ```bash
 # Mount with shorter attribute cache (values in seconds)
