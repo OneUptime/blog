@@ -18,8 +18,10 @@ NATS is a lightweight, high-performance messaging system designed for cloud-nati
 ## Step 1: Install NATS Server
 
 ```bash
-curl -L https://github.com/nats-io/nats-server/releases/latest/download/nats-server-linux-amd64.tar.gz | tar xz
-sudo mv nats-server /usr/local/bin/
+NATS_SERVER_VERSION=v2.14.0
+curl -LO "https://github.com/nats-io/nats-server/releases/download/${NATS_SERVER_VERSION}/nats-server-${NATS_SERVER_VERSION}-linux-amd64.tar.gz"
+tar -xzf "nats-server-${NATS_SERVER_VERSION}-linux-amd64.tar.gz"
+sudo install -m 0755 "nats-server-${NATS_SERVER_VERSION}-linux-amd64/nats-server" /usr/local/bin/nats-server
 nats-server --version
 ```
 
@@ -43,11 +45,9 @@ authorization {
     ]
 }
 
-logging {
-    file: "/var/log/nats/nats-server.log"
-    size: 100MB
-    max_files: 5
-}
+log_file: "/var/log/nats/nats-server.log"
+logfile_size_limit: 100MB
+logfile_max_num: 5
 ```
 
 ## Step 3: Create systemd Service
@@ -85,8 +85,12 @@ sudo systemctl enable --now nats
 ## Step 4: Install NATS CLI
 
 ```bash
-curl -L https://github.com/nats-io/natscli/releases/latest/download/nats-linux-amd64.tar.gz | tar xz
-sudo mv nats /usr/local/bin/
+sudo dnf install -y unzip
+
+NATS_CLI_VERSION=0.4.0
+curl -LO "https://github.com/nats-io/natscli/releases/download/v${NATS_CLI_VERSION}/nats-${NATS_CLI_VERSION}-linux-amd64.zip"
+unzip "nats-${NATS_CLI_VERSION}-linux-amd64.zip"
+sudo install -m 0755 "nats-${NATS_CLI_VERSION}-linux-amd64/nats" /usr/local/bin/nats
 ```
 
 ## Step 5: Test Publish/Subscribe
@@ -108,7 +112,7 @@ nats pub test.hello "Hello NATS" --server nats://app:secret123@localhost:4222
 Access the monitoring endpoint at `http://localhost:8222/`.
 
 ```bash
-nats server info --server nats://app:secret123@localhost:4222
+curl http://localhost:8222/varz
 ```
 
 ## Conclusion
