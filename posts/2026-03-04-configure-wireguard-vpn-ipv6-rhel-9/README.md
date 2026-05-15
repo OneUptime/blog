@@ -32,6 +32,7 @@ graph LR
 ## Prerequisites
 
 - RHEL systems with WireGuard tools installed
+- FIPS mode disabled on RHEL 9
 - IPv6 connectivity on both sides (for IPv6 transport)
 - An IPv6 /64 prefix for tunnel addresses
 
@@ -42,7 +43,7 @@ This configuration gives the server both IPv4 and IPv6 addresses on the tunnel i
 ```bash
 # Install WireGuard tools
 
-sudo dnf install -y epel-release wireguard-tools
+sudo dnf install -y wireguard-tools
 
 # Generate keys
 sudo mkdir -p /etc/wireguard && sudo chmod 700 /etc/wireguard
@@ -60,25 +61,25 @@ sudo tee /etc/wireguard/wg0.conf > /dev/null << EOF
 [Interface]
 PrivateKey = ${SERVER_PRIVKEY}
 # Dual-stack: assign both IPv4 and IPv6 addresses to the tunnel
-Address = 10.0.0.1/24, fd00:vpn::1/64
+Address = 10.0.0.1/24, fd42:42:42::1/64
 ListenPort = 51820
 
 # Enable forwarding for both protocols
 PostUp = sysctl -w net.ipv4.ip_forward=1; sysctl -w net.ipv6.conf.all.forwarding=1
-PostUp = firewall-cmd --add-port=51820/udp; firewall-cmd --add-masquerade
-PostDown = firewall-cmd --remove-port=51820/udp; firewall-cmd --remove-masquerade
+PostUp = firewall-cmd --add-port=51820/udp; firewall-cmd --add-masquerade; firewall-cmd --add-rich-rule='rule family="ipv6" masquerade'
+PostDown = firewall-cmd --remove-port=51820/udp; firewall-cmd --remove-masquerade; firewall-cmd --remove-rich-rule='rule family="ipv6" masquerade'
 
 [Peer]
 # Client 1
 PublicKey = CLIENT_PUBLIC_KEY_HERE
 # Allow both IPv4 and IPv6 from this peer
-AllowedIPs = 10.0.0.2/32, fd00:vpn::2/128
+AllowedIPs = 10.0.0.2/32, fd42:42:42::2/128
 EOF
 
 sudo chmod 600 /etc/wireguard/wg0.conf
 ```
 
-Note: `fd00:vpn::1` uses a Unique Local Address (ULA) prefix, which is the IPv6 equivalent of RFC 1918 private addresses. For production, use a properly generated ULA prefix from your `fd00::/8` allocation.
+Note: `fd42:42:42::1` uses a Unique Local Address (ULA) prefix, which is the IPv6 equivalent of RFC 1918 private addresses. For production, use a properly generated ULA /48 prefix from the `fd00::/8` locally assigned ULA range.
 
 ## Setting Up the Dual-Stack Client
 
@@ -87,7 +88,7 @@ Note: `fd00:vpn::1` uses a Unique Local Address (ULA) prefix, which is the IPv6 
 sudo tee /etc/wireguard/wg0.conf > /dev/null << 'EOF'
 [Interface]
 PrivateKey = CLIENT_PRIVATE_KEY_HERE
-Address = 10.0.0.2/24, fd00:vpn::2/64
+Address = 10.0.0.2/24, fd42:42:42::2/64
 DNS = 1.1.1.1, 2606:4700:4700::1111
 
 [Peer]
@@ -128,10 +129,10 @@ echo "net.ipv6.conf.all.forwarding = 1" | sudo tee -a /etc/sysctl.d/99-wireguard
 Unlike IPv4, IPv6 NAT is rarely needed because addresses are plentiful. But if your server only has one IPv6 address and you need to share it:
 
 ```bash
-# IPv6 masquerading with nftables (firewalld backend)
-sudo firewall-cmd --permanent --zone=public --add-masquerade
+# IPv6 masquerading with firewalld rich rules
+sudo firewall-cmd --permanent --zone=public --add-rich-rule='rule family="ipv6" masquerade'
 
-# Note: firewalld masquerade handles both IPv4 and IPv6
+# Plain firewalld masquerade handles IPv4 only
 sudo firewall-cmd --reload
 ```
 
@@ -153,10 +154,10 @@ ip addr show wg0
 ping -c 4 10.0.0.1
 
 # Test IPv6 through the tunnel
-ping6 -c 4 fd00:vpn::1
+ping -6 -c 4 fd42:42:42::1
 
 # Test external IPv6
-ping6 -c 4 2001:4860:4860::8888
+ping -6 -c 4 2001:4860:4860::8888
 
 # Check your public IPv6
 curl -6 ifconfig.me
@@ -169,7 +170,7 @@ If you want an IPv6-only tunnel (no IPv4 inside), just omit the IPv4 addresses:
 ```ini
 [Interface]
 PrivateKey = YOUR_PRIVATE_KEY
-Address = fd00:vpn::2/64
+Address = fd42:42:42::2/64
 
 [Peer]
 PublicKey = SERVER_PUBLIC_KEY
@@ -211,8 +212,8 @@ ip -6 addr show dev wg0
 # Check IPv6 routes
 ip -6 route show | grep wg0
 
-# Test with ping6
-ping6 -c 4 fd00:vpn::1
+# Test with IPv6 ping
+ping -6 -c 4 fd42:42:42::1
 ```
 
 **Endpoint resolution issues:**
@@ -228,4 +229,4 @@ sudo wg-quick down wg0 && sudo wg-quick up wg0
 
 ## Wrapping Up
 
-WireGuard's IPv6 support on RHEL is first-class. Whether you're using IPv6 for transport, carrying IPv6 through the tunnel, or running a full dual-stack setup, the configuration stays clean and readable. The main things to remember are: use bracket notation for IPv6 endpoints, include `::/0` in AllowedIPs if you want all IPv6 traffic tunneled, and enable IPv6 forwarding on the server if you're routing traffic.
+WireGuard's IPv6 support on RHEL is straightforward, but remember that RHEL 9 provides WireGuard as a Technology Preview. Whether you're using IPv6 for transport, carrying IPv6 through the tunnel, or running a full dual-stack setup, the configuration stays clean and readable. The main things to remember are: use bracket notation for IPv6 endpoints, include `::/0` in AllowedIPs if you want all IPv6 traffic tunneled, and enable IPv6 forwarding on the server if you're routing traffic.
