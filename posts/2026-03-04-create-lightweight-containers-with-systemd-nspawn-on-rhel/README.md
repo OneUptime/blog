@@ -29,7 +29,7 @@ sudo mkdir -p /var/lib/machines/mycontainer
 # Bootstrap a minimal RHEL system
 sudo dnf --releasever=9 --installroot=/var/lib/machines/mycontainer \
     --setopt=install_weak_deps=False \
-    install -y basesystem systemd dnf bash
+    install -y basesystem systemd dnf bash passwd
 ```
 
 This installs a bare-bones RHEL 9 filesystem tree under `/var/lib/machines/mycontainer`.
@@ -68,7 +68,7 @@ To shut down, press `Ctrl+]` three times in quick succession, or run `poweroff` 
 For extra isolation, mount the root filesystem read-only:
 
 ```bash
-# Read-only root with a writable tmpfs overlay
+# Read-only root with writable tmpfs mounts for /var and /tmp
 sudo systemd-nspawn --read-only -D /var/lib/machines/mycontainer \
     --tmpfs=/var --tmpfs=/tmp
 ```
