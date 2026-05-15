@@ -31,16 +31,19 @@ graph LR
 ## Step 1: Install the SAP HANA SQL Exporter
 
 ```bash
-# Download the hanadb_exporter (community maintained)
+# Install the hanadb_exporter (community maintained)
+sudo dnf install -y git python3 python3-pip
 
 cd /tmp
-curl -LO https://github.com/SUSE/hanadb_exporter/releases/latest/download/hanadb_exporter-linux-amd64.tar.gz
-tar xzf hanadb_exporter-linux-amd64.tar.gz
+git clone https://github.com/SUSE/hanadb_exporter.git
+cd hanadb_exporter
 
 # Install to a standard location
 sudo mkdir -p /opt/hanadb_exporter
-sudo cp hanadb_exporter /opt/hanadb_exporter/
-sudo chmod +x /opt/hanadb_exporter/hanadb_exporter
+sudo python3 -m venv /opt/hanadb_exporter/virt
+sudo /opt/hanadb_exporter/virt/bin/python -m pip install hdbcli
+sudo /opt/hanadb_exporter/virt/bin/python -m pip install .
+sudo chmod +x /opt/hanadb_exporter/virt/bin/hanadb_exporter
 ```
 
 ## Step 2: Create a Monitoring User in SAP HANA
@@ -52,12 +55,9 @@ sudo su - hdbadm -c "hdbsql -i 00 -u SYSTEM -p YourSystemPassword" <<'SQL'
 CREATE USER PROMETHEUS_MONITOR PASSWORD "MonitorPass123" NO FORCE_FIRST_PASSWORD_CHANGE;
 
 -- Grant read-only monitoring views
-GRANT MONITORING TO PROMETHEUS_MONITOR;
-GRANT CATALOG READ TO PROMETHEUS_MONITOR;
-
--- Grant access to system views needed for metrics
-GRANT SELECT ON SCHEMA SYS TO PROMETHEUS_MONITOR;
-GRANT SELECT ON SCHEMA _SYS_STATISTICS TO PROMETHEUS_MONITOR;
+CREATE ROLE PROMETHEUS_MONITOR_ROLE;
+GRANT MONITORING TO PROMETHEUS_MONITOR_ROLE;
+GRANT PROMETHEUS_MONITOR_ROLE TO PROMETHEUS_MONITOR;
 SQL
 ```
 
@@ -67,69 +67,122 @@ SQL
 # Create the configuration file
 sudo tee /opt/hanadb_exporter/config.json > /dev/null <<'CONFIG'
 {
-  "listen_address": ":9668",
+  "listen_address": "0.0.0.0",
+  "exposition_port": 9668,
+  "multi_tenant": true,
+  "timeout": 30,
   "hana": {
     "host": "localhost",
     "port": 30013,
     "user": "PROMETHEUS_MONITOR",
-    "password": "MonitorPass123"
-  },
-  "queries": [
-    {
-      "name": "hana_memory_usage",
-      "help": "SAP HANA memory usage in bytes",
-      "query": "SELECT HOST, USED_MEMORY_SIZE, FREE_MEMORY_SIZE, ALLOCATION_LIMIT FROM SYS.M_HOST_RESOURCE_UTILIZATION",
-      "metrics": [
-        {"label": "host", "column": "HOST"},
-        {"gauge": "used_memory", "column": "USED_MEMORY_SIZE"},
-        {"gauge": "free_memory", "column": "FREE_MEMORY_SIZE"},
-        {"gauge": "allocation_limit", "column": "ALLOCATION_LIMIT"}
-      ]
-    },
-    {
-      "name": "hana_cpu_usage",
-      "help": "SAP HANA CPU utilization percentage",
-      "query": "SELECT HOST, TOTAL_CPU_USER_TIME, TOTAL_CPU_SYSTEM_TIME, TOTAL_CPU_IDLE_TIME FROM SYS.M_HOST_RESOURCE_UTILIZATION",
-      "metrics": [
-        {"label": "host", "column": "HOST"},
-        {"gauge": "cpu_user", "column": "TOTAL_CPU_USER_TIME"},
-        {"gauge": "cpu_system", "column": "TOTAL_CPU_SYSTEM_TIME"},
-        {"gauge": "cpu_idle", "column": "TOTAL_CPU_IDLE_TIME"}
-      ]
-    },
-    {
-      "name": "hana_disk_usage",
-      "help": "SAP HANA disk usage in bytes",
-      "query": "SELECT HOST, USAGE_TYPE, TOTAL_SIZE, USED_SIZE FROM SYS.M_DISKS",
-      "metrics": [
-        {"label": "host", "column": "HOST"},
-        {"label": "usage_type", "column": "USAGE_TYPE"},
-        {"gauge": "total_size", "column": "TOTAL_SIZE"},
-        {"gauge": "used_size", "column": "USED_SIZE"}
-      ]
-    },
-    {
-      "name": "hana_connections",
-      "help": "SAP HANA connection count",
-      "query": "SELECT CONNECTION_STATUS, COUNT(*) AS COUNT FROM SYS.M_CONNECTIONS GROUP BY CONNECTION_STATUS",
-      "metrics": [
-        {"label": "status", "column": "CONNECTION_STATUS"},
-        {"gauge": "count", "column": "COUNT"}
-      ]
-    },
-    {
-      "name": "hana_replication_status",
-      "help": "SAP HANA system replication status",
-      "query": "SELECT SITE_NAME, REPLICATION_MODE, REPLICATION_STATUS FROM SYS.M_SERVICE_REPLICATION",
-      "metrics": [
-        {"label": "site", "column": "SITE_NAME"},
-        {"label": "mode", "column": "REPLICATION_MODE"},
-        {"label": "status", "column": "REPLICATION_STATUS"}
-      ]
-    }
-  ]
+    "password": "MonitorPass123",
+    "ssl": false,
+    "ssl_validate_cert": false
+  }
 }
 CONFIG
+
+sudo tee /opt/hanadb_exporter/metrics.json > /dev/null <<'METRICS'
+{
+  "SELECT host, ROUND(instance_total_memory_used_size / 1024 / 1024, 2) host_total_used_mem_mb, ROUND(allocation_limit / 1024 / 1024, 2) host_alloc_limit_mb FROM sys.m_host_resource_utilization;": {
+    "enabled": true,
+    "metrics": [
+      {
+        "name": "hanadb_host_memory_used_total",
+        "description": "Amount of memory from the memory pool that is currently being used by SAP HANA processes per host in MB",
+        "labels": ["HOST"],
+        "value": "HOST_TOTAL_USED_MEM_MB",
+        "unit": "mb",
+        "type": "gauge"
+      },
+      {
+        "name": "hanadb_host_memory_alloc_limit",
+        "description": "Memory allocation limit for all processes per host in MB",
+        "labels": ["HOST"],
+        "value": "HOST_ALLOC_LIMIT_MB",
+        "unit": "mb",
+        "type": "gauge"
+      }
+    ]
+  },
+  "SELECT MAX(TIMESTAMP) timestamp, HOST, MEASURED_ELEMENT_NAME core, SUM(MAP(CAPTION, 'User Time', TO_NUMBER(VALUE), 0)) user_pct, SUM(MAP(CAPTION, 'System Time', TO_NUMBER(VALUE), 0)) system_pct, SUM(MAP(CAPTION, 'Idle Time', TO_NUMBER(VALUE), 0)) idle_pct FROM sys.M_HOST_AGENT_METRICS WHERE MEASURED_ELEMENT_TYPE = 'Processor' GROUP BY HOST, MEASURED_ELEMENT_NAME;": {
+    "enabled": true,
+    "metrics": [
+      {
+        "name": "hanadb_cpu_user",
+        "description": "Percentage of CPU time spent in user space",
+        "labels": ["HOST", "CORE"],
+        "value": "USER_PCT",
+        "unit": "percent",
+        "type": "gauge"
+      },
+      {
+        "name": "hanadb_cpu_system",
+        "description": "Percentage of CPU time spent in kernel space",
+        "labels": ["HOST", "CORE"],
+        "value": "SYSTEM_PCT",
+        "unit": "percent",
+        "type": "gauge"
+      },
+      {
+        "name": "hanadb_cpu_idle",
+        "description": "Percentage of idle CPU time",
+        "labels": ["HOST", "CORE"],
+        "value": "IDLE_PCT",
+        "unit": "percent",
+        "type": "gauge"
+      }
+    ]
+  },
+  "SELECT md.host, md.usage_type, md.path, md.filesystem_type, TO_DECIMAL(md.total_size / 1024 / 1024, 10, 2) total_size_mb, TO_DECIMAL(du.used_size / 1024 / 1024, 10, 2) used_size_mb FROM sys.m_disk_usage du, sys.m_disks md WHERE du.host = md.host AND du.usage_type = md.usage_type;": {
+    "enabled": true,
+    "metrics": [
+      {
+        "name": "hanadb_disk_total_size",
+        "description": "Specifies the volume size in MB",
+        "labels": ["HOST", "USAGE_TYPE", "PATH", "FILESYSTEM_TYPE"],
+        "value": "TOTAL_SIZE_MB",
+        "unit": "mb",
+        "type": "gauge"
+      },
+      {
+        "name": "hanadb_disk_used_size",
+        "description": "Size of used disk space in MB based on usage type",
+        "labels": ["HOST", "USAGE_TYPE", "PATH", "FILESYSTEM_TYPE"],
+        "value": "USED_SIZE_MB",
+        "unit": "mb",
+        "type": "gauge"
+      }
+    ]
+  },
+  "SELECT host, LPAD(port, 5) port, connection_type, MAP(connection_status,'','N/A', connection_status) connection_status, COUNT(1) total_connections FROM SYS.M_CONNECTIONS GROUP BY host, port, connection_status, connection_type;": {
+    "enabled": true,
+    "metrics": [
+      {
+        "name": "hanadb_connections_total",
+        "description": "Number of connections grouped by type and status",
+        "labels": ["HOST", "PORT", "CONNECTION_TYPE", "CONNECTION_STATUS"],
+        "value": "TOTAL_CONNECTIONS",
+        "unit": "count",
+        "type": "gauge"
+      }
+    ]
+  },
+  "SELECT host, LPAD(port, 5) port, site_name, secondary_site_name, secondary_host, LPAD(secondary_port, 5) secondary_port, replication_mode, MAP(UPPER(replication_status),'ACTIVE',0,'ERROR',4,'SYNCING',2,'INITIALIZING',1,'UNKNOWN',3,99) replication_status FROM sys.m_service_replication;": {
+    "enabled": true,
+    "metrics": [
+      {
+        "name": "hanadb_sr_replication",
+        "description": "System Replication status. Values: 0-ACTIVE, 1-INITIALIZING, 2-SYNCING, 3-UNKNOWN, 4-ERROR, 99-UNMAPPED",
+        "labels": ["HOST", "PORT", "SITE_NAME", "SECONDARY_SITE_NAME", "SECONDARY_HOST", "SECONDARY_PORT", "REPLICATION_MODE"],
+        "value": "REPLICATION_STATUS",
+        "unit": "status",
+        "type": "gauge"
+      }
+    ]
+  }
+}
+METRICS
 ```
 
 ## Step 4: Create a systemd Service
@@ -142,8 +195,8 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
-ExecStart=/opt/hanadb_exporter/hanadb_exporter --config=/opt/hanadb_exporter/config.json
+User=hanadb_exporter
+ExecStart=/opt/hanadb_exporter/virt/bin/hanadb_exporter --config=/opt/hanadb_exporter/config.json --metrics=/opt/hanadb_exporter/metrics.json
 Restart=on-failure
 RestartSec=10
 
@@ -151,6 +204,9 @@ RestartSec=10
 WantedBy=multi-user.target
 SERVICE
 
+sudo useradd --system --home-dir /opt/hanadb_exporter --shell /sbin/nologin hanadb_exporter
+sudo chown -R hanadb_exporter:hanadb_exporter /opt/hanadb_exporter
+sudo chmod 600 /opt/hanadb_exporter/config.json
 sudo systemctl daemon-reload
 sudo systemctl enable --now hanadb-exporter
 ```
@@ -173,10 +229,12 @@ scrape_configs:
 
 ```bash
 # Reload Prometheus configuration
-sudo systemctl reload prometheus
+sudo systemctl kill -s HUP prometheus
 ```
 
 ## Step 6: Create Alert Rules
+
+Add `/etc/prometheus/hana_alerts.yml` to the `rule_files` list in `/etc/prometheus/prometheus.yml`, then create the rules file:
 
 ```bash
 sudo tee /etc/prometheus/hana_alerts.yml > /dev/null <<'ALERTS'
@@ -184,7 +242,7 @@ groups:
   - name: sap_hana_alerts
     rules:
       - alert: HANAHighMemoryUsage
-        expr: hana_memory_usage_used_memory / hana_memory_usage_allocation_limit > 0.90
+        expr: hanadb_host_memory_used_total_mb / hanadb_host_memory_alloc_limit_mb > 0.90
         for: 5m
         labels:
           severity: critical
@@ -192,7 +250,7 @@ groups:
           summary: "SAP HANA memory usage above 90%"
 
       - alert: HANAReplicationBroken
-        expr: hana_replication_status{status!="ACTIVE"} > 0
+        expr: hanadb_sr_replication_status > 0
         for: 2m
         labels:
           severity: critical
@@ -200,7 +258,7 @@ groups:
           summary: "SAP HANA system replication is not active"
 
       - alert: HANAHighConnectionCount
-        expr: sum(hana_connections_count) > 500
+        expr: sum(hanadb_connections_total_count) > 500
         for: 5m
         labels:
           severity: warning
