@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, BIND, TSIG, DNS Security, Linux
 
-Description: Protect your BIND zone transfers on RHEL using TSIG (Transaction SIGnature) keys to authenticate and encrypt DNS communications between primary and secondary servers.
+Description: Protect your BIND zone transfers on RHEL using TSIG (Transaction SIGnature) keys to authenticate DNS communications between primary and secondary servers.
 
 ---
 
-By default, zone transfers in BIND are controlled by IP-based ACLs. That works if you trust your network, but if someone spoofs a source IP or gains access to your network, they can pull your entire zone data. TSIG (Transaction SIGnature) adds cryptographic authentication to zone transfers, ensuring that only servers with the shared secret can participate.
+By default, zone transfers in BIND are controlled by IP-based ACLs. That works if you trust your network, but if someone gains access to your network or an allowed host, they can pull your entire zone data. TSIG (Transaction SIGnature) adds cryptographic authentication and integrity protection to zone transfers, ensuring that only servers with the shared secret can participate.
 
 ## How TSIG Works
 
-TSIG uses a shared secret key (HMAC) to sign DNS messages. Both the primary and secondary servers must have the same key. Every zone transfer request and response is authenticated with this key.
+TSIG uses a shared secret key (HMAC) to sign DNS messages. Both the primary and secondary servers must have the same key. Zone transfer requests and responses are authenticated with this key, but the zone data is not encrypted.
 
 ```mermaid
 sequenceDiagram
@@ -274,4 +274,4 @@ Check for time synchronization issues. TSIG includes timestamps, so clocks need 
 chronyc tracking
 ```
 
-TSIG is a straightforward addition to your DNS infrastructure that eliminates the risk of unauthorized zone transfers. The setup takes about 15 minutes and the security benefit is significant.
+TSIG is a straightforward addition to your DNS infrastructure that greatly reduces the risk of unauthorized zone transfers. The setup takes about 15 minutes and the security benefit is significant.
