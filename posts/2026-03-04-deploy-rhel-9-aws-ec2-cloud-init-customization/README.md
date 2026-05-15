@@ -32,13 +32,13 @@ You can deploy RHEL 9 in the cloud using:
 For AWS:
 
 ```bash
-aws ec2 run-instances --image-id ami-rhel9-xxxxx --instance-type m5.large --key-name mykey
+aws ec2 run-instances --image-id ami-0abcdef1234567890 --instance-type m5.large --key-name mykey --user-data file://cloud-config.yaml
 ```
 
 For Azure:
 
 ```bash
-az vm create --resource-group myRG --name myVM --image RedHat:RHEL:9:latest --size Standard_D2s_v3
+az vm create --resource-group myRG --name myVM --image RedHat:RHEL:9-lvm-gen2:latest --size Standard_D2s_v3
 ```
 
 For GCP:
@@ -65,6 +65,8 @@ packages:
 ```
 
 ## Step 4 - Register with Red Hat
+
+For BYOS or custom images, register the system with Red Hat. Pay-as-you-go marketplace images typically use the cloud provider's Red Hat Update Infrastructure and do not need subscription-manager registration.
 
 ```bash
 sudo subscription-manager register --auto-attach
