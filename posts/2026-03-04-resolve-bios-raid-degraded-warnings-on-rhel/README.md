@@ -19,8 +19,8 @@ Determine if you are using hardware RAID, firmware (fake) RAID, or software RAID
 
 cat /proc/mdstat
 
-# Check for device-mapper RAID (dmraid/fake RAID)
-sudo dmraid -s
+# Check for firmware RAID metadata handled by mdadm on modern RHEL
+sudo mdadm --detail-platform
 
 # Check for hardware RAID (vendor-specific tools)
 # Dell: omreport
@@ -58,6 +58,8 @@ sudo mdadm --manage /dev/md0 --remove /dev/sdb1
 # After physically replacing the failed disk
 # Partition the new disk to match the existing one
 sudo sfdisk -d /dev/sda | sudo sfdisk /dev/sdb
+# For GPT disks, randomize the copied disk and partition GUIDs
+sudo sgdisk -G /dev/sdb
 
 # Add the new disk to the array
 sudo mdadm --manage /dev/md0 --add /dev/sdb1
@@ -68,14 +70,17 @@ watch cat /proc/mdstat
 # The rebuild can take hours depending on disk size
 ```
 
-## Step 3: For Firmware RAID (dmraid)
+## Step 3: For Firmware RAID
 
 ```bash
-# Check dmraid status
-sudo dmraid -s
-sudo dmraid -r
+# Check firmware RAID metadata
+sudo mdadm --detail-platform
+cat /proc/mdstat
 
-# Firmware RAID is managed through the BIOS/UEFI setup
+# dmraid is deprecated on RHEL 7.5 and later. Use mdadm for
+# Intel IMSM or SNIA DDF firmware RAID sets on current RHEL.
+
+# Some firmware RAID arrays are also managed through the BIOS/UEFI setup.
 # Reboot and enter the RAID BIOS utility to:
 # 1. Identify the failed disk
 # 2. Mark it for replacement
@@ -86,21 +91,21 @@ sudo dmraid -r
 ## Step 4: For Hardware RAID (Dell PERC Example)
 
 ```bash
-# Install the management tools
-# Dell: sudo dnf install -y srvadmin-all
-# Or use perccli/storcli
+# Install the appropriate Dell management tools
+# Dell OpenManage: omreport
+# Dell PERC CLI: perccli or storcli
 
 # Check the controller and array status
 sudo perccli /c0 show
 
-# Identify the failed drive
+# Identify the failed drive and note its enclosure and slot
 sudo perccli /c0/eall/sall show
 
 # After physical replacement, the controller usually
 # starts rebuilding automatically
 
 # Monitor rebuild progress
-sudo perccli /c0/eall/sall show rebuild
+sudo perccli /c0/e32/s4 show rebuild
 ```
 
 ## Step 5: Verify the Rebuild
@@ -110,8 +115,8 @@ sudo perccli /c0/eall/sall show rebuild
 sudo mdadm --detail /dev/md0
 # State should return to "active" (not "degraded")
 
-# Check dmesg for any errors during rebuild
-dmesg | grep -i raid
+# Check kernel logs for any errors during rebuild
+sudo journalctl -k | grep -i raid
 ```
 
 ## Monitoring and Alerts
@@ -137,7 +142,7 @@ cat /proc/mdstat
 # Schedule periodic RAID scrubs
 echo "check" | sudo tee /sys/block/md0/md/sync_action
 
-# Monitor SMART on all drives
+# Monitor SMART on direct-attached drives
 sudo smartctl -H /dev/sda
 sudo smartctl -H /dev/sdb
 ```
