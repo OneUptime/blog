@@ -178,7 +178,7 @@ terraform {
   required_providers {
     libvirt = {
       source  = "dmacvicar/libvirt"
-      version = "~> 0.7"
+      version = "~> 0.8"
     }
   }
 }
@@ -197,7 +197,7 @@ resource "libvirt_volume" "rhel9_base" {
 
 # Read the SSH public key
 locals {
-  ssh_key = file("~/.ssh/id_rsa.pub")
+  ssh_key = file(pathexpand("~/.ssh/id_rsa.pub"))
 }
 
 # Create a web server using the module
