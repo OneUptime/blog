@@ -53,7 +53,7 @@ events {
 }
 ```
 
-The theoretical maximum concurrent connections is `worker_processes * worker_connections`. With 4 cores and 4096 connections per worker, that is 16,384 simultaneous connections.
+The theoretical maximum open connections is `worker_processes * worker_connections`. With 4 cores and 4096 connections per worker, that is 16,384 open connections. If Nginx is proxying to upstream servers, client capacity is lower because upstream connections also count toward `worker_connections`, and the actual total is still limited by file descriptor limits.
 
 ## Step 3 - Optimize File Handling
 
@@ -88,7 +88,7 @@ For upstream connections (reverse proxy), enable keep-alive to backends:
 upstream backend {
     server 127.0.0.1:3000;
 
-    # Keep 32 connections to the backend alive
+    # Cache up to 32 idle backend keep-alive connections per worker
     keepalive 32;
 }
 
@@ -169,7 +169,7 @@ net.core.netdev_max_backlog = 65535
 # Allow more file descriptors
 fs.file-max = 65535
 
-# Reuse TIME_WAIT sockets faster
+# Allow safe reuse of eligible TIME_WAIT sockets for new connections
 net.ipv4.tcp_tw_reuse = 1
 
 # Increase the range of local ports
@@ -186,7 +186,7 @@ sudo sysctl -p /etc/sysctl.d/99-nginx-tuning.conf
 
 ## Step 9 - Increase File Descriptor Limits
 
-Nginx needs one file descriptor per connection. Raise the limits:
+Nginx needs at least one file descriptor per client connection, and reverse proxying, open files, and logs can require more. Raise the limits:
 
 ```bash
 # Create a systemd override for nginx
