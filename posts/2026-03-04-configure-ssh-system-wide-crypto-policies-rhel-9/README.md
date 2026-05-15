@@ -60,7 +60,7 @@ sudo sshd -T | grep kexalgorithms
 |---|---|---|
 | DEFAULT | Balanced | General purpose, good default |
 | FUTURE | High | Maximum security, may break old clients |
-| FIPS | FIPS 140-2 compliant | Government/compliance environments |
+| FIPS | Helps enforce FIPS 140 requirements | Government/compliance environments |
 | LEGACY | Low | Compatibility with old systems |
 
 ### Switch to the FUTURE policy for stronger SSH crypto
@@ -92,10 +92,10 @@ sudo vi /etc/crypto-policies/policies/modules/SSH-STRICT.pmod
 cipher@SSH = -AES-128-CBC -AES-256-CBC -3DES-CBC
 
 # Require stronger key exchange
-key_exchange@SSH = -ECDH-SHA2-NISTP256
+group@SSH = -SECP256R1
 
 # Require stronger MACs
-mac@SSH = -HMAC-SHA1 -HMAC-SHA1-ETM
+mac@SSH = -HMAC-SHA1
 ```
 
 ### Apply the subpolicy
@@ -119,7 +119,7 @@ sudo systemctl restart sshd
 If you absolutely need to set SSH-specific crypto settings that override the system policy, you can do it in the SSH configuration. However, this is not recommended because it creates a disconnect between system policy and actual SSH behavior.
 
 ```bash
-sudo vi /etc/ssh/sshd_config.d/50-crypto.conf
+sudo vi /etc/ssh/sshd_config.d/49-crypto.conf
 ```
 
 ```bash
