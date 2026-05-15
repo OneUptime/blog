@@ -8,7 +8,7 @@ Description: Learn how to create custom fapolicyd trust rules to allow specific 
 
 ---
 
-When fapolicyd is enforcing application whitelisting, any binary not in the trust database will be blocked. This guide shows how to add custom trust rules for applications that are not installed through RPM.
+When fapolicyd is enforcing application whitelisting, binaries that are not allowed by the active rules or trust database can be blocked. This guide shows how to add custom trust rules for applications that are not installed through RPM.
 
 ## Understanding Trust Sources
 
@@ -64,18 +64,23 @@ sudo tee /etc/fapolicyd/rules.d/90-custom.rules << 'RULES'
 allow perm=execute all : dir=/opt/mycompany/ trust=0
 
 # Allow a specific binary by SHA256
-allow perm=execute sha256hash=abc123... : path=/usr/local/bin/mytool
+allow perm=execute exe=/usr/bin/bash trust=1 : sha256hash=abc123...
 RULES
 
-# Restart fapolicyd to load the new rules
-sudo systemctl restart fapolicyd
+# Compile and load the new rules
+sudo fagenrules --check
+sudo fagenrules --load
+sudo fapolicyd-cli --reload-rules
 ```
 
 ## Verifying Your Rules
 
 ```bash
-# Test if a specific file is allowed
-sudo fapolicyd-cli --check-path /opt/myapp/bin/myapp
+# Test whether the specific file can execute
+/opt/myapp/bin/myapp
+
+# Check for trust database mismatches
+sudo fapolicyd-cli --check-trustdb
 
 # Watch the logs for allow/deny decisions
 sudo journalctl -u fapolicyd -f
