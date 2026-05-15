@@ -20,12 +20,12 @@ The Talos Terraform provider is published in the Terraform Registry. Add it to y
 # versions.tf
 
 terraform {
-  required_version = ">= 1.5.0"
+  required_version = ">= 1.10.0"
 
   required_providers {
     talos = {
       source  = "siderolabs/talos"
-      version = "~> 0.5.0"
+      version = "~> 0.11.0"
     }
   }
 }
@@ -60,14 +60,14 @@ Generates the secrets (certificates, keys, tokens) needed for a Talos cluster:
 ```hcl
 # Generate cluster secrets
 resource "talos_machine_secrets" "cluster" {
-  talos_version = "v1.7.0"
+  talos_version = "v1.12.6"
 }
 ```
 
 This resource generates a complete set of PKI material including:
 - Cluster CA certificate and key
 - etcd CA certificate and key
-- Kubernetes API server certificates
+- Kubernetes CA and service account material
 - Bootstrap tokens
 
 ### talos_client_configuration
@@ -95,6 +95,7 @@ data "talos_machine_configuration" "controlplane" {
   machine_type     = "controlplane"
   cluster_endpoint = "https://10.0.0.1:6443"
   machine_secrets  = talos_machine_secrets.cluster.machine_secrets
+  talos_version    = "v1.12.6"
 }
 
 # Worker machine configuration
@@ -103,6 +104,7 @@ data "talos_machine_configuration" "worker" {
   machine_type     = "worker"
   cluster_endpoint = "https://10.0.0.1:6443"
   machine_secrets  = talos_machine_secrets.cluster.machine_secrets
+  talos_version    = "v1.12.6"
 }
 ```
 
@@ -159,10 +161,12 @@ Here is a complete Terraform configuration for a simple cluster:
 # main.tf - Complete Talos cluster via Terraform
 
 terraform {
+  required_version = ">= 1.10.0"
+
   required_providers {
     talos = {
       source  = "siderolabs/talos"
-      version = "~> 0.5.0"
+      version = "~> 0.11.0"
     }
   }
 }
@@ -188,7 +192,7 @@ variable "worker_nodes" {
 
 # Generate secrets
 resource "talos_machine_secrets" "this" {
-  talos_version = "v1.7.0"
+  talos_version = "v1.12.6"
 }
 
 # Control plane configuration
@@ -197,6 +201,7 @@ data "talos_machine_configuration" "controlplane" {
   machine_type     = "controlplane"
   cluster_endpoint = var.cluster_endpoint
   machine_secrets  = talos_machine_secrets.this.machine_secrets
+  talos_version    = "v1.12.6"
 }
 
 # Worker configuration
@@ -205,6 +210,7 @@ data "talos_machine_configuration" "worker" {
   machine_type     = "worker"
   cluster_endpoint = var.cluster_endpoint
   machine_secrets  = talos_machine_secrets.this.machine_secrets
+  talos_version    = "v1.12.6"
 }
 
 # Apply control plane configs
@@ -292,11 +298,11 @@ The `talos_machine_secrets` resource contains sensitive data. Store the Terrafor
 # Use a remote backend with encryption
 terraform {
   backend "s3" {
-    bucket         = "my-terraform-state"
-    key            = "talos/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "terraform-locks"
+    bucket       = "my-terraform-state"
+    key          = "talos/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
   }
 }
 ```
@@ -314,12 +320,13 @@ data "talos_machine_configuration" "controlplane" {
   machine_type     = "controlplane"
   cluster_endpoint = var.cluster_endpoint
   machine_secrets  = talos_machine_secrets.this.machine_secrets
+  talos_version    = "v1.12.6"
 
   config_patches = [
     yamlencode({
       machine = {
         install = {
-          image = "factory.talos.dev/installer/SCHEMATIC_ID:v1.7.0"
+          image = "factory.talos.dev/installer/SCHEMATIC_ID:v1.12.6"
         }
         network = {
           hostname = "cp-01"
