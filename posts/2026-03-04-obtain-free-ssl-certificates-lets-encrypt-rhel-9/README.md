@@ -23,13 +23,14 @@ Before you start, make sure you have:
 
 ## Installing Certbot
 
-Certbot is the official Let's Encrypt client. On RHEL, the easiest path is through EPEL.
+Certbot is a widely used Let's Encrypt client. On RHEL, the easiest path is through EPEL.
 
 Enable the EPEL repository first:
 
 ```bash
-# Install the EPEL release package for RHEL
+# Enable CodeReady Builder, then install the EPEL release package for RHEL
 
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
 sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 ```
 
@@ -74,7 +75,7 @@ Certbot will:
 1. Verify domain ownership via an HTTP-01 challenge
 2. Download the signed certificate
 3. Modify your Apache virtual host to use TLS
-4. Set up a redirect from HTTP to HTTPS
+4. Offer to set up a redirect from HTTP to HTTPS
 
 You will be prompted for an email address (for renewal notifications) and to agree to the Terms of Service.
 
@@ -148,7 +149,7 @@ Your server sends the domain certificate plus the intermediate. The browser matc
 
 ## Setting Up Auto-Renewal
 
-Let's Encrypt certificates expire after 90 days, so renewal is essential. Certbot installs a systemd timer by default:
+Let's Encrypt certificates have traditionally expired after 90 days, and Let's Encrypt is transitioning toward shorter default lifetimes, so renewal is essential. Certbot from EPEL ships a systemd timer:
 
 ```bash
 # Check if the renewal timer is active
@@ -162,7 +163,7 @@ Test renewal without actually renewing:
 sudo certbot renew --dry-run
 ```
 
-If the dry run passes, you are all set. Certbot will renew any certificate within 30 days of expiry.
+If the dry run passes, you are all set. Certbot will renew certificates when they are considered due; on current Certbot releases, that means when less than one-third of the certificate lifetime remains.
 
 ## Troubleshooting Common Issues
 
@@ -194,8 +195,8 @@ A few things to keep in mind once your certificates are in place:
 - Protect your private key. The files in `/etc/letsencrypt/live/` should only be readable by root.
 
 ```bash
-# Verify permissions on the private key
-sudo ls -la /etc/letsencrypt/live/example.com/privkey.pem
+# Verify permissions on the private key target
+sudo ls -l "$(sudo readlink -f /etc/letsencrypt/live/example.com/privkey.pem)"
 ```
 
 The file should show `-rw-------` with root ownership.
