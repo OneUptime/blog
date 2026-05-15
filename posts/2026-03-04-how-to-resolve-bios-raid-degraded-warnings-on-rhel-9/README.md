@@ -37,6 +37,7 @@ sudo smartctl -t short /dev/sdb
 Remove the failed disk:
 
 ```bash
+sudo mdadm /dev/md0 --fail /dev/sdb1
 sudo mdadm /dev/md0 --remove /dev/sdb1
 ```
 
@@ -58,19 +59,18 @@ sudo mdadm /dev/md0 --add /dev/sdc1
 watch cat /proc/mdstat
 ```
 
-## Check BIOS RAID (dmraid)
+## Check BIOS RAID Metadata
 
 ```bash
-sudo dmraid -s
-sudo dmraid -r
+sudo mdadm --detail /dev/md0
+sudo mdadm --examine /dev/sdb1
 ```
 
 ## Configure Email Alerts
 
 ```bash
-sudo tee /etc/mdadm.conf <<EOF
-MAILADDR admin@example.com
-EOF
+sudo mdadm --detail --scan | sudo tee -a /etc/mdadm.conf
+echo "MAILADDR admin@example.com" | sudo tee -a /etc/mdadm.conf
 
 # Enable the monitoring daemon
 
@@ -80,10 +80,9 @@ sudo systemctl enable --now mdmonitor
 ## Test the Alert
 
 ```bash
-sudo mdadm --monitor --test /dev/md0
+sudo mdadm --monitor --scan --test --oneshot
 ```
 
 ## Conclusion
 
 A degraded RAID array requires swift disk replacement to maintain redundancy. Monitor RAID health regularly and configure email alerts so degraded arrays are detected before a second disk failure causes data loss.
-
