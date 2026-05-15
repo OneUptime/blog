@@ -22,7 +22,7 @@ On RHEL, kernel modules live in `/lib/modules/$(uname -r)/` and have the `.ko` (
 lsmod
 
 # Count how many modules are loaded
-lsmod | wc -l
+lsmod | tail -n +2 | wc -l
 
 # Check if a specific module is loaded
 lsmod | grep ext4
@@ -156,7 +156,7 @@ To check what parameters a module currently has:
 
 ```bash
 # View current parameter values for a loaded module
-cat /sys/module/bridge/parameters/multicast_igmp_version 2>/dev/null
+cat /sys/module/bonding/parameters/miimon 2>/dev/null
 
 # List all parameters and current values
 for param in /sys/module/bonding/parameters/*; do
@@ -216,7 +216,7 @@ grep CONFIG_EXT4 /boot/config-$(uname -r)
 Dynamic Kernel Module Support (DKMS) automatically rebuilds third-party modules when the kernel is updated.
 
 ```bash
-# Install DKMS
+# Install DKMS (from EPEL or another repository that provides it)
 sudo dnf install dkms -y
 
 # Check DKMS module status
