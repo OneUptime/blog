@@ -12,7 +12,7 @@ LVM snapshots capture the state of a logical volume at a point in time. They are
 
 ## How LVM Snapshots Work
 
-LVM snapshots use copy-on-write (COW). When you create a snapshot, it does not copy all the data. Instead, it only stores the original version of blocks that change after the snapshot was created.
+LVM thick snapshots use copy-on-write (COW). When you create a snapshot, it does not copy all the data. Instead, it only stores the original version of blocks that change after the snapshot was created.
 
 ```mermaid
 graph TD
@@ -30,8 +30,10 @@ graph TD
 
 ## Creating a Snapshot
 
+These examples use thick LVM snapshots. If the original LV is thin-provisioned, RHEL creates a thin snapshot instead; create it without `-L` and merge it with `lvconvert --mergethin`.
+
 ```bash
-# Create a snapshot of the datalv logical volume
+# Create a thick snapshot of the datalv logical volume
 
 # The -L flag sets the snapshot size (space for changed blocks)
 sudo lvcreate -s -L 5G -n datalv_snap /dev/datavg/datalv
@@ -98,12 +100,14 @@ To revert the original volume to the snapshot state:
 sudo umount /mnt/snap
 sudo umount /data
 
+# Deactivate both volumes before merging
+sudo lvchange -an /dev/datavg/datalv_snap
+sudo lvchange -an /dev/datavg/datalv
+
 # Merge the snapshot back into the original volume
 sudo lvconvert --merge /dev/datavg/datalv_snap
 
-# The merge happens on next activation
-# Reactivate the volume
-sudo lvchange -an /dev/datavg/datalv
+# Reactivate the original volume
 sudo lvchange -ay /dev/datavg/datalv
 
 # Remount the original (now restored to snapshot state)
@@ -133,13 +137,14 @@ SNAP_NAME="datalv_backup_snap"
 SNAP_SIZE="5G"
 SNAP_MOUNT="/mnt/backup_snap"
 BACKUP_DIR="/backup"
+MOUNT_OPTIONS="ro,nouuid"  # For non-XFS filesystems, use "ro"
 
 # Create the snapshot
 sudo lvcreate -s -L "$SNAP_SIZE" -n "$SNAP_NAME" "$VOLUME"
 
 # Mount the snapshot
 sudo mkdir -p "$SNAP_MOUNT"
-sudo mount -o ro,nouuid "/dev/datavg/$SNAP_NAME" "$SNAP_MOUNT"
+sudo mount -o "$MOUNT_OPTIONS" "/dev/datavg/$SNAP_NAME" "$SNAP_MOUNT"
 
 # Perform the backup from the snapshot
 sudo tar czf "$BACKUP_DIR/data-$(date +%Y%m%d).tar.gz" -C "$SNAP_MOUNT" .
@@ -154,4 +159,3 @@ echo "Backup complete"
 ## Summary
 
 LVM snapshots on RHEL provide a lightweight way to capture volume state at a point in time using copy-on-write. They are invaluable for backups, testing, and providing rollback capability. Always monitor snapshot usage to prevent them from filling up, and remove snapshots you no longer need to free the allocated space.
-
