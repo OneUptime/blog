@@ -46,7 +46,7 @@ ad_gpo_access_control = enforcing
 # The default mapping covers common services
 ad_gpo_map_interactive = +login, +su, +gdm-password
 ad_gpo_map_remote_interactive = +sshd
-ad_gpo_map_service = +ftp
+ad_gpo_map_network = +ftp
 
 # Cache GPO data for this many seconds (default: 5)
 ad_gpo_cache_timeout = 120
@@ -56,7 +56,7 @@ ad_gpo_cache_timeout = 120
 
 ```bash
 # Three modes are available:
-# enforcing - GPO rules are enforced (deny if not permitted)
+# enforcing - GPO rules are evaluated and enforced
 # permissive - GPO rules are logged but not enforced
 # disabled - GPO processing is off
 
@@ -91,8 +91,8 @@ sudo journalctl -u sssd -g "GPO" --since "10 minutes ago"
 ## Verifying GPO Application
 
 ```bash
-# Check which GPOs are being applied
-sudo sssctl gpo-show --domain=example.com
+# Check which GPO policy files are cached
+sudo find /var/lib/sss/gpo_cache/ -name GptTmpl.inf -print
 
 # List cached GPO data
 ls -la /var/lib/sss/gpo_cache/
