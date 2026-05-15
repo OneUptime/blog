@@ -15,35 +15,64 @@ Deploying IS-IS Routing Protocol on RHEL provides a stable and secure foundation
 - RHEL with a valid subscription or CentOS Stream 9
 - Root or sudo access
 - A terminal session
+- At least one network interface connected to another IS-IS router
 
 ## Step 2: Configure the Service
 
-Edit the configuration file to match your environment:
+Install FRRouting and enable the daemons required for IS-IS:
 
 ```bash
-# Open the configuration file
+# Install FRRouting
+sudo dnf install frr
 
-sudo vi /etc/<service>/config.conf
+# Enable zebra and the IS-IS daemon
+sudo sed -i 's/^zebra=no/zebra=yes/' /etc/frr/daemons
+sudo sed -i 's/^isisd=no/isisd=yes/' /etc/frr/daemons
+
+# Start FRR so vtysh can connect to the daemons
+sudo systemctl enable --now frr
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Configure IS-IS with `vtysh`. Replace `ens192`, the NET value, and the authentication settings to match your environment:
+
+```bash
+sudo vtysh
+```
+
+```text
+configure terminal
+interface ens192
+ ip router isis CORE
+ isis network point-to-point
+exit
+router isis CORE
+ net 49.0001.1921.6800.1001.00
+ metric-style wide
+ log-adjacency-changes
+ area-password md5 ReplaceWithStrongPassword
+exit
+write memory
+exit
+```
+
+Adjust the settings according to your requirements. Key parameters to configure include the IS-IS process name, NET, participating interfaces, authentication settings, and logging options.
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart frr
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable frr
 
-# Start the service
-sudo systemctl start <service-name>
+# Restart the service
+sudo systemctl restart frr
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status frr
 ```
 
 
@@ -53,16 +82,21 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status frr
+
+# Check IS-IS status and adjacencies
+sudo vtysh -c "show isis summary"
+sudo vtysh -c "show isis neighbor"
+sudo vtysh -c "show isis route"
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u frr --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u frr -e --no-pager`.
+- Ensure all required packages are installed: `rpm -qa | grep frr`.
 
 ## Conclusion
 
