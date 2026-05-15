@@ -162,6 +162,7 @@ If you use a custom document root, fix the SELinux labels:
 
 ```bash
 # Set the correct SELinux context for custom web content
+sudo dnf install -y policycoreutils-python-utils
 sudo semanage fcontext -a -t httpd_sys_content_t "/var/www/mysite(/.*)?"
 sudo restorecon -Rv /var/www/mysite/
 ```
