@@ -191,9 +191,11 @@ spec:
   namespaceSelector:
     matchLabels:
       kueue-enabled: "true"
-  # Resource groups define available capacity
+  # Resource groups define available capacity. Keep node-associated
+  # resources, such as CPU, memory, and GPUs, in the same group so Kueue
+  # assigns a consistent ResourceFlavor to the workload.
   resourceGroups:
-    - coveredResources: ["cpu", "memory"]
+    - coveredResources: ["cpu", "memory", "nvidia.com/gpu"]
       flavors:
         - name: default-flavor
           resources:
@@ -203,16 +205,24 @@ spec:
             - name: "memory"
               nominalQuota: 128Gi
               borrowingLimit: 32Gi
+            - name: "nvidia.com/gpu"
+              nominalQuota: 0
         - name: spot-flavor
           resources:
             - name: "cpu"
               nominalQuota: 32
             - name: "memory"
               nominalQuota: 64Gi
-    - coveredResources: ["nvidia.com/gpu"]
-      flavors:
+            - name: "nvidia.com/gpu"
+              nominalQuota: 0
         - name: gpu-flavor
           resources:
+            - name: "cpu"
+              nominalQuota: 32
+              borrowingLimit: 8
+            - name: "memory"
+              nominalQuota: 128Gi
+              borrowingLimit: 32Gi
             - name: "nvidia.com/gpu"
               nominalQuota: 8
               borrowingLimit: 4
