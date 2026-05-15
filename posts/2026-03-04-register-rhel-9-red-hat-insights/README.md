@@ -8,11 +8,11 @@ Description: Learn how to register your RHEL system with Red Hat Insights for pr
 
 ---
 
-Red Hat Insights is a hosted service that analyzes your RHEL systems for security vulnerabilities, performance issues, configuration drift, and compliance problems. It runs as part of your RHEL subscription at no extra cost. Setting it up on RHEL takes about two minutes, and the value it provides in terms of catching problems before they become incidents is well worth the effort.
+Red Hat Insights, now documented by Red Hat as Red Hat Lightspeed, is a hosted service that analyzes your RHEL systems for security vulnerabilities, performance issues, configuration drift, and compliance problems. It runs as part of your RHEL subscription at no extra cost. Setting it up on RHEL takes about two minutes, and the value it provides in terms of catching problems before they become incidents is well worth the effort.
 
 ## What Red Hat Insights Does
 
-Insights collects system configuration data (not application data or user data) and analyzes it against Red Hat's knowledge base. It can identify:
+Insights collects system configuration data and analyzes it against Red Hat's knowledge base. It does not collect application data directly, but some system data can contain sensitive information, so Red Hat supports obfuscation and redaction controls. It can identify:
 
 - Known CVEs affecting your installed packages
 - Configuration issues that could cause performance problems
@@ -111,14 +111,32 @@ sudo systemctl status insights-client.timer
 sudo systemctl list-timers insights-client.timer
 ```
 
-To change the collection frequency, edit the configuration:
+To change the collection frequency, edit the systemd timer override:
 
 ```bash
-# Edit the Insights client configuration
-sudo vi /etc/insights-client/insights-client.conf
+# Edit the Insights client systemd timer
+sudo systemctl edit insights-client.timer
 ```
 
-You can adjust settings or disable automatic collection if you prefer to run it manually.
+For example, you can set a different timer schedule:
+
+```ini
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=14400
+```
+
+After changing the schedule, enable it:
+
+```bash
+sudo insights-client --enable-schedule
+```
+
+You can also disable automatic collection if you prefer to run it manually:
+
+```bash
+sudo insights-client --disable-schedule
+```
 
 ## Running a Manual Collection
 
@@ -160,21 +178,33 @@ ls /tmp/insights-review/
 
 ## Excluding Sensitive Data
 
-If you need to prevent certain data from being collected, configure redaction rules:
+If you need to prevent certain files or command outputs from being collected, configure file redaction:
 
 ```bash
-# Create or edit the file content redaction configuration
-sudo vi /etc/insights-client/remove.conf
+# Create or edit the file and command redaction configuration
+sudo vi /etc/insights-client/file-redaction.yaml
 ```
 
-Example `remove.conf`:
+Example `file-redaction.yaml`:
 
-```ini
-[remove]
-files=/etc/shadow,/etc/my-secret-config.conf
-commands=hostname
-patterns=password,secret_key
-keywords=my_sensitive_keyword
+```yaml
+---
+files:
+  - /etc/shadow
+  - /etc/my-secret-config.conf
+commands:
+  - /bin/hostname
+```
+
+For pattern and keyword redaction, create `/etc/insights-client/file-content-redaction.yaml`:
+
+```yaml
+---
+patterns:
+  - "password"
+  - "secret_key"
+keywords:
+  - "my_sensitive_keyword"
 ```
 
 This removes specified files, command outputs, patterns, and keywords from the data before it is uploaded.
@@ -226,8 +256,8 @@ This stops data collection and removes the system from the Insights dashboard.
 **Connection refused**: Ensure the system can reach the Insights endpoints:
 
 ```bash
-# Test connectivity to Insights API
-curl -v https://cert-api.access.redhat.com/r/insights 2>&1 | head -15
+# Test connectivity to Insights services
+sudo insights-client --test-connection
 ```
 
 **Proxy configuration**: If you need to go through a proxy:
