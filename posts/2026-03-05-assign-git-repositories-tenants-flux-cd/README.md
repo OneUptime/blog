@@ -12,7 +12,7 @@ In a multi-tenant Flux CD setup, each tenant typically has their own Git reposit
 
 ## How Git Repository Assignment Works
 
-Flux CD's source-controller manages GitRepository resources. In a multi-tenant setup, each tenant's GitRepository is created in the tenant's namespace. The tenant's Kustomization references this GitRepository and uses the tenant's service account for reconciliation, ensuring that the tenant can only deploy resources within their allowed namespaces.
+Flux CD's source-controller manages GitRepository resources. In a multi-tenant setup, each tenant's GitRepository is created in the tenant's namespace. The tenant's Kustomization references this GitRepository and impersonates the tenant's service account when applying resources, so Kubernetes RBAC can limit deployments to the tenant's allowed namespaces.
 
 ## Step 1: Create a GitRepository for the Tenant
 
@@ -112,7 +112,7 @@ spec:
 
 ## Step 4: Create Kustomizations That Reference Tenant Repos
 
-Each GitRepository needs a corresponding Kustomization that tells Flux what to deploy and where.
+Each repository path you want Flux to deploy needs a corresponding Kustomization that tells Flux what to deploy and where.
 
 ```yaml
 # tenants/team-alpha/sync-frontend.yaml
@@ -168,7 +168,7 @@ spec:
     name: platform-auth
 ```
 
-Use the `path` field in the Kustomization to restrict the tenant to their directory.
+Use the `path` field in the Kustomization to make Flux build only the tenant's directory.
 
 ```yaml
 # tenants/team-alpha/sync-shared.yaml
@@ -188,6 +188,8 @@ spec:
   serviceAccountName: team-alpha
   targetNamespace: team-alpha
 ```
+
+The referenced `platform-auth` Secret must exist in the same namespace as the `GitRepository`.
 
 ## Step 6: Pin Repository References
 
@@ -231,7 +233,7 @@ When assigning repositories to tenants:
 - Avoid sharing credentials between tenants
 - Use read-only deploy keys when possible to prevent tenants from pushing changes through Flux
 - The platform admin should create GitRepository resources, not the tenants, to prevent tenants from pointing to unauthorized repositories
-- Use the `serviceAccountName` field on Kustomizations to ensure RBAC enforcement
+- Use the `serviceAccountName` field on Kustomizations with tenant-scoped RBAC to enforce allowed deployments
 
 ## Summary
 
