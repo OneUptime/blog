@@ -157,10 +157,13 @@ nmcli connection show ens192 | grep ipv4
 
 ## Understanding the Keyfile Backend
 
-On RHEL, NetworkManager stores connection profiles as keyfiles in `/etc/NetworkManager/system-connections/`. After setting a static IP, you can inspect the generated file:
+On RHEL 9, NetworkManager stores persistent connection profiles as keyfiles in `/etc/NetworkManager/system-connections/` by default. After setting a static IP, you can inspect the generated file:
 
 ```bash
-# View the connection profile file
+# Find the profile file for this connection
+nmcli -f NAME,FILENAME connection show ens192
+
+# View the connection profile file shown in the FILENAME column
 cat /etc/NetworkManager/system-connections/ens192.nmconnection
 ```
 
@@ -229,4 +232,4 @@ flowchart TD
 
 ## Wrapping Up
 
-Configuring static IPs on RHEL with nmcli is straightforward once you understand the pattern: modify the connection properties, then bring the connection up. The keyfile format makes it easy to review and version-control your network configurations, and nmcli's scriptable interface fits naturally into automation workflows. For anything beyond a handful of servers, consider wrapping these commands into Ansible playbooks or shell scripts that your team can reuse consistently.
+Configuring static IPs on RHEL with nmcli is straightforward once you understand the pattern: modify the connection properties, then bring the connection up. The keyfile format makes it easy to review your network configurations, and nmcli's scriptable interface fits naturally into automation workflows. Keep in mind that keyfiles can contain sensitive values and should remain readable only by root. For anything beyond a handful of servers, consider wrapping these commands into Ansible playbooks or shell scripts that your team can reuse consistently.
