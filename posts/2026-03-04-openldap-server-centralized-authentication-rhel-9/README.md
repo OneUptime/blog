@@ -8,7 +8,7 @@ Description: A hands-on guide to deploying an OpenLDAP server on RHEL for centra
 
 ---
 
-OpenLDAP is no longer shipped with RHEL as a server package. Red Hat removed the OpenLDAP server (slapd) starting with RHEL and recommends using 389 Directory Server instead. However, the OpenLDAP client libraries and tools are still available. This guide covers setting up 389 Directory Server as a standalone LDAP server on RHEL, since it fills the same role and is the supported replacement.
+OpenLDAP is no longer shipped with RHEL as a server package. Red Hat removed the OpenLDAP server (slapd) starting with RHEL 8 and recommends using 389 Directory Server instead. However, the OpenLDAP client libraries and tools are still available. This guide covers setting up 389 Directory Server as a standalone LDAP server on RHEL, since it fills the same role and is the supported replacement.
 
 If you specifically need OpenLDAP slapd, you would need to build it from source or use a container, which is not covered here. For production environments on RHEL, 389 Directory Server is the right choice.
 
@@ -29,10 +29,13 @@ flowchart TD
 
 ## Step 1 - Install 389 Directory Server
 
+Make sure the RHEL and Directory Server repositories are enabled on the host.
+
 ```bash
 # Install 389 DS
 
-sudo dnf install 389-ds-base -y
+sudo dnf module enable redhat-ds:12 -y
+sudo dnf install 389-ds-base cockpit-389-ds openldap-clients -y
 ```
 
 ## Step 2 - Create the Directory Server Instance
@@ -65,8 +68,9 @@ root_dn = cn=Directory Manager
 root_password = YourStrongPassword
 
 [backend-userroot]
+create_suffix_entry = True
 suffix = dc=example,dc=com
-sample_entries = yes
+sample_entries = no
 ```
 
 Create the instance:
@@ -74,6 +78,10 @@ Create the instance:
 ```bash
 # Create the directory server instance
 sudo dscreate from-file /tmp/ds-setup.inf
+
+# Open LDAP and LDAPS in the firewall
+sudo firewall-cmd --permanent --add-port={389/tcp,636/tcp}
+sudo firewall-cmd --reload
 
 # Verify it is running
 sudo dsctl localhost status
@@ -84,21 +92,35 @@ sudo dsctl localhost status
 LDAP traffic must be encrypted. Set up TLS for the directory server.
 
 ```bash
-# Generate a self-signed certificate (for testing)
-# For production, use a certificate from your CA
-sudo dsconf localhost security tls generate-server-cert-csr \
-  --subject "CN=ldap.example.com,O=Example Corp"
+# Generate a certificate signing request
+sudo dsctl localhost tls generate-server-cert-csr \
+  -s "CN=ldap.example.com,O=Example Corp" ldap.example.com
 
-# Or import an existing certificate
+# After your CA signs the CSR, import the issued server certificate
+sudo dsconf -D "cn=Directory Manager" ldap://ldap.example.com \
+  security certificate add \
+  --file /etc/pki/tls/certs/ldap.crt \
+  --name "server-cert" \
+  --primary-cert
+
+# Or import an existing certificate and private key
 sudo dsctl localhost tls import-server-key-cert \
   /etc/pki/tls/certs/ldap.crt \
   /etc/pki/tls/private/ldap.key
 
 # Import the CA certificate
-sudo dsconf localhost security ca-cert add --file /etc/pki/tls/certs/ca.crt --name "Example CA"
+sudo dsconf -D "cn=Directory Manager" ldap://ldap.example.com \
+  security ca-certificate add \
+  --file /etc/pki/tls/certs/ca.crt \
+  --name "Example CA"
+
+# Trust the CA for TLS
+sudo dsconf -D "cn=Directory Manager" ldap://ldap.example.com \
+  security ca-certificate set-trust-flags "Example CA" \
+  --flags "CT,,"
 
 # Enable TLS
-sudo dsconf localhost security enable
+sudo dsconf localhost security enable --cert-name server-cert
 
 # Enable minimum TLS version
 sudo dsconf localhost security set --tls-protocol-min TLS1.2
@@ -111,7 +133,9 @@ Test TLS connectivity:
 
 ```bash
 # Test LDAPS connection
-ldapsearch -x -H ldaps://ldap.example.com -b "dc=example,dc=com" -s base
+ldapsearch -x -H ldaps://ldap.example.com:636 \
+  -D "cn=Directory Manager" -W \
+  -b "dc=example,dc=com" -s base
 ```
 
 ## Step 4 - Create the Directory Structure
@@ -120,7 +144,7 @@ Set up the organizational units for users and groups.
 
 ```bash
 # Add the people OU
-ldapadd -x -H ldap://localhost -D "cn=Directory Manager" -W << 'EOF'
+ldapadd -x -H ldaps://ldap.example.com:636 -D "cn=Directory Manager" -W << 'EOF'
 dn: ou=people,dc=example,dc=com
 objectClass: organizationalUnit
 ou: people
@@ -137,7 +161,7 @@ Create user entries with POSIX attributes for Linux authentication.
 
 ```bash
 # Add a user
-ldapadd -x -H ldap://localhost -D "cn=Directory Manager" -W << 'EOF'
+ldapadd -x -H ldaps://ldap.example.com:636 -D "cn=Directory Manager" -W << 'EOF'
 dn: uid=jsmith,ou=people,dc=example,dc=com
 objectClass: inetOrgPerson
 objectClass: posixAccount
@@ -148,10 +172,10 @@ sn: Smith
 givenName: John
 mail: jsmith@example.com
 uidNumber: 10001
-gidNumber: 10000
+gidNumber: 10001
 homeDirectory: /home/jsmith
 loginShell: /bin/bash
-userPassword: {SSHA}hashedpasswordhere
+userPassword: temporaryPassword
 EOF
 ```
 
@@ -159,7 +183,7 @@ To set a password interactively:
 
 ```bash
 # Set a user's password
-ldappasswd -x -H ldap://localhost \
+ldappasswd -x -H ldaps://ldap.example.com:636 \
   -D "cn=Directory Manager" -W \
   -S "uid=jsmith,ou=people,dc=example,dc=com"
 ```
@@ -168,7 +192,7 @@ ldappasswd -x -H ldap://localhost \
 
 ```bash
 # Add a POSIX group
-ldapadd -x -H ldap://localhost -D "cn=Directory Manager" -W << 'EOF'
+ldapadd -x -H ldaps://ldap.example.com:636 -D "cn=Directory Manager" -W << 'EOF'
 dn: cn=developers,ou=groups,dc=example,dc=com
 objectClass: posixGroup
 cn: developers
@@ -183,7 +207,7 @@ SSSD needs a service account to search the directory.
 
 ```bash
 # Create a bind account
-ldapadd -x -H ldap://localhost -D "cn=Directory Manager" -W << 'EOF'
+ldapadd -x -H ldaps://ldap.example.com:636 -D "cn=Directory Manager" -W << 'EOF'
 dn: cn=sssd-bind,ou=people,dc=example,dc=com
 objectClass: inetOrgPerson
 cn: sssd-bind
@@ -196,11 +220,12 @@ Set appropriate ACLs so the bind account can read user entries but not modify th
 
 ```bash
 # Add an ACI for the bind account
-dsconf localhost aci create \
-  --target-dn="dc=example,dc=com" \
-  --allow-read \
-  --bind-dn="cn=sssd-bind,ou=people,dc=example,dc=com" \
-  "sssd-read-access"
+ldapmodify -x -H ldaps://ldap.example.com:636 -D "cn=Directory Manager" -W << 'EOF'
+dn: dc=example,dc=com
+changetype: modify
+add: aci
+aci: (targetattr="uid || cn || sn || givenName || mail || uidNumber || gidNumber || homeDirectory || loginShell || gecos || memberUid || objectClass")(version 3.0; acl "sssd-read-access"; allow (read,search,compare) userdn="ldap:///cn=sssd-bind,ou=people,dc=example,dc=com";)
+EOF
 ```
 
 ## Step 8 - Configure RHEL Clients
@@ -209,7 +234,7 @@ On each RHEL client, configure SSSD to authenticate against the 389 DS server.
 
 ```bash
 # Install SSSD
-sudo dnf install sssd sssd-ldap -y
+sudo dnf install openldap-clients sssd sssd-ldap oddjob-mkhomedir -y
 
 # Configure SSSD
 sudo vi /etc/sssd/sssd.conf
@@ -228,7 +253,7 @@ ldap_uri = ldaps://ldap.example.com
 ldap_search_base = dc=example,dc=com
 ldap_default_bind_dn = cn=sssd-bind,ou=people,dc=example,dc=com
 ldap_default_authtok = BindAccountPassword
-ldap_tls_reqcert = demand
+ldap_tls_reqcert = hard
 ldap_tls_cacert = /etc/pki/tls/certs/ca.crt
 ldap_user_search_base = ou=people,dc=example,dc=com
 ldap_group_search_base = ou=groups,dc=example,dc=com
