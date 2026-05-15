@@ -90,7 +90,7 @@ lsblk "$DISK"
 df -h /mnt/data /mnt/database /mnt/logs
 ```
 
-## Using sfdisk for MBR Scripting
+## Using sfdisk for GPT Scripting
 
 sfdisk accepts partition definitions from stdin, making it great for piping:
 
@@ -222,6 +222,8 @@ For larger deployments, use the parted and filesystem Ansible modules:
     number: 1
     state: present
     label: gpt
+    name: data
+    fs_type: xfs
     part_start: 1MiB
     part_end: 100%
 
@@ -246,6 +248,11 @@ Always add error handling to production scripts:
 #!/bin/bash
 set -euo pipefail
 
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 /dev/sdX"
+    exit 1
+fi
+
 DISK=$1
 
 # Verify the device exists
@@ -255,7 +262,8 @@ if [ ! -b "$DISK" ]; then
 fi
 
 # Verify it is not the boot disk
-ROOT_DISK=$(mount | grep "on / " | awk '{print $1}' | sed 's/[0-9]*$//')
+ROOT_SOURCE=$(findmnt -n -o SOURCE /)
+ROOT_DISK="/dev/$(lsblk -no PKNAME "$ROOT_SOURCE" | head -n1)"
 if [ "$DISK" = "$ROOT_DISK" ]; then
     echo "ERROR: $DISK appears to be the boot disk. Refusing to partition."
     exit 1
