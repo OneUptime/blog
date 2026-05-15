@@ -20,11 +20,11 @@ Each element needs a unique OID (Object Identifier).
 
 ## Plan Your Custom Schema
 
-Before creating schema, obtain an OID arc for your organization, or use the experimental OID arc `2.16.840.1.113730.3.8.x.x` for testing:
+Before creating schema, obtain an OID arc for your organization, or use the documentation example PEN arc `1.3.6.1.4.1.32473.x.x` for testing:
 
 ```text
-Attribute OIDs: 2.16.840.1.113730.3.8.10.1.x
-ObjectClass OIDs: 2.16.840.1.113730.3.8.10.2.x
+Attribute OIDs: 1.3.6.1.4.1.32473.10.1.x
+ObjectClass OIDs: 1.3.6.1.4.1.32473.10.2.x
 ```
 
 ## Create a Custom Schema File
@@ -32,12 +32,12 @@ ObjectClass OIDs: 2.16.840.1.113730.3.8.10.2.x
 Create a new LDIF file for your custom schema:
 
 ```bash
-sudo vi /etc/dirsrv/slapd-localhost/schema/98custom.ldif
+sudo vi /etc/dirsrv/slapd-localhost/schema/99custom.ldif
 ```
 
 ```ldif
 dn: cn=schema
-attributeTypes: ( 2.16.840.1.113730.3.8.10.1.1
+attributeTypes: ( 1.3.6.1.4.1.32473.10.1.1
   NAME 'badgeNumber'
   DESC 'Employee badge number'
   EQUALITY caseIgnoreMatch
@@ -45,14 +45,14 @@ attributeTypes: ( 2.16.840.1.113730.3.8.10.1.1
   SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
   SINGLE-VALUE
   X-ORIGIN 'Custom Schema' )
-attributeTypes: ( 2.16.840.1.113730.3.8.10.1.2
+attributeTypes: ( 1.3.6.1.4.1.32473.10.1.2
   NAME 'department'
   DESC 'Department name'
   EQUALITY caseIgnoreMatch
   SUBSTR caseIgnoreSubstringsMatch
   SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
   X-ORIGIN 'Custom Schema' )
-attributeTypes: ( 2.16.840.1.113730.3.8.10.1.3
+attributeTypes: ( 1.3.6.1.4.1.32473.10.1.3
   NAME 'startDate'
   DESC 'Employee start date'
   EQUALITY generalizedTimeMatch
@@ -60,10 +60,10 @@ attributeTypes: ( 2.16.840.1.113730.3.8.10.1.3
   SYNTAX 1.3.6.1.4.1.1466.115.121.1.24
   SINGLE-VALUE
   X-ORIGIN 'Custom Schema' )
-objectClasses: ( 2.16.840.1.113730.3.8.10.2.1
+objectClasses: ( 1.3.6.1.4.1.32473.10.2.1
   NAME 'customEmployee'
   DESC 'Custom employee object class'
-  SUP inetOrgPerson
+  SUP top
   AUXILIARY
   MAY ( badgeNumber $ department $ startDate )
   X-ORIGIN 'Custom Schema' )
@@ -93,7 +93,7 @@ ldapmodify -x -H ldap://localhost -D "cn=Directory Manager" -W << 'EOF'
 dn: cn=schema
 changetype: modify
 add: attributeTypes
-attributeTypes: ( 2.16.840.1.113730.3.8.10.1.4
+attributeTypes: ( 1.3.6.1.4.1.32473.10.1.4
   NAME 'projectCode'
   DESC 'Project assignment code'
   EQUALITY caseIgnoreMatch
@@ -135,19 +135,19 @@ For better search performance on custom attributes:
 
 ```bash
 # Create an equality index for badgeNumber
-sudo dsconf localhost backend index create --attr badgeNumber \
+sudo dsconf localhost backend index add --attr badgeNumber \
     --index-type eq --reindex userroot
 
 # Create a presence and substring index for department
-sudo dsconf localhost backend index create --attr department \
+sudo dsconf localhost backend index add --attr department \
     --index-type eq --index-type pres --index-type sub --reindex userroot
 ```
 
 ## Validate the Schema
 
 ```bash
-# Check for schema errors
-sudo dsconf localhost schema validate
+# Check existing entries for attribute syntax errors
+sudo dsconf localhost schema validate-syntax -f "(objectClass=*)" dc=example,dc=com
 
 # List all custom attributes
 ldapsearch -x -H ldap://localhost -b "cn=schema" \
