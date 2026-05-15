@@ -23,7 +23,7 @@ Your application reads secrets from files at a known path, and the sidecar ensur
 ## Prerequisites
 
 - A Kubernetes cluster on RHEL
-- Helm 3 installed
+- Helm 3.6 or later installed
 - A running Vault server (can be inside or outside the cluster)
 - kubectl configured with cluster admin access
 
@@ -47,7 +47,7 @@ helm install vault hashicorp/vault \
   --set "injector.enabled=true"
 ```
 
-For production, use a non-dev deployment with persistent storage:
+For production, use a non-dev deployment with persistent storage, such as integrated Raft storage:
 
 ```bash
 # Install Vault for production
@@ -55,6 +55,7 @@ helm install vault hashicorp/vault \
   --namespace vault \
   --create-namespace \
   --set "server.ha.enabled=true" \
+  --set "server.ha.raft.enabled=true" \
   --set "server.ha.replicas=3" \
   --set "injector.enabled=true"
 ```
@@ -83,9 +84,9 @@ vault auth enable kubernetes
 ```
 
 ```bash
-# Configure Kubernetes auth with the cluster's service account
+# Configure Kubernetes auth with the Vault pod's local service account token
 vault write auth/kubernetes/config \
-  kubernetes_host="https://$KUBERNETES_PORT_443_TCP_ADDR:443"
+  kubernetes_host="https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT"
 ```
 
 ## Creating Vault Policies and Roles
@@ -120,7 +121,7 @@ vault write auth/kubernetes/role/myapp \
 Add some secrets that the application will use:
 
 ```bash
-# Enable the KV secrets engine (version 2)
+# Enable the KV secrets engine (version 2) if it is not already enabled
 vault secrets enable -path=secret kv-v2
 ```
 
@@ -196,7 +197,7 @@ kubectl apply -f myapp-deployment.yaml
 
 ## Custom Secret Templates
 
-By default, Vault writes secrets as JSON. Use templates to format them differently:
+By default, Vault writes secrets using a map-style template. Use templates to format them differently:
 
 ```yaml
 metadata:
@@ -229,7 +230,7 @@ vault.hashicorp.com/agent-inject-template-config.properties: |
 
 ## Configuring Secret Rotation
 
-The Vault Agent sidecar automatically refreshes secrets. Control the refresh interval:
+The Vault Agent sidecar automatically refreshes templates. For non-leased static secrets such as KV v2, control the render interval:
 
 ```yaml
 metadata:
@@ -237,8 +238,7 @@ metadata:
     vault.hashicorp.com/agent-inject: "true"
     vault.hashicorp.com/role: "myapp"
     vault.hashicorp.com/agent-inject-secret-database.txt: "secret/data/myapp/database"
-    vault.hashicorp.com/agent-cache-enable: "true"
-    vault.hashicorp.com/agent-run-as-same-user: "true"
+    vault.hashicorp.com/template-static-secret-render-interval: "2m"
 ```
 
 ## Verifying Secret Injection
@@ -247,7 +247,7 @@ Check that secrets were injected:
 
 ```bash
 # Check the pod has the init and sidecar containers
-kubectl get pods -l app=myapp -o jsonpath='{.items[0].spec.containers[*].name}'
+kubectl get pods -l app=myapp -o jsonpath='{.items[0].spec.initContainers[*].name} {.items[0].spec.containers[*].name}'
 ```
 
 ```bash
