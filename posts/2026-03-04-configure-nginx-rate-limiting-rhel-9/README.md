@@ -50,7 +50,7 @@ limit_req_zone $binary_remote_addr zone=login_limit:10m rate=1r/s;
 limit_req_zone $server_name zone=per_site:10m rate=100r/s;
 ```
 
-Memory usage: 1MB stores about 16,000 IP addresses.
+Memory usage: 1MB stores about 16,000 64-byte states on 32-bit platforms or about 8,000 128-byte states on 64-bit platforms.
 
 ## Step 2: Apply Rate Limits to Locations
 
@@ -62,8 +62,8 @@ server {
     server_name example.com;
 
     # Apply rate limiting to the entire site
-    # burst=20 allows 20 requests to queue beyond the rate limit
-    # nodelay processes queued requests immediately instead of spacing them
+    # burst=20 allows up to 20 excess requests beyond the rate limit
+    # nodelay processes excess requests within the burst limit immediately
     location / {
         limit_req zone=api_limit burst=20 nodelay;
         proxy_pass http://127.0.0.1:3000;
@@ -94,8 +94,8 @@ limit_req zone=api_limit;
 # This means the 20 queued requests take 2 seconds to drain
 limit_req zone=api_limit burst=20;
 
-# With burst=20 nodelay - queue up to 20 but process them immediately
-# After the burst is used, the client must wait for the bucket to refill
+# With burst=20 nodelay - process up to 20 excess requests immediately
+# Requests above the burst limit are rejected until the excess drains
 limit_req zone=api_limit burst=20 nodelay;
 
 # With delay=8 - process first 8 excess requests immediately
@@ -164,8 +164,9 @@ limit_req_zone $limit_key zone=api_limit:10m rate=10r/s;
 
 ```nginx
 # Set the log level for rate limit events
-# warn = log when requests are delayed
-# error = log when requests are rejected (default)
+# This sets the level for rejected requests; delayed requests are logged one level lower
+# warn = rejected requests are logged at warn, delayed requests at notice
+# error = rejected requests are logged at error, delayed requests at warn (default)
 limit_req_log_level warn;
 
 # Custom log format that includes rate limit status
