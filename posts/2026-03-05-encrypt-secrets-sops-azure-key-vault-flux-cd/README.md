@@ -31,7 +31,8 @@ az group create --name rg-flux-sops --location eastus
 az keyvault create \
   --name flux-sops-vault \
   --resource-group rg-flux-sops \
-  --location eastus
+  --location eastus \
+  --enable-rbac-authorization false
 
 # Create an RSA key for SOPS encryption
 az keyvault key create \
