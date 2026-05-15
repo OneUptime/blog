@@ -37,17 +37,17 @@ Visit the Talos release notes or documentation to confirm that your current Kube
 
 ```bash
 # Check the Kubernetes version on the cluster
-kubectl version --short
+kubectl version
 
 # List what Kubernetes versions the current Talos supports
 # This information is in the release notes and documentation
 ```
 
-As a general rule, Talos version N supports Kubernetes versions from the previous few minor releases. For example, Talos v1.7 might support Kubernetes v1.28 through v1.30.
+As a general rule, Talos version N supports Kubernetes versions from the previous few minor releases. For example, Talos v1.7 supports Kubernetes v1.25 through v1.30.
 
 ## Verifying the Upgrade Path
 
-Talos supports upgrading one minor version at a time. You cannot jump from v1.5 to v1.7 directly - you need to go through v1.6 first.
+Talos recommends upgrading one minor version at a time because configuration migrations are tested between adjacent minor releases. Do not plan to jump from v1.5 to v1.7 directly - go through the latest v1.6 patch release first.
 
 ```bash
 # Check your current version
@@ -59,7 +59,7 @@ talosctl version --nodes <node-ip>
 # If you want to reach v1.8.0, you need v1.7.x first
 ```
 
-Patch version upgrades within the same minor version (e.g., v1.6.3 to v1.6.7) are always safe and straightforward.
+Patch version upgrades within the same minor version (e.g., v1.6.3 to v1.6.7) are the normal low-risk path, but you should still review the release notes and take backups first.
 
 For the upgrade path verification:
 
@@ -79,7 +79,7 @@ The machine configuration schema evolves between Talos versions. Fields get adde
 
 ```bash
 # Retrieve current machine configs
-talosctl get machineconfig --nodes <node-ip> -o yaml > current-config.yaml
+talosctl get machineconfig --nodes <node-ip> -o yaml | yq eval .spec - > current-config.yaml
 
 # Validate the config against the target version's schema
 # Use talosctl from the target version to validate
@@ -198,11 +198,12 @@ talosctl get extensions --nodes ${CP_NODE}
 echo ""
 echo "=== Machine Config Validation ==="
 talosctl get machineconfig --nodes ${CP_NODE} -o yaml > /tmp/config-check.yaml
-talosctl validate --config /tmp/config-check.yaml --mode metal
+yq eval .spec /tmp/config-check.yaml > /tmp/config-check-spec.yaml
+talosctl validate --config /tmp/config-check-spec.yaml --mode metal
 
 echo ""
 echo "=== Kubernetes Version ==="
-kubectl version --short
+kubectl version
 
 echo ""
 echo "=== Node Status ==="
