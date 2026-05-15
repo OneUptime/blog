@@ -22,7 +22,7 @@ When you create a mount unit file manually, you gain full control over dependenc
 
 ## Creating a Basic Mount Unit
 
-Mount unit file names must match the mount point path, with slashes replaced by dashes. For example, the mount point `/data/backups` becomes `data-backups.mount`.
+Mount unit file names must match the systemd-escaped mount point path. For simple paths, slashes are replaced by dashes, so the mount point `/data/backups` becomes `data-backups.mount`. For paths with special characters, use `systemd-escape -p --suffix=mount /path/to/mount` to get the correct unit name.
 
 Create the unit file:
 
@@ -122,11 +122,11 @@ This ensures the mount only happens after iSCSI storage is available.
 |---------|-------|--------------------|
 | Simple syntax | Yes | More verbose |
 | Dependency management | Limited | Full systemd integration |
-| On-demand mounting | No | Yes (automount) |
+| On-demand mounting | Yes, with `x-systemd.automount` | Yes (automount) |
 | Timeout handling | x-systemd options | Native TimeoutSec |
 | Conditional mounting | No | ConditionPathExists, etc. |
-| Status monitoring | mount command | systemctl status |
-| Logging | dmesg | journalctl |
+| Status monitoring | mount command or generated systemd unit | systemctl status |
+| Logging | journalctl for generated unit and dmesg | journalctl |
 
 ## Using Conditional Mounting
 
