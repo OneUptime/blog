@@ -159,12 +159,12 @@ spec:
     - ".*dependency.*not ready.*"
 ```
 
-## Step 6: Combine HelmRelease and HelmRepository Alerts
+## Step 6: Combine HelmRelease, HelmChart, and HelmRepository Alerts
 
-For complete Helm workflow visibility, you can monitor both HelmRelease and HelmRepository events in a single alert.
+For complete Helm workflow visibility, you can monitor HelmRelease, HelmChart, and HelmRepository events in a single alert.
 
 ```yaml
-# Combined alert for both HelmRelease and HelmRepository events
+# Combined alert for HelmRelease, HelmChart, and HelmRepository events
 apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
@@ -177,6 +177,10 @@ spec:
   eventSources:
     # Watch all HelmRelease events
     - kind: HelmRelease
+      name: "*"
+      namespace: flux-system
+    # Watch all HelmChart events for chart artifact issues
+    - kind: HelmChart
       name: "*"
       namespace: flux-system
     # Watch all HelmRepository events for chart fetch issues
