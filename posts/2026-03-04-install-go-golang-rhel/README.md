@@ -4,18 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Go, Golang, Development, Programming, Linux
 
-Description: Install the Go programming language on RHEL using either the AppStream package or the official tarball for the latest version.
+Description: Install the Go programming language on RHEL using either Red Hat Go Toolset or the official tarball for the latest version.
 
 ---
 
 Go is a statically typed, compiled language well suited for systems programming, cloud services, and CLI tools. Here is how to install it on RHEL.
 
-## Option 1: Install from AppStream
+## Option 1: Install from Red Hat Go Toolset
 
 ```bash
-# Install Go from RHEL AppStream
+# On RHEL 8
+sudo yum module install -y go-toolset
 
-sudo dnf install -y golang
+# On RHEL 9 and 10
+sudo dnf install -y go-toolset
 
 # Check version
 go version
@@ -25,7 +27,7 @@ go version
 
 ```bash
 # Download the latest Go release
-GO_VERSION="1.22.1"
+GO_VERSION="1.26.3"
 curl -LO "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
 
 # Remove any previous Go installation and extract
@@ -39,11 +41,9 @@ rm "go${GO_VERSION}.linux-amd64.tar.gz"
 ## Configure Environment
 
 ```bash
-# Add Go to your PATH
+# If you installed the official tarball, add Go to your PATH
 cat >> ~/.bashrc << 'PROFILE'
-export GOROOT=/usr/local/go
-export GOPATH=$HOME/go
-export PATH=$GOROOT/bin:$GOPATH/bin:$PATH
+export PATH=/usr/local/go/bin:$HOME/go/bin:$PATH
 PROFILE
 
 source ~/.bashrc
@@ -128,10 +128,13 @@ dlv version
 ## Update Go
 
 ```bash
-# If installed from AppStream
-sudo dnf update -y golang
+# If installed from Red Hat Go Toolset on RHEL 8
+sudo yum update -y go-toolset
+
+# If installed from Red Hat Go Toolset on RHEL 9 and 10
+sudo dnf update -y go-toolset
 
 # If installed from tarball, repeat the installation steps with the new version
 ```
 
-Go compiles to static binaries by default, making it an excellent choice for building self-contained applications on RHEL.
+Go compiles to native binaries, making it an excellent choice for building applications on RHEL.
