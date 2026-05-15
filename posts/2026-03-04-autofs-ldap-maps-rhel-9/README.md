@@ -137,6 +137,8 @@ Edit `/etc/sssd/sssd.conf`:
 services = nss, pam, autofs
 domains = example.com
 
+[autofs]
+
 [domain/example.com]
 id_provider = ldap
 autofs_provider = ldap
@@ -158,35 +160,7 @@ sudo systemctl restart sssd
 
 ## Step 3: Configure autofs to Use SSSD
 
-Edit `/etc/autofs.conf` or `/etc/sysconfig/autofs`:
-
-```bash
-sudo vi /etc/autofs.conf
-```
-
-Set the map source:
-
-```bash
-map_object_class = automountMap
-entry_object_class = automount
-map_attribute = automountMapName
-entry_attribute = automountKey
-value_attribute = automountInformation
-```
-
-Configure the master map to use LDAP:
-
-```bash
-sudo vi /etc/auto.master
-```
-
-Add:
-
-```bash
-+auto.master
-```
-
-This tells autofs to look up the master map from the configured LDAP source via SSSD.
+When using SSSD, you do not need to configure LDAP schema settings in `/etc/autofs.conf` or add `+auto.master` to `/etc/auto.master`. SSSD reads the LDAP maps and exposes them to autofs through the `sss` automount source.
 
 ## Step 4: Configure nsswitch
 
@@ -217,11 +191,11 @@ mount | grep autofs
 ## Verifying LDAP Maps
 
 ```bash
-# Check what maps SSSD sees
-sudo sssctl automount-list
+# Check what maps autofs sees through SSSD
+sudo automount -m
 
 # Check specific map entries
-getent automount auto.home
+sudo automount -m | grep -A5 auto.home
 ```
 
 ## Troubleshooting
