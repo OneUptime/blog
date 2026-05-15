@@ -15,7 +15,7 @@ SELinux AVC denials occur when a process tries to perform an action that its sec
 ```bash
 # Search the audit log for recent AVC denials
 
-sudo ausearch -m avc --start recent
+sudo ausearch -m AVC,USER_AVC,SELINUX_ERR,USER_SELINUX_ERR -ts recent
 
 # Or use the audit log directly
 sudo grep "avc:  denied" /var/log/audit/audit.log | tail -10
@@ -69,7 +69,7 @@ sudo setsebool -P httpd_can_network_connect on
 
 ```bash
 # Generate a policy module from the denial
-sudo ausearch -m avc --start recent | audit2allow -M my_custom_policy
+sudo ausearch -m AVC,USER_AVC,SELINUX_ERR,USER_SELINUX_ERR -ts recent | audit2allow -M my_custom_policy
 
 # Review the generated policy before applying
 cat my_custom_policy.te
@@ -81,12 +81,12 @@ sudo semodule -i my_custom_policy.pp
 ## Verifying the Fix
 
 ```bash
-# Clear the AVC cache
+# Rebuild and reload the SELinux policy store after module changes
 sudo semodule -B
 
 # Attempt the previously denied action
 # Then check for new denials
-sudo ausearch -m avc --start recent
+sudo ausearch -m AVC,USER_AVC,SELINUX_ERR,USER_SELINUX_ERR -ts recent
 ```
 
 Always try restorecon first, then booleans, and only create custom policy modules as a last resort. Never disable SELinux to work around AVC denials.
