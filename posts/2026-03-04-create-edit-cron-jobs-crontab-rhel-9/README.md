@@ -47,7 +47,7 @@ If you have no jobs, you will see "no crontab for username."
 crontab -e
 ```
 
-This opens your crontab in the editor specified by the `EDITOR` or `VISUAL` environment variable (usually vi). When you save and exit, cron validates the syntax and installs the new crontab.
+This opens your crontab in the editor specified by the `VISUAL` or `EDITOR` environment variable (usually vi). When you save and exit, `crontab` validates the syntax and installs the new crontab.
 
 ### Removing Your Crontab
 
