@@ -153,7 +153,7 @@ sudo mount -t cifs //192.168.1.10/public /mnt/public -o username=guest,password=
 
 ## SMB Protocol Versions
 
-RHEL defaults to SMB 3.0. You can force specific versions:
+RHEL uses SMB 2 or the highest later protocol version supported by the server. You can force specific versions:
 
 ```bash
 # Force SMB 3.0
@@ -166,7 +166,7 @@ sudo mount -t cifs //server/share /mnt/share -o vers=2.1,credentials=/root/.smbc
 ## Troubleshooting
 
 ```bash
-# Enable verbose mount debugging
+# View recent kernel CIFS messages
 sudo dmesg | tail -20
 
 # Check mount with verbose output
