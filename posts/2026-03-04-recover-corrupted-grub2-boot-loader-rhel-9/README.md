@@ -41,14 +41,14 @@ flowchart TD
 2. Boot from the media
 3. At the boot menu, select **Troubleshooting**
 4. Select **Rescue a Red Hat Enterprise Linux system**
-5. When prompted, select option 1 to mount the existing installation under `/mnt/sysimage`
+5. When prompted, select option 1 to mount the existing installation under `/mnt/sysroot`
 
 ## Chrooting into the Installed System
 
 ```bash
 # Change root to the installed system
 
-chroot /mnt/sysimage
+chroot /mnt/sysroot
 
 # Verify you are now in the installed system
 cat /etc/redhat-release
@@ -83,10 +83,10 @@ cat /boot/grub2/grub.cfg | head -20
 mount /boot/efi
 
 # Reinstall the GRUB2 EFI packages
-dnf reinstall grub2-efi-x64 shim-x64 -y
+dnf reinstall grub2-efi shim -y
 
 # Regenerate the GRUB configuration
-grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
+grub2-mkconfig -o /boot/grub2/grub.cfg
 
 # Verify the EFI boot entry
 efibootmgr -v
@@ -101,8 +101,8 @@ dosfsck -a /dev/sda1
 # If severely damaged, reformat and reinstall
 mkfs.vfat /dev/sda1
 mount /dev/sda1 /boot/efi
-dnf reinstall grub2-efi-x64 shim-x64 -y
-grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
+dnf reinstall grub2-efi shim -y
+grub2-mkconfig -o /boot/grub2/grub.cfg
 ```
 
 ## Fixing Common GRUB2 Errors
@@ -121,6 +121,7 @@ ls (hd0,msdos2)/
 
 # Once found, set the root and boot:
 set root=(hd0,msdos1)
+set prefix=(hd0,msdos1)/boot/grub2
 insmod normal
 normal
 ```
@@ -174,9 +175,14 @@ mount --bind /dev /mnt/dev
 mount --bind /proc /mnt/proc
 mount --bind /sys /mnt/sys
 
-# Chroot and reinstall GRUB
+# Chroot and reinstall GRUB on BIOS systems
 chroot /mnt
 grub2-install /dev/sda
+grub2-mkconfig -o /boot/grub2/grub.cfg
+
+# On UEFI systems, mount the EFI System Partition and reinstall the EFI boot loader packages instead
+mount /boot/efi
+dnf reinstall grub2-efi shim -y
 grub2-mkconfig -o /boot/grub2/grub.cfg
 ```
 
