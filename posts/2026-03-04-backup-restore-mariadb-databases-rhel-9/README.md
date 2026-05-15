@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, MariaDB, Backup, Database
 
-Description: Back up and restore MariaDB databases on RHEL 9 using mysqldump and mariabackup.
+Description: Back up and restore MariaDB databases on RHEL 9 using mariadb-dump and mariabackup.
 
 ---
 
 ## Overview
 
-Back up and restore MariaDB databases on RHEL 9 using mysqldump and mariabackup. Proper database setup and management are essential for application reliability and data integrity.
+Back up and restore MariaDB databases on RHEL 9 using mariadb-dump and mariabackup. Proper database backups are essential for application reliability and data integrity.
 
 ## Prerequisites
 
@@ -18,83 +18,69 @@ Back up and restore MariaDB databases on RHEL 9 using mysqldump and mariabackup.
 - Root or sudo access
 - Sufficient disk space for database storage
 
-## Step 1 - Install the Database Packages
-
-For PostgreSQL:
+## Step 1 - Install the MariaDB Packages
 
 ```bash
-sudo dnf install -y postgresql-server postgresql
-sudo postgresql-setup --initdb
-sudo systemctl enable --now postgresql
+sudo dnf install -y mariadb-server mariadb-backup
+sudo systemctl enable --now mariadb.service
+sudo mariadb-secure-installation
 ```
 
-For MariaDB:
+## Step 2 - Create a Logical Backup
+
+Use `mariadb-dump` for a logical SQL backup. The `mysqldump` name may still exist as a compatibility link, but `mariadb-dump` is the current MariaDB client name.
 
 ```bash
-sudo dnf install -y mariadb-server
-sudo systemctl enable --now mariadb
-sudo mysql_secure_installation
+mariadb-dump -u root -p --routines --events --triggers --single-transaction --result-file=myappdb.sql --databases myappdb
 ```
 
-For MySQL 8.0:
+Use `--all-databases` instead of `--databases myappdb` if you need to back up every database on the server.
+
+## Step 3 - Restore a Logical Backup
+
+Restore the SQL dump into a running MariaDB server:
 
 ```bash
-sudo dnf install -y mysql-community-server
-sudo systemctl enable --now mysqld
+mariadb -u root -p < myappdb.sql
 ```
 
-Choose the appropriate commands for your database engine.
+If the database already exists and the dump does not contain `DROP` statements, remove the existing database or tables before importing the file.
 
-## Step 2 - Perform Initial Configuration
+## Step 4 - Create a Physical Backup
 
-Edit the main configuration file:
-
-- PostgreSQL: `/var/lib/pgsql/data/postgresql.conf` and `pg_hba.conf`
-- MariaDB/MySQL: `/etc/my.cnf.d/server.cnf`
-
-Adjust memory settings, connection limits, and authentication methods to match your workload.
-
-## Step 3 - Create Users and Databases
-
-For PostgreSQL:
-
-```bash
-sudo -u postgres createuser myappuser
-sudo -u postgres createdb myappdb -O myappuser
-```
-
-For MariaDB/MySQL:
+Create a backup user for mariabackup:
 
 ```sql
-CREATE DATABASE myappdb;
-CREATE USER 'myappuser'@'localhost' IDENTIFIED BY 'secure-password';
-GRANT ALL PRIVILEGES ON myappdb.* TO 'myappuser'@'localhost';
+CREATE USER 'backupuser'@'localhost' IDENTIFIED BY 'secure-password';
+GRANT RELOAD, LOCK TABLES, REPLICATION CLIENT ON *.* TO 'backupuser'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-## Step 4 - Configure Network Access
-
-If remote connections are needed, update the listen address and authentication rules, then open the firewall:
+Then create the backup in an empty or new target directory:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=postgresql
-# or
-
-sudo firewall-cmd --permanent --add-service=mysql
-sudo firewall-cmd --reload
+mariabackup --backup --target-dir=/var/mariadb/backup --user=backupuser --password=secure-password
 ```
 
-## Step 5 - Verify the Setup
-
-Connect to the database and run a test query:
+Prepare the backup before restoring it:
 
 ```bash
-# PostgreSQL
-psql -h localhost -U myappuser myappdb -c "SELECT version();"
-# MariaDB/MySQL
-mysql -u myappuser -p myappdb -e "SELECT VERSION();"
+mariabackup --prepare --target-dir=/var/mariadb/backup
+```
+
+## Step 5 - Restore a Physical Backup
+
+Stop MariaDB and make sure the data directory is empty before restoring a mariabackup backup:
+
+```bash
+sudo systemctl stop mariadb.service
+sudo rm -rf /var/lib/mysql/*
+sudo mariabackup --copy-back --target-dir=/var/mariadb/backup
+sudo chown -R mysql:mysql /var/lib/mysql
+sudo restorecon -Rv /var/lib/mysql
+sudo systemctl start mariadb.service
 ```
 
 ## Summary
 
-You have learned how to back up and restore mariadb databases. Always secure your database with strong passwords, restricted network access, and regular backups.
+You have learned how to back up and restore MariaDB databases. Always secure your database with strong passwords, restricted network access, and regular backups.
