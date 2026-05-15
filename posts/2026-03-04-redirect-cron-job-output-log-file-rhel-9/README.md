@@ -106,6 +106,7 @@ If you have the `moreutils` package installed, the `ts` command adds timestamps 
 
 ```bash
 # Install moreutils for the ts command
+# On RHEL, this package is commonly provided by EPEL, not the base RHEL repositories
 sudo dnf install moreutils -y
 
 # Use ts in your crontab to add timestamps
@@ -147,14 +148,14 @@ You can also disable email for all jobs by setting MAILTO to an empty string.
 MAILTO=""
 ```
 
-For email to work, you need a functioning mail transfer agent on the system. On RHEL, postfix is the default.
+For email to work, you need a functioning mail transfer agent on the system. On RHEL, Postfix is the standard MTA documented for this use, but it may not be installed unless the mail server package was selected during installation. If you use a wrapper script to send email yourself, make sure a mail user agent such as `s-nail` is installed too.
 
 ```bash
 # Check if postfix is running
 sudo systemctl status postfix
 
 # If not installed, install and start it
-sudo dnf install postfix -y
+sudo dnf install postfix s-nail -y
 sudo systemctl enable --now postfix
 ```
 
@@ -187,7 +188,7 @@ echo "=== Backup finished at $(date) with exit code $EXIT_CODE ===" >> "$LOGFILE
 
 # Send email only on failure
 if [ $EXIT_CODE -ne 0 ]; then
-    tail -50 "$LOGFILE" | mail -s "ALERT: Backup failed on $HOSTNAME (exit code: $EXIT_CODE)" "$MAILTO"
+    tail -50 "$LOGFILE" | s-nail -s "ALERT: Backup failed on $HOSTNAME (exit code: $EXIT_CODE)" "$MAILTO"
 fi
 ```
 
@@ -219,7 +220,7 @@ Understanding the options:
 # weekly      - rotate once per week
 # rotate 4    - keep 4 old copies
 # compress    - gzip old log files
-# delaycompress - wait until next rotation to compress (useful if processes still write to old log)
+# delaycompress - wait until the next rotation cycle to compress the previous log file
 # missingok   - do not error if the log file does not exist
 # notifempty  - do not rotate if the file is empty
 # create      - create a new empty log file after rotation with these permissions
