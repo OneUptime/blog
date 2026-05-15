@@ -19,7 +19,7 @@ Yum (Yellowdog Updater, Modified) served us well for many years, but its Python 
 Here is the timeline:
 - RHEL 7: yum was the default
 - RHEL 8: dnf was the default, yum was a symlink to dnf
-- RHEL: dnf is the only option, yum is still a symlink for compatibility
+- RHEL 9: dnf is the primary package manager, and yum is still an alias or symlink for compatibility
 
 ```bash
 # Check what yum actually points to on RHEL
@@ -51,7 +51,7 @@ Most commands translate directly. Here is a side-by-side reference:
 | List repos | yum repolist | dnf repolist |
 | History | yum history | dnf history |
 | Group install | yum groupinstall "Development Tools" | dnf group install "Development Tools" |
-| Check for updates | yum check-update | dnf check-upgrade |
+| Check for updates | yum check-update | dnf check-update |
 | Downgrade | yum downgrade httpd | dnf downgrade httpd |
 
 Note that `dnf upgrade` is the preferred command instead of `dnf update`. Both work, but `upgrade` is the correct DNF terminology.
@@ -112,11 +112,11 @@ DNF has a cleaner plugin system:
 
 ```bash
 # List installed DNF plugins
-dnf plugin list
+dnf list installed 'dnf-plugin*' 'python3-dnf-plugin*'
 
-# Common useful plugins
+# Common useful plugin packages
 sudo dnf install python3-dnf-plugin-versionlock
-sudo dnf install dnf-plugin-system-upgrade
+sudo dnf install dnf-plugins-core
 ```
 
 ## Configuration Changes
@@ -282,7 +282,7 @@ metadata_expire=3600
 
 ## Common Gotchas During Migration
 
-1. **check-update vs check-upgrade**: The yum command was `check-update`, DNF uses `check-upgrade`. Both work on RHEL because of compatibility, but `check-upgrade` is the correct DNF command.
+1. **check-update vs check-upgrade**: The yum command was `check-update`, and DNF's documented command is also `check-update`. `check-upgrade` works as a DNF alias, but `check-update` is the canonical command.
 
 2. **Group commands**: Yum used `groupinstall`, `groupremove`, etc. DNF uses `group install`, `group remove` (with a space). The old syntax still works.
 
@@ -299,7 +299,7 @@ After updating your scripts and configs, verify everything works:
 ```bash
 # Make sure DNF is functioning properly
 dnf repolist
-dnf check-upgrade
+dnf check-update
 dnf list installed | wc -l
 
 # Verify that the yum symlink works for backward compatibility
