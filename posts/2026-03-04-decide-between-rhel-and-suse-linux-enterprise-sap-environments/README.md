@@ -35,7 +35,7 @@ RHEL uses `tuned` with SAP-specific profiles, while SLES uses `saptune`. Both ac
 
 ## High Availability
 
-SAP requires cluster-based HA for production HANA systems. Both distributions include HA extensions:
+Production SAP HANA systems that need automated failover typically use cluster-based HA. Both distributions include HA extensions:
 
 ```bash
 # RHEL: Install the HA add-on for SAP
@@ -55,7 +55,7 @@ Both Red Hat and SUSE have direct collaboration agreements with SAP. When you op
 Key differences:
 - SUSE was the first Linux vendor certified for SAP and has a longer history in the SAP ecosystem
 - RHEL for SAP has grown significantly and is now equally certified for all SAP products
-- Both offer 4+ years of Extended Update Support for SAP-relevant RHEL/SLES releases
+- RHEL for SAP Solutions provides up to four years of Update Services for SAP Solutions (E4S) on specific minor releases, while SLES for SAP Applications includes one and a half years of general support plus three years of Extended Service Pack Overlap Support (ESPOS) for most service packs
 
 ## Cloud and On-Premises
 
@@ -64,8 +64,9 @@ On the major cloud providers, both RHEL for SAP and SLES for SAP are available a
 ```bash
 # AWS: List RHEL for SAP AMIs
 aws ec2 describe-images --owners 309956199498 \
-  --filters "Name=name,Values=*RHEL-SAP*" \
-  --query 'Images[*].[Name,ImageId]' --output table
+  --filters "Name=name,Values=RHEL-SAP-9*" \
+  --query 'sort_by(Images, &Name)[*].[CreationDate,Name,ImageId]' \
+  --region us-east-1 --output table
 
 # Azure: RHEL for SAP is available through the Azure Marketplace
 # with integrated HA extensions
