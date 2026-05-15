@@ -150,8 +150,8 @@ journalctl _GID=1000
 # Logs from a specific syslog identifier (tag)
 journalctl -t sudo
 
-# Logs from kernel messages
-journalctl -t kernel
+# Logs from a specific daemon tag
+journalctl -t sshd
 
 # Logs from a custom application tag
 journalctl -t myapp
@@ -202,7 +202,7 @@ journalctl -o json-pretty
 # Export format (for machine processing)
 journalctl -o export
 
-# Catalog format (includes explanatory text)
+# Message text only (no metadata)
 journalctl -o cat
 ```
 
@@ -237,7 +237,7 @@ journalctl -N
 # List all values for a specific field
 journalctl -F _SYSTEMD_UNIT
 
-# Filter by systemd unit type
+# Filter by systemd unit field
 journalctl _SYSTEMD_UNIT=nginx.service
 
 # Combine multiple field filters (AND logic)
