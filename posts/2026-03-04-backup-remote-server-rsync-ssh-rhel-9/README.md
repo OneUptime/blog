@@ -36,6 +36,7 @@ Copy the public key to the backup server:
 
 ```bash
 # Copy the backup key to the remote backup server
+# Make sure backupuser exists first; Step 5 shows the backup-server setup
 sudo ssh-copy-id -i /root/.ssh/backup_key.pub backupuser@backup.example.com
 ```
 
@@ -56,18 +57,44 @@ Create the validation wrapper:
 ```bash
 #!/bin/bash
 # /usr/local/bin/validate-rsync.sh
-# Only allow rsync commands
+# Only allow rsync and the specific maintenance commands used by the backup script
 
-case "$SSH_ORIGINAL_COMMAND" in
-    rsync\ --server*)
-        # Allow rsync server commands
-        $SSH_ORIGINAL_COMMAND
-        ;;
-    *)
-        echo "Only rsync is allowed"
-        exit 1
-        ;;
-esac
+set -euo pipefail
+SSH_ORIGINAL_COMMAND="${SSH_ORIGINAL_COMMAND:-}"
+
+if [[ "$SSH_ORIGINAL_COMMAND" == rsync\ --server* ]]; then
+    # Allow rsync server commands
+    exec $SSH_ORIGINAL_COMMAND
+fi
+
+mkdir_re='^mkdir[[:space:]]+-p[[:space:]]+(/backup/[A-Za-z0-9._-]+/[0-9]{4}-[0-9]{2}-[0-9]{2})$'
+latest_re='^rm[[:space:]]+-f[[:space:]]+(/backup/[A-Za-z0-9._-]+)/latest[[:space:]]+&&[[:space:]]+ln[[:space:]]+-s[[:space:]]+(/backup/[A-Za-z0-9._-]+/[0-9]{4}-[0-9]{2}-[0-9]{2})[[:space:]]+(/backup/[A-Za-z0-9._-]+)/latest$'
+du_re='^du[[:space:]]+-sh[[:space:]]+(/backup/[A-Za-z0-9._-]+)/\*$'
+ls_re='^ls[[:space:]]+-la[[:space:]]+(/backup/[A-Za-z0-9._-]+/latest/[A-Za-z0-9._/-]*)$'
+
+if [[ "$SSH_ORIGINAL_COMMAND" =~ $mkdir_re ]]; then
+    mkdir -p "${BASH_REMATCH[1]}"
+    exit 0
+fi
+
+if [[ "$SSH_ORIGINAL_COMMAND" =~ $latest_re && "${BASH_REMATCH[2]}" == "${BASH_REMATCH[1]}/"* && "${BASH_REMATCH[3]}" == "${BASH_REMATCH[1]}" ]]; then
+    rm -f "${BASH_REMATCH[1]}/latest"
+    ln -s "${BASH_REMATCH[2]}" "${BASH_REMATCH[1]}/latest"
+    exit 0
+fi
+
+if [[ "$SSH_ORIGINAL_COMMAND" =~ $du_re ]]; then
+    du -sh "${BASH_REMATCH[1]}"/*
+    exit 0
+fi
+
+if [[ "$SSH_ORIGINAL_COMMAND" =~ $ls_re ]]; then
+    ls -la "${BASH_REMATCH[1]}"
+    exit 0
+fi
+
+echo "Only backup-related rsync commands are allowed"
+exit 1
 ```
 
 ```bash
@@ -117,6 +144,7 @@ for SRC in "${BACKUP_SOURCES[@]}"; do
     rsync -azv --delete \
         --numeric-ids \
         --relative \
+        -M--fake-super \
         -e "ssh $SSH_OPTS" \
         --exclude='*.tmp' \
         --exclude='lost+found' \
@@ -212,6 +240,7 @@ ssh -i /root/.ssh/backup_key backupuser@backup.example.com \
 
 # Do a dry-run restore to check integrity
 rsync -avnc \
+    -M--fake-super \
     -e "ssh -i /root/.ssh/backup_key" \
     backupuser@backup.example.com:/backup/$(hostname)/latest/etc/ \
     /tmp/restore-test/
