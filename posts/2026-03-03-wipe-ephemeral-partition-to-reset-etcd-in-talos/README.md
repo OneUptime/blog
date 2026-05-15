@@ -29,7 +29,7 @@ The EPHEMERAL partition is the largest partition and holds everything that accum
 talosctl get disks --nodes <node-ip>
 
 # View mount points
-talosctl get mounts --nodes <node-ip>
+talosctl mounts --nodes <node-ip>
 
 # The EPHEMERAL partition is typically mounted at /var
 ```
@@ -45,8 +45,8 @@ talosctl get mounts --nodes <node-ip>
 # /var/run/               - runtime state files
 
 # You can explore the contents
-talosctl ls /var/lib/etcd --nodes <cp-node-ip>
-talosctl ls /var/lib/kubelet --nodes <node-ip>
+talosctl list /var/lib/etcd --nodes <cp-node-ip>
+talosctl list /var/lib/kubelet --nodes <node-ip>
 ```
 
 ## When to Wipe the EPHEMERAL Partition
@@ -75,13 +75,15 @@ The standard way to wipe the EPHEMERAL partition:
 # Wipe only the EPHEMERAL partition
 talosctl reset --nodes <node-ip> \
   --system-labels-to-wipe EPHEMERAL \
-  --graceful=false
+  --graceful=false \
+  --reboot=true
 ```
 
 Let us break down the flags:
 
 - `--system-labels-to-wipe EPHEMERAL` - Specifies which partition to wipe. Without this, `reset` wipes everything including the OS.
 - `--graceful=false` - Skips the Kubernetes drain and cordon steps. Use this when the cluster is not operational.
+- `--reboot=true` - Reboots the node after the reset instead of shutting it down.
 
 For a graceful reset (when the cluster is still working):
 
@@ -89,7 +91,8 @@ For a graceful reset (when the cluster is still working):
 # Graceful reset - drains the node first
 talosctl reset --nodes <node-ip> \
   --system-labels-to-wipe EPHEMERAL \
-  --graceful=true
+  --graceful=true \
+  --reboot=true
 ```
 
 ### What Happens During the Wipe
@@ -105,7 +108,7 @@ talosctl reset --nodes <node-ip> \
 talosctl dmesg --nodes <node-ip> --follow
 
 # After reboot, verify the partition is clean
-talosctl ls /var/lib/etcd --nodes <node-ip>
+talosctl list /var/lib/etcd --nodes <node-ip>
 # Should be empty or not exist yet
 ```
 
@@ -133,7 +136,8 @@ for node in "${CP_NODES[@]}"; do
     echo "Wiping EPHEMERAL on ${node}..."
     talosctl reset --nodes ${node} \
       --system-labels-to-wipe EPHEMERAL \
-      --graceful=false &
+      --graceful=false \
+      --reboot=true &
 done
 
 # Wait for all resets to complete
@@ -169,7 +173,8 @@ kubectl drain ${NODE_NAME} --ignore-daemonsets --delete-emptydir-data --timeout=
 # Wipe EPHEMERAL
 talosctl reset --nodes <worker-ip> \
   --system-labels-to-wipe EPHEMERAL \
-  --graceful=false
+  --graceful=false \
+  --reboot=true
 
 # Wait for the node to come back
 until talosctl version --nodes <worker-ip> 2>/dev/null; do
@@ -186,18 +191,18 @@ After the EPHEMERAL partition is wiped and the node reboots:
 
 ```bash
 # Check that etcd data is gone
-talosctl ls /var/lib/etcd --nodes <node-ip>
+talosctl list /var/lib/etcd --nodes <node-ip>
 # Should show an empty or nonexistent directory
 
 # Check services
-talosctl services --nodes <node-ip>
+talosctl service --nodes <node-ip>
 
 # On a control plane node, etcd should be waiting for bootstrap
 # On a worker node, kubelet should be trying to connect
 
 # Verify the machine config is still present
 # (EPHEMERAL wipe does NOT touch the machine config)
-talosctl get machineconfig --nodes <node-ip>
+talosctl get machineconfig v1alpha1 --nodes <node-ip>
 ```
 
 ## What Is Preserved After EPHEMERAL Wipe
@@ -219,17 +224,20 @@ There are different levels of reset in Talos:
 # Wipe only EPHEMERAL (most common for etcd reset)
 talosctl reset --nodes <node-ip> \
   --system-labels-to-wipe EPHEMERAL \
-  --graceful=false
+  --graceful=false \
+  --reboot=true
 
 # Wipe EPHEMERAL and STATE (removes machine config too)
 talosctl reset --nodes <node-ip> \
   --system-labels-to-wipe EPHEMERAL \
   --system-labels-to-wipe STATE \
-  --graceful=false
+  --graceful=false \
+  --reboot=true
 
-# Full reset (wipes everything, node goes back to maintenance mode)
+# Full reset (wipes everything, node reboots into maintenance mode if bootable)
 talosctl reset --nodes <node-ip> \
-  --graceful=false
+  --graceful=false \
+  --reboot=true
 ```
 
 Choose the level of wipe based on what you need:
@@ -249,7 +257,8 @@ Choose the level of wipe based on what you need:
 # Use --graceful=false to force it
 talosctl reset --nodes <node-ip> \
   --system-labels-to-wipe EPHEMERAL \
-  --graceful=false
+  --graceful=false \
+  --reboot=true
 
 # If it still hangs, try a hard reboot
 talosctl reboot --nodes <node-ip> --mode powercycle
@@ -277,9 +286,10 @@ talosctl dmesg --nodes <node-ip> | grep -i "ephemeral\|wipe\|format"
 # If the node did not actually wipe, try again
 talosctl reset --nodes <node-ip> \
   --system-labels-to-wipe EPHEMERAL \
-  --graceful=false
+  --graceful=false \
+  --reboot=true
 ```
 
 ## Summary
 
-Wiping the EPHEMERAL partition in Talos Linux is the standard way to reset etcd and other runtime data without reinstalling the OS. The command is `talosctl reset --system-labels-to-wipe EPHEMERAL --graceful=false`. It preserves the machine configuration and OS installation while clearing etcd data, kubelet state, and container images. Use it before cluster recovery from backup, when etcd data is corrupted, or when you need to cleanly reset a node's runtime state. Always make sure you have an etcd backup before wiping control plane nodes.
+Wiping the EPHEMERAL partition in Talos Linux is the standard way to reset etcd and other runtime data without reinstalling the OS. The command is `talosctl reset --system-labels-to-wipe EPHEMERAL --graceful=false --reboot=true`. It preserves the machine configuration and OS installation while clearing etcd data, kubelet state, and container images. Use it before cluster recovery from backup, when etcd data is corrupted, or when you need to cleanly reset a node's runtime state. Always make sure you have an etcd backup before wiping control plane nodes.
