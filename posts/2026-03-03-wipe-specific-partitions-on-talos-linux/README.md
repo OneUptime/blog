@@ -16,10 +16,10 @@ This guide covers the partition layout of Talos Linux, how to wipe specific part
 
 Before diving into partition management, it helps to understand how Talos organizes its disks. A standard Talos installation creates several partitions on the system disk:
 
-- **EFI**: The EFI system partition containing the bootloader. This is small (around 100MB) and rarely needs to be touched.
+- **EFI**: The EFI system partition containing boot data. Its size depends on the Talos version and image layout, and it rarely needs to be touched.
 - **BIOS**: A BIOS boot partition for legacy boot support.
-- **BOOT**: Contains the Talos kernel and initramfs. This is the actual operating system.
-- **META**: A small metadata partition used for storing configuration hints and overlay data.
+- **BOOT**: Contains bootloader, kernel, and initramfs data.
+- **META**: A small metadata partition used for storing Talos node metadata.
 - **STATE**: Contains the machine configuration, PKI certificates, and other persistent state. This is what makes the node "know" which cluster it belongs to.
 - **EPHEMERAL**: The largest partition, used for kubelet data, container images, pod logs, and temporary storage. This is where most of the day-to-day data lives.
 
@@ -27,11 +27,10 @@ You can view the partition layout on a running node:
 
 ```bash
 # View disk partitions
-
-talosctl disks --nodes 10.0.0.50
+talosctl get disks --nodes 10.0.0.50
 
 # Get detailed partition information
-talosctl get systemdisk --nodes 10.0.0.50 -o yaml
+talosctl get discoveredvolumes --nodes 10.0.0.50 -o yaml
 
 # View mount points
 talosctl mounts --nodes 10.0.0.50
@@ -92,11 +91,11 @@ talosctl reset --nodes 10.0.0.50 \
   --system-labels-to-wipe EPHEMERAL
 ```
 
-This is functionally equivalent to a full reset and is the most thorough way to clean a node while preserving the OS installation.
+This wipes the Talos persistent state while preserving the boot partitions and any user disks. A full reset is broader, because by default `talosctl reset` uses `--wipe-mode all`.
 
 ## Wiping User Data Disks
 
-Beyond system partitions, your nodes may have additional disks used for persistent volumes, local storage, or application data. These are not affected by a standard reset unless you explicitly target them:
+Beyond system partitions, your nodes may have additional disks used for persistent volumes, local storage, or application data. These are not affected when you use `--system-labels-to-wipe` unless you explicitly target them. A full reset without selective wipe flags uses `--wipe-mode all` by default.
 
 ```bash
 # Wipe a specific user data disk
@@ -114,6 +113,7 @@ You can target multiple disks:
 talosctl reset --nodes 10.0.0.50 \
   --graceful=true \
   --reboot=true \
+  --wipe-mode user-disks \
   --user-disks-to-wipe /dev/sdb \
   --user-disks-to-wipe /dev/sdc \
   --user-disks-to-wipe /dev/nvme1n1
@@ -125,10 +125,11 @@ Before wiping, identify which disks are which:
 
 ```bash
 # List all disks and their partitions
-talosctl disks --nodes 10.0.0.50
+talosctl get disks --nodes 10.0.0.50
+talosctl get discoveredvolumes --nodes 10.0.0.50
 
 # View disk usage
-talosctl get blockdevices --nodes 10.0.0.50
+talosctl usage --nodes 10.0.0.50 --humanize /var
 
 # Check what is mounted where
 talosctl mounts --nodes 10.0.0.50
@@ -138,7 +139,7 @@ Be extremely careful with disk paths. Wiping the wrong disk can destroy your OS 
 
 ## Handling the META Partition
 
-The META partition is special. It stores overlay configuration data that supplements the machine configuration. You generally do not need to wipe it independently, but you can include it in a reset:
+The META partition is special. It stores Talos node metadata. You generally do not need to wipe it independently, but you can include it in a reset:
 
 ```bash
 # Wipe including META
@@ -150,7 +151,7 @@ talosctl reset --nodes 10.0.0.50 \
   --system-labels-to-wipe META
 ```
 
-This is only necessary in special cases, such as when the META partition contains incorrect overlay data that is causing boot issues.
+This is only necessary in special cases, such as when the META partition contains incorrect metadata that is causing boot issues.
 
 ## Scripted Partition Management
 
@@ -202,13 +203,13 @@ After a partition wipe, verify that the expected partitions were cleared and tha
 
 ```bash
 # Check partition sizes (a freshly wiped partition will be nearly empty)
-talosctl disks --nodes 10.0.0.50
+talosctl get discoveredvolumes --nodes 10.0.0.50
 
 # Check system health
 talosctl health --nodes 10.0.0.50
 
 # For EPHEMERAL wipes, verify kubelet restarted
-talosctl services --nodes 10.0.0.50 | grep kubelet
+talosctl service kubelet --nodes 10.0.0.50
 
 # Check that pods are being recreated
 kubectl get pods --field-selector spec.nodeName=node-name --all-namespaces
@@ -218,10 +219,10 @@ kubectl get pods --field-selector spec.nodeName=node-name --all-namespaces
 
 | Action | STATE | EPHEMERAL | User Disks | Result |
 |--------|-------|-----------|------------|--------|
-| Full reset | Wiped | Wiped | Optional | Node enters maintenance mode |
+| Full reset | Wiped | Wiped | Wiped by default | Node enters maintenance mode |
 | EPHEMERAL only | Kept | Wiped | Untouched | Node rejoins cluster automatically |
 | STATE only | Wiped | Kept | Untouched | Node enters maintenance mode |
-| User disks only | Kept | Kept | Wiped | Node continues running |
+| User disks only | Kept | Kept | Wiped | Selected disks are wiped; the node reboots if `--reboot=true` is set |
 
 ## Wrapping Up
 
