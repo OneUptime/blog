@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Notification, Alert, Filtering
 
-Description: Learn how to filter Flux alerts by event reason using exclusion lists to receive only the notifications that matter.
+Description: Learn how to filter Flux alerts by event message patterns using exclusion lists to receive only the notifications that matter.
 
 ---
 
-Flux CD generates a variety of events as it reconciles resources, and not all of them require your attention. The Alert resource provides filtering capabilities through the `spec.exclusionList` field, which accepts regex patterns to exclude events by their message content. This guide demonstrates how to filter alerts by event reason so you receive only actionable notifications.
+Flux CD generates a variety of events as it reconciles resources, and not all of them require your attention. The Alert resource provides filtering capabilities through the `spec.exclusionList` field, which accepts regex patterns to exclude events by their message content. This guide demonstrates how to filter alerts by message patterns associated with event reasons so you receive only actionable notifications.
 
 ## Prerequisites
 
@@ -22,12 +22,12 @@ Flux CD generates a variety of events as it reconciles resources, and not all of
 Flux events include a reason field that describes why the event was generated. Common reasons include:
 
 - `ReconciliationSucceeded` - A successful reconciliation
-- `ReconciliationFailed` - A reconciliation error
+- `ArtifactFailed` - A source artifact error
 - `ProgressingWithRetry` - Retrying after a failure
 - `ArtifactUpToDate` - No changes detected in the source
 - `HealthCheckFailed` - A post-deployment health check failed
 
-The `spec.exclusionList` field in the Alert resource lets you exclude events based on regex matches against the event message, which typically contains the reason.
+The `spec.exclusionList` field in the Alert resource does not match the reason field directly. It lets you exclude events based on regex matches against the event message, so you should inspect both the reason and message and then filter the message text associated with the reasons you want to suppress.
 
 ## Step 1: Identify Events You Want to Filter
 
@@ -36,10 +36,10 @@ First, look at the events being generated in your cluster to understand the patt
 ```bash
 # List recent events from Flux resources
 
-kubectl get events -n flux-system --sort-by='.lastTimestamp'
+kubectl events -n flux-system
 
 # View events for a specific resource type
-kubectl get events -n flux-system --field-selector involvedObject.kind=Kustomization
+kubectl events -n flux-system --for Kustomization/flux-system
 
 # Check notification controller logs to see what events are being processed
 kubectl logs -n flux-system deploy/notification-controller --tail=50
@@ -47,10 +47,10 @@ kubectl logs -n flux-system deploy/notification-controller --tail=50
 
 ## Step 2: Create an Alert with Basic Exclusion Rules
 
-Exclude routine reconciliation events that indicate no changes were made.
+Exclude routine successful reconciliation events.
 
 ```yaml
-# Alert that filters out no-change reconciliation events
+# Alert that filters out successful reconciliation events
 apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
@@ -66,8 +66,8 @@ spec:
       namespace: flux-system
   # Exclude events matching these regex patterns
   exclusionList:
-    # Filter out events where reconciliation found no changes
-    - "^Reconciliation finished.*no changes$"
+    # Filter out successful reconciliation messages
+    - "^Reconciliation finished.*next run in.*$"
 ```
 
 ## Step 3: Filter Multiple Event Reasons
@@ -95,12 +95,17 @@ spec:
     - kind: GitRepository
       name: "*"
       namespace: flux-system
+    - kind: HelmChart
+      name: "*"
+      namespace: flux-system
   # Exclude various routine events
   exclusionList:
-    # Exclude no-change reconciliation messages
-    - "^Reconciliation finished.*no changes$"
+    # Exclude successful reconciliation messages
+    - "^Reconciliation finished.*next run in.*$"
     # Exclude artifact up-to-date messages
-    - "^stored artifact.*same revision$"
+    - "^artifact up-to-date with remote revision:.*$"
+    # Exclude source checks where the revision did not change
+    - "^no changes since last reconcilation: observed revision.*$"
     # Exclude waiting/progressing messages
     - ".*waiting for.*"
     - ".*is not ready$"
@@ -168,15 +173,21 @@ spec:
     - kind: HelmRelease
       name: "*"
       namespace: flux-system
+    - kind: GitRepository
+      name: "*"
+      namespace: flux-system
+    - kind: HelmChart
+      name: "*"
+      namespace: flux-system
   # Aggressively filter routine events
   exclusionList:
-    - "^Reconciliation finished.*no changes$"
+    - "^Reconciliation finished.*next run in.*$"
     - "^no updates made$"
     - ".*is not ready$"
     - ".*waiting for.*"
     - ".*dependency.*"
-    - "^stored artifact.*same revision$"
-    - "^artifact up-to-date.*"
+    - "^no changes since last reconcilation: observed revision.*$"
+    - "^artifact up-to-date with remote revision:.*$"
 ```
 
 ## Step 6: Test Your Exclusion Rules
@@ -200,18 +211,18 @@ Here is a reference table of useful exclusion patterns.
 
 | Pattern | What It Filters |
 |---|---|
-| `^Reconciliation finished.*no changes$` | No-change reconciliations |
-| `^stored artifact.*same revision$` | Unchanged source artifacts |
+| `^Reconciliation finished.*next run in.*$` | Successful Kustomization reconciliations |
+| `^no changes since last reconcilation: observed revision.*$` | Source checks with no new Git revision |
+| `^artifact up-to-date with remote revision:.*$` | Unchanged chart artifacts |
 | `.*is not ready$` | Resources still progressing |
 | `.*waiting for.*` | Dependency wait messages |
 | `.*dependency.*not ready.*` | Unresolved dependencies |
 | `^no updates made$` | No updates applied |
-| `^artifact up-to-date.*` | Source already current |
 
 ## Important Notes on Exclusion Behavior
 
 - Exclusion patterns are matched against the event message, not the event reason field directly
-- Patterns are Go regex syntax (similar to POSIX extended regex)
+- Patterns use Go regular expression syntax, which is based on RE2
 - Each pattern in the list is evaluated independently; if any pattern matches, the event is excluded
 - Patterns are case-sensitive by default
 - An empty exclusion list means no events are excluded
@@ -225,10 +236,10 @@ If events are being unexpectedly excluded or included, debug with these steps.
 kubectl get events -n flux-system -o json | jq '.items[] | {message: .message, reason: .reason, kind: .involvedObject.kind}'
 
 # Check if your regex patterns are valid
-# Test a pattern against a known event message
-echo "Reconciliation finished, no changes" | grep -E "^Reconciliation finished.*no changes$"
+# Test a simple pattern against a known event message
+echo "Reconciliation finished in 448.00332ms, next run in 10m0s" | grep -E "^Reconciliation finished.*next run in.*$"
 ```
 
 ## Summary
 
-Filtering alerts by event reason in Flux is accomplished through the `spec.exclusionList` field, which accepts regex patterns matched against event messages. By carefully crafting exclusion rules, you can eliminate noise from routine operations while preserving notifications for meaningful events. Start by observing the events in your cluster, then iteratively add exclusion patterns until you achieve the right balance between visibility and noise reduction.
+Filtering alerts by message patterns associated with event reasons in Flux is accomplished through the `spec.exclusionList` field, which accepts regex patterns matched against event messages. By carefully crafting exclusion rules, you can eliminate noise from routine operations while preserving notifications for meaningful events. Start by observing the events in your cluster, then iteratively add exclusion patterns until you achieve the right balance between visibility and noise reduction.
