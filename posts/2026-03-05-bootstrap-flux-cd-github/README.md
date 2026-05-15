@@ -241,7 +241,13 @@ Common issues and their solutions:
 
 ```bash
 # If bootstrap fails with authentication errors, verify your token
-echo $GITHUB_TOKEN | flux bootstrap github --token-auth ...
+echo $GITHUB_TOKEN | flux bootstrap github \
+  --token-auth \
+  --owner=<your-github-username> \
+  --repository=fleet-infra \
+  --branch=main \
+  --path=./clusters/production \
+  --personal
 
 # If reconciliation stalls, check the source-controller logs
 kubectl logs -n flux-system deploy/source-controller
