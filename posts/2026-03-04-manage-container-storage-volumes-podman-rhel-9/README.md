@@ -74,7 +74,7 @@ echo "<h1>Hello from RHEL</h1>" > /srv/webdata/index.html
 ## Mount the host directory into the container
 ```bash
 podman run -d --name web \
-  -v /srv/webdata:/usr/share/nginx/html:ro \
+  -v /srv/webdata:/usr/share/nginx/html:ro,Z \
   -p 8080:80 \
   docker.io/library/nginx:latest
 ```
@@ -119,9 +119,9 @@ ls -laZ /srv/webdata/
 
 ## tmpfs Mounts
 
-For temporary data that should not persist and should stay in memory:
+For temporary data that should not persist and should use a memory-backed filesystem:
 
-## Mount a tmpfs volume (stored in RAM)
+## Mount a tmpfs volume (memory-backed temporary filesystem)
 ```bash
 podman run -d --name tempapp \
   --tmpfs /tmp:size=100m \
@@ -135,7 +135,7 @@ podman run -d --name tempapp \
   docker.io/library/nginx:latest
 ```
 
-tmpfs mounts are useful for sensitive data that should not be written to disk, or for scratch space that benefits from RAM speed.
+tmpfs mounts are useful for scratch space that benefits from RAM speed, or for data that should not be written to the container's writable layer. Remember that Linux tmpfs can use swap unless swap is disabled or otherwise protected.
 
 ## Volume Drivers and Options
 
@@ -149,8 +149,8 @@ podman volume create --opt device=tmpfs --opt type=tmpfs --opt o=size=100m tmpvo
 ## Create a volume backed by an NFS mount
 ```bash
 podman volume create --opt type=nfs \
-  --opt o=addr=192.168.1.10,rw \
-  --opt device=:/exports/data \
+  --opt o=rw \
+  --opt device=192.168.1.10:/exports/data \
   nfsdata
 ```
 
@@ -184,7 +184,9 @@ Back up your volume data before major changes:
 
 ## Back up a volume to a tar archive
 ```bash
-podman run --rm -v dbdata:/source:ro -v /backup:/backup \
+mkdir -p /backup
+
+podman run --rm -v dbdata:/source:ro -v /backup:/backup:Z \
   registry.access.redhat.com/ubi9/ubi-minimal \
   tar czf /backup/dbdata-backup.tar.gz -C /source .
 ```
@@ -193,7 +195,7 @@ podman run --rm -v dbdata:/source:ro -v /backup:/backup \
 ```bash
 podman volume create dbdata-restored
 
-podman run --rm -v dbdata-restored:/target -v /backup:/backup:ro \
+podman run --rm -v dbdata-restored:/target -v /backup:/backup:ro,Z \
   registry.access.redhat.com/ubi9/ubi-minimal \
   tar xzf /backup/dbdata-backup.tar.gz -C /target
 ```
@@ -207,7 +209,7 @@ Rootless containers run with user namespace mapping, which can cause permission 
 podman unshare id
 ```
 
-## Fix ownership for a volume directory used by rootless containers
+## Fix ownership for a volume directory used by a rootless container process running as UID/GID 1000
 ```bash
 podman unshare chown -R 1000:1000 ~/.local/share/containers/storage/volumes/mydata/_data/
 ```
@@ -254,4 +256,4 @@ podman system df -v
 
 ## Summary
 
-Persistent storage on Podman comes down to three choices: named volumes for application data, bind mounts when you need to control the exact host path, and tmpfs for temporary in-memory storage. On RHEL, always remember the SELinux labels (`:Z` or `:z`) on bind mounts, or you will spend hours debugging permission errors. For rootless containers, `--userns=keep-id` is your friend for avoiding UID mapping headaches.
+Persistent storage on Podman comes down to three choices: named volumes for application data, bind mounts when you need to control the exact host path, and tmpfs for temporary memory-backed storage. On RHEL, always remember the SELinux labels (`:Z` or `:z`) on bind mounts, or you will spend hours debugging permission errors. For rootless containers, `--userns=keep-id` is your friend for avoiding UID mapping headaches.
