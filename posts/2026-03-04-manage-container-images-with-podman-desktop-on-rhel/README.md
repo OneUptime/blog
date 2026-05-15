@@ -97,13 +97,13 @@ sudo vi /etc/containers/registries.conf
 ```
 
 ```toml
+# Set search order for unqualified image names
+unqualified-search-registries = ["registry.access.redhat.com", "docker.io", "quay.io"]
+
 # Add your private registry
 [[registry]]
 location = "registry.example.com"
 insecure = false
-
-# Set search order for unqualified image names
-unqualified-search-registries = ["registry.access.redhat.com", "docker.io", "quay.io"]
 ```
 
 ## Clean Up Images
@@ -112,7 +112,7 @@ unqualified-search-registries = ["registry.access.redhat.com", "docker.io", "qua
 # Remove a specific image
 podman rmi my-web-app:v1
 
-# Remove all unused images (no running containers reference them)
+# Remove all unused images (no containers reference them)
 podman image prune -a
 
 # Check disk usage
