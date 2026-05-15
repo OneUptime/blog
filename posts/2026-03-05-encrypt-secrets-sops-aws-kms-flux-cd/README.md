@@ -178,7 +178,7 @@ Create a `.sops.yaml` file to standardize encryption rules across your repositor
 ```yaml
 # .sops.yaml - Repository SOPS configuration for AWS KMS
 creation_rules:
-  - path_regex: .*\.enc\.yaml$
+  - path_regex: .*\.yaml$
     encrypted_regex: ^(data|stringData)$
     kms: arn:aws:kms:us-east-1:123456789012:key/<key-id>
 ```
