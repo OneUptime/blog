@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, DNS-SD, Service Discovery, mDNS, Avahi, Linux
 
-Description: Learn how to set up DNS-based Service Discovery (DNS-SD) on RHEL using Avahi and standard DNS SRV records to enable automatic service discovery across your network.
+Description: Learn how to set up DNS-based Service Discovery (DNS-SD) on RHEL using Avahi and standard DNS records to enable automatic service discovery across your network.
 
 ---
 
-DNS-based Service Discovery (DNS-SD) lets services announce themselves on a network and lets clients find those services without hardcoding IP addresses or ports. On RHEL, you can implement DNS-SD using Avahi for local networks (mDNS/DNS-SD) or using standard DNS SRV and TXT records for larger environments. This guide covers both approaches.
+DNS-based Service Discovery (DNS-SD) lets services announce themselves on a network and lets clients find those services without hardcoding IP addresses or ports. On RHEL, you can implement DNS-SD using Avahi for local networks (mDNS/DNS-SD) or using standard DNS PTR, SRV, and TXT records for larger environments. This guide covers both approaches.
 
 ## Understanding DNS-SD
 
@@ -27,7 +27,7 @@ Avahi is an mDNS/DNS-SD implementation that works on local networks without any 
 ```bash
 # Install Avahi
 
-sudo dnf install -y avahi avahi-tools nss-mdns
+sudo dnf install -y avahi avahi-tools
 ```
 
 ```bash
@@ -54,7 +54,7 @@ host-name=myserver
 domain-name=local
 use-ipv4=yes
 use-ipv6=yes
-allow-interfaces=eth0
+allow-interfaces=
 deny-interfaces=
 
 [wide-area]
@@ -113,8 +113,8 @@ avahi-browse -t _http._tcp
 ```
 
 ```bash
-# Resolve a specific service to get host and port
-avahi-resolve-host-name myserver.local
+# Resolve the HTTP service to get host, address, port, and TXT records
+avahi-browse -r -t _http._tcp
 ```
 
 ## Publishing Multiple Services
@@ -144,7 +144,7 @@ sudo tee /etc/avahi/services/ssh.service > /dev/null << 'EOF'
 <?xml version="1.0" standalone='no'?>
 <!DOCTYPE service-group SYSTEM "avahi-service.dtd">
 <service-group>
-  <name>SSH on %h</name>
+  <name replace-wildcards="yes">SSH on %h</name>
   <service>
     <type>_ssh._tcp</type>
     <port>22</port>
@@ -207,44 +207,55 @@ for svc in http_services:
 
 ## DNS-SD with Standard DNS Infrastructure
 
-For larger environments where mDNS does not scale, use standard DNS SRV records. Configure your BIND DNS server:
+For larger environments where mDNS does not scale, use standard DNS records. Configure your BIND DNS server:
 
 ```bash
 # Add SRV records to your zone file
 # /var/named/internal.example.com.zone
-_http._tcp.internal.example.com.  IN SRV 10 0 8080 webapp1.internal.example.com.
-_http._tcp.internal.example.com.  IN SRV 10 0 8080 webapp2.internal.example.com.
-_http._tcp.internal.example.com.  IN SRV 20 0 8080 webapp3.internal.example.com.
+_http._tcp.internal.example.com.  IN PTR webapp1._http._tcp.internal.example.com.
+_http._tcp.internal.example.com.  IN PTR webapp2._http._tcp.internal.example.com.
+_http._tcp.internal.example.com.  IN PTR webapp3._http._tcp.internal.example.com.
+
+webapp1._http._tcp.internal.example.com.  IN SRV 10 0 8080 webapp1.internal.example.com.
+webapp2._http._tcp.internal.example.com.  IN SRV 10 0 8080 webapp2.internal.example.com.
+webapp3._http._tcp.internal.example.com.  IN SRV 20 0 8080 webapp3.internal.example.com.
 
 ; TXT records for service metadata
-_http._tcp.internal.example.com.  IN TXT "version=2.1" "path=/api"
+webapp1._http._tcp.internal.example.com.  IN TXT "version=2.1" "path=/api"
+webapp2._http._tcp.internal.example.com.  IN TXT "version=2.1" "path=/api"
+webapp3._http._tcp.internal.example.com.  IN TXT "version=2.1" "path=/api"
 
-; PTR records for service enumeration
+; PTR record for service type enumeration
 _services._dns-sd._udp.internal.example.com.  IN PTR _http._tcp.internal.example.com.
 ```
 
 Query the SRV records:
 
 ```bash
-# Look up the SRV records
-dig SRV _http._tcp.internal.example.com
+# Enumerate HTTP service instances
+dig PTR _http._tcp.internal.example.com
 ```
 
 ```bash
-# Look up associated TXT records
-dig TXT _http._tcp.internal.example.com
+# Look up the SRV record for a service instance
+dig SRV webapp1._http._tcp.internal.example.com
+```
+
+```bash
+# Look up associated TXT records for a service instance
+dig TXT webapp1._http._tcp.internal.example.com
 ```
 
 ## Configuring NSS for mDNS Resolution
 
-Enable mDNS hostname resolution system-wide:
+RHEL 9 does not provide `nss-mdns` in the standard repositories. If you install a compatible `nss-mdns` package from a trusted third-party repository, enable mDNS hostname resolution system-wide:
 
 ```bash
 # Edit nsswitch.conf to add mDNS support
 sudo sed -i 's/^hosts:.*/hosts:      files mdns4_minimal [NOTFOUND=return] dns myhostname/' /etc/nsswitch.conf
 ```
 
-Now you can resolve .local hostnames:
+With `nss-mdns` installed and configured, you can resolve .local hostnames:
 
 ```bash
 # Resolve an mDNS hostname
@@ -263,4 +274,4 @@ sudo firewall-cmd --reload
 
 ## Conclusion
 
-DNS-SD on RHEL gives you automatic service discovery that works at the protocol level without requiring additional infrastructure for local networks. Avahi handles the mDNS/DNS-SD implementation for local discovery, while standard DNS SRV records scale the same pattern to larger environments. Both approaches let your services find each other dynamically rather than relying on hardcoded addresses.
+DNS-SD on RHEL gives you automatic service discovery that works at the protocol level without requiring additional infrastructure for local networks. Avahi handles the mDNS/DNS-SD implementation for local discovery, while standard DNS records scale the same pattern to larger environments. Both approaches let your services find each other dynamically rather than relying on hardcoded addresses.
