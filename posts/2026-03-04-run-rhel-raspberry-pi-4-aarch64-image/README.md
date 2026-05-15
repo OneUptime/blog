@@ -4,38 +4,42 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Raspberry Pi, AArch64, ARM, Linux
 
-Description: Install and run RHEL on a Raspberry Pi 4 using the official aarch64 image for development, testing, or edge computing use cases.
+Description: Review the requirements and caveats for running RHEL on Raspberry Pi 4-class aarch64 hardware for development, testing, or edge computing experiments.
 
 ---
 
-Red Hat provides an aarch64 image that can run on the Raspberry Pi 4 Model B (4GB or 8GB recommended). This is useful for edge computing, development, and testing RHEL on low-cost ARM hardware.
+Red Hat provides RHEL for ARM 64 on aarch64 systems, but it does not provide a Raspberry Pi 4-specific SD card image. Red Hat recommends certified RHEL for ARM 64 hardware for supported deployments; Raspberry Pi 4 use should be treated as an experimental setup that depends on compatible UEFI firmware and the standard ARM installer rather than the KVM guest image.
 
 ## Prerequisites
 
 - Raspberry Pi 4 Model B with 4GB or 8GB RAM
-- MicroSD card (32GB minimum, Class 10 or UHS-I recommended)
+- MicroSD card for Raspberry Pi firmware and a USB drive or SSD for installation media/storage
 - Active RHEL subscription
-- Ethernet connection (Wi-Fi requires additional firmware)
+- Ethernet connection
+- Compatible Raspberry Pi 4 UEFI firmware
 
 ## Download the RHEL Image
 
 ```bash
-# From the Red Hat Customer Portal, download the RHEL image for ARM
+# From the Red Hat Customer Portal, download the RHEL installer for ARM
 
 # Navigate to: https://access.redhat.com/downloads/content/rhel
 # Select architecture: aarch64
-# Download the "KVM Guest Image" or "Raw image" for Raspberry Pi
+# Download the Boot ISO or Binary DVD ISO for RHEL for ARM 64
+
+# Do not write the KVM Guest Image directly to a Raspberry Pi microSD card.
+# Red Hat documents KVM guest images as qcow2 VM images that use cloud-init.
 ```
 
 ## Write the Image to a MicroSD Card
 
 ```bash
-# On a Linux workstation, identify the microSD card device
+# On a Linux workstation, identify the target USB installer device
 lsblk
 
-# Write the raw image to the microSD card
+# Write the installer ISO to the USB device
 # Replace /dev/sdX with your actual device
-sudo dd if=rhel-9.4-aarch64-kvm.img of=/dev/sdX bs=4M status=progress oflag=sync
+sudo dd if=rhel-9.4-aarch64-boot.iso of=/dev/sdX bs=4M status=progress conv=fsync
 
 # Sync and eject
 sync
@@ -43,12 +47,11 @@ sync
 
 ## Expand the Root Partition
 
-The default image has a small root partition. Expand it to use the full SD card.
+If you install to a larger target disk and need to expand an XFS root filesystem later, grow the partition first and then grow the mounted filesystem.
 
 ```bash
-# Use fdisk or parted to resize the last partition
-# First, resize the partition
-sudo parted /dev/sdX resizepart 3 100%
+# Replace 3 with the actual root partition number
+sudo parted /dev/sdX --script resizepart 3 100%
 
 # Then, after booting the Pi, expand the filesystem
 sudo xfs_growfs /
@@ -58,10 +61,10 @@ sudo xfs_growfs /
 
 1. Insert the microSD card into the Raspberry Pi 4
 2. Connect an Ethernet cable
-3. Connect a monitor via micro-HDMI or use serial console via GPIO pins
+3. Connect the RHEL installer USB drive or installation target
 4. Power on the Pi
 
-The default credentials are typically `root` with a predefined password or cloud-init configuration.
+Use the RHEL installer to create the root password or user account. KVM guest images do not have a default root password; they use cloud-init and the `cloud-user` account when launched in a supported VM environment.
 
 ## Configure Network and Register
 
@@ -80,7 +83,7 @@ sudo dnf update -y
 ## Configure Wi-Fi (Optional)
 
 ```bash
-# Wi-Fi on Raspberry Pi 4 requires firmware from linux-firmware
+# Wi-Fi support depends on the firmware and drivers available for the running kernel
 sudo dnf install -y linux-firmware
 
 # Reboot to load the firmware
@@ -119,4 +122,4 @@ sudo dnf install -y rsync
 # (Follow the standard root migration process)
 ```
 
-Running RHEL on a Raspberry Pi 4 gives you a fully supported enterprise Linux environment on affordable hardware, ideal for edge deployments and prototyping.
+Running RHEL on a Raspberry Pi 4 can be useful for experiments and prototyping, but it should not be described as a fully supported enterprise deployment unless the hardware and boot environment are covered by Red Hat's RHEL for ARM 64 support requirements.
