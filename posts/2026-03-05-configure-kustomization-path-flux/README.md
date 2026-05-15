@@ -21,9 +21,9 @@ graph TD
     A[Source Repository] --> B{spec.path directory}
     B --> C{kustomization.yaml exists?}
     C -->|Yes| D[Build with Kustomize]
-    C -->|No| E[Apply all YAML files]
+    C -->|No| E[Generate kustomization.yaml]
+    E --> D
     D --> F[Apply to cluster]
-    E --> F
 ```
 
 ## Basic Path Configuration
