@@ -12,33 +12,31 @@ AWS Graviton processors are ARM64-based chips designed by Amazon that offer up t
 
 ## Why Graviton Instances
 
-Graviton instances (identified by the "g" suffix like m7g, c7g, r7g) deliver consistent performance with lower power consumption. The price difference compared to their x86 counterparts is typically 20 percent less per hour. Combined with the improved performance per core, the total cost savings range from 20-40 percent depending on the workload.
+Graviton instances (identified by the "g" suffix like m7g, c7g, r7g) deliver consistent performance with lower power consumption. The price difference compared to their x86 counterparts is often lower per hour, but the exact savings vary by instance family, size, region, and pricing model. Combined with the improved performance per core, the total cost savings can range from 20-40 percent depending on the workload.
 
-Graviton3 (the current generation) instances provide good performance for web servers, microservices, Java applications, containerized workloads, and data processing. For Kubernetes clusters where the workload is primarily containers, Graviton is an excellent fit.
+Graviton3 and newer instances provide good performance for web servers, microservices, Java applications, containerized workloads, and data processing. For Kubernetes clusters where the workload is primarily containers, Graviton is an excellent fit.
 
 ## Prerequisites
 
 Before getting started:
 
 - Access to an AWS account
-- `talosctl`, `kubectl`, and the AWS CLI installed
+- `talosctl`, `kubectl`, the AWS CLI, `curl`, and `jq` installed
 - Understanding that your container images must support ARM64 (multi-arch images work seamlessly)
 
 ## Finding the ARM64 AMI
 
-Talos publishes ARM64 AMIs alongside x86 AMIs for every release:
+Talos publishes ARM64 AMIs alongside x86 AMIs for every release. The official AMI IDs are listed in the `cloud-images.json` file attached to each Talos release:
 
 ```bash
-# Find Talos ARM64 AMIs
+# Find the official Talos ARM64 AMI for a region
+AWS_REGION=us-east-1
+TALOS_VERSION=v1.13.2
 
-aws ec2 describe-images \
-  --owners 540036508848 \
-  --filters \
-    "Name=name,Values=talos-v1.7*" \
-    "Name=architecture,Values=arm64" \
-  --region us-east-1 \
-  --query 'Images | sort_by(@, &CreationDate) | [-3:].{Name:Name, ImageId:ImageId, Arch:Architecture}' \
-  --output table
+AMI=$(curl -sL "https://github.com/siderolabs/talos/releases/download/${TALOS_VERSION}/cloud-images.json" | \
+  jq -r '.[] | select(.cloud == "aws") | select(.region == "'${AWS_REGION}'") | select(.arch == "arm64") | .id')
+
+echo "$AMI"
 ```
 
 Make sure you use the ARM64 AMI, not the x86 one. Using the wrong architecture AMI will result in instances that fail to boot.
@@ -50,11 +48,9 @@ The machine configuration for ARM64 is identical to x86. Talos abstracts away th
 ```bash
 # Generate configuration - same process regardless of architecture
 talosctl gen config graviton-cluster https://graviton-cluster-lb.us-east-1.elb.amazonaws.com:6443 \
-  --config-patch='[
-    {"op": "add", "path": "/cluster/externalCloudProvider", "value": {
-      "enabled": true
-    }}
-  ]'
+  --with-examples=false \
+  --with-docs=false \
+  --install-disk /dev/xvda
 ```
 
 No special flags or configuration are needed for ARM64. The same controlplane.yaml and worker.yaml files work on both architectures.
@@ -66,7 +62,7 @@ Launch your cluster using Graviton instance types:
 ```bash
 # Launch a Graviton control plane node
 aws ec2 run-instances \
-  --image-id ami-0xxxx-arm64 \
+  --image-id "$AMI" \
   --instance-type m7g.xlarge \
   --count 1 \
   --subnet-id subnet-xxxxxxxx \
@@ -78,7 +74,7 @@ aws ec2 run-instances \
 
 # Launch Graviton worker nodes
 aws ec2 run-instances \
-  --image-id ami-0xxxx-arm64 \
+  --image-id "$AMI" \
   --instance-type m7g.2xlarge \
   --count 3 \
   --subnet-id subnet-xxxxxxxx \
@@ -221,14 +217,14 @@ In-place upgrades work the same on ARM64 as on x86:
 ```bash
 # Upgrade a Graviton node to a new Talos version
 talosctl upgrade --nodes <node-ip> \
-  --image ghcr.io/siderolabs/installer:v1.7.1
+  --image ghcr.io/siderolabs/installer:v1.13.2
 ```
 
 Talos automatically uses the correct architecture-specific image.
 
 ## Combining with Spot Instances
 
-Graviton Spot Instances offer the deepest discounts. Graviton instances generally have lower spot interruption rates because fewer people compete for ARM64 capacity:
+Graviton Spot Instances can offer deep discounts, but interruption rates vary by instance type, Availability Zone, and current capacity. Use multiple compatible Graviton instance types and the capacity-optimized allocation strategy to reduce interruption risk:
 
 ```bash
 # Create a mixed instance ASG with Graviton types
