@@ -47,6 +47,15 @@ graph TD
     php_version: "8.1"
 
   tasks:
+    # ---- System dependencies ----
+    - name: Install system dependencies
+      ansible.builtin.dnf:
+        name:
+          - firewalld
+          - python3-firewall
+          - python3-libsemanage
+        state: present
+
     # ---- Apache ----
     - name: Install Apache
       ansible.builtin.dnf:
@@ -94,6 +103,11 @@ graph TD
         state: started
 
     # ---- PHP ----
+    - name: Install PHP module stream
+      ansible.builtin.dnf:
+        name: "@php:{{ php_version }}"
+        state: present
+
     - name: Install PHP and common extensions
       ansible.builtin.dnf:
         name:
@@ -202,6 +216,12 @@ graph TD
         login_unix_socket: /var/lib/mysql/mysql.sock
 
     # ---- Firewall ----
+    - name: Enable and start firewalld
+      ansible.builtin.systemd:
+        name: firewalld
+        enabled: true
+        state: started
+
     - name: Open HTTP and HTTPS in firewall
       ansible.posix.firewalld:
         service: "{{ item }}"
