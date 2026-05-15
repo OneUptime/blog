@@ -14,7 +14,7 @@ systemd portable services provide a way to run application bundles in isolated e
 
 - RHEL with systemd 250 or later
 - Root or sudo access
-- `systemd-portable` package installed
+- `systemd-container` and `squashfs-tools` packages installed
 
 ## What Are Portable Services
 
@@ -23,7 +23,7 @@ Portable services bundle an application, its libraries, and unit files into a si
 ## Step 1: Install Required Packages
 
 ```bash
-sudo dnf install -y systemd-container
+sudo dnf install -y systemd-container squashfs-tools
 ```
 
 ## Step 2: Create a Portable Service Image
@@ -34,6 +34,9 @@ Build a minimal directory tree:
 mkdir -p /tmp/myportable/usr/lib/systemd/system
 mkdir -p /tmp/myportable/usr/local/bin
 mkdir -p /tmp/myportable/etc
+mkdir -p /tmp/myportable/proc /tmp/myportable/sys /tmp/myportable/dev
+mkdir -p /tmp/myportable/run /tmp/myportable/tmp /tmp/myportable/var/tmp
+touch /tmp/myportable/etc/resolv.conf /tmp/myportable/etc/machine-id
 ```
 
 Create the service unit inside the image:
@@ -74,7 +77,7 @@ mksquashfs /tmp/myportable myportable_1.0.raw -noappend
 ## Step 4: Attach the Portable Service
 
 ```bash
-sudo portablectl attach myportable_1.0.raw
+sudo portablectl attach ./myportable_1.0.raw
 ```
 
 This copies the unit files from the image into the host systemd configuration.
@@ -90,7 +93,7 @@ systemctl status myportable.service
 
 ```bash
 portablectl list
-sudo portablectl detach myportable_1.0.raw
+sudo portablectl detach ./myportable_1.0.raw
 ```
 
 ## Security Profiles
@@ -98,7 +101,7 @@ sudo portablectl detach myportable_1.0.raw
 Portable services support security profiles that restrict what the service can access:
 
 ```bash
-sudo portablectl attach --profile=strict myportable_1.0.raw
+sudo portablectl attach --profile=strict ./myportable_1.0.raw
 ```
 
 Available profiles include `default`, `strict`, `trusted`, and `nonetwork`.
