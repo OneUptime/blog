@@ -31,18 +31,18 @@ The simplest approach is to set `find_multipaths` in the defaults section:
 
 ```bash
 defaults {
-    find_multipaths yes
+    find_multipaths on
 }
 ```
 
-This tells multipathd to only create multipath devices when it detects more than one path to a device. Local disks with a single path are automatically excluded.
+This tells multipathd to create multipath devices only when it detects multiple paths with the same WWID, when the device was manually added, or when the WWID was previously recorded in `/etc/multipath/wwids`. Local disks with a single path are normally excluded.
 
 The `find_multipaths` parameter has several modes:
 
-- `yes`: Create multipath only if multiple paths exist
-- `no`: Try to create multipath for all devices
-- `smart`: Like yes, but waits briefly for additional paths before deciding
-- `greedy`: Create multipath for all non-blacklisted devices (even with one path)
+- `on`: Create multipath devices only for valid multipath candidates
+- `off`: Try to create multipath devices for all non-blacklisted devices
+- `strict`: Only create multipath devices for WWIDs that are already in `/etc/multipath/wwids`
+- `smart`: Like `on`, but waits briefly for additional paths before deciding
 
 ## Blacklisting by Device Name
 
@@ -61,7 +61,7 @@ The most reliable method is blacklisting by WWID:
 ```bash
 # Find the WWID of local disks
 
-sudo /lib/udev/scsi_id -g -u /dev/sda
+sudo multipathd show paths raw format "%d %w" | grep sda
 ```
 
 Add to multipath.conf:
@@ -163,6 +163,9 @@ After editing the blacklist:
 # Flush existing unused maps
 sudo multipath -F
 
+# Check configuration syntax
+sudo multipath -t > /dev/null
+
 # Reconfigure
 sudo multipathd reconfigure
 
@@ -183,4 +186,4 @@ sudo multipath -v3 2>&1 | grep -i blacklist
 
 ## Conclusion
 
-Blacklisting local disks from multipath keeps your configuration clean and prevents potential boot issues. Use `find_multipaths yes` as the first line of defense, then add explicit blacklist entries for device types that should never be multipathed. The combination of broad blacklisting with specific exceptions gives you the most control.
+Blacklisting local disks from multipath keeps your configuration clean and prevents potential boot issues. Use `find_multipaths on` as the first line of defense, then add explicit blacklist entries for device types that should never be multipathed. The combination of broad blacklisting with specific exceptions gives you the most control.
