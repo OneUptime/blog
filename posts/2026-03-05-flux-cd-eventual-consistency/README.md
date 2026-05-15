@@ -163,7 +163,7 @@ spec:
   force: false                # Do not replace resources on immutable field changes
 ```
 
-The drift detection respects field ownership. If an HPA (Horizontal Pod Autoscaler) changes the replica count on a Deployment, and Flux does not manage the `replicas` field, Flux will not revert the HPA's changes. Only fields that Flux has set through server-side apply are tracked and corrected.
+The drift detection works with server-side apply field ownership and Flux's apply policy. If an HPA (Horizontal Pod Autoscaler) changes the replica count on a Deployment, and Flux does not manage the `replicas` field, Flux will not revert the HPA's changes. Fields defined in the Flux manifests are corrected on reconciliation, while fields added by other tools may require the `Merge` policy or the documented `flux-client-side-apply` field manager to be preserved under Flux's default `Override` policy.
 
 ```yaml
 # If your Deployment does not set replicas, Flux will not manage that field
