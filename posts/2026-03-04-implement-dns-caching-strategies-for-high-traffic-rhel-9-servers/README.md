@@ -24,7 +24,7 @@ Install and configure Unbound as a local caching resolver:
 sudo dnf install -y unbound
 ```
 
-```yaml
+```text
 server:
     interface: 127.0.0.1
     access-control: 127.0.0.0/8 allow
@@ -46,18 +46,20 @@ sudo dnf install -y nscd
 sudo systemctl enable --now nscd
 ```
 
-Configure cache sizes:
+Configure the hosts cache:
 
 ```bash
 sudo vi /etc/nscd.conf
 ```
 
-```bash
+```text
 enable-cache            hosts           yes
 positive-time-to-live   hosts           3600
 negative-time-to-live   hosts           20
 suggested-size          hosts           211
 ```
+
+For DNS-backed host lookups, `nscd` uses the TTL returned by DNS rather than the `positive-time-to-live` value.
 
 ## Strategy 3: Application-Level Caching
 
@@ -81,13 +83,24 @@ def cached_resolve(hostname):
 
 Use Unbound to enforce minimum TTL values for aggressive caching:
 
-```yaml
+```text
 server:
     cache-min-ttl: 300
     cache-max-negative-ttl: 60
 ```
 
 ## Monitoring Cache Effectiveness
+
+Enable Unbound remote control before using `unbound-control`:
+
+```text
+remote-control:
+    control-enable: yes
+```
+
+```bash
+sudo -u unbound unbound-control-setup
+```
 
 ```bash
 sudo unbound-control stats | grep -E 'total.num|cache'
