@@ -78,10 +78,10 @@ sudo bpftrace -e 'tracepoint:syscalls:sys_exit_read /args.ret > 0/ { @bytes = hi
 
 ```bash
 sudo bpftrace -e '
-kprobe:blk_account_io_start { @start[arg0] = nsecs; }
-kprobe:blk_account_io_done /@start[arg0]/ {
-    @usecs = hist((nsecs - @start[arg0]) / 1000);
-    delete(@start[arg0]);
+tracepoint:block:block_bio_queue { @start[args.sector] = nsecs; }
+tracepoint:block:block_rq_complete, tracepoint:block:block_bio_complete /@start[args.sector]/ {
+    @usecs = hist((nsecs - @start[args.sector]) / 1000);
+    delete(@start[args.sector]);
 }'
 ```
 
@@ -104,16 +104,17 @@ BEGIN
     printf("Tracing block I/O latency... Hit Ctrl-C to end.\n");
 }
 
-kprobe:blk_account_io_start
+tracepoint:block:block_bio_queue
 {
-    @start[arg0] = nsecs;
+    @start[args.sector] = nsecs;
 }
 
-kprobe:blk_account_io_done
-/@start[arg0]/
+tracepoint:block:block_rq_complete,
+tracepoint:block:block_bio_complete
+/@start[args.sector]/
 {
-    @usecs = hist((nsecs - @start[arg0]) / 1000);
-    delete(@start[arg0]);
+    @usecs = hist((nsecs - @start[args.sector]) / 1000);
+    delete(@start[args.sector]);
 }
 
 END
@@ -188,4 +189,4 @@ sudo bpftrace -l 'uprobe:/usr/sbin/httpd:*'
 
 ## Conclusion
 
-bpftrace on RHEL provides a powerful and concise way to write eBPF tracing programs. Use one-liners for quick investigations and scripts for complex analysis. The minimal overhead makes bpftrace safe for production use.
+bpftrace on RHEL provides a powerful and concise way to write eBPF tracing programs. Use one-liners for quick investigations and scripts for complex analysis. bpftrace typically has low overhead, but high-frequency probes should be tested before sustained production use.
