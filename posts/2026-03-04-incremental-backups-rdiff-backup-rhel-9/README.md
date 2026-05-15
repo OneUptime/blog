@@ -31,15 +31,16 @@ graph TD
 ```bash
 # Install rdiff-backup from EPEL
 
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
 sudo dnf install epel-release
 sudo dnf install rdiff-backup
 ```
 
-If not in EPEL, install via pip:
+If not in EPEL, install via pip with Python 3.10 or newer:
 
 ```bash
-sudo dnf install python3-pip librsync-devel
-sudo pip3 install rdiff-backup
+sudo dnf install python3-pip python3-devel gcc libacl-devel librsync-devel
+pip3 install rdiff-backup
 ```
 
 Verify the installation:
@@ -52,23 +53,23 @@ rdiff-backup --version
 
 ```bash
 # Back up /home to a local backup directory
-rdiff-backup /home /backup/home
+rdiff-backup backup /home /backup/home
 
 # Back up /etc
-rdiff-backup /etc /backup/etc
+rdiff-backup backup /etc /backup/etc
 
 # Back up /var/www
-rdiff-backup /var/www /backup/www
+rdiff-backup backup /var/www /backup/www
 ```
 
 ## Remote Backup over SSH
 
 ```bash
 # Back up to a remote server
-rdiff-backup /home backupuser@backup.example.com::/backup/server1/home
+rdiff-backup backup /home backupuser@backup.example.com::/backup/server1/home
 
 # Back up from a remote server to local
-rdiff-backup backupuser@remote.example.com::/var/www /backup/remote-www
+rdiff-backup backup backupuser@remote.example.com::/var/www /backup/remote-www
 ```
 
 ## Automated Backup Script
@@ -89,8 +90,8 @@ for DIR in /etc /home /var/www /opt/app; do
     DIRNAME=$(basename "$DIR")
     echo "$(date): Backing up $DIR" >> "$LOG"
     
-    rdiff-backup \
-        --verbosity 3 \
+    rdiff-backup --verbosity 3 \
+        backup \
         --exclude '**/*.tmp' \
         --exclude '**/.cache' \
         --exclude '**/lost+found' \
@@ -106,7 +107,7 @@ done
 # Remove increments older than 30 days
 echo "$(date): Removing old increments" >> "$LOG"
 for DIR in etc home www app; do
-    rdiff-backup --remove-older-than 30D \
+    rdiff-backup --force remove increments --older-than 30D \
         "${REMOTE_SERVER}::${REMOTE_BASE}/${DIR}" \
         >> "$LOG" 2>&1
 done
@@ -136,71 +137,71 @@ Restore the latest version:
 
 ```bash
 # Restore a single file (latest version)
-rdiff-backup --restore-as-of now /backup/home/user1/document.txt /tmp/restored-document.txt
+rdiff-backup restore --at now /backup/home/user1/document.txt /tmp/restored-document.txt
 
 # Restore an entire directory (latest)
-rdiff-backup --restore-as-of now /backup/home/user1/ /tmp/restored-user1/
+rdiff-backup restore --at now /backup/home/user1/ /tmp/restored-user1/
 ```
 
 Restore from a specific point in time:
 
 ```bash
 # Restore from 3 days ago
-rdiff-backup --restore-as-of 3D /backup/home/user1/document.txt /tmp/restored-3days.txt
+rdiff-backup restore --at 3D /backup/home/user1/document.txt /tmp/restored-3days.txt
 
 # Restore from a specific date
-rdiff-backup --restore-as-of 2026-02-28 /backup/etc/ /tmp/restored-etc/
+rdiff-backup restore --at 2026-02-28 /backup/etc/ /tmp/restored-etc/
 
 # Restore from 1 week ago
-rdiff-backup --restore-as-of 1W /backup/var/www/ /tmp/restored-www/
+rdiff-backup restore --at 1W /backup/var/www/ /tmp/restored-www/
 ```
 
 ## Listing Available Increments
 
 ```bash
 # List available backup dates for a directory
-rdiff-backup --list-increments /backup/home
+rdiff-backup list increments /backup/home
 
 # Show increment sizes
-rdiff-backup --list-increment-sizes /backup/home
+rdiff-backup list increments --size /backup/home
 
 # List files changed at a specific increment
-rdiff-backup --list-changed-since 3D /backup/home
+rdiff-backup list files --changed-since 3D /backup/home
 ```
 
 ## Comparing Backups
 
 ```bash
 # Compare current source with backup
-rdiff-backup --compare /home /backup/home
+rdiff-backup compare /home /backup/home
 
 # Compare with a backup from 5 days ago
-rdiff-backup --compare-at-time 5D /home /backup/home
+rdiff-backup compare --at 5D /home /backup/home
 ```
 
 ## Managing Backup Size
 
 ```bash
 # Remove increments older than 60 days
-rdiff-backup --remove-older-than 60D /backup/home
+rdiff-backup --force remove increments --older-than 60D /backup/home
 
 # Remove all but the last 10 increments
-rdiff-backup --remove-older-than 10B /backup/home
+rdiff-backup --force remove increments --older-than 10B /backup/home
 
 # Check backup directory size
-rdiff-backup --list-increment-sizes /backup/home
+rdiff-backup list increments --size /backup/home
 ```
 
 ## Verifying Backups
 
 ```bash
 # Verify backup integrity
-rdiff-backup --verify /backup/home
+rdiff-backup verify /backup/home
 
-# Get backup statistics
-rdiff-backup --calculate-average /backup/home
+# Calculate average statistics
+rdiff-backup calculate /backup/home/rdiff-backup-data/session_statistics.*.data
 ```
 
 ## Wrapping Up
 
-rdiff-backup is ideal when you want the simplicity of a mirror backup with the safety net of being able to go back in time. The most recent backup is always a plain directory you can browse and copy from without any special tools. Only the older versions require the rdiff-backup tool to reconstruct. This is a significant advantage over tools that store everything in a proprietary format. The time-based retention (`--remove-older-than 30D`) keeps disk usage under control without any complex rotation scripts.
+rdiff-backup is ideal when you want the simplicity of a mirror backup with the safety net of being able to go back in time. The most recent backup is always a plain directory you can browse and copy from without any special tools. Only the older versions require the rdiff-backup tool to reconstruct. This is a significant advantage over tools that store everything in a proprietary format. The time-based retention (`remove increments --older-than 30D`) keeps disk usage under control without any complex rotation scripts.
