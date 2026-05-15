@@ -24,7 +24,7 @@ For tmpfs:
 tmpfs  /mnt/ramdisk  tmpfs  defaults,size=2G  0 0
 ```
 
-- Device is always `tmpfs`
+- Device is usually `tmpfs` for clarity, though fstab allows other source names for filesystems without backing storage
 - Type is always `tmpfs`
 - Dump and pass are both `0` (no backup, no fsck needed)
 
@@ -43,6 +43,9 @@ mkdir -p /mnt/ramdisk
 ```bash
 # Add tmpfs entry to fstab
 echo "tmpfs  /mnt/ramdisk  tmpfs  defaults,size=2G,mode=1777  0 0" >> /etc/fstab
+
+# Reload systemd's generated mount units after changing fstab
+systemctl daemon-reload
 ```
 
 ### Step 3: Mount It
@@ -102,7 +105,6 @@ For more control, use systemd mount units instead of or in addition to fstab. sy
 cat > /etc/systemd/system/mnt-ramdisk.mount << 'EOF'
 [Unit]
 Description=tmpfs RAM disk for application cache
-After=local-fs.target
 
 [Mount]
 What=tmpfs
