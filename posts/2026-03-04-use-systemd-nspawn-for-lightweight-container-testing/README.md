@@ -28,7 +28,8 @@ Use `dnf` to install a minimal RHEL system into a directory:
 
 ```bash
 sudo mkdir -p /var/lib/machines/testcontainer
-sudo dnf --releasever=9 --installroot=/var/lib/machines/testcontainer   --setopt=install_weak_deps=False install -y   basesystem systemd dnf
+sudo dnf --releasever=9 --installroot=/var/lib/machines/testcontainer   --setopt=install_weak_deps=False install -y   basesystem systemd dnf passwd
+sudo systemd-nspawn -D /var/lib/machines/testcontainer passwd root
 ```
 
 ## Step 3: Boot the Container
