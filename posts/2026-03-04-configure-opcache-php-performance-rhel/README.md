@@ -12,7 +12,7 @@ OPcache stores precompiled PHP bytecode in shared memory, eliminating the need t
 
 ## Install OPcache
 
-OPcache typically ships with PHP. Verify it is installed:
+OPcache is bundled with PHP, but on RHEL it may be installed as a separate package. Verify it is installed:
 
 ```bash
 # Check if OPcache is loaded
@@ -36,7 +36,8 @@ sudo tee /etc/php.d/10-opcache.ini << 'INI'
 ; Enable OPcache
 opcache.enable=1
 
-; Enable for CLI scripts (useful for long-running workers)
+; Disable for CLI scripts by default
+; Set to 1 only for CLI workers that benefit from it
 opcache.enable_cli=0
 
 ; Memory allocated for storing cached scripts (MB)
@@ -50,8 +51,8 @@ opcache.interned_strings_buffer=16
 ; Use: find /var/www -name "*.php" | wc -l to estimate
 opcache.max_accelerated_files=20000
 
-; How often to check for file changes (seconds)
-; Set to 0 in production (requires manual restart for changes)
+; How often to check for file changes when validate_timestamps=1
+; 0 checks every request; ignored when validate_timestamps=0
 ; Set to 2 in development
 opcache.revalidate_freq=0
 
@@ -79,8 +80,8 @@ sudo systemctl restart php-fpm
 # Verify OPcache is active
 php -i | grep -A 20 "opcache"
 
-# Check OPcache status via CLI
-php -r "var_dump(opcache_get_status());" | head -30
+# Check OPcache status in a CLI process
+php -d opcache.enable_cli=1 -r "var_dump(opcache_get_status(false));" | head -30
 ```
 
 ## Monitor OPcache
@@ -106,10 +107,14 @@ Since we disabled timestamp validation for production, you must reset OPcache af
 
 ```bash
 # Restart PHP-FPM (clears OPcache)
-sudo systemctl reload php-fpm
-
-# Or reset via PHP function in your deploy script
-php -r "opcache_reset();"
+sudo systemctl restart php-fpm
 ```
 
-A properly configured OPcache can reduce page load times by 50-70% for PHP applications by eliminating redundant compilation work.
+Or call `opcache_reset()` from a PHP deploy hook served by PHP-FPM:
+
+```php
+<?php
+opcache_reset();
+```
+
+A properly configured OPcache can significantly improve PHP application performance by eliminating redundant compilation work.
