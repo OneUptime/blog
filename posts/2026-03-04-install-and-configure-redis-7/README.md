@@ -17,15 +17,17 @@ Redis 7 is an in-memory data store used for caching, session storage, real-time 
 
 ## Step 1: Install Redis
 
+For Redis 7 from the RHEL AppStream repository:
+
 ```bash
-sudo dnf install -y redis
+sudo dnf module install -y redis:7
 ```
 
-Or for the latest version:
+Or for Redis 7.2 from the Remi repository:
 
 ```bash
 sudo dnf install -y https://rpms.remirepo.net/enterprise/remi-release-9.rpm
-sudo dnf module enable redis:remi-7.2 -y
+sudo dnf module enable -y redis:remi-7.2
 sudo dnf install -y redis
 ```
 
