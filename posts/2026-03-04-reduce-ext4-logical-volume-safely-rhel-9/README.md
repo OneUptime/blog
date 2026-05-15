@@ -8,11 +8,11 @@ Description: Safely reduce an ext4 logical volume on RHEL by shrinking the files
 
 ---
 
-Growing a logical volume is easy and risk-free. Shrinking one is a different story. You must shrink the filesystem first, then shrink the LV. Get the order wrong or use the wrong size, and you lose data. XFS cannot be shrunk at all, so this only works with ext4. Here is how to do it safely.
+Growing a logical volume is straightforward and usually lower-risk. Shrinking one is a different story. You must shrink the filesystem first, then shrink the LV. Get the order wrong or use the wrong size, and you lose data. XFS cannot be shrunk at all, so this guide is for ext4. Here is how to do it safely.
 
 ## Important Warnings
 
-- XFS filesystems cannot be reduced, only ext4
+- XFS and GFS2 filesystems cannot be reduced; this guide is for ext4
 - The filesystem MUST be unmounted before shrinking
 - Always back up your data before shrinking
 - Double-check your size calculations
@@ -78,7 +78,7 @@ Now shrink the LV to match:
 sudo lvreduce -L 30G /dev/datavg/datalv
 ```
 
-You will be prompted to confirm. Type `y` to proceed.
+In most cases, you will be prompted to confirm. Type `y` to proceed.
 
 ### Step 6: Mount and Verify
 
@@ -110,7 +110,7 @@ sudo mount /dev/datavg/datalv /data
 df -h /data
 ```
 
-The `-r` flag calls `resize2fs` and `e2fsck` automatically. This is safer because it coordinates the sizes correctly.
+The `-r` flag uses `fsadm` to coordinate the filesystem resize with the LV resize, using the appropriate filesystem tools such as `resize2fs` for ext4. This is safer because it coordinates the sizes correctly.
 
 ## Reducing by a Specific Amount
 
