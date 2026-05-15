@@ -13,10 +13,12 @@ The Phoronix Test Suite provides comprehensive system benchmarking on RHEL 9 wit
 ## Install Phoronix Test Suite
 
 ```bash
-sudo dnf install -y php-cli php-xml php-json
-wget https://phoronixtest-suite.com/releases/repo/pts.debian/files/phoronix-test-suite_10.8.4_all.deb
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+sudo dnf install -y phoronix-test-suite
 # Or install from source
 
+sudo dnf install -y git php-cli php-xml
 git clone https://github.com/phoronix-test-suite/phoronix-test-suite.git
 cd phoronix-test-suite
 sudo ./install-sh
@@ -55,7 +57,7 @@ phoronix-test-suite benchmark pts/server
 ## Compare Results
 
 ```bash
-phoronix-test-suite result-file-to-text results.txt
+phoronix-test-suite result-file-to-text results
 ```
 
 ## Upload Results
@@ -67,4 +69,3 @@ phoronix-test-suite upload-result results
 ## Conclusion
 
 The Phoronix Test Suite on RHEL 9 provides standardized benchmarks for comparing systems. Use it for hardware evaluation, pre-purchase testing, and tracking performance over time.
-
