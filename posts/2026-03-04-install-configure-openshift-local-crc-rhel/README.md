@@ -13,11 +13,14 @@ OpenShift Local (previously called CodeReady Containers or CRC) runs a minimal O
 ## System Requirements
 
 OpenShift Local requires:
-- 4 physical CPU cores (9 GB+ RAM recommended)
+- 4 physical CPU cores (10.5 GB+ free memory)
 - 35 GB of free disk space
-- A RHEL 8 or 9 workstation (physical or VM with nested virtualization)
+- A registered RHEL workstation from one of the latest two minor releases, with `libvirt` and `NetworkManager` installed. CRC does not support nested virtualization.
 
 ```bash
+# Install required Linux packages
+sudo dnf install libvirt NetworkManager
+
 # Verify CPU virtualization support
 
 grep -cE 'vmx|svm' /proc/cpuinfo
@@ -46,7 +49,7 @@ crc version
 ## Setting Up the Environment
 
 ```bash
-# Run the setup command to install prerequisites (libvirt, etc.)
+# Run the setup command to prepare your host for the CRC instance
 crc setup
 
 # This configures:
@@ -65,14 +68,14 @@ crc start
 # The startup takes 5-10 minutes on first run
 
 # After startup, you will see login credentials in the output:
-# To access the cluster as admin: oc login -u kubeadmin -p XXXXX
-# To access the cluster as developer: oc login -u developer -p developer
+# To access the cluster as admin: oc login -u kubeadmin -p XXXXX https://api.crc.testing:6443
+# To access the cluster as developer: oc login -u developer -p developer https://api.crc.testing:6443
 ```
 
 ## Configuring Resources
 
 ```bash
-# Increase memory allocation (default is 9 GB)
+# Increase memory allocation (default is 10752 MiB)
 crc config set memory 16384
 
 # Increase CPU cores
@@ -92,8 +95,8 @@ crc start
 # Set up the oc CLI
 eval $(crc oc-env)
 
-# Log in as admin
-oc login -u kubeadmin -p $(crc console --credentials | grep kubeadmin | awk -F"'" '{print $2}')
+# Switch to the cached admin context
+oc config use-context crc-admin
 
 # Verify the cluster is running
 oc get nodes
@@ -108,7 +111,7 @@ crc console
 
 ```bash
 # Log in as developer
-oc login -u developer -p developer
+oc login -u developer -p developer https://api.crc.testing:6443
 
 # Create a new project
 oc new-project my-test-app
