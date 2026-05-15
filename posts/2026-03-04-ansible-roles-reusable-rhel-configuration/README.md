@@ -51,27 +51,33 @@ ansible all -i inventory.ini -m ping
 
 ## Step 3 - Write Your Playbook
 
-Create a playbook YAML file:
+Create a role task file at `roles/common/tasks/main.yml`:
+
+```yaml
+---
+- name: Ensure packages are installed
+  ansible.builtin.dnf:
+    name:
+      - vim-enhanced
+      - tmux
+    state: present
+
+- name: Ensure services are running
+  ansible.builtin.systemd_service:
+    name: sshd
+    state: started
+    enabled: true
+```
+
+Create a playbook YAML file that uses the role:
 
 ```yaml
 ---
 - name: Example RHEL Administration Playbook
   hosts: all
   become: true
-  tasks:
-    - name: Ensure packages are installed
-      ansible.builtin.dnf:
-        name:
-          - vim
-          - tmux
-          - htop
-        state: present
-
-    - name: Ensure services are running
-      ansible.builtin.systemd:
-        name: sshd
-        state: started
-        enabled: true
+  roles:
+    - common
 ```
 
 ## Step 4 - Run the Playbook
@@ -89,7 +95,7 @@ ansible-playbook -i inventory.ini playbook.yml --check
 ## Step 5 - Verify Results
 
 ```bash
-ansible all -i inventory.ini -m command -a "rpm -q htop"
+ansible all -i inventory.ini -m command -a "rpm -q tmux"
 ```
 
 ## Summary
