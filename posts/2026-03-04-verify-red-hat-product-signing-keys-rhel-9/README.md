@@ -37,6 +37,7 @@ ls -la /etc/pki/rpm-gpg/
 # Typical keys on RHEL:
 # RPM-GPG-KEY-redhat-release   - Main product signing key
 # RPM-GPG-KEY-redhat-beta      - Beta product signing key
+# RPM-GPG-KEY-PQC-redhat-release - Post-quantum release key on newer RHEL 9 systems
 ```
 
 ## Viewing Installed GPG Keys
@@ -67,7 +68,7 @@ The most reliable way to verify a signing key is to compare its fingerprint with
 gpg --show-keys --with-fingerprint /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
 ```
 
-Compare the fingerprint with what Red Hat publishes on their security page. For the current RHEL 9 release key, the fingerprint should match the officially documented value `567E 347A D004 4ADE 55BA 8A5F 199E 2F91 FD43 1D51`.
+Compare the fingerprint with what Red Hat publishes on their security page. For Red Hat release key 2, which is used for RHEL 9 packages, the fingerprint should match the officially documented value `567E 347A D004 4ADE 55BA 8A5F 199E 2F91 FD43 1D51`. On RHEL 9.7 and later, Red Hat also documents release key 4 for newer RPM signing, with fingerprint `FCD355B305707A62DA143AB6E422397E50FE8467A2A95343D246D6276AFEDF8F`, so always compare every key present on your system with Red Hat's current product signing key page.
 
 ```bash
 # Import the key into your personal GPG keyring for inspection
@@ -105,7 +106,7 @@ Good output looks like:
 kernel-5.14.0-362.el9.x86_64.rpm: digests signatures OK
 ```
 
-Bad output (unsigned or bad signature):
+Bad output (bad or untrusted signature):
 
 ```bash
 kernel-5.14.0-362.el9.x86_64.rpm: DIGESTS SIGNATURES NOT OK
@@ -118,7 +119,7 @@ kernel-5.14.0-362.el9.x86_64.rpm: DIGESTS SIGNATURES NOT OK
 rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH} %{SIGPGP:pgpsig}\n' | head -30
 
 # Find packages without recorded PGP signature metadata
-rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH} %{SIGPGP:pgpsig}\n' | grep -vi "key id"
+rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH} %{SIGPGP:pgpsig}\n' | awk '$NF == "(none)"'
 ```
 
 ### Verify Packages During Installation
@@ -184,7 +185,7 @@ sudo rpm --import RPM-GPG-KEY-EPEL-9
 ```bash
 #!/bin/bash
 # /usr/local/bin/verify-rpm-keys.sh
-# Verify all RPM signing keys and package signatures
+# Audit RPM signing keys and recorded package signature metadata
 
 echo "=== Installed GPG Keys ==="
 rpm -qa gpg-pubkey* --qf '%{NAME}-%{VERSION}-%{RELEASE}\t%{SUMMARY}\n'
@@ -207,7 +208,7 @@ done
 
 echo ""
 echo "=== Packages Without Recorded PGP Signature Metadata ==="
-UNSIGNED=$(rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH} %{SIGPGP:pgpsig}\n' 2>/dev/null | grep -vi "key id" | head -20)
+UNSIGNED=$(rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH} %{SIGPGP:pgpsig}\n' 2>/dev/null | awk '$NF == "(none)"' | head -20)
 if [ -n "$UNSIGNED" ]; then
     echo "$UNSIGNED"
 else
