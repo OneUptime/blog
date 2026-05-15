@@ -162,13 +162,13 @@ sysctl net.ipv4.ip_forward
 sudo sysctl --system
 ```
 
-The `--system` flag reloads all sysctl configuration files from `/run/sysctl.d/`, `/etc/sysctl.d/`, `/usr/local/lib/sysctl.d/`, `/usr/lib/sysctl.d/`, and `/etc/sysctl.conf`. It also shows the load order, which is helpful when debugging conflicting settings.
+The `--system` flag reloads sysctl configuration files from `/etc/sysctl.d/`, `/run/sysctl.d/`, `/usr/local/lib/sysctl.d/`, `/usr/lib/sysctl.d/`, `/lib/sysctl.d/`, and `/etc/sysctl.conf`. Files are sorted lexicographically, and `/etc/sysctl.conf` is read last. It also shows the files being applied, which is helpful when debugging conflicting settings.
 
 If a parameter does not seem to stick, check for conflicting entries in other files.
 
 ```bash
 # Search all sysctl config files for a specific parameter
-grep -r "swappiness" /etc/sysctl.d/ /usr/lib/sysctl.d/ /etc/sysctl.conf
+grep -r "swappiness" /etc/sysctl.d/ /run/sysctl.d/ /usr/local/lib/sysctl.d/ /usr/lib/sysctl.d/ /lib/sysctl.d/ /etc/sysctl.conf
 ```
 
 ## A Word About SELinux
