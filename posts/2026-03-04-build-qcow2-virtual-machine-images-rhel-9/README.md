@@ -23,6 +23,7 @@ Build QCOW2 virtual machine images for RHEL 9 using Image Builder. RHEL Image Bu
 ```bash
 sudo dnf install -y osbuild-composer composer-cli cockpit-composer
 sudo systemctl enable --now osbuild-composer.socket
+sudo systemctl enable --now cockpit.socket
 ```
 
 ## Step 2 - Create a Blueprint
@@ -83,7 +84,7 @@ composer-cli compose image <compose-uuid>
 
 ## Step 5 - Deploy the Image
 
-Deploy the image to your target platform (KVM, AWS, Azure, VMware) following the platform-specific deployment process.
+Deploy the QCOW2 image to your target platform (KVM or OpenStack) following the platform-specific deployment process. For AWS, Azure, or VMware, build the matching image type (`ami`, `vhd`, `vmdk`, or `ova`) instead of `qcow2`.
 
 ## Using the Cockpit Web Console
 
