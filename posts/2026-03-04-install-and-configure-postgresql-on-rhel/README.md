@@ -36,13 +36,13 @@ systemctl status postgresql
 
 ## Configure Authentication
 
-By default, PostgreSQL uses `ident` authentication for local connections. For password-based access, edit `pg_hba.conf`:
+By default, PostgreSQL uses `peer` authentication for local Unix socket connections and `ident` authentication for loopback TCP connections. For password-based TCP access, edit `pg_hba.conf`:
 
 ```bash
 # Edit the host-based authentication file
 sudo vi /var/lib/pgsql/data/pg_hba.conf
 
-# Change ident to md5 (or scram-sha-256) for local connections:
+# Change ident to md5 (or scram-sha-256) for TCP connections:
 # Original:
 # local   all   all                 peer
 # host    all   all   127.0.0.1/32  ident
@@ -62,6 +62,7 @@ sudo vi /var/lib/pgsql/data/postgresql.conf
 # Change listen_addresses
 # listen_addresses = '*'
 # port = 5432
+# password_encryption = scram-sha-256
 
 # Restart PostgreSQL
 sudo systemctl restart postgresql
