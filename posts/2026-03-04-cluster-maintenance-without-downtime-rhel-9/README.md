@@ -46,11 +46,18 @@ Verify resources moved:
 sudo pcs status
 ```
 
-Perform maintenance on node1 (patches, upgrades, reboots).
+Perform maintenance on node1. If you are applying software updates, stop the cluster services on the node before updating it:
+
+```bash
+sudo pcs cluster stop node1
+sudo dnf upgrade -y
+sudo reboot
+```
 
 Bring the node back:
 
 ```bash
+sudo pcs cluster start node1
 sudo pcs node unstandby node1
 ```
 
@@ -78,7 +85,7 @@ Put the entire cluster in maintenance mode:
 sudo pcs property set maintenance-mode=true
 ```
 
-All monitoring and management stops. No failover occurs during this time.
+Resource start and stop management pauses, and recurring monitors for active resources are paused. No failover occurs during this time.
 
 Exit cluster maintenance mode:
 
@@ -94,7 +101,7 @@ Disable management for a specific resource:
 sudo pcs resource unmanage WebServer
 ```
 
-The resource keeps running but Pacemaker will not monitor, restart, or move it.
+The resource keeps running but Pacemaker will not start, stop, restart, or move it. Existing recurring monitor operations are not disabled unless you also disable them explicitly.
 
 Re-enable management:
 
@@ -117,6 +124,7 @@ sudo pcs node standby node1
 sudo pcs status
 
 # Perform the upgrade on node1
+sudo pcs cluster stop node1
 sudo dnf upgrade -y
 sudo reboot
 ```
@@ -126,6 +134,7 @@ sudo reboot
 After reboot:
 
 ```bash
+sudo pcs cluster start node1
 sudo pcs node unstandby node1
 sudo pcs status
 ```
@@ -139,6 +148,7 @@ sudo pcs node standby node2
 sudo pcs status
 
 # Perform the upgrade on node2
+sudo pcs cluster stop node2
 sudo dnf upgrade -y
 sudo reboot
 ```
@@ -146,6 +156,7 @@ sudo reboot
 ### Step 4: Verify Node 2
 
 ```bash
+sudo pcs cluster start node2
 sudo pcs node unstandby node2
 sudo pcs status
 ```
@@ -191,7 +202,9 @@ sudo pcs quorum expected-votes 2
 Restore after maintenance:
 
 ```bash
-# Quorum auto-adjusts when nodes rejoin
+# Restore the normal expected votes for the full cluster
+# Replace 3 with the full node count for your cluster
+sudo pcs quorum expected-votes 3
 sudo corosync-quorumtool
 ```
 
