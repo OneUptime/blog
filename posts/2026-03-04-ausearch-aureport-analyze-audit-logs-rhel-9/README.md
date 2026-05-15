@@ -24,7 +24,7 @@ comm="vim" exe="/usr/bin/vim" key="sshd_config"
 The key fields are:
 - `audit(1709568000.123:456)` - timestamp and event serial number
 - `auid=1000` - audit user ID (original login user)
-- `uid=0` - effective user ID
+- `uid=0` - real user ID
 - `comm="vim"` - command name
 - `key="sshd_config"` - the audit rule key that triggered this event
 
@@ -46,11 +46,11 @@ sudo ausearch -m USER_LOGIN
 # Search for events related to a specific file
 sudo ausearch -f /etc/passwd
 
-# Search for events by a specific user (using audit UID)
-sudo ausearch -ua 1000
+# Search for events by a specific login user (audit UID)
+sudo ausearch -ul 1000
 
 # Search for events by effective user ID
-sudo ausearch -ui 0
+sudo ausearch -ue 0
 ```
 
 ### Time-Based Searching
@@ -59,7 +59,7 @@ sudo ausearch -ui 0
 # Events from today
 sudo ausearch -ts today
 
-# Events from the last hour
+# Events from the last 10 minutes
 sudo ausearch -ts recent
 
 # Events from a specific date
@@ -103,10 +103,10 @@ sudo ausearch -m USER_LOGIN -sv no -ts today -i
 sudo ausearch -m SYSCALL -k file_delete -ts today
 
 # SELinux AVC denials
-sudo ausearch -m AVC -ts today
+sudo ausearch -m avc,user_avc,selinux_err,user_selinux_err -ts today
 
 # Account changes
-sudo ausearch -m ADD_USER -m DEL_USER -m ADD_GROUP -m DEL_GROUP -ts today -i
+sudo ausearch -m ADD_USER,DEL_USER,ADD_GROUP,DEL_GROUP -ts today -i
 ```
 
 ### Combining Filters
@@ -115,7 +115,7 @@ You can combine multiple search criteria:
 
 ```bash
 # File changes by a specific user today
-sudo ausearch -f /etc/passwd -ua 1000 -ts today -i
+sudo ausearch -f /etc/passwd -ul 1000 -ts today -i
 
 # Failed system calls related to a specific key
 sudo ausearch -k identity -sv no -ts today -i
@@ -189,7 +189,7 @@ sudo aureport --file -ts today -i
 # Account modification report
 sudo aureport --mods -i
 
-# Report of commands executed (with sudo)
+# Report of commands executed
 sudo aureport --comm -i
 
 # Executable report
@@ -234,13 +234,13 @@ sudo aureport --summary -ts today
 sudo aureport --login --failed -ts today -i
 
 # Step 3: Look at authentication events for a suspicious user
-sudo ausearch -ua suspicious_user -ts today -i
+sudo ausearch -ul suspicious_user -ts today -i
 
 # Step 4: Check what files they accessed
-sudo ausearch -ua suspicious_user -m SYSCALL -ts today -i | grep -i "key="
+sudo ausearch -ul suspicious_user -m SYSCALL -ts today -i | grep -i "key="
 
 # Step 5: Look at their command history
-sudo ausearch -ua suspicious_user -m EXECVE -ts today -i
+sudo ausearch -ul suspicious_user -m EXECVE -ts today -i
 ```
 
 ### Daily Security Review
@@ -282,7 +282,7 @@ sudo aureport --anomaly -ts yesterday -te today -i
 sudo ausearch -m USER_CMD -ts this-month -i
 
 # Find all configuration file changes
-sudo ausearch -k identity -k sudoers -k sshd_config -ts this-week -i
+sudo ausearch -k sshd_config -ts this-week -i
 
 # Count events by type for the last month
 sudo aureport --event --summary -ts this-month
@@ -291,7 +291,7 @@ sudo aureport --event --summary -ts this-month
 ## Tips and Best Practices
 
 1. **Always use `-i` for human-readable output** when investigating events manually.
-2. **Use time ranges** to limit output. Without them, you search the entire log history.
+2. **Use time ranges** to limit output and make the time window explicit. Without `-ts`, `ausearch` starts from today.
 3. **Pipe to grep or less** for large result sets: `sudo ausearch -k identity -i | less`
 4. **Use keys consistently** in your audit rules so you can search by key name.
 5. **Automate daily reports** with a cron job or systemd timer.
@@ -303,7 +303,7 @@ sudo aureport --event --summary -ts this-month
 |------|---------|
 | Search by key | `ausearch -k keyname` |
 | Search by file | `ausearch -f /path/to/file` |
-| Search by user | `ausearch -ua username` |
+| Search by login user | `ausearch -ul username` |
 | Today's events | `ausearch -ts today` |
 | Failed logins | `aureport --login --failed -i` |
 | File access summary | `aureport --file --summary` |
