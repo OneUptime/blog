@@ -34,20 +34,34 @@ LD_DEBUG=symbols ./my_program 2>&1
 # Show binding information
 LD_DEBUG=bindings ./my_program 2>&1
 
-# Filter output for a specific library
+# Write LD_DEBUG output to /tmp/debug.<pid>
 LD_DEBUG=libs LD_DEBUG_OUTPUT=/tmp/debug ./my_program
 ```
 
-Available LD_DEBUG categories: `libs`, `reloc`, `files`, `symbols`, `bindings`, `versions`, `scopes`, `all`.
+Available LD_DEBUG categories: `libs`, `reloc`, `files`, `symbols`, `bindings`, `versions`, `scopes`, `statistics`, `unused`, `help`, `all`. The `all` category does not include `statistics` or `unused`.
 
-## Step 3: Enable and Start the Service
+## Step 3: Debug a systemd Service
+
+To debug a service, pass the LD_DEBUG settings through a systemd drop-in:
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Create an override for the service
+sudo systemctl edit <service-name>
+```
 
-# Start the service
-sudo systemctl start <service-name>
+Add the following lines:
+
+```ini
+[Service]
+Environment=LD_DEBUG=libs
+Environment=LD_DEBUG_OUTPUT=/tmp/ld-debug
+```
+
+Then restart the service:
+
+```bash
+# Restart the service with the debug environment
+sudo systemctl restart <service-name>
 
 # Check the status
 sudo systemctl status <service-name>
@@ -64,6 +78,9 @@ sudo systemctl status <service-name>
 
 # Review recent logs
 journalctl -u <service-name> --no-pager -n 20
+
+# Review LD_DEBUG output written by the service
+sudo ls -l /tmp/ld-debug.*
 ```
 
 ## Troubleshooting
