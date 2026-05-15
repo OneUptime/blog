@@ -8,24 +8,20 @@ Description: Set up Red Hat Satellite in a disconnected, air-gapped environment 
 
 ---
 
-In secure environments, Satellite servers cannot access the internet. Red Hat provides a disconnected workflow where you export content on a connected system and import it on the air-gapped Satellite using physical media.
+In secure environments, Satellite servers cannot access the internet. Red Hat provides a disconnected workflow where you export content on a connected Satellite and import it on the air-gapped Satellite using physical media.
 
 ## Architecture Overview
 
 You need two systems:
-1. A connected Satellite (or a connected RHEL host with subscription-manager) that can download content from Red Hat CDN
+1. A connected Satellite that can download content from Red Hat CDN and export it
 2. The air-gapped Satellite that receives imported content via USB drives or other offline media
 
 ## Set Up the Connected Export Host
 
-On the internet-connected system:
+On the internet-connected Satellite:
 
 ```bash
-# Install the satellite-maintain package for content export tools
-
-sudo dnf install -y satellite-maintain
-
-# Or if using a dedicated connected Satellite, sync the required repos
+# Sync the required repositories
 hammer repository synchronize \
     --product "Red Hat Enterprise Linux for x86_64" \
     --name "Red Hat Enterprise Linux 9 for x86_64 - BaseOS RPMs 9" \
@@ -41,8 +37,8 @@ hammer content-export complete version \
     --version "1.0" \
     --organization "MyOrg"
 
-# The export is saved to /var/lib/pulp/exports/
-ls /var/lib/pulp/exports/MyOrg/RHEL9-Base/1.0/
+# The export is saved under a timestamped directory in /var/lib/pulp/exports/
+ls /var/lib/pulp/exports/MyOrg/RHEL9-Base/1.0/*/
 
 # For subsequent updates, use incremental export
 hammer content-export incremental version \
@@ -54,12 +50,12 @@ hammer content-export incremental version \
 ## Transfer Content to the Air-Gapped Network
 
 ```bash
-# Copy the export directory to removable media
-sudo cp -r /var/lib/pulp/exports/MyOrg/RHEL9-Base/1.0/ /mnt/usb/
+# Copy the complete timestamped export directory to removable media
+sudo cp -r /var/lib/pulp/exports/MyOrg/RHEL9-Base/1.0/2026-03-04T12-00-00-00-00/ /mnt/usb/
 
 # Or create a tar archive
 sudo tar czf /mnt/usb/rhel9-base-1.0.tar.gz \
-    -C /var/lib/pulp/exports/MyOrg/RHEL9-Base/ 1.0/
+    -C /var/lib/pulp/exports/MyOrg/RHEL9-Base/1.0/ 2026-03-04T12-00-00-00-00/
 ```
 
 Physically transfer the media to the air-gapped network.
@@ -67,15 +63,21 @@ Physically transfer the media to the air-gapped network.
 ## Import Content on the Air-Gapped Satellite
 
 ```bash
-# Copy the content from the removable media
-sudo cp -r /mnt/usb/1.0/ /var/lib/pulp/imports/MyOrg/RHEL9-Base/
+# Copy the exported content from the removable media
+sudo mkdir -p /var/lib/pulp/imports/MyOrg/RHEL9-Base/1.0/
+sudo cp -r /mnt/usb/2026-03-04T12-00-00-00-00/ /var/lib/pulp/imports/MyOrg/RHEL9-Base/1.0/
 
 # Set correct ownership
 sudo chown -R pulp:pulp /var/lib/pulp/imports/
 
+# Configure the disconnected Satellite to use exported content instead of CDN sync
+hammer organization configure-cdn \
+    --name "MyOrg" \
+    --type export_sync
+
 # Import the content
 hammer content-import version \
-    --path /var/lib/pulp/imports/MyOrg/RHEL9-Base/1.0/ \
+    --path /var/lib/pulp/imports/MyOrg/RHEL9-Base/1.0/2026-03-04T12-00-00-00-00/ \
     --organization "MyOrg"
 
 # Verify the content view was imported
@@ -87,11 +89,6 @@ hammer content-view version list \
 ## Configure the Air-Gapped Satellite
 
 ```bash
-# Disable CDN sync attempts (not reachable anyway)
-hammer organization update \
-    --name "MyOrg" \
-    --redhat-repository-url "file:///var/lib/pulp/imports/"
-
 # Promote the imported content view to environments
 hammer content-view version promote \
     --content-view "RHEL9-Base" \
@@ -120,10 +117,10 @@ Create a script for the regular export-transfer-import cycle:
 
 ```bash
 #!/bin/bash
-# export-content.sh - Run on the connected system
+# export-content.sh - Run on the connected Satellite
 hammer content-export incremental version \
     --content-view "RHEL9-Base" \
-    --version "latest" \
+    --version "2.0" \
     --organization "MyOrg"
 
 echo "Export complete. Transfer contents of /var/lib/pulp/exports/ to air-gapped network."
