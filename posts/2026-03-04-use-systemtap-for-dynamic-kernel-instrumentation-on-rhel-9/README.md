@@ -28,7 +28,7 @@ sudo dnf install -y systemtap
 sudo stap-prep
 
 # Run a simple probe
-sudo stap -e 'probe syscall.open { printf("%s opened %s\n", execname(), argstr) }'
+sudo stap -e 'probe syscall.openat { printf("%s opened %s\n", execname(), filename) }'
 
 # Trace disk I/O per process
 sudo stap -e '
