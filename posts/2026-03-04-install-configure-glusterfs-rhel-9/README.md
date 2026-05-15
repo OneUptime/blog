@@ -1,10 +1,10 @@
-# How to Install and Configure GlusterFS on RHEL
+# How to Install and Configure GlusterFS on RHEL-Compatible Systems
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, GlusterFS, Storage, Distributed File Systems, Linux
+Tags: RHEL-Compatible, GlusterFS, Storage, Distributed File Systems, Linux
 
-Description: Step-by-step guide to installing and configuring GlusterFS on RHEL, including server setup, volume creation, and client mounting.
+Description: Step-by-step guide to installing and configuring GlusterFS on RHEL-compatible systems, including server setup, volume creation, and client mounting.
 
 ---
 
@@ -21,7 +21,7 @@ Traditional NFS shares are limited to a single server. When that server runs out
 
 ## Prerequisites
 
-You need at least two RHEL servers. For this guide:
+You need at least two RHEL-compatible servers with access to the community CentOS Storage SIG GlusterFS packages. Red Hat Gluster Storage reached end of life on December 31, 2024, so these commands are not for a supported Red Hat Gluster Storage deployment on RHEL. For this guide:
 
 - **Node 1**: gluster1.example.com (192.168.1.10)
 - **Node 2**: gluster2.example.com (192.168.1.11)
@@ -48,7 +48,7 @@ Enable the GlusterFS repository and install the server package on both nodes:
 ```bash
 # On both gluster1 and gluster2
 
-sudo dnf install -y centos-release-gluster
+sudo dnf install -y centos-release-gluster11
 sudo dnf install -y glusterfs-server
 ```
 
@@ -73,7 +73,9 @@ If you need to be more specific:
 ```bash
 # Management port
 sudo firewall-cmd --permanent --add-port=24007/tcp
-# Brick ports (one per brick, starting at 49152)
+# Management/RDMA port
+sudo firewall-cmd --permanent --add-port=24008/tcp
+# Brick ports
 sudo firewall-cmd --permanent --add-port=49152-49251/tcp
 sudo firewall-cmd --reload
 ```
@@ -86,6 +88,7 @@ On both nodes, format the dedicated disk and mount it:
 sudo mkfs.xfs -i size=512 /dev/sdb
 sudo mkdir -p /data/glusterfs/vol1/brick1
 sudo mount /dev/sdb /data/glusterfs/vol1/brick1
+sudo mkdir -p /data/glusterfs/vol1/brick1/data
 ```
 
 Add it to `/etc/fstab` for persistence:
@@ -213,4 +216,4 @@ Common issues:
 
 ## Conclusion
 
-You now have a working GlusterFS cluster on RHEL with two nodes and a replicated volume. From here, you can expand the cluster with additional nodes, explore different volume types (distributed, dispersed), and tune performance settings for your workload.
+You now have a working GlusterFS cluster on a RHEL-compatible system with two nodes and a replicated volume. From here, you can expand the cluster with additional nodes, explore different volume types (distributed, dispersed), and tune performance settings for your workload.
