@@ -18,7 +18,7 @@ LVM striping distributes data across multiple physical volumes in parallel, simi
 
 ## Understanding LVM Striping
 
-When you create a striped logical volume, LVM divides data into chunks (called stripes) and writes each chunk to a different physical volume in a round-robin fashion. This means:
+When you create a striped logical volume, LVM divides data into stripe units and writes each unit to a different physical volume in a round-robin fashion. This means:
 
 - Read operations can pull data from multiple disks simultaneously
 - Write operations distribute data across all stripe members
@@ -80,7 +80,7 @@ sudo lvdisplay -m vg_stripe/lv_fast
 
 The stripe size significantly affects performance depending on your workload:
 
-- **Small stripe size (4K-16K)**: Better for random I/O workloads with small block sizes, such as database transaction logs.
+- **Small stripe size (4K-16K)**: Better for random I/O workloads with small block sizes, such as database data files with small random reads and writes.
 - **Medium stripe size (64K-128K)**: A good general-purpose setting that works well for mixed workloads.
 - **Large stripe size (256K-1M)**: Better for sequential I/O workloads like video streaming or large file transfers.
 
@@ -122,14 +122,14 @@ Test sequential write performance:
 
 ```bash
 sudo fio --name=seq_write --directory=/fast --rw=write --bs=1M \
-  --size=1G --numjobs=1 --runtime=30 --time_based --group_reporting
+  --size=1G --numjobs=1 --runtime=30 --time_based --direct=1 --group_reporting
 ```
 
 Test random read performance:
 
 ```bash
 sudo fio --name=rand_read --directory=/fast --rw=randread --bs=4K \
-  --size=1G --numjobs=4 --runtime=30 --time_based --group_reporting
+  --size=1G --numjobs=4 --runtime=30 --time_based --direct=1 --group_reporting
 ```
 
 ## Step 6: Create a RAID 0 Striped Volume (Alternative)
@@ -140,7 +140,7 @@ RHEL also supports creating striped volumes using the RAID 0 type:
 sudo lvcreate --type raid0 -i 4 -I 64K -L 40G -n lv_raid0 vg_stripe
 ```
 
-The RAID 0 type uses the MD RAID layer and provides some additional features over simple striping, though performance characteristics are similar.
+The RAID 0 type uses LVM RAID, which layers device mapper over the kernel MD RAID drivers, and provides some additional features over simple striping, though performance characteristics are similar.
 
 ## Step 7: Extend a Striped Logical Volume
 
