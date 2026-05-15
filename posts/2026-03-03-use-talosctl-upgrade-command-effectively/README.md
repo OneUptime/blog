@@ -39,7 +39,7 @@ Specifies which node to upgrade. You can specify one node at a time (recommended
 talosctl upgrade --nodes 192.168.1.10 \
   --image ghcr.io/siderolabs/installer:v1.7.0
 
-# Multiple nodes (they will be upgraded sequentially)
+# Multiple nodes (not recommended; upgrades may be started near-simultaneously)
 talosctl upgrade --nodes 192.168.1.10,192.168.1.11 \
   --image ghcr.io/siderolabs/installer:v1.7.0
 ```
@@ -65,7 +65,7 @@ The image tag usually matches the Talos version, but for custom images it could 
 
 ### --preserve
 
-Keeps the existing machine configuration and EPHEMERAL partition data during the upgrade:
+Keeps the EPHEMERAL partition data during the upgrade:
 
 ```bash
 talosctl upgrade --nodes 192.168.1.10 \
@@ -73,7 +73,7 @@ talosctl upgrade --nodes 192.168.1.10 \
   --preserve
 ```
 
-Without `--preserve`, the upgrade may wipe the EPHEMERAL partition, which means losing container images, pod data, and temporary storage. For most production upgrades, you want `--preserve`.
+Without `--preserve`, Talos 1.7 wipes the EPHEMERAL partition, which means losing container images, pod data, and temporary storage. This is the documented default behavior, but you should use `--preserve` when you need to keep ephemeral data intact, and especially for single-node control plane upgrades.
 
 When to skip `--preserve`:
 - When you want a clean EPHEMERAL partition
@@ -82,7 +82,7 @@ When to skip `--preserve`:
 
 ### --stage
 
-Prepares the upgrade without rebooting:
+Stages the upgrade so it is applied early during a reboot:
 
 ```bash
 talosctl upgrade --nodes 192.168.1.10 \
@@ -90,14 +90,16 @@ talosctl upgrade --nodes 192.168.1.10 \
   --stage
 ```
 
-The new image is downloaded and written to the inactive boot slot, but the node continues running the current version. You can then reboot at a time of your choosing:
+The upgrade artifacts are written to disk with metadata that Talos checks early in the boot process. The node reboots, applies the upgrade before normal services start, and then reboots again into the new version:
 
 ```bash
-# Later, when ready:
-talosctl reboot --nodes 192.168.1.10
+# Follow progress with --wait or kernel logs
+talosctl upgrade --nodes 192.168.1.10 \
+  --image ghcr.io/siderolabs/installer:v1.7.0 \
+  --stage --wait
 ```
 
-This is useful for planning maintenance windows where you want to minimize the reboot time.
+This is useful when a normal upgrade cannot safely unmount filesystems, such as when a process is holding a file open on disk.
 
 ### --force
 
@@ -124,7 +126,7 @@ talosctl upgrade --nodes 192.168.1.10 \
 # Combine with a timeout
 talosctl upgrade --nodes 192.168.1.10 \
   --image ghcr.io/siderolabs/installer:v1.7.0 \
-  --wait --wait-timeout 10m
+  --wait --timeout 10m
 ```
 
 ## Choosing the Right Image
@@ -271,21 +273,14 @@ kubectl uncordon "$HOSTNAME"
 ### Stage and Apply Pattern
 
 ```bash
-# Phase 1: Stage during business hours
-for NODE in "${ALL_NODES[@]}"; do
-  talosctl upgrade --nodes "$NODE" --image "$IMAGE" --stage
-done
-
-# Phase 2: Apply during maintenance window
+# Use staged upgrades when normal upgrades fail because filesystems cannot be unmounted.
 for NODE in "${CP_NODES[@]}"; do
-  talosctl reboot --nodes "$NODE"
-  sleep 30
+  talosctl upgrade --nodes "$NODE" --image "$IMAGE" --stage --wait
   talosctl health --nodes "$NODE" --wait-timeout 10m
 done
 
 for NODE in "${WORKER_NODES[@]}"; do
-  talosctl reboot --nodes "$NODE"
-  sleep 30
+  talosctl upgrade --nodes "$NODE" --image "$IMAGE" --stage --wait
   talosctl health --nodes "$NODE" --wait-timeout 5m
 done
 ```
@@ -350,9 +345,9 @@ talosctl dmesg --nodes 192.168.1.10
 
 ## Best Practices
 
-1. Always use `--preserve` in production unless you have a specific reason not to
+1. Use `--preserve` when ephemeral data must be retained, and for single-node control plane upgrades
 2. Upgrade one node at a time and verify health between each
-3. Use `--stage` for planned maintenance windows
+3. Use `--stage` when a normal upgrade cannot safely unmount filesystems
 4. Keep your `talosctl` client version close to your cluster version
 5. Test upgrades in a staging environment first
 6. Document the exact upgrade command for each node type in your runbook
