@@ -158,7 +158,7 @@ The client connects with `wss://ws.example.com/ws`, Nginx terminates TLS, and fo
 
 ## Step 6 - Load Balancing WebSocket Connections
 
-When proxying to multiple backends, use `ip_hash` to ensure a client always reaches the same backend:
+When proxying to multiple backends, use `ip_hash` to keep a client on the same backend while that backend is available:
 
 ```nginx
 upstream wsbackend {
@@ -181,7 +181,7 @@ server {
 }
 ```
 
-`ip_hash` is important here because a WebSocket connection is stateful. If a reconnection hits a different backend, the session is lost.
+`ip_hash` is important here because a WebSocket connection is stateful. If a reconnection hits a different backend, the session may be lost unless your application shares session state across backends.
 
 ## Step 7 - Test the Configuration
 
