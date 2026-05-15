@@ -12,12 +12,12 @@ OpenSCAP is a compliance scanning tool that checks systems against security benc
 
 ## Installing Required Packages
 
-On your Ansible control node, install the SCAP tools:
+On your RHEL Ansible control node, install Ansible and the SCAP tools. Install the SCAP tools on any target host where you run `oscap` scans directly:
 
 ```bash
 # Install OpenSCAP and the SCAP Security Guide
 
-sudo dnf install -y scap-security-guide openscap-scanner openscap-utils
+sudo dnf install -y ansible-core scap-security-guide openscap-scanner openscap-utils
 ```
 
 ## Generating an Ansible Playbook from a SCAP Profile
