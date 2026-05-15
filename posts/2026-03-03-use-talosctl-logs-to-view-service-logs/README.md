@@ -33,7 +33,7 @@ To see which services you can get logs from:
 
 ```bash
 # List all services on the node
-talosctl services --nodes <node-ip>
+talosctl service --nodes <node-ip>
 ```
 
 Common services you will check logs for:
@@ -107,7 +107,7 @@ talosctl logs kubelet --nodes <node-ip> | grep -i "error" | grep "$(date -u +%Y-
 
 ## Tail Behavior
 
-By default, `talosctl logs` returns recent log entries. You can control how many lines to show:
+By default, `talosctl logs` shows the available log output from the beginning. You can use `--tail` to control how many lines to show:
 
 ```bash
 # Show the last 100 lines of etcd logs
