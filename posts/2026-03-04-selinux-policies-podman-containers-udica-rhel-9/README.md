@@ -26,7 +26,7 @@ graph LR
     F --> G[Container runs with custom policy]
 ```
 
-`udica` inspects a running container's configuration (mounted volumes, exposed ports, Linux capabilities) and generates an SELinux policy that allows exactly what the container needs and nothing more.
+`udica` inspects a running container's configuration (mounted volumes, exposed ports, Linux capabilities) and generates a tailored SELinux policy based on those requirements.
 
 ## Prerequisites
 
@@ -147,7 +147,7 @@ podman run -d --name mydb \
 
 ## Understanding udica Templates
 
-udica uses templates that grant specific capability sets:
+udica uses templates that grant specific access patterns:
 
 | Template | Provides |
 |---|---|
@@ -167,11 +167,12 @@ If your container still gets SELinux denials with the custom policy:
 # Find the denials
 sudo ausearch -m avc -ts recent | grep mywebapp_policy
 
-# Generate additional rules with audit2allow
-sudo ausearch -m avc -ts recent | audit2allow -M mywebapp_extra
+# Generate additional allow rules
+sudo ausearch -m avc -ts recent | audit2allow > mywebapp_extra.rules
 
-# Install the extra module
-sudo semodule -i mywebapp_extra.pp
+# Regenerate the udica policy with the extra rules and reinstall it
+udica -j mywebapp.json --append-rules mywebapp_extra.rules mywebapp_policy
+sudo semodule -i mywebapp_policy.cil /usr/share/udica/templates/base_container.cil /usr/share/udica/templates/net_container.cil
 ```
 
 ## Updating the Policy
