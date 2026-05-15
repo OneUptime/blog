@@ -12,17 +12,17 @@ Red Hat Insights can generate Ansible playbooks that automatically fix issues it
 
 ## How Remediation Works
 
-When Insights identifies issues (vulnerabilities, advisor recommendations, or compliance failures), each finding includes a remediation definition. You can bundle these into a remediation plan, which generates an Ansible playbook.
+When Insights identifies issues (vulnerabilities, advisor recommendations, or compliance failures), many findings include a playbook-based remediation definition. You can bundle these into a remediation plan, which generates an Ansible playbook.
 
 ## Create a Remediation Plan
 
 1. Navigate to any Insights service (Advisor, Vulnerability, or Compliance)
 2. Select one or more recommendations or CVEs
-3. Click "Remediate"
+3. Click "Plan remediation"
 4. Choose "Create a new playbook" or add to an existing one
 5. Name the playbook (e.g., "March 2026 Security Fixes")
 6. Select the affected systems
-7. Click "Save"
+7. Review the plan and click "Submit"
 
 ## View and Download Remediation Playbooks
 
@@ -48,10 +48,10 @@ cat insights-remediation.yml
 # Execute the playbook against your systems
 ansible-playbook -i inventory.ini insights-remediation.yml --become
 
-# Example playbook structure:
+# Simplified example playbook structure:
 # ---
 # - name: Remediate CVE-2024-1234 on affected hosts
-#   hosts: all
+#   hosts: affected-host.example.com
 #   become: true
 #   tasks:
 #     - name: Update vulnerable openssl package
@@ -67,7 +67,8 @@ If your systems have Cloud Connector (rhc) configured, you can run playbooks dir
 ```bash
 # Install and enable the remote host configuration daemon
 sudo dnf install -y rhc
-sudo rhc connect
+sudo rhc connect --activation-key=<activation_key_name> --organization=<organization_ID>
+sudo dnf install -y rhc-worker-playbook
 
 # Verify the connection
 sudo rhc status
