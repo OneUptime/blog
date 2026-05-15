@@ -93,8 +93,8 @@ mkdir -p /tmp/restore-test
 tar xzf /backup/full-backup-20260304.tar.gz -C /tmp/restore-test
 
 # Verify critical files exist and are readable
-ls -la /tmp/restore-test/etc/passwd
-ls -la /tmp/restore-test/etc/shadow
+test -r /tmp/restore-test/etc/passwd
+test -r /tmp/restore-test/etc/shadow
 cat /tmp/restore-test/etc/hostname
 
 # Compare restored files with current system
