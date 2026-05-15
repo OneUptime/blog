@@ -18,7 +18,7 @@ flowchart TD
     B -->|"BIOS"| C["MBR loads GRUB2 from /boot/grub2/"]
     B -->|"UEFI"| D["UEFI loads shim/GRUB2 from EFI System Partition"]
     C --> E["GRUB2 reads /boot/grub2/grub.cfg"]
-    D --> F["GRUB2 reads /boot/efi/EFI/redhat/grub.cfg"]
+    D --> F["GRUB2 reads the EFI stub, then /boot/grub2/grub.cfg"]
     E --> G["Kernel + initramfs loaded"]
     F --> G
 ```
@@ -42,11 +42,11 @@ ls /sys/firmware/efi/efivars/ 2>/dev/null | head -5
 | Feature | BIOS | UEFI |
 |---------|------|------|
 | GRUB install location | MBR of boot disk | EFI System Partition (ESP) |
-| GRUB config path | /boot/grub2/grub.cfg | /boot/efi/EFI/redhat/grub.cfg |
-| Boot partition | /boot (ext4 or xfs) | /boot/efi (FAT32, vfat) |
-| Partition scheme | MBR | GPT (recommended) |
+| GRUB config path | /boot/grub2/grub.cfg | /boot/grub2/grub.cfg (EFI stub at /boot/efi/EFI/redhat/grub.cfg) |
+| Boot partition | /boot (ext4 or xfs) | /boot plus /boot/efi ESP (FAT32, vfat) |
+| Partition scheme | MBR or GPT with a BIOS boot partition | GPT (recommended) |
 | Secure Boot | Not supported | Supported via shim |
-| GRUB packages | grub2-pc | grub2-efi-x64, shim-x64 |
+| GRUB packages | grub2-pc | grub2-efi, shim |
 | Max disk size | 2 TB (MBR limit) | No practical limit (GPT) |
 
 ## BIOS Configuration
@@ -118,10 +118,10 @@ sudo efibootmgr -c -d /dev/sda -p 1 -L "RHEL" -l '\EFI\redhat\shimx64.efi'
 
 ```bash
 # Reinstall the UEFI GRUB packages
-sudo dnf reinstall grub2-efi-x64 shim-x64 -y
+sudo dnf reinstall grub2-efi shim -y
 
 # Regenerate configuration
-sudo grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
+sudo grub2-mkconfig -o /boot/grub2/grub.cfg
 ```
 
 ## UEFI Secure Boot
@@ -162,11 +162,8 @@ sudo grubby --update-kernel=ALL --args="transparent_hugepage=never"
 # Edit /etc/default/grub (same file for both)
 sudo sed -i 's/GRUB_TIMEOUT=.*/GRUB_TIMEOUT=10/' /etc/default/grub
 
-# Regenerate config - use the right path for your system
-# BIOS:
+# Regenerate config - RHEL 9 uses this path for both BIOS and UEFI:
 sudo grub2-mkconfig -o /boot/grub2/grub.cfg
-# UEFI:
-sudo grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
 ```
 
 ### Quick Script to Detect and Regenerate
@@ -175,11 +172,11 @@ sudo grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
 # Detect boot mode and regenerate GRUB config accordingly
 if [ -d /sys/firmware/efi ]; then
     echo "UEFI system detected"
-    sudo grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
 else
     echo "BIOS system detected"
-    sudo grub2-mkconfig -o /boot/grub2/grub.cfg
 fi
+
+sudo grub2-mkconfig -o /boot/grub2/grub.cfg
 ```
 
 ## Troubleshooting
@@ -197,8 +194,8 @@ ls -la /boot/efi/EFI/redhat/
 efibootmgr -v
 
 # Reinstall shim and GRUB
-dnf reinstall grub2-efi-x64 shim-x64 -y
-grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
+dnf reinstall grub2-efi shim -y
+grub2-mkconfig -o /boot/grub2/grub.cfg
 ```
 
 ### BIOS System Not Booting
@@ -213,4 +210,4 @@ grub2-mkconfig -o /boot/grub2/grub.cfg
 
 ## Wrapping Up
 
-The main thing to remember is which configuration file path to use: `/boot/grub2/grub.cfg` for BIOS and `/boot/efi/EFI/redhat/grub.cfg` for UEFI. Beyond that, most day-to-day operations like changing kernel parameters with `grubby` work identically on both. Check your boot mode with `ls /sys/firmware/efi`, use the right path for `grub2-mkconfig`, and you will be fine. If you are deploying new servers, UEFI is the way to go for its GPT support, Secure Boot capability, and lack of the 2 TB disk limitation.
+The main thing to remember on RHEL 9 is that `/boot/grub2/grub.cfg` is the generated GRUB configuration path for both BIOS and UEFI systems. On UEFI systems, `/boot/efi/EFI/redhat/grub.cfg` is only a stub and should not be recreated with `grub2-mkconfig`. Beyond that, most day-to-day operations like changing kernel parameters with `grubby` work identically on both. Check your boot mode with `ls /sys/firmware/efi`, use the right path for `grub2-mkconfig`, and you will be fine. If you are deploying new servers, UEFI is the way to go for its GPT support, Secure Boot capability, and lack of the 2 TB disk limitation.
