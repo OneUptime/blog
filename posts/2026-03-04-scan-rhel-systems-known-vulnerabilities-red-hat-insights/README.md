@@ -15,8 +15,10 @@ Red Hat Insights includes a Vulnerability service that cross-references the pack
 Your RHEL systems must be registered with Red Hat Insights. If not already registered:
 
 ```bash
-# Register with Insights
+# Register the system with Red Hat Subscription Management first
+sudo subscription-manager register --activationkey=<activation_key_name> --org=<organization_ID>
 
+# Register with Insights
 sudo insights-client --register
 
 # Run an initial data collection
@@ -46,7 +48,7 @@ The Vulnerability dashboard lets you filter by:
 - **Severity** - Focus on Critical and Important CVEs first
 - **CVSS score** - Sort by Common Vulnerability Scoring System score
 - **Known exploits** - Filter to show only CVEs with known public exploits
-- **Business risk** - Tag systems with business risk levels to help prioritize
+- **Business risk** - Assign business risk levels to CVEs to help prioritize
 
 ## Remediate a Vulnerability
 
@@ -77,9 +79,9 @@ ansible-playbook -i hosts.ini cve-remediation.yml --become
 sudo insights-client
 ```
 
-## Exclude CVEs That Do Not Apply
+## Mark CVEs That Do Not Require Action
 
-If a CVE does not affect your workload due to specific configuration, you can mark it as "Not affected" with a business justification in the web console. This keeps your dashboard clean and focused on actionable items.
+If a CVE does not require patching because you accept the risk or have applied a mitigation, you can set its status to "No action - risk accepted" or "Resolved via mitigation" with a business justification in the web console. This keeps your dashboard clean and focused on actionable items.
 
 ## Automate Regular Scanning
 
