@@ -34,7 +34,7 @@ name=Elasticsearch repository for 8.x packages
 baseurl=https://artifacts.elastic.co/packages/8.x/yum
 gpgcheck=1
 gpgkey=https://artifacts.elastic.co/GPG-KEY-elasticsearch
-enabled=1
+enabled=0
 autorefresh=1
 type=rpm-md
 ```
@@ -42,7 +42,7 @@ type=rpm-md
 ## Step 3: Install Elasticsearch
 
 ```bash
-sudo dnf install -y elasticsearch
+sudo dnf install --enablerepo=elasticsearch -y elasticsearch
 ```
 
 The installation prints an auto-generated password for the elastic user. Save it.
@@ -74,7 +74,7 @@ sudo vi /etc/elasticsearch/jvm.options.d/heap.options
 -Xmx2g
 ```
 
-Set heap to 50% of available RAM, but no more than 31 GB.
+Set heap to no more than 50% of available RAM, and no more than the compressed ordinary object pointer threshold. 26 GB is safe on most systems and the threshold can be as large as 30 GB on some systems.
 
 ## Step 6: Start and Enable
 
