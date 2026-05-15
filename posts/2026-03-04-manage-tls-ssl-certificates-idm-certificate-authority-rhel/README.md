@@ -8,7 +8,7 @@ Description: Learn how to request, manage, and renew TLS/SSL certificates using 
 
 ---
 
-IdM includes a Dogtag Certificate Authority that can issue TLS/SSL certificates for hosts and services. This provides a centralized PKI without needing a separate CA infrastructure. Certificates are automatically tracked for renewal by the certmonger service.
+IdM includes a Dogtag Certificate Authority that can issue TLS/SSL certificates for hosts and services. This provides a centralized PKI without needing a separate CA infrastructure. Certificates requested through certmonger are automatically tracked for renewal by the certmonger service.
 
 ## Requesting a Certificate for a Service
 
@@ -24,6 +24,7 @@ ipa service-add HTTP/web1.example.com
 openssl req -new -newkey rsa:2048 -nodes \
   -keyout /etc/pki/tls/private/web1.key \
   -out /tmp/web1.csr \
+  -addext "subjectAltName = DNS:web1.example.com" \
   -subj "/CN=web1.example.com/O=EXAMPLE.COM"
 
 # Request the certificate from IdM CA
@@ -42,6 +43,7 @@ sudo ipa-getcert request \
   -K HTTP/web1.example.com \
   -k /etc/pki/tls/private/web1.key \
   -f /etc/pki/tls/certs/web1.crt \
+  -g 2048 \
   -D web1.example.com \
   -C "systemctl restart httpd"
 
@@ -68,7 +70,7 @@ openssl x509 -in /etc/pki/tls/certs/web1.crt -noout -enddate
 
 ```bash
 # Find the certificate serial number
-ipa cert-find --subject=web1.example.com
+ipa cert-find --subject="CN=web1.example.com,O=EXAMPLE.COM"
 
 # Revoke the certificate (reason 0 = unspecified)
 ipa cert-revoke --revocation-reason=0 <serial-number>
