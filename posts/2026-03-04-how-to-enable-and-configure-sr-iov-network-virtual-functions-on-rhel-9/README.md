@@ -26,7 +26,12 @@ Ensure VT-d (Intel) or AMD-Vi is enabled in BIOS settings.
 ## Enable IOMMU
 
 ```bash
+# Intel hosts
 sudo grubby --update-kernel=ALL --args="intel_iommu=on iommu=pt"
+
+# AMD hosts
+sudo grubby --update-kernel=ALL --args="iommu=pt"
+
 sudo reboot
 ```
 
@@ -64,12 +69,9 @@ ip link show eth0
 ## Assign VFs to Virtual Machines
 
 ```bash
-# Detach VF from host
-sudo virsh nodedev-detach pci_0000_03_02_0
-
-# Attach to VM
-sudo virsh attach-interface --domain vm1 --type hostdev \
-  --source 03:02.0 --model virtio --config
+# Attach VF to a running VM and persist the configuration
+sudo virsh attach-interface vm1 hostdev 0000:03:02.0 \
+  --mac 52:54:00:12:34:56 --managed --live --config
 ```
 
 ## Configure VF MAC Address and VLAN
@@ -82,4 +84,3 @@ sudo ip link set eth0 vf 0 vlan 100
 ## Conclusion
 
 SR-IOV on RHEL 9 provides near-native network performance for virtual machines by bypassing the hypervisor for data plane traffic. Use it for workloads requiring high throughput and low latency in virtualized environments.
-
