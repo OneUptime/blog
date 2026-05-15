@@ -105,4 +105,4 @@ cat /etc/krb5.conf
 ldapsearch -x -H ldap://idm1.example.com -b "dc=example,dc=com" "(uid=admin)"
 ```
 
-After enrollment, the client automatically discovers available IdM servers through DNS SRV records and fails over between them. Credentials are cached locally by SSSD, allowing users to log in even when the IdM servers are temporarily unreachable.
+After enrollment, the client can use DNS SRV records for IdM server discovery when servers are not explicitly pinned, and SSSD can fail over between configured servers. Credentials are cached locally by SSSD, allowing users to log in even when the IdM servers are temporarily unreachable.
