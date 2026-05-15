@@ -8,7 +8,7 @@ Description: Diagnose and fix kernel panics caused by out-of-memory conditions o
 
 ---
 
-A kernel panic with "Out of memory" means the system exhausted all available memory and swap, and the OOM (Out-of-Memory) killer could not free enough memory to continue. By default, the kernel panics when the OOM killer fails.
+A kernel panic with "Out of memory" means the kernel reached an OOM (Out-of-Memory) condition and either could not kill a suitable process or was configured to panic on OOM. By default, the kernel runs the OOM killer instead of panicking.
 
 ## Understanding the Panic
 
@@ -26,7 +26,7 @@ sudo journalctl -b -1 | grep "Out of memory"
 ```bash
 # Check current OOM panic setting
 cat /proc/sys/vm/panic_on_oom
-# 0 = OOM killer runs (default), 1 = always panic
+# 0 = OOM killer runs (default), 1 = panic on system-wide OOM, 2 = always panic
 
 # Ensure panic_on_oom is 0 so the OOM killer can recover
 sudo sysctl -w vm.panic_on_oom=0
@@ -96,7 +96,7 @@ sudo systemctl restart httpd
 cat /proc/sys/vm/overcommit_memory
 # 0 = heuristic (default), 1 = always overcommit, 2 = strict
 
-# For servers, strict mode prevents overcommit
+# Strict mode prevents memory overcommit, but test it with your workload first
 sudo sysctl -w vm.overcommit_memory=2
 sudo sysctl -w vm.overcommit_ratio=80
 
