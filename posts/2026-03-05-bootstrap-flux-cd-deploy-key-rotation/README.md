@@ -23,8 +23,7 @@ flux bootstrap github \
   --branch=main \
   --path=clusters/my-cluster \
   --token-auth=false \
-  --ssh-key-algorithm=ed25519 \
-  --personal
+  --ssh-key-algorithm=ed25519
 ```
 
 After bootstrap, you can inspect the deploy key secret:
@@ -62,8 +61,7 @@ flux bootstrap github \
   --branch=main \
   --path=clusters/my-cluster \
   --token-auth=false \
-  --ssh-key-algorithm=ed25519 \
-  --personal
+  --ssh-key-algorithm=ed25519
 ```
 
 The bootstrap command is idempotent, but Flux does not overwrite the existing `flux-system` Secret. After deleting the Secret and re-running bootstrap, it:
@@ -99,7 +97,7 @@ cat flux-deploy-key.pub
 
 Register the new public key on your Git provider before updating the secret in the cluster. This prevents any downtime during the rotation.
 
-For GitHub, add the deploy key via the API:
+For GitHub, add the deploy key with the GitHub CLI:
 
 ```bash
 # Add the new deploy key to the GitHub repository
@@ -146,7 +144,7 @@ gh repo deploy-key delete OLD_KEY_ID --repo your-org/fleet-infra
 Clean up the local key files:
 
 ```bash
-# Securely remove the local key files
+# Remove the local key files
 rm -f flux-deploy-key flux-deploy-key.pub
 ```
 
@@ -277,11 +275,11 @@ Note: This CronJob registers the new key on GitHub before updating the Kubernete
 
 ## Monitoring Key Rotation
 
-Set up alerts to know when key rotation occurs or fails.
+Set up alerts to monitor Flux reconciliation after key rotation.
 
 ```yaml
 # key-rotation/alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: key-rotation-alert
@@ -328,8 +326,7 @@ flux bootstrap github \
   --branch=main \
   --path=clusters/my-cluster \
   --token-auth=false \
-  --read-write-key=false \
-  --personal
+  --read-write-key=false
 ```
 
 ## Summary
