@@ -12,15 +12,17 @@ XRDP is an open source RDP server that allows Windows Remote Desktop clients (ms
 
 ## Install XRDP
 
-XRDP is available from the EPEL repository.
+XRDP is available from the EPEL repository on RHEL 8 and RHEL 9. The example below uses RHEL 9; for RHEL 8, replace `9` with `8` in the CodeReady Builder and EPEL release package commands.
 
 ```bash
+# Enable the required RHEL repository for EPEL dependencies
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+
 # Enable EPEL repository
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 
-sudo dnf install -y epel-release
-
-# Install XRDP and the TigerVNC backend
-sudo dnf install -y xrdp tigervnc-server
+# Install XRDP and the Xorg backend
+sudo dnf install -y xrdp xorgxrdp
 
 # Install a desktop environment if needed
 sudo dnf groupinstall -y "Server with GUI"
@@ -53,8 +55,8 @@ sudo firewall-cmd --reload
 ## Configure SELinux
 
 ```bash
-# Allow XRDP to connect to the VNC backend
-sudo setsebool -P xrdp_connect_all_unreserved_ports on
+# Install the XRDP SELinux policy module if it is not already installed
+sudo dnf install -y xrdp-selinux
 
 # If you encounter SELinux denials, check the audit log
 sudo ausearch -m avc -ts recent | grep xrdp
@@ -67,8 +69,9 @@ sudo ausearch -m avc -ts recent | grep xrdp
 echo "gnome-session" > ~/.Xclients
 chmod +x ~/.Xclients
 
-# Or configure the default session globally
-sudo tee /etc/xrdp/startwm.sh > /dev/null << 'SCRIPT'
+# Or configure the default session globally on EPEL/Fedora builds
+sudo cp /usr/libexec/xrdp/startwm.sh /usr/libexec/xrdp/startwm.sh.bak
+sudo tee /usr/libexec/xrdp/startwm.sh > /dev/null << 'SCRIPT'
 #!/bin/sh
 if [ -r /etc/default/locale ]; then
   . /etc/default/locale
@@ -82,7 +85,7 @@ export GDK_BACKEND=x11
 # Start GNOME session
 exec gnome-session
 SCRIPT
-sudo chmod +x /etc/xrdp/startwm.sh
+sudo chmod +x /usr/libexec/xrdp/startwm.sh
 ```
 
 ## Connect from Windows
