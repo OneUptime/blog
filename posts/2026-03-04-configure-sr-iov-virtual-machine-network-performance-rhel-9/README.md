@@ -29,7 +29,7 @@ sudo grubby --update-kernel=ALL --args="intel_iommu=on iommu=pt"
 For AMD:
 
 ```bash
-sudo grubby --update-kernel=ALL --args="amd_iommu=on iommu=pt"
+sudo grubby --update-kernel=ALL --args="iommu=pt"
 ```
 
 Reboot:
@@ -73,24 +73,12 @@ ip link show ens1f0
 
 ## Making VFs Persistent
 
-Create a udev rule or systemd service:
+Create a udev rule:
 
 ```bash
-sudo tee /etc/systemd/system/sriov-vfs.service << 'SERVICE'
-[Unit]
-Description=Create SR-IOV Virtual Functions
-After=network-pre.target
-
-[Service]
-Type=oneshot
-ExecStart=/bin/bash -c 'echo 8 > /sys/class/net/ens1f0/device/sriov_numvfs'
-RemainAfterExit=yes
-
-[Install]
-WantedBy=multi-user.target
-SERVICE
-
-sudo systemctl enable sriov-vfs
+sudo tee /etc/udev/rules.d/ens1f0-sriov.rules << 'RULE'
+ACTION=="add", SUBSYSTEM=="net", ENV{ID_NET_DRIVER}=="ixgbe", ATTR{device/sriov_numvfs}="8"
+RULE
 ```
 
 ## Assigning a VF to a VM
@@ -117,16 +105,10 @@ sudo virsh nodedev-dumpxml pci_0000_03_10_0
 Attach to VM:
 
 ```bash
-cat > /tmp/sriov-interface.xml << 'XMLEOF'
-<interface type='hostdev' managed='yes'>
-  <source>
-    <address type='pci' domain='0x0000' bus='0x03' slot='0x10' function='0x0'/>
-  </source>
-</interface>
-XMLEOF
-
-sudo virsh attach-device vmname /tmp/sriov-interface.xml --persistent
+sudo virsh attach-interface vmname hostdev 0000:03:10.0 --mac 52:54:00:00:00:10 --managed --live --config
 ```
+
+For a shut down VM, omit `--live`.
 
 ### Using virt-install
 
@@ -135,7 +117,7 @@ sudo virt-install \
     --name sriov-vm \
     --memory 4096 \
     --vcpus 4 \
-    --disk size=20 \
+    --disk path=/var/lib/libvirt/images/rhel9-vm.qcow2 \
     --os-variant rhel9.3 \
     --host-device pci_0000_03_10_0 \
     --import
