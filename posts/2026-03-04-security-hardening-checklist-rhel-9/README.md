@@ -108,31 +108,42 @@ Configure password aging and complexity:
 ```bash
 # Set password aging defaults in /etc/login.defs
 # These values apply to newly created accounts
-grep -E "^PASS_MAX_DAYS|^PASS_MIN_DAYS|^PASS_MIN_LEN|^PASS_WARN_AGE" /etc/login.defs
+grep -E "^PASS_MAX_DAYS|^PASS_MIN_DAYS|^PASS_WARN_AGE" /etc/login.defs
 
 # Recommended values
 sed -i 's/^PASS_MAX_DAYS.*/PASS_MAX_DAYS   90/' /etc/login.defs
 sed -i 's/^PASS_MIN_DAYS.*/PASS_MIN_DAYS   7/' /etc/login.defs
 sed -i 's/^PASS_WARN_AGE.*/PASS_WARN_AGE   14/' /etc/login.defs
+
+# Configure local password complexity with pam_pwquality
+mkdir -p /etc/security/pwquality.conf.d
+cat > /etc/security/pwquality.conf.d/00-hardening.conf << 'EOF'
+minlen = 14
+minclass = 4
+EOF
 ```
 
 ### Lock down root
 
 ```bash
 # Disable direct root SSH login
-sed -i 's/^#PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+mkdir -p /etc/ssh/sshd_config.d
+printf 'PermitRootLogin no\n' > /etc/ssh/sshd_config.d/01-hardening.conf
+sshd -t
 systemctl restart sshd
 
 # Restrict su access to the wheel group
-echo "auth required pam_wheel.so use_uid" >> /etc/pam.d/su
+sed -i 's/^#\?[[:space:]]*auth[[:space:]]\+required[[:space:]]\+pam_wheel\.so[[:space:]]\+use_uid.*/auth required pam_wheel.so use_uid/' /etc/pam.d/su
+grep -q '^auth required pam_wheel.so use_uid' /etc/pam.d/su || echo 'auth required pam_wheel.so use_uid' >> /etc/pam.d/su
 ```
 
 ### Configure sudo
 
 ```bash
 # Ensure sudo logs all commands
-echo 'Defaults logfile="/var/log/sudo.log"' >> /etc/sudoers.d/logging
+printf 'Defaults logfile="/var/log/sudo.log"\n' > /etc/sudoers.d/logging
 chmod 440 /etc/sudoers.d/logging
+visudo -cf /etc/sudoers.d/logging
 ```
 
 ## Phase 4: Network Hardening
