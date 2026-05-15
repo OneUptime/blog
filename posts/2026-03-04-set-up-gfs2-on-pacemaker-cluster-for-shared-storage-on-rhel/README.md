@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, GFS2, Pacemaker, Shared Storage, Clustering, DLM
 
-Description: Configure GFS2 (Global File System 2) on a Pacemaker cluster on RHEL to allow multiple nodes to simultaneously read and write to shared block storage.
+Description: Configure GFS2 (Global File System 2) on a Pacemaker cluster on RHEL 8 or RHEL 9 to allow multiple nodes to simultaneously read and write to shared block storage.
 
 ---
 
@@ -12,9 +12,13 @@ GFS2 is a shared-disk cluster file system that lets multiple nodes mount and wri
 
 ## Prerequisites
 
-You need a working Pacemaker/Corosync cluster with fencing configured, and a shared block device visible from all nodes (typically from a SAN or iSCSI target).
+You need a working Pacemaker/Corosync cluster with fencing configured, and a shared block device visible from all nodes (typically from a SAN or iSCSI target). These commands target RHEL 8 or RHEL 9 with the Resilient Storage repository enabled.
 
 ```bash
+# Enable the Resilient Storage repository on all nodes
+# Use rhel-8-for-x86_64-resilientstorage-rpms on RHEL 8
+sudo subscription-manager repos --enable=rhel-9-for-x86_64-resilientstorage-rpms
+
 # Install required packages on all nodes
 
 sudo dnf install -y gfs2-utils dlm lvm2-lockd
@@ -28,6 +32,9 @@ lsblk /dev/sdb
 The DLM must be running before GFS2 can mount.
 
 ```bash
+# Set the quorum policy required for GFS2
+sudo pcs property set no-quorum-policy=freeze
+
 # Create a DLM resource (runs as a clone on all nodes)
 sudo pcs resource create dlm ocf:pacemaker:controld \
     op monitor interval=30s on-fail=fence
@@ -35,13 +42,13 @@ sudo pcs resource create dlm ocf:pacemaker:controld \
 sudo pcs resource clone dlm clone-max=2 clone-node-max=1
 ```
 
-## Configure Clustered LVM (Optional)
+## Configure Clustered LVM Locking (Optional)
 
-If you want to use LVM on the shared device:
+If you want to build shared LVM volumes on top of the shared device, configure LVM to use `lvmlockd` first:
 
 ```bash
 # Edit /etc/lvm/lvm.conf on all nodes
-# Set locking_type = 1 and use_lvmlockd = 1
+# Set use_lvmlockd = 1
 sudo lvmconfig --mergedconfig --type diff
 
 # Create the lvmlockd resource
@@ -54,6 +61,8 @@ sudo pcs resource clone lvmlockd clone-max=2 clone-node-max=1
 sudo pcs constraint order dlm-clone then lvmlockd-clone
 sudo pcs constraint colocation add lvmlockd-clone with dlm-clone
 ```
+
+After this, create shared volume groups with `vgcreate --shared`, start the lockspace on the other nodes with `vgchange --lockstart`, and manage shared logical volumes with the `ocf:heartbeat:LVM-activate` resource before mounting them.
 
 ## Create the GFS2 File System
 
@@ -69,6 +78,9 @@ sudo mkfs.gfs2 -p lock_dlm -t mycluster:shared_gfs2 -j 2 /dev/sdb1
 
 ```bash
 # Add the GFS2 filesystem as a cloned resource
+# Create the mount point on all nodes
+sudo mkdir -p /mnt/shared
+
 sudo pcs resource create shared_fs ocf:heartbeat:Filesystem \
     device="/dev/sdb1" \
     directory="/mnt/shared" \
@@ -78,8 +90,8 @@ sudo pcs resource create shared_fs ocf:heartbeat:Filesystem \
 sudo pcs resource clone shared_fs clone-max=2 clone-node-max=1
 
 # Ensure proper ordering
-sudo pcs constraint order lvmlockd-clone then shared_fs-clone
-sudo pcs constraint colocation add shared_fs-clone with lvmlockd-clone
+sudo pcs constraint order dlm-clone then shared_fs-clone
+sudo pcs constraint colocation add shared_fs-clone with dlm-clone
 ```
 
 ## Verify the Setup
@@ -101,8 +113,9 @@ cat /mnt/shared/testfile.txt
 # Check GFS2 lock status
 sudo dlm_tool ls
 
-# View GFS2 filesystem details
-sudo gfs2_tool df /mnt/shared
+# View GFS2 mount and space details
+mount | grep gfs2
+df -h /mnt/shared
 ```
 
 Fencing is absolutely required with GFS2. If a node becomes unresponsive and is not fenced, it could corrupt the shared filesystem. Always verify fencing works before deploying GFS2 in production.
