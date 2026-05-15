@@ -49,7 +49,7 @@ gpg --symmetric --armor --cipher-algo AES256 myfile.txt
 # Decrypt and write to the original filename
 gpg --decrypt myfile.txt.gpg > myfile.txt
 
-# Or let GPG figure out the output filename
+# Or specify the output filename
 gpg --output myfile.txt --decrypt myfile.txt.gpg
 ```
 
@@ -176,7 +176,7 @@ A common use case is encrypting database or system backups:
 
 ```bash
 # Encrypt a database dump
-pg_dump mydb | gpg --symmetric --cipher-algo AES256 --batch --passphrase-fd 3 \
+pg_dump mydb | gpg --symmetric --cipher-algo AES256 --batch --pinentry-mode loopback --passphrase-fd 3 \
     3< <(cat /root/.backup-passphrase) > mydb-backup.sql.gpg
 
 # Encrypt with a recipient's public key (no passphrase needed at encrypt time)
@@ -192,7 +192,7 @@ gpg --decrypt mydb-backup.sql.gpg | psql mydb
 # List packets in an encrypted file (shows encryption info without decrypting)
 gpg --list-packets myfile.txt.gpg
 
-# Show information about who can decrypt the file
+# For public-key encrypted files, show recipient key IDs when they are not hidden
 gpg --list-packets --verbose myfile.txt.gpg
 ```
 
@@ -215,7 +215,7 @@ gpg-connect-agent reloadagent /bye
 
 ## Securely Deleting the Original File
 
-After encrypting a file, you may want to securely delete the original:
+After encrypting a file, you may want to overwrite and remove the original. `shred` is best effort and may not remove recoverable copies from journaling or copy-on-write filesystems, SSD wear leveling, snapshots, backups, or mirrors:
 
 ```bash
 # Encrypt the file
