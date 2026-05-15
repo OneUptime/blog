@@ -12,14 +12,14 @@ The default AIDE configuration on RHEL does a reasonable job of monitoring syste
 
 ## How AIDE Rules Work
 
-AIDE rules in `/etc/aide.conf` follow a straightforward pattern. Each rule is a path followed by an attribute group that defines what to check. Lines starting with `!` are exclusions, and lines starting with `=` match only the directory itself (not its contents).
+AIDE rules in `/etc/aide.conf` follow a straightforward pattern. Each rule is a path regular expression followed by an attribute group that defines what to check. Lines starting with `!` are exclusions, and lines starting with `=` match the directory entry itself without recursively adding everything below it.
 
 The basic syntax looks like this:
 
 ```bash
 /path/to/monitor   ATTRIBUTE_GROUP
 !/path/to/exclude
-=/path/to/dir/only
+=/path/to/dir/only$
 ```
 
 ## Built-in Attribute Groups
@@ -54,10 +54,10 @@ Add custom groups near the top of the file, after the existing group definitions
 # Custom group for web application files - check content and permissions
 WEBAPP = sha512+p+u+g+s+acl+selinux+xattrs
 
-# Custom group for config files - check everything including timestamps
+# Custom group for config files - check content, metadata, and timestamps
 FULLCHECK = sha512+sha256+p+u+g+s+m+c+acl+selinux+xattrs+ftype
 
-# Custom group for data directories - content only, skip metadata churn
+# Custom group for data directories - check content and stable ownership/type data
 DATAFILES = sha512+n+u+g+ftype
 
 # Custom group for binaries - check content and all security attributes
@@ -124,17 +124,17 @@ Some directories change too frequently to monitor effectively. Use exclusion rul
 
 ## Using Regular Expressions
 
-AIDE supports regular expressions for more flexible matching. Prefix the path with `@@` to use regex:
+AIDE selection paths are regular expressions by default. Use regex metacharacters directly in the path:
 
 ```bash
 # Monitor all .conf files in /etc using regex
-@@/etc/.*\.conf$ FULLCHECK
+/etc/.*\.conf$ FULLCHECK
 
 # Monitor PHP files in the web root
-@@/var/www/html/.*\.php$ WEBAPP
+/var/www/html/.*\.php$ WEBAPP
 
 # Exclude all .log files everywhere
-!@@/.*\.log$
+!/.*\.log$
 ```
 
 ## Directory-Only Rules
@@ -143,7 +143,7 @@ Sometimes you only want to monitor a directory entry itself, not its contents. U
 
 ```bash
 # Only check the /data directory attributes, not files inside it
-=/data PERMS
+=/data$ PERMS
 ```
 
 ## Organizing Rules with Separate Config Files
@@ -208,15 +208,15 @@ sudo rm /var/www/html/test-aide.txt
 
 ## Rule Precedence
 
-AIDE processes rules in order from top to bottom. More specific rules should come after general ones. If a file matches multiple rules, the last match wins. Exclusion rules (`!`) take effect regardless of order when placed appropriately.
+AIDE builds a rule tree from the configuration and uses a deepest-match algorithm to find the relevant rule list. Within a rule list, AIDE uses the first matching rule, so place more specific rules before more general ones. Negative rules (`!`) are checked after a file has otherwise matched and can prevent it from being added.
 
 ```mermaid
 flowchart TD
-    A[File Being Checked] --> B{Matches Exclusion Rule?}
-    B -->|Yes| C[Skip File]
-    B -->|No| D{Matches Any Rule?}
+    A[File Being Checked] --> D{Matches Regular or Equals Rule?}
     D -->|No| E[Skip File]
-    D -->|Yes| F[Apply Last Matching Rule]
+    D -->|Yes| B{Matches Exclusion Rule?}
+    B -->|Yes| C[Skip File]
+    B -->|No| F[Apply Selected Matching Rule]
     F --> G[Record Attributes in Database]
 ```
 
