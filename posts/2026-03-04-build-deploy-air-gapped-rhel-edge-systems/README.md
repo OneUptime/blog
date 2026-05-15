@@ -35,10 +35,10 @@ Using Image Builder, create an edge commit:
 composer-cli compose start my-edge-blueprint edge-commit
 ```
 
-For an installer image:
+For an installer image that embeds an OSTree commit:
 
 ```bash
-composer-cli compose start my-edge-blueprint edge-installer
+composer-cli compose start-ostree --ref rhel/9/x86_64/edge --url http://localhost:8080/repo my-edge-blueprint edge-installer
 ```
 
 ## Step 3 - Deploy to Edge Devices
@@ -49,14 +49,15 @@ Write the installer to a USB drive or serve it over the network:
 sudo dd if=edge-installer.iso of=/dev/sdX bs=4M status=progress
 ```
 
-## Step 4 - Configure Automatic Updates
+## Step 4 - Configure Update Rollbacks
 
-RHEL for Edge supports automatic OS updates with Greenboot health checks:
+RHEL for Edge supports update rollback with Greenboot health checks:
 
 ```bash
 # Greenboot scripts in /etc/greenboot/check/required.d/
 
-# If any script fails, the system rolls back to the previous version
+# If required checks keep failing after retry attempts,
+# Greenboot rolls back to the previous rpm-ostree deployment
 ```
 
 ## Step 5 - Deploy Workloads
@@ -67,11 +68,18 @@ For container workloads, use Podman:
 podman run -d --name myapp registry.example.com/myapp:latest
 ```
 
-For Kubernetes workloads, install MicroShift:
+For Kubernetes workloads in an air-gapped RHEL for Edge image, add MicroShift and its generated container image references to the Image Builder blueprint:
 
-```bash
-sudo dnf install -y microshift
-sudo systemctl enable --now microshift
+```toml
+[[packages]]
+name = "microshift"
+version = "*"
+
+[customizations.services]
+enabled = ["microshift"]
+
+[[containers]]
+source = "<microshift_image_pullspec_with_digest>"
 ```
 
 ## Summary
