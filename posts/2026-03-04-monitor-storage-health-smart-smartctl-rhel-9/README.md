@@ -8,7 +8,7 @@ Description: Learn how to use SMART monitoring and smartctl on RHEL to detect fa
 
 ---
 
-Hard drives and SSDs do not fail without warning. Most storage devices support SMART (Self-Monitoring, Analysis, and Reporting Technology), which tracks internal health metrics that can predict failures before they happen. On RHEL, the `smartctl` tool lets you query these metrics and set up automated monitoring.
+Hard drives and SSDs can fail suddenly, but many failures show warning signs first. Most storage devices support SMART (Self-Monitoring, Analysis, and Reporting Technology), which tracks internal health metrics that can help identify failing devices before complete failure. On RHEL, the `smartctl` tool lets you query these metrics and set up automated monitoring.
 
 ## Installing smartmontools
 
@@ -73,9 +73,9 @@ For SSDs, watch:
 
 | Attribute | What It Means | Warning Sign |
 |-----------|--------------|--------------|
-| Wear_Leveling_Count | SSD wear level | Dropping below 10% |
+| Wear_Leveling_Count | Vendor-specific SSD wear level | Low normalized value or worsening trend |
 | Reallocated_Sector_Ct | Bad NAND cells remapped | Growing count |
-| Media_Wearout_Indicator | Remaining SSD life | Approaching 0 |
+| Media_Wearout_Indicator | Vendor-specific remaining SSD life | Approaching 0, if supported by the drive |
 
 ## Viewing Complete SMART Information
 
@@ -107,7 +107,7 @@ sudo smartctl -l selftest /dev/sda
 
 ## NVMe Drive Monitoring
 
-For NVMe drives, smartctl uses a different format:
+For NVMe drives, use the NVMe namespace device path:
 
 ```bash
 sudo smartctl -a /dev/nvme0n1
