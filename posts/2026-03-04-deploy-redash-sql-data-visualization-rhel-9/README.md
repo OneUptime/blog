@@ -20,8 +20,7 @@ Redash is an open-source tool built around SQL queries. Analysts write SQL, Reda
 
 ```mermaid
 graph TD
-    A[Web Browser] --> B[Nginx]
-    B --> C[Redash Web Server]
+    A[Web Browser] --> C[Redash Web Server]
     C --> D[PostgreSQL - Metadata]
     C --> E[Redis - Cache/Queue]
     C --> F[Redash Celery Workers]
@@ -38,7 +37,7 @@ graph TD
 
 sudo dnf install -y dnf-plugins-core
 sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
-sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
 # Start and enable Docker
 sudo systemctl enable --now docker
@@ -54,8 +53,9 @@ sudo usermod -aG docker $USER
 sudo mkdir -p /opt/redash
 cd /opt/redash
 
-# Generate a secret key for cookie encryption
-echo "REDASH_COOKIE_SECRET=$(openssl rand -base64 32)" | sudo tee .env
+# Generate secret keys for cookie signing and encrypted fields
+echo "REDASH_COOKIE_SECRET=$(openssl rand -hex 32)" | sudo tee .env
+echo "REDASH_SECRET_KEY=$(openssl rand -hex 32)" | sudo tee -a .env
 
 # Add additional environment variables
 sudo tee -a .env <<EOF
@@ -76,8 +76,6 @@ EOF
 
 ```yaml
 # /opt/redash/docker-compose.yml
-version: '3.8'
-
 services:
   # Redash web server handles the UI and API
   server:
