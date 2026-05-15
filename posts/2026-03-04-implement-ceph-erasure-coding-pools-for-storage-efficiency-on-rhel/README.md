@@ -22,7 +22,7 @@ An EC profile defines:
 ```bash
 # Create a 4+2 profile (4 data chunks, 2 parity chunks)
 
-# Requires at least 6 OSDs across different failure domains
+# Requires at least 6 host failure domains when crush-failure-domain=host
 sudo ceph osd erasure-code-profile set ec-42-profile \
     k=4 m=2 \
     crush-failure-domain=host
@@ -40,7 +40,7 @@ sudo ceph osd erasure-code-profile ls
 # Create an EC pool using the profile
 sudo ceph osd pool create ec-data-pool 128 erasure ec-42-profile
 
-# Enable the pool for RGW or RBD usage
+# Enable the pool for RGW usage
 sudo ceph osd pool application enable ec-data-pool rgw
 ```
 
@@ -49,29 +49,33 @@ sudo ceph osd pool application enable ec-data-pool rgw
 EC pools work well for RGW data storage. Configure the default data pool for a zone:
 
 ```bash
-# Set the RGW data pool to use erasure coding
-sudo radosgw-admin zone modify --rgw-zone=default \
+# Set the RGW default placement data pool to use erasure coding
+sudo radosgw-admin zone placement modify --rgw-zone=default \
+    --placement-id=default-placement \
+    --storage-class=STANDARD \
     --data-pool=ec-data-pool
 
-# Commit the changes
+# Commit the changes for multisite deployments
 sudo radosgw-admin period update --commit
 ```
 
-## Use EC Pools with RBD (via Cache Tier)
+## Use EC Pools with RBD
 
-RBD requires a replicated pool for metadata. You can use EC for data with an overlay:
+RBD requires a replicated pool for metadata. You can use EC for data by enabling overwrites and specifying the EC pool as the data pool when creating images:
 
 ```bash
-# Create a replicated pool for the EC pool's metadata
+# Create a replicated pool for RBD metadata
 sudo ceph osd pool create ec-rbd-meta 64
+sudo ceph osd pool application enable ec-rbd-meta rbd
+sudo rbd pool init ec-rbd-meta
 
 # Create the EC data pool
 sudo ceph osd pool create ec-rbd-data 128 erasure ec-42-profile
+sudo ceph osd pool application enable ec-rbd-data rbd
+sudo ceph osd pool set ec-rbd-data allow_ec_overwrites true
 
-# Set up a cache tier (replicated pool fronting the EC pool)
-sudo ceph osd tier add ec-rbd-data ec-rbd-meta
-sudo ceph osd tier cache-mode ec-rbd-meta writeback
-sudo ceph osd tier set-overlay ec-rbd-data ec-rbd-meta
+# Create an image whose metadata is in the replicated pool and data is in the EC pool
+sudo rbd create --size 1G --data-pool ec-rbd-data ec-rbd-meta/image01
 ```
 
 ## Verify EC Pool Status
