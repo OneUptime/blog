@@ -76,7 +76,7 @@ sudo grubby --update-kernel=ALL --remove-args="quiet rhgb"
 sudo grubby --update-kernel=ALL --args="crashkernel=256M"
 
 # Allocate huge pages at boot
-sudo grubby --update-kernel=ALL --args="hugepages=1024 hugepagesz=2M"
+sudo grubby --update-kernel=ALL --args="hugepagesz=2M hugepages=1024"
 
 # Disable transparent huge pages
 sudo grubby --update-kernel=ALL --args="transparent_hugepage=never"
@@ -112,7 +112,7 @@ sudo grubby --update-kernel=ALL --args="isolcpus=2-7"
 
 ```bash
 # Disable kernel module loading after boot (security hardening)
-sudo grubby --update-kernel=ALL --args="modules_disabled=1"
+sudo sysctl -w kernel.modules_disabled=1
 
 # Set SELinux mode from the command line
 sudo grubby --update-kernel=ALL --args="enforcing=1"
@@ -136,7 +136,7 @@ sudo grubby --update-kernel=ALL --args="earlyprintk=ttyS0,115200"
 
 ## Using /etc/default/grub for Global Settings
 
-For parameters that should apply to every kernel, including future updates, set them in `/etc/default/grub`.
+For parameters that should be managed through GRUB defaults, set them in `/etc/default/grub` and update the Boot Loader Specification (BLS) entries.
 
 ```bash
 # Edit the defaults file
@@ -145,11 +145,8 @@ sudo vi /etc/default/grub
 # Modify the GRUB_CMDLINE_LINUX line
 GRUB_CMDLINE_LINUX="crashkernel=256M resume=/dev/mapper/rhel-swap rd.lvm.lv=rhel/root rd.lvm.lv=rhel/swap transparent_hugepage=never"
 
-# Regenerate GRUB configuration
-# For BIOS:
-sudo grub2-mkconfig -o /boot/grub2/grub.cfg
-# For UEFI:
-sudo grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
+# Regenerate GRUB configuration and update BLS command lines
+sudo grub2-mkconfig -o /boot/grub2/grub.cfg --update-bls-cmdline
 ```
 
 ```mermaid
@@ -157,7 +154,7 @@ flowchart TD
     A["How to set kernel parameters"] --> B{"Scope?"}
     B -->|"One kernel"| C["grubby --update-kernel=/boot/vmlinuz-X"]
     B -->|"All current kernels"| D["grubby --update-kernel=ALL"]
-    B -->|"All current and future kernels"| E["Edit /etc/default/grub<br/>+ grub2-mkconfig"]
+    B -->|"GRUB defaults / BLS refresh"| E["Edit /etc/default/grub<br/>+ grub2-mkconfig --update-bls-cmdline"]
 ```
 
 ## Temporary One-Time Parameters
@@ -190,4 +187,4 @@ cat /boot/loader/entries/*.conf
 
 ## Wrapping Up
 
-Kernel command-line parameters on RHEL are managed through `grubby` for targeted changes and `/etc/default/grub` for global defaults. The key is knowing where each parameter should go: use `grubby --update-kernel=ALL` for changes that need to apply now, and edit `/etc/default/grub` with `grub2-mkconfig` for changes that must persist across future kernel installations. Always verify with `cat /proc/cmdline` after rebooting, and test unfamiliar parameters with a one-time GRUB menu edit before making them permanent.
+Kernel command-line parameters on RHEL are managed through `grubby` for targeted changes and `/etc/default/grub` for GRUB defaults. The key is knowing where each parameter should go: use `grubby --update-kernel=ALL` for changes that need to apply now, and edit `/etc/default/grub` with `grub2-mkconfig --update-bls-cmdline` when you need to refresh BLS entries from `GRUB_CMDLINE_LINUX`. Always verify with `cat /proc/cmdline` after rebooting, and test unfamiliar parameters with a one-time GRUB menu edit before making them permanent.
