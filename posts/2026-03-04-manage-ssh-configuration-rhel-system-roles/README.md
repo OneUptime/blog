@@ -14,13 +14,13 @@ SSH configuration drift is a real problem at scale. One server allows root login
 
 RHEL provides two separate roles for SSH:
 
-- `rhel-system-roles.sshd` - configures the SSH **server** (sshd)
-- `rhel-system-roles.ssh` - configures the SSH **client**
+- `redhat.rhel_system_roles.sshd` - configures the SSH **server** (sshd)
+- `redhat.rhel_system_roles.ssh` - configures the SSH **client**
 
 ```mermaid
 graph TD
-    A[Ansible Control Node] --> B[rhel-system-roles.sshd]
-    A --> C[rhel-system-roles.ssh]
+    A[Ansible Control Node] --> B[redhat.rhel_system_roles.sshd]
+    A --> C[redhat.rhel_system_roles.ssh]
     B --> D[/etc/ssh/sshd_config on targets/]
     C --> E[/etc/ssh/ssh_config on targets/]
 ```
@@ -45,7 +45,7 @@ Here is a playbook that hardens the SSH server configuration:
   hosts: all
   become: true
   vars:
-    sshd:
+    sshd_config:
       # Disable root login
       PermitRootLogin: "no"
       # Only allow key-based authentication
@@ -68,7 +68,7 @@ Here is a playbook that hardens the SSH server configuration:
       KexAlgorithms: "curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp521"
 
   roles:
-    - rhel-system-roles.sshd
+    - redhat.rhel_system_roles.sshd
 ```
 
 Run the playbook:
@@ -90,7 +90,7 @@ You can restrict SSH access to certain users or groups:
   hosts: all
   become: true
   vars:
-    sshd:
+    sshd_config:
       PermitRootLogin: "no"
       PasswordAuthentication: "no"
       # Only allow these users to SSH in
@@ -99,7 +99,7 @@ You can restrict SSH access to certain users or groups:
       AllowGroups: "sshusers wheel"
 
   roles:
-    - rhel-system-roles.sshd
+    - redhat.rhel_system_roles.sshd
 ```
 
 ## Configuring SSH with Match Blocks
@@ -114,21 +114,21 @@ The role supports Match blocks for conditional configuration:
   hosts: all
   become: true
   vars:
-    sshd:
+    sshd_config:
       PermitRootLogin: "no"
       PasswordAuthentication: "no"
-    # Match blocks for specific conditions
-    sshd_match:
-      - condition: "Group sftp-users"
-        PermitRootLogin: "no"
-        ChrootDirectory: "/data/sftp/%u"
-        ForceCommand: "internal-sftp"
-        AllowTcpForwarding: "no"
-      - condition: "Address 10.0.0.0/8"
-        PasswordAuthentication: "yes"
+      # Match blocks for specific conditions
+      Match:
+        - Condition: "Group sftp-users"
+          PermitRootLogin: "no"
+          ChrootDirectory: "/data/sftp/%u"
+          ForceCommand: "internal-sftp"
+          AllowTcpForwarding: "no"
+        - Condition: "Address 10.0.0.0/8"
+          PasswordAuthentication: "yes"
 
   roles:
-    - rhel-system-roles.sshd
+    - redhat.rhel_system_roles.sshd
 ```
 
 ## Configuring the SSH Client
@@ -150,18 +150,17 @@ The SSH client role manages `/etc/ssh/ssh_config`:
       StrictHostKeyChecking: "ask"
       # Use strong ciphers on the client side too
       Ciphers: "aes256-gcm@openssh.com,chacha20-poly1305@openssh.com"
-
-    # Host-specific client configuration
-    ssh_host:
-      - host: "*.internal.example.com"
-        ProxyJump: "bastion.example.com"
-        User: "admin"
-      - host: "bastion.example.com"
-        User: "jumpuser"
-        Port: 2222
+      # Host-specific client configuration
+      Host:
+        - Condition: "*.internal.example.com"
+          ProxyJump: "bastion.example.com"
+          User: "admin"
+        - Condition: "bastion.example.com"
+          User: "jumpuser"
+          Port: 2222
 
   roles:
-    - rhel-system-roles.ssh
+    - redhat.rhel_system_roles.ssh
 ```
 
 ## Using Drop-in Configuration
@@ -178,13 +177,13 @@ Instead of replacing the entire sshd_config, you can use drop-in files:
   vars:
     # Use a drop-in configuration file
     sshd_config_file: /etc/ssh/sshd_config.d/50-hardening.conf
-    sshd:
+    sshd_config:
       PermitRootLogin: "no"
       PasswordAuthentication: "no"
       MaxAuthTries: 3
 
   roles:
-    - rhel-system-roles.sshd
+    - redhat.rhel_system_roles.sshd
 ```
 
 This is safer because it does not touch the main sshd_config file.
@@ -220,7 +219,7 @@ Here is a production-ready playbook combining server and client configuration:
   become: true
   vars:
     # Server configuration
-    sshd:
+    sshd_config:
       Port: 22
       PermitRootLogin: "no"
       PasswordAuthentication: "no"
@@ -244,8 +243,8 @@ Here is a production-ready playbook combining server and client configuration:
       ServerAliveCountMax: 3
 
   roles:
-    - rhel-system-roles.sshd
-    - rhel-system-roles.ssh
+    - redhat.rhel_system_roles.sshd
+    - redhat.rhel_system_roles.ssh
 ```
 
 ## Wrapping Up
