@@ -20,7 +20,7 @@ flatpak info --show-permissions org.mozilla.firefox
 # View the complete metadata including sandbox settings
 flatpak info --show-metadata org.mozilla.firefox
 
-# List the filesystem access grants
+# List configured override entries
 flatpak override --show org.mozilla.firefox
 ```
 
@@ -50,7 +50,7 @@ flatpak override --user --filesystem=/mnt/data org.videolan.VLC
 # Give access to removable media
 flatpak override --user --filesystem=/run/media org.videolan.VLC
 
-# Grant access to a device (e.g., webcam)
+# Grant broad device access
 flatpak override --user --device=all org.mozilla.firefox
 ```
 
@@ -64,7 +64,7 @@ flatpak override --user --nofilesystem=home org.mozilla.firefox
 flatpak override --user --unshare=network com.example.app
 
 # Remove device access
-flatpak override --user --no-device=all org.mozilla.firefox
+flatpak override --user --nodevice=all org.mozilla.firefox
 ```
 
 ## Manage Permissions with Flatseal (Graphical Tool)
