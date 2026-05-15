@@ -18,6 +18,8 @@ sudo dnf install -y insights-client
 
 ## Register with Insights
 
+If the system is already registered with Red Hat Subscription Manager, register it with Insights:
+
 ```bash
 sudo insights-client --register
 ```
@@ -45,7 +47,7 @@ Access the Red Hat Insights dashboard at https://console.redhat.com/insights/. Y
 
 ## Configure Automatic Updates
 
-The insights-client runs daily by default via a systemd timer:
+The insights-client runs every 24 hours by default via a systemd timer:
 
 ```bash
 sudo systemctl status insights-client.timer
@@ -67,8 +69,9 @@ ansible-playbook remediation-playbook.yml
 The remote host configuration client provides additional capabilities:
 
 ```bash
-sudo dnf install -y rhc rhc-worker-playbook
-sudo rhc connect
+sudo rhc connect --activation-key=<activation_key_name> --organization=<organization_ID>
+sudo dnf install -y rhc-worker-playbook
+sudo rhc status
 ```
 
 ## Tag Systems for Organization
@@ -88,10 +91,11 @@ sudo insights-client
 Insights includes OpenSCAP-based compliance scanning:
 
 ```bash
+sudo insights-client --compliance-policies
+sudo insights-client --compliance-assign <policy_ID>
 sudo insights-client --compliance
 ```
 
 ## Conclusion
 
 Red Hat Insights gives you proactive visibility into RHEL 9 system health, security, and compliance. Register all systems and use the remediation playbooks to address issues efficiently.
-
