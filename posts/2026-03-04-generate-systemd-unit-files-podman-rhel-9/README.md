@@ -146,7 +146,7 @@ systemctl --user status container-webserver.service
 
 ## Installing Rootful Unit Files
 
-For system-level services:
+For system-level services, use a container created in the root container store:
 
 ## Generate the unit file as root
 ```bash
@@ -241,6 +241,8 @@ Since `podman generate systemd` is deprecated, consider migrating to Quadlet:
 
 ```bash
 # The equivalent Quadlet file for the above example
+mkdir -p ~/.config/containers/systemd/
+
 cat > ~/.config/containers/systemd/webserver.container << 'EOF'
 [Unit]
 Description=Nginx Web Server
