@@ -24,6 +24,13 @@ EFS_ID=$(aws efs create-file-system \
 
 echo "EFS ID: $EFS_ID"
 
+while [ "$(aws efs describe-file-systems \
+  --file-system-id $EFS_ID \
+  --query "FileSystems[0].LifeCycleState" \
+  --output text)" != "available" ]; do
+  sleep 5
+done
+
 # Create mount targets in each availability zone
 for SUBNET_ID in subnet-aaa subnet-bbb; do
   aws efs create-mount-target \
@@ -31,16 +38,24 @@ for SUBNET_ID in subnet-aaa subnet-bbb; do
     --subnet-id $SUBNET_ID \
     --security-groups sg-efs-access
 done
+
+while [ "$(aws efs describe-mount-targets \
+  --file-system-id $EFS_ID \
+  --query "MountTargets[?LifeCycleState!='available'] | length(@)" \
+  --output text)" -ne 0 ]; do
+  sleep 5
+done
 ```
 
 ## Step 2: Install the EFS Mount Helper
 
 ```bash
 # On your RHEL instances
-sudo dnf install -y amazon-efs-utils nfs-utils
+sudo dnf install -y curl nfs-utils
+curl https://amazon-efs-utils.aws.com/efs-utils-installer.sh | sudo sh -s -- --install
 
 # Verify the EFS utilities are installed
-rpm -q amazon-efs-utils
+mount.efs --version
 ```
 
 ## Step 3: Mount the EFS Filesystem
@@ -69,6 +84,13 @@ AP_ID=$(aws efs create-access-point \
   --posix-user "Uid=1000,Gid=1000" \
   --root-directory "Path=/app-data,CreationInfo={OwnerUid=1000,OwnerGid=1000,Permissions=755}" \
   --query 'AccessPointId' --output text)
+
+while [ "$(aws efs describe-access-points \
+  --access-point-id $AP_ID \
+  --query "AccessPoints[0].LifeCycleState" \
+  --output text)" != "available" ]; do
+  sleep 5
+done
 
 # Mount using the access point
 sudo mkdir -p /mnt/app-data
