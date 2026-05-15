@@ -8,7 +8,7 @@ Description: Step-by-step guide on install and configure vector for high-perform
 
 ---
 
-Vector for High-Performance Log Collection can be installed and configured on RHEL to provide robust functionality for your infrastructure. This guide walks through the installation, basic configuration, and verification steps.
+Vector can be installed and configured on RHEL to provide robust log collection functionality for your infrastructure. This guide walks through the installation, basic configuration, and verification steps.
 
 ## Prerequisites
 
@@ -23,11 +23,14 @@ Vector for High-Performance Log Collection can be installed and configured on RH
 
 sudo dnf update -y
 
-# Install the required packages
-sudo dnf install -y <package-name>
+# Add the Vector package repository
+bash -c "$(curl -L https://setup.vector.dev)"
+
+# Install Vector
+sudo dnf install -y vector
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+This installs the `vector` package and its systemd service.
 
 ## Step 2: Configure the Service
 
@@ -35,27 +38,48 @@ Edit the configuration file to match your environment:
 
 ```bash
 # Open the configuration file
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/vector/vector.yaml
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. For example, this configuration reads logs from journald and writes them to standard output for a basic verification setup:
+
+```yaml
+sources:
+  system_logs:
+    type: journald
+
+sinks:
+  console:
+    type: console
+    inputs:
+      - system_logs
+    target: stdout
+    encoding:
+      codec: json
+```
+
+Validate the configuration before restarting the service:
+
+```bash
+sudo vector validate /etc/vector/vector.yaml
+```
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart vector
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable vector
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start vector
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status vector
 ```
 
 
@@ -65,16 +89,16 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status vector
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u vector --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u vector -e --no-pager`.
+- Ensure Vector is installed: `rpm -qa | grep vector`.
 
 ## Conclusion
 
