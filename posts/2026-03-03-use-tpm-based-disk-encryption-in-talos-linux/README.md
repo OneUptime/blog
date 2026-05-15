@@ -8,25 +8,25 @@ Description: Configure TPM-based disk encryption in Talos Linux to leverage hard
 
 ---
 
-TPM-based disk encryption in Talos Linux ties your encryption keys to a hardware security module that is physically part of the server. This means the encrypted disk can only be unlocked on the specific machine where it was encrypted, using cryptographic operations that happen inside the TPM chip itself. For bare-metal Kubernetes deployments where physical security matters, TPM encryption is one of the strongest approaches available. This guide explains how TPM encryption works in Talos and how to set it up.
+TPM-based disk encryption in Talos Linux ties your encryption keys to a hardware security module that is physically part of the server. This means the encrypted disk can only be unlocked on the specific machine where it was encrypted and when the TPM policy is satisfied. For bare-metal Kubernetes deployments where physical security matters, TPM encryption with SecureBoot is one of the strongest approaches available. This guide explains how TPM encryption works in Talos and how to set it up.
 
 ## What is a TPM?
 
 A Trusted Platform Module (TPM) is a dedicated cryptographic processor that is built into the motherboard of most modern servers and many workstations. TPM 2.0 is the current standard and provides:
 
-- **Secure key storage** - encryption keys are generated and stored inside the TPM chip, never exposed in system memory
+- **Secure key protection** - secrets can be sealed to the TPM and released only when the TPM policy is satisfied
 - **Platform measurements** - the TPM records measurements of the boot chain (PCR values) that can be used to verify system integrity
 - **Sealed secrets** - data can be sealed to specific platform states, so it is only accessible when the system boots in a known-good configuration
 - **Random number generation** - hardware-based true random number generation
 
-Talos Linux leverages TPM 2.0 for disk encryption by sealing LUKS2 keys to the TPM. The key never leaves the chip in plain form.
+Talos Linux leverages TPM 2.0 for disk encryption by generating a random LUKS2 key and sealing it with the TPM.
 
 ## Prerequisites
 
 Before configuring TPM encryption, verify that your hardware meets the requirements:
 
 1. **TPM 2.0 chip** must be present and enabled in BIOS/UEFI firmware
-2. The TPM must be in a clear state (not owned by another OS)
+2. SecureBoot should be enabled for the strongest TPM-backed protection
 3. Talos Linux must be able to detect the TPM during boot
 
 You can check for TPM availability on an existing Talos node:
@@ -41,24 +41,29 @@ Look for TPM-related information in the output. If the TPM is detected, you will
 
 ## Configuring TPM Encryption
 
-The machine configuration for TPM-based encryption is concise:
+Current Talos releases configure system volume encryption with `VolumeConfig` documents. The machine configuration for TPM-based encryption is concise:
 
 ```yaml
-machine:
-  systemDiskEncryption:
-    state:
-      provider: luks2
-      keys:
-        - tpm: {}
-          slot: 0
-    ephemeral:
-      provider: luks2
-      keys:
-        - tpm: {}
-          slot: 0
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: STATE
+encryption:
+  provider: luks2
+  keys:
+    - tpm: {}
+      slot: 0
+---
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+encryption:
+  provider: luks2
+  keys:
+    - tpm: {}
+      slot: 0
 ```
 
-Like node ID keys, the `tpm: {}` object is empty because the TPM configuration is automatic. Talos handles all the interactions with the TPM chip.
+The `tpm: {}` object can be empty because Talos provides default TPM options. Talos handles the TPM interactions.
 
 ## How It Works Under the Hood
 
@@ -67,86 +72,88 @@ When Talos boots with TPM encryption configured, the following process occurs:
 1. **First boot (provisioning):**
    - Talos creates the LUKS2 encrypted partition
    - A random encryption key is generated
-   - The key is sealed to the TPM using the current PCR values
+   - The key is sealed with the TPM policy
    - The sealed key blob is stored in the LUKS2 header
    - The partition is formatted and mounted
 
 2. **Subsequent boots:**
    - Talos reads the sealed key blob from the LUKS2 header
-   - The TPM unseals the key only if the current PCR values match those at sealing time
+   - The TPM unseals the key only if the configured PCR policy is satisfied
    - The unsealed key decrypts the partition
    - Normal boot continues
 
-The critical point is that the TPM only releases the key when the platform state matches. If someone tampers with the boot chain, the PCR values will be different and the TPM will refuse to unseal the key.
+The critical point is that the TPM only releases the key when the configured policy matches. With SecureBoot and the default Talos policy, this ties unlocking to the SecureBoot state and the signed boot measurements.
 
 ## PCR Values and Measured Boot
 
 Platform Configuration Registers (PCRs) are special registers in the TPM that record measurements of the boot process. Each component in the boot chain (firmware, bootloader, kernel, initramfs) is measured and the hash is extended into the appropriate PCR.
 
-Key PCRs used by Talos:
+Key PCRs used by Talos TPM disk encryption:
 
-- **PCR 0** - UEFI firmware measurements
-- **PCR 4** - Boot manager and boot loader measurements
-- **PCR 7** - Secure Boot state
-- **PCR 11** - Often used for kernel and initramfs measurements
+- **PCR 7** - SecureBoot state and enrolled SecureBoot keys. Talos binds to PCR 7 by default.
+- **PCR 11** - Signed UKI and Talos boot phase measurements used for the TPM unlock policy.
 
-When Talos seals the encryption key to the TPM, it binds the key to specific PCR values. This means:
+When Talos seals the encryption key with the TPM, it binds the key to the configured PCR policy. By default, new Talos installations use PCR 7 plus the signed PCR 11 policy. You can configure additional PCRs with `tpm.options.pcrs`:
 
-- If the firmware is updated, PCR 0 changes
-- If the bootloader is modified, PCR 4 changes
-- If the kernel or initramfs changes, the relevant PCRs change
+```yaml
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: STATE
+encryption:
+  provider: luks2
+  keys:
+    - tpm:
+        options:
+          pcrs: [0, 7]
+      slot: 0
+```
 
-Any of these changes will prevent the TPM from unsealing the key until the seal is updated.
+Binding to more PCRs can increase protection, but it also makes unlocks more sensitive to legitimate firmware or platform changes.
 
 ## Handling Upgrades with TPM Encryption
 
-Talos upgrades change the kernel and initramfs, which changes PCR values. Talos handles this by re-sealing the encryption key to the new PCR values after a successful upgrade.
+Talos upgrades change boot assets such as the kernel and initramfs. With SecureBoot and TPM encryption, the new UKI must contain a PCR policy signed by the same PCR signing key, and the configured PCR states must still match.
 
 The upgrade process with TPM encryption:
 
 1. New Talos image is downloaded
-2. The encryption key is unsealed with current PCR values
+2. The encryption key is unsealed with the current TPM policy
 3. The upgrade is applied
-4. On the next boot, Talos re-measures and re-seals the key to the new PCR values
+4. On the next boot, Talos unlocks the disk if the signed PCR policy and configured PCR states match
 
-This is handled automatically. You do not need to do anything special when upgrading nodes that use TPM encryption.
+This is handled automatically for normal upgrades. If you build custom SecureBoot assets, preserve the UKI signing key and PCR signing key so upgraded nodes can still boot and unlock encrypted partitions.
 
 ```bash
 # Upgrade a TPM-encrypted node (same as any node)
-talosctl upgrade --nodes 192.168.1.10 --image ghcr.io/siderolabs/installer:v1.8.0
+talosctl upgrade --nodes 192.168.1.10 --image ghcr.io/siderolabs/installer:v1.13.2
 ```
 
 ## Adding Recovery Keys
 
-TPM keys should always be paired with a recovery mechanism. If the TPM fails or the motherboard is replaced, you need another way to access the encrypted data:
+TPM keys should be paired with a recovery plan. Be careful with static fallback keys: Talos stores `STATE` volume encryption configuration in the cleartext `META` partition, so a static passphrase for `STATE` weakens the protection. Static fallback keys are safer for non-`STATE` volumes when the `STATE` volume itself is encrypted:
 
 ```yaml
-machine:
-  systemDiskEncryption:
-    state:
-      provider: luks2
-      keys:
-        - tpm: {}
-          slot: 0
-        - static:
-            passphrase: "tpm-recovery-passphrase-store-securely"
-          slot: 1
-    ephemeral:
-      provider: luks2
-      keys:
-        - tpm: {}
-          slot: 0
-        - static:
-            passphrase: "tpm-recovery-passphrase-store-securely"
-          slot: 1
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+encryption:
+  provider: luks2
+  keys:
+    - tpm: {}
+      slot: 0
+      lockToState: true
+    - static:
+        passphrase: "tpm-recovery-passphrase-store-securely"
+      slot: 1
+      lockToState: true
 ```
 
-The recovery passphrase in slot 1 provides a fallback. Store it securely - this is your lifeline if the TPM becomes unavailable.
+The recovery passphrase in slot 1 provides a fallback for that volume. Store it securely, and use backups or a tested node recovery process for `STATE`.
 
 ## TPM vs Other Key Types
 
 **TPM vs Node ID:**
-- TPM is more secure because the key never exists in system memory in plain form
+- TPM is stronger when used with SecureBoot because the key release is bound to TPM policy and boot state
 - Node ID derives the key from identifiers that are accessible to software
 - TPM provides measured boot integration that node ID cannot
 - TPM requires specific hardware; node ID works everywhere
@@ -155,7 +162,7 @@ The recovery passphrase in slot 1 provides a fallback. Store it securely - this 
 - TPM is fully automated; no passphrase management needed
 - Static passphrases are simpler to set up but require careful management
 - TPM is hardware-bound; passphrases are portable
-- Use static passphrases as recovery keys alongside TPM
+- Use static passphrases carefully for non-`STATE` recovery keys alongside TPM
 
 **TPM vs KMS:**
 - Both provide strong security
@@ -176,9 +183,9 @@ talosctl logs machined --nodes 192.168.1.10 | grep -i "tpm\|encrypt"
 ```
 
 **TPM fails to unseal after firmware update:**
-- This is expected because firmware updates change PCR values
-- Use the recovery key to unlock the partitions
-- Talos will re-seal to the new PCR values on the next successful boot
+- This can happen if the update changes one of the PCR values you bind to, especially PCR 7 SecureBoot state
+- Use a recovery key if you configured one for the affected volume
+- Review your `tpm.options.pcrs` policy before applying firmware and SecureBoot database updates
 
 **TPM not detected:**
 - Check BIOS/UEFI settings for TPM enable/disable options
@@ -193,10 +200,10 @@ TPM-based encryption provides strong security guarantees, but be aware of some n
 
 2. **Firmware TPM (fTPM) vs Discrete TPM (dTPM).** Firmware TPM runs inside the CPU and is generally considered less secure than a discrete TPM chip. If your threat model includes sophisticated hardware attacks, prefer discrete TPM.
 
-3. **PCR policy granularity.** The tighter you bind PCR values, the more secure the seal, but the more brittle it becomes against legitimate changes. Talos balances this automatically.
+3. **PCR policy granularity.** The tighter you bind PCR values, the more secure the seal, but the more brittle it becomes against legitimate changes. Talos defaults to PCR 7 plus the signed PCR 11 policy, and you can configure additional PCRs when your environment needs them.
 
-4. **TPM ownership.** Make sure the TPM is not already owned by a previous operating system. A factory reset of the TPM (through BIOS/UEFI) clears any previous ownership.
+4. **Reused hardware.** If you are reusing a server and TPM enrollment behaves unexpectedly, clearing the TPM through BIOS/UEFI firmware can remove previous state.
 
 ## Summary
 
-TPM-based disk encryption in Talos Linux provides hardware-rooted security for your encrypted partitions. The encryption key is generated and sealed inside the TPM chip, making it inaccessible without the correct hardware in the correct state. Configuration is minimal - just add `tpm: {}` to your key configuration. Always pair TPM keys with recovery passphrases, and test your setup thoroughly before deploying to production. For bare-metal Kubernetes clusters handling sensitive data, TPM encryption is one of the best options available for protecting data at rest.
+TPM-based disk encryption in Talos Linux provides hardware-rooted security for your encrypted partitions. The encryption key is generated by Talos and sealed with the TPM, making it inaccessible without the correct hardware and TPM policy state. Configuration is minimal - just add `tpm: {}` to your key configuration. Pair TPM keys with a tested recovery plan, and test your setup thoroughly before deploying to production. For bare-metal Kubernetes clusters handling sensitive data, TPM encryption with SecureBoot is one of the best options available for protecting data at rest.
