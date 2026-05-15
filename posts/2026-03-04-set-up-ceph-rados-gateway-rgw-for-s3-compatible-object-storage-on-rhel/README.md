@@ -81,13 +81,33 @@ aws --endpoint-url http://node1:80 s3 ls s3://mybucket/
 
 Set up TLS using a certificate:
 
-```bash
-# Import the certificate and key into Ceph
-sudo ceph config set client.rgw.mystore.node1 rgw_frontends \
-    "beast port=443 ssl_port=443 ssl_certificate=/etc/ceph/rgw.pem"
+```yaml
+# rgw-https.yaml
+service_type: rgw
+service_id: mystore
+placement:
+  count: 1
+  hosts:
+    - node1
+spec:
+  ssl: true
+  certificate_source: inline
+  rgw_frontend_port: 443
+  ssl_cert: |
+    -----BEGIN CERTIFICATE-----
+    (PEM certificate contents here)
+    -----END CERTIFICATE-----
+  ssl_key: |
+    -----BEGIN PRIVATE KEY-----
+    (PEM private key contents here)
+    -----END PRIVATE KEY-----
 ```
 
-## Set Bucket Quotas
+```bash
+sudo ceph orch apply -i rgw-https.yaml
+```
+
+## Set User Quotas
 
 ```bash
 # Set a quota on a user
