@@ -74,8 +74,8 @@ sudo tuna show_threads --threads=5678
 # Move all IRQs to CPUs 0 and 1
 sudo tuna move --irqs='*' --cpus=0,1
 
-# Move a specific IRQ (e.g., eth0) to CPU 0
-sudo tuna move --irqs=eth0 --cpus=0
+# Move IRQs matching a device name pattern (e.g., eth0*) to CPU 0
+sudo tuna move --irqs='eth0*' --cpus=0
 
 # Verify the IRQ assignments
 sudo tuna show_irqs
@@ -107,7 +107,7 @@ sudo tuna apply /etc/tuna/rt-config.conf
 sudo tee /etc/systemd/system/tuna-config.service > /dev/null << 'EOF'
 [Unit]
 Description=Apply tuna real-time configuration
-After=multi-user.target
+Before=multi-user.target
 
 [Service]
 Type=oneshot
