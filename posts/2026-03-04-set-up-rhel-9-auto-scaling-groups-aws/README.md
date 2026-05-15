@@ -105,7 +105,7 @@ aws autoscaling put-scaling-policy \
     "TargetValue": 1000.0,
     "PredefinedMetricSpecification": {
       "PredefinedMetricType": "ALBRequestCountPerTarget",
-      "ResourceLabel": "app/my-alb/..."
+      "ResourceLabel": "app/my-alb/778d41231b141a0f/targetgroup/my-alb-target-group/943f017f100becff"
     }
   }'
 ```
@@ -116,6 +116,7 @@ aws autoscaling put-scaling-policy \
 # The cloud-init script should configure a health check endpoint
 # Add this to your cloud-init user data:
 cat <<'CLOUDINIT'
+#cloud-config
 runcmd:
   # Install and configure a simple health check
   - dnf install -y nginx
