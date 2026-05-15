@@ -8,7 +8,7 @@ Description: Learn how to use pidstat and mpstat for Per-Process CPU Analysis on
 
 ---
 
-pidstat and mpstat provide per-process and per-CPU performance analysis. pidstat breaks down CPU, memory, and I/O usage for individual processes, while mpstat shows how each CPU core is performing.
+pidstat and mpstat provide per-process and per-CPU performance analysis. pidstat breaks down CPU, memory, and I/O usage for individual processes, while mpstat shows how each logical CPU is performing.
 
 ## Prerequisites
 
@@ -34,7 +34,7 @@ Output columns:
 - `%usr` - User-space CPU time
 - `%system` - Kernel-space CPU time
 - `%CPU` - Total CPU usage
-- `CPU` - Which CPU core the process ran on
+- `CPU` - Which CPU the process was attached to when the sample was displayed
 
 ## Step 3: Filter pidstat by Process
 
@@ -66,7 +66,7 @@ This shows memory statistics:
 pidstat -d 1 5
 ```
 
-Shows read/write kilobytes per second for each process.
+Shows read/write KiB per second for each process.
 
 ## Step 6: Per-CPU Analysis with mpstat
 
@@ -74,7 +74,7 @@ Shows read/write kilobytes per second for each process.
 mpstat -P ALL 1 5
 ```
 
-This shows utilization for every CPU core. Key columns:
+This shows utilization for every logical CPU. Key columns:
 - `%usr` - User-space time
 - `%sys` - Kernel time
 - `%iowait` - Waiting for I/O
@@ -83,10 +83,10 @@ This shows utilization for every CPU core. Key columns:
 ## Step 7: Identify CPU Imbalance
 
 ```bash
-mpstat -P ALL 1 | awk '$2 ~ /^[0-9]+$/ && $NF < 50 {print "CPU " $2 " is busy: " 100-$NF "% used"}'
+S_TIME_FORMAT=ISO mpstat -P ALL 1 | awk '$2 ~ /^[0-9]+$/ && $NF < 50 {print "CPU " $2 " is busy: " 100-$NF "% used"}'
 ```
 
-If one core is at 100% while others are idle, your application may not be parallelized properly.
+If one logical CPU is at 100% while others are idle, your application may not be parallelized properly.
 
 ## Step 8: Combine pidstat Reports
 
@@ -96,8 +96,8 @@ Monitor CPU, memory, and I/O together:
 pidstat -u -r -d 1 5
 ```
 
-This shows CPU, memory, and I/O for all processes in one report.
+This shows CPU, memory, and I/O for active processes in one report.
 
 ## Conclusion
 
-pidstat and mpstat from the sysstat package give you detailed per-process and per-CPU performance data on RHEL. Use pidstat to identify which processes consume the most resources and mpstat to spot CPU imbalances across cores.
+pidstat and mpstat from the sysstat package give you detailed per-process and per-CPU performance data on RHEL. Use pidstat to identify which processes consume the most resources and mpstat to spot CPU imbalances across logical CPUs.
