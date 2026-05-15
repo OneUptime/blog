@@ -73,7 +73,7 @@ The pre-upgrade check analyzes your system and reports anything that would block
 
 ```bash
 # Run the pre-upgrade assessment
-sudo leapp preupgrade --target 9.7
+sudo -r unconfined_r -t unconfined_t leapp preupgrade --target 9.7
 ```
 
 If you are targeting an EUS, AUS, or E4S release instead, use the supported target version for your subscription and add the matching `--channel` option, such as `--channel eus`.
@@ -123,7 +123,7 @@ Some inhibitors require you to confirm a decision by creating an answer file. Le
 
 ```bash
 # Example: confirm you want to proceed despite a known issue
-sudo leapp answer --section check_vdo.confirm=True
+sudo -r unconfined_r -t unconfined_t leapp answer --section check_vdo.confirm=True
 ```
 
 ### Custom Repository Configuration
@@ -137,11 +137,11 @@ sudo dnf config-manager --set-disabled problematic-repo
 
 ## Performing the Upgrade
 
-Once all inhibitors are resolved and the pre-upgrade report is clean (or at least has no inhibitors), start the actual upgrade:
+Once all inhibitors are resolved and you have reviewed and addressed the issues in the pre-upgrade report, start the actual upgrade:
 
 ```bash
 # Run the upgrade
-sudo leapp upgrade --target 9.7
+sudo -r unconfined_r -t unconfined_t leapp upgrade --target 9.7
 ```
 
 Use the same target version and `--channel` option, if any, that you used for `leapp preupgrade`.
@@ -206,17 +206,13 @@ sudo vi /etc/selinux/config
 sudo reboot
 ```
 
-### Clean Up Leapp Data
+### Clean Up Leapp Packages
 
-After confirming everything works, remove the Leapp packages and leftover data:
+After confirming everything works, remove Leapp packages from the DNF exclude list so they can be removed from the system:
 
 ```bash
-# Remove Leapp packages and data
+# Clear the DNF exclude list
 sudo dnf config-manager --save --setopt exclude=''
-sudo dnf remove -y leapp-deps-el9 leapp-repository-deps-el9
-
-# Remove leftover Leapp data
-sudo rm -rf /var/log/leapp /root/tmp_leapp_py3 /var/lib/leapp
 ```
 
 ### Remove Old RHEL 8 Kernels
@@ -225,13 +221,25 @@ The upgrade may leave old RHEL 8 kernels in the boot menu. Remove them:
 
 ```bash
 # List installed kernels
-rpm -qa kernel-core
+rpm -q kernel-core
 
 # List remaining RHEL 8 packages
 rpm -qa | grep -e '\.el[78]' | grep -vE '^(gpg-pubkey|libmodulemd|katello-ca-consumer)' | sort
 
 # Remove remaining RHEL 8 packages after reviewing the transaction
 sudo dnf remove $(rpm -qa | grep \.el[78] | grep -vE 'gpg-pubkey|libmodulemd|katello-ca-consumer')
+
+# Remove remaining Leapp dependency packages
+sudo dnf remove -y leapp-deps-el9 leapp-repository-deps-el9
+```
+
+### Remove Leftover Leapp Data
+
+After confirming that you no longer need the upgrade logs for troubleshooting or Red Hat Support, remove leftover Leapp data:
+
+```bash
+# Remove leftover Leapp data
+sudo rm -rf /var/log/leapp /root/tmp_leapp_py3 /var/lib/leapp
 ```
 
 ### Update Remaining Packages
@@ -278,10 +286,11 @@ flowchart TD
     H --> I[Wait for Upgrade to Complete]
     I --> J[Verify RHEL 9]
     J --> K[Restore SELinux Enforcement]
-    K --> L[Clean Up Leapp Data]
-    L --> M[Remove Old Kernels]
-    M --> N[Run dnf update]
-    N --> O[Done]
+    K --> L[Clear DNF Excludes]
+    L --> M[Remove Old Kernels and RHEL 8 Packages]
+    M --> N[Remove Leapp Data]
+    N --> O[Run dnf update]
+    O --> P[Done]
 ```
 
 ## Things to Watch Out For
