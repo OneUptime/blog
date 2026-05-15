@@ -8,7 +8,7 @@ Description: Set up auditd on RHEL to monitor and log all activities by privileg
 
 ---
 
-Monitoring privileged user activity is a core requirement for security and compliance. When users operate with elevated privileges, their actions have the potential to affect the entire system. Using auditd on RHEL, you can create a comprehensive record of everything privileged users do, from the commands they run to the files they access. This guide shows you how.
+Monitoring privileged user activity is a core requirement for security and compliance. When users operate with elevated privileges, their actions have the potential to affect the entire system. Using auditd on RHEL, you can create a detailed audit trail for privileged program execution and sensitive file access. This guide shows you how.
 
 ## What to Monitor
 
@@ -31,34 +31,41 @@ flowchart TD
 sudo tee /etc/audit/rules.d/40-privileged-users.rules << 'EOF'
 ## Monitor privileged user activity
 
-# Track all commands executed by root (uid 0)
+# Track programs executed with effective UID 0
 
--a always,exit -F arch=b64 -S execve -F euid=0 -k root_commands
--a always,exit -F arch=b32 -S execve -F euid=0 -k root_commands
+-a always,exit -F arch=b64 -S execve -S execveat -F euid=0 -k root_commands
+-a always,exit -F arch=b32 -S execve -S execveat -F euid=0 -k root_commands
 
-# Track commands where the effective UID differs from the audit UID
-# This catches sudo and su usage
--a always,exit -F arch=b64 -S execve -C uid!=euid -F euid=0 -k privilege_escalation
--a always,exit -F arch=b32 -S execve -C uid!=euid -F euid=0 -k privilege_escalation
+# Track commands where the real UID differs from the effective UID
+# This catches setuid transitions such as sudo and su invocation
+-a always,exit -F arch=b64 -S execve -S execveat -C uid!=euid -F euid=0 -k privilege_escalation
+-a always,exit -F arch=b32 -S execve -S execveat -C uid!=euid -F euid=0 -k privilege_escalation
 
 # Track su command usage
--a always,exit -F path=/usr/bin/su -F perm=x -F auid>=1000 -F auid!=4294967295 -k user_switch
+-a always,exit -F arch=b64 -F path=/usr/bin/su -F perm=x -F auid>=1000 -F auid!=4294967295 -k user_switch
+-a always,exit -F arch=b32 -F path=/usr/bin/su -F perm=x -F auid>=1000 -F auid!=4294967295 -k user_switch
 
 # Track sudo command usage
--a always,exit -F path=/usr/bin/sudo -F perm=x -F auid>=1000 -F auid!=4294967295 -k sudo_usage
+-a always,exit -F arch=b64 -F path=/usr/bin/sudo -F perm=x -F auid>=1000 -F auid!=4294967295 -k sudo_usage
+-a always,exit -F arch=b32 -F path=/usr/bin/sudo -F perm=x -F auid>=1000 -F auid!=4294967295 -k sudo_usage
 
 # Track SSH key generation
--a always,exit -F path=/usr/bin/ssh-keygen -F perm=x -F auid>=1000 -F auid!=4294967295 -k ssh_keygen
+-a always,exit -F arch=b64 -F path=/usr/bin/ssh-keygen -F perm=x -F auid>=1000 -F auid!=4294967295 -k ssh_keygen
+-a always,exit -F arch=b32 -F path=/usr/bin/ssh-keygen -F perm=x -F auid>=1000 -F auid!=4294967295 -k ssh_keygen
 
 # Track service management
--a always,exit -F path=/usr/bin/systemctl -F perm=x -F auid>=1000 -F auid!=4294967295 -k service_management
+-a always,exit -F arch=b64 -F path=/usr/bin/systemctl -F perm=x -F auid>=1000 -F auid!=4294967295 -k service_management
+-a always,exit -F arch=b32 -F path=/usr/bin/systemctl -F perm=x -F auid>=1000 -F auid!=4294967295 -k service_management
 
 # Track firewall changes
--a always,exit -F path=/usr/bin/firewall-cmd -F perm=x -F auid>=1000 -F auid!=4294967295 -k firewall_changes
+-a always,exit -F arch=b64 -F path=/usr/bin/firewall-cmd -F perm=x -F auid>=1000 -F auid!=4294967295 -k firewall_changes
+-a always,exit -F arch=b32 -F path=/usr/bin/firewall-cmd -F perm=x -F auid>=1000 -F auid!=4294967295 -k firewall_changes
 
 # Track package management
--a always,exit -F path=/usr/bin/dnf -F perm=x -F auid>=1000 -F auid!=4294967295 -k package_management
--a always,exit -F path=/usr/bin/rpm -F perm=x -F auid>=1000 -F auid!=4294967295 -k package_management
+-a always,exit -F arch=b64 -F path=/usr/bin/dnf-3 -F perm=x -F auid>=1000 -F auid!=4294967295 -k package_management
+-a always,exit -F arch=b32 -F path=/usr/bin/dnf-3 -F perm=x -F auid>=1000 -F auid!=4294967295 -k package_management
+-a always,exit -F arch=b64 -F path=/usr/bin/rpm -F perm=x -F auid>=1000 -F auid!=4294967295 -k package_management
+-a always,exit -F arch=b32 -F path=/usr/bin/rpm -F perm=x -F auid>=1000 -F auid!=4294967295 -k package_management
 EOF
 ```
 
@@ -69,16 +76,22 @@ sudo tee /etc/audit/rules.d/41-privileged-file-access.rules << 'EOF'
 ## Monitor file access by privileged users
 
 # Track access to sensitive configuration files
--a always,exit -F arch=b64 -S open -S openat -F euid=0 -F dir=/etc -k root_etc_access
--a always,exit -F arch=b64 -S open -S openat -F euid=0 -F dir=/root -k root_home_access
+-a always,exit -F arch=b64 -S open -S openat -S openat2 -F euid=0 -F dir=/etc -k root_etc_access
+-a always,exit -F arch=b32 -S open -S openat -S openat2 -F euid=0 -F dir=/etc -k root_etc_access
+-a always,exit -F arch=b64 -S open -S openat -S openat2 -F euid=0 -F dir=/root -k root_home_access
+-a always,exit -F arch=b32 -S open -S openat -S openat2 -F euid=0 -F dir=/root -k root_home_access
 
 # Track access to audit configuration
--w /etc/audit/ -p rwxa -k audit_config_access
--w /var/log/audit/ -p rwa -k audit_log_access
+-a always,exit -F arch=b64 -F dir=/etc/audit/ -F perm=rwxa -k audit_config_access
+-a always,exit -F arch=b32 -F dir=/etc/audit/ -F perm=rwxa -k audit_config_access
+-a always,exit -F arch=b64 -F dir=/var/log/audit/ -F perm=rwa -k audit_log_access
+-a always,exit -F arch=b32 -F dir=/var/log/audit/ -F perm=rwa -k audit_log_access
 
 # Track access to authentication databases
--w /etc/passwd -p rwxa -k auth_db_access
--w /etc/shadow -p rwxa -k auth_db_access
+-a always,exit -F arch=b64 -F path=/etc/passwd -F perm=rwxa -k auth_db_access
+-a always,exit -F arch=b32 -F path=/etc/passwd -F perm=rwxa -k auth_db_access
+-a always,exit -F arch=b64 -F path=/etc/shadow -F perm=rwxa -k auth_db_access
+-a always,exit -F arch=b32 -F path=/etc/shadow -F perm=rwxa -k auth_db_access
 EOF
 ```
 
@@ -89,15 +102,22 @@ sudo tee /etc/audit/rules.d/42-sessions.rules << 'EOF'
 ## Monitor session activity
 
 # Track session initiation
--w /var/run/utmp -p wa -k session
--w /var/log/wtmp -p wa -k session
--w /var/log/btmp -p wa -k session
--w /var/log/lastlog -p wa -k logins
+-a always,exit -F arch=b64 -F path=/var/run/utmp -F perm=wa -k session
+-a always,exit -F arch=b32 -F path=/var/run/utmp -F perm=wa -k session
+-a always,exit -F arch=b64 -F path=/var/log/wtmp -F perm=wa -k session
+-a always,exit -F arch=b32 -F path=/var/log/wtmp -F perm=wa -k session
+-a always,exit -F arch=b64 -F path=/var/log/btmp -F perm=wa -k session
+-a always,exit -F arch=b32 -F path=/var/log/btmp -F perm=wa -k session
+-a always,exit -F arch=b64 -F path=/var/log/lastlog -F perm=wa -k logins
+-a always,exit -F arch=b32 -F path=/var/log/lastlog -F perm=wa -k logins
 
 # Track login configuration changes
--w /etc/login.defs -p wa -k login_config
--w /etc/securetty -p wa -k login_config
--w /etc/security/faillock.conf -p wa -k login_config
+-a always,exit -F arch=b64 -F path=/etc/login.defs -F perm=wa -k login_config
+-a always,exit -F arch=b32 -F path=/etc/login.defs -F perm=wa -k login_config
+-a always,exit -F arch=b64 -F path=/etc/securetty -F perm=wa -k login_config
+-a always,exit -F arch=b32 -F path=/etc/securetty -F perm=wa -k login_config
+-a always,exit -F arch=b64 -F path=/etc/security/faillock.conf -F perm=wa -k login_config
+-a always,exit -F arch=b32 -F path=/etc/security/faillock.conf -F perm=wa -k login_config
 EOF
 ```
 
