@@ -28,7 +28,7 @@ cat /proc/mdstat
 sudo mdadm --detail /dev/md5
 ```
 
-In the output, look for disks marked as "faulty" or "removed." Note the device name (e.g., /dev/sdc) and the serial number if you need to identify the physical drive.
+In the output, look for disks marked as "faulty" or "removed." Note the array member path (e.g., /dev/sdc or /dev/sdc1) and the serial number if you need to identify the physical drive.
 
 ```bash
 # Get the serial number of the failed disk (if it is still visible)
@@ -62,13 +62,15 @@ sudo mdadm --detail /dev/md5
 This is the part where you actually swap hardware. Depending on your server:
 
 - **Hot-swap bays**: Pull the failed drive and insert the new one. The kernel should detect the new disk automatically.
-- **No hot-swap**: You will need to shut down or use the SCSI rescan method.
+- **No hot-swap**: You will need to shut down before replacing the drive. After boot, or on hot-plug systems where the new disk is not detected automatically, use the SCSI rescan method.
 
 For hot-plug detection:
 
 ```bash
 # Rescan the SCSI bus to detect the new disk
-echo "- - -" | sudo tee /sys/class/scsi_host/host0/scan
+for host in /sys/class/scsi_host/host*/scan; do
+  echo "- - -" | sudo tee "$host" >/dev/null
+done
 
 # Verify the new disk appears
 lsblk
@@ -78,14 +80,14 @@ lsblk
 
 ```bash
 # Clear any existing signatures on the new disk
-sudo wipefs -a /dev/sdc
+sudo wipefs -a /dev/sdf
 ```
 
 ## Step 5 - Add the New Disk to the Array
 
 ```bash
 # Add the replacement disk to the array
-sudo mdadm --manage /dev/md5 --add /dev/sdc
+sudo mdadm --manage /dev/md5 --add /dev/sdf
 ```
 
 The rebuild starts immediately. Monitor progress:
@@ -111,7 +113,7 @@ sequenceDiagram
     participant Array as RAID Array
     participant New as New Disk
 
-    Admin->>Array: mdadm --add /dev/sdc
+    Admin->>Array: mdadm --add /dev/sdf
     Array->>New: Begin rebuild
     loop Until complete
         Array->>New: Copy/calculate data
@@ -170,15 +172,15 @@ The process is identical for RAID 1:
 sudo mdadm --manage /dev/md1 --fail /dev/sdc
 sudo mdadm --manage /dev/md1 --remove /dev/sdc
 # ... physically swap the disk ...
-sudo wipefs -a /dev/sdc
-sudo mdadm --manage /dev/md1 --add /dev/sdc
+sudo wipefs -a /dev/sdf
+sudo mdadm --manage /dev/md1 --add /dev/sdf
 ```
 
 ## Common Pitfalls
 
 1. **Wrong disk size**: The replacement disk must be at least as large as the original. mdadm will refuse to add a smaller disk.
 2. **Forgetting to update mdadm.conf**: The array may not assemble correctly on reboot.
-3. **Not checking SMART data**: Before adding the replacement, verify it is healthy: `sudo smartctl -H /dev/sdc`
+3. **Not checking SMART data**: Before adding the replacement, verify it is healthy: `sudo smartctl -H /dev/sdf`
 4. **Pulling the wrong disk**: Always double-check the serial number before physically removing a drive.
 
 ## Wrap-Up
