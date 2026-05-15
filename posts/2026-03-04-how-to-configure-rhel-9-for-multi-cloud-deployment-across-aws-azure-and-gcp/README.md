@@ -54,6 +54,7 @@ Create a universal cloud-init configuration:
 
 ```yaml
 # /etc/cloud/cloud.cfg.d/99-multicloud.cfg
+#cloud-config
 system_info:
   default_user:
     name: cloudadmin
@@ -71,9 +72,7 @@ packages:
   - wget
 
 runcmd:
-  - subscription-manager register --org=MyOrg --activationkey=multicloud-key
-  - insights-client --register
-  - dnf install -y rhc && rhc connect
+  - rhc connect --activation-key=multicloud-key --organization=<organization_ID>
 ```
 
 ## Use Terraform for Multi-Cloud Provisioning
@@ -142,10 +141,17 @@ Use Ansible to apply uniform network settings:
       ansible.posix.firewalld:
         service: "{{ item }}"
         permanent: true
+        immediate: true
         state: enabled
       loop:
         - ssh
         - https
+
+  handlers:
+    - name: restart chronyd
+      ansible.builtin.service:
+        name: chronyd
+        state: restarted
 ```
 
 ## Centralized Monitoring
@@ -156,9 +162,10 @@ Configure all instances to report to a central monitoring system:
 # Install and configure node_exporter on all instances
 sudo dnf install -y golang
 # Or download pre-built binary
-curl -LO https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
-tar xzf node_exporter-1.7.0.linux-amd64.tar.gz
-sudo cp node_exporter-1.7.0.linux-amd64/node_exporter /usr/local/bin/
+curl -LO https://github.com/prometheus/node_exporter/releases/download/v1.11.1/node_exporter-1.11.1.linux-amd64.tar.gz
+tar xzf node_exporter-1.11.1.linux-amd64.tar.gz
+sudo cp node_exporter-1.11.1.linux-amd64/node_exporter /usr/local/bin/
+sudo useradd --system --no-create-home --shell /sbin/nologin node_exporter
 
 sudo tee /etc/systemd/system/node_exporter.service > /dev/null <<EOF
 [Unit]
@@ -180,4 +187,3 @@ sudo systemctl enable --now node_exporter
 ## Conclusion
 
 Multi-cloud RHEL 9 deployment benefits from standardized images, consistent configuration management with Ansible, infrastructure-as-code with Terraform, and centralized monitoring. This approach gives you flexibility while maintaining operational consistency.
-
