@@ -12,7 +12,7 @@ You patched a system during a maintenance window, restarted the service, and now
 
 ## How DNF History Works
 
-Every time you install, update, or remove packages with DNF, it records the transaction in a SQLite database at `/var/lib/dnf/history/`. Each transaction gets a unique ID, and DNF stores exactly what changed: which packages were installed, updated, downgraded, or removed, along with the old and new versions.
+Every time you install, update, or remove packages with DNF, it records the transaction in a SQLite database under `/var/lib/dnf/`, commonly `/var/lib/dnf/history.sqlite` on DNF 4 systems. Each transaction gets a unique ID, and DNF stores exactly what changed: which packages were installed, updated, downgraded, or removed, along with the old and new versions.
 
 This gives you two powerful capabilities:
 
@@ -52,11 +52,11 @@ ID     | Command line             | Date and time    | Action(s)      | Altered
      9 | update openssl           | 2026-02-27 16:00 | Upgrade         |    2
 ```
 
-### Filter History by Date Range
+### View a Recent Transaction Range
 
 ```bash
-# Show transactions from the last 7 days
-dnf history list --since="7 days ago"
+# Show the last 7 transactions
+dnf history list last-6..last
 ```
 
 ### Filter History for a Specific Package
@@ -96,8 +96,7 @@ Command Line   : update -y
 Packages Altered:
     Upgrade  openssl-3.0.7-24.el9.x86_64  @rhel-9-for-x86_64-baseos-rpms
     Upgraded openssl-3.0.7-20.el9.x86_64  @@System
-    Upgrade  kernel-5.14.0-362.el9.x86_64 @rhel-9-for-x86_64-baseos-rpms
-    Install  kernel-5.14.0-362.el9.x86_64 @rhel-9-for-x86_64-baseos-rpms
+    Install  kernel-core-5.14.0-362.el9.x86_64 @rhel-9-for-x86_64-baseos-rpms
 ```
 
 ## Undoing a Transaction
@@ -144,6 +143,8 @@ sudo dnf history rollback 10
 ```
 
 This is powerful but also risky. If transactions 11 and 12 involved a lot of packages, the rollback will be complex. Always review the transaction summary before confirming.
+
+Red Hat does not support downgrading RHEL system packages to older versions with `dnf history undo` or `dnf history rollback`, especially packages such as `selinux`, `selinux-policy-*`, `kernel`, `glibc`, and `glibc` dependencies such as `gcc`. Avoid using history rollback as a way to downgrade a system from one RHEL minor release to another.
 
 ### When to Use Undo vs Rollback
 
@@ -246,7 +247,7 @@ sudo dnf update -y
 
 5. **Do not rely on history alone for disaster recovery.** DNF history is great for package-level rollbacks, but it does not cover configuration file changes, database migrations, or application state. Use it as one tool in your recovery toolkit, not the only one.
 
-6. **Clean up old history periodically.** The history database grows over time. While it is not usually a space concern, very old transactions are rarely useful:
+6. **Review old history periodically.** The history database grows over time. While it is not usually a space concern, very old transactions are rarely useful:
 
 ```bash
 # View the oldest transactions in history
