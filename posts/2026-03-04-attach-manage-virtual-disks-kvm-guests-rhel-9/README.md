@@ -13,13 +13,13 @@ Virtual disks are the primary storage for KVM guests on RHEL 9. You can add, res
 ## Creating a Virtual Disk
 
 ```bash
-qemu-img create -f qcow2 /var/lib/libvirt/images/data-disk.qcow2 50G
+sudo qemu-img create -f qcow2 /var/lib/libvirt/images/data-disk.qcow2 50G
 ```
 
 For raw format (better performance):
 
 ```bash
-qemu-img create -f raw /var/lib/libvirt/images/data-disk.raw 50G
+sudo qemu-img create -f raw /var/lib/libvirt/images/data-disk.raw 50G
 ```
 
 Using virsh:
@@ -76,18 +76,18 @@ sudo virsh detach-disk vmname vdb --persistent
 For a stopped VM:
 
 ```bash
-qemu-img resize /var/lib/libvirt/images/data-disk.qcow2 +20G
+sudo qemu-img resize /var/lib/libvirt/images/data-disk.qcow2 +20G
 ```
 
 For a running VM:
 
 ```bash
-sudo virsh blockresize vmname /var/lib/libvirt/images/data-disk.qcow2 70G
+sudo virsh blockresize vmname vdb 70G
 ```
 
 ### Inside the Guest
 
-After resizing the image, expand the file system in the guest:
+After resizing the image, expand the partition or LVM layer if needed, then expand the file system in the guest:
 
 For XFS:
 
@@ -124,9 +124,9 @@ Set the cache mode for different use cases:
 | Mode | Safety | Performance | Use Case |
 |------|--------|-------------|----------|
 | none | High | Good | Database, production |
-| writethrough | High | Lower | Default safe option |
+| writethrough | High | Lower | Safe write-through I/O |
 | writeback | Lower | High | Testing, non-critical |
-| directsync | Highest | Lowest | Maximum data safety |
+| directsync | High | Lower | Synchronous I/O without host page cache |
 
 ## Monitoring Disk Performance
 
