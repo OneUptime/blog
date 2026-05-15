@@ -33,7 +33,7 @@ Result:
 - `/nfs/data/` mounts `nfsserver:/export/data`
 - `/nfs/logs/` mounts `nfsserver:/export/logs`
 
-The parent directory `/nfs/` is managed by autofs. You cannot have permanent content in `/nfs/` alongside automounted subdirectories.
+The parent directory `/nfs/` is managed by autofs. Do not rely on permanent content in `/nfs/` alongside automounted subdirectories, because the autofs mount controls that directory while it is active.
 
 ### Setting Up Indirect Maps
 
@@ -42,6 +42,11 @@ The parent directory `/nfs/` is managed by autofs. You cannot have permanent con
 
 sudo tee /etc/auto.master.d/indirect.autofs << 'EOF'
 /shares /etc/auto.shares --timeout=600
+EOF
+
+sudo tee /etc/auto.shares << 'EOF'
+data    -rw  nfsserver:/export/data
+logs    -ro  nfsserver:/export/logs
 EOF
 
 sudo systemctl restart autofs
