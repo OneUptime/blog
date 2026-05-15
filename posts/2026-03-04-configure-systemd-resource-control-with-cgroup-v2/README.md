@@ -8,11 +8,11 @@ Description: Learn how to configure systemd Resource Control with Cgroup v2 on R
 
 ---
 
-Cgroup v2 is the default control group hierarchy on RHEL and provides a unified way to manage CPU, memory, I/O, and other resources for services managed by systemd. This guide covers how to configure resource control for systemd services using cgroup v2.
+Cgroup v2 is the default control group hierarchy on RHEL 9 and later and provides a unified way to manage CPU, memory, I/O, and other resources for services managed by systemd. This guide covers how to configure resource control for systemd services using cgroup v2.
 
 ## Prerequisites
 
-- RHEL (cgroup v2 is enabled by default)
+- RHEL 9 or later (RHEL 8 defaults to cgroup v1; enable cgroup v2 first)
 - Root or sudo access
 - Basic familiarity with systemd unit files
 
@@ -71,8 +71,8 @@ MemorySwapMax=512M
 |----------|-------------|
 | `MemoryMax` | Hard memory limit (OOM kill if exceeded) |
 | `MemoryHigh` | Soft limit (throttling begins) |
-| `MemoryLow` | Memory protection (best-effort reservation) |
-| `MemoryMin` | Hard memory reservation |
+| `MemoryLow` | Soft memory protection |
+| `MemoryMin` | Hard memory protection |
 | `MemorySwapMax` | Maximum swap usage |
 
 ## Step 3: Set I/O Limits
@@ -119,8 +119,8 @@ Check the cgroup settings:
 
 ```bash
 systemctl show myapp.service | grep -E 'CPU|Memory|IO'
-cat /sys/fs/cgroup/system.slice/myapp.service/memory.max
-cat /sys/fs/cgroup/system.slice/myapp.service/cpu.max
+cat /sys/fs/cgroup/apps.slice/myapp.service/memory.max
+cat /sys/fs/cgroup/apps.slice/myapp.service/cpu.max
 ```
 
 ## Step 6: Monitor Resource Usage
@@ -135,7 +135,7 @@ For a specific service:
 
 ```bash
 systemctl status myapp.service
-cat /sys/fs/cgroup/system.slice/myapp.service/memory.current
+cat /sys/fs/cgroup/apps.slice/myapp.service/memory.current
 ```
 
 ## Conclusion
