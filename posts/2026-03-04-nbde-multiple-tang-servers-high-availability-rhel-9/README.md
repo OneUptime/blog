@@ -107,13 +107,11 @@ sudo clevis luks list -d /dev/sda3
 After adding bindings, rebuild the initramfs:
 
 ```bash
-# Ensure network early boot is configured
-sudo tee /etc/dracut.conf.d/nbde-network.conf << 'EOF'
-kernel_cmdline="rd.neednet=1"
-EOF
+# Ensure Clevis support is available in the initramfs
+sudo dnf install clevis-dracut
 
-# Rebuild initramfs
-sudo dracut -fv
+# Rebuild initramfs and include the needed host-specific kernel arguments
+sudo dracut -fv --regenerate-all --hostonly-cmdline
 ```
 
 ## Choosing Between SSS and Multiple Bindings
@@ -165,7 +163,11 @@ done
 When rotating keys on one Tang server, clients bound via SSS will automatically use the other server(s) during the rotation period:
 
 ```bash
-# On Tang Server A - generate new keys
+# On Tang Server A - hide the old keys from new advertisements
+cd /var/db/tang
+sudo sh -c 'for key in *.jwk; do mv "$key" ".$key"; done'
+
+# Generate new keys
 sudo /usr/libexec/tangd-keygen /var/db/tang
 
 # Clients can still unlock using Server B
