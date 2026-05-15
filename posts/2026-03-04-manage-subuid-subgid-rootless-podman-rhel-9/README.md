@@ -111,7 +111,7 @@ Review the sorted output to confirm no ranges overlap.
 
 ## Applying Changes to Running Podman
 
-After modifying subuid or subgid files, migrate the Podman storage:
+After modifying subuid or subgid files, migrate Podman so the rootless user namespace is recreated with the new mappings:
 
 ```bash
 podman system migrate
@@ -123,13 +123,15 @@ If containers fail after migration, reset the storage:
 podman system reset
 ```
 
-This removes all containers, images, and volumes for the current user. Re-pull images after resetting.
+This removes all containers, pods, images, networks, build cache, and volumes for the current user. Re-pull images after resetting.
 
 ## Allocating Larger Ranges
 
-Some workloads need more than 65,536 UIDs. Increase the range:
+Some workloads need more than 65,536 UIDs. Replace the existing range with a larger non-overlapping range:
 
 ```bash
+sudo usermod --del-subuids 100000-165535 alice
+sudo usermod --del-subgids 100000-165535 alice
 sudo usermod --add-subuids 100000-262143 alice
 sudo usermod --add-subgids 100000-262143 alice
 ```
@@ -146,7 +148,7 @@ If rootless containers fail with permission errors:
 4. Run `podman system migrate` after any mapping changes
 
 ```bash
-grep $(whoami) /etc/subuid /etc/subgid
+grep "^$(id -un):" /etc/subuid /etc/subgid
 ls -la /usr/bin/newuidmap /usr/bin/newgidmap
 sysctl user.max_user_namespaces
 ```
