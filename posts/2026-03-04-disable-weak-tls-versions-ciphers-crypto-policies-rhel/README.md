@@ -31,7 +31,7 @@ openssl s_client -connect localhost:443 -tls1_2 < /dev/null 2>&1 | grep "Protoco
 The simplest approach is to use the DEFAULT policy, which already disables TLS 1.0 and 1.1:
 
 ```bash
-# DEFAULT policy requires TLS 1.2+ and disables weak ciphers
+# DEFAULT policy requires TLS 1.2+ and disables many legacy ciphers
 sudo update-crypto-policies --set DEFAULT
 ```
 
@@ -49,12 +49,12 @@ If you need to remove specific ciphers while staying on the DEFAULT policy:
 ```bash
 # Create a module to disable CBC and other weak ciphers
 sudo tee /etc/crypto-policies/policies/modules/NO-WEAK.pmod << 'EOF'
-# Disable all CBC-mode ciphers
-cipher = -AES-256-CBC -AES-128-CBC -3DES-CBC -CAMELLIA-256-CBC -CAMELLIA-128-CBC
+# Disable common CBC-mode ciphers and RC4 for TLS
+cipher@TLS = -AES-256-CBC -AES-128-CBC -3DES-CBC -CAMELLIA-256-CBC -CAMELLIA-128-CBC -RC4
+# Disable CBC-mode ciphers for SSH
+cipher@SSH = -*-CBC
 # Enforce minimum TLS 1.2
 protocol@TLS = -TLS1.0 -TLS1.1
-# Disable RC4 entirely
-cipher = -RC4
 EOF
 
 # Apply the custom module
@@ -64,7 +64,7 @@ sudo update-crypto-policies --set DEFAULT:NO-WEAK
 ## Verify the Changes
 
 ```bash
-# Restart services
+# Restart affected services, or reboot for full system-wide coverage
 sudo systemctl restart sshd httpd
 
 # Confirm weak TLS versions are rejected
