@@ -23,14 +23,16 @@ Apache Kafka is a distributed event streaming platform used for building real-ti
 
 sudo dnf update -y
 
-# Install Java (required for Kafka)
-sudo dnf install -y java-17-openjdk java-17-openjdk-devel
+# Install Java (required for Kafka) and wget
+sudo dnf install -y java-17-openjdk java-17-openjdk-devel wget
 
 # Download Apache Kafka
 cd /opt
-sudo wget https://downloads.apache.org/kafka/3.7.0/kafka_2.13-3.7.0.tgz
+sudo wget https://archive.apache.org/dist/kafka/3.7.0/kafka_2.13-3.7.0.tgz
 sudo tar -xzf kafka_2.13-3.7.0.tgz
 sudo mv kafka_2.13-3.7.0 kafka
+sudo useradd -r -s /sbin/nologin kafka
+sudo chown -R kafka:kafka /opt/kafka
 ```
 
 ## Step 2: Configure the Service
@@ -39,34 +41,57 @@ Edit the configuration file to match your environment:
 
 ```bash
 # Open the configuration file
-sudo vi /etc/<service>/config.conf
+sudo vi /opt/kafka/config/kraft/server.properties
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include `listeners`, `advertised.listeners`, `log.dirs`, authentication settings, and logging options.
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Generate a cluster ID and format the Kafka storage directory
+KAFKA_CLUSTER_ID="$(/opt/kafka/bin/kafka-storage.sh random-uuid)"
+sudo -u kafka /opt/kafka/bin/kafka-storage.sh format -t "$KAFKA_CLUSTER_ID" -c /opt/kafka/config/kraft/server.properties
+
+# Create a systemd service
+sudo tee /etc/systemd/system/kafka.service > /dev/null <<'EOF'
+[Unit]
+Description=Apache Kafka Server
+After=network.target
+
+[Service]
+Type=simple
+User=kafka
+Group=kafka
+WorkingDirectory=/opt/kafka
+ExecStart=/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/kraft/server.properties
+ExecStop=/opt/kafka/bin/kafka-server-stop.sh
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Reload systemd after creating the service file
+sudo systemctl daemon-reload
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable kafka
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start kafka
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status kafka
 ```
 
 ## Step 4: Configure the Firewall
 
 ```bash
 # Open the required port
-sudo firewall-cmd --permanent --add-port=<PORT>/tcp
+sudo firewall-cmd --permanent --add-port=9092/tcp
 sudo firewall-cmd --reload
 
 # Verify the rule
@@ -91,9 +116,9 @@ Confirm everything is working by checking the status and logs:
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
+- If the service fails to start, check the logs with `journalctl -u kafka -e --no-pager`.
 - SELinux may block access. Check for denials with `ausearch -m avc -ts recent` and apply appropriate policies.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- Ensure all required packages are installed: `rpm -qa | grep -E 'java-17-openjdk|wget'`.
 
 ## Conclusion
 
