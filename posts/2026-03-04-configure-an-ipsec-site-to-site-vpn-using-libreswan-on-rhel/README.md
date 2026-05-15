@@ -76,7 +76,7 @@ On both servers:
 ```bash
 # Create the shared secret
 sudo tee /etc/ipsec.d/site-to-site.secrets << 'SECRETS'
-@siteA @siteB : PSK "YourStrongPreSharedKeyHere123!"
+@siteA @siteB : PSK "QHRQrI6vMPYmoVTDTb48w3x+m4NQqr6kQzTOdeXEyvhoe/P1IUEi4gZ7BG6EgQ00hfXrXNiJ"
 SECRETS
 
 sudo chmod 600 /etc/ipsec.d/site-to-site.secrets
