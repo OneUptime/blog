@@ -51,8 +51,8 @@ flowchart TD
     D -->|Yes| E[Run aide --update]
     D -->|No| F[Investigate unexpected changes]
     E --> G[Review the update output]
-    G --> H[Copy aide.db.new.gz to aide.db.gz]
-    H --> I[Archive old database]
+    G --> H[Archive old database]
+    H --> I[Copy aide.db.new.gz to aide.db.gz]
     I --> J[Run aide --check to verify clean baseline]
     F --> K{Resolved?}
     K -->|Yes| E
@@ -133,6 +133,7 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 LOGFILE="/var/log/aide/post-patch-${TIMESTAMP}.log"
 
 mkdir -p "${ARCHIVE_DIR}"
+mkdir -p "$(dirname "${LOGFILE}")"
 
 echo "=== AIDE Post-Patch Update ===" | tee "${LOGFILE}"
 echo "Timestamp: $(date)" | tee -a "${LOGFILE}"
@@ -161,7 +162,14 @@ sudo chmod 700 /usr/local/sbin/aide-post-patch.sh
 
 ## Partial Updates: When You Cannot Update Everything
 
-Sometimes you want to accept changes in one area but not another. AIDE does not support partial database updates directly. A temporary config can help you narrow investigation to a smaller set of paths, but do not activate the database produced from that limited config as your full system baseline:
+Sometimes you want to accept changes in one area but not another. AIDE supports limiting a check or update to matching database entries with `--limit`, which leaves other entries unchecked and unchanged. Use a path regex that matches the area you have reviewed:
+
+```bash
+# Update only entries under /etc after reviewing those changes
+sudo aide --update --limit /etc
+```
+
+A temporary config can also help you narrow investigation to a smaller set of paths, but do not activate the database produced from that limited config as your full system baseline:
 
 ```bash
 # Check a limited scope using a temporary config
