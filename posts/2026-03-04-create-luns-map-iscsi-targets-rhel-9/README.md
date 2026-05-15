@@ -35,14 +35,14 @@ Use physical disks, partitions, or LVM logical volumes:
 Create file-based LUNs with a specified size:
 
 ```bash
-/backstores/fileio create lun0 /var/iscsi/lun0.img 50G
-/backstores/fileio create lun1 /var/iscsi/lun1.img 100G
+/backstores/fileio create lun2 /var/iscsi/lun2.img 50G
+/backstores/fileio create lun3 /var/iscsi/lun3.img 100G
 ```
 
-File backstores are created as sparse files by default (they grow as data is written). To pre-allocate the space:
+File backstores are created as sparse files by default (they grow as data is written). To use write-through I/O instead of the default write-back cache:
 
 ```bash
-/backstores/fileio create lun0 /var/iscsi/lun0.img 50G write_back=false
+/backstores/fileio create lun4 /var/iscsi/lun4.img 50G write_back=false
 ```
 
 ### Ramdisk Backstores
@@ -58,12 +58,12 @@ For testing or high-performance temporary storage:
 ```bash
 # Create the target
 
-/iscsi create iqn.2024.com.example:storage1
+/iscsi create iqn.2024-03.com.example:storage1
 
 # Map backstores to LUNs
-/iscsi/iqn.2024.com.example:storage1/tpg1/luns create /backstores/block/lun0
-/iscsi/iqn.2024.com.example:storage1/tpg1/luns create /backstores/block/lun1
-/iscsi/iqn.2024.com.example:storage1/tpg1/luns create /backstores/fileio/lun2
+/iscsi/iqn.2024-03.com.example:storage1/tpg1/luns create /backstores/block/lun0
+/iscsi/iqn.2024-03.com.example:storage1/tpg1/luns create /backstores/block/lun1
+/iscsi/iqn.2024-03.com.example:storage1/tpg1/luns create /backstores/fileio/lun2
 ```
 
 LUNs are numbered automatically starting from 0.
@@ -73,38 +73,39 @@ LUNs are numbered automatically starting from 0.
 Create ACLs for different initiators and control which LUNs each can see:
 
 ```bash
+# Disable auto-mapping before creating ACLs
+set global auto_add_mapped_luns=false
+
 # Create ACLs
-/iscsi/iqn.2024.com.example:storage1/tpg1/acls create iqn.2024.com.example:webserver1
-/iscsi/iqn.2024.com.example:storage1/tpg1/acls create iqn.2024.com.example:dbserver1
+/iscsi/iqn.2024-03.com.example:storage1/tpg1/acls create iqn.2024-03.com.example:webserver1
+/iscsi/iqn.2024-03.com.example:storage1/tpg1/acls create iqn.2024-03.com.example:dbserver1
 
 # Map specific LUNs to webserver1 (only LUN 0)
-cd /iscsi/iqn.2024.com.example:storage1/tpg1/acls/iqn.2024.com.example:webserver1
-create mapped_lun0 /backstores/block/lun0
+cd /iscsi/iqn.2024-03.com.example:storage1/tpg1/acls/iqn.2024-03.com.example:webserver1
+create mapped_lun=0 tpg_lun_or_backstore=/backstores/block/lun0
 
 # Map specific LUNs to dbserver1 (LUN 1 and LUN 2)
-cd /iscsi/iqn.2024.com.example:storage1/tpg1/acls/iqn.2024.com.example:dbserver1
-create mapped_lun1 /backstores/block/lun1
-create mapped_lun2 /backstores/fileio/lun2
+cd /iscsi/iqn.2024-03.com.example:storage1/tpg1/acls/iqn.2024-03.com.example:dbserver1
+create mapped_lun=1 tpg_lun_or_backstore=/backstores/block/lun1
+create mapped_lun=2 tpg_lun_or_backstore=/backstores/fileio/lun2
 ```
 
-By default, when you create an ACL, all LUNs in the TPG are automatically mapped. To disable auto-mapping:
+By default, when you create an ACL, all LUNs in the TPG are automatically mapped. Disable auto-mapping before creating ACLs:
 
 ```bash
-cd /iscsi/iqn.2024.com.example:storage1/tpg1
-set attribute default_cmdsn_depth=64
-set attribute generate_node_acls=0
+set global auto_add_mapped_luns=false
 ```
 
 Then manually map only the LUNs you want.
 
 ## Setting LUN Permissions
 
-You can make LUNs read-only:
+When creating a mapped LUN, you can make it read-only:
 
 ```bash
 # In the ACL mapped_lun
-cd /iscsi/iqn.2024.com.example:storage1/tpg1/acls/iqn.2024.com.example:webserver1
-create mapped_lun0 /backstores/block/lun0 write_protect=1
+cd /iscsi/iqn.2024-03.com.example:storage1/tpg1/acls/iqn.2024-03.com.example:webserver1
+create mapped_lun=0 tpg_lun_or_backstore=/backstores/block/lun0 write_protect=1
 ```
 
 ## Multiple Targets for Different Use Cases
@@ -113,12 +114,12 @@ You can create separate targets for different purposes:
 
 ```bash
 # Target for web servers
-/iscsi create iqn.2024.com.example:web-storage
-/iscsi/iqn.2024.com.example:web-storage/tpg1/luns create /backstores/block/lun0
+/iscsi create iqn.2024-03.com.example:web-storage
+/iscsi/iqn.2024-03.com.example:web-storage/tpg1/luns create /backstores/block/lun0
 
 # Target for database servers
-/iscsi create iqn.2024.com.example:db-storage
-/iscsi/iqn.2024.com.example:db-storage/tpg1/luns create /backstores/block/lun1
+/iscsi create iqn.2024-03.com.example:db-storage
+/iscsi/iqn.2024-03.com.example:db-storage/tpg1/luns create /backstores/block/lun1
 ```
 
 ## Using LVM for Flexible LUN Management
@@ -150,8 +151,8 @@ Then in targetcli:
 ls /
 
 # Show specific target details
-ls /iscsi/iqn.2024.com.example:storage1/tpg1/luns/
-ls /iscsi/iqn.2024.com.example:storage1/tpg1/acls/
+ls /iscsi/iqn.2024-03.com.example:storage1/tpg1/luns/
+ls /iscsi/iqn.2024-03.com.example:storage1/tpg1/acls/
 ```
 
 Save the configuration:
