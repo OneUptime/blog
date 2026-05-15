@@ -15,9 +15,11 @@ Selenium Grid lets you run browser tests across multiple machines and browsers i
 Selenium Grid 4 uses a hub-and-node architecture:
 
 - **Router** - receives test requests and routes them to available nodes
+- **New Session Queue** - queues new session requests until a matching node is available
 - **Distributor** - assigns test sessions to nodes based on capabilities
 - **Session Map** - tracks which node owns which session
 - **Node** - runs the actual browser and executes commands
+- **Event Bus** - handles internal communication between Grid components
 
 In standalone mode, all components run in a single process. In distributed mode, they run separately for scalability.
 
@@ -71,8 +73,9 @@ sudo dnf install -y google-chrome-stable
 
 ```bash
 # Download ChromeDriver
-CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+')
-curl -LO "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}.0/linux64/chromedriver-linux64.zip"
+CHROME_BUILD=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+')
+CHROMEDRIVER_VERSION=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_${CHROME_BUILD}")
+curl -LO "https://storage.googleapis.com/chrome-for-testing-public/${CHROMEDRIVER_VERSION}/linux64/chromedriver-linux64.zip"
 unzip chromedriver-linux64.zip
 sudo mv chromedriver-linux64/chromedriver /usr/local/bin/
 sudo chmod +x /usr/local/bin/chromedriver
@@ -80,7 +83,7 @@ sudo chmod +x /usr/local/bin/chromedriver
 
 ```bash
 # Download GeckoDriver for Firefox
-GECKO_VERSION="0.34.0"
+GECKO_VERSION="0.36.0"
 curl -LO "https://github.com/mozilla/geckodriver/releases/download/v${GECKO_VERSION}/geckodriver-v${GECKO_VERSION}-linux64.tar.gz"
 tar xzf geckodriver-v${GECKO_VERSION}-linux64.tar.gz
 sudo mv geckodriver /usr/local/bin/
@@ -93,7 +96,7 @@ Download the Selenium Server:
 
 ```bash
 # Download Selenium Server
-SELENIUM_VERSION="4.18.1"
+SELENIUM_VERSION="4.43.0"
 curl -LO "https://github.com/SeleniumHQ/selenium/releases/download/selenium-${SELENIUM_VERSION}/selenium-server-${SELENIUM_VERSION}.jar"
 sudo mv selenium-server-${SELENIUM_VERSION}.jar /opt/selenium-server.jar
 ```
@@ -125,7 +128,8 @@ On each node machine:
 java -jar /opt/selenium-server.jar node \
   --hub http://hub-ip:4444 \
   --port 5555 \
-  --max-sessions 5
+  --max-sessions 5 \
+  --override-max-sessions true
 ```
 
 ```bash
@@ -133,7 +137,8 @@ java -jar /opt/selenium-server.jar node \
 java -jar /opt/selenium-server.jar node \
   --hub http://hub-ip:4444 \
   --port 5556 \
-  --max-sessions 5
+  --max-sessions 5 \
+  --override-max-sessions true
 ```
 
 ## Docker-Based Deployment
@@ -142,7 +147,7 @@ The easiest way to run Selenium Grid is with containers:
 
 ```bash
 # Install Podman
-sudo dnf install -y podman podman-compose
+sudo dnf install -y container-tools
 ```
 
 Create a compose file:
@@ -151,40 +156,43 @@ Create a compose file:
 # docker-compose.yml
 version: "3"
 services:
-  hub:
-    image: selenium/hub:4.18
-    container_name: selenium-hub
-    ports:
-      - "4444:4444"
-
   chrome:
-    image: selenium/node-chrome:4.18
+    image: selenium/node-chrome:4.43.0-20260404
+    platform: linux/amd64
+    shm_size: 2gb
     depends_on:
-      - hub
+      - selenium-hub
     environment:
-      - SE_EVENT_BUS_HOST=hub
+      - SE_EVENT_BUS_HOST=selenium-hub
       - SE_EVENT_BUS_PUBLISH_PORT=4442
       - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
       - SE_NODE_MAX_SESSIONS=5
-    deploy:
-      replicas: 2
+      - SE_NODE_OVERRIDE_MAX_SESSIONS=true
 
   firefox:
-    image: selenium/node-firefox:4.18
+    image: selenium/node-firefox:4.43.0-20260404
+    shm_size: 2gb
     depends_on:
-      - hub
+      - selenium-hub
     environment:
-      - SE_EVENT_BUS_HOST=hub
+      - SE_EVENT_BUS_HOST=selenium-hub
       - SE_EVENT_BUS_PUBLISH_PORT=4442
       - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
       - SE_NODE_MAX_SESSIONS=5
-    deploy:
-      replicas: 2
+      - SE_NODE_OVERRIDE_MAX_SESSIONS=true
+
+  selenium-hub:
+    image: selenium/hub:4.43.0-20260404
+    container_name: selenium-hub
+    ports:
+      - "4442:4442"
+      - "4443:4443"
+      - "4444:4444"
 ```
 
 ```bash
 # Start the Grid
-podman-compose up -d
+podman compose up -d --scale chrome=2 --scale firefox=2
 ```
 
 ## Creating a Systemd Service
@@ -236,7 +244,7 @@ def driver():
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     driver = webdriver.Remote(
-        command_executor="http://localhost:4444/wd/hub",
+        command_executor="http://localhost:4444",
         options=chrome_options
     )
     yield driver
@@ -288,7 +296,7 @@ def driver(request):
         options.add_argument("--headless")
 
     driver = webdriver.Remote(
-        command_executor="http://localhost:4444/wd/hub",
+        command_executor="http://localhost:4444",
         options=options
     )
     yield driver
