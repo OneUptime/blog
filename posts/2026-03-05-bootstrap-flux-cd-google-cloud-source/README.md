@@ -69,12 +69,14 @@ cat ~/.ssh/flux-gcp.pub
 
 Register the SSH key with Google Cloud through the Google Cloud Console. Navigate to Cloud Source Repositories > SSH Keys > Register SSH Key, then paste the contents of `~/.ssh/flux-gcp.pub`.
 
-Get the SSH host key for source.developers.google.com:
+Optionally verify the SSH host key for source.developers.google.com before creating the Flux secret:
 
 ```bash
 # Scan the Google Cloud Source Repositories host key
 ssh-keyscan -p 2022 -t rsa source.developers.google.com > known_hosts_gcp.txt
 ```
+
+The `flux create secret git` command in the next step gathers the SSH host key and stores it in the Kubernetes secret automatically.
 
 ## Step 4: Create the Flux Git Secret
 
