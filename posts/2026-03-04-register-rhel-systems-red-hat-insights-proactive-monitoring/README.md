@@ -15,12 +15,11 @@ Red Hat Insights is a hosted service included with every RHEL subscription that 
 Your RHEL system must be registered with Red Hat Subscription Manager. If it is not already registered:
 
 ```bash
-# Register the system with your Red Hat account
+# Register the system with an activation key and organization ID
+sudo subscription-manager register --activation-key your_activation_key --org your_org_id
 
+# Or register with your Red Hat account
 sudo subscription-manager register --username your_username --password your_password
-
-# Attach the appropriate subscription
-sudo subscription-manager attach --auto
 ```
 
 ## Install the Insights Client
@@ -83,15 +82,14 @@ sudo insights-client --verbose
 
 ## Customize What Data Is Collected
 
-You can redact hostnames, IP addresses, or other sensitive data.
+You can obfuscate hostnames, IP addresses, or other sensitive data.
 
 ```bash
 # Edit the Insights client configuration
 sudo vi /etc/insights-client/insights-client.conf
 
 # To obfuscate hostnames and IP addresses, add:
-# obfuscate=True
-# obfuscate_hostname=True
+# obfuscation_list=hostname,ipv4,ipv6
 ```
 
 ## Unregister a System
