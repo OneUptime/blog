@@ -42,7 +42,13 @@ Consumer lag indicates how far behind a consumer is from the latest message.
 Set JMX port in the Kafka environment:
 
 ```bash
-export KAFKA_JMX_OPTS="-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=9999 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false"
+export KAFKA_JMX_OPTS="-Dcom.sun.management.jmxremote=true -Dcom.sun.management.jmxremote.port=9999 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false"
+```
+
+Add the JMX reporter to `/opt/kafka/config/server.properties`:
+
+```properties
+metric.reporters=org.apache.kafka.common.metrics.JmxReporter
 ```
 
 ## Step 3: Key Metrics to Monitor
@@ -50,19 +56,19 @@ export KAFKA_JMX_OPTS="-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxre
 | Metric | Description | Healthy Value |
 |--------|-------------|---------------|
 | UnderReplicatedPartitions | Partitions without enough replicas | 0 |
-| IsrShrinkRate | Rate of ISR shrinks | Near 0 |
+| IsrShrinksPerSec | Rate of ISR shrinks | Near 0 |
 | ActiveControllerCount | Controllers in the cluster | 1 |
-| OfflinePartitionsCount | Partitions without a leader | 0 |
+| OfflinePartitionCount | Partitions without a leader | 0 |
 | MessagesInPerSec | Message throughput | Varies |
 | BytesInPerSec | Byte throughput | Varies |
-| RequestHandlerAvgIdlePercent | Handler thread idle time | > 0.3 |
+| RequestHandlerAvgIdlePercent | Handler thread idle time | > 0.7 |
 
 ## Step 4: Prometheus Integration
 
 Use the JMX Exporter:
 
 ```bash
-curl -L https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.19.0/jmx_prometheus_javaagent-0.19.0.jar -o /opt/kafka/libs/jmx_prometheus_javaagent.jar
+curl -L https://github.com/prometheus/jmx_exporter/releases/download/1.5.0/jmx_prometheus_javaagent-1.5.0.jar -o /opt/kafka/libs/jmx_prometheus_javaagent.jar
 ```
 
 Create exporter config:
@@ -72,9 +78,16 @@ vi /opt/kafka/config/jmx-exporter.yaml
 ```
 
 ```yaml
+lowercaseOutputName: true
 rules:
-- pattern: kafka.server<type=(.+), name=(.+)><>Value
-  name: kafka_server_$1_$2
+- pattern: kafka.(\w+)<type=(.+), name=(.+)PerSec\w*><>Count
+  name: kafka_$1_$2_$3_total
+  type: COUNTER
+- pattern: kafka.(\w+)<type=(.+), name=(.+)Percent\w*><>(MeanRate|Value)
+  name: kafka_$1_$2_$3_percent
+  type: GAUGE
+- pattern: kafka.(\w+)<type=(.+), name=(.+)><>Value
+  name: kafka_$1_$2_$3
   type: GAUGE
 ```
 
