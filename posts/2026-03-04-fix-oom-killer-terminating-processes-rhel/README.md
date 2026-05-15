@@ -54,13 +54,13 @@ sudo systemctl daemon-reload
 sudo systemctl restart httpd
 
 # For the most critical services (use sparingly)
-# OOMScoreAdjust=-1000 disables OOM killing entirely
+# OOMScoreAdjust=-1000 disables OOM killing for that service's processes
 ```
 
-## Setting Memory Limits to Prevent OOM
+## Setting Memory Limits to Prevent System-Wide OOM
 
 ```bash
-# Set memory limits for a service to prevent it from consuming all memory
+# Set memory limits for a service to prevent it from consuming all system memory
 sudo systemctl edit mysql.service
 ```
 
@@ -94,12 +94,12 @@ echo "/swapfile none swap defaults 0 0" | sudo tee -a /etc/fstab
 ## Tuning System-Wide Memory Settings
 
 ```bash
-# Reduce swappiness to keep more data in RAM
-# Lower values mean the kernel prefers to reclaim page cache
+# Reduce swappiness to make the kernel less eager to swap anonymous memory
+# Tune this per workload; lower values treat swap I/O as more expensive
 sudo sysctl -w vm.swappiness=10
 echo "vm.swappiness = 10" | sudo tee /etc/sysctl.d/99-swappiness.conf
 
-# Set minimum free memory before OOM is triggered
+# Set the VM's minimum free-memory watermark reserve; tune carefully
 sudo sysctl -w vm.min_free_kbytes=131072
 echo "vm.min_free_kbytes = 131072" | sudo tee /etc/sysctl.d/99-minfree.conf
 ```
@@ -114,4 +114,4 @@ cat /proc/meminfo | grep -E "MemTotal|MemFree|MemAvailable|SwapFree"
 watch -n 1 'free -h'
 ```
 
-The best defense against OOM kills is proactive monitoring and setting memory limits on services. Use systemd's MemoryMax to cap individual services rather than relying on the OOM killer to make decisions.
+The best defense against OOM kills is proactive monitoring and setting memory limits on services. Use systemd's MemoryHigh as the main control mechanism and MemoryMax as the last line of defense rather than relying on the system-wide OOM killer to make decisions.
