@@ -176,11 +176,10 @@ method=manual
 address1=10.0.1.50/24,10.0.1.1
 route1=172.16.0.0/16,10.0.1.254
 route2=192.168.100.0/24,10.0.1.253,100
-dns=10.0.1.2;
-
-[ipv4]
-route1_options=table=100
+route3=0.0.0.0/0,10.0.2.1
+route3_options=table=100
 routing-rule1=priority 100 from 10.0.2.50/32 table 100
+dns=10.0.1.2;
 ```
 
 You can edit these files directly, then reload:
@@ -214,8 +213,8 @@ ip route show
 # Routes for a specific destination
 ip route get 172.16.0.100
 
-# Show the route cache
-ip route show cache
+# Show routes in all tables
+ip route show table all
 ```
 
 ### Trace the Path
