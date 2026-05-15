@@ -8,7 +8,7 @@ Description: Learn how to configure Podman containers on RHEL to send their logs
 
 ---
 
-Podman on RHEL supports multiple logging drivers, and journald is the recommended one for production environments. When container logs go to journald, you can use all the standard journalctl filtering and searching capabilities to manage container logs alongside your system logs.
+Podman on RHEL supports multiple logging drivers, and journald is the default when the systemd journal is available. When container logs go to journald, you can use all the standard journalctl filtering and searching capabilities to manage container logs alongside your system logs.
 
 ## Why Use journald for Container Logs
 
@@ -19,7 +19,7 @@ graph TD
     C[Podman Container 3] -->|journald driver| D
     D --> E[journalctl queries]
     D --> F[rsyslog forwarding]
-    D --> G[Persistent storage]
+    D --> G[Journal retention]
     D --> H[Rate limiting]
 ```
 
@@ -27,7 +27,7 @@ Benefits of using journald as the Podman log driver:
 
 - Unified log management with system logs
 - Structured metadata (container name, ID, image)
-- Built-in rate limiting and storage quotas
+- Built-in rate limiting and retention controls
 - Easy forwarding to remote syslog or SIEM
 - Survives container restarts
 
@@ -42,7 +42,7 @@ podman info --format '{{.Host.LogDriver}}'
 podman info --format '{{.Host.LogDriver}}'
 ```
 
-On RHEL, the default log driver is typically `journald`.
+On RHEL systems where the systemd journal is readable and writable, the default log driver is typically `journald`.
 
 ## Step 2: Configure journald as the Default Log Driver
 
@@ -168,8 +168,8 @@ journalctl SYSLOG_IDENTIFIER=myapp-myapp --no-pager
 # Error-level container logs from the last day
 journalctl CONTAINER_NAME=mywebapp -p err --since "1 day ago"
 
-# All container logs (filter by Podman's container ID field)
-journalctl -t podman --no-pager -n 100
+# Podman events (not container stdout/stderr)
+journalctl SYSLOG_IDENTIFIER=podman --no-pager -n 100
 ```
 
 ## Step 5: Use podman logs with journald
@@ -195,7 +195,7 @@ podman logs --since "2026-03-04T08:00:00" mywebapp
 
 ## Step 6: Container Logs in Systemd Services
 
-When running Podman containers as systemd services (using Quadlet or podman generate), logs automatically go to journald:
+When running Podman containers as systemd services (using Quadlet or podman generate), the systemd unit's logs are available through journald. Container stdout/stderr is queryable with the container fields shown above when the container uses the journald log driver:
 
 ```bash
 # Generate a systemd service for a container
@@ -255,9 +255,9 @@ To forward container logs to a remote server or SIEM:
 sudo vi /etc/rsyslog.d/container-forward.conf
 ```
 
-```bash
-# Forward container logs identified by their syslog identifier
-if $programname startswith 'podman' or $syslogtag startswith 'conmon' then {
+```rsyslog
+# Forward container logs identified by the custom journald tag
+if $programname startswith 'myapp-' or $programname startswith 'redis-' then {
     action(type="omfwd"
         target="logserver.example.com"
         port="514"
