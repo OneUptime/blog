@@ -13,16 +13,11 @@ ModSecurity is an open-source web application firewall (WAF) that protects Apach
 ## Prerequisites
 
 - A RHEL system with Apache installed and running
-- EPEL repository enabled
 - Root or sudo access
 
 ## Step 1: Install ModSecurity
 
 ```bash
-# Enable EPEL if not already enabled
-
-sudo dnf install -y epel-release
-
 # Install ModSecurity for Apache
 sudo dnf install -y mod_security mod_security_crs
 
@@ -35,7 +30,7 @@ httpd -M | grep security
 ```mermaid
 graph TD
     A[/etc/httpd/conf.d/mod_security.conf] --> B[Main module settings]
-    C[/etc/httpd/modsecurity.d/] --> D[modsecurity_crs_10_setup.conf]
+    C[/etc/httpd/modsecurity.d/] --> D[crs-setup.conf]
     C --> E[activated_rules/]
     E --> F[OWASP CRS Rules]
 ```
@@ -47,7 +42,7 @@ Key files:
 
 ## Step 3: Configure ModSecurity Mode
 
-ModSecurity has two main modes:
+The `SecRuleEngine` directive has three states: `On`, `Off`, and `DetectionOnly`. Start with detection before switching to enforcement:
 
 ```bash
 # Edit the main configuration
@@ -124,23 +119,33 @@ ls -la /etc/httpd/modsecurity.d/activated_rules/
 
 ## Step 6: Create Custom Rule Exclusions
 
-Your application will likely trigger false positives. Create an exclusion file:
+Your application will likely trigger false positives. Put runtime `ctl:` exclusions in a file loaded before the CRS, and put configure-time exclusions such as `SecRuleRemoveById` in a file loaded after the CRS:
 
 ```bash
-# Create a custom rules file that loads after the CRS
-cat <<'EOF' | sudo tee /etc/httpd/modsecurity.d/custom-exclusions.conf
-# Disable a specific rule that causes false positives
-# Rule 942100: SQL Injection detection via libinjection
-SecRuleRemoveById 942100
-
+# Runtime exclusions loaded before CRS rules
+cat <<'EOF' | sudo tee /etc/httpd/modsecurity.d/custom-before-crs.conf
 # Disable rules for a specific URL path
-SecRule REQUEST_URI "@beginsWith /api/upload"     "id:10001,phase:1,pass,nolog,    ctl:ruleRemoveById=200002,    ctl:ruleRemoveById=200003"
+SecRule REQUEST_URI "@beginsWith /api/upload" \
+    "id:10001,phase:1,pass,nolog,\
+    ctl:ruleRemoveById=200002,\
+    ctl:ruleRemoveById=200003"
 
 # Allow a specific parameter to bypass SQL injection checks
-SecRule ARGS:search_query "@rx .*"     "id:10002,phase:2,pass,nolog,    ctl:ruleRemoveTargetById=942100;ARGS:search_query"
+SecRule ARGS:search_query "@rx .*" \
+    "id:10002,phase:2,pass,nolog,\
+    ctl:ruleRemoveTargetById=942100;ARGS:search_query"
 
 # Increase the body limit for file upload endpoints
-SecRule REQUEST_URI "@beginsWith /upload"     "id:10003,phase:1,pass,nolog,    ctl:requestBodyLimit=52428800"
+SecRule REQUEST_URI "@beginsWith /upload" \
+    "id:10003,phase:1,pass,nolog,\
+    ctl:requestBodyLimit=52428800"
+EOF
+
+# Configure-time exclusions loaded after CRS rules
+sudo mkdir -p /etc/httpd/modsecurity.d/local_rules
+cat <<'EOF' | sudo tee /etc/httpd/modsecurity.d/local_rules/custom-after-crs.conf
+# Rule 941100: XSS Attack Detected via libinjection
+SecRuleRemoveById 941100
 EOF
 ```
 
