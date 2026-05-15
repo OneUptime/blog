@@ -8,13 +8,14 @@ Description: Step-by-step guide on set up kafka with zookeeper using Red Hat Ent
 
 ---
 
-ZooKeeper has traditionally been Kafka's coordination service, managing broker metadata and leader elections. While KRaft mode is replacing ZooKeeper, many existing deployments still use this architecture.
+ZooKeeper has traditionally been Kafka's coordination service, managing broker metadata and leader elections. While KRaft mode has replaced ZooKeeper in Apache Kafka 4.0 and later, many Kafka 3.x deployments still use this architecture.
 
 ## Prerequisites
 
 - RHEL with a valid subscription or CentOS Stream 9
 - Root or sudo access
 - A terminal session
+- Java installed and Apache Kafka 3.x extracted to `/opt/kafka`
 
 ## Step 2: Configure the Service
 
@@ -23,45 +24,76 @@ Configure ZooKeeper and Kafka:
 ```bash
 # Configure ZooKeeper
 
-cat <<EOF > /opt/kafka/config/zookeeper.properties
+sudo mkdir -p /var/lib/zookeeper /var/lib/kafka-logs
+
+sudo tee /opt/kafka/config/zookeeper.properties >/dev/null <<EOF
 dataDir=/var/lib/zookeeper
 clientPort=2181
 maxClientCnxns=0
 EOF
 
-# Start ZooKeeper
-/opt/kafka/bin/zookeeper-server-start.sh -daemon /opt/kafka/config/zookeeper.properties
-
 # Configure Kafka broker
-cat <<EOF > /opt/kafka/config/server.properties
+sudo tee /opt/kafka/config/server.properties >/dev/null <<EOF
 broker.id=0
 listeners=PLAINTEXT://:9092
+advertised.listeners=PLAINTEXT://localhost:9092
 log.dirs=/var/lib/kafka-logs
 zookeeper.connect=localhost:2181
 EOF
-
-# Start Kafka
-/opt/kafka/bin/kafka-server-start.sh -daemon /opt/kafka/config/server.properties
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Create a ZooKeeper systemd service
+sudo tee /etc/systemd/system/zookeeper.service >/dev/null <<EOF
+[Unit]
+Description=Apache ZooKeeper server
+After=network.target
 
-# Start the service
-sudo systemctl start <service-name>
+[Service]
+Type=simple
+ExecStart=/opt/kafka/bin/zookeeper-server-start.sh /opt/kafka/config/zookeeper.properties
+ExecStop=/opt/kafka/bin/zookeeper-server-stop.sh
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Create a Kafka systemd service
+sudo tee /etc/systemd/system/kafka.service >/dev/null <<EOF
+[Unit]
+Description=Apache Kafka broker
+After=network.target zookeeper.service
+Requires=zookeeper.service
+
+[Service]
+Type=simple
+ExecStart=/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/server.properties
+ExecStop=/opt/kafka/bin/kafka-server-stop.sh
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Reload systemd and enable the services to start on boot
+sudo systemctl daemon-reload
+sudo systemctl enable zookeeper kafka
+
+# Start the services
+sudo systemctl start zookeeper kafka
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status zookeeper kafka
 ```
 
 ## Step 4: Configure the Firewall
 
 ```bash
-# Open the required port
-sudo firewall-cmd --permanent --add-port=<PORT>/tcp
+# Open the Kafka broker port
+sudo firewall-cmd --permanent --add-port=9092/tcp
 sudo firewall-cmd --reload
 
 # Verify the rule
@@ -86,9 +118,9 @@ Confirm everything is working by checking the status and logs:
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
+- If the service fails to start, check the logs with `journalctl -u zookeeper -u kafka -e --no-pager`.
 - SELinux may block access. Check for denials with `ausearch -m avc -ts recent` and apply appropriate policies.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- Ensure Java is installed: `rpm -qa | grep java`.
 
 ## Conclusion
 
