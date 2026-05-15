@@ -24,7 +24,7 @@ RHEL for Edge uses rpm-ostree to deliver immutable OS images:
 
 - The OS is deployed as a single atomic unit
 - Updates are applied as new image versions
-- Rollback is automatic if a health check fails (Greenboot)
+- Rollback can be automatic if a health check fails after retries and a previous deployment is available (Greenboot)
 - Applications run in containers on Podman or MicroShift (Kubernetes)
 
 ## Step 2 - Build an Edge Image
@@ -38,7 +38,7 @@ composer-cli compose start my-edge-blueprint edge-commit
 For an installer image:
 
 ```bash
-composer-cli compose start my-edge-blueprint edge-installer
+composer-cli compose start-ostree --ref rhel/9/x86_64/edge --url http://edge-repo.example.com/repo my-edge-blueprint edge-installer
 ```
 
 ## Step 3 - Deploy to Edge Devices
@@ -46,17 +46,17 @@ composer-cli compose start my-edge-blueprint edge-installer
 Write the installer to a USB drive or serve it over the network:
 
 ```bash
-sudo dd if=edge-installer.iso of=/dev/sdX bs=4M status=progress
+sudo dd if=<UUID>-boot.iso of=/dev/sdX bs=4M status=progress
 ```
 
-## Step 4 - Configure Automatic Updates
+## Step 4 - Configure Health Checks for Updates
 
-RHEL for Edge supports automatic OS updates with Greenboot health checks:
+RHEL for Edge supports update validation with Greenboot health checks:
 
 ```bash
 # Greenboot scripts in /etc/greenboot/check/required.d/
 
-# If any script fails, the system rolls back to the previous version
+# If required checks keep failing after retries, the system rolls back if a previous deployment is available
 ```
 
 ## Step 5 - Deploy Workloads
@@ -70,7 +70,14 @@ podman run -d --name myapp registry.example.com/myapp:latest
 For Kubernetes workloads, install MicroShift:
 
 ```bash
+sudo subscription-manager repos \
+  --enable rhocp-4.19-for-rhel-9-$(uname -m)-rpms \
+  --enable fast-datapath-for-rhel-9-$(uname -m)-rpms
+sudo subscription-manager release --set=9.6
 sudo dnf install -y microshift
+sudo cp $HOME/openshift-pull-secret /etc/crio/openshift-pull-secret
+sudo chown root:root /etc/crio/openshift-pull-secret
+sudo chmod 600 /etc/crio/openshift-pull-secret
 sudo systemctl enable --now microshift
 ```
 
