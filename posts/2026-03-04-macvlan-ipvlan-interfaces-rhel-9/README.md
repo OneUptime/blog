@@ -83,7 +83,7 @@ ip link show ipvlan0
 
 ```bash
 # Create an IPVLAN in L3 mode for routed traffic
-# L3 mode acts as a router between the parent and virtual interface
+# L3 mode uses the parent namespace routing path and does not handle broadcast traffic
 sudo ip link add ipvlan_l3 link ens3 type ipvlan mode l3
 
 # Assign a different subnet IP
@@ -126,7 +126,7 @@ sudo podman network create --driver macvlan \
 sudo podman run -d --name web --network macvlan-net \
     --ip 192.168.1.70 nginx
 
-# The container now has a unique MAC and direct network access
+# The container uses a MACVLAN interface with direct access to the parent network
 ```
 
 ## MACVLAN Modes Explained
