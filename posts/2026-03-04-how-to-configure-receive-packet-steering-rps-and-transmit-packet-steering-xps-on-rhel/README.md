@@ -42,14 +42,22 @@ for rxq in /sys/class/net/ens192/queues/rx-*/rps_cpus; do
 done
 ```
 
-## Configuring RPS Flow Hash Table Size
+## Configuring RFS Flow Table Size
 
 ```bash
+# Set the global RFS flow table size
+sudo sysctl -w net.core.rps_sock_flow_entries=32768
+
 # Increase the per-queue flow table size
+# For a single RX queue, use the same value as rps_sock_flow_entries.
 echo 32768 | sudo tee /sys/class/net/ens192/queues/rx-0/rps_flow_cnt
 
-# Set the global flow table size
-sudo sysctl -w net.core.rps_sock_flow_entries=32768
+# For multiple RX queues, divide rps_sock_flow_entries by the number of RX queues.
+RX_QUEUES=$(ls -d /sys/class/net/ens192/queues/rx-* | wc -l)
+FLOW_CNT=$((32768 / RX_QUEUES))
+for rxq in /sys/class/net/ens192/queues/rx-*/rps_flow_cnt; do
+    echo "$FLOW_CNT" | sudo tee "$rxq"
+done
 ```
 
 ## Configuring XPS
@@ -65,37 +73,43 @@ echo "08" | sudo tee /sys/class/net/ens192/queues/tx-3/xps_cpus
 ## Making Changes Persistent
 
 ```bash
-# Create a systemd service for persistence
-cat << 'SERVICE' | sudo tee /etc/systemd/system/network-tuning.service
-[Unit]
-Description=Network RPS/XPS Tuning
-After=network.target
+# Persist the global RFS table size
+echo "net.core.rps_sock_flow_entries = 32768" | sudo tee /etc/sysctl.d/99-network-tuning.conf
+sudo sysctl --system
 
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/network-tuning.sh
-
-[Install]
-WantedBy=multi-user.target
-SERVICE
-
-# Create the tuning script
-cat << 'TUNE' | sudo tee /usr/local/bin/network-tuning.sh
+# Create a NetworkManager dispatcher script to apply queue settings when the interface comes up
+cat << 'TUNE' | sudo tee /etc/NetworkManager/dispatcher.d/99-rps-xps-tuning
 #!/bin/bash
 IFACE="ens192"
 CPU_MASK="ff"
+RFS_ENTRIES=32768
+
+[ "$1" = "$IFACE" ] || exit 0
+[ "$2" = "up" ] || exit 0
 
 for rxq in /sys/class/net/$IFACE/queues/rx-*/rps_cpus; do
     echo "$CPU_MASK" > "$rxq"
 done
 
+RX_QUEUES=$(ls -d /sys/class/net/$IFACE/queues/rx-* 2>/dev/null | wc -l)
+if [ "$RX_QUEUES" -gt 0 ]; then
+    FLOW_CNT=$((RFS_ENTRIES / RX_QUEUES))
+else
+    FLOW_CNT=0
+fi
+
 for rxq in /sys/class/net/$IFACE/queues/rx-*/rps_flow_cnt; do
-    echo 32768 > "$rxq"
+    echo "$FLOW_CNT" > "$rxq"
+done
+
+for txq in /sys/class/net/$IFACE/queues/tx-*/xps_cpus; do
+    queue=${txq%/xps_cpus}
+    queue=${queue##*-}
+    printf "%x\n" $((1 << queue)) > "$txq"
 done
 TUNE
 
-sudo chmod +x /usr/local/bin/network-tuning.sh
-sudo systemctl enable network-tuning
+sudo chmod +x /etc/NetworkManager/dispatcher.d/99-rps-xps-tuning
 ```
 
 RPS is most beneficial on systems where the NIC has fewer hardware queues than available CPU cores. If your NIC already supports RSS (Receive Side Scaling) with enough queues, hardware-based distribution is preferred over RPS.
