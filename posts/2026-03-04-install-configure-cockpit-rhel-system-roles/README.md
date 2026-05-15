@@ -83,7 +83,7 @@ ansible -i ~/ansible-cockpit/inventory.ini cockpit_servers -m ping
 
 ## Basic Cockpit Deployment Playbook
 
-Create a playbook that installs and enables Cockpit with default settings:
+Create a playbook that installs and enables Cockpit and lets the role manage the firewall rule:
 
 ```bash
 tee ~/ansible-cockpit/deploy-cockpit.yml << 'EOF'
@@ -91,6 +91,9 @@ tee ~/ansible-cockpit/deploy-cockpit.yml << 'EOF'
 - name: Deploy Cockpit web console
   hosts: cockpit_servers
   become: true
+
+  vars:
+    cockpit_manage_firewall: true
 
   roles:
     - role: rhel-system-roles.cockpit
@@ -103,7 +106,7 @@ Run the playbook:
 ansible-playbook -i ~/ansible-cockpit/inventory.ini ~/ansible-cockpit/deploy-cockpit.yml
 ```
 
-This installs the `cockpit` package, enables the `cockpit.socket`, and opens the firewall port. All in one role invocation.
+This installs the default Cockpit package set, enables and starts the `cockpit.socket`, and opens the firewall port. All in one role invocation.
 
 ## Customizing the Cockpit Deployment
 
@@ -145,7 +148,7 @@ ansible-playbook -i ~/ansible-cockpit/inventory.ini ~/ansible-cockpit/deploy-coc
 
 ## Installing Cockpit with Custom Certificates
 
-For production deployments, you'll want proper TLS certificates instead of the self-signed ones. The system role can deploy certificates using the `certificate` system role integration.
+For production deployments, you'll want proper TLS certificates instead of the self-signed ones. The system role can point Cockpit at an existing certificate and private key, or generate certificates using the `cockpit_certificates` variable and the `certificate` system role integration.
 
 ```bash
 tee ~/ansible-cockpit/deploy-cockpit-tls.yml << 'EOF'
@@ -191,7 +194,7 @@ EOF
 
 ## Deploying Cockpit Configuration Files
 
-You can also template the `cockpit.conf` configuration file:
+You can also manage the `cockpit.conf` configuration file with the `cockpit_config` variable:
 
 ```bash
 tee ~/ansible-cockpit/deploy-cockpit-configured.yml << 'EOF'
@@ -210,37 +213,21 @@ tee ~/ansible-cockpit/deploy-cockpit-configured.yml << 'EOF'
     cockpit_started: true
     cockpit_manage_firewall: true
 
+    cockpit_config:
+      WebService:
+        LoginTitle: "{{ inventory_hostname }}"
+        MaxStartups: 10
+      Session:
+        IdleTimeout: 15
+
   roles:
     - role: rhel-system-roles.cockpit
-
-  post_tasks:
-    - name: Deploy cockpit.conf
-      ansible.builtin.copy:
-        dest: /etc/cockpit/cockpit.conf
-        content: |
-          [WebService]
-          LoginTitle = {{ inventory_hostname }}
-          IdleTimeout = 15
-          MaxStartups = 10
-
-          [Session]
-          IdleTimeout = 15
-        owner: root
-        group: root
-        mode: '0644'
-      notify: Restart cockpit
-
-  handlers:
-    - name: Restart cockpit
-      ansible.builtin.systemd:
-        name: cockpit.socket
-        state: restarted
 EOF
 ```
 
 ## Combining with Other System Roles
 
-The real power of system roles is combining them. Here's a playbook that sets up a fully configured server with networking, firewall, and Cockpit:
+The real power of system roles is combining them. Here's a playbook that sets up a fully configured server with firewall, performance tuning, and Cockpit:
 
 ```bash
 tee ~/ansible-cockpit/full-server-setup.yml << 'EOF'
@@ -271,6 +258,7 @@ tee ~/ansible-cockpit/full-server-setup.yml << 'EOF'
 
   roles:
     - role: rhel-system-roles.firewall
+    - role: rhel-system-roles.tuned
     - role: rhel-system-roles.cockpit
 EOF
 ```
@@ -375,4 +363,4 @@ Common problems:
 
 ## Wrapping Up
 
-RHEL System Roles turn Cockpit deployment from a per-server manual task into a repeatable, automated process. The `cockpit` role handles package installation, service activation, and firewall configuration. Combined with other system roles for networking, firewall, and TuneD, you can stand up fully configured servers with a single playbook run. For organizations managing more than a handful of RHEL servers, this is the way to keep configurations consistent and deployments predictable.
+RHEL System Roles turn Cockpit deployment from a per-server manual task into a repeatable, automated process. The `cockpit` role handles package installation, service activation, and firewall configuration when `cockpit_manage_firewall` is enabled. Combined with other system roles for firewall and TuneD, you can stand up fully configured servers with a single playbook run. For organizations managing more than a handful of RHEL servers, this is the way to keep configurations consistent and deployments predictable.
