@@ -24,8 +24,8 @@ sudo dnf install rhel-system-roles -y
 # Verify the installation
 rpm -qa | grep rhel-system-roles
 
-# List available roles
-ls /usr/share/ansible/roles/ | grep rhel
+# List the installed RHEL System Roles collection
+ansible-galaxy collection list redhat.rhel_system_roles
 
 # The bootloader role documentation
 ls /usr/share/doc/rhel-system-roles/bootloader/
@@ -66,7 +66,7 @@ EOF
   hosts: all
   become: true
   roles:
-    - role: rhel-system-roles.bootloader
+    - role: redhat.rhel_system_roles.bootloader
       vars:
         bootloader_settings:
           - kernel: ALL
@@ -93,7 +93,7 @@ ansible-playbook -i inventory.ini bootloader-config.yml
   hosts: dbservers
   become: true
   roles:
-    - role: rhel-system-roles.bootloader
+    - role: redhat.rhel_system_roles.bootloader
       vars:
         bootloader_settings:
           - kernel: ALL
@@ -103,7 +103,7 @@ ansible-playbook -i inventory.ini bootloader-config.yml
               - name: hugepages
                 value: "1024"
               - name: numa_balancing
-                value: "0"
+                value: disable
               - name: intel_iommu
                 value: "on"
 ```
@@ -117,7 +117,7 @@ ansible-playbook -i inventory.ini bootloader-config.yml
   hosts: all
   become: true
   roles:
-    - role: rhel-system-roles.bootloader
+    - role: redhat.rhel_system_roles.bootloader
       vars:
         bootloader_settings:
           - kernel: ALL
@@ -137,7 +137,7 @@ ansible-playbook -i inventory.ini bootloader-config.yml
   hosts: webservers
   become: true
   roles:
-    - role: rhel-system-roles.bootloader
+    - role: redhat.rhel_system_roles.bootloader
       vars:
         bootloader_settings:
           - kernel: ALL
@@ -151,7 +151,7 @@ ansible-playbook -i inventory.ini bootloader-config.yml
   hosts: dbservers
   become: true
   roles:
-    - role: rhel-system-roles.bootloader
+    - role: redhat.rhel_system_roles.bootloader
       vars:
         bootloader_settings:
           - kernel: ALL
@@ -161,7 +161,7 @@ ansible-playbook -i inventory.ini bootloader-config.yml
               - name: hugepages
                 value: "2048"
               - name: numa_balancing
-                value: "0"
+                value: disable
 ```
 
 ## Practical Workflow
@@ -179,17 +179,17 @@ flowchart TD
 
 ## Verifying Changes
 
-After running the playbook, verify the changes were applied:
+After running the playbook, verify that the boot loader entries were updated. Kernel command-line changes appear in `/proc/cmdline` after the host boots with the updated entry:
 
 ```bash
-# Check kernel parameters on remote hosts
-ansible all -i inventory.ini -m command -a "cat /proc/cmdline"
-
 # Check grubby output
 ansible all -i inventory.ini -m command -a "grubby --info=DEFAULT"
 
+# Check active kernel parameters after reboot
+ansible all -i inventory.ini -m command -a "cat /proc/cmdline"
+
 # Check if a reboot is needed
-ansible all -i inventory.ini -m command -a "needs-restarting -r" --become
+ansible all -i inventory.ini -m command -a "dnf needs-restarting -r" --become
 ```
 
 ## Advantages of Using the System Role
@@ -221,7 +221,7 @@ ansible all -i inventory.ini -m command -a "needs-restarting -r" --become
         var: current_cmdline.stdout
 
   roles:
-    - role: rhel-system-roles.bootloader
+    - role: redhat.rhel_system_roles.bootloader
       vars:
         bootloader_settings:
           - kernel: ALL
