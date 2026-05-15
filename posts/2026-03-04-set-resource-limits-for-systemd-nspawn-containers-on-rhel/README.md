@@ -8,7 +8,7 @@ Description: Limit CPU, memory, and I/O resources for systemd-nspawn containers 
 
 ---
 
-When running multiple systemd-nspawn containers on a single RHEL host, you need to limit their resource consumption so one container cannot starve others. systemd integrates with cgroups v2 to provide fine-grained resource controls.
+When running multiple systemd-nspawn containers on a single RHEL host, you need to limit their resource consumption so one container cannot starve others. systemd integrates with cgroups v2 to provide fine-grained resource controls. RHEL 9 and later use cgroups v2 by default; on RHEL 8, enable cgroups v2 first if you want to use the cgroups v2 resource controls shown here.
 
 ## Set Limits via the nspawn Configuration File
 
@@ -26,7 +26,7 @@ Resource limits are set through the systemd service unit, not the nspawn file it
 
 ## Configure Resource Limits with systemd Overrides
 
-Each nspawn container runs as a systemd service named `systemd-nspawn@<name>.service`. Create an override:
+When an nspawn container is started through `machinectl` or the `systemd-nspawn@.service` template, it runs as a systemd service named `systemd-nspawn@<name>.service`. Create an override:
 
 ```bash
 # Create an override for the container service
@@ -79,13 +79,13 @@ systemd-cgtop
 
 ## Set Limits via Command Line
 
-You can also pass resource limits directly when launching:
+You can also pass resource limits directly when launching `systemd-nspawn`:
 
 ```bash
-# Start with CPU and memory limits using systemd-run
-sudo systemd-run --machine=mycontainer --scope \
-    -p MemoryMax=1G -p CPUQuota=25% \
-    /bin/bash
+# Start with CPU and memory limits using systemd-nspawn
+sudo systemd-nspawn --machine=mycontainer --boot \
+    --property=MemoryMax=1G \
+    --property=CPUQuota=25%
 ```
 
 ## Limit the Number of Processes
@@ -100,7 +100,7 @@ TasksMax=512
 
 ## Limit Disk Space
 
-Use machinectl to set a disk quota for the container image:
+Use `machinectl` to set a disk quota for the container image when the image storage supports it. Per-container size limits are supported only on btrfs file systems:
 
 ```bash
 # Set a 10 GB size limit on the container image
