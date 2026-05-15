@@ -36,7 +36,7 @@ sudo subscription-manager register
 sudo dnf update -y
 
 # Install equivalent packages
-sudo dnf install -y httpd mariadb-server php
+sudo dnf install -y httpd mariadb-server php policycoreutils-python-utils
 ```
 
 ## Migrate AppArmor to SELinux
@@ -54,10 +54,15 @@ sudo restorecon -Rv /custom/web
 
 ```bash
 rsync -aAXv sles-server:/srv/www/ /var/www/html/
-rsync -aAXv sles-server:/var/lib/mysql/ /var/lib/mysql/
+
+# On SLES, export MariaDB data
+mariadb-dump -u root -p --routines --events --triggers --single-transaction --all-databases > /tmp/mariadb.sql
+
+# On RHEL, copy and import the dump
+rsync -aAXv sles-server:/tmp/mariadb.sql /tmp/mariadb.sql
+mariadb -u root -p < /tmp/mariadb.sql
 ```
 
 ## Conclusion
 
 SLES to RHEL 9 migration requires a parallel deployment with data synchronization. Plan for AppArmor-to-SELinux conversion and package mapping during the transition.
-
