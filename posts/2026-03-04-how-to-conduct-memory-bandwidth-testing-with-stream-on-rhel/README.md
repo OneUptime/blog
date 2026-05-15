@@ -15,7 +15,7 @@ STREAM is a synthetic benchmark that measures sustainable memory bandwidth. It t
 ```bash
 # Install GCC compiler
 
-sudo dnf install -y gcc
+sudo dnf install -y gcc wget
 
 # Download the STREAM source code
 wget https://www.cs.virginia.edu/stream/FTP/Code/stream.c -O /tmp/stream.c
@@ -31,8 +31,8 @@ gcc -O3 -march=native -fopenmp \
 ## Running the Benchmark
 
 ```bash
-# Set the number of threads to the number of physical cores
-export OMP_NUM_THREADS=$(lscpu | grep "^Core(s)" | awk '{print $NF}')
+# Set the number of threads to the number of online physical cores
+export OMP_NUM_THREADS=$(lscpu -p=CORE,SOCKET,ONLINE | awk -F, '$1 !~ /^#/ && $3 == "Y" { cores[$1 "," $2]=1 } END { print length(cores) }')
 
 # Run the benchmark
 /tmp/stream
