@@ -30,6 +30,7 @@ Edit the main configuration file:
 # Output method - create a bootable ISO
 OUTPUT=ISO
 OUTPUT_URL=nfs://backup-server.example.com/backup/rear
+OUTPUT_OPTIONS="nfsvers=4"
 
 # Backup method - use tar for the system backup
 BACKUP=NETFS
@@ -80,7 +81,7 @@ sudo rear -v mkrescue
 
 ```bash
 # Check the output
-ls -lh /backup/rear/
+ls -lh /backup/rear/   # or check the configured NFS export on the backup server
 
 # View the ReaR log
 cat /var/log/rear/rear-$(hostname).log | tail -20
