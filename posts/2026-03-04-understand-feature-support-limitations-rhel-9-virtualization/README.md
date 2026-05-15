@@ -15,7 +15,7 @@ RHEL 9 KVM virtualization provides a comprehensive set of features, but understa
 RHEL 9 supports architecture-specific machine types:
 
 - **q35** (recommended on AMD64 and Intel 64) - Modern machine type with PCIe, AHCI, and better device support
-- **i440fx** - Older x86 machine types are still supported only for certain RHEL 7.6 and later variants; RHEL 7.5-based and earlier machine types are unsupported
+- **i440fx** - Older x86 machine types can still be used when they are supported by the host and guest combination; RHEL 7.5-based and earlier machine types are unsupported on RHEL 9 hosts
 
 Always use q35 for new VMs:
 
@@ -28,7 +28,7 @@ sudo virt-install --machine=q35 ...
 | Resource | Maximum |
 |----------|---------|
 | vCPUs per VM | 4096 on AMD64 and Intel 64 with RHEL 9.6 or later; 710 on RHEL 9.5 and earlier |
-| Memory per VM | 16 TB on AMD64 and Intel 64 |
+| Memory per VM | 16 TB on AMD64 and Intel 64; architecture-specific limits apply on ARM 64 and IBM Z |
 | Virtual disks per VM | Depends on bus type |
 | VMs per host | Limited by host resources |
 | virtio-blk disks | 28 |
@@ -36,14 +36,13 @@ sudo virt-install --machine=q35 ...
 
 ## Supported Guest Operating Systems
 
-RHEL 9 KVM supports:
+Red Hat supports specific certified guest operating systems on RHEL 9 KVM. Common supported guest families include:
 
 - RHEL 7, 8, 9
-- CentOS Stream 8, 9
 - Windows Server 2016, 2019, 2022
 - Windows 10, 11
 - SUSE Linux Enterprise 12, 15
-- Ubuntu (various LTS versions)
+- selected third-party Linux distributions, depending on Red Hat's certification matrix
 
 Check the full compatibility matrix in Red Hat documentation.
 
@@ -78,7 +77,7 @@ Check the release notes for the current list.
 
 - Requires compatible CPU features on source and destination
 - VM disk images normally use shared storage unless using a supported migration mode that copies storage
-- PCI passthrough devices prevent live migration
+- Most device passthrough and SR-IOV configurations prevent live migration or require specific supported hardware and drivers
 - Large memory VMs take longer to migrate
 
 ### Snapshots
@@ -89,7 +88,7 @@ Check the release notes for the current list.
 
 ### CPU
 
-- Guest vCPUs cannot exceed host physical CPUs for optimal performance
+- Guest vCPUs can exceed host physical CPUs, but vCPU overcommitment can reduce performance and should be planned carefully
 - CPU feature mismatch between hosts affects migration
 
 ### Memory
