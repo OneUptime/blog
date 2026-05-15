@@ -125,7 +125,16 @@ rules:
     resources: ["imagepolicies", "imagerepositories", "imageupdateautomations"]
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
-    resources: ["namespaces", "events"]
+    resources: ["namespaces", "events", "pods", "pods/log", "services", "configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
