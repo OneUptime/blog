@@ -99,8 +99,7 @@ server:
     # Logging
     verbosity: 1
     log-queries: no
-    logfile: "/var/log/unbound/unbound.log"
-    use-syslog: no
+    use-syslog: yes
 
     # Root hints
     root-hints: "/etc/unbound/root.hints"
@@ -122,9 +121,13 @@ server:
     local-data: "jenkins.internal.corp. IN A 192.168.1.72"
 
     # Reverse lookups for local data
-    local-data-ptr: "192.168.1.70 gitlab.internal.corp"
-    local-data-ptr: "192.168.1.71 wiki.internal.corp"
-    local-data-ptr: "192.168.1.72 jenkins.internal.corp"
+    local-data-ptr: "192.168.1.70 gitlab.internal.corp."
+    local-data-ptr: "192.168.1.71 wiki.internal.corp."
+    local-data-ptr: "192.168.1.72 jenkins.internal.corp."
+
+remote-control:
+    # Required for unbound-control stats/cache commands
+    control-enable: yes
 EOF
 ```
 
@@ -168,11 +171,10 @@ curl -o /etc/unbound/root.hints https://www.internic.net/domain/named.cache
 
 ## Step 6: Prepare the Environment
 
-Create the log directory:
+Create the remote control keys used by `unbound-control`:
 
 ```bash
-mkdir -p /var/log/unbound
-chown unbound:unbound /var/log/unbound
+systemctl restart unbound-keygen
 ```
 
 Fetch the DNSSEC root trust anchor:
@@ -225,7 +227,7 @@ Test DNSSEC validation:
 dig @localhost dnssec-tools.org A +dnssec
 
 # This should fail (deliberately broken DNSSEC)
-dig @localhost dnssec-failed.org A
+dig @localhost www.dnssec-failed.org A
 ```
 
 Test your local zone overrides:
@@ -267,7 +269,7 @@ Here's how common BIND directives map to Unbound:
 | `max-cache-size 256m` | `msg-cache-size: 128m` + `rrset-cache-size: 256m` |
 | `dnssec-validation auto` | `auto-trust-anchor-file` |
 | `zone "local" { ... }` (stub) | `local-zone` + `local-data` |
-| `blackhole { ... }` | `access-control: ... refuse` |
+| `blackhole { ... }` | `access-control: ... refuse` for clients; `do-not-query-address: ...` for upstream addresses |
 
 ## Monitoring Unbound
 
@@ -292,7 +294,6 @@ unbound-control flush_zone example.com
 Flush everything:
 
 ```bash
-unbound-control flush_requestlist
 unbound-control flush_zone .
 ```
 
