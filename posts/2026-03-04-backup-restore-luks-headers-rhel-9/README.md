@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LUKS, Header Backup, Data Recovery, Encryption, Linux
 
-Description: Back up and restore LUKS headers on RHEL to protect against header corruption and ensure encrypted data can always be recovered.
+Description: Back up and restore LUKS headers on RHEL to protect against header corruption and improve recoverability for encrypted data.
 
 ---
 
-The LUKS header contains all the information needed to unlock an encrypted device, including the encrypted master key and key slot data. If the header gets corrupted or overwritten, all data on the encrypted volume becomes permanently inaccessible. Backing up LUKS headers is one of the most important maintenance tasks for encrypted systems. This guide shows you how.
+The LUKS header contains all the information needed to unlock an encrypted device, including the encrypted master key and key slot data. If the header and keyslot area get badly corrupted or overwritten, all data on the encrypted volume can become permanently inaccessible. Backing up LUKS headers is one of the most important maintenance tasks for encrypted systems. This guide shows you how.
 
 ## Why LUKS Header Backups Are Critical
 
@@ -24,7 +24,7 @@ flowchart TD
     F --> I[Failed LUKS operations]
     F --> J[Malware or sabotage]
 
-    G --> K[DATA PERMANENTLY LOST]
+    G --> K[DATA MAY BE LOST]
     H --> K
     I --> K
     J --> K
@@ -33,7 +33,7 @@ flowchart TD
     M --> N[Data recovered]
 ```
 
-Without a header backup, there is no way to recover data from a LUKS device with a corrupted header, even if you know the passphrase.
+Without a header backup, there may be no way to recover data from a LUKS device with a badly corrupted or overwritten header and keyslot area, even if you know the passphrase.
 
 ## Backing Up a LUKS Header
 
@@ -178,7 +178,7 @@ ls -la /mnt/encrypted-data
 
 1. **Restoring an old header restores old key slots.** If you changed passphrases after the backup was made, the restored header will only accept the passphrases that were active at backup time.
 
-2. **The header UUID must match.** Only restore a header to the same device (or its replacement) that the header was backed up from.
+2. **The backup must belong to the same LUKS volume.** Only restore a header to the same device (or its replacement) that the header was backed up from. When an existing LUKS header is still readable, `cryptsetup luksHeaderRestore` also requires the volume key size and data offset in the backup to match the device.
 
 3. **Do not restore to the wrong device.** Restoring a header to a different device will not magically make that device's data accessible. The header is specific to the master key used during initial formatting.
 
@@ -187,15 +187,11 @@ ls -la /mnt/encrypted-data
 LUKS2 headers are larger than LUKS1:
 
 ```bash
-# Check the header size
-sudo cryptsetup luksDump /dev/sdb | grep "Data segments"
-
-# LUKS2 headers are typically 16 MB by default
-# You can check the exact offset
+# Check the data offset; for a standard LUKS2 device this is typically 16 MiB
 sudo cryptsetup luksDump /dev/sdb | grep offset
 ```
 
-The backup file will be approximately the same size as the header area.
+The backup file will be approximately the same size as the header and keyslot area.
 
 ## Automating Header Backups
 
@@ -222,7 +218,8 @@ for dev in $(blkid -t TYPE=crypto_LUKS -o device 2>/dev/null); do
 
     if [ $? -eq 0 ]; then
         # Encrypt the backup
-        gpg --batch --yes --symmetric --cipher-algo AES256 \
+        gpg --batch --yes --pinentry-mode loopback \
+            --symmetric --cipher-algo AES256 \
             --passphrase-file /root/.luks-backup-passphrase \
             "$BACKUP_FILE" 2>/dev/null
         shred -u "$BACKUP_FILE"
@@ -233,7 +230,7 @@ for dev in $(blkid -t TYPE=crypto_LUKS -o device 2>/dev/null); do
 done
 
 # Clean up old backups
-find "$BACKUP_DIR" -name "luks-header-*.img.gpg" -mtime +${RETENTION_DAYS} -delete
+find "$BACKUP_DIR" -name "luks-header*.img.gpg" -mtime +${RETENTION_DAYS} -delete
 
 SCRIPT
 
