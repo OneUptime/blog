@@ -55,11 +55,11 @@ sudo subscription-manager identity
 sudo dnf repolist
 ```
 
-PAYG instances use RHUI repositories provided by AWS, not the Red Hat CDN. You will see repo names like `rhel-9-baseos-rhui-rpms` and `rhel-9-appstream-rhui-rpms`.
+The repository source depends on the RHEL image version. RHEL 9.7 and later AWS Marketplace AMIs sold by Red Hat use auto-registration v2 and pull updates from the Red Hat CDN by default, so `subscription-manager identity` should show the system as registered and `dnf repolist` will show Red Hat CDN repositories such as `rhel-9-for-x86_64-baseos-rpms` and `rhel-9-for-x86_64-appstream-rpms`. Older RHEL PAYG images use RHUI repositories provided through AWS, with repo IDs like `rhel-9-baseos-rhui-rpms` and `rhel-9-appstream-rhui-rpms`.
 
 ## Key Differences from BYOS
 
-With PAYG, you do not need to run `subscription-manager register`. The instance is automatically configured to pull updates from AWS-hosted RHUI mirrors. If you need to switch to BYOS (Bring Your Own Subscription), you would remove the RHUI packages and register with `subscription-manager` manually.
+With PAYG, you do not need to run `subscription-manager register`. RHEL 9.7 and later Marketplace images auto-register through Red Hat Subscription Management, while older PAYG images are automatically configured to pull updates from AWS-hosted RHUI mirrors. If you need to switch an older RHUI-based instance to BYOS (Bring Your Own Subscription), you would remove the RHUI packages and register with `subscription-manager` manually.
 
 ## Cost Considerations
 
