@@ -16,67 +16,72 @@ k9s Terminal UI for Kubernetes can be installed and configured on RHEL to provid
 - Root or sudo access
 - A terminal session
 - A running Kubernetes cluster
+- `kubectl` installed and configured
+- A valid kubeconfig file for the cluster, typically at `~/.kube/config`
 
-## Step 1: Install Required Packages
+## Step 1: Install k9s
 
 ```bash
 # Update the system first
 
 sudo dnf update -y
 
-# Install the required packages
-sudo dnf install -y <package-name>
+# Install k9s from the official RPM release for x86_64/amd64 systems
+sudo dnf install -y https://github.com/derailed/k9s/releases/latest/download/k9s_linux_amd64.rpm
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+Use the RPM that matches your system architecture if you are not on x86_64/amd64.
 
-## Step 2: Configure the Service
+## Step 2: Configure k9s
 
-Edit the configuration file to match your environment:
+k9s uses your Kubernetes kubeconfig to connect to the cluster. Confirm that your current context points to the cluster you want to manage:
 
 ```bash
-# Open the configuration file
-sudo vi /etc/<service>/config.conf
+# Check the current Kubernetes context
+kubectl config current-context
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+k9s stores its own configuration under `~/.config/k9s` on Linux. You can inspect the active paths with:
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Show k9s configuration and data locations
+k9s info
 ```
 
-## Step 3: Enable and Start the Service
+Adjust the settings according to your requirements in `~/.config/k9s/config.yaml`. Key parameters to configure include refresh rate, UI settings, and namespace preferences.
+
+## Step 3: Start k9s
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Start k9s using the default kubeconfig
+k9s
 
-# Start the service
-sudo systemctl start <service-name>
+# Or start k9s with a specific kubeconfig
+k9s --kubeconfig ~/.kube/config
 
-# Check the status
-sudo systemctl status <service-name>
+# Check the installed version
+k9s version
 ```
 
 
 ## Verification
 
-Confirm everything is working by checking the status and logs:
+Confirm everything is working by checking Kubernetes access and k9s startup information:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
+# Check Kubernetes API access with your current kubeconfig
+kubectl cluster-info
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# Review k9s configuration and log locations
+k9s info
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If k9s cannot connect to the cluster, verify the current context with `kubectl config current-context`.
+- Ensure k9s is installed: `rpm -qa | grep k9s`.
+- If you use a non-default kubeconfig, start k9s with `k9s --kubeconfig /path/to/config` or set the `KUBECONFIG` environment variable.
 
 ## Conclusion
 
-You have successfully completed the setup described in this guide. Remember to monitor the service and review logs regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
+You have successfully completed the setup described in this guide. Remember to review the k9s logs regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
