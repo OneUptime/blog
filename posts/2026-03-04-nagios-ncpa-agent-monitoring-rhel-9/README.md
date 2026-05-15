@@ -20,46 +20,47 @@ Install and configure the Nagios NCPA agent on RHEL 9 for cross-platform monitor
 
 ## Step 1 - Install Required Packages
 
-Install the monitoring tools relevant to this guide:
+Install the Nagios repository package, then install NCPA:
 
 ```bash
-sudo dnf install -y pcp pcp-system-tools sysstat net-snmp net-snmp-utils
+sudo rpm -Uvh https://repo.nagios.com/nagios/9/nagios-repo-9-2.el9.noarch.rpm
+sudo dnf install -y ncpa
 ```
 
-Select only the packages you need for your specific setup.
+The Nagios repository provides the NCPA RPM for RHEL 9.
 
 ## Step 2 - Enable and Start Services
 
 ```bash
-sudo systemctl enable --now pmcd pmlogger
-# or for sysstat:
-
-sudo systemctl enable --now sysstat
+sudo systemctl enable --now ncpa
 ```
 
 ## Step 3 - Configure the Monitoring Tool
 
-Edit the relevant configuration file for your monitoring setup. Common locations include:
+Edit the NCPA configuration file:
 
-- `/etc/pcp/` for PCP configuration
-- `/etc/snmp/snmpd.conf` for SNMP
-- `/etc/prometheus/prometheus.yml` for Prometheus
-- `/etc/grafana/grafana.ini` for Grafana
+```bash
+sudo vi /usr/local/ncpa/etc/ncpa.cfg
+```
+
+Set a unique API token in the `[api]` section:
+
+```ini
+[api]
+community_string = <your-secure-token>
+```
 
 Apply your changes and restart the service:
 
 ```bash
-sudo systemctl restart <service-name>
+sudo systemctl restart ncpa
 ```
 
 ## Step 4 - Open Firewall Ports
 
 ```bash
-# Common monitoring ports
-sudo firewall-cmd --permanent --add-port=9090/tcp   # Prometheus
-sudo firewall-cmd --permanent --add-port=9100/tcp   # Node Exporter
-sudo firewall-cmd --permanent --add-port=3000/tcp   # Grafana
-sudo firewall-cmd --permanent --add-service=snmp     # SNMP
+# NCPA listener port
+sudo firewall-cmd --permanent --add-port=5693/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -68,17 +69,13 @@ sudo firewall-cmd --reload
 Confirm that metrics are being collected:
 
 ```bash
-# PCP
-pmstat -s 3
-# sysstat
-sar -u 1 3
-# Prometheus endpoint
-curl -s http://localhost:9090/api/v1/query?query=up
+curl -k -s "https://localhost:5693/api/system/agent_version?token=<your-secure-token>"
+curl -k -s "https://localhost:5693/api/cpu/percent?token=<your-secure-token>&aggregate=avg"
 ```
 
 ## Step 6 - Set Up Alerting (Optional)
 
-Configure alerts based on thresholds so you are notified before issues become critical. Use Prometheus Alertmanager, Nagios notifications, or Red Hat Insights recommendations depending on your stack.
+Configure alerts based on thresholds so you are notified before issues become critical. Use Nagios XI's NCPA configuration wizard, Nagios Core active checks with `check_ncpa.py`, or NCPA passive checks through NRDP depending on your stack.
 
 ## Summary
 
