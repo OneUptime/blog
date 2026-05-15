@@ -24,10 +24,10 @@ Keepalived for Virtual IP Failover can be installed and configured on RHEL to pr
 sudo dnf update -y
 
 # Install the required packages
-sudo dnf install -y <package-name>
+sudo dnf install -y keepalived
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+This installs the Keepalived daemon and its configuration files.
 
 ## Step 2: Configure the Service
 
@@ -35,27 +35,46 @@ Edit the configuration file to match your environment:
 
 ```bash
 # Open the configuration file
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/keepalived/keepalived.conf
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include the network interface, VRRP router ID, node priority, authentication settings, and virtual IP address.
+
+```conf
+vrrp_instance VI_1 {
+    state MASTER
+    interface eth0
+    virtual_router_id 51
+    priority 101
+    advert_int 1
+    authentication {
+        auth_type PASS
+        auth_pass changeme
+    }
+    virtual_ipaddress {
+        192.168.0.100/24
+    }
+}
+```
+
+On the backup node, use the same `virtual_router_id` and `virtual_ipaddress`, but set `state BACKUP` and a lower `priority`, such as `100`. Replace `eth0` and `192.168.0.100/24` with the interface and virtual IP address for your environment.
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart keepalived
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable keepalived
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start keepalived
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status keepalived
 ```
 
 
@@ -65,16 +84,19 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status keepalived
+
+# Check that the virtual IP address is present on the active node
+ip address show dev eth0
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u keepalived --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u keepalived -e --no-pager`.
+- Ensure the required package is installed: `rpm -qa | grep keepalived`.
 
 ## Conclusion
 
