@@ -8,11 +8,11 @@ Description: A complete guide to Podman networking on RHEL, covering bridge netw
 
 ---
 
-Container networking can be confusing, especially when you are juggling rootful and rootless modes with different network backends. On RHEL, Podman uses Netavark as the default network backend for rootful containers and pasta for rootless networking. This guide covers how to set up and manage networks for your containers.
+Container networking can be confusing, especially when you are juggling rootful and rootless modes with different network backends. On fresh RHEL 9 installs, Podman uses Netavark as the default network backend. Starting with RHEL 9.5, `pasta` is the default rootless network mode; earlier RHEL 9 releases use `slirp4netns` by default. This guide covers how to set up and manage networks for your containers.
 
 ## Default Networking Behavior
 
-When you run a container without specifying a network, Podman connects it to the default `podman` bridge network:
+When you run a rootful container without specifying a network, Podman connects it to the default `podman` bridge network. Rootless containers use the configured rootless network mode instead:
 
 ## Run a container on the default network
 ```bash
@@ -26,14 +26,14 @@ podman inspect web1 --format '{{.NetworkSettings.Networks}}'
 
 ## Checking Your Network Backend
 
-RHEL uses Netavark (not CNI) as the default:
+Fresh RHEL 9 installs use Netavark (not CNI) as the default network backend. Systems upgraded from RHEL 8 can still use CNI until they are migrated:
 
 ## Verify the network backend
 ```bash
 podman info --format '{{.Host.NetworkBackend}}'
 ```
 
-You should see `netavark` for rootful containers. Rootless containers use `pasta` (or `slirp4netns` on older setups) for port forwarding and network access.
+You should see `netavark` on a fresh RHEL 9 installation. Rootless containers use `pasta` on RHEL 9.5 and later, or `slirp4netns` on earlier RHEL 9 releases, for port forwarding and network access.
 
 ## Port Mapping
 
@@ -103,7 +103,7 @@ graph TB
 
 ## Run containers on a custom network
 ```bash
-podman run -d --name db --network mynet docker.io/library/mariadb:latest -e MYSQL_ROOT_PASSWORD=secret
+podman run -d --name db --network mynet -e MYSQL_ROOT_PASSWORD=secret docker.io/library/mariadb:latest
 podman run -d --name api --network mynet docker.io/library/nginx:latest
 podman run -d --name web --network mynet -p 8080:80 docker.io/library/nginx:latest
 ```
@@ -112,8 +112,8 @@ Containers on the same custom network can reach each other by name:
 
 ## Test DNS resolution between containers
 ```bash
-podman exec web ping -c 2 api
-podman exec web ping -c 2 db
+podman run --rm --network mynet registry.access.redhat.com/ubi9/ubi getent hosts api
+podman run --rm --network mynet registry.access.redhat.com/ubi9/ubi getent hosts db
 ```
 
 ## Connecting Containers to Multiple Networks
@@ -198,13 +198,13 @@ podman network inspect mynet | jq '.[0].Containers'
 
 ## Test connectivity from inside a container
 ```bash
-podman exec web curl -s http://api:80
+podman run --rm --network mynet registry.access.redhat.com/ubi9/ubi curl -s http://api:80
 ```
 
 ## Check DNS resolution inside a container
 ```bash
 podman exec web cat /etc/resolv.conf
-podman exec web nslookup api
+podman run --rm --network mynet registry.access.redhat.com/ubi9/ubi getent hosts api
 ```
 
 ## Check iptables/nftables rules for port forwarding
