@@ -159,21 +159,21 @@ Generate a full report for all users:
 
 ```bash
 # Report all user quotas on /home
-repquota -ua /home
+repquota -u /home
 ```
 
 For group quotas:
 
 ```bash
 # Report all group quotas on /home
-repquota -ga /home
+repquota -g /home
 ```
 
 Human-readable output:
 
 ```bash
 # Show human-readable quota report
-repquota -uas /home
+repquota -us /home
 ```
 
 ## Step 7: Copy Quotas Between Users
@@ -259,7 +259,7 @@ Set up a cron job to email weekly reports:
 # Add to root's crontab
 cat >> /var/spool/cron/root << 'EOF'
 # Weekly quota report every Monday at 7 AM
-0 7 * * 1 /usr/sbin/repquota -uas /home | mail -s "Weekly Quota Report" admin@example.com
+0 7 * * 1 /usr/sbin/repquota -us /home | mail -s "Weekly Quota Report" admin@example.com
 EOF
 ```
 
