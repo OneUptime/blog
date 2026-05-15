@@ -75,8 +75,8 @@ curl -vI https://example.com 2>&1 | grep -A 10 "Server certificate"
 curl -vI https://example.com 2>&1 | grep "expire date"
 
 # Connect with a specific TLS version
-curl --tlsv1.2 https://example.com
-curl --tlsv1.3 https://example.com
+curl --tlsv1.2 --tls-max 1.2 https://example.com
+curl --tlsv1.3 --tls-max 1.3 https://example.com
 
 # Skip certificate verification (testing only)
 curl -k https://self-signed.example.com
