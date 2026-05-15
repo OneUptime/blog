@@ -75,12 +75,12 @@ RHEL 8+ uses predictable network interface naming by default (e.g., `ens192`, `e
 ip link show
 
 # Create a udev rule for a custom network interface name
-sudo tee /etc/udev/rules.d/70-custom-ifnames.rules > /dev/null << 'EOF'
+sudo tee /etc/udev/rules.d/70-persistent-net.rules > /dev/null << 'EOF'
 # Rename the interface with MAC aa:bb:cc:dd:ee:ff to "mgmt0"
-SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="aa:bb:cc:dd:ee:ff", NAME="mgmt0"
+SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="aa:bb:cc:dd:ee:ff", ATTR{type}=="1", NAME="mgmt0"
 
 # Rename another interface to "data0"
-SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="11:22:33:44:55:66", NAME="data0"
+SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="11:22:33:44:55:66", ATTR{type}=="1", NAME="data0"
 EOF
 ```
 
