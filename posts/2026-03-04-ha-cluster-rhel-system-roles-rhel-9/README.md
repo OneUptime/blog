@@ -16,6 +16,8 @@ RHEL System Roles provide Ansible roles for automating system configuration, inc
 - Two or more RHEL target nodes
 - RHEL System Roles installed on the control node
 - SSH access from the control node to target nodes
+- Active RHEL and RHEL High Availability Add-On subscriptions on the target nodes
+- Apache HTTP Server installed and configured on each target node if you use the Apache resource example
 
 ## Installing RHEL System Roles
 
@@ -54,6 +56,8 @@ Create a playbook for a basic two-node cluster:
     ha_cluster_cluster_name: my-cluster
     ha_cluster_hacluster_password: "SecurePassword123"
     ha_cluster_enable_repos: true
+    ha_cluster_manage_firewall: true
+    ha_cluster_manage_selinux: true
 
     ha_cluster_resource_primitives:
       - id: ClusterVIP
@@ -96,7 +100,7 @@ Create a playbook for a basic two-node cluster:
 
 ## Adding STONITH Configuration
 
-Include fencing in the playbook:
+Include fencing as additional entries in the `ha_cluster_resource_primitives` list:
 
 ```yaml
     ha_cluster_cluster_properties:
@@ -104,9 +108,9 @@ Include fencing in the playbook:
           - name: stonith-enabled
             value: "true"
 
-    ha_cluster_fence_agents:
+    ha_cluster_resource_primitives:
       - id: fence-node1
-        agent: "fence_ipmilan"
+        agent: "stonith:fence_ipmilan"
         instance_attrs:
           - attrs:
               - name: ipaddr
@@ -121,7 +125,7 @@ Include fencing in the playbook:
                 value: "node1"
 
       - id: fence-node2
-        agent: "fence_ipmilan"
+        agent: "stonith:fence_ipmilan"
         instance_attrs:
           - attrs:
               - name: ipaddr
@@ -145,11 +149,15 @@ Add constraints to the playbook:
       - resource:
           id: fence-node1
         node: node1
-        score: "-INFINITY"
+        options:
+          - name: score
+            value: "-INFINITY"
       - resource:
           id: fence-node2
         node: node2
-        score: "-INFINITY"
+        options:
+          - name: score
+            value: "-INFINITY"
 ```
 
 ## Running the Playbook
@@ -168,7 +176,7 @@ sudo pcs status
 
 ## Idempotent Configuration
 
-The ha_cluster role is idempotent. Running it again will not disrupt an already configured cluster. This makes it safe to run as part of regular configuration management.
+The `ha_cluster` role is idempotent for the cluster state declared in the playbook. Because the role replaces the existing cluster configuration on the specified nodes, make sure the playbook contains the complete desired cluster configuration before running it as part of regular configuration management.
 
 ## Using Vault for Passwords
 
