@@ -93,9 +93,9 @@ Configure share access with groups:
     browseable = yes
 
     # Allow these users/groups
-    valid users = @samba_writers @samba_admins
+    valid users = @samba_readonly @samba_writers @samba_admins
 
-    # Read-only for writers, full control for admins
+    # Read-only for readonly users, write access for writers and admins
     read list = @samba_readonly
     write list = @samba_writers @samba_admins
     admin users = @samba_admins
@@ -146,7 +146,7 @@ The setgid bit (2) on the directory ensures new files inherit the group, keeping
 
 ## Per-User Shares
 
-Automatically create per-user shares:
+Automatically expose existing per-user home directories as shares:
 
 ```ini
 [homes]
@@ -158,11 +158,11 @@ Automatically create per-user shares:
     directory mask = 0700
 ```
 
-When user "jdoe" connects, they automatically see a share called "jdoe" pointing to their home directory.
+When user "jdoe" connects to a share called "jdoe", Samba points it to their home directory.
 
 ## Password Policies
 
-Configure password complexity and expiration:
+Configure password length and history policies:
 
 ```bash
 # Set minimum password length
@@ -222,13 +222,13 @@ Enable access auditing in smb.conf:
 [global]
     vfs objects = full_audit
     full_audit:prefix = %u|%I|%S
-    full_audit:success = connect disconnect mkdir rmdir open read write rename unlink
+    full_audit:success = connect disconnect mkdirat open read write renameat unlinkat
     full_audit:failure = connect
     full_audit:facility = local5
     full_audit:priority = notice
 ```
 
-This logs all file operations to syslog, which you can redirect to a dedicated log file via rsyslog.
+This logs the selected operations to syslog, which you can redirect to a dedicated log file via rsyslog.
 
 ## Wrap-Up
 
