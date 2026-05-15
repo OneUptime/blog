@@ -17,9 +17,13 @@ When your organization has an existing Certificate Authority (CA), you can insta
 
 sudo hostnamectl set-hostname idm1.example.com
 
-# Install required packages
-sudo dnf module enable idm:DL1 -y
+# Install required packages on RHEL 9
 sudo dnf install -y ipa-server ipa-server-dns
+
+# On RHEL 8, install the IdM DNS module profile instead
+sudo dnf module enable idm:DL1 -y
+sudo dnf distro-sync -y
+sudo dnf module install -y idm:DL1/dns
 ```
 
 ## Step 1: Start the Installation (Generates CSR)
@@ -64,8 +68,13 @@ cat /root/ipa.csr
 ```bash
 # Resume the installation with the signed certificate
 sudo ipa-server-install \
+  --domain=example.com \
+  --realm=EXAMPLE.COM \
+  --ds-password='DirectoryManagerPassword123' \
+  --admin-password='AdminPassword123' \
   --external-cert-file=/root/idm-ca.crt \
-  --external-cert-file=/root/external-ca.crt
+  --external-cert-file=/root/external-ca.crt \
+  --unattended
 
 # The installer continues and completes the setup
 # This may take 10-15 minutes
@@ -75,7 +84,7 @@ sudo ipa-server-install \
 
 ```bash
 # Open firewall ports
-sudo firewall-cmd --permanent --add-service={freeipa-ldap,freeipa-ldaps,dns,kerberos,kpasswd,http,https}
+sudo firewall-cmd --permanent --add-service={freeipa-4,dns}
 sudo firewall-cmd --reload
 
 # Authenticate as admin
@@ -105,7 +114,7 @@ sudo ipa-cacert-manage renew \
   --external-cert-file=/root/renewed-ca.crt \
   --external-cert-file=/root/external-ca.crt
 
-# Update CA certificates on all clients
+# Update CA certificates on all IdM servers and clients
 sudo ipa-certupdate
 ```
 
