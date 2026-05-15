@@ -117,11 +117,12 @@ Instead of allowing any user in the password file, you can name specific users:
 ```apache
 # Must be on the right network AND provide valid credentials
 <Directory /var/www/html/secure>
+    AuthType Basic
+    AuthName "Secure Zone"
+    AuthUserFile /etc/httpd/.htpasswd
+
     <RequireAll>
         Require ip 10.0.0.0/24
-        AuthType Basic
-        AuthName "Secure Zone"
-        AuthUserFile /etc/httpd/.htpasswd
         Require valid-user
     </RequireAll>
 </Directory>
@@ -132,14 +133,13 @@ Instead of allowing any user in the password file, you can name specific users:
 ```apache
 # Allow if on the right network OR if credentials are provided
 <Directory /var/www/html/internal>
+    AuthType Basic
+    AuthName "Internal Access"
+    AuthUserFile /etc/httpd/.htpasswd
+
     <RequireAny>
         Require ip 10.0.0.0/24
-        <RequireAll>
-            AuthType Basic
-            AuthName "Internal Access"
-            AuthUserFile /etc/httpd/.htpasswd
-            Require valid-user
-        </RequireAll>
+        Require valid-user
     </RequireAny>
 </Directory>
 ```
