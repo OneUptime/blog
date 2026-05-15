@@ -45,7 +45,7 @@ Server web1 gets three times the traffic of web3.
 
 ## Static Round Robin
 
-Similar to round robin but the distribution is computed at startup and cannot change at runtime:
+Similar to round robin but weight changes made at runtime do not affect the distribution:
 
 ```bash
 backend web_servers
@@ -54,7 +54,7 @@ backend web_servers
     server web2 192.168.1.12:8080 check weight 1
 ```
 
-**When to use it**: When you need fully deterministic distribution and do not plan to change weights at runtime.
+**When to use it**: When you need fully deterministic distribution and do not plan to adjust weights at runtime.
 
 ## Least Connections
 
@@ -82,9 +82,9 @@ backend web_servers
     server web3 192.168.1.13:8080 check
 ```
 
-**When to use it**: When you need basic session persistence without cookies. The same client IP always goes to the same server.
+**When to use it**: When you need basic session persistence without cookies. The same client IP goes to the same server as long as the set of running servers does not change.
 
-**Limitation**: If a server goes down, all its clients are redistributed. When it comes back, the hash changes again.
+**Limitation**: If a server goes down, many clients may be redistributed. When it comes back, the hash changes again.
 
 ## URI Hash
 
@@ -98,7 +98,7 @@ backend web_servers
     server web3 192.168.1.13:8080 check
 ```
 
-**When to use it**: When you want the same URL to always hit the same server. This is useful for caching, as each server caches a specific set of URLs.
+**When to use it**: When you want the same URL to hit the same server as long as the set of running servers does not change. This is useful for caching, as each server caches a specific set of URLs.
 
 ## URL Parameter Hash
 
@@ -111,7 +111,7 @@ backend web_servers
     server web2 192.168.1.12:8080 check
 ```
 
-A request to `/page?userid=42` always goes to the same server.
+A request to `/page?userid=42` goes to the same server as long as the set of running servers does not change.
 
 **When to use it**: When session affinity needs to be based on a specific request parameter.
 
@@ -163,7 +163,7 @@ flowchart TD
 
 ## Combining Algorithms with Weights
 
-Any algorithm can be combined with server weights:
+These algorithms can be combined with server weights:
 
 ```bash
 backend web_servers
