@@ -1,28 +1,30 @@
-# How to Migrate from CentOS Stream to RHEL in Production
+# How to Migrate from a Supported RHEL-Derived Linux Distribution to RHEL in Production
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, CentOS Stream, Migration, Convert2RHEL, Production, Linux
+Tags: RHEL, Alma Linux, CentOS Linux, Oracle Linux, Rocky Linux, Migration, Convert2RHEL, Production, Linux
 
-Description: Migrate production CentOS Stream systems to RHEL using Convert2RHEL, ensuring a smooth transition with minimal downtime.
+Description: Migrate supported production RHEL-derived Linux systems to RHEL using Convert2RHEL, ensuring a smooth transition with minimal downtime.
 
 ---
 
-CentOS Stream is a rolling-release distribution that tracks ahead of RHEL minor releases. Converting a CentOS Stream system to RHEL gives you stable, supported packages with predictable lifecycle guarantees.
+Convert2RHEL supports conversions from selected RHEL-derived distributions such as Alma Linux, CentOS Linux, Oracle Linux, and Rocky Linux to the corresponding RHEL minor release. CentOS Stream conversions are possible only as unsupported conversions, so production systems should use a supported conversion path or a fresh RHEL build and data migration.
 
 ## Prerequisites
 
 ```bash
-# Verify the current CentOS Stream version
+# Verify the current source OS version
 
 cat /etc/redhat-release
-# Example: CentOS Stream release 9
+# Example: Rocky Linux release 9.x
 
-# Update the system fully before converting
+# Update the system to a supported minor version before converting
 sudo dnf update -y
+sudo reboot
 
 # Ensure the system has an active network connection
-ping -c 3 subscription.rhsm.redhat.com
+curl -I https://subscription.rhsm.redhat.com
+curl -I https://cdn-public.redhat.com
 ```
 
 ## Creating a Pre-Conversion Backup
@@ -31,20 +33,24 @@ Always back up before converting production systems:
 
 ```bash
 # Create a full system backup
-sudo tar czpf /backup/centos-stream-pre-convert-$(date +%Y%m%d).tar.gz \
+sudo tar czpf /backup/pre-convert-$(date +%Y%m%d).tar.gz \
   --exclude=/proc --exclude=/sys --exclude=/dev \
   --exclude=/run --exclude=/tmp --exclude=/backup /
 
 # If using LVM, create a snapshot as a fallback
-sudo lvcreate --size 10G --snapshot --name pre-convert /dev/rhel/root
+sudo lvcreate --size 10G --snapshot --name pre-convert /dev/<vg_name>/<lv_name>
 ```
 
 ## Installing Convert2RHEL
 
 ```bash
-# Install the Convert2RHEL repository for CentOS Stream 9
+# Download the Red Hat GPG key
+sudo curl -o /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release \
+  https://security.access.redhat.com/data/fd431d51.txt
+
+# Install the Convert2RHEL repository for conversions to RHEL 9
 sudo curl -o /etc/yum.repos.d/convert2rhel.repo \
-  https://ftp.redhat.com/redhat/convert2rhel/9/convert2rhel.repo
+  https://cdn-public.redhat.com/content/public/repofiles/convert2rhel-for-rhel-9-x86_64.repo
 
 # Install Convert2RHEL
 sudo dnf install -y convert2rhel
@@ -53,17 +59,28 @@ sudo dnf install -y convert2rhel
 ## Running the Conversion
 
 ```bash
-# Run Convert2RHEL with an activation key (recommended for automation)
-sudo convert2rhel --org <your_org_id> --activationkey <your_key> -y
+# Configure RHSM credentials for Convert2RHEL
+sudo vi /etc/convert2rhel.ini
+```
 
-# Or use username and password
-sudo convert2rhel --username <rhn_user> --password <rhn_pass> -y
+```ini
+[subscription_manager]
+org = <your_org_id>
+activation_key = <your_key>
+```
+
+```bash
+# Run the pre-conversion analysis and resolve reported issues
+sudo convert2rhel analyze
+
+# Start the conversion after the analysis is clean
+sudo convert2rhel
 ```
 
 Convert2RHEL will:
 1. Verify system compatibility
-2. Replace CentOS Stream repositories with RHEL repositories
-3. Replace CentOS-branded packages with RHEL equivalents
+2. Replace source OS repositories with RHEL repositories
+3. Replace source OS packages with RHEL equivalents where available
 4. Register the system with Red Hat Subscription Management
 
 ## Post-Conversion Steps
@@ -78,11 +95,11 @@ cat /etc/redhat-release
 # Check subscription status
 sudo subscription-manager status
 
-# Verify all packages are from RHEL repos
+# Synchronize installed packages with enabled RHEL repositories
 sudo dnf distro-sync -y
 
-# Check for any remaining CentOS packages
-rpm -qa | grep -i centos
+# Review packages that are not available from the enabled RHEL repository
+sudo dnf list extras --disablerepo="*" --enablerepo=<RHEL_RepoID>
 ```
 
 ## Verifying Production Services
@@ -109,7 +126,7 @@ If the conversion fails partway through:
 cat /var/log/convert2rhel/convert2rhel.log
 
 # If you created an LVM snapshot, roll back
-sudo lvconvert --merge /dev/rhel/pre-convert
+sudo lvconvert --merge /dev/<vg_name>/pre-convert
 sudo reboot
 ```
 
