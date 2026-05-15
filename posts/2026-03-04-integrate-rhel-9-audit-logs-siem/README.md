@@ -262,10 +262,13 @@ After setting up forwarding, always verify that events actually arrive at your S
 ### Generate a test audit event
 
 ```bash
-# Trigger a test event by watching a file
+# Create the file before adding a watch
+touch /tmp/siem-test
+
+# Trigger a test event by watching the file
 sudo auditctl -w /tmp/siem-test -p wa -k siem_integration_test
 
-# Create the watched file to generate an event
+# Update the watched file to generate an event
 touch /tmp/siem-test
 
 # Verify the event was logged locally
@@ -287,10 +290,10 @@ rm -f /tmp/siem-test
 
 In environments with hundreds of audit rules, log volume can be significant. Here are some strategies:
 
-- **Filter at the source** - Only forward critical events using audit rule priorities.
+- **Filter at the source** - Define focused audit rules and forward only the events your SIEM needs.
 - **Use disk-backed queues** - Both rsyslog and Filebeat support disk-backed queues to handle bursts.
 - **Batch events** - Configure your shipper to batch events rather than sending them one at a time.
-- **Compress in transit** - Enable compression on your forwarder to reduce bandwidth.
+- **Compress in transit** - Enable compression where your forwarder and receiver support it.
 
 ### Check audit log volume
 
@@ -304,12 +307,12 @@ sudo aureport --summary
 
 Audit logs contain sensitive data. Always encrypt the transport.
 
-For audisp-remote, enable TLS:
+For audisp-remote, use Kerberos for authenticated encryption. Plain `transport = tcp` sends audit records without encryption:
 
 ```bash
 # In /etc/audit/audisp-remote.conf
-transport = tcp
-enable_krb5 = no
+transport = krb5
+format = managed
 ```
 
 For rsyslog, use TLS with certificate verification:
@@ -324,6 +327,8 @@ action(
     StreamDriver="gtls"
     StreamDriverMode="1"
     StreamDriverAuthMode="x509/name"
+    StreamDriverPermittedPeers="siem.example.com"
+    StreamDriver.CAFile="/etc/pki/rsyslog/ca.pem"
 )
 ```
 
