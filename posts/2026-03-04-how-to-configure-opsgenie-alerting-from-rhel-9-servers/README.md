@@ -19,24 +19,26 @@ Opsgenie provides alert management and on-call scheduling. This guide covers int
 ## Create the Alert Script
 
 ```bash
+sudo mkdir -p /opt/scripts
 sudo tee /opt/scripts/opsgenie-alert.sh <<'SCRIPT'
 #!/bin/bash
 API_KEY="your-opsgenie-api-key"
 MESSAGE="$1"
 PRIORITY="${2:-P3}"
 HOSTNAME=$(hostname)
+ALIAS=$(printf '%s' "$MESSAGE" | md5sum | cut -d' ' -f1)
 
 curl -s -X POST "https://api.opsgenie.com/v2/alerts" \
   -H "Content-Type: application/json" \
   -H "Authorization: GenieKey $API_KEY" \
   -d "{
-    "message": "$MESSAGE",
-    "alias": "$(echo $MESSAGE | md5sum | cut -d' ' -f1)",
-    "description": "Alert from $HOSTNAME at $(date)",
-    "priority": "$PRIORITY",
-    "source": "$HOSTNAME",
-    "tags": ["rhel9", "production"],
-    "entity": "$HOSTNAME"
+    \"message\": \"$MESSAGE\",
+    \"alias\": \"$ALIAS\",
+    \"description\": \"Alert from $HOSTNAME at $(date)\",
+    \"priority\": \"$PRIORITY\",
+    \"source\": \"$HOSTNAME\",
+    \"tags\": [\"rhel9\", \"production\"],
+    \"entity\": \"$HOSTNAME\"
   }"
 SCRIPT
 sudo chmod +x /opt/scripts/opsgenie-alert.sh
@@ -60,6 +62,7 @@ EOF
 ## Auto-Close Resolved Alerts
 
 ```bash
+sudo mkdir -p /opt/scripts
 sudo tee /opt/scripts/opsgenie-close.sh <<'SCRIPT'
 #!/bin/bash
 API_KEY="your-opsgenie-api-key"
@@ -76,4 +79,3 @@ sudo chmod +x /opt/scripts/opsgenie-close.sh
 ## Conclusion
 
 Opsgenie integration with RHEL 9 provides alert management with on-call routing and escalation. Use deduplication aliases to prevent alert storms and auto-close scripts for resolved issues.
-
