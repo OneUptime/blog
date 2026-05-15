@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Envoy, Proxy, Traefik, Caddy, Web Server, Reverse Proxy, Comparison, Linux
 
-Description: Learn how to compare Envoy, Traefik, and Caddy for Reverse Proxy Use Cases on RHEL 9 with step-by-step instructions, configuration examples, and best practices.
+Description: Learn how to compare Envoy, Traefik, and Caddy for Reverse Proxy Use Cases on RHEL 9 with configuration examples and best practices.
 
 ---
 
@@ -19,7 +19,7 @@ Choosing the right reverse proxy depends on your requirements. Envoy, Traefik, a
 | Auto TLS | No (external) | Yes (Let's Encrypt) | Yes (Let's Encrypt) |
 | Service Discovery | xDS, EDS | Docker, K8s, file | File, API |
 | gRPC Support | Excellent | Good | Good |
-| HTTP/3 | Yes | Yes | Yes |
+| HTTP/3 | Yes (downstream; upstream support is alpha) | Yes (entryPoint opt-in) | Yes |
 | Admin UI | Stats page | Dashboard | API |
 | Learning Curve | Steep | Moderate | Easy |
 
@@ -35,14 +35,24 @@ Envoy is the best choice when you need:
 ```yaml
 # Envoy: Powerful but verbose
 
-clusters:
-- name: backend
-  connect_timeout: 5s
-  type: STRICT_DNS
-  lb_policy: ROUND_ROBIN
-  circuit_breakers:
-    thresholds:
-    - max_connections: 1024
+static_resources:
+  clusters:
+  - name: backend
+    connect_timeout: 5s
+    type: STRICT_DNS
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: backend
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: backend.example.com
+                port_value: 8080
+    circuit_breakers:
+      thresholds:
+      - max_connections: 1024
 ```
 
 ## When to Choose Traefik
@@ -63,6 +73,11 @@ http:
       service: myapp
       tls:
         certResolver: letsencrypt
+  services:
+    myapp:
+      loadBalancer:
+        servers:
+        - url: "http://localhost:3000"
 ```
 
 ## When to Choose Caddy
@@ -83,13 +98,13 @@ myapp.example.com {
 
 ## Performance Comparison
 
-All three proxies handle high throughput well. Envoy generally has the lowest latency in service mesh scenarios due to its C++ implementation. Traefik and Caddy (both written in Go) perform comparably for typical reverse proxy workloads.
+All three proxies handle high throughput well, but actual latency and throughput depend on the protocol, TLS settings, routing rules, observability configuration, and deployment topology. Envoy is commonly chosen for latency-sensitive service mesh scenarios, while Traefik and Caddy (both written in Go) are often sufficient for typical reverse proxy workloads.
 
 Resource Usage
 
 - **Envoy**: Higher memory usage due to connection pooling and stats
 - **Traefik**: Moderate resource usage
-- **Caddy**: Lowest resource usage for simple configurations
+- **Caddy**: Often lightweight for simple configurations
 
 ## Conclusion
 
