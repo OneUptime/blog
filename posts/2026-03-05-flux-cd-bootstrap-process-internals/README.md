@@ -40,7 +40,7 @@ The `--path` flag determines where in the repository Flux will store the cluster
 Bootstrap generates the Kubernetes manifests for the Flux controllers. These are the same manifests you would get from running `flux install --export`. The generated manifests include:
 
 - Namespace (`flux-system`)
-- Custom Resource Definitions (CRDs) for all Flux types
+- Custom Resource Definitions (CRDs) for the selected Flux components
 - Service accounts and RBAC roles
 - Deployments for each controller (source-controller, kustomize-controller, helm-controller, notification-controller)
 - Network policies
@@ -91,9 +91,9 @@ spec:
 
 The GitRepository resource points at the same repository that was just configured. The Kustomization resource watches the cluster path and applies everything it finds there. This creates a self-management loop: Flux applies the manifests that define Flux itself.
 
-### Step 4: Git Commit and Push
+### Step 4: Component Commit and Install
 
-Bootstrap commits the generated manifests to the repository and pushes them. The commit message typically reads "Add Flux sync manifests."
+Bootstrap commits the generated component manifests to the repository, pushes them, and installs those components on the cluster. If Flux is already installed, bootstrap can use this step to upgrade the installed components.
 
 ### Step 5: Deploy Key or Token Setup
 
@@ -108,7 +108,7 @@ kubectl get secret flux-system -n flux-system -o yaml
 
 ### Step 6: Apply to Cluster
 
-Bootstrap applies the generated manifests directly to the cluster using the Kubernetes API. This is a one-time direct application. After this point, Flux manages itself through the GitOps loop.
+Bootstrap then commits and pushes the sync manifests, typically with the commit message "Add Flux sync manifests", and applies them directly to the cluster using the Kubernetes API. After this point, Flux manages itself through the GitOps loop.
 
 ### Step 7: Wait for Readiness
 
@@ -123,9 +123,11 @@ sequenceDiagram
 
     CLI->>Git: Create/connect repository
     CLI->>CLI: Generate manifests
-    CLI->>Git: Commit and push manifests
-    CLI->>K8s: Create deploy key secret
-    CLI->>K8s: Apply manifests directly
+    CLI->>Git: Commit and push component manifests
+    CLI->>K8s: Install components directly
+    CLI->>K8s: Create deploy key or token secret
+    CLI->>Git: Commit and push sync manifests
+    CLI->>K8s: Apply sync manifests directly
     K8s->>FC: Controllers start
     FC->>Git: Pull repository (self-manage)
     FC->>K8s: Reconcile cluster state
