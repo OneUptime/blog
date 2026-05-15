@@ -43,12 +43,12 @@ Common built-in roles include:
 
 | Role | Purpose |
 |------|---------|
-| User Administrator | Manage users and their attributes |
-| Group Administrator | Manage groups and membership |
-| Host Administrator | Manage hosts and host groups |
-| Service Administrator | Manage services |
-| Replication Administrators | Manage replication topology |
-| DNS Administrators | Manage DNS zones and records |
+| User Administrator | Create users and groups |
+| helpdesk | Perform simple user administration tasks |
+| Enrollment Administrator | Enroll clients and hosts |
+| IT Specialist | Manage hosts, host groups, services, and automount |
+| IT Security Specialist | Manage netgroups, HBAC rules, and sudo rules |
+| Security Architect | Manage delegation, replication, IdM configuration, and password policy |
 
 ## Step 1 - Create a Custom Role
 
@@ -56,84 +56,42 @@ Let's create a helpdesk role that can reset passwords and unlock accounts but ca
 
 ```bash
 # Create the role
-ipa role-add "Helpdesk" --desc="Helpdesk staff - password resets and account unlocks"
+ipa role-add "Password Helpdesk" --desc="Helpdesk staff - password resets and account unlocks"
 ```
 
-## Step 2 - Create Custom Permissions
+## Step 2 - Use the Built-in Helpdesk Privilege
 
-Define the specific actions the helpdesk role needs.
+IdM already includes a privilege for simple user administration, including password resets.
 
 ```bash
-# Permission to modify user passwords
-ipa permission-add "Reset User Password" \
-  --type=user \
-  --right=write \
-  --attrs=userPassword \
-  --attrs=krbPrincipalKey \
-  --attrs=krbPasswordExpiration \
-  --attrs=krbLastPwdChange
-
-# Permission to unlock user accounts
-ipa permission-add "Unlock User Account" \
-  --type=user \
-  --right=write \
-  --attrs=krbLastAdminUnlock \
-  --attrs=krbLoginFailedCount
-
-# Permission to read user details (needed to find the user)
-ipa permission-add "Read User Details" \
-  --type=user \
-  --right=read \
-  --attrs=uid \
-  --attrs=givenName \
-  --attrs=sn \
-  --attrs=mail \
-  --attrs=krbLoginFailedCount \
-  --attrs=nsAccountLock
+# Inspect the built-in privilege before assigning it
+ipa privilege-show "Modify Users and Reset passwords" --all
 ```
 
-## Step 3 - Create a Privilege and Add Permissions
+## Step 3 - Assign the Privilege to the Role
 
-Bundle the permissions into a privilege.
-
-```bash
-# Create a privilege
-ipa privilege-add "Helpdesk Operations" \
-  --desc="Permissions needed for helpdesk tasks"
-
-# Add permissions to the privilege
-ipa privilege-add-permission "Helpdesk Operations" \
-  --permissions="Reset User Password"
-
-ipa privilege-add-permission "Helpdesk Operations" \
-  --permissions="Unlock User Account"
-
-ipa privilege-add-permission "Helpdesk Operations" \
-  --permissions="Read User Details"
-```
-
-## Step 4 - Assign the Privilege to the Role
+Use the built-in privilege instead of recreating low-level password permissions by hand.
 
 ```bash
-# Add the privilege to the helpdesk role
-ipa role-add-privilege "Helpdesk" \
-  --privileges="Helpdesk Operations"
+# Add the privilege to the password helpdesk role
+ipa role-add-privilege "Password Helpdesk" \
+  --privileges="Modify Users and Reset passwords"
 
 # Verify the role configuration
-ipa role-show "Helpdesk" --all
+ipa role-show "Password Helpdesk" --all
 ```
 
-## Step 5 - Assign Users or Groups to the Role
+## Step 4 - Assign Users or Groups to the Role
 
 ```bash
 # Add a user to the role
-ipa role-add-member "Helpdesk" --users=jsmith
+ipa role-add-member "Password Helpdesk" --users=jsmith
 
 # Add a group to the role (better practice)
-ipa role-add-member "Helpdesk" --groups=helpdesk_staff
+ipa role-add-member "Password Helpdesk" --groups=helpdesk_staff
 ```
 
-Now members of the `helpdesk_staff` group can reset passwords and unlock accounts but cannot create users, delete users, or modify other attributes.
+Now members of the `helpdesk_staff` group can reset passwords and perform the user changes covered by the `Modify Users and Reset passwords` privilege, but they cannot create or delete users.
 
 ## Testing the RBAC Configuration
 
@@ -154,18 +112,28 @@ ipa user-add newuser --first=New --last=User
 # Expected: ipa: ERROR: Insufficient access
 ```
 
-## Delegation: Allowing Groups to Manage Their Own Members
+## Delegation: Allowing Groups to Manage User Attributes
 
-Delegation lets group managers add and remove members from their own groups without full admin access.
+Delegation lets one group manage selected attributes of users in another group without full admin access.
 
 ```bash
 # Create a delegation rule
 ipa delegation-add "Manage Team Members" \
+  --permissions=read \
+  --permissions=write \
   --group=team_leads \
   --membergroup=developers \
-  --attrs=member
+  --attrs=mobile \
+  --attrs=telephoneNumber \
+  --attrs=title
 
-# Now members of team_leads can add/remove members from developers
+# Now members of team_leads can update those attributes for users in developers
+```
+
+If you want group managers to add and remove members of a group, use IdM member managers instead.
+
+```bash
+ipa group-add-member-manager developers --groups=team_leads
 ```
 
 ## Self-Service Rules
@@ -175,10 +143,12 @@ Self-service rules let users modify their own attributes, like phone number or S
 ```bash
 # Allow users to manage their own SSH keys
 ipa selfservice-add "Users manage SSH keys" \
+  --permissions=write \
   --attrs=ipaSshPubKey
 
 # Allow users to update their own contact info
 ipa selfservice-add "Users manage contact info" \
+  --permissions=write \
   --attrs=mobile \
   --attrs=telephoneNumber \
   --attrs=street \
@@ -193,7 +163,7 @@ Periodically review who has what access.
 
 ```bash
 # List all roles and their members
-for role in $(ipa role-find --sizelimit=0 --raw | grep "cn:" | awk '{print $2}'); do
+ipa role-find --sizelimit=0 --raw | awk -F': ' '/^  cn: /{print $2}' | while IFS= read -r role; do
   echo "=== Role: $role ==="
   ipa role-show "$role" --all | grep -E "Member|Privilege"
   echo ""
@@ -203,7 +173,7 @@ done
 ipa permission-find --sizelimit=0
 
 # Show what privileges a specific user has through their roles
-ipa role-find --users=jsmith
+ipa user-show jsmith --all | grep -E "Member of roles|Indirect Member of roles"
 ```
 
 ## Practical RBAC Examples
@@ -215,13 +185,13 @@ ipa role-find --users=jsmith
 ipa role-add "Auditor" --desc="Read-only access for compliance auditing"
 
 ipa permission-add "Read All Users" \
-  --type=user --right=read --attrs="*"
+  --type=user --right=read --right=search
 
 ipa permission-add "Read All Groups" \
-  --type=group --right=read --attrs="*"
+  --type=group --right=read --right=search
 
 ipa permission-add "Read All Hosts" \
-  --type=host --right=read --attrs="*"
+  --type=host --right=read --right=search
 
 ipa privilege-add "Audit Read Access"
 ipa privilege-add-permission "Audit Read Access" \
