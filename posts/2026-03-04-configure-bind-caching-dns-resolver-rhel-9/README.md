@@ -17,7 +17,7 @@ There are several practical reasons:
 - Reduced external DNS traffic
 - Control over which upstream servers you use
 - Ability to add local overrides
-- Better privacy (your ISP doesn't see every DNS query)
+- Better privacy from your ISP's recursive resolver
 
 ```mermaid
 flowchart LR
@@ -38,7 +38,7 @@ dnf install bind bind-utils -y
 
 ## Configuration
 
-The key difference between a caching resolver and an authoritative server is that the resolver has recursion enabled and doesn't serve its own zones.
+The key difference between a caching resolver and an authoritative server is that the resolver has recursion enabled and doesn't primarily serve authoritative zones.
 
 Create the configuration:
 
@@ -78,7 +78,7 @@ options {
     // DNSSEC validation
     dnssec-validation auto;
 
-    // Cache size limit (in bytes, default is unlimited)
+    // Cache size limit
     max-cache-size 256m;
 
     // Cache TTL limits
@@ -86,6 +86,8 @@ options {
     max-ncache-ttl 3600;      // Maximum 1 hour for negative cache
 
     managed-keys-directory "/var/named/dynamic";
+    dump-file "/var/named/data/cache_dump.db";
+    statistics-file "/var/named/data/named_stats.txt";
     pid-file "/run/named/named.pid";
     session-keyfile "/run/named/session.key";
 };
@@ -203,7 +205,7 @@ Test a second time to see the cache in action (look at the query time):
 dig @localhost google.com
 ```
 
-The first query might take 30-100ms. The cached response should be under 1ms.
+The first query might take 30-100ms. The cached response is often much faster.
 
 Test from a client machine:
 
@@ -224,7 +226,7 @@ Or if you're running DHCP, configure it to hand out your resolver's IP as the DN
 
 ## Cache Management
 
-View cache statistics:
+View server status:
 
 ```bash
 rndc status
@@ -283,11 +285,12 @@ rndc reload
 
 ## Performance Tuning
 
-For busy networks, increase the number of worker threads and cache size:
+For busy networks, increase the recursive client limit and cache size:
 
 ```bash
 options {
     // ... existing options ...
+    recursive-clients 2000;
     max-cache-size 512m;
 };
 ```
