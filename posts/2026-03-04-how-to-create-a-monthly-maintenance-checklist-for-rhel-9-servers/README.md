@@ -15,20 +15,20 @@ Regular monthly maintenance keeps RHEL 9 servers secure, stable, and performing 
 - [ ] Review available security errata: `sudo dnf updateinfo list security`
 - [ ] Apply security updates: `sudo dnf update --security`
 - [ ] Verify updates applied: `sudo dnf history`
-- [ ] Reboot if kernel was updated: `needs-restarting -r`
-- [ ] Restart services needing restart: `needs-restarting -s`
+- [ ] Reboot if required: `sudo dnf needs-restarting -r`
+- [ ] Restart affected services listed by: `sudo dnf needs-restarting -s`
 
 ## Subscription and Compliance
 
 - [ ] Verify subscription status: `sudo subscription-manager status`
 - [ ] Check Insights recommendations: `sudo insights-client`
-- [ ] Run compliance scan: `sudo oscap xccdf eval ...`
+- [ ] Run compliance scan: `sudo oscap xccdf eval --report scan-report.html --profile <profileID> /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml`
 - [ ] Review and address compliance findings
 
 ## Disk Space
 
 - [ ] Check disk usage: `df -h`
-- [ ] Clean old packages: `sudo dnf clean all`
+- [ ] Clean DNF caches: `sudo dnf clean all`
 - [ ] Rotate and compress logs: `sudo logrotate -f /etc/logrotate.conf`
 - [ ] Clean journal: `sudo journalctl --vacuum-time=2weeks`
 - [ ] Remove old kernels: `sudo dnf remove --oldinstallonly`
@@ -71,4 +71,3 @@ Regular monthly maintenance keeps RHEL 9 servers secure, stable, and performing 
 ## Conclusion
 
 Consistent monthly maintenance of RHEL 9 servers prevents problems from accumulating. Automate what you can with Ansible and schedule manual review tasks in your team's calendar.
-
