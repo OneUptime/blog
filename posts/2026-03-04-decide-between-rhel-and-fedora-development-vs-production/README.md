@@ -8,21 +8,21 @@ Description: Understand when to use Fedora for development and RHEL for producti
 
 ---
 
-Fedora is the upstream community distribution that feeds into RHEL. New technologies land in Fedora first, get refined over several releases, and then are incorporated into the next RHEL major version. This relationship makes them natural complements for development and production use.
+Fedora is the upstream community distribution that feeds into CentOS Stream, which is upstream for RHEL. New technologies land in Fedora first, get refined over several releases, and then are incorporated into a future RHEL major version. This relationship makes them natural complements for development and production use.
 
 ## The Upstream Relationship
 
-Fedora releases every 6 months with the latest packages. RHEL branches from a Fedora release and stabilizes it:
+Fedora releases about every 6 months with the latest packages. RHEL major releases are developed through CentOS Stream, which is based on Fedora:
 
 ```bash
 # Fedora: Check your version (moves fast)
 
 cat /etc/fedora-release
-# Fedora release 41 (Forty One)
+# Fedora release 44 (Forty Four)
 
-# RHEL 9 was branched from Fedora 34
+# CentOS Stream 9, the upstream for RHEL 9, was based on Fedora 34
 cat /etc/redhat-release
-# Red Hat Enterprise Linux release 9.3 (Plow)
+# Red Hat Enterprise Linux release 9.7 (Plow)
 ```
 
 ## Package Version Differences
@@ -31,21 +31,19 @@ Fedora ships much newer versions of developer tools:
 
 ```bash
 # Fedora: Newer compiler and tools
-gcc --version   # GCC 14.x
-python3 --version  # Python 3.13
-node --version     # Node.js 22.x
+gcc --version   # GCC 16.x
+python3 --version  # Python 3.14
+node --version     # Node.js 24.x
 
 # RHEL 9: Older but stable versions
 gcc --version   # GCC 11.x
-python3 --version  # Python 3.9 (with 3.11, 3.12 available as app streams)
+python3 --version  # Python 3.9 (with 3.11 and, since RHEL 9.4, 3.12 available through AppStream)
 ```
 
 RHEL provides newer versions of languages through Application Streams:
 
 ```bash
-# RHEL: Enable a newer Python version via app stream
-sudo dnf module list python3*
-sudo dnf module enable python3.12
+# RHEL 9.4 and later: Install a newer Python version from AppStream
 sudo dnf install python3.12
 ```
 
@@ -68,8 +66,8 @@ Fedora releases are supported for about 13 months. RHEL major releases for 10 ye
 
 ```bash
 # Fedora: Check if your release is still supported
-dnf install fedora-release-identity-basic
-# If your Fedora is EOL, you must upgrade
+cat /etc/fedora-release
+# Compare the release number with Fedora's supported releases; if it is EOL, you must upgrade
 
 # RHEL: Your release is supported for years
 subscription-manager facts | grep distribution.version
