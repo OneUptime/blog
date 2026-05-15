@@ -70,6 +70,7 @@ Periodically restore backups to a test environment to confirm they work:
 ```bash
 # Restore a single file from tar
 BACKUP_FILE=/backups/full-backup-$(date +%Y%m%d).tar.gz
+sudo mkdir -p /tmp/restore-test
 tar --acls --xattrs --selinux -xzf "$BACKUP_FILE" -C /tmp/restore-test etc/hostname
 ```
 
