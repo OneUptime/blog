@@ -17,7 +17,7 @@ Plan and execute a RHEL major version migration strategy for your fleet. Careful
 - A RHEL system with an active subscription
 - Root or sudo access
 - A full backup of the system before any migration or upgrade
-- For Leapp upgrades: the leapp and leapp-upgrade packages
+- For Leapp upgrades: the Leapp upgrade packages for your source and target RHEL versions
 
 ## Step 1 - Prepare the System
 
@@ -26,20 +26,21 @@ Before any migration:
 1. Create a full backup (see backup guides in this series)
 2. Document current system configuration
 3. Verify subscription status: `subscription-manager status`
-4. Check disk space: `df -h` (at least 5 GB free in `/`)
+4. Check disk space: `df -h` (ensure enough free space for `/var/lib/leapp`; the pre-upgrade assessment commonly needs up to 4 GB)
 
 ## Step 2 - Install Migration Tools
 
 For Leapp-based upgrades:
 
 ```bash
-sudo dnf install -y leapp leapp-upgrade
+sudo yum install -y leapp-upgrade   # RHEL 7 to RHEL 8
+sudo dnf install -y leapp-upgrade   # RHEL 8 to later releases
 ```
 
-For CentOS conversions:
+For CentOS conversions, install the latest Convert2RHEL repository file for your target RHEL major version, then install the utility:
 
 ```bash
-sudo dnf install -y convert2rhel
+sudo yum -y install convert2rhel
 ```
 
 ## Step 3 - Run Pre-Migration Assessment
@@ -62,15 +63,17 @@ Once all inhibitors are resolved:
 
 ```bash
 sudo leapp upgrade
+sudo reboot
 ```
 
-The system will reboot into a special initramfs to complete the upgrade.
+Alternatively, run `sudo leapp upgrade --reboot` to reboot automatically. The system will boot into a special initramfs to complete the upgrade.
 
 ## Step 5 - Post-Migration Verification
 
 After the upgrade completes:
 
 ```bash
+[ -e "/etc/systemd/system/leapp_resume.service" ] || ps -e | grep -q leapp && echo "Leapp has not finished the execution yet!"
 cat /etc/redhat-release
 uname -r
 dnf check
@@ -82,7 +85,8 @@ systemctl list-units --failed
 Remove old packages and kernels:
 
 ```bash
-sudo dnf remove leapp leapp-upgrade
+sudo dnf config-manager --save --setopt exclude=''
+sudo dnf remove leapp-deps-el* leapp-repository-deps-el*
 sudo dnf autoremove
 ```
 
