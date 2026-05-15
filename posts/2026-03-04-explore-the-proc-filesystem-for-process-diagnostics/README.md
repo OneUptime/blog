@@ -8,7 +8,7 @@ Description: Learn how to explore the /proc Filesystem for Process Diagnostics o
 
 ---
 
-The /proc filesystem is a virtual filesystem that exposes kernel and process information as readable files. It provides detailed diagnostics for every running process without needing any additional tools.
+The /proc filesystem is a virtual filesystem that exposes kernel and process information as readable files. It provides detailed diagnostics for running processes without needing any additional tools, subject to normal Linux permissions and procfs mount options.
 
 ## Prerequisites
 
@@ -46,13 +46,13 @@ Key files for any process:
 ## Step 2: View Process Command Line
 
 ```bash
-cat /proc/$(pidof sshd)/cmdline | tr '\0' ' '
+cat /proc/$(pgrep -o -x sshd)/cmdline | tr '\0' ' '
 ```
 
 ## Step 3: View Process Status
 
 ```bash
-cat /proc/$(pidof sshd)/status
+cat /proc/$(pgrep -o -x sshd)/status
 ```
 
 Important fields include:
@@ -64,7 +64,7 @@ Important fields include:
 ## Step 4: List Open File Descriptors
 
 ```bash
-ls -la /proc/$(pidof nginx)/fd/
+ls -la /proc/$(pgrep -o -x nginx)/fd/
 ```
 
 Each entry is a symlink to the actual file, socket, or pipe.
@@ -72,7 +72,7 @@ Each entry is a symlink to the actual file, socket, or pipe.
 ## Step 5: View Memory Maps
 
 ```bash
-cat /proc/$(pidof httpd)/maps
+cat /proc/$(pgrep -o -x httpd)/maps
 ```
 
 This shows every memory region: code segments, shared libraries, heap, stack, and mapped files.
@@ -80,7 +80,7 @@ This shows every memory region: code segments, shared libraries, heap, stack, an
 ## Step 6: Check Process I/O Statistics
 
 ```bash
-cat /proc/$(pidof myapp)/io
+cat /proc/$(pgrep -o -x myapp)/io
 ```
 
 ```bash
@@ -112,13 +112,20 @@ cat /proc/loadavg
 Many `/proc/sys/` entries are writable:
 
 ```bash
-echo 1 > /proc/sys/net/ipv4/ip_forward
+sudo sh -c 'echo 1 > /proc/sys/net/ipv4/ip_forward'
 ```
 
-For persistent changes, use sysctl:
+To change the value for the current runtime, use sysctl:
 
 ```bash
 sudo sysctl -w net.ipv4.ip_forward=1
+```
+
+For persistent changes, write the setting to a sysctl configuration file:
+
+```bash
+printf 'net.ipv4.ip_forward = 1\n' | sudo tee /etc/sysctl.d/99-ip-forward.conf
+sudo sysctl -p /etc/sysctl.d/99-ip-forward.conf
 ```
 
 ## Conclusion
