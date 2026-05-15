@@ -31,7 +31,7 @@ sudo firewall-cmd --permanent --add-service=cockpit
 sudo firewall-cmd --reload
 ```
 
-Now open a browser and navigate to `https://your-server-ip:9090`. Log in with any system account that has sudo privileges. You will see a self-signed certificate warning, which is normal for a fresh install.
+Now open a browser and navigate to `https://your-server-ip:9090`. Log in with a system account; for administrative tasks, use an account with sudo privileges and switch to administrative access when prompted. You will see a self-signed certificate warning, which is normal for a fresh install.
 
 ## The Dashboard Overview
 
@@ -107,6 +107,12 @@ Cockpit also shows when a user last logged in and whether their account is locke
 
 The **Storage** section gives you a visual layout of your disks, partitions, volume groups, and file systems.
 
+If the Storage section is not present, install the storage add-on first:
+
+```bash
+sudo dnf install cockpit-storaged
+```
+
 You can:
 
 - View disk health and SMART data
@@ -132,8 +138,7 @@ sudo vgs
 sudo lvs
 
 # Extend a logical volume and resize the file system
-sudo lvextend -L +10G /dev/vg_data/lv_app
-sudo xfs_growfs /dev/vg_data/lv_app
+sudo lvextend --resizefs -L +10G /dev/vg_data/lv_app
 ```
 
 For quick tasks like extending a volume or mounting an NFS share, Cockpit is genuinely faster than typing out the commands. For scripted or automated storage provisioning, stick with the CLI.
@@ -235,7 +240,7 @@ After applying updates, Cockpit will indicate if a reboot is required (for examp
 
 ## Managing Multiple Servers
 
-Cockpit can manage multiple servers from a single dashboard. On the main server, click the hostname dropdown in the top left and select **Add new host**. The remote server needs Cockpit installed and the firewall open on port 9090.
+Cockpit can manage multiple servers from a single dashboard. On the main server, click the hostname dropdown in the top left and select **Add new host**. The remote server needs the `cockpit-system` package installed, `sshd` running, and SSH allowed through the firewall.
 
 This works over SSH, so the remote server does not even need Cockpit's web socket exposed to the public network. Your primary Cockpit instance connects to the others on your behalf.
 
