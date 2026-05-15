@@ -16,7 +16,7 @@ On RHEL, SELinux is enforcing by default, and NFS works with it, but you need to
 
 ## How SELinux Handles NFS Files
 
-By default, files served over NFS get the `nfs_t` SELinux type on the client side. This is fine for general file access, but applications like Apache, Samba, or custom services may need specific SELinux types to access the files.
+By default, NFS mounts use the `nfs_t` SELinux type on the client side, unless you are using labeled NFS. This is fine for general file access, but applications like Apache, Samba, or custom services may need SELinux policy booleans or compatible file types to access the files.
 
 ```bash
 # Check the SELinux context of NFS-mounted files
@@ -166,14 +166,17 @@ graph TD
 
 ## NFSv4 Security Labels
 
-NFSv4.2 supports labeled NFS, which passes SELinux contexts from server to client:
+NFSv4.2 supports labeled NFS, which allows clients to set and retrieve SELinux labels when the server export enables it:
 
 ```bash
-# Mount with security labels (requires NFSv4.2)
+# Example /etc/exports entry on the server
+/srv/nfs/shared 192.168.1.0/24(rw,sync,security_label)
+
+# Mount with NFSv4.2 on the client
 sudo mount -t nfs -o vers=4.2,sec=sys 192.168.1.10:/srv/nfs/shared /mnt/nfs-shared
 ```
 
-For labeled NFS to work, both server and client must support it, and the export must be configured appropriately.
+For labeled NFS to work, both server and client must support it, clients must use a consistent SELinux policy, and the export must include the `security_label` option.
 
 ## Temporarily Disabling SELinux for Testing
 
