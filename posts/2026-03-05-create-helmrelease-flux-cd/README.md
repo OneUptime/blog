@@ -24,7 +24,7 @@ Before creating a HelmRelease, ensure you have the following in place:
 
 ## Understanding the HelmRelease Resource
 
-The HelmRelease resource uses the API version `helm.toolkit.fluxcd.io/v2`. At a minimum, it requires a chart reference pointing to a source and the chart name. Flux's Helm Controller watches for HelmRelease objects and reconciles them at regular intervals, ensuring your cluster state matches the desired state in Git.
+The HelmRelease resource uses the API version `helm.toolkit.fluxcd.io/v2`. When using a chart template, it requires a reconciliation interval and a chart specification pointing to a source and the chart name. Flux's Helm Controller watches for HelmRelease objects and reconciles them at regular intervals, ensuring your cluster state matches the desired state in Git.
 
 ## Step 1: Define a HelmRepository Source
 
@@ -186,7 +186,7 @@ flux create helmrelease nginx \
   --export > helmrelease.yaml
 ```
 
-The `--export` flag outputs the YAML to a file so you can commit it to your Git repository.
+The `--export` flag prints the YAML to stdout, and the shell redirection writes it to a file so you can commit it to your Git repository.
 
 ## Reconciliation Flow
 
