@@ -72,11 +72,14 @@ nmcli connection modify br0 ipv4.dns "10.0.1.1"
 nmcli connection modify br0 ipv4.method manual
 ```
 
-## Step 4: Add Physical NIC as Bridge Slave
+## Step 4: Add Physical NIC as Bridge Port
 
 ```bash
 # Add your physical NIC to the bridge
-nmcli connection add type ethernet con-name br0-slave ifname eth0 master br0
+nmcli connection add type ethernet port-type bridge con-name br0-port ifname eth0 controller br0
+
+# For RHEL 9.3 or earlier, use the older NetworkManager property names:
+# nmcli connection add type ethernet slave-type bridge con-name br0-port ifname eth0 master br0
 ```
 
 ## Step 5: Bring Up the Bridge
@@ -90,8 +93,12 @@ nmcli connection down "Wired connection 1"
 # Optionally delete the old connection to avoid conflicts
 nmcli connection delete "Wired connection 1"
 
-# Bring up the bridge
+# Bring up the bridge and its physical port
+nmcli connection modify br0 connection.autoconnect-ports 1
+# For RHEL 9.3 or earlier, use:
+# nmcli connection modify br0 connection.autoconnect-slaves 1
 nmcli connection up br0
+nmcli connection up br0-port
 ```
 
 ## Step 6: Verify
@@ -142,7 +149,7 @@ virt-install \
   --vcpus 2 \
   --disk path=/var/lib/libvirt/images/testvm.qcow2,size=20 \
   --os-variant rhel9.0 \
-  --network bridge=br0 \
+  --network network=br0-network \
   --cdrom /path/to/rhel9.iso \
   --graphics vnc
 ```
@@ -200,7 +207,7 @@ bridge link show
 
 ## Troubleshooting
 
-**VMs cannot reach the network**: Check that the physical NIC is properly enslaved to the bridge:
+**VMs cannot reach the network**: Check that the physical NIC is properly attached as a port of the bridge:
 
 ```bash
 bridge link show | grep eth0
@@ -212,4 +219,4 @@ bridge link show | grep eth0
 
 ## Summary
 
-Creating a network bridge for KVM on RHEL involves making a bridge interface, moving your IP config to it, enslaving your physical NIC, and telling libvirt about the new bridge. Once set up, every VM connected to the bridge gets direct access to your physical network. Plan for a brief network interruption during setup, and always have console access when modifying the network config of your management interface.
+Creating a network bridge for KVM on RHEL involves making a bridge interface, moving your IP config to it, attaching your physical NIC as a bridge port, and telling libvirt about the new bridge. Once set up, every VM connected to the bridge gets direct access to your physical network. Plan for a brief network interruption during setup, and always have console access when modifying the network config of your management interface.
