@@ -12,15 +12,18 @@ NFS is still one of the most common ways to share storage across Linux servers. 
 
 ## Prerequisites
 
-Make sure the NFS client utilities are installed on your RHEL system:
+Make sure the Cockpit storage package and NFS client utilities are installed on your RHEL system:
 
 ```bash
-# Install NFS client packages
+# Install Cockpit storage and NFS client packages
 
-sudo dnf install nfs-utils -y
+sudo dnf install cockpit-storaged nfs-utils -y
 
-# Start and enable the required services
+# Start and enable Cockpit and NFS client support
+sudo systemctl enable --now cockpit.socket
 sudo systemctl enable --now nfs-client.target
+
+# Optional: start rpcbind if you use NFSv3 workflows
 sudo systemctl enable --now rpcbind
 ```
 
@@ -28,12 +31,12 @@ You also need an NFS server with an exported share. We'll use `nfs-server.exampl
 
 ## Adding an NFS Mount in Cockpit
 
-Navigate to Storage in the Cockpit sidebar. Look for the "NFS mounts" section. Click "New NFS mount" and fill in:
+Navigate to Storage in the Cockpit sidebar. In the Storage table menu, click "New NFS mount" and fill in:
 
 - **Server address** - the NFS server hostname or IP (e.g., `nfs-server.example.com`)
 - **Path on server** - the exported path (e.g., `/shared`)
 - **Local mount point** - where to mount it locally (e.g., `/mnt/shared`)
-- **Mount options** - additional mount options
+- **Mount options** - select options such as mounting at boot, read-only access, or custom mount options
 
 ```mermaid
 graph LR
@@ -42,11 +45,11 @@ graph LR
     C -->|Mount: /mnt/shared| D[Local Access]
 ```
 
-Click "Add" and Cockpit mounts the share and adds an entry to `/etc/fstab` so it persists across reboots.
+Click "Add" and Cockpit mounts the share. If you select "Mount at boot", Cockpit also adds an entry to `/etc/fstab` so it persists across reboots.
 
 ## The CLI Equivalent
 
-Here's what Cockpit does behind the scenes:
+Here's the CLI equivalent for a persistent mount:
 
 ```bash
 # Create the mount point
@@ -68,7 +71,7 @@ Before adding a mount, you might want to see what the server is sharing:
 showmount -e nfs-server.example.com
 ```
 
-This lists all exports and which clients are allowed to access them. If the command hangs or fails, check that the NFS server's firewall allows the `nfs` service.
+This lists exports reported by the server's mount service and which clients are allowed to access them. If the command hangs or fails, check that the NFS server's firewall allows the `nfs`, `rpc-bind`, and `mountd` services.
 
 ## Mount Options
 
@@ -80,7 +83,6 @@ Cockpit lets you specify mount options in the form. Common options include:
 | `ro` | Read-only access |
 | `soft` | Return error if server is unreachable |
 | `hard` | Keep retrying if server is unreachable (default) |
-| `intr` | Allow interruption of hung NFS operations |
 | `noatime` | Don't update access times, improves performance |
 | `vers=4` | Force NFS version 4 |
 | `sec=krb5` | Use Kerberos authentication |
@@ -90,7 +92,7 @@ A practical fstab entry with useful options:
 
 ```bash
 # Performance-tuned NFS mount in fstab
-nfs-server.example.com:/shared /mnt/shared nfs rw,hard,intr,noatime,vers=4,_netdev 0 0
+nfs-server.example.com:/shared /mnt/shared nfs rw,hard,noatime,vers=4,_netdev 0 0
 ```
 
 ## Checking NFS Mount Status
@@ -99,7 +101,7 @@ After adding the mount in Cockpit, verify it's working:
 
 ```bash
 # Show all NFS mounts
-mount -t nfs4
+findmnt -t nfs,nfs4
 
 # Check the mount point is accessible
 ls -la /mnt/shared
@@ -115,7 +117,7 @@ Cockpit's Storage page shows the mount with its current status and disk usage.
 
 ## Editing an Existing NFS Mount
 
-In Cockpit, click on the NFS mount in the Storage page to modify its options or change the mount point. Cockpit updates the fstab entry accordingly.
+In Cockpit, click on the NFS mount in the Storage page. If the share is mounted, unmount it first, then click "Edit" to modify its custom options. Cockpit updates the fstab entry accordingly.
 
 From the CLI:
 
@@ -158,9 +160,9 @@ EOF
 
 # Create the NFS map file
 sudo tee /etc/auto.nfs << 'EOF'
-shared -rw,hard,intr nfs-server.example.com:/shared
-data -rw,hard,intr nfs-server.example.com:/data
-backup -ro,hard,intr nfs-server.example.com:/backup
+shared -rw,hard nfs-server.example.com:/shared
+data -rw,hard nfs-server.example.com:/data
+backup -ro,hard nfs-server.example.com:/backup
 EOF
 
 # Enable and start autofs
@@ -192,7 +194,7 @@ ping nfs-server.example.com
 # Check if the NFS ports are reachable
 nc -zv nfs-server.example.com 2049
 
-# Check if rpcbind is running
+# For NFSv3, check if rpcbind is running
 systemctl status rpcbind
 ```
 
@@ -241,7 +243,7 @@ For better NFS performance, adjust the read and write buffer sizes:
 sudo mount -t nfs -o rsize=1048576,wsize=1048576 nfs-server.example.com:/shared /mnt/shared
 
 # In fstab format
-nfs-server.example.com:/shared /mnt/shared nfs rw,hard,intr,rsize=1048576,wsize=1048576,_netdev 0 0
+nfs-server.example.com:/shared /mnt/shared nfs rw,hard,rsize=1048576,wsize=1048576,_netdev 0 0
 ```
 
 Check current NFS I/O statistics:
@@ -256,4 +258,4 @@ nfsiostat 2 5
 
 ## Wrapping Up
 
-Cockpit makes NFS client configuration straightforward. Adding, modifying, and removing NFS mounts is a matter of filling in a form, and the fstab integration means your mounts survive reboots. For simple setups with a handful of mounts, the web interface is all you need. For environments with many shares, autofs is the better approach, and for performance tuning you'll want to specify the options explicitly.
+Cockpit makes NFS client configuration straightforward. Adding, modifying, and removing NFS mounts is a matter of filling in a form, and the "Mount at boot" option means your mounts survive reboots. For simple setups with a handful of mounts, the web interface is all you need. For environments with many shares, autofs is the better approach, and for performance tuning you'll want to specify the options explicitly.
