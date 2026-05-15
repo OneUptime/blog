@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Rust, Musl, Static Linking, Development, Linux
 
-Description: Build fully static Rust binaries on RHEL using the musl libc target, producing self-contained executables that run on any Linux distribution.
+Description: Build fully static Rust binaries on RHEL using the musl libc target, producing self-contained executables that run on compatible Linux systems.
 
 ---
 
-By default, Rust on RHEL links against glibc dynamically. Using the musl target produces fully static binaries that run on any Linux system without library dependencies.
+By default, Rust on RHEL links against glibc dynamically. Using the musl target produces fully static binaries that run on compatible Linux systems of the same architecture without glibc runtime dependencies.
 
 ## Install Prerequisites
 
@@ -93,20 +93,19 @@ Many applications need TLS. Use rustls instead of OpenSSL for easier static comp
 ```toml
 # Cargo.toml - use rustls instead of openssl
 [dependencies]
-reqwest = { version = "0.11", features = ["rustls-tls"], default-features = false }
+reqwest = { version = "0.13", features = ["rustls"], default-features = false }
 tokio = { version = "1", features = ["full"] }
 ```
 
 If you must use OpenSSL statically:
 
+```toml
+# Cargo.toml - build and statically link OpenSSL from source
+[dependencies]
+openssl = { version = "0.10", features = ["vendored"] }
+```
+
 ```bash
-# Install static OpenSSL for musl
-sudo dnf install -y openssl-static
-
-# Set environment variables for the build
-export OPENSSL_STATIC=1
-export OPENSSL_DIR=/usr
-
 cargo build --release --target x86_64-unknown-linux-musl
 ```
 
