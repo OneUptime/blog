@@ -20,7 +20,7 @@ Before you begin, make sure you have:
 
 - A Red Hat account (create one at access.redhat.com if needed)
 - An active RHEL subscription associated with that account
-- Network connectivity to subscription.rhsm.redhat.com (port 443)
+- Network connectivity to subscription.rhsm.redhat.com and cdn.redhat.com (port 443)
 - Root or sudo access on the RHEL system
 
 ## Step 1 - Verify subscription-manager Is Installed
@@ -97,11 +97,12 @@ Here is how the registration process works at a high level:
 
 ```mermaid
 flowchart TD
-    A[RHEL System] -->|subscription-manager register| B[Red Hat CDN]
+    A[RHEL System] -->|subscription-manager register| B[Red Hat Subscription Management]
     B -->|Authenticates credentials| C[Red Hat Customer Portal]
     C -->|Issues identity certificate| A
     A -->|subscription-manager attach| D[Subscription Allocated]
-    D -->|Repos enabled| E[Access to Packages and Updates]
+    A -->|Uses enabled repos| E[Red Hat CDN]
+    E -->|Provides packages and updates| F[Access to Packages and Updates]
 ```
 
 ## Registering Behind a Proxy
@@ -140,13 +141,13 @@ sudo subscription-manager list --consumed
 sudo subscription-manager list --available
 ```
 
-## Using an Authentication Token Instead of Password
+## Using an Activation Key Instead of Password
 
-For environments where you do not want to pass your password in plain text, you can use a registration token. Generate a token through the Red Hat API and then register:
+For environments where you do not want to pass your password in plain text, use an activation key with your organization ID:
 
 ```bash
-# Register using a token
-sudo subscription-manager register --token=your_token_here
+# Register using an activation key
+sudo subscription-manager register --activationkey=your_activation_key --org=your_org_id
 ```
 
 This approach is useful for CI/CD pipelines and automated provisioning.
@@ -184,7 +185,7 @@ sudo subscription-manager repos --list-enabled
 sudo dnf check-update
 ```
 
-You should see at least the `rhel-9-for-x86_64-baseos-rpms` and `rhel-9-for-x86_64-appstream-rpms` repositories.
+On x86_64 systems, you should see at least the `rhel-9-for-x86_64-baseos-rpms` and `rhel-9-for-x86_64-appstream-rpms` repositories.
 
 ## Summary
 
