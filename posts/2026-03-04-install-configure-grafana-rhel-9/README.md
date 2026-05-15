@@ -20,6 +20,27 @@ Install and configure Grafana on RHEL for building dashboards and visualizing me
 
 ## Step 1 - Install Required Packages
 
+Add the Grafana RPM repository and install Grafana:
+
+```bash
+wget -q -O gpg.key https://rpm.grafana.com/gpg.key
+sudo rpm --import gpg.key
+
+sudo tee /etc/yum.repos.d/grafana.repo > /dev/null <<'EOF'
+[grafana]
+name=grafana
+baseurl=https://rpm.grafana.com
+repo_gpgcheck=1
+enabled=1
+gpgcheck=1
+gpgkey=https://rpm.grafana.com/gpg.key
+sslverify=1
+sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+EOF
+
+sudo dnf install -y grafana
+```
+
 Install the monitoring tools relevant to this guide:
 
 ```bash
@@ -31,6 +52,7 @@ Select only the packages you need for your specific setup.
 ## Step 2 - Enable and Start Services
 
 ```bash
+sudo systemctl enable --now grafana-server
 sudo systemctl enable --now pmcd pmlogger
 # or for sysstat:
 
@@ -74,6 +96,8 @@ pmstat -s 3
 sar -u 1 3
 # Prometheus endpoint
 curl -s http://localhost:9090/api/v1/query?query=up
+# Grafana
+curl -I http://localhost:3000/
 ```
 
 ## Step 6 - Set Up Alerting (Optional)
