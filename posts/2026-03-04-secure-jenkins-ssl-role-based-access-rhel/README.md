@@ -36,7 +36,13 @@ Create the Nginx configuration for Jenkins:
 # Create the Jenkins proxy config
 sudo tee /etc/nginx/conf.d/jenkins.conf << 'CONF'
 upstream jenkins {
+    keepalive 32;
     server 127.0.0.1:8080;
+}
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
 }
 
 server {
@@ -50,10 +56,14 @@ server {
 
     location / {
         proxy_pass http://jenkins;
-        proxy_set_header Host $host;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_request_buffering off;
     }
 }
 CONF
@@ -66,8 +76,20 @@ sudo systemctl enable --now nginx
 Update Jenkins to listen only on localhost:
 
 ```bash
-# Edit Jenkins config to bind to localhost only
-sudo sed -i 's/^JENKINS_LISTEN_ADDRESS=.*/JENKINS_LISTEN_ADDRESS="127.0.0.1"/' /etc/sysconfig/jenkins
+# Create a systemd override to bind Jenkins HTTP traffic to localhost only
+sudo systemctl edit jenkins
+```
+
+Add the following override:
+
+```ini
+[Service]
+Environment="JENKINS_OPTS=--httpListenAddress=127.0.0.1"
+```
+
+Then restart Jenkins:
+
+```bash
 sudo systemctl restart jenkins
 ```
 
