@@ -12,7 +12,7 @@ There are situations where you need to create NetworkManager configuration files
 
 ## What is Offline Mode?
 
-Starting with NetworkManager 1.40 (included in RHEL), nmcli can generate keyfile-format connection profiles without needing a running NetworkManager daemon. It writes valid `.nmconnection` files to a directory you specify, using the same syntax you would use with regular nmcli commands.
+Starting with NetworkManager 1.40 (included in RHEL 9.1 and later), nmcli can generate keyfile-format connection profiles without needing a running NetworkManager daemon. It prints valid keyfile content to standard output, using the same syntax you would use with regular nmcli commands.
 
 The key difference is that offline mode does not activate anything, does not talk to the NetworkManager daemon, and does not require root privileges (unless you are writing to a protected directory).
 
@@ -20,13 +20,13 @@ The key difference is that offline mode does not activate anything, does not tal
 flowchart LR
     A[nmcli - Normal Mode] -->|D-Bus| B[NetworkManager Daemon]
     B --> C[Network Interfaces]
-    D[nmcli - Offline Mode] -->|Direct File Write| E[.nmconnection Files]
+    D[nmcli - Offline Mode] -->|Keyfile on stdout| E[.nmconnection Files]
     E -->|Later| B
 ```
 
 ## Basic Usage
 
-The offline mode uses the `nmcli connection add` command with the `--offline` flag, and the output goes to stdout or a specified directory:
+The offline mode uses the `nmcli connection add` command with the `--offline` flag, and the output goes to stdout:
 
 ```bash
 # Generate a keyfile and print it to stdout
@@ -93,6 +93,7 @@ nmcli --offline connection add \
 
 # Set proper permissions
 chmod 600 "$TARGET_DIR"/*.nmconnection
+chown root:root "$TARGET_DIR"/*.nmconnection
 
 echo "Network configuration files generated in $TARGET_DIR"
 ```
@@ -115,6 +116,7 @@ nmcli --offline connection add \
   > /etc/NetworkManager/system-connections/production.nmconnection
 
 chmod 600 /etc/NetworkManager/system-connections/production.nmconnection
+chown root:root /etc/NetworkManager/system-connections/production.nmconnection
 %end
 ```
 
@@ -130,7 +132,8 @@ RUN nmcli --offline connection add \
   ifname eth0 \
   ipv4.method auto \
   > /etc/NetworkManager/system-connections/container-net.nmconnection && \
-  chmod 600 /etc/NetworkManager/system-connections/container-net.nmconnection
+  chmod 600 /etc/NetworkManager/system-connections/container-net.nmconnection && \
+  chown root:root /etc/NetworkManager/system-connections/container-net.nmconnection
 ```
 
 ## Use Case: Generating Configs for Air-Gapped Systems
@@ -159,6 +162,7 @@ cp /tmp/airgap-configs/*.nmconnection /mnt/usb/network-configs/
 # On the target system, copy and set permissions
 cp /mnt/usb/network-configs/*.nmconnection /etc/NetworkManager/system-connections/
 chmod 600 /etc/NetworkManager/system-connections/*.nmconnection
+chown root:root /etc/NetworkManager/system-connections/*.nmconnection
 nmcli connection reload
 ```
 
@@ -200,7 +204,7 @@ done
 After generating keyfiles in offline mode, you should validate them before deploying:
 
 ```bash
-# Check the generated file is well-formed by trying to read it
+# Inspect the generated file
 cat /tmp/server-eth0.nmconnection
 
 # Verify the file has correct permissions
@@ -216,7 +220,7 @@ nmcli connection show server-eth0
 There are a few things to be aware of:
 
 - **No connection activation.** Offline mode only generates files; it cannot activate them.
-- **No validation against hardware.** It will not check if the specified interface name actually exists.
+- **No runtime device checks.** It will not talk to NetworkManager or check whether the specified interface name currently exists.
 - **No UUID conflict detection.** If you generate multiple files, they each get unique UUIDs, but offline mode cannot check against existing connections on a target system.
 - **Subset of connection types.** Most common connection types are supported (ethernet, wifi, bond, vlan, bridge), but some exotic types may not be available offline.
 
@@ -226,7 +230,7 @@ There are a few things to be aware of:
 |---|---|---|
 | Requires running NM | Yes | No |
 | Activates connections | Yes | No |
-| Validates against hardware | Yes | No |
+| Talks to runtime devices | Yes | No |
 | Writes to system directories | Yes | Writes to stdout |
 | Requires root | Usually | Only if writing to protected dirs |
 | Generates valid keyfiles | Yes | Yes |
