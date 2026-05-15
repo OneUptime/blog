@@ -15,6 +15,7 @@ Monitoring is essential for maintaining healthy systems. This guide shows you ho
 - RHEL with a valid subscription or CentOS Stream 9
 - Root or sudo access
 - A terminal session
+- Internet access to download Netdata's installer
 
 ## Step 1: Install Required Packages
 
@@ -23,39 +24,44 @@ Monitoring is essential for maintaining healthy systems. This guide shows you ho
 
 sudo dnf update -y
 
-# Install the required packages
-sudo dnf install -y <package-name>
+# Install a downloader for the Netdata installer
+sudo dnf install -y curl
+
+# Download and run the Netdata kickstart installer
+curl https://get.netdata.cloud/kickstart.sh > /tmp/netdata-kickstart.sh
+sh /tmp/netdata-kickstart.sh --release-channel stable
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+The kickstart installer detects your system and installs Netdata using the best supported method for your RHEL version.
 
 ## Step 2: Configure the Service
 
 Edit the configuration file to match your environment:
 
 ```bash
-# Open the configuration file
-sudo vi /etc/<service>/config.conf
+# Open the Netdata configuration file
+cd /etc/netdata 2>/dev/null || cd /opt/netdata/etc/netdata
+sudo ./edit-config netdata.conf
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include the `[web]` listening address, dashboard access controls, and logging options.
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart netdata
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable netdata
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start netdata
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status netdata
 ```
 
 
@@ -65,16 +71,21 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status netdata
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u netdata --no-pager -n 20
+
+# Check the local dashboard
+curl -I http://localhost:19999
 ```
+
+You can also open `http://localhost:19999` in a browser on the server, or replace `localhost` with the server's hostname or IP address if remote dashboard access is allowed.
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u netdata -e --no-pager`.
+- Ensure Netdata is installed: `command -v netdata`.
 
 ## Conclusion
 
