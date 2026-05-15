@@ -14,7 +14,7 @@ Managing storage on Linux servers gets complicated fast. You start with a single
 
 Without LVM, you are stuck with the partition sizes you chose during installation. Need more space on /var? Too bad, you need to shrink another partition or add a new disk and move data around. With LVM, you can:
 
-- Resize volumes on the fly
+- Extend volumes on the fly (and shrink only where the filesystem supports it)
 - Span volumes across multiple physical disks
 - Take snapshots for backups
 - Move data between disks without downtime
@@ -138,7 +138,8 @@ echo '/dev/datavg/datalv /data xfs defaults 0 0' | sudo tee -a /etc/fstab
 echo '/dev/datavg/logslv /logs xfs defaults 0 0' | sudo tee -a /etc/fstab
 echo '/dev/datavg/backuplv /backup xfs defaults 0 0' | sudo tee -a /etc/fstab
 
-# Test the fstab entries
+# Reload systemd mount units and test the fstab entries
+sudo systemctl daemon-reload
 sudo mount -a
 ```
 
@@ -157,4 +158,4 @@ df -hT /data /logs /backup
 lsblk
 ```
 
-You now have a fully functional LVM setup. The real power becomes apparent when you need to resize volumes, add disks, or take snapshots - all without unmounting or losing data.
+You now have a fully functional LVM setup. The real power becomes apparent when you need to extend volumes, add disks, or take snapshots - all without unmounting or losing data.
