@@ -51,7 +51,8 @@ sudo alternatives --config java
 
 # Select Java 17 (enter the number corresponding to Java 17)
 # This is interactive; for scripts, use:
-sudo alternatives --set java /usr/lib/jvm/java-17-openjdk-17.0.10.0.7-2.el9.x86_64/bin/java
+JAVA_TO_SELECT=$(alternatives --display java | grep "family java-17-openjdk" | cut -d' ' -f1)
+sudo alternatives --set java "$JAVA_TO_SELECT"
 
 # Also set javac
 sudo alternatives --config javac
