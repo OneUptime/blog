@@ -63,20 +63,20 @@ echo "net.ipv6.conf.all.forwarding = 1" | sudo tee -a /etc/sysctl.d/99-openvpn-f
 
 ## Step 2: Configure NAT with firewalld
 
-RHEL uses firewalld by default. Enable masquerading to handle NAT.
+RHEL uses firewalld by default. Enable masquerading on the zone that contains your outbound interface to handle NAT. In this example, ens192 is in the public zone.
 
 ```bash
-# Enable masquerading on the default zone
-sudo firewall-cmd --permanent --add-masquerade
+# Enable masquerading on the outbound zone
+sudo firewall-cmd --permanent --zone=public --add-masquerade
 
 # Reload
 sudo firewall-cmd --reload
 
 # Verify
-sudo firewall-cmd --query-masquerade
+sudo firewall-cmd --zone=public --query-masquerade
 ```
 
-This enables masquerading for all outgoing traffic, which means VPN client traffic leaving through ens192 gets the server's IP as source.
+This enables masquerading for traffic leaving through the public zone, which means VPN client traffic leaving through ens192 gets the server's IP as source.
 
 ## Step 3: Assign the VPN Interface to a Zone
 
@@ -95,6 +95,8 @@ sudo firewall-cmd --permanent --zone=internal --add-service=https
 # Reload
 sudo firewall-cmd --reload
 ```
+
+If you use the internal zone instead of trusted, use internal as the ingress zone in the policy examples below.
 
 ## Understanding the Packet Flow
 
@@ -138,10 +140,10 @@ sudo ip route add 10.8.0.0/24 via 192.168.1.10
 Then you can disable masquerading for internal traffic and only masquerade internet-bound traffic:
 
 ```bash
-# Remove the global masquerade
-sudo firewall-cmd --permanent --remove-masquerade
+# Remove masquerade from the outbound zone
+sudo firewall-cmd --permanent --zone=public --remove-masquerade
 
-# Add a specific masquerade policy for internet traffic only
+# Add a specific masquerade policy for traffic from the VPN zone to the outbound zone
 sudo firewall-cmd --permanent --new-policy=vpn-internet
 sudo firewall-cmd --permanent --policy=vpn-internet --add-ingress-zone=trusted
 sudo firewall-cmd --permanent --policy=vpn-internet --add-egress-zone=public
@@ -170,7 +172,7 @@ push "dhcp-option DNS 1.1.1.1"
 push "dhcp-option DNS 1.0.0.1"
 ```
 
-## Step 6: Using PostUp/PostDown in OpenVPN
+## Step 6: Using Up/Down Scripts in OpenVPN
 
 Alternatively, you can manage forwarding and NAT directly in the OpenVPN config:
 
@@ -192,15 +194,15 @@ sudo tee /etc/openvpn/server/up.sh > /dev/null << 'EOF'
 #!/bin/bash
 # Enable forwarding
 sysctl -w net.ipv4.ip_forward=1
-# Add masquerade
-firewall-cmd --add-masquerade
+# Add masquerade on the outbound zone
+firewall-cmd --zone=public --add-masquerade
 EOF
 
 # Create the down script
 sudo tee /etc/openvpn/server/down.sh > /dev/null << 'EOF'
 #!/bin/bash
-# Remove masquerade
-firewall-cmd --remove-masquerade
+# Remove masquerade from the outbound zone
+firewall-cmd --zone=public --remove-masquerade
 EOF
 
 # Make executable
@@ -214,7 +216,7 @@ sudo chmod +x /etc/openvpn/server/up.sh /etc/openvpn/server/down.sh
 sysctl net.ipv4.ip_forward
 
 # Check masquerading
-sudo firewall-cmd --query-masquerade
+sudo firewall-cmd --zone=public --query-masquerade
 
 # Check active zones
 sudo firewall-cmd --get-active-zones
@@ -223,6 +225,7 @@ sudo firewall-cmd --get-active-zones
 sudo conntrack -L | grep 10.8.0
 
 # Check NAT rules
+sudo nft list table inet firewalld | grep masquerade
 sudo nft list table ip firewalld | grep masquerade
 ```
 
@@ -251,7 +254,7 @@ curl ifconfig.me
 sysctl net.ipv4.ip_forward
 
 # Or masquerade is not enabled
-sudo firewall-cmd --query-masquerade
+sudo firewall-cmd --zone=public --query-masquerade
 ```
 
 **Client can reach internal network but not the internet:**
