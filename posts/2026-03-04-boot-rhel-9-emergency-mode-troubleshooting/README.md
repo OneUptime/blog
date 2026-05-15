@@ -10,7 +10,7 @@ Description: Learn how to boot RHEL into emergency mode for advanced troubleshoo
 
 ## When to Use Emergency Mode
 
-Emergency mode is the last resort before reaching for installation media. It is more restrictive than rescue mode: the root filesystem is mounted read-only, no other filesystems are mounted, networking is not started, and only the most essential system services run.
+Emergency mode is the last resort before reaching for installation media. It is more restrictive than rescue mode: when booted directly into emergency mode, the root filesystem is mounted read-only, no other filesystems are mounted, networking is not started, and only the most essential system services run.
 
 You need emergency mode when:
 
@@ -25,7 +25,7 @@ You need emergency mode when:
 ```mermaid
 flowchart TD
     A["Emergency Mode"] --> B["initramfs loaded"]
-    B --> C["Root filesystem mounted READ-ONLY"]
+    B --> C["Root filesystem usually mounted READ-ONLY"]
     C --> D["No other filesystems mounted"]
     D --> E["No networking"]
     E --> F["Minimal shell - root access"]
@@ -57,10 +57,10 @@ sudo systemctl emergency
 Once in emergency mode, you have:
 
 - A root shell
-- Root filesystem mounted read-only
+- Root filesystem usually mounted read-only when booted directly into emergency mode
 - No other filesystems
 - No network
-- No logging service
+- Almost no normal system services
 
 The first thing you usually need to do is remount root as read-write:
 
@@ -73,17 +73,14 @@ mount -o remount,rw /
 
 ### Repairing a Corrupted Root Filesystem
 
-If the root filesystem has errors, you may need to run fsck. Since the filesystem is mounted read-only in emergency mode, you need to unmount it first or run fsck on it while read-only.
+If the root filesystem has errors, you may need to run a filesystem repair tool. Repair the filesystem only when it is unmounted. For the root filesystem, that usually means booting from RHEL installation media or another rescue environment so the root filesystem can stay unmounted.
 
 ```bash
-# For XFS (default on RHEL), check and repair
+# For XFS (default on RHEL), repair an unmounted filesystem
 xfs_repair /dev/mapper/rhel-root
 
-# If the filesystem is mounted, you may need to boot from
-# installation media to unmount it completely
-
-# For ext4 filesystems
-fsck.ext4 -y /dev/sda2
+# For ext4 filesystems, repair an unmounted filesystem
+e2fsck -p /dev/sda2
 ```
 
 ### Fixing a Bad /etc/fstab
@@ -124,6 +121,8 @@ systemctl reboot
 
 ### Resetting the Root Password in Emergency Mode
 
+If you can authenticate to the emergency shell, you can change the root password:
+
 ```bash
 # Remount root read-write
 mount -o remount,rw /
@@ -137,6 +136,8 @@ touch /.autorelabel
 # Reboot
 systemctl reboot
 ```
+
+If you do not know the current root password, use the `rd.break` recovery method instead of `systemd.unit=emergency.target`.
 
 ### Rebuilding a Broken initramfs
 
@@ -196,8 +197,10 @@ If you need to download packages or access remote resources:
 # Remount root read-write
 mount -o remount,rw /
 
-# Start networking manually
+# Start networking manually (replace eth0 with the actual interface name)
 ip link set eth0 up
+
+# If a DHCP client is installed
 dhclient eth0
 
 # Or configure a static IP
@@ -215,7 +218,7 @@ ping -c 3 8.8.8.8
 
 | Feature | Rescue Mode | Emergency Mode |
 |---------|------------|----------------|
-| Root filesystem | Read-write | Read-only |
+| Root filesystem | Read-write | Usually read-only when booted directly |
 | Other filesystems | Mounted | Not mounted |
 | Networking | Can be started | Manual setup needed |
 | systemd services | Basic set running | Almost none |
