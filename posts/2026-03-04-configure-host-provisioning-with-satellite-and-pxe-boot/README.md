@@ -25,14 +25,19 @@ Satellite can provision RHEL hosts automatically using PXE boot. A new server bo
 satellite-installer \
     --foreman-proxy-dhcp true \
     --foreman-proxy-dhcp-interface enp1s0 \
+    --foreman-proxy-dhcp-managed true \
     --foreman-proxy-dhcp-range "192.168.1.100 192.168.1.200" \
     --foreman-proxy-dhcp-gateway 192.168.1.1 \
     --foreman-proxy-dhcp-nameservers 192.168.1.10 \
+    --foreman-proxy-dhcp-server 192.168.1.10 \
     --foreman-proxy-dns true \
     --foreman-proxy-dns-interface enp1s0 \
+    --foreman-proxy-dns-managed true \
+    --foreman-proxy-dns-server 127.0.0.1 \
     --foreman-proxy-dns-zone example.com \
     --foreman-proxy-dns-reverse 1.168.192.in-addr.arpa \
     --foreman-proxy-tftp true \
+    --foreman-proxy-tftp-managed true \
     --foreman-proxy-tftp-servername 192.168.1.10
 ```
 
@@ -47,6 +52,9 @@ hammer subnet create \
     --gateway 192.168.1.1 \
     --dns-primary 192.168.1.10 \
     --boot-mode DHCP \
+    --ipam DHCP \
+    --from 192.168.1.100 \
+    --to 192.168.1.200 \
     --domains "example.com" \
     --tftp-id 1 \
     --dhcp-id 1 \
@@ -60,12 +68,13 @@ hammer subnet create \
 ```bash
 # Create the OS entry
 hammer os create \
-    --name "RedHat" \
+    --name "Red Hat Enterprise Linux" \
     --major 9 \
     --minor 3 \
     --family Redhat \
     --architectures x86_64 \
     --partition-tables "Kickstart default" \
+    --provisioning-templates "Kickstart default" \
     --media "Red Hat Enterprise Linux 9"
 ```
 
@@ -75,11 +84,12 @@ hammer os create \
 # List available provisioning templates
 hammer template list --search "Kickstart"
 
+TEMPLATE_ID=$(hammer --csv template list --per-page=1000 | grep "provision" | grep ",Kickstart default" | cut -d, -f1)
+
 # Associate the kickstart template with the OS
 hammer os set-default-template \
     --id 1 \
-    --provisioning-template "Kickstart default" \
-    --template-kind provision
+    --provisioning-template-id "$TEMPLATE_ID"
 ```
 
 ## Create a Host Group
@@ -93,14 +103,19 @@ hammer hostgroup create \
     --architecture "x86_64" \
     --domain "example.com" \
     --subnet "Provisioning-Net" \
-    --operatingsystem "RedHat 9.3" \
+    --operatingsystem "Red Hat Enterprise Linux 9.3" \
     --medium "Red Hat Enterprise Linux 9" \
     --partition-table "Kickstart default" \
-    --root-password "ChangeMe123!" \
+    --root-pass "ChangeMe123!" \
     --content-view "RHEL9-Base" \
     --lifecycle-environment "Production" \
     --organization "MyOrg" \
     --location "Default Location"
+
+hammer hostgroup set-parameter \
+    --hostgroup "WebServers" \
+    --name "kt_activation_keys" \
+    --value "RHEL9-Activation-Key"
 ```
 
 ## Provision a Host
@@ -112,6 +127,7 @@ hammer host create \
     --hostgroup "WebServers" \
     --mac "aa:bb:cc:dd:ee:ff" \
     --build true \
+    --managed true \
     --organization "MyOrg" \
     --location "Default Location"
 ```
@@ -125,7 +141,7 @@ Now power on the bare-metal server or VM. It will PXE boot, contact Satellite, d
 hammer host info --name "webserver5.example.com"
 
 # View provisioning logs
-hammer host reports list --search "host = webserver5.example.com"
+hammer host reports --name "webserver5.example.com"
 ```
 
 PXE-based provisioning through Satellite eliminates manual RHEL installations and ensures consistent configuration across your infrastructure.
