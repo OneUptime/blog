@@ -33,7 +33,7 @@ Make sure you have free space in your volume group:
 vgs
 ```
 
-You need the `device-mapper-persistent-data` and `lvm2` packages (installed by default on RHEL):
+You need the `device-mapper-persistent-data` and `lvm2` packages:
 
 ```bash
 # Verify packages
@@ -105,7 +105,7 @@ EOF
 
 ## Step 4: Monitor the Thin Pool
 
-This is critical. If the thin pool runs out of space, all thin volumes using it will freeze:
+This is critical. If the thin pool runs out of space, thin volumes using it can become unavailable or unwritable:
 
 ```bash
 # Check thin pool usage
@@ -137,7 +137,7 @@ lvextend -L +1G vg_data/thinpool_tmeta
 
 ## Extending the Thin Pool
 
-When the pool gets full, extend it:
+Before the pool gets full, extend it:
 
 ```bash
 # Add 50 GB to the thin pool
@@ -166,7 +166,7 @@ Monitor aggressively when overprovisioning. Running out of pool space is worse t
 
 ## Enabling Discard/TRIM for Space Reclamation
 
-When files are deleted from thin volumes, the space should be returned to the pool. Enable discard support:
+When files are deleted from thin volumes, discard operations can return unused blocks to the pool. Enable discard support:
 
 In fstab:
 
@@ -192,7 +192,7 @@ systemctl enable --now fstrim.timer
 
 ## Converting Existing LVs to Thin
 
-You cannot convert a thick LV to thin in place. You need to:
+LVM can convert a thick LV to a thin LV, but the conversion is not reversible and the resulting thin LV is fully provisioned in the new thin pool. For a straightforward migration, you can:
 
 1. Back up the data
 2. Remove the thick LV
