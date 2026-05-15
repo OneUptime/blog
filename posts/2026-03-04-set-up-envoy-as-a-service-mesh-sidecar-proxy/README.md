@@ -8,7 +8,7 @@ Description: Learn how to set Up Envoy as a Service Mesh Sidecar Proxy on RHEL 9
 
 ---
 
-Envoy is commonly deployed as a sidecar proxy in service mesh architectures, where each service instance has its own Envoy instance handling all inbound and outbound network traffic. This pattern provides observability, security, and traffic control without modifying application code.
+Envoy is commonly deployed as a sidecar proxy in service mesh architectures, where each service instance has its own Envoy instance that can handle inbound and outbound network traffic routed through it. This pattern provides observability, security, and traffic control without modifying application business logic.
 
 ## Prerequisites
 
@@ -19,12 +19,12 @@ Envoy is commonly deployed as a sidecar proxy in service mesh architectures, whe
 ## Understanding the Sidecar Pattern
 
 ```bash
-Client -> Envoy (inbound) -> Application -> Envoy (outbound) -> Upstream
+Client -> Envoy inbound listener -> Application -> Envoy outbound listener -> Upstream
 ```
 
-Each application has its own Envoy sidecar that handles:
-- Inbound traffic (authentication, rate limiting)
-- Outbound traffic (service discovery, load balancing, retries)
+Each application has its own Envoy sidecar that can handle:
+- Inbound traffic when clients connect through the inbound listener
+- Outbound traffic when the application sends upstream requests through the outbound listener
 - Metrics collection and tracing
 
 ## Step 1: Configure Inbound Listener
@@ -127,6 +127,17 @@ static_resources:
 
 ```yaml
   - name: upstream_cluster
+    connect_timeout: 5s
+    type: STRICT_DNS
+    load_assignment:
+      cluster_name: upstream_cluster
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: upstream-service.local
+                port_value: 8080
     circuit_breakers:
       thresholds:
       - max_connections: 1024
@@ -149,4 +160,4 @@ Prometheus metrics are available at `/stats/prometheus`.
 
 ## Conclusion
 
-Deploying Envoy as a sidecar proxy on RHEL 9 provides transparent service mesh capabilities including retries, circuit breaking, load balancing, and observability without requiring changes to your application code.
+Deploying Envoy as a sidecar proxy on RHEL 9 provides service mesh capabilities including retries, circuit breaking, load balancing, and observability for traffic routed through Envoy, without requiring changes to your application business logic.
