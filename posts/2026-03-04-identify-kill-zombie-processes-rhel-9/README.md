@@ -38,32 +38,32 @@ Look for the "zombie" count in the Tasks line.
 Find zombie processes:
 
 ```bash
-ps aux | awk '$8 == "Z"'
+ps aux | awk '$8 ~ /^Z/'
 ```
 
 Or:
 
 ```bash
-ps -eo pid,ppid,stat,comm | grep -w Z
+ps -eo pid,ppid,stat,comm | awk '$3 ~ /^Z/'
 ```
 
 More detailed view:
 
 ```bash
-ps -eo pid,ppid,stat,uid,comm | awk '$3 ~ /Z/'
+ps -eo pid,ppid,stat,uid,comm | awk '$3 ~ /^Z/'
 ```
 
 ## Understanding Zombie Process Information
 
 ```bash
-ps -eo pid,ppid,stat,time,comm | grep -w Z
+ps -eo pid,ppid,stat,time,args | awk '$3 ~ /^Z/'
 ```
 
 Output example:
 
 ```bash
   PID  PPID STAT     TIME COMMAND
- 1234  5678 Z    00:00:00 defunct
+ 1234  5678 Z    00:00:00 [my-app] <defunct>
 ```
 
 - **PID 1234** - The zombie process
@@ -75,7 +75,7 @@ Output example:
 
 ### Method 1: Signal the Parent Process
 
-Send SIGCHLD to the parent to prompt it to call wait():
+Send SIGCHLD to the parent to prompt it to call wait(), if it handles that signal:
 
 ```bash
 kill -SIGCHLD 5678
@@ -84,12 +84,12 @@ kill -SIGCHLD 5678
 Check if the zombie is gone:
 
 ```bash
-ps -eo pid,ppid,stat,comm | grep -w Z
+ps -eo pid,ppid,stat,comm | awk '$3 ~ /^Z/'
 ```
 
 ### Method 2: Kill the Parent Process
 
-If the parent does not respond to SIGCHLD, killing the parent causes the zombie to be adopted by PID 1 (systemd), which will immediately clean it up:
+If the parent does not respond to SIGCHLD, killing the parent causes the zombie to be adopted by PID 1 (systemd) or the nearest subreaper, which will normally clean it up:
 
 ```bash
 kill 5678
@@ -101,7 +101,7 @@ If the parent does not exit gracefully:
 kill -9 5678
 ```
 
-After the parent dies, the zombies will be reaped by init/systemd.
+After the parent dies, the zombies will be reaped by init/systemd or the nearest subreaper.
 
 ### Method 3: Wait for Parent to Exit
 
@@ -118,11 +118,14 @@ sudo systemctl restart my-service
 Properly handle SIGCHLD in parent processes. In C:
 
 ```c
+#include <errno.h>
 #include <signal.h>
 #include <sys/wait.h>
 
 void sigchld_handler(int sig) {
+    int saved_errno = errno;
     while (waitpid(-1, NULL, WNOHANG) > 0);
+    errno = saved_errno;
 }
 
 int main() {
@@ -139,14 +142,14 @@ wait $child_pid
 
 ### Using Double Fork
 
-The double-fork technique prevents zombies by having the child fork again and exit immediately. The grandchild becomes an orphan adopted by init:
+The double-fork technique prevents zombies by having the child fork again and exit immediately. The grandchild becomes an orphan adopted by init or a subreaper:
 
 ```bash
 # Parent forks child
 
 # Child forks grandchild
 # Child exits immediately (parent waits for child)
-# Grandchild runs independently, adopted by init
+# Grandchild runs independently, adopted by init or a subreaper
 ```
 
 ## Monitoring for Zombies
@@ -154,10 +157,10 @@ The double-fork technique prevents zombies by having the child fork again and ex
 Set up a simple monitoring check:
 
 ```bash
-zombie_count=$(ps aux | awk '$8 == "Z"' | wc -l)
+zombie_count=$(ps aux | awk '$8 ~ /^Z/' | wc -l)
 if [ "$zombie_count" -gt 0 ]; then
     echo "WARNING: $zombie_count zombie processes found"
-    ps aux | awk '$8 == "Z"'
+    ps aux | awk '$8 ~ /^Z/'
 fi
 ```
 
