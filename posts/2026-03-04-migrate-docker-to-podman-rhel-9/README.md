@@ -124,7 +124,8 @@ sudo tar czf volume-backup.tar.gz -C /var/lib/docker/volumes/my-data/_data .
 ## On the RHEL system, create a Podman volume and restore
 ```bash
 podman volume create my-data
-sudo tar xzf volume-backup.tar.gz -C $(podman volume inspect my-data --format '{{.Mountpoint}}')
+mntPoint=$(podman volume inspect my-data --format '{{.Mountpoint}}')
+podman unshare tar xzf volume-backup.tar.gz -C "$mntPoint"
 ```
 
 ## Step 6: Migrate Docker Compose Files
@@ -138,7 +139,7 @@ pip3 install --user podman-compose
 
 Most compose files work as-is. Common changes needed:
 
-1. Replace `docker.io/` prefix if images use short names
+1. Add fully qualified image names like `docker.io/library/nginx:latest` if short-name resolution is ambiguous
 2. Add `:Z` to volume mounts for SELinux
 3. Remove Docker-specific features like `deploy` sections
 
@@ -162,18 +163,19 @@ Old Docker approach:
 ```bash
 # Cron or script that runs:
 
-docker run -d --restart always --name web -p 80:80 nginx
+docker run -d --restart always --name web -p 8080:80 nginx
 ```
 
 New Podman Quadlet approach:
 ```bash
+mkdir -p ~/.config/containers/systemd
 cat > ~/.config/containers/systemd/web.container << 'EOF'
 [Unit]
 Description=Web Server
 
 [Container]
 Image=docker.io/library/nginx:latest
-PublishPort=80:80
+PublishPort=8080:80
 
 [Service]
 Restart=always
@@ -279,7 +281,7 @@ podman volume ls
 podman ps
 
 # Services enabled
-systemctl --user list-unit-files | grep container
+systemctl --user list-unit-files | grep web.service
 
 # Network connectivity
 podman run --rm docker.io/library/alpine ping -c 1 google.com
