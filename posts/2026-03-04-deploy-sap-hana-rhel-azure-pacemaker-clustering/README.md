@@ -31,12 +31,18 @@ sudo subscription-manager repos \
 # Install packages
 sudo dnf install -y pacemaker pcs \
   fence-agents-azure-arm \
+  resource-agents-cloud \
   resource-agents-sap-hana
 ```
 
 ## Configuring Azure Fencing
 
 ```bash
+# Prepare pcsd and authenticate the nodes
+sudo systemctl enable --now pcsd.service
+sudo passwd hacluster
+sudo pcs host auth hana01 hana02 -u hacluster
+
 # Create the cluster
 sudo pcs cluster setup hana-ha hana01 hana02
 sudo pcs cluster start --all
@@ -47,11 +53,13 @@ sudo pcs stonith create fence-node1 fence_azure_arm \
   msi=true \
   resourceGroup="sap-rg" \
   subscriptionId="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" \
-  plug="hana01" \
   pcmk_host_map="hana01:hana01;hana02:hana02" \
-  pcmk_reboot_action="reboot" \
   power_timeout=240 \
+  pcmk_reboot_timeout=900 \
+  pcmk_monitor_timeout=120 \
   pcmk_monitor_retries=4 \
+  pcmk_action_limit=3 \
+  meta failure-timeout=120s \
   op monitor interval=3600
 
 # Set fence topology
@@ -76,8 +84,8 @@ sudo pcs resource create hana_vip IPaddr2 \
   cidr_netmask=24 \
   op monitor interval=10 timeout=20
 
-# Group the VIP and health check together
-sudo pcs resource group add g-hana-vip hana_vip hana_healthcheck
+# Group the health check and VIP together
+sudo pcs resource group add g-hana-vip hana_healthcheck hana_vip
 ```
 
 ## Creating HANA HA Resources
@@ -95,19 +103,21 @@ sudo pcs resource create SAPHanaTopology_HDB_00 SAPHanaTopology \
 sudo pcs resource create SAPHana_HDB_00 SAPHana \
   SID=HDB InstanceNumber=00 \
   PREFER_SITE_TAKEOVER=true \
-  AUTOMATED_REGISTER=true \
+  AUTOMATED_REGISTER=false \
   DUPLICATE_PRIMARY_TIMEOUT=7200 \
   op start timeout=3600 \
   op stop timeout=3600 \
+  op monitor interval=61 role="Secondary" timeout=700 \
+  op monitor interval=59 role="Primary" timeout=700 \
+  op promote timeout=3600 \
+  op demote timeout=3600 \
   promotable notify=true clone-max=2 clone-node-max=1
 
 # Constraints
 sudo pcs constraint colocation add g-hana-vip with \
-  Promoted SAPHana_HDB_00-clone 4000
-sudo pcs constraint order promote SAPHana_HDB_00-clone then \
-  start g-hana-vip
-sudo pcs constraint order start SAPHanaTopology_HDB_00-clone then \
-  promote SAPHana_HDB_00-clone
+  master SAPHana_HDB_00-clone 4000
+sudo pcs constraint order SAPHanaTopology_HDB_00-clone then \
+  SAPHana_HDB_00-clone symmetrical=false
 ```
 
 ## Testing Failover
