@@ -21,13 +21,21 @@ Supervisord Process Manager can be installed and configured on RHEL to provide r
 ```bash
 # Update the system first
 
-sudo dnf update -y
+sudo dnf upgrade -y
+
+# Enable CodeReady Builder and EPEL on RHEL 9
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+
+# On CentOS Stream 9, use these instead of the two RHEL commands above:
+# sudo dnf config-manager --set-enabled crb
+# sudo dnf install -y epel-release epel-next-release
 
 # Install the required packages
-sudo dnf install -y <package-name>
+sudo dnf install -y supervisor
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+The package installs the `supervisord` service, `supervisorctl`, and the default configuration files.
 
 ## Step 2: Configure the Service
 
@@ -35,27 +43,38 @@ Edit the configuration file to match your environment:
 
 ```bash
 # Open the configuration file
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/supervisord.conf
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include the UNIX socket, optional HTTP interface authentication, and logging options. To manage a process, add a program configuration file:
+
+```ini
+[program:sleep-demo]
+command=/usr/bin/sleep 3600
+autostart=true
+autorestart=true
+stderr_logfile=/var/log/supervisor/sleep-demo.err.log
+stdout_logfile=/var/log/supervisor/sleep-demo.out.log
+```
+
+Save program files in `/etc/supervisord.d/` with an `.ini` extension, for example `/etc/supervisord.d/sleep-demo.ini`.
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart supervisord
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable supervisord
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start supervisord
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status supervisord
 ```
 
 
@@ -65,16 +84,19 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status supervisord
+
+# Check managed processes
+sudo supervisorctl status
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+sudo journalctl -u supervisord --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `sudo journalctl -u supervisord -e --no-pager`.
+- Ensure the required package is installed: `rpm -q supervisor`.
 
 ## Conclusion
 
