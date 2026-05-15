@@ -54,10 +54,10 @@ sudo systemctl status multipathd
 
 sudo multipath -ll
 
-# Show all paths
-sudo multipath -v2
+# Show existing multipath topology with verbosity
+sudo multipath -v2 -l
 
-# Flush and rediscover
+# Flush unused maps and rediscover
 sudo multipath -F
 sudo multipath -v2
 ```
@@ -75,12 +75,12 @@ Key default settings:
 ```bash
 defaults {
     user_friendly_names yes
-    find_multipaths yes
+    find_multipaths on
 }
 ```
 
 - `user_friendly_names yes`: Uses names like `mpatha`, `mpathb` instead of WWIDs
-- `find_multipaths yes`: Only creates multipath devices when multiple paths exist
+- `find_multipaths on`: Creates multipath devices only when the paths meet multipath detection rules, such as multiple paths with the same WWID
 
 ## Understanding multipath -ll Output
 
@@ -118,7 +118,7 @@ sudo mkfs.xfs /dev/mapper/mpatha
 sudo mkdir -p /mnt/san
 sudo mount /dev/mapper/mpatha /mnt/san
 
-# In fstab (use the dm device or WWID)
+# In fstab (use the multipath mapper name or filesystem UUID)
 echo '/dev/mapper/mpatha /mnt/san xfs defaults,_netdev 0 0' | sudo tee -a /etc/fstab
 ```
 
