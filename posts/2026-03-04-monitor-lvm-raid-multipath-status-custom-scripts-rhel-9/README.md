@@ -20,8 +20,8 @@ Complex storage configurations using LVM, RAID, and multipath need continuous mo
 
 THRESHOLD=85
 
-vgs --noheadings --nosuffix --units g -o vg_name,vg_size,vg_free,vg_free/vg_size 2>/dev/null | while read VG SIZE FREE PCT; do
-    USED_PCT=$(echo "scale=0; (1 - $PCT) * 100" | bc)
+vgs --noheadings --nosuffix --units g -o vg_name,vg_size,vg_free 2>/dev/null | while read VG SIZE FREE; do
+    USED_PCT=$(awk -v size="$SIZE" -v free="$FREE" 'BEGIN { if (size > 0) printf "%.0f", ((size - free) / size) * 100; else print 0 }')
     if [ "$USED_PCT" -ge "$THRESHOLD" ]; then
         logger -p local0.warning "LVM WARNING: Volume group $VG is ${USED_PCT}% full (${FREE}G free of ${SIZE}G)"
     fi
@@ -121,9 +121,9 @@ if ! command -v multipathd &>/dev/null; then
     exit 0
 fi
 
-multipathd show paths format "%d %s %t %T" 2>/dev/null | while read DEV STATE DM_STATE PATH_STATE; do
-    if [ "$STATE" != "running" ] || [ "$PATH_STATE" != "ready" ]; then
-        logger -p local0.warning "MULTIPATH WARNING: Path $DEV state=$STATE path_state=$PATH_STATE"
+multipathd show paths raw format "%d %t %o" 2>/dev/null | while read DEV DM_STATE ONLINE_STATE; do
+    if [ "$DM_STATE" != "active" ] || [ "$ONLINE_STATE" != "running" ]; then
+        logger -p local0.warning "MULTIPATH WARNING: Path $DEV dm_state=$DM_STATE online_state=$ONLINE_STATE"
     fi
 done
 ```
@@ -134,8 +134,8 @@ done
 #!/bin/bash
 # Check for multipath devices with fewer paths than expected
 
-multipath -ll 2>/dev/null | grep -E "^[a-z]" | while read MPATH REST; do
-    ACTIVE=$(multipath -ll "$MPATH" 2>/dev/null | grep -c "active ready")
+multipathd show maps raw format "%n" 2>/dev/null | while read MPATH; do
+    ACTIVE=$(multipath -ll "$MPATH" 2>/dev/null | grep -Ec "active (ready|ghost)")
     TOTAL=$(multipath -ll "$MPATH" 2>/dev/null | grep -cE "running|faulty")
 
     if [ "$ACTIVE" -lt "$TOTAL" ]; then
@@ -188,7 +188,7 @@ check_raid() {
 # Multipath checks
 check_multipath() {
     command -v multipathd &>/dev/null || return
-    FAULTY=$(multipathd show paths format "%s" 2>/dev/null | grep -c "faulty")
+    FAULTY=$(multipathd show paths raw format "%t" 2>/dev/null | grep -c "failed")
     if [ "$FAULTY" -gt 0 ]; then
         logger -t "$LOG_TAG" -p local0.warning "MULTIPATH: $FAULTY faulty path(s) detected"
     fi
