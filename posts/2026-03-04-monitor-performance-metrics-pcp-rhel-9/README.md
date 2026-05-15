@@ -135,14 +135,15 @@ ls /var/log/pcp/pmlogger/$(hostname)/
 Replay archived data:
 
 ```bash
-pmval -a /var/log/pcp/pmlogger/$(hostname)/$(date +%Y%m%d).0 kernel.all.load
+archive=$(ls -t /var/log/pcp/pmlogger/$(hostname)/*.0 | head -n 1)
+pmval -a "${archive%.0}" kernel.all.load
 ```
 
-Create a custom logging configuration:
+Append a custom logging configuration:
 
 ```bash
-sudo tee /etc/pcp/pmlogger/config.d/custom.config << 'CONF'
-log mandatory on 5sec {
+sudo tee -a /var/lib/pcp/config/pmlogger/config.default << 'CONF'
+log mandatory on every 5 seconds {
     kernel.all.load
     kernel.all.cpu.user
     kernel.all.cpu.sys
@@ -165,17 +166,19 @@ sudo systemctl restart pmlogger
 Install the PCP web components:
 
 ```bash
-sudo dnf install pcp-webapp-grafana grafana pcp-pmda-redis -y
+sudo dnf install grafana grafana-pcp redis -y
 ```
 
 Enable the services:
 
 ```bash
 sudo systemctl enable --now grafana-server
-sudo systemctl enable --now pmproxy
+sudo systemctl enable --now pmproxy redis
+sudo firewall-cmd --permanent --add-service=grafana
+sudo firewall-cmd --reload
 ```
 
-Access Grafana at `http://your-server:3000` and add the PCP data source.
+Access Grafana at `http://your-server:3000`, enable the Performance Co-Pilot plugin, and add the PCP data source.
 
 ## Monitoring Remote Hosts
 
@@ -185,7 +188,7 @@ Query metrics from a remote host:
 pmval -h remote-host kernel.all.load
 ```
 
-The remote host must have `pmcd` running and its firewall must allow port 44321.
+The remote host must have `pmcd` running, `pmcd` must listen on a reachable interface, and its firewall must allow port 44321.
 
 ## Conclusion
 
