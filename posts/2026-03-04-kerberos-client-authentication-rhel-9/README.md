@@ -102,8 +102,8 @@ To use Kerberos for system login (console, SSH, etc.), configure PAM.
 The easiest way is through authselect with SSSD:
 
 ```bash
-# Install SSSD
-sudo dnf install sssd -y
+# Install SSSD and the Kerberos provider
+sudo dnf install sssd sssd-krb5 -y
 
 # Configure SSSD for Kerberos authentication
 sudo vi /etc/sssd/sssd.conf
@@ -124,20 +124,15 @@ krb5_keytab = /etc/krb5.keytab
 cache_credentials = True
 ```
 
+The Kerberos authentication provider must be paired with an identity provider. The `id_provider = files` example above authenticates local users from `/etc/passwd` against Kerberos. For LDAP, FreeIPA, or Active Directory environments, use the matching SSSD identity provider instead.
+
 ```bash
 sudo chmod 600 /etc/sssd/sssd.conf
 sudo authselect select sssd --force
 sudo systemctl enable --now sssd
 ```
 
-Alternatively, for direct PAM/Kerberos integration without SSSD:
-
-```bash
-# Install pam_krb5
-sudo dnf install pam_krb5 -y
-```
-
-Note: SSSD is the recommended approach on RHEL for most scenarios.
+Older RHEL releases supported direct PAM/Kerberos integration with `pam_krb5`, but that module has been deprecated. On RHEL 9, use SSSD with `pam_sss`.
 
 ## Step 6 - Manage Kerberos Tickets
 
