@@ -8,7 +8,7 @@ Description: Learn when and how to rebuild the initramfs on RHEL after installin
 
 ---
 
-Every time you install a new kernel module that is needed during early boot, update a storage driver, or change DKMS-managed modules, you need to rebuild the initramfs. Forgetting this step is one of the most common causes of boot failures on RHEL. This guide covers when rebuilding is necessary and how to do it safely.
+Every time you install a new kernel module that is needed during early boot, update a storage driver, or change DKMS-managed modules that are needed during early boot, you need to rebuild the initramfs. Forgetting this step is one of the most common causes of boot failures on RHEL. This guide covers when rebuilding is necessary and how to do it safely.
 
 ## When to Rebuild the Initramfs
 
@@ -45,6 +45,9 @@ for kver in $(ls /lib/modules/); do
     echo "Rebuilding initramfs for $kver..."
     sudo dracut --force /boot/initramfs-${kver}.img "$kver"
 done
+
+# On IBM Z / s390x systems only, update the boot map after rebuilding
+sudo zipl
 ```
 
 ## Safe Rebuild with Backup
@@ -70,8 +73,8 @@ fi
 ## Rebuilding After DKMS Module Changes
 
 ```bash
-# When DKMS builds a new module, it should rebuild the initramfs automatically
-# if REMAKE_INITRD=yes is set in dkms.conf
+# Some DKMS packages rebuild the initramfs automatically from their package
+# hooks or DKMS configuration, but verify this for the package you use.
 
 # Check the DKMS module status
 dkms status
@@ -91,9 +94,9 @@ lsinitrd /boot/initramfs-$(uname -r).img | grep module_name
 sudo dracut --force
 
 # After changing LUKS encryption settings
-# Make sure cryptsetup is in the initramfs
-lsinitrd /boot/initramfs-$(uname -r).img | grep cryptsetup
+# Rebuild, then make sure cryptsetup is in the initramfs
 sudo dracut --force --add crypt
+lsinitrd /boot/initramfs-$(uname -r).img | grep cryptsetup
 
 # After changing from ext4 to XFS or vice versa
 # The filesystem module must be in the initramfs
@@ -161,11 +164,11 @@ if ! lsinitrd "$IMG" > /dev/null 2>&1; then
     exit 1
 fi
 
-# Check that essential modules are present
-ESSENTIAL_MODULES="xfs dm_mod"
-for mod in $ESSENTIAL_MODULES; do
-    if ! lsinitrd "$IMG" | grep -q "$mod"; then
-        echo "WARNING: Essential module $mod not found in initramfs"
+# Check that expected modules for this host are present
+EXPECTED_MODULE_PATTERNS="xfs dm[-_]mod"
+for pattern in $EXPECTED_MODULE_PATTERNS; do
+    if ! lsinitrd "$IMG" | grep -Eq "$pattern"; then
+        echo "WARNING: Expected module pattern $pattern not found in initramfs"
     fi
 done
 
