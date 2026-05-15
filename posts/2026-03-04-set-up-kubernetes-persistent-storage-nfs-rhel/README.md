@@ -59,8 +59,10 @@ sudo umount /mnt
 For a small number of volumes, create them manually:
 
 ```bash
-# Create subdirectories for each PV
+# On the NFS server, create subdirectories for each PV
 sudo mkdir -p /srv/nfs/k8s/pv-{1,2,3}
+sudo chown nobody:nobody /srv/nfs/k8s/pv-{1,2,3}
+sudo chmod 777 /srv/nfs/k8s/pv-{1,2,3}
 
 # Create a PersistentVolume in Kubernetes
 cat << 'EOF' | kubectl apply -f -
