@@ -8,7 +8,7 @@ Description: Learn how to configure DNS-over-TLS with Unbound on RHEL with step-
 
 ---
 
-DNS-over-TLS (DoT) encrypts DNS queries between clients and the RHELer, preventing eavesdropping and manipulation of DNS traffic. Unbound on RHEL supports both acting as a DoT client (encrypting upstream queries) and a DoT server (accepting encrypted queries from clients).
+DNS-over-TLS (DoT) encrypts DNS queries between clients and the resolver, preventing eavesdropping and manipulation of DNS traffic. Unbound on RHEL supports both acting as a DoT client (encrypting upstream queries) and a DoT server (accepting encrypted queries from clients).
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ Forward queries to upstream DoT resolvers:
 sudo vi /etc/unbound/unbound.conf
 ```
 
-```yaml
+```conf
 server:
     interface: 127.0.0.1
     tls-cert-bundle: /etc/pki/tls/certs/ca-bundle.crt
@@ -45,17 +45,18 @@ The `#` after the address specifies the TLS authentication name used to verify t
 Generate or obtain TLS certificates:
 
 ```bash
-sudo openssl req -x509 -newkey rsa:4096 -sha256 -days 365   -nodes -keyout /etc/unbound/server.key   -out /etc/unbound/server.crt   -subj "/CN=dns.example.com"
+sudo openssl req -x509 -newkey rsa:4096 -sha256 -days 365   -nodes -keyout /etc/unbound/server.key   -out /etc/unbound/server.crt   -subj "/CN=dns.example.com"   -addext "subjectAltName=DNS:dns.example.com"
 
 sudo chown unbound:unbound /etc/unbound/server.key /etc/unbound/server.crt
 sudo chmod 600 /etc/unbound/server.key
 ```
 
-Add DoT server configuration:
+Add DoT server configuration (replace the `access-control` subnet with your client network):
 
-```yaml
+```conf
 server:
     interface: 0.0.0.0@853
+    access-control: 192.168.1.0/24 allow
     tls-service-key: /etc/unbound/server.key
     tls-service-pem: /etc/unbound/server.crt
     tls-port: 853
