@@ -43,34 +43,34 @@ Edit the configuration file to match your environment:
 
 ```bash
 # Open the configuration file
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/mongod.conf
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include `net.bindIp`, `security.authorization`, and `systemLog.path`.
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Restart MongoDB to apply changes if it is already running
+sudo systemctl restart mongod
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable mongod
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start mongod
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status mongod
 ```
 
 ## Step 4: Configure the Firewall
 
 ```bash
 # Open the required port
-sudo firewall-cmd --permanent --add-port=<PORT>/tcp
+sudo firewall-cmd --permanent --add-port=27017/tcp
 sudo firewall-cmd --reload
 
 # Verify the rule
@@ -92,9 +92,9 @@ mongosh --eval 'db.runCommand({ ping: 1 })'
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
+- If the service fails to start, check the logs with `journalctl -u mongod -e --no-pager`.
 - SELinux may block access. Check for denials with `ausearch -m avc -ts recent` and apply appropriate policies.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- Ensure all required packages are installed: `rpm -qa | grep mongodb-org`.
 
 ## Conclusion
 
