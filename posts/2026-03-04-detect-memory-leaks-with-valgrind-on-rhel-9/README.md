@@ -16,7 +16,7 @@ Memory leaks happen when a program allocates memory but never frees it. Over tim
 - Root or sudo access
 - A terminal session
 
-## Step 2: Configure the Service
+## Step 2: Install and Run Valgrind
 
 Run Valgrind to detect memory leaks:
 
@@ -38,37 +38,34 @@ Key output to look for:
 - **indirectly lost**: Memory reachable only through lost pointers
 - **possibly lost**: Memory that may or may not be leaked
 
-## Step 3: Enable and Start the Service
+## Step 3: Review the Valgrind Report
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# View the generated report
+cat valgrind-report.txt
 
-# Start the service
-sudo systemctl start <service-name>
-
-# Check the status
-sudo systemctl status <service-name>
+# Search for leak summaries
+grep -E "definitely lost|indirectly lost|possibly lost|still reachable" valgrind-report.txt
 ```
 
 
 ## Verification
 
-Confirm everything is working by checking the status and logs:
+Confirm everything is working by checking the Valgrind output:
 
 ```bash
 # Review the generated output or log file
 # Look for error patterns, failed calls, or resource issues
 
-# Check that debug tools are installed
-rpm -q gdb strace ltrace valgrind
+# Check that Valgrind is installed
+rpm -q valgrind
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If Valgrind cannot run the program, check that the program path is correct and executable.
+- Ensure all required packages are installed: `rpm -q <package-name>`.
 
 ## Conclusion
 
-You have successfully completed the setup described in this guide. Remember to monitor the service and review logs regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
+You have successfully completed the setup described in this guide. Remember to review Valgrind reports regularly while debugging to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
