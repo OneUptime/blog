@@ -16,7 +16,7 @@ NetworkManager has multiple levels of configuration reload, from least disruptiv
 
 ```mermaid
 flowchart TD
-    A[Least Disruptive] --> B[nmcli connection reapply]
+    A[Least Disruptive] --> B[nmcli device reapply]
     B --> C[nmcli connection up]
     C --> D[nmcli connection reload]
     D --> E[systemctl reload NetworkManager]
@@ -26,7 +26,7 @@ flowchart TD
 
 Let's go through each one.
 
-## Method 1: Connection Reapply
+## Method 1: Device Reapply
 
 The `reapply` subcommand applies pending changes to an already active connection without fully deactivating and reactivating it. This is the least disruptive option.
 
@@ -46,8 +46,9 @@ Not all properties can be reapplied live. Properties that can be changed without
 If a property cannot be reapplied, nmcli will tell you and you will need to use `connection up` instead.
 
 ```bash
-# Check which properties have pending changes
-nmcli device reapply ens192 --check
+# Compare running device state to the saved profile
+nmcli device show ens192
+nmcli connection show ens192
 ```
 
 ## Method 2: Connection Up (Reactivation)
@@ -101,7 +102,7 @@ If you changed NetworkManager's own configuration (files in `/etc/NetworkManager
 systemctl reload NetworkManager
 ```
 
-This reloads the daemon configuration without restarting the service. Active connections stay up. Use this when you have changed:
+This reloads the daemon configuration without restarting the service. Active connections stay up, though not every daemon setting can be changed at runtime. You can also use `nmcli general reload conf` when you only want to reload `NetworkManager.conf` settings. Use this when you have changed:
 
 - `/etc/NetworkManager/NetworkManager.conf`
 - Files in `/etc/NetworkManager/conf.d/`
@@ -111,14 +112,14 @@ This reloads the daemon configuration without restarting the service. Active con
 
 ## Method 5: Full Restart
 
-The nuclear option. Restarting NetworkManager tears down and rebuilds all connections:
+The nuclear option. Modern NetworkManager tries to preserve and restore active connection state across a daemon restart, but restarting the service is still more disruptive and riskier than a reload:
 
 ```bash
 # Full restart of NetworkManager
 systemctl restart NetworkManager
 ```
 
-This briefly disrupts all network connections. Use it only when:
+This can briefly disrupt network connections. Use it only when:
 
 - NetworkManager is in a bad state and not responding
 - You have made fundamental changes to how NetworkManager operates
@@ -186,8 +187,9 @@ nmcli connection show ens192
 When you are connected via SSH and need to change the IP address or gateway, there is always a risk of locking yourself out. Here are some safety strategies:
 
 ```bash
-# Strategy 1: Use at/cron to revert changes after a timeout
-echo "nmcli connection up ens192" | at now + 5 minutes
+# Strategy 1: Use a NetworkManager checkpoint that rolls back after a timeout
+nmcli device checkpoint --timeout 300 ens192 -- \
+  sh -c 'nmcli connection modify ens192 ipv4.addresses 10.0.1.51/24 && nmcli connection up ens192'
 
 # Strategy 2: Chain commands so they run together
 nmcli connection modify ens192 ipv4.addresses 10.0.1.51/24 && \
