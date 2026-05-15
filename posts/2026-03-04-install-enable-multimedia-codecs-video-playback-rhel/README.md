@@ -15,10 +15,10 @@ RHEL's default installation does not include proprietary multimedia codecs due t
 ```bash
 # Enable the CodeReady Builder repository (provides additional dependencies)
 
-sudo subscription-manager repos --enable=codeready-builder-for-rhel-9-x86_64-rpms
+sudo subscription-manager repos --enable=codeready-builder-for-rhel-9-$(arch)-rpms
 
 # Install EPEL for additional packages
-sudo dnf install -y epel-release
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 
 # Install RPM Fusion repositories for multimedia codecs
 sudo dnf install -y --nogpgcheck \
@@ -34,8 +34,8 @@ GStreamer is the multimedia framework used by GNOME applications.
 # Install GStreamer base and good plugins (open codecs)
 sudo dnf install -y gstreamer1-plugins-base gstreamer1-plugins-good
 
-# Install GStreamer bad plugins (additional codecs with potential patent issues)
-sudo dnf install -y gstreamer1-plugins-bad-free
+# Install GStreamer bad plugins and RPM Fusion freeworld codecs
+sudo dnf install -y gstreamer1-plugins-bad-free gstreamer1-plugins-bad-freeworld
 
 # Install GStreamer ugly plugins (codecs with known patent issues)
 sudo dnf install -y gstreamer1-plugins-ugly
@@ -85,7 +85,7 @@ ffplay /path/to/video.mp4
 
 ## Install Codec Support for Firefox
 
-Firefox on RHEL needs OpenH264 for H.264 video in web browsers.
+Firefox on RHEL uses system multimedia libraries such as FFmpeg for general HTML5 H.264/AAC playback. OpenH264 is still useful for H.264 WebRTC support.
 
 ```bash
 # Install OpenH264 from Cisco's repository (free for use)
@@ -100,6 +100,7 @@ sudo dnf install -y openh264 mozilla-openh264
 
 ```bash
 # Install DVD playback support
+sudo dnf install -y rpmfusion-free-release-tainted
 sudo dnf install -y libdvdcss libdvdread libdvdnav
 
 # Test DVD playback
