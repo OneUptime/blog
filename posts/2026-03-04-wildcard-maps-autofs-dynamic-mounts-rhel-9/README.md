@@ -94,6 +94,10 @@ If you want to mount from a server that matches the key name:
 
 ```bash
 # Key is the server name
+sudo tee /etc/auto.master.d/servers.autofs << 'EOF'
+/mnt /etc/auto.servers
+EOF
+
 sudo tee /etc/auto.servers << 'EOF'
 * -rw,soft &:/export/data
 EOF
@@ -107,7 +111,8 @@ Mount multiple subdirectories from the same NFS server for each key:
 
 ```bash
 sudo tee /etc/auto.projects << 'EOF'
-* -rw,soft /code nfsserver:/export/projects/&/code \
+* -rw,soft / nfsserver:/export/projects/& \
+           /code nfsserver:/export/projects/&/code \
            /docs nfsserver:/export/projects/&/docs \
            /builds nfsserver:/export/projects/&/builds
 EOF
