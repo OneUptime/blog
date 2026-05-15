@@ -20,42 +20,102 @@ Redmine Project Management can be installed and configured on RHEL to provide ro
 
 ```bash
 # Update the system first
-
 sudo dnf update -y
 
 # Install the required packages
-sudo dnf install -y <package-name>
+sudo dnf install -y ruby ruby-devel rubygem-bundler gcc gcc-c++ make redhat-rpm-config git curl tar postgresql-server postgresql-devel
+
+# Initialize, enable, and start PostgreSQL
+sudo postgresql-setup --initdb
+sudo systemctl enable --now postgresql.service
+
+# Create the Redmine operating system user
+sudo useradd --system --home-dir /opt/redmine --shell /sbin/nologin redmine
+
+# Create the Redmine PostgreSQL role and database
+sudo -u postgres psql -c "CREATE ROLE redmine LOGIN NOINHERIT;"
+sudo -u postgres createdb -E UTF8 -O redmine redmine
+
+# Download and install Redmine
+curl -LO https://www.redmine.org/releases/redmine-5.1.12.tar.gz
+sudo tar -xzf redmine-5.1.12.tar.gz -C /opt
+sudo ln -sfn /opt/redmine-5.1.12 /opt/redmine
+sudo chown -R redmine:redmine /opt/redmine-5.1.12
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+Redmine 5.1 supports the Ruby 3.0 and PostgreSQL 13 packages available on RHEL 9. If you install a newer Redmine release, confirm the Ruby and database version requirements first.
 
 ## Step 2: Configure the Service
 
-Edit the configuration file to match your environment:
+Create the Redmine database configuration:
 
 ```bash
-# Open the configuration file
-sudo vi /etc/<service>/config.conf
+sudo -u redmine cp /opt/redmine/config/database.yml.example /opt/redmine/config/database.yml
+sudo -u redmine vi /opt/redmine/config/database.yml
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Set the `production` PostgreSQL configuration to use the local Redmine database:
+
+```yaml
+production:
+  adapter: postgresql
+  database: redmine
+  username: redmine
+  encoding: utf8
+```
+
+Install the Redmine dependencies and initialize the application:
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo -u redmine bash -lc 'cd /opt/redmine && bundle config set --local path vendor/bundle'
+sudo -u redmine bash -lc 'cd /opt/redmine && bundle config set --local without "development test"'
+sudo -u redmine bash -lc 'cd /opt/redmine && bundle install'
+sudo -u redmine bash -lc 'cd /opt/redmine && bundle exec rake generate_secret_token'
+sudo -u redmine bash -lc 'cd /opt/redmine && RAILS_ENV=production bundle exec rake db:migrate'
+sudo -u redmine bash -lc 'cd /opt/redmine && RAILS_ENV=production REDMINE_LANG=en bundle exec rake redmine:load_default_data'
+sudo -u redmine bash -lc 'cd /opt/redmine && mkdir -p tmp tmp/pdf public/plugin_assets'
+sudo chmod -R 755 /opt/redmine-5.1.12/files /opt/redmine-5.1.12/log /opt/redmine-5.1.12/tmp /opt/redmine-5.1.12/public/plugin_assets
+```
+
+Create a systemd service for Redmine:
+
+```bash
+sudo vi /etc/systemd/system/redmine.service
+```
+
+Add the following unit:
+
+```ini
+[Unit]
+Description=Redmine project management
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=redmine
+WorkingDirectory=/opt/redmine
+Environment=RAILS_ENV=production
+ExecStart=/usr/bin/bundle exec rails server -e production -b 127.0.0.1 -p 3000
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
+# Reload systemd after creating the service file
+sudo systemctl daemon-reload
+
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable redmine.service
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start redmine.service
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status redmine.service
 ```
 
 
@@ -65,16 +125,20 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status redmine.service
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u redmine.service --no-pager -n 20
+
+# Confirm the application responds locally
+curl -I http://127.0.0.1:3000/
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u redmine.service -e --no-pager`.
+- Ensure Ruby, Bundler, PostgreSQL, and build dependencies are installed: `rpm -qa | grep -E 'ruby|bundler|postgresql|gcc|make'`.
+- If `bundle install` fails while building the PostgreSQL adapter, confirm that `postgresql-devel`, `gcc`, `make`, and `redhat-rpm-config` are installed.
 
 ## Conclusion
 
