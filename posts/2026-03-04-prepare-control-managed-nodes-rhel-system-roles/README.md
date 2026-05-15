@@ -48,6 +48,9 @@ sudo dnf install rhel-system-roles
 
 # Verify the roles are installed
 ls /usr/share/ansible/roles/ | grep rhel-system-roles
+
+# On newer RHEL releases, verify the collection path instead
+ls /usr/share/ansible/collections/ansible_collections/redhat/rhel_system_roles/
 ```
 
 ### Creating a Project Directory
@@ -79,11 +82,11 @@ Each managed node needs minimal preparation. The requirements are:
 
 1. SSH server running and accessible from the control node
 2. A user account with sudo privileges
-3. Python 3 installed (included by default on RHEL)
+3. Python 3 installed (usually present on RHEL 9 and later, but verify it on minimal installations and RHEL 8)
 
 ### Verifying Python
 
-RHEL ships with Python 3 in the base installation.
+RHEL provides Python 3 packages, and the default Python implementation is usually installed on RHEL 9 and later. Verify it on each managed node, especially on minimal installations or RHEL 8 systems.
 
 ```bash
 # Check Python 3 is available on the managed node
@@ -93,7 +96,7 @@ python3 --version
 If for some reason it is not installed:
 
 ```bash
-# Install Python 3 (should already be present on RHEL)
+# Install Python 3 if it is not present
 sudo dnf install python3
 ```
 
@@ -117,7 +120,7 @@ echo 'ansible ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/ansible
 sudo chmod 0440 /etc/sudoers.d/ansible
 ```
 
-The `NOPASSWD` directive is important for unattended Ansible runs. Without it, every playbook would prompt for a sudo password.
+The `NOPASSWD` directive is important for unattended Ansible runs. Without it, Ansible must be given a sudo password, for example with `--ask-become-pass` or `become_ask_pass = true`.
 
 ### Deploying SSH Keys to Managed Nodes
 
@@ -238,7 +241,7 @@ EOF
 
 Key settings explained:
 
-- `roles_path` includes the directory where RHEL System Roles are installed
+- `roles_path` includes the directory where traditional RHEL System Roles are installed. If your RHEL release installs the `redhat.rhel_system_roles` collection, use fully qualified collection role names in your playbooks.
 - `host_key_checking = false` avoids SSH host key prompts for new servers (set to `true` in high-security environments)
 - `become = true` enables privilege escalation by default, since RHEL System Roles need root access
 
