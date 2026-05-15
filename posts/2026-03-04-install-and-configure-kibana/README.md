@@ -15,6 +15,7 @@ This guide covers how to Install and Configure Kibana on RHEL. Following these s
 - RHEL with a minimal or standard installation
 - Root or sudo access
 - A stable network connection
+- A running Elasticsearch node that uses the same Elastic Stack version as Kibana
 
 ## Overview
 
@@ -31,20 +32,30 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo rpm --import https://artifacts.elastic.co/GPG-KEY-elasticsearch
 ```
 
 ## Step 2: Install Required Packages
 
 ```bash
-sudo dnf install -y <package-name>
+sudo tee /etc/yum.repos.d/kibana.repo > /dev/null <<'EOF'
+[kibana-9.x]
+name=Kibana repository for 9.x packages
+baseurl=https://artifacts.elastic.co/packages/9.x/yum
+gpgcheck=1
+gpgkey=https://artifacts.elastic.co/GPG-KEY-elasticsearch
+enabled=1
+autorefresh=1
+type=rpm-md
+EOF
+
+sudo dnf install -y kibana
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+rpm -qi kibana
 ```
 
 ## Step 3: Configure the Service
@@ -52,16 +63,28 @@ rpm -qi <package-name>
 Create or edit the main configuration file:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/kibana/kibana.yml
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+Apply the recommended settings for your environment. The RPM package reads Kibana settings from `/etc/kibana/kibana.yml`. To allow remote users to connect, set the host and port:
+
+```yaml
+server.host: "0.0.0.0"
+server.port: 5601
+```
+
+If your enrollment token has expired, generate a new Kibana enrollment token on the Elasticsearch host:
+
+```bash
+sudo /usr/share/elasticsearch/bin/elasticsearch-create-enrollment-token -s kibana
+```
 
 ## Step 4: Start and Enable the Service
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo systemctl daemon-reload
+sudo systemctl enable --now kibana.service
+sudo systemctl status kibana.service
 ```
 
 ## Step 5: Verify the Configuration
@@ -69,13 +92,13 @@ sudo systemctl status <service>
 Test the setup:
 
 ```bash
-sudo <service> --test
+curl -I http://localhost:5601
 ```
 
 Check the logs for any errors:
 
 ```bash
-journalctl -u <service> -f
+journalctl -u kibana.service -f
 ```
 
 ## Step 6: Configure Firewall Rules
@@ -83,7 +106,7 @@ journalctl -u <service> -f
 If the service needs network access:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo firewall-cmd --permanent --add-port=5601/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -92,8 +115,8 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+systemctl show kibana.service --property=MainPID,MemoryCurrent
+top -p "$(systemctl show kibana.service --property=MainPID --value)"
 ```
 
 ## Security Considerations
@@ -107,10 +130,10 @@ top -p $(pidof <service>)
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
+1. **Service fails to start**: Check `journalctl -u kibana.service -xe` for error messages
 2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
 3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
 
 ## Conclusion
 
-You have successfully configured install and configure kibana on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
+You have successfully configured Kibana on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
