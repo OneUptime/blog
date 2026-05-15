@@ -8,7 +8,7 @@ Description: Learn how to configure cgroups v2 on RHEL to limit and manage CPU, 
 
 ---
 
-Control Groups (cgroups) v2 is the unified resource management framework on RHEL. It lets you limit CPU, memory, I/O, and other resources for processes and services. RHEL uses cgroups v2 by default.
+Control Groups (cgroups) v2 is the unified resource management framework on RHEL. It lets you limit CPU, memory, I/O, and other resources for processes and services. RHEL 9 uses cgroups v2 by default.
 
 ## Prerequisites
 
@@ -35,7 +35,7 @@ Check available controllers:
 cat /sys/fs/cgroup/cgroup.controllers
 ```
 
-Output: `cpuset cpu io memory hugetlb pids rdma misc`
+Example output: `cpuset cpu io memory hugetlb pids rdma misc`
 
 ## Understanding the cgroups v2 Hierarchy
 
@@ -58,7 +58,7 @@ sudo mkdir /sys/fs/cgroup/mygroup
 Enable controllers for the group:
 
 ```bash
-echo "+cpu +memory +io" | sudo tee /sys/fs/cgroup/cgroup.subtree_control
+echo "+cpu +memory +io +cpuset +pids" | sudo tee /sys/fs/cgroup/cgroup.subtree_control
 ```
 
 ## Limiting CPU Resources
