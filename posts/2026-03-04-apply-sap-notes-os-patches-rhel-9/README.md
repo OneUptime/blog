@@ -40,8 +40,8 @@ Before patching, check the SAP Launchpad for applicable notes:
 ```bash
 # Key SAP Notes for RHEL:
 
-# 3108316 - SAP on RHEL: Requirements and Information
-# 2772999 - Red Hat Enterprise Linux 9.x: Installation and Configuration
+# 3108316 - Red Hat Enterprise Linux 9.x: Installation and Configuration
+# 2009879 - SAP HANA Guidelines for Red Hat Enterprise Linux (RHEL) Operating System
 # 2235581 - SAP HANA: Supported Operating Systems
 
 # Check the current RHEL version
@@ -91,10 +91,10 @@ sudo tar czf /root/sap-config-backup-$(date +%Y%m%d).tar.gz \
 
 ```bash
 # Stop the SAP application server (replace SID and instance number)
-sudo su - sidadm -c 'stopsap all'
+sudo su - sidadm -c '/usr/sap/hostctrl/exe/sapcontrol -nr 00 -function StopSystem'
 
 # If running SAP HANA, stop the database
-sudo su - hdbadm -c 'HDB stop'
+sudo su - hdbadm -c '/usr/sap/hostctrl/exe/sapcontrol -nr 00 -function StopSystem HDB'
 
 # Verify all SAP processes are stopped
 ps -ef | grep -i sap
@@ -130,17 +130,22 @@ mkdir -p /tmp/sap-kernel-update
 cd /tmp/sap-kernel-update
 
 # Extract the SAR archive using SAPCAR
-/usr/sap/SID/SYS/exe/run/SAPCAR -xvf /path/to/SAPEXE_*.SAR
-/usr/sap/SID/SYS/exe/run/SAPCAR -xvf /path/to/SAPEXEDB_*.SAR
+/usr/sap/SID/SYS/exe/run/SAPCAR -xfj /path/to/SAPEXE_*.SAR -R /tmp/sap-kernel-update
+/usr/sap/SID/SYS/exe/run/SAPCAR -xfj /path/to/SAPEXEDB_*.SAR -R /tmp/sap-kernel-update
 
 # Stop the instance if not already stopped
-stopsap all
+/usr/sap/hostctrl/exe/sapcontrol -nr 00 -function StopSystem
 
 # Back up the current kernel directory
-cp -rp /usr/sap/SID/SYS/exe/uc /usr/sap/SID/SYS/exe/uc.bak
+cp -rp /usr/sap/SID/SYS/exe/uc/linuxx86_64 /usr/sap/SID/SYS/exe/uc/linuxx86_64.bak
 
 # Copy new kernel files
 cp -p /tmp/sap-kernel-update/* /usr/sap/SID/SYS/exe/uc/linuxx86_64/
+
+# Run as root after copying the kernel files
+sudo chown -R sidadm:sapsys /usr/sap/SID/SYS/exe/uc/linuxx86_64/*
+sudo chmod -R 755 /usr/sap/SID/SYS/exe/uc/linuxx86_64/*
+sudo /usr/sap/SID/SYS/exe/uc/linuxx86_64/saproot.sh SID
 ```
 
 ## Step 7: Reboot If Required
@@ -164,10 +169,10 @@ cat /sys/kernel/mm/transparent_hugepage/enabled
 
 ```bash
 # Start SAP HANA (if applicable)
-sudo su - hdbadm -c 'HDB start'
+sudo su - hdbadm -c '/usr/sap/hostctrl/exe/sapcontrol -nr 00 -function StartSystem HDB'
 
 # Start the SAP application server
-sudo su - sidadm -c 'startsap all'
+sudo su - sidadm -c '/usr/sap/hostctrl/exe/sapcontrol -nr 00 -function StartSystem'
 
 # Verify SAP processes are running
 sudo su - sidadm -c 'sapcontrol -nr 00 -function GetProcessList'
