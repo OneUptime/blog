@@ -29,9 +29,9 @@ java -jar jenkins-cli.jar -s http://localhost:8080/ install-plugin github
 
 ## Create a GitHub Personal Access Token
 
-Go to GitHub Settings > Developer settings > Personal access tokens > Tokens (classic) and generate a token with these scopes:
-- `repo` (full control of private repos)
-- `admin:repo_hook` (manage webhooks)
+Go to GitHub Settings > Developer settings > Personal access tokens > Tokens (classic) and generate a token with one of these scopes:
+- `repo` (for private repository webhooks)
+- `admin:repo_hook` (if you want to limit the token to repository hook management)
 
 ## Configure GitHub Server in Jenkins
 
@@ -82,12 +82,13 @@ In the job configuration, under "Build Triggers", check "GitHub hook trigger for
 ```bash
 # You can create the webhook via GitHub API
 curl -X POST \
-  -H "Authorization: token YOUR_GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  -H "Authorization: Bearer YOUR_GITHUB_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "web",
     "active": true,
-    "events": ["push", "pull_request"],
+    "events": ["push"],
     "config": {
       "url": "https://jenkins.example.com/github-webhook/",
       "content_type": "json",
@@ -111,4 +112,4 @@ sudo firewall-cmd --reload
 
 Push a commit to your repository and check the Jenkins job. You should see a build triggered automatically within seconds. Check the webhook delivery status on GitHub under Settings > Webhooks > Recent Deliveries.
 
-If you see a 403 error, make sure CSRF protection is configured to allow the webhook URL in Jenkins security settings.
+If you see a 403 error, make sure the webhook URL ends with `/github-webhook/` and that the GitHub plugin is installed and enabled in Jenkins.
