@@ -25,54 +25,81 @@ Here is the machine configuration for a control plane node with a single interfa
 ```yaml
 # Control plane node with single NIC and VIP
 
-machine:
-  network:
-    hostname: cp-01
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24      # Node's primary IP
-        routes:
-          - network: 0.0.0.0/0    # Default route
-            gateway: 192.168.1.1
-        vip:
-          ip: 192.168.1.100       # Shared VIP
-    nameservers:
-      - 8.8.8.8
-      - 1.1.1.1
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.10/24      # Node's primary IP
+routes:
+  - gateway: 192.168.1.1          # Default route
+---
+apiVersion: v1alpha1
+kind: Layer2VIPConfig
+name: 192.168.1.100               # Shared VIP
+link: eth0
+---
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: cp-01
+---
+apiVersion: v1alpha1
+kind: ResolverConfig
+nameservers:
+  - address: 8.8.8.8
+  - address: 1.1.1.1
 ```
 
 Each control plane node gets the same VIP configuration but a different primary address:
 
 ```yaml
 # Node 2: cp-02
-- interface: eth0
-  addresses:
-    - 192.168.1.11/24
-  vip:
-    ip: 192.168.1.100
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.11/24
+---
+apiVersion: v1alpha1
+kind: Layer2VIPConfig
+name: 192.168.1.100
+link: eth0
+---
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: cp-02
+---
 
 # Node 3: cp-03
-- interface: eth0
-  addresses:
-    - 192.168.1.12/24
-  vip:
-    ip: 192.168.1.100
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.12/24
+---
+apiVersion: v1alpha1
+kind: Layer2VIPConfig
+name: 192.168.1.100
+link: eth0
+---
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: cp-03
 ```
 
 Worker nodes do not need VIP configuration. They connect to the VIP address but do not participate in the VIP election:
 
 ```yaml
 # Worker node - no VIP, but references VIP for cluster endpoint
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.20/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.20/24
+routes:
+  - gateway: 192.168.1.1
+---
+# In the generated worker machine config:
+version: v1alpha1
 cluster:
   controlPlane:
     endpoint: https://192.168.1.100:6443    # Points to VIP
@@ -100,10 +127,10 @@ The Kubernetes API server listens on all interfaces (0.0.0.0:6443 by default), s
 # Generate configs
 talosctl gen config my-cluster https://192.168.1.100:6443
 
-# Apply to control plane nodes
-talosctl -n 192.168.1.10 apply-config --file controlplane.yaml
-talosctl -n 192.168.1.11 apply-config --file controlplane.yaml
-talosctl -n 192.168.1.12 apply-config --file controlplane.yaml
+# Apply node-specific control plane configs
+talosctl -n 192.168.1.10 apply-config --file cp-01.yaml
+talosctl -n 192.168.1.11 apply-config --file cp-02.yaml
+talosctl -n 192.168.1.12 apply-config --file cp-03.yaml
 
 # Bootstrap the cluster (only on first node)
 talosctl -n 192.168.1.10 bootstrap
@@ -120,17 +147,14 @@ done
 
 ## DHCP with VIP
 
-If you prefer DHCP for the primary address, you can combine DHCP with a static VIP:
+If you prefer DHCP for the primary address, you can combine DHCP with a static VIP. On bare metal, Talos runs DHCP on linked physical interfaces by default, so the VIP configuration can be added as its own document:
 
 ```yaml
 # DHCP for primary address, static VIP
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        dhcp: true    # Primary address via DHCP
-        vip:
-          ip: 192.168.1.100    # Static VIP
+apiVersion: v1alpha1
+kind: Layer2VIPConfig
+name: 192.168.1.100    # Static VIP
+link: eth0
 ```
 
 This works, but there is a caveat: if DHCP assigns an address on a different subnet than the VIP, things will break. Make sure your DHCP server always assigns addresses on the same subnet as the VIP.
@@ -139,14 +163,16 @@ A safer approach is to use static addressing for control plane nodes and DHCP on
 
 ```yaml
 # Static addressing is more predictable for control plane
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24    # Static - no surprises
-        vip:
-          ip: 192.168.1.100
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.10/24    # Static - no surprises
+---
+apiVersion: v1alpha1
+kind: Layer2VIPConfig
+name: 192.168.1.100
+link: eth0
 ```
 
 ## Bandwidth Considerations
@@ -191,7 +217,7 @@ talosctl -n <vip-owner> reboot
 watch -n 1 'for n in 192.168.1.10 192.168.1.11 192.168.1.12; do echo -n "$n: "; talosctl -n $n get addresses 2>/dev/null | grep 192.168.1.100 || echo "no"; done'
 ```
 
-The failover time is the same regardless of how many interfaces you have - typically 3-12 seconds.
+The failover time is the same regardless of how many interfaces you have. A graceful shutdown usually reassigns the VIP almost immediately, while an unexpected failure can take longer, up to about a minute.
 
 ## Security with Single NIC
 
@@ -204,6 +230,8 @@ With a single interface, all traffic is on the same network segment. This means:
 To mitigate this, use these approaches:
 
 ### Kubernetes Network Policies
+
+Kubernetes NetworkPolicies restrict pod traffic when your CNI enforces them; they do not replace Talos host firewall rules for node-level services.
 
 ```yaml
 # Restrict access to the kube-system namespace
@@ -225,16 +253,19 @@ spec:
 
 ```yaml
 # Restrict Talos API access to known management IPs
-machine:
-  network:
-    nftablesRules:
-      - name: restrict-management
-        table: filter
-        chain: input
-        policy: accept
-        rules:
-          - match: tcp dport 50000 ip saddr != 192.168.1.0/24
-            verdict: drop
+apiVersion: v1alpha1
+kind: NetworkDefaultActionConfig
+ingress: block
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: talos-api-ingress
+portSelector:
+  ports:
+    - 50000
+  protocol: tcp
+ingress:
+  - subnet: 192.168.1.0/24
 ```
 
 ## Monitoring Tips
