@@ -14,7 +14,7 @@ Build immutable RHEL Edge images with Image Builder for secure deployments. RHEL
 
 ## Prerequisites
 
-- A RHEL 9 system for building edge images (with Image Builder)
+- A RHEL 9 system for building edge images (with Image Builder; minimum 2 CPU cores, 4 GiB RAM, and 20 GiB disk space)
 - Root or sudo access
 - For MicroShift: a system with at least 2 CPU cores and 2 GB RAM
 
@@ -38,7 +38,7 @@ composer-cli compose start my-edge-blueprint edge-commit
 For an installer image:
 
 ```bash
-composer-cli compose start my-edge-blueprint edge-installer
+composer-cli compose start-ostree --ref rhel/9/x86_64/edge --url http://10.0.2.2:8080/repo my-edge-installer-blueprint edge-installer
 ```
 
 ## Step 3 - Deploy to Edge Devices
@@ -46,17 +46,19 @@ composer-cli compose start my-edge-blueprint edge-installer
 Write the installer to a USB drive or serve it over the network:
 
 ```bash
-sudo dd if=edge-installer.iso of=/dev/sdX bs=4M status=progress
+sudo dd if=<UUID>-boot.iso of=/dev/sdX bs=4M status=progress
 ```
 
 ## Step 4 - Configure Automatic Updates
 
-RHEL for Edge supports automatic OS updates with Greenboot health checks:
+RHEL for Edge supports automatic OS updates with `rpm-ostreed-automatic`; Greenboot health checks validate the booted deployment and can roll back after repeated failures:
 
 ```bash
-# Greenboot scripts in /etc/greenboot/check/required.d/
+# In /etc/rpm-ostreed.conf, set AutomaticUpdatePolicy=stage
+sudo systemctl enable rpm-ostreed-automatic.timer --now
 
-# If any script fails, the system rolls back to the previous version
+# Required Greenboot scripts go in /etc/greenboot/check/required.d/
+# If required checks keep failing, Greenboot rolls back to the previous deployment
 ```
 
 ## Step 5 - Deploy Workloads
@@ -67,7 +69,7 @@ For container workloads, use Podman:
 podman run -d --name myapp registry.example.com/myapp:latest
 ```
 
-For Kubernetes workloads, install MicroShift:
+For Kubernetes workloads, install MicroShift after enabling the required MicroShift repositories and configuring the pull secret:
 
 ```bash
 sudo dnf install -y microshift
