@@ -75,7 +75,7 @@ ssl_sslv3=NO
 # Cipher suite (strong ciphers only)
 ssl_ciphers=HIGH:!aNULL:!MD5:!RC4
 
-# Require TLS for data connections
+# Disable TLS session reuse requirement for broader client compatibility
 require_ssl_reuse=NO
 
 # Implicit FTPS (port 990) - uncomment if needed
@@ -125,11 +125,11 @@ sudo firewall-cmd --reload
 
 ```bash
 # Test with curl (explicit FTPS)
-curl --ftp-ssl -u ftpuser:password ftp://ftp.example.com/
-curl --ftp-ssl -T testfile.txt -u ftpuser:password ftp://ftp.example.com/uploads/
+curl --ssl-reqd -u ftpuser:password ftp://ftp.example.com/
+curl --ssl-reqd -T testfile.txt -u ftpuser:password ftp://ftp.example.com/uploads/
 
 # If using a self-signed certificate, add -k to skip verification
-curl --ftp-ssl -k -u ftpuser:password ftp://ftp.example.com/
+curl --ssl-reqd -k -u ftpuser:password ftp://ftp.example.com/
 
 # Test with openssl to verify the TLS handshake
 openssl s_client -connect ftp.example.com:21 -starttls ftp
