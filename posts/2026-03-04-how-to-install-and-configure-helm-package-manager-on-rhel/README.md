@@ -15,7 +15,7 @@ Helm is the package manager for Kubernetes. It uses "charts" to define, install,
 ```bash
 # Install using the official script
 
-curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | bash
 
 # Verify installation
 helm version
@@ -25,7 +25,7 @@ Alternatively, install from a downloaded binary:
 
 ```bash
 # Download and install manually
-curl -L https://get.helm.sh/helm-v3.14.0-linux-amd64.tar.gz -o /tmp/helm.tar.gz
+curl -L https://get.helm.sh/helm-v4.1.4-linux-amd64.tar.gz -o /tmp/helm.tar.gz
 tar xzf /tmp/helm.tar.gz -C /tmp/
 sudo mv /tmp/linux-amd64/helm /usr/local/bin/
 ```
@@ -33,7 +33,7 @@ sudo mv /tmp/linux-amd64/helm /usr/local/bin/
 ## Adding Chart Repositories
 
 ```bash
-# Add the official stable charts repository
+# Add common chart repositories
 helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
@@ -49,7 +49,7 @@ helm repo list
 ## Searching for Charts
 
 ```bash
-# Search the Helm Hub
+# Search Artifact Hub
 helm search hub wordpress
 
 # Search local repositories
