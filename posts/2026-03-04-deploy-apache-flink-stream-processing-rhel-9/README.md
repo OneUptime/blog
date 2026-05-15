@@ -82,7 +82,7 @@ taskmanager.numberOfTaskSlots: 4
 taskmanager.bind-host: 0.0.0.0
 
 # Web UI configuration
-rest.address: 0.0.0.0
+rest.address: localhost
 rest.port: 8081
 rest.bind-address: 0.0.0.0
 
@@ -90,7 +90,7 @@ rest.bind-address: 0.0.0.0
 parallelism.default: 2
 
 # State backend - use RocksDB for large state
-state.backend: rocksdb
+state.backend.type: rocksdb
 state.checkpoints.dir: file:///opt/flink/checkpoints
 state.savepoints.dir: file:///opt/flink/savepoints
 
@@ -196,6 +196,7 @@ Here is a simple stream processing job in Java that reads from Kafka and writes 
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.connector.base.DeliveryGuarantee;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
@@ -238,6 +239,8 @@ public class StreamProcessingJob {
                     .setValueSerializationSchema(new SimpleStringSchema())
                     .build()
             )
+            .setDeliveryGuarantee(DeliveryGuarantee.EXACTLY_ONCE)
+            .setTransactionalIdPrefix("stream-processing-job")
             .build();
 
         // Write processed events to the output topic
