@@ -51,7 +51,7 @@ ls -Z /usr/sbin/httpd
 # system_u:object_r:httpd_exec_t:s0
 
 # SELinux restricts what httpd can access
-# For example, httpd can only serve content with httpd_sys_content_t label
+# For example, static content under /var/www/html is normally labeled httpd_sys_content_t
 ls -Z /var/www/html/
 ```
 
@@ -64,20 +64,18 @@ If an attacker drops a malicious binary in /tmp:
 # Attempting to execute /tmp/malware would produce:
 # bash: /tmp/malware: Operation not permitted
 
-# Even if fapolicyd were bypassed, SELinux blocks execution from /tmp
-# The httpd_t domain cannot execute files with tmp_t context
+# Even if fapolicyd were bypassed, SELinux still confines compromised services
+# The httpd_t domain cannot access files with tmp_t context by default
 ```
 
 ## Verifying Both Controls Are Working
 
 ```bash
-# Test fapolicyd: create a simple test script
-echo '#!/bin/bash' > /tmp/test_exec
-echo 'echo hello' >> /tmp/test_exec
-chmod +x /tmp/test_exec
+# Test fapolicyd: copy a trusted binary to an untrusted location
+cp /bin/ls /tmp/test_ls
 
 # With fapolicyd enforcing, this should be denied
-/tmp/test_exec
+/tmp/test_ls
 # Operation not permitted
 
 # Check SELinux booleans that complement fapolicyd
@@ -94,7 +92,7 @@ sudo setenforce 1
 # Keep fapolicyd in enforcement mode (permissive = 0)
 grep "permissive" /etc/fapolicyd/fapolicyd.conf
 
-# Regularly update both SELinux policies and fapolicyd trust
+# Regularly update SELinux policies and refresh fapolicyd after manual trust changes
 sudo dnf update selinux-policy -y
 sudo fapolicyd-cli --update
 ```
