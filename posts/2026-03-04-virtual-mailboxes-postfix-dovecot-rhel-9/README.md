@@ -220,7 +220,7 @@ service auth {
 # Enable and start both services
 sudo systemctl enable --now postfix dovecot
 
-# Reload Postfix after main.cf/map changes
+# Reload Postfix after main.cf changes
 sudo systemctl reload postfix
 
 # Restart Dovecot
@@ -279,8 +279,7 @@ sudo doveadm pw -s BLF-CRYPT
 echo "newuser@example.com:{BLF-CRYPT}HASH_HERE" | sudo tee -a /etc/dovecot/users
 
 # 4. No restart needed - Dovecot reads the file on each auth attempt
-# But reload Postfix for the mailbox map change
-sudo postfix reload
+# No Postfix reload is needed after postmap rebuilds the hash database
 ```
 
 ## Changing Passwords
@@ -303,11 +302,19 @@ plugin {
   quota_rule = *:storage=1G
   quota_rule2 = Trash:storage=+100M
 }
+```
+
+Enable the quota plugins in `/etc/dovecot/conf.d/10-mail.conf` and `/etc/dovecot/conf.d/20-imap.conf`:
+
+```bash
+mail_plugins = $mail_plugins quota
 
 protocol imap {
-  mail_plugins = $mail_plugins quota imap_quota
+  mail_plugins = $mail_plugins imap_quota
 }
 ```
+
+This enables quota handling for Dovecot operations such as IMAP APPEND. Because this guide delivers incoming mail with Postfix's `virtual(8)` delivery agent, Dovecot quota rules do not enforce limits on SMTP delivery. Use Dovecot LMTP or LDA if you need Dovecot to enforce quotas during delivery.
 
 ## Wrapping Up
 
