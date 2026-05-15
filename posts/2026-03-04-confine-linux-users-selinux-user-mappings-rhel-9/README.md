@@ -19,17 +19,17 @@ RHEL comes with several predefined SELinux users:
 | SELinux User | Purpose | Capabilities |
 |---|---|---|
 | unconfined_u | Default for regular users | No SELinux restrictions |
-| user_u | Basic confined user | Cannot become root, cannot run setuid programs |
-| staff_u | Staff user | Can use sudo to transition to sysadm_r |
+| user_u | Basic confined user | Cannot use su or sudo, can run only policy-permitted setuid programs |
+| staff_u | Staff user | Can use sudo to transition to sysadm_r when sudoers is configured for it |
 | sysadm_u | System administrator | Full admin access under SELinux |
-| guest_u | Guest user | No networking, no setuid, no su/sudo |
-| xguest_u | X Window guest | Only Firefox for web access, no networking |
+| guest_u | Guest user | No networking, no su/sudo, can run only policy-permitted setuid programs |
+| xguest_u | X Window guest | Limited network access for web browsing |
 
 ```mermaid
 graph TD
     A[Linux User Logs In] --> B{SELinux User Mapping?}
     B -->|unconfined_u| C[No SELinux Restrictions]
-    B -->|user_u| D[Cannot sudo, cannot run setuid]
+    B -->|user_u| D[Cannot su or sudo]
     B -->|staff_u| E[Can sudo, limited scope]
     B -->|guest_u| F[No network, very restricted]
 ```
@@ -59,12 +59,12 @@ The `__default__` entry controls what happens for any Linux user that does not h
 
 ```bash
 # Map 'johndoe' to the confined 'user_u' SELinux user
-sudo semanage login -a -s user_u johndoe
+sudo semanage login -a -s user_u -r s0 johndoe
 ```
 
 Now when `johndoe` logs in:
 - They cannot run `su` or `sudo`
-- They cannot execute setuid programs
+- They can run only setuid programs allowed by SELinux policy, such as `passwd`
 - They cannot change SELinux contexts
 - They are confined to `user_t` domain
 
@@ -75,20 +75,20 @@ Now when `johndoe` logs in:
 sudo semanage login -a -s staff_u admin1
 ```
 
-`staff_u` users can use `sudo` to perform administrative tasks but are still confined when running normal commands.
+`staff_u` users can use `sudo` to perform administrative tasks when sudo is configured with an SELinux role and type transition, but are still confined when running normal commands.
 
 ### Confine a Guest User
 
 ```bash
 # Map 'visitor' to 'guest_u' - very restricted
-sudo semanage login -a -s guest_u visitor
+sudo semanage login -a -s guest_u -r s0 visitor
 ```
 
 `guest_u` users:
 - Cannot use the network
-- Cannot run setuid programs
+- Can run only setuid programs allowed by SELinux policy, such as `passwd`
 - Cannot use `su` or `sudo`
-- Cannot execute programs from home or temp directories
+- Can execute programs from home and `/tmp` by default unless the `guest_exec_content` boolean is disabled
 
 ## Changing the Default Mapping
 
@@ -96,7 +96,7 @@ To confine all new users by default:
 
 ```bash
 # Change the default mapping from unconfined_u to user_u
-sudo semanage login -m -s user_u __default__
+sudo semanage login -m -s user_u -r s0 __default__
 ```
 
 Now any user without an explicit mapping gets confined as `user_u`. This is a significant security improvement for multi-user systems.
@@ -137,7 +137,7 @@ On a shared development server, confine regular developers and give team leads a
 
 ```bash
 # Confine all users by default
-sudo semanage login -m -s user_u __default__
+sudo semanage login -m -s user_u -r s0 __default__
 
 # Give team leads staff access
 sudo semanage login -a -s staff_u teamlead1
@@ -155,13 +155,13 @@ sudo semanage login -l
 Some useful booleans for confined user environments:
 
 ```bash
-# Allow confined users to execute programs in their home directory
+# Allow user_u users to execute programs in their home directory and /tmp
 sudo setsebool -P user_exec_content on
 
 # Allow confined users to run commands via cron
-sudo setsebool -P user_cron_spool_job on
+sudo setsebool -P cron_userdomain_transition on
 
-# Prevent confined users from running executables from /tmp
+# Prevent user_u users from running executables from their home directory and /tmp
 sudo setsebool -P user_exec_content off
 ```
 
@@ -185,7 +185,7 @@ id -Z
 # Try sudo (should fail for user_u)
 sudo ls /root
 
-# Try running a script from /tmp
+# Try running a script from /tmp after disabling user_exec_content
 chmod +x /tmp/test.sh
 /tmp/test.sh
 
@@ -193,7 +193,7 @@ chmod +x /tmp/test.sh
 newrole -r sysadm_r
 ```
 
-Each of these should be blocked for a `user_u` confined user.
+For a `user_u` confined user, `sudo` and `newrole -r sysadm_r` should be blocked. Running a script from `/tmp` should be blocked if `user_exec_content` is disabled.
 
 ## Troubleshooting
 
@@ -217,10 +217,16 @@ SELinux user mappings apply at login time. The user must log out and back in.
 
 **Staff user cannot use sudo:**
 
-Make sure the `staff_u` to `sysadm_r` transition is enabled:
+Make sure the user is allowed to gain the `sysadm_r` role through sudo by adding an SELinux role and type transition in sudoers:
 
 ```bash
-sudo setsebool -P staff_exec_content on
+sudo visudo -f /etc/sudoers.d/admin1
+```
+
+Add:
+
+```bash
+admin1 ALL=(ALL) TYPE=sysadm_t ROLE=sysadm_r ALL
 ```
 
 ## Wrapping Up
