@@ -8,7 +8,9 @@ Description: Learn how to enable and disable VDO compression on RHEL to balance 
 
 ---
 
-VDO on RHEL provides both deduplication and compression. While deduplication is almost always beneficial, compression adds CPU overhead during writes. For workloads where data is already compressed (videos, compressed archives), you may want to disable compression to save CPU cycles.
+VDO on RHEL provides both deduplication and compression. The `vdo` commands below apply to standalone VDO volumes, such as those managed with the VDO toolchain on RHEL 7 and RHEL 8. On LVM-VDO volumes, such as the default VDO management model documented for RHEL 9, use `lvs -o+vdo_compression,vdo_compression_state` and `lvchange --compression y|n vg-name/vdopoolname` instead.
+
+Deduplication is useful for workloads with repeated blocks, such as virtual machine images and backups, while compression adds CPU work during writes. For workloads where data is already compressed (videos, compressed archives), you may want to disable compression to save CPU cycles.
 
 ## Checking Current Compression Status
 
@@ -89,4 +91,4 @@ sudo vdo create --name=vdo-nocomp --device=/dev/sdc \
   --vdoLogicalSize=500G --compression=disabled
 ```
 
-The decision to enable or disable compression should be driven by actual measurements on your workload. Deduplication alone often provides significant space savings with lower CPU cost than compression.
+The decision to enable or disable compression should be driven by actual measurements on your workload. For workloads with repeated blocks, deduplication alone can provide significant space savings without the extra compression work.
