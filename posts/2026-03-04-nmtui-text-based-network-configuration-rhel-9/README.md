@@ -12,7 +12,7 @@ Not everyone wants to memorize nmcli syntax, and not every server has a graphica
 
 ## What is nmtui?
 
-nmtui stands for NetworkManager Text User Interface. It is included by default on RHEL as part of the `NetworkManager-tui` package. It provides three main functions:
+nmtui stands for NetworkManager Text User Interface. On RHEL, it is provided by the `NetworkManager-tui` package. It provides three main functions:
 
 - Edit a connection
 - Activate a connection
@@ -121,7 +121,7 @@ These shortcuts are helpful when you know exactly what you want to do.
 
 ## When to Use nmtui vs. nmcli
 
-Both tools talk to the same NetworkManager daemon and produce the same results. The choice comes down to your workflow:
+Both tools talk to the same NetworkManager daemon and can configure the same connection profiles. The choice comes down to your workflow:
 
 **Use nmtui when:**
 - You are configuring a server interactively and want a visual layout
