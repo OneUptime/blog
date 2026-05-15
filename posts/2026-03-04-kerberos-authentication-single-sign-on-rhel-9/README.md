@@ -99,6 +99,11 @@ SSH with GSSAPI authentication is the most common Kerberos SSO use case.
 On the SSH server:
 
 ```bash
+# Verify that the server has a host service principal in its keytab
+sudo klist -k /etc/krb5.keytab | grep host/server.example.com
+```
+
+```bash
 # Edit SSH server configuration
 sudo vi /etc/ssh/sshd_config
 ```
@@ -145,7 +150,7 @@ Kerberized NFS provides both authentication and encryption for file sharing.
 On the NFS server:
 
 ```bash
-# Create a service keytab for the NFS server
+# Create an NFS service principal and add it to the server keytab
 # (This is usually done through IdM or the KDC admin)
 kadmin -q "addprinc -randkey nfs/nfsserver.example.com"
 kadmin -q "ktadd -k /etc/krb5.keytab nfs/nfsserver.example.com"
