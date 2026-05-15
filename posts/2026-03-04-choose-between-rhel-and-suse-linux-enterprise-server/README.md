@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Comparison, Linux
 
-Description: Step-by-step guide on choose between rhel and suse linux enterprise server using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on choosing between RHEL and SUSE Linux Enterprise Server.
 
 ---
 
-RHEL and SUSE Linux Enterprise Server (SLES) are the two dominant commercial Linux distributions. They take different approaches to package management (DNF vs Zypper), configuration tools (Cockpit vs YaST), and container strategies.
+RHEL and SUSE Linux Enterprise Server (SLES) are two major commercial Linux distributions. They take different approaches to package management (DNF vs Zypper), configuration tools (Cockpit vs YaST), and container strategies.
 
 ## Prerequisites
 
-- RHEL with a valid subscription or CentOS Stream 9
+- RHEL with a valid subscription, CentOS Stream 9, or SLES 15
 - Root or sudo access
 - A terminal session
 
-## Step 2: Configure the Service
+## Step 1: Compare Core Platform Choices
 
 ### Key Comparison Areas
 
@@ -24,55 +24,56 @@ RHEL and SUSE Linux Enterprise Server (SLES) are the two dominant commercial Lin
 |---------|--------|---------|
 | Package Manager | DNF | Zypper |
 | Config Tool | Cockpit | YaST |
-| Container Tool | Podman | Podman/Docker |
-| Filesystem | XFS | Btrfs |
-| Transactional Updates | No | Yes |
+| Container Tool | Podman | Podman |
+| Filesystem | XFS | Btrfs for the operating system; XFS for other use cases |
+| Transactional Updates | No, standard DNF updates | Available as a technology preview for read-only root file systems |
 
-## Step 3: Enable and Start the Service
+## Step 2: Identify the Installed Platform
 
 ```bash
-# Enable the service to start on boot
+# Check the distribution and version
+cat /etc/os-release
 
-sudo systemctl enable <service-name>
+# Check which package manager is installed
+command -v dnf || command -v zypper
 
-# Start the service
-sudo systemctl start <service-name>
-
-# Check the status
-sudo systemctl status <service-name>
+# Check the root file system type
+findmnt -no FSTYPE /
 ```
 
-## Step 4: Configure the Firewall
+## Step 3: Compare Management Tools
 
 ```bash
-# Open the required port
-sudo firewall-cmd --permanent --add-port=<PORT>/tcp
-sudo firewall-cmd --reload
+# RHEL package management
+sudo dnf check-update
 
-# Verify the rule
-sudo firewall-cmd --list-all
+# SLES package management
+sudo zypper list-updates
 ```
 
 
 ## Verification
 
-Confirm everything is working by checking the status and logs:
+Confirm the relevant tools are available on the system you are evaluating:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
+# RHEL web console
+command -v cockpit-bridge
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# SLES configuration tool
+command -v yast2
+
+# Container runtime
+command -v podman
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- SELinux may block access. Check for denials with `ausearch -m avc -ts recent` and apply appropriate policies.
-- Verify firewall rules allow traffic on the required ports: `firewall-cmd --list-all`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If `dnf` or `zypper` is missing, verify that you are testing on the expected distribution.
+- If Cockpit is missing on RHEL, install it with `sudo dnf install cockpit`.
+- If YaST is missing on SLES, install the required YaST module with `sudo zypper install yast2`.
+- If Podman is missing, install RHEL container tools with `sudo dnf install container-tools` or install Podman on SLES with `sudo zypper install podman`.
 
 ## Conclusion
 
-You have successfully completed the setup described in this guide. Both options have their strengths, and the right choice depends on your specific requirements, budget, and team expertise. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
+Both options have their strengths, and the right choice depends on your specific requirements, budget, and team expertise. For production environments, always test changes in a staging environment first and keep your enterprise Linux systems updated with the latest security patches.
