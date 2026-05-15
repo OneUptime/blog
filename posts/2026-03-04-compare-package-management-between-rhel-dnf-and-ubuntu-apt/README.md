@@ -13,10 +13,11 @@ DNF (used by RHEL) and APT (used by Ubuntu/Debian) are both mature package manag
 ## Prerequisites
 
 - RHEL with a valid subscription or CentOS Stream 9
+- Ubuntu or Debian system for APT commands
 - Root or sudo access
 - A terminal session
 
-## Step 2: Configure the Service
+## Step 2: Compare Package Manager Commands
 
 ### Key Comparison Areas
 
@@ -30,37 +31,35 @@ DNF (used by RHEL) and APT (used by Ubuntu/Debian) are both mature package manag
 | Show Info | `dnf info pkg` | `apt show pkg` |
 | Clean Cache | `dnf clean all` | `apt clean` |
 
-## Step 3: Enable and Start the Service
+## Step 3: Refresh Metadata and Update Packages
 
 ```bash
-# Enable the service to start on boot
+# RHEL: refresh repository metadata and update packages
+sudo dnf makecache
+sudo dnf update
 
-sudo systemctl enable <service-name>
-
-# Start the service
-sudo systemctl start <service-name>
-
-# Check the status
-sudo systemctl status <service-name>
+# Ubuntu: refresh package indexes and upgrade packages
+sudo apt update
+sudo apt upgrade
 ```
 
 
 ## Verification
 
-Confirm everything is working by checking the status and logs:
+Confirm package management is working by checking package information:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
+# RHEL: show package details
+dnf info <package-name>
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# Ubuntu: show package details
+apt show <package-name>
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If DNF cannot find a package, refresh metadata with `sudo dnf makecache` and verify enabled repositories with `dnf repolist`.
+- If APT cannot find a package, refresh package indexes with `sudo apt update` and verify configured sources in `/etc/apt/sources.list` or `/etc/apt/sources.list.d/`.
 
 ## Conclusion
 
