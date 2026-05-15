@@ -19,14 +19,15 @@ RabbitMQ is a widely-used open-source message broker that implements the AMQP pr
 ## Step 1: Install Erlang
 
 ```bash
-sudo dnf install -y https://github.com/rabbitmq/erlang-rpm/releases/latest/download/erlang-26.2.5-1.el9.x86_64.rpm
+sudo rpm --import https://github.com/rabbitmq/signing-keys/releases/download/3.0/rabbitmq-release-signing-key.asc
+sudo dnf install -y https://github.com/rabbitmq/erlang-rpm/releases/download/v27.3.4.9/erlang-27.3.4.9-1.el9.x86_64.rpm
 ```
 
 ## Step 2: Install RabbitMQ
 
 ```bash
-sudo rpm --import https://github.com/rabbitmq/signing-keys/releases/download/3.0/rabbitmq-release-signing-key.asc
-sudo dnf install -y https://github.com/rabbitmq/rabbitmq-server/releases/latest/download/rabbitmq-server-3.13.0-1.el9.noarch.rpm
+sudo dnf install -y logrotate
+sudo dnf install -y https://github.com/rabbitmq/rabbitmq-server/releases/download/v4.3.0/rabbitmq-server-4.3.0-1.el8.noarch.rpm
 ```
 
 ## Step 3: Start and Enable
