@@ -27,7 +27,7 @@ dsconf localhost pwpolicy set \
 
 # Set minimum password length to 12 characters
 dsconf localhost pwpolicy set \
-  --pwdminlength=12
+  --pwdminlen=12
 
 # Require at least one digit in the password
 dsconf localhost pwpolicy set \
@@ -47,7 +47,7 @@ dsconf localhost pwpolicy set \
 ```bash
 # Enable password expiration
 dsconf localhost pwpolicy set \
-  --pwdexp=on
+  --pwdexpire=on
 
 # Set password maximum age to 90 days (in seconds: 90 * 86400)
 dsconf localhost pwpolicy set \
@@ -59,7 +59,8 @@ dsconf localhost pwpolicy set \
 
 # Keep a history of 5 passwords to prevent reuse
 dsconf localhost pwpolicy set \
-  --pwdinhistory=5
+  --pwdhistory=on \
+  --pwdhistorycount=5
 ```
 
 ## Configure Account Lockout
@@ -71,7 +72,7 @@ dsconf localhost pwpolicy set \
 
 # Lock the account after 5 failed attempts
 dsconf localhost pwpolicy set \
-  --pwdmaxfailure=5
+  --pwdmaxfailures=5
 
 # Set the lockout duration to 30 minutes (in seconds)
 dsconf localhost pwpolicy set \
@@ -79,7 +80,7 @@ dsconf localhost pwpolicy set \
 
 # Reset the failure counter after 10 minutes (in seconds)
 dsconf localhost pwpolicy set \
-  --pwdfailurecountinterval=600
+  --pwdresetfailcount=600
 ```
 
 ## Create a Subtree-Level Password Policy
@@ -94,7 +95,7 @@ dsconf localhost localpwp addsubtree \
 # Set a stricter minimum length for the subtree
 dsconf localhost localpwp set \
   "ou=engineering,dc=example,dc=com" \
-  --pwdminlength=16
+  --pwdminlen=16
 ```
 
 ## Verify the Policy
@@ -104,7 +105,7 @@ dsconf localhost localpwp set \
 dsconf localhost pwpolicy get
 
 # Test by attempting to set a weak password
-ldappasswd -H ldaps://ldap.example.com \
+ldappasswd -x -H ldaps://ldap.example.com \
   -D "cn=Directory Manager" -W \
   -S "uid=testuser,ou=people,dc=example,dc=com"
 ```
@@ -112,8 +113,16 @@ ldappasswd -H ldaps://ldap.example.com \
 ## Unlock a Locked Account
 
 ```bash
-# Unlock a user account that has been locked out
-dsidm localhost account unlock "uid=jdoe,ou=people,dc=example,dc=com"
+# Unlock a user account that has been locked out by the password policy
+ldapmodify -x -H ldaps://ldap.example.com \
+  -D "cn=Directory Manager" -W <<'EOF'
+
+dn: uid=jdoe,ou=people,dc=example,dc=com
+changetype: modify
+delete: passwordRetryCount
+-
+delete: accountUnlockTime
+EOF
 ```
 
 These settings provide a solid baseline for directory security. Adjust the thresholds based on your organization's security requirements.
