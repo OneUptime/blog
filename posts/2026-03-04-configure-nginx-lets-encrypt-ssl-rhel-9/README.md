@@ -20,9 +20,11 @@ Securing your Nginx web server with HTTPS is essential. Let's Encrypt provides f
 ## Step 1: Install Certbot
 
 ```bash
-# Enable EPEL repository
+# Enable CodeReady Builder and EPEL repository on RHEL 9
+ARCH=$( /bin/arch )
+sudo subscription-manager repos --enable "codeready-builder-for-rhel-9-${ARCH}-rpms"
 
-sudo dnf install -y epel-release
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 
 # Install Certbot with the Nginx plugin
 sudo dnf install -y certbot python3-certbot-nginx
@@ -123,6 +125,7 @@ add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" alway
 # OCSP stapling
 ssl_stapling on;
 ssl_stapling_verify on;
+ssl_trusted_certificate /etc/letsencrypt/live/example.com/chain.pem;
 resolver 8.8.8.8 8.8.4.4 valid=300s;
 resolver_timeout 5s;
 
@@ -179,4 +182,4 @@ sudo certbot renew --dry-run --debug-challenges
 
 ## Summary
 
-Your Nginx server on RHEL now serves traffic over HTTPS with a free Let's Encrypt certificate. Certbot handles the certificate lifecycle, including automatic renewal every 60 days. With the additional SSL hardening settings, your server only accepts modern TLS connections and tells browsers to always use HTTPS via HSTS headers.
+Your Nginx server on RHEL now serves traffic over HTTPS with a free Let's Encrypt certificate. Certbot handles the certificate lifecycle, including automatic renewal when certificates are near expiry. With the additional SSL hardening settings, your server only accepts modern TLS connections and tells browsers to always use HTTPS via HSTS headers.
