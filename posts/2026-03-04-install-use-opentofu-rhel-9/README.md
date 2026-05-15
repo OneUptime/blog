@@ -123,10 +123,10 @@ cat hello.txt
 
 ## Migrate from Terraform to OpenTofu
 
-If you have existing Terraform configurations, migrating is straightforward:
+If you have existing Terraform configurations, migrating is usually straightforward:
 
 ```bash
-# Your existing Terraform files work as-is with OpenTofu
+# Most existing Terraform files work as-is with OpenTofu
 cd /path/to/existing/terraform/project
 
 # Initialize with OpenTofu (it will download providers)
@@ -135,8 +135,8 @@ tofu init
 # Verify the state is read correctly
 tofu plan
 
-# The state file format is compatible
-# No changes should be detected if the infrastructure matches
+# If the plan looks correct, apply it so OpenTofu can update the state
+tofu apply
 ```
 
 ## Use OpenTofu with the Libvirt Provider
@@ -148,7 +148,7 @@ terraform {
   required_providers {
     libvirt = {
       source  = "dmacvicar/libvirt"
-      version = "~> 0.7"
+      version = "~> 0.9"
     }
   }
 }
@@ -158,23 +158,63 @@ provider "libvirt" {
 }
 
 resource "libvirt_volume" "rhel9" {
-  name   = "rhel9-opentofu.qcow2"
-  pool   = "default"
-  source = "/var/lib/libvirt/images/rhel-9-base.qcow2"
-  format = "qcow2"
+  name = "rhel9-opentofu.qcow2"
+  pool = "default"
+
+  target = {
+    format = {
+      type = "qcow2"
+    }
+  }
+
+  create = {
+    content = {
+      url = "/var/lib/libvirt/images/rhel-9-base.qcow2"
+    }
+  }
 }
 
 resource "libvirt_domain" "rhel9_vm" {
-  name   = "rhel9-opentofu"
-  memory = "2048"
-  vcpu   = 2
+  name        = "rhel9-opentofu"
+  type        = "kvm"
+  memory      = 2048
+  memory_unit = "MiB"
+  vcpu        = 2
 
-  disk {
-    volume_id = libvirt_volume.rhel9.id
+  os = {
+    type         = "hvm"
+    type_arch    = "x86_64"
+    type_machine = "q35"
+    boot_devices = ["hd"]
   }
 
-  network_interface {
-    network_name = "default"
+  devices = {
+    disks = [
+      {
+        source = {
+          file = {
+            file = libvirt_volume.rhel9.path
+          }
+        }
+        target = {
+          dev = "vda"
+          bus = "virtio"
+        }
+      }
+    ]
+
+    interfaces = [
+      {
+        model = {
+          type = "virtio"
+        }
+        source = {
+          network = {
+            network = "default"
+          }
+        }
+      }
+    ]
   }
 }
 ```
@@ -190,4 +230,4 @@ echo 'alias tf="tofu"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-OpenTofu provides the same infrastructure-as-code experience as Terraform with the confidence of an open-source license. Your existing HCL files, providers, and modules work without modification on RHEL.
+OpenTofu provides the same infrastructure-as-code experience as Terraform with the confidence of an open-source license. Most existing HCL files, providers, and modules work without modification on RHEL.
