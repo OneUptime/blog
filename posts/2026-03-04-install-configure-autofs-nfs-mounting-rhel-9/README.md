@@ -60,15 +60,15 @@ This says: "Use `/etc/auto.nfs` to manage mounts under `/nfs/`, and unmount afte
 
 ```bash
 sudo tee /etc/auto.nfs << 'MAP'
-data -rw,soft,intr nfsserver:/export/data
-logs -ro,soft,intr nfsserver:/export/logs
-media -rw,soft,intr nfsserver:/export/media
+data -rw,soft nfsserver:/export/data
+logs -ro,soft nfsserver:/export/logs
+media -rw,soft nfsserver:/export/media
 MAP
 ```
 
 Each line defines:
 - **Key** (`data`): The subdirectory name under the mount point
-- **Options** (`-rw,soft,intr`): Mount options
+- **Options** (`-rw,soft`): Mount options
 - **Source** (`nfsserver:/export/data`): The NFS export to mount
 
 ## Step 5: Restart autofs
@@ -99,7 +99,6 @@ mount | grep /nfs/data
 -rw              Read-write
 -ro              Read-only
 -soft            Return error if server is unreachable (instead of hanging)
--intr            Allow interrupting hung NFS operations
 -timeo=30        Timeout in deciseconds (3 seconds)
 -retrans=3       Number of retries before giving up
 -vers=4          Force NFS version 4
