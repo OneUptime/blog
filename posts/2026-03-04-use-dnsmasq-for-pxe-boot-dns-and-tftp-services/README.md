@@ -16,7 +16,7 @@ dnsmasq can serve as a PXE boot server by combining its DNS, DHCP, and built-in 
 - Root or sudo access
 - PXE boot images (kernel and initrd)
 - BIOS-based PXE client machines
-- An HTTP installation source that matches the `inst.repo` URL
+- An HTTP installation source that matches the `inst.repo` URL and contains a valid `.treeinfo` file
 
 ## Step 1: Install dnsmasq
 
