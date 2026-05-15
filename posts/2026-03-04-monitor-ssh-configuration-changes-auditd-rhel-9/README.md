@@ -36,6 +36,8 @@ flowchart TD
 Create a dedicated rules file for SSH monitoring:
 
 ```bash
+sudo install -d -m 755 /etc/systemd/system/sshd.service.d
+
 sudo tee /etc/audit/rules.d/50-ssh-monitoring.rules << 'EOF'
 ## SSH Configuration Monitoring Rules
 
@@ -66,7 +68,6 @@ sudo tee /etc/audit/rules.d/50-ssh-monitoring.rules << 'EOF'
 
 # Monitor the SSH service unit file
 -w /usr/lib/systemd/system/sshd.service -p wa -k ssh_service_change
--w /etc/systemd/system/sshd.service -p wa -k ssh_service_change
 -w /etc/systemd/system/sshd.service.d/ -p wa -k ssh_service_change
 EOF
 ```
@@ -77,16 +78,17 @@ Monitoring authorized_keys files for all users requires a different approach bec
 
 ```bash
 # Add rules for specific users' authorized_keys files
+sudo install -d -m 700 /root/.ssh
+
 sudo tee /etc/audit/rules.d/51-ssh-authorized-keys.rules << 'EOF'
 ## Monitor authorized_keys files
 
 # Root user
 -w /root/.ssh/ -p wa -k ssh_authorized_keys_change
-
-# Monitor the system-wide authorized keys directory if configured
--w /etc/ssh/authorized_keys/ -p wa -k ssh_authorized_keys_change
 EOF
 ```
+
+If you use a system-wide `AuthorizedKeysFile` path such as `/etc/ssh/authorized_keys/%u`, add a watch for that directory after confirming it exists.
 
 For monitoring all users dynamically, you can generate rules with a script:
 
@@ -203,24 +205,19 @@ Create a simple script that checks for SSH config changes and sends alerts:
 # /usr/local/bin/ssh-audit-alert.sh
 # Check for recent SSH config changes and alert
 
-LAST_CHECK_FILE="/var/run/ssh-audit-last-check"
+CHECKPOINT_DIR="/var/lib/audit"
+CHECKPOINT_FILE="$CHECKPOINT_DIR/ssh-audit-alert.checkpoint"
 
-if [ -f "$LAST_CHECK_FILE" ]; then
-    LAST_CHECK=$(cat "$LAST_CHECK_FILE")
-else
-    LAST_CHECK="today"
-fi
+install -d -m 700 "$CHECKPOINT_DIR"
 
 # Search for events since last check
-EVENTS=$(sudo ausearch -k sshd_config_change -ts "$LAST_CHECK" 2>/dev/null)
+EVENTS=$(sudo ausearch -k sshd_config_change --checkpoint "$CHECKPOINT_FILE" 2>/dev/null)
 
 if [ -n "$EVENTS" ] && ! echo "$EVENTS" | grep -q "no matches"; then
     echo "SSH configuration change detected on $(hostname):" | \
         systemd-cat -t ssh-audit-alert -p warning
     echo "$EVENTS" | systemd-cat -t ssh-audit-alert -p warning
 fi
-
-date +%H:%M:%S > "$LAST_CHECK_FILE"
 ```
 
 ## Summary
