@@ -29,8 +29,9 @@ sudo setenforce 1
 # Set the base context for WordPress files (read-only by httpd)
 sudo semanage fcontext -a -t httpd_sys_content_t "/var/www/html(/.*)?"
 
-# Allow httpd to write to wp-content (uploads, cache, plugins, themes)
-sudo semanage fcontext -a -t httpd_sys_rw_content_t "/var/www/html/wp-content(/.*)?"
+# Allow httpd to write to uploads and cache only
+sudo semanage fcontext -a -t httpd_sys_rw_content_t "/var/www/html/wp-content/uploads(/.*)?"
+sudo semanage fcontext -a -t httpd_sys_rw_content_t "/var/www/html/wp-content/cache(/.*)?"
 
 # Allow writing to wp-config.php during setup only
 # After setup, change back to httpd_sys_content_t
@@ -91,8 +92,8 @@ sudo semodule -i wordpress_custom.pp
 # Verify WordPress can upload files
 # Go to Media > Add New in the WordPress admin
 
-# Verify WordPress can install plugins
-# Go to Plugins > Add New
+# Verify dashboard plugin installation is blocked
+# Plugin and theme updates should be done from the command line
 
 # Check for any new SELinux denials after testing
 sudo ausearch -m AVC -ts recent --comm httpd
@@ -106,13 +107,13 @@ Setting WordPress core files to `httpd_sys_content_t` (read-only) means WordPres
 
 This is expected and intentional. Allowing Apache to write to core files (`wp-admin/`, `wp-includes/`, root PHP files) weakens your security posture because an attacker who compromises WordPress could modify those files.
 
-Instead of loosening SELinux contexts, use WP-CLI to perform core updates from the command line:
+Instead of loosening SELinux contexts, use WP-CLI to perform core, plugin, and theme updates from the command line as the system user that owns the WordPress files:
 
 ```bash
 # Update WordPress core via WP-CLI (recommended)
-sudo -u apache wp core update --path=/var/www/html
-sudo -u apache wp plugin update --all --path=/var/www/html
-sudo -u apache wp theme update --all --path=/var/www/html
+sudo -u wordpress wp core update --path=/var/www/html
+sudo -u wordpress wp plugin update --all --path=/var/www/html
+sudo -u wordpress wp theme update --all --path=/var/www/html
 ```
 
 If you prefer dashboard-based updates and accept the reduced security, you can set the entire WordPress directory to read-write:
