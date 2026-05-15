@@ -17,7 +17,7 @@ systemd-run lets you create transient (temporary) systemd units on the fly witho
 
 ## What Are Transient Units
 
-Transient units are systemd units created dynamically for a command or process. They do not persist across reboots and do not require unit files on disk. When the process exits and the unit is no longer referenced, systemd garbage-collects it automatically.
+Transient units are systemd units created dynamically for a command or process. They do not persist across reboots and do not require permanent unit files on disk. When the process exits successfully and the unit is no longer referenced, systemd garbage-collects it automatically. Failed transient units can remain loaded until you reset the failed state or use `--collect`.
 
 ## Step 1: Run a Basic Transient Service
 
@@ -60,7 +60,7 @@ sudo systemd-run --on-active=5m /usr/local/bin/cleanup.sh
 Or at a specific time:
 
 ```bash
-sudo systemd-run --on-calendar="2026-03-04 22:00:00" /usr/local/bin/report.sh
+sudo systemd-run --on-calendar="2026-06-01 22:00:00" /usr/local/bin/report.sh
 ```
 
 ## Step 5: Run as a Specific User
