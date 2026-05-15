@@ -237,7 +237,7 @@ The `logging` role configures rsyslog with inputs and outputs.
         type: basics
     logging_outputs:
       - name: remote_output
-        type: remote
+        type: forwards
         target: logserver.example.com
         tcp_port: 514
     logging_flows:
