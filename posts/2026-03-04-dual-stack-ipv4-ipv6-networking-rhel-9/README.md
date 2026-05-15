@@ -92,10 +92,10 @@ sudo nmcli connection up "ens192"
 
 ## Understanding Address Selection
 
-When your system has both IPv4 and IPv6 addresses, how does it decide which to use for outgoing connections? RHEL follows RFC 6724 for address selection. You can see the current policy table:
+When your system has both IPv4 and IPv6 addresses, how does it decide which to use for outgoing connections? RHEL follows RFC 6724 for address selection. You can see the current IPv6 address label table:
 
 ```bash
-# View the address selection policy
+# View the IPv6 address label table
 ip -6 addrlabel show
 ```
 
@@ -217,7 +217,7 @@ cat /etc/gai.conf
 
 **Happy Eyeballs (RFC 8305):**
 
-Modern applications use Happy Eyeballs, which tries both IPv6 and IPv4 connections simultaneously and uses whichever responds first. If IPv6 is broken but present, you might see brief delays as applications fall back to IPv4. Fix the IPv6 issue rather than disabling IPv6.
+Modern applications use Happy Eyeballs, which tries IPv6 and IPv4 connection attempts in a staggered sequence and uses whichever responds first. If IPv6 is broken but present, you might see brief delays as applications fall back to IPv4. Fix the IPv6 issue rather than disabling IPv6.
 
 ## Wrapping Up
 
