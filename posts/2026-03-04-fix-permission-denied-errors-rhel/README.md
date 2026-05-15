@@ -17,7 +17,7 @@ Description: A systematic approach to diagnosing and fixing 'Permission Denied' 
 
 ls -la /path/to/file
 
-# The output shows: permissions owner group
+# The output includes: permissions owner group
 # -rw-r----- 1 root apache 1024 Mar 1 10:00 config.txt
 # Only root and apache group members can read this file
 
@@ -40,9 +40,9 @@ A common oversight is that the parent directory lacks execute permission.
 # Check permissions on every directory in the path
 namei -l /path/to/file
 
-# If any directory lacks execute (x) permission for your user,
-# you cannot traverse it
-sudo chmod o+x /path/to/
+# If any directory lacks execute (x) permission for the owner,
+# group, or other class your user matches, you cannot traverse it
+sudo chmod g+x /path/to/
 ```
 
 ## Check for ACLs
@@ -68,7 +68,7 @@ sudo setfacl -b /path/to/file
 ls -Z /path/to/file
 
 # Check for recent SELinux denials
-sudo ausearch -m avc --start recent
+sudo ausearch -m AVC,USER_AVC,SELINUX_ERR,USER_SELINUX_ERR -ts recent
 
 # Restore the correct SELinux context
 sudo restorecon -v /path/to/file
