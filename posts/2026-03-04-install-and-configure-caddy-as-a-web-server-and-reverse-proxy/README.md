@@ -18,15 +18,16 @@ Caddy is a modern web server that automatically provisions and renews TLS certif
 ## Step 1: Install Caddy
 
 ```bash
-sudo dnf install -y 'dnf-command(copr)'
+sudo dnf install -y dnf-plugins-core
 sudo dnf copr enable -y @caddy/caddy
 sudo dnf install -y caddy
 ```
 
-Or install manually:
+Or install a static binary for manual use:
 
 ```bash
-curl -L "https://github.com/caddyserver/caddy/releases/latest/download/caddy_linux_amd64.tar.gz" | tar xz
+curl -L "https://caddyserver.com/api/download?os=linux&arch=amd64" -o caddy
+chmod +x caddy
 sudo mv caddy /usr/local/bin/
 ```
 
@@ -67,7 +68,7 @@ api.example.com {
 
 admin.example.com {
     reverse_proxy localhost:8080
-    basicauth {
+    basic_auth {
         admin $2a$14$hashed_password_here
     }
 }
