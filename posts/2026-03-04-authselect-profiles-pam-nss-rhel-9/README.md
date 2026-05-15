@@ -46,11 +46,11 @@ authselect list
 # Show the current authselect profile and features
 authselect current
 
-# Show which files authselect manages
+# Validate that the current configuration is managed by authselect
 authselect check
 ```
 
-If `authselect check` reports issues, the PAM files may have been manually edited. authselect will warn you about this.
+If `authselect check` reports issues, the PAM or NSS files may have been manually edited. authselect will warn you about this.
 
 ## Step 2 - Select a Profile
 
@@ -145,9 +145,9 @@ unlock_time = 900
 # Count failures within this window (15 minutes)
 fail_interval = 900
 
-# Even lock root (be careful with this)
-even_deny_root = false
-root_unlock_time = 60
+# To also lock root, uncomment these lines (be careful with this)
+# even_deny_root
+# root_unlock_time = 60
 ```
 
 Test the configuration:
@@ -245,7 +245,7 @@ If you are upgrading from RHEL 7 where authconfig was used:
 # Check if authconfig was used previously
 ls /etc/sysconfig/authconfig 2>/dev/null
 
-# authselect can detect and migrate the old configuration
+# Check whether the current PAM/NSS configuration is already managed by authselect
 sudo authselect check
 
 # Apply the appropriate authselect profile
@@ -269,11 +269,11 @@ sudo authselect select minimal --force
 # Check for manual modifications
 authselect check
 
-# If modifications exist, either:
-# 1. Reapply the profile (overwrites manual changes)
+# If you changed authselect templates or /etc/authselect/user-nsswitch.conf,
+# reapply the selected profile
 sudo authselect apply-changes
 
-# 2. Or use --force to select the profile again
+# If files were manually modified outside authselect, select the profile again with --force
 sudo authselect select sssd --force
 ```
 
