@@ -12,7 +12,7 @@ Keeping your Talos Linux nodes up to date is critical for security, stability, a
 
 ## How Talos Linux Upgrades Work
 
-Unlike traditional Linux distributions where you run package updates and hope nothing breaks, Talos Linux upgrades are atomic and image-based. When you run `talosctl upgrade`, the system downloads a new installer image, writes it to an alternate partition, and reboots into the new version. If the new version fails to boot, the system automatically rolls back to the previous version.
+Unlike traditional Linux distributions where you run package updates and hope nothing breaks, Talos Linux upgrades are atomic and image-based. When you run `talosctl upgrade`, the system downloads a new installer image, prepares the upgrade using Talos' A-B image scheme, and reboots into the new version. If the new version fails to boot, the system automatically rolls back to the previous version.
 
 This approach means upgrades are safe, predictable, and reversible. There is no half-upgraded state where some packages are updated and others are not.
 
@@ -67,7 +67,7 @@ echo "Waiting for node to reboot..."
 sleep 60
 
 # Verify the node is healthy
-talosctl health --nodes 192.168.1.10 --wait-timeout 5m
+talosctl health --nodes 192.168.1.10
 
 # Check the version
 talosctl version --nodes 192.168.1.10
@@ -105,7 +105,7 @@ talosctl upgrade --nodes 192.168.1.20 \
 sleep 60
 
 # Verify health
-talosctl health --nodes 192.168.1.20 --wait-timeout 5m
+talosctl health --nodes 192.168.1.20
 
 # Uncordon the node
 kubectl uncordon worker-1
@@ -141,7 +141,7 @@ for node in $CP_NODES; do
   sleep 90
 
   echo "Checking health..."
-  if ! talosctl health --nodes "$node" --wait-timeout 10m; then
+  if ! talosctl health --nodes "$node"; then
     echo "ERROR: Node $node failed health check after upgrade!"
     echo "Stopping upgrade. Investigate before continuing."
     exit 1
@@ -165,7 +165,11 @@ for node in $WORKER_NODES; do
   sleep 60
 
   echo "Checking health..."
-  talosctl health --nodes "$node" --wait-timeout 10m
+  if ! talosctl health --nodes "$node"; then
+    echo "ERROR: Node $node failed health check after upgrade!"
+    echo "Stopping upgrade. Investigate before continuing."
+    exit 1
+  fi
 
   echo "Verifying version..."
   talosctl version --nodes "$node"
@@ -179,16 +183,16 @@ talosctl version --nodes "$(echo $CP_NODES $WORKER_NODES | tr ' ' ',')"
 
 ## Using the Preserve Flag
 
-By default, `talosctl upgrade` preserves your machine configuration and data. If you want to explicitly control this:
+By default in Talos 1.7, `talosctl upgrade` does not preserve ephemeral data. On control plane nodes, a non-preserved upgrade also causes the node to leave the etcd cluster and rejoin after the upgrade. If you need to keep ephemeral data intact, or if you are upgrading a single-node control plane, explicitly use `--preserve`:
 
 ```bash
-# Upgrade with explicit preserve (default behavior)
+# Upgrade while preserving ephemeral data
 talosctl upgrade --nodes 192.168.1.10 \
   --image ghcr.io/siderolabs/installer:v1.7.0 \
   --preserve
 ```
 
-The preserve flag ensures that the node's machine configuration, etcd data (on control plane nodes), and other persistent state are kept across the upgrade.
+The preserve flag keeps the node's ephemeral data intact across the upgrade.
 
 ## Upgrading with System Extensions
 
@@ -224,20 +228,18 @@ If the node does not come back at all, you might need to:
 
 ## Staging Upgrades
 
-You can stage an upgrade without immediately rebooting the node:
+You can stage an upgrade so Talos applies it from an early boot environment:
 
 ```bash
-# Stage the upgrade - downloads the image but does not reboot
+# Stage the upgrade so it is applied from an early boot environment
 talosctl upgrade --nodes 192.168.1.10 \
   --image ghcr.io/siderolabs/installer:v1.7.0 \
   --stage
 
-# The upgrade will be applied on the next reboot
-# You can trigger the reboot when ready
-talosctl reboot --nodes 192.168.1.10
+# Talos will reboot, apply the staged upgrade early in boot, and reboot again
 ```
 
-Staging is useful when you want to download the upgrade image during a low-traffic period and then apply it during a scheduled maintenance window.
+Staging is useful when a normal upgrade cannot unmount filesystems cleanly because a process is holding a file open.
 
 ## Checking Available Versions
 
@@ -283,7 +285,8 @@ talosctl etcd members --nodes 192.168.1.10
 - Keep your `talosctl` client version in sync with your cluster version.
 - Monitor your cluster throughout the upgrade process.
 - Have a rollback plan ready, even though Talos handles automatic rollback.
-- Stage upgrades during low-traffic periods for critical clusters.
+- Use `--stage` when a normal upgrade cannot safely unmount filesystems.
+- Use `--preserve` when you need to keep ephemeral data intact or when upgrading a single-node control plane.
 - Do not skip minor versions when upgrading. Go from 1.6 to 1.7, not 1.6 to 1.8.
 
 The `talosctl upgrade` command makes node upgrades predictable and safe. By following a disciplined rolling upgrade approach, you can keep your cluster current without downtime.
