@@ -26,36 +26,34 @@ podman info
 
 ## Install Podman Desktop via Flatpak
 
-The recommended installation method on RHEL is through Flatpak:
+A common upstream installation method on Linux is through Flatpak:
 
 ```bash
 # Install Flatpak if not already present
 sudo dnf install -y flatpak
 
 # Add the Flathub repository
-flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
 
 # Install Podman Desktop
-flatpak install -y flathub io.podman_desktop.PodmanDesktop
+flatpak install -y --user flathub io.podman_desktop.PodmanDesktop
 
 # Launch Podman Desktop
 flatpak run io.podman_desktop.PodmanDesktop
 ```
 
-## Install via RPM (Alternative)
+## Install via Red Hat RPM (RHEL 10)
 
-You can also download the RPM directly:
+On RHEL 10, you can install the Red Hat build of Podman Desktop from the RHEL extensions repository:
 
 ```bash
-# Download the latest RPM from GitHub releases
-curl -L -o podman-desktop.rpm \
-    https://github.com/podman-desktop/podman-desktop/releases/latest/download/podman-desktop.x86_64.rpm
+# Enable the RHEL extensions repository
+sudo subscription-manager repos --enable rhel-10-for-$(uname -m)-extensions-rpms
 
-# Install the RPM
-sudo dnf install -y ./podman-desktop.rpm
+# Install Podman Desktop
+sudo dnf install -y rh-podman-desktop
 
-# Launch from the applications menu or command line
-podman-desktop
+# Launch from the applications menu
 ```
 
 ## Initial Configuration
@@ -81,6 +79,7 @@ cat /etc/subgid | grep $USER
 
 # If not present, add them
 sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $USER
+podman system migrate
 ```
 
 ## Verify the Connection
@@ -100,7 +99,7 @@ ls -la /run/user/$(id -u)/podman/podman.sock
 
 ## Create a Desktop Shortcut
 
-If installed via RPM and no shortcut appears:
+If you installed a standalone build and no shortcut appears, create a desktop entry and adjust `Exec` if the binary is not on your `PATH`:
 
 ```bash
 # Create a desktop entry
@@ -119,10 +118,10 @@ EOF
 
 ```bash
 # Update via Flatpak
-flatpak update io.podman_desktop.PodmanDesktop
+flatpak update --user io.podman_desktop.PodmanDesktop
 
-# Or via RPM
-sudo dnf update podman-desktop
+# Or via Red Hat RPM on RHEL 10
+sudo dnf update rh-podman-desktop
 ```
 
 Podman Desktop on RHEL provides a convenient graphical interface for developers and administrators who prefer visual container management alongside the powerful Podman CLI.
