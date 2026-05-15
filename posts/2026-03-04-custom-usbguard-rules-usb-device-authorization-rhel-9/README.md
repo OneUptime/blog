@@ -21,7 +21,7 @@ TARGET [DEVICE_SPEC] [CONDITIONS]
 Where:
 - **TARGET** is `allow`, `block`, or `reject`
 - **DEVICE_SPEC** includes device attributes like ID, name, hash, etc.
-- **CONDITIONS** are optional filters like interface class or connection type
+- **CONDITIONS** are optional `if` expressions; device attributes include filters like interface class or connection type
 
 The difference between `block` and `reject`: `block` prevents authorization but keeps the device visible to USBGuard for later manual authorization. `reject` removes the device from the system entirely.
 
@@ -66,8 +66,8 @@ block with-interface e0:*:*
 # Allow devices with a specific name
 allow name "Cruzer Blade"
 
-# Allow devices matching a name pattern (regex-like)
-allow name "Logitech*"
+# Allow one of several exact device names
+allow name one-of { "Logitech USB Keyboard" "Logitech USB Receiver" }
 ```
 
 ## Matching by Serial Number
@@ -111,7 +111,7 @@ allow id 046d:c52b with-interface { 03:01:01 03:01:02 03:00:00 }
 
 # Block any device that presents both HID and mass storage interfaces
 # This catches BadUSB attacks where a "keyboard" also has storage
-block with-interface one-of { 03:*:* 08:*:* }
+block with-interface all-of { 03:*:* 08:*:* }
 ```
 
 ## Rule Order and Precedence
@@ -134,8 +134,8 @@ block id 046d:*
 
 ```bash
 # Allow internal USB host controllers only
-allow id 1d6b:0002 with-interface 09:00:00 with-connect-type ""
-allow id 1d6b:0003 with-interface 09:00:00 with-connect-type ""
+allow id 1d6b:0002 with-interface 09:00:00
+allow id 1d6b:0003 with-interface 09:00:00
 
 # Block everything else (set ImplicitPolicyTarget=block in daemon config)
 ```
@@ -170,7 +170,7 @@ block with-interface 0a:*:*
 # Allow only keyboards, nothing else
 allow with-interface 03:01:01
 allow id 1d6b:* with-interface 09:00:00
-reject with-interface all
+reject
 ```
 
 ## Rule Evaluation Flow
