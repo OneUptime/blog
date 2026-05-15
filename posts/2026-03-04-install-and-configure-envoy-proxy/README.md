@@ -18,20 +18,21 @@ Envoy is a high-performance, open-source edge and service proxy designed for clo
 
 ## Step 1: Install Envoy
 
-Add the Envoy repository and install:
+Download the Envoy Linux binary:
 
 ```bash
-sudo dnf install -y yum-utils
-sudo curl -L https://getenvoy.io/linux/rhel/tetrate-getenvoy.repo -o /etc/yum.repos.d/tetrate-getenvoy.repo
-sudo dnf install -y getenvoy-envoy
+ENVOY_VERSION=1.38.0
+sudo curl -L "https://github.com/envoyproxy/envoy/releases/download/v${ENVOY_VERSION}/envoy-${ENVOY_VERSION}-linux-x86_64" -o /usr/local/bin/envoy
+sudo chmod +x /usr/local/bin/envoy
 ```
 
-Alternatively, download the binary directly:
+Alternatively, test the official Envoy container image:
 
 ```bash
-curl -L https://github.com/envoyproxy/envoy/releases/latest/download/envoy-x86_64 -o /usr/local/bin/envoy
-chmod +x /usr/local/bin/envoy
+podman run --rm docker.io/envoyproxy/envoy:v1.38-latest --version
 ```
+
+The systemd service below assumes the binary installation at `/usr/local/bin/envoy`.
 
 Verify:
 
@@ -112,7 +113,7 @@ WantedBy=multi-user.target
 ```
 
 ```bash
-sudo useradd -r -s /sbin/nologin envoy
+sudo id -u envoy >/dev/null 2>&1 || sudo useradd -r -s /sbin/nologin envoy
 sudo systemctl daemon-reload
 sudo systemctl enable --now envoy
 ```
