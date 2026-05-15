@@ -64,8 +64,10 @@ sudo ip netns exec ns1 ip route add default via 10.0.0.1
 # Enable IP forwarding on the host
 sudo sysctl -w net.ipv4.ip_forward=1
 
-# Add NAT rule for the namespace traffic
-sudo iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o ens192 -j MASQUERADE
+# Add NAT rule for the namespace traffic (replace ens192 with your outbound interface)
+sudo nft add table ip netns_nat
+sudo nft 'add chain ip netns_nat postrouting { type nat hook postrouting priority srcnat; policy accept; }'
+sudo nft 'add rule ip netns_nat postrouting ip saddr 10.0.0.0/24 oifname "ens192" masquerade'
 
 # Test internet access from the namespace
 sudo ip netns exec ns1 ping -c 3 8.8.8.8
