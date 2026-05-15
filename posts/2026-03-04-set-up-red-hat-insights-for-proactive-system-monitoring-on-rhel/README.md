@@ -21,7 +21,7 @@ sudo dnf install -y insights-client
 sudo insights-client --register
 
 # The client collects system data and uploads it to Red Hat
-# Output shows: Successfully registered host <hostname>
+# Output shows a successful upload for <hostname>
 ```
 
 ## Verify Registration
@@ -29,9 +29,6 @@ sudo insights-client --register
 ```bash
 # Check the registration status
 sudo insights-client --status
-
-# View the system ID
-sudo insights-client --display-name
 
 # Set a custom display name
 sudo insights-client --display-name="prod-web-01"
@@ -48,10 +45,13 @@ https://console.redhat.com/insights/
 You can also check from the command line:
 
 ```bash
-# Run an immediate check and upload
+# Retrieve analysis results
 sudo insights-client --check-results
 
-# View the compliance report
+# Display retrieved analysis results
+sudo insights-client --show-results
+
+# Run an OpenSCAP compliance scan and upload the report
 sudo insights-client --compliance
 ```
 
@@ -78,25 +78,27 @@ You can control what data Insights collects:
 # View the current collection configuration
 cat /etc/insights-client/insights-client.conf
 
-# To remove specific data from collection, use the remove.conf file
-sudo vi /etc/insights-client/remove.conf
+# To redact specific files or command output from collection, use the file-redaction.yaml file
+sudo vi /etc/insights-client/file-redaction.yaml
 ```
 
-Example remove.conf:
+Example file-redaction.yaml:
 
-```ini
-# /etc/insights-client/remove.conf
-[remove]
-# Remove hostname from collection
-commands=/bin/hostname
+```yaml
+# /etc/insights-client/file-redaction.yaml
+---
+# Redact command output from collection
+commands:
+  - /bin/hostname
 
-# Remove specific files from collection
-files=/etc/hosts
+# Redact specific files from collection
+files:
+  - /etc/hosts
 ```
 
 ```bash
 # Verify what will be collected before uploading
-sudo insights-client --no-upload --keep-archive
+sudo insights-client --no-upload
 # The archive location will be printed - inspect its contents
 ```
 
