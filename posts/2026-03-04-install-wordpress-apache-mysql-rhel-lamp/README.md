@@ -4,22 +4,23 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, WordPress, Apache, MySQL, LAMP, PHP, Web Development
 
-Description: Set up a complete WordPress site on RHEL using the classic LAMP stack with Apache, MySQL, and PHP for a production-ready web server.
+Description: Set up a complete WordPress site on RHEL 9 using the classic LAMP stack with Apache, MySQL, and PHP for a production-ready web server.
 
 ---
 
-The LAMP stack (Linux, Apache, MySQL, PHP) is the classic foundation for hosting WordPress. This guide walks through a complete WordPress installation on RHEL.
+The LAMP stack (Linux, Apache, MySQL, PHP) is the classic foundation for hosting WordPress. This guide walks through a complete WordPress installation on RHEL 9.
 
 ## Install the LAMP Stack
 
 ```bash
 # Install Apache, MySQL, and PHP with required extensions
 
-sudo dnf install -y httpd mysql-server php php-mysqlnd \
-  php-json php-xml php-mbstring php-curl php-zip php-gd php-intl
+sudo dnf install -y httpd mysql-server php php-fpm php-mysqlnd \
+  php-xml php-mbstring php-gd php-intl php-pecl-zip curl \
+  policycoreutils-python-utils
 
 # Start and enable all services
-sudo systemctl enable --now httpd mysqld
+sudo systemctl enable --now httpd php-fpm mysqld
 ```
 
 ## Configure MySQL
@@ -92,12 +93,12 @@ sudo httpd -M | grep rewrite
 ## SELinux and Firewall
 
 ```bash
-# Allow Apache to write to WordPress directories
+# Allow WordPress to make outbound HTTP connections for updates and plugin installs
 sudo setsebool -P httpd_can_network_connect 1
-sudo setsebool -P httpd_unified 1
 
-# Set SELinux context for WordPress files
-sudo chcon -R -t httpd_sys_rw_content_t /var/www/html/wp-content
+# Set a persistent SELinux context for WordPress files that need writes
+sudo semanage fcontext -a -t httpd_sys_rw_content_t "/var/www/html/wp-content(/.*)?"
+sudo restorecon -Rv /var/www/html/wp-content
 
 # Open firewall for HTTP
 sudo firewall-cmd --permanent --add-service=http
