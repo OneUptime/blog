@@ -25,7 +25,7 @@ Location constraints control which nodes a resource prefers or avoids.
 sudo pcs constraint location VIP prefers node1=100
 ```
 
-The score (100) indicates preference strength. Higher scores mean stronger preference. INFINITY forces the resource to that node.
+The score (100) indicates preference strength. Higher scores mean stronger preference. INFINITY makes the resource strongly prefer that node when the node is available.
 
 ### Avoid a Node
 
@@ -33,7 +33,7 @@ The score (100) indicates preference strength. Higher scores mean stronger prefe
 sudo pcs constraint location VIP avoids node2=100
 ```
 
-### Force a Resource to a Specific Node
+### Strongly Prefer a Specific Node
 
 ```bash
 sudo pcs constraint location VIP prefers node1=INFINITY
@@ -45,14 +45,14 @@ Run a resource on a node only during business hours:
 
 ```bash
 sudo pcs constraint location VIP rule score=INFINITY \
-    date-spec hours=9-17 weekdays=1-5
+    date-spec hours="9-16" weekdays="1-5"
 ```
 
 Run a resource based on a node attribute:
 
 ```bash
 sudo pcs node attribute node1 location=primary
-sudo pcs constraint location VIP rule score=INFINITY '#uname' eq node1
+sudo pcs constraint location VIP rule score=INFINITY location eq primary
 ```
 
 ## Order Constraints
@@ -80,7 +80,7 @@ sudo pcs constraint order VIP then WebServer kind=Optional
 Ensure resources never start or stop simultaneously:
 
 ```bash
-sudo pcs constraint order VIP then WebServer symmetrical=true
+sudo pcs constraint order VIP then WebServer kind=Serialize
 ```
 
 ## Colocation Constraints
@@ -127,7 +127,7 @@ sudo pcs constraint order
 sudo pcs constraint colocation
 ```
 
-View constraints in reference format:
+View constraints with internal IDs:
 
 ```bash
 sudo pcs constraint --full
@@ -138,7 +138,7 @@ sudo pcs constraint --full
 Remove a specific constraint by ID:
 
 ```bash
-sudo pcs constraint remove constraint-id
+sudo pcs constraint delete constraint-id
 ```
 
 Find the constraint ID with:
@@ -147,10 +147,10 @@ Find the constraint ID with:
 sudo pcs constraint --full
 ```
 
-Remove all location constraints for a resource:
+Remove a location constraint by ID:
 
 ```bash
-sudo pcs constraint location remove VIP
+sudo pcs constraint location remove location-constraint-id
 ```
 
 ## Using Resource Groups Instead of Constraints
@@ -168,12 +168,12 @@ This automatically creates implicit colocation (same node) and ordering (start i
 1. Use resource groups for simple co-location and ordering needs
 2. Use explicit constraints for complex relationships
 3. Avoid circular dependencies in order constraints
-4. Use INFINITY scores only when placement is mandatory
+4. Use INFINITY scores only for strong preferences or mandatory avoidance
 5. Test constraints by simulating node failures
 
 ## Testing Constraints
 
-Simulate resource placement:
+Test resource placement:
 
 ```bash
 sudo pcs resource move VIP node2
@@ -184,9 +184,9 @@ sudo pcs resource clear VIP
 Verify constraints are working:
 
 ```bash
-sudo pcs constraint location show resources VIP
+sudo pcs constraint ref VIP
 ```
 
 ## Conclusion
 
-Pacemaker constraints on RHEL provide precise control over resource placement and behavior. Use location constraints for node preferences, order constraints for startup sequences, and colocation constraints for keeping resources together. For simple relationships, resource groups combine all three.
+Pacemaker constraints on RHEL provide precise control over resource placement and behavior. Use location constraints for node preferences, order constraints for startup sequences, and colocation constraints for keeping resources together. For simple relationships, resource groups combine ordering and colocation behavior.
