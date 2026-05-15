@@ -29,12 +29,18 @@ When PAM encounters a user without a home directory, it calls the oddjobd daemon
 The recommended way to configure home directory creation on RHEL is through authselect.
 
 ```bash
+# Install the mkhomedir helper if it is not already present
+sudo dnf install oddjob-mkhomedir -y
+
 # Check the current authselect profile
 
 authselect current
 
-# Enable the mkhomedir feature
+# If an authselect profile is already active, enable the mkhomedir feature
 sudo authselect enable-feature with-mkhomedir
+
+# If no SSSD profile is selected yet, select it with the mkhomedir feature instead
+sudo authselect select sssd with-mkhomedir
 
 # Verify the feature is enabled
 authselect current
@@ -91,7 +97,7 @@ sudo cp /tmp/skel-profile /etc/skel/.bash_profile
 
 ## Step 4 - Configure SSSD Home Directory Settings
 
-SSSD controls the home directory path format. Adjust it to match your environment.
+SSSD controls the home directory path format when the identity provider does not supply one. Adjust it to match your environment.
 
 ```bash
 # Edit SSSD configuration
@@ -108,7 +114,7 @@ fallback_homedir = /home/%u
 # Or include the domain for multi-domain environments
 # fallback_homedir = /home/%d/%u
 
-# Or use a flat structure based on the short domain name
+# Or use a flat structure based on the domain name
 # fallback_homedir = /home/%u@%d
 ```
 
@@ -125,24 +131,23 @@ Configure the default permissions for newly created home directories.
 
 ```bash
 # Check the current umask setting for home directory creation
-grep -r "umask" /etc/oddjobd/oddjobd.conf.d/ /etc/login.defs
+grep -E "^(HOME_MODE|UMASK)" /etc/login.defs
 ```
 
-The oddjobd configuration file controls the permissions:
+For the stock `pam_oddjob_mkhomedir` flow, `HOME_MODE` or `UMASK` in `/etc/login.defs` controls the default permissions. `HOME_MODE` is used first if it is set, and `UMASK` is used as a fallback:
 
 ```bash
-# View the oddjobd mkhomedir configuration
-cat /etc/oddjobd/oddjobd.conf.d/oddjobd-mkhomedir.conf
+# Edit the login defaults
+sudo vi /etc/login.defs
 ```
 
-To change the default permissions, modify the umask. The default is typically 0077 (owner-only access):
+For owner-only home directories, use:
 
-```bash
-# Edit the mkhomedir configuration
-sudo vi /etc/oddjobd/oddjobd.conf.d/oddjobd-mkhomedir.conf
+```text
+HOME_MODE       0700
 ```
 
-Look for the `umask` attribute and adjust if needed. A value of `0077` means only the user can access their home directory. A value of `0022` makes it world-readable.
+If you use `UMASK` instead, a value of `0077` means only the user can access their home directory. A value of `0022` makes it world-readable.
 
 After changes:
 
@@ -161,7 +166,7 @@ pwd
 ls -la ~
 
 # Check ownership
-ls -ld /home/aduser
+ls -ld ~
 ```
 
 ## Alternative: NFS-Based Home Directories
@@ -191,10 +196,13 @@ sudo dnf install autofs -y
 echo "/home /etc/auto.home" | sudo tee -a /etc/auto.master
 
 # Configure auto.home to mount from NFS
-echo "* -rw,sync nfs-server:/exports/home/&" | sudo tee /etc/auto.home
+echo "* -fstype=nfs,rw,sync nfs-server:/exports/home/&" | sudo tee /etc/auto.home
 
 # Enable and start autofs
 sudo systemctl enable --now autofs
+
+# If SELinux is enforcing, allow NFS-backed home directories
+sudo setsebool -P use_nfs_home_dirs on
 ```
 
 When using NFS home directories, disable the local mkhomedir:
