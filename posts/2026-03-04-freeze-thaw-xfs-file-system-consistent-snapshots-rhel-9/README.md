@@ -8,7 +8,7 @@ Description: Learn how to use xfs_freeze to freeze and thaw XFS file systems on 
 
 ---
 
-When taking storage-level snapshots of an active filesystem, there is a risk that in-flight I/O operations create an inconsistent snapshot. Freezing the filesystem temporarily halts all new write operations and flushes pending data to disk, ensuring the snapshot captures a clean, consistent state. This guide covers how to freeze and thaw XFS filesystems on RHEL.
+When taking storage-level snapshots of an active filesystem, there is a risk that in-flight I/O operations create an inconsistent snapshot. Freezing the filesystem temporarily halts all new write operations and flushes pending data to disk, ensuring the snapshot captures a clean, filesystem-consistent state. This guide covers how to freeze and thaw XFS filesystems on RHEL.
 
 ## Prerequisites
 
@@ -25,7 +25,7 @@ When you freeze an XFS filesystem:
 2. The filesystem journal is committed
 3. New write operations are suspended (processes block until thaw)
 4. Read operations continue normally
-5. The filesystem is in a guaranteed consistent state
+5. The filesystem is in a filesystem-consistent state
 
 This window allows you to take a storage-level snapshot knowing the data is consistent.
 
@@ -55,6 +55,8 @@ With the filesystem frozen, take your snapshot:
 sudo lvcreate --size 5G --snapshot --name lv_data_snap /dev/vg_data/lv_data
 ```
 
+When taking an LVM snapshot, the LVM/device-mapper tools automatically freeze supported filesystems before creating the snapshot. Manual freezing is still useful for other storage-level snapshot workflows, such as SAN or some VM-level snapshots.
+
 ### VM-Level Snapshot
 
 Use your hypervisor's snapshot feature (VMware, KVM, Hyper-V, etc.) while the filesystem is frozen.
@@ -81,7 +83,7 @@ Blocked processes resume writing immediately.
 
 ## Step 4: Automate Freeze-Snapshot-Thaw
 
-Create a script that combines the freeze, snapshot, and thaw into a single atomic operation:
+Create a script that combines the freeze, snapshot, and thaw into a short coordinated operation:
 
 ```bash
 sudo tee /usr/local/bin/snapshot.sh << 'SCRIPT'
@@ -222,7 +224,7 @@ The entire sequence should take less than a second.
 Some applications (like databases) have their own snapshot or quiesce mechanisms. It is better to use application-level consistency tools when available:
 
 - MySQL: `FLUSH TABLES WITH READ LOCK`
-- PostgreSQL: `pg_start_backup()`
+- PostgreSQL: `pg_backup_start()`
 - MongoDB: `db.fsyncLock()`
 
 Then freeze the filesystem for the storage snapshot.
@@ -251,4 +253,4 @@ kill $WATCHDOG_PID 2>/dev/null
 
 ## Conclusion
 
-Freezing and thawing XFS filesystems on RHEL is a reliable technique for taking consistent storage-level snapshots. By combining `xfs_freeze` with LVM or SAN snapshots, you can create point-in-time copies of your data without stopping applications. The key is to minimize the freeze window, always ensure the thaw happens (even on errors), and integrate with application-level consistency mechanisms when available.
+Freezing and thawing XFS filesystems on RHEL is a reliable technique for taking consistent storage-level snapshots. By combining `xfs_freeze` with storage snapshot tools, you can create point-in-time copies of your data without stopping applications. The key is to minimize the freeze window, always ensure the thaw happens (even on errors), and integrate with application-level consistency mechanisms when available.
