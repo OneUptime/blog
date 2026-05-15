@@ -30,7 +30,7 @@ This shows PIDs, users, and access types.
 Gracefully:
 
 ```bash
-sudo fuser -k /mnt/data
+sudo fuser -k -TERM /mnt/data
 ```
 
 Forcefully:
@@ -92,4 +92,3 @@ sudo umount /mnt/data/bind-target
 ## Conclusion
 
 "Device or resource busy" errors on RHEL 9 require identifying and stopping processes that hold references to the mounted filesystem. Use fuser and lsof to find the culprits, then unmount after releasing all references.
-
