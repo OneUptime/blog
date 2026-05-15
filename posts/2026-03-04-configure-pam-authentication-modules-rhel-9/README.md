@@ -65,7 +65,6 @@ account    include      password-auth
 password   include      password-auth
 session    required     pam_selinux.so close
 session    required     pam_loginuid.so
-session    optional     pam_console.so
 session    required     pam_selinux.so open env_params
 session    optional     pam_keyinit.so force revoke
 session    include      password-auth
@@ -96,11 +95,13 @@ The `nullok` option allows empty passwords (remove it to require passwords). The
 ### pam_faillock.so - Account lockout after failed attempts
 
 ```bash
-auth    required    pam_faillock.so preauth silent deny=5 unlock_time=900
-auth    required    pam_faillock.so authfail deny=5 unlock_time=900
+auth       required       pam_faillock.so preauth silent
+auth       [success=1 default=bad] pam_unix.so
+auth       [default=die] pam_faillock.so authfail
+account    required       pam_faillock.so
 ```
 
-This locks an account for 15 minutes after 5 failed login attempts.
+With `deny=5` and `unlock_time=900` set in `/etc/security/faillock.conf`, this locks an account for 15 minutes after 5 failed login attempts.
 
 ### pam_pwquality.so - Password complexity
 
@@ -148,10 +149,10 @@ Add rules like these:
 
 ```bash
 # Allow the admin group from anywhere
-+ : @admins : ALL
++ : (admins) : ALL
 
 # Allow developers only from the office network
-+ : @developers : 10.0.0.0/24
++ : (developers) : 10.0.0.0/24
 
 # Deny everyone else
 - : ALL : ALL
@@ -159,11 +160,14 @@ Add rules like these:
 
 ### Enable pam_access for a service
 
-Add this line to the appropriate PAM service file (or use authselect, which is preferred):
+First check whether `pam_access` is already configured, then enable it with authselect if needed:
 
 ```bash
 # Check if pam_access is already configured
 grep pam_access /etc/pam.d/sshd
+
+# Enable pam_access through the current authselect profile
+sudo authselect enable-feature with-pamaccess
 ```
 
 ## Using authselect to Safely Modify PAM
@@ -242,7 +246,7 @@ sudo journalctl -t pam --since "1 hour ago"
 # Check the secure log for authentication details
 sudo tail -50 /var/log/secure
 
-# List loaded PAM modules for a service
+# Check shared library dependencies for a PAM module
 sudo ldd /usr/lib64/security/pam_unix.so
 ```
 
