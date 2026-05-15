@@ -34,7 +34,7 @@ Select only the packages you need for your specific setup.
 sudo systemctl enable --now pmcd pmlogger
 # or for sysstat:
 
-sudo systemctl enable --now sysstat
+sudo systemctl enable --now sysstat sysstat-collect.timer sysstat-summary.timer
 ```
 
 ## Step 3 - Configure the Monitoring Tool
@@ -46,7 +46,28 @@ Edit the relevant configuration file for your monitoring setup. Common locations
 - `/etc/prometheus/prometheus.yml` for Prometheus
 - `/etc/grafana/grafana.ini` for Grafana
 
-Apply your changes and restart the service:
+For Prometheus file-based service discovery, add a scrape job to `/etc/prometheus/prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: rhel-node-exporter
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/file_sd/rhel-targets.yml
+        refresh_interval: 30s
+```
+
+Create the target file with the RHEL hosts running Node Exporter:
+
+```yaml
+- targets:
+    - rhel-host-01.example.com:9100
+    - rhel-host-02.example.com:9100
+  labels:
+    role: rhel
+```
+
+Apply your changes and restart or reload the service:
 
 ```bash
 sudo systemctl restart <service-name>
@@ -73,7 +94,7 @@ pmstat -s 3
 # sysstat
 sar -u 1 3
 # Prometheus endpoint
-curl -s http://localhost:9090/api/v1/query?query=up
+curl -s 'http://localhost:9090/api/v1/query?query=up'
 ```
 
 ## Step 6 - Set Up Alerting (Optional)
