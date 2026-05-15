@@ -28,19 +28,25 @@ Create a daily backup to a local NAS or dedicated backup disk:
 
 BACKUP_DIR="/mnt/nas/backups/$(hostname)"
 DATE=$(date +%Y-%m-%d)
+LINK_DEST=()
 
 # Mount the NAS if not already mounted
 mountpoint -q /mnt/nas || mount -t nfs nas.local:/backup /mnt/nas
+mkdir -p "$BACKUP_DIR"
+
+if [ -e "${BACKUP_DIR}/latest" ]; then
+  LINK_DEST=(--link-dest="${BACKUP_DIR}/latest")
+fi
 
 # Create incremental backup using rsync with hard links
-rsync -az --delete \
-  --link-dest="${BACKUP_DIR}/latest" \
+rsync -aAXH --numeric-ids --delete \
+  "${LINK_DEST[@]}" \
   --exclude='/proc' --exclude='/sys' --exclude='/dev' \
-  --exclude='/run' --exclude='/tmp' \
+  --exclude='/run' --exclude='/tmp' --exclude='/mnt/nas' \
   / "${BACKUP_DIR}/${DATE}/"
 
 # Update the latest symlink
-ln -snf "${BACKUP_DIR}/${DATE}" "${BACKUP_DIR}/latest"
+ln -sfnT "${BACKUP_DIR}/${DATE}" "${BACKUP_DIR}/latest"
 
 echo "Local backup completed: ${BACKUP_DIR}/${DATE}"
 ```
@@ -59,12 +65,12 @@ REMOTE_DIR="/backup/$(hostname)"
 SSH_KEY="/root/.ssh/offsite_backup_key"
 
 # Send a compressed archive to the offsite location
-tar czf - \
+tar --xattrs --acls --selinux -czf - \
   --exclude=/proc --exclude=/sys --exclude=/dev \
-  --exclude=/run --exclude=/tmp \
+  --exclude=/run --exclude=/tmp --exclude=/mnt/nas \
   / | \
   ssh -i "$SSH_KEY" "$REMOTE" \
-  "cat > ${REMOTE_DIR}/full-backup-$(date +%Y%m%d).tar.gz"
+  "mkdir -p '${REMOTE_DIR}' && cat > '${REMOTE_DIR}/full-backup-$(date +%Y%m%d).tar.gz'"
 
 echo "Offsite backup completed"
 ```
@@ -90,11 +96,15 @@ Implement a retention policy that keeps recent backups longer:
 ```bash
 # /usr/local/bin/cleanup-backups.sh
 BACKUP_DIR="/mnt/nas/backups/$(hostname)"
+CUTOFF=$(date -d '7 days ago' +%Y-%m-%d)
 
 # Keep daily backups for 7 days
-find "$BACKUP_DIR" -maxdepth 1 -type d -mtime +7 -name "20*" -exec rm -rf {} \;
+find "$BACKUP_DIR" -maxdepth 1 -type d -name "20*" | while read -r backup; do
+  backup_date=$(basename "$backup")
+  [ "$backup_date" \< "$CUTOFF" ] && rm -rf "$backup"
+done
 
-# On the offsite server, keep monthly backups for 1 year
+# On the offsite server, keep backups for 30 days
 ssh -i /root/.ssh/offsite_backup_key backupuser@offsite-dc.example.com \
   "find /backup/$(hostname) -mtime +30 -name '*.tar.gz' -delete"
 ```
