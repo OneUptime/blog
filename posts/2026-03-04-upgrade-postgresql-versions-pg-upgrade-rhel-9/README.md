@@ -28,10 +28,17 @@ Install the target PostgreSQL server packages and the upgrade package. For Postg
 sudo dnf install -y postgresql-server postgresql-upgrade
 ```
 
-For PostgreSQL 15 or PostgreSQL 16, select the target module stream and install the upgrade package. For example, to use PostgreSQL 16:
+For a fresh PostgreSQL 15 or PostgreSQL 16 target, select the target module stream and install the upgrade package. For example, to use PostgreSQL 16:
 
 ```bash
 sudo dnf module install postgresql:16/server
+sudo dnf install -y postgresql-upgrade
+```
+
+If you are upgrading from an earlier PostgreSQL module stream within RHEL 9, switch to the later stream before running the migration:
+
+```bash
+sudo dnf module switch-to postgresql:16/server
 sudo dnf install -y postgresql-upgrade
 ```
 
