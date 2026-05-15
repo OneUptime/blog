@@ -54,7 +54,7 @@ resource "google_compute_instance" "rhel" {
 
   # Add your SSH key via metadata
   metadata = {
-    ssh-keys = "admin:${file("~/.ssh/id_rsa.pub")}"
+    ssh-keys = "admin:${file(pathexpand("~/.ssh/id_rsa.pub"))}"
   }
 
   tags = ["allow-ssh"]
