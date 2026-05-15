@@ -13,25 +13,33 @@ A Satellite Capsule Server acts as a local proxy for content delivery, provision
 ## Prerequisites
 
 The Capsule host needs:
-- RHEL 8 or 9 with at least 20 GB RAM and 4 CPUs
+- The latest supported RHEL 8 release with at least 12 GB RAM, 4 GB swap, and a 4-core 2.0 GHz CPU
 - A valid Red Hat subscription with Satellite infrastructure
 - DNS resolution between Satellite Server and Capsule
-- Ports 443, 5647, 8000, 8140, 8443, and 9090 open between them
+- Required Capsule ports open for your services, including 443 and 9090 from Satellite to the Capsule and 80, 443, 8000, and 9090 from clients
 
 ## Register the Capsule Host
 
 ```bash
-# Register the Capsule host to the Satellite Server
+# Generate the host registration command on the Satellite Server
+hammer host-registration generate-command \
+    --activation-keys "capsule-key"
 
-sudo subscription-manager register --org="MyOrg" --activationkey="capsule-key"
+# Run the generated curl command on the Capsule host as root
 
 # Enable required repositories
 sudo subscription-manager repos --disable='*'
 sudo subscription-manager repos \
-    --enable=rhel-9-for-x86_64-baseos-rpms \
-    --enable=rhel-9-for-x86_64-appstream-rpms \
-    --enable=satellite-capsule-6.15-for-rhel-9-x86_64-rpms \
-    --enable=satellite-maintenance-6.15-for-rhel-9-x86_64-rpms
+    --enable=rhel-8-for-x86_64-baseos-rpms \
+    --enable=rhel-8-for-x86_64-appstream-rpms \
+    --enable=satellite-capsule-6.15-for-rhel-8-x86_64-rpms \
+    --enable=satellite-maintenance-6.15-for-rhel-8-x86_64-rpms
+
+# Enable the Capsule module
+sudo dnf module enable -y satellite-capsule:el8
+
+# Update installed packages
+sudo dnf upgrade -y
 
 # Install the Capsule packages
 sudo dnf install -y satellite-capsule
@@ -74,14 +82,17 @@ On the Satellite Server, assign content to the Capsule:
 
 ```bash
 # Add lifecycle environments to the Capsule
+hammer capsule content available-lifecycle-environments \
+    --id 2
+
 hammer capsule content add-lifecycle-environment \
     --id 2 \
-    --lifecycle-environment "Development" \
+    --lifecycle-environment-id 3 \
     --organization "MyOrg"
 
 hammer capsule content add-lifecycle-environment \
     --id 2 \
-    --lifecycle-environment "Production" \
+    --lifecycle-environment-id 4 \
     --organization "MyOrg"
 
 # Synchronize content to the Capsule
@@ -91,11 +102,18 @@ hammer capsule content synchronize --id 2
 ## Configure Firewall on the Capsule
 
 ```bash
-# Open required ports
-sudo firewall-cmd --permanent --add-port={53/udp,53/tcp,67/udp,69/udp}
-sudo firewall-cmd --permanent --add-port={80/tcp,443/tcp}
-sudo firewall-cmd --permanent --add-port={5647/tcp,8000/tcp,8140/tcp,8443/tcp,9090/tcp}
-sudo firewall-cmd --reload
+# Open required ports and services
+sudo firewall-cmd \
+    --add-port="8000/tcp" \
+    --add-port="9090/tcp"
+sudo firewall-cmd \
+    --add-service=dns \
+    --add-service=dhcp \
+    --add-service=tftp \
+    --add-service=http \
+    --add-service=https \
+    --add-service=puppetmaster
+sudo firewall-cmd --runtime-to-permanent
 ```
 
 ## Register Hosts to the Capsule
@@ -103,14 +121,12 @@ sudo firewall-cmd --reload
 On remote RHEL hosts, point them to the Capsule instead of the main Satellite:
 
 ```bash
-# Install the Capsule's CA certificate
-sudo curl -o /etc/pki/ca-trust/source/anchors/capsule-ca.pem \
-    https://capsule.example.com/pub/katello-ca-consumer-latest.noarch.rpm
-sudo rpm -ivh https://capsule.example.com/pub/katello-ca-consumer-latest.noarch.rpm
+# Generate the host registration command on the Satellite Server
+hammer host-registration generate-command \
+    --activation-keys "remote-site-key" \
+    --smart-proxy-id 2
 
-# Register through the Capsule
-sudo subscription-manager register --org="MyOrg" \
-    --activationkey="remote-site-key"
+# Run the generated curl command on each remote RHEL host as root
 ```
 
 ## Verify the Capsule
