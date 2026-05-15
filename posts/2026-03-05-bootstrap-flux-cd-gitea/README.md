@@ -12,10 +12,10 @@ Gitea is a lightweight, self-hosted Git service that is easy to deploy and maint
 
 ## Prerequisites
 
-- A running Kubernetes cluster (v1.26 or later)
-- `kubectl` configured to access your cluster
-- Flux CLI installed (v2.0 or later)
-- A Gitea instance (self-hosted or cloud-hosted like Codeberg)
+- A running Kubernetes cluster supported by your Flux release (current Flux releases support Kubernetes v1.33 or later)
+- `kubectl` configured with cluster-admin access to your cluster
+- Flux CLI installed (v2.3 or later for the `helm.toolkit.fluxcd.io/v2` API used below)
+- A Gitea instance or Gitea-compatible Forgejo host (self-hosted or cloud-hosted like Codeberg)
 - A Gitea personal access token
 
 ## Step 1: Set Up Gitea
