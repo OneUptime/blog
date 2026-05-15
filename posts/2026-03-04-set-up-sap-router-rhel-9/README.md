@@ -90,9 +90,10 @@ sapgenpse seclogin -p local.pse -x "YourPSEPassword"
 cat <<'ROUTES' > /opt/saprouter/saprouttab
 # SAP Router Permission Table
 #
-# Format: P|D  source_host  dest_host  dest_port  password
+# Format: P|S|D  source_host  dest_host  dest_port  password
 #
-# P = Permit, D = Deny, S = Permit with SNC
+# P = Permit, D = Deny, S = Permit only NI protocol connections
+# SNC-specific entries start with K, such as KT, KP, KS, or KD
 
 # Allow SAP support to connect to your SAP systems
 P  194.39.131.34  192.168.1.10  3200  SAP_SUPPORT_PASS
@@ -129,7 +130,7 @@ ExecStart=/opt/saprouter/bin/saprouter -r -S 3299 \
   -G /opt/saprouter/log/saprouter.log \
   -T /opt/saprouter/log/saprouter_trace.log \
   -K "p:CN=saprouter.example.com, OU=SAP, O=YourCompany, C=US"
-ExecStop=/opt/saprouter/bin/saprouter -s -p 3299
+ExecStop=/opt/saprouter/bin/saprouter -s -S 3299
 Restart=on-failure
 RestartSec=30
 
@@ -159,10 +160,10 @@ sudo firewall-cmd --list-ports
 
 ```bash
 # Check if SAP Router is running
-sudo su - saprouter -c 'saprouter -l -p 3299'
+sudo su - saprouter -c 'saprouter -l -S 3299'
 
-# Check the connected clients
-sudo su - saprouter -c 'saprouter -n -p 3299'
+# Check the connected clients in detail
+sudo su - saprouter -c 'saprouter -L -S 3299'
 
 # View the log for troubleshooting
 tail -50 /opt/saprouter/log/saprouter.log
@@ -170,4 +171,4 @@ tail -50 /opt/saprouter/log/saprouter.log
 
 ## Conclusion
 
-SAP Router on RHEL provides a secure gateway between your SAP landscape and external networks, including SAP support. The route permission table gives you granular control over which connections are allowed, and SNC encryption ensures that all traffic is protected in transit. Review and update your saprouttab regularly as your SAP landscape changes.
+SAP Router on RHEL provides a secure gateway between your SAP landscape and external networks, including SAP support. The route permission table gives you granular control over which connections are allowed, and SNC encryption protects connections that are configured to use SNC. Review and update your saprouttab regularly as your SAP landscape changes.
