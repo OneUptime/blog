@@ -77,7 +77,7 @@ Now grow the XFS filesystem to fill the expanded device:
 sudo xfs_growfs /data
 ```
 
-The argument to `xfs_growfs` is the mount point, not the device path.
+Use the mount point as the argument to `xfs_growfs`. The command can also accept the block device path for a mounted XFS filesystem, but Red Hat's examples use the mount point.
 
 You can also grow to a specific size by specifying the number of filesystem blocks:
 
@@ -179,7 +179,7 @@ sudo smartctl -a /dev/sdb
 ## Best Practices
 
 - **Always verify available space** on the underlying device before attempting to grow.
-- **Use `lvextend -r`** when working with LVM to combine the volume extension and filesystem growth into one atomic operation.
+- **Use `lvextend -r`** when working with LVM to combine the volume extension and filesystem growth into one command.
 - **Monitor filesystem usage** proactively so you can grow before reaching critical levels.
 - **Test in non-production first** if you are unfamiliar with the procedure.
 
