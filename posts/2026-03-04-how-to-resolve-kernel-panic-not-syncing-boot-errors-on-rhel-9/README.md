@@ -21,7 +21,7 @@ When the GRUB menu appears, select the rescue kernel or:
 ## Check Recent Kernel Updates
 
 ```bash
-sudo rpm -qa kernel --last
+sudo rpm -q kernel --last
 ```
 
 ## Boot with a Previous Kernel
@@ -45,7 +45,7 @@ sudo dracut --regenerate-all --force
 
 ```bash
 # Check for missing modules
-sudo lsinitrd /boot/initramfs-$(uname -r).img | grep -i module
+sudo lsinitrd /boot/initramfs-$(uname -r).img | grep module_name
 
 # Add missing module to dracut
 echo 'add_drivers+=" module_name "' | sudo tee /etc/dracut.conf.d/custom.conf
@@ -65,8 +65,7 @@ sudo vi /etc/fstab
 ### Hardware Issues
 
 ```bash
-# Run memory test from GRUB menu
-memtest86+
+# Run a memory test from your system firmware or vendor diagnostics
 
 # Check disk health
 sudo smartctl -a /dev/sda
@@ -75,7 +74,7 @@ sudo smartctl -a /dev/sda
 ### SELinux Relabeling Required
 
 ```bash
-sudo touch /.autorelabel
+sudo fixfiles -F onboot
 sudo reboot
 ```
 
@@ -93,11 +92,10 @@ sudo journalctl -b -1 -p err
 If the kernel is corrupted:
 
 ```bash
-sudo dnf reinstall kernel-core
+sudo dnf reinstall kernel-core kernel-modules-core kernel-modules
 sudo grub2-mkconfig -o /boot/grub2/grub.cfg
 ```
 
 ## Conclusion
 
 Kernel panics on RHEL 9 require booting into rescue mode or using a previous kernel for diagnosis. Rebuild the initramfs, check fstab, and verify hardware health to resolve the underlying issue.
-
