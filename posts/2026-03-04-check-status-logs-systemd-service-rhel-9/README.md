@@ -61,13 +61,13 @@ Here is what each line tells you:
 For scripting, you want single-word answers instead of the full status block:
 
 ```bash
-# Returns "active" or "inactive"
+# Prints the current active state, such as "active", "inactive", or "failed"
 systemctl is-active httpd
 
-# Returns "enabled" or "disabled"
+# Prints the unit file state, such as "enabled", "disabled", "masked", or "static"
 systemctl is-enabled httpd
 
-# Returns "failed" if the service crashed, "active" otherwise
+# Prints "failed" if the service is in the failed state; otherwise prints its current state
 systemctl is-failed httpd
 ```
 
@@ -224,10 +224,10 @@ When you log into a server and want to quickly see if anything is broken:
 
 ```bash
 # List all services that have failed
-systemctl --failed
+systemctl --failed --type=service
 ```
 
-This shows a table of all failed units. For each failed service, dig into the logs:
+This shows a table of failed service units. For each failed service, dig into the logs:
 
 ```bash
 # See why a specific service failed
@@ -293,10 +293,10 @@ sudo journalctl --disk-usage
 To clean up old entries:
 
 ```bash
-# Keep only the last 7 days of logs
+# Vacuum archived journal files older than 7 days
 sudo journalctl --vacuum-time=7d
 
-# Keep only 500M of journal data
+# Vacuum archived journal files until they use less than 500M
 sudo journalctl --vacuum-size=500M
 ```
 
