@@ -79,15 +79,17 @@ kubectl create secret generic sops-vault \
   --from-literal=sops.vault-token="$FLUX_VAULT_TOKEN"
 ```
 
-## Step 5: Configure Vault Kubernetes Authentication (Production)
+## Step 5: Configure Vault Kubernetes Authentication (Optional)
 
-For production environments, Vault's Kubernetes auth method can issue scoped Vault tokens bound to the kustomize-controller service account. Flux still expects a Vault token through `sops.vault-token` or the controller's `VAULT_TOKEN` environment variable, so use the token returned by the Kubernetes auth login when creating the secret in Step 4.
+Vault's Kubernetes auth method can issue scoped Vault tokens bound to the kustomize-controller service account. Flux still expects a Vault token through `sops.vault-token` or the controller's `VAULT_TOKEN` environment variable, so use the token returned by the Kubernetes auth login when creating the secret in Step 4 and make sure it is renewed or refreshed before it expires. For production environments, use an automated token renewal approach such as Vault Agent or another token management process.
 
 ```bash
 # Enable Kubernetes auth in Vault
 vault auth enable kubernetes
 
-# Configure the Kubernetes auth backend
+# Configure the Kubernetes auth backend.
+# This form works when Vault can use its in-cluster service account token;
+# otherwise provide the Kubernetes API server address, CA, and reviewer JWT.
 vault write auth/kubernetes/config \
   kubernetes_host="https://kubernetes.default.svc:443"
 
@@ -223,8 +225,13 @@ Common issues with Vault Transit decryption and how to resolve them.
 # Check if the Vault token is valid
 kubectl get secret sops-vault -n flux-system -o jsonpath='{.data.sops\.vault-token}' | base64 -d | vault token lookup -
 
-# Verify the kustomize-controller can reach Vault
-kubectl exec -n flux-system deployment/kustomize-controller -- wget -qO- https://vault.example.com/v1/sys/health
+# Verify Vault is reachable from the flux-system namespace
+kubectl run vault-connectivity-check \
+  --namespace=flux-system \
+  --rm -i \
+  --restart=Never \
+  --image=curlimages/curl \
+  -- https://vault.example.com/v1/sys/health
 
 # Check controller logs for Vault-related errors
 kubectl logs -n flux-system deployment/kustomize-controller | grep -i "vault\|transit\|decrypt"
