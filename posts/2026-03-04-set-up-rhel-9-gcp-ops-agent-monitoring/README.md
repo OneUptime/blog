@@ -34,10 +34,10 @@ curl -sSO https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh
 sudo bash add-google-cloud-ops-agent-repo.sh --also-install
 
 # Verify the agent is running
-sudo systemctl status google-cloud-ops-agent
+sudo systemctl status google-cloud-ops-agent"*"
 
 # Check the agent version
-google_cloud_ops_agent_engine --version 2>/dev/null || echo "Agent installed"
+rpm --query --queryformat '%{NAME} %{VERSION} %{RELEASE} %{ARCH}\n' google-cloud-ops-agent
 ```
 
 ## Step 2: Configure Custom Metrics
@@ -91,7 +91,6 @@ logging:
     # Parse JSON application logs
     json_parser:
       type: parse_json
-      field: message
 
   service:
     pipelines:
@@ -126,8 +125,8 @@ gcloud alpha monitoring policies create \
   --display-name="RHEL High CPU" \
   --condition-display-name="CPU above 80%" \
   --condition-filter='metric.type="agent.googleapis.com/cpu/utilization" AND resource.type="gce_instance"' \
-  --condition-threshold-value=0.8 \
-  --condition-threshold-duration=300s \
+  --if='> 0.8' \
+  --duration=300s \
   --notification-channels="projects/PROJECT_ID/notificationChannels/CHANNEL_ID"
 ```
 
