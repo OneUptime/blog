@@ -16,11 +16,11 @@ Production environments require systematic verification before, during, and afte
 - Root or sudo access
 - A terminal session
 
-## Step 2: Configure the Service
+## Step 2: Configure Patch Management
 
 ### Patch Management Items
 
-- [ ] DNF automatic updates are configured: `dnf install dnf-automatic`
+- [ ] DNF automatic updates are installed and configured: `sudo dnf install dnf-automatic`
 - [ ] Update schedule is documented
 - [ ] Staging environment mirrors production
 - [ ] Rollback procedure is documented
@@ -28,20 +28,20 @@ Production environments require systematic verification before, during, and afte
 - [ ] Kernel updates include reboot scheduling
 - [ ] Post-update validation checks are automated
 - [ ] Package exclude list is maintained for sensitive packages
-- [ ] RHEL subscription is active: `subscription-manager status`
+- [ ] RHEL subscription is active on RHEL systems: `subscription-manager status`
 
-## Step 3: Enable and Start the Service
+## Step 3: Enable and Start the Timer
 
 ```bash
-# Enable the service to start on boot
+# Enable and start the DNF Automatic timer
 
-sudo systemctl enable <service-name>
+sudo systemctl enable --now dnf-automatic-install.timer
 
-# Start the service
-sudo systemctl start <service-name>
+# Check the timer status
+sudo systemctl status dnf-automatic-install.timer
 
-# Check the status
-sudo systemctl status <service-name>
+# Check scheduled timers
+sudo systemctl list-timers --all
 ```
 
 
@@ -60,7 +60,7 @@ uptime
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
+- If the timer fails to start, check the logs with `journalctl -u dnf-automatic-install.timer -e --no-pager`.
 - Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
 
 ## Conclusion
