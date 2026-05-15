@@ -67,7 +67,7 @@ Every "OK" means that check passed. If any check fails, the output clearly indic
 Each check has a built-in wait period. The overall timeout controls how long the command waits before declaring failure:
 
 ```bash
-# Default timeout (varies by Talos version, usually around 10 minutes)
+# Default timeout (20 minutes in current Talos versions)
 talosctl health --nodes <cp-ip>
 
 # Custom timeout - shorter for quick checks
@@ -156,7 +156,7 @@ waiting for etcd to be healthy: 1 error(s) occurred:
 Action: Check etcd service and logs on the failing node:
 
 ```bash
-talosctl services --nodes 10.0.0.2 | grep etcd
+talosctl service --nodes 10.0.0.2 | grep etcd
 talosctl logs etcd --nodes 10.0.0.2
 ```
 
@@ -266,10 +266,10 @@ echo "Waiting for cluster to bootstrap..."
 talosctl health --nodes <cp-ip> --wait-timeout 20m
 
 echo "Cluster is ready!"
-# Now safe to install CNI, deploy applications, etc.
+# Now safe to deploy applications, etc.
 ```
 
-The first bootstrap takes the longest because images need to be pulled and certificates need to be generated. A 20-minute timeout is reasonable.
+The first bootstrap takes the longest because images need to be pulled and control plane components need to start. A 20-minute timeout is reasonable.
 
 ## Combining with Other Health Checks
 
@@ -290,8 +290,14 @@ TALOS_OK=$?
 echo ""
 echo "=== Kubernetes Health ==="
 kubectl get nodes
-kubectl get pods -n kube-system | grep -v Running | grep -v Completed
-K8S_OK=$?
+NODES_OK=$?
+kubectl get pods -n kube-system
+PODS_OK=$?
+if [ $NODES_OK -eq 0 ] && [ $PODS_OK -eq 0 ] && ! kubectl get pods -n kube-system --no-headers | grep -v Running | grep -v Completed | grep -q .; then
+    K8S_OK=0
+else
+    K8S_OK=1
+fi
 
 # etcd specific checks
 echo ""
