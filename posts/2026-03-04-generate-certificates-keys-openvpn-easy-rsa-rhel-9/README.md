@@ -180,7 +180,7 @@ resolv-retry infinite
 nobind
 persist-key
 persist-tun
-cipher AES-256-GCM
+data-ciphers AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305
 auth SHA256
 key-direction 1
 verb 3
@@ -222,7 +222,8 @@ cd ~/openvpn-pki
 sudo cp ~/openvpn-pki/pki/crl.pem /etc/openvpn/server/
 
 # Add the CRL to the server config if not already there
-echo "crl-verify /etc/openvpn/server/crl.pem" | sudo tee -a /etc/openvpn/server/server.conf
+sudo grep -qxF "crl-verify /etc/openvpn/server/crl.pem" /etc/openvpn/server/server.conf || \
+  echo "crl-verify /etc/openvpn/server/crl.pem" | sudo tee -a /etc/openvpn/server/server.conf
 
 # Restart OpenVPN to apply
 sudo systemctl restart openvpn-server@server
@@ -237,9 +238,12 @@ cd ~/openvpn-pki
 
 # Renew a client certificate
 ./easyrsa renew client2
+./easyrsa revoke-renewed client2
+./easyrsa gen-crl
 
-# Copy the new certificate for distribution
+# Copy the new certificate for distribution and redeploy the updated CRL
 cp ~/openvpn-pki/pki/issued/client2.crt ~/client2-renewed.crt
+sudo cp ~/openvpn-pki/pki/crl.pem /etc/openvpn/server/
 ```
 
 ## Listing and Checking Certificates
