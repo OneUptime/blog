@@ -47,14 +47,14 @@ Create `configure-podman.yml`:
   hosts: managed_hosts
   become: true
   roles:
-    - role: rhel-system-roles.podman
+    - role: redhat.rhel_system_roles.podman
 ```
 
 Add the role-specific variables. Check the role documentation for available options:
 
 ```bash
-ls /usr/share/doc/rhel-system-roles/podman/
-cat /usr/share/doc/rhel-system-roles/podman/README.md
+ls /usr/share/ansible/roles/rhel-system-roles.podman/
+cat /usr/share/ansible/roles/rhel-system-roles.podman/README.md
 ```
 
 ## Step 4 - Run the Playbook
@@ -68,10 +68,10 @@ ansible-playbook -i inventory.ini configure-podman.yml
 On the managed hosts, verify that the configuration was applied:
 
 ```bash
-# Check relevant service or configuration
-
-systemctl status <service>
-cat <config-file>
+# Replace the placeholders with the systemd unit or configuration file
+# created from your podman role variables.
+systemctl status <generated-unit-name>
+cat <generated-config-file>
 ```
 
 ## Idempotency
