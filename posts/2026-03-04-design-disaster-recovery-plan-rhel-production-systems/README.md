@@ -14,7 +14,7 @@ A disaster recovery (DR) plan for RHEL systems ensures you can restore service a
 
 Before configuring anything, establish your RPO (Recovery Point Objective) and RTO (Recovery Time Objective):
 
-```bash
+```text
 RPO: Maximum acceptable data loss (e.g., 1 hour = hourly backups)
 RTO: Maximum acceptable downtime (e.g., 4 hours = must restore in 4 hours)
 ```
@@ -34,39 +34,43 @@ OUTPUT=ISO
 OUTPUT_URL=nfs://backup-server/rear-output
 BACKUP=NETFS
 BACKUP_URL=nfs://backup-server/rear-backups
-BACKUP_PROG_EXCLUDE=("${BACKUP_PROG_EXCLUDE[@]}" '/tmp/*' '/var/tmp/*')
-NETFS_KEEP_OLD_BACKUP_COPY=yes
+BACKUP_PROG_EXCLUDE+=( '/tmp/*' '/var/tmp/*' )
+NETFS_KEEP_OLD_BACKUP_COPY=y
 EOF
 
-# Create a full backup and recovery ISO
+# Create a backup and recovery ISO
 sudo rear -v mkbackup
 ```
 
 ## Data-Level Backups
 
-For application data, use rsync or dedicated backup tools:
+For application data, use dedicated backup tools or rsync for data that can be copied safely:
 
 ```bash
-# Incremental backup of critical data directories
-sudo rsync -avz --delete \
-  /var/lib/pgsql/ \
-  backup-server:/backups/$(hostname)/pgsql/
+# Physical backup of a running PostgreSQL cluster
+backup_dir=/backups/$(hostname)/pgsql/$(date +%Y%m%d)
+sudo mkdir -p "$backup_dir"
+sudo chown postgres:postgres "$backup_dir"
+sudo -u postgres pg_basebackup \
+  -D "$backup_dir" \
+  -Fp -P -X stream
 
 # Schedule daily backups via cron
 sudo tee /etc/cron.d/data-backup << 'EOF'
-0 2 * * * root rsync -avz --delete /var/lib/pgsql/ backup-server:/backups/$(hostname)/pgsql/ >> /var/log/backup.log 2>&1
+0 2 * * * root backup_dir=/backups/$(hostname)/pgsql/$(date +\%Y\%m\%d) && mkdir -p "$backup_dir" && chown postgres:postgres "$backup_dir" && sudo -u postgres pg_basebackup -D "$backup_dir" -Fp -P -X stream >> /var/log/backup.log 2>&1
 EOF
 ```
 
 ## LVM Snapshot-Based Backups
 
-Use LVM snapshots for consistent point-in-time copies:
+Use LVM snapshots for point-in-time copies. Quiesce applications or use application-native backup features if you need application-consistent backups:
 
 ```bash
-# Create a consistent snapshot
+# Create a snapshot
 sudo lvcreate -L 10G -s -n data-snap /dev/vg_data/lv_data
 
 # Mount the snapshot read-only and back it up
+sudo mkdir -p /mnt/snap /backup
 sudo mount -o ro /dev/vg_data/data-snap /mnt/snap
 sudo tar czf /backup/data-$(date +%Y%m%d).tar.gz -C /mnt/snap .
 sudo umount /mnt/snap
@@ -87,7 +91,10 @@ systemctl --failed
 df -h
 
 # Step 4: Restore application data from the latest backup
-sudo rsync -avz backup-server:/backups/$(hostname)/pgsql/ /var/lib/pgsql/
+sudo systemctl stop postgresql
+latest_backup=$(ls -td /backups/$(hostname)/pgsql/* | head -1)
+sudo rsync -a --delete "$latest_backup"/ /var/lib/pgsql/data/
+sudo chown -R postgres:postgres /var/lib/pgsql/data/
 
 # Step 5: Start application services
 sudo systemctl start postgresql
