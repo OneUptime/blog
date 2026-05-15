@@ -17,14 +17,16 @@ Cockpit is a web-based administration interface included with RHEL. With the vir
 
 sudo dnf install -y cockpit cockpit-machines
 
-# Ensure libvirt is installed
-sudo dnf install -y libvirt qemu-kvm virt-install
+# Ensure the virtualization packages are installed
+sudo dnf install -y qemu-kvm libvirt virt-install
 
 # Start and enable Cockpit
 sudo systemctl enable --now cockpit.socket
 
-# Start libvirt
-sudo systemctl enable --now libvirtd
+# Start the modular libvirt sockets used by RHEL 9
+for drv in qemu network nodedev nwfilter secret storage interface; do
+  sudo systemctl enable --now virt${drv}d{,-ro,-admin}.socket
+done
 
 # Open the firewall for Cockpit
 sudo firewall-cmd --permanent --add-service=cockpit
@@ -76,7 +78,7 @@ Once a VM is created, Cockpit provides:
 - **Performance monitoring**: CPU, memory, and disk usage graphs
 - **Disk management**: Add, remove, or resize virtual disks
 - **Network configuration**: Add or modify network interfaces
-- **Snapshots**: Create and manage VM snapshots
+- **Snapshots**: Create and manage VM snapshots on RHEL 9.4 or later when the VM uses file-based storage
 
 ## Verifying VMs from the Command Line
 
