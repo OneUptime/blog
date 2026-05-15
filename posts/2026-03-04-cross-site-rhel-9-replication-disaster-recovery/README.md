@@ -38,10 +38,10 @@ Using tar for a full backup:
 sudo tar czf /backups/full-backup-$(date +%Y%m%d).tar.gz --exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run --exclude=/tmp --exclude=/backups /
 ```
 
-Using rsync for incremental backup:
+Using rsync for incremental cross-site backup:
 
 ```bash
-sudo rsync -aAXv --delete / /backups/latest/ --exclude={/proc,/sys,/dev,/run,/tmp,/backups}
+sudo rsync -aAXv --delete --exclude={/proc,/sys,/dev,/run,/tmp,/backups} / backupuser@dr.example.com:/backups/latest/
 ```
 
 ## Step 3 - Automate with Cron
@@ -60,7 +60,7 @@ Always verify that backups are readable:
 tar tzf /backups/full-backup-*.tar.gz | head -20
 
 # For rsync
-ls -la /backups/latest/
+ssh backupuser@dr.example.com "ls -la /backups/latest/"
 ```
 
 ## Step 5 - Test Restoration
