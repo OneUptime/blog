@@ -57,7 +57,7 @@ sudo subscription-manager remove --all
 sudo subscription-manager status
 ```
 
-## View Subscription Details
+## View Consumed Pool IDs
 
 ```bash
 sudo subscription-manager list --consumed --pool-only
@@ -95,4 +95,3 @@ sudo subscription-manager syspurpose show
 ## Conclusion
 
 Proper subscription management keeps your RHEL 9 systems compliant and ensures access to updates. Simple Content Access reduces the complexity of managing individual subscription attachments.
-
