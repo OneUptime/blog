@@ -35,10 +35,10 @@ graph TD
 
 ## Step 1: Install Logwatch
 
-Logwatch is available in the EPEL repository:
+Logwatch is available in the standard RHEL repositories. On compatible rebuilds where it is not available, enable EPEL first:
 
 ```bash
-# Enable EPEL repository if not already enabled
+# Enable EPEL repository only if your system does not provide Logwatch
 
 sudo dnf install epel-release -y
 
@@ -211,14 +211,14 @@ sudo logwatch --output stdout --service sshd --service sudo --service pam_unix
 sudo logwatch --output stdout --service All --service "-zz-network"
 ```
 
-To permanently exclude services, create override files:
+To permanently exclude services, add negative `Service` entries to the local Logwatch configuration:
 
 ```bash
-# Create a directory for local service overrides
-sudo mkdir -p /etc/logwatch/conf/services
+# Edit the local configuration file
+sudo vi /etc/logwatch/conf/logwatch.conf
 
-# Disable a service report entirely
-echo "Title = " | sudo tee /etc/logwatch/conf/services/sendmail.conf
+# Disable a service report
+echo 'Service = "-sendmail"' | sudo tee -a /etc/logwatch/conf/logwatch.conf
 ```
 
 ## Step 8: Create Custom Log Groups
@@ -239,7 +239,7 @@ LogFile = /var/log/myapp/*.log
 Archive = /var/log/myapp/*.log.*.gz
 
 # Apply a date filter
-*ApplystdDate
+*ApplyStdDate
 ```
 
 ## Example Report Output
