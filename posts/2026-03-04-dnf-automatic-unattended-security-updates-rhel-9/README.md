@@ -77,7 +77,7 @@ email_host = localhost
 
 The two settings that matter most are `upgrade_type` and `apply_updates`. Setting `upgrade_type = security` means DNF will only grab packages flagged as security errata. Setting `apply_updates = yes` tells it to actually install them, not just download.
 
-If you are nervous about fully automatic installs, you can set `apply_updates = no` and `download_updates = yes`. This way packages get cached locally, and you just need to run `dnf update` to apply them - they will install instantly since they are already downloaded.
+If you are nervous about fully automatic installs, you can set `apply_updates = no` and `download_updates = yes`. This way packages get cached locally, and you just need to run `dnf update` to apply them - DNF can reuse the packages it already downloaded.
 
 ## Configuring the Systemd Timer
 
@@ -90,9 +90,9 @@ systemctl list-unit-files | grep dnf-automatic
 
 You will see these timers:
 
-- `dnf-automatic.timer` - Downloads and applies updates (respects your config)
+- `dnf-automatic.timer` - Reports, downloads, or applies updates based on your config
 - `dnf-automatic-download.timer` - Only downloads, never installs
-- `dnf-automatic-install.timer` - Downloads and installs regardless of config
+- `dnf-automatic-install.timer` - Downloads and installs, overriding the download/apply settings in your config
 - `dnf-automatic-notifyonly.timer` - Only notifies about available updates
 
 For security-only auto-patching, enable the main timer:
@@ -116,7 +116,7 @@ You can also see when it will next run:
 systemctl list-timers dnf-automatic.timer
 ```
 
-By default, the timer fires about one hour after boot and then once every 24 hours. If you want to change the schedule, override the timer:
+By default, the timer runs daily at 6:00 AM with up to a 60-minute randomized delay. If you want to change the schedule, override the timer:
 
 ```bash
 # Create a timer override
@@ -189,7 +189,7 @@ echo "Test from $(hostname)" | mail -s "DNF Automatic Test" sysadmin-team@mycomp
 
 ## Testing Your Configuration
 
-Before you trust this to run unattended, do a dry run:
+Before you trust this to run unattended, do a manual test run:
 
 ```bash
 # Run dnf-automatic manually to test the configuration
@@ -202,7 +202,7 @@ You can also check what security updates are currently available:
 
 ```bash
 # List available security updates
-sudo dnf updateinfo list security
+sudo dnf updateinfo list updates security
 
 # Get a summary of available security advisories
 sudo dnf updateinfo summary
