@@ -56,47 +56,54 @@ vi ~/playbooks/configure-sudo.yml
   become: true
 
   vars:
-    # Reset any existing drop-in files (clean slate)
-    sudo_remove_all: false
+    # Keep unmanaged drop-in files in place
+    sudo_remove_unauthorized_included_files: false
 
     # Define sudoers rules
-    sudo_sudoers:
-      - name: webadmins
-        state: present
-        users:
-          - "%webadmins"
-        hosts:
-          - ALL
-        commands:
-          - /usr/bin/systemctl start httpd
-          - /usr/bin/systemctl stop httpd
-          - /usr/bin/systemctl restart httpd
-          - /usr/bin/systemctl reload httpd
-          - /usr/bin/systemctl status httpd
+    sudo_sudoers_files:
+      - path: /etc/sudoers.d/webadmins
+        user_specifications:
+          - users:
+              - "%webadmins"
+            hosts:
+              - ALL
+            operators:
+              - root
+            commands:
+              - /usr/bin/systemctl start httpd
+              - /usr/bin/systemctl stop httpd
+              - /usr/bin/systemctl restart httpd
+              - /usr/bin/systemctl reload httpd
+              - /usr/bin/systemctl status httpd
 
-      - name: dbadmins
-        state: present
-        users:
-          - "%dbadmins"
-        hosts:
-          - ALL
-        commands:
-          - /usr/bin/systemctl start postgresql
-          - /usr/bin/systemctl stop postgresql
-          - /usr/bin/systemctl restart postgresql
-          - /usr/bin/systemctl status postgresql
+      - path: /etc/sudoers.d/dbadmins
+        user_specifications:
+          - users:
+              - "%dbadmins"
+            hosts:
+              - ALL
+            operators:
+              - root
+            commands:
+              - /usr/bin/systemctl start postgresql
+              - /usr/bin/systemctl stop postgresql
+              - /usr/bin/systemctl restart postgresql
+              - /usr/bin/systemctl status postgresql
 
-      - name: monitoring
-        state: present
-        users:
-          - "%monitoring"
-        hosts:
-          - ALL
-        nopassword: true
-        commands:
-          - /usr/bin/journalctl
-          - /usr/bin/ss
-          - /usr/bin/lsblk
+      - path: /etc/sudoers.d/monitoring
+        user_specifications:
+          - users:
+              - "%monitoring"
+            hosts:
+              - ALL
+            operators:
+              - root
+            tags:
+              - NOPASSWD
+            commands:
+              - /usr/bin/journalctl
+              - /usr/bin/ss
+              - /usr/bin/lsblk
 
   roles:
     - rhel-system-roles.sudo
@@ -120,14 +127,20 @@ ansible-playbook ~/playbooks/configure-sudo.yml --check --diff
 ### Using defaults
 
 ```yaml
-sudo_sudoers:
-  - name: global-defaults
-    state: present
+sudo_sudoers_files:
+  - path: /etc/sudoers.d/global-defaults
     defaults:
       - "!visiblepw"
       - "env_reset"
-      - "env_keep += HOME"
-      - 'secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"'
+      - env_keep:
+          - HOME
+      - secure_path:
+          - /usr/local/sbin
+          - /usr/local/bin
+          - /usr/sbin
+          - /usr/bin
+          - /sbin
+          - /bin
       - 'logfile="/var/log/sudo.log"'
       - "log_year"
 ```
@@ -135,37 +148,43 @@ sudo_sudoers:
 ### Per-user rules
 
 ```yaml
-sudo_sudoers:
-  - name: deploy-user
-    state: present
-    users:
-      - deploy
-    hosts:
-      - ALL
-    runas:
-      - root
-    nopassword: true
-    commands:
-      - /opt/deploy/run-deploy.sh
-      - /usr/bin/systemctl restart myapp
+sudo_sudoers_files:
+  - path: /etc/sudoers.d/deploy-user
+    user_specifications:
+      - users:
+          - deploy
+        hosts:
+          - ALL
+        operators:
+          - root
+        tags:
+          - NOPASSWD
+        commands:
+          - /opt/deploy/run-deploy.sh
+          - /usr/bin/systemctl restart myapp
 ```
 
 ### Removing old rules
 
 ```yaml
-sudo_sudoers:
-  - name: old-team-rule
+- name: Remove old sudoers drop-in
+  ansible.builtin.file:
+    path: /etc/sudoers.d/old-team-rule
     state: absent
 ```
 
 ### Clean slate approach
 
-If you want to remove all existing drop-in files and start fresh:
+If you want to remove unmanaged drop-in files and start fresh:
 
 ```yaml
-sudo_remove_all: true
-sudo_sudoers:
-  # ... define all your rules here
+sudo_rewrite_default_sudoers_file: false
+sudo_remove_unauthorized_included_files: true
+sudo_sudoers_files:
+  - path: /etc/sudoers
+    include_directories:
+      - /etc/sudoers.d
+  # ... define all managed drop-in files here
 ```
 
 ## Organizing by Environment
@@ -186,51 +205,64 @@ inventory/
 In `group_vars/webservers.yml`:
 
 ```yaml
-sudo_sudoers:
-  - name: webadmins
-    state: present
-    users:
-      - "%webadmins"
-    hosts:
-      - ALL
-    commands:
-      - /usr/bin/systemctl start httpd
-      - /usr/bin/systemctl stop httpd
-      - /usr/bin/systemctl restart httpd
-      - /usr/bin/systemctl reload httpd
+sudo_group_sudoers_files:
+  - path: /etc/sudoers.d/webadmins
+    user_specifications:
+      - users:
+          - "%webadmins"
+        hosts:
+          - ALL
+        operators:
+          - root
+        commands:
+          - /usr/bin/systemctl start httpd
+          - /usr/bin/systemctl stop httpd
+          - /usr/bin/systemctl restart httpd
+          - /usr/bin/systemctl reload httpd
 ```
 
 In `group_vars/dbservers.yml`:
 
 ```yaml
-sudo_sudoers:
-  - name: dbadmins
-    state: present
-    users:
-      - "%dbadmins"
-    hosts:
-      - ALL
-    commands:
-      - /usr/bin/systemctl start postgresql
-      - /usr/bin/systemctl stop postgresql
-      - /usr/bin/systemctl restart postgresql
+sudo_group_sudoers_files:
+  - path: /etc/sudoers.d/dbadmins
+    user_specifications:
+      - users:
+          - "%dbadmins"
+        hosts:
+          - ALL
+        operators:
+          - root
+        commands:
+          - /usr/bin/systemctl start postgresql
+          - /usr/bin/systemctl stop postgresql
+          - /usr/bin/systemctl restart postgresql
 ```
 
 In `group_vars/all.yml`:
 
 ```yaml
 # Rules that apply to all servers
-sudo_sudoers:
-  - name: monitoring
-    state: present
-    users:
-      - "%monitoring"
-    hosts:
-      - ALL
-    nopassword: true
-    commands:
-      - /usr/bin/journalctl
-      - /usr/bin/ss
+sudo_common_sudoers_files:
+  - path: /etc/sudoers.d/monitoring
+    user_specifications:
+      - users:
+          - "%monitoring"
+        hosts:
+          - ALL
+        operators:
+          - root
+        tags:
+          - NOPASSWD
+        commands:
+          - /usr/bin/journalctl
+          - /usr/bin/ss
+```
+
+Then combine the common and group-specific lists in the playbook:
+
+```yaml
+sudo_sudoers_files: "{{ sudo_common_sudoers_files + (sudo_group_sudoers_files | default([])) }}"
 ```
 
 ## Verifying the Configuration
@@ -257,11 +289,9 @@ sudo -l -U alice
 - name: Validate sudo configuration
   hosts: localhost
   tasks:
-    - name: Run ansible-playbook in check mode
+    - name: Run ansible-playbook syntax check
       command: >
-        ansible-playbook configure-sudo.yml
-        --check --diff
-        --syntax-check
+        ansible-playbook --syntax-check configure-sudo.yml
 ```
 
 ### Use a staging environment
