@@ -111,7 +111,7 @@ df -h /mnt/replicated-data
 
 ## Failover Procedure
 
-If node1 fails, promote node2:
+If node1 fails, fence node1 or confirm that it is offline, then promote node2:
 
 ```bash
 # On node2: promote to primary
