@@ -21,13 +21,13 @@ PCI passthrough assigns a physical PCI device (GPU, NIC, NVMe controller, etc.) 
 # Enable IOMMU in kernel parameters
 
 sudo grubby --update-kernel=ALL --args="intel_iommu=on iommu=pt"
-# For AMD: amd_iommu=on iommu=pt
+# For AMD: iommu=pt
 
 # Reboot
 sudo systemctl reboot
 
 # Verify IOMMU is enabled
-dmesg | grep -i "IOMMU enabled"
+virt-host-validate | grep -i IOMMU
 ```
 
 ## Identifying the PCI Device
@@ -83,6 +83,7 @@ sudo dracut -f
 # Create the hostdev XML
 cat << 'EOF' > /tmp/pci-passthrough.xml
 <hostdev mode='subsystem' type='pci' managed='yes'>
+  <driver name='vfio'/>
   <source>
     <address domain='0x0000' bus='0x01' slot='0x00' function='0x0'/>
   </source>
@@ -90,7 +91,7 @@ cat << 'EOF' > /tmp/pci-passthrough.xml
 EOF
 
 # Attach to a VM (VM must be shut down for initial attachment)
-sudo virsh attach-device rhel9-vm /tmp/pci-passthrough.xml --config
+sudo virsh attach-device rhel9-vm --file /tmp/pci-passthrough.xml --persistent
 
 # Start the VM
 sudo virsh start rhel9-vm
@@ -100,11 +101,12 @@ sudo virsh start rhel9-vm
 
 ```bash
 # Pass through a device during VM creation
+# Use the matching node device name from: virsh nodedev-list --cap pci
 sudo virt-install \
   --name gpu-vm \
   --memory 8192 --vcpus 4 \
   --disk size=50 \
-  --host-device 01:00.0 \
+  --host-device pci_0000_01_00_0 \
   --cdrom /var/lib/libvirt/images/rhel-9.4-dvd.iso \
   --os-variant rhel9.4 \
   --graphics vnc \
