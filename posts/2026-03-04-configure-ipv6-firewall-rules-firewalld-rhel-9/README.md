@@ -12,7 +12,7 @@ One of the nice things about firewalld on RHEL is that it handles both IPv4 and 
 
 ## How firewalld Handles IPv6
 
-firewalld uses nftables as its backend on RHEL. When you add a rule like `--add-service=https`, it creates entries in both the IPv4 and IPv6 tables. This dual-stack behavior is automatic.
+firewalld uses nftables as its backend on RHEL 9. When you add a rule like `--add-service=https`, it creates rules in firewalld's `inet` ruleset that can match both IPv4 and IPv6 traffic. This dual-stack behavior is automatic unless the service or rule is constrained to a specific family.
 
 ```bash
 # Verify firewalld is running with nftables backend
@@ -32,11 +32,14 @@ These ICMPv6 types must be allowed:
 
 | Type | Name | Purpose |
 |------|------|---------|
+| 1 | Destination Unreachable | Error reporting needed to establish and maintain connections |
+| 2 | Packet Too Big | Path MTU Discovery |
+| 3 | Time Exceeded | Hop limit and reassembly error reporting |
+| 4 | Parameter Problem | IPv6 header and option error reporting |
 | 133 | Router Solicitation | Clients requesting RAs |
 | 134 | Router Advertisement | Routers announcing prefixes |
 | 135 | Neighbor Solicitation | IPv6 equivalent of ARP |
 | 136 | Neighbor Advertisement | Response to NS |
-| 2 | Packet Too Big | Path MTU Discovery |
 
 ```bash
 # Check current ICMPv6 block settings
@@ -81,9 +84,12 @@ Some ICMPv6 types are safe to block. For instance, you might want to block echo 
 
 ```bash
 # Block ping6 (echo-request) - safe to block if you don't need it
-sudo firewall-cmd --permanent --add-icmp-block=echo-request
+sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv6" icmp-block name="echo-request"'
 
 # Never block these (they're needed for IPv6 to function):
+# - destination-unreachable
+# - time-exceeded
+# - parameter-problem
 # - neighbour-solicitation
 # - neighbour-advertisement
 # - router-solicitation
@@ -137,12 +143,12 @@ journalctl -k | grep "IPv6-"
 If your RHEL box acts as a router, you need to enable forwarding in firewalld as well as in the kernel.
 
 ```bash
-# Enable masquerading for a zone (IPv6 NAT, though uncommon)
-# Note: IPv6 masquerading is rarely needed since addresses are abundant
-# More commonly, you just enable forwarding:
+# Enable IPv6 forwarding in the kernel
+echo "net.ipv6.conf.all.forwarding=1" | sudo tee /etc/sysctl.d/95-IPv6-forwarding.conf
+sudo sysctl -p /etc/sysctl.d/95-IPv6-forwarding.conf
 
-# Check if forwarding is enabled in the zone
-sudo firewall-cmd --zone=public --query-masquerade
+# Check if intra-zone forwarding is enabled in a zone
+sudo firewall-cmd --zone=public --query-forward
 
 # For inter-zone forwarding, use policy objects (RHEL / firewalld 1.0+)
 sudo firewall-cmd --permanent --new-policy=forward-traffic
