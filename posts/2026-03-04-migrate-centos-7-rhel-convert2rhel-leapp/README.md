@@ -14,6 +14,8 @@ With CentOS 7 reaching end of life, migrating to RHEL requires a two-step proces
 
 ```bash
 # Update CentOS 7 to the latest available packages
+sudo sed -i 's/^mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
+sudo sed -i 's|#baseurl=http://mirror.centos.org|baseurl=https://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
 
 sudo yum update -y
 
@@ -29,15 +31,29 @@ sudo tar czpf /backup/centos7-pre-convert-$(date +%Y%m%d).tar.gz \
 ## Step 2: Install and Run Convert2RHEL
 
 ```bash
+# Configure Red Hat subscription details for Convert2RHEL
+sudo tee /etc/convert2rhel.ini >/dev/null <<'EOF'
+[subscription_manager]
+org = <your_org_id>
+activation_key = <your_key>
+EOF
+
+# Download the Red Hat GPG key
+sudo curl -o /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release \
+  https://security.access.redhat.com/data/fd431d51.txt
+
 # Install the Convert2RHEL repository
 sudo curl -o /etc/yum.repos.d/convert2rhel.repo \
-  https://ftp.redhat.com/redhat/convert2rhel/7/convert2rhel.repo
+  https://cdn-public.redhat.com/content/public/repofiles/convert2rhel-for-rhel-7-x86_64.repo
 
 # Install the Convert2RHEL package
 sudo yum install -y convert2rhel
 
-# Run the conversion with your Red Hat credentials
-sudo convert2rhel --org <your_org_id> --activationkey <your_key>
+# Run the pre-conversion analysis and fix any reported issues
+sudo convert2rhel analyze
+
+# Run the conversion
+sudo convert2rhel
 ```
 
 The tool will:
@@ -57,7 +73,11 @@ cat /etc/redhat-release
 
 ```bash
 # Enable the required repositories
+sudo subscription-manager repos --enable rhel-7-server-rpms
 sudo subscription-manager repos --enable rhel-7-server-extras-rpms
+
+# Use the latest RHEL 7.9 content
+sudo subscription-manager release --unset
 
 # Install the Leapp upgrade packages
 sudo yum install -y leapp-upgrade
@@ -70,6 +90,9 @@ cat /var/log/leapp/leapp-report.txt
 
 # Perform the upgrade
 sudo leapp upgrade --target 8.10
+
+# Reboot into the upgrade initramfs and then into RHEL 8
+sudo reboot
 ```
 
 ## Step 4: Upgrade from RHEL 8 to RHEL 9 (Optional)
@@ -78,16 +101,27 @@ After reaching RHEL 8, you can continue to RHEL 9:
 
 ```bash
 # Update RHEL 8 fully
+sudo subscription-manager repos \
+  --enable rhel-8-for-x86_64-baseos-rpms \
+  --enable rhel-8-for-x86_64-appstream-rpms
+sudo subscription-manager release --set 8.10
 sudo dnf update -y
+
+# If this system was upgraded from RHEL 7, remove leftover Leapp data first
+sudo dnf remove -y "*leapp*"
+sudo rm -rf /usr/share/leapp-repository/repositories
 
 # Install Leapp for RHEL 8 to 9 upgrade
 sudo dnf install -y leapp-upgrade
 
 # Pre-upgrade assessment
-sudo leapp preupgrade --target 9.4
+sudo leapp preupgrade --target 9.7
 
 # Perform the upgrade
-sudo leapp upgrade --target 9.4
+sudo leapp upgrade --target 9.7
+
+# Reboot into the upgrade initramfs and then into RHEL 9
+sudo reboot
 ```
 
 ## Post-Migration Cleanup
