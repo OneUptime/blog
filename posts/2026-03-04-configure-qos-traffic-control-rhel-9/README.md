@@ -8,13 +8,13 @@ Description: A comprehensive guide to setting up Quality of Service on RHEL usin
 
 ---
 
-Quality of Service (QoS) ensures that critical traffic gets the bandwidth and low latency it needs, even when the network is congested. Without QoS, a large file transfer can starve your SSH sessions, and a backup job can make your VoIP calls unusable. On RHEL, tc (traffic control) provides the building blocks for sophisticated QoS policies.
+Quality of Service (QoS) ensures that critical traffic gets the bandwidth and low latency it needs, even when the network is congested. Without QoS, a large file transfer can starve your SSH sessions, and a backup job can make your VoIP calls unusable. On RHEL, tc (traffic control) provides the building blocks for sophisticated QoS policies for traffic leaving an interface.
 
 ## QoS Concepts
 
 ```mermaid
 graph TD
-    A[Incoming Packets] --> B[Classification<br>Which class does this belong to?]
+    A[Outgoing Packets] --> B[Classification<br>Which class does this belong to?]
     B --> C[High Priority<br>Rate: 300 Mbit<br>Ceil: 1 Gbit]
     B --> D[Medium Priority<br>Rate: 500 Mbit<br>Ceil: 800 Mbit]
     B --> E[Low Priority<br>Rate: 200 Mbit<br>Ceil: 500 Mbit]
@@ -102,6 +102,7 @@ sudo tc filter add dev ens192 parent 1: protocol ip prio 1 u32 match ip sport 22
 
 # DNS
 sudo tc filter add dev ens192 parent 1: protocol ip prio 1 u32 match ip dport 53 0xffff flowid 1:10
+sudo tc filter add dev ens192 parent 1: protocol ip prio 1 u32 match ip sport 53 0xffff flowid 1:10
 
 # ICMP (ping)
 sudo tc filter add dev ens192 parent 1: protocol ip prio 1 u32 match ip protocol 1 0xff flowid 1:10
@@ -109,19 +110,24 @@ sudo tc filter add dev ens192 parent 1: protocol ip prio 1 u32 match ip protocol
 # Business traffic
 # HTTP
 sudo tc filter add dev ens192 parent 1: protocol ip prio 2 u32 match ip dport 80 0xffff flowid 1:20
+sudo tc filter add dev ens192 parent 1: protocol ip prio 2 u32 match ip sport 80 0xffff flowid 1:20
 
 # HTTPS
 sudo tc filter add dev ens192 parent 1: protocol ip prio 2 u32 match ip dport 443 0xffff flowid 1:20
+sudo tc filter add dev ens192 parent 1: protocol ip prio 2 u32 match ip sport 443 0xffff flowid 1:20
 
 # API port
 sudo tc filter add dev ens192 parent 1: protocol ip prio 2 u32 match ip dport 8080 0xffff flowid 1:20
+sudo tc filter add dev ens192 parent 1: protocol ip prio 2 u32 match ip sport 8080 0xffff flowid 1:20
 
 # Bulk traffic
 # rsync
 sudo tc filter add dev ens192 parent 1: protocol ip prio 3 u32 match ip dport 873 0xffff flowid 1:30
+sudo tc filter add dev ens192 parent 1: protocol ip prio 3 u32 match ip sport 873 0xffff flowid 1:30
 
 # FTP
 sudo tc filter add dev ens192 parent 1: protocol ip prio 3 u32 match ip dport 21 0xffff flowid 1:30
+sudo tc filter add dev ens192 parent 1: protocol ip prio 3 u32 match ip sport 21 0xffff flowid 1:30
 
 # Everything else falls to default class 1:40
 ```
@@ -156,7 +162,7 @@ tc -s -d class show dev ens192
 Look for:
 - **Sent** - Total bytes/packets through each class
 - **Dropped** - Packets dropped (indicates congestion in that class)
-- **Overlimits** - Times the class exceeded its rate (borrowed bandwidth)
+- **Overlimits** - Times the configured link or class limit was reached
 - **Backlog** - Packets queued, waiting to be sent
 
 ## The Complete QoS Script
@@ -192,10 +198,18 @@ tc qdisc add dev $IFACE parent 1:40 handle 40: fq_codel
 tc filter add dev $IFACE parent 1: protocol ip prio 1 u32 match ip dport 22 0xffff flowid 1:10
 tc filter add dev $IFACE parent 1: protocol ip prio 1 u32 match ip sport 22 0xffff flowid 1:10
 tc filter add dev $IFACE parent 1: protocol ip prio 1 u32 match ip dport 53 0xffff flowid 1:10
+tc filter add dev $IFACE parent 1: protocol ip prio 1 u32 match ip sport 53 0xffff flowid 1:10
 tc filter add dev $IFACE parent 1: protocol ip prio 1 u32 match ip protocol 1 0xff flowid 1:10
 tc filter add dev $IFACE parent 1: protocol ip prio 2 u32 match ip dport 80 0xffff flowid 1:20
+tc filter add dev $IFACE parent 1: protocol ip prio 2 u32 match ip sport 80 0xffff flowid 1:20
 tc filter add dev $IFACE parent 1: protocol ip prio 2 u32 match ip dport 443 0xffff flowid 1:20
+tc filter add dev $IFACE parent 1: protocol ip prio 2 u32 match ip sport 443 0xffff flowid 1:20
+tc filter add dev $IFACE parent 1: protocol ip prio 2 u32 match ip dport 8080 0xffff flowid 1:20
+tc filter add dev $IFACE parent 1: protocol ip prio 2 u32 match ip sport 8080 0xffff flowid 1:20
 tc filter add dev $IFACE parent 1: protocol ip prio 3 u32 match ip dport 873 0xffff flowid 1:30
+tc filter add dev $IFACE parent 1: protocol ip prio 3 u32 match ip sport 873 0xffff flowid 1:30
+tc filter add dev $IFACE parent 1: protocol ip prio 3 u32 match ip dport 21 0xffff flowid 1:30
+tc filter add dev $IFACE parent 1: protocol ip prio 3 u32 match ip sport 21 0xffff flowid 1:30
 
 echo "QoS configured on $IFACE"
 tc -s class show dev $IFACE
