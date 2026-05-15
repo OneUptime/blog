@@ -118,7 +118,7 @@ echo "Running custom pre-mount script..."
 
 # Example: wait for a specific device to appear
 if [ -f /etc/myapp/boot-config.conf ]; then
-    source /etc/myapp/boot-config.conf
+    . /etc/myapp/boot-config.conf
     # Perform custom initialization
     echo "Custom boot configuration loaded"
 fi
@@ -176,11 +176,11 @@ add_drivers+=" nvme vfio-pci "
 # Exclude modules you do not need
 omit_dracutmodules+=" plymouth multipath "
 
-# Set compression algorithm (zstd is fastest on RHEL)
+# Set compression algorithm
 compress="zstd"
 
 # Include firmware files
-firmware_dir="/lib/firmware"
+fw_dir+=" :/lib/firmware "
 install_items+=" /lib/firmware/custom-device.fw "
 ```
 
@@ -205,6 +205,10 @@ lsinitrd /tmp/test-initramfs.img | grep mymodule
 
 # To test boot with the new initramfs, copy it and create a GRUB entry
 sudo cp /tmp/test-initramfs.img /boot/initramfs-$(uname -r)-test.img
+sudo grubby --add-kernel /boot/vmlinuz-$(uname -r) \
+    --initrd /boot/initramfs-$(uname -r)-test.img \
+    --copy-default \
+    --title "RHEL test initramfs $(uname -r)"
 
 # Keep the original initramfs as a fallback
 # You can select the test entry from the GRUB menu
