@@ -2,38 +2,40 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, MariaDB, Backup, Restore, mysqldump, Mariabackup
+Tags: RHEL, MariaDB, Backup, Restore, mariadb-dump, Mariabackup
 
-Description: Back up and restore MariaDB databases on RHEL using mysqldump for logical backups and mariabackup for hot physical backups without downtime.
+Description: Back up and restore MariaDB databases on RHEL using mariadb-dump for logical backups and mariabackup for hot physical backups without downtime.
 
 ---
 
-MariaDB on RHEL offers two primary backup approaches: mysqldump for logical SQL exports and mariabackup for online physical backups. Each fits different scenarios depending on database size and downtime tolerance.
+MariaDB on RHEL offers two primary backup approaches: mariadb-dump for logical SQL exports and mariabackup for online physical backups. Each fits different scenarios depending on database size and downtime tolerance.
 
-## Logical Backups with mysqldump
+## Logical Backups with mariadb-dump
+
+`mariadb-dump` was previously named `mysqldump`. On older systems, the `mysqldump` compatibility name might still be available.
 
 ### Back Up a Single Database
 
 ```bash
 # Dump a single database
 
-mysqldump -u root -p mydb > /backup/mydb_$(date +%Y%m%d).sql
+mariadb-dump -u root -p mydb > /backup/mydb_$(date +%Y%m%d).sql
 
 # Dump with compression
-mysqldump -u root -p mydb | gzip > /backup/mydb_$(date +%Y%m%d).sql.gz
+mariadb-dump -u root -p mydb | gzip > /backup/mydb_$(date +%Y%m%d).sql.gz
 
 # Dump with single-transaction (consistent snapshot, no locks for InnoDB)
-mysqldump -u root -p --single-transaction mydb > /backup/mydb_$(date +%Y%m%d).sql
+mariadb-dump -u root -p --single-transaction mydb > /backup/mydb_$(date +%Y%m%d).sql
 ```
 
 ### Back Up All Databases
 
 ```bash
 # Dump all databases
-mysqldump -u root -p --all-databases --single-transaction > /backup/all_dbs_$(date +%Y%m%d).sql
+mariadb-dump -u root -p --all-databases --single-transaction > /backup/all_dbs_$(date +%Y%m%d).sql
 
 # Dump all databases with routines and triggers
-mysqldump -u root -p --all-databases --single-transaction \
+mariadb-dump -u root -p --all-databases --single-transaction \
     --routines --triggers --events > /backup/all_dbs_full_$(date +%Y%m%d).sql
 ```
 
@@ -41,35 +43,35 @@ mysqldump -u root -p --all-databases --single-transaction \
 
 ```bash
 # Dump specific tables from a database
-mysqldump -u root -p mydb orders customers > /backup/mydb_tables.sql
+mariadb-dump -u root -p mydb orders customers > /backup/mydb_tables.sql
 
 # Dump schema only
-mysqldump -u root -p --no-data mydb > /backup/mydb_schema.sql
+mariadb-dump -u root -p --no-data mydb > /backup/mydb_schema.sql
 
 # Dump data only
-mysqldump -u root -p --no-create-info mydb > /backup/mydb_data.sql
+mariadb-dump -u root -p --no-create-info mydb > /backup/mydb_data.sql
 ```
 
-## Restore from mysqldump
+## Restore from mariadb-dump
 
 ```bash
 # Restore a single database
-mysql -u root -p mydb < /backup/mydb_20250115.sql
+mariadb -u root -p mydb < /backup/mydb_20250115.sql
 
 # Restore from compressed backup
-gunzip < /backup/mydb_20250115.sql.gz | mysql -u root -p mydb
+gunzip < /backup/mydb_20250115.sql.gz | mariadb -u root -p mydb
 
 # Restore all databases
-mysql -u root -p < /backup/all_dbs_20250115.sql
+mariadb -u root -p < /backup/all_dbs_20250115.sql
 
 # Create a new database and restore into it
-mysql -u root -p -e "CREATE DATABASE newdb;"
-mysql -u root -p newdb < /backup/mydb_20250115.sql
+mariadb -u root -p -e "CREATE DATABASE newdb;"
+mariadb -u root -p newdb < /backup/mydb_20250115.sql
 ```
 
 ## Physical Backups with mariabackup
 
-mariabackup (based on Percona XtraBackup) creates hot backups without locking the database.
+mariabackup (based on Percona XtraBackup) creates online physical backups. For InnoDB, hot backups are possible without locking tables for the whole backup.
 
 ```bash
 # Install mariabackup
@@ -131,10 +133,10 @@ sudo mariabackup --prepare --target-dir=/backup/full \
 
 ```bash
 # Check dump file integrity
-mysql -u root -p -e "SOURCE /backup/mydb_20250115.sql;" test_restore_db
+mariadb -u root -p -e "SOURCE /backup/mydb_20250115.sql;" test_restore_db
 
 # Check mariabackup log for errors
 cat /backup/mariabackup_20250115/xtrabackup_info
 ```
 
-For databases under 10GB, mysqldump works well. For larger databases, mariabackup is preferred because it does not require locking tables and runs significantly faster.
+For databases under 10GB, mariadb-dump works well. For larger databases, mariabackup is preferred because it avoids long-running logical dumps and can run significantly faster.
