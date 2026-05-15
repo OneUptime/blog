@@ -21,7 +21,7 @@ Brick 1 (Node 1): file-A, file-C
 Brick 2 (Node 2): file-B
 ```
 
-GlusterFS uses a hashing algorithm (Davies-Humphreys) to decide which brick stores each file. The hash is based on the filename, so the placement is deterministic and no metadata server is needed.
+GlusterFS uses consistent hashing to decide which brick stores each file. The hash is based on the filename, so the placement is deterministic and no metadata server is needed.
 
 ## Prerequisites
 
@@ -165,7 +165,6 @@ sudo gluster volume set distvol cluster.lookup-optimize on
 
 # Adjust read-ahead
 sudo gluster volume set distvol performance.read-ahead on
-sudo gluster volume set distvol performance.read-ahead-page-count 8
 
 # Enable write-behind for better write performance
 sudo gluster volume set distvol performance.write-behind on
