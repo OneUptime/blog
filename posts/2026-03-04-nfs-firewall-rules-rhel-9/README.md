@@ -56,7 +56,7 @@ port=32803
 udp-port=32803
 
 [mountd]
-port=892
+port=20048
 
 [statd]
 port=662
@@ -89,7 +89,7 @@ graph TD
     end
     subgraph "NFSv3 Additional Ports"
         B[Port 111/TCP+UDP - rpcbind]
-        C[Port 892/TCP+UDP - mountd]
+        C[Port 20048/TCP+UDP - mountd]
         D[Port 32803/TCP+UDP - lockd]
         E[Port 662/TCP+UDP - statd]
     end
@@ -99,7 +99,7 @@ graph TD
 |---------|------|----------|-------------|
 | nfs | 2049 | TCP | NFSv4 and NFSv3 |
 | rpcbind | 111 | TCP/UDP | NFSv3 only |
-| mountd | 892 | TCP/UDP | NFSv3 only |
+| mountd | 20048 | TCP/UDP | NFSv3 only |
 | lockd | 32803 | TCP/UDP | NFSv3 file locking |
 | statd | 662 | TCP/UDP | NFSv3 crash recovery |
 
@@ -109,6 +109,7 @@ Instead of allowing NFS from anywhere, restrict it to specific networks or hosts
 
 ```bash
 # Create a rich rule to allow NFS only from a specific subnet
+sudo firewall-cmd --permanent --remove-service=nfs
 sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.1.0/24" service name="nfs" accept'
 sudo firewall-cmd --reload
 ```
@@ -117,6 +118,7 @@ For multiple subnets:
 
 ```bash
 # Allow from two different subnets
+sudo firewall-cmd --permanent --remove-service=nfs
 sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.1.0/24" service name="nfs" accept'
 sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="10.0.0.0/8" service name="nfs" accept'
 sudo firewall-cmd --reload
@@ -130,6 +132,9 @@ For more organized rules, use firewall zones:
 # Create a zone for NFS clients
 sudo firewall-cmd --permanent --new-zone=nfs-clients
 sudo firewall-cmd --permanent --zone=nfs-clients --add-source=192.168.1.0/24
+sudo firewall-cmd --permanent --remove-service=nfs
+sudo firewall-cmd --permanent --remove-service=mountd
+sudo firewall-cmd --permanent --remove-service=rpc-bind
 sudo firewall-cmd --permanent --zone=nfs-clients --add-service=nfs
 sudo firewall-cmd --permanent --zone=nfs-clients --add-service=mountd
 sudo firewall-cmd --permanent --zone=nfs-clients --add-service=rpc-bind
