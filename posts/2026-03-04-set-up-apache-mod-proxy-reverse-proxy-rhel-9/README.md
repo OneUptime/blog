@@ -59,7 +59,7 @@ Create a virtual host that proxies requests to a backend application:
 
     # Add proxy headers so the backend knows the original client info
     RequestHeader set X-Forwarded-Proto "http"
-    RequestHeader set X-Real-IP "%{REMOTE_ADDR}s"
+    RequestHeader set X-Real-IP "expr=%{REMOTE_ADDR}"
 
     ErrorLog logs/app-proxy-error.log
     CustomLog logs/app-proxy-access.log combined
@@ -162,7 +162,7 @@ SELinux blocks Apache from making outbound network connections by default:
 # Allow Apache to connect to network services (required for proxy)
 sudo setsebool -P httpd_can_network_connect on
 
-# If proxying to a specific port, you may also need
+# For reverse proxy configurations, you may also need
 sudo setsebool -P httpd_can_network_relay on
 
 # Verify the boolean is set
@@ -175,14 +175,8 @@ getsebool httpd_can_network_connect
 # Connection timeout to backend (seconds)
 ProxyTimeout 60
 
-# Number of seconds to wait for a connection to the backend
-ProxyConnectTimeout 5
-
-# Retry interval when a backend is down (seconds)
-ProxyPass / http://127.0.0.1:3000/ retry=5
-
-# Connection pooling settings
-ProxyPass / http://127.0.0.1:3000/ keepalive=On
+# Backend worker settings: connect timeout, socket timeout, retry interval, and TCP keepalive
+ProxyPass / http://127.0.0.1:3000/ connectiontimeout=5 timeout=60 retry=5 keepalive=On
 ```
 
 ## Step 8: Test and Apply
