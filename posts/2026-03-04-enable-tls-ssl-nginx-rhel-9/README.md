@@ -38,10 +38,11 @@ sudo openssl req -x509 -nodes -days 365 \
   -newkey rsa:2048 \
   -keyout /etc/pki/tls/private/nginx-selfsigned.key \
   -out /etc/pki/tls/certs/nginx-selfsigned.crt \
-  -subj "/CN=www.example.com"
+  -subj "/CN=www.example.com" \
+  -addext "subjectAltName=DNS:www.example.com"
 ```
 
-Generate Diffie-Hellman parameters for stronger key exchange:
+Generate Diffie-Hellman parameters if you plan to allow DHE cipher suites:
 
 ```bash
 # Generate DH parameters (this takes a minute or two)
@@ -69,7 +70,7 @@ server {
 
     # TLS settings
     ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
     ssl_prefer_server_ciphers off;
 
     # HSTS - tell browsers to always use HTTPS
@@ -111,6 +112,8 @@ For production, use certbot to get a trusted certificate:
 
 ```bash
 # Install certbot and the Nginx plugin
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 sudo dnf install -y certbot python3-certbot-nginx
 
 # Request a certificate
@@ -153,8 +156,8 @@ sequenceDiagram
     participant Client
     participant Nginx
     Client->>Nginx: ClientHello (supported ciphers, TLS versions)
-    Nginx->>Client: ServerHello (chosen cipher) + Certificate
-    Client->>Nginx: Key Exchange
+    Nginx->>Client: ServerHello (chosen cipher) + Certificate + key exchange data
+    Client->>Nginx: Client key exchange data + Finished
     Nginx->>Client: Finished
     Note over Client,Nginx: Encrypted connection established
     Client->>Nginx: Encrypted HTTP Request
@@ -182,6 +185,7 @@ OCSP stapling lets Nginx fetch the certificate revocation status and include it 
 # Enable OCSP stapling
 ssl_stapling on;
 ssl_stapling_verify on;
+ssl_trusted_certificate /etc/letsencrypt/live/www.example.com/chain.pem;
 resolver 8.8.8.8 8.8.4.4 valid=300s;
 resolver_timeout 5s;
 ```
