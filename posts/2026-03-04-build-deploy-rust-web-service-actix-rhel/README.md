@@ -8,7 +8,7 @@ Description: Build a high-performance web service using Rust and the Actix Web f
 
 ---
 
-Actix Web is one of the fastest web frameworks available, built on Rust's async runtime. This guide covers building and deploying an Actix web service on RHEL.
+Actix Web is one of the fastest web frameworks available, built on an async runtime in Rust. This guide covers building and deploying an Actix web service on RHEL.
 
 ## Install Rust
 
@@ -44,6 +44,7 @@ serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 env_logger = "0.10"
 log = "0.4"
+num_cpus = "1"
 ```
 
 Write the application:
