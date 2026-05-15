@@ -68,7 +68,7 @@ sudo virsh net-autostart custom-nat
 
 ## Creating an Isolated Network
 
-An isolated network has no connectivity to the host or external network:
+An isolated network has no connectivity to the external network, but guests can still communicate with the host and other guests on the same virtual network:
 
 ```bash
 cat << 'EOF' > /tmp/isolated-net.xml
