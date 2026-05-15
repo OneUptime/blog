@@ -19,11 +19,11 @@ sudo useradd --no-create-home --shell /bin/false alertmanager
 
 # Download and install
 cd /tmp
-curl -LO https://github.com/prometheus/alertmanager/releases/download/v0.27.0/alertmanager-0.27.0.linux-amd64.tar.gz
-tar xzf alertmanager-0.27.0.linux-amd64.tar.gz
+curl -LO https://github.com/prometheus/alertmanager/releases/download/v0.32.1/alertmanager-0.32.1.linux-amd64.tar.gz
+tar xzf alertmanager-0.32.1.linux-amd64.tar.gz
 
-sudo cp alertmanager-0.27.0.linux-amd64/alertmanager /usr/local/bin/
-sudo cp alertmanager-0.27.0.linux-amd64/amtool /usr/local/bin/
+sudo cp alertmanager-0.32.1.linux-amd64/alertmanager /usr/local/bin/
+sudo cp alertmanager-0.32.1.linux-amd64/amtool /usr/local/bin/
 sudo chown alertmanager:alertmanager /usr/local/bin/alertmanager /usr/local/bin/amtool
 
 # Create config directory
@@ -64,18 +64,18 @@ route:
   # Child routes for specific alerts
   routes:
     # Critical alerts go to both email and Slack
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'slack-critical'
       continue: true
 
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'email-team'
 
     # Warning alerts go to Slack only
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: 'slack-warnings'
 
 # Notification receivers
@@ -101,6 +101,7 @@ receivers:
 EOF
 
 sudo chown alertmanager:alertmanager /etc/alertmanager/alertmanager.yml
+amtool check-config /etc/alertmanager/alertmanager.yml --enable-feature=utf8-strict-mode
 ```
 
 ## Create Alertmanager systemd Service
@@ -117,7 +118,8 @@ Group=alertmanager
 Type=simple
 ExecStart=/usr/local/bin/alertmanager \
     --config.file=/etc/alertmanager/alertmanager.yml \
-    --storage.path=/var/lib/alertmanager/
+    --storage.path=/var/lib/alertmanager/ \
+    --enable-feature=utf8-strict-mode
 Restart=always
 
 [Install]
@@ -136,7 +138,7 @@ groups:
   - name: rhel-alerts
     rules:
       - alert: HighCpuUsage
-        expr: 100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
         for: 5m
         labels:
           severity: warning
@@ -167,9 +169,26 @@ groups:
         annotations:
           description: "{{ $labels.instance }} has been down for more than 2 minutes"
 EOF
+```
 
+Add these entries to `/etc/prometheus/prometheus.yml`, merging them with existing `rule_files` or `alerting` sections if they already exist:
+
+```yaml
+rule_files:
+  - /etc/prometheus/alert_rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['localhost:9093']
+```
+
+```bash
 # Validate the rules
 promtool check rules /etc/prometheus/alert_rules.yml
+
+# Validate the Prometheus configuration
+promtool check config /etc/prometheus/prometheus.yml
 
 # Reload Prometheus
 sudo systemctl reload prometheus
