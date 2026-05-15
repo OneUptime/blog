@@ -31,11 +31,11 @@ export KUBECONFIG=~/.kube/config
 
 ## Installing cert-manager
 
-Rancher requires cert-manager for TLS certificate management:
+With the default Rancher-generated TLS certificate, Rancher requires cert-manager for TLS certificate management:
 
 ```bash
 # Install cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Wait for cert-manager pods to be ready
 kubectl wait --for=condition=Ready pods --all -n cert-manager --timeout=120s
@@ -76,6 +76,8 @@ kubectl get pods -n cattle-system
 sudo firewall-cmd --permanent --add-port=80/tcp
 sudo firewall-cmd --permanent --add-port=443/tcp
 sudo firewall-cmd --permanent --add-port=6443/tcp
+sudo firewall-cmd --permanent --zone=trusted --add-source=10.42.0.0/16
+sudo firewall-cmd --permanent --zone=trusted --add-source=10.43.0.0/16
 sudo firewall-cmd --reload
 ```
 
@@ -114,9 +116,9 @@ The Rancher UI includes a built-in app catalog:
 ```bash
 # You can also deploy catalog apps via the Rancher CLI
 # Install the Rancher CLI
-curl -LO https://github.com/rancher/cli/releases/download/v2.8.0/rancher-linux-amd64-v2.8.0.tar.gz
-tar xzf rancher-linux-amd64-v2.8.0.tar.gz
-sudo mv rancher-v2.8.0/rancher /usr/local/bin/
+curl -LO https://github.com/rancher/cli/releases/download/v2.14.1/rancher-linux-amd64-v2.14.1.tar.gz
+tar xzf rancher-linux-amd64-v2.14.1.tar.gz
+sudo mv rancher-v2.14.1/rancher /usr/local/bin/
 
 # Log in to Rancher
 rancher login https://rancher.example.com --token your-api-token
