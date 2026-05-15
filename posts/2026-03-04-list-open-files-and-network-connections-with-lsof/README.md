@@ -32,7 +32,7 @@ This produces a lot of output. Use filters to narrow it down.
 ## Step 3: List Files Opened by a Process
 
 ```bash
-sudo lsof -p $(pidof httpd)
+sudo lsof -p $(pidof -d, httpd)
 ```
 
 Or by name:
@@ -78,7 +78,7 @@ This is useful for finding which processes prevent you from unmounting a filesys
 ## Step 7: List Network Connections for a Process
 
 ```bash
-sudo lsof -i -a -p $(pidof nginx)
+sudo lsof -i -a -p $(pidof -d, nginx)
 ```
 
 The `-a` flag means AND (both conditions must match).
