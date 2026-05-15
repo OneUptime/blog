@@ -1,16 +1,16 @@
-# How to Set Up Ansible AWX on RHEL for Web-Based Automation
+# How to Set Up Ansible on RHEL for Command-Line Automation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Ansible, AWX, Web UI
+Tags: RHEL, Ansible, CLI
 
-Description: Install and configure Ansible AWX on RHEL for web-based automation management.
+Description: Install and configure Ansible on RHEL for command-line automation management.
 
 ---
 
 ## Overview
 
-Install and configure Ansible AWX on RHEL for web-based automation management. Ansible provides agentless automation that connects to RHEL hosts over SSH and applies desired-state configuration.
+Install and configure Ansible on RHEL for command-line automation management. Ansible provides agentless automation that connects to RHEL hosts over SSH and applies desired-state configuration.
 
 ## Prerequisites
 
@@ -62,13 +62,12 @@ Create a playbook YAML file:
     - name: Ensure packages are installed
       ansible.builtin.dnf:
         name:
-          - vim
+          - vim-minimal
           - tmux
-          - htop
         state: present
 
     - name: Ensure services are running
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: sshd
         state: started
         enabled: true
@@ -89,9 +88,9 @@ ansible-playbook -i inventory.ini playbook.yml --check
 ## Step 5 - Verify Results
 
 ```bash
-ansible all -i inventory.ini -m command -a "rpm -q htop"
+ansible all -i inventory.ini -m command -a "rpm -q tmux"
 ```
 
 ## Summary
 
-You have learned how to set up ansible awx for web-based automation. Ansible's agentless architecture and declarative playbooks make it ideal for managing RHEL systems at scale.
+You have learned how to set up Ansible for command-line automation. Ansible's agentless architecture and declarative playbooks make it ideal for managing RHEL systems at scale.
