@@ -40,16 +40,14 @@ flowchart TD
     F -->|Yes| G{Is user listed in *.deny?}
     G -->|Yes| E
     G -->|No| D
-    F -->|No| H{Service is cron or at?}
-    H -->|cron| D2[All users allowed - cron default]
-    H -->|at| E2[Only root allowed - at default]
+    F -->|No| E2[Only root allowed]
 ```
 
 The key points:
 
 1. If the `.allow` file exists, **only** users listed in it can use the service. The `.deny` file is completely ignored.
 2. If the `.allow` file does not exist but the `.deny` file does, everyone except the listed users can use the service.
-3. If neither file exists, the behavior differs: all users can use cron, but only root can use at.
+3. If neither file exists, only root can use the service.
 4. Root can always use both services regardless of what is in these files.
 
 ## Default State on RHEL
@@ -227,7 +225,7 @@ elif [ -f /etc/cron.deny ]; then
         echo "  Deny file is empty - all users can use cron"
     fi
 else
-    echo "Mode: DEFAULT (all users can use cron)"
+    echo "Mode: DEFAULT (only root can use cron)"
 fi
 
 echo ""
@@ -272,7 +270,7 @@ When `.allow` exists, `.deny` is completely ignored. Pick one approach and stick
 Root can always use cron and at regardless of these files, so technically you do not need to list root. But I always add root to `.allow` files anyway for documentation purposes.
 
 **Mistake 3: Not cleaning up existing crontabs.**
-When you remove a user from `.allow` (or add them to `.deny`), their existing crontab still sits in `/var/spool/cron/`. It will not run, but it is good practice to clean it up.
+When you remove a user from `.allow` (or add them to `.deny`), their existing crontab still sits in `/var/spool/cron/`. It will continue to run until you remove it, so you should clean it up manually.
 
 **Mistake 4: Using blank lines or spaces in the files.**
 Each line should contain exactly one username with no leading or trailing spaces. Blank lines are usually harmless but can cause confusion.
