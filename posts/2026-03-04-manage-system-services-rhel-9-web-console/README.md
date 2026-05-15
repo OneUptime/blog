@@ -122,11 +122,11 @@ journalctl -u failed-service.service -b --no-pager
 systemctl reset-failed failed-service.service
 ```
 
-In Cockpit, the "Start" button on a failed service attempts to restart it. If it fails again, the logs update in real time so you can see the new error.
+In Cockpit, the "Start" button on a failed service attempts to start it again. If it fails again, the logs update in real time so you can see the new error.
 
 ## Working with Timers
 
-The Timers tab shows all systemd timer units, which are the modern replacement for cron jobs. Each entry shows when the timer last fired and when it's scheduled to fire next.
+The Timers tab shows all systemd timer units, which are a modern alternative to cron jobs. Each entry shows when the timer last fired and when it's scheduled to fire next.
 
 ```mermaid
 graph LR
