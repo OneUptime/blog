@@ -18,7 +18,7 @@ Network bridges connect two or more network segments at Layer 2, making them app
 nmcli connection add type bridge con-name br0 ifname br0
 
 # Add a physical interface as a bridge port
-nmcli connection add type ethernet con-name br0-port1 ifname eth0 master br0
+nmcli connection add type ethernet port-type bridge con-name br0-port1 ifname eth0 controller br0
 
 # Configure IP on the bridge
 nmcli connection modify br0 ipv4.addresses 192.168.1.100/24
@@ -70,7 +70,7 @@ nmcli connection down br0 && nmcli connection up br0
 If STP is enabled, forward delay controls how long a port waits before forwarding traffic:
 
 ```bash
-# Set forward delay to 4 seconds (minimum with STP)
+# Set forward delay to 4 seconds
 nmcli connection modify br0 bridge.forward-delay 4
 
 # Set to 0 if STP is disabled
@@ -111,8 +111,8 @@ You can bridge multiple physical interfaces together:
 ```bash
 # Create bridge with two physical ports
 nmcli connection add type bridge con-name br0 ifname br0
-nmcli connection add type ethernet con-name br0-port1 ifname eth0 master br0
-nmcli connection add type ethernet con-name br0-port2 ifname eth1 master br0
+nmcli connection add type ethernet port-type bridge con-name br0-port1 ifname eth0 controller br0
+nmcli connection add type ethernet port-type bridge con-name br0-port2 ifname eth1 controller br0
 
 # Configure IP
 nmcli connection modify br0 ipv4.addresses 192.168.1.100/24
@@ -130,7 +130,7 @@ Be careful with multi-port bridges, as they can create loops if STP is disabled 
 # Create a bridge that gets its IP via DHCP
 nmcli connection add type bridge con-name br0 ifname br0
 nmcli connection modify br0 ipv4.method auto
-nmcli connection add type ethernet con-name br0-port1 ifname eth0 master br0
+nmcli connection add type ethernet port-type bridge con-name br0-port1 ifname eth0 controller br0
 nmcli connection up br0
 ```
 
@@ -176,7 +176,7 @@ Sometimes you need a bridge that just forwards traffic without the host particip
 nmcli connection add type bridge con-name br0 ifname br0
 nmcli connection modify br0 ipv4.method disabled
 nmcli connection modify br0 ipv6.method disabled
-nmcli connection add type ethernet con-name br0-port1 ifname eth0 master br0
+nmcli connection add type ethernet port-type bridge con-name br0-port1 ifname eth0 controller br0
 nmcli connection up br0
 ```
 
