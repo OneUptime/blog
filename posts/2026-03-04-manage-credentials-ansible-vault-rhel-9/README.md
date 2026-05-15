@@ -68,7 +68,7 @@ To modify an encrypted file:
 ansible-vault edit secrets.yml
 ```
 
-The file is decrypted, opened in your editor, and re-encrypted when you save. The original file is never stored on disk in plain text.
+The file is decrypted to a temporary file, opened in your editor, and re-encrypted when you save. Ansible removes the temporary file when you close the editor.
 
 ## Encrypting an Existing File
 
@@ -270,11 +270,13 @@ ansible-playbook deploy.yml \
     --vault-id staging@~/.vault_pass_staging
 ```
 
+By default, vault ID labels are hints. Ansible tries the password with the matching label first, then tries the other supplied vault passwords in order unless `vault_id_match` is enabled.
+
 ```mermaid
 flowchart TD
     A[Playbook References Encrypted Variables] --> B{Which Vault ID?}
-    B -->|prod| C[Use prod vault password]
-    B -->|staging| D[Use staging vault password]
+    B -->|prod| C[Try prod vault password first]
+    B -->|staging| D[Try staging vault password first]
     C --> E[Decrypt production secrets]
     D --> F[Decrypt staging secrets]
     E --> G[Variables available in playbook]
@@ -315,7 +317,7 @@ db_data_directory: /var/lib/pgsql/data
 
 The naming convention of prefixing vault variables with `vault_` makes it easy to see which values come from encrypted sources.
 
-Use these in a playbook:
+Use these in a playbook. This example assumes the `community.postgresql` collection and its PostgreSQL Python driver requirements are installed on the managed host.
 
 ```yaml
 # configure-database.yml
@@ -324,14 +326,14 @@ Use these in a playbook:
   hosts: dbservers
   become: true
   tasks:
-    - name: Set PostgreSQL root password
-      postgresql_user:
+    - name: Set PostgreSQL superuser password
+      community.postgresql.postgresql_user:
         name: postgres
         password: "{{ db_root_password }}"
       become_user: postgres
 
     - name: Create application database user
-      postgresql_user:
+      community.postgresql.postgresql_user:
         name: appuser
         password: "{{ db_app_password }}"
         role_attr_flags: LOGIN
