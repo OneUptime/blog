@@ -14,9 +14,9 @@ iSCSI (Internet Small Computer Systems Interface) lets you share block storage d
 
 - **Target**: The server that exports storage
 - **Initiator**: The client that connects to the target
-- **LUN (Logical Unit Number)**: A block device exported through the target
+- **LUN (Logical Unit Number)**: A numbered logical unit exported through the target
 - **IQN (iSCSI Qualified Name)**: A unique identifier for targets and initiators
-- **TPG (Target Portal Group)**: Defines the network endpoint (IP + port) for the target
+- **TPG (Target Portal Group)**: Groups the target's portals, LUNs, and access controls
 
 ## Prerequisites
 
@@ -79,21 +79,23 @@ For a file:
 ### Create the iSCSI Target
 
 ```bash
-/iscsi create iqn.2024.com.example:target1
+/iscsi create iqn.2024-03.com.example:target1
 ```
 
 ### Create a LUN
 
 ```bash
-/iscsi/iqn.2024.com.example:target1/tpg1/luns create /backstores/block/disk0
+/iscsi/iqn.2024-03.com.example:target1/tpg1/luns create /backstores/block/disk0
 ```
+
+If you created the file-backed store instead, use `/backstores/fileio/disk0`.
 
 ### Configure Access (ACL)
 
 Create an ACL for the initiator. The IQN must match the initiator's configured name:
 
 ```bash
-/iscsi/iqn.2024.com.example:target1/tpg1/acls create iqn.2024.com.example:client1
+/iscsi/iqn.2024-03.com.example:target1/tpg1/acls create iqn.2024-03.com.example:client1
 ```
 
 ### Set the Portal (IP Address)
@@ -101,8 +103,8 @@ Create an ACL for the initiator. The IQN must match the initiator's configured n
 By default, the target listens on 0.0.0.0:3260. To bind to a specific IP:
 
 ```bash
-/iscsi/iqn.2024.com.example:target1/tpg1/portals delete 0.0.0.0 3260
-/iscsi/iqn.2024.com.example:target1/tpg1/portals create 192.168.1.10 3260
+/iscsi/iqn.2024-03.com.example:target1/tpg1/portals delete 0.0.0.0 3260
+/iscsi/iqn.2024-03.com.example:target1/tpg1/portals create 192.168.1.10 3260
 ```
 
 ### Save and Exit
@@ -133,10 +135,10 @@ o- / .............................................................. [...]
   | o- block ............................................ [Storage Objects: 1]
   | | o- disk0 ................. [/dev/sdb (10.0GiB) write-thru activated]
   o- iscsi .................................................. [Targets: 1]
-  | o- iqn.2024.com.example:target1 ............................ [TPGs: 1]
+  | o- iqn.2024-03.com.example:target1 ......................... [TPGs: 1]
   |   o- tpg1 .................................... [no-gen-acls, no-auth]
   |     o- acls .............................................. [ACLs: 1]
-  |     | o- iqn.2024.com.example:client1 ........... [Mapped LUNs: 1]
+  |     | o- iqn.2024-03.com.example:client1 ........ [Mapped LUNs: 1]
   |     |   o- mapped_lun0 ................... [lun0 block/disk0 (rw)]
   |     o- luns .............................................. [LUNs: 1]
   |     | o- lun0 ..................... [block/disk0 (/dev/sdb) (default_tg)]
@@ -146,7 +148,7 @@ o- / .............................................................. [...]
 
 ## Persistent Configuration
 
-The `target` service automatically saves and restores configuration. Verify the saved config:
+The `saveconfig` command saves the configuration so the `target` service can restore it at boot. Verify the saved config:
 
 ```bash
 cat /etc/target/saveconfig.json
