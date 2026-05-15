@@ -39,7 +39,8 @@ sudo targetcli
 
 ```bash
 cd /iscsi/iqn.2024.com.example:target1/tpg1/portals
-delete 0.0.0.0 3260
+# If a default 0.0.0.0:3260 portal exists, remove it first
+delete ip_address=0.0.0.0 ip_port=3260
 create 10.0.1.20 3260
 create 10.0.2.20 3260
 saveconfig
@@ -109,7 +110,7 @@ Edit `/etc/multipath.conf`:
 sudo tee /etc/multipath.conf << 'MPCONF'
 defaults {
     user_friendly_names yes
-    find_multipaths yes
+    find_multipaths on
     path_grouping_policy failover
     path_selector "round-robin 0"
     failback immediate
