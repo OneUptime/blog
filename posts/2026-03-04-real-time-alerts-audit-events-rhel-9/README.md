@@ -24,7 +24,25 @@ flowchart LR
     E --> I[SNMP Trap]
 ```
 
-The audit dispatcher (audispd) passes audit events to plugins in real time. You can write custom plugins that filter events and trigger alerts.
+On RHEL 9, the audit dispatcher functionality is integrated into `auditd`, which passes audit events to plugins in real time. You can write custom plugins that filter events and trigger alerts.
+
+Before using the examples below, create audit rules for the keys that the alert scripts search for:
+
+```bash
+sudo tee /etc/audit/rules.d/99-alerting.rules << 'EOF'
+-w /etc/ssh/sshd_config -p wa -k sshd_config
+-w /etc/passwd -p wa -k identity
+-w /etc/group -p wa -k identity
+-w /etc/shadow -p wa -k identity
+-w /etc/gshadow -p wa -k identity
+-w /etc/sudoers -p wa -k actions
+-w /etc/sudoers.d/ -p wa -k actions
+-a always,exit -F arch=b64 -S init_module -S finit_module -S delete_module -k modules
+-a always,exit -F arch=b32 -S init_module -S finit_module -S delete_module -k modules
+EOF
+
+sudo augenrules --load
+```
 
 ## Method 1: Using the audisp syslog Plugin
 
@@ -79,6 +97,8 @@ EOF
 ### Step 2: Create the Alert Script
 
 ```bash
+sudo dnf install socat mailx
+
 sudo tee /usr/local/bin/audit-alert.sh << 'SCRIPT'
 #!/bin/bash
 # /usr/local/bin/audit-alert.sh
@@ -111,7 +131,7 @@ socat UNIX-RECV:"$SOCKET" STDOUT | while read -r line; do
         echo "$line" | systemd-cat -t audit-alert -p warning
     fi
 
-    # Alert on sudo usage
+    # Alert on sudo config changes
     if echo "$line" | grep -q 'key="actions"'; then
         SUBJECT="ALERT: sudo config changed on $HOSTNAME"
         echo "$line" | mail -s "$SUBJECT" "$ALERT_EMAIL" 2>/dev/null
@@ -167,6 +187,8 @@ sudo systemctl enable --now audit-alert.service
 For integration with Slack, PagerDuty, or other services, modify the alert script to send webhook notifications:
 
 ```bash
+sudo dnf install socat curl
+
 sudo tee /usr/local/bin/audit-webhook-alert.sh << 'SCRIPT'
 #!/bin/bash
 # Audit event webhook alerter
@@ -221,18 +243,15 @@ sudo tee /usr/local/bin/audit-poll-alert.sh << 'SCRIPT'
 
 ALERT_EMAIL="security@example.com"
 HOSTNAME=$(hostname)
-LAST_CHECK_FILE="/var/run/audit-poll-timestamp"
+CHECKPOINT_DIR="/var/run/audit-poll-alert"
+
+mkdir -p "$CHECKPOINT_DIR"
 
 while true; do
-    if [ -f "$LAST_CHECK_FILE" ]; then
-        SINCE=$(cat "$LAST_CHECK_FILE")
-    else
-        SINCE="recent"
-    fi
-
     # Check for critical events
     for key in sshd_config identity actions modules; do
-        EVENTS=$(ausearch -k "$key" -ts "$SINCE" 2>/dev/null | grep -v "no matches")
+        CHECKPOINT_FILE="$CHECKPOINT_DIR/$key.checkpoint"
+        EVENTS=$(ausearch -k "$key" -ts recent --checkpoint "$CHECKPOINT_FILE" 2>/dev/null | grep -v "no matches")
         if [ -n "$EVENTS" ]; then
             echo "Critical audit events detected for key: $key" | \
                 mail -s "Audit Alert [$key] on $HOSTNAME" "$ALERT_EMAIL" 2>/dev/null
@@ -240,7 +259,6 @@ while true; do
         fi
     done
 
-    date +%H:%M:%S > "$LAST_CHECK_FILE"
     sleep 60
 done
 SCRIPT
