@@ -13,29 +13,63 @@ RabbitMQ is a widely-used open-source message broker that implements AMQP (Advan
 ## Installing Erlang and RabbitMQ
 
 ```bash
-# Install Erlang from the RabbitMQ Erlang repository
+# Import RabbitMQ repository signing keys
+sudo rpm --import 'https://github.com/rabbitmq/signing-keys/releases/download/3.0/rabbitmq-release-signing-key.asc'
+sudo rpm --import 'https://github.com/rabbitmq/signing-keys/releases/download/3.0/cloudsmith.rabbitmq-erlang.E495BB49CC4BBE5B.key'
+sudo rpm --import 'https://github.com/rabbitmq/signing-keys/releases/download/3.0/cloudsmith.rabbitmq-server.9F4587F226208342.key'
 
-cat << 'REPO' | sudo tee /etc/yum.repos.d/rabbitmq-erlang.repo
-[rabbitmq-erlang]
-name=rabbitmq-erlang
-baseurl=https://packagecloud.io/rabbitmq/erlang/el/9/$basearch
-gpgcheck=1
-gpgkey=https://packagecloud.io/rabbitmq/erlang/gpgkey
-enabled=1
-REPO
-
-# Install RabbitMQ repository
+# Install Erlang and RabbitMQ repositories for RHEL 9
 cat << 'REPO' | sudo tee /etc/yum.repos.d/rabbitmq.repo
-[rabbitmq-server]
-name=rabbitmq-server
-baseurl=https://packagecloud.io/rabbitmq/rabbitmq-server/el/9/$basearch
-gpgcheck=1
-gpgkey=https://packagecloud.io/rabbitmq/rabbitmq-server/gpgkey
+[modern-erlang]
+name=modern-erlang-el9
+baseurl=https://yum1.rabbitmq.com/erlang/el/9/$basearch
+        https://yum2.rabbitmq.com/erlang/el/9/$basearch
+repo_gpgcheck=1
 enabled=1
+gpgkey=https://github.com/rabbitmq/signing-keys/releases/download/3.0/cloudsmith.rabbitmq-erlang.E495BB49CC4BBE5B.key
+gpgcheck=1
+sslverify=1
+sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+metadata_expire=300
+pkg_gpgcheck=1
+autorefresh=1
+type=rpm-md
+
+[modern-erlang-noarch]
+name=modern-erlang-el9-noarch
+baseurl=https://yum1.rabbitmq.com/erlang/el/9/noarch
+        https://yum2.rabbitmq.com/erlang/el/9/noarch
+repo_gpgcheck=1
+enabled=1
+gpgkey=https://github.com/rabbitmq/signing-keys/releases/download/3.0/cloudsmith.rabbitmq-erlang.E495BB49CC4BBE5B.key
+       https://github.com/rabbitmq/signing-keys/releases/download/3.0/rabbitmq-release-signing-key.asc
+gpgcheck=1
+sslverify=1
+sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+metadata_expire=300
+pkg_gpgcheck=1
+autorefresh=1
+type=rpm-md
+
+[rabbitmq-el9]
+name=rabbitmq-el9
+baseurl=https://yum1.rabbitmq.com/rabbitmq/el/9/noarch
+        https://yum2.rabbitmq.com/rabbitmq/el/9/noarch
+repo_gpgcheck=1
+enabled=1
+gpgkey=https://github.com/rabbitmq/signing-keys/releases/download/3.0/cloudsmith.rabbitmq-server.9F4587F226208342.key
+       https://github.com/rabbitmq/signing-keys/releases/download/3.0/rabbitmq-release-signing-key.asc
+gpgcheck=1
+sslverify=1
+sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+metadata_expire=300
+pkg_gpgcheck=1
+autorefresh=1
+type=rpm-md
 REPO
 
 # Install packages
-sudo dnf install -y erlang rabbitmq-server
+sudo dnf install -y logrotate erlang rabbitmq-server
 ```
 
 ## Starting RabbitMQ
@@ -124,4 +158,4 @@ CONF
 sudo systemctl restart rabbitmq-server
 ```
 
-Always change the default guest credentials and configure appropriate memory and disk limits before deploying RabbitMQ to production.
+Always remove or replace the default guest credentials and configure appropriate memory and disk limits before deploying RabbitMQ to production.
