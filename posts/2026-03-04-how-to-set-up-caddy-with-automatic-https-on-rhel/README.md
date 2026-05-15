@@ -8,7 +8,7 @@ Description: Learn how to configure Caddy on RHEL for automatic HTTPS with Let's
 
 ---
 
-Caddy's standout feature is automatic HTTPS. By default, every site configured with a domain name gets a TLS certificate from Let's Encrypt without any extra configuration. This post covers how to set up and customize this behavior.
+Caddy's standout feature is automatic HTTPS. By default, every site configured with a public domain name gets a TLS certificate from a public ACME CA, such as Let's Encrypt or ZeroSSL, without any extra configuration. This post covers how to set up and customize this behavior.
 
 ## Installing Caddy
 
@@ -18,6 +18,7 @@ Caddy's standout feature is automatic HTTPS. By default, every site configured w
 sudo dnf install -y dnf-plugins-core
 sudo dnf copr enable @caddy/caddy -y
 sudo dnf install -y caddy
+sudo systemctl enable --now caddy
 ```
 
 ## Basic Automatic HTTPS
@@ -32,7 +33,7 @@ myapp.example.com {
 ```
 
 Caddy will automatically:
-1. Obtain a TLS certificate from Let's Encrypt
+1. Obtain a TLS certificate from a public ACME CA
 2. Redirect HTTP to HTTPS
 3. Renew the certificate before it expires
 
