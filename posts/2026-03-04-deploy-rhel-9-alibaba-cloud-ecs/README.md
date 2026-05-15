@@ -8,7 +8,7 @@ Description: Deploy and configure RHEL on Alibaba Cloud Elastic Compute Service 
 
 ---
 
-Alibaba Cloud ECS supports RHEL as a marketplace image. This guide covers launching and configuring a RHEL ECS instance with proper security groups, cloud disk storage, and CloudMonitor integration.
+Alibaba Cloud ECS supports RHEL as a paid public image. This guide covers launching and configuring a RHEL ECS instance with proper security groups, cloud disk storage, and CloudMonitor integration.
 
 ## Step 1: Create an ECS Instance
 
@@ -17,13 +17,14 @@ Alibaba Cloud ECS supports RHEL as a marketplace image. This guide covers launch
 
 aliyun ecs RunInstances \
   --RegionId us-east-1 \
-  --ImageId rhel_9_x64_20G \
+  --ImageId <rhel-9-image-id> \
   --InstanceType ecs.g7.large \
   --SecurityGroupId sg-xxxxx \
   --VSwitchId vsw-xxxxx \
   --InstanceName rhel9-server \
-  --SystemDiskCategory cloud_essd \
-  --SystemDiskSize 50 \
+  --SystemDisk.Category cloud_essd \
+  --SystemDisk.Size 50 \
+  --InternetMaxBandwidthOut 5 \
   --KeyPairName my-keypair
 ```
 
@@ -56,6 +57,12 @@ aliyun ecs CreateDisk \
   --DiskCategory cloud_essd \
   --Size 200
 
+# Use the DiskId returned by CreateDisk
+aliyun ecs AttachDisk \
+  --RegionId us-east-1 \
+  --InstanceId i-xxxxx \
+  --DiskId d-xxxxx
+
 # On the instance, partition and format
 sudo parted /dev/vdb mklabel gpt
 sudo parted -a optimal /dev/vdb mkpart primary xfs 0% 100%
@@ -69,22 +76,22 @@ sudo mount -a
 
 ```bash
 # Install the Alibaba Cloud CloudMonitor agent
-REGION=us-east-1
-curl -sL "http://cms-agent-$REGION.oss-$REGION-internal.aliyuncs.com/cms-go-agent/cms_go_agent_install.sh" | sudo bash
+# Run from a machine with Alibaba Cloud CLI credentials
+aliyun cms InstallMonitoringAgent \
+  --RegionId us-east-1 \
+  --InstanceIds '["i-xxxxx"]' \
+  --Force true
 
-# Verify the agent is running
-sudo systemctl status cloudmonitor
-
-# Check agent connection
-sudo /usr/local/cloudmonitor/cloudmonitorCtl.sh status
+# Verify the agent is running on the instance
+ps aux | grep argusagent | grep -v grep
 ```
 
 ## Step 5: Configure Security Best Practices
 
 ```bash
 # Harden SSH
-sudo sed -i 's/#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
-sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+printf 'PermitRootLogin no\nPasswordAuthentication no\n' | sudo tee /etc/ssh/sshd_config.d/99-hardening.conf
+sudo sshd -t
 sudo systemctl restart sshd
 
 # Enable automatic updates
