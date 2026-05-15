@@ -246,12 +246,12 @@ podman container prune
 
 ## Remove all unused images
 ```bash
-podman image prune
+podman image prune -a
 ```
 
-## Nuclear option - remove everything (containers, images, volumes)
+## Nuclear option - remove unused containers, images, networks, and volumes
 ```bash
-podman system prune -a
+podman system prune -a --volumes
 ```
 
 ## Running Containers That Restart Automatically
@@ -263,7 +263,7 @@ If you want a container to restart on failure or reboot, combine with systemd (c
 podman run -d --name webserver --restart unless-stopped -p 8080:80 docker.io/library/nginx:latest
 ```
 
-Note that `--restart` policies require the Podman service to be running. For production, systemd integration with Quadlet is the better approach.
+Note that restarting containers after a reboot requires the `podman-restart.service` systemd unit. For production, systemd integration with Quadlet is the better approach.
 
 ## Troubleshooting Common Issues
 
