@@ -51,25 +51,28 @@ Before initializing the database, take a look at the default configuration:
 sudo cat /etc/aide.conf
 ```
 
-The default config on RHEL is pretty comprehensive. It monitors critical directories like `/boot`, `/bin`, `/sbin`, `/lib`, `/lib64`, `/usr`, and `/etc`. The config file uses macros to define groups of attributes to check. For example:
+The default config on RHEL is pretty comprehensive. It monitors critical directories like `/boot`, `/bin`, `/sbin`, `/lib`, `/lib64`, `/usr`, and `/etc`. The config file uses rule groups to define sets of attributes to check. For example, current RHEL 9-style configs include groups like:
 
 ```bash
-# Default attribute groups defined in aide.conf
-CONTENT_EX = sha512+ftype+p+u+g+n+acl+selinux+xattrs
-DATAONLY = p+n+u+g+s+acl+selinux+xattrs+sha512
+# Attribute groups defined in aide.conf
+NORMAL = R+sha512-m-c
+DATAONLY = ftype+p+l+n+u+g+s+acl+selinux+xattrs+sha256
 ```
 
-These macros combine different check types:
+These groups combine different check types:
 
+- `sha256` - SHA-256 checksum
 - `sha512` - SHA-512 checksum
+- `ftype` - file type
 - `p` - permissions
+- `l` - symbolic link name
 - `u` - user ownership
 - `g` - group ownership
+- `s` - file size
 - `n` - number of hard links
 - `acl` - POSIX ACLs
 - `selinux` - SELinux context
 - `xattrs` - extended attributes
-- `ftype` - file type
 
 ## Initializing the AIDE Database
 
@@ -82,11 +85,11 @@ sudo aide --init
 
 This process scans every file and directory specified in `/etc/aide.conf` and records their attributes. On a typical RHEL system, this takes anywhere from 2 to 15 minutes depending on how many files you have and your disk speed.
 
-The output file is written to `/var/lib/aide/aide.db.new.gz`. AIDE does not use this file directly for checks - you need to copy it to the expected location:
+The output file is written to `/var/lib/aide/aide.db.new.gz`. AIDE does not use this file directly for checks - you need to move it to the expected location:
 
 ```bash
 # Move the new database to the active location
-sudo cp /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
+sudo mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
 ```
 
 This two-step process is intentional. It gives you a chance to review or archive the database before making it active.
@@ -139,7 +142,7 @@ Here is the typical AIDE workflow from installation through ongoing monitoring:
 flowchart TD
     A[Install AIDE] --> B[Review /etc/aide.conf]
     B --> C[Initialize Database: aide --init]
-    C --> D[Copy aide.db.new.gz to aide.db.gz]
+    C --> D[Move aide.db.new.gz to aide.db.gz]
     D --> E[Run Check: aide --check]
     E --> F{Changes Detected?}
     F -->|No| G[System OK - Schedule Next Check]
@@ -172,7 +175,7 @@ You should see AIDE report the new file as an added entry. This confirms your se
 
 A few things to watch out for:
 
-1. **Forgetting to copy the database** - Running `aide --init` does not automatically activate the database. You must copy `aide.db.new.gz` to `aide.db.gz`.
+1. **Forgetting to activate the database** - Running `aide --init` does not automatically activate the database. You must move `aide.db.new.gz` to `aide.db.gz`.
 
 2. **Running init on a compromised system** - The initial database should be created right after a clean OS install, before the system is exposed to the network.
 
