@@ -46,15 +46,16 @@ ldap_tls_cacert = /etc/pki/tls/certs/ca-bundle.crt
 When using multiple domains, ensure there are no UID/GID overlaps.
 
 ```bash
-# Set different ID ranges for each domain
+# Use non-overlapping ID ranges for each domain
 ```
 
 ```ini
 [domain/ad.example.com]
 ldap_id_mapping = True
-# AD auto-maps UIDs starting from a hash of the domain SID
+# AD maps SIDs into ID ranges selected from the domain SID
 
 [domain/ldap.internal.com]
+# Restrict LDAP users and groups to IDs in this range
 min_id = 100000
 max_id = 199999
 ```
@@ -68,8 +69,6 @@ Control which domain SSSD checks first for user lookups.
 domains = ad.example.com, ldap.internal.com
 # Users can qualify their domain with a separator
 domain_resolution_order = ad.example.com, ldap.internal.com
-# Default domain for unqualified names
-default_domain_suffix = ad.example.com
 ```
 
 ## Applying and Testing
@@ -87,9 +86,9 @@ id user1@ad.example.com
 # Test user lookup from the LDAP domain
 id user2@ldap.internal.com
 
-# Test with the default domain (unqualified name)
+# Test with an unqualified name
 id user1
-# Resolves against ad.example.com since it is the default
+# Resolves against the first matching domain in domain_resolution_order
 ```
 
 ## Checking Domain Status
