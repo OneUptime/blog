@@ -10,7 +10,7 @@ Description: Understand the difference between confined and unconfined SELinux u
 
 ## Confined vs Unconfined
 
-On a default RHEL installation, most users and processes run as `unconfined_u` in the `unconfined_t` domain. This means SELinux is enforcing, but these users are essentially exempt from most restrictions. They can run any program, access the network, and perform administrative tasks (if they have the right Unix permissions).
+On a default RHEL installation, Linux users are mapped to the `unconfined_u` SELinux user, and interactive user sessions commonly run in the `unconfined_t` domain. This means SELinux is enforcing, but these users are subject only to minimal SELinux restrictions. They can run programs, access the network, and perform administrative tasks (if they have the right Unix permissions).
 
 Confined users and processes, on the other hand, are restricted by SELinux to specific actions. A confined web server can only serve web content. A confined user can only access their home directory and run basic programs.
 
@@ -78,9 +78,9 @@ graph TD
 | Use sudo | Yes | Yes | Yes | No | No |
 | Use su | Yes | Yes | No | No | No |
 | Network access | Yes | Yes | Yes | Yes | No |
-| Run setuid programs | Yes | Yes | Yes | No | No |
-| Execute in /tmp | Yes | Yes | Yes | Depends | No |
-| Execute in ~/  | Yes | Yes | Yes | Depends | No |
+| Run setuid programs | Yes | Yes | Yes | Policy-permitted only | Policy-permitted only |
+| Execute in /tmp | Yes | Yes | Yes | Yes by default | Yes by default |
+| Execute in ~/  | Yes | Yes | Yes | Yes by default | Yes by default |
 
 ## Mapping Users to Confined SELinux Users
 
@@ -101,7 +101,7 @@ sudo semanage login -a -s guest_u guestuser
 
 ```bash
 # Confine all unmapped users as user_u
-sudo semanage login -m -s user_u __default__
+sudo semanage login -m -s user_u -r s0 __default__
 ```
 
 This is a powerful change. Every new user automatically gets confined.
@@ -146,7 +146,7 @@ ps -eZ | grep unconfined_t | grep -v "unconfined_u:unconfined_r"
 
 ```bash
 # Start with the default mapping
-sudo semanage login -m -s user_u __default__
+sudo semanage login -m -s user_u -r s0 __default__
 
 # Map specific admins
 sudo semanage login -a -s staff_u admin1
@@ -174,16 +174,16 @@ ps -eZ | grep myservice
 Fine-tune what confined users can do:
 
 ```bash
-# Allow confined users to run content from home directory
+# Allow user_u users to run content from their home directory and /tmp
 sudo setsebool -P user_exec_content on
 
-# Allow confined users to manage crontab
-sudo setsebool -P user_cron_spool_job on
+# Prevent guest users from running executables in their home directory and /tmp
+sudo setsebool -P guest_exec_content off
 
-# Prevent confined users from running executables in /tmp
+# Prevent user_u users from running executables in their home directory and /tmp
 sudo setsebool -P user_exec_content off
 
-# Allow staff to run unconfined applications
+# Allow staff users to run content from their home directory and /tmp
 sudo setsebool -P staff_exec_content on
 ```
 
@@ -227,14 +227,8 @@ sudo ausearch -m avc -c bash -ts recent
 The `staff_u` user needs to transition to `sysadm_r` when using sudo. Make sure sudoers is configured:
 
 ```bash
-# In /etc/sudoers, ensure the user has access
-admin1 ALL=(ALL) ALL
-```
-
-And the SELinux boolean is set:
-
-```bash
-sudo setsebool -P staff_exec_content on
+# In /etc/sudoers or a file under /etc/sudoers.d/, allow the role and type transition
+admin1 ALL=(ALL) TYPE=sysadm_t ROLE=sysadm_r ALL
 ```
 
 ## Reverting to Unconfined
