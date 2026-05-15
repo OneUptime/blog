@@ -159,11 +159,10 @@ sudo subscription-manager unregister
 # Step 2: Remove Satellite CA certificate
 sudo dnf remove -y katello-ca-consumer-*
 
-# Step 3: Restore CDN configuration
-sudo subscription-manager config --server.hostname=subscription.rhsm.redhat.com \
-    --server.port=443 \
-    --server.prefix=/subscription \
-    --rhsm.baseurl=https://cdn.redhat.com
+# Step 3: Restore the default RHSM configuration
+cd /etc/rhsm
+sudo mv rhsm.conf rhsm.satellite.back
+sudo mv rhsm.conf.kat-backup rhsm.conf
 
 # Step 4: Register to CDN
 sudo subscription-manager register --username=your_username --password=your_password
