@@ -67,7 +67,7 @@ echo "268435456" | sudo tee /sys/fs/cgroup/limited/memory.high
 echo $PID | sudo tee /sys/fs/cgroup/limited/cgroup.procs
 ```
 
-Or start a new process in the cgroup:
+Or start a new process in a systemd-managed scope with equivalent limits:
 
 ```bash
 sudo systemd-run --scope --slice=limited.slice   --property=MemoryMax=512M --property=CPUQuota=50%   /usr/local/bin/myapp
