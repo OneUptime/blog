@@ -87,11 +87,12 @@ podman run -d --name pid-limited \
 
 Resource Limits on Pods
 
-When using pods, you can set limits at the pod level:
+When using pods, you can set shared limits at the pod level and smaller limits on individual containers:
 
-## Create a pod with resource limits on individual containers
+## Create a pod with pod-level and individual container resource limits
 ```bash
-podman pod create --name limited-pod -p 8080:80
+podman pod create --name limited-pod -p 8080:80 \
+  --memory 512m --cpus 1
 
 podman run -d --pod limited-pod --name web \
   --memory 256m --cpus 0.5 \
@@ -120,6 +121,8 @@ By default, containers get a set of Linux capabilities. Drop the ones you do not
 podman run -d --name secure-app \
   --cap-drop ALL \
   --cap-add NET_BIND_SERVICE \
+  --cap-add SETUID \
+  --cap-add SETGID \
   docker.io/library/nginx:latest
 ```
 
@@ -145,6 +148,7 @@ podman run -d --name readonly-app \
   --read-only \
   --tmpfs /tmp \
   --tmpfs /run \
+  --tmpfs /var/cache/nginx \
   docker.io/library/nginx:latest
 ```
 
@@ -185,15 +189,15 @@ Force the container process to run as a non-root user:
 ```bash
 podman run -d --name nonroot-app \
   --user 1001:1001 \
-  docker.io/library/nginx:latest
+  registry.access.redhat.com/ubi9/ubi-minimal \
+  sleep infinity
 ```
 
 Or set it in the Containerfile:
 
 ```dockerfile
 FROM registry.access.redhat.com/ubi9/ubi-minimal
-RUN useradd -r -u 1001 appuser
-USER 1001
+USER 1001:1001
 CMD ["sleep", "infinity"]
 ```
 
@@ -240,7 +244,6 @@ Set process limits inside containers:
 
 podman run -d --name ulimit-app \
   --ulimit nofile=4096:8192 \
-  --ulimit nproc=256:512 \
   registry.access.redhat.com/ubi9/ubi-minimal \
   sleep infinity
 ```
