@@ -19,16 +19,12 @@ sudo dnf install -y net-snmp net-snmp-utils
 
 sudo tee /etc/snmp/snmpd.conf << 'CONF'
 # Allow read-only access from Zabbix server
-rocommunity zabbixMonitor 10.0.0.100
-rocommunity zabbixMonitor 127.0.0.1
+rocommunity zabbixMonitor 10.0.0.100 .1
+rocommunity zabbixMonitor 127.0.0.1 .1
 
 # System information
 syslocation "Data Center"
 syscontact "admin@example.com"
-
-# Expose full OID tree
-view all included .1
-access notConfigGroup "" any noauth exact all none none
 
 # Disk monitoring
 disk / 10%
@@ -66,18 +62,18 @@ snmpwalk -v2c -c zabbixMonitor 10.0.0.50 ifDescr
 
 Zabbix provides built-in SNMP templates. Link these to the host:
 
-- **Linux SNMP** - Covers CPU, memory, disk, network
+- **Linux by SNMP** - Covers CPU, memory, disk, network
 - **ICMP Ping** - Basic availability monitoring
 
 To link templates:
 1. Edit the host
 2. Go to the Templates tab
-3. Search for "Linux SNMP" and add it
+3. Search for "Linux by SNMP" and add it
 4. Save
 
 ## Key SNMP OIDs Monitored
 
-The Linux SNMP template monitors these OIDs:
+The Linux by SNMP template monitors these OIDs:
 
 ```text
 # System uptime
@@ -105,14 +101,14 @@ The Linux SNMP template monitors these OIDs:
 If you need to monitor something not in the default template:
 
 1. Go to Data collection > Hosts > Items > Create item
-2. Set Type: SNMPv2 agent
+2. Set Type: SNMP agent
 3. Set the SNMP OID (e.g., `.1.3.6.1.4.1.2021.11.9.0` for user CPU percentage)
 4. Set value type and update interval
 
 ```text
 Example custom item:
   Name: CPU User Time
-  Type: SNMPv2 agent
+  Type: SNMP agent
   SNMP OID: .1.3.6.1.4.1.2021.11.9.0
   Update interval: 60s
   Value type: Numeric (float)
