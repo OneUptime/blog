@@ -111,7 +111,7 @@ sudo /usr/share/bcc/tools/funccount 'tcp_*' -i 5
 sudo /usr/share/bcc/tools/funclatency do_sys_open
 
 # trace - general-purpose function tracer
-sudo /usr/share/bcc/tools/trace 'do_sys_open "%s", arg2'
+sudo /usr/share/bcc/tools/trace 'do_sys_open "%s", arg2@user'
 ```
 
 ## Practical Example: Finding Slow Disk I/O
