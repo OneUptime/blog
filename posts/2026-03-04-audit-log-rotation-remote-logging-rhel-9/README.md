@@ -41,20 +41,20 @@ max_log_file = 50
 num_logs = 10
 
 # Action when max_log_file size is reached
-# Options: IGNORE, SYSLOG, SUSPEND, ROTATE, KEEP_LOGS
-max_log_file_action = ROTATE
+# Options: ignore, syslog, exec, suspend, rotate, keep_logs
+max_log_file_action = rotate
 
 # Action when disk space is getting low
 space_left = 75
-space_left_action = SYSLOG
+space_left_action = syslog
 
 # Action when disk space is critically low
 admin_space_left = 50
-admin_space_left_action = SUSPEND
+admin_space_left_action = suspend
 
 # Action when disk is completely full
-disk_full_action = SUSPEND
-disk_error_action = SUSPEND
+disk_full_action = suspend
+disk_error_action = suspend
 ```
 
 ### Rotation Actions Explained
@@ -65,7 +65,7 @@ disk_error_action = SUSPEND
 | `KEEP_LOGS` | Rotate logs but never delete old ones |
 | `SYSLOG` | Send a warning to syslog but keep writing to the current log |
 | `SUSPEND` | Stop writing audit events (data may be lost) |
-| `HALT` | Shut down the system (for high-security environments) |
+| `HALT` | Shut down the system when used with disk-space actions |
 | `IGNORE` | Do nothing |
 
 ### Calculating Storage Requirements
@@ -173,7 +173,7 @@ sudo systemctl restart rsyslog
 On the receiving log server, configure rsyslog to accept remote connections:
 
 ```bash
-# /etc/rsyslog.d/remote-audit.conf on the log server
+sudo tee /etc/rsyslog.d/remote-audit.conf << 'EOF'
 
 # Accept TCP connections
 module(load="imtcp")
@@ -183,14 +183,14 @@ input(type="imtcp" port="514")
 template(name="AuditLogFile" type="string"
     string="/var/log/remote-audit/%HOSTNAME%/audit.log")
 
-local6.* ?AuditLogFile
-& stop
+local6.* action(type="omfile" dynaFile="AuditLogFile" createDirs="on")
+local6.* stop
 EOF
 ```
 
 ## Remote Logging with audisp-remote
 
-For more secure and reliable remote audit logging, use the dedicated `audisp-remote` plugin:
+For protocol-aware remote audit logging, use the dedicated `audisp-remote` plugin:
 
 ### Step 1: Install the Plugin
 
@@ -252,26 +252,31 @@ tcp_max_per_addr = 1
 tcp_client_max_idle = 0
 ```
 
-## Securing Remote Log Transport with TLS
+## Securing Remote Log Transport
 
-For encrypted transport of audit logs:
+For native encrypted transport with `audisp-remote`, use Kerberos:
 
 ```bash
-# Configure TLS in audisp-remote.conf
+# Configure Kerberos transport in audisp-remote.conf
 sudo vi /etc/audit/audisp-remote.conf
 ```
 
-Add TLS settings:
+Add Kerberos transport settings:
 
 ```ini
-transport = tcp
-enable_krb5 = no
-
-# For TLS (if using stunnel or a TLS-capable transport)
-# You may need to set up stunnel for TLS wrapping
+transport = KRB5
+krb5_principal = auditd/auditlog.example.com
 ```
 
-Set up stunnel for TLS encryption:
+If you need TLS instead of Kerberos, wrap the TCP connection with stunnel. Point `audisp-remote` at the local stunnel listener:
+
+```ini
+remote_server = 127.0.0.1
+port = 60
+transport = tcp
+```
+
+Set up stunnel for TLS encryption on the client:
 
 ```bash
 # Install stunnel
@@ -289,6 +294,20 @@ EOF
 
 # Start stunnel
 sudo systemctl enable --now stunnel@audit-client
+```
+
+On the audit log server, run the matching stunnel listener and forward decrypted traffic to the local auditd TCP listener:
+
+```bash
+sudo tee /etc/stunnel/audit-server.conf << 'EOF'
+[audit-remote]
+accept = 6514
+connect = 127.0.0.1:60
+cert = /etc/pki/tls/certs/auditlog.example.com.crt
+key = /etc/pki/tls/private/auditlog.example.com.key
+EOF
+
+sudo systemctl enable --now stunnel@audit-server
 ```
 
 ## Verifying Remote Logging
