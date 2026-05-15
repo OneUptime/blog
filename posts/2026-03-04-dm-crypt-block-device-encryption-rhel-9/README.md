@@ -162,16 +162,20 @@ sudo losetup -d /dev/loop0  # use the correct loop device
 rm /tmp/encrypted-container
 ```
 
-## dm-crypt with Integrity Protection
+## LUKS2 with Integrity Protection
 
-RHEL 9 supports dm-integrity combined with dm-crypt for authenticated encryption:
+RHEL 9 supports dm-integrity combined with dm-crypt for authenticated encryption through LUKS2:
 
 ```bash
-# Create an encrypted device with integrity protection
-sudo cryptsetup open --type plain \
+# Format a LUKS2 device with integrity protection
+sudo cryptsetup luksFormat --type luks2 \
     --cipher aes-gcm-random \
     --key-size 256 \
     --integrity aead \
+    /dev/sdb
+
+# Open the integrity-protected LUKS2 device
+sudo cryptsetup open \
     /dev/sdb integrity_encrypted
 ```
 
