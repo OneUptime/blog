@@ -8,7 +8,7 @@ Description: Step-by-step guide on install and configure zeromq using Red Hat En
 
 ---
 
-ZeroMQ can be installed and configured on RHEL to provide robust functionality for your infrastructure. This guide walks through the installation, basic configuration, and verification steps.
+ZeroMQ can be installed on RHEL to provide robust messaging functionality for your applications. This guide walks through the installation, basic application configuration, and verification steps.
 
 ## Prerequisites
 
@@ -23,39 +23,53 @@ ZeroMQ can be installed and configured on RHEL to provide robust functionality f
 
 sudo dnf update -y
 
-# Install the required packages
-sudo dnf install -y <package-name>
+# Enable the CodeReady Builder repository on RHEL 9
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+
+# Install EPEL on RHEL 9
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+
+# Install the ZeroMQ runtime and development files
+sudo dnf install -y zeromq zeromq-devel
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+On CentOS Stream 9, enable CRB and install both EPEL release packages instead:
+
+```bash
+sudo dnf config-manager --set-enabled crb
+sudo dnf install -y epel-release epel-next-release
+sudo dnf install -y zeromq zeromq-devel
+```
 
 ## Step 2: Configure the Service
 
-Edit the configuration file to match your environment:
+ZeroMQ does not install a system-wide service or a global configuration file. Configure the application that uses ZeroMQ with the endpoint, socket type, and security settings it needs.
 
 ```bash
-# Open the configuration file
-sudo vi /etc/<service>/config.conf
+# Example endpoint values used by your application
+export ZMQ_BIND_ENDPOINT="tcp://*:5555"
+export ZMQ_CONNECT_ENDPOINT="tcp://127.0.0.1:5555"
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the application settings according to your requirements. Key parameters to configure include bind or connect endpoints, socket patterns, authentication settings such as CURVE or PLAIN when used by your application, and application logging options.
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Restart your application to apply changes
+sudo systemctl restart <your-application-service>
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# ZeroMQ itself does not provide a service to enable or start.
+# Enable your application service if it should start on boot.
+sudo systemctl enable <your-application-service>
 
-# Start the service
-sudo systemctl start <service-name>
+# Start your application service
+sudo systemctl start <your-application-service>
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status <your-application-service>
 ```
 
 
@@ -64,17 +78,22 @@ sudo systemctl status <service-name>
 Confirm everything is working by checking the status and logs:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
+# Confirm the packages are installed
+rpm -q zeromq zeromq-devel
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# Check the installed libzmq version
+pkg-config --modversion libzmq
+
+# Check your application service status and recent logs
+sudo systemctl status <your-application-service>
+journalctl -u <your-application-service> --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If your application service fails to start, check the logs with `journalctl -u <your-application-service> -e --no-pager`.
+- Ensure ZeroMQ packages are installed: `rpm -q zeromq zeromq-devel`.
+- If `dnf` cannot find the packages, confirm that EPEL is enabled with `dnf repolist`.
 
 ## Conclusion
 
