@@ -93,6 +93,14 @@ Booleans are the most common SELinux configuration. They enable or disable speci
         persistent: true
       loop: "{{ nfs_booleans }}"
       when: "'nfs_servers' in group_names or 'nfs_clients' in group_names"
+
+    - name: Set Samba SELinux booleans
+      ansible.posix.seboolean:
+        name: "{{ item.name }}"
+        state: "{{ item.state }}"
+        persistent: true
+      loop: "{{ samba_booleans }}"
+      when: "'samba_servers' in group_names"
 ```
 
 ## Managing File Contexts
@@ -150,9 +158,9 @@ Booleans are the most common SELinux configuration. They enable or disable speci
   become: true
 
   tasks:
-    - name: Allow Apache to listen on port 8443
+    - name: Allow Apache to listen on port 8888
       community.general.seport:
-        ports: 8443
+        ports: 8888
         proto: tcp
         setype: http_port_t
         state: present
@@ -192,6 +200,7 @@ For cases where booleans and contexts are not enough:
         name:
           - policycoreutils-python-utils
           - selinux-policy-devel
+          - checkpolicy
         state: present
 
     - name: Copy custom policy source
@@ -246,8 +255,8 @@ For cases where booleans and contexts are not enough:
   tasks:
     - name: Check for recent SELinux denials
       ansible.builtin.shell: |
-        # Find denials in the last 24 hours
-        ausearch -m avc -ts recent 2>/dev/null | head -50 || echo "No recent denials"
+        # Find recent SELinux denials
+        ausearch -m AVC,USER_AVC,SELINUX_ERR,USER_SELINUX_ERR -ts recent 2>/dev/null | head -50
       register: denials
       changed_when: false
 
@@ -257,7 +266,7 @@ For cases where booleans and contexts are not enough:
           Host: {{ inventory_hostname }}
           SELinux denials:
           {{ denials.stdout }}
-      when: "'No recent denials' not in denials.stdout"
+      when: denials.stdout | trim | length > 0
 ```
 
 ## Wrapping Up
