@@ -8,7 +8,7 @@ Description: Learn how to diagnose and recover from the HelmRelease install retr
 
 ---
 
-When a HelmRelease in Flux CD fails to install and all configured retry attempts are exhausted, Flux stops trying and reports the error `install retries exhausted`. The HelmRelease enters a terminal failed state and will not attempt further installations until the issue is resolved and the resource is reset. This guide explains what causes this state, how to diagnose the underlying problem, and how to recover.
+When a HelmRelease in Flux CD fails to install and all configured retry attempts are exhausted, Flux stops trying that install action and reports the error `install retries exhausted`. The HelmRelease remains in a failed state and will not attempt further installations for the same desired state until the issue is resolved and the failure counters are reset, or until a new chart version or configuration change resets them. This guide explains what causes this state, how to diagnose the underlying problem, and how to recover.
 
 ## What Happens When Retries Are Exhausted
 
@@ -19,7 +19,7 @@ Flux tracks install retries through the `spec.install.remediation.retries` field
 - **Reason:** `InstallFailed`
 - **Message:** `install retries exhausted`
 
-At this point, the HelmRelease will not reconcile further until you intervene.
+At this point, the HelmRelease may still reconcile on its interval, but it will not retry the failed install for the same desired state until you intervene or apply a new release configuration.
 
 ```mermaid
 graph TD
@@ -31,7 +31,7 @@ graph TD
     F --> G{retries limit reached?}
     G -->|Yes| H[install retries exhausted]
     G -->|No| I[Next attempt]
-    H --> J[HelmRelease stuck in failed state]
+    H --> J[HelmRelease remains failed]
 ```
 
 ## Step 1: Confirm the Error
@@ -44,7 +44,7 @@ Verify that the HelmRelease is in the retries exhausted state:
 flux get helmreleases -n default
 
 # View the detailed conditions
-kubectl get helmrelease my-app -n default -o jsonpath='{.status.conditions[?(@.type=="Ready")]}' | jq .
+kubectl get helmrelease my-app -n default -o json | jq '.status.conditions[] | select(.type == "Ready")'
 
 # Expected output includes:
 # "reason": "InstallFailed"
@@ -247,8 +247,9 @@ metadata:
 spec:
   type: slack
   channel: flux-alerts
+  address: https://slack.com/api/chat.postMessage
   secretRef:
-    name: slack-webhook
+    name: slack-token
 ---
 # Alert for HelmRelease failures
 apiVersion: notification.toolkit.fluxcd.io/v1beta3
