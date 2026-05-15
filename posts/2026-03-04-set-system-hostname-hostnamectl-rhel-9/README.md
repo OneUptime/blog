@@ -50,7 +50,7 @@ hostname
 hostname -f
 ```
 
-The `hostnamectl status` output shows you all three hostnames plus additional system information:
+The `hostnamectl status` output can show you the configured hostnames plus additional system information:
 
 ```bash
  Static hostname: server01.example.com
@@ -77,7 +77,7 @@ hostnamectl hostname
 This command:
 - Writes the hostname to `/etc/hostname`
 - Updates the kernel hostname immediately
-- Takes effect without a reboot
+- Takes effect for the kernel hostname without a reboot, though services that read the hostname only at startup may need to be restarted
 
 ### Hostname Naming Rules
 
@@ -85,8 +85,8 @@ The static hostname should follow these rules:
 
 - Only lowercase letters (a-z), digits (0-9), hyphens (-), and dots (.)
 - Must not start or end with a hyphen or dot
-- Maximum 64 characters for the short hostname
-- Maximum 253 characters for the FQDN
+- Maximum 64 characters total for the static or transient hostname
+- DNS FQDNs can be longer, but `hostnamectl` on RHEL still enforces the Linux hostname length limit
 - Should be a valid FQDN for production systems
 
 ```bash
@@ -103,7 +103,7 @@ hostnamectl set-hostname monitor-server.infra.example.com
 
 ## Setting the Pretty Hostname
 
-The pretty hostname is for human consumption and has no restrictions on characters:
+The pretty hostname is for human consumption and has few restrictions on characters:
 
 ```bash
 # Set a pretty hostname
@@ -189,10 +189,10 @@ NetworkManager can interact with the hostname in several ways:
 
 ### Preventing DHCP from Changing the Hostname
 
-If you set a static hostname but DHCP keeps overriding it, configure NetworkManager to leave it alone:
+If you do not want NetworkManager to manage the transient hostname from DHCP or reverse DNS, configure NetworkManager to leave it alone:
 
 ```bash
-# Prevent NetworkManager from changing the hostname via DHCP
+# Prevent NetworkManager from changing the transient hostname via DHCP
 cat > /etc/NetworkManager/conf.d/hostname.conf << 'EOF'
 [main]
 hostname-mode=none
