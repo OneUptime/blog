@@ -30,10 +30,11 @@ graph LR
 ```bash
 # Add the HashiCorp repository
 
-sudo dnf config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
+sudo yum install -y yum-utils
+sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
 
 # Install Packer
-sudo dnf install -y packer
+sudo yum install -y packer
 
 # Verify the installation
 packer version
@@ -130,7 +131,7 @@ build {
       "sudo systemctl enable chronyd",
 
       "# Install and enable the SSM agent for AWS Systems Manager",
-      "sudo dnf install -y amazon-ssm-agent",
+      "sudo dnf install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm",
       "sudo systemctl enable amazon-ssm-agent"
     ]
   }
@@ -180,7 +181,6 @@ mkdir -p files
 cat > files/sshd_config << 'EOF'
 # Hardened SSH configuration for RHEL
 Port 22
-Protocol 2
 PermitRootLogin no
 MaxAuthTries 3
 PubkeyAuthentication yes
