@@ -15,6 +15,7 @@ This guide covers how to Install and Configure Traefik as a Reverse Proxy on RHE
 - RHEL with a minimal or standard installation
 - Root or sudo access
 - A stable network connection
+- A backend application that Traefik can forward traffic to
 
 ## Overview
 
@@ -28,40 +29,134 @@ Update your system to ensure all packages are current:
 sudo dnf update -y
 ```
 
-Install any required dependencies:
+Install the required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y curl tar gzip firewalld
 ```
 
 ## Step 2: Install Required Packages
 
+Install Traefik from the official binary release for x86_64 systems:
+
 ```bash
-sudo dnf install -y <package-name>
+TRAEFIK_VERSION="3.7.1"
+curl -L "https://github.com/traefik/traefik/releases/download/v${TRAEFIK_VERSION}/traefik_v${TRAEFIK_VERSION}_linux_amd64.tar.gz" -o /tmp/traefik.tar.gz
+curl -L "https://github.com/traefik/traefik/releases/download/v${TRAEFIK_VERSION}/traefik_v${TRAEFIK_VERSION}_checksums.txt" -o /tmp/traefik_checksums.txt
+cd /tmp
+grep "traefik_v${TRAEFIK_VERSION}_linux_amd64.tar.gz" traefik_checksums.txt | sha256sum -c -
+tar -xzf traefik.tar.gz traefik
+sudo install -m 0755 traefik /usr/local/bin/traefik
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+traefik version
 ```
 
 ## Step 3: Configure the Service
 
-Create or edit the main configuration file:
+Create a dedicated user and directories for Traefik:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo useradd --system --no-create-home --shell /sbin/nologin traefik
+sudo mkdir -p /etc/traefik/dynamic /var/lib/traefik
+sudo touch /var/lib/traefik/acme.json
+sudo chmod 600 /var/lib/traefik/acme.json
+sudo chown -R traefik:traefik /etc/traefik /var/lib/traefik
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+Create the main static configuration file:
+
+```bash
+sudo vi /etc/traefik/traefik.yml
+```
+
+Add the following configuration:
+
+```yaml
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+
+providers:
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+ping: {}
+
+log:
+  level: INFO
+```
+
+Create a dynamic routing configuration for your backend application:
+
+```bash
+sudo vi /etc/traefik/dynamic/app.yml
+```
+
+Add the following configuration and replace `example.com` and `http://127.0.0.1:8080` with your domain and backend service address:
+
+```yaml
+http:
+  routers:
+    app:
+      entryPoints:
+        - web
+      rule: "Host(`example.com`)"
+      service: app
+
+  services:
+    app:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:8080"
+```
+
+Create a systemd unit:
+
+```bash
+sudo vi /etc/systemd/system/traefik.service
+```
+
+Add the following service definition:
+
+```ini
+[Unit]
+Description=Traefik Reverse Proxy
+Documentation=https://doc.traefik.io/traefik/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=traefik
+Group=traefik
+ExecStart=/usr/local/bin/traefik --configFile=/etc/traefik/traefik.yml
+Restart=on-failure
+RestartSec=5s
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Reload systemd after creating the unit:
+
+```bash
+sudo systemctl daemon-reload
+```
 
 ## Step 4: Start and Enable the Service
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo systemctl enable --now traefik
+sudo systemctl status traefik
 ```
 
 ## Step 5: Verify the Configuration
@@ -69,21 +164,24 @@ sudo systemctl status <service>
 Test the setup:
 
 ```bash
-sudo <service> --test
+traefik healthcheck
+curl -H "Host: example.com" http://127.0.0.1/
 ```
 
 Check the logs for any errors:
 
 ```bash
-journalctl -u <service> -f
+journalctl -u traefik -f
 ```
 
 ## Step 6: Configure Firewall Rules
 
-If the service needs network access:
+If Traefik needs network access:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo systemctl enable --now firewalld
+sudo firewall-cmd --permanent --add-service=http
+sudo firewall-cmd --permanent --add-service=https
 sudo firewall-cmd --reload
 ```
 
@@ -92,8 +190,8 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+systemctl show traefik --property=MemoryCurrent
+top -p $(pidof traefik)
 ```
 
 ## Security Considerations
@@ -107,10 +205,10 @@ top -p $(pidof <service>)
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
+1. **Service fails to start**: Check `journalctl -u traefik -xe` for error messages
 2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
 3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
 
 ## Conclusion
 
-You have successfully configured install and configure traefik as a reverse proxy on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
+You have successfully configured Traefik as a reverse proxy on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
