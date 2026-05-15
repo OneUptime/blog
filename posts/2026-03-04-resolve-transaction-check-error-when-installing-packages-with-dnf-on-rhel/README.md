@@ -68,7 +68,7 @@ sudo dnf install package-name
 # Rebuild the RPM database
 sudo rpm --rebuilddb
 
-# Verify the database
+# Verify that the database can be queried
 rpm -qa | wc -l
 
 # Try the installation again
@@ -79,7 +79,7 @@ sudo dnf install package-name
 
 ```bash
 # Check for duplicate packages
-sudo dnf list --duplicates
+sudo dnf repoquery --duplicates
 
 # Remove older duplicates
 sudo dnf remove --duplicates
