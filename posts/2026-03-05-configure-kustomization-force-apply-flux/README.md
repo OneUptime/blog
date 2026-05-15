@@ -81,7 +81,7 @@ With this configuration, if Flux encounters an immutable field error while updat
 
 ## When to Use Force Apply
 
-### Jobs and CronJobs
+### Jobs
 
 Jobs are the most common use case for force apply because their `spec.template` is immutable.
 
