@@ -43,7 +43,7 @@ The quickest way to limit bandwidth on an interface:
 
 ```bash
 # Limit outbound bandwidth to 100 Mbits/sec using tbf (Token Bucket Filter)
-sudo tc qdisc add dev ens192 root tbf rate 100mbit burst 32kbit latency 400ms
+sudo tc qdisc add dev ens192 root tbf rate 100mbit burst 1mbit latency 400ms
 
 # Verify
 tc qdisc show dev ens192
@@ -81,14 +81,14 @@ Once you have classes, you need filters to sort traffic into them.
 
 ```bash
 # SSH traffic goes to high priority (class 1:10)
-sudo tc filter add dev ens192 parent 1: protocol ip prio 1 u32 match ip dport 22 0xffff flowid 1:10
+sudo tc filter add dev ens192 parent 1: protocol ip prio 1 u32 match ip protocol 6 0xff match ip dport 22 0xffff flowid 1:10
 
-# DNS traffic goes to high priority
-sudo tc filter add dev ens192 parent 1: protocol ip prio 1 u32 match ip dport 53 0xffff flowid 1:10
+# DNS traffic goes to high priority (UDP queries; add TCP/53 if you need DNS over TCP)
+sudo tc filter add dev ens192 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip dport 53 0xffff flowid 1:10
 
 # HTTP/HTTPS traffic goes to normal priority (class 1:20)
-sudo tc filter add dev ens192 parent 1: protocol ip prio 2 u32 match ip dport 80 0xffff flowid 1:20
-sudo tc filter add dev ens192 parent 1: protocol ip prio 2 u32 match ip dport 443 0xffff flowid 1:20
+sudo tc filter add dev ens192 parent 1: protocol ip prio 2 u32 match ip protocol 6 0xff match ip dport 80 0xffff flowid 1:20
+sudo tc filter add dev ens192 parent 1: protocol ip prio 2 u32 match ip protocol 6 0xff match ip dport 443 0xffff flowid 1:20
 
 # Everything else falls to default (class 1:30) via the "default 30" setting
 ```
@@ -140,10 +140,10 @@ if [ "$IFACE" = "ens192" ] && [ "$ACTION" = "up" ]; then
     tc class add dev ens192 parent 1:1 classid 1:30 htb rate 200mbit ceil 500mbit prio 3
 
     # Filters
-    tc filter add dev ens192 parent 1: protocol ip prio 1 u32 match ip dport 22 0xffff flowid 1:10
-    tc filter add dev ens192 parent 1: protocol ip prio 1 u32 match ip dport 53 0xffff flowid 1:10
-    tc filter add dev ens192 parent 1: protocol ip prio 2 u32 match ip dport 80 0xffff flowid 1:20
-    tc filter add dev ens192 parent 1: protocol ip prio 2 u32 match ip dport 443 0xffff flowid 1:20
+    tc filter add dev ens192 parent 1: protocol ip prio 1 u32 match ip protocol 6 0xff match ip dport 22 0xffff flowid 1:10
+    tc filter add dev ens192 parent 1: protocol ip prio 1 u32 match ip protocol 17 0xff match ip dport 53 0xffff flowid 1:10
+    tc filter add dev ens192 parent 1: protocol ip prio 2 u32 match ip protocol 6 0xff match ip dport 80 0xffff flowid 1:20
+    tc filter add dev ens192 parent 1: protocol ip prio 2 u32 match ip protocol 6 0xff match ip dport 443 0xffff flowid 1:20
 
     # Fair queueing on leaves
     tc qdisc add dev ens192 parent 1:10 handle 10: fq_codel
