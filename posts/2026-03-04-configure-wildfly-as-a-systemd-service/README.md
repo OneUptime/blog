@@ -15,10 +15,11 @@ This guide covers how to Configure WildFly as a systemd Service on RHEL. Followi
 - RHEL with a minimal or standard installation
 - Root or sudo access
 - A stable network connection
+- Java SE 11 or later
 
 ## Overview
 
-Configure WildFly as a systemd Service requires careful planning and execution. This guide walks through the complete process from installation to verification.
+Configuring WildFly as a systemd service requires careful planning and execution. This guide walks through the complete process from installation to verification.
 
 ## Step 1: Prepare the System
 
@@ -31,37 +32,58 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y java-17-openjdk tar gzip curl
 ```
 
 ## Step 2: Install Required Packages
 
 ```bash
-sudo dnf install -y <package-name>
+cd /tmp
+curl -LO https://github.com/wildfly/wildfly/releases/download/38.0.0.Final/wildfly-38.0.0.Final.tar.gz
+sudo tar -xzf wildfly-38.0.0.Final.tar.gz -C /opt
+sudo ln -sfn /opt/wildfly-38.0.0.Final /opt/wildfly
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+/opt/wildfly/bin/standalone.sh --version
 ```
 
 ## Step 3: Configure the Service
 
-Create or edit the main configuration file:
+Create the user and group that will run WildFly:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo groupadd -r wildfly
+sudo useradd -r -g wildfly -d /opt/wildfly -s /sbin/nologin wildfly
+sudo chown -R wildfly:wildfly /opt/wildfly-38.0.0.Final
+sudo chown -h wildfly:wildfly /opt/wildfly
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+Generate the systemd unit and edit the environment file:
+
+```bash
+cd /opt/wildfly/bin/systemd
+sudo ./generate_systemd_unit.sh standalone wildfly wildfly
+sudo vi /opt/wildfly/bin/systemd/wildfly-standalone.conf
+```
+
+Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware. For example, set `JAVA_HOME` if your environment requires a specific Java installation.
+
+Copy the generated files into the locations used by systemd and RHEL service configuration:
+
+```bash
+sudo cp /opt/wildfly/bin/systemd/wildfly-standalone.service /etc/systemd/system/
+sudo cp /opt/wildfly/bin/systemd/wildfly-standalone.conf /etc/sysconfig/
+sudo systemctl daemon-reload
+```
 
 ## Step 4: Start and Enable the Service
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo systemctl enable --now wildfly-standalone
+sudo systemctl status wildfly-standalone
 ```
 
 ## Step 5: Verify the Configuration
@@ -69,13 +91,15 @@ sudo systemctl status <service>
 Test the setup:
 
 ```bash
-sudo <service> --test
+systemctl is-active wildfly-standalone
+systemctl is-enabled wildfly-standalone
+curl http://127.0.0.1:8080/
 ```
 
 Check the logs for any errors:
 
 ```bash
-journalctl -u <service> -f
+journalctl -u wildfly-standalone -f
 ```
 
 ## Step 6: Configure Firewall Rules
@@ -83,7 +107,7 @@ journalctl -u <service> -f
 If the service needs network access:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo firewall-cmd --permanent --add-port=8080/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -92,8 +116,8 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+systemctl show wildfly-standalone --property=MemoryCurrent
+top -p $(systemctl show wildfly-standalone --property=MainPID --value)
 ```
 
 ## Security Considerations
@@ -107,10 +131,10 @@ top -p $(pidof <service>)
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
+1. **Service fails to start**: Check `journalctl -u wildfly-standalone -xe` for error messages
 2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
 3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
 
 ## Conclusion
 
-You have successfully configured configure wildfly as a systemd service on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
+You have successfully configured WildFly as a systemd service on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
