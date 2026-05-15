@@ -8,7 +8,7 @@ Description: Configure Jenkins to run with Java 17 on RHEL, including JDK instal
 
 ---
 
-Jenkins on RHEL works best with Java 17, which is the recommended LTS version. This guide covers installing Java 17, configuring Jenkins to use it, and setting up JDK configurations for build jobs.
+Jenkins on RHEL can run with Java 17 on Jenkins releases that still support it. Current Jenkins releases may require Java 21 or newer, so confirm your Jenkins version's Java support policy before switching the controller JVM. This guide covers installing Java 17, configuring Jenkins to use it, and setting up JDK configurations for build jobs.
 
 ## Install Java 17
 
@@ -33,10 +33,13 @@ If you have multiple Java versions installed, select the right one:
 sudo alternatives --config java
 
 # Set Java 17 as the default
-sudo alternatives --set java /usr/lib/jvm/java-17-openjdk-17.*/bin/java
+PKG_NAME=java-17-openjdk
+JAVA_TO_SELECT=$(alternatives --display java | grep "family $PKG_NAME" | cut -d' ' -f1)
+sudo alternatives --set java "$JAVA_TO_SELECT"
 
 # Set javac too
-sudo alternatives --set javac /usr/lib/jvm/java-17-openjdk-17.*/bin/javac
+JAVAC_TO_SELECT=$(alternatives --display javac | grep "family $PKG_NAME" | cut -d' ' -f1)
+sudo alternatives --set javac "$JAVAC_TO_SELECT"
 
 # Verify
 java -version
@@ -61,8 +64,11 @@ sudo systemctl edit jenkins
 # Restart Jenkins to apply changes
 sudo systemctl restart jenkins
 
-# Verify Jenkins is using Java 17
+# Check Jenkins restarted successfully
 sudo systemctl status jenkins
+
+# Verify the Java executable used by the running Jenkins process
+sudo readlink -f /proc/$(systemctl show -p MainPID --value jenkins)/exe
 ```
 
 ## Configure JDK in Jenkins Web UI
@@ -137,4 +143,4 @@ ps aux | grep jenkins
 sudo journalctl -u jenkins --no-pager -n 50
 ```
 
-With Java 17 properly configured, Jenkins runs efficiently on RHEL and your build jobs can take advantage of the latest JDK features and performance improvements.
+With Java 17 properly configured, Jenkins runs efficiently on supported Jenkins releases and your build jobs can take advantage of Java 17 features and performance improvements.
