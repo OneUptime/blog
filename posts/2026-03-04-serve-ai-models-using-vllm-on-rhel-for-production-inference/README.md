@@ -14,20 +14,29 @@ vLLM is a high-throughput serving engine for large language models. It uses Page
 
 - RHEL 9 with an NVIDIA GPU (A100, H100, or similar)
 - NVIDIA drivers and CUDA toolkit installed
-- Python 3.10 or 3.11
+- Python 3.10 to 3.13
 
 ## Install NVIDIA Drivers and CUDA
 
 ```bash
+# Install kernel headers for the running kernel
+sudo dnf install -y kernel-devel-$(uname -r) kernel-headers-$(uname -r)
+
 # Add the CUDA repository
 
 sudo dnf config-manager --add-repo \
     https://developer.download.nvidia.com/compute/cuda/repos/rhel9/x86_64/cuda-rhel9.repo
 
-# Install CUDA toolkit
-sudo dnf install -y cuda-toolkit-12-4
+sudo dnf clean expire-cache
 
-# Verify GPU access
+# Install NVIDIA drivers and CUDA toolkit
+sudo dnf module install -y nvidia-driver:latest-dkms
+sudo dnf install -y cuda-toolkit
+
+# Reboot so the NVIDIA kernel module is loaded
+sudo reboot
+
+# After reboot, verify GPU access
 nvidia-smi
 ```
 
@@ -35,11 +44,12 @@ nvidia-smi
 
 ```bash
 # Create a virtual environment
-python3.11 -m venv ~/vllm-env
+python3.12 -m venv ~/vllm-env
 source ~/vllm-env/bin/activate
 
-# Install vLLM
-pip install vllm
+# Install vLLM with CUDA wheels
+pip install --upgrade pip
+pip install vllm --extra-index-url https://download.pytorch.org/whl/cu129
 
 # Verify installation
 python -c "import vllm; print(vllm.__version__)"
@@ -49,8 +59,7 @@ python -c "import vllm; print(vllm.__version__)"
 
 ```bash
 # Serve a model with the OpenAI-compatible API
-python -m vllm.entrypoints.openai.api_server \
-    --model meta-llama/Llama-3.1-8B-Instruct \
+vllm serve meta-llama/Llama-3.1-8B-Instruct \
     --host 0.0.0.0 \
     --port 8000 \
     --max-model-len 4096 \
@@ -63,8 +72,7 @@ For models requiring authentication:
 # Set your Hugging Face token
 export HF_TOKEN="your_token_here"
 
-python -m vllm.entrypoints.openai.api_server \
-    --model meta-llama/Llama-3.1-8B-Instruct \
+vllm serve meta-llama/Llama-3.1-8B-Instruct \
     --host 0.0.0.0 \
     --port 8000
 ```
@@ -97,6 +105,11 @@ curl http://localhost:8000/v1/completions \
 ## Create a systemd Service
 
 ```bash
+id -u vllm >/dev/null 2>&1 || sudo useradd --system --create-home --shell /sbin/nologin vllm
+sudo -u vllm python3.12 -m venv /home/vllm/vllm-env
+sudo -u vllm /home/vllm/vllm-env/bin/pip install --upgrade pip
+sudo -u vllm /home/vllm/vllm-env/bin/pip install vllm --extra-index-url https://download.pytorch.org/whl/cu129
+
 sudo tee /etc/systemd/system/vllm.service << 'EOF'
 [Unit]
 Description=vLLM Inference Server
@@ -106,8 +119,7 @@ After=network.target
 Type=simple
 User=vllm
 Environment=HF_TOKEN=your_token_here
-ExecStart=/home/vllm/vllm-env/bin/python -m vllm.entrypoints.openai.api_server \
-    --model meta-llama/Llama-3.1-8B-Instruct \
+ExecStart=/home/vllm/vllm-env/bin/vllm serve meta-llama/Llama-3.1-8B-Instruct \
     --host 0.0.0.0 \
     --port 8000 \
     --max-model-len 4096 \
@@ -136,8 +148,7 @@ For models too large for a single GPU:
 
 ```bash
 # Use tensor parallelism across 4 GPUs
-python -m vllm.entrypoints.openai.api_server \
-    --model meta-llama/Llama-3.1-70B-Instruct \
+vllm serve meta-llama/Llama-3.1-70B-Instruct \
     --tensor-parallel-size 4 \
     --host 0.0.0.0 \
     --port 8000
