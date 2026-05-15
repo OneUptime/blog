@@ -15,10 +15,10 @@ RHEL supports Bluetooth through the BlueZ stack. This guide covers enabling the 
 ```bash
 # Install the Bluetooth stack and utilities
 
-sudo dnf install -y bluez bluez-tools
+sudo dnf install -y bluez
 
-# For audio devices (headphones, speakers), also install PipeWire Bluetooth support
-sudo dnf install -y pipewire-codec-aptx
+# For audio devices (headphones, speakers) on RHEL 9, verify PipeWire's PulseAudio compatibility layer is installed
+sudo dnf install -y pipewire-pulseaudio
 ```
 
 ## Enable and Start the Bluetooth Service
@@ -38,8 +38,7 @@ sudo systemctl status bluetooth
 
 ```bash
 # Check if the Bluetooth adapter is detected
-hciconfig
-# or
+bluetoothctl list
 bluetoothctl show
 
 # If the adapter is blocked by rfkill, unblock it
@@ -111,11 +110,11 @@ bluetoothctl connect AA:BB:CC:DD:EE:FF
 For Bluetooth headphones and speakers:
 
 ```bash
-# Verify PipeWire is handling Bluetooth audio
-pactl list modules | grep bluetooth
+# Verify PipeWire is handling PulseAudio clients
+pactl info | grep "Server Name"
 
-# If the Bluetooth audio module is not loaded
-# PipeWire should load it automatically when a device connects
+# Check that the Bluetooth audio device is visible to PipeWire
+pactl list cards short | grep bluez
 
 # Check connected audio devices
 pactl list sinks short
@@ -126,16 +125,13 @@ pactl set-default-sink bluez_output.AA_BB_CC_DD_EE_FF.1
 
 ## Auto-Connect on Boot
 
-Trusted devices should reconnect automatically. If they do not:
+Trusted devices should reconnect automatically. If Bluetooth is not powered after boot:
 
 ```bash
 # Edit the Bluetooth main configuration
 sudo vi /etc/bluetooth/main.conf
 
 # Ensure these settings are enabled:
-[General]
-AutoEnable=true
-
 [Policy]
 AutoEnable=true
 ```
@@ -155,7 +151,8 @@ journalctl -u bluetooth -f
 dmesg | grep -i bluetooth
 
 # Reset the Bluetooth adapter if it stops responding
-sudo hciconfig hci0 reset
+bluetoothctl power off
+bluetoothctl power on
 
 # Remove a paired device and start fresh
 bluetoothctl remove AA:BB:CC:DD:EE:FF
