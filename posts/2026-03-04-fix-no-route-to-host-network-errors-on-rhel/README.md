@@ -8,7 +8,7 @@ Description: Diagnose and resolve 'No route to host' errors on RHEL by checking 
 
 ---
 
-"No route to host" means the system cannot find a network path to reach the destination. This can be caused by missing routes, firewall blocks, or interface issues.
+"No route to host" usually means the system cannot find a network path to reach the destination, or it received an ICMP unreachable response. This can be caused by missing routes, firewall rejects, or interface issues.
 
 ## Step 1: Identify the Destination
 
@@ -56,9 +56,9 @@ ip addr show ens192
 sudo nmcli connection up ens192
 ```
 
-## Step 4: Check the Local Firewall
+## Step 4: Check the Firewall on the Destination Host
 
-The local firewall can cause "No route to host" messages:
+A firewall on the RHEL host that should accept the connection can cause "No route to host" messages:
 
 ```bash
 # Check if firewalld is blocking the traffic
