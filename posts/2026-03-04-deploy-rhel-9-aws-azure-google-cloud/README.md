@@ -12,7 +12,7 @@ Running RHEL in the cloud is pretty standard these days, but each provider has i
 
 ## Choosing the Right RHEL Image
 
-Each cloud provider offers official Red Hat Enterprise Linux images in their respective marketplaces. These are maintained by Red Hat and come pre-configured for the cloud environment. You will generally find two types of images:
+Each cloud provider offers official Red Hat Enterprise Linux images in their respective marketplaces. These are maintained by Red Hat and the cloud provider and come pre-configured for the cloud environment. You will generally find two types of images:
 
 - **On-Demand (PAYG)** - The RHEL subscription cost is baked into the hourly instance price. No separate Red Hat subscription needed.
 - **BYOS (Bring Your Own Subscription)** - You use your existing Red Hat subscription. The instance cost covers only the compute resources.
@@ -81,7 +81,7 @@ Azure lists RHEL images under the Red Hat publisher in the marketplace.
 az vm image list \
   --publisher RedHat \
   --offer RHEL \
-  --sku 9_3 \
+  --sku 9-lvm-gen2 \
   --all \
   --output table
 ```
@@ -96,7 +96,7 @@ az group create --name rhel-rg --location eastus
 az vm create \
   --resource-group rhel-rg \
   --name rhel9-server \
-  --image RedHat:RHEL:9_3:latest \
+  --image RedHat:RHEL:9-lvm-gen2:latest \
   --size Standard_B2s \
   --admin-username azureuser \
   --generate-ssh-keys \
@@ -119,6 +119,8 @@ If you are using BYOS images on Azure, you need to register with RHSM manually.
 ```bash
 # Register a BYOS instance with Red Hat
 sudo subscription-manager register --username <rh-username> --password <rh-password>
+
+# Only needed for older entitlement-mode accounts, not Simple Content Access
 sudo subscription-manager attach --auto
 ```
 
@@ -234,10 +236,10 @@ flowchart TD
     B -->|BYOS| D[Register with RHSM]
     C --> E[No action needed]
     D --> F[subscription-manager register]
-    F --> G[subscription-manager attach --auto]
+    F --> G[Enable repos if needed]
 ```
 
-The key thing to remember: do not try to register an on-demand instance with RHSM. It will conflict with RHUI and potentially break your package management. If you need to switch from RHUI to RHSM (say you want to move to your own subscription), Red Hat provides conversion scripts, but it is a one-way process for that instance.
+The key thing to remember: do not try to register an on-demand instance with RHSM unless you have a provider-supported conversion or billing path. At best, you can end up paying twice for updates; at worst, you can break your package management. If you need to switch from RHUI to RHSM (say you want to move to your own subscription), check the cloud provider's supported path first. In many cases, the clean approach is to deploy a BYOS or Cloud Access image and migrate the workload.
 
 ## Post-Deployment Checklist
 
