@@ -57,7 +57,7 @@ Kernel messages have severity levels that indicate their importance. These follo
 # 7 - KERN_DEBUG:   Debug-level messages
 ```
 
-In the dmesg output, you will see these levels indicated in the timestamp area. When looking at kernel logs, focus first on messages at the error level and above, as these typically indicate real problems.
+In Talos dmesg output, you will see these levels in the log prefix before the timestamp, such as `kern: info:`. When looking at kernel logs, focus first on messages at the error level and above, as these typically indicate real problems.
 
 ## Common Kernel Log Messages on Talos Linux
 
@@ -126,7 +126,7 @@ One of the most common reasons to check kernel logs is to investigate out-of-mem
 [12345.679] oom_reaper: reaped process 4523 (kubelet), now anon-rss:0kB
 ```
 
-If you see these messages, your node does not have enough memory for its workload. You need to either add more memory to the node, reduce the resource requests of your pods, or add more nodes to the cluster.
+If you see these messages, the node or a workload memory cgroup ran out of usable memory. You need to either add more memory to the node, reduce workload memory usage, adjust pod memory limits, or add more nodes to the cluster.
 
 ```bash
 # Check for OOM events across all nodes
@@ -169,19 +169,18 @@ talosctl -n 192.168.1.10 dmesg | grep -i "fail\|warn\|error" | head -30
 
 ## Forwarding Kernel Logs to External Systems
 
-If you need to persist kernel logs beyond the in-memory buffer, you can configure Talos to forward all machine logs - including kernel messages - to an external system:
+If you need to persist kernel logs beyond the in-memory buffer, configure Talos kernel log delivery separately from regular service log destinations:
 
 ```yaml
 # kernel-log-forwarding.yaml
-# Forward all machine logs including kernel messages
-machine:
-  logging:
-    destinations:
-      - endpoint: "tcp://log-collector.monitoring.svc:5140"
-        format: json_lines
+# Forward kernel messages to an external collector
+apiVersion: v1alpha1
+kind: KmsgLogConfig
+name: remote-log
+url: tcp://log-collector.monitoring.svc:5140/
 ```
 
-The forwarded logs will include kernel messages alongside other Talos system service logs. In your log aggregation system, you can filter for kernel-specific entries based on the service field.
+The kernel log destination uses the same TCP or UDP endpoint style as Talos service log destinations, and the only supported format is `json_lines`. Regular `machine.logging.destinations` forwards Talos service logs; kernel messages require `KmsgLogConfig` or the `talos.logging.kernel` kernel argument.
 
 ## Kernel Parameters and Their Effect on Logging
 
@@ -198,6 +197,6 @@ machine:
       - printk.devkmsg=on
 ```
 
-Setting `loglevel=7` enables debug-level kernel messages, which produces more verbose output. This is helpful during debugging but should be lowered in production to avoid flooding the log buffer. The `console` parameter is useful if you have serial console access for catching very early boot messages before the Talos API is available.
+Setting `loglevel=7` controls which kernel messages are printed to the console; it does not enable additional debug messages in the kernel log buffer by itself. This is helpful during debugging but can make a serial console noisy in production. The `console` parameter is useful if you have serial console access for catching very early boot messages before the Talos API is available.
 
 Kernel logs on Talos Linux provide the same deep system visibility you get on any Linux system. The main difference is the access method - instead of SSH and dmesg, you use `talosctl dmesg`. Once you are comfortable with this workflow, debugging hardware issues, memory problems, and driver errors on Talos nodes is straightforward.
