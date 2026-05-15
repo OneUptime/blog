@@ -36,9 +36,8 @@ For historical performance data, you also want the Performance Co-Pilot (PCP) in
 # Install PCP and the Cockpit PCP bridge
 sudo dnf install cockpit-pcp
 
-# Enable and start the PCP collector
-sudo systemctl enable --now pmcd
-sudo systemctl enable --now pmlogger
+# Enable and start the PCP services used by Cockpit metrics
+sudo systemctl enable --now pmlogger.service pmproxy.service
 ```
 
 PCP collects performance data continuously, so Cockpit can show you graphs going back hours or days, not just the current moment.
@@ -198,7 +197,7 @@ pminfo | head -20
 pmval kernel.all.cpu.user -s 5 -t 1
 
 # Query historical data from an archive
-pmval -a /var/log/pcp/pmlogger/$(hostname)/20260304.0.xz kernel.all.cpu.user -S "@08:00" -T "@12:00"
+pmval -a /var/log/pcp/pmlogger/$(hostname)/20260304 kernel.all.cpu.user -S "@08:00" -T "@12:00"
 ```
 
 ### Configuring PCP Retention
@@ -214,15 +213,15 @@ The retention period is controlled by the pmlogger daily maintenance script. Che
 
 ```bash
 # View the pmlogger daily configuration
-cat /etc/sysconfig/pmlogger
+cat /etc/sysconfig/pmlogger_timers
 ```
 
 To change the retention period:
 
 ```bash
 # Set PCP log retention to 30 days
-sudo tee /etc/sysconfig/pmlogger << 'EOF'
-PMLOGGER_DAILY_PARAMS="-E -x 30"
+sudo tee /etc/sysconfig/pmlogger_timers << 'EOF'
+PMLOGGER_DAILY_PARAMS="-E -k 30"
 EOF
 ```
 
