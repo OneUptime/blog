@@ -38,7 +38,7 @@ For workloads that need consistent CPU performance (databases, real-time applica
 # Disable Intel P-state driver (use acpi-cpufreq instead for manual control)
 sudo grubby --update-kernel=ALL --args="intel_pstate=disable"
 
-# Or force performance mode
+# Or explicitly use the Intel P-state driver in active mode
 sudo grubby --update-kernel=ALL --args="intel_pstate=active"
 ```
 
@@ -104,16 +104,23 @@ sudo grubby --update-kernel=ALL --args="numa_balancing=0"
 # Enable Intel IOMMU for device passthrough (KVM, SR-IOV)
 sudo grubby --update-kernel=ALL --args="intel_iommu=on iommu=pt"
 
-# Enable AMD IOMMU
-sudo grubby --update-kernel=ALL --args="amd_iommu=on iommu=pt"
+# On AMD hosts, IOMMU is enabled by default on RHEL; add passthrough mode
+sudo grubby --update-kernel=ALL --args="iommu=pt"
 ```
 
 ### I/O Scheduler Hints
 
 ```bash
-# Set the default I/O scheduler (none/mq-deadline/bfq/kyber)
-# For NVMe devices, 'none' is usually best
-sudo grubby --update-kernel=ALL --args="elevator=none"
+# Check the active multi-queue scheduler for a device
+# For NVMe devices, 'none' is the default and Red Hat recommends not changing it
+cat /sys/block/nvme0n1/queue/scheduler
+
+# Persist a scheduler change for a specific device with udev (replace device-wwn)
+sudo tee /etc/udev/rules.d/99-scheduler.rules >/dev/null <<'EOF'
+ACTION=="add|change", SUBSYSTEM=="block", ENV{ID_WWN}=="device-wwn", ATTR{queue/scheduler}="none"
+EOF
+sudo udevadm control --reload-rules
+sudo udevadm trigger --type=devices --action=change
 ```
 
 ## Network Performance Parameters
@@ -137,7 +144,7 @@ sudo grubby --update-kernel=ALL --args="mitigations=off"
 sudo grubby --update-kernel=ALL --args="nospectre_v2 nopti"
 ```
 
-The `mitigations=off` parameter disables all CPU vulnerability mitigations. This gives measurable performance improvements (5-15% depending on workload) but leaves the system vulnerable to speculative execution attacks. Only use this on systems that are not exposed to untrusted code.
+The `mitigations=off` parameter disables optional CPU vulnerability mitigations. This can give measurable performance improvements depending on workload, but leaves the system vulnerable to speculative execution attacks. Only use this on systems that are not exposed to untrusted code.
 
 ## Kdump and Crash Kernel
 
@@ -161,7 +168,7 @@ sudo grubby --info=DEFAULT
 
 ## Making Parameters Apply to Future Kernels
 
-Parameters set with `grubby --update-kernel=ALL` apply to all currently installed kernels but not to future kernel installations. To cover future kernels, also update `/etc/default/grub`:
+On RHEL 9, parameters set with `grubby --update-kernel=ALL` are normally copied from the previous kernel when you install a newer kernel. RHEL 9.0 had a known issue where newly installed kernels could lose previous command-line options. If you need to overwrite boot loader specification (BLS) snippets from `/etc/default/grub`, update `GRUB_CMDLINE_LINUX` and regenerate the GRUB config with `--update-bls-cmdline`:
 
 ```bash
 # Edit the defaults file
@@ -170,11 +177,8 @@ sudo vi /etc/default/grub
 # Add your parameters to GRUB_CMDLINE_LINUX
 GRUB_CMDLINE_LINUX="crashkernel=256M transparent_hugepage=never hugepages=4096 numa_balancing=0"
 
-# Regenerate GRUB config
-# BIOS:
-sudo grub2-mkconfig -o /boot/grub2/grub.cfg
-# UEFI:
-sudo grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
+# Regenerate GRUB config and update BLS snippets
+sudo grub2-mkconfig -o /boot/grub2/grub.cfg --update-bls-cmdline
 ```
 
 ## Verifying Parameters After Reboot
@@ -191,4 +195,4 @@ cat /proc/sys/kernel/numa_balancing
 
 ## Wrapping Up
 
-Kernel command-line parameters are the first layer of performance tuning on RHEL. They handle things that cannot be changed after boot: huge page allocation, CPU isolation, IOMMU setup, and hardware mitigation controls. Use `grubby` for immediate changes and `/etc/default/grub` for persistence across kernel updates. Always benchmark before and after, and document every parameter you set and the reason behind it. A server with unexplained custom parameters is a maintenance nightmare for whoever comes after you.
+Kernel command-line parameters are the first layer of performance tuning on RHEL. They handle things that cannot be changed after boot: huge page allocation, CPU isolation, IOMMU setup, and hardware mitigation controls. Use `grubby` for boot entry changes, and use `/etc/default/grub` with `--update-bls-cmdline` when you intentionally need to overwrite BLS snippets from GRUB defaults. Always benchmark before and after, and document every parameter you set and the reason behind it. A server with unexplained custom parameters is a maintenance nightmare for whoever comes after you.
