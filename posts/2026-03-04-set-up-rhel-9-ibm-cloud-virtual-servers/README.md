@@ -26,7 +26,7 @@ ibmcloud is subnet-create rhel9-subnet rhel9-vpc \
   --ipv4-cidr-block 10.240.0.0/24
 
 # Find the RHEL image
-ibmcloud is images --visibility public | grep -i "red-hat.*9"
+ibmcloud is images --visibility public | grep -i "ibm-redhat-9"
 
 # Create the instance
 ibmcloud is instance-create rhel9-server \
@@ -36,25 +36,29 @@ ibmcloud is instance-create rhel9-server \
   rhel9-subnet \
   --image-id $RHEL9_IMAGE_ID \
   --keys $SSH_KEY_ID
+
+# Reserve and attach a floating IP to the primary network interface
+ibmcloud is instance rhel9-server
+ibmcloud is floating-ip-reserve rhel9-server-ip --nic $PRIMARY_NIC_ID
 ```
 
 ## Step 2: Configure the Instance
 
 ```bash
 # SSH into the instance using the floating IP
-ssh root@<floating-ip>
+ssh -i <path-to-private-key> vpcuser@<floating-ip>
 
 # Update the system
-dnf update -y
+sudo dnf update -y
 
 # Set the hostname
-hostnamectl set-hostname rhel9-server.example.com
+sudo hostnamectl set-hostname rhel9-server.example.com
 
 # Configure firewall
-systemctl enable --now firewalld
-firewall-cmd --permanent --add-service=ssh
-firewall-cmd --permanent --add-service=https
-firewall-cmd --reload
+sudo systemctl enable --now firewalld
+sudo firewall-cmd --permanent --add-service=ssh
+sudo firewall-cmd --permanent --add-service=https
+sudo firewall-cmd --reload
 ```
 
 ## Step 3: Attach and Configure Block Storage
@@ -67,15 +71,18 @@ ibmcloud is volume-create rhel9-data \
   --capacity 500
 
 # Attach to the instance
-ibmcloud is instance-volume-attachment-add \
+ibmcloud is instance-volume-attachment-add rhel9-data-attachment \
   rhel9-server \
   rhel9-data \
   --auto-delete true
 
 # On the instance, format and mount
-sudo mkfs.xfs /dev/vdd
+lsblk
+DATA_DEVICE=/dev/vdb
+sudo mkfs.xfs "$DATA_DEVICE"
 sudo mkdir -p /data
-echo '/dev/vdd /data xfs defaults 0 0' | sudo tee -a /etc/fstab
+DATA_UUID=$(sudo blkid -s UUID -o value "$DATA_DEVICE")
+echo "UUID=$DATA_UUID /data xfs defaults,_netdev 0 0" | sudo tee -a /etc/fstab
 sudo mount -a
 ```
 
