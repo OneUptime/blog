@@ -4,21 +4,20 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, Apache APISIX, API Gateway, Dashboard, Linux
 
-Description: Learn how to install and deploy the Apache APISIX Dashboard on RHEL, including etcd setup, APISIX gateway configuration, dashboard installation, and route management through the web UI.
+Description: Learn how to install and deploy the Apache APISIX Dashboard on RHEL, including etcd setup, APISIX gateway configuration, dashboard access, and route management through the web UI.
 
 ---
 
-Apache APISIX is a high-performance API gateway built on top of Nginx and etcd. Its dashboard provides a web-based interface for managing routes, upstreams, consumers, and plugins without touching configuration files directly. This guide covers deploying the complete APISIX stack on RHEL.
+Apache APISIX is a high-performance API gateway built on top of Nginx and etcd. Its built-in dashboard provides a web-based interface for managing routes, upstreams, consumers, and plugins without touching configuration files directly. This guide covers deploying the complete APISIX stack on RHEL.
 
 ## Architecture Overview
 
-The APISIX ecosystem has three main components:
+The APISIX ecosystem has two main components:
 
 - **etcd** - the configuration store that holds all routing and plugin data
-- **APISIX** - the gateway that processes API traffic
-- **APISIX Dashboard** - a web UI for managing APISIX configuration
+- **APISIX** - the gateway that processes API traffic and provides the built-in Dashboard UI
 
-All three components need to be running for the dashboard to function.
+Both components need to be running for the dashboard to function.
 
 ## Prerequisites
 
@@ -26,13 +25,13 @@ Ensure your RHEL system has:
 
 - At least 2 GB of RAM
 - Root or sudo access
-- Ports 9080, 9443, 9000, and 2379 available
-- EPEL repository enabled
+- Ports 9080, 9180, 9443, and 2379 available
+- `dnf-plugins-core` installed for `yum-config-manager`
 
 ```bash
-# Enable EPEL repository
+# Install repository management tools
 
-sudo dnf install -y epel-release
+sudo dnf install -y dnf-plugins-core
 ```
 
 ## Installing etcd
@@ -87,7 +86,7 @@ Install APISIX using the RPM repository:
 
 ```bash
 # Add the APISIX repository
-sudo yum-config-manager --add-repo https://repos.apiseven.com/packages/centos/apache-apisix.repo
+sudo yum-config-manager --add-repo https://repos.apiseven.com/packages/redhat/apache-apisix.repo
 ```
 
 ```bash
@@ -99,8 +98,8 @@ If the repository method does not work on RHEL, install from the RPM package dir
 
 ```bash
 # Download and install APISIX RPM
-curl -LO https://repos.apiseven.com/packages/centos/9/x86_64/apisix-3.8.0-0.el9.x86_64.rpm
-sudo rpm -ivh apisix-3.8.0-0.el9.x86_64.rpm
+curl -LO https://repos.apiseven.com/packages/redhat/9/x86_64/apisix-3.16.0-0.ubi9.6.x86_64.rpm
+sudo dnf install -y ./apisix-3.16.0-0.ubi9.6.x86_64.rpm
 ```
 
 ## Configuring APISIX
@@ -113,18 +112,29 @@ sudo tee /usr/local/apisix/conf/config.yaml > /dev/null << 'EOF'
 apisix:
   node_listen: 9080
   enable_admin: true
-  admin_key:
-    - name: admin
-      key: your-admin-api-key-here
-      role: admin
-    - name: viewer
-      key: your-viewer-key-here
-      role: viewer
 
-etcd:
-  host:
-    - "http://127.0.0.1:2379"
-  prefix: "/apisix"
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  admin:
+    enable_admin_ui: true
+    admin_key:
+      - name: admin
+        key: your-admin-api-key-here
+        role: admin
+      - name: viewer
+        key: your-viewer-key-here
+        role: viewer
+    allow_admin:
+      - 0.0.0.0/0
+    admin_listen:
+      ip: 0.0.0.0
+      port: 9180
+  etcd:
+    host:
+      - "http://127.0.0.1:2379"
+    prefix: "/apisix"
 
 plugin_attr:
   prometheus:
@@ -146,96 +156,33 @@ Verify APISIX is responding:
 
 ```bash
 # Test the admin API
-curl -s http://127.0.0.1:9080/apisix/admin/routes \
+curl -s http://127.0.0.1:9180/apisix/admin/routes \
   -H 'X-API-KEY: your-admin-api-key-here' | head -20
 ```
 
-## Installing the APISIX Dashboard
+## Enabling the APISIX Dashboard
 
-Download and install the dashboard:
-
-```bash
-# Download the APISIX Dashboard
-DASHBOARD_VERSION="3.0.1"
-curl -LO https://github.com/apache/apisix-dashboard/releases/download/v${DASHBOARD_VERSION}/apisix-dashboard-${DASHBOARD_VERSION}-0.el9.x86_64.rpm
-sudo rpm -ivh apisix-dashboard-${DASHBOARD_VERSION}-0.el9.x86_64.rpm
-```
-
-If the RPM is not available, build from source:
+APISIX 3.13 and later include the Dashboard UI. The `enable_admin_ui: true` setting above enables it on the Admin API listener.
 
 ```bash
-# Install build dependencies
-sudo dnf install -y golang nodejs npm make
-
-# Clone and build the dashboard
-git clone https://github.com/apache/apisix-dashboard.git
-cd apisix-dashboard
-make build
-sudo cp output/manager-api /usr/local/bin/apisix-dashboard
-sudo mkdir -p /usr/local/apisix-dashboard
-sudo cp -r output/conf output/webapp /usr/local/apisix-dashboard/
+# Restart APISIX after enabling the dashboard
+sudo apisix stop
+sudo apisix start
 ```
+
+The older standalone APISIX Dashboard 3.0.1 release should only be used with APISIX 3.0 and is not required for current APISIX releases on RHEL 9.
 
 ## Configuring the Dashboard
 
-Edit the dashboard configuration:
-
-```bash
-# Configure the dashboard
-sudo tee /usr/local/apisix-dashboard/conf/conf.yaml > /dev/null << 'EOF'
-conf:
-  listen:
-    host: 0.0.0.0
-    port: 9000
-  etcd:
-    endpoints:
-      - "127.0.0.1:2379"
-  log:
-    error_log:
-      level: warn
-      file_path: /var/log/apisix-dashboard/error.log
-    access_log:
-      file_path: /var/log/apisix-dashboard/access.log
-
-authentication:
-  secret: your-dashboard-secret-key
-  expire_time: 3600
-  users:
-    - username: admin
-      password: admin
-EOF
-```
-
-```bash
-# Create the log directory
-sudo mkdir -p /var/log/apisix-dashboard
-```
+The built-in dashboard uses the Admin API configuration in `/usr/local/apisix/conf/config.yaml`. Use a strong Admin API key, replace `0.0.0.0/0` in `deployment.admin.allow_admin` with trusted client IP ranges, and restart APISIX after changing the configuration.
 
 ## Creating a Dashboard Systemd Service
 
-```bash
-# Create the systemd unit file
-sudo tee /etc/systemd/system/apisix-dashboard.service > /dev/null << 'EOF'
-[Unit]
-Description=Apache APISIX Dashboard
-After=network.target etcd.service
-
-[Service]
-Type=simple
-WorkingDirectory=/usr/local/apisix-dashboard
-ExecStart=/usr/local/bin/apisix-dashboard -c /usr/local/apisix-dashboard/conf/conf.yaml
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-```
+The APISIX RPM includes an APISIX service unit. Start APISIX with systemd if you prefer service management:
 
 ```bash
-# Start the dashboard
-sudo systemctl daemon-reload
-sudo systemctl enable --now apisix-dashboard
+# Start APISIX
+sudo systemctl enable --now apisix
 ```
 
 ## Configuring the Firewall
@@ -245,18 +192,18 @@ Open the necessary ports:
 ```bash
 # Allow traffic to APISIX and the dashboard
 sudo firewall-cmd --permanent --add-port=9080/tcp
+sudo firewall-cmd --permanent --add-port=9180/tcp
 sudo firewall-cmd --permanent --add-port=9443/tcp
-sudo firewall-cmd --permanent --add-port=9000/tcp
 sudo firewall-cmd --reload
 ```
 
 ## Accessing the Dashboard
 
-Open your browser and navigate to `http://your-server-ip:9000`. Log in with the credentials you set in the configuration (default: admin/admin).
+Open your browser and navigate to `http://your-server-ip:9180/ui/`. Enter the Admin API key you set in the configuration when prompted.
 
 ## Creating Routes Through the Dashboard
 
-Once logged in, you can create routes through the UI:
+Once connected, you can create routes through the UI:
 
 1. Click **Routes** in the left sidebar
 2. Click **Create** to add a new route
@@ -269,7 +216,7 @@ You can also create routes via the Admin API:
 
 ```bash
 # Create a route via the Admin API
-curl -i http://127.0.0.1:9080/apisix/admin/routes/1 \
+curl -i http://127.0.0.1:9180/apisix/admin/routes/1 \
   -H 'X-API-KEY: your-admin-api-key-here' \
   -X PUT -d '{
     "uri": "/api/*",
@@ -288,7 +235,7 @@ APISIX comes with dozens of plugins. Enable them on routes through the dashboard
 
 ```bash
 # Add rate limiting to a route
-curl -i http://127.0.0.1:9080/apisix/admin/routes/1 \
+curl -i http://127.0.0.1:9180/apisix/admin/routes/1 \
   -H 'X-API-KEY: your-admin-api-key-here' \
   -X PATCH -d '{
     "plugins": {
