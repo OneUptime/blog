@@ -23,6 +23,7 @@ Add users, SSH keys, and custom scripts to Image Builder blueprints. RHEL Image 
 ```bash
 sudo dnf install -y osbuild-composer composer-cli cockpit-composer
 sudo systemctl enable --now osbuild-composer.socket
+sudo systemctl enable --now cockpit.socket
 ```
 
 ## Step 2 - Create a Blueprint
@@ -45,7 +46,20 @@ version = "*"
 [[customizations.user]]
 name = "admin"
 groups = ["wheel"]
+key = "PUBLIC-SSH-KEY"
+
+[[customizations.files]]
+path = "/etc/profile.d/custom-message.sh"
+mode = "0755"
+user = "root"
+group = "root"
+data = """
+#!/bin/bash
+echo "Welcome to my custom RHEL image"
+"""
 ```
+
+Replace `PUBLIC-SSH-KEY` with the full contents of the public SSH key file, for example `~/.ssh/id_ed25519.pub`.
 
 Push the blueprint:
 
