@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Stratis, Web Console, Cockpit, Storage, Linux
 
-Description: Learn how to manage Stratis storage pools and filesystems using the RHEL Web Console (Cockpit), providing a graphical interface for creating pools, filesystems, and snapshots.
+Description: Learn how to manage Stratis storage pools and filesystems using the RHEL Web Console (Cockpit), providing a graphical interface for creating pools, filesystems, and common storage tasks.
 
 ---
 
@@ -57,7 +57,7 @@ Open a web browser and navigate to:
 https://your-server-ip:9090
 ```
 
-Log in with your system credentials. Ensure you log in as a user with administrative privileges, or check the "Reuse my password for privileged tasks" option.
+Log in with your system credentials. Ensure you log in as a user with administrative privileges, or click **Limited access** and authenticate to gain administrative access.
 
 ## Step 4: Navigate to Storage
 
@@ -71,13 +71,12 @@ You should see:
 
 ## Step 5: Create a Stratis Pool
 
-1. Scroll down to the **Devices** section or look for the **Create Stratis pool** button.
-2. Click **Create Stratis pool**.
-3. In the dialog:
+1. In the **Storage** table, click the menu button and select **Create Stratis pool**.
+2. In the dialog:
    - **Name**: Enter a pool name (for example, `datapool`)
    - **Block devices**: Select the disks to include in the pool by checking their checkboxes
-   - **Encryption**: Optionally enable encryption by toggling the encryption switch and providing a passphrase
-4. Click **Create** to create the pool.
+   - **Encryption**: Optionally select an encryption type, such as a passphrase, a Tang keyserver, or both
+3. Click **Create** to create the pool.
 
 The pool appears in the storage overview.
 
@@ -90,37 +89,39 @@ The pool appears in the storage overview.
    - **Mount point**: Enter the desired mount point (for example, `/documents`)
    - **Mount options**: Configure mount options:
      - Check "Mount at boot" for persistent mounting
-     - The Web Console automatically adds the `x-systemd.requires=stratisd.service` option
+     - The Web Console writes the appropriate persistent mount configuration when you choose an at-boot option
 4. Click **Create and mount**.
 
 The filesystem is created, formatted, and mounted in one step.
 
 ## Step 7: Create a Snapshot
 
-1. Navigate to the pool details.
-2. Find the filesystem you want to snapshot.
-3. Click the three-dot menu next to the filesystem.
-4. Select **Create snapshot**.
-5. Enter a name for the snapshot.
-6. Click **Create**.
+The RHEL 9 documentation describes Stratis snapshot creation from the CLI. You can run the command from the Web Console's **Terminal** page or from an SSH session:
 
-The snapshot appears in the filesystem list.
+```bash
+sudo stratis fs snapshot datapool documents documents-snapshot
+```
+
+The snapshot is a regular Stratis filesystem and appears in the filesystem list.
 
 ## Step 8: Mount a Snapshot
 
-1. Find the snapshot in the filesystem list.
-2. Click on it to expand details.
-3. Click **Mount** and specify a mount point.
-4. Click **Mount**.
+Mount the snapshot as a regular Stratis filesystem:
+
+```bash
+sudo mount /dev/stratis/datapool/documents-snapshot /mnt/documents-snapshot
+```
 
 ## Step 9: Add Devices to a Pool
 
 1. Click on the pool name.
 2. Click **Add block devices**.
-3. Select the devices to add.
-4. Click **Add**.
+3. Select the tier where you want to add the device, such as **data** or **cache**.
+4. If the pool is encrypted with a passphrase, enter the passphrase.
+5. Select the devices to add.
+6. Click **Add**.
 
-The pool capacity increases immediately.
+If you add devices to the data tier, the pool capacity increases immediately.
 
 ## Step 10: Monitor Pool Usage
 
@@ -154,22 +155,23 @@ The filesystem is unmounted and destroyed.
 
 ### Create an Encrypted Pool
 
-When creating a pool, toggle the encryption option:
+When creating a pool, select an encryption type:
 
 1. Click **Create Stratis pool**.
-2. Enable the **Encryption** toggle.
-3. Enter a passphrase.
-4. Select the block devices.
+2. Select the block devices.
+3. Select an encryption type, such as a passphrase, a Tang keyserver, or both.
+4. Enter and confirm the required encryption information.
 5. Click **Create**.
 
 ### Unlock an Encrypted Pool
 
-After reboot, encrypted pools may need to be unlocked:
+After reboot, encrypted pools may need to be unlocked. Pools configured with Tang can unlock automatically, but passphrase-based pools might need keyring-based unlocking from the CLI before the Web Console shows them:
 
-1. The Web Console shows locked pools with an unlock button.
-2. Click **Unlock**.
-3. Enter the passphrase.
-4. The pool and its filesystems become available.
+```bash
+sudo stratis key set --capture-key key-description
+```
+
+After the key is available and the pool is unlocked, refresh the Web Console and the pool and its filesystems become available.
 
 ## Advantages of the Web Console for Stratis
 
@@ -181,7 +183,7 @@ After reboot, encrypted pools may need to be unlocked:
 
 ## Limitations
 
-- **Some advanced features**: Not all Stratis CLI options are available in the Web Console (for example, cache tier management)
+- **Some advanced features**: Not all Stratis CLI options are available in the Web Console (for example, snapshot revert scheduling)
 - **Bulk operations**: The Web Console handles one operation at a time
 - **Scripting**: For automated or repeated operations, the CLI is more efficient
 
@@ -213,4 +215,4 @@ Then refresh the Web Console page.
 
 ## Conclusion
 
-The RHEL Web Console provides an intuitive graphical interface for managing Stratis storage, making it accessible to administrators who prefer visual tools or need to manage remote systems quickly. While the CLI remains necessary for some advanced operations, the Web Console covers the most common Stratis tasks including pool creation, filesystem management, snapshots, encryption, and monitoring. It is an excellent complement to command-line management.
+The RHEL Web Console provides an intuitive graphical interface for managing Stratis storage, making it accessible to administrators who prefer visual tools or need to manage remote systems quickly. While the CLI remains necessary for some operations such as snapshot creation and revert scheduling, the Web Console covers common Stratis tasks including pool creation, filesystem management, encryption, and monitoring. It is an excellent complement to command-line management.
