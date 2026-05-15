@@ -247,16 +247,17 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: projects/123456/locations/global/workloadIdentityPools/github/providers/my-repo
           service_account: github-actions@my-project.iam.gserviceaccount.com
 
       - name: Upload manifests
-        uses: google-github-actions/upload-cloud-storage@v2
+        uses: google-github-actions/upload-cloud-storage@v3
         with:
           path: manifests
           destination: my-app-flux-manifests
+          parent: false
 ```
 
 ## Verifying the Setup
