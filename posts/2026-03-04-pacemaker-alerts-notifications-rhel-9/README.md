@@ -28,7 +28,7 @@ Alerts call external scripts (alert agents) with event details passed as environ
 
 ## Installing the Alert Agents
 
-RHEL 9 includes built-in alert agents:
+RHEL 9 includes sample alert agents:
 
 ```bash
 ls /usr/share/pacemaker/alerts/
@@ -36,46 +36,52 @@ ls /usr/share/pacemaker/alerts/
 
 Common agents:
 
-- `alert_smtp.sh` - Send email notifications
-- `alert_snmp.sh` - Send SNMP traps
-- `alert_file.sh` - Write events to a file
+- `alert_smtp.sh.sample` - Send email notifications
+- `alert_snmp.sh.sample` - Send SNMP traps
+- `alert_file.sh.sample` - Write events to a file
+
+Install the sample alert agents you plan to use on each cluster node:
+
+```bash
+sudo install --mode=0755 /usr/share/pacemaker/alerts/alert_smtp.sh.sample /var/lib/pacemaker/alert_smtp.sh
+sudo install --mode=0755 /usr/share/pacemaker/alerts/alert_file.sh.sample /var/lib/pacemaker/alert_file.sh
+```
 
 ## Configuring Email Alerts
 
 ### Step 1: Install a Mail Transfer Agent
 
 ```bash
-sudo dnf install mailx postfix -y
+sudo dnf install postfix -y
 sudo systemctl enable --now postfix
 ```
 
 ### Step 2: Create the Alert
 
 ```bash
-sudo pcs alert create id=email-alert path=/usr/share/pacemaker/alerts/alert_smtp.sh \
+sudo pcs alert create id=email-alert path=/var/lib/pacemaker/alert_smtp.sh \
     options email_sender=cluster@example.com
 ```
 
 ### Step 3: Add Recipients
 
 ```bash
-sudo pcs alert recipient add email-alert value=admin@example.com
+sudo pcs alert recipient add email-alert value=admin@example.com id=admin-email
 ```
 
 Add multiple recipients:
 
 ```bash
-sudo pcs alert recipient add email-alert value=oncall@example.com
+sudo pcs alert recipient add email-alert value=oncall@example.com id=oncall-email
 ```
 
 ### Step 4: Configure the SMTP Server
 
-Set the mail server options:
+Configure Postfix to relay through your SMTP server if the cluster nodes do not deliver mail directly:
 
 ```bash
-sudo pcs alert update email-alert options \
-    email_sender=cluster@example.com \
-    email_host=smtp.example.com
+sudo postconf -e 'relayhost = [smtp.example.com]'
+sudo systemctl reload postfix
 ```
 
 ## Configuring File-Based Alerts
@@ -83,15 +89,13 @@ sudo pcs alert update email-alert options \
 Write events to a log file:
 
 ```bash
-sudo pcs alert create id=file-alert path=/usr/share/pacemaker/alerts/alert_file.sh
-sudo pcs alert recipient add file-alert value=/var/log/cluster/alerts.log
-```
-
-Ensure the directory exists:
-
-```bash
 sudo mkdir -p /var/log/cluster
 sudo chown hacluster:haclient /var/log/cluster
+sudo touch /var/log/cluster/alerts.log
+sudo chown hacluster:haclient /var/log/cluster/alerts.log
+sudo chmod 600 /var/log/cluster/alerts.log
+sudo pcs alert create id=file-alert path=/var/lib/pacemaker/alert_file.sh
+sudo pcs alert recipient add file-alert value=/var/log/cluster/alerts.log id=file-log
 ```
 
 ## Creating a Custom Alert Script
@@ -99,7 +103,7 @@ sudo chown hacluster:haclient /var/log/cluster
 Create a custom script that sends to a webhook:
 
 ```bash
-sudo tee /usr/share/pacemaker/alerts/alert_webhook.sh << 'SCRIPT'
+sudo tee /var/lib/pacemaker/alert_webhook.sh << 'SCRIPT'
 #!/bin/bash
 
 # Pacemaker passes event data as environment variables:
@@ -107,7 +111,7 @@ sudo tee /usr/share/pacemaker/alerts/alert_webhook.sh << 'SCRIPT'
 # CRM_alert_kind - node, fencing, or resource
 # CRM_alert_node - affected node
 # CRM_alert_desc - event description
-# CRM_alert_status - status code
+# CRM_alert_rc - fencing or resource operation return code
 # CRM_alert_recipient - configured recipient
 
 case "${CRM_alert_kind}" in
@@ -118,44 +122,57 @@ case "${CRM_alert_kind}" in
         message="Fencing operation on ${CRM_alert_node}: ${CRM_alert_desc}"
         ;;
     resource)
-        message="Resource ${CRM_alert_rsc} on ${CRM_alert_node}: ${CRM_alert_desc} (rc=${CRM_alert_status})"
+        message="Resource ${CRM_alert_rsc} on ${CRM_alert_node}: ${CRM_alert_desc} (rc=${CRM_alert_rc})"
         ;;
 esac
 
+json_message=${message//\\/\\\\}
+json_message=${json_message//\"/\\\"}
+
 curl -s -X POST "${CRM_alert_recipient}" \
     -H "Content-Type: application/json" \
-    -d "{\"text\": \"[Cluster Alert] ${message}\"}"
+    -d "{\"text\": \"[Cluster Alert] ${json_message}\"}"
 
 exit 0
 SCRIPT
 
-sudo chmod 755 /usr/share/pacemaker/alerts/alert_webhook.sh
-sudo chown root:root /usr/share/pacemaker/alerts/alert_webhook.sh
+sudo chmod 755 /var/lib/pacemaker/alert_webhook.sh
+sudo chown root:root /var/lib/pacemaker/alert_webhook.sh
 ```
 
 Register the custom alert:
 
 ```bash
-sudo pcs alert create id=webhook-alert path=/usr/share/pacemaker/alerts/alert_webhook.sh
-sudo pcs alert recipient add webhook-alert value=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+sudo pcs alert create id=webhook-alert path=/var/lib/pacemaker/alert_webhook.sh
+sudo pcs alert recipient add webhook-alert value=https://hooks.slack.com/services/YOUR/WEBHOOK/URL id=webhook-url
 ```
 
 ## Filtering Alerts by Event Type
 
-Restrict alerts to specific event types:
+Restrict alerts to specific event types with a `select` element in the CIB. For example:
 
-```bash
-# Only node events
-sudo pcs alert update email-alert options \
-    CRM_alert_select_kind=node
+```xml
+<!-- Only node events -->
+<alert id="email-alert" path="/var/lib/pacemaker/alert_smtp.sh">
+  <select>
+    <select_nodes />
+  </select>
+</alert>
 
-# Only fencing events
-sudo pcs alert update webhook-alert options \
-    CRM_alert_select_kind=fencing
+<!-- Only fencing events -->
+<alert id="webhook-alert" path="/var/lib/pacemaker/alert_webhook.sh">
+  <select>
+    <select_fencing />
+  </select>
+</alert>
 
-# Node and resource events
-sudo pcs alert update file-alert options \
-    CRM_alert_select_kind="node,resource"
+<!-- Node and resource events -->
+<alert id="file-alert" path="/var/lib/pacemaker/alert_file.sh">
+  <select>
+    <select_nodes />
+    <select_resources />
+  </select>
+</alert>
 ```
 
 ## Viewing Alert Configuration
@@ -169,7 +186,7 @@ sudo pcs alert
 Remove a recipient:
 
 ```bash
-sudo pcs alert recipient remove email-alert admin@example.com
+sudo pcs alert recipient remove admin-email
 ```
 
 Remove an alert:
