@@ -72,7 +72,7 @@ If the disk is still partially functional, migrate its physical extents to anoth
 sudo pvmove /dev/sdc1
 ```
 
-This command moves all physical extents from `/dev/sdc1` to other available physical volumes in the same volume group. If you want to target a specific destination:
+This command moves all physical extents from `/dev/sdc1` to other available physical volumes in the same volume group. If the volume group does not have enough free extents, add the replacement physical volume first, then run `pvmove` before removing the failed disk. If you want to target a specific destination:
 
 ```bash
 sudo pvmove /dev/sdc1 /dev/sda1
@@ -125,10 +125,12 @@ sudo vgreduce vg_data /dev/sdc1
 If the disk is completely failed and you cannot run `pvmove`, you need to force the removal:
 
 ```bash
+sudo vgchange --activate y --partial vg_data
+sudo vgreduce --removemissing --test vg_data
 sudo vgreduce --removemissing --force vg_data
 ```
 
-This tells LVM to remove any physical volumes that are no longer accessible. Be aware that any data that was exclusively on the failed disk and not mirrored or migrated will be lost.
+This tells LVM to remove physical volumes that are no longer accessible and, with `--force`, remove logical volumes that used the lost physical volume. Review the `--test` output first. Be aware that any data that was exclusively on the failed disk and not mirrored or migrated will be lost.
 
 ## Step 7: Remove the Physical Volume Label
 
@@ -175,14 +177,16 @@ sudo pvcreate /dev/sdd1
 sudo vgextend vg_data /dev/sdd1
 
 # Remove the missing disk
+sudo vgchange --activate y --partial vg_data
+sudo vgreduce --removemissing --test vg_data
 sudo vgreduce --removemissing --force vg_data
 
-# Check and repair logical volumes
-sudo lvchange -ay vg_data
+# Activate and check remaining logical volumes
+sudo vgchange -ay vg_data
 sudo lvs -a -o +devices
 ```
 
-After the removal, any logical volumes that had extents on the failed disk may be in a partial state. You may need to restore from backups for data that was lost.
+Before the removal, any logical volumes that had extents on the failed disk may be in a partial state. After a forced `vgreduce --removemissing`, LVM removes logical volumes that depended on the missing physical volume. You may need to restore from backups for data that was lost.
 
 ## Preventing Future Failures
 
