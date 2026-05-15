@@ -93,7 +93,7 @@ az identity federated-credential create \
   --resource-group my-resource-group \
   --issuer "$AKS_OIDC_ISSUER" \
   --subject system:serviceaccount:external-secrets:external-secrets \
-  --audience api://AzureADTokenExchange
+  --audiences api://AzureADTokenExchange
 ```
 
 Annotate the ESO service account in the HelmRelease values:
