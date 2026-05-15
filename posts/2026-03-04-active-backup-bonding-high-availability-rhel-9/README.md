@@ -47,10 +47,10 @@ The `primary=eth0` option tells the bond to prefer eth0 as the active slave when
 
 ```bash
 # Add the primary slave
-nmcli connection add type ethernet con-name bond0-slave1 ifname eth0 master bond0
+nmcli connection add type ethernet con-name bond0-slave1 ifname eth0 port-type bond controller bond0
 
 # Add the backup slave
-nmcli connection add type ethernet con-name bond0-slave2 ifname eth1 master bond0
+nmcli connection add type ethernet con-name bond0-slave2 ifname eth1 port-type bond controller bond0
 ```
 
 ## Step 3: Configure IP and Bring Up
@@ -61,6 +61,7 @@ nmcli connection modify bond0 ipv4.addresses 10.0.1.50/24
 nmcli connection modify bond0 ipv4.gateway 10.0.1.1
 nmcli connection modify bond0 ipv4.dns "10.0.1.1"
 nmcli connection modify bond0 ipv4.method manual
+nmcli connection modify bond0 connection.autoconnect-ports 1
 
 # Activate the bond
 nmcli connection up bond0
@@ -76,10 +77,10 @@ By default, when the primary slave recovers after a failure, the bond switches b
 # Always switch back to primary when it recovers (default)
 nmcli connection modify bond0 bond.options "mode=active-backup,miimon=100,primary=eth0,primary_reselect=always"
 
-# Only use primary on initial setup, never switch back
+# Switch back only if the primary has better speed and duplex
 nmcli connection modify bond0 bond.options "mode=active-backup,miimon=100,primary=eth0,primary_reselect=better"
 
-# Never switch back to primary once failover happens
+# Switch back to primary only if the current active slave fails
 nmcli connection modify bond0 bond.options "mode=active-backup,miimon=100,primary=eth0,primary_reselect=failure"
 ```
 
@@ -135,10 +136,10 @@ ip addr show bond0
 
 ## Step 5: Test Failover
 
-Simulate a failure by bringing down the active interface:
+Test failover handling by disconnecting the active interface:
 
 ```bash
-# Simulate failure on the primary slave
+# Disconnect the primary slave
 nmcli device disconnect eth0
 
 # Watch the bond status update
@@ -148,7 +149,7 @@ cat /proc/net/bonding/bond0
 ping -c 4 10.0.1.1
 ```
 
-You should see that eth1 is now the active slave and traffic continues without interruption.
+You should see that eth1 is now the active slave and connectivity continues through the backup.
 
 Bring the primary back:
 
@@ -172,7 +173,7 @@ graph TD
     C --> D
 ```
 
-Active-backup is the only standard bonding mode that works reliably with interfaces connected to different switches without special switch configuration (no MLAG needed).
+Active-backup is the standard HA bonding mode that works reliably with interfaces connected to different switches without special switch configuration (no MLAG needed).
 
 ## Monitoring the Bond
 
