@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, firewalld, Port Forwarding, Networking, Linux
 
-Description: How to set up port forwarding with firewalld on RHEL, covering local port redirection, forwarding to other hosts, and common use cases like NAT and load balancing.
+Description: How to set up port forwarding with firewalld on RHEL, covering local port redirection, forwarding to other hosts, and common use cases like NAT.
 
 ---
 
@@ -45,12 +45,14 @@ firewall-cmd --reload
 
 ## Remote Port Forwarding
 
-Forward traffic to a different host. This requires masquerading to be enabled.
+Forward traffic to a different host. This requires routing between the frontend and backend hosts. Masquerading is commonly used when the backend's return path does not already go back through the frontend.
 
 ### Step 1: Enable IP Forwarding
 
 ```bash
 # Enable IP forwarding in the kernel
+# firewalld also enables IP forwarding implicitly when toaddr is specified,
+# but this makes the setting explicit and persistent.
 echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/99-forward.conf
 sysctl -p /etc/sysctl.d/99-forward.conf
 
@@ -61,7 +63,7 @@ sysctl net.ipv4.ip_forward
 ### Step 2: Enable Masquerading
 
 ```bash
-# Enable masquerading on the zone
+# Enable masquerading on the zone if the backend needs source NAT
 firewall-cmd --zone=public --add-masquerade --permanent
 firewall-cmd --reload
 ```
@@ -160,7 +162,7 @@ firewall-cmd --reload
 sysctl net.ipv4.ip_forward
 # Must be 1
 
-# Check if masquerading is enabled (required for remote forwarding)
+# Check if masquerading is enabled (required if the backend needs source NAT)
 firewall-cmd --zone=public --query-masquerade
 
 # Check the forward rules are in place
@@ -206,4 +208,4 @@ echo 262144 > /proc/sys/net/netfilter/nf_conntrack_max
 
 ## Summary
 
-Port forwarding with firewalld covers two scenarios: local redirection (same host, different port) and remote forwarding (different host). Local forwarding is simple and does not need masquerading. Remote forwarding requires IP forwarding enabled in the kernel and masquerading enabled on the zone. Use rich rules for source-based forwarding control. Always verify with `--list-forward-ports` and test from a client to confirm traffic flows correctly.
+Port forwarding with firewalld covers two scenarios: local redirection (same host, different port) and remote forwarding (different host). Local forwarding is simple and does not need masquerading. Remote forwarding requires routing between hosts and IP forwarding in the kernel; use masquerading when the backend needs source NAT for return traffic. Use rich rules for source-based forwarding control. Always verify with `--list-forward-ports` and test from a client to confirm traffic flows correctly.
