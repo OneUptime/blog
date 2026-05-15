@@ -8,7 +8,7 @@ Description: Use machinectl to manage systemd-nspawn containers on RHEL, includi
 
 ---
 
-machinectl is the management interface for systemd-nspawn containers. It provides commands to list, start, stop, clone, and inspect containers stored under `/var/lib/machines/`.
+machinectl is the management interface for the systemd machine manager. It provides commands to list, start, stop, clone, and inspect systemd-nspawn containers stored under `/var/lib/machines/` and other supported machine image paths.
 
 ## List Running and Available Machines
 
@@ -23,7 +23,7 @@ machinectl list-images
 
 ## Start and Stop Containers
 
-Containers must be stored in `/var/lib/machines/` for machinectl to manage them:
+Containers are preferably stored in `/var/lib/machines/` for machinectl to manage them:
 
 ```bash
 # Start a container (boots with systemd as init)
@@ -86,8 +86,8 @@ sudo machinectl disable mycontainer
 ## View Container Resource Usage
 
 ```bash
-# Show resource usage for all running machines
-machinectl list
+# Show live resource usage by control group
+systemd-cgtop
 
 # Detailed status including control group info
 machinectl status mycontainer
