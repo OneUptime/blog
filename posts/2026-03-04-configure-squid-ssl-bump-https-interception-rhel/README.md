@@ -16,9 +16,9 @@ Squid SSL Bump allows the proxy to intercept HTTPS connections by dynamically ge
 # Check if Squid was built with SSL support
 
 squid -v | grep -- '--with-openssl'
+squid -v | grep -- '--enable-ssl-crtd'
 
-# If not, you may need to rebuild Squid with SSL support
-# On RHEL, the default Squid package typically includes SSL support
+# If either option is missing, use a Squid build that includes SSL Bump support
 sudo dnf install -y squid openssl
 ```
 
@@ -42,6 +42,7 @@ sudo cat squid-ca-cert.pem squid-ca-key.pem | sudo tee squid-ca.pem > /dev/null
 # Set permissions
 sudo chown squid:squid /etc/squid/ssl/*
 sudo chmod 600 /etc/squid/ssl/squid-ca-key.pem
+sudo chmod 600 /etc/squid/ssl/squid-ca.pem
 sudo chmod 644 /etc/squid/ssl/squid-ca-cert.pem
 ```
 
@@ -59,14 +60,18 @@ sudo chown -R squid:squid /var/spool/squid/ssl_db
 
 ```bash
 sudo tee /etc/squid/squid.conf << 'CONF'
-# Standard HTTP proxy port
-http_port 3128
-
-# HTTPS interception port with SSL bump
-https_port 3129 intercept ssl-bump \
-  cert=/etc/squid/ssl/squid-ca.pem \
+# Explicit proxy port with SSL bump for HTTPS CONNECT requests
+http_port 3128 ssl-bump \
+  tls-cert=/etc/squid/ssl/squid-ca.pem \
   generate-host-certificates=on \
   dynamic_cert_mem_cache_size=16MB
+
+# For transparent interception, add a separate https_port with "intercept"
+# and redirect client TCP/443 traffic to that port with firewall/NAT rules.
+# https_port 3129 intercept ssl-bump \
+#   tls-cert=/etc/squid/ssl/squid-ca.pem \
+#   generate-host-certificates=on \
+#   dynamic_cert_mem_cache_size=16MB
 
 # SSL bump certificate generation helper
 sslcrtd_program /usr/lib64/squid/security_file_certgen \
@@ -82,7 +87,7 @@ ssl_bump peek step1
 ssl_bump bump all
 
 # Or selectively bump - splice (pass through) certain domains
-# acl nobump dstdomain .example.com .bank.com
+# acl nobump ssl::server_name .example.com .bank.com
 # ssl_bump splice nobump
 # ssl_bump bump all
 
@@ -131,7 +136,7 @@ Clients must trust the Squid CA certificate to avoid SSL warnings:
 ```bash
 # On RHEL/CentOS clients
 sudo cp /etc/squid/ssl/squid-ca-cert.pem /etc/pki/ca-trust/source/anchors/squid-ca.pem
-sudo update-ca-trust
+sudo update-ca-trust extract
 
 # On Ubuntu/Debian clients
 sudo cp /etc/squid/ssl/squid-ca-cert.pem /usr/local/share/ca-certificates/squid-ca.crt
@@ -149,7 +154,8 @@ export https_proxy=http://proxy.example.com:3128
 curl https://www.example.com
 
 # Verify the certificate chain
-openssl s_client -connect www.example.com:443 -proxy proxy.example.com:3128 2>/dev/null | \
+openssl s_client -connect www.example.com:443 -servername www.example.com \
+  -proxy proxy.example.com:3128 </dev/null 2>/dev/null | \
   openssl x509 -noout -issuer
 # Should show your Squid CA as the issuer
 ```
@@ -157,8 +163,8 @@ openssl s_client -connect www.example.com:443 -proxy proxy.example.com:3128 2>/d
 ## Exclude Sensitive Sites
 
 ```bash
-# Add to squid.conf to skip SSL bump for banking and sensitive sites
-acl nobump_domains dstdomain .bank.com .paypal.com .healthcare.gov
+# Add before "ssl_bump bump all" in squid.conf to skip SSL bump for banking and sensitive sites
+acl nobump_domains ssl::server_name .bank.com .paypal.com .healthcare.gov
 ssl_bump splice nobump_domains
 ```
 
