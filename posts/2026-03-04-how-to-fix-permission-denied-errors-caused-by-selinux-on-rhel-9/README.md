@@ -27,6 +27,7 @@ sudo setenforce 1
 ## View SELinux Denials
 
 ```bash
+sudo dnf install -y policycoreutils-python-utils
 sudo ausearch -m AVC -ts recent
 sudo ausearch -m AVC --raw | audit2why
 ```
@@ -68,7 +69,7 @@ sudo setsebool -P httpd_can_network_connect on
 
 ```bash
 # Add a port to the SELinux policy
-sudo semanage port -a -t http_port_t -p tcp 8443
+sudo semanage port -a -t http_port_t -p tcp 3131
 ```
 
 ## Generate a Custom Policy Module
@@ -83,4 +84,3 @@ sudo semodule -i mypolicy.pp
 ## Conclusion
 
 SELinux permission denied errors protect your system from unauthorized access. Always fix the root cause (contexts, booleans, ports) rather than disabling SELinux. Use audit2why and sealert for accurate diagnosis.
-
