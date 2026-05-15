@@ -16,7 +16,7 @@ Cron works, but systemd timers give you better logging, dependency management, a
 |---------|------|---------------|
 | Logging | Requires manual setup | Built into journald |
 | Missed runs | Silently skipped | Can catch up with Persistent |
-| Random delay | Not built in | RandomizedDelaySec |
+| Random delay | Manual or implementation-specific setup | RandomizedDelaySec |
 | Dependencies | None | Full systemd dependency system |
 | Status checking | Hard to monitor | systemctl status |
 
@@ -102,7 +102,7 @@ ExecStart=/usr/bin/ansible-playbook \
     -i /opt/ansible/inventory \
     /opt/ansible/playbooks/patch.yml \
     --vault-password-file /opt/ansible/.vault_pass \
-    --limit "{{ ansible_hostname }}"
+    --limit localhost
 WorkingDirectory=/opt/ansible
 User=root
 StandardOutput=journal
@@ -178,18 +178,21 @@ TIMER
 
 ```bash
 # Create the ansible working directory
-sudo mkdir -p /opt/ansible/{playbooks,inventory,roles}
-sudo chown -R ansible:ansible /opt/ansible
+sudo id ansible >/dev/null 2>&1 || sudo useradd --system --home-dir /opt/ansible --shell /sbin/nologin ansible
+sudo install -d -o ansible -g ansible -m 0750 /opt/ansible /opt/ansible/playbooks /opt/ansible/roles
 
 # Create a simple inventory
-cat > /opt/ansible/inventory << 'INV'
+sudo tee /opt/ansible/inventory > /dev/null << 'INV'
 [local]
 localhost ansible_connection=local
 INV
+sudo chown ansible:ansible /opt/ansible/inventory
+sudo chmod 0640 /opt/ansible/inventory
 
 # Store the vault password
-echo 'your-vault-password' > /opt/ansible/.vault_pass
-chmod 600 /opt/ansible/.vault_pass
+printf '%s\n' 'your-vault-password' | sudo tee /opt/ansible/.vault_pass > /dev/null
+sudo chown ansible:ansible /opt/ansible/.vault_pass
+sudo chmod 0600 /opt/ansible/.vault_pass
 ```
 
 ## Managing Timers
