@@ -8,43 +8,63 @@ Description: Step-by-step guide on configure health checks for podman containers
 
 ---
 
-Health checks let Podman monitor the state of running containers and take action when they become unhealthy. This is essential for production container deployments where you need automatic detection of application failures.
+Health checks let Podman monitor the state of running containers and mark them as healthy or unhealthy. Podman can also take recovery action when a container becomes unhealthy if you configure `--health-on-failure`. This is essential for production container deployments where you need automatic detection of application failures.
 
 ## Prerequisites
 
 - RHEL with a valid subscription or CentOS Stream 9
 - Root or sudo access
 - A terminal session
-- Podman installed (usually included in RHEL by default)
+- Podman installed with the `container-tools` package
 
-## Step 2: Configure the Service
+## Step 1: Create a Container with a Health Check
 
-Edit the configuration file to match your environment:
+Create a test web container and define the health check command:
 
 ```bash
-# Open the configuration file
-
-sudo vi /etc/<service>/config.conf
+podman run -dt \
+  --name hc-container \
+  -p 8080:8080 \
+  --health-cmd='curl http://localhost:8080 || exit 1' \
+  --health-interval=30s \
+  --health-timeout=5s \
+  --health-retries=3 \
+  --health-start-period=10s \
+  registry.access.redhat.com/ubi9/httpd-24
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+The `--health-cmd` option runs the command inside the container. A zero exit code marks the container as healthy, and a non-zero exit code counts as a failed health check.
+
+## Step 2: Configure Container Recovery
+
+If you want Podman to take action after the container becomes unhealthy, configure the `--health-on-failure` option when creating the container:
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+podman run -dt \
+  --name hc-container-restart \
+  -p 8081:8080 \
+  --health-cmd='curl http://localhost:8080 || exit 1' \
+  --health-interval=30s \
+  --health-timeout=5s \
+  --health-retries=3 \
+  --health-start-period=10s \
+  --health-on-failure=restart \
+  registry.access.redhat.com/ubi9/httpd-24
 ```
 
-## Step 3: Enable and Start the Service
+The supported recovery actions are `none`, `kill`, `restart`, and `stop`. The default action is `none`.
+
+## Step 3: Check the Health Status
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Check the health status with inspect
+podman inspect --format='{{json .State.Health.Status}}' hc-container
 
-# Start the service
-sudo systemctl start <service-name>
+# Check the status in the container list
+podman ps
 
-# Check the status
-sudo systemctl status <service-name>
+# Run the health check manually
+podman healthcheck run hc-container
 ```
 
 
@@ -56,16 +76,20 @@ Confirm everything is working by checking the status and logs:
 # Verify Podman is working
 podman info
 
-# Run a test container
-podman run --rm docker.io/library/alpine echo "Hello from Podman"
+# Verify the web server responds on the host
+curl http://localhost:8080
+
+# View recent health check events
+podman events --since 10m --stream=false --filter container=hc-container
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
-- For container issues, check container logs with `podman logs <container-name>`.
+- If the container fails to start, check the container logs with `podman logs hc-container`.
+- Ensure the required package is installed: `rpm -q container-tools`.
+- Health check commands run inside the container, so make sure tools such as `curl` are available in the container image.
+- Use `podman inspect hc-container` to review the full health check configuration and status.
 
 ## Conclusion
 
-You have successfully completed the setup described in this guide. Remember to monitor the service and review logs regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
+You have successfully configured health checks for Podman containers on RHEL. Remember to monitor the container status and review logs regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
