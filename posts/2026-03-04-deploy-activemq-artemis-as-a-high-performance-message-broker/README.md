@@ -20,8 +20,8 @@ Apache ActiveMQ Artemis is the next-generation message broker from the ActiveMQ 
 
 ```bash
 cd /opt
-sudo curl -L https://downloads.apache.org/activemq/activemq-artemis/2.33.0/apache-artemis-2.33.0-bin.tar.gz | sudo tar xz
-sudo ln -s apache-artemis-2.33.0 artemis
+sudo curl -L https://downloads.apache.org/artemis/artemis/2.53.0/apache-artemis-2.53.0-bin.tar.gz | sudo tar xz
+sudo ln -s apache-artemis-2.53.0 artemis
 ```
 
 ## Step 2: Create a Broker Instance
