@@ -13,7 +13,8 @@ sysbench provides standardized database benchmarks for MySQL and PostgreSQL on R
 ## Install sysbench
 
 ```bash
-sudo dnf install -y epel-release
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 sudo dnf install -y sysbench
 ```
 
@@ -58,6 +59,7 @@ sysbench oltp_read_write \
 sudo -u postgres createdb sbtest
 
 sysbench oltp_read_write \
+  --db-driver=pgsql \
   --pgsql-host=localhost \
   --pgsql-user=postgres \
   --pgsql-db=sbtest \
@@ -70,6 +72,7 @@ sysbench oltp_read_write \
 
 ```bash
 sysbench oltp_read_write \
+  --db-driver=pgsql \
   --pgsql-host=localhost \
   --pgsql-user=postgres \
   --pgsql-db=sbtest \
@@ -83,16 +86,29 @@ sysbench oltp_read_write \
 ## Key Metrics
 
 - **Transactions per second (TPS)**: Overall throughput
-- **Latency**: Average, P95, P99 response times
+- **Latency**: Average and configured percentile response times
 - **Read/Write ratio**: Matches your workload pattern
 
 ## Clean Up
 
 ```bash
-sysbench oltp_read_write --mysql-db=sbtest cleanup
+sysbench oltp_read_write \
+  --mysql-host=localhost \
+  --mysql-user=root \
+  --mysql-password=yourpass \
+  --mysql-db=sbtest \
+  --tables=10 \
+  cleanup
+
+sysbench oltp_read_write \
+  --db-driver=pgsql \
+  --pgsql-host=localhost \
+  --pgsql-user=postgres \
+  --pgsql-db=sbtest \
+  --tables=10 \
+  cleanup
 ```
 
 ## Conclusion
 
 sysbench on RHEL 9 provides reproducible database benchmarks for MySQL and PostgreSQL. Use consistent test parameters across environments to make valid performance comparisons.
-
