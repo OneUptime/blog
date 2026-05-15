@@ -114,7 +114,7 @@ ansible-playbook prepare-sap-all.yml -i inventory.ini
 
 # Run in assert mode to verify compliance after configuration
 ansible-playbook prepare-hana.yml -i inventory.ini \
-  -e "sap_hana_preconfigure_assert=true"
+  -e "sap_general_preconfigure_assert=true sap_hana_preconfigure_assert=true"
 ```
 
 ## What Gets Configured
@@ -135,8 +135,8 @@ rpm -q compat-openssl11
 rpm -q libnsl
 rpm -q libatomic
 
-# Swap configuration (disabled for HANA)
-swapon --show                  # Should be empty for HANA nodes
+# Swap configuration
+swapon --show                  # Verify expected swap is configured
 ```
 
 The roles are idempotent, so running them multiple times is safe and will only change settings that have drifted from the required values.
