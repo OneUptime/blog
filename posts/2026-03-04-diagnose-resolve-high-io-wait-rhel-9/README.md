@@ -18,7 +18,7 @@ Check current I/O wait:
 top
 ```
 
-Look at the `%wa` (wait) value in the CPU line. Values consistently above 20% indicate a storage bottleneck.
+Look at the `%wa` (wait) value in the CPU line. Values consistently above 20% often indicate that storage I/O is limiting the workload.
 
 Or use vmstat:
 
@@ -34,7 +34,7 @@ The `wa` column shows I/O wait percentage.
 iostat -x 1
 ```
 
-Look for devices with high `%util` (approaching 100%) and high `await` values. This tells you which physical device is the bottleneck.
+Look for devices with high `%util` (approaching 100% on devices that handle requests serially) and high `await` values. This helps identify which block device or volume is the bottleneck.
 
 ## Step 2: Identify Which Processes Are Causing I/O
 
@@ -52,14 +52,14 @@ This shows only processes actively performing I/O, sorted by throughput. Look fo
 Use fatrace to see real-time file access:
 
 ```bash
-sudo dnf install fatrace
+sudo dnf install fatrace  # Available from EPEL or other enabled repositories
 sudo fatrace -f W  # Show only writes
 ```
 
 Or use strace on a specific process:
 
 ```bash
-sudo strace -e trace=read,write,open -p PID
+sudo strace -e trace=%file,read,write -p PID
 ```
 
 ## Common Causes and Solutions
@@ -110,10 +110,10 @@ Check if journal writes are the bottleneck:
 iostat -x 1 | grep -E "Device|journal"
 ```
 
-Consider using `nobarrier` mount option for non-critical data (use with caution):
+On RHEL 9 with XFS, do not use the deprecated `nobarrier` mount option because it can cause mounts to fail. If you are using another file system where barrier controls are still supported, disable barriers only when the storage has a non-volatile, battery-backed write cache or write caching is disabled.
 
 ```bash
-sudo mount -o remount,nobarrier /data
+findmnt -no FSTYPE,OPTIONS /data
 ```
 
 ### Insufficient I/O Scheduler Tuning
@@ -162,7 +162,7 @@ cat /proc/mdstat
 A rebuilding RAID array consumes significant I/O bandwidth. You can throttle the rebuild speed:
 
 ```bash
-# Reduce rebuild speed to free I/O for applications
+# Cap rebuild speed to free I/O for applications
 echo 50000 | sudo tee /proc/sys/dev/raid/speed_limit_max
 ```
 
