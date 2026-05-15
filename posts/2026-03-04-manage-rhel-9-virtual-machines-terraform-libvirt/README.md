@@ -15,7 +15,7 @@ If you run KVM-based virtualization on RHEL, managing VMs through virt-manager o
 ```mermaid
 graph TD
     A[Terraform Configuration] --> B[Terraform Libvirt Provider]
-    B --> C[libvirtd Daemon]
+    B --> C[libvirt Daemons]
     C --> D[QEMU/KVM Hypervisor]
     D --> E[RHEL VM 1]
     D --> F[RHEL VM 2]
@@ -31,24 +31,24 @@ Install the required packages on your RHEL hypervisor:
 ```bash
 # Install KVM and libvirt
 
-sudo dnf install -y qemu-kvm libvirt virt-install
+sudo dnf install -y qemu-kvm libvirt virt-install virt-viewer
 
-# Start and enable libvirtd
-sudo systemctl enable --now libvirtd
+# Start the libvirt virtualization sockets
+for drv in qemu network nodedev nwfilter secret storage interface; do sudo systemctl enable --now virt${drv}d{,-ro,-admin}.socket; done
 
-# Verify KVM support
-lsmod | grep kvm
+# Verify the host virtualization setup
+sudo virt-host-validate
 ```
 
 ## Install Terraform
 
 ```bash
 # Add the HashiCorp repository
-sudo dnf install -y dnf-plugins-core
-sudo dnf config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
+sudo yum install -y yum-utils
+sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
 
 # Install Terraform
-sudo dnf install -y terraform
+sudo yum -y install terraform
 
 # Verify the installation
 terraform version
@@ -71,7 +71,7 @@ terraform {
   required_providers {
     libvirt = {
       source  = "dmacvicar/libvirt"
-      version = "~> 0.7"
+      version = "~> 0.8.0"
     }
   }
 }
@@ -91,7 +91,10 @@ provider "libvirt" {
 resource "libvirt_pool" "rhel_pool" {
   name = "rhel_pool"
   type = "dir"
-  path = "/var/lib/libvirt/rhel_pool"
+
+  target {
+    path = "/var/lib/libvirt/rhel_pool"
+  }
 }
 
 # Create a base volume from the RHEL cloud image
@@ -117,8 +120,8 @@ resource "libvirt_volume" "rhel9_vm_disk" {
 # cloudinit.tf - Configure cloud-init for the VM
 
 # Cloud-init configuration for user setup
-data "template_file" "user_data" {
-  template = <<-EOF
+locals {
+  user_data = <<-EOF
     #cloud-config
     hostname: rhel9-vm1
     users:
@@ -126,7 +129,7 @@ data "template_file" "user_data" {
         sudo: ALL=(ALL) NOPASSWD:ALL
         shell: /bin/bash
         ssh_authorized_keys:
-          - ${file("~/.ssh/id_rsa.pub")}
+          - ${file(pathexpand("~/.ssh/id_rsa.pub"))}
     packages:
       - vim
       - curl
@@ -134,14 +137,13 @@ data "template_file" "user_data" {
     runcmd:
       - [ systemctl, enable, --now, sshd ]
   EOF
-}
 
-# Network configuration for the VM
-data "template_file" "network_config" {
-  template = <<-EOF
+  network_config = <<-EOF
     version: 2
     ethernets:
-      eth0:
+      primary:
+        match:
+          name: "e*"
         dhcp4: true
   EOF
 }
@@ -150,8 +152,8 @@ data "template_file" "network_config" {
 resource "libvirt_cloudinit_disk" "vm_init" {
   name           = "rhel9-vm1-init.iso"
   pool           = libvirt_pool.rhel_pool.name
-  user_data      = data.template_file.user_data.rendered
-  network_config = data.template_file.network_config.rendered
+  user_data      = local.user_data
+  network_config = local.network_config
 }
 ```
 
@@ -273,8 +275,8 @@ terraform destroy -auto-approve
 If Terraform cannot connect to libvirt, check the socket permissions:
 
 ```bash
-# Verify libvirtd is running
-sudo systemctl status libvirtd
+# Verify the libvirt sockets are running
+sudo systemctl status virtqemud.socket virtstoraged.socket virtnetworkd.socket
 
 # Check your user is in the libvirt group
 groups $USER
