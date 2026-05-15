@@ -88,19 +88,19 @@ sudo nmcli connection up "ens224"
 ip -6 addr show dev ens224
 ```
 
-## Ignoring IPv6 Autoconfiguration
+## Ignoring Automatically Learned IPv6 DNS and Routes
 
-Another option is to keep IPv6 active but ignore Router Advertisements and DHCP. This is useful when routers on a network send unwanted RA messages.
+Another option is to keep IPv6 auto-configuration active but ignore automatically learned DNS servers and routes. This is useful when you still want IPv6 addresses from Router Advertisements or DHCPv6, but do not want that connection to install IPv6 DNS or routing information.
 
 ```bash
-# Set to manual but don't assign any address
-sudo nmcli connection modify "ens224" ipv6.method ignore
+# Keep IPv6 auto-configuration, but ignore learned DNS and routes
+sudo nmcli connection modify "ens224" ipv6.method auto ipv6.ignore-auto-dns yes ipv6.ignore-auto-routes yes
 
 # Apply
 sudo nmcli connection up "ens224"
 ```
 
-Note: The `ignore` method was available in older NetworkManager. On RHEL, you might need to use `disabled` instead, as `ignore` may behave differently depending on the NetworkManager version. Check your version with:
+Note: The `ipv6.method ignore` value has a specific NetworkManager meaning: NetworkManager makes no IPv6 changes on the interface. It is not the right setting if your goal is to block automatically learned IPv6 settings while keeping NetworkManager in control. Check your version with:
 
 ```bash
 nmcli --version
@@ -128,8 +128,8 @@ graph LR
     A --> C[manual]
     A --> D[link-local]
     A --> E[disabled]
-    B --> F[SLAAC + DHCPv6<br>Full IPv6 stack]
-    C --> G[Static addresses only<br>No autoconfiguration]
+    B --> F[RA-based autoconfiguration<br>DHCPv6 when requested by router]
+    C --> G[Static + link-local addresses<br>No autoconfiguration]
     D --> H[fe80:: only<br>No global addresses]
     E --> I[No IPv6 at all<br>Kernel disables it]
 ```
@@ -143,8 +143,7 @@ If you need to turn IPv6 back on, just set the method back.
 sudo nmcli connection modify "ens224" ipv6.method auto
 
 # Or re-enable with a static address
-sudo nmcli connection modify "ens224" ipv6.method manual
-sudo nmcli connection modify "ens224" ipv6.addresses "2001:db8:1::10/64"
+sudo nmcli connection modify "ens224" ipv6.method manual ipv6.addresses "2001:db8:1::10/64"
 
 # Apply
 sudo nmcli connection up "ens224"
