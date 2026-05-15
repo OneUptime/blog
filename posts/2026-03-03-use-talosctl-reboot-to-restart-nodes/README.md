@@ -14,7 +14,7 @@ Restarting nodes is one of the most common tasks you will perform when managing 
 
 The `talosctl reboot` command sends a reboot request to one or more Talos Linux nodes through the Talos API. Unlike traditional Linux distributions where you might SSH into a machine and run `reboot`, Talos Linux is an API-driven operating system. All management operations, including reboots, go through the `talosctl` CLI.
 
-When you issue a reboot command, Talos Linux performs a graceful shutdown sequence. It stops all running services, drains the node from the Kubernetes cluster (if applicable), and then restarts the machine. This ensures minimal disruption to your workloads.
+When you issue a reboot command, Talos Linux performs a graceful shutdown sequence and then restarts the machine. If you want Talos to cordon the Kubernetes node and evict pods before rebooting, use the `--drain` flag. This helps minimize disruption to your workloads.
 
 ## Basic Usage
 
@@ -49,7 +49,7 @@ Before you reboot a node, it is a good idea to check its current status. This he
 talosctl health --nodes 192.168.1.10
 
 # List services running on the node
-talosctl services --nodes 192.168.1.10
+talosctl service --nodes 192.168.1.10
 
 # Check what pods are running on this node via kubectl
 kubectl get pods --field-selector spec.nodeName=worker-1 -A
@@ -73,8 +73,8 @@ Here are some important things to keep in mind when rebooting control plane node
 3. If you have a three-node control plane, you can safely reboot one node at a time while maintaining quorum.
 
 ```bash
-# Check etcd member health before rebooting
-talosctl etcd members --nodes 192.168.1.10
+# Check etcd member status before rebooting
+talosctl etcd status --nodes 192.168.1.10
 
 # Reboot first control plane node
 talosctl reboot --nodes 192.168.1.10
@@ -101,7 +101,7 @@ talosctl reboot --nodes 192.168.1.20
 kubectl uncordon worker-2
 ```
 
-While Talos handles draining internally during the reboot process, manually draining the node beforehand gives you more control over workload migration. This is especially useful if you have pods with long graceful shutdown periods.
+You can also have Talos drain the Kubernetes node before rebooting by passing `--drain`, but manually draining the node beforehand gives you more control over workload migration. This is especially useful if you have pods with long graceful shutdown periods.
 
 ## Using the Reboot Mode Flag
 
@@ -111,11 +111,17 @@ The `talosctl reboot` command supports a `--mode` flag that lets you control how
 # Default mode - graceful reboot
 talosctl reboot --nodes 192.168.1.10 --mode default
 
-# Powercycle mode - equivalent to a hard reset
+# Drain the Kubernetes node before rebooting
+talosctl reboot --nodes 192.168.1.10 --drain
+
+# Force mode - skip graceful teardown
+talosctl reboot --nodes 192.168.1.10 --mode force
+
+# Powercycle mode - bypass kexec
 talosctl reboot --nodes 192.168.1.10 --mode powercycle
 ```
 
-The default mode performs a graceful reboot, which is what you want in most cases. The powercycle mode is more aggressive and simulates a physical power cycle. Use powercycle only when a node is stuck and a graceful reboot is not working.
+The default mode performs a graceful reboot, which is what you want in most cases. The force mode skips graceful teardown and is useful when a userland service is stuck during shutdown. The powercycle mode bypasses kexec, which can be useful when you need the reboot to go through the platform firmware path.
 
 ## Waiting for the Node to Come Back
 
@@ -183,10 +189,17 @@ This script reboots each node one at a time and waits for it to become healthy b
 
 Sometimes a node might not respond to a reboot command. Here are some common issues and how to handle them:
 
-If the node is unresponsive to the API, try the powercycle mode:
+If the graceful reboot hangs because shutdown is stuck, try the force mode:
 
 ```bash
-# Force a powercycle if graceful reboot hangs
+# Force a reboot if graceful teardown hangs
+talosctl reboot --nodes 192.168.1.10 --mode force
+```
+
+If you need the reboot to bypass kexec, try the powercycle mode:
+
+```bash
+# Powercycle while bypassing kexec
 talosctl reboot --nodes 192.168.1.10 --mode powercycle
 ```
 
