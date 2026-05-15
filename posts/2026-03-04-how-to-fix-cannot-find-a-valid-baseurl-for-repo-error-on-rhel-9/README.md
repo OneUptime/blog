@@ -35,8 +35,9 @@ cat /etc/resolv.conf
 Fix DNS if needed:
 
 ```bash
-sudo nmcli con mod "System eth0" ipv4.dns "8.8.8.8 8.8.4.4"
-sudo nmcli con up "System eth0"
+nmcli con show --active
+sudo nmcli con mod "<connection-name>" ipv4.dns "8.8.8.8 8.8.4.4"
+sudo nmcli con up "<connection-name>"
 ```
 
 ## Check Subscription Status
@@ -86,4 +87,3 @@ sudo subscription-manager config --server.proxy_hostname=proxy.example.com --ser
 ## Conclusion
 
 The "Cannot find a valid baseurl" error usually stems from network, DNS, or subscription issues. Work through each layer systematically to identify and resolve the root cause.
-
