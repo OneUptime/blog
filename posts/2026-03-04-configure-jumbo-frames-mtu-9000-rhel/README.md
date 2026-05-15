@@ -21,8 +21,8 @@ All network devices in the path (NICs, switches, routers) must support jumbo fra
 
 ip link show ens192 | grep mtu
 
-# Set MTU to 9000 using nmcli
-sudo nmcli connection modify ens192 802-3-ethernet.mtu 9000
+# Set MTU to 9000 on the NetworkManager connection profile
+sudo nmcli connection modify ens192 mtu 9000
 
 # Apply the change (this briefly disconnects the interface)
 sudo nmcli connection up ens192
@@ -40,8 +40,8 @@ Before committing the change, verify that jumbo frames work end-to-end.
 # The -M do flag prevents fragmentation
 ping -M do -s 8972 -c 5 192.168.10.20
 
-# If the ping fails with "Message too long", a device in the path
-# does not support jumbo frames
+# If the ping fails with "Message too long", the local interface or
+# a device in the path does not support jumbo frames
 
 # Test with incrementally larger packets to find the MTU limit
 ping -M do -s 8000 -c 1 192.168.10.20
@@ -53,9 +53,9 @@ ping -M do -s 8972 -c 1 192.168.10.20
 
 ```bash
 # For bonded interfaces, set MTU on both the bond and the member interfaces
-sudo nmcli connection modify bond0 802-3-ethernet.mtu 9000
-sudo nmcli connection modify bond-slave-ens192 802-3-ethernet.mtu 9000
-sudo nmcli connection modify bond-slave-ens224 802-3-ethernet.mtu 9000
+sudo nmcli connection modify bond0 mtu 9000
+sudo nmcli connection modify bond-slave-ens192 mtu 9000
+sudo nmcli connection modify bond-slave-ens224 mtu 9000
 
 # Restart the bond
 sudo nmcli connection up bond0
@@ -66,11 +66,11 @@ sudo nmcli connection up bond0
 ```bash
 # The VLAN MTU must not exceed the parent interface MTU
 # Set the parent interface MTU first
-sudo nmcli connection modify ens192 802-3-ethernet.mtu 9000
+sudo nmcli connection modify ens192 mtu 9000
 sudo nmcli connection up ens192
 
 # Then set the VLAN MTU
-sudo nmcli connection modify vlan100 802-3-ethernet.mtu 9000
+sudo nmcli connection modify vlan100 mtu 9000
 sudo nmcli connection up vlan100
 ```
 
@@ -92,7 +92,7 @@ iperf3 -c 192.168.10.20 -t 30
 
 ```bash
 # If jumbo frames cause problems, revert to the default MTU
-sudo nmcli connection modify ens192 802-3-ethernet.mtu 1500
+sudo nmcli connection modify ens192 mtu 1500
 sudo nmcli connection up ens192
 ```
 
