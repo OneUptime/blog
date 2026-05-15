@@ -24,7 +24,7 @@ hostname -f
 # Ensure /etc/hosts has the correct entry
 echo "192.168.1.10 idm1.example.com idm1" | sudo tee -a /etc/hosts
 
-# Verify forward and reverse resolution
+# Verify forward resolution
 getent hosts idm1.example.com
 ```
 
@@ -32,7 +32,8 @@ getent hosts idm1.example.com
 
 ```bash
 # Install the IdM server with DNS packages
-sudo dnf module enable idm:DL1 -y
+sudo subscription-manager repos --enable=rhel-9-for-x86_64-baseos-rpms
+sudo subscription-manager repos --enable=rhel-9-for-x86_64-appstream-rpms
 sudo dnf install -y ipa-server ipa-server-dns
 
 # This installs the 389 Directory Server, Kerberos KDC,
@@ -54,14 +55,14 @@ sudo ipa-server-install \
   --unattended
 
 # The installation takes 10-20 minutes
-# It configures: LDAP, Kerberos, CA, DNS, HTTP, NTP
+# It configures: LDAP, Kerberos, CA, DNS, HTTP, and chronyd
 ```
 
 ## Configuring the Firewall
 
 ```bash
 # Open required ports
-sudo firewall-cmd --permanent --add-service={freeipa-ldap,freeipa-ldaps,dns,kerberos,kpasswd,http,https}
+sudo firewall-cmd --permanent --add-service={freeipa-4,dns}
 sudo firewall-cmd --reload
 ```
 
@@ -94,7 +95,7 @@ ipactl status
 # Create a DNS reverse zone if needed
 ipa dnszone-add 1.168.192.in-addr.arpa.
 
-# Enable password policy
+# Update the global password policy
 ipa pwpolicy-mod --minlife=1 --maxlife=90 --minlength=12
 ```
 
