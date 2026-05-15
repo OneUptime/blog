@@ -22,7 +22,7 @@ Ensure you have a working two-node Pacemaker/Corosync cluster with fencing confi
 sudo pcs status
 
 # Confirm fencing is active
-sudo pcs property show stonith-enabled
+sudo pcs property config stonith-enabled
 # Should return: stonith-enabled: true
 ```
 
@@ -32,8 +32,8 @@ sudo pcs property show stonith-enabled
 # Install MariaDB on both nodes
 sudo dnf install -y mariadb-server
 
-# Initialize MariaDB on both nodes
-sudo mysql_install_db --user=mysql
+# Initialize MariaDB once on the shared data directory
+sudo mariadb-install-db --user=mysql --datadir=/var/lib/mysql
 
 # Do NOT enable MariaDB with systemd -- Pacemaker manages it
 # sudo systemctl disable mariadb
@@ -63,7 +63,7 @@ sudo pcs resource group add db_group mariadb_svc db_vip
 # Install PostgreSQL on both nodes
 sudo dnf install -y postgresql-server
 
-# Initialize the database on both nodes
+# Initialize the database once on the shared data directory
 sudo postgresql-setup --initdb
 
 # Do NOT enable PostgreSQL with systemd
