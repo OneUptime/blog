@@ -42,11 +42,12 @@ Bridged mode connects VMs directly to the physical network. VMs get IP addresses
 sudo nmcli connection add type bridge con-name br0 ifname br0
 
 # Add the physical interface as a bridge port
-sudo nmcli connection add type bridge-slave con-name br0-port1 \
-  ifname ens3 master br0
+sudo nmcli connection add type ethernet slave-type bridge \
+  con-name br0-port1 ifname ens3 master br0
 
 # Configure IP settings on the bridge
 sudo nmcli connection modify br0 ipv4.method auto
+sudo nmcli connection modify br0 connection.autoconnect-ports 1
 sudo nmcli connection up br0
 
 # Verify the bridge
@@ -84,7 +85,7 @@ sudo virt-install \
   --name macvtap-vm \
   --memory 2048 --vcpus 2 \
   --disk size=20 \
-  --network type=direct,source=ens3,model=virtio,source_mode=bridge \
+  --network type=direct,source=ens3,model=virtio,source.mode=bridge \
   --cdrom /var/lib/libvirt/images/rhel-9.4-dvd.iso \
   --os-variant rhel9.4 --graphics vnc
 
@@ -104,7 +105,7 @@ sudo virt-install \
 # Best for: servers that need direct network access
 
 # macvtap: VM -> macvtap interface -> physical NIC -> network
-# Best for: simple setups, no host-to-VM communication needed
+# Best for: cases that explicitly require macvtap and do not need host-to-VM communication
 ```
 
 ## Troubleshooting
