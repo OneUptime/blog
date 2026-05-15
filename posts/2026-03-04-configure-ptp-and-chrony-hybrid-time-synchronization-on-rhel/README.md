@@ -63,7 +63,7 @@ Edit `/etc/chrony.conf`:
 
 ```ini
 # PTP source via shared memory (from phc2sys)
-# SHM segment 0, poll every 2 seconds, high precision
+# SHM segment 0, poll every 4 seconds, high precision
 refclock SHM 0 poll 2 refid PTP precision 1e-9 prefer
 
 # NTP fallback servers
@@ -107,7 +107,7 @@ chronyc tracking
 chronyc sourcestats
 ```
 
-Expected output shows the SHM/PTP source with nanosecond-level accuracy preferred over the NTP sources.
+Expected output shows the SHM/PTP source with a low offset preferred over the NTP sources.
 
 ## Failover Behavior
 
