@@ -10,7 +10,7 @@ Description: A practical guide to installing Postfix on RHEL and configuring it 
 
 ## Why Postfix?
 
-Postfix is the default MTA (Mail Transfer Agent) on RHEL and has been the workhorse of Linux mail servers for years. It replaced Sendmail as the go-to choice because it is faster, easier to configure, and more secure by design. Whether you need a server to send system notifications or a full-blown mail server for your organization, Postfix is the right tool.
+Postfix is the standard MTA (Mail Transfer Agent) used for SMTP service on RHEL and has been the workhorse of Linux mail servers for years. It replaced Sendmail as the go-to choice because it is faster, easier to configure, and more secure by design. Whether you need a server to send system notifications or a full-blown mail server for your organization, Postfix is the right tool.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ Postfix is the default MTA (Mail Transfer Agent) on RHEL and has been the workho
 
 ## Installing Postfix
 
-Postfix is usually installed by default on RHEL. If not, install it:
+Postfix might already be installed if you selected mail server packages during RHEL installation. If not, install it:
 
 ```bash
 # Install postfix
@@ -39,7 +39,7 @@ sudo dnf remove -y sendmail
 
 ```mermaid
 graph LR
-    A[Sending Client] -->|Port 587| B[Postfix - Submission]
+    A[Sending Client] -->|Port 587| B[Postfix SMTP Services]
     B --> C[Queue Manager]
     C --> D{Local Delivery?}
     D -->|Yes| E[Local Mailbox]
@@ -98,7 +98,7 @@ inet_protocols = ipv4
 # Maximum message size (25 MB)
 message_size_limit = 26214400
 
-# Mailbox size limit (1 GB)
+# Maximum individual mailbox or Maildir file size (1 GB)
 mailbox_size_limit = 1073741824
 ```
 
@@ -125,6 +125,13 @@ Install the Cyrus SASL packages:
 ```bash
 # Install SASL authentication support
 sudo dnf install -y cyrus-sasl cyrus-sasl-plain
+```
+
+Create `/etc/sasl2/smtpd.conf` so the Cyrus SASL library knows how to verify SMTP authentication requests:
+
+```bash
+pwcheck_method: saslauthd
+mech_list: PLAIN LOGIN
 ```
 
 Add SASL configuration to `/etc/postfix/main.cf`:
@@ -245,7 +252,7 @@ smtpd_recipient_restrictions =
 
 ## Viewing All Active Settings
 
-Postfix has many parameters with defaults. To see every active setting:
+Postfix has many parameters with defaults. To see the non-default active settings:
 
 ```bash
 # Show all non-default configuration values
