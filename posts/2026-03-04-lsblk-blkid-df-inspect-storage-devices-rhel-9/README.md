@@ -122,10 +122,10 @@ sudo blkid
 Sample output:
 
 ```bash
-/dev/sda1: UUID="abc12345-de67-89fg-hijk-lmnopqrstuv" BLOCK_SIZE="512" TYPE="xfs" PARTUUID="12345678-01"
-/dev/sda2: UUID="xyz98765-ab43-21cd-efgh-ijklmnopqrs" TYPE="LVM2_member" PARTUUID="12345678-02"
-/dev/mapper/rhel-root: UUID="root1234-5678-90ab-cdef-ghijklmnopqr" BLOCK_SIZE="512" TYPE="xfs"
-/dev/mapper/rhel-swap: UUID="swap1234-5678-90ab-cdef-ghijklmnopqr" TYPE="swap"
+/dev/sda1: UUID="abc12345-de67-89ab-cdef-123456789abc" BLOCK_SIZE="512" TYPE="xfs" PARTUUID="12345678-01"
+/dev/sda2: UUID="def98765-ab43-21cd-ef12-3456789abcde" TYPE="LVM2_member" PARTUUID="12345678-02"
+/dev/mapper/rhel-root: UUID="12345678-5678-90ab-cdef-abcdef123456" BLOCK_SIZE="512" TYPE="xfs"
+/dev/mapper/rhel-swap: UUID="98765432-5678-90ab-cdef-fedcba654321" TYPE="swap"
 ```
 
 ### Query a Specific Device
@@ -137,7 +137,7 @@ sudo blkid /dev/sda1
 ### Find a Device by UUID
 
 ```bash
-sudo blkid -U "abc12345-de67-89fg-hijk-lmnopqrstuv"
+sudo blkid -U "abc12345-de67-89ab-cdef-123456789abc"
 ```
 
 This returns the device path for the given UUID, which is useful for scripting.
@@ -164,7 +164,7 @@ Output:
 
 ```bash
 DEVNAME=/dev/sda1
-UUID=abc12345-de67-89fg-hijk-lmnopqrstuv
+UUID=abc12345-de67-89ab-cdef-123456789abc
 BLOCK_SIZE=512
 TYPE=xfs
 PARTUUID=12345678-01
@@ -274,7 +274,7 @@ lsblk /dev/sdb
 sudo blkid /dev/sdb1
 
 # Check if it's mounted and how much space is used
-df -h /dev/sdb1
+df -h | grep /dev/sdb1
 ```
 
 ### Create a Complete Storage Report
@@ -357,7 +357,7 @@ lsblk -o NAME,SIZE,MODEL,SERIAL,TRAN /dev/sdc
 sudo blkid /dev/sdc*
 
 # Check if any part is used by LVM
-sudo pvs /dev/sdc
+sudo pvs /dev/sdc*
 ```
 
 ## Conclusion
