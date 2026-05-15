@@ -37,7 +37,7 @@ zone "example.com" IN {
     type primary;
     file "example.com.zone";
     allow-update { none; };
-    allow-transfer { 192.168.1.11; };
+    allow-transfer { localhost; 192.168.1.11; };
 };
 EOF
 ```
@@ -122,7 +122,7 @@ zone "1.168.192.in-addr.arpa" IN {
     type primary;
     file "192.168.1.rev";
     allow-update { none; };
-    allow-transfer { 192.168.1.11; };
+    allow-transfer { localhost; 192.168.1.11; };
 };
 EOF
 ```
@@ -163,7 +163,7 @@ EOF
 
 IPv6 reverse zones use `ip6.arpa` and the address is written in nibble format (each hex digit separated by dots, reversed).
 
-For the prefix `2001:db8::/48`:
+For the prefix `2001:db8::/32`:
 
 ```bash
 cat >> /etc/named.conf << 'EOF'
@@ -224,6 +224,7 @@ chown named:named /var/named/2001-db8.ip6.rev
 named-checkconf /etc/named.conf
 named-checkzone example.com /var/named/example.com.zone
 named-checkzone 1.168.192.in-addr.arpa /var/named/192.168.1.rev
+named-checkzone 8.b.d.0.1.0.0.2.ip6.arpa /var/named/2001-db8.ip6.rev
 ```
 
 ## Starting and Testing
@@ -255,13 +256,13 @@ dig @localhost example.com MX +short
 
 ## Keeping Zones Consistent
 
-The most important thing with forward and reverse zones is consistency. Every A record should have a corresponding PTR record, and vice versa. When you add a new host, update both zones. When you remove one, remove it from both.
+The most important thing with forward and reverse zones is consistency. Each host address that should resolve backward should have a corresponding PTR record, and each PTR record should point to a name that resolves forward. If multiple names share one IP address, choose one canonical PTR name. When you add a new host, update both zones. When you remove one, remove it from both.
 
 A quick consistency check:
 
 ```bash
 # List all A records
-dig @localhost example.com AXFR | grep "IN\sA\s"
+dig @localhost example.com AXFR | grep -E "[[:space:]]IN[[:space:]]+A[[:space:]]"
 
 # List all PTR records
 dig @localhost 1.168.192.in-addr.arpa AXFR | grep PTR
