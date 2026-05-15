@@ -81,6 +81,13 @@ sudo modprobe vfio-pci
 # Make it persistent across reboots
 echo "vfio-pci" | sudo tee /etc/modules-load.d/vfio-pci.conf
 
+# If IOMMU is not already enabled, enable it for your CPU vendor and reboot
+if lscpu | grep -qi GenuineIntel; then
+    sudo grubby --update-kernel=ALL --args="intel_iommu=on iommu=pt"
+elif lscpu | grep -qi AuthenticAMD; then
+    sudo grubby --update-kernel=ALL --args="amd_iommu=on iommu=pt"
+fi
+
 # If your system does not have an IOMMU, enable unsafe no-IOMMU mode
 # (not recommended for production)
 echo 1 | sudo tee /sys/module/vfio/parameters/enable_unsafe_noiommu_mode
@@ -139,6 +146,7 @@ Create a minimal DPDK application that initializes the Environment Abstraction L
 ```c
 /* simple_dpdk.c - A minimal DPDK application */
 #include <stdio.h>
+#include <stdint.h>
 #include <rte_eal.h>
 #include <rte_ethdev.h>
 
@@ -161,7 +169,11 @@ int main(int argc, char *argv[]) {
     /* List information about each port */
     RTE_ETH_FOREACH_DEV(port_id) {
         struct rte_eth_dev_info dev_info;
-        rte_eth_dev_info_get(port_id, &dev_info);
+        ret = rte_eth_dev_info_get(port_id, &dev_info);
+        if (ret != 0) {
+            fprintf(stderr, "Error: Failed to get info for port %u\n", port_id);
+            continue;
+        }
         printf("Port %u: driver=%s\n", port_id, dev_info.driver_name);
     }
 
