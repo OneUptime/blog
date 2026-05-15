@@ -26,7 +26,7 @@ uname -r
 # List all installed kernels
 rpm -qa kernel-core
 
-# Check available disk space (you need at least 200 MB free in /boot)
+# Check available disk space in /boot
 df -h /boot
 
 # Verify your system is registered and has access to repositories
