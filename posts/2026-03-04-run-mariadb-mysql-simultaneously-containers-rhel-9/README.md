@@ -17,84 +17,89 @@ Run MariaDB and MySQL side by side on RHEL 9 using Podman containers. Proper dat
 - A RHEL 9 system with a valid subscription or configured repositories
 - Root or sudo access
 - Sufficient disk space for database storage
+- Podman installed
 
-## Step 1 - Install the Database Packages
+## Step 1 - Install Podman and Create Volumes
 
-For PostgreSQL:
-
-```bash
-sudo dnf install -y postgresql-server postgresql
-sudo postgresql-setup --initdb
-sudo systemctl enable --now postgresql
-```
-
-For MariaDB:
+Install Podman if it is not already available:
 
 ```bash
-sudo dnf install -y mariadb-server
-sudo systemctl enable --now mariadb
-sudo mysql_secure_installation
+sudo dnf install -y podman
 ```
 
-For MySQL 8.0:
+Create separate persistent volumes for each database engine:
 
 ```bash
-sudo dnf install -y mysql-community-server
-sudo systemctl enable --now mysqld
+podman volume create mariadb-data
+podman volume create mysql-data
 ```
 
-Choose the appropriate commands for your database engine.
+## Step 2 - Start the Containers
 
-## Step 2 - Perform Initial Configuration
-
-Edit the main configuration file:
-
-- PostgreSQL: `/var/lib/pgsql/data/postgresql.conf` and `pg_hba.conf`
-- MariaDB/MySQL: `/etc/my.cnf.d/server.cnf`
-
-Adjust memory settings, connection limits, and authentication methods to match your workload.
-
-## Step 3 - Create Users and Databases
-
-For PostgreSQL:
+Run MariaDB on the default MySQL/MariaDB port:
 
 ```bash
-sudo -u postgres createuser myappuser
-sudo -u postgres createdb myappdb -O myappuser
+podman run -d \
+  --name mariadb \
+  -p 3306:3306 \
+  -v mariadb-data:/var/lib/mysql \
+  -e MARIADB_ROOT_PASSWORD='change-this-root-password' \
+  -e MARIADB_DATABASE=myappdb \
+  -e MARIADB_USER=myappuser \
+  -e MARIADB_PASSWORD='secure-password' \
+  docker.io/library/mariadb:11
 ```
 
-For MariaDB/MySQL:
+Run MySQL 8.0 on a different host port so both containers can run at the same time:
 
-```sql
-CREATE DATABASE myappdb;
-CREATE USER 'myappuser'@'localhost' IDENTIFIED BY 'secure-password';
-GRANT ALL PRIVILEGES ON myappdb.* TO 'myappuser'@'localhost';
-FLUSH PRIVILEGES;
+```bash
+podman run -d \
+  --name mysql8 \
+  -p 3307:3306 \
+  -v mysql-data:/var/lib/mysql \
+  -e MYSQL_ROOT_PASSWORD='change-this-root-password' \
+  -e MYSQL_DATABASE=myappdb \
+  -e MYSQL_USER=myappuser \
+  -e MYSQL_PASSWORD='secure-password' \
+  docker.io/library/mysql:8.0
 ```
+
+The containers use the same internal database port, but different host ports: MariaDB on `3306` and MySQL on `3307`.
+
+## Step 3 - Check Container Status
+
+```bash
+podman ps
+podman port mariadb
+podman port mysql8
+podman logs mariadb
+podman logs mysql8
+```
+
+The environment variables create the initial database and user only when the data directory is empty. If you reuse an existing volume, those initialization variables do not modify the existing database.
 
 ## Step 4 - Configure Network Access
 
-If remote connections are needed, update the listen address and authentication rules, then open the firewall:
+If remote connections are needed, publish only the ports you require and open the matching firewall ports:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=postgresql
-# or
-
-sudo firewall-cmd --permanent --add-service=mysql
+sudo firewall-cmd --permanent --add-port=3306/tcp
+sudo firewall-cmd --permanent --add-port=3307/tcp
 sudo firewall-cmd --reload
 ```
 
 ## Step 5 - Verify the Setup
 
-Connect to the database and run a test query:
+Connect to each database and run a test query:
 
 ```bash
-# PostgreSQL
-psql -h localhost -U myappuser myappdb -c "SELECT version();"
-# MariaDB/MySQL
-mysql -u myappuser -p myappdb -e "SELECT VERSION();"
+# MariaDB
+podman exec mariadb mariadb -u myappuser -psecure-password myappdb -e "SELECT VERSION();"
+
+# MySQL 8.0
+podman exec mysql8 mysql -u myappuser -psecure-password myappdb -e "SELECT VERSION();"
 ```
 
 ## Summary
 
-You have learned how to run mariadb and mysql simultaneously using containers. Always secure your database with strong passwords, restricted network access, and regular backups.
+You have learned how to run MariaDB and MySQL simultaneously using containers. Always secure your database with strong passwords, restricted network access, and regular backups.
