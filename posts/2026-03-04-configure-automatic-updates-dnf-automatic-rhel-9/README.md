@@ -75,14 +75,18 @@ This section controls what dnf-automatic actually does.
 upgrade_type = default
 
 # How far to go with the update process
-# Options: 0 = just check, 1 = download, 2 = download and apply
+# download_updates and apply_updates are boolean values: yes or no
 # When using specific timers like dnf-automatic-install.timer,
 # this setting is overridden by the timer
 download_updates = yes
 apply_updates = no
 
-# Automatically reboot if needed after updates (be careful with this)
+# Add a random delay, in seconds, before downloading updates
 random_sleep = 0
+
+# Reboot behavior after upgrades
+# Options: never, when-changed, when-needed
+reboot = never
 ```
 
 For a security-focused configuration:
@@ -149,7 +153,7 @@ If you need more control over how email is sent, use the command_email emitter.
 ```ini
 [command_email]
 # Command to use for sending email
-command_email = /usr/bin/mail
+command_format = "mail -Ssendwait -s {subject} -r {email_from} {email_to}"
 email_from = dnf-automatic@myserver.example.com
 email_to = sysadmin@example.com
 ```
@@ -183,6 +187,9 @@ apply_updates = yes
 
 # Add up to 5 minutes of random delay to prevent all servers updating at once
 random_sleep = 300
+
+# Do not reboot automatically
+reboot = never
 
 [emitters]
 # Send email and update MOTD
@@ -279,7 +286,7 @@ You can verify what security updates are available before enabling automatic upd
 
 ```bash
 # List available security updates
-sudo dnf updateinfo list security
+sudo dnf updateinfo list updates security
 
 # Show details about security advisories
 sudo dnf updateinfo info security
@@ -293,7 +300,7 @@ sudo dnf update --security
 Before relying on automatic updates, test the setup.
 
 ```bash
-# Do a dry run to see what would happen
+# Run dnf-automatic manually with the timer code path
 sudo dnf-automatic --timer
 
 # Or run it manually to verify the full workflow
@@ -354,16 +361,16 @@ echo "packages available for update"
 
 ## Handling Reboots After Kernel Updates
 
-dnf-automatic does not reboot the system after installing updates. If a kernel update is applied, the new kernel will not be active until the next reboot.
+By default, dnf-automatic does not reboot the system after installing updates unless you configure the `reboot` option in `/etc/dnf/automatic.conf`. If a kernel update is applied, the new kernel will not be active until the next reboot.
 
 ```bash
 # Check if a reboot is needed
-sudo needs-restarting -r
+sudo dnf needs-restarting -r
 echo $?
 # Exit code 0 = no reboot needed, 1 = reboot needed
 
 # List services that need restarting after updates
-sudo needs-restarting -s
+sudo dnf needs-restarting -s
 ```
 
 You can automate reboots with a separate cron job or script, but be careful with this on production systems.
@@ -374,7 +381,7 @@ You can automate reboots with a separate cron job or script, but be careful with
 # Only reboot during maintenance window if needed
 # Run this via cron at your preferred reboot time
 
-if needs-restarting -r > /dev/null 2>&1; then
+if dnf needs-restarting -r > /dev/null 2>&1; then
     echo "No reboot needed"
 else
     logger "dnf-automatic: Reboot required, initiating reboot"
