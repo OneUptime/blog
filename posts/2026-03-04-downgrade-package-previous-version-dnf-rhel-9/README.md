@@ -53,12 +53,12 @@ The currently installed version is listed under "Installed Packages." Pick the v
 
 ## Using DNF History to Undo Transactions
 
-This is my preferred method when you want to roll back an entire update transaction, not just a single package. DNF keeps a record of every transaction it performs.
+This is useful when you want to revert an entire transaction, not just a single package. DNF keeps a record of every transaction it performs. On RHEL, use `history undo` and `history rollback` with care: Red Hat does not support using them to downgrade RHEL system packages such as `kernel`, `glibc`, `selinux`, or related dependencies.
 
 ### Viewing Transaction History
 
 ```bash
-# Show the last 20 DNF transactions
+# Show recent DNF transactions
 sudo dnf history list
 ```
 
@@ -87,7 +87,7 @@ This shows exactly what packages were upgraded, installed, or removed in that tr
 sudo dnf history undo 15
 ```
 
-This is powerful because it handles the whole transaction. If transaction 15 upgraded 42 packages, `history undo 15` will downgrade all 42 back to their previous versions.
+This is powerful because it handles the whole transaction. If transaction 15 upgraded 42 packages, `history undo 15` will attempt to downgrade those packages back to their previous versions, as long as the older packages are still available.
 
 ```mermaid
 flowchart TD
@@ -114,7 +114,7 @@ sudo dnf history undo 15
 sudo dnf history rollback 14
 ```
 
-With `rollback 14`, DNF will undo transactions 15, 16, 17, and so on, bringing the system back to the state it was in after transaction 14 completed. This is more aggressive but useful if multiple recent transactions caused issues.
+With `rollback 14`, DNF will undo transactions 15, 16, 17, and so on, bringing the system back to the state it was in after transaction 14 completed. This is more aggressive but useful if multiple recent non-system package transactions caused issues.
 
 ## Keeping Old Packages in Cache
 
@@ -133,7 +133,7 @@ Add or change this setting:
 keepcache=1
 ```
 
-The cached packages live in `/var/cache/dnf/`. With this enabled, old versions remain available locally even if they get removed from the upstream repository.
+The cached packages live in `/var/cache/dnf/`. With this enabled, downloaded RPM files remain available locally even if they get removed from the upstream repository, although you may need to install a cached RPM by file path if it is no longer present in repository metadata.
 
 Check what is in the cache:
 
@@ -235,6 +235,9 @@ sudo dnf downgrade httpd httpd-core httpd-tools mod_ssl
 If you just want to grab an older version for later use:
 
 ```bash
+# Install the download command if it is not already available
+sudo dnf install 'dnf-command(download)'
+
 # Download a specific version without installing
 sudo dnf download httpd-2.4.53-11.el9_2.5 --destdir=/tmp/rpms/
 ```
@@ -243,12 +246,12 @@ You can then install it later with:
 
 ```bash
 # Install the downloaded RPM
-sudo dnf localinstall /tmp/rpms/httpd-2.4.53-11.el9_2.5.x86_64.rpm
+sudo dnf install /tmp/rpms/httpd-2.4.53-11.el9_2.5.x86_64.rpm
 ```
 
 ## A Real-World Downgrade Scenario
 
-Let me walk through a typical scenario. Say you updated everything last night and now your web application is throwing 500 errors.
+Let me walk through a typical scenario. Say you updated your web stack last night and now your web application is throwing 500 errors.
 
 ```bash
 # Step 1: Check what was updated recently
@@ -260,7 +263,7 @@ sudo dnf history info last
 # Step 3: Find the httpd-related changes
 sudo dnf history info last | grep httpd
 
-# Step 4: Undo the entire transaction
+# Step 4: Undo the transaction if it does not include unsupported system package downgrades
 sudo dnf history undo last
 
 # Step 5: Verify the old version is back
@@ -278,4 +281,4 @@ curl -I http://localhost/
 
 ## Summary
 
-Downgrading packages on RHEL is well-supported and there are multiple approaches depending on your situation. For a single package, `dnf downgrade` is quick and simple. For rolling back a whole update session, `dnf history undo` is the way to go. Either way, remember to lock the package version afterward so it does not get upgraded again before you are ready. And if you are in an environment where downgrades might be needed, keep `keepcache=1` in your DNF configuration. You will thank yourself later.
+Downgrading individual packages on RHEL is well-supported and there are multiple approaches depending on your situation. For a single package, `dnf downgrade` is quick and simple. For reverting a non-system package transaction, `dnf history undo` can be the right tool if the older packages are still available. Either way, remember to lock the package version afterward so it does not get upgraded again before you are ready. And if you are in an environment where downgrades might be needed, keep `keepcache=1` in your DNF configuration. You will thank yourself later.
