@@ -24,7 +24,7 @@ flowchart TD
 
 | Type | Size | Allocation | Best For |
 |------|------|-----------|----------|
-| Static Huge Pages | 2 MB or 1 GB | Manual, at boot | Databases, KVM |
+| Static Huge Pages | 2 MB or 1 GB | Manual, at boot or runtime | Databases, KVM |
 | Transparent Huge Pages | 2 MB | Automatic, at runtime | General workloads |
 
 For databases, static huge pages are almost always the right choice. THP can cause latency spikes due to background compaction and defragmentation, which is why most database vendors recommend disabling it.
@@ -99,14 +99,14 @@ sudo grubby --info=ALL | grep hugepages
 
 ## Configuring 1 GB Huge Pages
 
-1 GB pages must be allocated at boot through kernel command-line parameters because they require contiguous physical memory that is only available during early boot.
+1 GB pages should usually be allocated early at boot through kernel command-line parameters because they require large contiguous physical memory and are much more likely to fail after memory becomes fragmented.
 
 ```bash
 # Allocate 16 x 1GB huge pages at boot
 sudo grubby --update-kernel=ALL --args="hugepagesz=1G hugepages=16"
 
-# Regenerate GRUB config
-sudo grub2-mkconfig -o /boot/grub2/grub.cfg
+# Reboot to apply the kernel command-line change
+sudo reboot
 ```
 
 After rebooting, verify.
@@ -119,7 +119,7 @@ cat /sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages
 
 ## Mounting the hugetlbfs Filesystem
 
-Applications access huge pages through the hugetlbfs filesystem.
+Applications that use file-backed HugeTLB pages access them through the hugetlbfs filesystem.
 
 ```bash
 # Create a mount point
