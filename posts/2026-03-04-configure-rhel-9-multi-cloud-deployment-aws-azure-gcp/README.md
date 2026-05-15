@@ -32,19 +32,19 @@ You can deploy RHEL in the cloud using:
 For AWS:
 
 ```bash
-aws ec2 run-instances --image-id ami-rhel9-xxxxx --instance-type m5.large --key-name mykey
+aws ec2 run-instances --image-id ami-0abcdef1234567890 --instance-type m5.large --key-name mykey --count 1
 ```
 
 For Azure:
 
 ```bash
-az vm create --resource-group myRG --name myVM --image RedHat:RHEL:9:latest --size Standard_D2s_v3
+az vm create --resource-group myRG --name myVM --image RedHat:RHEL:9-lvm-gen2:latest --size Standard_D2s_v3 --admin-username clouduser --generate-ssh-keys
 ```
 
 For GCP:
 
 ```bash
-gcloud compute instances create myvm --image-project=rhel-cloud --image-family=rhel-9 --machine-type=e2-medium
+gcloud compute instances create myvm --image-project=rhel-cloud --image-family=rhel-9 --machine-type=e2-medium --zone=us-central1-a
 ```
 
 ## Step 3 - Configure cloud-init
@@ -67,7 +67,7 @@ packages:
 ## Step 4 - Register with Red Hat
 
 ```bash
-sudo subscription-manager register --auto-attach
+sudo subscription-manager register --activationkey=my-activation-key --org=123456
 # Or connect to Red Hat Insights:
 
 sudo insights-client --register
