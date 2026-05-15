@@ -22,7 +22,7 @@ Here is how the classic runlevels map to systemd targets:
 |----------|-------------------------|------------------------------------|
 | 0        | poweroff.target         | Shut down the system               |
 | 1        | rescue.target           | Single-user mode, root shell       |
-| 2        | multi-user.target       | Multi-user, no GUI (RHEL default)  |
+| 2        | multi-user.target       | Multi-user, no GUI                 |
 | 3        | multi-user.target       | Multi-user, no GUI                 |
 | 4        | multi-user.target       | Unused/custom                      |
 | 5        | graphical.target        | Multi-user with GUI                |
@@ -129,7 +129,7 @@ Sometimes you need to boot into a different target without permanently changing 
 
 1. Reboot the system. When the GRUB menu appears, press `e` to edit the default entry.
 
-2. Find the line starting with `linux`. It looks something like:
+2. Find the line starting with `linux` (or `linuxefi` on some UEFI systems). It looks something like:
 
 ```bash
 linux ($root)/vmlinuz-5.14.0-... root=/dev/mapper/rhel-root ro ...
@@ -175,14 +175,11 @@ Add the parameter to `GRUB_CMDLINE_LINUX`:
 GRUB_CMDLINE_LINUX="crashkernel=1G-4G:192M,4G-64G:256M,64G-:512M resume=/dev/mapper/rhel-swap rd.lvm.lv=rhel/root rd.lvm.lv=rhel/swap systemd.unit=multi-user.target"
 ```
 
-Then regenerate the GRUB config:
+Then regenerate the GRUB config and update the Boot Loader Specification (BLS) snippets:
 
 ```bash
-# Regenerate GRUB config on BIOS systems
-sudo grub2-mkconfig -o /boot/grub2/grub.cfg
-
-# On UEFI systems, the path is different
-sudo grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
+# Regenerate GRUB config on BIOS and UEFI systems
+sudo grub2-mkconfig -o /boot/grub2/grub.cfg --update-bls-cmdline
 ```
 
 But honestly, using `systemctl set-default` is cleaner for permanent changes. The GRUB method is better for one-off situations or when systemd itself is misbehaving.
