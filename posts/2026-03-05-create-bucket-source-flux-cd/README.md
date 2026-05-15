@@ -16,7 +16,7 @@ This guide covers the fundamentals of creating and configuring a Bucket source i
 
 ## Prerequisites
 
-- Flux CD v2.0 or later installed on your cluster
+- Flux CD v2.4 or later installed on your cluster
 - `kubectl` access to the cluster running Flux
 - An object storage bucket containing your Kubernetes manifests
 - Credentials to access the bucket, unless it is publicly readable
@@ -96,7 +96,7 @@ flux get sources bucket -n flux-system
 
 ## Configuring the Bucket Path
 
-By default, Flux downloads files from the bucket root, subject to its default exclusion rules. You can use the `prefix` field to limit which files are downloaded, filtering by key prefix.
+By default, Flux downloads files from the bucket root, subject to its default exclusion rules. For the `generic`, `aws`, and `gcp` providers, you can use the `prefix` field to limit which files are downloaded, filtering by key prefix.
 
 ```yaml
 # flux-system/bucket-source-prefix.yaml
