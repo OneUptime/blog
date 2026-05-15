@@ -18,10 +18,11 @@ The "Authentication token manipulation error" typically appears when trying to c
 # Check permissions on the shadow file
 
 ls -la /etc/shadow
-# Should be: ---------- 1 root root (mode 000) or -rw------- (mode 600)
+# Should be root-owned and restricted, for example -r-------- (mode 400),
+# ---------- (mode 000), or -rw------- (mode 600)
 
 # Fix permissions
-sudo chmod 000 /etc/shadow
+sudo chmod 400 /etc/shadow
 sudo chown root:root /etc/shadow
 
 # Also check /etc/passwd
