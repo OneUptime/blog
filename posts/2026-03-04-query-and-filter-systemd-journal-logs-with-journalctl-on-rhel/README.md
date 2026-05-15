@@ -68,7 +68,7 @@ journalctl --since today
 # Show only error messages and above
 journalctl -p err
 
-# Show only critical and emergency messages
+# Show only critical messages and above
 journalctl -p crit
 
 # Show warnings for a specific service
@@ -83,6 +83,9 @@ journalctl _PID=1234
 
 # Show logs for a specific user (by UID)
 journalctl _UID=1000
+
+# Show logs for a specific group (by GID)
+journalctl _GID=1000
 
 # Show logs from a specific executable
 journalctl _EXE=/usr/sbin/sshd
