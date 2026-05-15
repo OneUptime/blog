@@ -8,11 +8,11 @@ Description: Configure different networking modes for systemd-nspawn containers 
 
 ---
 
-systemd-nspawn supports multiple networking modes. By default, containers share the host network stack, but you can isolate them with virtual ethernet pairs or bridge them to your physical network.
+systemd-nspawn supports multiple networking modes. By default, direct systemd-nspawn invocations share the host network stack, but you can isolate them with virtual ethernet pairs or bridge them to your physical network.
 
 ## Host Networking (Default)
 
-When you run nspawn without network flags, the container shares the host network:
+When you run systemd-nspawn directly without network flags, the container shares the host network. If you start the container with the systemd-nspawn@.service template, `--network-veth` is used by default:
 
 ```bash
 # Container uses host networking by default
@@ -62,8 +62,9 @@ To place the container on the same LAN as the host, use a bridge:
 ```bash
 # Create a bridge on the host using nmcli
 sudo nmcli connection add type bridge ifname br0 con-name br0
-sudo nmcli connection add type bridge-slave ifname enp1s0 master br0
+sudo nmcli connection add type ethernet port-type bridge ifname enp1s0 con-name br0-port1 controller br0
 sudo nmcli connection modify br0 ipv4.method auto
+sudo nmcli connection modify br0 connection.autoconnect-ports 1
 sudo nmcli connection up br0
 ```
 
