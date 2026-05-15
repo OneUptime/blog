@@ -28,7 +28,7 @@ sudo vi /etc/mongod.conf
 replication:
   replSetName: "rs0"
 net:
-  bindIp: 0.0.0.0
+  bindIp: localhost,<node-hostname>
   port: 27017
 ```
 
@@ -54,20 +54,20 @@ rs.initiate({
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable mongod
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start mongod
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status mongod
 ```
 
 ## Step 4: Configure the Firewall
 
 ```bash
 # Open the required port
-sudo firewall-cmd --permanent --add-port=<PORT>/tcp
+sudo firewall-cmd --permanent --add-port=27017/tcp
 sudo firewall-cmd --reload
 
 # Verify the rule
@@ -89,9 +89,9 @@ mongosh --eval 'db.runCommand({ ping: 1 })'
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
+- If the service fails to start, check the logs with `journalctl -u mongod -e --no-pager`.
 - SELinux may block access. Check for denials with `ausearch -m avc -ts recent` and apply appropriate policies.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- Ensure all required packages are installed: `rpm -qa | grep mongodb-org`.
 
 ## Conclusion
 
