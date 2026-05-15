@@ -18,10 +18,10 @@ DigitalOcean does not provide a native RHEL image, but you can upload a custom R
 # from the Red Hat Customer Portal (QCOW2 format)
 
 # Convert to raw format if needed
-qemu-img convert -f qcow2 -O raw rhel-9-cloud.qcow2 rhel-9-cloud.raw
+qemu-img convert -f qcow2 -O raw rhel-9-cloud.qcow2 rhel-9-cloud.img
 
 # Compress for faster upload
-gzip rhel-9-cloud.raw
+gzip rhel-9-cloud.img
 ```
 
 ## Step 2: Upload the Image to DigitalOcean
@@ -29,27 +29,18 @@ gzip rhel-9-cloud.raw
 ```bash
 # Upload the custom image using doctl
 doctl compute image create rhel9-custom \
-  --image-url "https://your-storage/rhel-9-cloud.raw.gz" \
+  --image-url "https://your-storage/rhel-9-cloud.img.gz" \
   --region nyc1 \
   --image-distribution "Unknown" \
   --image-description "Red Hat Enterprise Linux 9"
 
 # Wait for the image to be available
-doctl compute image list --public=false
+doctl compute image list
 ```
 
 ## Step 3: Create a Droplet
 
 ```bash
-# Create a Droplet with the custom RHEL image
-doctl compute droplet create rhel9-droplet \
-  --image $CUSTOM_IMAGE_ID \
-  --size s-2vcpu-4gb \
-  --region nyc1 \
-  --ssh-keys $SSH_KEY_FINGERPRINT \
-  --user-data-file cloud-init.yaml \
-  --tag-name rhel9
-
 # Create the cloud-init configuration
 cat <<'CLOUDINIT' > cloud-init.yaml
 #cloud-config
@@ -65,6 +56,15 @@ runcmd:
   - firewall-cmd --permanent --add-service=https
   - firewall-cmd --reload
 CLOUDINIT
+
+# Create a Droplet with the custom RHEL image
+doctl compute droplet create rhel9-droplet \
+  --image $CUSTOM_IMAGE_ID \
+  --size s-2vcpu-4gb \
+  --region nyc1 \
+  --ssh-keys $SSH_KEY_FINGERPRINT \
+  --user-data-file cloud-init.yaml \
+  --tag-name rhel9
 ```
 
 ## Step 4: Configure the Droplet
