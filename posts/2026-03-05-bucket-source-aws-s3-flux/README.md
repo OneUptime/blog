@@ -10,9 +10,9 @@ Description: Learn how to configure Flux CD to pull Kubernetes manifests from AW
 
 ## Introduction
 
-AWS S3 is one of the most widely used object storage services, and Flux CD supports it natively as a source for Kubernetes manifests. By configuring a Bucket source with the `aws` provider, Flux can pull manifests from S3 and automatically reconcile your cluster whenever the bucket contents change.
+AWS S3 is one of the most widely used object storage services, and Flux CD supports it natively as a source for Kubernetes manifests. By configuring a Bucket source with the `aws` provider, Flux can pull manifests from S3 and automatically reconcile your cluster on its configured interval when the bucket contents change.
 
-This guide covers both static credential authentication and the recommended IAM Roles for Service Accounts (IRSA) approach for EKS clusters.
+This guide covers both static credential authentication and the recommended secret-less IAM Roles for Service Accounts (IRSA) approach for EKS clusters.
 
 ## Prerequisites
 
@@ -226,7 +226,7 @@ spec:
 
 ## CI/CD Integration
 
-Upload manifests to S3 from your CI/CD pipeline to trigger Flux reconciliation.
+Upload manifests to S3 from your CI/CD pipeline so Flux can pick them up on the next reconciliation.
 
 ```yaml
 # .github/workflows/upload-manifests.yaml
@@ -282,7 +282,7 @@ flux get kustomizations -n flux-system
 
 4. **Use S3 server-side encryption.** Enable SSE-S3 or SSE-KMS to encrypt manifests at rest.
 
-5. **Set up S3 event notifications.** While Flux polls on an interval, S3 events can trigger webhooks for faster reconciliation if needed.
+5. **Set up S3 event notifications.** While Flux polls on an interval, S3 events can trigger a Flux Receiver webhook through a bridge such as Lambda or EventBridge for faster reconciliation if needed.
 
 ## Conclusion
 
