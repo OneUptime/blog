@@ -112,7 +112,7 @@ sudo systemctl restart springapp
 
 ## Graceful Shutdown
 
-Spring Boot supports graceful shutdown. Enable it in your application:
+Spring Boot supports graceful shutdown. Configure it explicitly in your application:
 
 ```properties
 # application.properties
