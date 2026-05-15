@@ -133,17 +133,16 @@ Install PCP and its Cockpit integration:
 sudo dnf install pcp cockpit-pcp -y
 
 # Enable and start the PCP collector
-sudo systemctl enable --now pmcd
-sudo systemctl enable --now pmlogger
+sudo systemctl enable --now pmlogger.service pmproxy.service
 ```
 
-After installing PCP, Cockpit's metrics page will show historical data instead of just live graphs. The pmlogger service writes data to `/var/log/pcp/` by default.
+After installing PCP, Cockpit's metrics page will show historical data instead of just live graphs. The pmlogger service writes data to `/var/log/pcp/pmlogger/$(hostname)/` by default.
 
 Verify PCP is collecting data:
 
 ```bash
 # Check that PCP daemons are running
-systemctl status pmcd pmlogger
+systemctl status pmcd pmlogger pmproxy
 
 # Query a metric to verify collection
 pminfo -f kernel.all.load
@@ -151,17 +150,16 @@ pminfo -f kernel.all.load
 
 ## Configuring PCP Data Retention
 
-By default, pmlogger keeps about 14 days of data. You can adjust this if disk space is a concern.
+By default, pmlogger_daily culls archives older than about 14 days. You can adjust this if disk space is a concern.
 
-Check and modify the retention policy:
+Check the logger configuration and the retention options:
 
 ```bash
 # View current pmlogger configuration
 cat /etc/pcp/pmlogger/control.d/local
 
-# Adjust retention in the pmlogger config
-# The -c flag sets the configuration, -t sets the logging interval
-sudo vi /etc/pcp/pmlogger/control.d/local
+# Check pmlogger_daily options for archive culling and compression
+man pmlogger_daily
 ```
 
 ## Identifying Resource-Hungry Processes
@@ -196,8 +194,9 @@ Create a custom alert rule. For example, to log a warning when CPU usage exceeds
 
 ```bash
 # Create a custom pmie rule file
-sudo tee /etc/pcp/pmie/config.d/cpu-alert.pmie << 'EOF'
-// Alert when CPU usage exceeds 90% for 5 minutes
+sudo tee -a /var/lib/pcp/config/pmie/config.default << 'EOF'
+
+// Alert when CPU usage exceeds 90%
 some_host (
     kernel.all.cpu.user + kernel.all.cpu.sys > 0.9 * hinv.ncpu
 ) -> syslog "High CPU usage detected - exceeds 90%";
