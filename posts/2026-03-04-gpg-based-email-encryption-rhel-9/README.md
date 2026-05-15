@@ -21,11 +21,11 @@ sequenceDiagram
     Note over B: Has their own private key
 
     A->>A: Write email message
-    A->>A: Encrypt with recipient's public key
     A->>A: Sign with sender's private key
+    A->>A: Encrypt signed message with recipient's public key
     A->>B: Send encrypted + signed email
-    B->>B: Verify signature with sender's public key
     B->>B: Decrypt with own private key
+    B->>B: Verify signature with sender's public key
     B->>B: Read message
 ```
 
@@ -59,8 +59,8 @@ Mutt is a powerful command-line email client with built-in GPG support.
 ### Install and Configure Mutt
 
 ```bash
-# Install mutt
-sudo dnf install mutt
+# Install mutt and s-nail for the mail command
+sudo dnf install mutt s-nail
 
 # Create the mutt configuration directory
 mkdir -p ~/.mutt
@@ -88,10 +88,10 @@ set pgp_sign_command="gpg --no-verbose --batch --quiet --output - %?p?--passphra
 set pgp_clearsign_command="gpg --no-verbose --batch --quiet --output - %?p?--passphrase-fd 0? --armor --textmode --clearsign %?a?-u %a? %f"
 
 # Create a pgp/mime encrypted attachment
-set pgp_encrypt_only_command="/usr/lib/mutt/pgpewrap gpg --batch --quiet --no-verbose --output - --encrypt --textmode --armor --always-trust -- -r %r -- %f"
+set pgp_encrypt_only_command="pgpewrap gpg --batch --quiet --no-verbose --output - --encrypt --textmode --armor --always-trust -- -r %r -- %f"
 
 # Create a pgp/mime encrypted and signed attachment
-set pgp_encrypt_sign_command="/usr/lib/mutt/pgpewrap gpg %?p?--passphrase-fd 0? --batch --quiet --no-verbose --textmode --output - --encrypt --sign %?a?-u %a? --armor --always-trust -- -r %r -- %f"
+set pgp_encrypt_sign_command="pgpewrap gpg %?p?--passphrase-fd 0? --batch --quiet --no-verbose --textmode --output - --encrypt --sign %?a?-u %a? --armor --always-trust -- -r %r -- %f"
 
 # Import a key into the public key ring
 set pgp_import_command="gpg --no-verbose --import %f"
@@ -160,7 +160,7 @@ mutt -s "Encrypted with attachment" -e "set crypt_autoencrypt=yes" -a file.txt -
 
 For quick encrypted messages without a full email client:
 
-### Encrypt and Send with mail/mailx
+### Encrypt and Send with mail
 
 ```bash
 # Encrypt a message and send it
