@@ -16,14 +16,21 @@ Traditional tools like `top` and `ps` report memory usage numbers that can be mi
 - Root or sudo access
 - A terminal session
 
-## Step 2: Configure the Service
+## Step 1: Enable EPEL and Install smem
 
-Install and use smem:
+Install and use smem. Use the repository setup commands that match your operating system:
 
 ```bash
-# Install smem
+# On RHEL 9, enable CodeReady Linux Builder and EPEL first
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 
-sudo dnf install -y smem
+# On CentOS Stream 9, enable CRB and EPEL first
+sudo dnf config-manager --set-enabled crb
+sudo dnf install -y epel-release epel-next-release
+
+# Install smem
+sudo dnf install -y smem python3-matplotlib
 
 # Show memory usage for all processes
 smem -tk
@@ -31,8 +38,11 @@ smem -tk
 # Sort by PSS (Proportional Set Size)
 smem -tk --sort pss
 
-# Show memory for a specific user
+# Show memory summarized by user
 smem -u
+
+# Show memory for a specific user
+smem -U nginx
 
 # Show per-mapping breakdown for a process
 smem -m -P nginx
@@ -47,37 +57,31 @@ Key metrics:
 - **PSS** (Proportional Set Size): USS + proportional share of shared memory
 - **RSS** (Resident Set Size): Total physical memory (overcounts shared pages)
 
-## Step 3: Enable and Start the Service
+## Step 2: Monitor in Real Time
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
-
-# Start the service
-sudo systemctl start <service-name>
-
-# Check the status
-sudo systemctl status <service-name>
+# Refresh the PSS-sorted smem output every 2 seconds
+watch -n 2 'smem -tk --sort pss'
 ```
 
 
 ## Verification
 
-Confirm everything is working by checking the status and logs:
+Confirm everything is working by running smem and checking that it can read process memory data:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
+# Check the installed version
+rpm -q smem
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# Confirm smem can read /proc memory data
+smem -tk | head
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If `dnf` cannot find `smem`, confirm that EPEL is enabled with `dnf repolist`.
+- If you see only a subset of processes, run `smem` with `sudo` so it can read the relevant `/proc/<pid>/smaps` files.
 
 ## Conclusion
 
-You have successfully completed the setup described in this guide. Remember to monitor the service and review logs regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
+You have successfully completed the setup described in this guide. Remember to monitor memory usage regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
