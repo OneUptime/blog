@@ -18,8 +18,10 @@ A baseline configuration ensures every RHEL 9 server in your fleet starts from t
 lang en_US.UTF-8
 keyboard us
 timezone UTC --utc
-rootpw --lock
-user --name=sysadmin --groups=wheel --lock
+# Replace the password hashes and SSH public key before use.
+rootpw --iscrypted --lock $6$baseline$tZRdtiW.C7rtnhHA8Z1PEkih1cF6qfDG.Nj4hHLHVTGDzz.Vo.62Kn.wObrfOhebDG942cGTH3iH8hB69ouI/.
+user --name=sysadmin --groups=wheel --iscrypted --password=$6$baseline$tZRdtiW.C7rtnhHA8Z1PEkih1cF6qfDG.Nj4hHLHVTGDzz.Vo.62Kn.wObrfOhebDG942cGTH3iH8hB69ouI/.
+sshkey --username=sysadmin "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHn2+53kx6KAZOpqCwI0aP9UWk4ntMr2RufWFJW2WaUl baseline-admin@example.com"
 selinux --enforcing
 firewall --enabled --ssh
 
@@ -115,4 +117,3 @@ sudo oscap xccdf eval \
 ## Conclusion
 
 A standardized baseline configuration for RHEL 9 ensures consistency, security, and compliance across your server fleet. Use kickstart for provisioning and Ansible for ongoing configuration management.
-
