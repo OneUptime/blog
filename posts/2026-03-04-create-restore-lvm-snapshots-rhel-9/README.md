@@ -56,10 +56,10 @@ The flags:
 
 ```bash
 # Show snapshot details
-lvs -o lv_name,lv_size,origin,snap_percent vg_data
+lvs -o lv_name,lv_size,origin,data_percent vg_data
 ```
 
-The `snap_percent` column shows how full the snapshot is. If it reaches 100%, the snapshot becomes invalid and must be removed.
+The `data_percent` column shows how full the snapshot is. If it reaches 100%, the snapshot becomes invalid and must be removed.
 
 ## Sizing the Snapshot
 
@@ -71,8 +71,8 @@ The snapshot needs to be large enough to hold all the changes made to the origin
 
 ```bash
 # Create a snapshot sized at 20% of the origin
-ORIGIN_SIZE=$(lvs --noheadings -o lv_size --units g /dev/vg_data/lv_data | tr -d ' ')
-SNAP_SIZE=$(echo "$ORIGIN_SIZE * 0.2" | bc)
+ORIGIN_SIZE=$(lvs --noheadings --nosuffix -o lv_size --units g /dev/vg_data/lv_data | tr -d ' ')
+SNAP_SIZE=$(echo "scale=2; $ORIGIN_SIZE * 0.2" | bc)
 lvcreate -L "${SNAP_SIZE}G" -s -n data_snap /dev/vg_data/lv_data
 ```
 
@@ -95,7 +95,7 @@ mount -o ro,nouuid /dev/vg_data/data_snap /mnt/snapshot
 
 ## Backing Up from a Snapshot
 
-This is the classic use case - take a consistent snapshot, then back up from it while the original stays online:
+This is the classic use case - take a point-in-time snapshot, then back up from it while the original stays online. For databases or busy applications, quiesce the application or use its backup mode first so the snapshot is application-consistent:
 
 ```bash
 # Create snapshot
@@ -157,7 +157,7 @@ Watch the snapshot fill percentage:
 
 ```bash
 # Check snapshot usage
-lvs -o lv_name,origin,snap_percent,lv_size
+lvs -o lv_name,origin,data_percent,lv_size
 ```
 
 Set up an alert for snapshots getting full:
@@ -167,7 +167,7 @@ Set up an alert for snapshots getting full:
 # /usr/local/bin/snapshot-alert.sh
 THRESHOLD=80
 
-lvs --noheadings -o lv_name,snap_percent --select 'lv_attr=~[^-]s' 2>/dev/null | while read -r NAME PERCENT; do
+lvs --noheadings -o lv_name,data_percent --select 'origin!=""' 2>/dev/null | while read -r NAME PERCENT; do
     PERCENT_INT=${PERCENT%.*}
     if [ "$PERCENT_INT" -ge "$THRESHOLD" ] 2>/dev/null; then
         logger -p user.crit "SNAPSHOT ALERT: $NAME is ${PERCENT}% full"
