@@ -12,7 +12,7 @@ The tar (tape archive) utility is a reliable tool for creating full system backu
 
 ## Creating a Full System Backup
 
-Back up the entire root filesystem while excluding virtual filesystems and the backup destination:
+Back up the root filesystem while excluding virtual filesystems and the backup destination:
 
 ```bash
 # Create a full system backup with gzip compression
@@ -30,15 +30,19 @@ sudo tar czpf /backup/full-backup-$(date +%Y%m%d).tar.gz \
   --exclude=/var/tmp \
   --exclude=/lost+found \
   --one-file-system \
+  --acls --xattrs --selinux \
   /
 ```
 
 Key flags explained:
 - `c` creates a new archive
 - `z` compresses with gzip
-- `p` preserves file permissions
+- `p` preserves file permissions when extracting
 - `f` specifies the output file
 - `--one-file-system` prevents crossing filesystem boundaries
+- `--acls --xattrs --selinux` preserves ACLs, extended attributes, and SELinux labels
+
+If `/boot`, `/home`, or other important paths are separate filesystems, back them up separately or omit `--one-file-system` intentionally.
 
 ## Using xz Compression for Smaller Archives
 
@@ -52,7 +56,13 @@ sudo tar cJpf /backup/full-backup-$(date +%Y%m%d).tar.xz \
   --exclude=/dev \
   --exclude=/run \
   --exclude=/tmp \
+  --exclude=/mnt \
+  --exclude=/media \
   --exclude=/backup \
+  --exclude=/var/tmp \
+  --exclude=/lost+found \
+  --one-file-system \
+  --acls --xattrs --selinux \
   /
 ```
 
@@ -77,14 +87,25 @@ To restore the full system, boot from rescue media and extract:
 mount /dev/sda2 /mnt
 
 # Extract the backup to the mounted filesystem
-sudo tar xzpf /backup/full-backup-20260304.tar.gz -C /mnt
+sudo tar xzpf /backup/full-backup-20260304.tar.gz -C /mnt \
+  --acls --xattrs --selinux --numeric-owner
 
 # Recreate excluded directories
-mkdir -p /mnt/{proc,sys,dev,run,tmp,mnt,media}
+mkdir -p /mnt/{proc,sys,dev,run,tmp,mnt,media,var/tmp}
+chmod 1777 /mnt/tmp /mnt/var/tmp
 
-# Reinstall the bootloader
-chroot /mnt grub2-install /dev/sda
+# Mount separate /boot and /boot/efi filesystems here if your system uses them
+mount --bind /dev /mnt/dev
+mount -t proc proc /mnt/proc
+mount --bind /sys /mnt/sys
+mount --bind /run /mnt/run
+
+# Reinstall the bootloader on BIOS systems
+chroot /mnt /sbin/grub2-install /dev/sda
 chroot /mnt grub2-mkconfig -o /boot/grub2/grub.cfg
+
+# On UEFI systems, rebuild the UEFI GRUB configuration instead
+# chroot /mnt grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
 ```
 
 ## Automating with a Backup Script
@@ -99,7 +120,10 @@ LOGFILE="/var/log/backup-${DATE}.log"
 echo "Starting full backup at $(date)" | tee "$LOGFILE"
 tar czpf "${BACKUP_DIR}/full-backup-${DATE}.tar.gz" \
   --exclude=/proc --exclude=/sys --exclude=/dev \
-  --exclude=/run --exclude=/tmp --exclude=/backup \
+  --exclude=/run --exclude=/tmp --exclude=/mnt \
+  --exclude=/media --exclude=/backup --exclude=/var/tmp \
+  --exclude=/lost+found --one-file-system \
+  --acls --xattrs --selinux \
   / 2>> "$LOGFILE"
 echo "Backup completed at $(date)" | tee -a "$LOGFILE"
 ```
