@@ -8,19 +8,19 @@ Description: Learn how to use talosctl services to list, inspect, and manage sys
 
 ---
 
-Every Talos Linux node runs a set of system services that keep the operating system and Kubernetes functioning. These include everything from the kernel-level `machined` service that drives the Talos API to the `kubelet` that connects the node to your Kubernetes cluster. The `talosctl services` command gives you full visibility into these services and lets you manage them when needed.
+Every Talos Linux node runs a set of system services that keep the operating system and Kubernetes functioning. These include everything from the `machined` init process that manages the node to the `kubelet` that connects the node to your Kubernetes cluster. The `talosctl services` command gives you full visibility into these services, and `talosctl service` lets you manage them when needed.
 
 ## Understanding Talos Linux Services
 
-Talos Linux does not use systemd, sysvinit, or any other traditional Linux init system. Instead, it uses its own service manager called `machined`. This service manager is purpose-built for running an immutable Kubernetes node and is much simpler than systemd. Services in Talos are either system services (managed by Talos itself) or container-based services (running in containerd).
+Talos Linux does not use systemd, sysvinit, or any other traditional Linux init system. Instead, it uses its own init process called `machined`. This service manager is purpose-built for running an immutable Kubernetes node and is much simpler than systemd. Services in Talos are either system services (managed by Talos itself) or container-based services (running in containerd).
 
 The core services you will find on a Talos Linux node include:
 
-- **machined**: The main Talos service that handles the API and system management
+- **machined**: The main Talos init process that handles system management
 - **containerd**: The container runtime
 - **kubelet**: The Kubernetes node agent
 - **etcd**: The distributed key-value store (control plane nodes only)
-- **apid**: The API daemon that handles talosctl requests
+- **apid**: The API daemon that handles and routes talosctl requests
 - **trustd**: Handles certificate management between nodes
 
 ## Listing All Services
@@ -55,17 +55,17 @@ To get detailed information about a specific service:
 
 ```bash
 # Get details about the kubelet service
-talosctl services kubelet --nodes 192.168.1.10
+talosctl service kubelet --nodes 192.168.1.10
 ```
 
-This shows more detailed information including the service's process ID, uptime, and any recent events:
+This shows more detailed information including the service state, health, and recent events. Those events often include process IDs and recent state changes:
 
 ```bash
 # Check etcd service details on a control plane node
-talosctl services etcd --nodes 192.168.1.10
+talosctl service etcd --nodes 192.168.1.10
 
 # Check containerd status
-talosctl services containerd --nodes 192.168.1.10
+talosctl service containerd --nodes 192.168.1.10
 ```
 
 ## Checking Services Across Multiple Nodes
@@ -117,14 +117,14 @@ talosctl service kubelet restart --nodes 192.168.1.10
 talosctl service containerd restart --nodes 192.168.1.10
 ```
 
-Be careful when restarting services. Restarting `kubelet` will cause the node to temporarily leave the Kubernetes cluster. Restarting `containerd` will stop all containers on the node. Restarting `etcd` on a control plane node can briefly impact cluster operations.
+Be careful when restarting services. Restarting `kubelet` can briefly make the node NotReady or interrupt pod status updates. Restarting `containerd` will stop containers on the node. Restarting `etcd` on a control plane node can briefly impact cluster operations.
 
 ## Stopping and Starting Services
 
 You can also stop and start individual services:
 
 ```bash
-# Stop the kubelet (this will take the node out of the Kubernetes cluster)
+# Stop the kubelet (this will make the node NotReady)
 talosctl service kubelet stop --nodes 192.168.1.20
 
 # Start the kubelet again
@@ -147,8 +147,8 @@ talosctl logs kubelet --nodes 192.168.1.10 -f
 # View the last 100 lines of etcd logs
 talosctl logs etcd --nodes 192.168.1.10 --tail 100
 
-# View logs for a specific time range
-talosctl logs kubelet --nodes 192.168.1.10 --since 1h
+# Follow only new kubelet log messages
+talosctl logs kubelet --nodes 192.168.1.10 -f --tail 0
 ```
 
 Combining service status checks with log inspection gives you a complete picture of what is happening on the node.
@@ -170,7 +170,7 @@ talosctl services --nodes 192.168.1.20
 # Note: no etcd on worker nodes
 ```
 
-The main difference is that worker nodes do not run etcd. Everything else should be the same.
+The main difference is that worker nodes do not run etcd. The other core services should be broadly similar across node roles.
 
 ## Using Services in Health Checks
 
@@ -183,8 +183,8 @@ Incorporate service checks into your cluster health monitoring:
 CONTROL_PLANE="192.168.1.10 192.168.1.11 192.168.1.12"
 WORKERS="192.168.1.20 192.168.1.21 192.168.1.22"
 
-REQUIRED_CP_SERVICES="apid containerd cri etcd kubelet machined trustd"
-REQUIRED_WORKER_SERVICES="apid containerd cri kubelet machined trustd"
+REQUIRED_CP_SERVICES="apid containerd cri etcd kubelet machined trustd udevd"
+REQUIRED_WORKER_SERVICES="apid containerd cri kubelet machined trustd udevd"
 
 check_services() {
   local node=$1
@@ -237,7 +237,7 @@ etcd health issues can cascade to the entire cluster:
 
 ```bash
 # Check etcd service details
-talosctl services etcd --nodes 192.168.1.10
+talosctl service etcd --nodes 192.168.1.10
 
 # Check etcd logs
 talosctl logs etcd --nodes 192.168.1.10 | tail -50
@@ -252,7 +252,7 @@ If containers are not starting, check containerd:
 
 ```bash
 # Check containerd status
-talosctl services containerd --nodes 192.168.1.10
+talosctl service containerd --nodes 192.168.1.10
 
 # View containerd logs
 talosctl logs containerd --nodes 192.168.1.10 | tail -50
@@ -267,7 +267,7 @@ When a service keeps crashing, follow this pattern:
 
 ```bash
 # 1. Check the service status
-talosctl services kubelet --nodes 192.168.1.20
+talosctl service kubelet --nodes 192.168.1.20
 
 # 2. Check the logs for errors
 talosctl logs kubelet --nodes 192.168.1.20 | tail -100
