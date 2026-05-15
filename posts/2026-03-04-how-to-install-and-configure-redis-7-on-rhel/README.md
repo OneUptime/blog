@@ -13,14 +13,11 @@ Redis is an in-memory data structure store used as a cache, database, and messag
 ## Installing Redis 7
 
 ```bash
-# Enable the Redis module from AppStream (if available)
-
+# RHEL 9.3 and later include Redis 7 as an AppStream module
 sudo dnf module list redis
 
-# Install Redis from the Remi repository for Redis 7
-sudo dnf install -y https://rpms.remirepo.net/enterprise/remi-release-9.rpm
-sudo dnf module enable redis:remi-7.2 -y
-sudo dnf install -y redis
+# Install Redis 7 from AppStream
+sudo dnf -y module install redis:7
 ```
 
 ## Starting Redis
@@ -71,11 +68,11 @@ logfile /var/log/redis/redis.log
 
 ```bash
 # Create ACL users (Redis 6+ ACL system)
-redis-cli
+redis-cli -a your-strong-password-here
 > ACL SETUSER appuser on >apppassword ~app:* +@all -@dangerous
 > ACL SETUSER readonly on >readpass ~* +@read
 > ACL LIST
-> ACL SAVE
+> CONFIG REWRITE
 ```
 
 ## Memory Tuning
@@ -107,6 +104,7 @@ sudo systemctl enable disable-thp
 ## Firewall (if accepting remote connections)
 
 ```bash
+# Also update bind in redis.conf to a reachable private interface before opening the port
 sudo firewall-cmd --add-port=6379/tcp --permanent
 sudo firewall-cmd --reload
 ```
