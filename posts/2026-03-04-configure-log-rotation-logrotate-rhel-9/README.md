@@ -20,7 +20,7 @@ graph LR
     F[app.log.4.gz - oldest] -->|removed| G[Deleted]
 ```
 
-logrotate is triggered by a systemd timer (or cron) that runs daily. It reads configuration files that specify rules for each log file or group of log files.
+On RHEL 9, logrotate is triggered by a systemd timer that runs daily. It reads configuration files that specify rules for each log file or group of log files.
 
 ## Default Configuration
 
@@ -47,8 +47,8 @@ create
 # Use date as suffix for rotated files
 dateext
 
-# Compress rotated files
-compress
+# Uncomment this if you want rotated files compressed globally
+#compress
 
 # Include per-application configs from this directory
 include /etc/logrotate.d
@@ -129,7 +129,7 @@ Some applications need to be notified after log rotation so they reopen their lo
 
 ### Size-Based Rotation
 
-Instead of time-based rotation, rotate when a file reaches a certain size:
+Instead of time-based rotation, rotate when logrotate runs and a file has reached a certain size:
 
 ```bash
 /var/log/myapp/app.log {
