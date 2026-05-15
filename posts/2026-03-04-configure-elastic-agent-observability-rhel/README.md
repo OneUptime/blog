@@ -19,10 +19,10 @@ You need a running Elasticsearch and Kibana instance, or an Elastic Cloud deploy
 ```bash
 # Download the Elastic Agent RPM (match the version to your Elasticsearch version)
 
-curl -L -O https://artifacts.elastic.co/downloads/beats/elastic-agent/elastic-agent-8.12.0-x86_64.rpm
+curl -L -O https://artifacts.elastic.co/downloads/beats/elastic-agent/elastic-agent-9.4.0-x86_64.rpm
 
 # Install the agent
-sudo rpm -vi elastic-agent-8.12.0-x86_64.rpm
+sudo rpm -vi elastic-agent-9.4.0-x86_64.rpm
 ```
 
 ## Enrolling with Fleet
@@ -61,53 +61,43 @@ outputs:
 inputs:
   - type: system/metrics
     id: system-metrics
-    data_stream:
-      namespace: default
+    data_stream.namespace: default
     use_output: default
     streams:
-      - data_stream:
-          dataset: system.cpu
-          type: metrics
+      - data_stream.dataset: system.cpu
         metricsets: [cpu]
         period: 10s
-      - data_stream:
-          dataset: system.memory
-          type: metrics
+      - data_stream.dataset: system.memory
         metricsets: [memory]
         period: 10s
-      - data_stream:
-          dataset: system.diskio
-          type: metrics
+      - data_stream.dataset: system.diskio
         metricsets: [diskio]
         period: 10s
-      - data_stream:
-          dataset: system.filesystem
-          type: metrics
+      - data_stream.dataset: system.filesystem
         metricsets: [filesystem]
         period: 60s
 
-  - type: logfile
+  - type: filestream
     id: system-logs
-    data_stream:
-      namespace: default
+    data_stream.namespace: default
     use_output: default
     streams:
-      - data_stream:
+      - id: rhel-system-logs
+        data_stream:
           dataset: system.syslog
-          type: logs
         paths:
           - /var/log/messages
           - /var/log/secure
 EOF
 
-# Start the agent in standalone mode
-sudo elastic-agent run
+# Start the Elastic Agent service in standalone mode
+sudo systemctl enable --now elastic-agent
 ```
 
 ## Firewall Configuration
 
 ```bash
-# Allow the agent to communicate with Elasticsearch and Fleet Server
+# Run these on hosts that run Elasticsearch or Fleet Server and need to accept inbound connections
 sudo firewall-cmd --permanent --add-port=9200/tcp
 sudo firewall-cmd --permanent --add-port=8220/tcp
 sudo firewall-cmd --reload
