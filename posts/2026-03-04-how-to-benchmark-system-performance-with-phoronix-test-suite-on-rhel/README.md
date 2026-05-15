@@ -8,16 +8,16 @@ Description: Learn how to install and use Phoronix Test Suite on RHEL for compre
 
 ---
 
-Phoronix Test Suite (PTS) is an open-source benchmarking platform that provides over 500 test profiles. It supports automated testing, result comparison, and result uploading to OpenBenchmarking.org.
+Phoronix Test Suite (PTS) is an open-source benchmarking platform that provides over 600 test profiles. It supports automated testing, result comparison, and result uploading to OpenBenchmarking.org.
 
 ## Installing Phoronix Test Suite
 
 ```bash
 # Install dependencies
 
-sudo dnf install -y php-cli php-xml php-json wget
+sudo dnf install -y php-cli php-xml php-pecl-zip wget
 
-# Download and install the latest Phoronix Test Suite
+# Download and install Phoronix Test Suite 10.8.4
 wget https://phoronix-test-suite.com/releases/phoronix-test-suite-10.8.4.tar.gz
 tar xzf phoronix-test-suite-10.8.4.tar.gz
 cd phoronix-test-suite
