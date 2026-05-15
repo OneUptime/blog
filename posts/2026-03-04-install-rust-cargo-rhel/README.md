@@ -54,12 +54,12 @@ cargo new hello_rhel
 cd hello_rhel
 ```
 
-The generated `src/main.rs`:
+Replace the generated `src/main.rs` with:
 
 ```rust
 // src/main.rs
 fn main() {
-    // Print system information
+    // Print a greeting
     println!("Hello from Rust on RHEL!");
 
     // Demonstrate basic Rust features
