@@ -20,10 +20,10 @@ LVM mirroring provides data redundancy by maintaining identical copies of your l
 
 LVM supports two types of mirroring:
 
-1. **Mirror segments (`mirror` type)**: The traditional LVM mirroring approach that uses a separate log device to track synchronization.
+1. **Mirror segments (`mirror` type)**: The traditional LVM mirroring approach that uses a mirror log to track synchronization. The log can be stored on disk or kept in memory.
 2. **RAID1 (`raid1` type)**: A newer approach that uses the MD RAID subsystem under the hood and is generally preferred for new deployments.
 
-Both approaches maintain duplicate copies of data, but RAID1 offers better handling of transient failures and does not require a separate log device.
+Both approaches maintain duplicate copies of data, but RAID1 offers better handling of transient failures and does not use the separate mirror log mechanism from the legacy `mirror` type.
 
 ## Step 1: Prepare the Physical Volumes
 
@@ -170,7 +170,7 @@ Ensure mirror copies reside on different physical disks by specifying physical v
 sudo lvcreate --type raid1 -m 1 -L 10G -n lv_placed vg_mirror /dev/sdb /dev/sdc
 ```
 
-This explicitly places each mirror leg on a specific disk.
+This restricts allocation to those disks so LVM can place the RAID1 images on separate physical volumes.
 
 You can also use allocation policies:
 
@@ -204,7 +204,7 @@ You can temporarily split off a mirror leg for backup purposes:
 sudo lvconvert --splitmirrors 1 --name lv_backup vg_mirror/lv_data
 ```
 
-This creates a new logical volume `lv_backup` from one of the mirror legs. The original volume continues operating with reduced redundancy. After taking your backup, you can re-add a mirror leg:
+This creates a new logical volume `lv_backup` from one of the mirror legs. The RAID1 volume must be fully synchronized before you split an image. If you split one image from a two-way RAID1 volume, the original volume continues operating as a linear volume with no redundancy until you add a mirror leg again. After taking your backup, you can re-add a mirror leg:
 
 ```bash
 sudo lvconvert -m 1 vg_mirror/lv_data
