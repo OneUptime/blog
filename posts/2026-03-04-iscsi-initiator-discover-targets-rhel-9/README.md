@@ -34,7 +34,7 @@ sudo vi /etc/iscsi/initiatorname.iscsi
 Set the name to match the ACL you configured on the target:
 
 ```bash
-InitiatorName=iqn.2024.com.example:client1
+InitiatorName=iqn.2024-03.com.example:client1
 ```
 
 Restart iscsid to pick up the change:
@@ -54,7 +54,7 @@ sudo iscsiadm -m discovery -t sendtargets -p <ISCSI_TARGET_IP>:3260
 Output shows discovered targets:
 
 ```bash
-<ISCSI_TARGET_IP>:3260,1 iqn.2024.com.example:target1
+<ISCSI_TARGET_IP>:3260,1 iqn.2024-03.com.example:target1
 ```
 
 The discovery results are stored in `/var/lib/iscsi/`:
@@ -67,14 +67,14 @@ ls /var/lib/iscsi/send_targets/
 ## Step 4: Log In to the Target
 
 ```bash
-sudo iscsiadm -m node -T iqn.2024.com.example:target1 -p <ISCSI_TARGET_IP>:3260 --login
+sudo iscsiadm -m node -T iqn.2024-03.com.example:target1 -p <ISCSI_TARGET_IP>:3260 --login
 ```
 
 Successful output:
 
 ```bash
-Logging in to [iface: default, target: iqn.2024.com.example:target1, portal: <ISCSI_TARGET_IP>,3260]
-Login to [iface: default, target: iqn.2024.com.example:target1, portal: <ISCSI_TARGET_IP>,3260] successful.
+Logging in to [iface: default, target: iqn.2024-03.com.example:target1, portal: <ISCSI_TARGET_IP>,3260]
+Login to [iface: default, target: iqn.2024-03.com.example:target1, portal: <ISCSI_TARGET_IP>,3260] successful.
 ```
 
 ## Step 5: Verify the New Disk
@@ -118,13 +118,13 @@ sudo iscsiadm -m session
 sudo iscsiadm -m session -P 3
 
 # Log out of a specific target
-sudo iscsiadm -m node -T iqn.2024.com.example:target1 -p <ISCSI_TARGET_IP>:3260 --logout
+sudo iscsiadm -m node -T iqn.2024-03.com.example:target1 -p <ISCSI_TARGET_IP>:3260 --logout
 
 # Log out of all targets
 sudo iscsiadm -m node --logoutall=all
 
 # Delete a discovered target
-sudo iscsiadm -m node -T iqn.2024.com.example:target1 -p <ISCSI_TARGET_IP>:3260 -o delete
+sudo iscsiadm -m node -T iqn.2024-03.com.example:target1 -p <ISCSI_TARGET_IP>:3260 -o delete
 ```
 
 ## Useful iscsiadm Modes
