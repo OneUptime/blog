@@ -17,10 +17,12 @@ graph TD
     A[Terraform] --> B[AWS Provider]
     B --> C[VPC]
     C --> D[Public Subnet]
-    D --> E[Internet Gateway]
-    D --> F[Security Group]
-    F --> G[RHEL EC2 Instance]
-    G --> H[Elastic IP]
+    C --> E[Internet Gateway]
+    D --> F[Route Table]
+    F --> E
+    D --> G[Security Group]
+    G --> H[RHEL EC2 Instance]
+    H --> I[Elastic IP]
 ```
 
 ## Prerequisites
@@ -39,7 +41,10 @@ Configure AWS credentials:
 
 ```bash
 # Install the AWS CLI
-sudo dnf install -y awscli2
+sudo dnf install -y unzip
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
 
 # Configure your credentials
 aws configure
