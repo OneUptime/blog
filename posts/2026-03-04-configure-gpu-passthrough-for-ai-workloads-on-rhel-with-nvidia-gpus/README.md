@@ -15,7 +15,7 @@ GPU passthrough allows a virtual machine to directly access a physical NVIDIA GP
 - RHEL with KVM/libvirt installed
 - NVIDIA GPU (Tesla, A100, H100, or similar)
 - CPU with IOMMU support (Intel VT-d or AMD-Vi)
-- BIOS/UEFI with IOMMU and SR-IOV enabled
+- BIOS/UEFI with IOMMU enabled
 
 ## Enable IOMMU in the Kernel
 
@@ -25,7 +25,7 @@ GPU passthrough allows a virtual machine to directly access a physical NVIDIA GP
 sudo grubby --update-kernel=ALL --args="intel_iommu=on iommu=pt"
 
 # For AMD CPUs
-sudo grubby --update-kernel=ALL --args="amd_iommu=on iommu=pt"
+sudo grubby --update-kernel=ALL --args="iommu=pt"
 
 # Reboot to apply
 sudo reboot
@@ -98,6 +98,7 @@ Add this to the VM's XML within the `<devices>` section:
 
 ```xml
 <hostdev mode='subsystem' type='pci' managed='yes'>
+  <driver name='vfio'/>
   <source>
     <address domain='0x0000' bus='0x41' slot='0x00' function='0x0'/>
   </source>
@@ -119,12 +120,12 @@ sudo dnf install -y cuda-drivers
 nvidia-smi
 ```
 
-## Verify Performance
+## Verify the GPU
 
 ```bash
-# Inside the VM, run a GPU benchmark
+# Inside the VM, verify the GPU model
 nvidia-smi -q | grep "Product Name"
-# Should show the full GPU model with no virtualization overhead
+# Should show the full GPU model assigned to the VM
 ```
 
-GPU passthrough on RHEL gives AI workloads direct access to NVIDIA hardware, providing the performance needed for training and inference without leaving the virtualized environment.
+GPU passthrough on RHEL gives AI workloads direct access to NVIDIA hardware with minimal virtualization overhead, providing the performance needed for training and inference without leaving the virtualized environment.
