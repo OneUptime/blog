@@ -13,9 +13,8 @@ PostgreSQL streaming replication continuously ships WAL (Write-Ahead Log) record
 ## Configure the Primary Server
 
 ```bash
-# Create a replication user
-
-sudo -u postgres psql -c "CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD 'replpass123';"
+# Create a replication user with a SCRAM-encrypted password
+sudo -u postgres psql -c "SET password_encryption = 'scram-sha-256'; CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD 'replpass123';"
 
 # Edit postgresql.conf on the primary
 sudo vi /var/lib/pgsql/data/postgresql.conf
@@ -74,7 +73,10 @@ ls -la /var/lib/pgsql/data/standby.signal
 # Check primary_conninfo in postgresql.auto.conf
 cat /var/lib/pgsql/data/postgresql.auto.conf
 # Should contain:
-# primary_conninfo = 'host=192.168.1.50 user=replicator password=replpass123'
+# primary_conninfo = 'host=192.168.1.50 user=replicator'
+
+# If primary_conninfo does not include the password, add a .pgpass entry
+sudo -u postgres bash -c "echo '192.168.1.50:5432:replication:replicator:replpass123' >> ~/.pgpass && chmod 600 ~/.pgpass"
 ```
 
 ## Start the Standby
