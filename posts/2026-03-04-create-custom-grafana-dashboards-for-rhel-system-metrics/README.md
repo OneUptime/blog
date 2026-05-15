@@ -61,8 +61,14 @@ rate(node_disk_read_bytes_total[5m]) / 1024 / 1024
 # Disk I/O write rate in MB/s
 rate(node_disk_written_bytes_total[5m]) / 1024 / 1024
 
-# Disk I/O latency (average wait time in ms)
-rate(node_disk_io_time_weighted_seconds_total[5m]) / rate(node_disk_io_time_seconds_total[5m]) * 1000
+# Disk I/O latency (average read/write time per operation in ms)
+(
+  rate(node_disk_read_time_seconds_total[5m]) +
+  rate(node_disk_write_time_seconds_total[5m])
+) / (
+  rate(node_disk_reads_completed_total[5m]) +
+  rate(node_disk_writes_completed_total[5m])
+) * 1000
 ```
 
 ## Network Throughput Panel
