@@ -106,11 +106,11 @@ echo "UUID=<uuid>  /mnt/raid1  xfs  defaults  0 0" | sudo tee -a /etc/fstab
 graph TD
     W[Write Request] --> D1[Disk 1 - Full Copy]
     W --> D2[Disk 2 - Full Copy]
-    R[Read Request] --> D1
-    R --> D2
+    R1[Read Request A] --> D1
+    R2[Read Request B] --> D2
 ```
 
-Both disks hold identical data. The kernel's RAID 1 driver can distribute reads across both disks, giving a modest read speed boost. Writes go to both, so write speed matches the slower of the two drives.
+Both disks hold identical data. The kernel's RAID 1 driver can distribute read requests across both disks, giving a modest read speed boost, especially when there are concurrent reads. Writes go to both, so write speed matches the slower of the two drives.
 
 ## Simulating a Disk Failure
 
@@ -155,7 +155,7 @@ sudo mdadm --create /dev/md1 --level=1 --raid-devices=3 /dev/sdb /dev/sdc /dev/s
 
 ## Monitoring the Array
 
-Set up a quick check with mdadm's built-in monitor:
+Run a quick status check with mdadm:
 
 ```bash
 # Check array status
@@ -168,10 +168,10 @@ For ongoing monitoring, see the dedicated monitoring post in this series.
 
 RAID 1 is not about speed, it is about safety. Some real-world observations:
 
-- Sequential reads can approach 2x single-disk speed because both disks serve data
+- Read performance can improve, especially with concurrent read workloads, because requests can be served from either mirror
 - Write throughput is limited to the speed of the slower drive
 - Random read IOPS can improve since requests get distributed
-- Usable capacity is the size of one disk regardless of how many mirrors you have
+- Usable capacity is the size of the smallest member disk regardless of how many mirrors you have
 
 ## Removing the Array
 

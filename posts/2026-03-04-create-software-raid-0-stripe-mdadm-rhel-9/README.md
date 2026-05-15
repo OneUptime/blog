@@ -10,7 +10,7 @@ Description: Learn how to set up a software RAID 0 striped array using mdadm on 
 
 ## Why RAID 0?
 
-RAID 0 stripes data across multiple disks without any redundancy. Every read and write gets spread across all drives in the array, which gives you roughly linear performance scaling. The catch is obvious: if any single disk fails, you lose everything. I use RAID 0 for scratch space, temporary build directories, and workloads where the data can be regenerated easily.
+RAID 0 stripes data across multiple disks without any redundancy. Data is split into chunks and written across the member drives, which can give you much higher throughput for workloads that can use all disks in the array. The catch is obvious: if any single disk fails, you lose everything. I use RAID 0 for scratch space, temporary build directories, and workloads where the data can be regenerated easily.
 
 On RHEL, mdadm is still the go-to tool for software RAID. It ships in the base repositories and integrates well with systemd and the initramfs tooling.
 
@@ -155,7 +155,7 @@ The default chunk size for mdadm RAID 0 is 512K. You can customize it at creatio
 sudo mdadm --create /dev/md0 --level=0 --raid-devices=2 --chunk=256 /dev/sdb /dev/sdc
 ```
 
-Smaller chunks spread small I/O across more disks, which can help with random read workloads. Larger chunks reduce overhead for sequential I/O. For most general-purpose workloads, the default 512K is fine.
+Smaller chunks distribute data across disks more frequently, which can help some workloads but can also make a single I/O touch more disks. Larger chunks reduce striping overhead for large sequential I/O. For most general-purpose workloads, the default 512K is fine.
 
 ## Verifying Array Details
 
