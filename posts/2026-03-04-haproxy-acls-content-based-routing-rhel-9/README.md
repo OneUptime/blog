@@ -124,7 +124,7 @@ frontend http_front
     bind *:80
 
     # Check for an A/B testing cookie
-    acl is_beta_user cook(ab_test) -i beta
+    acl is_beta_user req.cook(ab_test) -i beta
 
     use_backend beta_servers if is_beta_user
     default_backend production_servers
@@ -254,7 +254,7 @@ frontend http_front
 | `path_end` | Path ends with |
 | `path_reg` | Path matches regex |
 | `src` | Source IP address |
-| `cook(name)` | Cookie value |
+| `req.cook(name)` | Cookie value |
 | `method` | HTTP method |
 
 ## Apply and Validate
