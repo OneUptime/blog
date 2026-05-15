@@ -12,7 +12,7 @@ Managing certificates across a fleet of RHEL servers by hand is tedious and erro
 
 ## What the Certificate System Role Does
 
-The `rhel-system-roles.certificate` role manages certificates through the certmonger service. It can request certificates from IdM/FreeIPA, self-signed CAs, or local CAs, and it handles renewals automatically.
+The `rhel-system-roles.certificate` role manages certificates through the certmonger service. It can request certificates from IdM/FreeIPA or create self-signed certificates, and it handles renewals automatically.
 
 ```mermaid
 graph LR
@@ -20,10 +20,8 @@ graph LR
     B --> C[certmonger daemon]
     C --> D[IdM/FreeIPA CA]
     C --> E[Self-signed CA]
-    C --> F[Local CA]
     D --> G[Certificate deployed on target]
     E --> G
-    F --> G
 ```
 
 ## Prerequisites
@@ -33,7 +31,7 @@ Install the RHEL system roles package on your control node:
 ```bash
 # Install RHEL system roles
 
-sudo dnf install rhel-system-roles
+sudo dnf install rhel-system-roles ansible-core
 ```
 
 Verify the certificate role is available:
@@ -57,12 +55,11 @@ Here is a simple playbook that creates a self-signed certificate for a web serve
   vars:
     certificate_requests:
       # Define a certificate for the web server
-      - name: mycert
+      - name: webapp
         dns: "{{ ansible_fqdn }}"
         ca: self-sign
-        # Where to store the certificate and key
-        certificate_file: /etc/pki/tls/certs/webapp.crt
-        key_file: /etc/pki/tls/private/webapp.key
+        # This stores the certificate in /etc/pki/tls/certs/webapp.crt
+        # and the key in /etc/pki/tls/private/webapp.key
         # Set file ownership
         owner: root
         group: root
@@ -91,7 +88,7 @@ If your environment uses Red Hat Identity Management, you can request certificat
   become: true
   vars:
     certificate_requests:
-      - name: webapp-ipa
+      - name: webapp
         dns:
           - "{{ ansible_fqdn }}"
           - "www.{{ ansible_domain }}"
@@ -99,9 +96,6 @@ If your environment uses Red Hat Identity Management, you can request certificat
         ca: ipa
         # Principal for the certificate
         principal: "HTTP/{{ ansible_fqdn }}@{{ ansible_domain | upper }}"
-        # File locations
-        certificate_file: /etc/pki/tls/certs/webapp.crt
-        key_file: /etc/pki/tls/private/webapp.key
         owner: root
         group: root
 
@@ -126,22 +120,16 @@ You can define several certificates at once:
       - name: webapp
         dns: "{{ ansible_fqdn }}"
         ca: self-sign
-        certificate_file: /etc/pki/tls/certs/webapp.crt
-        key_file: /etc/pki/tls/private/webapp.key
 
       # Certificate for the internal API
       - name: api
         dns: "api.{{ ansible_domain }}"
         ca: self-sign
-        certificate_file: /etc/pki/tls/certs/api.crt
-        key_file: /etc/pki/tls/private/api.key
 
       # Certificate for database connections
       - name: dbclient
         dns: "{{ ansible_fqdn }}"
         ca: self-sign
-        certificate_file: /etc/pki/tls/certs/dbclient.crt
-        key_file: /etc/pki/tls/private/dbclient.key
 
   roles:
     - rhel-system-roles.certificate
@@ -160,7 +148,7 @@ The role supports several useful options:
   become: true
   vars:
     certificate_requests:
-      - name: custom-cert
+      - name: custom
         dns:
           - "{{ ansible_fqdn }}"
           - "alias.example.com"
@@ -170,8 +158,6 @@ The role supports several useful options:
         ca: self-sign
         # Key size
         key_size: 4096
-        certificate_file: /etc/pki/tls/certs/custom.crt
-        key_file: /etc/pki/tls/private/custom.key
         owner: root
         group: root
         # Run a command after the certificate is issued or renewed
