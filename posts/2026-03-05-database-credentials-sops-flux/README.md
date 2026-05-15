@@ -18,6 +18,7 @@ SOPS (Secrets OPerationS) encrypts the values in YAML and JSON files while leavi
 
 - Flux CD bootstrapped on your cluster
 - SOPS CLI installed locally (`brew install sops` or equivalent)
+- age CLI installed locally (`brew install age` or equivalent)
 - An encryption provider: AWS KMS, Azure Key Vault, GCP KMS, or age
 
 This guide uses age for simplicity, but the same approach works with cloud KMS providers.
@@ -93,13 +94,13 @@ metadata:
   namespace: my-app
 type: Opaque
 stringData:
-  DB_HOST: ENC[AES256_GCM,data:k8TnW2R3bQ==,iv:...,tag:...,type:str]
-  DB_PORT: ENC[AES256_GCM,data:NjQzMg==,iv:...,tag:...,type:str]
-  DB_NAME: ENC[AES256_GCM,data:bXlhcHBfcHJv,iv:...,tag:...,type:str]
-  DB_USER: ENC[AES256_GCM,data:bXlhcHBfdXNl,iv:...,tag:...,type:str]
-  DB_PASSWORD: ENC[AES256_GCM,data:c3VwZXItc2VjcmV0,iv:...,tag:...,type:str]
-  DB_SSL_MODE: ENC[AES256_GCM,data:cmVxdWlyZQ==,iv:...,tag:...,type:str]
-  DATABASE_URL: ENC[AES256_GCM,data:cG9zdGdyZXNxbDov,iv:...,tag:...,type:str]
+  DB_HOST: ENC[AES256_GCM,data:zB2sPZK9xQ8VY6mR,iv:...,tag:...,type:str]
+  DB_PORT: ENC[AES256_GCM,data:Y8pQm4xL,iv:...,tag:...,type:str]
+  DB_NAME: ENC[AES256_GCM,data:rW7nQ6yLz3eH9tA=,iv:...,tag:...,type:str]
+  DB_USER: ENC[AES256_GCM,data:mP5xK2vNq8sD4cE=,iv:...,tag:...,type:str]
+  DB_PASSWORD: ENC[AES256_GCM,data:fQ9vL2sK8mN4xT7pR6cY,iv:...,tag:...,type:str]
+  DB_SSL_MODE: ENC[AES256_GCM,data:nV3sJ8kL,iv:...,tag:...,type:str]
+  DATABASE_URL: ENC[AES256_GCM,data:pZ6xH9vK2mQ8sL4nR7tC5yW3aB,iv:...,tag:...,type:str]
 sops:
   age:
     - recipient: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
@@ -108,6 +109,8 @@ sops:
         ...
         -----END AGE ENCRYPTED FILE-----
   lastmodified: "2026-03-05T10:00:00Z"
+  mac: ENC[AES256_GCM,data:...,iv:...,tag:...,type:str]
+  encrypted_regex: ^(data|stringData)$
   version: 3.8.1
 ```
 
