@@ -8,11 +8,11 @@ Description: Write custom udev rules on RHEL to automatically configure devices 
 
 ---
 
-udev is the device manager for the Linux kernel. It manages device nodes in `/dev` and handles configured user-space actions when devices are added or removed. Custom udev rules let you automate tasks like setting permissions, renaming devices, or running scripts when specific hardware is connected.
+udev is the device manager for Linux systems. It receives device events from the kernel, manages device nodes in `/dev`, and handles configured user-space actions when devices are added or removed. Custom udev rules let you automate tasks like setting permissions, creating persistent symlinks, renaming network interfaces, or running scripts when specific hardware is connected.
 
 ## Understanding udev Rules
 
-udev rules are stored in `/etc/udev/rules.d/` (local rules) and `/usr/lib/udev/rules.d/` (system defaults). Rules are processed in lexical order by filename, and a rule file in `/etc/udev/rules.d/` overrides a system default only when it has the same filename.
+udev rules are stored in `/etc/udev/rules.d/` (local rules), `/run/udev/rules.d/` (runtime rules), and `/usr/lib/udev/rules.d/` (system defaults). Rules are processed in lexical order by filename, and a rule file in `/etc/udev/rules.d/` overrides a system default only when it has the same filename.
 
 ## Find Device Attributes
 
@@ -98,7 +98,7 @@ EOF
 
 ```bash
 # Reload udev rules without rebooting
-sudo udevadm control --reload-rules
+sudo udevadm control --reload
 
 # Trigger rules for existing devices
 sudo udevadm trigger
@@ -117,7 +117,7 @@ sudo udevadm monitor --property
 # SUBSYSTEM, KERNEL, ATTR{}, ATTRS{}, ACTION, ENV{}
 
 # Assignment keys (use = or +=):
-# NAME, SYMLINK, MODE, OWNER, GROUP, RUN, ENV{}
+# NAME (network interfaces only), SYMLINK, MODE, OWNER, GROUP, RUN, ENV{}
 
 # Common actions:
 # ACTION=="add"     - device connected
