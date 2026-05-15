@@ -12,7 +12,7 @@ This guide covers how to Set Up a Next.js Production Server on RHEL. Following t
 
 ## Prerequisites
 
-- RHEL with a minimal or standard installation
+- RHEL 9.5 or later with a minimal or standard installation
 - Root or sudo access
 - A stable network connection
 
@@ -31,20 +31,27 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf module install -y nodejs:22
+sudo dnf install -y firewalld
 ```
 
 ## Step 2: Install Required Packages
 
 ```bash
-sudo dnf install -y <package-name>
+sudo mkdir -p /opt/nextjs-app
+sudo chown "$USER": /opt/nextjs-app
+# Copy your Next.js application files into /opt/nextjs-app before continuing.
+cd /opt/nextjs-app
+npm ci
+npm run build
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+node --version
+npm --version
+npm run start -- --help
 ```
 
 ## Step 3: Configure the Service
@@ -52,16 +59,42 @@ rpm -qi <package-name>
 Create or edit the main configuration file:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo useradd --system --home-dir /opt/nextjs-app --shell /sbin/nologin nextjs
+sudo chown -R nextjs:nextjs /opt/nextjs-app
+sudo vi /etc/systemd/system/nextjs.service
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+Add a systemd unit for the Next.js production server:
+
+```ini
+[Unit]
+Description=Next.js production server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=nextjs
+Group=nextjs
+WorkingDirectory=/opt/nextjs-app
+Environment=NODE_ENV=production
+Environment=PORT=3000
+ExecStart=/usr/bin/npm run start -- --hostname 0.0.0.0 --port 3000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Apply the recommended settings for your environment. Start with the default port and adjust based on your workload and hardware.
 
 ## Step 4: Start and Enable the Service
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo systemctl daemon-reload
+sudo systemctl enable --now nextjs
+sudo systemctl status nextjs
 ```
 
 ## Step 5: Verify the Configuration
@@ -69,13 +102,13 @@ sudo systemctl status <service>
 Test the setup:
 
 ```bash
-sudo <service> --test
+curl -I http://127.0.0.1:3000
 ```
 
 Check the logs for any errors:
 
 ```bash
-journalctl -u <service> -f
+sudo journalctl -u nextjs -f
 ```
 
 ## Step 6: Configure Firewall Rules
@@ -83,7 +116,8 @@ journalctl -u <service> -f
 If the service needs network access:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo systemctl enable --now firewalld
+sudo firewall-cmd --permanent --add-port=3000/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -92,8 +126,8 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+systemctl show nextjs --property=MemoryCurrent
+top -p "$(systemctl show -p MainPID --value nextjs)"
 ```
 
 ## Security Considerations
@@ -107,7 +141,7 @@ top -p $(pidof <service>)
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
+1. **Service fails to start**: Check `sudo journalctl -u nextjs -xe` for error messages
 2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
 3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
 
