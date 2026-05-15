@@ -8,11 +8,11 @@ Description: How to make firewalld work correctly with Docker and Podman on RHEL
 
 ---
 
-Containers and firewalld have a complicated relationship. Docker and Podman both need to manipulate networking rules to expose container ports, and this can conflict with firewalld's rule management. Getting them to cooperate requires understanding how each tool interacts with the kernel's packet filtering.
+Containers and firewalld have a complicated relationship. Docker and rootful Podman both need to manipulate networking rules to expose container ports, and this can conflict with firewalld's rule management. Getting them to cooperate requires understanding how each tool interacts with the kernel's packet filtering.
 
 ## The Problem
 
-When you run a container with a published port, the container runtime sets up NAT rules to forward traffic from the host port to the container. Docker does this by directly modifying iptables/nftables, which can bypass or conflict with firewalld.
+When you run a container with a published port on a bridge network, the container runtime usually sets up NAT rules to forward traffic from the host port to the container. Docker does this by directly modifying iptables/nftables, which can bypass or conflict with firewalld.
 
 ```mermaid
 graph TD
@@ -23,7 +23,7 @@ graph TD
     B -.->|May not filter| D
 ```
 
-The result: firewalld rules might not actually block traffic to published container ports, because the container NAT rules are processed before firewalld's filter rules.
+The result: ordinary firewalld rules for host services might not actually block traffic to published container ports, because Docker's forwarding and port-publishing rules can handle that traffic outside the normal host input path.
 
 ## Docker and Firewalld
 
@@ -62,29 +62,23 @@ EOF
 systemctl restart docker
 ```
 
-After this, published ports will not work until you manually add forwarding rules. This approach is complex and not recommended unless you have a specific reason.
+After this, Docker stops creating most of the firewall rules it normally uses for bridge networking, masquerading, and port publishing, so you need to provide replacement rules yourself. This approach is complex and not recommended unless you have a specific reason.
 
-### Option 3: Use Firewalld Docker Zone
+### Option 3: Use Docker's Firewalld Zone
 
-Create a dedicated zone for the Docker bridge:
+When firewalld is running and Docker's iptables/ip6tables management is enabled, Docker creates a `docker` firewalld zone with target `ACCEPT` and assigns Docker bridge interfaces such as `docker0` to it. Verify that Docker has created and populated the zone:
 
 ```bash
-# Create a zone for Docker
-firewall-cmd --permanent --new-zone=docker
-firewall-cmd --permanent --zone=docker --set-target=ACCEPT
-firewall-cmd --reload
-
-# Assign the Docker bridge to this zone
-firewall-cmd --zone=docker --change-interface=docker0 --permanent
-firewall-cmd --reload
+# Check Docker's firewalld integration
+firewall-cmd --get-active-zones
+firewall-cmd --zone=docker --list-all
 ```
 
-Then control external access through the public zone on your physical interface:
+Do not rely on allowing or blocking the same port in the `public` zone to restrict a Docker-published port. Docker's own forwarding rules control published container ports. For simple exposure control, bind the published port to localhost or a specific host address:
 
 ```bash
-# Only allow port 8080 from external
-firewall-cmd --zone=public --add-port=8080/tcp --permanent
-firewall-cmd --reload
+# Only expose the Docker-published port locally
+docker run -d -p 127.0.0.1:8080:80 nginx
 ```
 
 ## Podman and Firewalld
@@ -93,7 +87,7 @@ Podman on RHEL works differently from Docker in significant ways:
 
 ### Rootless Podman
 
-Rootless Podman (running as a regular user) uses slirp4netns or pasta for networking. It does not modify firewall rules at all. Published ports work through user-space proxying:
+Rootless Podman (running as a regular user) uses slirp4netns or pasta for networking. On RHEL 9.5 and later, pasta is the default rootless network mode; earlier RHEL 9 releases default to slirp4netns. Rootless port publishing does not create the same host firewall rules as rootful bridge networking:
 
 ```bash
 # Rootless Podman - no firewall conflicts
@@ -110,19 +104,19 @@ firewall-cmd --reload
 
 ### Rootful Podman
 
-Rootful Podman (running as root) uses CNI or netavark for networking and creates bridge interfaces similar to Docker:
+Rootful Podman (running as root) uses netavark by default on fresh RHEL 9 installations, while some upgraded systems can still use CNI. It creates bridge interfaces similar to Docker:
 
 ```bash
 # Check Podman's network backend
-podman info | grep networkBackend
+podman info --format '{{.Host.NetworkBackend}}'
 ```
 
-For rootful Podman with netavark:
+For rootful Podman with a bridge interface:
 
 ```bash
-# Podman creates a podman bridge by default
-# Assign it to a trusted zone
-firewall-cmd --zone=trusted --change-interface=podman0 --permanent
+# Check the bridge interface name before assigning it
+bridge_interface=$(podman network inspect podman --format '{{.NetworkInterface}}')
+firewall-cmd --zone=trusted --change-interface="$bridge_interface" --permanent
 firewall-cmd --reload
 ```
 
@@ -136,8 +130,8 @@ firewall-cmd --zone=public --add-service=http --permanent
 firewall-cmd --zone=public --add-service=https --permanent
 firewall-cmd --reload
 
-# Run the container, publishing on standard ports
-podman run -d --name webapp -p 80:8080 -p 443:8443 my-web-app
+# Run the container as root, publishing on standard ports
+sudo podman run -d --name webapp -p 80:8080 -p 443:8443 my-web-app
 
 # Verify firewall allows traffic
 firewall-cmd --zone=public --list-all
@@ -178,7 +172,7 @@ firewall-cmd --reload
 
 ## Masquerading for Container Networks
 
-If containers need outbound internet access through the host:
+Container runtimes normally configure masquerading for their managed bridge networks. If you have disabled that rule management or you are managing container forwarding yourself, enable masquerading on the zone bound to the external interface:
 
 ```bash
 # Enable masquerading on the public zone
@@ -206,7 +200,7 @@ podman port webapp
 
 **Firewalld rules not affecting Docker ports**:
 
-This is the NAT bypass issue. Docker's NAT rules are processed before firewalld's filter rules. Use Docker's `-p 127.0.0.1:port:port` syntax to limit access, or use the firewalld docker zone approach.
+This is the NAT bypass issue. Docker creates its own forwarding and port-publishing rules, so ordinary host input rules might not restrict Docker-published ports. Use Docker's `-p 127.0.0.1:port:port` syntax to limit access, or add filtering in Docker's `DOCKER-USER` chain.
 
 **Container cannot reach the internet**:
 
@@ -220,4 +214,4 @@ sysctl net.ipv4.ip_forward
 
 ## Summary
 
-Podman on RHEL, especially rootless Podman, works well with firewalld because it does not bypass firewall rules. Docker is more problematic because it modifies iptables directly. For Docker, either accept its rule management and control access through which ports you publish, or create a dedicated firewalld zone for the Docker bridge. For Podman, standard firewalld port rules work as expected. Always test from an external machine to verify that only the intended ports are reachable.
+Podman on RHEL, especially rootless Podman, works well with firewalld because it does not bypass firewall rules in the same way as Docker-published bridge ports. Docker is more problematic because it modifies iptables/nftables directly. For Docker, either accept its rule management and control access through which ports and addresses you publish, or use Docker's firewalld integration and Docker-specific filtering such as the `DOCKER-USER` chain. For Podman, standard firewalld port rules work as expected for host-published rootless ports. Always test from an external machine to verify that only the intended ports are reachable.
