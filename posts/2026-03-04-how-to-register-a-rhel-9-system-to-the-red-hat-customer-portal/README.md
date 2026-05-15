@@ -18,9 +18,13 @@ sudo subscription-manager register --username=your_username --password=your_pass
 
 ## Auto-Attach a Subscription
 
+If your organization uses entitlement mode, attach a subscription:
+
 ```bash
 sudo subscription-manager attach --auto
 ```
+
+If your organization uses Simple Content Access, skip this step. Registered systems can access entitled content without attaching a subscription.
 
 ## Verify Registration
 
@@ -29,6 +33,8 @@ sudo subscription-manager status
 sudo subscription-manager list --consumed
 ```
 
+With Simple Content Access enabled, `subscription-manager status` can show the overall status as disabled because per-system subscription attachment is not used.
+
 ## View Available Subscriptions
 
 ```bash
@@ -36,6 +42,8 @@ sudo subscription-manager list --available --all
 ```
 
 ## Attach a Specific Subscription
+
+If your organization uses entitlement mode, attach a specific subscription pool:
 
 ```bash
 sudo subscription-manager attach --pool=<pool-id>
@@ -86,4 +94,3 @@ sudo subscription-manager register
 ## Conclusion
 
 Proper registration ensures your RHEL 9 system receives security updates and has access to Red Hat's full software ecosystem. Use activation keys for automated deployments.
-
