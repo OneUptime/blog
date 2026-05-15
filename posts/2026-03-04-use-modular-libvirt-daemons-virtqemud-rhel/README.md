@@ -61,14 +61,25 @@ for drv in qemu interface network nodedev nwfilter secret storage; do
   sudo systemctl unmask virt${drv}d.service
   sudo systemctl unmask virt${drv}d{,-ro,-admin}.socket
   sudo systemctl enable virt${drv}d.service
-  sudo systemctl enable --now virt${drv}d{,-ro,-admin}.socket
+  sudo systemctl enable virt${drv}d{,-ro,-admin}.socket
+  sudo systemctl start virt${drv}d{,-ro,-admin}.socket
 done
 
 # Enable the proxy daemon for remote connections
+# If libvirtd-tls.socket was enabled, include virtproxyd-tls.socket as well
+sudo grep listen_tls /etc/libvirt/libvirtd.conf
 sudo systemctl unmask virtproxyd.service
 sudo systemctl unmask virtproxyd{,-ro,-admin}.socket
 sudo systemctl enable virtproxyd.service
-sudo systemctl enable --now virtproxyd{,-ro,-admin}.socket
+sudo systemctl enable virtproxyd{,-ro,-admin}.socket
+sudo systemctl start virtproxyd{,-ro,-admin}.socket
+
+# If listen_tls is set to 1, also enable the TLS socket
+if sudo grep -Eq '^[[:space:]]*listen_tls[[:space:]]*=[[:space:]]*1' /etc/libvirt/libvirtd.conf; then
+  sudo systemctl unmask virtproxyd-tls.socket
+  sudo systemctl enable virtproxyd-tls.socket
+  sudo systemctl start virtproxyd-tls.socket
+fi
 ```
 
 ## Verifying the Modular Daemons
@@ -126,14 +137,18 @@ sudo virt-admin -c virtqemud:///system daemon-log-filters "3:remote 4:event 3:ut
 ```bash
 # If needed, you can revert to the monolithic daemon
 for drv in qemu interface network nodedev nwfilter secret storage; do
+  sudo systemctl stop virt${drv}d.service
   sudo systemctl stop virt${drv}d{,-ro,-admin}.socket
   sudo systemctl disable virt${drv}d.service
   sudo systemctl disable virt${drv}d{,-ro,-admin}.socket
 done
 
+sudo systemctl stop virtproxyd.service
 sudo systemctl stop virtproxyd{,-ro,-admin}.socket
+sudo systemctl stop virtproxyd-tls.socket
 sudo systemctl disable virtproxyd.service
 sudo systemctl disable virtproxyd{,-ro,-admin}.socket
+sudo systemctl disable virtproxyd-tls.socket
 
 sudo systemctl enable libvirtd.service
 sudo systemctl enable --now libvirtd{,-ro,-admin}.socket
