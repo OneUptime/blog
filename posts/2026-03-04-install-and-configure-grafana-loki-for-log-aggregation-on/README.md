@@ -32,10 +32,12 @@ repo_gpgcheck=1
 enabled=1
 gpgcheck=1
 gpgkey=https://rpm.grafana.com/gpg.key
+sslverify=1
+sslcacert=/etc/pki/tls/certs/ca-bundle.crt
 EOF
 
-# Install Grafana
-sudo dnf install -y grafana
+# Install Loki
+sudo dnf install -y loki
 ```
 
 ## Step 2: Configure the Service
@@ -44,27 +46,27 @@ Edit the configuration file to match your environment:
 
 ```bash
 # Open the configuration file
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/loki/config.yml
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include the HTTP listening address and port, storage settings, and whether Loki expects the `X-Scope-OrgID` tenant header with `auth_enabled`.
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart loki
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable loki
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start loki
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status loki
 ```
 
 
@@ -74,16 +76,19 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status loki
+
+# Check the Loki readiness endpoint
+curl http://localhost:3100/ready
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u loki --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u loki -e --no-pager`.
+- Ensure all required packages are installed: `rpm -qa | grep loki`.
 
 ## Conclusion
 
