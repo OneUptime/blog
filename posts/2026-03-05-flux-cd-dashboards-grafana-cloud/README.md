@@ -44,9 +44,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: alloy
-  namespace: monitoring
+  namespace: flux-system
 spec:
   interval: 30m
+  targetNamespace: monitoring
   chart:
     spec:
       chart: alloy
@@ -136,6 +137,9 @@ prometheus:
     podMonitorSelector:
       matchLabels:
         app.kubernetes.io/part-of: flux
+    podMonitorNamespaceSelector:
+      matchNames:
+        - flux-system
 ```
 
 ## Step 2: Create PodMonitors for Flux
@@ -210,7 +214,7 @@ The imported dashboards visualize these important metrics:
 
 **Source Fetching:**
 - `gotk_reconcile_duration_seconds{kind="GitRepository"}` - Git fetch duration
-- Source artifact size and fetch frequency
+- Source readiness, revisions, and fetch frequency
 
 ## Step 5: Create Custom Dashboard Panels
 
