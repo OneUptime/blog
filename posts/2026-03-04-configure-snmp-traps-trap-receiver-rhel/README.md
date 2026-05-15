@@ -30,12 +30,12 @@ authCommunity log,execute,net trapCommunity123
 # createUser -e 0x8000000001020304 trapuser SHA "AuthPass123" AES "PrivPass456"
 # authUser log,execute trapuser
 
-# Log traps to a file
+# Keep NOTIFICATION-LOG-MIB retention enabled
 [snmptrapd]
-doNotRetain 0
+doNotRetainNotificationLogs no
 
 # Format the output
-format2 %V\n% Agent Address: %A\n Agent Hostname: %B\n Date: %H:%J:%K - %L/%M/%Y\n Enterprise OID: %N\n Trap Type: %W\n Trap Sub-Type: %q\n Community: %P\n Uptime: %T\n Variables:\n%v\n
+format2 %V\n Agent Address: %b\n Agent Hostname: %B\n Date: %h:%j:%k - %l/%m/%y\n Enterprise OID: %N\n Trap Type: %W\n Trap Sub-Type: %q\n Community: %P\n Uptime: %T\n Variables:\n%v\n
 
 # Execute a script when specific traps arrive
 traphandle default /usr/local/bin/trap-handler.sh
@@ -67,7 +67,7 @@ echo -e "$VARS" >> "$LOGFILE"
 echo "---" >> "$LOGFILE"
 
 # Example: Send an email for critical traps
-if echo "$VARS" | grep -q "linkDown"; then
+if echo "$VARS" | grep -Eq "linkDown|\.1\.3\.6\.1\.6\.3\.1\.1\.5\.3"; then
     echo "Link down on $HOST at $(date)" | mail -s "SNMP Alert: Link Down" admin@example.com
 fi
 SCRIPT
@@ -107,11 +107,11 @@ snmptrap -v 2c -c trapCommunity123 localhost "" \
 # Send a linkDown trap
 snmptrap -v 2c -c trapCommunity123 localhost "" \
   .1.3.6.1.6.3.1.1.5.3 \
-  ifIndex i 2 \
-  ifAdminStatus i 1 \
-  ifOperStatus i 2
+  IF-MIB::ifIndex.2 i 2 \
+  IF-MIB::ifAdminStatus.2 i 1 \
+  IF-MIB::ifOperStatus.2 i 2
 
-# Send from a remote host
+# Send to a remote trap receiver
 snmptrap -v 2c -c trapCommunity123 10.0.0.100 "" \
   .1.3.6.1.4.1.8072.2.3.0.1 \
   .1.3.6.1.4.1.8072.2.3.2.1 s "Alert from remote host"
