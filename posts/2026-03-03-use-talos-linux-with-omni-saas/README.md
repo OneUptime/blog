@@ -30,12 +30,16 @@ Think of it as a management plane that sits above your Talos Linux infrastructur
 Sign up for an Omni account at omni.siderolabs.com. After creating your account, you will get access to the Omni dashboard and an account-specific registration endpoint.
 
 ```bash
-# Install omnictl - the CLI for Omni
+# Install omnictl, talosctl, and kubelogin on macOS or Linux
 
-curl -sL https://omni.siderolabs.com/install/omnictl | sh
+brew install siderolabs/tap/sidero-tools
 
-# Authenticate with your Omni account
-omnictl auth login
+# Copy the omniconfig.yaml file from your Omni dashboard, then configure omnictl
+mkdir -p ~/.talos/omni
+cp omniconfig.yaml ~/.talos/omni/config
+
+# Trigger browser-based authentication and verify access
+omnictl get cluster
 ```
 
 The Omni dashboard will show your account and any existing clusters. For a new account, it will be empty - ready for you to register machines.
@@ -47,18 +51,18 @@ The key concept in Omni is machine registration. Instead of managing individual 
 To register a machine, you boot it with a special Talos Linux image that points to your Omni account:
 
 ```bash
-# Download the Omni-specific Talos image from your account
-# The URL is unique to your Omni account
+# Download the Omni-specific Talos image from your account.
 # Find it in the Omni dashboard under "Download Installation Media"
+# or use omnictl after configuring your omniconfig.
 
 # For bare metal - download the ISO
-wget "https://omni.siderolabs.com/image/<ACCOUNT_ID>/v1.9.0/metal-amd64.iso"
+omnictl download iso --arch amd64 --talos-version v1.9.0
 
-# For cloud instances - download the disk image
-wget "https://omni.siderolabs.com/image/<ACCOUNT_ID>/v1.9.0/nocloud-amd64.raw.xz"
+# For cloud instances - download the appropriate image for your platform
+omnictl download nocloud --arch amd64 --talos-version v1.9.0
 ```
 
-The image contains your account's registration token baked in, so any machine that boots from it will automatically register with your Omni account.
+The generated image includes the SideroLink connection parameters for your Omni account, so any machine that boots from it will automatically register with your Omni account.
 
 ## Booting Machines for Omni
 
@@ -78,6 +82,7 @@ For cloud instances, use the appropriate disk image for your provider:
 
 ```bash
 # Example: Creating a VM on Proxmox with the Omni image
+xz -d nocloud-amd64.raw.xz
 qm create 100 --name talos-omni-01 --memory 4096 --cores 2
 qm importdisk 100 nocloud-amd64.raw local-lvm
 qm set 100 --scsi0 local-lvm:vm-100-disk-0 --boot order=scsi0
@@ -116,7 +121,7 @@ Omni handles all the configuration generation, applies it to each machine, and b
 
 ```bash
 # List available machines
-omnictl get machines
+omnictl get machine
 
 # Create a cluster using a cluster template
 cat > cluster-template.yaml << 'TEMPLATE'
@@ -124,6 +129,8 @@ kind: Cluster
 name: production-cluster
 kubernetes:
   version: v1.31.0
+talos:
+  version: v1.9.0
 patches:
   - name: default
     inline:
@@ -132,26 +139,21 @@ patches:
           nameservers:
             - 8.8.8.8
             - 8.8.4.4
+---
+kind: ControlPlane
+machines:
+  - <MACHINE_ID_1>
+  - <MACHINE_ID_2>
+  - <MACHINE_ID_3>
+---
+kind: Workers
+machines:
+  - <MACHINE_ID_4>
 TEMPLATE
 
-omnictl apply -f cluster-template.yaml
-
-# Assign machines to the cluster
-omnictl assign machine <MACHINE_ID_1> \
-  --cluster production-cluster \
-  --role controlplane
-
-omnictl assign machine <MACHINE_ID_2> \
-  --cluster production-cluster \
-  --role controlplane
-
-omnictl assign machine <MACHINE_ID_3> \
-  --cluster production-cluster \
-  --role controlplane
-
-omnictl assign machine <MACHINE_ID_4> \
-  --cluster production-cluster \
-  --role worker
+omnictl cluster template validate -f cluster-template.yaml
+omnictl cluster template sync -f cluster-template.yaml --verbose
+omnictl cluster template status -f cluster-template.yaml
 ```
 
 ## Accessing Your Cluster
@@ -160,10 +162,10 @@ Once Omni finishes building the cluster, you can get the kubeconfig directly fro
 
 ```bash
 # Download kubeconfig through omnictl
-omnictl kubeconfig --cluster production-cluster > kubeconfig
+omnictl kubeconfig ./kubeconfig --cluster production-cluster --merge=false --force
 
 # Or through talosctl via the Omni proxy
-omnictl talosconfig --cluster production-cluster > talosconfig
+omnictl talosconfig ./talosconfig --cluster production-cluster --merge=false --force
 talosctl --talosconfig=talosconfig health
 ```
 
@@ -179,6 +181,8 @@ kind: Cluster
 name: edge-cluster
 kubernetes:
   version: v1.31.0
+talos:
+  version: v1.9.0
 patches:
   - name: kubelet-config
     inline:
@@ -193,35 +197,48 @@ patches:
           interfaces:
             - interface: eth0
               dhcp: true
-controlPlane:
-  machines:
-    count: 3
-    selector:
-      labels:
-        role: control-plane
-workers:
-  machines:
-    count: 5
-    selector:
-      labels:
-        location: edge-site-01
+---
+kind: ControlPlane
+machineClass:
+  name: edge-control-plane
+  size: 3
+---
+kind: Workers
+machineClass:
+  name: edge-workers
+  size: 5
+patches:
+  - name: kubelet-config
+    inline:
+      machine:
+        kubelet:
+          extraArgs:
+            rotate-server-certificates: "true"
 ```
 
 ```bash
 # Apply the template to create the cluster
-omnictl apply -f cluster-template.yaml
+omnictl cluster template validate -f cluster-template.yaml
+omnictl cluster template sync -f cluster-template.yaml --verbose
 ```
 
 ## Managing Upgrades
 
 Omni simplifies the upgrade process for both Talos Linux and Kubernetes:
 
-```bash
-# Upgrade Talos Linux on a cluster
-omnictl upgrade talos --cluster production-cluster --version v1.10.0
+For clusters managed by a template, update the versions in the `Cluster` document:
 
-# Upgrade Kubernetes
-omnictl upgrade kubernetes --cluster production-cluster --version v1.32.0
+```yaml
+kubernetes:
+  version: v1.32.0
+talos:
+  version: v1.10.0
+```
+
+```bash
+# Then validate and sync the template
+omnictl cluster template validate -f cluster-template.yaml
+omnictl cluster template sync -f cluster-template.yaml --verbose
 ```
 
 Omni performs rolling upgrades, updating one node at a time and waiting for each node to be healthy before proceeding to the next one.
@@ -248,13 +265,13 @@ Omni truly shines when you manage multiple clusters. The dashboard shows all you
 
 ```bash
 # List all clusters
-omnictl get clusters
+omnictl get cluster
 
 # Get details about a specific cluster
 omnictl get cluster production-cluster
 
 # View machines across all clusters
-omnictl get machines --all
+omnictl get machine
 ```
 
 ## Machine Labels and Organization
@@ -262,24 +279,33 @@ omnictl get machines --all
 Use labels to organize your machines and make cluster creation easier:
 
 ```bash
-# Label machines by location
-omnictl label machine <MACHINE_ID> location=datacenter-east
-omnictl label machine <MACHINE_ID> location=datacenter-west
+# Add labels when generating installation media
+omnictl download iso --arch amd64 \
+  --initial-labels location=datacenter-east,hardware=gpu-node
 
-# Label by hardware type
-omnictl label machine <MACHINE_ID> hardware=gpu-node
-omnictl label machine <MACHINE_ID> hardware=storage-node
+# Create a machine class that selects machines by label
+cat > machine-class.yaml << 'CLASS'
+metadata:
+  namespace: default
+  type: MachineClasses.omni.sidero.dev
+  id: datacenter-east-gpu
+spec:
+  matchlabels:
+    - location = datacenter-east, hardware = gpu-node
+CLASS
+
+omnictl apply -f machine-class.yaml
 ```
 
-These labels can be used in cluster templates to automatically select the right machines for each cluster.
+These labels can be used by machine classes in cluster templates to automatically select the right machines for each cluster.
 
 ## Troubleshooting
 
-If a machine does not appear in Omni after booting, verify that it has network connectivity and can reach the Omni service. The machine needs outbound HTTPS access to communicate with Omni.
+If a machine does not appear in Omni after booting, verify that it has network connectivity and can reach the Omni service. For Omni SaaS, machines need outbound TCP 443 and UDP 51820 access to the Omni endpoints shown in the UI.
 
 If cluster creation fails, check the machine health in the Omni dashboard. Each machine shows its current state and any errors. Common issues include insufficient resources or network configuration problems.
 
-For connectivity issues between Omni and your machines, check that your firewall allows outbound connections on port 443. Omni uses a pull-based model where machines connect to Omni, not the other way around.
+For connectivity issues between Omni and your machines, check that your firewall allows outbound connections on TCP 443 and UDP 51820. Omni uses a pull-based model where machines connect to Omni, not the other way around.
 
 ## Conclusion
 
