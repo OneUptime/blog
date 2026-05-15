@@ -1,16 +1,16 @@
-# How to Configure Automated Database Backups with pg_dump and Cron on RHEL 9
+# How to Configure Database Servers on RHEL 9
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, PostgreSQL, Pg_dump, Cron, Backup
+Tags: RHEL, PostgreSQL, MariaDB, MySQL, Database
 
-Description: Configure automated PostgreSQL backups using pg_dump and cron on RHEL 9.
+Description: Configure PostgreSQL, MariaDB, or MySQL database servers on RHEL 9.
 
 ---
 
 ## Overview
 
-Configure automated PostgreSQL backups using pg_dump and cron on RHEL 9. Proper database setup and management are essential for application reliability and data integrity.
+Configure PostgreSQL, MariaDB, or MySQL database servers on RHEL 9. Proper database setup and management are essential for application reliability and data integrity.
 
 ## Prerequisites
 
@@ -33,14 +33,15 @@ For MariaDB:
 ```bash
 sudo dnf install -y mariadb-server
 sudo systemctl enable --now mariadb
-sudo mysql_secure_installation
+sudo mariadb-secure-installation
 ```
 
 For MySQL 8.0:
 
 ```bash
-sudo dnf install -y mysql-community-server
+sudo dnf install -y mysql-server
 sudo systemctl enable --now mysqld
+sudo mysql_secure_installation
 ```
 
 Choose the appropriate commands for your database engine.
@@ -49,8 +50,9 @@ Choose the appropriate commands for your database engine.
 
 Edit the main configuration file:
 
-- PostgreSQL: `/var/lib/pgsql/data/postgresql.conf` and `pg_hba.conf`
-- MariaDB/MySQL: `/etc/my.cnf.d/server.cnf`
+- PostgreSQL: `/var/lib/pgsql/data/postgresql.conf` and `/var/lib/pgsql/data/pg_hba.conf`
+- MariaDB: `/etc/my.cnf.d/mariadb-server.cnf`
+- MySQL: `/etc/my.cnf.d/mysql-server.cnf`
 
 Adjust memory settings, connection limits, and authentication methods to match your workload.
 
@@ -59,7 +61,7 @@ Adjust memory settings, connection limits, and authentication methods to match y
 For PostgreSQL:
 
 ```bash
-sudo -u postgres createuser myappuser
+sudo -u postgres createuser --pwprompt myappuser
 sudo -u postgres createdb myappdb -O myappuser
 ```
 
@@ -97,4 +99,4 @@ mysql -u myappuser -p myappdb -e "SELECT VERSION();"
 
 ## Summary
 
-You have learned how to configure automated database backups with pg_dump and cron. Always secure your database with strong passwords, restricted network access, and regular backups.
+You have learned how to configure database servers on RHEL 9. Always secure your database with strong passwords, restricted network access, and regular backups.
