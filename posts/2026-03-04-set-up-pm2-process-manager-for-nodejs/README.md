@@ -30,7 +30,7 @@ pm2 start app.js --name myapp
 With additional options:
 
 ```bash
-pm2 start app.js --name myapp --instances max --exec-mode cluster
+pm2 start app.js --name myapp -i max
 ```
 
 ## Step 3: Common PM2 Commands
@@ -67,8 +67,8 @@ module.exports = {
     },
     max_memory_restart: '500M',
     log_date_format: 'YYYY-MM-DD HH:mm:ss',
-    error_file: '/var/log/pm2/myapp-error.log',
-    out_file: '/var/log/pm2/myapp-out.log'
+    error_file: './myapp-error.log',
+    out_file: './myapp-out.log'
   }]
 };
 ```
