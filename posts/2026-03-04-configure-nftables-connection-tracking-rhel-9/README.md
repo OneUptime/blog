@@ -14,6 +14,7 @@ Connection tracking, often called conntrack, is the mechanism that allows nftabl
 
 - A RHEL system with root or sudo access
 - The nftables service installed and running
+- The conntrack-tools package installed for the `conntrack` command
 - Basic understanding of TCP/IP networking
 
 ## How Connection Tracking Works
@@ -163,6 +164,7 @@ echo 65536 | sudo tee /proc/sys/net/netfilter/nf_conntrack_buckets
 # Make persistent
 cat <<'EOF' | sudo tee /etc/sysctl.d/99-conntrack-size.conf
 net.netfilter.nf_conntrack_max = 262144
+net.netfilter.nf_conntrack_buckets = 65536
 EOF
 ```
 
@@ -177,8 +179,8 @@ sudo modprobe nf_conntrack_ftp
 # Make the module load at boot
 echo "nf_conntrack_ftp" | sudo tee /etc/modules-load.d/nf_conntrack_ftp.conf
 
-# Create nftables rules that use the FTP helper
-sudo nft add table inet filter
+# Create the filter table if you did not create it in Step 2
+sudo nft list table inet filter >/dev/null 2>&1 || sudo nft add table inet filter
 
 # Create a ct helper object for FTP
 sudo nft add ct helper inet filter ftp-standard { type "ftp" protocol tcp \; }
@@ -253,8 +255,12 @@ sudo conntrack -F
 ## Step 8: Save the Configuration
 
 ```bash
-# Export the complete ruleset
-sudo nft list ruleset | sudo tee /etc/nftables.conf
+# Export the complete ruleset to a script loaded by the RHEL nftables service
+sudo nft list ruleset | sudo tee /etc/nftables/conntrack-firewall.nft
+
+# Include the script in the nftables service configuration if it is not already included
+sudo grep -q 'include "/etc/nftables/conntrack-firewall.nft"' /etc/sysconfig/nftables.conf || \
+    echo 'include "/etc/nftables/conntrack-firewall.nft"' | sudo tee -a /etc/sysconfig/nftables.conf
 
 # Restart nftables to verify the configuration loads correctly
 sudo systemctl restart nftables
