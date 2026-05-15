@@ -13,7 +13,7 @@ Postfix is a reliable mail transfer agent for sending email from RHEL 9 servers.
 ## Install Postfix
 
 ```bash
-sudo dnf install -y postfix mailx
+sudo dnf install -y postfix s-nail cyrus-sasl-plain
 ```
 
 ## Configure Postfix for Outbound Email
@@ -39,7 +39,6 @@ mydestination = $myhostname, localhost.$mydomain, localhost
 relayhost = [smtp.example.com]:587
 
 # TLS settings
-smtp_use_tls = yes
 smtp_tls_CAfile = /etc/pki/tls/certs/ca-bundle.crt
 smtp_tls_security_level = encrypt
 ```
@@ -118,4 +117,3 @@ sudo newaliases
 ## Conclusion
 
 Postfix on RHEL 9 provides reliable outbound email for system notifications, cron job output, and application alerts. Use a relay host for production environments and always enable TLS encryption.
-
