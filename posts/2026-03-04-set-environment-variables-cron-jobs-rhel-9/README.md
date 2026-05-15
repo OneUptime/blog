@@ -10,7 +10,7 @@ Description: A practical guide to managing environment variables in cron jobs on
 
 ## The Environment Gap
 
-One of the most common reasons cron jobs fail is the environment gap. When you log into a RHEL system, your shell loads a rich set of environment variables from `/etc/profile`, `~/.bash_profile`, `~/.bashrc`, and other files. You get a fully configured PATH, custom variables, aliases, and functions.
+One of the most common reasons cron jobs fail is the environment gap. When you log into a RHEL system, your shell loads a rich set of environment variables from `/etc/profile`, `~/.bash_profile`, and, often indirectly, `~/.bashrc` and other files. You get a fully configured PATH, custom variables, aliases, and functions.
 
 Cron does not do any of that.
 
@@ -98,14 +98,15 @@ Important limitations of crontab variables:
 - You cannot use variable expansion. `PATH=$HOME/bin:$PATH` will not work.
 - You cannot use command substitution. `TODAY=$(date +%F)` will not work.
 - Each variable must be on its own line in the format `NAME=value`.
-- Quotes around values are optional and treated as literal characters.
+- Matching quotes around values can preserve leading or trailing whitespace, but they do not enable shell-style expansion.
 
 ## Method 2: Source Your Profile in the Job
 
 If your script depends on the full login environment, source the profile files explicitly.
 
 ```bash
-# Source bash_profile before running the command
+# Set bash first if you want to use the bash-specific source command
+SHELL=/bin/bash
 30 2 * * * source /home/admin/.bash_profile && /usr/local/bin/backup.sh
 
 # Or use the dot notation
@@ -192,7 +193,7 @@ The `set -a` command tells bash to automatically export all variables that get s
 
 ## The SHELL Variable
 
-By default, cron uses `/bin/sh` to execute commands. On RHEL, `/bin/sh` is actually a symlink to bash, but it runs in POSIX mode, which disables some bash-specific features. Set SHELL explicitly if you need bash features.
+By default, cron uses `/bin/sh` to execute commands. On RHEL, `/bin/sh` is typically provided by bash, but when bash is invoked as `sh`, it behaves more like a POSIX shell, which disables some bash-specific features. Set SHELL explicitly if you need bash features.
 
 ```bash
 # Set bash as the shell for your cron jobs
@@ -204,14 +205,16 @@ SHELL=/bin/bash
 
 ## The HOME Variable
 
-Cron sets HOME to the user's home directory from `/etc/passwd`. If your script uses relative paths or tilde expansion, be aware that the working directory for cron jobs is the user's home directory.
+Cron sets HOME to the user's home directory from `/etc/passwd`. If your script uses relative paths, be aware that cron does not run the job from the script's location.
 
 ```bash
-# These are equivalent in cron
+# This runs from /opt/myapp
 30 2 * * * cd /opt/myapp && ./run.sh
+
+# This runs the script by absolute path, but does not cd to /opt/myapp first
 30 2 * * * /opt/myapp/run.sh
 
-# The working directory is HOME by default, not the script's location
+# Do not assume the working directory is the script's location
 ```
 
 If your script expects to be run from a specific directory, always `cd` to it first.
@@ -251,7 +254,7 @@ env -i HOME=$HOME LOGNAME=$(whoami) PATH=/usr/local/bin:/usr/bin:/bin SHELL=/bin
 30 2 * * * /opt/myapp/venv/bin/python /opt/myapp/process.py
 
 # Option 2: Activate the virtualenv in the command
-30 2 * * * source /opt/myapp/venv/bin/activate && python /opt/myapp/process.py
+30 2 * * * . /opt/myapp/venv/bin/activate && python /opt/myapp/process.py
 ```
 
 **Java applications:** Java needs JAVA_HOME and the java binary in PATH.
