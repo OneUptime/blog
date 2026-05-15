@@ -34,14 +34,14 @@ template(name="elastic-index" type="list") {
     property(name="timereported" dateFormat="rfc3339" position.from="1" position.to="10")
 }
 
-template(name="elastic-json" type="list") {
+template(name="elastic-json" type="list" option.json="on") {
     constant(value="{")
     constant(value="\"@timestamp\":\"")    property(name="timereported" dateFormat="rfc3339")
     constant(value="\",\"host\":\"")       property(name="hostname")
     constant(value="\",\"severity\":\"")   property(name="syslogseverity-text")
     constant(value="\",\"facility\":\"")   property(name="syslogfacility-text")
     constant(value="\",\"program\":\"")    property(name="programname")
-    constant(value="\",\"message\":\"")    property(name="msg" format="json")
+    constant(value="\",\"message\":\"")    property(name="msg")
     constant(value="\"}")
 }
 
@@ -75,6 +75,9 @@ sudo systemctl restart rsyslog
 # (Download from splunk.com for your RHEL version)
 sudo rpm -i splunkforwarder-9.x.x-linux-x86_64.rpm
 
+# Start the forwarder and accept the license
+sudo /opt/splunkforwarder/bin/splunk start --accept-license
+
 # Configure the forwarder to send to your Splunk indexer
 sudo /opt/splunkforwarder/bin/splunk add forward-server splunk.example.com:9997
 
@@ -82,27 +85,45 @@ sudo /opt/splunkforwarder/bin/splunk add forward-server splunk.example.com:9997
 sudo /opt/splunkforwarder/bin/splunk add monitor /var/log/messages
 sudo /opt/splunkforwarder/bin/splunk add monitor /var/log/secure
 
-# Start the forwarder
-sudo /opt/splunkforwarder/bin/splunk start --accept-license
+# Restart and enable the forwarder at boot
+sudo /opt/splunkforwarder/bin/splunk restart
 sudo /opt/splunkforwarder/bin/splunk enable boot-start
 ```
 
 ### Option 2: rsyslog to Splunk HEC (HTTP Event Collector)
 
 ```bash
-# Install the HTTP output module
-sudo dnf install -y rsyslog-mmjsonparse
+# Install rsyslog, which includes the HTTP output module on supported RHEL versions
+sudo dnf install -y rsyslog
 
 # Create /etc/rsyslog.d/splunk-hec.conf
 sudo tee /etc/rsyslog.d/splunk-hec.conf << 'EOF'
 module(load="omhttp")
 
-template(name="splunk_hec" type="list") {
-    constant(value="{\"event\":\"")
-    property(name="msg" format="json")
+template(name="splunk_hec" type="list" option.json="on") {
+    constant(value="{")
+    constant(value="\"event\":\"")      property(name="msg")
     constant(value="\",\"sourcetype\":\"syslog\",\"host\":\"")
     property(name="hostname")
     constant(value="\"}")
+}
+
+template(name="splunk_hec_retry" type="string" string="%msg%")
+
+ruleset(name="splunk_retry") {
+    action(
+        type="omhttp"
+        server="splunk.example.com"
+        serverport="8088"
+        restpath="services/collector/event"
+        template="splunk_hec_retry"
+        httpheaderkey="Authorization"
+        httpheadervalue="Splunk YOUR-HEC-TOKEN-HERE"
+        batch="on"
+        batch.format="newline"
+        batch.maxsize="100"
+        action.resumeretrycount="-1"
+    )
 }
 
 action(
@@ -114,9 +135,11 @@ action(
     httpheaderkey="Authorization"
     httpheadervalue="Splunk YOUR-HEC-TOKEN-HERE"
     batch="on"
+    batch.format="newline"
     batch.maxsize="100"
     retry="on"
     retry.ruleset="splunk_retry"
+    action.resumeretrycount="-1"
 )
 EOF
 
