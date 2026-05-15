@@ -8,7 +8,7 @@ Description: Learn how to use talosctl bootstrap to initialize a new Talos Linux
 
 ---
 
-Every Talos Linux cluster starts with a single command: `talosctl bootstrap`. This command is the critical first step that initializes etcd and kicks off the Kubernetes control plane. Getting it right is essential, and getting it wrong can leave you with a broken cluster. This guide explains exactly how the bootstrap process works and how to use it correctly.
+Most Talos Linux clusters created from control plane machine configs start with a single command: `talosctl bootstrap`. This command is the critical first step that initializes etcd and kicks off the Kubernetes control plane. Getting it right is essential, and getting it wrong can leave you with a broken cluster. This guide explains exactly how the bootstrap process works and how to use it correctly.
 
 ## What Bootstrap Does
 
@@ -58,7 +58,7 @@ Wait for the nodes to install Talos Linux and reboot. You can watch the progress
 
 ```bash
 # Watch a node's services come up
-talosctl services --nodes 192.168.1.10
+talosctl service --nodes 192.168.1.10
 ```
 
 ## Running the Bootstrap Command
@@ -78,13 +78,13 @@ After running the bootstrap command, you can monitor the progress:
 
 ```bash
 # Watch services start up on the bootstrap node
-talosctl services --nodes 192.168.1.10
+talosctl service --nodes 192.168.1.10
 
 # Check etcd status
 talosctl etcd members --nodes 192.168.1.10
 
-# Watch Kubernetes components come online
-talosctl logs kube-apiserver --nodes 192.168.1.10 -f
+# Watch Kubernetes control plane containers come online
+talosctl containers --kubernetes --nodes 192.168.1.10
 ```
 
 The bootstrap process typically takes one to three minutes, depending on your hardware and network speed. You will see services starting up in this order: etcd, kube-apiserver, kube-controller-manager, and kube-scheduler.
@@ -98,7 +98,7 @@ Once the bootstrap is complete, verify that everything is running:
 talosctl etcd members --nodes 192.168.1.10
 
 # Check that all services are running
-talosctl services --nodes 192.168.1.10
+talosctl service --nodes 192.168.1.10
 
 # Retrieve the kubeconfig
 talosctl kubeconfig --nodes 192.168.1.10
@@ -159,10 +159,10 @@ This is a serious issue that requires manual recovery:
 ```bash
 # If you accidentally bootstrapped multiple nodes, you need to reset them
 # WARNING: This destroys all data on the node
-talosctl reset --nodes 192.168.1.11 --graceful
+talosctl reset --nodes 192.168.1.11 --graceful=false --reboot
 
 # Re-apply configuration
-talosctl apply-config --nodes 192.168.1.11 --file controlplane.yaml
+talosctl apply-config --insecure --nodes 192.168.1.11 --file controlplane.yaml
 
 # Wait for the node to come back, then it will join the existing cluster
 ```
