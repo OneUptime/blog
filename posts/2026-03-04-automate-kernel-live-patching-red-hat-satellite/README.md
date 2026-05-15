@@ -55,6 +55,7 @@ hammer content-view publish \
 hammer content-view version promote \
   --organization "Your Org" \
   --content-view "RHEL9-LivePatch" \
+  --version 1 \
   --to-lifecycle-environment "Production"
 ```
 
@@ -65,8 +66,8 @@ Use a remote execution job to install kpatch on all managed hosts.
 ```bash
 # Run a remote execution job to install kpatch-dnf on all hosts
 hammer job-invocation create \
-  --job-template "Run Command - Script Default" \
-  --inputs "command=dnf install -y kpatch-dnf" \
+  --job-template "Run Command - SSH Default" \
+  --inputs command="dnf install -y kpatch-dnf" \
   --search-query "os = RedHat 9" \
   --organization "Your Org"
 ```
@@ -82,9 +83,9 @@ hammer job-invocation create \
     state: present
 
 - name: Install available kernel live patches
-  shell: dnf update -y kpatch-patch-*
+  shell: dnf kpatch auto && dnf update -y "kpatch-patch"
   register: kpatch_result
-  changed_when: "'Nothing to do' not in kpatch_result.stdout"
+  changed_when: "'Nothing to do' not in kpatch_result.stdout and 'Nothing to do' not in kpatch_result.stderr"
 
 - name: Verify live patches are loaded
   command: kpatch list
@@ -100,9 +101,12 @@ hammer job-invocation create \
 
 ```bash
 # Create a recurring job in Satellite to apply live patches weekly
-hammer recurring-logic create \
+hammer job-invocation create \
+  --job-template "Run Command - SSH Default" \
+  --inputs command='dnf kpatch auto && dnf update -y "kpatch-patch"' \
+  --search-query "os = RedHat 9" \
   --cron-line "0 2 * * 1" \
-  --purpose "Weekly kernel live patch application"
+  --organization "Your Org"
 
 # Or use Satellite's content management to auto-apply errata
 # Navigate to: Content > Errata > Select security errata
@@ -112,14 +116,10 @@ hammer recurring-logic create \
 ## Monitor Live Patch Status
 
 ```bash
-# Check live patch status across all hosts
-hammer host list --search "installed_packages ~ kpatch-patch" \
-  --fields "Name,Operating System"
-
 # Run a status check across all hosts
 hammer job-invocation create \
-  --job-template "Run Command - Script Default" \
-  --inputs "command=kpatch list" \
+  --job-template "Run Command - SSH Default" \
+  --inputs command='rpm -qa "kpatch-patch*" && kpatch list' \
   --search-query "os = RedHat 9" \
   --organization "Your Org"
 ```
@@ -129,13 +129,14 @@ hammer job-invocation create \
 ```bash
 # List security errata that include live patches
 hammer erratum list \
-  --search "type = security and packages ~ kpatch" \
+  --search "type = security and package_name ~ kpatch-patch" \
   --organization "Your Org"
 
 # Check which hosts need live patches
 hammer host errata list \
   --host "server1.example.com" \
-  --search "type = security"
+  --type security \
+  --include-applicable true
 ```
 
 ## Reporting
@@ -143,9 +144,9 @@ hammer host errata list \
 ```bash
 # Generate a report of live patch compliance
 hammer report-template generate \
-  --name "Host - Installed Packages" \
-  --inputs "organization=Your Org" \
-  --output /tmp/kpatch-report.csv
+  --name "Host - All Installed Packages" \
+  --organization "Your Org" \
+  --path /tmp
 ```
 
 Automating kernel live patching through Satellite ensures consistent security coverage across your entire RHEL fleet with minimal manual effort and zero downtime.
