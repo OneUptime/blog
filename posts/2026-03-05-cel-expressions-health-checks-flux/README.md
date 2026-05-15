@@ -68,7 +68,7 @@ spec:
   healthCheckExprs:
     - apiVersion: databases.example.com/v1
       kind: PostgresCluster
-      failed: status.conditions.exists(e, e.type == 'Ready' && e.status == 'False')
+      inProgress: status.conditions.exists(e, e.type == 'Ready' && e.status == 'False')
       current: status.conditions.exists(e, e.type == 'Ready' && e.status == 'True')
 ```
 
@@ -94,7 +94,7 @@ status:
       message: "PostgreSQL cluster is running and accepting connections"
 ```
 
-If the custom resource has a `Ready` condition with status `True`, Flux considers it healthy. If the condition is `False`, Flux considers it still reconciling and will continue checking until the timeout expires. If the condition is missing or the resource uses a different status shape, define `healthCheckExprs` so Flux can evaluate the correct fields.
+If the custom resource has a `Ready` condition with status `True`, Flux considers it healthy. If the condition is `False`, Flux considers it still reconciling and will continue checking until the timeout expires. If the condition is missing, Flux may not be able to infer the intended status; if the resource uses a different status shape, define `healthCheckExprs` so Flux can evaluate the correct fields.
 
 ## Health Checks with Multiple Resources
 
@@ -139,7 +139,7 @@ spec:
   healthCheckExprs:
     - apiVersion: redis.example.com/v1
       kind: RedisCluster
-      failed: status.conditions.exists(e, e.type == 'Ready' && e.status == 'False')
+      inProgress: status.conditions.exists(e, e.type == 'Ready' && e.status == 'False')
       current: status.conditions.exists(e, e.type == 'Ready' && e.status == 'True')
 ```
 
@@ -191,7 +191,7 @@ spec:
   healthCheckExprs:
     - apiVersion: redis.example.com/v1
       kind: RedisCluster
-      failed: status.conditions.exists(e, e.type == 'Ready' && e.status == 'False')
+      inProgress: status.conditions.exists(e, e.type == 'Ready' && e.status == 'False')
       current: status.conditions.exists(e, e.type == 'Ready' && e.status == 'True')
 ```
 
@@ -243,7 +243,7 @@ spec:
   healthCheckExprs:
     - apiVersion: databases.example.com/v1
       kind: PostgresCluster
-      failed: status.conditions.exists(e, e.type == 'Ready' && e.status == 'False')
+      inProgress: status.conditions.exists(e, e.type == 'Ready' && e.status == 'False')
       current: status.conditions.exists(e, e.type == 'Ready' && e.status == 'True')
 ```
 
