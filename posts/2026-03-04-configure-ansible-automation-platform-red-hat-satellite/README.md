@@ -1,16 +1,16 @@
-# How to Configure Ansible Automation Platform with Red Hat Satellite
+# How to Configure Ansible Core on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Ansible, Red Hat Satellite, Integration
+Tags: RHEL, Ansible, Automation
 
-Description: Integrate Ansible Automation Platform with Red Hat Satellite for unified management.
+Description: Configure Ansible Core on RHEL for basic host management.
 
 ---
 
 ## Overview
 
-Integrate Ansible Automation Platform with Red Hat Satellite for unified management. Ansible provides agentless automation that connects to RHEL hosts over SSH and applies desired-state configuration.
+Configure Ansible Core on RHEL for basic host management. Ansible provides agentless automation that connects to RHEL hosts over SSH and applies desired-state configuration.
 
 ## Prerequisites
 
@@ -32,7 +32,7 @@ ansible --version
 
 ## Step 2 - Configure Inventory
 
-Create `/etc/ansible/hosts` or a local inventory file:
+Create a local `inventory.ini` file:
 
 ```ini
 [webservers]
@@ -62,14 +62,14 @@ Create a playbook YAML file:
     - name: Ensure packages are installed
       ansible.builtin.dnf:
         name:
-          - vim
+          - vim-enhanced
           - tmux
-          - htop
+          - chrony
         state: present
 
     - name: Ensure services are running
-      ansible.builtin.systemd:
-        name: sshd
+      ansible.builtin.systemd_service:
+        name: chronyd
         state: started
         enabled: true
 ```
@@ -89,9 +89,9 @@ ansible-playbook -i inventory.ini playbook.yml --check
 ## Step 5 - Verify Results
 
 ```bash
-ansible all -i inventory.ini -m command -a "rpm -q htop"
+ansible all -i inventory.ini -m command -a "rpm -q chrony"
 ```
 
 ## Summary
 
-You have learned how to configure ansible automation platform with red hat satellite. Ansible's agentless architecture and declarative playbooks make it ideal for managing RHEL systems at scale.
+You have learned how to configure Ansible Core on RHEL. Ansible's agentless architecture and declarative playbooks make it ideal for managing RHEL systems at scale.
