@@ -8,7 +8,7 @@ Description: Convert Oracle Linux servers to RHEL in place using the Convert2RHE
 
 ---
 
-Convert2RHEL supports converting Oracle Linux 7, 8, and 9 to the corresponding RHEL version. The process replaces Oracle-specific packages with RHEL equivalents and registers the system with Red Hat Subscription Manager.
+Convert2RHEL supports converting specific minor releases of Oracle Linux 7, 8, and 9 to the corresponding supported RHEL minor release. The process replaces Oracle-specific packages with RHEL equivalents and registers the system with Red Hat Subscription Manager.
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@ Convert2RHEL supports converting Oracle Linux 7, 8, and 9 to the corresponding R
 # Verify your Oracle Linux version
 
 cat /etc/oracle-release
-# Oracle Linux Server release 8.9
+# Oracle Linux Server release 8.10
 
 # Check which kernel is running
 uname -r
@@ -24,6 +24,7 @@ uname -r
 # Convert2RHEL will switch this to the RHEL kernel
 
 # Update all packages to the latest Oracle Linux versions
+# Use yum instead of dnf on Oracle Linux 7
 sudo dnf update -y
 sudo reboot
 ```
@@ -36,8 +37,8 @@ If you are running the UEK kernel, switch to the Red Hat Compatible Kernel befor
 # Install the RHCK kernel if not already installed
 sudo dnf install kernel
 
-# Set RHCK as the default boot kernel
-sudo grubby --set-default /boot/vmlinuz-$(rpm -q kernel --qf '%{VERSION}-%{RELEASE}.%{ARCH}\n' | tail -1)
+# Set the latest RHCK kernel as the default boot kernel
+sudo grubby --set-default $(ls /boot/vmlinuz-* | grep -v 'uek' | sort -V | tail -1)
 
 # Reboot into RHCK
 sudo reboot
@@ -51,8 +52,11 @@ uname -r
 
 ```bash
 # Add the Convert2RHEL repository for Oracle Linux 8
+sudo curl -o /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release \
+  https://security.access.redhat.com/data/fd431d51.txt
+
 sudo curl -o /etc/yum.repos.d/convert2rhel.repo \
-  https://ftp.redhat.com/redhat/convert2rhel/8/convert2rhel.repo
+  https://cdn-public.redhat.com/content/public/repofiles/convert2rhel-for-rhel-8-x86_64.repo
 
 # Install the tool
 sudo dnf install convert2rhel -y
@@ -61,8 +65,17 @@ sudo dnf install convert2rhel -y
 ## Running the Conversion
 
 ```bash
-# Convert using an activation key (recommended)
-sudo convert2rhel --org your-org-id --activationkey your-key -y
+# Configure RHSM registration with an activation key
+sudo vi /etc/convert2rhel.ini
+# [subscription_manager]
+# org = your-org-id
+# activation_key = your-key
+
+# Run and review the pre-conversion analysis first
+sudo convert2rhel analyze
+
+# Start the conversion
+sudo convert2rhel -y
 
 # The tool will:
 # 1. Verify system eligibility
@@ -80,7 +93,7 @@ sudo reboot
 
 # Verify the conversion
 cat /etc/redhat-release
-# Red Hat Enterprise Linux release 8.9 (Ootpa)
+# Red Hat Enterprise Linux release 8.10 (Ootpa)
 
 # Check for remaining Oracle Linux packages
 rpm -qa | grep -i oracle
@@ -100,7 +113,7 @@ sudo subscription-manager status
 
 ## Handling Third-Party Packages
 
-If you have Oracle-specific tools like Oracle Instant Client, they will continue to work on RHEL:
+If you have Oracle-specific tools like Oracle Instant Client, they should continue to work on RHEL as long as their required dependencies are still present:
 
 ```bash
 # Verify Oracle Instant Client still works
@@ -116,8 +129,7 @@ cat /var/log/convert2rhel/convert2rhel.log
 
 # Common issue: Third-party repos with unsigned packages
 # Fix: Disable third-party repos during conversion
-sudo convert2rhel --org your-org --activationkey your-key \
-  --disablerepo="ol8_developer_EPEL" -y
+sudo convert2rhel --disablerepo="ol8_developer_EPEL" -y
 ```
 
 After conversion, your Oracle Linux server is a fully supported RHEL system with access to Red Hat updates and support.
