@@ -8,11 +8,11 @@ Description: Use the ComplianceAsCode project's STIG Ansible role to apply and m
 
 ---
 
-The ComplianceAsCode project (formerly known as SCAP Security Guide) is a community effort that produces security content for automated compliance. It includes Ansible roles that can be used directly to apply STIG controls to RHEL systems. Unlike standalone playbooks, roles are modular and easier to integrate into your existing Ansible infrastructure.
+The ComplianceAsCode project (formerly known as SCAP Security Guide) is a community effort that produces security content for automated compliance. It includes generated Ansible playbooks and published Ansible roles that can be used to apply STIG controls to RHEL systems. Unlike standalone playbooks, roles are modular and easier to integrate into your existing Ansible infrastructure.
 
 ## What Is ComplianceAsCode
 
-ComplianceAsCode is the upstream project behind the scap-security-guide RPM. It produces SCAP content, Ansible playbooks, Ansible roles, bash scripts, and Kickstart files for multiple compliance profiles. The STIG role it produces is specifically designed to apply all DISA STIG controls to RHEL.
+ComplianceAsCode is the upstream project behind the scap-security-guide RPM. It produces SCAP content, Ansible playbooks, published Ansible roles, bash scripts, and Kickstart files for multiple compliance profiles. The generated RHEL STIG automation is designed to apply the DISA STIG controls selected by the RHEL STIG profile.
 
 ```mermaid
 flowchart TD
@@ -27,40 +27,46 @@ flowchart TD
     G --> J[Apply to RHEL]
 ```
 
-## Install the STIG Ansible Role
+## Install the STIG Ansible Content
 
 ### From the RPM package
 
-The easiest method on RHEL:
+The easiest method on RHEL installs the generated playbooks:
 
 ```bash
 # Install scap-security-guide which includes the Ansible content
 
 dnf install -y scap-security-guide ansible-core
 
-# The role is installed to:
+# The generated playbooks are installed to:
 ls /usr/share/scap-security-guide/ansible/
 
-# Find the STIG playbook that uses the role
+# Find the generated STIG playbook
 cat /usr/share/scap-security-guide/ansible/rhel9-playbook-stig.yml | head -20
 ```
 
 ### From the ComplianceAsCode GitHub Repository
 
-For the latest version:
+For the latest generated playbooks:
 
 ```bash
 # Clone the repository
 git clone https://github.com/ComplianceAsCode/content.git /opt/complianceascode
 
-# The Ansible roles are generated during the build process
+# The Ansible playbooks are generated during the build process
 cd /opt/complianceascode
-dnf install -y cmake openscap-utils python3-pyyaml python3-jinja2
+dnf install -y cmake make openscap-utils openscap-scanner python3 python3-setuptools
 
 # Build the RHEL content
 mkdir build && cd build
 cmake ..
 make rhel9
+```
+
+For the reusable generated role, install the published role:
+
+```bash
+ansible-galaxy install RedHatOfficial.rhel9_stig
 ```
 
 ## Using the Role in Your Playbooks
@@ -75,7 +81,7 @@ make rhel9
   become: yes
 
   roles:
-    - role: rhel9-role-stig
+    - role: RedHatOfficial.rhel9_stig
 ```
 
 ### Using the pre-built playbook
@@ -111,7 +117,7 @@ The STIG role uses variables to control which rules are applied. You can overrid
     var_accounts_maximum_age_login_defs: 60
 
   roles:
-    - role: rhel9-role-stig
+    - role: RedHatOfficial.rhel9_stig
 ```
 
 ## Selectively Apply STIG Controls Using Tags
@@ -127,7 +133,7 @@ ansible-playbook -i inventory.ini \
 # Skip specific controls that break your environment
 ansible-playbook -i inventory.ini \
   /usr/share/scap-security-guide/ansible/rhel9-playbook-stig.yml \
-  --skip-tags "enable_fips_mode"
+  --skip-tags "fips_custom_stig_sub_policy"
 ```
 
 ## Integrate with Your Existing Ansible Structure
@@ -161,7 +167,7 @@ Add the STIG role to your server provisioning workflow:
     - role: base-config
     - role: monitoring-agent
     # Then apply STIG hardening
-    - role: rhel9-role-stig
+    - role: RedHatOfficial.rhel9_stig
 
   post_tasks:
     - name: Run STIG compliance scan
@@ -186,7 +192,7 @@ Add the STIG role to your server provisioning workflow:
 The ComplianceAsCode project releases updates regularly:
 
 ```bash
-# Update the RPM to get the latest role
+# Update the RPM to get the latest packaged playbooks and SCAP content
 dnf update -y scap-security-guide
 
 # Check the installed version
