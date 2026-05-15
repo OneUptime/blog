@@ -88,7 +88,7 @@ firewall-cmd --zone=public --list-services
 
 ## Adding Custom Port Rules
 
-If the predefined service doesn't exist for your application, you can add a port directly. In Cockpit, click "Add ports" within a zone and specify:
+If the predefined service doesn't exist for your application, you can add a port directly. In Cockpit, click "Add Services" within a zone, choose "Custom Ports," and specify:
 
 - **Port number** or range (e.g., 8080 or 3000-3010)
 - **Protocol** - TCP or UDP
@@ -233,7 +233,7 @@ Rich rules are more advanced and may not be fully manageable through Cockpit's U
 A quick way to verify your firewall configuration:
 
 ```bash
-# Full status dump
+# Check whether firewalld is running
 sudo firewall-cmd --state
 
 # List everything in the active zone
@@ -252,8 +252,7 @@ Enable logging to track what the firewall is blocking:
 
 ```bash
 # Enable logging for denied packets
-sudo firewall-cmd --set-log-denied=all --permanent
-sudo firewall-cmd --reload
+sudo firewall-cmd --set-log-denied=all
 
 # Check the logs
 journalctl -k --no-pager | grep "FINAL_REJECT"
