@@ -8,7 +8,7 @@ Description: Migrate workloads from Amazon Linux 2 to RHEL on AWS using a parall
 
 ---
 
-Amazon Linux 2 reaches end of standard support in June 2025. If you need a commercially supported OS on AWS, RHEL is a strong choice. Since there is no in-place conversion from Amazon Linux to RHEL, you need to launch a new RHEL instance and migrate your workloads.
+Amazon Linux 2 reaches end of support on June 30, 2026. If you need a commercially supported OS on AWS, RHEL is a strong choice. Since there is no supported in-place conversion from Amazon Linux to RHEL, you need to launch a new RHEL instance and migrate your workloads.
 
 ## Step 1: Audit the Amazon Linux 2 Instance
 
@@ -21,11 +21,17 @@ rpm -qa --queryformat '%{NAME}\n' | sort > /tmp/al2-packages.txt
 systemctl list-units --type=service --state=running > /tmp/al2-services.txt
 
 # Document instance metadata
-curl -s http://169.254.169.254/latest/meta-data/instance-type
-curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone
+TOKEN=$(curl -s -X PUT http://169.254.169.254/latest/api/token \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/instance-type
+curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/placement/availability-zone
 
 # Export security group and IAM role info
-aws ec2 describe-instances --instance-ids $(curl -s http://169.254.169.254/latest/meta-data/instance-id) \
+INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/instance-id)
+aws ec2 describe-instances --instance-ids "$INSTANCE_ID" \
   --query 'Reservations[0].Instances[0].[SecurityGroups,IamInstanceProfile]'
 ```
 
@@ -52,8 +58,9 @@ aws ec2 run-instances \
 ## Step 3: Install Equivalent Packages on RHEL
 
 ```bash
-# Register with Red Hat (or use RHEL BYOS AMI with Cloud Access)
-sudo subscription-manager register --auto-attach
+# Register with Red Hat if you are using BYOS or Cloud Access.
+# RHEL pay-as-you-go AMIs on AWS use RHUI repositories instead.
+sudo subscription-manager register
 
 # Amazon Linux 2 extras -> RHEL Application Streams
 # Map your AL2 extras to RHEL modules
@@ -81,10 +88,14 @@ aws ec2 attach-volume --volume-id vol-1234567890abcdef0 \
 
 # On RHEL: Mount the volume
 sudo mkdir -p /data
-sudo mount /dev/xvdf1 /data
+lsblk
+sudo mount /dev/nvme1n1p1 /data
 
 # Add to fstab
-echo "UUID=$(sudo blkid -s UUID -o value /dev/xvdf1) /data xfs defaults 0 2" | sudo tee -a /etc/fstab
+DEVICE=/dev/nvme1n1p1
+UUID=$(sudo blkid -s UUID -o value "$DEVICE")
+FSTYPE=$(sudo blkid -s TYPE -o value "$DEVICE")
+echo "UUID=$UUID /data $FSTYPE defaults,nofail 0 2" | sudo tee -a /etc/fstab
 ```
 
 ## Step 5: Migrate Application Configuration
