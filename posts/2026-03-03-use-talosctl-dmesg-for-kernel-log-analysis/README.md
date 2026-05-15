@@ -40,7 +40,7 @@ To watch kernel messages as they happen:
 
 ```bash
 # Follow kernel messages in real time (like tail -f)
-talosctl dmesg --nodes <node-ip> --follow
+talosctl dmesg --nodes <node-ip> --follow --tail
 ```
 
 This is particularly useful when you are actively troubleshooting an issue. Keep this running in one terminal while reproducing the problem in another.
@@ -69,7 +69,7 @@ talosctl dmesg --nodes <node-ip> | grep -i "oom\|out of memory"
 
 ### By Time
 
-Kernel messages include timestamps. You can use these to focus on a specific time window:
+Kernel messages include timestamps. You can use these, or boot markers, to focus on a specific part of the log:
 
 ```bash
 # Look at messages from the last boot
@@ -126,7 +126,7 @@ talosctl dmesg --nodes <node-ip> | grep -i "oom\|killed process\|out of memory"
 talosctl dmesg --nodes <node-ip> | grep -i "memory\|hugepages\|swap"
 ```
 
-OOM kills happen when the system runs out of available memory. The kernel selects a process to kill based on an OOM score. In Kubernetes clusters, this often means a pod consumed more memory than its limits allowed.
+OOM kills happen when the system or a memory cgroup runs out of available memory. The kernel selects a process to kill based on OOM scoring and cgroup constraints. In Kubernetes clusters, this often means a pod exceeded its memory limit or the node experienced memory pressure.
 
 ### Network Interface Issues
 
@@ -196,14 +196,14 @@ Watch kernel messages during an upgrade to catch driver or hardware issues:
 
 ```bash
 # Follow dmesg during an upgrade
-talosctl dmesg --nodes <node-ip> --follow
+talosctl dmesg --nodes <node-ip> --follow --tail
 ```
 
 In another terminal:
 
 ```bash
 # Start the upgrade
-talosctl upgrade --nodes <node-ip> --image ghcr.io/siderolabs/installer:v1.7.0
+talosctl upgrade --nodes <node-ip> --image ghcr.io/siderolabs/installer:<target-version>
 ```
 
 ### During Node Bootstrap
@@ -212,7 +212,7 @@ When a new node joins the cluster, kernel messages show hardware initialization:
 
 ```bash
 # Watch a new node's kernel messages during bootstrap
-talosctl dmesg --nodes <new-node-ip> --follow
+talosctl dmesg --nodes <new-node-ip> --follow --tail
 ```
 
 ## Kernel Log Ring Buffer Size
@@ -221,6 +221,7 @@ The kernel ring buffer has a limited size. Very old messages are overwritten by 
 
 ```bash
 # Periodically capture dmesg to a file
+NODE_IP=<node-ip>
 DATE=$(date +%Y%m%d_%H%M%S)
 talosctl dmesg --nodes <node-ip> > "/tmp/dmesg-${NODE_IP}-${DATE}.txt"
 ```
@@ -233,7 +234,7 @@ While `talosctl dmesg` is great for manual investigation, you should also set up
 
 ```bash
 # Simple script to alert on critical kernel messages
-talosctl dmesg --nodes <node-ip> --follow | while read line; do
+talosctl dmesg --nodes <node-ip> --follow --tail | while read line; do
     if echo "$line" | grep -qi "panic\|oom\|i/o error\|hardware error"; then
         echo "ALERT on <node-ip>: $line"
         # Send alert notification
