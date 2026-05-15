@@ -90,8 +90,8 @@ RHEL System Roles are Ansible roles maintained by Red Hat for consistent configu
 sudo dnf install rhel-system-roles
 
 # List available roles
-ls /usr/share/ansible/roles/
-# Includes: rhel-system-roles.timesync, rhel-system-roles.firewall, etc.
+ls /usr/share/ansible/collections/ansible_collections/redhat/rhel_system_roles/roles/
+# Includes: timesync, firewall, selinux, etc.
 ```
 
 Create a playbook that applies your baseline:
@@ -102,20 +102,20 @@ Create a playbook that applies your baseline:
 - hosts: all
   become: true
   roles:
-    - role: rhel-system-roles.timesync
+    - role: redhat.rhel_system_roles.timesync
       vars:
         timesync_ntp_servers:
           - hostname: time.example.com
             iburst: yes
 
-    - role: rhel-system-roles.firewall
+    - role: redhat.rhel_system_roles.firewall
       vars:
         firewall:
           - service: ssh
             state: enabled
             permanent: yes
 
-    - role: rhel-system-roles.selinux
+    - role: redhat.rhel_system_roles.selinux
       vars:
         selinux_state: enforcing
 ```
