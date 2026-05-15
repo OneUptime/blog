@@ -32,6 +32,12 @@ Select the tool that best matches your recovery requirements.
 
 ## Step 2 - Create the Backup
 
+Create the backup directory:
+
+```bash
+sudo mkdir -p /backups/latest
+```
+
 Using tar for a full backup:
 
 ```bash
@@ -47,6 +53,14 @@ sudo rsync -aAXv --delete / /backups/latest/ --exclude={/proc,/sys,/dev,/run,/tm
 ## Step 3 - Automate with Cron
 
 ```bash
+sudo tee /usr/local/bin/backup.sh > /dev/null <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+mkdir -p /backups/latest
+rsync -aAXv --delete / /backups/latest/ --exclude={/proc,/sys,/dev,/run,/tmp,/backups}
+EOF
+sudo chmod 0750 /usr/local/bin/backup.sh
 echo "0 2 * * * root /usr/local/bin/backup.sh" | sudo tee /etc/cron.d/daily-backup
 ```
 
@@ -56,8 +70,8 @@ Always verify that backups are readable:
 
 ```bash
 # For tar
-
-tar tzf /backups/full-backup-*.tar.gz | head -20
+latest_tar=$(ls -t /backups/full-backup-*.tar.gz | head -n 1)
+tar tzf "$latest_tar" | head -20
 
 # For rsync
 ls -la /backups/latest/
@@ -69,7 +83,9 @@ Periodically restore backups to a test environment to confirm they work:
 
 ```bash
 # Restore a single file from tar
-tar xzf /backups/full-backup-*.tar.gz -C /tmp/restore-test etc/hostname
+mkdir -p /tmp/restore-test
+latest_tar=$(ls -t /backups/full-backup-*.tar.gz | head -n 1)
+tar xzf "$latest_tar" -C /tmp/restore-test etc/hostname
 ```
 
 ## Summary
