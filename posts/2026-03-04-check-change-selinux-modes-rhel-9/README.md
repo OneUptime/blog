@@ -126,10 +126,11 @@ SELINUX=permissive
 ### Disable SELinux (Not Recommended)
 
 ```bash
-SELINUX=disabled
+# Disable SELinux on RHEL 9
+sudo grubby --update-kernel ALL --args selinux=0
 ```
 
-After changing the config file, reboot for the change to take effect:
+After changing the config file or kernel command line, reboot for the change to take effect:
 
 ```bash
 sudo reboot
@@ -154,22 +155,27 @@ If SELinux was previously disabled and you want to re-enable it, there is an ext
 sudo vi /etc/selinux/config
 # Set: SELINUX=permissive
 
-# 2. Create the relabel trigger file
-sudo touch /.autorelabel
+# 2. Remove the disabled kernel parameter and boot permissive
+sudo grubby --update-kernel ALL --remove-args selinux
+sudo grubby --update-kernel ALL --args enforcing=0
 
-# 3. Reboot
+# 3. Create the relabel trigger file
+sudo fixfiles -F onboot
+
+# 4. Reboot
 sudo reboot
 ```
 
 The system will relabel all files during boot (this can take a while on large filesystems). After relabeling completes:
 
 ```bash
-# 4. Verify everything works in permissive mode
+# 5. Verify everything works in permissive mode
 sudo ausearch -m avc -ts recent
 
-# 5. If no critical denials, switch to enforcing
+# 6. If no critical denials, switch to enforcing
 sudo vi /etc/selinux/config
 # Set: SELINUX=enforcing
+sudo grubby --update-kernel ALL --remove-args enforcing
 sudo reboot
 ```
 
