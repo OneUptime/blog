@@ -162,6 +162,7 @@ Device paths can change between reboots, so UUID or label is preferred.
 ### Test the fstab Entry
 
 ```bash
+sudo systemctl daemon-reload
 sudo umount /data
 sudo mount -a
 df -Th /data
@@ -183,15 +184,14 @@ sudo chmod 755 /data
 | `defaults` | rw, suid, dev, exec, auto, nouser, async |
 | `noatime` | Do not update access times (improves performance) |
 | `nodiratime` | Do not update directory access times |
-| `nobarrier` | Disable write barriers (use only with battery-backed cache) |
-| `logbufs=8` | Increase log buffers for better write performance |
+| `logbufs=8` | Use eight in-memory log buffers (the default on current XFS) |
 | `inode64` | Allow inodes to be allocated anywhere (default on 64-bit) |
 | `allocsize=64k` | Set buffered I/O allocation size |
 
 Example with performance options:
 
 ```bash
-echo 'UUID=your-uuid /data xfs defaults,noatime,logbufs=8 0 0' | sudo tee -a /etc/fstab
+echo 'UUID=your-uuid /data xfs defaults,noatime 0 0' | sudo tee -a /etc/fstab
 ```
 
 ## Creating XFS on LVM
