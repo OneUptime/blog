@@ -106,23 +106,26 @@ talosctl -n 192.168.1.10 logs kubelet --tail 20 -f
 
 ## Viewing Kubernetes Control Plane Logs
 
-Talos runs Kubernetes control plane components as static pods, but you can view their logs through `talosctl` as well:
+Talos runs Kubernetes control plane components as static pods, but you can view their container logs through `talosctl` as well. First list the Kubernetes containers, then pass the full container name to `talosctl logs -k`:
 
 ```bash
+# List Kubernetes containers on the node
+talosctl -n 192.168.1.10 containers -k
+
 # View API server logs
-talosctl -n 192.168.1.10 logs kube-apiserver
+talosctl -n 192.168.1.10 logs -k <kube-apiserver-container>
 
 # View controller manager logs
-talosctl -n 192.168.1.10 logs kube-controller-manager
+talosctl -n 192.168.1.10 logs -k <kube-controller-manager-container>
 
 # View scheduler logs
-talosctl -n 192.168.1.10 logs kube-scheduler
+talosctl -n 192.168.1.10 logs -k <kube-scheduler-container>
 
 # View kube-proxy logs (if using kube-proxy)
-talosctl -n 192.168.1.10 logs kube-proxy
+talosctl -n 192.168.1.10 logs -k <kube-proxy-container>
 ```
 
-These are accessible through `talosctl` even though they technically run as containers. This is because Talos manages the control plane lifecycle directly rather than leaving it to kubelet alone.
+These are accessible through `talosctl` even though they run as containers. This is because the `-k` flag tells `talosctl logs` to use the Kubernetes containerd namespace.
 
 ## Piping and Filtering Log Output
 
@@ -180,31 +183,28 @@ API server log entries help diagnose authentication, authorization, and admissio
 
 ```bash
 # Check for authentication failures
-talosctl -n 192.168.1.10 logs kube-apiserver | grep -i "unauthorized\|forbidden"
+talosctl -n 192.168.1.10 logs -k <kube-apiserver-container> | grep -i "unauthorized\|forbidden"
 
 # Look for admission webhook timeouts
-talosctl -n 192.168.1.10 logs kube-apiserver | grep -i "webhook\|admission"
+talosctl -n 192.168.1.10 logs -k <kube-apiserver-container> | grep -i "webhook\|admission"
 
 # Find certificate-related errors
-talosctl -n 192.168.1.10 logs kube-apiserver | grep -i "certificate\|tls\|x509"
+talosctl -n 192.168.1.10 logs -k <kube-apiserver-container> | grep -i "certificate\|tls\|x509"
 ```
 
-## Using JSON Output
+## Programmatic Log Processing
 
-For programmatic processing, you can request JSON-formatted output:
+The `talosctl logs` command supports flags such as `--tail`, `--follow`, and `-k`, but it does not provide a JSON output mode. For programmatic checks, process the text output directly or send logs to an external collector in the `json_lines` format:
 
-```bash
-# Get logs in JSON format for parsing
-talosctl -n 192.168.1.10 logs kubelet -o json
-
-# Parse JSON logs with jq
-talosctl -n 192.168.1.10 logs kubelet -o json | jq '.msg'
-
-# Filter by log level using jq
-talosctl -n 192.168.1.10 logs kubelet -o json | jq 'select(.level == "error")'
+```yaml
+machine:
+  logging:
+    destinations:
+      - endpoint: "tcp://log-collector:5140"
+        format: json_lines
 ```
 
-JSON output is particularly useful when you want to build scripts that automatically detect and report problems.
+Structured forwarding is particularly useful when you want to build scripts that automatically detect and report problems.
 
 ## Viewing Logs from the Talos Dashboard
 
@@ -219,7 +219,7 @@ The dashboard shows a live view of all services, their health status, and scroll
 
 ## Log Retention and Buffer Sizes
 
-Talos keeps a limited buffer of logs in memory. The exact size depends on the service and how verbose it is, but as a general rule, very active services like kubelet and API server will have their oldest logs rotated out faster than quiet services.
+Talos writes service logs under `/var/log` on the node, and `talosctl logs` reads the available service or container log history from the node. Very active services can still rotate through local log history faster than quiet services.
 
 If you need long-term log retention, configure log forwarding to an external system:
 
@@ -232,6 +232,6 @@ machine:
         format: json_lines
 ```
 
-This ensures that even if the in-memory buffer fills up, you have a complete log history available in your external log storage.
+This ensures that even if local log history rotates, you have a more complete log history available in your external log storage.
 
 The `talosctl logs` command is the foundation of Talos Linux troubleshooting. Getting comfortable with it, including the various flags for following, tailing, and formatting output, will make you much more effective at diagnosing issues in your Talos-managed Kubernetes clusters.
