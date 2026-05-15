@@ -30,14 +30,16 @@ BACKUP_URL=nfs://nfs-server.example.com/exports/rear
 
 # NFS mount options
 BACKUP_OPTIONS="nfsvers=4,nolock"
+OUTPUT_OPTIONS="$BACKUP_OPTIONS"
 
-# Keep 3 previous backup copies
-NETFS_KEEP_OLD_BACKUP_COPY=3
+# Keep the previous backup copy
+NETFS_KEEP_OLD_BACKUP_COPY=y
 
 # Exclude unnecessary mount points
-EXCLUDE_MOUNTPOINTS=( /tmp /run/media )
+EXCLUDE_MOUNTPOINTS=( /tmp /run/media /data )
 
 # Exclude large data volumes that have their own backup
+# Also exclude the corresponding mount points above
 EXCLUDE_VG=( data_vg )
 ```
 
@@ -54,13 +56,13 @@ BACKUP_URL=cifs://smb-server.example.com/backup
 
 # CIFS credentials
 BACKUP_OPTIONS="cred=/etc/rear/cifs_credentials"
+OUTPUT_OPTIONS="$BACKUP_OPTIONS"
 ```
 
 Create the credentials file:
 
 ```bash
-# /etc/rear/cifs_credentials
-sudo cat > /etc/rear/cifs_credentials << 'CRED'
+sudo tee /etc/rear/cifs_credentials > /dev/null << 'CRED'
 username=backup_user
 password=SecurePass123
 domain=EXAMPLE
@@ -99,8 +101,8 @@ Configure ReaR to output PXE boot files for network recovery:
 ```bash
 # /etc/rear/local.conf - PXE output
 OUTPUT=PXE
-OUTPUT_PREFIX_PXE=rear-$(hostname)
-PXE_TFTP_URL=nfs://pxe-server.example.com/tftpboot
+OUTPUT_PREFIX_PXE=rear-$HOSTNAME
+PXE_TFTP_UPLOAD_URL=nfs://pxe-server.example.com/tftpboot
 PXE_CONFIG_URL=nfs://pxe-server.example.com/tftpboot/pxelinux.cfg
 ```
 
