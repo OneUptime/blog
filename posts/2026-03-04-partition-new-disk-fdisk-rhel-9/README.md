@@ -83,7 +83,7 @@ For MBR partition tables, you can have up to four primary partitions. If you nee
 
 ## Step 6 - Change Partition Type (Optional)
 
-By default, new partitions get type 83 (Linux). To change it:
+On MBR partition tables, new Linux partitions commonly use type 83 (Linux). To change it:
 
 ```bash
 # Change partition type
@@ -92,7 +92,7 @@ t     # Change type
 8e    # Linux LVM type code
 ```
 
-Common type codes:
+Common MBR type codes:
 - `83` - Linux filesystem
 - `82` - Linux swap
 - `8e` - Linux LVM
@@ -185,11 +185,11 @@ The format is `start,size,type`. Empty fields use defaults.
 
 MBR partition tables have real limitations:
 
-- Maximum disk size: 2 TB
+- Maximum partition size: 2 TiB on 512-byte sector disks
 - Maximum four primary partitions
 - Extended/logical partitions add complexity
 
-For disks over 2 TB or when you need more than four partitions, use GPT with parted instead.
+For large disks or when you need more than four partitions without extended/logical partitions, use GPT with parted instead.
 
 ## Wrap-Up
 
