@@ -76,7 +76,7 @@ spec:
 
 ## Step 3: Debug HTTPS Authentication
 
-For GitRepository sources using HTTPS URLs, the secret should contain `username` and `password` fields.
+For GitRepository sources using HTTPS URLs with basic authentication, the secret should contain `username` and `password` fields.
 
 ```bash
 # Check the secret keys (do not print values in shared environments)
