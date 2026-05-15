@@ -60,7 +60,7 @@ sudo podman ps
 sudo dnf install -y mariadb
 
 # Connect to MariaDB (port 3306)
-mysql -h 127.0.0.1 -P 3306 -u root -p
+mariadb -h 127.0.0.1 -P 3306 -u root -p
 # Enter mariadbRootPass123
 
 # Connect to MySQL (port 3307)
@@ -68,25 +68,69 @@ mysql -h 127.0.0.1 -P 3307 -u root -p
 # Enter mysqlRootPass123
 
 # Or use the containerized client directly
-sudo podman exec -it mariadb mysql -u root -p
+sudo podman exec -it mariadb mariadb -u root -p
 sudo podman exec -it mysql mysql -u root -p
 ```
 
 ## Make Containers Start on Boot
 
 ```bash
-# Generate systemd unit files for both containers
-sudo podman generate systemd --name mariadb --files --new
-sudo podman generate systemd --name mysql --files --new
+# Create Quadlet systemd unit files for both containers
+sudo mkdir -p /etc/containers/systemd
 
-# Move the unit files
-sudo mv container-mariadb.service /etc/systemd/system/
-sudo mv container-mysql.service /etc/systemd/system/
+sudo tee /etc/containers/systemd/mariadb.container << 'EOF'
+[Unit]
+Description=MariaDB container
+Wants=network-online.target
+After=network-online.target
 
-# Enable them
+[Container]
+ContainerName=mariadb
+Image=docker.io/library/mariadb:11
+PublishPort=3306:3306
+Environment=MARIADB_ROOT_PASSWORD=mariadbRootPass123
+Environment=MARIADB_DATABASE=webapp
+Environment=MARIADB_USER=webuser
+Environment=MARIADB_PASSWORD=webpass123
+Volume=/opt/mariadb/data:/var/lib/mysql:Z
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo tee /etc/containers/systemd/mysql.container << 'EOF'
+[Unit]
+Description=MySQL container
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+ContainerName=mysql
+Image=docker.io/library/mysql:8.0
+PublishPort=3307:3306
+Environment=MYSQL_ROOT_PASSWORD=mysqlRootPass123
+Environment=MYSQL_DATABASE=analytics
+Environment=MYSQL_USER=analyticsuser
+Environment=MYSQL_PASSWORD=analyticspass123
+Volume=/opt/mysql/data:/var/lib/mysql:Z
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Remove the manually started containers so systemd can manage them
+sudo podman rm -f mariadb mysql
+
+# Reload systemd and start them
 sudo systemctl daemon-reload
-sudo systemctl enable container-mariadb.service
-sudo systemctl enable container-mysql.service
+sudo systemctl start mariadb.service
+sudo systemctl start mysql.service
 ```
 
 ## Configure Custom Settings
@@ -101,15 +145,9 @@ max_connections = 100
 slow_query_log = 1
 EOF
 
-# Recreate the MariaDB container with the config mount
-sudo podman stop mariadb && sudo podman rm mariadb
-sudo podman run -d \
-    --name mariadb \
-    -p 3306:3306 \
-    -e MARIADB_ROOT_PASSWORD=mariadbRootPass123 \
-    -v /opt/mariadb/data:/var/lib/mysql:Z \
-    -v /opt/mariadb/conf:/etc/mysql/conf.d:Z \
-    docker.io/library/mariadb:11
+# Add the config mount to the MariaDB Quadlet file
+sudo sed -i '/Volume=\/opt\/mariadb\/data/a Volume=/opt/mariadb/conf:/etc/mysql/conf.d:Z' \
+    /etc/containers/systemd/mariadb.container
 
 # Create custom MySQL config
 sudo mkdir -p /opt/mysql/conf
@@ -120,27 +158,29 @@ max_connections = 100
 slow_query_log = 1
 EOF
 
-# Recreate the MySQL container with the config mount
-sudo podman stop mysql && sudo podman rm mysql
-sudo podman run -d \
-    --name mysql \
-    -p 3307:3306 \
-    -e MYSQL_ROOT_PASSWORD=mysqlRootPass123 \
-    -v /opt/mysql/data:/var/lib/mysql:Z \
-    -v /opt/mysql/conf:/etc/mysql/conf.d:Z \
-    docker.io/library/mysql:8.0
+# Add the config mount to the MySQL Quadlet file
+sudo sed -i '/Volume=\/opt\/mysql\/data/a Volume=/opt/mysql/conf:/etc/mysql/conf.d:Z' \
+    /etc/containers/systemd/mysql.container
+
+# Reload systemd and restart both containers
+sudo systemctl daemon-reload
+sudo systemctl restart mariadb.service
+sudo systemctl restart mysql.service
 ```
 
 ## Back Up Both Databases
 
 ```bash
+# Create the backup directory
+sudo mkdir -p /backup
+
 # Back up MariaDB
-sudo podman exec mariadb mysqldump -u root -pmariadbRootPass123 \
-    --all-databases > /backup/mariadb_all.sql
+sudo sh -c 'podman exec mariadb mariadb-dump -u root -pmariadbRootPass123 \
+    --all-databases > /backup/mariadb_all.sql'
 
 # Back up MySQL
-sudo podman exec mysql mysqldump -u root -pmysqlRootPass123 \
-    --all-databases > /backup/mysql_all.sql
+sudo sh -c 'podman exec mysql mysqldump -u root -pmysqlRootPass123 \
+    --all-databases > /backup/mysql_all.sql'
 ```
 
 ## Open Firewall Ports
