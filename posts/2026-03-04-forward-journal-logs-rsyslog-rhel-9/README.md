@@ -39,17 +39,22 @@ The two work together: journald collects everything, and rsyslog can read from t
 
 ## Step 3 - Apply the Configuration
 
-To forward journal logs to rsyslog, you need to edit the appropriate configuration files. The main files are:
+On RHEL, rsyslog normally reads journal entries through its `imjournal` input. Verify that `/etc/rsyslog.conf` contains an `imjournal` module line like this:
 
-- `/etc/rsyslog.conf` and `/etc/rsyslog.d/*.conf` for rsyslog
-- `/etc/systemd/journald.conf` for journald
+```conf
+module(load="imjournal" StateFile="imjournal.state")
+```
+
+If your system instead uses journald socket forwarding, configure `ForwardToSyslog=yes` in `/etc/systemd/journald.conf` and ensure rsyslog is reading the system log socket. Do not enable both methods unless you have checked for duplicate messages.
+
+Use `/etc/rsyslog.conf` or `/etc/rsyslog.d/*.conf` for rsyslog rules and outputs. Use `/etc/systemd/journald.conf` only for journald behavior such as socket forwarding or journal storage.
 
 Make your changes, then restart the relevant service:
 
 ```bash
 sudo systemctl restart rsyslog
-# or
 
+# If you changed journald.conf:
 sudo systemctl restart systemd-journald
 ```
 
@@ -71,7 +76,7 @@ tail -20 /var/log/messages
 
 ## Step 5 - Open Firewall Ports (If Applicable)
 
-If your setup involves remote logging, open the necessary ports:
+If your setup involves receiving remote logging traffic, open the necessary port on the log server. For example, for TCP syslog on port 514:
 
 ```bash
 sudo firewall-cmd --permanent --add-port=514/tcp
