@@ -22,10 +22,12 @@ sudo mv /tmp/nats-server-v2.10.11-linux-amd64/nats-server /usr/local/bin/
 sudo chmod +x /usr/local/bin/nats-server
 
 # Install the NATS CLI tool
-curl -L https://github.com/nats-io/natscli/releases/download/v0.1.3/nats-0.1.3-linux-amd64.tar.gz \
-  -o /tmp/nats-cli.tar.gz
-tar xzf /tmp/nats-cli.tar.gz -C /tmp/
+sudo dnf install -y unzip
+curl -L https://github.com/nats-io/natscli/releases/download/v0.1.3/nats-0.1.3-linux-amd64.zip \
+  -o /tmp/nats-cli.zip
+unzip /tmp/nats-cli.zip -d /tmp/
 sudo mv /tmp/nats-0.1.3-linux-amd64/nats /usr/local/bin/
+sudo chmod +x /usr/local/bin/nats
 ```
 
 ## Basic Configuration
@@ -51,7 +53,7 @@ trace: false
 max_connections: 10000
 max_payload: 1MB
 
-# Authentication
+# Default permissions
 authorization {
   default_permissions = {
     publish = ["*"]
@@ -105,8 +107,8 @@ nats request "api.time" ""
 ## Monitoring
 
 ```bash
-# Check server info
-nats server info
+# Check server health
+curl http://localhost:8222/healthz
 
 # View statistics via HTTP monitoring
 curl http://localhost:8222/varz
