@@ -37,13 +37,6 @@ For Leapp-based upgrades:
 sudo dnf install -y leapp-upgrade
 ```
 
-For CentOS conversions:
-
-```bash
-sudo curl -o /etc/yum.repos.d/convert2rhel.repo https://cdn-public.redhat.com/content/public/repofiles/convert2rhel-for-rhel-8-x86_64.repo
-sudo dnf install -y convert2rhel
-```
-
 ## Step 3 - Run Pre-Migration Assessment
 
 ```bash
@@ -82,7 +75,7 @@ systemctl list-units --failed
 
 ## Step 6 - Clean Up
 
-Remove old packages and kernels:
+Remove Leapp packages from the DNF exclude list and remove remaining Leapp dependency packages:
 
 ```bash
 sudo dnf config-manager --save --setopt exclude=''
@@ -94,7 +87,7 @@ sudo dnf remove leapp-deps-el9 leapp-repository-deps-el9
 If the migration fails, you can:
 - Restore from your pre-migration backup
 - Use LVM snapshots to revert to the previous state
-- Boot from the old kernel if available
+- Investigate the Leapp logs and known issues before retrying the upgrade
 
 ## Summary
 
