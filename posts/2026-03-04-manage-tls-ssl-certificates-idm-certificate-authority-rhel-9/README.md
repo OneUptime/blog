@@ -29,7 +29,7 @@ ipa-cacert-manage list
 Export the CA certificate:
 
 ```bash
-ipa-cacert-manage install --ca-cert-file=/tmp/ipa-ca.crt
+cp /etc/ipa/ca.crt /tmp/ipa-ca.crt
 ```
 
 ## Requesting Certificates
@@ -43,6 +43,7 @@ openssl req -new -nodes \
     -newkey rsa:2048 \
     -keyout /etc/pki/tls/private/web1.key \
     -out /tmp/web1.csr \
+    -addext "subjectAltName = DNS:web1.example.com" \
     -subj "/CN=web1.example.com"
 ```
 
@@ -67,6 +68,7 @@ openssl req -new -nodes \
     -newkey rsa:2048 \
     -keyout /etc/pki/tls/private/httpd.key \
     -out /tmp/httpd.csr \
+    -addext "subjectAltName = DNS:web1.example.com" \
     -subj "/CN=web1.example.com"
 
 ipa cert-request /tmp/httpd.csr --principal=HTTP/web1.example.com
@@ -81,6 +83,7 @@ sudo ipa-getcert request \
     -K HTTP/web1.example.com \
     -k /etc/pki/tls/private/httpd.key \
     -f /etc/pki/tls/certs/httpd.crt \
+    -g 2048 \
     -D web1.example.com \
     -C "systemctl reload httpd"
 ```
@@ -90,6 +93,7 @@ Parameters:
 - `-K` - Kerberos principal
 - `-k` - Private key file
 - `-f` - Certificate file
+- `-g` - Key size to generate if the key does not already exist
 - `-D` - DNS Subject Alternative Name
 - `-C` - Command to run after renewal
 
@@ -186,6 +190,7 @@ Create a lightweight sub-CA for specific purposes:
 
 ```bash
 ipa ca-add web-ca --desc="Sub-CA for web servers" --subject="CN=Web CA,O=Example"
+ipa-certupdate
 ```
 
 Request certificates from the sub-CA:
@@ -195,6 +200,8 @@ sudo ipa-getcert request \
     -K HTTP/web1.example.com \
     -k /etc/pki/tls/private/httpd.key \
     -f /etc/pki/tls/certs/httpd.crt \
+    -g 2048 \
+    -D web1.example.com \
     -X web-ca
 ```
 
