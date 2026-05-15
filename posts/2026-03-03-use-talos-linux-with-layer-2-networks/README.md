@@ -18,7 +18,7 @@ Talos Linux handles Layer 2 networking through its networkd service, which confi
 
 Key Layer 2 features supported by Talos include:
 
-- Physical interface configuration (MTU, MAC address, link speed)
+- Physical interface configuration (addresses, routes, MTU, and link state)
 - Interface bonding (LACP, active-backup, etc.)
 - VLAN tagging (802.1Q)
 - Bridge interfaces
@@ -30,17 +30,14 @@ Start with the basics. Each physical interface needs to be configured in the mac
 
 ```yaml
 # Basic physical interface configuration
-
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-        mtu: 9000    # Jumbo frames if your switches support it
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - gateway: 192.168.1.1
+mtu: 9000    # Jumbo frames if your switches support it
 ```
 
 To find out what interfaces are available on a node:
@@ -62,34 +59,39 @@ VLANs are essential in environments where you need to separate traffic types. Ta
 
 ```yaml
 # VLAN configuration
-machine:
-  network:
-    interfaces:
-      # Trunk interface - carries tagged traffic
-      - interface: eth0
-        mtu: 9000
-        # No IP on the trunk interface itself
-      # Management VLAN
-      - interface: eth0.100
-        addresses:
-          - 10.100.0.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 10.100.0.1
-        vlan:
-          vlanId: 100
-      # Storage VLAN
-      - interface: eth0.200
-        addresses:
-          - 10.200.0.10/24
-        vlan:
-          vlanId: 200
-      # Pod network VLAN
-      - interface: eth0.300
-        addresses:
-          - 10.300.0.10/24
-        vlan:
-          vlanId: 300
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+mtu: 9000
+---
+# Management VLAN
+apiVersion: v1alpha1
+kind: VLANConfig
+name: eth0.100
+parent: eth0
+vlanID: 100
+addresses:
+  - address: 10.100.0.10/24
+routes:
+  - gateway: 10.100.0.1
+---
+# Storage VLAN
+apiVersion: v1alpha1
+kind: VLANConfig
+name: eth0.200
+parent: eth0
+vlanID: 200
+addresses:
+  - address: 10.200.0.10/24
+---
+# Pod network VLAN
+apiVersion: v1alpha1
+kind: VLANConfig
+name: eth0.300
+parent: eth0
+vlanID: 300
+addresses:
+  - address: 10.300.0.10/24
 ```
 
 Make sure your physical switch ports are configured as trunks carrying the appropriate VLANs. A common mistake is having the switch port in access mode when the Talos node expects trunk mode.
@@ -108,47 +110,46 @@ For redundancy and throughput, bond multiple physical interfaces together:
 
 ```yaml
 # LACP bond configuration
-machine:
-  network:
-    interfaces:
-      # Define the bond interface
-      - interface: bond0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-        bond:
-          mode: 802.3ad       # LACP
-          lacpRate: fast
-          hashPolicy: layer3+4
-          miimon: 100
-          updelay: 200
-          downdelay: 200
-          interfaces:
-            - eth0
-            - eth1
+apiVersion: v1alpha1
+kind: BondConfig
+name: bond0
+links:
+  - eth0
+  - eth1
+bondMode: 802.3ad       # LACP
+lacpRate: fast
+xmitHashPolicy: layer3+4
+miimon: 100
+updelay: 200
+downdelay: 200
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - gateway: 192.168.1.1
 ```
 
 Different bond modes for different scenarios:
 
 ```yaml
 # Active-backup for simple redundancy (no switch configuration needed)
-bond:
-  mode: active-backup
-  primaryReselect: always
-  primary: eth0
-  interfaces:
-    - eth0
-    - eth1
-
+apiVersion: v1alpha1
+kind: BondConfig
+name: bond0
+links:
+  - eth0
+  - eth1
+bondMode: active-backup
+primaryReselect: always
+---
 # Balance-XOR for load distribution
-bond:
-  mode: balance-xor
-  hashPolicy: layer3+4
-  interfaces:
-    - eth0
-    - eth1
+apiVersion: v1alpha1
+kind: BondConfig
+name: bond0
+links:
+  - eth0
+  - eth1
+bondMode: balance-xor
+xmitHashPolicy: layer3+4
 ```
 
 Verify the bond is working:
@@ -167,39 +168,41 @@ A common production setup uses bonded interfaces with VLANs on top:
 
 ```yaml
 # Bond + VLAN configuration
-machine:
-  network:
-    interfaces:
-      # Bond with no IP (trunk)
-      - interface: bond0
-        mtu: 9000
-        bond:
-          mode: 802.3ad
-          lacpRate: fast
-          hashPolicy: layer3+4
-          interfaces:
-            - eth0
-            - eth1
-      # Management VLAN on bond
-      - interface: bond0.100
-        addresses:
-          - 10.100.0.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 10.100.0.1
-        vlan:
-          vlanId: 100
-      # Storage VLAN on bond
-      - interface: bond0.200
-        addresses:
-          - 10.200.0.10/24
-        vlan:
-          vlanId: 200
+apiVersion: v1alpha1
+kind: BondConfig
+name: bond0
+mtu: 9000
+links:
+  - eth0
+  - eth1
+bondMode: 802.3ad
+lacpRate: fast
+xmitHashPolicy: layer3+4
+---
+# Management VLAN on bond
+apiVersion: v1alpha1
+kind: VLANConfig
+name: bond0.100
+parent: bond0
+vlanID: 100
+addresses:
+  - address: 10.100.0.10/24
+routes:
+  - gateway: 10.100.0.1
+---
+# Storage VLAN on bond
+apiVersion: v1alpha1
+kind: VLANConfig
+name: bond0.200
+parent: bond0
+vlanID: 200
+addresses:
+  - address: 10.200.0.10/24
 ```
 
 ## Layer 2 Load Balancing with MetalLB
 
-In bare metal environments, MetalLB's Layer 2 mode is the simplest way to expose Kubernetes services with external IP addresses. MetalLB responds to ARP requests for service IPs, directing traffic to the node hosting the service:
+In bare metal environments, MetalLB's Layer 2 mode is the simplest way to expose Kubernetes services with external IP addresses. MetalLB responds to ARP requests for IPv4 service IPs and NDP requests for IPv6 service IPs. In Layer 2 mode, one elected node receives traffic for a service IP, and kube-proxy then forwards traffic to the service's pods:
 
 ```yaml
 # MetalLB L2 advertisement configuration
@@ -230,17 +233,19 @@ Talos Linux supports a built-in Virtual IP feature that uses Layer 2 (gratuitous
 
 ```yaml
 # VIP configuration for control plane
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        vip:
-          ip: 192.168.1.100    # Shared VIP among control plane nodes
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.10/24
+---
+apiVersion: v1alpha1
+kind: Layer2VIPConfig
+name: 192.168.1.100    # Shared VIP among control plane nodes
+link: eth0
 ```
 
-The VIP uses gratuitous ARP announcements to move the virtual IP between control plane nodes during failover. This only works within a single Layer 2 broadcast domain - the VIP and the node's primary address must be on the same subnet.
+The VIP uses gratuitous ARP announcements to move the virtual IP between control plane nodes during failover. This only works within a single Layer 2 broadcast domain - the VIP and the node's primary address must be on the same subnet. Talos uses etcd elections for VIP ownership, so the VIP comes up only after etcd is available.
 
 ## Troubleshooting Layer 2 Issues
 
@@ -256,7 +261,7 @@ talosctl -n <node-ip> get neighbors
 talosctl -n <node-ip> dmesg | grep -i "arp\|neigh"
 
 # Capture ARP traffic
-talosctl -n <node-ip> pcap --interface eth0 --bpf-filter "arp" --duration 30s -o arp.pcap
+talosctl -n <node-ip> pcap --interface eth0 --bpf-filter "$(tcpdump -dd -y EN10MB 'arp')" --duration 30s -o arp.pcap
 ```
 
 ### VLAN Traffic Not Getting Through
@@ -269,7 +274,7 @@ talosctl -n <node-ip> get links -o yaml | grep -A 10 "vlan"
 talosctl -n <node-ip> get links eth0 -o yaml | grep -i "state\|carrier"
 
 # Capture tagged traffic
-talosctl -n <node-ip> pcap --interface eth0 --bpf-filter "vlan" --duration 10s -o vlan.pcap
+talosctl -n <node-ip> pcap --interface eth0 --bpf-filter "$(tcpdump -dd -y EN10MB 'vlan')" --duration 10s -o vlan.pcap
 ```
 
 ### Bond Failover Not Working
