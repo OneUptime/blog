@@ -8,7 +8,7 @@ Description: Set up NVMe over Fabrics on RHEL to access remote NVMe storage over
 
 ---
 
-NVMe over Fabrics (NVMe-oF) extends the NVMe protocol over a network, allowing remote storage to be accessed with very low latency. RHEL supports NVMe-oF over both RDMA and TCP transports.
+NVMe over Fabrics (NVMe-oF) extends the NVMe protocol over a network, allowing remote storage to be accessed with very low latency. RHEL supports NVMe-oF host connections over RDMA and TCP transports. Red Hat supports RDMA target configuration with `nvmet`, but current RHEL documentation does not support the in-kernel NVMe/TCP target (`nvmet-tcp`); use a vendor-supported NVMe/TCP target for production TCP deployments.
 
 ## Target (Storage Server) Configuration
 
@@ -21,7 +21,7 @@ sudo dnf install -y nvmetcli nvme-cli
 
 # Load the required kernel modules
 sudo modprobe nvmet
-sudo modprobe nvmet-tcp   # For TCP transport
+sudo modprobe nvmet-tcp   # For TCP transport on lab systems where nvmet-tcp is available
 # sudo modprobe nvmet-rdma  # For RDMA transport
 ```
 
@@ -36,13 +36,13 @@ echo 1 | sudo tee /sys/kernel/config/nvmet/subsystems/nqn.2025-01.com.example:st
 
 # Create a namespace and link it to a block device
 sudo mkdir -p /sys/kernel/config/nvmet/subsystems/nqn.2025-01.com.example:storage/namespaces/1
-echo "/dev/sdb" | sudo tee /sys/kernel/config/nvmet/subsystems/nqn.2025-01.com.example:storage/namespaces/1/device_path
+echo -n "/dev/sdb" | sudo tee /sys/kernel/config/nvmet/subsystems/nqn.2025-01.com.example:storage/namespaces/1/device_path
 echo 1 | sudo tee /sys/kernel/config/nvmet/subsystems/nqn.2025-01.com.example:storage/namespaces/1/enable
 
 # Create a TCP port
 sudo mkdir -p /sys/kernel/config/nvmet/ports/1
 echo "tcp" | sudo tee /sys/kernel/config/nvmet/ports/1/addr_trtype
-echo "192.168.1.10" | sudo tee /sys/kernel/config/nvmet/ports/1/addr_traddr
+echo -n "192.168.1.10" | sudo tee /sys/kernel/config/nvmet/ports/1/addr_traddr
 echo "4420" | sudo tee /sys/kernel/config/nvmet/ports/1/addr_trsvcid
 echo "ipv4" | sudo tee /sys/kernel/config/nvmet/ports/1/addr_adrfam
 
@@ -88,4 +88,4 @@ The remote NVMe device appears as a local `/dev/nvmeXnY` device. You can format 
 sudo nvme disconnect -n nqn.2025-01.com.example:storage
 ```
 
-For persistent connections across reboots, save the configuration using `nvmetcli` on the target side and use `/etc/nvme/discovery.conf` on the initiator.
+For persistent connections across reboots, save the configuration using `nvmetcli` on the target side. On the initiator, add the discovery parameters to `/etc/nvme/discovery.conf`, use `nvme connect-all`, and enable `nvmf-autoconnect.service`.
