@@ -59,8 +59,8 @@ sudo tee /etc/openvpn/server/auth-ldap.conf > /dev/null << 'EOF'
     # Follow LDAP referrals
     FollowReferrals yes
 
-    # TLS settings (for ldaps://)
-    TLSEnable       yes
+    # TLS settings (for ldaps://). Use TLSEnable yes only with ldap:// and STARTTLS.
+    TLSEnable       no
     TLSCACertFile   /etc/pki/tls/certs/ca-bundle.crt
 
     # Service account for searching
@@ -99,7 +99,7 @@ Add the LDAP plugin to your existing OpenVPN server config.
 sudo tee -a /etc/openvpn/server/server.conf > /dev/null << 'EOF'
 
 # LDAP authentication plugin
-plugin /usr/lib64/openvpn/plugin/lib/openvpn-auth-ldap.so /etc/openvpn/server/auth-ldap.conf
+plugin /usr/lib64/openvpn/plugins/openvpn-auth-ldap.so /etc/openvpn/server/auth-ldap.conf
 
 # Still require client certificates (belt and suspenders)
 # Remove this line if you want username/password only
@@ -119,7 +119,7 @@ If you want to drop client certificates entirely and rely solely on LDAP:
 sudo tee -a /etc/openvpn/server/server.conf > /dev/null << 'EOF'
 
 # LDAP authentication
-plugin /usr/lib64/openvpn/plugin/lib/openvpn-auth-ldap.so /etc/openvpn/server/auth-ldap.conf
+plugin /usr/lib64/openvpn/plugins/openvpn-auth-ldap.so /etc/openvpn/server/auth-ldap.conf
 
 # Don't require client certificates
 verify-client-cert none
@@ -140,7 +140,7 @@ sudo tee /etc/openvpn/server/auth-ldap.conf > /dev/null << 'EOF'
 <LDAP>
     URL             ldaps://ipa.example.com:636
     Timeout         15
-    TLSEnable       yes
+    TLSEnable       no
     TLSCACertFile   /etc/ipa/ca.crt
     BindDN          "uid=openvpn-svc,cn=users,cn=accounts,dc=example,dc=com"
     Password        "ServiceAccountPasswordHere"
@@ -200,10 +200,10 @@ sudo systemctl restart openvpn-server@server
 
 # Check for errors
 sudo systemctl status openvpn-server@server
-journalctl -u openvpn-server@server --since "2 minutes ago"
+sudo journalctl -u openvpn-server@server --since "2 minutes ago"
 
 # Watch the log during a connection attempt
-sudo tail -f /var/log/openvpn/openvpn.log
+sudo journalctl -u openvpn-server@server -f
 ```
 
 ## Testing LDAP Connectivity
@@ -228,10 +228,10 @@ ldapsearch -H ldaps://ldap.example.com:636 \
 
 ```bash
 # Verify the plugin file exists
-ls -la /usr/lib64/openvpn/plugin/lib/openvpn-auth-ldap.so
+ls -la /usr/lib64/openvpn/plugins/openvpn-auth-ldap.so
 
 # Check for missing library dependencies
-ldd /usr/lib64/openvpn/plugin/lib/openvpn-auth-ldap.so
+ldd /usr/lib64/openvpn/plugins/openvpn-auth-ldap.so
 
 # Check SELinux for denials
 sudo ausearch -m avc --start recent | grep openvpn
