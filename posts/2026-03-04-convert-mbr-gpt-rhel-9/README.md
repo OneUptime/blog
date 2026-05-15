@@ -10,7 +10,7 @@ Description: Step-by-step instructions for converting an MBR partition table to 
 
 ## Why Convert to GPT?
 
-MBR has been around since 1983 and carries hard limitations: 2 TB maximum disk size and only four primary partitions. If you are upgrading to larger disks, migrating to UEFI boot, or just want a more robust partition table, GPT is the way forward.
+MBR has been around since 1983 and carries hard limitations: about 2 TiB on disks with 512-byte sectors and only four primary partitions. If you are upgrading to larger disks, migrating to UEFI boot, or just want a more robust partition table, GPT is the way forward.
 
 The good news is that you can convert MBR to GPT without destroying your data, as long as you use the right tool and take precautions.
 
@@ -45,6 +45,8 @@ sudo sfdisk -d /dev/sdb > /root/sdb-partition-backup.txt
 # Back up critical data on the disk
 # Use rsync, tar, or your backup tool of choice
 ```
+
+If the disk uses extended and logical partitions, keep the `sfdisk` dump as well as the first-sector backup; the first 512 bytes alone is not a complete backup of every extended boot record.
 
 ## Step 3 - Examine the Current Layout
 
@@ -136,8 +138,10 @@ sudo gdisk /dev/sdb
 # w     (write)
 
 # Format the ESP
-sudo mkfs.vfat -F 32 /dev/sdb1
+sudo mkfs.vfat -F 32 /dev/sdbX
 ```
+
+Replace `/dev/sdbX` with the new ESP partition, and do not format an existing data or boot partition by mistake. If there is no free space for the BIOS Boot Partition or ESP, you must shrink or move an existing partition before creating it.
 
 ### Non-Boot Disks
 
@@ -167,6 +171,7 @@ If something goes wrong and you need to revert:
 
 ```bash
 # Restore the MBR backup
+sudo sgdisk -z /dev/sdb
 sudo dd if=/root/sdb-mbr-backup.bin of=/dev/sdb bs=512 count=1
 
 # Or use gdisk to convert back
@@ -184,11 +189,13 @@ After conversion, update any references:
 # Regenerate fstab entries if device names changed
 sudo blkid /dev/sdb*
 
-# If this is a boot disk, reinstall GRUB
+# If this is a BIOS/legacy boot disk, reinstall GRUB
 sudo grub2-install /dev/sdb
 sudo grub2-mkconfig -o /boot/grub2/grub.cfg
 ```
 
+On UEFI systems, especially with Secure Boot enabled, do not run `grub2-install` blindly; RHEL uses the signed shim boot path, and Red Hat documents that `grub2-install` can make Secure Boot systems unbootable.
+
 ## Wrap-Up
 
-Converting from MBR to GPT on RHEL is a well-supported operation when you use gdisk. The key is having a solid backup before you start. For data disks, the conversion is nearly risk-free. For boot disks, you need to account for the boot partition requirements of your firmware type. Once converted, you get all the benefits of GPT: large disk support, more partitions, and a more resilient partition table format.
+Converting from MBR to GPT on RHEL is a well-supported operation when you use gdisk. The key is having a solid backup before you start. For data disks, the conversion is usually straightforward. For boot disks, you need to account for the boot partition requirements of your firmware type. Once converted, you get all the benefits of GPT: large disk support, more partitions, and a more resilient partition table format.
