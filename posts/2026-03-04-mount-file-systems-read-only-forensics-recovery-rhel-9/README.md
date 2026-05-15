@@ -74,13 +74,13 @@ sudo mount -o ro,norecovery,noatime /dev/sdb1 /mnt/evidence
 For an additional layer of protection, set the block device itself to read-only before mounting:
 
 ```bash
-sudo blockdev --setro /dev/sdb
+sudo blockdev --setro /dev/sdb1
 ```
 
 Verify:
 
 ```bash
-sudo blockdev --getro /dev/sdb
+sudo blockdev --getro /dev/sdb1
 ```
 
 Output of `1` means read-only. Now mount:
@@ -94,7 +94,7 @@ Even if someone accidentally tries to remount read-write, the block device restr
 To reset the device back to read-write later:
 
 ```bash
-sudo blockdev --setrw /dev/sdb
+sudo blockdev --setrw /dev/sdb1
 ```
 
 ## Working with Disk Images
@@ -105,14 +105,14 @@ For forensic work, it is best practice to work with a copy of the disk rather th
 sudo dd if=/dev/sdb of=/forensics/disk_image.raw bs=4M status=progress
 ```
 
-Mount the image using a loop device:
+If the image contains a file system directly, mount the image using a loop device:
 
 ```bash
-sudo losetup -r /dev/loop0 /forensics/disk_image.raw
+sudo losetup -r --find --show /forensics/disk_image.raw
 sudo mount -o ro,norecovery /dev/loop0 /mnt/evidence
 ```
 
-The `-r` flag on losetup sets the loop device to read-only.
+The `-r` flag on losetup sets the loop device to read-only. Replace `/dev/loop0` with the loop device printed by `losetup`.
 
 For images with partition tables, use the offset:
 
