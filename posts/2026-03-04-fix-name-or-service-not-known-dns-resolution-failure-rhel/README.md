@@ -8,7 +8,7 @@ Description: Fix DNS resolution failures on RHEL that produce 'Name or service n
 
 ---
 
-The "Name or service not known" error means your system cannot resolve hostnames to IP addresses. This is a DNS resolution failure, not a network connectivity issue.
+The "Name or service not known" error means your system cannot resolve hostnames or service names. This is a name resolution failure, not proof that general network connectivity is down.
 
 ## Step 1: Verify DNS Is the Problem
 
@@ -30,7 +30,7 @@ cat /etc/resolv.conf
 
 # Check if resolv.conf is managed by NetworkManager
 ls -la /etc/resolv.conf
-# If it is a symlink, NetworkManager or systemd-resolved manages it
+# If it is a symlink, inspect the target to see what manages it
 
 # Check what DNS servers NetworkManager is using
 nmcli device show | grep DNS
@@ -69,7 +69,7 @@ cat /etc/resolv.conf
 
 ```bash
 # Verify the name resolution order
-grep hosts /etc/nsswitch.conf
+grep '^hosts:' /etc/nsswitch.conf
 # Should include: files dns
 # Example: hosts: files dns myhostname
 
@@ -82,7 +82,7 @@ sudo vi /etc/nsswitch.conf
 
 ```bash
 # If using systemd-resolved
-sudo systemd-resolve --flush-caches
+sudo resolvectl flush-caches
 
 # If using nscd
 sudo systemctl restart nscd
@@ -95,11 +95,9 @@ sudo sss_cache -E
 
 ```bash
 # DNS uses port 53 (UDP and TCP)
-# Verify outbound DNS is not blocked
-sudo firewall-cmd --list-all | grep dns
-
-# Test DNS connectivity
+# Test outbound DNS connectivity
 nc -zvu 8.8.8.8 53
+nc -zv 8.8.8.8 53
 ```
 
 The most common fix is setting correct DNS servers through NetworkManager. Avoid manually editing `/etc/resolv.conf` on RHEL since NetworkManager will overwrite it.
