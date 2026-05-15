@@ -15,6 +15,7 @@ This guide provides step-by-step instructions for completing this task on RHEL. 
 - RHEL with a valid subscription or CentOS Stream 9
 - Root or sudo access
 - A terminal session
+- Java 17 or later
 
 ## Step 1: Install Required Packages
 
@@ -24,10 +25,20 @@ This guide provides step-by-step instructions for completing this task on RHEL. 
 sudo dnf update -y
 
 # Install the required packages
-sudo dnf install -y <package-name>
+sudo dnf install -y java-17-openjdk wget tar
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+Download and install Apache ActiveMQ Classic:
+
+```bash
+export ACTIVEMQ_VERSION=6.2.4
+
+wget https://downloads.apache.org/activemq/${ACTIVEMQ_VERSION}/apache-activemq-${ACTIVEMQ_VERSION}-bin.tar.gz
+sudo tar -xzf apache-activemq-${ACTIVEMQ_VERSION}-bin.tar.gz -C /opt
+sudo ln -sfn /opt/apache-activemq-${ACTIVEMQ_VERSION} /opt/activemq
+sudo useradd --system --home-dir /opt/activemq --shell /sbin/nologin activemq
+sudo chown -R activemq:activemq /opt/apache-activemq-${ACTIVEMQ_VERSION}
+```
 
 ## Step 2: Configure the Service
 
@@ -35,34 +46,61 @@ Edit the configuration file to match your environment:
 
 ```bash
 # Open the configuration file
-sudo vi /etc/<service>/config.conf
+sudo vi /opt/activemq/conf/activemq.xml
 ```
 
 Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Create a systemd service unit
+sudo vi /etc/systemd/system/activemq.service
+```
+
+Add the following service configuration:
+
+```ini
+[Unit]
+Description=Apache ActiveMQ Classic
+After=network.target
+
+[Service]
+Type=forking
+User=activemq
+Group=activemq
+WorkingDirectory=/opt/activemq
+ExecStart=/opt/activemq/bin/activemq start
+ExecStop=/opt/activemq/bin/activemq stop
+PIDFile=/opt/activemq/data/activemq.pid
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+# Reload systemd and restart the service to apply changes
+sudo systemctl daemon-reload
+sudo systemctl restart activemq
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable activemq
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start activemq
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status activemq
 ```
 
 ## Step 4: Configure the Firewall
 
 ```bash
-# Open the required port
-sudo firewall-cmd --permanent --add-port=<PORT>/tcp
+# Open the default OpenWire broker port
+sudo firewall-cmd --permanent --add-port=61616/tcp
 sudo firewall-cmd --reload
 
 # Verify the rule
@@ -76,16 +114,16 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status activemq
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u activemq --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u activemq -e --no-pager`.
+- Ensure Java is installed and available: `java -version`.
 
 ## Conclusion
 
