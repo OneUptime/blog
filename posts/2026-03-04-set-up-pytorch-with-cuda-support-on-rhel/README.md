@@ -12,16 +12,15 @@ PyTorch is a widely used machine learning framework. Setting it up with CUDA sup
 
 ## Prerequisites
 
-Ensure NVIDIA drivers and CUDA are installed:
+Ensure the NVIDIA driver is installed. A local CUDA Toolkit is optional for PyTorch wheels, but useful if you build PyTorch from source or compile custom CUDA extensions:
 
 ```bash
 # Check that the NVIDIA driver is loaded
 
 nvidia-smi
 
-# Check the CUDA version
+# Optional: check the local CUDA Toolkit version, if installed
 nvcc --version
-# Note the CUDA version (e.g., 12.4) for matching the PyTorch build
 ```
 
 ## Install Python and Create a Virtual Environment
@@ -40,14 +39,14 @@ pip install --upgrade pip
 
 ## Install PyTorch with CUDA
 
-Select the correct CUDA version from the PyTorch website. For CUDA 12.4:
+Select a supported CUDA build from the PyTorch website. For CUDA 12.6:
 
 ```bash
-# Install PyTorch with CUDA 12.4 support
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+# Install PyTorch with CUDA 12.6 support
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
 
-# For CUDA 12.1
-# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+# For CUDA 12.8
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 ```
 
 ## Verify the Installation
@@ -136,7 +135,7 @@ watch -n 1 nvidia-smi
 python3 -c "
 import torch
 print(f'Memory allocated: {torch.cuda.memory_allocated()/1e9:.2f} GB')
-print(f'Memory cached: {torch.cuda.memory_reserved()/1e9:.2f} GB')
+print(f'Memory reserved: {torch.cuda.memory_reserved()/1e9:.2f} GB')
 "
 ```
 
@@ -149,7 +148,7 @@ python3 -c "import torch; print(torch.cuda.is_available())"
 # Ensure the CUDA version matches
 python3 -c "import torch; print('Compiled CUDA:', torch.version.cuda)"
 nvidia-smi | head -3
-# The driver CUDA version should be >= the PyTorch CUDA version
+# The CUDA version reported by nvidia-smi should be high enough for the PyTorch CUDA runtime you installed
 ```
 
 PyTorch with CUDA on RHEL gives you a stable, enterprise-supported platform for developing and training deep learning models.
