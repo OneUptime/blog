@@ -15,8 +15,8 @@ If you are working in a government or Department of Defense environment, DISA ST
 DISA STIGs are more prescriptive than CIS benchmarks. Each finding has a severity category:
 
 - **CAT I (High)** - Directly exploitable vulnerabilities. Fix immediately.
-- **CAT II (Medium)** - Configuration weaknesses. Fix within 30 days.
-- **CAT III (Low)** - Best practices. Fix within 90 days.
+- **CAT II (Medium)** - Configuration weaknesses that can lead to compromise. Prioritize according to your organization's remediation timeline.
+- **CAT III (Low)** - Security weaknesses that degrade protective measures. Track and remediate according to your organization's POA&M process.
 
 ```mermaid
 flowchart TD
@@ -24,8 +24,8 @@ flowchart TD
     A --> C[CAT II - Medium Severity]
     A --> D[CAT III - Low Severity]
     B --> E[Fix Immediately]
-    C --> F[Fix Within 30 Days]
-    D --> G[Fix Within 90 Days]
+    C --> F[Prioritize by Risk]
+    D --> G[Track in POA&M]
 ```
 
 ## Install the Required Tools
@@ -90,7 +90,7 @@ Here are the most critical STIG controls implemented as Ansible tasks:
 # V-257844 - RHEL must implement NIST FIPS-validated cryptography
 - name: Check if FIPS mode is enabled
   ansible.builtin.command:
-    cmd: fips-mode-setup --check
+    cmd: fips-mode-setup --is-enabled
   register: fips_status
   changed_when: false
   failed_when: false
@@ -98,7 +98,7 @@ Here are the most critical STIG controls implemented as Ansible tasks:
 - name: Enable FIPS mode
   ansible.builtin.command:
     cmd: fips-mode-setup --enable
-  when: "'is not enabled' in fips_status.stdout"
+  when: fips_status.rc != 0
   notify: reboot system
 ```
 
@@ -112,19 +112,19 @@ Here are the most critical STIG controls implemented as Ansible tasks:
     create: yes
     mode: '0600'
     block: |
-      # V-257987 - Disable root login
+      # V-257985 - Disable root login
       PermitRootLogin no
-      # V-257989 - Disable empty passwords
+      # V-257984 - Disable empty passwords
       PermitEmptyPasswords no
-      # V-257988 - Disable host-based auth
+      # V-257997 - Disable host-based auth
       HostbasedAuthentication no
-      # V-257993 - Set client alive interval
+      # V-257996 - Terminate unresponsive SSH connections after 10 minutes
       ClientAliveInterval 600
       ClientAliveCountMax 0
-      # V-257991 - Use approved ciphers
-      Ciphers aes256-ctr,aes192-ctr,aes128-ctr,aes256-gcm@openssh.com,aes128-gcm@openssh.com
-      # V-257992 - Use approved MACs
-      MACs hmac-sha2-512,hmac-sha2-256,hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
+      # V-257989 - Use approved ciphers
+      Ciphers aes256-gcm@openssh.com,aes256-ctr,aes128-gcm@openssh.com,aes128-ctr
+      # V-257991 - Use approved MACs
+      MACs hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha2-256,hmac-sha2-512
   notify: restart sshd
 ```
 
@@ -216,6 +216,12 @@ Here are the most critical STIG controls implemented as Ansible tasks:
     - role: stig-kernel
 
   post_tasks:
+    - name: Create compliance log directory
+      ansible.builtin.file:
+        path: /var/log/compliance
+        state: directory
+        mode: '0750'
+
     - name: Run STIG compliance scan
       ansible.builtin.command:
         cmd: >
@@ -240,8 +246,8 @@ oscap xccdf eval \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml || true
 
 # Show the summary
-echo "Pass: $(grep -c 'result="pass"' /tmp/stig-results.xml)"
-echo "Fail: $(grep -c 'result="fail"' /tmp/stig-results.xml)"
+echo "Pass: $(grep -c '<result>pass</result>' /tmp/stig-results.xml)"
+echo "Fail: $(grep -c '<result>fail</result>' /tmp/stig-results.xml)"
 ```
 
 ## Handle STIG Exceptions (POA&M)
