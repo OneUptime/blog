@@ -15,6 +15,7 @@ Server blocks in Nginx are the equivalent of Apache virtual hosts. They let you 
 ## Prerequisites
 
 - RHEL with Nginx installed
+- `policycoreutils-python-utils` installed for the `semanage` command
 - DNS records pointing your domains to the server
 - Root or sudo access
 
@@ -111,18 +112,18 @@ server {
 EOF
 ```
 
-The `server_name _` is a convention for catch-all blocks. Returning 444 drops the connection without sending a response, which is useful for blocking scanners.
+The `server_name _` value is an invalid-name placeholder by convention. The catch-all behavior comes from `default_server` on the `listen` directive. Returning 444 drops the connection without sending a response, which is useful for blocking scanners.
 
 ## Step 6 - Disable the Default RHEL Page
 
-The default page is configured in `/etc/nginx/nginx.conf`. Comment out or remove the default server block there to avoid conflicts:
+The default page can be configured in `/etc/nginx/nginx.conf`. If that file already has a `listen 80 default_server;` block, comment it out or remove the `default_server` parameter before using the catch-all block above. Nginx allows only one default server for the same address and port:
 
 ```bash
 # Check if there is a default server block in the main config
 grep -n "server {" /etc/nginx/nginx.conf
 ```
 
-If there is one, either remove it or ensure your `00-default.conf` has the `default_server` flag.
+If there is one, make sure only one server block for port 80 uses the `default_server` flag.
 
 ## How Server Block Matching Works
 
