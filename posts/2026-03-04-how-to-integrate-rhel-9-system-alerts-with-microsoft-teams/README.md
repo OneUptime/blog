@@ -13,16 +13,17 @@ Integrating RHEL 9 alerts with Microsoft Teams keeps your operations team inform
 ## Create a Teams Webhook
 
 1. In Microsoft Teams, go to the target channel
-2. Click "..." then "Connectors"
-3. Add "Incoming Webhook"
-4. Name it and copy the webhook URL
+2. Click "..." then "Manage channel"
+3. Select "Edit" under Connectors and add "Incoming Webhook"
+4. Name it, select "Create", and copy the webhook URL
 
 ## Create the Alert Script
 
 ```bash
+sudo mkdir -p /opt/scripts
 sudo tee /opt/scripts/teams-alert.sh <<'SCRIPT'
 #!/bin/bash
-WEBHOOK_URL="https://outlook.office.com/webhook/YOUR/WEBHOOK/URL"
+WEBHOOK_URL="https://xxxxx.webhook.office.com/xxxxxxxxx"
 HOSTNAME=$(hostname)
 MESSAGE="$1"
 SEVERITY="${2:-warning}"
@@ -33,21 +34,33 @@ else
   COLOR="FFA500"
 fi
 
+PAYLOAD=$(python3 - "$HOSTNAME" "$MESSAGE" "$SEVERITY" "$COLOR" "$(date -Is)" <<'PY'
+import json
+import sys
+
+hostname, message, severity, color, timestamp = sys.argv[1:]
+
+print(json.dumps({
+    "@type": "MessageCard",
+    "@context": "http://schema.org/extensions",
+    "themeColor": color,
+    "summary": f"RHEL 9 Alert - {hostname}",
+    "title": f"RHEL 9 Alert - {hostname}",
+    "text": message,
+    "sections": [{
+        "facts": [
+            {"name": "Host", "value": hostname},
+            {"name": "Severity", "value": severity},
+            {"name": "Time", "value": timestamp}
+        ]
+    }]
+}))
+PY
+)
+
 curl -s -X POST "$WEBHOOK_URL" \
   -H "Content-Type: application/json" \
-  -d "{
-    "@type": "MessageCard",
-    "themeColor": "$COLOR",
-    "title": "RHEL 9 Alert - $HOSTNAME",
-    "text": "$MESSAGE",
-    "sections": [{
-      "facts": [
-        {"name": "Host", "value": "$HOSTNAME"},
-        {"name": "Severity", "value": "$SEVERITY"},
-        {"name": "Time", "value": "$(date)"}
-      ]
-    }]
-  }"
+  -d "$PAYLOAD"
 SCRIPT
 sudo chmod +x /opt/scripts/teams-alert.sh
 ```
@@ -58,7 +71,7 @@ sudo chmod +x /opt/scripts/teams-alert.sh
 # CPU alert
 
 sudo tee /etc/cron.d/teams-cpu-alert <<EOF
-*/5 * * * * root CPU=\$(top -bn1 | grep "Cpu(s)" | awk '{print int(\$2)}'); [ \$CPU -gt 90 ] && /opt/scripts/teams-alert.sh "CPU usage at \${CPU}%" critical
+*/5 * * * * root CPU=\$(top -bn1 | awk -F'[, ]+' '/Cpu\(s\):/ {print int(100 - \$8)}'); [ \$CPU -gt 90 ] && /opt/scripts/teams-alert.sh "CPU usage at \${CPU}\%" critical
 EOF
 ```
 
@@ -71,4 +84,3 @@ EOF
 ## Conclusion
 
 Microsoft Teams webhook integration provides instant alert delivery to your operations channel. Customize alert scripts for disk, CPU, memory, and service monitoring on RHEL 9.
-
