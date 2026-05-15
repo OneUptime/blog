@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Fapolicyd, RPM, Security, Package Management
 
-Description: Learn how fapolicyd integrates with the RPM database to automatically trust packages installed through official channels on RHEL.
+Description: Learn how fapolicyd integrates with the RPM database to trust packages registered through package management on RHEL.
 
 ---
 
-fapolicyd on RHEL integrates natively with the RPM database, meaning any software installed through DNF or RPM is automatically trusted. This guide explains how this integration works and how to manage it effectively.
+fapolicyd on RHEL integrates natively with the RPM database, meaning software installed through the system package manager and registered in RPM can be trusted by policy. This guide explains how this integration works and how to manage it effectively.
 
 ## How RPM Trust Works
 
-fapolicyd uses the RPM database as its primary trust source. When you install a package through DNF, all binaries and libraries in that package are automatically added to the trust database.
+fapolicyd uses the RPM database as a default trust source. When you install a package through DNF, RPM-installed binaries, scripts, and other files included by fapolicyd's trust filters are added to the trust database.
 
 ```bash
 # Verify that RPM is configured as a trust backend
@@ -32,13 +32,13 @@ sudo fapolicyd-cli --dump-db | head -30
 # Check if a specific RPM-installed file is trusted
 sudo fapolicyd-cli --dump-db | grep "/usr/bin/curl"
 
-# Count trusted entries from RPM
-sudo fapolicyd-cli --dump-db | wc -l
+# Count trusted entries from the RPM backend
+sudo fapolicyd-cli --dump-db | awk '$1 == "rpmdb" { count++ } END { print count + 0 }'
 ```
 
 ## Updating Trust After Package Changes
 
-When packages are installed, updated, or removed, the trust database needs to be refreshed.
+When packages are installed, updated, or removed outside the automatic plugin path, the trust database needs to be refreshed.
 
 ```bash
 # Install a new package
@@ -51,18 +51,16 @@ sudo fapolicyd-cli --update
 sudo fapolicyd-cli --dump-db | grep "/usr/sbin/httpd"
 ```
 
-## Using the DNF Plugin for Automatic Updates
+## Using the RPM Plugin for Automatic Updates
 
-RHEL includes a DNF plugin that automatically updates fapolicyd trust when packages change.
+RHEL includes an RPM plugin that notifies fapolicyd when DNF or RPM package transactions change the RPM database.
 
 ```bash
-# Install the fapolicyd DNF plugin
-sudo dnf install fapolicyd-dnf-plugin -y
+# Install the fapolicyd RPM plugin
+sudo dnf install rpm-plugin-fapolicyd -y
 
-# Verify the plugin is enabled
-cat /etc/dnf/plugins/fapolicyd.conf
-# [main]
-# enabled = 1
+# Verify the plugin package is installed
+rpm -q rpm-plugin-fapolicyd
 
 # Now package operations automatically update fapolicyd trust
 sudo dnf install vim -y
@@ -96,4 +94,4 @@ grep "integrity" /etc/fapolicyd/fapolicyd.conf
 # This ensures binaries match what RPM originally installed
 ```
 
-The RPM integration makes fapolicyd practical for enterprise RHEL deployments, since most software goes through the package manager. Only custom or third-party binaries require manual trust configuration.
+The RPM integration makes fapolicyd practical for enterprise RHEL deployments, since most software goes through the package manager. Only custom or non-RPM third-party binaries require manual trust configuration.
