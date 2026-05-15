@@ -31,14 +31,14 @@ RHEL ships with several predefined zones:
 | Zone | Default Behavior |
 |---|---|
 | trusted | Accept all traffic |
-| home | Allow SSH, mDNS, Samba, DHCP client |
+| home | Allow SSH, mDNS, Samba client, DHCPv6 client |
 | internal | Same as home |
-| work | Allow SSH, DHCP client |
-| public | Allow SSH, DHCP client (default zone) |
+| work | Allow SSH, DHCPv6 client |
+| public | Allow SSH, DHCPv6 client (default zone) |
 | external | Allow SSH, masquerading enabled |
 | dmz | Allow SSH only |
-| block | Reject all incoming with ICMP message |
-| drop | Drop all incoming silently |
+| block | Reject unsolicited incoming with ICMP message |
+| drop | Drop unsolicited incoming silently |
 
 ## Checking the Current Configuration
 
