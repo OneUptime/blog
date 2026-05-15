@@ -61,11 +61,11 @@ cat /proc/interrupts
 echo 1 | sudo tee /proc/irq/24/smp_affinity
 ```
 
-Use irqbalance with a banned CPU list:
+Use irqbalance with a banned CPU mask:
 
 ```bash
 sudo tee /etc/sysconfig/irqbalance << 'CONF'
-IRQBALANCE_BANNED_CPULIST=2-7
+IRQBALANCE_BANNED_CPUS=000000fc
 CONF
 
 sudo systemctl restart irqbalance
@@ -126,7 +126,7 @@ kernel.watchdog=0
 # Reduce vmstat updates
 vm.stat_interval=120
 
-# Disable swap
+# Minimize swap usage
 vm.swappiness=0
 SYSCTL
 sudo sysctl -p /etc/sysctl.d/realtime.conf
@@ -134,7 +134,7 @@ sudo sysctl -p /etc/sysctl.d/realtime.conf
 
 ## Step 7: Disable Power Management
 
-Power management features (C-states, P-states) cause latency spikes:
+Power management transitions such as deep C-states can cause latency spikes:
 
 ```bash
 # Disable deep C-states via kernel parameter
