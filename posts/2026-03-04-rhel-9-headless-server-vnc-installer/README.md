@@ -145,7 +145,7 @@ On your workstation, start a listening VNC client:
 vncviewer -listen 5500
 ```
 
-Then on the server's boot line, use `inst.vnc.connect` instead:
+Then on the server's boot line, use `inst.vncconnect` instead:
 
 ```bash
 # Tell the installer to connect back to your workstation
@@ -162,14 +162,24 @@ Once RHEL is installed and running, you might want ongoing remote graphical acce
 # Install the TigerVNC server package
 sudo dnf install -y tigervnc-server
 
+# Map display :2 / port 5902 to your user
+echo ":2=$USER" | sudo tee -a /etc/tigervnc/vncserver.users
+
+# Start GNOME sessions by default
+printf "session=gnome\nalwaysshared\n" | sudo tee -a /etc/tigervnc/vncserver-config-defaults
+
+# Open the standard VNC service ports in firewalld
+sudo firewall-cmd --permanent --add-service=vnc-server
+sudo firewall-cmd --reload
+
 # Set a VNC password for your user
 vncpasswd
 
 # Start a VNC session
-vncserver :1
+sudo systemctl enable --now vncserver@:2
 
 # To verify it is running
-ss -tlnp | grep 5901
+ss -tlnp | grep 5902
 ```
 
 For production servers, most sysadmins rely on SSH and Cockpit rather than VNC for day-to-day management. VNC is most valuable during that initial install phase.
@@ -180,7 +190,7 @@ For production servers, most sysadmins rely on SSH and Cockpit rather than VNC f
 
 **Black screen after connecting:** Wait a moment. The Anaconda GUI takes some time to initialize, especially on servers with slower storage. If it stays black for more than a minute, there may be a driver issue with the installer.
 
-**Wrong IP address:** If the server picked up an unexpected DHCP address, you may need to check your DHCP server's lease table or use `inst.ip` to force a known address.
+**Wrong IP address:** If the server picked up an unexpected DHCP address, you may need to check your DHCP server's lease table or use `ip=` to force a known address.
 
 **Password rejected:** The `inst.vncpassword` value must be between 6 and 8 characters. If you set something shorter or longer, the installer may not accept the password correctly.
 
