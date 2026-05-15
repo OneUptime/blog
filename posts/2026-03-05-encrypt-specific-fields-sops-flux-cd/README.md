@@ -62,8 +62,8 @@ metadata:
     app: myapp
 type: Opaque
 stringData:
-  username: ENC[AES256_GCM,data:dGVzdA==,iv:...,tag:...,type:str]
-  password: ENC[AES256_GCM,data:c3VwZXItc2VjcmV0,iv:...,tag:...,type:str]
+  username: ENC[AES256_GCM,data:...,iv:...,tag:...,type:str]
+  password: ENC[AES256_GCM,data:...,iv:...,tag:...,type:str]
 sops:
   # ... SOPS metadata
 ```
@@ -76,12 +76,12 @@ Define the encryption regex in your `.sops.yaml` so the team does not need to re
 # .sops.yaml - Standard Kubernetes secret encryption
 creation_rules:
   # For Kubernetes Secrets, encrypt data and stringData
-  - path_regex: .*secret.*\.enc\.yaml$
+  - path_regex: .*secret.*\.ya?ml$
     encrypted_regex: ^(data|stringData)$
     age: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
 
   # For HelmRelease values, encrypt only values fields
-  - path_regex: .*helmrelease.*\.enc\.yaml$
+  - path_regex: .*helmrelease.*\.ya?ml$
     encrypted_regex: ^(values)$
     age: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
 ```
@@ -143,7 +143,7 @@ The most common use case: encrypt only the secret values.
 ```yaml
 # .sops.yaml
 creation_rules:
-  - path_regex: .*\.enc\.yaml$
+  - path_regex: .*\.ya?ml$
     encrypted_regex: ^(data|stringData)$
     age: age1key...
 ```
