@@ -15,11 +15,13 @@ Nagios Core is one of the most established open-source monitoring tools. While n
 ```bash
 # Install build tools and required libraries
 
-sudo dnf install -y gcc glibc glibc-common make gettext automake autoconf \
-    wget httpd php gd gd-devel perl net-snmp openssl-devel unzip
+# Enable EPEL and CodeReady Builder for plugin dependencies on RHEL 9
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-x86_64-rpms
 
-# Install EPEL for additional dependencies
-sudo dnf install -y epel-release
+sudo dnf install -y gcc glibc glibc-common make gettext automake autoconf \
+    wget httpd php gd gd-devel perl openssl-devel unzip s-nail postfix \
+    net-snmp net-snmp-utils perl-Net-SNMP
 ```
 
 ## Create the Nagios User and Group
@@ -40,9 +42,9 @@ sudo usermod -aG nagcmd apache
 cd /tmp
 
 # Download Nagios Core source
-wget https://github.com/NagiosEnterprises/nagioscore/releases/download/nagios-4.5.1/nagios-4.5.1.tar.gz
-tar xzf nagios-4.5.1.tar.gz
-cd nagios-4.5.1
+wget https://github.com/NagiosEnterprises/nagioscore/releases/download/nagios-4.5.12/nagios-4.5.12.tar.gz
+tar xzf nagios-4.5.12.tar.gz
+cd nagios-4.5.12
 
 # Configure the build
 ./configure --with-command-group=nagcmd
@@ -50,9 +52,9 @@ cd nagios-4.5.1
 # Compile
 make all
 
-# Install Nagios, init scripts, configs, and web interface
+# Install Nagios, daemon files, configs, and web interface
 sudo make install
-sudo make install-init
+sudo make install-daemoninit
 sudo make install-commandmode
 sudo make install-config
 sudo make install-webconf
@@ -64,9 +66,9 @@ sudo make install-webconf
 cd /tmp
 
 # Download plugins
-wget https://github.com/nagios-plugins/nagios-plugins/releases/download/release-2.4.8/nagios-plugins-2.4.8.tar.gz
-tar xzf nagios-plugins-2.4.8.tar.gz
-cd nagios-plugins-2.4.8
+wget https://github.com/nagios-plugins/nagios-plugins/releases/download/release-2.5/nagios-plugins-2.5.tar.gz
+tar xzf nagios-plugins-2.5.tar.gz
+cd nagios-plugins-2.5
 
 # Compile and install plugins
 ./configure --with-nagios-user=nagios --with-nagios-group=nagios
@@ -90,11 +92,12 @@ cat /etc/httpd/conf.d/nagios.conf
 ## Configure SELinux
 
 ```bash
-# Allow Apache to connect to Nagios CGI scripts
-sudo setsebool -P httpd_can_network_connect on
+# Allow Apache to run Nagios CGI scripts
+sudo setsebool -P httpd_enable_cgi on
 
 # If SELinux blocks access, set the correct contexts
 sudo chcon -R -t httpd_sys_content_t /usr/local/nagios/share/
+sudo chcon -R -t httpd_sys_script_exec_t /usr/local/nagios/sbin/
 sudo chcon -R -t httpd_sys_rw_content_t /usr/local/nagios/var/
 ```
 
