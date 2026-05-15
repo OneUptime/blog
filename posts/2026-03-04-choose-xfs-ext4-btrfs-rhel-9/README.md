@@ -8,21 +8,21 @@ Description: A practical comparison of XFS, ext4, and Btrfs on RHEL to help you 
 
 ---
 
-RHEL gives you three filesystem options: XFS (the default), ext4 (the veteran), and Btrfs (available as a technology preview). Each has strengths and tradeoffs. After years of running all three in production, here is my take on when to use each one.
+RHEL gives you two supported local filesystem options: XFS (the default) and ext4 (the veteran). Btrfs is worth discussing because it often comes up in Linux filesystem comparisons, but it is not available or supported on RHEL 9. After years of running XFS and ext4 on RHEL, and Btrfs on other Linux distributions, here is my take on when to use each one.
 
 ## Quick Comparison
 
 | Feature | XFS | ext4 | Btrfs |
 |---------|-----|------|-------|
 | RHEL default | Yes | No | No |
-| Max filesystem size | 1 EB | 1 EB | 16 EB |
-| Max file size | 8 EB | 16 TB | 16 EB |
-| Online grow | Yes | Yes | Yes |
-| Online shrink | No | No | Yes |
-| Snapshots | No (use LVM) | No (use LVM) | Built-in |
-| Checksums | Metadata only | No | Data + Metadata |
-| RHEL support status | Full | Full | Technology Preview |
-| Defragmentation | xfs_fsr | e4defrag | btrfs defrag |
+| Max filesystem size | 1 PB | 50 TB | Not supported on RHEL 9 |
+| Max file size | 8 EB | 16 TB | Not supported on RHEL 9 |
+| Online grow | Yes | Yes | Not supported on RHEL 9 |
+| Online shrink | No | No | Not supported on RHEL 9 |
+| Snapshots | No (use LVM or Stratis) | No (use LVM) | Not supported on RHEL 9 |
+| Checksums | Metadata only | Metadata only (no data checksums) | Not supported on RHEL 9 |
+| RHEL support status | Full | Full | Removed / unsupported |
+| Defragmentation | xfs_fsr | e4defrag | Not supported on RHEL 9 |
 
 ## XFS - The Default Choice
 
@@ -98,20 +98,24 @@ resize2fs /dev/vg_data/lv_data 50G
 - No built-in snapshots
 - Fragmentation can be an issue with certain workloads
 
-## Btrfs - The Feature-Rich Newcomer
+## Btrfs - Not Available on RHEL 9
 
-Btrfs brings modern features like built-in snapshots, checksums, and compression. On RHEL, it is available as a technology preview, meaning Red Hat does not provide full production support.
+Btrfs brings modern features like built-in snapshots, checksums, and compression. On RHEL 9, it is not a technology preview. Red Hat removed Btrfs in RHEL 8, including the `btrfs.ko` kernel module and `btrfs-progs`, so stock RHEL 9 systems cannot create, mount, or install on Btrfs filesystems.
 
 ### When to Consider Btrfs
 
-- Development and testing environments
+- Non-RHEL systems where the distribution supports Btrfs
+- Development and testing environments outside stock RHEL
 - Systems where snapshots without LVM are valuable
 - Workloads that benefit from transparent compression
-- When data integrity (checksums) is critical and you accept the technology preview status
+- When data integrity (checksums) is critical and you accept your distribution's Btrfs support status
 
 ### Btrfs Strengths
 
 ```bash
+# These commands are common on distributions that support Btrfs,
+# but they are not available on stock RHEL 9.
+
 # Create a Btrfs filesystem
 mkfs.btrfs /dev/vg_data/lv_data
 
@@ -130,7 +134,7 @@ mount -o compress=zstd /dev/vg_data/lv_data /data
 
 ### Btrfs Limitations on RHEL
 
-- Technology preview, not fully supported
+- Removed and unsupported on RHEL 8 and later
 - RAID 5/6 support is still considered unstable
 - Performance can be unpredictable under heavy random write loads
 - More complex to manage and troubleshoot
@@ -147,7 +151,7 @@ graph TD
     C -->|No| F{Large files or high throughput?}
     F -->|Yes| G[XFS]
     F -->|No, many small files| E
-    D -->|Yes| H[Btrfs]
+    D -->|Yes| H[Use LVM/Stratis on RHEL, or Btrfs on another supported distribution]
     D -->|No| G
 ```
 
@@ -191,8 +195,8 @@ For most RHEL deployments, stick with **XFS**. It is the default, best tested, a
 
 Use **ext4** when you have a specific reason: you need filesystem shrink capability, you have a workload with millions of tiny files, or you are running older software that was tested against ext4.
 
-Use **Btrfs** only in non-production environments or when you have a specific need for its features and accept that Red Hat's support is limited.
+Use **Btrfs** only outside stock RHEL 9, or when you have a specific need for its features on a distribution that supports it.
 
 ## Summary
 
-XFS is the right choice for most RHEL systems - it is the default, well-supported, and performs great for general and large-file workloads. ext4 is better for small-file workloads and when you need shrink capability. Btrfs brings powerful features like snapshots and checksums but is only a technology preview on RHEL. Pick based on your workload, not hype.
+XFS is the right choice for most RHEL systems - it is the default, well-supported, and performs great for general and large-file workloads. ext4 is better for small-file workloads and when you need shrink capability. Btrfs brings powerful features like snapshots and checksums on distributions that support it, but it is removed and unsupported on RHEL 9. Pick based on your workload, not hype.
