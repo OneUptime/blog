@@ -24,8 +24,8 @@ sudo subscription-manager attach --pool=<your-pool-id>
 sudo subscription-manager repos \
   --enable=ansible-automation-platform-2.4-for-rhel-9-x86_64-rpms
 
-# Install the automation hub package
-sudo dnf install automation-hub -y
+# Install the Ansible Automation Platform installer package
+sudo dnf install ansible-automation-platform-installer -y
 ```
 
 ## Running the Installer
@@ -39,14 +39,16 @@ Key configuration parameters:
 
 ```ini
 [automationhub]
-hub.example.com
+hub.example.com ansible_connection=local
 
 [all:vars]
 automationhub_admin_password='SecurePassword123'
-automationhub_pg_host='localhost'
+automationhub_pg_host=''
+automationhub_pg_port=''
 automationhub_pg_database='automationhub'
 automationhub_pg_username='automationhub'
 automationhub_pg_password='DBPassword123'
+automationhub_pg_sslmode='prefer'
 ```
 
 ```bash
@@ -61,9 +63,9 @@ Configure PAH to sync certified collections from the Red Hat Automation Hub.
 
 ```bash
 # Log in to the PAH web interface at https://hub.example.com
-# Navigate to Collections > Repository Management > Remote
+# Navigate to Collections > Remotes
 
-# Add the certified remote:
+# Edit the rh-certified remote:
 # URL: https://console.redhat.com/api/automation-hub/content/published/
 # Token: <your-offline-token-from-console.redhat.com>
 ```
@@ -94,7 +96,7 @@ ansible-galaxy collection build
 # Upload to PAH using the API
 ansible-galaxy collection publish \
   myorg-mycollection-1.0.0.tar.gz \
-  --server https://hub.example.com/api/galaxy/content/inbound-custom/ \
+  --server https://hub.example.com/api/galaxy/ \
   --token <your-pah-token>
 ```
 
@@ -104,10 +106,6 @@ Collections uploaded to PAH land in a staging area and must be approved before t
 
 ```bash
 # Use the web UI: Collections > Approval
-# Or use the API:
-curl -X POST \
-  https://hub.example.com/api/galaxy/v3/collections/myorg/mycollection/versions/1.0.0/move/staging/published/ \
-  -H "Authorization: Token <your-pah-token>"
 ```
 
 PAH gives your organization a single source of truth for Ansible collections, with approval workflows and version control.
