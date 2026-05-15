@@ -15,17 +15,17 @@ Fluentd is an open-source data collector that provides a unified logging layer. 
 - RHEL 9
 - Root or sudo access
 
-## Step 1: Install Fluentd (td-agent)
+## Step 1: Install Fluentd (fluent-package)
 
 ```bash
-curl -fsSL https://toolbelt.treasuredata.com/sh/install-redhat-fluent-package5-lts.sh | sh
+curl -fsSL https://fluentd.cdn.cncf.io/sh/install-redhat-fluent-package6-lts.sh | sh
 ```
 
-Or install as a Ruby gem:
+Or install as a Ruby gem for a standalone setup:
 
 ```bash
 sudo dnf install -y ruby ruby-devel gcc make
-sudo gem install fluentd
+sudo gem install fluentd --no-doc
 ```
 
 ## Step 2: Configure Fluentd
@@ -59,9 +59,8 @@ sudo vi /etc/fluent/fluentd.conf
   @type elasticsearch
   host elasticsearch.local
   port 9200
-  index_name fluentd
-  type_name _doc
   logstash_format true
+  logstash_prefix fluentd
   <buffer>
     @type file
     path /var/log/fluent/buffer
@@ -91,6 +90,8 @@ sudo fluentd --dry-run -c /etc/fluent/fluentd.conf
 ```
 
 ## Step 6: Add Filtering
+
+Place filters before the `<match **>` block so events pass through the filter before they are routed to Elasticsearch.
 
 ```xml
 <filter system.**>
