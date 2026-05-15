@@ -30,7 +30,7 @@ sudo oscap xccdf eval \
 
 ## Encryption at Rest
 
-HIPAA requires encryption of ePHI at rest:
+HIPAA treats encryption of ePHI as an addressable safeguard. In healthcare environments, enable it when your risk analysis determines it is reasonable and appropriate:
 
 ```bash
 # LUKS encryption should be configured at install time
@@ -47,25 +47,37 @@ sudo mkfs.xfs /dev/mapper/encrypted-data
 
 ```bash
 # Set the system-wide crypto policy to a HIPAA-appropriate level
-sudo update-crypto-policies --set FIPS
-# Or at minimum:
-sudo update-crypto-policies --set DEFAULT
+sudo update-crypto-policies --set FUTURE
+# Or keep the RHEL 9 default:
+# sudo update-crypto-policies --set DEFAULT
 
-# Verify
+# Reboot or restart affected services after changing crypto policies
+sudo reboot
+
+# After reboot, verify
 update-crypto-policies --show
 
-# Configure SSH for strong encryption
-sudo vi /etc/ssh/sshd_conf.d/hipaa.conf
+# For FIPS requirements, enable FIPS mode during installation or with fips-mode-setup
+sudo fips-mode-setup --check
+
+# Configure SSH access controls
+sudo vi /etc/ssh/sshd_config.d/hipaa.conf
 ```
 
 ```bash
-# /etc/ssh/sshd_conf.d/hipaa.conf
+# /etc/ssh/sshd_config.d/hipaa.conf
 PermitRootLogin no
 PasswordAuthentication no
 MaxAuthTries 3
 ClientAliveInterval 300
-ClientAliveCountMax 0
+ClientAliveCountMax 1
 Banner /etc/issue.net
+```
+
+```bash
+# Validate and reload SSH configuration
+sudo sshd -t
+sudo systemctl reload sshd
 ```
 
 ## Access Controls
@@ -105,6 +117,14 @@ HIPAA requires detailed audit trails:
 ```bash
 # Ensure auditd is running
 sudo systemctl enable --now auditd
+
+# Configure sudo to write a log file that auditd can watch
+sudo tee /etc/sudoers.d/hipaa-logging << 'SUDO'
+Defaults logfile="/var/log/sudo.log"
+SUDO
+sudo visudo -cf /etc/sudoers.d/hipaa-logging
+sudo touch /var/log/sudo.log
+sudo chmod 0600 /var/log/sudo.log
 
 # Add rules to track access to ePHI directories
 sudo tee -a /etc/audit/rules.d/hipaa.rules << 'RULES'
