@@ -12,12 +12,12 @@ stress-ng is a versatile tool that can stress test various system resources incl
 
 ## Installing stress-ng
 
-Install stress-ng from the EPEL repository:
+Install stress-ng from the EPEL repository. For example, on RHEL 9:
 
 ```bash
 # Enable EPEL repository
-
-sudo dnf install -y epel-release
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 
 # Install stress-ng
 sudo dnf install -y stress-ng
@@ -42,7 +42,7 @@ The `--cpu 0` flag tells stress-ng to use all available CPU cores. The `--metric
 Test memory allocation and access patterns:
 
 ```bash
-# Stress 4 memory workers, each allocating 1GB
+# Stress 4 memory workers with 1GB allocated in total
 stress-ng --vm 4 --vm-bytes 1G --timeout 60s --metrics-brief
 
 # Test with specific memory access patterns
@@ -80,4 +80,4 @@ You can limit the CPU load percentage:
 stress-ng --cpu 0 --cpu-load 80 --timeout 300s --metrics-brief
 ```
 
-stress-ng provides detailed metrics at completion, including bogo-ops (bogus operations per second), which gives a relative performance comparison across runs and systems.
+stress-ng provides detailed metrics at completion, including bogo operations and bogo ops per second, which give a relative performance comparison across runs and systems.
