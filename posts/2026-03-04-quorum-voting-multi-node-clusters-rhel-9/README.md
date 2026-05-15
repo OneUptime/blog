@@ -45,16 +45,10 @@ Flags:             Quorate
 By default, each node has one vote. You can assign different vote weights:
 
 ```bash
-sudo corosync-cmapctl -s nodelist.node.0.quorum_votes u32 2
+sudo corosync-quorumtool -v 2 -n <nodeid>
 ```
 
-This gives node 0 two votes. Use this for nodes with higher reliability.
-
-With pcs:
-
-```bash
-sudo pcs quorum update node1 votes=2
-```
+This gives the specified node two votes for the running cluster. Use this carefully, because changing vote weights can make split-brain protection weaker if the higher-vote node becomes isolated.
 
 ## Using a Quorum Device
 
@@ -65,7 +59,7 @@ A quorum device (qdevice) is a lightweight daemon that provides an additional vo
 On a separate RHEL server:
 
 ```bash
-sudo dnf install corosync-qnetd -y
+sudo dnf install pcs corosync-qnetd -y
 sudo systemctl enable --now pcsd
 sudo passwd hacluster
 sudo pcs qdevice setup model net --enable --start
@@ -80,9 +74,10 @@ sudo firewall-cmd --reload
 
 ### Configure the Cluster to Use the Quorum Device
 
-From a cluster node:
+Install the qdevice client on each cluster node, then add the device from one cluster node:
 
 ```bash
+sudo dnf install corosync-qdevice -y
 sudo pcs host auth qnetd-server -u hacluster
 sudo pcs quorum device add model net host=qnetd-server algorithm=ffsplit
 ```
@@ -108,13 +103,19 @@ sudo pcs quorum device add model net host=qnetd-server algorithm=ffsplit
 
 ### lms (Last Man Standing)
 
-Allows the cluster to continue as long as at least one node remains. Aggressive but flexible:
+Allows the cluster to continue with one remaining node if that node can still see the qnetd server. Aggressive but flexible:
 
 ```bash
 sudo pcs quorum device add model net host=qnetd-server algorithm=lms
 ```
 
 ## Configuring Quorum Options
+
+Stop the cluster before changing these quorum options with `pcs quorum update`:
+
+```bash
+sudo pcs cluster stop --all
+```
 
 ### wait_for_all
 
@@ -126,7 +127,7 @@ sudo pcs quorum update wait_for_all=1
 
 ### last_man_standing
 
-Dynamically recalculate quorum as nodes leave:
+Dynamically recalculate quorum as nodes leave. This option requires `wait_for_all` and is incompatible with quorum devices:
 
 ```bash
 sudo pcs quorum update last_man_standing=1
@@ -135,10 +136,16 @@ sudo pcs quorum update last_man_standing_window=10000
 
 ### auto_tie_breaker
 
-For even-numbered clusters without a quorum device:
+For even-numbered clusters without a quorum device. This option is incompatible with quorum devices:
 
 ```bash
 sudo pcs quorum update auto_tie_breaker=1
+```
+
+Restart the cluster after updating quorum options:
+
+```bash
+sudo pcs cluster start --all
 ```
 
 ## Removing a Quorum Device
