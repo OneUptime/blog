@@ -18,13 +18,13 @@ XFS project quotas allow you to set storage limits on specific directory trees r
 
 ## Understanding Project Quotas
 
-Unlike user and group quotas that limit storage based on file ownership, project quotas limit storage based on the directory where files reside. Every file within a project directory counts toward that project's quota, regardless of which user owns it.
+Unlike user and group quotas that limit storage based on file ownership, project quotas limit storage based on a project ID assigned to a directory tree. After the project is initialized, files in that project directory count toward that project's quota, regardless of which user owns them.
 
 Key concepts:
 - Each project has a numeric ID and an optional name
 - A directory tree is associated with a project ID
-- All files in that directory tree count toward the project's quota
-- Project quotas and group quotas cannot be used simultaneously on the same filesystem
+- Files assigned that project ID in the directory tree count toward the project's quota
+- Project quotas and group quotas are only mutually exclusive on older non-default XFS disk formats
 
 ## Step 1: Enable Project Quotas
 
@@ -34,7 +34,7 @@ Edit `/etc/fstab` to add the project quota mount option:
 /dev/vg_data/lv_data /data xfs defaults,pquota 0 0
 ```
 
-**Note**: You cannot use `gquota` and `pquota` together on the same XFS filesystem.
+**Note**: On older non-default XFS disk formats, you cannot use `gquota` and `pquota` together on the same filesystem.
 
 Remount the filesystem:
 
