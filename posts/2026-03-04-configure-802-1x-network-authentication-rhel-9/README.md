@@ -90,7 +90,7 @@ Putting passwords directly in the command or keyfile is not ideal. You can confi
 nmcli connection modify corporate-802.1x 802-1x.password-flags 1
 
 # Or store the password in the keyfile but restrict file permissions
-# (passwords in keyfiles are encrypted at rest on RHEL)
+# (passwords in keyfiles are stored in plain text but readable only by root)
 nmcli connection modify corporate-802.1x 802-1x.password "YourSecurePassword"
 ```
 
@@ -249,8 +249,8 @@ openssl x509 -in /etc/pki/tls/certs/corporate-ca.pem -noout -subject -dates
 # Check if the RADIUS server's cert chains to your CA
 # (You need to capture the server cert during auth - check wpa_supplicant logs)
 
-# Temporarily disable server cert validation for testing (NOT for production)
-nmcli connection modify corporate-802.1x 802-1x.phase1-auth-flags 0x00000001
+# Temporarily remove the CA certificate for testing (NOT for production)
+nmcli connection modify corporate-802.1x 802-1x.ca-cert ""
 ```
 
 ### Switch Port Not Authenticating
