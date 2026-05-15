@@ -30,7 +30,7 @@ lspci -v -s $(lspci | grep Ethernet | head -1 | awk '{print $1}') | grep -i "sr-
 sudo grubby --update-kernel=ALL --args="intel_iommu=on iommu=pt"
 
 # For AMD CPUs
-sudo grubby --update-kernel=ALL --args="amd_iommu=on iommu=pt"
+sudo grubby --update-kernel=ALL --args="iommu=pt"
 
 # Reboot to apply
 sudo reboot
@@ -108,7 +108,7 @@ ip link show ens192
 
 ```bash
 # Attach VF to a running VM
-virsh attach-interface myvm hostdev 0000:03:10.0 --managed
+virsh attach-interface myvm hostdev 0000:03:10.0 --mac 52:54:00:00:01:01 --managed --live --config
 ```
 
 SR-IOV VFs provide significantly lower latency and higher throughput than virtio or emulated networking. They are recommended for network-intensive VM workloads such as NFV and high-frequency trading.
