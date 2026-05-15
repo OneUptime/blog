@@ -8,7 +8,7 @@ Description: Learn how to monitor swap usage and diagnose memory pressure on RHE
 
 ---
 
-Swap usage by itself is not a problem. The kernel legitimently moves inactive pages to swap to free RAM for active workloads. But when swap usage climbs steadily, when swap I/O is constant, or when the system starts thrashing between RAM and swap, you have memory pressure that needs attention.
+Swap usage by itself is not a problem. The kernel legitimately moves inactive pages to swap to free RAM for active workloads. But when swap usage climbs steadily, when swap I/O is constant, or when the system starts thrashing between RAM and swap, you have memory pressure that needs attention.
 
 ## Quick Health Check
 
@@ -30,7 +30,7 @@ Swap:          4.0Gi      1.2Gi      2.8Gi
 
 Key things to notice:
 - `available` tells you how much memory can be used without swapping (includes reclaimable cache)
-- Swap `used` shows how much is currently paged out
+- Swap `used` shows how much swap space is currently allocated
 - If `available` is low AND swap is growing, you have real pressure
 
 ## Monitoring Tools
@@ -43,9 +43,9 @@ vmstat 2 10
 ```
 
 Focus on these columns:
-- `si` (swap in) - pages read from swap back to RAM per second
-- `so` (swap out) - pages written from RAM to swap per second
-- `free` - free memory in kilobytes
+- `si` (swap in) - amount of memory read from swap back to RAM per second
+- `so` (swap out) - amount of memory written from RAM to swap per second
+- `free` - free memory in the unit `vmstat` is using, KiB by default
 - `wa` - percentage of CPU time spent waiting for I/O
 
 When `si` and `so` are consistently high, the system is thrashing.
@@ -109,7 +109,7 @@ for pid in /proc/[0-9]*; do
 done | sort -rn | head -20
 ```
 
-This shows the top 20 processes by swap usage.
+This shows the top 20 processes by `VmSwap`, which covers swapped-out anonymous private memory and does not include shmem swap usage.
 
 ### Using smem for Proportional Memory
 
@@ -151,7 +151,7 @@ full avg10=0.00 avg60=0.00 avg300=0.00 total=0
 ```
 
 - `some` - percentage of time at least one task is stalled on memory
-- `full` - percentage of time all tasks are stalled on memory
+- `full` - percentage of time all non-idle tasks are stalled on memory
 - `avg10`, `avg60`, `avg300` - averages over 10s, 60s, 300s windows
 
 If `some avg10` exceeds 10-20%, you have noticeable memory pressure. If `full avg10` is above 0 consistently, you have serious problems.
@@ -247,7 +247,7 @@ ps aux --sort=-rss | head -10
 vmstat 1 30 | awk '{print strftime("%H:%M:%S"), $0}'
 ```
 
-If `si` and `so` are both consistently above 100-200 pages/sec, the system is thrashing.
+If `si` and `so` are both consistently above 100-200 KiB/sec in the default `vmstat` output, the system is thrashing.
 
 ## Summary
 
