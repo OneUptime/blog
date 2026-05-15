@@ -31,16 +31,16 @@ Each zone has a target that defines what happens to traffic not matching any rul
 
 | Target | Behavior |
 |---|---|
-| default | Reject (sends ICMP error) |
+| default | Accept ICMP and reject other unmatched traffic |
 | ACCEPT | Allow all unmatched traffic |
 | DROP | Silently drop unmatched traffic |
 | REJECT | Reject with ICMP unreachable |
 
-The `default` and `DROP` targets implement deny-all behavior. The difference is that `DROP` gives no feedback to the sender (stealthier), while `default`/`REJECT` sends an ICMP error (faster failure for legitimate clients).
+The `default`, `REJECT`, and `DROP` targets implement deny-all behavior for non-ICMP traffic. The difference is that `DROP` gives no feedback to the sender (stealthier), while `default`/`REJECT` sends an ICMP error for rejected traffic (faster failure for legitimate clients).
 
 ## Method 1: Using the Default Zone Target
 
-The public zone already uses the `default` target, which rejects unmatched traffic. If your interfaces are in the public zone, you already have a deny-all policy for anything beyond the zone's allowed services.
+The public zone already uses the `default` target, which accepts ICMP and rejects other unmatched traffic. If your interfaces are in the public zone, you already have a deny-all policy for anything beyond the zone's allowed services.
 
 ```bash
 # Verify the public zone target
@@ -77,7 +77,7 @@ firewall-cmd --reload
 
 ## Method 3: Using the drop Zone
 
-The `drop` zone drops everything with no exceptions. Assign your interface to it and build up from zero:
+The `drop` zone starts with no allowed incoming services and drops unmatched traffic with no reply. Assign your interface to it and build up from zero:
 
 ```bash
 # Move your interface to the drop zone
@@ -122,21 +122,20 @@ firewall-cmd --reload
 
 ## Handling Outbound Traffic
 
-Firewalld's zone targets only affect incoming traffic by default. Outbound connections and their return traffic (established connections) are allowed. If you need to restrict outbound traffic too:
+Firewalld's zone targets only affect incoming traffic by default. Outbound connections and their return traffic (established connections) are allowed. If you need to restrict outbound traffic too, use a policy for traffic from the host to other zones:
 
 ```bash
-# Block outbound to specific destinations using direct rules
-firewall-cmd --direct --add-rule ipv4 filter OUTPUT 0 -d 0.0.0.0/0 -j DROP --permanent
+# Create an outbound policy from the local host to any non-host zone
+firewall-cmd --permanent --new-policy=host-outbound
+firewall-cmd --permanent --policy=host-outbound --add-ingress-zone=HOST
+firewall-cmd --permanent --policy=host-outbound --add-egress-zone=ANY
+firewall-cmd --permanent --policy=host-outbound --set-target=DROP
 
 # Then allow specific outbound traffic
-firewall-cmd --direct --add-rule ipv4 filter OUTPUT 0 -d 10.0.1.0/24 -j ACCEPT --permanent
-firewall-cmd --direct --add-rule ipv4 filter OUTPUT 0 -p tcp --dport 443 -j ACCEPT --permanent
-firewall-cmd --direct --add-rule ipv4 filter OUTPUT 0 -p tcp --dport 80 -j ACCEPT --permanent
-firewall-cmd --direct --add-rule ipv4 filter OUTPUT 0 -p udp --dport 53 -j ACCEPT --permanent
-firewall-cmd --direct --add-rule ipv4 filter OUTPUT 0 -p tcp --dport 53 -j ACCEPT --permanent
-
-# Allow loopback
-firewall-cmd --direct --add-rule ipv4 filter OUTPUT 0 -o lo -j ACCEPT --permanent
+firewall-cmd --permanent --policy=host-outbound --add-rich-rule='rule family="ipv4" destination address="10.0.1.0/24" accept'
+firewall-cmd --permanent --policy=host-outbound --add-service=https
+firewall-cmd --permanent --policy=host-outbound --add-service=http
+firewall-cmd --permanent --policy=host-outbound --add-service=dns
 
 firewall-cmd --reload
 ```
