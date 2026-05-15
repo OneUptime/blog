@@ -31,28 +31,39 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y curl postgresql-server
+sudo postgresql-setup --initdb
+sudo systemctl enable --now postgresql.service
 ```
 
 ## Step 2: Install Required Packages
 
 ```bash
-sudo dnf install -y <package-name>
+curl -O https://download.bareos.org/current/EL_9/add_bareos_repositories.sh
+sudo sh ./add_bareos_repositories.sh
+sudo dnf install -y bareos
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+rpm -qi bareos bareos-director bareos-storage bareos-filedaemon bareos-database-postgresql bareos-bconsole
 ```
 
 ## Step 3: Configure the Service
 
-Create or edit the main configuration file:
+Create the Bareos PostgreSQL catalog:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo -u postgres /usr/lib/bareos/scripts/create_bareos_database
+sudo -u postgres /usr/lib/bareos/scripts/make_bareos_tables
+sudo -u postgres /usr/lib/bareos/scripts/grant_bareos_privileges
+```
+
+Create or edit the Bareos configuration files:
+
+```bash
+sudo vi /etc/bareos/bareos-dir.d/director/bareos-dir.conf
 ```
 
 Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
@@ -60,8 +71,10 @@ Apply the recommended settings for your environment. Start with the defaults and
 ## Step 4: Start and Enable the Service
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo systemctl enable --now bareos-dir.service
+sudo systemctl enable --now bareos-sd.service
+sudo systemctl enable --now bareos-fd.service
+sudo systemctl status bareos-dir.service bareos-sd.service bareos-fd.service
 ```
 
 ## Step 5: Verify the Configuration
@@ -69,13 +82,16 @@ sudo systemctl status <service>
 Test the setup:
 
 ```bash
-sudo <service> --test
+sudo -u bareos /usr/sbin/bareos-dir -t
+sudo -u bareos /usr/sbin/bareos-sd -t
+sudo /usr/sbin/bareos-fd -t
+sudo /usr/sbin/bconsole -t
 ```
 
 Check the logs for any errors:
 
 ```bash
-journalctl -u <service> -f
+journalctl -u bareos-dir.service -u bareos-sd.service -u bareos-fd.service -f
 ```
 
 ## Step 6: Configure Firewall Rules
@@ -83,7 +99,7 @@ journalctl -u <service> -f
 If the service needs network access:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo firewall-cmd --permanent --add-port=9101-9103/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -92,8 +108,8 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+systemctl show bareos-dir.service --property=MemoryCurrent
+top -p $(pidof bareos-dir)
 ```
 
 ## Security Considerations
@@ -107,7 +123,7 @@ top -p $(pidof <service>)
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
+1. **Service fails to start**: Check `journalctl -u bareos-dir.service -xe` for error messages
 2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
 3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
 
