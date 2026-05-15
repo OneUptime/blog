@@ -28,16 +28,18 @@ Install the virtualization packages:
 
 ```bash
 # Install KVM, QEMU, libvirt, and management tools
-sudo dnf install -y @virtualization-host-environment
+sudo dnf install -y qemu-kvm libvirt virt-install virt-viewer libvirt-daemon-config-network
 ```
 
-This meta-group pulls in `qemu-kvm`, `libvirt`, `virt-install`, `virt-viewer`, and other essential packages.
+This installs the hypervisor, libvirt, `virt-install`, console tools, and the default libvirt network configuration.
 
-Start and enable the libvirt daemon:
+Enable and start the modular libvirt sockets used by fresh RHEL 9 installs:
 
 ```bash
-# Enable and start libvirtd
-sudo systemctl enable --now libvirtd
+# Enable and start the modular libvirt sockets
+for drv in qemu network nodedev nwfilter secret storage interface; do
+  sudo systemctl enable --now virt${drv}d{,-ro,-admin}.socket
+done
 ```
 
 Verify the installation:
@@ -73,7 +75,7 @@ timezone America/New_York --utc
 timesource --ntp-server=0.rhel.pool.ntp.org
 
 # Network - use DHCP from the default libvirt network
-network --bootproto=dhcp --device=enp1s0 --activate --hostname=rhel9-vm.lab.local
+network --bootproto=dhcp --device=link --activate --hostname=rhel9-vm.lab.local
 
 # Root and user accounts
 rootpw --iscrypted $6$rounds=656000$yoursalt$yourhash
@@ -82,6 +84,7 @@ user --name=admin --groups=wheel --iscrypted --password=$6$rounds=656000$yoursal
 # Disk layout - automatic partitioning on the virtual disk
 ignoredisk --only-use=vda
 clearpart --all --drives=vda --initlabel
+bootloader --location=mbr --boot-drive=vda
 autopart --type=lvm
 
 # Security
@@ -103,8 +106,8 @@ chrony
 # Enable chronyd
 systemctl enable chronyd
 
-# Update packages
-dnf update -y
+# Update packages if configured repositories are available
+dnf update -y || true
 %end
 ```
 
@@ -136,17 +139,18 @@ The `virt-install` command creates a VM, attaches the ISO, passes the Kickstart 
 # Create a RHEL VM with virt-install and Kickstart
 sudo virt-install \
   --name rhel9-web01 \
-  --ram 4096 \
+  --memory 4096 \
   --vcpus 2 \
   --disk path=/var/lib/libvirt/images/rhel9-web01.qcow2,size=40,format=qcow2 \
-  --os-variant rhel9.4 \
+  --osinfo rhel9.4 \
   --location /var/lib/libvirt/isos/rhel-9.4-x86_64-dvd.iso \
   --initrd-inject=/var/lib/libvirt/kickstarts/rhel9-base.cfg \
   --extra-args="inst.ks=file:/rhel9-base.cfg console=ttyS0" \
   --network network=default \
   --graphics none \
   --console pty,target_type=serial \
-  --noautoconsole
+  --noautoconsole \
+  --wait=-1
 ```
 
 Let me break down the key flags:
@@ -154,24 +158,25 @@ Let me break down the key flags:
 | Flag | Purpose |
 |------|---------|
 | `--name` | VM name as it appears in virsh |
-| `--ram` | Memory in MiB |
+| `--memory` | Memory in MiB |
 | `--vcpus` | Number of virtual CPUs |
 | `--disk` | Virtual disk path, size in GiB, and format |
-| `--os-variant` | Optimization hint for the guest OS |
+| `--osinfo` | Guest OS type and version |
 | `--location` | Path to the ISO (used to extract kernel/initrd) |
 | `--initrd-inject` | Injects the Kickstart file into the initrd |
 | `--extra-args` | Kernel boot arguments, including the Kickstart path |
 | `--network` | Which libvirt network to attach to |
 | `--graphics none` | No graphical console (headless) |
 | `--noautoconsole` | Do not automatically attach to the VM console |
+| `--wait=-1` | Keep `virt-install` running until the install completes so the VM can reboot |
 
 The `--initrd-inject` option is the key to making this work. It packs your Kickstart file into the initial ramdisk so the installer can find it with `inst.ks=file:/rhel9-base.cfg`.
 
-To check available OS variants:
+To check available OS information values:
 
 ```bash
-# List available OS variants for RHEL
-osinfo-query os | grep rhel
+# List available OS information values for RHEL
+virt-install --osinfo list | grep rhel
 ```
 
 ## Monitoring the Installation
@@ -239,22 +244,24 @@ for VM_DEF in "${VMS[@]}"; do
 
     sudo virt-install \
         --name "$NAME" \
-        --ram "$RAM" \
+        --memory "$RAM" \
         --vcpus "$VCPUS" \
         --disk path="${IMG_DIR}/${NAME}.qcow2,size=${DISK},format=qcow2" \
-        --os-variant rhel9.4 \
+        --osinfo rhel9.4 \
         --location "$ISO" \
         --initrd-inject="$KS" \
         --extra-args="inst.ks=file:/$(basename $KS) console=ttyS0" \
         --network network=default \
         --graphics none \
         --console pty,target_type=serial \
-        --noautoconsole
+        --noautoconsole \
+        --wait=-1 &
 
     echo "$NAME creation started."
 done
 
-echo "All VMs queued for installation."
+wait
+echo "All VM installations finished."
 ```
 
 Make it executable and run it:
@@ -267,7 +274,7 @@ chmod +x batch-create-vms.sh
 sudo ./batch-create-vms.sh
 ```
 
-Each VM installs in parallel since we used `--noautoconsole`. On decent hardware, you can spin up a handful of VMs simultaneously without issues.
+Each VM installs in parallel because the script starts each `virt-install` process in the background. On decent hardware, you can spin up a handful of VMs simultaneously without issues.
 
 ## Using Different Kickstart Files per VM
 
@@ -313,7 +320,7 @@ sudo virsh undefine rhel9-web01 --remove-all-storage
 ## Practical Tips
 
 - Use `qcow2` format for disks. It supports thin provisioning, so a 40 GiB disk only uses the space it actually needs on the host.
-- Set `--os-variant` correctly. It tunes disk, network, and other virtual hardware settings for the guest OS. Using the wrong variant can cause poor performance.
+- Set `--osinfo` correctly. It tunes disk, network, and other virtual hardware settings for the guest OS. Using the wrong value can cause poor performance.
 - For production VMs, use bridged networking instead of the default NAT network. This gives VMs real IPs on your physical network.
 - Keep your Kickstart files in a Git repository alongside these scripts. When you need to recreate a VM six months later, you will have the exact configuration that was used.
 - If you are running many VMs on a single host, consider setting CPU pinning and memory huge pages for better performance under load.
