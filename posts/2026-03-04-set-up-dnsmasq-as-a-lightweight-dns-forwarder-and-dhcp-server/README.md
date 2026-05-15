@@ -8,7 +8,7 @@ Description: Learn how to set Up dnsmasq as a Lightweight DNS Forwarder and DHCP
 
 ---
 
-dnsmasq combines DNS forwarding, DHCP, and TFTP services in a single lightweight daemon. IRHELdeal for small networks, development environments, and lab setups where aRHELBIND or ISC DHCP deployment would be excessive.
+dnsmasq combines DNS forwarding, DHCP, and TFTP services in a single lightweight daemon. Ideal for small networks, development environments, and lab setups where a BIND or ISC DHCP deployment would be excessive.
 
 ## Prerequisites
 
@@ -79,8 +79,8 @@ dhcp-option=option:router,192.168.1.1
 dhcp-option=option:dns-server,192.168.1.10
 
 # Static leases
-dhcp-host=aa:bb:cc:dd:ee:01,server1,192.168.1.11
-dhcp-host=aa:bb:cc:dd:ee:02,server2,192.168.1.12
+dhcp-host=aa:bb:cc:dd:ee:01,server2,192.168.1.11
+dhcp-host=aa:bb:cc:dd:ee:02,db,192.168.1.12
 ```
 
 ## Step 5: Configure Firewall
@@ -114,4 +114,3 @@ cat /var/lib/dnsmasq/dnsmasq.leases
 ## Conclusion
 
 dnsmasq provides a lightweight all-in-one DNS and DHCP solution for RHEL. It is particularly well-suited for lab environments, small offices, and development networks where simplicity and ease of configuration are priorities.
-RHEL
