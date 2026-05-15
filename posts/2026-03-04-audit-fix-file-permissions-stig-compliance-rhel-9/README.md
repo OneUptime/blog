@@ -29,7 +29,7 @@ The fastest way to audit STIG compliance is with OpenSCAP:
 
 sudo dnf install openscap-scanner scap-security-guide -y
 
-# Run a STIG scan focused on file permissions
+# Run a STIG scan
 sudo oscap xccdf eval \
     --profile xccdf_org.ssgproject.content_profile_stig \
     --results /tmp/stig-results.xml \
@@ -71,8 +71,8 @@ sudo chown root:root /etc/gshadow
 
 ```bash
 # SSH server config
-sudo chmod 600 /etc/ssh/sshd_config
-sudo chown root:root /etc/ssh/sshd_config
+sudo rpm --setugids openssh-server
+sudo rpm --setperms openssh-server
 
 # SSH private host keys
 sudo chmod 600 /etc/ssh/ssh_host_*_key
@@ -81,22 +81,17 @@ sudo chown root:root /etc/ssh/ssh_host_*_key
 # SSH public host keys
 sudo chmod 644 /etc/ssh/ssh_host_*_key.pub
 sudo chown root:root /etc/ssh/ssh_host_*_key.pub
+
+sudo systemctl restart sshd.service
 ```
 
 ### Cron Directories
 
 ```bash
-# Set correct permissions on cron directories
-sudo chmod 700 /etc/cron.d
-sudo chmod 700 /etc/cron.daily
-sudo chmod 700 /etc/cron.hourly
-sudo chmod 700 /etc/cron.monthly
-sudo chmod 700 /etc/cron.weekly
-sudo chown root:root /etc/cron.d /etc/cron.daily /etc/cron.hourly /etc/cron.monthly /etc/cron.weekly
-
-# Crontab files
-sudo chmod 600 /etc/crontab
-sudo chown root:root /etc/crontab
+# Restore packaged cron permissions and ownership to RHEL defaults
+sudo dnf reinstall cronie crontabs
+sudo rpm --setugids cronie crontabs
+sudo rpm --setperms cronie crontabs
 ```
 
 ## Finding Permission Violations
@@ -147,15 +142,16 @@ chmod 0000 /etc/shadow /etc/gshadow
 chown root:root /etc/shadow /etc/gshadow
 
 echo "Fixing SSH configurations..."
-chmod 600 /etc/ssh/sshd_config
-chown root:root /etc/ssh/sshd_config
+rpm --setugids openssh-server
+rpm --setperms openssh-server
 chmod 600 /etc/ssh/ssh_host_*_key
 chmod 644 /etc/ssh/ssh_host_*_key.pub
+systemctl restart sshd.service
 
 echo "Fixing cron directories..."
-chmod 700 /etc/cron.d /etc/cron.daily /etc/cron.hourly /etc/cron.monthly /etc/cron.weekly
-chmod 600 /etc/crontab
-chown root:root /etc/crontab
+dnf reinstall -y cronie crontabs
+rpm --setugids cronie crontabs
+rpm --setperms cronie crontabs
 
 echo "Fixing home directory permissions..."
 for dir in /home/*/; do
@@ -199,7 +195,11 @@ Check if file permissions match what the RPM expects:
 sudo rpm -Va | grep "^.M"
 
 # The .M flag means permissions differ from the RPM database
-# Fix by reinstalling the affected package
+# Restore packaged permissions and ownership
+sudo rpm --setperms <package-name>
+sudo rpm --setugids <package-name>
+
+# Reinstall the affected package if files are missing or otherwise damaged
 sudo dnf reinstall <package-name>
 ```
 
