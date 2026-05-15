@@ -12,7 +12,7 @@ Description: A practical guide to creating Git authentication secrets with the f
 
 When Flux needs to access private Git repositories, it requires authentication credentials stored as Kubernetes secrets. The `flux create secret git` command simplifies the creation of these secrets, supporting both SSH key-based and HTTPS token-based authentication methods.
 
-This guide covers all authentication scenarios, from basic HTTPS tokens to SSH deploy keys, including provider-specific configurations for GitHub, GitLab, and Bitbucket.
+This guide covers common authentication scenarios, from basic HTTPS credentials and tokens to SSH deploy keys, including provider-specific configurations for GitHub, GitLab, and Bitbucket.
 
 ## Prerequisites
 
@@ -40,7 +40,7 @@ graph TD
     B --> E[SSH Key + Password]
     C --> F[Username + Password]
     C --> G[Personal Access Token]
-    C --> H[OAuth Token]
+    C --> H[Bearer Token]
 ```
 
 ## HTTPS Authentication
@@ -237,7 +237,7 @@ flux get sources git
 ## Exporting Secrets as YAML
 
 ```bash
-# Export the secret creation command as a YAML manifest
+# Export the generated Secret as a YAML manifest
 # Useful for storing in version control (encrypt before committing)
 flux create secret git github-auth \
   --url=https://github.com/myorg/myrepo \
