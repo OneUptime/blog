@@ -17,7 +17,8 @@ Fail2Ban is available from the EPEL repository:
 ```bash
 # Enable EPEL
 
-sudo dnf install epel-release -y
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 
 # Install Fail2Ban
 sudo dnf install fail2ban fail2ban-firewalld -y
@@ -47,7 +48,6 @@ maxretry = 5
 
 # Use firewalld for banning
 banaction = firewallcmd-rich-rules
-banaction_allports = firewallcmd-rich-rules
 
 # Email notifications (optional)
 # destemail = admin@example.com
@@ -191,13 +191,15 @@ ignoreip = 127.0.0.1/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
 Or use a file-based whitelist:
 
 ```bash
-sudo vi /etc/fail2ban/jail.local
+sudo vi /etc/fail2ban/ignore-ips.conf
 ```
+
+Add one IP address per line, then reference it from `jail.local`:
 
 ```ini
 [DEFAULT]
 ignoreip = 127.0.0.1/8
-ignorecommand = /etc/fail2ban/filter.d/ignorecommands/apache-hierarchical-ip
+ignorecommand = /usr/bin/grep -Fxq <ip> /etc/fail2ban/ignore-ips.conf
 ```
 
 ## Monitoring and Logging
@@ -266,7 +268,7 @@ sudo systemctl status firewalld
 
 ### Fail2Ban keeps banning legitimate users
 
-Lower the maxretry or increase findtime. Also check `ignoreip` to make sure your management network is whitelisted.
+Increase `maxretry` or shorten `findtime`. Also check `ignoreip` to make sure your management network is whitelisted.
 
 ## Wrapping Up
 
