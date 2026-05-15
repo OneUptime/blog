@@ -69,14 +69,14 @@ server {
 
 ## Step 2: Enable Gzip Compression
 
-Compress content before caching and serving:
+Compress content before serving:
 
 ```nginx
 # /etc/nginx/conf.d/gzip.conf
 
 gzip on;
 gzip_vary on;
-gzip_min_length 1024;
+gzip_min_length 256;
 gzip_comp_level 5;
 gzip_types
     text/plain
@@ -89,8 +89,6 @@ gzip_types
     image/svg+xml;
 
 # Do not compress already small responses
-
-gzip_min_length 256;
 
 # Compress responses for proxied requests too
 gzip_proxied any;
@@ -143,7 +141,7 @@ server {
         # Add a header showing cache status (HIT, MISS, BYPASS)
         add_header X-Cache-Status $upstream_cache_status;
 
-        # Use the request URI as the cache key
+        # Use the scheme, method, host, and request URI as the cache key
         proxy_cache_key "$scheme$request_method$host$request_uri";
 
         # Serve stale content while revalidating in the background
@@ -184,22 +182,9 @@ sudo restorecon -Rv /var/cache/nginx
 
 ## Step 6: Cache Purging
 
-```nginx
-# Allow cache purging from trusted IPs
-location /purge/ {
-    # Only allow from localhost
-    allow 127.0.0.1;
-    deny all;
-
-    # Purge the cached item
-    proxy_cache_purge backend_cache "$scheme$request_method$host$request_uri";
-}
-```
+The `proxy_cache_purge` directive is available with NGINX Plus/commercial Nginx builds. With the open source Nginx packages commonly used on RHEL, purge cached content by removing cache files and reloading Nginx if needed.
 
 ```bash
-# Purge a specific cached URL
-curl -X PURGE http://app.example.com/purge/path/to/page
-
 # Manually clear all cached files
 sudo rm -rf /var/cache/nginx/proxy/*
 ```
