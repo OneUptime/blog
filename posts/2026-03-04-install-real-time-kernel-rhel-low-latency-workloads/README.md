@@ -26,11 +26,11 @@ sudo subscription-manager repos --enable=rhel-9-for-x86_64-rt-rpms
 ## Install the Real-Time Kernel
 
 ```bash
-# Install the real-time kernel package
-sudo dnf install -y kernel-rt kernel-rt-core kernel-rt-modules
+# Install the RHEL for Real Time package group
+sudo dnf groupinstall -y RT
 
 # Verify the RT kernel is installed
-rpm -qa | grep kernel-rt
+rpm -ql realtime-setup
 ```
 
 ## Set the Real-Time Kernel as Default
@@ -43,7 +43,8 @@ sudo grubby --info=ALL | grep title
 sudo grubby --info=ALL | grep -A1 "kernel-rt"
 
 # Set the RT kernel as the default boot entry
-sudo grubby --set-default=/boot/vmlinuz-$(rpm -q --qf '%{VERSION}-%{RELEASE}.%{ARCH}' kernel-rt-core)
+RT_KERNEL=$(rpm -ql "$(rpm -q kernel-rt-core | sort -V | tail -1)" | grep '^/boot/vmlinuz')
+sudo grubby --set-default="$RT_KERNEL"
 
 # Verify the default kernel
 sudo grubby --default-kernel
@@ -61,19 +62,18 @@ sudo reboot
 ```bash
 # After reboot, confirm the RT kernel is active
 uname -r
-# Output should contain ".rt" in the version string, e.g.:
-# 5.14.0-362.8.1.el9_3.x86_64+rt
+# Output should contain "rt" or "+rt" in the version string, e.g.:
+# 5.14.0-284.11.1.rt14.296.el9_2.x86_64+rt
 
-# Check the kernel preemption model
-uname -v
-# Should show PREEMPT_RT
+# Show the full running kernel string
+uname -a
 ```
 
 ## Install Real-Time Tuning Tools
 
 ```bash
 # Install the real-time tuning utilities
-sudo dnf install -y tuned-profiles-realtime rt-tests tuna
+sudo dnf install -y tuned-profiles-realtime realtime-tests tuna
 
 # Enable the realtime tuned profile
 sudo tuned-adm profile realtime
@@ -85,10 +85,9 @@ sudo tuned-adm active
 ## Basic Real-Time Configuration
 
 ```bash
-# Add kernel boot parameters for real-time tuning
-# Isolate CPUs 2-7 for real-time tasks, keep 0-1 for housekeeping
-sudo grubby --update-kernel=ALL \
-  --args="isolcpus=2-7 nohz_full=2-7 rcu_nocbs=2-7"
+# Configure the realtime TuneD profile to isolate CPUs 2-7 for real-time tasks
+sudo sed -i 's/^isolated_cores=.*/isolated_cores=2-7/' /etc/tuned/realtime-variables.conf
+sudo tuned-adm profile realtime
 
 # Reboot to apply
 sudo reboot
