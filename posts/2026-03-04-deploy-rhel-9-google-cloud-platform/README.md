@@ -47,9 +47,10 @@ gcloud compute ssh rhel9-instance --zone=us-central1-a
 sudo dnf update -y
 
 # Format and mount the data disk
-sudo mkfs.xfs /dev/sdb
+sudo mkfs.xfs /dev/disk/by-id/google-rhel9-data
 sudo mkdir -p /data
-echo '/dev/sdb /data xfs defaults,noatime 0 0' | sudo tee -a /etc/fstab
+DISK_UUID=$(sudo blkid -s UUID -o value /dev/disk/by-id/google-rhel9-data)
+echo "UUID=${DISK_UUID} /data xfs defaults,noatime,nofail 0 2" | sudo tee -a /etc/fstab
 sudo mount -a
 ```
 
@@ -120,11 +121,21 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member="serviceAccount:rhel9-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/monitoring.metricWriter"
 
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:rhel9-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/logging.logWriter"
+
 # Associate the service account with the instance
+gcloud compute instances stop rhel9-instance \
+  --zone=us-central1-a
+
 gcloud compute instances set-service-account rhel9-instance \
   --zone=us-central1-a \
   --service-account=rhel9-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com \
   --scopes=cloud-platform
+
+gcloud compute instances start rhel9-instance \
+  --zone=us-central1-a
 ```
 
 ## Conclusion
