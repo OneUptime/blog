@@ -10,7 +10,7 @@ Description: Use LMTP to deliver mail from Postfix directly to Dovecot on RHEL, 
 
 ## Why LMTP Instead of Direct Delivery?
 
-By default, Postfix delivers mail to Maildir or mbox files directly. This works, but Dovecot never knows about new messages until the user checks their mailbox. With LMTP (Local Mail Transfer Protocol), Postfix hands messages to Dovecot for final delivery. This gives you several advantages:
+In many basic setups, Postfix delivers mail to Maildir or mbox files directly. This works, but Dovecot never knows about new messages until the user checks their mailbox. With LMTP (Local Mail Transfer Protocol), Postfix hands messages to Dovecot for final delivery. This gives you several advantages:
 
 - Dovecot manages the mailbox format and indexing directly
 - Sieve server-side filtering works automatically
@@ -45,7 +45,7 @@ graph LR
 sudo dnf install -y dovecot dovecot-pigeonhole
 ```
 
-The `dovecot-pigeonhole` package includes Sieve filtering and the LMTP service.
+The `dovecot` package provides the LMTP service, and `dovecot-pigeonhole` adds Sieve filtering support.
 
 ## Configuring Dovecot LMTP
 
@@ -212,7 +212,7 @@ Set up a quota warning script. Edit `/etc/dovecot/conf.d/10-master.conf`:
 ```bash
 service quota-warning {
   executable = script /usr/local/bin/quota-warning.sh
-  user = dovecot
+  user = vmail
 
   unix_listener quota-warning {
     user = vmail
