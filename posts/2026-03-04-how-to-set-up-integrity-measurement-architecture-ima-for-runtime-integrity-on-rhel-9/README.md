@@ -8,7 +8,7 @@ Description: Step-by-step guide on set up integrity measurement architecture (im
 
 ---
 
-IMA provides runtime integrity verification on RHEL 9 by measuring files before access and comparing them against known-good values.
+IMA provides runtime integrity verification on RHEL 9 by measuring files before access and, when appraisal is enabled, comparing them against known-good values.
 
 ## Overview
 
@@ -20,7 +20,7 @@ Add kernel boot parameters:
 
 ```bash
 sudo grubby --update-kernel=ALL \
-  --args="ima_policy=tcb ima_hash=sha256 ima_appraise=fix"
+  --args="ima_policy=appraise_tcb ima_hash=sha256 ima_appraise=fix"
 ```
 
 Reboot:
@@ -44,7 +44,7 @@ sudo tee /etc/ima/ima-policy <<EOF
 
 measure func=BPRM_CHECK mask=MAY_EXEC
 # Measure shared libraries
-measure func=FILE_MMAP mask=MAY_EXEC
+measure func=MMAP_CHECK mask=MAY_EXEC
 # Measure files opened for read by root
 measure func=FILE_CHECK mask=MAY_READ uid=0
 # Measure kernel modules
@@ -59,7 +59,7 @@ EOF
 ## Load the Policy
 
 ```bash
-sudo cat /etc/ima/ima-policy > /sys/kernel/security/ima/policy
+sudo tee /sys/kernel/security/ima/policy < /etc/ima/ima-policy > /dev/null
 ```
 
 ## Sign Files for IMA Appraisal
@@ -73,9 +73,12 @@ sudo dnf install -y ima-evm-utils
 Generate a signing key:
 
 ```bash
+sudo mkdir -p /etc/keys/ima
 sudo openssl genrsa -out /etc/keys/ima-privkey.pem 2048
-sudo openssl rsa -in /etc/keys/ima-privkey.pem -pubout \
-  -out /etc/keys/ima-pubkey.pem
+sudo openssl req -new -x509 -key /etc/keys/ima-privkey.pem \
+  -outform DER -out /etc/keys/ima/ima.der \
+  -subj "/CN=Local IMA signing key/"
+sudo keyctl padd asymmetric Local-IMA %:.ima < /etc/keys/ima/ima.der
 ```
 
 Sign system binaries:
@@ -101,4 +104,3 @@ sudo ausearch -m INTEGRITY_STATUS -ts today
 ## Conclusion
 
 IMA on RHEL 9 provides kernel-enforced runtime integrity by measuring and appraising files before they are accessed. Combined with file signing and TPM, it creates a strong defense against unauthorized system modifications.
-
