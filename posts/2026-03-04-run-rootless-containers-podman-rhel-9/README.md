@@ -76,7 +76,7 @@ You will see `root` inside the container, but on the host, the process runs as y
 
 ## On the host, check the actual process owner
 ```bash
-ps aux | grep -i "ubi-minimal"
+podman top -l huser user args
 ```
 
 The process owner will be your regular user, not root.
@@ -115,6 +115,8 @@ If your home directory is on a small partition, you can redirect storage by crea
 
 ```bash
 mkdir -p ~/.config/containers
+sudo mkdir -p /data/containers/storage
+sudo chown -R $USER:$USER /data/containers
 ```
 
 ## Create a user-level storage config
@@ -124,6 +126,13 @@ cat > ~/.config/containers/storage.conf << 'EOF'
 driver = "overlay"
 graphroot = "/data/containers/storage"
 EOF
+```
+
+On SELinux systems, label the new storage path so containers can use it:
+
+```bash
+sudo semanage fcontext -a -e ~/.local/share/containers /data/containers
+sudo restorecon -R -v /data/containers
 ```
 
 After changing storage location, reset:
@@ -175,16 +184,21 @@ This is critical for any rootless container you want running as a service.
 
 Rootless containers use `slirp4netns` or `pasta` for networking instead of the CNI/netavark bridge that rootful containers use.
 
-## Check which network mode rootless containers are using
+## Check which network backend Podman is using
 ```bash
 podman info --format '{{.Host.NetworkBackend}}'
 ```
 
-On RHEL, `pasta` is the default rootless network handler. It provides better performance than `slirp4netns`:
+On RHEL 9.5 and later, `pasta` is the default rootless network handler. Earlier RHEL 9 releases default to `slirp4netns`. `pasta` provides better performance than `slirp4netns`:
 
-## Run a container with the default pasta network
+## Run a container with the default rootless network
 ```bash
 podman run -d --name web -p 8080:80 docker.io/library/nginx:latest
+```
+
+## Check the network mode for the container
+```bash
+podman inspect --format '{{.HostConfig.NetworkMode}}' web
 ```
 
 ## File Permissions with Rootless Containers
@@ -212,7 +226,7 @@ With cgroups v2 on RHEL, rootless containers can set resource limits:
 
 ## Run with memory and CPU limits as a regular user
 ```bash
-podman run --rm --memory 256m --cpus 0.5 registry.access.redhat.com/ubi9/ubi-minimal stress-ng --vm 1 --vm-bytes 200M --timeout 10s
+podman run --rm --memory 256m --cpus 0.5 registry.access.redhat.com/ubi9/ubi-minimal sleep 10
 ```
 
 ## Verify cgroups v2 is active
