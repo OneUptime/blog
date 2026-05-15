@@ -70,7 +70,7 @@ There are two types of chains, and understanding the difference is critical.
 nft add chain inet my_filter input { type filter hook input priority 0 \; policy drop \; }
 ```
 
-**Regular chains** don't attach to any hook. They only execute when another chain jumps to them:
+**Regular chains** don't attach to any hook. They only execute when another chain jumps or goes to them:
 
 ```bash
 nft add chain inet my_filter ssh_rules
@@ -85,7 +85,7 @@ Base chains need three properties: type, hook, and priority.
 Types:
 - `filter` - for filtering packets
 - `nat` - for network address translation
-- `route` - for rerouting packets
+- `route` - for rerouting packets in `ip` and `ip6` output chains
 
 Hooks for the inet/ip/ip6 families:
 - `prerouting` - before routing decision
@@ -93,6 +93,8 @@ Hooks for the inet/ip/ip6 families:
 - `forward` - for forwarded traffic
 - `output` - for locally generated traffic
 - `postrouting` - after routing decision
+
+The `inet` family also supports the `ingress` hook on RHEL 9-era kernels. Ingress chains run before `prerouting` and require a device parameter.
 
 Priority determines the order chains execute. Lower numbers run first.
 
@@ -234,10 +236,10 @@ This is useful when you want to separate concerns across different tables. For e
 
 ## Listing and Inspecting
 
-List all chains in a table:
+List all chains and rules in a table:
 
 ```bash
-nft list chains inet server_firewall
+nft list table inet server_firewall
 ```
 
 List a specific chain with rules:
