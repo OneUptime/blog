@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, KVM, Live Migration, Virtualization, High Availability, Linux
 
-Description: Learn how to perform live migration of KVM virtual machines between RHEL hosts with zero downtime using libvirt and shared storage.
+Description: Learn how to perform live migration of KVM virtual machines between RHEL hosts with minimal downtime using libvirt and shared storage.
 
 ---
 
-Live migration moves a running virtual machine from one physical host to another without shutting it down. This is essential for hardware maintenance, load balancing, and high availability. The VM's memory state is transferred while the guest continues running.
+Live migration moves a running virtual machine from one physical host to another without shutting it down. This is essential for hardware maintenance, load balancing, and high availability. The VM's memory state is transferred while the guest continues running, with only a brief switchover pause at the end.
 
 ## Prerequisites
 
@@ -20,9 +20,10 @@ Both hosts need:
 - Matching libvirt version (or close)
 
 ```bash
-# Verify libvirt is running on both hosts
+# Verify libvirt is running on both hosts.
+# On current RHEL systems, the QEMU driver is commonly managed by virtqemud.
 
-sudo systemctl status libvirtd
+sudo systemctl status virtqemud
 
 # Check CPU compatibility
 virsh capabilities | grep -A5 '<cpu'
@@ -34,7 +35,7 @@ df -h /var/lib/libvirt/images
 ## Setting Up SSH Connectivity
 
 ```bash
-# Live migration uses SSH or TLS for the transport
+# This example uses SSH for the libvirt connection to the destination
 # Configure passwordless SSH between hosts
 sudo ssh-keygen -t rsa -N "" -f /root/.ssh/id_rsa
 sudo ssh-copy-id root@host2.example.com
@@ -82,7 +83,7 @@ watch -n 1 'sudo virsh domjobinfo rhel9-vm'
 If live migration is not possible (e.g., incompatible CPUs):
 
 ```bash
-# Offline migration (VM is paused during transfer)
+# Offline migration moves the VM definition; use it for a shut-off VM
 sudo virsh migrate --offline --persistent \
   rhel9-vm qemu+ssh://root@host2.example.com/system
 ```
@@ -113,4 +114,4 @@ sudo virsh list
 sudo virsh dominfo rhel9-vm
 ```
 
-Live migration requires shared storage so both hosts can access the same disk images. Without shared storage, you would need to copy the disk image separately, which does not support true live migration.
+This workflow uses shared storage so both hosts can access the same disk images. Without shared storage, use libvirt storage migration options such as `--copy-storage-all`, or copy the disk image separately for an offline migration.
