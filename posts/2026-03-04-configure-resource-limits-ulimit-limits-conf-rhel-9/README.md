@@ -19,7 +19,7 @@ Resource limits are your safety net. They protect the system from individual pro
 Linux has two types of resource limits:
 
 - **Soft limit** - the currently enforced limit. Processes can raise this up to the hard limit.
-- **Hard limit** - the ceiling. Only root can raise hard limits. Regular users can lower them but never raise them back.
+- **Hard limit** - the ceiling. Only root, or a process with the `CAP_SYS_RESOURCE` capability, can raise hard limits. Regular users can lower them but never raise them back.
 
 ```mermaid
 graph TD
@@ -54,10 +54,10 @@ Here are the most commonly checked individual limits:
 # Maximum number of open file descriptors
 ulimit -n
 
-# Maximum number of processes (per user)
+# Maximum number of processes/threads (per real user ID)
 ulimit -u
 
-# Maximum file size (in blocks)
+# Maximum file size (in KB / 1024-byte blocks)
 ulimit -f
 
 # Maximum stack size (in KB)
@@ -81,8 +81,9 @@ ulimit -n 65536
 # Set a soft limit for max processes
 ulimit -Su 4096
 
-# Set a hard limit (only root can increase hard limits)
-sudo bash -c 'ulimit -Hn 131072'
+# Set a hard limit in a root shell for that shell and its children
+sudo -i
+ulimit -Hn 131072
 
 # Enable core dumps (set core file size to unlimited)
 ulimit -c unlimited
@@ -185,14 +186,14 @@ webapp          hard    nproc           8192
 EOF
 ```
 
-Files in `limits.d/` are processed in alphabetical order, and they override settings in `limits.conf`. Use a numeric prefix to control the order.
+Files in `limits.d/` are processed after `limits.conf` in alphabetical order, so later matching entries can replace earlier ones. Use a numeric prefix to control the order.
 
 ```bash
-# RHEL ships with this default file for nproc
+# Older RHEL releases may ship with a default file for nproc
 cat /etc/security/limits.d/20-nproc.conf
 ```
 
-You will typically see:
+On systems that include it, you will typically see:
 
 ```bash
 # Default limit for number of user's processes to prevent
@@ -201,6 +202,8 @@ You will typically see:
 root       soft    nproc     unlimited
 ```
 
+RHEL 8 and RHEL 9 do not install a `20-nproc.conf` file by default, so create your own file in `/etc/security/limits.d/` if you need a default `nproc` policy there.
+
 ## Common Resource Limit Items
 
 Here is a reference table of the most useful limit items:
@@ -208,7 +211,7 @@ Here is a reference table of the most useful limit items:
 | Item | Description | ulimit flag | Typical production value |
 |------|-------------|-------------|------------------------|
 | nofile | Max open files | -n | 65536 |
-| nproc | Max processes | -u | 4096-16384 |
+| nproc | Max processes/threads per real user ID | -u | 4096-16384 |
 | memlock | Max locked memory (KB) | -l | unlimited for DB/JVM |
 | stack | Max stack size (KB) | -s | 8192-65536 |
 | core | Core file size (KB) | -c | 0 or unlimited |
@@ -225,8 +228,8 @@ Changes to `limits.conf` and `limits.d/` take effect at the next login. Existing
 # Then verify the new limits
 ulimit -a
 
-# Or switch to the user and check
-sudo -u appuser bash -c 'ulimit -a'
+# Or start a login shell for the user and check
+sudo -iu appuser bash -lc 'ulimit -a'
 ```
 
 For services managed by systemd, resource limits in `limits.conf` may not apply because systemd has its own limit controls. You need to set limits in the service unit file instead.
@@ -258,17 +261,20 @@ sudo systemctl restart postgresql
 
 ## System-Wide Limits
 
-Beyond per-user limits, there are system-wide kernel limits that set the overall ceiling.
+Beyond per-user limits, there are system-wide kernel limits that affect overall resource availability.
 
 ```bash
-# Check the system-wide maximum number of open files
+# Check the system-wide maximum number of open file handles
 cat /proc/sys/fs/file-max
 
 # Check current usage
 cat /proc/sys/fs/file-nr
 # Output: allocated  free  maximum
 
-# Increase system-wide file limit temporarily
+# Check the per-process ceiling for nofile
+cat /proc/sys/fs/nr_open
+
+# Increase system-wide file handle limit temporarily
 sudo sysctl -w fs.file-max=2097152
 
 # Make it permanent
@@ -279,7 +285,7 @@ EOF
 sudo sysctl --system
 ```
 
-The per-user limits from `limits.conf` cannot exceed the system-wide kernel limits. Make sure the kernel limits are high enough first.
+The `nofile` hard limit cannot be raised above `fs.nr_open`, while `fs.file-max` controls the total number of open file handles across the system. Make sure both kernel settings are high enough for your workload.
 
 ## Troubleshooting Resource Limit Issues
 
