@@ -8,25 +8,34 @@ Description: Step-by-step guide on migrate from oracle linux to rhel 9 using con
 
 ---
 
-Convert2RHEL supports converting Oracle Linux systems to RHEL 9 for full Red Hat support coverage.
+Convert2RHEL supports converting supported Oracle Linux 9 systems to the corresponding RHEL 9 minor release for full Red Hat support coverage.
 
 ## Prerequisites
 
-- Oracle Linux 8 or 9 system
+- Oracle Linux 9 system on a supported minor version
 - Active Red Hat subscription
 - System backup completed
+- Booted into Oracle's Red Hat Compatible Kernel (RHCK), not UEK
 
 ## Install Convert2RHEL
 
 ```bash
-sudo dnf install -y https://ftp.redhat.com/redhat/convert2rhel/9/convert2rhel.repo
+sudo curl -o /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release https://security.access.redhat.com/data/fd431d51.txt
+sudo curl -o /etc/yum.repos.d/convert2rhel.repo https://cdn-public.redhat.com/content/public/repofiles/convert2rhel-for-rhel-9-x86_64.repo
 sudo dnf install -y convert2rhel
 ```
 
 ## Run the Conversion
 
 ```bash
-sudo convert2rhel --org <org-id> --activationkey <key-name>
+sudo tee /etc/convert2rhel.ini >/dev/null <<'EOF'
+[subscription_manager]
+org = <organization_ID>
+activation_key = <activation_key>
+EOF
+
+sudo convert2rhel analyze
+sudo convert2rhel
 ```
 
 ## Handle Oracle-Specific Packages
@@ -34,7 +43,6 @@ sudo convert2rhel --org <org-id> --activationkey <key-name>
 Convert2RHEL will:
 - Replace Oracle Linux kernel with RHEL kernel
 - Remove Oracle Linux branding packages
-- Replace UEK kernel with RHEL kernel
 - Update repository configuration
 
 ## Post-Conversion
@@ -60,4 +68,3 @@ uname -r
 ## Conclusion
 
 Convert2RHEL provides a straightforward path from Oracle Linux to RHEL. After conversion, you gain access to Red Hat support, Insights, and the full RHEL ecosystem.
-
