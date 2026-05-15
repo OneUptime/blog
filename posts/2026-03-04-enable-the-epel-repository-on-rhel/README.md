@@ -8,7 +8,7 @@ Description: Enable the Extra Packages for Enterprise Linux (EPEL) repository on
 
 ---
 
-EPEL (Extra Packages for Enterprise Linux) provides packages that are not included in the default RHEL repositories. It is maintained by the Fedora community and is widely used for tools like htop, nginx (community build), and many development libraries.
+EPEL (Extra Packages for Enterprise Linux) provides packages that are not included in the default RHEL repositories. It is maintained by the Fedora community and is widely used for tools like htop, ncdu, mosh, and many development libraries.
 
 ## Prerequisites
 
@@ -17,10 +17,10 @@ Your system must be registered with Red Hat and have the CodeReady Builder repos
 ```bash
 # Enable CodeReady Builder (RHEL 9)
 
-sudo subscription-manager repos --enable codeready-builder-for-rhel-9-x86_64-rpms
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
 
 # For RHEL 8
-# sudo subscription-manager repos --enable codeready-builder-for-rhel-8-x86_64-rpms
+# sudo subscription-manager repos --enable codeready-builder-for-rhel-8-$(arch)-rpms
 ```
 
 ## Install EPEL
@@ -53,10 +53,10 @@ sudo dnf repoinfo epel
 sudo dnf install -y htop
 
 # Install other commonly used EPEL packages
-sudo dnf install -y ncdu jq mosh
+sudo dnf install -y ncdu mosh moreutils
 
 # Verify which repo a package comes from
-dnf info htop | grep Repository
+dnf repoquery --info htop | grep '^Repository'
 ```
 
 ## Disable EPEL Temporarily
