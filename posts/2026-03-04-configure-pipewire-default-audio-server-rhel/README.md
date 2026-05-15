@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, PipeWire, Audio, PulseAudio, Sound, Linux
 
-Description: Configure PipeWire as the default audio server on RHEL, replacing PulseAudio for improved audio handling, lower latency, and better Bluetooth audio support.
+Description: Configure PipeWire as the default audio server on RHEL 9 and later, replacing the PulseAudio daemon for improved audio handling, lower latency, and better Bluetooth audio support.
 
 ---
 
-PipeWire is a modern multimedia server that handles both audio and video streams. RHEL uses PipeWire as the default audio server, replacing PulseAudio. It provides PulseAudio and JACK compatibility layers, so existing applications continue to work without modification.
+PipeWire is a modern multimedia server that handles both audio and video streams. RHEL 9 and later use PipeWire as the default audio server, replacing the PulseAudio daemon. It provides PulseAudio and JACK compatibility layers, so existing applications continue to work without modification.
 
 ## Check the Current Audio Server
 
@@ -28,14 +28,14 @@ pipewire --version
 ## Install PipeWire (If Not Already Present)
 
 ```bash
-# Install PipeWire and its PulseAudio compatibility layer
-sudo dnf install -y pipewire pipewire-pulseaudio pipewire-utils
+# Install PipeWire, its PulseAudio compatibility layer, and client utilities
+sudo dnf install -y pipewire pipewire-pulseaudio pipewire-utils pulseaudio-utils wireplumber
 
 # Install JACK compatibility (for pro audio applications)
 sudo dnf install -y pipewire-jack-audio-connection-kit
 
-# Install Bluetooth audio codec support
-sudo dnf install -y pipewire-codec-aptx
+# Install ALSA compatibility
+sudo dnf install -y pipewire-alsa
 ```
 
 ## Replace PulseAudio with PipeWire
@@ -43,11 +43,8 @@ sudo dnf install -y pipewire-codec-aptx
 If your system is still running PulseAudio:
 
 ```bash
-# Remove PulseAudio
-sudo dnf remove -y pulseaudio pulseaudio-libs
-
-# Install PipeWire PulseAudio replacement
-sudo dnf install -y pipewire-pulseaudio
+# Replace the PulseAudio daemon with PipeWire's PulseAudio implementation
+sudo dnf swap --allowerasing pulseaudio pipewire-pulseaudio
 
 # Enable PipeWire services for the current user
 systemctl --user enable pipewire pipewire-pulse
