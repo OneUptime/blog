@@ -8,13 +8,14 @@ Description: Run multiple PHP versions simultaneously on RHEL using Remi reposit
 
 ---
 
-Some environments need to run multiple PHP versions. For example, a legacy application may require PHP 7.4 while a new one needs PHP 8.2. The Remi repository makes this possible on RHEL.
+Some environments need to run multiple PHP versions. For example, a legacy application may require PHP 7.4 while a new one needs PHP 8.2. The Remi repository makes this possible on RHEL. PHP 7.4 is end-of-life upstream, so use it only when a legacy application requires it.
 
 ## Install the Remi Repository
 
 ```bash
 # Install EPEL and Remi
 
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
 sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 sudo dnf install -y https://rpms.remirepo.net/enterprise/remi-release-9.rpm
 ```
@@ -28,13 +29,13 @@ Remi provides versioned PHP packages that can coexist:
 sudo dnf install -y php74-php-fpm php74-php-cli php74-php-mysqlnd \
   php74-php-xml php74-php-mbstring php74-php-curl php74-php-zip php74-php-gd
 
-# Install PHP 8.1
-sudo dnf install -y php81-php-fpm php81-php-cli php81-php-mysqlnd \
-  php81-php-xml php81-php-mbstring php81-php-curl php81-php-zip php81-php-gd
-
 # Install PHP 8.2
 sudo dnf install -y php82-php-fpm php82-php-cli php82-php-mysqlnd \
   php82-php-xml php82-php-mbstring php82-php-curl php82-php-zip php82-php-gd
+
+# Install PHP 8.4
+sudo dnf install -y php84-php-fpm php84-php-cli php84-php-mysqlnd \
+  php84-php-xml php84-php-mbstring php84-php-curl php84-php-zip php84-php-gd
 ```
 
 ## Verify Installations
@@ -42,8 +43,8 @@ sudo dnf install -y php82-php-fpm php82-php-cli php82-php-mysqlnd \
 ```bash
 # Check each version
 php74 -v   # PHP 7.4.x
-php81 -v   # PHP 8.1.x
 php82 -v   # PHP 8.2.x
+php84 -v   # PHP 8.4.x
 ```
 
 ## Configure Separate PHP-FPM Pools
@@ -55,16 +56,16 @@ Each version has its own PHP-FPM service and configuration:
 sudo sed -i 's|^listen = .*|listen = /var/opt/remi/php74/run/php-fpm/www.sock|' \
   /etc/opt/remi/php74/php-fpm.d/www.conf
 
-# PHP 8.1 pool - /etc/opt/remi/php81/php-fpm.d/www.conf
-sudo sed -i 's|^listen = .*|listen = /var/opt/remi/php81/run/php-fpm/www.sock|' \
-  /etc/opt/remi/php81/php-fpm.d/www.conf
-
 # PHP 8.2 pool - /etc/opt/remi/php82/php-fpm.d/www.conf
 sudo sed -i 's|^listen = .*|listen = /var/opt/remi/php82/run/php-fpm/www.sock|' \
   /etc/opt/remi/php82/php-fpm.d/www.conf
 
+# PHP 8.4 pool - /etc/opt/remi/php84/php-fpm.d/www.conf
+sudo sed -i 's|^listen = .*|listen = /var/opt/remi/php84/run/php-fpm/www.sock|' \
+  /etc/opt/remi/php84/php-fpm.d/www.conf
+
 # Start all PHP-FPM services
-sudo systemctl enable --now php74-php-fpm php81-php-fpm php82-php-fpm
+sudo systemctl enable --now php74-php-fpm php82-php-fpm php84-php-fpm
 ```
 
 ## Route Nginx to Different PHP Versions
