@@ -58,7 +58,12 @@ For UEFI systems:
 
 ```bash
 chroot /mnt/sysroot
-dnf reinstall grub2-efi-x64 shim-x64
+dnf reinstall grub2-efi shim grub2-tools grub2-common
+
+# RHEL 9 and later
+grub2-mkconfig -o /boot/grub2/grub.cfg
+
+# RHEL 8 and earlier
 grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
 ```
 
@@ -185,8 +190,9 @@ touch /.autorelabel
 If you need network access in the rescue environment:
 
 ```bash
-# Start networking
-dhclient
+# List network profiles and start the wired profile
+nmcli connection show
+nmcli connection up "Wired connection 1"
 ```
 
 ## Exiting Rescue Mode
