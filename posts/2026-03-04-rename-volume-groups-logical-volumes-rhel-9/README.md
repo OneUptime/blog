@@ -76,11 +76,13 @@ sudo sed -i 's/old_vg/new_vg/g' /etc/default/grub
 sudo grub2-mkconfig -o /boot/grub2/grub.cfg
 ```
 
-For UEFI systems:
+For UEFI systems on RHEL 9.0 through 9.2:
 
 ```bash
 sudo grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
 ```
+
+On RHEL 9.3 and later, `/boot/efi/EFI/redhat/grub.cfg` is a stub that redirects to `/boot/grub2/grub.cfg`, so use the `/boot/grub2/grub.cfg` command above for UEFI systems as well.
 
 ### Step 5: Rebuild the initramfs
 
@@ -122,17 +124,16 @@ sudo sed -i 's|/dev/vg_data/lv_old|/dev/vg_data/lv_new|g' /etc/fstab
 
 ### Step 3: Update Mount Points
 
-If the logical volume is currently mounted, remount with the new device path:
+If the logical volume is currently mounted, unmount and mount it by mount point after updating `/etc/fstab`:
 
 ```bash
-sudo umount /dev/vg_data/lv_old
-sudo mount /dev/vg_data/lv_new /mountpoint
+sudo umount /mountpoint
+sudo mount /mountpoint
 ```
 
-Or simply remount all:
+Or test all entries in `/etc/fstab`:
 
 ```bash
-sudo umount -a
 sudo mount -a
 ```
 
@@ -200,6 +201,8 @@ grub2-mkconfig -o /boot/grub2/grub.cfg
 dracut -f
 exit
 ```
+
+On RHEL 9.0 through 9.2 UEFI systems, use `/boot/efi/EFI/redhat/grub.cfg` as the `grub2-mkconfig` output path instead. On RHEL 9.3 and later, use `/boot/grub2/grub.cfg` because the EFI file is only a stub.
 
 9. Reboot:
 
