@@ -219,7 +219,7 @@ flux install \
 
 ## Setting Up Image Automation After Bootstrap
 
-If you initially bootstrapped without image automation and want to add it later, re-run bootstrap with the extra components.
+If you initially bootstrapped without image automation and want to add it later, re-run bootstrap with the extra components. If the existing GitHub bootstrap uses a read-only SSH deploy key, delete the `flux-system` Secret first so Flux can regenerate the deploy key with write access.
 
 ```bash
 # Add image automation controllers to an existing Flux installation
@@ -235,7 +235,29 @@ flux bootstrap github \
 
 The bootstrap command is idempotent. It will add the new controllers without affecting existing ones.
 
-After adding the image automation controllers, configure them with an ImageRepository, ImagePolicy, and ImageUpdateAutomation.
+After adding the image automation controllers, configure them with an ImageRepository, ImagePolicy, and ImageUpdateAutomation. The manifests you want Flux to update must also contain image policy markers.
+
+```yaml
+# deployment.yaml
+# Mark the image field for automatic updates
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+        - name: my-app
+          image: ghcr.io/myorg/my-app:1.0.0 # {"$imagepolicy": "flux-system:my-app"}
+```
 
 ```yaml
 # image-repo.yaml
