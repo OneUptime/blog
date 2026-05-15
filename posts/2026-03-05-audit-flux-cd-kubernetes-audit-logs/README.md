@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Security, Audit Log, Compliance, Monitoring
 
-Description: Learn how to configure Kubernetes audit logging to track and monitor all operations performed by Flux CD controllers for security and compliance.
+Description: Learn how to configure Kubernetes audit logging to track and monitor Kubernetes API operations performed by Flux CD controllers for security and compliance.
 
 ---
 
-Kubernetes audit logs record all requests made to the API server, including those from Flux CD controllers. By configuring audit logging to capture Flux operations, you gain visibility into what changes Flux makes, when they happen, and which service account performed them. This is essential for security incident investigation and compliance.
+Kubernetes audit logs record requests made to the API server, including those from Flux CD controllers, according to the configured audit policy. By configuring audit logging to capture Flux Kubernetes API operations, you gain visibility into what API changes Flux makes, when they happen, and which service account performed them. This is essential for security incident investigation and compliance.
 
 ## Understanding Kubernetes Audit Logging
 
@@ -56,7 +56,7 @@ rules:
       - "system:serviceaccount:flux-system:image-reflector-controller"
       - "system:serviceaccount:flux-system:image-automation-controller"
 
-  # Log all create, update, delete operations by Flux service accounts
+  # Log create, update, patch, and delete operations by Flux service accounts for common workload resources
   - level: Request
     users:
       - "system:serviceaccount:flux-system:kustomize-controller"
@@ -221,4 +221,4 @@ cat /var/log/kubernetes/audit/audit.log | jq -r 'select(
 5. **Retain for compliance**: Keep audit logs for the duration required by your compliance framework.
 6. **Use structured queries**: Parse audit logs as JSON for precise filtering and analysis.
 
-Kubernetes audit logs provide complete visibility into Flux CD operations. By properly configuring audit policies and analyzing the resulting logs, you can detect security issues, investigate incidents, and meet compliance requirements for your GitOps infrastructure.
+Kubernetes audit logs provide visibility into Flux CD operations that go through the Kubernetes API server. By properly configuring audit policies and analyzing the resulting logs, you can detect security issues, investigate incidents, and meet compliance requirements for your GitOps infrastructure.
