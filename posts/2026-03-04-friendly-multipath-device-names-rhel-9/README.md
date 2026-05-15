@@ -8,7 +8,7 @@ Description: Configure custom friendly names for multipath devices on RHEL to ma
 
 ---
 
-By default, DM-Multipath uses names like `mpatha`, `mpathb`, or long WWID strings. For environments with many LUNs, custom aliases make it much easier to identify which multipath device maps to which storage function.
+DM-Multipath can use names like `mpatha`, `mpathb`, or long WWID strings, depending on whether `user_friendly_names` is enabled. For environments with many LUNs, custom aliases make it much easier to identify which multipath device maps to which storage function.
 
 ## Default Naming Behavior
 
