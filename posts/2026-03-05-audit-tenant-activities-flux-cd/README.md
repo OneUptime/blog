@@ -130,16 +130,24 @@ Configure Kubernetes API server audit logging to capture relevant API calls made
 apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
-  # Log all actions by Flux service accounts at the RequestResponse level
+  # Log Flux service account activity, but keep Secret bodies out of audit logs
   - level: RequestResponse
     users:
       - "system:serviceaccount:team-alpha:team-alpha"
       - "system:serviceaccount:team-beta:team-beta"
     resources:
       - group: ""
-        resources: ["pods", "services", "configmaps", "secrets"]
+        resources: ["pods", "services", "configmaps"]
       - group: "apps"
         resources: ["deployments", "statefulsets"]
+  # Log Secret access metadata without recording request or response bodies
+  - level: Metadata
+    users:
+      - "system:serviceaccount:team-alpha:team-alpha"
+      - "system:serviceaccount:team-beta:team-beta"
+    resources:
+      - group: ""
+        resources: ["secrets"]
   # Log namespace creation and deletion
   - level: RequestResponse
     resources:
@@ -219,7 +227,7 @@ data:
         Host              elasticsearch.logging.svc
         Port              9200
         Index             flux-audit
-        Type              _doc
+        Suppress_Type_Name On
 ```
 
 ## Step 8: Create Audit Reports
@@ -238,8 +246,8 @@ kubectl get events --all-namespaces \
   --field-selector reason=ReconciliationFailed \
   --sort-by=.metadata.creationTimestamp
 
-# Check which tenants have stale reconciliations
-flux get kustomizations --all-namespaces | grep -v "True"
+# Check which tenants have failed or unknown reconciliations
+flux get kustomizations --all-namespaces --status-selector ready=false
 ```
 
 ## Summary
