@@ -41,7 +41,7 @@ How it works:
 4. Client sends the cookie on subsequent requests
 5. HAProxy reads the cookie and routes to web1
 
-The `indirect` flag means HAProxy removes the cookie before forwarding to the backend (the backend never sees it). The `nocache` flag adds `Cache-Control: nocache` to prevent proxies from caching the response with the Set-Cookie header.
+The `indirect` flag means HAProxy removes the cookie before forwarding to the backend (the backend never sees it). The `nocache` flag marks a response as non-cacheable when HAProxy inserts a persistence cookie, which prevents proxies from caching and reusing a response with the Set-Cookie header.
 
 ## Method 2 - Source IP Persistence
 
@@ -92,7 +92,7 @@ backend web_servers
     server web2 192.168.1.12:8080 check cookie web2
 ```
 
-The `prefix` option appends the server identifier to the application's existing cookie value instead of creating a new cookie.
+The `prefix` option prefixes the server identifier to the application's existing cookie value instead of creating a new cookie.
 
 ## How Cookie-Based Stickiness Works
 
@@ -140,7 +140,7 @@ backend web_servers
     server web2 192.168.1.12:8080 check cookie web2
 ```
 
-The `option redispatch` directive tells HAProxy to send the client to a different backend when their sticky server is down. Without it, the client gets an error.
+The `option redispatch` directive allows HAProxy to break cookie or consistent-hash persistence and retry a different backend when a connection to the sticky server fails. Without it, the client may receive an error after retries instead of being sent to another server.
 
 ## Cookie Options Reference
 
@@ -152,7 +152,7 @@ The `option redispatch` directive tells HAProxy to send the client to a differen
 | `nocache` | Adds Cache-Control headers to prevent cookie caching |
 | `httponly` | Sets the HttpOnly flag on the cookie |
 | `secure` | Sets the Secure flag (only sent over HTTPS) |
-| `dynamic` | Allows changing cookie values at runtime |
+| `dynamic` | Generates per-server cookie values from the server address, port, and a `dynamic-cookie-key` |
 
 A production cookie configuration:
 
@@ -181,6 +181,8 @@ cat cookies.txt
 Check the stats to verify session distribution:
 
 ```bash
+# Requires a Runtime API stats socket configured at /var/lib/haproxy/stats.
+
 # View session counts per server
 echo "show stat" | sudo socat stdio /var/lib/haproxy/stats | \
     awk -F',' '/web_servers/ && !/BACKEND|FRONTEND/ {print $2, "total_sessions:", $8}'
@@ -191,6 +193,8 @@ echo "show stat" | sudo socat stdio /var/lib/haproxy/stats | \
 View what is in the stick table:
 
 ```bash
+# Requires a Runtime API stats socket configured at /var/lib/haproxy/stats.
+
 # Show stick table entries
 echo "show table web_servers" | sudo socat stdio /var/lib/haproxy/stats
 ```
@@ -218,4 +222,4 @@ flowchart TD
 
 ## Wrap-Up
 
-Cookie-based stickiness is the most reliable method for web applications. Use `insert indirect nocache` for HAProxy-managed cookies, or `prefix` if you want to piggyback on your application's existing session cookie. Always enable `option redispatch` so users are not stuck on a dead server. The ultimate goal should be to eliminate the need for sticky sessions by using a shared session store, but when you need them, HAProxy handles it well.
+Cookie-based stickiness is the most reliable method for web applications. Use `insert indirect nocache` for HAProxy-managed cookies, or `prefix` if you want to piggyback on your application's existing session cookie. Enable `option redispatch` when you prefer sending users to another available server over keeping them pinned to a failed connection target. The ultimate goal should be to eliminate the need for sticky sessions by using a shared session store, but when you need them, HAProxy handles it well.
