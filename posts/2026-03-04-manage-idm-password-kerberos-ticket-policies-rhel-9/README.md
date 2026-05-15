@@ -35,7 +35,7 @@ IdM supports multiple password policies assigned to different groups. The policy
 ipa pwpolicy-find
 
 # Show the global (default) password policy
-ipa pwpolicy-show global_policy
+ipa pwpolicy-show
 ```
 
 ### Modify the Global Password Policy
@@ -44,20 +44,20 @@ The global policy applies to all users unless they have a group-specific policy 
 
 ```bash
 # Set minimum password length to 12 characters
-ipa pwpolicy-mod global_policy --minlength=12
+ipa pwpolicy-mod --minlength=12
 
 # Require at least one character from 3 different classes
 # (uppercase, lowercase, digits, special characters)
-ipa pwpolicy-mod global_policy --minclasses=3
+ipa pwpolicy-mod --minclasses=3
 
 # Set password expiration to 90 days
-ipa pwpolicy-mod global_policy --maxlife=90
+ipa pwpolicy-mod --maxlife=90
 
-# Set minimum password age to 1 day (prevent rapid changes)
-ipa pwpolicy-mod global_policy --minlife=1
+# Set minimum password age to 1 hour (prevent rapid changes)
+ipa pwpolicy-mod --minlife=1
 
 # Set password history to remember last 6 passwords
-ipa pwpolicy-mod global_policy --history=6
+ipa pwpolicy-mod --history=6
 ```
 
 ### Create Group-Specific Password Policies
@@ -66,7 +66,7 @@ You often want different policies for admins versus regular users. Create a stri
 
 ```bash
 # Create a password policy for the admins group
-# Priority 1 means it takes precedence over the global policy (priority 0 is highest)
+# Priority 1 means it takes precedence over the global policy
 ipa pwpolicy-add admins \
   --priority=1 \
   --minlength=16 \
@@ -90,13 +90,13 @@ Account lockout protects against brute-force attacks. Be careful with the settin
 
 ```bash
 # Set lockout after 5 failed attempts
-ipa pwpolicy-mod global_policy --maxfail=5
+ipa pwpolicy-mod --maxfail=5
 
 # Set lockout duration to 10 minutes (600 seconds)
-ipa pwpolicy-mod global_policy --lockouttime=600
+ipa pwpolicy-mod --lockouttime=600
 
 # Set the failure reset interval to 5 minutes (300 seconds)
-ipa pwpolicy-mod global_policy --failinterval=300
+ipa pwpolicy-mod --failinterval=300
 ```
 
 ### Check a User's Effective Policy
@@ -156,8 +156,8 @@ ipa krbtpolicy-reset jsmith
 # Check a user's password expiration
 ipa user-show jsmith --all | grep -i "password expiration"
 
-# Check from the Kerberos side
-ipa user-show jsmith --all | grep krbPasswordExpiration
+# Check the raw Kerberos password expiration attribute
+ipa user-show jsmith --all --raw | grep krbPasswordExpiration
 ```
 
 ### Force a Password Reset
@@ -176,7 +176,7 @@ ipa passwd jsmith
 Sometimes you need to buy time during a migration or outage.
 
 ```bash
-# Set a specific expiration date (YYYYMMDD format in the attribute)
+# Set a specific expiration date (GeneralizedTime format: YYYYMMDDHHMMSSZ)
 ipa user-mod jsmith --setattr=krbPasswordExpiration=20270101000000Z
 ```
 
@@ -200,11 +200,12 @@ Here is a set of policies that balances security with usability for most organiz
 Keep an eye on password expirations and lockouts with these commands:
 
 ```bash
-# Find users with passwords expiring in the next 7 days
-ipa user-find --all --raw | grep -B5 "krbPasswordExpiration"
+# List users with password expiration attributes
+ipa user-find --all --raw --sizelimit=0 | grep -B5 "krbPasswordExpiration"
 
-# Check for locked accounts
-ipa user-find --locked=True
+# Check whether a specific account is locked
+ipa user-status jsmith
+ipa pwpolicy-show --user=jsmith
 
 # Unlock a locked account
 ipa user-unlock jsmith
@@ -244,7 +245,7 @@ If `kinit -R` fails, verify the renewable lifetime:
 klist -f
 
 # Verify the policy allows renewal
-ipa krbtpolicy-show --user=jsmith
+ipa krbtpolicy-show jsmith
 ```
 
 ### Account Locked But User Did Not Fail
@@ -253,7 +254,7 @@ Sometimes a misconfigured application repeatedly fails authentication with a use
 
 ```bash
 # Check for failed authentication attempts
-sudo journalctl -u krb5kdc | grep "LOCKED_OUT"
+sudo grep "LOCKED_OUT" /var/log/krb5kdc.log
 ```
 
 Password policies and ticket policies need periodic review. What works for 50 users may not work for 5000. Revisit these settings at least annually and after any significant change in your user base or security requirements.
