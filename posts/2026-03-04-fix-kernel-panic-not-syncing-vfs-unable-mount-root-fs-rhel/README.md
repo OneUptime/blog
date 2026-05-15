@@ -18,10 +18,13 @@ This kernel panic occurs when the kernel cannot find or mount the root filesyste
 # Select: Troubleshooting > Rescue a Red Hat Enterprise Linux system
 
 # The rescue environment will try to find your installation
-# and mount it under /mnt/sysroot
+# and mount it under /mnt/sysroot on RHEL 8/9
+# or /mnt/sysimage on RHEL 7
 
 # If it finds the installation:
 chroot /mnt/sysroot
+# On RHEL 7:
+# chroot /mnt/sysimage
 ```
 
 ## Check the GRUB Configuration
@@ -38,7 +41,7 @@ cat /boot/grub2/grub.cfg | grep "root="
 # Verify the device exists
 ls -la /dev/mapper/rhel-root
 # Or
-blkid | grep <UUID-from-grub>
+blkid | grep 'UUID-from-grub'
 ```
 
 ## Fix 1: Correct the Root Device
@@ -56,6 +59,8 @@ vi /etc/default/grub
 
 # Regenerate GRUB configuration
 grub2-mkconfig -o /boot/grub2/grub.cfg
+# On RHEL 7/8 UEFI systems:
+# grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
 ```
 
 ## Fix 2: Rebuild the initramfs
