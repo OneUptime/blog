@@ -8,14 +8,14 @@ Description: Deploy and configure RHEL on Oracle Cloud Infrastructure compute in
 
 ---
 
-Oracle Cloud Infrastructure (OCI) supports RHEL as a platform image for compute instances. This guide covers deploying RHEL on OCI with proper networking, block storage, and integration with OCI services.
+Oracle Cloud Infrastructure (OCI) supports RHEL on compute instances through imported custom images. This guide covers deploying RHEL on OCI with proper networking, block storage, and integration with OCI services.
 
 ## Step 1: Create a Compute Instance
 
 ```bash
 # Using OCI CLI to create a RHEL instance
 
-# First, find the RHEL image OCID
+# First, find the imported RHEL custom image OCID
 oci compute image list \
   --compartment-id $COMPARTMENT_ID \
   --operating-system "Red Hat Enterprise Linux" \
@@ -39,7 +39,7 @@ oci compute instance launch \
 
 ```bash
 # SSH into the instance
-ssh opc@<public-ip>
+ssh cloud-user@<public-ip>
 
 # Update the system
 sudo dnf update -y
@@ -54,14 +54,15 @@ sudo mount -a
 ## Step 3: Configure Security Lists
 
 ```bash
-# Add an ingress rule for HTTPS
+# Replace the ingress rules with an HTTPS ingress rule
 oci network security-list update \
   --security-list-id $SECLIST_ID \
   --ingress-security-rules '[{
     "source": "0.0.0.0/0",
     "protocol": "6",
     "tcpOptions": {"destinationPortRange": {"min": 443, "max": 443}}
-  }]'
+  }]' \
+  --force
 
 # Configure firewalld on the instance
 sudo systemctl enable --now firewalld
@@ -73,8 +74,7 @@ sudo firewall-cmd --reload
 
 ```bash
 # Install OCI CLI
-sudo dnf install -y python3-pip
-pip3 install oci-cli
+bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults
 
 # Configure using instance principal (no credentials needed)
 # The instance must have a dynamic group and policy configured
@@ -84,12 +84,14 @@ oci os ns get --auth instance_principal
 ## Step 5: Set Up Monitoring
 
 ```bash
-# Install the OCI monitoring agent
-sudo dnf install -y oracle-cloud-agent
+# Install the Oracle Cloud Agent if Oracle provides an RPM for your image
+sudo dnf install -y /path/to/oracle-cloud-agent.rpm
 
-# Enable monitoring plugins
-sudo /opt/oracle-cloud-agent/agent ctl start \
-  --plugin "Compute Instance Monitoring"
+# Enable the Compute Instance Monitoring plugin
+oci compute instance update \
+  --instance-id $INSTANCE_OCID \
+  --agent-config '{"pluginsConfig": [{"name": "Compute Instance Monitoring", "desiredState": "ENABLED"}]}' \
+  --force
 
 # Verify the agent is running
 sudo systemctl status oracle-cloud-agent
