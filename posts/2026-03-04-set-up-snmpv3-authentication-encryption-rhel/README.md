@@ -50,7 +50,7 @@ syscontact "noc@example.com"
 view allview included .1
 
 # Map the SNMPv3 user to the view
-# rouser USERNAME authpriv|auth|noauth
+# rouser USERNAME priv|auth|noauth
 rouser monitoruser priv -V allview
 
 # Disk and load monitoring
@@ -103,9 +103,11 @@ SNMPv3 supports three security levels:
 
 ```bash
 # noAuthNoPriv - no authentication, no encryption (not recommended)
+# Requires a user and access rule configured for noauth
 snmpget -v3 -u monitoruser -l noAuthNoPriv localhost sysDescr.0
 
 # authNoPriv - authentication only (passwords verified but data not encrypted)
+# Requires an access rule configured for auth or noauth
 snmpget -v3 -u monitoruser -l authNoPriv \
   -a SHA -A 'AuthPass123!secure' \
   localhost sysDescr.0
@@ -134,8 +136,8 @@ sudo systemctl stop snmpd
 # Create a read-write user for management
 sudo net-snmp-create-v3-user -A 'AdminAuth789!' -a SHA-256 -X 'AdminPriv789!' -x AES adminuser
 
-# Add to snmpd.conf
-echo 'rwuser adminuser priv -V allview' | sudo tee -a /etc/snmp/snmpd.conf
+# Restrict the automatically added rwuser line to require encryption and use the view
+sudo sed -i 's/^rwuser adminuser.*/rwuser adminuser priv -V allview/' /etc/snmp/snmpd.conf
 
 sudo systemctl start snmpd
 ```
