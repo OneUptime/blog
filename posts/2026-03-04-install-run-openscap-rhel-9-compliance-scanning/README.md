@@ -20,7 +20,7 @@ dnf install -y openscap-scanner
 # Install the SCAP Security Guide (provides compliance profiles)
 dnf install -y scap-security-guide
 
-# Optional: Install utilities for generating remediation
+# Optional: Install utilities such as oscap-ssh and autotailor
 dnf install -y openscap-utils
 
 # Verify the installation
@@ -132,14 +132,14 @@ OpenSCAP can generate fix scripts based on scan results:
 # Generate a bash remediation script
 oscap xccdf generate fix \
   --fix-type bash \
-  --result-id "" \
+  --result-id xccdf_org.open-scap_testresult_xccdf_org.ssgproject.content_profile_stig \
   --output /tmp/remediation.sh \
   /var/log/compliance/stig-results.xml
 
 # Generate an Ansible playbook
 oscap xccdf generate fix \
   --fix-type ansible \
-  --result-id "" \
+  --result-id xccdf_org.open-scap_testresult_xccdf_org.ssgproject.content_profile_stig \
   --output /tmp/remediation.yml \
   /var/log/compliance/stig-results.xml
 
@@ -152,14 +152,18 @@ cat /tmp/remediation.sh | head -50
 Besides XCCDF policy compliance, OpenSCAP can also run OVAL vulnerability scans:
 
 ```bash
-# Check for available OVAL content
-ls /usr/share/xml/scap/ssg/content/ssg-rhel9-oval.xml
+# Install bzip2 if it is not already installed
+dnf install -y bzip2
+
+# Download the latest Red Hat Security Advisory OVAL definitions
+wget -O - https://www.redhat.com/security/data/oval/v2/RHEL9/rhel-9.oval.xml.bz2 | \
+  bzip2 --decompress > /var/log/compliance/rhel-9.oval.xml
 
 # Run an OVAL scan
 oscap oval eval \
   --results /var/log/compliance/oval-results.xml \
   --report /var/log/compliance/oval-report.html \
-  /usr/share/xml/scap/ssg/content/ssg-rhel9-oval.xml
+  /var/log/compliance/rhel-9.oval.xml
 ```
 
 ## Automate Regular Scans
@@ -203,11 +207,10 @@ echo "0 3 * * 0 root /usr/local/bin/compliance-scan.sh" >> /etc/crontab
 
 ```bash
 # If oscap fails with XML parsing errors
-oscap info --fetch-remote-resources \
+oscap info \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
 
-# If scan runs out of memory on large systems
-# Increase the timeout and memory limits
+# If the content references remote resources and you trust them
 oscap xccdf eval --fetch-remote-resources \
   --profile xccdf_org.ssgproject.content_profile_stig \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
