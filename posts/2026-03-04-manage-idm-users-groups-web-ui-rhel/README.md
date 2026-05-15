@@ -47,7 +47,7 @@ The user management workflow in the Web UI:
 
 1. Navigate to **Identity** > **Users** > **Active Users**
 2. Click **Add** to create a new user
-3. Fill in: User login, First name, Last name, and optionally Class, email
+3. Fill in: User login, First name, Last name, and optionally GID or password
 4. Click **Add** to save
 
 To modify a user:
@@ -60,8 +60,8 @@ To modify a user:
 1. Navigate to **Identity** > **Groups** > **User Groups**
 2. Click **Add** to create a group
 3. Enter the group name and description
-4. To add members, click the group name, then the **Members** tab
-5. Click **Add** and select users or groups to include
+4. To add members, click the group name, then select **Users**, **User Groups**, or **External**
+5. Click **Add**, select users or groups to include, move them to the prospective column, and confirm
 
 ## Setting Up Host-Based Access
 
@@ -74,8 +74,8 @@ To modify a user:
 ## Comparing CLI vs Web UI
 
 ```bash
-# Any action in the Web UI can also be done via CLI
-# The Web UI calls the same API endpoints
+# Most common Web UI actions can also be done via CLI
+# The Web UI uses the JSON-RPC interface to access the same IdM API
 
 # Example: Creating a user via CLI equivalent
 ipa user-add jdoe --first=Jane --last=Doe
