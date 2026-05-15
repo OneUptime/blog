@@ -27,7 +27,7 @@ This is the default behavior when you join RHEL to AD with realmd. SSSD uses an 
 
 ### How It Works
 
-SSSD takes the RID (the last portion of the SID) and adds it to a base ID to produce the UID. For example, if the base ID is 200000 and the user's RID is 1105, the UID becomes 201105.
+SSSD takes the AD object's SID, allocates an ID range slice for the AD domain, and then maps the RID (the last portion of the SID) inside that slice. With the default range starting at 200000, a domain assigned to the first slice and a user RID of 1105 would produce UID 201105.
 
 ```bash
 # Check the current ID mapping configuration
@@ -66,16 +66,16 @@ getent group "Domain Users@example.com"
 ### Disadvantages
 
 - UIDs may differ across RHEL systems with different SSSD configurations
-- NFSv3 file sharing between Linux hosts requires consistent UIDs (NFSv4 with Kerberos avoids this)
+- NFSv3 file sharing between Linux hosts requires consistent UIDs (NFSv4 name mapping with Kerberos can reduce reliance on numeric IDs, but still needs consistent identity resolution)
 - Cannot choose specific UID values for users
 
 ## Approach 2: Using POSIX Attributes from AD
 
 If you need consistent UIDs across all Linux systems (for NFS, for compliance, or for migration from another directory), store POSIX attributes directly in AD.
 
-### Step 1 - Enable POSIX Extensions in AD
+### Step 1 - Confirm POSIX Attributes in AD
 
-On the AD domain controller, install the "Identity Management for UNIX" role or manually populate the POSIX attributes. In modern AD (2016+), these attributes are available by default in the schema.
+Modern Active Directory schemas include the RFC 2307 POSIX attributes. The old "Identity Management for UNIX" extension and the Unix Attributes tab were deprecated and are not the right approach for current Windows Server deployments. Populate the POSIX attributes directly with PowerShell or with the Attribute Editor in Active Directory Users and Computers.
 
 The key attributes to populate in AD:
 
@@ -100,7 +100,7 @@ Set-ADUser -Identity jsmith -Replace @{
 }
 ```
 
-Or use Active Directory Users and Computers with the Unix Attributes tab.
+Or use Active Directory Users and Computers with Advanced Features enabled and edit the attributes on the Attribute Editor tab.
 
 ### Step 3 - Configure SSSD to Use AD POSIX Attributes
 
@@ -134,7 +134,8 @@ default_shell = /bin/bash
 Restart SSSD:
 
 ```bash
-sudo sss_cache -E
+sudo systemctl stop sssd
+sudo rm -f /var/lib/sss/db/*
 sudo systemctl restart sssd
 ```
 
@@ -152,7 +153,7 @@ getent passwd jsmith
 
 ## Handling Users Without POSIX Attributes
 
-When using `ldap_id_mapping = False`, users without POSIX attributes in AD will not be resolvable on Linux. Configure fallbacks for these users.
+When using `ldap_id_mapping = False`, users without `uidNumber` and `gidNumber` in AD will not be resolvable on Linux. You cannot fall back to automatic ID mapping for only those users in the same SSSD domain, but you can still configure fallbacks for missing home directory and shell attributes.
 
 ```ini
 [domain/example.com]
@@ -191,14 +192,15 @@ Set-ADGroup -Identity "Linux Admins" -Replace @{gidNumber = 10100}
 SSSD allows per-user overrides on the client side, which is useful when you cannot modify AD.
 
 ```bash
-# Override the UID for a specific user
-sudo sss_override user-add jsmith@example.com --uid=10001 --gid=10000
+# Override multiple attributes for a specific user
+sudo sss_override user-add jsmith@example.com \
+  --uid=10001 \
+  --gid=10000 \
+  --home=/home/jsmith \
+  --shell=/bin/bash
 
-# Override the home directory
+# Or override only one attribute
 sudo sss_override user-add jsmith@example.com --home=/home/jsmith
-
-# Override the shell
-sudo sss_override user-add jsmith@example.com --shell=/bin/bash
 
 # Apply overrides
 sudo systemctl restart sssd
@@ -221,11 +223,11 @@ ipa idview-add linux_overrides
 # Add a user override
 ipa idoverrideuser-add linux_overrides \
   jsmith@ad.example.com \
-  --uid=10001 --gid=10000 \
+  --uid=10001 --gidnumber=10000 \
   --homedir=/home/jsmith \
   --shell=/bin/bash
 
-# Apply the view to a host group
+# Apply the view to the current members of a host group
 ipa idview-apply linux_overrides --hostgroups=linux_servers
 ```
 
