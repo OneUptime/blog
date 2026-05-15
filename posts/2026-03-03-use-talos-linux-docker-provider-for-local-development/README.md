@@ -8,7 +8,7 @@ Description: A hands-on guide to using the Talos Linux Docker provider for fast 
 
 ---
 
-When you need a local Kubernetes cluster for development, the options are familiar: Minikube, kind, k3d, or Docker Desktop. The Talos Linux Docker provider is a compelling alternative that many developers overlook. It runs Talos nodes as Docker containers on your machine, giving you a cluster that behaves almost identically to a production Talos deployment, complete with the Talos API, immutable OS behavior, and the same upgrade mechanisms.
+When you need a local Kubernetes cluster for development, the options are familiar: Minikube, kind, k3d, or Docker Desktop. The Talos Linux Docker provider is a compelling alternative that many developers overlook. It runs Talos nodes as Docker containers on your machine, giving you a cluster that behaves similarly to a production Talos deployment, complete with the Talos API and immutable OS behavior.
 
 This guide covers how to use the Talos Docker provider effectively for local development, from getting started through to advanced workflows.
 
@@ -46,8 +46,7 @@ docker info
 
 ```bash
 # Create a basic development cluster
-talosctl cluster create \
-  --provisioner docker \
+talosctl cluster create docker \
   --name dev \
   --controlplanes 1 \
   --workers 1
@@ -82,8 +81,7 @@ kubectl get nodes
 For the lightest possible footprint, run a single node that handles both control plane and workload duties:
 
 ```bash
-talosctl cluster create \
-  --provisioner docker \
+talosctl cluster create docker \
   --name dev-minimal \
   --controlplanes 1 \
   --workers 0 \
@@ -95,8 +93,7 @@ talosctl cluster create \
 For testing scheduling behavior, node affinity, or pod disruption budgets:
 
 ```bash
-talosctl cluster create \
-  --provisioner docker \
+talosctl cluster create docker \
   --name dev-multi \
   --controlplanes 1 \
   --workers 3
@@ -107,13 +104,14 @@ talosctl cluster create \
 Control how much CPU and memory the cluster uses:
 
 ```bash
-talosctl cluster create \
-  --provisioner docker \
+talosctl cluster create docker \
   --name dev-limited \
   --controlplanes 1 \
   --workers 1 \
-  --cpus 2 \
-  --memory 2048
+  --cpus-controlplanes 2.0 \
+  --cpus-workers 2.0 \
+  --memory-controlplanes 2GiB \
+  --memory-workers 2GiB
 ```
 
 ### Specific Kubernetes Version
@@ -121,12 +119,11 @@ talosctl cluster create \
 Test against a particular Kubernetes version:
 
 ```bash
-talosctl cluster create \
-  --provisioner docker \
-  --name dev-k8s-128 \
+talosctl cluster create docker \
+  --name dev-k8s-136 \
   --controlplanes 1 \
   --workers 1 \
-  --kubernetes-version 1.28.0
+  --kubernetes-version 1.36.0
 ```
 
 ## Working with Multiple Clusters
@@ -135,9 +132,9 @@ One of the best features of the Docker provider is running multiple clusters sim
 
 ```bash
 # Create clusters for different purposes
-talosctl cluster create --provisioner docker --name frontend-dev --controlplanes 1 --workers 1
-talosctl cluster create --provisioner docker --name backend-dev --controlplanes 1 --workers 1
-talosctl cluster create --provisioner docker --name integration --controlplanes 1 --workers 2
+talosctl cluster create docker --name frontend-dev --subnet 10.6.0.0/24 --controlplanes 1 --workers 1
+talosctl cluster create docker --name backend-dev --subnet 10.7.0.0/24 --controlplanes 1 --workers 1
+talosctl cluster create docker --name integration --subnet 10.8.0.0/24 --controlplanes 1 --workers 2
 
 # List running clusters
 docker ps --filter "label=talos.dev/role" --format "table {{.Names}}\t{{.Status}}"
@@ -159,9 +156,10 @@ Access services running in the cluster from your host:
 # Use kubectl port-forward
 kubectl port-forward svc/myapp 8080:80
 
-# Or use NodePort services
-# The Docker provider maps node ports to the host
-kubectl get svc myapp -o jsonpath='{.spec.ports[0].nodePort}'
+# Or expose ports when creating the cluster
+talosctl cluster create docker \
+  --name dev-with-ports \
+  --exposed-ports 8080:30080/tcp
 ```
 
 For more persistent access, deploy an ingress controller:
@@ -194,16 +192,16 @@ EOF
 
 ## Loading Local Docker Images
 
-When developing locally, you build images that exist in your local Docker daemon but not inside the cluster. The Docker provider containers share the Docker daemon, so images are accessible:
+When developing locally, you build images that exist in your local Docker daemon but not inside the cluster. The Docker provider runs Talos with its own container runtime, so push local images to a registry reachable from the cluster:
 
 ```bash
 # Build your application image
-docker build -t myapp:dev .
+docker build -t registry.example.com/myapp:dev .
 
-# The image is available inside the cluster because
-# the Talos containers share the Docker socket
+# Push it to a registry the Talos nodes can reach
+docker push registry.example.com/myapp:dev
 
-# Deploy using the local image
+# Deploy using the registry image
 kubectl apply -f - <<EOF
 apiVersion: apps/v1
 kind: Deployment
@@ -221,8 +219,8 @@ spec:
     spec:
       containers:
         - name: myapp
-          image: myapp:dev
-          imagePullPolicy: Never  # Use the local image
+          image: registry.example.com/myapp:dev
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
 EOF
@@ -258,11 +256,11 @@ tilt up
 
 CLUSTER_NAME ?= dev
 KUBECONFIG ?= $(HOME)/.kube/$(CLUSTER_NAME)-config
+IMAGE ?= registry.example.com/myapp:dev
 
 .PHONY: cluster-up
 cluster-up:
-	talosctl cluster create \
-		--provisioner docker \
+	talosctl cluster create docker \
 		--name $(CLUSTER_NAME) \
 		--controlplanes 1 \
 		--workers 1
@@ -275,8 +273,10 @@ cluster-down:
 
 .PHONY: deploy
 deploy:
-	docker build -t myapp:dev .
+	docker build -t $(IMAGE) .
+	docker push $(IMAGE)
 	KUBECONFIG=$(KUBECONFIG) kubectl apply -f manifests/
+	KUBECONFIG=$(KUBECONFIG) kubectl set image deploy/myapp myapp=$(IMAGE)
 
 .PHONY: logs
 logs:
@@ -302,7 +302,7 @@ talosctl dmesg --follow
 talosctl etcd status
 
 # View running services
-talosctl services
+talosctl service
 
 # Get cluster health details
 talosctl health --verbose
@@ -316,7 +316,7 @@ kubectl get pods -o wide
 kubectl describe pod <pod-name>
 kubectl get events --sort-by=.lastTimestamp
 
-# Check resource usage
+# Check resource usage if metrics-server is installed
 kubectl top nodes
 kubectl top pods
 ```
@@ -365,13 +365,13 @@ EOF
 - Enable `allowSchedulingOnControlPlanes` to avoid needing worker nodes for simple setups
 - Set memory limits to prevent Docker from consuming all host RAM
 - Destroy clusters when not actively using them
-- Use `imagePullPolicy: Never` for local images to skip registry lookups
+- Use a local registry or registry mirror for images you build during development
 
 ## Troubleshooting
 
 If cluster creation fails, check Docker has enough resources allocated. On Docker Desktop for macOS, increase memory in Preferences > Resources.
 
-If pods fail to pull images, make sure you are using `imagePullPolicy: Never` for local images. The Docker provider does not have access to remote registries by default in all configurations.
+If pods fail to pull local images, make sure you pushed the image to a registry reachable from the Talos containers, then reference that registry in the workload manifest.
 
 If the cluster is slow, check the Docker Desktop resource limits. A minimum of 4 GB memory and 2 CPUs dedicated to Docker is recommended for a single-node cluster.
 
