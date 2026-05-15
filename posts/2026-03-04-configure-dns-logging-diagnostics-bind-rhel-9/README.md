@@ -48,13 +48,14 @@ options {
     recursion yes;
     allow-recursion { 10.0.0.0/8; 192.168.0.0/16; localhost; };
     dnssec-validation auto;
+    querylog no;
     pid-file "/run/named/named.pid";
 };
 
 logging {
     // Channel for general BIND messages
     channel default_log {
-        file "/var/log/named/default.log" versions 5 size 10m;
+        file "/var/named/log/default.log" versions 5 size 10m;
         severity info;
         print-time yes;
         print-severity yes;
@@ -63,14 +64,14 @@ logging {
 
     // Channel for DNS queries
     channel query_log {
-        file "/var/log/named/queries.log" versions 10 size 50m;
+        file "/var/named/log/queries.log" versions 10 size 50m;
         severity info;
         print-time yes;
     };
 
     // Channel for zone transfer activity
     channel transfer_log {
-        file "/var/log/named/transfers.log" versions 3 size 5m;
+        file "/var/named/log/transfers.log" versions 3 size 5m;
         severity info;
         print-time yes;
         print-severity yes;
@@ -78,7 +79,7 @@ logging {
 
     // Channel for security events
     channel security_log {
-        file "/var/log/named/security.log" versions 5 size 10m;
+        file "/var/named/log/security.log" versions 5 size 10m;
         severity info;
         print-time yes;
         print-severity yes;
@@ -86,7 +87,7 @@ logging {
 
     // Channel for DNSSEC validation
     channel dnssec_log {
-        file "/var/log/named/dnssec.log" versions 3 size 5m;
+        file "/var/named/log/dnssec.log" versions 3 size 5m;
         severity info;
         print-time yes;
         print-severity yes;
@@ -94,7 +95,7 @@ logging {
 
     // Channel for rate limiting events
     channel rate_limit_log {
-        file "/var/log/named/rate-limit.log" versions 3 size 5m;
+        file "/var/named/log/rate-limit.log" versions 3 size 5m;
         severity info;
         print-time yes;
     };
@@ -122,14 +123,14 @@ EOF
 Set up the log directory with proper permissions:
 
 ```bash
-mkdir -p /var/log/named
-chown named:named /var/log/named
-chmod 750 /var/log/named
+mkdir -p /var/named/log
+chown named:named /var/named/log
+chmod 700 /var/named/log
 ```
 
 ## Enabling Query Logging
 
-Query logging is disabled by default because it generates a lot of output. Enable it when you need to debug resolution issues.
+Query logging generates a lot of output, so the example above sets `querylog no;` to keep it off at startup. Enable it when you need to debug resolution issues.
 
 Enable query logging at runtime:
 
@@ -203,13 +204,13 @@ rndc stats
 less /var/named/data/named_stats.txt
 ```
 
-View recursion depth:
+Dump active recursive queries:
 
 ```bash
 rndc recursing
 ```
 
-Trace a specific query (increase debug level):
+Increase debug logging:
 
 ```bash
 # Set debug level
@@ -217,7 +218,7 @@ Trace a specific query (increase debug level):
 rndc trace 3
 
 # Watch the logs
-tail -f /var/log/named/default.log
+tail -f /var/named/log/default.log
 
 # Turn off debug when done
 rndc notrace
@@ -229,7 +230,7 @@ Create a logrotate configuration to manage log file sizes:
 
 ```bash
 cat > /etc/logrotate.d/named << 'EOF'
-/var/log/named/*.log {
+/var/named/log/*.log {
     daily
     missingok
     rotate 14
@@ -237,19 +238,17 @@ cat > /etc/logrotate.d/named << 'EOF'
     delaycompress
     notifempty
     create 0640 named named
+    copytruncate
     sharedscripts
-    postrotate
-        /usr/sbin/rndc reopen 2>/dev/null || true
-    endscript
 }
 EOF
 ```
 
-The `rndc reopen` command tells BIND to close and reopen its log files after rotation.
+The `copytruncate` option lets logrotate copy and truncate the current file without relying on an `rndc` log-reopen command, which is not available in RHEL 9's BIND version.
 
 ## Monitoring with Statistics Channel
 
-BIND can serve statistics via HTTP. Add this to your options:
+BIND can serve statistics via HTTP. Add this as a top-level statement in `/etc/named.conf`:
 
 ```bash
 statistics-channels {
