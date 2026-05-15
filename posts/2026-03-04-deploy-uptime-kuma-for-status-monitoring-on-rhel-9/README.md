@@ -16,34 +16,57 @@ Deploying Uptime Kuma for Status Monitoring on RHEL provides a stable and secure
 - Root or sudo access
 - A terminal session
 
+## Step 1: Install Container Tools
+
+Install Podman and the related container tools:
+
+```bash
+sudo dnf install -y container-tools
+sudo mkdir -p /etc/containers/systemd
+sudo podman volume create uptime-kuma
+```
+
 ## Step 2: Configure the Service
 
-Edit the configuration file to match your environment:
+Create a Podman Quadlet service definition for Uptime Kuma:
 
 ```bash
-# Open the configuration file
+sudo tee /etc/containers/systemd/uptime-kuma.container > /dev/null <<'EOF'
+[Unit]
+Description=Uptime Kuma status monitoring
+After=network-online.target
+Wants=network-online.target
 
-sudo vi /etc/<service>/config.conf
+[Container]
+Image=docker.io/louislam/uptime-kuma:2
+ContainerName=uptime-kuma
+PublishPort=3001:3001
+Volume=uptime-kuma:/app/data
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target
+EOF
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the port mapping and volume according to your requirements. Keep `/app/data` on local storage or a local Podman volume so SQLite can use POSIX file locks safely.
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Generate the systemd service from the Quadlet file
+sudo systemctl daemon-reload
 ```
 
-## Step 3: Enable and Start the Service
+## Step 3: Start the Service
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
-
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start uptime-kuma.service
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status uptime-kuma.service
 ```
 
 
@@ -53,16 +76,19 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status uptime-kuma.service
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+sudo journalctl -u uptime-kuma.service --no-pager -n 20
 ```
+
+Uptime Kuma should be available at `http://localhost:3001`.
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `sudo journalctl -u uptime-kuma.service -e --no-pager`.
+- Ensure the container tools are installed: `rpm -qa | grep container-tools`.
+- If the service is not generated after editing the Quadlet file, run `sudo systemctl daemon-reload` and check the generated unit with `systemctl status uptime-kuma.service`.
 
 ## Conclusion
 
