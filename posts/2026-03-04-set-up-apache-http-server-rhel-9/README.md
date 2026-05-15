@@ -96,8 +96,8 @@ cat <<'EOF' | sudo tee /var/www/html/index.html
 </html>
 EOF
 
-# Set correct ownership
-sudo chown apache:apache /var/www/html/index.html
+# Set safe ownership for static content
+sudo chown root:root /var/www/html/index.html
 
 # Set correct permissions
 sudo chmod 644 /var/www/html/index.html
@@ -134,11 +134,11 @@ DocumentRoot "/var/www/html"
     # Allow .htaccess overrides
     AllowOverride All
 
-    # Only allow access controls
+    # Allow all requests to this directory
     Require all granted
 </Directory>
 
-# Hide the Apache version in response headers
+# Limit Apache version details in response headers and error pages
 ServerTokens Prod
 ServerSignature Off
 ```
@@ -163,6 +163,7 @@ ls -lZ /var/www/html/
 
 # If you serve content from a non-default directory, set the correct context
 # Example: serving from /srv/www
+# Install policycoreutils-python-utils first if semanage is unavailable
 sudo semanage fcontext -a -t httpd_sys_content_t "/srv/www(/.*)?"
 sudo restorecon -Rv /srv/www
 
