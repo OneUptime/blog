@@ -96,13 +96,13 @@ sudo dnf upgrade --exclude=kernel*
 Permanently exclude in dnf configuration:
 
 ```bash
-echo "exclude=kernel*" | sudo tee -a /etc/dnf/dnf.conf
+echo "excludepkgs=kernel*" | sudo tee -a /etc/dnf/dnf.conf
 ```
 
 Remove the exclusion when you are ready to update:
 
 ```bash
-sudo sed -i '/^exclude=kernel/d' /etc/dnf/dnf.conf
+sudo sed -i '/^excludepkgs=kernel/d' /etc/dnf/dnf.conf
 ```
 
 ## Configuring the Number of Kept Kernels
