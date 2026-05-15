@@ -76,6 +76,7 @@ composer-cli compose image <compose-uuid>
 ```bash
 # Install Azure CLI
 sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc
+sudo dnf install -y https://packages.microsoft.com/config/rhel/9.0/packages-microsoft-prod.rpm
 sudo dnf install -y azure-cli
 
 # Login to Azure
@@ -83,7 +84,7 @@ az login
 
 # Create a resource group and storage account
 az group create --name rhel-images-rg --location eastus
-az storage account create --name rhelimagestorage --resource-group rhel-images-rg --sku Standard_LRS
+az storage account create --name rhelimagestorage --resource-group rhel-images-rg --location eastus --sku Standard_LRS
 
 # Get the storage account key
 STORAGE_KEY=$(az storage account keys list --account-name rhelimagestorage --resource-group rhel-images-rg --query "[0].value" -o tsv)
@@ -109,6 +110,7 @@ az image create \
   --resource-group rhel-images-rg \
   --name rhel-custom-image \
   --os-type Linux \
+  --location eastus \
   --source "https://rhelimagestorage.blob.core.windows.net/vhds/rhel-server.vhd"
 
 # Create a VM from the image
@@ -116,6 +118,7 @@ az vm create \
   --resource-group rhel-images-rg \
   --name rhel-server-01 \
   --image rhel-custom-image \
+  --location eastus \
   --size Standard_B2s \
   --admin-username azadmin \
   --ssh-key-values ~/.ssh/id_rsa.pub
