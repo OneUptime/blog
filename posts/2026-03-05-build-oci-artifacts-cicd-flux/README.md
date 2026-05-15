@@ -144,10 +144,10 @@ push-artifact:
 
 ## Building OCI Artifacts for AWS ECR
 
-When using AWS ECR, you need to authenticate using the AWS CLI or an OIDC provider before pushing.
+When using AWS ECR, make sure AWS credentials are available to the Flux CLI, for example through the AWS CLI environment or an OIDC provider, before pushing.
 
 ```bash
-# Authenticate to AWS before pushing, for example with the AWS CLI
+# Verify AWS credentials before pushing
 aws sts get-caller-identity
 
 # Push the artifact to ECR
