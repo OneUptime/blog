@@ -38,10 +38,12 @@ With NAT, VMs use a private 192.168.122.0/24 range and the host translates. With
 ```bash
 # Install virtualization packages if not already present
 
-dnf install -y qemu-kvm libvirt virt-install bridge-utils
+dnf install -y qemu-kvm libvirt virt-install
 
-# Start and enable libvirtd
-systemctl enable --now libvirtd
+# Start and enable the modular libvirt daemon sockets
+for drv in qemu network nodedev nwfilter secret storage interface; do
+  systemctl enable --now virt${drv}d.socket virt${drv}d-ro.socket virt${drv}d-admin.socket
+done
 ```
 
 ## Step 1: Create the Host Bridge
@@ -62,9 +64,13 @@ nmcli connection modify br0 ipv4.dns "10.0.1.1 8.8.8.8"
 nmcli connection modify br0 ipv4.method manual
 
 # Add physical NIC as a bridge port
-nmcli connection add type ethernet con-name br0-port ifname eth0 master br0
+nmcli connection add type ethernet port-type bridge con-name br0-port ifname eth0 controller br0
 
-# Remove the old connection on eth0 if it exists
+# Bring bridge ports up automatically with the bridge
+nmcli connection modify br0 connection.autoconnect-ports 1
+
+# Remove the old standalone connection on eth0 if it exists
+# (replace the name if your existing profile is different)
 nmcli connection delete "Wired connection 1" 2>/dev/null
 
 # Activate the bridge (brief network interruption here)
@@ -196,7 +202,7 @@ virt-install \
   --vcpus 1 \
   --disk path=/var/lib/libvirt/images/testvm.qcow2,size=20 \
   --os-variant rhel9.0 \
-  --network type=direct,source=eth0,source_mode=bridge,model=virtio \
+  --network type=direct,source=eth0,source.mode=bridge,model=virtio \
   --location /var/lib/libvirt/images/rhel-9.iso \
   --noautoconsole
 ```
@@ -237,13 +243,13 @@ You can create separate bridges for different networks:
 nmcli connection add type bridge con-name br-prod ifname br-prod
 nmcli connection modify br-prod ipv4.addresses 10.0.1.50/24
 nmcli connection modify br-prod ipv4.method manual
-nmcli connection add type ethernet con-name br-prod-port ifname eth0 master br-prod
+nmcli connection add type ethernet port-type bridge con-name br-prod-port ifname eth0 controller br-prod
 
 # Management network bridge
 nmcli connection add type bridge con-name br-mgmt ifname br-mgmt
 nmcli connection modify br-mgmt ipv4.addresses 172.16.0.50/24
 nmcli connection modify br-mgmt ipv4.method manual
-nmcli connection add type ethernet con-name br-mgmt-port ifname eth1 master br-mgmt
+nmcli connection add type ethernet port-type bridge con-name br-mgmt-port ifname eth1 controller br-mgmt
 ```
 
 Then assign VMs to the appropriate bridge based on their role.
