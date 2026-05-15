@@ -31,8 +31,7 @@ sudo dnf install -y samba samba-client samba-common
 # Create the directory to share
 sudo mkdir -p /srv/samba/shared
 
-# Set permissions
-sudo chmod 0775 /srv/samba/shared
+# Set initial ownership
 sudo chown nobody:nobody /srv/samba/shared
 ```
 
@@ -75,6 +74,9 @@ Samba maintains its own password database separate from the system passwords:
 # Create a system user (if not already existing)
 sudo useradd -M -s /sbin/nologin smbuser1
 
+# Set a local password to enable the operating system account
+sudo passwd smbuser1
+
 # Set the Samba password for the user
 sudo smbpasswd -a smbuser1
 
@@ -93,6 +95,9 @@ sudo usermod -aG samba_users smbuser1
 
 # Set group ownership on the share
 sudo chgrp samba_users /srv/samba/shared
+
+# Allow group members to write and keep new files in the same group
+sudo chmod 2775 /srv/samba/shared
 ```
 
 ## Step 5 - Validate Configuration
@@ -110,10 +115,6 @@ testparm checks the syntax of smb.conf and reports any issues. Fix any errors be
 # Set the correct SELinux context for the share
 sudo semanage fcontext -a -t samba_share_t "/srv/samba/shared(/.*)?"
 sudo restorecon -Rv /srv/samba/shared
-
-# Enable Samba-related SELinux booleans
-sudo setsebool -P samba_enable_home_dirs on
-sudo setsebool -P samba_export_all_rw on
 ```
 
 ## Step 7 - Configure Firewall
@@ -127,11 +128,11 @@ sudo firewall-cmd --reload
 ## Step 8 - Start Samba Services
 
 ```bash
-# Enable and start Samba and its companion service
-sudo systemctl enable --now smb nmb
+# Enable and start the Samba file-sharing service
+sudo systemctl enable --now smb
 
-# Verify they are running
-sudo systemctl status smb nmb
+# Verify it is running
+sudo systemctl status smb
 ```
 
 ## Step 9 - Test the Share
@@ -181,7 +182,7 @@ graph LR
     Win[Windows Client] -->|SMB Protocol| SMB[smbd<br>Port 445]
     Lin[Linux Client] -->|SMB Protocol| SMB
     SMB --> FS[Filesystem<br>/srv/samba]
-    NMB[nmbd<br>NetBIOS] --> SMB
+    NMB[Optional nmbd<br>NetBIOS] --> SMB
 ```
 
 ## Logging
