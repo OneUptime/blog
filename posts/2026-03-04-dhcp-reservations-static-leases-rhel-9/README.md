@@ -10,6 +10,8 @@ Description: Configure DHCP reservations on RHEL to assign consistent IP address
 
 DHCP is great for handing out IPs automatically, but some devices need a consistent address. Printers, servers, network gear, monitoring systems - these all work better with a predictable IP. You could configure them statically, but then you lose the benefits of centralized DHCP management (DNS servers, gateways, lease tracking). DHCP reservations give you the best of both worlds: a fixed IP managed through DHCP.
 
+On RHEL 9, the ISC DHCP client and server packages are deprecated but still supported for the RHEL 9 lifecycle. For new deployments, plan a migration path to alternatives such as ISC Kea.
+
 ## How Reservations Work
 
 ```mermaid
@@ -96,7 +98,7 @@ EOF
 
 You have two choices for where to place reserved IPs:
 
-**Inside the DHCP range:** The reserved IP is within the range (e.g., range is 192.168.1.100-200 and reservation is 192.168.1.150). The server will skip that IP for other clients.
+**Inside the DHCP range:** The reserved IP is within the range (e.g., range is 192.168.1.100-200 and reservation is 192.168.1.150). With ISC DHCP host declarations, do not rely on a `fixed-address` entry to remove that address from the dynamic pool.
 
 **Outside the DHCP range:** The reserved IP is outside the range (e.g., range is 192.168.1.100-200 and reservation is 192.168.1.30). This is the cleaner approach, as it clearly separates reserved and dynamic addresses.
 
@@ -255,7 +257,7 @@ The device should consistently get its reserved IP.
 
 **Client gets a different IP than expected:** Make sure the MAC address in the reservation matches exactly. MAC addresses are case-insensitive but must include colons.
 
-**"No free leases" error for reserved hosts:** If the reserved IP falls within the dynamic range and the range is full, the server might not be able to assign it. Keep reservations outside the dynamic range.
+**IP conflicts with another DHCP client:** If the reserved IP falls within the dynamic range, another client can receive that address as a normal dynamic lease. Keep reservations outside the dynamic range.
 
 **Changes not taking effect:** Some clients hold onto their old lease. Force a release and renew on the client, or wait for the current lease to expire.
 
