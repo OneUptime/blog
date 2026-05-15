@@ -24,7 +24,7 @@ Nginx provides two modules for traffic control:
 | Module | Purpose |
 |--------|---------|
 | `ngx_http_limit_req_module` | Limits the request rate per key (usually IP) |
-| `ngx_http_limit_conn_module` | Limits the number of simultaneous connections per key |
+| `ngx_http_limit_conn_module` | Limits the number of simultaneous processed connections per key |
 
 Both are compiled into Nginx by default on RHEL.
 
@@ -86,7 +86,7 @@ server {
 
 ## Step 4 - Configure Connection Limiting
 
-Limit the number of simultaneous connections from a single IP:
+Limit the number of simultaneous processed connections from a single IP:
 
 ```nginx
 http {
@@ -96,20 +96,22 @@ http {
 
 server {
     location / {
-        # Max 20 simultaneous connections per IP
+        # Max 20 simultaneous processed connections per IP
         limit_conn perip 20;
         proxy_pass http://127.0.0.1:3000;
     }
 }
 ```
 
+Nginx counts a connection for this module only after the full request header has been read and the request is being processed. With HTTP/2 and HTTP/3, each concurrent request is counted separately.
+
 ## Step 5 - Bandwidth Throttling
 
-Limit download speed per connection:
+Limit download speed per request:
 
 ```nginx
 location /downloads/ {
-    # Allow full speed for the first 10 MB, then throttle to 1 MB/s
+    # Allow full speed for the first 10 MB of the response, then throttle to 1 MB/s
     limit_rate_after 10m;
     limit_rate 1m;
 }
