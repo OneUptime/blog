@@ -87,6 +87,7 @@ This distributes memory evenly across all NUMA nodes.
 
 ```ini
 [Service]
+CPUAffinity=numa
 NUMAPolicy=bind
 NUMAMask=0
 ```
@@ -102,10 +103,12 @@ NUMAMask=0-1
 ## Step 8: Monitor NUMA Performance
 
 ```bash
-numastat -m
+numastat -n
 ```
 
 Watch for `other_node` allocations. High numbers indicate cross-node memory access.
+
+On systems where these hardware cache events are supported:
 
 ```bash
 perf stat -e node-loads,node-load-misses ./myapp
