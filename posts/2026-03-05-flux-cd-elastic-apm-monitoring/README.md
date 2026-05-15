@@ -80,6 +80,7 @@ data:
             fields:
               service.name: flux-helm-controller
 
+    # Requires kube-state-metrics to be configured for Flux custom resources.
     - module: prometheus
       period: 30s
       metricsets: ["collector"]
@@ -129,7 +130,7 @@ data:
         - /var/log/containers/notification-controller-*.log
       processors:
         - add_kubernetes_metadata:
-            host: ${NODE_NAME}
+            node: ${NODE_NAME}
             matchers:
               - logs_path:
                   logs_path: "/var/log/containers/"
@@ -248,8 +249,8 @@ metadata:
   name: elastic-credentials
   namespace: flux-system
 stringData:
-  username: elastic
-  password: your-elasticsearch-password
+  headers: |
+    Authorization: ApiKey your-elasticsearch-api-key
 ---
 apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
