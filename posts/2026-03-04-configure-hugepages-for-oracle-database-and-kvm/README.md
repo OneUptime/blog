@@ -8,7 +8,7 @@ Description: Learn how to configure HugePages for Oracle Database and KVM on RHE
 
 ---
 
-Static HugePages provide dedicated large memory pages (typically 2 MB or 1 GB) that are reserved at boot time. Unlike Transparent HugePages, static HugePages must be explicitly configured and are required by applications like Oracle Database and KVM virtual machines.
+Static HugePages provide dedicated large memory pages (typically 2 MB or 1 GB) that are reserved explicitly. Unlike Transparent HugePages, static HugePages must be explicitly configured and can be used by applications like Oracle Database and KVM virtual machines.
 
 ## Prerequisites
 
@@ -39,22 +39,22 @@ Required pages = SGA size / HugePage size
 Required pages = 4096 MB / 2 MB = 2048 pages
 ```
 
-Add 10% overhead:
+For this simple example, allocate 2048 pages. For production Oracle systems, size HugePages from the actual SGA requirements of all running instances and leave sufficient memory available for normal pages:
 
 ```bash
-Total = 2048 + 205 = 2253 pages
+Total = 2048 pages
 ```
 
 ## Step 3: Configure HugePages
 
 ```bash
-sudo sysctl -w vm.nr_hugepages=2253
+sudo sysctl -w vm.nr_hugepages=2048
 ```
 
 Make persistent:
 
 ```bash
-echo "vm.nr_hugepages=2253" | sudo tee /etc/sysctl.d/99-hugepages.conf
+echo "vm.nr_hugepages=2048" | sudo tee /etc/sysctl.d/99-hugepages.conf
 sudo sysctl --system
 ```
 
@@ -69,7 +69,7 @@ grep HugePages_Total /proc/meminfo
 For KVM with very large VMs, 1 GB pages reduce TLB pressure further:
 
 ```bash
-sudo grubby --update-kernel=ALL --args="hugepagesz=1G hugepages=16"
+sudo grubby --update-kernel=ALL --args="default_hugepagesz=1G hugepagesz=1G hugepages=16"
 sudo reboot
 ```
 
@@ -99,20 +99,24 @@ oracle  soft  memlock  unlimited
 oracle  hard  memlock  unlimited
 ```
 
+You can also use a value in KB that is at least large enough for the SGA instead of `unlimited`.
+
 ## Step 6: Configure for KVM
 
 When creating VMs with libvirt, use hugepages in the XML:
 
 ```xml
 <memoryBacking>
-  <hugepages/>
+  <hugepages>
+    <page size="1" unit="G"/>
+  </hugepages>
 </memoryBacking>
 ```
 
 Or with QEMU directly:
 
 ```bash
-qemu-system-x86_64 -m 4096 -mem-path /dev/hugepages ...
+qemu-system-x86_64 -m 4G -object memory-backend-file,id=ram0,size=4G,mem-path=/dev/hugepages,prealloc=on -machine memory-backend=ram0 ...
 ```
 
 ## Step 7: Mount hugetlbfs
@@ -134,8 +138,8 @@ echo "nodev /dev/hugepages hugetlbfs defaults 0 0" | sudo tee -a /etc/fstab
 watch -n 5 'grep -i huge /proc/meminfo'
 ```
 
-If `HugePages_Free` drops to 0, you need to allocate more pages.
+If `HugePages_Free` drops to 0 and new HugePage allocations fail, allocate more pages.
 
 ## Conclusion
 
-Static HugePages on RHEL provide guaranteed large-page memory for applications like Oracle Database and KVM that benefit from reduced TLB misses. Unlike Transparent HugePages, static HugePages are reserved at boot and are not subject to compaction delays.
+Static HugePages on RHEL provide guaranteed large-page memory for applications like Oracle Database and KVM that benefit from reduced TLB misses. Unlike Transparent HugePages, static HugePages are reserved explicitly and are not subject to Transparent HugePages defragmentation delays.
