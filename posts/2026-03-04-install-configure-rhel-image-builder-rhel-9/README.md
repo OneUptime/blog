@@ -23,6 +23,7 @@ Install and configure RHEL Image Builder on RHEL 9 for custom OS images. RHEL Im
 ```bash
 sudo dnf install -y osbuild-composer composer-cli cockpit-composer
 sudo systemctl enable --now osbuild-composer.socket
+sudo systemctl enable --now cockpit.socket
 ```
 
 ## Step 2 - Create a Blueprint
