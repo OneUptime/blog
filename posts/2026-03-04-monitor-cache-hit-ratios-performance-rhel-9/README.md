@@ -63,9 +63,8 @@ Here is a script to extract and display cache stats in a readable format:
 # /usr/local/bin/cache-report.sh
 # Display cache statistics in a readable format
 
-for cached_lv in $(lvs --noheadings -o lv_dm_path --select 'segtype=cache' 2>/dev/null); do
+lvs --noheadings -o lv_name,lv_dm_path --select 'segtype=cache' 2>/dev/null | while read -r LV_NAME cached_lv; do
     DM_NAME=$(basename "$cached_lv")
-    LV_NAME=$(lvs --noheadings -o lv_name --select "lv_dm_path=$cached_lv" 2>/dev/null | tr -d ' ')
 
     STATUS=$(dmsetup status "$DM_NAME" 2>/dev/null)
     [ -z "$STATUS" ] && continue
@@ -178,14 +177,14 @@ If the cache is constantly full (near 100% utilization) and the hit ratio is low
 
 ### Cause: Workload Is Not Cacheable
 
-Sequential workloads (backups, large file copies) do not benefit from caching because the same data is rarely read twice:
+Sequential workloads (backups, large file copies) usually benefit less from caching because the same data is rarely read twice:
 
 ```bash
 # Check if the workload is mostly sequential
 iostat -x 1 5
 ```
 
-If you see large average request sizes (`areq-sz` > 128 KB), the workload is likely sequential.
+If you see large average request sizes (`rareq-sz` or `wareq-sz` > 128 KB, or `areq-sz` on summary output), the workload is likely sequential.
 
 ### Cause: Cache Warming
 
@@ -205,7 +204,7 @@ If the cache is full and data is constantly being promoted and demoted:
 dmsetup status vg_data-lv_data | awk '{print "Promotions:", $13, "Demotions:", $12}'
 ```
 
-High, equal promotion and demotion numbers indicate thrashing.
+High, similar promotion and demotion rates over time indicate thrashing.
 
 ## Alerting on Poor Cache Performance
 
