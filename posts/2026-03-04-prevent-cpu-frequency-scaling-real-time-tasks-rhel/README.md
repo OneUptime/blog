@@ -26,7 +26,7 @@ cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors
 
 ## Set the Performance Governor
 
-The `performance` governor locks CPUs at their maximum frequency.
+The `performance` governor requests the highest allowed frequency within the `scaling_max_freq` policy limit.
 
 ```bash
 # Set all CPUs to the performance governor
@@ -46,7 +46,11 @@ The `tuned` daemon provides profiles that persist across reboots.
 # Install tuned if not already present
 sudo dnf install -y tuned
 
-# For real-time systems, use the realtime or latency-performance profile
+# Enable and start tuned
+sudo systemctl enable --now tuned
+
+# Use latency-performance, or realtime on RHEL for Real Time
+# when the tuned-profiles-realtime package is installed
 sudo tuned-adm profile latency-performance
 
 # Verify the active profile
@@ -59,11 +63,11 @@ sudo tuned-adm active
 CPU C-states allow the processor to enter idle power-saving modes. Exiting deep C-states takes time and causes latency.
 
 ```bash
-# Disable deep C-states by setting maximum C-state to 0 or 1
+# Disable deep C-states by limiting the maximum C-state
 sudo grubby --update-kernel=ALL \
   --args="processor.max_cstate=0 intel_idle.max_cstate=0"
 
-# Also disable the intel_pstate driver if you want manual frequency control
+# Also disable the intel_pstate driver if you need to use another cpufreq driver
 sudo grubby --update-kernel=ALL \
   --args="intel_pstate=disable"
 
@@ -75,12 +79,14 @@ sudo reboot
 
 ```bash
 # Check the maximum allowed C-state
+cat /sys/module/processor/parameters/max_cstate 2>/dev/null || echo "processor idle driver not active"
 cat /sys/module/intel_idle/parameters/max_cstate 2>/dev/null || echo "intel_idle disabled"
 
-# Verify CPU frequency is locked at maximum
+# Verify the requested CPU frequency policy
 cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq
 cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_max_freq
-# Both should show the same value
+# scaling_cur_freq often matches scaling_max_freq with the performance governor,
+# but hardware, thermal limits, turbo settings, and the active driver can affect it.
 ```
 
 ## Disable Turbo Boost (Optional)
@@ -102,4 +108,4 @@ echo 0 | sudo tee /sys/devices/system/cpu/cpufreq/boost 2>/dev/null
 sudo cyclictest --mlockall --threads=4 --priority=99 --interval=1000 --duration=60
 ```
 
-With frequency scaling and deep C-states disabled, your real-time CPUs maintain a constant clock speed, eliminating frequency-transition latency from your system.
+With frequency scaling constrained and deep C-states disabled, your real-time CPUs avoid many frequency and idle-state transitions that can add latency to your system.
