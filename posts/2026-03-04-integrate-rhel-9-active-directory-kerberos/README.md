@@ -141,13 +141,14 @@ sudo klist -kt /etc/krb5.keytab
 Or use adcli:
 
 ```bash
-# Add a service principal
-sudo adcli add-service --domain=ad.example.com HTTP/rhel-server.ad.example.com
+# Add a service principal and keytab entry
+sudo adcli update --domain=ad.example.com --add-service-principal=HTTP/rhel-server.ad.example.com
 ```
 
 ## Step 5 - Configure Kerberized SSH Against AD
 
 With the host keytab in place, configure SSH for GSSAPI authentication.
+Kerberos authenticates the user, but SSH still needs the AD user to resolve to a local account through SSSD, Winbind, or an equivalent local account mapping.
 
 On the RHEL server:
 
@@ -213,7 +214,7 @@ sudo systemctl restart httpd
 
 ## Step 7 - Keytab Rotation
 
-AD computer account passwords expire by default (every 30 days). The keytab must be updated before the password expires.
+AD computer account passwords are normally rotated by clients on a 30-day schedule. For standalone keytabs, rotate the keytab on a schedule so the password stored in AD and the keys stored locally stay in sync.
 
 ```bash
 # Update the keytab (rotate the password)
