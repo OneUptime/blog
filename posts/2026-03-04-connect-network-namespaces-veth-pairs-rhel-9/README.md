@@ -166,11 +166,16 @@ sudo ip netns exec ns1 ping -c 2 10.0.0.1
 sudo sysctl -w net.ipv4.ip_forward=1
 
 # Add NAT for the bridge subnet
-sudo iptables -t nat -A POSTROUTING -s 10.0.0.0/24 ! -o br0 -j MASQUERADE
+sudo nft add table ip netns_nat
+sudo nft 'add chain ip netns_nat prerouting { type nat hook prerouting priority dstnat; policy accept; }'
+sudo nft 'add chain ip netns_nat postrouting { type nat hook postrouting priority srcnat; policy accept; }'
+sudo nft add rule ip netns_nat postrouting ip saddr 10.0.0.0/24 oifname != "br0" masquerade
 
 # Allow forwarding
-sudo iptables -A FORWARD -i br0 -j ACCEPT
-sudo iptables -A FORWARD -o br0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+sudo nft add table inet netns_filter
+sudo nft 'add chain inet netns_filter forward { type filter hook forward priority filter; policy drop; }'
+sudo nft add rule inet netns_filter forward iifname "br0" accept
+sudo nft add rule inet netns_filter forward oifname "br0" ct state established,related accept
 
 # Test internet from a namespace
 sudo ip netns exec ns1 ping -c 2 8.8.8.8
