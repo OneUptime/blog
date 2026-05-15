@@ -36,7 +36,8 @@ dracut:/# exit
 # This boots with the known-good initramfs from the previous kernel
 
 # After booting, rebuild the initramfs for the new kernel
-sudo dracut -f /boot/initramfs-$(uname -r).img $(uname -r)
+KVER="5.14.0-362.el9.x86_64"  # replace with the failed kernel version
+sudo dracut -f /boot/initramfs-${KVER}.img ${KVER}
 ```
 
 ## Fix from Rescue Mode
@@ -44,6 +45,8 @@ sudo dracut -f /boot/initramfs-$(uname -r).img $(uname -r)
 ```bash
 # Boot from RHEL installation media
 # Select: Troubleshooting > Rescue a Red Hat Enterprise Linux system
+# RHEL 9 mounts the installed system at /mnt/sysroot.
+# On RHEL 7 and 8, use /mnt/sysimage instead.
 chroot /mnt/sysroot
 
 # List available kernels
@@ -99,4 +102,4 @@ lsinitrd /boot/initramfs-$(uname -r).img > /dev/null && echo "OK" || echo "CORRU
 sudo reboot
 ```
 
-Always check that the initramfs exists and is not zero-size after a kernel update. A missing or truncated initramfs is the most common cause of post-update boot failures.
+Always check that the initramfs exists and is not zero-size after a kernel update. A missing or truncated initramfs is a common cause of post-update boot failures.
