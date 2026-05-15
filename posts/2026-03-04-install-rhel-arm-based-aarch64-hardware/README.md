@@ -48,6 +48,7 @@ Many ARM servers use serial console instead of a graphics adapter.
 ```bash
 # If using a serial console, append console parameters to the boot command
 # In the GRUB menu, press 'e' to edit the boot entry and add:
+# Use the console device exposed by your firmware; ttyAMA0 is common on ARM64.
 console=ttyAMA0,115200n8
 ```
 
@@ -56,14 +57,17 @@ console=ttyAMA0,115200n8
 For data center deployments, PXE boot is common.
 
 ```bash
-# Set up a TFTP server with the aarch64 boot files
-# The GRUB EFI binary for ARM is grubaa64.efi
-sudo cp /path/to/rhel9-aarch64/EFI/BOOT/BOOTAA64.EFI /var/lib/tftpboot/
+# Set up a TFTP server with the aarch64 UEFI boot files
+# The UEFI fallback boot file for ARM64 is BOOTAA64.EFI
+sudo mkdir -p /var/lib/tftpboot/redhat
+sudo cp -r /path/to/rhel9-aarch64/EFI /var/lib/tftpboot/redhat/
+sudo chmod -R 755 /var/lib/tftpboot/redhat/
 
 # Configure the DHCP server to point to the ARM bootloader
 # In dhcpd.conf:
+# option architecture-type code 93 = unsigned integer 16;
 # if option architecture-type = 00:0b {
-#     filename "BOOTAA64.EFI";
+#     filename "redhat/EFI/BOOT/BOOTAA64.EFI";
 # }
 ```
 
@@ -82,7 +86,7 @@ lscpu | grep -E "Architecture|Model name|CPU"
 
 # Register the system
 sudo subscription-manager register --username your_username --password your_password
-sudo subscription-manager attach --auto
+sudo subscription-manager status
 
 # Update the system
 sudo dnf update -y
@@ -98,4 +102,4 @@ sudo subscription-manager repos --enable=codeready-builder-for-rhel-9-aarch64-rp
 sudo dnf repolist
 ```
 
-RHEL on aarch64 provides the same package ecosystem and lifecycle as the x86_64 version, making it straightforward to deploy ARM-based infrastructure alongside existing x86 systems.
+RHEL on aarch64 provides the broad RHEL package ecosystem and lifecycle, making it straightforward to deploy ARM-based infrastructure alongside existing x86 systems.
