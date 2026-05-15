@@ -42,12 +42,12 @@ Write a playbook that uses the ad_integration role:
     ad_integration_realm: "EXAMPLE.COM"
     ad_integration_password: "{{ ad_join_password }}"
     ad_integration_user: "svc_adjoin"
-    # Allow specific AD groups to log in
+    # Leave existing DNS configuration unchanged
     ad_integration_manage_dns: false
     ad_integration_timesync_source: "ad-dc.example.com"
 
   roles:
-    - rhel-system-roles.ad_integration
+    - redhat.rhel_system_roles.ad_integration
 ```
 
 Create an inventory for the target hosts:
@@ -65,10 +65,10 @@ ansible_become=true
 
 ## Running the Playbook
 
-Execute the playbook, passing the AD join password securely:
+Execute the playbook, passing the AD join password as an extra variable for quick testing:
 
 ```bash
-# Run the playbook with a vault-encrypted password
+# Run the playbook with the AD join password as an extra variable
 ansible-playbook join_ad.yml \
   -i inventory.ini \
   -e "ad_join_password='SecureP@ss123'" \
@@ -83,7 +83,11 @@ ansible-vault create vars/ad_secrets.yml
 # Add: ad_join_password: "SecureP@ss123"
 
 # Run with vault
-ansible-playbook join_ad.yml -i inventory.ini --ask-vault-pass
+ansible-playbook join_ad.yml \
+  -i inventory.ini \
+  -e @vars/ad_secrets.yml \
+  --ask-vault-pass \
+  --ask-become-pass
 ```
 
 ## Verifying the Join
