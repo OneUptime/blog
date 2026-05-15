@@ -35,8 +35,8 @@ sudo useradd --no-create-home --shell /bin/false node_exporter
 ## Step 2: Download and Install Node Exporter
 
 ```bash
-# Download the latest Node Exporter
-NODE_EXPORTER_VERSION="1.7.0"
+# Download Node Exporter
+NODE_EXPORTER_VERSION="1.11.1"
 cd /tmp
 curl -LO "https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz"
 
@@ -71,7 +71,7 @@ User=node_exporter
 Group=node_exporter
 Type=simple
 
-# Start Node Exporter with default collectors
+# Start Node Exporter with default collectors and selected additional collectors
 ExecStart=/usr/local/bin/node_exporter \
     --web.listen-address=:9100 \
     --collector.systemd \
@@ -163,8 +163,11 @@ scrape_configs:
 Reload Prometheus:
 
 ```bash
-# Reload Prometheus configuration
+# Reload Prometheus configuration if --web.enable-lifecycle is enabled
 curl -X POST http://localhost:9090/-/reload
+
+# Otherwise, send SIGHUP to the Prometheus process
+sudo kill -HUP "$(pidof prometheus)"
 ```
 
 ## Key Metrics from Node Exporter
