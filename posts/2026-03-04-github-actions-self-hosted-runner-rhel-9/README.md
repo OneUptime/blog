@@ -39,7 +39,7 @@ mkdir actions-runner && cd actions-runner
 
 # Download the latest runner package
 curl -o actions-runner-linux-x64.tar.gz -L \
-  https://github.com/actions/runner/releases/latest/download/actions-runner-linux-x64-2.311.0.tar.gz
+  https://github.com/actions/runner/releases/download/v2.334.0/actions-runner-linux-x64-2.334.0.tar.gz
 
 # Extract the package
 tar xzf actions-runner-linux-x64.tar.gz
@@ -140,10 +140,12 @@ sudo dnf install -y \
   gcc gcc-c++ make cmake \
   git curl wget \
   python3 python3-pip \
-  java-17-openjdk \
-  docker
+  java-17-openjdk
 
-# Start Docker if your workflows need it
+# Install and start Docker Engine if your workflows need it
+sudo dnf install -y dnf-plugins-core
+sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 sudo systemctl enable --now docker
 sudo usermod -aG docker github-runner
 ```
@@ -152,7 +154,7 @@ sudo usermod -aG docker github-runner
 
 ```bash
 # Create additional runner directories
-for i in 1 2 3; do
+for i in 2 3 4; do
   sudo su - github-runner -c "
     mkdir -p actions-runner-${i} && cd actions-runner-${i}
     tar xzf ~/actions-runner/actions-runner-linux-x64.tar.gz
