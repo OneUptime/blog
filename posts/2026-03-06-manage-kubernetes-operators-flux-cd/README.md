@@ -75,14 +75,15 @@ spec:
   chart:
     spec:
       chart: cert-manager
-      version: "v1.14.x"
+      version: "v1.20.x"
       sourceRef:
         kind: HelmRepository
         name: jetstack
   # Install CRDs via the Helm chart
   values:
-    installCRDs: true
-    # Enable DNS01 challenge support
+    crds:
+      enabled: true
+    # Configure recursive nameservers for DNS01 self-checks
     dns01RecursiveNameservers: "8.8.8.8:53"
     # Configure resource limits for the controller
     resources:
@@ -200,7 +201,7 @@ spec:
   chart:
     spec:
       chart: kube-prometheus-stack
-      version: "56.x"
+      version: "85.x"
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
@@ -278,7 +279,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   # Download CRDs from the cert-manager release
-  - https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.crds.yaml
+  - https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.crds.yaml
 ```
 
 ```yaml
@@ -294,13 +295,14 @@ spec:
   chart:
     spec:
       chart: cert-manager
-      version: "v1.14.x"
+      version: "v1.20.x"
       sourceRef:
         kind: HelmRepository
         name: jetstack
   values:
     # Do NOT install CRDs via Helm since we manage them separately
-    installCRDs: false
+    crds:
+      enabled: false
   install:
     createNamespace: true
     # Skip CRD management in HelmRelease
@@ -397,7 +399,7 @@ spec:
   chart:
     spec:
       chart: postgres-operator
-      version: "1.12.x"
+      version: "1.15.x"
       sourceRef:
         kind: HelmRepository
         name: postgres-operator-charts
@@ -477,7 +479,7 @@ spec:
     spec:
       chart: cert-manager
       # Pin to patch version range within a minor version
-      version: "v1.14.x"
+      version: "v1.19.x"
       sourceRef:
         kind: HelmRepository
         name: jetstack
@@ -487,7 +489,7 @@ spec:
 # Strategy 2: Test upgrades in staging first
 # 1. Update the version in staging cluster path
 # clusters/staging/infrastructure/controllers/cert-manager.yaml
-#   version: "v1.15.x"
+#   version: "v1.20.x"
 
 # 2. Verify in staging
 flux get helmreleases cert-manager --context staging
@@ -498,7 +500,7 @@ kubectl get certificates -A --context staging
 
 # 4. After validation, update production
 # clusters/production/infrastructure/controllers/cert-manager.yaml
-#   version: "v1.15.x"
+#   version: "v1.20.x"
 ```
 
 ## Step 8: Monitoring Operators
@@ -562,12 +564,13 @@ spec:
     spec:
       chart: cert-manager
       # Staging can run a newer version for testing
-      version: "v1.15.x"
+      version: "v1.20.x"
       sourceRef:
         kind: HelmRepository
         name: jetstack
   values:
-    installCRDs: true
+    crds:
+      enabled: true
     # Staging uses fewer resources
     resources:
       requests:
@@ -596,12 +599,13 @@ spec:
     spec:
       chart: cert-manager
       # Production runs the proven version
-      version: "v1.14.x"
+      version: "v1.19.x"
       sourceRef:
         kind: HelmRepository
         name: jetstack
   values:
-    installCRDs: true
+    crds:
+      enabled: true
     # Production uses more resources and replicas
     resources:
       requests:
@@ -622,7 +626,7 @@ spec:
 
 ```yaml
 # clusters/production/notifications/operator-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: operator-health
@@ -642,7 +646,8 @@ spec:
     # Monitor operator configuration Kustomizations
     - kind: Kustomization
       name: infrastructure-configs
-  summary: "Operator installation or configuration issue detected"
+  eventMetadata:
+    summary: "Operator installation or configuration issue detected"
 ```
 
 ## Summary
