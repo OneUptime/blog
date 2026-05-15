@@ -28,7 +28,7 @@ oscap --version
 3. Select your RHEL version (e.g., RHEL 9)
 4. Choose a compliance profile (e.g., CIS Red Hat Enterprise Linux 9 Benchmark)
 5. Assign systems to the policy
-6. Set a scan schedule
+6. Review and finish creating the policy
 
 ## Run a Compliance Scan from the CLI
 
@@ -46,9 +46,13 @@ sudo oscap xccdf eval \
 
 ## Upload Results to Insights
 
-The insights-client automatically uploads compliance scan results when the compliance module is enabled.
+The compliance service does not run scans automatically on a default schedule. After the system is assigned to a SCAP policy, use `insights-client --compliance` to run an OpenSCAP scan and upload the report.
 
 ```bash
+# Optional: list policies and assign this system to a policy from the CLI
+sudo insights-client --compliance-policies
+sudo insights-client --compliance-assign <policy_ID>
+
 # Trigger a compliance scan and upload results to Insights
 sudo insights-client --compliance
 ```
@@ -78,13 +82,17 @@ sudo systemctl enable --now auditd
 
 ```bash
 # Generate an Ansible playbook from SCAP results
+RESULT_ID=$(oscap info /tmp/cis-results.xml | awk '/^Result ID:/ { print $3; exit }')
+
 sudo oscap xccdf generate fix \
   --fix-type ansible \
-  --result-id "" \
-  /tmp/cis-results.xml > cis-remediation.yml
+  --result-id "$RESULT_ID" \
+  --output cis-remediation.yml \
+  /tmp/cis-results.xml
 
 # Run the playbook
-ansible-playbook cis-remediation.yml --become
+sudo ANSIBLE_COLLECTIONS_PATH=/usr/share/rhc-worker-playbook/ansible/collections/ansible_collections/ \
+  ansible-playbook -i "localhost," -c local cis-remediation.yml
 ```
 
 Re-run the compliance scan after applying fixes to verify your compliance score has improved. Regular scanning helps maintain continuous compliance with your chosen security standard.
