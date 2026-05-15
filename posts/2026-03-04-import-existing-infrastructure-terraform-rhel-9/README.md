@@ -15,12 +15,13 @@ Most teams do not start with Terraform from day one. You probably have servers, 
 ```mermaid
 graph TD
     A[Existing Infrastructure] --> B{Import Method}
-    B -->|CLI Command| C[terraform import]
-    B -->|HCL Block| D[import block in config]
-    C --> E[State Updated]
-    D --> E
-    E --> F[Write matching HCL]
-    F --> G[terraform plan shows no changes]
+    B -->|CLI Command| C[Write matching HCL]
+    C --> D[terraform import updates state]
+    B -->|HCL Block| E[Add import block]
+    E --> F[Generate or write matching HCL]
+    F --> G[terraform apply updates state]
+    D --> H[terraform plan shows no changes]
+    G --> H
 ```
 
 ## Method 1: CLI Import
@@ -31,7 +32,7 @@ First, write the resource block that will represent the existing resource:
 # main.tf - Resource block for an existing EC2 instance
 
 resource "aws_instance" "existing_server" {
-  # These values will be filled in after import
+  # Set these values to match the existing instance
   ami           = "ami-0123456789abcdef0"
   instance_type = "t3.medium"
 
@@ -99,8 +100,8 @@ Terraform 1.5+ can generate the HCL for imported resources:
 # Generate configuration for imported resources
 terraform plan -generate-config-out=generated.tf
 
-# This creates generated.tf with the HCL that matches
-# the actual state of the imported resources
+# This creates generated.tf with Terraform's generated HCL
+# for resources declared in import blocks
 ```
 
 Review the generated file and clean it up:
@@ -108,6 +109,12 @@ Review the generated file and clean it up:
 ```bash
 # Open and review the generated configuration
 vim generated.tf
+
+# Run plan to review the import
+terraform plan
+
+# Apply the import plan to update Terraform state
+terraform apply
 
 # Run plan to confirm no changes
 terraform plan
@@ -123,31 +130,31 @@ Here is a practical example of importing a manually-created RHEL server setup:
 # VPC
 import {
   to = aws_vpc.production
-  id = "vpc-0a1b2c3d4e5f6g7h8"
+  id = "vpc-0a1b2c3d4e5f6a7b8"
 }
 
 # Subnet
 import {
   to = aws_subnet.production_public
-  id = "subnet-0a1b2c3d4e5f6g7h8"
+  id = "subnet-0a1b2c3d4e5f6a7b8"
 }
 
 # Security group
 import {
   to = aws_security_group.production_sg
-  id = "sg-0a1b2c3d4e5f6g7h8"
+  id = "sg-0a1b2c3d4e5f6a7b8"
 }
 
 # EC2 instance
 import {
   to = aws_instance.production_rhel
-  id = "i-0a1b2c3d4e5f6g7h8"
+  id = "i-0a1b2c3d4e5f6a7b8"
 }
 
 # Elastic IP
 import {
   to = aws_eip.production_eip
-  id = "eipalloc-0a1b2c3d4e5f6g7h8"
+  id = "eipalloc-0a1b2c3d4e5f6a7b8"
 }
 ```
 
@@ -158,7 +165,10 @@ terraform plan -generate-config-out=production.tf
 # Review and clean up the generated code
 vim production.tf
 
-# Verify no changes are needed
+# Apply the import plan to update Terraform state
+terraform apply
+
+# Verify no further changes are needed
 terraform plan
 # Should show: No changes. Your infrastructure matches the configuration.
 ```
@@ -170,7 +180,7 @@ terraform plan
 # import-resources.sh - Bulk import existing resources
 set -euo pipefail
 
-# List of resources to import (type:name:id)
+# List of resources to import (address:id)
 RESOURCES=(
   "aws_instance.web_1:i-0abc123def456789"
   "aws_instance.web_2:i-0def456abc789012"
