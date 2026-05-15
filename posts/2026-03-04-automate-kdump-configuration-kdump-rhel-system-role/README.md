@@ -46,6 +46,8 @@ Create `configure-kdump.yml`:
 - name: How to Automate Kernel Dump (kdump) Configuration Using the kdump RHEL System Role
   hosts: managed_hosts
   become: true
+  vars:
+    kdump_path: /var/crash
   roles:
     - role: rhel-system-roles.kdump
 ```
@@ -68,10 +70,8 @@ ansible-playbook -i inventory.ini configure-kdump.yml
 On the managed hosts, verify that the configuration was applied:
 
 ```bash
-# Check relevant service or configuration
-
-systemctl status <service>
-cat <config-file>
+systemctl status kdump.service
+cat /etc/kdump.conf
 ```
 
 ## Idempotency
