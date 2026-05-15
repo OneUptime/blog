@@ -12,15 +12,15 @@ Running AIDE checks on a schedule is only half the battle. If the results sit in
 
 ## Prerequisites
 
-You need a working mail setup on your RHEL system. The simplest approach is using the `mailx` command with either a local MTA or an external SMTP relay.
+You need a working mail setup on your RHEL system. On RHEL 9, the simplest approach is using the `mail` command from the `s-nail` package with either a local MTA or an external SMTP relay.
 
 ```bash
-# Install mailx if not already present
+# Install s-nail if not already present
 
-sudo dnf install mailx -y
+sudo dnf install s-nail -y
 
 # Verify it is installed
-rpm -q mailx
+rpm -q s-nail
 ```
 
 For sending mail through an external relay, you will also need Postfix configured as a relay:
@@ -36,7 +36,7 @@ Configure Postfix to use an SMTP relay by editing `/etc/postfix/main.cf`:
 ```bash
 # Set the relay host (replace with your mail server)
 sudo postconf -e "relayhost = [smtp.example.com]:587"
-sudo postconf -e "smtp_use_tls = yes"
+sudo postconf -e "smtp_tls_security_level = encrypt"
 sudo postconf -e "smtp_sasl_auth_enable = yes"
 sudo postconf -e "smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd"
 sudo postconf -e "smtp_sasl_security_options = noanonymous"
@@ -181,7 +181,7 @@ To: ${RECIPIENTS}
 <hr>
 <h3>Report Details</h3>
 <pre style="background: #f5f5f5; padding: 15px; border: 1px solid #ddd;">
-$(cat "${TMPFILE}")
+$(sed 's/\&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' "${TMPFILE}")
 </pre>
 </body></html>
 HTMLEOF
@@ -206,9 +206,10 @@ send_webhook() {
     local message="$1"
     local webhook_url="https://hooks.example.com/your-webhook-url"
 
-    curl -s -X POST "${webhook_url}" \
-        -H "Content-Type: application/json" \
-        -d "{\"text\": \"${message}\"}"
+    python3 -c 'import json, sys; print(json.dumps({"text": sys.argv[1]}))' "${message}" |
+        curl -s -X POST "${webhook_url}" \
+            -H "Content-Type: application/json" \
+            --data-binary @-
 }
 ```
 
