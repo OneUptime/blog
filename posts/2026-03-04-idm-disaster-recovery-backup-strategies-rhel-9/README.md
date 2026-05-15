@@ -15,7 +15,7 @@ Losing your IdM infrastructure means users cannot log in, services cannot authen
 ```mermaid
 flowchart TD
     A[IdM Production] -->|ipa-backup| B[Full Backup]
-    A -->|ipa-backup --data| C[Data-Only Backup]
+    A -->|ipa-backup --data --online| C[Data-Only Backup]
     B --> D[/var/lib/ipa/backup/]
     C --> D
     D -->|Copy to remote| E[Off-site Storage]
@@ -27,7 +27,7 @@ flowchart TD
 IdM provides two backup types:
 
 - **Full backup**: Includes everything needed to rebuild the server from scratch, including configuration files, certificates, keys, and directory data. Must be run while IdM services are stopped.
-- **Data-only backup**: Includes only the LDAP data and the changelog. Can be run while IdM services are running. Useful for recovering from data corruption without rebuilding the whole server.
+- **Data-only backup**: Includes only the LDAP data and the changelog. Can be run while IdM services are running when you use the `--online` option. Useful for recovering from data corruption without rebuilding the whole server.
 
 ## Step 1 - Create a Full Backup
 
@@ -42,7 +42,7 @@ sudo ipa-backup
 ls -la /var/lib/ipa/backup/
 ```
 
-The backup creates a GPG-encrypted archive by default. You will see a directory like `ipa-full-2026-03-04-02-30-00`.
+The backup creates a directory like `ipa-full-2026-03-04-02-30-00`. If you need GPG encryption, add the `--gpg` option and make sure the root GPG keyring is available for restores.
 
 ## Step 2 - Create a Data-Only Backup
 
@@ -50,7 +50,7 @@ Data backups are lighter and can run online. Schedule these more frequently.
 
 ```bash
 # Create a data-only backup (services keep running)
-sudo ipa-backup --data
+sudo ipa-backup --data --online
 
 # List available backups
 ls -la /var/lib/ipa/backup/
@@ -68,8 +68,8 @@ sudo tee /usr/local/bin/idm-backup.sh << 'SCRIPT'
 LOGFILE="/var/log/idm-backup.log"
 echo "$(date): Starting IdM backup" >> "$LOGFILE"
 
-# Run data-only backup
-/usr/sbin/ipa-backup --data >> "$LOGFILE" 2>&1
+# Run online data-only backup
+/usr/sbin/ipa-backup --data --online >> "$LOGFILE" 2>&1
 
 # Clean up backups older than 30 days
 find /var/lib/ipa/backup/ -maxdepth 1 -type d -mtime +30 -exec rm -rf {} \; >> "$LOGFILE" 2>&1
@@ -106,10 +106,10 @@ sudo scp -r /var/lib/ipa/backup/ipa-full-2026-03-04-02-30-00 \
 
 ## Step 5 - Restore from a Full Backup
 
-If you lose a server completely, restore from a full backup on a fresh RHEL install.
+If you lose a server completely and cannot rebuild it from a healthy replica, restore from a full backup on a fresh RHEL install with the same hostname, IP address, and IdM software version as the backed-up server.
 
 ```bash
-# Install IdM server packages first (do NOT run ipa-server-install)
+# Install IdM server packages first
 sudo dnf install ipa-server ipa-server-dns ipa-server-ca -y
 
 # Copy the backup to the new server
@@ -180,15 +180,14 @@ sudo ipa-crlgen-manage enable
 If all IdM servers are lost, you must restore from backup.
 
 ```bash
-# On a fresh RHEL system with the same hostname and IP as the original master
+# On a fresh RHEL system with the same hostname, IP, and IdM software version as the original master
 sudo dnf install ipa-server ipa-server-dns ipa-server-ca -y
 
 # Restore from the most recent full backup
 sudo ipa-restore /var/lib/ipa/backup/ipa-full-2026-03-04-02-30-00
 
-# After restoration, reinitialize any replicas
-# On each replica, force a full resync
-ipa-replica-manage re-initialize --from=restored-master.example.com
+# After restoration, build new replicas from the restored master
+sudo ipa-replica-install --setup-ca --setup-dns --forwarder=8.8.8.8
 ```
 
 ## Testing Your Recovery Plan
