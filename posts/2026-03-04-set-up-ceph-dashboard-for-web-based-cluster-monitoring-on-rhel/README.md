@@ -40,12 +40,9 @@ sudo ceph dashboard set-ssl-certificate-key -i /etc/pki/tls/private/dashboard.ke
 
 ```bash
 # Create an administrator account
+echo -n "YourSecurePassword" | sudo tee /tmp/password.txt
 sudo ceph dashboard ac-user-create admin -i /tmp/password.txt administrator
-
-# The password file should contain just the password
-echo "YourSecurePassword" | sudo tee /tmp/password.txt
-sudo ceph dashboard ac-user-create admin -i /tmp/password.txt administrator
-rm /tmp/password.txt
+sudo rm /tmp/password.txt
 ```
 
 ## Check Dashboard URL
@@ -99,11 +96,13 @@ sudo ceph dashboard set-prometheus-api-host http://node1:9095
 
 ```bash
 # Enable RGW management in the dashboard
-sudo ceph dashboard set-rgw-api-access-key MYACCESSKEY123
-sudo ceph dashboard set-rgw-api-secret-key MYSECRETKEY456
+sudo ceph dashboard set-rgw-credentials
 
 # Enable iSCSI management
 sudo ceph dashboard set-iscsi-api-ssl-verification false
+echo "https://admin:password@iscsi-gateway.example.com:5000" | sudo tee /tmp/iscsi-gateway-url.txt
+sudo ceph dashboard iscsi-gateway-add -i /tmp/iscsi-gateway-url.txt iscsi-gateway
+sudo rm /tmp/iscsi-gateway-url.txt
 ```
 
 ## Access the Dashboard
