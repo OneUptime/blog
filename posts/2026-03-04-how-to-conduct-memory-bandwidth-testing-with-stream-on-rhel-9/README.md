@@ -13,7 +13,7 @@ The STREAM benchmark measures sustainable memory bandwidth on RHEL 9, critical f
 ## Download and Compile STREAM
 
 ```bash
-sudo dnf install -y gcc
+sudo dnf install -y gcc numactl
 curl -O https://www.cs.virginia.edu/stream/FTP/Code/stream.c
 
 # Compile with optimizations
@@ -62,4 +62,3 @@ numactl --cpunodebind=1 --membind=1 ./stream
 ## Conclusion
 
 STREAM on RHEL 9 provides standardized memory bandwidth measurements. Use it to validate hardware specifications, compare systems, and identify NUMA-related performance issues.
-
