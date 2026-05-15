@@ -8,7 +8,7 @@ Description: Learn how to enable nested virtualization on RHEL, allowing you to 
 
 ---
 
-Nested virtualization lets you run a hypervisor inside a virtual machine, creating VMs within VMs. This is useful for testing virtualization setups, training environments, and CI/CD pipelines that need to build VM images. Performance is reduced compared to bare-metal virtualization, so it is best suited for non-production workloads.
+Nested virtualization lets you run a hypervisor inside a virtual machine, creating VMs within VMs. This is useful for testing virtualization setups, training environments, and CI/CD pipelines that need to build VM images. In most RHEL 9 Linux-in-Linux environments, nested virtualization is a Technology Preview feature. Performance is reduced compared to bare-metal virtualization, so it is best suited for non-production workloads.
 
 ## Checking if Nested Virtualization is Enabled
 
@@ -20,7 +20,7 @@ cat /sys/module/kvm_intel/parameters/nested
 
 # For AMD CPUs
 cat /sys/module/kvm_amd/parameters/nested
-# 1 = enabled, 0 = disabled
+# 1 or Y = enabled, 0 or N = disabled
 ```
 
 ## Enabling Nested Virtualization
@@ -38,7 +38,7 @@ sudo modprobe kvm_intel nested=1
 sudo modprobe -r kvm_amd
 sudo modprobe kvm_amd nested=1
 
-# Verify it is now enabled
+# Verify it is now enabled (use kvm_amd on AMD systems)
 cat /sys/module/kvm_intel/parameters/nested
 ```
 
@@ -66,16 +66,28 @@ sudo virsh edit rhel9-hypervisor
 #   <cache mode='passthrough'/>
 # </cpu>
 
-# Or use host-model for better migration compatibility:
-# <cpu mode='host-model'/>
+# Or use a custom CPU model and explicitly require the virtualization feature:
+# Intel example:
+# <cpu mode='custom' match='exact' check='partial'>
+#   <model fallback='allow'>Haswell-noTSX</model>
+#   <feature policy='require' name='vmx'/>
+# </cpu>
+#
+# AMD example:
+# <cpu mode='custom' match='exact' check='none'>
+#   <model fallback='allow'>EPYC-IBPB</model>
+#   <feature policy='require' name='svm'/>
+# </cpu>
 ```
 
 ## Installing KVM Inside the Guest
 
 ```bash
 # Inside the guest VM (L1), install KVM
-sudo dnf group install -y "Virtualization Host"
-sudo systemctl enable --now libvirtd
+sudo dnf install -y qemu-kvm libvirt virt-install virt-viewer
+for drv in qemu network nodedev nwfilter secret storage interface; do
+  sudo systemctl start virt${drv}d{,-ro,-admin}.socket
+done
 
 # Verify hardware virtualization is visible
 grep -E '(vmx|svm)' /proc/cpuinfo
@@ -105,12 +117,12 @@ sudo virt-install \
 ## Performance Considerations
 
 ```bash
-# Check CPU overhead from nested virtualization
+# Confirm the CPU model visible to the L2 guest
 # Inside the L2 guest
 cat /proc/cpuinfo | grep "model name"
 
 # Nested VMs have higher latency for VM exits
-# Expect 20-40% performance reduction compared to L1 guests
+# Expect workload-dependent performance reduction compared to L1 guests
 ```
 
 Nested virtualization should not be used for production workloads. It adds significant overhead to every privileged operation in the L2 guest. Use it for testing, development, and training scenarios where convenience outweighs performance.
