@@ -16,7 +16,7 @@ Many enterprise environments route all outbound traffic through corporate proxy 
 - The Flux CLI installed on a workstation that can reach the cluster
 - Your corporate proxy URL (e.g., `http://proxy.corp.example.com:8080`)
 - The proxy's CA certificate if it performs TLS inspection
-- A GitHub or GitLab personal access token with `repo` permissions
+- For the GitHub bootstrap example below, a GitHub personal access token with `repo` permissions
 
 ## Understanding the Proxy Requirements
 
@@ -120,7 +120,9 @@ Commit and push these changes. Flux will apply the proxy configuration to its ow
 
 Many corporate proxies perform TLS inspection by terminating and re-encrypting HTTPS connections using a corporate CA certificate. Flux controllers will reject these connections unless the corporate CA is trusted.
 
-Create a ConfigMap with your corporate CA certificate.
+For Git repositories, add the corporate CA certificate to the Secret referenced by the `GitRepository` as a `ca.crt` key. For HelmRepository, OCIRepository, Bucket, ImageRepository, and notification Provider resources, use a Secret with a `ca.crt` key and reference it with `certSecretRef`.
+
+If you need a controller-level trust store for the bootstrap repository or other global source-controller traffic, create a ConfigMap with your corporate CA certificate.
 
 ```bash
 # Create a ConfigMap with the corporate CA certificate
@@ -129,7 +131,7 @@ kubectl create configmap corporate-ca \
   -n flux-system
 ```
 
-Then mount the CA certificate into the source-controller (which handles GitRepository, HelmRepository, HelmChart, Bucket, and OCIRepository fetches) by adding a volume mount patch. If you use image automation or outbound notifications through the same TLS-intercepting proxy, apply the same CA mount to those controllers as well.
+Then mount the CA certificate into the source-controller (which handles GitRepository, HelmRepository, HelmChart, Bucket, and OCIRepository fetches) by adding a volume mount patch. If you use image automation or outbound notifications through the same TLS-intercepting proxy and cannot use their `certSecretRef` fields, apply the same CA mount to those controllers as well.
 
 ```yaml
 # flux-system/ca-patch.yaml
