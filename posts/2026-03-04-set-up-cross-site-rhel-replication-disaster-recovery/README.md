@@ -20,25 +20,27 @@ For most use cases, scheduled rsync over SSH provides reliable cross-site replic
 
 # Replicate data to a remote disaster recovery site
 
-PRIMARY_DIRS="/etc /home /var/www /var/lib/pgsql"
+PRIMARY_DIRS="/etc /home /var/www"
 DR_HOST="dr-server.remote-site.example.com"
 DR_USER="repl"
 SSH_KEY="/root/.ssh/dr_replication_key"
 
 for DIR in $PRIMARY_DIRS; do
-  rsync -az --delete \
+  rsync -aAXz --numeric-ids --delete \
     -e "ssh -i ${SSH_KEY} -p 2222" \
     "${DIR}/" \
     "${DR_USER}@${DR_HOST}:${DIR}/" \
     2>> /var/log/cross-site-repl.log
 done
+
+# Use database-native backups or storage snapshots for live database directories.
 ```
 
 Schedule it to run frequently:
 
 ```bash
 # Replicate every 15 minutes
-echo '*/15 * * * * root /usr/local/bin/cross-site-replicate.sh' > /etc/cron.d/cross-site-repl
+echo '*/15 * * * * root /usr/local/bin/cross-site-replicate.sh' | sudo tee /etc/cron.d/cross-site-repl >/dev/null
 ```
 
 ## Block-Level Replication with DRBD
@@ -46,8 +48,8 @@ echo '*/15 * * * * root /usr/local/bin/cross-site-replicate.sh' > /etc/cron.d/cr
 DRBD replicates data at the block device level, providing near-real-time replication:
 
 ```bash
-# Install DRBD (from ELRepo or a supported repository)
-sudo dnf install -y drbd90-utils kmod-drbd90
+# Install DRBD (from ELRepo or a supported repository; package names vary by RHEL release)
+sudo dnf install -y drbd9x-utils kmod-drbd9x
 
 # Load the DRBD kernel module
 sudo modprobe drbd
@@ -58,8 +60,6 @@ Configure a DRBD resource:
 ```bash
 # /etc/drbd.d/data.res
 resource data {
-    protocol C;    # Synchronous replication (strongest consistency)
-
     on primary-server {
         device    /dev/drbd0;
         disk      /dev/sdb1;
@@ -75,8 +75,9 @@ resource data {
     }
 
     net {
-        # For cross-site (WAN) replication, use protocol A (async)
-        # protocol A;
+        # For cross-site (WAN) replication, use protocol A (async).
+        # Use protocol C only when the link latency is low enough for synchronous writes.
+        protocol A;
         max-buffers     8192;
         max-epoch-size  8192;
     }
@@ -103,6 +104,6 @@ sudo drbdadm status data
 
 - **Protocol A (asynchronous):** Best for cross-site WAN links. Lower latency impact but some data loss possible.
 - **Protocol B (semi-synchronous):** Data is written to remote memory. Good compromise.
-- **Protocol C (synchronous):** No data loss, but requires low-latency links. Best for same-site or short-distance replication.
+- **Protocol C (synchronous):** No data loss from a single-node failure after the remote disk acknowledges the write, but requires low-latency links. Best for same-site or short-distance replication.
 
 For cross-site disaster recovery over a WAN link, protocol A is typically the right choice to avoid performance degradation.
