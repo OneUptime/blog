@@ -16,48 +16,50 @@ CentOS Stream sits just ahead of RHEL in the development pipeline, receiving upd
 - Root or sudo access
 - A terminal session
 
-## Step 2: Configure the Service
+## Step 2: Compare Release Details
 
 ### Key Comparison Areas
 
 | Feature | RHEL | CentOS Stream 9 |
 |---------|--------|-----------------|
 | Position | Stable release | Ahead of RHEL |
-| Updates | Point releases | Continuous |
-| Support | Enterprise | Community |
+| Updates | Stable minor releases with backported fixes | Continuous preview of the next RHEL minor release |
+| Support | Enterprise subscription support | Community support |
 | Use Case | Production | Development/Testing |
 
-## Step 3: Enable and Start the Service
+## Step 3: Check Release and Repository Details
 
 ```bash
-# Enable the service to start on boot
+# Show the installed distribution and version
+cat /etc/os-release
 
-sudo systemctl enable <service-name>
+# Show enabled software repositories
+dnf repolist
 
-# Start the service
-sudo systemctl start <service-name>
-
-# Check the status
-sudo systemctl status <service-name>
+# On RHEL, check subscription status
+sudo subscription-manager status
 ```
 
 
 ## Verification
 
-Confirm everything is working by checking the status and logs:
+Confirm the system identity, repository set, and available updates:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
+# Confirm the release name
+cat /etc/redhat-release
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# Review enabled and disabled repositories
+dnf repolist --all
+
+# Review packages with newer versions available
+dnf list --upgrades
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If RHEL repositories are unavailable, check registration with `sudo subscription-manager status`.
+- Ensure required packages are installed with `dnf list --installed <package-name>`.
 
 ## Conclusion
 
