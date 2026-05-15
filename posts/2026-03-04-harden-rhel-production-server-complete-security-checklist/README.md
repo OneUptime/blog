@@ -13,13 +13,13 @@ Hardening a RHEL server before putting it into production reduces your attack su
 ## 1. Apply All Security Updates
 
 ```bash
-# Update all packages to their latest versions
+# Apply all security updates
 
-sudo dnf update -y
+sudo dnf update --security -y
 
 # Enable automatic security updates
 sudo dnf install dnf-automatic
-sudo sed -i 's/apply_updates = no/apply_updates = yes/' /etc/dnf/automatic.conf
+sudo sed -i 's/^upgrade_type = .*/upgrade_type = security/' /etc/dnf/automatic.conf
 sudo systemctl enable --now dnf-automatic-install.timer
 ```
 
@@ -31,24 +31,25 @@ getenforce
 
 # If it shows Permissive, set it to Enforcing
 sudo setenforce 1
-sudo sed -i 's/^SELINUX=permissive/SELINUX=enforcing/' /etc/selinux/config
+sudo sed -i 's/^SELINUX=.*/SELINUX=enforcing/' /etc/selinux/config
 ```
 
 ## 3. Harden SSH
 
 ```bash
 # Edit the SSH configuration
-sudo tee /etc/ssh/sshd_config.d/99-hardening.conf << 'EOF'
+sudo tee /etc/ssh/sshd_config.d/01-hardening.conf << 'EOF'
 PermitRootLogin no
 PasswordAuthentication no
+KbdInteractiveAuthentication no
 MaxAuthTries 3
 ClientAliveInterval 300
 ClientAliveCountMax 2
 AllowUsers your-admin-user
-Protocol 2
 X11Forwarding no
 EOF
 
+sudo sshd -t
 sudo systemctl restart sshd
 ```
 
@@ -72,7 +73,8 @@ sudo firewall-cmd --list-all
 ```bash
 # Install and enable auditd
 sudo dnf install audit
-sudo systemctl enable --now auditd
+sudo systemctl enable auditd
+sudo service auditd start
 
 # Add rules to monitor critical files
 sudo tee /etc/audit/rules.d/hardening.rules << 'EOF'
@@ -91,7 +93,7 @@ sudo augenrules --load
 # Configure password aging
 sudo sed -i 's/^PASS_MAX_DAYS.*/PASS_MAX_DAYS 90/' /etc/login.defs
 sudo sed -i 's/^PASS_MIN_DAYS.*/PASS_MIN_DAYS 7/' /etc/login.defs
-sudo sed -i 's/^PASS_MIN_LEN.*/PASS_MIN_LEN 12/' /etc/login.defs
+sudo sed -i 's/^#\?[[:space:]]*minlen[[:space:]]*=.*/minlen = 12/' /etc/security/pwquality.conf
 ```
 
 ## 7. Disable Unnecessary Services
