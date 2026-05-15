@@ -8,7 +8,7 @@ Description: Configure Azure Managed Identities on RHEL VMs to securely access A
 
 ---
 
-Azure Managed Identities eliminate the need to store credentials on your RHEL virtual machines. Instead, the VM gets an automatically managed identity in Azure AD that can be granted access to Azure resources. This guide shows you how to set up and use managed identities on RHEL.
+Azure Managed Identities eliminate the need to store credentials on your RHEL virtual machines. Instead, the VM gets an automatically managed identity in Microsoft Entra ID that can be granted access to Azure resources. This guide shows you how to set up and use managed identities on RHEL.
 
 ## Managed Identity Flow
 
@@ -16,12 +16,12 @@ Azure Managed Identities eliminate the need to store credentials on your RHEL vi
 sequenceDiagram
     participant VM as RHEL VM
     participant IMDS as Instance Metadata Service
-    participant AAD as Azure AD
+    participant Entra as Microsoft Entra ID
     participant KV as Key Vault
 
     VM->>IMDS: Request token (no credentials needed)
-    IMDS->>AAD: Authenticate VM identity
-    AAD->>IMDS: Return access token
+    IMDS->>Entra: Authenticate VM identity
+    Entra->>IMDS: Return access token
     IMDS->>VM: Access token
     VM->>KV: Access resource with token
     KV->>VM: Return secret/data
@@ -47,7 +47,7 @@ echo "Principal ID: $PRINCIPAL_ID"
 ## Step 2: Grant Access to Azure Resources
 
 ```bash
-# Grant access to Key Vault secrets
+# Grant access to Key Vault secrets (for vaults using the access policy permission model)
 az keyvault set-policy \
   --name my-keyvault \
   --object-id $PRINCIPAL_ID \
@@ -57,13 +57,13 @@ az keyvault set-policy \
 az role assignment create \
   --assignee $PRINCIPAL_ID \
   --role "Storage Blob Data Reader" \
-  --scope /subscriptions/.../storageAccounts/mystorageaccount
+  --scope /subscriptions/<subscription-id>/resourceGroups/rg-rhel9/providers/Microsoft.Storage/storageAccounts/mystorageaccount
 
-# Grant access to Azure SQL
+# Grant management access to an Azure SQL server
 az role assignment create \
   --assignee $PRINCIPAL_ID \
   --role "Contributor" \
-  --scope /subscriptions/.../servers/myserver
+  --scope /subscriptions/<subscription-id>/resourceGroups/rg-rhel9/providers/Microsoft.Sql/servers/myserver
 ```
 
 ## Step 3: Use the Managed Identity from RHEL
@@ -72,7 +72,7 @@ az role assignment create \
 # On the RHEL VM, get a token from the Instance Metadata Service
 # This works without any credentials
 
-# Get a token for Azure Resource Manager
+# Get a token for Azure Key Vault
 TOKEN=$(curl -s 'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://vault.azure.net' \
   -H 'Metadata: true' | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
@@ -84,7 +84,9 @@ curl -s "https://my-keyvault.vault.azure.net/secrets/my-secret?api-version=7.4" 
 ## Step 4: Use Managed Identity with Azure CLI
 
 ```bash
-# Install Azure CLI on RHEL
+# Install Azure CLI on RHEL 9
+sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc
+sudo dnf install -y https://packages.microsoft.com/config/rhel/9.0/packages-microsoft-prod.rpm
 sudo dnf install -y azure-cli
 
 # Login using the managed identity (no credentials needed)
@@ -92,7 +94,7 @@ az login --identity
 
 # Now you can use az commands with the VM's identity
 az keyvault secret show --vault-name my-keyvault --name my-secret
-az storage blob list --account-name mystorageaccount --container-name mycontainer
+az storage blob list --account-name mystorageaccount --container-name mycontainer --auth-mode login
 ```
 
 ## Step 5: Use in Application Code (Python Example)
@@ -103,7 +105,8 @@ sudo dnf install -y python3-pip
 pip3 install azure-identity azure-keyvault-secrets
 
 # Create a Python script that uses managed identity
-cat <<'PYSCRIPT' > /opt/app/get_secrets.py
+sudo mkdir -p /opt/app
+sudo tee /opt/app/get_secrets.py >/dev/null <<'PYSCRIPT'
 from azure.identity import ManagedIdentityCredential
 from azure.keyvault.secrets import SecretClient
 
