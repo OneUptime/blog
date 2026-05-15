@@ -50,20 +50,20 @@ flowchart TD
 
 When SCAP Workbench opens:
 
-1. Click "Load Content" or use File > Open
+1. Click "Load Content" or use File > Open Other Content
 2. Navigate to `/usr/share/xml/scap/ssg/content/`
 3. Select `ssg-rhel9-ds.xml`
 4. The available profiles will appear in the dropdown
 
 ## Select a Profile
 
-The profile dropdown shows all available security profiles:
+The profile dropdown shows available security profiles, such as:
 
 - CIS Level 1 Server
-- CIS Level 2 Server (labeled just "CIS")
+- CIS Level 2 Server
 - DISA STIG
 - PCI-DSS
-- OSPP (NIST 800-53)
+- OSPP (Protection Profile for General Purpose Operating Systems)
 
 Select the profile that matches your compliance requirements.
 
@@ -76,7 +76,7 @@ This is where SCAP Workbench really shines. To customize a profile:
 3. A new window opens showing all rules in the profile
 4. Uncheck rules that do not apply to your environment
 5. Modify values (like minimum password length) by clicking on the value
-6. Click "OK" to save your tailoring
+6. Click "OK" to confirm your tailoring
 
 ### Example customizations
 
@@ -90,10 +90,10 @@ This is where SCAP Workbench really shines. To customize a profile:
 After customizing:
 
 ```bash
-# SCAP Workbench saves tailoring files to your home directory by default
-# Move them to a standard location
+# Choose a standard location for saved tailoring files
 mkdir -p /etc/scap/tailoring/
-# Save from SCAP Workbench to: /etc/scap/tailoring/rhel9-stig-tailored.xml
+# In SCAP Workbench, use File > Save Customization Only
+# and save to: /etc/scap/tailoring/rhel9-stig-tailored.xml
 ```
 
 ## Run a Scan
@@ -116,13 +116,13 @@ After the scan completes:
 
 ### Generate an HTML report
 
-1. Click "Generate Report"
+1. Click the "Save Results" combo box and choose "HTML Report"
 2. Choose the output location
 3. The HTML report is identical to what `oscap` generates from the command line
 
 ### Generate remediation
 
-1. Click "Generate Remediation"
+1. Click "Generate remediation role"
 2. Choose the output format (Bash, Ansible, or Puppet)
 3. Save the remediation script
 
@@ -140,11 +140,11 @@ oscap xccdf eval \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
 ```
 
-The profile ID in the tailoring file will have a `_customized` suffix. Check the tailoring file to find the exact profile ID:
+SCAP Workbench commonly suggests a profile ID with a `_customized` suffix, but you can choose a different ID when creating the customization. Check the tailoring file to find the exact profile ID:
 
 ```bash
 # Find the profile ID in the tailoring file
-grep "Profile id=" /etc/scap/tailoring/rhel9-stig-tailored.xml
+grep -E "Profile.*id=" /etc/scap/tailoring/rhel9-stig-tailored.xml
 ```
 
 ## Scan Remote Systems
