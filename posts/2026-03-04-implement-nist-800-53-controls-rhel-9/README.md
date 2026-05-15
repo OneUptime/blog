@@ -8,7 +8,7 @@ Description: Implement NIST 800-53 security controls on RHEL, mapping technical 
 
 ---
 
-NIST Special Publication 800-53 defines the security and privacy controls that federal information systems must implement. It is the foundation that FISMA compliance is built on, and many private sector organizations adopt it as their security framework. RHEL provides solid tooling for implementing these controls, including an OpenSCAP profile that maps directly to NIST 800-53.
+NIST Special Publication 800-53 defines the security and privacy controls that federal information systems must implement. It is the foundation that FISMA compliance is built on, and many private sector organizations adopt it as their security framework. RHEL provides solid tooling for implementing these controls, including OpenSCAP content that references many NIST 800-53 controls.
 
 ## Understanding NIST 800-53 Control Families
 
@@ -25,19 +25,20 @@ flowchart TD
     A --> H[MP - Media Protection]
 ```
 
-## Scan Against the NIST 800-53 Profile
+## Scan Against the OSPP Profile
 
-RHEL includes an OSPP (Operating System Protection Profile) that maps to many NIST 800-53 controls:
+RHEL includes an OSPP (Operating System Protection Profile) that can help validate many operating-system-level hardening requirements:
 
 ```bash
 # Install OpenSCAP
 
 dnf install -y openscap-scanner scap-security-guide
+mkdir -p /var/log/compliance
 
-# List profiles related to NIST/OSPP
-oscap info /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml | grep -iE "ospp|800-53"
+# List the OSPP profile
+oscap info /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml | grep -i ospp
 
-# Run the OSPP profile scan (maps to 800-53 controls)
+# Run the OSPP profile scan
 oscap xccdf eval \
   --profile xccdf_org.ssgproject.content_profile_ospp \
   --results /var/log/compliance/nist-results.xml \
@@ -50,11 +51,11 @@ oscap xccdf eval \
 ### AC-2: Account Management
 
 ```bash
-# List all system accounts
+# List all human accounts
 awk -F: '$3 >= 1000 && $3 < 65534 {print $1, $3, $7}' /etc/passwd
 
 # Ensure no accounts have empty passwords
-awk -F: '($2 == "" || $2 == "!") {print $1}' /etc/shadow
+awk -F: '$2 == "" {print $1}' /etc/shadow
 
 # Set password expiration for all human accounts
 for user in $(awk -F: '$3 >= 1000 && $3 < 65534 {print $1}' /etc/passwd); do
@@ -147,7 +148,7 @@ cat > /etc/audit/rules.d/nist-800-53.rules << 'EOF'
 
 # Record audit configuration changes
 -w /etc/audit/ -p wa -k audit-config
--w /etc/audisp/ -p wa -k audit-config
+-w /etc/audit/plugins.d/ -p wa -k audit-config
 
 # Record kernel module loading
 -w /sbin/insmod -p x -k modules
@@ -165,7 +166,7 @@ augenrules --load
 chmod 600 /var/log/audit/audit.log
 chown root:root /var/log/audit/audit.log
 
-# Configure audit to halt on failure
+# Configure audit low-space actions
 sed -i 's/^space_left_action.*/space_left_action = email/' /etc/audit/auditd.conf
 sed -i 's/^admin_space_left_action.*/admin_space_left_action = single/' /etc/audit/auditd.conf
 ```
@@ -252,14 +253,15 @@ echo "0 5 * * * root /usr/sbin/aide --check" >> /etc/crontab
 
 ```bash
 # Run the full OSPP scan
+mkdir -p /var/log/compliance
 oscap xccdf eval \
   --profile xccdf_org.ssgproject.content_profile_ospp \
   --results /var/log/compliance/nist-final.xml \
   --report /var/log/compliance/nist-final.html \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml || true
 
-echo "Pass: $(grep -c 'result="pass"' /var/log/compliance/nist-final.xml)"
-echo "Fail: $(grep -c 'result="fail"' /var/log/compliance/nist-final.xml)"
+echo "Pass: $(grep -c '<result>pass</result>' /var/log/compliance/nist-final.xml)"
+echo "Fail: $(grep -c '<result>fail</result>' /var/log/compliance/nist-final.xml)"
 ```
 
 NIST 800-53 is a comprehensive framework, and not every control maps to an OS configuration. Focus on what you can implement at the RHEL level, document compensating controls for everything else, and use OpenSCAP to continuously validate your compliance posture.
