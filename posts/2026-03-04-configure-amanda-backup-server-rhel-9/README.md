@@ -26,7 +26,8 @@ graph TD
 
 ```bash
 # Install Amanda server package
-
+# On RHEL 9, enable EPEL first if the Amanda packages are not already available.
+sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 sudo dnf install amanda-server amanda-client
 
 # The amanda user is created automatically
@@ -56,6 +57,9 @@ tapecycle 14        # Number of virtual tapes to keep
 # Use disk-based virtual tapes
 tpchanger "chg-disk:/backup/amanda/vtapes/daily"
 tapetype DISK
+labelstr "Daily-[0-9][0-9]"
+autolabel "Daily-%%" EMPTY VOLUME_ERROR
+amrecover_changer "changer"
 
 # Holding disk for staging
 holdingdisk hd1 {
@@ -68,8 +72,28 @@ define tapetype DISK {
     length 50 Gb
 }
 
-# Compression and encryption
-compress client fast
+# Dumptype used by the disklist
+define dumptype global {
+    auth "bsdtcp"
+}
+
+define dumptype root-tar {
+    global
+    program "GNUTAR"
+    compress none
+    index yes
+    priority low
+}
+
+define dumptype user-tar {
+    root-tar
+    priority medium
+}
+
+define dumptype comp-user-tar {
+    user-tar
+    compress client fast
+}
 
 # Logging
 logdir "/var/log/amanda/daily"
@@ -128,6 +152,9 @@ sudo dnf install amanda-client
 echo "amanda.example.com amandabackup amdump" | sudo tee /var/lib/amanda/.amandahosts
 sudo chown amandabackup:disk /var/lib/amanda/.amandahosts
 sudo chmod 600 /var/lib/amanda/.amandahosts
+
+# Start the Amanda socket for bsdtcp client connections
+sudo systemctl enable --now amanda.socket
 ```
 
 ## Configuring Firewall
@@ -137,7 +164,6 @@ On the server:
 ```bash
 # Open Amanda ports
 sudo firewall-cmd --permanent --add-port=10080/tcp
-sudo firewall-cmd --permanent --add-port=10080/udp
 sudo firewall-cmd --reload
 ```
 
@@ -145,7 +171,6 @@ On the clients:
 
 ```bash
 sudo firewall-cmd --permanent --add-port=10080/tcp
-sudo firewall-cmd --permanent --add-port=10080/udp
 sudo firewall-cmd --reload
 ```
 
@@ -187,7 +212,7 @@ Add:
 sudo -u amandabackup amadmin daily find client1.example.com /etc
 
 # Restore files interactively
-sudo -u amandabackup amrecover daily
+sudo amrecover daily
 # Then use commands like:
 #   sethost client1.example.com
 #   setdisk /etc
@@ -210,7 +235,7 @@ sudo -u amandabackup amreport daily
 sudo -u amandabackup amadmin daily info
 
 # View backup history
-sudo -u amandabackup amadmin daily find --sort hostname
+sudo -u amandabackup amadmin daily find --sort h
 ```
 
 ## Wrapping Up
