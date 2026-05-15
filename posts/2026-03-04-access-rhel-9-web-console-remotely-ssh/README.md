@@ -208,7 +208,7 @@ The `autossh` utility automatically restarts SSH tunnels when they drop. Handy f
 Install and use autossh for a resilient tunnel:
 
 ```bash
-# Install autossh
+# Install autossh (enable EPEL first if it is not available in your RHEL repositories)
 sudo dnf install autossh -y
 
 # Start a self-healing tunnel
