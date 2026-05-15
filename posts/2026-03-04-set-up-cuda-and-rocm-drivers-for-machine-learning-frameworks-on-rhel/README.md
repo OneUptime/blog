@@ -12,7 +12,7 @@ Machine learning frameworks need GPU drivers to offload compute operations. NVID
 
 ## NVIDIA CUDA Setup
 
-### Install NVIDIA Drivers
+### Disable the Nouveau Driver
 
 ```bash
 # Disable the nouveau driver
@@ -31,14 +31,17 @@ sudo dnf config-manager --add-repo \
     https://developer.download.nvidia.com/compute/cuda/repos/rhel9/x86_64/cuda-rhel9.repo
 
 # Clean the cache
-sudo dnf clean all
+sudo dnf clean expire-cache
 ```
 
 ### Install CUDA Toolkit and Drivers
 
 ```bash
-# Install the full CUDA toolkit (includes drivers)
-sudo dnf install -y cuda-toolkit-12-4 cuda-drivers
+# Enable the NVIDIA driver module stream for RHEL 9
+sudo dnf module enable -y nvidia-driver:latest-dkms
+
+# Install the CUDA toolkit and proprietary NVIDIA driver packages
+sudo dnf install -y cuda-toolkit cuda-drivers
 
 # Set up environment variables
 echo 'export PATH=/usr/local/cuda/bin:$PATH' >> ~/.bashrc
@@ -53,8 +56,10 @@ nvcc --version
 ### Install cuDNN (for Deep Learning)
 
 ```bash
-# Install cuDNN from the CUDA repo
-sudo dnf install -y libcudnn8 libcudnn8-devel
+# Install cuDNN from the CUDA repo, matching your CUDA major version
+sudo dnf -y install --allowerasing cudnn9-cuda-12
+# For CUDA 13, use:
+# sudo dnf -y install --allowerasing cudnn9-cuda-13
 ```
 
 ## AMD ROCm Setup
@@ -70,30 +75,29 @@ lspci | grep -i amd
 ### Add the ROCm Repository
 
 ```bash
-# Add the AMD ROCm repository for RHEL 9
-cat << 'EOF' | sudo tee /etc/yum.repos.d/rocm.repo
-[rocm]
-name=ROCm
-baseurl=https://repo.radeon.com/rocm/rhel9/6.0/main
-enabled=1
-gpgcheck=1
-gpgkey=https://repo.radeon.com/rocm/rocm.gpg.key
-EOF
-
+# Install the AMDGPU installer package for RHEL 9.7
+sudo dnf install -y https://repo.radeon.com/amdgpu-install/7.2.3/rhel/9.7/amdgpu-install-7.2.3.70203-1.el9.noarch.rpm
 sudo dnf clean all
 ```
 
 ### Install ROCm
 
 ```bash
-# Install the ROCm runtime and development packages
-sudo dnf install -y rocm-hip-runtime rocm-hip-sdk rocm-dev
-
-# Install the kernel driver
+# Install kernel headers and the AMDGPU kernel driver
+sudo dnf install -y "kernel-headers-$(uname -r)" "kernel-devel-$(uname -r)" "kernel-devel-matched-$(uname -r)"
 sudo dnf install -y amdgpu-dkms
 
+# Enable repositories and packages required by ROCm on RHEL 9
+wget https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+sudo rpm -ivh epel-release-latest-9.noarch.rpm
+sudo dnf config-manager --enable codeready-builder-for-rhel-9-x86_64-rpms
+sudo dnf install -y python3-setuptools python3-wheel
+
 # Add your user to the render and video groups
-sudo usermod -aG render,video $USER
+sudo usermod -a -G render,video $LOGNAME
+
+# Install ROCm
+sudo dnf install -y rocm
 
 # Set up environment variables
 echo 'export PATH=/opt/rocm/bin:$PATH' >> ~/.bashrc
@@ -108,7 +112,7 @@ sudo reboot
 
 ```bash
 # Check GPU detection
-rocm-smi
+amd-smi
 
 # List available GPUs
 rocminfo | grep "Marketing Name"
