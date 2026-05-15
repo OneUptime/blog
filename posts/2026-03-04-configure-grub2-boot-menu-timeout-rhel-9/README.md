@@ -21,8 +21,8 @@ RHEL defaults to a 5-second timeout, which is a reasonable middle ground.
 
 grep GRUB_TIMEOUT /etc/default/grub
 
-# Check what the running GRUB config says
-sudo grub2-editenv list | grep menu_auto_hide
+# Check what the generated GRUB config says
+grep -E 'set timeout|set timeout_style' /boot/grub2/grub.cfg
 ```
 
 ## Changing the Timeout
@@ -42,11 +42,8 @@ GRUB_TIMEOUT=10
 sudo sed -i 's/GRUB_TIMEOUT=.*/GRUB_TIMEOUT=10/' /etc/default/grub
 
 # Regenerate the GRUB configuration
-# For BIOS systems:
+# On RHEL 9, use this path for both BIOS and UEFI systems:
 sudo grub2-mkconfig -o /boot/grub2/grub.cfg
-
-# For UEFI systems:
-sudo grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
 ```
 
 ### Setting the Timeout to Zero (Instant Boot)
@@ -56,13 +53,14 @@ sudo grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
 sudo sed -i 's/GRUB_TIMEOUT=.*/GRUB_TIMEOUT=0/' /etc/default/grub
 
 # Also set the hidden timeout style
+sudo sed -i '/GRUB_TIMEOUT_STYLE/d' /etc/default/grub
 echo 'GRUB_TIMEOUT_STYLE=hidden' | sudo tee -a /etc/default/grub
 
 # Regenerate config
 sudo grub2-mkconfig -o /boot/grub2/grub.cfg
 ```
 
-With `GRUB_TIMEOUT=0` and `GRUB_TIMEOUT_STYLE=hidden`, the menu does not appear at all. You can still access it by holding `Shift` during boot on BIOS systems or pressing `Esc` on UEFI systems.
+With `GRUB_TIMEOUT=0` and `GRUB_TIMEOUT_STYLE=hidden`, the menu does not appear during a normal boot. To make emergency access more reliable, use a short nonzero timeout; otherwise try repeatedly pressing `Esc` or `F8`, or holding `Shift`, during boot.
 
 ### Setting an Infinite Timeout (Wait Forever)
 
@@ -83,8 +81,8 @@ RHEL supports three timeout styles:
 | Style | Behavior |
 |-------|----------|
 | menu | Always show the menu during the timeout period |
-| countdown | Show a countdown but no menu (press a key to see the menu) |
-| hidden | Hide the menu entirely (press Shift or Esc to access) |
+| countdown | Show a countdown but no menu (press `Esc` or `F4`, or hold `Shift`, to see the menu) |
+| hidden | Hide the menu during the timeout period (press `Esc` or `F4`, or hold `Shift`, to see the menu) |
 
 ```bash
 # Show a countdown instead of the full menu
@@ -96,7 +94,7 @@ sudo grub2-mkconfig -o /boot/grub2/grub.cfg
 
 ## The Menu Auto-Hide Feature
 
-RHEL has a menu auto-hide feature that skips the GRUB menu if there is only one boot entry and the previous boot was successful.
+RHEL has a menu auto-hide feature that skips the GRUB menu if RHEL is the only installed operating system and the previous boot was successful.
 
 ```bash
 # Check the auto-hide status
