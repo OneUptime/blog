@@ -34,8 +34,7 @@ LVM has three layers:
 LVM tools come pre-installed on RHEL, but verify:
 
 ```bash
-# Check if LVM is installed
-
+# Install LVM tools if needed
 sudo dnf install lvm2 -y
 ```
 
@@ -153,11 +152,13 @@ sudo lvscan
 To cleanly remove LVM components (in reverse order):
 
 ```bash
-# Unmount the filesystem
-sudo umount /data
+# Unmount the filesystems
+sudo umount /data /app /logs
 
-# Remove the logical volume
+# Remove the logical volumes
 sudo lvremove datavg/datalv
+sudo lvremove datavg/applv
+sudo lvremove datavg/loglv
 
 # Remove the volume group (after removing all LVs)
 sudo vgremove datavg
@@ -169,4 +170,3 @@ sudo pvremove /dev/sdb /dev/sdc
 ## Summary
 
 LVM on RHEL provides the flexibility to manage storage without being constrained by physical disk boundaries. The layered architecture of PVs, VGs, and LVs lets you resize, move, and snapshot your storage as your needs change. This foundation is the starting point for more advanced features like snapshots, thin provisioning, and caching covered in subsequent guides.
-
