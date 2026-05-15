@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, OpsGenie, Alerting, Monitoring, Linux
 
-Description: Set up Opsgenie alerting from RHEL servers using the Opsgenie API to create and manage incidents for system issues.
+Description: Set up Opsgenie alerting from RHEL servers using the Opsgenie API to create and manage alerts for system issues.
 
 ---
 
@@ -17,6 +17,7 @@ Create an API integration in Opsgenie:
 1. Go to Settings > Integrations in Opsgenie
 2. Add a new "API" integration
 3. Copy the API key
+4. Turn on the integration
 
 ## Basic Alert Script
 
@@ -34,34 +35,66 @@ create_alert() {
     local description="$2"
     local priority="$3"  # P1-P5
     local alias="$4"     # Dedup key
+    local payload
+
+    payload=$(MESSAGE="$message" \
+      DESCRIPTION="$description" \
+      PRIORITY="${priority:-P3}" \
+      ALIAS="${alias:-$(hostname)-alert}" \
+      HOSTNAME="$(hostname)" \
+      TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      UPTIME="$(uptime -p)" \
+      python3 - << 'PY'
+import json
+import os
+
+print(json.dumps({
+    "message": os.environ["MESSAGE"],
+    "alias": os.environ["ALIAS"],
+    "description": os.environ["DESCRIPTION"],
+    "priority": os.environ["PRIORITY"],
+    "source": os.environ["HOSTNAME"],
+    "tags": ["rhel", os.environ["HOSTNAME"]],
+    "details": {
+        "hostname": os.environ["HOSTNAME"],
+        "timestamp": os.environ["TIMESTAMP"],
+        "uptime": os.environ["UPTIME"],
+    },
+}))
+PY
+    )
 
     curl -s -X POST "$OPSGENIE_URL" \
       -H "Content-Type: application/json" \
       -H "Authorization: GenieKey $OPSGENIE_API_KEY" \
-      -d "{
-        \"message\": \"$message\",
-        \"alias\": \"${alias:-$(hostname)-alert}\",
-        \"description\": \"$description\",
-        \"priority\": \"${priority:-P3}\",
-        \"source\": \"$(hostname)\",
-        \"tags\": [\"rhel\", \"$(hostname)\"],
-        \"details\": {
-          \"hostname\": \"$(hostname)\",
-          \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
-          \"uptime\": \"$(uptime -p)\"
-        }
-      }"
+      -d "$payload"
 }
 
 close_alert() {
     local alias="$1"
+    local encoded_alias
+    local payload
 
-    curl -s -X POST "$OPSGENIE_URL/$alias/close?identifierType=alias" \
+    encoded_alias=$(ALIAS="$alias" python3 - << 'PY'
+import os
+from urllib.parse import quote
+
+print(quote(os.environ["ALIAS"], safe=""))
+PY
+    )
+
+    payload=$(NOTE="Automatically closed - condition resolved on $(hostname)" python3 - << 'PY'
+import json
+import os
+
+print(json.dumps({"note": os.environ["NOTE"]}))
+PY
+    )
+
+    curl -s -X POST "$OPSGENIE_URL/$encoded_alias/close?identifierType=alias" \
       -H "Content-Type: application/json" \
       -H "Authorization: GenieKey $OPSGENIE_API_KEY" \
-      -d "{
-        \"note\": \"Automatically closed - condition resolved on $(hostname)\"
-      }"
+      -d "$payload"
 }
 
 # Export functions for use in other scripts
@@ -79,9 +112,9 @@ source /usr/local/bin/opsgenie-alert.sh
 CRITICAL=90
 WARNING=80
 
-df -h --output=target,pcent | tail -n +2 | while read mount usage; do
+df -h --output=pcent,target | tail -n +2 | while read -r usage mount; do
     PERCENT=${usage%\%}
-    ALIAS="disk-$(hostname)-$(echo $mount | tr '/' '-')"
+    ALIAS="disk-$(hostname)-$(echo "$mount" | tr '/' '-')"
 
     if [ "$PERCENT" -gt "$CRITICAL" ]; then
         create_alert \
