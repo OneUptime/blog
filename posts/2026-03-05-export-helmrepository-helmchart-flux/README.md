@@ -155,13 +155,13 @@ done
 
 ## Full Cluster Export
 
-When migrating an entire Flux installation, you can combine exports of all source types into a comprehensive backup.
+When migrating an entire Flux installation, you can combine exports of the source types you use into a comprehensive backup.
 
 ```bash
 # Create a directory for the backup
 mkdir -p flux-backup/sources
 
-# Export all source types
+# Export HelmRepository, HelmChart, and GitRepository sources
 : > flux-backup/sources/helm-repositories.yaml
 for namespace in $(kubectl get helmrepositories.source.toolkit.fluxcd.io --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"\n"}{end}' | sort -u); do
   flux export source helm --all --namespace="$namespace" >> flux-backup/sources/helm-repositories.yaml
