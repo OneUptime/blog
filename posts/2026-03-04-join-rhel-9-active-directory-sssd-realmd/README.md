@@ -30,13 +30,13 @@ Before joining, make sure these are in place:
 - DNS resolution to AD domain controllers (critical)
 - Time synchronized between RHEL and AD (Kerberos requires this)
 - An AD account with permission to join computers to the domain
-- Network connectivity to AD on ports 53, 88, 389, 636, 3268, and 445
+- Network connectivity to AD on ports 53, 88, 389, 445, 464, and 3268, plus 636 and 3269 if you use LDAPS
 
 ```bash
 # Verify DNS resolution to AD
 
 host ad.example.com
-nslookup _ldap._tcp.example.com
+nslookup -type=SRV _ldap._tcp.example.com
 
 # Verify time sync
 chronyc tracking
@@ -50,7 +50,7 @@ cat /etc/resolv.conf
 
 ```bash
 # Install realmd, SSSD, and related packages
-sudo dnf install realmd sssd oddjob oddjob-mkhomedir adcli samba-common-tools -y
+sudo dnf install realmd sssd oddjob oddjob-mkhomedir adcli samba-common-tools krb5-workstation bind-utils -y
 ```
 
 ## Step 2 - Discover the Domain
@@ -72,10 +72,11 @@ example.com
   configured: no
   server-software: active-directory
   client-software: sssd
-  required-package: sssd-tools
+  required-package: oddjob
+  required-package: oddjob-mkhomedir
   required-package: sssd
   required-package: adcli
-  required-package: samba-common-tools
+  required-package: samba-common
 ```
 
 ## Step 3 - Join the Domain
@@ -130,15 +131,18 @@ id administrator@example.com
 su - administrator@example.com
 
 # Test Kerberos ticket
-kinit administrator@example.com
+kinit administrator@EXAMPLE.COM
 klist
 ```
 
 ## Step 6 - Configure Home Directory Creation
 
-AD users need home directories on the RHEL system.
+AD users need home directories on the RHEL system. If home directories are not created automatically after the join, check the current authselect profile before changing it.
 
 ```bash
+# Check the current authselect profile and enabled features
+authselect current
+
 # Enable automatic home directory creation
 sudo authselect enable-feature with-mkhomedir
 
