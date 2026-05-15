@@ -16,9 +16,12 @@ Disable swap and configure kernel modules on every node (control plane and worke
 
 ```bash
 # Disable swap (required for Kubernetes)
-
 sudo swapoff -a
 sudo sed -i '/ swap / s/^/#/' /etc/fstab
+
+# Set SELinux to permissive mode for kubeadm-managed nodes
+sudo setenforce 0
+sudo sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
 
 # Load required kernel modules
 sudo tee /etc/modules-load.d/k8s.conf << 'EOF'
@@ -43,6 +46,7 @@ sudo sysctl --system
 
 ```bash
 # Install containerd as the container runtime
+sudo dnf -y install dnf-plugins-core
 sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
 sudo dnf install containerd.io -y
 
@@ -63,15 +67,16 @@ sudo systemctl enable --now containerd
 sudo tee /etc/yum.repos.d/kubernetes.repo << 'EOF'
 [kubernetes]
 name=Kubernetes
-baseurl=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/
+baseurl=https://pkgs.k8s.io/core:/stable:/v1.36/rpm/
 enabled=1
 gpgcheck=1
-gpgkey=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1.36/rpm/repodata/repomd.xml.key
+exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
 EOF
 
 # Install Kubernetes components
-sudo dnf install -y kubelet kubeadm kubectl
-sudo systemctl enable kubelet
+sudo dnf install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+sudo systemctl enable --now kubelet
 ```
 
 ## Firewall Configuration
@@ -83,11 +88,15 @@ sudo firewall-cmd --permanent --add-port=2379-2380/tcp  # etcd
 sudo firewall-cmd --permanent --add-port=10250/tcp      # kubelet
 sudo firewall-cmd --permanent --add-port=10259/tcp      # kube-scheduler
 sudo firewall-cmd --permanent --add-port=10257/tcp      # kube-controller-manager
+sudo firewall-cmd --permanent --add-port=8472/udp       # Flannel VXLAN
 sudo firewall-cmd --reload
 
 # On worker nodes
 sudo firewall-cmd --permanent --add-port=10250/tcp      # kubelet
-sudo firewall-cmd --permanent --add-port=30000-32767/tcp # NodePort services
+sudo firewall-cmd --permanent --add-port=10256/tcp      # kube-proxy
+sudo firewall-cmd --permanent --add-port=30000-32767/tcp # NodePort services (TCP)
+sudo firewall-cmd --permanent --add-port=30000-32767/udp # NodePort services (UDP)
+sudo firewall-cmd --permanent --add-port=8472/udp       # Flannel VXLAN
 sudo firewall-cmd --reload
 ```
 
