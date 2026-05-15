@@ -1,14 +1,14 @@
-# How to Deploy WireGuard VPN with Web UI on RHEL
+# How to Deploy WireGuard VPN on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, VPN, Linux
 
-Description: Step-by-step guide on deploy wireguard vpn with web ui using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on deploy wireguard vpn using Red Hat Enterprise Linux 9.
 
 ---
 
-Deploying WireGuard VPN with Web UI on RHEL provides a stable and secure foundation for your workload. This guide covers the installation, configuration, and operational considerations.
+Deploying WireGuard VPN on RHEL provides a stable and secure foundation for your workload. This guide covers the installation, configuration, and operational considerations.
 
 ## Prerequisites
 
@@ -26,13 +26,14 @@ Configure WireGuard VPN:
 sudo dnf install -y wireguard-tools
 
 # Generate keys
-wg genkey | tee /etc/wireguard/private.key | wg pubkey > /etc/wireguard/public.key
-chmod 600 /etc/wireguard/private.key
+sudo install -d -m 700 /etc/wireguard
+sudo sh -c 'umask 077 && wg genkey > /etc/wireguard/private.key && wg pubkey < /etc/wireguard/private.key > /etc/wireguard/public.key'
 
 # Create configuration
-cat <<EOF | sudo tee /etc/wireguard/wg0.conf
+PRIVATE_KEY=$(sudo cat /etc/wireguard/private.key)
+cat <<EOF | sudo tee /etc/wireguard/wg0.conf > /dev/null
 [Interface]
-PrivateKey = $(cat /etc/wireguard/private.key)
+PrivateKey = ${PRIVATE_KEY}
 Address = 10.0.0.1/24
 ListenPort = 51820
 
@@ -40,6 +41,7 @@ ListenPort = 51820
 PublicKey = <client-public-key>
 AllowedIPs = 10.0.0.2/32
 EOF
+sudo chmod 600 /etc/wireguard/wg0.conf
 
 # Start WireGuard
 sudo systemctl enable --now wg-quick@wg0
@@ -49,13 +51,13 @@ sudo systemctl enable --now wg-quick@wg0
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable wg-quick@wg0
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start wg-quick@wg0
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status wg-quick@wg0
 ```
 
 
@@ -73,8 +75,8 @@ ip addr show wg0
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u wg-quick@wg0 -e --no-pager`.
+- Ensure all required packages are installed: `rpm -q wireguard-tools`.
 
 ## Conclusion
 
