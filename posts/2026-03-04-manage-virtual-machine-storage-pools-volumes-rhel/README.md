@@ -64,6 +64,7 @@ sudo virsh pool-autostart lvm-pool
 sudo virsh pool-define-as nfs-pool netfs \
   --source-host nfs-server.example.com \
   --source-path /exports/vm-images \
+  --source-format nfs \
   --target /mnt/nfs-vm-images
 
 sudo virsh pool-start nfs-pool
@@ -85,11 +86,11 @@ sudo virsh vol-info vm-disk1.qcow2 --pool new-pool
 # Resize a volume
 sudo virsh vol-resize vm-disk1.qcow2 --pool new-pool 40G
 
-# Delete a volume
-sudo virsh vol-delete vm-disk1.qcow2 --pool new-pool
-
 # Clone a volume
 sudo virsh vol-clone vm-disk1.qcow2 vm-disk1-clone.qcow2 --pool new-pool
+
+# Delete a volume
+sudo virsh vol-delete vm-disk1.qcow2 --pool new-pool
 ```
 
 ## Refreshing a Pool
