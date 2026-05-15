@@ -93,7 +93,7 @@ Automatically discover all running services:
 sudo tee -a /etc/zabbix/zabbix_agent2.d/custom-services.conf << 'CONF'
 
 # Discover active systemd services (output JSON for Zabbix LLD)
-UserParameter=service.discovery,systemctl list-units --type=service --state=running --no-legend --no-pager | awk '{print $1}' | sed 's/.service$//' | python3 -c "import sys,json; print(json.dumps([{'{#SERVICE}':s.strip()} for s in sys.stdin if s.strip()]))"
+UserParameter=service.discovery,systemctl list-units --type=service --state=running --no-legend --no-pager | awk '{print $1}' | sed 's/\.service$//' | python3 -c "import sys,json; print(json.dumps([{'{#SERVICE}':s.strip()} for s in sys.stdin if s.strip()]))"
 CONF
 
 sudo systemctl restart zabbix-agent2
@@ -124,18 +124,33 @@ Severity: Average
 ## Export and Import Templates
 
 ```bash
-# Export a template via the API
+# First get the template ID
 curl -X POST http://zabbix.example.com/api_jsonrpc.php \
-  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -H "Content-Type: application/json-rpc" \
   -d '{
     "jsonrpc": "2.0",
     "method": "template.get",
     "params": {
         "filter": {"host": ["Custom RHEL Service Monitor"]},
-        "output": "extend"
+        "output": ["templateid", "host"]
     },
-    "auth": "YOUR_AUTH_TOKEN",
     "id": 1
+  }'
+
+# Export the template via the API
+curl -X POST http://zabbix.example.com/api_jsonrpc.php \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -H "Content-Type: application/json-rpc" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "configuration.export",
+    "params": {
+        "options": {"templates": ["TEMPLATE_ID"]},
+        "format": "yaml",
+        "prettyprint": true
+    },
+    "id": 2
   }'
 ```
 
