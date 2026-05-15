@@ -12,7 +12,7 @@ Dynatrace OneAgent provides automatic, full-stack monitoring of your RHEL server
 
 ## Prerequisites
 
-You need a Dynatrace environment (SaaS or Managed) with the Environment ID and API token ready.
+You need a Dynatrace environment (SaaS or Managed) with the Environment ID and an API token that has the `InstallerDownload` scope ready.
 
 ## Downloading and Installing OneAgent
 
@@ -59,6 +59,11 @@ sudo /opt/dynatrace/oneagent/agent/tools/oneagentctl \
   --set-host-property=Environment=production \
   --set-host-property=Team=platform
 
+# Set custom host tags
+sudo /opt/dynatrace/oneagent/agent/tools/oneagentctl \
+  --set-host-tag=Environment=production \
+  --set-host-tag=Team=platform
+
 # Restart the agent for changes to take effect
 sudo systemctl restart oneagent
 ```
@@ -81,11 +86,11 @@ sudo /opt/dynatrace/oneagent/agent/tools/oneagentctl \
 OneAgent automatically discovers most processes. For custom applications, verify detection:
 
 ```bash
-# Check which processes OneAgent has discovered
-/opt/dynatrace/oneagent/agent/tools/oneagentctl --get-process-metadata
+# Check that OneAgent is running before reviewing discovered processes in Dynatrace
+sudo systemctl status oneagent
 
-# View OneAgent logs for detection details
-sudo tail -50 /var/log/dynatrace/oneagent/oneagent.log
+# View available OneAgent log files for detection details
+sudo find /var/log/dynatrace/oneagent -type f -name "*.log" -print | head
 ```
 
 ## Configuring Log Monitoring
@@ -112,8 +117,8 @@ sudo /opt/dynatrace/oneagent/agent/tools/oneagentctl \
 # To check update status
 /opt/dynatrace/oneagent/agent/tools/oneagentctl --get-auto-update-enabled
 
-# To manually trigger an update
+# To enable automatic updates
 sudo /opt/dynatrace/oneagent/agent/tools/oneagentctl --set-auto-update-enabled=true
 ```
 
-Once installed, navigate to your Dynatrace environment. The host should appear within 5 minutes with full infrastructure metrics, process monitoring, and service detection.
+Once installed, navigate to your Dynatrace environment. The host should appear within 5 minutes with full infrastructure metrics, process monitoring, and service detection after monitored application processes are restarted as needed.
