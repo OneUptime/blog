@@ -27,7 +27,7 @@ sudo grubby --update-kernel=ALL --args="intel_iommu=on iommu=pt"
 For AMD:
 
 ```bash
-sudo grubby --update-kernel=ALL --args="amd_iommu=on iommu=pt"
+sudo grubby --update-kernel=ALL --args="iommu=pt"
 ```
 
 Reboot and verify:
