@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, KVM, SELinux, SVirt, Security, Virtualization, Linux
 
-Description: Learn how SELinux sVirt on RHEL 9 provides mandatory access control isolation between KVM virtual machines to prevent VM escape attacks.
+Description: Learn how SELinux sVirt on RHEL 9 provides mandatory access control isolation between KVM virtual machines to help mitigate VM escape attacks.
 
 ---
 
@@ -16,7 +16,7 @@ When a VM starts, libvirt automatically:
 
 1. Assigns a unique SELinux category pair to the QEMU process (e.g., `svirt_t:s0:c123,c456`)
 2. Labels the VM's disk images with matching categories
-3. Labels other resources (sockets, devices) with matching categories
+3. Labels other VM resources (disk devices, PCI/USB devices, and boot files) with matching categories where applicable
 
 Because each VM gets a unique category, SELinux prevents one VM's process from accessing another VM's resources.
 
@@ -62,13 +62,13 @@ Each VM has different category pairs, preventing cross-VM access.
 | svirt_t | QEMU/KVM process type |
 | svirt_image_t | VM disk image type |
 | svirt_tcg_t | QEMU running without KVM (TCG mode) |
-| virt_content_t | Content accessible to VMs |
+| svirt_content_t | Shared read-only content accessible to VMs |
 
 ## Static vs Dynamic Labeling
 
 ### Dynamic (Default)
 
-libvirt automatically assigns unique categories at VM start and removes them at shutdown. This is the default and recommended approach.
+libvirt automatically assigns unique categories at VM start and restores resource labels when the VM stops. This is the default and recommended approach.
 
 ### Static
 
@@ -77,7 +77,6 @@ You can assign fixed labels in the VM XML:
 ```xml
 <seclabel type='static' model='selinux' relabel='yes'>
   <label>system_u:system_r:svirt_t:s0:c100,c200</label>
-  <imagelabel>system_u:object_r:svirt_image_t:s0:c100,c200</imagelabel>
 </seclabel>
 ```
 
@@ -87,12 +86,12 @@ Static labeling is useful when VMs need to share specific resources.
 
 By default, sVirt prevents sharing. To allow shared access:
 
-### Using virt_content_t
+### Using svirt_content_t
 
-Label shared content:
+Label shared read-only content:
 
 ```bash
-sudo semanage fcontext -a -t virt_content_t "/shared/iso(/.*)?"
+sudo semanage fcontext -a -t svirt_content_t "/shared/iso(/.*)?"
 sudo restorecon -Rv /shared/iso
 ```
 
@@ -150,7 +149,7 @@ Enable SELinux boolean for NFS-based VM images:
 sudo setsebool -P virt_use_nfs on
 ```
 
-### iSCSI Storage
+### CIFS/Samba Storage
 
 ```bash
 sudo setsebool -P virt_use_samba on  # For CIFS
@@ -176,7 +175,7 @@ Key booleans:
 
 - `virt_use_nfs` - Allow VMs to use NFS storage
 - `virt_use_samba` - Allow VMs to use Samba/CIFS storage
-- `virt_sandbox_use_all_caps` - Allow sandboxed VMs full capabilities
+- `virt_sandbox_use_sys_admin` - Allow sandbox containers to use sys_admin system calls
 - `virt_use_usb` - Allow VMs to use USB devices
 
 ## Summary
