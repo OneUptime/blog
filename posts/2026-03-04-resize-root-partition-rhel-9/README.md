@@ -197,7 +197,7 @@ mount /dev/sdc1 /mnt/backup  # External backup drive
 mount /dev/rhel/root /mnt/root
 
 # Back up
-tar czf /mnt/backup/root_backup.tar.gz -C /mnt/root .
+xfsdump -l 0 -f /mnt/backup/root.xfsdump /mnt/root
 
 # Unmount, remove, recreate
 umount /mnt/root
@@ -207,7 +207,7 @@ mkfs.xfs /dev/rhel/root
 
 # Restore
 mount /dev/rhel/root /mnt/root
-tar xzf /mnt/backup/root_backup.tar.gz -C /mnt/root
+xfsrestore -f /mnt/backup/root.xfsdump /mnt/root
 
 # Reinstall bootloader
 mount /dev/sda1 /mnt/root/boot
