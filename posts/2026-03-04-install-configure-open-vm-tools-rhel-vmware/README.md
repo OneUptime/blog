@@ -59,12 +59,13 @@ vSphere can send shutdown commands to the guest OS:
 # In vSphere: Right-click VM > Power > Shut Down Guest OS
 ```
 
-### File and Clipboard Sharing (Desktop Only)
+### Clipboard Sharing (Desktop Only)
 
 ```bash
-# With open-vm-tools-desktop installed, shared folders and
-# clipboard copy/paste between host and guest are available
-# Configure shared folders in the VM settings in vSphere
+# With open-vm-tools-desktop installed, clipboard copy/paste
+# can be used with supported VMware console clients
+# In vSphere/ESXi, copy and paste is disabled by default and
+# must be enabled in the VM or host advanced settings
 ```
 
 ### Guest Customization
@@ -72,18 +73,18 @@ vSphere can send shutdown commands to the guest OS:
 Open VM Tools supports vSphere guest customization, which allows automatic configuration of hostname, network settings, and more during VM deployment from templates.
 
 ```bash
-# Verify that the customization support is working
-vmware-toolbox-cmd config get deployPkg enable-custom-scripts
+# Check whether guest customization is enabled
+vmware-toolbox-cmd config get deployPkg enable-customization
 ```
 
 ## Configure Time Synchronization
 
 ```bash
-# By default, vmtoolsd syncs guest time with the ESXi host
-# To check the current time sync status
+# By default, periodic VMware Tools time synchronization is disabled
+# To check the current periodic time sync status
 vmware-toolbox-cmd timesync status
 
-# Enable time synchronization
+# Enable periodic VMware Tools time synchronization
 vmware-toolbox-cmd timesync enable
 
 # If you prefer to use NTP/chrony instead of VMware time sync
