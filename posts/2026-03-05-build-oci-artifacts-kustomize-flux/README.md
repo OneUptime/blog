@@ -257,9 +257,9 @@ spec:
 | Flux processing | Builds overlay at reconciliation | Applies YAML directly |
 | Debugging | Can inspect overlay structure | See exact applied manifests |
 | Artifact size | Larger (includes base + all overlays) | Smaller (only rendered output) |
-| Flexibility | Flux can apply post-rendering patches | What you build is what you deploy |
+| Flexibility | Flux builds the selected overlay at reconciliation time | Artifact already contains the rendered manifests |
 
-For most teams, Option A (raw overlay) is recommended because it preserves the Kustomize structure and allows Flux to apply additional post-rendering transformations if needed.
+For most teams, Option A (raw overlay) is recommended because it preserves the Kustomize structure and lets Flux build the selected overlay at reconciliation time.
 
 ## Conclusion
 
