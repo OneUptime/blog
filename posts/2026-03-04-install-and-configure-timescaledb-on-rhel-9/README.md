@@ -15,66 +15,86 @@ TimescaleDB can be installed and configured on RHEL to provide robust functional
 - RHEL with a valid subscription or CentOS Stream 9
 - Root or sudo access
 - A terminal session
+- `curl` installed
 
 ## Step 1: Install Required Packages
 
 ```bash
 # Update the system first
-
 sudo dnf update -y
 
-# Install the required packages
-sudo dnf install -y <package-name>
-```
+# Install the PostgreSQL Yum repository for RHEL 9
+sudo dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
 
-Replace `<package-name>` with the specific package for your use case.
+# Disable the built-in PostgreSQL module so the PGDG PostgreSQL 16 packages are used
+sudo dnf -qy module disable postgresql
+
+# Add the TimescaleDB repository
+curl -s https://packagecloud.io/install/repositories/timescale/timescaledb/script.rpm.sh | sudo bash
+
+# Install PostgreSQL 16 and TimescaleDB for PostgreSQL 16
+sudo dnf install -y postgresql16-server postgresql16-contrib timescaledb-2-postgresql-16
+```
 
 ## Step 2: Configure the Service
 
-Edit the configuration file to match your environment:
+Initialize the PostgreSQL database and run the TimescaleDB tuning tool:
 
 ```bash
-# Open the configuration file
-sudo vi /etc/<service>/config.conf
+# Initialize the PostgreSQL 16 database
+sudo /usr/pgsql-16/bin/postgresql-16-setup initdb
+
+# Tune PostgreSQL for TimescaleDB
+sudo timescaledb-tune --pg-version=16 --conf-path=/var/lib/pgsql/16/data/postgresql.conf --quiet --yes
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+If you need remote access, edit `/var/lib/pgsql/16/data/postgresql.conf` and `/var/lib/pgsql/16/data/pg_hba.conf` to match your environment. Key parameters to configure include listening addresses, authentication settings, and logging options.
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart postgresql-16
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable postgresql-16
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start postgresql-16
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status postgresql-16
 ```
 
 
 ## Verification
 
-Confirm everything is working by checking the status and logs:
+Confirm everything is working by enabling the TimescaleDB extension in a database and checking the service status and logs:
 
 ```bash
+# Create a database for testing
+sudo -u postgres createdb timescale_test
+
+# Enable TimescaleDB in the database
+sudo -u postgres psql -d timescale_test -c "CREATE EXTENSION IF NOT EXISTS timescaledb;"
+
+# Check that the extension is installed
+sudo -u postgres psql -d timescale_test -c "\dx timescaledb"
+
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status postgresql-16
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u postgresql-16 --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u postgresql-16 -e --no-pager`.
+- Ensure all required packages are installed: `rpm -qa | grep -E 'postgresql16|timescaledb'`.
+- If `CREATE EXTENSION` reports that TimescaleDB must be preloaded, confirm that `shared_preload_libraries = 'timescaledb'` is set in `/var/lib/pgsql/16/data/postgresql.conf`, then restart PostgreSQL.
 
 ## Conclusion
 
