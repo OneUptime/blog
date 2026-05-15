@@ -1,20 +1,20 @@
-# How to Configure RHEL for PCI-DSS v4.0 Compliance
+# How to Configure RHEL for PCI-DSS v4.0.1 Compliance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, PCI-DSS, Compliance, Security, Linux
 
-Description: Configure RHEL to meet PCI-DSS v4.0 requirements, covering encryption, access control, logging, and network security controls.
+Description: Configure RHEL to meet PCI-DSS v4.0.1 requirements, covering encryption, access control, logging, and network security controls.
 
 ---
 
-PCI-DSS v4.0 raised the bar for systems that handle payment card data. If your RHEL servers are in scope for PCI compliance, whether they process, store, or transmit cardholder data, they need to meet specific technical requirements. This guide maps the key PCI-DSS v4.0 requirements to practical RHEL configurations.
+PCI-DSS v4.0 and its v4.0.1 revision raised the bar for systems that handle payment card data. If your RHEL servers are in scope for PCI compliance, whether they process, store, or transmit cardholder data, they need to meet specific technical requirements. This guide maps the key PCI-DSS v4.0.1 requirements to practical RHEL configurations.
 
-## PCI-DSS v4.0 Requirements Mapped to RHEL
+## PCI-DSS v4.0.1 Requirements Mapped to RHEL
 
 ```mermaid
 flowchart TD
-    A[PCI-DSS v4.0] --> B[Req 1: Network Security]
+    A[PCI-DSS v4.0.1] --> B[Req 1: Network Security]
     A --> C[Req 2: Secure Configuration]
     A --> D[Req 3: Protect Stored Data]
     A --> E[Req 5: Malware Protection]
@@ -32,6 +32,7 @@ RHEL's SCAP Security Guide includes a PCI-DSS profile:
 # Install OpenSCAP and SSG
 
 dnf install -y openscap-scanner scap-security-guide
+mkdir -p /var/log/compliance
 
 # Check available PCI-DSS profile
 oscap info /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml | grep -i pci
@@ -63,15 +64,14 @@ firewall-cmd --permanent --zone=drop --add-port=443/tcp
 firewall-cmd --reload
 firewall-cmd --list-all
 
-# Log dropped packets
-firewall-cmd --permanent --set-log-denied=all
-firewall-cmd --reload
+# Log denied packets
+firewall-cmd --set-log-denied=all
 ```
 
 ### Disable IP forwarding
 
 ```bash
-# PCI-DSS requires that servers do not route traffic
+# Disable routing on servers that are not intended to route traffic
 cat > /etc/sysctl.d/99-pci-network.conf << 'EOF'
 net.ipv4.ip_forward = 0
 net.ipv6.conf.all.forwarding = 0
@@ -120,7 +120,7 @@ sysctl -w fs.suid_dumpable=0
 ### Configure disk encryption
 
 ```bash
-# PCI-DSS v4.0 requires encryption of stored cardholder data
+# PCI-DSS v4.0.1 requires encryption of stored cardholder data
 # Use LUKS for disk encryption
 # Check if LUKS is in use
 lsblk -f | grep crypto_LUKS
@@ -133,14 +133,16 @@ lsblk -f | grep crypto_LUKS
 
 ```bash
 # Ensure cardholder data files have restrictive permissions
-chmod 600 /path/to/cardholder/data/
-chown appuser:appgroup /path/to/cardholder/data/
+chown -R appuser:appgroup /path/to/cardholder/data/
+find /path/to/cardholder/data/ -type d -exec chmod 700 {} \;
+find /path/to/cardholder/data/ -type f -exec chmod 600 {} \;
 ```
 
 ## Requirement 5: Anti-Malware
 
 ```bash
 # Install and configure ClamAV or another anti-malware solution
+# Enable an approved repository such as EPEL first if ClamAV is not available
 dnf install -y clamav clamd clamav-update
 
 # Update virus definitions
@@ -150,6 +152,7 @@ freshclam
 systemctl enable --now clamd@scan
 
 # Schedule daily scans
+mkdir -p /var/log/clamav
 echo "0 2 * * * root /usr/bin/clamscan -r /var /home --log=/var/log/clamav/daily-scan.log" >> /etc/crontab
 ```
 
@@ -174,7 +177,7 @@ chmod 440 /etc/sudoers.d/pci-access
 ### Password requirements
 
 ```bash
-# PCI-DSS v4.0 requires minimum 12 character passwords
+# PCI-DSS v4.0.1 requires minimum 12 character passwords
 cat > /etc/security/pwquality.conf.d/pci-dss.conf << 'EOF'
 minlen = 12
 minclass = 3
@@ -192,7 +195,7 @@ sed -i 's/^PASS_MIN_DAYS.*/PASS_MIN_DAYS   1/' /etc/login.defs
 ### Account lockout
 
 ```bash
-# Lock accounts after 10 failed attempts (PCI-DSS v4.0 changed from 6 to 10)
+# Lock accounts after 10 failed attempts
 cat > /etc/security/faillock.conf << 'EOF'
 deny = 10
 unlock_time = 1800
@@ -200,6 +203,10 @@ fail_interval = 900
 audit
 silent
 EOF
+
+# Ensure pam_faillock is enabled in the active authselect profile
+authselect current | grep -q with-faillock || authselect enable-feature with-faillock
+authselect apply-changes
 ```
 
 ### SSH hardening
@@ -228,9 +235,11 @@ systemctl restart sshd
 
 ```bash
 # Enable and configure auditd
-systemctl enable --now auditd
+systemctl enable auditd
+service auditd start
 
 # PCI-DSS requires logging of all access to cardholder data
+mkdir -p /var/lib/pci-data
 cat > /etc/audit/rules.d/pci-dss.rules << 'EOF'
 # Log all access to cardholder data
 -w /var/lib/pci-data/ -p rwxa -k cardholder_access
@@ -246,7 +255,7 @@ cat > /etc/audit/rules.d/pci-dss.rules << 'EOF'
 
 # Log audit configuration changes
 -w /etc/audit/ -p wa -k audit_config
--w /etc/audisp/ -p wa -k audit_config
+-w /etc/audit/plugins.d/ -p wa -k audit_config
 
 # Log time changes
 -a always,exit -F arch=b64 -S adjtimex -S settimeofday -k time-change
@@ -271,8 +280,10 @@ chronyc sources
 ```bash
 # PCI-DSS requires at least 12 months of audit logs
 # with 3 months immediately available
-sed -i 's/^max_log_file_action.*/max_log_file_action = rotate/' /etc/audit/auditd.conf
-sed -i 's/^num_logs.*/num_logs = 99/' /etc/audit/auditd.conf
+# Size local and centralized log storage for your event volume
+sed -i 's/^max_log_file .*/max_log_file = 100/' /etc/audit/auditd.conf
+sed -i 's/^max_log_file_action.*/max_log_file_action = keep_logs/' /etc/audit/auditd.conf
+service auditd reload
 ```
 
 ## Requirement 11: Regular Security Testing
@@ -304,4 +315,4 @@ echo "Pass: $(grep -c 'result="pass"' /var/log/compliance/pci-final.xml)"
 echo "Fail: $(grep -c 'result="fail"' /var/log/compliance/pci-final.xml)"
 ```
 
-PCI-DSS v4.0 compliance on RHEL is achievable with the right configuration. The key is to use the built-in tools, scan regularly, and keep your documentation current. Auditors appreciate systems where the compliance evidence is generated automatically.
+PCI-DSS v4.0.1 compliance on RHEL is achievable with the right configuration. The key is to use the built-in tools, scan regularly, and keep your documentation current. Auditors appreciate systems where the compliance evidence is generated automatically.
