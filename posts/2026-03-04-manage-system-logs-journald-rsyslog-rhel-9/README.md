@@ -127,7 +127,7 @@ cat /etc/rsyslog.conf
 The default configuration routes messages to different files based on facility and severity. The key rules look like this:
 
 ```bash
-# Log all kernel messages to /var/log/messages
+# Log informational and higher-priority messages, excluding mail, authpriv, and cron
 *.info;mail.none;authpriv.none;cron.none    /var/log/messages
 
 # Authentication messages go to /var/log/secure
@@ -230,7 +230,7 @@ Centralizing logs from multiple servers is essential for any production environm
 
 ### Configuring the Log Server (Receiver)
 
-On the central log server, enable TCP or UDP reception.
+On the central log server, enable TCP reception.
 
 ```bash
 # Create a configuration for receiving remote logs
@@ -306,10 +306,10 @@ journalctl --disk-usage
 Clean up old entries:
 
 ```bash
-# Remove journal entries older than 2 weeks
+# Remove archived journal files older than 2 weeks
 sudo journalctl --vacuum-time=2w
 
-# Limit the journal to 500MB
+# Limit archived journal files to 500MB
 sudo journalctl --vacuum-size=500M
 ```
 
