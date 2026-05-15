@@ -31,8 +31,9 @@ sudo passwd sftpuser1
 The chroot directory must be owned by root for OpenSSH to enforce the jail:
 
 ```bash
-# Set ownership on the user's home directory to root
+# Set ownership and permissions on the user's home directory for chroot
 sudo chown root:root /home/sftpuser1
+sudo chmod 755 /home/sftpuser1
 
 # Create an upload directory the user can write to
 sudo mkdir /home/sftpuser1/uploads
@@ -78,7 +79,7 @@ sudo systemctl restart sshd
 sftp sftpuser1@localhost
 ```
 
-Once connected, the user will only see the `uploads` directory and cannot escape the chroot jail. Attempting a regular SSH login will fail because the shell is set to `/sbin/nologin`.
+Once connected, the user is confined to `/home/sftpuser1` and can write to the `uploads` directory. Attempting a regular SSH login will not provide a shell because `ForceCommand internal-sftp` forces the SFTP server for this group and the login shell is set to `/sbin/nologin`.
 
 ## SELinux Considerations
 
