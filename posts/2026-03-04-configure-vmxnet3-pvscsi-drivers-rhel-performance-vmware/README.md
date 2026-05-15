@@ -8,7 +8,7 @@ Description: Configure VMXNET3 network and PVSCSI storage paravirtual drivers on
 
 ---
 
-VMware provides paravirtual drivers that outperform emulated hardware. VMXNET3 is the paravirtual network adapter and PVSCSI is the paravirtual SCSI controller. Both are included in the RHEL kernel and should be used for all production VMware VMs.
+VMware provides paravirtual drivers that outperform emulated hardware. VMXNET3 is the paravirtual network adapter and PVSCSI is the paravirtual SCSI controller. Both are included in the RHEL kernel and are good defaults for most production VMware VMs, especially I/O-intensive workloads.
 
 ## Check Current Drivers
 
@@ -51,6 +51,7 @@ ethtool -i ens192
 
 ```bash
 # Increase the ring buffer size for better throughput
+ethtool -g ens192
 sudo ethtool -G ens192 rx 4096 tx 4096
 
 # Enable TCP Segmentation Offload (should be on by default)
@@ -62,8 +63,9 @@ sudo ethtool -K ens192 gro on
 # Verify offload settings
 ethtool -k ens192 | grep -E "tcp-segmentation|generic-receive"
 
-# Make ring buffer changes persistent via NetworkManager
-sudo nmcli connection modify ens192 ethtool.ring-rx 4096 ethtool.ring-tx 4096
+# Make ring buffer changes persistent via NetworkManager connection profile
+nmcli connection show
+sudo nmcli connection modify "Example-Connection" ethtool.ring-rx 4096 ethtool.ring-tx 4096
 ```
 
 ## Switch to PVSCSI (If Using LSI Logic)
@@ -105,12 +107,14 @@ Then power off the VM, change the SCSI controller type to "VMware Paravirtual" i
 ```bash
 # Check the current queue depth
 cat /sys/module/vmw_pvscsi/parameters/cmd_per_lun
+cat /sys/module/vmw_pvscsi/parameters/ring_pages
 
 # Increase the queue depth for database workloads
-echo 64 | sudo tee /sys/module/vmw_pvscsi/parameters/cmd_per_lun
+echo 254 | sudo tee /sys/module/vmw_pvscsi/parameters/cmd_per_lun
+echo 32 | sudo tee /sys/module/vmw_pvscsi/parameters/ring_pages
 
 # Make persistent via modprobe configuration
-echo "options vmw_pvscsi cmd_per_lun=64" | sudo tee /etc/modprobe.d/pvscsi.conf
+echo "options vmw_pvscsi cmd_per_lun=254 ring_pages=32" | sudo tee /etc/modprobe.d/pvscsi.conf
 
 # Rebuild initramfs to include the new setting
 sudo dracut -f
