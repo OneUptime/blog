@@ -13,7 +13,7 @@ Apache Superset is an open-source data exploration and visualization platform th
 ## Prerequisites
 
 - RHEL with at least 4 GB RAM and 2 CPU cores
-- Python 3.9 or later
+- Python 3.10 or later (Python 3.11 is available on RHEL 9.2 and later)
 - A database backend (PostgreSQL recommended)
 - Root or sudo access
 
@@ -39,7 +39,7 @@ graph TD
 ```bash
 # Install required development libraries and tools
 
-sudo dnf install -y gcc gcc-c++ python3-devel python3-pip \
+sudo dnf install -y gcc gcc-c++ python3.11 python3.11-devel python3.11-pip \
     openssl-devel libffi-devel cyrus-sasl-devel \
     openldap-devel postgresql-devel mariadb-devel \
     redis
@@ -77,7 +77,7 @@ EOF
 sudo useradd -r -m -s /bin/bash superset
 
 # Create the virtual environment
-sudo -u superset python3 -m venv /home/superset/venv
+sudo -u superset python3.11 -m venv /home/superset/venv
 
 # Activate the environment and upgrade pip
 sudo -u superset bash -c "
@@ -97,7 +97,7 @@ source /home/superset/venv/bin/activate
 pip install apache-superset
 
 # Install database drivers for common data sources
-pip install psycopg2-binary    # PostgreSQL
+pip install psycopg2           # PostgreSQL
 pip install mysqlclient        # MySQL
 pip install clickhouse-connect # ClickHouse
 pip install redis              # Redis for caching
@@ -114,6 +114,7 @@ Create the Superset configuration file.
 
 import os
 from datetime import timedelta
+from flask_caching.backends.rediscache import RedisCache
 
 # Generate a strong secret key for session management
 # Run this to generate: openssl rand -base64 42
@@ -135,11 +136,23 @@ CACHE_CONFIG = {
 # Celery configuration for async queries
 class CeleryConfig:
     broker_url = 'redis://localhost:6379/0'
+    imports = (
+        'superset.sql_lab',
+        'superset.tasks.scheduler',
+    )
     result_backend = 'redis://localhost:6379/0'
-    worker_prefetch_multiplier = 1
+    worker_prefetch_multiplier = 10
     task_acks_late = True
 
 CELERY_CONFIG = CeleryConfig
+
+# SQL Lab async query result backend
+RESULTS_BACKEND = RedisCache(
+    host='localhost',
+    port=6379,
+    db=0,
+    key_prefix='superset_results',
+)
 
 # Enable feature flags
 FEATURE_FLAGS = {
@@ -151,8 +164,9 @@ FEATURE_FLAGS = {
 # Session and security settings
 WTF_CSRF_ENABLED = True
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = False  # Set to True after enabling HTTPS
 PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
+ENABLE_PROXY_FIX = True
 
 # Row limit for SQL queries
 ROW_LIMIT = 50000
@@ -167,6 +181,7 @@ SUPERSET_WEBSERVER_TIMEOUT = 120
 # Set the configuration path as an environment variable
 echo 'export SUPERSET_CONFIG_PATH=/home/superset/superset_config.py' | \
     sudo tee -a /home/superset/.bashrc
+echo 'export FLASK_APP=superset' | sudo tee -a /home/superset/.bashrc
 ```
 
 ## Step 6: Initialize the Database
@@ -176,6 +191,7 @@ echo 'export SUPERSET_CONFIG_PATH=/home/superset/superset_config.py' | \
 sudo -u superset bash -c "
 source /home/superset/venv/bin/activate
 export SUPERSET_CONFIG_PATH=/home/superset/superset_config.py
+export FLASK_APP=superset
 
 # Upgrade the metadata database schema
 superset db upgrade
@@ -246,6 +262,7 @@ ExecStart=/home/superset/venv/bin/celery \
     --app=superset.tasks.celery_app:app \
     worker \
     --pool=prefork \
+    -O fair \
     --concurrency=4 \
     --loglevel=info
 WorkingDirectory=/home/superset
@@ -334,6 +351,7 @@ sudo journalctl -u superset-celery -f
 sudo -u superset bash -c "
 source /home/superset/venv/bin/activate
 export SUPERSET_CONFIG_PATH=/home/superset/superset_config.py
+export FLASK_APP=superset
 superset run -h 0.0.0.0 -p 8088 --with-threads --debugger
 "
 ```
