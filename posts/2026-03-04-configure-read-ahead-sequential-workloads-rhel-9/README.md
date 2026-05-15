@@ -19,7 +19,7 @@ graph LR
     A[Application reads block 1] --> B[Kernel detects sequential pattern]
     B --> C[Pre-fetches blocks 2-N in background]
     C --> D[App reads block 2 - already in cache]
-    D --> E[Zero wait time, higher throughput]
+    D --> E[Less wait time, higher throughput]
 ```
 
 The default read-ahead on RHEL is typically 128 KB (256 sectors of 512 bytes each).
@@ -116,11 +116,15 @@ dnf install -y fio
 ```bash
 # Test with default read-ahead
 blockdev --setra 256 /dev/sda
+sync
+echo 3 > /proc/sys/vm/drop_caches
 fio --name=seqread --filename=/data/testfile --rw=read --bs=1M \
     --size=1G --numjobs=1 --time_based --runtime=30 --group_reporting
 
 # Test with larger read-ahead
 blockdev --setra 4096 /dev/sda
+sync
+echo 3 > /proc/sys/vm/drop_caches
 fio --name=seqread --filename=/data/testfile --rw=read --bs=1M \
     --size=1G --numjobs=1 --time_based --runtime=30 --group_reporting
 ```
@@ -131,10 +135,11 @@ Compare the throughput numbers between runs.
 
 ```bash
 # Drop caches first for a clean test
+sync
 echo 3 > /proc/sys/vm/drop_caches
 
 # Sequential read test
-dd if=/data/largefile of=/dev/null bs=1M count=1024 iflag=direct
+dd if=/data/largefile of=/dev/null bs=1M count=1024
 ```
 
 ## Per-Process Read-Ahead with posix_fadvise
@@ -159,10 +164,10 @@ lvs -o lv_name,lv_read_ahead
 lvchange -r 4096 /dev/vg_data/lv_data
 ```
 
-The `-r` value is in sectors (512 bytes each). Use `auto` to let LVM choose:
+The `-r` value is in sectors (512 bytes each). Use `auto` to let LVM use the kernel default:
 
 ```bash
-# Let LVM auto-detect optimal read-ahead
+# Let LVM use the kernel default read-ahead
 lvchange -r auto /dev/vg_data/lv_data
 ```
 
