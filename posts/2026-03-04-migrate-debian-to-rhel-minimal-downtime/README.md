@@ -8,7 +8,7 @@ Description: Migrate from Debian servers to RHEL with minimal downtime using a p
 
 ---
 
-Like Ubuntu, Debian cannot be converted to RHEL in place. The migration requires a parallel RHEL server. The key to minimal downtime is running both systems side by side and switching over quickly.
+Like Ubuntu, Debian does not have a supported in-place conversion path to RHEL. The migration requires a parallel RHEL server. The key to minimal downtime is running both systems side by side and switching over quickly.
 
 ## Step 1: Audit the Debian System
 
@@ -40,6 +40,9 @@ sudo subscription-manager register --auto-attach
 # Debian 'apache2' = RHEL 'httpd'
 # Debian 'postgresql' = RHEL 'postgresql-server'
 sudo dnf install httpd postgresql-server
+
+# Initialize the PostgreSQL data directory before starting it for the first time
+sudo postgresql-setup --initdb
 ```
 
 ## Step 3: Replicate Data Continuously
@@ -79,7 +82,7 @@ sudo nmcli con mod "System eth0" ipv4.addresses 192.168.1.10/24
 sudo nmcli con mod "System eth0" ipv4.gateway 192.168.1.1
 sudo nmcli con mod "System eth0" ipv4.method manual
 
-# Firewall: Debian uses iptables directly, RHEL uses firewalld
+# Firewall: Debian commonly uses nftables or iptables, RHEL uses firewalld
 sudo firewall-cmd --permanent --add-port=80/tcp
 sudo firewall-cmd --permanent --add-port=443/tcp
 sudo firewall-cmd --permanent --add-port=5432/tcp
@@ -92,7 +95,7 @@ Execute the cutover during a short maintenance window:
 
 ```bash
 # 1. Stop the application on Debian
-ssh debian-server "sudo systemctl stop httpd"
+ssh debian-server "sudo systemctl stop apache2"
 
 # 2. Run a final data sync
 sudo rsync -avz --delete debian-server:/var/www/html/ /var/www/html/
@@ -102,7 +105,7 @@ sudo -u postgres pg_ctl promote -D /var/lib/pgsql/data
 
 # 4. Update DNS or switch the load balancer to point to the RHEL server
 # 5. Start services on RHEL
-sudo systemctl start httpd postgresql
+sudo systemctl start httpd postgresql.service
 
 # 6. Verify the application is working
 curl -I http://localhost/
