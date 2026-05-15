@@ -2,61 +2,60 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Magento, PHP, Nginx, MySQL, E-Commerce, Linux
+Tags: RHEL, Magento, PHP, Nginx, MariaDB, OpenSearch, E-Commerce, Linux
 
-Description: Install Magento 2 Open Source on RHEL with Nginx, PHP-FPM, MySQL, and Elasticsearch for a production-ready e-commerce platform.
+Description: Install Magento 2 Open Source on RHEL with Nginx, PHP-FPM, MariaDB, and OpenSearch for a production-ready e-commerce platform.
 
 ---
 
-Magento 2 is a feature-rich e-commerce platform. Its installation requires multiple components working together. This guide covers setting up Magento 2 on RHEL.
+Magento 2 is a feature-rich e-commerce platform. Its installation requires multiple components working together. This guide covers setting up Magento 2 on RHEL 9.
 
 ## Install Prerequisites
 
 ```bash
-# Install Nginx and MySQL
+# Install Nginx and MariaDB 10.11
 
-sudo dnf install -y nginx mysql-server
+sudo dnf install -y nginx
+sudo dnf module install -y mariadb:10.11/server
 
-# Install PHP 8.2 via Remi with Magento-required extensions
-sudo dnf install -y https://rpms.remirepo.net/enterprise/remi-release-9.rpm
-sudo dnf module reset php -y && sudo dnf module enable php:remi-8.2 -y
+# Install PHP 8.2 with Magento-required extensions
+sudo dnf module reset php -y
+sudo dnf module enable php:8.2 -y
 
 sudo dnf install -y php-fpm php-cli php-mysqlnd php-gd php-curl \
   php-xml php-mbstring php-zip php-intl php-bcmath php-soap \
   php-opcache php-sodium
 
-# Install Elasticsearch (required by Magento 2.4+)
-sudo rpm --import https://artifacts.elastic.co/GPG-KEY-elasticsearch
-sudo tee /etc/yum.repos.d/elasticsearch.repo << 'REPO'
-[elasticsearch]
-name=Elasticsearch repository
-baseurl=https://artifacts.elastic.co/packages/7.x/yum
-gpgcheck=1
-gpgkey=https://artifacts.elastic.co/GPG-KEY-elasticsearch
-enabled=1
-REPO
+# Install OpenSearch (required by Magento 2.4+)
+sudo curl -SL https://artifacts.opensearch.org/releases/bundle/opensearch/2.x/opensearch-2.x.repo \
+  -o /etc/yum.repos.d/opensearch-2.x.repo
 
-sudo dnf install -y elasticsearch
+sudo env OPENSEARCH_INITIAL_ADMIN_PASSWORD='OpenSearchPass789!' dnf install -y opensearch
 ```
 
 ## Configure Services
 
 ```bash
-# Configure MySQL
-sudo systemctl enable --now mysqld
-sudo mysql_secure_installation
+# Configure MariaDB
+sudo systemctl enable --now mariadb
+sudo mariadb-secure-installation
 
-sudo mysql -u root -p << 'SQL'
+sudo mariadb -u root -p << 'SQL'
 CREATE DATABASE magento CHARACTER SET utf8mb4;
 CREATE USER 'magento'@'localhost' IDENTIFIED BY 'MagentoPass789!';
 GRANT ALL PRIVILEGES ON magento.* TO 'magento'@'localhost';
 FLUSH PRIVILEGES;
 SQL
 
-# Configure Elasticsearch
-sudo systemctl enable --now elasticsearch
+# Configure OpenSearch
+sudo tee -a /etc/opensearch/opensearch.yml << 'YAML'
+discovery.type: single-node
+plugins.security.disabled: true
+YAML
 
-# Verify Elasticsearch is running
+sudo systemctl enable --now opensearch
+
+# Verify OpenSearch is running
 curl -s http://localhost:9200
 ```
 
@@ -71,12 +70,12 @@ php composer-setup.php --install-dir=/usr/local/bin --filename=composer
 # You will need Magento authentication keys from marketplace.magento.com
 cd /var/www
 sudo composer create-project --repository-url=https://repo.magento.com/ \
-  magento/project-community-edition magento2
+  magento/project-community-edition=2.4.7-p10 magento2
 
 # Set file permissions
 sudo chown -R nginx:nginx /var/www/magento2
-find /var/www/magento2 -type d -exec chmod 755 {} \;
-find /var/www/magento2 -type f -exec chmod 644 {} \;
+sudo find /var/www/magento2 -type d -exec chmod 755 {} \;
+sudo find /var/www/magento2 -type f -exec chmod 644 {} \;
 sudo chmod -R 775 /var/www/magento2/{var,generated,pub/static,pub/media,app/etc}
 ```
 
@@ -113,7 +112,9 @@ sudo -u nginx bin/magento setup:install \
   --admin-email=admin@example.com \
   --admin-user=admin --admin-password=Admin123! \
   --language=en_US --currency=USD --timezone=America/New_York \
-  --search-engine=elasticsearch7 --elasticsearch-host=localhost
+  --use-rewrites=1 \
+  --search-engine=opensearch --opensearch-host=localhost \
+  --opensearch-port=9200
 ```
 
 After installation, run `bin/magento setup:di:compile` and `bin/magento setup:static-content:deploy` for production readiness.
