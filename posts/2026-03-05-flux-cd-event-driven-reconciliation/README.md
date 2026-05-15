@@ -32,7 +32,7 @@ flowchart LR
 
 ## How Flux Receives Events
 
-Flux CD uses its notification controller to receive external events via webhooks. When a webhook is received, the notification controller annotates the relevant Flux resource, which triggers an immediate reconciliation.
+Flux CD uses its notification controller to receive external events via webhooks. When a valid webhook is received, the notification controller requests a reconciliation for the Flux resources listed in the Receiver.
 
 The event flow looks like this:
 
@@ -46,7 +46,7 @@ sequenceDiagram
 
     Dev->>Git: Push commit
     Git->>NC: Webhook POST
-    NC->>SC: Annotate GitRepository<br/>with reconcile.fluxcd.io/requestedAt
+    NC->>SC: Request GitRepository<br/>reconciliation
     SC->>SC: Fetch latest commit
     SC->>KC: New artifact available
     KC->>KC: Reconcile Kustomization
@@ -95,6 +95,16 @@ spec:
 ### GitLab Webhook Receiver
 
 ```yaml
+# Secret containing the webhook token for validation
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gitlab-webhook-token
+  namespace: flux-system
+type: Opaque
+stringData:
+  token: your-webhook-secret-here
+---
 # Receiver for GitLab push events
 apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Receiver
@@ -118,7 +128,17 @@ spec:
 For other systems or custom integrations:
 
 ```yaml
-# Generic receiver that accepts any POST request with the correct token
+# Secret used to generate the Receiver webhook path
+apiVersion: v1
+kind: Secret
+metadata:
+  name: webhook-token
+  namespace: flux-system
+type: Opaque
+stringData:
+  token: your-webhook-secret-here
+---
+# Generic receiver that accepts any request to the generated webhook path
 apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Receiver
 metadata:
@@ -150,7 +170,7 @@ kubectl get receiver github-receiver -n flux-system \
 # The full URL is: http(s)://<your-flux-webhook-domain><webhookPath>
 ```
 
-The webhook URL follows this pattern: `https://<load-balancer-address>/hook/<random-token>`
+The webhook URL follows this pattern: `https://<load-balancer-address>/hook/<hash>`
 
 You must expose the notification controller's webhook endpoint via a Kubernetes Service, Ingress, or LoadBalancer so your Git provider can reach it.
 
@@ -323,7 +343,7 @@ kubectl logs -n flux-system deployment/source-controller | grep "reconciling"
 
 2. **Increase polling intervals when using webhooks**: If webhooks are reliably delivering events, you can safely increase `spec.interval` to reduce unnecessary API calls.
 
-3. **Secure your webhook endpoints**: Always use HTTPS and strong webhook secrets. Validate the payload signature to prevent unauthorized reconciliation triggers.
+3. **Secure your webhook endpoints**: Always use HTTPS and strong webhook secrets. Use provider-specific Receiver types or `generic-hmac` when you need Flux to validate the webhook payload signature.
 
 4. **Monitor webhook delivery**: Set up alerts for webhook delivery failures in your Git provider so you know if events are not reaching Flux.
 
