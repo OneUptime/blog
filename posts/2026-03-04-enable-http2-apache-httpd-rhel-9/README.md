@@ -10,7 +10,7 @@ Description: Step-by-step instructions for enabling HTTP/2 on Apache httpd in RH
 
 ## What HTTP/2 Brings to the Table
 
-HTTP/1.1 has served us well, but it has a fundamental limitation: one request per connection at a time. Browsers work around this by opening multiple connections, which wastes resources. HTTP/2 fixes this with multiplexing, letting many requests share a single connection. It also adds header compression and server push.
+HTTP/1.1 has served us well, but it commonly handles one outstanding response per connection at a time in browser traffic. Browsers work around this by opening multiple connections, which wastes resources. HTTP/2 fixes this with multiplexing, letting many requests share a single connection. It also adds header compression and includes server push, although modern browser support for server push is limited.
 
 On RHEL, enabling HTTP/2 in Apache is surprisingly simple.
 
@@ -60,6 +60,12 @@ If it is not listed, check the module config files:
 ```bash
 # Look for the HTTP/2 module configuration
 cat /etc/httpd/conf.modules.d/10-h2.conf
+```
+
+If that file is missing, install the RHEL `mod_http2` package:
+
+```bash
+sudo dnf install mod_http2
 ```
 
 The module should be loaded with:
@@ -136,7 +142,7 @@ You can also check with openssl:
 
 ```bash
 # Check ALPN negotiation
-openssl s_client -connect www.example.com:443 -alpn h2 </dev/null 2>/dev/null | grep ALPN
+openssl s_client -connect www.example.com:443 -servername www.example.com -alpn h2 </dev/null 2>/dev/null | grep ALPN
 ```
 
 You should see `ALPN protocol: h2`.
