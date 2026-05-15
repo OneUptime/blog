@@ -47,22 +47,20 @@ composer-cli status show
 composer-cli compose types
 ```
 
-You should see output listing available image formats:
+You should see output listing the image formats available on your RHEL version and architecture. Common formats include:
 
 ```bash
 ami
-azure-image
-edge-commit
-edge-installer
-guest-image
+gce
 image-installer
-iso
+ova
 oci
-openstack
 qcow2
+tar
 vhd
 vmdk
-vsphere
+vagrant-libvirt
+wsl
 ```
 
 ## Enabling the Cockpit Web Interface
