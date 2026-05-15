@@ -38,7 +38,7 @@ composer-cli compose start my-edge-blueprint edge-commit
 For an installer image:
 
 ```bash
-composer-cli compose start my-edge-blueprint edge-installer
+composer-cli compose start-ostree --ref rhel/9/x86_64/edge --url http://example.com/repo/ my-edge-blueprint edge-installer
 ```
 
 ## Step 3 - Deploy to Edge Devices
@@ -54,9 +54,18 @@ sudo dd if=edge-installer.iso of=/dev/sdX bs=4M status=progress
 RHEL for Edge supports automatic OS updates with Greenboot health checks:
 
 ```bash
-# Greenboot scripts in /etc/greenboot/check/required.d/
+sudo tee /etc/rpm-ostreed.conf >/dev/null <<'EOF'
+[Daemon]
+AutomaticUpdatePolicy=stage
+IdleExitTimeout=60
+EOF
 
-# If any script fails, the system rolls back to the previous version
+sudo systemctl reload rpm-ostreed
+sudo systemctl enable --now rpm-ostreed-automatic.timer
+
+# Put required Greenboot health check scripts in /etc/greenboot/check/required.d/
+
+# If required checks keep failing after the configured retries, Greenboot rolls back to the previous deployment
 ```
 
 ## Step 5 - Deploy Workloads
@@ -67,7 +76,7 @@ For container workloads, use Podman:
 podman run -d --name myapp registry.example.com/myapp:latest
 ```
 
-For Kubernetes workloads, install MicroShift:
+For Kubernetes workloads, install MicroShift after enabling the required MicroShift repositories and configuring the pull secret:
 
 ```bash
 sudo dnf install -y microshift
