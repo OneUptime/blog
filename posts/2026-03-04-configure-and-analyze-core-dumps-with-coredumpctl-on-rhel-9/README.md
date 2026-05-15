@@ -8,7 +8,7 @@ Description: Step-by-step guide on configure and analyze core dumps with coredum
 
 ---
 
-When a process crashes on modern RHEL systems, systemd-coredump captures the core dump automatically. The coredumpctl utility lets you list, inspect, and debug these core dumps without needing to configure traditional core dump file paths.
+When a process crashes on RHEL 9 systems configured to use systemd-coredump, systemd-coredump captures the core dump automatically. The coredumpctl utility lets you list, inspect, and debug these core dumps without needing to configure traditional core dump file paths.
 
 ## Prerequisites
 
@@ -17,6 +17,18 @@ When a process crashes on modern RHEL systems, systemd-coredump captures the cor
 - A terminal session
 
 ## Step 2: Configure the Service
+
+Verify that the kernel is configured to send core dumps to systemd-coredump:
+
+```bash
+sysctl kernel.core_pattern
+```
+
+The output should start with:
+
+```text
+kernel.core_pattern = |/usr/lib/systemd/systemd-coredump
+```
 
 Work with core dumps using coredumpctl:
 
@@ -56,14 +68,14 @@ KeepFree=1G
 ## Step 3: Enable and Start the Service
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Check the socket that receives core dump data
+sudo systemctl status systemd-coredump.socket
 
-# Start the service
-sudo systemctl start <service-name>
+# Optional: start the socket if it is inactive
+sudo systemctl start systemd-coredump.socket
 
-# Check the status
-sudo systemctl status <service-name>
+# coredump.conf changes take effect the next time a core dump is received
+coredumpctl list
 ```
 
 
@@ -72,17 +84,17 @@ sudo systemctl status <service-name>
 Confirm everything is working by checking the status and logs:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
+# Check that systemd-coredump is configured as the core dump handler
+sysctl kernel.core_pattern
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# Review recent core dump logs
+journalctl MESSAGE_ID=fc2e22bc6ee647b6b90729ab34a250b1 --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If core dumps are not captured, verify that `sysctl kernel.core_pattern` starts with `|/usr/lib/systemd/systemd-coredump`.
+- If `coredumpctl debug` cannot start a debugger, install GDB with `sudo dnf install gdb`.
 
 ## Conclusion
 
