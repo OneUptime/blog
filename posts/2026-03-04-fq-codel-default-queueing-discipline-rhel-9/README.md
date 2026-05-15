@@ -43,7 +43,7 @@ graph LR
 
 fq_codel combines two algorithms:
 
-1. **Fair Queuing (fq)** - Separates traffic into individual flows and gives each flow its own virtual queue. A large download can't starve your SSH session.
+1. **Fair Queuing (fq)** - Separates traffic into flow hash buckets and gives each active bucket its own queue. A large download can't starve your SSH session.
 
 2. **CoDel (Controlled Delay)** - Manages queue depth by targeting a specific sojourn time (how long packets sit in the queue). If packets wait longer than the target, CoDel starts dropping them, which signals TCP to slow down.
 
@@ -51,7 +51,7 @@ fq_codel combines two algorithms:
 
 ```mermaid
 graph TD
-    A[All Packets] --> B[Hash by flow - src/dst/port]
+    A[All Packets] --> B[Hash by flow - 5-tuple]
     B --> C[Flow 1: SSH<br>Low volume]
     B --> D[Flow 2: File Transfer<br>High volume]
     B --> E[Flow 3: DNS<br>Short bursts]
@@ -61,7 +61,7 @@ graph TD
     F --> G[Transmit]
 ```
 
-Each flow gets equal access to the link. A flow that's flooding the interface doesn't affect other flows.
+Each flow hash bucket gets fair access to the link. A flow that's flooding the interface has much less impact on other flows, although hash collisions can put multiple flows in the same bucket.
 
 ## Default fq_codel Parameters
 
@@ -74,12 +74,14 @@ The default parameters on RHEL:
 
 | Parameter | Default | Meaning |
 |-----------|---------|---------|
-| target | 5ms | Target maximum sojourn time |
+| target | 5ms | Acceptable standing queue delay |
 | interval | 100ms | CoDel control interval |
 | quantum | 1514 | Bytes dequeued per round-robin turn |
 | flows | 1024 | Number of flow hash buckets |
 | limit | 10240 | Maximum packets in the queue |
+| memory_limit | 32Mb | Maximum queued memory before drops |
 | ecn | enabled | Use ECN marking instead of drops when possible |
+| drop_batch | 64 | Maximum packets dropped in one over-limit batch |
 
 ## Why 5ms Target?
 
@@ -118,8 +120,8 @@ sudo tc qdisc replace dev ens192 root fq_codel limit 20480
 ### For Low-Bandwidth Links (under 10 Mbps)
 
 ```bash
-# Lower the target for slow links
-sudo tc qdisc replace dev ens192 root fq_codel target 2ms interval 50ms
+# Keep target at or above the time needed to serialize one MTU-sized packet
+sudo tc qdisc replace dev ens192 root fq_codel target 10ms interval 100ms
 ```
 
 ### Disabling ECN
@@ -188,6 +190,7 @@ sysctl net.core.default_qdisc
 # If you wanted to change the system-wide default
 # (not recommended - fq_codel is a good default)
 # sudo sysctl -w net.core.default_qdisc=fq
+# Existing interfaces may need their qdisc replaced or the driver reloaded
 ```
 
 ## Wrapping Up
