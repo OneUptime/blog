@@ -32,9 +32,9 @@ Before installing Velero, you need:
 brew install velero
 
 # Or download directly
-wget https://github.com/vmware-tanzu/velero/releases/download/v1.14.0/velero-v1.14.0-linux-amd64.tar.gz
-tar -xzf velero-v1.14.0-linux-amd64.tar.gz
-sudo mv velero-v1.14.0-linux-amd64/velero /usr/local/bin/
+wget https://github.com/velero-io/velero/releases/download/v1.18.0/velero-v1.18.0-linux-amd64.tar.gz
+tar -xzf velero-v1.18.0-linux-amd64.tar.gz
+sudo mv velero-v1.18.0-linux-amd64/velero /usr/local/bin/
 ```
 
 ## Setting Up Object Storage
@@ -69,6 +69,18 @@ If you prefer keeping backups on-premises, MinIO is a great option.
 kubectl create namespace minio
 
 kubectl apply -f - <<EOF
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-data
+  namespace: minio
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -115,6 +127,12 @@ spec:
   selector:
     app: minio
 EOF
+
+# Create the bucket used by Velero
+kubectl -n minio rollout status deployment/minio
+kubectl -n minio run minio-client --rm -i --restart=Never \
+  --image=minio/mc --command -- sh -c \
+  'mc alias set local http://minio:9000 minioadmin minioadmin123 && mc mb -p local/velero-backups'
 ```
 
 ## Installing Velero on Talos Linux
@@ -126,7 +144,7 @@ Install Velero using the CLI. The installation deploys the Velero server compone
 ```bash
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.10.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.0 \
   --bucket talos-cluster-backups \
   --secret-file ./velero-credentials \
   --backup-location-config region=us-east-1 \
@@ -146,7 +164,7 @@ EOF
 
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.10.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.0 \
   --bucket velero-backups \
   --secret-file ./minio-credentials \
   --backup-location-config \
@@ -172,10 +190,11 @@ velero backup-location get
 
 ```bash
 # Back up everything in the cluster
-velero backup create full-backup-$(date +%Y%m%d)
+BACKUP_NAME=full-backup-$(date +%Y%m%d)
+velero backup create $BACKUP_NAME
 
 # Check backup status
-velero backup describe full-backup-20260303
+velero backup describe $BACKUP_NAME
 ```
 
 ### Namespace-Specific Backup
@@ -245,7 +264,7 @@ velero schedule describe daily-full
 
 By default, Velero backs up Kubernetes resources but not the data inside persistent volumes. You need to enable volume backups explicitly.
 
-### Using File System Backup (Restic/Kopia)
+### Using File System Backup (Kopia)
 
 ```bash
 # Create a backup that includes persistent volume data
@@ -262,10 +281,7 @@ kubectl annotate pod my-app-pod-xyz \
 If your storage provider supports CSI snapshots:
 
 ```bash
-# Install the CSI plugin
-velero plugin add velero/velero-plugin-for-csi:v0.7.0
-
-# Enable CSI snapshots in Velero
+# Enable CSI snapshots in Velero. In Velero v1.14 and newer, CSI support is built in.
 kubectl patch deployment velero -n velero \
   --type=json \
   -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--features=EnableCSI"}]'
@@ -280,7 +296,8 @@ kubectl patch deployment velero -n velero \
 velero backup get
 
 # Restore from a specific backup
-velero restore create --from-backup full-backup-20260303
+velero restore create full-backup-20260303-restore \
+  --from-backup full-backup-20260303
 
 # Check restore status
 velero restore describe full-backup-20260303-restore
@@ -331,9 +348,9 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: velero
+      deploy: velero
   endpoints:
-  - port: http-monitoring
+  - port: metrics
     interval: 30s
 ```
 
@@ -341,7 +358,7 @@ spec:
 
 When running Velero on Talos Linux, keep these points in mind:
 
-- Talos nodes have no writable filesystem for Velero's node agent. Make sure you configure the node agent to use `/var` which Talos makes available for ephemeral storage.
+- Talos uses a mostly read-only root filesystem. Velero's node agent uses the kubelet paths under `/var/lib/kubelet` by default; if your workloads use custom hostPath storage, keep those paths under `/var` and make sure they are mounted into the kubelet namespace.
 - Since Talos is immutable, you cannot install the Velero CLI on the nodes themselves. All operations go through your workstation or CI/CD pipelines.
 - Combine Velero backups with Talos etcd snapshots for complete coverage. Velero handles workloads; etcd snapshots handle cluster-level state.
 
