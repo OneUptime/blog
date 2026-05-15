@@ -22,67 +22,23 @@ This guide covers NVMe/TCP, which is the most accessible option.
 
 ## Prerequisites
 
-- Two RHEL servers (target and initiator)
-- NVMe drive on the target server (or a block device to export)
-- Network connectivity between the servers
+- A RHEL 9 server as the NVMe/TCP host (initiator)
+- A supported NVMe/TCP target (controller), such as an external storage array, appliance, or vendor-supported target software
+- Network connectivity between the systems
 
 ## Setting Up the NVMe Target
 
-### Install the Target Software
+RHEL 9 supports NVMe/TCP host configuration, but the in-kernel NVMe/TCP controller module (`nvmet-tcp`) is not supported by Red Hat. Configure the NVMe/TCP target using your storage array, appliance, SPDK-based target, or other vendor-supported storage software.
 
-```bash
-sudo dnf install -y nvme-cli nvmetcli
-```
+For the host-side commands below, this example assumes:
 
-### Load the Kernel Modules
-
-```bash
-sudo modprobe nvmet
-sudo modprobe nvmet-tcp
-```
-
-Make them persistent:
-
-```bash
-echo nvmet | sudo tee /etc/modules-load.d/nvmet.conf
-echo nvmet-tcp | sudo tee -a /etc/modules-load.d/nvmet.conf
-```
-
-### Configure the Target Using sysfs
-
-Create a subsystem:
-
-```bash
-SUBSYS="nqn.2024.com.example:nvme-target"
-sudo mkdir -p /sys/kernel/config/nvmet/subsystems/$SUBSYS
-echo 1 | sudo tee /sys/kernel/config/nvmet/subsystems/$SUBSYS/attr_allow_any_host
-```
-
-Create a namespace (map a block device):
-
-```bash
-sudo mkdir -p /sys/kernel/config/nvmet/subsystems/$SUBSYS/namespaces/1
-echo /dev/nvme0n1 | sudo tee /sys/kernel/config/nvmet/subsystems/$SUBSYS/namespaces/1/device_path
-echo 1 | sudo tee /sys/kernel/config/nvmet/subsystems/$SUBSYS/namespaces/1/enable
-```
-
-Create a port (network endpoint):
-
-```bash
-sudo mkdir -p /sys/kernel/config/nvmet/ports/1
-echo 192.168.1.10 | sudo tee /sys/kernel/config/nvmet/ports/1/addr_traddr
-echo 4420 | sudo tee /sys/kernel/config/nvmet/ports/1/addr_trsvcid
-echo tcp | sudo tee /sys/kernel/config/nvmet/ports/1/addr_trtype
-echo ipv4 | sudo tee /sys/kernel/config/nvmet/ports/1/addr_adrfam
-```
-
-Link the subsystem to the port:
-
-```bash
-sudo ln -s /sys/kernel/config/nvmet/subsystems/$SUBSYS /sys/kernel/config/nvmet/ports/1/subsystems/$SUBSYS
-```
+- Controller IP address: `192.168.1.10`
+- Transport service ID: `4420`
+- Subsystem NQN: `nqn.2024.com.example:nvme-target`
 
 ### Configure the Firewall
+
+If the NVMe/TCP controller runs on a firewall-managed Linux system, allow the target port:
 
 ```bash
 sudo firewall-cmd --permanent --add-port=4420/tcp
@@ -162,8 +118,10 @@ sudo tee /etc/nvme/discovery.conf << 'DISC'
 --transport=tcp --traddr=192.168.1.10 --trsvcid=4420
 DISC
 
+sudo nvme connect-all
+
 # Enable the connect-all service
-sudo systemctl enable --now nvmf-autoconnect.service
+sudo systemctl enable nvmf-autoconnect.service
 ```
 
 Or create a systemd service:
