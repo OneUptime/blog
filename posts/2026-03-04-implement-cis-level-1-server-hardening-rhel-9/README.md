@@ -212,9 +212,11 @@ dnf install -y audit
 systemctl enable --now auditd
 
 # Set audit backlog limit
-sed -i 's/^-b.*/-b 8192/' /etc/audit/rules.d/audit.rules
+cat > /etc/audit/rules.d/10-cis-audit-control.rules << 'EOF'
+-b 8192
+EOF
 
-# Add CIS-required audit rules
+# Add common CIS-required audit rules
 cat > /etc/audit/rules.d/cis-level1.rules << 'EOF'
 # Monitor changes to date and time
 -a always,exit -F arch=b64 -S adjtimex -S settimeofday -k time-change
@@ -302,6 +304,10 @@ deny = 5
 unlock_time = 900
 fail_interval = 900
 EOF
+
+# Ensure the PAM stack includes pam_faillock when authselect manages PAM
+authselect enable-feature with-faillock
+authselect apply-changes -b
 ```
 
 ## Section 6: System Maintenance
@@ -340,6 +346,9 @@ find / -xdev -nogroup -ls 2>/dev/null
 After applying all the controls, run an OpenSCAP scan to verify:
 
 ```bash
+# Install the OpenSCAP scanner and RHEL 9 security content
+dnf install -y openscap-scanner scap-security-guide
+
 # Run the CIS Level 1 Server profile scan
 oscap xccdf eval \
   --profile xccdf_org.ssgproject.content_profile_cis_server_l1 \
