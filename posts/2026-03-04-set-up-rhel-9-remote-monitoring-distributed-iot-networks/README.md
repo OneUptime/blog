@@ -25,10 +25,9 @@ graph TB
         GWB --> MQTT
     end
     subgraph "RHEL Monitoring Server"
-        MQTT --> Telegraph[Telegraf Collector]
-        Telegraph --> Prometheus[Prometheus]
+        MQTT --> Telegraf[Telegraf Collector]
+        Telegraf --> Prometheus[Prometheus]
         Prometheus --> Grafana[Grafana Dashboard]
-        Prometheus --> AlertMgr[Alertmanager]
     end
 ```
 
@@ -90,11 +89,11 @@ Telegraf bridges MQTT messages and Prometheus metrics.
 # Add the InfluxData repository for Telegraf
 cat <<'EOF' | sudo tee /etc/yum.repos.d/influxdata.repo
 [influxdata]
-name = InfluxData Repository
-baseurl = https://repos.influxdata.com/rhel/9/x86_64/stable/
+name = InfluxData Repository - Stable
+baseurl = https://repos.influxdata.com/stable/$basearch/main
 enabled = 1
 gpgcheck = 1
-gpgkey = https://repos.influxdata.com/influxdata-archive_compat.key
+gpgkey = https://repos.influxdata.com/influxdata-archive.key
 EOF
 
 # Install Telegraf
@@ -127,8 +126,12 @@ sudo tee /etc/telegraf/telegraf.conf > /dev/null <<'EOF'
   username = "iot_collector"
   password = "your_password_here"
   data_format = "json"
-  # Tag each message with the gateway name from the topic
+  # Keep the full topic and extract the gateway name from it
   topic_tag = "topic"
+  [[inputs.mqtt_consumer.topic_parsing]]
+    topic = "iot/+/+"
+    measurement = "_/_/measurement"
+    tags = "_/gateway/_"
 
 # Expose all collected metrics as a Prometheus endpoint
 [[outputs.prometheus_client]]
@@ -148,10 +151,10 @@ sudo useradd --no-create-home --shell /bin/false prometheus
 
 # Download and install Prometheus
 cd /tmp
-curl -LO https://github.com/prometheus/prometheus/releases/download/v2.50.0/prometheus-2.50.0.linux-amd64.tar.gz
-tar xzf prometheus-2.50.0.linux-amd64.tar.gz
-sudo cp prometheus-2.50.0.linux-amd64/prometheus /usr/local/bin/
-sudo cp prometheus-2.50.0.linux-amd64/promtool /usr/local/bin/
+curl -LO https://github.com/prometheus/prometheus/releases/download/v3.11.3/prometheus-3.11.3.linux-amd64.tar.gz
+tar xzf prometheus-3.11.3.linux-amd64.tar.gz
+sudo cp prometheus-3.11.3.linux-amd64/prometheus /usr/local/bin/
+sudo cp prometheus-3.11.3.linux-amd64/promtool /usr/local/bin/
 
 # Create directories for Prometheus
 sudo mkdir -p /etc/prometheus /var/lib/prometheus
@@ -168,7 +171,7 @@ global:
 
 # Alert rules for IoT monitoring
 rule_files:
-  - "iot_alerts.yml"
+  - "/etc/prometheus/iot_alerts.yml"
 
 # Scrape configurations
 scrape_configs:
@@ -193,19 +196,19 @@ sudo tee /etc/prometheus/iot_alerts.yml > /dev/null <<'EOF'
 groups:
   - name: iot_alerts
     rules:
-      # Alert when a sensor stops reporting
-      - alert: SensorOffline
+      # Alert when the Telegraf collector stops reporting
+      - alert: TelegrafCollectorOffline
         expr: up{job="iot_telegraf"} == 0
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "IoT sensor offline"
-          description: "No data received from IoT sensors for 5 minutes."
+          summary: "IoT metrics collector offline"
+          description: "Prometheus cannot scrape the Telegraf MQTT collector for 5 minutes."
 
       # Alert on high temperature readings
       - alert: HighTemperature
-        expr: mqtt_consumer_temperature > 45
+        expr: temperature_value > 45
         for: 2m
         labels:
           severity: warning
@@ -249,12 +252,14 @@ sudo systemctl enable --now prometheus
 # Add the Grafana repository
 sudo tee /etc/yum.repos.d/grafana.repo > /dev/null <<'EOF'
 [grafana]
-name=Grafana OSS
+name=grafana
 baseurl=https://rpm.grafana.com
 repo_gpgcheck=1
 enabled=1
 gpgcheck=1
 gpgkey=https://rpm.grafana.com/gpg.key
+sslverify=1
+sslcacert=/etc/pki/tls/certs/ca-bundle.crt
 EOF
 
 # Install and start Grafana
@@ -297,7 +302,7 @@ mosquitto_pub -h localhost -u iot_collector -P your_password_here \
   -m '{"value": 65.2, "unit": "percent", "device_id": "sensor_002"}'
 ```
 
-After a few seconds, verify the metrics appear in Prometheus by visiting `http://your-server:9090` and querying `mqtt_consumer_temperature`.
+After a few seconds, verify the metrics appear in Prometheus by visiting `http://your-server:9090` and querying `temperature_value`.
 
 ## Step 7: Configure TLS for Secure MQTT Communication
 
