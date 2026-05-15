@@ -27,11 +27,11 @@ Automating RHEL image builds with Ansible lets you integrate OS image creation i
   tasks:
     - name: Copy blueprint to the Image Builder host
       copy:
-        src: blueprints/web-server.toml
-        dest: /tmp/web-server.toml
+        src: "blueprints/{{ blueprint_name }}.toml"
+        dest: "/tmp/{{ blueprint_name }}.toml"
 
     - name: Push the blueprint to Image Builder
-      command: composer-cli blueprints push /tmp/web-server.toml
+      command: "composer-cli blueprints push /tmp/{{ blueprint_name }}.toml"
       changed_when: true
 
     - name: Depsolve the blueprint to verify dependencies
