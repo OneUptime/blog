@@ -15,11 +15,16 @@ Zabbix Agent 2 includes a native Docker monitoring plugin that communicates with
 ```bash
 # Docker must be installed and running
 
-sudo dnf install -y docker-ce
+sudo dnf install -y dnf-plugins-core
+sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 sudo systemctl enable --now docker
 
-# Zabbix Agent 2 must be installed
-sudo dnf install -y zabbix-agent2 zabbix-agent2-plugin-docker
+# Zabbix Agent 2 must be installed from the Zabbix repository
+# RHEL 9 example; use the matching repository package for your RHEL version
+sudo rpm -Uvh https://repo.zabbix.com/zabbix/7.4/release/rhel/9/noarch/zabbix-release-latest.el9.noarch.rpm
+sudo dnf clean all
+sudo dnf install -y zabbix-agent2
 ```
 
 ## Grant Zabbix Access to Docker
@@ -62,7 +67,7 @@ zabbix_agent2 -t docker.container_info[my-container]
 zabbix_agent2 -t docker.container_stats[my-container]
 
 # Check Docker data space usage
-zabbix_agent2 -t docker.data_usage
+zabbix_agent2 -t docker.data.usage
 
 # Get Docker system info
 zabbix_agent2 -t docker.info
@@ -146,10 +151,8 @@ Trigger: Container unhealthy
 ## SELinux Considerations
 
 ```bash
-# If SELinux blocks Zabbix Agent from accessing Docker socket
-sudo setsebool -P zabbix_can_network 1
-
-# If custom SELinux policies are needed
+# If SELinux blocks Zabbix Agent 2 from accessing the Docker socket,
+# inspect the AVC denials and create a local policy module
 sudo ausearch -m AVC -c zabbix_agent2 -ts recent | audit2allow -M zabbix_docker
 sudo semodule -i zabbix_docker.pp
 ```
