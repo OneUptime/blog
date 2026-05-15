@@ -15,7 +15,7 @@ Traefik is a modern reverse proxy and load balancer that natively supports autom
 ```bash
 # Download the Traefik binary
 
-curl -L https://github.com/traefik/traefik/releases/download/v3.0.0/traefik_v3.0.0_linux_amd64.tar.gz \
+curl -L https://github.com/traefik/traefik/releases/download/v3.7.1/traefik_v3.7.1_linux_amd64.tar.gz \
   -o /tmp/traefik.tar.gz
 tar xzf /tmp/traefik.tar.gz -C /tmp/
 sudo mv /tmp/traefik /usr/local/bin/
@@ -85,7 +85,10 @@ http:
 # Create required directories
 sudo mkdir -p /etc/traefik/conf.d /var/lib/traefik
 sudo useradd -r -s /sbin/nologin traefik
+sudo touch /var/lib/traefik/acme.json
+sudo chmod 600 /var/lib/traefik/acme.json
 sudo chown traefik:traefik /var/lib/traefik
+sudo chown traefik:traefik /var/lib/traefik/acme.json
 
 # Create the systemd unit
 cat << 'SERVICE' | sudo tee /etc/systemd/system/traefik.service
@@ -116,4 +119,4 @@ sudo firewall-cmd --add-service=https --permanent
 sudo firewall-cmd --reload
 ```
 
-Traefik will automatically request a certificate from Let's Encrypt when the first HTTPS request arrives for a configured domain. Certificates are stored in `acme.json` and renewed automatically before expiration.
+Traefik will automatically request a certificate from Let's Encrypt for domain names derived from routers that use the `letsencrypt` certificate resolver. Certificates are stored in `acme.json` and renewed automatically before expiration.
