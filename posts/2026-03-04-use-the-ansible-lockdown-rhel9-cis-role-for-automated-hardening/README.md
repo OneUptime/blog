@@ -104,7 +104,7 @@ After running the playbook, verify compliance:
 # Run an OpenSCAP scan to verify compliance
 sudo dnf install -y openscap-scanner scap-security-guide
 sudo oscap xccdf eval \
-  --profile xccdf_org.ssgproject.content_profile_cis \
+  --profile xccdf_org.ssgproject.content_profile_cis_server_l1 \
   --report /tmp/cis-report.html \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
 ```
