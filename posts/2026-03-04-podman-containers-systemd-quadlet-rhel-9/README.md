@@ -48,7 +48,6 @@ Description=Nginx Web Server Container
 [Container]
 Image=docker.io/library/nginx:latest
 PublishPort=8080:80
-Volume=web-data.volume:/usr/share/nginx/html:Z
 
 [Service]
 Restart=always
@@ -74,12 +73,12 @@ systemctl --user start nginx
 systemctl --user status nginx
 ```
 
-## Enable it to start on boot
+## Enable rootless startup at boot
 ```bash
-systemctl --user enable nginx
+sudo loginctl enable-linger "$USER"
 ```
 
-Note that the service name matches the filename without the `.container` extension.
+The `[Install]` section in the Quadlet file tells systemd which target should want the generated service. For rootless services to start at boot without an interactive login, enable lingering for the user. Note that the service name matches the filename without the `.container` extension.
 
 ## Quadlet Volume Files
 
@@ -167,7 +166,7 @@ MYSQL_DATABASE=production
 EOF
 ```
 
-Reference it with `EnvironmentFile=` in the `[Service]` section or `EnvironmentFile=` in the `[Container]` section.
+Reference it with `EnvironmentFile=` in the `[Container]` section so Podman passes the variables to the container.
 
 ## Health Checks
 
@@ -181,7 +180,7 @@ Description=Web Application
 [Container]
 Image=docker.io/library/nginx:latest
 PublishPort=8080:80
-HealthCmd=curl -f http://localhost/ || exit 1
+HealthCmd=nginx -t
 HealthInterval=30s
 HealthTimeout=5s
 HealthRetries=3
@@ -204,7 +203,7 @@ sudo mkdir -p /etc/containers/systemd/
 ```
 
 ```bash
-sudo cat > /etc/containers/systemd/monitoring.container << 'EOF'
+sudo tee /etc/containers/systemd/monitoring.container > /dev/null << 'EOF'
 [Unit]
 Description=Monitoring Agent
 After=network-online.target
@@ -260,8 +259,8 @@ If one container depends on another:
 cat > ~/.config/containers/systemd/api.container << 'EOF'
 [Unit]
 Description=API Server
-Requires=database.service
-After=database.service
+Requires=database.container
+After=database.container
 
 [Container]
 Image=registry.access.redhat.com/ubi9/ubi-minimal
@@ -276,7 +275,7 @@ WantedBy=default.target
 EOF
 ```
 
-The `Requires=` and `After=` directives ensure the database starts before the API server.
+The `Requires=` and `After=` directives ensure the database starts before the API server. Quadlet translates dependencies on other Quadlet files into dependencies on the generated systemd services.
 
 ## Debugging Quadlet Issues
 
@@ -284,7 +283,7 @@ If your Quadlet file is not generating a service:
 
 ## Check for generator errors
 ```bash
-/usr/libexec/podman/quadlet --dryrun --user 2>&1
+/usr/lib/systemd/system-generators/podman-system-generator --user --dryrun
 ```
 
 ## Verify the generated unit file
