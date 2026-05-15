@@ -8,7 +8,7 @@ Description: Learn how to use ethtool on RHEL for advanced network interface dia
 
 ---
 
-ethtool is a powerful utility for querying and configuring network interface settings. It provides low-level diagnostics that are not available through standard tools like `ip` or `nmcli`.
+ethtool is a powerful utility for querying and configuring network interface settings. It provides many low-level driver and hardware diagnostics that are not available through standard tools like `ip` or `nmcli`.
 
 ## Installing ethtool
 
@@ -47,7 +47,7 @@ ethtool -i ens192
 ## NIC Statistics
 
 ```bash
-# View all NIC-level statistics
+# View NIC- and driver-specific statistics
 ethtool -S ens192
 
 # Filter for specific statistics
