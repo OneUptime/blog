@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Patching, Security, Fleet Management, Linux
 
-Description: Design and implement a patch management strategy for fleets of RHEL servers using dnf-automatic, content views, and staged rollouts.
+Description: Design and implement a patch management strategy for fleets of RHEL servers using dnf-automatic and staged rollouts.
 
 ---
 
@@ -23,8 +23,8 @@ sudo dnf updateinfo summary
 sudo dnf updateinfo list security
 
 # List only critical/important security updates
-sudo dnf updateinfo list --security --severity Critical
-sudo dnf updateinfo list --security --severity Important
+sudo dnf updateinfo list --security --sec-severity=Critical
+sudo dnf updateinfo list --security --sec-severity=Important
 ```
 
 ## Staged Rollout Strategy
@@ -82,7 +82,7 @@ email_to = ops-team@example.com
 email_host = smtp.example.com
 EOF
 
-sudo systemctl enable --now dnf-automatic-notifyonly.timer
+sudo systemctl enable --now dnf-automatic-download.timer
 ```
 
 ## Snapshot Before Patching
