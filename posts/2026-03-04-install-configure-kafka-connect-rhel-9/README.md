@@ -51,7 +51,7 @@ sudo useradd -r -m -s /sbin/nologin kafka
 
 # Download Apache Kafka (includes Kafka Connect)
 cd /opt
-sudo curl -LO https://downloads.apache.org/kafka/3.7.0/kafka_2.13-3.7.0.tgz
+sudo curl -LO https://archive.apache.org/dist/kafka/3.7.0/kafka_2.13-3.7.0.tgz
 sudo tar xzf kafka_2.13-3.7.0.tgz
 sudo mv kafka_2.13-3.7.0 kafka
 sudo chown -R kafka:kafka /opt/kafka
@@ -108,22 +108,26 @@ sudo chown kafka:kafka /opt/kafka/plugins
 
 ```bash
 # Download the JDBC connector (for database sources and sinks)
-cd /opt/kafka/plugins
-sudo mkdir -p jdbc-connector
-cd jdbc-connector
+sudo rpm --import https://packages.confluent.io/confluent-cli/rpm/archive.key
+sudo dnf install -y yum-utils unzip
+sudo yum-config-manager --add-repo https://packages.confluent.io/confluent-cli/rpm/confluent-cli.repo
+sudo dnf clean all
+sudo dnf install -y confluent-cli
 
-# Download the Confluent JDBC connector
-sudo curl -LO https://packages.confluent.io/maven/io/confluent/kafka-connect-jdbc/10.7.4/kafka-connect-jdbc-10.7.4.jar
+# Install Confluent connectors with their required dependencies
+sudo confluent connect plugin install confluentinc/kafka-connect-jdbc:10.7.4 \
+    --plugin-directory /opt/kafka/plugins \
+    --worker-configurations /opt/kafka/config/connect-distributed.properties \
+    --force
+sudo confluent connect plugin install confluentinc/kafka-connect-elasticsearch:15.0.0 \
+    --plugin-directory /opt/kafka/plugins \
+    --worker-configurations /opt/kafka/config/connect-distributed.properties \
+    --force
 
 # Download database drivers
+cd /opt/kafka/plugins/confluentinc-kafka-connect-jdbc/lib
 sudo curl -LO https://jdbc.postgresql.org/download/postgresql-42.7.1.jar
 sudo curl -LO https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/8.3.0/mysql-connector-j-8.3.0.jar
-
-# Download the Elasticsearch connector
-cd /opt/kafka/plugins
-sudo mkdir -p elasticsearch-connector
-cd elasticsearch-connector
-sudo curl -LO https://packages.confluent.io/maven/io/confluent/kafka-connect-elasticsearch/14.0.12/kafka-connect-elasticsearch-14.0.12.jar
 
 # Fix ownership
 sudo chown -R kafka:kafka /opt/kafka/plugins
@@ -196,8 +200,8 @@ curl -X POST http://localhost:8083/connectors \
         "timestamp.column.name": "updated_at",
         "incrementing.column.name": "id",
         "topic.prefix": "db-",
-        "poll.interval.ms": 5000,
-        "tasks.max": 2
+        "poll.interval.ms": "5000",
+        "tasks.max": "2"
     }
 }'
 ```
@@ -216,10 +220,9 @@ curl -X POST http://localhost:8083/connectors \
         "connector.class": "io.confluent.connect.elasticsearch.ElasticsearchSinkConnector",
         "connection.url": "http://localhost:9200",
         "topics": "db-orders,db-customers",
-        "type.name": "_doc",
-        "key.ignore": true,
-        "schema.ignore": true,
-        "tasks.max": 2
+        "key.ignore": "true",
+        "schema.ignore": "true",
+        "tasks.max": "2"
     }
 }'
 ```
