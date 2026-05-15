@@ -17,7 +17,7 @@ RHEL bundles essential build tools into a convenient group package.
 ```bash
 # Install the complete development toolchain
 
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf group install -y "Development Tools"
 
 # This installs:
 # - gcc (C compiler)
@@ -94,6 +94,7 @@ gcc -o hello hello.c
 cat > hello.cpp << 'CPPFILE'
 #include <iostream>
 #include <string>
+#include <utility>
 
 // Test modern C++ features
 int main() {
@@ -120,12 +121,12 @@ g++ -std=c++17 -o hello_cpp hello.cpp
 ```bash
 # Common development libraries you might need
 sudo dnf install -y \
-    glibc-devel \        # C standard library headers
-    glibc-static \       # Static C library
-    libstdc++-devel \    # C++ standard library headers
-    libstdc++-static \   # Static C++ library
-    kernel-headers \     # Linux kernel headers
-    kernel-devel         # Kernel build infrastructure
+    glibc-devel \
+    glibc-static \
+    libstdc++-devel \
+    libstdc++-static \
+    kernel-headers \
+    kernel-devel
 ```
 
 ## Using GCC Compiler Flags
