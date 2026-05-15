@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, Linux
 
-Description: Step-by-step guide on install cockpit-machines for virtual machine management using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on installing cockpit-machines for virtual machine management using Red Hat Enterprise Linux 9.
 
 ---
 
@@ -15,66 +15,77 @@ This guide provides step-by-step instructions for completing this task on RHEL. 
 - RHEL with a valid subscription or CentOS Stream 9
 - Root or sudo access
 - A terminal session
+- Hardware virtualization support enabled in the system firmware
 
 ## Step 1: Install Required Packages
 
 ```bash
 # Update the system first
-
 sudo dnf update -y
 
-# Install the required packages
-sudo dnf install -y <package-name>
+# Install the RHEL web console, virtualization packages, and VM management add-on
+sudo dnf install -y cockpit cockpit-machines qemu-kvm libvirt virt-install virt-viewer
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+The `cockpit-machines` package adds the Virtual Machines page to the RHEL web console. The `qemu-kvm`, `libvirt`, `virt-install`, and `virt-viewer` packages provide the KVM virtualization stack used to create and manage VMs.
 
-## Step 2: Configure the Service
+## Step 2: Configure the Services
 
-Edit the configuration file to match your environment:
+Enable and start the Cockpit web console socket:
 
 ```bash
-# Open the configuration file
-sudo vi /etc/<service>/config.conf
+# Enable and start Cockpit
+sudo systemctl enable --now cockpit.socket
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+If you use `firewalld` and need to access the web console from another machine, open the Cockpit service:
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo firewall-cmd --add-service=cockpit --permanent
+sudo firewall-cmd --reload
+```
+
+Start the libvirt virtualization sockets used by RHEL 9:
+
+```bash
+for drv in qemu network nodedev nwfilter secret storage interface; do
+  sudo systemctl start virt${drv}d{,-ro,-admin}.socket
+done
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Check that the web console socket is running
+sudo systemctl status cockpit.socket
 
-# Start the service
-sudo systemctl start <service-name>
-
-# Check the status
-sudo systemctl status <service-name>
+# Check that the QEMU libvirt socket is running
+sudo systemctl status virtqemud.socket
 ```
 
 
 ## Verification
 
-Confirm everything is working by checking the status and logs:
+Confirm everything is working by checking the service status, validating the virtualization host, and opening the web console:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
+# Check the web console service status
+sudo systemctl status cockpit.socket
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# Verify that the host is ready for virtualization
+sudo virt-host-validate
+
+# Review recent Cockpit logs
+journalctl -u cockpit.socket --no-pager -n 20
 ```
+
+Open `https://localhost:9090` in a browser, log in with a local system account, and confirm that **Virtual Machines** appears in the side menu.
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the web console fails to start, check the logs with `journalctl -u cockpit.socket -e --no-pager`.
+- If virtual machines do not appear, ensure the required package is installed: `rpm -q cockpit-machines`.
+- If VM creation fails, run `sudo virt-host-validate` and follow any `FAIL` or `WARN` messages.
 
 ## Conclusion
 
