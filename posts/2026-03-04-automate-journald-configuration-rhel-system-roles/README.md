@@ -14,8 +14,8 @@ Use RHEL System Roles to automate journald configuration across multiple systems
 
 ## Prerequisites
 
-- A RHEL 9 system with a valid subscription or configured repositories
-- Root or sudo access
+- A RHEL 9 control node with a valid subscription or configured repositories
+- One or more managed RHEL systems with SSH and sudo access configured
 - Basic familiarity with the command line
 
 ## Step 1 - Verify the Required Packages
@@ -23,10 +23,10 @@ Use RHEL System Roles to automate journald configuration across multiple systems
 Ensure the relevant packages are installed:
 
 ```bash
-sudo dnf install -y rsyslog systemd
+sudo dnf install -y rhel-system-roles
 ```
 
-rsyslog and systemd-journald ship by default on RHEL 9.
+This installs the RHEL System Roles collection and `ansible-core` as a dependency. `systemd-journald` ships with systemd on RHEL 9.
 
 ## Step 2 - Understand the Logging Architecture
 
@@ -39,18 +39,28 @@ The two work together: journald collects everything, and rsyslog can read from t
 
 ## Step 3 - Apply the Configuration
 
-To automate journald configuration using rhel system roles, you need to edit the appropriate configuration files. The main files are:
+To automate journald configuration using RHEL System Roles, create a playbook that includes the `redhat.rhel_system_roles.journald` role:
 
-- `/etc/rsyslog.conf` and `/etc/rsyslog.d/*.conf` for rsyslog
-- `/etc/systemd/journald.conf` for journald
+```yaml
+---
+- name: Configure journald
+  hosts: managed-node-01.example.com
+  tasks:
+    - name: Configure persistent logging
+      ansible.builtin.include_role:
+        name: redhat.rhel_system_roles.journald
+      vars:
+        journald_persistent: true
+        journald_max_disk_size: 2048
+        journald_per_user: true
+        journald_sync_interval: 1
+```
 
-Make your changes, then restart the relevant service:
+Validate the playbook syntax, then run it:
 
 ```bash
-sudo systemctl restart rsyslog
-# or
-
-sudo systemctl restart systemd-journald
+ansible-playbook --syntax-check ~/playbook.yml
+ansible-playbook ~/playbook.yml
 ```
 
 ## Step 4 - Verify the Setup
@@ -71,7 +81,7 @@ tail -20 /var/log/messages
 
 ## Step 5 - Open Firewall Ports (If Applicable)
 
-If your setup involves remote logging, open the necessary ports:
+If your setup involves receiving remote syslog traffic over TCP, open the necessary port:
 
 ```bash
 sudo firewall-cmd --permanent --add-port=514/tcp
