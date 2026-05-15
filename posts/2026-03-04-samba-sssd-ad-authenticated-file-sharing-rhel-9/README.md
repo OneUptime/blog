@@ -1,10 +1,10 @@
-# How to Configure Samba with SSSD for AD-Authenticated File Sharing on RHEL
+# How to Configure Samba with Winbind for AD-Authenticated File Sharing on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Samba, SSSD, Active Directory, Linux
+Tags: RHEL, Samba, Winbind, Active Directory, Linux
 
-Description: Set up Samba file sharing on RHEL using SSSD for Active Directory authentication, providing an alternative to Winbind for AD-integrated environments.
+Description: Set up Samba file sharing on RHEL using Winbind for Active Directory authentication, the supported configuration for AD-integrated Samba file servers.
 
 ---
 
@@ -12,9 +12,10 @@ Description: Set up Samba file sharing on RHEL using SSSD for Active Directory a
 
 SSSD (System Security Services Daemon) is another way to integrate Linux with Active Directory. While Winbind is Samba's native AD integration, SSSD is a general-purpose identity and authentication daemon that works with multiple backends (AD, LDAP, FreeIPA).
 
-When to use SSSD over Winbind:
+On RHEL, use Winbind for Samba file servers joined directly to AD. Red Hat supports SSSD for system identity and authentication, but Samba AD domain member servers require Winbind for domain users and groups.
+
+When SSSD is still the right choice:
 - You already use SSSD for system authentication
-- You want a single daemon for both login and Samba authentication
 - You need offline caching for laptop users
 - You use FreeIPA as your identity provider
 
@@ -27,10 +28,12 @@ When to use SSSD over Winbind:
 ## Step 1 - Install Packages
 
 ```bash
-# Install SSSD, Samba, and AD integration tools
+# Install Samba, Winbind, and AD integration tools
 
-sudo dnf install -y sssd sssd-ad sssd-tools samba samba-client \
-    realmd adcli krb5-workstation oddjob oddjob-mkhomedir
+sudo dnf install -y realmd oddjob oddjob-mkhomedir samba samba-client \
+    samba-winbind samba-winbind-clients samba-common-tools \
+    samba-winbind-krb5-locator krb5-workstation \
+    policycoreutils-python-utils firewalld
 ```
 
 ## Step 2 - Join the Domain
@@ -39,59 +42,57 @@ sudo dnf install -y sssd sssd-ad sssd-tools samba samba-client \
 # Discover the domain
 sudo realm discover example.com
 
-# Join the domain
-sudo realm join example.com -U administrator
+# Join the domain using Samba membership and Winbind
+sudo realm join --membership-software=samba --client-software=winbind \
+    example.com -U administrator
 
 # Verify
 sudo realm list
 ```
 
-## Step 3 - Configure SSSD
+## Step 3 - Configure Winbind
 
-After joining with realm, SSSD should be configured automatically. Verify /etc/sssd/sssd.conf:
+After joining with realm, Samba and Winbind should be configured automatically. Verify /etc/samba/smb.conf and adjust the ID mapping range for your environment:
 
 ```ini
-[sssd]
-domains = example.com
-config_file_version = 2
-services = nss, pam
+[global]
+    workgroup = EXAMPLE
+    realm = EXAMPLE.COM
+    security = ads
+    kerberos method = secrets and keytab
 
-[domain/example.com]
-ad_domain = example.com
-krb5_realm = EXAMPLE.COM
-realmd_tags = manages-system joined-with-adcli
-cache_credentials = True
-id_provider = ad
-access_provider = ad
-fallback_homedir = /home/%u
-default_shell = /bin/bash
+    idmap config * : backend = tdb
+    idmap config * : range = 10000-999999
+    idmap config EXAMPLE : backend = rid
+    idmap config EXAMPLE : range = 2000000-2999999
 
-# Use short names (jdoe instead of jdoe@example.com)
-use_fully_qualified_names = False
+    template shell = /bin/bash
+    template homedir = /home/%U
 ```
 
-Restart SSSD:
+Verify and reload Samba:
 
 ```bash
-sudo systemctl restart sssd
+testparm
+sudo smbcontrol all reload-config
 ```
 
-## Step 4 - Test SSSD User Resolution
+## Step 4 - Test Winbind User Resolution
 
 ```bash
 # Look up an AD user
-id jdoe
+id "EXAMPLE\jdoe"
 
 # List AD users
-getent passwd jdoe
+getent passwd "EXAMPLE\jdoe"
 
 # List AD groups
-getent group "Domain Users"
+getent group "EXAMPLE\Domain Users"
 ```
 
-## Step 5 - Configure Samba to Use SSSD
+## Step 5 - Configure the Samba Share
 
-The key to making Samba work with SSSD is the ID mapping configuration. Edit /etc/samba/smb.conf:
+Edit /etc/samba/smb.conf and add the share:
 
 ```ini
 [global]
@@ -99,42 +100,39 @@ The key to making Samba work with SSSD is the ID mapping configuration. Edit /et
     realm = EXAMPLE.COM
     security = ads
 
-    # Use SSSD for ID mapping
+    # Use Winbind for ID mapping
     idmap config * : backend = tdb
-    idmap config * : range = 3000-7999
-    idmap config EXAMPLE : backend = sss
-    idmap config EXAMPLE : range = 200000-2147483647
+    idmap config * : range = 10000-999999
+    idmap config EXAMPLE : backend = rid
+    idmap config EXAMPLE : range = 2000000-2999999
 
     # Kerberos authentication method
     kerberos method = secrets and keytab
 
-    # Do not use Winbind - SSSD handles identity
-    # Leave winbind service stopped
-
 [shared]
     path = /srv/samba/shared
-    writable = yes
-    valid users = @"domain users"
+    read only = no
+    valid users = @"EXAMPLE\Domain Users"
 ```
 
-## Step 6 - Generate the Samba Keytab
+## Step 6 - Validate the Samba Configuration
 
 ```bash
-# Generate a Kerberos keytab for Samba
-sudo net ads keytab create -U administrator
+# Validate the configuration
+testparm
 
-# Verify the keytab
-sudo klist -k /etc/krb5.keytab
+# Test the domain join
+sudo net ads testjoin
 ```
 
 ## Step 7 - Start Services
 
 ```bash
-# Enable Samba (do NOT start winbind when using SSSD)
-sudo systemctl enable --now smb
+# Enable Winbind before starting Samba
+sudo systemctl enable --now winbind
 
-# Make sure SSSD is running
-sudo systemctl enable --now sssd
+# Enable Samba
+sudo systemctl enable --now smb
 
 # Enable home directory creation
 sudo systemctl enable --now oddjobd
@@ -145,15 +143,18 @@ sudo systemctl enable --now oddjobd
 ```mermaid
 graph TD
     Client[SMB Client] -->|Authentication| Samba[Samba smbd]
-    Samba -->|Identity Lookup| SSSD[SSSD]
-    SSSD -->|LDAP/Kerberos| AD[Active Directory]
+    Samba -->|Identity Lookup| Winbind[Winbind]
+    Winbind -->|LDAP/Kerberos| AD[Active Directory]
     Samba -->|File Access| FS[Filesystem]
-    SSSD -->|NSS/PAM| System[System Auth]
+    Winbind -->|NSS/PAM| System[System Auth]
 ```
 
 ## Step 8 - Configure SELinux and Firewall
 
 ```bash
+# Create the share directory
+sudo mkdir -p /srv/samba/shared
+
 # SELinux booleans
 sudo setsebool -P samba_export_all_rw on
 
@@ -170,7 +171,7 @@ sudo firewall-cmd --reload
 
 ```bash
 # Test from the server
-smbclient //localhost/shared -U jdoe
+smbclient //localhost/shared -U "EXAMPLE\jdoe"
 
 # From a Windows client
 # Connect to \\rhel-server\shared with domain credentials
@@ -181,40 +182,41 @@ sudo smbstatus
 
 ## Handling Group Permissions
 
-When using SSSD, AD group names are available in Samba:
+When using Winbind, AD group names are available in Samba:
 
 ```ini
 [finance]
     path = /srv/samba/finance
-    writable = yes
-    valid users = @"finance team"
-    write list = @"finance admins"
+    read only = no
+    valid users = @"EXAMPLE\finance team"
+    write list = @"EXAMPLE\finance admins"
 ```
 
 Set directory permissions to match:
 
 ```bash
 sudo mkdir -p /srv/samba/finance
-sudo chgrp "finance team" /srv/samba/finance
+sudo chgrp 'EXAMPLE\finance team' /srv/samba/finance
 sudo chmod 2775 /srv/samba/finance
 ```
 
 ## Troubleshooting
 
-### SSSD Issues
+### Winbind Issues
 
 ```bash
-# Check SSSD status
-sudo systemctl status sssd
+# Check Winbind status
+sudo systemctl status winbind
 
-# Clear SSSD cache
-sudo sss_cache -E
+# Clear Samba and Winbind cache
+sudo net cache flush
 
 # Test user lookup
-getent passwd jdoe
+getent passwd "EXAMPLE\jdoe"
 
-# Debug mode
-sudo sssd -d 6 -i
+# List domain users and groups
+wbinfo -u
+wbinfo -g
 ```
 
 ### Samba Issues
@@ -234,10 +236,10 @@ sudo net ads testjoin
 
 | Issue | Cause | Fix |
 |-------|-------|-----|
-| User not found | SSSD cache | `sudo sss_cache -E` |
+| User not found | Winbind cache or service state | `sudo net cache flush` and check `systemctl status winbind` |
 | Permission denied | ID mapping | Check idmap config in smb.conf |
-| Kerberos failure | Keytab | Regenerate with `net ads keytab create` |
-| SSSD not starting | Config error | Check /etc/sssd/sssd.conf syntax |
+| Kerberos failure | Domain join or machine account issue | Check `net ads testjoin` |
+| Winbind not starting | Config error | Check /etc/samba/smb.conf syntax with `testparm` |
 
 ## SSSD vs. Winbind Comparison
 
@@ -246,9 +248,9 @@ sudo net ads testjoin
 | Identity provider | AD, LDAP, FreeIPA | AD only (via Samba) |
 | Offline caching | Yes | Limited |
 | Configuration | sssd.conf | smb.conf |
-| Samba ID mapping | sss backend | rid/ad backend |
-| System integration | Full (NSS, PAM, sudo) | Limited |
+| Samba ID mapping | Not supported for RHEL AD member file servers | rid/ad backend |
+| System integration | Full (NSS, PAM, sudo) | NSS/PAM for domain users and Samba |
 
 ## Wrap-Up
 
-Using SSSD with Samba on RHEL provides a clean separation between identity management (SSSD) and file sharing (Samba). This approach works well when SSSD is already in use for system authentication, as it avoids running both SSSD and Winbind simultaneously. The key configuration piece is the `idmap config EXAMPLE : backend = sss` setting in smb.conf, which tells Samba to use SSSD for ID mapping instead of Winbind.
+Using Winbind with Samba on RHEL provides the supported path for an AD-authenticated file server. SSSD remains a good choice for general system authentication, but Samba domain member servers on RHEL need Winbind so that smbd can resolve domain users and groups correctly. The key configuration piece is the `idmap config EXAMPLE : backend = rid` or `idmap config EXAMPLE : backend = ad` setting in smb.conf, depending on whether you generate IDs from RIDs or store POSIX IDs in AD.
