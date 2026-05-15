@@ -23,11 +23,13 @@ Caddy is a web server that automatically provisions and renews TLS certificates 
 
 sudo dnf update -y
 
-# Install the required packages
-sudo dnf install -y <package-name>
+# Enable the Caddy COPR repository and install Caddy
+sudo dnf install -y dnf-plugins-core
+sudo dnf copr enable -y @caddy/caddy
+sudo dnf install -y caddy
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+This installs Caddy and its systemd service files.
 
 ## Step 2: Configure the Service
 
@@ -35,34 +37,35 @@ Edit the configuration file to match your environment:
 
 ```bash
 # Open the configuration file
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/caddy/Caddyfile
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include site addresses, reverse proxy targets, file server roots, and logging options.
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Reload Caddy to apply changes without downtime
+sudo systemctl reload caddy
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable caddy
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start caddy
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status caddy
 ```
 
 ## Step 4: Configure the Firewall
 
 ```bash
-# Open the required port
-sudo firewall-cmd --permanent --add-port=<PORT>/tcp
+# Open HTTP and HTTPS traffic
+sudo firewall-cmd --permanent --add-service=http
+sudo firewall-cmd --permanent --add-service=https
 sudo firewall-cmd --reload
 
 # Verify the rule
@@ -76,18 +79,18 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status caddy
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u caddy --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
+- If the service fails to start, check the logs with `journalctl -u caddy -e --no-pager`.
 - SELinux may block access. Check for denials with `ausearch -m avc -ts recent` and apply appropriate policies.
 - Verify firewall rules allow traffic on the required ports: `firewall-cmd --list-all`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- Ensure Caddy is installed: `rpm -q caddy`.
 
 ## Conclusion
 
