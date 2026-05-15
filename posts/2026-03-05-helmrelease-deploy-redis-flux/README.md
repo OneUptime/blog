@@ -55,7 +55,7 @@ spec:
   type: oci
   # Bitnami OCI Helm chart registry
   url: oci://registry-1.docker.io/bitnamicharts
-  interval: 1h  # Frequency for checking new chart versions
+  interval: 1h  # Ignored for OCI HelmRepository sources
 ```
 
 If you already have a Bitnami HelmRepository defined in your cluster from another deployment, you can reuse it. Each HelmRepository name must be unique within its namespace.
@@ -96,7 +96,7 @@ spec:
       retries: 3
   values:
     # Architecture: standalone or replication
-    architecture: replication  # Deploy Redis with replicas for high availability
+    architecture: replication  # Deploy Redis with read replicas
 
     # Authentication configuration
     auth:
@@ -266,4 +266,4 @@ chart:
 
 ## Conclusion
 
-Deploying Redis with Flux CD and HelmRelease provides a clean GitOps workflow for managing your caching infrastructure. Every configuration change is tracked in Git, making rollbacks straightforward and deployments reproducible. Whether you need a simple standalone instance or a replicated setup for high availability, the Bitnami Redis chart combined with Flux gives you the flexibility and automation to run Redis confidently on Kubernetes.
+Deploying Redis with Flux CD and HelmRelease provides a clean GitOps workflow for managing your caching infrastructure. Every configuration change is tracked in Git, making rollbacks straightforward and deployments reproducible. Whether you need a simple standalone instance or a replicated setup for read scaling and redundancy, the Bitnami Redis chart combined with Flux gives you the flexibility and automation to run Redis confidently on Kubernetes.
