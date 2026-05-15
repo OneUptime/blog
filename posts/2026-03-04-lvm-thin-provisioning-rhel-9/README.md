@@ -43,7 +43,7 @@ Create a thin pool within the volume group:
 
 ```bash
 # Create a thin pool using 90% of the VG space
-# The remaining 10% is kept for metadata and pool extension
+# LVM allocates thin-pool metadata automatically; the remaining space is kept free for future extension
 sudo lvcreate -l 90%VG --thinpool thinpool thinvg
 
 # Verify the thin pool
@@ -98,10 +98,18 @@ Configure automatic pool extension in `/etc/lvm/lvm.conf`:
 ```bash
 # Edit LVM configuration for auto-extension
 sudo vi /etc/lvm/lvm.conf
+```
 
-# Find and set these values in the activation section:
-# thin_pool_autoextend_threshold = 80
-# thin_pool_autoextend_percent = 20
+Find, uncomment, and set these values in the activation section:
+
+```conf
+thin_pool_autoextend_threshold = 80
+thin_pool_autoextend_percent = 20
+```
+
+```bash
+# Restart monitoring so the new settings are applied
+sudo systemctl restart lvm2-monitor
 ```
 
 This tells LVM to automatically extend the thin pool by 20% when it reaches 80% full (provided there is free space in the VG).
@@ -136,4 +144,3 @@ sudo lvextend -L +100G thinvg/thinpool
 ## Summary
 
 LVM thin provisioning on RHEL provides storage efficiency by allocating physical space on demand rather than upfront. It is ideal for virtual machine storage, development environments, and any scenario where actual usage is much less than allocated capacity. The key requirement is monitoring pool usage closely to prevent out-of-space conditions.
-
