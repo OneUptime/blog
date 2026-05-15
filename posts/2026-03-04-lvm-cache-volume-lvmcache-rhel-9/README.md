@@ -90,7 +90,7 @@ lvcreate -L 50G -n mycachevol vg_data /dev/nvme0n1p1
 lvconvert --type cache --cachevol vg_data/mycachevol vg_data/lv_data
 ```
 
-This is simpler than the pool method and recommended for single-volume caching.
+This is simpler than the pool method and convenient for single-volume caching.
 
 ## Verifying Cache Status
 
@@ -155,7 +155,7 @@ lvchange --cachesettings 'migration_threshold=2048' vg_data/lv_data
 
 Common settings:
 - `migration_threshold` - number of sectors to migrate per time period
-- `sequential_threshold` - sequential I/O size to bypass cache
+- `sequential_threshold` - older `mq` policy setting for sequential I/O; with the default `smq` policy on newer kernels, this setting is ignored
 
 ## Monitoring Cache Effectiveness
 
@@ -174,11 +174,11 @@ done
 
 ## Resizing the Cache
 
-To increase cache size, you need to detach, resize, and reattach:
+To increase cache size, split the cache, resize it, and reattach:
 
 ```bash
 # Detach cache
-lvconvert --uncache vg_data/lv_data
+lvconvert --splitcache vg_data/lv_data
 
 # The cache LV is now available again
 # Extend it
