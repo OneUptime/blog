@@ -36,7 +36,7 @@ nmcli connection show
 nmcli connection show "ens192" | grep ipv6
 ```
 
-You should see output showing the current IPv6 method, which is likely set to `auto` (SLAAC) by default.
+You should see output showing the current IPv6 method, which is likely set to `auto` (Router Advertisements/SLAAC, and DHCPv6 if the router advertises it) by default.
 
 ## Setting a Static IPv6 Address
 
@@ -94,7 +94,7 @@ ip -6 route show
 ping6 -c 4 2001:db8:1::1
 
 # Test external connectivity
-ping6 -c 4 2600::
+ping6 -c 4 2001:4860:4860::8888
 ```
 
 ## Understanding the Generated Configuration File
@@ -111,9 +111,12 @@ The relevant section will look something like this:
 ```ini
 [ipv6]
 method=manual
-address1=2001:db8:1::10/64,2001:db8:1::1
+address1=2001:db8:1::10/64
+gateway=2001:db8:1::1
 dns=2001:4860:4860::8888;2001:4860:4860::8844;
 ```
+
+On RHEL 9.5 and earlier, you may see the gateway attached to `address1` instead, like `address1=2001:db8:1::10/64,2001:db8:1::1`.
 
 ## Configuring IPv6 with a Link-Local Address Only
 
@@ -129,7 +132,7 @@ sudo nmcli connection up "ens224"
 
 ## Setting IPv6 Privacy Extensions
 
-If you want privacy extensions (temporary addresses) on top of your static config, you can configure that too.
+If your connection also uses SLAAC/autoconfigured IPv6 addresses alongside your static address, you can configure privacy extensions too. This affects SLAAC-generated addresses; it does not create temporary addresses from a purely manual static address.
 
 ```bash
 # Enable IPv6 privacy extensions
