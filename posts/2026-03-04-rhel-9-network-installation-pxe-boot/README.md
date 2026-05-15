@@ -27,8 +27,8 @@ sequenceDiagram
     TFTP->>Client: Send boot loader
     Client->>TFTP: Request PXE config file
     TFTP->>Client: Send PXE config (with kernel + initrd paths)
-    Client->>HTTP: Download kernel (vmlinuz) and initrd
-    HTTP->>Client: Send kernel and initrd
+    Client->>TFTP: Download kernel (vmlinuz) and initrd
+    TFTP->>Client: Send kernel and initrd
     Client->>HTTP: Download packages during installation
     HTTP->>Client: Send RPM packages
 ```
@@ -122,34 +122,31 @@ You need to copy the PXE boot loader and the kernel/initrd from the installation
 # Install the SYSLINUX package for the PXE boot loader
 sudo dnf install -y syslinux-tftpboot
 
-# The pxelinux.0 file should now be in /tftpboot/ - copy it
-sudo cp /tftpboot/pxelinux.0 /var/lib/tftpboot/
-sudo cp /tftpboot/ldlinux.c32 /var/lib/tftpboot/
+# Copy the SYSLINUX PXE boot loader files
+sudo mkdir -p /var/lib/tftpboot/pxelinux
+sudo cp /tftpboot/* /var/lib/tftpboot/pxelinux/
 
 # Copy kernel and initrd from the installation tree
-sudo mkdir -p /var/lib/tftpboot/rhel9
-sudo cp /var/www/html/rhel9/images/pxeboot/vmlinuz /var/lib/tftpboot/rhel9/
-sudo cp /var/www/html/rhel9/images/pxeboot/initrd.img /var/lib/tftpboot/rhel9/
+sudo mkdir -p /var/lib/tftpboot/pxelinux/rhel9
+sudo cp /var/www/html/rhel9/images/pxeboot/vmlinuz /var/lib/tftpboot/pxelinux/rhel9/
+sudo cp /var/www/html/rhel9/images/pxeboot/initrd.img /var/lib/tftpboot/pxelinux/rhel9/
 
 # Create the PXE configuration directory
-sudo mkdir -p /var/lib/tftpboot/pxelinux.cfg
+sudo mkdir -p /var/lib/tftpboot/pxelinux/pxelinux.cfg
 ```
 
 ### For UEFI Clients
 
 ```bash
-# Install the shim and GRUB EFI packages
-sudo dnf install -y shim-x64 grub2-efi-x64
+# Copy the EFI boot loader files from the RHEL DVD ISO
+sudo mkdir -p /var/lib/tftpboot/redhat
+sudo cp -r /var/www/html/rhel9/EFI /var/lib/tftpboot/redhat/
+sudo chmod -R 755 /var/lib/tftpboot/redhat/
 
-# Copy the EFI boot loader files
-sudo mkdir -p /var/lib/tftpboot/uefi
-sudo cp /boot/efi/EFI/redhat/shimx64.efi /var/lib/tftpboot/uefi/
-sudo cp /boot/efi/EFI/redhat/grubx64.efi /var/lib/tftpboot/uefi/
-
-# Copy kernel and initrd (same files, just accessible from the UEFI path)
-sudo mkdir -p /var/lib/tftpboot/rhel9
-sudo cp /var/www/html/rhel9/images/pxeboot/vmlinuz /var/lib/tftpboot/rhel9/
-sudo cp /var/www/html/rhel9/images/pxeboot/initrd.img /var/lib/tftpboot/rhel9/
+# Copy kernel and initrd
+sudo mkdir -p /var/lib/tftpboot/images/rhel9
+sudo cp /var/www/html/rhel9/images/pxeboot/vmlinuz /var/lib/tftpboot/images/rhel9/
+sudo cp /var/www/html/rhel9/images/pxeboot/initrd.img /var/lib/tftpboot/images/rhel9/
 ```
 
 ## Creating PXE Configuration Files
@@ -160,7 +157,7 @@ Create the default configuration file that all BIOS PXE clients will use:
 
 ```bash
 # Create the default PXE boot menu for BIOS clients
-sudo tee /var/lib/tftpboot/pxelinux.cfg/default << 'EOF'
+sudo tee /var/lib/tftpboot/pxelinux/pxelinux.cfg/default << 'EOF'
 DEFAULT linux
 PROMPT 0
 TIMEOUT 100
@@ -176,11 +173,11 @@ For UEFI clients, create a GRUB configuration:
 
 ```bash
 # Create the GRUB config for UEFI PXE clients
-sudo tee /var/lib/tftpboot/uefi/grub.cfg << 'EOF'
+sudo tee /var/lib/tftpboot/redhat/EFI/BOOT/grub.cfg << 'EOF'
 set timeout=10
 menuentry 'Install RHEL' {
-  linuxefi rhel9/vmlinuz inst.repo=http://192.168.1.10/rhel9/ ip=dhcp
-  initrdefi rhel9/initrd.img
+  linux images/rhel9/vmlinuz inst.repo=http://192.168.1.10/rhel9/ ip=dhcp
+  initrd images/rhel9/initrd.img
 }
 EOF
 ```
@@ -217,11 +214,11 @@ subnet 192.168.1.0 netmask 255.255.255.0 {
 
         # Serve the correct boot loader based on client architecture
         if option architecture-type = 00:07 {
-            filename "uefi/shimx64.efi";
+            filename "redhat/EFI/BOOT/BOOTX64.EFI";
         } else if option architecture-type = 00:09 {
-            filename "uefi/shimx64.efi";
+            filename "redhat/EFI/BOOT/BOOTX64.EFI";
         } else {
-            filename "pxelinux.0";
+            filename "pxelinux/pxelinux.0";
         }
     }
 }
@@ -271,7 +268,7 @@ Then update the PXE config to include it:
 
 ```bash
 # Updated BIOS PXE config with kickstart
-sudo tee /var/lib/tftpboot/pxelinux.cfg/default << 'EOF'
+sudo tee /var/lib/tftpboot/pxelinux/pxelinux.cfg/default << 'EOF'
 DEFAULT linux
 PROMPT 0
 TIMEOUT 100
