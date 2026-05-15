@@ -10,7 +10,7 @@ Description: Learn how to configure systemd-journald on RHEL to store logs persi
 
 ## The Problem with Default Journal Storage
 
-By default on RHEL, the systemd journal stores logs persistently if the directory `/var/log/journal/` exists, which it typically does on standard installations. However, this is not guaranteed on every setup, especially minimal installations or custom images. If the directory does not exist, journald falls back to storing logs in `/run/log/journal/`, which is a tmpfs filesystem. That means your logs disappear on every reboot.
+By default on RHEL, the systemd journal is not configured to maintain logs persistently. With the default `Storage=auto` behavior, journald stores logs persistently only if the directory `/var/log/journal/` exists. If the directory does not exist, journald falls back to storing logs in `/run/log/journal/`, which is a tmpfs filesystem. That means your logs disappear on every reboot.
 
 If you have ever rebooted a server to fix an issue, only to realize the pre-reboot logs are gone because journald was not configured for persistent storage, you know how frustrating this can be. Let me walk you through making sure that does not happen again.
 
@@ -43,7 +43,7 @@ Most of the settings will be commented out, meaning journald uses its defaults. 
 The `Storage=` directive in `journald.conf` controls where logs are written:
 
 - **`auto`** (default) - Stores logs in `/var/log/journal/` if the directory exists. If it does not exist, uses volatile storage in `/run/log/journal/`.
-- **`persistent`** - Always stores logs in `/var/log/journal/` and creates the directory if it does not exist.
+- **`persistent`** - Stores logs in `/var/log/journal/` and creates the directory if it does not exist, with a temporary fallback to `/run/log/journal/` during early boot or if the disk is not writable.
 - **`volatile`** - Only stores logs in memory at `/run/log/journal/`. Logs are lost on reboot.
 - **`none`** - Disables all log storage. Logs can still be forwarded to other targets.
 
@@ -98,7 +98,7 @@ journalctl --disk-usage
 
 ## Configuring Size Limits
 
-Without size limits, the journal can grow until it fills up your `/var` partition. That is a bad day for everyone. journald has several settings to control this.
+The journal has built-in size limits, but the defaults may still be too large for a small `/var` partition. journald has several settings to control this.
 
 ### Key Size Settings
 
@@ -123,7 +123,7 @@ RuntimeMaxUse=256M
 
 Here is what each setting does:
 
-- **`SystemMaxUse`** - Hard cap on total journal disk usage. Once reached, the oldest entries are deleted to make room.
+- **`SystemMaxUse`** - Upper limit on total journal disk usage. Once reached, journald deletes archived journal files to make room, although active files can make usage temporarily exceed the configured value.
 - **`SystemKeepFree`** - Ensures journald does not eat into the last N bytes of free space on the partition. This protects other applications.
 - **`SystemMaxFileSize`** - Controls how large individual journal files can grow before a new one is started.
 - **`RuntimeMaxUse`** - Same as `SystemMaxUse` but for the volatile journal in `/run/log/journal/`.
@@ -221,16 +221,16 @@ This is incredibly valuable for troubleshooting. If a server crashed and reboote
 
 ## Forwarding to rsyslog
 
-Persistent journald storage does not replace rsyslog. Both can run simultaneously. By default on RHEL, journald forwards messages to rsyslog, which writes them to traditional text files in `/var/log/`.
+Persistent journald storage does not replace rsyslog. Both can run simultaneously. By default on RHEL, journald and rsyslog work together so messages are written to traditional text files in `/var/log/`.
 
-Check that forwarding is enabled:
+Check how journald is configured for direct syslog socket forwarding:
 
 ```bash
-# This should be set to yes (or commented out, as yes is the default)
+# Check whether direct forwarding to the syslog socket is enabled
 grep ForwardToSyslog /etc/systemd/journald.conf
 ```
 
-If the line is commented out, the default is `yes`, meaning rsyslog receives journal entries automatically.
+On current systemd versions, the upstream default for `ForwardToSyslog=` is `no`. RHEL's rsyslog service can still read from the journal through its own configuration, so do not rely on this setting alone to decide whether `/var/log/` files are being written.
 
 ## Automating Cleanup with a systemd Timer
 
@@ -285,9 +285,9 @@ ls -lh /var/log/journal/$(cat /etc/machine-id)/
 
 ## Practical Tips
 
-- **Set `Storage=persistent` explicitly** on every server, even if RHEL typically creates `/var/log/journal/` by default. Being explicit prevents surprises.
+- **Set `Storage=persistent` explicitly** on every server. Being explicit prevents surprises.
 - **Size your journal limits based on the `/var` partition size.** On servers with a small `/var`, keep `SystemMaxUse` conservative (500MB-1GB). On servers with plenty of space, 2-4GB is reasonable.
-- **Use `--vacuum-time` rather than `--vacuum-size` for routine cleanup.** Time-based cleanup is more predictable and ensures you always have at least N days of history.
+- **Use `--vacuum-time` rather than `--vacuum-size` for routine cleanup.** Time-based cleanup is more predictable when you care about retention age, though size limits can still remove older archived journal files when space is constrained.
 - **Check `journalctl --disk-usage` periodically**, especially on servers running verbose applications.
 - **After a crash, always check the previous boot logs** with `journalctl -b -1` before doing anything else. The answer is usually in there.
 
