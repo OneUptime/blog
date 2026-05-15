@@ -34,10 +34,13 @@ update-crypto-policies --show
 # Output: LEGACY
 ```
 
-## Restarting Services
+## Rebooting or Restarting Services
 
 ```bash
-# Restart services to apply the new policy
+# Reboot to fully apply the new policy
+sudo reboot
+
+# Or restart specific affected services if a full reboot is not possible
 sudo systemctl restart sshd
 sudo systemctl restart httpd
 
@@ -78,6 +81,9 @@ Once you have upgraded the legacy systems, switch back to a stronger policy:
 
 ```bash
 sudo update-crypto-policies --set DEFAULT
+sudo reboot
+
+# Or restart specific affected services if a full reboot is not possible
 sudo systemctl restart sshd httpd
 ```
 
