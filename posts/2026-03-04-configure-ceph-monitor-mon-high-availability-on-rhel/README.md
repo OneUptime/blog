@@ -43,6 +43,9 @@ cephadm will deploy monitor daemons on the specified hosts and add them to the q
 If you need more control over placement:
 
 ```bash
+# Disable automated monitor placement before adding monitors explicitly
+sudo ceph orch apply mon --unmanaged
+
 # Add a monitor on a specific host and IP
 sudo ceph orch daemon add mon node2:192.168.1.11
 
@@ -78,7 +81,7 @@ sudo ceph mon stat
 
 ## Monitor Network Configuration
 
-Monitors should communicate on a dedicated network if possible. Set the public network in the Ceph configuration:
+Monitors communicate on the Ceph public network. Set the monitor public subnet in the Ceph configuration:
 
 ```bash
 # Set the public network for monitor communication
