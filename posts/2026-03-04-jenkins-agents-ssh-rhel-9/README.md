@@ -31,8 +31,8 @@ On each RHEL machine that will be a Jenkins agent:
 
 sudo useradd -m -d /var/lib/jenkins -s /bin/bash jenkins
 
-# Install Java 17 (required for the agent)
-sudo dnf install -y java-17-openjdk
+# Install Java 21 (or another Java version supported by your Jenkins controller)
+sudo dnf install -y java-21-openjdk
 
 # Create a workspace directory
 sudo mkdir -p /var/lib/jenkins/workspace
@@ -48,6 +48,7 @@ On the Jenkins controller:
 
 ```bash
 # Generate an SSH key pair for Jenkins
+sudo install -d -m 700 -o jenkins -g jenkins /var/lib/jenkins/.ssh
 sudo -u jenkins ssh-keygen -t ed25519 -f /var/lib/jenkins/.ssh/id_ed25519 -N ""
 
 # Copy the public key
@@ -136,9 +137,13 @@ pipeline {
 ## Monitor Agent Status
 
 ```bash
-# Check agent connectivity from Jenkins CLI
+# Show the agent configuration from Jenkins CLI
 java -jar jenkins-cli.jar -s http://localhost:8080/ \
   get-node rhel9-agent-01
+
+# Wait until the agent is online
+java -jar jenkins-cli.jar -s http://localhost:8080/ \
+  wait-node-online rhel9-agent-01
 
 # List all nodes
 java -jar jenkins-cli.jar -s http://localhost:8080/ \
