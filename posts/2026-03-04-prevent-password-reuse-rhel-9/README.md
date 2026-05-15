@@ -32,9 +32,9 @@ graph TD
 
 ## Configuring pam_pwhistory
 
-### Option 1: Using the pam_pwhistory.conf file (RHEL.1+)
+### Option 1: Using the pam_pwhistory.conf file (RHEL 9.2+)
 
-RHEL.1 introduced a dedicated configuration file:
+RHEL 9.2 introduced a dedicated configuration file:
 
 ```bash
 sudo vi /etc/security/pwhistory.conf
@@ -61,14 +61,22 @@ If your version does not have the config file, or if you prefer PAM-level config
 grep pam_pwhistory /etc/pam.d/system-auth
 ```
 
-If it is not present, you need to add it. The safest way is through an authselect custom profile:
+If it is not present and your authselect version supports it, enable the built-in feature:
+
+```bash
+sudo authselect enable-feature with-pwhistory
+sudo authselect apply-changes
+```
+
+Otherwise, add it through an authselect custom profile:
 
 ```bash
 # Create a custom profile
 sudo authselect create-profile myorg --base-on sssd
 
-# Edit the system-auth template
+# Edit the system-auth and password-auth templates
 sudo vi /etc/authselect/custom/myorg/system-auth
+sudo vi /etc/authselect/custom/myorg/password-auth
 ```
 
 Add the pam_pwhistory line in the password section:
@@ -130,21 +138,26 @@ This catches the "Summer2025 to Summer2026" problem. The user cannot just change
 sudo useradd reusetest
 sudo passwd reusetest
 # Set: TestP@ss1234
+sudo su - reusetest
+passwd
+# Change it to: TestP@ss5678
 ```
 
 ### Try to reuse the password
 
 ```bash
-sudo passwd reusetest
-# Enter: TestP@ss1234 (the same password)
+passwd
+# Enter current password: TestP@ss5678
+# Enter new password: TestP@ss1234 (the previous password)
 # Expected: "Password has been already used. Choose another."
 ```
 
 ### Try a similar password
 
 ```bash
-sudo passwd reusetest
-# Enter: TestP@ss1235 (only 1 character different)
+passwd
+# Enter current password: TestP@ss5678
+# Enter new password: TestP@ss5679 (only 1 character different)
 # Expected: "BAD PASSWORD: The password is too similar to the old one"
 ```
 
