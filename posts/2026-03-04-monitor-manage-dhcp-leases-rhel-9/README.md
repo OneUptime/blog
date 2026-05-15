@@ -37,23 +37,48 @@ lease 192.168.1.150 {
 ```
 
 Key fields:
-- `starts` / `ends` - Lease start and expiration times
-- `binding state` - active, free, abandoned, or expired
+- `starts` / `ends` - Lease start and expiration times, recorded in UTC
+- `binding state` - active, free, or abandoned for DHCPv4; DHCPv6 leases commonly use active or expired
 - `hardware ethernet` - Client's MAC address
 - `client-hostname` - Hostname the client reported
 
 ## Listing Active Leases
 
-The lease file can contain both active and expired entries. To see only active leases:
+The lease file is append-only: if the same lease appears more than once, the last entry is the current one. To see current active leases:
 
 ```bash
-grep -A 8 "binding state active" /var/lib/dhcpd/dhcpd.leases | grep -E "^lease|hardware|client-hostname|ends"
+awk '
+/^lease / { ip=$2; mac=""; name=""; end=""; state="" }
+/^[[:space:]]*ends / { end=$3" "$4; gsub(/;/,"",end) }
+/^[[:space:]]*hardware ethernet/ { mac=$3; gsub(/;/,"",mac) }
+/^[[:space:]]*client-hostname/ { name=$2; gsub(/[";]/,"",name) }
+/^[[:space:]]*binding state/ { state=$3; gsub(/;/,"",state) }
+/^}/ { lease[ip]=state "|" end "|" mac "|" name }
+END {
+    for (ip in lease) {
+        split(lease[ip], f, "|")
+        if (f[1] == "active") {
+            printf "%-16s %-20s %-20s %s\n", ip, f[3], f[4], f[2]
+        }
+    }
+}
+' /var/lib/dhcpd/dhcpd.leases | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n
 ```
 
 Count active leases:
 
 ```bash
-grep -c "binding state active" /var/lib/dhcpd/dhcpd.leases
+awk '
+/^lease / { ip=$2; state="" }
+/^[[:space:]]*binding state/ { state=$3; gsub(/;/,"",state) }
+/^}/ { leases[ip]=state }
+END {
+    for (ip in leases) {
+        if (leases[ip] == "active") count++
+    }
+    print count + 0
+}
+' /var/lib/dhcpd/dhcpd.leases
 ```
 
 ## Building a Lease Summary Script
@@ -69,26 +94,46 @@ LEASE_FILE="/var/lib/dhcpd/dhcpd.leases"
 
 echo "=== DHCP Lease Status ==="
 echo ""
-echo "Active leases:    $(grep -c 'binding state active' $LEASE_FILE)"
-echo "Free leases:      $(grep -c 'binding state free' $LEASE_FILE)"
-echo "Abandoned leases: $(grep -c 'binding state abandoned' $LEASE_FILE)"
-echo "Expired leases:   $(grep -c 'binding state expired' $LEASE_FILE)"
+awk '
+/^lease / { ip=$2; mac=""; name=""; state="" }
+/hardware ethernet/ { mac=$3; gsub(/;/,"",mac) }
+/client-hostname/ { name=$2; gsub(/[";]/,"",name) }
+/^[[:space:]]*binding state/ { state=$3; gsub(/;/,"",state) }
+/^}/ {
+    states[ip]=state
+    details[ip]=mac "|" name
+}
+END {
+    for (ip in states) {
+        counts[states[ip]]++
+    }
+    printf "Active leases:    %d\n", counts["active"]
+    printf "Free leases:      %d\n", counts["free"]
+    printf "Abandoned leases: %d\n", counts["abandoned"]
+}
+' "$LEASE_FILE"
 echo ""
 echo "=== Active Lease Details ==="
 echo ""
 
 awk '
-/^lease / { ip=$2 }
-/hardware ethernet/ { mac=$3; gsub(/;/,"",mac) }
-/client-hostname/ { name=$2; gsub(/[";]/,"",name) }
-/binding state active/ { active=1 }
+/^lease / { ip=$2; mac=""; name=""; state="" }
+/^[[:space:]]*hardware ethernet/ { mac=$3; gsub(/;/,"",mac) }
+/^[[:space:]]*client-hostname/ { name=$2; gsub(/[";]/,"",name) }
+/^[[:space:]]*binding state/ { state=$3; gsub(/;/,"",state) }
 /^}/ {
-    if (active) {
-        printf "%-16s %-20s %s\n", ip, mac, name
-    }
-    active=0; ip=""; mac=""; name=""
+    states[ip]=state
+    details[ip]=mac "|" name
 }
-' $LEASE_FILE | sort -t. -k4 -n
+END {
+    for (ip in states) {
+        if (states[ip] == "active") {
+            split(details[ip], f, "|")
+            printf "%-16s %-20s %s\n", ip, f[1], f[2]
+        }
+    }
+}
+' "$LEASE_FILE" | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n
 
 echo ""
 SCRIPT
@@ -110,7 +155,12 @@ Quick pool check:
 
 ```bash
 TOTAL=101
-ACTIVE=$(grep -c "binding state active" /var/lib/dhcpd/dhcpd.leases)
+ACTIVE=$(awk '
+/^lease / { ip=$2; state="" }
+/^[[:space:]]*binding state/ { state=$3; gsub(/;/,"",state) }
+/^}/ { leases[ip]=state }
+END { for (ip in leases) if (leases[ip] == "active") count++; print count + 0 }
+' /var/lib/dhcpd/dhcpd.leases)
 PERCENT=$((ACTIVE * 100 / TOTAL))
 echo "Pool utilization: $ACTIVE/$TOTAL ($PERCENT%)"
 ```
@@ -126,7 +176,12 @@ LEASE_FILE="/var/lib/dhcpd/dhcpd.leases"
 TOTAL_POOL=101
 THRESHOLD=80
 
-ACTIVE=$(grep -c "binding state active" $LEASE_FILE)
+ACTIVE=$(awk '
+/^lease / { ip=$2; state="" }
+/^[[:space:]]*binding state/ { state=$3; gsub(/;/,"",state) }
+/^}/ { leases[ip]=state }
+END { for (ip in leases) if (leases[ip] == "active") count++; print count + 0 }
+' "$LEASE_FILE")
 PERCENT=$((ACTIVE * 100 / TOTAL_POOL))
 
 if [ $PERCENT -ge $THRESHOLD ]; then
@@ -145,15 +200,32 @@ echo "*/15 * * * * root /usr/local/bin/dhcp-pool-alert.sh" > /etc/cron.d/dhcp-mo
 
 ## Handling Abandoned Leases
 
-A lease becomes "abandoned" when the DHCP server detects that the IP is already in use (by pinging before offering). Abandoned leases don't get reassigned automatically.
+A lease becomes "abandoned" when the DHCP server detects that the IP is already in use, such as by pinging before offering. Abandoned leases remain unavailable for at least `abandon-lease-time` seconds, then dhcpd can try to reclaim them if no free leases are available.
 
 Find abandoned leases:
 
 ```bash
-grep -B 1 "binding state abandoned" /var/lib/dhcpd/dhcpd.leases
+awk '
+/^lease / { ip=$2; mac=""; name=""; state="" }
+/^[[:space:]]*hardware ethernet/ { mac=$3; gsub(/;/,"",mac) }
+/^[[:space:]]*client-hostname/ { name=$2; gsub(/[";]/,"",name) }
+/^[[:space:]]*binding state/ { state=$3; gsub(/;/,"",state) }
+/^}/ {
+    states[ip]=state
+    details[ip]=mac "|" name
+}
+END {
+    for (ip in states) {
+        if (states[ip] == "abandoned") {
+            split(details[ip], f, "|")
+            printf "%-16s %-20s %s\n", ip, f[1], f[2]
+        }
+    }
+}
+' /var/lib/dhcpd/dhcpd.leases | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n
 ```
 
-To reclaim abandoned leases, you need to stop the server, remove them from the lease file, and restart:
+If you must manually clear abandoned leases instead of waiting for dhcpd to reclaim them, stop the server, back up the lease file, edit carefully, and restart:
 
 ```bash
 systemctl stop dhcpd
@@ -163,7 +235,21 @@ systemctl stop dhcpd
 cp /var/lib/dhcpd/dhcpd.leases /var/lib/dhcpd/dhcpd.leases.backup
 
 # Remove abandoned entries (be careful with this)
-awk '/^lease.*\{/{lease=$0; data=""} {data=data"\n"$0} /^\}/{if(data !~ /binding state abandoned/) print data}' \
+awk '
+/^lease[[:space:]][^{]+[[:space:]]*\{/ {
+    in_lease=1; block=$0 ORS; abandoned=0; next
+}
+in_lease {
+    block=block $0 ORS
+    if ($0 ~ /^[[:space:]]*binding state abandoned;/) abandoned=1
+    if ($0 ~ /^}/) {
+        if (!abandoned) printf "%s", block
+        in_lease=0; block=""; abandoned=0
+    }
+    next
+}
+{ print }
+' \
     /var/lib/dhcpd/dhcpd.leases > /var/lib/dhcpd/dhcpd.leases.clean
 
 mv /var/lib/dhcpd/dhcpd.leases.clean /var/lib/dhcpd/dhcpd.leases
@@ -176,9 +262,9 @@ To prevent the underlying conflict that caused the abandonment, find out what de
 
 ## Lease File Maintenance
 
-The lease file grows over time as expired entries accumulate. ISC DHCP periodically rewrites the file to clean up expired entries, but you can force it:
+The lease file grows over time as old entries accumulate. ISC DHCP periodically rewrites the file from its in-memory lease database to prevent unbounded growth.
 
-Stop the server and let it clean up on restart:
+If you have just restored or manually maintained the lease file, restart the service after checking the file:
 
 ```bash
 systemctl restart dhcpd
@@ -226,6 +312,7 @@ Then use `omshell` to query and modify leases:
 omshell << 'EOF'
 server localhost
 port 7911
+key-algorithm HMAC-SHA256
 key omapi-key your-base64-secret-here
 connect
 new lease
@@ -243,16 +330,22 @@ For reporting or integration with monitoring tools, export lease data to a struc
 ```bash
 awk '
 /^lease / { ip=$2 }
-/starts / { start=$3" "$4; gsub(/;/,"",start) }
-/ends / { end=$3" "$4; gsub(/;/,"",end) }
-/hardware ethernet/ { mac=$3; gsub(/;/,"",mac) }
-/client-hostname/ { name=$2; gsub(/[";]/,"",name) }
-/binding state/ { state=$3; gsub(/;/,"",state) }
+/^[[:space:]]*starts / { start=$3" "$4; gsub(/;/,"",start) }
+/^[[:space:]]*ends / { end=$3" "$4; gsub(/;/,"",end) }
+/^[[:space:]]*hardware ethernet/ { mac=$3; gsub(/;/,"",mac) }
+/^[[:space:]]*client-hostname/ { name=$2; gsub(/[";]/,"",name) }
+/^[[:space:]]*binding state/ { state=$3; gsub(/;/,"",state) }
 /^\}/ {
-    if (state == "active") {
-        printf "%s,%s,%s,%s,%s\n", ip, mac, name, start, end
-    }
+    states[ip]=state
+    details[ip]=mac "," name "," start "," end
     ip=""; mac=""; name=""; state=""; start=""; end=""
+}
+END {
+    for (ip in states) {
+        if (states[ip] == "active") {
+            print ip "," details[ip]
+        }
+    }
 }
 ' /var/lib/dhcpd/dhcpd.leases > /tmp/dhcp-leases.csv
 
