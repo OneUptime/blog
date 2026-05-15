@@ -8,7 +8,7 @@ Description: Learn how to configure Node.js Cluster Mode for Multi-Core Servers 
 
 ---
 
-This guide covers how to Configure Node.js Cluster Mode for Multi-Core Servers on RHEL. Following these steps will help you set up a reliable configuration on RHEL.
+This guide covers how to configure Node.js Cluster Mode for multi-core servers on RHEL. Following these steps will help you set up a reliable clustered Node.js service on RHEL.
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ This guide covers how to Configure Node.js Cluster Mode for Multi-Core Servers o
 
 ## Overview
 
-Configure Node.js Cluster Mode for Multi-Core Servers requires careful planning and execution. This guide walks through the complete process from installation to verification.
+Configuring Node.js Cluster Mode for multi-core servers requires careful planning and execution. This guide walks through the complete process from installation to verification. The Node.js `cluster` module starts worker processes that can share the same server port, which lets one application use multiple CPU cores.
 
 ## Step 1: Prepare the System
 
@@ -31,37 +31,102 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y curl firewalld
 ```
 
 ## Step 2: Install Required Packages
 
+On RHEL 9, Node.js is available from the AppStream module repositories. List the available streams and install a supported Node.js stream:
+
 ```bash
-sudo dnf install -y <package-name>
+sudo dnf module list nodejs
+sudo dnf module install -y nodejs:18
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+node --version
+npm --version
+rpm -qi nodejs
 ```
 
 ## Step 3: Configure the Service
 
-Create or edit the main configuration file:
+Create a dedicated service user and application directory:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+id -u nodeapp >/dev/null 2>&1 || sudo useradd --system --home /opt/cluster-demo --shell /sbin/nologin nodeapp
+sudo install -d -o nodeapp -g nodeapp /opt/cluster-demo
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+Create the clustered Node.js application:
+
+```bash
+sudo tee /opt/cluster-demo/server.js >/dev/null <<'EOF'
+const cluster = require('node:cluster');
+const http = require('node:http');
+const { availableParallelism } = require('node:os');
+const process = require('node:process');
+
+const port = Number(process.env.PORT || 3000);
+const workers = availableParallelism();
+
+if (cluster.isPrimary) {
+  console.log(`Primary ${process.pid} is running`);
+
+  for (let i = 0; i < workers; i += 1) {
+    cluster.fork();
+  }
+
+  cluster.on('exit', (worker, code, signal) => {
+    console.log(`Worker ${worker.process.pid} exited with code ${code} and signal ${signal}`);
+    cluster.fork();
+  });
+} else {
+  http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end(`Handled by worker ${process.pid}\n`);
+  }).listen(port, '0.0.0.0', () => {
+    console.log(`Worker ${process.pid} listening on port ${port}`);
+  });
+}
+EOF
+sudo chown nodeapp:nodeapp /opt/cluster-demo/server.js
+```
+
+Create the systemd unit:
+
+```bash
+sudo tee /etc/systemd/system/node-cluster-demo.service >/dev/null <<'EOF'
+[Unit]
+Description=Node.js cluster demo service
+After=network.target
+
+[Service]
+Type=simple
+User=nodeapp
+Group=nodeapp
+WorkingDirectory=/opt/cluster-demo
+Environment=NODE_ENV=production
+Environment=PORT=3000
+ExecStart=/usr/bin/node /opt/cluster-demo/server.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+Apply the recommended settings for your environment. Start with the defaults and adjust the `PORT` value and worker logic based on your workload and hardware.
 
 ## Step 4: Start and Enable the Service
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo systemctl daemon-reload
+sudo systemctl enable --now node-cluster-demo.service
+sudo systemctl status node-cluster-demo.service
 ```
 
 ## Step 5: Verify the Configuration
@@ -69,13 +134,14 @@ sudo systemctl status <service>
 Test the setup:
 
 ```bash
-sudo <service> --test
+curl http://127.0.0.1:3000/
+pgrep -af "node /opt/cluster-demo/server.js"
 ```
 
 Check the logs for any errors:
 
 ```bash
-journalctl -u <service> -f
+journalctl -u node-cluster-demo.service -f
 ```
 
 ## Step 6: Configure Firewall Rules
@@ -83,7 +149,8 @@ journalctl -u <service> -f
 If the service needs network access:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo systemctl enable --now firewalld
+sudo firewall-cmd --permanent --add-port=3000/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -92,8 +159,8 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+systemctl show node-cluster-demo.service --property=MemoryCurrent
+top -p "$(pgrep -d, -f 'node /opt/cluster-demo/server.js')"
 ```
 
 ## Security Considerations
@@ -107,10 +174,10 @@ top -p $(pidof <service>)
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
+1. **Service fails to start**: Check `journalctl -u node-cluster-demo.service -xe` for error messages
 2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
 3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
 
 ## Conclusion
 
-You have successfully configured configure node.js cluster mode for multi-core servers on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
+You have successfully configured Node.js cluster mode for multi-core servers on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
