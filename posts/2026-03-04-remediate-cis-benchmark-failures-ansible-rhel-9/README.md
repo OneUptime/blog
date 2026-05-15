@@ -15,9 +15,9 @@ Scanning for CIS compliance is only half the battle. The other half is fixing th
 You need a control node with Ansible installed and SSH access to your RHEL targets:
 
 ```bash
-# Install Ansible on your control node
+# Install Ansible and the collections used by RHEL remediation playbooks
 
-dnf install -y ansible-core
+dnf install -y ansible-core rhc-worker-playbook
 
 # On each target, install the SCAP Security Guide
 dnf install -y scap-security-guide openscap-scanner
@@ -40,11 +40,13 @@ Run the playbook against your targets:
 
 ```bash
 # Apply CIS Level 1 Server hardening
+ANSIBLE_COLLECTIONS_PATH=/usr/share/rhc-worker-playbook/ansible/collections/ansible_collections/ \
 ansible-playbook -i inventory.ini \
   /usr/share/scap-security-guide/ansible/rhel9-playbook-cis_server_l1.yml \
   --check --diff
 
 # Once you have reviewed the changes, run for real
+ANSIBLE_COLLECTIONS_PATH=/usr/share/rhc-worker-playbook/ansible/collections/ansible_collections/ \
 ansible-playbook -i inventory.ini \
   /usr/share/scap-security-guide/ansible/rhel9-playbook-cis_server_l1.yml
 ```
@@ -62,10 +64,13 @@ oscap xccdf eval \
   --results /tmp/cis-results.xml \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
 
+# Find the result ID
+oscap info /tmp/cis-results.xml
+
 # Generate an Ansible playbook from the failures
 oscap xccdf generate fix \
   --fix-type ansible \
-  --result-id "" \
+  --result-id xccdf_org.open-scap_testresult_xccdf_org.ssgproject.content_profile_cis_server_l1 \
   --output /tmp/cis-fix.yml \
   /tmp/cis-results.xml
 ```
@@ -243,9 +248,9 @@ oscap xccdf eval \
 
 # Compare pass/fail counts
 echo "Before:"
-grep -c 'result="fail"' /tmp/cis-results.xml
+grep -c '<result>fail</result>' /tmp/cis-results.xml
 echo "After:"
-grep -c 'result="fail"' /tmp/cis-post-remediation.xml
+grep -c '<result>fail</result>' /tmp/cis-post-remediation.xml
 ```
 
 ## Handle Exceptions
