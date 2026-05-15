@@ -53,24 +53,32 @@ df -h /var
 # Register the system with Red Hat
 sudo subscription-manager register --username YOUR_USERNAME --password YOUR_PASSWORD
 
-# Attach the Satellite subscription
+# Confirm that a Satellite subscription is available
 sudo subscription-manager list --available --matches='*Satellite*'
-sudo subscription-manager attach --pool=POOL_ID_FROM_ABOVE
 
 # Disable all repositories and enable only what Satellite needs
 sudo subscription-manager repos --disable '*'
 sudo subscription-manager repos \
     --enable=rhel-9-for-x86_64-baseos-rpms \
     --enable=rhel-9-for-x86_64-appstream-rpms \
-    --enable=satellite-6.15-for-rhel-9-x86_64-rpms \
-    --enable=satellite-maintenance-6.15-for-rhel-9-x86_64-rpms
+    --enable=satellite-6.17-for-rhel-9-x86_64-rpms \
+    --enable=satellite-maintenance-6.17-for-rhel-9-x86_64-rpms
 
 # Update the system
 sudo dnf update -y
 
 # Configure the firewall
-sudo firewall-cmd --add-port={53/udp,67-69/udp,80/tcp,443/tcp,5647/tcp,8000/tcp,8140/tcp,8443/tcp,9090/tcp} --permanent
-sudo firewall-cmd --reload
+sudo firewall-cmd \
+    --add-port="8000/tcp" \
+    --add-port="9090/tcp"
+sudo firewall-cmd \
+    --add-service=dns \
+    --add-service=dhcp \
+    --add-service=tftp \
+    --add-service=http \
+    --add-service=https \
+    --add-service=puppetmaster
+sudo firewall-cmd --runtime-to-permanent
 
 # Disable and stop any conflicting services
 sudo systemctl disable --now named dhcpd 2>/dev/null
