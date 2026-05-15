@@ -14,7 +14,7 @@ DigitalOcean Spaces is an S3-compatible object storage service that integrates w
 
 ## Prerequisites
 
-- Flux CD v2.0 or later installed on your Kubernetes cluster
+- Flux CD v2.4 or later installed on your Kubernetes cluster
 - A DigitalOcean account with Spaces enabled
 - DigitalOcean API access or an S3-compatible CLI tool that can create buckets
 - An S3-compatible CLI tool (e.g., `s3cmd` or `aws` CLI)
@@ -41,14 +41,14 @@ doctl spaces keys create flux-key \
   --grants 'bucket=flux-manifests;permission=read'
 ```
 
-Once you have your access key and secret key, configure your S3 client.
+Once you have your access key and secret key, configure your S3 client. Use an AWS region such as `us-east-1` for AWS CLI compatibility; the DigitalOcean datacenter region is selected by the Spaces endpoint.
 
 ```bash
 # Configure the AWS CLI to work with DigitalOcean Spaces
 aws configure --profile spaces
 # Access Key ID: your-spaces-access-key
 # Secret Access Key: your-spaces-secret-key
-# Default region: nyc3
+# Default region: us-east-1
 # Default output format: json
 ```
 
@@ -98,7 +98,6 @@ spec:
   bucketName: flux-manifests
   # DigitalOcean Spaces endpoint format: {region}.digitaloceanspaces.com
   endpoint: nyc3.digitaloceanspaces.com
-  region: nyc3
   secretRef:
     name: spaces-bucket-creds
 ```
@@ -129,7 +128,6 @@ spec:
   provider: generic
   bucketName: flux-manifests
   endpoint: nyc3.digitaloceanspaces.com
-  region: nyc3
   # Only download files from the staging prefix
   prefix: staging/my-app/
   secretRef:
@@ -163,7 +161,6 @@ spec:
   provider: generic
   bucketName: flux-manifests
   endpoint: nyc3.digitaloceanspaces.com
-  region: nyc3
   prefix: production/my-app/
   secretRef:
     name: spaces-bucket-creds
@@ -241,7 +238,6 @@ spec:
   bucketName: flux-manifests
   # Use the regional endpoint for the Space
   endpoint: nyc3.digitaloceanspaces.com
-  region: nyc3
   secretRef:
     name: spaces-bucket-creds
 ```
