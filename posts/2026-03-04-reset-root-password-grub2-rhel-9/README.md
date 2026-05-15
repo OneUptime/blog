@@ -39,10 +39,10 @@ Reboot the server. When the GRUB menu appears, highlight the default kernel entr
 
 ### Step 2: Add rd.break to the Kernel Line
 
-Find the line that starts with `linux` or `linuxefi`. Move to the end of that line and add `rd.break`.
+Find the line that starts with `linux`. Move to the end of that line and add `rd.break`.
 
-```bash
-linuxefi /vmlinuz-5.14.0-362.el9.x86_64 root=/dev/mapper/rhel-root ro crashkernel=256M ... rd.break
+```text
+linux ($root)/vmlinuz-5.14.0-362.el9.x86_64 root=/dev/mapper/rhel-root ro crashkernel=256M ... rd.break
 ```
 
 Also remove `rhgb` and `quiet` if present, so you can see what is happening during boot.
@@ -76,7 +76,7 @@ passwd root
 
 ### Step 6: Handle SELinux Relabeling
 
-Since you changed a file (the shadow password file) without SELinux context, you need to trigger a relabel on the next boot.
+Since you changed the shadow password file from the initramfs environment, you need to trigger a relabel on the next boot.
 
 ```bash
 # Create the autorelabel trigger file
@@ -99,7 +99,7 @@ The system will reboot. It will take extra time on the first boot because of the
 
 ### Step 8: Verify
 
-Once the system boots normally, log in with the new root password.
+Once the system boots normally, log in with the new root password. Use the console, or SSH only if root SSH login is allowed on your server.
 
 ```bash
 # Test the new password
@@ -118,7 +118,7 @@ If the root filesystem uses LUKS encryption, you will be prompted for the LUKS p
 
 ### SELinux Relabeling Time
 
-The `/.autorelabel` step is critical. Without it, you will not be able to log in with the new password because SELinux will block access to the shadow file with the wrong security context. The relabeling can take anywhere from 1-15 minutes depending on filesystem size.
+The `/.autorelabel` step is critical. Without it, SELinux context issues can prevent you from logging in with the new password. The relabeling can take anywhere from 1-15 minutes depending on filesystem size.
 
 ### Physical Security Implications
 
@@ -142,11 +142,11 @@ If you cannot access the GRUB menu (for example, if GRUB itself is broken or pas
 ```bash
 chroot /mnt/sysimage
 passwd root
-touch /.autorelabel
+rm -f /.autorelabel
 exit
-reboot
+exit
 ```
 
 ## Wrapping Up
 
-Resetting the root password on RHEL takes about five minutes once you know the process. The key steps are: edit the GRUB entry to add `rd.break`, remount `/sysroot` as read-write, chroot in, change the password, touch `/.autorelabel`, and reboot. The most common mistake people make is forgetting the `/.autorelabel` step, which leads to the new password not working because of SELinux context mismatches. Follow the steps in order and you will be fine.
+Resetting the root password on RHEL takes about five minutes once you know the process. The key steps are: edit the GRUB entry to add `rd.break`, remount `/sysroot` as read-write, chroot in, change the password, touch `/.autorelabel`, and reboot. The most common mistake people make is forgetting the `/.autorelabel` step, which can lead to the new password not working because of SELinux context mismatches. Follow the steps in order and you will be fine.
