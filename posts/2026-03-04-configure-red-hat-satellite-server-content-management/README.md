@@ -36,12 +36,12 @@ Before configuring content management, ensure you have:
 
 ## Step 1 - Upload a Subscription Manifest
 
-If you have not already done this, generate a manifest in the Red Hat Customer Portal and upload it to Satellite:
+If you have not already done this, generate a manifest in the Red Hat Hybrid Cloud Console and upload it to Satellite. For disconnected Satellite servers, generate the manifest in the Red Hat Customer Portal instead:
 
-1. Log in to access.redhat.com
-2. Go to Subscriptions, then Subscription Allocations
+1. Log in to console.redhat.com
+2. Go to Red Hat Satellite, then Manifests
 3. Create a new allocation for your Satellite
-4. Add subscriptions and download the manifest ZIP file
+4. Download the manifest ZIP file
 
 Then upload it via the Satellite CLI:
 
@@ -80,11 +80,11 @@ sudo hammer repository-set enable \
 For additional repositories like Satellite Client tools:
 
 ```bash
-# Enable Satellite Client repository for RHEL
+# Enable Satellite Client repository for RHEL 9
 sudo hammer repository-set enable \
     --organization "MyOrganization" \
     --product "Red Hat Enterprise Linux for x86_64" \
-    --name "Red Hat Satellite Client 6 for RHEL x86_64 (RPMs)" \
+    --name "Red Hat Satellite Client 6 for RHEL 9 x86_64 (RPMs)" \
     --basearch "x86_64"
 ```
 
@@ -209,6 +209,7 @@ Promote the published version through lifecycle environments:
 sudo hammer content-view version promote \
     --organization "MyOrganization" \
     --content-view "RHEL9-Server" \
+    --version 1 \
     --to-lifecycle-environment "Development" \
     --async
 
@@ -216,6 +217,7 @@ sudo hammer content-view version promote \
 sudo hammer content-view version promote \
     --organization "MyOrganization" \
     --content-view "RHEL9-Server" \
+    --version 1 \
     --to-lifecycle-environment "Staging" \
     --async
 
@@ -223,6 +225,7 @@ sudo hammer content-view version promote \
 sudo hammer content-view version promote \
     --organization "MyOrganization" \
     --content-view "RHEL9-Server" \
+    --version 1 \
     --to-lifecycle-environment "Production" \
     --async
 ```
