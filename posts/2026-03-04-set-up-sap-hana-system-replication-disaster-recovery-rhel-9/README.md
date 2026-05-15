@@ -24,6 +24,7 @@ Set up SAP HANA System Replication on RHEL 9 for disaster recovery. Running SAP 
 ```bash
 sudo subscription-manager repos --enable=rhel-9-for-x86_64-sap-solutions-rpms
 sudo subscription-manager repos --enable=rhel-9-for-x86_64-sap-netweaver-rpms
+sudo subscription-manager repos --enable=rhel-9-for-x86_64-highavailability-rpms
 ```
 
 ## Step 2 - Install SAP-Specific Packages
@@ -32,7 +33,7 @@ sudo subscription-manager repos --enable=rhel-9-for-x86_64-sap-netweaver-rpms
 sudo dnf install -y tuned-profiles-sap-hana resource-agents-sap-hana
 # For RHEL System Roles for SAP:
 
-sudo dnf install -y rhel-system-roles-sap
+sudo dnf install -y ansible-core rhel-system-roles-sap rhel-system-roles
 ```
 
 ## Step 3 - Apply SAP Tuning Profile
@@ -45,20 +46,20 @@ This configures kernel parameters, memory settings, and I/O schedulers as recomm
 
 ## Step 4 - Configure Kernel Parameters
 
-Verify the critical settings in `/etc/sysctl.conf`:
-
-```text
-vm.swappiness = 10
-vm.dirty_ratio = 10
-vm.dirty_background_ratio = 3
-net.core.somaxconn = 4096
-net.ipv4.tcp_max_syn_backlog = 8192
-```
-
-Apply:
+If you configure the host manually, verify the SAP HANA settings from the applicable SAP Notes instead of hardcoding values that conflict with RHEL System Roles or tuned. For example:
 
 ```bash
-sudo sysctl -p
+sysctl vm.swappiness
+sysctl vm.dirty_ratio
+sysctl vm.dirty_background_ratio
+sysctl net.core.somaxconn
+sysctl net.ipv4.tcp_max_syn_backlog
+```
+
+If changes are required, place them in a dedicated file under `/etc/sysctl.d/` and apply them:
+
+```bash
+sudo sysctl --system
 ```
 
 ## Step 5 - Set Up High Availability (If Required)
@@ -75,7 +76,7 @@ Configure the cluster with pcs commands following the SAP-specific resource agen
 
 ## Step 6 - Validate the Configuration
 
-Use the SAP HANA Hardware Configuration Check Tool (HWCCT) or the RHEL System Roles validation tasks to confirm your system meets SAP requirements.
+Use SAP HANA Hardware and Cloud Measurement Tools (HCMT) or the RHEL System Roles validation tasks to confirm your system meets SAP requirements.
 
 ## Summary
 
