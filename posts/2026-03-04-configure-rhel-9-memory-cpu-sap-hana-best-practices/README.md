@@ -16,8 +16,8 @@ SAP HANA is an in-memory database that demands careful memory and CPU configurat
 graph TB
     subgraph "RHEL Memory Layout for HANA"
         Total[Total Physical RAM]
-        Total --> HANA_Alloc[HANA Memory Allocation - 90%]
-        Total --> OS_Reserve[OS Reserved - 10%]
+        Total --> HANA_Alloc[HANA Global Allocation Limit]
+        Total --> OS_Reserve[OS and Other Processes]
         HANA_Alloc --> Row[Row Store]
         HANA_Alloc --> Column[Column Store]
         HANA_Alloc --> Code[Code/Stack]
@@ -41,35 +41,39 @@ SAP HANA is NUMA-aware and performs best with proper NUMA configuration.
 
 numactl --hardware
 
-# Verify NUMA balancing is enabled (recommended by SAP)
+# Verify automatic NUMA balancing is disabled for SAP HANA
 cat /proc/sys/kernel/numa_balancing
-# Should return 1
+# Should return 0
 
-# If NUMA balancing is off, enable it
-echo 1 | sudo tee /proc/sys/kernel/numa_balancing
+# If automatic NUMA balancing is on, disable it
+echo 0 | sudo tee /proc/sys/kernel/numa_balancing
+
+# Stop numad if it is installed and running
+sudo systemctl disable --now numad
 
 # Make it persistent
-echo 'kernel.numa_balancing = 1' | sudo tee /etc/sysctl.d/sap-numa.conf
+echo 'kernel.numa_balancing = 0' | sudo tee /etc/sysctl.d/sap-numa.conf
 sudo sysctl --system
 ```
 
-## Step 2: Disable Transparent Huge Pages
+## Step 2: Configure Transparent Huge Pages
 
 ```bash
-# THP must be disabled for SAP HANA
+# SAP recommends THP madvise for SAP HANA on RHEL 9.2 and later
+# For older supported OS combinations, use transparent_hugepage=never
 # Check current status
 cat /sys/kernel/mm/transparent_hugepage/enabled
 
-# Disable via kernel parameter (persistent across reboots)
-sudo grubby --update-kernel=ALL --args="transparent_hugepage=never"
+# Set via kernel parameter (persistent across reboots)
+sudo grubby --update-kernel=ALL --args="transparent_hugepage=madvise"
 
-# Disable immediately without reboot
-echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
+# Apply immediately without reboot
+echo madvise | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
 echo never | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
 
 # Verify
 cat /sys/kernel/mm/transparent_hugepage/enabled
-# Expected: always madvise [never]
+# Expected: always [madvise] never
 ```
 
 ## Step 3: Configure Memory Overcommit
@@ -77,7 +81,7 @@ cat /sys/kernel/mm/transparent_hugepage/enabled
 ```bash
 # SAP HANA requires specific overcommit settings
 sudo tee /etc/sysctl.d/sap-hana-memory.conf > /dev/null <<'EOF'
-# Do not overcommit memory - HANA needs real memory guarantees
+# Use the kernel default heuristic overcommit policy
 vm.overcommit_memory = 0
 
 # Set swappiness low to avoid swapping HANA data
@@ -120,48 +124,47 @@ sudo tuned-adm profile sap-hana
 tuned-adm active
 ```
 
-## Step 5: Configure CPU Isolation (Optional for Large Systems)
+## Step 5: Configure CPU Affinity (Optional for Large Systems)
 
-For very large HANA instances, you can isolate CPUs from the OS scheduler:
+For very large HANA instances, you can reserve CPUs for HANA services:
 
 ```bash
 # Check the number of CPUs
 nproc
 
-# Isolate CPUs 2-63 for HANA (keep CPUs 0-1 for OS tasks)
+# Isolate CPUs 2-63 from the general scheduler (keep CPUs 0-1 for OS tasks)
 # Add to kernel command line
 sudo grubby --update-kernel=ALL --args="isolcpus=2-63"
 
-# Alternative: use cgroups to allocate CPUs to HANA
+# Alternative: use systemd resource control to allocate CPUs to a HANA service
 # This is less disruptive and does not require a reboot
-sudo mkdir -p /sys/fs/cgroup/cpuset/sap_hana
-echo "2-63" | sudo tee /sys/fs/cgroup/cpuset/sap_hana/cpuset.cpus
-echo "0-1" | sudo tee /sys/fs/cgroup/cpuset/sap_hana/cpuset.mems
+sudo systemctl set-property SAP<SID>_<INSTANCE>.service AllowedCPUs=2-63
 ```
 
-## Step 6: Configure Huge Pages for SAP HANA
+## Step 6: Avoid Unused Static Huge Pages for SAP HANA
 
-While THP is disabled, static huge pages can be beneficial:
+Static HugeTLB pages reserve memory that normal processes cannot use. Do not reserve them unless SAP, Red Hat, or your hardware vendor explicitly requires them for your deployment:
 
 ```bash
-# Calculate the number of huge pages needed
-# Example: 120 GB for HANA / 2 MB per huge page = 61440 pages
-echo 61440 | sudo tee /proc/sys/vm/nr_hugepages
+# Check whether static huge pages are reserved
+grep HugePages /proc/meminfo
 
-# Make persistent
-echo 'vm.nr_hugepages = 61440' | sudo tee -a /etc/sysctl.d/sap-hana-memory.conf
+# Clear unused static huge page reservations
+echo 0 | sudo tee /proc/sys/vm/nr_hugepages
+
+# Make the setting persistent
+echo 'vm.nr_hugepages = 0' | sudo tee -a /etc/sysctl.d/sap-hana-memory.conf
 sudo sysctl --system
 
-# Verify huge pages allocation
+# Verify huge pages allocation is not reserved
 grep HugePages /proc/meminfo
 ```
 
 ## Step 7: Validate the Configuration
 
 ```bash
-# Run the SAP HANA hardware check tool
-# As the hdbadm user:
-sudo su - hdbadm -c '/usr/sap/HDB/HDB00/exe/hdbcheck'
+# Run the SAP HANA hardware and cloud measurement tool
+hcmt -v
 
 # Check memory allocation
 free -h
@@ -178,4 +181,4 @@ sysctl vm.overcommit_memory vm.swappiness vm.max_map_count
 
 ## Conclusion
 
-Proper memory and CPU configuration on RHEL is fundamental to SAP HANA performance. The key settings are disabling THP, configuring appropriate swap and overcommit settings, ensuring NUMA awareness, and using the performance CPU governor. Always validate your configuration with the SAP HANA hardware check tool before going into production.
+Proper memory and CPU configuration on RHEL is fundamental to SAP HANA performance. The key settings are configuring THP according to SAP guidance, configuring appropriate swap and overcommit settings, ensuring NUMA awareness, and using the performance CPU governor. Always validate your configuration with the SAP HANA hardware and cloud measurement tool before going into production.
