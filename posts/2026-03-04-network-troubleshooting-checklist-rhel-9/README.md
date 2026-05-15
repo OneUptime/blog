@@ -117,8 +117,8 @@ Can you establish TCP connections? Is UDP working?
 curl -o /dev/null -s -w "%{http_code}" http://example.com
 # Any response (even 404) means TCP works
 
-# Test a specific port
-ss -tn state established dst example.com
+# Test a specific TCP port
+timeout 5 bash -c '</dev/tcp/example.com/80' && echo "TCP port open" || echo "TCP port closed or filtered"
 
 # Check if a local service is listening
 ss -tlnp | grep :80
@@ -212,34 +212,36 @@ Here's a script that runs through the entire checklist:
 # Usage: sudo bash netcheck.sh [target_host]
 
 TARGET=${1:-"8.8.8.8"}
-IFACE=$(ip route get $TARGET 2>/dev/null | grep -oP 'dev \K\S+')
+ROUTE_TARGET=$(getent ahostsv4 "$TARGET" | awk 'NR==1 {print $1}')
+ROUTE_TARGET=${ROUTE_TARGET:-$TARGET}
+IFACE=$(ip route get "$ROUTE_TARGET" 2>/dev/null | awk '/ dev / {for (i=1; i<=NF; i++) if ($i == "dev") {print $(i+1); exit}}')
 
 echo "=== Target: $TARGET ==="
 echo "=== Interface: $IFACE ==="
 echo ""
 
 echo "--- Layer 1: Link State ---"
-ip -br link show dev $IFACE 2>/dev/null
+ip -br link show dev "$IFACE" 2>/dev/null
 echo ""
 
 echo "--- Layer 2: Neighbors ---"
-ip neigh show dev $IFACE 2>/dev/null | head -5
+ip neigh show dev "$IFACE" 2>/dev/null | head -5
 echo ""
 
 echo "--- Layer 3: IP and Routes ---"
-ip -br addr show dev $IFACE 2>/dev/null
+ip -br addr show dev "$IFACE" 2>/dev/null
 echo "Default route:"
 ip route show default
 echo "Route to target:"
-ip route get $TARGET 2>/dev/null
+ip route get "$ROUTE_TARGET" 2>/dev/null
 echo "Ping gateway:"
 GW=$(ip route show default | awk '{print $3}' | head -1)
-ping -c 2 -W 2 $GW 2>/dev/null | tail -2
+ping -c 2 -W 2 "$GW" 2>/dev/null | tail -2
 echo ""
 
 echo "--- Layer 4: Connectivity ---"
 echo "Ping target:"
-ping -c 2 -W 2 $TARGET 2>/dev/null | tail -2
+ping -c 2 -W 2 "$TARGET" 2>/dev/null | tail -2
 echo ""
 
 echo "--- Layer 5: DNS ---"
