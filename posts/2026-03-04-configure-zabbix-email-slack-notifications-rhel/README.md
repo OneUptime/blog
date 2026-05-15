@@ -17,16 +17,17 @@ Timely alerts are critical for incident response. Zabbix supports multiple notif
 ```bash
 # Install postfix for sending emails
 
-sudo dnf install -y postfix mailx
+sudo dnf install -y postfix mailx cyrus-sasl-plain
 
 # Configure postfix as a relay (using an SMTP relay like Gmail or your mail server)
 sudo tee -a /etc/postfix/main.cf << 'CONF'
 # Relay through an external SMTP server
 relayhost = [smtp.gmail.com]:587
-smtp_use_tls = yes
+smtp_tls_security_level = encrypt
 smtp_sasl_auth_enable = yes
 smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
-smtp_sasl_security_options = noanonymous
+smtp_sasl_security_options = noanonymous, noplaintext
+smtp_sasl_tls_security_options = noanonymous
 smtp_tls_CAfile = /etc/pki/tls/certs/ca-bundle.crt
 CONF
 
@@ -80,16 +81,19 @@ Connection security: None (local postfix handles TLS)
 
 ### Configure Slack Media Type in Zabbix
 
-Zabbix 7.0 includes a built-in Slack media type:
+Zabbix provides an official Slack webhook media type for Zabbix 7.0:
 
 1. Go to Alerts > Media types
-2. Find "Slack" in the list (or import it from Zabbix integrations)
+2. Find "Slack" in the list (or import `media_slack.yaml` from Zabbix integrations)
 3. Set the parameters:
 
 ```text
 bot_token: xoxb-your-bot-token
-channel: #monitoring-alerts
+channel: {ALERT.SENDTO}
+zabbix_url: https://zabbix.example.com
 ```
+
+When assigning the Slack media to a user, set "Send to" to the target channel, such as `#monitoring-alerts`. Add the bot to the target channel before testing.
 
 Alternatively, use a webhook-based approach:
 
@@ -105,13 +109,16 @@ SUBJECT="$2"
 MESSAGE="$3"
 
 # Send to Slack
-curl -s -X POST "$WEBHOOK_URL" \
+python3 - "$SUBJECT" "$MESSAGE" << 'PY' | curl -sS -X POST "$WEBHOOK_URL" \
   -H "Content-Type: application/json" \
-  -d "{
-    \"text\": \"*${SUBJECT}*\n${MESSAGE}\",
-    \"username\": \"Zabbix\",
-    \"icon_emoji\": \":warning:\"
-  }"
+  --data-binary @-
+import json
+import sys
+
+subject = sys.argv[1]
+message = sys.argv[2]
+print(json.dumps({"text": f"*{subject}*\n{message}"}))
+PY
 SCRIPT
 
 sudo chmod +x /usr/lib/zabbix/alertscripts/slack.sh
