@@ -21,9 +21,9 @@ sudo dnf install -y nginx
 
 # Install Jenkins (add the Jenkins repo first)
 sudo wget -O /etc/yum.repos.d/jenkins.repo \
-  https://pkg.jenkins.io/redhat-stable/jenkins.repo
-sudo rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
-sudo dnf install -y jenkins java-17-openjdk
+  https://pkg.jenkins.io/rpm-stable/jenkins.repo
+sudo rpm --import https://pkg.jenkins.io/rpm-stable/jenkins.io-2026.key
+sudo dnf install -y fontconfig java-21-openjdk jenkins
 
 # Start Jenkins
 sudo systemctl enable --now jenkins
@@ -40,8 +40,8 @@ Edit the Jenkins configuration to listen only on localhost:
 sudo mkdir -p /etc/systemd/system/jenkins.service.d
 cat << 'OVERRIDE' | sudo tee /etc/systemd/system/jenkins.service.d/override.conf
 [Service]
-Environment="JENKINS_LISTEN_ADDRESS=127.0.0.1"
 Environment="JENKINS_PORT=8080"
+Environment="JENKINS_OPTS=--httpListenAddress=127.0.0.1"
 OVERRIDE
 
 sudo systemctl daemon-reload
@@ -57,6 +57,12 @@ upstream jenkins {
     server 127.0.0.1:8080;
 }
 
+# Required for Jenkins WebSocket agents
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
 # Redirect HTTP to HTTPS
 server {
     listen 80;
@@ -65,7 +71,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name jenkins.example.com;
 
     # TLS certificates
@@ -87,7 +94,8 @@ server {
 
         # Required for Jenkins CLI and WebSocket agents
         proxy_http_version 1.1;
-        proxy_set_header Connection "";
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
 
         # Timeouts
         proxy_connect_timeout 90;
@@ -102,11 +110,12 @@ server {
         proxy_pass http://jenkins;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Port $server_port;
     }
 }
 ```
@@ -119,7 +128,8 @@ sudo mkdir -p /etc/nginx/ssl
 sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -keyout /etc/nginx/ssl/jenkins.key \
   -out /etc/nginx/ssl/jenkins.crt \
-  -subj "/CN=jenkins.example.com"
+  -subj "/CN=jenkins.example.com" \
+  -addext "subjectAltName=DNS:jenkins.example.com"
 ```
 
 ## Starting and Testing
@@ -130,6 +140,9 @@ sudo nginx -t
 
 # Start Nginx
 sudo systemctl enable --now nginx
+
+# Allow Nginx to proxy traffic when SELinux is enforcing
+sudo setsebool -P httpd_can_network_connect 1
 
 # Open firewall ports
 sudo firewall-cmd --add-service=http --permanent
@@ -155,4 +168,4 @@ curl -I https://jenkins.example.com
 curl -sI https://jenkins.example.com | grep X-Jenkins
 ```
 
-The `proxy_request_buffering off` directive is important for large file uploads. The WebSocket configuration for `/wsagents` enables Jenkins inbound agents to connect through the proxy.
+The `proxy_request_buffering off` directive is important for Jenkins HTTP CLI commands and streaming uploads. The WebSocket configuration for `/wsagents` enables Jenkins inbound agents to connect through the proxy.
