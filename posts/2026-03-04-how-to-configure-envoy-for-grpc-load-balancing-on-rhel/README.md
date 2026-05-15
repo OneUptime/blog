@@ -8,14 +8,14 @@ Description: Learn how to configure Envoy on RHEL to load balance gRPC traffic a
 
 ---
 
-gRPC uses HTTP/2 for transport, which means traditional L4 load balancers cannot distribute requests across connections effectively. Envoy provides L7 gRPC-aware load balancing that distributes individual RPC calls.
+gRPC uses HTTP/2 for transport, which means traditional L4 load balancers distribute connections rather than individual RPCs within a persistent HTTP/2 connection. Envoy provides L7 gRPC-aware load balancing that distributes individual RPC calls.
 
 ## Installing Envoy
 
 ```bash
 # Download Envoy binary
 
-curl -L https://github.com/envoyproxy/envoy/releases/download/v1.28.0/envoy-1.28.0-linux-x86_64 \
+sudo curl -L https://github.com/envoyproxy/envoy/releases/download/v1.28.0/envoy-1.28.0-linux-x86_64 \
   -o /usr/local/bin/envoy
 sudo chmod +x /usr/local/bin/envoy
 ```
@@ -115,6 +115,8 @@ grpcurl -plaintext localhost:50051 grpc.health.v1.Health/Check
 ## Creating a systemd Service
 
 ```bash
+id -u envoy >/dev/null 2>&1 || sudo useradd --system --no-create-home --shell /sbin/nologin envoy
+
 cat << 'SERVICE' | sudo tee /etc/systemd/system/envoy-grpc.service
 [Unit]
 Description=Envoy gRPC Load Balancer
