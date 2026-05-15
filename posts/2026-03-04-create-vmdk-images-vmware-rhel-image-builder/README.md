@@ -14,7 +14,7 @@ Create VMDK images for VMware using RHEL Image Builder. RHEL Image Builder lets 
 
 ## Prerequisites
 
-- A RHEL 9 system with a valid subscription
+- A RHEL 9 x86_64 system with a valid subscription
 - Root or sudo access
 - The osbuild-composer and composer-cli packages
 
@@ -23,6 +23,7 @@ Create VMDK images for VMware using RHEL Image Builder. RHEL Image Builder lets 
 ```bash
 sudo dnf install -y osbuild-composer composer-cli cockpit-composer
 sudo systemctl enable --now osbuild-composer.socket
+sudo systemctl enable --now cockpit.socket
 ```
 
 ## Step 2 - Create a Blueprint
@@ -61,10 +62,10 @@ List available image types:
 composer-cli compose types
 ```
 
-Start a compose (e.g., qcow2 for KVM, ami for AWS, vhd for Azure):
+Start a compose using the `vmdk` image type for VMware vSphere:
 
 ```bash
-composer-cli compose start my-custom-image qcow2
+composer-cli compose start my-custom-image vmdk
 ```
 
 ## Step 4 - Monitor and Download
@@ -83,7 +84,7 @@ composer-cli compose image <compose-uuid>
 
 ## Step 5 - Deploy the Image
 
-Deploy the image to your target platform (KVM, AWS, Azure, VMware) following the platform-specific deployment process.
+Deploy the VMDK image to VMware following the platform-specific deployment process.
 
 ## Using the Cockpit Web Console
 
