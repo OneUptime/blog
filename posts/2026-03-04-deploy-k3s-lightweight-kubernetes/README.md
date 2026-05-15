@@ -15,10 +15,11 @@ This guide covers how to Deploy k3s Lightweight Kubernetes on RHEL. Following th
 - RHEL with a minimal or standard installation
 - Root or sudo access
 - A stable network connection
+- A unique hostname for each node
 
 ## Overview
 
-Deploy k3s Lightweight Kubernetes requires careful planning and execution. This guide walks through the complete process from installation to verification.
+Deploying k3s Lightweight Kubernetes requires careful planning and execution. This guide walks through the complete process from installation to verification.
 
 ## Step 1: Prepare the System
 
@@ -31,20 +32,25 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y curl
+```
+
+On RHEL 10, install the additional kernel modules package required by k3s:
+
+```bash
+sudo dnf install -y kernel-modules-extra
 ```
 
 ## Step 2: Install Required Packages
 
 ```bash
-sudo dnf install -y <package-name>
+curl -sfL https://get.k3s.io | sh -
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+sudo k3s --version
 ```
 
 ## Step 3: Configure the Service
@@ -52,16 +58,24 @@ rpm -qi <package-name>
 Create or edit the main configuration file:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo mkdir -p /etc/rancher/k3s
+sudo vi /etc/rancher/k3s/config.yaml
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware. For example:
+
+```yaml
+write-kubeconfig-mode: "0644"
+node-label:
+  - "environment=lab"
+```
 
 ## Step 4: Start and Enable the Service
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo systemctl enable k3s
+sudo systemctl restart k3s
+sudo systemctl status k3s
 ```
 
 ## Step 5: Verify the Configuration
@@ -69,13 +83,14 @@ sudo systemctl status <service>
 Test the setup:
 
 ```bash
-sudo <service> --test
+sudo k3s kubectl get nodes
+sudo k3s kubectl get pods --all-namespaces
 ```
 
 Check the logs for any errors:
 
 ```bash
-journalctl -u <service> -f
+sudo journalctl -u k3s -f
 ```
 
 ## Step 6: Configure Firewall Rules
@@ -83,7 +98,9 @@ journalctl -u <service> -f
 If the service needs network access:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo firewall-cmd --permanent --add-port=6443/tcp
+sudo firewall-cmd --permanent --zone=trusted --add-source=10.42.0.0/16
+sudo firewall-cmd --permanent --zone=trusted --add-source=10.43.0.0/16
 sudo firewall-cmd --reload
 ```
 
@@ -92,14 +109,14 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+systemctl show k3s --property=MemoryCurrent
+top -p $(pidof k3s)
 ```
 
 ## Security Considerations
 
-- Run the service with a dedicated non-root user when possible
-- Enable TLS/SSL for network communication
+- Protect `/etc/rancher/k3s/k3s.yaml` because it grants cluster access
+- Use TLS subject alternative names with `tls-san` when the API server is reached through a DNS name or load balancer
 - Restrict access with firewall rules
 - Keep packages updated with `dnf update`
 
@@ -107,10 +124,10 @@ top -p $(pidof <service>)
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
+1. **Service fails to start**: Check `journalctl -u k3s -xe` for error messages
 2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
 3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
 
 ## Conclusion
 
-You have successfully configured deploy k3s lightweight kubernetes on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
+You have successfully configured k3s Lightweight Kubernetes on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
