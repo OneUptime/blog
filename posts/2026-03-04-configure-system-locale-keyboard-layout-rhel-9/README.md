@@ -90,7 +90,7 @@ After installation, the new locales should appear in the list.
 
 ## Setting the System Locale
 
-Use `localectl` to change the system-wide locale. This writes to `/etc/locale.conf` and updates the running session.
+Use `localectl` to change the system-wide locale. This writes to `/etc/locale.conf` and updates the system setting at runtime.
 
 ```bash
 # Set the system locale to British English with UTF-8 encoding
@@ -114,8 +114,10 @@ localectl status
 Keep in mind that changing the system locale affects new login sessions. Your current shell session will not pick up the change until you log out and back in, or source the file manually.
 
 ```bash
-# Apply locale changes to the current session without logging out
+# Apply locale changes to the current shell without logging out
+set -a
 source /etc/locale.conf
+set +a
 ```
 
 ## Configuring the Keyboard Layout
@@ -145,6 +147,8 @@ sudo localectl set-keymap de
 
 This updates the virtual console keymap. The setting is stored in `/etc/vconsole.conf`.
 
+Unless you pass `--no-convert`, `localectl` also applies the closest matching X11 keyboard layout.
+
 ```bash
 # Check the virtual console configuration
 cat /etc/vconsole.conf
@@ -158,12 +162,14 @@ KEYMAP=de
 
 ### Setting the X11 Keyboard Layout
 
-If you are running a graphical environment, you can set the X11 layout separately.
+If you are running a graphical environment, you can set the X11 layout directly.
 
 ```bash
-# Set the X11 keyboard layout to French with the AZERTY variant
+# Set the X11 keyboard layout to French
 sudo localectl set-x11-keymap fr "" "" ""
 ```
+
+Unless you pass `--no-convert`, `localectl` also applies the closest matching virtual console keymap.
 
 The full syntax for `set-x11-keymap` is:
 
@@ -259,7 +265,7 @@ cat /etc/vconsole.conf
 - Always use UTF-8 encoding. There is almost never a reason to use legacy encodings like ISO-8859-1 on modern RHEL systems.
 - If you are automating server deployments with Kickstart, set the locale in the Kickstart file using the `lang` and `keyboard` directives so you do not have to fix it post-install.
 - The `loadkeys` command can temporarily change the console keymap for testing, but it does not persist across reboots. Always use `localectl` for permanent changes.
-- When running containers on RHEL, the container inherits the host locale unless you explicitly set one inside the container. Keep this in mind for applications that are locale-sensitive.
+- When running containers on RHEL, the container uses the locale environment provided by the image or container runtime. Pass `LANG` or `LC_*` explicitly if your application is locale-sensitive.
 
 ## Summary
 
