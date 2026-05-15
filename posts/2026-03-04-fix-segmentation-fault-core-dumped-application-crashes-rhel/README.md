@@ -53,8 +53,8 @@ coredumpctl info
 Install the debugger and debuginfo packages:
 
 ```bash
-# Install GDB and debuginfo-install helper
-sudo dnf install gdb debuginfo-install
+# Install GDB and the dnf-utils package that provides debuginfo-install
+sudo dnf install gdb dnf-utils
 
 # Install debug symbols for the crashing application (example: httpd)
 sudo dnf debuginfo-install httpd
