@@ -15,6 +15,7 @@ Forward RHEL 9 system logs to Elasticsearch or Splunk for centralized analysis. 
 ## Prerequisites
 
 - A RHEL 9 system with a valid subscription or configured repositories
+- A compatible ingestion path, such as Splunk Universal Forwarder, Elastic Agent, Filebeat, Logstash, or a syslog listener in front of Splunk or Elasticsearch
 - Root or sudo access
 - Basic familiarity with the command line
 
@@ -39,14 +40,31 @@ The two work together: journald collects everything, and rsyslog can read from t
 
 ## Step 3 - Apply the Configuration
 
-To forward logs to elasticsearch or splunk from rhel 9, you need to edit the appropriate configuration files. The main files are:
+To forward logs to Elasticsearch or Splunk from RHEL 9 with rsyslog, send syslog events to a compatible receiver, such as a Splunk syslog input, Logstash syslog input, or another rsyslog server that forwards into the platform. The main files are:
 
 - `/etc/rsyslog.conf` and `/etc/rsyslog.d/*.conf` for rsyslog
 - `/etc/systemd/journald.conf` for journald
 
-Make your changes, then restart the relevant service:
+Create a forwarding rule for rsyslog:
 
 ```bash
+sudo tee /etc/rsyslog.d/10-forward-logs.conf >/dev/null <<'EOF'
+*.* action(type="omfwd"
+  target="logs.example.com"
+  port="514"
+  protocol="tcp"
+  queue.type="linkedList"
+  queue.filename="forward_logs"
+  action.resumeRetryCount="-1"
+  queue.saveOnShutdown="on"
+)
+EOF
+```
+
+Replace `logs.example.com` and `514` with the host and port of your Splunk or Elasticsearch ingestion endpoint. Then validate the configuration and restart the relevant service:
+
+```bash
+sudo rsyslogd -N1
 sudo systemctl restart rsyslog
 # or
 
@@ -65,13 +83,16 @@ systemctl status systemd-journald
 Review recent logs to confirm your changes are working:
 
 ```bash
+logger "rhel9 forwarding test"
 journalctl --since "5 minutes ago"
 tail -20 /var/log/messages
 ```
 
+Confirm that the test message also appears in the receiving Elasticsearch or Splunk pipeline.
+
 ## Step 5 - Open Firewall Ports (If Applicable)
 
-If your setup involves remote logging, open the necessary ports:
+If your setup involves a remote syslog listener, open the necessary port on the receiving server. Use the protocol and port your receiver is actually configured to listen on:
 
 ```bash
 sudo firewall-cmd --permanent --add-port=514/tcp
@@ -82,8 +103,9 @@ sudo firewall-cmd --reload
 
 - Check for syntax errors in rsyslog configuration: `rsyslogd -N1`
 - Verify SELinux is not blocking log operations: `ausearch -m AVC -ts recent`
-- Ensure the target directory exists and has correct permissions
+- Ensure the receiver is listening on the configured host, port, and protocol
+- If the receiver writes logs to local files, ensure the target directory exists and has correct permissions
 
 ## Summary
 
-You have learned how to forward logs to elasticsearch or splunk from rhel 9 on RHEL 9. Regular log management is essential for security, compliance, and troubleshooting in any production environment.
+You have learned how to forward logs to Elasticsearch or Splunk from RHEL 9. Regular log management is essential for security, compliance, and troubleshooting in any production environment.
