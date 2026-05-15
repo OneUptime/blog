@@ -98,21 +98,34 @@ When mdadm detects a failed disk:
 
 ## Dedicated vs. Global Hot Spares
 
-By default, a spare added to an array is dedicated to that array. If you run multiple arrays and want a spare that any of them can use, you need to configure a spare group.
+By default, a spare added to an array is dedicated to that array. If you run multiple arrays and want mdadm to move a spare between them when needed, you need to configure a spare group in `/etc/mdadm.conf`.
 
 ```bash
-# Create arrays with a shared spare group
+# Create arrays
 sudo mdadm --create /dev/md1 --level=1 --raid-devices=2 --spare-devices=0 \
-    --spare-group=shared /dev/sdb /dev/sdc
+    /dev/sdb /dev/sdc
 
 sudo mdadm --create /dev/md5 --level=5 --raid-devices=3 --spare-devices=0 \
-    --spare-group=shared /dev/sdd /dev/sde /dev/sdf
+    /dev/sdd /dev/sde /dev/sdf
 
-# Add a global spare associated with the spare group
+# Add spare-group=shared to the ARRAY lines for /dev/md1 and /dev/md5 in /etc/mdadm.conf
+sudo vi /etc/mdadm.conf
+```
+
+The relevant lines should look like this after you add the spare group:
+
+```bash
+ARRAY /dev/md1 UUID=... spare-group=shared
+ARRAY /dev/md5 UUID=... spare-group=shared
+```
+
+Then add a spare to one array in the spare group:
+
+```bash
 sudo mdadm --manage /dev/md1 --add /dev/sdg
 ```
 
-The mdadm monitor daemon handles spare group assignments when running with the `--scan` option.
+The mdadm monitor daemon handles spare movement between arrays in the group when running with the `--scan` option.
 
 ## Removing a Hot Spare
 
