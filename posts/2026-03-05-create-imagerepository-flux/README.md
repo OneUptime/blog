@@ -15,7 +15,7 @@ The ImageRepository resource in Flux tells the image reflector controller to sca
 Before proceeding, ensure you have:
 
 - A running Kubernetes cluster with Flux installed
-- The image reflector controller and image automation controller installed
+- The image reflector controller installed, and the image automation controller if you plan to automate Git updates
 - Access to a container registry with at least one image
 
 ## What Is an ImageRepository?
