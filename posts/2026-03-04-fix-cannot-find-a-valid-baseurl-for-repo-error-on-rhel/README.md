@@ -23,7 +23,8 @@ ping -c 3 8.8.8.8
 # If ping fails, check the network interface
 nmcli device status
 
-# Restart the network connection
+# List connection profiles and restart the relevant one
+nmcli connection show
 sudo nmcli connection up ens192
 ```
 
@@ -38,6 +39,7 @@ dig cdn.redhat.com
 cat /etc/resolv.conf
 
 # Add a DNS server if missing
+# Replace ens192 with your NetworkManager connection profile name
 sudo nmcli connection modify ens192 ipv4.dns "8.8.8.8 8.8.4.4"
 sudo nmcli connection up ens192
 ```
@@ -50,7 +52,10 @@ sudo subscription-manager identity
 
 # If not registered:
 sudo subscription-manager register --username=your-user --password=your-pass
-sudo subscription-manager attach --auto
+sudo subscription-manager refresh
+
+# Only for legacy entitlement-based accounts:
+# sudo subscription-manager attach --auto
 
 # Check which repos are enabled
 sudo subscription-manager repos --list-enabled
@@ -111,7 +116,7 @@ sudo update-ca-trust
 # Most common fix: re-register and clean cache
 sudo subscription-manager clean
 sudo subscription-manager register --username=your-user --password=your-pass
-sudo subscription-manager attach --auto
+sudo subscription-manager refresh
 sudo dnf clean all
 sudo dnf makecache
 ```
