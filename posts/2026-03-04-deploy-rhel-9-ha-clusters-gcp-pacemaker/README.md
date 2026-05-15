@@ -1,50 +1,38 @@
-# How to Deploy RHEL 9 HA Clusters on GCP with Pacemaker
+# How to Deploy RHEL 9 Instances on GCP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, GCP, High Availability, Pacemaker
+Tags: RHEL, GCP
 
-Description: Learn how to deploy and configure highly available RHEL clusters on GCP using Pacemaker for automated failover.
+Description: Learn how to deploy and configure RHEL instances on GCP.
 
 ---
 
 ## Overview
 
-Deploy RHEL 9 HA clusters on GCP using Pacemaker. RHEL 9 is fully supported on major cloud platforms with official images and integrated tooling.
+Deploy RHEL 9 instances on GCP. RHEL 9 is supported on Google Cloud with official images and integrated tooling.
 
 ## Prerequisites
 
 - A RHEL 9 subscription or cloud marketplace entitlement
-- An account on the target cloud platform (AWS, Azure, or GCP)
-- CLI tools installed: aws-cli, az-cli, or gcloud
+- A Google Cloud account
+- The gcloud CLI installed and configured
 
 ## Step 1 - Choose Your Deployment Method
 
-You can deploy RHEL 9 in the cloud using:
+You can deploy RHEL 9 on GCP using:
 
-1. **Marketplace images** - pre-built, official Red Hat images
+1. **Google Cloud images** - pre-built RHEL images from the rhel-cloud image project or Google Cloud Marketplace
 2. **Custom images** - built with Image Builder and uploaded
 3. **Terraform** - infrastructure as code provisioning
 4. **Red Hat Hybrid Cloud Console** - centralized management
 
 ## Step 2 - Launch a RHEL 9 Instance
 
-For AWS:
-
-```bash
-aws ec2 run-instances --image-id ami-rhel9-xxxxx --instance-type m5.large --key-name mykey
-```
-
-For Azure:
-
-```bash
-az vm create --resource-group myRG --name myVM --image RedHat:RHEL:9:latest --size Standard_D2s_v3
-```
-
 For GCP:
 
 ```bash
-gcloud compute instances create myvm --image-project=rhel-cloud --image-family=rhel-9 --machine-type=e2-medium
+gcloud compute instances create myvm --zone=us-central1-a --image-project=rhel-cloud --image-family=rhel-9 --machine-type=e2-medium
 ```
 
 ## Step 3 - Configure cloud-init
@@ -66,6 +54,8 @@ packages:
 
 ## Step 4 - Register with Red Hat
 
+If you are using a BYOS or custom image, register the instance with Red Hat:
+
 ```bash
 sudo subscription-manager register --auto-attach
 # Or connect to Red Hat Insights:
@@ -75,7 +65,7 @@ sudo insights-client --register
 
 ## Step 5 - Configure Security and Networking
 
-Set up security groups, NSGs, or firewall rules to allow only necessary traffic. Enable SELinux (it is on by default) and configure firewalld.
+Set up Google Cloud firewall rules to allow only necessary traffic. Enable SELinux (it is on by default) and configure firewalld.
 
 ## Step 6 - Set Up Monitoring
 
@@ -89,4 +79,4 @@ sudo insights-client
 
 ## Summary
 
-You have learned how to deploy rhel 9 ha clusters on gcp with pacemaker. RHEL 9 on cloud platforms benefits from official support, pre-configured images, and integration with Red Hat management tools.
+You have learned how to deploy RHEL 9 instances on GCP. RHEL 9 on Google Cloud benefits from official support, pre-configured images, and integration with Red Hat management tools.
