@@ -26,6 +26,9 @@ sudo dnf install -y pcs pacemaker fence-agents-all
 
 # Install PostgreSQL
 sudo dnf install -y postgresql-server postgresql-contrib
+
+# On the primary node, initialize PostgreSQL
+sudo postgresql-setup --initdb
 ```
 
 ## Configure Corosync and PCS
@@ -36,6 +39,10 @@ sudo passwd hacluster
 
 # Start and enable pcsd on both nodes
 sudo systemctl enable --now pcsd
+
+# If firewalld is running, allow cluster traffic on both nodes
+sudo firewall-cmd --permanent --add-service=high-availability
+sudo firewall-cmd --reload
 
 # Authenticate nodes from node1
 sudo pcs host auth node1 node2 -u hacluster -p yourpassword
@@ -70,6 +77,26 @@ sudo -u postgres psql -c "CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD
 # host replication replicator 192.168.1.0/24 md5
 ```
 
+Restart PostgreSQL on the primary, then clone the primary data directory on the standby:
+
+```bash
+# On the primary
+sudo systemctl restart postgresql
+
+# On the standby
+sudo systemctl stop postgresql
+sudo rm -rf /var/lib/pgsql/data/*
+sudo -u postgres pg_basebackup -h node1 -U replicator \
+    -D /var/lib/pgsql/data -X stream -P
+
+# On both nodes
+sudo -u postgres mkdir -p /var/lib/pgsql/pg_archive
+
+# Stop PostgreSQL on both nodes before Pacemaker starts managing it
+sudo systemctl stop postgresql
+sudo systemctl disable postgresql
+```
+
 ## Configure the Pacemaker Resource
 
 ```bash
@@ -80,10 +107,17 @@ sudo pcs resource create pgsql ocf:heartbeat:pgsql \
     pgdata="/var/lib/pgsql/data" \
     rep_mode="sync" \
     node_list="node1 node2" \
+    restore_command="cp /var/lib/pgsql/pg_archive/%f %p" \
+    repuser="replicator" \
     master_ip="192.168.1.100" \
     op start timeout=60s \
     op stop timeout=60s \
-    op monitor interval=10s timeout=30s
+    op monitor interval=10s timeout=30s \
+    op monitor interval=9s timeout=30s role=Promoted \
+    op promote timeout=60s \
+    op demote timeout=60s \
+    op notify timeout=60s \
+    promotable promoted-max=1 promoted-node-max=1 notify=true
 
 # Create a virtual IP resource
 sudo pcs resource create vip ocf:heartbeat:IPaddr2 \
@@ -91,7 +125,7 @@ sudo pcs resource create vip ocf:heartbeat:IPaddr2 \
     op monitor interval=10s
 
 # Ensure the VIP runs on the same node as the primary
-sudo pcs constraint colocation add vip with pgsql-clone INFINITY with-rsc-role=Master
+sudo pcs constraint colocation add vip with promoted pgsql-clone INFINITY
 sudo pcs constraint order promote pgsql-clone then start vip
 ```
 
@@ -101,7 +135,7 @@ sudo pcs constraint order promote pgsql-clone then start vip
 # Check cluster status
 sudo pcs status
 
-# Verify PostgreSQL replication
+# Verify PostgreSQL replication on the primary
 sudo -u postgres psql -c "SELECT * FROM pg_stat_replication;"
 ```
 
