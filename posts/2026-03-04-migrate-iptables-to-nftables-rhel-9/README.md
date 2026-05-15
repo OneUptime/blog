@@ -44,13 +44,13 @@ iptables -L -n -v --line-numbers
 
 ## Step 2: Install the Translation Tools
 
-RHEL includes the iptables-nft package which provides translation utilities. Make sure it's installed:
+RHEL includes translation utilities in the iptables package, and you need nftables installed to load the converted rules. Make sure both packages are installed:
 
 ```bash
-dnf install iptables-nft -y
+dnf install iptables nftables -y
 ```
 
-This gives you two key commands: `iptables-translate` and `iptables-restore-translate`.
+This gives you the key commands: `iptables-translate`, `ip6tables-translate`, `iptables-restore-translate`, and `ip6tables-restore-translate`.
 
 ## Step 3: Translate Individual Rules
 
@@ -82,19 +82,20 @@ For a complete migration, use `iptables-restore-translate` to convert your entir
 Convert the full iptables backup to nftables format:
 
 ```bash
-iptables-restore-translate -f /root/iptables-backup.rules > /root/nftables-rules.nft
+iptables-restore-translate -f /root/iptables-backup.rules > /etc/nftables/ruleset-migrated-from-iptables.nft
 ```
 
 Do the same for your IPv6 rules:
 
 ```bash
-ip6tables-restore-translate -f /root/ip6tables-backup.rules >> /root/nftables-rules.nft
+ip6tables-restore-translate -f /root/ip6tables-backup.rules > /etc/nftables/ruleset-migrated-from-ip6tables.nft
 ```
 
-Review the translated file before applying:
+Review the translated files before applying:
 
 ```bash
-cat /root/nftables-rules.nft
+cat /etc/nftables/ruleset-migrated-from-iptables.nft
+cat /etc/nftables/ruleset-migrated-from-ip6tables.nft
 ```
 
 ## Step 5: Disable iptables and Enable nftables
@@ -109,35 +110,29 @@ systemctl disable iptables
 
 # Enable and start nftables
 systemctl enable nftables
-systemctl start nftables
 ```
 
-## Step 6: Load Your Translated Rules
+## Step 6: Make Rules Persistent
 
-Apply the translated ruleset:
+To ensure your rules survive a reboot, include the translated files in the main nftables config:
 
 ```bash
-nft -f /root/nftables-rules.nft
+echo 'include "/etc/nftables/ruleset-migrated-from-iptables.nft"' >> /etc/sysconfig/nftables.conf
+echo 'include "/etc/nftables/ruleset-migrated-from-ip6tables.nft"' >> /etc/sysconfig/nftables.conf
+```
+
+## Step 7: Load Your Translated Rules
+
+Start nftables to apply the translated ruleset:
+
+```bash
+systemctl start nftables
 ```
 
 Verify the rules loaded properly:
 
 ```bash
 nft list ruleset
-```
-
-## Step 7: Make Rules Persistent
-
-To ensure your rules survive a reboot, save them to the nftables configuration file:
-
-```bash
-nft list ruleset > /etc/nftables/main.nft
-```
-
-Then include this file in the main nftables config:
-
-```bash
-echo 'include "/etc/nftables/main.nft"' >> /etc/sysconfig/nftables.conf
 ```
 
 Restart nftables to confirm persistence:
