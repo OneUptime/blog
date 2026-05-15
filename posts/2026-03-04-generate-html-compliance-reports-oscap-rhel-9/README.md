@@ -16,6 +16,7 @@ A well-formatted compliance report can save hours of back-and-forth with auditor
 # Install prerequisites
 
 dnf install -y openscap-scanner scap-security-guide
+mkdir -p /var/log/compliance
 
 # Generate an HTML report during a compliance scan
 oscap xccdf eval \
@@ -142,15 +143,16 @@ echo "" >> "$SUMMARY"
 
 for PROFILE_NAME in "${!PROFILES[@]}"; do
     PROFILE_ID="${PROFILES[$PROFILE_NAME]}"
+    SCAN_LOG="${REPORT_DIR}/${PROFILE_NAME}-scan.txt"
 
     oscap xccdf eval \
       --profile "$PROFILE_ID" \
       --results "${REPORT_DIR}/${PROFILE_NAME}-results.xml" \
       --report "${REPORT_DIR}/${PROFILE_NAME}-report.html" \
-      "$CONTENT" 2>/dev/null || true
+      "$CONTENT" > "$SCAN_LOG" 2>/dev/null || true
 
-    PASS=$(grep -c 'result="pass"' "${REPORT_DIR}/${PROFILE_NAME}-results.xml" 2>/dev/null || echo 0)
-    FAIL=$(grep -c 'result="fail"' "${REPORT_DIR}/${PROFILE_NAME}-results.xml" 2>/dev/null || echo 0)
+    PASS=$(awk '/^Result[[:space:]]*pass$/ { count++ } END { print count + 0 }' "$SCAN_LOG")
+    FAIL=$(awk '/^Result[[:space:]]*fail$/ { count++ } END { print count + 0 }' "$SCAN_LOG")
     TOTAL=$((PASS + FAIL))
     [ "$TOTAL" -gt 0 ] && SCORE=$((PASS * 100 / TOTAL)) || SCORE=0
 
@@ -178,11 +180,11 @@ cat /var/log/compliance/$(date +%Y%m%d)/summary.txt | \
 ### Serve reports via web server
 
 ```bash
-# If you have Apache installed
+# If you have Apache and httpd-tools installed
 ln -s /var/log/compliance /var/www/html/compliance
 # Reports accessible at: http://server/compliance/
 
-# Restrict access with basic auth
+# Restrict access with basic auth if .htaccess overrides are enabled
 cat > /var/www/html/compliance/.htaccess << 'EOF'
 AuthType Basic
 AuthName "Compliance Reports"
