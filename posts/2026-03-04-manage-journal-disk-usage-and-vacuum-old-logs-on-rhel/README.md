@@ -26,33 +26,33 @@ ls -lh /run/log/journal/
 ## Vacuum by Size
 
 ```bash
-# Reduce journal to at most 500MB
+# Reduce archived journal files to at most 500M
 sudo journalctl --vacuum-size=500M
 
-# Reduce to 1GB
+# Reduce archived journal files to 1G
 sudo journalctl --vacuum-size=1G
 
-# Verify the new size
+# Verify the new size (active journal files may still count toward disk usage)
 journalctl --disk-usage
 ```
 
 ## Vacuum by Time
 
 ```bash
-# Remove all entries older than 30 days
+# Remove archived journal files older than 30 days
 sudo journalctl --vacuum-time=30d
 
-# Remove entries older than 2 weeks
+# Remove archived journal files older than 2 weeks
 sudo journalctl --vacuum-time=2weeks
 
-# Remove entries older than 6 hours (useful for testing)
+# Remove archived journal files older than 6 hours (useful for testing)
 sudo journalctl --vacuum-time=6h
 ```
 
 ## Vacuum by Number of Files
 
 ```bash
-# Keep only the 5 most recent journal files
+# Keep only the 5 most recent archived journal files
 sudo journalctl --vacuum-files=5
 ```
 
