@@ -24,7 +24,7 @@ Use the logging RHEL System Role to configure rsyslog across RHEL systems. RHEL 
 sudo dnf install -y rhel-system-roles
 ```
 
-The roles are installed to `/usr/share/ansible/roles/`.
+The collection is installed under `/usr/share/ansible/collections/ansible_collections/redhat/rhel_system_roles/`, and the logging role documentation is available at `/usr/share/ansible/roles/rhel-system-roles.logging/README.md`.
 
 ## Step 2 - Create an Inventory File
 
@@ -46,15 +46,26 @@ Create `configure-logging.yml`:
 - name: How to Automate Logging Configuration Using the logging RHEL System Role
   hosts: managed_hosts
   become: true
+  vars:
+    logging_inputs:
+      - name: basic_input
+        type: basics
+    logging_outputs:
+      - name: files_output
+        type: files
+        path: /var/log/messages
+    logging_flows:
+      - name: flow0
+        inputs: [basic_input]
+        outputs: [files_output]
   roles:
-    - role: rhel-system-roles.logging
+    - redhat.rhel_system_roles.logging
 ```
 
-Add the role-specific variables. Check the role documentation for available options:
+To use other role-specific variables, check the role documentation for available options:
 
 ```bash
-ls /usr/share/doc/rhel-system-roles/logging/
-cat /usr/share/doc/rhel-system-roles/logging/README.md
+less /usr/share/ansible/roles/rhel-system-roles.logging/README.md
 ```
 
 ## Step 4 - Run the Playbook
@@ -68,10 +79,9 @@ ansible-playbook -i inventory.ini configure-logging.yml
 On the managed hosts, verify that the configuration was applied:
 
 ```bash
-# Check relevant service or configuration
-
-systemctl status <service>
-cat <config-file>
+rsyslogd -N 1
+systemctl status rsyslog
+cat /etc/rsyslog.conf
 ```
 
 ## Idempotency
