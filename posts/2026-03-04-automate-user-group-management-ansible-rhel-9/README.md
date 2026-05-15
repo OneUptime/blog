@@ -129,7 +129,7 @@ Use Ansible Vault to store password hashes:
 
 ```bash
 # Generate a password hash
-python3 -c "import crypt; print(crypt.crypt('UserPassword123', crypt.mksalt(crypt.METHOD_SHA512)))"
+ansible all -i localhost, -m debug -a "msg={{ 'UserPassword123' | password_hash('sha512') }}"
 ```
 
 ```yaml
@@ -207,20 +207,27 @@ vault_user_passwords:
     - name: Set default password aging in login.defs
       ansible.builtin.lineinfile:
         path: /etc/login.defs
-        regexp: "^{{ item.key }}"
+        regexp: "^#?{{ item.key }}\\s+"
         line: "{{ item.key }}\t{{ item.value }}"
       loop:
         - { key: "PASS_MAX_DAYS", value: "90" }
         - { key: "PASS_MIN_DAYS", value: "7" }
-        - { key: "PASS_MIN_LEN", value: "12" }
         - { key: "PASS_WARN_AGE", value: "14" }
 
+    - name: Set password length requirement in pwquality.conf
+      ansible.builtin.lineinfile:
+        path: /etc/security/pwquality.conf
+        regexp: "^#?minlen\\s*="
+        line: "minlen = 12"
+
     - name: Set password aging for existing users
-      ansible.builtin.command: >
-        chage --maxdays 90 --mindays 7 --warndays 14 {{ item.username }}
+      ansible.builtin.user:
+        name: "{{ item.username }}"
+        password_expire_max: 90
+        password_expire_min: 7
+        password_expire_warn: 14
       loop: "{{ users }}"
       when: item.state == "present"
-      changed_when: false
 ```
 
 ## Role-Based User Management
@@ -278,11 +285,11 @@ additional_users:
       register: system_users
       changed_when: false
 
-    - name: Get users with sudo access
+    - name: Get direct members of the wheel group
       ansible.builtin.shell: |
-        # Find users in wheel or sudo groups
+        # Find users directly listed in the wheel group
         getent group wheel | cut -d: -f4
-      register: sudo_users
+      register: wheel_users
       changed_when: false
 
     - name: Display user audit
@@ -290,7 +297,7 @@ additional_users:
         msg: |
           Host: {{ inventory_hostname }}
           Users: {{ system_users.stdout_lines }}
-          Sudo users: {{ sudo_users.stdout }}
+          Wheel group members: {{ wheel_users.stdout }}
 ```
 
 ## Wrapping Up
