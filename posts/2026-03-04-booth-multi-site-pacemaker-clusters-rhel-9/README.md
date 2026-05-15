@@ -27,7 +27,7 @@ Booth uses tickets to control which site runs resources:
 
 ## Step 1: Install Booth
 
-On all cluster nodes and the arbitrator:
+On all cluster nodes:
 
 ```bash
 sudo dnf install booth-site -y
@@ -36,48 +36,40 @@ sudo dnf install booth-site -y
 On the arbitrator only:
 
 ```bash
-sudo dnf install booth-arbitrator -y
+sudo dnf install pcs booth-core booth-arbitrator -y
 ```
 
 ## Step 2: Configure Booth
 
-Create the same configuration on all nodes and the arbitrator:
+Create the Booth configuration on one node of one cluster:
 
 ```bash
-sudo tee /etc/booth/booth.conf << 'CONF'
-transport="UDP"
-port="9929"
-
-# Site 1 cluster
-
-site="192.168.1.100"
-
-# Site 2 cluster
-site="192.168.2.100"
-
-# Arbitrator
-arbitrator="192.168.3.100"
-
-# Define a ticket
-ticket="webserver-ticket"
-    expire="600"
-    timeout="10"
-    retries="5"
-    renewal-freq="30"
-    before-acquire-handler="/usr/share/booth/service-runnable.sh"
-CONF
+sudo pcs booth setup sites 192.168.1.100 192.168.2.100 arbitrators 192.168.3.100
+sudo pcs booth ticket add webserver-ticket expire=600 timeout=10 retries=5 renewal-freq=30 before-acquire-handler="/usr/share/booth/service-runnable WebGroup"
 ```
 
-The IP addresses should be the virtual IPs of each cluster or the IPs of specific nodes.
+The site IP addresses should be the floating IPs of each cluster. Synchronize the Booth configuration to the local cluster, then pull it to the arbitrator and the second cluster:
+
+```bash
+sudo pcs booth sync
+
+# On the arbitrator
+sudo pcs host auth cluster1-node1
+sudo pcs booth pull cluster1-node1
+
+# On a node in site 2
+sudo pcs host auth cluster1-node1
+sudo pcs booth pull cluster1-node1
+sudo pcs booth sync
+```
 
 ## Step 3: Configure Firewall
 
-On all nodes:
+On all cluster nodes and the arbitrator:
 
 ```bash
-sudo firewall-cmd --permanent --add-port=9929/tcp
-sudo firewall-cmd --permanent --add-port=9929/udp
-sudo firewall-cmd --reload
+sudo firewall-cmd --permanent --add-service=high-availability
+sudo firewall-cmd --add-service=high-availability
 ```
 
 ## Step 4: Start Booth
@@ -85,20 +77,18 @@ sudo firewall-cmd --reload
 On the arbitrator:
 
 ```bash
-sudo systemctl enable --now booth@booth
+sudo pcs booth start
+sudo pcs booth enable
 ```
 
 On each cluster site, start Booth as a cluster resource (not with systemd directly):
 
 ```bash
-sudo pcs resource create booth-ip ocf:heartbeat:IPaddr2 \
-    ip=192.168.1.100 cidr_netmask=24
+# On a node in site 1
+sudo pcs booth create ip 192.168.1.100
 
-sudo pcs resource create booth-site ocf:pacemaker:booth-site \
-    config=/etc/booth/booth.conf \
-    op monitor interval=30s
-
-sudo pcs resource group add booth-group booth-ip booth-site
+# On a node in site 2
+sudo pcs booth create ip 192.168.2.100
 ```
 
 ## Step 5: Configure Ticket Constraints
@@ -116,22 +106,22 @@ This means WebGroup only runs on the site that holds the webserver-ticket.
 Grant the ticket to site 1:
 
 ```bash
-sudo booth client grant -t webserver-ticket -s 192.168.1.100
+sudo pcs booth ticket grant webserver-ticket
 ```
 
 Verify ticket status:
 
 ```bash
-sudo booth client list
+sudo pcs booth status
 ```
 
 ## Step 7: Test Failover
 
-Revoke the ticket from site 1 and grant to site 2:
+Revoke the ticket from site 1, then grant it from a node in site 2:
 
 ```bash
-sudo booth client revoke -t webserver-ticket -s 192.168.1.100
-sudo booth client grant -t webserver-ticket -s 192.168.2.100
+sudo pcs booth ticket revoke webserver-ticket
+sudo pcs booth ticket grant webserver-ticket
 ```
 
 Verify resources moved to site 2:
@@ -153,13 +143,13 @@ Booth handles automatic failover when a site goes down. If site 1 becomes unreac
 Check ticket status:
 
 ```bash
-sudo booth client list
+sudo pcs booth status
 ```
 
-Check Booth service status:
+Check Booth configuration:
 
 ```bash
-sudo systemctl status booth@booth
+sudo pcs booth config
 ```
 
 View Booth logs:
