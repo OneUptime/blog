@@ -10,7 +10,7 @@ Description: Learn how to use spec.patches in a Flux Kustomization to modify res
 
 ## Introduction
 
-The `spec.patches` field in a Flux Kustomization lets you apply patches to resources inline, directly within the Kustomization resource definition. This means you can modify manifests from your source repository without changing the actual source files. Patches are applied after Kustomize builds the manifests but before they are sent to the cluster. This is useful for environment-specific overrides, adding labels, changing replica counts, or any modification that should differ between clusters or environments.
+The `spec.patches` field in a Flux Kustomization lets you apply patches to resources inline, directly within the Kustomization resource definition. This means you can modify manifests from your source repository without changing the actual source files. Patches are applied as part of the Kustomize build before the final manifests are sent to the cluster. This is useful for environment-specific overrides, adding labels, changing replica counts, or any modification that should differ between clusters or environments.
 
 ## How Patches Work in Flux
 
@@ -341,8 +341,8 @@ spec:
 ## Verifying Patches
 
 ```bash
-# Preview how patches will modify the manifests
-flux build kustomization my-app --path ./deploy
+# Preview how local patches will modify the manifests
+flux build kustomization my-app --path ./deploy --kustomization-file ./kustomization-patch.yaml --dry-run
 
 # Check the Kustomization status for patch-related errors
 kubectl describe kustomization.kustomize.toolkit.fluxcd.io my-app -n flux-system
@@ -353,7 +353,7 @@ kubectl describe kustomization.kustomize.toolkit.fluxcd.io my-app -n flux-system
 1. **Use patches for environment-specific overrides** rather than duplicating manifests across environments.
 2. **Keep patches focused**: Each patch should make one logical change. Use multiple patches rather than one large patch.
 3. **Use label selectors** to apply the same patch to multiple resources when the modification is common (like adding labels or annotations).
-4. **Test patches** with `flux build kustomization` before pushing changes to verify the expected output.
+4. **Test local patches** with `flux build kustomization --kustomization-file ... --dry-run` before pushing changes to verify the expected output.
 5. **Document why each patch exists** with comments in your YAML, especially for non-obvious modifications.
 
 ## Conclusion
