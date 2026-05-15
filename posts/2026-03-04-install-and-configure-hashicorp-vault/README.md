@@ -31,20 +31,21 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y yum-utils
 ```
 
 ## Step 2: Install Required Packages
 
 ```bash
-sudo dnf install -y <package-name>
+sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
+sudo dnf install -y vault
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+vault version
+rpm -qi vault
 ```
 
 ## Step 3: Configure the Service
@@ -52,30 +53,60 @@ rpm -qi <package-name>
 Create or edit the main configuration file:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/vault.d/vault.hcl
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+Apply the recommended settings for your environment. Start with a valid Vault server configuration and adjust the addresses, TLS certificate paths, and node ID for your host:
+
+```hcl
+ui            = true
+api_addr      = "https://127.0.0.1:8200"
+cluster_addr  = "https://127.0.0.1:8201"
+
+storage "raft" {
+  path    = "/opt/vault/data"
+  node_id = "vault-1"
+}
+
+listener "tcp" {
+  address       = "127.0.0.1:8200"
+  tls_cert_file = "/opt/vault/tls/vault.crt"
+  tls_key_file  = "/opt/vault/tls/vault.key"
+}
+```
 
 ## Step 4: Start and Enable the Service
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo systemctl enable --now vault
+sudo systemctl status vault
 ```
 
 ## Step 5: Verify the Configuration
 
-Test the setup:
+Set the Vault API address:
 
 ```bash
-sudo <service> --test
+export VAULT_ADDR=https://127.0.0.1:8200
+vault status
+```
+
+Initialize Vault once, then securely store the unseal keys and initial root token from the output:
+
+```bash
+vault operator init
+```
+
+Unseal Vault with the required number of unseal keys:
+
+```bash
+vault operator unseal
 ```
 
 Check the logs for any errors:
 
 ```bash
-journalctl -u <service> -f
+journalctl -u vault -f
 ```
 
 ## Step 6: Configure Firewall Rules
@@ -83,7 +114,7 @@ journalctl -u <service> -f
 If the service needs network access:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo firewall-cmd --permanent --add-port=8200/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -92,8 +123,8 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+systemctl show vault --property=MemoryCurrent
+top -p $(pidof vault)
 ```
 
 ## Security Considerations
@@ -107,10 +138,10 @@ top -p $(pidof <service>)
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
+1. **Service fails to start**: Check `journalctl -u vault -xe` for error messages
 2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
-3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
+3. **Port conflicts**: Use `ss -tlnp | grep 8200` to identify processes using the port
 
 ## Conclusion
 
-You have successfully configured install and configure hashicorp vault on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
+You have successfully installed and configured HashiCorp Vault on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
