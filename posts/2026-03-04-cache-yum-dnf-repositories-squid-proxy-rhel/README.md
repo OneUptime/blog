@@ -30,6 +30,10 @@ acl localnet src 192.168.0.0/16
 
 # Standard ACLs
 acl Safe_ports port 80 443 8080
+acl SSL_ports port 443
+acl CONNECT method CONNECT
+http_access deny !Safe_ports
+http_access deny CONNECT !SSL_ports
 http_access allow localnet
 http_access allow localhost
 http_access deny all
@@ -49,7 +53,6 @@ maximum_object_size_in_memory 128 MB
 # RPM files never change once published (same filename = same content)
 refresh_pattern -i \.rpm$          129600  100%  129600 override-expire override-lastmod reload-into-ims ignore-reload ignore-no-cache
 refresh_pattern -i \.drpm$         129600  100%  129600 override-expire override-lastmod reload-into-ims ignore-reload ignore-no-cache
-refresh_pattern -i \.srpm$         129600  100%  129600 override-expire override-lastmod reload-into-ims ignore-reload ignore-no-cache
 
 # Cache repository metadata for a shorter time (it changes with updates)
 refresh_pattern -i repodata/       0       20%   4320  reload-into-ims
@@ -62,10 +65,10 @@ refresh_pattern -i (/cgi-bin/|\?)  0       0%    0
 refresh_pattern .                  0       20%   4320
 
 # Do not cache HTTPS content (we only cache plain HTTP repos)
-# If your repos use HTTPS, consider using "peek and splice" SSL bump
+# RHEL CDN repositories use HTTPS and will be tunneled, not cached, by a normal proxy
 
 # Range request handling (important for yum/dnf partial downloads)
-range_offset_limit -1
+range_offset_limit none
 
 # Cache store log for debugging
 cache_store_log /var/log/squid/store.log
@@ -114,8 +117,8 @@ Or set it per-repository in `/etc/yum.repos.d/`:
 
 ```bash
 # Add proxy line to a specific repo
-sudo sed -i '/^\[baseos\]/a proxy=http://yum-cache.example.com:3128' \
-  /etc/yum.repos.d/redhat.repo
+sudo sed -i '/^\[my-http-repo\]/a proxy=http://yum-cache.example.com:3128' \
+  /etc/yum.repos.d/my-http-repo.repo
 ```
 
 ## Test the Cache
@@ -160,4 +163,4 @@ sudo firewall-cmd --reload
 sudo setsebool -P squid_connect_any 1
 ```
 
-With a properly tuned Squid cache, the first server to download a package caches it locally, and every subsequent server gets it from the cache at LAN speed instead of downloading from the internet again.
+With a properly tuned Squid cache and HTTP-based repositories, the first server to download a package caches it locally, and every subsequent server gets it from the cache at LAN speed instead of downloading from the internet again.
