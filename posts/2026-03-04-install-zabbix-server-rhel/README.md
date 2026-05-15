@@ -69,25 +69,10 @@ grep -E '^DB(Host|Name|User|Password)' /etc/zabbix/zabbix_server.conf
 
 ```bash
 # Edit the Nginx configuration for Zabbix
-sudo tee /etc/nginx/conf.d/zabbix.conf << 'CONF'
-server {
-    listen 80;
-    server_name zabbix.example.com;
-
-    root /usr/share/zabbix;
-    index index.php;
-
-    location / {
-        try_files $uri $uri/ /index.php?$query_string;
-    }
-
-    location ~ \.php$ {
-        fastcgi_pass unix:/run/php-fpm/zabbix.sock;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        include fastcgi_params;
-    }
-}
-CONF
+sudo sed -i 's|^#\s*listen\s\+8080;|        listen          80;|' \
+  /etc/nginx/conf.d/zabbix.conf
+sudo sed -i 's|^#\s*server_name\s\+example.com;|        server_name     zabbix.example.com;|' \
+  /etc/nginx/conf.d/zabbix.conf
 
 # Remove or comment out the default server block if it conflicts
 # sudo vi /etc/nginx/nginx.conf
@@ -98,8 +83,12 @@ CONF
 ```bash
 # The Zabbix PHP-FPM pool is pre-configured at /etc/php-fpm.d/zabbix.conf
 # Adjust timezone if needed
-sudo sed -i 's|^;php_value\[date.timezone\].*|php_value[date.timezone] = America/New_York|' \
-  /etc/php-fpm.d/zabbix.conf
+if grep -q '^php_value\[date.timezone\]' /etc/php-fpm.d/zabbix.conf; then
+  sudo sed -i 's|^php_value\[date.timezone\].*|php_value[date.timezone] = America/New_York|' \
+    /etc/php-fpm.d/zabbix.conf
+else
+  echo 'php_value[date.timezone] = America/New_York' | sudo tee -a /etc/php-fpm.d/zabbix.conf
+fi
 ```
 
 ## Start All Services
@@ -116,7 +105,7 @@ sudo systemctl status zabbix-agent2
 ## Firewall Configuration
 
 ```bash
-# Allow HTTP and Zabbix agent port
+# Allow HTTP and the Zabbix server/trapper port
 sudo firewall-cmd --permanent --add-service=http
 sudo firewall-cmd --permanent --add-port=10051/tcp
 sudo firewall-cmd --reload
