@@ -18,12 +18,14 @@ graph TB
         Parent[Parent Instance]
         subgraph "Nitro Enclave"
             App[Enclave Application]
-            KMS[KMS Integration]
+            KMS[KMS SDK Client]
         end
+        Proxy[KMS Proxy on Parent]
         Parent -->|vsock| App
         App --> KMS
+        KMS -->|vsock| Proxy
     end
-    KMS --> AWSKMS[AWS KMS Service]
+    Proxy --> AWSKMS[AWS KMS Service]
 ```
 
 ## Prerequisites
@@ -39,6 +41,7 @@ graph TB
 
 aws ec2 run-instances \
   --image-id ami-rhel9-id \
+  --count 1 \
   --instance-type m5.xlarge \
   --enclave-options Enabled=true \
   --key-name my-key \
@@ -51,14 +54,34 @@ aws ec2 run-instances \
 # SSH into the instance
 ssh -i my-key.pem ec2-user@<public-ip>
 
-# Install the Nitro Enclaves CLI and tools
-sudo dnf install -y aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel
+# Install build tools and Docker for RHEL
+sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y dnf-plugins-core git
+sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+
+# Add the ec2-user to the docker group
+sudo usermod -aG docker ec2-user
+
+# Build and install the Nitro Enclaves CLI from the AWS source repository
+git clone https://github.com/aws/aws-nitro-enclaves-cli.git
+cd aws-nitro-enclaves-cli
+export NITRO_CLI_INSTALL_DIR=/
+make nitro-cli
+make vsock-proxy
+sudo make NITRO_CLI_INSTALL_DIR=/ install
+source /etc/profile.d/nitro-cli-env.sh
+echo 'source /etc/profile.d/nitro-cli-env.sh' >> ~/.bashrc
+nitro-cli-config -i
 
 # Add the ec2-user to the ne group
 sudo usermod -aG ne ec2-user
 
+# Log out and reconnect so the docker and ne group changes take effect
+
 # Start the Nitro Enclaves allocator service
-sudo systemctl enable --now nitro-enclaves-allocator
+sudo systemctl enable --now nitro-enclaves-allocator.service
 
 # Configure memory and CPU allocation for enclaves
 sudo tee /etc/nitro_enclaves/allocator.yaml > /dev/null <<'ALLOCATOR'
@@ -70,7 +93,7 @@ cpu_count: 2
 ALLOCATOR
 
 # Restart the allocator
-sudo systemctl restart nitro-enclaves-allocator
+sudo systemctl restart nitro-enclaves-allocator.service
 ```
 
 ## Step 3: Build an Enclave Image
@@ -124,11 +147,13 @@ nitro-cli build-enclave \
 
 ```bash
 # Start the enclave
+# Use --debug-mode only while testing if you want to view console output.
 nitro-cli run-enclave \
   --eif-path enclave-app.eif \
   --memory 512 \
   --cpu-count 2 \
-  --enclave-cid 16
+  --enclave-cid 16 \
+  --debug-mode
 
 # Check enclave status
 nitro-cli describe-enclaves
