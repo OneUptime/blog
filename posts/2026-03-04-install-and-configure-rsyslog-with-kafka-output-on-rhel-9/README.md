@@ -23,14 +23,19 @@ Apache Kafka is a distributed event streaming platform used for building real-ti
 
 sudo dnf update -y
 
-# Install Java (required for Kafka)
-sudo dnf install -y java-17-openjdk java-17-openjdk-devel
+# Install rsyslog Kafka support, Java, and download tools
+sudo dnf install -y rsyslog rsyslog-kafka java-17-openjdk java-17-openjdk-devel wget firewalld
 
 # Download Apache Kafka
 cd /opt
-sudo wget https://downloads.apache.org/kafka/3.7.0/kafka_2.13-3.7.0.tgz
+sudo wget https://archive.apache.org/dist/kafka/3.7.0/kafka_2.13-3.7.0.tgz
 sudo tar -xzf kafka_2.13-3.7.0.tgz
 sudo mv kafka_2.13-3.7.0 kafka
+
+# Initialize Kafka storage for KRaft mode
+cd /opt/kafka
+KAFKA_CLUSTER_ID="$(bin/kafka-storage.sh random-uuid)"
+sudo bin/kafka-storage.sh format -t "$KAFKA_CLUSTER_ID" -c config/kraft/server.properties
 ```
 
 ## Step 2: Configure the Service
@@ -38,35 +43,80 @@ sudo mv kafka_2.13-3.7.0 kafka
 Edit the configuration file to match your environment:
 
 ```bash
-# Open the configuration file
-sudo vi /etc/<service>/config.conf
+# Create a systemd unit for Kafka
+sudo vi /etc/systemd/system/kafka.service
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Add the following service definition:
+
+```ini
+[Unit]
+Description=Apache Kafka Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/kafka
+ExecStart=/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/kraft/server.properties
+ExecStop=/opt/kafka/bin/kafka-server-stop.sh
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Configure rsyslog to send logs to Kafka:
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo vi /etc/rsyslog.d/10-kafka.conf
+```
+
+Add the following configuration:
+
+```conf
+module(load="omkafka")
+
+*.* action(
+  type="omkafka"
+  broker=["localhost:9092"]
+  topic="rsyslog"
+  template="RSYSLOG_SyslogProtocol23Format"
+)
+```
+
+Verify the rsyslog configuration syntax:
+
+```bash
+sudo rsyslogd -N 1
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Reload systemd after adding the Kafka unit
+sudo systemctl daemon-reload
 
-# Start the service
-sudo systemctl start <service-name>
+# Enable and start Kafka
+sudo systemctl enable --now kafka
+
+# Create the topic used by rsyslog
+/opt/kafka/bin/kafka-topics.sh --create --topic rsyslog --bootstrap-server localhost:9092
+
+# Enable and restart rsyslog
+sudo systemctl enable --now rsyslog
+sudo systemctl restart rsyslog
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status kafka
+sudo systemctl status rsyslog
 ```
 
 ## Step 4: Configure the Firewall
 
 ```bash
-# Open the required port
-sudo firewall-cmd --permanent --add-port=<PORT>/tcp
+# Open the Kafka broker port
+sudo firewall-cmd --permanent --add-port=9092/tcp
 sudo firewall-cmd --reload
 
 # Verify the rule
@@ -87,13 +137,20 @@ Confirm everything is working by checking the status and logs:
 
 # List topics
 /opt/kafka/bin/kafka-topics.sh --list --bootstrap-server localhost:9092
+
+# Send a test log message through rsyslog
+logger "rsyslog Kafka output test"
+
+# Read messages from the rsyslog topic
+/opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic rsyslog --from-beginning --timeout-ms 10000
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
+- If Kafka fails to start, check the logs with `journalctl -u kafka -e --no-pager`.
+- If rsyslog fails to start, check the logs with `journalctl -u rsyslog -e --no-pager` and validate the configuration with `rsyslogd -N 1`.
 - SELinux may block access. Check for denials with `ausearch -m avc -ts recent` and apply appropriate policies.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- Ensure all required packages are installed: `rpm -qa | grep -E 'rsyslog|java-17-openjdk'`.
 
 ## Conclusion
 
