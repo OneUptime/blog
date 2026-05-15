@@ -15,7 +15,7 @@ Packaging Go binaries as RPMs lets you distribute them through standard RHEL pac
 ```bash
 # Install RPM build tools
 
-sudo dnf install -y rpm-build rpmdevtools golang
+sudo dnf install -y rpm-build rpmdevtools golang systemd-rpm-macros
 
 # Set up the RPM build directory structure
 rpmdev-setuptree
@@ -60,10 +60,10 @@ func main() {
 ```bash
 # Create a source tarball
 VERSION="1.0.0"
-mkdir -p myservice-\${VERSION}
-cp main.go go.mod myservice-\${VERSION}/
-tar czf ~/rpmbuild/SOURCES/myservice-\${VERSION}.tar.gz myservice-\${VERSION}
-rm -rf myservice-\${VERSION}
+mkdir -p myservice-${VERSION}
+cp main.go go.mod myservice-${VERSION}/
+tar czf ~/rpmbuild/SOURCES/myservice-${VERSION}.tar.gz myservice-${VERSION}
+rm -rf myservice-${VERSION}
 ```
 
 ## Create the RPM Spec File
@@ -76,8 +76,10 @@ Summary:        A sample Go web service
 
 License:        MIT
 Source0:        %{name}-%{version}.tar.gz
+Source1:        %{name}.service
 
 BuildRequires:  golang >= 1.21
+BuildRequires:  systemd-rpm-macros
 
 %description
 A sample Go web service packaged as an RPM.
@@ -90,15 +92,20 @@ go build -ldflags="-s -w -X main.version=%{version}" -o %{name} .
 
 %install
 install -Dpm 0755 %{name} %{buildroot}%{_bindir}/%{name}
+install -Dpm 0644 %{SOURCE1} %{buildroot}%{_unitdir}/%{name}.service
 
 %files
 %{_bindir}/%{name}
+%{_unitdir}/%{name}.service
 
 %post
 %systemd_post %{name}.service
 
 %preun
 %systemd_preun %{name}.service
+
+%postun
+%systemd_postun_with_restart %{name}.service
 ```
 
 ## Create a Systemd Unit File
