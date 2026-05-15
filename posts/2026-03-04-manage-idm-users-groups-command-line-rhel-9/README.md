@@ -95,11 +95,11 @@ ipa user-enable jsmith
 ### Deleting a User
 
 ```bash
-# Delete (can be preserved)
+# Delete permanently (default)
 ipa user-del jsmith
 
-# Permanently delete
-ipa user-del jsmith --permanent
+# Delete multiple users and continue on errors
+ipa user-del --continue jsmith jdoe
 ```
 
 ### Preserving and Restoring Users
@@ -231,8 +231,8 @@ done
 ## Managing User Certificates
 
 ```bash
-# Request a certificate for a user
-ipa cert-request user-cert.csr --principal=jsmith
+# Request a certificate for a user with a user certificate profile
+ipa cert-request user-cert.csr --principal=jsmith --profile-id=smime
 
 # List user certificates
 ipa cert-find --user=jsmith
