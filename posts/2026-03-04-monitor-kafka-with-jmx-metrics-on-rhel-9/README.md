@@ -8,53 +8,78 @@ Description: Step-by-step guide on monitor kafka with jmx metrics using Red Hat 
 
 ---
 
-Kafka exposes detailed metrics through JMX (Java Management Extensions). Collecting these metrics with tools like Prometheus helps you monitor broker health, consumer lag, and topic throughput.
+Kafka exposes detailed metrics through JMX (Java Management Extensions). Collecting these metrics with tools like Prometheus helps you monitor broker health, replication status, and topic throughput.
 
 ## Prerequisites
 
 - RHEL with a valid subscription or CentOS Stream 9
 - Root or sudo access
 - A terminal session
+- Apache Kafka installed under `/opt/kafka` and managed by a `kafka.service` systemd unit
+- Prometheus JMX Exporter Java agent downloaded to `/opt/jmx-exporter/jmx_prometheus_javaagent.jar`
 
 ## Step 2: Configure the Service
 
-Edit the configuration file to match your environment:
+Create a JMX Exporter configuration file to match your environment:
 
 ```bash
-# Open the configuration file
-
-sudo vi /etc/<service>/config.conf
+# Create the JMX Exporter configuration file
+sudo mkdir -p /etc/kafka
+sudo vi /etc/kafka/jmx-exporter.yml
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Use a minimal configuration to expose Kafka broker JMX metrics in Prometheus format:
+
+```yaml
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+rules:
+  - pattern: ".*"
+```
+
+Add the JMX Exporter Java agent to the Kafka service. The example below exposes metrics on port `9404`:
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Add the Java agent to the Kafka JVM options
+sudo systemctl edit kafka.service
+```
+
+Add the following override:
+
+```ini
+[Service]
+Environment="KAFKA_OPTS=-javaagent:/opt/jmx-exporter/jmx_prometheus_javaagent.jar=9404:/etc/kafka/jmx-exporter.yml"
+```
+
+Reload systemd and restart Kafka to apply changes:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart kafka.service
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable kafka.service
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start kafka.service
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status kafka.service
 ```
 
 ## Step 4: Configure the Firewall
 
 ```bash
-# Open the required port
-sudo firewall-cmd --permanent --add-port=<PORT>/tcp
+# Open the JMX Exporter metrics port
+sudo firewall-cmd --permanent --add-port=9404/tcp
 sudo firewall-cmd --reload
 
 # Verify the rule
-sudo firewall-cmd --list-all
+sudo firewall-cmd --list-ports
 ```
 
 
@@ -63,11 +88,14 @@ sudo firewall-cmd --list-all
 Confirm everything is working by checking the status and logs:
 
 ```bash
+# Check that the Prometheus metrics endpoint is responding
+curl http://localhost:9404/metrics
+
 # Check Kafka broker status
 /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092
 
 # Create a test topic
-/opt/kafka/bin/kafka-topics.sh --create --topic test --bootstrap-server localhost:9092
+/opt/kafka/bin/kafka-topics.sh --create --topic test --partitions 1 --replication-factor 1 --bootstrap-server localhost:9092
 
 # List topics
 /opt/kafka/bin/kafka-topics.sh --list --bootstrap-server localhost:9092
@@ -75,9 +103,10 @@ Confirm everything is working by checking the status and logs:
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- SELinux may block access. Check for denials with `ausearch -m avc -ts recent` and apply appropriate policies.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u kafka.service -e --no-pager`.
+- If metrics are not exposed, verify that the JMX Exporter jar path, configuration file path, and port in `KAFKA_OPTS` are correct.
+- SELinux or firewall rules may block remote access to the metrics port. Check for denials with `ausearch -m avc -ts recent` and apply appropriate policies.
+- Ensure Java, Kafka, and the JMX Exporter jar are installed in the paths used by the service.
 
 ## Conclusion
 
