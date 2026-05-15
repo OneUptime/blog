@@ -22,12 +22,12 @@ SELinux labels files based on their path. The policy maps path patterns to conte
 - `/var/lib/mysql(/.*)?` maps to `mysqld_db_t`
 - `/var/log(/.*)?` maps to `var_log_t`
 
-When you create files outside these standard paths, they get the `default_t` label, which no service is allowed to access.
+When you create files outside these standard paths, they usually inherit the label of the parent directory, such as `var_t` under `/srv` or `usr_t` under parts of `/opt`. Newly-created objects in top-level directories can be labeled `default_t`. These generic labels are not what confined services expect.
 
 ```mermaid
 graph TD
     A[File in /var/www/html/] -->|Auto-labeled| B[httpd_sys_content_t]
-    C[File in /opt/myapp/html/] -->|Auto-labeled| D[default_t]
+    C[File in /opt/myapp/html/] -->|Auto-labeled| D[generic type]
     B -->|Apache can read| E[Works]
     D -->|Apache cannot read| F[Blocked by SELinux]
 ```
@@ -165,8 +165,8 @@ sudo restorecon -Rv /data/shares/
 ### Custom NFS Export
 
 ```bash
-# NFS exported directory
-sudo semanage fcontext -a -t nfs_t "/data/exports(/.*)?"
+# Read-only content exported by NFS
+sudo semanage fcontext -a -t public_content_t "/data/exports(/.*)?"
 sudo restorecon -Rv /data/exports/
 ```
 
