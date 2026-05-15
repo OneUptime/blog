@@ -29,7 +29,8 @@ Use Winbind when your primary goal is running Samba file servers that need tight
 # Install Samba, Winbind, and related tools
 
 sudo dnf install samba samba-winbind samba-winbind-clients \
-  samba-common-tools krb5-workstation oddjob oddjob-mkhomedir -y
+  samba-common-tools samba-client samba-winbind-krb5-locator \
+  krb5-workstation oddjob oddjob-mkhomedir -y
 ```
 
 ## Step 2 - Configure Kerberos
@@ -62,6 +63,12 @@ Configure it for your AD domain:
 [domain_realm]
   .example.com = EXAMPLE.COM
   example.com = EXAMPLE.COM
+
+[plugins]
+  localauth = {
+    module = winbind:/usr/lib64/samba/krb5/winbind_krb5_localauth.so
+    enable_only = winbind
+  }
 ```
 
 Test Kerberos:
