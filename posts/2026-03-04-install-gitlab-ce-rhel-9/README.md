@@ -24,6 +24,7 @@ sudo systemctl enable --now postfix
 # Open the firewall for HTTP and HTTPS
 sudo firewall-cmd --permanent --add-service=http
 sudo firewall-cmd --permanent --add-service=https
+sudo firewall-cmd --permanent --add-service=ssh
 sudo firewall-cmd --reload
 ```
 
@@ -31,7 +32,7 @@ sudo firewall-cmd --reload
 
 ```bash
 # Add the GitLab repository
-curl -sS https://packages.gitlab.com/install/repositories/gitlab/gitlab-ce/script.rpm.sh | sudo bash
+curl --location "https://packages.gitlab.com/install/repositories/gitlab/gitlab-ce/script.rpm.sh" | sudo bash
 
 # Install GitLab CE and set the external URL
 sudo EXTERNAL_URL="http://gitlab.example.com" dnf install -y gitlab-ce
@@ -115,7 +116,7 @@ sudo gitlab-ctl tail sidekiq
 
 ## Enable HTTPS with Let's Encrypt
 
-```hcl
+```ruby
 # In /etc/gitlab/gitlab.rb, change the URL to HTTPS
 # external_url 'https://gitlab.example.com'
 
