@@ -36,11 +36,10 @@ sudo journalctl -u firewalld -n 50
 ```bash
 # Validate the configuration
 
-sudo firewall-cmd --check-config
+sudo firewall-offline-cmd --check-config
 
 # Reset to defaults if corrupted
-sudo rm -rf /etc/firewalld/zones/*
-sudo rm -rf /etc/firewalld/services/*
+sudo firewall-offline-cmd --reset-to-defaults
 sudo systemctl restart firewalld
 ```
 
@@ -104,4 +103,3 @@ sudo journalctl -f | grep REJECT
 ## Conclusion
 
 Restore firewalld on RHEL 9 by checking for configuration errors, conflicting services, and missing dependencies. Always ensure the SSH service is allowed before enabling the firewall to avoid locking yourself out.
-
