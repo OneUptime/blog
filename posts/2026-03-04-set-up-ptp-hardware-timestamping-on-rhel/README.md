@@ -8,14 +8,14 @@ Description: Enable and verify PTP hardware timestamping on RHEL network interfa
 
 ---
 
-Hardware timestamping records the exact time a PTP packet is sent or received at the NIC hardware level, removing kernel and software delays from the timing measurement. This is the key to achieving nanosecond-level accuracy with PTP.
+Hardware timestamping records the exact time a PTP packet is sent or received at the NIC hardware level, reducing kernel and software delays in the timing measurement. This is a key requirement for sub-microsecond or nanosecond-scale accuracy with PTP on supported networks.
 
 ## Check NIC Hardware Timestamping Capabilities
 
 ```bash
-# Install ethtool if not present
+# Install ethtool and linuxptp if not present
 
-sudo dnf install -y ethtool
+sudo dnf install -y ethtool linuxptp
 
 # Query timestamping capabilities
 ethtool -T enp1s0
@@ -31,7 +31,7 @@ Capabilities:
 PTP Hardware Clock: 0
 ```
 
-If `PTP Hardware Clock: 0` or higher is shown, the NIC has a hardware clock (PHC).
+If a non-negative `PTP Hardware Clock` value, such as `0` or higher, is shown, the NIC has a hardware clock (PHC).
 
 ## Verify the PTP Hardware Clock Device
 
@@ -74,9 +74,10 @@ summary_interval        1
 
 ```bash
 # Start ptp4l in slave mode with hardware timestamping
-sudo ptp4l -i enp1s0 -H -s -f /etc/ptp4l.conf -m
+sudo ptp4l -H -s -f /etc/ptp4l.conf -m
 
 # -H explicitly selects hardware timestamping
+# -f reads the interface from the [enp1s0] section in /etc/ptp4l.conf
 # -m prints messages to stdout for verification
 ```
 
@@ -88,19 +89,19 @@ The system clock and the NIC hardware clock are independent. Use phc2sys to keep
 # Sync system clock (CLOCK_REALTIME) from NIC's PHC
 sudo phc2sys -s enp1s0 -c CLOCK_REALTIME -w -m
 
-# Monitor the offset - should be under 100ns with good hardware
+# Monitor the offset - good hardware and a PTP-aware network can reach sub-microsecond accuracy
 ```
 
 ## Verify Hardware Timestamping is Active
 
 ```bash
-# Check the ptp4l log for hardware timestamp confirmation
-journalctl -u ptp4l | grep "time stamping"
-# Should show: "selected /dev/ptp0 as PTP clock"
+# Check the ptp4l log for the selected PTP clock
+journalctl -u ptp4l | grep -E "selected .* as PTP clock"
+# Should show a selected PTP clock, for example: "selected /dev/ptp0 as PTP clock"
 
 # Check master offset values
 journalctl -u ptp4l -f
-# With hardware timestamping, offsets should be under 100 nanoseconds
+# With hardware timestamping, offsets are reported in nanoseconds and can converge to sub-microsecond values on a suitable network
 ```
 
 ## Compare with Software Timestamping
@@ -110,7 +111,7 @@ For reference, you can temporarily switch to software timestamping:
 ```bash
 # Run with software timestamping to see the difference
 sudo ptp4l -i enp1s0 -S -s -m
-# Offsets will be in the microsecond range instead of nanosecond
+# Offsets are typically larger, often in the microsecond range
 ```
 
 ## Troubleshooting
@@ -120,12 +121,12 @@ sudo ptp4l -i enp1s0 -S -s -m
 sudo dmesg | grep -i ptp
 
 # Verify the NIC driver supports PTP
-modinfo <driver_name> | grep ptp
+modinfo <driver_name> | grep -i ptp
 
 # Check for IRQ coalescing (can hurt precision)
 ethtool -c enp1s0
-# Disable coalescing for best results
+# Consider disabling coalescing if you need the lowest possible latency variation
 sudo ethtool -C enp1s0 rx-usecs 0 tx-usecs 0
 ```
 
-Hardware timestamping is the foundation of high-precision PTP. Without it, PTP accuracy degrades from nanoseconds to microseconds.
+Hardware timestamping is the foundation of high-precision PTP. Without it, PTP accuracy typically degrades from sub-microsecond or nanosecond-scale accuracy to microseconds.
