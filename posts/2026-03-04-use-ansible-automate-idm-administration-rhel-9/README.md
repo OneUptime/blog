@@ -34,6 +34,9 @@ If you install from Ansible Galaxy, either use fully qualified module names such
 [ipaserver]
 idm1.example.com
 
+[ipaservers]
+idm1.example.com
+
 [ipareplicas]
 idm2.example.com
 
@@ -215,6 +218,22 @@ ansible-vault encrypt_string 'AdminPassword' --name 'ipaadmin_password'
   hosts: ipaserver
   become: false
   tasks:
+    - name: Create dev server host group
+      ipahostgroup:
+        ipaadmin_password: "{{ ipaadmin_password }}"
+        name: devservers
+        description: "Development servers"
+        state: present
+
+    - name: Create sudo commands
+      ipasudocmd:
+        ipaadmin_password: "{{ ipaadmin_password }}"
+        name: "{{ item }}"
+        state: present
+      loop:
+        - /usr/bin/systemctl
+        - /usr/bin/journalctl
+
     - name: Create sudo rule
       ipasudorule:
         ipaadmin_password: "{{ ipaadmin_password }}"
