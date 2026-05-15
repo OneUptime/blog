@@ -23,10 +23,10 @@ Set up and customize log rotation with logrotate on RHEL to manage disk space. T
 Ensure the relevant packages are installed:
 
 ```bash
-sudo dnf install -y rsyslog systemd
+sudo dnf install -y logrotate
 ```
 
-rsyslog and systemd-journald ship by default on RHEL.
+logrotate is commonly installed by default on RHEL, but installing the package ensures the logrotate command and systemd timer are present.
 
 ## Step 2 - Understand the Logging Architecture
 
@@ -35,22 +35,36 @@ RHEL uses two logging systems:
 - **systemd-journald** - captures structured binary logs from all services, the kernel, and early boot
 - **rsyslog** - processes, filters, and forwards text-based syslog messages
 
-The two work together: journald collects everything, and rsyslog can read from the journal or receive messages directly via the syslog socket.
+The two work together: journald collects logs, and rsyslog can read from the journal or receive messages directly via the syslog socket. logrotate manages text log files such as files under `/var/log`. It does not rotate the binary journal; journald retention is controlled separately in `/etc/systemd/journald.conf`.
 
 ## Step 3 - Apply the Configuration
 
 To set up log rotation with logrotate, you need to edit the appropriate configuration files. The main files are:
 
-- `/etc/rsyslog.conf` and `/etc/rsyslog.d/*.conf` for rsyslog
-- `/etc/systemd/journald.conf` for journald
+- `/etc/logrotate.conf` for global logrotate defaults
+- `/etc/logrotate.d/*` for per-application log rotation policies
 
-Make your changes, then restart the relevant service:
+For example, create a per-application policy in `/etc/logrotate.d/myapp`:
 
 ```bash
-sudo systemctl restart rsyslog
-# or
+sudo vi /etc/logrotate.d/myapp
+```
 
-sudo systemctl restart systemd-journald
+```text
+/var/log/myapp/*.log {
+    daily
+    rotate 7
+    compress
+    missingok
+    notifempty
+    create 0640 root root
+}
+```
+
+On RHEL 9, logrotate is run by a systemd timer. Enable and start the timer if needed:
+
+```bash
+sudo systemctl enable --now logrotate.timer
 ```
 
 ## Step 4 - Verify the Setup
@@ -58,29 +72,34 @@ sudo systemctl restart systemd-journald
 Check the service status:
 
 ```bash
-systemctl status rsyslog
-systemctl status systemd-journald
+systemctl status logrotate.timer
 ```
 
-Review recent logs to confirm your changes are working:
+Run logrotate in debug mode to check the configuration without changing any log files:
 
 ```bash
-journalctl --since "5 minutes ago"
-tail -20 /var/log/messages
+sudo logrotate -d /etc/logrotate.conf
+```
+
+After the timer runs, check the logrotate state file to confirm which logs have been processed:
+
+```bash
+sudo cat /var/lib/logrotate/logrotate.status
 ```
 
 ## Step 5 - Open Firewall Ports (If Applicable)
 
-If your setup involves remote logging, open the necessary ports:
+Log rotation itself does not require firewall changes. If your setup also involves receiving remote syslog messages, open the port and protocol used by your rsyslog listener:
 
 ```bash
 sudo firewall-cmd --permanent --add-port=514/tcp
+sudo firewall-cmd --permanent --add-port=514/udp
 sudo firewall-cmd --reload
 ```
 
 ## Troubleshooting
 
-- Check for syntax errors in rsyslog configuration: `rsyslogd -N1`
+- Check for logrotate configuration errors: `logrotate -d /etc/logrotate.conf`
 - Verify SELinux is not blocking log operations: `ausearch -m AVC -ts recent`
 - Ensure the target directory exists and has correct permissions
 
