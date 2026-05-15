@@ -28,11 +28,11 @@ Categorize patches by severity:
 ```bash
 # Review available updates
 
-sudo dnf updateinfo list security
+sudo dnf updateinfo list updates security
 sudo dnf updateinfo summary
 
 # Check specific CVEs
-sudo dnf updateinfo info --cve CVE-2025-XXXX
+sudo dnf updateinfo info --cve=CVE-2025-XXXX
 ```
 
 ### 2. Testing
@@ -59,8 +59,8 @@ sudo dnf update --advisory RHSA-2025:1234
 
 ```bash
 sudo dnf history
-needs-restarting -r
-needs-restarting -s
+sudo dnf needs-restarting -r
+sudo dnf needs-restarting -s
 ```
 
 ## Automate with Satellite
@@ -68,6 +68,7 @@ needs-restarting -s
 ```bash
 hammer content-view version promote \
   --content-view "RHEL9-Production" \
+  --version 1 \
   --to-lifecycle-environment "Production" \
   --organization "MyOrg"
 ```
@@ -89,9 +90,16 @@ hammer content-view version promote \
         security: true
       register: update_result
 
+    - name: Check whether a reboot is needed
+      ansible.builtin.command: dnf needs-restarting -r
+      register: reboot_check
+      failed_when: reboot_check.rc not in [0, 1]
+      changed_when: false
+      when: update_result.changed
+
     - name: Reboot if needed
       ansible.builtin.reboot:
-      when: update_result.changed
+      when: update_result.changed and reboot_check.rc == 1
 ```
 
 ## Rollback Plan
@@ -107,4 +115,3 @@ sudo dnf history undo <transaction-id>
 ## Conclusion
 
 A structured patch management strategy for RHEL 9 balances security with stability. Classify patches by severity, test before deploying, use rolling updates in production, and always maintain a rollback plan.
-
