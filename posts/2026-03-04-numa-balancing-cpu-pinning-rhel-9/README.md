@@ -184,7 +184,7 @@ Key metrics to watch:
 | local_node | Memory allocated on the node where the process ran |
 | other_node | Memory allocated on a different node |
 
-A high `numa_miss` count indicates your workload is frequently accessing remote memory, which means pinning could help.
+A high `numa_miss` count indicates memory is often being allocated on a node other than the intended node. Compare it with `numa_hit`, `local_node`, and `other_node` to decide whether CPU and memory pinning could help.
 
 ## Tuning NUMA-Related Kernel Parameters
 
@@ -194,8 +194,9 @@ sudo tee /etc/sysctl.d/90-numa.conf <<EOF
 # Disable automatic NUMA balancing for pinned workloads
 kernel.numa_balancing = 0
 
-# Control how aggressively the kernel reclaims memory from remote nodes
-# 0 = reclaim from local node only, 1 = allow reclaim from remote nodes
+# Control whether the kernel reclaims memory from the local node
+# before allocating from another node
+# 0 = disable zone reclaim, 1 = enable zone reclaim
 vm.zone_reclaim_mode = 0
 EOF
 
