@@ -8,7 +8,7 @@ Description: Learn how to install, mount, and configure FUSE-based file systems 
 
 ---
 
-FUSE (Filesystem in Userspace) lets you mount filesystems without kernel modules. This means regular users can mount filesystems, developers can create custom filesystems, and you can access remote storage, archives, and cloud services as if they were local directories. RHEL has solid FUSE support built in.
+FUSE (Filesystem in Userspace) lets you mount filesystems without writing filesystem-specific kernel modules. This means regular users can mount filesystems, developers can create custom filesystems, and you can access remote storage, archives, and cloud services as if they were local directories. RHEL has solid FUSE support built in.
 
 ## What Is FUSE
 
@@ -31,7 +31,7 @@ FUSE is available by default on RHEL, but verify:
 ```bash
 # Install FUSE packages
 
-dnf install -y fuse fuse-libs fuse3 fuse3-libs
+dnf install -y fuse3 fuse3-libs
 ```
 
 Check that the FUSE kernel module is loaded:
@@ -50,7 +50,7 @@ modprobe fuse
 
 ## Allowing Non-Root Users to Mount FUSE
 
-By default, only root can mount FUSE filesystems. To allow regular users, edit the FUSE configuration:
+FUSE supports non-root mounts through the `fusermount3` helper. By default, a non-root user's FUSE mount is only accessible to that user. To allow regular users to make FUSE mounts accessible to other users, edit the FUSE configuration:
 
 ```bash
 # Edit FUSE config
@@ -71,11 +71,11 @@ Several popular FUSE filesystems are available:
 
 | Filesystem | Purpose | Package |
 |-----------|---------|---------|
-| SSHFS | Mount remote dirs over SSH | fuse-sshfs |
+| SSHFS | Mount remote dirs over SSH | fuse-sshfs (EPEL) |
 | s3fs | Mount S3 buckets | s3fs-fuse (EPEL) |
-| ntfs-3g | Read/write NTFS drives | ntfs-3g |
+| ntfs-3g | Read/write NTFS drives | ntfs-3g (EPEL) |
 | encfs | Encrypted directories | fuse-encfs (EPEL) |
-| rclone mount | Cloud storage (S3, GCS, etc.) | rclone |
+| rclone mount | Cloud storage (S3, GCS, etc.) | rclone (EPEL) |
 
 ## Mounting NTFS Drives
 
@@ -115,16 +115,16 @@ Key options:
 
 ```bash
 # Standard unmount
-fusermount -u /mountpoint
+fusermount3 -u /mountpoint
 
 # Or use umount
 umount /mountpoint
 
 # Force unmount if busy
-fusermount -uz /mountpoint
+fusermount3 -uz /mountpoint
 ```
 
-The `fusermount` command is preferred for FUSE mounts as it handles cleanup properly.
+The `fusermount3` command is preferred for FUSE 3 mounts as it handles cleanup properly.
 
 ## FUSE Performance Considerations
 
@@ -138,7 +138,7 @@ To improve FUSE performance:
 
 ```bash
 # Mount with larger buffer sizes where supported
-mount -t fuse.sshfs user@host:/path /mnt -o max_read=131072,max_write=131072
+mount -t fuse.sshfs user@host:/path /mnt -o max_read=131072
 ```
 
 ## Debugging FUSE Issues
@@ -186,12 +186,12 @@ semodule -i myfuse.pp
 FUSE filesystems can be added to fstab, but they need the `_netdev` option if they depend on networking:
 
 ```bash
-sshfs#user@host:/remote/path  /mnt/remote  fuse  _netdev,user,idmap=user  0 0
+user@host:/remote/path  /mnt/remote  fuse.sshfs  _netdev,user,idmap=user  0 0
 ```
 
-## Automounting with systemd
+## Mounting with systemd
 
-For more control, use a systemd automount unit:
+For more control, use a systemd mount unit:
 
 ```bash
 # /etc/systemd/system/mnt-remote.mount
@@ -201,9 +201,9 @@ Description=FUSE mount for remote storage
 After=network-online.target
 
 [Mount]
-What=sshfs#user@host:/remote/path
+What=user@host:/remote/path
 Where=/mnt/remote
-Type=fuse
+Type=fuse.sshfs
 Options=_netdev,user,idmap=user,IdentityFile=/root/.ssh/id_rsa
 
 [Install]
@@ -215,4 +215,4 @@ systemctl enable --now mnt-remote.mount
 
 ## Summary
 
-FUSE on RHEL gives you flexible, user-space filesystem access for remote storage, cloud services, and non-native filesystem formats. Install the FUSE packages, configure `/etc/fuse.conf` for user access, and use the appropriate FUSE filesystem for your needs. Keep in mind the performance overhead compared to kernel filesystems, and use `fusermount -u` for clean unmounts.
+FUSE on RHEL gives you flexible, user-space filesystem access for remote storage, cloud services, and non-native filesystem formats. Install the FUSE packages, configure `/etc/fuse.conf` for shared user access, and use the appropriate FUSE filesystem for your needs. Keep in mind the performance overhead compared to kernel filesystems, and use `fusermount3 -u` for clean unmounts.
