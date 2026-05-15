@@ -14,13 +14,13 @@ Deploy RHEL 9 on Google Cloud Platform using Compute Engine. RHEL 9 is fully sup
 
 ## Prerequisites
 
-- A RHEL 9 subscription or cloud marketplace entitlement
-- An account on the target cloud platform (AWS, Azure, or GCP)
-- CLI tools installed: aws-cli, az-cli, or gcloud
+- A Google Cloud account with billing enabled
+- The Google Cloud CLI installed and authenticated
+- A project with the Compute Engine API enabled
 
 ## Step 1 - Choose Your Deployment Method
 
-You can deploy RHEL 9 in the cloud using:
+You can deploy RHEL 9 on GCP using:
 
 1. **Marketplace images** - pre-built, official Red Hat images
 2. **Custom images** - built with Image Builder and uploaded
@@ -29,34 +29,28 @@ You can deploy RHEL 9 in the cloud using:
 
 ## Step 2 - Launch a RHEL 9 Instance
 
-For AWS:
-
-```bash
-aws ec2 run-instances --image-id ami-rhel9-xxxxx --instance-type m5.large --key-name mykey
-```
-
-For Azure:
-
-```bash
-az vm create --resource-group myRG --name myVM --image RedHat:RHEL:9:latest --size Standard_D2s_v3
-```
-
 For GCP:
 
 ```bash
-gcloud compute instances create myvm --image-project=rhel-cloud --image-family=rhel-9 --machine-type=e2-medium
+gcloud compute instances create myvm \
+  --zone=us-central1-a \
+  --image-project=rhel-cloud \
+  --image-family=rhel-9 \
+  --machine-type=e2-medium
 ```
 
 ## Step 3 - Configure cloud-init
 
-RHEL 9 cloud images use cloud-init for first-boot customization. Create a user-data script:
+RHEL 9 cloud images use cloud-init for first-boot customization. Create a `cloud-config.yaml` user-data script:
 
 ```yaml
 #cloud-config
 hostname: my-rhel-server
 users:
+  - default
   - name: admin
     groups: wheel
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
     ssh_authorized_keys:
       - ssh-rsa AAAA...your-key-here
 packages:
@@ -64,7 +58,20 @@ packages:
   - tmux
 ```
 
+Pass it to the instance through the `user-data` metadata key:
+
+```bash
+gcloud compute instances create myvm \
+  --zone=us-central1-a \
+  --image-project=rhel-cloud \
+  --image-family=rhel-9 \
+  --machine-type=e2-medium \
+  --metadata-from-file=user-data=cloud-config.yaml
+```
+
 ## Step 4 - Register with Red Hat
+
+Google Cloud pay-as-you-go RHEL images receive updates through Google's Red Hat Update Infrastructure (RHUI) and do not use `subscription-manager`. For BYOS or custom images, register with Red Hat:
 
 ```bash
 sudo subscription-manager register --auto-attach
