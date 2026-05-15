@@ -14,8 +14,8 @@ KVM virtual machines on RHEL 9 can boot using either traditional BIOS or UEFI fi
 
 | Feature | BIOS (SeaBIOS) | UEFI (OVMF) |
 |---------|---------------|--------------|
-| Disk scheme | MBR | GPT |
-| Max disk size | 2 TB | 9.4 ZB |
+| Typical disk scheme | MBR | GPT |
+| Typical boot disk limit | 2 TB with MBR | 9.4 ZB with GPT and 512-byte sectors |
 | Secure Boot | No | Yes |
 | Boot speed | Fast | Faster |
 | Default | Yes | No |
@@ -51,7 +51,7 @@ sudo virt-install \
     --disk size=20 \
     --cdrom /var/lib/libvirt/images/rhel9.iso \
     --os-variant rhel9.3 \
-    --boot uefi,firmware.feature0.name=secure-boot,firmware.feature0.enabled=yes
+    --boot uefi,nvram_template=/usr/share/OVMF/OVMF_VARS.secboot.fd
 ```
 
 ## Configuring Boot Order
@@ -96,12 +96,12 @@ For more granular control:
 </interface>
 ```
 
-### Temporary Boot from CD-ROM
+### Boot from CD-ROM
 
-Boot once from CD-ROM without changing the permanent configuration:
+To boot from CD-ROM, place `cdrom` before `hd` in the VM XML boot order:
 
 ```bash
-sudo virsh start vmname --boot cdrom
+sudo virsh edit vmname
 ```
 
 ## Converting BIOS to UEFI
@@ -112,7 +112,7 @@ This is not a simple conversion. You typically need to:
 2. Attach the old disk as a secondary
 3. Reinstall the OS or migrate data
 
-Direct conversion is not supported because BIOS uses MBR partitioning while UEFI requires GPT.
+Direct conversion is not just a firmware setting change. BIOS installations commonly use MBR, while UEFI installations need an EFI System Partition and UEFI boot loader configuration.
 
 ## Checking Current Firmware
 
