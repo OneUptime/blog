@@ -55,6 +55,7 @@ logs_enabled: true
 Create a log configuration:
 
 ```bash
+sudo mkdir -p /etc/datadog-agent/conf.d/syslog.d
 sudo tee /etc/datadog-agent/conf.d/syslog.d/conf.yaml <<EOF
 logs:
   - type: file
@@ -67,12 +68,15 @@ logs:
     source: auth
     service: rhel9
 EOF
+
+sudo setfacl -m u:dd-agent:r /var/log/messages /var/log/secure
 ```
 
 ## Enable Integrations
 
 ```bash
 # Process monitoring
+sudo mkdir -p /etc/datadog-agent/conf.d/process.d
 sudo tee /etc/datadog-agent/conf.d/process.d/conf.yaml <<EOF
 init_config:
 instances:
@@ -93,4 +97,3 @@ sudo datadog-agent status
 ## Conclusion
 
 The Datadog Agent on RHEL 9 provides deep visibility into system metrics, logs, and processes. Use tags to organize servers and create dashboards and alerts in the Datadog console.
-
