@@ -15,7 +15,8 @@ sysbench is a multi-threaded benchmark tool commonly used to evaluate database p
 ```bash
 # Install sysbench from EPEL
 
-sudo dnf install -y epel-release
+sudo subscription-manager repos --enable codeready-builder-for-rhel-$(rpm -E %rhel)-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-$(rpm -E %rhel).noarch.rpm
 sudo dnf install -y sysbench
 ```
 
@@ -72,6 +73,7 @@ sysbench /usr/share/sysbench/oltp_read_write.lua \
 sudo -u postgres createdb sbtest
 sudo -u postgres psql -c "CREATE USER sbuser WITH PASSWORD 'sbpass';"
 sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE sbtest TO sbuser;"
+sudo -u postgres psql -d sbtest -c "GRANT CREATE ON SCHEMA public TO sbuser;"
 
 # Prepare the test data
 sysbench /usr/share/sysbench/oltp_read_write.lua \
