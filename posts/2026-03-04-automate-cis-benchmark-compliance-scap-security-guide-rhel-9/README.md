@@ -8,14 +8,14 @@ Description: Automate CIS benchmark compliance on RHEL using the scap-security-g
 
 ---
 
-The scap-security-guide (SSG) project is a community-driven effort that provides ready-to-use security content for SCAP scanners. On RHEL, it ships as an RPM and includes everything you need to automate CIS compliance: SCAP datastreams, Ansible playbooks, bash remediation scripts, and Kickstart snippets. Instead of writing all your hardening automation from scratch, you can lean heavily on what SSG already provides.
+The scap-security-guide (SSG) project is a community-driven effort that provides ready-to-use security content for SCAP scanners. On RHEL, it ships as an RPM and includes the content you need to automate CIS compliance: SCAP datastreams, Ansible playbooks, bash remediation scripts, and Kickstart snippets. Instead of writing all your hardening automation from scratch, you can lean heavily on what SSG already provides.
 
 ## Install scap-security-guide
 
 ```bash
-# Install the package
+# Install the content package, OpenSCAP scanner, and Ansible requirements
 
-dnf install -y scap-security-guide
+dnf install -y scap-security-guide openscap-scanner ansible-core rhc-worker-playbook
 
 # See what was installed
 rpm -ql scap-security-guide | head -30
@@ -60,6 +60,9 @@ The SSG ships with complete Ansible playbooks for each profile:
 # List available Ansible playbooks
 ls /usr/share/scap-security-guide/ansible/rhel9-playbook-*.yml
 
+# On RHEL 9, use the Red Hat Connector collection path for SSG Ansible playbooks
+export ANSIBLE_COLLECTIONS_PATH=/usr/share/rhc-worker-playbook/ansible/collections/ansible_collections/
+
 # Preview what the CIS Level 1 playbook will do
 ansible-playbook --check --diff \
   -i localhost, -c local \
@@ -87,6 +90,7 @@ ansible_become=yes
 EOF
 
 # Run the playbook against all servers
+ANSIBLE_COLLECTIONS_PATH=/usr/share/rhc-worker-playbook/ansible/collections/ansible_collections/ \
 ansible-playbook \
   -i /tmp/inventory.ini \
   /usr/share/scap-security-guide/ansible/rhel9-playbook-cis_server_l1.yml
@@ -126,14 +130,14 @@ cp /usr/share/scap-security-guide/kickstart/ssg-rhel9-cis_server_l1-ks.cfg \
 # The Kickstart file includes:
 # - Secure partitioning
 # - Package selection
-# - %addon org_fedora_oscap section for applying the profile
+# - %addon com_redhat_oscap section for applying the profile
 ```
 
 The key section in the Kickstart file is the OpenSCAP addon:
 
 ```bash
 # This goes in your Kickstart file
-%addon org_fedora_oscap
+%addon com_redhat_oscap
   content-type = scap-security-guide
   profile = xccdf_org.ssgproject.content_profile_cis_server_l1
 %end
@@ -150,17 +154,20 @@ oscap xccdf eval \
   --results /tmp/scan-results.xml \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
 
+# Find the result ID in the scan results
+oscap info /tmp/scan-results.xml
+
 # Generate Ansible playbook for only the failed rules
 oscap xccdf generate fix \
   --fix-type ansible \
-  --result-id "" \
+  --result-id xccdf_org.open-scap_testresult_xccdf_org.ssgproject.content_profile_cis_server_l1 \
   --output /tmp/targeted-fix.yml \
   /tmp/scan-results.xml
 
 # Generate bash script for only the failed rules
 oscap xccdf generate fix \
   --fix-type bash \
-  --result-id "" \
+  --result-id xccdf_org.open-scap_testresult_xccdf_org.ssgproject.content_profile_cis_server_l1 \
   --output /tmp/targeted-fix.sh \
   /tmp/scan-results.xml
 ```
@@ -175,6 +182,7 @@ Integrate SSG into your server build pipeline:
 set -e
 
 echo "Step 1: Apply CIS Level 1 hardening"
+ANSIBLE_COLLECTIONS_PATH=/usr/share/rhc-worker-playbook/ansible/collections/ansible_collections/ \
 ansible-playbook -i localhost, -c local \
   /usr/share/scap-security-guide/ansible/rhel9-playbook-cis_server_l1.yml
 
@@ -186,8 +194,8 @@ oscap xccdf eval \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml || true
 
 echo "Step 3: Count results"
-PASS=$(grep -c 'result="pass"' /var/log/compliance/initial-scan.xml)
-FAIL=$(grep -c 'result="fail"' /var/log/compliance/initial-scan.xml)
+PASS=$(grep -E -c '<[^>]*result>pass</[^>]*result>' /var/log/compliance/initial-scan.xml)
+FAIL=$(grep -E -c '<[^>]*result>fail</[^>]*result>' /var/log/compliance/initial-scan.xml)
 echo "Results: $PASS passed, $FAIL failed"
 
 # Fail the build if too many failures
