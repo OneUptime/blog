@@ -17,21 +17,25 @@ Before you can manage VMs in Cockpit, you need the virtualization stack installe
 Install the virtualization packages and Cockpit VM module:
 
 ```bash
-# Install the virtualization host group
-
-sudo dnf install @virtualization-host-environment -y
+# Install the virtualization packages
+sudo dnf install qemu-kvm libvirt virt-install virt-viewer cockpit -y
 
 # Install the Cockpit VM management module
 sudo dnf install cockpit-machines -y
 
-# Enable and start libvirtd
-sudo systemctl enable --now libvirtd
+# Start the modular libvirt sockets
+for drv in qemu network nodedev nwfilter secret storage interface; do
+    sudo systemctl start virt${drv}d{,-ro,-admin}.socket
+done
+
+# Enable Cockpit's web console socket
+sudo systemctl enable --now cockpit.socket
 
 # Verify KVM support
-lsmod | grep kvm
+sudo virt-host-validate
 ```
 
-You should see either `kvm_intel` or `kvm_amd` depending on your hardware. If neither appears, check that hardware virtualization is enabled in your BIOS/UEFI settings.
+The validation output should show passing KVM checks. If hardware virtualization checks fail, check that virtualization is enabled in your BIOS/UEFI settings.
 
 ## The Virtual Machines Page
 
@@ -182,13 +186,14 @@ sudo virsh attach-interface web-server \
 
 The "Snapshots" tab lets you create point-in-time snapshots of a VM. This is invaluable before making risky changes.
 
-Click "Create snapshot" and give it a name and description. Cockpit creates an internal snapshot that captures the VM's disk state and (if running) memory state.
+On RHEL 9.4 and later, supported snapshots require file-based VM storage and use external snapshots. Click "Create snapshot" and give it a name and description. A snapshot captures the VM's disk image, and a live snapshot of a running VM can also include the VM's memory state.
 
 ```bash
-# Create a snapshot from CLI
+# Create a disk-only external snapshot from CLI
 sudo virsh snapshot-create-as web-server \
-    --name "before-upgrade" \
-    --description "Snapshot before OS upgrade"
+    before-upgrade \
+    "Snapshot before OS upgrade" \
+    --disk-only
 
 # List snapshots
 sudo virsh snapshot-list web-server
@@ -242,23 +247,20 @@ sudo virsh pool-autostart data-pool
 The VM detail page shows basic resource usage. For more detailed monitoring, check the host's performance graphs on the Cockpit overview page while the VM is running.
 
 ```bash
-# Check VM resource usage from CLI
-sudo virt-top
-
-# Get detailed stats
+# Get detailed stats from CLI
 sudo virsh domstats web-server
 ```
 
 ## Migrating VMs
 
-Cockpit doesn't currently support live migration through the UI, but you can do it from the integrated terminal:
+Cockpit supports live migration through the UI when the source and destination hosts meet RHEL's migration prerequisites. You can also do it from the integrated terminal:
 
 ```bash
 # Live migrate a VM to another host
-sudo virsh migrate --live web-server \
+sudo virsh migrate --live --persistent web-server \
     qemu+ssh://destination-host/system
 ```
 
 ## Wrapping Up
 
-Cockpit's virtual machine management module turns browser-based VM administration into reality. For creating VMs, managing their resources, taking snapshots, and accessing consoles, it covers the common workflows well. It doesn't replace virsh for advanced operations like live migration or complex storage configurations, but for day-to-day VM management on a single host, it's a clean, efficient interface that reduces the barrier to entry for teams working with KVM.
+Cockpit's virtual machine management module turns browser-based VM administration into reality. For creating VMs, managing their resources, taking snapshots, migrating VMs between hosts, and accessing consoles, it covers the common workflows well. It doesn't replace virsh for advanced operations or complex storage configurations, but for day-to-day VM management, it's a clean, efficient interface that reduces the barrier to entry for teams working with KVM.
