@@ -15,10 +15,14 @@ Event-Driven Ansible (EDA) enables you to create automated responses to system e
 ```bash
 # Install ansible-rulebook on the control node
 
-pip install ansible-rulebook
+# Install the required Java dependency and pip
+sudo dnf install java-17-openjdk python3-pip -y
 
-# Install the required Java dependency (for Drools rule engine)
-sudo dnf install java-17-openjdk -y
+# Install ansible-rulebook and its Ansible runtime dependencies
+pip install ansible-rulebook ansible ansible-runner
+
+# Install the collection used by the file watch example
+ansible-galaxy collection install community.eda
 
 # Verify installation
 ansible-rulebook --version
@@ -35,7 +39,7 @@ A rulebook contains sources (event listeners), conditions (filters), and actions
   hosts: all
   sources:
     # Listen for webhook events from monitoring
-    - ansible.eda.webhook:
+    - eda.builtin.webhook:
         host: 0.0.0.0
         port: 5000
 
@@ -101,7 +105,7 @@ curl -X POST http://localhost:5000/endpoint \
 - name: Respond to file changes
   hosts: localhost
   sources:
-    - ansible.eda.file_watch:
+    - community.eda.file_watch:
         path: /etc/ssh/sshd_config
         recursive: false
 
