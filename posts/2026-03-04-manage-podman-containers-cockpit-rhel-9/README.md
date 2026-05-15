@@ -23,6 +23,9 @@ sudo dnf install podman -y
 
 # Install the Cockpit Podman integration
 sudo dnf install cockpit-podman -y
+
+# Enable the web console if it is not already enabled
+sudo systemctl enable --now cockpit.socket
 ```
 
 Refresh your browser after installation. A "Podman containers" entry will appear in the sidebar.
@@ -211,21 +214,33 @@ podman image prune -a
 
 For production use, you want containers to start automatically on boot. Podman integrates with systemd to make this possible.
 
-Generate a systemd unit file for a container:
+Create a Quadlet file for the container:
 
-```bash
-# Generate a systemd service file for an existing container
-podman generate systemd --name my-nginx --new --files
+```ini
+# /etc/containers/systemd/my-nginx.container
+[Container]
+Image=docker.io/library/nginx:latest
+ContainerName=my-nginx
+PublishPort=8080:80
 
-# Move the generated file to the systemd directory
-sudo mv container-my-nginx.service /etc/systemd/system/
-
-# Enable and start the service
-sudo systemctl daemon-reload
-sudo systemctl enable --now container-my-nginx.service
+[Install]
+WantedBy=multi-user.target
 ```
 
-For rootless containers, place the unit file in `~/.config/systemd/user/` and use `systemctl --user`.
+Reload systemd, then enable and start the generated service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now my-nginx.service
+```
+
+For rootless containers, place the Quadlet file in `~/.config/containers/systemd/`, use `systemctl --user`, and enable linger if the service must start at boot without an active login session:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now my-nginx.service
+sudo loginctl enable-linger "$USER"
+```
 
 ## Practical Example: Running a Multi-Container Application
 
