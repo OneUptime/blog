@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Monitoring, Linux
 
-Description: Step-by-step guide on install and configure the splunk universal forwarder using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on install and configure the Splunk Universal Forwarder using Red Hat Enterprise Linux 9.
 
 ---
 
@@ -16,46 +16,54 @@ The Splunk Universal Forwarder collects and sends log data to a Splunk indexer f
 - Root or sudo access
 - A terminal session
 
-## Step 1: Install Required Packages
+## Step 1: Install the Splunk Universal Forwarder
 
 ```bash
 # Update the system first
-
 sudo dnf update -y
 
-# Install the required packages
-sudo dnf install -y <package-name>
+# Install the downloaded Splunk Universal Forwarder RPM
+sudo dnf install -y ./splunkforwarder-<version>-<build>.x86_64.rpm
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+Replace `splunkforwarder-<version>-<build>.x86_64.rpm` with the RPM file you downloaded from Splunk. The default installation directory on Linux is `/opt/splunkforwarder`.
 
-## Step 2: Configure the Service
+## Step 2: Configure the Forwarder
 
-Edit the configuration file to match your environment:
+Configure the forwarder to send data to your Splunk indexer or receiving forwarder:
 
 ```bash
-# Open the configuration file
-sudo vi /etc/<service>/config.conf
+# Go to the Splunk Universal Forwarder CLI directory
+cd /opt/splunkforwarder/bin
+
+# Start the forwarder and accept the license
+sudo ./splunk start --accept-license
+
+# Add a receiving indexer or forwarder
+sudo ./splunk add forward-server <indexer-hostname-or-ip>:9997
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Replace `<indexer-hostname-or-ip>` with the host name or IP address of your Splunk receiver. The default Splunk-to-Splunk receiving port is commonly `9997`, but use the port configured in your Splunk environment.
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Add a local file or directory to monitor
+sudo ./splunk add monitor /var/log
+
+# Restart the forwarder to apply changes
+sudo ./splunk restart
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Enable systemd boot-start for the Splunk Universal Forwarder
+sudo /opt/splunkforwarder/bin/splunk enable boot-start -systemd-managed 1 -user splunkfwd -group splunkfwd
 
-# Start the service
-sudo systemctl start <service-name>
+# Start the service if it is not already running
+sudo /opt/splunkforwarder/bin/splunk start
 
 # Check the status
-sudo systemctl status <service-name>
+sudo /opt/splunkforwarder/bin/splunk status
 ```
 
 
@@ -65,16 +73,19 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo /opt/splunkforwarder/bin/splunk status
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# Check the configured forwarding targets
+sudo /opt/splunkforwarder/bin/splunk list forward-server
+
+# Review recent internal logs
+sudo tail -n 20 /opt/splunkforwarder/var/log/splunk/splunkd.log
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the forwarder fails to start, check `/opt/splunkforwarder/var/log/splunk/splunkd.log`.
+- Ensure the RPM package is installed: `rpm -qa | grep splunkforwarder`.
 
 ## Conclusion
 
