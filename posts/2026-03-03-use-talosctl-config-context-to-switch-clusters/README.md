@@ -55,7 +55,7 @@ talosctl config info
 
 # Now all talosctl commands target the staging cluster
 talosctl version
-talosctl services
+talosctl service
 ```
 
 After switching, every subsequent `talosctl` command will target the endpoints defined in the selected context until you switch again.
@@ -134,9 +134,9 @@ Here is a complete workflow for setting up and using contexts:
 
 ```bash
 # Step 1: Generate configs for each cluster
-talosctl gen config dev https://dev-api.example.com:6443 --output-dir ./dev
-talosctl gen config staging https://staging-api.example.com:6443 --output-dir ./staging
-talosctl gen config production https://prod-api.example.com:6443 --output-dir ./production
+talosctl gen config dev https://dev-api.example.com:6443 --output ./dev
+talosctl gen config staging https://staging-api.example.com:6443 --output ./staging
+talosctl gen config production https://prod-api.example.com:6443 --output ./production
 
 # Step 2: Merge all configs
 talosctl config merge ./dev/talosconfig
