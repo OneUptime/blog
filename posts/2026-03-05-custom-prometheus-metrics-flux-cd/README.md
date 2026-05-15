@@ -175,9 +175,6 @@ spec:
     metadata:
       labels:
         app: flux-custom-exporter
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "9090"
     spec:
       serviceAccountName: flux-custom-exporter
       containers:
@@ -187,7 +184,8 @@ spec:
           args:
             - "pip install --no-cache-dir kubernetes prometheus-client && python /app/exporter.py"
           ports:
-            - containerPort: 9090
+            - name: metrics
+              containerPort: 9090
           volumeMounts:
             - name: exporter-script
               mountPath: /app
@@ -195,6 +193,19 @@ spec:
         - name: exporter-script
           configMap:
             name: flux-exporter-script
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: flux-custom-exporter
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: flux-custom-exporter
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
 ```
 
 The exporter script collects custom metrics from the Kubernetes API.
@@ -225,10 +236,10 @@ data:
         custom_api = client.CustomObjectsApi()
 
         # Count Kustomizations per namespace
-        kustomizations = custom_api.list_cluster_custom_object(
+        kustomizations = custom_api.list_custom_object_for_all_namespaces(
             group="kustomize.toolkit.fluxcd.io",
             version="v1",
-            plural="kustomizations"
+            resource_plural="kustomizations"
         )
         ns_counts = {}
         for ks in kustomizations.get("items", []):
