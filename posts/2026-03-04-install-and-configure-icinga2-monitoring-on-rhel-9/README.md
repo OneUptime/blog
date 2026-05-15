@@ -12,7 +12,8 @@ Icinga2 Monitoring can be installed and configured on RHEL to provide robust fun
 
 ## Prerequisites
 
-- RHEL with a valid subscription or CentOS Stream 9
+- RHEL 9 with a valid Red Hat subscription
+- An Icinga repository subscription
 - Root or sudo access
 - A terminal session
 
@@ -23,39 +24,61 @@ Icinga2 Monitoring can be installed and configured on RHEL to provide robust fun
 
 sudo dnf update -y
 
-# Install the required packages
-sudo dnf install -y <package-name>
+# Add the Icinga repository
+sudo rpm --import https://packages.icinga.com/icinga.key
+sudo curl https://packages.icinga.com/subscription/rhel/ICINGA-release.repo -o /etc/yum.repos.d/ICINGA-release.repo
+
+# Enable CodeReady Builder and install EPEL
+ARCH=$(/bin/arch)
+OSVER=$(. /etc/os-release; echo "${VERSION_ID%%.*}")
+sudo subscription-manager repos --enable "codeready-builder-for-rhel-${OSVER}-${ARCH}-rpms"
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-${OSVER}.noarch.rpm
+
+# Install Icinga 2 and monitoring plugins
+sudo dnf install -y icinga2 nagios-plugins-all
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+If SELinux is enabled, also install the SELinux policy package:
+
+```bash
+sudo dnf install -y icinga2-selinux
+```
 
 ## Step 2: Configure the Service
 
 Edit the configuration file to match your environment:
 
 ```bash
-# Open the configuration file
-sudo vi /etc/<service>/config.conf
+# Open the main configuration file
+sudo vi /etc/icinga2/icinga2.conf
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include included configuration directories, enabled features, and logging options.
+
+```bash
+# Validate the configuration before restarting
+sudo icinga2 daemon -C
+```
+
+If you need the Icinga 2 API for Icinga Web, Icinga DB, or distributed monitoring, run the API setup command:
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo icinga2 api setup
+sudo systemctl restart icinga2
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable icinga2
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start icinga2
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status icinga2
 ```
 
 
@@ -65,16 +88,19 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status icinga2
+
+# Validate the Icinga 2 configuration
+sudo icinga2 daemon -C
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u icinga2 --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u icinga2 -e --no-pager`.
+- Ensure all required packages are installed: `rpm -qa | grep -E 'icinga2|nagios-plugins'`.
 
 ## Conclusion
 
