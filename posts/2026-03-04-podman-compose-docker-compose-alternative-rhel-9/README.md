@@ -16,7 +16,7 @@ Podman Compose is available as a Python package:
 
 ## Install podman-compose using pip
 ```bash
-sudo dnf install -y python3-pip
+sudo dnf install -y podman python3-pip
 pip3 install --user podman-compose
 ```
 
@@ -165,8 +165,7 @@ cat > Containerfile << 'EOF'
 FROM registry.access.redhat.com/ubi9/ubi-minimal
 RUN microdnf install -y python3 && microdnf clean all
 WORKDIR /app
-COPY app.py .
-CMD ["python3", "app.py"]
+CMD ["python3", "-m", "http.server", "8000"]
 EOF
 ```
 
@@ -218,7 +217,7 @@ services:
 Podman Compose creates a default network for each project. Containers can reach each other by service name:
 
 ```bash
-# From the web container, reach the db service by name
+# From the web container, reach the api service by name
 
 podman-compose exec web curl http://api:8000
 ```
@@ -251,8 +250,8 @@ There are some differences to be aware of:
 |---------|---------------|----------------|
 | Daemon required | Yes (Docker daemon) | No |
 | rootless support | Limited | Full |
-| `deploy` section | Supported | Not supported |
-| Swarm features | Supported | Not supported |
+| `deploy` section | Supported by the Compose specification | Limited support |
+| Swarm features | Use `docker stack deploy` | Not supported |
 | Network driver options | Full | Limited |
 | Build caching | Advanced | Basic |
 
