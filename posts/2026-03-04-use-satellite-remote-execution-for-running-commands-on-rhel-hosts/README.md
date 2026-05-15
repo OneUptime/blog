@@ -85,7 +85,7 @@ last -5"  \
 ```bash
 # Install a specific erratum on matching hosts
 hammer job-invocation create \
-    --job-template "Install Errata - Katello Script Default" \
+    --feature katello_errata_install \
     --inputs "errata=RHSA-2026:0123" \
     --search-query "hostgroup = Production"
 ```
