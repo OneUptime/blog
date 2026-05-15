@@ -54,7 +54,7 @@ sudo mkdir -p /etc/prometheus /var/lib/prometheus
 sudo chown prometheus:prometheus /etc/prometheus /var/lib/prometheus
 
 # Download and install Prometheus
-PROM_VERSION="2.51.0"
+PROM_VERSION="3.11.3"
 cd /tmp
 curl -LO "https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/prometheus-${PROM_VERSION}.linux-amd64.tar.gz"
 tar xf "prometheus-${PROM_VERSION}.linux-amd64.tar.gz"
@@ -74,13 +74,36 @@ cd /tmp && rm -rf "prometheus-${PROM_VERSION}.linux-amd64"*
 sudo useradd --no-create-home --shell /bin/false node_exporter
 
 # Download and install
-NODE_EXPORTER_VERSION="1.7.0"
+NODE_EXPORTER_VERSION="1.11.1"
 cd /tmp
 curl -LO "https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz"
 tar xf "node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz"
 sudo cp "node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64/node_exporter" /usr/local/bin/
 sudo chown node_exporter:node_exporter /usr/local/bin/node_exporter
 rm -rf "node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64"*
+```
+
+### Install Alertmanager
+
+```bash
+# Create user
+sudo useradd --no-create-home --shell /bin/false alertmanager
+
+# Create directories
+sudo mkdir -p /etc/alertmanager /var/lib/alertmanager
+sudo chown alertmanager:alertmanager /etc/alertmanager /var/lib/alertmanager
+
+# Download and install
+ALERTMANAGER_VERSION="0.32.1"
+cd /tmp
+curl -LO "https://github.com/prometheus/alertmanager/releases/download/v${ALERTMANAGER_VERSION}/alertmanager-${ALERTMANAGER_VERSION}.linux-amd64.tar.gz"
+tar xf "alertmanager-${ALERTMANAGER_VERSION}.linux-amd64.tar.gz"
+cd "alertmanager-${ALERTMANAGER_VERSION}.linux-amd64"
+
+sudo cp alertmanager amtool /usr/local/bin/
+sudo chown alertmanager:alertmanager /usr/local/bin/alertmanager /usr/local/bin/amtool
+
+cd /tmp && rm -rf "alertmanager-${ALERTMANAGER_VERSION}.linux-amd64"*
 ```
 
 ### Install Grafana
@@ -129,7 +152,28 @@ sudo firewall-cmd --permanent --add-port=9100/tcp
 sudo firewall-cmd --reload
 ```
 
-## Step 3: Configure Prometheus
+## Step 3: Configure Alertmanager
+
+```bash
+sudo tee /etc/alertmanager/alertmanager.yml << 'EOF'
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: "default"
+  group_by: ["alertname", "instance"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: "default"
+EOF
+
+sudo chown alertmanager:alertmanager /etc/alertmanager/alertmanager.yml
+```
+
+## Step 4: Configure Prometheus
 
 ```bash
 sudo vi /etc/prometheus/prometheus.yml
@@ -182,7 +226,7 @@ scrape_configs:
           role: "monitoring"
 ```
 
-## Step 4: Create Alert Rules
+## Step 5: Create Alert Rules
 
 ```bash
 sudo vi /etc/prometheus/alert_rules.yml
@@ -269,7 +313,34 @@ sudo chown prometheus:prometheus /etc/prometheus/alert_rules.yml
 promtool check rules /etc/prometheus/alert_rules.yml
 ```
 
-## Step 5: Create Prometheus Systemd Service
+## Step 6: Create Systemd Services
+
+### Create Alertmanager Systemd Service
+
+```bash
+sudo tee /etc/systemd/system/alertmanager.service << 'EOF'
+[Unit]
+Description=Alertmanager
+After=network-online.target
+
+[Service]
+User=alertmanager
+Group=alertmanager
+Type=simple
+ExecStart=/usr/local/bin/alertmanager \
+    --config.file=/etc/alertmanager/alertmanager.yml \
+    --storage.path=/var/lib/alertmanager
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now alertmanager
+```
+
+### Create Prometheus Systemd Service
 
 ```bash
 sudo tee /etc/systemd/system/prometheus.service << 'EOF'
@@ -298,7 +369,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now prometheus
 ```
 
-## Step 6: Start Grafana and Configure
+## Step 7: Start Grafana and Configure
 
 ```bash
 # Start Grafana
@@ -306,6 +377,7 @@ sudo systemctl enable --now grafana-server
 
 # Open firewall ports
 sudo firewall-cmd --permanent --add-port=9090/tcp
+sudo firewall-cmd --permanent --add-port=9093/tcp
 sudo firewall-cmd --permanent --add-port=3000/tcp
 sudo firewall-cmd --reload
 ```
@@ -326,7 +398,7 @@ EOF
 sudo systemctl restart grafana-server
 ```
 
-## Step 7: Import Dashboards
+## Step 8: Import Dashboards
 
 Log into Grafana at `http://your-server:3000` (admin/admin) and import these popular dashboards:
 
@@ -338,7 +410,7 @@ Log into Grafana at `http://your-server:3000` (admin/admin) and import these pop
 
 Go to **Dashboards** > **Import** > Enter the dashboard ID > Select Prometheus data source.
 
-## Step 8: Useful PromQL Queries for Grafana Panels
+## Step 9: Useful PromQL Queries for Grafana Panels
 
 ```promql
 # System Overview
@@ -364,13 +436,16 @@ topk(5, 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) 
 
 ```bash
 # Check all services
-sudo systemctl status prometheus node_exporter grafana-server
+sudo systemctl status prometheus alertmanager node_exporter grafana-server
 
 # Verify Prometheus targets
 curl -s http://localhost:9090/api/v1/targets | python3 -m json.tool | head -50
 
 # Check Prometheus alerts
 curl -s http://localhost:9090/api/v1/alerts | python3 -m json.tool
+
+# Check Alertmanager alerts
+curl -s http://localhost:9093/api/v2/alerts | python3 -m json.tool
 
 # Check Grafana logs
 sudo journalctl -u grafana-server --no-pager -n 20
