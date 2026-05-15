@@ -14,7 +14,7 @@ Enrolling a RHEL 9 system as an IdM client allows users to authenticate with the
 
 - A running IdM server (or replica)
 - DNS resolution to the IdM server
-- Network connectivity on ports 88, 389, 636, and 443
+- Network connectivity to the IdM server on ports 80, 88, 389, 443, 464, and 636; port 53 is also required when using IdM integrated DNS
 - Root access on the client system
 
 ## Installing the Client Package
@@ -76,10 +76,10 @@ sudo ipa-client-install \
 
 ### Using a One-Time Password
 
-On the IdM server, create a host entry with a one-time password:
+On the IdM server, create a host entry with a random one-time password:
 
 ```bash
-ipa host-add client1.example.com --password=enrollment_password
+ipa host-add client1.example.com --random
 ```
 
 On the client:
@@ -87,7 +87,7 @@ On the client:
 ```bash
 sudo ipa-client-install \
     --domain=example.com \
-    --password='enrollment_password' \
+    --password='W5YpARl=7M.n' \
     --mkhomedir \
     --unattended
 ```
@@ -128,7 +128,7 @@ sudo systemctl enable --now oddjobd
 IdM can manage sudo rules centrally. On the client, enable SSSD sudo:
 
 ```bash
-sudo authselect select sssd with-sudo with-mkhomedir
+sudo authselect enable-feature with-sudo
 ```
 
 Verify sudo is using SSSD:
