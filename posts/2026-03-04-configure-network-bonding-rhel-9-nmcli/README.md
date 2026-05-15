@@ -17,6 +17,7 @@ I have been running bonded interfaces on production servers for years, and the p
 Before you start, make sure you have:
 
 - RHEL installed with at least two physical network interfaces
+- RHEL 9.4 or later if you use the `port-type` and `controller` options shown below
 - Root or sudo access
 - NetworkManager running (it should be by default)
 
@@ -69,10 +70,10 @@ Now attach your physical interfaces to the bond. Replace `eth0` and `eth1` with 
 
 ```bash
 # Add the first slave interface to the bond
-nmcli connection add type ethernet con-name bond0-slave1 ifname eth0 master bond0
+nmcli connection add type ethernet port-type bond con-name bond0-port1 ifname eth0 controller bond0
 
 # Add the second slave interface to the bond
-nmcli connection add type ethernet con-name bond0-slave2 ifname eth1 master bond0
+nmcli connection add type ethernet port-type bond con-name bond0-port2 ifname eth1 controller bond0
 ```
 
 ## Step 3: Configure IP Addressing
@@ -99,11 +100,14 @@ nmcli connection modify bond0 ipv4.method auto
 Activate the bond and its slaves:
 
 ```bash
+# Activate all bond ports when the bond is activated
+nmcli connection modify bond0 connection.autoconnect-ports 1
+
 # Activate the bond connection
 nmcli connection up bond0
 ```
 
-NetworkManager will automatically bring up the slave connections when the bond activates.
+NetworkManager will bring up the port connections when the bond activates.
 
 ## Step 5: Verify the Configuration
 
@@ -167,8 +171,8 @@ If you need to tear down the bond:
 
 ```bash
 # Deactivate and delete the slave connections
-nmcli connection delete bond0-slave1
-nmcli connection delete bond0-slave2
+nmcli connection delete bond0-port1
+nmcli connection delete bond0-port2
 
 # Delete the bond itself
 nmcli connection delete bond0
