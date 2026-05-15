@@ -1,89 +1,79 @@
-# How to Use talosctl get events for Debugging
+# How to Use talosctl events for Debugging
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, Talosctl, Event, Debugging, Kubernetes, Cluster Management
 
-Description: A practical guide to using talosctl get events for debugging issues on Talos Linux nodes and understanding system-level events.
+Description: A practical guide to using talosctl events for debugging issues on Talos Linux nodes and understanding system-level events.
 
 ---
 
 Talos Linux generates a stream of internal events as it manages the lifecycle of a node. These events cover everything from service state changes to configuration updates to hardware detection. When something is not working as expected, these events are often the fastest path to figuring out what went wrong.
 
-The `talosctl get events` command gives you access to this event stream. Unlike Kubernetes events (which track pod scheduling, container starts, and similar cluster-level activity), Talos events operate at the operating system level. They tell you what Talos itself is doing on each node.
+The `talosctl events` command gives you access to this event stream. Unlike Kubernetes events (which track pod scheduling, container starts, and similar cluster-level activity), Talos events operate at the operating system level. They tell you what Talos itself is doing on each node.
 
 ## Running the Command
 
-The simplest form of the command retrieves recent events from a node:
+The simplest form of the command streams new events from a node:
 
 ```bash
 # Get events from a specific node
-
-talosctl get events --nodes 192.168.1.10
+talosctl events --nodes 192.168.1.10
 ```
 
-This returns a list of events with their types, timestamps, and associated data. You can also follow events in real time:
+By default, the command streams events as they occur. To include recent history before the live stream, use `--tail` or `--duration`:
 
 ```bash
-# Follow events as they happen
-talosctl get events --nodes 192.168.1.10 --watch
+# Show the last 50 events and then continue streaming
+talosctl events --nodes 192.168.1.10 --tail 50
+
+# Show events from the last 10 minutes and then continue streaming
+talosctl events --nodes 192.168.1.10 --duration 10m
 ```
 
-The watch mode keeps the connection open and prints new events as they occur. This is extremely useful when you are making configuration changes and want to see how the system responds.
+The live stream keeps the connection open and prints new events as they occur. This is extremely useful when you are making configuration changes and want to see how the system responds.
 
 ## Understanding Event Structure
 
-Each event in the output contains several fields:
-
-```text
-NODE           TYPE        ID                                   VERSION   TIMESTAMP
-192.168.1.10   ConfigSet   config-set-1234                     1         2026-03-03T10:15:30Z
-192.168.1.10   PhaseEvent  phase-event-5678                    1         2026-03-03T10:15:31Z
-```
-
-The key fields are:
+Each event includes metadata about where it came from, when it happened, and the event payload. The exact display format can vary by Talos version, but the important fields are:
 
 - **NODE**: Which node generated the event
-- **TYPE**: The category of event
-- **ID**: A unique identifier for the event
+- **ID**: The event identifier, which can be used with `--since` to resume after a known event
 - **TIMESTAMP**: When the event occurred
+- **ACTOR ID**: The actor associated with the operation, when available
+- **TYPE / PAYLOAD**: The event type and event-specific details
 
-To get more detail about a specific event, use the YAML output format:
+To resume after a specific event ID, use `--since`:
 
 ```bash
-# Get detailed event information in YAML format
-talosctl get events --nodes 192.168.1.10 -o yaml
+# Continue after a known event ID
+talosctl events --nodes 192.168.1.10 --since <event-id>
 ```
 
-This will show you the full event payload, including any additional metadata that is not visible in the table view.
+This is useful when you are collecting events over time and do not want to process the same event twice.
 
 ## Common Event Types
 
-### ConfigSet Events
+### Configuration Events
 
-These fire when the node configuration is applied or updated:
+Configuration changes appear in the event stream as Talos processes the apply-config request and reconciles affected subsystems:
 
 ```bash
 # Filter for configuration-related events
-talosctl get events --nodes 192.168.1.10 | grep -i config
+talosctl events --nodes 192.168.1.10 --tail 100 | grep -i config
 ```
 
-ConfigSet events tell you when a machine configuration was applied. If you recently pushed a config change and it did not take effect, check whether a ConfigSet event appeared. If it did not, the configuration might not have been accepted.
+If you recently pushed a config change and it did not take effect, check whether configuration-related events appeared after the apply operation. If they did not, the configuration might not have been accepted or the command might not have reached the node.
 
 ### PhaseEvent
 
-Phase events track the stages of the Talos boot and configuration process. Talos goes through several phases during boot:
-
-1. Security phase (setting up security primitives)
-2. Network phase (configuring network interfaces)
-3. Disk phase (mounting disks and partitions)
-4. Kubernetes phase (starting kubelet and related services)
+Phase events track stages of Talos boot and configuration processing. Depending on the Talos version and node role, these can include early boot, platform setup, networking, storage, service startup, and Kubernetes-related work.
 
 Each phase transition generates events. If a node is stuck during boot, the phase events will show you exactly where it stopped.
 
 ```bash
 # Look for phase-related events
-talosctl get events --nodes 192.168.1.10 -o yaml | grep -A5 "PhaseEvent"
+talosctl events --nodes 192.168.1.10 --tail 100 | grep "PhaseEvent"
 ```
 
 ### ServiceStateEvent
@@ -92,10 +82,10 @@ These track the state of Talos-managed services like etcd, kubelet, and the API 
 
 ```bash
 # Check service state changes
-talosctl get events --nodes 192.168.1.10 | grep -i service
+talosctl events --nodes 192.168.1.10 --tail 100 | grep -i service
 ```
 
-A common debugging scenario is finding that etcd failed to start. The service state events will show the transition from "Starting" to "Failed" and may include an error message explaining why.
+A common debugging scenario is finding that etcd failed to start. The service state events can show transitions such as starting, running, or failed, and may include a message explaining why.
 
 ### TaskEvent
 
@@ -109,7 +99,7 @@ When a new node is not joining your Kubernetes cluster, events will show you whe
 
 ```bash
 # Watch events on the new node during bootstrap
-talosctl get events --nodes 192.168.1.20 --watch
+talosctl events --nodes 192.168.1.20
 ```
 
 Look for:
@@ -126,18 +116,18 @@ After applying a new machine configuration, you should see a sequence of events:
 ```bash
 # Apply a config and watch events simultaneously
 # Terminal 1:
-talosctl get events --nodes 192.168.1.10 --watch
+talosctl events --nodes 192.168.1.10
 
 # Terminal 2:
 talosctl apply-config --nodes 192.168.1.10 --file new-config.yaml
 ```
 
 You should see:
-1. A ConfigSet event showing the new configuration was received
-2. Phase events as Talos reconfigures affected subsystems
+1. Configuration-related events showing the apply operation was received or processed
+2. Phase or task events as Talos reconfigures affected subsystems
 3. Service restart events for services affected by the change
 
-If the ConfigSet event appears but no subsequent phase events follow, the configuration might be syntactically valid but not different enough from the current configuration to trigger a reconfiguration.
+If configuration-related events appear but no subsequent phase or task events follow, the configuration might be syntactically valid but not different enough from the current configuration to trigger a reconfiguration.
 
 ### Etcd Membership Issues
 
@@ -145,7 +135,7 @@ Etcd problems are among the most common issues in Talos clusters. Events can hel
 
 ```bash
 # Check etcd-related events across all control plane nodes
-talosctl get events --nodes 192.168.1.10,192.168.1.11,192.168.1.12 | grep -i etcd
+talosctl events --nodes 192.168.1.10,192.168.1.11,192.168.1.12 --tail 200 | grep -i etcd
 ```
 
 Look for events that show etcd failing to join the cluster, certificate errors, or timeout events. These often point to network connectivity or certificate issues between control plane nodes.
@@ -156,7 +146,7 @@ During a Talos upgrade, the event stream shows each step of the process:
 
 ```bash
 # Monitor events during an upgrade
-talosctl get events --nodes 192.168.1.10 --watch
+talosctl events --nodes 192.168.1.10
 
 # In another terminal, start the upgrade
 talosctl upgrade --nodes 192.168.1.10 --image ghcr.io/siderolabs/installer:v1.7.0
@@ -170,7 +160,7 @@ Events are most useful when combined with other diagnostic information. Here is 
 
 ```bash
 # Step 1: Check events for the timeframe of the problem
-talosctl get events --nodes 192.168.1.10
+talosctl events --nodes 192.168.1.10 --duration 30m
 
 # Step 2: Check service logs for any services that showed errors in events
 talosctl logs --nodes 192.168.1.10 kubelet
@@ -184,26 +174,26 @@ talosctl get machineconfig --nodes 192.168.1.10 -o yaml
 
 This layered approach starts with the high-level event view and drills down into specific subsystems as needed.
 
-## Filtering and Output Formats
+## Filtering and History Options
 
-You can control the output format to make events easier to parse:
+You can control how much event history is included before the live stream:
 
 ```bash
-# JSON output for programmatic processing
-talosctl get events --nodes 192.168.1.10 -o json
+# Show the last 100 events
+talosctl events --nodes 192.168.1.10 --tail 100
 
-# YAML output for human-readable detail
-talosctl get events --nodes 192.168.1.10 -o yaml
+# Show events from the last 30 minutes
+talosctl events --nodes 192.168.1.10 --duration 30m
 
-# Table output (default) for quick scanning
-talosctl get events --nodes 192.168.1.10 -o table
+# Resume after a specific event ID
+talosctl events --nodes 192.168.1.10 --since <event-id>
 ```
 
-For automated monitoring, JSON output works well with tools like `jq`:
+You can also filter by actor ID when you know which operation produced the events:
 
 ```bash
-# Extract specific fields from events using jq
-talosctl get events --nodes 192.168.1.10 -o json | jq '.spec.type'
+# Filter events by actor ID
+talosctl events --nodes 192.168.1.10 --actor-id <actor-id>
 ```
 
 ## Building an Event Monitoring Practice
@@ -214,4 +204,4 @@ You can also pipe events to a centralized logging system for historical analysis
 
 ## Conclusion
 
-The `talosctl get events` command provides visibility into the internal workings of Talos Linux at the operating system level. By understanding the different event types and knowing what to look for in common debugging scenarios, you can significantly reduce the time it takes to diagnose and resolve issues. Make events your first stop when troubleshooting, and combine them with service logs and kernel messages for a complete picture of what is happening on your nodes.
+The `talosctl events` command provides visibility into the internal workings of Talos Linux at the operating system level. By understanding the different event types and knowing what to look for in common debugging scenarios, you can significantly reduce the time it takes to diagnose and resolve issues. Make events your first stop when troubleshooting, and combine them with service logs and kernel messages for a complete picture of what is happening on your nodes.
