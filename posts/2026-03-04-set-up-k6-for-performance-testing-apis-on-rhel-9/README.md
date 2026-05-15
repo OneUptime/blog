@@ -49,9 +49,10 @@ If the repository method does not work, install from the binary:
 
 ```bash
 # Download the k6 binary
-curl -LO https://github.com/grafana/k6/releases/latest/download/k6-linux-amd64.tar.gz
-tar xzf k6-linux-amd64.tar.gz
-sudo mv k6-linux-amd64/k6 /usr/local/bin/
+K6_VERSION=v2.0.0
+curl -LO "https://github.com/grafana/k6/releases/download/${K6_VERSION}/k6-${K6_VERSION}-linux-amd64.tar.gz"
+tar xzf "k6-${K6_VERSION}-linux-amd64.tar.gz"
+sudo mv "k6-${K6_VERSION}-linux-amd64/k6" /usr/local/bin/
 ```
 
 ## Writing Your First k6 Test
@@ -152,7 +153,7 @@ export default function () {
   check(res, {
     'status is 200': (r) => r.status === 200,
     'response time OK': (r) => r.timings.duration < 500,
-    'content type is JSON': (r) => r.headers['Content-Type'].includes('application/json'),
+    'content type is JSON': (r) => String(r.headers['Content-Type'] || '').includes('application/json'),
   });
 }
 ```
@@ -294,7 +295,8 @@ k6 run --out csv=results.csv test.js
 
 ```bash
 # Send metrics to Prometheus via Remote Write
-k6 run --out experimental-prometheus-rw test.js
+K6_PROMETHEUS_RW_SERVER_URL=http://localhost:9090/api/v1/write \
+  k6 run --out experimental-prometheus-rw test.js
 ```
 
 ## CI/CD Integration
@@ -310,9 +312,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: grafana/k6-action@v0.3.1
+      - uses: grafana/setup-k6-action@v1
+      - uses: grafana/run-k6-action@v1
         with:
-          filename: test.js
+          path: test.js
 ```
 
 ```bash
