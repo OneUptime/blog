@@ -35,6 +35,7 @@ spec:
       containers:
         - name: web
           image: registry.access.redhat.com/ubi9/httpd-24:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
           resources:
@@ -103,6 +104,7 @@ spec:
       containers:
         - name: db
           image: registry.redhat.io/rhel9/postgresql-15:latest
+          imagePullPolicy: IfNotPresent
           env:
             - name: POSTGRESQL_USER
               value: "edgeuser"
@@ -130,7 +132,7 @@ kubectl get pvc
 
 ## Pre-Pulling Images for Offline Operation
 
-Edge devices may have intermittent connectivity. Pre-pull images:
+Edge devices may have intermittent connectivity. Pre-pull images and configure workloads to use locally cached images:
 
 ```bash
 # Pull images to the local CRI-O cache
@@ -140,6 +142,8 @@ sudo crictl pull registry.redhat.io/rhel9/postgresql-15:latest
 # List cached images
 sudo crictl images
 ```
+
+For fully disconnected deployments, use a mirror registry or embed the required container images in the RHEL for Edge image.
 
 ## Monitoring Edge Workloads
 
