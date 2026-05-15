@@ -217,19 +217,18 @@ ldap_default_authtok_type = password
 ldap_default_authtok = your_bind_password_here
 ```
 
-For better security, store the password in a separate file:
+If you do not want to keep the bind password in plain text, you can obfuscate it:
 
 ```bash
-# Create a password file
-echo -n "your_bind_password_here" | sudo tee /etc/sssd/ldap-bind-pw > /dev/null
-sudo chmod 600 /etc/sssd/ldap-bind-pw
+# Obfuscate the bind password in the LDAP domain section
+echo -n "your_bind_password_here" | sudo sss_obfuscate --stdin --domain ldap.example.com
 ```
 
-Then reference it in sssd.conf:
+This updates the domain section in sssd.conf:
 
 ```ini
-ldap_default_authtok_type = password
-ldap_default_authtok = file:///etc/sssd/ldap-bind-pw
+ldap_default_authtok_type = obfuscated_password
+ldap_default_authtok = <obfuscated value>
 ```
 
 ## Restricting Access
