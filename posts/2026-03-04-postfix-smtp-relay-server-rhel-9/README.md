@@ -105,6 +105,7 @@ If you also want to accept TLS-encrypted connections from internal hosts:
 smtpd_tls_security_level = may
 smtpd_tls_cert_file = /etc/letsencrypt/live/relay.example.com/fullchain.pem
 smtpd_tls_key_file = /etc/letsencrypt/live/relay.example.com/privkey.pem
+smtpd_tls_auth_only = yes
 ```
 
 ## SASL Authentication for External Hosts
@@ -114,6 +115,14 @@ If you want hosts outside your `mynetworks` range to use the relay (like remote 
 ```bash
 # Install SASL support
 sudo dnf install -y cyrus-sasl cyrus-sasl-plain
+```
+
+Configure Cyrus SASL to use `saslauthd`:
+
+```bash
+# /etc/sasl2/smtpd.conf
+pwcheck_method: saslauthd
+mech_list: PLAIN LOGIN
 ```
 
 Add to `main.cf`:
@@ -147,6 +156,7 @@ Protect the relay from internal hosts that might go haywire:
 smtpd_client_connection_rate_limit = 100
 smtpd_client_connection_count_limit = 20
 smtpd_client_recipient_rate_limit = 200
+smtpd_client_event_limit_exceptions =
 anvil_rate_time_unit = 60s
 ```
 
@@ -160,6 +170,16 @@ sudo firewall-cmd --permanent --add-service=smtp
 sudo firewall-cmd --permanent --add-port=587/tcp
 
 sudo firewall-cmd --reload
+```
+
+If you use port 587, also enable the `submission` service in `/etc/postfix/master.cf` and reload Postfix:
+
+```bash
+submission inet n       -       n       -       -       smtpd
+  -o syslog_name=postfix/submission
+  -o smtpd_tls_security_level=encrypt
+  -o smtpd_sasl_auth_enable=yes
+  -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
 ```
 
 ## Starting the Relay
