@@ -29,7 +29,7 @@ hosts:      files dns myhostname
 This means:
 1. **files** - Check `/etc/hosts` first
 2. **dns** - Query DNS servers
-3. **myhostname** - Fall back to systemd's local hostname resolution
+3. **myhostname** - Resolve the local system hostname through systemd's `nss-myhostname` module
 
 ```mermaid
 flowchart TD
@@ -38,7 +38,7 @@ flowchart TD
     B -->|Not found| D{Query DNS}
     D -->|Found| E[Return IP from DNS]
     D -->|Not found| F{myhostname}
-    F -->|Local hostname| G[Return localhost]
+    F -->|Local hostname| G[Return local system IPs]
     F -->|Not found| H[Resolution fails]
 ```
 
