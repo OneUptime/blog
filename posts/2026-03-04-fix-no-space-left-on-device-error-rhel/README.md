@@ -21,10 +21,10 @@ df -h
 # Look for "Use%" at 100%
 
 # Find the largest directories on the full filesystem
-sudo du -sh /* 2>/dev/null | sort -rh | head -10
+sudo du -xsh /* 2>/dev/null | sort -rh | head -10
 
 # Drill deeper into the largest directory
-sudo du -sh /var/* | sort -rh | head -10
+sudo du -xsh /var/* | sort -rh | head -10
 ```
 
 ## Quick Space Recovery
@@ -34,12 +34,13 @@ sudo du -sh /var/* | sort -rh | head -10
 sudo dnf clean all
 
 # Remove old kernels (keep current and one previous)
-sudo dnf remove --oldinstallonly --setopt installonly_limit=2 kernel
+sudo dnf remove --oldinstallonly --setopt=installonly_limit=2 kernel
 
 # Clear systemd journal logs older than 7 days
 sudo journalctl --vacuum-time=7d
 
-# Find and list large files (over 100MB)
+# Find and list large files (over 100MB) on the full filesystem
+# Replace / with the full filesystem's mount point if it is not /
 sudo find / -xdev -type f -size +100M -exec ls -lh {} \; 2>/dev/null
 
 # Remove old log files
@@ -72,7 +73,8 @@ sudo systemctl restart <service-name>
 df -i
 
 # If inodes are at 100%, you have too many small files
-# Find directories with the most files
+# Find directories with the most files on the full filesystem
+# Replace / with the full filesystem's mount point if it is not /
 sudo find / -xdev -printf '%h\n' | sort | uniq -c | sort -rn | head -20
 
 # Common culprits: /tmp, /var/spool, session files
@@ -98,4 +100,4 @@ sudo xfs_growfs /
 sudo resize2fs /dev/mapper/rhel-root
 ```
 
-Start by identifying what is consuming space with `df -h` and `du -sh`, then clean up accordingly.
+Start by identifying what is consuming space with `df -h` and `du -xsh`, then clean up accordingly.
