@@ -175,7 +175,7 @@ sender_canonical_maps = regexp:/etc/postfix/sender_canonical
 And in `/etc/postfix/sender_canonical`:
 
 ```bash
-/@.*$/ @example.com
+/^(.+)@.*$/ ${1}@example.com
 ```
 
 ## Starting the Service
@@ -239,24 +239,30 @@ relayhost = [relay.example.com]
 
 ## Preventing Local Mail Delivery Failures
 
-Since `mydestination` is empty, mail sent to local users (like root) will try to relay. To handle root's mail, set up an alias:
+Since `mydestination` is empty, mail sent to local users (like root) will be rewritten with `myorigin` and then relayed. Local `/etc/aliases` entries only apply to local delivery, so use a virtual alias map to handle root's mail on the null client:
 
 ```bash
-# Edit /etc/aliases
-sudo vi /etc/aliases
+# Add a virtual alias map
+sudo postconf -e 'virtual_alias_maps = hash:/etc/postfix/virtual'
+
+# Edit /etc/postfix/virtual
+sudo vi /etc/postfix/virtual
 ```
 
 Add:
 
 ```bash
-root: admin@example.com
+root@example.com admin@example.com
 ```
 
-Rebuild the alias database:
+Rebuild the map database:
 
 ```bash
-# Rebuild aliases
-sudo newaliases
+# Rebuild the virtual alias map
+sudo postmap /etc/postfix/virtual
+
+# Reload Postfix
+sudo systemctl reload postfix
 ```
 
 ## Troubleshooting
