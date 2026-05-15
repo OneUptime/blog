@@ -30,7 +30,7 @@ Map Ubuntu packages to RHEL equivalents:
 | Ubuntu | RHEL 9 |
 |--------|--------|
 | apache2 | httpd |
-| mysql-server | mysql or mariadb-server |
+| mysql-server | mysql-server or mariadb-server |
 | postgresql | postgresql-server |
 | python3 | python3 |
 | ufw | firewalld |
@@ -84,7 +84,10 @@ sudo firewall-cmd --reload
 
 ```bash
 rsync -aAXv ubuntu-server:/var/www/html/ /var/www/html/
-rsync -aAXv ubuntu-server:/var/lib/mysql/ /var/lib/mysql/
+
+# Use a logical dump for MySQL/MariaDB data when changing distributions
+ssh ubuntu-server 'sudo mysqldump --all-databases --single-transaction --routines --triggers --events' > /tmp/mysql-dump.sql
+sudo mysql < /tmp/mysql-dump.sql
 ```
 
 ## Verify Services
@@ -98,4 +101,3 @@ curl -I http://localhost
 ## Conclusion
 
 Ubuntu to RHEL 9 migration is a manual process requiring package mapping, configuration conversion, and data migration. Plan thoroughly, test in a staging environment, and execute during a maintenance window.
-
