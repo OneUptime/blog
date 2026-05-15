@@ -31,20 +31,19 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y curl
 ```
 
 ## Step 2: Install Required Packages
 
 ```bash
-sudo dnf install -y <package-name>
+curl --proto '=https' --tlsv1.2 -sSf https://get.k0s.sh | sudo sh
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+k0s version
 ```
 
 ## Step 3: Configure the Service
@@ -52,7 +51,9 @@ rpm -qi <package-name>
 Create or edit the main configuration file:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo mkdir -p /etc/k0s
+sudo k0s config create | sudo tee /etc/k0s/k0s.yaml >/dev/null
+sudo vi /etc/k0s/k0s.yaml
 ```
 
 Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
@@ -60,8 +61,8 @@ Apply the recommended settings for your environment. Start with the defaults and
 ## Step 4: Start and Enable the Service
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo k0s install controller --single -c /etc/k0s/k0s.yaml --start
+sudo k0s status
 ```
 
 ## Step 5: Verify the Configuration
@@ -69,13 +70,13 @@ sudo systemctl status <service>
 Test the setup:
 
 ```bash
-sudo <service> --test
+sudo k0s kubectl get nodes
 ```
 
 Check the logs for any errors:
 
 ```bash
-journalctl -u <service> -f
+sudo journalctl -u k0scontroller -f
 ```
 
 ## Step 6: Configure Firewall Rules
@@ -83,7 +84,15 @@ journalctl -u <service> -f
 If the service needs network access:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo firewall-cmd --permanent --add-port=2380/tcp
+sudo firewall-cmd --permanent --add-port=6443/tcp
+sudo firewall-cmd --permanent --add-port=8132/tcp
+sudo firewall-cmd --permanent --add-port=9443/tcp
+sudo firewall-cmd --permanent --add-port=179/tcp
+sudo firewall-cmd --permanent --add-port=10250/tcp
+sudo firewall-cmd --permanent --add-masquerade
+sudo firewall-cmd --permanent --add-source=10.244.0.0/16
+sudo firewall-cmd --permanent --add-source=10.96.0.0/12
 sudo firewall-cmd --reload
 ```
 
@@ -92,13 +101,13 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+systemctl show k0scontroller --property=MemoryCurrent
+top -p "$(pidof k0s | tr ' ' ',')"
 ```
 
 ## Security Considerations
 
-- Run the service with a dedicated non-root user when possible
+- Use least-privilege Kubernetes workloads and avoid running application containers as root when possible
 - Enable TLS/SSL for network communication
 - Restrict access with firewall rules
 - Keep packages updated with `dnf update`
@@ -107,10 +116,10 @@ top -p $(pidof <service>)
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
+1. **Service fails to start**: Check `sudo journalctl -u k0scontroller -xe` for error messages
 2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
 3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
 
 ## Conclusion
 
-You have successfully configured install k0s kubernetes distribution on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
+You have successfully configured k0s Kubernetes Distribution on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
