@@ -20,14 +20,14 @@ To check memory usage on a node:
 talosctl memory --nodes 192.168.1.10
 ```
 
-The output shows the standard Linux memory information, similar to what you would see from `/proc/meminfo`:
+The output shows a summary of Linux memory information, with values reported in MB:
 
 ```text
-TOTAL         USED          FREE          SHARED        BUFFERS       CACHE
-16384 MB      8192 MB       4096 MB       256 MB        512 MB        3328 MB
+NODE            TOTAL   USED   FREE   SHARED   BUFFERS   CACHE   AVAILABLE
+192.168.1.10    16384   8192   4096   256      512       3328    7680
 ```
 
-This gives you a quick overview of how much memory is total, how much is actively used, how much is free, and how much is being used for buffers and cache.
+This gives you a quick overview of how much memory is total, how much is actively used, how much is free, how much is being used for buffers and cache, and how much is available for new allocations.
 
 ## Understanding Memory Metrics
 
@@ -40,9 +40,9 @@ The numbers reported by `talosctl memory` can be confusing if you are not famili
 - **Buffers**: Memory used by the kernel for block device I/O buffers.
 - **Cache**: Memory used by the page cache for file system data.
 
-The important thing to understand is that buffers and cache are not wasted memory. Linux aggressively uses free memory for caching to improve performance. This memory can be reclaimed immediately when applications need it.
+The important thing to understand is that buffers and cache are not wasted memory. Linux aggressively uses free memory for caching to improve performance. Much of this memory can usually be reclaimed when applications need it.
 
-The real metric to worry about is "available" memory, which is the sum of free memory plus reclaimable cache and buffers. As long as available memory is reasonable, your node is fine.
+The real metric to worry about is "available" memory, which is the kernel's estimate of how much memory can be used for new applications without swapping. As long as available memory is reasonable, your node is fine.
 
 ## Checking Memory Across Multiple Nodes
 
@@ -53,7 +53,7 @@ To compare memory usage across your cluster:
 talosctl memory --nodes 192.168.1.10,192.168.1.11,192.168.1.12,192.168.1.20,192.168.1.21
 ```
 
-This shows memory information for each node side by side, making it easy to spot nodes that are under memory pressure.
+This shows memory information for each node in a separate row, making it easy to spot nodes that are under memory pressure.
 
 ## Scripting Memory Checks
 
@@ -110,7 +110,7 @@ talosctl processes --nodes 192.168.1.20
 talosctl stats --nodes 192.168.1.20
 
 # Check disk usage
-talosctl disks --nodes 192.168.1.20
+talosctl usage --nodes 192.168.1.20
 
 # Check file system mounts
 talosctl mounts --nodes 192.168.1.20
@@ -135,16 +135,17 @@ fi
 # Get memory info
 MEMORY_OUTPUT=$(talosctl memory --nodes "$NODE" 2>&1)
 
-# Parse total and used memory (adjust parsing based on actual output format)
-TOTAL=$(echo "$MEMORY_OUTPUT" | tail -1 | awk '{print $1}')
-USED=$(echo "$MEMORY_OUTPUT" | tail -1 | awk '{print $2}')
+# Parse total, used, and available memory from the first data row
+TOTAL=$(echo "$MEMORY_OUTPUT" | awk 'NR > 1 {print $2; exit}')
+USED=$(echo "$MEMORY_OUTPUT" | awk 'NR > 1 {print $3; exit}')
+AVAILABLE=$(echo "$MEMORY_OUTPUT" | awk 'NR > 1 {print $8; exit}')
 
 if [ -n "$TOTAL" ] && [ "$TOTAL" -gt 0 ] 2>/dev/null; then
-  USAGE_PERCENT=$((USED * 100 / TOTAL))
+  USAGE_PERCENT=$(((TOTAL - AVAILABLE) * 100 / TOTAL))
 
   if [ "$USAGE_PERCENT" -ge "$THRESHOLD_PERCENT" ]; then
     echo "ALERT: Node $NODE memory usage is ${USAGE_PERCENT}% (threshold: ${THRESHOLD_PERCENT}%)"
-    echo "Total: $TOTAL MB, Used: $USED MB"
+    echo "Total: $TOTAL MB, Used: $USED MB, Available: $AVAILABLE MB"
     # Add your alerting mechanism here (email, Slack, PagerDuty, etc.)
     exit 1
   else
@@ -220,19 +221,20 @@ LOG_FILE="./memory-trend.csv"
 
 # Create header if file does not exist
 if [ ! -f "$LOG_FILE" ]; then
-  echo "timestamp,node,total,used,free,cache" > "$LOG_FILE"
+  echo "timestamp,node,total,used,free,cache,available" > "$LOG_FILE"
 fi
 
 TIMESTAMP=$(date +%Y-%m-%d_%H:%M:%S)
 
 for node in $NODES; do
   MEMORY=$(talosctl memory --nodes "$node" 2>/dev/null | tail -1)
-  TOTAL=$(echo "$MEMORY" | awk '{print $1}')
-  USED=$(echo "$MEMORY" | awk '{print $2}')
-  FREE=$(echo "$MEMORY" | awk '{print $3}')
-  CACHE=$(echo "$MEMORY" | awk '{print $6}')
+  TOTAL=$(echo "$MEMORY" | awk '{print $2}')
+  USED=$(echo "$MEMORY" | awk '{print $3}')
+  FREE=$(echo "$MEMORY" | awk '{print $4}')
+  CACHE=$(echo "$MEMORY" | awk '{print $7}')
+  AVAILABLE=$(echo "$MEMORY" | awk '{print $8}')
 
-  echo "$TIMESTAMP,$node,$TOTAL,$USED,$FREE,$CACHE" >> "$LOG_FILE"
+  echo "$TIMESTAMP,$node,$TOTAL,$USED,$FREE,$CACHE,$AVAILABLE" >> "$LOG_FILE"
 done
 ```
 
