@@ -60,7 +60,7 @@ If your servers have different capacities, assign weights:
 
 ```nginx
 upstream backend {
-    # The powerful server gets twice the traffic
+    # Higher weights receive proportionally more traffic
     server 192.168.1.11:8080 weight=3;
     server 192.168.1.12:8080 weight=2;
     server 192.168.1.13:8080 weight=1;
@@ -97,7 +97,7 @@ upstream backend {
 }
 ```
 
-This provides basic session persistence. The same client IP always goes to the same backend, which is useful for applications that store session data locally.
+This provides basic session persistence. The same client IP normally goes to the same backend unless that backend is unavailable, which is useful for applications that store session data locally.
 
 ## Load Balancing Methods Comparison
 
