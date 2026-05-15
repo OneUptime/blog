@@ -120,6 +120,7 @@ Add to fstab for persistence:
 ```bash
 # Add new swap to fstab
 echo "/dev/rhel/swap2  none  swap  defaults  0 0" >> /etc/fstab
+systemctl daemon-reload
 ```
 
 ## Method 3: Add a New Physical Volume First
@@ -171,6 +172,12 @@ Update the fstab entry with the new UUID, or switch to using the device path whi
 /dev/rhel/swap  none  swap  defaults  0 0
 ```
 
+After changing `/etc/fstab`, reload systemd's generated mount and swap units:
+
+```bash
+systemctl daemon-reload
+```
+
 ## Verify After Reboot
 
 The real test is whether swap comes back after a reboot. If you cannot reboot, at least test the fstab:
@@ -200,7 +207,8 @@ swapon /dev/rhel/swap
 
 # Update fstab UUID if needed
 NEW_UUID=$(blkid -s UUID -o value /dev/rhel/swap)
-sed -i "s|UUID=.*swap|UUID=$NEW_UUID  none  swap|" /etc/fstab
+sed -i.bak -E "/[[:space:]]swap[[:space:]]/s|^UUID=[^[:space:]]+|UUID=$NEW_UUID|" /etc/fstab
+systemctl daemon-reload
 
 # Verify
 free -h
