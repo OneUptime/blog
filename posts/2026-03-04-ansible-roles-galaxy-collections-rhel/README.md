@@ -34,7 +34,7 @@ graph TD
 ```bash
 # Create a new role with the standard directory structure
 
-ansible-galaxy role init roles/rhel_base
+ansible-galaxy role init rhel_base --init-path roles
 ```
 
 This creates:
@@ -179,7 +179,7 @@ dependencies: []
 ## Installing Collections from Galaxy
 
 ```bash
-# Search for RHEL-related collections
+# List installed collections
 ansible-galaxy collection list
 
 # Install specific collections
