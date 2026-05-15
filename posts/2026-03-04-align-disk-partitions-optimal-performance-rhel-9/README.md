@@ -47,17 +47,17 @@ Look at the "Start" column. For 512-byte sector disks, the first partition shoul
 
 ### With parted
 
-parted aligns to optimal boundaries by default when you use the `-a optimal` flag (which is the default on RHEL):
+parted can align new partitions to disk topology hints when you use the `-a optimal` flag, but you should still specify an aligned start such as `1MiB`:
 
 ```bash
 # Create a GPT label
 sudo parted /dev/sdb mklabel gpt
 
-# Create an aligned partition (starts at 1 MiB by default)
-sudo parted -a optimal /dev/sdb mkpart primary xfs 0% 100%
+# Create an aligned partition starting at 1 MiB
+sudo parted -a optimal /dev/sdb mkpart primary xfs 1MiB 100%
 ```
 
-Using percentages or MiB units ensures proper alignment:
+Using MiB or GiB units for the start position, with percentages for the end position, helps keep partition boundaries aligned:
 
 ```bash
 # These all produce aligned partitions
@@ -100,13 +100,13 @@ If the physical block size is 4096 but the logical block size is 512, you have a
 When partitioning disks for RAID, align to the RAID stripe size for best performance:
 
 ```bash
-# For a RAID 5 with 64K chunks and 3 data disks
-# Stripe size = 64K x 3 = 192K
+# For a RAID 5 with 64K chunks and 4 data disks
+# Stripe size = 64K x 4 = 256K
 # Start at 1 MiB to cover all common stripe sizes
 sudo parted -a optimal /dev/sdb mkpart primary xfs 1MiB 100%
 ```
 
-The 1 MiB default alignment is a multiple of all common stripe sizes, so it works well without needing to calculate specific values.
+The 1 MiB default alignment is a multiple of many common power-of-two stripe sizes, so it works well in many environments without needing to calculate specific values. For non-power-of-two stripe widths, verify the layout and tune the filesystem geometry if needed.
 
 ## Fixing Misaligned Partitions
 
@@ -135,11 +135,11 @@ For partitions with data, you must back up, recreate the partition aligned, form
 
 ## Verifying Alignment in Bulk
 
-Check all partitions on all disks:
+Check all partitions on a disk:
 
 ```bash
 # Check alignment for all partitions on a disk
-for part in $(seq 1 $(sudo parted -s /dev/sdb print | grep -c "^ ")); do
+for part in $(sudo parted -m /dev/sdb print | awk -F: '/^[0-9]+:/ {print $1}'); do
     echo -n "Partition $part: "
     sudo parted /dev/sdb align-check optimal $part
 done
@@ -161,4 +161,4 @@ The default 4096-byte block size on RHEL is correct for virtually all modern dri
 
 ## Wrap-Up
 
-On RHEL, both parted and fdisk default to optimal alignment, so if you use default settings, your partitions will be properly aligned. The key is to avoid manually specifying sector offsets unless you know what you are doing. When in doubt, start partitions at 1 MiB boundaries, use the `-a optimal` flag in parted, and verify with `align-check`. Proper alignment is a one-time setup that pays performance dividends for the life of the disk.
+On RHEL, fdisk and parted use disk topology information to help create aligned partitions, so if you use their defaults and verify the result, your partitions will usually be properly aligned. The key is to avoid manually specifying sector offsets unless you know what you are doing. When in doubt, start partitions at 1 MiB boundaries, use the `-a optimal` flag in parted, and verify with `align-check`. Proper alignment is a one-time setup that pays performance dividends for the life of the disk.
