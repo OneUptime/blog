@@ -35,7 +35,7 @@ graph TD
 ```bash
 # Create a system user for Prometheus (no home directory, no login shell)
 
-sudo useradd --no-create-home --shell /bin/false prometheus
+sudo useradd --system --no-create-home --shell /bin/false prometheus
 ```
 
 ## Step 2: Create Directory Structure
@@ -55,7 +55,7 @@ sudo chown prometheus:prometheus /var/lib/prometheus
 ```bash
 # Download the latest Prometheus release
 # Check https://prometheus.io/download/ for the current version
-PROM_VERSION="2.51.0"
+PROM_VERSION="3.11.3"
 cd /tmp
 curl -LO "https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/prometheus-${PROM_VERSION}.linux-amd64.tar.gz"
 
@@ -70,14 +70,6 @@ sudo cp promtool /usr/local/bin/
 # Set ownership
 sudo chown prometheus:prometheus /usr/local/bin/prometheus
 sudo chown prometheus:prometheus /usr/local/bin/promtool
-
-# Copy console templates and libraries
-sudo cp -r consoles /etc/prometheus/
-sudo cp -r console_libraries /etc/prometheus/
-
-# Set ownership
-sudo chown -R prometheus:prometheus /etc/prometheus/consoles
-sudo chown -R prometheus:prometheus /etc/prometheus/console_libraries
 
 # Clean up
 cd /tmp
@@ -115,6 +107,12 @@ alerting:
 rule_files: []
   # - "alert_rules.yml"
   # - "recording_rules.yml"
+
+# Storage configuration
+storage:
+  tsdb:
+    retention:
+      time: 30d
 
 # Scrape configurations - define what to monitor
 scrape_configs:
@@ -168,9 +166,6 @@ Type=simple
 ExecStart=/usr/local/bin/prometheus \
     --config.file=/etc/prometheus/prometheus.yml \
     --storage.tsdb.path=/var/lib/prometheus/ \
-    --web.console.templates=/etc/prometheus/consoles \
-    --web.console.libraries=/etc/prometheus/console_libraries \
-    --storage.tsdb.retention.time=30d \
     --web.enable-lifecycle
 
 # Restart on failure
@@ -285,10 +280,10 @@ du -sh /var/lib/prometheus/
 ls -la /var/lib/prometheus/
 ```
 
-Configure retention in the service file:
+Configure retention in `/etc/prometheus/prometheus.yml`:
 
-- `--storage.tsdb.retention.time=30d` - Keep data for 30 days
-- `--storage.tsdb.retention.size=10GB` - Keep up to 10GB of data
+- `storage.tsdb.retention.time: 30d` - Keep data for 30 days
+- `storage.tsdb.retention.size: 10GB` - Keep up to 10GB of data
 
 ## Troubleshooting
 
