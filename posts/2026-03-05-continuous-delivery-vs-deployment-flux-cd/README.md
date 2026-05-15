@@ -62,7 +62,7 @@ Continuous delivery with Flux requires introducing a gate between "change is rea
 
 ### Pattern 1: Branch-Based Gating
 
-The most common approach is to use a staging branch that Flux watches, while production changes require a pull request and manual merge.
+The most common approach is to use a release branch that Flux watches, while production changes require a pull request and manual merge.
 
 ```yaml
 # Flux watches a 'release' branch, not 'main'
@@ -185,7 +185,7 @@ Flux's image automation controllers can automatically update image tags in Git w
 
 If image automation writes directly to the branch that Flux watches for production, you have continuous deployment of image updates. If image automation writes to a branch that requires a PR and human merge before reaching the production branch, you retain continuous delivery semantics.
 
-The key configuration is the `push` section of the ImageUpdateAutomation resource, specifically which branch it targets. The pull request requirement is enforced by your Git provider's branch protection or release workflow before changes reach the production branch.
+The key configuration is `.spec.git.push.branch` of the ImageUpdateAutomation resource, specifically which branch it targets. If `.spec.git.push` is not set, Flux uses the checkout branch as the push branch. The pull request requirement is enforced by your Git provider's branch protection or release workflow before changes reach the production branch.
 
 ## Choosing the Right Model
 
