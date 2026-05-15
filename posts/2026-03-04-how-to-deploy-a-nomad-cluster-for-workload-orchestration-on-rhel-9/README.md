@@ -16,6 +16,12 @@ HashiCorp Nomad provides flexible workload orchestration on RHEL 9 for container
 sudo dnf install -y yum-utils
 sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
 sudo dnf install -y nomad
+
+# On client nodes that will run Docker jobs:
+sudo dnf install -y dnf-plugins-core
+sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+sudo dnf install -y docker-ce docker-ce-cli containerd.io
+sudo systemctl enable --now docker
 ```
 
 ## Configure a Server Node
@@ -28,6 +34,10 @@ data_dir   = "/opt/nomad/data"
 server {
   enabled          = true
   bootstrap_expect = 3
+
+  server_join {
+    retry_join = ["10.0.1.11:4648", "10.0.1.12:4648", "10.0.1.13:4648"]
+  }
 }
 
 addresses {
@@ -75,6 +85,8 @@ job "web" {
     count = 3
 
     network {
+      mode = "bridge"
+
       port "http" {
         to = 80
       }
@@ -105,4 +117,3 @@ nomad job status web
 ## Conclusion
 
 Nomad on RHEL 9 provides lightweight, flexible workload orchestration that supports containers, binaries, and other task types. It is simpler than Kubernetes for organizations that do not need the full Kubernetes feature set.
-
