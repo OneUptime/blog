@@ -109,10 +109,10 @@ This is a common source of confusion. When you see `chmod` changing "group" perm
 
 ## Practical Example: Temporary Permission Restriction
 
-The mask is useful for temporarily restricting all non-owner access:
+The mask is useful for temporarily restricting named users, named groups, and the owning group:
 
 ```bash
-# Restrict all named users and groups to read-only
+# Restrict named users, named groups, and the owning group to read-only
 setfacl -m m::r /opt/shared/file.txt
 
 # Later, restore full permissions
@@ -134,13 +134,11 @@ sudo chmod 750 /opt/docs
 sudo setfacl -m g:writers:rwx /opt/docs
 sudo setfacl -m g:readers:rwx /opt/docs
 
-# But set the mask to r-x, limiting everyone to read-execute
+# But set the mask to r-x, limiting those group entries to read-execute
 sudo setfacl -m m::rx /opt/docs
 
-# Now explicitly grant writers write permission by adjusting their entry
-# and then set the mask to accommodate them
-sudo setfacl -m g:writers:rwx /opt/docs
-sudo setfacl -m m::rwx /opt/docs
+# There is no way for writers to bypass that mask. If you widen
+# the mask to rwx while readers still have rwx, readers can write too.
 ```
 
 Actually, a better approach for this use case is simply setting the ACL entries correctly:
