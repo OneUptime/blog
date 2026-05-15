@@ -77,10 +77,10 @@ sudo localectl set-locale LANG=en_US.UTF-8
 localectl status
 ```
 
-If you need a locale that isn't installed, you can generate it:
+If you need a locale that isn't installed, install the appropriate language pack:
 
 ```bash
-# Install the langpacks for your desired locale
+# Install the English language pack
 sudo dnf install glibc-langpack-en -y
 ```
 
@@ -125,7 +125,7 @@ The default Chrony configuration in `/etc/chrony.conf` points to Red Hat's NTP p
 
 ## Basic Network Settings
 
-RHEL uses NetworkManager for all network configuration. The `nmcli` command is your primary tool for managing connections from the terminal.
+RHEL uses NetworkManager by default for network configuration. The `nmcli` command is your primary tool for managing connections from the terminal.
 
 Check the current network status:
 
@@ -210,7 +210,7 @@ echo "=== Network ===" && nmcli device status
 
 ## Tips from the Field
 
-**Use Ansible for consistency.** If you're managing more than a handful of servers, automate this with Ansible. All of these settings have corresponding Ansible modules (`hostname`, `timezone`, `locale_gen`, etc.) that make it easy to enforce a baseline across your fleet.
+**Use Ansible for consistency.** If you're managing more than a handful of servers, automate this with Ansible. These settings can be managed with modules and roles such as `ansible.builtin.hostname`, `community.general.timezone`, `community.general.nmcli`, and the RHEL system roles that make it easy to enforce a baseline across your fleet.
 
 **Document your baseline.** Keep a record of what your standard settings should be. When something drifts, you'll want a reference to compare against.
 
