@@ -20,9 +20,23 @@ Disk quotas on ext4 filesystems allow administrators to limit the amount of stor
 sudo dnf install quota -y
 ```
 
-## Step 1: Enable Quota Support in Mount Options
+## Step 1: Enable Quota Support
 
-Edit `/etc/fstab` to add quota mount options:
+For a new ext4 filesystem, enable quota support when you create it:
+
+```bash
+sudo mkfs.ext4 -O quota /dev/vg_data/lv_data
+```
+
+For an existing ext4 filesystem, unmount it and enable the quota feature with `tune2fs`:
+
+```bash
+sudo umount /data
+sudo tune2fs -O quota /dev/vg_data/lv_data
+sudo tune2fs -Q usrquota,grpquota /dev/vg_data/lv_data
+```
+
+Edit `/etc/fstab` to add quota mount options if you want enforcement enabled when the filesystem is mounted:
 
 ```bash
 /dev/vg_data/lv_data /data ext4 defaults,usrquota,grpquota 0 2
@@ -32,10 +46,9 @@ Options:
 - `usrquota`: Enable user quotas
 - `grpquota`: Enable group quotas
 
-Remount the filesystem:
+Mount the filesystem:
 
 ```bash
-sudo umount /data
 sudo mount /data
 ```
 
@@ -45,28 +58,22 @@ Or remount without unmounting:
 sudo mount -o remount /data
 ```
 
-## Step 2: Create Quota Database Files
+## Step 2: Verify Quota Support
 
-Initialize the quota database:
+Confirm that the ext4 quota feature is enabled:
 
 ```bash
-sudo quotacheck -cugm /data
+sudo tune2fs -l /dev/vg_data/lv_data | grep -i quota
 ```
 
-Flags:
-- `-c`: Create new quota files
-- `-u`: Check user quotas
-- `-g`: Check group quotas
-- `-m`: Do not try to remount the filesystem read-only
-
-This creates `aquota.user` and `aquota.group` files in the filesystem root.
+On RHEL 9, ext4 quotas use hidden quota inodes when the quota feature is enabled, so there are no visible `aquota.user` or `aquota.group` files to create with `quotacheck`.
 
 ## Step 3: Enable Quota Enforcement
 
 Turn on quota checking:
 
 ```bash
-sudo quotaon /data
+sudo quotaon -ug /data
 ```
 
 Verify:
@@ -183,22 +190,23 @@ Users can check their own quotas:
 quota -u user1
 ```
 
-## Step 8: Update Quota Database
+## Step 8: Refresh Quota Enforcement
 
-If you add or remove files outside of normal quota tracking, update the database:
+If you need to temporarily stop and restart quota enforcement:
 
 ```bash
-sudo quotaoff /data
-sudo quotacheck -ugm /data
-sudo quotaon /data
+sudo quotaoff -ug /data
+sudo quotaon -ug /data
 ```
+
+With the ext4 quota feature enabled, quota usage is stored in hidden system inodes and kept consistent by the filesystem, so `quotacheck` is not normally needed.
 
 ## Step 9: Disable Quotas
 
 Turn off quota enforcement:
 
 ```bash
-sudo quotaoff /data
+sudo quotaoff -ug /data
 ```
 
 Remove quota mount options from `/etc/fstab` if you want to disable permanently.
@@ -246,14 +254,14 @@ echo '0 9 * * * root /usr/local/bin/quota-warn.sh' | sudo tee /etc/cron.d/quota-
 | `setquota` | Set quota limits from command line |
 | `repquota` | Generate quota reports |
 | `quota` | Show quota for current user |
-| `quotacheck` | Scan filesystem and update quota database |
+| `quotacheck` | Scan filesystem and update visible quota files on filesystems that use them |
 | `warnquota` | Send warning emails to over-quota users |
 
 ## Best Practices
 
 - **Test quotas with a non-critical user first** before applying to all users.
 - **Set soft limits below hard limits** to give users a warning period.
-- **Run `quotacheck` periodically** to keep the quota database accurate.
+- **Use the ext4 quota feature on RHEL 9** instead of maintaining visible quota files manually.
 - **Monitor grace period expirations** to catch users who consistently exceed soft limits.
 - **Communicate quota policies** to users before enabling enforcement.
 
