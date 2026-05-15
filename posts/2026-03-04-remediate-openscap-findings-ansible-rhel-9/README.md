@@ -29,6 +29,7 @@ flowchart TD
 
 ```bash
 # Run a compliance scan and save results
+mkdir -p /var/log/compliance
 
 oscap xccdf eval \
   --profile xccdf_org.ssgproject.content_profile_stig \
@@ -37,16 +38,19 @@ oscap xccdf eval \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml || true
 
 # Check how many items failed
-echo "Failed: $(grep -c 'result="fail"' /var/log/compliance/scan-results.xml)"
+echo "Failed: $(grep -c '<result>fail</result>' /var/log/compliance/scan-results.xml)"
 ```
 
 ## Step 2: Generate an Ansible Playbook from Results
 
 ```bash
+# Get the result ID from the scan results
+RESULT_ID=$(oscap info /var/log/compliance/scan-results.xml | awk -F': ' '/Result ID:/ {print $2; exit}')
+
 # Generate a playbook that fixes only the failed rules
 oscap xccdf generate fix \
   --fix-type ansible \
-  --result-id "" \
+  --result-id "$RESULT_ID" \
   --output /tmp/remediation-playbook.yml \
   /var/log/compliance/scan-results.xml
 
@@ -75,7 +79,8 @@ grep -i "reboot\|restart\|disable\|remove" /tmp/remediation-playbook.yml
 
 ```bash
 # Run the playbook in check mode (dry run)
-ansible-playbook -i localhost, -c local \
+ANSIBLE_COLLECTIONS_PATH=/usr/share/rhc-worker-playbook/ansible/collections/ansible_collections/ \
+  ansible-playbook -i localhost, -c local \
   --check --diff \
   /tmp/remediation-playbook.yml
 
@@ -86,11 +91,13 @@ ansible-playbook -i localhost, -c local \
 
 ```bash
 # Apply the playbook
-ansible-playbook -i localhost, -c local \
+ANSIBLE_COLLECTIONS_PATH=/usr/share/rhc-worker-playbook/ansible/collections/ansible_collections/ \
+  ansible-playbook -i localhost, -c local \
   /tmp/remediation-playbook.yml
 
 # For remote hosts, use your inventory
-ansible-playbook -i inventory.ini \
+ANSIBLE_COLLECTIONS_PATH=/usr/share/rhc-worker-playbook/ansible/collections/ansible_collections/ \
+  ansible-playbook -i inventory.ini \
   /tmp/remediation-playbook.yml
 ```
 
@@ -105,8 +112,8 @@ oscap xccdf eval \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml || true
 
 # Compare before and after
-echo "Before: $(grep -c 'result="fail"' /var/log/compliance/scan-results.xml) failures"
-echo "After:  $(grep -c 'result="fail"' /var/log/compliance/post-remediation.xml) failures"
+echo "Before: $(grep -c '<result>fail</result>' /var/log/compliance/scan-results.xml) failures"
+echo "After:  $(grep -c '<result>fail</result>' /var/log/compliance/post-remediation.xml) failures"
 ```
 
 ## Use Pre-Built SSG Playbooks Instead
@@ -118,11 +125,13 @@ For full-profile remediation, use the playbooks that ship with scap-security-gui
 ls /usr/share/scap-security-guide/ansible/rhel9-playbook-*.yml
 
 # Apply the full STIG playbook
-ansible-playbook -i localhost, -c local \
+ANSIBLE_COLLECTIONS_PATH=/usr/share/rhc-worker-playbook/ansible/collections/ansible_collections/ \
+  ansible-playbook -i localhost, -c local \
   /usr/share/scap-security-guide/ansible/rhel9-playbook-stig.yml
 
 # Apply CIS Level 1
-ansible-playbook -i localhost, -c local \
+ANSIBLE_COLLECTIONS_PATH=/usr/share/rhc-worker-playbook/ansible/collections/ansible_collections/ \
+  ansible-playbook -i localhost, -c local \
   /usr/share/scap-security-guide/ansible/rhel9-playbook-cis_server_l1.yml
 ```
 
@@ -135,15 +144,16 @@ The difference between generated and pre-built playbooks:
 Some remediation tasks require a reboot (like enabling FIPS mode or changing kernel parameters):
 
 ```yaml
-# Add a reboot handler to the generated playbook
-# Append this at the end of the playbook
+# Add a reboot handler to the play in the generated playbook
 
+- hosts: all
   handlers:
     - name: reboot system
       ansible.builtin.reboot:
         reboot_timeout: 300
 
-# Add notify directives to tasks that need it
+  tasks:
+    # Add notify directives to tasks that need it
 ```
 
 ## Create a Complete Remediation Pipeline Script
@@ -167,7 +177,7 @@ oscap xccdf eval \
   --report "${DIR}/pre-scan.html" \
   "$CONTENT" 2>/dev/null || true
 
-PRE_FAIL=$(grep -c 'result="fail"' "${DIR}/pre-scan.xml")
+PRE_FAIL=$(grep -c '<result>fail</result>' "${DIR}/pre-scan.xml" || true)
 echo "Initial failures: $PRE_FAIL"
 
 if [ "$PRE_FAIL" -eq 0 ]; then
@@ -176,14 +186,17 @@ if [ "$PRE_FAIL" -eq 0 ]; then
 fi
 
 echo "=== Step 2: Generate Remediation ==="
+RESULT_ID=$(oscap info "${DIR}/pre-scan.xml" | awk -F': ' '/Result ID:/ {print $2; exit}')
+
 oscap xccdf generate fix \
   --fix-type ansible \
-  --result-id "" \
+  --result-id "$RESULT_ID" \
   --output "${DIR}/remediation.yml" \
   "${DIR}/pre-scan.xml"
 
 echo "=== Step 3: Apply Remediation ==="
-ansible-playbook -i localhost, -c local "${DIR}/remediation.yml"
+ANSIBLE_COLLECTIONS_PATH=/usr/share/rhc-worker-playbook/ansible/collections/ansible_collections/ \
+  ansible-playbook -i localhost, -c local "${DIR}/remediation.yml"
 
 echo "=== Step 4: Re-scan ==="
 oscap xccdf eval \
@@ -192,7 +205,7 @@ oscap xccdf eval \
   --report "${DIR}/post-scan.html" \
   "$CONTENT" 2>/dev/null || true
 
-POST_FAIL=$(grep -c 'result="fail"' "${DIR}/post-scan.xml")
+POST_FAIL=$(grep -c '<result>fail</result>' "${DIR}/post-scan.xml" || true)
 
 echo "=== Results ==="
 echo "Before: $PRE_FAIL failures"
@@ -216,7 +229,7 @@ Some rules may continue to fail after remediation. Common reasons:
 oscap xccdf eval \
   --profile xccdf_org.ssgproject.content_profile_stig \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml 2>&1 | \
-  grep -B1 "^Result.*fail" | grep "^Title"
+  awk '/^Title[[:space:]]/ {title=$0} /^Result[[:space:]]+fail$/ {print title}'
 ```
 
 Document these remaining items as exceptions with justifications and timelines for resolution.
