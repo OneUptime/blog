@@ -28,23 +28,22 @@ Update your system to ensure all packages are current:
 sudo dnf update -y
 ```
 
-Install any required dependencies:
+Install the firewall tooling used later in this guide:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y firewalld
 ```
 
 ## Step 2: Install Required Packages
 
 ```bash
-sudo dnf install -y <package-name>
+sudo dnf install -y memcached
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+rpm -qi memcached
 ```
 
 ## Step 3: Configure the Service
@@ -52,16 +51,24 @@ rpm -qi <package-name>
 Create or edit the main configuration file:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/sysconfig/memcached
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware. For a local application server, bind Memcached to localhost:
+
+```bash
+PORT="11211"
+USER="memcached"
+MAXCONN="1024"
+CACHESIZE="64"
+OPTIONS="-l 127.0.0.1,::1"
+```
 
 ## Step 4: Start and Enable the Service
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo systemctl enable --now memcached
+sudo systemctl status memcached
 ```
 
 ## Step 5: Verify the Configuration
@@ -69,13 +76,14 @@ sudo systemctl status <service>
 Test the setup:
 
 ```bash
-sudo <service> --test
+systemctl is-active --quiet memcached
+ss -ltnp 'sport = :11211'
 ```
 
 Check the logs for any errors:
 
 ```bash
-journalctl -u <service> -f
+journalctl -u memcached -f
 ```
 
 ## Step 6: Configure Firewall Rules
@@ -83,7 +91,7 @@ journalctl -u <service> -f
 If the service needs network access:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo firewall-cmd --permanent --add-port=11211/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -92,8 +100,8 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+systemctl show memcached --property=MemoryCurrent
+top -p $(pidof memcached)
 ```
 
 ## Security Considerations
@@ -107,7 +115,7 @@ top -p $(pidof <service>)
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
+1. **Service fails to start**: Check `journalctl -u memcached -xe` for error messages
 2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
 3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
 
