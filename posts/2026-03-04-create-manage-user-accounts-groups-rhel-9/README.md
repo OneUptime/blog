@@ -19,7 +19,7 @@ Before diving into commands, it helps to understand where user and group informa
 | `/etc/passwd` | User account information (name, UID, GID, home, shell) |
 | `/etc/shadow` | Encrypted passwords and password aging info |
 | `/etc/group` | Group definitions and membership |
-| `/etc/gshadow` | Encrypted group passwords (rarely used) |
+| `/etc/gshadow` | Secure group information, including group passwords (rarely used) |
 | `/etc/login.defs` | Default settings for new accounts |
 | `/etc/skel/` | Template files copied into new home directories |
 
@@ -90,10 +90,10 @@ sudo usermod -d /home/newpath -m jsmith
 # Change the user's comment/description
 sudo usermod -c "John Smith - SRE Team" jsmith
 
-# Lock a user account (prefix the password hash with !)
+# Lock a user's password (prefix the password hash with !)
 sudo usermod -L jsmith
 
-# Unlock a locked account
+# Unlock a locked password
 sudo usermod -U jsmith
 
 # Set an account expiration date (useful for contractors)
@@ -114,7 +114,7 @@ I generally recommend keeping home directories around for a while after removing
 
 ## Managing Passwords
 
-The `passwd` command handles password changes and account locking.
+The `passwd` command handles password changes and password locking.
 
 ```bash
 # Change your own password
@@ -126,10 +126,10 @@ sudo passwd jsmith
 # Force a user to change their password on next login
 sudo passwd -e jsmith
 
-# Lock an account (same as usermod -L)
+# Lock a user's password (same as usermod -L)
 sudo passwd -l jsmith
 
-# Unlock an account
+# Unlock a locked password
 sudo passwd -u jsmith
 
 # Check password status for a user
@@ -203,7 +203,7 @@ groups jsmith
 # Same info using the id command (includes UIDs and GIDs)
 id jsmith
 
-# List all members of a specific group
+# Show a group's database entry and supplementary member list
 getent group developers
 ```
 
@@ -243,6 +243,7 @@ jsmith:$6$rounds=...:19500:0:99999:7:::
 | 6 | Warning days before expiry |
 | 7 | Days after expiry until account is disabled |
 | 8 | Days since epoch when account expires |
+| 9 | Reserved field |
 
 ## Understanding /etc/group
 
@@ -257,7 +258,7 @@ developers:x:2000:jsmith,ajones,bwilson
 | 1 | developers | Group name |
 | 2 | x | Group password placeholder |
 | 3 | 2000 | Group ID (GID) |
-| 4 | jsmith,ajones,bwilson | Comma-separated member list |
+| 4 | jsmith,ajones,bwilson | Comma-separated supplementary member list |
 
 ## Customizing Default Settings
 
@@ -275,7 +276,7 @@ Key settings you might want to adjust:
 - `UID_MIN` / `UID_MAX` - Range for regular user UIDs
 - `PASS_MAX_DAYS` - Default password expiry
 - `PASS_MIN_DAYS` - Minimum days between password changes
-- `PASS_MIN_LEN` - Minimum password length
+- `PASS_WARN_AGE` - Warning period before password expiry
 - `CREATE_HOME` - Whether to create home directories by default
 
 ### /etc/skel
