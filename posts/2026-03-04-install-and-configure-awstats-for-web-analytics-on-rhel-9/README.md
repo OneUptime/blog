@@ -23,58 +23,81 @@ AWStats for Web Analytics can be installed and configured on RHEL to provide rob
 
 sudo dnf update -y
 
-# Install the required packages
-sudo dnf install -y <package-name>
+# Enable EPEL on RHEL 9
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+
+# Install AWStats and Apache HTTP Server
+sudo dnf install -y awstats httpd
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+On CentOS Stream 9, enable the CRB and EPEL repositories before installing `awstats` and `httpd`.
 
-## Step 2: Configure the Service
+## Step 2: Configure AWStats
 
 Edit the configuration file to match your environment:
 
 ```bash
+# Create a site-specific configuration file
+sudo cp /etc/awstats/awstats.model.conf /etc/awstats/awstats.example.com.conf
+
 # Open the configuration file
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/awstats/awstats.example.com.conf
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include the log file path, log format, site domain, host aliases, and data directory.
 
-```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+```apache
+LogFile="/var/log/httpd/access_log"
+LogType=W
+LogFormat=1
+SiteDomain="example.com"
+HostAliases="www.example.com localhost 127.0.0.1"
+DirData="/var/lib/awstats"
+AllowToUpdateStatsFromBrowser=0
 ```
 
-## Step 3: Enable and Start the Service
+```bash
+# Restart Apache to apply the packaged AWStats web configuration
+sudo systemctl restart httpd
+```
+
+## Step 3: Enable and Start Apache
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Enable Apache to start on boot
+sudo systemctl enable httpd
 
-# Start the service
-sudo systemctl start <service-name>
+# Start Apache
+sudo systemctl start httpd
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status httpd
 ```
 
 
 ## Verification
 
-Confirm everything is working by checking the status and logs:
+Confirm everything is working by updating the AWStats database and checking Apache:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
+# Build or update statistics for the example.com profile
+sudo /usr/share/awstats/wwwroot/cgi-bin/awstats.pl -config=example.com -update
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# Check Apache status
+sudo systemctl status httpd
+
+# Review recent Apache logs
+journalctl -u httpd --no-pager -n 20
 ```
+
+Then open `http://server.example.com/awstats/awstats.pl?config=example.com` in a browser, replacing the host name and configuration name for your environment.
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If Apache fails to start, check the logs with `journalctl -u httpd -e --no-pager`.
+- Ensure all required packages are installed: `rpm -q awstats httpd`.
+- If AWStats does not show data, confirm that `LogFile` points to an existing readable access log and run `/usr/share/awstats/wwwroot/cgi-bin/awstats.pl -config=example.com -update` again.
 
 ## Conclusion
 
