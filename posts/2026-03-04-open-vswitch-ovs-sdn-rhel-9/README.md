@@ -26,7 +26,7 @@ graph TD
 ```bash
 # Install OVS packages
 
-sudo dnf install -y openvswitch3.1
+sudo dnf install -y openvswitch NetworkManager-ovs
 
 # Start and enable the OVS service
 sudo systemctl enable --now openvswitch
@@ -45,7 +45,7 @@ sudo ovs-vsctl add-br br0
 # Add a physical interface to the bridge
 sudo ovs-vsctl add-port br0 ens4
 
-# Assign an IP address to the bridge
+# Assign an IP address to the bridge, not to the physical port
 sudo ip addr add 192.168.1.10/24 dev br0
 sudo ip link set br0 up
 
@@ -81,7 +81,7 @@ sudo ovs-ofctl add-flow br0 "priority=100,icmp,actions=drop"
 # Add a rule to forward HTTP traffic to a specific port
 sudo ovs-ofctl add-flow br0 "priority=200,tcp,tp_dst=80,actions=output:2"
 
-# Add a rule to mirror all traffic to a monitoring port
+# Add a low-priority rule to send otherwise unmatched traffic to two OpenFlow ports
 sudo ovs-ofctl add-flow br0 "priority=50,actions=output:1,output:3"
 
 # Delete a specific flow
@@ -107,7 +107,7 @@ sudo ovs-vsctl show
 # Show bridge and port statistics
 sudo ovs-ofctl dump-ports br0
 
-# Monitor real-time flow matches
+# Monitor OpenFlow messages on the switch's snoop socket
 sudo ovs-ofctl snoop br0
 
 # Check the OVS database
@@ -124,13 +124,21 @@ OVS stores its configuration in a database that persists across reboots automati
 ```bash
 # Use NetworkManager to manage the bridge IP
 sudo nmcli connection add type ovs-bridge con-name br0 conn.interface br0
-sudo nmcli connection add type ovs-port con-name br0-port conn.interface br0 master br0
+sudo nmcli connection add type ovs-port con-name br0-port conn.interface br0-port master br0
 sudo nmcli connection add type ovs-interface con-name br0-iface conn.interface br0 \
+    slave-type ovs-port \
     master br0-port \
     ipv4.method manual \
     ipv4.addresses 192.168.1.10/24
 
+sudo nmcli connection add type ovs-port con-name ens4-port conn.interface ens4-port master br0
+sudo nmcli connection add type ethernet con-name ens4-iface conn.interface ens4 \
+    master ens4-port \
+    ipv4.method disabled \
+    ipv6.method disabled
+
 sudo nmcli connection up br0-iface
+sudo nmcli connection up ens4-iface
 ```
 
 ## Summary
