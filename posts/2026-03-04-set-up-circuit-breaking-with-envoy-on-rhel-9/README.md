@@ -34,6 +34,17 @@ Add circuit breaker thresholds to your cluster definition:
 ```yaml
 # envoy-circuit-breaker.yaml
 
+admin:
+  access_log:
+  - name: envoy.access_loggers.file
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
+      path: /tmp/envoy-admin.log
+  address:
+    socket_address:
+      address: 127.0.0.1
+      port_value: 8001
+
 static_resources:
   listeners:
   - name: main_listener
@@ -178,10 +189,14 @@ clusters:
       max_connections: 100
       max_pending_requests: 50
       max_requests: 200
-  common_http_protocol_options:
-    idle_timeout: 300s
-  http_protocol_options:
-    max_headers_count: 100
+  typed_extension_protocol_options:
+    envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+      "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+      common_http_protocol_options:
+        idle_timeout: 300s
+        max_headers_count: 100
+      explicit_http_config:
+        http_protocol_options: {}
   upstream_connection_options:
     tcp_keepalive:
       keepalive_probes: 3
@@ -209,7 +224,7 @@ Use a load testing tool to trigger the circuit breaker:
 
 ```bash
 # Install hey for load testing
-sudo dnf install -y golang
+sudo dnf install -y go-toolset
 go install github.com/rakyll/hey@latest
 ```
 
