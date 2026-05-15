@@ -8,11 +8,11 @@ Description: Learn how to bootstrap Flux CD with Bitbucket Server (Bitbucket Dat
 
 ---
 
-Bitbucket Server (also known as Bitbucket Data Center) is Atlassian's self-hosted Git solution widely used in enterprise environments. While Flux CD does not have a dedicated `flux bootstrap bitbucket-server` command like it does for GitHub and GitLab, you can bootstrap Flux using the generic Git server approach combined with manual repository setup. This guide walks you through the complete process of connecting Flux CD to a Bitbucket Server instance.
+Bitbucket Server (also known as Bitbucket Data Center) is Atlassian's self-hosted Git solution widely used in enterprise environments. Flux CD includes a dedicated `flux bootstrap bitbucket-server` command for API-driven bootstrapping, but you can also bootstrap Flux using the generic Git server approach combined with manual repository setup. This guide walks you through the manual SSH-based process of connecting Flux CD to a Bitbucket Server instance.
 
 ## Prerequisites
 
-- A running Kubernetes cluster (v1.26 or later)
+- A running Kubernetes cluster supported by your Flux release
 - `kubectl` configured to access your cluster
 - Flux CLI installed (v2.0 or later)
 - A Bitbucket Server instance with SSH access
@@ -63,7 +63,7 @@ cat known_hosts.txt
 
 ## Step 4: Install Flux Components Manually
 
-Since there is no dedicated Bitbucket Server bootstrap command, use `flux install` to deploy the controllers first.
+For the manual Git server approach, use `flux install` to deploy the controllers first.
 
 ```bash
 # Install Flux controllers on the cluster
@@ -190,6 +190,14 @@ resources:
   - kustomization-sync.yaml
 EOF
 
+# Create a root kustomization.yaml for the cluster path
+cat > clusters/production/kustomization.yaml << 'EOF'
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - flux-system
+EOF
+
 # Commit and push
 git add -A
 git commit -m "Add Flux system configuration"
@@ -235,7 +243,28 @@ spec:
         memory: 64Mi
 ```
 
-Commit and push this file. Flux will automatically detect the change and deploy the application.
+Create a kustomization for the app directory and add it to the cluster kustomization:
+
+```bash
+mkdir -p clusters/production/apps
+
+cat > clusters/production/apps/kustomization.yaml << 'EOF'
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - podinfo.yaml
+EOF
+
+cat > clusters/production/kustomization.yaml << 'EOF'
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - flux-system
+  - apps
+EOF
+```
+
+Commit and push these files. Flux will automatically detect the change and deploy the application.
 
 ```bash
 # Force immediate reconciliation
@@ -295,4 +324,4 @@ spec:
 
 ## Summary
 
-While Bitbucket Server does not have a dedicated Flux bootstrap command, the setup process is well-defined and repeatable. By manually installing Flux components, configuring SSH authentication, and creating the GitRepository and Kustomization resources, you achieve the same GitOps workflow as with other Git providers. Once configured, Flux continuously monitors your Bitbucket Server repository for changes and applies them to your cluster automatically. This approach works for both Bitbucket Server and Bitbucket Data Center deployments.
+While Bitbucket Server has a dedicated Flux bootstrap command, the manual setup process is also well-defined and repeatable. By manually installing Flux components, configuring SSH authentication, and creating the GitRepository and Kustomization resources, you achieve the same GitOps workflow as with other Git providers. Once configured, Flux continuously monitors your Bitbucket Server repository for changes and applies them to your cluster automatically. This approach works for both Bitbucket Server and Bitbucket Data Center deployments.
