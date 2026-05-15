@@ -8,7 +8,7 @@ Description: Learn how to list, enable, and disable Red Hat software repositorie
 
 ---
 
-After registering your RHEL system and attaching a subscription, you get access to a set of default repositories. But not every repository is enabled out of the box, and sometimes you need more than the defaults. The `subscription-manager repos` command gives you full control over which Red Hat repositories are active on your system. This guide covers everything from listing repos to enabling specialized channels.
+After registering your RHEL system, and attaching a subscription if your organization still uses entitlement-based subscription management, you get access to a set of default repositories. But not every repository is enabled out of the box, and sometimes you need more than the defaults. The `subscription-manager repos` command gives you full control over which Red Hat repositories are active on your system. This guide covers everything from listing repos to enabling specialized channels.
 
 ## Default Repositories on RHEL
 
@@ -136,7 +136,7 @@ sudo subscription-manager repos --enable=rhel-9-for-x86_64-highavailability-rpms
 sudo subscription-manager repos --enable=rhel-9-for-x86_64-resilientstorage-rpms
 ```
 
-**Supplementary** - Contains third-party and supplementary packages:
+**Supplementary** - Contains proprietary-licensed supplementary packages that are not included in the open source RHEL repositories:
 
 ```bash
 # Enable Supplementary
@@ -218,8 +218,8 @@ For consistent configuration across many systems:
 **Repository not found**: Make sure your subscription covers the repository. Not all subscriptions include every repo. Check with:
 
 ```bash
-# Verify available repos for your subscription
-sudo subscription-manager repos --list | grep -c "Repo ID"
+# Verify the repo ID is available for your subscription
+sudo subscription-manager repos --list | grep -i "rhel-9-for-x86_64-supplementary-rpms"
 ```
 
 **Stale repo metadata**: If dnf complains about metadata, clean and refresh:
