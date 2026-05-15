@@ -8,7 +8,7 @@ Description: Learn how to bootstrap Flux CD on a Kubernetes cluster using SSH ke
 
 ---
 
-When bootstrapping Flux CD, you need to establish a secure connection between your Kubernetes cluster and your Git repository. SSH key authentication is one of the most secure and widely used methods for this purpose. It eliminates the need to store passwords or tokens and provides strong cryptographic authentication. This guide walks you through bootstrapping Flux CD with SSH keys on GitHub and GitLab.
+When bootstrapping Flux CD, you need to establish a secure connection between your Kubernetes cluster and your Git repository. SSH key authentication is one of the most secure and widely used methods for this purpose. It eliminates the need to store passwords or tokens for ongoing Git reconciliation and provides strong cryptographic authentication. This guide walks you through bootstrapping Flux CD with SSH keys on GitHub and GitLab.
 
 ## Prerequisites
 
@@ -55,7 +55,7 @@ The simplest way to bootstrap with SSH on GitHub is to let Flux handle the key g
 
 ### Step 1: Export Your GitHub Token
 
-Even with SSH authentication, Flux needs a GitHub token during bootstrap to create the repository and register the deploy key. This token is only used during the bootstrap process, not for ongoing Git operations.
+Even with SSH authentication, Flux needs a GitHub token during bootstrap to create the repository and register the deploy key. The Flux controllers do not use this token for ongoing Git fetches, although on GitHub the deploy key remains linked to the personal access token used to create it.
 
 ```bash
 # Export your GitHub personal access token
@@ -230,7 +230,7 @@ Periodically rotating SSH keys is a good security practice. Here is how to rotat
 # Generate a new SSH key pair
 ssh-keygen -t ed25519 -C "flux-deploy-key-rotated" -f ~/.ssh/flux-deploy-key-new -N ""
 
-# Delete the existing secret so Flux can recreate it
+# Delete the existing secret before recreating it
 kubectl -n flux-system delete secret flux-system
 
 # Recreate the Kubernetes secret with the new key
