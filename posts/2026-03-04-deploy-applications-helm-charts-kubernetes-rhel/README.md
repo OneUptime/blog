@@ -15,7 +15,7 @@ Helm is the package manager for Kubernetes. It uses charts (pre-configured packa
 ```bash
 # Download the latest Helm binary
 
-curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4
 chmod 700 get_helm.sh
 ./get_helm.sh
 
@@ -29,9 +29,6 @@ kubectl cluster-info
 ## Adding Chart Repositories
 
 ```bash
-# Add the official Helm stable charts repository
-helm repo add stable https://charts.helm.sh/stable
-
 # Add Bitnami charts (widely used community charts)
 helm repo add bitnami https://charts.bitnami.com/bitnami
 
