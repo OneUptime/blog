@@ -23,7 +23,7 @@ RHEL 9 is fully supported as a guest operating system in both VMware vSphere and
 1. Create a new VM in vSphere Client
 2. Select "Red Hat Enterprise Linux 9 (64-bit)" as the guest OS
 3. Recommended settings:
-   - VMX-17 or later hardware version
+   - VMX-18 or later hardware version
    - PVSCSI storage controller (better than LSI Logic)
    - VMXNET3 network adapter (better than E1000)
    - Thin provisioned disks
@@ -81,8 +81,11 @@ ethtool -i ens192
 
 ### Supported Hyper-V Versions
 
+- Windows Server 2016 Hyper-V
 - Windows Server 2019 Hyper-V
 - Windows Server 2022 Hyper-V
+- Windows Server 2025 Hyper-V
+- Azure Local / Azure Stack HCI
 - Azure (based on Hyper-V)
 
 ### Creating a Hyper-V VM for RHEL 9
