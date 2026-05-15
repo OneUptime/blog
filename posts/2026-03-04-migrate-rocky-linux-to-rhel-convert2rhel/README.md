@@ -16,7 +16,7 @@ Rocky Linux is binary-compatible with RHEL, which makes the conversion straightf
 # Verify your Rocky Linux version
 
 cat /etc/rocky-release
-# Rocky Linux release 9.3 (Blue Onyx)
+# Rocky Linux release 9.7 (Blue Onyx)
 
 # Ensure the system is fully updated
 sudo dnf update -y
@@ -29,18 +29,28 @@ sudo reboot
 
 ```bash
 # Add the Convert2RHEL repository for your major version
+sudo curl -o /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release \
+  https://security.access.redhat.com/data/fd431d51.txt
+
 sudo curl -o /etc/yum.repos.d/convert2rhel.repo \
-  https://ftp.redhat.com/redhat/convert2rhel/9/convert2rhel.repo
+  https://cdn-public.redhat.com/content/public/repofiles/convert2rhel-for-rhel-9-x86_64.repo
 
 # Install the tool
 sudo dnf install convert2rhel -y
+
+# Configure Red Hat Subscription Manager credentials
+sudo tee /etc/convert2rhel.ini >/dev/null <<'EOF'
+[subscription_manager]
+org = your-org-id
+activation_key = your-key
+EOF
 ```
 
 ## Run the Analysis (Recommended)
 
 ```bash
 # Run an analysis without making changes
-sudo convert2rhel analyze --org your-org-id --activationkey your-key
+sudo convert2rhel analyze
 
 # Review the output for any warnings or blockers
 # Common findings:
@@ -52,7 +62,7 @@ sudo convert2rhel analyze --org your-org-id --activationkey your-key
 
 ```bash
 # Run the full conversion
-sudo convert2rhel --org your-org-id --activationkey your-key -y
+sudo convert2rhel
 
 # The tool performs these steps:
 # 1. Validates system compatibility
@@ -73,7 +83,7 @@ sudo reboot
 
 # Verify you are running RHEL
 cat /etc/redhat-release
-# Red Hat Enterprise Linux release 9.3 (Plow)
+# Red Hat Enterprise Linux release 9.7 (Plow)
 
 uname -r
 # Should show an el9 kernel without "rocky"
@@ -86,8 +96,7 @@ sudo dnf repolist
 
 # Look for any remaining Rocky Linux packages
 rpm -qa | grep -i rocky
-# If any remain, remove them
-sudo dnf remove rocky-release rocky-logos 2>/dev/null
+# Review any remaining packages before removing them
 ```
 
 ## Verify Application Functionality
@@ -107,11 +116,11 @@ systemctl status httpd nginx postgresql 2>/dev/null
 ## Re-enable Third-Party Repositories
 
 ```bash
-# EPEL: Install the RHEL version
+# EPEL: Enable CodeReady Builder, then install the RHEL version
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
 sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 
-# Other third-party repos should work unchanged since Rocky and RHEL
-# use the same package format and version scheme
+# Reinstall or reconfigure other third-party repos for RHEL where needed
 ```
 
 The conversion from Rocky Linux to RHEL is one of the smoothest Convert2RHEL paths because of the high degree of binary compatibility between the two distributions.
