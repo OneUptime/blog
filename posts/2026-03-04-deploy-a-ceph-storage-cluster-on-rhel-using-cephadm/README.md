@@ -13,17 +13,22 @@ cephadm is the recommended tool for deploying and managing Ceph clusters. It use
 ## Prerequisites
 
 Ensure all nodes have:
-- RHEL 9 with a valid subscription
+- RHEL 9.6 or 9.7 with a valid Red Hat subscription and access to Red Hat Ceph Storage content
 - At least one unused disk per node for OSDs
-- Passwordless SSH between the admin node and all cluster nodes
+- SSH installed and running, with root-level access to all cluster nodes
 - Chrony configured for time synchronization
+- Login access to `registry.redhat.io`
 
 ## Install cephadm on the Bootstrap Node
 
 ```bash
-# Install cephadm
+# Enable the required RHEL and Red Hat Ceph Storage repositories
+sudo subscription-manager repos --enable=rhel-9-for-x86_64-baseos-rpms
+sudo subscription-manager repos --enable=rhel-9-for-x86_64-appstream-rpms
+sudo subscription-manager repos --enable=rhceph-9-tools-for-rhel-9-x86_64-rpms
 
-sudo dnf install -y cephadm
+# Install cephadm, the Ceph CLI, and host dependencies
+sudo dnf install -y cephadm ceph-common podman lvm2 chrony
 
 # Verify the installation
 cephadm version
@@ -37,9 +42,13 @@ Run the bootstrap command on the first node. This creates the initial monitor an
 # Bootstrap the cluster with the first node's IP
 sudo cephadm bootstrap \
     --mon-ip 192.168.1.10 \
+    --registry-url registry.redhat.io \
+    --registry-username RED_HAT_USERNAME \
+    --registry-password RED_HAT_PASSWORD \
     --initial-dashboard-user admin \
     --initial-dashboard-password changeme \
-    --allow-fqdn-hostname
+    --allow-fqdn-hostname \
+    --yes-i-know
 ```
 
 This command will:
@@ -100,7 +109,7 @@ On each node, open the required Ceph ports:
 # Monitor, OSD, and MDS ports
 sudo firewall-cmd --permanent --add-port=6789/tcp
 sudo firewall-cmd --permanent --add-port=3300/tcp
-sudo firewall-cmd --permanent --add-port=6800-7300/tcp
+sudo firewall-cmd --permanent --add-port=6800-7568/tcp
 sudo firewall-cmd --reload
 ```
 
