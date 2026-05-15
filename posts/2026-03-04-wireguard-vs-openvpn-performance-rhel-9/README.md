@@ -25,6 +25,8 @@ sudo dnf install -y wireguard-tools openvpn easy-rsa
 sudo dnf install -y iperf3 sysstat
 ```
 
+On RHEL 9, WireGuard is provided as an unsupported Technology Preview, and EPEL packages such as OpenVPN or Easy-RSA are community-supported rather than covered by Red Hat production SLAs. That is fine for a lab benchmark, but it matters for production planning.
+
 ## WireGuard Configuration for Benchmarking
 
 Set up a basic WireGuard tunnel:
@@ -49,14 +51,14 @@ sudo systemctl enable --now wg-quick@wg0
 
 ## OpenVPN Configuration for Benchmarking
 
-Use OpenVPN with UDP and AES-256-GCM (the recommended cipher):
+Use OpenVPN with UDP and AES-GCM ciphers:
 
 ```bash
 # In /etc/openvpn/server/server.conf
 port 1194
 proto udp
 dev tun
-data-ciphers AES-256-GCM
+data-ciphers AES-256-GCM:AES-128-GCM
 auth SHA256
 # ... (standard cert and key config)
 ```
@@ -147,12 +149,12 @@ Performance isn't everything. OpenVPN has advantages in other areas:
 | Feature | WireGuard | OpenVPN |
 |---------|-----------|---------|
 | TCP transport | No | Yes |
-| TCP/443 HTTPS-like transport | No (UDP only) | Yes (can blend with HTTPS) |
+| TCP/443 transport | No (UDP only) | Yes (can run on TCP/443 and through HTTP proxies) |
 | LDAP/RADIUS auth | No | Yes |
 | Per-client config | AllowedIPs only | Full push/pull config |
 | Client platforms | Good | Excellent (every OS) |
-| Restrictive firewalls | May be blocked | Can tunnel through HTTPS |
-| Dynamic IP assignment | Manual | Built-in DHCP |
+| Restrictive firewalls | May be blocked | Can run over TCP/443 or through supported proxies |
+| Dynamic IP assignment | Manual | Built-in address pools |
 | Logging/audit | Minimal | Comprehensive |
 
 ## Choosing the Right VPN
