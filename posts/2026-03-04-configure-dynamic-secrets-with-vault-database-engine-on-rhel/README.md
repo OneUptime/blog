@@ -63,6 +63,9 @@ Create a Vault management user:
 ```bash
 # Connect to PostgreSQL and create the Vault user
 sudo -u postgres psql << 'SQL'
+ALTER SYSTEM SET password_encryption = 'scram-sha-256';
+SELECT pg_reload_conf();
+SET password_encryption = 'scram-sha-256';
 CREATE ROLE vault_admin WITH LOGIN PASSWORD 'vault_admin_password' CREATEROLE VALID UNTIL 'infinity';
 GRANT ALL PRIVILEGES ON DATABASE postgres TO vault_admin;
 SQL
@@ -71,11 +74,8 @@ SQL
 Configure PostgreSQL to accept password authentication from Vault:
 
 ```bash
-# Edit pg_hba.conf to allow password auth
-sudo tee -a /var/lib/pgsql/data/pg_hba.conf > /dev/null << 'EOF'
-host    all    vault_admin    127.0.0.1/32    md5
-host    all    all            127.0.0.1/32    md5
-EOF
+# Add password auth rules before any existing matching host rules
+sudo sed -i '1ihost    all    all            127.0.0.1/32    scram-sha-256\nhost    all    vault_admin    127.0.0.1/32    scram-sha-256' /var/lib/pgsql/data/pg_hba.conf
 ```
 
 ```bash
@@ -99,7 +99,8 @@ vault write database/config/myapp-db \
   allowed_roles="myapp-readonly,myapp-readwrite" \
   connection_url="postgresql://{{username}}:{{password}}@127.0.0.1:5432/postgres?sslmode=disable" \
   username="vault_admin" \
-  password="vault_admin_password"
+  password="vault_admin_password" \
+  password_authentication="scram-sha-256"
 ```
 
 Rotate the root credentials so that only Vault knows the password:
@@ -173,6 +174,17 @@ The process is similar for MySQL:
 # Install MySQL
 sudo dnf install -y mysql-server
 sudo systemctl enable --now mysqld
+```
+
+Create a Vault management user:
+
+```bash
+# Connect to MySQL as root and create the Vault user
+mysql -u root -p << 'SQL'
+CREATE USER 'vault_admin'@'%' IDENTIFIED BY 'vault_admin_password';
+GRANT CREATE USER, SELECT ON *.* TO 'vault_admin'@'%' WITH GRANT OPTION;
+FLUSH PRIVILEGES;
+SQL
 ```
 
 ```bash
