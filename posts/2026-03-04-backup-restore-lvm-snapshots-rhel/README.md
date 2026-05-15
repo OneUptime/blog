@@ -8,7 +8,7 @@ Description: Use LVM snapshots on RHEL to create point-in-time copies of logical
 
 ---
 
-LVM snapshots create a point-in-time copy of a logical volume. This is useful for taking consistent backups of mounted filesystems without downtime, or for testing changes with the ability to roll back.
+LVM snapshots create a point-in-time copy of a logical volume. This is useful for taking filesystem-consistent backups of mounted filesystems without downtime, or for testing changes with the ability to roll back. For application-consistent backups, quiesce or back up applications such as databases with their own backup tools before creating the snapshot.
 
 ## Prerequisites
 
@@ -39,7 +39,7 @@ sudo lvcreate --size 5G --snapshot \
 sudo lvs
 ```
 
-The snapshot only uses space as data changes on the original volume, so 5 GB is usually enough for short-term operations.
+The snapshot only uses space as data changes on the original volume, so size it for the expected write activity while the snapshot exists and monitor its usage. If the snapshot fills up, it becomes invalid.
 
 ## Mounting and Backing Up from a Snapshot
 
@@ -50,7 +50,8 @@ Mount the snapshot read-only and create a backup:
 sudo mkdir -p /mnt/snap
 
 # Mount the snapshot read-only
-sudo mount -o ro /dev/rhel/root-snap /mnt/snap
+# Add nouuid for XFS snapshots while the origin filesystem is mounted
+sudo mount -o ro,nouuid /dev/rhel/root-snap /mnt/snap
 
 # Create a tar backup from the snapshot (consistent point-in-time)
 sudo tar czf /backup/root-snapshot-$(date +%Y%m%d).tar.gz -C /mnt/snap .
@@ -97,7 +98,7 @@ lvcreate --size "$SNAP_SIZE" --snapshot --name "$SNAP_NAME" "$LV"
 
 # Mount and backup
 mkdir -p /mnt/snap
-mount -o ro "/dev/rhel/${SNAP_NAME}" /mnt/snap
+mount -o ro,nouuid "/dev/rhel/${SNAP_NAME}" /mnt/snap
 tar czf "/backup/data-$(date +%Y%m%d).tar.gz" -C /mnt/snap .
 
 # Cleanup
