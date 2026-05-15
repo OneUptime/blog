@@ -31,7 +31,7 @@ flowchart TD
 
 gpg --version
 
-# Expected output includes version 2.3.x or later on RHEL
+# Expected output on RHEL 9 includes a GnuPG 2.3.x version
 # Also shows supported algorithms
 ```
 
@@ -61,7 +61,7 @@ For a quick default key:
 gpg --generate-key
 ```
 
-This creates an Ed25519 key (on RHEL) with a 2-year expiration.
+This uses the current GnuPG defaults, which on RHEL 9 typically create an Ed25519 primary key with a Curve25519 encryption subkey and a default expiration interval.
 
 ## Method 3: Batch Key Generation
 
@@ -90,7 +90,7 @@ gpg --batch --generate-key /tmp/gpg-key-batch.conf
 rm /tmp/gpg-key-batch.conf
 ```
 
-Note: The `%no-protection` directive creates a key without a passphrase. For production use, remove this line and set a passphrase interactively, or use `Passphrase: your-passphrase-here`.
+Note: The `%no-protection` directive creates a key without a passphrase. For production use, remove this line and set a passphrase interactively, or use `Passphrase: your-passphrase-here` only in a protected batch file that you delete immediately after use.
 
 For a passphrase-protected batch key:
 
