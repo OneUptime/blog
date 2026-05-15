@@ -33,7 +33,7 @@ RETENTION_DAYS=14
 DATE=$(date +%Y%m%d_%H%M%S)
 LOG_FILE="/var/log/pg_backup.log"
 
-# List of databases to back up (or use "all" for everything)
+# List of databases to back up
 DATABASES="myappdb analyticsdb"
 
 # Start logging
@@ -70,6 +70,8 @@ SCRIPT
 
 sudo chmod +x /usr/local/bin/pg_backup.sh
 sudo chown postgres:postgres /usr/local/bin/pg_backup.sh
+sudo touch /var/log/pg_backup.log
+sudo chown postgres:postgres /var/log/pg_backup.log
 ```
 
 ## Create a Cron Job
@@ -81,8 +83,8 @@ sudo tee /etc/cron.d/pg_backup << 'EOF'
 0 2 * * * postgres /usr/local/bin/pg_backup.sh
 EOF
 
-# Verify the cron job is scheduled
-sudo crontab -u postgres -l
+# Verify the cron job is installed
+sudo cat /etc/cron.d/pg_backup
 ```
 
 ## Add Password Authentication for Scripts
@@ -149,7 +151,7 @@ sudo chown postgres:postgres /usr/local/bin/pg_backup_notify.sh
 ls -lh /backup/postgresql/
 
 # Test restoring a backup to verify integrity
-sudo -u postgres createdb test_restore
+sudo -u postgres createdb -T template0 test_restore
 sudo -u postgres pg_restore -d test_restore /backup/postgresql/myappdb_20250115_020000.dump
 sudo -u postgres dropdb test_restore
 
@@ -165,6 +167,7 @@ sudo tee /etc/logrotate.d/pg_backup << 'EOF'
     weekly
     rotate 8
     compress
+    create 0640 postgres postgres
     missingok
     notifempty
 }
