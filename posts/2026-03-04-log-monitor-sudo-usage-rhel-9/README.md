@@ -86,7 +86,7 @@ Defaults!/usr/bin/sudoreplay !log_output
 Defaults!/usr/bin/sudoreplay !log_input
 
 # Set the I/O log directory
-Defaults iolog_dir=/var/log/sudo-io/%{user}
+Defaults iolog_dir=/var/log/sudo-io
 ```
 
 ### Create the I/O log directory
@@ -129,7 +129,7 @@ sudo vi /etc/audit/rules.d/sudo.rules
 -w /etc/sudoers.d/ -p wa -k sudoers_change
 
 # Track sudo executions
--a always,exit -F arch=b64 -S execve -F path=/usr/bin/sudo -k sudo_usage
+-a always,exit -F arch=b64 -S execve -F exe=/usr/bin/sudo -k sudo_usage
 
 # Track changes to the sudo log
 -w /var/log/sudo.log -p wa -k sudo_log
@@ -167,11 +167,10 @@ sudo vi /usr/local/bin/sudo-alert.sh
 ```bash
 #!/bin/bash
 # Check for failed sudo attempts in the last 5 minutes
-SINCE=$(date -d '5 minutes ago' '+%b %e %H:%M')
-FAILURES=$(grep "sudo:" /var/log/secure | grep "NOT in sudoers\|incorrect password\|authentication failure" | tail -20)
+FAILURES=$(journalctl -t sudo --since "5 minutes ago" --no-pager | grep -E "NOT in sudoers|incorrect password|authentication failure" | tail -20)
 
 if [ -n "$FAILURES" ]; then
-    echo "$FAILURES" | logger -p auth.alert -t sudo-alert
+    echo "$FAILURES" | logger -p authpriv.alert -t sudo-alert
 fi
 ```
 
