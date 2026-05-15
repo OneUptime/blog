@@ -13,7 +13,9 @@ ntopng provides real-time network traffic monitoring with a web-based interface 
 ## Install ntopng
 
 ```bash
-sudo dnf install -y epel-release
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+sudo curl https://packages.ntop.org/centos-stable/ntop.repo -o /etc/yum.repos.d/ntop.repo
 sudo dnf install -y ntopng ntopng-data
 ```
 
@@ -27,13 +29,14 @@ sudo tee /etc/ntopng/ntopng.conf <<EOF
 -w=3000
 -m=10.0.0.0/8
 -n=1
---community
+--community=
 EOF
 ```
 
 ## Start ntopng
 
 ```bash
+sudo systemctl enable --now redis
 sudo systemctl enable --now ntopng
 ```
 
@@ -62,14 +65,7 @@ ntopng provides:
 
 ## Configure Alerts
 
-```bash
-sudo tee -a /etc/ntopng/ntopng.conf <<EOF
---alert-probing
---alert-smtp-server=smtp.example.com
---alert-sender=ntopng@example.com
---alert-recipient=admin@example.com
-EOF
-```
+Use the ntopng web interface to enable checks and configure alert endpoints. For email notifications, add an email endpoint with your SMTP server, sender address, and recipient address.
 
 ## Enable Packet Capture
 
@@ -81,6 +77,7 @@ sudo tee /etc/ntopng/ntopng.conf <<EOF
 -i=eth1
 -w=3000
 -m=10.0.0.0/8
+--community=
 EOF
 
 sudo systemctl restart ntopng
@@ -88,15 +85,13 @@ sudo systemctl restart ntopng
 
 ## Data Retention
 
-Configure how long ntopng keeps historical data:
+Configure where ntopng stores historical data:
 
 ```bash
 # Add to ntopng.conf
---dump-flows=logfile
 --data-dir=/var/lib/ntopng
 ```
 
 ## Conclusion
 
 ntopng provides comprehensive network traffic visibility on RHEL 9. Use it to identify bandwidth hogs, detect network anomalies, and monitor traffic patterns across your infrastructure.
-
