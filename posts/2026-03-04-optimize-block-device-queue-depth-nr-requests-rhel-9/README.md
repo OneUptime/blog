@@ -12,7 +12,7 @@ Every block device on RHEL has an I/O request queue that buffers read and write 
 
 ## Understanding Queue Depth
 
-Queue depth refers to how many I/O operations a device can process concurrently. Modern storage devices, especially NVMe SSDs, support deep queues that allow many parallel operations. HDDs benefit from smaller queues because they can only perform one physical operation at a time.
+Queue depth refers to how many I/O operations a device can process concurrently. Modern storage devices, especially NVMe SSDs, support deep queues that allow many parallel operations. HDDs can still benefit from some queuing for request merging and command reordering, but very deep queues often increase latency because the media has limited mechanical parallelism.
 
 ## Checking Current Queue Settings
 
@@ -36,13 +36,12 @@ cat /sys/block/nvme0n1/queue/nr_requests
 
 ## Understanding nr_requests
 
-The `nr_requests` parameter sets the maximum number of read or write requests that can be queued for a device in the block layer. This is the software queue managed by the I/O scheduler.
+The `nr_requests` parameter sets how many requests may be allocated in the block layer for reads or writes. It applies separately to reads and writes, so the total number of allocated requests can be twice the value.
 
-Default values on RHEL:
+RHEL documentation describes the default value as 128, meaning 128 read requests and 128 write requests. Actual values can vary by kernel, device type, driver, and distribution configuration, so always check the current value in sysfs before tuning.
 
-- HDD: 64
-- SSD: 64 or higher
-- NVMe: 1023
+- Default documented value: 128
+- Effective per-device value: check `/sys/block/<device>/queue/nr_requests`
 
 ## Tuning nr_requests
 
@@ -70,6 +69,8 @@ NVMe devices handle deep queues well:
 echo 1023 | sudo tee /sys/block/nvme0n1/queue/nr_requests
 ```
 
+If the write fails with `Invalid argument`, the driver or device is rejecting that value. Use the current sysfs value as the baseline and test supported values instead of assuming that all NVMe devices accept 1023.
+
 ## Tuning Hardware Queue Depth
 
 The hardware queue depth controls how many commands the device driver sends to the hardware:
@@ -89,7 +90,7 @@ echo 32 | sudo tee /sys/block/sda/device/queue_depth
 The read-ahead value controls how much data the kernel pre-fetches during sequential reads:
 
 ```bash
-# View current read-ahead (in 512-byte sectors)
+# View current read-ahead (in KB)
 
 cat /sys/block/sda/queue/read_ahead_kb
 
@@ -124,15 +125,15 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
 
-## Making Changes Persistent with sysctl (for read-ahead)
+## Changing Read-Ahead with blockdev
 
-Using blockdev:
+Using blockdev changes the current runtime setting:
 
 ```bash
 sudo blockdev --setra 8192 /dev/sda
 ```
 
-The value is in 512-byte sectors, so 8192 equals 4096 KB.
+The `blockdev --setra` value is in 512-byte sectors, so 8192 equals 4096 KB. Use a udev rule or another boot-time configuration mechanism if you need this value to persist after reboot.
 
 ## Tuning for Specific Workloads
 
@@ -185,7 +186,7 @@ Monitor queue utilization with iostat:
 iostat -x 1
 ```
 
-Watch the `aqu-sz` (average queue size) column. If it is consistently at or above nr_requests, consider increasing the value.
+Watch the `aqu-sz` (average queue size) column. It reflects outstanding I/O, including requests already dispatched below the scheduler, so do not compare it to `nr_requests` alone. If it is consistently near the available scheduler and device queue capacity, benchmark higher queue settings and confirm that latency still meets your workload requirements.
 
 ## Summary
 
