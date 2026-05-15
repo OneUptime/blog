@@ -23,11 +23,15 @@ Webmin can be installed and configured on RHEL to provide robust functionality f
 
 sudo dnf update -y
 
-# Install the required packages
-sudo dnf install -y <package-name>
+# Add the official Webmin repository
+curl -o webmin-setup-repo.sh https://raw.githubusercontent.com/webmin/webmin/master/webmin-setup-repo.sh
+sudo sh webmin-setup-repo.sh
+
+# Install Webmin
+sudo dnf install -y webmin
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+The setup script configures the Webmin repository and installs the required GPG keys so that Webmin can be installed and updated with `dnf`.
 
 ## Step 2: Configure the Service
 
@@ -35,27 +39,31 @@ Edit the configuration file to match your environment:
 
 ```bash
 # Open the configuration file
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/webmin/miniserv.conf
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include allowed addresses, denied addresses, SSL settings, and logging options.
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart webmin
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable webmin
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start webmin
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status webmin
+
+# Allow access to the default Webmin port if firewalld is running
+sudo firewall-cmd --permanent --add-port=10000/tcp
+sudo firewall-cmd --reload
 ```
 
 
@@ -65,16 +73,19 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status webmin
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u webmin --no-pager -n 20
 ```
+
+After successful installation, open `https://<Your-Server-IP>:10000` in your browser.
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u webmin -e --no-pager`.
+- Ensure Webmin is installed: `rpm -qa | grep webmin`.
+- If the browser cannot connect, confirm that the firewall allows TCP port `10000`.
 
 ## Conclusion
 
