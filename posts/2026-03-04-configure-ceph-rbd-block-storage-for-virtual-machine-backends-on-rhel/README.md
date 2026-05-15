@@ -17,11 +17,11 @@ Ceph RBD provides block storage that can be used as virtual machine disk backend
 
 sudo ceph osd pool create rbd-pool 128
 
-# Initialize the pool for RBD use
-sudo rbd pool init rbd-pool
-
 # Enable the rbd application on the pool
 sudo ceph osd pool application enable rbd-pool rbd
+
+# Initialize the pool for RBD use
+sudo rbd pool init -p rbd-pool
 ```
 
 ## Create an RBD Image
@@ -50,10 +50,10 @@ sudo scp root@node1:/etc/ceph/ceph.conf /etc/ceph/
 sudo scp root@node1:/etc/ceph/ceph.client.admin.keyring /etc/ceph/
 
 # Map the RBD image to a local block device
-sudo rbd map rbd-pool/vm-disk1
+sudo rbd device map rbd-pool/vm-disk1 --id admin
 
 # Check the mapped device
-sudo rbd showmapped
+sudo rbd device list
 # Output shows /dev/rbd0
 ```
 
