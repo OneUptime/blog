@@ -80,7 +80,7 @@ sudo xfsdump -l 0 -L "data_full" -M "media1" -M "media2" \
 Pipe the backup through SSH to a remote server:
 
 ```bash
-sudo xfsdump -l 0 -L "data_full" -M "remote" -f - /data | \
+sudo xfsdump -l 0 -L "data_full" -M "remote" - /data | \
   ssh user@backup-server "cat > /backups/data_full.dump"
 ```
 
@@ -127,14 +127,16 @@ Restore in order: first the full backup, then each incremental:
 
 ```bash
 # Restore level 0 (full)
-sudo xfsrestore -f /backup/data_full.dump /data
+sudo xfsrestore -r -f /backup/data_full.dump /data
 
 # Restore level 1 (incremental)
-sudo xfsrestore -f /backup/data_incr_1.dump /data
+sudo xfsrestore -r -f /backup/data_incr_1.dump /data
 
 # Restore level 2 (incremental)
-sudo xfsrestore -f /backup/data_incr_2.dump /data
+sudo xfsrestore -r -f /backup/data_incr_2.dump /data
 ```
+
+After the last incremental restore, remove the `xfsrestorehousekeeping` directory created in the restore destination.
 
 ### Restore Specific Files
 
@@ -164,7 +166,7 @@ sudo xfsrestore -f /backup/data_full.dump -s path/to/file.txt /data
 
 ```bash
 ssh user@backup-server "cat /backups/data_full.dump" | \
-  sudo xfsrestore -f - /data
+  sudo xfsrestore - /data
 ```
 
 ## Step 7: Verify Backups
