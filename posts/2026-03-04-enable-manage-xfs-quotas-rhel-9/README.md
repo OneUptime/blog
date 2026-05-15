@@ -52,6 +52,7 @@ Available quota mount options:
 | `pquota` or `prjquota` | Enable project quotas |
 | `uqnoenforce` | Track user usage without enforcing limits |
 | `gqnoenforce` | Track group usage without enforcing limits |
+| `pqnoenforce` | Track project usage without enforcing limits |
 
 Remount the filesystem to apply:
 
@@ -68,7 +69,7 @@ Verify quotas are enabled:
 mount | grep /data
 ```
 
-You should see `usrquota,grpquota` in the mount options.
+You should see quota options such as `uquota,gquota` or `usrquota,grpquota` in the mount options.
 
 ## Step 2: Check Current Quota Status
 
@@ -101,7 +102,9 @@ sudo xfs_quota -x -c 'limit isoft=10000 ihard=12000 user1' /data
 Set limits for multiple users:
 
 ```bash
-sudo xfs_quota -x -c 'limit bsoft=5g bhard=6g user1 user2 user3' /data
+for user in user1 user2 user3; do
+    sudo xfs_quota -x -c "limit bsoft=5g bhard=6g $user" /data
+done
 ```
 
 ## Step 4: Set Group Quotas
