@@ -96,7 +96,7 @@ Uses the IEEE 802.3ad Link Aggregation Control Protocol. Both the server and swi
 
 **Cons**: Requires switch support for LACP. More complex to set up on the switch side.
 
-**Best for**: Data center environments where you control the switch and want the best combination of throughput and redundancy.
+**Best for**: Data center environments where you control the switch and want the best combination of aggregate throughput across multiple flows and redundancy.
 
 ```bash
 # Create an 802.3ad bond with fast LACP rate
@@ -126,9 +126,9 @@ Like balance-tlb but also balances incoming traffic by manipulating ARP replies.
 
 **Pros**: Balances both incoming and outgoing traffic. No switch support needed.
 
-**Cons**: Only works with IPv4 (the ARP trick does not apply to IPv6). Can sometimes confuse network monitoring tools because of MAC address changes.
+**Cons**: Receive balancing depends on neighbor discovery behavior and can sometimes confuse network monitoring tools because of MAC address changes.
 
-**Best for**: Servers that need bidirectional load balancing without switch configuration. IPv4-only environments.
+**Best for**: Servers that need bidirectional load balancing without switch configuration.
 
 ```bash
 # Create a balance-alb bond
@@ -149,11 +149,11 @@ nmcli connection add type bond con-name bond0 ifname bond0 \
 
 ## Hash Policy Options
 
-For modes that support load balancing (balance-xor and 802.3ad), the `xmit_hash_policy` controls how traffic is distributed:
+For modes that support hash-based transmit selection, the `xmit_hash_policy` controls how traffic is distributed. It is most commonly tuned for balance-xor and 802.3ad; on RHEL it also applies to balance-tlb and balance-alb when `tlb_dynamic_lb=0`.
 
-- **layer2** (default): Hash on source/destination MAC. Good if all traffic goes to one gateway.
-- **layer2+3**: Hash on MAC and IP. Better distribution when traffic goes through a router.
-- **layer3+4**: Hash on IP and port. Best distribution for most workloads.
+- **layer2** (default): Hash on source/destination MAC and Ethernet protocol type. Good when traffic is between this system and multiple peers in the same broadcast domain.
+- **layer2+3**: Hash on MAC and IP. Better distribution when most traffic goes through a router.
+- **layer3+4**: Hash on IP and port. Often improves per-flow distribution, but is not 802.3ad compliant.
 
 ```bash
 # Set hash policy on an existing bond
