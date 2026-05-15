@@ -14,7 +14,7 @@ I find Buildah especially useful when I need to create minimal images without al
 
 ## Installing Buildah
 
-If you installed the `container-tools` module, Buildah is already there. Otherwise:
+If you installed the `container-tools` meta-package, Buildah is already there. Otherwise:
 
 ## Install buildah
 ```bash
@@ -123,6 +123,7 @@ mountpoint=$(buildah mount $container)
 
 ## Install packages directly into the mount point using the host's dnf
 ```bash
+sudo dnf install --installroot $mountpoint --releasever 9 -y redhat-release
 sudo dnf install --installroot $mountpoint --releasever 9 --setopt install_weak_deps=false -y coreutils-single
 ```
 
@@ -140,10 +141,10 @@ Buildah gives you control over how layers are created:
 
 ## Build with a single layer (squash all layers into one)
 ```bash
-buildah build --layers=false -t my-app:squashed .
+buildah build --squash -t my-app:squashed .
 ```
 
-## Build with layer caching enabled (default)
+## Build with intermediate layer caching enabled
 ```bash
 buildah build --layers=true -t my-app:layered .
 ```
