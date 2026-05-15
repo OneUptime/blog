@@ -65,7 +65,8 @@ global(
 
 # Listen on TCP port 6514 with TLS
 module(load="imtcp" StreamDriver.Name="gtls"
-    StreamDriver.Mode="1" StreamDriver.AuthMode="x509/name")
+    StreamDriver.Mode="1" StreamDriver.AuthMode="x509/name"
+    PermittedPeer="client.example.com")
 
 input(type="imtcp" port="6514")
 EOF
