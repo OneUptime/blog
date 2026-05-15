@@ -40,8 +40,8 @@ ping -M do -s 8972 remote-host
 ## Verify Jumbo Frame Support
 
 ```bash
-# Check interface capabilities
-ethtool -i eth0
+# Check interface MTU limits, if reported by the driver
+ip -d link show eth0
 ```
 
 ## Switch Configuration
@@ -71,4 +71,3 @@ done
 ## Conclusion
 
 Jumbo frames on RHEL 9 can significantly improve throughput for bulk data transfers. Ensure all network devices in the path support the configured MTU to avoid fragmentation and packet drops.
-
