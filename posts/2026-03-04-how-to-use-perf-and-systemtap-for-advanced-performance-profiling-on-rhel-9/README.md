@@ -13,7 +13,11 @@ Advanced performance profiling on RHEL 9 requires tools like perf and SystemTap 
 ## Install Performance Tools
 
 ```bash
-sudo dnf install -y perf systemtap systemtap-runtime kernel-debuginfo kernel-devel
+sudo dnf install -y perf systemtap
+sudo stap-prep
+
+# If stap-prep cannot install the required kernel packages automatically
+sudo dnf install -y kernel-debuginfo-$(uname -r) kernel-debuginfo-common-$(uname -m)-$(uname -r) kernel-devel-$(uname -r)
 ```
 
 ## Using perf for CPU Profiling
@@ -42,7 +46,7 @@ sudo perf report
 sudo perf report --stdio
 
 # Display call graph
-sudo perf report --call-graph
+sudo perf report --call-graph graph
 ```
 
 ### perf stat for Event Counting
@@ -85,8 +89,8 @@ sudo stap -e 'probe syscall.open { printf("%s(%d) opened %s\n", execname(), pid(
 ```bash
 sudo stap -e '
 probe vfs.read.return {
-  if (bytes_read > 0)
-    printf("%s(%d) read %d bytes\n", execname(), pid(), bytes_read)
+  if (returnval() > 0)
+    printf("%s(%d) read %d bytes\n", execname(), pid(), returnval())
 }'
 ```
 
@@ -94,9 +98,9 @@ probe vfs.read.return {
 
 ```bash
 sudo stap -e '
-probe process.create {
-  printf("New process: %s(%d) created by %s(%d)\n",
-    execname(), pid(), pexecname(), ppid())
+probe kprocess.create {
+  printf("New process: %d created by %s(%d)\n",
+    new_pid, execname(), pid())
 }'
 ```
 
@@ -140,4 +144,3 @@ cd FlameGraph
 ## Conclusion
 
 perf provides efficient CPU and hardware event profiling, while SystemTap enables deep kernel and application tracing. Use perf for initial analysis and SystemTap for targeted investigation of specific subsystems on RHEL 9.
-
