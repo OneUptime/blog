@@ -8,7 +8,7 @@ Description: Set up DNS-over-TLS on RHEL using Unbound or systemd-resolved to en
 
 ---
 
-Standard DNS sends queries in plain text. Anyone on the network path, your ISP, a rogue wifi hotspot, a compromised router, can see every domain you look up. DNS-over-TLS (DoT) encrypts the DNS conversation between your client and the resolver, running DNS inside a TLS session on port 853. RHEL supports this through both systemd-resolved and Unbound.
+Standard DNS sends queries in plain text. Anyone on the network path, your ISP, a rogue wifi hotspot, a compromised router, can see every domain you look up. DNS-over-TLS (DoT) encrypts the DNS conversation between your client and the resolver, running DNS inside a TLS session on port 853. RHEL supports this through Unbound; systemd-resolved can also be used on RHEL 9, but Red Hat provides it as a Technology Preview.
 
 ## How DNS-over-TLS Works
 
@@ -30,7 +30,7 @@ The encryption is between the client and the resolver. The resolver still makes 
 
 ## Option 1: Configure systemd-resolved for DoT
 
-systemd-resolved on RHEL supports DoT natively. This is the simplest approach for individual machines.
+systemd-resolved on RHEL 9 supports DoT natively, but Red Hat provides systemd-resolved as a Technology Preview rather than a fully supported production feature. This is the simplest approach for individual machines where that support scope is acceptable.
 
 Enable systemd-resolved if not already running:
 
@@ -118,6 +118,9 @@ server:
     msg-cache-size: 64m
     rrset-cache-size: 128m
 
+remote-control:
+    control-enable: yes
+
 forward-zone:
     name: "."
     # Cloudflare DoT
@@ -140,6 +143,7 @@ Create the log directory and start:
 ```bash
 mkdir -p /var/log/unbound && chown unbound:unbound /var/log/unbound
 unbound-anchor -a /var/lib/unbound/root.key
+unbound-control-setup
 unbound-checkconf
 systemctl enable --now unbound
 ```
@@ -205,6 +209,9 @@ server:
     verbosity: 1
     logfile: "/var/log/unbound/unbound.log"
     use-syslog: no
+
+remote-control:
+    control-enable: yes
 EOF
 ```
 
@@ -219,19 +226,23 @@ firewall-cmd --reload
 Start the server:
 
 ```bash
+mkdir -p /var/log/unbound && chown unbound:unbound /var/log/unbound
+unbound-anchor -a /var/lib/unbound/root.key
+unbound-control-setup
+unbound-checkconf
 systemctl enable --now unbound
 ```
 
 ## Verifying DoT is Working
 
-Test from a client that supports DoT. You can use `kdig` from the `knot-utils` package:
+Test from a client that supports DoT. You can use `kdig` from the `knot-utils` package. If you used a self-signed certificate, copy the certificate or issuing CA to the client and pass it with `+tls-ca=/path/to/ca.pem`.
 
 ```bash
 dnf install knot-utils -y
 
 # Test DoT connection
 
-kdig @192.168.1.10 +tls google.com
+kdig @192.168.1.10 +tls-ca +tls-hostname=dns.example.com google.com
 ```
 
 Or verify with openssl that the TLS connection works:
@@ -256,10 +267,10 @@ tail -f /var/log/unbound/unbound.log
 
 ## Troubleshooting
 
-**TLS handshake failures:** Check that the certificate is valid and the CA bundle is accessible:
+**TLS handshake failures:** Check that the certificate is valid and signed by a CA the client trusts. For a self-signed test certificate, verify against that certificate instead of the public CA bundle:
 
 ```bash
-openssl verify -CAfile /etc/pki/tls/certs/ca-bundle.crt /etc/unbound/tls/server.crt
+openssl verify -CAfile /etc/unbound/tls/server.crt /etc/unbound/tls/server.crt
 ```
 
 **Connection refused on port 853:** Verify the firewall and that Unbound is listening:
