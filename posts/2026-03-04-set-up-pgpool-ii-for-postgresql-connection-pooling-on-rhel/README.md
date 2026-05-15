@@ -13,12 +13,15 @@ pgpool-II sits between your application and PostgreSQL, providing connection poo
 ## Install pgpool-II
 
 ```bash
-# Install pgpool-II from the PostgreSQL repository
+# Install the pgpool-II YUM repository
 
-sudo dnf install -y https://www.pgpool.net/yum/rpms/4.5/redhat/rhel-9-x86_64/pgpool-II-pg16-4.5.0-1pgdg.rhel9.x86_64.rpm
+sudo dnf install -y https://www.pgpool.net/yum/rpms/4.5/redhat/rhel-9-x86_64/pgpool-II-release-4.5-1.noarch.rpm
 
-# Or install from EPEL/AppStream if available
-sudo dnf install -y pgpool-II pgpool-II-pg16-extensions
+# Install pgpool-II for PostgreSQL 16
+sudo dnf install -y pgpool-II-pg16
+
+# Optional: install the extension package on PostgreSQL servers for online recovery
+sudo dnf install -y pgpool-II-pg16-extensions
 ```
 
 ## Configure Connection Pooling
@@ -41,13 +44,13 @@ port = 9999
 backend_hostname0 = '192.168.1.50'
 backend_port0 = 5432
 backend_weight0 = 1
-backend_data_directory0 = '/var/lib/pgsql/data'
+backend_data_directory0 = '/var/lib/pgsql/16/data'
 backend_flag0 = 'ALLOW_TO_FAILOVER'
 
 backend_hostname1 = '192.168.1.51'
 backend_port1 = 5432
 backend_weight1 = 1
-backend_data_directory1 = '/var/lib/pgsql/data'
+backend_data_directory1 = '/var/lib/pgsql/16/data'
 backend_flag1 = 'ALLOW_TO_FAILOVER'
 
 # Connection pooling settings
@@ -65,7 +68,7 @@ client_idle_limit = 0
 ## Configure Load Balancing
 
 ```bash
-# Enable load balancing (distributes SELECT queries across backends)
+# Enable load balancing (distributes eligible SELECT queries across backends)
 load_balance_mode = on
 
 # Streaming replication mode
@@ -75,7 +78,7 @@ backend_clustering_mode = 'streaming_replication'
 delay_threshold = 10000000
 
 # Functions that always go to primary
-write_function_list = 'nextval,setval,currval'
+write_function_list = 'nextval,setval,lastval,currval'
 read_only_function_list = ''
 ```
 
@@ -83,11 +86,11 @@ read_only_function_list = ''
 
 ```bash
 # Create the pool_passwd file for pgpool authentication
-sudo pg_md5 --md5auth --username=myuser mypassword
+sudo pg_md5 --config-file=/etc/pgpool-II/pgpool.conf --md5auth --username=myuser mypassword
 # This writes to /etc/pgpool-II/pool_passwd
 
 # Or register users manually
-sudo pg_md5 -m -u myuser mypassword
+sudo pg_md5 -m -f /etc/pgpool-II/pgpool.conf -u myuser mypassword
 
 # Enable pool_hba authentication
 enable_pool_hba = on
@@ -129,13 +132,14 @@ sudo tee /etc/pgpool-II/failover.sh << 'SCRIPT'
 #!/bin/bash
 # Failover script for pgpool-II
 FAILED_NODE_ID=$1
-OLD_PRIMARY_HOST=$6
-NEW_PRIMARY_ID=$7
+NEW_MAIN_HOST=$6
+OLD_PRIMARY_ID=$8
+NEW_MAIN_DATA_DIR=${10}
 
-if [ "$FAILED_NODE_ID" = "0" ]; then
-    # Primary failed, promote standby
-    ssh -T postgres@$OLD_PRIMARY_HOST "pg_ctl promote -D /var/lib/pgsql/data"
-    echo "Promoted node $NEW_PRIMARY_ID to primary"
+if [ "$FAILED_NODE_ID" = "$OLD_PRIMARY_ID" ] && [ -n "$NEW_MAIN_HOST" ]; then
+    # Primary failed, promote the new main node
+    ssh -T postgres@$NEW_MAIN_HOST "/usr/pgsql-16/bin/pg_ctl promote -D $NEW_MAIN_DATA_DIR"
+    echo "Promoted $NEW_MAIN_HOST to primary"
 fi
 SCRIPT
 
@@ -145,7 +149,7 @@ sudo chmod 755 /etc/pgpool-II/failover.sh
 ## Start pgpool-II
 
 ```bash
-sudo systemctl enable --now pgpool-II
+sudo systemctl enable --now pgpool.service
 
 # Open the firewall
 sudo firewall-cmd --permanent --add-port=9999/tcp
@@ -168,10 +172,12 @@ SHOW pool_pools;
 ## Verify Load Balancing
 
 ```bash
-# Run a read query multiple times and check which backend serves it
+# Run read queries multiple times, then check select_cnt and load_balance_node
 for i in {1..10}; do
-    psql -h localhost -p 9999 -U myuser -d mydb -t -c "SHOW pool_node_id;"
+    psql -h localhost -p 9999 -U myuser -d mydb -t -c "SELECT 1;"
 done
+
+psql -h localhost -p 9999 -U myuser -d mydb -c "SHOW pool_nodes;"
 ```
 
 pgpool-II adds a layer between your application and PostgreSQL that improves connection management, distributes read load, and provides automatic failover for streaming replication setups.
