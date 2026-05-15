@@ -49,8 +49,8 @@ kubectl get pods -n traefik
 kubectl get svc -n traefik
 
 # Access the Traefik dashboard (port-forward for testing)
-kubectl port-forward -n traefik deploy/traefik 9000:9000
-# Visit http://localhost:9000/dashboard/
+kubectl port-forward -n traefik deploy/traefik 8080:8080
+# Visit http://localhost:8080/dashboard/
 ```
 
 ## Creating an Ingress Resource
@@ -121,10 +121,10 @@ kubectl apply -f myapp-ingressroute.yaml
 ## Firewall on RHEL Nodes
 
 ```bash
-# Open NodePort range on each RHEL worker node
+# Open the configured NodePorts on each RHEL worker node
 sudo firewall-cmd --add-port=30080/tcp --permanent
 sudo firewall-cmd --add-port=30443/tcp --permanent
 sudo firewall-cmd --reload
 ```
 
-Traefik's IngressRoute CRD provides more features than the standard Kubernetes Ingress resource, including middleware chains, weighted routing, and TCP/UDP routing.
+Traefik's CRDs provide more features than the standard Kubernetes Ingress resource, including middleware chains, weighted routing, and TCP/UDP routing.
