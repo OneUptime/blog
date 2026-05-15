@@ -46,7 +46,7 @@ graph LR
 sudo postqueue -p
 ```
 
-The output shows queue ID, size, arrival time, sender, and recipients. Messages marked with `*` are in the active queue. Messages without `*` are deferred.
+The output shows queue ID, size, arrival time, sender, and recipients. Messages marked with `*` are in the active queue, while messages marked with `!` are on hold.
 
 ### Queue Summary by Domain
 
@@ -67,7 +67,7 @@ sudo qshape incoming
 
 ```bash
 # Quick count of queued messages
-sudo postqueue -p | grep -c "^[A-F0-9]"
+sudo postqueue -j | wc -l
 
 # Or use find to count queue files
 sudo find /var/spool/postfix/deferred -type f | wc -l
@@ -82,7 +82,7 @@ sudo find /var/spool/postfix/active -type f | wc -l
 # Attempt immediate delivery of all queued messages
 sudo postqueue -f
 
-# Flush messages for a specific domain
+# Schedule immediate delivery for a fast-flush-eligible site
 sudo postqueue -s example.com
 ```
 
@@ -198,9 +198,9 @@ Generate a report:
 
 ```bash
 # Analyze today's mail log
-sudo pflogsumm /var/log/maillog
+sudo pflogsumm -d today /var/log/maillog
 
-# Analyze a specific date range
+# Generate a report with more detail in summary sections
 sudo pflogsumm --detail 10 /var/log/maillog
 ```
 
@@ -258,7 +258,7 @@ Add to crontab:
 ## Postfix Built-in Statistics
 
 ```bash
-# Show queue manager statistics
+# Show whether Postfix is running
 sudo postfix status
 
 # Show Postfix process table
