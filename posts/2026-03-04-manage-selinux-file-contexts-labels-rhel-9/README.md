@@ -20,7 +20,7 @@ system_u:object_r:httpd_sys_content_t:s0
 
 The four parts are:
 - **User** (system_u) - SELinux user
-- **Role** (object_r) - SELinux role (always object_r for files)
+- **Role** (object_r) - SELinux role (normally object_r for files)
 - **Type** (httpd_sys_content_t) - The most important part, used for access decisions
 - **Level** (s0) - MLS/MCS security level
 
@@ -62,7 +62,7 @@ stat /var/www/html/index.html
 | httpd_sys_content_t | Web server read-only content |
 | httpd_sys_rw_content_t | Web server writable content |
 | samba_share_t | Samba shared files |
-| nfs_t | NFS exported files |
+| nfs_t | NFS-mounted files on the client side |
 | home_dir_t | User home directories |
 | var_log_t | Log files |
 | etc_t | Configuration files |
@@ -139,7 +139,7 @@ sudo restorecon -Rv /srv/mywebsite/
 
 ## Context Inheritance
 
-New files inherit the context of their parent directory. This is why setting the right context on directories is important:
+New files usually get a type based on their parent directory, unless a policy transition rule applies. This is why setting the right context on directories is important:
 
 ```bash
 # Create a file in /var/www/html - it gets httpd_sys_content_t automatically
