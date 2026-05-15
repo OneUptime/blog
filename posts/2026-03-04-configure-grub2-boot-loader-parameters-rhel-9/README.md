@@ -19,16 +19,16 @@ RHEL uses the Boot Loader Specification (BLS) by default, which means individual
 ```mermaid
 flowchart TD
     A["GRUB2 Configuration"] --> B["/etc/default/grub<br/>Default parameters"]
-    A --> C["/boot/grub2/grub.cfg<br/>Generated config (BIOS)"]
-    A --> D["/boot/efi/EFI/redhat/grub.cfg<br/>Generated config (UEFI)"]
+    A --> C["/boot/grub2/grub.cfg<br/>Generated config"]
+    A --> D["/boot/efi/EFI/redhat/grub.cfg<br/>UEFI stub that loads /boot/grub2/grub.cfg"]
     A --> E["/boot/loader/entries/*.conf<br/>BLS boot entries"]
 ```
 
 | File | Purpose |
 |------|---------|
 | /etc/default/grub | Default parameters for grub2-mkconfig |
-| /boot/grub2/grub.cfg | Generated GRUB configuration (BIOS systems) |
-| /boot/efi/EFI/redhat/grub.cfg | Generated GRUB configuration (UEFI systems) |
+| /boot/grub2/grub.cfg | Generated GRUB configuration |
+| /boot/efi/EFI/redhat/grub.cfg | UEFI stub that loads /boot/grub2/grub.cfg |
 | /boot/loader/entries/*.conf | Individual boot entry files (BLS) |
 
 ## Viewing Current Configuration
@@ -76,11 +76,14 @@ GRUB_ENABLE_BLSCFG=true
 After editing `/etc/default/grub`, regenerate the GRUB configuration:
 
 ```bash
-# For BIOS systems
+# For BIOS and UEFI systems on RHEL 9
 sudo grub2-mkconfig -o /boot/grub2/grub.cfg
+```
 
-# For UEFI systems
-sudo grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
+If you changed `GRUB_CMDLINE_LINUX` and want to overwrite the kernel command line in existing BLS snippets with that value, include `--update-bls-cmdline`:
+
+```bash
+sudo grub2-mkconfig -o /boot/grub2/grub.cfg --update-bls-cmdline
 ```
 
 ## Using grubby for Parameter Changes
