@@ -4,58 +4,79 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, CI/CD, Linux
 
-Description: Step-by-step guide on install jfrog artifactory using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on installing JFrog Artifactory using Red Hat Enterprise Linux 9.
 
 ---
 
-This guide provides step-by-step instructions for completing this task on RHEL. Following these procedures ensures a reliable and secure setup.
+This guide provides step-by-step instructions for installing JFrog Artifactory on RHEL. Following these procedures ensures a reliable and secure setup.
 
 ## Prerequisites
 
-- RHEL with a valid subscription or CentOS Stream 9
+- RHEL 9 with a valid subscription or another JFrog-supported RPM-based operating system
 - Root or sudo access
 - A terminal session
+- Network access to `releases.jfrog.io`
 
 ## Step 1: Install Required Packages
 
 ```bash
-# Update the system first
-
 sudo dnf update -y
 
-# Install the required packages
-sudo dnf install -y <package-name>
+# Install a downloader for the JFrog repository file
+sudo dnf install -y wget
+
+# Add the JFrog Artifactory Pro RPM repository
+wget https://releases.jfrog.io/artifactory/artifactory-pro-rpms/artifactory-pro-rpms.repo -O jfrog-artifactory-pro-rpms.repo
+sudo mv jfrog-artifactory-pro-rpms.repo /etc/yum.repos.d/
+
+# Install Artifactory Pro. Replace the version with the release you want to install.
+sudo dnf install -y jfrog-artifactory-pro-7.111.11
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+Replace `jfrog-artifactory-pro` with the package for the edition you plan to install, such as `jfrog-artifactory-oss` or `jfrog-artifactory-cpp-ce`, if you are not installing Artifactory Pro.
 
 ## Step 2: Configure the Service
 
 Edit the configuration file to match your environment:
 
 ```bash
-# Open the configuration file
-sudo vi /etc/<service>/config.conf
+# Artifactory RPM installations use /opt/jfrog as JFROG_HOME
+export JFROG_HOME=/opt/jfrog
+
+# Open the Artifactory system configuration file
+sudo vi $JFROG_HOME/artifactory/var/etc/system.yaml
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+For production environments, configure an external PostgreSQL database in `system.yaml`. For example:
+
+```yaml
+shared:
+  database:
+    type: postgresql
+    driver: org.postgresql.Driver
+    url: jdbc:postgresql://<DB_SERVER_IP_OR_HOSTNAME>:5432/artifactory_db
+    username: artifactory_user
+    password: your_secure_password
+```
+
+Adjust the settings according to your requirements. Key parameters to configure include database settings, filestore settings, node settings, and logging options.
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart artifactory.service
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable artifactory.service
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start artifactory.service
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status artifactory.service
 ```
 
 
@@ -65,16 +86,19 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status artifactory.service
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u artifactory.service --no-pager -n 20
 ```
+
+After the service starts, open `http://<SERVER_HOSTNAME>:8082/` in your browser and complete the Artifactory onboarding wizard.
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u artifactory.service -e --no-pager`.
+- Ensure the Artifactory package is installed: `rpm -qa | grep jfrog-artifactory`.
+- If you configured an external database, verify that the database URL, username, password, and network connectivity are correct.
 
 ## Conclusion
 
