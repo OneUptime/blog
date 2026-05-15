@@ -23,10 +23,10 @@ Learn how to configure rsyslog on RHEL 9 for centralized log management from mul
 Ensure the relevant packages are installed:
 
 ```bash
-sudo dnf install -y rsyslog systemd
+sudo dnf install -y rsyslog
 ```
 
-rsyslog and systemd-journald ship by default on RHEL 9.
+systemd-journald is part of systemd, and rsyslog is normally installed on RHEL 9 systems.
 
 ## Step 2 - Understand the Logging Architecture
 
@@ -44,9 +44,42 @@ To configure rsyslog for centralized log management, you need to edit the approp
 - `/etc/rsyslog.conf` and `/etc/rsyslog.d/*.conf` for rsyslog
 - `/etc/systemd/journald.conf` for journald
 
-Make your changes, then restart the relevant service:
+On the logging server, create `/etc/rsyslog.d/remotelog.conf`:
 
 ```bash
+sudo vi /etc/rsyslog.d/remotelog.conf
+```
+
+Add a TCP listener and store remote logs by host:
+
+```conf
+template(name="RemoteLogs" type="string" string="/var/log/remote/%HOSTNAME%/%PROGRAMNAME%.log")
+
+module(load="imtcp")
+ruleset(name="remote") {
+    *.* action(type="omfile" DynaFile="RemoteLogs")
+}
+input(type="imtcp" port="514" ruleset="remote")
+```
+
+On each client, create `/etc/rsyslog.d/10-remotelog.conf`:
+
+```bash
+sudo vi /etc/rsyslog.d/10-remotelog.conf
+```
+
+Forward all messages to the logging server over TCP:
+
+```conf
+*.* action(type="omfwd" target="log-server.example.com" port="514" protocol="tcp")
+```
+
+Replace `log-server.example.com` with the hostname or IP address of your logging server.
+
+Make your changes, validate the rsyslog configuration, then restart the relevant service:
+
+```bash
+sudo rsyslogd -N1
 sudo systemctl restart rsyslog
 # or
 
@@ -65,8 +98,10 @@ systemctl status systemd-journald
 Review recent logs to confirm your changes are working:
 
 ```bash
+logger "centralized rsyslog test"
 journalctl --since "5 minutes ago"
 tail -20 /var/log/messages
+sudo find /var/log/remote -type f -name "*.log" -print
 ```
 
 ## Step 5 - Open Firewall Ports (If Applicable)
