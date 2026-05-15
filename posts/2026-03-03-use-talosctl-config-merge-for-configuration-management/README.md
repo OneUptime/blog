@@ -90,34 +90,34 @@ After merging, you can switch between clusters easily:
 # Switch to the development cluster
 talosctl config context dev-cluster
 
-# Now all talosctl commands target the dev cluster
-talosctl version
-talosctl services
+# Now talosctl commands use the dev-cluster context
+talosctl version --nodes 10.0.1.10
+talosctl service --nodes 10.0.1.10
 
 # Switch to production
 talosctl config context prod-cluster
-talosctl version
+talosctl version --nodes 10.0.2.10
 ```
 
 ## Handling Merge Conflicts
 
-If you try to merge a configuration that has the same context name as an existing one, the merge command will update the existing context with the new values. This is useful when you regenerate cluster configurations:
+If you try to merge a configuration that has the same context name as an existing one, the merge command keeps the existing context and renames the incoming context by appending an index number. This avoids accidentally overwriting a working configuration:
 
 ```bash
 # Regenerate config for an existing cluster
 talosctl gen config prod-cluster https://new-endpoint.example.com:6443 \
   --output-dir ./updated-config
 
-# Merge will update the existing prod-cluster context
+# Merge will keep prod-cluster and add the incoming context with an indexed name
 talosctl config merge ./updated-config/talosconfig
 ```
 
-If you want to keep both the old and new configurations, rename the context before merging:
+If you want to replace the old configuration instead, remove the old context first, then merge the regenerated talosconfig:
 
 ```bash
-# You can edit the talosconfig file to change the context name
-# before merging, or use config rename after merging
-talosctl config context prod-cluster-v2
+# Remove the old context before merging the replacement
+talosctl config remove prod-cluster
+talosctl config merge ./updated-config/talosconfig
 ```
 
 ## Merging Into a Custom Config File
@@ -241,7 +241,7 @@ gpg --symmetric --cipher-algo AES256 ~/.talos/config -o ~/secure-backups/talosco
 Sometimes you need to look at the details of a specific context:
 
 ```bash
-# View the full configuration (be careful - this contains secrets)
+# View information about the current context
 talosctl config info
 
 # Check the endpoints for the current context
