@@ -17,17 +17,17 @@ ss is the modern replacement for netstat on RHEL 9.
 ### View All Connections
 
 ```bash
-# All TCP connections
+# Active TCP connections
 
 ss -t
 
-# All TCP connections with details
+# Active TCP connections with details
 ss -tnp
 
-# All listening sockets
+# All listening TCP sockets
 ss -tlnp
 
-# All UDP sockets
+# Listening UDP sockets
 ss -ulnp
 ```
 
@@ -61,9 +61,9 @@ ss -tnei
 
 ```bash
 # Count connections per state
-ss -tn state established | wc -l
-ss -tn state time-wait | wc -l
-ss -tn state close-wait | wc -l
+ss -Htn state established | wc -l
+ss -Htn state time-wait | wc -l
+ss -Htn state close-wait | wc -l
 ```
 
 ## Using netstat (Legacy)
@@ -79,7 +79,7 @@ netstat -tnp
 # Listening ports
 netstat -tlnp
 
-# All connections with statistics
+# Protocol statistics
 netstat -s
 
 # Interface statistics
@@ -91,7 +91,8 @@ netstat -i
 Install nload:
 
 ```bash
-sudo dnf install -y epel-release
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 sudo dnf install -y nload
 ```
 
@@ -114,27 +115,29 @@ nload eth0 eth1
 # Set refresh interval (milliseconds)
 nload -t 500
 
-# Set traffic unit
-nload -u M  # Megabytes
+# Set traffic rate unit
+nload -u M  # Megabytes per second
 
-# Set graph height
+# Set average calculation window (seconds)
 nload -a 300
+
+# Set graph scale for incoming traffic (kBit/s)
+nload -i 10240
 ```
 
 ## Combining Tools for Analysis
 
 ```bash
-# Find top connections by data transfer
-ss -tnpi | sort -k5 -n -r | head -10
+# Show TCP connection details with process and internal TCP information
+ss -tnpi
 
 # Monitor connection rate
 watch -n 1 'ss -s'
 
 # Check for connection floods
-ss -tn state syn-recv | wc -l
+ss -Htn state syn-recv | wc -l
 ```
 
 ## Conclusion
 
 Use ss for modern socket analysis, netstat for legacy compatibility, and nload for real-time bandwidth visualization. These tools together provide comprehensive network performance diagnostics on RHEL 9.
-
