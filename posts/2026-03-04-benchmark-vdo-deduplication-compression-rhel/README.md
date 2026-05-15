@@ -15,17 +15,20 @@ Before deploying VDO in production, benchmarking helps you understand the space 
 ```bash
 # Install VDO and benchmarking tools
 
-sudo dnf install -y vdo kmod-kvdo fio
+sudo dnf install -y lvm2 vdo kmod-kvdo fio
 
 # Create a test VDO volume
+# Replace the device path with your test device's persistent name.
 sudo vdo create --name=vdo-bench \
-  --device=/dev/sdb \
+  --device=/dev/disk/by-id/scsi-3600508b1001c264ad2af21e903ad031f \
   --vdoLogicalSize=200G
 
 # Format and mount
+sudo udevadm settle
 sudo mkfs.xfs -K /dev/mapper/vdo-bench
 sudo mkdir -p /mnt/vdo-bench
 sudo mount /dev/mapper/vdo-bench /mnt/vdo-bench
+sudo chmod a+rwx /mnt/vdo-bench
 ```
 
 ## Benchmarking Deduplication
@@ -52,14 +55,21 @@ sudo vdostats --human-readable
 ## Benchmarking Compression
 
 ```bash
+# Disable deduplication to isolate compression savings
+sudo vdo disableDeduplication --name=vdo-bench
+sudo vdo enableCompression --name=vdo-bench
+
 # Write highly compressible data (text, logs, etc.)
 for i in $(seq 1 5); do
-    dd if=/dev/zero bs=1M count=1024 | tr '\0' 'A' > /mnt/vdo-bench/compressible_${i}.dat
+    yes "compressible log line ${i}" | head -c 1G > /mnt/vdo-bench/compressible_${i}.dat
 done
-sync
+sync && sudo dmsetup message vdo-bench 0 sync-dedupe
 
 # Check compression savings
 sudo vdostats --verbose /dev/mapper/vdo-bench | grep "saving percent"
+
+# Re-enable deduplication for combined VDO tests
+sudo vdo enableDeduplication --name=vdo-bench
 ```
 
 ## Benchmarking Throughput with fio
@@ -85,7 +95,8 @@ sudo fio --name=rand-write --ioengine=libaio --iodepth=32 \
 ## Comparing VDO vs Raw Device
 
 ```bash
-# Benchmark raw device without VDO for comparison
+# Benchmark a spare raw device without VDO for comparison
+# This overwrites data on /dev/sdc; replace it with an unused test device.
 sudo fio --name=raw-write --ioengine=libaio --iodepth=16 \
   --rw=write --bs=128k --size=4G --numjobs=1 \
   --filename=/dev/sdc --direct=1
@@ -100,4 +111,4 @@ sudo umount /mnt/vdo-bench
 sudo vdo remove --name=vdo-bench
 ```
 
-Record your benchmark results for different data types. The overhead of VDO is typically 10-20% for write throughput and minimal for reads. The space savings often more than compensate for the performance cost.
+Record your benchmark results for different data types. VDO overhead varies with the workload, CPU, memory, backing storage, write policy, and amount of duplicate or compressible data. The space savings often more than compensate for the performance cost.
