@@ -14,10 +14,10 @@ Before deploying VDO in production, benchmarking helps you understand the actual
 
 - A RHEL 9 system with root or sudo access
 - Two similar block devices (one for VDO, one for baseline comparison)
-- The `lvm2`, `kmod-kvdo`, and `fio` packages installed
+- The `lvm2`, `kmod-kvdo`, `vdo`, `fio`, and `jq` packages installed
 
 ```bash
-sudo dnf install lvm2 kmod-kvdo fio -y
+sudo dnf install lvm2 kmod-kvdo vdo fio jq -y
 ```
 
 ## Step 1: Set Up Test Volumes
@@ -135,12 +135,12 @@ sudo vdostats --human-readable
 ```bash
 # Baseline (standard LVM)
 sudo fio --name=seq_write --directory=/mnt/baseline --rw=write --bs=1M \
-  --size=4G --numjobs=1 --runtime=60 --time_based --group_reporting \
+  --size=4G --numjobs=1 --runtime=60 --time_based --direct=1 --group_reporting \
   --output=/tmp/baseline_seq_write.json --output-format=json
 
 # VDO
 sudo fio --name=seq_write --directory=/mnt/vdo --rw=write --bs=1M \
-  --size=4G --numjobs=1 --runtime=60 --time_based --group_reporting \
+  --size=4G --numjobs=1 --runtime=60 --time_based --direct=1 --group_reporting \
   --output=/tmp/vdo_seq_write.json --output-format=json
 ```
 
@@ -149,12 +149,12 @@ sudo fio --name=seq_write --directory=/mnt/vdo --rw=write --bs=1M \
 ```bash
 # Baseline
 sudo fio --name=seq_read --directory=/mnt/baseline --rw=read --bs=1M \
-  --size=4G --numjobs=1 --runtime=60 --time_based --group_reporting \
+  --size=4G --numjobs=1 --runtime=60 --time_based --direct=1 --group_reporting \
   --output=/tmp/baseline_seq_read.json --output-format=json
 
 # VDO
 sudo fio --name=seq_read --directory=/mnt/vdo --rw=read --bs=1M \
-  --size=4G --numjobs=1 --runtime=60 --time_based --group_reporting \
+  --size=4G --numjobs=1 --runtime=60 --time_based --direct=1 --group_reporting \
   --output=/tmp/vdo_seq_read.json --output-format=json
 ```
 
@@ -163,12 +163,12 @@ sudo fio --name=seq_read --directory=/mnt/vdo --rw=read --bs=1M \
 ```bash
 # Baseline
 sudo fio --name=rand_read --directory=/mnt/baseline --rw=randread --bs=4K \
-  --size=2G --numjobs=4 --runtime=60 --time_based --group_reporting \
+  --size=2G --numjobs=4 --runtime=60 --time_based --direct=1 --group_reporting \
   --output=/tmp/baseline_rand_read.json --output-format=json
 
 # VDO
 sudo fio --name=rand_read --directory=/mnt/vdo --rw=randread --bs=4K \
-  --size=2G --numjobs=4 --runtime=60 --time_based --group_reporting \
+  --size=2G --numjobs=4 --runtime=60 --time_based --direct=1 --group_reporting \
   --output=/tmp/vdo_rand_read.json --output-format=json
 ```
 
@@ -177,12 +177,12 @@ sudo fio --name=rand_read --directory=/mnt/vdo --rw=randread --bs=4K \
 ```bash
 # Baseline
 sudo fio --name=rand_write --directory=/mnt/baseline --rw=randwrite --bs=4K \
-  --size=2G --numjobs=4 --runtime=60 --time_based --group_reporting \
+  --size=2G --numjobs=4 --runtime=60 --time_based --direct=1 --group_reporting \
   --output=/tmp/baseline_rand_write.json --output-format=json
 
 # VDO
 sudo fio --name=rand_write --directory=/mnt/vdo --rw=randwrite --bs=4K \
-  --size=2G --numjobs=4 --runtime=60 --time_based --group_reporting \
+  --size=2G --numjobs=4 --runtime=60 --time_based --direct=1 --group_reporting \
   --output=/tmp/vdo_rand_write.json --output-format=json
 ```
 
@@ -191,12 +191,12 @@ sudo fio --name=rand_write --directory=/mnt/vdo --rw=randwrite --bs=4K \
 ```bash
 # Baseline
 sudo fio --name=mixed --directory=/mnt/baseline --rw=randrw --rwmixread=70 --bs=4K \
-  --size=2G --numjobs=4 --runtime=60 --time_based --group_reporting \
+  --size=2G --numjobs=4 --runtime=60 --time_based --direct=1 --group_reporting \
   --output=/tmp/baseline_mixed.json --output-format=json
 
 # VDO
 sudo fio --name=mixed --directory=/mnt/vdo --rw=randrw --rwmixread=70 --bs=4K \
-  --size=2G --numjobs=4 --runtime=60 --time_based --group_reporting \
+  --size=2G --numjobs=4 --runtime=60 --time_based --direct=1 --group_reporting \
   --output=/tmp/vdo_mixed.json --output-format=json
 ```
 
@@ -207,12 +207,12 @@ Measure write latency:
 ```bash
 # Baseline
 sudo fio --name=latency --directory=/mnt/baseline --rw=randwrite --bs=4K \
-  --size=1G --numjobs=1 --runtime=60 --time_based \
+  --size=1G --numjobs=1 --runtime=60 --time_based --direct=1 \
   --lat_percentiles=1 --group_reporting
 
 # VDO
 sudo fio --name=latency --directory=/mnt/vdo --rw=randwrite --bs=4K \
-  --size=1G --numjobs=1 --runtime=60 --time_based \
+  --size=1G --numjobs=1 --runtime=60 --time_based --direct=1 \
   --lat_percentiles=1 --group_reporting
 ```
 
@@ -224,7 +224,7 @@ Test how VDO handles data that deduplicates well during active I/O:
 
 ```bash
 # Create a file with repeating patterns
-dd if=/dev/zero bs=1M count=1024 | tr '\0' '\x41' > /tmp/pattern.dat
+dd if=/dev/zero bs=1M count=1024 | tr '\0' 'A' > /tmp/pattern.dat
 
 # Write multiple copies while measuring throughput
 time for i in $(seq 1 10); do
