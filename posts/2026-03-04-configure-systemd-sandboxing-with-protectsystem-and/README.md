@@ -22,6 +22,7 @@ Add sandboxing directives to a service:
 
 ```bash
 sudo mkdir -p /etc/systemd/system/myapp.service.d/
+sudo mkdir -p /var/lib/myapp
 sudo tee /etc/systemd/system/myapp.service.d/sandbox.conf <<EOF
 [Service]
 ProtectSystem=strict
@@ -44,13 +45,13 @@ sudo systemctl restart myapp
 ```bash
 # Enable the service to start on boot
 
-sudo systemctl enable <service-name>
+sudo systemctl enable myapp.service
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start myapp.service
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status myapp.service
 ```
 
 
@@ -60,15 +61,15 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Verify the configuration was applied
-systemctl show <service-name> | grep -i <setting>
+systemctl show myapp.service -p ProtectSystem -p PrivateTmp -p ProtectHome -p NoNewPrivileges -p ReadWritePaths
 
 # Check for errors in the journal
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u myapp.service --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
+- If the service fails to start, check the logs with `journalctl -u myapp.service -e --no-pager`.
 - Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
 
 ## Conclusion
