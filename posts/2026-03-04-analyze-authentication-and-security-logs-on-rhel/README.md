@@ -37,7 +37,7 @@ sudo grep "Failed password" /var/log/secure | \
     awk '{print $(NF-3)}' | sort | uniq -c | sort -rn | head -20
 
 # Find failed attempts using journalctl
-journalctl -u sshd -p err --since "24 hours ago" | grep "Failed"
+journalctl -u sshd --since "24 hours ago" | grep "Failed"
 ```
 
 ## Find Successful Logins
@@ -125,7 +125,7 @@ sudo ausearch -m ADD_USER,DEL_USER,USER_MGMT --start today
 sudo ausearch -m USER_CHAUTHTOK --start today
 
 # Detect group membership changes
-sudo ausearch -m ADD_GROUP,DEL_GROUP --start today
+sudo ausearch -m GRP_MGMT --start today
 ```
 
 Regular review of authentication logs is a fundamental security practice. Automate these checks with cron jobs or integrate them with your monitoring system to catch issues early.
