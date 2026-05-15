@@ -20,21 +20,21 @@ The monitoring pipeline works as follows:
 
 ## Installing node_exporter on RHEL
 
-Download and install node_exporter:
+If you have enabled EPEL on RHEL 9, install the packaged exporter:
 
 ```bash
-sudo dnf install golang-github-prometheus-node-exporter
+sudo dnf install node-exporter
 ```
 
 Or download from the Prometheus project:
 
 ```bash
-curl -LO https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
-tar xzf node_exporter-1.7.0.linux-amd64.tar.gz
-sudo cp node_exporter-1.7.0.linux-amd64/node_exporter /usr/local/bin/
+curl -LO https://github.com/prometheus/node_exporter/releases/download/v1.11.1/node_exporter-1.11.1.linux-amd64.tar.gz
+tar xzf node_exporter-1.11.1.linux-amd64.tar.gz
+sudo cp node_exporter-1.11.1.linux-amd64/node_exporter /usr/local/bin/
 ```
 
-Create a systemd service:
+For the manual install, create a systemd service:
 
 ```bash
 sudo useradd -r -s /sbin/nologin node_exporter
@@ -116,7 +116,7 @@ scrape_configs:
           - 'rhel-server3:9100'
 ```
 
-Reload Prometheus:
+If Prometheus was started with `--web.enable-lifecycle`, reload it:
 
 ```bash
 curl -X POST http://localhost:9090/-/reload
@@ -153,7 +153,7 @@ rate(node_disk_read_time_seconds_total[5m]) / rate(node_disk_reads_completed_tot
 ### Disk Utilization
 
 ```promql
-rate(node_disk_io_time_seconds_total[5m])
+rate(node_disk_io_time_seconds_total[5m]) * 100
 ```
 
 ## Creating Grafana Dashboards
