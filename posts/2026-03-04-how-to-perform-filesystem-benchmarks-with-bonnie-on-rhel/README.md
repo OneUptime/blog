@@ -14,8 +14,9 @@ bonnie++ is a filesystem benchmark tool that tests sequential I/O, random seeks,
 
 ```bash
 # Install from EPEL
+# Replace 9 with your RHEL major version if needed
 
-sudo dnf install -y epel-release
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 sudo dnf install -y bonnie++
 ```
 
@@ -28,7 +29,7 @@ bonnie++ -d /tmp -s 16g -n 256 -u root
 
 # -d: directory to test in
 # -s: file size (should be 2x RAM to bypass cache)
-# -n: number of files for metadata tests (num:max_size:min_size:num_dirs)
+# -n: number of 1024-file groups for metadata tests (num:max_size:min_size:num_dirs)
 # -u: user to run as
 ```
 
@@ -38,9 +39,9 @@ bonnie++ -d /tmp -s 16g -n 256 -u root
 # Benchmark a specific filesystem mount
 bonnie++ -d /mnt/data -s 32g -n 256 -u root
 
-# Test with specific block size
+# Test without write buffering
 bonnie++ -d /mnt/data -s 16g -n 256 -b -u root
-# -b: no write buffering (forces sync)
+# -b: no write buffering (fsync after every write)
 ```
 
 ## Understanding the Output
@@ -65,7 +66,7 @@ bonnie++ outputs results in CSV format. Key metrics include:
 
 ```bash
 # Run bonnie++ and save CSV output
-bonnie++ -d /tmp -s 16g -n 256 -u root 2>&1 | tee /tmp/bonnie-results.csv
+bonnie++ -q -d /tmp -s 16g -n 256 -u root | tee /tmp/bonnie-results.csv
 
 # Convert CSV to HTML
 cat /tmp/bonnie-results.csv | bon_csv2html > /tmp/bonnie-report.html
@@ -75,10 +76,10 @@ cat /tmp/bonnie-results.csv | bon_csv2html > /tmp/bonnie-report.html
 
 ```bash
 # Test XFS
-bonnie++ -d /mnt/xfs-volume -s 16g -n 256 -u root > /tmp/xfs-results.csv 2>&1
+bonnie++ -q -d /mnt/xfs-volume -s 16g -n 256 -u root > /tmp/xfs-results.csv
 
 # Test ext4
-bonnie++ -d /mnt/ext4-volume -s 16g -n 256 -u root > /tmp/ext4-results.csv 2>&1
+bonnie++ -q -d /mnt/ext4-volume -s 16g -n 256 -u root > /tmp/ext4-results.csv
 
 # Combine and compare
 cat /tmp/xfs-results.csv /tmp/ext4-results.csv | bon_csv2html > /tmp/comparison.html
