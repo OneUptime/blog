@@ -97,7 +97,7 @@ cat /proc/sys/fs/file-nr
 sudo vi /etc/systemd/system.conf
 
 # Set the default for all services
-# DefaultLimitNOFILE=65536
+DefaultLimitNOFILE=65536
 
 # Apply
 sudo systemctl daemon-reexec
