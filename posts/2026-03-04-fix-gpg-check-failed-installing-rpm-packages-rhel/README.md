@@ -8,7 +8,7 @@ Description: Fix 'GPG check FAILED' errors when installing RPM packages on RHEL 
 
 ---
 
-GPG signature verification protects against tampered or corrupted packages. When you see "GPG check FAILED", it means the package signature does not match any trusted key on your system.
+GPG signature verification protects against tampered or corrupted packages. When you see "GPG check FAILED", it means the package cannot be verified with a trusted key on your system, or the package signature or digest verification failed.
 
 ## Understanding the Error
 
