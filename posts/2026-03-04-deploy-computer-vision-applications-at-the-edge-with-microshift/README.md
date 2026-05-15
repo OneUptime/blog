@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, MicroShift, Edge, Computer Vision, Kubernetes, Container
 
-Description: Deploy containerized computer vision workloads on edge devices running MicroShift on RHEL, using GPU passthrough and optimized container images.
+Description: Deploy containerized computer vision workloads on edge devices running MicroShift on RHEL, using GPU access and optimized container images.
 
 ---
 
@@ -12,22 +12,36 @@ MicroShift on RHEL provides a lightweight Kubernetes platform for running AI/ML 
 
 ## Prerequisites
 
-You need MicroShift installed on a RHEL 9 system with a supported GPU or neural processing unit. For NVIDIA GPUs, install the NVIDIA container toolkit.
+You need MicroShift installed on a RHEL 9 system with a supported GPU or neural processing unit. For NVIDIA GPUs, install the NVIDIA driver, NVIDIA Container Toolkit, and NVIDIA Kubernetes device plugin.
 
 ## Install NVIDIA Container Support
 
 ```bash
 # Add the NVIDIA container toolkit repo
 
-curl -s -L https://nvidia.github.io/libnvidia-container/rhel9.0/libnvidia-container.repo \
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo \
   | sudo tee /etc/yum.repos.d/nvidia-container-toolkit.repo
 
 # Install the toolkit
 sudo dnf install -y nvidia-container-toolkit
+sudo setsebool -P container_use_devices on
 
 # Configure CRI-O to use the NVIDIA runtime
-sudo nvidia-ctk runtime configure --runtime=crio
+sudo nvidia-ctk runtime configure --runtime=crio --set-as-default \
+  --drop-in-config=/etc/crio/crio.conf.d/99-nvidia.conf
 sudo systemctl restart crio
+
+# Install the NVIDIA device plugin so MicroShift advertises nvidia.com/gpu
+sudo mkdir -p /etc/microshift/manifests.d/nvidia-device-plugin
+curl -s -L https://gitlab.com/nvidia/kubernetes/device-plugin/-/raw/main/deployments/static/nvidia-device-plugin-privileged-with-service-account.yml \
+  | sudo tee /etc/microshift/manifests.d/nvidia-device-plugin/nvidia-device-plugin.yml
+cat <<EOF | sudo tee /etc/microshift/manifests.d/nvidia-device-plugin/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - nvidia-device-plugin.yml
+EOF
+
 sudo systemctl restart microshift
 ```
 
@@ -72,6 +86,7 @@ spec:
         - name: video-input
           hostPath:
             path: /dev/video0
+            type: CharDevice
 ---
 apiVersion: v1
 kind: Service
@@ -92,6 +107,7 @@ spec:
 ```bash
 # Create the namespace and deploy
 oc create namespace vision
+oc adm policy add-scc-to-user privileged -z default -n vision
 oc apply -f vision-app.yaml
 
 # Check pod status
