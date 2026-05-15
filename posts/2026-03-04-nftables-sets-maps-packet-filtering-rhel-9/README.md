@@ -93,13 +93,14 @@ nft add rule inet firewall input ip saddr @temp_block drop
 
 This is incredibly useful for temporary bans. The element will automatically disappear after the timeout.
 
-## Dynamic Sets with Meters
+## Dynamic Sets for Rate Limiting
 
-You can use dynamic sets with the `meter` statement for rate limiting per source IP:
+You can use dynamic sets with stateful limit expressions for rate limiting per source IP:
 
 ```bash
+nft add set inet firewall ssh_meter { type ipv4_addr \; flags dynamic \; timeout 60s \; }
 nft add rule inet firewall input tcp dport 22 ct state new \
-    meter ssh_meter { ip saddr limit rate 3/minute } accept
+    update @ssh_meter { ip saddr limit rate 3/minute } accept
 ```
 
 This creates a dynamic set that tracks connection rates per source IP.
@@ -224,6 +225,6 @@ nft list ruleset
 
 ## Performance Considerations
 
-Sets in nftables use hash tables internally, so lookups are O(1) regardless of how many elements they contain. This means a set with 10,000 IP addresses performs just as fast as one with 10. With iptables, you'd need ipset as a separate tool to get this behavior. In nftables, it's built in.
+Sets in nftables use efficient internal data structures such as hash tables and red-black trees, depending on the set type and flags. This avoids long linear rule chains and scales far better than writing one rule per IP address or port. With iptables, you'd need ipset as a separate tool to get this behavior. In nftables, it's built in.
 
 For very large blocklists, sets with the interval flag and proper element organization will give you excellent performance without any additional tooling.
