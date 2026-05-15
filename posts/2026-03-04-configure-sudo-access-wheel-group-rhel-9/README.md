@@ -31,8 +31,8 @@ This means: any member of the wheel group can run any command as any user on any
 ```mermaid
 graph LR
     A[User in wheel group] --> B[Runs sudo command]
-    B --> C[PAM authenticates user]
-    C --> D[sudoers grants access via %wheel rule]
+    B --> C[sudoers policy matches the %wheel rule]
+    C --> D[PAM authenticates user if required]
     D --> E[Command runs as root]
 ```
 
@@ -179,14 +179,14 @@ sudo ausearch -k group_changes --interpret
 ## Listing Current Wheel Members
 
 ```bash
-# Show all members of the wheel group
+# Show supplementary members listed for the wheel group
 getent group wheel
 ```
 
 Or for a more detailed view:
 
 ```bash
-# List wheel members with their full names
+# List supplementary wheel members with their full names
 for user in $(getent group wheel | cut -d: -f4 | tr ',' ' '); do
     fullname=$(getent passwd "$user" | cut -d: -f5)
     echo "$user - $fullname"
