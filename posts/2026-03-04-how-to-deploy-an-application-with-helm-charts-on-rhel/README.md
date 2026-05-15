@@ -86,30 +86,32 @@ env:
 ```yaml
 # myapp/templates/deployment.yaml (key sections)
 spec:
-  containers:
-    - name: {{ .Chart.Name }}
-      image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-      ports:
-        - containerPort: 80
-      env:
-        {{- range $key, $value := .Values.env }}
-        - name: {{ $key }}
-          value: {{ $value | quote }}
-        {{- end }}
-      resources:
-        {{- toYaml .Values.resources | nindent 8 }}
-      livenessProbe:
-        httpGet:
-          path: /health
-          port: 80
-        initialDelaySeconds: 15
-        periodSeconds: 10
-      readinessProbe:
-        httpGet:
-          path: /ready
-          port: 80
-        initialDelaySeconds: 5
-        periodSeconds: 5
+  template:
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          ports:
+            - containerPort: 80
+          env:
+            {{- range $key, $value := .Values.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
 ```
 
 ## Linting and Testing
@@ -121,8 +123,8 @@ helm lint myapp/
 # Render templates locally to inspect output
 helm template myapp myapp/
 
-# Dry-run to verify against the cluster
-helm install myapp myapp/ --dry-run --debug
+# Server-side dry-run to verify against the cluster
+helm install myapp myapp/ --dry-run=server --debug
 ```
 
 ## Deploying the Chart
@@ -163,4 +165,4 @@ helm package myapp/
 curl --data-binary "@myapp-0.1.0.tgz" http://chartmuseum.example.com/api/charts
 ```
 
-Always use `helm lint` before deploying and `helm template` to review the rendered manifests. Use `--dry-run` against your cluster to catch RBAC or resource quota issues before actual deployment.
+Always use `helm lint` before deploying and `helm template` to review the rendered manifests. Use `--dry-run=server` against your cluster to catch RBAC or resource quota issues before actual deployment.
