@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Comparison, Linux
 
-Description: Step-by-step guide on choose between rhel and almalinux for enterprise deployments using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on choosing between RHEL and AlmaLinux for enterprise deployments using Red Hat Enterprise Linux 9.
 
 ---
 
@@ -12,11 +12,11 @@ AlmaLinux is another community-driven RHEL-compatible distribution that emerged 
 
 ## Prerequisites
 
-- RHEL with a valid subscription or CentOS Stream 9
+- Access to RHEL and AlmaLinux 9 documentation
 - Root or sudo access
 - A terminal session
 
-## Step 2: Configure the Service
+## Step 2: Compare Platform and Support Requirements
 
 ### Key Comparison Areas
 
@@ -33,38 +33,40 @@ AlmaLinux is another community-driven RHEL-compatible distribution that emerged 
 - RHEL provides certified hardware and software support
 - AlmaLinux has a community governance model
 
-## Step 3: Enable and Start the Service
+## Step 3: Verify the Installed Distribution
 
 ```bash
-# Enable the service to start on boot
+# Show the installed distribution and version
+cat /etc/os-release
 
-sudo systemctl enable <service-name>
+# Show the package that provides the system release identity
+rpm -q --whatprovides system-release
 
-# Start the service
-sudo systemctl start <service-name>
+# List enabled repositories
+dnf repolist
 
-# Check the status
-sudo systemctl status <service-name>
+# On RHEL, check subscription status
+sudo subscription-manager status
 ```
 
 
 ## Verification
 
-Confirm everything is working by checking the status and logs:
+Confirm the system identity and enabled repositories before making a platform choice:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
+# Confirm the distribution name and version
+cat /etc/redhat-release
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# Confirm enabled package repositories
+dnf repolist
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If `subscription-manager status` fails, confirm you are running it on RHEL and that the system is registered.
+- If repositories are missing, review the enabled repositories with `dnf repolist --all`.
 
 ## Conclusion
 
-You have successfully completed the setup described in this guide. Both options have their strengths, and the right choice depends on your specific requirements, budget, and team expertise. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
+You have successfully completed the comparison described in this guide. Both options have their strengths, and the right choice depends on your specific requirements, budget, and team expertise. For production environments, always test changes in a staging environment first and keep your RHEL or AlmaLinux system updated with the latest security patches.
