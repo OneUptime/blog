@@ -49,10 +49,10 @@ dbadmin ALL=(postgres) NOPASSWD: /usr/bin/psql, \
 
 ```bash
 # Allow only specific users
-echo "AllowUsers sysadmin deployer" >> /etc/ssh/sshd_config.d/access.conf
+printf '%s\n' "AllowUsers sysadmin deployer" | sudo tee /etc/ssh/sshd_config.d/access.conf
 
-# Or restrict by group
-echo "AllowGroups ssh-users" >> /etc/ssh/sshd_config.d/access.conf
+# Or restrict by group instead
+printf '%s\n' "AllowGroups ssh-users" | sudo tee /etc/ssh/sshd_config.d/access.conf
 
 sudo systemctl reload sshd
 ```
@@ -91,4 +91,3 @@ sudo chmod u-s /usr/bin/unnecessary-suid-binary
 ## Conclusion
 
 Implementing least privilege on RHEL 9 reduces the blast radius of compromised accounts. Use granular sudo rules, SSH restrictions, ACLs, and SELinux user mappings to limit access to only what each user needs.
-
