@@ -39,13 +39,13 @@ Password authentication is the weakest link in SSH security. Key-based authentic
 On your workstation (not the server), generate a key pair.
 
 ```bash
-# Generate an Ed25519 key (recommended for RHEL)
+# Generate an Ed25519 key (recommended for most non-FIPS systems)
 ssh-keygen -t ed25519 -C "admin@workstation"
 ```
 
 You will be prompted for a file location (the default `~/.ssh/id_ed25519` is fine) and a passphrase. Always set a passphrase on your private key. It protects you if someone gets access to your workstation.
 
-If you need RSA for compatibility with older systems:
+If you need RSA for compatibility with older systems or FIPS-mode RHEL systems:
 
 ```bash
 # Generate a 4096-bit RSA key
@@ -206,10 +206,10 @@ sudo firewall-cmd --permanent --add-service=ssh
 sudo firewall-cmd --reload
 ```
 
-To restrict SSH access to specific source IP ranges:
+To restrict the default SSH service to specific source IP ranges:
 
 ```bash
-# Create a rich rule allowing SSH only from a specific subnet
+# Create a rich rule allowing the default SSH service only from a specific subnet
 sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="10.0.0.0/8" service name="ssh" accept'
 
 # Remove the general SSH rule
@@ -246,10 +246,10 @@ Configure your browser or application to use `localhost:1080` as a SOCKS5 proxy,
 
 ### Remote Port Forwarding
 
-Expose a local service through a remote server:
+Expose a local service on the remote server's loopback interface:
 
 ```bash
-# Make your local port 8080 accessible on the remote server's port 9090
+# Make your local port 8080 accessible on the remote server's localhost port 9090
 ssh -R 9090:localhost:8080 admin@remote-server
 ```
 
