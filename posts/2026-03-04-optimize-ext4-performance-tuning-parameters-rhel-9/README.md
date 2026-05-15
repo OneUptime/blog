@@ -26,11 +26,11 @@ Disabling access time updates eliminates unnecessary write operations:
 /dev/vg_data/lv_data /data ext4 defaults,noatime 0 2
 ```
 
-This is the single most impactful mount option for general workloads.
+This is often one of the most impactful mount options for general workloads when applications do not require access time tracking.
 
 ### Journal Mode
 
-ext4 supports three journaling modes:
+Upstream ext4 supports three journaling modes, but RHEL 9 supports only `data=ordered` for ext4.
 
 **data=ordered** (default): Metadata is journaled. Data is flushed before metadata is committed.
 
@@ -38,17 +38,9 @@ ext4 supports three journaling modes:
 /dev/vg_data/lv_data /data ext4 defaults,data=ordered 0 2
 ```
 
-**data=journal**: Both data and metadata are journaled. Safest but slowest for large writes. Can actually improve random write performance because everything goes through the sequential journal first.
+**data=journal**: Both data and metadata are journaled. This mode is not supported for ext4 on RHEL 9.
 
-```bash
-/dev/vg_data/lv_data /data ext4 defaults,data=journal 0 2
-```
-
-**data=writeback**: Only metadata is journaled. Data may be written after metadata. Fastest but can expose stale data after a crash.
-
-```bash
-/dev/vg_data/lv_data /data ext4 defaults,data=writeback 0 2
-```
+**data=writeback**: Only metadata is journaled. Data may be written after metadata. This mode is not supported for ext4 on RHEL 9.
 
 ### commit Interval
 
@@ -58,7 +50,7 @@ The `commit` option controls how often the journal is flushed to disk (in second
 /dev/vg_data/lv_data /data ext4 defaults,noatime,commit=30 0 2
 ```
 
-Increasing from the default 5 seconds to 30 seconds reduces the frequency of disk flushes, improving performance at the cost of potentially losing up to 30 seconds of data on a crash.
+Increasing from the default 5 seconds to 30 seconds reduces the frequency of disk flushes, improving performance at the cost of potentially losing more recent metadata changes on a crash. With delayed allocation, recently written file data can also be at risk for longer than the commit interval.
 
 ### barrier
 
@@ -165,10 +157,10 @@ sudo mke2fs -O journal_dev /dev/ssd_journal
 sudo mkfs.ext4 -J device=/dev/ssd_journal /dev/sdb1
 ```
 
-Mount with the external journal:
+Mount with the external journal if the journal device location has changed:
 
 ```bash
-/dev/sdb1 /data ext4 defaults,journal_dev=0xMAJMIN 0 2
+/dev/sdb1 /data ext4 defaults,journal_path=/dev/ssd_journal 0 2
 ```
 
 ## Block I/O Tuning
@@ -216,7 +208,7 @@ Focus on data integrity with acceptable performance.
 ### Web Server
 
 ```bash
-/dev/vg_data/lv_data /data ext4 noatime,data=writeback,commit=30 0 2
+/dev/vg_data/lv_data /data ext4 noatime,data=ordered,commit=30 0 2
 ```
 
 Optimize for read-heavy workloads with many small files.
@@ -224,7 +216,7 @@ Optimize for read-heavy workloads with many small files.
 ### Log Storage
 
 ```bash
-/dev/vg_data/lv_data /data ext4 noatime,data=writeback,commit=60,nodelalloc 0 2
+/dev/vg_data/lv_data /data ext4 noatime,data=ordered,commit=60,nodelalloc 0 2
 ```
 
 Optimize for sequential append-heavy writes.
@@ -232,10 +224,10 @@ Optimize for sequential append-heavy writes.
 ### Mail Server
 
 ```bash
-/dev/vg_data/lv_data /data ext4 noatime,data=journal 0 2
+/dev/vg_data/lv_data /data ext4 noatime,data=ordered 0 2
 ```
 
-The `data=journal` mode can improve random write performance for mail spool directories.
+Use RHEL's supported journaling mode and benchmark mail spool behavior with your delivery pattern.
 
 ## Benchmarking
 
@@ -255,4 +247,4 @@ sudo fio --name=mixed --directory=/data --rw=randrw --rwmixread=70 --bs=4K \
 
 ## Conclusion
 
-ext4 on RHEL offers extensive tuning capabilities that can be tailored to specific workloads. The most impactful changes for most environments are enabling `noatime`, choosing the appropriate journal mode, adjusting the commit interval, and reducing reserved blocks on data filesystems. Always benchmark your specific workload before and after changes to verify that tuning produces the desired improvement.
+ext4 on RHEL offers extensive tuning capabilities that can be tailored to specific workloads. The most impactful changes for most environments are enabling `noatime`, keeping RHEL's supported journal mode, adjusting the commit interval, and reducing reserved blocks on data filesystems. Always benchmark your specific workload before and after changes to verify that tuning produces the desired improvement.
