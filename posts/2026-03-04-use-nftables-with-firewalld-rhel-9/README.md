@@ -94,7 +94,7 @@ nft add table inet custom_rules
 nft add chain inet custom_rules prerouting { type filter hook prerouting priority -10 \; policy accept \; }
 ```
 
-By using a different priority (like -10), your chain runs before firewalld's chains. Use a positive priority to run after.
+For chains attached to the same hook, lower priority values run first. A priority like -10 runs before chains at priority 0 on that hook; a positive priority runs after them.
 
 ## Using firewalld's Direct Interface
 
@@ -157,6 +157,7 @@ After=firewalld.service
 
 [Service]
 Type=oneshot
+ExecStartPre=-/usr/sbin/nft delete table inet custom_filter
 ExecStart=/usr/sbin/nft -f /etc/nftables/custom.nft
 RemainAfterExit=yes
 
@@ -184,7 +185,7 @@ nft list table inet firewalld
 nft list table inet custom_filter
 ```
 
-Make sure chain priorities don't conflict. firewalld typically uses priority 0 for its filter chains. Use different priorities for your custom chains.
+Make sure chain priorities don't conflict on the same hook. firewalld typically uses priority 0 for its filter chains. Use different priorities for your custom chains.
 
 ## Troubleshooting Common Issues
 
