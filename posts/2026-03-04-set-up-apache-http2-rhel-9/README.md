@@ -8,7 +8,7 @@ Description: Learn how to enable and configure HTTP/2 protocol support in Apache
 
 ---
 
-HTTP/2 brings significant performance improvements over HTTP/1.1, including multiplexed streams, header compression, and server push. Apache on RHEL supports HTTP/2 through the mod_http2 module. This guide shows you how to enable and configure it.
+HTTP/2 brings significant performance improvements over HTTP/1.1, including multiplexed streams, header compression, and optional server push for clients that still support it. Apache on RHEL supports HTTP/2 through the mod_http2 module. This guide shows you how to enable and configure it.
 
 ## Prerequisites
 
@@ -124,8 +124,8 @@ Protocols h2 h2c http/1.1
 # Default is 100, which is fine for most sites
 H2MaxSessionStreams 100
 
-# Window size for flow control (bytes)
-# Larger values can improve throughput for large files
+# Window size for request body flow control (bytes)
+# Larger values can improve throughput for large uploads
 H2WindowSize 65535
 
 # Minimum number of workers for HTTP/2 processing
@@ -134,10 +134,10 @@ H2MinWorkers 1
 # Maximum number of workers for HTTP/2 processing
 H2MaxWorkers 25
 
-# Direct HTTP/2 mode (improves performance, avoids internal redirect)
+# Direct HTTP/2 mode for clients using prior knowledge with h2c
 H2Direct On
 
-# Enable server push
+# Enable server push for clients that still support it
 H2Push On
 
 # Push CSS and JS resources when HTML is requested
@@ -204,4 +204,4 @@ curl -v --http2 https://www.example.com/ 2>&1 | grep "using HTTP/2"
 
 ## Summary
 
-HTTP/2 on Apache with RHEL brings multiplexed connections, header compression, and optional server push to your web server. The main requirements are using the event MPM, having TLS configured, and loading mod_http2. With these in place, browsers automatically negotiate HTTP/2 and your users get faster page loads.
+HTTP/2 on Apache with RHEL brings multiplexed connections, header compression, and optional server push for clients that still support it to your web server. The main requirements are using the event MPM, having TLS configured, and loading mod_http2. With these in place, browsers automatically negotiate HTTP/2 and your users get faster page loads.
