@@ -32,8 +32,6 @@ sudo systemctl enable --now ipsec
 
 ```bash
 sudo firewall-cmd --permanent --add-service=ipsec
-sudo firewall-cmd --permanent --add-port=500/udp
-sudo firewall-cmd --permanent --add-port=4500/udp
 sudo firewall-cmd --reload
 ```
 
@@ -77,9 +75,7 @@ echo "net.ipv4.ip_forward = 1" | sudo tee /etc/sysctl.d/99-ipforward.conf
 ## Start the VPN
 
 ```bash
-sudo ipsec restart
-sudo ipsec auto --add site-to-site
-sudo ipsec auto --up site-to-site
+sudo systemctl restart ipsec
 ```
 
 ## Verify the Tunnel
@@ -95,13 +91,10 @@ ping 10.0.2.1  # Remote subnet
 For stronger security, use certificates instead of PSK:
 
 ```bash
-sudo ipsec certutil -S -k rsa -n "vpn-siteA" \
-  -s "CN=siteA.example.com" -w 24 -t "CT,," \
-  -z /etc/hostname
+sudo ipsec import ~/siteA.p12
+sudo certutil -L -d /var/lib/ipsec/nss/
 
-# Export and import certificates between sites
-
-sudo ipsec certutil -L -n "vpn-siteA" -a > siteA.pem
+# Use the certificate nickname from the NSS database in the connection configuration
 ```
 
 ## Troubleshoot
@@ -115,4 +108,3 @@ sudo ipsec status
 ## Conclusion
 
 Libreswan on RHEL 9 provides enterprise-grade IPsec VPN connectivity. Use certificate authentication for production environments and monitor tunnel status to ensure reliable site-to-site connectivity.
-
