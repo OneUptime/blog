@@ -19,6 +19,7 @@ mkdir -p /home/student/project/{src,docs,bin}
 
 # Create empty files
 touch /home/student/project/src/{main.c,utils.c,header.h}
+touch /home/student/project/bin/run.sh
 
 # Create a file with content
 echo "Project README" > /home/student/project/docs/README.txt
