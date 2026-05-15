@@ -12,16 +12,17 @@ Router Advertisements (RAs) are the backbone of IPv6 autoconfiguration. When a h
 
 ## How Router Advertisements Work
 
-In IPv6, there's no DHCP server needed for basic address assignment (though DHCPv6 can complement it). Instead, routers periodically broadcast RAs, and hosts use SLAAC (Stateless Address Autoconfiguration) to build their own addresses from the announced prefix combined with their interface identifier.
+In IPv6, there's no DHCP server needed for basic address assignment (though DHCPv6 can complement it). Instead, routers periodically multicast RAs, and hosts use SLAAC (Stateless Address Autoconfiguration) to build their own addresses from the announced prefix combined with their interface identifier.
 
 ```mermaid
 sequenceDiagram
     participant Client as IPv6 Client
     participant Router as RHEL Router (radvd)
+    participant Network as Solicited-node multicast
     Client->>Router: Router Solicitation (RS)
     Router->>Client: Router Advertisement (RA)<br>Prefix: 2001:db8:1::/64<br>Flags, Lifetime, etc.
-    Client->>Client: Generate IPv6 address<br>2001:db8:1::EUI64/64
-    Client->>Router: Neighbor Solicitation (DAD)
+    Client->>Client: Generate IPv6 address<br>2001:db8:1::interface-id/64
+    Client->>Network: Neighbor Solicitation (DAD)
     Client->>Client: Address confirmed
 ```
 
@@ -140,8 +141,8 @@ sudo systemctl status radvd
 From the RHEL router itself, you can check that radvd is running and sending advertisements.
 
 ```bash
-# Check radvd is listening
-ss -ulnp | grep radvd
+# Check radvd is running
+pgrep -a radvd
 
 # Watch for RAs on the network
 sudo tcpdump -i ens224 -n icmp6 -c 5
@@ -248,7 +249,9 @@ sudo firewall-cmd --list-all
 
 ```bash
 # ICMPv6 must be allowed for RAs to work
-sudo firewall-cmd --permanent --add-icmp-block-inversion
+sudo firewall-cmd --query-icmp-block=router-advertisement
+sudo firewall-cmd --permanent --remove-icmp-block=router-advertisement
+sudo firewall-cmd --permanent --remove-icmp-block=router-solicitation
 sudo firewall-cmd --reload
 ```
 
