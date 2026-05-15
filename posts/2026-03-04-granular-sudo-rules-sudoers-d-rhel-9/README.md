@@ -58,7 +58,7 @@ sudo visudo -f /etc/sudoers.d/webadmins
                        /usr/bin/systemctl stop httpd, \
                        /usr/bin/systemctl restart httpd, \
                        /usr/bin/systemctl reload httpd, \
-                       /usr/bin/systemctl status httpd
+                       /usr/bin/systemctl --no-pager status httpd
 ```
 
 ### Example: Allow DB team to manage PostgreSQL
@@ -72,8 +72,8 @@ sudo visudo -f /etc/sudoers.d/dbadmins
 %dbadmins ALL=(root) /usr/bin/systemctl start postgresql, \
                       /usr/bin/systemctl stop postgresql, \
                       /usr/bin/systemctl restart postgresql, \
-                      /usr/bin/systemctl status postgresql, \
-                      /usr/bin/journalctl -u postgresql
+                      /usr/bin/systemctl --no-pager status postgresql, \
+                      /usr/bin/journalctl --no-pager -u postgresql
 ```
 
 ### Example: Allow a deploy user to run specific scripts
@@ -98,7 +98,7 @@ sudo visudo -f /etc/sudoers.d/monitoring
 nagios ALL=(root) NOPASSWD: /usr/sbin/dmidecode, \
                              /usr/bin/lsblk, \
                              /usr/sbin/fdisk -l, \
-                             /usr/bin/ss -tlnp
+                             /usr/sbin/ss -tlnp
 ```
 
 ## Using Command Aliases
@@ -111,9 +111,9 @@ sudo visudo -f /etc/sudoers.d/aliases
 
 ```bash
 # Define command groups
-Cmnd_Alias NETWORKING = /usr/sbin/ip, /usr/bin/ss, /usr/sbin/iptables, /usr/sbin/nft
-Cmnd_Alias SERVICES = /usr/bin/systemctl start *, /usr/bin/systemctl stop *, /usr/bin/systemctl restart *, /usr/bin/systemctl status *
-Cmnd_Alias LOGS = /usr/bin/journalctl, /usr/bin/tail -f /var/log/*
+Cmnd_Alias NETWORKING = /usr/sbin/ip, /usr/sbin/ss, /usr/sbin/iptables, /usr/sbin/nft
+Cmnd_Alias SERVICES = /usr/bin/systemctl start *, /usr/bin/systemctl stop *, /usr/bin/systemctl restart *, /usr/bin/systemctl --no-pager status *
+Cmnd_Alias LOGS = /usr/bin/journalctl --no-pager -u *, /usr/bin/tail -f /var/log/*
 Cmnd_Alias STORAGE = /usr/sbin/fdisk, /usr/sbin/mkfs.*, /usr/bin/mount, /usr/bin/umount
 
 # Network team gets networking and log commands
@@ -204,7 +204,7 @@ ls -la /etc/sudoers.d/
 -r--r-----. 1 root root  100 Mar  4  2026 90-restricted
 ```
 
-Use number prefixes to control processing order. Aliases should come first (00-), then team rules (10-), then service accounts (20-), then restrictions (90-).
+Use zero-padded number prefixes to control lexical processing order. Aliases should come first (00-), then team rules (10-), then service accounts (20-), then restrictions (90-).
 
 ## Common Mistakes to Avoid
 
