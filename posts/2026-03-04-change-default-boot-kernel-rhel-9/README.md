@@ -78,7 +78,7 @@ This is a one-time selection and does not change the default.
 
 ## Preventing a New Kernel from Becoming Default
 
-If you want to keep a specific kernel as default even after installing updates, you can configure dnf to not change the default.
+If you want to keep a specific kernel as default even after installing updates, record your preferred kernel and reset it with `grubby` if an update changes the default.
 
 ```bash
 # Pin the current default kernel
@@ -126,11 +126,9 @@ sudo grub2-editenv set saved_entry=0
 # Check that the BLS entries are correct
 ls -la /boot/loader/entries/
 
-# Regenerate GRUB configuration if needed
-# BIOS:
+# Regenerate GRUB configuration if needed on RHEL 9
+# BIOS and UEFI:
 sudo grub2-mkconfig -o /boot/grub2/grub.cfg
-# UEFI:
-sudo grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
 ```
 
 ## Wrapping Up
