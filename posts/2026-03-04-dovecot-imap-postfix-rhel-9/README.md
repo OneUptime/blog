@@ -103,6 +103,7 @@ Edit `/etc/dovecot/conf.d/15-mailboxes.conf`:
 
 ```bash
 namespace inbox {
+  inbox = yes
   mailbox Drafts {
     auto = subscribe
     special_use = \Drafts
@@ -247,7 +248,7 @@ Edit `/etc/dovecot/conf.d/10-master.conf` for high-traffic servers:
 
 ```bash
 service imap-login {
-  # Number of connections before forking a new process
+  # Number of connections handled before restarting the process
   service_count = 1
 
   # Pre-fork processes for faster connection handling
