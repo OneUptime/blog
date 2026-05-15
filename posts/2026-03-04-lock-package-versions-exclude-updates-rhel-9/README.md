@@ -21,7 +21,7 @@ A few common scenarios:
 
 ## Method 1: DNF Versionlock Plugin
 
-The versionlock plugin is the cleanest way to pin packages to specific versions. It integrates directly with DNF and prevents both upgrades and downgrades of locked packages.
+The versionlock plugin is the cleanest way to pin packages to specific versions. It integrates directly with DNF and prevents both upgrades and downgrades of locked packages during transaction operations.
 
 ### Install the Plugin
 
@@ -38,14 +38,14 @@ sudo dnf install -y python3-dnf-plugin-versionlock
 sudo dnf versionlock add httpd
 ```
 
-This reads the installed version and creates a lock rule for it. The package will not be updated, downgraded, or removed by DNF operations.
+This reads the installed version and creates a lock rule for it. The package will not be updated or downgraded by DNF transaction operations.
 
 ### Lock a Package at a Specific Version
 
-If you want to lock to a version that is not currently installed:
+If you want to lock to a version that is not currently installed but is available in your enabled repositories:
 
 ```bash
-# Lock to a specific version string
+# Lock to a specific available version string
 sudo dnf versionlock add httpd-2.4.57-5.el9
 ```
 
@@ -99,7 +99,7 @@ The lock rules are stored in a plain text file:
 cat /etc/dnf/plugins/versionlock.list
 ```
 
-You can edit this file directly if you need to add or modify entries in bulk. The format is the full NEVRA (Name-Epoch:Version-Release.Arch) pattern.
+You can edit this file directly if you need to add or modify entries in bulk. The file contains package specs, typically concrete NEVRA-style patterns such as `Name-Epoch:Version-Release.Arch` with wildcards where needed.
 
 ## Method 2: Exclude Packages in dnf.conf
 
@@ -193,7 +193,7 @@ flowchart TD
 |---------|-------------|-------------------|---------------------|
 | Pins to specific version | Yes | No | No |
 | Blocks all updates | Yes | Yes | Yes (from that repo) |
-| Blocks installation | No (already installed) | Yes | Yes (from that repo) |
+| Blocks installation | Only for non-matching versions of that package | Yes | Yes (from that repo) |
 | Scope | All repos | All repos | Single repo |
 | Easy to list/manage | Yes (dnf versionlock list) | Manual file editing | Manual file editing |
 | Per-package granularity | Yes | Yes (with wildcards) | Yes (with wildcards) |
@@ -309,7 +309,7 @@ This helps you remember to review locks periodically instead of leaving packages
 
 2. **Leaving locks forever.** Version locks should be temporary. Set a calendar reminder to review them monthly. Outdated locks mean missed security patches.
 
-3. **Not documenting why a lock exists.** The versionlock file does not support comments. Keep a separate document or use your change management system to track why each lock was created.
+3. **Not documenting why a lock exists.** Even if you add comments to the locklist, keep the reason in a separate document or your change management system so it does not get lost during automated updates.
 
 4. **Excluding too broadly.** A wildcard like `kernel*` also catches `kernel-tools`, `kernel-headers`, and other packages you might actually want to update. Be specific.
 
