@@ -8,7 +8,7 @@ Description: Learn how to create, manage, and restore KVM virtual machine snapsh
 
 ---
 
-Snapshots capture the complete state of a virtual machine at a point in time, including disk contents and optionally memory state. On RHEL 9, snapshots are invaluable for testing changes, creating restore points before upgrades, and rapid rollback when something goes wrong.
+Snapshots capture the state of a virtual machine at a point in time, including disk contents and optionally memory state. On RHEL 9.4 and later, Red Hat supports VM snapshots when they are external snapshots created with supported storage and snapshot options. Snapshots are invaluable for testing changes, creating restore points before upgrades, and rapid rollback when something goes wrong.
 
 ## Types of Snapshots
 
@@ -16,9 +16,11 @@ Snapshots capture the complete state of a virtual machine at a point in time, in
 
 Stored within the qcow2 disk image. Simple but limited to qcow2 format.
 
+Internal snapshots are deprecated in RHEL 9 and should not be used for production VMs.
+
 ### External Snapshots
 
-Create a new overlay file for changes. More flexible and better for production use.
+Create a new overlay file for changes. This is the supported and recommended snapshot type for production use on RHEL 9.
 
 ### Memory Snapshots
 
@@ -29,23 +31,23 @@ Include VM memory state, allowing you to restore to the exact running state.
 ### Disk-Only Snapshot (VM can be running)
 
 ```bash
-sudo virsh snapshot-create-as vmname snapshot1 \
-    --description "Before upgrade" \
-    --disk-only
+sudo virsh snapshot-create-as vmname snapshot1 "Before upgrade" \
+    --disk-only \
+    --quiesce
 ```
 
 ### Full Snapshot with Memory
 
 ```bash
-sudo virsh snapshot-create-as vmname snapshot1 \
-    --description "Before upgrade"
+sudo virsh snapshot-create-as vmname snapshot1 "Before upgrade" \
+    --memspec /var/lib/libvirt/images/vmname-snapshot1-memory.img
 ```
 
 ### Snapshot of a Shut Down VM
 
 ```bash
-sudo virsh snapshot-create-as vmname snapshot1 \
-    --description "Clean state"
+sudo virsh snapshot-create-as vmname snapshot1 "Clean state" \
+    --disk-only
 ```
 
 ## Listing Snapshots
@@ -63,7 +65,7 @@ sudo virsh snapshot-list vmname --tree
 ## Viewing Snapshot Details
 
 ```bash
-sudo virsh snapshot-info vmname --snapshotname snapshot1
+sudo virsh snapshot-info vmname snapshot1
 ```
 
 ## Reverting to a Snapshot
@@ -72,7 +74,7 @@ sudo virsh snapshot-info vmname --snapshotname snapshot1
 sudo virsh snapshot-revert vmname snapshot1
 ```
 
-If the snapshot includes memory state, the VM resumes at the exact point it was captured. If it is a disk-only snapshot, the VM restarts from the restored disk state.
+If the snapshot includes memory state, the VM resumes from the state captured in the snapshot. If it is a disk-only snapshot, the VM is restored to the disk state and normally remains shut off unless you use options such as `--running`.
 
 ### Reverting a Running VM
 
@@ -115,18 +117,18 @@ For saving a running VM's complete state to a file (like hibernation):
 ### Save
 
 ```bash
-sudo virsh save vmname /var/lib/libvirt/save/vmname.save
+sudo virsh save vmname /var/lib/libvirt/qemu/save/vmname.save
 ```
 
-The VM is paused and its state is written to the file.
+The VM stops running, and its RAM and CPU state are written to the file. Disk contents are not saved, so the VM disk images must remain unchanged until restore.
 
 ### Restore
 
 ```bash
-sudo virsh restore /var/lib/libvirt/save/vmname.save
+sudo virsh restore /var/lib/libvirt/qemu/save/vmname.save
 ```
 
-The VM resumes exactly where it was.
+The VM resumes from the saved state, assuming its disks still match the state they had when the save file was created.
 
 ## Best Practices
 
@@ -139,13 +141,13 @@ The VM resumes exactly where it was.
 
 ## Snapshot Performance Impact
 
-Each internal snapshot adds an overlay layer to the disk image. Performance degrades as layers accumulate:
+Each external snapshot adds an overlay layer to the disk backing chain. Performance can degrade as layers accumulate:
 
 - 1-3 snapshots: Minimal impact
 - 4-10 snapshots: Noticeable I/O degradation
 - 10+ snapshots: Significant performance loss
 
-Merge snapshots when testing is complete:
+For external active snapshots, merge the active overlay back into the backing image when testing is complete:
 
 ```bash
 sudo virsh blockcommit vmname vda --active --verbose --pivot
