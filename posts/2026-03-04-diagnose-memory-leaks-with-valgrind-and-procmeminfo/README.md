@@ -8,7 +8,7 @@ Description: Learn how to diagnose Memory Leaks with Valgrind and /proc/meminfo 
 
 ---
 
-Memory leaks cause applications to consume ever-increasing amounts of RAM until they crash or trigger the OOM killer. Valgrind and /proc/meminfo are complementary tools for detecting and diagnosing memory leaks on RHEL.
+Memory leaks cause applications to consume ever-increasing amounts of RAM until they crash or trigger the OOM killer. Valgrind and the /proc filesystem are complementary tools for detecting and diagnosing memory leaks on RHEL.
 
 ## Prerequisites
 
@@ -28,7 +28,7 @@ sudo dnf install -y valgrind
 valgrind --leak-check=full --show-leak-kinds=all ./myapp
 ```
 
-Valgrind runs your program in a virtual CPU and tracks every memory allocation. When the program exits, it reports:
+Valgrind runs your program in a virtual CPU and tracks heap allocations. When the program exits, it reports:
 
 ```bash
 LEAK SUMMARY:
@@ -46,18 +46,19 @@ LEAK SUMMARY:
 ## Step 3: Get Detailed Stack Traces
 
 ```bash
-valgrind --leak-check=full --track-origins=yes --num-callers=20 ./myapp
+valgrind --leak-check=full --show-leak-kinds=all --num-callers=20 ./myapp
 ```
 
-This shows exactly which function allocated the leaked memory.
+This shows deeper allocation stack traces for leaked memory. Add `--track-origins=yes` when you also need to trace where uninitialized values came from.
 
-## Step 4: Monitor Memory Growth with /proc/meminfo
+## Step 4: Monitor Memory Growth with /proc
 
 For long-running services where Valgrind is too slow:
 
 ```bash
+pid=$(pidof -s myapp)
 while true; do
-    echo "$(date): RSS=$(cat /proc/$(pidof myapp)/status | grep VmRSS)"
+    echo "$(date): RSS=$(grep '^VmRSS:' /proc/$pid/status)"
     sleep 60
 done
 ```
@@ -65,7 +66,7 @@ done
 Or use a more detailed view:
 
 ```bash
-cat /proc/$(pidof myapp)/smaps_rollup
+cat /proc/$pid/smaps_rollup
 ```
 
 ## Step 5: Track Memory Over Time
@@ -88,7 +89,7 @@ Massif shows heap usage over time and identifies which allocations are responsib
 ## Step 7: Check System-Wide Memory
 
 ```bash
-cat /proc/meminfo | grep -E 'MemTotal|MemFree|MemAvailable|Buffers|Cached|Slab'
+grep -E '^(MemTotal|MemFree|MemAvailable|Buffers|Cached|Slab):' /proc/meminfo
 ```
 
 | Field | Description |
