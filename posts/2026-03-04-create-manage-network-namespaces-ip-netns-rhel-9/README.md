@@ -23,7 +23,7 @@ graph TD
         FW1[Firewall Rules]
     end
     subgraph Namespace: blue
-        E2[veth-blue<br>10.0.1.1]
+        E2[veth-blue<br>10.0.1.2]
         LO2[lo]
         RT2[Routing Table]
         FW2[Firewall Rules]
@@ -112,12 +112,12 @@ sudo ip netns exec blue ip route show
 # Add a default route inside the namespace
 sudo ip netns exec blue ip route add default via 10.0.1.1
 
-# Now the namespace can reach outside (if forwarding is enabled)
+# Now the namespace can reach outside if forwarding and suitable routing or NAT are enabled
 ```
 
 ## Namespace-Specific DNS
 
-Namespaces don't inherit /etc/resolv.conf. You need to configure it.
+By default, processes in a namespace still see the host's `/etc/resolv.conf`. You can give commands run with `ip netns exec` a namespace-specific resolver configuration.
 
 ```bash
 # Create the namespace's resolv.conf
@@ -146,8 +146,8 @@ ip netns monitor
 # Check which namespace a process is in
 sudo ip netns identify $$
 
-# Check which namespace you're currently in
-sudo ip netns identify 1
+# Check which namespace the current shell is in
+ip netns identify $$
 ```
 
 ## Running Services in a Namespace
@@ -165,7 +165,7 @@ curl http://10.0.1.2:8080
 ## Deleting a Namespace
 
 ```bash
-# Delete a namespace (this also removes any interfaces inside it)
+# Delete a namespace (veth interfaces inside it are destroyed; physical interfaces move back when the namespace is freed)
 sudo ip netns del blue
 
 # Verify
@@ -196,7 +196,11 @@ sudo ip netns exec testenv ip route add default via 10.200.0.1
 
 # Enable forwarding and NAT on the host
 sudo sysctl -w net.ipv4.ip_forward=1
-sudo iptables -t nat -A POSTROUTING -s 10.200.0.0/24 -j MASQUERADE
+sudo nft add table ip nat
+sudo nft -- add chain ip nat prerouting '{ type nat hook prerouting priority -100 ; }'
+sudo nft add chain ip nat postrouting '{ type nat hook postrouting priority 100 ; }'
+# Replace ens192 with the host's internet-facing interface
+sudo nft add rule ip nat postrouting ip saddr 10.200.0.0/24 oifname "ens192" masquerade
 
 # Set up DNS
 sudo mkdir -p /etc/netns/testenv
@@ -209,4 +213,4 @@ sudo ip netns exec testenv curl -s ifconfig.me
 
 ## Wrapping Up
 
-Network namespaces on RHEL are a fundamental building block for network isolation. They're how containers get their own network stacks, but they're also useful on their own for testing, security isolation, and learning. The workflow is: create the namespace, create veth pairs to connect it, configure addresses and routes, and optionally enable NAT for internet access. Everything inside a namespace is completely isolated from the rest of the system.
+Network namespaces on RHEL are a fundamental building block for network isolation. They're how containers get their own network stacks, but they're also useful on their own for testing, security isolation, and learning. The workflow is: create the namespace, create veth pairs to connect it, configure addresses and routes, and optionally enable NAT for internet access. The network stack inside a namespace is isolated from the rest of the system.
