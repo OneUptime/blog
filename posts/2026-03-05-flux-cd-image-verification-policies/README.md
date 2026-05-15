@@ -42,7 +42,7 @@ cosign verify --key cosign.pub ghcr.io/myorg/webapp@sha256:<image-digest>
 
 ## Step 2: Configure Kyverno Image Verification Policy
 
-Deploy a Kyverno ClusterPolicy that verifies image signatures for all pods:
+Deploy a Kyverno ClusterPolicy that verifies image signatures for all pods. Kyverno also provides the newer `ImageValidatingPolicy` API for image signature validation; the `ClusterPolicy` `verifyImages` form below remains common in existing installations:
 
 ```yaml
 # policy-verify-images.yaml
