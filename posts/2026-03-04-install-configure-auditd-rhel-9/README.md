@@ -46,7 +46,7 @@ rpm -qa | grep audit
 
 ```bash
 # Start the audit daemon
-sudo systemctl start auditd
+sudo service auditd start
 
 # Enable it to start at boot
 sudo systemctl enable auditd
@@ -61,8 +61,8 @@ Note: auditd is special compared to most systemd services. You should not use `s
 # Reload auditd configuration without restarting
 sudo service auditd reload
 
-# Or use the auditctl command to signal a reload
-sudo auditctl -R /etc/audit/rules.d/audit.rules
+# Or use the auditctl command to signal auditd
+sudo auditctl --signal reload
 ```
 
 ## Understanding the Configuration Files
@@ -95,7 +95,7 @@ log_file = /var/log/audit/audit.log
 # ENRICHED adds resolved user/group names
 log_format = ENRICHED
 
-# Maximum size of a single log file in MB
+# Maximum size of a single log file in MiB
 max_log_file = 50
 
 # Number of log files to keep
@@ -157,7 +157,7 @@ Permission flags:
 ### System Call Rules
 
 ```bash
-# Monitor all file deletions by root
+# Monitor file deletions from root login sessions
 # -a = add rule, -S = system call, -F = field filter
 sudo auditctl -a always,exit -F arch=b64 -S unlink -S unlinkat -S rename -S renameat -F auid=0 -k root_file_delete
 
@@ -225,8 +225,10 @@ sudo auditctl -s
 # View the number of audit rules loaded
 sudo auditctl -l | wc -l
 
-# Trigger a test event by modifying a watched file
-sudo touch /etc/passwd
+# Trigger a test event by watching and modifying a temporary file
+sudo touch /tmp/auditd-test
+sudo auditctl -w /tmp/auditd-test -p wa -k identity
+sudo touch /tmp/auditd-test
 
 # Search for the event
 sudo ausearch -k identity -ts recent
