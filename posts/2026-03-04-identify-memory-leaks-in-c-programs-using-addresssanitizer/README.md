@@ -8,7 +8,7 @@ Description: Step-by-step guide on identify memory leaks in c programs using add
 
 ---
 
-AddressSanitizer (ASan) is a compile-time instrumentation tool that detects memory errors such as buffer overflows, use-after-free, and memory leaks. It is built into GCC and Clang, making it easy to use on RHEL without installing additional software.
+AddressSanitizer (ASan) is a compile-time instrumentation tool that detects memory errors such as buffer overflows and use-after-free bugs. LeakSanitizer (LSan) can be used with ASan to detect memory leaks. These sanitizers are supported by GCC and Clang, making them easy to use on RHEL after installing the compiler packages.
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@ AddressSanitizer (ASan) is a compile-time instrumentation tool that detects memo
 - Root or sudo access
 - A terminal session
 
-## Step 2: Configure the Service
+## Step 2: Compile the Program
 
 Compile and run with AddressSanitizer:
 
@@ -26,7 +26,7 @@ Compile and run with AddressSanitizer:
 sudo dnf install -y gcc gcc-c++
 
 # Compile with AddressSanitizer enabled
-gcc -fsanitize=address -g -o my_program my_program.c
+gcc -fsanitize=address -g -fno-omit-frame-pointer -o my_program my_program.c
 
 # Run the program (ASan reports errors to stderr)
 ./my_program
@@ -40,43 +40,37 @@ READ of size 4 at 0x... thread T0
     #0 0x... in main /path/to/file.c:10
 ```
 
-For memory leak detection, add `-fsanitize=leak`:
+For memory leak detection, add `-fsanitize=leak` or keep `detect_leaks=1` enabled in `ASAN_OPTIONS`:
 
 ```bash
-gcc -fsanitize=address,leak -g -o my_program my_program.c
+gcc -fsanitize=address,leak -g -fno-omit-frame-pointer -o my_program my_program.c
 ```
 
-## Step 3: Enable and Start the Service
+## Step 3: Run Leak Detection
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Run the program with leak detection enabled
+ASAN_OPTIONS=detect_leaks=1 ./my_program
 
-# Start the service
-sudo systemctl start <service-name>
-
-# Check the status
-sudo systemctl status <service-name>
+# Show available AddressSanitizer runtime options
+ASAN_OPTIONS=help=1 ./my_program
 ```
 
 
 ## Verification
 
-Confirm everything is working by checking the status and logs:
+Confirm everything is working by checking the program output:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
-
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# A leak report starts like this
+==12345==ERROR: LeakSanitizer: detected memory leaks
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If sanitizer reports do not include source lines, compile with `-g` and run the program from the build host where the source files are available.
+- If a leak is not reported, make sure leak detection is enabled with `ASAN_OPTIONS=detect_leaks=1` and that the executable was linked with the sanitizer flags.
 
 ## Conclusion
 
-You have successfully completed the setup described in this guide. Remember to monitor the service and review logs regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
+You have successfully compiled and run a C program with AddressSanitizer and LeakSanitizer. Use these flags during development and testing to catch memory issues early. For production environments, build without sanitizer flags unless you have a specific diagnostic reason to keep them enabled.
