@@ -13,9 +13,9 @@ RHEL provides tlog for recording terminal sessions, and it integrates with SSSD 
 ## Installing tlog
 
 ```bash
-# Install tlog and the SSSD session recording module
+# Install tlog and SSSD
 
-sudo dnf install tlog -y
+sudo dnf install tlog sssd -y
 
 # Verify installation
 rpm -q tlog
@@ -45,6 +45,9 @@ groups = wheel, sysadmins
 # Set proper permissions on the configuration file
 sudo chmod 600 /etc/sssd/conf.d/sssd-session-recording.conf
 sudo chown root:root /etc/sssd/conf.d/sssd-session-recording.conf
+
+# Enable the SSSD authselect profile
+sudo authselect select sssd with-files-domain
 
 # Restart SSSD to apply the session recording config
 sudo systemctl restart sssd
@@ -91,13 +94,16 @@ exit
 
 ```bash
 # List recorded sessions from the journal
-sudo journalctl -o verbose TLOG_REC=* | grep TLOG_REC_SESSION
+sudo journalctl _COMM=tlog-rec-sessio
+
+# Find the recording ID
+sudo journalctl -o verbose _COMM=tlog-rec-sessio | grep TLOG_REC=
 
 # Play back a specific session
 sudo tlog-play -r journal -M TLOG_REC=<session-id>
 
-# List all recordings
-sudo journalctl --output=export TLOG_REC=* | grep -c TLOG_REC
+# Count recorded journal entries
+sudo journalctl _COMM=tlog-rec-sessio | grep -c tlog-rec-session
 ```
 
 ## Using Cockpit for Session Playback
@@ -114,4 +120,4 @@ sudo systemctl enable --now cockpit.socket
 # Access https://your-server:9090 and navigate to Session Recording
 ```
 
-Session recording with tlog provides a complete audit trail of what users typed and saw during their terminal sessions, meeting compliance requirements for PCI DSS, HIPAA, and SOX.
+Session recording with tlog provides an audit trail of terminal output and, if input logging is enabled, what users typed during their terminal sessions, helping support compliance requirements for PCI DSS, HIPAA, and SOX.
