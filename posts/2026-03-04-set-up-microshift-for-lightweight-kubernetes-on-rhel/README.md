@@ -8,11 +8,11 @@ Description: Install and configure MicroShift on RHEL to run a lightweight, sing
 
 ---
 
-MicroShift is a lightweight Kubernetes distribution from Red Hat designed for edge devices and small footprint environments. It runs on RHEL and provides core Kubernetes APIs with minimal resource usage.
+MicroShift is a lightweight Kubernetes distribution from Red Hat designed for edge devices and small footprint environments. It runs on supported RHEL releases and provides core Kubernetes APIs with minimal resource usage.
 
 ## Prerequisites
 
-You need RHEL with a valid subscription and at least 2 CPU cores and 2 GB of RAM. MicroShift also requires CRI-O as the container runtime.
+You need RHEL with an active MicroShift subscription, at least 2 CPU cores, 2 GB of RAM, and 10 GB of storage. MicroShift uses CRI-O as the container runtime, which is installed as a dependency. Install an `oc` binary that matches your MicroShift version before running the verification commands.
 
 ## Enable Required Repositories
 
@@ -20,8 +20,8 @@ You need RHEL with a valid subscription and at least 2 CPU cores and 2 GB of RAM
 # Enable the MicroShift repository
 
 sudo subscription-manager repos \
-  --enable rhocp-4.14-for-rhel-9-x86_64-rpms \
-  --enable fast-datapath-for-rhel-9-x86_64-rpms
+  --enable rhocp-4.21-for-rhel-9-$(uname -m)-rpms \
+  --enable fast-datapath-for-rhel-9-$(uname -m)-rpms
 
 # Verify repos are enabled
 sudo dnf repolist | grep -E "rhocp|fast-datapath"
@@ -31,9 +31,15 @@ sudo dnf repolist | grep -E "rhocp|fast-datapath"
 
 ```bash
 # Install MicroShift and its dependencies
-sudo dnf install -y microshift openshift-clients
+sudo dnf install -y microshift
 
 # MicroShift will automatically pull in CRI-O as a dependency
+
+# After downloading your Red Hat pull secret to $HOME/openshift-pull-secret,
+# copy it for CRI-O
+sudo cp $HOME/openshift-pull-secret /etc/crio/openshift-pull-secret
+sudo chown root:root /etc/crio/openshift-pull-secret
+sudo chmod 600 /etc/crio/openshift-pull-secret
 ```
 
 ## Configure Firewall Rules
@@ -42,8 +48,8 @@ sudo dnf install -y microshift openshift-clients
 # Open required ports for MicroShift
 sudo firewall-cmd --permanent --zone=trusted --add-source=10.42.0.0/16
 sudo firewall-cmd --permanent --zone=trusted --add-source=169.254.169.1
-sudo firewall-cmd --permanent --add-port=6443/tcp
-sudo firewall-cmd --permanent --add-port=30000-32767/tcp
+sudo firewall-cmd --permanent --zone=public --add-port=6443/tcp
+sudo firewall-cmd --permanent --zone=public --add-port=30000-32767/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -53,13 +59,13 @@ sudo firewall-cmd --reload
 # Enable and start MicroShift
 sudo systemctl enable --now microshift
 
-# Wait for MicroShift to initialize (may take a minute)
-sleep 30
+# Wait for MicroShift to initialize (the first start can take several minutes)
+sleep 120
 
 # Copy the kubeconfig to your user
 mkdir -p ~/.kube
-sudo cp /var/lib/microshift/resources/kubeadmin/kubeconfig ~/.kube/config
-sudo chown $(id -u):$(id -g) ~/.kube/config
+sudo cat /var/lib/microshift/resources/kubeadmin/kubeconfig > ~/.kube/config
+chmod go-r ~/.kube/config
 ```
 
 ## Verify the Cluster
@@ -89,4 +95,4 @@ ps aux | grep microshift
 free -h
 ```
 
-MicroShift typically uses around 500 MB of RAM at idle, making it suitable for edge devices and IoT gateways.
+Actual idle usage varies by MicroShift version, enabled components, and workload, so size the host above the minimum requirements for the applications you plan to run.
