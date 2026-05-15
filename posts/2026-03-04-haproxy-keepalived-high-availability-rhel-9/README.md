@@ -68,7 +68,7 @@ defaults
     timeout server  30s
 
 frontend http_front
-    bind *:80
+    bind 192.168.1.100:80
     default_backend web_servers
 
 backend web_servers
@@ -188,17 +188,17 @@ The key differences: `state BACKUP` and `priority 90` (lower than the primary's 
 
 ## Step 6 - Handle SELinux
 
-Keepalived needs permission to manage the VIP:
+If SELinux blocks HAProxy from connecting to backend ports such as 8080, allow HAProxy to connect to any TCP port:
 
 ```bash
-# Allow Keepalived to manage virtual IPs
+# Allow HAProxy to connect to backend ports
 sudo setsebool -P haproxy_connect_any on
 ```
 
-If Keepalived has issues, check for SELinux denials:
+If HAProxy or Keepalived has issues, check for SELinux denials:
 
 ```bash
-sudo ausearch -m avc -ts recent | grep keepalived
+sudo ausearch -m avc -ts recent | grep -E 'haproxy|keepalived'
 ```
 
 ## Step 7 - Open Firewall for VRRP
