@@ -49,23 +49,22 @@ sudo pcs property set stonith-enabled=true
 For an active-passive configuration, group all resources together so they all run on the same node:
 
 ```bash
-# Virtual IP
-
-sudo pcs resource create ClusterVIP ocf:heartbeat:IPaddr2 \
-    ip=192.168.1.100 cidr_netmask=24 \
-    op monitor interval=30s
-
 # Shared filesystem
 sudo pcs resource create SharedFS ocf:heartbeat:Filesystem \
     device=/dev/sdb1 directory=/mnt/data fstype=xfs \
     op monitor interval=20s
+
+# Virtual IP
+sudo pcs resource create ClusterVIP ocf:heartbeat:IPaddr2 \
+    ip=192.168.1.100 cidr_netmask=24 \
+    op monitor interval=30s
 
 # Application service
 sudo pcs resource create AppService systemd:myapp \
     op monitor interval=30s
 
 # Group them together
-sudo pcs resource group add AppGroup ClusterVIP SharedFS AppService
+sudo pcs resource group add AppGroup SharedFS ClusterVIP AppService
 ```
 
 ## Step 4: Configure Resource Stickiness
@@ -91,8 +90,8 @@ Node List:
   * Online: [ node1 node2 ]
 
 Resource Group: AppGroup:
-  * ClusterVIP  (ocf:heartbeat:IPaddr2):    Started node1
   * SharedFS    (ocf:heartbeat:Filesystem):  Started node1
+  * ClusterVIP  (ocf:heartbeat:IPaddr2):    Started node1
   * AppService  (systemd:myapp):             Started node1
 ```
 
@@ -137,7 +136,7 @@ Set how many failures trigger a move:
 sudo pcs resource meta AppService migration-threshold=3 failure-timeout=120s
 ```
 
-After 3 failures within 120 seconds, the resource moves to the other node.
+After 3 failures before the failure count expires, the resource moves to the other node. The `failure-timeout` value controls when Pacemaker expires the failure count if there are no new failures.
 
 ## Monitoring Active-Passive Status
 
@@ -147,7 +146,7 @@ Check which node is active:
 sudo pcs resource status
 ```
 
-Check failover history:
+Check current failure counts:
 
 ```bash
 sudo pcs resource failcount show
