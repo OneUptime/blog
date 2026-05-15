@@ -13,9 +13,12 @@ fwupd is a daemon and command-line tool that manages firmware updates for hardwa
 ## Install fwupd
 
 ```bash
-# Install fwupd (often pre-installed on RHEL)
+# Install fwupd (often pre-installed on RHEL 8 and later)
 
 sudo dnf install -y fwupd
+
+# On RHEL 7, use yum instead
+# sudo yum install -y fwupd
 
 # Start the service if it is not already running
 sudo systemctl start fwupd
