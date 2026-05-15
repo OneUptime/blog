@@ -12,7 +12,7 @@ While the `flux bootstrap` command is the recommended way to install Flux CD, th
 
 ## Prerequisites
 
-- A running Kubernetes cluster supported by your Flux version (current Flux v2.8 documentation lists Kubernetes v1.33 or later)
+- A running Kubernetes cluster supported by your Flux version (current Flux v2.8 documentation lists Kubernetes v1.33 or later, with v1.34 requiring at least v1.34.1)
 - `kubectl` configured to access your cluster
 - Helm v3.10 or later installed
 - (Optional) Flux CLI for verification and management
@@ -166,7 +166,7 @@ helm install flux2 fluxcd-community/flux2 \
 kubectl get pods -n flux-system
 ```
 
-All controllers should reach the Running state within a minute.
+All enabled controllers should reach the Running state within a minute.
 
 ## Step 5: Verify with the Flux CLI
 
@@ -198,6 +198,8 @@ kubectl create secret generic fleet-infra-auth \
   --from-literal=password=<git-token> \
   -n flux-system
 ```
+
+If you use HTTPS authentication, use an HTTPS repository URL in the GitRepository instead of the SSH URL shown below.
 
 Create the GitRepository source:
 
@@ -370,7 +372,7 @@ To remove Flux installed via Helm:
 # Uninstall the Helm release
 helm uninstall flux2 --namespace flux-system
 
-# Clean up CRDs (Helm does not remove CRDs automatically)
+# Clean up any remaining CRDs
 kubectl delete crd -l app.kubernetes.io/part-of=flux
 
 # Remove the namespace
