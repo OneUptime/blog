@@ -8,14 +8,14 @@ Description: Enable full disk encryption with LUKS2 during RHEL installation to 
 
 ---
 
-Full disk encryption (FDE) with LUKS2 ensures that all data on your RHEL system is encrypted at rest. If the physical disk is stolen or the system is decommissioned, the data remains inaccessible without the encryption passphrase. The easiest way to set this up is during the initial installation. This guide walks through the process.
+Full disk encryption (FDE) with LUKS2 ensures that your RHEL system data partitions are encrypted at rest. Boot partitions such as `/boot` and `/boot/efi` remain unencrypted so the system can start. If the physical disk is stolen or the system is decommissioned, the encrypted data remains inaccessible without the encryption passphrase. The easiest way to set this up is during the initial installation. This guide walks through the process.
 
 ## Why Encrypt During Installation?
 
 ```mermaid
 flowchart TD
     A[RHEL Installation] --> B{Enable Encryption?}
-    B -->|Yes - During Install| C[All partitions encrypted from the start]
+    B -->|Yes - During Install| C[System data partitions encrypted from the start]
     B -->|No - Post Install| D[Complex migration required later]
     C --> E[Automatic LUKS2 setup]
     C --> F[Proper partition layout]
@@ -140,7 +140,7 @@ logvol /home --fstype=xfs --name=home --vgname=rhel --size=10240
 logvol swap --fstype=swap --name=swap --vgname=rhel --size=4096
 ```
 
-For better security, avoid putting the passphrase in the Kickstart file. Instead, use a key file or prompt during installation.
+For better security, avoid putting the passphrase in the Kickstart file. Instead, omit `--passphrase` so the installer prompts during installation, or use Kickstart escrow options such as `--escrowcert` and `--backuppassphrase` to protect recovery material.
 
 ## Verifying Encryption After Installation
 
@@ -180,7 +180,7 @@ Typical results on a modern CPU show that AES-XTS-256 can achieve several GB/s t
 ### Add a Backup Passphrase
 
 ```bash
-# Add an additional passphrase (LUKS supports up to 8 key slots)
+# Add an additional passphrase (LUKS2 supports up to 32 key slots)
 sudo cryptsetup luksAddKey /dev/sda3
 ```
 
