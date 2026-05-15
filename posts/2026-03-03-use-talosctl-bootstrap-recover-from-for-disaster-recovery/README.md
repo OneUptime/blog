@@ -46,8 +46,8 @@ Before running the command, you need:
 
 ls -la ./etcd-backup.db
 
-# Optionally verify it with etcdctl
-etcdctl snapshot status ./etcd-backup.db --write-out=table
+# Optionally verify it with etcdutl
+etcdutl --write-out=table snapshot status ./etcd-backup.db
 
 # 2. A control plane node in a state ready for bootstrap
 # This means the node has been configured but not yet bootstrapped,
@@ -70,19 +70,22 @@ If the nodes are still running (but etcd is broken), reset them:
 # This wipes the EPHEMERAL partition (which contains etcd data)
 talosctl reset --nodes <cp-node-1> \
   --system-labels-to-wipe EPHEMERAL \
+  --reboot \
   --graceful=false
 
 talosctl reset --nodes <cp-node-2> \
   --system-labels-to-wipe EPHEMERAL \
+  --reboot \
   --graceful=false
 
 talosctl reset --nodes <cp-node-3> \
   --system-labels-to-wipe EPHEMERAL \
+  --reboot \
   --graceful=false
 
 # Wait for nodes to come back from reset
 sleep 30
-talosctl services --nodes <cp-node-1>
+talosctl service --nodes <cp-node-1>
 ```
 
 If you are provisioning entirely new nodes, apply the machine configurations first:
@@ -107,6 +110,9 @@ talosctl dmesg --nodes <cp-node-1-ip> --follow
 Choose one control plane node to be the initial bootstrap node:
 
 ```bash
+# Confirm etcd is waiting for bootstrap before recovery
+talosctl service etcd --nodes <cp-node-1>
+
 # Bootstrap from the etcd snapshot
 talosctl bootstrap --nodes <cp-node-1> \
   --recover-from ./etcd-backup.db
@@ -123,11 +129,11 @@ This command will:
 
 ```bash
 # Watch the bootstrap progress
-talosctl services --nodes <cp-node-1>
+talosctl service --nodes <cp-node-1>
 
 # Wait for etcd to be running
 # You should see etcd in the "Running" state
-talosctl services --nodes <cp-node-1> | grep etcd
+talosctl service etcd --nodes <cp-node-1>
 
 # Check etcd status - initially only one member
 talosctl etcd status --nodes <cp-node-1>
@@ -146,8 +152,8 @@ The other control plane nodes should detect that the cluster has been bootstrapp
 watch -n 5 "talosctl etcd members --nodes <cp-node-1>"
 
 # Check if the other nodes' etcd services are running
-talosctl services --nodes <cp-node-2> | grep etcd
-talosctl services --nodes <cp-node-3> | grep etcd
+talosctl service etcd --nodes <cp-node-2>
+talosctl service etcd --nodes <cp-node-3>
 
 # Once all three members appear, verify health
 talosctl etcd status --nodes <cp-node-1>
@@ -190,9 +196,9 @@ kubectl get services --all-namespaces
 talosctl version --nodes <cp-node-1>
 
 # Verify the snapshot file is not corrupted
-etcdctl snapshot status ./etcd-backup.db
+etcdutl --write-out=table snapshot status ./etcd-backup.db
 
-# Try again - the command is idempotent
+# Try again only if the previous attempt failed before bootstrap completed
 talosctl bootstrap --nodes <cp-node-1> \
   --recover-from ./etcd-backup.db
 ```
@@ -245,7 +251,7 @@ Practice makes perfect. Test `bootstrap --recover-from` regularly:
 talosctl etcd snapshot ./test-snapshot.db --nodes <staging-cp>
 
 # 2. Destroy the staging cluster (or a separate test cluster)
-talosctl reset --nodes <test-cp-1> --system-labels-to-wipe EPHEMERAL --graceful=false
+talosctl reset --nodes <test-cp-1> --system-labels-to-wipe EPHEMERAL --reboot --graceful=false
 
 # 3. Recover from the snapshot
 talosctl bootstrap --nodes <test-cp-1> --recover-from ./test-snapshot.db
@@ -278,6 +284,7 @@ for node in "${CP_NODES[@]}"; do
     echo "Resetting ${node}..."
     talosctl reset --nodes ${node} \
       --system-labels-to-wipe EPHEMERAL \
+      --reboot \
       --graceful=false || true
 done
 
