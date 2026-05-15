@@ -16,6 +16,7 @@ You need:
 
 - RHEL with root or sudo access
 - Envoy proxy installed (version 1.28 or newer)
+- Go installed if you build the rate limit service from source
 - Basic familiarity with Envoy configuration
 
 Install Envoy if you have not already:
@@ -39,7 +40,7 @@ podman pull docker.io/envoyproxy/envoy:v1.29-latest
 Envoy supports two rate limiting mechanisms:
 
 - **Local rate limiting** - Each Envoy instance enforces limits independently using a token bucket algorithm. Simple to set up but limits are per-instance, not global.
-- **Global rate limiting** - Envoy calls an external rate limit service (like Lyft's ratelimit) to make decisions. Limits are shared across all Envoy instances.
+- **Global rate limiting** - Envoy calls an external rate limit service (like the Envoy reference ratelimit service) to make decisions. Limits are shared across all Envoy instances.
 
 ## Configuring Local Rate Limiting
 
@@ -47,6 +48,12 @@ Local rate limiting is the simplest approach. Add the `envoy.filters.http.local_
 
 ```yaml
 # envoy-local-ratelimit.yaml
+admin:
+  address:
+    socket_address:
+      address: 127.0.0.1
+      port_value: 8001
+
 static_resources:
   listeners:
   - name: main
@@ -113,7 +120,7 @@ static_resources:
                 port_value: 9090
 ```
 
-This configuration allows 100 requests per 60-second window per Envoy instance.
+This configuration refills 100 tokens every 60 seconds per Envoy instance.
 
 ## Per-Route Local Rate Limiting
 
@@ -164,7 +171,7 @@ Create a rate limit configuration:
 
 ```bash
 # Create the rate limit config directory
-mkdir -p /etc/ratelimit/config
+sudo mkdir -p /etc/ratelimit/config
 ```
 
 ```yaml
@@ -197,16 +204,16 @@ sudo systemctl enable --now redis
 
 ```bash
 # Build and run the rate limit service
-cd ratelimit
-go build -o /usr/local/bin/ratelimit ./src/service_cmd/main.go
+sudo go build -o /usr/local/bin/ratelimit ./src/service_cmd/main.go
 ```
 
 ```bash
 # Start the rate limit service
 REDIS_SOCKET_TYPE=tcp \
 REDIS_URL=127.0.0.1:6379 \
-RUNTIME_ROOT=/etc/ratelimit \
-RUNTIME_SUBDIRECTORY=config \
+RUNTIME_ROOT=/etc \
+RUNTIME_SUBDIRECTORY=ratelimit \
+RUNTIME_APPDIRECTORY=config \
 LOG_LEVEL=debug \
 /usr/local/bin/ratelimit
 ```
@@ -243,13 +250,13 @@ routes:
     prefix: "/api"
   route:
     cluster: api_service
-    rate_limits:
-    - actions:
-      - remote_address: {}
-    - actions:
-      - request_headers:
-          header_name: ":path"
-          descriptor_key: "path"
+  rate_limits:
+  - actions:
+    - remote_address: {}
+  - actions:
+    - generic_key:
+        descriptor_key: "path"
+        descriptor_value: "/api"
 ```
 
 Add the rate limit cluster:
@@ -259,7 +266,11 @@ clusters:
 - name: rate_limit_cluster
   type: STRICT_DNS
   connect_timeout: 1s
-  http2_protocol_options: {}
+  typed_extension_protocol_options:
+    envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+      "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+      explicit_http_config:
+        http2_protocol_options: {}
   load_assignment:
     cluster_name: rate_limit_cluster
     endpoints:
@@ -295,9 +306,9 @@ curl -s http://localhost:8001/stats | grep ratelimit
 
 Key metrics include:
 
-- `http.ingress_http.http_local_rate_limiter.ok` - requests that passed the limit
-- `http.ingress_http.http_local_rate_limiter.rate_limited` - requests that were rejected
-- `ratelimit.production.over_limit` - global rate limit rejections
+- `http_local_rate_limiter.http_local_rate_limit.ok` - requests that passed the local limit
+- `http_local_rate_limiter.http_local_rate_limit.rate_limited` - requests without an available local token
+- `cluster.api_service.ratelimit.over_limit` - global rate limit rejections for the routed cluster
 
 ## Conclusion
 
