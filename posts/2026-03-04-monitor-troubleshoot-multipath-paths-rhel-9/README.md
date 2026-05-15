@@ -138,13 +138,13 @@ sudo multipathd reinstate path sdb
 sudo multipathd reconfigure
 ```
 
-### Force a Path Check
+### Verify Path Checker Status
 
 ```bash
-# Check all paths now
+# Show current path checker state
 sudo multipathd show paths
 
-# Force a path recheck
+# Reload configuration and changed multipath maps
 sudo multipathd reconfigure
 ```
 
@@ -170,7 +170,7 @@ sudo multipath -v3 /dev/sdb 2>&1 | head -30
 # Check if the device is blacklisted
 sudo multipathd show blacklist
 
-# Force multipath to pick up the device
+# Add the device WWID and ask multipathd to monitor the path
 sudo multipath -a /dev/sdb
 sudo multipathd add path sdb
 ```
@@ -194,8 +194,9 @@ Adjust the `marginal_path_*` settings to handle flapping:
 ```bash
 defaults {
     marginal_path_double_failed_time 10
-    marginal_path_err_sample_time 30
+    marginal_path_err_sample_time 180
     marginal_path_err_rate_threshold 5
+    marginal_path_err_recheck_gap_time 300
 }
 ```
 
