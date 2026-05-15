@@ -24,10 +24,10 @@ Fluentd can be installed and configured on RHEL to provide robust functionality 
 sudo dnf update -y
 
 # Install the required packages
-sudo dnf install -y <package-name>
+curl -fsSL https://fluentd.cdn.cncf.io/sh/install-redhat-fluent-package6-lts.sh | sudo sh
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+This installs the `fluent-package` RPM package and configures the Fluentd RPM repository.
 
 ## Step 2: Configure the Service
 
@@ -35,27 +35,39 @@ Edit the configuration file to match your environment:
 
 ```bash
 # Open the configuration file
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/fluent/fluentd.conf
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include sources, filters, matches, and system-wide logging options. For example, the default RPM configuration accepts HTTP events and writes them to Fluentd's log output:
+
+```apache
+<source>
+  @type http
+  port 8888
+  bind 0.0.0.0
+</source>
+
+<match debug.**>
+  @type stdout
+</match>
+```
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart fluentd.service
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable fluentd.service
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start fluentd.service
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status fluentd.service
 ```
 
 
@@ -65,16 +77,19 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status fluentd.service
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# Send a sample log event to the default HTTP input
+curl -X POST -d 'json={"json":"message"}' http://localhost:8888/debug.test
+
+# Review recent Fluentd logs
+sudo tail -n 20 /var/log/fluent/fluentd.log
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u fluentd.service -e --no-pager` and `/var/log/fluent/fluentd.log`.
+- Ensure the Fluentd package is installed: `rpm -q fluent-package`.
 
 ## Conclusion
 
