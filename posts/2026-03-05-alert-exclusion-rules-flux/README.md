@@ -23,7 +23,7 @@ The `spec.exclusionList` field accepts an array of regex pattern strings. When a
 
 ## Step 1: Add a Simple Exclusion Rule
 
-Start by excluding the most common noisy event, which is a reconciliation that finds no changes.
+Start by excluding a common noisy source event, which is a Git repository reconciliation that finds no changes.
 
 ```yaml
 # Alert with a single exclusion rule
@@ -38,12 +38,12 @@ spec:
     name: slack-provider
   eventSeverity: info
   eventSources:
-    - kind: Kustomization
+    - kind: GitRepository
       name: "*"
       namespace: flux-system
-  # Suppress no-change reconciliation events
+  # Suppress no-change source reconciliation events
   exclusionList:
-    - "^Reconciliation finished.*no changes$"
+    - ".*no changes since last reconcili?ation: observed revision.*"
 ```
 
 Apply it.
@@ -79,10 +79,8 @@ spec:
       name: "*"
       namespace: flux-system
   exclusionList:
-    # No-change reconciliation events
-    - "^Reconciliation finished.*no changes$"
-    # Source artifact unchanged
-    - "^stored artifact.*same revision$"
+    # Source revision unchanged
+    - ".*no changes since last reconcili?ation: observed revision.*"
     - "^artifact up-to-date.*"
     # Progress and waiting messages
     - ".*is not ready$"
@@ -180,7 +178,7 @@ Verify that your exclusion rules are working as expected.
 # Force a reconciliation to generate events
 flux reconcile kustomization flux-system --with-source
 
-# Watch the notification controller logs to see which events are excluded
+# Watch the notification controller logs while testing
 kubectl logs -n flux-system deploy/notification-controller -f
 
 # View the full alert spec to confirm exclusion rules
@@ -199,13 +197,13 @@ import (
 
 func TestFluxExclusionPatterns(t *testing.T) {
 	patterns := []string{
-		"^Reconciliation finished.*no changes$",
-		"^stored artifact.*same revision$",
+		".*no changes since last reconcili?ation: observed revision.*",
+		"^artifact up-to-date.*",
 	}
 	messages := []string{
-		"Reconciliation finished, no changes",
+		"no changes since last reconcilation: observed revision 'main@sha1:abc123'",
 		"Reconciliation failed",
-		"stored artifact for revision main@sha1:abc123, same revision",
+		"artifact up-to-date with remote revision: '48.3.3'",
 	}
 
 	for _, msg := range messages {
@@ -243,8 +241,7 @@ kubectl get events -n flux-system -o json | jq -r '.items[].message' | sort | un
 
 | Pattern | Purpose |
 |---|---|
-| `^Reconciliation finished.*no changes$` | No-change reconciliations |
-| `^stored artifact.*same revision$` | Unchanged source artifacts |
+| `.*no changes since last reconcili?ation: observed revision.*` | Unchanged Git source revision |
 | `^artifact up-to-date.*` | Source already current |
 | `.*is not ready$` | Resources not yet ready |
 | `.*waiting for.*` | Waiting on dependencies |
