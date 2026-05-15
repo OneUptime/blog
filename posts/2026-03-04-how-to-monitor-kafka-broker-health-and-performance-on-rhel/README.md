@@ -64,7 +64,7 @@ tail -f /opt/kafka/logs/server.log
 
 ```bash
 # Set JMX port in the Kafka environment
-# Add to /etc/systemd/system/kafka.service or kafka startup
+# Add to the Kafka startup environment, or use Environment= entries in systemd
 export KAFKA_JMX_OPTS="-Dcom.sun.management.jmxremote \
   -Dcom.sun.management.jmxremote.port=9999 \
   -Dcom.sun.management.jmxremote.authenticate=false \
@@ -88,7 +88,8 @@ export JMX_PORT=9999
 
 # Request latency
 # kafka.network:type=RequestMetrics,name=TotalTimeMs,request=Produce
-# kafka.network:type=RequestMetrics,name=TotalTimeMs,request=Fetch
+# kafka.network:type=RequestMetrics,name=TotalTimeMs,request=FetchConsumer
+# kafka.network:type=RequestMetrics,name=TotalTimeMs,request=FetchFollower
 ```
 
 ## Log Directory Health
@@ -107,7 +108,7 @@ du -sh /var/kafka-logs/*
 
 ```bash
 # Download the JMX Exporter agent
-curl -L https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.20.0/jmx_prometheus_javaagent-0.20.0.jar \
+curl -L https://github.com/prometheus/jmx_exporter/releases/download/1.5.0/jmx_prometheus_javaagent-1.5.0.jar \
   -o /opt/kafka/jmx_prometheus_javaagent.jar
 
 # Add to KAFKA_OPTS in the systemd service
