@@ -41,7 +41,7 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-The `%i` specifier is replaced with the instance name at runtime.
+The `%i` specifier is replaced with the escaped instance name at runtime.
 
 ## Step 2: Create Instance Configurations
 
@@ -86,12 +86,12 @@ systemctl stop 'myapp@*.service'
 
 | Specifier | Description |
 |-----------|-------------|
-| `%i` | Instance name (unescaped) |
-| `%I` | Instance name (escaped) |
+| `%i` | Instance name (escaped) |
+| `%I` | Instance name (unescaped) |
 | `%n` | Full unit name |
 | `%N` | Unescaped full unit name |
-| `%p` | Prefix name (before @) |
-| `%f` | Instance name as a path |
+| `%p` | Prefix name (escaped) |
+| `%f` | Unescaped filename or instance path |
 
 ## Practical Example: Multi-Port Web Server
 
