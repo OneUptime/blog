@@ -77,16 +77,18 @@ Edit `templates/deployment.yaml` to add environment variables:
 
 ```yaml
 spec:
-  containers:
-    - name: {{ .Chart.Name }}
-      image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-      ports:
-        - containerPort: {{ .Values.service.port }}
-      env:
-        {{- range .Values.env }}
-        - name: {{ .name }}
-          value: {{ .value | quote }}
-        {{- end }}
+  template:
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          ports:
+            - containerPort: {{ .Values.service.port }}
+          env:
+            {{- range .Values.env }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
 ```
 
 ## Step 4: Validate the Chart
