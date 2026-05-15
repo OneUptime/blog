@@ -27,10 +27,10 @@ flowchart TD
 
 ## Prerequisites
 
-Make sure you have the iptables-nft package installed:
+Make sure you have the nftables and iptables packages installed:
 
 ```bash
-dnf install iptables-nft -y
+dnf install nftables iptables -y
 ```
 
 Verify the translate tool is available:
@@ -91,13 +91,14 @@ Notice how the tool maps iptables concepts directly:
 - Connection tracking (`-m state --state`) becomes `ct state`
 - Interface matching (`-i lo`) becomes `iifname "lo"`
 
-## Handling Translation Warnings
+## Handling Untranslated Rules
 
-Sometimes the tool will print warnings to stderr when it encounters rules it can't translate directly. Capture these:
+Sometimes the tool will insert commented rules in the output when it encounters rules it can't translate directly. Capture stderr for syntax errors, and check the translated file for commented rules:
 
 ```bash
 iptables-restore-translate -f /root/iptables-v4.rules > /root/nft-v4.nft 2> /root/translate-warnings.log
 cat /root/translate-warnings.log
+grep -n "^#.*-A" /root/nft-v4.nft
 ```
 
 Common issues include:
@@ -109,7 +110,7 @@ Common issues include:
 
 Always review the translated file before applying it. Look for any lines that seem off or incomplete.
 
-Open the file and check for issues:
+Open the file and check for other comments or issues:
 
 ```bash
 grep -n "# " /root/nft-v4.nft
@@ -216,7 +217,7 @@ systemctl restart nftables
 
 If you have a very large ruleset, consider breaking the translation into logical chunks. You can split your iptables-save output by table (filter, nat, mangle) and translate each one separately. This makes review and debugging much easier.
 
-Count rules per table:
+Count total rules:
 
 ```bash
 grep -c "^-A" /root/iptables-v4.rules
