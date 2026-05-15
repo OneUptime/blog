@@ -20,7 +20,7 @@ The GitOps Toolkit was designed with these principles:
 
 ## The Controllers
 
-Flux CD consists of four core controllers and two optional image automation controllers:
+A default Flux CD installation consists of four controllers. Extra components can be added for features such as image automation and source composition:
 
 ```mermaid
 graph TB
@@ -90,13 +90,14 @@ spec:
     spec:
       containers:
         - name: manager
-          image: ghcr.io/fluxcd/source-controller
+          image: ghcr.io/fluxcd/source-controller:v1.8.2
           args:
             - --storage-path=/data      # Where artifacts are stored
             - --storage-adv-addr=source-controller.flux-system.svc.cluster.local.
           ports:
             - containerPort: 9090       # HTTP server for artifact downloads
-            - containerPort: 8080       # Health and metrics
+            - containerPort: 8080       # Metrics
+            - containerPort: 9440       # Health checks
 ```
 
 The source-controller runs an internal HTTP server that serves artifact tarballs to other controllers. This is how the kustomize-controller and helm-controller access the fetched content without needing their own Git or Helm clients.
@@ -210,7 +211,7 @@ The notification-controller handles both inbound and outbound events. It watches
 
 ```yaml
 # Provider for Slack notifications
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -222,7 +223,7 @@ spec:
     name: slack-webhook-url
 ---
 # Alert that sends failure events to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-failures
@@ -347,11 +348,11 @@ graph LR
     RC -->|triggers| GR
 ```
 
-Each controller operates independently, communicating through the Kubernetes API. The source-controller produces artifacts, the kustomize-controller and helm-controller consume them, and the notification-controller observes the whole process and bridges it to external systems.
+Each controller operates independently, communicating through the Kubernetes API and the artifact URLs published by source-controller. The source-controller produces artifacts, the kustomize-controller and helm-controller consume them, and the notification-controller observes the whole process and bridges it to external systems.
 
 ## Deployment Topology
 
-All Flux controllers run in the `flux-system` namespace by default. They are standard Kubernetes Deployments with leader election enabled for high availability.
+All Flux controllers run in the `flux-system` namespace by default. They are standard Kubernetes Deployments that support leader election, which lets you scale controller replicas for high availability.
 
 ```bash
 # View all Flux controllers running in the cluster
@@ -367,4 +368,4 @@ kubectl get deployments -n flux-system
 
 ## Summary
 
-The Flux CD GitOps Toolkit is a modular architecture of specialized Kubernetes controllers. The source-controller acquires artifacts from external sources, the kustomize-controller and helm-controller apply them to the cluster, and the notification-controller handles event routing. Each controller manages its own set of custom resources and communicates with others through the Kubernetes API. This composable design means you can use only the controllers you need and extend the system with custom controllers that follow the same patterns.
+The Flux CD GitOps Toolkit is a modular architecture of specialized Kubernetes controllers. The source-controller acquires artifacts from external sources, the kustomize-controller and helm-controller apply them to the cluster, and the notification-controller handles event routing. Each controller manages its own set of custom resources and coordinates through Kubernetes API state and source artifacts. This composable design means you can use only the controllers you need and extend the system with custom controllers that follow the same patterns.
