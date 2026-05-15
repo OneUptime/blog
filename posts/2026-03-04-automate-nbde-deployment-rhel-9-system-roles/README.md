@@ -17,15 +17,15 @@ On your Ansible control node:
 ```bash
 # Install the system roles package
 
-sudo dnf install rhel-system-roles -y
+sudo dnf install -y rhel-system-roles ansible-core
 
 # Verify the NBDE roles are available
-ls /usr/share/ansible/roles/ | grep nbde
+ls /usr/share/ansible/collections/ansible_collections/redhat/rhel_system_roles/roles/ | grep nbde
 ```
 
 You should see two roles:
-- `rhel-system-roles.nbde_server` - for Tang server deployment
-- `rhel-system-roles.nbde_client` - for Clevis client configuration
+- `redhat.rhel_system_roles.nbde_server` - for Tang server deployment
+- `redhat.rhel_system_roles.nbde_client` - for Clevis client configuration
 
 ## Setting Up the Inventory
 
@@ -59,7 +59,7 @@ Create a playbook for the Tang server deployment:
 - name: Deploy Tang NBDE servers
   hosts: tang_servers
   roles:
-    - role: rhel-system-roles.nbde_server
+    - role: redhat.rhel_system_roles.nbde_server
       vars:
         nbde_server_manage_firewall: true
         nbde_server_manage_selinux: true
@@ -83,7 +83,7 @@ The client playbook needs to know which LUKS devices to bind and which Tang serv
 - name: Configure NBDE clients
   hosts: nbde_clients
   roles:
-    - role: rhel-system-roles.nbde_client
+    - role: redhat.rhel_system_roles.nbde_client
       vars:
         nbde_client_bindings:
           - device: /dev/sda3
@@ -123,15 +123,15 @@ Here is a combined playbook that deploys both Tang and Clevis:
 - name: Deploy Tang servers
   hosts: tang_servers
   roles:
-    - role: rhel-system-roles.nbde_server
+    - role: redhat.rhel_system_roles.nbde_server
       vars:
         nbde_server_manage_firewall: true
         nbde_server_manage_selinux: true
 
-- name: Configure Clevis clients with SSS
+- name: Configure Clevis clients
   hosts: nbde_clients
   roles:
-    - role: rhel-system-roles.nbde_client
+    - role: redhat.rhel_system_roles.nbde_client
       vars:
         nbde_client_bindings:
           - device: /dev/sda3
@@ -210,17 +210,15 @@ Automate key rotation on Tang servers:
 # tang-key-rotation.yml - Rotate Tang keys
 - name: Rotate Tang server keys
   hosts: tang_servers
-  tasks:
-    - name: Generate new Tang keys
-      command: /usr/libexec/tangd-keygen /var/db/tang
-      notify: restart tangd
-
-  handlers:
-    - name: restart tangd
-      systemd:
-        name: tangd.socket
-        state: restarted
+  roles:
+    - role: redhat.rhel_system_roles.nbde_server
+      vars:
+        nbde_server_rotate_keys: true
+        nbde_server_manage_firewall: true
+        nbde_server_manage_selinux: true
 ```
+
+This generates new Tang keys and hides the old keys from advertisement. Existing clients that are still bound to old keys can continue to unlock until you remove those old keys, so update client bindings before deleting retired Tang keys.
 
 ## Troubleshooting Ansible NBDE Deployment
 
