@@ -26,12 +26,12 @@ NetworkManager integration means:
 - Server's public key and endpoint information
 - A pre-shared key (optional but recommended)
 
+On RHEL 9, WireGuard is provided as a Technology Preview, so check Red Hat's support scope before using it in production.
+
 ## Installing WireGuard Tools
 
 ```bash
-# Install EPEL and WireGuard tools
-
-sudo dnf install -y epel-release
+# Install WireGuard tools
 sudo dnf install -y wireguard-tools
 ```
 
@@ -83,31 +83,26 @@ sudo nmcli connection modify "wg-vpn" \
 
 ## Adding the Server as a Peer
 
-This is where it gets a bit different from the wg-quick approach. You need to import a peer configuration or edit the connection file directly.
+This is where it gets a bit different from the wg-quick approach. Add the server peer with the `wireguard.peers` property.
 
 ```bash
-# The nmcli peer syntax requires editing the connection file
-# Find the connection file
-sudo ls /etc/NetworkManager/system-connections/ | grep wg
+# Add the server as a peer
+sudo nmcli connection modify "wg-vpn" \
+    wireguard.peers "SERVER_PUBLIC_KEY_HERE endpoint=YOUR_SERVER_IP:51820 allowed-ips=0.0.0.0/0 persistent-keepalive=25"
 ```
 
-Edit the connection file to add the peer section:
+If your server uses a pre-shared key, include it in the same peer definition:
 
 ```bash
-sudo tee -a /etc/NetworkManager/system-connections/wg-vpn.nmconnection > /dev/null << 'EOF'
-
-[wireguard-peer.SERVER_PUBLIC_KEY_HERE]
-endpoint=YOUR_SERVER_IP:51820
-allowed-ips=0.0.0.0/0;
-persistent-keepalive=25
-EOF
+sudo nmcli connection modify "wg-vpn" \
+    wireguard.peers "SERVER_PUBLIC_KEY_HERE endpoint=YOUR_SERVER_IP:51820 allowed-ips=0.0.0.0/0 persistent-keepalive=25 preshared-key=PRESHARED_KEY_HERE"
 ```
 
-Replace `SERVER_PUBLIC_KEY_HERE` with the actual server public key and `YOUR_SERVER_IP` with the server's address.
+Replace `SERVER_PUBLIC_KEY_HERE` with the actual server public key and `YOUR_SERVER_IP` with the server's address. The `allowed-ips=0.0.0.0/0` setting routes IPv4 traffic through the tunnel; use narrower prefixes if you only want routes for specific private networks.
 
 ```bash
-# Reload NetworkManager to pick up the changes
-sudo nmcli connection reload
+# Review the configured peer
+nmcli connection show "wg-vpn" | grep wireguard.peers
 ```
 
 ## Alternative: Import from a wg-quick Config
@@ -175,7 +170,7 @@ sudo nmcli connection modify "wg-vpn" \
     ipv4.dns-priority -100
 ```
 
-The negative priority means this connection's DNS will be preferred for matching domains.
+The negative priority means this connection's DNS will be preferred for matching domains. For split DNS routing, NetworkManager must be using a DNS plugin that supports conditional forwarding, such as `dnsmasq` or `systemd-resolved`.
 
 ## Verifying the Connection
 
@@ -234,7 +229,7 @@ sudo wg show wg0
 ip route show table all | grep wg0
 
 # Check DNS
-resolvectl status wg0
+nmcli device show wg0 | grep DNS
 ```
 
 **DNS not working through the tunnel:**
