@@ -128,13 +128,13 @@ Create the exports template:
     nfs_mounts:
       - src: "{{ nfs_server }}:/data/shared"
         path: /mnt/shared
-        opts: "rw,sync,hard,intr,timeo=600,retrans=2"
+        opts: "rw,sync,hard,timeo=600,retrans=2"
       - src: "{{ nfs_server }}:/data/home"
         path: /mnt/home
-        opts: "rw,sync,hard,intr"
+        opts: "rw,sync,hard"
       - src: "{{ nfs_server }}:/data/readonly"
         path: /mnt/readonly
-        opts: "ro,sync,hard,intr"
+        opts: "ro,sync,hard"
 
   tasks:
     - name: Install NFS client packages
