@@ -13,25 +13,25 @@ Sonatype Nexus Repository Manager is a universal artifact repository that suppor
 ## Prerequisites
 
 ```bash
-# Install Java 8 or 11 (required by Nexus)
+# The current Linux archive includes the recommended JVM.
+# Install basic tools if they are not already present.
 
-sudo dnf install -y java-11-openjdk java-11-openjdk-devel
-java -version
+sudo dnf install -y curl tar gzip
 ```
 
 ## Installing Nexus
 
 ```bash
 # Download Nexus
-curl -L https://download.sonatype.com/nexus/3/nexus-3.68.0-04-unix.tar.gz \
+curl -L https://download.sonatype.com/nexus/3/nexus-3.92.2-01-linux-x86_64.tar.gz \
   -o /tmp/nexus.tar.gz
 
 # Extract to /opt
 sudo tar xzf /tmp/nexus.tar.gz -C /opt/
-sudo mv /opt/nexus-3.68.0-04 /opt/nexus
+sudo mv /opt/nexus-3.92.2-01 /opt/nexus
 
 # Create a nexus user
-sudo useradd -r -s /sbin/nologin nexus
+sudo useradd -r -s /bin/bash nexus
 sudo chown -R nexus:nexus /opt/nexus /opt/sonatype-work
 ```
 
