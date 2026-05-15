@@ -28,7 +28,7 @@ sudo cp /etc/default/grub /backup/grub/default-grub.bak
 # Backup custom GRUB menu entries
 sudo cp -r /etc/grub.d/ /backup/grub/grub.d.bak/
 
-# For UEFI systems, also backup the EFI GRUB config
+# For RHEL 7/8 UEFI systems, also backup the EFI GRUB config
 if [ -d /boot/efi/EFI/redhat ]; then
   sudo cp /boot/efi/EFI/redhat/grub.cfg /backup/grub/efi-grub.cfg.bak
 fi
@@ -60,7 +60,7 @@ sudo cp -r /backup/grub/grub.d.bak/* /etc/grub.d/
 # Regenerate grub.cfg from the restored files
 sudo grub2-mkconfig -o /boot/grub2/grub.cfg
 
-# For UEFI systems
+# For RHEL 7/8 UEFI systems
 sudo grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
 ```
 
@@ -70,10 +70,11 @@ If the system will not boot, use RHEL rescue media:
 
 ```bash
 # Boot from RHEL installation media, choose Troubleshooting > Rescue
-# The rescue system mounts your root at /mnt/sysimage
+# The rescue system mounts your root at /mnt/sysroot on RHEL 8+,
+# or /mnt/sysimage on RHEL 7
 
 # Chroot into the installed system
-chroot /mnt/sysimage
+chroot /mnt/sysroot
 
 # Reinstall GRUB to the boot disk (BIOS)
 grub2-install /dev/sda
@@ -92,5 +93,5 @@ Add a cron job to back up GRUB configuration weekly:
 
 ```bash
 # Add to root's crontab
-echo '0 3 * * 0 cp /boot/grub2/grub.cfg /backup/grub/grub.cfg.$(date +\%Y\%m\%d)' | sudo tee -a /var/spool/cron/root
+(sudo crontab -l 2>/dev/null; echo '0 3 * * 0 cp /boot/grub2/grub.cfg /backup/grub/grub.cfg.$(date +\%Y\%m\%d)') | sudo crontab -
 ```
