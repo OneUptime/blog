@@ -14,17 +14,19 @@ Cloud-init is the standard tool for automating the initial configuration of clou
 
 ```mermaid
 graph TB
-    A[Instance Boots] --> B[cloud-init runs]
+    A[Instance Boots] --> B[Generator Stage]
     B --> C[Local Stage]
     C --> D[Network Stage]
     D --> E[Config Stage]
     E --> F[Final Stage]
-    C --> C1[Configure network]
-    D --> D1[Set hostname]
-    E --> E1[Create users]
-    E --> E2[Write files]
+    C --> C1[Find local datasource]
+    C --> C2[Apply network configuration]
+    D --> D1[Run cloud_init_modules]
+    D --> D2[Set hostname, create users, write files]
+    E --> E1[Set timezone]
+    E --> E2[Prepare runcmd script]
     F --> F1[Install packages]
-    F --> F2[Run scripts]
+    F --> F2[Run user scripts and runcmd]
 ```
 
 ## Step 1: Basic Cloud-Init Configuration
