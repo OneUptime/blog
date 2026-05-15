@@ -24,15 +24,15 @@ The machine configuration is stored on the node itself. When you run `talosctl e
 talosctl edit mc --nodes <node-ip>
 ```
 
-This opens the full machine configuration in your default editor (set by the `EDITOR` environment variable). Make your changes, save the file, and close the editor. talosctl will validate and apply the changes.
+This opens the full machine configuration in your default editor (set by the `TALOS_EDITOR` or `EDITOR` environment variable). Make your changes, save the file, and close the editor. talosctl will validate and apply the changes.
 
 ## Setting Your Editor
 
-talosctl uses the `EDITOR` environment variable to determine which editor to open:
+talosctl uses the `TALOS_EDITOR` or `EDITOR` environment variable to determine which editor to open:
 
 ```bash
 # Use vim
-export EDITOR=vim
+export TALOS_EDITOR=vim
 talosctl edit mc --nodes <node-ip>
 
 # Use nano
@@ -44,7 +44,7 @@ export EDITOR="code --wait"
 talosctl edit mc --nodes <node-ip>
 ```
 
-If `EDITOR` is not set, talosctl defaults to `vi`.
+If neither `TALOS_EDITOR` nor `EDITOR` is set, talosctl defaults to `vi` on Linux.
 
 ## What You See in the Editor
 
@@ -79,7 +79,7 @@ cluster:
     # ... more cluster configuration
 ```
 
-You can modify any field in this document.
+You can modify any valid field in this document, though some changes may require a reboot or may be rejected when using no-reboot mode.
 
 ## Common Configuration Changes
 
@@ -179,6 +179,9 @@ talosctl edit mc --nodes <node-ip> --mode staged
 # Force a reboot after applying
 talosctl edit mc --nodes <node-ip> --mode reboot
 
+# Apply immediately, then automatically revert unless confirmed by another config update
+talosctl edit mc --nodes <node-ip> --mode try
+
 # Let Talos decide (default)
 talosctl edit mc --nodes <node-ip> --mode auto
 ```
@@ -198,16 +201,14 @@ With dry run, the editor still opens and you can make changes. But when you save
 
 ## Editing Configuration on Multiple Nodes
 
-The `talosctl edit mc` command targets one node at a time. For making the same change across multiple nodes, consider:
+The `talosctl edit mc` command can target multiple nodes when multiple IP addresses are specified. For making the same change across several nodes, you can use:
 
 ```bash
-# Edit each node individually
-talosctl edit mc --nodes 10.0.0.1
-talosctl edit mc --nodes 10.0.0.2
-talosctl edit mc --nodes 10.0.0.3
+# Edit multiple nodes
+talosctl edit mc --nodes 10.0.0.1,10.0.0.2,10.0.0.3
 ```
 
-For bulk changes, `talosctl patch mc` (covered in a separate guide) is more efficient than editing each node interactively.
+For bulk changes, `talosctl patch mc` (covered in a separate guide) is often more efficient than editing nodes interactively.
 
 ## Safety Considerations
 
@@ -245,7 +246,7 @@ Both commands update the machine configuration, but they serve different purpose
 | Interactive | Yes (opens editor) | No (takes a file) |
 | Fetches current config | Yes | No |
 | Best for | Quick, one-off changes | Scripted/automated changes |
-| Multiple nodes | One at a time | Can target multiple |
+| Multiple nodes | Can target multiple | Can target multiple |
 | CI/CD friendly | No | Yes |
 
 Use `edit mc` for interactive troubleshooting and quick fixes. Use `apply-config` for automated workflows and repeatable operations.
@@ -270,7 +271,7 @@ A typical workflow for making a configuration change:
 
 ```bash
 # Step 1: Back up the current configuration
-talosctl get machineconfig --nodes <node-ip> -o yaml > backup.yaml
+talosctl get machineconfig v1alpha1 --nodes <node-ip> -o jsonpath='{.spec}' > backup.yaml
 
 # Step 2: Dry run your changes
 talosctl edit mc --nodes <node-ip> --dry-run
