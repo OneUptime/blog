@@ -38,9 +38,9 @@ Check inode usage:
 df -i /data
 ```
 
-## Step 2: Monitor Filesystem Health with xfs_db
+## Step 2: Inspect Free Space with xfs_db
 
-The `xfs_db` tool provides low-level filesystem inspection. Run it on an unmounted filesystem or use the read-only mode:
+The `xfs_db` tool provides low-level filesystem inspection. It is useful for examining free space layout, but it is not a substitute for a consistency check with `xfs_repair -n` or health reporting with `xfs_spaceman`. Run it on an unmounted filesystem or use the read-only mode:
 
 ```bash
 sudo xfs_db -r /dev/vg_data/lv_data
@@ -113,19 +113,17 @@ A healthy filesystem has large contiguous free space regions. Many small free ex
 
 ## Step 5: Monitor XFS Statistics
 
-XFS maintains runtime statistics in `/proc/fs/xfs/stat`:
+XFS maintains runtime statistics in `/proc/fs/xfs/stat`, which is a compatibility path to the XFS statistics exported under `/sys/fs/xfs/` on RHEL:
 
 ```bash
 cat /proc/fs/xfs/stat
 ```
 
-Key metrics include:
+Key output lines include:
 
-- **xs_write_calls**: Number of write system calls
-- **xs_read_calls**: Number of read system calls
-- **xs_log_writes**: Number of log writes
-- **xs_allocx**: Number of extent allocations
-- **xs_freex**: Number of extent frees
+- **rw**: Write and read call counters
+- **log**: Log writes, log blocks, and related log activity counters
+- **extent_alloc**: Extent allocation and free counters, including allocated and freed blocks
 
 Monitor these over time to detect changes in workload patterns:
 
