@@ -36,6 +36,8 @@ Type=oneshot
 ExecStart=/usr/local/bin/process-uploads.sh
 ```
 
+Make sure `/usr/local/bin/process-uploads.sh` exists, is executable, and moves or removes each processed CSV file so the path unit does not immediately trigger again for the same file.
+
 ## Step 2: Create the Path Unit
 
 ```bash
@@ -60,10 +62,10 @@ WantedBy=multi-user.target
 | Directive | Triggers When |
 |-----------|---------------|
 | `PathExists` | The path exists |
-| `PathExistsGlob` | Any file matches the glob pattern |
-| `PathChanged` | The path is modified |
-| `PathModified` | The path is written to or attributes change |
-| `DirectoryNotEmpty` | A file appears in the directory |
+| `PathExistsGlob` | At least one file matches the glob pattern |
+| `PathChanged` | A watched file is closed after being written, or a watched directory changes |
+| `PathModified` | The path is written to, changed, or attributes change |
+| `DirectoryNotEmpty` | The directory contains at least one file |
 
 Example using `DirectoryNotEmpty`:
 
@@ -88,7 +90,7 @@ systemctl status process-upload.path
 ## Step 5: Test the Trigger
 
 ```bash
-touch /var/uploads/test.csv
+sudo touch /var/uploads/test.csv
 systemctl status process-upload.service
 journalctl -u process-upload.service
 ```
