@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, Pod, Linux
 
-Description: A practical guide to creating and managing Podman pods on RHEL, grouping containers that share network namespaces, storage, and lifecycle management.
+Description: A practical guide to creating and managing Podman pods on RHEL, grouping containers that share network namespaces, shared volume mounts, and lifecycle management.
 
 ---
 
-If you have worked with Kubernetes, you know what a pod is - a group of containers that share network and other namespaces. Podman brings this concept to standalone container management. Pods let you run tightly coupled containers that need to communicate over localhost, share storage, and be managed as a unit.
+If you have worked with Kubernetes, you know what a pod is - a group of containers that share network and other namespaces. Podman brings this concept to standalone container management. Pods let you run tightly coupled containers that need to communicate over localhost, mount the same volumes, and be managed as a unit.
 
 I use pods whenever I have a main application container plus sidecar containers like log shippers or monitoring agents.
 
@@ -66,14 +66,14 @@ podman run -d --pod my-pod --name app registry.access.redhat.com/ubi9/ubi-minima
 
 ## Add another container to the same pod
 ```bash
-podman run -d --pod my-pod --name sidecar registry.access.redhat.com/ubi9/ubi-minimal sleep infinity
+podman run -d --pod my-pod --name web docker.io/library/nginx:latest
 ```
 
 Both containers share the same network namespace, so they can communicate over localhost:
 
 ## Test localhost communication between containers in the pod
 ```bash
-podman exec app curl -s http://localhost:80
+podman run --rm --pod my-pod registry.access.redhat.com/ubi9/ubi curl -s http://localhost:80
 ```
 
 ## Practical Example: Web App with Database
@@ -116,9 +116,9 @@ podman pod ls
 podman pod inspect my-pod
 ```
 
-## View containers in a pod
+## View containers associated with pods
 ```bash
-podman pod ps
+podman ps -a --pod
 ```
 
 ## Stop all containers in a pod
@@ -223,7 +223,7 @@ This is great for prototyping on your local machine and then deploying to Kubern
 
 ## Pod Networking Details
 
-All containers in a pod share one IP address:
+All containers in a pod share one network namespace. With bridge networking, they share one IP address:
 
 ## Check the pod's IP address
 ```bash
@@ -238,15 +238,15 @@ By default, containers in a pod share the network but have separate PID namespac
 
 ## Create a pod with shared PID namespace
 ```bash
-podman pod create --name shared-pid --share pid,net --infra
+podman pod create --name shared-pid --share +pid
 ```
 
 ## Now containers can see each other's processes
 ```bash
-podman run -d --pod shared-pid --name app1 registry.access.redhat.com/ubi9/ubi-minimal sleep infinity
-podman run -d --pod shared-pid --name app2 registry.access.redhat.com/ubi9/ubi-minimal sleep infinity
+podman run -d --pod shared-pid --name app1 registry.access.redhat.com/ubi9/ubi sleep infinity
+podman run -d --pod shared-pid --name app2 registry.access.redhat.com/ubi9/ubi sleep infinity
 
-podman exec app1 ps aux
+podman exec app1 ps -ef
 ```
 
 ## Pod Volumes
@@ -262,12 +262,12 @@ podman pod create --name vol-pod
 ```bash
 podman run -d --pod vol-pod --name writer \
   -v shared-data:/data \
-  registry.access.redhat.com/ubi9/ubi-minimal \
+  registry.access.redhat.com/ubi9/ubi \
   /bin/bash -c 'while true; do date >> /data/log.txt; sleep 5; done'
 
 podman run -d --pod vol-pod --name reader \
   -v shared-data:/data:ro \
-  registry.access.redhat.com/ubi9/ubi-minimal \
+  registry.access.redhat.com/ubi9/ubi \
   tail -f /data/log.txt
 ```
 
