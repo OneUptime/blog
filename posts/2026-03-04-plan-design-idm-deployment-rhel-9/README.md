@@ -35,7 +35,7 @@ Recommended topologies:
 ### Topology Rules
 
 - Each replica should be connected to at least two other replicas
-- Do not create more than 4 replication agreements per server
+- Connect a replica to a maximum of 4 other replicas unless you need extra failover paths or direct links for a larger deployment
 - Keep the maximum number of hops between any two servers to 3 or fewer
 
 ## DNS Planning
@@ -60,10 +60,14 @@ If using external DNS, you must create:
 _kerberos._udp.example.com.     SRV  0 100 88  idm1.example.com.
 _kerberos._tcp.example.com.     SRV  0 100 88  idm1.example.com.
 _kerberos-master._udp.example.com. SRV 0 100 88 idm1.example.com.
+_kerberos-master._tcp.example.com. SRV 0 100 88 idm1.example.com.
 _kpasswd._udp.example.com.      SRV  0 100 464 idm1.example.com.
+_kpasswd._tcp.example.com.      SRV  0 100 464 idm1.example.com.
 _ldap._tcp.example.com.         SRV  0 100 389 idm1.example.com.
 _kerberos.example.com.          TXT  "EXAMPLE.COM"
 ```
+
+Create the equivalent SRV records for each IdM server, and ensure the target hostnames have correct A or AAAA records and reverse DNS.
 
 ## Naming Conventions
 
@@ -88,10 +92,10 @@ idm3.example.com  (replica in secondary site)
 
 ### Minimum Requirements per Server
 
-| Component | Small (<1000 users) | Medium (1000-10000) | Large (10000+) |
+| Component | Small (<10000 users) | Medium (10000-100000) | Large (100000+) |
 |-----------|--------------------|--------------------|----------------|
 | CPU | 2 cores | 4 cores | 8+ cores |
-| RAM | 4 GB | 8 GB | 16+ GB |
+| RAM | 4 GB plus 4 GB swap | 16 GB plus 4 GB swap | 16+ GB |
 | Disk | 20 GB | 50 GB | 100+ GB |
 
 ### Disk Layout
@@ -100,7 +104,7 @@ Recommended partition layout:
 
 ```text
 /              20 GB
-/var/lib/dirsrv  Depends on user count (estimate 1 KB per entry)
+/var/lib/dirsrv  Depends on user count (estimate 5-10 KB per basic user or host entry with a certificate)
 /var/log       10 GB (LDAP and Kerberos logs)
 ```
 
@@ -114,9 +118,9 @@ IdM includes a full certificate authority based on Dogtag:
 - Manages certificate lifecycle
 - Integrates with Kerberos for PKINIT
 
-### External CA
+### External CA or No Integrated CA
 
-Use an external CA when:
+Use an externally signed IdM CA, or install without an integrated CA, when:
 
 - Your organization requires certificates from a specific CA
 - Compliance mandates a particular certificate chain
@@ -135,7 +139,8 @@ IdM servers need these ports open:
 | 88 | TCP/UDP | Kerberos |
 | 464 | TCP/UDP | Kerberos password change |
 | 53 | TCP/UDP | DNS (if integrated) |
-| 123 | UDP | NTP |
+
+Keep time synchronization available for IdM servers and clients. On RHEL 9, IdM configures `chronyd` as an NTP client and does not provide an IdM NTP server role.
 
 ## Integration Planning
 
