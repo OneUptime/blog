@@ -14,7 +14,8 @@ Integrate Prometheus monitoring with Red Hat Satellite for unified observability
 
 ## Prerequisites
 
-- A RHEL 9 system with a valid subscription or configured repositories
+- A Red Hat Satellite Server running on RHEL 9 with a valid subscription or configured repositories
+- A Prometheus server that can reach the Satellite Server
 - Root or sudo access
 - Network access for remote monitoring tools (if applicable)
 
@@ -23,7 +24,13 @@ Integrate Prometheus monitoring with Red Hat Satellite for unified observability
 Install the monitoring tools relevant to this guide:
 
 ```bash
-sudo dnf install -y pcp pcp-system-tools sysstat net-snmp net-snmp-utils
+sudo satellite-maintain packages install pcp \
+  pcp-pmda-apache \
+  pcp-pmda-openmetrics \
+  pcp-pmda-postgresql \
+  pcp-pmda-redis \
+  pcp-system-tools \
+  foreman-pcp
 ```
 
 Select only the packages you need for your specific setup.
@@ -32,34 +39,56 @@ Select only the packages you need for your specific setup.
 
 ```bash
 sudo systemctl enable --now pmcd pmlogger
-# or for sysstat:
-
-sudo systemctl enable --now sysstat
 ```
 
 ## Step 3 - Configure the Monitoring Tool
 
-Edit the relevant configuration file for your monitoring setup. Common locations include:
-
-- `/etc/pcp/` for PCP configuration
-- `/etc/snmp/snmpd.conf` for SNMP
-- `/etc/prometheus/prometheus.yml` for Prometheus
-- `/etc/grafana/grafana.ini` for Grafana
-
-Apply your changes and restart the service:
+Configure PCP to collect Satellite, Apache HTTP Server, PostgreSQL, and Redis metrics:
 
 ```bash
-sudo systemctl restart <service-name>
+sudo ln -s /etc/pcp/proc/foreman-hotproc.conf /var/lib/pcp/pmdas/proc/hotproc.conf
+
+cd /var/lib/pcp/pmdas/proc
+sudo ./Install
+
+sudo satellite-installer --enable-apache-mod-status
+cd /var/lib/pcp/pmdas/apache
+sudo ./Install
+
+cd /var/lib/pcp/pmdas/postgresql
+sudo ./Install
+
+cd /var/lib/pcp/pmdas/redis
+sudo ./Install
+
+sudo satellite-installer --foreman-telemetry-prometheus-enabled true
+cd /var/lib/pcp/pmdas/openmetrics
+echo "https://satellite.example.com/metrics" | sudo tee config.d/foreman.url
+sudo ./Install
+
+sudo systemctl restart pmcd pmlogger pmproxy
+```
+
+Replace `satellite.example.com` with the FQDN of your Satellite Server.
+
+On your Prometheus server, add the Satellite metrics endpoint to `/etc/prometheus/prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: satellite
+    scheme: https
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - satellite.example.com
 ```
 
 ## Step 4 - Open Firewall Ports
 
 ```bash
 # Common monitoring ports
-sudo firewall-cmd --permanent --add-port=9090/tcp   # Prometheus
-sudo firewall-cmd --permanent --add-port=9100/tcp   # Node Exporter
-sudo firewall-cmd --permanent --add-port=3000/tcp   # Grafana
-sudo firewall-cmd --permanent --add-service=snmp     # SNMP
+sudo firewall-cmd --permanent --add-port=9090/tcp   # Prometheus, if hosted on this system
+sudo firewall-cmd --permanent --add-service=grafana  # Grafana, if hosted on this system
 sudo firewall-cmd --reload
 ```
 
@@ -69,11 +98,12 @@ Confirm that metrics are being collected:
 
 ```bash
 # PCP
-pmstat -s 3
-# sysstat
-sar -u 1 3
-# Prometheus endpoint
-curl -s http://localhost:9090/api/v1/query?query=up
+pcp
+pminfo
+foreman-rake telemetry:metrics
+
+# Prometheus query API, from the Prometheus server
+curl -G http://localhost:9090/api/v1/query --data-urlencode 'query=up{job="satellite"}'
 ```
 
 ## Step 6 - Set Up Alerting (Optional)
