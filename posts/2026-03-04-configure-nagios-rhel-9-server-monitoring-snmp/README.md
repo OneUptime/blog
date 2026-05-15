@@ -16,49 +16,60 @@ Configure Nagios with SNMP on RHEL 9 for monitoring server resources. Effective 
 
 - A RHEL 9 system with a valid subscription or configured repositories
 - Root or sudo access
-- Network access for remote monitoring tools (if applicable)
+- A Nagios Core or Nagios XI server with the `check_snmp` plugin installed
+- Network access from the Nagios server to UDP port 161 on the RHEL 9 host
 
 ## Step 1 - Install Required Packages
 
 Install the monitoring tools relevant to this guide:
 
 ```bash
-sudo dnf install -y pcp pcp-system-tools sysstat net-snmp net-snmp-utils
+sudo dnf install -y net-snmp net-snmp-utils
 ```
 
-Select only the packages you need for your specific setup.
+Install the Nagios SNMP plugin on the Nagios server if it is not already available.
 
 ## Step 2 - Enable and Start Services
 
 ```bash
-sudo systemctl enable --now pmcd pmlogger
-# or for sysstat:
-
-sudo systemctl enable --now sysstat
+sudo systemctl enable --now snmpd.service
 ```
 
 ## Step 3 - Configure the Monitoring Tool
 
-Edit the relevant configuration file for your monitoring setup. Common locations include:
-
-- `/etc/pcp/` for PCP configuration
-- `/etc/snmp/snmpd.conf` for SNMP
-- `/etc/prometheus/prometheus.yml` for Prometheus
-- `/etc/grafana/grafana.ini` for Grafana
-
-Apply your changes and restart the service:
+Configure SNMP on the RHEL 9 host. For SNMPv3, create a read-only user and restart the agent:
 
 ```bash
-sudo systemctl restart <service-name>
+sudo systemctl stop snmpd.service
+sudo net-snmp-create-v3-user -ro -A 'replace-with-auth-password' -a SHA -X 'replace-with-privacy-password' -x AES nagios
+sudo systemctl start snmpd.service
+```
+
+The SNMP agent uses `/etc/snmp/snmpd.conf` for its main configuration and stores SNMPv3 user credentials in the persistent Net-SNMP configuration.
+
+On the Nagios server, define a command that uses the SNMP plugin:
+
+```nagios
+define command {
+    command_name    check_snmp_v3
+    command_line    $USER1$/check_snmp -H $HOSTADDRESS$ -P 3 -L authPriv -U $ARG1$ -a SHA -A $ARG2$ -x AES -X $ARG3$ -o $ARG4$
+}
+```
+
+Then add a service check for the RHEL 9 host:
+
+```nagios
+define service {
+    use                    generic-service
+    host_name              rhel9-server
+    service_description    SNMP Uptime
+    check_command          check_snmp_v3!nagios!replace-with-auth-password!replace-with-privacy-password!sysUpTime.0
+}
 ```
 
 ## Step 4 - Open Firewall Ports
 
 ```bash
-# Common monitoring ports
-sudo firewall-cmd --permanent --add-port=9090/tcp   # Prometheus
-sudo firewall-cmd --permanent --add-port=9100/tcp   # Node Exporter
-sudo firewall-cmd --permanent --add-port=3000/tcp   # Grafana
 sudo firewall-cmd --permanent --add-service=snmp     # SNMP
 sudo firewall-cmd --reload
 ```
@@ -68,17 +79,16 @@ sudo firewall-cmd --reload
 Confirm that metrics are being collected:
 
 ```bash
-# PCP
-pmstat -s 3
-# sysstat
-sar -u 1 3
-# Prometheus endpoint
-curl -s http://localhost:9090/api/v1/query?query=up
+# From the RHEL 9 host
+snmpwalk -v3 -l authPriv -u nagios -a SHA -A 'replace-with-auth-password' -x AES -X 'replace-with-privacy-password' localhost sysUpTime.0
+
+# From the Nagios server
+/usr/local/nagios/libexec/check_snmp -H rhel9-server.example.com -P 3 -L authPriv -U nagios -a SHA -A 'replace-with-auth-password' -x AES -X 'replace-with-privacy-password' -o sysUpTime.0
 ```
 
 ## Step 6 - Set Up Alerting (Optional)
 
-Configure alerts based on thresholds so you are notified before issues become critical. Use Prometheus Alertmanager, Nagios notifications, or Red Hat Insights recommendations depending on your stack.
+Configure Nagios notifications and add thresholds to service checks where the selected OID returns a numeric value. You can also use Red Hat Insights recommendations depending on your stack.
 
 ## Summary
 
