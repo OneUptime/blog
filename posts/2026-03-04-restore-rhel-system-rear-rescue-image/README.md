@@ -13,8 +13,8 @@ When a RHEL system suffers a catastrophic failure, the ReaR (Relax-and-Recover) 
 ## Prerequisites
 
 You need:
-- The ReaR rescue ISO created with `rear mkbackup`
-- The backup archive (stored on NFS, CIFS, or local media)
+- The ReaR rescue ISO created with `rear mkbackup` or `rear mkrescue`
+- The backup archive or configured backup system that ReaR will restore from
 - Access to the server console (physical, iLO, iDRAC, or virtual)
 
 ## Step 1: Boot from the ReaR Rescue ISO
@@ -55,10 +55,9 @@ rear recover
 
 ReaR will:
 1. Recreate the original disk layout (partitions, LVM, filesystems)
-2. Mount the backup source (NFS, CIFS, or local)
-3. Extract the backup archive to the recreated filesystems
-4. Reinstall the bootloader (GRUB2)
-5. Restore SELinux contexts
+2. Restore files from the configured backup method, or prompt you to restore them under `/mnt/local`
+3. Reinstall the bootloader (GRUB2)
+4. Prepare the system for SELinux relabeling if needed
 
 ## Step 4: Handle Disk Layout Changes
 
@@ -70,8 +69,8 @@ If the replacement disk is a different size, ReaR may prompt you to edit the lay
 vi /var/lib/rear/layout/disklayout.conf
 
 # Example: change disk size references
-# Original: /dev/sda 500107862016
-# New:      /dev/sda 1000204886016
+# Original: disk /dev/sda 500107862016 msdos
+# New:      disk /dev/sda 1000204886016 msdos
 ```
 
 ## Step 5: Verify the Restored System
@@ -87,7 +86,10 @@ cat /etc/hostname
 cat /etc/fstab
 
 # Verify the bootloader
-grub2-install --recheck /dev/sda
+find /boot -name grub.cfg -print
+
+# Ensure SELinux relabels files on the next boot
+touch /.autorelabel
 
 # Exit chroot
 exit
