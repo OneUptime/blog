@@ -68,7 +68,7 @@ hammer content-view add-repository \
 Filters let you include or exclude specific packages and errata:
 
 ```bash
-# Create an erratum date filter (only include errata before a cutoff)
+# Create an erratum date filter (exclude errata on or after a cutoff)
 hammer content-view filter create \
     --name "Errata-Cutoff" \
     --type erratum \
@@ -80,7 +80,8 @@ hammer content-view filter rule create \
     --content-view-filter "Errata-Cutoff" \
     --content-view "RHEL9-Base" \
     --organization "MyOrg" \
-    --end-date "2026-03-01" \
+    --start-date "2026-03-01" \
+    --date-type updated \
     --types security,bugfix,enhancement
 
 # Create a package exclusion filter
