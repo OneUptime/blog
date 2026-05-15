@@ -133,16 +133,15 @@ http://source-controller.flux-system.svc.cluster.local./
 
 This is an in-cluster HTTP call - it never leaves the cluster network. The consuming controller downloads the tarball, extracts it to a temporary directory, and processes the contents.
 
-## Communication Mechanism 3: Kubernetes Events
+## Communication Mechanism 3: Flux Events
 
-Flux controllers emit Kubernetes events when significant actions occur. The notification-controller watches for these events and forwards them to external systems.
+Flux controllers emit Flux events when significant actions occur. They push these event payloads to the notification-controller event API, and the notification-controller forwards matching events to external systems.
 
 ```mermaid
 graph LR
-    KC[Kustomize Controller] -->|emits Event| API[Kubernetes API]
-    HC[Helm Controller] -->|emits Event| API
-    SC[Source Controller] -->|emits Event| API
-    API -->|watch Events| NC[Notification Controller]
+    KC[Kustomize Controller] -->|pushes Event| NC[Notification Controller Event API]
+    HC[Helm Controller] -->|pushes Event| NC
+    SC[Source Controller] -->|pushes Event| NC
     NC -->|forwards to| Slack[Slack]
     NC -->|forwards to| Teams[Teams]
     NC -->|forwards to| Webhook[Webhooks]
@@ -151,21 +150,19 @@ graph LR
 Events carry metadata that the notification-controller uses for filtering and routing:
 
 ```yaml
-# Example Kubernetes Event emitted by the kustomize-controller
-apiVersion: v1
-kind: Event
-metadata:
-  namespace: flux-system
+# Example Flux event emitted by the kustomize-controller
 involvedObject:
   apiVersion: kustomize.toolkit.fluxcd.io/v1
   kind: Kustomization
   name: apps
   namespace: flux-system
+metadata:
+  kustomize.toolkit.fluxcd.io/revision: "main@sha1:abc123def"
+severity: info
 reason: ReconciliationSucceeded
 message: "Applied revision: main@sha1:abc123def"
-type: Normal
-source:
-  component: kustomize-controller
+reportingController: kustomize-controller
+timestamp: "2026-03-05T10:05:00Z"
 ```
 
 The notification-controller matches events against `Alert` resources to determine what to forward:
