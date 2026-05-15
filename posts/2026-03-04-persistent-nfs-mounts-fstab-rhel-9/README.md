@@ -34,7 +34,7 @@ The `defaults` option works, but production mounts benefit from explicit options
 
 ```bash
 # Production-grade fstab entry
-192.168.1.10:/srv/nfs/shared  /mnt/nfs-shared  nfs  rw,hard,intr,rsize=65536,wsize=65536,noatime,_netdev  0 0
+192.168.1.10:/srv/nfs/shared  /mnt/nfs-shared  nfs  rw,hard,rsize=65536,wsize=65536,noatime,_netdev  0 0
 ```
 
 ### Option Breakdown
@@ -43,13 +43,12 @@ The `defaults` option works, but production mounts benefit from explicit options
 |--------|---------|
 | `rw` | Read-write access |
 | `hard` | Keep retrying if server is unavailable |
-| `intr` | Allow signal interrupts during hangs |
 | `rsize=65536` | 64 KB read buffer for better throughput |
 | `wsize=65536` | 64 KB write buffer for better throughput |
 | `noatime` | Skip access time updates for performance |
-| `_netdev` | Wait for network before mounting |
+| `_netdev` | Treat the mount as network-dependent |
 
-The `_netdev` option is critical. Without it, the system tries to mount NFS before the network is up, which causes boot delays or failures.
+The `_netdev` option is useful as an explicit safeguard. On systemd-based RHEL systems, NFS mounts are normally recognized as network mounts automatically, and `_netdev` forces that network-dependent ordering when detection is not enough.
 
 ## Creating the Mount Point
 
@@ -75,7 +74,7 @@ If `mount -a` fails, fix the fstab entry before rebooting, or you risk a boot fa
 
 ## Handling Boot Failures
 
-If the NFS server is down during boot, a `hard` mount will cause the boot process to hang. To prevent this, use the `nofail` option:
+If the NFS server is down during boot, a required NFS mount can delay or fail the boot. To prevent this, use the `nofail` option:
 
 ```bash
 # nofail prevents boot failure if the NFS server is unreachable
@@ -99,7 +98,7 @@ Wants=network-online.target
 What=192.168.1.10:/srv/nfs/shared
 Where=/mnt/nfs-shared
 Type=nfs
-Options=rw,hard,intr,_netdev
+Options=rw,hard,_netdev
 
 [Install]
 WantedBy=multi-user.target
@@ -166,8 +165,8 @@ journalctl -b | grep -i nfs
 
 ## Common Pitfalls
 
-1. **Missing _netdev**: The mount tries before the network is up and hangs
-2. **Missing nofail**: A down NFS server blocks the entire boot
+1. **Network ordering issues**: Make sure the mount is treated as network-dependent
+2. **Missing nofail**: A down NFS server can delay or fail the boot
 3. **Wrong permissions**: The mount succeeds but the files are not accessible
 4. **Typos in server name or path**: Always test with `mount -a` before rebooting
 5. **SELinux blocking**: Check `ausearch -m avc` for denials
