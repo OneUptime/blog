@@ -14,7 +14,7 @@ SELinux uses security labels (contexts) on every file and directory to enforce m
 
 A full filesystem relabel is necessary in the following situations:
 
-- After switching SELinux from disabled to enforcing mode
+- After switching SELinux from disabled to permissive or enforcing mode
 - After a major policy change or policy module update
 - After restoring files from a backup that did not preserve SELinux contexts
 - When you see widespread "avc: denied" messages in the audit log
@@ -46,7 +46,7 @@ sudo touch /.autorelabel
 sudo systemctl reboot
 ```
 
-During the next boot, the system will detect the `.autorelabel` file and relabel every file on every mounted filesystem. The file is automatically removed after the relabel completes.
+During the next boot, the system will detect the `.autorelabel` file and relabel local filesystems that support SELinux labels. The file is automatically removed after the relabel completes.
 
 **Important:** A full relabel can take a long time depending on the number of files on your system. A system with millions of files might take 30 minutes or more. Plan accordingly and do not interrupt the process.
 
@@ -56,13 +56,13 @@ The `fixfiles` command provides more control over the relabel process:
 
 ```bash
 # Relabel the entire filesystem on next boot
-sudo fixfiles onboot
+sudo fixfiles -F onboot
 
 # Or relabel immediately without rebooting (system should be in permissive or single-user mode)
 sudo fixfiles -F relabel
 ```
 
-The `-F` flag forces a relabel even if the policy has not changed. Without it, `fixfiles` might skip the relabel if it determines the policy version has not changed.
+The `-F` flag forces `fixfiles` to reset customizable file contexts to match the active file-context policy. Red Hat recommends switching to permissive mode before using `fixfiles -F onboot` when re-enabling SELinux on a system where it was previously disabled.
 
 You can also check what `fixfiles` would do without actually making changes:
 
