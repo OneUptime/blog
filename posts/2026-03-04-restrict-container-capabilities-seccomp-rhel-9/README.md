@@ -34,7 +34,7 @@ podman run --rm registry.access.redhat.com/ubi9/ubi:latest grep Cap /proc/self/s
 Decode the capability bitmask:
 
 ```bash
-capsh --decode=00000000a80425fb
+capsh --decode=$(podman run --rm registry.access.redhat.com/ubi9/ubi:latest awk '/CapEff/ {print $2}' /proc/self/status)
 ```
 
 ## Dropping Capabilities
@@ -63,7 +63,7 @@ For rootless containers, you can only add capabilities that exist within the use
 
 ## Understanding Seccomp Profiles
 
-Seccomp filters restrict which system calls a container can make. Podman ships with a default seccomp profile that blocks dangerous syscalls like `reboot`, `mount`, and `kexec_load`.
+Seccomp filters restrict which system calls a container can make. Podman ships with a default seccomp profile that blocks or restricts dangerous syscalls like `kexec_load`, `userfaultfd`, and `vmsplice`, while other privileged operations are also constrained by Linux capabilities.
 
 View the default seccomp profile:
 
@@ -73,26 +73,21 @@ cat /usr/share/containers/seccomp.json | python3 -m json.tool | head -50
 
 ## Creating a Custom Seccomp Profile
 
-Create a restrictive custom profile that only allows specific syscalls:
+Create a custom profile that denies specific syscalls:
 
 ```bash
 cat > /tmp/custom-seccomp.json << 'SECCOMP'
 {
-  "defaultAction": "SCMP_ACT_ERRNO",
+  "defaultAction": "SCMP_ACT_ALLOW",
   "architectures": [
     "SCMP_ARCH_X86_64"
   ],
   "syscalls": [
     {
       "names": [
-        "read", "write", "open", "close", "stat", "fstat",
-        "mmap", "mprotect", "munmap", "brk", "rt_sigaction",
-        "rt_sigprocmask", "ioctl", "access", "execve", "exit_group",
-        "arch_prctl", "set_tid_address", "set_robust_list",
-        "futex", "getpid", "getuid", "getgid", "geteuid",
-        "getegid", "openat", "newfstatat", "clone", "wait4"
+        "keyctl", "add_key", "request_key"
       ],
-      "action": "SCMP_ACT_ALLOW"
+      "action": "SCMP_ACT_ERRNO"
     }
   ]
 }
@@ -155,11 +150,11 @@ seccomp_profile = "/etc/containers/seccomp.json"
 Use `strace` to see which syscalls a container process makes:
 
 ```bash
-podman run --rm --cap-add=CAP_SYS_PTRACE registry.access.redhat.com/ubi9/ubi:latest strace -c -f echo hello
+podman run --rm --cap-add=CAP_SYS_PTRACE registry.access.redhat.com/ubi9/ubi:latest bash -lc 'dnf -y install strace >/dev/null && strace -c -f echo hello'
 ```
 
 This helps you build a minimal seccomp profile.
 
 ## Conclusion
 
-Restricting container capabilities and applying seccomp profiles on RHEL significantly reduces the attack surface. Drop all capabilities and add only what your application needs. Use custom seccomp profiles to limit system calls to the minimum required set.
+Restricting container capabilities and applying seccomp profiles on RHEL significantly reduces the attack surface. Drop all capabilities and add only what your application needs. Use custom seccomp profiles to limit or deny system calls based on what your application requires.
