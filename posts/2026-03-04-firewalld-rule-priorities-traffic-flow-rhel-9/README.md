@@ -12,27 +12,29 @@ Firewalld processes rules in a specific order, and understanding that order is c
 
 ## Default Rule Processing Order
 
-Firewalld evaluates rules in this order:
+For traffic handled by a zone, firewalld evaluates rich rules and other zone primitives in this order:
 
 ```mermaid
 graph TD
-    A[Incoming Packet] --> B[Port forwarding rules]
-    B --> C[Source-based zone match]
-    C --> D[Interface-based zone match]
-    D --> E[Rich rules by priority]
-    E --> F[Zone services/ports]
-    F --> G[Zone default target]
+    A[Incoming Packet] --> B[Zone classification]
+    B --> C[Selected zone rules]
+    C --> D[Negative-priority rich rules]
+    D --> E[Priority 0 rich rules by action]
+    E --> F[Zone services/ports and other primitives]
+    F --> G[Positive-priority rich rules]
+    G --> H[Zone default target]
 ```
 
 Within a zone, rules are processed as follows:
-1. Rich rules with lower priority numbers (evaluated first)
-2. Rich rules with higher priority numbers
-3. Standard zone services and port rules
-4. Zone default action (accept, reject, or drop)
+1. Rich rules with negative priority numbers, sorted from lower to higher values
+2. Priority 0 rich rules, placed into log, deny, and allow chains based on their action
+3. Standard zone services, ports, and other firewalld primitives
+4. Rich rules with positive priority numbers, sorted from lower to higher values
+5. Zone default action (accept, reject, or drop)
 
 ## Rich Rule Priority
 
-Rich rules support a `priority` attribute. The default priority is 0. Lower numbers are evaluated first, and the range is -32768 to 32767.
+Rich rules support a `priority` attribute. The default priority is 0. Lower numbers have higher precedence, and the range is -32768 to 32767. Ordering for rules with the same priority can be undefined, so use different priorities when one rule must reliably come before another.
 
 ```bash
 # High priority rule (evaluated first) - block a specific IP
@@ -83,14 +85,17 @@ firewall-cmd --reload
 
 ## Practical Example: Rate Limiting with Exceptions
 
-Allow your monitoring server unlimited access while rate limiting everyone else:
+Allow your monitoring server unlimited SSH access while rate limiting everyone else:
 
 ```bash
-# Priority -100: Monitoring server gets unlimited access
-firewall-cmd --zone=public --add-rich-rule='rule priority="-100" family="ipv4" source address="10.0.2.10" accept' --permanent
+# Priority -100: Monitoring server gets unlimited SSH access
+firewall-cmd --zone=public --add-rich-rule='rule priority="-100" family="ipv4" source address="10.0.2.10" service name="ssh" accept' --permanent
 
 # Priority 0: Rate limit SSH for everyone else
 firewall-cmd --zone=public --add-rich-rule='rule service name="ssh" accept limit value="3/m"' --permanent
+
+# Remove the default SSH service so the rich rule controls SSH access
+firewall-cmd --zone=public --remove-service=ssh --permanent
 
 firewall-cmd --reload
 ```
@@ -98,7 +103,7 @@ firewall-cmd --reload
 ## Viewing Rule Priorities
 
 ```bash
-# List rich rules (they show in priority order)
+# List rich rules and confirm their priority values
 firewall-cmd --zone=public --list-rich-rules
 
 # Show full zone configuration
@@ -107,10 +112,11 @@ firewall-cmd --zone=public --list-all
 
 ## How Priorities Interact with Services
 
-Standard services added with `--add-service` do not have a priority. They are evaluated after all rich rules. This means:
+Standard services added with `--add-service` do not have a rich rule priority. Negative-priority rich rules are evaluated before standard services, and positive-priority rich rules are evaluated after standard services. This means:
 
-- A rich rule with priority 0 is evaluated before standard services
-- A deny rich rule at any priority will override a standard service allow
+- A negative-priority deny rich rule can block traffic before a standard service allows it
+- A positive-priority deny rich rule will not override traffic that a standard service already accepted
+- Priority 0 rich rules are placed into action-specific chains rather than simply sorted before every standard service
 
 ```bash
 # This service allows HTTP for everyone in the zone
@@ -148,11 +154,11 @@ Here is a convention that works well for organizing rules:
 | 0 | Default (standard rich rules) |
 | 1 to 99 | Conditional allows |
 | 100 to 999 | Catch-all denies |
-| 1000+ | Logging rules |
+| 1000+ | Low-precedence logging or catch-all rules |
 
 ## Logging with Priority
 
-Use logging rules at a lower priority to log before accept/deny:
+Use logging rules at a lower numerical priority to log before accept/deny:
 
 ```bash
 # Priority -150: Log traffic from a suspicious subnet before deciding
@@ -168,4 +174,4 @@ Note: A log-only rule (without accept/drop/reject) just logs and then passes the
 
 ## Summary
 
-Rule priorities give you precise control over firewalld's evaluation order. Use negative priorities for rules that should be checked first (blocks, exceptions), zero for standard rules, and positive priorities for catch-all denies or logging. The key pattern is: deny-before-allow for blocking specific sources, or allow-before-deny for whitelisting. Always verify with `nft list ruleset` if rules are not behaving as expected, and remember that standard services (added with `--add-service`) are evaluated after rich rules.
+Rule priorities give you precise control over firewalld's evaluation order. Use negative priorities for rules that should be checked before other firewalld primitives (blocks, exceptions), zero for standard rich rules, and positive priorities for low-precedence catch-all denies or logging. The key pattern is: deny-before-allow for blocking specific sources, or allow-before-deny for whitelisting. Always verify with `nft list ruleset` if rules are not behaving as expected, and remember that standard services (added with `--add-service`) are evaluated after negative-priority rich rules but before positive-priority rich rules.
