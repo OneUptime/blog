@@ -40,11 +40,11 @@ graph TD
 |---------|-------|-------|
 | Size limit | Configurable (default 50% RAM) | None |
 | Can use swap | Yes | No |
-| Visible in `df` | Yes | No |
-| Page cache behavior | Can be reclaimed | Cannot be reclaimed |
+| Meaningful capacity in `df` | Yes | No (reports zero capacity) |
+| Page cache behavior | Can be swapped under memory pressure | Cannot be reclaimed by the VM |
 | OOM risk | Low (bounded) | High (unbounded) |
 | Data persists after reboot | No | No |
-| Use case | General temporary storage | Security-sensitive data |
+| Use case | General temporary storage | Small, trusted RAM-only data |
 
 ## Using tmpfs
 
@@ -84,7 +84,7 @@ With tmpfs, under memory pressure, the kernel can move tmpfs data to swap. This 
 
 ```bash
 # tmpfs data can end up in swap
-# Check if tmpfs data is in swap
+# View shared memory/tmpfs and swap-cache counters (not per-mount proof)
 cat /proc/meminfo | grep -E "Shmem|SwapCached"
 ```
 
@@ -95,7 +95,7 @@ However, this means ramfs can consume unlimited RAM:
 ```bash
 # DANGER: This will consume all RAM and potentially crash the system
 # DO NOT actually run this
-# dd if=/dev/zero of=/mnt/ramfs/bigfile bs=1M count=unlimited
+# dd if=/dev/zero of=/mnt/ramfs/bigfile bs=1M status=progress
 ```
 
 ## Practical Example: Encryption Key Storage
@@ -115,12 +115,12 @@ openssl enc -d -aes-256-cbc -in /mnt/keys/keyfile -out /mnt/keys/plainkey
 # Use the key
 # ... application reads from /mnt/keys/plainkey ...
 
-# Clean up securely
+# Clean up
 shred -u /mnt/keys/plainkey
 umount /mnt/keys
 ```
 
-The key never touches swap or persistent storage.
+The decrypted file on ramfs is not backed by swap or persistent storage. For stronger protection, remember that applications can still hold copies of secrets in process memory unless they explicitly lock or clear that memory.
 
 ## Practical Example: Safe tmpfs for Builds
 
@@ -147,10 +147,10 @@ df -h /mnt/tmpfs
 # Shows: tmpfs  2.0G  256M  1.8G  13% /mnt/tmpfs
 ```
 
-ramfs does not:
+ramfs does not show useful capacity or usage numbers:
 
 ```bash
-# ramfs shows 0 in df
+# ramfs reports 0 capacity in df
 df -h /mnt/ramfs
 # Shows: ramfs  0  0  0  - /mnt/ramfs
 ```
@@ -180,7 +180,7 @@ dmsetup table | grep swap
 
 ### ramfs Security Advantage
 
-ramfs data never leaves RAM. Even if swap is unencrypted, ramfs data is safe.
+Files stored on ramfs are not swapped out by the filesystem. This does not protect any copies of the data that applications keep in swappable process memory.
 
 ### ramfs Risk
 
@@ -195,6 +195,8 @@ If you want tmpfs behavior (size limits, visibility) with the security of keepin
 ```bash
 # Encrypt swap first
 cryptsetup open --type plain --cipher aes-xts-plain64 --key-file /dev/urandom /dev/swap_device swap
+mkswap /dev/mapper/swap
+swapon /dev/mapper/swap
 
 # Then use tmpfs normally - even if data is swapped, swap is encrypted
 mount -t tmpfs -o size=1G tmpfs /mnt/secure
