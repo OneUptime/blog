@@ -92,7 +92,7 @@ If the system was previously registered but certificates are stale:
 sudo subscription-manager refresh
 
 # Regenerate identity certificates
-sudo subscription-manager identity --force
+sudo subscription-manager identity --regenerate --force
 ```
 
 ## Step 3: Clean the DNF Cache

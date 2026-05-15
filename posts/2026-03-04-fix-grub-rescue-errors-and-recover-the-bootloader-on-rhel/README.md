@@ -19,12 +19,18 @@ At the `grub rescue>` prompt:
 
 grub rescue> ls
 
-# Try each partition to find the one with /boot
+# Try each partition to find the one with the GRUB files
 grub rescue> ls (hd0,msdos1)/
 grub rescue> ls (hd0,msdos1)/grub2/
+grub rescue> ls (hd0,msdos1)/boot/grub2/
 
 # Once you find the right partition, set the prefix
+# If /boot is a separate partition:
 grub rescue> set prefix=(hd0,msdos1)/grub2
+grub rescue> set root=(hd0,msdos1)
+
+# If /boot is a directory on the root partition:
+grub rescue> set prefix=(hd0,msdos1)/boot/grub2
 grub rescue> set root=(hd0,msdos1)
 
 # Load the normal module and boot
@@ -48,8 +54,11 @@ sudo dnf reinstall grub2-efi-x64 shim-x64
 # Regenerate the GRUB configuration
 sudo grub2-mkconfig -o /boot/grub2/grub.cfg
 
-# For UEFI systems, the config goes to a different location
+# On RHEL 8 and earlier UEFI systems, the config goes to a different location
 sudo grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
+
+# On RHEL 9 and later UEFI systems, use /boot/grub2/grub.cfg
+# Do not overwrite /boot/efi/EFI/redhat/grub.cfg with grub2-mkconfig
 ```
 
 ## Using the RHEL Rescue Environment
@@ -61,10 +70,10 @@ If you cannot boot at all:
 # Select "Troubleshooting" > "Rescue a Red Hat Enterprise Linux system"
 
 # The rescue environment will try to find and mount your installation
-# It should mount under /mnt/sysimage
+# On RHEL 8 and later, it should mount under /mnt/sysroot
 
 # Chroot into your installation
-chroot /mnt/sysimage
+chroot /mnt/sysroot
 
 # Reinstall GRUB (BIOS)
 grub2-install /dev/sda
