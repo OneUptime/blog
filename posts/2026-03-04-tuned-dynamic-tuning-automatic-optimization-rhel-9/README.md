@@ -90,11 +90,11 @@ Tracks network activity and adjusts interface parameters:
 Create a custom profile that uses dynamic tuning plugins:
 
 ```bash
-sudo mkdir -p /etc/tuned/my-dynamic
+sudo mkdir -p /etc/tuned/profiles/my-dynamic
 ```
 
 ```bash
-sudo tee /etc/tuned/my-dynamic/tuned.conf << 'CONF'
+sudo tee /etc/tuned/profiles/my-dynamic/tuned.conf << 'CONF'
 [main]
 summary=Custom dynamic tuning profile
 include=balanced
