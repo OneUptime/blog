@@ -15,10 +15,10 @@ Virtual machine environments are ideal candidates for VDO because multiple VMs o
 - A RHEL system with root or sudo access
 - KVM/libvirt or similar hypervisor installed
 - Available block storage for VDO
-- The `lvm2` and `kmod-kvdo` packages installed
+- The `lvm2`, `vdo`, and `kmod-kvdo` packages installed
 
 ```bash
-sudo dnf install lvm2 kmod-kvdo -y
+sudo dnf install lvm2 vdo kmod-kvdo -y
 ```
 
 ## Why VDO for Virtual Machines?
@@ -44,7 +44,7 @@ sudo vgcreate vg_vm /dev/sdb
 sudo lvcreate --type vdo --name lv_vmstore --size 200G --virtualsize 2T vg_vm
 ```
 
-This creates a 200 GB physical volume that presents 2 TB of virtual space (10:1 ratio), suitable for VM storage with high deduplication potential.
+This creates a 200 GB physical VDO pool that presents 2 TB of virtual space (10:1 ratio), suitable for VM storage with high deduplication potential.
 
 ## Step 2: Format and Mount
 
@@ -97,7 +97,7 @@ sudo qemu-img create -f raw /var/lib/libvirt/images/vm1.raw 50G
 For VDO, raw format is generally preferred because:
 - Data blocks align more predictably, improving deduplication
 - No qcow2 metadata overhead
-- VDO's thin provisioning replaces qcow2's thin allocation
+- Sparse raw files can allocate space only as sectors are written on file systems that support holes, while VDO provides block-level thin provisioning underneath
 
 ## Step 5: Install VMs
 
@@ -123,7 +123,7 @@ When cloning VMs, VDO automatically deduplicates the identical blocks:
 
 sudo virt-clone --original vm1 --name vm2 --auto-clone
 
-# Or manually copy and register
+# Or manually copy the disk image before defining another VM that uses it
 sudo cp /var/lib/libvirt/images/vm1.qcow2 /var/lib/libvirt/images/vm2.qcow2
 ```
 
@@ -172,24 +172,36 @@ The default settings work well for most VM environments. For very large deployme
 
 ### Block Map Cache
 
-The block map translates virtual addresses to physical addresses. For better VM performance:
+The block map translates virtual addresses to physical addresses. For better VM performance, stop the VMs and deactivate the volume before changing this setting:
 
 ```bash
+sudo umount /var/lib/libvirt/images
+sudo lvchange -an vg_vm/lv_vmstore
 sudo lvchange --vdosettings 'block_map_cache_size_mb=256' vg_vm/lv_vmstore
+sudo lvchange -ay vg_vm/lv_vmstore
+sudo mount /var/lib/libvirt/images
 ```
 
 ### Sync Mode
 
-For production VMs, ensure synchronous mode for data safety:
+The default `auto` write policy selects the write mode based on the underlying storage characteristics. After stopping the VMs and deactivating the volume, you can use `sync` if the underlying storage guarantees that writes are persistent when acknowledged:
 
 ```bash
+sudo umount /var/lib/libvirt/images
+sudo lvchange -an vg_vm/lv_vmstore
 sudo lvchange --vdosettings 'write_policy=sync' vg_vm/lv_vmstore
+sudo lvchange -ay vg_vm/lv_vmstore
+sudo mount /var/lib/libvirt/images
 ```
 
-For development/test environments where performance matters more than durability:
+After stopping the VMs and deactivating the volume, use `async` if the underlying storage has a volatile write-back cache and relies on flushes/FUA for persistence:
 
 ```bash
+sudo umount /var/lib/libvirt/images
+sudo lvchange -an vg_vm/lv_vmstore
 sudo lvchange --vdosettings 'write_policy=async' vg_vm/lv_vmstore
+sudo lvchange -ay vg_vm/lv_vmstore
+sudo mount /var/lib/libvirt/images
 ```
 
 ## Step 9: Handle VM Migration
