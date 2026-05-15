@@ -12,7 +12,7 @@ AlmaLinux is a community-driven, free RHEL-compatible distribution created by Cl
 
 ## ABI Compatibility Approach
 
-AlmaLinux initially aimed for bug-for-bug RHEL compatibility but shifted to ABI compatibility after Red Hat restricted access to RHEL sources. This means AlmaLinux guarantees that binaries compiled for RHEL will run on AlmaLinux, but individual package versions may differ slightly:
+AlmaLinux initially aimed for bug-for-bug RHEL compatibility but shifted to ABI compatibility after Red Hat restricted access to RHEL sources. This means AlmaLinux aims to ensure that binaries and kernel modules that work on RHEL also work on AlmaLinux, but individual package versions may differ slightly:
 
 ```bash
 # AlmaLinux: Check the release
@@ -41,18 +41,26 @@ rpm -qa | grep alma
 For migrating to RHEL instead:
 
 ```bash
-# Migrate from CentOS to RHEL using convert2rhel
-sudo dnf install convert2rhel
-sudo convert2rhel --org your-org --activationkey your-key
+# Migrate from CentOS 8 to RHEL 8 using convert2rhel
+sudo curl -o /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release \
+  https://security.access.redhat.com/data/fd431d51.txt
+sudo curl -o /etc/yum.repos.d/convert2rhel.repo \
+  https://cdn-public.redhat.com/content/public/repofiles/convert2rhel-for-rhel-8-x86_64.repo
+sudo yum -y install convert2rhel
+
+# Add org and activation_key under [subscription_manager] in /etc/convert2rhel.ini,
+# then run the pre-conversion analysis and conversion.
+sudo convert2rhel analyze
+sudo convert2rhel
 ```
 
 ## Governance and Funding
 
-AlmaLinux is governed by the AlmaLinux OS Foundation, a 501(c)(6) nonprofit. This provides assurance that the project will not be acquired or changed direction by a single company. Red Hat is a for-profit subsidiary of IBM, and RHEL is a commercial product with clear business incentives for continued support.
+AlmaLinux is governed by the AlmaLinux OS Foundation, a 501(c)(6) nonprofit. This reduces the risk that the project will be acquired or changed direction by a single company. Red Hat is a for-profit subsidiary of IBM, and RHEL is a commercial product with clear business incentives for continued support.
 
 ## Security Updates
 
-Both RHEL and AlmaLinux issue security errata. RHEL errata are published immediately through the Red Hat Customer Portal. AlmaLinux tracks RHEL errata and typically releases matching updates within 1-3 days:
+Both RHEL and AlmaLinux issue security errata. RHEL errata are published through the Red Hat Customer Portal. AlmaLinux tracks RHEL errata and generally publishes updates quickly, though timing can vary:
 
 ```bash
 # AlmaLinux: Check for security updates
@@ -64,7 +72,7 @@ sudo dnf updateinfo list security
 
 ## Third-Party Software Certification
 
-This is a key differentiator. ISVs certify their software on RHEL, not on AlmaLinux. If you run commercial databases, middleware, or applications, check the vendor's support matrix:
+This is a key differentiator. Many ISVs certify their software on RHEL, not on AlmaLinux. If you run commercial databases, middleware, or applications, check the vendor's support matrix:
 
 ```bash
 # Example: Check if your system is recognized by an ISV installer
