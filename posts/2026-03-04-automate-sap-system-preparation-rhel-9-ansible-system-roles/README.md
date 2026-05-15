@@ -22,17 +22,22 @@ Automate SAP system preparation on RHEL 9 using Ansible System Roles. Running SA
 ## Step 1 - Register and Enable SAP Repositories
 
 ```bash
-sudo subscription-manager repos --enable=rhel-9-for-x86_64-sap-solutions-rpms
-sudo subscription-manager repos --enable=rhel-9-for-x86_64-sap-netweaver-rpms
+sudo subscription-manager release --set=9.6
+sudo subscription-manager repos \
+  --disable="*" \
+  --enable="rhel-9-for-$(uname -m)-baseos-e4s-rpms" \
+  --enable="rhel-9-for-$(uname -m)-appstream-e4s-rpms" \
+  --enable="rhel-9-for-$(uname -m)-sap-solutions-e4s-rpms" \
+  --enable="rhel-9-for-$(uname -m)-sap-netweaver-e4s-rpms"
 ```
 
 ## Step 2 - Install SAP-Specific Packages
 
 ```bash
-sudo dnf install -y tuned-profiles-sap-hana resource-agents-sap-hana
+sudo dnf install -y ansible-core tuned-profiles-sap-hana
 # For RHEL System Roles for SAP:
 
-sudo dnf install -y rhel-system-roles-sap
+sudo dnf install -y rhel-system-roles-sap rhel-system-roles
 ```
 
 ## Step 3 - Apply SAP Tuning Profile
@@ -45,20 +50,17 @@ This configures kernel parameters, memory settings, and I/O schedulers as recomm
 
 ## Step 4 - Configure Kernel Parameters
 
-Verify the critical settings in `/etc/sysctl.conf`:
+RHEL System Roles for SAP manages the required sysctl configuration. If you configure manually, verify SAP-related settings under `/etc/sysctl.d/`, such as `/etc/sysctl.d/sap.conf`:
 
 ```text
-vm.swappiness = 10
-vm.dirty_ratio = 10
-vm.dirty_background_ratio = 3
-net.core.somaxconn = 4096
-net.ipv4.tcp_max_syn_backlog = 8192
+vm.max_map_count = 2147483647
+kernel.pid_max = 4194304
 ```
 
 Apply:
 
 ```bash
-sudo sysctl -p
+sudo sysctl --system
 ```
 
 ## Step 5 - Set Up High Availability (If Required)
@@ -66,7 +68,8 @@ sudo sysctl -p
 Install the HA add-on:
 
 ```bash
-sudo dnf install -y pacemaker pcs fence-agents-all
+sudo subscription-manager repos --enable="rhel-9-for-$(uname -m)-highavailability-e4s-rpms"
+sudo dnf install -y pacemaker pcs fence-agents-all sap-hana-ha
 sudo systemctl enable --now pcsd
 sudo passwd hacluster
 ```
@@ -75,7 +78,7 @@ Configure the cluster with pcs commands following the SAP-specific resource agen
 
 ## Step 6 - Validate the Configuration
 
-Use the SAP HANA Hardware Configuration Check Tool (HWCCT) or the RHEL System Roles validation tasks to confirm your system meets SAP requirements.
+Use SAP HANA Hardware and Cloud Measurement Tools (HCMT) or the RHEL System Roles validation tasks to confirm your system meets SAP requirements.
 
 ## Summary
 
