@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Crypto Policies, TLS, Ciphers, Security Hardening, Linux
 
-Description: Use RHEL 9 crypto policies to disable weak TLS versions and ciphers across all applications, ensuring only strong encryption is used system-wide.
+Description: Use RHEL 9 crypto policies to disable weak TLS versions and ciphers for supported system crypto back ends, helping enforce strong encryption system-wide.
 
 ---
 
-Disabling weak TLS versions and cipher suites is a fundamental security hardening step. On RHEL 9, the system-wide crypto policy mechanism makes this easy by allowing you to control TLS settings for all applications from a single configuration. This guide shows you how to identify and disable weak cryptographic settings.
+Disabling weak TLS versions and cipher suites is a fundamental security hardening step. On RHEL 9, the system-wide crypto policy mechanism makes this easy by allowing you to control TLS settings for supported applications that use the system-provided crypto back ends. This guide shows you how to identify and disable weak cryptographic settings.
 
 ## Identifying Weak TLS Versions and Ciphers
 
@@ -51,14 +51,17 @@ openssl ciphers -v 2>/dev/null | grep -iE "RC4|DES|3DES|NULL|EXPORT|MD5"
 ### Check SSH Configuration
 
 ```bash
-# View allowed SSH ciphers
+# View SSH ciphers supported by the OpenSSH binary
 ssh -Q cipher
 
-# View allowed SSH MACs
+# View SSH MACs supported by the OpenSSH binary
 ssh -Q mac
 
-# View allowed key exchange algorithms
+# View key exchange algorithms supported by the OpenSSH binary
 ssh -Q kex
+
+# Check the effective SSH client configuration
+ssh -G localhost | grep -E "^(ciphers|macs|kexalgorithms) "
 
 # Check the running sshd configuration
 sudo sshd -T | grep -E "^ciphers|^macs|^kexalgorithms"
@@ -83,18 +86,19 @@ DEFAULT disables:
 - NULL ciphers
 - Export-grade ciphers
 - RSA key exchange (no forward secrecy)
+- SHA-1 signatures and SHA-1-signed certificates
 - DSA keys
 
 ## Going Further: Removing Additional Weak Options
 
 ### Disable CBC Mode Ciphers
 
-CBC mode ciphers are vulnerable to padding oracle attacks:
+CBC mode ciphers have a history of protocol-specific attacks and are commonly disabled when they are not required:
 
 ```bash
 sudo tee /etc/crypto-policies/policies/modules/NO-CBC.pmod << 'EOF'
 # Disable CBC mode ciphers
-cipher = -AES-256-CBC -AES-128-CBC -CAMELLIA-256-CBC -CAMELLIA-128-CBC
+cipher = -*-CBC
 EOF
 
 sudo update-crypto-policies --set DEFAULT:NO-CBC
@@ -106,8 +110,9 @@ sudo update-crypto-policies --set DEFAULT:NO-CBC
 sudo tee /etc/crypto-policies/policies/modules/NO-SHA1.pmod << 'EOF'
 # Disable SHA-1 everywhere
 hash = -SHA1
-sign = -RSA-SHA1 -ECDSA-SHA1 -RSA-PSS-SHA1
+sign = -*-SHA1
 mac = -HMAC-SHA1
+sha1_in_certs = 0
 EOF
 
 sudo update-crypto-policies --set DEFAULT:NO-SHA1
@@ -118,7 +123,7 @@ sudo update-crypto-policies --set DEFAULT:NO-SHA1
 ```bash
 sudo tee /etc/crypto-policies/policies/modules/AES256-ONLY.pmod << 'EOF'
 # Only allow 256-bit symmetric encryption
-cipher = -AES-128-GCM -AES-128-CCM -AES-128-CBC -AES-128-CTR
+cipher = -AES-128-*
 EOF
 
 sudo update-crypto-policies --set DEFAULT:AES256-ONLY
@@ -131,12 +136,13 @@ sudo tee /etc/crypto-policies/policies/modules/HARDENED.pmod << 'EOF'
 # Combined hardening module
 
 # No CBC mode
-cipher = -AES-256-CBC -AES-128-CBC -CAMELLIA-256-CBC -CAMELLIA-128-CBC
+cipher = -*-CBC
 
 # No SHA-1
 hash = -SHA1
-sign = -RSA-SHA1 -ECDSA-SHA1 -RSA-PSS-SHA1
-mac = -HMAC-SHA1 -UMAC-64
+sign = -*-SHA1
+mac = -HMAC-SHA1
+sha1_in_certs = 0
 
 # Minimum 3072-bit keys
 min_rsa_size = 3072
@@ -160,7 +166,7 @@ sudo systemctl restart nginx 2>/dev/null
 openssl ciphers -v 2>/dev/null | grep -iE "RC4|DES|3DES|NULL|CBC|SHA1"
 
 # Test SSH ciphers
-ssh -Q cipher | grep -i cbc
+ssh -G localhost | grep "^ciphers " | grep -i cbc
 # Should return nothing if CBC is disabled
 
 # Test a TLS connection
@@ -229,7 +235,7 @@ fi
 | HIPAA | Strong encryption (TLS 1.2+ recommended) |
 | FedRAMP | TLS 1.2+ with FIPS-approved algorithms |
 
-All of these can be met with at least the DEFAULT policy, and most are better served by DEFAULT:NO-SHA1 or the FUTURE policy.
+DEFAULT provides a good TLS 1.2+ baseline for many environments. Requirements that mandate FIPS-approved algorithms or validated cryptographic modules usually require FIPS mode, the FIPS crypto policy, or organization-specific controls in addition to DEFAULT.
 
 ## Troubleshooting
 
@@ -261,4 +267,4 @@ diff /tmp/default-ciphers.txt /tmp/hardened-ciphers.txt
 
 ## Summary
 
-Disabling weak TLS versions and ciphers on RHEL 9 is straightforward with system-wide crypto policies. The DEFAULT policy already provides good protection. For stronger requirements, create custom policy modules that disable CBC mode, SHA-1, or 128-bit ciphers. Verify your changes with OpenSSL and SSH queries, and regularly scan your services to confirm only strong cryptography is in use.
+Disabling weak TLS versions and ciphers on RHEL 9 is straightforward with system-wide crypto policies. The DEFAULT policy already provides good protection. For stronger requirements, create custom policy modules that disable CBC mode, SHA-1, or 128-bit ciphers. Verify your changes with OpenSSL and effective SSH configuration queries, and regularly scan your services to confirm only strong cryptography is in use.
