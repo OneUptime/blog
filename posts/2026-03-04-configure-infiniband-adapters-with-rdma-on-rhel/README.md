@@ -28,6 +28,8 @@ sudo dnf install -y opensm
 # Load InfiniBand kernel modules
 sudo modprobe ib_core
 sudo modprobe ib_uverbs
+sudo modprobe ib_umad
+sudo modprobe rdma_ucm
 sudo modprobe mlx5_ib    # For Mellanox/NVIDIA ConnectX adapters
 
 # Verify modules are loaded
@@ -100,18 +102,18 @@ rping -c -a 10.0.0.1 -v -C 10
 ## Verify with ibping
 
 ```bash
-# On the server (use the LID from ibstat)
+# On the server
 ibping -S
 
-# On the client
-ibping -L 1    # Replace 1 with the server's LID
+# On the client (use the server's LID from ibstat)
+ibping -c 50 -L 1    # Replace 1 with the server's LID
 ```
 
-## Enable RDMA Service
+## Apply Persistent RDMA Module Configuration
 
 ```bash
-# Enable the RDMA service for persistent configuration
-sudo systemctl enable --now rdma
+# After changing /etc/rdma/modules/rdma.conf, apply persistent module changes
+sudo systemctl restart rdma-load-modules@rdma.service
 ```
 
 ## Firewall Considerations
