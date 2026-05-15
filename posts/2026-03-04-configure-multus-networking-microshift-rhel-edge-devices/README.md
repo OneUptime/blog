@@ -38,7 +38,7 @@ composer-cli compose start my-edge-blueprint edge-commit
 For an installer image:
 
 ```bash
-composer-cli compose start my-edge-blueprint edge-installer
+composer-cli compose start-ostree --ref rhel/9/x86_64/edge --url http://example.com/repo my-edge-blueprint edge-installer
 ```
 
 ## Step 3 - Deploy to Edge Devices
@@ -74,6 +74,72 @@ sudo dnf install -y microshift
 sudo systemctl enable --now microshift
 ```
 
+Install the MicroShift Multus RPM and restart the host so existing pods are recreated with Multus annotations:
+
+```bash
+sudo dnf install -y microshift-multus
+sudo systemctl reboot
+```
+
+After the system restarts, verify that Multus is running:
+
+```bash
+oc get pods -n openshift-multus
+```
+
+Create a `NetworkAttachmentDefinition` for a bridge secondary network:
+
+```yaml
+apiVersion: "k8s.cni.cncf.io/v1"
+kind: NetworkAttachmentDefinition
+metadata:
+  name: bridge-conf
+spec:
+  config: '{
+      "cniVersion": "0.4.0",
+      "type": "bridge",
+      "bridge": "br-test",
+      "mode": "bridge",
+      "ipam": {
+        "type": "host-local",
+        "ranges": [
+          [
+            {
+              "subnet": "10.10.0.0/24",
+              "rangeStart": "10.10.0.20",
+              "rangeEnd": "10.10.0.50",
+              "gateway": "10.10.0.254"
+            }
+          ]
+        ],
+        "dataDir": "/var/lib/cni/br-test"
+      }
+    }'
+```
+
+Apply the definition:
+
+```bash
+oc apply -f network-attachment-definition.yaml
+```
+
+Attach a pod to the secondary network with the Multus annotation:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-bridge
+  annotations:
+    k8s.v1.cni.cncf.io/networks: bridge-conf
+spec:
+  containers:
+  - name: hello-microshift
+    image: quay.io/microshift/busybox:1.36
+    command: ["/bin/sh"]
+    args: ["-c", "while true; do sleep 3600; done"]
+```
+
 ## Summary
 
-You have learned how to configure multus networking for microshift edge devices. RHEL for Edge with rpm-ostree and MicroShift provides a robust platform for running workloads in remote and resource-constrained environments.
+You have learned how to configure Multus networking for MicroShift edge devices. RHEL for Edge with rpm-ostree and MicroShift provides a robust platform for running workloads in remote and resource-constrained environments.
