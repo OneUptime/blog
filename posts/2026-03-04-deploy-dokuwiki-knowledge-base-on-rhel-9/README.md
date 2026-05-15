@@ -15,35 +15,59 @@ Deploying DokuWiki Knowledge Base on RHEL provides a stable and secure foundatio
 - RHEL with a valid subscription or CentOS Stream 9
 - Root or sudo access
 - A terminal session
+- Apache HTTP Server, PHP-FPM, and the required PHP extensions
 
 ## Step 2: Configure the Service
 
-Edit the configuration file to match your environment:
+Install Apache, PHP-FPM, and DokuWiki:
 
 ```bash
-# Open the configuration file
+# Install the required packages
+sudo dnf install -y httpd php php-fpm php-gd php-mbstring php-xml tar curl policycoreutils-python-utils
 
-sudo vi /etc/<service>/config.conf
+# Download and extract the current stable DokuWiki release
+sudo mkdir -p /var/www/html/dokuwiki
+curl -L https://download.dokuwiki.org/src/dokuwiki/dokuwiki-stable.tgz -o /tmp/dokuwiki-stable.tgz
+sudo tar -xzf /tmp/dokuwiki-stable.tgz --strip-components=1 -C /var/www/html/dokuwiki
+
+# Allow Apache to write DokuWiki configuration and page data
+sudo chown -R apache:apache /var/www/html/dokuwiki
+sudo semanage fcontext -a -t httpd_sys_rw_content_t '/var/www/html/dokuwiki/(conf|data)(/.*)?'
+sudo restorecon -Rv /var/www/html/dokuwiki
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Create an Apache configuration file for the DokuWiki directory:
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo vi /etc/httpd/conf.d/dokuwiki.conf
+```
+
+Add the following configuration:
+
+```apache
+Alias /dokuwiki /var/www/html/dokuwiki
+
+<Directory "/var/www/html/dokuwiki">
+    AllowOverride All
+    Require all granted
+</Directory>
+```
+
+If `firewalld` is running, allow HTTP traffic:
+
+```bash
+sudo firewall-cmd --permanent --add-service=http
+sudo firewall-cmd --reload
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
-
-# Start the service
-sudo systemctl start <service-name>
+# Enable and start Apache and PHP-FPM
+sudo systemctl enable --now php-fpm httpd
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status php-fpm httpd
 ```
 
 
@@ -53,16 +77,24 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status php-fpm httpd
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u httpd --no-pager -n 20
+journalctl -u php-fpm --no-pager -n 20
+```
+
+Open `http://server_IP_or_host_name/dokuwiki/install.php` in a browser and complete the DokuWiki installer. After installation, remove the installer:
+
+```bash
+sudo rm /var/www/html/dokuwiki/install.php
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If Apache fails to start, check the logs with `journalctl -u httpd -e --no-pager`.
+- If PHP pages do not load, check PHP-FPM with `systemctl status php-fpm` and `journalctl -u php-fpm -e --no-pager`.
+- Ensure all required packages are installed: `rpm -q httpd php php-fpm php-gd php-mbstring php-xml`.
 
 ## Conclusion
 
