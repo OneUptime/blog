@@ -17,13 +17,14 @@ TLP is available from the EPEL repository on RHEL.
 ```bash
 # Enable the EPEL repository
 
-sudo dnf install -y epel-release
+sudo subscription-manager repos --enable codeready-builder-for-rhel-$(rpm -E %rhel)-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-$(rpm -E %rhel).noarch.rpm
 
 # Install TLP
 sudo dnf install -y tlp tlp-rdw
 
-# For ThinkPad laptops, install the additional battery management package
-sudo dnf install -y kernel-devel akmod-tp_smapi
+# For legacy ThinkPad laptops, check whether an external battery module is recommended
+sudo tlp-stat -b
 ```
 
 ## Enable and Start TLP
@@ -50,10 +51,10 @@ sudo tlp-stat -s
 # View battery information
 sudo tlp-stat -b
 
-# View all active settings
+# View active configuration
 sudo tlp-stat -c
 
-# View power consumption estimates
+# View processor tunables
 sudo tlp-stat -p
 ```
 
@@ -107,7 +108,7 @@ USB_AUTOSUSPEND=1
 # Apply the new configuration without rebooting
 sudo tlp start
 
-# Verify the settings are active
+# Verify the configured settings are loaded
 sudo tlp-stat -c | grep -E "CPU_SCALING|CPU_BOOST|WIFI_PWR"
 ```
 
@@ -127,11 +128,11 @@ echo 80 | sudo tee /sys/class/power_supply/BAT0/charge_stop_threshold
 ## Monitor Battery Life Impact
 
 ```bash
-# Check current power draw
-sudo tlp-stat -p
+# Check battery status and rate information
+sudo tlp-stat -b
 
 # Monitor battery discharge rate over time
 upower -i /org/freedesktop/UPower/devices/battery_BAT0
 ```
 
-TLP works well alongside RHEL's default power management and provides noticeable battery life improvements on most laptop hardware.
+TLP should replace conflicting power profile tools and can provide noticeable battery life improvements on many laptop hardware configurations.
