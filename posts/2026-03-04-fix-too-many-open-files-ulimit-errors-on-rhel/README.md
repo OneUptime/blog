@@ -23,7 +23,7 @@ cat /proc/$(pgrep nginx | head -1)/limits | grep "open files"
 
 # Check the system-wide limit
 cat /proc/sys/fs/file-nr
-# Shows: allocated  free  maximum
+# Shows: allocated  unused  maximum
 # Example: 5120  0  1048576
 
 # Check the system-wide maximum
@@ -32,7 +32,7 @@ cat /proc/sys/fs/file-max
 
 ## Increase Limits for a Specific User
 
-Edit `/etc/security/limits.conf`:
+For login sessions, edit `/etc/security/limits.conf`:
 
 ```bash
 sudo vi /etc/security/limits.conf
@@ -108,7 +108,7 @@ cat /proc/$(pgrep nginx | head -1)/limits | grep "open files"
 
 ```bash
 # Check how many file descriptors a process is using
-ls -la /proc/$(pgrep nginx | head -1)/fd | wc -l
+ls -1 /proc/$(pgrep nginx | head -1)/fd | wc -l
 
 # Find processes using the most file descriptors
 for pid in /proc/[0-9]*; do
