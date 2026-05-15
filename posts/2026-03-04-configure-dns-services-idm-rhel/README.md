@@ -91,7 +91,7 @@ ipa dnszone-mod example.com --allow-transfer="none;"
 ipa dnszone-mod example.com --dynamic-update=TRUE
 
 # IdM clients can then update their own A/AAAA records
-# This is handled automatically during client enrollment
+# Use ipa-client-install --enable-dns-updates during enrollment
 ```
 
 ## Verifying DNS
@@ -107,4 +107,4 @@ dig @idm1.example.com -x 192.168.1.50
 ipactl status | grep named
 ```
 
-IdM DNS integrates tightly with the identity layer. When you add a host to IdM, DNS records are created automatically. When you remove a host, the records are cleaned up. This reduces the manual DNS management overhead significantly.
+IdM DNS integrates tightly with the identity layer. When you add a host to IdM with `ipa host-add --ip-address` or enroll a client with dynamic DNS updates enabled, DNS records can be created or updated through IdM. When you remove a host with `ipa host-del --updatedns`, the corresponding DNS records are cleaned up. This reduces the manual DNS management overhead significantly.
