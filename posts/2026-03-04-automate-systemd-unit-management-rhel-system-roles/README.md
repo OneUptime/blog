@@ -10,7 +10,7 @@ Description: Learn how to use RHEL System Roles to automate systemd service mana
 
 If you manage more than a handful of RHEL servers, you already know the pain of SSH-ing into each box to tweak services. RHEL System Roles give you a supported, Red Hat-maintained way to handle systemd units at scale using Ansible. No more one-off scripts or hoping that your colleague remembered to enable that service on the new node.
 
-This guide walks through using the `rhel-system-roles.systemd` role (part of the broader RHEL System Roles collection) to manage services, deploy custom unit files, and keep your fleet consistent.
+This guide walks through using the `redhat.rhel_system_roles.systemd` role (part of the broader RHEL System Roles collection) to manage services, deploy custom unit files, and keep your fleet consistent.
 
 ---
 
@@ -26,11 +26,11 @@ Install the package on your Ansible control node:
 sudo dnf install rhel-system-roles -y
 ```
 
-After installation, the roles live under `/usr/share/ansible/roles/`. You can verify:
+After installation, the collection lives under `/usr/share/ansible/collections/ansible_collections/redhat/rhel_system_roles/`, and the roles can be referenced as `redhat.rhel_system_roles.<role_name>`. You can verify:
 
 ```bash
 # List available RHEL system roles
-ls /usr/share/ansible/roles/ | grep rhel
+ls /usr/share/ansible/collections/ansible_collections/redhat/rhel_system_roles/roles/
 ```
 
 ---
@@ -60,7 +60,7 @@ ansible all -i inventory.ini -m ping
 
 ## Enabling and Disabling Services via the systemd Role
 
-The most common task is making sure a service is running and enabled at boot. Here is a playbook that uses the `rhel-system-roles.systemd` approach through Ansible's built-in modules, combined with role-based variable management.
+The most common task is making sure a service is running and enabled at boot. Here is a playbook that uses the `redhat.rhel_system_roles.systemd` role with role-based variable management.
 
 Create a playbook file:
 
@@ -77,26 +77,21 @@ Create a playbook file:
         name: httpd
         state: present
 
-    # Start and enable httpd so it survives reboots
-    - name: Enable and start httpd
-      ansible.builtin.systemd_service:
-        name: httpd
-        state: started
-        enabled: true
-
-    # Make sure the firewall allows HTTP traffic
-    - name: Enable and start firewalld
-      ansible.builtin.systemd_service:
-        name: firewalld
-        state: started
-        enabled: true
-
-    # Disable and stop a service you do not want running
-    - name: Disable and stop cups (not needed on web servers)
-      ansible.builtin.systemd_service:
-        name: cups
-        state: stopped
-        enabled: false
+    # Manage services with the RHEL systemd role
+    - name: Enable, start, disable, and stop services
+      ansible.builtin.include_role:
+        name: redhat.rhel_system_roles.systemd
+      vars:
+        systemd_started_units:
+          - httpd.service
+          - firewalld.service
+        systemd_enabled_units:
+          - httpd.service
+          - firewalld.service
+        systemd_stopped_units:
+          - cups.service
+        systemd_disabled_units:
+          - cups.service
 ```
 
 Run the playbook:
@@ -106,7 +101,7 @@ Run the playbook:
 ansible-playbook -i inventory.ini manage-services.yml
 ```
 
-The `systemd_service` module (available in Ansible 2.14+) is the preferred way to manage systemd units. It replaces the older `systemd` module name and works well on RHEL.
+If you are writing standalone Ansible tasks instead of using the RHEL systemd role, `ansible.builtin.systemd_service` is the current fully qualified module name for managing systemd units. The older `ansible.builtin.systemd` name is kept as a backward-compatible alias.
 
 ---
 
@@ -114,12 +109,12 @@ The `systemd_service` module (available in Ansible 2.14+) is the preferred way t
 
 Sometimes you need to push a custom systemd unit file to your servers. Maybe you have a homegrown monitoring agent or a backend app that needs its own service definition.
 
-Here is the workflow: deploy the unit file as a template, reload systemd, then enable and start the service.
+Here is the workflow: create the unit file as a template, then let the RHEL systemd role deploy it, reload systemd, enable the unit, and start the service.
 
 First, create your unit file template:
 
 ```ini
-# templates/myapp.service.j2 - Jinja2 template for the custom service
+# myapp.service.j2 - Jinja2 template for the custom service
 [Unit]
 Description=My Custom Application
 After=network-online.target
@@ -161,40 +156,26 @@ Now the playbook that deploys it:
         system: true
         shell: /sbin/nologin
 
-    # Deploy the unit file from template
-    - name: Deploy systemd unit file
-      ansible.builtin.template:
-        src: templates/myapp.service.j2
-        dest: /etc/systemd/system/myapp.service
-        owner: root
-        group: root
-        mode: "0644"
-      notify: Reload systemd and restart myapp
-
-    # Enable the service so it starts at boot
-    - name: Enable and start myapp
-      ansible.builtin.systemd_service:
-        name: myapp
-        state: started
-        enabled: true
-        daemon_reload: true
-
-  handlers:
-    # Handler runs only when the unit file changes
-    - name: Reload systemd and restart myapp
-      ansible.builtin.systemd_service:
-        name: myapp
-        state: restarted
-        daemon_reload: true
+    # Deploy the unit file, reload systemd, enable the service, and start it
+    - name: Deploy and activate myapp
+      ansible.builtin.include_role:
+        name: redhat.rhel_system_roles.systemd
+      vars:
+        systemd_unit_file_templates:
+          - myapp.service.j2
+        systemd_enabled_units:
+          - myapp.service
+        systemd_started_units:
+          - myapp.service
 ```
 
-The handler pattern is important here. You only want to restart the service when the unit file actually changes. If the template is unchanged, Ansible skips the handler and your service keeps running without interruption.
+The role expects system unit templates to use the `<name>.<unit_type>.j2` naming convention, such as `myapp.service.j2`, and places the rendered unit under `/etc/systemd/system/`.
 
 ---
 
 ## Using the RHEL System Role for Timesync (Practical Example)
 
-To show how RHEL System Roles work with their role-based variable approach, here is an example using the `rhel-system-roles.timesync` role. The pattern is the same for any RHEL System Role:
+To show how RHEL System Roles work with their role-based variable approach, here is an example using the `redhat.rhel_system_roles.timesync` role. The pattern is the same for any RHEL System Role:
 
 ```yaml
 # timesync.yml - Configure NTP using the official RHEL System Role
@@ -209,16 +190,16 @@ To show how RHEL System Roles work with their role-based variable approach, here
       - hostname: ntp2.example.com
         iburst: true
   roles:
-    - rhel-system-roles.timesync
+    - redhat.rhel_system_roles.timesync
 ```
 
-This installs and configures chrony, enables the service, and makes sure time sync is working. The role handles the systemd unit management internally.
+On RHEL 8 and later, this installs and configures chrony, enables the service, and makes sure time sync is working. The role handles the systemd unit management internally.
 
 ---
 
-## Managing Multiple Services with Loops
+## Managing Multiple Services with Lists
 
-When you need to handle several services at once, loops keep your playbook clean:
+When you need to handle several services at once, lists keep your playbook clean:
 
 ```yaml
 # bulk-service-management.yml - Manage multiple services in one pass
@@ -228,35 +209,28 @@ When you need to handle several services at once, loops keep your playbook clean
   become: true
   vars:
     services_to_enable:
-      - sshd
-      - firewalld
-      - chronyd
-      - rsyslog
+      - sshd.service
+      - firewalld.service
+      - chronyd.service
+      - rsyslog.service
     services_to_disable:
-      - cups
-      - avahi-daemon
-      - bluetooth
+      - cups.service
+      - avahi-daemon.service
+      - bluetooth.service
 
   tasks:
-    # Enable and start all required services
-    - name: Enable required services
-      ansible.builtin.systemd_service:
-        name: "{{ item }}"
-        state: started
-        enabled: true
-      loop: "{{ services_to_enable }}"
-
-    # Stop and disable unnecessary services
-    - name: Disable unnecessary services
-      ansible.builtin.systemd_service:
-        name: "{{ item }}"
-        state: stopped
-        enabled: false
-      loop: "{{ services_to_disable }}"
-      ignore_errors: true
+    # Manage all required and unnecessary services
+    - name: Apply service policy
+      ansible.builtin.include_role:
+        name: redhat.rhel_system_roles.systemd
+      vars:
+        systemd_started_units: "{{ services_to_enable }}"
+        systemd_enabled_units: "{{ services_to_enable }}"
+        systemd_stopped_units: "{{ services_to_disable }}"
+        systemd_disabled_units: "{{ services_to_disable }}"
 ```
 
-The `ignore_errors: true` on the disable task is practical because some services might not be installed on every host. You do not want the playbook to fail just because bluetooth was never installed on a headless server.
+When you use the role, keep your unit lists accurate for the target hosts. Do not include services that are not installed on a host unless you have accounted for that host difference elsewhere in your inventory or variables.
 
 ---
 
@@ -272,6 +246,7 @@ After running your playbooks, you want confirmation that everything is correct. 
       loop: "{{ services_to_enable }}"
       register: service_check
       changed_when: false
+      failed_when: false
 
     # Print the results
     - name: Show service status
@@ -284,15 +259,15 @@ After running your playbooks, you want confirmation that everything is correct. 
 
 ## Tips From the Field
 
-**Keep your playbooks idempotent.** The `systemd_service` module is already idempotent, meaning running it twice produces the same result. Do not add extra shell commands that break this property.
+**Keep your playbooks idempotent.** The RHEL systemd role and the `systemd_service` module are idempotent, meaning running them twice produces the same result. Do not add extra shell commands that break this property.
 
-**Use `daemon_reload: true` when deploying unit files.** If you change a unit file but forget to reload systemd, the old version stays in memory. The `daemon_reload` parameter handles this automatically.
+**Reload systemd when deploying unit files.** If you change a unit file but forget to reload systemd, the old version stays in memory. The RHEL systemd role handles this when it deploys unit file templates; if you write standalone tasks, use the `daemon_reload` parameter in `ansible.builtin.systemd_service`.
 
-**Pin your role versions.** If you are using RHEL System Roles from Ansible Galaxy or Automation Hub, pin the version in your `requirements.yml`:
+**Pin your collection versions.** If you are using RHEL System Roles from Ansible Galaxy or Automation Hub, pin the version in your `requirements.yml`:
 
 ```yaml
 # requirements.yml - Pin role versions for reproducibility
-roles:
+collections:
   - name: redhat.rhel_system_roles
     version: "1.23.0"
 ```
@@ -308,6 +283,6 @@ ansible-playbook -i inventory.ini manage-services.yml --check --diff
 
 ## Wrapping Up
 
-RHEL System Roles combined with Ansible's `systemd_service` module give you a reliable, repeatable way to manage services across your entire fleet. Instead of writing fragile shell scripts or relying on tribal knowledge about which services should be running where, you codify it in playbooks that anyone on the team can read and run.
+RHEL System Roles give you a reliable, repeatable way to manage services across your entire fleet. Instead of writing fragile shell scripts or relying on tribal knowledge about which services should be running where, you codify it in playbooks that anyone on the team can read and run.
 
 Start small. Pick one service management task you do regularly, automate it, and build from there. Once your team sees how much time it saves, the rest of your service management will follow.
