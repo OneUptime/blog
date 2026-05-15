@@ -8,20 +8,21 @@ Description: Learn how to use noatime and nodiratime mount options on RHEL to re
 
 ---
 
-Every time you read a file on a Linux system, the kernel updates its "access time" (atime) in the inode metadata. That means every read triggers a write. For workloads that read a lot of files - web servers, build systems, mail servers - this creates a steady stream of unnecessary disk writes that waste I/O bandwidth and reduce SSD lifespan.
+With traditional full atime behavior, every time you read a file on a Linux system, the kernel updates its "access time" (atime) in the inode metadata. That means each read can trigger a write. RHEL uses `relatime` by default, which avoids many of those writes, but read-heavy workloads - web servers, build systems, mail servers - can still benefit from reducing unnecessary metadata writes where accurate atime values are not needed.
 
 ## What atime, relatime, noatime, and nodiratime Mean
 
-- **atime** - Access time is updated on every file access (the worst for performance)
-- **relatime** - Access time is updated only if it is older than the modify time, or if 24 hours have passed (RHEL default)
+- **atime** - The inode access timestamp that records when a file or directory was last read
+- **strictatime** - Access time is updated on every file access (the worst for performance)
+- **relatime** - Access time is updated only if it is older than the modify or change time, or if 24 hours have passed (RHEL default)
 - **noatime** - Access time is never updated (best for performance)
-- **nodiratime** - Access time is never updated for directories (but still updated for files)
+- **nodiratime** - Access time is never updated for directories (but file atime follows the other atime options)
 
 ```mermaid
 graph TD
     A[File Read Happens] --> B{Mount Option?}
-    B -->|atime| C[Always update access time - write to disk]
-    B -->|relatime| D{atime older than mtime or 24h passed?}
+    B -->|strictatime| C[Always update access time - write to disk]
+    B -->|relatime| D{atime older than mtime/ctime or 24h passed?}
     D -->|Yes| E[Update access time]
     D -->|No| F[Skip update]
     B -->|noatime| G[Never update access time - no write]
@@ -55,7 +56,7 @@ Use `noatime` when:
 
 Keep `relatime` (or even `atime`) when:
 
-- You run mail servers that use atime to track which messages have been read (like mutt with mstrstrstrstrstrstrstrstrstrstrstrstrstrstrstrstrstrstrstrstrstrstrstrstrstrstrstrstrstrstr mailbox format)
+- You run mail servers that use atime to track which messages have been read (like mutt with mbox mailbox format)
 - Backup software relies on atime to determine which files to back up
 - Security auditing requires knowing when files were last accessed
 - The `tmpwatch` or `systemd-tmpfiles` service uses atime to clean old files
@@ -111,7 +112,11 @@ You can also apply noatime to the root filesystem:
 /dev/mapper/rhel-root  /  xfs  defaults,noatime  0 0
 ```
 
-This requires a reboot to take effect on the root filesystem.
+This takes effect after you reboot or remount the root filesystem:
+
+```bash
+mount -o remount /
+```
 
 ## Using nodiratime
 
@@ -129,16 +134,19 @@ The performance gain depends on your workload:
 
 ### High-Read Workloads (Web Servers, Build Systems)
 
-The benefit is significant. Every file read no longer requires a metadata write:
+The benefit can be significant. Reads that would otherwise update atime no longer require a metadata write:
 
 ```bash
 # Quick before/after test
 # Test with relatime (default)
 mount -o remount,relatime /data
+sync
+echo 3 > /proc/sys/vm/drop_caches
 time find /data -type f -exec cat {} + > /dev/null 2>&1
 
 # Test with noatime
 mount -o remount,noatime /data
+sync
 echo 3 > /proc/sys/vm/drop_caches
 time find /data -type f -exec cat {} + > /dev/null 2>&1
 ```
@@ -167,7 +175,7 @@ Check your tmpfiles configuration:
 grep -r "^[a-z].*tmp" /etc/tmpfiles.d/ /usr/lib/tmpfiles.d/ 2>/dev/null
 ```
 
-The `A` (access time) qualifier in tmpfiles rules will not work correctly with `noatime`. However, most rules use modification time, so this is rarely a problem in practice.
+Tmpfiles rules that depend on access time will not reflect reads correctly with `noatime`. However, tmpfiles cleanup also considers modification time and, for files, change time by default, so this is rarely a problem in practice.
 
 ## Best Practice Configuration
 
