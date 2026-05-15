@@ -141,7 +141,7 @@ jobs:
 
           # Generate configs with all patches
           talosctl gen config production https://api.prod.internal:6443 \
-              --from-secrets secrets.yaml \
+              --with-secrets secrets.yaml \
               --config-patch @patches/common.yaml \
               --config-patch-control-plane @patches/cp.yaml \
               --config-patch-worker @patches/worker.yaml \
@@ -168,7 +168,7 @@ Before running Talos-specific validation, check that your YAML is syntactically 
 # Using yq to check YAML syntax
 yq eval '.' controlplane.yaml > /dev/null 2>&1 && echo "YAML OK" || echo "YAML ERROR"
 
-# Using python for a quick syntax check
+# Using python with PyYAML installed for a quick syntax check
 python3 -c "import yaml; yaml.safe_load(open('controlplane.yaml'))"
 ```
 
@@ -180,7 +180,7 @@ Another valuable validation technique is comparing your new configuration agains
 
 ```bash
 # Diff against the currently running config
-talosctl get machineconfig --nodes 10.0.1.10 -o yaml > running.yaml
+talosctl get machineconfig --nodes 10.0.1.10 -o yaml | yq eval '.spec' - > running.yaml
 diff running.yaml proposed.yaml
 ```
 
