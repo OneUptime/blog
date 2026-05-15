@@ -137,7 +137,7 @@ fi
 echo "Resizing multipath device: $MPATH_DEV"
 
 # Get path devices
-PATHS=$(sudo multipathd show paths format "%d %m" | grep "$MPATH_DEV" | awk '{print $1}')
+PATHS=$(sudo multipathd show paths raw format "%d %m" | awk -v map="$MPATH_DEV" '$2 == map {print $1}')
 
 echo "Rescanning paths: $PATHS"
 for dev in $PATHS; do
@@ -179,8 +179,8 @@ sudo journalctl -u multipathd | tail -20
 # Try reconfiguring
 sudo multipathd reconfigure
 
-# Force flush and rediscover (caution: unmount first)
-sudo multipath -F
+# Flush and rediscover the affected unused map (caution: unmount first)
+sudo multipath -f mpatha
 sudo multipath -v2
 ```
 
@@ -196,4 +196,4 @@ sudo dmsetup table /dev/mapper/mpatha
 
 ## Conclusion
 
-Resizing a multipath device after a SAN LUN expansion follows a clear sequence: rescan the individual paths, resize the multipath map, then extend whatever is on top (partitions, LVM, file systems). The process is online and does not require downtime. Always verify each step completes before moving to the next.
+Resizing a multipath device after a SAN LUN expansion follows a clear sequence: rescan the individual paths, resize the multipath map, then extend whatever is on top (partitions, LVM, file systems). For supported online resize paths, the process can be done without downtime. Always verify each step completes before moving to the next.
