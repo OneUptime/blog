@@ -12,7 +12,7 @@ HelmRelease upgrade failures in Flux occur when an existing Helm release cannot 
 
 ## How Upgrades Work in Flux
 
-When Flux detects a change in a HelmRelease (new chart version, changed values, or changed spec), it performs a Helm upgrade. The upgrade process renders the new templates, computes a diff against the previous release, and applies the changes. If the upgrade fails, Flux can optionally roll back to the previous release.
+When Flux detects a change in a HelmRelease (new chart version, changed values, or changed spec), it performs a Helm upgrade. The upgrade process renders the new templates, compares the desired release state with the existing release and cluster state, and applies the changes. If the upgrade fails, Flux can optionally roll back to the previous release.
 
 ```mermaid
 graph TD
@@ -37,7 +37,7 @@ Start by examining the current state of the HelmRelease:
 ```bash
 # Get the HelmRelease status
 
-flux get helmrelease my-app -n default
+flux get helmreleases -n default | grep my-app
 
 # View detailed conditions
 kubectl get helmrelease my-app -n default -o jsonpath='{.status.conditions}' | jq .
@@ -62,7 +62,7 @@ kubectl logs -n flux-system deployment/helm-controller | grep -E "upgrade|rollba
 
 ## Step 3: Check the Helm Release History
 
-Flux stores Helm release history as Kubernetes Secrets. Examining the history reveals previous successful versions and failed attempts:
+Helm stores release history as Kubernetes Secrets by default, and Flux uses Helm storage for HelmRelease reconciliation. Examining the history reveals previous successful versions and failed attempts:
 
 ```bash
 # List all Helm release secrets for the release
@@ -248,9 +248,9 @@ spec:
 | `cannot patch ... field is immutable` | Immutable field change | Use `force: true` or delete the resource |
 | `another operation is in progress` | Concurrent upgrade | Wait or clean up the pending release |
 | `has no deployed releases` | Previous install failed | Uninstall and reinstall |
-| `pre-upgrade hooks failed` | Hook job failure | Fix the hook or skip hooks |
+| `pre-upgrade hooks failed` | Hook job failure | Fix the hook or set `upgrade.disableHooks: true` when appropriate |
 | `timed out waiting for condition` | Pods not ready after upgrade | Increase timeout or fix readiness probes |
-| `UPGRADE FAILED: ... is invalid` | Validation error | Fix the values or disable validation |
+| `UPGRADE FAILED: ... is invalid` | Validation error | Fix the values or, when appropriate, use `upgrade.disableOpenAPIValidation` or `upgrade.disableSchemaValidation` |
 
 ## Best Practices
 
