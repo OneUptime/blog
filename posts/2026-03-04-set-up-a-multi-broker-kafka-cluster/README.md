@@ -23,10 +23,12 @@ Repeat on each node:
 ```bash
 sudo dnf install -y java-17-openjdk
 cd /opt
-sudo curl -L https://downloads.apache.org/kafka/3.7.0/kafka_2.13-3.7.0.tgz | sudo tar xz
-sudo ln -s kafka_2.13-3.7.0 kafka
 sudo useradd -r -s /sbin/nologin kafka
+sudo curl -L https://archive.apache.org/dist/kafka/3.7.2/kafka_2.13-3.7.2.tgz | sudo tar xz
+sudo ln -s kafka_2.13-3.7.2 kafka
+sudo mkdir -p /var/lib/kafka/data
 sudo chown -R kafka:kafka /opt/kafka*
+sudo chown -R kafka:kafka /var/lib/kafka
 ```
 
 ## Step 2: Configure Node 1
@@ -43,6 +45,7 @@ listeners=PLAINTEXT://:9092,CONTROLLER://:9093
 advertised.listeners=PLAINTEXT://node1:9092
 inter.broker.listener.name=PLAINTEXT
 controller.listener.names=CONTROLLER
+listener.security.protocol.map=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
 log.dirs=/var/lib/kafka/data
 num.partitions=3
 default.replication.factor=3
@@ -85,13 +88,32 @@ sudo -u kafka /opt/kafka/bin/kafka-storage.sh format   -t <CLUSTER_ID>   -c /opt
 On each node:
 
 ```bash
+sudo tee /etc/systemd/system/kafka.service >/dev/null <<'EOF'
+[Unit]
+Description=Apache Kafka Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kafka
+Group=kafka
+WorkingDirectory=/opt/kafka
+ExecStart=/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/kraft/server.properties
+ExecStop=/opt/kafka/bin/kafka-server-stop.sh
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
 sudo systemctl enable --now kafka
 ```
 
 ## Step 7: Verify the Cluster
 
 ```bash
-/opt/kafka/bin/kafka-metadata.sh --snapshot /var/lib/kafka/data/__cluster_metadata-0/00000000000000000000.log --cluster-id <CLUSTER_ID>
+/opt/kafka/bin/kafka-metadata-quorum.sh --bootstrap-server node1:9092 describe --status
 ```
 
 Create a replicated topic:
@@ -108,4 +130,4 @@ Describe the topic to see partition distribution:
 
 ## Conclusion
 
-A 3-node Kafka cluster with KRaft on RHEL 9 provides fault tolerance for up to one node failure (with replication factor 3 and min.insync.replicas 2). This configuration is the minimum recommended for production deployments.
+A 3-node Kafka cluster with KRaft on RHEL 9 provides fault tolerance for up to one node failure (with replication factor 3 and min.insync.replicas 2). This combined broker/controller configuration is suitable for small deployments; for critical production deployments, use dedicated controller nodes.
