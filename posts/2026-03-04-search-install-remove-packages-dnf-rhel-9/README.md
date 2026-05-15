@@ -8,7 +8,7 @@ Description: A practical guide to searching, installing, and removing packages w
 
 ---
 
-If you manage RHEL systems, you will spend a good chunk of your time working with DNF. It replaced YUM as the default package manager starting with RHEL 8, and in RHEL it is the only game in town. This guide walks through the commands you will use most often, from searching for packages to cleaning up after yourself.
+If you manage RHEL systems, you will spend a good chunk of your time working with DNF. It replaced YUM as the default package manager starting with RHEL 8, and in RHEL 9 the `yum` command remains only as a compatibility alias for DNF. This guide walks through the commands you will use most often, from searching for packages to cleaning up after yourself.
 
 ## Understanding DNF Basics
 
@@ -71,8 +71,8 @@ dnf list installed
 # List all available packages (from enabled repos)
 dnf list available
 
-# List packages with updates ready
-dnf list updates
+# List packages with upgrades ready
+dnf list --upgrades
 ```
 
 You can also filter with glob patterns:
@@ -125,10 +125,10 @@ sudo dnf install -y wget curl tmux htop
 
 ### Reinstall a Package
 
-If config files got corrupted or something went sideways, you can reinstall:
+If package-owned files got corrupted or something went sideways, you can reinstall:
 
 ```bash
-# Reinstall a package (replaces all files from the package)
+# Reinstall a package
 sudo dnf reinstall httpd
 ```
 
@@ -168,15 +168,15 @@ This command returns exit code 100 if updates are available and 0 if there are n
 ### Apply All Updates
 
 ```bash
-# Update all installed packages
-sudo dnf update -y
+# Upgrade all installed packages
+sudo dnf upgrade -y
 ```
 
 ### Update a Specific Package
 
 ```bash
-# Update only the kernel package
-sudo dnf update kernel
+# Upgrade only the kernel package
+sudo dnf upgrade kernel
 ```
 
 ### Security Updates Only
@@ -184,8 +184,8 @@ sudo dnf update kernel
 If you want to apply only security patches and leave everything else alone:
 
 ```bash
-# Apply only security-related updates
-sudo dnf update --security
+# Apply only security-related upgrades
+sudo dnf upgrade --security
 ```
 
 ## Cleaning Up
@@ -209,7 +209,7 @@ After cleaning, the next DNF operation will re-download metadata from your repos
 
 ```bash
 # Force a metadata refresh
-sudo dnf makecache
+sudo dnf --refresh makecache
 ```
 
 ## Useful DNF Options
@@ -217,10 +217,10 @@ sudo dnf makecache
 Here are some flags worth knowing:
 
 ```bash
-# Do a dry run without actually changing anything
+# Download the resolved package set without installing it
 sudo dnf install httpd --downloadonly
 
-# Show which repo each package comes from
+# Show available duplicate versions and which repo they come from
 dnf list available --showduplicates nginx
 
 # Skip broken dependencies and install what you can
@@ -238,7 +238,7 @@ Here is a summary of the most common DNF commands:
 | Find which package provides a file | `dnf provides <file>` |
 | Install a package | `sudo dnf install <name>` |
 | Remove a package | `sudo dnf remove <name>` |
-| Update all packages | `sudo dnf update` |
+| Upgrade all packages | `sudo dnf upgrade` |
 | List installed packages | `dnf list installed` |
 | Clean all caches | `sudo dnf clean all` |
 | Remove orphaned dependencies | `sudo dnf autoremove` |
