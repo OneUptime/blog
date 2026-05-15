@@ -8,7 +8,7 @@ Description: Learn how to use Memory Cgroups to Limit and Monitor Application Me
 
 ---
 
-Memory cgroups (control groups) let you set hard and soft limits on memory usage for applications, preventing any single process or group from consuming all available RAM. On RHEL 9 with cgroup v2, memory control is integrated with systemd.
+Memory cgroups (control groups) let you set hard limits, throttling thresholds, and memory protections for applications, preventing any single process or group from consuming all available RAM. On RHEL 9 with cgroup v2, memory control is integrated with systemd.
 
 ## Prerequisites
 
@@ -98,6 +98,10 @@ Description=Memory Limited Applications
 [Slice]
 MemoryMax=4G
 MemoryHigh=3G
+```
+
+```bash
+sudo systemctl daemon-reload
 ```
 
 Assign services:
