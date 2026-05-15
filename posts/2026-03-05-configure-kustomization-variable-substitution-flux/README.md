@@ -173,12 +173,14 @@ metadata:
   namespace: default
 data:
   # If LOG_LEVEL is not defined, default to "info"
-  log_level: ${LOG_LEVEL:=info}
+  log_level: "${LOG_LEVEL:=info}"
   # If MAX_CONNECTIONS is not defined, default to "100"
-  max_connections: ${MAX_CONNECTIONS:=100}
+  max_connections: "${MAX_CONNECTIONS:=100}"
   # If CACHE_TTL is not defined, default to "300"
-  cache_ttl: ${CACHE_TTL:=300}
+  cache_ttl: "${CACHE_TTL:=300}"
 ```
+
+Flux only runs substitution when at least one `substitute` value or `substituteFrom` source is configured. If you rely only on default expressions, add a harmless placeholder value such as `var_substitution_enabled: "true"` under `spec.postBuild.substitute`.
 
 ## Important Rules for Variable Values
 
@@ -194,6 +196,8 @@ postBuild:
     PORT: "8080"         # Quoted number
 ```
 
+When a substituted value is placed in a Kubernetes field that expects a string, quote the placeholder in the manifest if the final value could look like a number or boolean. For example, use `value: "${PORT}"` for an environment variable value, while numeric fields such as `replicas: ${REPLICAS}` should remain unquoted.
+
 ## Verifying Variable Substitution
 
 You can preview the result of variable substitution before it is applied to the cluster.
@@ -201,6 +205,9 @@ You can preview the result of variable substitution before it is applied to the 
 ```bash
 # Build the Kustomization locally to see substituted output
 flux build kustomization my-app --path ./deploy --kustomization-file ./kustomization-vars.yaml --dry-run
+
+# Or reproduce post-build substitution from local Kustomize output
+kustomize build ./deploy | flux envsubst --strict
 
 # Check the Kustomization status for substitution errors
 kubectl describe kustomization my-app -n flux-system
