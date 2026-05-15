@@ -12,10 +12,10 @@ SR-IOV (Single Root I/O Virtualization) allows a physical network adapter to pre
 
 ## Prerequisites
 
-- Physical NIC that supports SR-IOV (Intel X710, Mellanox ConnectX, etc.)
+- Physical NIC that supports SR-IOV and has a supported RHEL VF driver
 - SR-IOV enabled in the server BIOS/UEFI
 - Hyper-V host running Windows Server 2016 or later
-- RHEL 8 or RHEL Generation 2 VM
+- Supported RHEL VM (for example, RHEL 8 or later)
 
 ## Enable SR-IOV on the Hyper-V Host
 
@@ -62,17 +62,18 @@ lspci | grep -i "virtual function"
 # adapter (eth0) and the VF adapter
 ip link show
 
-# Check which driver the VF is using
+# Check the synthetic adapter driver
 ethtool -i eth0
 
-# For Intel NICs, the VF driver is typically iavf or ixgbevf
-# For Mellanox NICs, the VF driver is mlx5_core
-lsmod | grep -E "iavf|ixgbevf|mlx5"
+# For Intel NICs, the VF driver is typically iavf or ixgbevf.
+# The VF is enslaved by the netvsc device, so keep IP configuration
+# on eth0 and do not configure the VF interface directly.
+lsmod | grep -E "hv_netvsc|iavf|ixgbevf"
 ```
 
 ## Verify SR-IOV is Active
 
-```bash
+```powershell
 # Check the network adapter status from the Hyper-V host
 Get-VMNetworkAdapter -VMName "RHEL9-Server" | Format-List `
   Name, IovWeight, IovUsage, IovQueuePairsRequested
@@ -101,8 +102,8 @@ SR-IOV on Hyper-V uses a "teaming" approach where the synthetic adapter (netvsc)
 ethtool -i eth0
 # The netvsc driver manages the failover
 
-# Check the bonding/teaming status
-cat /proc/net/dev
+# Check for VF attach/failover messages
+dmesg | grep -i "hv_netvsc.*vf\|vf.*hv_netvsc"
 ```
 
 ## Troubleshooting
