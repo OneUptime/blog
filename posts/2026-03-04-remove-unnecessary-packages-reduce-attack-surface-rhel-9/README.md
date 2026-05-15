@@ -58,7 +58,7 @@ dnf remove -y alsa* pulseaudio*
 Some packages install services that listen on network ports. These are the highest-risk items:
 
 ```bash
-# Find packages that own listening services
+# Identify listening TCP services and their processes
 ss -tlnp | awk '{print $4, $6}' | sort
 
 # Cross-reference with RPM to find the owning package
@@ -84,12 +84,15 @@ dnf remove -y nfs-utils
 dnf remove -y telnet
 ```
 
-## Using dnf to Find Weak Dependencies
+## Using dnf to Find Extra and Unneeded Packages
 
-RHEL's dnf has a concept of weak dependencies. These are packages that were pulled in as recommendations but are not strictly required:
+RHEL's dnf tracks packages that were installed as dependencies and are no longer required. It can also show installed packages that are not present in enabled repositories:
 
 ```bash
-# Show packages installed as weak dependencies
+# Show packages installed as dependencies that are no longer needed
+dnf repoquery --unneeded
+
+# Show installed packages that are not present in enabled repositories
 dnf repoquery --installed --extras
 
 # List packages that were installed as dependencies but
@@ -187,7 +190,7 @@ After cleaning up, prevent new unnecessary packages from creeping back in:
 # Exclude specific packages from being installed via dnf
 echo "excludepkgs=cups*,avahi*,bluetooth*" >> /etc/dnf/dnf.conf
 
-# Or use the installonlypkgs directive to limit kernel versions kept
+# Use installonly_limit to limit kernel versions kept
 echo "installonly_limit=3" >> /etc/dnf/dnf.conf
 ```
 
