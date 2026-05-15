@@ -16,12 +16,15 @@ LibreNMS is a community-driven network monitoring system that auto-discovers net
 # Install EPEL
 
 sudo dnf install -y epel-release
+sudo dnf -y module reset php
+sudo dnf -y module enable php:8.2
 
 # Install required packages
-sudo dnf install -y nginx mariadb-server php-fpm php-cli php-mysqlnd \
-  php-gd php-xml php-mbstring php-curl php-zip php-snmp php-json \
-  php-process php-pear php-intl python3 python3-pip python3-pymysql \
-  net-snmp net-snmp-utils rrdtool fping git cronie unzip
+sudo dnf install -y acl bash-completion cronie curl fping git mariadb-server \
+  mtr net-snmp net-snmp-utils nginx nmap php-fpm php-cli php-common \
+  php-curl php-gd php-gmp php-json php-mbstring php-mysqlnd php-process \
+  php-snmp php-xml php-zip python3 python3-PyMySQL python3-redis \
+  python3-memcached python3-pip python3-systemd rrdtool unzip
 ```
 
 ## Create the LibreNMS User
@@ -57,7 +60,15 @@ sudo -u librenms bash -c 'cd /opt/librenms && ./scripts/composer_wrapper.php ins
 ## Configure MariaDB
 
 ```bash
+# Configure MariaDB settings
+sudo tee /etc/my.cnf.d/librenms.cnf << 'CNF'
+[mysqld]
+innodb_file_per_table=1
+lower_case_table_names=0
+CNF
+
 sudo systemctl enable --now mariadb
+sudo systemctl restart mariadb
 sudo mysql_secure_installation
 
 # Create the database
@@ -67,15 +78,6 @@ CREATE USER 'librenms'@'localhost' IDENTIFIED BY 'LibreNMSPass123!';
 GRANT ALL PRIVILEGES ON librenms.* TO 'librenms'@'localhost';
 FLUSH PRIVILEGES;
 SQL
-
-# Configure MariaDB settings
-sudo tee /etc/my.cnf.d/librenms.cnf << 'CNF'
-[mysqld]
-innodb_file_per_table=1
-lower_case_table_names=0
-CNF
-
-sudo systemctl restart mariadb
 ```
 
 ## Configure PHP-FPM
@@ -86,7 +88,7 @@ sudo tee /etc/php-fpm.d/librenms.conf << 'CONF'
 [librenms]
 user = librenms
 group = librenms
-listen = /run/php-fpm/librenms.sock
+listen = /run/php-fpm-librenms.sock
 listen.owner = nginx
 listen.group = nginx
 pm = dynamic
@@ -99,6 +101,7 @@ CONF
 # Set the timezone in PHP
 sudo sed -i 's|^;date.timezone.*|date.timezone = America/New_York|' /etc/php.ini
 
+sudo systemctl enable php-fpm
 sudo systemctl restart php-fpm
 ```
 
@@ -118,13 +121,13 @@ server {
         try_files $uri $uri/ /index.php?$query_string;
     }
 
-    location ~ \.php$ {
-        fastcgi_pass unix:/run/php-fpm/librenms.sock;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        include fastcgi_params;
+    location ~ [^/]\.php(/|$) {
+        fastcgi_pass unix:/run/php-fpm-librenms.sock;
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        include fastcgi.conf;
     }
 
-    location ~ /\.ht {
+    location ~ /\.(?!well-known).* {
         deny all;
     }
 }
@@ -138,6 +141,8 @@ sudo nginx -t && sudo systemctl enable --now nginx
 ```bash
 sudo cp /opt/librenms/snmpd.conf.example /etc/snmp/snmpd.conf
 sudo sed -i 's/RANDOMSTRINGGOESHERE/librenms_community/' /etc/snmp/snmpd.conf
+sudo curl -o /usr/bin/distro https://raw.githubusercontent.com/librenms/librenms-agent/master/snmp/distro
+sudo chmod +x /usr/bin/distro
 sudo systemctl enable --now snmpd
 ```
 
@@ -148,6 +153,7 @@ sudo cp /opt/librenms/dist/librenms.cron /etc/cron.d/librenms
 sudo cp /opt/librenms/dist/librenms-scheduler.service /etc/systemd/system/
 sudo cp /opt/librenms/dist/librenms-scheduler.timer /etc/systemd/system/
 sudo systemctl enable --now librenms-scheduler.timer
+sudo cp /opt/librenms/misc/librenms.logrotate /etc/logrotate.d/librenms
 ```
 
 ## Firewall and SELinux
@@ -156,8 +162,16 @@ sudo systemctl enable --now librenms-scheduler.timer
 sudo firewall-cmd --permanent --add-service=http
 sudo firewall-cmd --reload
 
-sudo setsebool -P httpd_can_network_connect 1
-sudo chcon -R -t httpd_sys_rw_content_t /opt/librenms
+sudo dnf install -y policycoreutils-python-utils
+sudo semanage fcontext -a -t httpd_sys_content_t '/opt/librenms/html(/.*)?'
+sudo semanage fcontext -a -t httpd_sys_rw_content_t '/opt/librenms/(rrd|storage)(/.*)?'
+sudo semanage fcontext -a -t httpd_log_t '/opt/librenms/logs(/.*)?'
+sudo semanage fcontext -a -t httpd_cache_t '/opt/librenms/cache(/.*)?'
+sudo semanage fcontext -a -t bin_t '/opt/librenms/librenms-service.py'
+sudo restorecon -RFvv /opt/librenms
+sudo setsebool -P httpd_can_sendmail=1
+sudo setsebool -P httpd_execmem 1
+sudo chcon -t httpd_sys_rw_content_t /opt/librenms/.env
 ```
 
 Navigate to `http://nms.example.com/install` to complete the web installer. After setup, run `sudo -u librenms /opt/librenms/validate.php` to check for issues.
