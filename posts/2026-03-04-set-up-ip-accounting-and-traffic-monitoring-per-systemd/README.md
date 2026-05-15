@@ -31,7 +31,7 @@ EOF
 
 # Reload and restart
 sudo systemctl daemon-reload
-sudo systemctl restart nginx
+sudo systemctl restart nginx.service
 
 # View traffic statistics
 systemctl show nginx.service -p IPIngressBytes -p IPEgressBytes -p IPIngressPackets -p IPEgressPackets
@@ -41,13 +41,13 @@ systemctl show nginx.service -p IPIngressBytes -p IPEgressBytes -p IPIngressPack
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable nginx.service
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start nginx.service
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status nginx.service
 ```
 
 
@@ -57,16 +57,16 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Verify the configuration was applied
-systemctl show <service-name> | grep -i <setting>
+systemctl show nginx.service -p IPAccounting
 
 # Check for errors in the journal
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u nginx.service --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u nginx.service -e --no-pager`.
+- Ensure all required packages are installed: `rpm -q nginx`.
 
 ## Conclusion
 
