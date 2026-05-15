@@ -12,7 +12,7 @@ DNF caches repository metadata, package headers, and downloaded RPM files locall
 
 ## Where Does DNF Store Its Cache?
 
-The cache lives under `/var/cache/dnf/`. Each enabled repository gets its own subdirectory.
+The cache lives under `/var/cache/dnf/`. Each repository DNF has used gets its own subdirectory.
 
 ```bash
 # Check the total size of the DNF cache
@@ -124,11 +124,11 @@ sudo dnf makecache
 This is especially useful on servers where you want to pre-populate the cache during a maintenance window, so the next `dnf install` or `dnf upgrade` does not spend time downloading metadata.
 
 ```bash
-# Force a timer-based background cache refresh
+# Run the timer-friendly cache refresh used by systemd timers
 sudo dnf makecache --timer
 ```
 
-The `--timer` option is designed for use with systemd timers. It respects the `metadata_timer_sync` configuration and only refreshes if the cache is older than a certain threshold.
+The `--timer` option is designed for use with systemd timers. It respects the `metadata_timer_sync` configuration and exits without refreshing if it is too soon after the last successful timer run.
 
 ## Configuring Cache Behavior
 
@@ -165,8 +165,8 @@ Control how long metadata stays fresh before DNF considers it stale:
 # Metadata expires after 48 hours (default)
 metadata_expire=172800
 
-# Or use a human-readable format
-# metadata_expire=48h
+# Or use a longer interval, such as 7 days
+# metadata_expire=7d
 ```
 
 You can also set this per repository in the repo file:
@@ -195,7 +195,7 @@ cachedir=/data/dnf-cache
 
 On servers with limited disk space, set up periodic cache cleaning.
 
-### Using a Systemd Timer
+### Using cron.weekly
 
 ```bash
 # Create a simple cleanup script
@@ -263,14 +263,14 @@ sudo dnf makecache
 
 ### Offline Package Installation
 
-If you need to install packages on a server without internet access, use the cache on a connected system:
+If you need to install packages on a server without internet access, download them on a connected system. The `dnf download` command is provided by the `dnf-plugins-core` package.
 
 ```bash
 # On the connected system, download packages without installing
 sudo dnf download httpd --resolve --destdir=/tmp/offline-rpms/
 
 # Transfer the RPMs to the offline system and install
-sudo dnf localinstall /tmp/offline-rpms/*.rpm
+sudo dnf install /tmp/offline-rpms/*.rpm
 ```
 
 ## Cache and dnf-automatic
