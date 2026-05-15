@@ -1,16 +1,16 @@
-# How to Set Up Ansible Execution Environments for RHEL Automation
+# How to Set Up Ansible Core for RHEL Automation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Ansible, Execution Environments, Container
+Tags: RHEL, Ansible, Automation
 
-Description: Build and use Ansible execution environments on RHEL for consistent automation.
+Description: Install and use Ansible Core on RHEL for consistent automation.
 
 ---
 
 ## Overview
 
-Build and use Ansible execution environments on RHEL for consistent automation. Ansible provides agentless automation that connects to RHEL hosts over SSH and applies desired-state configuration.
+Install and use Ansible Core on RHEL for consistent automation. Ansible provides agentless automation that connects to RHEL hosts over SSH and applies desired-state configuration.
 
 ## Prerequisites
 
@@ -32,7 +32,7 @@ ansible --version
 
 ## Step 2 - Configure Inventory
 
-Create `/etc/ansible/hosts` or a local inventory file:
+Create a local inventory file named `inventory.ini`:
 
 ```ini
 [webservers]
@@ -46,7 +46,7 @@ db1.example.com
 Test connectivity:
 
 ```bash
-ansible all -i inventory.ini -m ping
+ansible all -i inventory.ini -m ansible.builtin.ping
 ```
 
 ## Step 3 - Write Your Playbook
@@ -62,13 +62,13 @@ Create a playbook YAML file:
     - name: Ensure packages are installed
       ansible.builtin.dnf:
         name:
-          - vim
+          - nano
           - tmux
-          - htop
+          - rsync
         state: present
 
     - name: Ensure services are running
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: sshd
         state: started
         enabled: true
@@ -89,9 +89,9 @@ ansible-playbook -i inventory.ini playbook.yml --check
 ## Step 5 - Verify Results
 
 ```bash
-ansible all -i inventory.ini -m command -a "rpm -q htop"
+ansible all -i inventory.ini -m ansible.builtin.command -a "rpm -q nano tmux rsync"
 ```
 
 ## Summary
 
-You have learned how to set up ansible execution environments for RHEL automation. Ansible's agentless architecture and declarative playbooks make it ideal for managing RHEL systems at scale.
+You have learned how to set up Ansible Core for RHEL automation. Ansible's agentless architecture and declarative playbooks make it ideal for managing RHEL systems at scale.
