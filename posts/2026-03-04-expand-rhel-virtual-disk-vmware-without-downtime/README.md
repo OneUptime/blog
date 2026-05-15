@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, VMware, Disk Expansion, LVM, Storage, Linux
 
-Description: Expand a RHEL virtual disk in VMware vSphere and grow the filesystem online without rebooting the virtual machine.
+Description: Expand a RHEL virtual disk in VMware vSphere and grow the filesystem online without rebooting the virtual machine when your VMware configuration supports hot extend.
 
 ---
 
-When a RHEL VM runs low on disk space in VMware, you can expand the virtual disk and grow the filesystem without downtime. This works when you are using LVM, which is the default RHEL partitioning scheme.
+When a RHEL VM runs low on disk space in VMware, you can expand the virtual disk and grow the filesystem without downtime when your VMware configuration supports hot extend. This works when you are using LVM, which is the default RHEL partitioning scheme.
 
 ## Step 1: Expand the Virtual Disk in vSphere
 
@@ -17,7 +17,7 @@ When a RHEL VM runs low on disk space in VMware, you can expand the virtual disk
 3. Increase the "Provisioned Size" (e.g., from 50 GB to 100 GB)
 4. Click OK
 
-Note: The VM does not need to be powered off for this step.
+Note: The VM does not need to be powered off for this step when the virtual disk supports hot extend, such as PVSCSI on vSphere 7.0 or later or NVMe on vSphere 8.0.1 or later. Remove snapshots before expanding the disk; if hot extend is not supported in your environment, power off the VM first.
 
 ## Step 2: Rescan the SCSI Bus in the Guest
 
@@ -33,7 +33,7 @@ lsblk
 
 ## Step 3: Extend the Partition
 
-If your disk uses a GPT partition table with a single partition:
+If your disk uses a GPT partition table and the LVM physical volume is on partition 3:
 
 ```bash
 # Install growpart if not already available
@@ -117,4 +117,4 @@ sudo lvextend -l +100%FREE /dev/mapper/rhel-root
 sudo xfs_growfs /
 ```
 
-Both approaches work without rebooting the VM, making disk expansion a non-disruptive operation for RHEL on VMware.
+Both approaches work without rebooting the VM when hot add or hot extend is supported, making disk expansion a non-disruptive operation for RHEL on VMware.
