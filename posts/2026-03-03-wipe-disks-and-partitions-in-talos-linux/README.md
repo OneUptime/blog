@@ -16,13 +16,13 @@ Before wiping anything, it helps to know what Talos puts on the disk during inst
 
 ```text
 Standard Talos Disk Layout:
-  /dev/sda1 - EFI System Partition (ESP) or BIOS boot
-  /dev/sda2 - BIOS grub partition
-  /dev/sda3 - BOOT (kernel, initramfs)
-  /dev/sda4 - META (metadata key-value store)
-  /dev/sda5 - STATE (machine configuration, certificates)
-  /dev/sda6 - EPHEMERAL (Kubernetes data, container images, pods)
+  /dev/sda1 - EFI (boot assets for current UEFI/systemd-boot installs)
+  /dev/sda2 - META (metadata key-value store)
+  /dev/sda3 - STATE (machine configuration, certificates)
+  /dev/sda4 - EPHEMERAL (Kubernetes data, container images, pods)
 ```
+
+Older GRUB-based installs, legacy BIOS installs, or upgraded nodes can also have BIOS and BOOT partitions. On those systems, BOOT contains GRUB configuration and Talos boot assets such as `vmlinuz` and `initramfs`.
 
 Each partition serves a different purpose, and depending on your goal, you may want to wipe all of them or only specific ones.
 
@@ -41,7 +41,7 @@ talosctl reset --nodes 192.168.1.10 --graceful=false
 
 A graceful reset will first cordon and drain the node in Kubernetes, remove the node from etcd (if it is a control plane node), and then wipe the disk. A non-graceful reset skips the drain step, which is useful when the node is already unreachable by the Kubernetes API.
 
-After a full reset, the node reboots into maintenance mode, ready to receive a new machine configuration. All partitions except the BOOT partition are wiped.
+By default, `talosctl reset` wipes the node and shuts it down unless you pass `--reboot`. Current Talos versions default to `--wipe-mode all`, which wipes the system disk and user disks, so a full reset can leave the machine unable to boot from disk until Talos is reinstalled or booted from ISO/PXE. If you only want to clear Talos state while preserving the bootable installation, use a selective wipe instead.
 
 ## Selective Partition Wipes
 
@@ -79,11 +79,11 @@ Wiping the STATE partition makes sense when:
 
 ## Wiping Disks for Reinstallation
 
-If you want to completely start over, including rewriting the boot partition and reinstalling Talos from scratch, you need to reinstall rather than just reset. The reset command leaves the boot partition intact, but a reinstall writes everything fresh.
+If you want to completely start over, including rewriting boot assets and reinstalling Talos from scratch, plan for a reinstall from ISO, PXE, or another boot asset after the reset. A full reset can wipe the bootable installation, while a reinstall writes everything fresh.
 
 ```bash
-# To do a complete reinstall, first reset the node
-talosctl reset --nodes 192.168.1.10 --graceful=false
+# To do a complete reinstall, first reset the node and reboot into external install media
+talosctl reset --nodes 192.168.1.10 --graceful=false --reboot
 
 # Then boot the node from a Talos ISO or PXE
 # and apply a fresh machine configuration
@@ -95,18 +95,27 @@ Alternatively, if you have physical access or console access to the machine, you
 
 ## Wiping Additional Data Disks
 
-Talos nodes may have additional disks beyond the system disk. These are often used for persistent volumes, local storage, or Ceph/Rook storage backends. Talos provides a way to wipe these disks through the machine configuration.
+Talos nodes may have additional disks beyond the system disk. These are often used for persistent volumes, local storage, or Ceph/Rook storage backends. Talos provides user volumes and raw volumes through machine configuration, and it provides `talosctl wipe disk` for block devices that are no longer used as a volume.
 
 ```yaml
-# Machine configuration snippet to wipe a secondary disk
-machine:
-  disks:
-    - device: /dev/sdb
-      partitions:
-        - mountpoint: /var/mnt/storage
+# Machine configuration snippet to create a secondary user volume
+apiVersion: v1alpha1
+kind: UserVolumeConfig
+name: storage
+provisioning:
+  diskSelector:
+    match: disk.dev_path == '/dev/sdb'
+  minSize: 100GB
 ```
 
-If you need to wipe a secondary disk that was previously configured, you can update the machine configuration to remove the disk entry and then manually zero the disk using a DaemonSet or privileged pod, since Talos does not provide direct disk access through `talosctl`.
+If you need to wipe a secondary disk or partition that was previously configured as a Talos volume, first remove the matching volume configuration from the machine configuration and make sure Kubernetes is no longer using it. Then wipe the device with `talosctl wipe disk`:
+
+```bash
+# Wipe a block device or partition that is no longer used as a Talos volume
+talosctl wipe disk sdb1 --nodes 192.168.1.10 --drop-partition
+```
+
+If the disk is still actively used by Kubernetes and cannot be removed from Talos volume management first, a privileged pod can be used as a last resort to clear the partition table:
 
 ```yaml
 # Kubernetes DaemonSet to wipe a specific disk on specific nodes
@@ -156,13 +165,13 @@ After wiping, you should verify that the disk is in the expected state.
 talosctl get disks --nodes 192.168.1.10
 
 # Check partition information
-talosctl get systemstat --nodes 192.168.1.10
+talosctl get discoveredvolumes --nodes 192.168.1.10
 
 # Check mount points
-talosctl get mounts --nodes 192.168.1.10
+talosctl get mountstatus --nodes 192.168.1.10
 ```
 
-If the node has been fully reset, it should be in maintenance mode with no partitions mounted. If you did a selective wipe, the remaining partitions should still be present and intact.
+If the node has been selectively reset and rebooted, the wiped volumes should be recreated or absent depending on what you wiped. If you did a full reset, you may need to boot from ISO or PXE before `talosctl` can report the disk state again.
 
 ## Safety Considerations
 
