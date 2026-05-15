@@ -40,6 +40,7 @@ acl SSL_ports port 443
 acl Safe_ports port 80
 acl Safe_ports port 443
 acl Safe_ports port 8080
+acl CONNECT method CONNECT
 
 http_access deny !Safe_ports
 http_access deny CONNECT !SSL_ports
@@ -84,6 +85,7 @@ export https_proxy=http://proxy.example.com:3128
 Block specific domains:
 
 ```bash
+# Add before http_access allow localnet and other allow rules
 acl blocked_sites dstdomain .facebook.com .twitter.com
 http_access deny blocked_sites
 ```
@@ -102,6 +104,8 @@ acl authenticated proxy_auth REQUIRED
 http_access allow authenticated
 ```
 
+Place the authentication rules before other `http_access allow` rules. Remove `http_access allow localnet` if all clients should be required to authenticate.
+
 ## Monitor Squid
 
 ```bash
@@ -112,4 +116,3 @@ sudo squidclient -h localhost mgr:info
 ## Conclusion
 
 Squid provides caching, access control, and content filtering for RHEL 9 networks. Configure appropriate ACLs and caching parameters based on your network requirements.
-
