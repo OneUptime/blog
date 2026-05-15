@@ -150,7 +150,7 @@ After Flux reconciles, verify that the secret was properly decrypted and created
 
 ```bash
 # Check the Flux Kustomization status
-flux get kustomizations my-app
+flux get kustomizations --namespace=flux-system
 
 # Verify the secret exists and contains decrypted values
 kubectl get secret my-app-secret -n default -o jsonpath='{.data.username}' | base64 -d
@@ -185,7 +185,7 @@ If Flux fails to decrypt secrets, check the Kustomization status for errors.
 
 ```bash
 # Check for decryption errors
-flux get kustomizations my-app
+flux get kustomizations --namespace=flux-system
 
 # View detailed logs from the kustomize-controller
 kubectl logs -n flux-system deployment/kustomize-controller | grep -i sops
