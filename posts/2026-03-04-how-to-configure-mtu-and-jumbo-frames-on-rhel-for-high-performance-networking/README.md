@@ -8,7 +8,7 @@ Description: Learn how to configure MTU and enable jumbo frames on RHEL to reduc
 
 ---
 
-The Maximum Transmission Unit (MTU) defines the largest packet size that a network interface can transmit. The default MTU is 1500 bytes. Jumbo frames use an MTU of 9000 bytes, reducing overhead and improving throughput for bulk data transfers.
+The Maximum Transmission Unit (MTU) defines the largest layer-3 packet size that a network interface can transmit without fragmentation. The default Ethernet MTU is 1500 bytes. Jumbo frames commonly use an MTU of 9000 bytes, reducing overhead and improving throughput for bulk data transfers.
 
 ## Checking Current MTU
 
@@ -46,7 +46,7 @@ ip link show ens192 | grep mtu
 
 ## Verifying End-to-End Jumbo Frame Support
 
-All devices in the network path must support the same MTU. Test with ping:
+All devices in the network path must support jumbo frames and use a compatible MTU. Test with ping:
 
 ```bash
 # Test if jumbo frames work end-to-end
