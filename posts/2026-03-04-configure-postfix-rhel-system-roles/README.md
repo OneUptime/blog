@@ -35,7 +35,7 @@ sudo dnf install rhel-system-roles
 
 ## Basic Relay Configuration
 
-The most common setup is configuring Postfix as a relay that forwards all mail through a central mail server:
+The most common setup is configuring Postfix as a relay that forwards non-local mail through a central mail server:
 
 ```yaml
 # playbook-postfix-relay.yml
@@ -84,38 +84,21 @@ If your relay requires authentication:
       inet_interfaces: "loopback-only"
       mydomain: "example.com"
       myorigin: "$mydomain"
-      # Enable TLS
-      smtp_use_tls: "yes"
+      # Require TLS
       smtp_tls_security_level: "encrypt"
       smtp_tls_CAfile: "/etc/pki/tls/certs/ca-bundle.crt"
       # Enable SASL authentication
       smtp_sasl_auth_enable: "yes"
       smtp_sasl_password_maps: "hash:/etc/postfix/sasl_passwd"
       smtp_sasl_security_options: "noanonymous"
-
-  tasks:
-    - name: Apply postfix system role
-      ansible.builtin.include_role:
-        name: rhel-system-roles.postfix
-
-    - name: Create SASL password file
-      ansible.builtin.copy:
+    postfix_files:
+      - name: sasl_passwd
         # Store relay credentials
         content: "[smtp.example.com]:587 relay_user:relay_password"
-        dest: /etc/postfix/sasl_passwd
-        owner: root
-        group: root
-        mode: "0600"
+        postmap: true
 
-    - name: Generate SASL password database
-      ansible.builtin.command: postmap /etc/postfix/sasl_passwd
-      notify: Restart postfix
-
-  handlers:
-    - name: Restart postfix
-      ansible.builtin.service:
-        name: postfix
-        state: restarted
+  roles:
+    - rhel-system-roles.postfix
 ```
 
 ## Configuring Postfix as a Local-Only Mail Server
@@ -138,8 +121,9 @@ For servers that only need to deliver mail locally (no external sending):
       mynetworks: "127.0.0.0/8 [::1]/128"
       # Deliver to local mailboxes
       home_mailbox: "Maildir/"
-      # No relay
+      # No relay, and reject non-local delivery
       relayhost: ""
+      default_transport: "error:Local delivery only"
 
   roles:
     - rhel-system-roles.postfix
