@@ -8,7 +8,7 @@ Description: Configure automated file and directory backups on RHEL using rsync 
 
 ---
 
-rsync is the workhorse of Linux backup strategies. It copies only changed data, preserves permissions, and works over SSH. Combined with cron, you get a simple but effective backup system that does not need any extra software.
+rsync is the workhorse of Linux backup strategies. It copies only changed data, preserves permissions, and works over SSH. Combined with cron, you get a simple but effective backup system that does not need a dedicated backup application.
 
 ## How rsync Backups Work
 
@@ -140,9 +140,9 @@ ln -s "$DEST" "$LATEST"
 
 # Clean up old backups
 # Keep 7 daily, 4 weekly, 6 monthly
-find "$BACKUP_BASE/daily" -maxdepth 1 -type d -mtime +7 -exec rm -rf {} \; 2>/dev/null
-find "$BACKUP_BASE/weekly" -maxdepth 1 -type d -mtime +28 -exec rm -rf {} \; 2>/dev/null
-find "$BACKUP_BASE/monthly" -maxdepth 1 -type d -mtime +180 -exec rm -rf {} \; 2>/dev/null
+find "$BACKUP_BASE/daily" -mindepth 1 -maxdepth 1 -type d -mtime +7 -exec rm -rf {} \; 2>/dev/null
+find "$BACKUP_BASE/weekly" -mindepth 1 -maxdepth 1 -type d -mtime +28 -exec rm -rf {} \; 2>/dev/null
+find "$BACKUP_BASE/monthly" -mindepth 1 -maxdepth 1 -type d -mtime +180 -exec rm -rf {} \; 2>/dev/null
 
 echo "$(date): $BACKUP_TYPE backup complete" >> "$LOG"
 ```
@@ -207,4 +207,4 @@ rsync -avnc /etc/ /backup/daily/$(date +%Y-%m-%d)/etc/
 
 ## Wrapping Up
 
-rsync with cron is the simplest backup solution that actually works. The `--link-dest` option for hard-linked incremental backups is the key feature that makes this practical. Each daily backup looks like a full copy but only uses disk space for files that actually changed. Add database dumps before the file backup, set up rotation to manage disk space, and you have a reliable backup system with zero extra software required.
+rsync with cron is the simplest backup solution that actually works. The `--link-dest` option for hard-linked incremental backups is the key feature that makes this practical. Each daily backup looks like a full copy but only uses disk space for files that actually changed. Add database dumps before the file backup, set up rotation to manage disk space, and you have a reliable backup system without a dedicated backup suite.
