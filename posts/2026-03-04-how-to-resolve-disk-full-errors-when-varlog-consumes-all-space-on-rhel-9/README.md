@@ -94,10 +94,9 @@ sudo systemctl restart systemd-journald
 ```bash
 # Add a cron job to alert on disk usage
 
-echo '*/30 * * * * root [ $(df /var --output=pcent | tail -1 | tr -d " %") -gt 85 ] && echo "/var is over 85% full" | mail -s "Disk Alert" admin@example.com' | sudo tee /etc/cron.d/disk-alert
+echo '*/30 * * * * root [ $(df /var --output=pcent | tail -1 | tr -dc "0-9") -gt 85 ] && echo "/var is over 85% full" | mail -s "Disk Alert" admin@example.com' | sudo tee /etc/cron.d/disk-alert
 ```
 
 ## Conclusion
 
 A full /var/log partition disrupts logging and can cause service failures on RHEL 9. Truncate active files, clean old logs, configure proper rotation, and set up disk space alerts to prevent recurrence.
-
