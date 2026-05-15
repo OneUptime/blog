@@ -101,13 +101,7 @@ systemd sends SIGTERM, and Spring Boot completes in-flight requests before exiti
 
 ## Step 8: Health Check Integration
 
-Use the Spring Boot Actuator health endpoint with systemd watchdog:
-
-```ini
-[Service]
-Type=notify
-WatchdogSec=60
-```
+Use the Spring Boot Actuator health endpoint with external monitoring or a separate watchdog helper. Do not switch the service to `Type=notify` and enable `WatchdogSec` unless your application or wrapper sends systemd `READY=1` and periodic `WATCHDOG=1` notifications; the Actuator health endpoint does not do this by itself.
 
 ## Conclusion
 
