@@ -16,7 +16,7 @@ An HBAC rule has four components:
 
 - **Who** - Users or user groups
 - **Where** - Hosts or host groups
-- **What** - Services or service groups (ssh, login, sudo, etc.)
+- **What** - HBAC services or service groups (sshd, login, sudo, etc.)
 - **Rule type** - Allow (deny rules are not supported; absence of an allow rule denies access)
 
 ## Checking Existing HBAC Rules
@@ -112,10 +112,18 @@ Use `ipa hbactest` to simulate access:
 ```bash
 # Test: Can jsmith access web1 via SSH?
 
-ipa hbactest --user=jsmith --host=web1.example.com --service=sshd
+ipa hbactest --user=jsmith --host=web1.example.com --service=sshd \
+  --rules=allow_webadmins_webservers \
+  --rules=allow_dbadmins_dbservers \
+  --rules=allow_devs_devservers \
+  --rules=allow_admin_all
 
 # Test: Can bgreen access db1 via SSH?
-ipa hbactest --user=bgreen --host=db1.example.com --service=sshd
+ipa hbactest --user=bgreen --host=db1.example.com --service=sshd \
+  --rules=allow_webadmins_webservers \
+  --rules=allow_dbadmins_dbservers \
+  --rules=allow_devs_devservers \
+  --rules=allow_admin_all
 ```
 
 Expected results:
@@ -149,11 +157,11 @@ ipa hbacsvc-find
 Common services:
 
 - `sshd` - SSH access
-- `sudo` - Sudo privilege
+- `sudo` - Access to the sudo PAM service (use sudo rules to grant command privileges)
 - `login` - Console login
 - `ftp` - FTP access
 
-Create a custom service:
+Create a custom service for a PAM service that exists on the client:
 
 ```bash
 ipa hbacsvc-add myapp --desc="Custom application service"
