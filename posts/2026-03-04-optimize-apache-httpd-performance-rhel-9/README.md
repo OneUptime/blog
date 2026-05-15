@@ -34,9 +34,9 @@ The three options:
 |-----|-------------|----------|
 | `event` | Async, handles keep-alive efficiently | Most workloads (default in RHEL) |
 | `worker` | Threaded, good concurrency | Thread-safe applications |
-| `prefork` | Process-based, no threads | mod_php or non-thread-safe modules |
+| `prefork` | Process-based, no threads | Legacy embedded PHP or non-thread-safe modules |
 
-The `event` MPM is the default and the best choice for most setups. If you are using mod_php, you are stuck with `prefork`.
+The `event` MPM is the default and the best choice for most setups. On RHEL 9, PHP runs through `php-fpm` by default instead of `mod_php`, so you usually do not need `prefork` for PHP.
 
 To switch MPMs, edit `/etc/httpd/conf.modules.d/00-mpm.conf`:
 
@@ -65,7 +65,7 @@ Edit or create the MPM configuration:
 
 Key parameters:
 
-- **MaxRequestWorkers** - The maximum number of simultaneous connections. This is the most important setting.
+- **MaxRequestWorkers** - The maximum number of simultaneous requests that can be served at once. For the event MPM, idle keep-alive connections are handled asynchronously, so total open connections can be higher than this value.
 - **ThreadsPerChild** - Threads per child process. MaxRequestWorkers / ThreadsPerChild = number of child processes.
 - **MaxConnectionsPerChild** - Recycles processes after this many connections to prevent memory leaks.
 
@@ -75,10 +75,10 @@ A rough approach: check how much memory each Apache process uses, then divide yo
 
 ```bash
 # Check memory usage per Apache process (in KB)
-ps aux | grep httpd | awk '{sum += $6; count++} END {print "Avg:", sum/count, "KB per process"}'
+ps -C httpd -o rss= | awk '{sum += $1; count++} END {if (count) print "Avg:", sum/count, "KB per process"}'
 ```
 
-If each process uses about 50 MB and you have 4 GB for Apache, you can handle around 80 processes. Multiply by ThreadsPerChild for the thread count.
+If each child process uses about 50 MB and you have 4 GB for Apache, the rough memory ceiling is around 80 child processes. With `ThreadsPerChild 25`, that would be a theoretical upper bound of about 2000 worker threads, but you should set `MaxRequestWorkers` lower until benchmarks and monitoring show the server has enough CPU, memory, and backend capacity.
 
 ## Step 3 - Configure KeepAlive
 
