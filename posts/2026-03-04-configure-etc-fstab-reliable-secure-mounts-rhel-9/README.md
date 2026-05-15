@@ -38,7 +38,7 @@ A typical RHEL fstab looks like this:
 ```text
 UUID=a1b2c3d4-e5f6-7890-abcd-ef1234567890  /       xfs     defaults        0 0
 UUID=b2c3d4e5-f6a7-8901-bcde-f12345678901  /boot   xfs     defaults        0 0
-UUID=c3d4e5f6-a7b8-9012-cdef-123456789012  swap    swap    defaults        0 0
+UUID=c3d4e5f6-a7b8-9012-cdef-123456789012  none    swap    defaults        0 0
 ```
 
 ## Using UUIDs for Device Identification
@@ -101,13 +101,13 @@ UUID=...  /tmp  xfs  defaults,nosuid,noexec,nodev  0 0
 
 ## Setting the Correct fsck Order
 
-The root file system should have fsck order 1. Other file systems should use 2 so they are checked after root. File systems that should not be checked (like swap or NFS) use 0:
+For file systems checked by `fsck`, the root file system should have fsck order 1. Other checked file systems should use 2 so they are checked after root. File systems that should not be checked, such as swap, NFS, or XFS on RHEL, use 0:
 
 ```text
-UUID=...  /       xfs  defaults        0 1
-UUID=...  /boot   xfs  defaults        0 2
-UUID=...  /data   xfs  defaults        0 2
-UUID=...  swap    swap defaults        0 0
+UUID=...  /       xfs  defaults        0 0
+UUID=...  /boot   xfs  defaults        0 0
+UUID=...  /data   xfs  defaults        0 0
+UUID=...  none    swap defaults        0 0
 ```
 
 ## Testing fstab Changes Without Rebooting
@@ -115,24 +115,26 @@ UUID=...  swap    swap defaults        0 0
 After editing fstab, always test before rebooting:
 
 ```bash
-# Attempt to mount all entries in fstab
+findmnt --verify
+```
 
+This command validates your fstab and reports any issues. On RHEL systems using systemd, reload the systemd manager configuration after changing `/etc/fstab`:
+
+```bash
+systemctl daemon-reload
+```
+
+If there are errors, fix them before rebooting. You can then attempt to mount all entries in fstab:
+
+```bash
 mount -a
 ```
 
-If there are errors, fix them before rebooting. You can also verify a specific entry:
+You can also verify a specific entry:
 
 ```bash
 mount -o remount /data
 ```
-
-Check that everything is mounted correctly:
-
-```bash
-findmnt --verify
-```
-
-This command validates your fstab and reports any issues.
 
 ## Configuring the nofail Option
 
@@ -165,8 +167,8 @@ cp /etc/fstab /etc/fstab.bak.$(date +%Y%m%d)
 ## Common Mistakes to Avoid
 
 - Never use device names like `/dev/sda1` as they can change
-- Always run `mount -a` after editing fstab to catch errors
-- Do not set fsck order to 1 for anything other than the root file system
+- Always validate fstab with `findmnt --verify` after editing it
+- Do not set fsck order to 1 for anything other than the root file system, and use 0 for XFS on RHEL
 - Remember that a typo in fstab can prevent your system from booting
 - Always have a rescue disk or console access available when making changes
 
