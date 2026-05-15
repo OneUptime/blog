@@ -8,7 +8,7 @@ Description: Use Ansible to manage Podman containers on RHEL, including rootless
 
 ---
 
-Podman is the native container runtime on RHEL. Unlike Docker, it runs without a daemon and supports rootless containers out of the box. Ansible works well with Podman, and since Podman is Docker-compatible at the CLI level, many of the same Ansible modules work for both.
+Podman is the native container runtime on RHEL. Unlike Docker, it runs without a daemon and supports rootless containers out of the box. Ansible works well with Podman through the `containers.podman` collection, and many Docker CLI concepts translate directly to Podman.
 
 ## Podman vs Docker on RHEL
 
@@ -96,11 +96,12 @@ One of Podman's best features is running containers without root:
       containers.podman.podman_image:
         name: docker.io/library/httpd:2.4
 
-    - name: Run Apache as a rootless container
+    - name: Create Apache as a rootless container
       containers.podman.podman_container:
         name: my-httpd
         image: docker.io/library/httpd:2.4
-        state: started
+        state: created
+        rm: true
         # Rootless containers need ports above 1024
         ports:
           - "8080:80"
@@ -190,11 +191,12 @@ Generate systemd service files so containers start on boot:
   become: true
 
   tasks:
-    - name: Run the container
+    - name: Create the container
       containers.podman.podman_container:
         name: webapp
         image: docker.io/library/nginx:1.25
-        state: started
+        state: created
+        rm: true
         ports:
           - "80:80"
 
@@ -204,8 +206,8 @@ Generate systemd service files so containers start on boot:
         new: true
         dest: /etc/systemd/system/
         restart_policy: always
-        time: 30
-        names: true
+        stop_timeout: 30
+        use_names: true
       register: systemd_unit
 
     - name: Enable the container service
