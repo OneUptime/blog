@@ -25,7 +25,8 @@ Winbind is the component of Samba that handles communication with Active Directo
 # Install Samba and Winbind packages
 
 sudo dnf install -y samba samba-winbind samba-winbind-clients \
-    samba-client krb5-workstation oddjob oddjob-mkhomedir
+    samba-client samba-common-tools krb5-workstation \
+    oddjob oddjob-mkhomedir bind-utils
 ```
 
 ## Step 2 - Configure DNS and Time
@@ -38,7 +39,7 @@ sudo nmcli connection up ens192
 
 # Verify DNS
 host example.com
-host _ldap._tcp.example.com
+host -t SRV _ldap._tcp.example.com
 
 # Sync time with AD
 sudo dnf install -y chrony
@@ -133,8 +134,9 @@ sudo systemctl enable --now oddjobd
 ## Step 7 - Start Winbind
 
 ```bash
-# Enable and start Winbind and Samba
-sudo systemctl enable --now winbind smb
+# Enable and start Winbind before Samba
+sudo systemctl enable --now winbind
+sudo systemctl enable --now smb
 
 # Verify Winbind can communicate with AD
 wbinfo -t    # Test trust secret
