@@ -94,7 +94,7 @@ ls -la /mnt/data/lost+found/
 xfs_info /mnt/data
 
 # Run a read-only check (with the filesystem mounted)
-sudo xfs_scrub /dev/sda1
+sudo xfs_scrub -n /mnt/data
 ```
 
 ## If xfs_repair Cannot Fix It
@@ -105,14 +105,14 @@ sudo xfs_scrub /dev/sda1
 sudo mount -o ro,norecovery /dev/sda1 /mnt/damaged
 
 # Dump what you can
-sudo xfsdump -f /tmp/xfs-backup - /mnt/damaged
+sudo xfsdump -l 0 -f /tmp/xfs-backup /mnt/damaged
 
 # Create a new XFS filesystem on a replacement disk
 sudo mkfs.xfs /dev/sdb1
 
 # Restore from dump
 sudo mount /dev/sdb1 /mnt/restored
-sudo xfsrestore -f /tmp/xfs-backup - /mnt/restored
+sudo xfsrestore -f /tmp/xfs-backup /mnt/restored
 ```
 
 Regular backups are the best protection against filesystem corruption. XFS is robust, but hardware failures can corrupt any filesystem.
