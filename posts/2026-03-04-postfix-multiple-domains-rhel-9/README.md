@@ -30,7 +30,7 @@ Each domain needs an MX record pointing to your mail server:
 | example.org | MX 10 | mail.example.com |
 | example.net | MX 10 | mail.example.com |
 
-All domains resolve to the same server IP.
+The MX host, `mail.example.com`, resolves to the server IP.
 
 ## Architecture
 
@@ -56,6 +56,9 @@ Add to `/etc/postfix/main.cf`:
 # Your primary domain stays in mydestination
 
 mydestination = mail.example.com, localhost
+
+# Listen for SMTP connections on all network interfaces
+inet_interfaces = all
 
 # List the virtual alias domains
 virtual_alias_domains = example.com, example.org, example.net
@@ -136,6 +139,9 @@ Add to `/etc/postfix/main.cf`:
 ```bash
 # Do not include virtual domains in mydestination
 mydestination = mail.example.com, localhost
+
+# Listen for SMTP connections on all network interfaces
+inet_interfaces = all
 
 # Virtual mailbox domain configuration
 virtual_mailbox_domains = example.com, example.org, example.net
