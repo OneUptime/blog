@@ -39,7 +39,7 @@ unlock_time = 900
 # Count failures within a 10-minute window
 fail_interval = 600
 
-# Log failures to syslog
+# Log unknown user names to syslog
 audit
 
 # Suppress failure messages during pre-auth
@@ -72,9 +72,10 @@ sequenceDiagram
     pam_faillock-->>User: Account locked
 ```
 
-The module appears twice in the PAM stack:
+The module commonly appears three times in the PAM stack:
 1. **preauth** - Checks if the account is already locked before even trying the password.
 2. **authfail** - Records the failure after an unsuccessful authentication.
+3. **authsucc** - Clears the failure record after a successful authentication so the module tracks consecutive failures.
 
 ## Checking and Managing Locked Accounts
 
@@ -199,10 +200,11 @@ sudo vi /usr/local/bin/monitor-lockouts.sh
 # Alert on locked accounts
 
 THRESHOLD=5  # This should match your deny setting
+FAILLOCK_DIR="/var/run/faillock"  # Use your configured dir value if you changed it
 ALERT_SENT="/var/run/lockout-alerts"
 mkdir -p "$ALERT_SENT"
 
-for record in /var/run/faillock/*; do
+for record in "$FAILLOCK_DIR"/*; do
     [ -f "$record" ] || continue
     user=$(basename "$record")
 
@@ -259,7 +261,7 @@ grep pam_faillock /etc/pam.d/system-auth
 grep pam_faillock /etc/pam.d/password-auth
 ```
 
-You should see both `preauth` and `authfail` entries.
+You should see `preauth`, `authfail`, and usually `authsucc` entries.
 
 ### Account locked but user says they did not fail
 
