@@ -15,7 +15,7 @@ Upgrading Kubernetes is separate from upgrading Talos Linux itself. While `talos
 It is important to understand what gets upgraded with each command:
 
 - `talosctl upgrade` - Upgrades the Talos Linux operating system (kernel, init system, base tools)
-- `talosctl upgrade-k8s` - Upgrades Kubernetes components (API server, etcd, kubelet, kube-proxy, CoreDNS)
+- `talosctl upgrade-k8s` - Upgrades Kubernetes components (API server, controller manager, scheduler, kubelet, kube-proxy, and bootstrap manifests such as CoreDNS when they change)
 
 You might upgrade Talos Linux without changing the Kubernetes version, or upgrade Kubernetes without changing the Talos version. However, each Talos Linux release supports a specific range of Kubernetes versions, so you need to check compatibility.
 
@@ -74,12 +74,13 @@ Attempting to upgrade to a Kubernetes version outside the supported range will f
 
 When you run `talosctl upgrade-k8s`, the following happens:
 
-1. The command validates that the target version is compatible with the current Talos version.
-2. Control plane components are upgraded (API server, controller manager, scheduler).
-3. kubelet is upgraded on all nodes.
-4. Core Kubernetes add-ons are upgraded (kube-proxy, CoreDNS).
+1. Images for the new Kubernetes components are pre-pulled to the nodes.
+2. Control plane component image versions are updated (API server, controller manager, scheduler).
+3. kube-proxy is updated.
+4. kubelet is upgraded on all nodes and verified through the Kubernetes Node resources.
+5. Kubernetes bootstrap manifests are re-applied, which can update add-ons such as CoreDNS when Talos provides changed manifests.
 
-The process is rolling by nature - each component is upgraded one at a time to maintain cluster availability.
+The process is designed to maintain cluster availability, but kubelet upgrades may still cause workloads to restart.
 
 ```bash
 # Start the Kubernetes upgrade
@@ -136,8 +137,8 @@ Skipping minor versions can cause API compatibility issues and break your cluste
 Before upgrading Kubernetes, check if you are using any APIs that will be removed in the target version:
 
 ```bash
-# Use kubectl to check for deprecated APIs
-kubectl get apiservices
+# Check API server metrics for deprecated API requests
+kubectl get --raw /metrics | grep apiserver_requested_deprecated_apis
 
 # Install and run a tool like pluto to check for deprecated APIs
 # https://github.com/FairwindsOps/pluto
@@ -176,9 +177,9 @@ kubectl run dns-test --image=busybox --rm -it -- nslookup kubernetes.default
 The `talosctl upgrade-k8s` command handles the upgrade order automatically, but it is good to understand what happens:
 
 1. **API server, controller manager, scheduler**: These are upgraded first on each control plane node, one node at a time.
-2. **kubelet**: Upgraded on each node, starting with control plane nodes and then worker nodes.
-3. **kube-proxy**: Updated across all nodes.
-4. **CoreDNS**: Updated.
+2. **kube-proxy**: Updated across all nodes.
+3. **kubelet**: Upgraded on each node and verified through the Kubernetes Node resources.
+4. **Bootstrap manifests**: Re-applied, which can update CoreDNS and other Talos-managed bootstrap resources when their manifests have changed.
 
 This order ensures backward compatibility since the API server is upgraded before kubelet.
 
@@ -195,17 +196,17 @@ The dry run shows you exactly what changes will be made without actually applyin
 
 ## Rolling Back a Kubernetes Upgrade
 
-If something goes wrong after a Kubernetes upgrade, you can downgrade by running `upgrade-k8s` with the previous version:
+Kubernetes downgrades are not generally supported as a routine rollback path. If something goes wrong after a Kubernetes upgrade, first try to fix the failing component or rerun `upgrade-k8s` so Talos can continue from the failed phase:
 
 ```bash
-# Roll back to the previous version
-talosctl upgrade-k8s --nodes 192.168.1.10 --to 1.29.5
+# Retry the upgrade after fixing the underlying issue
+talosctl upgrade-k8s --nodes 192.168.1.10 --to 1.30.0
 ```
 
-However, rollbacks are not always clean. Some Kubernetes versions store data in etcd in formats that are not backward compatible. This is why etcd backups before upgrades are essential:
+Some Kubernetes versions store data in etcd in formats that are not backward compatible with older versions. This is why etcd backups before upgrades are essential:
 
 ```bash
-# If rollback does not work cleanly, restore the etcd backup
+# If recovery requires restoring cluster state, restore the etcd backup
 # This is a last resort and requires taking down the cluster
 ```
 
@@ -236,14 +237,14 @@ for cluster_info in "${CLUSTERS[@]}"; do
 
   # Check current version
   echo "Current version:"
-  kubectl --context "$cluster_name" version --short 2>/dev/null
+  kubectl --context "$cluster_name" version 2>/dev/null
 
   # Perform upgrade
   talosctl upgrade-k8s --nodes "$node" --to "$TARGET_VERSION"
 
   # Verify
   echo "Post-upgrade version:"
-  kubectl --context "$cluster_name" version --short 2>/dev/null
+  kubectl --context "$cluster_name" version 2>/dev/null
 
   # Health check
   talosctl health --nodes "$node" --wait-timeout 5m
@@ -287,7 +288,7 @@ talosctl logs kubelet --nodes 192.168.1.10
 kubectl describe node <node-name>
 
 # Check kubelet status
-talosctl services --nodes 192.168.1.20 | grep kubelet
+talosctl service --nodes 192.168.1.20 kubelet
 
 # Restart kubelet if needed
 talosctl service kubelet restart --nodes 192.168.1.20
