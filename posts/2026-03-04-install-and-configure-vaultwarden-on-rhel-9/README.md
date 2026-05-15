@@ -2,19 +2,20 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, HashiCorp, Linux
+Tags: RHEL, Vaultwarden, Linux
 
-Description: Step-by-step guide on install and configure vaultwarden using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on install and configure Vaultwarden using Red Hat Enterprise Linux 9.
 
 ---
 
-Vaultwarden can be installed and configured on RHEL to provide robust functionality for your infrastructure. This guide walks through the installation, basic configuration, and verification steps.
+Vaultwarden can be installed and configured on RHEL to provide a lightweight self-hosted password manager for your infrastructure. This guide walks through the installation, basic configuration, and verification steps.
 
 ## Prerequisites
 
 - RHEL with a valid subscription or CentOS Stream 9
 - Root or sudo access
 - A terminal session
+- A DNS name and TLS-capable reverse proxy for production use
 
 ## Step 1: Install Required Packages
 
@@ -23,11 +24,11 @@ Vaultwarden can be installed and configured on RHEL to provide robust functional
 
 sudo dnf update -y
 
-# Add HashiCorp repository
-sudo dnf config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
+# Install Podman and firewalld
+sudo dnf install -y container-tools firewalld
 
-# Install Vault
-sudo dnf install -y vault
+# Enable the firewall service
+sudo systemctl enable --now firewalld
 ```
 
 ## Step 2: Configure the Service
@@ -35,35 +36,56 @@ sudo dnf install -y vault
 Edit the configuration file to match your environment:
 
 ```bash
-# Open the configuration file
-sudo vi /etc/<service>/config.conf
+# Create the persistent data directory
+sudo mkdir -p /vw-data /etc/containers/systemd
+
+# Open the Quadlet configuration file
+sudo vi /etc/containers/systemd/vaultwarden.container
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include the container image, persistent data volume, published port, domain name, and signup policy.
+
+```ini
+[Unit]
+Description=Vaultwarden container
+After=network-online.target
+
+[Container]
+Image=docker.io/vaultwarden/server:latest
+ContainerName=vaultwarden
+Volume=/vw-data:/data:Z
+PublishPort=8080:80
+Environment=DOMAIN=https://vaultwarden.example.com
+Environment=SIGNUPS_ALLOWED=false
+
+[Install]
+WantedBy=multi-user.target
+```
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl daemon-reload
+sudo systemctl restart vaultwarden.service
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable vaultwarden.service
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start vaultwarden.service
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status vaultwarden.service
 ```
 
 ## Step 4: Configure the Firewall
 
 ```bash
 # Open the required port
-sudo firewall-cmd --permanent --add-port=<PORT>/tcp
+sudo firewall-cmd --permanent --add-port=8080/tcp
 sudo firewall-cmd --reload
 
 # Verify the rule
@@ -76,18 +98,18 @@ sudo firewall-cmd --list-all
 Confirm everything is working by checking the status and logs:
 
 ```bash
-# Check Vault status
-vault status
+# Check the Vaultwarden service status
+sudo systemctl status vaultwarden.service
 
-# Verify Vault is accessible
-vault secrets list
+# Verify Vaultwarden is accessible
+curl -I http://localhost:8080
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- SELinux may block access. Check for denials with `ausearch -m avc -ts recent` and apply appropriate policies.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u vaultwarden.service -e --no-pager`.
+- SELinux may block access if the data directory is not labeled for containers. The `:Z` suffix on the volume mount relabels `/vw-data` for the Vaultwarden container.
+- Ensure all required packages are installed: `rpm -qa | grep -E 'podman|firewalld'`.
 
 ## Conclusion
 
