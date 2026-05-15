@@ -33,7 +33,7 @@ stress-ng --cpu 4 --cpu-method all --timeout 120s --metrics-brief
 ## Memory Stress Testing
 
 ```bash
-# Allocate and stress 4 GB of memory
+# Allocate and stress 2 GB of memory
 stress-ng --vm 2 --vm-bytes 2G --timeout 60s --metrics-brief
 
 # Memory with specific patterns
@@ -67,4 +67,3 @@ mpstat -P ALL 1 60
 ## Conclusion
 
 stress-ng on RHEL 9 validates hardware stability and provides baseline performance metrics. Run extended tests (hours or days) for hardware burn-in and shorter tests for quick performance comparisons.
-
