@@ -25,15 +25,15 @@ graph LR
 
 ## Installing the venv Module
 
-On RHEL, the venv module may not be installed by default. Install it first.
+On RHEL 9, install the matching Python and pip packages for the Python version you plan to use. The `venv` module uses pip bootstrapping when it creates a default environment.
 
 ```bash
-# Install venv for the default Python 3.9
+# Install Python and pip for the default Python 3.9
+sudo dnf install -y python3.9 python3.9-pip
 
-sudo dnf install -y python3-pip
-
-# If using Python 3.11, install its venv support
-sudo dnf install -y python3.11-pip
+# If using Python 3.11 or 3.12, install the matching Python and pip packages
+sudo dnf install -y python3.11 python3.11-pip
+sudo dnf install -y python3.12 python3.12-pip
 
 # Verify venv is available
 python3 -m venv --help
@@ -159,7 +159,7 @@ source venv-system/bin/activate
 
 # System packages are visible, but new installs stay local
 pip list  # Shows both system and local packages
-pip install --user somepackage  # Installs only in the venv
+pip install somepackage  # Installs into the venv
 ```
 
 ## Automating venv Activation with a Shell Function
