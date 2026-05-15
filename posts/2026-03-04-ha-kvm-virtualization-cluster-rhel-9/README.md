@@ -23,7 +23,9 @@ On all nodes:
 
 ```bash
 sudo dnf install qemu-kvm libvirt virt-install -y
-sudo systemctl enable --now libvirtd
+for drv in qemu network nodedev nwfilter secret storage interface; do
+    sudo systemctl enable --now virt${drv}d{,-ro,-admin}.socket
+done
 ```
 
 ## Step 2: Configure Shared Storage
@@ -106,23 +108,16 @@ sudo ssh-keygen -t rsa -N ""
 sudo ssh-copy-id root@node1
 ```
 
-Configure libvirt to allow migration:
+Verify that libvirt can connect to the remote hypervisor over SSH:
 
 ```bash
-sudo tee /etc/libvirt/libvirtd.conf << 'CONF'
-listen_tls = 0
-listen_tcp = 1
-tcp_port = "16509"
-auth_tcp = "none"
-CONF
-
-sudo systemctl restart libvirtd
+sudo virsh -c qemu+ssh://root@node2/system uri
 ```
 
 Open firewall ports:
 
 ```bash
-sudo firewall-cmd --permanent --add-port=16509/tcp
+sudo firewall-cmd --permanent --add-service=ssh
 sudo firewall-cmd --permanent --add-port=49152-49215/tcp
 sudo firewall-cmd --reload
 ```
