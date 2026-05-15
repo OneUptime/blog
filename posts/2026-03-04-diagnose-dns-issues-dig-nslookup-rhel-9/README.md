@@ -71,11 +71,13 @@ The key things to look at:
 
 ## Common dig Recipes
 
-Check all record types for a domain:
+Request cached records of any type for a domain:
 
 ```bash
 dig example.com ANY
 ```
+
+ANY queries are not a reliable way to list every record in a zone; many DNS servers return minimal responses for them.
 
 Follow the full resolution chain from root servers:
 
@@ -86,7 +88,7 @@ dig +trace example.com
 Check a specific name server for a zone:
 
 ```bash
-dig @ns1.example.com example.com SOA
+dig @hera.ns.cloudflare.com example.com SOA
 ```
 
 Do a reverse lookup:
@@ -128,7 +130,7 @@ dig example.com +timeout=10 +tries=3
 Do a zone transfer (if allowed):
 
 ```bash
-dig @ns1.example.com example.com AXFR
+dig @hera.ns.cloudflare.com example.com AXFR
 ```
 
 ## nslookup Basics
@@ -177,7 +179,7 @@ Is the name spelled correctly? Is the record actually in the zone file?
 dig example.com NS +short
 
 # Query the authoritative server directly
-dig @ns1.example.com nonexistent.example.com
+dig @hera.ns.cloudflare.com nonexistent.example.com
 ```
 
 ### Problem: SERVFAIL
@@ -200,8 +202,8 @@ dig example.com +cd
 
 ```bash
 # Check if the authoritative servers respond
-dig @ns1.example.com example.com
-dig @ns2.example.com example.com
+dig @hera.ns.cloudflare.com example.com
+dig @elliott.ns.cloudflare.com example.com
 ```
 
 ### Problem: REFUSED
@@ -249,7 +251,7 @@ dig example.com | grep flags
 Query the authoritative server directly to bypass caches:
 
 ```bash
-dig @ns1.example.com www.example.com A
+dig @hera.ns.cloudflare.com www.example.com A
 ```
 
 ## Advanced dig Techniques
