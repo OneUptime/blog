@@ -16,7 +16,7 @@ blktrace captures detailed I/O events at the block device layer. It shows you ex
 - Root or sudo access
 - A terminal session
 
-## Step 2: Configure the Service
+## Step 2: Capture and Parse I/O Events
 
 Use blktrace to trace I/O:
 
@@ -29,46 +29,47 @@ sudo dnf install -y blktrace
 sudo blktrace -d /dev/sda -w 10
 
 # Process the trace data
-blkparse -i sda -o sda-trace.txt
+blkparse -i sda -o sda-trace.txt -d sda.bin
 
 # Use btt for aggregate statistics
-btt -i sda.blktrace.0 -o sda-stats
+btt -i sda.bin -o sda-stats
 
 # Real-time monitoring
 sudo btrace /dev/sda
 ```
 
-## Step 3: Enable and Start the Service
+## Step 3: Review the Trace Output
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Confirm that raw trace files were created
+ls -lh sda.blktrace.*
 
-# Start the service
-sudo systemctl start <service-name>
+# Check the human-readable trace output
+head -n 20 sda-trace.txt
 
-# Check the status
-sudo systemctl status <service-name>
+# Check the btt summary output
+less sda-stats
 ```
 
 
 ## Verification
 
-Confirm everything is working by checking the status and logs:
+Confirm everything is working by checking the generated trace output:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
+# Confirm the raw trace, parsed text, and btt input files exist
+ls -lh sda.blktrace.* sda-trace.txt sda.bin
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# Review the parsed trace output
+head -n 20 sda-trace.txt
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If `blktrace` fails to start, confirm that the device path exists with `lsblk`.
+- Ensure the required package is installed: `rpm -q blktrace`.
+- If the trace output is empty, generate I/O on the target device while `blktrace` is running.
 
 ## Conclusion
 
-You have successfully completed the setup described in this guide. Remember to monitor the service and review logs regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
+You have successfully completed the setup described in this guide. Remember to review the trace output regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
