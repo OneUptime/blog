@@ -167,7 +167,7 @@ done
 
 ## Excluding Service Accounts
 
-Service accounts should typically not have password aging. Lock them to password authentication instead:
+Service accounts should typically not have password aging. Lock their passwords to disable password authentication instead:
 
 ```bash
 # Lock the service account password (prevents password login)
@@ -236,7 +236,7 @@ for user in $(awk -F: '$3 >= 1000 && $3 < 65534 {print $1}' /etc/passwd); do
     now_epoch=$(date +%s)
     days_left=$(( (expire_epoch - now_epoch) / 86400 ))
 
-    if [ "$days_left" -le "$WARN_DAYS" ]; then
+    if [ "$days_left" -le "$WARN_DAYS" ] && [ "$days_left" -ge 0 ]; then
         logger -p auth.warning "Password expiring: $user in $days_left days"
     fi
 done
