@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, Kubernetes, Monitoring, Talosctl, Dashboard
 
-Description: Explore the talosctl dashboard command for real-time monitoring of Talos Linux nodes including CPU, memory, and service status.
+Description: Explore the talosctl dashboard command for real-time monitoring of Talos Linux nodes including node overview, logs, and resource usage.
 
 ---
 
-Managing a Talos Linux cluster through the command line does not mean you are limited to raw text output. The `talosctl dashboard` command provides a terminal-based graphical interface that displays real-time system information about your nodes. It is like having htop for your entire Talos Linux cluster, showing CPU usage, memory consumption, running services, and more in a single view.
+Managing a Talos Linux cluster through the command line does not mean you are limited to raw text output. The `talosctl dashboard` command provides a terminal-based graphical interface that displays real-time system information about your nodes. It is like having htop for your entire Talos Linux cluster, showing CPU usage, memory consumption, logs, and node overview information in a single view.
 
 ## What Is the talosctl Dashboard?
 
@@ -24,7 +24,7 @@ It connects to one or more Talos nodes via the Talos API and streams system metr
 talosctl dashboard --nodes <node-ip>
 ```
 
-The dashboard opens immediately in your terminal window. You will see panels for system summary, CPU usage, memory usage, and running processes.
+The dashboard opens immediately in your terminal window. You will see node overview information, logs, and real-time metrics for resource usage and running processes.
 
 ## Dashboard Layout
 
@@ -34,10 +34,11 @@ The dashboard is organized into several sections:
 
 The top section shows basic system information:
 
-- Hostname and IP addresses
+- Hostname and network information
 - Talos version
 - Kubernetes version
 - Uptime
+- CPU and memory load
 - Machine type (controlplane or worker)
 
 ### CPU Panel
@@ -81,11 +82,15 @@ When monitoring multiple nodes, you can switch between them using keyboard short
 
 The dashboard supports keyboard shortcuts for navigation:
 
-- **Tab** or **Right Arrow** - Switch to the next node
-- **Shift+Tab** or **Left Arrow** - Switch to the previous node
+- **l** or **Right Arrow** - Switch to the next node
+- **h** or **Left Arrow** - Switch to the previous node
+- **j** or **Down Arrow** - Scroll the logs or process list down
+- **k** or **Up Arrow** - Scroll the logs or process list up
+- **Ctrl+d** / **Ctrl+u** - Scroll the logs or process list half a page down or up
+- **Ctrl+f** / **Ctrl+b** - Scroll the logs or process list one page down or up
 - **q** - Quit the dashboard
 
-These shortcuts make it easy to flip between nodes and compare their resource usage.
+These shortcuts make it easy to flip between nodes, scroll through logs or processes, and compare resource usage.
 
 ## Practical Use Cases
 
@@ -171,16 +176,16 @@ The talosctl dashboard is best for:
 - Real-time observation during operations
 - Environments where a full monitoring stack is not yet deployed
 
-### Dashboard vs. talosctl services
+### Dashboard vs. talosctl service
 
-The `talosctl services` command shows service status in a simple text format:
+The `talosctl service` command shows service status in a simple text format:
 
 ```bash
 # Text-based service listing
-talosctl services --nodes <node-ip>
+talosctl service --nodes <node-ip>
 ```
 
-The dashboard provides the same information plus resource metrics, all in a continuously updating view.
+The dashboard provides node overview information, logs, and resource metrics in a continuously updating view. For direct service state queries or service control, use `talosctl service`.
 
 ## Running the Dashboard Remotely
 
@@ -195,9 +200,9 @@ Make sure your talosconfig file contains the correct endpoints and credentials f
 
 Resource Overhead
 
-The dashboard itself adds minimal overhead to the monitored nodes. It uses the existing Talos API streaming endpoints, so it is essentially just reading metrics that are already being collected. You do not need to worry about the dashboard impacting node performance.
+The dashboard itself is intended for interactive troubleshooting, and its update interval defaults to 3 seconds. You can adjust that interval with the `--update-interval` flag if you need less frequent updates.
 
-The only consideration is network bandwidth. If you are monitoring many nodes over a slow connection, the streaming updates might consume noticeable bandwidth.
+The main practical consideration is network bandwidth. If you are monitoring many nodes over a slow connection, frequent updates might consume noticeable bandwidth.
 
 ## Terminal Requirements
 
