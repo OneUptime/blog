@@ -27,14 +27,12 @@ Several properties make Talos well-suited for CI/CD:
 The fastest way to run Talos in CI is the Docker provider. It runs Talos nodes as Docker containers, which means no VMs, no nested virtualization, and fast startup times.
 
 ```bash
-# Create a single-node Talos cluster using Docker
+# Create a Talos cluster using Docker
 
 talosctl cluster create \
-  --provisioner docker \
+  docker \
   --name ci-cluster \
-  --controlplanes 1 \
-  --workers 1 \
-  --wait-timeout 5m
+  --workers 1
 
 # Get the kubeconfig
 talosctl kubeconfig --force /tmp/ci-kubeconfig --merge=false
@@ -57,14 +55,15 @@ For tests that need real kernel features, network simulation, or disk testing, t
 ```bash
 # Create a cluster with QEMU (requires KVM access)
 talosctl cluster create \
-  --provisioner qemu \
+  qemu \
   --name ci-cluster-qemu \
   --controlplanes 1 \
   --workers 1 \
-  --cpus 2 \
-  --memory 2048 \
-  --disk 10240 \
-  --wait-timeout 10m
+  --cpus-controlplanes 2.0 \
+  --cpus-workers 2.0 \
+  --memory-controlplanes 2048mb \
+  --memory-workers 2048mb \
+  --disks virtio:10GiB
 ```
 
 The QEMU provider is slower but more realistic. Use it when Docker provider limitations affect your tests.
@@ -96,11 +95,9 @@ KUBECONFIG_PATH="/tmp/${CLUSTER_NAME}-kubeconfig"
 create_cluster() {
   echo "Creating Talos cluster: ${CLUSTER_NAME}"
   talosctl cluster create \
-    --provisioner docker \
+    docker \
     --name "${CLUSTER_NAME}" \
-    --controlplanes 1 \
-    --workers 1 \
-    --wait-timeout 5m
+    --workers 1
 
   talosctl kubeconfig --force "${KUBECONFIG_PATH}" --merge=false
   export KUBECONFIG="${KUBECONFIG_PATH}"
@@ -126,7 +123,7 @@ case "${1:-}" in
   *)
     create_cluster
     echo "Cluster running. Press Ctrl+C to destroy."
-    wait
+    while true; do sleep 3600; done
     ;;
 esac
 ```
@@ -140,7 +137,7 @@ Most CI runners do not have `talosctl` pre-installed. Add an installation step:
 curl -sL https://talos.dev/install | sh
 
 # Or install a specific version
-curl -LO https://github.com/siderolabs/talos/releases/download/v1.7.0/talosctl-linux-amd64
+curl -LO https://github.com/siderolabs/talos/releases/download/v1.13.0/talosctl-linux-amd64
 chmod +x talosctl-linux-amd64
 sudo mv talosctl-linux-amd64 /usr/local/bin/talosctl
 
@@ -157,13 +154,16 @@ Here is a complete integration test workflow:
 # run-integration-tests.sh
 set -euo pipefail
 
+cleanup() {
+  talosctl cluster destroy --name integration-test 2>/dev/null || true
+}
+trap cleanup EXIT
+
 # Step 1: Create cluster
 talosctl cluster create \
-  --provisioner docker \
+  docker \
   --name integration-test \
-  --controlplanes 1 \
-  --workers 2 \
-  --wait-timeout 5m
+  --workers 2
 
 # Step 2: Get kubeconfig
 export KUBECONFIG=/tmp/integration-kubeconfig
@@ -178,15 +178,15 @@ kubectl rollout status deployment/myapp --timeout=120s
 
 # Step 5: Run tests
 # Run your test suite against the cluster
-go test ./integration/... -v -timeout 10m
-TEST_RESULT=$?
+if go test ./integration/... -v -timeout 10m; then
+  TEST_RESULT=0
+else
+  TEST_RESULT=$?
+fi
 
 # Step 6: Collect artifacts
 kubectl logs deployment/myapp > /tmp/app-logs.txt 2>&1 || true
 kubectl get events --sort-by='.lastTimestamp' > /tmp/events.txt 2>&1 || true
-
-# Step 7: Cleanup
-talosctl cluster destroy --name integration-test
 
 exit $TEST_RESULT
 ```
@@ -206,11 +206,9 @@ run_test_suite() {
   local cluster_name="ci-${suite}-$(date +%s)"
 
   talosctl cluster create \
-    --provisioner docker \
+    docker \
     --name "${cluster_name}" \
-    --controlplanes 1 \
-    --workers 1 \
-    --wait-timeout 5m
+    --workers 1
 
   export KUBECONFIG="/tmp/${cluster_name}-kubeconfig"
   talosctl kubeconfig --force "$KUBECONFIG" --merge=false
@@ -249,17 +247,15 @@ Different tests may need different cluster configurations. Use config patches:
 ```bash
 # Test with specific Kubernetes version
 talosctl cluster create \
-  --provisioner docker \
-  --name k8s-129-test \
-  --kubernetes-version 1.29.0 \
-  --controlplanes 1 \
+  docker \
+  --name k8s-136-test \
+  --kubernetes-version 1.36.0 \
   --workers 1
 
 # Test with specific CNI
 talosctl cluster create \
-  --provisioner docker \
+  docker \
   --name cilium-test \
-  --controlplanes 1 \
   --workers 1 \
   --config-patch '[{"op": "replace", "path": "/cluster/network/cni/name", "value": "none"}]'
 
@@ -273,7 +269,7 @@ Speed up CI runs by caching Talos images:
 
 ```bash
 # Pre-pull the Talos container images
-docker pull ghcr.io/siderolabs/talos:v1.7.0
+docker pull ghcr.io/siderolabs/talos:v1.13.0
 
 # Cache the talosctl binary
 # In GitHub Actions, use actions/cache
@@ -284,9 +280,8 @@ Use the smallest cluster that satisfies your test requirements. A single control
 
 ```bash
 talosctl cluster create \
-  --provisioner docker \
+  docker \
   --name minimal \
-  --controlplanes 1 \
   --workers 0 \
   --config-patch '[{"op": "add", "path": "/cluster/allowSchedulingOnControlPlanes", "value": true}]'
 ```
