@@ -23,7 +23,7 @@ Samba can act as a print server, making CUPS-managed printers available to Windo
 ```bash
 # Install Samba and CUPS
 
-sudo dnf install -y samba samba-client cups cups-filters
+sudo dnf install -y samba samba-client cups cups-filters policycoreutils-python-utils
 ```
 
 ## Step 2 - Configure CUPS
@@ -63,13 +63,17 @@ Edit /etc/samba/smb.conf to include print sharing:
     guest ok = yes
     writable = no
     printable = yes
+    create mask = 0600
 
 [print$]
     comment = Printer Drivers
     path = /var/lib/samba/drivers
     browseable = yes
-    read only = yes
-    write list = @samba_admins
+    read only = no
+    write list = printadmin
+    force group = printadmin
+    create mask = 0664
+    directory mask = 2775
 ```
 
 ## Step 4 - Create the Spool Directory
@@ -81,18 +85,18 @@ sudo chmod 1777 /var/spool/samba
 
 # Create the drivers directory
 sudo mkdir -p /var/lib/samba/drivers
+sudo getent group printadmin >/dev/null || sudo groupadd printadmin
+sudo chgrp -R printadmin /var/lib/samba/drivers
+sudo chmod -R 2775 /var/lib/samba/drivers
 ```
 
 ## Step 5 - Configure SELinux
 
 ```bash
-# Set SELinux contexts
-sudo setsebool -P samba_enable_home_dirs on
-
-# Allow Samba to act as a print server
-sudo semanage fcontext -a -t samba_share_t "/var/spool/samba(/.*)?"
+# Restore the default Samba spool context
 sudo restorecon -Rv /var/spool/samba
 
+# Label the printer driver share for Samba
 sudo semanage fcontext -a -t samba_share_t "/var/lib/samba/drivers(/.*)?"
 sudo restorecon -Rv /var/lib/samba/drivers
 ```
@@ -109,7 +113,7 @@ sudo firewall-cmd --reload
 
 ```bash
 # Restart Samba
-sudo systemctl restart smb nmb
+sudo systemctl restart smb
 
 # Verify configuration
 testparm
@@ -142,8 +146,11 @@ For automatic driver installation on Windows clients:
 sudo mkdir -p /var/lib/samba/drivers/{W32X86,x64,WIN40}
 
 # Set permissions
-sudo chown -R root:samba_admins /var/lib/samba/drivers
+sudo chgrp -R printadmin /var/lib/samba/drivers
 sudo chmod -R 2775 /var/lib/samba/drivers
+
+# Allow members of printadmin to upload and preconfigure drivers
+sudo net rpc rights grant "printadmin" SePrintOperatorPrivilege -U "DOMAIN\\administrator"
 ```
 
 Then upload drivers from a Windows machine using the Print Management console or the `rpcclient` tool.
@@ -169,8 +176,8 @@ echo "Test print" | lpr -P printer_name
 # Check Samba printer shares
 smbclient -L //localhost -U% | grep -i print
 
-# View CUPS error log
-sudo tail -f /var/log/cups/error_log
+# View CUPS logs
+sudo journalctl -u cups -f
 
 # View Samba log
 sudo tail -f /var/log/samba/log.smbd
