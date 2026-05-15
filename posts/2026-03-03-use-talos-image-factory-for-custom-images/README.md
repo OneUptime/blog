@@ -23,7 +23,7 @@ The service is available at `factory.talos.dev` and provides both a web UI and a
 There are several practical reasons to build custom images rather than using the stock Talos release:
 
 - **Hardware support**: Your servers may need specific drivers or firmware that are not included in the default image. Network cards, storage controllers, and GPU devices often require additional kernel modules.
-- **Platform requirements**: Different deployment targets like AWS, Azure, VMware, or bare metal each have their own requirements for guest agents, cloud-init providers, and disk layouts.
+- **Platform requirements**: Different deployment targets like AWS, Azure, VMware, or bare metal each have their own requirements for guest agents, platform metadata, and disk layouts.
 - **Reproducibility**: By defining your image as a schematic, you can rebuild the exact same image at any time. This is valuable for auditing, disaster recovery, and consistent deployments across environments.
 - **Reduced boot time**: When extensions are baked into the image, nodes do not need to download and install them on first boot. This can shave minutes off your provisioning time.
 
@@ -76,7 +76,7 @@ curl -X POST --data-binary @my-schematic.yaml \
   https://factory.talos.dev/schematics
 
 # Response will look like:
-# {"id":"376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba"}
+# {"id":"921c54c7a76452ab05e34ffcf36f1248145dd97c9d558b957ef57cc7b6becee1"}
 ```
 
 The returned ID is a content hash of your schematic. This means the same schematic will always produce the same ID, and you can safely share these IDs across your team.
@@ -87,7 +87,7 @@ With your schematic ID, you can construct URLs for any image type:
 
 ```bash
 # Download an ISO for AMD64
-SCHEMATIC_ID="376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba"
+SCHEMATIC_ID="921c54c7a76452ab05e34ffcf36f1248145dd97c9d558b957ef57cc7b6becee1"
 TALOS_VERSION="v1.7.0"
 
 # ISO download URL
@@ -95,8 +95,10 @@ wget https://factory.talos.dev/image/${SCHEMATIC_ID}/${TALOS_VERSION}/metal-amd6
 
 # Installer image (for use in machine configs)
 # This is a container image reference
-echo "factory.talos.dev/installer/${SCHEMATIC_ID}:${TALOS_VERSION}"
+echo "factory.talos.dev/metal-installer/${SCHEMATIC_ID}:${TALOS_VERSION}"
 ```
+
+The ISO uses the full schematic, including kernel arguments. The installer image includes the configured system extensions; kernel arguments are applied through ISO, PXE, or disk-image boot assets rather than through the installer container image.
 
 ### Step 4: Use the Custom Installer in Machine Configs
 
@@ -105,7 +107,7 @@ When generating your Talos machine configuration, reference the custom installer
 ```bash
 # Generate machine configs with the custom installer
 talosctl gen config my-cluster https://10.0.0.1:6443 \
-  --install-image factory.talos.dev/installer/${SCHEMATIC_ID}:${TALOS_VERSION}
+  --install-image factory.talos.dev/metal-installer/${SCHEMATIC_ID}:${TALOS_VERSION}
 ```
 
 This ensures that when nodes are installed or upgraded, they use your custom image with all extensions included.
@@ -123,7 +125,7 @@ When it is time to upgrade your cluster to a new Talos version, you simply chang
 ```bash
 # Upgrade a node to a new version with the same extensions
 talosctl upgrade --nodes 10.0.0.2 \
-  --image factory.talos.dev/installer/${SCHEMATIC_ID}:v1.8.0
+  --image factory.talos.dev/metal-installer/${SCHEMATIC_ID}:v1.8.0
 ```
 
 Because the schematic ID is stable, your extensions carry forward to the new version automatically.
