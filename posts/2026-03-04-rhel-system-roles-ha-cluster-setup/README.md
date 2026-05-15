@@ -42,6 +42,8 @@ sudo dnf install rhel-system-roles
 sudo subscription-manager repos --enable=rhel-9-for-x86_64-highavailability-rpms
 ```
 
+The examples below use `ha_cluster_node_options`, which is available in RHEL 9.5 and later. Use Ansible Vault for the `hacluster` password in real deployments.
+
 ## Basic Two-Node Cluster
 
 Here is a playbook that sets up a basic two-node cluster:
@@ -54,12 +56,14 @@ Here is a playbook that sets up a basic two-node cluster:
   hosts: ha_cluster
   become: true
   vars:
-    # Cluster password for hacluster user
+    # Demo password for hacluster user; use Ansible Vault in production
     ha_cluster_cluster_name: my-cluster
     ha_cluster_hacluster_password: "ChangeMe123!"
 
     # Enable the cluster to start on boot
     ha_cluster_start_on_boot: true
+    ha_cluster_manage_firewall: true
+    ha_cluster_manage_selinux: true
 
     # Define the cluster members
     ha_cluster_node_options:
@@ -121,7 +125,7 @@ ansible-playbook -i inventory playbook-ha-basic.yml
 
 ## Adding Cluster Resources
 
-Here is a more complete example with a virtual IP and an Apache resource:
+Here is a more complete example with a virtual IP and an Apache resource. This assumes Apache is already installed and configured on both cluster nodes, including a `server-status` endpoint reachable from `127.0.0.1`.
 
 ```yaml
 # playbook-ha-resources.yml
@@ -134,6 +138,8 @@ Here is a more complete example with a virtual IP and an Apache resource:
     ha_cluster_cluster_name: web-cluster
     ha_cluster_hacluster_password: "ChangeMe123!"
     ha_cluster_start_on_boot: true
+    ha_cluster_manage_firewall: true
+    ha_cluster_manage_selinux: true
 
     ha_cluster_node_options:
       - node_name: node1.example.com
@@ -204,6 +210,8 @@ Two-node clusters need special quorum handling:
   vars:
     ha_cluster_cluster_name: two-node-cluster
     ha_cluster_hacluster_password: "ChangeMe123!"
+    ha_cluster_manage_firewall: true
+    ha_cluster_manage_selinux: true
 
     # Quorum settings for two-node clusters
     ha_cluster_quorum:
@@ -215,7 +223,7 @@ Two-node clusters need special quorum handling:
 
     ha_cluster_cluster_properties:
       - attrs:
-          # Do not stop all resources if quorum is lost
+          # Allow the surviving node to recover resources after fencing
           - name: no-quorum-policy
             value: ignore
           # Enable STONITH
