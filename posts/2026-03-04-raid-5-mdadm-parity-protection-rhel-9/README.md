@@ -117,9 +117,11 @@ Key things to look for:
 The default chunk size is 512K. For workloads with large sequential I/O (video files, backups), this works well. For database workloads with smaller random I/O, consider 64K or 128K.
 
 ```bash
-# Create with custom chunk size (specify at creation time only)
+# Create with custom chunk size
 sudo mdadm --create /dev/md5 --level=5 --raid-devices=3 --chunk=128 /dev/sdb /dev/sdc /dev/sdd
 ```
+
+It is best to choose the chunk size when you create the array. Changing it later requires a reshape operation and appropriate backup precautions.
 
 ## Adding a Hot Spare
 
@@ -142,7 +144,8 @@ sudo mdadm --manage /dev/md5 --fail /dev/sdc
 sudo mdadm --detail /dev/md5
 
 # If there is a hot spare, rebuild starts automatically
-# Otherwise, remove and add a replacement
+# For this simulation, remove and re-add the same device
+# For a real failure, add the replacement disk path instead
 sudo mdadm --manage /dev/md5 --remove /dev/sdc
 sudo mdadm --manage /dev/md5 --add /dev/sdc
 
@@ -152,7 +155,7 @@ watch cat /proc/mdstat
 
 ## Performance Tuning
 
-Increase the stripe cache size for better sequential read performance:
+Increase the stripe cache size for better RAID 5/6 stripe handling, especially for write-heavy sequential workloads:
 
 ```bash
 # Increase stripe cache (value is in pages, default is 256)
