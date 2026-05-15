@@ -39,8 +39,9 @@ sudo mysql_secure_installation
 For MySQL 8.0:
 
 ```bash
-sudo dnf install -y mysql-community-server
+sudo dnf install -y mysql-server
 sudo systemctl enable --now mysqld
+sudo mysql_secure_installation
 ```
 
 Choose the appropriate commands for your database engine.
@@ -50,16 +51,18 @@ Choose the appropriate commands for your database engine.
 Edit the main configuration file:
 
 - PostgreSQL: `/var/lib/pgsql/data/postgresql.conf` and `pg_hba.conf`
-- MariaDB/MySQL: `/etc/my.cnf.d/server.cnf`
+- MariaDB: `/etc/my.cnf.d/mariadb-server.cnf`
+- MySQL: `/etc/my.cnf.d/mysql-server.cnf`
 
 Adjust memory settings, connection limits, and authentication methods to match your workload.
+Restart the database service after changing server configuration.
 
 ## Step 3 - Create Users and Databases
 
 For PostgreSQL:
 
 ```bash
-sudo -u postgres createuser myappuser
+sudo -u postgres createuser --pwprompt myappuser
 sudo -u postgres createdb myappdb -O myappuser
 ```
 
