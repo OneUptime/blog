@@ -15,13 +15,14 @@ Combining VDO deduplication with DRBD replication on RHEL 9 provides space-effic
 - Two RHEL 9 servers with network connectivity
 - Block devices available for VDO/DRBD
 - Matching kernel versions on both nodes
+- A LINBIT or compatible DRBD repository enabled on both nodes
 
 ## Install Packages
 
 On both nodes:
 
 ```bash
-sudo dnf install -y vdo kmod-kvdo drbd drbd-utils kernel-modules-extra
+sudo dnf install -y lvm2 vdo kmod-kvdo drbd-utils kmod-drbd
 ```
 
 ## Create VDO Volumes
@@ -29,10 +30,13 @@ sudo dnf install -y vdo kmod-kvdo drbd drbd-utils kernel-modules-extra
 On both nodes:
 
 ```bash
-sudo vdo create --name=vdo-data \
-  --device=/dev/sdb \
-  --vdoLogicalSize=100G \
-  --writePolicy=async
+sudo pvcreate /dev/sdb
+sudo vgcreate vg_vdo /dev/sdb
+sudo lvcreate --type vdo \
+  --name vdo-data \
+  --size 100G \
+  --virtualsize 100G \
+  vg_vdo
 ```
 
 ## Configure DRBD
@@ -50,14 +54,14 @@ resource vdo-repl {
 
   on node1 {
     device /dev/drbd0;
-    disk /dev/mapper/vdo-data;
+    disk /dev/vg_vdo/vdo-data;
     address 10.0.1.10:7789;
     meta-disk internal;
   }
 
   on node2 {
     device /dev/drbd0;
-    disk /dev/mapper/vdo-data;
+    disk /dev/vg_vdo/vdo-data;
     address 10.0.1.20:7789;
     meta-disk internal;
   }
@@ -130,4 +134,3 @@ sudo mount /dev/drbd0 /mnt/replicated
 ## Conclusion
 
 VDO with DRBD on RHEL 9 provides deduplicated, compressed, and replicated storage. This combination reduces storage costs while maintaining data availability across two nodes.
-
