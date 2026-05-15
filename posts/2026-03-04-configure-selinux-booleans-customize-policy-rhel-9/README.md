@@ -111,7 +111,7 @@ sudo setsebool -P httpd_can_sendmail on
 # Allow Apache to read user home directories
 sudo setsebool -P httpd_enable_homedirs on
 
-# Allow Apache CGI scripts to make network connections
+# Allow Apache to act as a network relay or proxy
 sudo setsebool -P httpd_can_network_relay on
 
 # Allow Apache to use NFS-mounted content
@@ -127,11 +127,13 @@ sudo setsebool -P httpd_use_cifs on
 # Allow Samba to share home directories
 sudo setsebool -P samba_enable_home_dirs on
 
-# Allow Samba to export NFS volumes
+# Allow Samba to export unlabeled content read-only
 sudo setsebool -P samba_export_all_ro on
+
+# Allow Samba to export unlabeled content read-write
 sudo setsebool -P samba_export_all_rw on
 
-# Allow Samba to use CUPS for printing
+# Allow Samba to act as a domain controller
 sudo setsebool -P samba_domain_controller on
 ```
 
@@ -151,11 +153,11 @@ sudo setsebool -P nfs_export_all_rw on
 ### FTP
 
 ```bash
-# Allow FTP users to access home directories
-sudo setsebool -P ftp_home_dir on
+# Allow FTP servers to access NFS-mounted content
+sudo setsebool -P ftpd_use_nfs on
 
 # Allow anonymous FTP write
-sudo setsebool -P allow_ftpd_anon_write on
+sudo setsebool -P ftpd_anon_write on
 
 # Allow FTP full access
 sudo setsebool -P ftpd_full_access on
@@ -164,10 +166,10 @@ sudo setsebool -P ftpd_full_access on
 ### Mail
 
 ```bash
-# Allow Postfix to connect to external databases
+# Allow Postfix to write to the local mail spool
 sudo setsebool -P postfix_local_write_mail_spool on
 
-# Allow mail to use the network
+# Allow services to use NIS where required
 sudo setsebool -P nis_enabled on
 ```
 
@@ -194,7 +196,7 @@ When you hit an SELinux denial, the audit log often tells you which boolean to s
 
 ```bash
 # Look at recent denials
-sudo ausearch -m avc -ts recent
+sudo ausearch -m AVC,USER_AVC,SELINUX_ERR,USER_SELINUX_ERR -ts recent
 
 # Use sealert for human-readable suggestions
 sudo sealert -a /var/log/audit/audit.log
