@@ -10,12 +10,12 @@ Description: Learn how to install and configure Fluentd on RHEL to collect, pars
 
 Fluentd is an open-source data collector that unifies log collection and consumption. It can ingest logs from files, syslog, and applications, then route them to destinations like Elasticsearch, S3, or other storage backends.
 
-## Installing Fluentd (td-agent)
+## Installing Fluentd (fluent-package)
 
 ```bash
-# Install the td-agent package (Fluentd distribution by Treasure Data)
+# Install the Fluent Package LTS distribution
 
-curl -fsSL https://toolbelt.treasuredata.com/sh/install-redhat-fluent-package5-lts.sh | sh
+curl -fsSL https://fluentd.cdn.cncf.io/sh/install-redhat-fluent-package6-lts.sh | sh
 
 # Start and enable the service
 sudo systemctl enable --now fluentd
