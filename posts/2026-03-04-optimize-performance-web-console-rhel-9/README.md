@@ -14,11 +14,11 @@ The RHEL Web Console (powered by Cockpit) provides a browser-based interface for
 
 - A RHEL system with an active subscription
 - Root or sudo access
-- Network access to the server
+- Network access to the server with TCP port 9090 open in the firewall
 
 ## Installing the Web Console
 
-The Web Console is included by default on RHEL. If not installed:
+The Web Console is included by default in many RHEL installation variants. If not installed:
 
 ```bash
 sudo dnf install cockpit -y
@@ -44,18 +44,18 @@ Log in with your system credentials. Check the "Reuse my password for privileged
 
 ### Overview Dashboard
 
-The main page shows:
+The Overview page shows a usage summary for:
 
 - CPU usage graph
 - Memory usage graph
 - Disk I/O graph
 - Network traffic graph
 
-These update in real time and provide a quick health check.
+These provide a quick health check.
 
 ### Detailed Performance Metrics
 
-Click on the performance graphs to see detailed views:
+In the **Overview** page, click **View metrics and history** in the **Usage** section to see detailed views:
 
 - **CPU** - Per-core utilization, load average
 - **Memory** - Used, cached, swap usage
@@ -85,7 +85,6 @@ The Web Console does not have a built-in process manager, but you can use the in
 
 ```bash
 top
-htop
 ps aux --sort=-%cpu | head -20
 ```
 
@@ -156,8 +155,7 @@ After installing cockpit-pcp, the performance graphs use PCP for data collection
 Enable PCP services:
 
 ```bash
-sudo systemctl enable --now pmcd
-sudo systemctl enable --now pmlogger
+sudo systemctl enable --now pmlogger.service pmproxy.service
 ```
 
 Refresh the Web Console to see enhanced performance charts.
