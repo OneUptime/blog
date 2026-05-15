@@ -73,7 +73,7 @@ flux bootstrap gitlab \
   --token-auth
 ```
 
-The `--token-auth` flag tells Flux to use the personal access token for Git operations over HTTPS instead of using SSH deploy keys. This is often necessary for self-managed instances with custom certificate configurations.
+The `--token-auth` flag tells Flux to use the personal access token for Git operations over HTTPS instead of using SSH deploy keys.
 
 For instances with self-signed certificates, you need to provide the CA certificate:
 
@@ -177,7 +177,7 @@ The `dependsOn` field ensures infrastructure components are deployed before appl
 
 ## Step 8: Configure GitLab CI Integration
 
-You can trigger Flux reconciliation from GitLab CI pipelines for faster feedback loops.
+You can trigger Flux reconciliation from GitLab CI pipelines for faster feedback loops. Make sure the runner has Kubernetes credentials available through `KUBECONFIG` or in-cluster configuration.
 
 ```yaml
 # .gitlab-ci.yml
@@ -187,7 +187,7 @@ stages:
 
 flux-reconcile:
   stage: deploy
-  image: ghcr.io/fluxcd/flux-cli:v2.2.0
+  image: ghcr.io/fluxcd/flux-cli:v2.8.7
   script:
     - flux reconcile source git flux-system --namespace=flux-system
     - flux reconcile kustomization flux-system --namespace=flux-system
@@ -225,7 +225,7 @@ Configure Flux to update commit statuses in GitLab so your team can see deployme
 ```yaml
 # clusters/production/notifications/gitlab-provider.yaml
 # Provider for GitLab commit status updates
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: gitlab-status
@@ -236,7 +236,7 @@ spec:
   secretRef:
     name: gitlab-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: gitlab-status
