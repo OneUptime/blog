@@ -29,7 +29,7 @@ talosctl etcd status --nodes <cp-node-1>
 # - Member ID
 # - Endpoint
 # - DB Size
-# - Leader status
+# - Leader member ID
 # - Raft term and index
 ```
 
@@ -213,6 +213,7 @@ set -e
 
 CP_NODES=("10.0.0.1" "10.0.0.2" "10.0.0.3")
 FIRST_CP="${CP_NODES[0]}"
+NODE_LIST=$(IFS=,; echo "${CP_NODES[*]}")
 ERRORS=0
 
 echo "=== etcd Post-Recovery Validation ==="
@@ -221,33 +222,33 @@ echo ""
 
 # Check 1: All members present
 echo "Check 1: etcd members"
-MEMBER_COUNT=$(talosctl etcd members --nodes ${FIRST_CP} 2>/dev/null | grep -c "10\.")
+MEMBER_COUNT=$(talosctl etcd members --nodes ${FIRST_CP} 2>/dev/null | awk 'NR > 1 && NF {count++} END {print count+0}')
 if [ "${MEMBER_COUNT}" -eq 3 ]; then
     echo "  PASS: ${MEMBER_COUNT} members found"
 else
     echo "  FAIL: Expected 3 members, found ${MEMBER_COUNT}"
-    ((ERRORS++))
+    ERRORS=$((ERRORS + 1))
 fi
 
 # Check 2: Leader elected
 echo "Check 2: Leader election"
-LEADER=$(talosctl etcd status --nodes ${FIRST_CP} 2>/dev/null | grep -c "true")
-if [ "${LEADER}" -ge 1 ]; then
-    echo "  PASS: Leader is elected"
+LEADER_COUNT=$(talosctl etcd status --nodes ${NODE_LIST} 2>/dev/null | awk 'NR > 1 && $2 == $8 {count++} END {print count+0}')
+if [ "${LEADER_COUNT}" -eq 1 ]; then
+    echo "  PASS: One leader is elected"
 else
-    echo "  FAIL: No leader elected"
-    ((ERRORS++))
+    echo "  FAIL: Expected one leader, found ${LEADER_COUNT}"
+    ERRORS=$((ERRORS + 1))
 fi
 
 # Check 3: etcd service running on all nodes
 echo "Check 3: etcd service status"
 for node in "${CP_NODES[@]}"; do
-    STATUS=$(talosctl services --nodes ${node} 2>/dev/null | grep etcd | awk '{print $2}')
+    STATUS=$(talosctl service etcd --nodes ${node} 2>/dev/null | awk '$1 == "STATE" {print $2}')
     if [ "${STATUS}" = "Running" ]; then
         echo "  PASS: etcd running on ${node}"
     else
         echo "  FAIL: etcd not running on ${node} (status: ${STATUS})"
-        ((ERRORS++))
+        ERRORS=$((ERRORS + 1))
     fi
 done
 
@@ -257,17 +258,18 @@ if kubectl cluster-info 2>/dev/null | grep -q "running"; then
     echo "  PASS: Kubernetes API is accessible"
 else
     echo "  FAIL: Kubernetes API is not accessible"
-    ((ERRORS++))
+    ERRORS=$((ERRORS + 1))
 fi
 
 # Check 5: Write operations work
 echo "Check 5: Write operations"
-if kubectl create namespace validation-test 2>/dev/null; then
-    kubectl delete namespace validation-test 2>/dev/null
+TEST_NAMESPACE="validation-test-$(date +%s)"
+if kubectl create namespace ${TEST_NAMESPACE} 2>/dev/null; then
+    kubectl delete namespace ${TEST_NAMESPACE} 2>/dev/null
     echo "  PASS: Write operations working"
 else
     echo "  FAIL: Write operations failed"
-    ((ERRORS++))
+    ERRORS=$((ERRORS + 1))
 fi
 
 # Check 6: No error logs
