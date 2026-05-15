@@ -8,7 +8,7 @@ Description: Configure autofs timeout and caching parameters on RHEL to control 
 
 ---
 
-autofs timeout and caching settings control two things: how long mounted file systems stay active after the last access, and how often autofs re-reads its map configuration. Tuning these settings affects system responsiveness, NFS server load, and resource usage.
+autofs timeout and caching settings control two things: how long mounted file systems stay active after the last access, and how long autofs caches successful and failed map lookups. Tuning these settings affects system responsiveness, NFS server load, and resource usage.
 
 ## Mount Timeout
 
@@ -96,7 +96,7 @@ Controls how long autofs waits for a mount operation to complete:
 mount_wait = 30
 ```
 
-Default is usually around 30 seconds. If your NFS server is slow to respond, increase this. If you want faster failure detection, decrease it.
+By default, autofs waits until `mount(8)` returns. Setting a value causes autofs to send `SIGTERM` to the mount process after that many seconds, although RPC timeouts can still delay the process exit. If your NFS server is slow to respond, increase this. If you want faster failure detection, decrease it.
 
 ## Map Caching
 
@@ -109,8 +109,11 @@ sudo vi /etc/autofs.conf
 ```
 
 ```bash
-# Map entry cache timeout (seconds)
-# How long map entries are cached before re-reading
+# Successful map entry cache timeout (seconds)
+# How long successful map lookups are cached
+positive_timeout = 120
+
+# Map entry cache hash table slots
 map_hash_table_size = 1024
 
 # Browse mode - show mount points even when not mounted
