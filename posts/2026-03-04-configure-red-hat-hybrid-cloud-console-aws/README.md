@@ -10,83 +10,54 @@ Description: Configure Red Hat Hybrid Cloud Console integrations for AWS.
 
 ## Overview
 
-Configure Red Hat Hybrid Cloud Console integrations for AWS. RHEL 9 is fully supported on major cloud platforms with official images and integrated tooling.
+Configure Red Hat Hybrid Cloud Console integrations for AWS. A cloud integration lets Hybrid Cloud Console services use data from your AWS account, including cost management and the RHEL management bundle.
 
 ## Prerequisites
 
-- A RHEL 9 subscription or cloud marketplace entitlement
-- An account on the target cloud platform (AWS, Azure, or GCP)
-- CLI tools installed: aws-cli, az-cli, or gcloud
+- A Red Hat account with Organization Administrator permissions or Cloud Administrator permissions
+- An AWS account that you want to connect to the Hybrid Cloud Console
+- AWS IAM permissions for `CreatePolicy`, `CreateRole`, `AttachRolePolicy`, `GetPolicy`, and `GetRole`
+- For the recommended account authorization method, an AWS access key ID and secret access key
 
-## Step 1 - Choose Your Deployment Method
+## Step 1 - Choose Your Integration Services
 
-You can deploy RHEL 9 in the cloud using:
+You can connect an AWS integration to Hybrid Cloud Console services such as:
 
-1. **Marketplace images** - pre-built, official Red Hat images
-2. **Custom images** - built with Image Builder and uploaded
-3. **Terraform** - infrastructure as code provisioning
-4. **Red Hat Hybrid Cloud Console** - centralized management
+1. **Cost management** - track and analyze AWS cloud costs
+2. **RHEL management bundle** - use Red Hat gold images and autoregistration for RHEL systems on AWS
+3. **Red Hat Insights images** - launch customized RHEL images in AWS
 
-## Step 2 - Launch a RHEL 9 Instance
+## Step 2 - Add the AWS Integration
 
-For AWS:
+In the Red Hat Hybrid Cloud Console:
 
-```bash
-aws ec2 run-instances --image-id ami-rhel9-xxxxx --instance-type m5.large --key-name mykey
-```
+1. Go to **Settings > Integrations** and select the **Cloud** tab.
+2. Click **Add integration** to open the cloud integration wizard.
+3. Select **Amazon Web Services**, and then click **Next**.
+4. Enter a descriptive integration name, such as `my_aws_integration`, and then click **Next**.
 
-For Azure:
+## Step 3 - Configure Account Authorization
 
-```bash
-az vm create --resource-group myRG --name myVM --image RedHat:RHEL:9:latest --size Standard_D2s_v3
-```
+For the recommended configuration mode, select **Account authorization**. This lets Red Hat configure and manage the integration after you provide your AWS access key ID and secret access key.
 
-For GCP:
+After you enter the AWS credentials, select the Hybrid Cloud Console services that you want the integration to use. Cost Management and RHEL management services are selected by default when they are available.
 
-```bash
-gcloud compute instances create myvm --image-project=rhel-cloud --image-family=rhel-9 --machine-type=e2-medium
-```
+## Step 4 - Configure Manual Access
 
-## Step 3 - Configure cloud-init
+If you do not want to provide AWS account authorization credentials to Red Hat, select **Manual configuration** instead. The wizard provides the AWS IAM role and policy instructions that you must complete in your AWS account.
 
-RHEL 9 cloud images use cloud-init for first-boot customization. Create a user-data script:
+If you select a service such as Cost Management, follow the service-specific instructions shown in the wizard before continuing.
 
-```yaml
-#cloud-config
-hostname: my-rhel-server
-users:
-  - name: admin
-    groups: wheel
-    ssh_authorized_keys:
-      - ssh-rsa AAAA...your-key-here
-packages:
-  - vim
-  - tmux
-```
+## Step 5 - Review and Add the Integration
 
-## Step 4 - Register with Red Hat
+On the **Review details** page, verify the AWS account and service selections. Click **Add** to create the AWS cloud integration.
 
-```bash
-sudo subscription-manager register --auto-attach
-# Or connect to Red Hat Insights:
+After the integration is added, return to the **Integrations** page and select the **Cloud** tab. Confirm that your AWS integration is listed and that its status is **Ready**.
 
-sudo insights-client --register
-```
+## Step 6 - Manage the Integration
 
-## Step 5 - Configure Security and Networking
-
-Set up security groups, NSGs, or firewall rules to allow only necessary traffic. Enable SELinux (it is on by default) and configure firewalld.
-
-## Step 6 - Set Up Monitoring
-
-Connect your cloud instances to your monitoring infrastructure:
-
-```bash
-# Install Node Exporter for Prometheus
-# Or register with Red Hat Insights
-sudo insights-client
-```
+From the **Integrations** page, you can edit the integration, pause or resume data collection, or remove the integration when it is no longer needed.
 
 ## Summary
 
-You have learned how to configure red hat hybrid cloud console cloud integrations for aws. RHEL 9 on cloud platforms benefits from official support, pre-configured images, and integration with Red Hat management tools.
+You have learned how to configure Red Hat Hybrid Cloud Console cloud integrations for AWS. After the AWS account is connected, Hybrid Cloud Console services can use AWS data for the services you selected, such as cost management and RHEL management.
