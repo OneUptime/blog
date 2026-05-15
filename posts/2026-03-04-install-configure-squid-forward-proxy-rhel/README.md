@@ -104,7 +104,7 @@ sudo firewall-cmd --reload
 ## Configure SELinux
 
 ```bash
-# Allow Squid to connect to the network
+# Allow Squid to connect to non-standard destination ports
 sudo setsebool -P squid_connect_any 1
 ```
 
