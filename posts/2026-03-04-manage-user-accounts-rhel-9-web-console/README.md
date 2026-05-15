@@ -35,7 +35,8 @@ Click "Create new account" and fill in:
 - **Full name** - the user's real name
 - **User name** - the login name
 - **Password** - set an initial password
-- **Access level** - Server Administrator (adds to wheel group for sudo) or Regular User
+
+After creating the account, add it to any required groups. Add the user to `wheel` if they need sudo access.
 
 Cockpit creates the account immediately. The CLI equivalent:
 
@@ -78,15 +79,15 @@ Cockpit also has a checkbox option to force password change on next login, which
 
 ## Locking and Unlocking Accounts
 
-When an employee leaves or an account needs to be temporarily disabled, locking is better than deleting. A locked account keeps its home directory and files intact but prevents login.
+When an employee leaves or an account needs to be temporarily disabled, locking is better than deleting. A locked password keeps the account's home directory and files intact and prevents password-based login. If the user has other authentication methods, such as SSH keys, also expire the account or remove those credentials.
 
 In Cockpit, there's a "Lock account" toggle on the user detail page.
 
 ```bash
-# Lock an account
+# Lock password-based login
 sudo usermod -L jsmith
 
-# Unlock an account
+# Unlock password-based login
 sudo usermod -U jsmith
 
 # Verify the lock status
@@ -185,8 +186,8 @@ Here's a typical workflow for setting up a new developer account:
 1. In Cockpit, click "Create new account"
 2. Enter their name and username
 3. Set an initial password
-4. Check "Server Administrator" if they need sudo
-5. Click "Create"
+4. Click "Create"
+5. Open the new account and add them to `wheel` if they need sudo
 6. On the user detail page, check "Require password change on next login"
 7. Add their SSH public key
 
@@ -215,19 +216,19 @@ sudo chown -R jdev:jdev /home/jdev/.ssh
 
 When someone leaves:
 
-1. Lock their account in Cockpit (toggle the lock switch)
+1. Lock password-based login in Cockpit (toggle the lock switch)
 2. Remove them from the wheel group
-3. Optionally set an account expiration date
+3. Set an account expiration date if you need to block other login methods
 
 ```bash
-# Lock the account immediately
+# Lock password-based login immediately
 sudo usermod -L jdev
+
+# Expire the account to block other login methods, such as SSH keys
+sudo chage -E 0 jdev
 
 # Remove sudo access
 sudo gpasswd -d jdev wheel
-
-# Set account to expire today
-sudo chage -E 0 jdev
 ```
 
 ## Checking Active Sessions
