@@ -119,13 +119,13 @@ Place your certificate and key in the Cockpit configuration directory:
 # Combine your cert and key into a single file
 
 # Cockpit expects a combined PEM file
-sudo cat /etc/pki/tls/certs/your-cert.pem /etc/pki/tls/private/your-key.pem > /etc/cockpit/ws-certs.d/your-cert.cert
+sudo sh -c 'cat /etc/pki/tls/certs/your-cert.pem /etc/pki/tls/private/your-key.pem > /etc/cockpit/ws-certs.d/your-cert.cert'
 ```
 
-Cockpit picks up the certificate with the highest priority filename in `/etc/cockpit/ws-certs.d/`. Restart the socket to apply:
+Cockpit picks up the certificate with the highest priority filename in `/etc/cockpit/ws-certs.d/`. Restart the web console service to apply:
 
 ```bash
-sudo systemctl restart cockpit.socket
+sudo systemctl restart cockpit
 ```
 
 ## Cockpit Configuration File
@@ -140,11 +140,12 @@ sudo tee /etc/cockpit/cockpit.conf << 'EOF'
 # Set the page title shown in the browser tab
 LoginTitle = My RHEL Server
 
-# Session idle timeout in minutes
-IdleTimeout = 15
-
 # Restrict to specific origins if needed
 # Origins = https://server.example.com:9090
+
+[Session]
+# Session idle timeout in minutes
+IdleTimeout = 15
 EOF
 ```
 
