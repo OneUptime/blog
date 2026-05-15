@@ -87,7 +87,7 @@ key = "rhel-webserver-image"
 AWS
 
 # Start the build with upload
-composer-cli compose start aws-webserver ami "" aws-config.toml
+composer-cli compose start aws-webserver ami rhel-webserver-image aws-config.toml
 ```
 
 ### Option 2: Manual Upload with AWS CLI
@@ -97,13 +97,16 @@ composer-cli compose start aws-webserver ami "" aws-config.toml
 sudo dnf install -y awscli2
 aws configure
 
-# Upload the raw image to S3
-aws s3 cp <compose-uuid>-image.raw s3://my-image-bucket/rhel-webserver.raw
+# Upload the AMI disk image to S3
+aws s3 cp <compose-uuid>-disk.ami s3://my-image-bucket/rhel-webserver.ami
+
+# Ensure the required vmimport IAM role exists before importing the image.
 
 # Create an import task
 aws ec2 import-image \
   --description "Custom RHEL Web Server" \
-  --disk-containers "Description=RHEL,Format=raw,UserBucket={S3Bucket=my-image-bucket,S3Key=rhel-webserver.raw}"
+  --license-type BYOL \
+  --disk-containers "Description=RHEL,Format=RAW,UserBucket={S3Bucket=my-image-bucket,S3Key=rhel-webserver.ami}"
 
 # Monitor import progress
 aws ec2 describe-import-image-tasks --import-task-ids <import-task-id>
