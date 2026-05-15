@@ -64,7 +64,7 @@ pm.min_spare_servers = 5
 pm.max_spare_servers = 35
 ```
 
-The `pm = dynamic` setting creates processes on demand. For high-traffic sites, consider `pm = static` with a fixed number of children.
+The `pm = dynamic` setting adjusts the number of child processes based on the spare-server settings. For high-traffic sites, consider `pm = static` with a fixed number of children.
 
 ## Step 3 - Configure Apache to Use PHP-FPM
 
@@ -133,7 +133,7 @@ sudo rm /var/www/html/info.php
 
 ## Step 7 - Using TCP Instead of Unix Socket
 
-If PHP-FPM runs on a different server, use TCP:
+If PHP-FPM runs on the same server but you prefer TCP instead of a Unix socket, use TCP:
 
 In `/etc/php-fpm.d/www.conf`:
 
@@ -199,10 +199,10 @@ In Apache:
 
 ```apache
 # Expose PHP-FPM status to localhost
-<Location /fpm-status>
-    SetHandler "proxy:unix:/run/php-fpm/www.sock|fcgi://localhost/fpm-status"
-    Require ip 127.0.0.1
-</Location>
+<LocationMatch "/fpm-status">
+    Require local
+    ProxyPass "unix:/run/php-fpm/www.sock|fcgi://localhost/"
+</LocationMatch>
 ```
 
 Restart both services and check:
