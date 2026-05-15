@@ -15,14 +15,17 @@ Build RHEL for Edge images using Image Builder for immutable deployments. RHEL I
 ## Prerequisites
 
 - A RHEL 9 system with a valid subscription
+- Enabled BaseOS and AppStream repositories
 - Root or sudo access
-- The osbuild-composer and composer-cli packages
+- The osbuild-composer, composer-cli, and cockpit-composer packages
 
 ## Step 1 - Install Image Builder
 
 ```bash
-sudo dnf install -y osbuild-composer composer-cli cockpit-composer
-sudo systemctl enable --now osbuild-composer.socket
+sudo dnf install -y osbuild-composer composer-cli cockpit-composer bash-completion firewalld
+sudo systemctl enable --now firewalld osbuild-composer.socket cockpit.socket
+sudo firewall-cmd --add-service=cockpit --permanent
+sudo firewall-cmd --reload
 ```
 
 ## Step 2 - Create a Blueprint
@@ -61,10 +64,10 @@ List available image types:
 composer-cli compose types
 ```
 
-Start a compose (e.g., qcow2 for KVM, ami for AWS, vhd for Azure):
+Start a RHEL for Edge Commit compose for network-based deployments:
 
 ```bash
-composer-cli compose start my-custom-image qcow2
+composer-cli compose start my-custom-image edge-commit
 ```
 
 ## Step 4 - Monitor and Download
@@ -83,7 +86,7 @@ composer-cli compose image <compose-uuid>
 
 ## Step 5 - Deploy the Image
 
-Deploy the image to your target platform (KVM, AWS, Azure, VMware) following the platform-specific deployment process.
+Extract and serve the RHEL for Edge commit from a web server, then deploy it to your target edge device with Anaconda and Kickstart. For non-network-based deployments, create an `edge-container` and then an `edge-installer` image instead.
 
 ## Using the Cockpit Web Console
 
@@ -91,4 +94,4 @@ You can also manage Image Builder through the Cockpit web console at `https://yo
 
 ## Summary
 
-You have learned how to build rhel for edge (rpm-ostree) images using image builder. Image Builder provides a consistent workflow for creating RHEL images across all deployment targets.
+You have learned how to build RHEL for Edge (rpm-ostree) images using Image Builder. Image Builder provides a consistent workflow for creating RHEL for Edge images across supported deployment targets.
