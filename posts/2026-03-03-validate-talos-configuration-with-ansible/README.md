@@ -52,7 +52,7 @@ Create a comprehensive validation playbook:
           import yaml, sys
           try:
               with open('{{ config_dir }}/{{ inventory_hostname }}.yaml') as f:
-                  yaml.safe_load(f)
+                  list(yaml.safe_load_all(f))
               print('YAML syntax is valid')
           except yaml.YAMLError as e:
               print(f'YAML error: {e}', file=sys.stderr)
@@ -87,7 +87,9 @@ Create a comprehensive validation playbook:
 
     - name: Parse configuration
       ansible.builtin.set_fact:
-        parsed_config: "{{ config_content.content | b64decode | from_yaml }}"
+        config_documents: "{{ config_content.content | b64decode | from_yaml_all | list }}"
+        parsed_config: "{{ (config_content.content | b64decode | from_yaml_all | selectattr('version', 'defined') | selectattr('version', 'equalto', 'v1alpha1') | list | first) }}"
+        hostname_config: "{{ (config_content.content | b64decode | from_yaml_all | selectattr('kind', 'defined') | selectattr('kind', 'equalto', 'HostnameConfig') | list | first | default({})) }}"
 
     - name: Verify cluster name is set
       ansible.builtin.assert:
@@ -131,12 +133,11 @@ Create a comprehensive validation playbook:
     - name: Verify hostname is set correctly
       ansible.builtin.assert:
         that:
-          - parsed_config.machine.network.hostname is defined
-          - parsed_config.machine.network.hostname == inventory_hostname
+          - (hostname_config.hostname | default(parsed_config.machine.network.hostname | default(''))) == inventory_hostname
         fail_msg: "Hostname mismatch"
         success_msg: "Hostname is correct"
       ignore_errors: true
-      when: parsed_config.machine.network is defined
+      when: hostname_config.hostname is defined or parsed_config.machine.network.hostname is defined
       register: hostname_check
 
     # Layer 5 - Security checks
@@ -170,10 +171,10 @@ If the cluster is already running, compare the new configuration against what is
     - name: Get current machine configuration from node
       ansible.builtin.command:
         cmd: >
-          talosctl get machineconfig
+          talosctl get machineconfig v1alpha1
           --nodes {{ node_ip }}
           --talosconfig {{ talosconfig_path }}
-          -o yaml
+          -o jsonpath='{.spec}'
       register: current_config
       ignore_errors: true
 
@@ -229,7 +230,7 @@ Generate a summary of all validation results:
       block:
         - name: YAML syntax check
           ansible.builtin.command:
-            cmd: python3 -c "import yaml; yaml.safe_load(open('{{ config_dir }}/{{ inventory_hostname }}.yaml'))"
+            cmd: python3 -c "import yaml; list(yaml.safe_load_all(open('{{ config_dir }}/{{ inventory_hostname }}.yaml')))"
           register: yaml_result
           failed_when: false
 
