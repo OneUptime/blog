@@ -120,7 +120,7 @@ If your public IP is static, SNAT is more efficient than masquerading because th
 Replace the masquerade line with SNAT:
 
 ```bash
-nft add rule inet nat_gateway postrouting oifname "eth0" snat to 203.0.113.10
+nft add rule inet nat_gateway postrouting oifname "eth0" snat ip to 203.0.113.10
 ```
 
 ## Destination NAT (DNAT) - Port Forwarding
@@ -130,13 +130,13 @@ DNAT redirects incoming traffic to a different destination. This is how you expo
 Forward incoming port 80 to an internal web server:
 
 ```bash
-nft add rule inet nat_gateway prerouting iifname "eth0" tcp dport 80 dnat to 192.168.1.100:80
+nft add rule inet nat_gateway prerouting iifname "eth0" tcp dport 80 dnat ip to 192.168.1.100:80
 ```
 
 Forward incoming port 443 to the same server:
 
 ```bash
-nft add rule inet nat_gateway prerouting iifname "eth0" tcp dport 443 dnat to 192.168.1.100:443
+nft add rule inet nat_gateway prerouting iifname "eth0" tcp dport 443 dnat ip to 192.168.1.100:443
 ```
 
 Don't forget to allow the forwarded traffic in your forward chain:
@@ -174,13 +174,13 @@ table inet gateway {
         type nat hook prerouting priority -100; policy accept;
 
         # Port forward HTTP to internal web server
-        iifname "eth0" tcp dport 80 dnat to 192.168.1.100:80
+        iifname "eth0" tcp dport 80 dnat ip to 192.168.1.100:80
 
         # Port forward HTTPS to internal web server
-        iifname "eth0" tcp dport 443 dnat to 192.168.1.100:443
+        iifname "eth0" tcp dport 443 dnat ip to 192.168.1.100:443
 
         # Port forward SSH on 2222 to internal server
-        iifname "eth0" tcp dport 2222 dnat to 192.168.1.50:22
+        iifname "eth0" tcp dport 2222 dnat ip to 192.168.1.50:22
     }
 
     chain postrouting {
@@ -248,7 +248,7 @@ ssh -p 2222 user@your-public-ip
 Check the NAT connection tracking table:
 
 ```bash
-conntrack -L -n
+conntrack -L
 ```
 
 ## Monitoring NAT Connections
