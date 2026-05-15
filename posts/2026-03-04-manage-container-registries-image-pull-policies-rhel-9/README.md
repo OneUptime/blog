@@ -176,10 +176,10 @@ Set a default pull policy in `/etc/containers/containers.conf`:
 
 ```toml
 [engine]
-image_pull_policy = "missing"
+pull_policy = "missing"
 ```
 
-Options: `always`, `missing`, `never`, `newer`.
+Options: `always`, `missing`, `never`.
 
 ## Registry Certificates
 
@@ -197,14 +197,14 @@ sudo cp client.cert /etc/containers/certs.d/registry.example.com/
 sudo cp client.key /etc/containers/certs.d/registry.example.com/
 ```
 
-The directory name must match the registry hostname.
+The directory name must match the registry host and port.
 
 ## Short Name Aliases
 
 Create aliases for commonly used images:
 
 ```bash
-cat > /etc/containers/registries.conf.d/shortnames.conf << 'EOF'
+sudo tee /etc/containers/registries.conf.d/shortnames.conf > /dev/null << 'EOF'
 [aliases]
 "nginx" = "docker.io/library/nginx"
 "redis" = "docker.io/library/redis"
@@ -221,15 +221,21 @@ Now `podman pull nginx` resolves directly without prompting.
 For more secure credential management:
 
 ```bash
-# Install a credential helper
-sudo dnf install -y podman-credential-helpers
-
-# Configure Podman to use it
-cat > ~/.config/containers/containers.conf << 'EOF'
-[engine]
-helper_binaries_dir = ["/usr/libexec/podman"]
+# Configure a registry-specific credential helper
+mkdir -p ~/.config/containers
+cat > ~/.config/containers/auth.json << 'EOF'
+{
+  "auths": {
+    "registry.example.com": {}
+  },
+  "credHelpers": {
+    "registry.example.com": "secretservice"
+  }
+}
 EOF
 ```
+
+The helper name is the suffix after `docker-credential-`, so this example uses the `docker-credential-secretservice` helper.
 
 ## Per-User Registry Configuration
 
