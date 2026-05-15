@@ -16,7 +16,7 @@ Before you begin, ensure you have:
 
 - A Kubernetes cluster up and running
 - `kubectl` configured to communicate with your cluster
-- The Flux CLI installed (verify with `flux --version`)
+- The Flux CLI installed (verify with `flux version --client`)
 - A GitHub, GitLab, or other Git server account
 
 Run the pre-flight checks to verify cluster compatibility.
@@ -316,7 +316,7 @@ flux bootstrap github \
 flux logs --kind=GitRepository --name=flux-system
 ```
 
-**Bootstrap fails behind a corporate proxy:** Set the `HTTPS_PROXY` environment variable before running the bootstrap command.
+**Bootstrap fails behind a corporate proxy:** Set the `HTTPS_PROXY` environment variable before running the bootstrap command so the Flux CLI can reach your Git provider. If the Flux controllers in the cluster must also use the proxy for egress, configure `HTTPS_PROXY` and `NO_PROXY` on the Flux controller deployments during bootstrap.
 
 ```bash
 # Set proxy for HTTPS traffic
