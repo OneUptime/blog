@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, ISO, Lorax, Kickstart, Custom Installation, Linux
 
-Description: Learn how to build custom RHEL installation ISOs with embedded Kickstart files and tailored package sets using lorax and mkksiso, enabling fully automated and reproducible server deployments.
+Description: Learn how to build custom RHEL installation ISOs with embedded Kickstart files, custom installer runtime images, and optional package repositories using lorax and mkksiso, enabling fully automated and reproducible server deployments.
 
 ---
 
@@ -16,18 +16,18 @@ This guide covers the full process of creating a custom RHEL ISO, from writing t
 
 ### lorax
 
-`lorax` is Red Hat's tool for creating the installation image tree. It downloads packages from repositories, builds the installer image, and produces a bootable ISO. It is the same tool Red Hat uses internally to build the official RHEL installer images.
+`lorax` is Red Hat's tool for creating the Anaconda installer boot image and installation tree metadata. It pulls the packages needed for the installer runtime from repositories and produces a bootable `boot.iso`. It is part of the toolchain used to build installer images.
 
 ### mkksiso
 
-`mkksiso` is a simpler tool (included with the `lorax` package) that takes an existing RHEL ISO and injects a Kickstart file into it. If you do not need to change the package set on the ISO itself and just want to embed a Kickstart, `mkksiso` is the faster path.
+`mkksiso` is a simpler tool (included with the `lorax` package) that takes an existing RHEL ISO and injects a Kickstart file into it. If you just want to embed a Kickstart or add a small custom repository to an existing ISO, `mkksiso` is the faster path.
 
 ```mermaid
 flowchart TD
-    A[Start] --> B{Need custom packages on ISO?}
-    B -->|Yes| C[Use lorax to build from scratch]
+    A[Start] --> B{Need custom installer runtime?}
+    B -->|Yes| C[Use lorax to build boot.iso]
     B -->|No| D[Use mkksiso to embed Kickstart]
-    C --> E[Custom ISO with packages + Kickstart]
+    C --> E[Custom installer ISO + Kickstart]
     D --> F[Stock ISO with embedded Kickstart]
     E --> G[Deploy to servers]
     F --> G
@@ -170,7 +170,7 @@ sudo mkksiso --ks /root/ks.cfg /path/to/rhel-9.4-x86_64-dvd.iso /root/rhel9-cust
 
 1. Extracts the ISO contents to a temporary directory
 2. Copies your Kickstart file into the ISO root
-3. Modifies the GRUB and isolinux boot configuration to add `inst.ks=cdrom:/ks.cfg`
+3. Modifies the GRUB and isolinux boot configuration to add an `inst.ks=` argument that points at the embedded Kickstart file
 4. Rebuilds the ISO with the correct checksum and boot records
 
 You can also add extra kernel boot parameters:
@@ -182,13 +182,13 @@ sudo mkksiso --ks /root/ks.cfg --cmdline "inst.text console=ttyS0,115200" /path/
 
 ## Step 2b: Build a Completely Custom ISO with lorax
 
-If you need to change which packages are on the ISO itself (not just what gets installed, but what is available on the media), use `lorax`.
+If you need to change the installer runtime itself, use `lorax`. For example, you can build a custom Anaconda `boot.iso` from your enabled repositories. The package payload used for the installed system still needs to come from the RHEL DVD content, a network repository, or a repository you add to the ISO.
 
 First, set up a local repository or make sure you have access to the RHEL repos:
 
 ```bash
-# Create the installation tree and ISO using lorax
-# This pulls packages from configured repos and builds a bootable image
+# Create the installation tree and boot.iso using lorax
+# This pulls installer-runtime packages from configured repos
 sudo lorax -p "Red Hat Enterprise Linux" \
     -v "9.4" \
     -r "9.4" \
@@ -199,33 +199,15 @@ sudo lorax -p "Red Hat Enterprise Linux" \
     /root/rhel9-lorax-output/
 ```
 
-The `lorax` command creates an installer tree in the output directory. This tree contains the kernel, initramfs, installer images, and a repository with packages.
+The `lorax` command creates an installer tree in the output directory. This tree contains files such as `.discinfo`, `.treeinfo`, the PXE boot files, and the generated `boot.iso` under `images/`.
 
-After lorax finishes, you need to create the ISO from the output tree:
+After lorax finishes, copy the generated boot ISO:
 
 ```bash
-# Create an ISO from the lorax output
-# mkisofs/genisoimage builds the final bootable ISO
-genisoimage -o /root/rhel9-lorax-custom.iso \
-    -b isolinux/isolinux.bin \
-    -c isolinux/boot.cat \
-    -no-emul-boot \
-    -boot-load-size 4 \
-    -boot-info-table \
-    -eltorito-alt-boot \
-    -e images/efiboot.img \
-    -no-emul-boot \
-    -R -J -V "RHEL-9-Custom" \
-    /root/rhel9-lorax-output/
-
-# Make the ISO bootable on UEFI systems
-isohybrid --uefi /root/rhel9-lorax-custom.iso
-
-# Implant an MD5 checksum for media verification
-implantisomd5 /root/rhel9-lorax-custom.iso
+cp /root/rhel9-lorax-output/images/boot.iso /root/rhel9-lorax-custom.iso
 ```
 
-Then embed your Kickstart into this custom ISO:
+Then embed your Kickstart into this custom ISO. If you use this boot ISO instead of the full RHEL DVD ISO, make sure your Kickstart uses a network installation source such as `url --url=https://repo.example.com/rhel/9/BaseOS/x86_64/os/` or another valid install tree instead of `cdrom`.
 
 ```bash
 # Embed Kickstart into the lorax-built ISO
@@ -243,11 +225,24 @@ mkdir -p /root/custom-rpms
 # Copy your RPMs into it
 cp /path/to/your-custom-package.rpm /root/custom-rpms/
 
+# Install the repository metadata tool if needed
+sudo dnf install -y createrepo_c
+
 # Generate repository metadata
-createrepo /root/custom-rpms/
+createrepo_c /root/custom-rpms/
 ```
 
-Then reference this repo in your lorax build or copy it into the ISO tree before rebuilding.
+Then add this repo to the ISO and reference it from the Kickstart:
+
+```bash
+sudo mkksiso --add /root/custom-rpms --ks /root/ks.cfg /path/to/rhel-9.4-x86_64-dvd.iso /root/rhel9-custom.iso
+```
+
+Inside the Kickstart file, refer to the added directory through the installer mount point:
+
+```bash
+repo --name=custom --baseurl=file:///run/install/repo/custom-rpms/
+```
 
 For the simpler `mkksiso` approach, you can reference an external repo in your Kickstart file:
 
@@ -325,4 +320,4 @@ fi
 
 ## Wrapping Up
 
-Building custom RHEL ISOs is one of those investments that pays for itself quickly. The first time takes an hour or two to get the Kickstart right and build the ISO. After that, every server deployment drops from a 30-minute manual process to a boot-and-walk-away operation. Use `mkksiso` when you just need to embed a Kickstart into the stock ISO, and reach for `lorax` when you need full control over what packages and images are on the media. Either way, always test in a VM before deploying to production hardware.
+Building custom RHEL ISOs is one of those investments that pays for itself quickly. The first time takes an hour or two to get the Kickstart right and build the ISO. After that, every server deployment drops from a 30-minute manual process to a boot-and-walk-away operation. Use `mkksiso` when you need to embed a Kickstart or add files to an existing ISO, and reach for `lorax` when you need to customize the installer runtime image. Either way, always test in a VM before deploying to production hardware.
