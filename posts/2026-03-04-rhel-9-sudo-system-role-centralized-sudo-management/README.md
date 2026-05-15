@@ -21,7 +21,7 @@ Use the sudo RHEL System Role to centrally manage sudo rules across RHEL systems
 ## Step 1 - Install RHEL System Roles
 
 ```bash
-sudo dnf install -y rhel-system-roles
+sudo dnf install -y rhel-system-roles ansible-core
 ```
 
 The roles are installed to `/usr/share/ansible/roles/`.
@@ -46,15 +46,27 @@ Create `configure-sudo.yml`:
 - name: How to Use the RHEL sudo System Role for Centralized sudo Management
   hosts: managed_hosts
   become: true
-  roles:
-    - role: rhel-system-roles.sudo
+  tasks:
+    - name: Apply custom sudoers configuration
+      ansible.builtin.include_role:
+        name: redhat.rhel_system_roles.sudo
+      vars:
+        sudo_sudoers_files:
+          - path: /etc/sudoers
+            user_specifications:
+              - users:
+                  - adminuser
+                hosts:
+                  - ALL
+                commands:
+                  - ALL
 ```
 
 Add the role-specific variables. Check the role documentation for available options:
 
 ```bash
-ls /usr/share/doc/rhel-system-roles/sudo/
-cat /usr/share/doc/rhel-system-roles/sudo/README.md
+ls /usr/share/ansible/roles/rhel-system-roles.sudo/
+cat /usr/share/ansible/roles/rhel-system-roles.sudo/README.md
 ```
 
 ## Step 4 - Run the Playbook
@@ -68,10 +80,7 @@ ansible-playbook -i inventory.ini configure-sudo.yml
 On the managed hosts, verify that the configuration was applied:
 
 ```bash
-# Check relevant service or configuration
-
-systemctl status <service>
-cat <config-file>
+sudo cat /etc/sudoers | tail -n 1
 ```
 
 ## Idempotency
