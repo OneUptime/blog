@@ -26,7 +26,7 @@ aws ec2 run-instances \
 # Find the RHEL 9 ARM AMI ID in your region
 aws ec2 describe-images \
   --owners 309956199498 \
-  --filters "Name=name,Values=RHEL-9*arm64*" \
+  --filters "Name=name,Values=RHEL-9*" "Name=architecture,Values=arm64" "Name=state,Values=available" \
   --query "Images | sort_by(@, &CreationDate) | [-1].ImageId" \
   --output text
 ```
@@ -45,11 +45,14 @@ cat /etc/redhat-release
 ## Install Benchmarking Tools
 
 ```bash
+# Enable the upstream sysbench repository if sysbench is not in your enabled RHEL repos
+curl -s https://packagecloud.io/install/repositories/akopytov/sysbench/script.rpm.sh | sudo bash
+
 # Install common benchmarking utilities
-sudo dnf install -y sysbench fio iperf3 stress-ng
+sudo dnf install -y sysbench fio iperf3
 
 # Install compiler tools for building custom benchmarks
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf group install -y "Development Tools"
 ```
 
 ## CPU Benchmark
@@ -104,18 +107,18 @@ iperf3 -c <server-ip> -t 60 -P 4
 
 ```bash
 # Calculate the cost-performance ratio
-# Graviton instances are typically 20% cheaper than x86 equivalents
-# Example:
-# m7g.xlarge (Graviton): $0.1632/hr, sysbench score: 15000 events/sec
-# m7i.xlarge (Intel):    $0.2016/hr, sysbench score: 14500 events/sec
-# Graviton cost-per-event is significantly lower
+# Use current EC2 compute and RHEL OS pricing for your region
+# Example using us-east-1 Linux On-Demand compute rates before RHEL OS charges:
+# m7g.xlarge (Graviton): $0.1632/hr + RHEL OS charge, sysbench score: 15000 events/sec
+# m7i.xlarge (Intel):    $0.2016/hr + RHEL OS charge, sysbench score: 14500 events/sec
+# Include the RHEL vCPU-based OS charge when calculating cost per event
 ```
 
 ## Application-Level Testing
 
 ```bash
 # For web workloads, install and benchmark your actual application
-sudo dnf install -y nginx
+sudo dnf install -y nginx httpd-tools
 sudo systemctl start nginx
 
 # Use ab (Apache Bench) from another machine
