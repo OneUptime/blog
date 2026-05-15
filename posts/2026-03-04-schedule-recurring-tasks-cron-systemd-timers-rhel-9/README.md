@@ -185,6 +185,7 @@ First, create the service unit at `/etc/systemd/system/backup.service`:
 Description=Daily database backup
 
 [Service]
+Type=oneshot
 # Run the backup script
 ExecStart=/opt/scripts/db-backup.sh
 # Run as a specific user
@@ -313,7 +314,7 @@ journalctl -u backup.service --no-pager -n 50
 | Dependencies | None | Can depend on other units |
 | Resource control | None | Full cgroup support (CPU, memory limits) |
 | Missed runs | Lost if system was off | Persistent=true catches up |
-| Random delay | Not built-in | RandomizedDelaySec |
+| Random delay | RANDOM_DELAY environment variable | RandomizedDelaySec per timer |
 | Monitoring | Check logs manually | systemctl list-timers, journalctl |
 | Calendar syntax | 5-field cron format | Flexible OnCalendar format |
 | User jobs | crontab per user | Possible but more complex |
@@ -333,7 +334,7 @@ journalctl -u backup.service --no-pager -n 50
 - Tasks that need resource limits (CPU, memory caps)
 - When you want integrated logging through the journal
 - When you need to catch up on missed runs after downtime
-- When you want to avoid thundering herd with random delays
+- When you want per-timer random delays to avoid thundering herd
 
 ## Practical Examples
 
