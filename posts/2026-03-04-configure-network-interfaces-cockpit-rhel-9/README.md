@@ -16,7 +16,7 @@ Click "Networking" in Cockpit's sidebar. The page shows:
 
 - A traffic graph for each active interface
 - A list of all interfaces with their IPs, status, and type
-- Buttons to add bonds, bridges, VLANs, and teams
+- Buttons to add bonds, bridges, VLANs, and teams (deprecated in RHEL 9)
 
 ```mermaid
 graph TD
@@ -114,7 +114,7 @@ The MTU (Maximum Transmission Unit) can be adjusted in the interface settings. T
 
 ```bash
 # Set MTU via nmcli
-sudo nmcli connection modify ens192 802-3-ethernet.mtu 9000
+sudo nmcli connection modify ens192 ethernet.mtu 9000
 sudo nmcli connection up ens192
 
 # Verify the change
@@ -150,14 +150,16 @@ sudo nmcli connection add type bond \
 
 # Add member interfaces
 sudo nmcli connection add type ethernet \
+    port-type bond \
     con-name bond0-port1 \
     ifname ens192 \
-    master bond0
+    controller bond0
 
 sudo nmcli connection add type ethernet \
+    port-type bond \
     con-name bond0-port2 \
     ifname ens224 \
-    master bond0
+    controller bond0
 
 # Configure IP on the bond
 sudo nmcli connection modify bond0 \
@@ -210,9 +212,10 @@ sudo nmcli connection add type bridge \
 
 # Add a port to the bridge
 sudo nmcli connection add type ethernet \
+    port-type bridge \
     con-name br0-port \
     ifname ens192 \
-    master br0
+    controller br0
 
 # Set IP on the bridge
 sudo nmcli connection modify br0 \
