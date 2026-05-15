@@ -16,11 +16,13 @@ Leapp is Red Hat's official tool for in-place major version upgrades. It upgrade
 # Ensure RHEL 7 is fully updated
 
 sudo yum update -y
+sudo reboot
 
-# Verify your subscription provides access to RHEL 8 content
-sudo subscription-manager repos --list | grep rhel-8
+# Ensure Subscription Manager uses the latest RHEL 7 content
+sudo subscription-manager release --unset
 
 # Enable the required repositories
+sudo subscription-manager repos --enable rhel-7-server-rpms
 sudo subscription-manager repos --enable rhel-7-server-extras-rpms
 
 # Install Leapp and its RHEL 7 to 8 upgrade data
@@ -33,7 +35,8 @@ Always run the assessment first. It identifies blockers without making any chang
 
 ```bash
 # Run the pre-upgrade check
-sudo leapp preupgrade
+ulimit -n 16384
+sudo leapp preupgrade --target 8.10
 
 # Review the report
 cat /var/log/leapp/leapp-report.txt
@@ -42,7 +45,9 @@ cat /var/log/leapp/leapp-report.txt
 The report classifies findings as:
 
 - **Inhibitor**: Must be fixed before upgrading. The upgrade will refuse to proceed.
-- **High risk**: Should be addressed but will not block the upgrade.
+- **High**: Very likely to result in a deteriorated system state.
+- **Medium**: Can impact both the system and applications.
+- **Low**: Should not impact the system but can have an impact on applications.
 - **Info**: Informational only.
 
 ## Common Inhibitors and Fixes
@@ -59,7 +64,7 @@ sudo rmmod pata_acpi
 echo "blacklist pata_acpi" | sudo tee /etc/modprobe.d/leapp-blacklist.conf
 
 # Inhibitor: GRUB2 configuration issue
-# Fix: Reinstall GRUB
+# Fix on BIOS systems: Reinstall GRUB to the correct boot disk
 sudo grub2-install /dev/sda
 sudo grub2-mkconfig -o /boot/grub2/grub.cfg
 ```
@@ -69,8 +74,8 @@ sudo grub2-mkconfig -o /boot/grub2/grub.cfg
 Some findings require explicit answers:
 
 ```bash
-# If Leapp asks about VDO devices
-sudo leapp answer --section remove_pam_pkcs11_module_check.confirm=True
+# If Leapp asks whether to disable pam_pkcs11 in PAM configuration
+sudo leapp answer --section remove_pam_pkcs11_module_check.confirm=False
 
 # Check for unanswered questions
 sudo leapp answer --list
@@ -83,7 +88,8 @@ After all inhibitors are resolved:
 ```bash
 # Create a backup or snapshot before proceeding
 # Then start the upgrade
-sudo leapp upgrade
+ulimit -n 16384
+sudo leapp upgrade --target 8.10 --reboot
 
 # The system will:
 # 1. Download RHEL 8 packages
@@ -98,13 +104,13 @@ sudo leapp upgrade
 ```bash
 # Verify the upgrade succeeded
 cat /etc/redhat-release
-# Red Hat Enterprise Linux release 8.x (Ootpa)
+# Red Hat Enterprise Linux release 8.10 (Ootpa)
 
 # Check for remaining RHEL 7 packages
-rpm -qa | grep el7
+rpm -qa | grep -e '\.el[67]' | grep -vE '^(gpg-pubkey|libmodulemd|katello-ca-consumer)' | sort
 
 # Remove leftover RHEL 7 packages
-sudo dnf remove $(rpm -qa | grep el7 | grep -v gpg-pubkey)
+sudo yum remove kernel-workaround $(rpm -qa | grep '\.el7' | grep -vE 'gpg-pubkey|libmodulemd|katello-ca-consumer')
 
 # Verify subscription
 sudo subscription-manager status
