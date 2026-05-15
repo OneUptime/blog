@@ -31,7 +31,7 @@ Before enabling USBGuard, generate a policy that allows all currently connected 
 
 ```bash
 # Generate a policy based on currently connected devices
-sudo usbguard generate-policy > /etc/usbguard/rules.conf
+sudo sh -c 'usbguard generate-policy > /etc/usbguard/rules.conf'
 ```
 
 Review the generated policy:
@@ -48,7 +48,7 @@ Each rule describes an allowed device with attributes like vendor ID, product ID
 A typical rule looks like this:
 
 ```bash
-allow id 1d6b:0002 serial "0000:00:14.0" name "xHCI Host Controller" hash "..." with-interface 09:00:00 with-connect-type ""
+allow id 1d6b:0002 serial "0000:00:14.0" name "xHCI Host Controller" hash "JDOb0BiktYs2ct3mSQKopnOOV2h9MGYADwhT+oUtF2s=" parent-hash "4PHGcaDKWtPjKDwYpIRG722cB9SlGz9l9Iea93+Gt9c=" via-port "usb1" with-interface 09:00:00
 ```
 
 The key parts:
@@ -100,8 +100,8 @@ sudo usbguard list-devices
 # Allow the device temporarily (until next plug)
 sudo usbguard allow-device 15
 
-# Or allow the device permanently by adding a rule
-sudo usbguard append-rule 'allow id 0781:5567 name "Cruzer Blade" with-interface 08:06:50'
+# Or allow the device permanently by appending a device-specific rule
+sudo usbguard allow-device 15 -p
 ```
 
 ## Blocking All New USB Devices by Default
@@ -119,10 +119,10 @@ Key settings:
 # Block all new devices by default
 ImplicitPolicyTarget=block
 
-# What to do when the policy cannot be applied
+# What to do with USB devices already connected when the daemon starts
 PresentDevicePolicy=apply-policy
 
-# Action for devices connected at boot before USBGuard starts
+# What to do with USB devices inserted after the daemon starts
 InsertedDevicePolicy=apply-policy
 ```
 
@@ -151,11 +151,11 @@ flowchart TD
 
 ## Monitoring USB Events
 
-Check the USBGuard audit log for USB activity:
+Check the USBGuard audit log or watch USBGuard IPC events for USB activity:
 
 ```bash
-# View recent USB authorization events
-sudo journalctl -u usbguard --since "today"
+# View recent USB authorization audit events
+sudo tail -n 100 /var/log/usbguard/usbguard-audit.log
 
 # Watch USB events in real time
 sudo usbguard watch
@@ -174,7 +174,7 @@ For servers that should never have USB devices plugged in (other than pre-existi
 
 ```bash
 # Generate policy for existing devices
-sudo usbguard generate-policy > /etc/usbguard/rules.conf
+sudo sh -c 'usbguard generate-policy > /etc/usbguard/rules.conf'
 
 # Set strict blocking
 sudo sed -i 's/^ImplicitPolicyTarget=.*/ImplicitPolicyTarget=block/' /etc/usbguard/usbguard-daemon.conf
@@ -194,12 +194,14 @@ If USBGuard blocks a device you need:
 # Find the device in the blocked list
 sudo usbguard list-devices | grep block
 
-# Get detailed device info
-sudo usbguard list-devices -b
+# List only blocked devices
+sudo usbguard list-devices --blocked
 
 # Allow it and add to permanent policy
-sudo usbguard allow-device DEVICE_NUMBER
-sudo usbguard list-devices | grep DEVICE_NUMBER >> /etc/usbguard/rules.conf
+sudo usbguard allow-device DEVICE_NUMBER -p
+
+# Confirm the permanent rule was added
+sudo usbguard list-rules
 ```
 
 If you accidentally lock yourself out of the keyboard/mouse, you can recover by booting into single-user mode or using a remote SSH session to fix the policy.
