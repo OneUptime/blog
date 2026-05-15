@@ -23,27 +23,24 @@ Edit the configuration file to match your environment:
 ```bash
 # Open the configuration file
 
-sudo vi /etc/<service>/config.conf
+sudo vi /var/ossec/etc/ossec.conf
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include monitored log files, file integrity monitoring paths, alerting options, and remote manager settings.
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo /var/ossec/bin/ossec-control restart
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
-
 # Start the service
-sudo systemctl start <service-name>
+sudo /var/ossec/bin/ossec-control start
 
 # Check the status
-sudo systemctl status <service-name>
+sudo /var/ossec/bin/ossec-control status
 ```
 
 
@@ -53,16 +50,16 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo /var/ossec/bin/ossec-control status
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+sudo tail -n 20 /var/ossec/logs/ossec.log
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `sudo tail -n 50 /var/ossec/logs/ossec.log`.
+- Ensure all required packages are installed: `rpm -qa | grep -E 'zlib-devel|pcre2-devel|make|gcc|sqlite-devel|openssl-devel|libevent-devel|systemd-devel'`.
 
 ## Conclusion
 
