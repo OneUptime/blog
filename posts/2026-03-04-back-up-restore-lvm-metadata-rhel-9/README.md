@@ -18,7 +18,7 @@ LVM metadata describes the structure of your volume groups, logical volumes, and
 
 ## How LVM Metadata Works
 
-LVM stores metadata in a dedicated area at the beginning of each physical volume. This metadata contains the complete description of the volume group, including all physical volumes, logical volumes, their sizes, and how extents are allocated.
+LVM typically stores metadata in a dedicated area near the beginning of each physical volume. This metadata contains the complete description of the volume group, including all physical volumes, logical volumes, their sizes, and how extents are allocated.
 
 LVM automatically maintains two types of metadata copies:
 
@@ -56,8 +56,7 @@ Files are named with the volume group name and a sequence number, such as `vg_da
 The backup and archive behavior is controlled in `/etc/lvm/lvm.conf`. Review the relevant settings:
 
 ```bash
-sudo grep -A 5 "backup {" /etc/lvm/lvm.conf
-sudo grep -A 5 "archive {" /etc/lvm/lvm.conf
+sudo grep -A 15 "backup {" /etc/lvm/lvm.conf
 ```
 
 Key settings include:
@@ -66,9 +65,6 @@ Key settings include:
 backup {
     backup = 1
     backup_dir = "/etc/lvm/backup"
-}
-
-archive {
     archive = 1
     archive_dir = "/etc/lvm/archive"
     retain_min = 10
@@ -76,7 +72,7 @@ archive {
 }
 ```
 
-The `retain_min` setting keeps at least 10 archive copies, and `retain_days` keeps archives for 30 days.
+The `retain_min` setting keeps at least 10 archive copies, and `retain_days` keeps archive files for at least 30 days.
 
 ## Step 4: Create a Manual Backup
 
@@ -89,6 +85,7 @@ sudo vgcfgbackup vg_data
 This writes the current metadata to `/etc/lvm/backup/vg_data`. You can also specify a custom output file:
 
 ```bash
+sudo mkdir -p /root/lvm-backups
 sudo vgcfgbackup -f /root/lvm-backups/vg_data_$(date +%Y%m%d).vg vg_data
 ```
 
@@ -192,10 +189,12 @@ sudo vgcfgrestore -f /root/lvm-backups/vg_data_20260304.vg vg_data
 sudo vgchange -ay vg_data
 ```
 
-If no backup file exists, you can try to reconstruct metadata from the on-disk copies:
+If no backup file exists but on-disk metadata copies are still present, use `pvck` to search for and save a metadata copy, then restore from that file:
 
 ```bash
-sudo vgcfgrestore --force vg_data
+sudo pvck --dump metadata_search /dev/sdd1
+sudo pvck --dump metadata_search --settings "metadata_offset=<offset>" -f /root/lvm-backups/vg_data_recovered.vg /dev/sdd1
+sudo vgcfgrestore -f /root/lvm-backups/vg_data_recovered.vg vg_data
 ```
 
 ## Step 10: Automate Metadata Backups
@@ -209,7 +208,7 @@ BACKUP_DIR="/root/lvm-backups/$(date +%Y%m%d)"
 mkdir -p "$BACKUP_DIR"
 vgcfgbackup
 cp /etc/lvm/backup/* "$BACKUP_DIR/"
-find /root/lvm-backups -mtime +90 -type d -exec rm -rf {} + 2>/dev/null
+find /root/lvm-backups -mindepth 1 -maxdepth 1 -mtime +90 -type d -exec rm -rf {} + 2>/dev/null
 SCRIPT
 sudo chmod +x /etc/cron.daily/lvm-backup
 ```
