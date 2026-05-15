@@ -1,54 +1,55 @@
-# How to Use SELinux Deny Rules Introduced in RHEL.4
+# How to Use SELinux Deny Rules Introduced in RHEL 9.4
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SELinux, Deny Rules, Security, Linux
 
-Description: Explore the new SELinux deny rules feature introduced in RHEL.4 that provides explicit denial capabilities, overriding any allow rules in the policy.
+Description: Explore the new SELinux deny rules feature introduced in RHEL 9.4 that removes matching permissions from allow rules in the policy.
 
 ---
 
-## What Changed in RHEL.4
+## What Changed in RHEL 9.4
 
-RHEL.4 introduced a significant new capability to SELinux: explicit deny rules. Before this, SELinux worked on a "default deny, explicit allow" model. You could only add `allow` rules to grant access. There was no way to create a rule that explicitly denied access and could not be overridden by other allow rules.
+RHEL 9.4 introduced a significant new capability to SELinux userspace 3.6: explicit deny rules in CIL. Before this, SELinux worked on a "default deny, explicit allow" model. You could add `allow` rules to grant access and `neverallow` rules to catch policy violations at build time, but there was no CIL rule that directly removed specific permissions from matching allow rules.
 
-With deny rules, you can now create ironclad restrictions that take precedence over everything else in the policy. Even if another module or boolean grants access, a deny rule blocks it.
+With deny rules, you can remove selected permissions from the effective policy while the deny rule module remains installed. If another module or boolean would otherwise grant that access, the deny rule removes the matching permission when the policy is built and loaded.
 
 ## Why Deny Rules Matter
 
 ```mermaid
 graph TD
-    A[Access Request] --> B{Deny Rule Exists?}
-    B -->|Yes| C[DENIED - No override possible]
-    B -->|No| D{Allow Rule Exists?}
-    D -->|Yes| E[ALLOWED]
-    D -->|No| F[DENIED - Default deny]
+    A[Policy Modules Loaded] --> B{Deny Rule Matches an Allow Permission?}
+    B -->|Yes| C[Permission Removed from Effective Policy]
+    B -->|No| D[Allow Rule Remains]
+    C --> E[Access Request Has No Matching Allow]
+    D --> F[Access Request Allowed if the Allow Applies]
+    E --> G[DENIED - Default deny]
 ```
 
-Before deny rules, if you wanted to prevent a specific access, you had to make sure no allow rule existed for it. But with complex policies, third-party modules, and booleans, an allow rule could slip in anywhere. Deny rules close that gap by providing an explicit, un-overridable block.
+Before deny rules, if you wanted to prevent a specific access, you had to make sure no allow rule existed for it. But with complex policies, third-party modules, and booleans, an allow rule could slip in anywhere. Deny rules close that gap by removing matching permissions from the final policy.
 
 Use cases:
-- Preventing specific processes from accessing sensitive files, no matter what
+- Preventing specific processes from accessing sensitive files through SELinux allow rules
 - Hardening a policy against future changes that might accidentally grant too much access
-- Creating security guardrails that cannot be bypassed by enabling booleans
+- Creating security guardrails that are not bypassed by enabling booleans while the deny module remains installed
 
 ## Prerequisites
 
 ```bash
-# Verify you are running RHEL.4 or later
+# Verify you are running RHEL 9.4 or later
 
 cat /etc/redhat-release
 
 # Check the SELinux policy version
 sestatus | grep "Policy"
 
-# Install policy development tools
-sudo dnf install -y selinux-policy-devel policycoreutils-python-utils
+# Install policy development and policy search tools
+sudo dnf install -y selinux-policy-devel policycoreutils-python-utils setools-console
 ```
 
 ## Creating a Deny Rule
 
-Deny rules use the `neverallow` statement in the SELinux policy language. However, for runtime deny rules in RHEL.4+, you use the CIL (Common Intermediate Language) format with the `deny` keyword.
+Traditional SELinux policy uses `neverallow` statements as compile-time checks. For deny rules in RHEL 9.4+, use the CIL (Common Intermediate Language) format with the `deny` keyword.
 
 ### Example: Deny httpd from Reading Shadow File
 
@@ -65,7 +66,7 @@ Install the module:
 sudo semodule -i deny_httpd_shadow.cil
 ```
 
-Now even if a custom module or boolean grants `httpd_t` access to `shadow_t`, this deny rule blocks it.
+Now even if a custom module or boolean would otherwise grant `httpd_t` access to `shadow_t`, this deny rule removes the matching permissions from the effective policy.
 
 ### Example: Deny Container Processes from Accessing Host Config
 
@@ -79,7 +80,7 @@ Create `deny_container_etc.cil`:
 sudo semodule -i deny_container_etc.cil
 ```
 
-Containers can never write to files labeled `etc_t`, regardless of any other rules.
+Containers are denied write and append access to files labeled `etc_t` while this deny rule remains installed and SELinux is enforcing.
 
 ## Writing Deny Rules in CIL Format
 
@@ -110,7 +111,7 @@ You can apply deny rules to groups of types using attributes:
 (deny domain shadow_t (file (write append)))
 ```
 
-This denies ALL process domains from writing to shadow files. Even the most privileged confined domain cannot override this.
+This removes matching write and append permissions for all process domains from shadow files. Be very careful with broad attributes like `domain`, because they can remove permissions from a large part of the policy.
 
 ## Practical Examples
 
@@ -164,9 +165,11 @@ sudo semodule -e deny_httpd_shadow
 ### Verify the Rule Is Active
 
 ```bash
-# Search for deny rules in the loaded policy
-sudo sesearch --deny -s httpd_t -t shadow_t
+# Confirm the denied permissions are no longer allowed in the effective policy
+sudo sesearch -A -s httpd_t -t shadow_t -c file -p read
 ```
+
+If the deny rule removed the permission, `sesearch` should not show an allow rule for that source, target, class, and permission.
 
 ### Test the Denial
 
@@ -175,16 +178,16 @@ sudo sesearch --deny -s httpd_t -t shadow_t
 sudo ausearch -m avc -ts recent | grep "denied"
 ```
 
-Deny rule violations appear in the audit log just like regular AVC denials, but they cannot be resolved by adding allow rules.
+Deny-rule effects appear as regular AVC denials because the matching allow permission is absent from the effective policy. They cannot be resolved by adding another allow rule while the deny rule remains installed.
 
 ## Interaction with Allow Rules
 
 The key behavior to understand:
 
-1. If a deny rule and an allow rule both apply, the **deny rule wins**
-2. Deny rules cannot be overridden by booleans
-3. Deny rules cannot be overridden by `audit2allow` generated modules
-4. The only way to remove a deny rule's effect is to remove the deny rule module itself
+1. If a deny rule and an allow rule both apply, the **deny rule removes the matching permission**
+2. Deny rules remove matching permissions from conditional allow rules controlled by booleans
+3. Deny rules remove matching permissions from `audit2allow` generated modules
+4. The usual way to remove a deny rule's effect is to remove or disable the deny rule module itself
 
 This makes deny rules a powerful tool for security hardening, but also means you need to be careful. An overly broad deny rule could break services in ways that are hard to diagnose because the usual `audit2allow` fix will not work.
 
@@ -208,7 +211,7 @@ This makes deny rules a powerful tool for security hardening, but also means you
 
 Traditional `neverallow` rules in SELinux are compile-time checks. They prevent policy authors from writing allow rules that violate the constraint, but they are only checked when the policy is compiled.
 
-The new deny rules in RHEL.4 are runtime rules. They are evaluated during every access check and take precedence over allow rules that are already in the loaded policy. This is a much stronger guarantee.
+The new deny rules in RHEL 9.4 are CIL access-vector rules that remove permissions from matching allow rules before `neverallow` checking. The resulting loaded policy no longer contains those allow permissions, so normal SELinux default-deny behavior blocks the access.
 
 ## Troubleshooting
 
@@ -224,8 +227,8 @@ If the denial matches your deny rule and the service legitimately needs that acc
 
 **Cannot fix denial with audit2allow:**
 
-This is expected behavior for deny rules. The deny rule takes precedence. If you need to allow the access, remove the deny rule module.
+This is expected behavior for deny rules. The deny rule removes the matching allow permission. If you need to allow the access, remove the deny rule module.
 
 ## Wrapping Up
 
-Deny rules are a valuable addition to SELinux in RHEL.4. They give you explicit, un-overridable restrictions that strengthen your security posture. Use them for your most critical security boundaries, like preventing web servers from accessing password files or containers from modifying host configuration. Start with targeted, specific rules, test carefully, and keep them under version control. They are a powerful tool, and with power comes the need for discipline.
+Deny rules are a valuable addition to SELinux in RHEL 9.4. They give you a direct way to remove selected permissions from allow rules and strengthen your security posture. Use them for your most critical security boundaries, like preventing web servers from accessing password files or containers from modifying host configuration. Start with targeted, specific rules, test carefully, and keep them under version control. They are a powerful tool, and with power comes the need for discipline.
