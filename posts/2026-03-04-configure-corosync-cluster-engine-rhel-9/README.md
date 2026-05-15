@@ -112,7 +112,7 @@ grep crypto /etc/corosync/corosync.conf
 Change encryption settings:
 
 ```bash
-sudo pcs cluster config update totem crypto_cipher=aes256 crypto_hash=sha256
+sudo pcs cluster config update crypto cipher=aes256 hash=sha256
 ```
 
 ## Configuring the Totem Protocol
@@ -200,7 +200,7 @@ sudo pcs cluster config update totem token=10000
 Regenerate the Corosync auth key:
 
 ```bash
-sudo pcs cluster destroy
+sudo pcs cluster destroy --all
 sudo pcs host auth node1 node2 -u hacluster
 sudo pcs cluster setup my-cluster node1 node2
 sudo pcs cluster start --all
