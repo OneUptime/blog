@@ -53,7 +53,7 @@ rpm -q xfsprogs
 
 ## Step 1: Enable Quotas via Mount Options
 
-XFS quotas must be enabled at mount time. You cannot turn them on for a mounted filesystem without remounting it.
+XFS quotas must be enabled at mount time. They are not a remountable option, so you cannot turn them on for a mounted filesystem without unmounting and mounting it again.
 
 Edit your `/etc/fstab` to add quota mount options:
 
@@ -76,7 +76,7 @@ The key mount options are:
 | `gquota` or `grpquota` | Enable group quotas |
 | `pquota` or `prjquota` | Enable project quotas |
 
-Note that you cannot enable group quotas and project quotas at the same time on XFS. Pick one or the other.
+Note that group quotas and project quotas are mutually exclusive only on older, non-default XFS disk formats. On current default RHEL 9 XFS filesystems, you can enable them independently.
 
 ## Step 2: Remount the Filesystem
 
