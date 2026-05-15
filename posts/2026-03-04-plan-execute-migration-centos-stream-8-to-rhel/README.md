@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, CentOS Stream, Migration, Convert2RHEL, Linux
 
-Description: Migrate from CentOS Stream 8 to RHEL 8 using Convert2RHEL, including preparation steps and post-conversion validation.
+Description: Plan an unsupported migration from CentOS Stream 8 to RHEL 8 using Convert2RHEL, including preparation steps and post-conversion validation.
 
 ---
 
-CentOS Stream 8 reaches end of life in May 2024. Convert2RHEL supports converting CentOS Stream 8 systems to RHEL 8 in place. Here is how to plan and execute the migration.
+CentOS Stream 8 reached end of life on May 31, 2024. Convert2RHEL can perform an unsupported in-place conversion from CentOS Stream 8 to RHEL 8. Here is how to plan and execute the migration.
 
 ## Pre-Migration Assessment
 
@@ -41,8 +41,11 @@ needs-restarting -r && echo "No reboot needed" || sudo reboot
 
 ```bash
 # Add the Convert2RHEL repository
+sudo curl -o /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release \
+  https://security.access.redhat.com/data/fd431d51.txt
+
 sudo curl -o /etc/yum.repos.d/convert2rhel.repo \
-  https://ftp.redhat.com/redhat/convert2rhel/8/convert2rhel.repo
+  https://cdn-public.redhat.com/content/public/repofiles/convert2rhel-for-rhel-8-x86_64.repo
 
 # Install Convert2RHEL
 sudo dnf install convert2rhel -y
@@ -56,17 +59,16 @@ sudo convert2rhel analyze --org your-org --activationkey your-key
 ## Handle Pre-Conversion Issues
 
 ```bash
-# Common issue: CentOS Stream packages may be newer than current RHEL 8 minor release
-# Convert2RHEL handles this by mapping to the appropriate RHEL version
+# Common issue: CentOS Stream packages may be newer than RHEL 8 packages
+# CentOS Stream 8 is an unsupported conversion path, so review the analysis carefully
 
 # If EPEL is installed, it may cause conflicts
 # Disable it during conversion
 sudo dnf config-manager --set-disabled epel epel-modular 2>/dev/null
 
-# Remove any CentOS-specific packages that conflict
-sudo dnf remove centos-stream-repos centos-stream-release 2>/dev/null
-# Note: Convert2RHEL handles this automatically, but removing them
-# beforehand can prevent some edge cases
+# Remove any third-party or CentOS-specific packages that the analysis flags
+# Do not remove CentOS release or repository packages unless Convert2RHEL
+# or Red Hat's unsupported-conversion guidance tells you to do so
 ```
 
 ## Execute the Conversion
@@ -112,7 +114,8 @@ After converting to RHEL 8, consider your next steps:
 
 ```bash
 # Check RHEL 8 end of life dates
-# Full Support: May 2024, Maintenance: May 2029, ELS: May 2032
+# Full Support ended: May 31, 2024; Maintenance Support ends: May 31, 2029
+# Check Red Hat's life-cycle page for current extended support options
 
 # Plan an upgrade to RHEL 9 using Leapp
 sudo dnf install leapp-upgrade
