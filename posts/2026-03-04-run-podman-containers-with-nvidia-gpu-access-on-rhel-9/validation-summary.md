@@ -4,7 +4,7 @@
 not-technically-relevant
 
 ## Post Type
-Placeholder tutorial
+Tutorial / Guide
 
 ## Technologies Covered
 - Red Hat Enterprise Linux 9
@@ -13,20 +13,21 @@ Placeholder tutorial
 - NVIDIA GPUs
 - NVIDIA Container Toolkit
 - Container Device Interface (CDI)
-- systemd
+- Linux systemd
 - SELinux
 
 ## Sources Consulted
-- NVIDIA Container Toolkit documentation: CDI support and Podman usage, https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/1.18.1/cdi-support.html
-- NVIDIA Container Toolkit installation guide for RPM-based distributions, https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
-- Red Hat Enterprise Linux 9 documentation: Building, running, and managing containers, https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/html/building_running_and_managing_containers/
-- Red Hat Enterprise Linux 9.5 release notes: Podman container tools updates, https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/html/9.5_release_notes/
+- NVIDIA Container Toolkit CDI support documentation: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/cdi-support.html
+- NVIDIA Container Toolkit installation guide: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
+- NVIDIA Container Toolkit 1.13.5 installation guide, CDI support section: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/1.13.5/install-guide.html
+- Red Hat Enterprise Linux 9 Building, running, and managing containers: https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/html/building_running_and_managing_containers/
+- Red Hat Enterprise Linux 9.5 Release Notes: https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/html/9.5_release_notes/
 
 ## Issues Found
-- The post title and introduction claim to explain NVIDIA GPU access for Podman containers on RHEL, but the implementation sections contain generic service placeholders such as `/etc/<service>/config.conf` and `<service-name>`.
-- The post does not install or verify the NVIDIA GPU driver, install NVIDIA Container Toolkit packages, generate or list a CDI specification, or run Podman with an NVIDIA CDI device such as `--device nvidia.com/gpu=all`.
-- The verification commands only prove basic Podman functionality with Alpine and do not validate GPU access or `nvidia-smi` inside a GPU-enabled container.
-- Because the body is placeholder content rather than an incorrect but salvageable version-specific guide, it was classified as not technically relevant according to the review instructions.
+- The article title and introduction promise instructions for running Podman containers with NVIDIA GPU access on RHEL, but the body contains generic placeholder service-management content such as `/etc/<service>/config.conf` and `<service-name>`. These commands do not configure NVIDIA GPU access for Podman.
+- The post omits the required NVIDIA-specific setup steps documented by NVIDIA, including installing the NVIDIA Container Toolkit base package, generating a CDI specification with `sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml`, and running a container with a CDI device such as `--device nvidia.com/gpu=all`.
+- The verification section only tests basic Podman functionality with Alpine and does not verify GPU access. Official NVIDIA guidance verifies GPU access with a CUDA image and `nvidia-smi`.
+- Troubleshooting guidance references a generic service and package placeholder instead of the relevant Podman, CDI, NVIDIA driver, and NVIDIA Container Toolkit checks.
 
 ## Review Notes
-An accurate future version should follow the current NVIDIA Container Toolkit CDI flow for Podman: install the NVIDIA driver and toolkit, ensure CDI specifications are generated or refreshed, list CDI devices with `nvidia-ctk cdi list`, and test with a CUDA-capable image using `podman run --rm --device nvidia.com/gpu=all --security-opt=label=disable ... nvidia-smi`.
+The topic is technically relevant, but this specific post is placeholder content and does not provide a usable or accurate RHEL 9 Podman NVIDIA GPU procedure. Rewriting it into a correct guide would require replacing most of the article rather than making targeted technical corrections, so it was classified as not-technically-relevant.
