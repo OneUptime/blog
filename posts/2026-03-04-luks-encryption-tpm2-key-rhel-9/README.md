@@ -8,7 +8,7 @@ Description: Configure LUKS disk encryption on RHEL to use a TPM 2.0 chip for au
 
 ---
 
-A Trusted Platform Module (TPM) 2.0 chip can securely store encryption keys bound to the hardware platform state. By binding a LUKS key to the TPM, you can automatically unlock encrypted volumes at boot without entering a passphrase, while ensuring that the volume can only be unlocked on the specific hardware and software configuration it was sealed to. This guide covers the setup on RHEL.
+A Trusted Platform Module (TPM) 2.0 chip can protect key material bound to the hardware platform state. By binding a LUKS key to the TPM, you can automatically unlock encrypted volumes at boot without entering a passphrase, while ensuring that the volume can only be unlocked when the selected platform measurements match the state it was sealed to. This guide covers the setup on RHEL.
 
 ## How TPM-Based LUKS Unlocking Works
 
@@ -29,7 +29,7 @@ sequenceDiagram
     Note over I: Boot continues normally
 ```
 
-If the boot chain changes (different kernel, modified bootloader, or BIOS update), the PCR values will not match and the TPM will refuse to release the key. This protects against offline tampering.
+If a component measured into the selected PCRs changes, the PCR values will not match and the TPM will refuse to release the key. This can help protect against offline tampering, depending on which PCRs you bind to.
 
 ## Prerequisites
 
@@ -81,7 +81,7 @@ sudo tpm2_pcrread
 ### Basic TPM Binding
 
 ```bash
-# Bind LUKS to the TPM (uses default PCRs: 7)
+# Bind LUKS to the TPM and seal it to PCR 7
 sudo clevis luks bind -d /dev/sdb tpm2 '{"pcr_bank":"sha256","pcr_ids":"7"}'
 
 # Enter an existing LUKS passphrase when prompted
@@ -96,14 +96,14 @@ For stronger security, bind to multiple PCRs:
 sudo clevis luks bind -d /dev/sdb tpm2 '{"pcr_bank":"sha256","pcr_ids":"7,8"}'
 ```
 
-### Binding with a PCR Policy and Passphrase
+### Binding with a PCR Policy and Tang
 
-For the most secure setup, require both TPM and a passphrase:
+For a setup that requires both a TPM policy and a Tang server, combine pins with Shamir's Secret Sharing:
 
 ```bash
 # This uses Shamir's Secret Sharing to require both factors
 sudo clevis luks bind -d /dev/sdb sss \
-    '{"t":2,"pins":{"tpm2":{"pcr_bank":"sha256","pcr_ids":"7"},"tang":{"url":"http://tang.example.com"}}}'
+    '{"t":2,"pins":{"tang":[{"url":"http://tang.example.com"}],"tpm2":{"pcr_bank":"sha256","pcr_ids":"7"}}}'
 ```
 
 ## Step 3: Configure Boot Integration
@@ -122,7 +122,7 @@ lsinitrd /boot/initramfs-$(uname -r).img | grep clevis
 
 ### For Secondary Volumes
 
-For non-root volumes, enable the Clevis systemd units:
+For non-root volumes, make sure the volume is listed in `/etc/crypttab` with the `_netdev` option, then enable the Clevis systemd unit:
 
 ```bash
 # Enable Clevis unlock at boot for non-root volumes
@@ -205,7 +205,7 @@ For environments where kernel updates are frequent, you might want to avoid bind
 
 ```bash
 # Bind only to Secure Boot state (PCR 7)
-# This survives kernel updates but still detects firmware tampering
+# This survives kernel updates but still detects changes to Secure Boot state
 sudo clevis luks bind -d /dev/sdb tpm2 '{"pcr_bank":"sha256","pcr_ids":"7"}'
 ```
 
@@ -259,4 +259,4 @@ sudo dracut -fv --regenerate-all
 
 ## Summary
 
-TPM 2.0 based LUKS unlocking on RHEL, configured through Clevis, provides hardware-bound automated disk decryption. The TPM seals the encryption key to specific platform state measurements (PCRs), so the volume can only be unlocked on the original hardware with an unmodified boot chain. Always maintain a passphrase key slot as a fallback, and be prepared to re-bind after firmware or boot configuration changes.
+TPM 2.0 based LUKS unlocking on RHEL, configured through Clevis, provides hardware-bound automated disk decryption. Clevis seals key material to specific platform state measurements (PCRs), so the volume can only be unlocked when those selected measurements match. Always maintain a passphrase key slot as a fallback, and be prepared to re-bind after firmware or boot configuration changes.
