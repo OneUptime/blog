@@ -12,7 +12,7 @@ Flux CD runs several controllers in the flux-system namespace: source-controller
 
 ## Why Resource Limits Matter
 
-Without resource limits, a Flux controller can consume unbounded CPU and memory. In large clusters with hundreds of Kustomizations or HelmReleases, the kustomize-controller might use several gigabytes of memory during reconciliation. If a controller runs out of memory on a constrained node, the OOM killer terminates it, causing reconciliation delays and potentially leaving the cluster in a partially reconciled state.
+Flux install manifests include default resource requests and limits, but you may need to tune them for your cluster size. If limits are removed or set too high, a Flux controller can consume more CPU and memory than expected. In large clusters with hundreds of Kustomizations or HelmReleases, the kustomize-controller might use several gigabytes of memory during reconciliation. If a controller runs out of memory on a constrained node, the OOM killer terminates it, causing reconciliation delays and potentially leaving the cluster in a partially reconciled state.
 
 Conversely, setting limits too low causes throttling (for CPU) or OOM kills (for memory), leading to slow reconciliations or controller restarts.
 
@@ -125,7 +125,7 @@ Commit and push this file. Flux will apply the patches during its next reconcili
 
 ## Step 3: Configure Limits via flux install
 
-If you install Flux with the CLI, you can patch resources at install time:
+If you install Flux with the CLI, you can export the install manifests and edit resources before applying them:
 
 ```bash
 flux install --export > gotk-components.yaml
