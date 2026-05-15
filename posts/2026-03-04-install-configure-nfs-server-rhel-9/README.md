@@ -44,11 +44,11 @@ sudo systemctl status nfs-server
 # Create a directory to share
 sudo mkdir -p /srv/nfs/shared
 
-# Set ownership (adjust as needed)
-sudo chown nobody:nobody /srv/nfs/shared
+# Set group ownership (adjust group as needed)
+sudo chgrp users /srv/nfs/shared
 
-# Set permissions
-sudo chmod 755 /srv/nfs/shared
+# Set permissions and preserve the group for new files
+sudo chmod 2770 /srv/nfs/shared
 ```
 
 ## Step 4 - Configure Exports
@@ -60,7 +60,7 @@ Edit /etc/exports to define what gets shared and who can access it.
 # Format: directory client(options)
 
 # Share with a specific subnet
-echo "/srv/nfs/shared 192.168.1.0/24(rw,sync,no_subtree_check,no_root_squash)" | sudo tee -a /etc/exports
+echo "/srv/nfs/shared 192.168.1.0/24(rw,sync,no_subtree_check)" | sudo tee -a /etc/exports
 ```
 
 ### Export Options Explained
@@ -114,7 +114,7 @@ showmount -e 192.168.1.10
 sudo mkdir -p /mnt/nfs-shared
 sudo mount -t nfs 192.168.1.10:/srv/nfs/shared /mnt/nfs-shared
 
-# Test read/write
+# Test read/write as a user with write permission on the export
 touch /mnt/nfs-shared/test-file
 ls /mnt/nfs-shared
 ```
@@ -148,7 +148,7 @@ sudo exportfs -arv
 
 ## Checking NFS Version
 
-RHEL uses NFSv4 by default. You can verify the active versions:
+RHEL clients use the latest NFS version that the server provides. You can verify the active server versions:
 
 ```bash
 # Check which NFS versions are enabled
@@ -158,14 +158,13 @@ cat /proc/fs/nfsd/versions
 nfsstat -s
 ```
 
-To disable older NFS versions (v3, v2) for security:
+To disable NFSv3 for security:
 
 ```bash
 # Edit /etc/nfs.conf and set vers3=n under [nfsd] section
 sudo vi /etc/nfs.conf
 # Under [nfsd]:
 # vers3=n
-# vers2=n
 
 # Restart NFS
 sudo systemctl restart nfs-server
