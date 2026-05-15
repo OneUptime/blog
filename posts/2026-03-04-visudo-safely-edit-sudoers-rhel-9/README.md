@@ -14,7 +14,7 @@ A single typo in `/etc/sudoers` can lock every admin out of sudo. I have seen it
 
 When you run `visudo`, it:
 
-1. Opens the file in an editor (vi by default).
+1. Opens the file in the editor configured for `visudo` (often vi on RHEL).
 2. Locks the file to prevent concurrent edits.
 3. Validates the syntax after you save.
 4. Refuses to write the file if there are errors.
@@ -73,11 +73,11 @@ Output for a valid configuration:
 sudo visudo -c -f /etc/sudoers.d/webadmins
 ```
 
-This checks that file as a standalone sudoers policy. Use `sudo visudo -c` to validate the full policy, including `/etc/sudoers` and all included files.
+This checks that file as an alternate sudoers policy. It can still miss problems that only appear when the full policy is evaluated, so use `sudo visudo -c` to validate `/etc/sudoers` and all included files together.
 
 ## Changing the Default Editor
 
-By default, visudo uses vi. If you prefer a different editor:
+`visudo` uses the editor configured by the sudoers policy, often vi on RHEL. If you prefer a different editor:
 
 ```bash
 # Use nano for this session, if sudoers allows setting EDITOR
