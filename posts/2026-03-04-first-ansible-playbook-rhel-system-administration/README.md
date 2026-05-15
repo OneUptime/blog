@@ -62,13 +62,13 @@ Create a playbook YAML file:
     - name: Ensure packages are installed
       ansible.builtin.dnf:
         name:
-          - vim
+          - vim-minimal
           - tmux
-          - htop
+          - rsync
         state: present
 
     - name: Ensure services are running
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: sshd
         state: started
         enabled: true
@@ -89,7 +89,7 @@ ansible-playbook -i inventory.ini playbook.yml --check
 ## Step 5 - Verify Results
 
 ```bash
-ansible all -i inventory.ini -m command -a "rpm -q htop"
+ansible all -i inventory.ini -m command -a "rpm -q rsync"
 ```
 
 ## Summary
