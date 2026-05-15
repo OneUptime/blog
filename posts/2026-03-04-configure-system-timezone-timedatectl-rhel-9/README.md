@@ -56,14 +56,14 @@ timedatectl list-timezones
 This produces a long list. Filter it:
 
 ```bash
-# Find timezones in the US
+# Find timezones in the Americas
 timedatectl list-timezones | grep America
 
 # Find a specific city
 timedatectl list-timezones | grep -i chicago
 ```
 
-Timezones follow the `Region/City` naming convention (e.g., `America/New_York`, `Europe/London`, `Asia/Tokyo`).
+Most timezones follow the `Region/City` naming convention (e.g., `America/New_York`, `Europe/London`, `Asia/Tokyo`).
 
 ## Setting the Timezone
 
@@ -125,8 +125,8 @@ Applications can convert UTC to local time for display. Let the server keep ever
 ```mermaid
 graph LR
     A[Server in UTC] --> B[App converts to user timezone]
-    B --> C[US/Eastern user sees ET]
-    B --> D[EU/Berlin user sees CET]
+    B --> C[US/Eastern user sees local time]
+    B --> D[EU/Berlin user sees local time]
     B --> E[Asia/Tokyo user sees JST]
 ```
 
@@ -135,7 +135,7 @@ graph LR
 The hardware clock (RTC) runs independently of the OS. It keeps time when the system is powered off. RHEL can keep the RTC in either UTC or local time:
 
 ```bash
-# Check if the RTC is set to UTC
+# Check whether the RTC is using local time
 timedatectl | grep "RTC in local TZ"
 ```
 
@@ -167,7 +167,7 @@ sudo timedatectl set-ntp false
 sudo timedatectl set-time "2026-03-04 12:00:00"
 ```
 
-You can also set just the date or just the time:
+You can also set just the date or just the time. Setting only the date sets the time to midnight:
 
 ```bash
 # Set only the date
@@ -200,11 +200,12 @@ Keep this package updated, especially if you run services that deal with schedul
 
 ## How Applications Read the Timezone
 
-Applications determine the timezone through this hierarchy:
+On RHEL, glibc-based applications commonly determine the timezone through this order:
 
 1. The `TZ` environment variable (per-process override)
 2. `/etc/localtime` (system default)
-3. `/etc/timezone` (fallback on some systems, not standard on RHEL)
+
+Some other distributions also use `/etc/timezone` as a configuration file, but it is not the standard system timezone source on RHEL.
 
 To override the timezone for a single command:
 
@@ -247,11 +248,17 @@ This is another reason to run servers in UTC and handle timezone conversion in y
 
 ## Timezone Configuration in Containers
 
-Containers inherit the host's timezone by default on some runtimes, but not all. To set a timezone in a Podman container:
+Containers often default to UTC unless the image or runtime configuration sets something else. To set a timezone in a Podman container:
 
 ```bash
-# Run a container with a specific timezone
+# Use Podman's native timezone option
+podman run --tz=America/New_York myimage
+
+# Or pass TZ for applications that read it
 podman run -e TZ=America/New_York myimage
+
+# Or match the host timezone
+podman run --tz=local myimage
 
 # Or mount the host's localtime
 podman run -v /etc/localtime:/etc/localtime:ro myimage
