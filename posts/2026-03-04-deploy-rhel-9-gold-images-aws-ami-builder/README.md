@@ -46,16 +46,19 @@ phases:
         action: ExecuteBash
         inputs:
           commands:
-            - dnf install -y vim git tmux htop firewalld aide
-            - dnf install -y dnf-automatic amazon-cloudwatch-agent
+            - dnf install -y vim git tmux firewalld aide dnf-automatic
 
       - name: HardenSSH
         action: ExecuteBash
         inputs:
           commands:
-            - sed -i 's/#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
-            - sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-            - sed -i 's/#MaxAuthTries 6/MaxAuthTries 3/' /etc/ssh/sshd_config
+            - |
+              install -d -m 0755 /etc/ssh/sshd_config.d
+              cat > /etc/ssh/sshd_config.d/99-hardening.conf << 'SSHD'
+              PermitRootLogin no
+              PasswordAuthentication no
+              MaxAuthTries 3
+              SSHD
 
       - name: ConfigureFirewall
         action: ExecuteBash
@@ -90,14 +93,14 @@ phases:
         action: ExecuteBash
         inputs:
           commands:
-            - grep "PermitRootLogin no" /etc/ssh/sshd_config
-            - grep "PasswordAuthentication no" /etc/ssh/sshd_config
+            - grep "PermitRootLogin no" /etc/ssh/sshd_config.d/99-hardening.conf
+            - grep "PasswordAuthentication no" /etc/ssh/sshd_config.d/99-hardening.conf
 
       - name: ValidatePackages
         action: ExecuteBash
         inputs:
           commands:
-            - rpm -q firewalld aide amazon-cloudwatch-agent
+            - rpm -q firewalld aide dnf-automatic
 COMPONENT
 
 # Upload the component
@@ -117,7 +120,7 @@ aws imagebuilder create-image-recipe \
   --semantic-version "1.0.0" \
   --parent-image "arn:aws:imagebuilder:us-east-1:aws:image/red-hat-enterprise-linux-9-x86/x.x.x" \
   --components '[
-    {"componentArn": "arn:aws:imagebuilder:us-east-1:ACCOUNT:component/rhel9-base-config/1.0.0"},
+    {"componentArn": "arn:aws:imagebuilder:us-east-1:123456789012:component/rhel9-base-config/1.0.0"},
     {"componentArn": "arn:aws:imagebuilder:us-east-1:aws:component/amazon-cloudwatch-agent-linux/x.x.x"}
   ]' \
   --block-device-mappings '[
@@ -140,7 +143,7 @@ aws imagebuilder create-infrastructure-configuration \
   --name "RHEL9-Build-Infra" \
   --instance-profile-name EC2ImageBuilderRole \
   --instance-types m6i.large \
-  --terminate-instance-on-failure true
+  --terminate-instance-on-failure
 
 # Create a distribution configuration
 aws imagebuilder create-distribution-configuration \
@@ -150,7 +153,7 @@ aws imagebuilder create-distribution-configuration \
     "amiDistributionConfiguration": {
       "name": "rhel9-gold-{{imagebuilder:buildDate}}",
       "launchPermission": {
-        "organizationArns": ["arn:aws:organizations::ACCOUNT:organization/o-xxx"]
+        "organizationArns": ["arn:aws:organizations::123456789012:organization/o-xxx"]
       }
     }
   }]'
@@ -158,9 +161,9 @@ aws imagebuilder create-distribution-configuration \
 # Create the pipeline
 aws imagebuilder create-image-pipeline \
   --name "RHEL9-Gold-Pipeline" \
-  --image-recipe-arn "arn:aws:imagebuilder:us-east-1:ACCOUNT:image-recipe/rhel9-gold-image/1.0.0" \
-  --infrastructure-configuration-arn "arn:aws:imagebuilder:..." \
-  --distribution-configuration-arn "arn:aws:imagebuilder:..." \
+  --image-recipe-arn "arn:aws:imagebuilder:us-east-1:123456789012:image-recipe/rhel9-gold-image/1.0.0" \
+  --infrastructure-configuration-arn "arn:aws:imagebuilder:us-east-1:123456789012:infrastructure-configuration/rhel9-build-infra" \
+  --distribution-configuration-arn "arn:aws:imagebuilder:us-east-1:123456789012:distribution-configuration/rhel9-distribution" \
   --schedule '{"scheduleExpression":"cron(0 0 1 * ? *)","pipelineExecutionStartCondition":"EXPRESSION_MATCH_ONLY"}'
 ```
 
@@ -169,11 +172,11 @@ aws imagebuilder create-image-pipeline \
 ```bash
 # Manually trigger a build
 aws imagebuilder start-image-pipeline-execution \
-  --image-pipeline-arn "arn:aws:imagebuilder:us-east-1:ACCOUNT:image-pipeline/rhel9-gold-pipeline"
+  --image-pipeline-arn "arn:aws:imagebuilder:us-east-1:123456789012:image-pipeline/rhel9-gold-pipeline"
 
 # Check the build status
 aws imagebuilder list-image-pipeline-images \
-  --image-pipeline-arn "arn:aws:imagebuilder:..." \
+  --image-pipeline-arn "arn:aws:imagebuilder:us-east-1:123456789012:image-pipeline/rhel9-gold-pipeline" \
   --query 'imageSummaryList[0].{State:state.status,AMI:outputResources.amis[0].image}'
 ```
 
