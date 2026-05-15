@@ -14,8 +14,9 @@ GitLab Runner is the agent that executes CI/CD jobs defined in your `.gitlab-ci.
 
 ```bash
 # Add the GitLab Runner repository
-
-curl -sS https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.rpm.sh | sudo bash
+curl -L "https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.rpm.sh" -o script.rpm.sh
+less script.rpm.sh
+sudo bash script.rpm.sh
 
 # Install GitLab Runner
 sudo dnf install -y gitlab-runner
@@ -26,9 +27,9 @@ gitlab-runner --version
 
 ## Register the Runner
 
-Get the registration token from your GitLab instance:
+Create a runner in your GitLab instance and copy its authentication token:
 1. Go to Settings > CI/CD > Runners
-2. Copy the registration token
+2. Create a runner, set any required tags, and copy the authentication token
 
 ```bash
 # Register the runner interactively
@@ -36,9 +37,8 @@ sudo gitlab-runner register
 
 # You will be prompted for:
 # - GitLab instance URL (e.g., https://gitlab.example.com)
-# - Registration token
+# - Runner authentication token
 # - Description (e.g., "rhel9-runner-01")
-# - Tags (e.g., "rhel9,docker,build")
 # - Executor (shell, docker, etc.)
 ```
 
@@ -49,11 +49,9 @@ For automated registration:
 sudo gitlab-runner register \
   --non-interactive \
   --url "https://gitlab.example.com" \
-  --registration-token "YOUR_TOKEN" \
+  --token "YOUR_RUNNER_AUTH_TOKEN" \
   --executor "shell" \
-  --description "rhel9-shell-runner" \
-  --tag-list "rhel9,shell" \
-  --run-untagged="true"
+  --description "rhel9-shell-runner"
 ```
 
 ## Configure the Docker Executor
@@ -61,20 +59,21 @@ sudo gitlab-runner register \
 The Docker executor runs each job in a fresh container:
 
 ```bash
-# Install Docker (or Podman)
-sudo dnf install -y docker
-sudo systemctl enable --now docker
-sudo usermod -aG docker gitlab-runner
+# Install Podman and enable a Podman socket for the gitlab-runner user
+sudo dnf install -y podman podman-docker podman-plugins
+sudo loginctl enable-linger gitlab-runner
+
+# Sign in as the gitlab-runner user through SSH or another pam_systemd session, then run:
+systemctl --user enable --now podman.socket
 
 # Register with the Docker executor
 sudo gitlab-runner register \
   --non-interactive \
   --url "https://gitlab.example.com" \
-  --registration-token "YOUR_TOKEN" \
+  --token "YOUR_RUNNER_AUTH_TOKEN" \
   --executor "docker" \
   --docker-image "registry.access.redhat.com/ubi9/ubi:latest" \
-  --description "rhel9-docker-runner" \
-  --tag-list "rhel9,docker"
+  --description "rhel9-docker-runner"
 ```
 
 ## Runner Configuration File
@@ -93,6 +92,8 @@ check_interval = 0   # How often to check for new jobs (0 = default 3s)
   executor = "docker"
 
   [runners.docker]
+    # Replace UID with the output of: id -u gitlab-runner
+    host = "unix:///run/user/UID/podman/podman.sock"
     image = "registry.access.redhat.com/ubi9/ubi:latest"
     privileged = false
     disable_entrypoint_overwrite = false
@@ -100,11 +101,6 @@ check_interval = 0   # How often to check for new jobs (0 = default 3s)
     disable_cache = false
     volumes = ["/cache"]
     shm_size = 0
-
-  [runners.cache]
-    Type = "local"
-    Path = "/cache"
-    Shared = true
 ```
 
 ## Manage the Runner Service
