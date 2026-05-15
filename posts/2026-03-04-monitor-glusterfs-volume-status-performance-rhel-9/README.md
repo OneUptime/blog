@@ -56,7 +56,7 @@ Shows which clients are connected and their connection details.
 sudo gluster volume status repvol mem
 ```
 
-Shows memory usage of each brick and NFS/self-heal daemon process.
+Shows memory usage and memory pool details for the volume's brick processes.
 
 ## Volume Profiling
 
@@ -121,7 +121,7 @@ sudo gluster volume heal repvol info
 # Summary of heal status
 sudo gluster volume heal repvol info summary
 
-# Files currently being healed
+# Files where healing failed
 sudo gluster volume heal repvol info heal-failed
 
 # Split-brain entries
@@ -165,8 +165,8 @@ A statedump captures the internal state of GlusterFS processes for debugging:
 # Generate statedump for a brick
 sudo kill -USR1 <brick_pid>
 
-# Find the statedump files
-ls /var/run/gluster/
+# Find the statedump directory
+sudo gluster --print-statedumpdir
 ```
 
 ## Checking Disk Usage
