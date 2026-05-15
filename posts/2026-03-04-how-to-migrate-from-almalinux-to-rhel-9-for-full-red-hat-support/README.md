@@ -12,21 +12,29 @@ Converting from AlmaLinux to RHEL 9 provides full Red Hat support and access to 
 
 ## Prerequisites
 
-- AlmaLinux 8 or 9
+- A supported AlmaLinux 9 minor release for conversion to the corresponding RHEL 9 minor release
 - Red Hat subscription
 - System backup
 
 ## Install Convert2RHEL
 
 ```bash
-sudo dnf install -y https://ftp.redhat.com/redhat/convert2rhel/9/convert2rhel.repo
-sudo dnf install -y convert2rhel
+sudo curl -o /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release https://security.access.redhat.com/data/fd431d51.txt
+sudo curl -o /etc/yum.repos.d/convert2rhel.repo https://cdn-public.redhat.com/content/public/repofiles/convert2rhel-for-rhel-9-x86_64.repo
+sudo yum -y install convert2rhel
 ```
 
 ## Run Conversion
 
 ```bash
-sudo convert2rhel --org <org-id> --activationkey <key-name> -y
+sudo tee /etc/convert2rhel.ini >/dev/null <<'EOF'
+[subscription_manager]
+org = <org-id>
+activation_key = <key-name>
+EOF
+
+sudo convert2rhel analyze
+sudo convert2rhel -y
 ```
 
 ## Post-Conversion Verification
@@ -38,7 +46,7 @@ sudo subscription-manager status
 # Verify no AlmaLinux packages remain
 
 rpm -qa | grep almalinux
-# Should return nothing
+# Review any remaining AlmaLinux-branded packages
 
 sudo dnf update -y
 sudo reboot
@@ -48,6 +56,7 @@ sudo reboot
 
 ```bash
 # Register with Insights
+sudo dnf install -y insights-client
 sudo insights-client --register
 
 # Connect with rhc
@@ -58,4 +67,3 @@ sudo rhc connect
 ## Conclusion
 
 AlmaLinux to RHEL 9 conversion is seamless with Convert2RHEL. After conversion, take advantage of Red Hat Insights, Satellite, and commercial support for enterprise management.
-
