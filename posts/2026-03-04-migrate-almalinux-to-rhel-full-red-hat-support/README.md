@@ -23,9 +23,9 @@ AlmaLinux is ABI-compatible with RHEL, making in-place conversion with Convert2R
 # Check your AlmaLinux version
 
 cat /etc/almalinux-release
-# AlmaLinux release 9.3 (Shamrock Pampas Cat)
+# AlmaLinux release 9.7 (Moss Jungle Cat)
 
-# Update to the latest AlmaLinux packages
+# Update to a minor version supported by Convert2RHEL
 sudo dnf update -y
 sudo reboot
 
@@ -36,21 +36,30 @@ sudo reboot
 
 ```bash
 # Add the Convert2RHEL repository
+sudo curl -o /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release \
+  https://security.access.redhat.com/data/fd431d51.txt
 sudo curl -o /etc/yum.repos.d/convert2rhel.repo \
-  https://ftp.redhat.com/redhat/convert2rhel/9/convert2rhel.repo
+  https://cdn-public.redhat.com/content/public/repofiles/convert2rhel-for-rhel-9-x86_64.repo
 
 # Install the conversion tool
 sudo dnf install convert2rhel -y
 
+# Configure Red Hat Subscription Manager credentials for the conversion
+sudo tee /etc/convert2rhel.ini >/dev/null <<'EOF'
+[subscription_manager]
+org = your-org-id
+activation_key = your-key
+EOF
+
 # Run the analysis first
-sudo convert2rhel analyze --org your-org-id --activationkey your-key
+sudo convert2rhel analyze
 ```
 
 ## Execute the Conversion
 
 ```bash
 # Perform the in-place conversion
-sudo convert2rhel --org your-org-id --activationkey your-key -y
+sudo convert2rhel -y
 
 # Monitor the output. The tool will:
 # - Remove almalinux-release and related branding packages
@@ -67,7 +76,7 @@ sudo reboot
 
 # Verify RHEL is installed
 cat /etc/redhat-release
-# Red Hat Enterprise Linux release 9.3 (Plow)
+# Red Hat Enterprise Linux release 9.7 (Plow)
 
 # Confirm subscription is active
 sudo subscription-manager status
@@ -118,6 +127,9 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost/
 ## Re-enable EPEL
 
 ```bash
+# Enable CodeReady Linux Builder, which EPEL packages can depend on
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+
 # Install EPEL for RHEL 9
 sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 
@@ -125,4 +137,4 @@ sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noa
 sudo dnf repolist | grep epel
 ```
 
-After conversion, you have a fully supported RHEL system. Open a Red Hat support case to verify your subscription is working correctly if this is your first conversion.
+After conversion, you have a RHEL system eligible for Red Hat support for Red Hat packages. Open a Red Hat support case to verify your subscription is working correctly if this is your first conversion.
