@@ -149,6 +149,8 @@ spec:
         name: app-config
 ```
 
+Only keys that are valid environment variable names are injected. Keys such as `nginx.conf` or `app.properties` are skipped when using `envFrom`.
+
 ## Creating Secrets
 
 ### From Literal Values
@@ -312,7 +314,7 @@ kubectl edit configmap app-config
 kubectl create configmap app-config --from-file=app.properties --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-When a ConfigMap mounted as a volume changes, kubelet eventually updates the mounted files. The delay is typically up to the kubelet sync period (default 60 seconds).
+When a ConfigMap mounted as a volume changes, kubelet eventually updates the mounted files. The delay can be as long as the kubelet sync period plus the cache propagation delay, depending on the kubelet's change detection strategy.
 
 ## Conclusion
 
