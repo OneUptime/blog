@@ -58,10 +58,10 @@ nmcli connection add type bond con-name bond0 ifname bond0 \
 
 ```bash
 # Add first slave
-nmcli connection add type ethernet con-name bond0-slave1 ifname eth0 master bond0
+nmcli connection add type ethernet port-type bond con-name bond0-slave1 ifname eth0 controller bond0
 
 # Add second slave
-nmcli connection add type ethernet con-name bond0-slave2 ifname eth1 master bond0
+nmcli connection add type ethernet port-type bond con-name bond0-slave2 ifname eth1 controller bond0
 ```
 
 ## Step 3: Configure IP and Activate
@@ -134,18 +134,18 @@ Use iperf3 to measure the aggregate throughput:
 # Install iperf3
 dnf install -y iperf3
 
-# Run a multi-stream test to exercise both slaves
-iperf3 -c 10.0.1.100 -t 30 -P 8
+# Run a single-stream test; balance-rr can stripe one TCP/IP stream across slaves
+iperf3 -c 10.0.1.100 -t 30
 ```
 
-Compare the result to a single-interface test to see if you actually gained bandwidth:
+Compare single-stream and multi-stream results, and watch retransmissions to see if reordering is costing more than the extra bandwidth is worth:
 
 ```bash
-# Single-stream test (will only use one slave effectively for TCP)
-iperf3 -c 10.0.1.100 -t 30
-
-# Multi-stream test (should show higher aggregate throughput)
+# Multi-stream test
 iperf3 -c 10.0.1.100 -t 30 -P 4
+
+# Watch for retransmissions while testing
+ss -ti | grep retrans
 ```
 
 ## Monitoring Traffic Distribution
