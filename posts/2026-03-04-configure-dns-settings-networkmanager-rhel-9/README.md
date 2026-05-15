@@ -65,10 +65,10 @@ host example.com
 
 ## DNS Priority
 
-When multiple connections are active (e.g., a primary and a management interface), NetworkManager uses DNS priority to determine which connection's DNS servers appear first in `/etc/resolv.conf`:
+When multiple connections are active (e.g., a primary and a management interface), NetworkManager uses DNS priority to determine which connection's DNS servers appear first in `/etc/resolv.conf` when using the default DNS mode:
 
 ```bash
-# Set DNS priority (lower values = higher priority, default is 0)
+# Set DNS priority (lower values = higher priority)
 nmcli connection modify ens192 ipv4.dns-priority 10
 nmcli connection modify ens224 ipv4.dns-priority 100
 
@@ -80,8 +80,8 @@ nmcli connection up ens224
 With the above configuration, DNS servers from `ens192` will be listed before those from `ens224` in resolv.conf.
 
 Special priority values:
-- **Negative values** - Only this connection's DNS servers are used (exclusive mode)
-- **0** (default) - Standard priority, uses the route metric as a tiebreaker
+- **Negative values** - Only DNS servers from connections with the lowest priority value are used
+- **0** - Use the global default priority; if no global default is set, NetworkManager uses 50 for VPN connections and 100 for other connections
 - **Positive values** - Lower number means higher priority
 
 ```bash
@@ -116,7 +116,7 @@ NetworkManager supports different DNS processing modes that control how it manag
 
 ```bash
 # Check the current DNS processing mode
-nmcli general | grep DNS
+NetworkManager --print-config | grep -E '^(# )?dns='
 ```
 
 You can configure the mode in NetworkManager's configuration:
@@ -163,7 +163,7 @@ This is generally not recommended because you lose the automatic DNS updates whe
 
 ## Split DNS Configuration
 
-Split DNS sends queries for specific domains to specific DNS servers. This is common in environments where internal domains use internal DNS servers and everything else goes to public DNS:
+Split DNS sends queries for specific domains to specific DNS servers when NetworkManager is using a resolver plugin that supports conditional forwarding, such as `dns=dnsmasq` or `dns=systemd-resolved`. This is common in environments where internal domains use internal DNS servers and everything else goes to public DNS:
 
 ```bash
 # Configure split DNS - internal domains go to internal DNS
