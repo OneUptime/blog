@@ -30,7 +30,7 @@ The physical interfaces feed into a bond, and VLANs sit on top of that bond. The
 
 ## Prerequisites
 
-- RHEL with at least two network interfaces
+- RHEL 9.4 or later with at least two network interfaces
 - A network switch configured with trunk ports carrying your VLANs
 - Root or sudo access
 - An existing bond interface (or we will create one)
@@ -47,15 +47,20 @@ nmcli connection add type bond con-name bond0 ifname bond0 bond.options "mode=80
 # Add port interfaces
 nmcli connection add type ethernet port-type bond con-name bond0-port1 ifname eth0 controller bond0
 nmcli connection add type ethernet port-type bond con-name bond0-port2 ifname eth1 controller bond0
+
+# Bring up all bond ports automatically when bond0 is activated
+nmcli connection modify bond0 connection.autoconnect-ports 1
 ```
 
 Do not assign an IP directly to bond0 if you only want traffic on the VLANs. You can leave it without an address:
 
 ```bash
-# Disable IPv4 on the base bond if not needed
+# Disable IPv4 and leave IPv6 unmanaged on the base bond if not needed
 nmcli connection modify bond0 ipv4.method disabled
-nmcli connection modify bond0 ipv6.method disabled
+nmcli connection modify bond0 ipv6.method ignore
 ```
+
+If you are using a VLAN on top of the bond, do not configure the bond with the `fail_over_mac=follow` option. VLAN devices cannot change their MAC address when the bond parent changes MAC addresses.
 
 ## Step 2: Create VLAN Interfaces
 
