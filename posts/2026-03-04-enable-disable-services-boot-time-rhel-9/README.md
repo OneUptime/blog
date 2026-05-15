@@ -82,16 +82,16 @@ This returns one of several possible states:
 |-------|---------|
 | `enabled` | Starts at boot (symlink exists) |
 | `disabled` | Does not start at boot |
-| `static` | Cannot be enabled directly, only started as a dependency |
+| `static` | Cannot be enabled directly because it has no install information |
 | `masked` | Completely blocked from starting |
 | `alias` | The name is an alias for another unit |
-| `indirect` | Enabled indirectly through another unit |
+| `indirect` | Not enabled itself, but can be enabled through an `Also=` unit, alias, or default instance |
 
-The exit code is also useful for scripting - 0 means enabled, non-zero means not enabled:
+The output is useful for scripting when you need to check for the exact state:
 
 ```bash
 # Use in a script
-if systemctl is-enabled --quiet httpd; then
+if [ "$(systemctl is-enabled httpd)" = "enabled" ]; then
     echo "httpd starts at boot"
 else
     echo "httpd does NOT start at boot"
@@ -116,7 +116,7 @@ You will see something like:
 WantedBy=multi-user.target
 ```
 
-`WantedBy=multi-user.target` means "when someone enables this service, create a symlink in `/etc/systemd/system/multi-user.target.wants/`." The multi-user target is the standard target for a running system with networking but no graphical interface.
+`WantedBy=multi-user.target` means "when someone enables this service, create a symlink in `/etc/systemd/system/multi-user.target.wants/`." The multi-user target is the standard target for a non-graphical multi-user system.
 
 Here is the flow:
 
@@ -222,7 +222,7 @@ Sometimes you try to enable a service and get this error:
 The unit files have no installation config (WantedBy=, RequiredBy=, etc.)
 ```
 
-This means the unit file has no `[Install]` section. These are "static" services that are only meant to be started as dependencies of other services. You cannot enable them directly, and you should not need to. They will start automatically when whatever depends on them starts.
+This means the unit file has no `[Install]` section. These are "static" services that are usually started manually or pulled in as dependencies of other units. You cannot enable them directly, and you should not need to. They will start automatically when whatever depends on them starts.
 
 Check for this:
 
