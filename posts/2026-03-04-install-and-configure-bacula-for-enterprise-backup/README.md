@@ -31,20 +31,21 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo subscription-manager repos --enable codeready-builder-for-rhel-$(rpm -E %rhel)-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-$(rpm -E %rhel).noarch.rpm
+sudo dnf install -y firewalld postgresql-server
 ```
 
 ## Step 2: Install Required Packages
 
 ```bash
-sudo dnf install -y <package-name>
+sudo dnf install -y bacula-director bacula-storage bacula-client bacula-console
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+rpm -qi bacula-director bacula-storage bacula-client bacula-console
 ```
 
 ## Step 3: Configure the Service
@@ -52,16 +53,29 @@ rpm -qi <package-name>
 Create or edit the main configuration file:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/bacula/bacula-dir.conf
+sudo vi /etc/bacula/bacula-sd.conf
+sudo vi /etc/bacula/bacula-fd.conf
+sudo vi /etc/bacula/bconsole.conf
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+Apply the recommended settings for your environment. Start with the defaults and adjust the Director, Storage daemon, File daemon, Console, and Catalog resources based on your workload and hardware.
+
+Initialize the PostgreSQL catalog database before starting the Director:
+
+```bash
+sudo postgresql-setup --initdb
+sudo systemctl enable --now postgresql
+sudo -u postgres /usr/libexec/bacula/create_bacula_database
+sudo -u postgres /usr/libexec/bacula/make_bacula_tables
+sudo -u postgres /usr/libexec/bacula/grant_bacula_privileges
+```
 
 ## Step 4: Start and Enable the Service
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo systemctl enable --now bacula-dir bacula-sd bacula-fd
+sudo systemctl status bacula-dir bacula-sd bacula-fd
 ```
 
 ## Step 5: Verify the Configuration
@@ -69,13 +83,16 @@ sudo systemctl status <service>
 Test the setup:
 
 ```bash
-sudo <service> --test
+sudo bacula-dir -t -c /etc/bacula/bacula-dir.conf
+sudo bacula-sd -t -c /etc/bacula/bacula-sd.conf
+sudo bacula-fd -t -c /etc/bacula/bacula-fd.conf
+echo "status all" | sudo bconsole -c /etc/bacula/bconsole.conf
 ```
 
 Check the logs for any errors:
 
 ```bash
-journalctl -u <service> -f
+journalctl -u bacula-dir -u bacula-sd -u bacula-fd -f
 ```
 
 ## Step 6: Configure Firewall Rules
@@ -83,7 +100,10 @@ journalctl -u <service> -f
 If the service needs network access:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo systemctl enable --now firewalld
+sudo firewall-cmd --permanent --add-port=9101/tcp
+sudo firewall-cmd --permanent --add-port=9102/tcp
+sudo firewall-cmd --permanent --add-port=9103/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -92,8 +112,8 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+systemctl show bacula-dir bacula-sd bacula-fd --property=MemoryCurrent
+top -p $(pidof bacula-dir bacula-sd bacula-fd | tr ' ' ',')
 ```
 
 ## Security Considerations
@@ -107,7 +127,7 @@ top -p $(pidof <service>)
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
+1. **Service fails to start**: Check `journalctl -u bacula-dir -u bacula-sd -u bacula-fd -xe` for error messages
 2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
 3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
 
