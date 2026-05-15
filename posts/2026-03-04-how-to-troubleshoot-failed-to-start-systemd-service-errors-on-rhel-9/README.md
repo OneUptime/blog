@@ -91,7 +91,7 @@ sudo systemctl start servicename
 ## Enable Debug Logging
 
 ```bash
-# Temporarily increase logging
+# Temporarily enable application debug logging for services that support it
 sudo systemctl edit servicename
 # Add:
 # [Service]
@@ -104,4 +104,3 @@ sudo systemctl restart servicename
 ## Conclusion
 
 systemd service failures on RHEL 9 are usually caused by configuration errors, port conflicts, permission issues, or missing dependencies. Check the journal logs first, then examine the unit file and service configuration.
-
