@@ -45,7 +45,7 @@ Note that multiple addresses are comma-separated in the same `ipv4.addresses` pa
 
 ## Adding IPs to an Existing Connection
 
-More commonly, you will want to add an IP to a connection that already exists. Use the `+` prefix to append:
+More commonly, you will want to add an IP to a connection that already exists. Use the `+` prefix to append. The examples below assume the connection profile is named `ens192`; if your profile has a different name, use that connection name instead.
 
 ```bash
 # Add a second IP address to an existing connection
@@ -218,7 +218,7 @@ ip addr add 10.0.1.99/24 dev ens192
 ip addr del 10.0.1.99/24 dev ens192
 ```
 
-Be aware that NetworkManager may remove addresses it did not configure, depending on its settings. To prevent this, you can set the `may-fail` property or manage the address through NetworkManager instead.
+Be aware that NetworkManager may remove addresses it did not configure when it reapplies or activates the connection profile. If the address must coexist reliably with a NetworkManager-managed profile, manage the address through NetworkManager instead.
 
 ## Performance Considerations
 
