@@ -29,24 +29,24 @@ talosctl logs containerd -n <node-ip>
 talosctl logs apid -n <node-ip>
 ```
 
-By default, this shows the most recent logs. The output streams to your terminal in chronological order.
+By default, this shows the available log file from the beginning. Use `--tail` if you only want the most recent lines. The output streams to your terminal in chronological order.
 
 ## Viewing Kubernetes Component Logs
 
-Kubernetes control plane components run as containers, and their logs are accessible through `talosctl`:
+Kubernetes control plane components run as containers, and their logs are accessible through `talosctl` with the Kubernetes containerd namespace. Use `talosctl containers -k -n <node-ip>` first if you need to find the exact container name.
 
 ```bash
 # API server logs
-talosctl logs kube-apiserver -n <control-plane-ip>
+talosctl logs -k <kube-apiserver-container> -n <control-plane-ip>
 
 # Controller manager logs
-talosctl logs kube-controller-manager -n <control-plane-ip>
+talosctl logs -k <kube-controller-manager-container> -n <control-plane-ip>
 
 # Scheduler logs
-talosctl logs kube-scheduler -n <control-plane-ip>
+talosctl logs -k <kube-scheduler-container> -n <control-plane-ip>
 
-# Kube-proxy logs (if running as static pod)
-talosctl logs kube-proxy -n <node-ip>
+# Kube-proxy logs (if running as a Kubernetes pod on that node)
+talosctl logs -k <kube-proxy-container> -n <node-ip>
 ```
 
 ## Following Logs in Real Time
@@ -61,24 +61,24 @@ talosctl logs kubelet -n <node-ip> -f
 talosctl logs etcd -n <control-plane-ip> -f
 
 # Follow API server logs
-talosctl logs kube-apiserver -n <control-plane-ip> -f
+talosctl logs -k <kube-apiserver-container> -n <control-plane-ip> -f
 ```
 
 The `-f` flag keeps the connection open and streams new log entries as they appear. Press Ctrl+C to stop.
 
-## Filtering Logs by Time
+## Limiting Log Output
 
-You can retrieve logs from a specific time window:
+You can retrieve only the most recent lines with `--tail`:
 
 ```bash
-# Logs since a specific time ago
-talosctl logs kubelet -n <node-ip> --since 1h
+# Show the last 200 lines
+talosctl logs kubelet -n <node-ip> --tail 200
 
-# Logs since a specific timestamp
-talosctl logs kubelet -n <node-ip> --since "2026-03-03T10:00:00Z"
+# Show the last 50 lines
+talosctl logs kubelet -n <node-ip> --tail 50
 
 # Combine with follow for recent logs plus real-time streaming
-talosctl logs kubelet -n <node-ip> --since 10m -f
+talosctl logs kubelet -n <node-ip> --tail 100 -f
 ```
 
 ## Filtering Log Content
@@ -163,7 +163,7 @@ talosctl logs kubelet -n <node-ip> | grep -i "error\|fail" | tail -30
 talosctl logs etcd -n <control-plane-ip> | grep -i "error\|fail" | tail -30
 
 # For API access issues, check the API server
-talosctl logs kube-apiserver -n <control-plane-ip> | grep -i "error\|fail" | tail -30
+talosctl logs -k <kube-apiserver-container> -n <control-plane-ip> | grep -i "error\|fail" | tail -30
 ```
 
 ### Step 3: Check System-Level Logs
@@ -181,9 +181,9 @@ talosctl logs controller-runtime -n <node-ip> | tail -50
 ```bash
 # Look at timestamps across different services
 # to find cascading failures
-echo "=== etcd ===" && talosctl logs etcd -n <cp-ip> --since 5m | head -20
-echo "=== apiserver ===" && talosctl logs kube-apiserver -n <cp-ip> --since 5m | head -20
-echo "=== kubelet ===" && talosctl logs kubelet -n <node-ip> --since 5m | head -20
+echo "=== etcd ===" && talosctl logs etcd -n <cp-ip> --tail 100 | head -20
+echo "=== apiserver ===" && talosctl logs -k <kube-apiserver-container> -n <cp-ip> --tail 100 | head -20
+echo "=== kubelet ===" && talosctl logs kubelet -n <node-ip> --tail 100 | head -20
 ```
 
 ## Common Log Patterns to Watch For
@@ -199,7 +199,7 @@ talosctl dmesg -n <node-ip> | grep -i "oom\|out of memory\|killed process"
 
 ```bash
 # Certificate-related errors
-talosctl logs kube-apiserver -n <cp-ip> | grep -i "certificate\|tls\|x509"
+talosctl logs -k <kube-apiserver-container> -n <cp-ip> | grep -i "certificate\|tls\|x509"
 talosctl logs kubelet -n <node-ip> | grep -i "certificate\|tls\|x509"
 ```
 
@@ -249,43 +249,17 @@ talosctl dmesg -n <node-ip> > "/tmp/diag-$(date +%Y%m%d)/dmesg.log"
 
 ## Centralized Log Collection
 
-For production clusters, ship logs to a centralized logging system:
+For production clusters, ship Talos service logs to a centralized logging system with machine logging destinations:
 
 ```yaml
-# Deploy Fluent Bit as a DaemonSet to collect logs
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: fluent-bit
-  namespace: logging
-spec:
-  selector:
-    matchLabels:
-      app: fluent-bit
-  template:
-    metadata:
-      labels:
-        app: fluent-bit
-    spec:
-      tolerations:
-        - operator: Exists
-      containers:
-      - name: fluent-bit
-        image: fluent/fluent-bit:latest
-        volumeMounts:
-        - name: varlog
-          mountPath: /var/log
-          readOnly: true
-        - name: containers
-          mountPath: /var/log/containers
-          readOnly: true
-      volumes:
-      - name: varlog
-        hostPath:
-          path: /var/log
-      - name: containers
-        hostPath:
-          path: /var/log/containers
+# Send Talos service logs as JSON lines over TCP or UDP
+machine:
+  logging:
+    destinations:
+      - endpoint: "tcp://log-collector.example.com:5044/"
+        format: "json_lines"
+        extraTags:
+          cluster: production
 ```
 
 ## Using the Controller Runtime Logs
@@ -303,11 +277,11 @@ talosctl logs controller-runtime -n <node-ip> | grep -i "machine\|config"
 
 ## Log Retention
 
-Talos Linux keeps a limited amount of logs in memory (there is no persistent log storage on the immutable filesystem). If you need long-term log retention, you must ship logs to an external system.
+Talos Linux stores system component logs in `/var/log` on the EPHEMERAL volume and rotates them. If you need long-term log retention, you must ship logs to an external system.
 
 ```bash
 # The amount of log data available depends on:
-# - System memory
+# - EPHEMERAL volume capacity
 # - Log volume
 # - How long the node has been running
 
