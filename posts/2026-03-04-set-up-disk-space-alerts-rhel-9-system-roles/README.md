@@ -22,11 +22,11 @@ On your Ansible control node:
 sudo dnf install rhel-system-roles ansible-core
 ```
 
-The system roles are installed to `/usr/share/ansible/roles/`.
+The system roles are installed to `/usr/share/ansible/roles/` and can be referenced by their collection names, such as `redhat.rhel_system_roles.storage`.
 
 ## Understanding the Storage Role
 
-The `rhel-system-roles.storage` role manages disks, partitions, LVM, and file systems. While it focuses on provisioning, you can combine it with the metrics role for monitoring.
+The `redhat.rhel_system_roles.storage` role manages disks, partitions, LVM, and file systems. While it focuses on provisioning, you can combine it with the metrics role for monitoring.
 
 List available system roles:
 
@@ -36,7 +36,7 @@ ls /usr/share/ansible/roles/ | grep rhel
 
 ## Setting Up Metrics Collection with the Metrics Role
 
-The `rhel-system-roles.metrics` role configures Performance Co-Pilot (PCP) for system metrics collection, including disk space monitoring:
+The `redhat.rhel_system_roles.metrics` role configures Performance Co-Pilot (PCP) for system metrics collection, including disk space monitoring:
 
 ```yaml
 # playbook-metrics.yml
@@ -49,7 +49,7 @@ The `rhel-system-roles.metrics` role configures Performance Co-Pilot (PCP) for s
     metrics_retention_days: 14
     metrics_monitored_hosts: []
   roles:
-    - rhel-system-roles.metrics
+    - redhat.rhel_system_roles.metrics
 ```
 
 Run the playbook:
@@ -79,7 +79,6 @@ While system roles handle metrics collection, you can deploy alert scripts using
           #!/bin/bash
           THRESHOLD=85
           CRITICAL=95
-          MAILTO="admin@example.com"
 
           df -Ph | grep -vE '^Filesystem|tmpfs|cdrom' | while read line; do
             USAGE=$(echo "$line" | awk '{print $5}' | tr -d '%')
@@ -88,9 +87,9 @@ While system roles handle metrics collection, you can deploy alert scripts using
             HOSTNAME=$(hostname)
 
             if [ "$USAGE" -ge "$CRITICAL" ]; then
-              logger -p local0.crit "CRITICAL: $PARTITION ($DEVICE) is ${USAGE}% full on $HOSTNAME"
+              logger -t check_disk_space -p local0.crit "CRITICAL: $PARTITION ($DEVICE) is ${USAGE}% full on $HOSTNAME"
             elif [ "$USAGE" -ge "$THRESHOLD" ]; then
-              logger -p local0.warning "WARNING: $PARTITION ($DEVICE) is ${USAGE}% full on $HOSTNAME"
+              logger -t check_disk_space -p local0.warning "WARNING: $PARTITION ($DEVICE) is ${USAGE}% full on $HOSTNAME"
             fi
           done
 
@@ -140,6 +139,7 @@ The storage role ensures partitions are properly sized from the start:
   vars:
     storage_pools:
       - name: data_vg
+        type: lvm
         disks:
           - /dev/sdb
         volumes:
@@ -152,7 +152,7 @@ The storage role ensures partitions are properly sized from the start:
             mount_point: /var/log/app
             fs_type: xfs
   roles:
-    - rhel-system-roles.storage
+    - redhat.rhel_system_roles.storage
 ```
 
 ## Configuring PCP Disk Alerts
@@ -165,16 +165,19 @@ After the metrics role sets up PCP, configure disk space alerts using pmie (Perf
   become: true
   tasks:
     - name: Create pmie disk alert rules
-      copy:
-        dest: /etc/pcp/pmie/config.d/disk_space.pmie
-        content: |
+      blockinfile:
+        path: /var/lib/pcp/config/pmie/config.default
+        marker: "// {mark} Ansible managed disk space alerts"
+        block: |
           // Alert when any filesystem is above 85% full
-          filesys.full $1 > 85 ->
-            syslog "Disk space warning: %i is %v%% full";
+          disk_space_warning =
+            some_inst ( filesys.full > 85 && filesys.full < 95 ) ->
+              syslog "Disk space warning: %i is %v%% full";
 
           // Critical alert when any filesystem is above 95% full
-          filesys.full $1 > 95 ->
-            syslog "CRITICAL: Disk space critical: %i is %v%% full";
+          disk_space_critical =
+            some_inst ( filesys.full >= 95 ) ->
+              syslog "CRITICAL: Disk space critical: %i is %v%% full";
 
     - name: Restart pmie service
       systemd:
