@@ -35,11 +35,12 @@ dig @1.1.1.1 example.com
 ## Fix DNS Configuration via NetworkManager
 
 ```bash
-sudo nmcli con show "System eth0" | grep dns
+nmcli con show --active
+sudo nmcli con show "<connection-name>" | grep dns
 
-sudo nmcli con mod "System eth0" ipv4.dns "8.8.8.8 8.8.4.4"
-sudo nmcli con mod "System eth0" ipv4.ignore-auto-dns yes
-sudo nmcli con up "System eth0"
+sudo nmcli con mod "<connection-name>" ipv4.dns "8.8.8.8 8.8.4.4"
+sudo nmcli con mod "<connection-name>" ipv4.ignore-auto-dns yes
+sudo nmcli con up "<connection-name>"
 ```
 
 ## Check systemd-resolved
@@ -49,7 +50,7 @@ sudo systemctl status systemd-resolved
 resolvectl status
 ```
 
-Restart if needed:
+If the host uses systemd-resolved, restart it if needed:
 
 ```bash
 sudo systemctl restart systemd-resolved
@@ -100,4 +101,3 @@ If ping works but DNS does not, the issue is DNS-specific.
 ## Conclusion
 
 DNS resolution failures on RHEL 9 are caused by incorrect DNS configuration, unreachable DNS servers, or firewall rules blocking port 53. Verify DNS settings in NetworkManager and test with multiple DNS servers to isolate the problem.
-
