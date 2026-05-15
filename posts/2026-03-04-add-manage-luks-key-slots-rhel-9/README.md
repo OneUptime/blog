@@ -42,7 +42,7 @@ For a quick summary:
 
 ```bash
 # Show just the key slot status
-sudo cryptsetup luksDump /dev/sdb | grep -A2 "Keyslots:"
+sudo cryptsetup luksDump /dev/sdb | grep -E "^[[:space:]]+[0-9]+:|^Key Slot [0-9]+:"
 ```
 
 ## Adding a New Passphrase
@@ -100,12 +100,12 @@ sudo cryptsetup luksOpen /dev/sdb data_encrypted --key-file /root/luks-keyfile
 ## Changing a Passphrase
 
 ```bash
-# Change the passphrase in a specific key slot
+# Change a passphrase
 sudo cryptsetup luksChangeKey /dev/sdb
 
 # You will be prompted for the old passphrase and then the new one
 
-# Change a specific key slot
+# Change the passphrase in a specific key slot
 sudo cryptsetup luksChangeKey --key-slot 0 /dev/sdb
 ```
 
@@ -197,7 +197,7 @@ echo "Recovery Key: $RECOVERY_KEY"
 echo "SAVE THIS KEY IN A SECURE LOCATION"
 
 # Add it to a key slot
-echo -n "$RECOVERY_KEY" | sudo cryptsetup luksAddKey --key-slot 7 /dev/sdb --key-file=-
+printf "%s" "$RECOVERY_KEY" | sudo cryptsetup luksAddKey --key-slot 7 --new-keyfile=- /dev/sdb
 
 # Print the key for secure storage, then clear the variable
 echo "Recovery key for /dev/sdb: $RECOVERY_KEY"
@@ -221,8 +221,8 @@ for dev in $(blkid -t TYPE=crypto_LUKS -o device); do
     echo "Device: $dev"
     echo "UUID: $(cryptsetup luksDump "$dev" | grep "^UUID:" | awk '{print $2}')"
     echo "Key Slots:"
-    cryptsetup luksDump "$dev" | grep -E "^\s+[0-9]+:" | while read line; do
-        slot=$(echo "$line" | awk '{print $1}')
+    cryptsetup luksDump "$dev" | grep -E "^[[:space:]]+[0-9]+:|^Key Slot [0-9]+:" | while read line; do
+        slot=$(echo "$line" | sed -E 's/^[[:space:]]*([0-9]+):.*/\1/; s/^Key Slot ([0-9]+):.*/\1/')
         echo "  Slot $slot active"
     done
     echo ""
