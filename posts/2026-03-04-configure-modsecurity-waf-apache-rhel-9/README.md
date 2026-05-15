@@ -15,18 +15,14 @@ ModSecurity is an open-source web application firewall (WAF) that sits inside Ap
 ## Prerequisites
 
 - RHEL with Apache httpd installed
-- EPEL repository enabled
+- Enabled RHEL repositories
 - Root or sudo access
 
-## Step 1 - Enable EPEL and Install ModSecurity
+## Step 1 - Install ModSecurity
 
-ModSecurity is available through the EPEL repository:
+ModSecurity is available through the RHEL repositories:
 
 ```bash
-# Enable EPEL repository
-
-sudo dnf install -y epel-release
-
 # Install ModSecurity and the Apache connector
 sudo dnf install -y mod_security mod_security_crs
 ```
