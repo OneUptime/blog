@@ -23,7 +23,7 @@ When you create a Stratis filesystem, it reports a virtual size of 1 TiB regardl
 - A 50 GiB pool can have multiple filesystems, each reporting 1 TiB
 - Only actual data written consumes pool space
 - Stratis metadata and overhead consume some pool space
-- If the pool runs out of physical space, all filesystems become read-only
+- If the pool runs out of physical space, Stratis cannot allocate more space to filesystems, which can cause writes to fail and applications to risk data loss
 
 This model requires proactive monitoring.
 
@@ -50,7 +50,7 @@ Key metrics:
 ### Detailed Pool Information
 
 ```bash
-sudo stratis pool describe datapool
+sudo stratis pool list --name datapool
 ```
 
 ## Step 2: Monitor Filesystem Usage
@@ -107,14 +107,24 @@ sudo tee /usr/local/bin/stratis-monitor.sh << 'SCRIPT'
 WARNING_THRESHOLD=75
 CRITICAL_THRESHOLD=90
 
-stratis pool list --no-headers 2>/dev/null | while read line; do
-    pool_name=$(echo "$line" | awk '{print $1}')
-    total_raw=$(echo "$line" | awk '{print $2}')
-    used_raw=$(echo "$line" | awk '{print $4}')
+stratis pool list 2>/dev/null | awk 'NR > 1 {
+    print $1 "," $2 " " $3 "," $5 " " $6
+}' | while IFS=, read pool_name total_raw used_raw; do
 
-    # Extract numeric values (assumes GiB)
-    total=$(echo "$total_raw" | sed 's/[^0-9.]//g')
-    used=$(echo "$used_raw" | sed 's/[^0-9.]//g')
+    total=$(echo "$total_raw" | awk '
+        $2=="KiB"{print $1/1024/1024}
+        $2=="MiB"{print $1/1024}
+        $2=="GiB"{print $1}
+        $2=="TiB"{print $1*1024}
+        $2=="PiB"{print $1*1024*1024}
+    ')
+    used=$(echo "$used_raw" | awk '
+        $2=="KiB"{print $1/1024/1024}
+        $2=="MiB"{print $1/1024}
+        $2=="GiB"{print $1}
+        $2=="TiB"{print $1*1024}
+        $2=="PiB"{print $1*1024*1024}
+    ')
 
     if [ -n "$total" ] && [ -n "$used" ]; then
         percent=$(echo "$used $total" | awk '{printf "%.0f", ($1/$2)*100}')
@@ -188,11 +198,9 @@ if [ ! -f "$LOG_FILE" ]; then
     echo "timestamp,pool,total,used,free" > "$LOG_FILE"
 fi
 
-stratis pool list --no-headers 2>/dev/null | while read line; do
-    pool=$(echo "$line" | awk '{print $1}')
-    total=$(echo "$line" | awk '{print $2}')
-    used=$(echo "$line" | awk '{print $4}')
-    free=$(echo "$line" | awk '{print $6}')
+stratis pool list 2>/dev/null | awk 'NR > 1 {
+    print $1 "," $2 " " $3 "," $5 " " $6 "," $8 " " $9
+}' | while IFS=, read pool total used free; do
     echo "$(date -Iseconds),$pool,$total,$used,$free" >> "$LOG_FILE"
 done
 SCRIPT
@@ -227,8 +235,8 @@ sudo stratis filesystem destroy datapool unused_fs
 ### If the Pool Becomes Full
 
 When a pool is completely full:
-1. Filesystems become read-only
-2. No new data can be written
+1. Stratis cannot allocate more pool space to filesystems
+2. New writes can fail, and applications using the filesystems risk data loss
 3. You must add storage to recover
 
 ```bash
@@ -237,7 +245,7 @@ When a pool is completely full:
 sudo stratis pool add-data datapool /dev/sde
 ```
 
-After adding space, filesystems should become writable again.
+After adding space, Stratis can allocate more space to the filesystems again. Verify the affected filesystems and applications before resuming normal writes.
 
 ## Best Practices
 
