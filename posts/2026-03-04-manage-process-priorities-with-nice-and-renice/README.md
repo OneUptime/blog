@@ -13,7 +13,7 @@ nice and renice let you adjust process scheduling priorities on RHEL. A process 
 ## Prerequisites
 
 - RHEL
-- Root or sudo access (for setting negative nice values)
+- Root or sudo access, or suitable limits configured, for setting negative nice values
 
 ## Understanding Nice Values
 
@@ -25,7 +25,7 @@ High    Default   Low
 Priority         Priority
 ```
 
-Only root can set negative nice values (higher priority).
+Root, sudo users, or users with a suitable nice limit can set negative nice values (higher priority).
 
 ## Step 1: Start a Process with a Specific Priority
 
@@ -33,7 +33,7 @@ Only root can set negative nice values (higher priority).
 nice -n 10 /usr/local/bin/backup.sh
 ```
 
-This starts the backup script with niceness 10 (lower priority than default).
+This starts the backup script with niceness adjusted by 10, which gives it niceness 10 from the default 0 (lower priority than default).
 
 For highest priority:
 
@@ -106,7 +106,7 @@ sudo vi /etc/security/limits.conf
 
 ```bash
 appuser  hard  nice  -10
-appuser  soft  nice  0
+appuser  soft  nice  -10
 ```
 
 ## Conclusion
