@@ -137,10 +137,10 @@ GPG uses a trust model to determine how much you trust each key owner to properl
 
 ### How Trust Affects Key Validity
 
-A key is considered valid if:
+A key is considered valid in the default Web of Trust model if:
 - You have signed it yourself, OR
-- It has been signed by a key you trust at the "Full" level, OR
-- It has been signed by three or more keys you trust at the "Marginal" level
+- It has been signed by enough keys you trust at the "Full" level (default: one), OR
+- It has been signed by enough keys you trust at the "Marginal" level (default: three)
 
 ```mermaid
 flowchart TD
