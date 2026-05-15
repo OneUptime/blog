@@ -73,7 +73,7 @@ sentinel failover-timeout mymaster 60000
 sentinel parallel-syncs mymaster 1
 ```
 
-The `2` means two sentinels must agree that the master is down before failover.
+The `2` is the quorum: two sentinels must agree that the master is objectively down. A failover is then authorized by a majority of the known sentinels.
 
 ## Step 6: Start Sentinel
 
@@ -91,7 +91,7 @@ Stop the master:
 sudo systemctl stop redis
 ```
 
-Watch sentinel logs:
+Query Sentinel for the current master:
 
 ```bash
 redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster
