@@ -125,6 +125,9 @@ sudo chown -R nginx:nginx /var/www/phpsite
 ## Step 6 - Fix SELinux
 
 ```bash
+# Install the SELinux management tools if they are not already installed
+sudo dnf install -y policycoreutils-python-utils
+
 # Set SELinux context for the document root
 sudo semanage fcontext -a -t httpd_sys_content_t "/var/www/phpsite(/.*)?"
 sudo restorecon -Rv /var/www/phpsite/
@@ -228,17 +231,18 @@ curl http://localhost/fpm-status
 
 If PHP-FPM runs on a separate server:
 
-In `/etc/php-fpm.d/www.conf`:
+In `/etc/php-fpm.d/www.conf` on the PHP-FPM server:
 
 ```ini
-listen = 127.0.0.1:9000
+listen = 0.0.0.0:9000
+listen.allowed_clients = NGINX_PRIVATE_IP
 ```
 
-In Nginx:
+In Nginx on the web server:
 
 ```nginx
 location ~ \.php$ {
-    fastcgi_pass 127.0.0.1:9000;
+    fastcgi_pass PHP_FPM_PRIVATE_IP:9000;
     fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
     include fastcgi_params;
 }
