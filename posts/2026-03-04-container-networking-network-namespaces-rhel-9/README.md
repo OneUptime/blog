@@ -16,12 +16,12 @@ Container networking isn't magic. When Podman or Docker creates a container with
 graph TD
     subgraph Host
         PHY[ens192<br>Physical Interface]
-        BR[cni-podman0 / docker0<br>Bridge Interface<br>10.88.0.1/16]
+        BR[podman0 / docker0<br>Bridge Interface<br>10.88.0.1/16]
         VETH1H[veth-abc123]
         VETH2H[veth-def456]
         BR --- VETH1H
         BR --- VETH2H
-        NAT[iptables NAT<br>MASQUERADE]
+        NAT[firewall NAT<br>MASQUERADE]
         BR --> NAT
         NAT --> PHY
     end
@@ -51,7 +51,7 @@ Let's replicate what a container runtime does.
 ### Step 1: Create the Bridge
 
 ```bash
-# Create a bridge (like docker0 or cni-podman0)
+# Create a bridge (like docker0 or podman0)
 
 sudo ip link add container-br0 type bridge
 sudo ip addr add 172.20.0.1/24 dev container-br0
@@ -65,16 +65,17 @@ sudo ip link set container-br0 up
 sudo ip netns add container1
 
 # Create a veth pair
-sudo ip link add veth-host1 type veth peer name eth0
+sudo ip link add veth-host1 type veth peer name veth-cont1
 
 # Move one end into the "container"
-sudo ip link set eth0 netns container1
+sudo ip link set veth-cont1 netns container1
 
 # Attach the other end to the bridge
 sudo ip link set veth-host1 master container-br0
 sudo ip link set veth-host1 up
 
 # Configure the "container" side
+sudo ip netns exec container1 ip link set veth-cont1 name eth0
 sudo ip netns exec container1 ip addr add 172.20.0.2/24 dev eth0
 sudo ip netns exec container1 ip link set eth0 up
 sudo ip netns exec container1 ip link set lo up
@@ -90,7 +91,7 @@ sudo sysctl -w net.ipv4.ip_forward=1
 # Add NAT for the container subnet
 sudo iptables -t nat -A POSTROUTING -s 172.20.0.0/24 ! -o container-br0 -j MASQUERADE
 sudo iptables -A FORWARD -i container-br0 -j ACCEPT
-sudo iptables -A FORWARD -o container-br0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+sudo iptables -A FORWARD -o container-br0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 
 # Set up DNS
 sudo mkdir -p /etc/netns/container1
@@ -117,22 +118,23 @@ sudo iptables -A FORWARD -p tcp -d 172.20.0.2 --dport 80 -j ACCEPT
 # Start a web server in the "container"
 sudo ip netns exec container1 python3 -m http.server 80 &
 
-# Access it from outside
-curl http://localhost:8080
+# Access it from another machine by using the host's IP address
+curl http://<host-ip>:8080
 ```
 
-This is exactly what `podman run -p 8080:80` does.
+This is the same basic kind of NAT and forwarding that `podman run -p 8080:80` sets up, although the exact firewall backend and rule names vary by Podman version and configuration.
 
 ## Adding a Second Container
 
 ```bash
 # Create second container
 sudo ip netns add container2
-sudo ip link add veth-host2 type veth peer name eth0
-sudo ip link set eth0 netns container2
+sudo ip link add veth-host2 type veth peer name veth-cont2
+sudo ip link set veth-cont2 netns container2
 sudo ip link set veth-host2 master container-br0
 sudo ip link set veth-host2 up
 
+sudo ip netns exec container2 ip link set veth-cont2 name eth0
 sudo ip netns exec container2 ip addr add 172.20.0.3/24 dev eth0
 sudo ip netns exec container2 ip link set eth0 up
 sudo ip netns exec container2 ip link set lo up
@@ -170,7 +172,7 @@ bridge link show
 
 ```bash
 # See the NAT rules added by Podman
-sudo iptables -t nat -L -n -v | grep -A 5 "PODMAN\|CNI"
+sudo iptables -t nat -L -n -v | grep -A 5 "PODMAN\|NETAVARK\|CNI"
 
 # See the port forwarding
 sudo iptables -t nat -L PREROUTING -n -v
@@ -188,7 +190,7 @@ podman exec test-web ip addr show
 podman exec test-web ip route show
 
 # Check the bridge on the host
-ip addr show cni-podman0
+ip addr show podman0
 
 # Check NAT rules
 sudo iptables -t nat -L POSTROUTING -v -n
@@ -225,11 +227,14 @@ sudo ip netns del container1
 sudo ip netns del container2
 sudo ip link del container-br0
 
-# Clean up iptables rules
-sudo iptables -t nat -F
-sudo iptables -F FORWARD
+# Clean up the iptables rules added above
+sudo iptables -t nat -D PREROUTING -p tcp --dport 8080 -j DNAT --to-destination 172.20.0.2:80
+sudo iptables -t nat -D POSTROUTING -s 172.20.0.0/24 ! -o container-br0 -j MASQUERADE
+sudo iptables -D FORWARD -p tcp -d 172.20.0.2 --dport 80 -j ACCEPT
+sudo iptables -D FORWARD -o container-br0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+sudo iptables -D FORWARD -i container-br0 -j ACCEPT
 ```
 
 ## Wrapping Up
 
-Container networking on RHEL is built on network namespaces, veth pairs, bridges, and iptables NAT. There's nothing proprietary or mysterious about it. Building it by hand helps you understand exactly what Podman or Docker does when you run a container, and that understanding makes troubleshooting container networking issues much more straightforward. When a container can't connect, you now know exactly which layer to check.
+Container networking on RHEL is built on network namespaces, veth pairs, bridges, and firewall NAT. There's nothing proprietary or mysterious about it. Building it by hand helps you understand exactly what Podman or Docker does when you run a container, and that understanding makes troubleshooting container networking issues much more straightforward. When a container can't connect, you now know exactly which layer to check.
