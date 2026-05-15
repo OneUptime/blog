@@ -14,7 +14,7 @@ Swap space is your safety net when physical RAM runs out. Without it, the OOM ki
 
 Even with plenty of RAM, swap serves important purposes:
 
-- Hibernation support requires swap at least equal to RAM size
+- Hibernation support requires enough swap for the memory image; Red Hat recommends sizing it based on RAM size and workload
 - The kernel can move inactive pages to swap, freeing RAM for active workloads
 - It prevents the OOM killer from stepping in during unexpected memory spikes
 - Some applications expect swap to exist and behave unpredictably without it
@@ -187,15 +187,15 @@ swapon --show
 graph TD
     A[Swap Options] --> B[Swap Partition]
     A --> C[Swap File]
-    B --> D[Better performance]
+    B --> D[Dedicated block device]
     B --> E[Requires partitioning]
     B --> F[Harder to resize]
     C --> G[Easy to create and resize]
-    C --> H[Slightly more overhead]
-    C --> I[Works on any filesystem]
+    C --> H[Filesystem restrictions apply]
+    C --> I[No repartitioning needed]
 ```
 
-For most production RHEL systems, a swap partition (especially on LVM) is the preferred choice. It is slightly faster and integrates well with LVM management workflows.
+For most production RHEL systems, a swap partition (especially on LVM) is the preferred choice. It is a dedicated block device and integrates well with LVM management workflows.
 
 ## Summary
 
