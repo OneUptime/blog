@@ -8,40 +8,41 @@ Description: Learn how to create and use activation keys to register RHEL system
 
 ---
 
-If you manage more than a handful of RHEL systems, typing in your Red Hat username and password on each one gets old fast. Activation keys solve this problem. They let you register systems without exposing credentials, and you can bundle subscription settings, system purpose, and repository choices into a single key. This guide covers creating activation keys and using them to register RHEL systems.
+If you manage more than a handful of RHEL systems, typing in your Red Hat username and password on each one gets old fast. Activation keys solve this problem. They let you register systems without exposing Red Hat account credentials, and you can bundle system purpose and repository choices into a single key. This guide covers creating activation keys and using them to register RHEL systems.
 
 ## What Is an Activation Key?
 
-An activation key is a pre-configured token created in the Red Hat Customer Portal (or Satellite Server). When you register a system with an activation key, the key automatically associates the system with your organization, attaches subscriptions, and can set system purpose attributes. No username or password is needed on the target system.
+An activation key is a pre-configured token created in the Red Hat Hybrid Cloud Console (or Satellite Server). When you register a system with an activation key, the key automatically associates the system with your organization, applies configured system settings, enables configured repositories, and can set system purpose attributes. In entitlement-based or Satellite environments, activation keys can also attach subscriptions. No username or password is needed on the target system.
 
 ## When to Use Activation Keys
 
 - Automated provisioning with Kickstart, Ansible, or cloud-init
 - Registering systems without sharing credentials with other admins
-- Enforcing consistent subscription settings across a fleet
+- Enforcing consistent system purpose and repository settings across a fleet
 - Deploying in environments where interactive login is not practical
 
-## Creating an Activation Key in the Customer Portal
+## Creating an Activation Key in the Hybrid Cloud Console
 
-Log in to the Red Hat Customer Portal at access.redhat.com, then navigate to Subscriptions, then Activation Keys. Click "New" to create one.
+Log in to the Red Hat Hybrid Cloud Console at console.redhat.com, then navigate to Services, System Configuration, then Activation Keys. Click "Create activation key" to create one.
 
 You will need to provide:
 - A name for the key (something descriptive, like `rhel9-webservers`)
-- The service level (Premium, Standard, or Self-Support)
-- Optionally, auto-attach behavior and subscriptions to associate
+- A workload setting, such as latest release or an available Extended Update Support release
+- Optionally, system purpose values such as role, SLA, and usage
+- Optionally, additional repositories to enable after the key is created
 
 ```mermaid
 flowchart LR
-    A[Red Hat Customer Portal] --> B[Subscriptions Section]
+    A[Red Hat Hybrid Cloud Console] --> B[System Configuration]
     B --> C[Activation Keys]
-    C --> D[Create New Key]
-    D --> E[Name + Service Level + Subscriptions]
+    C --> D[Create Activation Key]
+    D --> E[Name + Workload + System Purpose]
     E --> F[Key Ready to Use]
 ```
 
 ## Finding Your Organization ID
 
-To register with an activation key, you also need your organization ID. Find it in the Customer Portal under Subscriptions, or run this on an already-registered system:
+To register with an activation key, you also need your organization ID. Find it on the Activation Keys page in the Hybrid Cloud Console, or run this on an already-registered system:
 
 ```bash
 # Display the organization ID from an already registered system
@@ -62,18 +63,18 @@ sudo subscription-manager register --activationkey=rhel9-webservers --org=123456
 
 Replace `rhel9-webservers` with your key name and `12345678` with your actual organization ID.
 
-The system will authenticate using the activation key, register with Red Hat, and apply whatever subscriptions and settings you configured in the key.
+The system will authenticate using the activation key, register with Red Hat, and apply whatever system settings and repositories you configured in the key.
 
 ## Using Multiple Activation Keys
 
-You can stack multiple activation keys during registration. This is useful when you have a base key for all systems and a specialized key for specific roles:
+If you use Red Hat Satellite, you can stack multiple activation keys during registration. This is useful when you have a base key for all systems and a specialized key for specific roles:
 
 ```bash
 # Register with two activation keys combined
 sudo subscription-manager register --activationkey=rhel9-base,rhel9-database --org=12345678
 ```
 
-The settings from all specified keys are merged. If there are conflicts, the last key takes precedence for most settings.
+The settings from all specified keys are merged. If there are conflicts, the rightmost key takes precedence for conflicting Satellite settings.
 
 ## Activation Keys in Kickstart Deployments
 
@@ -128,20 +129,22 @@ sudo subscription-manager status
 sudo subscription-manager repos --list-enabled
 ```
 
-If using Simple Content Access (SCA), the status will show "Content Access Mode" rather than individual subscription details.
+If using Simple Content Access (SCA), the status can show "Overall Status: Disabled" with a "Content Access Mode" message. That is expected because system-level subscription attachment status is not calculated in SCA mode.
 
 ## Troubleshooting Activation Key Issues
 
-**Invalid activation key**: Double-check the key name. It is case-sensitive. Copy it exactly from the Customer Portal.
+**Invalid activation key**: Double-check the key name. It is case-sensitive. Copy it exactly from the Hybrid Cloud Console or Satellite.
 
-**Organization ID mismatch**: The org ID must match the account that owns the activation key. Verify your org ID in the portal.
+**Organization ID mismatch**: The org ID must match the account that owns the activation key. Verify your org ID in the Hybrid Cloud Console or Satellite.
 
-**No subscriptions attached**: If the activation key does not have auto-attach enabled and no subscriptions are directly associated, the system will register but may not have content access. Either update the key in the portal or run:
+**No subscriptions attached**: If you use entitlement-based subscription management or Satellite without Simple Content Access, and the activation key does not have auto-attach enabled or subscriptions associated, the system will register but may not have content access. Either update the key or run:
 
 ```bash
 # Manually auto-attach after registration
 sudo subscription-manager attach --auto
 ```
+
+If your organization uses Simple Content Access, attaching subscriptions is obsolete and not required. Check that the needed repositories are enabled instead.
 
 **Network issues**: Ensure the system can reach `subscription.rhsm.redhat.com` on port 443. Test connectivity:
 
@@ -154,15 +157,15 @@ curl -v https://subscription.rhsm.redhat.com/subscription 2>&1 | head -20
 
 Activation keys are more secure than username/password registration for several reasons:
 
-- No credentials are stored on the target system or in scripts
+- No Red Hat username or password is stored on the target system or in scripts
 - Keys can be revoked or rotated without changing account passwords
 - You can create purpose-specific keys with limited scope
 - Keys do not grant portal login access, only registration capability
 
 ## Managing Activation Keys
 
-You can list, modify, or delete activation keys in the Customer Portal at any time. If a key is compromised, delete it immediately and create a new one. Existing systems registered with the old key remain registered, but no new systems can use the deleted key.
+You can list, modify, or delete activation keys in the Hybrid Cloud Console or Satellite at any time. If a key is compromised, delete it immediately and create a new one. Existing systems registered with the old key remain registered, but no new systems can use the deleted key.
 
 ## Summary
 
-Activation keys are the preferred way to register RHEL systems at scale. They remove the need for interactive credential entry, keep passwords out of scripts and automation playbooks, and let you standardize subscription and system purpose settings across your infrastructure. Whether you are deploying via Kickstart, cloud-init, or Ansible, activation keys make registration clean and repeatable.
+Activation keys are the preferred way to register RHEL systems at scale. They remove the need for interactive credential entry, keep passwords out of scripts and automation playbooks, and let you standardize system purpose and repository settings across your infrastructure. Whether you are deploying via Kickstart, cloud-init, or Ansible, activation keys make registration clean and repeatable.
