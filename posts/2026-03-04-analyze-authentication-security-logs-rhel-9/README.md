@@ -65,13 +65,13 @@ systemctl status systemd-journald
 Review recent logs to confirm your changes are working:
 
 ```bash
-journalctl --since "5 minutes ago"
-tail -20 /var/log/messages
+journalctl --facility=auth,authpriv --since "5 minutes ago"
+tail -20 /var/log/secure
 ```
 
 ## Step 5 - Open Firewall Ports (If Applicable)
 
-If your setup involves remote logging, open the necessary ports:
+If the system receives remote logs over TCP, open the necessary port:
 
 ```bash
 sudo firewall-cmd --permanent --add-port=514/tcp
