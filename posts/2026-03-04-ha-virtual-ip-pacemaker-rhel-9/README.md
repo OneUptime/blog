@@ -8,7 +8,7 @@ Description: Learn how to set up a highly available virtual IP address with Pace
 
 ---
 
-A virtual IP (VIP) is a floating IP address managed by Pacemaker that automatically moves between cluster nodes during failover. Clients connect to the VIP and are transparently redirected to whichever node currently hosts the service.
+A virtual IP (VIP) is a floating IP address managed by Pacemaker that automatically moves between cluster nodes during failover. Clients connect to the VIP and reach whichever node currently owns the address and hosts the service.
 
 ## Prerequisites
 
@@ -21,9 +21,9 @@ A virtual IP (VIP) is a floating IP address managed by Pacemaker that automatica
 A VIP works by:
 
 1. Pacemaker assigns the IP to the active node's network interface
-2. ARP announcements inform the network of the new MAC address for the IP
+2. Unsolicited ARP packets for IPv4, or Neighbor Advertisement packets for IPv6, inform neighboring systems of the new owner for the IP
 3. When failover occurs, the IP moves to another node
-4. New ARP announcements redirect traffic to the new node
+4. New ARP or Neighbor Advertisement packets update neighboring systems so new traffic reaches the new node
 
 ## Step 1: Choose the VIP Address
 
@@ -52,7 +52,7 @@ Check that the VIP is running:
 sudo pcs status resources
 ```
 
-Check which node has the VIP:
+Check which node has the VIP by running this on the cluster nodes:
 
 ```bash
 ip addr show | grep 192.168.1.100
@@ -75,7 +75,7 @@ sudo pcs resource create AppService systemd:myapp \
 sudo pcs resource group add AppGroup ClusterVIP AppService
 ```
 
-The VIP starts first, then the service. They always run on the same node.
+The VIP starts first, then the service. While both resources are running, the group keeps them on the same node.
 
 ## Step 5: Test Failover
 
@@ -116,7 +116,7 @@ Group them if they must be on the same node:
 sudo pcs resource group add MultiVIP VIP1 VIP2
 ```
 
-Or let them float independently on different nodes for load distribution.
+Or let them float independently on different nodes for separate active/passive services.
 
 ## VIP on a Specific Interface
 
@@ -132,7 +132,7 @@ sudo pcs resource create ClusterVIP ocf:heartbeat:IPaddr2 \
 
 ```bash
 sudo pcs resource create VIP6 ocf:heartbeat:IPaddr2 \
-    ip=fd00::100 cidr_netmask=64 \
+    ip=fd00:0:0:0:0:0:0:100 cidr_netmask=64 \
     op monitor interval=30s
 ```
 
@@ -141,7 +141,9 @@ sudo pcs resource create VIP6 ocf:heartbeat:IPaddr2 \
 The IPaddr2 resource agent monitors by:
 
 1. Checking if the IP is assigned to a local interface
-2. Sending ARP/neighbor solicitation packets
+2. Performing a detailed status check of the resource
+
+When the address is brought online, IPaddr2 sends unsolicited ARP packets for IPv4 or Neighbor Advertisement packets for IPv6. IPv4 ARP refreshes during monitoring can also be configured with the `arp_count_refresh` parameter.
 
 Customize monitor behavior:
 
@@ -198,4 +200,4 @@ sudo pcs resource cleanup ClusterVIP
 
 ## Conclusion
 
-A virtual IP with Pacemaker on RHEL provides seamless failover for client connections. The VIP automatically moves during node failures, and ARP announcements redirect network traffic to the new node. Group the VIP with service resources and configure stickiness to control failover behavior.
+A virtual IP with Pacemaker on RHEL provides failover for the address clients use to reach a service. The VIP automatically moves during node failures, and ARP or Neighbor Advertisement packets update neighboring systems so new traffic reaches the new node. Existing client connections may need to reconnect after a failover. Group the VIP with service resources and configure stickiness to control failover behavior.
