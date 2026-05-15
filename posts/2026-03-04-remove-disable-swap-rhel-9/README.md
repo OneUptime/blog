@@ -8,7 +8,7 @@ Description: Learn how to safely remove and disable swap on RHEL, whether you ar
 
 ---
 
-There are legitimate reasons to disable swap. Kubernetes requires swap to be off on worker nodes. Some database administrators prefer no swap for predictable performance. Or maybe you are reclaiming the space for something else. Whatever the reason, here is how to do it properly on RHEL.
+There are legitimate reasons to disable swap. Kubernetes kubelets do not start with swap enabled by default on Linux worker nodes. Some database administrators prefer no swap for predictable performance. Or maybe you are reclaiming the space for something else. Whatever the reason, here is how to do it properly on RHEL.
 
 ## Before You Disable Swap
 
@@ -17,7 +17,7 @@ Think carefully before removing swap:
 - Systems without swap are vulnerable to OOM kills during memory spikes
 - Some applications assume swap exists and may fail without it
 - Hibernation will not work without swap
-- Kubernetes is the most common valid reason to disable swap (though newer versions can work with swap enabled)
+- Kubernetes is the most common valid reason to disable swap (though newer versions can work with swap enabled when the kubelet is configured for it)
 
 ```mermaid
 graph TD
@@ -74,7 +74,10 @@ Comment out or remove swap entries in `/etc/fstab`:
 
 ```bash
 # Comment out swap lines in fstab
-sed -i '/swap/s/^/#/' /etc/fstab
+sed -i '/^[[:space:]]*[^#].*[[:space:]]swap[[:space:]]/s/^/#/' /etc/fstab
+
+# Reload systemd's generated mount and swap units
+systemctl daemon-reload
 ```
 
 Verify the change:
@@ -121,23 +124,23 @@ lvextend -l +100%FREE /dev/rhel/root
 xfs_growfs /
 ```
 
-## Step 5: Mask the Swap Unit (systemd)
+## Step 5: Reload systemd and Check Swap Units
 
-Systemd might try to activate swap even without fstab. Mask the swap target:
+Systemd generates swap units from `/etc/fstab`, so reload systemd after changing that file:
 
 ```bash
-# Prevent systemd from activating swap
-systemctl mask swap.target
+# Regenerate systemd units after editing fstab
+systemctl daemon-reload
 ```
 
-Check for any auto-generated swap units:
+Check for any swap units that are still active:
 
 ```bash
 # List swap-related systemd units
 systemctl list-units --type=swap
 ```
 
-If any exist, mask them individually:
+If any swap unit is configured outside `/etc/fstab`, mask it individually:
 
 ```bash
 # Mask specific swap units
@@ -153,10 +156,10 @@ For Kubernetes nodes, this is the standard procedure:
 swapoff -a
 
 # Remove swap from fstab
-sed -i '/swap/s/^/#/' /etc/fstab
+sed -i '/^[[:space:]]*[^#].*[[:space:]]swap[[:space:]]/s/^/#/' /etc/fstab
 
-# Mask swap target
-systemctl mask swap.target
+# Reload systemd units
+systemctl daemon-reload
 
 # Verify swap is off
 free -h | grep Swap
@@ -169,11 +172,11 @@ The output should show `Swap: 0B 0B 0B`.
 If you change your mind:
 
 ```bash
-# Unmask the swap target
-systemctl unmask swap.target
-
 # Uncomment swap lines in fstab
-sed -i '/swap/s/^#//' /etc/fstab
+sed -i '/^[[:space:]]*#[^#].*[[:space:]]swap[[:space:]]/s/^[[:space:]]*#//' /etc/fstab
+
+# Reload systemd units
+systemctl daemon-reload
 
 # Activate swap
 swapon -a
@@ -191,6 +194,7 @@ mkswap /dev/rhel/swap
 
 # Add fstab entry and enable
 echo "/dev/rhel/swap  none  swap  defaults  0 0" >> /etc/fstab
+systemctl daemon-reload
 swapon -a
 ```
 
@@ -211,4 +215,4 @@ systemctl list-units --type=swap --state=active
 
 ## Summary
 
-Disabling swap on RHEL involves four steps: turn it off with `swapoff -a`, remove fstab entries, optionally remove the swap device, and mask the systemd swap target. The most common reason is Kubernetes node preparation. Always make sure you have enough physical RAM before removing swap, and keep the procedure documented so you can reverse it if needed.
+Disabling swap on RHEL involves four steps: turn it off with `swapoff -a`, remove fstab entries, reload systemd, and optionally remove the swap device. The most common reason is Kubernetes node preparation. Always make sure you have enough physical RAM before removing swap, and keep the procedure documented so you can reverse it if needed.
