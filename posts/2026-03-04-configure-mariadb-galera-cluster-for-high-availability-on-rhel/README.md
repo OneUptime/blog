@@ -69,6 +69,7 @@ Copy the same configuration but change node-specific values:
 ```bash
 sudo firewall-cmd --permanent --add-port=3306/tcp   # MySQL connections
 sudo firewall-cmd --permanent --add-port=4567/tcp   # Galera replication
+sudo firewall-cmd --permanent --add-port=4567/udp   # Galera replication
 sudo firewall-cmd --permanent --add-port=4568/tcp   # Incremental State Transfer
 sudo firewall-cmd --permanent --add-port=4444/tcp   # State Snapshot Transfer
 sudo firewall-cmd --reload
@@ -137,4 +138,4 @@ Enable MariaDB on all nodes so they start automatically on boot:
 sudo systemctl enable mariadb
 ```
 
-A Galera Cluster requires a minimum of three nodes to avoid split-brain situations. Always use an odd number of nodes for proper quorum.
+A Galera Cluster should use at least three voting members to avoid split-brain situations. Always use an odd number of voting members for proper quorum, such as three database nodes or two database nodes plus a Galera Arbitrator.
