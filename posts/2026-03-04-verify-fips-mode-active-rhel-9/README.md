@@ -92,11 +92,11 @@ openssl dgst -sha512 /etc/hostname
 ### Test TLS connections
 
 ```bash
-# List available ciphers (should only show FIPS-approved)
-openssl ciphers -v 'ALL' 2>/dev/null | wc -l
+# List the default enabled TLS ciphers after system crypto policy is applied
+openssl ciphers -v 2>/dev/null | wc -l
 
 # Try to connect with a non-FIPS cipher (should fail)
-openssl s_client -connect example.com:443 -cipher RC4-SHA 2>&1 | head -5
+openssl s_client -connect example.com:443 -tls1_2 -cipher RC4-SHA 2>&1 | head -5
 # Expected: Error - no matching cipher
 
 # Connect with a FIPS-approved cipher (should work)
@@ -202,7 +202,11 @@ echo ""
 
 # Check 5: OpenSSL FIPS provider
 echo "5. OpenSSL FIPS provider:"
-openssl list -providers 2>/dev/null | grep -q "fips" && echo "   PASS - FIPS provider active" || echo "   FAIL - FIPS provider not found"
+if openssl list -providers 2>/dev/null | awk '/^[[:space:]]*[[:alnum:]_.-]+[[:space:]]*$/ { in_fips=(tolower($1)=="fips") } in_fips && /status:[[:space:]]*active/ { found=1 } END { exit found ? 0 : 1 }'; then
+    echo "   PASS - FIPS provider active"
+else
+    echo "   FAIL - FIPS provider not active"
+fi
 echo ""
 
 # Check 6: MD5 rejection
