@@ -15,8 +15,9 @@ The Splunk Universal Forwarder sends log data from RHEL 9 servers to a Splunk de
 ```bash
 # Download from Splunk
 
-wget -O splunkforwarder.rpm 'https://download.splunk.com/products/universalforwarder/releases/9.1.0/linux/splunkforwarder-9.1.0-x86_64.rpm'
+wget -O splunkforwarder.rpm 'https://download.splunk.com/products/universalforwarder/releases/10.2.1/linux/splunkforwarder-10.2.1-c892b66d163d.x86_64.rpm'
 sudo rpm -ivh splunkforwarder.rpm
+sudo chown -R splunkfwd:splunkfwd /opt/splunkforwarder
 ```
 
 ## Initial Configuration
@@ -45,13 +46,15 @@ sudo /opt/splunkforwarder/bin/splunk add monitor /var/log/audit/audit.log -index
 ## Configure as a systemd Service
 
 ```bash
-sudo /opt/splunkforwarder/bin/splunk enable boot-start -systemd-managed 1 -user splunkfwd
+sudo /opt/splunkforwarder/bin/splunk stop
+sudo /opt/splunkforwarder/bin/splunk enable boot-start -systemd-managed 1 -user splunkfwd -group splunkfwd
 sudo systemctl start SplunkForwarder
 ```
 
-## Configure Firewall
+## Configure Firewall on the Receiver
 
 ```bash
+# Run on the Splunk receiver or indexer if firewalld blocks inbound forwarding traffic.
 sudo firewall-cmd --permanent --add-port=9997/tcp
 sudo firewall-cmd --reload
 ```
@@ -66,4 +69,3 @@ sudo /opt/splunkforwarder/bin/splunk list monitor
 ## Conclusion
 
 The Splunk Universal Forwarder on RHEL 9 provides reliable log shipping to your Splunk deployment. Configure the monitors for all relevant log files and verify data flow regularly.
-
