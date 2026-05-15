@@ -10,6 +10,8 @@ Description: Learn how to grow a VDO logical volume on RHEL to expand storage ca
 
 As storage needs increase, you may need to grow a VDO volume. RHEL supports online growth of VDO volumes, meaning you do not need to unmount or stop applications. You can grow the logical size independently of the physical size, or grow both.
 
+The `vdo` commands below apply to standalone VDO volumes. If you are using the LVM-VDO integration, use the LVM commands in the later section instead.
+
 ## Checking Current VDO Volume Size
 
 ```bash
@@ -63,8 +65,8 @@ sudo vdo status --name=vdo0 | grep "Physical size"
 If you are using the LVM-VDO integration (recommended on RHEL 9+):
 
 ```bash
-# Check current LV size
-sudo lvs -o name,size,vdo_saving_percent
+# Check current LV size and physical usage
+sudo lvs -o name,size,data_percent,vdo_saving_percent
 
 # Grow the VDO pool LV
 sudo lvextend -L +100G /dev/vg0/vdo_pool
