@@ -41,20 +41,20 @@ mokutil --sb-state
 # Output: SecureBoot enabled
 
 # Alternative check using the EFI variable
-od -An -t u1 /sys/firmware/efi/efivars/SecureBoot-* | tail -1
-# Last byte: 1 = enabled, 0 = disabled
+od -An -t u1 /sys/firmware/efi/efivars/SecureBoot-* | awk '{print $NF}'
+# 1 = enabled, 0 = disabled
 ```
 
 ## How RHEL Secure Boot Works on Hyper-V
 
 The boot chain is verified in this order:
 
-1. Hyper-V UEFI firmware verifies the GRUB2 bootloader (signed by Microsoft)
-2. GRUB2 verifies the Linux kernel (signed by Red Hat)
+1. Hyper-V UEFI firmware verifies the shim bootloader (signed by Microsoft)
+2. shim verifies GRUB2, and GRUB2 verifies the Linux kernel (signed by Red Hat)
 3. The kernel enforces module signature verification
 
 ```bash
-# Verify the bootloader is signed
+# Verify shim is signed
 pesign -S -i /boot/efi/EFI/redhat/shimx64.efi
 
 # Verify the kernel is signed
