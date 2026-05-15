@@ -26,8 +26,8 @@ testdisk is the go-to tool for partition recovery on Linux.
 
 ```bash
 # Enable EPEL repository
-
-sudo dnf install -y epel-release
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 
 # Install testdisk
 sudo dnf install -y testdisk
@@ -84,10 +84,11 @@ If Quick Search does not find your partition:
 Once you have found the deleted partition:
 
 1. Select it in the testdisk interface
-2. Press **Enter** to proceed
-3. Select **Write** to write the restored partition table
-4. Confirm the operation
-5. Reboot or run `partprobe` to reload the partition table
+2. Use the arrow keys to change it from **D** (deleted) to **P** (primary), **L** (logical), or **\*** (bootable), as appropriate
+3. Press **Enter** to proceed
+4. Select **Write** to write the restored partition table
+5. Confirm the operation
+6. Reboot or run `partprobe` to reload the partition table
 
 ```bash
 # After testdisk writes the partition table
@@ -97,6 +98,7 @@ sudo partprobe /dev/sdb
 lsblk /dev/sdb
 
 # Try mounting it
+sudo mkdir -p /mnt/recovered
 sudo mount /dev/sdb1 /mnt/recovered
 ls /mnt/recovered
 ```
@@ -129,9 +131,11 @@ sudo fdisk /dev/sdb
 # n (new partition)
 # Enter the exact start sector
 # Enter the exact end sector or size
+# If asked whether to remove an existing filesystem signature, answer No
 # w (write)
 
 # Do NOT format - just mount
+sudo mkdir -p /mnt/recovered
 sudo mount /dev/sdb1 /mnt/recovered
 ```
 
@@ -151,15 +155,17 @@ sudo fdisk -l /dev/sdb
 
 ## Recovering GPT Partitions
 
-GPT stores a backup partition table at the end of the disk. If the primary GPT is corrupted but the backup is intact:
+GPT stores a backup header and partition table at the end of the disk. If the primary GPT header is corrupted but the backup is intact:
 
 ```bash
-# Recover GPT from backup with gdisk
+# Recover the primary GPT header from the backup with gdisk
 sudo gdisk /dev/sdb
 # r (recovery menu)
 # b (rebuild primary GPT from backup)
 # w (write)
 ```
+
+If the primary GPT partition table is damaged, use `c` in the same recovery menu to load the backup partition table before writing.
 
 ## File Recovery When Partition Recovery Fails
 
