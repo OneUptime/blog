@@ -24,8 +24,8 @@ oscap xccdf eval \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml || true
 
 # Get the overall picture
-echo "Pass: $(grep -c 'result="pass"' /tmp/stig-results.xml)"
-echo "Fail: $(grep -c 'result="fail"' /tmp/stig-results.xml)"
+echo "Pass: $(grep -c '<result>pass</result>' /tmp/stig-results.xml)"
+echo "Fail: $(grep -c '<result>fail</result>' /tmp/stig-results.xml)"
 ```
 
 ```mermaid
@@ -45,6 +45,8 @@ flowchart TD
 ### Enable FIPS Mode
 
 This is the single most common CAT I finding:
+
+Red Hat recommends enabling FIPS mode during installation for systems that must be FIPS compliant. On an existing system, `fips-mode-setup --enable` switches the system into FIPS mode, but you may still need to regenerate keys that were created before FIPS mode was enabled.
 
 ```bash
 # Check current FIPS status
@@ -137,6 +139,9 @@ done
 ### Account Lockout
 
 ```bash
+# Enable pam_faillock in the authselect-managed PAM stack
+authselect enable-feature with-faillock
+
 # Configure faillock
 cat > /etc/security/faillock.conf << 'EOF'
 deny = 3
@@ -183,6 +188,9 @@ sed -i 's/^max_log_file .*/max_log_file = 50/' /etc/audit/auditd.conf
 sed -i 's/^space_left_action.*/space_left_action = email/' /etc/audit/auditd.conf
 sed -i 's/^action_mail_acct.*/action_mail_acct = root/' /etc/audit/auditd.conf
 sed -i 's/^admin_space_left_action.*/admin_space_left_action = single/' /etc/audit/auditd.conf
+
+# Reload auditd configuration
+service auditd restart
 ```
 
 ### Kernel Parameters
@@ -253,9 +261,9 @@ oscap xccdf eval \
 
 # Compare before and after
 echo "Before remediation:"
-echo "  Fail: $(grep -c 'result="fail"' /tmp/stig-results.xml)"
+echo "  Fail: $(grep -c '<result>fail</result>' /tmp/stig-results.xml)"
 echo "After remediation:"
-echo "  Fail: $(grep -c 'result="fail"' /tmp/stig-post-fix.xml)"
+echo "  Fail: $(grep -c '<result>fail</result>' /tmp/stig-post-fix.xml)"
 ```
 
 Work through STIG findings methodically. Do not try to fix everything at once. Start with CAT I, verify those are clean, then move to CAT II and CAT III. Document any items you cannot fix with a POA&M (Plan of Action and Milestones) that explains why and what compensating controls are in place.
