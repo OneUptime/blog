@@ -211,11 +211,17 @@ smtpd_sender_restrictions =
 
 ### Block Specific Client IPs
 
-Create `/etc/postfix/client_access`:
+Create `/etc/postfix/client_access` for individual client IPs:
 
 ```bash
 # Block abusive IPs
 1.2.3.4         REJECT Too many spam attempts
+```
+
+Create `/etc/postfix/client_cidr_access` for client networks:
+
+```bash
+# Block abusive networks
 5.6.7.0/24      REJECT Known spam network
 ```
 
@@ -223,11 +229,14 @@ Create `/etc/postfix/client_access`:
 sudo postmap /etc/postfix/client_access
 ```
 
+The CIDR table is read directly and does not need `postmap`.
+
 Add to `main.cf`:
 
 ```bash
 smtpd_client_restrictions =
     check_client_access hash:/etc/postfix/client_access,
+    check_client_access cidr:/etc/postfix/client_cidr_access,
     permit_mynetworks,
     reject_unknown_client_hostname
 ```
@@ -262,10 +271,10 @@ Create `/etc/postfix/body_checks`:
 
 ## Monitoring Rate Limit Effectiveness
 
-Check the anvil statistics:
+Check Postfix status and recent anvil log entries:
 
 ```bash
-# View anvil rate limit statistics
+# Check Postfix status and recent anvil logs
 sudo postfix status
 sudo grep "anvil" /var/log/maillog | tail -20
 ```
@@ -273,7 +282,7 @@ sudo grep "anvil" /var/log/maillog | tail -20
 Check how many connections are being rejected:
 
 ```bash
-# Count rejections in the last hour
+# Count logged rejections in the current maillog
 sudo grep "NOQUEUE: reject" /var/log/maillog | wc -l
 
 # See rejection reasons
