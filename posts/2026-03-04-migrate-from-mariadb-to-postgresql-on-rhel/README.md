@@ -13,9 +13,10 @@ Migrating from MariaDB to PostgreSQL involves converting schemas, data types, an
 ## Install pgloader
 
 ```bash
-# Install pgloader from EPEL
+# Install pgloader from EPEL on RHEL 9
 
-sudo dnf install -y epel-release
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 sudo dnf install -y pgloader
 
 # Verify installation
@@ -28,7 +29,7 @@ pgloader --version
 # Create a read-only user for the migration
 mysql -u root -p -e "
 CREATE USER 'migrator'@'localhost' IDENTIFIED BY 'migratorpass';
-GRANT SELECT, SHOW VIEW, TRIGGER, LOCK TABLES ON myapp.* TO 'migrator'@'localhost';
+GRANT SELECT, SHOW VIEW, LOCK TABLES ON myapp.* TO 'migrator'@'localhost';
 FLUSH PRIVILEGES;
 "
 
@@ -106,7 +107,7 @@ pgloader /tmp/migrate.load
 ## Verify the Migration
 
 ```bash
-# Count rows in MariaDB
+# Review approximate row estimates in MariaDB
 mysql -u migrator -p -e "
 SELECT table_name, table_rows
 FROM information_schema.tables
@@ -114,7 +115,7 @@ WHERE table_schema = 'myapp'
 ORDER BY table_name;
 "
 
-# Count rows in PostgreSQL
+# Review approximate row estimates in PostgreSQL
 sudo -u postgres psql -d myapp_pg -c "
 SELECT schemaname, relname, n_live_tup
 FROM pg_stat_user_tables
@@ -131,13 +132,13 @@ sudo -u postgres psql -d myapp_pg -c "SELECT COUNT(*) FROM users;"
 ```bash
 MariaDB              PostgreSQL
 ---------            ----------
-TINYINT              SMALLINT
+TINYINT              SMALLINT (TINYINT(1) may map to BOOLEAN)
 MEDIUMINT            INTEGER
 INT AUTO_INCREMENT   SERIAL
 BIGINT AUTO_INCREMENT BIGSERIAL
-DATETIME             TIMESTAMP
+DATETIME             TIMESTAMPTZ
 DOUBLE               DOUBLE PRECISION
-ENUM(...)            TEXT (with CHECK constraint)
+ENUM(...)            PostgreSQL enum type, or TEXT with a custom cast rule
 LONGTEXT             TEXT
 BLOB                 BYTEA
 ```
