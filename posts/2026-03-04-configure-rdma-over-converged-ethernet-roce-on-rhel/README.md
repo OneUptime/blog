@@ -59,12 +59,13 @@ PFC prevents packet drops, which is critical for RDMA:
 ```bash
 # Install the Data Center Bridging tools
 sudo dnf install -y lldpad
+sudo systemctl enable --now lldpad
 
 # Enable DCBX and PFC on priority 3
 sudo dcbtool sc enp1s0 dcb on
-sudo dcbtool sc enp1s0 pfc e:1 a:1 w:1
+sudo dcbtool sc enp1s0 pfc e:1 a:1 w:1 pfcup:00010000
 
-# Enable PFC on priority 3
+# On NVIDIA/Mellanox adapters, enable PFC on priority 3
 sudo mlnx_qos -i enp1s0 --pfc 0,0,0,1,0,0,0,0
 ```
 
@@ -74,7 +75,7 @@ Configure the adapter for RoCEv2 (recommended for routable RDMA):
 
 ```bash
 # Check current RoCE mode
-cat /sys/class/infiniband/mlx5_0/ports/1/gid_attrs/types/0
+cma_roce_mode -d mlx5_0 -p 1
 
 # Set default RoCE mode to v2 via cma_roce_mode
 sudo cma_roce_mode -d mlx5_0 -p 1 -m 2
