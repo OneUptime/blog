@@ -52,7 +52,7 @@ High `%iowait` indicates disk I/O is a bottleneck.
 
 ### Device Section
 
-- **tps** - Transfers per second (I/O operations per second)
+- **tps** - Transfers per second issued to the device (a transfer is an I/O request after possible merging)
 - **kB_read/s** - Kilobytes read per second
 - **kB_wrtn/s** - Kilobytes written per second
 - **kB_dscd/s** - Kilobytes discarded per second (TRIM operations)
@@ -82,7 +82,7 @@ Additional fields include:
 
 ### %util (Utilization)
 
-When `%util` approaches 100%, the device is saturated:
+When `%util` approaches 100%, the device may be saturated, especially for devices that serve requests serially:
 
 ```bash
 iostat -x 1 | awk '/^sd/ && $NF > 80 {print $1, "util:", $NF"%"}'
@@ -147,13 +147,19 @@ Create a simple monitoring script:
 ```bash
 #!/bin/bash
 echo "Monitoring disk I/O - Press Ctrl+C to stop"
-echo "Timestamp | Device | r/s | w/s | rMB/s | wMB/s | await | util%"
+echo "Timestamp | Device | r/s | w/s | rMB/s | wMB/s | r_await | w_await | util%"
 echo "---"
 iostat -xmt 1 | awk '
-/^[0-9]/ { timestamp = $1" "$2 }
-/^sd|^nvme|^vd/ {
-    printf "%s | %s | %.1f | %.1f | %.1f | %.1f | %.1f | %.1f\n",
-        timestamp, $1, $2, $8, $3, $9, $10, $NF
+/^[0-9]/ { timestamp = $1" "$2; next }
+/^Device/ {
+    for (i = 1; i <= NF; i++) {
+        col[$i] = i
+    }
+    next
+}
+/^(sd|nvme|vd)/ {
+    printf "%s | %s | %.1f | %.1f | %.1f | %.1f | %.1f | %.1f | %.1f\n",
+        timestamp, $1, $(col["r/s"]), $(col["w/s"]), $(col["rMB/s"]), $(col["wMB/s"]), $(col["r_await"]), $(col["w_await"]), $(col["%util"])
 }'
 ```
 
