@@ -96,6 +96,7 @@ A basic SCTP server in C using lksctp:
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/sctp.h>
@@ -104,10 +105,12 @@ int main() {
     int sock, client;
     struct sockaddr_in addr;
     char buffer[1024];
+    ssize_t n;
 
     /* Create an SCTP socket */
     sock = socket(AF_INET, SOCK_STREAM, IPPROTO_SCTP);
 
+    memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(5000);
     addr.sin_addr.s_addr = INADDR_ANY;
@@ -117,8 +120,11 @@ int main() {
 
     printf("SCTP server listening on port 5000\n");
     client = accept(sock, NULL, NULL);
-    sctp_recvmsg(client, buffer, sizeof(buffer), NULL, 0, NULL, 0);
-    printf("Received: %s\n", buffer);
+    n = sctp_recvmsg(client, buffer, sizeof(buffer) - 1, NULL, 0, NULL, 0);
+    if (n > 0) {
+        buffer[n] = '\0';
+        printf("Received: %s\n", buffer);
+    }
 
     close(client);
     close(sock);
