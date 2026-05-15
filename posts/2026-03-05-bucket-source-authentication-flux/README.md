@@ -28,7 +28,7 @@ Each provider supports different authentication approaches.
 | `generic` | accesskey/secretkey | N/A | S3-compatible API |
 | `aws` | accesskey/secretkey | IRSA | EKS recommended |
 | `gcp` | Service account JSON | Workload Identity | GKE recommended |
-| `azure` | Account key, SAS token | Managed Identity | AKS recommended |
+| `azure` | Account key, SAS token | Workload Identity / Managed Identity | AKS recommended |
 
 ## Static Credentials for Generic S3 Provider
 
@@ -228,12 +228,35 @@ spec:
     name: azure-sas-creds
 ```
 
-### Azure Managed Identity
+### Azure Workload Identity
 
-With Managed Identity enabled on AKS, no secret is needed.
+With Azure Workload Identity configured for the source-controller service account, no secret is needed.
+
+```bash
+# Annotate and label the source-controller service account for Azure Workload Identity
+kubectl annotate serviceaccount source-controller \
+  --namespace flux-system \
+  --overwrite \
+  azure.workload.identity/client-id=YOUR_MANAGED_IDENTITY_CLIENT_ID \
+  azure.workload.identity/tenant-id=YOUR_TENANT_ID
+
+kubectl label serviceaccount source-controller \
+  --namespace flux-system \
+  --overwrite \
+  azure.workload.identity/use=true
+
+# Label the source-controller pods so the Azure Workload Identity webhook injects credentials
+kubectl patch deployment source-controller \
+  --namespace flux-system \
+  --type='merge' \
+  -p '{"spec":{"template":{"metadata":{"labels":{"azure.workload.identity/use":"true"}}}}}'
+
+# Restart source-controller
+kubectl rollout restart deployment/source-controller -n flux-system
+```
 
 ```yaml
-# flux-system/bucket-azure-mi.yaml
+# flux-system/bucket-azure-workload-identity.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
@@ -244,7 +267,7 @@ spec:
   provider: azure
   bucketName: my-manifests
   endpoint: https://mystorageaccount.blob.core.windows.net
-  # No secretRef -- Managed Identity provides credentials
+  # No secretRef -- Azure Workload Identity provides credentials
 ```
 
 ## TLS Certificate Authentication
@@ -311,7 +334,7 @@ flowchart TD
     A[Choose provider] --> B{Cloud managed K8s?}
     B -->|Yes, EKS| C[Use IRSA]
     B -->|Yes, GKE| D[Use Workload Identity]
-    B -->|Yes, AKS| E[Use Managed Identity]
+    B -->|Yes, AKS| E[Use Workload Identity]
     B -->|No| F{Self-hosted storage?}
     F -->|Yes| G[Use generic + static creds]
     F -->|No| H[Use provider-specific static creds]
@@ -322,7 +345,7 @@ flowchart TD
 
 ## Best Practices
 
-1. **Prefer cloud IAM over static credentials.** Use IRSA, Workload Identity, or Managed Identity whenever running on a managed Kubernetes service.
+1. **Prefer cloud IAM over static credentials.** Use IRSA or Workload Identity whenever running on a managed Kubernetes service.
 
 2. **Scope credentials to minimum permissions.** Grant only read access to the specific bucket Flux needs.
 
@@ -334,4 +357,4 @@ flowchart TD
 
 ## Conclusion
 
-Flux CD provides flexible authentication options for Bucket sources across all major cloud providers and S3-compatible storage backends. Cloud-native IAM integration (IRSA, Workload Identity, Managed Identity) is the recommended approach for managed Kubernetes services, while static credentials with the `generic` provider cover self-hosted and S3-compatible storage. Regardless of the method you choose, follow the principle of least privilege and rotate credentials regularly.
+Flux CD provides flexible authentication options for Bucket sources across all major cloud providers and S3-compatible storage backends. Cloud-native IAM integration (IRSA and Workload Identity) is the recommended approach for managed Kubernetes services, while static credentials with the `generic` provider cover self-hosted and S3-compatible storage. Regardless of the method you choose, follow the principle of least privilege and rotate credentials regularly.
