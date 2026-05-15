@@ -89,7 +89,13 @@ sudo vi /etc/chrony.conf
 ```bash
 # No external NTP sources - we are the reference
 # Use the local clock as the time source, stratum 8
-local stratum 8
+local stratum 8 orphan
+
+# Allow manual time input with chronyc settime
+manual
+
+# Poll the secondary server for orphan-mode failover
+server 10.0.0.2 iburst
 
 # Allow the local network to sync
 allow 10.0.0.0/8
@@ -109,7 +115,7 @@ log tracking measurements statistics
 logdir /var/log/chrony
 ```
 
-The `local stratum 8` directive tells chrony to serve time from the local clock with stratum 8. Clients will see this as a low-quality source (higher stratum means lower quality), which is honest.
+The `local stratum 8 orphan` directive tells chrony to serve time from the local clock with stratum 8 when needed. Clients will see this as a low-quality source (higher stratum means lower quality), which is honest.
 
 ```bash
 # Restart chrony to apply changes
@@ -121,14 +127,14 @@ sudo systemctl restart chronyd
 For redundancy, set up a second server that syncs to the primary and can take over if the primary goes down:
 
 ```bash
-# Sync to the primary NTP server
+# Poll the primary NTP server for orphan-mode failover
 server 10.0.0.1 iburst
 
-# Peer with the primary for mutual backup
-peer 10.0.0.1
+# Allow manual time input with chronyc settime
+manual
 
-# If primary is unreachable, serve from local clock
-local stratum 9 orphan
+# Use the same local/orphan configuration as the primary
+local stratum 8 orphan
 
 # Allow network clients
 allow 10.0.0.0/8
@@ -140,7 +146,7 @@ makestep 1.0 3
 rtcsync
 ```
 
-The `orphan` option on the `local` directive means this server only activates its local clock source when it cannot reach any other server. This prevents two servers from both insisting on their own time.
+The `orphan` option on the `local` directive lets both servers use the same local configuration and poll each other. The server with the smallest reference ID serves from its local clock, and the other server synchronizes to it. If that server fails, the other can take over.
 
 ### Configure Client Systems
 
@@ -171,10 +177,17 @@ sudo firewall-cmd --reload
 
 ## Setting the Initial Time
 
-On an isolated network, you need to set the time manually on the primary NTP server before anything else can sync:
+On an isolated network, you need to set the time manually on the primary NTP server before anything else can sync. If you added the `manual` directive above, use `chronyc settime` so chrony can update its drift estimate:
 
 ```bash
-# Set the system time manually
+# Set the system time through chrony
+sudo chronyc settime "2026-03-04 12:00:00"
+```
+
+You can also set the system clock directly:
+
+```bash
+# Set the system time manually outside chrony
 sudo timedatectl set-time "2026-03-04 12:00:00"
 ```
 
@@ -202,7 +215,7 @@ Without an external reference, your primary server's clock will drift. The rate 
 To manage drift:
 
 1. **Check drift periodically**: Compare against a known reference (even a wristwatch or phone carried into the secure area)
-2. **Correct manually when needed**: Use `timedatectl set-time` on the primary server
+2. **Correct manually when needed**: Use `chronyc settime` or `timedatectl set-time` on the primary server
 3. **Use good hardware**: Physical servers with quality oscillators drift less
 
 ```bash
@@ -253,9 +266,9 @@ If all offsets are within a few milliseconds of zero (relative to the primary se
 Establish a procedure for periodically correcting the primary server's time. On many isolated networks, this is done during maintenance windows:
 
 ```bash
-# On the primary NTP server, step the time to the correct value
-sudo chronyc makestep
-# Or set it explicitly
+# On the primary NTP server, set the time to the correct value
+sudo chronyc settime "2026-03-04 15:30:00"
+# Or set the system clock directly
 sudo timedatectl set-time "2026-03-04 15:30:00"
 ```
 
