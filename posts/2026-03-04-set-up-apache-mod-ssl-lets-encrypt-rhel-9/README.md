@@ -24,8 +24,11 @@ HTTPS is no longer optional. Browsers flag unencrypted sites as insecure, and se
 
 sudo dnf install -y mod_ssl
 
+# Enable the CodeReady Builder repository required by some EPEL packages
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+
 # Enable the EPEL repository (Certbot lives here)
-sudo dnf install -y epel-release
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 
 # Install Certbot and the Apache plugin
 sudo dnf install -y certbot python3-certbot-apache
@@ -147,7 +150,7 @@ sudo certbot renew --dry-run
 sudo certbot certificates
 ```
 
-The timer runs twice daily and only renews certificates that are within 30 days of expiry.
+The timer runs twice daily. With current EPEL 9 Certbot packages, it only renews certificates that are within 30 days of expiry; newer Certbot releases renew when less than one-third of the certificate lifetime remains.
 
 ## Step 7: Harden SSL Configuration
 
