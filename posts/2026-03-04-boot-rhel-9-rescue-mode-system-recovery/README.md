@@ -10,7 +10,7 @@ Description: A step-by-step guide to booting RHEL into rescue mode (single-user 
 
 ## What Is Rescue Mode?
 
-Rescue mode on RHEL is a minimal boot target (systemd's rescue.target) that starts a single-user shell with basic system services. The root filesystem is mounted read-write, networking is available if needed, and you get a root shell to fix whatever went wrong.
+Rescue mode on RHEL is a minimal boot target (systemd's rescue.target) that starts a single-user shell with basic system services. The system attempts to mount local filesystems, does not activate network interfaces by default, and gives you a root shell after authentication so you can fix whatever went wrong.
 
 This is the mode you reach for when the system boots but something is broken: a misconfigured service, a bad fstab entry, a full disk, or a locked-out user account.
 
@@ -20,7 +20,7 @@ This is the mode you reach for when the system boots but something is broken: a 
 flowchart TD
     A["System Recovery Modes"] --> B["Rescue Mode<br/>(rescue.target)"]
     A --> C["Emergency Mode<br/>(emergency.target)"]
-    B --> D["Root filesystem mounted read-write<br/>Basic services running<br/>Networking available<br/>Logging active"]
+    B --> D["Local filesystems mounted<br/>Basic services running<br/>Network interfaces not activated<br/>Logging active"]
     C --> E["Root filesystem mounted read-only<br/>Minimal services<br/>No networking<br/>Bare shell only"]
 ```
 
@@ -31,14 +31,14 @@ Use rescue mode when you can, and emergency mode when rescue mode itself fails.
 1. Reboot the system (or power it on)
 2. When the GRUB menu appears, highlight the kernel entry you want to boot
 3. Press `e` to edit the boot entry
-4. Find the line starting with `linux` or `linuxefi`
+4. Find the line starting with `linux`
 5. Append `systemd.unit=rescue.target` at the end of that line
 6. Press `Ctrl+X` or `F10` to boot
 
 ```bash
 # The kernel line will look something like:
 
-linuxefi /vmlinuz-5.14.0-362.el9.x86_64 root=/dev/mapper/rhel-root ro crashkernel=256M ... systemd.unit=rescue.target
+linux ($root)/vmlinuz-5.14.0-362.el9.x86_64 root=/dev/mapper/rhel-root ro crashkernel=256M ... systemd.unit=rescue.target
 ```
 
 ## Booting into Rescue Mode with systemctl
@@ -56,9 +56,9 @@ This immediately drops you to a rescue shell. All non-essential services are sto
 
 When you enter rescue mode, you get:
 
-- A root shell (password required unless booting from GRUB edit)
-- The root filesystem mounted read-write
-- Local filesystems mounted (from /etc/fstab)
+- A root shell after the root password prompt
+- Local filesystems mounted (from /etc/fstab), if they can be mounted
+- The root filesystem typically remounted read-write unless a problem prevents it
 - Basic system logging
 - No network services by default (but you can start them)
 - No multi-user services
@@ -111,7 +111,7 @@ systemctl enable failing-service.service
 ### Resetting a Root Password
 
 ```bash
-# Simply set a new password
+# If you can authenticate to the rescue shell, set a new password
 passwd root
 ```
 
@@ -133,7 +133,6 @@ mount -a
 ```bash
 # Start networking if needed
 systemctl start NetworkManager
-systemctl start network
 
 # Reinstall a broken package
 dnf reinstall <package-name>
