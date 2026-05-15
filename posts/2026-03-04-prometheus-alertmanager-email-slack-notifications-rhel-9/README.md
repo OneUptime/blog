@@ -1,16 +1,16 @@
-# How to Set Up Prometheus Alertmanager for Notifications on RHEL 9
+# How to Set Up Basic Monitoring Tools on RHEL 9
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Prometheus, Alertmanager, Notification
+Tags: RHEL, Prometheus, Monitoring
 
-Description: Configure Prometheus Alertmanager on RHEL 9 for email and Slack alert notifications.
+Description: Configure basic monitoring tools on RHEL 9.
 
 ---
 
 ## Overview
 
-Configure Prometheus Alertmanager on RHEL 9 for email and Slack alert notifications. Effective monitoring is critical for maintaining system health, detecting issues early, and planning capacity.
+Configure basic monitoring tools on RHEL 9. Effective monitoring is critical for maintaining system health, detecting issues early, and planning capacity.
 
 ## Prerequisites
 
@@ -78,8 +78,8 @@ curl -s http://localhost:9090/api/v1/query?query=up
 
 ## Step 6 - Set Up Alerting (Optional)
 
-Configure alerts based on thresholds so you are notified before issues become critical. Use Prometheus Alertmanager, Nagios notifications, or Red Hat Insights recommendations depending on your stack.
+Configure alerts based on thresholds so you are notified before issues become critical. If you use Prometheus, configure alerting rules and Alertmanager receivers for notification routing; otherwise use Nagios notifications or Red Hat Insights recommendations depending on your stack.
 
 ## Summary
 
-You now know how to configure prometheus alertmanager for email and slack notifications. Regular monitoring helps you detect performance degradation, plan capacity, and respond to incidents quickly on your RHEL 9 systems.
+You now know how to configure basic monitoring tools on RHEL 9. Regular monitoring helps you detect performance degradation, plan capacity, and respond to incidents quickly on your RHEL 9 systems.
