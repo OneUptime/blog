@@ -8,18 +8,18 @@ Description: Learn how to use Red Hat Universal Base Images (UBI) with Podman on
 
 ---
 
-Red Hat Universal Base Images (UBI) are freely redistributable container base images built from RHEL. You can use them without a Red Hat subscription, distribute containers built on them freely, and when running on a subscribed RHEL host, you get access to the full RHEL package set. They are the best starting point for building production containers on RHEL.
+Red Hat Universal Base Images (UBI) are freely redistributable container base images built from RHEL. You can use them without a Red Hat subscription, distribute containers built on them freely, and when running on a subscribed RHEL host, you can access entitled RHEL repositories. They are the best starting point for building production containers on RHEL.
 
 ## UBI Image Variants
 
 Red Hat provides several UBI variants:
 
-| Image | Size | Use Case |
+| Image | Approx. Uncompressed Size | Use Case |
 |-------|------|----------|
-| ubi9/ubi | ~215MB | Full RHEL userspace |
-| ubi9/ubi-minimal | ~90MB | Minimal image with microdnf |
-| ubi9/ubi-micro | ~35MB | Ultra-minimal, no package manager |
-| ubi9/ubi-init | ~235MB | systemd-enabled for multi-service |
+| ubi9/ubi | ~208MB | Full RHEL userspace |
+| ubi9/ubi-minimal | ~102MB | Minimal image with microdnf |
+| ubi9/ubi-micro | ~23MB | Ultra-minimal, no package manager |
+| ubi9/ubi-init | ~228MB | systemd-enabled for multi-service |
 
 ## Pulling UBI Images
 
@@ -103,11 +103,11 @@ UBI micro has no package manager at all. Use multi-stage builds to add what you 
 ```bash
 cat > Containerfile << 'EOF'
 # Build stage: install packages in a full UBI image
-FROM registry.access.redhat.com/ubi9/ubi as builder
-RUN dnf install -y --installroot /mnt/rootfs --releasever 9 \
+FROM registry.access.redhat.com/ubi9/ubi AS builder
+RUN dnf --installroot /mnt/rootfs --releasever=/ install -y \
     --setopt install_weak_deps=false --nodocs \
     coreutils-single python3 && \
-    dnf clean all --installroot /mnt/rootfs
+    dnf --installroot /mnt/rootfs clean all
 
 # Runtime stage: copy into ubi-micro
 FROM registry.access.redhat.com/ubi9/ubi-micro
@@ -128,7 +128,7 @@ When your container needs to run multiple services with systemd:
 cat > Containerfile << 'EOF'
 FROM registry.access.redhat.com/ubi9/ubi-init
 
-RUN dnf install -y httpd sshd && \
+RUN dnf install -y httpd openssh-server && \
     dnf clean all && \
     systemctl enable httpd sshd
 
@@ -137,7 +137,7 @@ CMD ["/sbin/init"]
 EOF
 ```
 
-## Run the init container (needs special flags for systemd)
+## Run the init container
 ```bash
 podman run -d --name multi-service \
   -p 8080:80 -p 2222:22 \
@@ -148,15 +148,15 @@ podman run -d --name multi-service \
 
 UBI images come with two repositories pre-configured:
 
-- `ubi-9-baseos` - Base OS packages
-- `ubi-9-appstream` - Application stream packages
+- `ubi-9-baseos-rpms` - Base OS packages
+- `ubi-9-appstream-rpms` - Application stream packages
 
 ## Check available repositories inside a UBI container
 ```bash
 podman run --rm registry.access.redhat.com/ubi9/ubi dnf repolist
 ```
 
-When running on a subscribed RHEL host, additional RHEL repositories become available automatically through the host's subscription.
+When running on a registered and subscribed RHEL host with Red Hat-provided Podman, entitlement data is mounted into the container so standard UBI containers can use the subscribed RHEL BaseOS and AppStream repositories.
 
 ## Language Runtime UBI Images
 
@@ -166,8 +166,8 @@ Red Hat also provides UBI images with language runtimes pre-installed:
 # Python 3.11 on UBI 9
 podman pull registry.access.redhat.com/ubi9/python-311
 
-# Node.js 18 on UBI 9
-podman pull registry.access.redhat.com/ubi9/nodejs-18
+# Node.js 22 on UBI 9
+podman pull registry.access.redhat.com/ubi9/nodejs-22
 
 # Go toolset on UBI 9
 podman pull registry.access.redhat.com/ubi9/go-toolset
@@ -198,7 +198,7 @@ skopeo inspect docker://registry.access.redhat.com/ubi9/ubi-minimal:latest | jq 
 
 ## View image advisories
 ```bash
-podman run --rm registry.access.redhat.com/ubi9/ubi-minimal microdnf updateinfo list
+podman run --rm registry.access.redhat.com/ubi9/ubi dnf updateinfo list
 ```
 
 ## Best Practices for UBI
@@ -207,7 +207,7 @@ podman run --rm registry.access.redhat.com/ubi9/ubi-minimal microdnf updateinfo 
 
 2. **Pin specific versions** for reproducible builds:
 ```bash
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.3-1612
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.7
 ```
 
 3. **Run as non-root** inside the container:
@@ -232,11 +232,11 @@ LABEL name="my-app" \
 
 ```mermaid
 graph LR
-    A[ubi-micro ~35MB] -->|Add microdnf| B[ubi-minimal ~90MB]
-    B -->|Add dnf, more packages| C[ubi ~215MB]
-    C -->|Add systemd| D[ubi-init ~235MB]
+    A[ubi-micro ~23MB] -->|Add microdnf| B[ubi-minimal ~102MB]
+    B -->|Add dnf, more packages| C[ubi ~208MB]
+    C -->|Add systemd| D[ubi-init ~228MB]
 ```
 
 ## Summary
 
-UBI images are the foundation for building production containers on RHEL. They are free to use and redistribute, receive regular security updates from Red Hat, and give you access to RHEL packages. Start with ubi-micro or ubi-minimal for the smallest images, use the standard ubi when you need full dnf, and use ubi-init only when you genuinely need systemd inside your container.
+UBI images are the foundation for building production containers on RHEL. They are free to use and redistribute, receive regular security updates from Red Hat, and give you access to UBI packages plus entitled RHEL repositories on subscribed RHEL hosts. Start with ubi-micro or ubi-minimal for the smallest images, use the standard ubi when you need full dnf, and use ubi-init only when you genuinely need systemd inside your container.
