@@ -26,10 +26,12 @@ gpgcheck=1
 gpgkey=https://packages.pagerduty.com/GPG-KEY-RPM-pagerduty
 EOF
 
-# Install the PagerDuty Agent
+# Install the PagerDuty Agent on RHEL 8 or later
 sudo dnf install pdagent pdagent-integrations -y
 
-# Start and enable the agent
+# Register the systemd unit from the RPM package, then start and enable the agent
+sudo cp /var/lib/pdagent/scripts/pdagent.service /etc/systemd/system/pdagent.service
+sudo systemctl daemon-reload
 sudo systemctl enable --now pdagent
 ```
 
@@ -123,6 +125,10 @@ curl -s -X POST https://events.pagerduty.com/v2/enqueue \
 ## Scheduling Checks
 
 ```bash
+# Make the scripts executable
+sudo chmod +x /usr/local/bin/check-disk-pagerduty.sh
+sudo chmod +x /usr/local/bin/check-services-pagerduty.sh
+
 # Run checks every 5 minutes via cron
 sudo tee /etc/cron.d/pagerduty-checks << 'EOF'
 */5 * * * * root /usr/local/bin/check-disk-pagerduty.sh
