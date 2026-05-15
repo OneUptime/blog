@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Bare-Metal Recovery, Disaster Recovery, Linux
 
-Description: Perform a bare-metal recovery of a RHEL system from backup images.
+Description: Prepare for a bare-metal recovery of a RHEL system from backup images.
 
 ---
 
 ## Overview
 
-Perform a bare-metal recovery of a RHEL system from backup images. A solid backup strategy protects against data loss from hardware failures, human errors, and security incidents.
+Prepare for a bare-metal recovery of a RHEL system from backup images. A solid backup strategy protects against data loss from hardware failures, human errors, and security incidents.
 
 ## Prerequisites
 
@@ -28,20 +28,20 @@ RHEL provides several backup tools:
 - **LVM snapshots** - point-in-time filesystem snapshots
 - **dd** - byte-level disk cloning
 
-Select the tool that best matches your recovery requirements.
+Select the tool that best matches your recovery requirements. For a full bare-metal recovery workflow on RHEL, use ReaR or combine your file backups with a tested process for recreating disks, partitions, boot loaders, and file systems.
 
 ## Step 2 - Create the Backup
 
 Using tar for a full backup:
 
 ```bash
-sudo tar czf /backups/full-backup-$(date +%Y%m%d).tar.gz --exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run --exclude=/tmp --exclude=/backups /
+sudo tar --acls --xattrs --selinux -czf /backups/full-backup-$(date +%Y%m%d).tar.gz --exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run --exclude=/tmp --exclude=/backups /
 ```
 
 Using rsync for incremental backup:
 
 ```bash
-sudo rsync -aAXv --delete / /backups/latest/ --exclude={/proc,/sys,/dev,/run,/tmp,/backups}
+sudo rsync -aHAXv --numeric-ids --delete / /backups/latest/ --exclude={/proc,/sys,/dev,/run,/tmp,/backups}
 ```
 
 ## Step 3 - Automate with Cron
@@ -69,9 +69,9 @@ Periodically restore backups to a test environment to confirm they work:
 
 ```bash
 # Restore a single file from tar
-tar xzf /backups/full-backup-*.tar.gz -C /tmp/restore-test etc/hostname
+sudo tar --acls --xattrs --selinux -xzpf /backups/full-backup-*.tar.gz -C /tmp/restore-test etc/hostname
 ```
 
 ## Summary
 
-You have learned how to perform a bare-metal recovery of a rhel system. Remember the 3-2-1 rule: keep three copies of your data, on two different media types, with one copy stored off-site.
+You have learned how to prepare for a bare-metal recovery of a RHEL system. Remember the 3-2-1 rule: keep three copies of your data, on two different media types, with one copy stored off-site.
