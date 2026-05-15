@@ -8,7 +8,7 @@ Description: Learn how to use the cpu-partitioning TuneD profile on RHEL to isol
 
 ---
 
-The `cpu-partitioning` TuneD profile on RHEL isolates specific CPUs for dedicated workloads by removing them from the general scheduler, disabling timer ticks, and moving interrupts to housekeeping CPUs. This is essential for low-latency and real-time applications.
+The `cpu-partitioning` TuneD profile on RHEL isolates specific CPUs for dedicated workloads by moving general work and interrupts to housekeeping CPUs and enabling full dynticks on the isolated CPUs. This is useful for low-latency and real-time applications.
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ The `cpu-partitioning` TuneD profile on RHEL isolates specific CPUs for dedicate
 
 ## Installing the Profile
 
-The cpu-partitioning profile is included with TuneD:
+The cpu-partitioning profile is available as a TuneD profile package:
 
 ```bash
 sudo dnf install tuned-profiles-cpu-partitioning -y
@@ -47,12 +47,12 @@ sudo tee /etc/tuned/cpu-partitioning-variables.conf << 'CONF'
 
 isolated_cores=2-7
 
-# CPUs that do not use nohz_full (optional, subset of isolated_cores)
+# Isolated CPUs without the kernel scheduler load balancing (optional, subset of isolated_cores)
 # no_balance_cores=6,7
 CONF
 ```
 
-This isolates CPUs 2 through 7, leaving CPUs 0 and 1 as housekeeping cores.
+This isolates CPUs 2 through 7, leaving CPUs 0 and 1 as housekeeping cores. With only `isolated_cores` set, scheduler load balancing remains enabled among the isolated CPUs. Set `no_balance_cores` for isolated CPUs that must be pinned individually without scheduler load balancing.
 
 ## Activating the Profile
 
@@ -79,16 +79,26 @@ cat /proc/cmdline
 You should see parameters like:
 
 ```bash
-isolcpus=2-7 nohz_full=2-7 rcu_nocbs=2-7
+nohz_full=2-7 rcu_nocbs=2-7 tuned.non_isolcpus=...
 ```
 
-Check that isolated CPUs are not running general tasks:
+If you configured `no_balance_cores`, you should also see an `isolcpus=` parameter for those CPUs.
+
+Check that isolated CPUs are not in the allowed CPU list for the current shell:
 
 ```bash
-ps -eo pid,psr,comm | sort -k2 -n
+cat /proc/self/status | grep Cpus_allowed_list
 ```
 
-Most processes should be on CPUs 0 and 1.
+This should show only the housekeeping CPUs, such as `0-1`.
+
+To see the affinity of all processes, use:
+
+```bash
+ps -ae -o pid= | xargs -n 1 taskset -cp
+```
+
+Most process affinity lists should be limited to CPUs 0 and 1, although TuneD cannot move every kernel process.
 
 ## Running Applications on Isolated CPUs
 
@@ -141,8 +151,8 @@ sudo dnf install rt-tests -y
 sudo cyclictest -m -p 80 -t 1 -a 2 -D 60s
 ```
 
-This measures timer latency on CPU 2 for 60 seconds. On properly isolated CPUs, you should see latencies under 10 microseconds.
+This measures timer latency on CPU 2 for 60 seconds. Expected latency depends on the hardware, firmware, kernel, and workload; a properly isolated system should show lower and more consistent maximum latencies than an untuned baseline.
 
 ## Conclusion
 
-The cpu-partitioning TuneD profile on RHEL provides a systematic way to isolate CPUs for low-latency workloads. Combined with taskset and real-time scheduling, it can achieve consistent sub-10-microsecond latency for demanding applications.
+The cpu-partitioning TuneD profile on RHEL provides a systematic way to isolate CPUs for low-latency workloads. Combined with taskset and real-time scheduling, it can reduce latency variation for demanding applications.
