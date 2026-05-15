@@ -17,7 +17,7 @@ sudo dnf install sysstat
 sudo systemctl enable --now sysstat
 ```
 
-The sysstat service uses a cron job or systemd timer to collect data every 10 minutes by default. Data files are stored in `/var/log/sa/`.
+On RHEL 9, the sysstat service uses systemd timers to collect data every 10 minutes by default. Data files are stored in `/var/log/sa/`.
 
 ## Verifying Data Collection
 
@@ -39,13 +39,13 @@ This shows block device statistics for today:
 
 ```text
 12:00:01 AM       DEV       tps     rkB/s     wkB/s     dkB/s   areq-sz    aqu-sz     await     %util
-12:10:01 AM    dev8-0     12.30     98.40     45.20      0.00     11.66      0.03      2.45      1.23
-12:10:01 AM   dev8-16      3.20     25.60     12.80      0.00     12.00      0.01      3.12      0.45
+12:10:01 AM       sda     12.30     98.40     45.20      0.00     11.66      0.03      2.45      1.23
+12:10:01 AM       sdb      3.20     25.60     12.80      0.00     12.00      0.01      3.12      0.45
 ```
 
 ## Understanding sar Disk Output
 
-- **DEV** - Device identifier (dev major-minor)
+- **DEV** - Block device name
 - **tps** - Transfers per second
 - **rkB/s** - Read kilobytes per second
 - **wkB/s** - Write kilobytes per second
@@ -57,13 +57,13 @@ This shows block device statistics for today:
 
 ## Using Human-Readable Device Names
 
-Add the `-p` flag for pretty device names:
+Add the `-p` flag for a more human-readable layout:
 
 ```bash
 sar -dp
 ```
 
-This shows `sda`, `sdb`, `nvme0n1` instead of `dev8-0`.
+This keeps device names such as `sda`, `sdb`, or `nvme0n1` easy to scan in the report output.
 
 ## Viewing Historical Data
 
@@ -109,9 +109,11 @@ This shows overall I/O statistics:
 
 - **bread/s** - Blocks read per second
 - **bwrtn/s** - Blocks written per second
+- **bdscd/s** - Blocks discarded per second
 - **tps** - Total transfers per second
 - **rtps** - Read transfers per second
 - **wtps** - Write transfers per second
+- **dtps** - Discard transfers per second
 
 ## Exporting Data for Analysis
 
@@ -164,10 +166,10 @@ HISTORY=90
 
 ## Analyzing Trends
 
-Find the busiest times for disk I/O:
+Find the periods with the highest write throughput:
 
 ```bash
-sar -dp -f /var/log/sa/sa04 | sort -k6 -rn | head -10
+sar -d -f /var/log/sa/sa04 | sort -k6 -rn | head -10
 ```
 
 This sorts by write throughput and shows the top 10 periods.
