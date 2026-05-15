@@ -206,14 +206,14 @@ Running `restorecon` on large directory trees can take time. For a full filesyst
 
 ```bash
 # Full filesystem relabel - can take a long time
-sudo restorecon -Rp /
+sudo restorecon -RFp /
 
 # Or trigger a relabel on next reboot
-sudo touch /.autorelabel
+sudo fixfiles -F onboot
 sudo reboot
 ```
 
-The `/.autorelabel` method is often faster because it runs early in the boot process before services start.
+The on-boot method relabels the system before normal services start, which is useful when incorrect labels could prevent the system from booting cleanly.
 
 ## Troubleshooting
 
