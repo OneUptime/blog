@@ -39,7 +39,7 @@ Once you identify the processes, stop them gracefully:
 
 ```bash
 # Send SIGTERM to all processes using the mount
-sudo fuser -k /mnt/data
+sudo fuser -k -TERM -m /mnt/data
 
 # Or send SIGTERM to specific PIDs
 sudo kill -TERM 12345 12346
@@ -49,7 +49,7 @@ If a process does not respond to SIGTERM:
 
 ```bash
 # Force kill processes on the mount point
-sudo fuser -ki /mnt/data
+sudo fuser -k -i -m /mnt/data
 # The -i flag asks for confirmation before each kill
 ```
 
