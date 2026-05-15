@@ -34,8 +34,9 @@ graph TB
 ## Prerequisites
 
 - Two RHEL servers with SAP HANA installed on both
-- RHEL High Availability Add-On subscription
+- RHEL for SAP Solutions subscription with the RHEL High Availability Add-On
 - SAP HANA System Replication already configured between the two nodes
+- SAP HANA `srConnectionChanged()` HA/DR provider hook configured and tested
 - Shared fencing mechanism (SBD, IPMI, or cloud fencing agent)
 
 ## Step 1: Install High Availability Packages
@@ -43,20 +44,30 @@ graph TB
 Run these commands on both nodes:
 
 ```bash
-# Enable the HA repository
-
-sudo subscription-manager repos --enable=rhel-9-for-x86_64-highavailability-rpms
+# Enable the RHEL for SAP Solutions E4S repositories
+# Set the RHEL 9 minor release supported for your SAP HANA version first
+sudo subscription-manager release --set=9.4
+sudo subscription-manager repos \
+  --disable="*" \
+  --enable="rhel-9-for-x86_64-baseos-e4s-rpms" \
+  --enable="rhel-9-for-x86_64-appstream-e4s-rpms" \
+  --enable="rhel-9-for-x86_64-sap-solutions-e4s-rpms" \
+  --enable="rhel-9-for-x86_64-sap-netweaver-e4s-rpms" \
+  --enable="rhel-9-for-x86_64-highavailability-e4s-rpms"
 
 # Install Pacemaker, Corosync, and SAP HANA resource agents
 sudo dnf install -y \
   pacemaker \
   pcs \
   fence-agents-all \
-  resource-agents-sap-hana \
-  sap-cluster-connector
+  sap-hana-ha
 
 # Enable and start the pcs daemon on both nodes
 sudo systemctl enable --now pcsd
+
+# If firewalld is running, allow the HA cluster service on both nodes
+sudo firewall-cmd --permanent --add-service=high-availability
+sudo firewall-cmd --reload
 
 # Set the password for the hacluster user on both nodes
 echo "StrongClusterPassword" | sudo passwd --stdin hacluster
@@ -112,38 +123,41 @@ sudo pcs stonith config
 ```bash
 # Set cluster properties for SAP HANA
 sudo pcs property set maintenance-mode=true
+sudo pcs resource defaults update resource-stickiness=1000 migration-threshold=5000
 
 # Create the SAPHanaTopology resource (runs on all nodes)
-sudo pcs resource create SAPHanaTopology_HDB_00 SAPHanaTopology \
+sudo pcs resource create rsc_SAPHanaTop_HDB_HDB00 ocf:heartbeat:SAPHanaTopology \
   SID=HDB InstanceNumber=00 \
   op start timeout=600 \
   op stop timeout=300 \
-  op monitor interval=10 timeout=600 \
-  clone clone-max=2 clone-node-max=1 interleave=true
+  op monitor interval=30 timeout=300 \
+  clone cln_SAPHanaTop_HDB_HDB00
+sudo pcs resource update cln_SAPHanaTop_HDB_HDB00 \
+  meta clone-node-max=1 interleave=true
 
-# Create the SAPHana resource (primary/secondary)
-sudo pcs resource create SAPHana_HDB_00 SAPHana \
+# Create the SAPHanaController resource (primary/secondary)
+sudo pcs resource create rsc_SAPHanaCon_HDB_HDB00 ocf:heartbeat:SAPHanaController \
   SID=HDB InstanceNumber=00 \
   PREFER_SITE_TAKEOVER=true \
   DUPLICATE_PRIMARY_TIMEOUT=7200 \
-  AUTOMATED_REGISTER=true \
-  op start timeout=3600 \
+  AUTOMATED_REGISTER=false \
   op stop timeout=3600 \
-  op monitor interval=61 role=Slave timeout=700 \
-  op monitor interval=59 role=Master timeout=700 \
-  op promote timeout=3600 \
-  op demote timeout=3600 \
-  promotable notify=true clone-max=2 clone-node-max=1 interleave=true
+  op monitor interval=59 role=Promoted timeout=700 \
+  op monitor interval=61 role=Unpromoted timeout=700 \
+  meta priority=100 \
+  promotable cln_SAPHanaCon_HDB_HDB00
+sudo pcs resource update cln_SAPHanaCon_HDB_HDB00 \
+  meta clone-node-max=1 interleave=true
 
 # Create the Virtual IP resource
-sudo pcs resource create vip_HDB_00 IPaddr2 \
+sudo pcs resource create rsc_vip_HDB_HDB00_primary ocf:heartbeat:IPaddr2 \
   ip=192.168.1.200 \
   cidr_netmask=24 \
   op monitor interval=10 timeout=20
 
 # Set constraints so the VIP follows the primary HANA
-sudo pcs constraint colocation add vip_HDB_00 with master SAPHana_HDB_00-clone 4000
-sudo pcs constraint order SAPHanaTopology_HDB_00-clone then SAPHana_HDB_00-clone
+sudo pcs constraint colocation add rsc_vip_HDB_HDB00_primary with promoted cln_SAPHanaCon_HDB_HDB00 2000
+sudo pcs constraint order cln_SAPHanaTop_HDB_HDB00 then cln_SAPHanaCon_HDB_HDB00 symmetrical=false
 
 # Exit maintenance mode
 sudo pcs property set maintenance-mode=false
@@ -156,7 +170,7 @@ sudo pcs property set maintenance-mode=false
 sudo pcs status
 
 # Check the HANA-specific attributes
-sudo crm_mon -A1
+sudo SAPHanaSR-showAttr
 
 # Verify system replication status
 sudo su - hdbadm -c 'python /usr/sap/HDB/HDB00/exe/python_support/systemReplicationStatus.py'
@@ -165,15 +179,14 @@ sudo su - hdbadm -c 'python /usr/sap/HDB/HDB00/exe/python_support/systemReplicat
 ## Step 6: Test Failover
 
 ```bash
-# Simulate a primary failure by stopping HANA on the primary node
+# Trigger a manual takeover by moving the promotable HANA resource
 # WARNING: Only do this in a test environment
-sudo pcs resource move SAPHana_HDB_00-clone node2
+sudo pcs resource move cln_SAPHanaCon_HDB_HDB00
 
 # Watch the cluster perform the takeover
 watch sudo pcs status
 
-# After successful failover, clear the move constraint
-sudo pcs resource clear SAPHana_HDB_00-clone
+# In RHEL 9, pcs removes the temporary move constraint after the move completes
 ```
 
 ## Failover Process
