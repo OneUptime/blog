@@ -15,13 +15,14 @@ DRBD (Distributed Replicated Block Device) provides real-time, synchronous block
 - Two RHEL servers with a running Pacemaker cluster
 - A dedicated partition or disk on each server for DRBD
 - Network connectivity between nodes (preferably a dedicated replication network)
+- LINBIT DRBD packages enabled on both nodes
 
 ## Step 1: Install DRBD
 
 On both nodes:
 
 ```bash
-sudo dnf install drbd drbd-utils kmod-drbd -y
+sudo dnf install drbd drbd-utils kmod-drbd drbd-pacemaker -y
 ```
 
 Load the DRBD kernel module:
@@ -176,7 +177,7 @@ sudo pcs resource create DRBDVIP ocf:heartbeat:IPaddr2 \
 The filesystem and VIP must run on the DRBD primary:
 
 ```bash
-sudo pcs constraint colocation add DRBDFs with Promoted DRBDData-clone INFINITY
+sudo pcs constraint colocation add DRBDFs with promoted DRBDData-clone INFINITY
 sudo pcs constraint colocation add DRBDVIP with DRBDFs INFINITY
 
 sudo pcs constraint order promote DRBDData-clone then start DRBDFs
