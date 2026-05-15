@@ -71,8 +71,8 @@ sudo vi /var/kerberos/krb5kdc/kdc.conf
 
 ```ini
 [kdcdefaults]
-  kdc_ports = 88
-  kdc_tcp_ports = 88
+  kdc_listen = 88
+  kdc_tcp_listen = 88
 
 [realms]
   EXAMPLE.COM = {
@@ -135,8 +135,10 @@ This means any principal with an `/admin` suffix has full administrative access 
 ## Step 7 - Configure the Firewall
 
 ```bash
-# Open KDC ports
+# Open KDC, password change, and admin ports
 sudo firewall-cmd --permanent --add-service=kerberos
+sudo firewall-cmd --permanent --add-port=464/tcp
+sudo firewall-cmd --permanent --add-port=464/udp
 sudo firewall-cmd --permanent --add-port=749/tcp
 sudo firewall-cmd --reload
 ```
