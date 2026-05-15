@@ -109,14 +109,14 @@ Some applications write to files instead of the journal:
 
 ```bash
 # Follow a traditional log file
-tail -f /var/log/audit/audit.log
+sudo tail -f /var/log/audit/audit.log
 
 # Follow multiple files
-tail -f /var/log/messages /var/log/secure
+sudo tail -f /var/log/messages /var/log/secure
 
 # Use multitail for colored multi-file monitoring
 sudo dnf install -y multitail
-multitail /var/log/messages /var/log/secure
+sudo multitail /var/log/messages /var/log/secure
 ```
 
 Real-time log monitoring with `journalctl -f` is one of the simplest and most effective tools in a sysadmin's toolkit. Combine it with filters to cut through the noise and focus on what matters during an active incident.
