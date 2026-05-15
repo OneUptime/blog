@@ -31,13 +31,8 @@ ls /usr/share/ansible/roles/ | grep kdump
   hosts: all
   become: true
   vars:
-    # Reserve 256 MB for the crash kernel
-    kdump_system_action: dump
-
     # Store crash dumps locally
-    kdump_target:
-      type: local
-      path: /var/crash
+    kdump_path: /var/crash
 
     # Core collector options: compress the dump to save space
     kdump_core_collector: "makedumpfile -l --message-level 7 -d 31"
@@ -104,4 +99,4 @@ echo c | sudo tee /proc/sysrq-trigger
 ls -la /var/crash/
 ```
 
-The system role handles all the configuration details, including setting the correct crashkernel boot parameter and adjusting SELinux contexts for the dump target.
+The system role handles all the configuration details, including setting the correct crashkernel boot parameter when required.
