@@ -8,7 +8,7 @@ Description: A hands-on guide to using IdM vaults on RHEL to securely store and 
 
 ---
 
-IdM vaults give you a way to store sensitive data like passwords, API keys, certificates, and other secrets inside the IdM directory itself. The vault system uses the Key Recovery Authority (KRA) component of the integrated CA to encrypt data at rest. It is not a replacement for something like HashiCorp Vault in a complex microservices environment, but for storing secrets that need to be accessible to specific users or services within your IdM domain, it works well.
+IdM vaults give you a way to store sensitive data like passwords, API keys, certificates, and other secrets in IdM. The vault system uses the Key Recovery Authority (KRA) component to store the archived secret securely. It is not a replacement for something like HashiCorp Vault in a complex microservices environment, but for storing secrets that need to be accessible to specific users or services within your IdM domain, it works well.
 
 ## Vault Types
 
@@ -24,7 +24,7 @@ flowchart TD
 
 - **Standard**: The simplest type. Data is protected by access control and KRA encryption but has no additional vault-level encryption.
 - **Symmetric**: Encrypted with a password. Anyone who knows the password and has access to the vault can retrieve the data.
-- **Asymmetric**: Encrypted with a public key. Only the holder of the private key can decrypt the data.
+- **Asymmetric**: Encrypted with a public key. Vault owners can archive and retrieve secrets, while vault members can archive secrets; retrieving the data requires the private key.
 
 ## Prerequisites
 
@@ -89,7 +89,7 @@ rm -f /tmp/vault-pw.txt
 
 ## Step 3 - Create an Asymmetric Vault
 
-Asymmetric vaults use public/private key pairs. Anyone with the public key can store data, but only the private key holder can retrieve it.
+Asymmetric vaults use public/private key pairs. Users with vault access can store data with the public key, but retrieving it requires the private key.
 
 ```bash
 # Generate a key pair for the vault
@@ -179,8 +179,11 @@ ipa vault-find --shared
 # List service vaults
 ipa vault-find --service=HTTP/app.example.com
 
-# List all vaults (admin only)
-ipa vault-find --users=jsmith
+# List all user vaults (admin only)
+ipa vault-find --users
+
+# List vaults for a specific user
+ipa vault-find --user=jsmith
 ```
 
 ### Show Vault Details
