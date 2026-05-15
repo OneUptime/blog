@@ -54,6 +54,7 @@ addprinc -requires_preauth krbtgt/WEST.EXAMPLE.COM@EAST.EXAMPLE.COM
 
 # Enter a strong shared password when prompted
 # This password must be IDENTICAL on both KDCs
+# The resulting keys, key version number (kvno), and encryption types must match
 
 # For two-way trust, also create the reverse
 addprinc -requires_preauth krbtgt/EAST.EXAMPLE.COM@WEST.EXAMPLE.COM
@@ -70,6 +71,7 @@ sudo kadmin.local
 addprinc -requires_preauth krbtgt/WEST.EXAMPLE.COM@EAST.EXAMPLE.COM
 
 # Use the SAME password as on the EAST KDC
+# Verify that the resulting kvno and encryption types match
 
 # For two-way trust
 addprinc -requires_preauth krbtgt/EAST.EXAMPLE.COM@WEST.EXAMPLE.COM
@@ -77,11 +79,11 @@ addprinc -requires_preauth krbtgt/EAST.EXAMPLE.COM@WEST.EXAMPLE.COM
 quit
 ```
 
-The passwords must match exactly on both sides. If they do not match, the trust will not work.
+The passwords, key version numbers (`kvno` values), and encryption types must match exactly on both sides. If they do not match, the trust will not work.
 
-## Configuring krb5.conf on Clients
+## Configuring krb5.conf on Clients and Servers
 
-Update `/etc/krb5.conf` on all client machines to know about both realms:
+Update `/etc/krb5.conf` on all client machines and on servers that will accept cross-realm tickets so they know about both realms:
 
 ```ini
 [libdefaults]
@@ -114,7 +116,7 @@ Update `/etc/krb5.conf` on all client machines to know about both realms:
     }
 ```
 
-The `[capaths]` section tells clients the direct trust path between realms. The `.` means direct trust (no intermediate realms).
+The `[capaths]` section tells clients and servers the direct trust path between realms. The `.` means direct trust (no intermediate realms).
 
 ## Testing the Trust
 
@@ -152,7 +154,8 @@ kvno HTTP/webserver.west.example.com@WEST.EXAMPLE.COM
 #   support the same encryption types
 # "Server not found in Kerberos database" - check that the 
 #   krbtgt principals exist on both KDCs
-# "Preauthentication failed" - the shared passwords don't match
+# "Decrypt integrity check failed" - the shared keys, kvno values, or
+#   encryption types do not match
 ```
 
 To verify encryption type compatibility:
@@ -165,4 +168,3 @@ kadmin.local -q "getprinc krbtgt/WEST.EXAMPLE.COM@EAST.EXAMPLE.COM"
 ## Summary
 
 Cross-realm Kerberos trust allows users in one realm to transparently access services in another. The key steps are creating matching `krbtgt` principals with identical passwords on both KDCs and configuring clients to know about both realms. For production environments, consider using strong, randomly generated passwords for the cross-realm principals and rotating them periodically.
-
