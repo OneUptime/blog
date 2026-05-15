@@ -16,34 +16,51 @@ RDMA (Remote Direct Memory Access) and InfiniBand provide extremely low-latency,
 - Root or sudo access
 - A terminal session
 
-## Step 2: Configure the Service
+## Step 1: Install RDMA and InfiniBand Packages
 
-Edit the configuration file to match your environment:
+Install the core RDMA packages and InfiniBand diagnostic tools:
 
 ```bash
-# Open the configuration file
-
-sudo vi /etc/<service>/config.conf
+# Install the RDMA core packages, OpenSM, and verification tools
+sudo dnf install -y rdma-core opensm libibverbs-utils infiniband-diags
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+InfiniBand fabrics require a subnet manager. If your switch does not provide one, enable OpenSM on one host in the fabric:
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Enable and start OpenSM on the subnet manager host
+sudo systemctl enable --now opensm
 ```
 
-## Step 3: Enable and Start the Service
+## Step 2: Configure IP over InfiniBand
+
+Create a NetworkManager profile for the InfiniBand interface. Replace `mlx4_ib0` and the IP address with values from your environment. Use `datagram` mode for broad hardware compatibility; older adapters can use `connected` mode with an MTU of `65520` if supported.
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Create an IPoIB profile
+sudo nmcli connection add type infiniband con-name mlx4_ib0 ifname mlx4_ib0 \
+    transport-mode datagram mtu 2044
 
-# Start the service
-sudo systemctl start <service-name>
+# Configure IPv4 settings
+sudo nmcli connection modify mlx4_ib0 ipv4.method manual \
+    ipv4.addresses 192.0.2.10/24
+```
 
-# Check the status
-sudo systemctl status <service-name>
+If your fabric uses InfiniBand partitions, set the partition key:
+
+```bash
+# Optional: configure an InfiniBand partition key
+sudo nmcli connection modify mlx4_ib0 infiniband.p-key 0x8002
+```
+
+## Step 3: Activate the InfiniBand Connection
+
+```bash
+# Bring up the IPoIB connection
+sudo nmcli connection up mlx4_ib0
+
+# Check the subnet manager if this host runs OpenSM
+sudo systemctl status opensm
 ```
 
 
@@ -52,17 +69,24 @@ sudo systemctl status <service-name>
 Confirm everything is working by checking the status and logs:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
+# List available InfiniBand devices
+ibv_devices
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# Display device details
+ibv_devinfo
+
+# Check InfiniBand port state
+ibstat
+
+# Confirm the IPoIB interface is up
+ip addr show mlx4_ib0
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If OpenSM fails to start, check the logs with `journalctl -u opensm -e --no-pager`.
+- Ensure all required packages are installed: `rpm -qa | grep -E 'rdma-core|opensm|libibverbs-utils|infiniband-diags'`.
+- If non-root users run RDMA applications, add appropriate `memlock` limits in `/etc/security/limits.conf`, such as `@rdma soft memlock unlimited` and `@rdma hard memlock unlimited`.
 
 ## Conclusion
 
