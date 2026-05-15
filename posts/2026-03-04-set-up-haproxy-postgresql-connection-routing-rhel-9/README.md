@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, HAProxy, PostgreSQL, Load Balancing, Linux
 
-Description: Configure HAProxy to route PostgreSQL connections on RHEL with primary/replica splitting, health checks, and connection pooling.
+Description: Configure HAProxy to route PostgreSQL connections on RHEL with primary/replica splitting, health checks, and failover support.
 
 ---
 
-HAProxy can route PostgreSQL connections to separate primary and replica servers, providing read/write splitting and high availability. This guide covers setting up HAProxy for PostgreSQL on RHEL.
+HAProxy can route PostgreSQL connections to separate primary and replica servers when applications send writes and reads to different HAProxy ports, providing read/write splitting and high availability. This guide covers setting up HAProxy for PostgreSQL on RHEL.
 
 ## Prerequisites
 
@@ -41,10 +41,10 @@ GRANT CONNECT ON DATABASE postgres TO haproxy_check;
 
 Update `pg_hba.conf` on all PostgreSQL servers:
 
-```bash
-# Allow health check connections from HAProxy
+```conf
+# Allow health check connections from the HAProxy host
 
-host    postgres    haproxy_check    192.168.1.0/24    trust
+host    postgres    haproxy_check    192.168.1.20/32    trust
 ```
 
 ```bash
@@ -91,8 +91,8 @@ listen pgsql_write
     # Primary server
     server pg-primary 192.168.1.10:5432 check inter 5s fall 3 rise 2
 
-    # Standby for automatic failover (optional)
-    server pg-standby 192.168.1.11:5432 check backup
+    # Add a promoted standby here after external failover tooling promotes it.
+    # server pg-standby 192.168.1.11:5432 check backup
 
 # Read traffic distributed across replicas
 listen pgsql_read
@@ -149,28 +149,15 @@ done
 ## Step 5: Connection Timeouts for Long Queries
 
 ```haproxy
-listen pgsql_write
-    bind *:5432
-    mode tcp
+# Add these lines inside the existing listen pgsql_write section
+# for longer write operations (DDL, bulk inserts)
+timeout client  300s
+timeout server  300s
 
-    # Longer timeout for write operations (DDL, bulk inserts)
-    timeout client  300s
-    timeout server  300s
-
-    option pgsql-check user haproxy_check
-    server pg-primary 192.168.1.10:5432 check
-
-listen pgsql_read
-    bind *:5433
-    mode tcp
-
-    # Moderate timeout for read queries
-    timeout client  60s
-    timeout server  60s
-
-    option pgsql-check user haproxy_check
-    server pg-replica1 192.168.1.11:5432 check
-    server pg-replica2 192.168.1.12:5432 check
+# Add these lines inside the existing listen pgsql_read section
+# for read queries
+timeout client  60s
+timeout server  60s
 ```
 
 ## Step 6: Monitor Connections
@@ -204,4 +191,4 @@ sudo ausearch -m avc -ts recent | grep haproxy
 
 ## Summary
 
-HAProxy on RHEL provides PostgreSQL connection routing with read/write splitting, health checks, and failover support. Direct writes to the primary on one port and reads to replicas on another. The built-in PostgreSQL health check verifies database connectivity, and connection-based load balancing ensures even distribution of database queries.
+HAProxy on RHEL provides PostgreSQL connection routing with read/write splitting, health checks, and failover support when paired with PostgreSQL failover tooling. Direct writes to the primary on one port and reads to replicas on another. The built-in PostgreSQL health check verifies PostgreSQL protocol availability, and connection-based load balancing helps distribute database sessions.
