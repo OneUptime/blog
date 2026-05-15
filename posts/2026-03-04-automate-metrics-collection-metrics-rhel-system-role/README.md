@@ -24,7 +24,7 @@ Use the metrics RHEL System Role to deploy PCP for automated metrics collection.
 sudo dnf install -y rhel-system-roles
 ```
 
-The roles are installed to `/usr/share/ansible/roles/`.
+The collection is installed to `/usr/share/ansible/collections/ansible_collections/redhat/rhel_system_roles/`.
 
 ## Step 2 - Create an Inventory File
 
@@ -46,15 +46,19 @@ Create `configure-metrics.yml`:
 - name: How to Automate Metrics Collection Using the metrics RHEL System Role
   hosts: managed_hosts
   become: true
-  roles:
-    - role: rhel-system-roles.metrics
+  tasks:
+    - name: Configure Performance Co-Pilot
+      ansible.builtin.include_role:
+        name: redhat.rhel_system_roles.metrics
+      vars:
+        metrics_retention_days: 14
 ```
 
 Add the role-specific variables. Check the role documentation for available options:
 
 ```bash
-ls /usr/share/doc/rhel-system-roles/metrics/
-cat /usr/share/doc/rhel-system-roles/metrics/README.md
+ls /usr/share/ansible/collections/ansible_collections/redhat/rhel_system_roles/roles/metrics/
+cat /usr/share/ansible/collections/ansible_collections/redhat/rhel_system_roles/roles/metrics/README.md
 ```
 
 ## Step 4 - Run the Playbook
@@ -68,10 +72,7 @@ ansible-playbook -i inventory.ini configure-metrics.yml
 On the managed hosts, verify that the configuration was applied:
 
 ```bash
-# Check relevant service or configuration
-
-systemctl status <service>
-cat <config-file>
+ansible managed_hosts -i inventory.ini -m command -a 'pminfo -f kernel.all.load'
 ```
 
 ## Idempotency
