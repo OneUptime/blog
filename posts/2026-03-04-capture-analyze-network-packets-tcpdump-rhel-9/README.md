@@ -23,13 +23,13 @@ sudo dnf install -y tcpdump
 ## Basic Capture
 
 ```bash
-# Capture all traffic on the default interface
-sudo tcpdump -i ens192
+# Capture all traffic on the default interface tcpdump selects
+sudo tcpdump
 
 # Capture on a specific interface
 sudo tcpdump -i ens192
 
-# Capture with more detail (show packet contents)
+# Capture with more verbose packet summaries
 sudo tcpdump -i ens192 -v
 
 # Capture with even more detail
@@ -135,7 +135,7 @@ sudo tcpdump -i ens192 -nn -w /tmp/capture.pcap -c 1000
 sudo tcpdump -i ens192 -nn -w /tmp/capture.pcap -C 100
 
 # Save with time-based rotation (new file every 3600 seconds)
-sudo tcpdump -i ens192 -nn -w /tmp/capture.pcap -G 3600
+sudo tcpdump -i ens192 -nn -w '/tmp/capture-%Y%m%d%H%M%S.pcap' -G 3600
 ```
 
 ## Reading Capture Files
@@ -176,8 +176,8 @@ sudo tcpdump -i ens192 -nn 'udp port 53' -l | grep -i "A?"
 **Detecting TCP connection problems:**
 
 ```bash
-# Watch for TCP SYN packets without SYN-ACK (connection failures)
-sudo tcpdump -i ens192 -nn 'tcp[tcpflags] & (tcp-syn) != 0'
+# Watch for initial TCP SYN packets (connection attempts)
+sudo tcpdump -i ens192 -nn 'tcp[tcpflags] & (tcp-syn|tcp-ack) == tcp-syn'
 ```
 
 **Monitoring HTTP requests:**
