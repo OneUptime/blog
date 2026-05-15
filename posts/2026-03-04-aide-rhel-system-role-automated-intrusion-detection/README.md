@@ -60,8 +60,12 @@ The simplest playbook installs AIDE and initializes the database with default se
 # aide-basic.yml - Basic AIDE deployment
 - name: Deploy AIDE file integrity monitoring
   hosts: servers
-  roles:
-    - role: rhel-system-roles.aide
+  tasks:
+    - name: Configure file integrity checks with AIDE
+      ansible.builtin.include_role:
+        name: rhel-system-roles.aide.aide
+      vars:
+        aide_init: true
 ```
 
 Run it:
@@ -80,21 +84,17 @@ For production use, you will want to customize the configuration. The role accep
 - name: Deploy AIDE with custom configuration
   hosts: servers
   vars:
-    aide_conf_d_files:
-      - name: custom-monitoring
-        content: |
-          # Monitor application directories
-          /opt/webapp CONTENT_EX
-          /etc/nginx CONTENT_EX
-          !/opt/webapp/logs
-          !/opt/webapp/tmp
-    aide_init_database: true
-    aide_cron_check:
-      hour: 3
-      minute: 0
-  roles:
-    - role: rhel-system-roles.aide
+    aide_config_template: templates/aide-custom.conf.j2
+    aide_init: true
+    aide_cron_check: true
+    aide_cron_interval: 0 3 * * *
+  tasks:
+    - name: Configure file integrity checks with AIDE
+      ansible.builtin.include_role:
+        name: rhel-system-roles.aide.aide
 ```
+
+The custom template must be a complete AIDE configuration file. Base it on the example template provided with the role, include the role's required header comments, and add rules such as `/opt/webapp CONTENT_EX`, `/etc/nginx CONTENT_EX`, `!/opt/webapp/logs`, and `!/opt/webapp/tmp`.
 
 ## Role Variables Reference
 
@@ -102,41 +102,36 @@ Key variables the AIDE system role accepts:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `aide_init_database` | Initialize the AIDE database after configuration | `true` |
-| `aide_conf_d_files` | List of additional config file snippets | `[]` |
-| `aide_cron_check` | Cron schedule for AIDE checks | Varies |
-| `aide_email_notification` | Email address for alerts | None |
+| `aide_init` | Initialize the AIDE database after configuration | `false` |
+| `aide_config_template` | Path to a custom template for `/etc/aide.conf` | `null` |
+| `aide_cron_check` | Enable or remove the periodic cron check | `null` |
+| `aide_cron_interval` | Cron schedule for AIDE checks | `0 12 * * *` |
 
 ## Deploying with Custom Rules Per Host Group
 
-Different servers need different monitoring rules. Use group variables:
+Different servers need different monitoring rules. Use different configuration templates per host group:
 
 ```yaml
 # aide-groups.yml - Per-group AIDE configuration
 - name: Deploy AIDE to web servers
   hosts: webservers
   vars:
-    aide_conf_d_files:
-      - name: web-rules
-        content: |
-          /var/www/html CONTENT_EX
-          /etc/nginx CONTENT_EX
-          /etc/httpd CONTENT_EX
-          !/var/www/html/cache
-  roles:
-    - role: rhel-system-roles.aide
+    aide_config_template: templates/aide-web.conf.j2
+    aide_init: true
+  tasks:
+    - name: Configure file integrity checks with AIDE
+      ansible.builtin.include_role:
+        name: rhel-system-roles.aide.aide
 
 - name: Deploy AIDE to database servers
   hosts: dbservers
   vars:
-    aide_conf_d_files:
-      - name: db-rules
-        content: |
-          /var/lib/pgsql/data/pg_hba.conf CONTENT_EX
-          /var/lib/pgsql/data/postgresql.conf CONTENT_EX
-          /etc/my.cnf.d CONTENT_EX
-  roles:
-    - role: rhel-system-roles.aide
+    aide_config_template: templates/aide-db.conf.j2
+    aide_init: true
+  tasks:
+    - name: Configure file integrity checks with AIDE
+      ansible.builtin.include_role:
+        name: rhel-system-roles.aide.aide
 ```
 
 ## Deployment Architecture
@@ -166,6 +161,14 @@ After patching, you can update AIDE databases fleet-wide:
 - name: Update AIDE database on all servers
   hosts: servers
   tasks:
+    - name: Ensure AIDE archive directory exists
+      file:
+        path: /var/lib/aide/archive
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+
     - name: Archive current AIDE database
       copy:
         src: /var/lib/aide/aide.db.gz
@@ -211,10 +214,20 @@ Trigger AIDE checks across all systems and collect results:
         msg: "AIDE detected changes (exit code {{ aide_result.rc }})"
       when: aide_result.rc != 0
 
-    - name: Save report locally
+    - name: Ensure local report directory exists
+      file:
+        path: ./aide-reports
+        state: directory
+        mode: "0750"
+      delegate_to: localhost
+      become: false
+
+    - name: Save report locally on the control node
       copy:
         content: "{{ aide_result.stdout }}"
-        dest: "/var/log/aide/fleet-check-{{ ansible_date_time.iso8601_basic }}.log"
+        dest: "./aide-reports/{{ inventory_hostname }}-{{ ansible_date_time.iso8601_basic }}.log"
+      delegate_to: localhost
+      become: false
 ```
 
 ## Handling Role Errors
@@ -226,7 +239,7 @@ Common issues and fixes:
 ansible servers -m shell -a "df -h /var/lib/aide"
 
 # If AIDE is already installed with a different config, force re-init
-ansible-playbook -i inventory aide-custom.yml --extra-vars "aide_init_database=true"
+ansible-playbook -i inventory aide-custom.yml --extra-vars "aide_init=true"
 ```
 
 ## Verifying Deployment
@@ -241,7 +254,7 @@ ansible servers -m command -a "aide --version"
 ansible servers -m stat -a "path=/var/lib/aide/aide.db.gz"
 
 # Check cron jobs are configured
-ansible servers -m command -a "crontab -l"
+ansible servers -m command -a "grep '/usr/sbin/aide --check' /etc/crontab"
 ```
 
 ## Best Practices for Fleet Management
