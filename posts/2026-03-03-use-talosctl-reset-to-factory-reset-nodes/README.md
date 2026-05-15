@@ -18,9 +18,9 @@ When you execute a reset, Talos performs these steps (depending on the options y
 2. Leaves the etcd cluster (graceful mode, control plane nodes)
 3. Stops all Talos services
 4. Wipes specified disk partitions
-5. Reboots into maintenance mode or shuts down
+5. Shuts down by default, or reboots if `--reboot` is specified
 
-The result is a clean node that has no memory of its previous cluster membership. The Talos Linux operating system itself remains installed on the BOOT partition, so you do not need to reinstall from scratch.
+The result is a clean node that has no memory of its previous cluster membership when the system state is wiped. By default, `talosctl reset` wipes all disks selected by its wipe mode, so use `--system-labels-to-wipe STATE --system-labels-to-wipe EPHEMERAL` when you want to preserve the boot partitions and only clear Talos state and runtime data.
 
 ## Basic Reset Command
 
@@ -30,7 +30,7 @@ The result is a clean node that has no memory of its previous cluster membership
 talosctl reset --nodes <node-ip>
 ```
 
-This performs a graceful reset: it drains workloads, leaves etcd if applicable, wipes state and ephemeral partitions, and reboots into maintenance mode.
+This performs a graceful reset: it drains workloads, leaves etcd if applicable, wipes disks according to the reset wipe mode, and shuts down by default. Add `--reboot` if you want the node to reboot after the reset.
 
 ## Graceful Mode
 
@@ -83,7 +83,7 @@ Non-graceful mode immediately stops services and wipes partitions without trying
 
 ## Choosing What to Wipe
 
-By default, reset wipes the STATE and EPHEMERAL partitions. You can control this:
+By default, current Talos releases reset all selected disks (`--wipe-mode all`). You can limit the reset to specific system partitions:
 
 ```bash
 # Wipe only specific partitions
@@ -97,14 +97,14 @@ talosctl reset --nodes <node-ip> \
 **STATE partition** contains:
 
 - The machine configuration
-- etcd data (on control plane nodes)
 - Node identity information
-- Cluster membership state
+- System state
 
 **EPHEMERAL partition** contains:
 
 - Container images
 - Kubernetes pod data
+- etcd data (on control plane nodes)
 - Logs
 - Temporary runtime data
 
@@ -114,37 +114,38 @@ If you want to clear container data while preserving the configuration:
 
 ```bash
 # Keep configuration, wipe container and pod data only
-talosctl reset --nodes <node-ip> --system-labels-to-wipe EPHEMERAL
+talosctl reset --nodes <node-ip> --system-labels-to-wipe EPHEMERAL --reboot
 ```
 
 After this reset, the node reboots and re-applies its saved configuration. All containers and pod data start fresh, but the node automatically rejoins its cluster.
 
-### Full Wipe
+### Wipe State and Ephemeral Data
 
-To wipe everything:
+To wipe Talos state and runtime data while preserving boot partitions:
 
 ```bash
-# Wipe both partitions (default)
+# Wipe both partitions
 talosctl reset --nodes <node-ip> \
     --system-labels-to-wipe STATE \
-    --system-labels-to-wipe EPHEMERAL
+    --system-labels-to-wipe EPHEMERAL \
+    --reboot
 ```
 
-After a full wipe, the node boots into maintenance mode and needs a new configuration to be applied.
+After wiping STATE and EPHEMERAL with `--reboot`, the node boots into maintenance mode and needs a new configuration to be applied.
 
 ## Reboot vs. Shutdown After Reset
 
 Control what happens after the wipe:
 
 ```bash
-# Reboot into maintenance mode (default)
+# Reboot into maintenance mode
 talosctl reset --nodes <node-ip> --reboot
 
-# Power off after wiping
-talosctl reset --nodes <node-ip> --shutdown
+# Power off after wiping (default)
+talosctl reset --nodes <node-ip>
 ```
 
-Use `--reboot` when you plan to re-provision the node immediately. Use `--shutdown` when you are decommissioning the hardware or need to perform physical maintenance.
+Use `--reboot` when you plan to re-provision the node immediately. Omit `--reboot` when you are decommissioning the hardware or need to perform physical maintenance.
 
 ## Resetting Worker Nodes
 
@@ -155,8 +156,8 @@ Worker nodes are simpler to reset because they do not run etcd:
 kubectl cordon <node-name>
 kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
 
-# Reset the worker
-talosctl reset --nodes <worker-ip>
+# Reset the worker and reboot into maintenance mode
+talosctl reset --nodes <worker-ip> --system-labels-to-wipe STATE --system-labels-to-wipe EPHEMERAL --reboot
 ```
 
 After the reset, the node is in maintenance mode. Re-provision it:
@@ -182,7 +183,7 @@ kubectl cordon <cp-node-name>
 kubectl drain <cp-node-name> --ignore-daemonsets --delete-emptydir-data
 
 # Step 4: Reset (graceful mode handles etcd leave)
-talosctl reset --nodes <cp-ip>
+talosctl reset --nodes <cp-ip> --system-labels-to-wipe STATE --system-labels-to-wipe EPHEMERAL --reboot
 ```
 
 Never reset more control plane nodes than your etcd cluster can tolerate losing.
@@ -192,8 +193,8 @@ Never reset more control plane nodes than your etcd cluster can tolerate losing.
 ### Workers in Bulk
 
 ```bash
-# Reset multiple workers at once
-talosctl reset --nodes 10.0.0.4,10.0.0.5,10.0.0.6
+# Reset multiple workers at once and reboot into maintenance mode
+talosctl reset --nodes 10.0.0.4,10.0.0.5,10.0.0.6 --system-labels-to-wipe STATE --system-labels-to-wipe EPHEMERAL --reboot
 ```
 
 Make sure all nodes are drained first.
@@ -212,14 +213,14 @@ CONTROL_PLANES="10.0.0.1 10.0.0.2 10.0.0.3"
 # Reset workers first (they are simpler)
 echo "Resetting worker nodes..."
 for node in $WORKERS; do
-    talosctl reset --nodes $node --graceful=false &
+    talosctl reset --nodes $node --graceful=false --system-labels-to-wipe STATE --system-labels-to-wipe EPHEMERAL &
 done
 wait
 
 # Then reset control plane nodes one at a time
 echo "Resetting control plane nodes..."
 for node in $CONTROL_PLANES; do
-    talosctl reset --nodes $node --graceful=false
+    talosctl reset --nodes $node --graceful=false --system-labels-to-wipe STATE --system-labels-to-wipe EPHEMERAL
     sleep 10
 done
 
@@ -239,7 +240,7 @@ After a reset with `--reboot`, the node enters maintenance mode. You can verify 
 talosctl version --insecure --nodes <node-ip>
 ```
 
-The `--insecure` flag is needed because maintenance mode does not use TLS.
+The `--insecure` flag is needed because maintenance mode uses the unauthenticated maintenance service.
 
 ### Re-Provisioning
 
@@ -287,7 +288,8 @@ If you only wiped EPHEMERAL but not STATE, the configuration is preserved. That 
 # Wipe both partitions
 talosctl reset --nodes <node-ip> \
     --system-labels-to-wipe STATE \
-    --system-labels-to-wipe EPHEMERAL
+    --system-labels-to-wipe EPHEMERAL \
+    --reboot
 ```
 
 ### etcd Member Not Removed After Reset
@@ -332,7 +334,7 @@ fi
 
 # Proceed with reset
 echo "Resetting $NODE..."
-talosctl reset --nodes $NODE --graceful=true
+talosctl reset --nodes $NODE --graceful=true --system-labels-to-wipe STATE --system-labels-to-wipe EPHEMERAL --reboot
 
 echo "Reset initiated. Verifying cluster health..."
 sleep 30
