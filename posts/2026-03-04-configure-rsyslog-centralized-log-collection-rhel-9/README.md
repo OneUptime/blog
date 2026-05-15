@@ -85,12 +85,16 @@ Add the following content:
 ```bash
 # Template to create per-host directories and log files
 # Logs will be stored as /var/log/remote/HOSTNAME/PROGRAMNAME.log
-template(name="RemoteLogs" type="string"
-    string="/var/log/remote/%HOSTNAME%/%PROGRAMNAME%.log"
-)
+template(name="RemoteLogs" type="list") {
+    constant(value="/var/log/remote/")
+    property(name="hostname" securePath="replace")
+    constant(value="/")
+    property(name="programname" securePath="replace")
+    constant(value=".log")
+}
 
 # Apply the template to all incoming remote logs
-# The ampersand-tilde stops further processing of remote messages
+# The stop statement prevents further processing of remote messages
 if $fromhost-ip != '127.0.0.1' then {
     action(type="omfile" dynaFile="RemoteLogs")
     stop
@@ -128,14 +132,14 @@ sudo firewall-cmd --list-ports
 
 ### Step 5: Configure SELinux
 
-SELinux on RHEL may block rsyslog from listening on non-standard configurations. Allow it:
+SELinux on RHEL already permits the default syslog port 514. If you choose a different TCP port, add it to the `syslogd_port_t` SELinux port type:
 
 ```bash
-# Allow rsyslog to use the syslogd port
-sudo semanage port -a -t syslogd_port_t -p tcp 514
+# Allow rsyslog to use a custom TCP port, such as 30514
+sudo semanage port -a -t syslogd_port_t -p tcp 30514
 
 # If the port is already defined, modify it instead
-# sudo semanage port -m -t syslogd_port_t -p tcp 514
+# sudo semanage port -m -t syslogd_port_t -p tcp 30514
 ```
 
 ### Step 6: Restart rsyslog
@@ -206,7 +210,7 @@ From the client, send a test message:
 
 ```bash
 # Send a test log message
-logger "Test message from $(hostname) to central log server"
+logger -t remote-test "Test message from $(hostname) to central log server"
 ```
 
 On the central server, check for the message:
@@ -216,7 +220,7 @@ On the central server, check for the message:
 ls /var/log/remote/
 
 # Check the log file for the test message
-cat /var/log/remote/CLIENT_HOSTNAME/root.log
+cat /var/log/remote/CLIENT_HOSTNAME/remote-test.log
 ```
 
 ## Configuring Log Rotation for Remote Logs
