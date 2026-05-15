@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, ComplianceAsCode, Compliance, Security, Linux
 
-Description: Use the ComplianceAsCode project to validate RHEL against multiple security frameworks including CIS, STIG, PCI-DSS, and NIST 800-53.
+Description: Use the ComplianceAsCode project to validate RHEL against multiple security frameworks including CIS, STIG, PCI-DSS, and OSPP.
 
 ---
 
@@ -105,7 +105,7 @@ oscap xccdf eval \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml || true
 ```
 
-### OSPP (Maps to NIST 800-53)
+### OSPP
 
 ```bash
 oscap xccdf eval \
@@ -217,7 +217,7 @@ dnf install -y scap-workbench
 
 # Apply a scan with tailoring
 oscap xccdf eval \
-  --profile xccdf_org.ssgproject.content_profile_stig \
+  --profile xccdf_org.ssgproject.content_profile_stig_customized \
   --tailoring-file /path/to/tailoring.xml \
   --results /tmp/tailored-results.xml \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml || true
@@ -270,4 +270,4 @@ SCRIPT
 chmod +x /usr/local/bin/compliance-history.sh
 ```
 
-ComplianceAsCode is the single source of truth for RHEL security compliance content. Whether you need CIS, STIG, PCI-DSS, or NIST controls, it has you covered. Use the RPM for stable production environments, build from source when you need the latest updates, and contribute back when you find something that needs fixing.
+ComplianceAsCode is the single source of truth for RHEL security compliance content. Whether you need CIS, STIG, PCI-DSS, or OSPP, it has you covered. Use the RPM for stable production environments, build from source when you need the latest updates, and contribute back when you find something that needs fixing.
