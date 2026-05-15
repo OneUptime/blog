@@ -46,15 +46,18 @@ Create `configure-bootloader.yml`:
 - name: How to Automate GRUB Boot Loader Configuration Using the bootloader RHEL System Role
   hosts: managed_hosts
   become: true
-  roles:
-    - role: rhel-system-roles.bootloader
+  tasks:
+    - name: Update the boot loader timeout
+      ansible.builtin.include_role:
+        name: redhat.rhel_system_roles.bootloader
+      vars:
+        bootloader_timeout: 10
 ```
 
 Add the role-specific variables. Check the role documentation for available options:
 
 ```bash
-ls /usr/share/doc/rhel-system-roles/bootloader/
-cat /usr/share/doc/rhel-system-roles/bootloader/README.md
+cat /usr/share/ansible/roles/rhel-system-roles.bootloader/README.md
 ```
 
 ## Step 4 - Run the Playbook
@@ -68,10 +71,7 @@ ansible-playbook -i inventory.ini configure-bootloader.yml
 On the managed hosts, verify that the configuration was applied:
 
 ```bash
-# Check relevant service or configuration
-
-systemctl status <service>
-cat <config-file>
+ansible managed_hosts -i inventory.ini -m ansible.builtin.command -a "grep 'set timeout=10' /boot/grub2/grub.cfg"
 ```
 
 ## Idempotency
