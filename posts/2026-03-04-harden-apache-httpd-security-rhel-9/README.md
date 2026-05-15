@@ -81,7 +81,7 @@ Add headers that instruct browsers to enable their built-in security features:
 # Security headers - add to /etc/httpd/conf.d/security.conf
 Header always set X-Content-Type-Options "nosniff"
 Header always set X-Frame-Options "SAMEORIGIN"
-Header always set X-XSS-Protection "1; mode=block"
+Header always set Content-Security-Policy "frame-ancestors 'self'"
 Header always set Referrer-Policy "strict-origin-when-cross-origin"
 Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
 ```
@@ -98,7 +98,7 @@ Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains
 Most sites only need GET, POST, and HEAD. Block everything else:
 
 ```apache
-# Only allow common safe methods
+# Only allow common methods
 <Directory /var/www/html>
     <LimitExcept GET POST HEAD>
         Require all denied
@@ -119,7 +119,7 @@ Already covered in Step 4, but if you need finer control per directory:
 
 ## Step 7 - Disable ETag Headers
 
-ETags can leak inode information on some configurations:
+Apache 2.4 on RHEL does not include inode information in ETags by default, but older or custom configurations that use `FileETag INode` can expose it:
 
 ```apache
 # Remove ETag header to prevent information leakage
@@ -156,7 +156,7 @@ LimitRequestFieldSize 8190
 
 ## Step 10 - Disable TRACE Method
 
-The TRACE method can be used in cross-site tracing attacks:
+The TRACE method is rarely needed on public sites. Disable it if your hardening policy requires reducing exposed HTTP methods:
 
 ```apache
 # Disable TRACE method

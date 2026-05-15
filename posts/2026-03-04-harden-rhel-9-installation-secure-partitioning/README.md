@@ -58,8 +58,9 @@ For automated deployments, add the partition layout to your Kickstart file:
 clearpart --all --initlabel
 
 # Create boot partitions
+# Anaconda hard codes /boot/efi mount options and ignores --fsoptions there
 part /boot/efi --fstype=efi --size=600
-part /boot --fstype=xfs --size=1024
+part /boot --fstype=xfs --size=1024 --fsoptions="nodev,nosuid"
 
 # Create a physical volume for LVM
 part pv.01 --size=1 --grow
