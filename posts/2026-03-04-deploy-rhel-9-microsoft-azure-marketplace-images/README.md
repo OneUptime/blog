@@ -16,7 +16,7 @@ Deploy RHEL 9 on Microsoft Azure using Marketplace images. RHEL 9 is fully suppo
 
 - A RHEL 9 subscription or cloud marketplace entitlement
 - An account on the target cloud platform (AWS, Azure, or GCP)
-- CLI tools installed: aws-cli, az-cli, or gcloud
+- CLI tools installed: AWS CLI, Azure CLI, or Google Cloud CLI
 
 ## Step 1 - Choose Your Deployment Method
 
@@ -32,13 +32,13 @@ You can deploy RHEL 9 in the cloud using:
 For AWS:
 
 ```bash
-aws ec2 run-instances --image-id ami-rhel9-xxxxx --instance-type m5.large --key-name mykey
+aws ec2 run-instances --image-id ami-xxxxxxxxxxxxxxxxx --instance-type m5.large --key-name mykey
 ```
 
 For Azure:
 
 ```bash
-az vm create --resource-group myRG --name myVM --image RedHat:RHEL:9:latest --size Standard_D2s_v3
+az vm create --resource-group myRG --name myVM --image RedHat:RHEL:9-lvm-gen2:latest --size Standard_D2s_v3
 ```
 
 For GCP:
@@ -67,7 +67,7 @@ packages:
 ## Step 4 - Register with Red Hat
 
 ```bash
-sudo subscription-manager register --auto-attach
+sudo subscription-manager register --org=ORG_ID --activationkey=ACTIVATION_KEY
 # Or connect to Red Hat Insights:
 
 sudo insights-client --register
