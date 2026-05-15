@@ -8,19 +8,19 @@ Description: Address SHA-1 deprecation issues when upgrading to RHEL 9, where SH
 
 ---
 
-RHEL 9 disables SHA-1 for signatures in the DEFAULT system-wide crypto policy. Applications and services that rely on SHA-1 signed certificates or keys will break after upgrading. Here is how to identify and resolve these issues.
+RHEL 9 disables SHA-1 for signatures in the DEFAULT system-wide crypto policy. Applications and services that rely on SHA-1 signed certificates, package signatures, or protocol negotiations will break after upgrading. Here is how to identify and resolve these issues.
 
 ## Understanding the Change
 
 In RHEL 8, SHA-1 signatures were allowed. In RHEL 9, the DEFAULT crypto policy rejects them. This affects:
 - TLS certificates signed with SHA-1
-- SSH keys using SHA-1 signatures
+- SSH connections that negotiate `ssh-rsa` (RSA/SHA-1) signatures
 - RPM packages signed with SHA-1
 - IPsec/VPN connections using SHA-1
 
 ## Identifying SHA-1 Dependencies Before Upgrade
 
-Scan your system for SHA-1 certificates and keys:
+Scan your system for SHA-1 certificates and SSH servers that require `ssh-rsa` signatures:
 
 ```bash
 # Find certificates using SHA-1 signatures
@@ -33,11 +33,8 @@ find /etc/pki -name "*.pem" -o -name "*.crt" | while read cert; do
   fi
 done
 
-# Check SSH host keys
-for key in /etc/ssh/ssh_host_*_key.pub; do
-  echo "Key: $key"
-  ssh-keygen -l -f "$key"
-done
+# Test SSH servers without allowing the SHA-1 ssh-rsa signature algorithm
+ssh -oHostKeyAlgorithms=-ssh-rsa user@server.example.com
 ```
 
 ## Temporary Workaround: Allow SHA-1
@@ -47,6 +44,9 @@ If you need time to replace SHA-1 certificates after upgrading, temporarily allo
 ```bash
 # Switch to the SHA1 subpolicy that allows SHA-1 signatures
 sudo update-crypto-policies --set DEFAULT:SHA1
+
+# Restart the system so the policy is applied by all services
+sudo reboot
 
 # Verify the policy change
 update-crypto-policies --show
@@ -82,9 +82,8 @@ Regenerate SSH host keys if they use weak algorithms:
 # Remove old DSA keys (deprecated)
 sudo rm -f /etc/ssh/ssh_host_dsa_key*
 
-# Regenerate RSA and Ed25519 keys
-sudo ssh-keygen -t rsa -b 4096 -f /etc/ssh/ssh_host_rsa_key -N ""
-sudo ssh-keygen -t ed25519 -f /etc/ssh/ssh_host_ed25519_key -N ""
+# Generate any missing default host keys, including RSA and Ed25519
+sudo ssh-keygen -A
 
 # Restart SSHD
 sudo systemctl restart sshd
@@ -97,6 +96,9 @@ Once all SHA-1 dependencies are resolved:
 ```bash
 # Restore the strict DEFAULT policy
 sudo update-crypto-policies --set DEFAULT
+
+# Restart the system so the policy is applied by all services
+sudo reboot
 
 # Verify
 update-crypto-policies --show
