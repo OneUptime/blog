@@ -61,8 +61,11 @@ sudo ip netns exec test-ns ping -c 4 10.0.0.1
 # Enable IP forwarding
 sudo sysctl -w net.ipv4.ip_forward=1
 
-# Add NAT rule
-sudo iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o eth0 -j MASQUERADE
+# Add NAT rule with nftables
+sudo nft add table nat
+sudo nft -- add chain nat prerouting '{ type nat hook prerouting priority -100 ; }'
+sudo nft add chain nat postrouting '{ type nat hook postrouting priority 100 ; }'
+sudo nft add rule nat postrouting ip saddr 10.0.0.0/24 oifname "ens3" masquerade
 
 # Add default route in namespace
 sudo ip netns exec test-ns ip route add default via 10.0.0.1
@@ -77,4 +80,3 @@ sudo ip netns delete test-ns
 ## Conclusion
 
 Network namespaces on RHEL 9 provide isolated networking for testing, development, and container implementations. Use veth pairs to connect namespaces and configure routing for internet access.
-
