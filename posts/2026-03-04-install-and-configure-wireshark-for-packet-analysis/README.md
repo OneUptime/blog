@@ -28,89 +28,95 @@ Update your system to ensure all packages are current:
 sudo dnf update -y
 ```
 
-Install any required dependencies:
-
-```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
-```
+DNF resolves Wireshark dependencies automatically from the enabled RHEL repositories, so no EPEL package or development tool group is required.
 
 ## Step 2: Install Required Packages
 
 ```bash
-sudo dnf install -y <package-name>
+sudo dnf install -y wireshark wireshark-cli
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+rpm -qi wireshark wireshark-cli
+wireshark --version
+tshark --version
 ```
 
-## Step 3: Configure the Service
+## Step 3: Configure Capture Permissions
 
-Create or edit the main configuration file:
+Add your user to the `wireshark` group so packet capture can be handled by `dumpcap` without running the full Wireshark application as root:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo usermod -aG wireshark "$USER"
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
-
-## Step 4: Start and Enable the Service
+Log out and back in, then verify the new group membership:
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+id
+```
+
+## Step 4: Start Wireshark
+
+```bash
+wireshark
+```
+
+For systems without a graphical desktop, use `tshark` from the command line:
+
+```bash
+tshark -D
 ```
 
 ## Step 5: Verify the Configuration
 
-Test the setup:
+List available capture interfaces:
 
 ```bash
-sudo <service> --test
+tshark -D
 ```
 
-Check the logs for any errors:
+Capture a small packet sample and open it for analysis:
 
 ```bash
-journalctl -u <service> -f
+tshark -i enp1s0 -c 10 -w sample.pcapng
+tshark -r sample.pcapng
 ```
 
 ## Step 6: Configure Firewall Rules
 
-If the service needs network access:
+Local packet capture does not require opening a firewalld service. If you use SSH to collect captures from a remote RHEL host, make sure SSH is allowed on that remote host:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo firewall-cmd --permanent --add-service=ssh
 sudo firewall-cmd --reload
 ```
 
 ## Step 7: Performance Tuning
 
-Monitor resource usage and adjust configuration parameters based on your workload:
+Use capture limits and ring buffers for long-running captures so files do not grow without bounds:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+dumpcap -i enp1s0 -b filesize:102400 -b files:5 -w capture.pcapng
 ```
 
 ## Security Considerations
 
-- Run the service with a dedicated non-root user when possible
-- Enable TLS/SSL for network communication
-- Restrict access with firewall rules
+- Do not run the Wireshark GUI as root
+- Limit packet capture permissions to trusted users in the `wireshark` group
+- Store capture files securely because they can contain credentials, tokens, and private traffic
 - Keep packages updated with `dnf update`
 
 ## Troubleshooting
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
-2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
-3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
+1. **No interfaces are listed**: Run `tshark -D` and verify that `dumpcap` is installed from the `wireshark-cli` package
+2. **Permission denied**: Verify group membership with `id` and log out and back in after running `usermod`
+3. **Capture file is too large**: Use `dumpcap` ring buffers with `-b filesize:<size>` and `-b files:<count>`
 
 ## Conclusion
 
-You have successfully configured install and configure wireshark for packet analysis on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
+You have successfully installed and configured Wireshark for packet analysis on RHEL. Review capture permissions regularly and keep the packages updated to maintain security and performance.
