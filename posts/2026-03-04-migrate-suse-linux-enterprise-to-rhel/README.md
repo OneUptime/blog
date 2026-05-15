@@ -8,7 +8,7 @@ Description: Plan and execute a migration from SUSE Linux Enterprise Server to R
 
 ---
 
-There is no in-place conversion tool from SLES to RHEL because the distributions use different package formats (RPM with zypper vs RPM with DNF) and different system configuration tools. Migration requires building a new RHEL server and moving workloads over.
+There is no supported in-place conversion path from SLES to RHEL in Red Hat's Convert2RHEL tooling. Both distributions use RPM packages, but they use different package managers, repositories, package sets, and system configuration tools. Migration requires building a new RHEL server and moving workloads over.
 
 ## Step 1: Document the SLES System
 
@@ -40,7 +40,7 @@ Most RPM package names are the same, but some differ:
 ```bash
 # Common differences:
 # SLES: apache2 -> RHEL: httpd
-# SLES: SUSEfirewall2 -> RHEL: firewalld
+# Older SLES: SuSEfirewall2 -> RHEL: firewalld
 # SLES: yast2-* -> RHEL: no equivalent (use nmcli, cockpit)
 # SLES: patterns-* -> RHEL: @group-names
 
@@ -74,7 +74,9 @@ sudo cp /tmp/mysite.conf /etc/httpd/conf.d/mysite.conf
 sudo httpd -t
 
 # Sysctl settings: Both use /etc/sysctl.d/
-scp sles-server:/etc/sysctl.d/*.conf /etc/sysctl.d/
+mkdir -p /tmp/sles-sysctl
+scp sles-server:/etc/sysctl.d/*.conf /tmp/sles-sysctl/
+sudo cp /tmp/sles-sysctl/*.conf /etc/sysctl.d/
 sudo sysctl --system
 ```
 
@@ -84,11 +86,12 @@ Replace YaST workflows with RHEL equivalents:
 
 ```bash
 # YaST network -> nmcli
-sudo nmcli con mod eth0 ipv4.addresses "192.168.1.10/24"
-sudo nmcli con mod eth0 ipv4.gateway "192.168.1.1"
-sudo nmcli con mod eth0 ipv4.dns "8.8.8.8"
-sudo nmcli con mod eth0 ipv4.method manual
-sudo nmcli con up eth0
+sudo nmcli con show
+sudo nmcli con mod "<connection_name>" ipv4.addresses "192.168.1.10/24"
+sudo nmcli con mod "<connection_name>" ipv4.gateway "192.168.1.1"
+sudo nmcli con mod "<connection_name>" ipv4.dns "8.8.8.8"
+sudo nmcli con mod "<connection_name>" ipv4.method manual
+sudo nmcli con up "<connection_name>"
 
 # YaST firewall -> firewall-cmd
 sudo firewall-cmd --permanent --add-service=http
