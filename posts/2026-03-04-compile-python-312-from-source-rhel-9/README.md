@@ -33,6 +33,7 @@ sudo dnf install -y \
     libuuid-devel \
     ncurses-devel \
     expat-devel \
+    gnupg2 \
     wget
 ```
 
@@ -48,6 +49,8 @@ wget "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSIO
 
 # Verify the download (optional but recommended)
 wget "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz.asc"
+gpg --keyserver hkps://keys.openpgp.org --recv-keys A821E680E5FA6305
+gpg --verify "Python-${PYTHON_VERSION}.tgz.asc" "Python-${PYTHON_VERSION}.tgz"
 
 # Extract the source
 tar xzf "Python-${PYTHON_VERSION}.tgz"
@@ -68,7 +71,6 @@ cd "Python-${PYTHON_VERSION}"
     --enable-optimizations \
     --with-lto \
     --enable-shared \
-    --with-system-ffi \
     --with-ensurepip=upgrade
 ```
 
@@ -76,7 +78,7 @@ cd "Python-${PYTHON_VERSION}"
 
 ```bash
 # Build using all available CPU cores
-# 'make -j' uses all cores, or specify a number like -j4
+# nproc supplies the number of available processing units
 make -j "$(nproc)"
 
 # Install without overwriting the system Python
@@ -152,7 +154,7 @@ pip --version
 
 ```mermaid
 graph TD
-    A[Download Source] --> B[Install Dependencies]
+    A[Install Dependencies] --> B[Download Source]
     B --> C[./configure with flags]
     C --> D[make -j nproc]
     D --> E[make altinstall]
@@ -168,6 +170,7 @@ graph TD
 cd /
 rm -rf /tmp/Python-${PYTHON_VERSION}
 rm -f /tmp/Python-${PYTHON_VERSION}.tgz
+rm -f /tmp/Python-${PYTHON_VERSION}.tgz.asc
 ```
 
 ## Uninstalling a Source-Built Python
