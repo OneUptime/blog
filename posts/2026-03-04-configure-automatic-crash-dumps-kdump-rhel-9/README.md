@@ -36,11 +36,10 @@ On a minimal RHEL install, kdump might not be installed. Let's fix that:
 
 ```bash
 # Install the kdump tools and crash analysis utility
-
-sudo dnf install kexec-tools crash kernel-debuginfo -y
+sudo dnf install kexec-tools crash -y
 ```
 
-The `kexec-tools` package provides kdump itself. The `crash` utility is what you use to analyze the dump files later. The `kernel-debuginfo` package provides the symbols needed for meaningful analysis.
+The `kexec-tools` package provides kdump itself. The `crash` utility is what you use to analyze the dump files later. The matching `kernel-debuginfo` package provides the symbols needed for meaningful analysis; install it from the debug RPM repository before analyzing a dump.
 
 Enable the kdump service so it starts on every boot:
 
@@ -62,19 +61,22 @@ You should see "active (exited)" in the output. kdump loads the crash kernel int
 
 ## Configuring the crashkernel Boot Parameter
 
-RHEL usually sets the `crashkernel` parameter automatically during installation. You can verify it is present in your boot configuration:
+On current RHEL 9 installations, `kexec-tools` maintains default `crashkernel` reservation values. You can verify the parameter is present in your boot configuration:
 
 ```bash
 # Check the current crashkernel setting
 cat /proc/cmdline | tr ' ' '\n' | grep crashkernel
 ```
 
-On RHEL with the default configuration, you should see something like `crashkernel=1G-4G:192M,4G-64G:256M,64G-:512M`. This is the auto-scaling syntax that reserves different amounts of memory based on total system RAM.
+On x86_64 RHEL systems with the default configuration, you should see something like `crashkernel=1G-4G:192M,4G-64G:256M,64G-:512M`. This range-based syntax reserves different amounts of memory based on total system RAM.
 
 If the parameter is missing or you need to change it, use `grubby`:
 
 ```bash
-# Set crashkernel to reserve 256M for systems with enough RAM
+# Reset crashkernel to the RHEL default for all installed kernels
+sudo kdumpctl reset-crashkernel --kernel=ALL
+
+# Or set a custom crashkernel reservation
 sudo grubby --update-kernel=ALL --args="crashkernel=256M"
 ```
 
@@ -110,15 +112,19 @@ Here are the most important options you will want to set:
 ```bash
 # /etc/kdump.conf - Key settings explained
 
-# Where to save the dump (path relative to the filesystem root)
+# Where to save the dump. With no separate target configured, this is
+# an absolute path from the root filesystem.
 path /var/crash
 
 # What to capture. This controls how much data goes into the dump.
-# Level 31 skips zero pages, cache, user data - good balance of size vs info
-core_collector makedumpfile -l --message-level 7 -d 31
+# Level 31 skips zero, cache, cache private, user, and free pages.
+core_collector makedumpfile -l --message-level 1 -d 31
 
 # What to do after the dump is saved
-default reboot
+final_action reboot
+
+# What to do if saving the dump fails
+failure_action reboot
 ```
 
 The `core_collector` line is the most important tuning knob. The `-d` flag sets the dump level, which controls what pages are excluded:
@@ -128,7 +134,7 @@ The `core_collector` line is the most important tuning knob. The `-d` flag sets 
 | 0 | Nothing excluded (full dump) |
 | 1 | Zero-filled pages |
 | 17 | Zero pages + free pages |
-| 31 | Zero + cache + free + user pages |
+| 31 | Zero + cache + cache private + user + free pages |
 
 Level 31 is usually the right choice. It gives you kernel memory, which is what you need for debugging panics, while keeping the dump file manageable in size.
 
@@ -139,6 +145,7 @@ If your local disk might be part of the problem (say, a storage driver panic), y
 ```bash
 # Save dumps to a remote server via SSH
 ssh user@crashserver.example.com
+sshkey /root/.ssh/kdump_id_rsa
 path /var/crash/remote-dumps
 ```
 
