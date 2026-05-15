@@ -8,7 +8,7 @@ Description: Configure IMA on RHEL for continuous runtime file integrity checkin
 
 ---
 
-IMA provides continuous runtime integrity verification at the kernel level. Unlike file integrity monitoring tools that run periodically, IMA checks files every time they are accessed.
+IMA provides continuous runtime integrity verification at the kernel level. Unlike file integrity monitoring tools that run periodically, IMA can measure or appraise files when kernel integrity hooks are triggered, such as when files are executed, memory-mapped for execution, or read by root under the TCB policy.
 
 ## Understanding IMA Modes
 
@@ -33,27 +33,27 @@ After reboot, verify IMA is running:
 
 ```bash
 # Check IMA measurements are being collected
-sudo head -5 /sys/kernel/security/ima/ascii_runtime_measurements
+sudo head -5 /sys/kernel/security/integrity/ima/ascii_runtime_measurements
 
 # Each line shows:
-# PCR_number hash_algorithm:hash filename_hint filename
+# PCR_number template_digest template_name file_hash filename
 # Example:
-# 10 sha256:abc123... /usr/bin/bash boot_aggregate
+# 10 abc123... ima-ng sha256:def456... /usr/bin/bash
 ```
 
 ## Set Up IMA Appraisal
 
-Appraisal mode verifies file integrity before allowing execution:
+Appraisal mode verifies file integrity before allowing access to protected files:
 
 ```bash
 # First, label all files with their current hashes (fix mode)
 sudo grubby --update-kernel=ALL \
-  --args="ima_policy=appraise_tcb ima_appraise=fix"
+  --args="ima_policy=appraise_tcb ima_appraise=fix evm=fix"
 
 sudo reboot
 
 # After reboot in fix mode, access files to set their hashes
-# Run common commands to label their binaries
+# Run common commands to label protected files
 find /usr/bin /usr/sbin /usr/lib64 -type f -exec head -c 1 {} \; 2>/dev/null
 
 # Check that security.ima extended attributes are being set
@@ -78,8 +78,9 @@ appraise func=FILE_MMAP mask=MAY_EXEC
 POLICY
 
 # Load the policy at boot by adding to the kernel parameters
-sudo grubby --update-kernel=ALL \
-  --args="ima_policy=/etc/ima/ima-policy"
+# RHEL loads /etc/ima/ima-policy automatically during boot.
+# Test the policy before rebooting:
+echo /etc/ima/ima-policy | sudo tee /sys/kernel/security/integrity/ima/policy
 ```
 
 ## Monitor IMA Violations
