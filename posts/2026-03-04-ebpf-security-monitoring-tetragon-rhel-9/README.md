@@ -30,19 +30,14 @@ Traditional auditd captures syscalls but generates massive log volumes and canno
 ## Installing Tetragon on RHEL
 
 ```bash
-# Add the Cilium Tetragon repository
-
-cat <<'REPO' | sudo tee /etc/yum.repos.d/cilium-tetragon.repo
-[cilium-tetragon]
-name=Cilium Tetragon
-baseurl=https://download.cilium.io/tetragon/rpm/stable/
-enabled=1
-gpgcheck=1
-gpgkey=https://download.cilium.io/tetragon/rpm/stable/GPG-KEY-cilium
-REPO
-
-# Install Tetragon
-sudo dnf install -y tetragon
+# Download and install the current Tetragon package for Linux amd64
+TETRAGON_VERSION=v1.7.0
+curl -LO "https://github.com/cilium/tetragon/releases/download/${TETRAGON_VERSION}/tetragon-${TETRAGON_VERSION}-amd64.tar.gz"
+curl -LO "https://github.com/cilium/tetragon/releases/download/${TETRAGON_VERSION}/tetragon-${TETRAGON_VERSION}-amd64.tar.gz.sha256sum"
+sha256sum --check "tetragon-${TETRAGON_VERSION}-amd64.tar.gz.sha256sum"
+tar -xzf "tetragon-${TETRAGON_VERSION}-amd64.tar.gz"
+cd "tetragon-${TETRAGON_VERSION}-amd64/"
+sudo ./install.sh
 
 # Enable and start the Tetragon service
 sudo systemctl enable --now tetragon
@@ -51,12 +46,13 @@ sudo systemctl enable --now tetragon
 sudo systemctl status tetragon
 
 # Install the tetra CLI for interacting with Tetragon
-sudo dnf install -y tetragon-cli
+curl -L https://github.com/cilium/tetragon/releases/latest/download/tetra-linux-amd64.tar.gz | tar -xz
+sudo mv tetra /usr/local/bin/
 ```
 
 ## Viewing Real-Time Security Events
 
-Once Tetragon is running, it immediately starts capturing process execution and basic security events:
+Once Tetragon is running, it immediately starts capturing process lifecycle events:
 
 ```bash
 # Stream all events in real time using the tetra CLI
@@ -164,7 +160,7 @@ spec:
       selectors:
         - matchActions:
             - action: Post
-    - call: "__x64_sys_setuid"
+    - call: "sys_setuid"
       syscall: true
       args:
         - index: 0
@@ -210,15 +206,13 @@ For production use, you want to forward Tetragon events to your logging infrastr
 
 ```bash
 # Tetragon writes JSON events to its export file
-# Configure the export path in the Tetragon config
-sudo mkdir -p /etc/tetragon/
-cat <<'EOF' | sudo tee /etc/tetragon/tetragon.yaml
-export-filename: /var/log/tetragon/tetragon.log
-export-file-max-size-mb: 100
-export-file-rotation-interval: 24h
-export-file-max-backups: 5
-export-file-compress: true
-EOF
+# Configure the export path and rotation settings with drop-in config files
+sudo mkdir -p /etc/tetragon/tetragon.conf.d /var/log/tetragon
+echo "/var/log/tetragon/tetragon.log" | sudo tee /etc/tetragon/tetragon.conf.d/export-filename
+echo "100" | sudo tee /etc/tetragon/tetragon.conf.d/export-file-max-size-mb
+echo "24h" | sudo tee /etc/tetragon/tetragon.conf.d/export-file-rotation-interval
+echo "5" | sudo tee /etc/tetragon/tetragon.conf.d/export-file-max-backups
+echo "true" | sudo tee /etc/tetragon/tetragon.conf.d/export-file-compress
 
 # Restart to apply
 sudo systemctl restart tetragon
@@ -248,8 +242,9 @@ sudo systemctl status tetragon
 ps aux | grep tetragon
 
 # Monitor eBPF program performance
+sudo sysctl kernel.bpf_stats_enabled=1
 sudo bpftool prog list | grep tetragon
-# Look at the "run_cnt" and "run_time_ns" fields to see actual overhead
+# Look at the "run_cnt" and "run_time_ns" fields when BPF runtime stats are enabled
 ```
 
 Typical overhead is less than 1% CPU on moderately active systems, since eBPF programs run in the kernel and only send matching events to userspace.
