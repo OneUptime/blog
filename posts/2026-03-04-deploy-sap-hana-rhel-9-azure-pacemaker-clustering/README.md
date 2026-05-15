@@ -14,7 +14,7 @@ Deploy SAP HANA on RHEL 9 in Azure with Pacemaker clustering. Running SAP on RHE
 
 ## Prerequisites
 
-- RHEL 9 with the SAP Solutions subscription
+- RHEL 9.4 or later with the SAP Solutions subscription
 - Systems meeting SAP hardware requirements (see SAP Note 2772999)
 - Root or sudo access
 - For HA clusters: at least two RHEL 9 nodes with the HA add-on
@@ -22,14 +22,19 @@ Deploy SAP HANA on RHEL 9 in Azure with Pacemaker clustering. Running SAP on RHE
 ## Step 1 - Register and Enable SAP Repositories
 
 ```bash
-sudo subscription-manager repos --enable=rhel-9-for-x86_64-sap-solutions-rpms
-sudo subscription-manager repos --enable=rhel-9-for-x86_64-sap-netweaver-rpms
+sudo subscription-manager release --set=9.4
+sudo subscription-manager repos --disable="*" \
+  --enable="rhel-9-for-$(uname -m)-baseos-e4s-rpms" \
+  --enable="rhel-9-for-$(uname -m)-appstream-e4s-rpms" \
+  --enable="rhel-9-for-$(uname -m)-sap-solutions-e4s-rpms" \
+  --enable="rhel-9-for-$(uname -m)-sap-netweaver-e4s-rpms" \
+  --enable="rhel-9-for-$(uname -m)-highavailability-e4s-rpms"
 ```
 
 ## Step 2 - Install SAP-Specific Packages
 
 ```bash
-sudo dnf install -y tuned-profiles-sap-hana resource-agents-sap-hana
+sudo dnf install -y tuned-profiles-sap-hana sap-hana-ha
 # For RHEL System Roles for SAP:
 
 sudo dnf install -y rhel-system-roles-sap
@@ -45,20 +50,17 @@ This configures kernel parameters, memory settings, and I/O schedulers as recomm
 
 ## Step 4 - Configure Kernel Parameters
 
-Verify the critical settings in `/etc/sysctl.conf`:
+Verify the SAP kernel settings in `/etc/sysctl.d/sap.conf`:
 
 ```text
-vm.swappiness = 10
-vm.dirty_ratio = 10
-vm.dirty_background_ratio = 3
-net.core.somaxconn = 4096
-net.ipv4.tcp_max_syn_backlog = 8192
+vm.max_map_count = 2147483647
+kernel.pid_max = 4194304
 ```
 
 Apply:
 
 ```bash
-sudo sysctl -p
+sudo sysctl --system
 ```
 
 ## Step 5 - Set Up High Availability (If Required)
@@ -66,16 +68,16 @@ sudo sysctl -p
 Install the HA add-on:
 
 ```bash
-sudo dnf install -y pacemaker pcs fence-agents-all
+sudo dnf install -y pacemaker pcs resource-agents-cloud fence-agents-azure-arm
 sudo systemctl enable --now pcsd
 sudo passwd hacluster
 ```
 
-Configure the cluster with pcs commands following the SAP-specific resource agent documentation.
+Configure the cluster with pcs commands following the SAP-specific resource agent documentation and configure Azure fencing with `fence_azure_arm` or SBD.
 
 ## Step 6 - Validate the Configuration
 
-Use the SAP HANA Hardware Configuration Check Tool (HWCCT) or the RHEL System Roles validation tasks to confirm your system meets SAP requirements.
+Use the SAP HANA Hardware and Cloud Measurement Tools (HCMT), `hdblcm --action=check_installation`, or the RHEL System Roles validation tasks to confirm your system meets SAP requirements.
 
 ## Summary
 
