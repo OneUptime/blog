@@ -14,8 +14,8 @@ The Flux helm-controller is responsible for rendering Helm templates, computing 
 
 - **Large Helm charts**: Charts like `kube-prometheus-stack` render thousands of Kubernetes resources.
 - **Many HelmReleases**: Managing dozens or hundreds of releases in a single cluster.
-- **Drift detection**: Enabled drift detection increases memory usage because the controller holds both desired and live state in memory for comparison.
-- **Frequent reconciliation**: Short reconciliation intervals cause more concurrent operations.
+- **Drift detection**: Enabled drift detection adds server-side dry-run comparisons between the stored Helm manifest and the current cluster state.
+- **Frequent reconciliation**: Short reconciliation intervals keep the controller's reconciliation workers busy more often.
 - **Helm history**: Large release histories consume memory when the controller loads them.
 
 When the helm-controller exceeds its memory limit, Kubernetes kills the pod with an OOMKilled status, causing reconciliation failures and potential release inconsistencies.
@@ -76,6 +76,28 @@ kubectl port-forward -n flux-system deployment/helm-controller 8080:8080
 
 # In another terminal, query memory metrics
 curl -s http://localhost:8080/metrics | grep process_resident_memory_bytes
+```
+
+Flux also includes an optional near-OOM watcher for helm-controller. When enabled, it monitors memory usage and gracefully shuts down the controller before Kubernetes forcefully OOM-kills it:
+
+```yaml
+# Enable near-OOM detection for helm-controller
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+patches:
+  - target:
+      kind: Deployment
+      name: helm-controller
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --feature-gates=OOMWatch=true
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --oom-watch-memory-threshold=95
 ```
 
 ## Step 3: Increase Helm Controller Memory Limits
