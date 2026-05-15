@@ -25,7 +25,7 @@ uname -r
 sudo grubby --set-default /boot/vmlinuz-5.15.0-200.131.27.el9uek.x86_64
 ```
 
-UEK includes optimizations for Oracle Database workloads, including better I/O scheduling and DTrace support. RHEL uses only the RHCK.
+UEK includes optimizations developed with Oracle Database, middleware, and hardware engineering teams, and DTrace is available for use with UEK. RHEL uses Red Hat's own Enterprise Linux kernel.
 
 ## Oracle Database Preinstallation
 
@@ -36,7 +36,7 @@ Oracle Linux ships a preinstallation RPM that automatically configures kernel pa
 sudo dnf install oracle-database-preinstall-21c
 
 # This automatically sets sysctl parameters, creates the oracle user,
-# and configures /etc/security/limits.conf
+# and configures release-specific resource limit files
 ```
 
 On RHEL, you must configure these prerequisites manually or use your own automation:
@@ -48,6 +48,7 @@ fs.aio-max-nr = 1048576
 fs.file-max = 6815744
 kernel.shmall = 2097152
 kernel.shmmax = 4294967295
+kernel.shmmni = 4096
 kernel.sem = 250 32000 100 128
 net.ipv4.ip_local_port_range = 9000 65500
 net.core.rmem_default = 262144
@@ -71,7 +72,7 @@ sudo subscription-manager status
 sudo dnf repolist
 ```
 
-If you run Oracle Database, Oracle Premier Support for Oracle Linux is included with your database support contract at no additional cost.
+If you deploy Oracle Database on Oracle Cloud Infrastructure or Oracle Engineered Systems, Oracle says the benefits of Oracle Linux Support are provided at no additional cost.
 
 ## Compatibility
 
