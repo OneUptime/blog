@@ -23,7 +23,7 @@ Users authenticate to the controller, which authorizes their access to specific 
 ## Prerequisites
 
 - RHEL systems for controller and worker (can be the same machine for testing)
-- PostgreSQL 11 or newer for the controller database
+- A supported PostgreSQL version for the controller database
 - Root or sudo access
 
 ## Installing Boundary
@@ -61,7 +61,7 @@ Create the Boundary database:
 ```bash
 # Create the database and user
 sudo -u postgres psql << 'SQL'
-CREATE USER boundary WITH PASSWORD 'boundary_db_password';
+CREATE USER boundary WITH PASSWORD 'boundary_db_password' SUPERUSER;
 CREATE DATABASE boundary OWNER boundary;
 SQL
 ```
@@ -103,21 +103,21 @@ listener "tcp" {
 kms "aead" {
   purpose = "root"
   aead_type = "aes-gcm"
-  key = "sP1fnF5Xz85RrXpS+DAANXNueTriiQOk"
+  key = "uaCDi302qbo8xvn56nLjfr933EhqnogahrQ0eIoClSc="
   key_id = "global_root"
 }
 
 kms "aead" {
   purpose = "worker-auth"
   aead_type = "aes-gcm"
-  key = "8fZBjCUfN0TzjEGLQldGY4+iE9AkOvCf"
+  key = "7a/UZXCGRIpgxW06F/wDMxFeMOS3/bcAWnFavGPzptE="
   key_id = "global_worker-auth"
 }
 
 kms "aead" {
   purpose = "recovery"
   aead_type = "aes-gcm"
-  key = "8fZBjCUfN0TzjEGLQldGY4+iE9AkOvCg"
+  key = "zjzSSN1uYXFj4T1YgM3R46/YJDdLHVvweTx3QJoQ1eI="
   key_id = "global_recovery"
 }
 EOF
@@ -131,6 +131,14 @@ boundary database init -config /etc/boundary/controller.hcl
 ```
 
 Save the output, which contains the initial auth method ID, login name, and password.
+
+After initialization, remove the superuser role from the Boundary database user:
+
+```bash
+sudo -u postgres psql << 'SQL'
+ALTER USER boundary WITH NOSUPERUSER;
+SQL
+```
 
 ## Starting the Controller
 
@@ -169,7 +177,7 @@ disable_mlock = true
 worker {
   name = "boundary-worker-1"
   description = "Boundary worker on RHEL"
-  controllers = ["127.0.0.1:9201"]
+  initial_upstreams = ["127.0.0.1:9201"]
 }
 
 listener "tcp" {
@@ -181,7 +189,7 @@ listener "tcp" {
 kms "aead" {
   purpose = "worker-auth"
   aead_type = "aes-gcm"
-  key = "8fZBjCUfN0TzjEGLQldGY4+iE9AkOvCf"
+  key = "7a/UZXCGRIpgxW06F/wDMxFeMOS3/bcAWnFavGPzptE="
   key_id = "global_worker-auth"
 }
 EOF
