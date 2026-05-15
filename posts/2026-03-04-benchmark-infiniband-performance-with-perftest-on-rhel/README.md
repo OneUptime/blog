@@ -68,7 +68,7 @@ ib_write_lat -d mlx5_0
 # Client
 ib_write_lat -d mlx5_0 10.0.0.1
 
-# Output shows latency in microseconds for different message sizes
+# Output shows latency in microseconds for the selected message size
 ```
 
 ### Send Latency
@@ -95,8 +95,8 @@ ib_write_bw -d mlx5_0 -D 10 --report_gbits 10.0.0.1
 # Test with multiple queue pairs
 ib_write_bw -d mlx5_0 -q 4 --report_gbits 10.0.0.1
 
-# Use a specific port on the adapter
-ib_write_bw -d mlx5_0 -p 1 --report_gbits 10.0.0.1
+# Use a specific network port on the adapter
+ib_write_bw -d mlx5_0 -i 1 --report_gbits 10.0.0.1
 
 # Test all message sizes
 ib_write_bw -d mlx5_0 -a --report_gbits 10.0.0.1
