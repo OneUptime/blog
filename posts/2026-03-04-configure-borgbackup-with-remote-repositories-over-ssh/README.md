@@ -14,11 +14,12 @@ This guide covers how to Configure BorgBackup with Remote Repositories Over SSH 
 
 - RHEL with a minimal or standard installation
 - Root or sudo access
+- SSH access to the remote repository host
 - A stable network connection
 
 ## Overview
 
-Configure BorgBackup with Remote Repositories Over SSH requires careful planning and execution. This guide walks through the complete process from installation to verification.
+Configuring BorgBackup with remote repositories over SSH requires Borg to be installed on the client and, for the standard SSH mode, on the remote host. This guide walks through the complete process from installation to verification.
 
 ## Step 1: Prepare the System
 
@@ -31,37 +32,46 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y openssh-clients openssh-server
+sudo systemctl enable --now sshd
 ```
 
 ## Step 2: Install Required Packages
 
 ```bash
-sudo dnf install -y <package-name>
+sudo dnf install -y borgbackup
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+borg --version
+rpm -qi borgbackup
 ```
 
-## Step 3: Configure the Service
+## Step 3: Configure the SSH Repository
 
-Create or edit the main configuration file:
+Create a dedicated repository user and directory on the remote host:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo useradd --create-home --shell /bin/bash borg
+sudo mkdir -p /home/borg/repos/server1
+sudo chown -R borg:borg /home/borg/repos
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
-
-## Step 4: Start and Enable the Service
+Copy the backup client's SSH key to the remote `borg` user:
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+ssh-copy-id borg@backup.example.com
+```
+
+Borg does not use a long-running service for normal backups. It starts `borg serve` over SSH when the client connects.
+
+## Step 4: Initialize the Repository and Create a Backup
+
+```bash
+borg init --encryption=repokey borg@backup.example.com:/home/borg/repos/server1
+borg create --stats borg@backup.example.com:/home/borg/repos/server1::'{hostname}-{now}' /etc /home
 ```
 
 ## Step 5: Verify the Configuration
@@ -69,21 +79,22 @@ sudo systemctl status <service>
 Test the setup:
 
 ```bash
-sudo <service> --test
+borg list borg@backup.example.com:/home/borg/repos/server1
+borg check borg@backup.example.com:/home/borg/repos/server1
 ```
 
-Check the logs for any errors:
+If SSH authentication fails, test the SSH connection directly:
 
 ```bash
-journalctl -u <service> -f
+ssh borg@backup.example.com borg --version
 ```
 
 ## Step 6: Configure Firewall Rules
 
-If the service needs network access:
+If the remote repository host uses firewalld, allow SSH:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo firewall-cmd --permanent --add-service=ssh
 sudo firewall-cmd --reload
 ```
 
@@ -92,25 +103,28 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+borg create --stats --compression lz4 borg@backup.example.com:/home/borg/repos/server1::'{hostname}-{now}' /etc /home
+borg prune --list borg@backup.example.com:/home/borg/repos/server1 --glob-archives '{hostname}-*' --keep-daily 7 --keep-weekly 4 --keep-monthly 6
+borg compact borg@backup.example.com:/home/borg/repos/server1
 ```
 
 ## Security Considerations
 
-- Run the service with a dedicated non-root user when possible
-- Enable TLS/SSL for network communication
-- Restrict access with firewall rules
+- Use a dedicated non-root user on the remote repository host
+- Use SSH key authentication and protect the private key
+- Restrict SSH access with firewall rules
+- Consider a forced command in `~borg/.ssh/authorized_keys`, such as `command="borg serve --restrict-to-path /home/borg/repos",restrict ssh-rsa AAAAB3[...]`
+- Export and store a copy of the Borg repository key if you use encryption
 - Keep packages updated with `dnf update`
 
 ## Troubleshooting
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
-2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
-3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
+1. **SSH connection fails**: Verify that `sshd` is running on the remote host and that port 22 is reachable
+2. **Permission denied**: Verify SSH key access, repository ownership, and SELinux contexts with `ls -laZ`
+3. **Borg not found on the remote host**: Install `borgbackup` on the remote host or use a mounted remote filesystem instead of Borg's SSH mode
 
 ## Conclusion
 
-You have successfully configured configure borgbackup with remote repositories over ssh on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
+You have successfully configured BorgBackup with a remote repository over SSH on RHEL. Test restores regularly, check repository health, and keep Borg and SSH updated to maintain security and reliability.
