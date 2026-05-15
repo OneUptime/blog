@@ -21,10 +21,10 @@ Use the storage RHEL System Role for automating disk and LVM configuration. RHEL
 ## Step 1 - Install RHEL System Roles
 
 ```bash
-sudo dnf install -y rhel-system-roles
+sudo dnf install -y rhel-system-roles ansible-core
 ```
 
-The roles are installed to `/usr/share/ansible/roles/`.
+The roles are installed under `/usr/share/ansible/roles/` and the collection is installed under `/usr/share/ansible/collections/ansible_collections/redhat/rhel_system_roles/`.
 
 ## Step 2 - Create an Inventory File
 
@@ -47,14 +47,14 @@ Create `configure-storage.yml`:
   hosts: managed_hosts
   become: true
   roles:
-    - role: rhel-system-roles.storage
+    - role: redhat.rhel_system_roles.storage
 ```
 
 Add the role-specific variables. Check the role documentation for available options:
 
 ```bash
-ls /usr/share/doc/rhel-system-roles/storage/
-cat /usr/share/doc/rhel-system-roles/storage/README.md
+ls /usr/share/ansible/roles/rhel-system-roles.storage/
+cat /usr/share/ansible/roles/rhel-system-roles.storage/README.md
 ```
 
 ## Step 4 - Run the Playbook
@@ -68,10 +68,10 @@ ansible-playbook -i inventory.ini configure-storage.yml
 On the managed hosts, verify that the configuration was applied:
 
 ```bash
-# Check relevant service or configuration
-
-systemctl status <service>
-cat <config-file>
+lsblk -f
+findmnt
+sudo vgs
+sudo lvs
 ```
 
 ## Idempotency
