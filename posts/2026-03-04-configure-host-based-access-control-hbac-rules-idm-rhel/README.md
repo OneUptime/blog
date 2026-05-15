@@ -17,14 +17,14 @@ HBAC (Host-Based Access Control) rules in IdM let you define which users or grou
 
 kinit admin
 
-# Disable the default rule that allows everyone everywhere
+# After creating and testing replacement rules, disable the default rule
 ipa hbacrule-disable allow_all
 
 # Verify it is disabled
 ipa hbacrule-show allow_all
 ```
 
-After disabling allow_all, no one can log in to IdM-enrolled hosts until you create specific rules.
+If you disable allow_all before creating specific rules, no one can log in to IdM-enrolled hosts.
 
 ## Creating HBAC Rules
 
@@ -77,7 +77,8 @@ ipa hbactest \
   --user=jsmith \
   --host=prod1.example.com \
   --service=sshd \
-  --rules=dev-server-access,admin-access
+  --rules=dev-server-access \
+  --rules=admin-access
 ```
 
 ## Listing and Managing Rules
@@ -93,4 +94,4 @@ ipa hbacrule-show dev-server-access --all
 ipa hbacrule-del dev-server-access
 ```
 
-Always test HBAC rules with `ipa hbactest` before disabling `allow_all`. Keep an admin access rule that grants you access to all hosts to avoid locking yourself out. SSSD on client machines caches HBAC rules, so changes may take a few minutes to propagate.
+Always test HBAC rules with `ipa hbactest` before disabling `allow_all`. Keep an admin access rule that grants you access to all hosts to avoid locking yourself out. SSSD on client machines caches HBAC rules, so propagation depends on the client's SSSD refresh settings.
