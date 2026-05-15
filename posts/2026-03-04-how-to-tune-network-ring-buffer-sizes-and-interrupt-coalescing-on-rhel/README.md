@@ -25,7 +25,8 @@ ethtool -g ens192
 ## Increasing Ring Buffer Sizes
 
 ```bash
-# Set RX and TX ring buffer sizes to their maximum
+# Set RX and TX ring buffer sizes to the maximums reported by ethtool -g
+# 4096 is an example value; use the values shown for your NIC.
 sudo ethtool -G ens192 rx 4096 tx 4096
 
 # Verify the change
@@ -39,6 +40,7 @@ ethtool -g ens192
 cat << 'DISPATCH' | sudo tee /etc/NetworkManager/dispatcher.d/99-ring-buffer.sh
 #!/bin/bash
 if [ "$1" = "ens192" ] && [ "$2" = "up" ]; then
+    # 4096 is an example value; use the maximums reported by ethtool -g.
     ethtool -G ens192 rx 4096 tx 4096
 fi
 DISPATCH
@@ -85,6 +87,7 @@ ip -s link show ens192
 cat << 'DISPATCH' | sudo tee /etc/NetworkManager/dispatcher.d/99-nic-tuning.sh
 #!/bin/bash
 if [ "$1" = "ens192" ] && [ "$2" = "up" ]; then
+    # 4096 is an example value; use the maximums reported by ethtool -g.
     ethtool -G ens192 rx 4096 tx 4096
     ethtool -C ens192 adaptive-rx on adaptive-tx on
 fi
@@ -93,4 +96,4 @@ DISPATCH
 sudo chmod +x /etc/NetworkManager/dispatcher.d/99-nic-tuning.sh
 ```
 
-Larger ring buffers help absorb traffic bursts but consume more kernel memory. Start with maximum ring buffer sizes and tune coalescing based on whether your workload prioritizes throughput or latency.
+Larger ring buffers help absorb traffic bursts but consume more kernel memory. Start with the maximum ring buffer sizes reported by `ethtool -g` and tune coalescing based on whether your workload prioritizes throughput or latency.
