@@ -75,7 +75,7 @@ sudo -u postgres pgbench -c 10 -j 4 -T 60 \
   --report-per-command \
   pgbench_test
 
-# Output latency histogram
+# Output per-transaction logs for latency analysis
 sudo -u postgres pgbench -c 10 -j 4 -T 60 \
   --log --log-prefix=/tmp/pgbench_log \
   pgbench_test
@@ -92,4 +92,4 @@ sudo -u postgres pgbench -c 10 -j 4 -T 60 \
 # number of transactions actually processed: 90000
 ```
 
-Higher scale factors produce more realistic results because the dataset is too large to fit entirely in memory. Start with a scale factor that creates a dataset 2-3 times larger than your shared_buffers setting.
+Higher scale factors can produce more realistic results when they create a dataset that is too large to fit entirely in memory. Start with a scale factor that creates a dataset larger than the memory target you want to test.
