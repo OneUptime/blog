@@ -98,14 +98,14 @@ pmdumplog -l /var/log/pcp/pmlogger/$(hostname)/20250115
 ## Configure Archive Retention
 
 ```bash
-# Edit pmlogger retention (default keeps 14 days)
+# Review the local pmlogger control file if you need to change logger arguments
 sudo vi /etc/pcp/pmlogger/control.d/local
 
-# Adjust the retention in the pmlogger_daily config
+# Adjust the retention in the pmlogger_daily timer config
 # The -k flag sets retention in days
 # Example: keep 30 days
-# sudo vi /etc/sysconfig/pmlogger
-# PMLOGGER_DAILY_PARAMS="-k 30"
+# sudo vi /etc/sysconfig/pmlogger_timers
+# PMLOGGER_DAILY_PARAMS="-E -k 30"
 ```
 
 ## Use pcp-atop for Interactive Monitoring
@@ -118,7 +118,7 @@ sudo dnf install -y pcp-system-tools
 pcp atop
 
 # Replay from a PCP archive
-pcp -a /var/log/pcp/pmlogger/$(hostname)/20250115 atop
+pcp atop -r /var/log/pcp/pmlogger/$(hostname)/20250115
 ```
 
 PCP gives you both real-time visibility and historical playback of system performance, which is invaluable for capacity planning and post-incident analysis on RHEL.
