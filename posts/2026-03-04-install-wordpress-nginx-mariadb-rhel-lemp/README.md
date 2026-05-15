@@ -26,10 +26,10 @@ sudo systemctl enable --now nginx mariadb php-fpm
 
 ```bash
 # Secure the MariaDB installation
-sudo mysql_secure_installation
+sudo mariadb-secure-installation
 
 # Create the WordPress database and user
-sudo mysql -u root -p -e "
+sudo mariadb -u root -p -e "
 CREATE DATABASE wordpress CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER 'wpuser'@'localhost' IDENTIFIED BY 'SecurePass456!';
 GRANT ALL PRIVILEGES ON wordpress.* TO 'wpuser'@'localhost';
@@ -41,10 +41,9 @@ FLUSH PRIVILEGES;
 
 ```bash
 # Edit the PHP-FPM pool to use nginx user
-sudo sed -i 's/^user = apache/user = nginx/' /etc/php-fpm.d/www.conf
-sudo sed -i 's/^group = apache/group = nginx/' /etc/php-fpm.d/www.conf
-sudo sed -i 's/^listen.owner = nobody/listen.owner = nginx/' /etc/php-fpm.d/www.conf
-sudo sed -i 's/^listen.group = nobody/listen.group = nginx/' /etc/php-fpm.d/www.conf
+sudo sed -i 's/^user = .*/user = nginx/' /etc/php-fpm.d/www.conf
+sudo sed -i 's/^group = .*/group = nginx/' /etc/php-fpm.d/www.conf
+sudo sed -i 's/^listen.acl_users = .*/listen.acl_users = nginx/' /etc/php-fpm.d/www.conf
 
 # Restart PHP-FPM
 sudo systemctl restart php-fpm
@@ -55,8 +54,8 @@ sudo systemctl restart php-fpm
 ```bash
 cd /tmp
 curl -O https://wordpress.org/latest.tar.gz
+sudo mkdir -p /var/www
 sudo tar xzf latest.tar.gz -C /var/www/
-sudo chown -R nginx:nginx /var/www/wordpress
 
 # Configure wp-config.php
 cd /var/www/wordpress
@@ -64,6 +63,7 @@ sudo cp wp-config-sample.php wp-config.php
 sudo sed -i "s/database_name_here/wordpress/" wp-config.php
 sudo sed -i "s/username_here/wpuser/" wp-config.php
 sudo sed -i "s/password_here/SecurePass456!/" wp-config.php
+sudo chown -R nginx:nginx /var/www/wordpress
 ```
 
 ## Configure Nginx Server Block
@@ -102,8 +102,11 @@ sudo systemctl reload nginx
 
 ```bash
 # Allow Nginx to read WordPress files and connect to the database
+sudo dnf install -y policycoreutils-python-utils
 sudo setsebool -P httpd_can_network_connect_db 1
-sudo chcon -R -t httpd_sys_rw_content_t /var/www/wordpress/wp-content
+sudo semanage fcontext -a -t httpd_sys_content_t "/var/www/wordpress(/.*)?"
+sudo semanage fcontext -a -t httpd_sys_rw_content_t "/var/www/wordpress/wp-content(/.*)?"
+sudo restorecon -Rv /var/www/wordpress
 
 # Open HTTP port
 sudo firewall-cmd --permanent --add-service=http
