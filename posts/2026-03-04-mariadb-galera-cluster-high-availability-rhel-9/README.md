@@ -14,87 +14,92 @@ Configure a MariaDB Galera Cluster on RHEL 9 for synchronous multi-master replic
 
 ## Prerequisites
 
-- A RHEL 9 system with a valid subscription or configured repositories
+- Three RHEL 9 systems with valid subscriptions or configured repositories
 - Root or sudo access
 - Sufficient disk space for database storage
+- Network connectivity between all cluster nodes
 
 ## Step 1 - Install the Database Packages
 
-For PostgreSQL:
-
 ```bash
-sudo dnf install -y postgresql-server postgresql
-sudo postgresql-setup --initdb
-sudo systemctl enable --now postgresql
+sudo dnf install -y mariadb-server-galera
 ```
 
-For MariaDB:
-
-```bash
-sudo dnf install -y mariadb-server
-sudo systemctl enable --now mariadb
-sudo mysql_secure_installation
-```
-
-For MySQL 8.0:
-
-```bash
-sudo dnf install -y mysql-community-server
-sudo systemctl enable --now mysqld
-```
-
-Choose the appropriate commands for your database engine.
+Install the package on every node. The `mariadb-server-galera` package installs the MariaDB server, Galera replication library, and Galera support files needed for the cluster.
 
 ## Step 2 - Perform Initial Configuration
 
-Edit the main configuration file:
+Edit the Galera configuration file on every node:
 
-- PostgreSQL: `/var/lib/pgsql/data/postgresql.conf` and `pg_hba.conf`
-- MariaDB/MySQL: `/etc/my.cnf.d/server.cnf`
+```bash
+sudo vi /etc/my.cnf.d/galera.cnf
+```
 
-Adjust memory settings, connection limits, and authentication methods to match your workload.
+Set the cluster address and enable the wsrep API. Use the addresses of your own nodes:
+
+```ini
+[mariadb]
+wsrep_on=1
+wsrep_cluster_name="mariadb_cluster"
+wsrep_cluster_address="gcomm://10.0.0.10,10.0.0.11,10.0.0.12"
+```
+
+For the first node of a new cluster, you can temporarily use an empty cluster address before bootstrapping:
+
+```ini
+wsrep_cluster_address="gcomm://"
+```
+
+After the cluster is running, configure each node with the cluster member addresses so it can rejoin correctly after a restart.
 
 ## Step 3 - Create Users and Databases
 
-For PostgreSQL:
+Bootstrap the first node of the new cluster:
 
 ```bash
-sudo -u postgres createuser myappuser
-sudo -u postgres createdb myappdb -O myappuser
+sudo galera_new_cluster
 ```
 
-For MariaDB/MySQL:
+Then start MariaDB on the remaining nodes:
+
+```bash
+sudo systemctl start mariadb.service
+sudo systemctl enable mariadb.service
+```
+
+Create users and databases after the cluster is online:
 
 ```sql
 CREATE DATABASE myappdb;
-CREATE USER 'myappuser'@'localhost' IDENTIFIED BY 'secure-password';
-GRANT ALL PRIVILEGES ON myappdb.* TO 'myappuser'@'localhost';
+CREATE USER 'myappuser'@'%' IDENTIFIED BY 'secure-password';
+GRANT ALL PRIVILEGES ON myappdb.* TO 'myappuser'@'%';
 FLUSH PRIVILEGES;
 ```
 
 ## Step 4 - Configure Network Access
 
-If remote connections are needed, update the listen address and authentication rules, then open the firewall:
+If remote connections are needed, update the listen address and authentication rules, then open the firewall for MariaDB client traffic and Galera replication traffic:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=postgresql
-# or
-
-sudo firewall-cmd --permanent --add-service=mysql
+sudo firewall-cmd --permanent --add-port=3306/tcp
+sudo firewall-cmd --permanent --add-port=4567/tcp
+sudo firewall-cmd --permanent --add-port=4567/udp
+sudo firewall-cmd --permanent --add-port=4568/tcp
+sudo firewall-cmd --permanent --add-port=4444/tcp
 sudo firewall-cmd --reload
 ```
 
 ## Step 5 - Verify the Setup
 
-Connect to the database and run a test query:
+Connect to MariaDB and check the Galera status variables:
 
 ```bash
-# PostgreSQL
-psql -h localhost -U myappuser myappdb -c "SELECT version();"
-# MariaDB/MySQL
-mysql -u myappuser -p myappdb -e "SELECT VERSION();"
+mysql -u root -p -e 'SHOW STATUS LIKE "wsrep_cluster_size";'
+mysql -u root -p -e 'SHOW STATUS LIKE "wsrep_cluster_status";'
+mysql -u root -p -e 'SHOW STATUS LIKE "wsrep_local_state_comment";'
+mysql -u root -p -e 'SHOW STATUS LIKE "wsrep_ready";'
 ```
 
 ## Summary
 
-You have learned how to configure mariadb galera cluster for high availability. Always secure your database with strong passwords, restricted network access, and regular backups.
+You have learned how to configure MariaDB Galera Cluster for high availability. Always secure your database with strong passwords, restricted network access, TLS for cluster traffic, and regular backups.
