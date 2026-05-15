@@ -17,7 +17,7 @@ Head to the Red Hat Customer Portal at https://access.redhat.com/downloads and l
 You will see two ISO options:
 
 - **Boot ISO** (about 900 MB) - a minimal image that pulls packages from a network repository during installation.
-- **DVD ISO** (about 9 GB) - contains the full package set, good for offline or air-gapped installs.
+- **DVD ISO** (larger than 4.7 GB) - contains the BaseOS and AppStream repositories needed for a standard offline install.
 
 For most cases, the DVD ISO is the safer choice. Download it and verify the checksum:
 
@@ -70,7 +70,7 @@ Click "Installation Destination" and select the disk where RHEL will be installe
 
 You have two choices:
 
-- **Automatic** - Anaconda creates a default layout using LVM with `/boot`, `/`, and swap. This is fine for most servers and workstations.
+- **Automatic** - Anaconda creates a default layout using LVM with `/boot`, `/`, swap, and `/home` on large enough disks. This is fine for most servers and workstations.
 - **Custom** - You control the partition layout. This is what you want for production servers where you need separate `/var`, `/home`, `/tmp`, or specific volume group sizing.
 
 For a custom layout using LVM, a reasonable starting point for a 100 GB disk looks like this:
@@ -129,10 +129,9 @@ After the reboot, remove the USB drive. The system should boot from the disk int
 ```bash
 # Register with Red Hat Subscription Manager
 sudo subscription-manager register --username your-rh-username --password your-rh-password
-
-# Attach a subscription automatically
-sudo subscription-manager attach --auto
 ```
+
+For most current Red Hat accounts, Simple Content Access is enabled, so registering the system is enough for subscription access. If your organization still uses the older entitlement model, your Red Hat administrator can tell you whether you need to attach a subscription pool manually.
 
 ### Update All Packages
 
