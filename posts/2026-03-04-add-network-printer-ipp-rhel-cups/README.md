@@ -18,8 +18,8 @@ The Internet Printing Protocol (IPP) is the modern standard for network printing
 sudo dnf install -y cups
 sudo systemctl enable --now cups
 
-# Install avahi for automatic printer discovery
-sudo dnf install -y avahi nss-mdns
+# Install avahi tools for mDNS/DNS-SD printer discovery
+sudo dnf install -y avahi avahi-tools
 sudo systemctl enable --now avahi-daemon
 ```
 
@@ -99,7 +99,7 @@ lpoptions -p "Network-Printer" -l
 
 ```bash
 # Print a test page
-lp -d "Network-Printer" /usr/share/cups/data/testprint
+lp -d "Network-Printer" /usr/share/cups/data/default-testpage.pdf
 
 # Print a specific file with options
 lp -d "Network-Printer" -o media=Letter -o sides=one-sided document.pdf
@@ -124,8 +124,8 @@ lpstat -p "Network-Printer" -o
 # Test IPP connectivity
 ipptool -tv ipp://192.168.1.50/ipp/print get-printer-attributes.test
 
-# Check CUPS error logs
-sudo tail -f /var/log/cups/error_log
+# Check CUPS logs
+sudo journalctl -u cups -f
 
 # Verify the printer is reachable
 ping 192.168.1.50
