@@ -22,6 +22,10 @@ kubeadm is the official tool for bootstrapping production-grade Kubernetes clust
 On every node:
 
 ```bash
+# Set SELinux in permissive mode
+sudo setenforce 0
+sudo sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+
 # Disable swap
 
 sudo swapoff -a
@@ -49,7 +53,9 @@ sudo sysctl --system
 ## Step 2: Install containerd
 
 ```bash
-sudo dnf install -y containerd
+sudo dnf install -y dnf-plugins-core
+sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+sudo dnf install -y containerd.io
 sudo mkdir -p /etc/containerd
 containerd config default | sudo tee /etc/containerd/config.toml
 sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
@@ -62,14 +68,15 @@ sudo systemctl enable --now containerd
 cat << EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
 [kubernetes]
 name=Kubernetes
-baseurl=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/
+baseurl=https://pkgs.k8s.io/core:/stable:/v1.36/rpm/
 enabled=1
 gpgcheck=1
-gpgkey=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1.36/rpm/repodata/repomd.xml.key
+exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
 EOF
 
-sudo dnf install -y kubelet kubeadm kubectl
-sudo systemctl enable kubelet
+sudo dnf install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+sudo systemctl enable --now kubelet
 ```
 
 ## Step 4: Initialize the Control Plane
@@ -77,7 +84,7 @@ sudo systemctl enable kubelet
 On the control plane node:
 
 ```bash
-sudo kubeadm init --pod-network-cidr=10.244.0.0/16
+sudo kubeadm init --pod-network-cidr=192.168.0.0/16
 ```
 
 Save the join command from the output.
@@ -95,7 +102,9 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 Install Calico:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/custom-resources.yaml
 ```
 
 ## Step 7: Join Worker Nodes
