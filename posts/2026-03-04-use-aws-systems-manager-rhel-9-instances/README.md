@@ -16,9 +16,9 @@ AWS Systems Manager (SSM) provides agent-based management for RHEL instances thr
 graph LR
     Admin[Administrator] --> Console[AWS Console / CLI]
     Console --> SSM[Systems Manager]
-    SSM --> Agent1[SSM Agent - RHEL Instance 1]
-    SSM --> Agent2[SSM Agent - RHEL Instance 2]
-    SSM --> Agent3[SSM Agent - RHEL Instance 3]
+    Agent1[SSM Agent - RHEL Instance 1] --> SSM
+    Agent2[SSM Agent - RHEL Instance 2] --> SSM
+    Agent3[SSM Agent - RHEL Instance 3] --> SSM
 ```
 
 ## Step 1: Install the SSM Agent
@@ -138,8 +138,8 @@ aws ssm create-association \
 
 # View collected inventory
 aws ssm get-inventory \
-  --filters "Key=AWS:InstanceInformation.InstanceId,Values=i-0123456789abcdef0" \
-  --result-attributes "TypeName=AWS:Application"
+  --filters "Key=AWS:InstanceInformation.InstanceId,Values=i-0123456789abcdef0,Type=Equal" \
+  --query 'Entities[].Data."AWS:Application".Content[]'
 ```
 
 ## Conclusion
