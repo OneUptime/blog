@@ -31,6 +31,8 @@ kubectl get pods -n kube-system
 kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
 
 # Install the Calico custom resource to configure the installation
+# If your kubeadm pod CIDR is not 192.168.0.0/16, download this file first
+# and update spec.calicoNetwork.ipPools[0].cidr before creating it.
 kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/custom-resources.yaml
 ```
 
@@ -110,7 +112,7 @@ EOF
 # View current IP pools
 calicoctl get ippool -o yaml
 
-# Create a new IP pool for a specific namespace or workload
+# Create a new IP pool for workloads on matching nodes
 cat << 'EOF' | calicoctl apply -f -
 apiVersion: projectcalico.org/v3
 kind: IPPool
@@ -144,11 +146,13 @@ kubectl exec test-pod -- wget -qO- http://backend-service.policy-test:8080
 ## Firewall Rules for Calico
 
 ```bash
-# Calico requires these ports on all RHEL nodes
-sudo firewall-cmd --permanent --add-port=179/tcp      # BGP
-sudo firewall-cmd --permanent --add-port=4789/udp     # VXLAN
-sudo firewall-cmd --permanent --add-port=5473/tcp     # Calico Typha
-sudo firewall-cmd --permanent --add-port=443/tcp      # Calico API
+# If you keep a host firewall enabled, allow the traffic for your Calico mode.
+# Calico documentation recommends disabling firewalld/iptables managers when possible.
+sudo firewall-cmd --permanent --add-port=179/tcp      # BGP, if BGP routing is enabled
+sudo firewall-cmd --permanent --add-protocol=ipip     # IP-in-IP, if IPIP encapsulation is enabled
+sudo firewall-cmd --permanent --add-port=4789/udp     # VXLAN, if VXLAN encapsulation is enabled
+sudo firewall-cmd --permanent --add-port=5473/tcp     # Typha, if Typha is enabled
+sudo firewall-cmd --permanent --add-port=6443/tcp     # kube-apiserver, or your configured secure port
 sudo firewall-cmd --reload
 ```
 
