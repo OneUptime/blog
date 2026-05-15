@@ -34,7 +34,7 @@ sudo dnf install -y libva-intel-driver
 
 # Verify VA-API is working
 vainfo
-# Look for "VAProfileH264" and "VAProfileHEVC" entries
+# Look for VAProfile entries for codecs your GPU supports, such as H264 or HEVC
 ```
 
 ### AMD GPUs
@@ -79,9 +79,9 @@ gst-inspect-1.0 | grep vaapi
 # List available hardware acceleration methods in FFmpeg
 ffmpeg -hwaccels
 
-# Decode a video using VA-API
+# Transcode a video using VA-API
 ffmpeg -hwaccel vaapi -hwaccel_device /dev/dri/renderD128 \
-  -i input.mp4 -c:v h264_vaapi -o output.mp4
+  -hwaccel_output_format vaapi -i input.mp4 -c:v h264_vaapi output.mp4
 
 # Decode using VDPAU (NVIDIA)
 ffmpeg -hwaccel vdpau -i input.mp4 output.mp4
