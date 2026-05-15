@@ -36,8 +36,8 @@ sudo perf top
 ### Trace Specific Events
 
 ```bash
-# Count system calls for a specific process
-sudo perf stat -e 'syscalls:*' -p $(pgrep nginx) -- sleep 5
+# Count system calls for nginx processes
+sudo perf stat -e 'syscalls:*' -p $(pgrep -d, nginx) -- sleep 5
 
 # Record context switches
 sudo perf record -e context-switches -a -- sleep 10
@@ -96,7 +96,7 @@ probe syscall.* {
   if (pid() == target())
     printf("%s(%s)\n", name, argstr)
 }
-' -x $(pgrep myapp) -T 5
+' -x $(pgrep -n myapp) -T 5
 ```
 
 ### Monitor File Opens
