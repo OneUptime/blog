@@ -8,7 +8,7 @@ Description: Step-by-step guide on set up minio object storage server using Red 
 
 ---
 
-Setting up MinIO Object Storage Server on RHEL requires proper planning and configuration. This guide walks through each step from initial installation to verification.
+Setting up MinIO Object Storage Server on RHEL requires proper planning and configuration. This guide walks through each step from service configuration to verification.
 
 ## Prerequisites
 
@@ -23,34 +23,42 @@ Edit the configuration file to match your environment:
 ```bash
 # Open the configuration file
 
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/default/minio
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include storage volumes, console listening address, and root credentials.
+
+```bash
+MINIO_VOLUMES="/mnt/data"
+MINIO_OPTS="--console-address :9001"
+MINIO_ROOT_USER="minioadmin"
+MINIO_ROOT_PASSWORD="CHANGE_ME_TO_A_STRONG_PASSWORD"
+```
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart minio
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable minio
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start minio
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status minio
 ```
 
 ## Step 4: Configure the Firewall
 
 ```bash
-# Open the required port
-sudo firewall-cmd --permanent --add-port=<PORT>/tcp
+# Open the MinIO S3 API and web console ports
+sudo firewall-cmd --permanent --add-port=9000/tcp
+sudo firewall-cmd --permanent --add-port=9001/tcp
 sudo firewall-cmd --reload
 
 # Verify the rule
@@ -64,18 +72,18 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status minio
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u minio --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
+- If the service fails to start, check the logs with `journalctl -u minio -e --no-pager`.
 - SELinux may block access. Check for denials with `ausearch -m avc -ts recent` and apply appropriate policies.
 - Verify firewall rules allow traffic on the required ports: `firewall-cmd --list-all`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- Ensure the MinIO package is installed: `rpm -qa | grep minio`.
 
 ## Conclusion
 
