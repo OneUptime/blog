@@ -22,7 +22,7 @@ sudo mkfs.xfs -f -d agcount=64 -l size=512m,lazy-count=1 /dev/data_vg/db_lv
 
 - `agcount=64` - Multiple allocation groups for parallel metadata operations
 - `size=512m` - Larger log for write-heavy workloads
-- `lazy-count=1` - Reduces contention on the superblock
+- `lazy-count=1` - Keeps the default lazy superblock counter behavior, reducing metadata contention
 
 ### ext4 (Alternative)
 
@@ -35,14 +35,12 @@ sudo mkfs.ext4 -E lazy_itable_init=0 -O dir_index,extent /dev/data_vg/db_lv
 ## Mount Options for Databases
 
 ```text
-UUID=...  /var/lib/pgsql  xfs  defaults,noatime,nodiratime,logbufs=8,logbsize=256k  0 0
+UUID=...  /var/lib/pgsql  xfs  defaults,noatime,logbsize=256k  0 0
 ```
 
 Key options:
 
-- **noatime** - Eliminates access time updates (huge impact for databases)
-- **nodiratime** - Same for directory access times
-- **logbufs=8** - Increases XFS log buffers
+- **noatime** - Eliminates file and directory access time updates
 - **logbsize=256k** - Increases XFS log buffer size
 
 ## Separating Database Components
@@ -83,13 +81,6 @@ vm.dirty_ratio = 40
 vm.dirty_background_ratio = 10
 vm.dirty_expire_centisecs = 500
 vm.dirty_writeback_centisecs = 100
-
-# Increase shared memory limits
-kernel.shmmax = 68719476736
-kernel.shmall = 4294967296
-
-# File descriptor limits
-fs.file-max = 2097152
 
 # Optimize for many concurrent connections
 net.core.somaxconn = 65535
