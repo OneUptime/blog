@@ -33,13 +33,13 @@ sudo stratis pool create datapool /dev/sdb
 
 ### Multi-Device Pool
 
-Create a pool spanning multiple devices:
+Create a pool that uses multiple devices as shared capacity:
 
 ```bash
 sudo stratis pool create bigpool /dev/sdb /dev/sdc /dev/sdd
 ```
 
-Stratis stripes data across all devices in the pool for improved performance.
+Stratis adds these devices to the pool's data tier. If you need RAID-style striping, mirroring, or parity, provide that below Stratis, for example with an MD RAID or LVM device.
 
 ### List Pools
 
@@ -62,7 +62,7 @@ Properties explained:
 ### View Pool Details
 
 ```bash
-sudo stratis pool describe datapool
+sudo stratis pool list --name datapool
 ```
 
 ### View Block Devices in a Pool
@@ -134,22 +134,19 @@ df -Th /documents /projects /backups /logs
 
 ### Configure Persistent Mounts
 
-For each filesystem, get the UUID and add to `/etc/fstab`:
+Get the pool UUID and add entries to `/etc/fstab`:
 
 ```bash
-sudo blkid /dev/stratis/datapool/documents
-sudo blkid /dev/stratis/datapool/projects
-sudo blkid /dev/stratis/datapool/backups
-sudo blkid /dev/stratis/datapool/logs
+sudo stratis pool list --name datapool
 ```
 
 Add entries to `/etc/fstab`:
 
 ```bash
-UUID=uuid1 /documents xfs defaults,x-systemd.requires=stratisd.service 0 0
-UUID=uuid2 /projects xfs defaults,x-systemd.requires=stratisd.service 0 0
-UUID=uuid3 /backups xfs defaults,x-systemd.requires=stratisd.service 0 0
-UUID=uuid4 /logs xfs defaults,x-systemd.requires=stratisd.service 0 0
+/dev/stratis/datapool/documents /documents xfs defaults,x-systemd.requires=stratis-fstab-setup@pool-uuid.service,x-systemd.after=stratis-fstab-setup@pool-uuid.service 0 0
+/dev/stratis/datapool/projects /projects xfs defaults,x-systemd.requires=stratis-fstab-setup@pool-uuid.service,x-systemd.after=stratis-fstab-setup@pool-uuid.service 0 0
+/dev/stratis/datapool/backups /backups xfs defaults,x-systemd.requires=stratis-fstab-setup@pool-uuid.service,x-systemd.after=stratis-fstab-setup@pool-uuid.service 0 0
+/dev/stratis/datapool/logs /logs xfs defaults,x-systemd.requires=stratis-fstab-setup@pool-uuid.service,x-systemd.after=stratis-fstab-setup@pool-uuid.service 0 0
 ```
 
 ## Renaming Filesystems
@@ -188,17 +185,17 @@ Example:
 - Total data written across all filesystems: 30 GiB
 - Pool used space: approximately 30 GiB
 
-**Important**: Monitor pool usage to avoid running out of physical space. If the pool fills completely, all filesystems in the pool become read-only.
+**Important**: Monitor pool usage to avoid running out of physical space. If the pool fills completely, Stratis cannot assign more space to filesystems, writes can fail, and applications can lose data.
 
 ## Setting Filesystem Size Limits
 
 While Stratis filesystems are thin-provisioned, you can set a size limit:
 
 ```bash
-sudo stratis filesystem create --size-limit 10GiB datapool limited_fs
+sudo stratis filesystem create --size 10GiB --size-limit 10GiB datapool limited_fs
 ```
 
-This limits the filesystem to 10 GiB of actual data.
+This sets the filesystem size and size limit to 10 GiB.
 
 ## Best Practices
 
@@ -206,8 +203,7 @@ This limits the filesystem to 10 GiB of actual data.
 - **Set up alerts**: Configure monitoring to warn when pools approach capacity.
 - **Use meaningful names**: Choose descriptive names for pools and filesystems.
 - **Plan pool membership**: Adding devices to pools is easy, but removing them is not currently supported.
-- **Always use UUID in fstab**: Device paths can change; UUIDs are persistent.
-- **Include x-systemd.requires**: This ensures Stratis is running before mounts are attempted at boot.
+- **Use the Stratis fstab service**: Include `x-systemd.requires=stratis-fstab-setup@pool-uuid.service` so the pool is started before mounts are attempted at boot.
 
 ## Conclusion
 
