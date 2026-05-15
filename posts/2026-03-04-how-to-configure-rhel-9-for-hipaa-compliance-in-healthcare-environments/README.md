@@ -8,7 +8,7 @@ Description: Step-by-step guide on configure rhel 9 for hipaa compliance in heal
 
 ---
 
-HIPAA compliance requires specific technical controls for healthcare systems. This guide covers configuring RHEL 9 to meet HIPAA requirements.
+HIPAA compliance requires appropriate administrative, physical, and technical safeguards for healthcare systems. This guide covers configuring RHEL 9 to support HIPAA Security Rule requirements.
 
 ## Apply the HIPAA Security Profile
 
@@ -45,12 +45,15 @@ HIPAA requires comprehensive audit trails:
 
 ```bash
 sudo dnf install -y audit
-sudo systemctl enable --now auditd
+sudo systemctl enable auditd
+sudo service auditd start
 ```
 
 Configure audit rules:
 
 ```bash
+sudo mkdir -p /opt/healthcare-data
+
 sudo tee /etc/audit/rules.d/hipaa.rules <<EOF
 # Monitor authentication files
 
@@ -78,10 +81,13 @@ sudo augenrules --load
 Implement least privilege:
 
 ```bash
+sudo dnf install -y policycoreutils-python-utils
+
 # Create healthcare application group
-sudo groupadd healthcare-app
+sudo groupadd --force healthcare-app
 
 # Restrict PHI directory access
+sudo mkdir -p /opt/healthcare-data
 sudo chown root:healthcare-app /opt/healthcare-data
 sudo chmod 2770 /opt/healthcare-data
 
@@ -95,16 +101,21 @@ sudo restorecon -Rv /opt/healthcare-data
 Encrypt data at rest with LUKS:
 
 ```bash
+sudo dnf install -y cryptsetup
 sudo cryptsetup luksFormat /dev/sdb
 sudo cryptsetup luksOpen /dev/sdb phi_encrypted
 sudo mkfs.xfs /dev/mapper/phi_encrypted
 sudo mount /dev/mapper/phi_encrypted /opt/healthcare-data
+sudo chown root:healthcare-app /opt/healthcare-data
+sudo chmod 2770 /opt/healthcare-data
+sudo restorecon -Rv /opt/healthcare-data
 ```
 
-Enforce TLS for data in transit:
+Use stricter system-wide cryptographic policies for supported applications:
 
 ```bash
 sudo update-crypto-policies --set FUTURE
+sudo reboot
 ```
 
 ## Configure Session Controls
@@ -126,6 +137,7 @@ EOF
 ## Schedule Regular Compliance Scans
 
 ```bash
+sudo mkdir -p /var/log/compliance
 sudo tee /etc/cron.weekly/hipaa-scan <<EOF
 #!/bin/bash
 oscap xccdf eval \
@@ -139,5 +151,4 @@ sudo chmod +x /etc/cron.weekly/hipaa-scan
 
 ## Conclusion
 
-RHEL 9 provides the tools and security profiles needed for HIPAA compliance in healthcare environments. Apply the HIPAA SCAP profile, enable comprehensive auditing, encrypt sensitive data, and schedule regular compliance scans to maintain your security posture.
-
+RHEL 9 provides tools and security profiles that can support HIPAA compliance efforts in healthcare environments. Apply the HIPAA SCAP profile, enable comprehensive auditing, encrypt sensitive data, and schedule regular compliance scans to maintain your security posture.
