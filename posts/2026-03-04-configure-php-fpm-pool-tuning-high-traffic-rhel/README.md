@@ -23,7 +23,7 @@ PHP-FPM offers three process management strategies:
 ```bash
 # Check average PHP-FPM worker memory usage
 
-ps -ylC php-fpm --sort:rss | awk '{sum += $8; n++} END {print "Avg RSS:", sum/n/1024, "MB"}'
+ps -o rss=,args= -C php-fpm | awk '/php-fpm: pool/ {sum += $1; n++} END {if (n) print "Avg RSS:", sum/n/1024, "MB"; else print "No PHP-FPM workers found"}'
 
 # Check total available memory
 free -m | awk '/^Mem:/ {print "Available:", $7, "MB"}'
@@ -71,12 +71,16 @@ request_slowlog_timeout = 5s
 
 ## Enable Status Page for Monitoring
 
-```bash
-# In /etc/php-fpm.d/www.conf, add:
-# pm.status_path = /status
-# ping.path = /ping
+In `/etc/php-fpm.d/www.conf`, add:
 
-# In your Nginx config, add a location block:
+```ini
+pm.status_path = /status
+ping.path = /ping
+```
+
+In your Nginx config, add a location block:
+
+```bash
 sudo tee -a /etc/nginx/conf.d/php-status.conf << 'CONF'
 server {
     listen 127.0.0.1:8081;
