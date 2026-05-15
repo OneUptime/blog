@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ansible, Patching, Security, Automation, Linux
 
-Description: Build an automated patching workflow for RHEL servers using Ansible, including pre-patch checks, staged rollouts, and rollback capabilities.
+Description: Build an automated patching workflow for RHEL servers using Ansible, including pre-patch checks, staged rollouts, and reboot handling.
 
 ---
 
-Manual patching does not scale. If you are SSH-ing into servers one at a time to run `dnf update`, you are wasting hours every patch cycle and introducing inconsistency. Ansible lets you automate the entire process with pre-checks, staged rollouts, and automatic reboots when needed.
+Manual patching does not scale. If you are SSH-ing into servers one at a time to run `dnf update`, you are wasting hours every patch cycle and introducing inconsistency. Ansible lets you automate the process with pre-checks, staged rollouts, and automatic reboots when needed.
 
 ## Patching Workflow
 
@@ -58,7 +58,7 @@ graph TD
     - name: Check if reboot is required
       ansible.builtin.command: needs-restarting -r
       register: reboot_check
-      failed_when: false
+      failed_when: reboot_check.rc not in [0, 1]
       changed_when: reboot_check.rc == 1
 
     - name: Reboot if required
@@ -103,11 +103,11 @@ To apply only security updates:
       when: patch_result.changed
 ```
 
-## Full Patching Playbook with Pre-checks and Rollback
+## Full Patching Playbook with Pre-checks and Validation
 
 ```yaml
 # playbook-patch-full.yml
-# Production patching with pre-checks, backups, and validation
+# Production patching with pre-checks and validation
 ---
 - name: Pre-patch checks
   hosts: patch_targets
@@ -154,7 +154,7 @@ To apply only security updates:
     - name: Check if reboot is needed
       ansible.builtin.command: needs-restarting -r
       register: reboot_check
-      failed_when: false
+      failed_when: reboot_check.rc not in [0, 1]
       changed_when: reboot_check.rc == 1
 
     - name: Reboot if required
@@ -296,7 +296,7 @@ Sometimes you need to skip certain packages:
       changed_when: false
 
     - name: Get installed security errata
-      ansible.builtin.command: dnf updateinfo list installed --security
+      ansible.builtin.command: dnf updateinfo list security --installed
       register: security_errata
       changed_when: false
 
