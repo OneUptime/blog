@@ -27,14 +27,14 @@ sudo virsh dommemstat rhel9-vm
 ## Changing vCPU Count
 
 ```bash
-# Set the maximum vCPU count (requires VM shutdown)
+# Set the maximum vCPU count (takes effect on next boot)
 sudo virsh setvcpus rhel9-vm 4 --config --maximum
 
-# Set the current vCPU count (can be done live if max allows it)
+# Set the persistent current vCPU count (takes effect on next boot)
 sudo virsh setvcpus rhel9-vm 4 --config
 
 # Hot-add vCPUs to a running VM (VM must have max set higher)
-# First, set a high maximum
+# First, set a high maximum for the next boot
 sudo virsh setvcpus rhel9-vm 8 --config --maximum
 
 # Then hot-add CPUs while running
@@ -68,7 +68,7 @@ sudo virsh setmaxmem rhel9-vm 8G --config
 # Set current memory
 sudo virsh setmem rhel9-vm 4G --config
 
-# Hot-add memory to a running VM (balloon)
+# Adjust current memory on a running VM (balloon, up to the configured maximum)
 # The VM must be configured with virtio-balloon driver
 sudo virsh setmem rhel9-vm 6G --live
 ```
@@ -79,7 +79,7 @@ The virtio-balloon driver allows dynamic memory adjustment:
 
 ```bash
 # Check if balloon driver is active
-sudo virsh dommemstat rhel9-vm | grep balloon
+sudo virsh dumpxml rhel9-vm | grep memballoon
 
 # Set memory using the balloon
 sudo virsh setmem rhel9-vm 3G --live
@@ -104,9 +104,10 @@ sudo virsh edit rhel9-vm
 
 ```bash
 # Limit CPU usage to 50% of one core
+sudo virsh schedinfo rhel9-vm --set vcpu_period=100000
 sudo virsh schedinfo rhel9-vm --set vcpu_quota=50000
 
-# The default period is 100000 microseconds (100ms)
+# With a period of 100000 microseconds (100ms),
 # quota of 50000 = 50% of one core
 
 # View current CPU scheduler settings
