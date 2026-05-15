@@ -12,9 +12,24 @@ SAP HANA System Replication (HSR) continuously replicates data from a primary HA
 
 ## Replication Modes
 
-- **SYNC:** Zero data loss. The primary waits for the secondary to acknowledge. Best for local HA.
+- **SYNC:** The primary waits until the secondary has received the redo log and persisted it to disk. For strict zero data loss when the secondary is unavailable, use SYNC with the full sync option enabled. Best for local HA.
 - **SYNCMEM:** Near-zero data loss. The primary waits for the secondary to receive data in memory. Good balance.
-- **ASYNC:** Minimal performance impact. Some data loss possible. Best for cross-region DR.
+- **ASYNC:** Minimal performance impact. The primary does not wait for secondary acknowledgement, so some data loss is possible. Best for cross-region DR.
+
+## Backing Up the Primary
+
+An initial full data backup or storage snapshot is required before configuring system replication. In an SAP HANA MDC system, back up the system database and all tenant databases.
+
+```bash
+# Switch to the HANA admin user
+su - hdbadm
+
+# Create a full backup using hdbsql
+hdbsql -u SYSTEM -p <password> -i 00 \
+  "BACKUP DATA USING FILE ('initial_backup')"
+
+# Or use SAP HANA Studio / SAP HANA Cockpit to create the backup
+```
 
 ## Enabling Replication on the Primary
 
@@ -31,18 +46,6 @@ hdbnsutil -sr_enable --name=dc1_primary
 
 # Verify replication is enabled
 hdbnsutil -sr_state
-```
-
-## Backing Up the Primary
-
-A full backup is required before registering a secondary:
-
-```bash
-# Create a full backup using hdbsql
-hdbsql -u SYSTEM -p <password> -i 00 \
-  "BACKUP DATA USING FILE ('initial_backup')"
-
-# Or use HANA Studio / HANA Cockpit to create the backup
 ```
 
 ## Registering the Secondary (Same Region - SYNC)
@@ -92,7 +95,7 @@ HDB start
 ```bash
 # Check replication status from the primary
 su - hdbadm
-python /usr/sap/HDB/HDB00/exe/python_support/systemReplicationStatus.py
+python $DIR_INSTANCE/exe/python_support/systemReplicationStatus.py
 
 # Quick status check
 hdbnsutil -sr_state
