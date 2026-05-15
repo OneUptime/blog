@@ -103,7 +103,7 @@ rr_min_io_rq 100
 
 Lower values distribute I/O more evenly but add overhead from path switching. Higher values reduce overhead but may result in less even distribution.
 
-## Configuring for Active/Passive Arrays (ALUA)
+## Configuring for ALUA Arrays
 
 For arrays using ALUA (Asymmetric Logical Unit Access):
 
@@ -181,4 +181,4 @@ Compare results between `round-robin`, `queue-length`, and `service-time` to fin
 
 ## Conclusion
 
-The right load balancing policy depends on your storage array and workload. Use `multibus` with `service-time` for active/active arrays, `group_by_prio` with `alua` for ALUA arrays, and `failover` when you need simplicity or the array only supports active/passive. Benchmark with your actual workload to confirm which policy gives the best performance.
+The right load balancing policy depends on your storage array and workload. Use `multibus` with `service-time` for active/active arrays, `group_by_prio` with `alua` for ALUA arrays, and `failover` when you need simplicity or the array supports only a single active path. Benchmark with your actual workload to confirm which policy gives the best performance.
