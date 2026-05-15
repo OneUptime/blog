@@ -77,11 +77,14 @@ echo "## Privileged command execution audit rules" > "$RULES_FILE"
 echo "## Generated on $(date)" >> "$RULES_FILE"
 echo "" >> "$RULES_FILE"
 
-# Find all setuid and setgid executables on all local filesystems
-for partition in $(findmnt -n -l -k -it xfs,ext4,ext3 --output TARGET); do
+# Find all setuid and setgid executables on common local Linux filesystems
+for partition in $(findmnt -n -l -k -t xfs,ext4,ext3 --output TARGET); do
     find "$partition" -xdev \( -perm -4000 -o -perm -2000 \) -type f 2>/dev/null | \
     while read -r binary; do
-        echo "-a always,exit -F path=${binary} -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged" >> "$RULES_FILE"
+        echo "-a always,exit -F arch=b64 -F path=${binary} -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged" >> "$RULES_FILE"
+        if [[ "$(uname -m)" == "x86_64" ]]; then
+            echo "-a always,exit -F arch=b32 -F path=${binary} -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged" >> "$RULES_FILE"
+        fi
     done
 done
 
@@ -108,33 +111,33 @@ sudo tee /etc/audit/rules.d/30-privileged-manual.rules << 'EOF'
 ## Audit key privileged commands
 
 # Password and account management
--a always,exit -F path=/usr/bin/passwd -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-passwd
--a always,exit -F path=/usr/bin/chage -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-chage
--a always,exit -F path=/usr/bin/gpasswd -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-gpasswd
--a always,exit -F path=/usr/sbin/usermod -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-usermod
--a always,exit -F path=/usr/sbin/useradd -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-useradd
--a always,exit -F path=/usr/sbin/userdel -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-userdel
--a always,exit -F path=/usr/sbin/groupadd -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-groupadd
--a always,exit -F path=/usr/sbin/groupdel -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-groupdel
+-a always,exit -F arch=b64 -F path=/usr/bin/passwd -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-passwd
+-a always,exit -F arch=b64 -F path=/usr/bin/chage -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-chage
+-a always,exit -F arch=b64 -F path=/usr/bin/gpasswd -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-gpasswd
+-a always,exit -F arch=b64 -F path=/usr/sbin/usermod -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-usermod
+-a always,exit -F arch=b64 -F path=/usr/sbin/useradd -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-useradd
+-a always,exit -F arch=b64 -F path=/usr/sbin/userdel -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-userdel
+-a always,exit -F arch=b64 -F path=/usr/sbin/groupadd -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-groupadd
+-a always,exit -F arch=b64 -F path=/usr/sbin/groupdel -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-groupdel
 
 # Privilege escalation
--a always,exit -F path=/usr/bin/su -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-su
--a always,exit -F path=/usr/bin/sudo -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-sudo
--a always,exit -F path=/usr/bin/newgrp -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-newgrp
+-a always,exit -F arch=b64 -F path=/usr/bin/su -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-su
+-a always,exit -F arch=b64 -F path=/usr/bin/sudo -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-sudo
+-a always,exit -F arch=b64 -F path=/usr/bin/newgrp -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-newgrp
 
 # Mount operations
--a always,exit -F path=/usr/bin/mount -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-mount
--a always,exit -F path=/usr/bin/umount -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-umount
+-a always,exit -F arch=b64 -F path=/usr/bin/mount -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-mount
+-a always,exit -F arch=b64 -F path=/usr/bin/umount -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-umount
 
 # Cron
--a always,exit -F path=/usr/bin/crontab -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-cron
+-a always,exit -F arch=b64 -F path=/usr/bin/crontab -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-cron
 
 # SSH key management
--a always,exit -F path=/usr/bin/ssh-agent -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-ssh
+-a always,exit -F arch=b64 -F path=/usr/bin/ssh-agent -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-ssh
 
 # Package management
--a always,exit -F path=/usr/bin/dnf -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-pkg
--a always,exit -F path=/usr/bin/rpm -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-pkg
+-a always,exit -F arch=b64 -F path=/usr/bin/dnf -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-pkg
+-a always,exit -F arch=b64 -F path=/usr/bin/rpm -F perm=x -F auid>=1000 -F auid!=4294967295 -k privileged-pkg
 EOF
 ```
 
@@ -150,16 +153,16 @@ sudo tee /etc/audit/rules.d/31-sudo.rules << 'EOF'
 -w /etc/sudoers -p wa -k sudo-config
 -w /etc/sudoers.d/ -p wa -k sudo-config
 
-# Monitor sudo log
+# Monitor a dedicated sudo log if sudoers is configured with Defaults logfile="/var/log/sudo.log"
 -w /var/log/sudo.log -p wa -k sudo-log
 
-# Audit the sudo command execution via syscall
--a always,exit -F arch=b64 -S execve -C uid!=euid -F euid=0 -k sudo-execve
--a always,exit -F arch=b32 -S execve -C uid!=euid -F euid=0 -k sudo-execve
+# Audit setuid-root command execution via syscall
+-a always,exit -F arch=b64 -S execve -C uid!=euid -F euid=0 -k setuid-root-execve
+-a always,exit -F arch=b32 -S execve -C uid!=euid -F euid=0 -k setuid-root-execve
 EOF
 ```
 
-The last two rules catch any command executed where the effective UID differs from the real UID and the effective UID is root, which captures sudo and similar privilege escalation tools.
+The last two rules catch setuid-root command execution where the effective UID differs from the real UID and the effective UID is root, which captures tools such as sudo and su when they are invoked.
 
 ## Loading and Verifying Rules
 
@@ -187,7 +190,8 @@ sudo ausearch -k privileged-sudo -ts today -i
 sudo ausearch -k privileged-passwd -ts today -i
 
 # Find all privilege escalation (su and sudo)
-sudo ausearch -k privileged-su -k privileged-sudo -ts today -i
+sudo ausearch -k privileged-su -ts today -i
+sudo ausearch -k privileged-sudo -ts today -i
 
 # Generate a summary report
 sudo aureport -x --summary | head -20
