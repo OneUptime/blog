@@ -12,7 +12,7 @@ MicroShift is a lightweight Kubernetes distribution derived from OpenShift, desi
 
 ## Prerequisites
 
-MicroShift requires RHEL.x with an active subscription:
+MicroShift requires a supported RHEL 9 release with an active subscription:
 
 ```bash
 # Verify RHEL version
@@ -21,8 +21,11 @@ cat /etc/redhat-release
 
 # Enable required repositories
 sudo subscription-manager repos \
-  --enable rhocp-4.16-for-rhel-9-x86_64-rpms \
-  --enable fast-datapath-for-rhel-9-x86_64-rpms
+  --enable rhocp-4.21-for-rhel-9-$(uname -m)-rpms \
+  --enable fast-datapath-for-rhel-9-$(uname -m)-rpms
+
+# Lock RHEL to the supported release for MicroShift 4.21
+sudo subscription-manager release --set=9.6
 ```
 
 ## Installing MicroShift
@@ -33,18 +36,23 @@ sudo dnf install -y microshift openshift-clients
 
 # MicroShift uses CRI-O as the container runtime
 # It is installed as a dependency automatically
+
+# Copy your Red Hat pull secret for MicroShift image pulls
+sudo cp $HOME/openshift-pull-secret /etc/crio/openshift-pull-secret
+sudo chown root:root /etc/crio/openshift-pull-secret
+sudo chmod 600 /etc/crio/openshift-pull-secret
 ```
 
 ## Configuring the Firewall
 
-Open the required ports:
+Open the required firewall rules and optional external access ports:
 
 ```bash
-# Allow Kubernetes API server
+# Allow host network pod access
 sudo firewall-cmd --permanent --zone=trusted --add-source=10.42.0.0/16
 sudo firewall-cmd --permanent --zone=trusted --add-source=169.254.169.1
 
-# Allow NodePort services
+# Allow external Kubernetes API server and NodePort access
 sudo firewall-cmd --permanent --add-port=6443/tcp
 sudo firewall-cmd --permanent --add-port=30000-32767/tcp
 
@@ -114,7 +122,7 @@ dns:
   baseDomain: microshift.example.com
 network:
   clusterNetwork:
-    - cidr: 10.42.0.0/16
+    - 10.42.0.0/16
   serviceNetwork:
     - 10.43.0.0/16
 node:
