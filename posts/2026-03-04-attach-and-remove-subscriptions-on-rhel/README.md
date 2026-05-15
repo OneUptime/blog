@@ -8,12 +8,12 @@ Description: Learn how to attach, list, and remove subscriptions on RHEL using s
 
 ---
 
-After registering a RHEL system, you need to attach subscriptions to access software repositories. You can attach subscriptions automatically or by specific pool ID.
+After registering a RHEL system in an entitlement-based Red Hat Subscription Management environment, you can attach subscriptions to access software repositories. You can attach subscriptions automatically or by specific pool ID. If your organization uses Simple Content Access, subscription attachment is no longer required and attach commands may be ignored.
 
 ## Auto-Attach Subscriptions
 
 ```bash
-# Automatically attach the best available subscription
+# Automatically attach the best available subscription in entitlement-based mode
 
 sudo subscription-manager attach --auto
 
@@ -91,4 +91,4 @@ sudo subscription-manager unregister
 # This frees up the subscription for use on another system
 ```
 
-After attaching subscriptions, the system can pull packages from the Red Hat CDN. If you are migrating a system or decommissioning it, always unregister to free up the subscription entitlement.
+After attaching subscriptions in entitlement-based mode, the system can pull packages from the Red Hat CDN. If you are migrating a system or decommissioning it, always unregister to remove the system from Red Hat hosted services and release any attached subscription entitlement.
