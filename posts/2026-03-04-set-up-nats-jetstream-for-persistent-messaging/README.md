@@ -48,7 +48,7 @@ nats stream add ORDERS   --subjects "orders.>"   --retention limits   --max-msgs
 ## Step 3: Create a Consumer
 
 ```bash
-nats consumer add ORDERS order-processor   --ack explicit   --deliver all   --max-deliver 3   --filter "orders.new"   --server nats://localhost:4222
+nats consumer add ORDERS order-processor   --pull   --ack explicit   --deliver all   --max-deliver 3   --filter "orders.new"   --server nats://localhost:4222
 ```
 
 ## Step 4: Publish Messages
