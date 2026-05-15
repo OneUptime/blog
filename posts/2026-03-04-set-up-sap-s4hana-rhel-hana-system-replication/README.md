@@ -12,7 +12,7 @@ SAP HANA System Replication (HSR) maintains a synchronized copy of your HANA dat
 
 ## Prerequisites
 
-Both RHEL servers must be prepared for SAP HANA (see the preparation guide) with HANA already installed.
+Both RHEL servers must be prepared for SAP HANA (see the preparation guide) with HANA already installed. A supported fencing (STONITH) device must be configured for the Pacemaker cluster, SAP HANA automatic startup must be disabled so the cluster can manage the instances, and the HANA system replication HA/DR provider hook must be enabled before the cluster manages HANA.
 
 ```bash
 # Verify HANA is installed on both nodes
@@ -79,7 +79,7 @@ Install the HA cluster packages:
 ```bash
 # On both nodes
 sudo dnf install -y pacemaker pcs fence-agents-all \
-  resource-agents-sap-hana
+  sap-hana-ha
 
 # Enable and start pcsd
 sudo systemctl enable --now pcsd
@@ -95,35 +95,58 @@ Configure the cluster:
 sudo pcs host auth hana01 hana02 -u hacluster
 
 # Create the cluster
-sudo pcs cluster setup hana-ha hana01 hana02
-
-# Start the cluster
-sudo pcs cluster start --all
+sudo pcs cluster setup hana-ha --start hana01 hana02
 sudo pcs cluster enable --all
+
+# Configure resource defaults
+sudo pcs resource defaults update resource-stickiness=1000
+sudo pcs resource defaults update migration-threshold=5000
 ```
 
 ## Step 5: Create HANA Cluster Resources
 
 ```bash
 # Configure the SAPHanaTopology resource
-sudo pcs resource create SAPHanaTopology_HDB_00 SAPHanaTopology \
-  SID=HDB InstanceNumber=00 \
+sudo pcs resource create rsc_SAPHanaTop_HDB_HDB00 \
+  ocf:heartbeat:SAPHanaTopology \
+  SID=HDB \
+  InstanceNumber=00 \
   op start timeout=600 \
   op stop timeout=300 \
-  op monitor interval=10 timeout=600 \
-  clone clone-max=2 clone-node-max=1 interleave=true
+  op monitor interval=30 timeout=300 \
+  clone cln_SAPHanaTop_HDB_HDB00
 
-# Configure the SAPHana resource
-sudo pcs resource create SAPHana_HDB_00 SAPHana \
-  SID=HDB InstanceNumber=00 \
+sudo pcs resource update cln_SAPHanaTop_HDB_HDB00 \
+  meta clone-node-max=1 interleave=true
+
+# Configure the SAPHanaController resource
+sudo pcs resource create rsc_SAPHanaCon_HDB_HDB00 \
+  ocf:heartbeat:SAPHanaController \
+  SID=HDB \
+  InstanceNumber=00 \
   PREFER_SITE_TAKEOVER=true \
-  AUTOMATED_REGISTER=true \
   DUPLICATE_PRIMARY_TIMEOUT=7200 \
-  op start timeout=3600 \
+  AUTOMATED_REGISTER=false \
   op stop timeout=3600 \
-  op monitor interval=61 role=Slave timeout=700 \
-  op monitor interval=59 role=Master timeout=700 \
-  promotable notify=true clone-max=2 clone-node-max=1 interleave=true
+  op monitor interval=59 role=Promoted timeout=700 \
+  op monitor interval=61 role=Unpromoted timeout=700 \
+  meta priority=100 \
+  promotable cln_SAPHanaCon_HDB_HDB00
+
+sudo pcs resource update cln_SAPHanaCon_HDB_HDB00 \
+  meta clone-node-max=1 interleave=true
+
+# Start topology before the HANA controller
+sudo pcs constraint order cln_SAPHanaTop_HDB_HDB00 \
+  then cln_SAPHanaCon_HDB_HDB00 symmetrical=false
+
+# Configure a virtual IP for clients; replace values for your network
+sudo pcs resource create rsc_vip_HDB_HDB00_primary \
+  ocf:heartbeat:IPaddr2 ip=192.168.0.15 cidr_netmask=24 nic=eth0
+
+# Keep the virtual IP on the promoted HANA site
+sudo pcs constraint colocation add rsc_vip_HDB_HDB00_primary \
+  with promoted cln_SAPHanaCon_HDB_HDB00 2000
 ```
 
 Verify the cluster status:
