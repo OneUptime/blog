@@ -15,6 +15,7 @@ Zeek Network Security Monitor can be installed and configured on RHEL to provide
 - RHEL with a valid subscription or CentOS Stream 9
 - Root or sudo access
 - A terminal session
+- The network interface name Zeek should monitor, such as `ens192` or `eth0`
 
 ## Step 1: Install Required Packages
 
@@ -23,39 +24,58 @@ Zeek Network Security Monitor can be installed and configured on RHEL to provide
 
 sudo dnf update -y
 
-# Install the required packages
-sudo dnf install -y <package-name>
+# On RHEL 9, enable CodeReady Linux Builder and EPEL
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+
+# On CentOS Stream 9, enable CRB and EPEL
+sudo dnf config-manager --set-enabled crb
+sudo dnf install -y epel-release epel-next-release
+
+# Install Zeek and ZeekControl
+sudo dnf install -y zeek-core zeekctl
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+Use the RHEL commands on Red Hat Enterprise Linux 9, or the CentOS Stream commands on CentOS Stream 9.
 
 ## Step 2: Configure the Service
 
 Edit the configuration file to match your environment:
 
 ```bash
-# Open the configuration file
-sudo vi /etc/<service>/config.conf
+# Open the ZeekControl node configuration file
+sudo vi /etc/zeek/node.cfg
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+For a single-host deployment, set the monitored interface in the standalone node. Replace `ens192` with the interface that receives mirrored or tapped traffic:
 
-```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+```ini
+[zeek]
+type=standalone
+host=localhost
+interface=ens192
 ```
 
-## Step 3: Enable and Start the Service
+Review the local network definitions and site policy file as needed:
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo vi /etc/zeek/networks.cfg
+sudo vi /usr/share/zeek/site/local.zeek
+```
 
-# Start the service
-sudo systemctl start <service-name>
+Adjust the settings according to your requirements. Key parameters to configure include the monitoring interface, local networks, log rotation, and site-specific Zeek policy scripts.
+
+## Step 3: Enable and Start Zeek
+
+```bash
+# Check the ZeekControl configuration
+sudo zeekctl check
+
+# Install the configuration and start Zeek
+sudo zeekctl deploy
 
 # Check the status
-sudo systemctl status <service-name>
+sudo zeekctl status
 ```
 
 
@@ -65,18 +85,19 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo zeekctl status
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# Review current Zeek logs
+sudo ls -l /var/log/zeek/logs/current
+sudo tail -n 20 /var/log/zeek/logs/current/conn.log
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
+- If Zeek fails to start, check diagnostics with `sudo zeekctl diag`.
 - SELinux may block access. Check for denials with `ausearch -m avc -ts recent` and apply appropriate policies.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
-- Test network connectivity with `ss -tlnp` to verify listening ports and `curl` to test endpoints.
+- Ensure all required packages are installed: `rpm -qa | grep -E 'zeek|zeekctl'`.
+- Verify that the configured interface exists with `ip link show` and is receiving traffic with `sudo tcpdump -i <interface> -c 10`.
 
 ## Conclusion
 
