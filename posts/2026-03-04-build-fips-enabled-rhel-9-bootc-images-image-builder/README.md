@@ -1,94 +1,112 @@
-# How to Build FIPS-Enabled RHEL 9 bootc Images with Image Builder
+# How to Build FIPS-Enabled RHEL 9 bootc Images with bootc-image-builder
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Image Builder, FIPS, Bootc, Security
 
-Description: Build FIPS-enabled RHEL 9 bootc images with Image Builder.
+Description: Build FIPS-enabled RHEL 9 bootc images with bootc-image-builder.
 
 ---
 
 ## Overview
 
-Build FIPS-enabled RHEL 9 bootc images with Image Builder. RHEL Image Builder lets you create customized, deployable operating system images for physical, virtual, and cloud environments.
+Build FIPS-enabled RHEL 9 bootc images with bootc-image-builder. bootc-image-builder converts bootc container images into deployable disk images for physical, virtual, and cloud environments.
 
 ## Prerequisites
 
 - A RHEL 9 system with a valid subscription
 - Root or sudo access
-- The osbuild-composer and composer-cli packages
+- Podman and the container-tools package
+- Access to `registry.redhat.io`
 
-## Step 1 - Install Image Builder
+## Step 1 - Install bootc-image-builder
 
 ```bash
-sudo dnf install -y osbuild-composer composer-cli cockpit-composer
-sudo systemctl enable --now osbuild-composer.socket
+sudo dnf install -y container-tools
+sudo podman login registry.redhat.io
+sudo podman pull registry.redhat.io/rhel9/bootc-image-builder:latest
 ```
 
-## Step 2 - Create a Blueprint
+## Step 2 - Create the bootc Image
 
-Create a TOML blueprint file `my-image.toml`:
+Create a TOML file `01-fips.toml` to enable the FIPS kernel argument:
 
 ```toml
-name = "my-custom-image"
-description = "Custom RHEL 9 image"
-version = "1.0.0"
-
-[[packages]]
-name = "vim-enhanced"
-version = "*"
-
-[[packages]]
-name = "tmux"
-version = "*"
-
-[[customizations.user]]
-name = "admin"
-groups = ["wheel"]
+# Enable FIPS
+kargs = ["fips=1"]
 ```
 
-Push the blueprint:
+Create a `Containerfile`:
+
+```Dockerfile
+FROM registry.redhat.io/rhel9/rhel-bootc:latest
+
+COPY 01-fips.toml /usr/lib/bootc/kargs.d/
+RUN dnf install -y crypto-policies-scripts vim-enhanced tmux && \
+    update-crypto-policies --no-reload --set FIPS && \
+    rm -rf /var/cache/dnf
+```
+
+Build and tag the bootc container image:
 
 ```bash
-composer-cli blueprints push my-image.toml
+sudo podman build -t localhost/my-fips-bootc:latest .
 ```
 
 ## Step 3 - Start a Compose
 
-List available image types:
+Create a TOML file `config.toml` to configure user access:
 
-```bash
-composer-cli compose types
+```toml
+[[customizations.user]]
+name = "admin"
+password = "admin"
+groups = ["wheel"]
 ```
 
-Start a compose (e.g., qcow2 for KVM, ami for AWS, vhd for Azure):
+Start a build for the target image type. For example, use `qcow2` for KVM:
 
 ```bash
-composer-cli compose start my-custom-image qcow2
+mkdir -p ./output
+
+sudo podman run \
+  --rm \
+  --privileged \
+  --pull=newer \
+  --security-opt label=type:unconfined_t \
+  -v /var/lib/containers/storage:/var/lib/containers/storage \
+  -v ./config.toml:/config.toml:ro \
+  -v ./output:/output \
+  registry.redhat.io/rhel9/bootc-image-builder:latest \
+  --local \
+  --type qcow2 \
+  --config /config.toml \
+  localhost/my-fips-bootc:latest
 ```
 
 ## Step 4 - Monitor and Download
 
-Check the status:
+The build runs in the foreground. When it finishes, find the image in the `output` directory:
 
 ```bash
-composer-cli compose status
-```
-
-Download the finished image:
-
-```bash
-composer-cli compose image <compose-uuid>
+ls -lh output
 ```
 
 ## Step 5 - Deploy the Image
 
-Deploy the image to your target platform (KVM, AWS, Azure, VMware) following the platform-specific deployment process.
+Deploy the image to your target platform following the platform-specific deployment process. bootc-image-builder supports image types such as `qcow2`, `raw`, `ami`, `vmdk`, and `iso`.
 
-## Using the Cockpit Web Console
+## Verify FIPS Mode
 
-You can also manage Image Builder through the Cockpit web console at `https://your-host:9090`. Navigate to "Image Builder" to create blueprints and start composes from the browser.
+After logging in to the deployed system, check that FIPS mode is enabled:
+
+```bash
+cat /proc/sys/crypto/fips_enabled
+update-crypto-policies --show
+```
+
+The expected output is `1` for `/proc/sys/crypto/fips_enabled` and `FIPS` for the crypto policy.
 
 ## Summary
 
-You have learned how to build fips-enabled rhel 9 bootc images with image builder. Image Builder provides a consistent workflow for creating RHEL images across all deployment targets.
+You have learned how to build FIPS-enabled RHEL 9 bootc images with bootc-image-builder. bootc-image-builder provides a consistent workflow for creating RHEL bootc disk images across deployment targets.
