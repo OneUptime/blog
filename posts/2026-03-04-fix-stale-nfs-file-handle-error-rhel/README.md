@@ -73,9 +73,10 @@ nfsstat -m
 ## Prevent Future Stale Handles
 
 ```bash
-# Use the 'hard' mount option for resilience
+# Use the 'hard' mount option for resilience during transient outages.
+# It does not prevent stale handles caused by deleted or re-created objects.
 # Edit /etc/fstab on the client
-# server:/export  /mnt/nfs  nfs  hard,intr,timeo=600,retrans=3  0 0
+# server:/export  /mnt/nfs  nfs  hard,timeo=600,retrans=3  0 0
 
 # Verify current mount options
 nfsstat -m
@@ -87,12 +88,12 @@ cat /etc/auto.master
 ## Clearing Stale Handles on Individual Files
 
 ```bash
-# If only specific files are stale, you can often fix them
-# by accessing the parent directory
+# If only specific files are stale, check whether the parent directory
+# can still be listed successfully
 cd /mnt/nfs
 ls -la
 
-# Or stat the file to refresh the handle
+# Stat the file to confirm whether it still returns ESTALE
 stat /mnt/nfs/somefile
 
 # If that does not work, the full remount is required
@@ -114,4 +115,4 @@ sudo rpcdebug -m nfs -c all
 nfsstat -c
 ```
 
-Stale NFS handles are most commonly caused by the server restarting its NFS service or re-exporting a filesystem. Coordinate server maintenance with client remount procedures to avoid disruption.
+Stale NFS handles are commonly caused by server-side object or export changes, such as deleting or re-creating files or directories, changing exports, failover/remount events, or fileid/fsid changes. A service restart alone should not invalidate stable file handles, but maintenance can expose these changes. Coordinate server maintenance with client remount procedures to avoid disruption.
