@@ -20,6 +20,8 @@ The key to valid comparison is controlling variables. Use the same RHEL version,
 cat /etc/redhat-release
 
 # Ensure the same packages are installed
+# If sysbench is not in your enabled RHEL repositories, enable EPEL
+# or use the same trusted internal package source on both systems.
 sudo dnf install -y sysbench fio iperf3 gcc make
 
 # Check that compiler versions match
@@ -67,12 +69,16 @@ sudo dnf install -y mariadb-server
 sudo systemctl start mariadb
 
 # Prepare the test database
-mysql -u root -e "CREATE DATABASE sbtest;"
-sysbench oltp_read_write --db-driver=mysql --mysql-user=root \
+sudo mysql -e "CREATE DATABASE sbtest;"
+sudo mysql -e "CREATE USER 'sbtest'@'localhost' IDENTIFIED BY 'benchmark-pass';"
+sudo mysql -e "GRANT ALL PRIVILEGES ON sbtest.* TO 'sbtest'@'localhost';"
+sysbench oltp_read_write --db-driver=mysql \
+  --mysql-user=sbtest --mysql-password=benchmark-pass --mysql-db=sbtest \
   --tables=10 --table-size=100000 prepare
 
 # Run the benchmark
-sysbench oltp_read_write --db-driver=mysql --mysql-user=root \
+sysbench oltp_read_write --db-driver=mysql \
+  --mysql-user=sbtest --mysql-password=benchmark-pass --mysql-db=sbtest \
   --tables=10 --table-size=100000 --threads=8 --time=120 run
 ```
 
