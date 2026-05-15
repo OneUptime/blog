@@ -55,7 +55,9 @@ Common package name differences:
 ```bash
 # On the new RHEL server: Register and enable repositories
 sudo subscription-manager register
-sudo subscription-manager attach --auto
+# With Simple Content Access, registration is enough for content access.
+# For older entitlement-based accounts only, attach a subscription:
+# sudo subscription-manager attach --auto
 
 # Install equivalent packages
 sudo dnf install httpd php php-mysqlnd mariadb-server
@@ -108,8 +110,9 @@ sudo firewall-cmd --reload
 # Set proper SELinux contexts for web content
 sudo restorecon -Rv /var/www/html/
 
-# If your app writes to non-standard directories, add SELinux booleans
-sudo setsebool -P httpd_can_network_connect on
+# If your app writes to non-standard directories, add persistent SELinux file contexts
+sudo semanage fcontext -a -t httpd_sys_rw_content_t "/path/to/app-writable(/.*)?"
+sudo restorecon -Rv /path/to/app-writable
 ```
 
 ## Phase 7: Test and Cutover
