@@ -42,7 +42,7 @@ sudo openssl req -new -x509 -newkey rsa:2048 \
     -keyout sb-key.priv \
     -outform DER \
     -out sb-key.der \
-    -nodes \
+    -noenc \
     -days 3650 \
     -subj "/CN=My Organization Secure Boot Key/"
 
@@ -184,6 +184,7 @@ For deploying custom keys across many systems, include the enrollment in your pr
 # In a Kickstart post-install section
 %post
 # Copy the MOK certificate
+mkdir -p /root/secureboot-keys
 cp /path/to/sb-key.der /root/secureboot-keys/sb-key.der
 
 # Queue the enrollment (requires reboot and console interaction)
@@ -205,7 +206,7 @@ openssl x509 -in /root/secureboot-keys/sb-key.der -inform DER -noout -dates
 openssl x509 -in /root/secureboot-keys/sb-key.der -inform DER -noout -text | grep -A2 "Validity"
 ```
 
-Plan to rotate keys before expiration to avoid disruption.
+Plan to rotate keys before expiration or make sure new modules are signed within the certificate validity period. The `sign-file` utility does not warn you if the certificate is outside its validity dates.
 
 ## Security Best Practices
 
