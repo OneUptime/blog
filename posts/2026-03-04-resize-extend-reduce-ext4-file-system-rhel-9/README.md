@@ -104,7 +104,7 @@ Shrink the filesystem to the desired size:
 sudo resize2fs /dev/vg_data/lv_data 20G
 ```
 
-This reduces the filesystem to 20 GB. Make sure the target size is larger than the data currently stored.
+This reduces the filesystem to 20 GiB. Make sure the target size is larger than the data currently stored.
 
 ### Step 4: Reduce the Logical Volume
 
@@ -132,14 +132,14 @@ df -Th /data
 sudo umount /data
 sudo e2fsck -f /dev/vg_data/lv_data
 sudo lvreduce -r -L 20G /dev/vg_data/lv_data
-sudo mount /data
+sudo mount /dev/vg_data/lv_data /data
 ```
 
 The `-r` flag tells `lvreduce` to resize the filesystem before shrinking the logical volume.
 
 ## Reducing the Root ext4 Filesystem
 
-The root filesystem cannot be unmounted while running. Use a rescue environment:
+The root filesystem cannot be unmounted while running. Use a rescue environment, and make sure the filesystem is not mounted there before checking or shrinking it:
 
 1. Boot from RHEL installation media in rescue mode
 2. Activate LVM:
