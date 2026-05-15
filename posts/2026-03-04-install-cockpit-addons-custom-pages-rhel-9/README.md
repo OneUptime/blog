@@ -28,10 +28,9 @@ The most commonly used add-ons:
 | cockpit-podman | Podman container management |
 | cockpit-pcp | Performance Co-Pilot metrics integration |
 | cockpit-storaged | Storage management (usually installed by default) |
-| cockpit-networkmanager | Network configuration (usually installed by default) |
-| cockpit-selinux | SELinux troubleshooting |
-| cockpit-kdump | Kernel crash dump configuration |
-| cockpit-sosreport | Generate sosreport from the web console |
+| cockpit-packagekit | Software updates and package installation (usually installed by default) |
+| cockpit-files | File manager for files and directories |
+| cockpit-composer | Image Builder for custom OS images |
 | cockpit-session-recording | Session recording management |
 
 ## Installing Add-on Packages
@@ -50,34 +49,31 @@ sudo dnf install cockpit-podman -y
 # Install performance monitoring integration
 sudo dnf install cockpit-pcp -y
 
-# Install SELinux troubleshooting
-sudo dnf install cockpit-selinux -y
-
 # Or install several at once
-sudo dnf install cockpit-machines cockpit-podman cockpit-pcp cockpit-selinux cockpit-sosreport -y
+sudo dnf install cockpit-machines cockpit-podman cockpit-pcp cockpit-session-recording -y
 ```
 
 After installation, refresh your browser. The new modules show up in the sidebar.
 
-## The SELinux Add-on
+## The SELinux Page
 
-The `cockpit-selinux` package adds an SELinux page to Cockpit. It shows:
+Cockpit's SELinux integration can show SELinux state and audit issues when the supporting SELinux troubleshooting tools are present on the system. It shows:
 
 - Current SELinux mode (enforcing, permissive, disabled)
 - Recent SELinux denials with detailed explanations
-- Suggested fixes, including the exact `setsebool` or `semanage` commands needed
+- Suggested fixes from `setroubleshootd`
 
-This is incredibly useful. Instead of parsing `audit.log` and running `audit2why` manually, Cockpit presents the information in plain language.
+This is incredibly useful. Instead of parsing `audit.log` and running `sealert` manually, Cockpit presents the information in plain language.
 
 ```bash
 # What you'd do from the CLI
-sudo ausearch -m avc -ts recent
-sudo audit2why < /var/log/audit/audit.log
+sudo ausearch -m AVC,USER_AVC,SELINUX_ERR,USER_SELINUX_ERR -ts recent
+sudo sealert -a /var/log/audit/audit.log
 ```
 
-## The SOS Report Add-on
+## The Diagnostic Reports Page
 
-The `cockpit-sosreport` package lets you generate a support report directly from the web console. When you need to open a case with Red Hat support, this collects all the system information they need.
+The Diagnostic reports page lets you generate a support report directly from the web console. When you need to open a case with Red Hat support, this collects all the system information they need.
 
 ```bash
 # CLI equivalent
