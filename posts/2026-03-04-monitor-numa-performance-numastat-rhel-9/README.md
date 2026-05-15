@@ -66,13 +66,13 @@ other_node                 12345           23456
 ### Understanding the Metrics
 
 - **numa_hit** - Allocations that were satisfied by the intended node
-- **numa_miss** - Allocations that fell back to another node (performance concern)
+- **numa_miss** - Allocations made on this node even though the process preferred another node (performance concern)
 - **numa_foreign** - Allocations intended for this node but allocated elsewhere
 - **interleave_hit** - Interleave policy allocations on this node
 - **local_node** - Allocations on the node where the process was running
 - **other_node** - Allocations on a different node than where the process ran
 
-High `numa_miss` and `other_node` values indicate poor NUMA placement.
+High `numa_miss` and `other_node` values can indicate poor NUMA placement.
 
 ## Per-Process NUMA Statistics
 
@@ -100,7 +100,7 @@ Stack                        0.10            0.00            0.10
 Private                    120.50           35.70          156.20
 ```
 
-Ideally, a process should have most memory on its local NUMA node.
+Ideally, a single-node-bound process should have most memory on its local NUMA node.
 
 ## System-Wide Memory per NUMA Node
 
@@ -135,7 +135,7 @@ watch -n 5 "numastat -p $(pgrep my-application | head -1)"
 
 ### Problem: High numa_miss Count
 
-If `numa_miss` increases rapidly, processes are allocating memory from remote nodes. Fix by binding processes to their local node:
+If `numa_miss` increases rapidly, processes are receiving memory from nodes other than the preferred node. Consider binding processes to the CPU and memory nodes they should use:
 
 ```bash
 numactl --cpunodebind=0 --membind=0 ./my-application
@@ -163,15 +163,15 @@ Check if a process has memory on multiple nodes:
 numastat -p $(pgrep my-application | head -1)
 ```
 
-If memory is spread across nodes, bind it to one node for better performance.
+If a single-node workload's memory is spread across nodes, bind it to the intended node for better locality.
 
 ## Using numastat with PCP
 
 Integrate NUMA monitoring with PCP:
 
 ```bash
-pmval mem.numa.alloc.hit
-pmval mem.numa.alloc.miss
+pcp numastat -n
+pminfo -dt mem.numa.alloc
 ```
 
 ## Conclusion
