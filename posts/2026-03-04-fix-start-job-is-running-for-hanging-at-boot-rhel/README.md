@@ -64,13 +64,9 @@ CONF
 ## Common Cause 3: Slow Storage Device
 
 ```bash
-# Increase the timeout for a specific mount
-sudo systemctl edit dev-sdb1.mount
-```
+# Increase the timeout for a specific fstab mount
 
-```ini
-[Mount]
-TimeoutSec=300
+# /dev/sdb1  /data  xfs  defaults,x-systemd.device-timeout=300s,x-systemd.mount-timeout=300s  0 0
 ```
 
 ## Reducing Default Timeouts
