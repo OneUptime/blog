@@ -15,7 +15,7 @@ SSSD (System Security Services Daemon) provides a way for RHEL clients to authen
 ```bash
 # Install SSSD with LDAP provider support
 
-sudo dnf install -y sssd sssd-ldap oddjob-mkhomedir
+sudo dnf install -y sssd sssd-ldap sssd-tools oddjob-mkhomedir openldap-clients
 ```
 
 ## Configure SSSD
@@ -26,6 +26,7 @@ Edit the SSSD configuration file to point at your 389 DS instance.
 # Create the SSSD configuration file
 sudo tee /etc/sssd/sssd.conf > /dev/null << 'EOF'
 [sssd]
+config_file_version = 2
 services = nss, pam
 domains = example.com
 
@@ -42,15 +43,17 @@ ldap_search_base = dc=example,dc=com
 
 # Bind credentials for SSSD to search the directory
 ldap_default_bind_dn = cn=Directory Manager
+ldap_default_authtok_type = password
 ldap_default_authtok = your_password_here
 
 # TLS settings
 ldap_tls_reqcert = demand
 ldap_tls_cacert = /etc/pki/tls/certs/ca-bundle.crt
 
-# User and group object class mappings
-ldap_user_object_class = inetOrgPerson
-ldap_group_object_class = groupOfNames
+# User and group object class mappings for RFC2307 POSIX entries
+ldap_schema = rfc2307
+ldap_user_object_class = posixAccount
+ldap_group_object_class = posixGroup
 EOF
 
 # Set strict permissions - SSSD requires 0600
@@ -96,7 +99,7 @@ ssh jdoe@localhost
 
 ```bash
 # Increase SSSD log verbosity for debugging
-sudo sss_debuglevel 6
+sudo sssctl debug-level 6
 
 # Check SSSD logs for connection issues
 sudo journalctl -u sssd -f
