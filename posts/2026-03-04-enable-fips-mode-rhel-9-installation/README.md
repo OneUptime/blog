@@ -8,7 +8,7 @@ Description: Enable FIPS 140-3 compliant cryptography on RHEL during the install
 
 ---
 
-FIPS (Federal Information Processing Standards) mode ensures that your RHEL system only uses NIST-validated cryptographic algorithms. Enabling it during installation is the cleanest approach because it configures the kernel, libraries, and all cryptographic subsystems before any data hits the disk. Enabling FIPS post-installation works too, but during installation is the recommended path per Red Hat documentation.
+FIPS (Federal Information Processing Standards) mode ensures that your RHEL system uses FIPS-approved cryptographic algorithms and validated cryptographic modules. Enabling it during installation is the cleanest approach because it configures the kernel, libraries, and all cryptographic subsystems before any data hits the disk. Enabling FIPS post-installation works too, but during installation is the recommended path per Red Hat documentation.
 
 ## Why Enable FIPS During Installation
 
@@ -29,7 +29,7 @@ The simplest way to enable FIPS during installation is to add a kernel parameter
 # At the RHEL installation boot menu:
 
 # 1. Highlight the installation option
-# 2. Press Tab to edit boot parameters
+# 2. Press Tab on BIOS systems, or e on UEFI systems, to edit boot parameters
 # 3. Append: fips=1
 # The full line should look something like:
 # vmlinuz ... inst.stage2=... fips=1
@@ -37,23 +37,23 @@ The simplest way to enable FIPS during installation is to add a kernel parameter
 
 ## Method 2: Kickstart File
 
-For automated installations, add the fips directive to your Kickstart file:
+For automated installations, add the `fips=1` kernel argument to the same PXE, ISO, or boot loader entry that points to your Kickstart file:
 
 ```bash
-# Add this line to your Kickstart configuration
-fips --enable
+# PXE or custom ISO boot entry example
+append initrd=initrd.img inst.ks=http://server.example.com/ks.cfg fips=1
 
-# Full Kickstart example with FIPS
+# Kickstart example for the installed system
 text
 lang en_US.UTF-8
 keyboard us
 timezone America/New_York --utc
 rootpw --iscrypted $6$salt$hash
 
-# Enable FIPS mode
-fips --enable
+# Keep fips=1 on the installed kernel command line
+bootloader --append="fips=1"
 
-# Partitioning (FIPS requires /boot on a separate partition)
+# Partitioning (/boot should be a separate, unencrypted partition)
 clearpart --all --initlabel
 part /boot --fstype=xfs --size=1024
 part /boot/efi --fstype=efi --size=600
@@ -69,15 +69,15 @@ logvol swap --vgname=rhel --fstype=swap --size=4096 --name=swap
 reboot
 ```
 
-Important: When using FIPS mode, `/boot` must be on a separate partition. The FIPS integrity check needs to verify the kernel and initramfs, and this requires `/boot` to be on its own partition rather than within an encrypted volume.
+Important: When using FIPS mode, enable `fips=1` before the installer starts. If you are using encrypted storage, keep `/boot` on a separate, unencrypted partition so the boot loader can read the kernel and initramfs.
 
 ## Method 3: Anaconda GUI
 
 During the graphical installation:
 
-1. In the Installation Summary screen, click "Security Policy"
-2. Select the FIPS profile or a profile that includes FIPS (like STIG)
-3. The installer will configure FIPS mode as part of the profile application
+1. In the Installation Summary screen, click "Security Policy" or "Security Profile"
+2. Select the compliance profile you need, such as STIG
+3. Still add `fips=1` at the boot menu before installation starts. Starting with RHEL 9.6, STIG and other security profiles do not automatically enable FIPS mode at first boot.
 
 ## Verify FIPS Is Active After Installation
 
@@ -119,7 +119,7 @@ When FIPS mode is active, the following changes take effect:
 - **SSH**: Only FIPS-approved ciphers and MACs are available
 - **TLS**: Only TLS 1.2 and 1.3 with FIPS-approved cipher suites
 - **Kernel**: The kernel performs self-tests on cryptographic modules at boot
-- **OpenSSL**: Only the FIPS provider is active
+- **OpenSSL**: The FIPS provider is loaded and OpenSSL uses the FIPS property query for approved algorithms
 
 ```bash
 # See which SSH ciphers are available in FIPS mode
@@ -166,4 +166,4 @@ ldapsearch -x -H ldaps://ldap.example.com -b "dc=example,dc=com" 2>&1
 klist -e
 ```
 
-Enabling FIPS during installation is a simple one-line addition to your boot parameters or Kickstart file, but it has far-reaching effects on how the entire system handles cryptography. Get it right during installation and you avoid the hassle of retrofitting it later.
+Enabling FIPS during installation is a simple one-line addition to your boot parameters, but it has far-reaching effects on how the entire system handles cryptography. Get it right during installation and you avoid the hassle of retrofitting it later.
