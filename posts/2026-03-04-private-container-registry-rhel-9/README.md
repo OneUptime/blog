@@ -41,7 +41,7 @@ sudo mkdir -p /opt/registry/certs
 
 ## Generate a self-signed certificate
 ```bash
-openssl req -newkey rsa:4096 -nodes -sha256 \
+sudo openssl req -newkey rsa:4096 -nodes -sha256 \
   -keyout /opt/registry/certs/registry.key \
   -x509 -days 365 \
   -out /opt/registry/certs/registry.crt \
@@ -140,12 +140,12 @@ This section covers listing images in the registry.
 
 ## List all repositories in the registry
 ```bash
-curl -u admin:password https://registry.example.com:5000/v2/_catalog --cacert /opt/registry/certs/registry.crt
+curl -u admin:your-password https://registry.example.com:5000/v2/_catalog --cacert /opt/registry/certs/registry.crt
 ```
 
 ## List tags for a specific image
 ```bash
-curl -u admin:password https://registry.example.com:5000/v2/nginx/tags/list --cacert /opt/registry/certs/registry.crt
+curl -u admin:your-password https://registry.example.com:5000/v2/nginx/tags/list --cacert /opt/registry/certs/registry.crt
 ```
 
 ## Making the Registry a systemd Service
@@ -155,7 +155,7 @@ Create a Quadlet file so the registry starts on boot:
 ```bash
 sudo mkdir -p /etc/containers/systemd/
 
-sudo cat > /etc/containers/systemd/registry.container << 'EOF'
+sudo tee /etc/containers/systemd/registry.container > /dev/null << 'EOF'
 [Unit]
 Description=Private Container Registry
 After=network-online.target
@@ -169,7 +169,7 @@ Volume=/opt/registry/auth:/auth:Z
 Environment=REGISTRY_HTTP_TLS_CERTIFICATE=/certs/registry.crt
 Environment=REGISTRY_HTTP_TLS_KEY=/certs/registry.key
 Environment=REGISTRY_AUTH=htpasswd
-Environment=REGISTRY_AUTH_HTPASSWD_REALM=Private Registry
+Environment="REGISTRY_AUTH_HTPASSWD_REALM=Private Registry"
 Environment=REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd
 
 [Service]
@@ -181,6 +181,8 @@ EOF
 ```
 
 ```bash
+sudo podman stop registry
+sudo podman rm registry
 sudo systemctl daemon-reload
 sudo systemctl enable --now registry
 ```
@@ -198,7 +200,7 @@ sudo cp registry.crt /etc/containers/certs.d/registry.example.com:5000/ca.crt
 ## Also add it to the system trust store
 ```bash
 sudo cp registry.crt /etc/pki/ca-trust/source/anchors/
-sudo update-ca-trust
+sudo update-ca-trust extract
 ```
 
 ## Log in
@@ -215,12 +217,12 @@ Over time, deleted tags leave orphaned layers. Clean them up:
 sudo podman exec registry /bin/registry garbage-collect /etc/docker/registry/config.yml
 ```
 
-## Configuring Storage Quotas
+## Configuring Registry Storage and Deletion
 
-Limit storage usage in the registry configuration:
+Configure storage and enable deletion in the registry configuration:
 
 ```bash
-sudo cat > /opt/registry/config.yml << 'EOF'
+sudo tee /opt/registry/config.yml > /dev/null << 'EOF'
 version: 0.1
 storage:
   filesystem:
