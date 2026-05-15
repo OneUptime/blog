@@ -102,7 +102,7 @@ sudo stratis pool list
 View pool details:
 
 ```bash
-sudo stratis pool describe mypool
+sudo stratis pool list --name mypool
 ```
 
 Check physical disk membership:
@@ -144,21 +144,21 @@ df -Th /data
 
 ## Step 7: Configure Persistent Mounting
 
-Stratis filesystems should be mounted using their UUID in `/etc/fstab` with the `x-systemd.requires=stratisd.service` option:
+Stratis filesystems should be mounted using their `/dev/stratis/` path in `/etc/fstab` with the Stratis fstab setup service:
 
-Get the UUID:
+Get the pool UUID:
 
 ```bash
-sudo blkid /dev/stratis/mypool/myfs
+sudo stratis pool list --name mypool
 ```
 
 Add to `/etc/fstab`:
 
 ```bash
-UUID=your-uuid-here /data xfs defaults,x-systemd.requires=stratisd.service 0 0
+/dev/stratis/mypool/myfs /data xfs defaults,x-systemd.requires=stratis-fstab-setup@pool-uuid.service,x-systemd.after=stratis-fstab-setup@pool-uuid.service 0 0
 ```
 
-The `x-systemd.requires` option ensures the Stratis daemon is running before the mount is attempted.
+Replace `pool-uuid` with the UUID of `mypool`. The `x-systemd.requires` and `x-systemd.after` options ensure the Stratis fstab setup service runs before the mount is attempted.
 
 Test:
 
