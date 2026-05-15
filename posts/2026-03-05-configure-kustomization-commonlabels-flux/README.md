@@ -21,7 +21,8 @@ Recent Kustomize versions still support `commonLabels`, but warn that it is depr
 When you define `commonLabels` in a `kustomization.yaml`, Kustomize adds those labels to:
 
 - The `metadata.labels` field of every resource
-- The `spec.selector.matchLabels` field of Deployments, StatefulSets, DaemonSets, and Jobs
+- Selector fields such as Service `spec.selector` and the `spec.selector.matchLabels` field of Deployments, StatefulSets, and DaemonSets
+- The `spec.selector.matchLabels` field of Jobs when the Job defines an explicit selector
 - The `spec.template.metadata.labels` field of pod templates
 
 This automatic injection ensures that selectors and pod labels stay consistent, which is critical for Kubernetes controllers to function correctly.
@@ -145,7 +146,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app: webapp
     environment: staging       # added by commonLabels
     managed-by: flux           # added by commonLabels
     team: platform             # added by commonLabels
@@ -172,6 +172,8 @@ The Service selector will also include the common labels, ensuring it still matc
 ## Step 4: Configure Flux Kustomization
 
 Point Flux at the overlay directories.
+
+These examples assume the `staging` and `production` namespaces already exist.
 
 ```yaml
 # clusters/my-cluster/webapp-staging.yaml
