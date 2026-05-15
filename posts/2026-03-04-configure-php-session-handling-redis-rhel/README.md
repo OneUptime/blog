@@ -55,8 +55,8 @@ session.save_path = "tcp://127.0.0.1:6379?auth=YourRedisPassword123&database=0"
 ; Session lifetime in seconds (default: 1440 = 24 minutes)
 session.gc_maxlifetime = 1440
 
-; Prefix for session keys in Redis
-; Helps distinguish sessions from other Redis data
+; Session locking settings
+redis.session.locking_enabled = 1
 redis.session.lock_expire = 30
 redis.session.lock_wait_time = 50000
 redis.session.lock_retries = 2000
@@ -101,7 +101,7 @@ redis-cli -a YourRedisPassword123 get "PHPREDIS_SESSION:<session_id>"
 
 ## Multi-Server Setup
 
-For load-balanced environments, point all servers to the same Redis instance:
+For load-balanced environments, point all servers to the same Redis instance. Use a private network, and enable Redis TLS if the connection is not otherwise protected:
 
 ```ini
 ; On each web server, point to the central Redis server
