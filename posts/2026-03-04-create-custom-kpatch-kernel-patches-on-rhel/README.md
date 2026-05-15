@@ -18,11 +18,11 @@ While Red Hat provides official kpatch modules for critical CVEs, you can also b
 sudo dnf install -y kpatch kpatch-build
 
 # Install kernel source and build dependencies
-sudo dnf install -y kernel-devel kernel-debuginfo rpm-build \
+sudo dnf install -y kernel-devel-$(uname -r) kernel-debuginfo-$(uname -r) rpm-build \
     elfutils-libelf-devel gcc make pesign yum-utils
 
 # Install the source RPM for the running kernel
-sudo dnf download --source kernel-$(uname -r | sed 's/\.x86_64//')
+sudo dnf download --source "$(rpm -q --qf '%{SOURCERPM}\n' kernel-core-$(uname -r) | sed 's/\.src\.rpm$//')"
 sudo rpm -ivh kernel-*.src.rpm
 ```
 
@@ -44,17 +44,17 @@ Write a unified diff that describes your kernel change:
 ```bash
 # Example: Create a simple patch file
 cat > /tmp/my-fix.patch << 'EOF'
---- a/net/core/sock.c
-+++ b/net/core/sock.c
-@@ -1234,6 +1234,8 @@ static void sock_def_readable(struct sock *sk)
- {
- 	struct socket_wq *wq;
-
-+	/* Fix: add missing rcu read lock */
-+	rcu_read_lock();
- 	wq = rcu_dereference(sk->sk_wq);
- 	if (skwq_has_sleeper(wq))
- 		wake_up_interruptible_sync_poll(&wq->wait, EPOLLIN | EPOLLPRI |
+--- a/fs/proc/meminfo.c
++++ b/fs/proc/meminfo.c
+@@ -95,7 +95,7 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
+ 		"Committed_AS:   %8lu kB\n"
+ 		"VmallocTotal:   %8lu kB\n"
+ 		"VmallocUsed:    %8lu kB\n"
+-		"VmallocChunk:   %8lu kB\n"
++		"VMALLOCCHUNK:   %8lu kB\n"
+ #ifdef CONFIG_MEMORY_FAILURE
+ 		"HardwareCorrupted: %5lu kB\n"
+ #endif
 EOF
 ```
 
@@ -65,7 +65,7 @@ EOF
 # This compares the original and patched kernel objects to generate the kpatch module
 sudo kpatch-build -s ~/rpmbuild/BUILD/kernel-*/linux-*/ \
     -c /boot/config-$(uname -r) \
-    -v $(uname -r) \
+    -v /usr/lib/debug/lib/modules/$(uname -r)/vmlinux \
     /tmp/my-fix.patch
 
 # The output module will be in the current directory
