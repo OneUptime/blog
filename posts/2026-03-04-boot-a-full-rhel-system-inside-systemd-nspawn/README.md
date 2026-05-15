@@ -25,7 +25,7 @@ sudo mkdir -p /var/lib/machines/rhel-full
 # Install a more complete system for full boot
 sudo dnf --releasever=9 --installroot=/var/lib/machines/rhel-full \
     install -y basesystem systemd dnf bash passwd \
-    systemd-resolved NetworkManager-tui vim-minimal
+    systemd-resolved NetworkManager-tui chrony vim-minimal
 ```
 
 ## Set Up the Root Password
