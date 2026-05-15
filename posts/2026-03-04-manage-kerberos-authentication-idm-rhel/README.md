@@ -109,9 +109,17 @@ kvno HTTP/web1.example.com
 ## Delegation and Constrained Delegation
 
 ```bash
-# Allow a service to request tickets on behalf of users
-ipa service-add-delegation-target HTTP/web1.example.com \
-  --targets=ldap/idm1.example.com
+# Create a delegation target for the service that can be accessed
+ipa servicedelegationtarget-add ldap-target
+ipa servicedelegationtarget-add-member ldap-target \
+  --principals=ldap/idm1.example.com@EXAMPLE.COM
+
+# Allow a service to request tickets on behalf of users for that target
+ipa servicedelegationrule-add http-delegation
+ipa servicedelegationrule-add-member http-delegation \
+  --principals=HTTP/web1.example.com@EXAMPLE.COM
+ipa servicedelegationrule-add-target http-delegation \
+  --servicedelegationtargets=ldap-target
 ```
 
 Kerberos is time-sensitive. Keep clocks synchronized across all IdM servers and clients using chronyd. A clock skew of more than 5 minutes (default) will cause authentication failures.
