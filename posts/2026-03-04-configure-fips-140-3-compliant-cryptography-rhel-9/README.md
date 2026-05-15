@@ -8,7 +8,7 @@ Description: Configure RHEL for FIPS 140-3 compliant cryptography, understanding
 
 ---
 
-RHEL is the first major Red Hat release to ship with FIPS 140-3 validated cryptographic modules. This is a significant upgrade from FIPS 140-2 that was used in RHEL 8. If your organization requires FIPS compliance, understanding what changed and how to properly configure it on RHEL matters.
+RHEL 9 is the first major Red Hat release with FIPS 140-3 validated cryptographic modules. This is a significant upgrade from FIPS 140-2 that was used in RHEL 8. If your organization requires FIPS compliance, check the validation status for your exact RHEL minor release and package versions, and understand what changed before configuring it.
 
 ## FIPS 140-3 vs FIPS 140-2
 
@@ -38,8 +38,8 @@ openssl version -a | head -5
 # Check the FIPS module status
 openssl list -providers
 
-# View the FIPS module configuration
-cat /etc/pki/tls/fips_local.cnf 2>/dev/null
+# View the OpenSSL configuration that loads provider and crypto-policy settings
+grep -E "openssl_conf|providers|fips|crypto_policy" /etc/pki/tls/openssl.cnf /etc/pki/tls/fips_local.cnf 2>/dev/null
 
 # Check the kernel crypto module
 cat /proc/crypto | grep -A5 "name.*aes"
@@ -48,9 +48,9 @@ cat /proc/crypto | grep -A5 "name.*aes"
 ## Enable FIPS 140-3 Mode
 
 ```bash
-# Enable FIPS mode (this uses FIPS 140-3 modules on RHEL)
+# Enable FIPS mode. For full compliance, enable FIPS during installation when possible.
 fips-mode-setup --enable
-systemctl reboot
+reboot
 
 # Verify after reboot
 fips-mode-setup --check
@@ -66,11 +66,11 @@ cat /proc/sys/crypto/fips_enabled
 openssl list -cipher-algorithms 2>/dev/null | sort
 
 # Approved:
-# - AES (128, 192, 256) in ECB, CBC, CTR, GCM, CCM modes
+# - AES (128, 192, 256) in approved modes, depending on the component and protocol
 # - AES-XTS for storage encryption
 
 # Not approved:
-# - DES, 3DES (deprecated)
+# - DES, 3DES
 # - RC4, Blowfish, Camellia
 ```
 
@@ -101,7 +101,9 @@ openssl list -signature-algorithms 2>/dev/null
 # Approved:
 # - RSA (2048+ bits)
 # - ECDSA (P-256, P-384, P-521)
-# - EdDSA (Ed25519, Ed448) - new in FIPS 140-3
+
+# Not approved in RHEL FIPS-mode SSH/OpenSSL configurations:
+# - Ed25519, Ed448
 
 # Key exchange:
 # - ECDH (P-256, P-384, P-521)
@@ -118,7 +120,7 @@ update-crypto-policies --show
 # Check what TLS protocols are available
 openssl s_client -help 2>&1 | grep -E "tls1|ssl"
 
-# Only TLS 1.2 and 1.3 are available in FIPS mode
+# RHEL 9 supports TLS 1.2 and TLS 1.3; in FIPS mode, TLS 1.2 also requires Extended Master Secret (EMS)
 # Verify by testing a connection
 openssl s_client -connect example.com:443 -tls1_2 </dev/null 2>/dev/null | grep "Protocol"
 ```
@@ -127,17 +129,12 @@ openssl s_client -connect example.com:443 -tls1_2 </dev/null 2>/dev/null | grep 
 
 ```bash
 # SSH is automatically configured by the crypto policy
-# Verify available algorithms
-ssh -Q cipher
-# Expected: aes128-ctr, aes192-ctr, aes256-ctr, aes128-gcm@openssh.com, aes256-gcm@openssh.com
+# Verify the generated OpenSSH crypto-policy configuration
+grep -E "^(Ciphers|MACs|KexAlgorithms)" /etc/crypto-policies/back-ends/opensshserver.config
 
-ssh -Q mac
-# Expected: hmac-sha2-256, hmac-sha2-512, hmac-sha2-256-etm@openssh.com, hmac-sha2-512-etm@openssh.com
+grep -E "^(Ciphers|MACs|KexAlgorithms)" /etc/crypto-policies/back-ends/openssh.config
 
-ssh -Q kex
-# Expected: ecdh-sha2-nistp256, ecdh-sha2-nistp384, ecdh-sha2-nistp521,
-#           diffie-hellman-group14-sha256, diffie-hellman-group16-sha512,
-#           diffie-hellman-group18-sha512
+# ssh -Q lists algorithms supported by OpenSSH, not necessarily the final system crypto-policy restrictions
 ```
 
 ## Configure Disk Encryption for FIPS 140-3
@@ -162,7 +159,7 @@ FIPS 140-3 requires integrity verification of cryptographic modules:
 # Check that FIPS module integrity is verified at boot
 journalctl -b | grep -i "fips.*integrity\|fips.*self.test"
 
-# Verify the OpenSSL FIPS module checksum
+# Check that the OpenSSL FIPS provider is loaded
 # The module performs self-tests automatically
 # If self-tests fail, the module refuses to operate
 openssl list -providers 2>&1 | grep -A3 "fips"
@@ -175,7 +172,7 @@ openssl list -providers 2>&1 | grep -A3 "fips"
 ```bash
 # GnuTLS on RHEL follows the system crypto policy
 # Verify GnuTLS FIPS status
-gnutls-cli --list | grep -i fips
+gnutls-cli --fips140-mode
 ```
 
 ### NSS (Network Security Services)
