@@ -8,13 +8,15 @@ Description: Step-by-step guide on tune network ring buffer sizes and interrupt 
 
 ---
 
-Tuning network ring buffers and interrupt coalescing on RHEL 9 reduces CPU overhead and improves throughput for high-traffic servers.
+Tuning network ring buffers and interrupt coalescing on RHEL 9 can reduce CPU overhead and improve throughput for high-traffic servers.
 
 ## View Current Ring Buffer Settings
 
 ```bash
 ethtool -g eth0
 ```
+
+Use values at or below the `Pre-set maximums` shown by `ethtool -g`.
 
 ## Increase Ring Buffer Sizes
 
@@ -25,13 +27,9 @@ sudo ethtool -G eth0 rx 4096 tx 4096
 ## Make Ring Buffer Changes Persistent
 
 ```bash
-sudo tee /etc/NetworkManager/dispatcher.d/99-ring-buffers <<'EOF'
-#!/bin/bash
-if [ "$1" = "eth0" ] && [ "$2" = "up" ]; then
-    ethtool -G eth0 rx 4096 tx 4096
-fi
-EOF
-sudo chmod +x /etc/NetworkManager/dispatcher.d/99-ring-buffers
+CONNECTION=$(nmcli -g GENERAL.CONNECTION device show eth0)
+sudo nmcli connection modify "$CONNECTION" ethtool.ring-rx 4096 ethtool.ring-tx 4096
+sudo nmcli connection up "$CONNECTION"
 ```
 
 ## View Interrupt Coalescing Settings
@@ -66,5 +64,4 @@ ethtool -S eth0 | grep -E "drop|error|miss"
 
 ## Conclusion
 
-Ring buffer and interrupt coalescing tuning on RHEL 9 balances CPU usage and network throughput. Increase ring buffers to prevent packet drops and adjust coalescing based on your latency vs. throughput requirements.
-
+Ring buffer and interrupt coalescing tuning on RHEL 9 balances CPU usage and network throughput. Increase ring buffers to help reduce packet drops and adjust coalescing based on your latency vs. throughput requirements.
