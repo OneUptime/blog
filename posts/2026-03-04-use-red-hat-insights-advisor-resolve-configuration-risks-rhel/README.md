@@ -52,7 +52,7 @@ Advisor recommendations with a remediation type of Playbook can be added to a re
 1. Follow the manual steps provided in the recommendation
 2. Generate an Ansible remediation playbook
 
-For manual resolution, Advisor provides exact commands. For example, if Advisor flags an outdated openssl package:
+For manual resolution, Advisor provides mitigation or resolution instructions, which can include commands. For example, if the recommended resolution instructs you to update openssl:
 
 ```bash
 # Update the flagged package as recommended by Advisor
@@ -78,4 +78,4 @@ If a recommendation does not apply to your environment:
 
 Open the Advisor recommendations page, locate the recommendation, click the more-options menu at the end of the row, and select "Disable recommendation". To re-enable it later, filter recommendations by Status, select Disabled, and choose "Enable recommendation" from the same menu.
 
-Advisor continuously monitors your systems and updates recommendations as new issues are discovered or patches are released. Review the dashboard regularly to keep your RHEL fleet in optimal condition.
+The Insights client runs on a schedule by default, and Advisor updates recommendations as new issues are discovered or patches are released. Review the dashboard regularly to keep your RHEL fleet in optimal condition.
