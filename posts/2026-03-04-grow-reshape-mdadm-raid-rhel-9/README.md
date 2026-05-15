@@ -17,7 +17,7 @@ Not every transformation is possible, and some come with risks, but the capabili
 ## Prerequisites
 
 - An existing mdadm RAID array on RHEL
-- Sufficient free space for the reshape operation (mdadm uses a backup file)
+- Sufficient free space outside the array being reshaped for the backup file
 - A backup of your data (always back up before reshaping)
 
 ## Growing a RAID 5 Array by Adding a Disk
@@ -95,8 +95,8 @@ graph LR
 ```
 
 Not all conversions are supported. Some restrictions:
-- You cannot shrink an array (remove active devices) in most cases
-- RAID 0 cannot be reshaped to RAID 5 directly
+- Shrinking an array requires shrinking the filesystem first and reducing the visible array size before removing active devices
+- RAID 0 can be converted to RAID 4 or RAID 5, but mdadm handles it as a special reshape path and requires extra care
 - RAID 10 reshaping is limited
 
 ## Changing the Chunk Size
