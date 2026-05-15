@@ -8,7 +8,7 @@ Description: Automate the deployment of RHEL virtual machines on VMware vSphere 
 
 ---
 
-Combining Terraform with Kickstart lets you automate the entire RHEL VM lifecycle on VMware. Terraform handles VM creation and resource allocation, while Kickstart handles unattended OS installation and configuration.
+Combining Terraform with Kickstart lets you automate the RHEL VM deployment workflow on VMware. Terraform handles VM creation and resource allocation, while Kickstart handles unattended OS installation and configuration after the installer is started with the Kickstart boot option.
 
 ## Prerequisites
 
@@ -64,17 +64,30 @@ EOF
 terraform {
   required_providers {
     vsphere = {
-      source  = "hashicorp/vsphere"
-      version = "~> 2.6"
+      source  = "vmware/vsphere"
+      version = "~> 2.11"
     }
   }
 }
 
+variable "vsphere_user" {
+  type = string
+}
+
+variable "vsphere_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "vsphere_server" {
+  type = string
+}
+
 # vSphere provider configuration
 provider "vsphere" {
-  user           = var.vsphere_user
-  password       = var.vsphere_password
-  vsphere_server = var.vsphere_server
+  user                 = var.vsphere_user
+  password             = var.vsphere_password
+  vsphere_server       = var.vsphere_server
   allow_unverified_ssl = true
 }
 
@@ -104,9 +117,11 @@ resource "vsphere_virtual_machine" "rhel_vm" {
   resource_pool_id = data.vsphere_compute_cluster.cluster.resource_pool_id
   datastore_id     = data.vsphere_datastore.datastore.id
 
-  num_cpus = 4
-  memory   = 8192
-  guest_id = "rhel9_64Guest"
+  num_cpus                   = 4
+  memory                     = 8192
+  guest_id                   = "rhel9_64Guest"
+  wait_for_guest_net_timeout = 0
+  wait_for_guest_ip_timeout  = 0
 
   # Use PVSCSI for best disk performance
   scsi_type = "pvscsi"
@@ -122,13 +137,13 @@ resource "vsphere_virtual_machine" "rhel_vm" {
     thin_provisioned = true
   }
 
-  # Boot from the RHEL ISO with Kickstart
+  # Boot from the RHEL ISO
   cdrom {
     datastore_id = data.vsphere_datastore.datastore.id
     path         = "iso/rhel-9.4-x86_64-dvd.iso"
   }
 
-  # Pass Kickstart URL via extra config
+  # Optional VM metadata for inventory; Anaconda reads the inst.ks boot option below.
   extra_config = {
     "guestinfo.kickstart" = "http://webserver.example.com/ks/rhel9-base.cfg"
   }
@@ -169,4 +184,4 @@ cat /etc/redhat-release
 systemctl status vmtoolsd
 ```
 
-This approach scales to deploying hundreds of identical RHEL VMs by simply adjusting the Terraform count or using `for_each` with a list of VM definitions.
+With PXE or a custom ISO that includes the Kickstart boot option, this approach scales to deploying hundreds of identical RHEL VMs by adjusting the Terraform count or using `for_each` with a list of VM definitions.
