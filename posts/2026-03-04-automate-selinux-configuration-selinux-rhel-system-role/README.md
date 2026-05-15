@@ -46,6 +46,13 @@ Create `configure-selinux.yml`:
 - name: How to Automate SELinux Configuration Using the selinux RHEL System Role
   hosts: managed_hosts
   become: true
+  vars:
+    selinux_policy: targeted
+    selinux_state: enforcing
+    selinux_booleans:
+      - name: ssh_sysadm_login
+        state: true
+        persistent: true
   roles:
     - role: rhel-system-roles.selinux
 ```
@@ -68,10 +75,9 @@ ansible-playbook -i inventory.ini configure-selinux.yml
 On the managed hosts, verify that the configuration was applied:
 
 ```bash
-# Check relevant service or configuration
-
-systemctl status <service>
-cat <config-file>
+getenforce
+grep '^SELINUX=' /etc/selinux/config
+getsebool ssh_sysadm_login
 ```
 
 ## Idempotency
