@@ -53,6 +53,9 @@ sudo tee /etc/sudoers.d/db-admins << 'EOF'
 %db-admins ALL=(postgres) NOPASSWD: ALL
 EOF
 
+# Set the recommended sudoers file permissions
+sudo chmod 0440 /etc/sudoers.d/web-admins /etc/sudoers.d/db-admins
+
 # Validate the sudoers syntax
 sudo visudo -cf /etc/sudoers.d/web-admins
 sudo visudo -cf /etc/sudoers.d/db-admins
@@ -66,7 +69,7 @@ Not every user needs a login shell:
 # Create a user for deployment only (no interactive shell)
 sudo useradd -s /usr/sbin/nologin deploy-bot
 
-# For users who need SFTP only
+# For SFTP-only users, combine nologin with an sshd Match/ForceCommand configuration
 sudo useradd -s /usr/sbin/nologin sftp-user
 ```
 
@@ -93,7 +96,7 @@ Regularly check for overly permissive files:
 # Find SUID/SGID binaries (potential privilege escalation vectors)
 sudo find / -xdev \( -perm -4000 -o -perm -2000 \) -type f -exec ls -l {} \;
 
-# Find files writable by non-owners
+# Find world-writable files in /etc
 sudo find /etc -xdev -type f -perm -o+w -exec ls -l {} \;
 ```
 
@@ -109,6 +112,7 @@ Defaults log_output
 Defaults!/usr/bin/sudoreplay !log_output
 Defaults logfile="/var/log/sudo.log"
 EOF
+sudo chmod 0440 /etc/sudoers.d/logging
 ```
 
 Review sudo logs regularly:
