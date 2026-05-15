@@ -78,20 +78,19 @@ sudo systemctl restart cups
 
 ```bash
 # Allow CUPS traffic through the firewall
-sudo firewall-cmd --permanent --add-service=ipp
 sudo firewall-cmd --permanent --add-port=631/tcp
 sudo firewall-cmd --reload
 ```
 
 ## Access the CUPS Web Interface
 
-Open a browser and navigate to `https://your-server-ip:631`. The web interface lets you add printers, manage queues, and view job history.
+Open a browser and navigate to `http://your-server-ip:631`. The web interface lets you add printers, manage queues, and view job history. Administrative tasks require HTTPS, for example `https://your-server-ip:631/admin/`.
 
 ## Add a Printer via Command Line
 
 ```bash
-# List detected printers
-lpstat -p -d
+# List detected printer devices
+lpinfo -v
 
 # Add a local USB printer
 sudo lpadmin -p "HP-LaserJet" \
@@ -113,7 +112,7 @@ sudo lpadmin -d "Office-Printer"
 
 ```bash
 # Print a test page
-lp -d Office-Printer /usr/share/cups/data/testprint
+lp -d Office-Printer /usr/share/cups/data/default-testpage.pdf
 
 # Check the print queue
 lpstat -o
@@ -125,14 +124,14 @@ lpstat -t
 ## Enable Printer Sharing
 
 ```bash
-# Share all printers on the network
+# Enable printer sharing on the server
 sudo cupsctl --share-printers
 
 # Share a specific printer
 sudo lpadmin -p "Office-Printer" -o printer-is-shared=true
 
 # Verify sharing is enabled
-lpstat -v
+cupsctl | grep '^_share_printers=1'
 ```
 
 CUPS provides a robust and flexible print management system that works with a wide range of printer hardware and supports both local and network printing on RHEL.
