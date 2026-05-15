@@ -8,17 +8,17 @@ Description: Configure Nginx on RHEL to use HTTP/2 and TLS 1.3 for maximum perfo
 
 ---
 
-HTTP/2 and TLS 1.3 represent the latest standards in web performance and security. HTTP/2 enables multiplexed streams over a single connection, while TLS 1.3 reduces the handshake to just one round trip. Nginx on RHEL supports both. This guide shows you how to enable and optimize them.
+HTTP/2 and TLS 1.3 represent modern standards in web performance and security. HTTP/2 enables multiplexed streams over a single connection, while TLS 1.3 reduces the handshake to just one round trip. Nginx on RHEL 9 supports both. This guide shows you how to enable and optimize them.
 
 ## Prerequisites
 
-- A RHEL system with Nginx installed
+- A RHEL 9 system with Nginx installed
 - A valid SSL certificate (from Let's Encrypt or another CA)
 - Root or sudo access
 
 ## Step 1: Verify OpenSSL Version
 
-TLS 1.3 requires OpenSSL 1.1.1 or newer. RHEL ships with OpenSSL 3.x:
+TLS 1.3 requires OpenSSL 1.1.1 or newer. RHEL 9 ships with OpenSSL 3.x:
 
 ```bash
 # Check OpenSSL version
@@ -35,7 +35,8 @@ nginx -V 2>&1 | grep -o "OpenSSL [0-9.]*"
 # /etc/nginx/conf.d/example.com.conf
 
 server {
-    # Enable HTTP/2 by adding 'http2' to the listen directive
+    # Enable HTTP/2 by adding 'http2' to the listen directive.
+    # On Nginx 1.25.1 or newer, use 'http2 on;' instead.
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
 
@@ -49,10 +50,10 @@ server {
     # Enable only TLS 1.2 and TLS 1.3
     ssl_protocols TLSv1.2 TLSv1.3;
 
-    # Cipher suites for TLS 1.2 (TLS 1.3 ciphers are fixed by the protocol)
+    # Cipher suites for TLS 1.2 (TLS 1.3 ciphers are not controlled by ssl_ciphers)
     ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
 
-    # Let the server choose the cipher order
+    # Let clients choose the cipher order
     ssl_prefer_server_ciphers off;
 
     # ECDH curve for key exchange
@@ -110,26 +111,17 @@ http2_max_concurrent_streams 128;
 large_client_header_buffers 4 16k;
 ```
 
-## Step 5: Enable Server Push (Optional)
+## Step 5: Add Preload Hints (Optional)
 
-HTTP/2 server push preloads resources before the browser requests them:
+HTTP/2 server push is obsolete in current Nginx and unsupported by modern browsers. Use Link preload headers instead:
 
 ```nginx
 server {
     listen 443 ssl http2;
     server_name example.com;
+    root /var/www/html;
 
-    location / {
-        root /var/www/html;
-
-        # Push CSS and JS when the main page is requested
-        http2_push /css/style.css;
-        http2_push /js/app.js;
-    }
-
-    # Preload header approach (better browser compatibility)
     location = /index.html {
-        root /var/www/html;
         add_header Link "</css/style.css>; rel=preload; as=style";
         add_header Link "</js/app.js>; rel=preload; as=script";
     }
@@ -180,7 +172,7 @@ curl -w "time_total: %{time_total}\n" -o /dev/null -s --http2 https://example.co
 nginx -V 2>&1 | grep http_v2
 
 # Check if TLS 1.3 is supported by the system
-openssl ciphers -v 'TLSv1.3' 2>/dev/null
+openssl ciphers -v -s -tls1_3 2>/dev/null | grep TLSv1.3
 
 # Check error log
 sudo tail -f /var/log/nginx/error.log
