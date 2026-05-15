@@ -238,7 +238,7 @@ echo "20260101" | sudo tee /var/spool/anacron/cron.daily
 You can test anacron manually without waiting for the hourly trigger.
 
 ```bash
-# Test run - show what would be done without actually doing it
+# Validate the anacrontab syntax without running jobs
 sudo anacron -T
 
 # Force run all jobs now, ignoring timestamps
@@ -304,7 +304,7 @@ rpm -q cronie-anacron
 ls -la /etc/cron.hourly/0anacron
 
 # Make sure it is executable
-file /etc/cron.hourly/0anacron
+test -x /etc/cron.hourly/0anacron && echo "executable"
 
 # Validate anacrontab syntax
 sudo anacron -T
