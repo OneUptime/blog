@@ -112,12 +112,12 @@ defaults tcp_defaults
     timeout server 30s
 
 # HTTP frontend for web traffic
-frontend http_front
+frontend http_front from http_defaults
     mode http
     bind *:80
     default_backend web_servers
 
-backend web_servers
+backend web_servers from http_defaults
     mode http
     balance roundrobin
     option httpchk GET /health
@@ -125,27 +125,29 @@ backend web_servers
     server web2 192.168.1.12:8080 check
 
 # TCP frontend for database traffic
-frontend mysql_front
+frontend mysql_front from tcp_defaults
     mode tcp
     bind *:3306
     default_backend mysql_servers
 
-backend mysql_servers
+backend mysql_servers from tcp_defaults
     mode tcp
     balance roundrobin
     server db1 192.168.1.21:3306 check
     server db2 192.168.1.22:3306 check
 
 # TCP frontend for Redis
-frontend redis_front
+frontend redis_front from tcp_defaults
     mode tcp
     bind *:6379
     default_backend redis_servers
 
-backend redis_servers
+backend redis_servers from tcp_defaults
     mode tcp
     balance roundrobin
     option tcp-check
+    tcp-check send PING\r\n
+    tcp-check expect string +PONG
     server redis1 192.168.1.31:6379 check
     server redis2 192.168.1.32:6379 check
 EOF
