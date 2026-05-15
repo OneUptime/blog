@@ -8,7 +8,9 @@ Description: Learn how to install and configure HashiCorp Waypoint on RHEL to bu
 
 ---
 
-HashiCorp Waypoint provides a consistent workflow for building, deploying, and releasing applications regardless of the target platform. Whether you deploy to Docker, Kubernetes, AWS ECS, or bare metal, Waypoint gives you the same interface. This guide covers installing and using Waypoint on RHEL.
+HashiCorp Waypoint Community Edition provides a consistent workflow for building, deploying, and releasing applications regardless of the target platform. Whether you deploy to Docker, Kubernetes, AWS ECS, or bare metal, Waypoint gives you the same interface. This guide covers installing and using the legacy Waypoint CLI on RHEL.
+
+> Note: HashiCorp Waypoint Community Edition is no longer actively maintained. The latest Community Edition release is 0.11.4; HashiCorp's current Waypoint offering is HCP Waypoint.
 
 ## How Waypoint Works
 
@@ -23,7 +25,7 @@ Each phase uses a plugin that handles the platform-specific details.
 ## Prerequisites
 
 - RHEL with root or sudo access
-- Docker or Podman installed for container builds
+- Docker installed and running for the Docker examples
 - A Kubernetes cluster (optional, for Kubernetes deployments)
 
 ## Installing Waypoint
@@ -31,8 +33,8 @@ Each phase uses a plugin that handles the platform-specific details.
 ```bash
 # Add the HashiCorp repository
 
-sudo dnf install -y yum-utils
-sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
+sudo dnf install -y dnf-plugins-core
+sudo dnf config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
 ```
 
 ```bash
@@ -63,7 +65,7 @@ For Kubernetes:
 waypoint install -platform=kubernetes -accept-tos
 ```
 
-The install command outputs a token that you use to authenticate.
+The install command configures a Waypoint CLI context for the server. To open and authenticate to the web UI, use `waypoint ui -authenticate`.
 
 ## Setting Up a Project
 
@@ -284,8 +286,8 @@ waypoint exec -- /bin/sh
 Waypoint includes a web UI:
 
 ```bash
-# Get the UI URL
-waypoint ui
+# Open and authenticate to the UI
+waypoint ui -authenticate
 ```
 
 The UI shows projects, deployments, builds, and release history.
