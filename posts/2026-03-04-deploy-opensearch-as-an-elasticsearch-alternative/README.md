@@ -31,20 +31,22 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y curl
 ```
 
 ## Step 2: Install Required Packages
 
 ```bash
-sudo dnf install -y <package-name>
+sudo curl -SL https://artifacts.opensearch.org/releases/bundle/opensearch/3.x/opensearch-3.x.repo -o /etc/yum.repos.d/opensearch-3.x.repo
+sudo dnf clean all
+sudo dnf repolist
+sudo env OPENSEARCH_INITIAL_ADMIN_PASSWORD='<custom-admin-password>' dnf install -y opensearch
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+rpm -qi opensearch
 ```
 
 ## Step 3: Configure the Service
@@ -52,7 +54,15 @@ rpm -qi <package-name>
 Create or edit the main configuration file:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/opensearch/opensearch.yml
+```
+
+For a single-node deployment, add or update these settings:
+
+```yaml
+network.host: 0.0.0.0
+discovery.type: single-node
+plugins.security.disabled: false
 ```
 
 Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
@@ -60,8 +70,8 @@ Apply the recommended settings for your environment. Start with the defaults and
 ## Step 4: Start and Enable the Service
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo systemctl enable --now opensearch
+sudo systemctl status opensearch
 ```
 
 ## Step 5: Verify the Configuration
@@ -69,13 +79,13 @@ sudo systemctl status <service>
 Test the setup:
 
 ```bash
-sudo <service> --test
+curl -X GET https://localhost:9200 -u 'admin:<custom-admin-password>' --insecure
 ```
 
 Check the logs for any errors:
 
 ```bash
-journalctl -u <service> -f
+journalctl -u opensearch -f
 ```
 
 ## Step 6: Configure Firewall Rules
@@ -83,7 +93,7 @@ journalctl -u <service> -f
 If the service needs network access:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo firewall-cmd --permanent --add-port=9200/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -92,8 +102,8 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+systemctl show opensearch --property=MemoryCurrent
+top -p $(systemctl show opensearch --property=MainPID --value)
 ```
 
 ## Security Considerations
@@ -107,7 +117,7 @@ top -p $(pidof <service>)
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
+1. **Service fails to start**: Check `journalctl -u opensearch -xe` for error messages
 2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
 3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
 
