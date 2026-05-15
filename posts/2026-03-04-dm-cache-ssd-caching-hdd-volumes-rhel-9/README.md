@@ -23,9 +23,10 @@ graph LR
     C -->|Evict cold data| D
 ```
 
-dm-cache supports two caching modes:
+dm-cache supports three caching modes:
 - **writeback** - Writes go to SSD first, then lazily flushed to HDD (faster, but data at risk if SSD fails)
 - **writethrough** - Writes go to both SSD and HDD simultaneously (safer, but slower writes)
+- **passthrough** - Reads and writes go to the origin device while cache blocks are invalidated, mainly for cache coherency and recovery workflows
 
 ## Prerequisites
 
@@ -61,7 +62,7 @@ This is the LV on the SSD that stores cached data:
 
 ```bash
 # Create a cache data LV on the SSD
-# Use the --devices flag to ensure it lands on the SSD
+# Specify the SSD PV to ensure it lands on the SSD
 lvcreate -L 50G -n cache_data vg_data /dev/nvme0n1p1
 ```
 
@@ -87,6 +88,7 @@ lvconvert --type cache-pool --cachemode writethrough \
 The `--cachemode` options:
 - `writethrough` - safe default, no data loss if SSD fails
 - `writeback` - faster but requires SSD reliability
+- `passthrough` - bypasses the cache and requires a clean cache before enabling
 
 ## Step 5: Attach the Cache to the Origin LV
 
@@ -125,6 +127,7 @@ This creates the cache data LV, metadata LV, pool, and attaches it all in one co
 |------|------------|------------|-------------|
 | writethrough | Same as HDD | SSD for cached data | Safe - HDD always current |
 | writeback | SSD speed | SSD for cached data | Risk if SSD fails |
+| passthrough | Same as HDD | Same as HDD | Used for cache coherency and recovery |
 
 For production with important data, start with writethrough. Switch to writeback only if you need write performance and have SSD redundancy.
 
@@ -176,7 +179,7 @@ dmsetup status vg_data-lv_data | awk '{print "Read hits:", $8, "Read misses:", $
 lvs -o cache_read_hits,cache_read_misses vg_data/lv_data
 ```
 
-A healthy cache should have a hit ratio above 80% for random I/O workloads.
+A healthy cache often has a hit ratio above 80% for cache-friendly random I/O workloads, but the right target depends on the workload.
 
 ## Summary
 
