@@ -154,14 +154,15 @@ A more detailed report for administrators:
 
 REPORT_FILE="/tmp/quota-report-$(date +%Y%m%d).txt"
 ADMIN_EMAIL="admin@example.com"
+QUOTA_FILESYSTEMS=$(findmnt -rn -o TARGET,OPTIONS | awk '$2 ~ /(^|,)(quota|usrquota|uquota)(,|$)/ {print $1}')
 
 {
     echo "=== Disk Quota Report for $(hostname) ==="
     echo "Generated: $(date)"
     echo ""
 
-    # Check all filesystems with quotas
-    for FS in $(mount | grep -E 'usrquota|uquota' | awk '{print $3}'); do
+    # Check all filesystems with user quotas
+    for FS in $QUOTA_FILESYSTEMS; do
         FS_TYPE=$(df -T "$FS" | tail -1 | awk '{print $2}')
         echo "--- Filesystem: $FS ($FS_TYPE) ---"
         echo ""
@@ -178,9 +179,9 @@ ADMIN_EMAIL="admin@example.com"
         echo ""
     done
 
-    echo "=== Users Over Soft Limit ==="
-    # Find users over their soft limit (shown with + in repquota)
-    for FS in $(mount | grep -E 'usrquota|uquota' | awk '{print $3}'); do
+    echo "=== Non-XFS Users Over Soft Limit ==="
+    # Find users over their soft limit on non-XFS filesystems (shown with + in repquota)
+    for FS in $QUOTA_FILESYSTEMS; do
         FS_TYPE=$(df -T "$FS" | tail -1 | awk '{print $2}')
         if [ "$FS_TYPE" != "xfs" ]; then
             repquota -u "$FS" | grep "+-\|++"
@@ -216,7 +217,7 @@ MESSAGE = Your disk usage has exceeded the allowed quota.|Please reduce your usa
 SIGNATURE = System Administration Team
 ```
 
-Set up the user-to-email mapping:
+Set up optional filesystem descriptions for warning emails:
 
 ```bash
 # Edit the quota tab file
@@ -257,7 +258,7 @@ fi
 
 TIMESTAMP=$(date +%Y-%m-%dT%H:%M:%S)
 
-# Log data for each quota-enabled filesystem
+# Log data for /home
 repquota -u /home | tail -n +5 | while read -r line; do
     USER=$(echo "$line" | awk '{print $1}')
     USED=$(echo "$line" | awk '{print $3}')
@@ -265,6 +266,7 @@ repquota -u /home | tail -n +5 | while read -r line; do
     HARD=$(echo "$line" | awk '{print $5}')
 
     [ -z "$USER" ] && continue
+    [ -z "$HARD" ] && continue
     echo "$TIMESTAMP,$USER,$USED,$SOFT,$HARD,/home" >> "$LOG_FILE"
 done
 ```
@@ -281,7 +283,7 @@ For a fast terminal overview:
 
 ```bash
 # One-liner: show top 10 disk users on /home
-repquota -us /home | tail -n +5 | sort -k3 -rn | head -10
+repquota -us /home | tail -n +5 | sort -k3 -hr | head -10
 ```
 
 ## Summary
