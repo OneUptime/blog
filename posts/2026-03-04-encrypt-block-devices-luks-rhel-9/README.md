@@ -61,8 +61,8 @@ sudo cryptsetup luksFormat --type luks2 \
 Parameter explanations:
 - `--cipher aes-xts-plain64` - the encryption algorithm (AES in XTS mode)
 - `--key-size 512` - key size in bits (512 for AES-256 in XTS mode, since XTS splits the key)
-- `--hash sha256` - hash algorithm for the passphrase derivation
-- `--iter-time 5000` - time in milliseconds for the passphrase derivation function (higher is more secure but slower to unlock)
+- `--hash sha256` - hash algorithm used in the LUKS key setup scheme and volume key digest
+- `--iter-time 5000` - time in milliseconds for passphrase processing (higher is more secure but slower to unlock)
 
 ## Step 3: Open the LUKS Device
 
