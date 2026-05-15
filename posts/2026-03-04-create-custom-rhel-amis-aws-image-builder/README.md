@@ -60,10 +60,6 @@ version = "*"
 name = "rsync"
 version = "*"
 
-# Customizations
-[customizations]
-hostname = ""
-
 [customizations.services]
 enabled = ["cloud-init", "cloud-init-local", "cloud-config", "cloud-final", "sshd", "firewalld"]
 disabled = ["kdump"]
@@ -73,15 +69,15 @@ append = "console=ttyS0,115200n8 console=tty0 net.ifnames=0 nvme_core.io_timeout
 
 [[customizations.filesystem]]
 mountpoint = "/var"
-size = "10 GiB"
+minsize = "10 GiB"
 
 [[customizations.filesystem]]
 mountpoint = "/var/log"
-size = "5 GiB"
+minsize = "5 GiB"
 
 [[customizations.filesystem]]
 mountpoint = "/tmp"
-size = "2 GiB"
+minsize = "2 GiB"
 ```
 
 ## Building the AMI
@@ -104,26 +100,29 @@ watch composer-cli compose status
 
 ```bash
 # Download the completed image
-composer-cli compose image <compose-uuid>
+composer-cli compose image <compose-uuid> --filename golden-image.raw
 
 # Upload to S3
-aws s3 cp <compose-uuid>-image.raw s3://rhel-images-bucket/golden-image.raw
+aws s3 cp golden-image.raw s3://rhel-images-bucket/golden-image.raw
 
 # Import as an AMI
-aws ec2 import-image \
+IMPORT_TASK_ID=$(aws ec2 import-image \
   --description "RHEL 9 Golden Image v1.0.0" \
   --license-type BYOL \
   --disk-containers "[{
     \"Description\": \"RHEL 9 Golden Image\",
-    \"Format\": \"raw\",
+    \"Format\": \"RAW\",
     \"UserBucket\": {
       \"S3Bucket\": \"rhel-images-bucket\",
       \"S3Key\": \"golden-image.raw\"
     }
-  }]"
+  }]" \
+  --query 'ImportTaskId' \
+  --output text)
 
 # Check import status
 aws ec2 describe-import-image-tasks \
+  --import-task-ids "$IMPORT_TASK_ID" \
   --query 'ImportImageTasks[*].{ID:ImportTaskId,Status:Status,Progress:Progress}'
 ```
 
@@ -132,6 +131,7 @@ aws ec2 describe-import-image-tasks \
 ```bash
 # Get the AMI ID from the completed import
 AMI_ID=$(aws ec2 describe-import-image-tasks \
+  --import-task-ids "$IMPORT_TASK_ID" \
   --query 'ImportImageTasks[?Status==`completed`].ImageId' \
   --output text)
 
