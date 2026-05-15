@@ -8,7 +8,7 @@ Description: Configure Duplicity on RHEL for encrypted, bandwidth-efficient incr
 
 ---
 
-Duplicity combines tar-format backups with GPG encryption and rsync-like bandwidth efficiency. It produces encrypted, signed backup volumes that can be stored on untrusted remote storage. You get the security of encryption with the efficiency of incremental backups.
+Duplicity combines tar-format backups with GPG encryption and rsync-like bandwidth efficiency. It produces encrypted backup volumes, and can sign them when you configure a signing key, so they can be stored on untrusted remote storage. You get the security of encryption with the efficiency of incremental backups.
 
 ## How Duplicity Works
 
@@ -28,6 +28,8 @@ graph LR
 
 ```bash
 # Install Duplicity and dependencies
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 
 sudo dnf install duplicity python3-boto3 gnupg2
 
@@ -60,10 +62,11 @@ export AWS_SECRET_ACCESS_KEY="your-secret-key"
 export PASSPHRASE="YourEncryptionPassphrase"
 
 # Backup to S3
-duplicity /home s3://s3.amazonaws.com/my-backup-bucket/home
+duplicity /home s3:///my-backup-bucket/home
 
 # Backup to MinIO or other S3-compatible storage
-duplicity /home s3://minio.example.com/backup-bucket/home
+duplicity --s3-endpoint-url https://minio.example.com \
+    /home s3:///backup-bucket/home
 
 unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY PASSPHRASE
 ```
@@ -121,7 +124,7 @@ export PASSPHRASE="YourStrongPassphrase"
 duplicity restore sftp://backupuser@backup.example.com/backup/home /tmp/restore/
 
 # Restore a specific file
-duplicity restore --file-to-restore Documents/report.pdf \
+duplicity restore --path-to-restore Documents/report.pdf \
     sftp://backupuser@backup.example.com/backup/home /tmp/restored-report.pdf
 
 # Restore from a specific point in time
