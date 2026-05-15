@@ -1,23 +1,23 @@
-# How to Install Multiple Python Versions on RHEL Using Software Collections
+# How to Install Multiple Python Versions on RHEL 9 Using AppStream
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Python, Software Collections, Linux, Development
+Tags: RHEL, Python, AppStream, Linux, Development
 
-Description: Learn how to install and manage multiple Python versions side by side on RHEL using Software Collections and the AppStream module system.
+Description: Learn how to install and manage multiple Python versions side by side on RHEL 9 using AppStream RPM packages.
 
 ---
 
-Running multiple Python versions on a single RHEL system is a common requirement. You might need Python 3.9 for one project and Python 3.12 for another. RHEL makes this possible through its AppStream module system, which replaced the older Software Collections approach.
+Running multiple Python versions on a single RHEL system is a common requirement. You might need Python 3.9 for one project and Python 3.12 for another. RHEL 9 makes this possible through versioned RPM packages from the AppStream repository, replacing the older Software Collections approach used in earlier RHEL releases.
 
-## Understanding RHEL AppStream Modules
+## Understanding RHEL AppStream Packages
 
-RHEL ships Python 3.9 as the default system Python. Additional versions are available through AppStream modules. This modular approach lets you install multiple interpreters without conflicts.
+RHEL 9 ships Python 3.9 as the default system Python. Additional versions are available through AppStream RPM packages. This package-based approach lets you install multiple interpreters without conflicts.
 
 ```mermaid
 graph TD
     A[RHEL System] --> B[Default Python 3.9]
-    A --> C[AppStream Modules]
+    A --> C[AppStream Packages]
     C --> D[Python 3.11]
     C --> E[Python 3.12]
     B --> F[System Tools]
@@ -27,12 +27,12 @@ graph TD
 
 ## Checking Available Python Versions
 
-Start by listing the Python modules available in your RHEL repositories.
+Start by listing the Python packages available in your RHEL repositories.
 
 ```bash
-# List all available Python module streams
+# List available Python 3 packages
 
-sudo dnf module list python*
+sudo dnf list --available 'python3*'
 
 # Check what Python packages are already installed
 rpm -qa | grep python3
@@ -44,10 +44,10 @@ Python 3.9 comes pre-installed on most RHEL systems, but if you need to install 
 
 ```bash
 # Install the default Python 3.9
-sudo dnf install -y python3
+sudo dnf install -y python3.9
 
 # Verify the installation
-python3 --version
+python3.9 --version
 # Output: Python 3.9.x
 ```
 
@@ -72,7 +72,7 @@ sudo dnf install -y python3.11-devel
 
 ## Installing Python 3.12
 
-Python 3.12 is also available on RHEL.4 and later.
+Python 3.12 is also available on RHEL 9.4 and later.
 
 ```bash
 # Install Python 3.12
@@ -86,33 +86,25 @@ python3.12 --version
 sudo dnf install -y python3.12-pip python3.12-devel
 ```
 
-## Managing Multiple Versions with alternatives
+## Managing Multiple Versions with Explicit Commands
 
-The `alternatives` system provides a clean way to switch the default `python3` command between versions.
+Avoid changing the system `python3` command. Red Hat recommends using version-specific commands, custom symlinks in `/usr/local/bin` or `~/.local/bin`, or virtual environments when you need a different default for your own shell or project.
 
 ```bash
-# Register each Python version with the alternatives system
-# Syntax: alternatives --install <link> <name> <path> <priority>
-sudo alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 1
-sudo alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 2
-sudo alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 3
+# Use a version-specific command directly
+python3.11 --version
+python3.12 --version
 
-# Interactively select the default version
-sudo alternatives --config python3
+# Optional: create a user-local shortcut for your shell
+mkdir -p ~/.local/bin
+ln -s /usr/bin/python3.12 ~/.local/bin/python3-project
 ```
 
-When you run `alternatives --config python3`, you will see a menu like this:
+When `~/.local/bin` is in your `PATH`, you can use the shortcut without changing the system Python:
 
 ```bash
-There are 3 programs which provide 'python3'.
-
-  Selection    Command
------------------------------------------------
-   1           /usr/bin/python3.9
-   2           /usr/bin/python3.11
-*+ 3           /usr/bin/python3.12
-
-Enter to keep the current selection[+], or type selection number:
+python3-project --version
+# Output: Python 3.12.x
 ```
 
 ## Using Version-Specific Commands Directly
@@ -172,4 +164,4 @@ done
 
 ## Summary
 
-RHEL provides a straightforward way to run multiple Python versions through the AppStream repository. Install additional versions with `dnf`, use the `alternatives` system or direct version commands to pick which one runs, and rely on virtual environments to keep project dependencies isolated.
+RHEL provides a straightforward way to run multiple Python versions through the AppStream repository. Install additional versions with `dnf`, use direct version commands or project-local shortcuts to pick which one runs, and rely on virtual environments to keep project dependencies isolated.
