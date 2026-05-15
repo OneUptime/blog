@@ -10,7 +10,7 @@ Description: Discover how to deploy and manage Talos Linux clusters at the edge,
 
 Edge computing pushes computation closer to where data is generated. Rather than sending everything back to a central data center, you process data at retail stores, factory floors, cell towers, or remote sites. Kubernetes has become the platform of choice for managing edge workloads, but running it at the edge introduces challenges that do not exist in the data center. Unreliable networks, limited hardware, physical security risks, and the sheer number of locations to manage all complicate things.
 
-Talos Linux is particularly well suited for edge deployments. Its immutable design means nodes cannot be tampered with at the OS level. Its API-driven management eliminates the need for SSH access. And its minimal footprint runs comfortably on the kind of hardware you typically find at edge locations.
+Talos Linux is particularly well suited for edge deployments. Its immutable design prevents persistent ad-hoc OS changes outside the machine configuration. Its API-driven management eliminates the need for SSH access. And its minimal footprint runs comfortably on the kind of hardware you typically find at edge locations.
 
 ## Why Talos Linux at the Edge
 
@@ -21,7 +21,7 @@ Talos solves these problems through:
 - **Immutable OS** - There is no shell, no SSH, no way to make ad-hoc changes. The OS state is defined entirely by the machine configuration.
 - **API-driven management** - Everything from upgrades to configuration changes happens through the Talos API, which can be automated.
 - **Minimal attack surface** - With no package manager, no shell, and only the minimum services needed for Kubernetes, the attack surface is dramatically smaller.
-- **Small footprint** - The base OS uses about 100-150 MB of RAM, leaving the rest for your workloads.
+- **Small footprint** - Talos itself uses less than 100 MB of disk space, leaving most of the node's storage for the EPHEMERAL partition and your workloads.
 
 ## Architecture for Edge Deployments
 
@@ -148,7 +148,7 @@ Managing edge clusters requires secure remote access. Tailscale and WireGuard ar
 machine:
   install:
     extensions:
-      - image: ghcr.io/siderolabs/tailscale:latest
+      - image: ghcr.io/siderolabs/tailscale:<compatible-tag>@sha256:<digest>
 ```
 
 For WireGuard, configure it through the Talos network configuration:
@@ -169,7 +169,7 @@ machine:
               endpoint: management.example.com:51820
               allowedIPs:
                 - 10.10.0.0/24
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
 ```
 
 ## Fleet Management
@@ -212,6 +212,7 @@ spec:
     metadata:
       name: '{{name}}-edge-stack'
     spec:
+      project: default
       source:
         repoURL: https://github.com/org/edge-manifests
         path: apps/
@@ -251,14 +252,14 @@ Rolling out upgrades across edge clusters should be automated and gradual:
 ```bash
 # Upgrade a single edge cluster
 talosctl upgrade --nodes <EDGE_NODE_IP> \
-  --image ghcr.io/siderolabs/installer:v1.7.0
+  --image ghcr.io/siderolabs/installer:v1.13.0
 
 # Script to upgrade all edge clusters in waves
 for cluster in $(cat edge-clusters.txt); do
   echo "Upgrading $cluster"
   talosctl --context "$cluster" upgrade \
     --nodes $(talosctl --context "$cluster" config info -o json | jq -r '.nodes[0]') \
-    --image ghcr.io/siderolabs/installer:v1.7.0
+    --image ghcr.io/siderolabs/installer:v1.13.0
   # Wait and verify before moving to next
   sleep 300
   talosctl --context "$cluster" health
@@ -270,26 +271,31 @@ done
 Edge sites are often physically accessible to people who should not be modifying the infrastructure. Talos's immutable design helps here:
 
 - No SSH means no credentials to steal
-- No shell means no local tampering
-- Secure boot ensures only signed OS images run
-- The disk is encrypted if you configure it
+- No shell means no interactive local administration path
+- Secure Boot helps ensure only signed OS images run
+- System volumes can be encrypted if you configure them
 
 ```yaml
 # Enable disk encryption for edge nodes
-machine:
-  systemDiskEncryption:
-    ephemeral:
-      provider: luks2
-      keys:
-        - nodeID: {}
-          slot: 0
-    state:
-      provider: luks2
-      keys:
-        - nodeID: {}
-          slot: 0
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: STATE
+encryption:
+  provider: luks2
+  keys:
+    - nodeID: {}
+      slot: 0
+---
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+encryption:
+  provider: luks2
+  keys:
+    - nodeID: {}
+      slot: 0
 ```
 
 ## Wrapping Up
 
-Talos Linux brings the right combination of security, simplicity, and automation to edge computing. Its immutable design protects against the physical access risks that are inherent at edge locations. Its API-driven management scales to hundreds of sites without requiring an army of administrators. And its minimal resource footprint means it runs well on the modest hardware typically deployed at edge locations. When combined with fleet management tools and GitOps workflows, Talos makes managing distributed Kubernetes infrastructure at the edge practical and sustainable.
+Talos Linux brings the right combination of security, simplicity, and automation to edge computing. Its immutable design, combined with Secure Boot and disk encryption, helps reduce the physical access risks that are inherent at edge locations. Its API-driven management scales to hundreds of sites without requiring an army of administrators. And its minimal resource footprint means it runs well on the modest hardware typically deployed at edge locations. When combined with fleet management tools and GitOps workflows, Talos makes managing distributed Kubernetes infrastructure at the edge practical and sustainable.
