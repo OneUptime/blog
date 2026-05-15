@@ -41,7 +41,7 @@ In practice, the delta between CentOS Stream and RHEL is small. Most updates are
 
 ## Binary Compatibility
 
-CentOS Stream packages are built from the same sources as RHEL, using the same build system. The ABI/API compatibility is maintained within a major version:
+CentOS Stream shares sources with RHEL and is built in a dedicated CentOS Stream build system that stays in sync with RHEL development. The ABI/API compatibility is maintained within a major version:
 
 ```bash
 # Check the ABI compatibility level
@@ -59,7 +59,7 @@ This is the critical difference. RHEL comes with Red Hat support, SLAs, certifie
 subscription-manager status
 
 # CentOS Stream: No subscription manager needed
-# Support comes from community forums and Bugzilla
+# Support comes from community forums and Red Hat Jira
 ```
 
 ## When CentOS Stream Works for Production
