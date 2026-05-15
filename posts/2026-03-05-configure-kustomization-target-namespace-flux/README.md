@@ -129,7 +129,7 @@ All three Kustomizations point to the same `path` and source but deploy to diffe
 
 ## Creating the Target Namespace
 
-The target namespace must exist before resources can be deployed to it. You can ensure the namespace exists by creating it as part of your infrastructure Kustomization.
+The target namespace must exist before resources can be deployed to it, or be defined by a manifest included in the Kustomization. You can ensure the namespace exists by creating it as part of your infrastructure Kustomization.
 
 ```yaml
 # namespaces.yaml - Create namespaces before deploying apps
