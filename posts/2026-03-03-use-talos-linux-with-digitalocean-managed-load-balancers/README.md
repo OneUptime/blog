@@ -95,7 +95,7 @@ Then deploy the CCM:
 
 ```bash
 # Deploy the DigitalOcean Cloud Controller Manager
-kubectl apply -f https://raw.githubusercontent.com/digitalocean/digitalocean-cloud-controller-manager/master/releases/v0.1.47/manifest.yaml
+kubectl apply -f https://raw.githubusercontent.com/digitalocean/digitalocean-cloud-controller-manager/master/releases/digitalocean-cloud-controller-manager/v0.1.67.yml
 ```
 
 Verify it is running:
@@ -141,6 +141,8 @@ metadata:
   annotations:
     # Configure the load balancer protocol
     service.beta.kubernetes.io/do-loadbalancer-protocol: "http"
+    # Override the automatically selected health check
+    service.beta.kubernetes.io/do-loadbalancer-override-health-check: "true"
     # Set the health check path
     service.beta.kubernetes.io/do-loadbalancer-healthcheck-path: "/"
     # Set the health check protocol
@@ -172,14 +174,13 @@ kind: Service
 metadata:
   name: web-https
   annotations:
-    # Use HTTPS on the load balancer
-    service.beta.kubernetes.io/do-loadbalancer-protocol: "https"
+    # Use HTTP by default and HTTPS on port 443
+    service.beta.kubernetes.io/do-loadbalancer-protocol: "http"
+    service.beta.kubernetes.io/do-loadbalancer-tls-ports: "443"
     # Specify the certificate ID from DigitalOcean
     service.beta.kubernetes.io/do-loadbalancer-certificate-id: "<certificate-id>"
     # Redirect HTTP to HTTPS
     service.beta.kubernetes.io/do-loadbalancer-redirect-http-to-https: "true"
-    # Backend protocol (traffic from LB to nodes)
-    service.beta.kubernetes.io/do-loadbalancer-tls-passthrough: "false"
 spec:
   type: LoadBalancer
   selector:
@@ -198,6 +199,7 @@ Upload your certificate to DigitalOcean first:
 ```bash
 # Upload a TLS certificate
 doctl compute certificate create \
+  --type custom \
   --name my-cert \
   --private-key-path server.key \
   --leaf-certificate-path server.crt \
@@ -221,25 +223,35 @@ For applications that need session affinity:
 
 ```yaml
 annotations:
+  service.beta.kubernetes.io/do-loadbalancer-protocol: "http"
   service.beta.kubernetes.io/do-loadbalancer-sticky-sessions-type: "cookies"
   service.beta.kubernetes.io/do-loadbalancer-sticky-sessions-cookie-name: "DO-LB"
   service.beta.kubernetes.io/do-loadbalancer-sticky-sessions-cookie-ttl: "300"
+spec:
+  externalTrafficPolicy: Local
 ```
 
 ## Load Balancer Sizing
 
-DigitalOcean Load Balancers have a default size, but you can select a larger size for higher throughput:
+DigitalOcean Load Balancers have a default size, but you can select more load balancer nodes for higher throughput:
 
 ```yaml
 annotations:
-  service.beta.kubernetes.io/do-loadbalancer-size-slug: "lb-medium"
+  service.beta.kubernetes.io/do-loadbalancer-size-unit: "3"
 ```
 
-Available sizes are `lb-small`, `lb-medium`, and `lb-large`, with increasing connection and throughput limits.
+The value is the number of load balancer nodes to create. Older `lb-small`, `lb-medium`, and `lb-large` size slugs are deprecated in favor of size units.
 
 ## Internal Load Balancers
 
-DigitalOcean does not currently support internal (VPC-only) load balancers. All managed load balancers get a public IP. If you need internal-only load balancing, consider using an in-cluster solution like MetalLB or simply ClusterIP services with an ingress controller.
+DigitalOcean supports internal (VPC-only) load balancers. To create one, set the network annotation:
+
+```yaml
+annotations:
+  service.beta.kubernetes.io/do-loadbalancer-network: "INTERNAL"
+```
+
+Resources must be in the same VPC to reach the internal load balancer, and you cannot switch an existing load balancer between internal and external networking after creation.
 
 ## Monitoring Load Balancer Health
 
