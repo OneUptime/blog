@@ -40,14 +40,13 @@ The key is using the right privileges and volume mounts:
 podman run --rm -it \
   --privileged \
   --device /dev/fuse \
-  registry.access.redhat.com/ubi9/ubi \
+  registry.access.redhat.com/ubi9/podman \
   /bin/bash
 ```
 
 Inside the container, install and use Podman:
 
 ```bash
-dnf install -y podman
 podman run --rm docker.io/library/alpine echo "Hello from nested container"
 ```
 
@@ -55,21 +54,20 @@ podman run --rm docker.io/library/alpine echo "Hello from nested container"
 
 Using `--privileged` is convenient but grants too many capabilities. Here is a more restrictive approach:
 
-## Run with specific capabilities and security options
+## Run with rootless Podman and security options
 ```bash
 podman run --rm -it \
-  --cap-add=SYS_ADMIN \
+  --user podman \
   --security-opt label=disable \
-  --security-opt seccomp=unconfined \
   --device /dev/fuse \
-  -v podman-storage:/var/lib/containers:Z \
-  registry.access.redhat.com/ubi9/ubi \
-  /bin/bash
+  -v podman-storage:/home/podman/.local/share/containers:Z \
+  registry.access.redhat.com/ubi9/podman \
+  podman run --rm docker.io/library/alpine echo "Hello from nested container"
 ```
 
 The important flags:
-- `--cap-add=SYS_ADMIN` allows mount operations needed by overlay storage
-- `--security-opt label=disable` disables SELinux labeling inside the container
+- `--user podman` runs the inner Podman in a user namespace
+- `--security-opt label=disable` disables SELinux separation for the outer container
 - `--device /dev/fuse` provides the FUSE device for fuse-overlayfs
 - Volume mount for persistent container storage
 
@@ -85,7 +83,8 @@ systemctl --user enable --now podman.socket
 ## Run a container with access to the Podman socket
 ```bash
 podman run --rm -it \
-  -v $XDG_RUNTIME_DIR/podman/podman.sock:/var/run/podman/podman.sock:Z \
+  --security-opt label=disable \
+  -v $XDG_RUNTIME_DIR/podman/podman.sock:/var/run/podman/podman.sock \
   -e CONTAINER_HOST=unix:///var/run/podman/podman.sock \
   registry.access.redhat.com/ubi9/ubi \
   /bin/bash
@@ -106,21 +105,18 @@ Buildah inside a container works similarly to Podman:
 ```bash
 podman run --rm -it \
   --device /dev/fuse \
-  --cap-add=SYS_ADMIN \
   --security-opt label=disable \
-  registry.access.redhat.com/ubi9/ubi \
+  registry.access.redhat.com/ubi9/buildah \
   /bin/bash
 ```
 
 Inside:
 
 ```bash
-dnf install -y buildah
-
 # Build an image using Buildah
 
-container=$(buildah from registry.access.redhat.com/ubi9/ubi-minimal)
-buildah run $container -- microdnf install -y httpd
+container=$(buildah from registry.access.redhat.com/ubi9/ubi)
+buildah run --isolation=chroot $container -- dnf install -y httpd
 buildah config --entrypoint '["/usr/sbin/httpd", "-D", "FOREGROUND"]' $container
 buildah commit $container my-httpd:latest
 buildah images
@@ -145,7 +141,7 @@ dnf install -y skopeo
 # Inspect a remote image (no privileges needed)
 skopeo inspect docker://docker.io/library/nginx:latest
 
-# Copy between registries
+# Copy to a local directory transport
 skopeo copy docker://docker.io/library/nginx:latest dir:/tmp/nginx
 ```
 
@@ -155,10 +151,10 @@ Build a dedicated image with all container tools pre-installed:
 
 ```bash
 cat > Containerfile.ci << 'EOF'
-FROM registry.access.redhat.com/ubi9/ubi
+FROM registry.access.redhat.com/ubi9/podman
 
 # Install container tools
-RUN dnf install -y podman buildah skopeo fuse-overlayfs && \
+RUN dnf install -y buildah skopeo fuse-overlayfs && \
     dnf clean all
 
 # Configure Podman for nested container use
@@ -170,7 +166,7 @@ RUN echo '[storage]' > /etc/containers/storage.conf && \
 # Configure registries
 RUN echo 'unqualified-search-registries = ["registry.redhat.io", "docker.io"]' > /etc/containers/registries.conf
 
-VOLUME /var/lib/containers
+VOLUME /home/podman/.local/share/containers
 
 CMD ["/bin/bash"]
 EOF
@@ -185,8 +181,8 @@ podman build -f Containerfile.ci -t ci-builder:latest .
 ```bash
 podman run --rm -it \
   --device /dev/fuse \
-  --cap-add=SYS_ADMIN \
   --security-opt label=disable \
+  --user podman \
   ci-builder:latest
 ```
 
@@ -203,9 +199,9 @@ podman volume create ci-storage
 ```bash
 podman run --rm -it \
   --device /dev/fuse \
-  --cap-add=SYS_ADMIN \
   --security-opt label=disable \
-  -v ci-storage:/var/lib/containers:Z \
+  --user podman \
+  -v ci-storage:/home/podman/.local/share/containers:Z \
   ci-builder:latest
 ```
 
@@ -221,11 +217,11 @@ podman run --rm -it \
   --user podman \
   --device /dev/fuse \
   --security-opt label=disable \
-  quay.io/podman/stable \
+  registry.access.redhat.com/ubi9/podman \
   podman run --rm docker.io/library/alpine echo "Nested rootless"
 ```
 
-The `quay.io/podman/stable` image comes pre-configured for rootless nested use.
+The `registry.access.redhat.com/ubi9/podman` image comes pre-configured with a `podman` user for rootless nested use.
 
 ## Security Recommendations
 
@@ -239,4 +235,4 @@ When running container tools inside containers:
 
 ## Summary
 
-Running Podman, Buildah, and Skopeo inside containers is a common requirement for CI/CD pipelines on RHEL. The approach is cleaner than Docker-in-Docker because there is no daemon to manage. Use `--device /dev/fuse` and `--cap-add=SYS_ADMIN` for the minimum privileges needed, or use the Podman remote client through a socket for better security. For simple image inspection and copying, Skopeo works without any special privileges at all.
+Running Podman, Buildah, and Skopeo inside containers is a common requirement for CI/CD pipelines on RHEL. The approach is cleaner than Docker-in-Docker because there is no daemon to manage. Use `--device /dev/fuse`, `--user podman`, and `--security-opt label=disable` for the less-privileged nested Podman pattern, or use the Podman remote client through a socket for better security. For simple image inspection and copying, Skopeo works without any special privileges at all.
