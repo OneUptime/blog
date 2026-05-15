@@ -23,7 +23,7 @@ Start with a quick overview:
 uptime
 ```
 
-The load average values show system load over 1, 5, and 15 minutes. A load average higher than the number of CPU cores indicates the system is overloaded.
+The load average values show system load over 1, 5, and 15 minutes. A load average higher than the number of CPU cores can indicate the system is overloaded, but remember that load average includes runnable tasks and tasks in uninterruptible sleep, not only CPU execution.
 
 Check CPU count:
 
@@ -49,7 +49,7 @@ Key fields to examine:
 
 - **%CPU** - Percentage of CPU used
 - **TIME+** - Cumulative CPU time
-- **STAT** - Process state (R = running, D = disk wait)
+- **STAT** - Process state (R = running, D = uninterruptible sleep, often I/O wait)
 
 ## Step 3: Determine CPU Usage Type
 
@@ -63,7 +63,7 @@ Key columns:
 
 - **%usr** - User space (application code)
 - **%sys** - Kernel space (system calls, drivers)
-- **%iowait** - Waiting for I/O
+- **%iowait** - Idle time while the system has outstanding I/O
 - **%irq** - Hardware interrupts
 - **%soft** - Software interrupts
 - **%steal** - Stolen by hypervisor (VMs)
@@ -81,13 +81,13 @@ sudo perf top -p $(pgrep my-app | head -1)
 Kernel is consuming CPU. Check for excessive system calls:
 
 ```bash
-sudo perf record -ag -e syscalls:sys_enter_* -- sleep 10
+sudo perf record -ag -e 'syscalls:sys_enter_*' -- sleep 10
 perf report --stdio
 ```
 
 ### High %iowait
 
-CPU is waiting for disk I/O:
+The system has outstanding disk I/O while CPU time is idle:
 
 ```bash
 iostat -xz 2 5
@@ -141,6 +141,7 @@ kill -9 $(pgrep runaway-process)
 Create a CPU-limited cgroup:
 
 ```bash
+echo "+cpu" | sudo tee /sys/fs/cgroup/cgroup.subtree_control
 sudo mkdir -p /sys/fs/cgroup/cpu-limited
 echo "50000 100000" | sudo tee /sys/fs/cgroup/cpu-limited/cpu.max
 ```
