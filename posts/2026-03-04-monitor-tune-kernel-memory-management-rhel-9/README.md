@@ -75,7 +75,7 @@ sudo sysctl -w vm.swappiness=0
 
 ```mermaid
 flowchart LR
-    A["vm.swappiness = 0"] -->|"Minimal swapping<br/>Keep everything in RAM"| B["Best for: Databases, Caches"]
+    A["vm.swappiness = 0"] -->|"Minimal swapping<br/>Avoid swap until memory pressure is high"| B["Best for: Databases, Caches"]
     C["vm.swappiness = 60"] -->|"Balanced default<br/>Moderate swapping"| D["Best for: General workloads"]
     E["vm.swappiness = 100"] -->|"Aggressive swapping<br/>Free RAM quickly"| F["Best for: Batch processing"]
 ```
@@ -92,16 +92,16 @@ sudo sysctl -p /etc/sysctl.d/90-memory.conf
 
 ## Dirty Page Tuning
 
-When applications write data, it first goes to the page cache as "dirty" pages. The kernel's pdflush/writeback threads eventually flush dirty pages to disk. Tuning these parameters controls how much dirty data can accumulate and when writeback starts.
+When applications write data, it first goes to the page cache as "dirty" pages. The kernel's flusher/writeback threads eventually flush dirty pages to disk. Tuning these parameters controls how much dirty data can accumulate and when writeback starts.
 
 ```bash
-# Percentage of total memory that can be dirty before background writeback starts
+# Percentage of available memory that can be dirty before background writeback starts
 sudo sysctl -w vm.dirty_background_ratio=5
 
-# Percentage of total memory that can be dirty before processes are forced to wait
+# Percentage of available memory that can be dirty before processes start writeback themselves
 sudo sysctl -w vm.dirty_ratio=15
 
-# Maximum time dirty data can stay in cache before forced writeback (centiseconds)
+# Age at which dirty data becomes eligible for writeback (centiseconds)
 sudo sysctl -w vm.dirty_expire_centisecs=3000
 
 # How often the writeback thread wakes up to check for dirty data (centiseconds)
@@ -156,13 +156,14 @@ When the system runs out of memory, the Out-of-Memory (OOM) killer selects a pro
 
 ```bash
 # Check the OOM score of a specific process
-cat /proc/$(pidof postgres)/oom_score
+pid=$(pgrep -n -x postgres)
+cat /proc/$pid/oom_score
 
 # Adjust OOM score to make a process less likely to be killed (-1000 to 1000)
-echo -500 | sudo tee /proc/$(pidof postgres)/oom_score_adj
+echo -500 | sudo tee /proc/$pid/oom_score_adj
 
 # Completely protect a process from OOM killer
-echo -1000 | sudo tee /proc/$(pidof postgres)/oom_score_adj
+echo -1000 | sudo tee /proc/$pid/oom_score_adj
 ```
 
 For systemd services, use the `OOMScoreAdjust` directive:
@@ -214,9 +215,9 @@ cat /proc/pressure/memory
 | Metric | Meaning |
 |--------|---------|
 | some | Percentage of time at least one task is stalled on memory |
-| full | Percentage of time all tasks are stalled on memory |
+| full | Percentage of time all non-idle tasks are stalled on memory |
 
-If `full` is consistently above zero, your system needs more memory or better tuning.
+If `full` is consistently above zero under normal load, investigate whether your system needs more memory or better tuning.
 
 ## Monitoring with /proc/vmstat
 
