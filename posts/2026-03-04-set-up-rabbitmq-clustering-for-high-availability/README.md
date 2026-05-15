@@ -55,19 +55,13 @@ sudo systemctl start rabbitmq-server
 On rabbit2:
 
 ```bash
-sudo rabbitmqctl stop_app
-sudo rabbitmqctl reset
 sudo rabbitmqctl join_cluster rabbit@rabbit1
-sudo rabbitmqctl start_app
 ```
 
 On rabbit3:
 
 ```bash
-sudo rabbitmqctl stop_app
-sudo rabbitmqctl reset
 sudo rabbitmqctl join_cluster rabbit@rabbit1
-sudo rabbitmqctl start_app
 ```
 
 ## Step 4: Verify Cluster
@@ -83,7 +77,7 @@ You should see all three nodes listed.
 Quorum queues replicate messages across cluster members:
 
 ```bash
-rabbitmqadmin declare queue name=ha-queue durable=true   arguments='{"x-queue-type": "quorum"}'
+rabbitmqadmin queues declare --name ha-queue --type quorum --durable true
 ```
 
 ## Step 6: Configure a Load Balancer
@@ -91,11 +85,18 @@ rabbitmqadmin declare queue name=ha-queue durable=true   arguments='{"x-queue-ty
 Point clients to a load balancer that distributes connections across all nodes:
 
 ```bash
-# HAProxy or Nginx configuration
-upstream rabbitmq {
-    server rabbit1:5672;
-    server rabbit2:5672;
-    server rabbit3:5672;
+# Nginx stream configuration
+stream {
+    upstream rabbitmq {
+        server rabbit1:5672;
+        server rabbit2:5672;
+        server rabbit3:5672;
+    }
+
+    server {
+        listen 5672;
+        proxy_pass rabbitmq;
+    }
 }
 ```
 
