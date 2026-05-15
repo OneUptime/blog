@@ -17,7 +17,7 @@ Azure Marketplace provides official RHEL images maintained by Red Hat. These ima
 
 az vm image list --publisher RedHat --offer RHEL --sku 9_4 --all --output table
 
-# Find the latest RHEL.4 image
+# Find the latest RHEL 9.4 image
 az vm image list \
   --publisher RedHat \
   --offer RHEL \
@@ -127,8 +127,8 @@ ssh azadmin@$(az vm show --resource-group rhel-prod-rg --name rhel-web-01 -d --q
 # Verify RHEL version
 cat /etc/redhat-release
 
-# Check subscription (PAYG images are auto-registered)
-sudo subscription-manager status
+# Check update repositories (PAYG images use Azure RHUI)
+sudo dnf repolist
 
 # Verify Azure Agent is running
 sudo systemctl status waagent
