@@ -32,7 +32,7 @@ ansible --version
 
 ## Step 2 - Configure Inventory
 
-Create `/etc/ansible/hosts` or a local inventory file:
+Create a local inventory file named `inventory.ini` or use `/etc/ansible/hosts` and omit `-i inventory.ini` in the following commands:
 
 ```ini
 [webservers]
@@ -64,11 +64,11 @@ Create a playbook YAML file:
         name:
           - vim
           - tmux
-          - htop
+          - curl
         state: present
 
     - name: Ensure services are running
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: sshd
         state: started
         enabled: true
@@ -89,7 +89,7 @@ ansible-playbook -i inventory.ini playbook.yml --check
 ## Step 5 - Verify Results
 
 ```bash
-ansible all -i inventory.ini -m command -a "rpm -q htop"
+ansible all -i inventory.ini -m command -a "rpm -q curl"
 ```
 
 ## Summary
