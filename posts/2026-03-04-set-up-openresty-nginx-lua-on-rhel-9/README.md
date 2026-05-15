@@ -16,6 +16,27 @@ Setting up OpenResty (Nginx + Lua) on RHEL requires proper planning and configur
 - Root or sudo access
 - A terminal session
 
+## Step 1: Install OpenResty
+
+Add the official OpenResty repository for your platform, update the package metadata, and install the OpenResty package:
+
+```bash
+# Install wget if it is not already available
+sudo dnf install -y wget
+
+# Add the OpenResty repository for RHEL 9 or later
+wget https://openresty.org/package/rhel/openresty2.repo
+sudo mv openresty2.repo /etc/yum.repos.d/openresty.repo
+
+# On CentOS Stream 9, use this repository instead:
+# wget https://openresty.org/package/centos/openresty2.repo
+# sudo mv openresty2.repo /etc/yum.repos.d/openresty.repo
+
+# Refresh package metadata and install OpenResty
+sudo dnf check-update
+sudo dnf install -y openresty
+```
+
 ## Step 2: Configure the Service
 
 Edit the configuration file to match your environment:
@@ -23,34 +44,37 @@ Edit the configuration file to match your environment:
 ```bash
 # Open the configuration file
 
-sudo vi /etc/<service>/config.conf
+sudo vi /usr/local/openresty/nginx/conf/nginx.conf
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include listening addresses, server names, Lua handlers, and logging options. Test the configuration before restarting the service:
 
 ```bash
+# Test the OpenResty configuration
+sudo openresty -t
+
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart openresty
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable openresty
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start openresty
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status openresty
 ```
 
 ## Step 4: Configure the Firewall
 
 ```bash
-# Open the required port
-sudo firewall-cmd --permanent --add-port=<PORT>/tcp
+# Open HTTP traffic
+sudo firewall-cmd --permanent --add-service=http
 sudo firewall-cmd --reload
 
 # Verify the rule
@@ -64,17 +88,20 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status openresty
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u openresty --no-pager -n 20
+
+# Confirm OpenResty responds locally
+curl http://localhost/
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
+- If the service fails to start, check the logs with `journalctl -u openresty -e --no-pager`.
 - SELinux may block access. Check for denials with `ausearch -m avc -ts recent` and apply appropriate policies.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- Ensure the OpenResty package is installed: `rpm -q openresty`.
 
 ## Conclusion
 
