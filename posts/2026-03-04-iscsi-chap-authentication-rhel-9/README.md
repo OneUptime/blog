@@ -8,7 +8,7 @@ Description: Configure CHAP authentication for iSCSI connections on RHEL to prev
 
 ---
 
-By default, iSCSI targets accept connections from any initiator that knows the target IQN. CHAP (Challenge-Handshake Authentication Protocol) adds username and password authentication to iSCSI connections, preventing unauthorized initiators from accessing your storage.
+Without CHAP, iSCSI access depends on the target's normal ACL and network controls, but there is no username and password check during login. CHAP (Challenge-Handshake Authentication Protocol) adds username and password authentication to iSCSI connections, preventing unauthorized initiators from accessing your storage.
 
 ## CHAP Authentication Types
 
@@ -33,7 +33,7 @@ set auth userid=iscsiuser
 set auth password=SecurePass123
 ```
 
-The password must be between 12 and 16 characters.
+Use a CHAP secret that is at least 12 bytes long. A 12-16 character ASCII secret works well for broad iSCSI compatibility.
 
 Enable authentication on the TPG:
 
@@ -98,6 +98,8 @@ set auth userid=iscsiuser
 set auth password=SecurePass123
 set auth mutual_userid=targetuser
 set auth mutual_password=TargetPass456
+cd /iscsi/iqn.2024.com.example:target1/tpg1
+set attribute authentication=1
 ```
 
 ```bash
@@ -139,8 +141,7 @@ You can also require CHAP for the discovery phase:
 
 ```bash
 sudo targetcli
-cd /iscsi/iqn.2024.com.example:target1/tpg1
-set attribute authentication=1
+cd /iscsi
 set discovery_auth enable=1 userid=discoveryuser password=DiscPass789
 saveconfig
 exit
@@ -174,7 +175,8 @@ sudo iscsiadm -m node -T iqn.2024.com.example:target1 -p 192.168.1.10:3260 \
 After logging in with CHAP:
 
 ```bash
-sudo iscsiadm -m session -P 3 | grep -A 5 "CHAP"
+sudo iscsiadm -m node -T iqn.2024.com.example:target1 -p 192.168.1.10:3260 -P 1 | \
+    grep -E "node.session.auth.(authmethod|username|username_in)"
 ```
 
 ## Troubleshooting CHAP
@@ -191,7 +193,7 @@ sudo journalctl -u iscsid | tail -20
 ```
 
 Make sure:
-- Passwords are 12-16 characters
+- CHAP secrets are at least 12 bytes long
 - Username and password match exactly on both sides
 - iscsid was restarted after configuration changes
 
