@@ -50,7 +50,7 @@ Launch a command with a specific nice value:
 
 nice -n 19 ./my-backup-script.sh
 
-# Default nice (10)
+# Default adjustment (+10)
 nice ./my-script.sh
 
 # High priority (requires root)
@@ -84,9 +84,9 @@ sudo renice 5 -g 5678
 ## Permission Rules
 
 - Regular users can only increase the nice value (lower priority) of their own processes
-- Regular users cannot set nice values below 0
+- Regular users cannot set nice values below 0 unless they have a suitable `RLIMIT_NICE` resource limit
 - Root can set any nice value for any process
-- Once a regular user increases the nice value, they cannot decrease it
+- Once a regular user increases the nice value, they cannot decrease it unless they have a suitable `RLIMIT_NICE` resource limit
 
 ## Practical Examples
 
@@ -136,16 +136,16 @@ sudo systemctl daemon-reload
 sudo systemctl restart myservice
 ```
 
-## Setting Default Nice Values with limits.conf
+## Setting Nice Limits with limits.conf
 
-Set default nice value limits for users or groups:
+Set nice value limits for users or groups:
 
 ```bash
 sudo tee /etc/security/limits.d/nice.conf << 'CONF'
 # Allow the realtime group to set nice values as low as -20
 @realtime    -    nice    -20
 
-# Limit regular users to nice values 0 and above
+# Keep regular users from raising priority above nice value 0
 *            -    nice    0
 CONF
 ```
