@@ -122,7 +122,8 @@ For NUMA node binding:
 
 ```ini
 [Service]
-CPUAffinity=numa:0
+CPUAffinity=numa
+NUMAMask=0
 ```
 
 Reload and restart:
@@ -147,6 +148,13 @@ CPUAffinity=0-3
 ```
 
 This restricts all services to CPUs 0-3 by default.
+
+Reload systemd and reboot to apply the change:
+
+```bash
+sudo systemctl daemon-reload
+sudo reboot
+```
 
 ## Using cgroups for CPU Pinning
 
