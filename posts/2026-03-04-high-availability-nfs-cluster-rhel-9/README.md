@@ -93,24 +93,49 @@ sudo pcs stonith create fence-node2 fence_ipmilan \
 The NFS data must be on storage accessible from both nodes. This example uses a shared LVM volume:
 
 ```bash
-# On both nodes, create the shared volume group
+# On both nodes, set the LVM system ID source for clustered LVM
+sudo sed -i 's/^[[:space:]#]*system_id_source = .*/system_id_source = "uname"/' /etc/lvm/lvm.conf
+
+# On one node only, create the shared volume group
 # (The physical volume must be on shared storage, e.g., iSCSI or SAN)
 sudo pvcreate /dev/sdb
-sudo vgcreate nfs_vg /dev/sdb
+sudo vgcreate --setautoactivation n nfs_vg /dev/sdb
 sudo lvcreate -L 100G -n nfs_lv nfs_vg
 
 # Format on one node only
 sudo mkfs.xfs /dev/nfs_vg/nfs_lv
+
+# If LVM devices files are enabled, add the shared device on the other node
+sudo lvmdevices --adddev /dev/sdb
 ```
 
 ## Step 6 - Create Cluster Resources
 
-Create resources for the filesystem, virtual IP, and NFS server:
+Create resources for LVM activation, the filesystem, NFS server, exports, virtual IP, and NFS notifications:
 
 ```bash
+# Create the mount point on both nodes
+sudo mkdir -p /srv/nfs/shared
+
+# Create the LVM activation resource
+sudo pcs resource create nfs_lvm ocf:heartbeat:LVM-activate \
+    vgname=nfs_vg vg_access_mode=system_id \
+    --group nfs_group
+
 # Create the filesystem resource
 sudo pcs resource create nfs_fs ocf:heartbeat:Filesystem \
     device="/dev/nfs_vg/nfs_lv" directory="/srv/nfs/shared" fstype="xfs" \
+    --group nfs_group
+
+# Create the NFS server resource
+sudo pcs resource create nfs_server ocf:heartbeat:nfsserver \
+    nfs_shared_infodir=/srv/nfs/shared/nfsinfo nfs_no_notify=true \
+    --group nfs_group
+
+# Create the NFS export resource
+sudo pcs resource create nfs_export ocf:heartbeat:exportfs \
+    clientspec="192.168.1.0/24" options="rw,sync,no_root_squash" \
+    directory="/srv/nfs/shared" fsid=1 \
     --group nfs_group
 
 # Create the virtual IP resource
@@ -118,15 +143,9 @@ sudo pcs resource create nfs_vip ocf:heartbeat:IPaddr2 \
     ip=192.168.1.100 cidr_netmask=24 \
     --group nfs_group
 
-# Create the NFS server resource
-sudo pcs resource create nfs_server ocf:heartbeat:nfsserver \
-    nfs_shared_infodir=/srv/nfs/nfsinfo \
-    --group nfs_group
-
-# Create the NFS export resource
-sudo pcs resource create nfs_export ocf:heartbeat:exportfs \
-    clientspec="192.168.1.0/24" options="rw,sync,no_root_squash" \
-    directory="/srv/nfs/shared" fsid=1 \
+# Send NFSv3 reboot notifications after the NFS resources start
+sudo pcs resource create nfs_notify ocf:heartbeat:nfsnotify \
+    source_host=192.168.1.100 \
     --group nfs_group
 ```
 
@@ -190,10 +209,10 @@ Clients should mount using the virtual IP and use the `hard` mount option:
 
 ```bash
 # /etc/fstab on clients
-192.168.1.100:/srv/nfs/shared  /mnt/nfs-ha  nfs  rw,hard,intr,_netdev,nofail  0 0
+192.168.1.100:/srv/nfs/shared  /mnt/nfs-ha  nfs  rw,hard,_netdev,nofail  0 0
 ```
 
-During failover, there will be a brief pause (typically 30-90 seconds) while resources move to the surviving node. The `hard` mount option ensures the client retries until the service is back.
+During failover, there will be a brief pause while resources move to the surviving node. NFSv4 clients may take up to 90 seconds to recover during the server grace period. The `hard` mount option ensures the client retries until the service is back.
 
 ## Monitoring the Cluster
 
