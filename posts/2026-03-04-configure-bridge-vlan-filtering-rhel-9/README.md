@@ -143,13 +143,17 @@ SCRIPT
 chmod +x /etc/NetworkManager/dispatcher.d/99-bridge-vlans
 ```
 
-### Option B: Use nmcli VLAN Options (RHEL.2+)
+### Option B: Use nmcli VLAN Options
 
-On newer RHEL versions, nmcli supports bridge port VLAN configuration directly:
+On RHEL 9, nmcli supports bridge port VLAN configuration directly:
 
 ```bash
 # Set VLANs on a bridge port via nmcli
-nmcli connection modify br0-trunk bridge-port.vlans "10, 20"
+nmcli connection modify br0-trunk bridge-port.vlans "10,20"
+
+# Optional: do not add VLAN 1 as the default PVID on new bridge ports
+nmcli connection modify br0 bridge.vlan-default-pvid 0
+
 nmcli connection up br0-trunk
 ```
 
@@ -197,13 +201,13 @@ cat /sys/class/net/br0/bridge/vlan_filtering
 # Should output: 1
 ```
 
-**Traffic not flowing after enabling VLAN filtering**: When you enable VLAN filtering, the bridge stops forwarding all traffic by default. You must explicitly add VLAN memberships to each port.
+**Traffic not flowing after enabling VLAN filtering**: When you enable VLAN filtering, the bridge forwards only traffic for VLANs assigned to each port. By default, NetworkManager adds VLAN 1 as the default PVID, so you must explicitly add any other VLAN memberships you need.
 
 ```bash
 # Verify VLAN membership
 bridge vlan show
 
-# If a port has no VLANs assigned, no traffic will flow through it
+# If a port is not a member of the VLAN you need, that VLAN will not flow through it
 ```
 
 ## Summary
