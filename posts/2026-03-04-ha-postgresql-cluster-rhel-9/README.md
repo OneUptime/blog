@@ -132,6 +132,7 @@ sudo pcs resource create PostgreSQL ocf:heartbeat:pgsql \
     op monitor interval=30s timeout=10s role=Unpromoted
 
 sudo pcs resource promotable PostgreSQL \
+    meta \
     promoted-max=1 promoted-node-max=1 \
     clone-max=2 clone-node-max=1 \
     notify=true
