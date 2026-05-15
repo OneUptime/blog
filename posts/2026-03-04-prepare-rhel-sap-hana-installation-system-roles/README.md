@@ -15,7 +15,7 @@ Red Hat provides dedicated System Roles for SAP that automate the complex OS-lev
 ```bash
 # Install the RHEL System Roles for SAP
 
-sudo dnf install -y rhel-system-roles-sap
+sudo dnf install -y ansible-core rhel-system-roles-sap rhel-system-roles
 
 # Verify the roles are installed
 ls /usr/share/ansible/roles/ | grep sap
@@ -35,10 +35,12 @@ ls /usr/share/ansible/roles/ | grep sap
 
   vars:
     # SAP HANA specific variables
-    sap_hana_preconfigure_assert: true
-    sap_hana_preconfigure_assert_ignore_errors: false
     sap_general_preconfigure_modify_etc_hosts: true
-    sap_general_preconfigure_update: true
+    sap_general_preconfigure_reboot_ok: false
+    sap_general_preconfigure_fail_if_reboot_required: false
+    sap_hana_preconfigure_reboot_ok: true
+    sap_hana_preconfigure_fail_if_reboot_required: false
+    sap_hana_preconfigure_update: true
 
   roles:
     # Step 1: General SAP prerequisites
@@ -111,6 +113,7 @@ After running the roles, verify readiness:
 ```bash
 # Run the roles in assert mode to check compliance
 ansible-playbook prepare-sap-hana.yml -i inventory.ini \
+  -e "sap_general_preconfigure_assert=true" \
   -e "sap_hana_preconfigure_assert=true"
 
 # Manual checks
