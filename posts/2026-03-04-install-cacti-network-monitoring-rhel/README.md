@@ -15,12 +15,13 @@ Cacti is an open-source network monitoring and graphing tool built on RRDtool. I
 ```bash
 # Install EPEL repository
 
-sudo dnf install -y epel-release
+sudo subscription-manager repos --enable "codeready-builder-for-rhel-$(rpm -E %rhel)-$(arch)-rpms"
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-$(rpm -E %rhel).noarch.rpm
 
 # Install Apache, MySQL, PHP, and SNMP tools
-sudo dnf install -y httpd mysql-server php php-mysqlnd php-xml \
-  php-mbstring php-gd php-intl php-ldap php-snmp php-posix \
-  net-snmp net-snmp-utils rrdtool
+sudo dnf install -y httpd mysql-server php php-cli php-common php-mysqlnd php-xml \
+  php-mbstring php-gd php-intl php-ldap php-snmp php-process \
+  php-pdo net-snmp net-snmp-utils rrdtool
 
 # Install Cacti (from EPEL)
 sudo dnf install -y cacti
@@ -46,14 +47,14 @@ SQL
 mysql_tzinfo_to_sql /usr/share/zoneinfo | sudo mysql -u root -p mysql
 
 # Import the Cacti database schema
-sudo mysql -u cactiuser -p'CactiPass123!' cacti < /usr/share/cacti/cacti.sql
+sudo mysql -u cactiuser -p'CactiPass123!' cacti < /usr/share/doc/cacti/cacti.sql
 ```
 
 ## Configure Cacti
 
 ```bash
 # Edit the Cacti database configuration
-sudo tee /usr/share/cacti/include/config.php << 'PHP'
+sudo tee /etc/cacti/db.php << 'PHP'
 <?php
 $database_type     = 'mysql';
 $database_default  = 'cacti';
@@ -78,8 +79,6 @@ sudo tee /etc/my.cnf.d/cacti.cnf << 'CNF'
 max_heap_table_size = 256M
 tmp_table_size = 256M
 join_buffer_size = 128M
-innodb_file_format = Barracuda
-innodb_large_prefix = 1
 innodb_buffer_pool_size = 1G
 innodb_flush_log_at_timeout = 3
 innodb_read_io_threads = 32
@@ -123,9 +122,10 @@ sudo systemctl restart php-fpm httpd
 
 ```bash
 # Configure cron for the Cacti poller (runs every 5 minutes)
-sudo tee /etc/cron.d/cacti << 'CRON'
-*/5 * * * * apache /usr/bin/php /usr/share/cacti/poller.php >> /var/log/cacti/poller.log 2>&1
-CRON
+sudo vi /etc/cron.d/cacti
+
+# Ensure one poller entry is enabled:
+# */5 * * * * apache /usr/bin/php /usr/share/cacti/poller.php > /dev/null 2>&1
 ```
 
 ## Firewall and SELinux
