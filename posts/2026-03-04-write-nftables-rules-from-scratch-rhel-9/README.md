@@ -131,6 +131,7 @@ table inet firewall {
     # Set of trusted management IPs
     set trusted_mgmt {
         type ipv4_addr
+        flags interval
         elements = { 10.0.0.0/8, 192.168.1.0/24 }
     }
 
