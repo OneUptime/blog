@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, MariaDB, Database, Security
 
-Description: Install MariaDB on RHEL 9 and secure it with mysql_secure_installation.
+Description: Install MariaDB on RHEL 9 and secure it with mariadb-secure-installation.
 
 ---
 
 ## Overview
 
-Install MariaDB on RHEL 9 and secure it with mysql_secure_installation. Proper database setup and management are essential for application reliability and data integrity.
+Install MariaDB on RHEL 9 and secure it with mariadb-secure-installation. Proper database setup and management are essential for application reliability and data integrity.
 
 ## Prerequisites
 
@@ -33,14 +33,15 @@ For MariaDB:
 ```bash
 sudo dnf install -y mariadb-server
 sudo systemctl enable --now mariadb
-sudo mysql_secure_installation
+sudo mariadb-secure-installation
 ```
 
 For MySQL 8.0:
 
 ```bash
-sudo dnf install -y mysql-community-server
+sudo dnf install -y mysql-server
 sudo systemctl enable --now mysqld
+sudo mysql_secure_installation
 ```
 
 Choose the appropriate commands for your database engine.
@@ -50,7 +51,8 @@ Choose the appropriate commands for your database engine.
 Edit the main configuration file:
 
 - PostgreSQL: `/var/lib/pgsql/data/postgresql.conf` and `pg_hba.conf`
-- MariaDB/MySQL: `/etc/my.cnf.d/server.cnf`
+- MariaDB: `/etc/my.cnf.d/mariadb-server.cnf`
+- MySQL: `/etc/my.cnf.d/mysql-server.cnf`
 
 Adjust memory settings, connection limits, and authentication methods to match your workload.
 
