@@ -45,6 +45,14 @@ Actual DISK READ:      5.23 M/s | Actual DISK WRITE:     12.45 M/s
 - **IO>** - Percentage of time spent waiting for I/O
 - **COMMAND** - The process command
 
+On RHEL 9, delay accounting is disabled by default. If `iotop` shows a warning that `CONFIG_TASK_DELAY_ACCT` is not enabled and does not display the `SWAPIN` and `IO>` columns, enable it at runtime with:
+
+```bash
+echo 1 | sudo tee /proc/sys/kernel/task_delayacct
+```
+
+This enables delay accounting system-wide, but only for tasks started after the command runs. To enable it permanently, set `kernel.task_delayacct = 1` in `/etc/sysctl.conf` or add the `delayacct` kernel command-line option, then reboot.
+
 ## Showing Only Active Processes
 
 By default, iotop shows all processes. To show only processes currently performing I/O:
@@ -152,7 +160,7 @@ LOG="/var/log/io_monitor.log"
 
 while true; do
     TOP_IO=$(iotop -botPqqqk --iter=1 | head -5)
-    TOTAL_WRITE=$(echo "$TOP_IO" | awk '{sum += $6} END {print sum/1024}')
+    TOTAL_WRITE=$(echo "$TOP_IO" | awk '{sum += $7} END {print sum/1024}')
 
     if (( $(echo "$TOTAL_WRITE > $THRESHOLD_MB" | bc -l) )); then
         echo "$(date): High I/O detected - ${TOTAL_WRITE}MB/s write" >> "$LOG"
