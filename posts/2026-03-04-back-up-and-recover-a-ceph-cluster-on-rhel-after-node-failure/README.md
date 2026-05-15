@@ -96,17 +96,20 @@ sudo ceph orch daemon add mon node4:192.168.1.14
 If you lose quorum (majority of monitors):
 
 ```bash
+# Stop all monitor daemons before modifying the monmap
+sudo systemctl stop ceph-mon.target
+
 # On a surviving monitor node, extract the monmap
 sudo ceph-mon -i node1 --extract-monmap /tmp/monmap
 
 # Remove failed monitors from the monmap
-monmaptool /tmp/monmap --rm node2
-monmaptool /tmp/monmap --rm node3
+sudo monmaptool /tmp/monmap --rm node2
+sudo monmaptool /tmp/monmap --rm node3
 
 # Inject the modified monmap
 sudo ceph-mon -i node1 --inject-monmap /tmp/monmap
 
-# Start the monitor
+# Start only the surviving monitor
 sudo systemctl start ceph-mon@node1
 ```
 
