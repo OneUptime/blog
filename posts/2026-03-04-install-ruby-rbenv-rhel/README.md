@@ -8,16 +8,16 @@ Description: Install and manage multiple Ruby versions on RHEL using rbenv, allo
 
 ---
 
-rbenv is a lightweight Ruby version manager that lets you switch between Ruby versions on a per-project basis. Unlike the system Ruby from AppStream, rbenv compiles Ruby from source, giving you access to any version.
+rbenv is a lightweight Ruby version manager that lets you switch between Ruby versions on a per-project basis. Unlike the system Ruby from AppStream, rbenv with ruby-build compiles Ruby from source, giving you access to Ruby versions supported by ruby-build.
 
 ## Install Dependencies
 
 ```bash
 # Install build tools and libraries needed to compile Ruby
 
-sudo dnf install -y git gcc gcc-c++ make bzip2 openssl-devel \
-  readline-devel zlib-devel libffi-devel libyaml-devel \
-  gdbm-devel ncurses-devel
+sudo dnf install -y git autoconf gcc gcc-c++ make patch bzip2 \
+  openssl-devel readline-devel zlib-devel libffi-devel libyaml-devel \
+  gdbm-devel ncurses-devel tar perl-FindBin
 ```
 
 ## Install rbenv
@@ -42,8 +42,8 @@ rbenv --version
 # ruby-build provides the 'rbenv install' command
 git clone https://github.com/rbenv/ruby-build.git ~/.rbenv/plugins/ruby-build
 
-# List available Ruby versions
-rbenv install -l
+# List all available Ruby versions
+rbenv install -L
 ```
 
 ## Install Ruby Versions
