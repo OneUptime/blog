@@ -8,7 +8,7 @@ Description: A complete guide to using Trusted Platform Module (TPM) with Talos 
 
 ---
 
-Trusted Platform Module (TPM) is a hardware security chip found on most modern servers and workstations. It provides a hardware root of trust that software alone cannot replicate. Talos Linux supports TPM 2.0 for disk encryption, measured boot, and secure key storage. This guide walks you through enabling and using TPM features in your Talos Linux cluster.
+Trusted Platform Module (TPM) is a hardware security chip found on most modern servers and workstations. It provides a hardware root of trust that software alone cannot replicate. Talos Linux supports TPM 2.0 for TPM-backed disk encryption and trusted boot when combined with Secure Boot. This guide walks you through enabling and using TPM features in your Talos Linux cluster.
 
 ## What Is TPM and Why It Matters
 
@@ -17,9 +17,9 @@ A TPM is a dedicated microcontroller designed to secure hardware through integra
 For Kubernetes infrastructure running on Talos Linux, TPM provides several important capabilities:
 
 - **Disk encryption keys** sealed to the hardware, so a stolen disk cannot be read on a different machine
-- **Measured boot** that verifies each stage of the boot process has not been tampered with
-- **Remote attestation** that lets you prove to an external verifier that a node is running trusted software
-- **Secure key storage** for secrets that should never leave the hardware
+- **Measured boot** that records boot-stage measurements into TPM PCRs for policy checks
+- **Signed PCR policies** that let Talos unlock disks only when the expected boot measurements are present
+- **Secure key sealing** for disk encryption keys that should not be exposed directly to software
 
 ## Checking for TPM Hardware
 
@@ -66,10 +66,12 @@ Apply this configuration when generating your Talos config:
 ```bash
 # Generate a Talos configuration with TPM encryption enabled
 talosctl gen config my-cluster https://cluster-endpoint:6443 \
+  --install-image factory.talos.dev/metal-installer/<schematic-id>:<talos-version> \
+  --install-disk /dev/sda \
   --config-patch @machine-config-tpm-encryption.yaml
 
-# Apply the configuration to a node
-talosctl apply-config --nodes <node-ip> --file controlplane.yaml
+# Apply the configuration to a node in maintenance mode
+talosctl apply-config --nodes <node-ip> --file controlplane.yaml --insecure
 ```
 
 ## Understanding PCR-Based Sealing
@@ -82,10 +84,10 @@ Here are the PCRs most relevant to Talos Linux:
 |-----|-----------------|
 | PCR 0 | BIOS/UEFI firmware code |
 | PCR 1 | BIOS/UEFI firmware configuration |
-| PCR 4 | Boot loader code |
+| PCR 4 | Boot loader and loaded EFI application code |
 | PCR 7 | Secure Boot state |
 | PCR 8 | Boot loader configuration |
-| PCR 11 | Used by Talos for system state |
+| PCR 11 | UKI measurements and Talos boot phases |
 
 You can read the current PCR values from a Talos node:
 
@@ -97,14 +99,15 @@ talosctl read /sys/class/tpm/tpm0/pcr-sha256/7 --nodes <node-ip>
 
 ## Configuring Measured Boot with Secure Boot
 
-For the strongest security guarantees, combine TPM with UEFI Secure Boot. Talos supports Secure Boot out of the box, and when combined with TPM, it creates a verified boot chain from firmware to the Kubernetes control plane.
+For the strongest security guarantees, combine TPM with UEFI Secure Boot. Talos supports Secure Boot on UEFI systems with Secure Boot images, and when combined with TPM, it creates a trusted boot chain for the operating system.
 
 ```yaml
 # machine-config-secureboot-tpm.yaml
 # Enable Secure Boot with TPM-sealed encryption
 machine:
   install:
-    image: factory.talos.dev/installer-secureboot/<schematic-id>:v1.7.0
+    image: factory.talos.dev/installer-secureboot/<schematic-id>:<talos-version>
+    disk: /dev/sda
   systemDiskEncryption:
     ephemeral:
       provider: luks2
@@ -121,8 +124,8 @@ machine:
 The Secure Boot variant of the Talos installer includes signed bootloader components that satisfy the Secure Boot chain:
 
 ```bash
-# Generate a Secure Boot enabled Talos image from the Image Factory
-# First, create a schematic that includes secure boot
+# Generate a schematic for the Talos Image Factory
+# Secure Boot is selected by using the installer-secureboot image path
 cat > secureboot-schematic.yaml <<'EOF'
 customization:
   systemExtensions:
@@ -135,27 +138,27 @@ SCHEMATIC_ID=$(curl -s -X POST --data-binary @secureboot-schematic.yaml \
   -H "Content-Type: application/x-yaml" | jq -r '.id')
 
 # Use the secure boot installer image
-echo "Installer: factory.talos.dev/installer-secureboot/${SCHEMATIC_ID}:v1.7.0"
+echo "Installer: factory.talos.dev/installer-secureboot/${SCHEMATIC_ID}:<talos-version>"
 ```
 
 ## Handling TPM During Upgrades
 
-When you upgrade Talos Linux, the boot measurements change because the kernel and initramfs are different. The TPM-sealed keys need to handle this gracefully. Talos manages this transition automatically during the upgrade process.
+When you upgrade Talos Linux, the boot measurements change because the kernel and initramfs are different. With Secure Boot images, the new UKI must contain a PCR policy signed by the same PCR signing key, and the configured PCR states must still match.
 
 ```bash
-# Perform a Talos upgrade - TPM keys are automatically re-sealed
+# Perform a Talos upgrade using the matching installer image
 talosctl upgrade --nodes <node-ip> \
-  --image ghcr.io/siderolabs/installer:v1.7.1
+  --image factory.talos.dev/installer-secureboot/<schematic-id>:<talos-version>
 
 # Verify the node comes back up with encryption intact
 talosctl health --nodes <node-ip>
 ```
 
-If something goes wrong during an upgrade and the TPM seal breaks, you can recover using a static key that you should keep as a backup:
+If something goes wrong during an upgrade and the TPM policy no longer matches, you can recover an encrypted EPHEMERAL partition using a static key that you should keep as a backup. Avoid using static keys for the STATE partition in production, because Talos stores STATE encryption configuration in the META partition.
 
 ```yaml
 # machine-config-tpm-with-backup.yaml
-# TPM encryption with a static backup key for recovery
+# TPM encryption with a static backup key for EPHEMERAL recovery
 machine:
   systemDiskEncryption:
     ephemeral:
@@ -171,9 +174,6 @@ machine:
       keys:
         - slot: 0
           tpm: {}
-        - slot: 1
-          static:
-            passphrase: "your-recovery-passphrase-keep-this-safe"
 ```
 
 Store the recovery passphrase in a secure location like a hardware security module or a secrets manager, separate from the infrastructure it protects.
@@ -200,14 +200,16 @@ aws ec2 run-instances \
 After setting up TPM, verify everything is working correctly:
 
 ```bash
-# Check that the disk encryption is active and using TPM
-talosctl get systemdiskencryptionstatus --nodes <node-ip>
+# Check the configured volume encryption keys
+talosctl get volumeconfigs STATE --nodes <node-ip> -o yaml
+talosctl get volumeconfigs EPHEMERAL --nodes <node-ip> -o yaml
 
 # Verify the TPM device is recognized
 talosctl dmesg --nodes <node-ip> | grep -i "tpm"
 
-# Check the encrypted partitions
-talosctl list /dev/mapper/ --nodes <node-ip>
+# Check volume status, including encrypted volume locations and PCRs on newer Talos releases
+talosctl get volumestatus STATE --nodes <node-ip> -o yaml
+talosctl get volumestatus EPHEMERAL --nodes <node-ip> -o yaml
 ```
 
 ## Security Considerations
@@ -221,4 +223,4 @@ While TPM significantly improves your security posture, keep these points in min
 
 ## Conclusion
 
-TPM support in Talos Linux adds a hardware-backed security layer that is difficult to achieve with software alone. By sealing disk encryption keys to the TPM and combining this with Secure Boot, you create a verified boot chain that protects your Kubernetes infrastructure from firmware to workload. The configuration is straightforward, and Talos handles the complexity of TPM interactions so you can focus on running your cluster securely.
+TPM support in Talos Linux adds a hardware-backed security layer that is difficult to achieve with software alone. By sealing disk encryption keys to the TPM and combining this with Secure Boot, you create a trusted boot path for Talos and its encrypted volumes. The configuration is straightforward, and Talos handles the complexity of TPM interactions so you can focus on running your cluster securely.
