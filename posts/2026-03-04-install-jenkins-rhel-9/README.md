@@ -12,12 +12,12 @@ Jenkins remains one of the most widely used CI/CD servers. It runs on Java and p
 
 ## Prerequisites
 
-Jenkins requires Java. Install OpenJDK 17:
+Jenkins requires Java. Install OpenJDK 21:
 
 ```bash
-# Install Java 17
+# Install Java 21
 
-sudo dnf install -y java-17-openjdk java-17-openjdk-devel
+sudo dnf install -y fontconfig java-21-openjdk
 
 # Verify the installation
 java -version
@@ -27,10 +27,10 @@ java -version
 
 ```bash
 # Add the Jenkins repository
-sudo wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
+sudo wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/rpm-stable/jenkins.repo
 
 # Import the Jenkins GPG key
-sudo rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+sudo rpm --import https://pkg.jenkins.io/rpm-stable/jenkins.io-2026.key
 
 # Install Jenkins
 sudo dnf install -y jenkins
@@ -110,7 +110,7 @@ sudo systemctl edit jenkins
 
 # Set Java memory options
 # [Service]
-# Environment="JAVA_OPTS=-Xmx2g -Xms512m"
+# Environment="JAVA_OPTS=-Djava.awt.headless=true -Xms512m -Xmx2g"
 
 # Restart Jenkins
 sudo systemctl restart jenkins
