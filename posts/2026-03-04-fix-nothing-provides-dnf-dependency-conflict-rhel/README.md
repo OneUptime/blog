@@ -32,7 +32,7 @@ sudo subscription-manager repos --list | grep -E "codeready|baseos|appstream"
 
 # Enable the CodeReady/CRB repository (common source of devel packages)
 sudo subscription-manager repos --enable codeready-builder-for-rhel-9-x86_64-rpms
-# Or on RHEL 9:
+# On RHEL-compatible rebuilds, the same repository is often named crb:
 sudo dnf config-manager --set-enabled crb
 ```
 
@@ -40,10 +40,10 @@ sudo dnf config-manager --set-enabled crb
 
 ```bash
 # Search for which package provides the missing library
-sudo dnf provides "libfoo.so.2"
+sudo dnf provides "libfoo.so.2()(64bit)"
 
 # Search across all repos including disabled ones
-sudo dnf provides "libfoo.so.2" --enablerepo=\*
+sudo dnf provides "libfoo.so.2()(64bit)" --enablerepo=\*
 ```
 
 ## Step 3: Install from EPEL
