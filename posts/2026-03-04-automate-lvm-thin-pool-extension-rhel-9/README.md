@@ -8,7 +8,7 @@ Description: Learn how to configure automatic LVM thin pool extension on RHEL us
 
 ---
 
-A thin pool that fills to 100% causes every thin volume in the pool to freeze. The best defense is automation - let the system extend the pool before it runs out of space. RHEL has built-in support for this through the `dmeventd` monitoring daemon and LVM configuration.
+A thin pool that fills to 100% causes writes to thin volumes in the pool to be queued or return errors, depending on the pool's `whenfull` setting. The best defense is automation - let the system extend the pool before it runs out of space. RHEL has built-in support for this through the `dmeventd` monitoring daemon and LVM configuration.
 
 ## Built-in Auto-Extension with dmeventd
 
@@ -38,9 +38,10 @@ This means:
 ### Step 2: Enable the Monitoring Service
 
 ```bash
-# Enable and start the LVM monitoring service
+# Enable and restart the LVM monitoring service
 
 systemctl enable --now lvm2-monitor
+systemctl restart lvm2-monitor
 ```
 
 Verify it is running:
@@ -73,13 +74,13 @@ You can test by temporarily lowering the threshold:
 lvs -o lv_name,data_percent vg_data/thinpool
 ```
 
-If the pool is at 50%, temporarily set the threshold to 40% to trigger an extension, then set it back.
+If the pool is above 50%, temporarily set the threshold to 50% to trigger an extension, then set it back. The minimum supported threshold is 50, and setting a smaller value is treated as 50.
 
 ## How Auto-Extension Works
 
 ```mermaid
 graph TD
-    A[dmeventd monitors thin pool] --> B{Data% >= threshold?}
+    A[dmeventd monitors thin pool] --> B{Data% or Meta% >= threshold?}
     B -->|No| A
     B -->|Yes| C{Free space in VG?}
     C -->|Yes| D[Extend pool by configured %]
@@ -124,18 +125,18 @@ EXTEND_PERCENT=20
 ADMIN_EMAIL="admin@example.com"
 
 # Process each thin pool
-lvs --noheadings -o vg_name,lv_name,data_percent,lv_size --units g \
+lvs --noheadings --nosuffix -o vg_name,lv_name,data_percent,lv_size --units g \
     --select 'lv_attr=~^t' 2>/dev/null | while read -r VG LV DATA SIZE; do
 
     DATA_INT=${DATA%.*}
 
     if [ "$DATA_INT" -ge "$THRESHOLD" ] 2>/dev/null; then
         # Calculate extension size
-        SIZE_NUM=${SIZE%g}
-        EXTEND_SIZE=$(echo "$SIZE_NUM * $EXTEND_PERCENT / 100" | bc)
+        SIZE=${SIZE#<}
+        EXTEND_SIZE=$(echo "$SIZE * $EXTEND_PERCENT / 100" | bc)
 
         # Check for VG free space
-        VG_FREE=$(vgs --noheadings -o vg_free --units g "$VG" | tr -d ' g')
+        VG_FREE=$(vgs --noheadings --nosuffix -o vg_free --units g "$VG" | tr -d ' <')
         VG_FREE_INT=${VG_FREE%.*}
 
         if [ "$VG_FREE_INT" -ge "${EXTEND_SIZE%.*}" ] 2>/dev/null; then
@@ -271,4 +272,4 @@ lvs -o lv_name,data_percent,metadata_percent --select 'lv_attr=~^t'
 
 ## Summary
 
-Automating thin pool extension on RHEL prevents one of the most disruptive storage failures. Use the built-in `dmeventd` auto-extension (set `thin_pool_autoextend_threshold` and `thin_pool_autoextend_percent` in lvm.conf) for basic automation. Add a custom script for notifications and handling VG exhaustion. Always monitor that the volume group itself has room to grow, because auto-extension fails silently when there is no VG free space.
+Automating thin pool extension on RHEL prevents one of the most disruptive storage failures. Use the built-in `dmeventd` auto-extension (set `thin_pool_autoextend_threshold` and `thin_pool_autoextend_percent` in lvm.conf) for basic automation. Add a custom script for notifications and handling VG exhaustion. Always monitor that the volume group itself has room to grow, because auto-extension fails when there is no VG free space and the pool can keep filling.
