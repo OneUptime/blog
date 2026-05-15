@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, HAProxy, Health Check, Load Balancing, Linux
 
-Description: Learn how to set up TCP, HTTP, and custom health checks in HAProxy on RHEL to automatically detect and route around failed backend servers.
+Description: Learn how to set up TCP and HTTP health checks in HAProxy on RHEL to automatically detect and route around failed backend servers.
 
 ---
 
-Health checks let HAProxy detect failed backend servers and stop sending traffic to them. When a server recovers, HAProxy automatically adds it back to the pool. This guide covers TCP, HTTP, and custom health checks on RHEL.
+Health checks let HAProxy detect failed backend servers and stop sending traffic to them. When a server recovers, HAProxy automatically adds it back to the pool. This guide covers TCP and HTTP health checks on RHEL.
 
 ## Prerequisites
 
@@ -22,7 +22,7 @@ Health checks let HAProxy detect failed backend servers and stop sending traffic
 graph TD
     A[HAProxy Health Checks] --> B[TCP Check]
     A --> C[HTTP Check]
-    A --> D[Custom Agent Check]
+    A --> D[Agent Check]
     B --> E[Can connect to port?]
     C --> F[HTTP response code OK?]
     D --> G[Agent reports health status]
@@ -99,7 +99,7 @@ backend app_servers
 
     # Multiple expect rules (all must pass)
     http-check expect status 200
-    http-check expect header Content-Type contains application/json
+    http-check expect hdr name Content-Type value -m sub application/json
     http-check expect string "ok"
 
     server app1 192.168.1.10:8080 check
@@ -139,6 +139,7 @@ backend web_servers
 
 ```bash
 # Check server states via the stats socket
+# These examples assume the Runtime API socket is configured at /var/lib/haproxy/stats
 
 echo "show servers state" | sudo socat stdio /var/lib/haproxy/stats
 
@@ -157,7 +158,7 @@ echo "enable server web_servers/web1" | sudo socat stdio /var/lib/haproxy/stats
 
 ## Step 8: Email Notifications on State Changes
 
-Create a script that runs when servers change state:
+Create a polling script that external monitoring can use to inspect server state:
 
 ```bash
 #!/bin/bash
@@ -185,7 +186,7 @@ backend web_servers
     email-alert mailers alert_mailers
     email-alert from haproxy@example.com
     email-alert to admin@example.com
-    email-alert level alert
+    email-alert level notice
 
     server web1 192.168.1.10:80 check
     server web2 192.168.1.11:80 check
