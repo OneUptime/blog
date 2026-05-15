@@ -17,7 +17,8 @@ Run a pre-upgrade assessment with Leapp on RHEL to identify issues before upgrad
 - A RHEL system with an active subscription
 - Root or sudo access
 - A full backup of the system before any migration or upgrade
-- For Leapp upgrades: the leapp and leapp-upgrade packages
+- For Leapp upgrades: the leapp-upgrade package
+- If using sudo for Leapp commands, run them with the unconfined SELinux role and type
 
 ## Step 1 - Prepare the System
 
@@ -26,26 +27,28 @@ Before any migration:
 1. Create a full backup (see backup guides in this series)
 2. Document current system configuration
 3. Verify subscription status: `subscription-manager status`
-4. Check disk space: `df -h` (at least 5 GB free in `/`)
+4. Check disk space: `df -h` (ensure enough space in `/var/lib/leapp`; the pre-upgrade assessment can require up to 4 GB)
 
 ## Step 2 - Install Migration Tools
 
 For Leapp-based upgrades:
 
 ```bash
-sudo dnf install -y leapp leapp-upgrade
+sudo dnf install -y leapp-upgrade
 ```
 
-For CentOS conversions:
+For CentOS conversions to RHEL 9:
 
 ```bash
-sudo dnf install -y convert2rhel
+sudo curl -o /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release https://security.access.redhat.com/data/fd431d51.txt
+sudo curl -o /etc/yum.repos.d/convert2rhel.repo https://cdn-public.redhat.com/content/public/repofiles/convert2rhel-for-rhel-9-x86_64.repo
+sudo yum -y install convert2rhel
 ```
 
 ## Step 3 - Run Pre-Migration Assessment
 
 ```bash
-sudo leapp preupgrade
+sudo -r unconfined_r -t unconfined_t leapp preupgrade
 ```
 
 Review the report:
@@ -61,7 +64,7 @@ Address all inhibitors before proceeding.
 Once all inhibitors are resolved:
 
 ```bash
-sudo leapp upgrade
+sudo -r unconfined_r -t unconfined_t leapp upgrade --reboot
 ```
 
 The system will reboot into a special initramfs to complete the upgrade.
@@ -79,9 +82,10 @@ systemctl list-units --failed
 
 ## Step 6 - Clean Up
 
-Remove old packages and kernels:
+Remove any remaining Leapp packages from the exclude list in `/etc/dnf/dnf.conf`, then remove old packages and kernels:
 
 ```bash
+sudo vi /etc/dnf/dnf.conf
 sudo dnf remove leapp leapp-upgrade
 sudo dnf autoremove
 ```
