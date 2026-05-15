@@ -19,7 +19,7 @@ RHEL splits its content into two main repositories:
 - **BaseOS** - Core operating system packages (kernel, systemd, glibc, etc.) that follow the standard RHEL lifecycle
 - **AppStream** - User-space applications, languages, databases, and tools that can be delivered in multiple versions
 
-The AppStream repository is where module streams come into play. It lets Red Hat ship multiple versions of software (like Node.js 18 and Node.js 20) and lets you pick which one you want.
+The AppStream repository is where module streams come into play. It lets Red Hat ship multiple versions of software (like Node.js 22 and Node.js 24) and lets you pick which one you want.
 
 ```mermaid
 flowchart TD
@@ -28,10 +28,10 @@ flowchart TD
     B --> D[Core OS Packages<br>Single Version<br>10-year Lifecycle]
     C --> E[Regular RPM Packages]
     C --> F[Module Streams]
-    F --> G[nodejs:18]
-    F --> H[nodejs:20]
-    F --> I[php:8.1]
-    F --> J[php:8.2]
+    F --> G[nodejs:22]
+    F --> H[nodejs:24]
+    F --> I[php:8.2]
+    F --> J[php:8.3]
     F --> K[postgresql:15]
     F --> L[postgresql:16]
 ```
@@ -41,9 +41,9 @@ flowchart TD
 Before diving into commands, let me clarify the terminology:
 
 - **Module** - A set of RPM packages that represent a component (e.g., nodejs, php, postgresql)
-- **Stream** - A specific version of a module (e.g., nodejs:18, nodejs:20)
+- **Stream** - A specific version of a module (e.g., nodejs:22, nodejs:24)
 - **Profile** - A predefined set of packages within a stream for a specific use case (e.g., "common," "devel," "server")
-- **Default stream** - The stream that gets installed if you do not specify one
+- **Default stream** - The stream that gets installed if you do not specify one. RHEL 9 does not define default module streams in the AppStream repository, although a system administrator can configure custom defaults.
 
 ## Listing Available Modules
 
@@ -53,7 +53,7 @@ Before diving into commands, let me clarify the terminology:
 dnf module list
 ```
 
-The output shows each module, its available streams, the currently enabled stream (marked with [e]), the default stream (marked with [d]), and the installed profile.
+The output shows each module, its available streams, the currently enabled stream (marked with [e]), any configured default stream or default profile (marked with [d]), and installed profiles (marked with [i]).
 
 ```bash
 # Filter the list to a specific module
@@ -67,29 +67,29 @@ To see what profiles are available:
 
 ```bash
 # List profiles for a specific stream
-dnf module info --profile nodejs:20
+dnf module info --profile nodejs:24
 ```
 
 ## Enabling and Installing Module Streams
 
-### Installing the Default Stream
+### Installing the Initial Application Stream RPM
 
-If you just want the default version, a regular install works:
+If you just want the initial Application Stream RPM version of a package, a regular install works:
 
 ```bash
-# Install nodejs using the default stream
+# Install nodejs using the non-modular RPM package
 sudo dnf install nodejs
 ```
 
-DNF automatically enables the default stream and installs the default profile.
+In RHEL 9, Red Hat provides initial Application Stream versions as RPM packages that can be installed with `dnf install`. This does not enable a module stream.
 
 ### Installing a Specific Stream
 
 To pick a specific version:
 
 ```bash
-# Enable the nodejs:20 stream
-sudo dnf module enable nodejs:20
+# Enable the nodejs:24 stream
+sudo dnf module enable nodejs:24
 
 # Then install nodejs
 sudo dnf install nodejs
@@ -99,7 +99,7 @@ Or do it in one step:
 
 ```bash
 # Install a specific stream and profile in one command
-sudo dnf module install nodejs:20/common
+sudo dnf module install nodejs:24/common
 ```
 
 ### Checking What Is Enabled
@@ -114,33 +114,25 @@ dnf module list nodejs
 
 ## Switching Between Streams
 
-This is where things get interesting. Say you have been running Node.js 18 and want to move to Node.js 20.
+This is where things get interesting. Say you have been running Node.js 22 and want to move to Node.js 24.
 
 ```bash
-# Step 1: Reset the current module stream
-sudo dnf module reset nodejs
-
-# Step 2: Enable the new stream
-sudo dnf module enable nodejs:20
-
-# Step 3: Synchronize installed packages with the new stream
-sudo dnf distro-sync
+# Switch to the new stream
+sudo dnf module switch-to nodejs:24
 ```
 
-The `distro-sync` step is important. It ensures that the installed packages are updated (or downgraded) to match the versions in the newly enabled stream.
+The `switch-to` command enables the new stream, updates installed profiles when possible, and synchronizes installed modular packages with the versions provided by the new stream.
 
 ```mermaid
 flowchart LR
-    A[Running nodejs:18] --> B[dnf module reset nodejs]
-    B --> C[dnf module enable nodejs:20]
-    C --> D[dnf distro-sync]
-    D --> E[Running nodejs:20]
+    A[Running nodejs:22] --> B[dnf module switch-to nodejs:24]
+    B --> C[Running nodejs:24]
 ```
 
-You cannot switch directly from one enabled stream to another without resetting first. DNF will refuse to do it:
+You cannot switch directly from one enabled stream to another by using `dnf module enable`. DNF will refuse to do it:
 
 ```bash
-The operation would result in switching of module 'nodejs' stream '18' to stream '20'
+The operation would result in switching of module 'nodejs' stream '22' to stream '24'
 Error: It is not possible to switch enabled streams of a module unless explicitly enabled via configuration option module_stream_switch.
 ```
 
@@ -175,8 +167,11 @@ Installing multiple profiles is additive. You get the union of packages from all
 ### Removing Installed Module Packages
 
 ```bash
-# Remove all packages installed by a module
-sudo dnf module remove nodejs
+# Remove packages from all installed profiles within a stream
+sudo dnf module remove nodejs:24
+
+# Remove all packages whose names are provided by the specified stream
+sudo dnf module remove --all nodejs:24
 ```
 
 ### Resetting a Module
@@ -197,7 +192,7 @@ If you want to make sure a module stream is never accidentally enabled:
 sudo dnf module disable nodejs
 ```
 
-A disabled module will not show up in searches and its packages will not be considered for installation.
+A disabled module makes all of its streams unavailable, so packages from those streams will not be considered for installation.
 
 ## Practical Examples
 
@@ -238,14 +233,14 @@ psql --version
 RHEL ships Python 3.9 as part of BaseOS (not a module), but additional versions are available:
 
 ```bash
-# Check available Python versions
-dnf module list python*
+# Check available Python RPM packages
+dnf list python3.11 python3.12
 
 # Install an additional Python version alongside the default
-sudo dnf install python3.11
+sudo dnf install python3.12
 
 # Use the specific version
-python3.11 --version
+python3.12 --version
 ```
 
 ## Module Stream Lifecycles
@@ -254,7 +249,7 @@ Not all streams have the same support lifecycle. Some are supported for the full
 
 ```bash
 # Check the lifecycle information (available in RHEL documentation)
-dnf module info nodejs:20
+dnf module info nodejs:24
 ```
 
 The `Module RHEL Life Cycle` page on Red Hat's documentation site lists the exact support dates for each stream. Plan your deployments accordingly, as running an end-of-life stream means no more security patches.
@@ -289,12 +284,12 @@ sudo dnf remove conflicting-package
 sudo dnf module reset module-name
 ```
 
-### Listing All Modular Packages
+### Listing Installed Module Profiles
 
-To see which of your installed packages come from modules:
+To see which module streams have installed profiles:
 
 ```bash
-# List installed packages from modular repos
+# List module streams with installed profiles
 dnf module list --installed
 ```
 
@@ -312,4 +307,4 @@ dnf module list --installed
 
 ## Summary
 
-Application Streams and module streams give RHEL the flexibility to offer multiple versions of software without the complexity of third-party repositories. The workflow is straightforward: list available streams, enable the one you need, install it, and go. When you need to switch versions, reset the module, enable the new stream, and run distro-sync. It is a clean system that works well once you understand the module, stream, and profile hierarchy.
+Application Streams and module streams give RHEL the flexibility to offer multiple versions of software without the complexity of third-party repositories. The workflow is straightforward: list available streams, enable the one you need, install it, and go. When you need to switch versions, use `dnf module switch-to` for the target stream. It is a clean system that works well once you understand the module, stream, and profile hierarchy.
