@@ -8,7 +8,7 @@ Description: Learn how to configure RPS and RFS on RHEL to distribute network pa
 
 ---
 
-Receive Packet Steering (RPS) and Receive Flow Steering (RFS) are kernel features that distribute incoming network packet processing across multiple CPU cores. RPS distributes based on packet hash, while RFS ensures packets are processed on the same CPU core where the application is running, improving cache locality.
+Receive Packet Steering (RPS) and Receive Flow Steering (RFS) are kernel features that distribute incoming network packet processing across multiple CPU cores. RPS distributes based on packet hash, while RFS tries to steer packets to the CPU core where the receiving application thread is running, improving cache locality.
 
 ## How RPS and RFS Work
 
@@ -53,7 +53,18 @@ ls /sys/class/net/ens3/queues/
 # Enable RPS on all RX queues, distributing to all CPU cores
 # The bitmask represents which CPUs to use (ff = cores 0-7)
 NCPUS=$(nproc)
-MASK=$(printf '%x' $((2**NCPUS - 1)))
+MASK=$(awk -v n="$NCPUS" 'BEGIN {
+    groups = int((n + 31) / 32)
+    for (i = groups - 1; i >= 0; i--) {
+        bits = n - i * 32
+        if (bits >= 32) {
+            val = 4294967295
+        } else {
+            val = 2 ^ bits - 1
+        }
+        printf "%s%08x", (i == groups - 1 ? "" : ","), val
+    }
+}')
 
 # Apply the CPU mask to each RX queue
 for rxq in /sys/class/net/ens3/queues/rx-*/rps_cpus; do
@@ -87,11 +98,41 @@ cat /sys/class/net/ens3/queues/rx-0/rps_flow_cnt
 ## Step 4: Make Settings Persistent
 
 ```bash
-# Create a udev rule to apply RPS/RFS settings on boot
+# Create a helper script to apply RPS/RFS settings on boot
+cat << 'SCRIPTEOF' | sudo tee /usr/local/sbin/apply-rps-rfs-ens3.sh
+#!/bin/bash
+set -e
+
+NCPUS=$(nproc)
+MASK=$(awk -v n="$NCPUS" 'BEGIN {
+    groups = int((n + 31) / 32)
+    for (i = groups - 1; i >= 0; i--) {
+        bits = n - i * 32
+        if (bits >= 32) {
+            val = 4294967295
+        } else {
+            val = 2 ^ bits - 1
+        }
+        printf "%s%08x", (i == groups - 1 ? "" : ","), val
+    }
+}')
+
+for q in /sys/class/net/ens3/queues/rx-*/rps_cpus; do
+    echo "$MASK" > "$q"
+done
+
+QUEUES=$(ls -d /sys/class/net/ens3/queues/rx-* | wc -l)
+FLOW_CNT=$((32768 / QUEUES))
+
+for q in /sys/class/net/ens3/queues/rx-*/rps_flow_cnt; do
+    echo "$FLOW_CNT" > "$q"
+done
+SCRIPTEOF
+sudo chmod +x /usr/local/sbin/apply-rps-rfs-ens3.sh
+
+# Create a udev rule to run the helper when ens3 is added
 cat << 'UDEVEOF' | sudo tee /etc/udev/rules.d/99-rps-rfs.rules
-# Apply RPS to all RX queues of ens3
-ACTION=="add", SUBSYSTEM=="net", KERNEL=="ens3", \
-    RUN+="/bin/bash -c 'for q in /sys/class/net/ens3/queues/rx-*/rps_cpus; do echo ff > $q; done'"
+ACTION=="add", SUBSYSTEM=="net", KERNEL=="ens3", RUN+="/usr/local/sbin/apply-rps-rfs-ens3.sh"
 UDEVEOF
 
 # Create a sysctl configuration for RFS
@@ -102,8 +143,8 @@ sudo sysctl --system
 ## Step 5: Tune the Backlog Queue
 
 ```bash
-# Increase the per-CPU packet processing backlog
-# Default is 1000, increase for high-traffic servers
+# Increase the NAPI polling packet budget
+# This limits packets processed in one polling cycle
 echo 5000 | sudo tee /proc/sys/net/core/netdev_budget
 
 # Also increase the backlog queue length
@@ -120,21 +161,21 @@ cat /proc/softirqs | grep NET_RX
 # Watch the distribution in real time
 watch -n 1 'cat /proc/softirqs | grep NET_RX'
 
-# Check for RPS flow hash collisions
+# Check softnet backlog, drop, and squeeze counters
 cat /proc/net/softnet_stat
 
 # Monitor per-queue statistics
 ethtool -S ens3 | grep rx_queue
 ```
 
-## Using tuned for Automatic Configuration
+## Using tuned for General Network Throughput Tuning
 
 ```bash
 # Install and enable tuned
 sudo dnf install -y tuned
 sudo systemctl enable --now tuned
 
-# The network-throughput profile automatically configures RPS/RFS
+# The network-throughput profile tunes general network throughput settings
 sudo tuned-adm profile network-throughput
 
 # Verify the active profile
@@ -143,4 +184,4 @@ tuned-adm active
 
 ## Summary
 
-You have configured RPS and RFS on RHEL to distribute network packet processing across multiple CPU cores. RPS provides software-based packet distribution when hardware RSS is not available, and RFS ensures packets are processed on the CPU where the receiving application runs, improving cache locality and reducing latency. For high-traffic servers, combine these settings with proper interrupt affinity and the tuned network-throughput profile.
+You have configured RPS and RFS on RHEL to distribute network packet processing across multiple CPU cores. RPS provides software-based packet distribution when hardware RSS is not available or when there are fewer hardware queues than CPU cores, and RFS tries to process packets on the CPU where the receiving application runs, improving cache locality and reducing latency. For high-traffic servers, combine these settings with proper interrupt affinity and the tuned network-throughput profile.
