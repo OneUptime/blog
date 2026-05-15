@@ -22,7 +22,7 @@ While Dockerfiles handle most image-building needs, Packer adds value when you:
 ## Prerequisites
 
 - RHEL with root or sudo access
-- Docker or Podman installed
+- Docker Engine installed
 - Basic familiarity with JSON or HCL configuration
 
 ## Installing Packer
@@ -49,8 +49,10 @@ packer version
 ## Installing Docker
 
 ```bash
-# Install Docker
-sudo dnf install -y docker
+# Install Docker Engine
+sudo dnf install -y dnf-plugins-core
+sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 sudo systemctl enable --now docker
 sudo usermod -aG docker $USER
 ```
@@ -77,12 +79,12 @@ packer {
 }
 
 source "docker" "rhel" {
-  image  = "redhat/ubi9:latest"
+  image  = "registry.access.redhat.com/ubi9/ubi:latest"
   commit = true
   changes = [
     "EXPOSE 8080",
     "CMD [\"/usr/sbin/httpd\", \"-D\", \"FOREGROUND\"]",
-    "ENV APP_ENV=production"
+    "ENV APP_ENV production"
   ]
 }
 
@@ -203,16 +205,18 @@ provisioner "ansible" {
 Add a post-processor to push to a container registry:
 
 ```hcl
-post-processor "docker-tag" {
-  repository = "registry.example.com/myapp/web"
-  tags       = ["latest", "1.0.0"]
-}
+post-processors {
+  post-processor "docker-tag" {
+    repository = "registry.example.com/myapp/web"
+    tags       = ["latest", "1.0.0"]
+  }
 
-post-processor "docker-push" {
-  login          = true
-  login_server   = "registry.example.com"
-  login_username = "deploy"
-  login_password = "registry_password"
+  post-processor "docker-push" {
+    login          = true
+    login_server   = "registry.example.com"
+    login_username = "deploy"
+    login_password = "registry_password"
+  }
 }
 ```
 
@@ -223,7 +227,7 @@ Define variables for reusable templates:
 ```hcl
 variable "base_image" {
   type    = string
-  default = "redhat/ubi9:latest"
+  default = "registry.access.redhat.com/ubi9/ubi:latest"
 }
 
 variable "app_version" {
@@ -264,9 +268,9 @@ Pass variables at build time:
 packer build -var app_version=2.0.0 -var registry=docker.io/myorg docker-image.pkr.hcl
 ```
 
-## Multi-Stage Builds
+## Multi-Image Builds
 
-Build for multiple platforms from the same template:
+Build multiple images from the same template:
 
 ```hcl
 source "docker" "ubuntu" {
@@ -275,7 +279,7 @@ source "docker" "ubuntu" {
 }
 
 source "docker" "rhel" {
-  image  = "redhat/ubi9:latest"
+  image  = "registry.access.redhat.com/ubi9/ubi:latest"
   commit = true
 }
 
