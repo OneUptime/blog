@@ -8,7 +8,7 @@ Description: Learn how to create a minimal, self-contained rescue initramfs imag
 
 ---
 
-A rescue initramfs is a self-contained boot image that gives you a working environment even when the root filesystem is completely destroyed. RHEL generates one automatically during installation, but you can build custom rescue images tailored to your hardware and needs using dracut. A minimal image boots faster and fits on smaller media.
+A rescue initramfs is a self-contained boot image that can give you a working early-boot environment even when the root filesystem is unavailable, as long as the bootloader, kernel, and initramfs are still usable. RHEL generates one automatically during installation, but you can build custom rescue images tailored to your hardware and needs using dracut. A minimal image can boot faster and fits on smaller media.
 
 ## Standard vs Minimal Rescue Image
 
@@ -49,7 +49,7 @@ ls -lh /boot/initramfs-0-rescue-*.img
 A rescue image is only useful if it contains the tools you need. Configure what gets included:
 
 ```bash
-# Create a dracut config for the rescue image
+# Create a dracut config for future rescue image builds
 cat <<'EOF' | sudo tee /etc/dracut.conf.d/rescue-tools.conf
 # Tools to include in the rescue initramfs
 install_items+=" /usr/sbin/fsck /usr/sbin/fsck.xfs /usr/sbin/xfs_repair "
@@ -69,7 +69,6 @@ sudo dracut --force \
     --hostonly \
     --compress zstd \
     --add "rescue" \
-    --include /etc/dracut.conf.d/rescue-tools.conf /etc/dracut.conf.d/rescue-tools.conf \
     /boot/initramfs-rescue-custom.img \
     $(uname -r)
 
@@ -82,6 +81,9 @@ lsinitrd /boot/initramfs-rescue-custom.img | grep -E "fsck|lvm|vi|ip$"
 If you need network access from the rescue environment:
 
 ```bash
+# Install the network dracut module package if it is not already installed
+sudo dnf install -y dracut-network
+
 # Build a rescue image with network support
 sudo dracut --force \
     --hostonly \
@@ -123,9 +125,9 @@ sudo dracut --force \
     $(uname -r)
 
 # Create a bootable USB (replace /dev/sdX with your USB device)
-# WARNING: this will erase the USB drive
-# sudo dd if=/boot/vmlinuz-$(uname -r) of=/dev/sdX bs=4M
-# Then set up the USB with the kernel and initramfs using a bootloader
+# Do not write vmlinuz directly to the device with dd; a kernel file is not
+# a complete bootable disk image. Set up the USB with a bootloader, then copy
+# the kernel and initramfs to the boot filesystem.
 
 # A simpler approach: copy to an existing bootable USB
 sudo mount /dev/sdX1 /mnt
@@ -144,7 +146,7 @@ lsinitrd /boot/initramfs-rescue-custom.img
 lsinitrd /boot/initramfs-rescue-custom.img | grep -c "\.ko"
 echo "kernel modules included"
 
-lsinitrd /boot/initramfs-rescue-custom.img | grep -E "bin/(vi|grep|lvm|fsck)"
+lsinitrd /boot/initramfs-rescue-custom.img | grep -E "(usr/)?(s)?bin/(vi|grep|lvm|fsck)"
 echo "essential tools present"
 
 # Check total size
