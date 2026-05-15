@@ -26,6 +26,7 @@ fio --name=seq-read \
   --bs=1M \
   --numjobs=4 \
   --size=4G \
+  --time_based \
   --runtime=60 \
   --group_reporting \
   --filename=/mnt/test/fio-test
@@ -41,6 +42,7 @@ fio --name=seq-write \
   --bs=1M \
   --numjobs=4 \
   --size=4G \
+  --time_based \
   --runtime=60 \
   --group_reporting \
   --filename=/mnt/test/fio-test
@@ -57,6 +59,7 @@ fio --name=rand-read \
   --numjobs=8 \
   --iodepth=32 \
   --size=1G \
+  --time_based \
   --runtime=60 \
   --group_reporting \
   --filename=/mnt/test/fio-test
@@ -73,6 +76,7 @@ fio --name=rand-write \
   --numjobs=8 \
   --iodepth=32 \
   --size=1G \
+  --time_based \
   --runtime=60 \
   --group_reporting \
   --filename=/mnt/test/fio-test
@@ -90,6 +94,7 @@ fio --name=mixed \
   --numjobs=8 \
   --iodepth=32 \
   --size=1G \
+  --time_based \
   --runtime=60 \
   --group_reporting \
   --filename=/mnt/test/fio-test
@@ -104,4 +109,3 @@ fio --name=mixed \
 ## Conclusion
 
 fio on RHEL 9 provides comprehensive disk I/O benchmarking. Test sequential and random workloads that match your application patterns to make informed storage decisions.
-
