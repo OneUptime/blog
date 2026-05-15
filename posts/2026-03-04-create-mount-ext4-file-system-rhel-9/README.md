@@ -8,7 +8,7 @@ Description: Learn how to create, mount, and configure ext4 file systems on RHEL
 
 ---
 
-While XFS is the default filesystem on RHEL, ext4 remains widely used and fully supported. ext4 is a mature and reliable filesystem that offers features like online resizing (both growing and shrinking), journaling, and excellent compatibility. This guide covers creating and mounting ext4 filesystems on RHEL.
+While XFS is the default filesystem on RHEL, ext4 remains widely used and fully supported. ext4 is a mature and reliable filesystem that offers features like online growing, offline shrinking, journaling, and excellent compatibility. This guide covers creating and mounting ext4 filesystems on RHEL.
 
 ## Prerequisites
 
