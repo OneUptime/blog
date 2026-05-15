@@ -31,11 +31,16 @@ net.bridge.bridge-nf-call-ip6tables = 1
 net.ipv4.ip_forward = 1
 EOF
 sudo sysctl --system
+
+sudo setenforce 0
+sudo sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
 ```
 
 ## Install Container Runtime (containerd)
 
 ```bash
+sudo dnf install -y dnf-plugins-core
+sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
 sudo dnf install -y containerd.io
 sudo containerd config default | sudo tee /etc/containerd/config.toml
 sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
@@ -48,14 +53,15 @@ sudo systemctl enable --now containerd
 sudo tee /etc/yum.repos.d/kubernetes.repo <<EOF
 [kubernetes]
 name=Kubernetes
-baseurl=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/
+baseurl=https://pkgs.k8s.io/core:/stable:/v1.36/rpm/
 enabled=1
 gpgcheck=1
-gpgkey=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1.36/rpm/repodata/repomd.xml.key
+exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
 EOF
 
-sudo dnf install -y kubelet kubeadm kubectl
-sudo systemctl enable kubelet
+sudo dnf install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+sudo systemctl enable --now kubelet
 ```
 
 ## Initialize the Cluster
@@ -91,5 +97,4 @@ kubectl get pods -A
 
 ## Conclusion
 
-kubeadm on RHEL 9 provides a production-ready Kubernetes cluster. Add worker nodes, install a CNI plugin, and deploy your workloads using standard Kubernetes manifests.
-
+kubeadm on RHEL 9 provides a foundation for a Kubernetes cluster. Add worker nodes, install a CNI plugin, and deploy your workloads using standard Kubernetes manifests.
