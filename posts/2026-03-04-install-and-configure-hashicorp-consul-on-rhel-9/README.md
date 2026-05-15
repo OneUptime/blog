@@ -24,6 +24,7 @@ HashiCorp Consul provides service discovery, configuration management, and servi
 sudo dnf update -y
 
 # Add HashiCorp repository
+sudo dnf install -y yum-utils
 sudo dnf config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
 
 # Install Consul
@@ -36,34 +37,50 @@ Edit the configuration file to match your environment:
 
 ```bash
 # Open the configuration file
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/consul.d/consul.hcl
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Add a basic single-server configuration, then adjust the settings according to your requirements. Key parameters to configure include the datacenter, data directory, server mode, ACLs, TLS, gossip encryption, and logging options.
+
+```hcl
+datacenter = "dc1"
+data_dir = "/opt/consul"
+server = true
+bootstrap_expect = 1
+log_level = "INFO"
+```
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Validate the configuration before starting Consul
+sudo consul validate /etc/consul.d/
+
+# Restart the service to apply changes if Consul is already running
+sudo systemctl restart consul
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable consul
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start consul
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status consul
 ```
 
 ## Step 4: Configure the Firewall
 
 ```bash
-# Open the required port
-sudo firewall-cmd --permanent --add-port=<PORT>/tcp
+# Open the default Consul ports needed for a server agent
+sudo firewall-cmd --permanent --add-port=8300/tcp
+sudo firewall-cmd --permanent --add-port=8301/tcp
+sudo firewall-cmd --permanent --add-port=8301/udp
+sudo firewall-cmd --permanent --add-port=8500/tcp
+sudo firewall-cmd --permanent --add-port=8600/tcp
+sudo firewall-cmd --permanent --add-port=8600/udp
 sudo firewall-cmd --reload
 
 # Verify the rule
@@ -85,8 +102,8 @@ consul info
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u consul -e --no-pager`.
+- Ensure Consul is installed: `rpm -q consul`.
 
 ## Conclusion
 
