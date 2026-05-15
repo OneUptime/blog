@@ -15,6 +15,7 @@ This guide provides step-by-step instructions for completing this task on RHEL. 
 - RHEL with a valid subscription or CentOS Stream 9
 - Root or sudo access
 - A terminal session
+- Java 11 or Java 17
 
 ## Step 1: Install Required Packages
 
@@ -23,11 +24,24 @@ This guide provides step-by-step instructions for completing this task on RHEL. 
 
 sudo dnf update -y
 
-# Install the required packages
-sudo dnf install -y <package-name>
+# Install Java
+sudo dnf install -y java-17-openjdk
+
+# Add the Apache Cassandra RPM repository
+sudo tee /etc/yum.repos.d/cassandra.repo > /dev/null <<'EOF'
+[cassandra]
+name=Apache Cassandra
+baseurl=https://redhat.cassandra.apache.org/50x/
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://downloads.apache.org/cassandra/KEYS
+EOF
+
+# Install Apache Cassandra
+sudo dnf install -y cassandra
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+This repository installs the current Apache Cassandra 5.0 RPM packages. Use the repository path for the Cassandra release series you plan to run.
 
 ## Step 2: Configure the Service
 
@@ -35,34 +49,34 @@ Edit the configuration file to match your environment:
 
 ```bash
 # Open the configuration file
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/cassandra/default.conf/cassandra.yaml
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include `cluster_name`, seed nodes, `listen_address`, `rpc_address`, authentication settings, and logging options.
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart cassandra
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable cassandra
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start cassandra
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status cassandra
 ```
 
 ## Step 4: Configure the Firewall
 
 ```bash
-# Open the required port
-sudo firewall-cmd --permanent --add-port=<PORT>/tcp
+# Open the CQL native transport port for trusted clients
+sudo firewall-cmd --permanent --add-port=9042/tcp
 sudo firewall-cmd --reload
 
 # Verify the rule
@@ -76,16 +90,22 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status cassandra
+
+# Check the Cassandra node status
+nodetool status
+
+# Connect with the CQL shell
+cqlsh
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+sudo tail -n 20 /var/log/cassandra/system.log
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `sudo tail -n 100 /var/log/cassandra/system.log`.
+- Ensure all required packages are installed: `rpm -qa | grep cassandra`.
 
 ## Conclusion
 
