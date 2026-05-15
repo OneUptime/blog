@@ -16,13 +16,20 @@ lsof (list open files) shows every file descriptor a process has open, including
 - Root or sudo access
 - A terminal session
 
-## Step 2: Configure the Service
+## Step 1: Install lsof
+
+Install the lsof package if it is not already installed:
+
+```bash
+sudo dnf install lsof
+```
+
+## Step 2: Inspect Open Files and Sockets
 
 Use lsof to inspect open files and connections:
 
 ```bash
 # Show all open files for a process
-
 lsof -p <PID>
 
 # Show all network connections
@@ -35,40 +42,37 @@ lsof /var/log/messages
 lsof -u nginx
 
 # Show listening ports
-lsof -i -P -n | grep LISTEN
+lsof -iTCP -sTCP:LISTEN -P -n
 ```
 
-## Step 3: Enable and Start the Service
+## Step 3: Check lsof Output
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Confirm lsof is installed and available
+lsof -v
 
-# Start the service
-sudo systemctl start <service-name>
-
-# Check the status
-sudo systemctl status <service-name>
+# Check which process is listening on port 22
+lsof -iTCP:22 -sTCP:LISTEN -P -n
 ```
 
 
 ## Verification
 
-Confirm everything is working by checking the status and logs:
+Confirm lsof can list open files and sockets:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
+# List open files for the current shell
+lsof -p $$
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# List active network sockets without DNS or service-name lookups
+lsof -i -P -n
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If `lsof` is not found, install it with `sudo dnf install lsof`.
+- If expected processes are missing from the output, rerun the command with `sudo` so lsof can inspect processes owned by other users.
 
 ## Conclusion
 
-You have successfully completed the setup described in this guide. Remember to monitor the service and review logs regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
+You have successfully used lsof to inspect open files and sockets on RHEL. Remember to rerun lsof with `sudo` when you need a system-wide view and keep your RHEL system updated with the latest security patches.
