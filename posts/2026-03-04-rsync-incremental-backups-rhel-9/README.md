@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Rsync, Backup, Linux
 
-Description: Use rsync for efficient incremental backups on RHEL.
+Description: Use rsync for an efficient incrementally updated backup mirror on RHEL.
 
 ---
 
 ## Overview
 
-Use rsync for efficient incremental backups on RHEL. A solid backup strategy protects against data loss from hardware failures, human errors, and security incidents.
+Use rsync for an efficient incrementally updated backup mirror on RHEL. A solid backup strategy protects against data loss from hardware failures, human errors, and security incidents.
 
 ## Prerequisites
 
@@ -38,7 +38,7 @@ Using tar for a full backup:
 sudo tar czf /backups/full-backup-$(date +%Y%m%d).tar.gz --exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run --exclude=/tmp --exclude=/backups /
 ```
 
-Using rsync for incremental backup:
+Using rsync for an incrementally updated backup mirror:
 
 ```bash
 sudo rsync -aAXv --delete / /backups/latest/ --exclude={/proc,/sys,/dev,/run,/tmp,/backups}
@@ -57,7 +57,8 @@ Always verify that backups are readable:
 ```bash
 # For tar
 
-tar tzf /backups/full-backup-*.tar.gz | head -20
+latest_backup=$(ls -t /backups/full-backup-*.tar.gz | head -1)
+tar tzf "$latest_backup" | head -20
 
 # For rsync
 ls -la /backups/latest/
@@ -69,9 +70,11 @@ Periodically restore backups to a test environment to confirm they work:
 
 ```bash
 # Restore a single file from tar
-tar xzf /backups/full-backup-*.tar.gz -C /tmp/restore-test etc/hostname
+latest_backup=$(ls -t /backups/full-backup-*.tar.gz | head -1)
+mkdir -p /tmp/restore-test
+tar xzf "$latest_backup" -C /tmp/restore-test etc/hostname
 ```
 
 ## Summary
 
-You have learned how to use rsync for incremental backups. Remember the 3-2-1 rule: keep three copies of your data, on two different media types, with one copy stored off-site.
+You have learned how to use rsync for an incrementally updated backup mirror. Remember the 3-2-1 rule: keep three copies of your data, on two different media types, with one copy stored off-site.
