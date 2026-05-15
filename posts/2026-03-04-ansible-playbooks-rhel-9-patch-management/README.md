@@ -15,6 +15,7 @@ Write Ansible playbooks for automating RHEL patch management and security update
 ## Prerequisites
 
 - A RHEL system to serve as the Ansible control node
+- A Red Hat subscription attached to managed hosts
 - SSH access to managed hosts
 - Python 3 installed on managed hosts (included by default on RHEL)
 
@@ -32,7 +33,7 @@ ansible --version
 
 ## Step 2 - Configure Inventory
 
-Create `/etc/ansible/hosts` or a local inventory file:
+Create `/etc/ansible/hosts` or a local inventory file named `inventory.ini`:
 
 ```ini
 [webservers]
@@ -59,19 +60,13 @@ Create a playbook YAML file:
   hosts: all
   become: true
   tasks:
-    - name: Ensure packages are installed
+    - name: Apply available security updates
       ansible.builtin.dnf:
-        name:
-          - vim
-          - tmux
-          - htop
-        state: present
-
-    - name: Ensure services are running
-      ansible.builtin.systemd:
-        name: sshd
-        state: started
-        enabled: true
+        name: "*"
+        state: latest
+        security: true
+        update_only: true
+        update_cache: true
 ```
 
 ## Step 4 - Run the Playbook
@@ -89,7 +84,7 @@ ansible-playbook -i inventory.ini playbook.yml --check
 ## Step 5 - Verify Results
 
 ```bash
-ansible all -i inventory.ini -m command -a "rpm -q htop"
+ansible all -i inventory.ini -m command -a "dnf updateinfo list updates security"
 ```
 
 ## Summary
