@@ -8,7 +8,7 @@ Description: Learn how to install and use Docker Compose on RHEL to define and r
 
 ---
 
-Docker Compose allows you to define multi-container applications in a YAML file and manage them as a single unit. Docker Compose V2 is now a Docker CLI plugin and comes bundled with Docker CE.
+Docker Compose allows you to define multi-container applications in a YAML file and manage them as a single unit. Docker Compose V2 is now a Docker CLI plugin and is available on RHEL through the `docker-compose-plugin` package from Docker's RPM repository.
 
 ## Installing Docker Compose
 
@@ -19,7 +19,7 @@ If you installed Docker CE with the compose plugin, it is already available:
 
 docker compose version
 
-# If not installed, add the plugin
+# If not installed, add the plugin from Docker's RPM repository
 sudo dnf install -y docker-compose-plugin
 ```
 
