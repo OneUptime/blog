@@ -15,14 +15,12 @@ Envoy is a high-performance proxy designed for service mesh architectures. As a 
 ```bash
 # Download the official Envoy binary
 
-sudo dnf install -y yum-utils
-sudo rpm --import https://getenvoy.io/gpg
-sudo yum-config-manager --add-repo https://tetrate.bintray.com/getenvoy-rpm/centos/tetrate-getenvoy-rpm.repo
-
-# Alternatively, download the binary directly
-curl -L https://github.com/envoyproxy/envoy/releases/download/v1.28.0/envoy-1.28.0-linux-x86_64 \
-  -o /usr/local/bin/envoy
-sudo chmod +x /usr/local/bin/envoy
+sudo dnf install -y curl
+ENVOY_VERSION=1.38.0
+curl -L "https://github.com/envoyproxy/envoy/releases/download/v${ENVOY_VERSION}/envoy-${ENVOY_VERSION}-linux-x86_64" \
+  -o /tmp/envoy
+sudo install -m 0755 /tmp/envoy /usr/local/bin/envoy
+rm /tmp/envoy
 
 # Verify installation
 envoy --version
@@ -31,6 +29,10 @@ envoy --version
 ## Basic Sidecar Configuration
 
 Create a configuration file that proxies traffic to a local application:
+
+```bash
+sudo mkdir -p /etc/envoy
+```
 
 ```yaml
 # Save as /etc/envoy/envoy.yaml
@@ -103,7 +105,6 @@ SERVICE
 
 # Create envoy user and directories
 sudo useradd -r -s /sbin/nologin envoy
-sudo mkdir -p /etc/envoy
 sudo systemctl daemon-reload
 sudo systemctl enable --now envoy
 ```
