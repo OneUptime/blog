@@ -204,6 +204,20 @@ rules:
     resources: ["jobs", "cronjobs"]
     verbs: ["*"]
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: staging-deployer
+  namespace: staging
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: staging-deployer
+subjects:
+  - kind: ServiceAccount
+    name: staging-deployer
+    namespace: staging
+---
 # Production service account - strict permissions
 apiVersion: v1
 kind: ServiceAccount
@@ -225,6 +239,20 @@ rules:
   - apiGroups: [""]
     resources: ["services", "configmaps"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: production-deployer
+  namespace: production
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: production-deployer
+subjects:
+  - kind: ServiceAccount
+    name: production-deployer
+    namespace: production
 ```
 
 ## Step 5: Use OPA Gatekeeper for Dynamic Authorization
