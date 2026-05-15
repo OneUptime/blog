@@ -8,7 +8,7 @@ Description: Learn how to configure systemd-journald for persistent log storage 
 
 ---
 
-By default on RHEL, systemd-journald stores logs persistently in `/var/log/journal/`. However, understanding how to control storage behavior, set size limits, and configure rotation is important for keeping your system running smoothly. Without proper limits, journal logs can consume significant disk space over time.
+By default on RHEL, systemd-journald stores logs in `/run/log/journal/`, which is not persistent. However, understanding how to control storage behavior, set size limits, and configure rotation is important for keeping your system running smoothly. Without proper limits, journal logs can consume significant disk space over time.
 
 ## How journald Storage Works
 
@@ -29,11 +29,11 @@ journald has four storage modes:
 - **persistent** - Stores logs in `/var/log/journal/`, creating the directory if needed
 - **volatile** - Stores logs only in memory at `/run/log/journal/`
 - **auto** - Stores persistently if `/var/log/journal/` exists, otherwise volatile
-- **none** - Drops all logs
+- **none** - Drops all logs, although forwarding to other configured targets can still work
 
 ## Step 1: Enable Persistent Storage
 
-On RHEL, persistent storage is the default. To verify or explicitly enable it:
+On RHEL, persistent storage is not the default. To verify or explicitly enable it:
 
 ```bash
 # Check if the persistent journal directory exists
@@ -83,8 +83,7 @@ Storage=persistent
 # Default is 10% of the filesystem or 4G, whichever is smaller
 SystemMaxUse=2G
 
-# When journal exceeds this size, oldest entries are removed
-# This is the threshold that triggers cleanup
+# Minimum free disk space journald should leave for other uses
 SystemKeepFree=1G
 
 # Maximum size of individual journal files
@@ -102,10 +101,10 @@ Here is what each setting does:
 |---------|-------------|---------|
 | SystemMaxUse | Total max disk space for persistent logs | 10% of filesystem, max 4G |
 | SystemKeepFree | Minimum free disk space to maintain | 15% of filesystem, max 4G |
-| SystemMaxFileSize | Maximum size of a single journal file | 1/8 of SystemMaxUse |
+| SystemMaxFileSize | Maximum size of a single journal file | 1/8 of SystemMaxUse, capped at 128M |
 | SystemMaxFiles | Maximum number of journal files | 100 |
-| RuntimeMaxUse | Total max space for volatile logs | 10% of RAM, max 4G |
-| RuntimeKeepFree | Min free RAM to maintain for volatile logs | 15% of RAM, max 4G |
+| RuntimeMaxUse | Total max space for volatile logs | 10% of the runtime filesystem, max 4G |
+| RuntimeKeepFree | Min free space to maintain on the runtime filesystem | 15% of the runtime filesystem, max 4G |
 
 ## Step 3: Configure Time-Based Retention
 
