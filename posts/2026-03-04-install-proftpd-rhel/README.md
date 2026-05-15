@@ -15,7 +15,8 @@ ProFTPD is a feature-rich FTP server with an Apache-like configuration syntax. I
 ```bash
 # ProFTPD is available from EPEL
 
-sudo dnf install -y epel-release
+sudo subscription-manager repos --enable "codeready-builder-for-rhel-$(rpm -E %rhel)-$(arch)-rpms"
+sudo dnf install -y "https://dl.fedoraproject.org/pub/epel/epel-release-latest-$(rpm -E %rhel).noarch.rpm"
 sudo dnf install -y proftpd proftpd-utils
 ```
 
@@ -34,6 +35,8 @@ ServerType          standalone
 DefaultServer       on
 Port                21
 Umask               022
+User                nobody
+Group               nobody
 
 # Use system authentication
 AuthPAMConfig       proftpd
@@ -69,12 +72,12 @@ DisplayChdir        .message true
 
 # Restrict specific system users from FTP
 <Limit LOGIN>
-    DenyGroup root wheel
+    DenyGroup OR root,wheel
 </Limit>
 
 # Global settings
 <Global>
-    # Do not allow overwriting of files by default
+    # Allow overwriting of files
     AllowOverwrite  on
 
     # Allow resuming uploads
@@ -123,7 +126,8 @@ echo "/sbin/nologin" | sudo tee -a /etc/shells
 
 ```bash
 sudo mkdir -p /var/log/proftpd
-sudo chown proftpd:proftpd /var/log/proftpd
+sudo chown root:root /var/log/proftpd
+sudo chmod 750 /var/log/proftpd
 ```
 
 ## Start ProFTPD
@@ -150,9 +154,9 @@ sudo firewall-cmd --reload
 ## Configure SELinux
 
 ```bash
-# Allow FTP home directory access
-sudo setsebool -P ftp_home_dir 1
+# Allow FTP home directory access and passive mode ports
 sudo setsebool -P ftpd_full_access 1
+sudo setsebool -P ftpd_use_passive_mode 1
 ```
 
 ## Enable TLS
@@ -172,7 +176,7 @@ sudo tee -a /etc/proftpd.conf << 'TLSCONF'
     TLSEngine               on
     TLSLog                  /var/log/proftpd/tls.log
     TLSProtocol             TLSv1.2 TLSv1.3
-    TLSCipherSuite          HIGH:!aNULL:!MD5
+    TLSCipherSuite          PROFILE=SYSTEM
     TLSRSACertificateFile   /etc/pki/tls/certs/proftpd.crt
     TLSRSACertificateKeyFile /etc/pki/tls/private/proftpd.key
     TLSRequired             on
@@ -191,7 +195,7 @@ sudo systemctl restart proftpd
 ftp localhost
 
 # FTPS test with curl
-curl --ftp-ssl -k -u ftpuser:password ftp://localhost/
+curl --ssl-reqd -k -u ftpuser:password ftp://localhost/
 
 # FTPS test with lftp
 lftp -u ftpuser -e "set ftp:ssl-force true; set ssl:verify-certificate no; ls; quit" ftp://localhost
