@@ -18,7 +18,7 @@ Running a Pacemaker HA cluster on GCP requires a fence agent that can communicat
 sudo subscription-manager repos --enable=rhel-9-for-x86_64-highavailability-rpms
 
 # Install cluster packages
-sudo dnf install -y pcs pacemaker fence-agents-gce resource-agents-gcp
+sudo dnf install -y pcs pacemaker fence-agents-gce resource-agents-cloud
 ```
 
 ## Set Up the Cluster
@@ -41,7 +41,7 @@ sudo pcs cluster enable --all
 
 ## Configure the GCP Service Account
 
-The VMs need a service account with the Compute Instance Admin role. If you are using the default compute service account, verify it has the right permissions:
+The VMs need a service account with the Compute Admin and Compute Network Admin roles, or a custom role with the equivalent permissions needed to reset instances and update alias IP ranges. If you are using the default compute service account, verify it has the right permissions:
 
 ```bash
 # Check the service account attached to the VM
@@ -70,10 +70,18 @@ sudo pcs property set no-quorum-policy=ignore
 GCP does not support traditional floating IPs. Use an alias IP or an internal load balancer:
 
 ```bash
-# Assign an alias IP to the primary node's NIC
-gcloud compute instances network-interfaces update node1 \
-  --zone us-central1-a \
-  --aliases "10.128.0.100/32"
+# Create a Pacemaker-managed alias IP resource
+sudo pcs resource create aliasip gcp-vpc-move-vip \
+  alias_ip=10.128.0.100/32
+
+# Create the local IP resource for the node interface
+sudo pcs resource create vip IPaddr2 \
+  nic=eth0 \
+  ip=10.128.0.100 \
+  cidr_netmask=32
+
+# Keep both resources together during failover
+sudo pcs resource group add vipgrp aliasip vip
 ```
 
 ## Verify
@@ -86,4 +94,4 @@ sudo pcs status
 sudo pcs stonith show
 ```
 
-Test failover by stopping Pacemaker on one node and verifying that resources migrate to the other node and fencing triggers correctly.
+Test resource failover with `sudo pcs resource move vip <target-node>`, and test fencing separately with `sudo pcs stonith fence <node-name>` in a maintenance window.
