@@ -8,7 +8,7 @@ Description: Step-by-step guide to configuring 802.3ad LACP link aggregation on 
 
 ---
 
-802.3ad, also known as LACP (Link Aggregation Control Protocol), is the industry-standard way to aggregate multiple network links into one logical channel. Both the server and switch negotiate the aggregation dynamically, which means if one side has a misconfiguration, the link aggregation simply will not form. That built-in safety is one of the biggest advantages over static bonding modes.
+802.3ad mode uses LACP (Link Aggregation Control Protocol) to aggregate multiple network links into one logical channel. Both the server and switch negotiate the aggregation dynamically, which means if one side has a misconfiguration, the link aggregation simply will not form. That built-in safety is one of the biggest advantages over static bonding modes.
 
 ## Prerequisites
 
@@ -49,17 +49,20 @@ Key options explained:
 
 - **mode=802.3ad**: Enables LACP
 - **miimon=100**: Check link every 100ms
-- **lacp_rate=fast**: Send LACP PDUs every second instead of every 30 seconds. Use this for faster failover detection.
-- **xmit_hash_policy=layer3+4**: Hash on source/destination IP and port for better traffic distribution
+- **lacp_rate=fast**: Request that the link partner send LACP PDUs every second instead of every 30 seconds. Use this for faster LACP timeout detection.
+- **xmit_hash_policy=layer3+4**: Hash on source/destination IP and port for better traffic distribution. This policy is not fully 802.3ad compliant, so verify that your switch tolerates it before using it in production.
 
-## Step 2: Add Slaves
+## Step 2: Add Ports
 
 ```bash
-# Add first slave
-nmcli connection add type ethernet con-name bond0-slave1 ifname eth0 master bond0
+# Add first port
+nmcli connection add type ethernet port-type bond con-name bond0-port1 ifname eth0 controller bond0
 
-# Add second slave
-nmcli connection add type ethernet con-name bond0-slave2 ifname eth1 master bond0
+# Add second port
+nmcli connection add type ethernet port-type bond con-name bond0-port2 ifname eth1 controller bond0
+
+# Automatically activate ports when bond0 is activated
+nmcli connection modify bond0 connection.autoconnect-ports 1
 ```
 
 ## Step 3: Configure IP
@@ -91,8 +94,8 @@ cat /proc/net/bonding/bond0
 Look for these indicators in the output:
 
 - **Partner MAC address** should not be all zeros (00:00:00:00:00:00 means the switch is not responding with LACP)
-- **Aggregator ID** should be the same for all slaves
-- **MII Status** should be "up" for all slaves
+- **Aggregator ID** should be the same for all ports
+- **MII Status** should be "up" for all ports
 
 If the partner MAC is all zeros, the switch side is not configured for LACP on those ports.
 
@@ -103,7 +106,7 @@ The exact switch commands vary by vendor, but here is what you need on the switc
 1. Create a port-channel or LAG group
 2. Add the ports connected to your server NICs
 3. Set the port-channel mode to LACP (active or passive)
-4. Make sure the LACP rate matches (fast or slow)
+4. Optionally use a fast LACP rate if you want shorter LACP timeout detection
 
 For reference, on a Cisco-style switch it looks something like:
 
@@ -120,13 +123,13 @@ interface GigabitEthernet0/2
 
 ## Hash Policy Deep Dive
 
-The hash policy determines how outgoing traffic is distributed across slaves. Getting this right is important for actual load balancing:
+The hash policy determines how outgoing traffic is distributed across ports. Getting this right is important for actual load balancing:
 
-**layer2** (default): Hashes source and destination MAC addresses. If all your traffic goes to one router (one MAC), all traffic hits one slave. Not great.
+**layer2** (default): Hashes source and destination MAC addresses. If all your traffic goes to one router (one MAC), all traffic hits one port. Not great.
 
 **layer2+3**: Adds IP addresses to the hash. Better when traffic goes through a router to many destinations.
 
-**layer3+4**: Adds TCP/UDP ports to the hash. Best distribution for most workloads since even connections to the same IP get spread across slaves if they use different ports.
+**layer3+4**: Adds TCP/UDP ports to the hash. Best distribution for many workloads since even connections to the same IP get spread across ports if they use different ports, but it is not fully 802.3ad compliant.
 
 ```bash
 # Check current hash policy
@@ -139,28 +142,28 @@ nmcli connection down bond0 && nmcli connection up bond0
 
 ## Performance Considerations
 
-LACP aggregation increases available bandwidth, but a single TCP connection still uses only one slave (determined by the hash). You see the throughput benefit when:
+LACP aggregation increases available bandwidth, but a single TCP connection still uses only one port (determined by the hash). You see the throughput benefit when:
 
 - Multiple clients connect to the server simultaneously
 - The server handles many concurrent connections (web servers, databases)
-- You use the layer3+4 hash policy to spread traffic effectively
+- You choose a hash policy that matches the traffic pattern
 
 To verify traffic distribution:
 
 ```bash
-# Watch per-slave traffic counters
+# Watch per-port traffic counters
 watch -n 1 cat /proc/net/bonding/bond0
 
-# Check individual slave interface stats
+# Check individual port interface stats
 ip -s link show eth0
 ip -s link show eth1
 ```
 
 ## Troubleshooting
 
-**LACP not negotiating**: Verify the switch config. Check that both sides use the same LACP rate. Try setting the bond to `lacp_rate=slow` temporarily.
+**LACP not negotiating**: Verify the switch config. Check that the switch ports are in an LACP port-channel. Try setting the bond to `lacp_rate=slow` temporarily if the switch has trouble with fast LACP.
 
-**All traffic on one slave**: This is usually a hash policy issue. If all traffic goes to one gateway, the layer2 hash sends everything to the same slave. Switch to layer3+4.
+**All traffic on one port**: This is usually a hash policy issue. If all traffic goes to one gateway, the layer2 hash sends everything to the same port. Try `layer2+3` first, or `layer3+4` if you need port-based distribution and your switch tolerates it.
 
 ```bash
 # Check if LACP PDUs are being exchanged
@@ -178,18 +181,19 @@ ping -c 4 10.0.0.1
 ip neigh show dev bond0
 ```
 
-## Adding More Slaves
+## Adding More Ports
 
-You can add more slaves to an existing LACP bond (assuming the switch is configured for additional ports):
+You can add more ports to an existing LACP bond (assuming the switch is configured for additional ports):
 
 ```bash
-# Add a third slave
-nmcli connection add type ethernet con-name bond0-slave3 ifname eth2 master bond0
+# Add a third port
+nmcli connection add type ethernet port-type bond con-name bond0-port3 ifname eth2 controller bond0
 
-# The bond picks it up automatically
+# Bring up the new port and check the bond
+nmcli connection up bond0-port3
 cat /proc/net/bonding/bond0
 ```
 
 ## Summary
 
-802.3ad LACP is the right choice when you need both throughput and redundancy, and your switch supports it. Use `lacp_rate=fast` for quicker failover detection and `xmit_hash_policy=layer3+4` for the best traffic distribution. Always verify that LACP actually negotiated by checking the partner MAC address in the bond status. If it is all zeros, go check your switch config.
+802.3ad LACP is the right choice when you need both throughput and redundancy, and your switch supports it. Use `lacp_rate=fast` for quicker LACP timeout detection and `xmit_hash_policy=layer3+4` when you need better traffic distribution and your switch tolerates it. Always verify that LACP actually negotiated by checking the partner MAC address in the bond status. If it is all zeros, go check your switch config.
