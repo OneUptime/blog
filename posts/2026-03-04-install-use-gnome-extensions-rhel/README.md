@@ -18,7 +18,11 @@ GNOME Shell extensions add functionality to the RHEL desktop environment. They c
 sudo dnf install -y gnome-extensions-app gnome-shell-extension-common
 
 # Install the browser integration for installing extensions from the web
+# RHEL 10
 sudo dnf install -y gnome-browser-connector
+
+# RHEL 8 and RHEL 9
+sudo dnf install -y chrome-gnome-shell
 ```
 
 ## Install Extensions from Packages
@@ -31,7 +35,11 @@ dnf search gnome-shell-extension
 
 # Install common extensions
 # System monitor in the top bar
+# RHEL 10
 sudo dnf install -y gnome-shell-extension-system-monitor
+
+# RHEL 8 and RHEL 9
+sudo dnf install -y gnome-shell-extension-systemMonitor
 
 # Desktop icons
 sudo dnf install -y gnome-shell-extension-desktop-icons
@@ -115,7 +123,7 @@ gnome-extensions prefs extension-uuid@author
 # Install from extensions.gnome.org
 
 # GSConnect - Phone integration (like KDE Connect)
-sudo dnf install -y gnome-shell-extension-gsconnect
+# Install from extensions.gnome.org or from a third-party repository that provides it
 ```
 
 ## Troubleshooting
