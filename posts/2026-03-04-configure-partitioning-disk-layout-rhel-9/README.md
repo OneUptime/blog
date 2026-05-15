@@ -67,8 +67,8 @@ Swap sizing depends on your RAM and whether you need hibernation support (rare o
 |---|---|
 | 2 GB or less | 2x RAM |
 | 2 GB - 8 GB | Equal to RAM |
-| 8 GB - 64 GB | At least 4 GB |
-| 64 GB+ | At least 4 GB |
+| 8 GB - 64 GB | 4 GB to 0.5x RAM |
+| 64 GB+ | Workload dependent, at least 4 GB |
 
 For servers with large amounts of RAM (128 GB+), many sysadmins still allocate 4-8 GB of swap as a safety net. Running with zero swap is risky because the OOM killer becomes the only defense against memory exhaustion.
 
@@ -80,7 +80,7 @@ During the RHEL installation, click on "Installation Destination" to access disk
 
 Select your disk, choose "Automatic" under Storage Configuration, and click Done. Anaconda will create a reasonable layout using LVM. You can then click "Done" and review the automatic proposal.
 
-The automatic layout creates /boot, /, /home, and swap. It works fine for test systems but often does not separate /var, which is a problem for production servers.
+The automatic layout creates /boot, /, and swap, and it can create /home when enough disk space is available. It works fine for test systems but often does not separate /var, which is a problem for production servers.
 
 ### Option 2: Custom Partitioning
 
@@ -193,7 +193,7 @@ The /var directory holds system logs (/var/log), package caches (/var/cache), an
 
 ### Keep /boot Outside LVM
 
-The /boot partition must be a standard partition, not an LVM logical volume. GRUB needs to read kernels and initramfs images at boot time before LVM is available. RHEL expects /boot to be XFS or ext4 on a standard partition.
+The /boot partition must be a standard partition, not an LVM logical volume. Placing /boot on LVM is not supported by the RHEL installer. RHEL expects /boot to be XFS or ext4 on a standard partition.
 
 ### Leave Free Space in the Volume Group
 
@@ -201,14 +201,14 @@ Do not allocate every last gigabyte during installation. Leave 10-20% of your vo
 
 ### Use XFS as the Default Filesystem
 
-RHEL defaults to XFS and it is the recommended choice. XFS handles large files and high-throughput workloads well, supports online growth (no unmount needed), and is heavily tested by Red Hat. Only choose ext4 if you specifically need online shrink capability.
+RHEL defaults to XFS and it is the recommended choice. XFS handles large files and high-throughput workloads well, supports online growth (no unmount needed), and is heavily tested by Red Hat. Only choose ext4 if you specifically need shrink capability.
 
 ## Handling Multiple Disks
 
 If your server has multiple disks, you can either create separate volume groups per disk or span a single volume group across multiple disks.
 
 ```bash
-# Kickstart example: two disks, mirrored /boot, single VG across both
+# Kickstart example: two disks, boot files on sda, single VG across both
 clearpart --all --initlabel --drives=sda,sdb
 
 part /boot/efi --fstype="efi" --size=600 --ondisk=sda
