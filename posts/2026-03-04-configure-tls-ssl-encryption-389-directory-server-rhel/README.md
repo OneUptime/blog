@@ -26,7 +26,8 @@ openssl req -x509 -nodes -days 365 \
   -newkey rsa:2048 \
   -keyout /etc/dirsrv/slapd-localhost/server.key \
   -out /etc/dirsrv/slapd-localhost/server.crt \
-  -subj "/CN=ldap.example.com"
+  -subj "/CN=ldap.example.com" \
+  -addext "subjectAltName=DNS:ldap.example.com"
 ```
 
 ## Import Certificates into 389 DS NSS Database
@@ -37,18 +38,10 @@ openssl req -x509 -nodes -days 365 \
 # Stop the directory server instance
 dsctl localhost stop
 
-# Create a PKCS12 bundle from your cert and key
-openssl pkcs12 -export \
-  -in /etc/dirsrv/slapd-localhost/server.crt \
-  -inkey /etc/dirsrv/slapd-localhost/server.key \
-  -out /tmp/server.p12 \
-  -name "Server-Cert" \
-  -passout pass:changeit
-
-# Import the PKCS12 into the NSS database
-pk12util -i /tmp/server.p12 \
-  -d /etc/dirsrv/slapd-localhost \
-  -W changeit
+# Import the certificate and private key into the NSS database
+dsctl localhost tls import-server-key-cert \
+  /etc/dirsrv/slapd-localhost/server.crt \
+  /etc/dirsrv/slapd-localhost/server.key
 
 # Start the directory server
 dsctl localhost start
@@ -58,12 +51,16 @@ dsctl localhost start
 
 ```bash
 # Enable TLS security using dsconf
-dsconf localhost config replace nsslapd-security=on
+dsconf localhost config replace nsslapd-securePort=636 nsslapd-security=on
 
 # Set the RSA cipher configuration
 dsconf localhost security rsa set \
-  --tls-name "Server-Cert" \
-  --tls-minimum-version "TLS1.2"
+  --tls-allow-rsa-certificates on \
+  --nss-token "internal (software)" \
+  --nss-cert-name "Server-Cert"
+
+# Set the minimum TLS protocol version
+dsconf localhost security set --tls-protocol-min="TLS1.2"
 
 # Restart the instance to apply changes
 dsctl localhost restart
@@ -77,7 +74,7 @@ openssl s_client -connect ldap.example.com:636 -showcerts
 
 # Or use ldapsearch with STARTTLS on port 389
 ldapsearch -H ldap://ldap.example.com -ZZ \
-  -D "cn=Directory Manager" -W \
+  -D "cn=Directory Manager" -W -x \
   -b "dc=example,dc=com" "(uid=*)"
 ```
 
@@ -85,7 +82,7 @@ ldapsearch -H ldap://ldap.example.com -ZZ \
 
 ```bash
 # Allow LDAPS traffic through the firewall
-sudo firewall-cmd --permanent --add-service=ldaps
+sudo firewall-cmd --permanent --add-port=636/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -94,7 +91,7 @@ sudo firewall-cmd --reload
 ```bash
 # Require secure connections only
 dsconf localhost config replace nsslapd-require-secure-binds=on
-dsconf localhost restart
+dsctl localhost restart
 ```
 
 After this change, all clients must connect using LDAPS (port 636) or STARTTLS. Plaintext binds will be rejected.
