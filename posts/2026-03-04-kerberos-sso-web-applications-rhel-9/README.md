@@ -61,8 +61,11 @@ sudo ipa-getkeytab -s idm.example.com \
 ### For Active Directory
 
 ```bash
-# Using adcli
-sudo adcli add-service --domain=ad.example.com HTTP/web.example.com
+# Using adcli on a domain-joined host
+sudo adcli update --domain=ad.example.com \
+  --add-service-principal=HTTP/web.example.com \
+  --host-keytab=/etc/httpd/http.keytab \
+  --show-details
 
 # Or using msktutil
 kinit Administrator@AD.EXAMPLE.COM
@@ -155,9 +158,6 @@ sudo firewall-cmd --permanent --add-service=http
 sudo firewall-cmd --permanent --add-service=https
 sudo firewall-cmd --reload
 
-# Allow Apache to read the keytab (SELinux)
-sudo setsebool -P allow_httpd_mod_auth_pam on
-
 # If SELinux blocks access to the keytab, set the context
 sudo semanage fcontext -a -t httpd_keytab_t "/etc/httpd/http.keytab"
 sudo restorecon -v /etc/httpd/http.keytab
@@ -193,7 +193,8 @@ EOF
 ### Chrome/Chromium
 
 ```bash
-# Configure Chrome Kerberos delegation
+# Configure Google Chrome Kerberos delegation
+sudo mkdir -p /etc/opt/chrome/policies/managed
 sudo tee /etc/opt/chrome/policies/managed/kerberos.json << 'EOF'
 {
   "AuthServerAllowlist": "*.example.com",
