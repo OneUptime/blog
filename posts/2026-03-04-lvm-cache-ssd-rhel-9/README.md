@@ -22,7 +22,7 @@ graph LR
     F --> D
 ```
 
-LVM supports two caching modes:
+LVM supports two caching methods:
 - **dm-cache**: Full block-level caching with write-back or write-through support
 - **dm-writecache**: Write-focused caching that accelerates writes
 
@@ -30,7 +30,7 @@ LVM supports two caching modes:
 
 You need:
 - A volume group with the origin data on HDD
-- An SSD added to the same volume group (or a separate VG)
+- An SSD added to the same volume group
 
 ```bash
 # Set up the HDD-based volume group
@@ -77,6 +77,8 @@ sudo lvconvert --type cache     --cachepool cachevg/cache_data     cachevg/datal
 ## Choosing the Cache Mode
 
 ```bash
+# Use one of these instead of the attach command above.
+
 # Write-through (default, safer) - writes go to both cache and origin
 sudo lvconvert --type cache     --cachepool cachevg/cache_data     --cachemode writethrough     cachevg/datalv
 
@@ -124,4 +126,3 @@ sudo lvconvert --uncache cachevg/datalv
 ## Summary
 
 LVM cache on RHEL provides a transparent way to accelerate HDD storage with an SSD. Choose write-through mode for safety or write-back for maximum performance. Monitor cache hit rates to ensure the cache is sized appropriately for your workload.
-
