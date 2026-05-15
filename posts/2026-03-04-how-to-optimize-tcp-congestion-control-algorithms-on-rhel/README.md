@@ -24,8 +24,8 @@ sysctl net.ipv4.tcp_congestion_control
 ## Common Algorithms
 
 - **cubic**: Default on RHEL. Good for general-purpose use.
-- **bbr**: Developed by Google. Excels on high-bandwidth, high-latency links.
-- **reno**: The original TCP congestion control. Rarely optimal.
+- **bbr**: Developed by Google and supported in RHEL 8 and later. Excels on high-bandwidth, high-latency links.
+- **reno**: A classic loss-based TCP congestion control algorithm. Rarely optimal.
 
 ## Enabling BBR
 
