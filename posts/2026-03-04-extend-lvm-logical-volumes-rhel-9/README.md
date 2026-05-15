@@ -8,7 +8,7 @@ Description: Learn how to grow LVM logical volumes and their filesystems on RHEL
 
 ---
 
-One of the biggest advantages of LVM is the ability to extend volumes without unmounting them. Running low on space in `/var`? Add more storage to the volume group and grow the logical volume while applications keep running.
+One of the biggest advantages of LVM is the ability to extend volumes without unmounting them when the filesystem supports online growth. Running low on space in `/var`? Add more storage to the volume group and grow the logical volume while applications keep running.
 
 ## Extending a Logical Volume - The Process
 
@@ -62,7 +62,7 @@ After extending the LV, grow the filesystem to use the new space:
 sudo xfs_growfs /data
 
 # For ext4 filesystems (can be mounted or unmounted)
-sudo resize2fs /dev/datavg/applv
+sudo resize2fs /dev/datavg/datalv
 ```
 
 You can combine both steps with the `-r` flag:
@@ -72,7 +72,7 @@ You can combine both steps with the `-r` flag:
 sudo lvextend -L +10G -r /dev/datavg/datalv
 ```
 
-The `-r` flag automatically detects the filesystem type and runs the appropriate resize command.
+The `-r` flag uses `fsadm` to resize supported filesystems such as XFS and ext4.
 
 ## Adding a New Disk to the Volume Group
 
@@ -105,7 +105,7 @@ df -h /data
 sudo xfs_info /data
 
 # For ext4, check filesystem details
-sudo tune2fs -l /dev/datavg/applv | grep "Block count"
+sudo tune2fs -l /dev/datavg/datalv | grep "Block count"
 ```
 
 ## Extending the Root Volume
@@ -125,5 +125,4 @@ df -h /
 
 ## Summary
 
-Extending LVM volumes on RHEL is an online operation that does not require downtime. The key steps are verifying free space in the volume group, extending the logical volume, and then growing the filesystem. Use the `-r` flag with `lvextend` to handle both steps at once.
-
+Extending LVM volumes on RHEL is an online operation that does not require downtime when the filesystem supports online growth. The key steps are verifying free space in the volume group, extending the logical volume, and then growing the filesystem. Use the `-r` flag with `lvextend` to handle both steps at once.
