@@ -59,7 +59,7 @@ Here's a well-commented configuration with the settings you'll most commonly adj
 
 ```bash
 # Use Red Hat's NTP pool (default on RHEL)
-# The "iburst" option sends 4 requests in quick succession at startup
+# The "iburst" option sends a burst of 4-8 requests at startup
 # for faster initial synchronization
 pool 2.rhel.pool.ntp.org iburst
 
@@ -128,7 +128,7 @@ If your internal NTP servers are also Chrony servers, you can set them up to ser
 allow 10.0.0.0/8
 
 # Serve time even when not synchronized to an external source
-# (useful if this server has a GPS clock or other reference)
+# (useful in an isolated network; use a refclock for GPS or other hardware references)
 local stratum 10
 ```
 
@@ -151,7 +151,7 @@ The output columns mean:
 | Column | Meaning |
 |--------|---------|
 | M | Mode: ^ = server, = = peer, # = local clock |
-| S | State: * = current best, + = combined, - = not combined, ? = unreachable |
+| S | State: * = current best, + = combined, - = not combined, x = falseticker, ~ = too variable, ? = unreachable/not selectable |
 | Name | Source hostname or IP |
 | Stratum | NTP stratum of the source |
 | Poll | Polling interval (log2 seconds) |
@@ -221,11 +221,11 @@ Verify it's working:
 
 ```bash
 # Check if hardware timestamping is active
-chronyc sources -v
-# Look for "HW" in the source mode column
+chronyc ntpdata
+# Look for "TX timestamping : Hardware" and "RX timestamping : Hardware"
 ```
 
-Hardware timestamping is most useful in environments where microsecond-level accuracy matters, like financial trading systems or certain distributed databases.
+Hardware timestamping is most useful in environments where microsecond-level accuracy matters, like financial trading systems or certain distributed databases. For best results, both the NTP client and server should use hardware timestamping, and local-network deployments should use a shorter polling interval and interleaved mode (`xleave`).
 
 ## Monitoring Time Synchronization
 
@@ -324,7 +324,7 @@ sudo chronyc makestep
 # Test connectivity to the NTP server
 ping pool.ntp.org
 
-# Check if UDP 123 is open
+# If this host serves time, check whether chronyd is listening on UDP 123
 sudo ss -ulnp | grep 123
 ```
 
