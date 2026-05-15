@@ -46,7 +46,7 @@ RateLimitIntervalSec=30s
 RateLimitBurst=1000
 ```
 
-With these settings, each service can log up to 1000 messages every 30 seconds. After that, journald suppresses additional messages and logs a notice like:
+With these settings, each service has a base limit of 1000 messages every 30 seconds. The effective burst limit can be higher because journald multiplies `RateLimitBurst` by a factor based on available free space for the journal. After the effective limit is reached, journald suppresses additional messages and logs a notice like:
 
 ```bash
 Suppressed 4523 messages from myapp.service
@@ -111,29 +111,30 @@ Storage=persistent
 SystemMaxUse=2G
 
 # Minimum free disk space to leave on the filesystem
-# If free space drops below this, oldest logs are removed
+# If free space drops below this, oldest archived logs are removed
 # Default: 15% of filesystem, capped at 4G
 SystemKeepFree=1G
 
 # Maximum size of individual journal files
 # Smaller files allow more granular cleanup
-# Default: 1/8 of SystemMaxUse
+# Default: 1/8 of SystemMaxUse, capped at 128M
 SystemMaxFileSize=128M
 
 # Maximum number of journal files to retain
 # Default: 100
 SystemMaxFiles=50
 
-# ---- Runtime (Memory) Storage Quotas ----
+# ---- Runtime (Volatile) Storage Quotas ----
 
-# Maximum RAM usage for volatile logs
-# Default: 10% of RAM, capped at 4G
+# Maximum filesystem space for volatile logs under /run/log/journal
+# Default: 10% of the runtime filesystem, capped at 4G
 RuntimeMaxUse=200M
 
-# Minimum free RAM to maintain
+# Minimum free space to maintain on the runtime filesystem
 RuntimeKeepFree=100M
 
 # Maximum size of individual runtime journal files
+# Default: 1/8 of RuntimeMaxUse, capped at 128M
 RuntimeMaxFileSize=50M
 ```
 
@@ -169,7 +170,7 @@ journalctl --grep="Suppressed" --no-pager -n 20
 graph TD
     A[New log entry arrives] --> B{SystemMaxUse exceeded?}
     B -->|No| C{SystemKeepFree violated?}
-    B -->|Yes| D[Remove oldest journal files]
+    B -->|Yes| D[Remove oldest archived journal files]
     C -->|No| E[Write log entry]
     C -->|Yes| D
     D --> F{Enough space now?}
@@ -180,25 +181,25 @@ graph TD
 
 The quotas work together:
 
-1. `SystemMaxUse` sets the hard ceiling on total journal size
-2. `SystemKeepFree` ensures the filesystem always has breathing room
+1. `SystemMaxUse` sets the target ceiling on total journal size
+2. `SystemKeepFree` limits new journal growth so the filesystem keeps breathing room
 3. `SystemMaxFileSize` controls the granularity of cleanup (smaller files mean more precise cleanup)
-4. `SystemMaxFiles` provides an absolute cap on file count
+4. `SystemMaxFiles` limits how many archived journal files are retained
 
-journald uses whichever limit is reached first.
+journald uses whichever limit is reached first. Only archived journal files are deleted during cleanup, so active journal files can temporarily leave actual usage above the configured limits.
 
 ## Step 5: Manual Cleanup Commands
 
 When you need to free space immediately:
 
 ```bash
-# Remove journal entries older than 14 days
+# Remove archived journal files older than 14 days
 sudo journalctl --vacuum-time=14d
 
-# Reduce journal to a maximum of 500MB
+# Reduce archived journal files to a maximum of 500MB
 sudo journalctl --vacuum-size=500M
 
-# Keep only the 10 most recent journal files
+# Keep only the 10 most recent archived journal files
 sudo journalctl --vacuum-files=10
 
 # Rotate current journal file first, then vacuum
@@ -215,8 +216,8 @@ Create a script that generates log flood and observe rate limiting:
 # /tmp/test-rate-limit.sh
 # Generate a burst of log messages to test rate limiting
 
-echo "Sending 2000 log messages..."
-for i in $(seq 1 2000); do
+echo "Sending 12000 log messages..."
+for i in $(seq 1 12000); do
     logger -t ratetest "Test message number $i"
 done
 echo "Done. Check for suppression notices."
