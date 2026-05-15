@@ -45,7 +45,7 @@ sudo tuned-adm profile throughput-performance
 sudo tuned-adm profile latency-performance
 ```
 
-**network-latency** - Extends latency-performance with network-specific tuning like disabling transparent huge pages and tuning socket buffers:
+**network-latency** - Extends latency-performance with network-specific tuning like disabling transparent huge pages and tuning network-related sysctl parameters:
 
 ```bash
 sudo tuned-adm profile network-latency
@@ -53,7 +53,7 @@ sudo tuned-adm profile network-latency
 
 ### Network Profiles
 
-**network-throughput** - Maximizes network throughput by increasing buffer sizes:
+**network-throughput** - Tunes streaming network throughput by increasing kernel network buffers, generally for older CPUs or 40G+ networks:
 
 ```bash
 sudo tuned-adm profile network-throughput
@@ -133,7 +133,7 @@ Check transparent huge pages setting:
 cat /sys/kernel/mm/transparent_hugepage/enabled
 ```
 
-Check disk scheduler:
+Check the disk scheduler for your block device, replacing `sda` if your device has a different name:
 
 ```bash
 cat /sys/block/sda/queue/scheduler
@@ -151,4 +151,4 @@ cat /etc/tuned/active_profile
 
 ## Conclusion
 
-Selecting the right TuneD profile is one of the easiest performance wins on RHEL. Match your profile to your workload: use `throughput-performance` for servers, `latency-performance` for real-time workloads, and `virtual-guest` for VMs.
+Selecting the right TuneD profile is one of the easiest performance wins on RHEL. Match your profile to your workload: use `throughput-performance` for servers, `latency-performance` for latency-sensitive workloads, and `virtual-guest` for VMs.
