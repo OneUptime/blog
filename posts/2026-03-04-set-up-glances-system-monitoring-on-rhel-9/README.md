@@ -16,34 +16,64 @@ Setting up Glances System Monitoring on RHEL requires proper planning and config
 - Root or sudo access
 - A terminal session
 
-## Step 2: Configure the Service
+## Step 1: Install Glances
 
-Edit the configuration file to match your environment:
+Enable EPEL, then install the Glances package:
 
 ```bash
-# Open the configuration file
+# On RHEL 9
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 
-sudo vi /etc/<service>/config.conf
+# On CentOS Stream 9
+sudo dnf config-manager --set-enabled crb
+sudo dnf install -y epel-release epel-next-release
+
+# Install Glances
+sudo dnf install -y glances
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+## Step 2: Configure the Service
+
+Create a systemd service to run Glances in web server mode:
+
+```bash
+# Create the service file
+sudo vi /etc/systemd/system/glances.service
+```
+
+Add the following unit definition:
+
+```ini
+[Unit]
+Description=Glances system monitoring
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/glances -w
+Restart=always
+RemainAfterExit=no
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Adjust `/etc/glances/glances.conf` if you need custom thresholds, plugin settings, or password settings.
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl daemon-reload
+sudo systemctl restart glances.service
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
-
-# Start the service
-sudo systemctl start <service-name>
+sudo systemctl enable --now glances.service
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status glances.service
 ```
 
 
@@ -53,16 +83,20 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status glances.service
+
+# Check the local web interface
+curl http://127.0.0.1:61208/
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u glances.service --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u glances.service -e --no-pager`.
+- Ensure the Glances package is installed: `rpm -q glances`.
+- If you need browser access from another host, allow the default web port with `sudo firewall-cmd --permanent --add-port=61208/tcp && sudo firewall-cmd --reload`.
 
 ## Conclusion
 
