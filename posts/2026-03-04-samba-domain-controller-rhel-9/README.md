@@ -20,10 +20,11 @@ Note: Red Hat does not officially support Samba as an AD DC on RHEL. For product
 - A static IP address
 - A valid hostname matching the intended domain
 - Samba built with AD DC support (may require compilation from source or third-party packages)
+- DNS tools such as `bind-utils` for verification commands
 
 ## Step 1 - Install Samba AD DC Packages
 
-The RHEL Samba packages may not include AD DC functionality. You may need to install from source:
+Red Hat does not provide supported RHEL packages for running Samba as an AD DC. Use Samba built with AD DC support from source or a trusted third-party repository. Install local tools and build dependencies as needed:
 
 ```bash
 # Install build dependencies
@@ -33,8 +34,8 @@ sudo dnf install -y gcc make python3-devel gnutls-devel libacl-devel \
     libattr-devel jansson-devel libtirpc-devel rpcsvc-proto-devel \
     docbook-style-xsl gpgme-devel python3-gpg lmdb-devel
 
-# Install standard Samba packages
-sudo dnf install -y samba samba-client samba-dc krb5-workstation
+# Install client and verification tools from RHEL repositories
+sudo dnf install -y samba-client krb5-workstation bind-utils
 ```
 
 ## Step 2 - Set the Hostname
@@ -53,7 +54,9 @@ Remove any existing smb.conf before provisioning:
 
 ```bash
 # Back up and remove existing config
-sudo mv /etc/samba/smb.conf /etc/samba/smb.conf.bak
+if [ -f /etc/samba/smb.conf ]; then
+    sudo mv /etc/samba/smb.conf /etc/samba/smb.conf.bak
+fi
 
 # Provision the domain
 sudo samba-tool domain provision \
@@ -73,7 +76,7 @@ The provision command creates:
 
 ## Step 4 - Configure Kerberos
 
-The provisioning creates a krb5.conf. Copy it:
+The provisioning creates a krb5.conf. Copy the file from the path shown in the provision output. For packaged builds, it is commonly under `/var/lib/samba/private`; for source builds, it is commonly under `/usr/local/samba/private`:
 
 ```bash
 # Copy the generated Kerberos config
@@ -82,18 +85,20 @@ sudo cp /var/lib/samba/private/krb5.conf /etc/krb5.conf
 
 ## Step 5 - Start the Samba DC Service
 
-The Samba DC runs as a single `samba` process, not the separate smbd/nmbd services:
+The Samba DC is started by the `samba` AD DC daemon, which manages the required `smbd` and `winbindd` subprocesses. Do not run the standalone smbd/nmbd/winbind services separately for the DC role. This example assumes your AD-DC-capable build provides or you have created a `samba-ad-dc` systemd unit:
 
 ```bash
 # Disable standard Samba services
 sudo systemctl disable --now smb nmb winbind
 
-# Start the Samba DC service
-sudo systemctl enable --now samba
+# Start the Samba AD DC service
+sudo systemctl enable --now samba-ad-dc
 
 # Check status
-sudo systemctl status samba
+sudo systemctl status samba-ad-dc
 ```
+
+If your package provider uses a different systemd unit name, use the service file provided with that AD-DC-capable Samba build.
 
 ## Step 6 - Verify the Domain Controller
 
@@ -130,14 +135,24 @@ graph TD
 
 ```bash
 # Open required ports for AD DC
-sudo firewall-cmd --permanent --add-service=samba
-sudo firewall-cmd --permanent --add-service=samba-dc
-sudo firewall-cmd --permanent --add-service=dns
-sudo firewall-cmd --permanent --add-service=kerberos
-sudo firewall-cmd --permanent --add-service=ldap
-sudo firewall-cmd --permanent --add-service=ldaps
-sudo firewall-cmd --permanent --add-port=3268/tcp  # Global Catalog
-sudo firewall-cmd --permanent --add-port=3269/tcp  # Global Catalog SSL
+for port in \
+    53/tcp 53/udp \
+    88/tcp 88/udp \
+    135/tcp \
+    137/udp 138/udp 139/tcp \
+    389/tcp 389/udp \
+    445/tcp \
+    464/tcp 464/udp \
+    636/tcp \
+    3268/tcp 3269/tcp \
+    49152-65535/tcp
+do
+    sudo firewall-cmd --permanent --add-port="$port"
+done
+
+# Optional if the DC also provides NTP
+sudo firewall-cmd --permanent --add-port=123/udp
+
 sudo firewall-cmd --reload
 ```
 
@@ -174,6 +189,8 @@ On a Windows machine:
 5. Restart the computer
 
 ## Creating File Shares on the DC
+
+The Samba team recommends using a domain member as the file server. If this is a single-DC lab and you still create shares on the DC, set the final permissions from Windows ACL tools rather than relying on POSIX ACLs alone.
 
 ```ini
 # Add shares to smb.conf (after the auto-generated DC sections)
@@ -233,7 +250,7 @@ sudo samba-tool drs showrepl
 sudo samba-tool dbcheck
 
 # View Samba logs
-journalctl -u samba
+journalctl -u samba-ad-dc
 sudo tail -f /var/log/samba/log.samba
 ```
 
