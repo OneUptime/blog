@@ -31,7 +31,7 @@ sudo systemctl enable --now sysstat
 
 ## How sysstat Collects Data
 
-The sysstat service runs a cron job (via systemd timer) every 10 minutes to collect system activity data. Data files are stored in `/var/log/sa/`:
+The sysstat service enables systemd timers that collect system activity data every 10 minutes. Data files are stored in `/var/log/sa/`:
 
 ```bash
 ls /var/log/sa/
@@ -67,7 +67,7 @@ View memory usage:
 sar -r
 ```
 
-This shows free memory, used memory, buffers, cached memory, and swap usage.
+This shows free memory, available memory, used memory, buffers, and cached memory.
 
 View swap usage specifically:
 
@@ -86,10 +86,10 @@ sar -d
 View specific device activity:
 
 ```bash
-sar -d -p
+sar -d --dev=sda
 ```
 
-The `-p` flag shows device names instead of device numbers.
+Replace `sda` with the device name you want to inspect.
 
 ## Monitoring Network Usage
 
