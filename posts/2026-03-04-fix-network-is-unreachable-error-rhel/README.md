@@ -21,8 +21,12 @@ ip link show
 ip link show ens192
 # Look for "state UP" in the output
 
+# Find the NetworkManager connection profile name for the interface
+nmcli -f NAME,DEVICE connection show --active
+
 # If the interface is down, bring it up
-sudo nmcli connection up ens192
+# Replace "System ens192" with the profile name from the previous command
+sudo nmcli connection up "System ens192"
 ```
 
 ## Step 2: Check IP Address Configuration
@@ -32,10 +36,11 @@ sudo nmcli connection up ens192
 ip addr show
 
 # If no IP is assigned, check DHCP or static configuration
-sudo nmcli connection show ens192 | grep ipv4
+# Replace "System ens192" with your NetworkManager connection profile name
+sudo nmcli connection show "System ens192" | grep ipv4
 
 # Request a new DHCP lease if needed
-sudo nmcli connection down ens192 && sudo nmcli connection up ens192
+sudo nmcli connection down "System ens192" && sudo nmcli connection up "System ens192"
 ```
 
 ## Step 3: Check the Routing Table
@@ -52,8 +57,9 @@ ip route show default
 sudo ip route add default via 192.168.1.1 dev ens192
 
 # Make it persistent through NetworkManager
-sudo nmcli connection modify ens192 ipv4.gateway 192.168.1.1
-sudo nmcli connection up ens192
+# Replace "System ens192" with your NetworkManager connection profile name
+sudo nmcli connection modify "System ens192" ipv4.gateway 192.168.1.1
+sudo nmcli connection up "System ens192"
 ```
 
 ## Step 4: Test Connectivity Layer by Layer
