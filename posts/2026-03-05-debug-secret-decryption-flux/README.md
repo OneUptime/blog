@@ -177,7 +177,7 @@ kubectl get secret sops-keys -n flux-system \
 
 ### Missing decryption block in Kustomization
 
-If the `decryption` block is missing entirely, SOPS files will be applied as-is with encrypted values:
+If the `decryption` block is missing entirely, reconciliation fails when Flux detects a SOPS-encrypted Secret:
 
 ```yaml
 # This is wrong - no decryption configured
