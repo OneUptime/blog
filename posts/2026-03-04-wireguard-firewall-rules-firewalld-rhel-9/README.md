@@ -170,14 +170,14 @@ You might see WireGuard configs that use PostUp and PostDown to manage firewall 
 
 **PostUp/PostDown approach** (in wg0.conf):
 ```ini
-PostUp = firewall-cmd --add-port=51820/udp; firewall-cmd --add-masquerade
-PostDown = firewall-cmd --remove-port=51820/udp; firewall-cmd --remove-masquerade
+PostUp = firewall-cmd --add-port=51820/udp; firewall-cmd --zone=public --add-masquerade
+PostDown = firewall-cmd --remove-port=51820/udp; firewall-cmd --zone=public --remove-masquerade
 ```
 
 **Permanent firewalld rules** (recommended):
 ```bash
 sudo firewall-cmd --permanent --add-port=51820/udp
-sudo firewall-cmd --permanent --add-masquerade
+sudo firewall-cmd --permanent --zone=public --add-masquerade
 ```
 
 I prefer permanent rules because they survive firewalld reloads and are easier to audit. PostUp/PostDown adds rules to the runtime config only, so a `firewall-cmd --reload` from another process would wipe them out.
@@ -189,7 +189,7 @@ I prefer permanent rules because they survive firewalld reloads and are easier t
 sudo firewall-cmd --list-all-zones | grep -A 20 "vpn\|public\|trusted"
 
 # Verify masquerading
-sudo iptables -t nat -L POSTROUTING -n -v 2>/dev/null || sudo nft list table ip firewalld
+sudo iptables -t nat -L POSTROUTING -n -v 2>/dev/null || sudo nft list table inet firewalld || sudo nft list table ip firewalld
 
 # Check forwarding policies
 sudo firewall-cmd --get-policies
