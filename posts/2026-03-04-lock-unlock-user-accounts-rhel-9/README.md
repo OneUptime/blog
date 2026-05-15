@@ -60,8 +60,8 @@ The difference between `passwd -l` and `usermod -L` is mostly a matter of prefer
 This is a stronger lock. Setting the account expiration date to a date in the past makes the account completely unusable.
 
 ```bash
-# Expire the account immediately (set expiry to epoch day 0)
-sudo chage -E 0 jsmith
+# Expire the account immediately (set expiry to a date in the past)
+sudo chage -E 1 jsmith
 ```
 
 To un-expire:
@@ -71,7 +71,7 @@ To un-expire:
 sudo chage -E -1 jsmith
 ```
 
-The value `0` sets the expiry to January 1, 1970 (day zero of the epoch). The value `-1` removes the expiry entirely.
+The value `1` sets the expiry to January 2, 1970, which is safely in the past. Avoid using `0` for account expiration because some tools interpret it as either no expiration or January 1, 1970. The value `-1` removes the expiry entirely.
 
 **What this does:**
 - Blocks ALL authentication methods, including SSH keys
@@ -111,7 +111,7 @@ Here is a quick comparison:
 |--------|---------------------|----------------|-----------|----------------|
 | `passwd -l` | Yes | No | No | No |
 | `usermod -L` | Yes | No | No | No |
-| `chage -E 0` | Yes | Yes | Yes | Yes |
+| `chage -E 1` | Yes | Yes | Yes | Yes |
 | `nologin` shell | Yes (interactive) | Yes (interactive) | Yes | No |
 
 ```mermaid
@@ -119,10 +119,10 @@ flowchart TD
     A[Need to disable a user?] --> B{Temporary or permanent?}
     B -->|Temporary| C{SSH keys in use?}
     C -->|No| D[passwd -l]
-    C -->|Yes| E[chage -E 0]
+    C -->|Yes| E[chage -E 1]
     B -->|Permanent| F{Delete account?}
     F -->|Yes| G[userdel]
-    F -->|No| H[chage -E 0 + nologin shell]
+    F -->|No| H[chage -E 1 + nologin shell]
 ```
 
 ## Checking if an Account is Locked
@@ -133,7 +133,7 @@ You need to verify the lock status, not just trust that you ran the command. Her
 
 ```bash
 # Look at the shadow entry - a '!' or '!!' prefix means locked
-sudo grep jsmith /etc/shadow
+sudo grep '^jsmith:' /etc/shadow
 ```
 
 If you see `jsmith:!!:...` or `jsmith:!$6$...`, the password is locked. The `!!` means no password was ever set (and it is locked). The `!` before a hash means a password exists but is locked.
@@ -162,16 +162,16 @@ Here is a quick script that checks everything:
 
 ```bash
 # Comprehensive account lock status check
-USER="jsmith"
+ACCOUNT="jsmith"
 
 echo "=== Password Status ==="
-sudo passwd -S $USER
+sudo passwd -S "$ACCOUNT"
 
 echo "=== Account Expiry ==="
-sudo chage -l $USER | grep "Account expires"
+sudo chage -l "$ACCOUNT" | grep "Account expires"
 
 echo "=== Login Shell ==="
-getent passwd $USER | cut -d: -f7
+getent passwd "$ACCOUNT" | cut -d: -f7
 ```
 
 The `passwd -S` output shows the account status in the second field:
@@ -187,7 +187,7 @@ If you need to lock several accounts at once, for example during a security inci
 # Lock multiple accounts from a list
 for user in jsmith bwilson kpatel; do
     sudo passwd -l "$user"
-    sudo chage -E 0 "$user"
+    sudo chage -E 1 "$user"
     echo "Locked: $user"
 done
 ```
@@ -212,21 +212,21 @@ If you want to be thorough:
 ```bash
 # Lock the account AND terminate active sessions
 sudo passwd -l jsmith
-sudo chage -E 0 jsmith
+sudo chage -E 1 jsmith
 sudo pkill -u jsmith
 ```
 
 ## Service Accounts
 
-Service accounts (like `apache`, `postgres`, `nginx`) should always have their shell set to `/sbin/nologin`. If you find a service account with a real shell, fix it:
+Service accounts (like `apache`, `postgres`, `nginx`) should usually have their shell set to `/sbin/nologin` unless the package documentation says otherwise. If you find a service account with an interactive shell, review it:
 
 ```bash
-# Find service accounts with real shells (UIDs below 1000)
-awk -F: '$3 < 1000 && $7 != "/sbin/nologin" && $7 != "/bin/false" {print $1, $7}' /etc/passwd
+# Find service accounts with interactive shells (UIDs below 1000)
+awk -F: '$3 > 0 && $3 < 1000 && $7 !~ /(nologin|false|sync|shutdown|halt)$/ {print $1, $7}' /etc/passwd
 ```
 
-The only system account that should have a real shell is `root`.
+The only system account that should normally have an interactive shell is `root`; a few special-purpose system accounts may use command shells such as `/bin/sync`, `/sbin/shutdown`, or `/sbin/halt`.
 
 ## Wrapping Up
 
-For quick, temporary lockouts where the user only authenticates with passwords, `passwd -l` works fine. For anything serious, like a terminated employee or a suspected compromise, use `chage -E 0` combined with setting the shell to `/sbin/nologin`. Always verify the lock with `passwd -S` and `chage -l`, and do not forget to kill active sessions. The worst thing is locking an account and finding out the user was still logged in via an SSH key the whole time.
+For quick, temporary lockouts where the user only authenticates with passwords, `passwd -l` works fine. For anything serious, like a terminated employee or a suspected compromise, use `chage -E 1` combined with setting the shell to `/sbin/nologin`. Always verify the lock with `passwd -S` and `chage -l`, and do not forget to kill active sessions. The worst thing is locking an account and finding out the user was still logged in via an SSH key the whole time.
