@@ -63,7 +63,7 @@ for SRC in $SOURCES; do
   DIR_NAME=$(echo "$SRC" | tr '/' '_')
   rsync -az --delete \
     --bwlimit=10000 \
-    -e "ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no" \
+    -e "ssh -i ${SSH_KEY} -o BatchMode=yes" \
     "${SRC}/" \
     "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/${DIR_NAME}/" \
     2>> "$LOG"
@@ -82,21 +82,20 @@ On the remote server, restrict what the backup key can do:
 # On backup-server.example.com, edit the authorized_keys file
 # Prefix the key with a command restriction:
 cat >> /home/backupuser/.ssh/authorized_keys << 'AUTH'
-command="rrsync /backup/",no-agent-forwarding,no-port-forwarding,no-pty ssh-ed25519 AAAAC3... backup@source-server
+command="/usr/bin/rrsync /backup/",no-agent-forwarding,no-port-forwarding,no-pty ssh-ed25519 AAAAC3... backup@source-server
 AUTH
 ```
 
 Install rrsync (restricted rsync):
 
 ```bash
-# rrsync is included with rsync
-sudo cp /usr/share/doc/rsync/support/rrsync /usr/local/bin/
-sudo chmod 755 /usr/local/bin/rrsync
+# On current RHEL releases, rrsync is packaged separately
+sudo dnf install rsync-rrsync
 ```
 
 ## Scheduling the Remote Backup
 
 ```bash
 # Add to root crontab
-echo '30 2 * * * /usr/local/bin/remote-backup.sh' | sudo tee -a /var/spool/cron/root
+(sudo crontab -l 2>/dev/null; echo '30 2 * * * /usr/local/bin/remote-backup.sh') | sudo crontab -
 ```
