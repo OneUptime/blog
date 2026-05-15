@@ -31,18 +31,17 @@ flowchart TD
     A[sysinit.target] --> B[basic.target]
     B --> C[multi-user.target]
     C --> D[graphical.target]
-    A --> E[emergency.target]
-    B --> F[rescue.target]
+    A --> F[rescue.target]
+    E[emergency.target]
 ```
 
 ## Checking the Current and Default Target
 
 ```bash
-# See what target the system is currently running
-
+# See the default boot target
 systemctl get-default
 
-# Check the active target
+# Check the currently active targets
 systemctl list-units --type=target --state=active
 ```
 
@@ -137,7 +136,7 @@ linux ($root)/vmlinuz-5.14.0-... root=/dev/mapper/rhel-root ... systemd.unit=res
 
 ### What Rescue Mode Gives You
 
-- Root filesystem mounted read-write
+- Local filesystems mounted, including the root filesystem according to the system's normal mount configuration
 - No networking
 - No multi-user services
 - Root shell after password authentication
