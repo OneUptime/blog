@@ -120,7 +120,7 @@ ip neigh show
 ip neigh show dev ens192
 
 # Add a static ARP entry
-sudo ip neigh add 192.168.1.50 lladdr 00:11:22:33:44:55 dev ens192
+sudo ip neigh add 192.168.1.50 lladdr 00:11:22:33:44:55 dev ens192 nud permanent
 
 # Delete a neighbor entry
 sudo ip neigh del 192.168.1.50 dev ens192
@@ -233,8 +233,8 @@ ip route get 10.0.0.50
 **Check for duplicate addresses:**
 
 ```bash
-# Look for "tentative" flags on IPv6 addresses
-ip -6 addr show | grep tentative
+# Look for "dadfailed" flags on IPv6 addresses
+ip -6 addr show | grep dadfailed
 ```
 
 **Check interface errors and drops:**
@@ -250,7 +250,7 @@ ip -s link show dev ens192
 |-------------|-------------|
 | `ifconfig` | `ip addr show` |
 | `ifconfig eth0 up` | `ip link set eth0 up` |
-| `ifconfig eth0 192.168.1.10` | `ip addr add 192.168.1.10/24 dev eth0` |
+| `ifconfig eth0 192.168.1.10 netmask 255.255.255.0` | `ip addr add 192.168.1.10/24 dev eth0` |
 | `route -n` | `ip route show` |
 | `route add default gw 192.168.1.1` | `ip route add default via 192.168.1.1` |
 | `arp -n` | `ip neigh show` |
