@@ -179,8 +179,8 @@ sudo authselect check
 If files have been modified outside of authselect, you will see warnings. To fix them:
 
 ```bash
-# Restore files to match the current profile
-sudo authselect apply-changes
+# Re-select the intended profile and features to overwrite manual changes
+sudo authselect select sssd with-faillock with-silent-lastlog --force
 ```
 
 ## Backing Up and Restoring
@@ -189,7 +189,7 @@ Before making changes, create a backup:
 
 ```bash
 # Back up the current authentication configuration
-sudo authselect backup my-backup-$(date +%Y%m%d)
+sudo authselect apply-changes --backup=my-backup-$(date +%Y%m%d)
 
 # List available backups
 sudo authselect backup-list
@@ -209,7 +209,9 @@ sudo dnf install sssd sssd-ad realmd oddjob oddjob-mkhomedir -y
 # Join the domain
 sudo realm join ad.example.com
 
-# Configure authselect with the right features
+# If realm join did not already apply the features you need, preserve the
+# current profile choice and add the required features
+sudo authselect current
 sudo authselect select sssd with-mkhomedir with-faillock with-pamaccess --force
 
 # Verify the configuration
@@ -236,8 +238,8 @@ The `authselect-compat` package provides wrapper scripts that translate old auth
 # Check for modifications
 sudo authselect check
 
-# If the output shows modified files, and you want to revert
-sudo authselect apply-changes
+# If the output shows modified files, re-select the intended profile and features
+sudo authselect select sssd with-faillock with-silent-lastlog --force
 ```
 
 ### Features are not taking effect
