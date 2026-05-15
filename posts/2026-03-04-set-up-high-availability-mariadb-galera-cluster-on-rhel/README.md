@@ -8,7 +8,7 @@ Description: Set up a multi-master MariaDB Galera Cluster on RHEL for synchronou
 
 ---
 
-MariaDB Galera Cluster provides synchronous multi-master replication, meaning every node can accept both reads and writes. When a node fails, the remaining nodes continue serving traffic without any manual intervention.
+MariaDB Galera Cluster provides synchronous multi-master replication, meaning every node can accept both reads and writes. When a node fails, the remaining nodes continue serving traffic as long as they retain quorum.
 
 This guide covers setting up a three-node Galera Cluster on RHEL 9.
 
@@ -18,9 +18,6 @@ This guide covers setting up a three-node Galera Cluster on RHEL 9.
 # Install MariaDB server and Galera packages on all three nodes
 
 sudo dnf install -y mariadb-server mariadb-server-galera galera
-
-# Run the security script on each node
-sudo mysql_secure_installation
 ```
 
 ## Configure the First Node (Bootstrap Node)
@@ -59,6 +56,9 @@ innodb_doublewrite=1
 # On node1 only, bootstrap the cluster
 sudo galera_new_cluster
 
+# Run the security script on node1 before adding other nodes
+sudo mariadb-secure-installation
+
 # Verify the cluster size
 mysql -u root -p -e "SHOW STATUS LIKE 'wsrep_cluster_size';"
 # Expected output: wsrep_cluster_size = 1
@@ -83,6 +83,7 @@ mysql -u root -p -e "SHOW STATUS LIKE 'wsrep_cluster_size';"
 # Galera requires these ports on all nodes
 sudo firewall-cmd --permanent --add-port=3306/tcp   # MySQL client connections
 sudo firewall-cmd --permanent --add-port=4567/tcp   # Galera cluster replication
+sudo firewall-cmd --permanent --add-port=4567/udp   # Galera cluster replication
 sudo firewall-cmd --permanent --add-port=4568/tcp   # Incremental State Transfer
 sudo firewall-cmd --permanent --add-port=4444/tcp   # State Snapshot Transfer
 sudo firewall-cmd --reload
@@ -110,4 +111,4 @@ SHOW STATUS LIKE 'wsrep_ready';
 "
 ```
 
-A healthy cluster shows `wsrep_cluster_status = Primary`, `wsrep_connected = ON`, and `wsrep_ready = ON`. If a node goes down, the cluster continues operating and the node automatically resyncs when it comes back.
+A healthy cluster shows `wsrep_cluster_status = Primary`, `wsrep_connected = ON`, and `wsrep_ready = ON`. If a node goes down and the remaining nodes retain quorum, the cluster continues operating and the node automatically resyncs when it comes back.
