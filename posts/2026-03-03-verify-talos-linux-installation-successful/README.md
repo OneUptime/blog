@@ -39,7 +39,7 @@ Every Talos node runs a set of core services. Check that they are all healthy:
 
 ```bash
 # Check services on a control plane node
-talosctl services --nodes 192.168.1.101
+talosctl service --nodes 192.168.1.101
 
 # Expected output for a healthy control plane node:
 # SERVICE        STATE     HEALTH   LAST EVENT
@@ -56,7 +56,7 @@ On worker nodes, you will not see `etcd` since workers do not run etcd.
 
 ```bash
 # Check services on a worker node
-talosctl services --nodes 192.168.1.110
+talosctl service --nodes 192.168.1.110
 
 # Expected output for a healthy worker node:
 # SERVICE        STATE     HEALTH   LAST EVENT
@@ -83,10 +83,14 @@ Time synchronization is critical, especially for etcd. Verify NTP is working:
 # Check time on all nodes
 talosctl time --nodes 192.168.1.101,192.168.1.102,192.168.1.103
 
-# The output shows each node's time and the NTP server it is syncing with
+# The output shows each node's current server time
 ```
 
-If time is significantly off (more than a few seconds), etcd will have problems. Verify your NTP servers are reachable.
+If time is significantly off (more than a few seconds), etcd will have problems. Verify your NTP servers are reachable. You can also compare a node against a specific NTP server:
+
+```bash
+talosctl time --nodes 192.168.1.101 --check pool.ntp.org
+```
 
 ### Verify the Machine Configuration
 
@@ -106,13 +110,16 @@ Verify that Talos installed to the disk correctly:
 
 ```bash
 # View disk information
-talosctl disks --nodes 192.168.1.101
+talosctl get disks --nodes 192.168.1.101
+
+# View discovered partitions and volumes
+talosctl get discoveredvolumes --nodes 192.168.1.101
 
 # Check mounts
 talosctl mounts --nodes 192.168.1.101
 ```
 
-You should see the expected partitions: EFI, BOOT, META, STATE, and EPHEMERAL.
+You should see the expected system volumes and partitions, such as EFI, META, STATE, and EPHEMERAL. Depending on the Talos version and firmware mode, discovered volumes may also show BOOT or BIOS partitions.
 
 ## Layer 2: etcd Verification
 
