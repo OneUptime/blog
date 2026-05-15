@@ -37,20 +37,20 @@ flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/fl
 # List all configured remotes
 flatpak remotes
 
-# View details about the Flathub remote
-flatpak remote-info --list flathub | head -20
-
 # Check the repository URL
+flatpak remotes --columns=name,url | grep flathub
+
+# List available applications from Flathub
 flatpak remote-ls flathub --columns=application | head -20
 ```
 
 ## Install GNOME Software Integration
 
-For a graphical experience, install the GNOME Software Flatpak plugin.
+For a graphical experience, install GNOME Software and Flatpak support.
 
 ```bash
-# Install the plugin
-sudo dnf install -y gnome-software-plugin-flatpak
+# Ensure GNOME Software and Flatpak support are installed
+sudo dnf install -y gnome-software flatpak
 
 # Restart GNOME Software to detect the new source
 # Close and reopen GNOME Software from the Activities menu
@@ -65,7 +65,7 @@ After this, Flathub applications appear alongside RPM packages in the GNOME Soft
 flatpak search --remote=flathub "text editor"
 
 # Install popular applications
-# Visual Studio Code (OSS)
+# Visual Studio Code
 flatpak install -y flathub com.visualstudio.code
 
 # GIMP image editor
@@ -92,11 +92,12 @@ sudo flatpak remote-modify --disable flathub
 # Re-enable it
 sudo flatpak remote-modify --enable flathub
 
-# Set a subset filter to only allow specific applications
+# Set a local filter to only allow specific applications
 # Create a filter file
 sudo mkdir -p /etc/flatpak/remotes.d
 sudo tee /etc/flatpak/remotes.d/flathub.filter > /dev/null << 'EOF'
 # Only allow specific applications
+allow runtime/*
 allow org.mozilla.firefox
 allow org.videolan.VLC
 allow org.gimp.GIMP
@@ -111,22 +112,22 @@ sudo flatpak remote-modify --filter=/etc/flatpak/remotes.d/flathub.filter flathu
 
 ```bash
 # If you need to remove Flathub
-# First, uninstall all applications from Flathub
-flatpak uninstall --all
+# First, uninstall any applications you installed from Flathub
+flatpak uninstall com.slack.Slack
 
 # Then remove the remote
-sudo flatpak remote-delete flathub
+sudo flatpak remote-delete --force flathub
 ```
 
 ## Keep Applications Updated
 
 ```bash
-# Update all Flatpak applications from Flathub
+# Update all Flatpak applications
 flatpak update
 
-# Set up automatic updates via systemd timer
-systemctl --user enable flatpak-update.timer 2>/dev/null || \
-  echo "Create a custom timer for automatic updates"
+# GNOME Software can manage automatic Flatpak updates from Update Preferences.
+# For command-line automation, create a custom systemd timer that runs:
+flatpak update -y --noninteractive
 ```
 
 Flathub combined with Flatpak gives RHEL users access to a wide ecosystem of up-to-date desktop applications while maintaining the stability and security of the base RHEL system.
