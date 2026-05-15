@@ -56,7 +56,7 @@ upgrade_type = security
 # Actually apply the updates (not just download)
 apply_updates = yes
 
-# How to handle package manager confirmations
+# Download updates before applying them
 download_updates = yes
 
 # Random sleep before running (0 to 3600 seconds)
@@ -89,19 +89,19 @@ dnf-automatic uses a systemd timer, not cron. There are actually several timer o
 
 ```bash
 # Available timers:
-# dnf-automatic.timer           - download and apply (runs at 6am)
+# dnf-automatic.timer           - use the behavior from /etc/dnf/automatic.conf
 # dnf-automatic-download.timer  - download only
 # dnf-automatic-install.timer   - download and install
 # dnf-automatic-notifyonly.timer - check and notify only
 
-# Enable the main timer for automatic security updates
-systemctl enable --now dnf-automatic.timer
+# Enable the install timer for automatic security updates
+systemctl enable --now dnf-automatic-install.timer
 
 # Verify the timer is active
-systemctl status dnf-automatic.timer
+systemctl status dnf-automatic-install.timer
 
 # Check when it will next run
-systemctl list-timers dnf-automatic.timer
+systemctl list-timers dnf-automatic-install.timer
 ```
 
 ## Customize the Timer Schedule
@@ -110,9 +110,9 @@ By default, dnf-automatic runs daily at 6:00 AM with a random delay. You can cus
 
 ```bash
 # Create an override for the timer
-mkdir -p /etc/systemd/system/dnf-automatic.timer.d/
+mkdir -p /etc/systemd/system/dnf-automatic-install.timer.d/
 
-cat > /etc/systemd/system/dnf-automatic.timer.d/override.conf << 'EOF'
+cat > /etc/systemd/system/dnf-automatic-install.timer.d/override.conf << 'EOF'
 [Timer]
 # Clear the default schedule
 OnCalendar=
@@ -126,7 +126,7 @@ EOF
 systemctl daemon-reload
 
 # Verify the new schedule
-systemctl list-timers dnf-automatic.timer
+systemctl list-timers dnf-automatic-install.timer
 ```
 
 ## Set Up Email Notifications
@@ -154,7 +154,7 @@ Some packages should not be updated automatically because they need testing firs
 # excludepkgs = kernel* postgresql* mysql*
 
 # Or set them in the main dnf config
-echo "exclude=kernel* postgresql*" >> /etc/dnf/dnf.conf
+echo "excludepkgs=kernel* postgresql*" >> /etc/dnf/dnf.conf
 ```
 
 ## Monitor Update Activity
@@ -193,7 +193,7 @@ Security updates sometimes include kernel patches that require a reboot. You can
 
 ```bash
 # Check if a reboot is needed
-needs-restarting -r
+dnf needs-restarting --reboothint
 echo $?
 # Exit code 0 = no reboot needed
 # Exit code 1 = reboot needed
@@ -201,7 +201,7 @@ echo $?
 # Automate reboot checks with a cron job
 cat > /etc/cron.daily/check-reboot << 'SCRIPT'
 #!/bin/bash
-if ! needs-restarting -r > /dev/null 2>&1; then
+if ! dnf needs-restarting --reboothint > /dev/null 2>&1; then
     echo "Reboot required on $(hostname)" | mail -s "Reboot needed" root
 fi
 SCRIPT
@@ -212,7 +212,7 @@ For environments where unplanned reboots are acceptable, you can add an automati
 
 ```bash
 # Add this to the reboot check script (use with caution)
-# if ! needs-restarting -r > /dev/null 2>&1; then
+# if ! dnf needs-restarting --reboothint > /dev/null 2>&1; then
 #     /usr/sbin/shutdown -r +5 "Automatic reboot for kernel security update"
 # fi
 ```
