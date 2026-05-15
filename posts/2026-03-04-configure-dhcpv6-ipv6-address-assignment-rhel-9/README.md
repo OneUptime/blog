@@ -18,7 +18,7 @@ flowchart TD
     A --> C[Stateless DHCPv6]
     A --> D[Stateful DHCPv6]
     B --> E["Client auto-generates address from prefix + MAC/random"]
-    C --> F["SLAAC for address, DHCPv6 for DNS/NTP options"]
+    C --> F["SLAAC for address, DHCPv6 for DNS/SNTP options"]
     D --> G["DHCPv6 assigns address AND options, like IPv4 DHCP"]
 ```
 
@@ -36,7 +36,7 @@ The DHCPv6 server is part of the same package as DHCPv4:
 dnf install dhcp-server -y
 ```
 
-The daemon for IPv6 is `dhcpd6`, which uses the configuration file `/etc/dhcp/dhcpd6.conf`.
+The IPv6 systemd service is `dhcpd6`, which runs `dhcpd` in IPv6 mode and uses the configuration file `/etc/dhcp/dhcpd6.conf`.
 
 ## Configuring Stateful DHCPv6
 
@@ -58,7 +58,7 @@ option dhcp6.name-servers 2001:db8::10, 2001:4860:4860::8888;
 # Domain search list
 option dhcp6.domain-search "example.com";
 
-# NTP server
+# SNTP server
 option dhcp6.sntp-servers 2001:db8::10;
 
 # Subnet declaration
@@ -155,7 +155,7 @@ interface eth1 {
     # M flag off - clients use SLAAC for addresses
     AdvManagedFlag off;
 
-    # O flag on - clients use DHCPv6 for DNS, NTP, etc.
+    # O flag on - clients use DHCPv6 for DNS, SNTP, etc.
     AdvOtherConfigFlag on;
 
     prefix 2001:db8::/64 {
@@ -276,7 +276,7 @@ radvdump
 **Client ignoring DHCPv6:** Some clients need explicit configuration to use DHCPv6. On RHEL clients:
 
 ```bash
-nmcli connection modify "System eth0" ipv6.method dhcp
+nmcli connection modify "System eth0" ipv6.method auto
 nmcli connection up "System eth0"
 ```
 
