@@ -8,7 +8,7 @@ Description: Learn how to configure systemd-resolved for Local DNS Caching on RH
 
 ---
 
-systemd-resolved provides local DNS caching and resolution management integraRHELth the systemd init system. On RHEL, it can serve as a local caching stRHELolver that speeds up repeated DNS lookups.
+systemd-resolved provides local DNS caching and resolution management integrated with the systemd init system. On RHEL, it can serve as a local caching stub resolver that speeds up repeated DNS lookups.
 
 ## Prerequisites
 
@@ -18,6 +18,7 @@ systemd-resolved provides local DNS caching and resolution management integraRHE
 ## Step 1: Enable systemd-resolved
 
 ```bash
+sudo dnf install -y systemd-resolved
 sudo systemctl enable --now systemd-resolved
 ```
 
@@ -39,6 +40,21 @@ CacheFromLocalhost=no
 ```
 
 ## Step 3: Link resolv.conf
+
+On RHEL systems that use NetworkManager, configure NetworkManager to use systemd-resolved:
+
+```bash
+sudo vi /etc/NetworkManager/NetworkManager.conf
+```
+
+```ini
+[main]
+dns=systemd-resolved
+```
+
+```bash
+sudo systemctl reload NetworkManager
+```
 
 ```bash
 sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
@@ -75,7 +91,7 @@ resolvectl flush-caches
 
 ## Step 8: Per-Interface Configuration
 
-Configure different DNS servers for different network interfaces:
+Configure different DNS servers for different network interfaces. These `resolvectl` commands set runtime per-interface DNS configuration:
 
 ```bash
 resolvectl dns eth0 10.0.0.1
@@ -84,5 +100,4 @@ resolvectl domain eth0 internal.company.com
 
 ## Conclusion
 
-systemd-resolved provides transparent DNS caching on RHEL with support for DNSSEC and DNS-over-TLS. It integrates naturally with NetworkManager and systemd, making it a convenient choice for workstations and servers that benefit from reduced DNS latency.
-RHEL
+systemd-resolved provides transparent DNS caching on RHEL with support for DNSSEC and DNS-over-TLS. It integrates naturally with NetworkManager and systemd, making it a convenient choice for workstations and servers that benefit from reduced DNS latency. On RHEL 8 and RHEL 9, Red Hat provides systemd-resolved as an unsupported Technology Preview, so avoid using it for production workloads on those releases.
