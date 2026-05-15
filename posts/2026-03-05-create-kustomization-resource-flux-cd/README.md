@@ -19,7 +19,7 @@ The Kustomization resource uses the API version `kustomize.toolkit.fluxcd.io/v1`
 Before you begin, make sure you have the following in place:
 
 - A Kubernetes cluster with Flux CD installed
-- A GitRepository or OCIRepository source already configured
+- A GitRepository, OCIRepository, or Bucket source already configured
 - `kubectl` configured to access your cluster
 - The Flux CLI installed (optional but helpful)
 
