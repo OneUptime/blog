@@ -19,7 +19,7 @@ mount | grep gfs2
 df -h /mnt/gfs2
 
 # Check GFS2-specific information
-sudo gfs2_tool df /mnt/gfs2
+sudo tunegfs2 -l /dev/vg_shared/lv_gfs2
 
 # View lock information
 sudo dlm_tool ls
@@ -35,7 +35,7 @@ When adding a new node to the cluster, you need an additional journal:
 sudo gfs2_jadd -j 1 /mnt/gfs2
 
 # Verify the journal count
-sudo tunegfs2 -l /dev/vg_shared/lv_gfs2 | grep journals
+sudo gfs2_edit -p journals /dev/vg_shared/lv_gfs2
 ```
 
 ## Growing a GFS2 File System
@@ -57,7 +57,7 @@ GFS2 does not support online fsck. You must unmount the filesystem on all nodes 
 
 ```bash
 # Stop the filesystem resource on all nodes
-sudo pcs resource disable gfs2-fs-clone
+sudo pcs resource disable --wait=120 gfs2-fs-clone
 
 # Run the filesystem check
 sudo fsck.gfs2 -y /dev/vg_shared/lv_gfs2
@@ -73,7 +73,7 @@ sudo pcs resource enable gfs2-fs-clone
 cat /sys/kernel/debug/gfs2/mycluster:gfs2data/glstats | head -20
 
 # Look for processes stuck waiting on GFS2 locks
-cat /sys/kernel/debug/gfs2/mycluster:gfs2data/glocks | grep -c "Waiting"
+cat /sys/kernel/debug/gfs2/mycluster:gfs2data/glocks | grep -c '^ H:.* f:.*W'
 
 # Check DLM status
 sudo dlm_tool status
@@ -97,13 +97,13 @@ sudo tunegfs2 -l /dev/vg_shared/lv_gfs2 | grep "Lock Table"
 
 ## Withdrawing and Recovering a Node
 
-If a node's GFS2 instance withdraws (enters read-only due to I/O errors):
+If a node's GFS2 instance withdraws (the file system becomes unavailable after GFS2 detects an inconsistency):
 
 ```bash
 # Check for withdraw messages
 sudo dmesg | grep "GFS2.*withdraw"
 
-# The node needs to be fenced or the filesystem unmounted and remounted
+# Stop applications, then unmount and remount the filesystem to replay journals
 sudo umount /mnt/gfs2
 sudo mount /dev/vg_shared/lv_gfs2 /mnt/gfs2
 ```
