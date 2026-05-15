@@ -15,15 +15,15 @@ SR-IOV allows a single physical network adapter to present multiple virtual func
 ```bash
 # Verify the NIC supports SR-IOV
 
-lspci -v | grep -A10 "Ethernet" | grep "SR-IOV"
+lspci -v | grep -i "Single Root I/O Virtualization"
 
 # Check if IOMMU is enabled (required for VF passthrough)
-dmesg | grep -i iommu
-# Should show: DMAR: IOMMU enabled
+dmesg | grep -Ei "DMAR|IOMMU|AMD-Vi"
+# Intel systems commonly show DMAR messages; AMD systems commonly show AMD-Vi/IOMMU messages.
 
 # If IOMMU is not enabled, add it to the kernel command line
-sudo grubby --update-kernel=ALL --args="intel_iommu=on"
-# For AMD: sudo grubby --update-kernel=ALL --args="amd_iommu=on"
+sudo grubby --update-kernel=ALL --args="intel_iommu=on iommu=pt"
+# For AMD on current RHEL releases: sudo grubby --update-kernel=ALL --args="iommu=pt"
 sudo reboot
 ```
 
@@ -107,11 +107,12 @@ virsh nodedev-list | grep pci | grep 03_10
 
 # Create a device XML for the VF
 cat > /tmp/vf-device.xml << 'XML'
-<hostdev mode='subsystem' type='pci' managed='yes'>
+<interface type='hostdev' managed='yes'>
   <source>
-    <address domain='0x0000' bus='0x03' slot='0x10' function='0x0'/>
+    <address type='pci' domain='0x0000' bus='0x03' slot='0x10' function='0x0'/>
   </source>
-</hostdev>
+  <mac address='00:11:22:33:44:55'/>
+</interface>
 XML
 
 # Attach the VF to a running VM
