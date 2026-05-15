@@ -15,7 +15,7 @@ Composer is the standard dependency manager for PHP projects. It handles package
 ```bash
 # Make sure PHP CLI is installed
 
-sudo dnf install -y php-cli php-zip php-mbstring php-xml unzip
+sudo dnf install -y php-cli php-zip php-mbstring php-xml unzip curl
 
 # Download the Composer installer
 php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
@@ -26,7 +26,7 @@ ACTUAL_HASH="$(php -r "echo hash_file('sha384', 'composer-setup.php');")"
 
 if [ "$EXPECTED_HASH" = "$ACTUAL_HASH" ]; then
     echo "Installer verified"
-    php composer-setup.php --install-dir=/usr/local/bin --filename=composer
+    sudo php composer-setup.php --install-dir=/usr/local/bin --filename=composer
 else
     echo "Installer corrupt"
     rm composer-setup.php
@@ -73,11 +73,12 @@ composer update
 require_once __DIR__ . '/vendor/autoload.php';
 
 use Monolog\Logger;
+use Monolog\Level;
 use Monolog\Handler\StreamHandler;
 
 // Create a logger instance
 $log = new Logger('app');
-$log->pushHandler(new StreamHandler('/var/log/myapp.log', Logger::INFO));
+$log->pushHandler(new StreamHandler('/var/log/myapp.log', Level::Info));
 
 $log->info('Application started');
 $log->error('Something went wrong', ['context' => 'example']);
@@ -105,10 +106,10 @@ phpcs --version
 
 ```bash
 # Self-update Composer
-sudo composer self-update
+sudo -H composer self-update
 
 # Roll back to previous version if needed
-sudo composer self-update --rollback
+sudo -H composer self-update --rollback
 ```
 
 Always commit `composer.lock` to version control so all team members use the exact same dependency versions.
