@@ -4,24 +4,23 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SAP, Business One, HANA, Configuration, Linux
 
-Description: Configure RHEL to host SAP Business One with SAP HANA, including OS preparation, required packages, and system tuning for the B1 platform.
+Description: Prepare RHEL for SAP HANA workloads used with SAP Business One environments, including OS preparation, required packages, and system tuning.
 
 ---
 
-SAP Business One on HANA can run on RHEL. The OS requires specific preparation for both the HANA database and the Business One application server components.
+SAP HANA can run on RHEL for SAP Solutions, but SAP Business One, version for SAP HANA has its own Platform Support Matrix. Check the current SAP Business One matrix before choosing RHEL; current SAP Business One 10.0 documentation lists SLES 15 as the supported Linux host OS for the Business One server components. RHEL still requires specific preparation for SAP HANA workloads.
 
 ## System Requirements
 
-SAP Business One on HANA has specific hardware and OS requirements:
+SAP Business One on HANA has specific hardware and OS requirements. Use the SAP Business One sizing tool, SAP HANA hardware guidance, and the SAP Business One Platform Support Matrix for production sizing:
 
 ```bash
 # Check minimum requirements
 
-# CPU: 4+ cores
-# RAM: 16 GB minimum (32 GB recommended)
-# Disk: 100 GB+ for HANA data
+# CPU, RAM, and disk: size according to SAP Business One and SAP HANA guidance
 
-# Verify RHEL version (RHEL 9.x supported)
+# Verify the RHEL version, then confirm the exact release is supported
+# for your SAP HANA revision and SAP Business One deployment.
 cat /etc/redhat-release
 
 # Check available memory
@@ -34,7 +33,7 @@ df -h
 ## Preparing RHEL for SAP Business One
 
 ```bash
-# Update the system
+# Update the system after enabling the required RHEL for SAP Solutions repositories
 sudo dnf update -y
 
 # Install required packages
@@ -53,6 +52,8 @@ sudo dnf install -y \
   libcanberra-gtk2 \
   net-tools \
   nfs-utils \
+  rhel-system-roles-sap \
+  rhel-system-roles \
   xorg-x11-utils
 
 # Enable uuidd (required by HANA)
@@ -63,7 +64,7 @@ sudo systemctl enable --now uuidd
 
 ```bash
 # Create SAP-specific sysctl configuration
-sudo cat > /etc/sysctl.d/sap-b1.conf << 'SYSCTL'
+sudo tee /etc/sysctl.d/sap-b1.conf > /dev/null << 'SYSCTL'
 # SAP Business One / HANA parameters
 vm.max_map_count = 2147483647
 vm.swappiness = 10
@@ -98,7 +99,7 @@ sudo mkfs.xfs /dev/sdd1    # HANA shared
 sudo mkdir -p /hana/data /hana/log /hana/shared
 
 # Add to fstab
-cat >> /etc/fstab << 'FSTAB'
+sudo tee -a /etc/fstab > /dev/null << 'FSTAB'
 /dev/sdb1  /hana/data    xfs  defaults,noatime  0 0
 /dev/sdc1  /hana/log     xfs  defaults,noatime  0 0
 /dev/sdd1  /hana/shared  xfs  defaults,noatime  0 0
@@ -111,7 +112,7 @@ sudo mount -a
 
 ```bash
 # /etc/security/limits.d/sap-b1.conf
-cat > /etc/security/limits.d/sap-b1.conf << 'LIMITS'
+sudo tee /etc/security/limits.d/sap-b1.conf > /dev/null << 'LIMITS'
 @sapsys  hard  nofile   1048576
 @sapsys  soft  nofile   1048576
 @sapsys  hard  nproc    unlimited
@@ -130,4 +131,4 @@ sudo systemctl disable --now bluetooth
 sudo systemctl disable --now avahi-daemon
 ```
 
-After these preparations, you can proceed with the SAP HANA database installation followed by the SAP Business One server installation using the SAP B1 Setup Wizard.
+After these preparations, and after confirming that your exact SAP Business One and SAP HANA release combination supports the target OS, you can proceed with the SAP HANA database installation followed by the SAP Business One server installation using the SAP B1 Setup Wizard.
