@@ -8,17 +8,17 @@ Description: Learn how to install SWIG and Build Python C Extensions on RHEL wit
 
 ---
 
-This guide covers how to Install SWIG and Build Python C Extensions on RHEL. Following these steps will help you set up a reliable configuration on RHEL.
+This guide covers how to install SWIG and build Python C extensions on RHEL. Following these steps will help you set up a reliable build environment on RHEL.
 
 ## Prerequisites
 
-- RHEL with a minimal or standard installation
+- RHEL 9 with a minimal or standard installation
 - Root or sudo access
 - A stable network connection
 
 ## Overview
 
-Install SWIG and Build Python C Extensions requires careful planning and execution. This guide walks through the complete process from installation to verification.
+Installing SWIG and building Python C extensions requires the compiler toolchain, Python development headers, and the SWIG package. This guide walks through the complete process from installation to verification.
 
 ## Step 1: Prepare the System
 
@@ -31,86 +31,124 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf group install -y "Development Tools"
 ```
 
 ## Step 2: Install Required Packages
 
 ```bash
-sudo dnf install -y <package-name>
+sudo dnf install -y swig python3-devel python3-setuptools
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+swig -version
+python3 --version
+rpm -q swig python3-devel python3-setuptools
 ```
 
-## Step 3: Configure the Service
+## Step 3: Create the Source and SWIG Interface Files
 
-Create or edit the main configuration file:
+Create a small C library, header file, and SWIG interface file:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+cat > example.h <<'EOF'
+int add(int a, int b);
+EOF
+
+cat > example.c <<'EOF'
+#include "example.h"
+
+int add(int a, int b) {
+    return a + b;
+}
+EOF
+
+cat > example.i <<'EOF'
+%module example
+%{
+#include "example.h"
+%}
+
+int add(int a, int b);
+EOF
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+The `%module` directive names the Python module. The declarations after the `%}` block tell SWIG which C functions to expose.
 
-## Step 4: Start and Enable the Service
+## Step 4: Build the Python Extension
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+cat > setup.py <<'EOF'
+from setuptools import Extension, setup
+
+example_module = Extension(
+    "_example",
+    sources=["example.i", "example.c"],
+)
+
+setup(
+    name="example",
+    version="1.0",
+    py_modules=["example"],
+    ext_modules=[example_module],
+)
+EOF
+
+python3 setup.py build_ext --inplace
 ```
 
 ## Step 5: Verify the Configuration
 
-Test the setup:
+Test the generated Python module:
 
 ```bash
-sudo <service> --test
+python3 - <<'EOF'
+import example
+
+print(example.add(2, 3))
+EOF
 ```
 
-Check the logs for any errors:
+The command should print:
 
-```bash
-journalctl -u <service> -f
+```text
+5
 ```
 
-## Step 6: Configure Firewall Rules
+## Step 6: Check the Generated Files
 
-If the service needs network access:
+SWIG generates a Python wrapper and setuptools builds a compiled extension:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
-sudo firewall-cmd --reload
+ls -1 example.py example_wrap.c _example*.so
 ```
 
 ## Step 7: Performance Tuning
 
-Monitor resource usage and adjust configuration parameters based on your workload:
+For production extensions, build with optimization flags and test with the same Python version you will use in production:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+CFLAGS="-O2" python3 setup.py build_ext --inplace
 ```
 
 ## Security Considerations
 
-- Run the service with a dedicated non-root user when possible
-- Enable TLS/SSL for network communication
-- Restrict access with firewall rules
-- Keep packages updated with `dnf update`
+- Build extensions as a regular user when possible
+- Use trusted source code before compiling native extensions
+- Keep compiler, Python, and SWIG packages updated with `dnf update`
+- Avoid installing Python packages globally with `pip` as root on RHEL systems
 
 ## Troubleshooting
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
-2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
-3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
+1. **`Python.h: No such file or directory`**: Install the matching Python development package, such as `python3-devel`
+2. **`swig: command not found`**: Install the `swig` package and enable the CodeReady Linux Builder repository if necessary
+3. **Import errors for `_example`**: Confirm that `python3 setup.py build_ext --inplace` completed and that `_example*.so` is in the same directory as `example.py`
 
 ## Conclusion
 
-You have successfully configured install swig and build python c extensions on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
+You have successfully installed SWIG and built a Python C extension on RHEL. Keep the build toolchain updated and rebuild extensions when you change Python versions.
