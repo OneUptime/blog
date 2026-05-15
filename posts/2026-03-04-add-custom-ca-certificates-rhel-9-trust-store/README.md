@@ -8,7 +8,7 @@ Description: A practical guide to adding custom and internal CA certificates to 
 
 ---
 
-If your organization runs an internal certificate authority, you need every RHEL server to trust it. Otherwise, internal services using certificates signed by your CA will trigger verification failures. Tools like curl, wget, Python, Java, and anything that makes TLS connections will refuse to connect.
+If your organization runs an internal certificate authority, you need every RHEL server to trust it. Otherwise, internal services using certificates signed by your CA will trigger verification failures. Tools like curl, wget, Python, Java, and many applications that make TLS connections may refuse to connect.
 
 This guide shows you exactly how to add custom CA certificates to the RHEL trust store and verify that everything works.
 
@@ -53,12 +53,12 @@ openssl x509 -inform der -in ca-cert.der -out ca-cert.pem
 If you need to extract it from a running server:
 
 ```bash
-# Download the CA certificate from a server
+# Save the certificate chain from a server for inspection
 openssl s_client -connect internal-server.corp:443 -showcerts </dev/null 2>/dev/null | \
-  sed -n '/BEGIN CERTIFICATE/,/END CERTIFICATE/p' > ca-cert.pem
+  sed -n '/BEGIN CERTIFICATE/,/END CERTIFICATE/p' > server-chain.pem
 ```
 
-When a server sends multiple certificates in the chain, the last one is typically the CA certificate (or the highest intermediate).
+When a server sends multiple certificates in the chain, this output can include the server certificate and one or more intermediate CAs. Inspect the certificates and copy only the CA certificate or certificates you intend to trust into separate PEM files.
 
 ## Step 2: Verify the Certificate
 
@@ -105,7 +105,7 @@ graph LR
 
 ```bash
 # Rebuild all trust store bundles
-sudo update-ca-trust
+sudo update-ca-trust extract
 ```
 
 This command regenerates the consolidated CA bundles from all sources, including your newly added certificate.
@@ -155,8 +155,8 @@ python3 -c "import urllib.request; urllib.request.urlopen('https://internal-serv
 ### Test with Java
 
 ```bash
-# Verify the CA is in the Java keystore
-keytool -list -cacerts -storepass changeit | grep -i "mycompany"
+# Verify the CA is in the RHEL Java keystore
+keytool -list -keystore /etc/pki/java/cacerts -storepass changeit | grep -i "mycompany"
 ```
 
 ## Adding Multiple CA Certificates
@@ -171,15 +171,15 @@ sudo cp root-ca.pem /etc/pki/ca-trust/source/anchors/mycompany-root-ca.pem
 sudo cp intermediate-ca.pem /etc/pki/ca-trust/source/anchors/mycompany-intermediate-ca.pem
 
 # Rebuild once after adding all certificates
-sudo update-ca-trust
+sudo update-ca-trust extract
 ```
 
 You can also put multiple certificates in a single PEM file:
 
 ```bash
 # Combine multiple CA certs into one file
-cat root-ca.pem intermediate-ca.pem > /etc/pki/ca-trust/source/anchors/mycompany-full-chain.pem
-sudo update-ca-trust
+cat root-ca.pem intermediate-ca.pem | sudo tee /etc/pki/ca-trust/source/anchors/mycompany-full-chain.pem >/dev/null
+sudo update-ca-trust extract
 ```
 
 ## Automating with Ansible
@@ -199,7 +199,7 @@ For fleets of servers, automate this with Ansible:
 
 - name: Update CA trust store
   ansible.builtin.command:
-    cmd: update-ca-trust
+    cmd: update-ca-trust extract
   listen: Update CA trust
 ```
 
@@ -208,28 +208,28 @@ For fleets of servers, automate this with Ansible:
 When your internal CA certificate is about to expire and gets replaced:
 
 1. Add the new CA certificate to anchors
-2. Run `update-ca-trust`
+2. Run `update-ca-trust extract`
 3. Verify services work with the new CA
 4. After all old certificates signed by the previous CA have been replaced, remove the old CA
-5. Run `update-ca-trust` again
+5. Run `update-ca-trust extract` again
 
 ```bash
 # Add new CA alongside the old one during transition
 sudo cp new-ca.pem /etc/pki/ca-trust/source/anchors/mycompany-root-ca-2026.pem
-sudo update-ca-trust
+sudo update-ca-trust extract
 
 # Later, remove the old CA
 sudo rm /etc/pki/ca-trust/source/anchors/mycompany-root-ca.pem
-sudo update-ca-trust
+sudo update-ca-trust extract
 ```
 
 ## Troubleshooting
 
-**"Certificate not found in bundle after update-ca-trust"**: Make sure the file has a `.pem` extension and is valid PEM format. Check with `openssl x509 -in file.pem -noout -text`.
+**"Certificate not found in bundle after update-ca-trust"**: Make sure the file is a valid PEM or DER certificate and is readable. Check a PEM certificate with `openssl x509 -in file.pem -noout -text`.
 
 **"Still getting certificate errors after adding CA"**: Some applications cache the trust store. Restart the application. For Java apps, make sure they use the system keystore path.
 
-**"Application uses its own trust store"**: Some applications (like Firefox, Node.js, or Go programs) bundle their own CA list. You may need to configure them separately.
+**"Application uses its own trust store"**: Some applications or runtimes use their own trust store, pinned certificates, or explicit CA settings. You may need to configure them separately.
 
 ```bash
 # For Node.js, set the environment variable
@@ -252,9 +252,9 @@ If you no longer need a custom CA in the trust store:
 sudo rm /etc/pki/ca-trust/source/anchors/mycompany-root-ca.pem
 
 # Rebuild the trust store
-sudo update-ca-trust
+sudo update-ca-trust extract
 ```
 
 ## Wrapping Up
 
-Adding custom CA certificates to RHEL is straightforward: drop the PEM file in `/etc/pki/ca-trust/source/anchors/`, run `update-ca-trust`, and verify. The centralized trust store model means one change propagates to OpenSSL, GnuTLS, Java, and all the tools that depend on them. Just remember to automate this across your fleet and plan for CA certificate rotation ahead of time.
+Adding custom CA certificates to RHEL is straightforward: drop the PEM file in `/etc/pki/ca-trust/source/anchors/`, run `update-ca-trust extract`, and verify. The centralized trust store model means one change propagates to applications that use the shared system trust, including OpenSSL, GnuTLS, NSS, and Java. Just remember to automate this across your fleet and plan for CA certificate rotation ahead of time.
