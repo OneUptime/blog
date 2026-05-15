@@ -39,6 +39,9 @@ mdadm includes a built-in monitoring daemon that watches arrays and sends notifi
 Edit the mdadm configuration file:
 
 ```bash
+# Add ARRAY entries for existing arrays
+sudo mdadm --detail --scan | sudo tee -a /etc/mdadm.conf
+
 # Set the alert email address in mdadm.conf
 echo "MAILADDR admin@example.com" | sudo tee -a /etc/mdadm.conf
 ```
@@ -135,10 +138,10 @@ RHEL includes a weekly RAID scrub that checks for data consistency. This runs vi
 
 ```bash
 # Check the scrub timer status
-sudo systemctl status mdcheck_start.timer
+sudo systemctl status raid-check.timer
 
 # The timer is usually enabled by default
-sudo systemctl enable mdcheck_start.timer
+sudo systemctl enable --now raid-check.timer
 ```
 
 To manually trigger a scrub:
