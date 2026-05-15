@@ -107,11 +107,11 @@ ldapsearch -x -H ldap://ldap2.example.com -b "dc=example,dc=com" "(uid=testuser)
 ## Monitor Replication Lag
 
 ```bash
-# View the replication lag (CSN difference)
-sudo dsconf ldap1 repl-agmt status --suffix "dc=example,dc=com" "agmt-to-ldap2" | grep -i lag
+# View the replication topology status
+sudo dsconf ldap1 replication monitor
 
 # Check the changelog
-sudo dsconf ldap1 replication get-changelog
+sudo dsconf ldap1 replication get-changelog --suffix "dc=example,dc=com"
 ```
 
 ## Handle Replication Conflicts
@@ -120,7 +120,8 @@ sudo dsconf ldap1 replication get-changelog
 # Search for replication conflicts
 ldapsearch -x -H ldap://ldap1.example.com \
     -D "cn=Directory Manager" -W \
-    -b "dc=example,dc=com" "(nsds5ReplConflict=*)"
+    -b "dc=example,dc=com" "(&(objectClass=ldapSubEntry)(nsds5ReplConflict=*))" \
+    "*" nsds5ReplConflict
 ```
 
 Multi-master replication in 389 Directory Server ensures your RHEL LDAP infrastructure remains available even when one server goes down, with both servers actively handling read and write requests.
