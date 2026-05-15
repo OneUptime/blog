@@ -19,7 +19,7 @@ On the server that will receive logs:
 
 sudo vi /etc/rsyslog.conf
 
-# Uncomment these lines to enable UDP and TCP reception:
+# Add or uncomment these lines to enable UDP and TCP reception:
 # For UDP (port 514)
 module(load="imudp")
 input(type="imudp" port="514")
