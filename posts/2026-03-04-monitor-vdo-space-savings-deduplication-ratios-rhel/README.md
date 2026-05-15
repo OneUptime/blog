@@ -42,14 +42,14 @@ sudo vdostats --verbose /dev/mapper/vdo0 | grep -E "data blocks used|logical blo
 # saving percent: overall space reduction percentage
 ```
 
-## Calculating Deduplication and Compression Ratios
+## Calculating Overall Data Reduction Ratios
 
 ```bash
 # Get raw numbers for ratio calculation
 LOGICAL=$(sudo vdostats --verbose /dev/mapper/vdo0 | grep "logical blocks used" | awk '{print $NF}')
 PHYSICAL=$(sudo vdostats --verbose /dev/mapper/vdo0 | grep "data blocks used" | awk '{print $NF}')
 
-# Calculate the ratio
+# Calculate the overall data reduction ratio
 echo "scale=2; $LOGICAL / $PHYSICAL" | bc
 # A result of 3.00 means 3:1 data reduction
 ```
@@ -80,7 +80,7 @@ echo "*/30 * * * * root /usr/local/bin/vdo-monitor.sh" | sudo tee /etc/cron.d/vd
 # Script to alert when physical space usage exceeds 80%
 sudo tee /usr/local/bin/vdo-alert.sh << 'EOF'
 #!/bin/bash
-USAGE=$(vdostats /dev/mapper/vdo0 | tail -1 | awk '{print $4}' | tr -d '%')
+USAGE=$(vdostats /dev/mapper/vdo0 | tail -1 | awk '{print $5}' | tr -d '%')
 if [ "$USAGE" -gt 80 ]; then
     logger -p local0.warning "VDO volume vdo0 physical usage at ${USAGE}%"
 fi
