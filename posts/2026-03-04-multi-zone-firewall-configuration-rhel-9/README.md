@@ -180,7 +180,7 @@ Setting the default to `drop` means any new or unassigned interface will silentl
 In addition to interface-based zones, you can assign traffic to zones based on source IP:
 
 ```bash
-# Route traffic from 10.0.5.0/24 to the trusted zone regardless of interface
+# Assign traffic from 10.0.5.0/24 to the trusted zone regardless of interface
 firewall-cmd --zone=trusted --add-source=10.0.5.0/24 --permanent
 firewall-cmd --reload
 ```
@@ -195,7 +195,7 @@ Source-based assignments take precedence over interface-based ones.
 firewall-cmd --get-zone-of-interface=eth0
 ```
 
-**Service accessible when it should not be**: Make sure the service is not in the default zone:
+**Service accessible when it should not be**: Make sure the service is not enabled in the interface's zone:
 
 ```bash
 firewall-cmd --zone=public --list-all
