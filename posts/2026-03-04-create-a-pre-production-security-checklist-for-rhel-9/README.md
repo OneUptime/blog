@@ -16,33 +16,35 @@ Production environments require systematic verification before, during, and afte
 - Root or sudo access
 - A terminal session
 
-## Step 2: Configure the Service
+## Step 1: Create the Checklist
 
 ### Security Verification Items
 
 - [ ] SELinux is in Enforcing mode: `getenforce`
 - [ ] Firewall is active: `firewall-cmd --state`
-- [ ] SSH root login is disabled
-- [ ] Password authentication is disabled for SSH
+- [ ] SSH root login is disabled: `sudo sshd -T | grep '^permitrootlogin'`
+- [ ] Password authentication is disabled for SSH: `sudo sshd -T | grep '^passwordauthentication'`
 - [ ] Unused services are stopped and disabled
 - [ ] System crypto policy is set appropriately: `update-crypto-policies --show`
 - [ ] All packages are up to date: `dnf check-update`
 - [ ] Audit daemon is running: `systemctl status auditd`
-- [ ] No world-writable files: `find / -perm -o+w -type f 2>/dev/null`
-- [ ] No unowned files: `find / -nouser -o -nogroup 2>/dev/null`
+- [ ] No world-writable files: `sudo find / -perm -o+w -type f 2>/dev/null`
+- [ ] No unowned files: `sudo find / \( -nouser -o -nogroup \) 2>/dev/null`
 
-## Step 3: Enable and Start the Service
+## Step 2: Run the Checklist
 
 ```bash
-# Enable the service to start on boot
+# Check SELinux enforcement
+getenforce
 
-sudo systemctl enable <service-name>
+# Check firewalld state
+firewall-cmd --state
 
-# Start the service
-sudo systemctl start <service-name>
+# Check effective SSH server settings
+sudo sshd -T | grep -E '^(permitrootlogin|passwordauthentication)'
 
-# Check the status
-sudo systemctl status <service-name>
+# Check auditd status
+systemctl status auditd
 ```
 
 
