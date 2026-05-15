@@ -33,7 +33,7 @@ coredumpctl info <PID>
 ## Analyze a Core Dump with gdb
 
 ```bash
-sudo dnf install -y gdb
+sudo dnf install -y gdb dnf-utils
 sudo dnf debuginfo-install -y crashed-application
 
 coredumpctl debug <PID>
@@ -80,12 +80,13 @@ sudo dnf install -y valgrind
 valgrind ./crashed-application
 ```
 
-## Enable ABRT for Automatic Reporting
+## Use systemd-coredump for Crash Reporting
 
 ```bash
-sudo dnf install -y abrt abrt-cli
-sudo systemctl enable --now abrtd
-abrt-cli list
+# ABRT is not available in RHEL 9.
+# Use systemd-coredump and coredumpctl instead.
+coredumpctl list
+coredumpctl info <PID>
 ```
 
 ## Check System Logs
@@ -98,4 +99,3 @@ sudo dmesg | grep -i segfault
 ## Conclusion
 
 Segmentation faults on RHEL 9 require examining core dumps, checking for updates, and verifying library dependencies. Use gdb and coredumpctl for diagnosis, and keep packages updated to benefit from bug fixes.
-
