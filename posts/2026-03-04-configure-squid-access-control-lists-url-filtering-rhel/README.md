@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Squid, ACL, URL Filtering, Proxy, Security, Linux
 
-Description: Use Squid ACLs on RHEL to filter URLs, block unwanted websites, restrict access by time, and enforce browsing policies for your network.
+Description: Use Squid ACLs on RHEL to filter HTTP URLs and domains, block unwanted websites, restrict access by time, and enforce browsing policies for your network.
 
 ---
 
-Squid's Access Control Lists (ACLs) provide granular control over what traffic is allowed through the proxy. You can filter by domain, URL pattern, time of day, source IP, and more.
+Squid's Access Control Lists (ACLs) provide granular control over what traffic is allowed through the proxy. You can filter by domain, HTTP URL pattern, time of day, source IP, and more.
 
 ## Basic ACL Types
 
@@ -28,15 +28,16 @@ acl guests src 10.0.99.0/24
 acl blocked_domains dstdomain .facebook.com .twitter.com .tiktok.com
 acl allowed_domains dstdomain .company.com .github.com .stackoverflow.com
 
-# URL regex patterns
+# URL regex patterns for HTTP requests
 acl blocked_urls url_regex -i \.exe$ \.torrent$ \.msi$
 acl streaming_urls url_regex -i netflix\.com youtube\.com twitch\.tv
 
 # Port ACLs
 acl Safe_ports port 80 443 8080 8443
 acl SSL_ports port 443
+acl CONNECT method CONNECT
 
-# MIME type blocking
+# MIME type blocking for responses Squid can inspect
 acl blocked_mime rep_mime_type -i video/mp4 video/x-flv
 
 # Time-based ACLs
@@ -111,7 +112,7 @@ LIST
 ## Block by Content Type
 
 ```bash
-# Add to squid.conf to block specific content types
+# Add to squid.conf to block specific content types in inspectable HTTP requests
 acl blocked_content urlpath_regex -i \.(mp3|mp4|avi|mkv|flv|wmv)$
 http_access deny blocked_content
 ```
@@ -162,7 +163,7 @@ curl -x http://proxy:3128 http://www.facebook.com
 
 # Test allowed access
 curl -x http://proxy:3128 http://www.github.com
-# Should return 200
+# Should return a successful response or redirect
 
 # Monitor in real time
 sudo tail -f /var/log/squid/access.log | grep -E "TCP_DENIED|DENIED"
