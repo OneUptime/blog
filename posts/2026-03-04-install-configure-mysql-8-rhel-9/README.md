@@ -20,50 +20,25 @@ Install and configure MySQL 8.0 on RHEL 9 with secure defaults. Proper database 
 
 ## Step 1 - Install the Database Packages
 
-For PostgreSQL:
+Install the MySQL 8.0 server package:
 
 ```bash
-sudo dnf install -y postgresql-server postgresql
-sudo postgresql-setup --initdb
-sudo systemctl enable --now postgresql
-```
-
-For MariaDB:
-
-```bash
-sudo dnf install -y mariadb-server
-sudo systemctl enable --now mariadb
+sudo dnf install -y mysql-server
+sudo systemctl enable --now mysqld
 sudo mysql_secure_installation
 ```
-
-For MySQL 8.0:
-
-```bash
-sudo dnf install -y mysql-community-server
-sudo systemctl enable --now mysqld
-```
-
-Choose the appropriate commands for your database engine.
 
 ## Step 2 - Perform Initial Configuration
 
 Edit the main configuration file:
 
-- PostgreSQL: `/var/lib/pgsql/data/postgresql.conf` and `pg_hba.conf`
-- MariaDB/MySQL: `/etc/my.cnf.d/server.cnf`
+- MySQL: `/etc/my.cnf.d/mysql-server.cnf`
 
 Adjust memory settings, connection limits, and authentication methods to match your workload.
 
 ## Step 3 - Create Users and Databases
 
-For PostgreSQL:
-
-```bash
-sudo -u postgres createuser myappuser
-sudo -u postgres createdb myappdb -O myappuser
-```
-
-For MariaDB/MySQL:
+Connect as an administrative MySQL user and create an application database and user:
 
 ```sql
 CREATE DATABASE myappdb;
@@ -74,14 +49,12 @@ FLUSH PRIVILEGES;
 
 ## Step 4 - Configure Network Access
 
-If remote connections are needed, update the listen address and authentication rules, then open the firewall:
+If remote connections are needed, update `bind-address` in `/etc/my.cnf.d/mysql-server.cnf`, grant the user access from the required client host or network, then open the firewall:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=postgresql
-# or
-
 sudo firewall-cmd --permanent --add-service=mysql
 sudo firewall-cmd --reload
+sudo systemctl restart mysqld
 ```
 
 ## Step 5 - Verify the Setup
@@ -89,12 +62,9 @@ sudo firewall-cmd --reload
 Connect to the database and run a test query:
 
 ```bash
-# PostgreSQL
-psql -h localhost -U myappuser myappdb -c "SELECT version();"
-# MariaDB/MySQL
 mysql -u myappuser -p myappdb -e "SELECT VERSION();"
 ```
 
 ## Summary
 
-You have learned how to install and configure mysql 8.0. Always secure your database with strong passwords, restricted network access, and regular backups.
+You have learned how to install and configure MySQL 8.0. Always secure your database with strong passwords, restricted network access, and regular backups.
