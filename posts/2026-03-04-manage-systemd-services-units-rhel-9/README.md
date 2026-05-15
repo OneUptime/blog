@@ -139,7 +139,7 @@ Create the unit file at `/etc/systemd/system/myapp.service`:
 [Unit]
 # Brief description of what this service does
 Description=My Custom Application
-# Start after the network is available
+# Start after basic networking is initialized (not necessarily online)
 After=network.target
 # Optional: start after a database if your app needs one
 After=postgresql.service
