@@ -12,7 +12,7 @@ MariaDB Galera Cluster provides synchronous multi-master replication on RHEL 9. 
 
 ## Prerequisites
 
-- Three RHEL 9 servers (Galera requires at least 3 nodes for quorum)
+- Three RHEL 9 servers (recommended for quorum in a highly available cluster)
 - Network connectivity between all nodes
 - Open firewall ports
 
@@ -97,6 +97,7 @@ On all nodes:
 ```bash
 sudo firewall-cmd --permanent --add-port=3306/tcp
 sudo firewall-cmd --permanent --add-port=4567/tcp
+sudo firewall-cmd --permanent --add-port=4567/udp
 sudo firewall-cmd --permanent --add-port=4568/tcp
 sudo firewall-cmd --permanent --add-port=4444/tcp
 sudo firewall-cmd --reload
@@ -194,6 +195,12 @@ For distributing connections across all nodes, use HAProxy:
 sudo dnf install haproxy -y
 ```
 
+Create the HAProxy health-check user on the cluster, replacing `192.168.1.100` with the HAProxy server IP:
+
+```bash
+mysql -u root -p -e "CREATE USER IF NOT EXISTS 'haproxy'@'192.168.1.100' IDENTIFIED BY '';"
+```
+
 Configure HAProxy:
 
 ```bash
@@ -211,6 +218,12 @@ listen galera-cluster
 CONF
 ```
 
+Start and enable HAProxy:
+
+```bash
+sudo systemctl enable --now haproxy
+```
+
 ## Conclusion
 
-MariaDB Galera Cluster on RHEL 9 provides synchronous multi-master replication with automatic node recovery. All nodes accept writes, ensuring no single point of failure. Use a load balancer to distribute database connections across all cluster members.
+MariaDB Galera Cluster on RHEL 9 provides synchronous multi-master replication with automatic node joining. All nodes accept writes, helping avoid a database-node single point of failure. Use a load balancer to distribute database connections across all cluster members.
