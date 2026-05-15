@@ -185,14 +185,18 @@ A umask of `027` means new files get `640` and new directories get `750`, preven
 Use auditd to watch for files being made world-writable:
 
 ```bash
-# Add audit rule to watch for world-writable permission changes
-sudo auditctl -a always,exit -F arch=b64 -S chmod,fchmod,fchmodat -F a1&0002 -k world-writable
+# Add audit rules to watch for world-writable permission changes
+sudo auditctl -a always,exit -F arch=b64 -S chmod,fchmod -F 'a1&0002' -k world-writable
+sudo auditctl -a always,exit -F arch=b64 -S fchmodat -F 'a2&0002' -k world-writable
 
-# Make the rule persistent
-echo '-a always,exit -F arch=b64 -S chmod,fchmod,fchmodat -F a1&0002 -k world-writable' | sudo tee -a /etc/audit/rules.d/world-writable.rules
+# Make the rules persistent
+sudo tee -a /etc/audit/rules.d/world-writable.rules << 'EOF'
+-a always,exit -F arch=b64 -S chmod,fchmod -F a1&0002 -k world-writable
+-a always,exit -F arch=b64 -S fchmodat -F a2&0002 -k world-writable
+EOF
 
-# Restart auditd
-sudo service auditd restart
+# Load the persistent rules
+sudo augenrules --load
 ```
 
 Search the audit log for violations:
