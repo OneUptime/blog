@@ -19,7 +19,7 @@ Skipper stands out from other routers because of its filter and predicate system
 You will need:
 
 - A RHEL system with root or sudo access
-- Go 1.21 or newer (for building from source)
+- The Go version required by Skipper's current `go.mod` file (for building from source)
 - A Kubernetes cluster (if using Skipper as an ingress controller)
 
 ## Installing Skipper from Binary
@@ -28,17 +28,17 @@ Download the latest release:
 
 ```bash
 # Download the latest Skipper binary
-
-curl -LO https://github.com/zalando/skipper/releases/latest/download/skipper-linux-amd64
-chmod +x skipper-linux-amd64
-sudo mv skipper-linux-amd64 /usr/local/bin/skipper
+LATEST=$(curl -fsSL https://api.github.com/repos/zalando/skipper/releases/latest | sed -n 's/.*"tag_name": "\([^"]*\)".*/\1/p')
+curl -LO "https://github.com/zalando/skipper/releases/latest/download/skipper-${LATEST}-linux-amd64.tar.gz"
+tar -xzf "skipper-${LATEST}-linux-amd64.tar.gz"
+sudo mv "skipper-${LATEST}-linux-amd64/skipper" /usr/local/bin/skipper
 ```
 
 Verify the installation:
 
 ```bash
 # Check the Skipper version
-skipper version
+skipper -version
 ```
 
 ## Building from Source
@@ -64,7 +64,8 @@ Create a routes file that defines how traffic should be routed:
 
 ```bash
 # Create a routes file
-cat > /etc/skipper/routes.eskip << 'EOF'
+sudo mkdir -p /etc/skipper
+sudo tee /etc/skipper/routes.eskip > /dev/null << 'EOF'
 // Route all traffic for example.com to a backend
 main: Path("/") -> "http://127.0.0.1:8080";
 
@@ -120,10 +121,16 @@ addHeader: Path("/") -> setRequestHeader("X-Forwarded-By", "skipper") -> "http:/
 rateLimited: Path("/api") -> ratelimit(10, "1m") -> "http://api:8080";
 
 // Modify the response
-modifyResponse: Path("/") -> modResponseHeader("Server", "MyApp") -> "http://backend:8080";
+modifyResponse: Path("/") -> setResponseHeader("Server", "MyApp") -> "http://backend:8080";
 
 // Strip path prefix before forwarding
 stripPrefix: PathSubtree("/v1/api") -> modPath("^/v1", "") -> "http://api:8080";
+```
+
+If you use `ratelimit`, start Skipper with the rate limit filters enabled:
+
+```bash
+skipper -routes-file /etc/skipper/routes.eskip -address :9999 -enable-ratelimits
 ```
 
 ## Traffic Splitting for A/B Testing
@@ -132,11 +139,11 @@ Skipper makes it easy to split traffic between backends:
 
 ```bash
 // Send 80% of traffic to v1, 20% to v2
-mainRoute: Path("/app")
-  -> trafficSegment(0.0, 0.8) -> "http://app-v1:8080";
+mainRoute: Path("/app") && TrafficSegment(0.0, 0.8)
+  -> "http://app-v1:8080";
 
-canaryRoute: Path("/app")
-  -> trafficSegment(0.8, 1.0) -> "http://app-v2:8080";
+canaryRoute: Path("/app") && TrafficSegment(0.8, 1.0)
+  -> "http://app-v2:8080";
 ```
 
 ## Creating a Systemd Service
@@ -177,6 +184,55 @@ Deploy Skipper as an ingress controller in your cluster:
 
 ```yaml
 # skipper-deployment.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: skipper-ingress
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: skipper-ingress
+rules:
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  - services
+  - endpoints
+  - pods
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices
+  verbs:
+  - get
+  - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: skipper-ingress
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: skipper-ingress
+subjects:
+- kind: ServiceAccount
+  name: skipper-ingress
+  namespace: kube-system
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -192,16 +248,19 @@ spec:
       labels:
         app: skipper-ingress
     spec:
+      serviceAccountName: skipper-ingress
       containers:
       - name: skipper
-        image: registry.opensource.zalan.do/teapot/skipper:latest
+        image: registry.opensource.zalan.do/teapot/skipper:v0.25.2
         args:
         - skipper
         - -kubernetes
         - -kubernetes-in-cluster
         - -kubernetes-path-mode=path-prefix
         - -address=:9999
+        - -wait-first-route-load
         - -proxy-preserve-host
+        - -enable-ratelimits
         ports:
         - containerPort: 9999
         resources:
@@ -224,6 +283,7 @@ kind: Ingress
 metadata:
   name: app-ingress
   annotations:
+    kubernetes.io/ingress.class: skipper
     zalando.org/skipper-filter: ratelimit(20, "1m")
 spec:
   rules:
@@ -241,14 +301,15 @@ spec:
 
 ## Monitoring and Metrics
 
-Skipper exposes Prometheus metrics by default. Enable them with:
+Skipper exposes metrics on its support listener by default. To expose them in Prometheus format, start Skipper with:
 
 ```bash
 # Start Skipper with Prometheus metrics
 skipper -routes-file /etc/skipper/routes.eskip \
   -address :9999 \
-  -enable-prometheus-metrics \
-  -metrics-listener :9911
+  -metrics-flavour=prometheus \
+  -support-listener :9911 \
+  -serve-host-metrics
 ```
 
 Key metrics to watch include `skipper_serve_host_duration_seconds`, `skipper_route_lookup_duration_seconds`, and `skipper_filter_request_duration_seconds`.
