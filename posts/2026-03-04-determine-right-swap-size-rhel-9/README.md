@@ -16,10 +16,10 @@ Red Hat provides specific guidance for RHEL:
 
 | System RAM | Recommended Swap | If Hibernation Needed |
 |-----------|-----------------|----------------------|
-| 2 GB or less | 2x RAM | 3x RAM |
+| Less than 2 GB | 2x RAM | 3x RAM |
 | 2-8 GB | Equal to RAM | 2x RAM |
 | 8-64 GB | At least 4 GB | 1.5x RAM |
-| More than 64 GB | At least 4 GB | Not recommended |
+| More than 64 GB | Workload dependent (at least 4 GB) | Not recommended |
 
 These are starting points, not hard rules. Your actual needs depend on what the system does.
 
@@ -57,9 +57,9 @@ sysctl vm.overcommit_memory
 
 - `0` (default) - Heuristic overcommit. Kernel estimates if there is enough memory.
 - `1` - Always overcommit. Never deny allocations.
-- `2` - Strict overcommit. Total allocations limited to swap + (RAM * overcommit_ratio/100).
+- `2` - Strict overcommit. Total allocations limited to swap plus a configurable amount of RAM, set by `overcommit_ratio` or `overcommit_kbytes`.
 
-With strict overcommit (mode 2), swap size directly determines how much memory can be allocated:
+With strict overcommit (mode 2), swap size directly contributes to how much memory can be allocated:
 
 ```bash
 # Check overcommit ratio
@@ -68,7 +68,8 @@ sysctl vm.overcommit_ratio
 
 ```bash
 # Calculate commit limit with mode 2
-# CommitLimit = Swap + (RAM * overcommit_ratio / 100)
+# By default: CommitLimit = Swap + (RAM * overcommit_ratio / 100)
+# If overcommit_kbytes is set, it is used instead of overcommit_ratio.
 grep CommitLimit /proc/meminfo
 ```
 
@@ -160,8 +161,8 @@ free -h
 # Historical swap data (if sysstat is running)
 sar -S | tail -20
 
-# Peak swap usage from today
-sar -S | awk 'NR>2 {print $5}' | sort -rn | head -1
+# Peak swap usage from today, in KB
+sar -S | awk 'tolower($0) !~ /linux|kbswpfree|average/ && NF {print $(NF-3)}' | sort -rn | head -1
 ```
 
 ### Estimate Based on Memory Pressure
@@ -213,6 +214,7 @@ For an LVM-based swap:
 lvcreate -L 8G -n swap vg_system
 mkswap /dev/vg_system/swap
 echo "/dev/vg_system/swap  none  swap  defaults  0 0" >> /etc/fstab
+systemctl daemon-reload
 swapon -a
 ```
 
@@ -224,9 +226,10 @@ dd if=/dev/zero of=/swapfile bs=1M count=8192 status=progress
 chmod 600 /swapfile
 mkswap /swapfile
 echo "/swapfile  none  swap  defaults  0 0" >> /etc/fstab
+systemctl daemon-reload
 swapon -a
 ```
 
 ## Summary
 
-The right swap size depends on your workload, not a simple formula. For most RHEL servers with 8-64 GB of RAM, 4-8 GB of swap is a reasonable starting point. Database servers need less swap but lower swappiness. Systems that hibernate need swap equal to RAM. Kubernetes nodes typically run without swap. Analyze your historical usage, check for OOM events, and size accordingly. You can always add more swap later using LVM or swap files without downtime.
+The right swap size depends on your workload, not a simple formula. For most RHEL servers with 8-64 GB of RAM, 4-8 GB of swap is a reasonable starting point. Database servers need less swap but lower swappiness. Systems that hibernate need at least swap equal to RAM, and often more depending on the RAM size. Kubernetes nodes typically run without swap unless swap support is explicitly configured. Analyze your historical usage, check for OOM events, and size accordingly. You can always add more swap later using LVM or swap files without downtime.
