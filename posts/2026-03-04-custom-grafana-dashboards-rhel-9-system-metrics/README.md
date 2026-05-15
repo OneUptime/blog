@@ -23,7 +23,7 @@ Create custom Grafana dashboards for visualizing RHEL 9 system metrics. Effectiv
 Install the monitoring tools relevant to this guide:
 
 ```bash
-sudo dnf install -y pcp pcp-system-tools sysstat net-snmp net-snmp-utils
+sudo dnf install -y pcp pcp-system-tools pcp-zeroconf grafana grafana-pcp sysstat net-snmp net-snmp-utils
 ```
 
 Select only the packages you need for your specific setup.
@@ -31,7 +31,8 @@ Select only the packages you need for your specific setup.
 ## Step 2 - Enable and Start Services
 
 ```bash
-sudo systemctl enable --now pmcd pmlogger
+sudo systemctl enable --now pmcd pmlogger pmproxy
+sudo systemctl enable --now grafana-server
 # or for sysstat:
 
 sudo systemctl enable --now sysstat
@@ -58,7 +59,7 @@ sudo systemctl restart <service-name>
 # Common monitoring ports
 sudo firewall-cmd --permanent --add-port=9090/tcp   # Prometheus
 sudo firewall-cmd --permanent --add-port=9100/tcp   # Node Exporter
-sudo firewall-cmd --permanent --add-port=3000/tcp   # Grafana
+sudo firewall-cmd --permanent --add-service=grafana # Grafana
 sudo firewall-cmd --permanent --add-service=snmp     # SNMP
 sudo firewall-cmd --reload
 ```
