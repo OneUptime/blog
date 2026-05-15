@@ -15,7 +15,7 @@ An active-active cluster runs services on all nodes simultaneously, distributing
 - Two or more RHEL servers with HA Add-On
 - Stateless application that can run on multiple nodes
 - STONITH fencing configured
-- A load balancer or shared virtual IP
+- An external load balancer, or a virtual IP for failover
 
 ## Step 1: Set Up the Cluster
 
@@ -63,7 +63,7 @@ Clone Set: WebServer-clone [WebServer]:
   * Started: [ node1 node2 node3 ]
 ```
 
-## Step 4: Configure a Load-Balanced Virtual IP
+## Step 4: Configure a Failover Virtual IP
 
 For a single VIP that clients connect to:
 
@@ -73,19 +73,19 @@ sudo pcs resource create ClusterVIP ocf:heartbeat:IPaddr2 \
     op monitor interval=30s
 ```
 
-The VIP runs on one node and redirects or load-balances to all nodes.
+This VIP runs on one node at a time for failover. It does not load-balance traffic across all web server clones by itself; use an external load balancer for traffic distribution.
 
 ## Step 5: Use Promotable Clone Resources
 
-For resources that need one primary and multiple secondaries (like databases):
+For resources whose resource agent supports promoted and unpromoted roles (such as a replicated PostgreSQL database):
 
 ```bash
 sudo pcs resource create DBServer ocf:heartbeat:pgsql \
     pgctl=/usr/bin/pg_ctl \
     psql=/usr/bin/psql \
     pgdata=/var/lib/pgsql/data \
-    op monitor interval=30s role=Promoted \
-    op monitor interval=60s role=Unpromoted
+    op monitor OCF_CHECK_LEVEL=0 timeout=30s interval=30s \
+    op monitor OCF_CHECK_LEVEL=0 timeout=30s interval=29s role=Promoted
 
 sudo pcs resource promotable DBServer \
     promoted-max=1 promoted-node-max=1 \
@@ -98,10 +98,10 @@ Control how many instances run:
 
 ```bash
 # Maximum number of clones (default: number of nodes)
-sudo pcs resource update WebServer-clone clone-max=3
+sudo pcs resource meta WebServer-clone clone-max=3
 
 # Maximum clones per node
-sudo pcs resource update WebServer-clone clone-node-max=1
+sudo pcs resource meta WebServer-clone clone-node-max=1
 ```
 
 ## Step 7: Colocation with Clone Resources
@@ -109,7 +109,7 @@ sudo pcs resource update WebServer-clone clone-node-max=1
 Colocate a VIP with the promoted instance of a promotable clone:
 
 ```bash
-sudo pcs constraint colocation add ClusterVIP with Promoted DBServer-clone INFINITY
+sudo pcs constraint colocation add ClusterVIP with promoted DBServer-clone INFINITY
 ```
 
 Order the VIP to start after the promoted instance:
@@ -146,13 +146,13 @@ The clone resource automatically starts on the returning node.
 View clone status:
 
 ```bash
-sudo pcs resource status
+sudo pcs status resources
 ```
 
 Check resource placement:
 
 ```bash
-sudo pcs constraint location show
+sudo pcs constraint location config
 ```
 
 ## Conclusion
