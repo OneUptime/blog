@@ -35,7 +35,7 @@ for i in $(seq 1 7); do
 done
 
 # Look at peak CPU usage times
-sar -u -f /var/log/sa/sa$(date +%d) | sort -k3 -rn | head -5
+sar -u -f /var/log/sa/sa$(date +%d) | awk '/^[0-9]/ {busy=100-$NF; print busy "% busy", $0}' | sort -rn | head -5
 ```
 
 If `%idle` regularly drops below 20% during business hours, you need more CPU capacity.
@@ -46,8 +46,11 @@ If `%idle` regularly drops below 20% during business hours, you need more CPU ca
 # View memory usage trends
 sar -r -f /var/log/sa/sa$(date +%d)
 
-# Check swap usage trends (swap usage indicates memory pressure)
+# Check swap usage trends (sustained growth can indicate memory pressure)
 sar -S -f /var/log/sa/sa$(date +%d)
+
+# Check swap activity trends
+sar -W -f /var/log/sa/sa$(date +%d)
 
 # Monitor for OOM killer events
 journalctl -k | grep -c "Out of memory"
@@ -77,7 +80,10 @@ echo "At current growth rate, / will be full in approximately $DAYS_LEFT days"
 ## Disk I/O Analysis
 
 ```bash
-# Check I/O wait percentage (high iowait means disk is a bottleneck)
+# Check I/O wait percentage (high iowait can mean storage is a bottleneck)
+sar -u -f /var/log/sa/sa$(date +%d) | tail -5
+
+# Check block device activity
 sar -d -f /var/log/sa/sa$(date +%d) | tail -5
 
 # Identify which disks are saturated
@@ -91,7 +97,7 @@ iostat -xz 1 5
 # View network throughput trends
 sar -n DEV -f /var/log/sa/sa$(date +%d) | grep eth0
 
-# Check for dropped packets (indicates saturation)
+# Check for dropped packets (can indicate saturation or buffer/driver issues)
 sar -n EDEV -f /var/log/sa/sa$(date +%d) | grep eth0
 ```
 
