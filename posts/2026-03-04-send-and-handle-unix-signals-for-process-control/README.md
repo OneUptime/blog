@@ -65,7 +65,7 @@ Many daemons reload their configuration on SIGHUP:
 
 ```bash
 sudo kill -HUP $(pidof nginx)
-sudo systemctl reload nginx    # Does the same thing
+sudo systemctl reload nginx    # Uses the service's configured reload action
 ```
 
 ## Step 5: Handle Signals in a Bash Script
@@ -107,7 +107,7 @@ signal.signal(signal.SIGHUP, handler)
 Use strace to watch signals:
 
 ```bash
-strace -e trace=signal -p $(pidof myapp)
+strace -e trace=%signal -p $(pidof myapp)
 ```
 
 ## Step 8: Pause and Resume Processes
