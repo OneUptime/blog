@@ -19,7 +19,7 @@ cat /sys/power/state
 # Common output: freeze mem disk
 
 # Check if systemd supports each mode
-systemctl status sleep.target suspend.target hibernate.target
+systemctl status sleep.target suspend.target hibernate.target hybrid-sleep.target
 ```
 
 ## Suspend (Suspend-to-RAM)
@@ -36,9 +36,9 @@ journalctl -b -u systemd-suspend.service
 
 ## Configure Hibernate (Suspend-to-Disk)
 
-Hibernate saves the system state to swap space and powers off completely. It requires a swap partition or file at least as large as your RAM.
+Hibernate saves the system state to swap space and powers off completely. It requires a swap partition or file large enough to hold the hibernation image; many systems size swap at least as large as RAM.
 
-### Set Up a Swap Partition
+### Set Up Swap Space
 
 ```bash
 # Check current swap
@@ -57,16 +57,22 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ### Configure the Resume Device
 
 ```bash
-# Find the UUID of the swap partition or the device containing the swap file
-sudo findmnt -no UUID -T /swapfile
+# For a swap partition, find its UUID
+sudo blkid -s UUID -o value /dev/your-swap-partition
 
-# For a swap file, also find the file offset
-sudo filefrag -v /swapfile | head -4
-# Note the physical_offset of the first extent
+# For a swap file, find the UUID of the filesystem containing it
+findmnt -no UUID -T /swapfile
 
-# Add resume parameters to the kernel boot command
+# For a swap file, also find the first physical offset in PAGE_SIZE units
+sudo filefrag -v -b$(getconf PAGESIZE) /swapfile | awk '$1=="0:" {print $4}' | cut -d. -f1
+
+# Add resume parameters to the kernel boot command for a swap partition
 sudo grubby --update-kernel=ALL \
-  --args="resume=UUID=your-swap-uuid resume_offset=your-offset"
+  --args="resume=UUID=your-swap-uuid"
+
+# Or, for a swap file, include the filesystem UUID and resume offset
+sudo grubby --update-kernel=ALL \
+  --args="resume=UUID=your-filesystem-uuid resume_offset=your-offset"
 
 # Regenerate initramfs to include the resume module
 sudo dracut -f
