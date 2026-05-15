@@ -37,6 +37,7 @@ For NFSv4, you can also browse the server's root export:
 
 ```bash
 # Mount the NFSv4 root and browse
+sudo mkdir -p /mnt/nfs-browse
 sudo mount -t nfs4 192.168.1.10:/ /mnt/nfs-browse
 ls /mnt/nfs-browse
 sudo umount /mnt/nfs-browse
@@ -66,7 +67,7 @@ Mount options control how the NFS share behaves on the client. Here are the most
 
 ```bash
 # Mount with specific options
-sudo mount -t nfs -o rw,hard,intr,rsize=65536,wsize=65536 192.168.1.10:/srv/nfs/shared /mnt/nfs-shared
+sudo mount -t nfs -o rw,hard,rsize=65536,wsize=65536 192.168.1.10:/srv/nfs/shared /mnt/nfs-shared
 ```
 
 ### Common Mount Options
@@ -77,7 +78,7 @@ sudo mount -t nfs -o rw,hard,intr,rsize=65536,wsize=65536 192.168.1.10:/srv/nfs/
 | `ro` | Mount read-only |
 | `hard` | Retry NFS requests indefinitely (recommended) |
 | `soft` | Return error after timeout (risky for data) |
-| `intr` | Allow interrupting hung NFS operations |
+| `intr` | Backward-compatibility option ignored on RHEL 9 |
 | `rsize=N` | Read buffer size in bytes |
 | `wsize=N` | Write buffer size in bytes |
 | `timeo=N` | Timeout in tenths of a second |
