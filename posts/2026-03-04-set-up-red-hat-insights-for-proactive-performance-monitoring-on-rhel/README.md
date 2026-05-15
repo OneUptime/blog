@@ -17,7 +17,7 @@ Red Hat Insights is a hosted service included with your RHEL subscription. It an
 
 sudo subscription-manager register --auto-attach
 
-# Install the Insights client (pre-installed on RHEL 8+)
+# Install the Insights client (pre-installed on RHEL 8+ except some minimal installs)
 sudo dnf install -y insights-client
 
 # Register the system with Insights
@@ -33,11 +33,8 @@ sudo insights-client
 # Check registration status
 sudo insights-client --status
 
-# View the system ID assigned by Insights
-sudo insights-client --display-name
-
 # Set a custom display name
-sudo insights-client --display-name="webserver-prod-01"
+sudo insights-client --display-name "webserver-prod-01"
 ```
 
 ## View Recommendations
@@ -80,8 +77,7 @@ cat /etc/insights-client/insights-client.conf
 sudo vi /etc/insights-client/insights-client.conf
 
 # To redact hostnames from uploaded data
-# obfuscate=True
-# obfuscate_hostname=True
+# obfuscation_list=hostname
 ```
 
 ## Use the Insights Advisor CLI
@@ -91,20 +87,23 @@ sudo vi /etc/insights-client/insights-client.conf
 # Typically viewed in the web console, but the insights-client
 # can provide some information locally
 
-# Check what data was last uploaded
-sudo insights-client --check-results
+# Test connectivity to Red Hat Insights services
+sudo insights-client --test-connection
 
-# View the compliance status
-sudo insights-client --compliance
+# Fetch diagnostic information after the system has registered and uploaded once
+sudo insights-client --diagnosis
+
+# List available compliance policies for this system
+sudo insights-client --compliance-policies
 ```
 
 ## Install Insights for Compliance (SCAP)
 
 ```bash
-# Install the compliance component
+# Install the supported SCAP Security Guide package for your RHEL minor version
 sudo dnf install -y scap-security-guide
 
-# Run a compliance scan through Insights
+# After assigning the system to a compliance policy, run and upload a compliance scan
 sudo insights-client --compliance
 
 # View compliance results in the console at:
