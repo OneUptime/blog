@@ -14,7 +14,7 @@ This guide walks through installing and configuring Podman on a fresh RHEL syste
 
 ## Why Podman Over Docker?
 
-Podman is a daemonless container engine. That means there is no background process running as root waiting for instructions. Each container runs as a child process of the Podman command, which makes it simpler to manage and more secure by default.
+Podman is a daemonless container engine. That means there is no background process running as root waiting for instructions. Podman starts containers directly through the OCI runtime and `conmon`, without sending requests to a persistent daemon, which makes it simpler to manage and more secure by default.
 
 ```mermaid
 graph LR
@@ -63,9 +63,9 @@ You should see output showing Podman 4.x or later with the cgroups v2 configurat
 
 ## Configuring Container Registries
 
-Podman uses `/etc/containers/registries.conf` to know where to pull images from. By default, RHEL configures `registry.redhat.io` and `registry.access.redhat.com`.
+Podman uses `/etc/containers/registries.conf` to know where to pull images from. By default, RHEL configures `registry.access.redhat.com`, `registry.redhat.io`, and `docker.io` as unqualified search registries.
 
-If you want to add Docker Hub or other registries, edit the config:
+If you want to verify the order or add other registries, edit the config:
 
 ## Add unqualified search registries
 ```bash
@@ -121,7 +121,11 @@ For Docker Hub:
 podman login docker.io
 ```
 
-Credentials are stored in `${XDG_RUNTIME_DIR}/containers/auth.json` for rootless or `/run/containers/0/auth.json` for root.
+By default on Linux, credentials are stored in `${XDG_RUNTIME_DIR}/containers/auth.json`, which is under `/run` and does not persist across reboot. If you want persistent credentials, specify an auth file explicitly:
+
+```bash
+podman login --authfile ~/.config/containers/auth.json registry.redhat.io
+```
 
 ## Testing Your Installation
 
@@ -145,8 +149,8 @@ One of Podman's strongest features is rootless container support. To set up a re
 
 ## Verify subuid and subgid mappings exist for your user
 ```bash
-grep $USER /etc/subuid
-grep $USER /etc/subgid
+grep "^${USER}:" /etc/subuid
+grep "^${USER}:" /etc/subgid
 ```
 
 If your user is missing from these files, add the mappings:
@@ -156,7 +160,7 @@ If your user is missing from these files, add the mappings:
 sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $USER
 ```
 
-After modifying these files, reset the Podman storage for the user:
+After modifying these files, migrate the user's Podman state so the new mappings are picked up:
 
 ```bash
 podman system migrate
