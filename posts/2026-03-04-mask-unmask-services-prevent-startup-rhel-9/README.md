@@ -90,7 +90,14 @@ Output:
 Removed /etc/systemd/system/bluetooth.service.
 ```
 
-This removes the symlink to `/dev/null`, restoring the original behavior. After unmasking, the service is in a disabled state. You will need to enable and start it if you want it running:
+This removes the symlink to `/dev/null`, restoring the original behavior. After unmasking, the service returns to its previous enablement state, so check it before assuming it will or will not start at boot:
+
+```bash
+# Check the service enablement state after unmasking
+systemctl is-enabled bluetooth
+```
+
+If you want it enabled and running:
 
 ```bash
 # After unmasking, enable and start if needed
@@ -115,7 +122,7 @@ If masked, this returns `masked`. You can also see it in the full status output:
 sudo systemctl status bluetooth
 ```
 
-The "Loaded" line will show the link to `/dev/null`:
+The "Loaded" line will show that the unit is masked:
 
 ```bash
 bluetooth.service
@@ -127,7 +134,7 @@ To list all masked services on the system:
 
 ```bash
 # List all masked service unit files
-systemctl list-unit-files --type=service --state=masked
+systemctl list-unit-files --type=service --state=masked,masked-runtime
 ```
 
 ---
@@ -142,6 +149,7 @@ If you are running firewalld, you definitely do not want iptables or nftables se
 # Mask iptables to prevent conflicts with firewalld
 sudo systemctl mask iptables
 sudo systemctl mask ip6tables
+sudo systemctl mask nftables
 ```
 
 ### Locking Down Server Roles
@@ -201,12 +209,12 @@ sudo systemctl unmask bluetooth
 
 ## What Happens to Dependencies?
 
-When you mask a service that other services depend on, those dependent services will fail to start if they use `Requires=` for the dependency. If they use `Wants=`, they will start without the masked service.
+When you mask a service that other services depend on, those dependent services will fail to start if they use `Requires=` with the usual `After=` ordering for the dependency. If they use `Wants=`, they will start without the masked service.
 
 Here is an example:
 
 ```bash
-# If service-a has Requires=service-b and you mask service-b
+# If service-a has Requires=service-b and After=service-b, and you mask service-b
 sudo systemctl mask service-b
 sudo systemctl start service-a
 # This fails because service-b is required but cannot start
@@ -250,8 +258,8 @@ Here is a quick script to audit which services are masked on a system:
 
 ```bash
 # List all masked services and their mask targets
-systemctl list-unit-files --type=service --state=masked --no-legend | while read -r unit state _; do
-    echo "$unit -> $(readlink /etc/systemd/system/$unit 2>/dev/null || echo 'runtime mask')"
+systemctl list-unit-files --type=service --state=masked,masked-runtime --no-legend | while read -r unit state _; do
+    echo "$unit -> $(readlink /etc/systemd/system/$unit 2>/dev/null || readlink /run/systemd/system/$unit 2>/dev/null || echo 'mask target unknown')"
 done
 ```
 
