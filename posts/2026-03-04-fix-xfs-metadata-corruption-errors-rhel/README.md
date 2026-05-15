@@ -37,8 +37,13 @@ sudo umount /data
 # Run xfs_repair
 sudo xfs_repair /dev/sdb1
 
-# If xfs_repair complains about a dirty log, clear it first
-# WARNING: This discards the log, which may lose recent transactions
+# If xfs_repair reports a dirty log, replay it by mounting and unmounting first
+sudo mount /data
+sudo umount /data
+sudo xfs_repair /dev/sdb1
+
+# If mounting fails and the log cannot be replayed, clear it as a last resort
+# WARNING: This discards the log, which may cause data loss or damage
 sudo xfs_repair -L /dev/sdb1
 
 # Remount after repair
@@ -47,21 +52,17 @@ sudo mount /data
 
 ## Repairing the Root Filesystem
 
-The root filesystem cannot be unmounted while running. You need to boot into rescue mode.
+The root filesystem cannot be unmounted while running normally. You need to boot from installation or rescue media.
 
 ```bash
-# Option 1: Boot from RHEL installation media
+# Boot from RHEL installation media
 # Select "Troubleshooting" > "Rescue a Red Hat Enterprise Linux system"
 
-# Option 2: Boot into emergency mode
-# At the GRUB menu, press 'e' and add: systemd.unit=emergency.target
-# The root filesystem will be mounted read-only
-
-# In rescue/emergency mode:
+# In rescue mode:
 umount /mnt/sysroot   # if mounted by rescue environment
 xfs_repair /dev/sda2  # your root partition
 
-# Or if the log needs clearing
+# If mounting the root filesystem to replay the log fails, use -L only as a last resort
 xfs_repair -L /dev/sda2
 
 # Reboot after repair
@@ -70,7 +71,7 @@ reboot
 
 ## Using xfs_metadump for Diagnosis
 
-Before running repair, capture metadata for analysis.
+Before running repair, capture metadata for analysis from an unmounted or read-only mounted filesystem.
 
 ```bash
 # Create a metadata dump for analysis (safe, read-only operation)
@@ -78,7 +79,7 @@ sudo xfs_metadump /dev/sdb1 /tmp/xfs_metadata.dump
 
 # Examine the metadata dump
 sudo xfs_mdrestore /tmp/xfs_metadata.dump /tmp/xfs_image
-sudo xfs_repair -n /tmp/xfs_image  # -n is no-modify (dry run)
+sudo xfs_repair -n -f /tmp/xfs_image  # -n is no-modify (dry run), -f reads a regular file image
 ```
 
 ## Checking Filesystem Consistency
