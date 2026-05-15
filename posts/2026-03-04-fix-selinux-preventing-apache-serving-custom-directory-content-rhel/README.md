@@ -56,6 +56,9 @@ sudo restorecon -Rv /opt/website/uploads/
 # CGI scripts need the httpd_sys_script_exec_t context
 sudo semanage fcontext -a -t httpd_sys_script_exec_t "/opt/website/cgi-bin(/.*)?"
 sudo restorecon -Rv /opt/website/cgi-bin/
+
+# SELinux also requires the CGI boolean to be enabled
+sudo setsebool -P httpd_enable_cgi on
 ```
 
 ## Apache Configuration
