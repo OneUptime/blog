@@ -12,17 +12,24 @@ Description: Use the RHEL Cockpit web console to create and manage RAID arrays t
 
 Cockpit is the web-based administration console that ships with RHEL. It provides a clean graphical interface for storage management, including RAID array creation and monitoring. If you prefer a visual approach or need to hand off RAID management to team members who are not comfortable with the command line, Cockpit is an excellent option.
 
-Under the hood, Cockpit uses the same mdadm tools, so everything it creates is standard and can be managed from the CLI as well.
+Under the hood, Cockpit manages standard Linux software RAID, so arrays it creates are standard mdraid devices and can be managed from the CLI with mdadm as well.
 
 ## Prerequisites
 
 - RHEL with Cockpit installed and enabled
+- The `cockpit-storaged` package
 - Unused disks for the RAID array
 - A web browser
 
 ## Step 1 - Enable Cockpit
 
-Cockpit is installed by default on RHEL. Just enable and start it:
+Cockpit is installed by default in many RHEL 9 installation variants. If it is not installed on your system, install it first:
+
+```bash
+sudo dnf install -y cockpit
+```
+
+Then enable and start it:
 
 ```bash
 # Enable and start the Cockpit socket
@@ -34,7 +41,7 @@ sudo firewall-cmd --permanent --add-service=cockpit
 sudo firewall-cmd --reload
 ```
 
-Access Cockpit at `https://your-server-ip:9090` in your browser. Log in with a user that has sudo privileges.
+Access Cockpit at `https://your-server-ip:9090` in your browser. Log in with a system user that is allowed to use the web console, then switch to administrative access when prompted.
 
 ## Step 2 - Install the Storage Module
 
@@ -58,8 +65,8 @@ Click on **Storage** in the Cockpit sidebar. You will see:
 
 ## Step 4 - Create a RAID Array
 
-1. In the Storage section, look for the **RAID devices** panel
-2. Click the **Create RAID device** button (the "+" icon)
+1. In the Storage section, open the Storage table menu
+2. Select **Create MDRAID device**
 3. A dialog appears where you configure:
    - **Name**: Give the array a meaningful name
    - **RAID Level**: Choose from RAID 0, 1, 4, 5, 6, or 10
@@ -75,14 +82,14 @@ The interface will show the sync progress as a percentage bar.
 Once the array exists:
 
 1. Click on the new RAID device in the storage overview
-2. Click **Create partition table** if needed (choose GPT)
-3. Click **Create partition** or use the entire device
+2. To use the entire RAID device directly, open the device menu and select **Format**
+3. To partition the RAID device first, click **Create partition table** if needed, choose GPT for modern systems and disks larger than 2 TB, then click **Create partition**
 4. Choose your filesystem type (XFS is recommended)
 5. Set the mount point
-6. Check "Mount at boot" for persistent mounting
-7. Click **Create**
+6. In the **At boot** option, choose when the volume should be mounted
+7. Click **Format and mount** or **Create and mount**
 
-Cockpit handles the mkfs command, fstab entry, and mounting automatically.
+Cockpit handles the formatting, persistent mount configuration, and mounting automatically.
 
 ## Managing the Array in Cockpit
 
