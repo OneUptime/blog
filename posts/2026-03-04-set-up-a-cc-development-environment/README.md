@@ -18,7 +18,7 @@ This guide covers how to Set Up a C/C++ Development Environment on RHEL. Followi
 
 ## Overview
 
-Set Up a C/C++ Development Environment requires careful planning and execution. This guide walks through the complete process from installation to verification.
+Setting up a C/C++ development environment requires installing the compiler toolchain, build utilities, debugger, and optional profiling tools. This guide walks through the complete process from installation to verification.
 
 ## Step 1: Prepare the System
 
@@ -31,86 +31,100 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
 sudo dnf groupinstall -y "Development Tools"
 ```
 
 ## Step 2: Install Required Packages
 
 ```bash
-sudo dnf install -y <package-name>
+sudo dnf install -y gcc gcc-c++ gdb make cmake git
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+rpm -q gcc gcc-c++ gdb make cmake git
 ```
 
-## Step 3: Configure the Service
+## Step 3: Configure Git
 
-Create or edit the main configuration file:
+Set the Git identity used for commits:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+Replace the name and email address with the values you want to use for your projects.
 
-## Step 4: Start and Enable the Service
+## Step 4: Install Optional Toolchains
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo dnf install -y llvm-toolset
 ```
+
+Install the LLVM toolset if you want to use Clang, LLDB, or other LLVM-based tools alongside GCC.
 
 ## Step 5: Verify the Configuration
 
-Test the setup:
+Check the compiler and debugger versions:
 
 ```bash
-sudo <service> --test
+gcc --version
+g++ --version
+gdb --version
 ```
 
-Check the logs for any errors:
+Build a small C program:
 
 ```bash
-journalctl -u <service> -f
+cat > hello.c <<'EOF'
+#include <stdio.h>
+
+int main(void) {
+    puts("Hello from C on RHEL");
+    return 0;
+}
+EOF
+
+gcc -Wall -Wextra -g hello.c -o hello
+./hello
 ```
 
-## Step 6: Configure Firewall Rules
+## Step 6: Install Debugging Tools
 
-If the service needs network access:
+For deeper troubleshooting, install common debugging and tracing tools:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
-sudo firewall-cmd --reload
+sudo dnf install -y valgrind strace ltrace
 ```
+
+These tools help inspect memory errors, system calls, and library calls while developing native applications.
 
 ## Step 7: Performance Tuning
 
-Monitor resource usage and adjust configuration parameters based on your workload:
+Install performance measurement tools when you need to profile application behavior:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+sudo dnf install -y perf sysstat
+perf stat ./hello
 ```
 
 ## Security Considerations
 
-- Run the service with a dedicated non-root user when possible
-- Enable TLS/SSL for network communication
-- Restrict access with firewall rules
+- Build and test applications as a normal user rather than root
+- Use compiler warnings such as `-Wall` and `-Wextra` during development
+- Keep debug symbols in development builds with `-g`
 - Keep packages updated with `dnf update`
 
 ## Troubleshooting
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
-2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
-3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
+1. **Compiler not found**: Verify the package is installed with `rpm -q gcc gcc-c++`
+2. **Missing headers or libraries**: Install the matching `-devel` package for the library you are using
+3. **Permission denied**: Build inside a directory owned by your user and verify file ownership with `ls -la`
 
 ## Conclusion
 
-You have successfully configured set up a c/c++ development environment on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
+You have successfully set up a C/C++ development environment on RHEL. Keep the toolchain updated and verify builds regularly to maintain security and reliability.
