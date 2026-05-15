@@ -77,21 +77,21 @@ Also verify the LUKS key slots:
 
 ```bash
 # Check LUKS key slot usage
-sudo cryptsetup luksDump /dev/sda3 | grep "Key Slot"
+sudo cryptsetup luksDump /dev/sda3 | grep -Ei "Keyslots|^[[:space:]]+[0-9]+:"
 ```
 
-You will see your original passphrase in one slot and the Clevis-managed key in another.
+You will see the original passphrase slot and the Clevis-managed slot listed as enabled key slots.
 
 ## Enabling Early Boot Unlock
 
-For the root volume or any volume needed at boot, regenerate the initramfs to include Clevis:
+For the root volume, regenerate the initramfs to include Clevis:
 
 ```bash
 # Rebuild the initramfs with Clevis support
 sudo dracut -fv
 ```
 
-This adds the Clevis and networking components to the initramfs so the Tang key exchange can happen before the root filesystem is mounted.
+This adds Clevis support to the initramfs so the Tang key exchange can happen before the root filesystem is mounted.
 
 ## Configuring Network in Early Boot
 
@@ -117,11 +117,11 @@ sudo grubby --update-kernel=ALL --args="rd.neednet=1 ip=10.0.1.50::10.0.1.1:255.
 
 ## Testing the Binding
 
-Test that Clevis can unlock the volume without the passphrase:
+Test that Clevis can unlock the volume without the passphrase. Replace `1` with the Clevis slot shown by `clevis luks list`:
 
 ```bash
-# Test the Clevis binding (this does not actually unlock, just verifies)
-sudo clevis luks unlock -d /dev/sda3
+# Test the Clevis binding without opening the device
+sudo clevis luks unlock -d /dev/sda3 -t 1
 ```
 
 For a full test, reboot the system and verify it comes up without prompting for a passphrase:
