@@ -162,11 +162,24 @@ POOL="datapool"
 THRESHOLD=85
 
 # Get pool usage percentage
-TOTAL=$(stratis pool list | grep "$POOL" | awk '{print $3}' | sed 's/GiB//')
-USED=$(stratis pool list | grep "$POOL" | awk '{print $5}' | sed 's/GiB//')
+PERCENT=$(stratis pool list | awk -v pool="$POOL" '
+function to_gib(value, unit) {
+    if (unit == "TiB") return value * 1024
+    if (unit == "GiB") return value
+    if (unit == "MiB") return value / 1024
+    if (unit == "KiB") return value / 1048576
+    if (unit == "B") return value / 1073741824
+    return 0
+}
+$1 == pool {
+    total = to_gib($2, $3)
+    used = to_gib($5, $6)
+    if (total > 0) {
+        printf "%.0f", (used / total) * 100
+    }
+}')
 
-if [ -n "$TOTAL" ] && [ -n "$USED" ]; then
-    PERCENT=$(echo "$USED $TOTAL" | awk '{printf "%.0f", ($1/$2)*100}')
+if [ -n "$PERCENT" ]; then
     if [ "$PERCENT" -ge "$THRESHOLD" ]; then
         echo "WARNING: Stratis pool $POOL is ${PERCENT}% full" | \
           logger -t stratis-monitor -p user.warning
@@ -184,7 +197,7 @@ Currently, Stratis does not support removing data devices from a pool. Once a de
 
 ### Device Size Matters
 
-Stratis works best when all data devices in a pool are similar in size. Mixing very different sizes is supported but may not distribute data optimally.
+Stratis can use data devices of different sizes, but capacity planning is simpler when data devices are similar in size.
 
 ### Device Type Consistency
 
