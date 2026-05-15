@@ -15,13 +15,14 @@ GFS2 (Global File System 2) is a cluster filesystem on RHEL 9 that allows multip
 - A RHEL 9 Pacemaker cluster with at least two nodes
 - STONITH fencing configured (required for GFS2)
 - Shared block storage accessible from all nodes (iSCSI, SAN, or shared disk)
+- The RHEL Resilient Storage repository enabled on all nodes
 
 ## Understanding GFS2
 
 GFS2 uses DLM for distributed locking, ensuring data consistency when multiple nodes access the same files. Key components:
 
 - **DLM** - Distributed Lock Manager for coordinating access
-- **clvmd/lvmlockd** - Cluster-aware LVM for shared volume groups
+- **lvmlockd** - Cluster-aware LVM locking for shared volume groups
 - **GFS2** - The cluster filesystem itself
 
 ## Step 1: Install Required Packages
@@ -29,50 +30,48 @@ GFS2 uses DLM for distributed locking, ensuring data consistency when multiple n
 On all nodes:
 
 ```bash
+sudo subscription-manager repos --enable=rhel-9-for-x86_64-resilientstorage-rpms
 sudo dnf install gfs2-utils dlm lvm2-lockd -y
 ```
 
 ## Step 2: Configure DLM
 
-Create the DLM resource as a clone (runs on all nodes):
+Set the quorum policy required for GFS2:
 
 ```bash
-sudo pcs resource create dlm ocf:pacemaker:controld \
-    op monitor interval=30s
+sudo pcs property set no-quorum-policy=freeze
+```
 
-sudo pcs resource clone dlm clone-max=2 clone-node-max=1
+Create the DLM resource in a cloneable locking group:
+
+```bash
+sudo pcs resource create dlm --group locking ocf:pacemaker:controld \
+    op monitor interval=30s on-fail=fence
+
+sudo pcs resource clone locking interleave=true
 ```
 
 ## Step 3: Configure lvmlockd
 
-Create the lvmlockd resource:
+Create the lvmlockd resource in the same locking group:
 
 ```bash
-sudo pcs resource create lvmlockd ocf:heartbeat:lvmlockd \
-    op monitor interval=30s
-
-sudo pcs resource clone lvmlockd clone-max=2 clone-node-max=1
-```
-
-Order lvmlockd after DLM:
-
-```bash
-sudo pcs constraint order dlm-clone then lvmlockd-clone
-sudo pcs constraint colocation add lvmlockd-clone with dlm-clone
+sudo pcs resource create lvmlockd --group locking ocf:heartbeat:lvmlockd \
+    op monitor interval=30s on-fail=fence
 ```
 
 ## Step 4: Create Shared LVM Volume Group
 
-Enable shared locking in LVM:
-
-```bash
-sudo lvmconfig --type diff
-```
-
 On all nodes, set `use_lvmlockd = 1` in `/etc/lvm/lvm.conf`:
 
 ```bash
-sudo sed -i 's/use_lvmlockd = 0/use_lvmlockd = 1/' /etc/lvm/lvm.conf
+sudo sed -i 's/# use_lvmlockd = 0/use_lvmlockd = 1/; s/use_lvmlockd = 0/use_lvmlockd = 1/' /etc/lvm/lvm.conf
+```
+
+Check the setting:
+
+```bash
+sudo lvmconfig --type diff
 ```
 
 From one node, create the shared volume group:
@@ -81,16 +80,17 @@ From one node, create the shared volume group:
 sudo vgcreate --shared shared-vg /dev/sdb
 ```
 
-On the other nodes, start the lock for the VG:
+On the other nodes, add the shared device to the LVM devices file if `use_devicesfile = 1` is enabled, then start the lock for the VG:
 
 ```bash
-sudo vgchange --lock-start shared-vg
+sudo lvmdevices --adddev /dev/sdb
+sudo vgchange --lockstart shared-vg
 ```
 
 Create a logical volume:
 
 ```bash
-sudo lvcreate -L 10G -n shared-lv shared-vg
+sudo lvcreate --activate sy -L 10G -n shared-lv shared-vg
 ```
 
 ## Step 5: Create the GFS2 Filesystem
@@ -104,27 +104,33 @@ sudo mkfs.gfs2 -p lock_dlm -t my-cluster:shared-gfs2 -j 2 /dev/shared-vg/shared-
 Parameters:
 
 - `-p lock_dlm` - Use DLM for locking
-- `-t my-cluster:shared-gfs2` - Lock table name (cluster-name:fs-name)
+- `-t my-cluster:shared-gfs2` - Lock table name (cluster-name:fs-name). Replace `my-cluster` with your Pacemaker cluster name.
 - `-j 2` - Number of journals (one per node that will mount)
 
 ## Step 6: Create the GFS2 Filesystem Resource
 
 ```bash
-sudo pcs resource create SharedGFS2 ocf:heartbeat:Filesystem \
+sudo pcs resource create shared-lv --group shared-vg ocf:heartbeat:LVM-activate \
+    lvname=shared-lv \
+    vgname=shared-vg \
+    activation_mode=shared \
+    vg_access_mode=lvmlockd
+
+sudo pcs resource create SharedGFS2 --group shared-vg ocf:heartbeat:Filesystem \
     device=/dev/shared-vg/shared-lv \
     directory=/mnt/shared \
     fstype=gfs2 \
     options="noatime" \
-    op monitor interval=20s
+    op monitor interval=20s on-fail=fence
 
-sudo pcs resource clone SharedGFS2 clone-max=2 clone-node-max=1
+sudo pcs resource clone shared-vg interleave=true
 ```
 
-Order after lvmlockd:
+Order after the locking group:
 
 ```bash
-sudo pcs constraint order lvmlockd-clone then SharedGFS2-clone
-sudo pcs constraint colocation add SharedGFS2-clone with lvmlockd-clone
+sudo pcs constraint order start locking-clone then shared-vg-clone
+sudo pcs constraint colocation add shared-vg-clone with locking-clone
 ```
 
 ## Step 7: Verify the Setup
@@ -172,9 +178,9 @@ sudo gfs2_jadd -j 1 /mnt/shared
 Unmount GFS2 on all nodes before running fsck:
 
 ```bash
-sudo pcs resource disable SharedGFS2-clone
+sudo pcs resource disable --wait=100 SharedGFS2
 sudo fsck.gfs2 -y /dev/shared-vg/shared-lv
-sudo pcs resource enable SharedGFS2-clone
+sudo pcs resource enable --wait=100 SharedGFS2
 ```
 
 ### Growing the Filesystem
@@ -197,7 +203,7 @@ sudo dlm_tool status
 View filesystem statistics:
 
 ```bash
-gfs2_tool df /mnt/shared
+df -h /mnt/shared
 ```
 
 ## Conclusion
