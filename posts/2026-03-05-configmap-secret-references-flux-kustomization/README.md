@@ -104,7 +104,7 @@ stringData:
   JWT_SECRET: my-super-secret-jwt-key
 ```
 
-Apply the Secret securely:
+Apply the Secret to the cluster:
 
 ```bash
 # Apply the secret to the cluster
@@ -139,10 +139,20 @@ spec:
         name: app-credentials
 ```
 
-Use the secret variables in your manifests:
+Use the secret variables to render an application Secret, then reference that Secret from your Deployment:
 
 ```yaml
-# deploy/deployment.yaml - Using Secret variables in environment
+# deploy/app-runtime-secret.yaml - Render sensitive values into a Kubernetes Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-app-runtime
+type: Opaque
+stringData:
+  DATABASE_URL: ${DATABASE_URL}
+  REDIS_PASSWORD: ${REDIS_PASSWORD}
+---
+# deploy/deployment.yaml - Reference the rendered Secret from the application
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -161,9 +171,15 @@ spec:
           image: myregistry.io/my-app:latest
           env:
             - name: DATABASE_URL
-              value: ${DATABASE_URL}
+              valueFrom:
+                secretKeyRef:
+                  name: my-app-runtime
+                  key: DATABASE_URL
             - name: REDIS_PASSWORD
-              value: ${REDIS_PASSWORD}
+              valueFrom:
+                secretKeyRef:
+                  name: my-app-runtime
+                  key: REDIS_PASSWORD
 ```
 
 ## Combining ConfigMaps and Secrets
