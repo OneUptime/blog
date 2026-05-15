@@ -8,13 +8,13 @@ Description: Learn how to use talosctl etcd members to inspect and manage etcd c
 
 ---
 
-The etcd cluster is the backbone of every Kubernetes deployment, and understanding its membership is essential for maintaining a healthy cluster. The `talosctl etcd members` command gives you visibility into which nodes are participating in the etcd cluster, their roles, and their health status. This guide covers how to use this command effectively for day-to-day operations and troubleshooting.
+The etcd cluster is the backbone of every Kubernetes deployment, and understanding its membership is essential for maintaining a healthy cluster. The `talosctl etcd members` command gives you visibility into which nodes are participating in the etcd cluster, their peer and client URLs, and whether any member is still a learner. This guide covers how to use this command effectively for day-to-day operations and troubleshooting.
 
 ## What etcd Members Are
 
 In a Talos Linux cluster, each control plane node runs an etcd member. These members form a distributed consensus group that stores all Kubernetes cluster state. For a cluster to function, a majority of etcd members (a quorum) must be online and communicating with each other.
 
-For a three-member etcd cluster, at least two members must be online. For a five-member cluster, at least three must be online. Losing quorum means your Kubernetes API server cannot write to etcd, which effectively makes your cluster read-only or unavailable.
+For a three-member etcd cluster, at least two members must be online. For a five-member cluster, at least three must be online. Losing quorum means your Kubernetes API server cannot reliably use etcd, which effectively makes the Kubernetes control plane unavailable.
 
 ## Basic Usage
 
@@ -26,25 +26,27 @@ To list all etcd members in your cluster:
 talosctl etcd members --nodes 192.168.1.10
 ```
 
-The output shows each etcd member along with its ID, hostname, peer URLs, and client URLs:
+The output shows each etcd member along with the node queried, member ID, hostname, peer URLs, client URLs, and learner status:
 
 ```text
-ID                   HOSTNAME         PEER URLS                      CLIENT URLS
-8e9e05c52164694d     cp-1            https://192.168.1.10:2380      https://192.168.1.10:2379
-91bc3c398fb3c146     cp-2            https://192.168.1.11:2380      https://192.168.1.11:2379
-a8aef21c3de6f95e     cp-3            https://192.168.1.12:2380      https://192.168.1.12:2379
+NODE           ID                 HOSTNAME   PEER URLS                 CLIENT URLS               LEARNER
+192.168.1.10   8e9e05c52164694d   cp-1       https://192.168.1.10:2380 https://192.168.1.10:2379 false
+192.168.1.10   91bc3c398fb3c146   cp-2       https://192.168.1.11:2380 https://192.168.1.11:2379 false
+192.168.1.10   a8aef21c3de6f95e   cp-3       https://192.168.1.12:2380 https://192.168.1.12:2379 false
 ```
 
-You can target any control plane node for this command, and you will get the same result since all etcd members know about each other.
+You can target any healthy control plane node for this command, and you should get the same result since all etcd members know about each other.
 
 ## Understanding the Output
 
 Each column in the output tells you something important:
 
-- **ID**: A unique identifier for the etcd member. You need this ID when removing or managing specific members.
+- **NODE**: The Talos node that was queried for the member list.
+- **ID**: A unique identifier for the etcd member. You need this ID when force-removing specific members.
 - **HOSTNAME**: The hostname of the node running this etcd member.
 - **PEER URLS**: The address other etcd members use to communicate with this member (port 2380).
 - **CLIENT URLS**: The address that Kubernetes components use to read and write data to etcd (port 2379).
+- **LEARNER**: Whether the member is currently a non-voting learner while catching up.
 
 ## Verifying Cluster Health
 
@@ -58,10 +60,10 @@ talosctl etcd members --nodes 192.168.1.10
 talosctl health --nodes 192.168.1.10
 
 # Check etcd service status
-talosctl services --nodes 192.168.1.10 | grep etcd
+talosctl service etcd --nodes 192.168.1.10
 ```
 
-A healthy etcd cluster should have all members listed, all peer URLs reachable, and all members in a "started" state.
+A healthy etcd cluster should have all members listed, all peer URLs reachable, and all etcd services in a running and healthy state.
 
 ## Checking Member Count
 
@@ -127,33 +129,33 @@ You should see the new member appear in the list once it has joined.
 
 ### When a Control Plane Node Leaves
 
-If a control plane node is permanently removed from the cluster, you need to remove its etcd member:
+If a control plane node is permanently removed from the cluster, a normal `talosctl reset` will leave etcd as part of the reset flow. If the node is broken or unavailable and cannot leave cleanly, you can force-remove its etcd member:
 
 ```bash
 # List members to find the ID of the node being removed
 talosctl etcd members --nodes 192.168.1.10
 
-# Remove the member by ID
+# Force-remove the member by ID
 talosctl etcd remove-member --nodes 192.168.1.10 <member-id>
 
 # Verify the member was removed
 talosctl etcd members --nodes 192.168.1.10
 ```
 
-Leaving a dead etcd member in the cluster can cause performance issues and eventual quorum problems. Always clean up after removing a control plane node.
+Leaving a dead etcd member in the cluster reduces fault tolerance and can cause quorum problems. Always clean up after removing a control plane node.
 
 ## Troubleshooting etcd Membership Issues
 
-### Member Shows as Unstarted
+### Member Service Is Not Running
 
-If a member appears in the list but is not fully started, check its logs:
+If a member appears in the list but its etcd service is not running or healthy, check its logs:
 
 ```bash
 # Check etcd logs on the problematic node
 talosctl logs etcd --nodes 192.168.1.12
 
 # Check if the etcd service is running
-talosctl services --nodes 192.168.1.12 | grep etcd
+talosctl service etcd --nodes 192.168.1.12
 ```
 
 Common causes include network partitions, disk space issues, or corrupted data directories.
@@ -164,7 +166,7 @@ If a control plane node exists but its etcd member is not showing up:
 
 ```bash
 # Check if etcd is running on the node
-talosctl services --nodes 192.168.1.12
+talosctl service etcd --nodes 192.168.1.12
 
 # Check the machine config for etcd settings
 talosctl get machineconfig --nodes 192.168.1.12 -o yaml | grep -A10 etcd
