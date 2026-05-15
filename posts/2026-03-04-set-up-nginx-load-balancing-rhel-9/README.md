@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, Load Balancing, High Availability, Linux
 
-Description: Learn how to configure Nginx as a load balancer on RHEL with round-robin, least connections, and IP hash algorithms plus health checks.
+Description: Learn how to configure Nginx as a load balancer on RHEL with round-robin, least connections, and IP hash algorithms plus passive failure handling.
 
 ---
 
-Nginx provides efficient layer 7 load balancing with multiple distribution algorithms, health checks, and session persistence. This guide covers configuring Nginx as a load balancer on RHEL for both HTTP and HTTPS traffic.
+Nginx provides efficient layer 7 load balancing with multiple distribution algorithms, passive failure handling, and session persistence. This guide covers configuring Nginx as a load balancer on RHEL for both HTTP and HTTPS traffic.
 
 ## Prerequisites
 
@@ -98,7 +98,7 @@ upstream backend_servers {
 }
 ```
 
-## Step 5: Configure Health Checks
+## Step 5: Configure Passive Failure Handling
 
 ```nginx
 upstream backend_servers {
@@ -112,8 +112,8 @@ upstream backend_servers {
 ```
 
 Parameters explained:
-- `max_fails=3` - Mark the server as down after 3 consecutive failures
-- `fail_timeout=30s` - Wait 30 seconds before trying the failed server again
+- `max_fails=3` - Consider the server unavailable after 3 unsuccessful attempts during the `fail_timeout` period
+- `fail_timeout=30s` - Use 30 seconds as both the window for counting failures and the time the server is considered unavailable
 
 ## Step 6: Keepalive Connections to Upstream
 
@@ -122,7 +122,7 @@ upstream backend_servers {
     server 192.168.1.10:3000;
     server 192.168.1.11:3000;
 
-    # Maintain up to 32 idle connections to each backend
+    # Maintain up to 32 idle upstream connections per worker process
     keepalive 32;
 }
 
@@ -212,4 +212,4 @@ sudo ausearch -m avc -ts recent | grep nginx
 
 ## Summary
 
-Nginx load balancing on RHEL distributes traffic efficiently across your backend servers. Choose round-robin for even distribution, least_conn for variable request processing times, or ip_hash when you need session persistence. Health checks automatically remove failing backends and re-add them when they recover.
+Nginx load balancing on RHEL distributes traffic efficiently across your backend servers. Choose round-robin for even distribution, least_conn for variable request processing times, or ip_hash when you need session persistence. Passive failure handling temporarily marks failing backends unavailable and retries them after the configured timeout.
