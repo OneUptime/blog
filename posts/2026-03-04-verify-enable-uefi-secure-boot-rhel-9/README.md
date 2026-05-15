@@ -20,7 +20,7 @@ The quickest way to check if Secure Boot is active:
 mokutil --sb-state
 ```
 
-This returns either `SecureBoot enabled` or `SecureBoot disabled`.
+This typically returns `SecureBoot enabled` or `SecureBoot disabled`. On systems in setup mode, it can also report the platform state.
 
 You can also check through the kernel:
 
@@ -97,10 +97,10 @@ pesign -S -i /boot/vmlinuz-$(uname -r)
 
 ### Third-Party Kernel Modules
 
-If you use third-party drivers (NVIDIA, VirtualBox, custom modules), they may not be signed by a trusted key. You will see errors like:
+If you use third-party drivers (NVIDIA, VirtualBox, custom modules), they may not be signed by a trusted key. With Secure Boot enforcing module signatures, the module load can fail with errors like:
 
 ```bash
-module verification failed: signature and/or required key missing
+modprobe: ERROR: could not insert '<module_name>': Required key not available
 ```
 
 Solutions:
@@ -133,7 +133,7 @@ pesign -S -i /boot/vmlinuz-$(uname -r)
 
 ## Checking Secure Boot Violations
 
-If Secure Boot blocks something, it shows up in the system log:
+If Secure Boot or kernel module signature enforcement blocks something after the kernel starts, related messages can show up in the system log:
 
 ```bash
 # Check for Secure Boot related messages
