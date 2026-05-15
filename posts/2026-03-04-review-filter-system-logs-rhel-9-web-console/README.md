@@ -113,7 +113,7 @@ journalctl --no-pager | grep "Failed password"
 journalctl --no-pager | grep -i "out of memory"
 ```
 
-The Cockpit search updates the list in real time as you type.
+Apply the filter after typing your search expression to update the list.
 
 ## Reading Log Entry Details
 
@@ -201,7 +201,7 @@ journalctl -p err --since "24 hours ago" -o json --no-pager > /tmp/errors.json
 
 ## Configuring Journal Persistence
 
-By default, RHEL stores journals persistently in `/var/log/journal/`. If journals are only in `/run/log/journal/`, they're volatile and lost on reboot.
+By default, RHEL stores the systemd journal in `/run/log/journal/`, which is volatile and lost on reboot. To keep journal entries across reboots, configure persistent storage in `/var/log/journal/`.
 
 Ensure persistent storage is configured:
 
@@ -209,10 +209,10 @@ Ensure persistent storage is configured:
 # Check if persistent storage is in use
 ls /var/log/journal/
 
-# If the directory doesn't exist, create it and restart journald
+# If the directory doesn't exist, create it and flush the journal
 sudo mkdir -p /var/log/journal
 sudo systemd-tmpfiles --create --prefix /var/log/journal
-sudo systemctl restart systemd-journald
+sudo journalctl --flush
 ```
 
 ## Managing Journal Size
@@ -224,6 +224,7 @@ Journals can grow large on busy systems. Control the size with journald configur
 journalctl --disk-usage
 
 # Set maximum journal size
+sudo mkdir -p /etc/systemd/journald.conf.d
 sudo tee /etc/systemd/journald.conf.d/size.conf << 'EOF'
 [Journal]
 SystemMaxUse=1G
