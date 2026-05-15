@@ -45,8 +45,8 @@ LogFile=/var/log/zabbix/zabbix_agent2.log
 LogFileSize=10
 
 # Enable remote commands (optional, disable for security)
-AllowKey=system.run[*]
 DenyKey=system.run[rm *]
+AllowKey=system.run[*]
 
 # TLS encryption (optional but recommended)
 # TLSConnect=psk
@@ -105,7 +105,7 @@ zabbix_agent2 -t system.uptime
 zabbix_agent2 -t system.cpu.util
 zabbix_agent2 -t vm.memory.size[available]
 zabbix_agent2 -t vfs.fs.size[/,pfree]
-zabbix_agent2 -t net.if.in[eth0]
+zabbix_agent2 -t net.if.in[$(ip -o -4 route show to default | awk '{print $5; exit}')]
 
 # Test from the Zabbix server
 zabbix_get -s 10.0.0.50 -k system.uptime
@@ -114,8 +114,8 @@ zabbix_get -s 10.0.0.50 -k system.uptime
 ## SELinux Configuration
 
 ```bash
-# If SELinux blocks the agent, allow it
-sudo setsebool -P zabbix_can_network 1
+# Install the Zabbix SELinux policy package if SELinux blocks the agent
+sudo dnf install -y zabbix-selinux-policy
 
 # Check for SELinux denials
 sudo ausearch -m AVC -c zabbix_agent2 -ts recent
