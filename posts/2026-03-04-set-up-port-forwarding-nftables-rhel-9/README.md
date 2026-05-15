@@ -75,11 +75,11 @@ nftables uses tables and chains to organize rules. You need a table with prerout
 sudo nft add table ip nat
 
 # Create the prerouting chain for DNAT (incoming traffic)
-# The priority -100 ensures this runs before the filter chain
-sudo nft add chain ip nat prerouting { type nat hook prerouting priority -100 \; }
+# The priority -100 registers this chain at the destination NAT priority
+sudo nft -- add chain ip nat prerouting { type nat hook prerouting priority -100 \; }
 
 # Create the postrouting chain for SNAT (outgoing traffic)
-# The priority 100 ensures this runs after the filter chain
+# The priority 100 registers this chain at the source NAT priority
 sudo nft add chain ip nat postrouting { type nat hook postrouting priority 100 \; }
 ```
 
@@ -167,14 +167,14 @@ sudo nft add rule ip filter forward ct state established,related accept
 nftables rules are lost on reboot unless you save them.
 
 ```bash
-# Save the current ruleset to the default configuration file
-sudo nft list ruleset | sudo tee /etc/nftables.conf
+# Save the current ruleset to a script loaded by the RHEL nftables service
+sudo nft list ruleset | sudo tee /etc/nftables/port-forwarding.nft
 
-# Alternatively, save to a separate file and include it
-sudo nft list ruleset | sudo tee /etc/nftables/port-forwarding.conf
+# Include the script in the nftables service configuration
+echo 'include "/etc/nftables/port-forwarding.nft"' | sudo tee -a /etc/sysconfig/nftables.conf
 ```
 
-To include a separate file, edit `/etc/nftables.conf`:
+To include the separate file manually, edit `/etc/sysconfig/nftables.conf`:
 
 ```bash
 #!/usr/sbin/nft -f
@@ -182,7 +182,7 @@ To include a separate file, edit `/etc/nftables.conf`:
 flush ruleset
 
 # Include the port forwarding rules
-include "/etc/nftables/port-forwarding.conf"
+include "/etc/nftables/port-forwarding.nft"
 ```
 
 ## Step 8: Test the Port Forwarding
