@@ -53,9 +53,7 @@ This runs in the foreground and shows progress. For large volumes, it can take h
 sudo pvmove -b /dev/sdb /dev/sdd
 
 # Check progress
-sudo pvmove --status
-# Or use lvs
-sudo lvs -o lv_name,copy_percent
+sudo lvs -a -o lv_name,copy_percent,devices
 ```
 
 ## Moving a Specific Logical Volume
@@ -109,7 +107,7 @@ If `pvmove` is interrupted (system crash, etc.), recovery is straightforward:
 sudo lvs -a -o lv_name,copy_percent
 
 # Resume an interrupted pvmove
-sudo pvmove /dev/sdb /dev/sdd
+sudo pvmove
 
 # If you need to abort a pvmove in progress
 sudo pvmove --abort
@@ -138,4 +136,3 @@ sudo pvremove /dev/sdb
 ## Summary
 
 LVM data migration with `pvmove` is one of the most powerful features of LVM on RHEL. It allows you to move data between physical volumes transparently while volumes remain mounted and accessible. This makes disk replacements, storage upgrades, and tier migrations seamless operations.
-
