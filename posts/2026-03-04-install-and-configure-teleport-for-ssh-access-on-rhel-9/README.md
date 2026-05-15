@@ -15,47 +15,70 @@ Teleport for SSH Access can be installed and configured on RHEL to provide robus
 - RHEL with a valid subscription or CentOS Stream 9
 - Root or sudo access
 - A terminal session
+- A running Teleport cluster, proxy address, join token, and CA pin
 
 ## Step 1: Install Required Packages
 
 ```bash
 # Update the system first
-
 sudo dnf update -y
 
-# Install the required packages
-sudo dnf install -y <package-name>
+# Install the DNF config-manager plugin
+sudo dnf install -y dnf-plugins-core
+
+# Add the Teleport RPM repository for RHEL 9 or CentOS Stream 9
+source /etc/os-release
+export TELEPORT_VERSION=v18
+export TELEPORT_CHANNEL="stable/${TELEPORT_VERSION}"
+export TELEPORT_PKG=teleport
+REPO_ID="$ID"
+REPO_VERSION_ID="$(echo "$VERSION_ID" | grep -Eo '^[0-9]+')"
+ARCH="$(rpm --eval '%{_arch}')"
+
+sudo dnf config-manager --add-repo \
+  "https://yum.releases.teleport.dev/${REPO_ID}/${REPO_VERSION_ID}/Teleport/${ARCH}/${TELEPORT_CHANNEL}/teleport.repo"
+
+# Install Teleport Community Edition
+sudo dnf install -y "${TELEPORT_PKG}"
+
+# Verify the installed binary
+teleport version
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+Use `teleport-ent` instead of `teleport` if you are installing Teleport Enterprise Self-Hosted.
 
 ## Step 2: Configure the Service
 
 Edit the configuration file to match your environment:
 
 ```bash
-# Open the configuration file
-sudo vi /etc/<service>/config.conf
+# Generate the SSH node configuration
+sudo teleport node configure \
+  --proxy=teleport.example.com:443 \
+  --token=/path/to/join-token \
+  --ca-pin=sha256:replace-with-your-cluster-ca-pin \
+  --labels=env=prod,os=rhel9 \
+  -o file:///etc/teleport.yaml
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Replace `teleport.example.com:443`, `/path/to/join-token`, and the `sha256:` CA pin with values from your Teleport cluster. You can also edit `/etc/teleport.yaml` directly to adjust labels, the node name, or SSH service settings.
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart teleport
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable teleport
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start teleport
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status teleport
 ```
 
 
@@ -65,17 +88,17 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status teleport
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u teleport --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
+- If the service fails to start, check the logs with `journalctl -u teleport -e --no-pager`.
 - Check file ownership and permissions with `ls -laZ` (the Z flag shows SELinux contexts).
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- Ensure Teleport is installed: `rpm -qa | grep teleport`.
 
 ## Conclusion
 
