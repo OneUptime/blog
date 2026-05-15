@@ -14,6 +14,7 @@ Virtual hosts let you run multiple websites on a single Apache server. Each site
 
 - A RHEL system with Apache installed and running
 - DNS records pointing your domains to the server (or local /etc/hosts entries for testing)
+- The policycoreutils-python-utils package installed for the semanage command
 - Root or sudo access
 
 ## Understanding Virtual Host Types
