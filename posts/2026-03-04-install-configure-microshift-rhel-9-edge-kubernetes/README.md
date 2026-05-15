@@ -16,7 +16,7 @@ Install and configure MicroShift on RHEL 9 for lightweight Kubernetes at the edg
 
 - A RHEL 9 system for building edge images (with Image Builder)
 - Root or sudo access
-- For MicroShift: a system with at least 2 CPU cores and 2 GB RAM
+- For MicroShift: a supported RHEL 9 minor version for your MicroShift release, at least 2 CPU cores, 2 GB RAM, 10 GB storage, and an active MicroShift subscription
 
 ## Step 1 - Understand the Edge Architecture
 
@@ -38,7 +38,7 @@ composer-cli compose start my-edge-blueprint edge-commit
 For an installer image:
 
 ```bash
-composer-cli compose start my-edge-blueprint edge-installer
+composer-cli compose start-ostree --ref rhel/9/$(uname -m)/edge --url http://10.0.2.2:8080/repo/ my-edge-blueprint edge-installer
 ```
 
 ## Step 3 - Deploy to Edge Devices
@@ -46,17 +46,17 @@ composer-cli compose start my-edge-blueprint edge-installer
 Write the installer to a USB drive or serve it over the network:
 
 ```bash
-sudo dd if=edge-installer.iso of=/dev/sdX bs=4M status=progress
+sudo dd if=<UUID>-boot.iso of=/dev/sdX bs=4M status=progress
 ```
 
-## Step 4 - Configure Automatic Updates
+## Step 4 - Configure Health Checks for Updates
 
-RHEL for Edge supports automatic OS updates with Greenboot health checks:
+RHEL for Edge supports rpm-ostree updates with Greenboot health checks:
 
 ```bash
 # Greenboot scripts in /etc/greenboot/check/required.d/
 
-# If any script fails, the system rolls back to the previous version
+# If required checks keep failing after retries, the system rolls back if a previous deployment is available
 ```
 
 ## Step 5 - Deploy Workloads
@@ -70,7 +70,17 @@ podman run -d --name myapp registry.example.com/myapp:latest
 For Kubernetes workloads, install MicroShift:
 
 ```bash
+sudo subscription-manager repos \
+  --enable rhocp-4.20-for-rhel-9-$(uname -m)-rpms \
+  --enable fast-datapath-for-rhel-9-$(uname -m)-rpms
+sudo subscription-manager release --set=9.6
 sudo dnf install -y microshift
+sudo cp $HOME/openshift-pull-secret /etc/crio/openshift-pull-secret
+sudo chown root:root /etc/crio/openshift-pull-secret
+sudo chmod 600 /etc/crio/openshift-pull-secret
+sudo firewall-cmd --permanent --zone=trusted --add-source=10.42.0.0/16
+sudo firewall-cmd --permanent --zone=trusted --add-source=169.254.169.1
+sudo firewall-cmd --reload
 sudo systemctl enable --now microshift
 ```
 
