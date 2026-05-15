@@ -8,7 +8,7 @@ Description: Learn how to install and Manage Python Packages with pipx on RHEL w
 
 ---
 
-This guide covers how to Install and Manage Python Packages with pipx on RHEL. Following these steps will help you set up a reliable configuration on RHEL.
+This guide covers how to install and manage Python command-line applications with pipx on RHEL. Following these steps will help you set up a reliable per-user pipx installation on RHEL.
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ This guide covers how to Install and Manage Python Packages with pipx on RHEL. F
 
 ## Overview
 
-Install and Manage Python Packages with pipx requires careful planning and execution. This guide walks through the complete process from installation to verification.
+pipx installs Python command-line applications into isolated virtual environments and exposes their executable commands on your PATH. This guide walks through installation, PATH configuration, package management, and verification.
 
 ## Step 1: Prepare the System
 
@@ -31,86 +31,86 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y python3 python3-pip
 ```
 
-## Step 2: Install Required Packages
+## Step 2: Install pipx
 
 ```bash
-sudo dnf install -y <package-name>
+python3 -m pip install --user pipx
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+python3 -m pipx --version
 ```
 
-## Step 3: Configure the Service
+## Step 3: Configure the PATH
 
-Create or edit the main configuration file:
+Add the pipx binary directory and the directory for pipx-installed applications to your shell PATH:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+python3 -m pipx ensurepath
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+Open a new terminal session, or reload your shell profile, before running `pipx` directly.
 
-## Step 4: Start and Enable the Service
+## Step 4: Install and Manage Packages
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+pipx install black
+pipx list
 ```
 
 ## Step 5: Verify the Configuration
 
-Test the setup:
+Test the installed application:
 
 ```bash
-sudo <service> --test
+black --version
 ```
 
-Check the logs for any errors:
+Run a Python application without installing it permanently:
 
 ```bash
-journalctl -u <service> -f
+pipx run pycowsay "pipx is working"
 ```
 
-## Step 6: Configure Firewall Rules
+## Step 6: Update or Remove Packages
 
-If the service needs network access:
+Upgrade one installed application, upgrade all installed applications, or remove an application:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
-sudo firewall-cmd --reload
+pipx upgrade black
+pipx upgrade-all
+pipx uninstall black
 ```
 
 ## Step 7: Performance Tuning
 
-Monitor resource usage and adjust configuration parameters based on your workload:
+Review where pipx stores applications and virtual environments. The default pipx application binary directory is `~/.local/bin`, and the default virtual environment location on Linux is typically `~/.local/share/pipx`.
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+pipx environment
+pipx list
 ```
 
 ## Security Considerations
 
-- Run the service with a dedicated non-root user when possible
-- Enable TLS/SSL for network communication
-- Restrict access with firewall rules
-- Keep packages updated with `dnf update`
+- Install applications as a regular user unless you need them globally for all users
+- Use `sudo pipx install --global <package>` only when a system-wide command is required
+- Review packages before installing them from PyPI
+- Keep pipx and installed applications updated with `python3 -m pip install --user -U pipx` and `pipx upgrade-all`
 
 ## Troubleshooting
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
-2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
-3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
+1. **`pipx` command not found**: Run `python3 -m pipx ensurepath`, then open a new terminal session
+2. **Installed app command not found**: Verify that `~/.local/bin` is in your PATH with `echo $PATH`
+3. **Package fails to install**: Confirm that Python and pip are installed with `python3 --version` and `python3 -m pip --version`
 
 ## Conclusion
 
-You have successfully configured install and manage python packages with pipx on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
+You have successfully configured pipx on RHEL. Use `pipx install`, `pipx list`, `pipx upgrade-all`, and `pipx uninstall` to manage isolated Python command-line applications.
