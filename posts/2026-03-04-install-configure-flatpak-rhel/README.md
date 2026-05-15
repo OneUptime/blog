@@ -8,7 +8,7 @@ Description: Install and configure Flatpak on RHEL to run sandboxed applications
 
 ---
 
-Flatpak is a framework for distributing desktop applications on Linux. Applications run in isolated sandboxes with their own libraries and dependencies, which means they work consistently regardless of the host system's package versions. This is useful for running newer application versions on RHEL's stable base.
+Flatpak is a framework for distributing desktop applications on Linux. Applications run in isolated sandboxes with their own libraries and dependencies, which means they work consistently regardless of the host system's package versions. This is useful for running newer application versions on RHEL's stable base. Red Hat supports the Flatpak package manager, but applications from third-party remotes such as Flathub are not supported by Red Hat.
 
 ## Install Flatpak
 
@@ -17,17 +17,17 @@ Flatpak is a framework for distributing desktop applications on Linux. Applicati
 
 sudo dnf install -y flatpak
 
-# Install the GNOME Software Flatpak plugin for graphical management
-sudo dnf install -y gnome-software-plugin-flatpak
+# Optional: install GNOME Software for graphical management
+sudo dnf install -y gnome-software
 ```
 
 ## Add the Flathub Repository
 
-Flathub is the primary source for Flatpak applications.
+Flathub is the primary third-party source for Flatpak applications.
 
 ```bash
 # Add the Flathub repository
-flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
 # Verify it was added
 flatpak remotes
@@ -91,8 +91,8 @@ flatpak update
 # Update a specific application
 flatpak update org.mozilla.firefox
 
-# Check for available updates without installing
-flatpak update --no-deploy
+# Check for available updates
+flatpak remote-ls --updates
 ```
 
 ## Remove Applications
