@@ -8,7 +8,7 @@ Description: Send system alerts from RHEL servers to Slack channels using incomi
 
 ---
 
-Slack incoming webhooks provide a simple way to send notifications from RHEL servers to your team's Slack channels. No agent installation is required, just curl and a webhook URL.
+Slack incoming webhooks provide a simple way to send notifications from RHEL servers to your team's Slack channels. No agent installation is required, just curl, jq, and a webhook URL.
 
 ## Setting Up the Slack Webhook
 
@@ -41,19 +41,27 @@ send_slack() {
         *)        COLOR="#808080" ;;
     esac
 
-    curl -s -X POST "$WEBHOOK_URL" \
-      -H "Content-Type: application/json" \
-      -d "{
-        \"attachments\": [{
-          \"color\": \"$COLOR\",
-          \"title\": \"Alert from $(hostname)\",
-          \"text\": \"$message\",
-          \"fields\": [
-            {\"title\": \"Host\", \"value\": \"$(hostname)\", \"short\": true},
-            {\"title\": \"Time\", \"value\": \"$(date '+%Y-%m-%d %H:%M:%S')\", \"short\": true}
+    PAYLOAD=$(jq -n \
+      --arg color "$COLOR" \
+      --arg title "Alert from $(hostname)" \
+      --arg message "$message" \
+      --arg host "$(hostname)" \
+      --arg time "$(date '+%Y-%m-%d %H:%M:%S')" \
+      '{
+        attachments: [{
+          color: $color,
+          title: $title,
+          text: $message,
+          fields: [
+            {title: "Host", value: $host, short: true},
+            {title: "Time", value: $time, short: true}
           ]
         }]
-      }"
+      }')
+
+    curl -s -X POST "$WEBHOOK_URL" \
+      -H "Content-Type: application/json" \
+      -d "$PAYLOAD"
 }
 
 # Usage
@@ -70,17 +78,25 @@ WEBHOOK_URL="https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXX
 WARNING_THRESHOLD=80
 CRITICAL_THRESHOLD=90
 
-df -h --output=target,pcent | tail -n +2 | while read mount usage; do
+df -h --output=pcent,target | tail -n +2 | while read -r usage mount; do
     PERCENT=${usage%\%}
 
-    if [ "$PERCENT" -gt "$CRITICAL_THRESHOLD" ]; then
+    if [ "$PERCENT" -ge "$CRITICAL_THRESHOLD" ]; then
+        PAYLOAD=$(jq -n \
+          --arg text ":red_circle: *CRITICAL* - Disk usage on \`$(hostname)\`: \`$mount\` at *${PERCENT}%*" \
+          '{text: $text}')
+
         curl -s -X POST "$WEBHOOK_URL" \
           -H "Content-Type: application/json" \
-          -d "{\"text\": \":red_circle: *CRITICAL* - Disk usage on \`$(hostname)\`: \`$mount\` at *${PERCENT}%*\"}"
-    elif [ "$PERCENT" -gt "$WARNING_THRESHOLD" ]; then
+          -d "$PAYLOAD"
+    elif [ "$PERCENT" -ge "$WARNING_THRESHOLD" ]; then
+        PAYLOAD=$(jq -n \
+          --arg text ":warning: *WARNING* - Disk usage on \`$(hostname)\`: \`$mount\` at *${PERCENT}%*" \
+          '{text: $text}')
+
         curl -s -X POST "$WEBHOOK_URL" \
           -H "Content-Type: application/json" \
-          -d "{\"text\": \":warning: *WARNING* - Disk usage on \`$(hostname)\`: \`$mount\` at *${PERCENT}%*\"}"
+          -d "$PAYLOAD"
     fi
 done
 ```
@@ -96,9 +112,13 @@ SERVICES="httpd postgresql sshd firewalld"
 
 for svc in $SERVICES; do
     if ! systemctl is-active --quiet "$svc"; then
+        PAYLOAD=$(jq -n \
+          --arg text ":x: *SERVICE DOWN* on \`$(hostname)\`: \`$svc\` is not running" \
+          '{text: $text}')
+
         curl -s -X POST "$WEBHOOK_URL" \
           -H "Content-Type: application/json" \
-          -d "{\"text\": \":x: *SERVICE DOWN* on \`$(hostname)\`: \`$svc\` is not running\"}"
+          -d "$PAYLOAD"
     fi
 done
 ```
@@ -122,7 +142,7 @@ EOF
 sudo mkdir -p /etc/systemd/system/httpd.service.d/
 sudo tee /etc/systemd/system/httpd.service.d/slack-notify.conf << 'EOF'
 [Unit]
-OnFailure=slack-notify@httpd.service
+OnFailure=slack-notify@%N.service
 EOF
 
 sudo systemctl daemon-reload
