@@ -34,6 +34,9 @@ graph TD
 -- Run this on the MySQL primary (it will replicate to replicas)
 CREATE USER 'haproxy_check'@'192.168.1.%' IDENTIFIED BY '';
 GRANT USAGE ON *.* TO 'haproxy_check'@'192.168.1.%';
+GRANT REPLICATION CLIENT ON *.* TO 'haproxy_check'@'192.168.1.%';
+-- For MariaDB 10.5.9+ advanced replication checks, use:
+-- GRANT REPLICA MONITOR ON *.* TO 'haproxy_check'@'192.168.1.%';
 FLUSH PRIVILEGES;
 ```
 
@@ -77,7 +80,7 @@ listen mysql_write
     # Only the primary server handles writes
     server mysql-primary 192.168.1.10:3306 check inter 5s fall 3 rise 2
 
-    # Backup server in case primary fails (manual failover)
+    # Promoted standby only; HAProxy does not promote replicas automatically
     server mysql-standby 192.168.1.11:3306 check backup
 
 # Read traffic - distributed across replicas
@@ -151,25 +154,45 @@ DB_READ_PORT=3307
 For more thorough health checks that verify replication status:
 
 ```bash
-# Create a custom health check script on each MySQL server
+# Create a custom health check script on the HAProxy server
 cat <<'SCRIPT' | sudo tee /usr/local/bin/mysql-health-check.sh
 #!/bin/bash
 # Check if MySQL is running and replication is healthy
 
-MYSQL_STATUS=$(mysql -u haproxy_check -e "SHOW SLAVE STATUS\G" 2>/dev/null)
+MYSQL_HOST="${HAPROXY_SERVER_ADDR:-127.0.0.1}"
+MYSQL_PORT="${HAPROXY_SERVER_PORT:-3306}"
+MYSQL_CMD="mysql -h ${MYSQL_HOST} -P ${MYSQL_PORT} -u haproxy_check --connect-timeout=3 --batch --skip-column-names"
 
-if echo "$MYSQL_STATUS" | grep -q "Slave_IO_Running: Yes"; then
-    if echo "$MYSQL_STATUS" | grep -q "Slave_SQL_Running: Yes"; then
+MYSQL_STATUS=$($MYSQL_CMD -e "SHOW REPLICA STATUS\G" 2>/dev/null || $MYSQL_CMD -e "SHOW SLAVE STATUS\G" 2>/dev/null)
+
+if [ -n "$MYSQL_STATUS" ]; then
+    if echo "$MYSQL_STATUS" | grep -Eq "(Replica_IO_Running|Slave_IO_Running): Yes" && \
+       echo "$MYSQL_STATUS" | grep -Eq "(Replica_SQL_Running|Slave_SQL_Running): Yes"; then
         # Replication is healthy
         exit 0
     fi
+
+    # Replica exists but replication is broken
+    exit 1
 fi
 
-# Not a replica (primary) or replication is broken
-mysql -u haproxy_check -e "SELECT 1" > /dev/null 2>&1
+# Not a replica (primary)
+$MYSQL_CMD -e "SELECT 1" > /dev/null 2>&1
 exit $?
 SCRIPT
 chmod +x /usr/local/bin/mysql-health-check.sh
+```
+
+Then enable the script for the read listener in HAProxy:
+
+```haproxy
+global
+    external-check
+    insecure-fork-wanted
+
+listen mysql_read
+    option external-check
+    external-check command /usr/local/bin/mysql-health-check.sh
 ```
 
 ## Step 7: Monitor Database Connections
