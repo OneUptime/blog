@@ -83,7 +83,7 @@ mkdir /opt/shared-project/subdir
 getfacl /opt/shared-project/subdir
 ```
 
-The new file will have the default ACL entries as its access ACL (minus execute for files, per the umask). The subdirectory will have both the access ACL and the default ACL.
+The new file will have the default ACL entries as its access ACL, limited by the permissions requested when the file is created. For example, tools such as `touch` typically create files with mode `0666`, so execute permission is not added even if the default ACL contains `x`. The subdirectory will have both the access ACL and the default ACL.
 
 ## Practical Example: Team Shared Directory
 
@@ -143,17 +143,17 @@ sudo setfacl -d -x g:qa /opt/shared-project
 
 ## Default ACLs and umask
 
-The umask does NOT affect files created in directories with default ACLs. The default ACL takes full control of the permissions:
+The umask does NOT affect files created in directories with default ACLs. The default ACL is inherited, but permissions that were not requested by the file-creation mode are still turned off:
 
 ```bash
 # Even with umask 077, files inherit the default ACL
 umask 077
 touch /opt/shared-project/another-file.txt
 getfacl /opt/shared-project/another-file.txt
-# Permissions come from the default ACL, not umask
+# Permissions come from the default ACL and creation mode, not umask
 ```
 
-This is an important distinction. It means default ACLs provide consistent permissions regardless of individual users' umask settings.
+This is an important distinction. It means default ACLs provide consistent permissions regardless of individual users' umask settings, while regular files still normally start without execute permission unless the creating program requests it.
 
 ## Applying Default ACLs to Existing Content
 
@@ -181,7 +181,7 @@ setfacl --restore=/root/teamwork-acls.txt
 
 ## Common Pitfall: Execute Permission on Files
 
-Default ACLs set with `rwx` will try to give execute permission to new regular files. The kernel's file creation mask removes execute for regular files, so this typically is not a problem. But be aware:
+Default ACLs set with `rwx` can still result in new regular files without execute permission. For common file creation tools such as `touch`, the requested creation mode does not include execute permission, so execute is turned off even if the default ACL contains it. But be aware:
 
 ```bash
 # Default ACL grants rwx, but new files get rw- (execute stripped)
