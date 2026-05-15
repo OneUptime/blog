@@ -55,7 +55,7 @@ options {
 
 logging {
     channel default_log {
-        file "/var/log/named/default.log" versions 3 size 5m;
+        file "/var/named/log/default.log" versions 3 size 5m;
         severity info;
         print-time yes;
     };
@@ -201,8 +201,9 @@ EOF
 ```bash
 chown -R named:named /var/named/internal
 chown -R named:named /var/named/external
-mkdir -p /var/log/named
-chown named:named /var/log/named
+mkdir -p /var/named/log
+chown named:named /var/named/log
+chmod 700 /var/named/log
 ```
 
 ## Validating and Starting
@@ -213,6 +214,7 @@ Check the configuration:
 named-checkconf /etc/named.conf
 named-checkzone company.com /var/named/internal/company.com.zone
 named-checkzone company.com /var/named/external/company.com.zone
+named-checkzone 1.168.192.in-addr.arpa /var/named/internal/192.168.1.rev
 ```
 
 Restart BIND:
@@ -231,7 +233,7 @@ dig @localhost app.company.com A
 
 This should return `192.168.1.100`.
 
-Test the external view from an external client (or simulate it):
+Test the external view from an external client:
 
 ```bash
 dig @203.0.113.10 app.company.com A
@@ -239,15 +241,21 @@ dig @203.0.113.10 app.company.com A
 
 This should return `203.0.113.50`.
 
+If you are testing from the DNS server itself and it has a non-internal address assigned, you can bind the query to that source address:
+
+```bash
+dig -b 203.0.113.10 @203.0.113.10 app.company.com A
+```
+
 You can verify which view a client is hitting by checking the logs:
 
 ```bash
-tail -f /var/log/named/default.log
+tail -f /var/named/log/default.log
 ```
 
 ## Important Considerations
 
-**Every zone must be defined in every view.** If you reference a zone in one view, BIND won't fall through to another view to find it. If you need the root hints in both views, include them in both.
+**Every zone needed by a view must be defined in that view.** If you reference a zone in one view, BIND won't fall through to another view to find it. If you need the root hints in both views, include them in both.
 
 **Serial numbers should be kept in sync** across internal and external zone files for the same zone. This avoids confusion when troubleshooting.
 
