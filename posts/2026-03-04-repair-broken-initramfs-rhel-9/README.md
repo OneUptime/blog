@@ -45,9 +45,9 @@ Rebuild for the currently running kernel:
 sudo dracut --force
 ```
 
-## Method 2: Rebuild from GRUB Emergency
+## Method 2: Rebuild from the dracut Emergency Shell
 
-If no other kernel works, edit the GRUB entry:
+If the system reaches a dracut emergency shell, rebuild from the installed system root:
 
 1. At the GRUB menu, press `e` to edit the default entry
 2. Find the line starting with `linux` or `linuxefi`
@@ -58,8 +58,9 @@ In the emergency shell:
 
 ```bash
 mount -o remount,rw /sysroot
+# If /boot is a separate filesystem, mount it under /sysroot/boot before rebuilding
 chroot /sysroot
-dracut --force
+dracut --force /boot/initramfs-$(uname -r).img $(uname -r)
 exit
 reboot
 ```
@@ -72,7 +73,8 @@ The rescue environment will try to find and mount your existing installation. If
 
 ```bash
 chroot /mnt/sysroot
-dracut --force
+KERNEL_VERSION=5.14.0-362.el9.x86_64
+dracut --force /boot/initramfs-${KERNEL_VERSION}.img ${KERNEL_VERSION}
 exit
 reboot
 ```
@@ -93,7 +95,8 @@ sudo mount --bind /sys /mnt/sys
 
 # Chroot and rebuild
 sudo chroot /mnt
-dracut --force
+KERNEL_VERSION=5.14.0-362.el9.x86_64
+dracut --force /boot/initramfs-${KERNEL_VERSION}.img ${KERNEL_VERSION}
 exit
 
 # Unmount
@@ -130,7 +133,7 @@ Check for specific modules:
 lsinitrd /boot/initramfs-$(uname -r).img | grep xfs
 ```
 
-Verify the image is not corrupted:
+Check that the image is recognized as initramfs or compressed data:
 
 ```bash
 file /boot/initramfs-$(uname -r).img
@@ -152,4 +155,4 @@ ls -la /boot/initramfs-*
 
 ## Conclusion
 
-A broken initramfs on RHEL prevents the system from booting but is repairable using dracut. Boot from an older kernel, rescue media, or GRUB emergency mode to rebuild the image. Always verify the initramfs contents after rebuilding.
+A broken initramfs on RHEL prevents the system from booting but is repairable using dracut. Boot from an older kernel, rescue media, or the dracut emergency shell to rebuild the image. Always verify the initramfs contents after rebuilding.
