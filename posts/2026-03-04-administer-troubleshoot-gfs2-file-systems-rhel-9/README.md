@@ -21,7 +21,7 @@ mount | grep gfs2
 Check file system statistics:
 
 ```bash
-gfs2_tool df /shared
+df -h /shared
 ```
 
 View detailed superblock information:
@@ -37,7 +37,7 @@ sudo tunegfs2 -l /dev/shared_vg/gfs2_lv
 Lock contention is the most common GFS2 performance issue. View lock statistics:
 
 ```bash
-cat /sys/kernel/debug/gfs2/mycluster\:mygfs2/glstats
+cat /sys/kernel/debug/gfs2/mycluster:mygfs2/glstats
 ```
 
 Or use glocktop for a real-time view:
@@ -51,7 +51,7 @@ High lock wait times indicate contention between nodes.
 ### Monitoring with DLM Statistics
 
 ```bash
-cat /sys/kernel/debug/dlm/mygfs2
+sudo dlm_tool lockdebug -sv mygfs2
 ```
 
 ## Adding Journals
@@ -67,7 +67,7 @@ sudo gfs2_jadd -j 2 /shared
 Verify:
 
 ```bash
-sudo tunegfs2 -l /dev/shared_vg/gfs2_lv | grep Journals
+sudo gfs2_edit -p jindex /dev/shared_vg/gfs2_lv | grep journal
 ```
 
 ## Growing a GFS2 File System
@@ -105,12 +105,12 @@ sudo fsck.gfs2 -y /dev/shared_vg/gfs2_lv
 sudo pcs resource enable gfs2-mount-clone
 ```
 
-For a read-only check without unmounting:
+For a consistent snapshot without unmounting, suspend writes instead. This is not a replacement for `fsck.gfs2`:
 
 ```bash
-sudo gfs2_tool freeze /shared
-# Perform check
-sudo gfs2_tool unfreeze /shared
+sudo dmsetup suspend /shared
+# Take a snapshot
+sudo dmsetup resume /shared
 ```
 
 ## Handling Node Failures
@@ -120,10 +120,10 @@ When a node fails, the surviving nodes must recover its journal before I/O can c
 Monitor journal recovery:
 
 ```bash
-journalctl -u dlm -f
+journalctl -k -f | grep -E "GFS2|DLM|dlm"
 ```
 
-Check which journals need recovery:
+Check the journal configuration:
 
 ```bash
 sudo tunegfs2 -l /dev/shared_vg/gfs2_lv
@@ -186,14 +186,14 @@ ping -c 10 node2
 Freeze the file system for consistent backups:
 
 ```bash
-# Freeze - blocks all new I/O
-sudo gfs2_tool freeze /shared
+# Suspend writes - blocks new write I/O
+sudo dmsetup suspend /shared
 
 # Take backup/snapshot
 sudo lvcreate -s -L 5G -n backup_snap /dev/shared_vg/gfs2_lv
 
-# Unfreeze
-sudo gfs2_tool unfreeze /shared
+# Resume writes
+sudo dmsetup resume /shared
 ```
 
 ## Quota Management
@@ -201,20 +201,22 @@ sudo gfs2_tool unfreeze /shared
 Enable quotas:
 
 ```bash
-sudo tunegfs2 -o quota=on /dev/shared_vg/gfs2_lv
+sudo pcs resource update gfs2-mount options="quota=on"
+sudo pcs resource refresh gfs2-mount
+sudo quotacheck -ug /shared
 ```
 
 Set quotas:
 
 ```bash
 # Set user quota (1 GB limit)
-sudo gfs2_quota limit -u testuser -l 1 /shared
+sudo setquota -u testuser 0 1048576 0 0 /shared
 
 # Set group quota
-sudo gfs2_quota limit -g developers -l 10 /shared
+sudo setquota -g developers 0 10485760 0 0 /shared
 
 # View quotas
-sudo gfs2_quota list /shared
+sudo repquota /shared
 ```
 
 ## Monitoring GFS2 with Pacemaker
