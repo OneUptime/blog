@@ -16,20 +16,20 @@ Pacemaker supports alert agents since version 1.1.15. Alert agents are scripts p
 
 ## Configure Email Alerts
 
-RHEL ships with a built-in email alert agent.
+RHEL ships with a sample email alert agent.
 
 ```bash
 # First, ensure mailx is installed for sending emails
 
 sudo dnf install -y mailx
 
-# Verify the alert agent exists
-ls /usr/share/pacemaker/alerts/alert_smtp.sh
+# Install the sample alert agent on each cluster node
+sudo install --mode=0755 /usr/share/pacemaker/alerts/alert_smtp.sh.sample /var/lib/pacemaker/alert_smtp.sh
 
 # Create the alert configuration
 sudo pcs alert create id=my_email_alert \
-    path=/usr/share/pacemaker/alerts/alert_smtp.sh \
-    options email_recipients=admin@example.com
+    path=/var/lib/pacemaker/alert_smtp.sh \
+    options email_sender=donotreply@example.com
 
 # Add a recipient for the alert
 sudo pcs alert recipient add my_email_alert value=admin@example.com
@@ -41,17 +41,21 @@ You can write your own alert agent for integrations like Slack or PagerDuty.
 
 ```bash
 # Create a custom alert script
-sudo tee /usr/share/pacemaker/alerts/alert_custom.sh << 'EOF'
+sudo tee /var/lib/pacemaker/alert_custom.sh << 'EOF'
 #!/bin/bash
 # Custom Pacemaker alert agent
 # Environment variables provided by Pacemaker:
-#   CRM_alert_kind: node, fencing, resource
+#   CRM_alert_kind: node, fencing, resource, attribute
 #   CRM_alert_node: affected node name
 #   CRM_alert_desc: event description
-#   CRM_alert_status: status code
+#   CRM_alert_status: status code (for resource alerts)
 #   CRM_alert_rsc: resource name (for resource alerts)
 
 LOGFILE="/var/log/pacemaker-alerts.log"
+
+if [ -n "$required_kind" ] && [ "$CRM_alert_kind" != "$required_kind" ]; then
+    exit 0
+fi
 
 echo "$(date) | Kind: ${CRM_alert_kind} | Node: ${CRM_alert_node} | Resource: ${CRM_alert_rsc} | Desc: ${CRM_alert_desc}" >> "$LOGFILE"
 
@@ -63,8 +67,11 @@ if [ -n "$CRM_alert_recipient" ]; then
 fi
 EOF
 
-# Make it executable
-sudo chmod 755 /usr/share/pacemaker/alerts/alert_custom.sh
+# Make it executable and create a log file the hacluster user can write to
+sudo chmod 755 /var/lib/pacemaker/alert_custom.sh
+sudo touch /var/log/pacemaker-alerts.log
+sudo chown hacluster:haclient /var/log/pacemaker-alerts.log
+sudo chmod 600 /var/log/pacemaker-alerts.log
 ```
 
 ## Register the Custom Alert
@@ -72,7 +79,7 @@ sudo chmod 755 /usr/share/pacemaker/alerts/alert_custom.sh
 ```bash
 # Register the alert with Pacemaker
 sudo pcs alert create id=slack_alert \
-    path=/usr/share/pacemaker/alerts/alert_custom.sh
+    path=/var/lib/pacemaker/alert_custom.sh
 
 # Add the Slack webhook URL as a recipient
 sudo pcs alert recipient add slack_alert \
@@ -82,20 +89,20 @@ sudo pcs alert recipient add slack_alert \
 ## Filter Alert Types
 
 ```bash
-# Only receive alerts about resource events (not node or fencing)
+# Configure the custom script to process only resource events
 sudo pcs alert create id=resource_alerts \
-    path=/usr/share/pacemaker/alerts/alert_custom.sh \
-    options kind=resource
+    path=/var/lib/pacemaker/alert_custom.sh \
+    options required_kind=resource
 
 # Verify configured alerts
-sudo pcs alert show
+sudo pcs alert config
 ```
 
 ## Test the Alerts
 
 ```bash
 # Simulate a resource failure to trigger an alert
-sudo pcs resource fail my_resource
+sudo crm_resource --resource my_resource --fail
 
 # Check the alert log
 cat /var/log/pacemaker-alerts.log
@@ -111,7 +118,7 @@ sudo pcs resource cleanup my_resource
 sudo pcs alert remove my_email_alert
 
 # Verify removal
-sudo pcs alert show
+sudo pcs alert config
 ```
 
 Using alert agents keeps your team informed about cluster events in real time, which is critical for responding to outages quickly.
