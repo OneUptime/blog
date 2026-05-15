@@ -58,7 +58,7 @@ Connected mode supports larger MTU (up to 65520 bytes) for better throughput:
 ```bash
 # Set connected mode with jumbo MTU
 sudo nmcli connection modify ib0-ipoib infiniband.transport-mode connected
-sudo nmcli connection modify ib0-ipoib 802-3-ethernet.mtu 65520
+sudo nmcli connection modify ib0-ipoib infiniband.mtu 65520
 sudo nmcli connection up ib0-ipoib
 
 # Verify MTU
