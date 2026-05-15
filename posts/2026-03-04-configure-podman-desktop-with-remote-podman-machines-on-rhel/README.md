@@ -22,6 +22,9 @@ sudo dnf install -y podman
 # Enable the Podman socket for the user (rootless)
 systemctl --user enable --now podman.socket
 
+# Keep the user's systemd services available when the user is not logged in
+sudo loginctl enable-linger "$USER"
+
 # Verify the socket is running
 systemctl --user status podman.socket
 
@@ -94,12 +97,9 @@ podman --connection rhel-server images
 
 Open Podman Desktop and navigate to Settings > Resources:
 
-1. Click "Create new" under Podman connections
-2. Enter the connection details:
-   - Name: rhel-server
-   - SSH connection URI
-   - Path to your SSH key
-3. Click "Connect"
+1. Enable remote Podman connections if the setting is not already enabled.
+2. Podman Desktop detects the connections listed by `podman system connection list`.
+3. Refresh the Podman provider if the new connection does not appear immediately.
 
 The remote Podman instance appears as a selectable engine in Podman Desktop. You can switch between local and remote in the environment selector.
 
