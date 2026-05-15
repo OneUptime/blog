@@ -15,42 +15,57 @@ Deploying Caddy with Automatic HTTPS on RHEL provides a stable and secure founda
 - RHEL with a valid subscription or CentOS Stream 9
 - Root or sudo access
 - A terminal session
+- A DNS A or AAAA record for your domain pointing to this server
 
-## Step 2: Configure the Service
+## Step 1: Install Caddy
+
+Enable the official Caddy COPR repository and install the package:
+
+```bash
+sudo dnf install -y dnf-plugins-core
+sudo dnf copr enable @caddy/caddy
+sudo dnf install -y caddy
+```
+
+## Step 2: Configure Caddy
 
 Edit the configuration file to match your environment:
 
 ```bash
 # Open the configuration file
 
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/caddy/Caddyfile
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the site address and upstream according to your requirements. Caddy enables automatic HTTPS when a public domain name appears in the Caddyfile and ports 80 and 443 are reachable from the internet.
+
+```caddyfile
+example.com {
+    reverse_proxy localhost:8080
+}
+```
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Reload Caddy to apply changes without stopping the service
+sudo systemctl reload caddy
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
-
-# Start the service
-sudo systemctl start <service-name>
+# Enable the service to start on boot and start it now
+sudo systemctl enable --now caddy
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status caddy
 ```
 
 ## Step 4: Configure the Firewall
 
 ```bash
-# Open the required port
-sudo firewall-cmd --permanent --add-port=<PORT>/tcp
+# Open HTTP and HTTPS
+sudo firewall-cmd --permanent --add-service=http
+sudo firewall-cmd --permanent --add-service=https
 sudo firewall-cmd --reload
 
 # Verify the rule
@@ -64,16 +79,20 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status caddy
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u caddy --no-pager -n 20
+
+# Test HTTPS
+curl -I https://example.com
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u caddy -e --no-pager`.
+- Ensure Caddy is installed: `rpm -q caddy`.
+- For public certificates, confirm the domain's A or AAAA record points to this server and that ports 80 and 443 are externally reachable.
 
 ## Conclusion
 
