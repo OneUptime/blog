@@ -8,7 +8,7 @@ Description: Run production containers on RHEL using Podman and systemd for auto
 
 ---
 
-Podman integrates directly with systemd, making it the preferred way to run production containers on RHEL without a container daemon. You can generate systemd unit files from running containers or pods.
+Podman integrates directly with systemd, making it the preferred way to run production containers on RHEL without a container daemon. You can generate systemd unit files from existing containers or pods, although Quadlet is the preferred approach on RHEL versions that support it.
 
 ## Running a Container and Generating a Unit File
 
@@ -43,7 +43,7 @@ The `--new` flag means systemd will create a fresh container each time (rather t
 
 ## Quadlet - The Modern Approach (RHEL 9.3+)
 
-RHEL 9.3 and later support Quadlet, which lets you write container definitions as systemd-native unit files:
+RHEL 9.3 and later include Podman 4.6 or newer with Quadlet support, which lets you write container definitions as systemd-native unit files:
 
 ```ini
 # /etc/containers/systemd/webapp.container
@@ -96,6 +96,7 @@ sudo journalctl -u webapp.service --since "10 minutes ago"
 # HealthCmd=/usr/bin/curl -f http://localhost:8080/ || exit 1
 # HealthInterval=30s
 # HealthRetries=3
+# HealthOnFailure=kill
 ```
 
 This approach gives you the reliability of systemd (automatic restarts, dependency management, journal logging) with the simplicity of Podman containers.
