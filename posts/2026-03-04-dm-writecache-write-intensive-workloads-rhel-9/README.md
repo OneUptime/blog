@@ -71,8 +71,8 @@ vgextend vg_data /dev/nvme0n1p1
 Create a logical volume on the SSD for write caching:
 
 ```bash
-# Create writecache LV on the SSD
-lvcreate -L 20G -n writecache vg_data /dev/nvme0n1p1
+# Create a deactivated writecache LV on the SSD
+lvcreate -an -L 20G -n writecache vg_data /dev/nvme0n1p1
 ```
 
 ## Step 3: Attach the Writecache
@@ -81,27 +81,29 @@ Attach the writecache to an existing origin LV:
 
 ```bash
 # Convert lv_data to use writecache
-# The origin filesystem must be unmounted or the LV must not be active
+# The origin filesystem must be unmounted and the LV must not be active
 umount /data
+lvchange -an vg_data/lv_data
 lvconvert --type writecache --cachevol vg_data/writecache vg_data/lv_data
+lvchange -ay vg_data/lv_data
 mount /data
 ```
 
 ## One-Step Creation
 
-You can also create the writecache LV and attach it in one command:
+You can also create a new LV with writecache attached in one command:
 
 ```bash
-# Create and attach writecache in one step
-lvcreate --type writecache -L 20G -n writecache \
-    --cachevol writecache vg_data/lv_data /dev/nvme0n1p1
+# Create a new cached LV in one step
+lvcreate --type writecache -L 100G -n lv_data \
+    --cachedevice /dev/nvme0n1p1 --cachesize 20G vg_data /dev/sdb1
 ```
 
 ## Verify the Configuration
 
 ```bash
 # Check that writecache is active
-lvs -a -o lv_name,lv_size,segtype vg_data
+lvs -a -o lv_name,lv_size,segtype,pool_lv vg_data
 
 # Detailed status
 dmsetup status vg_data-lv_data
@@ -173,7 +175,9 @@ To detach the writecache (flushes all pending writes first):
 umount /data
 
 # Remove writecache (flushes data to origin first)
+lvchange -an vg_data/lv_data
 lvconvert --uncache vg_data/lv_data
+lvchange -ay vg_data/lv_data
 
 # Remount
 mount /data
@@ -185,16 +189,16 @@ The `--uncache` operation is safe - it flushes all cached writes to the origin b
 
 ### Data Safety
 
-dm-writecache is inherently less safe than writethrough caching because writes are only on the SSD until they are flushed. If the SSD fails before flushing:
+dm-writecache is inherently less safe than writethrough caching because writes are only on the SSD until they are flushed. If the system loses power before flushing:
 
-- With battery-backed or power-loss-protected SSDs: data is safe
+- With battery-backed or power-loss-protected SSDs: committed cache data is protected from power loss
 - Without protection: recent writes can be lost
 
-Use enterprise-grade SSDs with power loss protection for writecache in production.
+If the SSD itself fails before cached data is flushed, those writes can still be lost unless the cache device is redundant. Use enterprise-grade SSDs with power loss protection, and consider RAID1 for the fast LV when writecache protects production data.
 
 ### Filesystem Requirements
 
-dm-writecache works with any filesystem, but the origin LV must be unmounted (or the volume deactivated) when attaching or detaching the cache.
+dm-writecache works with any filesystem, but the origin LV must be unmounted and deactivated when attaching or detaching the cache.
 
 ### SSD Wear
 
