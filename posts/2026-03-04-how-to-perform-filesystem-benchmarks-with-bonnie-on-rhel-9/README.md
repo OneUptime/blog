@@ -13,7 +13,8 @@ bonnie++ tests filesystem performance on RHEL 9 with sequential and random I/O o
 ## Install bonnie++
 
 ```bash
-sudo dnf install -y epel-release
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 sudo dnf install -y bonnie++
 ```
 
@@ -27,12 +28,12 @@ Parameters:
 - `-d`: Test directory
 - `-u`: User to run as
 - `-s`: File size (should be 2x RAM)
-- `-n`: Number of files for create/delete tests
+- `-n`: Number of files for create/stat/delete tests, in units of 1024 files
 
 ## Test Specific Operations
 
 ```bash
-# Sequential output only
+# Disable write buffering
 
 bonnie++ -d /mnt/test -u root -s 4G -b
 
@@ -52,7 +53,7 @@ bonnie++ reports:
 | File Creates | Per second |
 | File Deletes | Per second |
 
-## Convert Output to CSV
+## Convert CSV Output to HTML
 
 ```bash
 bonnie++ -d /mnt/test -u root -s 4G | bon_csv2html > results.html
@@ -61,4 +62,3 @@ bonnie++ -d /mnt/test -u root -s 4G | bon_csv2html > results.html
 ## Conclusion
 
 bonnie++ on RHEL 9 provides comprehensive filesystem benchmarking. Use file sizes at least twice your system RAM to ensure you are testing disk performance rather than cache performance.
-
