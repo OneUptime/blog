@@ -20,7 +20,7 @@ Flux CD provides `spec.driftDetection` in the HelmRelease API. When enabled, the
 
 ## Prerequisites
 
-- A Kubernetes cluster (v1.20+)
+- A Kubernetes cluster supported by your Flux version
 - Flux CD v2.2+ installed (drift detection requires helm-controller v0.37+)
 - `flux` CLI installed
 - A working HelmRelease managed by Flux
@@ -60,7 +60,7 @@ spec:
 
 The `mode` field accepts two values:
 
-- **`enabled`**: Detects drift and corrects it by re-applying the desired state.
+- **`enabled`**: Detects drift and corrects it by creating and patching resources back to the desired state.
 - **`warn`**: Detects drift and logs a warning, but does not correct it.
 
 ## Drift Detection Modes in Detail
@@ -94,7 +94,7 @@ When drift is detected in warn mode, the helm-controller will emit Kubernetes ev
 
 ### Enabled Mode
 
-Use `enabled` mode to both detect and automatically correct drift:
+Use `enabled` mode to both detect and automatically correct drift by creating and patching resources based on the server-side dry-run apply result:
 
 ```yaml
 # HelmRelease with drift detection that auto-corrects
@@ -164,10 +164,10 @@ Each ignore rule specifies:
 
 ### Check HelmRelease Status
 
-View drift detection status using the flux CLI:
+View HelmRelease status using the flux CLI:
 
 ```bash
-# Check HelmRelease status including drift information
+# Check HelmRelease status
 flux get helmreleases --all-namespaces
 
 # Get detailed status for a specific HelmRelease
@@ -267,7 +267,7 @@ Drift detection adds overhead because the helm-controller must compare live reso
 
 ```bash
 # Check helm-controller resource consumption
-kubectl top pod -n flux-system -l app=helm-controller
+kubectl top pod -n flux-system -l app.kubernetes.io/component=helm-controller
 ```
 
 ## Summary
