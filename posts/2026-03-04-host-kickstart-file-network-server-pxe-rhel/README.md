@@ -27,8 +27,8 @@ sequenceDiagram
     TFTP->>Client: Send boot loader
     Client->>TFTP: Request PXE menu config
     TFTP->>Client: Send menu config
-    Client->>HTTP: Fetch kernel (vmlinuz)
-    Client->>HTTP: Fetch initrd (initrd.img)
+    Client->>TFTP: Fetch kernel (vmlinuz)
+    Client->>TFTP: Fetch initrd (initrd.img)
     Client->>HTTP: Fetch Kickstart file
     Client->>Client: Run Anaconda installer
 ```
@@ -138,9 +138,9 @@ Most modern servers use UEFI, so you need to set this up as well.
 # Create UEFI boot directory
 sudo mkdir -p /var/lib/tftpboot/uefi
 
-# Copy the UEFI boot files
-sudo cp /boot/efi/EFI/BOOT/BOOTX64.EFI /var/lib/tftpboot/uefi/
-sudo cp /boot/efi/EFI/redhat/grubx64.efi /var/lib/tftpboot/uefi/
+# Copy the UEFI boot files from the RHEL installation tree
+sudo cp /var/www/html/rhel9/EFI/BOOT/BOOTX64.EFI /var/lib/tftpboot/uefi/
+sudo cp /var/www/html/rhel9/EFI/BOOT/grubx64.efi /var/lib/tftpboot/uefi/
 ```
 
 ### Create the BIOS PXE Menu
@@ -180,13 +180,13 @@ set timeout=30
 set default=0
 
 menuentry 'Install RHEL (Kickstart - Automated)' {
-  linuxefi rhel9/vmlinuz inst.repo=http://192.168.1.50/rhel9/ inst.ks=http://192.168.1.50/kickstart/kickstart.cfg ip=dhcp
-  initrdefi rhel9/initrd.img
+  linux rhel9/vmlinuz inst.repo=http://192.168.1.50/rhel9/ inst.ks=http://192.168.1.50/kickstart/kickstart.cfg ip=dhcp
+  initrd rhel9/initrd.img
 }
 
 menuentry 'Install RHEL (Manual)' {
-  linuxefi rhel9/vmlinuz inst.repo=http://192.168.1.50/rhel9/ ip=dhcp
-  initrdefi rhel9/initrd.img
+  linux rhel9/vmlinuz inst.repo=http://192.168.1.50/rhel9/ ip=dhcp
+  initrd rhel9/initrd.img
 }
 
 menuentry 'Boot from local disk' {
@@ -221,6 +221,7 @@ sudo tee /etc/dhcp/dhcpd.conf << 'EOF'
 # DHCP server configuration for PXE boot
 
 # Global options
+option architecture-type code 93 = unsigned integer 16;
 option domain-name "example.com";
 option domain-name-servers 192.168.1.10, 8.8.8.8;
 default-lease-time 600;
@@ -235,14 +236,14 @@ subnet 192.168.1.0 netmask 255.255.255.0 {
     next-server 192.168.1.50;
 
     # Detect BIOS vs UEFI and serve the appropriate bootloader
-    class "pxe-bios" {
-        match if substring (option vendor-class-identifier, 0, 20) = "PXEClient:Arch:00000";
-        filename "pxelinux.0";
-    }
+    class "pxeclients" {
+        match if substring (option vendor-class-identifier, 0, 9) = "PXEClient";
 
-    class "pxe-uefi" {
-        match if substring (option vendor-class-identifier, 0, 20) = "PXEClient:Arch:00007";
-        filename "uefi/BOOTX64.EFI";
+        if option architecture-type = 00:07 {
+            filename "uefi/BOOTX64.EFI";
+        } else {
+            filename "pxelinux.0";
+        }
     }
 }
 EOF
@@ -259,10 +260,7 @@ Key options explained:
 If your server has multiple network interfaces, specify which one DHCP should listen on:
 
 ```bash
-# Edit the dhcpd service to bind to a specific interface
-sudo sed -i 's/^ExecStart=.*/ExecStart=\/usr\/sbin\/dhcpd -f -cf \/etc\/dhcp\/dhcpd.conf -user dhcpd -group dhcpd --no-pid ens192/' /etc/systemd/system/dhcpd.service
-
-# Or create a systemd override
+# Create a systemd override
 sudo systemctl edit dhcpd
 ```
 
@@ -330,7 +328,7 @@ Before deploying to production hardware, test with a VM:
 sudo journalctl -u dhcpd -f
 
 # Monitor TFTP transfers
-sudo journalctl -u tftp -f
+sudo journalctl -u tftp.socket -u tftp.service -f
 
 # Monitor HTTP requests for the Kickstart and repo files
 sudo tail -f /var/log/httpd/access_log
