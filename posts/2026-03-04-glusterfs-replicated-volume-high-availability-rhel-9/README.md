@@ -24,7 +24,7 @@ Every write goes to all replicas synchronously. Reads can come from any replica.
 
 ## Prerequisites
 
-- Three RHEL servers (for a 3-way replica) with GlusterFS installed
+- Three RHEL servers (for a 3-way replica) with GlusterFS installed from your chosen package source. Red Hat Gluster Storage reached end of life on December 31, 2024, so verify your support path before using this on RHEL 9 in production.
 - Trusted storage pool configured
 - Dedicated storage partitions on each node
 
@@ -105,7 +105,7 @@ cat /data/glusterfs/replica/brick1/data/test.txt  # Should show same content on 
 
 ## Quorum Configuration
 
-Server-side quorum prevents split-brain by requiring a majority of bricks in a replica set to be online before allowing writes:
+Server-side quorum protects cluster management by requiring enough trusted-pool nodes to be online. If a node loses server quorum, `glusterd` stops the participating brick processes on that node:
 
 ```bash
 # Enable server-side quorum
@@ -113,7 +113,7 @@ sudo gluster volume set repvol cluster.server-quorum-type server
 sudo gluster volume set repvol cluster.server-quorum-ratio 51%
 ```
 
-Client-side quorum is enabled by default for replica 3 volumes. It ensures a majority of replicas acknowledge a write before it is considered successful:
+Client-side quorum is the I/O-path protection against split-brain. It is enabled by default for replica 3 volumes and allows writes only when enough bricks in the replica set are available:
 
 ```bash
 # Check current quorum settings
@@ -126,8 +126,10 @@ sudo gluster volume get repvol cluster.quorum-count
 Simulate a node failure and verify continued access:
 
 ```bash
-# On node3, stop the GlusterFS brick
+# On node3, simulate a node or brick outage.
+# Stopping glusterd alone may leave existing brick processes running.
 sudo systemctl stop glusterd
+sudo pkill glusterfsd
 
 # On the client, reads and writes should still work
 echo "Written during node3 outage" | sudo tee /mnt/repvol/failover-test.txt
@@ -163,7 +165,7 @@ sudo gluster volume heal repvol info healed
 If you want 3-way redundancy without storing 3 full copies, use an arbiter volume. The third brick only stores metadata (file names and sizes), not data:
 
 ```bash
-sudo gluster volume create arbvol replica 3 arbiter 1 \
+sudo gluster volume create arbvol replica 2 arbiter 1 \
     node1:/data/glusterfs/arb/brick1/data \
     node2:/data/glusterfs/arb/brick1/data \
     node3:/data/glusterfs/arb/brick1/data
@@ -177,11 +179,11 @@ This gives you the split-brain protection of 3-way replication with only 2 full 
 # Enable metadata caching
 sudo gluster volume set repvol group metadata-cache
 
-# Adjust read policy (round-robin reads from replicas)
+# Set read policy to hash reads by GFID
 sudo gluster volume set repvol cluster.read-hash-mode 1
 
 # Set eager-lock for better write performance
-sudo gluster volume set repvol cluster.eager-lock enable
+sudo gluster volume set repvol cluster.eager-lock on
 ```
 
 ## Conclusion
