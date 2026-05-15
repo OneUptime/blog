@@ -8,61 +8,70 @@ Description: Step-by-step guide on configure rhel system registration via cockpi
 
 ---
 
-Configuring RHEL System Registration via Cockpit on RHEL involves several steps to ensure proper operation and security. This guide covers the essential configuration options and best practices.
+Configuring RHEL System Registration via Cockpit on RHEL involves several steps to ensure the web console is available and the system can access Red Hat repositories. This guide covers the essential configuration options and best practices.
 
 ## Prerequisites
 
-- RHEL with a valid subscription or CentOS Stream 9
+- RHEL 9 with a valid Red Hat subscription, Red Hat Customer Portal account, or activation key
 - Root or sudo access
 - A terminal session
 
 ## Step 2: Configure the Service
 
-Edit the configuration file to match your environment:
+Install Cockpit if it is not already installed, then enable the web console socket:
 
 ```bash
-# Open the configuration file
+# Install the web console package if needed
+sudo dnf install cockpit
 
-sudo vi /etc/<service>/config.conf
+# Enable and start the Cockpit socket
+sudo systemctl enable --now cockpit.socket
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+If you are connecting from another machine and your firewall does not already allow Cockpit, open the Cockpit service in firewalld:
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo firewall-cmd --add-service=cockpit --permanent
+sudo firewall-cmd --reload
 ```
 
 ## Step 3: Enable and Start the Service
 
+Open the RHEL web console in a browser:
+
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+https://<hostname-or-ip-address>:9090
+```
 
-# Start the service
-sudo systemctl start <service-name>
+Log in with a local system account. On the Overview page, click the **Not registered** warning in the Health field, or open **Subscriptions** from the main menu.
 
-# Check the status
-sudo systemctl status <service-name>
+In the Overview field, click **Register**, select the registration method, and provide the required Red Hat account credentials or activation key and organization ID. If you do not want to connect the system to Red Hat Lightspeed, clear the Insights checkbox before clicking **Register**.
+
+You can confirm the Cockpit socket is running from the terminal:
+
+```bash
+sudo systemctl status cockpit.socket
 ```
 
 
 ## Verification
 
-Confirm everything is working by checking the status and logs:
+Confirm registration by checking the subscription details in the web console or from the terminal:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
+# Check the registration and subscription status
+sudo subscription-manager status
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# Review recent Cockpit logs
+sudo journalctl -u cockpit.service -u cockpit.socket --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the web console is not reachable, check the socket with `sudo systemctl status cockpit.socket`.
+- Ensure the required package is installed: `rpm -q cockpit`.
+- If you connect from another machine, ensure port 9090 is open in the firewall.
+- If registration fails, verify the Red Hat account, activation key, and organization ID you entered in the web console.
 
 ## Conclusion
 
