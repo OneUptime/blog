@@ -70,15 +70,15 @@ BACKUP_PROG_INCLUDE=(
 )
 
 # Exclude these from the backup
-BACKUP_PROG_EXCLUDE=(
+BACKUP_PROG_EXCLUDE+=(
     '/tmp/*'
     '/var/tmp/*'
     '/var/cache/*'
     '/backup/*'
 )
 
-# Keep old backups (number of backups to retain)
-NETFS_KEEP_OLD_BACKUP_COPY=3
+# Keep the previous backup archive when creating a new one
+NETFS_KEEP_OLD_BACKUP_COPY=y
 ```
 
 ## Creating a Recovery Image
@@ -93,13 +93,13 @@ sudo rear -v mkbackup
 # This creates:
 # - A bootable ISO image
 # - A tar archive of the system
-# Both in /backup/rear/
+# Both in /backup/rear/$(hostname)/
 ```
 
 Check the output:
 
 ```bash
-ls -lh /backup/rear/
+ls -lh /backup/rear/$(hostname)/
 # rear-hostname.iso     (bootable recovery ISO)
 # backup.tar.gz         (system file backup)
 # backup.log            (backup log)
@@ -182,13 +182,13 @@ reboot
 ## Verifying the Recovery Image
 
 ```bash
-# Verify the backup without actually recovering
+# Dump the current ReaR configuration and system information
 sudo rear dump
 
 # Check that the ISO is valid
-file /backup/rear/rear-$(hostname).iso
+file /backup/rear/$(hostname)/rear-$(hostname).iso
 
-# List what would be recovered
+# Check whether the disk layout has changed since the last backup
 sudo rear -v checklayout
 ```
 
