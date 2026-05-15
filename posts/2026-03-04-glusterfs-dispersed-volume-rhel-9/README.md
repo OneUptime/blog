@@ -22,7 +22,7 @@ Dispersed volumes in GlusterFS use erasure coding to provide redundancy without 
 
 ## Prerequisites
 
-- Six RHEL servers with GlusterFS installed (for a 4+2 configuration)
+- Six RHEL servers with GlusterFS installed from an appropriate package source for your environment (for a 4+2 configuration)
 - Trusted storage pool configured
 - Dedicated storage partitions on each node
 
@@ -31,10 +31,10 @@ Dispersed volumes in GlusterFS use erasure coding to provide redundancy without 
 On each of the six nodes:
 
 ```bash
-sudo mkfs.xfs -i size=512 /dev/sdb
+sudo mkfs.xfs -i size=512 /dev/sdb1
 sudo mkdir -p /data/glusterfs/disperse/brick1
-sudo mount /dev/sdb /data/glusterfs/disperse/brick1
-echo '/dev/sdb /data/glusterfs/disperse/brick1 xfs defaults 0 0' | sudo tee -a /etc/fstab
+sudo mount /dev/sdb1 /data/glusterfs/disperse/brick1
+echo '/dev/sdb1 /data/glusterfs/disperse/brick1 xfs defaults 0 0' | sudo tee -a /etc/fstab
 sudo mkdir -p /data/glusterfs/disperse/brick1/data
 ```
 
@@ -105,7 +105,7 @@ Each brick stores a fragment, not a complete copy of the file.
 |---|---|---|---|---|
 | disperse 3 redundancy 1 | 3 | 1 | 66% | 1 |
 | disperse 6 redundancy 2 | 6 | 2 | 66% | 2 |
-| disperse 6 redundancy 3 | 6 | 3 | 50% | 3 |
+| disperse 7 redundancy 3 | 7 | 3 | 57% | 3 |
 | disperse 11 redundancy 3 | 11 | 3 | 73% | 3 |
 
 ## Distributed-Dispersed Volumes
@@ -150,8 +150,8 @@ sudo gluster volume heal dispvol info summary
 Dispersed volumes have higher CPU overhead due to erasure coding. These settings can help:
 
 ```bash
-# Increase the stripe unit for large-file workloads
-sudo gluster volume set dispvol disperse.eager-lock enable
+# Keep inode locks briefly to improve access efficiency for repeated file operations
+sudo gluster volume set dispvol disperse.eager-lock on
 
 # Enable parallel data access
 sudo gluster volume set dispvol performance.io-thread-count 32
