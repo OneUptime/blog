@@ -52,7 +52,7 @@ Create a custom configuration file that sets up the GRUB2 superuser and password
 
 ```bash
 # Create the GRUB2 user configuration
-cat > /etc/grub.d/01_users << 'EOF'
+cat > /etc/grub.d/01_users_custom << 'EOF'
 #!/bin/sh
 cat << 'GRUBEOF'
 set superusers="grubadmin"
@@ -61,7 +61,7 @@ GRUBEOF
 EOF
 
 # Make it executable
-chmod +x /etc/grub.d/01_users
+chmod +x /etc/grub.d/01_users_custom
 ```
 
 Replace `PASTE_YOUR_HASH_HERE` with the actual hash you generated in the previous step.
@@ -74,29 +74,19 @@ After adding the user configuration, regenerate the GRUB2 config:
 # For BIOS-based systems
 grub2-mkconfig -o /boot/grub2/grub.cfg
 
-# For UEFI-based systems
-grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
+# For UEFI-based systems on RHEL 9
+grub2-mkconfig -o /boot/grub2/grub.cfg
 ```
 
 ## Allow Normal Booting Without a Password
 
-By default, once you set a GRUB2 password, users will need to enter it just to boot normally. That is usually too restrictive. You want the password to be required only for editing boot entries or accessing the GRUB command line, not for standard booting.
+By default on RHEL 9, boot entries remain unrestricted when you set a GRUB2 password for editing protection. You want the password to be required only for editing boot entries or accessing the GRUB command line, not for standard booting.
 
-To allow password-free normal booting, modify the menu entry class:
+To verify password-free normal booting, check the generated menu entries:
 
 ```bash
-# Edit the 10_linux template to add --unrestricted to menu entries
-# This allows booting without a password while still requiring
-# a password for editing
-
-# Back up the original
-cp /etc/grub.d/10_linux /etc/grub.d/10_linux.bak
-
-# Add --unrestricted to the CLASS variable
-sed -i 's/^CLASS="--class gnu-linux --class gnu --class os"/CLASS="--class gnu-linux --class gnu --class os --unrestricted"/' /etc/grub.d/10_linux
-
-# Regenerate the configuration
-grub2-mkconfig -o /boot/grub2/grub.cfg
+# RHEL 9 BLS entries should include --unrestricted for normal booting
+grep "unrestricted" /boot/grub2/grub.cfg | head -5
 ```
 
 Now normal booting works without a password, but pressing `e` to edit or `c` for the GRUB command line will require authentication.
@@ -124,9 +114,6 @@ The GRUB configuration files themselves need to be protected:
 # Set strict permissions on the GRUB config
 chmod 600 /boot/grub2/grub.cfg
 
-# For UEFI systems
-chmod 600 /boot/efi/EFI/redhat/grub.cfg
-
 # Verify ownership
 ls -la /boot/grub2/grub.cfg
 # Should show: -rw------- root root
@@ -136,8 +123,8 @@ ls -la /boot/grub2/grub.cfg
 
 ```bash
 # Protect the custom GRUB user configuration
-chmod 700 /etc/grub.d/01_users
-chown root:root /etc/grub.d/01_users
+chmod 700 /etc/grub.d/01_users_custom
+chown root:root /etc/grub.d/01_users_custom
 
 # Also protect the entire grub.d directory
 chmod 700 /etc/grub.d/
@@ -145,20 +132,20 @@ chmod 700 /etc/grub.d/
 
 ## Configure Multiple GRUB Users
 
-You can set up multiple users with different access levels:
+You can set up multiple GRUB superusers:
 
 ```bash
 # Example with multiple users
-cat > /etc/grub.d/01_users << 'EOF'
+cat > /etc/grub.d/01_users_custom << 'EOF'
 #!/bin/sh
 cat << 'GRUBEOF'
-set superusers="grubadmin"
+set superusers="grubadmin grubmaint"
 password_pbkdf2 grubadmin HASH_FOR_ADMIN
 password_pbkdf2 grubmaint HASH_FOR_MAINTENANCE
 GRUBEOF
 EOF
 
-chmod +x /etc/grub.d/01_users
+chmod +x /etc/grub.d/01_users_custom
 grub2-mkconfig -o /boot/grub2/grub.cfg
 ```
 
@@ -185,7 +172,7 @@ If you forget the GRUB password, you will need to boot from rescue media:
 1. Boot from the RHEL installation ISO
 2. Choose "Troubleshooting" then "Rescue a Red Hat Enterprise Linux system"
 3. Mount the installed system (the rescue environment will offer to do this)
-4. Remove or edit `/etc/grub.d/01_users`
+4. Remove or edit `/etc/grub.d/01_users_custom`
 5. Regenerate the GRUB config
 6. Reboot from the hard drive
 
