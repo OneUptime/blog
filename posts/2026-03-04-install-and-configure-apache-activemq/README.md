@@ -26,8 +26,8 @@ sudo dnf install -y java-17-openjdk
 
 ```bash
 cd /opt
-sudo curl -L https://downloads.apache.org/activemq/6.1.0/apache-activemq-6.1.0-bin.tar.gz | sudo tar xz
-sudo ln -s apache-activemq-6.1.0 activemq
+sudo curl -L https://downloads.apache.org/activemq/6.2.5/apache-activemq-6.2.5-bin.tar.gz | sudo tar xzf -
+sudo ln -s apache-activemq-6.2.5 activemq
 ```
 
 ## Step 3: Create Service User
