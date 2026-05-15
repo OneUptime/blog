@@ -83,7 +83,7 @@ Get a quick summary of performance counters:
 perf stat ./my-application
 ```
 
-This shows instructions, cycles, cache misses, branches, and IPC (instructions per cycle).
+This shows common counters such as instructions, cycles, branches, branch misses, and IPC (instructions per cycle).
 
 Count specific events:
 
@@ -169,10 +169,12 @@ perf annotate
 
 This shows assembly and source code with per-line CPU time.
 
-Install debug symbols for system libraries:
+Install debug symbols for system packages:
 
 ```bash
-sudo dnf install --enablerepo=*debug* kernel-debuginfo
+sudo subscription-manager repos --enable rhel-9-for-$(uname -i)-baseos-debug-rpms
+sudo subscription-manager repos --enable rhel-9-for-$(uname -i)-appstream-debug-rpms
+sudo dnf debuginfo-install <package-name>
 ```
 
 ## Generating Flame Graphs
