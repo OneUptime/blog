@@ -8,17 +8,18 @@ Description: Learn how to install Yarn Package Manager on RHEL with step-by-step
 
 ---
 
-This guide covers how to Install Yarn Package Manager on RHEL. Following these steps will help you set up a reliable configuration on RHEL.
+This guide covers how to install Yarn Package Manager on RHEL. Following these steps will help you install Node.js, enable Corepack, and activate Yarn.
 
 ## Prerequisites
 
 - RHEL with a minimal or standard installation
 - Root or sudo access
 - A stable network connection
+- Enabled RHEL AppStream repositories
 
 ## Overview
 
-Install Yarn Package Manager requires careful planning and execution. This guide walks through the complete process from installation to verification.
+Yarn runs on top of Node.js. On current RHEL releases, the recommended installation path is to install Node.js from RHEL AppStream and use Corepack to provide the `yarn` binary.
 
 ## Step 1: Prepare the System
 
@@ -28,89 +29,108 @@ Update your system to ensure all packages are current:
 sudo dnf update -y
 ```
 
-Install any required dependencies:
+Install Node.js and npm from a supported RHEL module stream. First list the streams available on your system:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf module list nodejs
 ```
 
-## Step 2: Install Required Packages
+Then install a supported stream. For example, on RHEL 9 systems where `nodejs:20` is available:
 
 ```bash
-sudo dnf install -y <package-name>
+sudo dnf module install -y nodejs:20
 ```
 
-Verify the installation:
+If your RHEL minor release does not provide `nodejs:20`, choose another supported stream shown by `dnf module list nodejs`, such as `nodejs:18`.
+
+## Step 2: Verify Node.js and npm
 
 ```bash
-rpm -qi <package-name>
+node --version
+npm --version
 ```
 
-## Step 3: Configure the Service
-
-Create or edit the main configuration file:
+Verify the installed RPM package:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+rpm -q nodejs npm
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+## Step 3: Enable Corepack
 
-## Step 4: Start and Enable the Service
+Corepack provides package-manager shims for Yarn and pnpm. Enable it after Node.js is installed:
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo corepack enable
 ```
+
+Activate the current stable Yarn release:
+
+```bash
+corepack prepare yarn@stable --activate
+```
+
+## Step 4: Initialize a Yarn Project
+
+```bash
+mkdir my-yarn-project
+cd my-yarn-project
+yarn init -2
+```
+
+This creates a new project configured for modern Yarn.
 
 ## Step 5: Verify the Configuration
 
-Test the setup:
+Check the Yarn version:
 
 ```bash
-sudo <service> --test
+yarn --version
 ```
 
-Check the logs for any errors:
+Install dependencies for the project:
 
 ```bash
-journalctl -u <service> -f
+yarn install
 ```
 
-## Step 6: Configure Firewall Rules
+## Step 6: Configure Network Access
 
-If the service needs network access:
+Yarn does not run a system service or require inbound firewall rules. It needs outbound HTTPS access to the package registry configured for your project. Check the configured registry:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
-sudo firewall-cmd --reload
+yarn config get npmRegistryServer
 ```
 
-## Step 7: Performance Tuning
+If your organization uses an internal npm registry, configure it in the project `.yarnrc.yml` file:
 
-Monitor resource usage and adjust configuration parameters based on your workload:
+```yaml
+npmRegistryServer: "https://registry.example.com"
+```
+
+## Step 7: Cache and Project Settings
+
+Yarn stores configuration in `.yarnrc.yml` for modern Yarn projects. To inspect the effective configuration, run:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+yarn config
 ```
 
 ## Security Considerations
 
-- Run the service with a dedicated non-root user when possible
-- Enable TLS/SSL for network communication
-- Restrict access with firewall rules
-- Keep packages updated with `dnf update`
+- Keep Node.js and npm updated with `dnf update`
+- Use HTTPS registries for package downloads
+- Store registry tokens in user-level or CI secrets instead of committing them to the repository
+- Pin the package manager version in project configuration so builds use the expected Yarn release
 
 ## Troubleshooting
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
-2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
-3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
+1. **`yarn` command not found**: Run `sudo corepack enable`, then open a new shell and try again
+2. **Requested Node.js stream is unavailable**: Run `sudo dnf module list nodejs` and install a stream available for your RHEL release
+3. **Registry access fails**: Verify outbound HTTPS connectivity and check `yarn config get npmRegistryServer`
 
 ## Conclusion
 
-You have successfully configured install yarn package manager on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
+You have successfully installed Yarn Package Manager on RHEL. Keep Node.js updated and pin Yarn per project to maintain reliable builds.
