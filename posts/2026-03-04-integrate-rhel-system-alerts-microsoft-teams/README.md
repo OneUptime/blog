@@ -13,9 +13,9 @@ Microsoft Teams incoming webhooks allow you to send alert notifications from RHE
 ## Setting Up the Teams Webhook
 
 1. In Microsoft Teams, go to the channel where you want alerts
-2. Click the three dots menu and select "Connectors" (or "Workflows")
-3. Add an "Incoming Webhook" connector
-4. Name it (e.g., "RHEL Alerts") and copy the webhook URL
+2. Click the three dots menu and select "Workflows"
+3. Choose the "Send webhook alerts to a channel" template
+4. Save the workflow and copy the webhook URL
 
 ## Basic Alert Function
 
@@ -27,30 +27,45 @@ Create a reusable function for sending Teams messages:
 
 # Send alert messages to Microsoft Teams
 
-WEBHOOK_URL="https://outlook.office.com/webhook/YOUR_WEBHOOK_URL"
+CONFIG_FILE="/etc/teams-alert.conf"
+
+if [ -r "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
+fi
+
+: "${WEBHOOK_URL:?Set WEBHOOK_URL in /etc/teams-alert.conf}"
 
 send_teams_alert() {
     local title="$1"
     local message="$2"
     local color="$3"  # hex color without #
+    local payload
 
-    curl -s -X POST "$WEBHOOK_URL" \
+    payload=$(TITLE="$title" MESSAGE="$message" COLOR="${color:-FF0000}" HOST="$(hostname)" TIME="$(date '+%Y-%m-%d %H:%M:%S')" python3 - << 'PY'
+import json
+import os
+
+print(json.dumps({
+    "@type": "MessageCard",
+    "@context": "http://schema.org/extensions",
+    "themeColor": os.environ["COLOR"],
+    "summary": os.environ["TITLE"],
+    "sections": [{
+        "activityTitle": os.environ["TITLE"],
+        "facts": [
+            {"name": "Host", "value": os.environ["HOST"]},
+            {"name": "Time", "value": os.environ["TIME"]},
+            {"name": "Details", "value": os.environ["MESSAGE"]}
+        ],
+        "markdown": True
+    }]
+}))
+PY
+)
+
+    curl -fsS -X POST "$WEBHOOK_URL" \
       -H "Content-Type: application/json" \
-      -d "{
-        \"@type\": \"MessageCard\",
-        \"@context\": \"http://schema.org/extensions\",
-        \"themeColor\": \"${color:-FF0000}\",
-        \"summary\": \"$title\",
-        \"sections\": [{
-          \"activityTitle\": \"$title\",
-          \"facts\": [
-            {\"name\": \"Host\", \"value\": \"$(hostname)\"},
-            {\"name\": \"Time\", \"value\": \"$(date '+%Y-%m-%d %H:%M:%S')\"},
-            {\"name\": \"Details\", \"value\": \"$message\"}
-          ],
-          \"markdown\": true
-        }]
-      }"
+      -d "$payload"
 }
 
 # If called directly with arguments
@@ -108,8 +123,7 @@ source /usr/local/bin/teams-alert.sh
 CPU_COUNT=$(nproc)
 LOAD=$(awk '{print $1}' /proc/loadavg)
 
-# Compare using bc for floating point
-if [ "$(echo "$LOAD > $CPU_COUNT" | bc)" -eq 1 ]; then
+if awk -v load="$LOAD" -v cpu_count="$CPU_COUNT" 'BEGIN { exit !(load > cpu_count) }'; then
     send_teams_alert \
       "High CPU Load" \
       "Load average is $LOAD (threshold: $CPU_COUNT cores) on $(hostname)" \
@@ -120,6 +134,10 @@ fi
 ## Scheduling the Checks
 
 ```bash
+# Store the Teams webhook URL outside the shared script
+sudo install -m 600 /dev/null /etc/teams-alert.conf
+echo 'WEBHOOK_URL="https://YOUR_WORKFLOW_OR_WEBHOOK_URL"' | sudo tee /etc/teams-alert.conf >/dev/null
+
 # Set up cron jobs for all monitoring scripts
 sudo tee /etc/cron.d/teams-monitoring << 'EOF'
 */5 * * * * root /usr/local/bin/check-disk-teams.sh 2>/dev/null
@@ -132,4 +150,4 @@ sudo chmod 750 /usr/local/bin/teams-alert.sh
 sudo chmod 750 /usr/local/bin/check-*-teams.sh
 ```
 
-Store the webhook URL in a separate config file with restricted permissions to keep it out of scripts that might be shared or version-controlled.
+Storing the webhook URL in a separate config file with restricted permissions keeps it out of scripts that might be shared or version-controlled.
