@@ -8,7 +8,7 @@ Description: Learn how to effectively monitor and manage LVM thin pool utilizati
 
 ---
 
-A thin pool running out of space is one of the worst storage failures you can have. Unlike a full filesystem where just one mount point stops accepting writes, a full thin pool freezes every thin volume in the pool simultaneously. Applications hang, databases corrupt, and recovery is painful. Monitoring thin pool utilization is not optional.
+A thin pool running out of space is one of the worst storage failures you can have. Unlike a full filesystem where just one mount point stops accepting writes, a full thin pool can stall or fail writes to every thin volume in the pool simultaneously. Applications hang, filesystems can be damaged, and recovery is painful. Monitoring thin pool utilization is not optional.
 
 ## Understanding Thin Pool Metrics
 
@@ -17,7 +17,7 @@ A thin pool has two resources to monitor:
 1. **Data space** - actual storage for the data in thin volumes
 2. **Metadata space** - mapping information that tracks which pool blocks belong to which thin volume
 
-Both can fill up independently, and either one running out causes the same freeze.
+Both can fill up independently, and either one running out can disrupt I/O across the thin volumes in the pool.
 
 ```mermaid
 graph TD
@@ -51,8 +51,8 @@ lvs -a -o+lv_layout,pool_lv,origin,data_percent,metadata_percent,move_pv,copy_pe
 ### Using thin_dump for Deep Inspection
 
 ```bash
-# Dump thin pool metadata for analysis (pool must not be active, or use --format xml)
-thin_dump /dev/vg_data/thinpool_tmeta
+# Dump thin pool metadata for analysis (pool must not be active, or use --metadata-snap)
+thin_dump --metadata-snap /dev/vg_data/thinpool_tmeta
 ```
 
 ## Automated Monitoring Script
@@ -115,11 +115,11 @@ lvs -o lv_name,lv_size,data_percent,origin --select 'pool_lv=thinpool' vg_data
 
 ### Identify Large Snapshots
 
-Snapshots that have diverged significantly from their origin consume more pool space:
+Snapshots that have diverged significantly from their origin consume more pool space. The `origin` column identifies thin snapshots, and `data_percent` shows their mapped data:
 
 ```bash
-# Show snapshots and their divergence
-lvs -o lv_name,origin,data_percent --select 'lv_attr=~^V' vg_data
+# Show thin snapshots and their mapped data usage
+lvs -o lv_name,origin,data_percent --select 'lv_attr=~^V && origin!=""' vg_data
 ```
 
 ### Reclaim Space with TRIM/Discard
@@ -214,11 +214,12 @@ thin_pool_autoextend_percent = 20
 
 This tells LVM to extend the pool by 20% when it reaches 80% full.
 
-Make sure the `dmeventd` service is running:
+Make sure the thin pool is monitored by `dmeventd`:
 
 ```bash
-# Enable and start the monitoring daemon
-systemctl enable --now lvm2-monitor
+# Enable monitoring for the thin pool and restart the monitoring daemon
+lvchange --monitor y vg_data/thinpool
+systemctl restart lvm2-monitor
 ```
 
 Verify it is working:
