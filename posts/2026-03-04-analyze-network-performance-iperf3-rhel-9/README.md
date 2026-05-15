@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, iperf3, Network Performance, Linux
 
-Description: Learn how to use iperf3 on RHEL to measure network throughput, latency, and performance between two hosts, including TCP and UDP testing, bidirectional tests, and interpreting results.
+Description: Learn how to use iperf3 on RHEL to measure network throughput, jitter, and performance between two hosts, including TCP and UDP testing, bidirectional tests, and interpreting results.
 
 ---
 
@@ -118,6 +118,7 @@ Don't forget to open the port in the firewall:
 
 ```bash
 sudo firewall-cmd --permanent --add-port=5201/tcp
+sudo firewall-cmd --permanent --add-port=5201/udp
 sudo firewall-cmd --reload
 ```
 
@@ -159,10 +160,10 @@ iperf3 -c 10.8.0.1 -t 30
 ## Window Size and Buffer Tuning
 
 ```bash
-# Set TCP window size
+# Set TCP socket buffer/window size
 iperf3 -c 192.168.1.100 -w 256K
 
-# Set the send/receive buffer length
+# Set the read/write buffer length
 iperf3 -c 192.168.1.100 -l 128K
 ```
 
