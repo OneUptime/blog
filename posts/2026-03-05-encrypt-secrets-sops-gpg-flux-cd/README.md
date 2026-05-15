@@ -53,8 +53,8 @@ Get the fingerprint of the newly created key, which you will use when encrypting
 gpg --list-secret-keys "${KEY_NAME}"
 
 # Export the fingerprint to an environment variable
-export KEY_FP=$(gpg --list-secret-keys "${KEY_NAME}" \
-  --with-colons 2>/dev/null | awk -F: '/^fpr/{print $10; exit}')
+export KEY_FP=$(gpg --with-colons --list-secret-keys "${KEY_NAME}" \
+  2>/dev/null | awk -F: '/^fpr/{print $10; exit}')
 
 echo "Key fingerprint: ${KEY_FP}"
 ```
