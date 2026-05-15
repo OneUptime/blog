@@ -126,7 +126,7 @@ ansible-playbook -i inventory playbook.yml --vault-password-file ~/.vault_pass
 echo 'YourVaultPassword' > ~/.vault_pass
 chmod 600 ~/.vault_pass
 
-# Add to .gitignore so it never gets committed
+# If you use a project-local password file, add it to .gitignore
 echo '.vault_pass' >> .gitignore
 ```
 
@@ -169,8 +169,21 @@ postgres_replication_password: "{{ vault_postgres_replication_password }}"
   tasks:
     - name: Install PostgreSQL
       ansible.builtin.dnf:
-        name: postgresql-server
+        name:
+          - postgresql-server
+          - python3-psycopg2
         state: present
+
+    - name: Initialize PostgreSQL database
+      ansible.builtin.command:
+        cmd: postgresql-setup --initdb
+        creates: /var/lib/pgsql/data/PG_VERSION
+
+    - name: Start and enable PostgreSQL
+      ansible.builtin.systemd:
+        name: postgresql
+        state: started
+        enabled: true
 
     - name: Set PostgreSQL password
       community.postgresql.postgresql_user:
