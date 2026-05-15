@@ -15,13 +15,25 @@ Docker Swarm is a container orchestration tool built into Docker. It is simpler 
 ```bash
 # Remove any old Docker packages
 
-sudo dnf remove docker docker-client docker-common docker-latest
+sudo dnf remove docker \
+  docker-client \
+  docker-client-latest \
+  docker-common \
+  docker-latest \
+  docker-latest-logrotate \
+  docker-logrotate \
+  docker-engine \
+  podman \
+  runc
+
+# Install the DNF plugin for managing repositories
+sudo dnf install -y dnf-plugins-core
 
 # Add the Docker CE repository
 sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
 
 # Install Docker CE
-sudo dnf install docker-ce docker-ce-cli containerd.io -y
+sudo dnf install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
 
 # Start and enable Docker
 sudo systemctl enable --now docker
@@ -95,7 +107,7 @@ sudo docker service ps web
 ```bash
 # Rolling update to a new image version
 sudo docker service update \
-  --image nginx:1.25 \
+  --image nginx:1.29 \
   --update-parallelism 1 \
   --update-delay 10s \
   web
@@ -106,7 +118,7 @@ sudo docker service ps web
 
 ## Firewall Configuration
 
-Open the required ports on all Swarm nodes:
+Open the required ports between Swarm nodes. Port 2377/tcp is needed on manager nodes, and the overlay network ports are needed between nodes:
 
 ```bash
 # Ports needed for Docker Swarm
