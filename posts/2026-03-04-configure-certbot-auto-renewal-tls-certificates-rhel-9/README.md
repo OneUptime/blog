@@ -125,10 +125,12 @@ sudo chmod 755 /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
 
 ### Pre and Post Hooks
 
-Pre hooks run before any renewal attempt, and post hooks run after, regardless of whether renewal happened. These are useful for standalone mode where you need to stop and start a service:
+Pre hooks run before any renewal attempt, and post hooks run after each attempt, whether the renewal succeeded or failed. These are useful for standalone mode where you need to stop and start a service:
 
 ```bash
 # Write pre and post hooks for standalone mode
+sudo mkdir -p /etc/letsencrypt/renewal-hooks/pre /etc/letsencrypt/renewal-hooks/post
+
 sudo tee /etc/letsencrypt/renewal-hooks/pre/stop-httpd.sh << 'SCRIPT'
 #!/bin/bash
 systemctl stop httpd
@@ -157,7 +159,7 @@ Add or modify these lines under `[renewalparams]`:
 ```ini
 [renewalparams]
 # Hook to reload web server after successful renewal
-post_hook = systemctl reload httpd
+deploy_hook = systemctl reload httpd
 ```
 
 ## Creating a Custom Systemd Timer
@@ -226,8 +228,8 @@ sudo certbot certificates
 Here is a simple script you can run from cron or your monitoring system:
 
 ```bash
-# Check if any certificates expire within 14 days
 #!/bin/bash
+# Check if any certificates expire within 14 days
 THRESHOLD=14
 
 for cert_dir in /etc/letsencrypt/live/*/; do
