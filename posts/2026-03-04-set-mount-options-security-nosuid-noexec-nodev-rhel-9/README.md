@@ -14,11 +14,11 @@ Mount options control how file systems behave after they are attached to the dir
 
 ### nosuid
 
-The nosuid option prevents set-user-ID (SUID) and set-group-ID (SGID) bits from being honored on the mounted file system. SUID programs run with the permissions of the file owner rather than the user executing them. If an attacker places a SUID root binary on a partition without nosuid, they could escalate to root privileges.
+The nosuid option prevents set-user-ID (SUID), set-group-ID (SGID), and file capabilities from being honored on the mounted file system. SUID programs run with the permissions of the file owner rather than the user executing them. If an attacker places a SUID root binary on a partition without nosuid, they could escalate to root privileges.
 
 ### noexec
 
-The noexec option prevents the execution of any binaries on the mounted file system. This stops attackers from running malicious executables that they may have uploaded or written to that partition.
+The noexec option prevents direct execution of binaries and other executable files on the mounted file system. This stops attackers from directly running malicious executables that they may have uploaded or written to that partition.
 
 ### nodev
 
@@ -160,7 +160,7 @@ With noexec, you should see:
 -bash: /tmp/ls_test: Permission denied
 ```
 
-Verify nosuid works:
+Verify nosuid works on a test mount that has nosuid but does not also have noexec:
 
 ```bash
 # Create a SUID test (as root)
