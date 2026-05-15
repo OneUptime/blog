@@ -46,6 +46,15 @@ Create `configure-network.yml`:
 - name: How to Automate Network Configuration Using the network RHEL System Role
   hosts: managed_hosts
   become: true
+  vars:
+    network_connections:
+      - name: example-ethernet
+        type: ethernet
+        interface_name: eth1
+        state: up
+        ip:
+          dhcp4: true
+          auto6: false
   roles:
     - role: rhel-system-roles.network
 ```
@@ -53,8 +62,7 @@ Create `configure-network.yml`:
 Add the role-specific variables. Check the role documentation for available options:
 
 ```bash
-ls /usr/share/doc/rhel-system-roles/network/
-cat /usr/share/doc/rhel-system-roles/network/README.md
+cat /usr/share/ansible/roles/rhel-system-roles.network/README.md
 ```
 
 ## Step 4 - Run the Playbook
@@ -68,10 +76,8 @@ ansible-playbook -i inventory.ini configure-network.yml
 On the managed hosts, verify that the configuration was applied:
 
 ```bash
-# Check relevant service or configuration
-
-systemctl status <service>
-cat <config-file>
+systemctl status NetworkManager
+nmcli connection show example-ethernet
 ```
 
 ## Idempotency
