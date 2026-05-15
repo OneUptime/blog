@@ -8,64 +8,72 @@ Description: Step-by-step guide on set up podman machine for local container dev
 
 ---
 
-Podman Machine creates a lightweight virtual machine that runs a Podman-compatible Linux environment. This is especially useful on development workstations where you need a consistent container runtime environment.
+Podman Machine creates a lightweight virtual machine that runs a Podman-compatible Linux environment. On Linux hosts such as RHEL, Podman can run containers directly without a virtual machine, but Podman Machine can still be used when you want an isolated VM-backed container environment.
 
 ## Prerequisites
 
 - RHEL with a valid subscription or CentOS Stream 9
-- Root or sudo access
+- Root or sudo access to install packages
 - A terminal session
-- Podman installed (usually included in RHEL by default)
+- Podman installed through the `container-tools` package
+- Hardware virtualization enabled for the local VM
 
-## Step 2: Configure the Service
+## Step 1: Install Container Tools
 
-Edit the configuration file to match your environment:
+Install Podman and the related container tools:
 
 ```bash
-# Open the configuration file
-
-sudo vi /etc/<service>/config.conf
+sudo dnf install container-tools
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Confirm Podman is available:
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+podman --version
 ```
 
-## Step 3: Enable and Start the Service
+## Step 2: Initialize the Podman Machine
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Create the default Podman machine
+podman machine init --cpus 2 --memory 2048 --disk-size 20
+```
 
-# Start the service
-sudo systemctl start <service-name>
+Adjust the CPU, memory, and disk size values according to your requirements. Memory is specified in MiB, and disk size is specified in GiB.
+
+## Step 3: Start the Podman Machine
+
+```bash
+# Start the default machine
+podman machine start
 
 # Check the status
-sudo systemctl status <service-name>
+podman machine list
 ```
 
 
 ## Verification
 
-Confirm everything is working by checking the status and logs:
+Confirm everything is working by checking the machine and running a test container:
 
 ```bash
+# Inspect the default machine
+podman machine inspect
+
 # Verify Podman is working
 podman info
 
 # Run a test container
-podman run --rm docker.io/library/alpine echo "Hello from Podman"
+podman run --rm registry.access.redhat.com/ubi9/ubi echo "Hello from Podman"
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the machine fails to start, inspect it with `podman machine inspect`.
+- If the VM starts but container commands fail, check the connection with `podman system connection list`.
+- Ensure all required packages are installed: `rpm -qa | grep container-tools`.
 - For container issues, check container logs with `podman logs <container-name>`.
 
 ## Conclusion
 
-You have successfully completed the setup described in this guide. Remember to monitor the service and review logs regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
+You have successfully completed the setup described in this guide. Remember to monitor the machine and review logs regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
