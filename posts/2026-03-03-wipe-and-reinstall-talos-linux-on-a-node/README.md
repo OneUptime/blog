@@ -39,7 +39,10 @@ kubectl drain "${NODE_NAME}" \
   --delete-emptydir-data \
   --timeout=300s
 
-# For control plane nodes, remove etcd member first
+# For healthy control plane nodes, have the node leave etcd first
+talosctl etcd leave --nodes 10.0.0.50
+
+# If the control plane node is unreachable or broken, remove the etcd member
 # Execute from a different control plane node
 talosctl etcd remove-member --nodes 10.0.0.11 <member-id>
 
@@ -66,15 +69,18 @@ Save the current machine configuration for reference:
 
 ```bash
 # Get the current machine config
-talosctl get machineconfig --nodes 10.0.0.50 -o yaml > old-config-backup.yaml
+talosctl get machineconfig v1alpha1 \
+  --nodes 10.0.0.50 \
+  -o jsonpath='{.spec}' > old-config-backup.yaml
 ```
 
-## Method 1: Reinstall via Talos Reset and New Config
+## Method 1: Reset Data Partitions and Apply New Config
 
-The simplest method - reset the node completely and reapply configuration:
+The simplest method for a clean node reconfiguration is to reset Talos state and ephemeral data, then reapply configuration:
 
 ```bash
-# Full reset with all partitions wiped
+# Wipe Talos STATE/EPHEMERAL and selected user disks.
+# The BOOT partition and installed Talos OS binaries stay intact.
 talosctl reset --nodes 10.0.0.50 \
   --graceful=false \
   --reboot=true \
@@ -86,13 +92,13 @@ talosctl reset --nodes 10.0.0.50 \
 # Wait for the node to enter maintenance mode
 sleep 60
 
-# Apply fresh configuration with a new installer image
+# Apply fresh configuration
 talosctl apply-config --insecure \
   --nodes 10.0.0.50 \
   --file worker.yaml
 ```
 
-This method preserves the BOOT partition (the Talos OS binaries). The installer image specified in the machine config determines what version gets installed to disk.
+This method preserves the BOOT partition (the Talos OS binaries). Use ISO, PXE, disk imaging, or `talosctl upgrade` if you need to replace the Talos version or installed system extensions.
 
 ## Method 2: Reinstall from ISO
 
@@ -101,13 +107,15 @@ For a truly clean installation that replaces everything including the OS binarie
 ### Step 2a: Create or Download the ISO
 
 ```bash
+TALOS_VERSION="v1.12.1"
+
 # Generate a custom ISO with Image Factory
 SCHEMATIC_ID=$(curl -s -X POST \
   --data-binary @schematic.yaml \
   https://factory.talos.dev/schematics | jq -r '.id')
 
 wget -O talos.iso \
-  "https://factory.talos.dev/image/${SCHEMATIC_ID}/v1.7.0/metal-amd64.iso"
+  "https://factory.talos.dev/image/${SCHEMATIC_ID}/${TALOS_VERSION}/metal-amd64.iso"
 ```
 
 ### Step 2b: Boot from the ISO
@@ -118,7 +126,8 @@ For physical servers, write the ISO to a USB drive or mount it through IPMI virt
 # Write to USB
 sudo dd if=talos.iso of=/dev/sdX bs=4M status=progress conv=fsync
 
-# Or mount via IPMI (example with ipmitool)
+# Or mount the ISO via your server's IPMI/iDRAC/iLO virtual media.
+# ipmitool can open the serial console to change boot order:
 ipmitool -H 10.0.0.150 -U admin -P password \
   sol activate  # Access serial console to change boot order
 ```
@@ -136,7 +145,7 @@ talosctl apply-config --insecure \
   --file worker.yaml
 
 # The installer will write Talos to the system disk
-# This completely replaces any existing installation
+# Set machine.install.wipe: true in worker.yaml to wipe existing partitions
 ```
 
 ## Method 3: Disk Image Installation
@@ -145,7 +154,7 @@ For large-scale deployments, you can write a disk image directly:
 
 ```bash
 # Download the raw disk image
-wget "https://factory.talos.dev/image/${SCHEMATIC_ID}/v1.7.0/metal-amd64.raw.xz"
+wget "https://factory.talos.dev/image/${SCHEMATIC_ID}/${TALOS_VERSION}/metal-amd64.raw.xz"
 
 # Decompress
 xz -d metal-amd64.raw.xz
@@ -169,10 +178,10 @@ For data center environments with PXE infrastructure:
 # The boot assets are available from Image Factory:
 
 # Kernel
-wget "https://factory.talos.dev/image/${SCHEMATIC_ID}/v1.7.0/kernel-amd64"
+wget "https://factory.talos.dev/image/${SCHEMATIC_ID}/${TALOS_VERSION}/kernel-amd64"
 
 # Initramfs
-wget "https://factory.talos.dev/image/${SCHEMATIC_ID}/v1.7.0/initramfs-amd64.xz"
+wget "https://factory.talos.dev/image/${SCHEMATIC_ID}/${TALOS_VERSION}/initramfs-amd64.xz"
 ```
 
 Configure your PXE server (like Matchbox or a simple TFTP/HTTP server) to serve these files:
@@ -182,7 +191,8 @@ Configure your PXE server (like Matchbox or a simple TFTP/HTTP server) to serve 
 #!ipxe
 kernel https://pxe.example.com/talos/kernel-amd64 \
   talos.platform=metal \
-  init_on_alloc=1
+  slab_nomerge \
+  pti=on
 initrd https://pxe.example.com/talos/initramfs-amd64.xz
 boot
 ```
@@ -205,13 +215,13 @@ After reinstalling, verify everything is working:
 talosctl version --nodes 10.0.0.50
 
 # Verify the system disk layout
-talosctl disks --nodes 10.0.0.50
+talosctl get disks --nodes 10.0.0.50
 
 # Check installed extensions
 talosctl get extensions --nodes 10.0.0.50
 
 # Verify Kubernetes node status
-kubectl get node -o wide | grep 10.0.0.50
+kubectl get nodes -o wide | grep 10.0.0.50
 
 # Check system health
 talosctl health --nodes 10.0.0.50
@@ -223,14 +233,13 @@ For environments where you regularly reinstall nodes, automate the process:
 
 ```bash
 #!/bin/bash
-# reinstall-node.sh - automated node reinstall
+# reset-node.sh - automated node reset and reconfiguration
 set -euo pipefail
 
 NODE_IP=$1
 CONFIG_FILE=$2
-TALOS_VERSION="${3:-v1.7.0}"
 
-echo "=== Reinstalling Talos on ${NODE_IP} ==="
+echo "=== Resetting and reconfiguring Talos on ${NODE_IP} ==="
 
 # Step 1: Remove from cluster
 echo "Removing from cluster..."
@@ -266,7 +275,7 @@ talosctl apply-config --insecure \
 # Step 5: Wait for the node to join
 echo "Waiting for node to join the cluster..."
 for i in $(seq 1 60); do
-  if kubectl get nodes | grep -q "${NODE_IP}"; then
+  if kubectl get nodes -o wide | grep -q "${NODE_IP}"; then
     echo "Node has joined the cluster"
     break
   fi
@@ -277,7 +286,7 @@ done
 echo "Running health check..."
 talosctl health --nodes "${NODE_IP}" --wait-timeout 10m
 
-echo "=== Reinstall complete ==="
+echo "=== Reset complete ==="
 ```
 
 ## Wiping Disks Securely
@@ -288,10 +297,10 @@ For decommissioning nodes that handled sensitive data, use secure wipe methods:
 # Before resetting, securely wipe user data disks
 # This must be done while the node is still running Talos
 
-# Option 1: Use dd to zero-fill (slow but thorough)
-talosctl -n 10.0.0.50 read /dev/zero | talosctl -n 10.0.0.50 write /dev/sdb
+# Option 1: Use Talos' ZEROES wipe method on an unused user disk
+talosctl wipe disk --nodes 10.0.0.50 --method ZEROES sdb
 
-# Option 2: Include user disks in the reset with wipe
+# Option 2: For a normal reinstall wipe, include user disks in the reset
 talosctl reset --nodes 10.0.0.50 \
   --graceful=false \
   --reboot=true \
