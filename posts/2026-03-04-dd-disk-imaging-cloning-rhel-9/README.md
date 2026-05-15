@@ -32,16 +32,22 @@ Select the tool that best matches your recovery requirements.
 
 ## Step 2 - Create the Backup
 
-Using tar for a full backup:
+Identify the source disk before running dd:
 
 ```bash
-sudo tar czf /backups/full-backup-$(date +%Y%m%d).tar.gz --exclude=/proc --exclude=/sys --exclude=/dev --exclude=/run --exclude=/tmp --exclude=/backups /
+lsblk -o NAME,SIZE,TYPE,MOUNTPOINTS
 ```
 
-Using rsync for incremental backup:
+Create a compressed disk image:
 
 ```bash
-sudo rsync -aAXv --delete / /backups/latest/ --exclude={/proc,/sys,/dev,/run,/tmp,/backups}
+sudo sh -c 'dd if=/dev/sdX bs=64K status=progress conv=noerror,sync | gzip > /backups/sdX-$(date +%Y%m%d).img.gz'
+```
+
+Clone one disk to another disk:
+
+```bash
+sudo dd if=/dev/sdX of=/dev/sdY bs=64K status=progress conv=noerror,sync,fsync
 ```
 
 ## Step 3 - Automate with Cron
@@ -55,12 +61,11 @@ echo "0 2 * * * root /usr/local/bin/backup.sh" | sudo tee /etc/cron.d/daily-back
 Always verify that backups are readable:
 
 ```bash
-# For tar
+# For a compressed dd image
+gzip -t /backups/sdX-*.img.gz
 
-tar tzf /backups/full-backup-*.tar.gz | head -20
-
-# For rsync
-ls -la /backups/latest/
+# For a cloned disk, compare the source and destination sizes
+sudo blockdev --getsize64 /dev/sdX /dev/sdY
 ```
 
 ## Step 5 - Test Restoration
@@ -68,8 +73,8 @@ ls -la /backups/latest/
 Periodically restore backups to a test environment to confirm they work:
 
 ```bash
-# Restore a single file from tar
-tar xzf /backups/full-backup-*.tar.gz -C /tmp/restore-test etc/hostname
+# Restore a compressed dd image to a disk
+sudo sh -c 'gzip -dc /backups/sdX-20260304.img.gz | dd of=/dev/sdY bs=64K status=progress conv=fsync'
 ```
 
 ## Summary
