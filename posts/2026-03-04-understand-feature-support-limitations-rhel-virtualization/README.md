@@ -52,9 +52,11 @@ osinfo-query os | grep -E "rhel|win|centos|fedora|ubuntu"
 
 # osinfo data helps select installation defaults; it is not the Red Hat support matrix.
 # On AMD64 and Intel 64 RHEL 9 KVM hosts, Red Hat's certified guest list includes:
-# - RHEL 7, 8, 9, and 10
+# - RHEL 7, 8, and 9
+# - RHEL 10 on RHEL 9.6 and later hosts
 # - Windows 10 and 11
-# - Windows Server 2016, 2019, 2022, and 2025
+# - Windows Server 2016, 2019, and 2022
+# - Windows Server 2025 on RHEL 9.4 and later hosts
 # Guests that are not listed are handled under Red Hat's third-party software support policy.
 ```
 
@@ -81,9 +83,9 @@ sudo virt-host-validate qemu
 # Some features have specific requirements or limitations:
 
 # 1. Live migration requires:
-#    - Same or compatible CPU models
-#    - Shared storage accessible from both hosts
-#    - Same libvirt and QEMU versions (recommended)
+#    - Source and destination hosts that use supported RHEL versions and machine types
+#    - CPU features compatible with the destination host
+#    - VM disk images accessible from both hosts, or a supported storage-copy migration option
 
 # 2. Snapshots:
 #    - Red Hat supports VM snapshots on RHEL only with external snapshots
