@@ -63,7 +63,7 @@ graph TD
 Here is a production-appropriate policy:
 
 ```bash
-sudo cat > /etc/containers/policy.json << 'EOF'
+sudo tee /etc/containers/policy.json > /dev/null << 'EOF'
 {
     "default": [
         {
@@ -147,20 +147,20 @@ sudo podman image trust set --type reject untrusted-registry.com
 Tell Podman where to find and store signatures:
 
 ```bash
-sudo cat > /etc/containers/registries.d/default.yaml << 'EOF'
+sudo tee /etc/containers/registries.d/default.yaml > /dev/null << 'EOF'
 default-docker:
-  sigstore: file:///var/lib/containers/sigstore
+  lookaside: file:///var/lib/containers/sigstore
 
 docker:
   registry.example.com:
-    sigstore: https://sigstore.example.com/signatures/
-    sigstore-staging: file:///var/lib/containers/sigstore
+    lookaside: https://sigstore.example.com/signatures/
+    lookaside-staging: file:///var/lib/containers/sigstore
   registry.access.redhat.com:
-    sigstore: https://access.redhat.com/webassets/docker/content/sigstore
+    lookaside: https://access.redhat.com/webassets/docker/content/sigstore
 EOF
 ```
 
-The `sigstore` URL is where Podman looks for signatures when pulling images. The `sigstore-staging` is where it stores signatures when pushing.
+The `lookaside` URL is where Podman looks for simple-signing signatures when pulling images. The `lookaside-staging` URL is where it stores signatures when pushing.
 
 ## Setting Up GPG Keys for Trust
 
@@ -169,7 +169,7 @@ This section covers setting up gpg keys for trust.
 ## Import a GPG public key for signature verification
 ```bash
 sudo mkdir -p /etc/pki/containers/
-sudo gpg --armor --export signing@example.com | sudo tee /etc/pki/containers/company-signing-key.pub
+gpg --armor --export signing@example.com | sudo tee /etc/pki/containers/company-signing-key.pub
 ```
 
 ## Verify the key was installed correctly
@@ -196,7 +196,7 @@ podman pull untrusted-registry.com/some-image:latest
 ## This should be rejected (unsigned image from signed-required registry)
 ```bash
 podman pull registry.example.com/unsigned-image:latest
-# Error: Source image rejected: A]signature was required but no signature exists
+# Error: Source image rejected: A signature was required, but no signature exists
 ```
 
 ## Per-User Trust Policies
@@ -208,7 +208,7 @@ mkdir -p ~/.config/containers/
 cp /etc/containers/policy.json ~/.config/containers/policy.json
 ```
 
-Edit the user-level policy file. User policies can only be more restrictive than the system policy, not more permissive.
+Edit the user-level policy file carefully. If `~/.config/containers/policy.json` exists, Podman reads it instead of the system-wide `/etc/containers/policy.json` for that user.
 
 ## Sigstore (Cosign) Trust Policies
 
@@ -240,10 +240,10 @@ Track what images are being pulled on your system:
 
 ## Check podman events for pull operations
 ```bash
-podman events --filter event=pull --since 24h
+podman events --filter event=pull --since 24h --stream=false
 ```
 
-## Log all container operations through auditd
+## Log podman executions through auditd
 ```bash
 sudo auditctl -w /usr/bin/podman -p x -k container-ops
 ```
