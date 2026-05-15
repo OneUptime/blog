@@ -36,20 +36,23 @@ graph LR
 ```bash
 # Install Apache, PHP, and MariaDB
 
-sudo dnf install -y httpd php php-mysqlnd php-xml php-mbstring php-intl php-zip php-gd php-json php-curl mariadb-server
+sudo dnf install -y httpd mod_ssl php php-fpm php-mysqlnd php-xml php-mbstring php-intl php-zip php-gd php-curl mariadb-server policycoreutils-python-utils
 
 # Enable and start MariaDB
 sudo systemctl enable --now mariadb
 
 # Enable and start Apache
 sudo systemctl enable --now httpd
+
+# Enable and start PHP-FPM
+sudo systemctl enable --now php-fpm
 ```
 
 ## Step 2: Set Up the Database
 
 ```bash
 # Secure MariaDB installation
-sudo mysql_secure_installation
+sudo mariadb-secure-installation
 ```
 
 Create the Roundcube database:
@@ -73,11 +76,11 @@ EXIT;
 ```bash
 # Download Roundcube (check for latest version at roundcube.net)
 cd /tmp
-curl -LO https://github.com/roundcube/roundcubemail/releases/download/1.6.9/roundcubemail-1.6.9-complete.tar.gz
+curl -LO https://github.com/roundcube/roundcubemail/releases/download/1.6.15/roundcubemail-1.6.15-complete.tar.gz
 
 # Extract to web directory
-sudo tar xzf roundcubemail-1.6.9-complete.tar.gz
-sudo mv roundcubemail-1.6.9 /var/www/roundcube
+sudo tar xzf roundcubemail-1.6.15-complete.tar.gz
+sudo mv roundcubemail-1.6.15 /var/www/roundcube
 
 # Set ownership
 sudo chown -R apache:apache /var/www/roundcube
