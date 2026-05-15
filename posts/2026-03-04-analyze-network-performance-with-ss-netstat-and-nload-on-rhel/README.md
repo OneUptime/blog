@@ -72,10 +72,13 @@ netstat -rn
 ## Real-Time Bandwidth Monitoring with nload
 
 ```bash
+# Enable EPEL first (replace 9 with your RHEL major version)
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+
 # Install nload from EPEL
 sudo dnf install -y nload
 
-# Monitor all interfaces in real time
+# Monitor auto-detected interfaces in real time
 nload
 
 # Monitor a specific interface
@@ -90,7 +93,7 @@ nload shows incoming and outgoing traffic with current, average, min, and max ba
 ## Advanced Analysis
 
 ```bash
-# Find the top connections by data transfer
+# Find the top remote endpoints by connection count
 ss -tn | awk '{print $5}' | sort | uniq -c | sort -rn | head -10
 
 # Check for connections in TIME_WAIT state (potential issue)
