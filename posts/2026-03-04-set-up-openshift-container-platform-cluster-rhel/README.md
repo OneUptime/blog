@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, OpenShift, Kubernetes, Container, Enterprise
 
-Description: Deploy an OpenShift Container Platform cluster on RHEL infrastructure using the installer-provisioned infrastructure method.
+Description: Deploy an OpenShift Container Platform cluster on bare-metal infrastructure using the user-provisioned infrastructure method.
 
 ---
 
@@ -15,7 +15,8 @@ OpenShift Container Platform (OCP) is Red Hat's enterprise Kubernetes distributi
 You need:
 - A Red Hat account with an OpenShift subscription
 - A pull secret from console.redhat.com
-- DNS configured for the cluster (api.cluster.example.com, *.apps.cluster.example.com)
+- DNS configured for the cluster (api.cluster.example.com, api-int.cluster.example.com, *.apps.cluster.example.com, and node records)
+- API and application ingress load balancers
 - A bastion/installer host running RHEL
 
 ```bash
@@ -61,7 +62,7 @@ metadata:
   name: ocp-cluster
 compute:
   - name: worker
-    replicas: 3
+    replicas: 0
 controlPlane:
   name: master
   replicas: 3
@@ -70,6 +71,8 @@ platform:
 pullSecret: '<your-pull-secret>'
 sshKey: '<your-ssh-public-key>'
 ```
+
+For user-provisioned infrastructure, `compute.replicas` must be set to `0` even when you plan to deploy worker nodes manually.
 
 ## Generating Manifests and Ignition Configs
 
@@ -91,17 +94,24 @@ openshift-install create ignition-configs --dir=.
 
 ## Booting the Nodes
 
-Boot the control plane and worker nodes using RHCOS (Red Hat CoreOS) with the Ignition configs:
+Boot the bootstrap, control plane, and worker nodes using RHCOS (Red Hat CoreOS) with the Ignition configs:
 
 ```bash
 # Serve the Ignition configs via HTTP from the bastion
 python3 -m http.server 8080 --directory ~/ocp-install &
 
-# Boot each node with RHCOS ISO and point to the Ignition config
-# On the RHCOS boot prompt, add kernel parameters:
-# coreos.inst.install_dev=/dev/sda
-# coreos.inst.ignition_url=http://bastion:8080/master.ign
+# Calculate the SHA512 digest for each Ignition config
+sha512sum ~/ocp-install/bootstrap.ign
+sha512sum ~/ocp-install/master.ign
+sha512sum ~/ocp-install/worker.ign
+
+# Boot each node with the RHCOS ISO, wait for the live environment shell,
+# then install RHCOS with the correct Ignition config for that node type.
+sudo coreos-installer install --ignition-url=http://bastion:8080/master.ign /dev/sda \
+  --ignition-hash=sha512-<master-ignition-digest>
 ```
+
+Use `bootstrap.ign` for the temporary bootstrap node, `master.ign` for each control plane node, and `worker.ign` for each worker node.
 
 ## Monitoring the Installation
 
@@ -142,8 +152,8 @@ Worker nodes may need their CSRs approved:
 # List pending CSRs
 oc get csr | grep Pending
 
-# Approve all pending CSRs
-oc get csr -o name | xargs oc adm certificate approve
+# Approve all pending CSRs after verifying they are valid
+oc get csr -o go-template='{{range .items}}{{if not .status}}{{.metadata.name}}{{"\n"}}{{end}}{{end}}' | xargs --no-run-if-empty oc adm certificate approve
 ```
 
 The full installation process typically takes 30-60 minutes. After completion, you have a production-ready OpenShift cluster with the full platform capabilities.
