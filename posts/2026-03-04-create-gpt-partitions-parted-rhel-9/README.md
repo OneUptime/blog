@@ -12,7 +12,7 @@ Description: Learn how to use parted to create GPT partition tables and partitio
 
 GPT (GUID Partition Table) is the modern replacement for MBR. It supports disks larger than 2 TB, allows up to 128 partitions by default, and stores a backup copy of the partition table at the end of the disk for added safety. On RHEL with UEFI boot, GPT is required.
 
-parted is the standard tool for managing GPT partitions on RHEL. Unlike fdisk's interactive-only approach, parted can be used both interactively and with one-liner commands, making it ideal for scripting.
+parted is a standard tool for managing GPT partitions on RHEL. It can be used both interactively and with one-liner commands, making it useful for scripting.
 
 ## Prerequisites
 
@@ -44,17 +44,17 @@ This wipes any existing partition table. parted will ask for confirmation if it 
 parted uses start and end positions. You can specify sizes in MB, GB, TB, or percentages.
 
 ```bash
-# Create a 50 GB partition starting at 1 MiB
-sudo parted /dev/sdb mkpart primary xfs 1MiB 50GiB
+# Create a 50 GiB partition starting at 1 MiB
+sudo parted /dev/sdb mkpart data xfs 1MiB 50GiB
 
-# Create a 100 GB partition starting where the first one ended
-sudo parted /dev/sdb mkpart primary xfs 50GiB 150GiB
+# Create a 100 GiB partition starting where the first one ended
+sudo parted /dev/sdb mkpart backups xfs 50GiB 150GiB
 
 # Create a partition using the remaining space
-sudo parted /dev/sdb mkpart primary xfs 150GiB 100%
+sudo parted /dev/sdb mkpart logs xfs 150GiB 100%
 ```
 
-The "primary" label is technically not needed for GPT (GPT does not have primary/extended/logical distinctions), but parted accepts it for compatibility.
+GPT does not have primary/extended/logical distinctions. With a GPT partition table, the first argument after `mkpart` is the partition name.
 
 ## Step 4 - Name Your Partitions
 
@@ -85,9 +85,9 @@ You should see output like:
 
 ```bash
 Number  Start   End     Size    File system  Name     Flags
- 1      1049kB  53.7GB  53.7GB               data
- 2      53.7GB  161GB   107GB                backups
- 3      161GB   500GB   339GB                logs
+ 1      1049kB  53.7GB  53.7GB  xfs          data
+ 2      53.7GB  161GB   107GB   xfs          backups
+ 3      161GB   500GB   339GB   xfs          logs
 ```
 
 ## Step 6 - Create Filesystems
@@ -128,8 +128,8 @@ echo "UUID=<uuid3>  /mnt/logs     xfs  defaults  0 0" | sudo tee -a /etc/fstab
 GPT partitions support various flags:
 
 ```bash
-# Set the boot flag (for EFI System Partition)
-sudo parted /dev/sdb set 1 boot on
+# Set the ESP flag (for EFI System Partition)
+sudo parted /dev/sdb set 1 esp on
 
 # Set the LVM flag
 sudo parted /dev/sdb set 2 lvm on
@@ -138,20 +138,19 @@ sudo parted /dev/sdb set 2 lvm on
 sudo parted /dev/sdb set 3 raid on
 
 # List supported flags
-sudo parted /dev/sdb print
+sudo parted /dev/sdb help set
 ```
 
 ## Using Optimal Alignment
 
-parted aligns partitions to optimal boundaries by default. You can check and control this:
+parted supports optimal alignment. You can check and control this:
 
 ```bash
 # Check alignment of partition 1
 sudo parted /dev/sdb align-check optimal 1
 
-# parted uses optimal alignment by default
-# To explicitly set alignment mode
-sudo parted -a optimal /dev/sdb mkpart primary xfs 1MiB 50GiB
+# To explicitly set optimal alignment mode
+sudo parted -a optimal /dev/sdb mkpart data xfs 1MiB 50GiB
 ```
 
 ## Interactive Mode
@@ -173,7 +172,7 @@ sudo parted /dev/sdb
 | Command | Description |
 |---------|-------------|
 | `mklabel gpt` | Create GPT partition table |
-| `mkpart name fs start end` | Create a partition |
+| `mkpart name fs-type start end` | Create a GPT partition |
 | `rm N` | Remove partition N |
 | `name N label` | Set partition name |
 | `set N flag on/off` | Set/unset a flag |
