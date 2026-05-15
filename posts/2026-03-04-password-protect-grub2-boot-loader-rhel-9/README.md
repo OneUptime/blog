@@ -34,7 +34,7 @@ By default, password protection blocks editing boot entries and accessing the GR
 ```bash
 # Generate a PBKDF2 password hash
 
-grub2-setpassword
+sudo grub2-setpassword
 ```
 
 You will be prompted to enter and confirm the password. This creates a file at `/boot/grub2/user.cfg` containing the hashed password.
@@ -83,10 +83,8 @@ sudo grub2-setpassword
 sudo rm /boot/grub2/user.cfg
 
 # Regenerate GRUB config (if needed)
-# For BIOS:
+# For RHEL 9 BIOS and UEFI systems:
 sudo grub2-mkconfig -o /boot/grub2/grub.cfg
-# For UEFI:
-sudo grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
 ```
 
 ## Advanced: Custom Users and Unrestricted Entries
