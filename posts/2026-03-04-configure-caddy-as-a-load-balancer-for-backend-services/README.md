@@ -23,11 +23,13 @@ sudo vi /etc/caddy/Caddyfile
 
 ```bash
 myapp.example.com {
-    reverse_proxy 10.0.1.10:3000 10.0.1.11:3000 10.0.1.12:3000
+    reverse_proxy 10.0.1.10:3000 10.0.1.11:3000 10.0.1.12:3000 {
+        lb_policy round_robin
+    }
 }
 ```
 
-Caddy distributes requests across all three backends using round-robin by default.
+Caddy distributes requests across all three backends using round-robin.
 
 ## Step 2: Choose a Load Balancing Policy
 
@@ -40,13 +42,13 @@ myapp.example.com {
 ```
 
 Available policies:
-- `round_robin` (default)
+- `random` (default) - Random selection
+- `round_robin` - Iterate through each upstream in turn
 - `least_conn` - Send to server with fewest connections
-- `random` - Random selection
 - `first` - Always use first available
 - `ip_hash` - Sticky sessions by client IP
 - `uri_hash` - Route by request URI
-- `header` - Route by header value
+- `header <field>` - Route by header value
 
 ## Step 3: Add Health Checks
 
@@ -83,8 +85,6 @@ This sets a cookie on the first response, ensuring subsequent requests from the 
 myapp.example.com {
     reverse_proxy 10.0.1.10:3000 10.0.1.11:3000 {
         header_up X-Real-IP {remote_host}
-        header_up X-Forwarded-For {remote_host}
-        header_up X-Forwarded-Proto {scheme}
     }
 }
 ```
