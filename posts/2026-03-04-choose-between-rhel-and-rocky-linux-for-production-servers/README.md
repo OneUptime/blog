@@ -4,29 +4,27 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Comparison, Linux
 
-Description: Step-by-step guide on choose between rhel and rocky linux for production servers using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on choosing between RHEL and Rocky Linux for production servers.
 
 ---
 
-Rocky Linux was created as a direct RHEL-compatible replacement after CentOS shifted to CentOS Stream. Both Rocky and RHEL aim for binary compatibility, but they differ in support, certification, and ecosystem integration for enterprise workloads.
+Rocky Linux was created as a direct RHEL-compatible replacement after CentOS shifted to CentOS Stream. Rocky aims to be compatible with RHEL, but Rocky and RHEL differ in support, certification, and ecosystem integration for enterprise workloads.
 
 ## Prerequisites
 
-- RHEL with a valid subscription or CentOS Stream 9
-- Root or sudo access
-- A terminal session
+- Basic familiarity with enterprise Linux administration
+- An inventory of production workload support and certification requirements
+- Budget and compliance requirements for your environment
 
-## Step 2: Configure the Service
-
-### Key Comparison Areas
+## Key Comparison Areas
 
 | Feature | RHEL | Rocky Linux 9 |
 |---------|--------|----------------|
 | Binary Compatibility | Reference | Compatible |
-| Support | Red Hat | Community/CIQ |
-| Certifications | Full vendor | Limited |
-| Cost | Subscription | Free |
-| Security Patches | Same day | Slight delay |
+| Support | Red Hat subscription support | Community support; commercial options from CIQ and other providers |
+| Certifications | Red Hat certified ecosystem | Limited compared with RHEL |
+| Cost | Subscription required for supported production use | No subscription required |
+| Security Patches | Red Hat errata and advisories | Rebuilt updates and Rocky Linux errata |
 
 ### When to Choose RHEL
 
@@ -40,51 +38,6 @@ Rocky Linux was created as a direct RHEL-compatible replacement after CentOS shi
 - Development and testing environments
 - Community support is sufficient
 
-## Step 3: Enable and Start the Service
-
-```bash
-# Enable the service to start on boot
-
-sudo systemctl enable <service-name>
-
-# Start the service
-sudo systemctl start <service-name>
-
-# Check the status
-sudo systemctl status <service-name>
-```
-
-## Step 4: Configure the Firewall
-
-```bash
-# Open the required port
-sudo firewall-cmd --permanent --add-port=<PORT>/tcp
-sudo firewall-cmd --reload
-
-# Verify the rule
-sudo firewall-cmd --list-all
-```
-
-
-## Verification
-
-Confirm everything is working by checking the status and logs:
-
-```bash
-# Check the service status
-sudo systemctl status <service-name>
-
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
-```
-
-## Troubleshooting
-
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- SELinux may block access. Check for denials with `ausearch -m avc -ts recent` and apply appropriate policies.
-- Verify firewall rules allow traffic on the required ports: `firewall-cmd --list-all`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
-
 ## Conclusion
 
-You have successfully completed the setup described in this guide. Both options have their strengths, and the right choice depends on your specific requirements, budget, and team expertise. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
+Both options have their strengths, and the right choice depends on your specific requirements, budget, and team expertise. For production environments, always test changes in a staging environment first and keep your systems updated with the latest security patches.
