@@ -20,7 +20,7 @@ Before extending, check how much free space the volume group has:
 sudo vgs
 ```
 
-Look at the VFree column. If it shows zero, you need to add a new disk to the VG first.
+Look at the VFree column. If it shows zero, you need to add storage to the VG first, such as by adding a new disk.
 
 ## Extending a Logical Volume
 
