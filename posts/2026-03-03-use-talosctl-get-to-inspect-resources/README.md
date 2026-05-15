@@ -60,9 +60,8 @@ talosctl get resolvers --nodes <node-ip>    # DNS resolvers
 talosctl get hostname --nodes <node-ip>     # Hostname
 
 # Hardware resources
-talosctl get cpus --nodes <node-ip>         # CPU information
-talosctl get memorymodules --nodes <node-ip> # Memory modules
-talosctl get blockdevices --nodes <node-ip>  # Disks
+talosctl get disks --nodes <node-ip>        # Disk information
+talosctl get blockdevices --nodes <node-ip> # Block devices and partitions
 
 # Runtime resources
 talosctl get services --nodes <node-ip>     # Service status
@@ -70,7 +69,7 @@ talosctl get members --nodes <node-ip>      # Cluster members
 talosctl get nodename --nodes <node-ip>     # Kubernetes node name
 
 # Configuration resources
-talosctl get machineconfig --nodes <node-ip> # Full machine config
+talosctl get machineconfig v1alpha1 --nodes <node-ip> # Full machine config
 ```
 
 ## Output Formats
@@ -101,7 +100,7 @@ Machine-readable output, useful for scripting:
 
 ```bash
 # Extract specific values with jq
-talosctl get addresses --nodes <node-ip> -o json | jq '.spec.address'
+talosctl get addresses --nodes <node-ip> -o json | jq '.[].spec.address'
 ```
 
 ## Practical Examples
@@ -113,7 +112,7 @@ talosctl get addresses --nodes <node-ip> -o json | jq '.spec.address'
 talosctl get addresses --nodes <node-ip>
 ```
 
-This shows every IP on every interface, including loopback addresses, pod CIDRs, and service addresses assigned by Kubernetes.
+This shows every IP on every interface, including loopback addresses and addresses created by the CNI.
 
 To get just the primary IP:
 
@@ -125,14 +124,14 @@ talosctl get addresses --nodes <node-ip> -o yaml | grep -B5 "eth0\|ens\|enp"
 ### Checking Disk Configuration
 
 ```bash
-# See all block devices
-talosctl get blockdevices --nodes <node-ip>
+# See all disks
+talosctl get disks --nodes <node-ip>
 
 # Get detailed info about a specific disk
-talosctl get blockdevices sda --nodes <node-ip> -o yaml
+talosctl get disks sda --nodes <node-ip> -o yaml
 ```
 
-This shows disk size, partitions, model, serial number, and other hardware details. Useful for verifying that Talos installed to the correct disk.
+This shows disk size, model, serial number, and other hardware details. Useful for verifying that Talos installed to the correct disk.
 
 ### Verifying Network Routes
 
@@ -161,7 +160,7 @@ If DNS resolution is not working, this tells you what nameservers the node is co
 
 ```bash
 # Get the full machine configuration
-talosctl get machineconfig --nodes <node-ip> -o yaml
+talosctl get machineconfig v1alpha1 --nodes <node-ip> -o yaml
 ```
 
 This outputs the complete configuration including cluster certificates, kubelet settings, and network configuration. Note that sensitive values like private keys are included, so handle this output carefully.
@@ -198,7 +197,7 @@ Press Ctrl+C to stop watching.
 
 ## Filtering by Namespace
 
-Resources live in namespaces. Most commonly used resources are in the default namespace, but you can specify others:
+Resources live in namespaces. Most commonly used resources have a default namespace in their resource definition, but you can specify others:
 
 ```bash
 # Get resources from a specific namespace
@@ -208,8 +207,8 @@ talosctl get addresses --namespace network --nodes <node-ip>
 To see available namespaces:
 
 ```bash
-# The namespace is part of the resource definition
-talosctl get rd --nodes <node-ip> -o yaml | grep "namespace"
+# List namespaces
+talosctl get namespaces --nodes <node-ip>
 ```
 
 ## Querying Multiple Nodes
@@ -236,7 +235,7 @@ NODES="10.0.0.1 10.0.0.2 10.0.0.3 10.0.0.4 10.0.0.5"
 
 for node in $NODES; do
     DNS=$(talosctl get resolvers --nodes $node -o json 2>/dev/null | \
-        jq -r '.spec.dnsServers[]' 2>/dev/null)
+        jq -r '.[].spec.dnsServers[]' 2>/dev/null)
     if echo "$DNS" | grep -q "$EXPECTED_DNS"; then
         echo "$node: DNS OK"
     else
@@ -253,7 +252,7 @@ NODES="10.0.0.1 10.0.0.2 10.0.0.3"
 
 for node in $NODES; do
     echo "=== $node ==="
-    talosctl get blockdevices --nodes $node -o yaml 2>/dev/null | grep "size:"
+    talosctl get disks --nodes $node -o yaml 2>/dev/null | grep "size:"
 done
 ```
 
@@ -286,7 +285,7 @@ talosctl get links --nodes <node-ip>
 
 ```bash
 # Compare running config with expected config
-talosctl get machineconfig --nodes <node-ip> -o yaml > running.yaml
+talosctl get machineconfig v1alpha1 --nodes <node-ip> -o jsonpath='{.spec}' > running.yaml
 diff running.yaml expected.yaml
 ```
 
