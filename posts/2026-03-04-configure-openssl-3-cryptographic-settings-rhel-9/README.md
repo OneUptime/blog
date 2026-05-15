@@ -25,7 +25,7 @@ flowchart TD
     B --> F[Base Provider]
     C --> G[AES, RSA, SHA-2, SHA-3,<br>ECDSA, Ed25519, etc.]
     D --> H[FIPS 140-3 Validated<br>Algorithms Only]
-    E --> I[MD4, MD5, DES, RC4,<br>Blowfish, etc.]
+    E --> I[MD2, MD4, MDC2, DES, RC4,<br>Blowfish, etc.]
     F --> J[Encoders, Decoders,<br>Key Serialization]
 ```
 
@@ -33,7 +33,7 @@ flowchart TD
 
 1. **Provider architecture** - Algorithms live in providers, not the core library
 2. **Deprecated algorithms** - MD2, MDC2, Whirlpool, and others are now in the legacy provider
-3. **Engine API removed** - Replaced by the provider API
+3. **Engine API deprecated** - Engines still exist in many OpenSSL 3.0 builds, but new algorithm implementations should use the provider API
 4. **FIPS module** - Separate, validated provider for FIPS compliance
 5. **Configuration changes** - `openssl.cnf` has new sections for providers
 
@@ -157,7 +157,7 @@ OPENSSL_CONF=/etc/pki/tls/openssl-legacy.cnf openssl dgst -md4 somefile
 
 ## Configuring the FIPS Provider
 
-For environments that require FIPS 140-3 compliance, RHEL provides a validated FIPS provider.
+For environments that require FIPS 140-3 compliance, RHEL provides a validated FIPS provider. If you need a compliant system, enable FIPS during installation; switching an already configured system to FIPS mode is useful for testing but does not by itself guarantee compliance.
 
 ### Enabling FIPS Mode System-Wide
 
@@ -180,13 +180,13 @@ cat /proc/sys/crypto/fips_enabled
 openssl list -providers
 ```
 
-In FIPS mode, only FIPS-approved algorithms are available. Non-approved algorithms (like MD5 for hashing, or RSA keys shorter than 2048 bits) will be rejected.
+In FIPS mode, RHEL core cryptographic components use FIPS-approved implementations for cryptographic operations. Non-approved algorithms (like MD5 for hashing, or RSA keys shorter than 2048 bits) will be rejected.
 
 ### What FIPS Mode Restricts
 
 When FIPS mode is enabled, these are no longer available:
 
-- MD5 (for message digests, still usable in HMAC)
+- MD5 (for general message digests)
 - SHA-1 (for signatures, still usable in HMAC)
 - DES, 3DES (for encryption in most contexts)
 - RSA keys smaller than 2048 bits
@@ -213,6 +213,8 @@ sudo fips-mode-setup --disable
 sudo systemctl reboot
 ```
 
+Red Hat warns that disabling FIPS mode after setup can leave the system in an inconsistent state. For compliance-sensitive systems, plan on reinstalling instead of toggling FIPS mode off.
+
 ## System-Wide Crypto Policies
 
 RHEL uses `update-crypto-policies` to manage cryptographic settings across all applications (OpenSSL, GnuTLS, NSS, etc.) from a single place.
@@ -220,11 +222,12 @@ RHEL uses `update-crypto-policies` to manage cryptographic settings across all a
 ### Available Policies
 
 ```bash
-# List available crypto policies
+# Show the current crypto policy
 update-crypto-policies --show
 
-# See all available policies and subpolicies
+# See available policies and policy modules
 ls /usr/share/crypto-policies/policies/
+ls /usr/share/crypto-policies/policies/modules/
 ```
 
 The built-in policies:
@@ -281,8 +284,8 @@ min_tls_version = TLS1.2
 # Set minimum RSA key size
 min_rsa_size = 3072
 
-# Disable specific ciphers
-cipher = -CAMELLIA-128-CBC -CAMELLIA-256-CBC
+# Disable a specific TLS cipher
+cipher@TLS = -CHACHA20-POLY1305
 ```
 
 Apply it:
@@ -310,14 +313,14 @@ Fix: Either enable the legacy provider or update the application to use modern a
 
 ### Applications Failing After RHEL 8 to 9 Upgrade
 
-Applications compiled against OpenSSL 1.1.1 might use APIs that were removed in 3.0:
+Applications compiled against OpenSSL 1.1.1 need to be rebuilt for RHEL 9 and might use APIs that are deprecated in OpenSSL 3.0:
 
 ```bash
 # Check what OpenSSL libraries an application links against
 ldd /usr/local/bin/myapp | grep ssl
 
-# Check for deprecated API usage
-openssl version -a | grep "OPENSSL_API_COMPAT"
+# Look for common deprecated ENGINE or custom METHOD symbols
+readelf -Ws /usr/local/bin/myapp | grep -E 'ENGINE_|EVP_.*_meth_|RSA_meth_|EC_KEY_METHOD_'
 ```
 
 ### Certificate and Key Format Issues
@@ -368,7 +371,7 @@ openssl s_client -connect localhost:443 -cipher RC4-SHA 2>&1
 
 4. **Keep crypto policies consistent.** All servers in a cluster should use the same policy. Use configuration management to enforce this.
 
-5. **Monitor for deprecation warnings.** OpenSSL 3.0 logs warnings when deprecated functions are called. Watch your application logs for these.
+5. **Monitor for deprecation warnings.** OpenSSL 3.0 marks many older APIs as deprecated, so watch your build logs and compiler warnings when rebuilding applications.
 
 ## Summary
 
