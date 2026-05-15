@@ -8,7 +8,7 @@ Description: Learn how to create and manage LVM RAID volumes on RHEL, covering R
 
 ---
 
-LVM RAID combines the flexibility of logical volume management with the data protection of RAID technology. On RHEL, LVM supports RAID levels 1, 4, 5, 6, and 10, using the MD (multiple devices) RAID subsystem underneath. This guide covers how to set up and manage different LVM RAID configurations.
+LVM RAID combines the flexibility of logical volume management with the data protection of RAID technology. On RHEL, LVM supports RAID levels 0, 1, 4, 5, 6, and 10, using the MD (multiple devices) RAID subsystem underneath. This guide covers how to set up and manage different LVM RAID configurations.
 
 ## Prerequisites
 
@@ -20,6 +20,7 @@ LVM RAID combines the flexibility of logical volume management with the data pro
 
 | RAID Level | Minimum Disks | Description |
 |-----------|--------------|-------------|
+| RAID 0    | 2            | Striping for performance, with no redundancy |
 | RAID 1    | 2            | Mirroring - data is duplicated on each disk |
 | RAID 4    | 3            | Striping with a dedicated parity disk |
 | RAID 5    | 3            | Striping with distributed parity |
@@ -31,13 +32,13 @@ LVM RAID combines the flexibility of logical volume management with the data pro
 Initialize your disks:
 
 ```bash
-sudo pvcreate /dev/sdb /dev/sdc /dev/sdd /dev/sde
+sudo pvcreate /dev/sdb /dev/sdc /dev/sdd /dev/sde /dev/sdf
 ```
 
 Create a volume group:
 
 ```bash
-sudo vgcreate vg_raid /dev/sdb /dev/sdc /dev/sdd /dev/sde
+sudo vgcreate vg_raid /dev/sdb /dev/sdc /dev/sdd /dev/sde /dev/sdf
 ```
 
 Verify:
@@ -145,8 +146,8 @@ When a disk fails in a RAID volume:
 sudo lvs -a -o name,devices,lv_health_status vg_raid
 
 # Add a replacement disk
-sudo pvcreate /dev/sdf
-sudo vgextend vg_raid /dev/sdf
+sudo pvcreate /dev/sdg
+sudo vgextend vg_raid /dev/sdg
 
 # Repair the RAID
 sudo lvconvert --repair vg_raid/lv_raid5
