@@ -20,7 +20,7 @@ This selection ensures vSphere applies the correct default hardware settings.
 
 ## Recommended VM Hardware Settings
 
-```bash
+```text
 # VM Configuration Best Practices:
 
 CPU:         Allocate based on workload (start with 2-4 vCPUs)
@@ -33,7 +33,7 @@ SCSI Slots:  Place the OS disk on SCSI 0:0
 
 ## Attach the RHEL ISO
 
-```bash
+```text
 # In the VM settings:
 1. Add a CD/DVD drive
 2. Select "Datastore ISO File"
@@ -45,7 +45,7 @@ SCSI Slots:  Place the OS disk on SCSI 0:0
 
 Power on the VM and open the console. The RHEL Anaconda installer will boot from the ISO.
 
-```bash
+```text
 # Key installation decisions:
 # - Partitioning: Use LVM for flexible disk management
 # - Network: Configure the VMXNET3 adapter during install
@@ -97,7 +97,6 @@ sudo systemctl restart chronyd
 ```bash
 # Register with Red Hat
 sudo subscription-manager register --username your_username --password your_password
-sudo subscription-manager attach --auto
 
 # Update the system
 sudo dnf update -y
