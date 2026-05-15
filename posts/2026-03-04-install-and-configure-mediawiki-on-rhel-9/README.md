@@ -20,42 +20,64 @@ MediaWiki can be installed and configured on RHEL to provide robust functionalit
 
 ```bash
 # Update the system first
-
 sudo dnf update -y
 
-# Install the required packages
-sudo dnf install -y <package-name>
-```
+# Install PHP 8.2, which is required by current MediaWiki releases
+sudo dnf -y module install php:8.2
 
-Replace `<package-name>` with the specific package for your use case.
+# Install Apache, MariaDB, PHP extensions, and download tools
+sudo dnf install -y httpd mariadb-server php-cli php-curl php-gd php-intl php-mbstring php-mysqlnd php-opcache php-xml tar wget
+
+# Download and extract MediaWiki
+cd /tmp
+wget https://releases.wikimedia.org/mediawiki/1.45/mediawiki-1.45.3.tar.gz
+sudo tar -xzf mediawiki-1.45.3.tar.gz -C /var/www
+sudo ln -s /var/www/mediawiki-1.45.3 /var/www/html/mediawiki
+sudo chown -R apache:apache /var/www/mediawiki-1.45.3
+sudo restorecon -Rv /var/www/mediawiki-1.45.3 /var/www/html/mediawiki
+```
 
 ## Step 2: Configure the Service
 
-Edit the configuration file to match your environment:
+Create a MariaDB database and user for MediaWiki:
 
 ```bash
-# Open the configuration file
-sudo vi /etc/<service>/config.conf
+# Start MariaDB before creating the database
+sudo systemctl enable --now mariadb
+sudo mysql_secure_installation
+
+# Log in to MariaDB
+sudo mariadb -u root -p
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Run these SQL statements at the MariaDB prompt:
 
-```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+```sql
+CREATE DATABASE wikidatabase CHARACTER SET binary;
+CREATE USER 'wiki'@'localhost' IDENTIFIED BY 'THISpasswordSHOULDbeCHANGED';
+GRANT ALL PRIVILEGES ON wikidatabase.* TO 'wiki'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Enable and start Apache and PHP-FPM
+sudo systemctl enable --now httpd php-fpm
 
-# Start the service
-sudo systemctl start <service-name>
+# Restart Apache after installing MediaWiki files
+sudo systemctl restart httpd
 
-# Check the status
-sudo systemctl status <service-name>
+# Open HTTP traffic if firewalld is running
+sudo systemctl is-active --quiet firewalld && sudo firewall-cmd --permanent --add-service=http
+sudo systemctl is-active --quiet firewalld && sudo firewall-cmd --reload
+```
+
+Open `http://<server-ip-or-hostname>/mediawiki/mw-config/` in a browser and complete the MediaWiki installer. When the installer generates `LocalSettings.php`, copy it to the MediaWiki installation directory:
+
+```bash
+sudo install -o apache -g apache -m 640 /path/to/LocalSettings.php /var/www/mediawiki-1.45.3/LocalSettings.php
 ```
 
 
@@ -65,16 +87,16 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status httpd php-fpm mariadb
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+sudo journalctl -u httpd -u php-fpm -u mariadb --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If Apache, PHP-FPM, or MariaDB fails to start, check the logs with `sudo journalctl -u httpd -u php-fpm -u mariadb -e --no-pager`.
+- Ensure all required packages are installed: `rpm -qa | grep -E 'httpd|mariadb-server|php'`.
 
 ## Conclusion
 
