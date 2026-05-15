@@ -22,16 +22,18 @@ Locust stands out from other load testing tools because:
 
 ## Prerequisites
 
-- RHEL with Python 3.9 or newer
-- pip installed
+- RHEL with Python 3.10 or newer (on RHEL 9, use Python 3.11 or 3.12 for current Locust releases)
+- pip installed for that Python version
 - A web application to test
 
 ## Installing Locust
 
 ```bash
-# Install Locust
+# Install Python 3.11 and pip on RHEL 9 if needed
+sudo dnf install -y python3.11 python3.11-pip
 
-pip3 install --user locust
+# Install Locust
+python3.11 -m pip install --user locust
 ```
 
 Verify the installation:
@@ -275,6 +277,10 @@ locust -f locustfile.py \
 For long-running distributed tests:
 
 ```bash
+# Create a dedicated service user and install Locust for that user
+sudo useradd --system --home-dir /var/lib/locust --create-home --shell /sbin/nologin locust
+sudo -H -u locust python3.11 -m pip install --user locust
+
 # Create a systemd service for the Locust master
 sudo tee /etc/systemd/system/locust-master.service > /dev/null << 'EOF'
 [Unit]
@@ -284,7 +290,7 @@ After=network.target
 [Service]
 Type=simple
 User=locust
-ExecStart=/usr/local/bin/locust -f /opt/loadtests/locustfile.py --master --host http://target.example.com
+ExecStart=/var/lib/locust/.local/bin/locust -f /opt/loadtests/locustfile.py --master --host http://target.example.com
 Restart=on-failure
 
 [Install]
