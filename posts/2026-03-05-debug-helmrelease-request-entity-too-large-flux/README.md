@@ -48,7 +48,7 @@ kubectl describe helmrelease my-app -n default | grep -i "too large\|entity"
 kubectl logs -n flux-system deployment/helm-controller | grep "too large" | grep "my-app"
 ```
 
-The error message typically reads: `Request entity too large: limit is 3145728` or similar.
+The error message may read `Request entity too large: limit is 3145728` when the Kubernetes API server rejects the request body. If the individual Secret object is over the Kubernetes Secret size limit, you may instead see an error such as `Too long: must have at most 1048576 bytes`.
 
 ## Step 2: Assess the Current Release History
 
@@ -68,9 +68,9 @@ LATEST_SECRET=$(kubectl get secrets -n default -l name=my-app,owner=helm \
 kubectl get -n default "$LATEST_SECRET" -o json | wc -c
 ```
 
-## Step 3: Reduce Release History
+## Step 3: Limit Release History
 
-One preventive fix is to reduce the number of historical releases stored by Helm. Each release revision is kept as a separate Secret, and having many revisions increases total cluster storage usage, even though the "request entity too large" error is caused by the release Secret being written for a single revision.
+One preventive measure is to limit the number of historical releases stored by Helm. Each release revision is kept as a separate Secret, and having many revisions increases total cluster storage usage. This does not reduce the size of the new release Secret being written, so it will not fix a release whose current rendered output is too large.
 
 ### Set maxHistory on the HelmRelease
 
@@ -95,11 +95,11 @@ spec:
   maxHistory: 3
 ```
 
-The `maxHistory` field tells Flux to limit how many Helm release revisions are saved for this HelmRelease.
+The `maxHistory` field tells Flux to limit how many Helm release revisions are saved for this HelmRelease. If not set, Flux defaults this value to `5`.
 
 ### Manually Clean Up Old Release Secrets
 
-If you are already in the error state and cannot upgrade, manually remove old release Secrets:
+If you are already carrying excessive history, manually remove old release Secrets to reduce cluster storage usage:
 
 ```bash
 # List all release secrets, sorted by creation time
@@ -205,7 +205,7 @@ spec:
 
 ## Step 5: Recover After Cleanup
 
-After reducing the history or chart size, trigger a fresh reconciliation:
+After reducing the chart size, trigger a fresh reconciliation:
 
 ```bash
 # Reconcile the HelmRelease
@@ -215,9 +215,9 @@ flux reconcile helmrelease my-app -n default --reset
 flux get helmreleases -n default --watch
 ```
 
-## Step 6: Prevent Future Occurrences
+## Step 6: Prevent Future Storage Growth
 
-Add the following configuration to all HelmReleases as a preventive measure:
+Add the following configuration to HelmReleases where you want a lower release-history limit than Flux's default:
 
 ```yaml
 # Preventive configuration
@@ -263,10 +263,9 @@ kubectl describe helmrelease my-app -n default | grep "too large"
 # 2. Count release secrets
 kubectl get secrets -n default -l name=my-app,owner=helm | wc -l
 
-# 3. Delete old secrets (keep last 2-3)
-kubectl get secrets -n default -l name=my-app,owner=helm --sort-by='{.metadata.creationTimestamp}' -o name | head -n -3 | xargs kubectl delete -n default
+# 3. Reduce the current chart output size if the latest release Secret is too large
 
-# 4. Add maxHistory to HelmRelease (in Git)
+# 4. Optionally set maxHistory to keep less history than the Flux default of 5
 # maxHistory: 3
 
 # 5. Reset and reconcile the HelmRelease
@@ -275,7 +274,7 @@ flux reconcile helmrelease my-app -n default --reset
 
 ## Best Practices
 
-1. **Always set maxHistory.** Default to 3-5 for most releases to prevent unbounded history growth.
+1. **Use maxHistory deliberately.** Flux defaults to 5 saved revisions; set a lower value such as 3 if you want to keep less release history.
 2. **Monitor secret sizes.** Set up alerts for release Secrets approaching Kubernetes size limits.
 3. **Split large charts.** If a single chart produces hundreds of resources, consider breaking it into smaller charts.
 4. **Clean up regularly.** Include release history cleanup in your operational runbooks.
@@ -283,4 +282,4 @@ flux reconcile helmrelease my-app -n default --reset
 
 ## Conclusion
 
-The "request entity too large" error in Flux is caused by Helm release Secrets becoming too large for Kubernetes to store. The primary fix is reducing the rendered release size by splitting large charts or disabling unused features, and setting `maxHistory` on your HelmRelease prevents unbounded history growth. Regular monitoring and cleanup of release Secrets prevent this issue from recurring.
+The "request entity too large" error in Flux is caused by a Helm release Secret becoming too large for Kubernetes to store. The primary fix is reducing the rendered release size by splitting large charts or disabling unused features, and setting `maxHistory` on your HelmRelease controls historical release storage. Regular monitoring of release Secret sizes helps prevent this issue from recurring.
