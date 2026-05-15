@@ -22,6 +22,8 @@ sudo subscription-manager register --username=your-rh-username --password=your-r
 
 ## Auto-Attach a Subscription
 
+For organizations that do not use Simple Content Access (SCA), attach a subscription after registration:
+
 ```bash
 # Automatically attach the best matching subscription
 sudo subscription-manager attach --auto
@@ -30,9 +32,11 @@ sudo subscription-manager attach --auto
 sudo subscription-manager list --consumed
 ```
 
+If SCA is enabled for your organization, you do not need to attach a subscription. Register the system and enable the required repositories.
+
 ## Register with an Activation Key
 
-For automated deployments, use an activation key (created in the Customer Portal):
+For automated deployments, use an activation key (created in the Red Hat Hybrid Cloud Console):
 
 ```bash
 # Register with an activation key (no password needed)
@@ -48,7 +52,7 @@ sudo subscription-manager register \
 sudo subscription-manager identity
 
 # Example output:
-# system identity: 12345678-abcd-efgh-ijkl-123456789012
+# system identity: 12345678-abcd-4ef0-8abc-123456789012
 # name: myhost.example.com
 # org name: My Organization
 # org ID: 12345678
