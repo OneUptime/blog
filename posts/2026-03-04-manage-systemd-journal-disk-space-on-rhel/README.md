@@ -8,7 +8,7 @@ Description: Control how much disk space the systemd journal consumes on RHEL by
 
 ---
 
-The systemd journal can grow to consume significant disk space, especially on busy servers. RHEL stores journal logs in `/var/log/journal/` by default. Here is how to manage that space.
+The systemd journal can grow to consume significant disk space, especially on busy servers. RHEL stores journal logs in `/run/log/journal/` by default unless persistent storage is enabled. With persistent storage enabled, journal logs are stored in `/var/log/journal/`. Here is how to manage that space.
 
 ## Check Current Journal Size
 
@@ -78,14 +78,18 @@ journalctl --disk-usage
 If you want logs only in memory (lost on reboot):
 
 ```bash
-# Remove the persistent journal directory
+# Configure journald to use volatile storage
+sudo vi /etc/systemd/journald.conf
+# Set: Storage=volatile
+
+# Remove the persistent journal directory if it exists
 sudo rm -rf /var/log/journal
 
-# Restart journald - it will fall back to /run/log/journal (tmpfs)
+# Restart journald - it will use /run/log/journal
 sudo systemctl restart systemd-journald
 
-# Verify storage type
-journalctl --header | grep "Storage"
+# Verify journal storage directories
+ls -ld /run/log/journal /var/log/journal 2>/dev/null
 ```
 
 ## Forward Logs to rsyslog
