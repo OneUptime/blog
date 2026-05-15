@@ -47,7 +47,10 @@ openssl genrsa -out ca.key 4096
 ```bash
 # Create the CA certificate
 openssl req -new -x509 -days 3650 -key ca.key -out ca.crt \
-  -subj "/C=US/ST=California/O=MyOrg/CN=MyOrg Internal CA"
+  -subj "/C=US/ST=California/O=MyOrg/CN=MyOrg Internal CA" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign" \
+  -addext "subjectKeyIdentifier=hash"
 ```
 
 ## Generating Server Certificates
