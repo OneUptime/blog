@@ -14,7 +14,7 @@ Dynatrace OneAgent provides full-stack monitoring for RHEL 9, covering infrastru
 
 ```bash
 wget -O Dynatrace-OneAgent.sh \
-  "https://your-environment.live.dynatrace.com/api/v1/deployment/installer/agent/unix/default/latest?Api-Token=YOUR_API_TOKEN&arch=x86&flavor=default"
+  "https://your-environment.live.dynatrace.com/api/v1/deployment/installer/agent/unix/default/latest?Api-Token=YOUR_INSTALLER_DOWNLOAD_TOKEN&arch=x86&flavor=default"
 sudo /bin/sh Dynatrace-OneAgent.sh --set-app-log-content-access=true
 ```
 
@@ -28,14 +28,14 @@ sudo systemctl status oneagent
 
 ```bash
 sudo /opt/dynatrace/oneagent/agent/tools/oneagentctl \
-  --set-host-group=rhel9-production
+  --set-host-group=rhel9-production --restart-service
 ```
 
 ## Configure Network Zones
 
 ```bash
 sudo /opt/dynatrace/oneagent/agent/tools/oneagentctl \
-  --set-network-zone=datacenter-east
+  --set-network-zone=datacenter-east --restart-service
 ```
 
 ## Monitor Custom Processes
@@ -48,7 +48,7 @@ Dynatrace auto-discovers processes, but you can add custom detection rules in th
 # OneAgent automatically detects common log files
 
 # For custom log paths, configure in Dynatrace UI:
-# Settings > Log Monitoring > Log sources and storage
+# Settings > Collect and capture > Log Monitoring > Custom log sources
 ```
 
 ## Verify Data in Dynatrace
@@ -61,4 +61,3 @@ Check the Dynatrace UI for:
 ## Conclusion
 
 Dynatrace OneAgent on RHEL 9 provides automatic discovery and monitoring of infrastructure, processes, and applications. Configure host groups and network zones for organized observability.
-
