@@ -8,25 +8,27 @@ Description: Learn how the system-wide CA trust store works on RHEL and how to m
 
 ---
 
-Every time your RHEL system makes a TLS connection, it needs to decide whether to trust the remote certificate. That decision comes down to the system-wide CA trust store, a collection of root CA certificates that the system considers trustworthy. Understanding how this store works and how to manage it is essential for any sysadmin.
+Every time a RHEL application makes a TLS connection with the system trust store, it needs to decide whether to trust the remote certificate. That decision comes down to the system-wide CA trust store, a collection of root CA certificates that the system considers trustworthy. Understanding how this store works and how to manage it is essential for any sysadmin.
 
 ## How the Trust Store Works on RHEL
 
-RHEL uses a consolidated trust store managed by the `ca-certificates` package and the `update-ca-trust` tool. Rather than individual applications maintaining their own certificate stores (like older systems did), RHEL funnels everything through a single source of truth.
+RHEL uses a consolidated trust store managed by the `ca-certificates` package and the `update-ca-trust` tool. Rather than every application maintaining its own certificate store, RHEL provides a shared source of trust for NSS, GnuTLS, OpenSSL, and Java.
 
 ```mermaid
 graph TD
-    A[/etc/pki/ca-trust/source/] --> B[update-ca-trust]
-    B --> C[/etc/pki/tls/certs/ca-bundle.crt]
-    B --> D[/etc/pki/tls/certs/ca-bundle.trust.crt]
-    B --> E[/etc/pki/java/cacerts]
-    C --> F[OpenSSL applications]
-    C --> G[curl, wget, etc.]
-    D --> H[GnuTLS applications]
-    E --> I[Java applications]
+    A["/etc/pki/ca-trust/source/ and /usr/share/pki/ca-trust-source/"] --> B["update-ca-trust extract"]
+    B --> C["/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"]
+    B --> D["/etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt"]
+    B --> E["/etc/pki/java/cacerts"]
+    A --> J["p11-kit trust store"]
+    C --> F["OpenSSL applications"]
+    C --> G["curl, wget, etc."]
+    D --> H["OpenSSL applications that need trust flags"]
+    E --> I["Java applications"]
+    J --> K["NSS and GnuTLS applications"]
 ```
 
-The source certificates live in `/etc/pki/ca-trust/source/`. The `update-ca-trust` command reads them and generates consolidated bundles that different cryptographic libraries use.
+The source certificates live in `/etc/pki/ca-trust/source/` and `/usr/share/pki/ca-trust-source/`, with `/etc/pki/ca-trust/source/` taking priority for local administrator changes. The `update-ca-trust extract` command reads them and generates consolidated bundles that different cryptographic libraries use.
 
 ## The Trust Store Directory Structure
 
@@ -40,6 +42,7 @@ ls -la /etc/pki/ca-trust/source/
 
 - `/etc/pki/ca-trust/source/anchors/` - Put new CA certificates you want to trust here
 - `/etc/pki/ca-trust/source/blocklist/` - Put CA certificates you want to distrust here
+- `/usr/share/pki/ca-trust-source/` - Lower-priority source configuration, usually managed by packages
 - `/etc/pki/ca-trust/extracted/` - Generated output bundles (do not edit these manually)
 
 The generated bundles:
@@ -91,10 +94,10 @@ python3 -c "import ssl; print(ssl.get_default_verify_paths())"
 
 ## How update-ca-trust Works
 
-When you run `update-ca-trust`, it:
+When you run `update-ca-trust extract`, it:
 
 1. Reads all certificates from `/etc/pki/ca-trust/source/anchors/`
-2. Reads all certificates from the default system store
+2. Reads lower-priority source configuration from `/usr/share/pki/ca-trust-source/`
 3. Applies any blocklist entries
 4. Generates consolidated bundles in multiple formats
 5. Places the bundles where applications expect them
@@ -136,7 +139,7 @@ If you need to remove trust from a specific CA (maybe your organization does not
 sudo cp distrusted-ca.pem /etc/pki/ca-trust/source/blocklist/
 
 # Rebuild the trust store
-sudo update-ca-trust
+sudo update-ca-trust extract
 ```
 
 Verify the distrust:
@@ -153,11 +156,11 @@ It should now fail verification.
 Sometimes you need to pull a single CA certificate out of the bundle:
 
 ```bash
-# Extract certificates and find a specific one
+# Identify a specific certificate
 trust list --filter=ca-anchors | grep -A5 "DigiCert"
 ```
 
-Or extract from the PEM bundle by searching for the issuer:
+Or extract from the PEM bundle by searching for its bundle comment or label:
 
 ```bash
 # Use awk to extract a specific certificate from the bundle
@@ -185,7 +188,7 @@ Java applications use a keystore format. RHEL's `update-ca-trust` generates this
 ls -la /etc/pki/java/cacerts
 ```
 
-Java applications that use the default trust store path will automatically benefit from trust store changes after running `update-ca-trust`.
+Java applications that use the RHEL default trust store path will automatically benefit from trust store changes after running `update-ca-trust extract`.
 
 ```bash
 # List certificates in the Java keystore
@@ -211,7 +214,7 @@ sudo rm -f /etc/pki/ca-trust/source/anchors/*
 sudo rm -f /etc/pki/ca-trust/source/blocklist/*
 
 # Rebuild from the default package contents
-sudo update-ca-trust
+sudo update-ca-trust extract
 ```
 
 ## Monitoring Trust Store Changes
@@ -227,4 +230,4 @@ Compare this periodically. If it changes unexpectedly, investigate.
 
 ## Wrapping Up
 
-The system-wide CA trust store on RHEL is well-designed. The single-source-of-truth model through `update-ca-trust` means you make changes in one place and every application picks them up. Keep the `ca-certificates` package updated, use the anchors and blocklist directories for customization, and always run `update-ca-trust` after making changes.
+The system-wide CA trust store on RHEL is well-designed. The shared trust model through `update-ca-trust` means you make changes in one place and applications that use the system trust store pick them up. Keep the `ca-certificates` package updated, use the anchors and blocklist directories for customization, and always run `update-ca-trust extract` after making changes.
