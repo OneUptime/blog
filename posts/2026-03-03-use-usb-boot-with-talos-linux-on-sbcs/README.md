@@ -71,14 +71,16 @@ After the EEPROM is updated, the Pi will try USB boot before SD card boot.
 
 ```bash
 # Download the Talos Pi image
-curl -LO https://github.com/siderolabs/talos/releases/latest/download/metal-rpi_generic-arm64.raw.xz
-xz -d metal-rpi_generic-arm64.raw.xz
+TALOS_VERSION=v1.13.0
+SCHEMATIC_ID=ee21ef4a5ef808a9b7484cc0dda0f25075021691c8c09a276591eedb638ea1f9
+curl -LO https://factory.talos.dev/image/${SCHEMATIC_ID}/${TALOS_VERSION}/metal-arm64.raw.xz
+xz -d metal-arm64.raw.xz
 
 # Identify your USB drive
 lsblk
 
 # Flash the image to the USB drive
-sudo dd if=metal-rpi_generic-arm64.raw of=/dev/sdX bs=4M status=progress conv=fsync
+sudo dd if=metal-arm64.raw of=/dev/sdX bs=4M status=progress conv=fsync
 sync
 ```
 
@@ -98,19 +100,18 @@ The USB drive typically shows up as `/dev/sda` on Raspberry Pi.
 
 ## USB Boot on Raspberry Pi 5
 
-The Pi 5 supports USB boot out of the box with its updated bootloader. The process is similar to the Pi 4 but the bootloader configuration is slightly different:
+The Pi 5 supports USB and NVMe boot through its EEPROM bootloader. The process is similar to the Pi 4, but the bootloader configuration is slightly different:
 
 ```bash
-# On Pi 5, USB boot is enabled by default
-# Just verify the boot order
+# Verify or change the boot order
 sudo rpi-eeprom-config --edit
 
 # Recommended boot order for Pi 5:
-# BOOT_ORDER=0xf416
+# BOOT_ORDER=0xf146
 # NVMe (6), USB (4), SD (1), restart (f)
 ```
 
-Flash Talos to a USB drive and boot. The Pi 5's USB 3.0 controller provides better throughput than the Pi 4.
+Flash Talos to a USB drive and boot. Talos documents the Raspberry Pi generic image as officially tested on Raspberry Pi 4 and community tested on Compute Module 4, so treat Raspberry Pi 5 as board-specific validation work before using it for production nodes.
 
 ## USB Boot on Rock Pi and Pine64 Boards
 
@@ -135,11 +136,10 @@ The exact process varies by board revision. Check the board manufacturer's docum
 
 ### Pine64 Boards
 
-Pine64 boards like the ROCKPro64 follow a similar pattern:
+Talos documents Pine64 and Pine64 Rock64 images, but the generic Pine64 flow is SD-card based. USB boot depends on the specific Pine64 board and boot firmware, so check the board documentation before assuming that SPI/U-Boot USB boot is available:
 
 ```bash
-# Write U-Boot to SPI flash (board-specific process)
-# Then flash Talos to USB
+# If your board firmware supports USB boot, flash the Talos board image to USB
 sudo dd if=metal-arm64.raw of=/dev/sdX bs=4M status=progress conv=fsync
 ```
 
@@ -159,10 +159,10 @@ One challenge with USB boot is that device names can change between reboots if y
 
 ```bash
 # Check block device names on a running Talos node
-talosctl -n <NODE_IP> get blockdevices
+talosctl -n <NODE_IP> get disks
 
 # Use /dev/disk/by-id/ for stable naming in configs
-talosctl -n <NODE_IP> ls /dev/disk/by-id/
+talosctl -n <NODE_IP> list /dev/disk/by-id/
 ```
 
 In the Talos machine configuration, you can use the disk ID for more reliable device identification:
@@ -178,19 +178,18 @@ machine:
 You can use a second USB drive for additional storage while booting from the first:
 
 ```yaml
-# Machine config for two USB drives
-machine:
-  install:
-    disk: /dev/sda  # Boot drive
-
-  disks:
-    - device: /dev/sdb  # Second USB drive
-      partitions:
-        - mountpoint: /var/mnt/storage
-          size: 0  # Use all space
+# User volume config for a second USB drive
+apiVersion: v1alpha1
+kind: UserVolumeConfig
+name: storage
+provisioning:
+  diskSelector:
+    match: disk.transport == "usb" && !system_disk
+filesystem:
+  type: xfs
 ```
 
-This second drive can then be used by Kubernetes through a local path provisioner or CSI driver.
+Talos mounts the user volume under `/var/mnt/storage`, where it can then be used by Kubernetes through a local path provisioner or CSI driver.
 
 ## Performance Tuning for USB Storage
 
@@ -199,19 +198,13 @@ Optimize the USB storage performance in Talos:
 ```yaml
 machine:
   sysctls:
-    # USB storage I/O scheduling
-    # deadline or mq-deadline works best for USB SSDs
-    # This is set per-device, so we use a general approach
-
-    # Increase readahead for better sequential performance
+    # Tune Linux writeback behavior for storage-heavy workloads
     vm.dirty_ratio: "20"
     vm.dirty_background_ratio: "5"
-
-    # Reduce commit interval for better write-back behavior
     vm.dirty_writeback_centisecs: "500"
 ```
 
-For USB SSDs, you can also enable TRIM support if the drive supports it:
+For USB SSDs, you can also verify TRIM support:
 
 ```bash
 # Check if TRIM is supported
@@ -229,8 +222,8 @@ Keep an eye on your USB storage health:
 # Check for USB errors in kernel logs
 talosctl -n <NODE_IP> dmesg | grep -i "usb\|error\|reset"
 
-# Monitor disk I/O
-talosctl -n <NODE_IP> stats
+# Inspect disk usage
+talosctl -n <NODE_IP> usage
 ```
 
 Watch for USB reset messages in the kernel log. Frequent resets indicate a failing drive, a bad cable, or insufficient power delivery.
