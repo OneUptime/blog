@@ -215,7 +215,7 @@ grep -r "^Port" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/
 If you ever need to remove the custom port from SELinux:
 
 ```bash
-sudo semanage port -d -t ssh_port_t -p tcp 2222
+sudo semanage port -d -p tcp 2222
 ```
 
 To modify an existing port rather than add a new one:
