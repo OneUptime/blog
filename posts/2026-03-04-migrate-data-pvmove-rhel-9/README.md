@@ -90,7 +90,7 @@ pvmove is I/O intensive. Some tips:
 # Monitor I/O impact
 iostat -x 5
 
-# pvmove uses a temporary mirror, so it doubles the write I/O
+# pvmove uses a temporary mirror, adding read/write I/O while active segments are copied
 ```
 
 ## Handling Interruptions
