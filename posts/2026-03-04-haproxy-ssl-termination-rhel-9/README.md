@@ -23,20 +23,19 @@ SSL termination means HAProxy handles the TLS encryption and decryption. Clients
 HAProxy expects the certificate and private key in a single PEM file:
 
 ```bash
-# Combine the certificate and key into one file
-
-sudo cat /etc/pki/tls/certs/server.crt /etc/pki/tls/private/server.key > /etc/haproxy/certs/site.pem
-
-# If you have a CA chain, include it
-sudo cat /etc/pki/tls/certs/server.crt /etc/pki/tls/certs/chain.crt /etc/pki/tls/private/server.key > /etc/haproxy/certs/site.pem
-```
-
-Create the certs directory and set permissions:
-
-```bash
 # Create the certificate directory
 sudo mkdir -p /etc/haproxy/certs
 
+# Combine the certificate and key into one file
+sudo sh -c 'cat /etc/pki/tls/certs/server.crt /etc/pki/tls/private/server.key > /etc/haproxy/certs/site.pem'
+
+# If you have a CA chain, include it
+sudo sh -c 'cat /etc/pki/tls/certs/server.crt /etc/pki/tls/certs/chain.crt /etc/pki/tls/private/server.key > /etc/haproxy/certs/site.pem'
+```
+
+Set strict permissions:
+
+```bash
 # Set strict permissions
 sudo chmod 700 /etc/haproxy/certs
 sudo chmod 600 /etc/haproxy/certs/site.pem
@@ -131,9 +130,9 @@ Combine the Let's Encrypt files into HAProxy format:
 
 ```bash
 # Create the combined PEM file for HAProxy
-sudo cat /etc/letsencrypt/live/www.example.com/fullchain.pem \
-         /etc/letsencrypt/live/www.example.com/privkey.pem \
-         > /etc/haproxy/certs/site.pem
+sudo sh -c 'cat /etc/letsencrypt/live/www.example.com/fullchain.pem \
+    /etc/letsencrypt/live/www.example.com/privkey.pem \
+    > /etc/haproxy/certs/site.pem'
 sudo chmod 600 /etc/haproxy/certs/site.pem
 ```
 
