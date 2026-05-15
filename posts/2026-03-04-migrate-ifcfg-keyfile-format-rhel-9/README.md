@@ -8,7 +8,7 @@ Description: A practical guide to migrating network configuration from the legac
 
 ---
 
-If you have been managing Red Hat systems for a while, you are probably familiar with the ifcfg files that lived in `/etc/sysconfig/network-scripts/`. Those files were the standard way to configure networking for over two decades. With RHEL, Red Hat has officially deprecated the ifcfg format in favor of NetworkManager keyfiles. This is not just a cosmetic change - the ifcfg plugin may be removed entirely in a future release, so migration is something you should plan for now.
+If you have been managing Red Hat systems for a while, you are probably familiar with the ifcfg files that lived in `/etc/sysconfig/network-scripts/`. Those files were the standard way to configure networking for over two decades. Starting with RHEL 9, Red Hat has officially deprecated the ifcfg format in favor of NetworkManager keyfiles. This is not just a cosmetic change - support for the ifcfg format will be removed in the next major RHEL release, so migration is something you should plan for now.
 
 ## What Changed and Why
 
@@ -17,12 +17,12 @@ In RHEL 8 and earlier, NetworkManager supported two configuration backends:
 - **ifcfg-rh plugin**: Read and wrote files in `/etc/sysconfig/network-scripts/`
 - **keyfile plugin**: Read and wrote `.nmconnection` files in `/etc/NetworkManager/system-connections/`
 
-RHEL defaults to the keyfile format. The ifcfg plugin is still included for backward compatibility, but it is deprecated. New installations create keyfiles by default.
+RHEL 9 defaults to the keyfile format. The ifcfg plugin is still included for backward compatibility, but it is deprecated. New RHEL 9 installations create keyfiles by default.
 
 ```mermaid
 flowchart LR
     A[RHEL 7/8] -->|ifcfg files| B[/etc/sysconfig/network-scripts/]
-    C[RHEL] -->|keyfiles| D[/etc/NetworkManager/system-connections/]
+    C[RHEL 9] -->|keyfiles| D[/etc/NetworkManager/system-connections/]
     B -->|Migration| D
 ```
 
@@ -90,12 +90,14 @@ The simplest approach is to use `nmcli` to migrate connections automatically. Ne
 nmcli connection migrate ens192
 ```
 
-To migrate all connections at once:
+To migrate all NetworkManager-managed connections at once:
 
 ```bash
-# Migrate all ifcfg connections to keyfile format
+# Migrate all NetworkManager-managed ifcfg connections to keyfile format
 nmcli connection migrate
 ```
+
+If an ifcfg file contains `NM_CONTROLLED=no`, NetworkManager does not control that profile and the migration process ignores it.
 
 After migration, verify the new files were created:
 
@@ -118,7 +120,7 @@ nmcli connection show ens192
 # Delete the old ifcfg-based connection
 nmcli connection delete ens192
 
-# Create a new connection (will use keyfile format by default on RHEL)
+# Create a new connection (will use keyfile format by default on RHEL 9)
 nmcli connection add \
   con-name ens192 \
   ifname ens192 \
@@ -138,23 +140,26 @@ For environments with many servers, here is a script approach:
 
 ```bash
 #!/bin/bash
-# migrate-ifcfg.sh - Migrate all ifcfg connections to keyfile format
+# migrate-ifcfg.sh - Migrate all NetworkManager-managed ifcfg connections to keyfile format
 
 # List connections still using ifcfg format
-IFCFG_CONNECTIONS=$(nmcli -t -f NAME,FILENAME connection show | grep sysconfig | cut -d: -f1)
+mapfile -t IFCFG_CONNECTIONS < <(
+    nmcli -t -f UUID,FILENAME connection show |
+    awk -F: '$2 ~ /^\/etc\/sysconfig\/network-scripts\// {print $1}'
+)
 
-if [ -z "$IFCFG_CONNECTIONS" ]; then
+if [ ${#IFCFG_CONNECTIONS[@]} -eq 0 ]; then
     echo "No ifcfg connections found. Nothing to migrate."
     exit 0
 fi
 
 echo "The following connections will be migrated:"
-echo "$IFCFG_CONNECTIONS"
+printf '%s\n' "${IFCFG_CONNECTIONS[@]}"
 echo ""
 
-for conn in $IFCFG_CONNECTIONS; do
-    echo "Migrating: $conn"
-    nmcli connection migrate "$conn"
+for conn_uuid in "${IFCFG_CONNECTIONS[@]}"; do
+    echo "Migrating UUID: $conn_uuid"
+    nmcli connection migrate uuid "$conn_uuid"
     if [ $? -eq 0 ]; then
         echo "  Success"
     else
@@ -228,7 +233,7 @@ rm /etc/sysconfig/network-scripts/ifcfg-ens192
 
 ### Connections with Custom Scripts
 
-If your ifcfg files reference dispatcher scripts (like `ifup-local` or `ifdown-local`), you need to migrate those to NetworkManager dispatcher scripts in `/etc/NetworkManager/dispatcher.d/`.
+If your old network-scripts workflow depends on hooks like `ifup-local` or `ifdown-local`, you need to migrate those to NetworkManager dispatcher scripts in `/etc/NetworkManager/dispatcher.d/`.
 
 ### VLAN and Bond Configurations
 
