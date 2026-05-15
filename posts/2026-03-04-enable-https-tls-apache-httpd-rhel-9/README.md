@@ -17,7 +17,7 @@ Running a website over plain HTTP means every request and response travels in cl
 - RHEL with Apache httpd installed and running
 - A domain name pointing to your server (for Let's Encrypt) or a self-signed certificate for testing
 - Root or sudo access
-- Firewall port 443 open
+- Firewall port 443 open, and port 80 reachable if you use Certbot's Apache HTTP-01 challenge or the HTTP-to-HTTPS redirect
 
 ## Step 1 - Install mod_ssl
 
@@ -57,16 +57,16 @@ sudo openssl req -x509 -nodes -days 365 \
 For production, use certbot to get a free trusted certificate:
 
 ```bash
-# Install certbot and the Apache plugin
+# With EPEL enabled, install certbot and the Apache plugin
 sudo dnf install -y certbot python3-certbot-apache
 
 # Request a certificate and auto-configure Apache
 sudo certbot --apache -d www.example.com -d example.com
 ```
 
-Certbot will modify your Apache config to point to the new certificates and set up auto-renewal.
+Certbot will modify your Apache config to point to the new certificates and set up auto-renewal. If those packages are not available on your RHEL host, follow Certbot's current snap-based installation instructions instead.
 
-Verify the renewal timer is active:
+If you installed the EPEL packages, verify the renewal timer is active:
 
 ```bash
 # Check that the certbot renewal timer is running
@@ -88,8 +88,7 @@ sudo tee /etc/httpd/conf.d/mysite-ssl.conf > /dev/null <<'EOF'
     SSLCertificateFile /etc/pki/tls/certs/selfsigned.crt
     SSLCertificateKeyFile /etc/pki/tls/private/selfsigned.key
 
-    # If you have a CA chain file, uncomment the next line
-    # SSLCertificateChainFile /etc/pki/tls/certs/chain.crt
+    # For a CA-issued certificate, point SSLCertificateFile at the full chain file
 
     <Directory /var/www/html>
         Require all granted
