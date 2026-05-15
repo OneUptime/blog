@@ -110,4 +110,4 @@ sudo firewall-cmd --add-service=https --permanent
 sudo firewall-cmd --reload
 ```
 
-Caddy automatically provisions TLS certificates from Let's Encrypt for all configured domains. No additional TLS configuration is needed. Just point your DNS records to the server and Caddy handles the rest.
+Caddy automatically provisions TLS certificates from a public ACME CA such as Let's Encrypt or ZeroSSL for configured public domains. No additional TLS configuration is needed for typical public sites. Just point your DNS records to the server, make sure ports 80 and 443 are reachable, and Caddy handles the rest.
