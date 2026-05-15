@@ -23,17 +23,14 @@ Use sar from sysstat on RHEL 9 to monitor CPU, memory, disk, and network over ti
 Install the monitoring tools relevant to this guide:
 
 ```bash
-sudo dnf install -y pcp pcp-system-tools sysstat net-snmp net-snmp-utils
+sudo dnf install -y sysstat
 ```
 
-Select only the packages you need for your specific setup.
+Select only the additional packages you need if you also use another monitoring stack.
 
 ## Step 2 - Enable and Start Services
 
 ```bash
-sudo systemctl enable --now pmcd pmlogger
-# or for sysstat:
-
 sudo systemctl enable --now sysstat
 ```
 
@@ -41,26 +38,20 @@ sudo systemctl enable --now sysstat
 
 Edit the relevant configuration file for your monitoring setup. Common locations include:
 
-- `/etc/pcp/` for PCP configuration
-- `/etc/snmp/snmpd.conf` for SNMP
-- `/etc/prometheus/prometheus.yml` for Prometheus
-- `/etc/grafana/grafana.ini` for Grafana
+- `/etc/sysstat/sysstat` for sysstat collection settings
+- `/etc/sysstat/sysstat.ioconf` for disk device name mapping
 
-Apply your changes and restart the service:
+For example, adjust `HISTORY` to change how long daily data files are kept, or adjust `SADC_OPTIONS` to collect additional optional activity data. The scheduled sysstat collection scripts read this file on their next run.
 
 ```bash
-sudo systemctl restart <service-name>
+systemctl list-timers 'sysstat*'
 ```
 
 ## Step 4 - Open Firewall Ports
 
 ```bash
-# Common monitoring ports
-sudo firewall-cmd --permanent --add-port=9090/tcp   # Prometheus
-sudo firewall-cmd --permanent --add-port=9100/tcp   # Node Exporter
-sudo firewall-cmd --permanent --add-port=3000/tcp   # Grafana
-sudo firewall-cmd --permanent --add-service=snmp     # SNMP
-sudo firewall-cmd --reload
+# No firewall ports are required for local sar collection.
+# If you add remote monitoring services, open only the ports for those services.
 ```
 
 ## Step 5 - Verify Data Collection
@@ -68,12 +59,14 @@ sudo firewall-cmd --reload
 Confirm that metrics are being collected:
 
 ```bash
-# PCP
-pmstat -s 3
-# sysstat
+# CPU
 sar -u 1 3
-# Prometheus endpoint
-curl -s http://localhost:9090/api/v1/query?query=up
+# Memory
+sar -r 1 3
+# Disk devices
+sar -d 1 3
+# Network interfaces
+sar -n DEV 1 3
 ```
 
 ## Step 6 - Set Up Alerting (Optional)
