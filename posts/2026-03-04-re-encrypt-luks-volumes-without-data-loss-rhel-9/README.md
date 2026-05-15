@@ -8,7 +8,7 @@ Description: Re-encrypt LUKS volumes on RHEL without data loss using the online 
 
 ---
 
-LUKS2 on RHEL supports online reencryption, which lets you change the encryption cipher, key size, or rotate the master key while the volume remains accessible. This is a significant improvement over LUKS1, where reencryption required taking the volume offline. This guide covers how to safely re-encrypt LUKS volumes.
+LUKS2 on RHEL supports online reencryption, which lets you change the encryption cipher, key size, or rotate the master key while the volume remains accessible. This is a significant improvement over LUKS1, where reencryption requires taking the volume offline. This guide covers how to safely re-encrypt LUKS volumes.
 
 ## Why Re-encrypt?
 
@@ -37,7 +37,7 @@ flowchart TD
 Before starting reencryption:
 
 ```bash
-# Verify the device is LUKS2 (reencryption requires LUKS2)
+# Verify the device is LUKS2 (online reencryption requires LUKS2)
 
 sudo cryptsetup luksDump /dev/sdb | head -5
 # Must show: Version: 2
@@ -50,7 +50,7 @@ sudo cryptsetup luksHeaderBackup /dev/sdb \
     --header-backup-file /root/luks-header-pre-reencrypt.img
 
 # Check current encryption parameters
-sudo cryptsetup luksDump /dev/sdb | grep -E "cipher:|keysize:|hash:"
+sudo cryptsetup luksDump /dev/sdb | grep -Ei "cipher:|key:|hash:|pbkdf:"
 ```
 
 ## Online Reencryption (Volume Remains Mounted)
@@ -84,7 +84,6 @@ sudo cryptsetup reencrypt /dev/sdb
 sudo cryptsetup reencrypt /dev/sdb \
     --cipher aes-xts-plain64 \
     --key-size 512 \
-    --hash sha256 \
     --pbkdf argon2id \
     --iter-time 2000
 ```
@@ -100,7 +99,7 @@ sudo cryptsetup status data_encrypted
 # The luksDump command shows reencryption progress
 sudo cryptsetup luksDump /dev/sdb | grep -i reencrypt
 
-# Watch progress in real time using the --progress-frequency flag
+# Print progress when starting or resuming reencryption
 sudo cryptsetup reencrypt /dev/sdb --progress-frequency 5
 ```
 
@@ -136,14 +135,18 @@ LUKS2 reencryption can also encrypt a device that was not previously encrypted:
 # Step 1: Unmount the device
 sudo umount /dev/sdb1
 
-# Step 2: Initialize LUKS with reencryption mode
+# Step 2: Make sure the last 32 MiB is unused before reducing the device size
+# For example, shrink an ext2/ext3/ext4 filesystem or extend the partition/LV.
+
+# Step 3: Initialize LUKS with reencryption mode
 sudo cryptsetup reencrypt --encrypt --type luks2 \
     --cipher aes-xts-plain64 \
     --key-size 512 \
     --reduce-device-size 32M \
     /dev/sdb1
 
-# The --reduce-device-size makes room for the LUKS header
+# The --reduce-device-size option makes room for the LUKS header by using
+# space at the end of the device; that space must not contain filesystem data.
 # Enter a passphrase when prompted
 ```
 
@@ -153,9 +156,13 @@ You can also permanently remove encryption:
 
 ```bash
 # Decrypt a LUKS volume (remove encryption, keep data)
-sudo cryptsetup reencrypt --decrypt /dev/sdb
+sudo cryptsetup reencrypt --decrypt \
+    --header /root/luks-header-before-decrypt.img \
+    /dev/sdb
 
-# This removes the LUKS header and decrypts all data
+# This exports the LUKS2 header to a separate file, removes the header
+# from the device, and decrypts all data.
+# Do not place the exported header file on the device you are decrypting.
 ```
 
 ## Handling Interrupted Reencryption
@@ -166,7 +173,8 @@ If the system crashes or loses power during reencryption, LUKS2 can recover:
 # Check if reencryption was interrupted
 sudo cryptsetup luksDump /dev/sdb | grep -i reencrypt
 
-# Resume the interrupted reencryption
+# Resume the interrupted reencryption, or repair first if recovery is required
+sudo cryptsetup repair /dev/sdb
 sudo cryptsetup reencrypt --resume-only /dev/sdb
 ```
 
@@ -205,12 +213,12 @@ After reencryption completes:
 
 ```bash
 # Verify the new encryption parameters
-sudo cryptsetup luksDump /dev/sdb | grep -E "cipher:|keysize:|hash:"
+sudo cryptsetup luksDump /dev/sdb | grep -Ei "cipher:|key:|hash:|pbkdf:"
 
 # Test the passphrase
 sudo cryptsetup luksOpen --test-passphrase /dev/sdb
 
-# Verify data integrity
+# Verify data integrity if the filesystem is not already mounted
 sudo mount /dev/mapper/data_encrypted /mnt/encrypted-data
 # Check your data
 
