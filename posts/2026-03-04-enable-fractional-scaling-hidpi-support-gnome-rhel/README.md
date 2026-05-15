@@ -17,7 +17,7 @@ Modern HiDPI displays (4K, 5K) require proper scaling to keep text and UI elemen
 
 xrandr | grep " connected"
 
-# Check the current scale factor
+# Check the current integer scale factor
 gsettings get org.gnome.desktop.interface scaling-factor
 
 # Check display settings via GNOME
@@ -52,15 +52,15 @@ After logging back in, go to Settings > Displays. You will now see additional sc
 
 ## Enable Fractional Scaling on X11
 
-On X11, fractional scaling uses a different approach with xrandr.
+On X11, fractional scaling is not the RHEL-documented GNOME path. If you must use X11, use an xrandr transform as a workaround.
 
 ```bash
-# For 150% scaling on X11 using xrandr
-# First, set a higher virtual resolution, then scale down
-xrandr --output eDP-1 --scale 1.5x1.5
+# For 150% larger output on X11 using xrandr
+# Values below 1.0 make the output appear larger
+xrandr --output eDP-1 --scale 0.6667x0.6667
 
-# Or use GNOME's built-in X11 fractional scaling
-gsettings set org.gnome.mutter experimental-features "['x11-randr-fractional-scaling']"
+# Check whether your GNOME build exposes X11 fractional scaling
+gsettings describe org.gnome.mutter experimental-features
 ```
 
 ## Configure Per-Monitor Scaling
@@ -72,7 +72,7 @@ If you have mixed-DPI monitors (e.g., a 4K laptop display and a 1080p external m
 # Go to Settings > Displays and set different scale factors for each monitor
 
 # On X11, use xrandr to scale specific outputs
-xrandr --output eDP-1 --scale 1x1 --output HDMI-1 --scale 1.5x1.5
+xrandr --output eDP-1 --scale 1x1 --output HDMI-1 --scale 0.6667x0.6667
 ```
 
 ## Adjust Font Scaling
@@ -108,7 +108,7 @@ export GDK_DPI_SCALE=0.5
 export QT_AUTO_SCREEN_SCALE_FACTOR=1
 export QT_SCALE_FACTOR=1.5
 
-# Make these persistent by adding them to ~/.bashrc or a profile script
+# For applications launched from a shell, make these persistent in ~/.bashrc or a profile script
 echo 'export QT_AUTO_SCREEN_SCALE_FACTOR=1' >> ~/.bashrc
 ```
 
