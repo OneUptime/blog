@@ -13,17 +13,18 @@ Snapshots capture the state of a virtual machine at a specific point in time, in
 ## Creating a Snapshot
 
 ```bash
-# Create a snapshot of a running VM (includes memory state)
+# Create a live snapshot of a running VM (includes memory state)
 
-sudo virsh snapshot-create-as rhel9-vm \
-  --name "before-update" \
-  --description "Snapshot before applying kernel update"
+sudo virsh snapshot-create-as rhel9-vm before-update \
+  "Snapshot before applying kernel update" \
+  --live \
+  --memspec /var/lib/libvirt/images/rhel9-vm-before-update-memory.img
 
 # Create a disk-only snapshot (no memory, faster)
-sudo virsh snapshot-create-as rhel9-vm \
-  --name "disk-snap" \
-  --description "Disk-only snapshot" \
-  --disk-only
+sudo virsh snapshot-create-as rhel9-vm disk-snap \
+  "Disk-only snapshot" \
+  --disk-only \
+  --quiesce
 ```
 
 ## Listing Snapshots
@@ -33,7 +34,7 @@ sudo virsh snapshot-create-as rhel9-vm \
 sudo virsh snapshot-list rhel9-vm
 
 # Show detailed info about a specific snapshot
-sudo virsh snapshot-info rhel9-vm --snapshotname "before-update"
+sudo virsh snapshot-info rhel9-vm before-update
 
 # View the snapshot XML configuration
 sudo virsh snapshot-dumpxml rhel9-vm "before-update"
@@ -43,31 +44,31 @@ sudo virsh snapshot-dumpxml rhel9-vm "before-update"
 
 ```bash
 # Revert the VM to a previous snapshot
-sudo virsh snapshot-revert rhel9-vm --snapshotname "before-update"
+sudo virsh snapshot-revert rhel9-vm before-update
 
 # The VM returns to the exact state when the snapshot was taken
 # If the snapshot included memory, the VM resumes running
 
 # Revert and start the VM paused
-sudo virsh snapshot-revert rhel9-vm --snapshotname "before-update" --paused
+sudo virsh snapshot-revert rhel9-vm before-update --paused
 ```
 
 ## Deleting Snapshots
 
 ```bash
 # Delete a specific snapshot
-sudo virsh snapshot-delete rhel9-vm --snapshotname "before-update"
+sudo virsh snapshot-delete rhel9-vm before-update
 
 # Delete a snapshot and its children
-sudo virsh snapshot-delete rhel9-vm --snapshotname "before-update" --children
+sudo virsh snapshot-delete rhel9-vm before-update --children
 
 # Delete only the metadata (keep the disk data)
-sudo virsh snapshot-delete rhel9-vm --snapshotname "disk-snap" --metadata
+sudo virsh snapshot-delete rhel9-vm disk-snap --metadata
 ```
 
 ## Saving and Restoring VM State
 
-For saving a running VM's complete state to a file (like hibernation):
+For saving a running VM's memory state to a file (like hibernation):
 
 ```bash
 # Save a running VM's state to a file
@@ -77,20 +78,20 @@ sudo virsh save rhel9-vm /var/lib/libvirt/save/rhel9-vm.save
 # Restore the VM from the saved state
 sudo virsh restore /var/lib/libvirt/save/rhel9-vm.save
 
-# The VM resumes exactly where it left off
+# The VM resumes where it left off, as long as its disk state has not changed
 ```
 
 ## Snapshot Best Practices
 
 ```bash
-# Check snapshot disk chain (external snapshots create overlay files)
+# Show active disk images (external snapshots create overlay files)
 sudo virsh domblklist rhel9-vm
 
 # Snapshots with overlay chains can grow large
 # Monitor disk usage
 du -sh /var/lib/libvirt/images/
 
-# For long-term backups, use full disk copies instead of snapshots
+# For long-term backups, shut down or quiesce the VM and use full disk copies instead of snapshots
 sudo cp /var/lib/libvirt/images/rhel9-vm.qcow2 \
   /backup/rhel9-vm-$(date +%Y%m%d).qcow2
 ```
@@ -103,7 +104,7 @@ If you have a chain of external snapshots and want to flatten them:
 # Block commit merges the overlay back into the base image
 sudo virsh blockcommit rhel9-vm vda --active --pivot
 
-# This removes the overlay and consolidates into a single file
+# This pivots the VM back to the base image and consolidates the active chain
 ```
 
 Use snapshots for short-term rollback points, not as a long-term backup strategy. Snapshot chains slow down disk I/O as they grow deeper. Delete snapshots when they are no longer needed.
