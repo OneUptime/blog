@@ -18,13 +18,13 @@ When a user runs `sudo somecommand`, here's what happens:
 flowchart TD
     A[User runs sudo command] --> B{User in sudoers?}
     B -->|No| C[Access denied, logged]
-    B -->|Yes| D{Password required?}
+    B -->|Yes| F{Command allowed?}
+    F -->|No| C
+    F -->|Yes| D{Password required?}
     D -->|Yes| E{Password correct?}
     D -->|No NOPASSWD| G[Command executes as target user]
-    E -->|Yes| F{Command allowed?}
+    E -->|Yes| G
     E -->|No| C
-    F -->|Yes| G
-    F -->|No| C
     G --> H[Action logged to /var/log/secure]
 ```
 
@@ -219,7 +219,7 @@ sudo -l
 sudo -l -U jsmith
 
 # Test a command without running it (checks if it would be allowed)
-sudo -v
+sudo -l /usr/bin/systemctl restart httpd
 ```
 
 ## sudo Logging
