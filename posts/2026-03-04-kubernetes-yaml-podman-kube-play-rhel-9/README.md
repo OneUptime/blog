@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, Kubernetes, YAML, Linux
 
-Description: Learn how to use podman kube play on RHEL to run Kubernetes Pod, Deployment, and Service YAML manifests locally without a Kubernetes cluster.
+Description: Learn how to use podman kube play on RHEL to run Kubernetes Pod, Deployment, and related YAML manifests locally without a Kubernetes cluster.
 
 ---
 
@@ -81,7 +81,7 @@ spec:
       mountPath: /usr/share/nginx/html
   - name: content-writer
     image: registry.access.redhat.com/ubi9/ubi-minimal
-    command: ["/bin/bash", "-c"]
+    command: ["/bin/sh", "-c"]
     args:
     - |
       while true; do
@@ -277,7 +277,7 @@ EOF
 podman kube play deployment.yaml
 ```
 
-Note that Podman creates pods, not a Deployment controller. The replicas are created as separate pods.
+Note that Podman creates pods, not a Deployment controller. It accepts Deployment YAML, but the actual replica count is ignored and set to 1.
 
 ## Replacing Running Pods
 
@@ -291,9 +291,9 @@ podman kube play --replace simple-pod.yaml
 ## Starting Pods in the Background
 
 ```bash
-# Play the YAML and start containers in detached mode
+# Play the YAML and start containers instead of only creating them
 
-podman kube play simple-pod.yaml --start
+podman kube play --start=true simple-pod.yaml
 ```
 
 ## Integrating with systemd
@@ -301,6 +301,7 @@ podman kube play simple-pod.yaml --start
 You can use Quadlet to manage kube-play YAML:
 
 ```bash
+mkdir -p ~/.config/containers/systemd
 cat > ~/.config/containers/systemd/webapp.kube << 'EOF'
 [Unit]
 Description=Web Application from K8s YAML
@@ -329,7 +330,8 @@ This runs your Kubernetes YAML as a systemd service.
 | PersistentVolumeClaim | Mapped to Podman volumes |
 | ConfigMap | Supported |
 | Secret | Supported |
-| Service | Limited |
+| DaemonSet | Basic |
+| Job | Basic |
 
 ## Summary
 
