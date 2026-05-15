@@ -77,7 +77,7 @@ vmstat 2 10
 # procs:  r = runnable processes, b = blocked processes
 # memory: swpd = swap used, free = free memory, buff = buffers, cache = cache
 # swap:   si = swap in, so = swap out (high values indicate memory pressure)
-# io:     bi = blocks in from disk, bo = blocks out to disk
+# io:     bi = KiB received from block devices, bo = KiB sent to block devices
 # system: in = interrupts/sec, cs = context switches/sec
 # cpu:    us = user, sy = system, id = idle, wa = I/O wait, st = stolen
 
