@@ -37,7 +37,7 @@ Start by installing a new IdM replica to add to the topology.
 ```bash
 # On the new RHEL system, install required packages
 
-sudo dnf install ipa-server ipa-server-dns ipa-server-ca -y
+sudo dnf install ipa-server ipa-server-dns -y
 
 # Install the replica (connects to an existing server automatically)
 sudo ipa-replica-install \
@@ -136,19 +136,17 @@ sudo dsconf -D "cn=Directory Manager" ldap://localhost \
 When two admins modify the same entry on different servers simultaneously, a replication conflict can occur.
 
 ```bash
-# Search for replication conflict entries
-ldapsearch -x -H ldap://localhost \
-  -D "cn=Directory Manager" -W \
-  -b "dc=example,dc=com" \
-  "(nsds5ReplConflict=*)"
+# List replication conflict entries
+sudo dsconf -D "cn=Directory Manager" ldap://localhost \
+  repl-conflict list dc=example,dc=com
 ```
 
 To resolve conflicts, you typically need to decide which version of the entry to keep and delete the conflict entry:
 
 ```bash
 # Delete a conflict entry (replace the DN with the actual conflict DN)
-ldapdelete -x -H ldap://localhost \
-  -D "cn=Directory Manager" -W \
+sudo dsconf -D "cn=Directory Manager" ldap://localhost \
+  repl-conflict delete \
   "nsuniqueid=abcdef12-3456+uid=jsmith,cn=users,cn=accounts,dc=example,dc=com"
 ```
 
@@ -193,8 +191,8 @@ ipa server-role-find --status=enabled
 # Check which server is the CA renewal master
 ipa config-show | grep "CA renewal"
 
-# Check which server generates CRLs
-ipa config-show | grep "CRL"
+# Check whether the local CA server generates CRLs
+ipa-crlgen-manage status
 ```
 
 ## Removing a Server from the Topology
@@ -202,7 +200,7 @@ ipa config-show | grep "CRL"
 When decommissioning a server, follow this order:
 
 ```bash
-# 1. Move any special roles off the server first
+# 1. Move special roles off the server first (example: CA renewal master)
 ipa config-mod --ca-renewal-master-server=server2.example.com
 
 # 2. Remove the server from the topology
