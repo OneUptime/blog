@@ -113,7 +113,7 @@ podman run -d --name persistent-web \
 podman kube generate persistent-web > persistent-web.yaml
 ```
 
-The YAML will include a PersistentVolumeClaim for the named volume.
+The YAML will reference the named volume as a `persistentVolumeClaim` volume, using the Podman volume name as the claim name.
 
 ## Generating Deployment YAML
 
@@ -131,17 +131,18 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app: web
-  name: web
+    app: web-pod
+  name: web-pod-deployment
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: web
+      app: web-pod
   template:
     metadata:
       labels:
-        app: web
+        app: web-pod
+      name: web-pod
     spec:
       containers:
       - name: web
@@ -183,7 +184,7 @@ Note that sensitive environment variables will be in plain text in the YAML. Bef
 
 The generated YAML is a starting point. You will typically need to:
 
-1. **Add resource limits** that were runtime-only:
+1. **Add resource requests and limits:**
 ```yaml
 resources:
   limits:
