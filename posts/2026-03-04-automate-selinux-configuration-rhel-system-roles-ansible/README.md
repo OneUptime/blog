@@ -27,7 +27,7 @@ sudo dnf install -y rhel-system-roles
 ansible-galaxy collection install redhat.rhel_system_roles
 ```
 
-The SELinux role is available at `/usr/share/ansible/roles/rhel-system-roles.selinux/` after installation.
+When installed from the RHEL RPM package, the SELinux role documentation is available under `/usr/share/doc/rhel-system-roles/selinux/`, and the role files are also available under `/usr/share/ansible/roles/rhel-system-roles.selinux/`.
 
 ## Architecture
 
@@ -54,7 +54,7 @@ Create a playbook that uses the SELinux system role:
     selinux_policy: targeted
 
   roles:
-    - role: rhel-system-roles.selinux
+    - role: redhat.rhel_system_roles.selinux
 ```
 
 ## Configuring SELinux Mode
@@ -233,7 +233,7 @@ Here is a complete playbook for a web server:
         state: present
 
   roles:
-    - role: rhel-system-roles.selinux
+    - role: redhat.rhel_system_roles.selinux
 ```
 
 ## Playbook for Database Servers
@@ -263,7 +263,7 @@ Here is a complete playbook for a web server:
         state: present
 
   roles:
-    - role: rhel-system-roles.selinux
+    - role: redhat.rhel_system_roles.selinux
 ```
 
 ## Running the Playbook
@@ -281,17 +281,31 @@ ansible-playbook -i inventory selinux-webservers.yml --check --diff
 
 ## Handling Reboot Requirements
 
-Changing from `disabled` to `enforcing` requires a reboot and filesystem relabel. The role handles this:
+Changing from `disabled` to an enabled state requires a reboot and filesystem relabel. The role sets `selinux_reboot_required`, but it does not reboot the managed host itself; handle the reboot in a `block`/`rescue` flow and then reapply the role:
 
 ```yaml
 vars:
   selinux_state: enforcing
   selinux_policy: targeted
 
-post_tasks:
-  - name: Reboot if SELinux state changed
-    reboot:
-    when: selinux_reboot_required | default(false)
+tasks:
+  - name: Configure SELinux
+    block:
+      - name: Include SELinux role
+        ansible.builtin.include_role:
+          name: redhat.rhel_system_roles.selinux
+    rescue:
+      - name: Fail if the role failed for another reason
+        ansible.builtin.fail:
+          msg: "SELinux role failed"
+        when: not selinux_reboot_required | default(false)
+
+      - name: Reboot if SELinux state changed
+        ansible.builtin.reboot:
+
+      - name: Reapply SELinux role after reboot
+        ansible.builtin.include_role:
+          name: redhat.rhel_system_roles.selinux
 ```
 
 ## Inventory Organization
@@ -314,7 +328,7 @@ Use group variables in `group_vars/` to set SELinux configuration per role.
 
 ## Idempotency
 
-The SELinux system role is idempotent. Running it multiple times produces the same result. Booleans that are already set correctly are skipped. File contexts that already exist are not recreated. This makes it safe to run as part of regular configuration management.
+The SELinux system role is idempotent. Running it multiple times produces the same result. Booleans that are already set correctly are skipped. File contexts that already exist are not recreated. SELinux module management is idempotent on Fedora and RHEL 8.6 or later. This makes it safe to run as part of regular configuration management.
 
 ## Verifying Configuration
 
