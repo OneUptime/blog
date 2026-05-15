@@ -135,10 +135,10 @@ done
 kubectl apply -f helmreleases-backup.yaml
 ```
 
-For a complete migration, you also need to export sources and other Flux resources.
+For a migration, you also need to export the sources and any other Flux resources your HelmReleases depend on.
 
 ```bash
-# Export a complete set of Flux resources for migration
+# Export common Flux resources for migration
 : > helm-sources.yaml
 kubectl get helmrepositories.source.toolkit.fluxcd.io -A \
   -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' |
@@ -219,11 +219,11 @@ However, kubectl output includes status, resource versions, and other cluster-sp
 
 ## Scripting Exports for Backup
 
-Create a backup script that exports all Flux resources regularly.
+Create a backup script that exports common Flux resources regularly.
 
 ```bash
 #!/bin/bash
-# backup-flux-resources.sh - Export all Flux resources for backup
+# backup-flux-resources.sh - Export common Flux resources for backup
 
 BACKUP_DIR="flux-backup-$(date +%Y%m%d)"
 mkdir -p "$BACKUP_DIR"
