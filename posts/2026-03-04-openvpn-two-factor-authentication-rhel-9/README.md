@@ -42,7 +42,8 @@ The user enters their password followed by their 6-digit TOTP code (from Google 
 ```bash
 # Install the PAM module
 
-sudo dnf install -y epel-release
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 sudo dnf install -y google-authenticator qrencode
 ```
 
@@ -87,15 +88,14 @@ Create a PAM configuration that checks both the system password and the TOTP cod
 ```bash
 # Create the PAM config for OpenVPN
 sudo tee /etc/pam.d/openvpn > /dev/null << 'EOF'
-# First verify the system password
-auth    required    pam_unix.so
-# Then verify the TOTP code
+# Ask for password+TOTP, then pass only the password to pam_unix
 auth    required    pam_google_authenticator.so forward_pass
+auth    required    pam_unix.so use_first_pass
 account required    pam_unix.so
 EOF
 ```
 
-The `forward_pass` option means the user enters their password and OTP concatenated. If you prefer separate prompts (not supported by all clients), use `authtok_prompt` instead.
+The `forward_pass` option means the user enters their password and OTP in one prompt. The module strips off the OTP and forwards the system password to `pam_unix.so use_first_pass`. If you prefer separate prompts (not supported by all clients), use `authtok_prompt` instead.
 
 ## Configuring OpenVPN for PAM Authentication
 
@@ -163,7 +163,7 @@ sudo systemctl restart openvpn-server@server
 sudo systemctl status openvpn-server@server
 
 # Watch the log during a connection attempt
-sudo tail -f /var/log/openvpn/openvpn.log
+sudo journalctl -u openvpn-server@server -f
 ```
 
 ## Testing PAM Authentication Directly
@@ -187,10 +187,7 @@ SELinux might block the PAM plugin from reading user home directories.
 # Check for SELinux denials
 sudo ausearch -m avc -ts recent | grep openvpn
 
-# If needed, create a policy module
-sudo setsebool -P authlogin_yubikey on
-
-# Or allow OpenVPN to read home directories
+# If home directory access is disabled, allow OpenVPN to read home directories
 sudo setsebool -P openvpn_enable_homedirs on
 ```
 
@@ -199,17 +196,20 @@ sudo setsebool -P openvpn_enable_homedirs on
 Some OpenVPN clients support a separate OTP field through the static challenge feature:
 
 ```bash
-# In server.conf, add:
-# static-challenge "Enter OTP: " 1
+# In server.conf, add static-challenge and replace the earlier plugin line:
+static-challenge "Enter OTP: " 0
+
+# Map the static challenge response to the PAM token prompt:
+plugin /usr/lib64/openvpn/plugins/openvpn-plugin-auth-pam.so "openvpn login USERNAME password PASSWORD verification OTP"
 ```
 
-The `1` means the OTP is echoed to the screen. With this approach, users enter their password and OTP in separate prompts. The PAM config changes slightly:
+The `0` means the OTP is not echoed to the screen. With this approach, users enter their password and OTP in separate prompts. The PAM config changes slightly:
 
 ```bash
 # Modified PAM config without forward_pass
 sudo tee /etc/pam.d/openvpn > /dev/null << 'EOF'
 auth    required    pam_unix.so
-auth    required    pam_google_authenticator.so
+auth    required    pam_google_authenticator.so authtok_prompt=verification
 account required    pam_unix.so
 EOF
 ```
