@@ -10,58 +10,80 @@ Description: Create custom RHEL 9 AMIs for AWS using Image Builder.
 
 ## Overview
 
-Create custom RHEL 9 AMIs for AWS using Image Builder. RHEL 9 is fully supported on major cloud platforms with official images and integrated tooling.
+Create custom RHEL 9 AMIs for AWS using RHEL image builder. RHEL 9 is fully supported on AWS with official images and integrated tooling.
 
 ## Prerequisites
 
 - A RHEL 9 subscription or cloud marketplace entitlement
-- An account on the target cloud platform (AWS, Azure, or GCP)
-- CLI tools installed: aws-cli, az-cli, or gcloud
+- An AWS account with an access key and a writable S3 bucket
+- CLI tools installed: composer-cli and aws-cli
 
-## Step 1 - Choose Your Deployment Method
+## Step 1 - Choose Your Image Builder Method
 
-You can deploy RHEL 9 in the cloud using:
+You can create RHEL 9 images for AWS using:
 
 1. **Marketplace images** - pre-built, official Red Hat images
-2. **Custom images** - built with Image Builder and uploaded
-3. **Terraform** - infrastructure as code provisioning
+2. **Custom AMI images** - built with RHEL image builder and uploaded
+3. **RHEL web console** - graphical image builder workflow
 4. **Red Hat Hybrid Cloud Console** - centralized management
 
-## Step 2 - Launch a RHEL 9 Instance
+## Step 2 - Build a RHEL 9 AMI
 
-For AWS:
+Create a blueprint:
 
-```bash
-aws ec2 run-instances --image-id ami-rhel9-xxxxx --instance-type m5.large --key-name mykey
+```toml
+name = "rhel9-aws-base"
+description = "RHEL 9 AWS base image"
+version = "0.0.1"
+
+[[packages]]
+name = "vim"
+version = "*"
+
+[[packages]]
+name = "tmux"
+version = "*"
 ```
 
-For Azure:
+Push the blueprint and start an AMI compose:
 
 ```bash
-az vm create --resource-group myRG --name myVM --image RedHat:RHEL:9:latest --size Standard_D2s_v3
+sudo composer-cli blueprints push rhel9-aws-base.toml
+sudo composer-cli blueprints depsolve rhel9-aws-base
 ```
 
-For GCP:
+Create an AWS upload configuration:
+
+```toml
+provider = "aws"
+
+[settings]
+accessKeyID = "AWS_ACCESS_KEY_ID"
+secretAccessKey = "AWS_SECRET_ACCESS_KEY"
+bucket = "AWS_BUCKET"
+region = "AWS_REGION"
+key = "rhel9-aws-base"
+```
+
+Then build and upload the AMI:
 
 ```bash
-gcloud compute instances create myvm --image-project=rhel-cloud --image-family=rhel-9 --machine-type=e2-medium
+sudo composer-cli compose start rhel9-aws-base ami rhel9-aws-base aws-config.toml
+sudo composer-cli compose status
 ```
 
-## Step 3 - Configure cloud-init
+## Step 3 - Configure the Image
 
-RHEL 9 cloud images use cloud-init for first-boot customization. Create a user-data script:
+Use the blueprint to define image customizations such as the hostname, users, SSH key, and packages:
 
-```yaml
-#cloud-config
-hostname: my-rhel-server
-users:
-  - name: admin
-    groups: wheel
-    ssh_authorized_keys:
-      - ssh-rsa AAAA...your-key-here
-packages:
-  - vim
-  - tmux
+```toml
+[customizations]
+hostname = "my-rhel-server"
+
+[[customizations.user]]
+name = "admin"
+key = "ssh-rsa AAAA...your-key-here"
+groups = ["users", "wheel"]
 ```
 
 ## Step 4 - Register with Red Hat
@@ -75,7 +97,7 @@ sudo insights-client --register
 
 ## Step 5 - Configure Security and Networking
 
-Set up security groups, NSGs, or firewall rules to allow only necessary traffic. Enable SELinux (it is on by default) and configure firewalld.
+Set up AWS security groups and host firewall rules to allow only necessary traffic. SELinux enforcing mode is the default and recommended mode on RHEL 9, and you can use firewalld for common host firewall rules.
 
 ## Step 6 - Set Up Monitoring
 
@@ -89,4 +111,4 @@ sudo insights-client
 
 ## Summary
 
-You have learned how to create custom rhel 9 amis for aws using image builder. RHEL 9 on cloud platforms benefits from official support, pre-configured images, and integration with Red Hat management tools.
+You have learned how to create custom RHEL 9 AMIs for AWS using image builder. RHEL 9 on AWS benefits from official support, pre-configured images, and integration with Red Hat management tools.
