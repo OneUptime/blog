@@ -22,7 +22,7 @@ In this guide we will install Apache, walk through the key configuration files, 
 
 ## Step 1 - Install Apache httpd
 
-Install the httpd package and the supporting tools:
+Install the httpd package:
 
 ```bash
 # Install the Apache web server package
@@ -57,11 +57,13 @@ sudo systemctl status httpd
 
 ## Step 3 - Open the Firewall
 
-RHEL uses firewalld by default. Open HTTP and HTTPS ports:
+RHEL uses firewalld by default. Open HTTP now, and open HTTPS if you plan to add TLS later:
 
 ```bash
-# Allow HTTP and HTTPS traffic through the firewall
+# Allow HTTP traffic through the firewall
 sudo firewall-cmd --permanent --add-service=http
+
+# Optional: allow HTTPS traffic if you configure TLS later
 sudo firewall-cmd --permanent --add-service=https
 sudo firewall-cmd --reload
 ```
@@ -161,6 +163,9 @@ sudo restorecon -Rv /var/www/html/
 If you want Apache to serve content from a non-default directory, set the correct SELinux context:
 
 ```bash
+# Install SELinux management tools if semanage is not available
+sudo dnf install -y policycoreutils-python-utils
+
 # Label a custom directory so Apache can read from it
 sudo semanage fcontext -a -t httpd_sys_content_t "/srv/mysite(/.*)?"
 sudo restorecon -Rv /srv/mysite/
