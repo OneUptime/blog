@@ -25,7 +25,7 @@ flowchart LR
 ```bash
 # Install SSSD with LDAP support
 
-sudo dnf install sssd sssd-ldap sssd-tools oddjob oddjob-mkhomedir -y
+sudo dnf install sssd sssd-ldap sssd-tools openldap-clients oddjob oddjob-mkhomedir -y
 ```
 
 ## Step 2 - Configure SSSD
@@ -85,8 +85,7 @@ cache_credentials = True
 entry_cache_timeout = 5400
 
 # Access control (allow all authenticated users)
-access_provider = ldap
-ldap_access_filter = (objectClass=posixAccount)
+access_provider = permit
 ```
 
 Set proper permissions:
@@ -176,6 +175,7 @@ passwd
 ### For 389 Directory Server
 
 ```ini
+ldap_schema = rfc2307bis
 ldap_user_object_class = inetOrgPerson
 ldap_user_name = uid
 ldap_group_object_class = groupOfUniqueNames
@@ -185,6 +185,7 @@ ldap_group_member = uniqueMember
 ### For OpenLDAP with memberOf Overlay
 
 ```ini
+ldap_schema = rfc2307bis
 ldap_user_object_class = inetOrgPerson
 ldap_user_name = uid
 ldap_group_object_class = groupOfNames
