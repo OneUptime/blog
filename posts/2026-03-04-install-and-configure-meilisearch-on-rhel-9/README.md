@@ -8,7 +8,7 @@ Description: Step-by-step guide on install and configure meilisearch using Red H
 
 ---
 
-Meilisearch can be installed and configured on RHEL to provide robust functionality for your infrastructure. This guide walks through the installation, basic configuration, and verification steps.
+Meilisearch can be installed and configured on RHEL to provide robust functionality for your infrastructure. This guide walks through the installation, basic configuration, and verification steps using Podman, which avoids the current Meilisearch Linux binary requirement for glibc 2.35 or newer.
 
 ## Prerequisites
 
@@ -20,42 +20,77 @@ Meilisearch can be installed and configured on RHEL to provide robust functional
 
 ```bash
 # Update the system first
-
 sudo dnf update -y
 
 # Install the required packages
-sudo dnf install -y <package-name>
+sudo dnf install -y container-tools curl openssl
+
+# Create a persistent data directory for Meilisearch
+sudo install -d -m 750 /var/lib/meilisearch
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+This installs Podman through the RHEL container tools package and creates a host directory that will be mounted into the Meilisearch container.
 
 ## Step 2: Configure the Service
 
 Edit the configuration file to match your environment:
 
 ```bash
-# Open the configuration file
-sudo vi /etc/<service>/config.conf
+# Create an environment file with a production master key
+MEILI_MASTER_KEY=$(openssl rand -base64 32)
+printf 'MEILI_ENV=production\nMEILI_MASTER_KEY=%s\n' "$MEILI_MASTER_KEY" | sudo tee /etc/meilisearch.env >/dev/null
+sudo chmod 600 /etc/meilisearch.env
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include the environment, authentication settings, and logging options.
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Create a systemd Quadlet service definition
+sudo install -d -m 755 /etc/containers/systemd
+sudo vi /etc/containers/systemd/meilisearch.container
+```
+
+Add the following content:
+
+```ini
+[Unit]
+Description=Meilisearch
+
+[Container]
+Image=docker.io/getmeili/meilisearch:latest
+ContainerName=meilisearch
+PublishPort=7700:7700
+Volume=/var/lib/meilisearch:/meili_data:Z
+EnvironmentFile=/etc/meilisearch.env
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+After changing the Quadlet file or environment file, reload systemd and restart the service to apply changes.
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart meilisearch.service
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
+# Reload systemd so it generates the service from the Quadlet file
+sudo systemctl daemon-reload
+
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable meilisearch.service
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start meilisearch.service
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status meilisearch.service
 ```
 
 
@@ -65,16 +100,20 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status meilisearch.service
+
+# Check the Meilisearch health endpoint
+curl http://localhost:7700/health
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u meilisearch.service --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u meilisearch.service -e --no-pager`.
+- Ensure all required packages are installed: `rpm -qa | grep -E 'podman|container-tools'`.
+- Confirm the container image is available locally with `sudo podman image ls getmeili/meilisearch`.
 
 ## Conclusion
 
