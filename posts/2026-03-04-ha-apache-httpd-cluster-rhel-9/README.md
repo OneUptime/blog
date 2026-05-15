@@ -22,7 +22,7 @@ A highly available Apache HTTPD cluster on RHEL uses Pacemaker to manage a virtu
 On both nodes:
 
 ```bash
-sudo dnf install httpd -y
+sudo dnf install httpd wget -y
 ```
 
 ## Step 2: Configure Apache
@@ -51,15 +51,32 @@ sudo systemctl disable httpd
 sudo systemctl stop httpd
 ```
 
+Because the Pacemaker Apache resource agent does not use systemd, update the Apache logrotate script on both nodes so it does not reload Apache through systemd. In `/etc/logrotate.d/httpd`, replace:
+
+```bash
+/bin/systemctl reload httpd.service > /dev/null 2>/dev/null || true
+```
+
+with:
+
+```bash
+/usr/bin/test -f /var/run/httpd-WebServer.pid >/dev/null 2>/dev/null &&
+/usr/bin/ps -q $(/usr/bin/cat /var/run/httpd-WebServer.pid) >/dev/null 2>/dev/null &&
+/usr/sbin/httpd -f /etc/httpd/conf/httpd.conf -c "PidFile /var/run/httpd-WebServer.pid" -k graceful > /dev/null 2>/dev/null || true
+```
+
 ## Step 3: Configure the Firewall
 
 On both nodes:
 
 ```bash
 sudo firewall-cmd --permanent --add-service=http
-sudo firewall-cmd --permanent --add-service=https
 sudo firewall-cmd --reload
 ```
+
+Add the `https` service only if you have also configured Apache for TLS.
+
+Run the following `pcs resource` commands from one cluster node only.
 
 ## Step 4: Create the Virtual IP Resource
 
@@ -150,7 +167,7 @@ sudo pcs resource create WebFS ocf:heartbeat:Filesystem \
     device=nfs-server:/export/www directory=/var/www/html fstype=nfs \
     op monitor interval=20s
 
-sudo pcs resource group add WebGroup WebVIP WebFS WebServer
+sudo pcs resource group add WebGroup WebFS --before WebServer
 ```
 
 ## Conclusion
