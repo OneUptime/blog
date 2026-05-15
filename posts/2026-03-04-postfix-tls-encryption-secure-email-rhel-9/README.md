@@ -52,11 +52,12 @@ smtpd_tls_cert_file = /etc/letsencrypt/live/mail.example.com/fullchain.pem
 smtpd_tls_key_file = /etc/letsencrypt/live/mail.example.com/privkey.pem
 
 # Use strong ciphers
+smtpd_tls_ciphers = high
 smtpd_tls_mandatory_ciphers = high
-smtpd_tls_mandatory_protocols = >=TLSv1.2
+smtpd_tls_mandatory_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
 
 # Disable older protocols
-smtpd_tls_protocols = >=TLSv1.2
+smtpd_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
 
 # Enable TLS session caching for performance
 smtpd_tls_session_cache_database = btree:${data_directory}/smtpd_scache
@@ -79,7 +80,7 @@ These settings control how Postfix handles TLS when sending mail to other server
 # Enable TLS for outgoing connections
 smtp_tls_security_level = may
 
-# Use the system CA bundle to verify remote certificates
+# Use the system CA bundle when a stricter per-destination policy requires verification
 smtp_tls_CAfile = /etc/pki/tls/certs/ca-bundle.crt
 
 # Enable session caching for outbound connections
@@ -89,8 +90,10 @@ smtp_tls_session_cache_database = btree:${data_directory}/smtp_scache
 smtp_tls_loglevel = 1
 
 # Prefer strong ciphers
+smtp_tls_ciphers = high
+smtp_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
 smtp_tls_mandatory_ciphers = high
-smtp_tls_mandatory_protocols = >=TLSv1.2
+smtp_tls_mandatory_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
 ```
 
 ## Enforcing TLS on the Submission Port
@@ -136,7 +139,7 @@ sequenceDiagram
 
 ## Enabling SMTPS (Port 465)
 
-Some older clients use implicit TLS on port 465 instead of STARTTLS. Enable it in `/etc/postfix/master.cf`:
+Some clients use standardized implicit TLS on port 465 instead of STARTTLS. Enable it in `/etc/postfix/master.cf`:
 
 ```bash
 smtps     inet  n       -       n       -       -       smtpd
@@ -254,7 +257,8 @@ Make sure you are using the full chain certificate, not just the server cert.
 
 ```bash
 # Postfix needs to read the key
-sudo chmod 640 /etc/letsencrypt/live/mail.example.com/privkey.pem
+sudo chown root:root /etc/letsencrypt/live/mail.example.com/privkey.pem
+sudo chmod 600 /etc/letsencrypt/live/mail.example.com/privkey.pem
 ```
 
 ## Wrapping Up
