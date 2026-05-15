@@ -85,7 +85,7 @@ Cmnd_Alias SVC_DB = /usr/bin/systemctl start postgresql, \
                      /usr/bin/systemctl status mariadb
 
 Cmnd_Alias MONITORING = /usr/bin/journalctl, \
-                         /usr/bin/ss, \
+                         /usr/sbin/ss, \
                          /usr/bin/lsblk, \
                          /usr/sbin/dmidecode, \
                          /usr/bin/top -b -n 1
@@ -95,14 +95,6 @@ Cmnd_Alias SECURITY = /usr/sbin/auditctl, \
                        /usr/sbin/aureport, \
                        /usr/bin/firewall-cmd --list-all, \
                        /usr/bin/firewall-cmd --get-active-zones
-
-# Dangerous commands that should never be granted
-Cmnd_Alias DANGEROUS = /usr/bin/su, \
-                        /usr/bin/bash, \
-                        /usr/bin/sh, \
-                        /usr/bin/csh, \
-                        /usr/sbin/visudo, \
-                        /usr/bin/passwd root
 ```
 
 ## Step 4: Create Role-Based Rules
@@ -114,8 +106,8 @@ sudo visudo -f /etc/sudoers.d/10-webadmins
 ```bash
 # Web admins: manage web services and edit web configs
 %webadmins ALL=(root) SVC_WEB, \
-                       /usr/bin/vi /etc/httpd/conf/*, \
-                       /usr/bin/vi /etc/nginx/*, \
+                       sudoedit /etc/httpd/conf/*, \
+                       sudoedit /etc/nginx/*, \
                        /usr/bin/apachectl configtest, \
                        /usr/sbin/nginx -t
 ```
@@ -158,10 +150,9 @@ sudo visudo -f /etc/sudoers.d/90-restrictions
 
 ```bash
 # Prevent non-wheel users from running shells or dangerous commands
-# This rule must come AFTER the allow rules
-%webadmins ALL=(root) !DANGEROUS
-%dbadmins  ALL=(root) !DANGEROUS
-%secops    ALL=(root) !DANGEROUS
+# Do this by keeping role rules as explicit allowlists.
+# Do not try to make broad rules safe with ALL plus negated commands.
+# Remove or narrow any broad grants for these groups instead.
 ```
 
 ## Handling Edge Cases
@@ -194,6 +185,7 @@ echo "Web application stack restarted at $(date)"
 ```
 
 ```bash
+sudo chown root:root /usr/local/sbin/restart-webapp.sh
 sudo chmod 750 /usr/local/sbin/restart-webapp.sh
 ```
 
