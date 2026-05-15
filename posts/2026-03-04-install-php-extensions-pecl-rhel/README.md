@@ -96,7 +96,7 @@ sudo systemctl restart php-fpm
 # Search for available extensions
 pecl search oauth
 
-# Show available versions of an extension
+# Show remote package information
 pecl remote-info redis
 ```
 
