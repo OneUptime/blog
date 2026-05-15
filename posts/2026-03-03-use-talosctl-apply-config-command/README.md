@@ -24,7 +24,7 @@ The command tells you what effect the configuration change will have.
 
 ### Applying to a New Node (Insecure Mode)
 
-When a node is freshly installed with Talos Linux and has not been configured yet, it runs in maintenance mode. In this state, it does not have TLS credentials, so you need the `--insecure` flag:
+When a node is freshly installed with Talos Linux and has not been configured yet, it runs in maintenance mode. In this state, it has not received the credentials and certificates needed to authenticate the client, so you need the `--insecure` flag:
 
 ```bash
 # Apply configuration to a new, unconfigured node
@@ -32,7 +32,7 @@ When a node is freshly installed with Talos Linux and has not been configured ye
 talosctl apply-config --insecure --nodes <node-ip> --file controlplane.yaml
 ```
 
-The `--insecure` flag bypasses TLS verification. Only use this for initial node setup when the node is in maintenance mode.
+The `--insecure` flag connects to the encrypted maintenance service without client authentication. Only use this for initial node setup when the node is in maintenance mode.
 
 ### Applying to an Existing Node
 
@@ -43,7 +43,7 @@ For nodes that are already configured and running:
 talosctl apply-config --nodes <node-ip> --file updated-config.yaml
 ```
 
-No `--insecure` flag needed because the node already has TLS credentials and your talosconfig has the matching certificates.
+No `--insecure` flag needed because the node is already configured and your talosconfig has the matching client certificates.
 
 ## Apply Modes
 
@@ -115,21 +115,23 @@ talosctl gen config my-cluster https://10.0.0.1:6443 --output-types controlplane
 
 ## Applying Configuration Patches
 
-Instead of replacing the entire configuration, you can apply patches to modify specific fields:
+Instead of editing a generated configuration file by hand, you can apply patches to the local configuration before sending it to the node:
 
 ```bash
-# Apply a patch to the existing configuration
-talosctl apply-config --nodes <node-ip> --config-patch '[{"op": "add", "path": "/machine/network/hostname", "value": "my-node"}]'
+# Apply a patch to the local configuration before sending it
+talosctl apply-config --nodes <node-ip> --file config.yaml --config-patch '[{"op": "add", "path": "/machine/network/hostname", "value": "my-node"}]'
 ```
 
-Patches use JSON Patch format (RFC 6902). This is useful for making small changes without managing the entire configuration file.
+Talos supports JSON Patch format (RFC 6902) and strategic merge patches. This example uses JSON Patch.
 
 You can also use patch files:
 
 ```bash
 # Apply a patch from a file
-talosctl apply-config --nodes <node-ip> --config-patch @patch.yaml
+talosctl apply-config --nodes <node-ip> --file config.yaml --config-patch @patch.yaml
 ```
+
+If you want to patch the current machine configuration already running on a node, use `talosctl patch machineconfig` instead of `apply-config`.
 
 ## Dry Run
 
@@ -179,11 +181,10 @@ Some configuration changes can be applied live:
 
 Other changes require a reboot:
 
-- Kernel parameters
-- Install disk changes
+- Boot-time settings
+- Install disk changes, which are only used during install or upgrade
 - Machine type changes (worker to control plane)
-- Cluster certificate changes
-- Major Kubernetes version changes
+- Changes outside the fields Talos can apply immediately
 
 When you apply in auto mode, Talos handles this distinction for you.
 
@@ -266,7 +267,7 @@ Before applying changes, save the current configuration:
 
 ```bash
 # Save the running configuration
-talosctl get machineconfig --nodes <node-ip> -o yaml > backup-config.yaml
+talosctl get machineconfig v1alpha1 --nodes <node-ip> -o jsonpath='{.spec}' > backup-config.yaml
 ```
 
 ## Conclusion
