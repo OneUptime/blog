@@ -14,8 +14,8 @@ When bootstrapping Flux CD with the GitHub-specific bootstrap command, the defau
 
 - **Granular permissions**: Limit access to specific repositories and actions.
 - **Organization-level management**: Apps are owned by the organization, not a user.
-- **Higher rate limits**: GitHub Apps get higher API rate limits than PATs.
-- **Automatic token rotation**: Installation tokens expire after one hour.
+- **Scalable rate limits**: GitHub App installation rate limits can scale with the installation and organization context.
+- **Short-lived tokens**: Installation tokens expire after one hour.
 
 This guide walks through creating a GitHub App, configuring it for Flux CD, and bootstrapping your cluster so Flux uses app-based authentication for ongoing reconciliation.
 
@@ -34,7 +34,7 @@ Before you begin, ensure you have:
 Navigate to your GitHub organization settings and create a new GitHub App. You need the following permissions:
 
 - **Repository permissions**:
-  - Contents: Read and write (to push Flux manifests)
+  - Contents: Read-only for standard Flux reconciliation, or read and write if Flux image automation will push commits
   - Metadata: Read-only
 
 - **Organization permissions**: None required for basic setup
@@ -216,7 +216,7 @@ If bootstrap fails with authentication errors, check:
 
 - **App ID and Installation ID**: Ensure they match your GitHub App configuration.
 - **Private key format**: The key must be in PEM format and not passphrase-protected.
-- **Repository permissions**: The app must have Contents read/write access on the target repository.
+- **Repository permissions**: The app must have Contents read access on the target repository, or Contents read/write access if Flux image automation will push commits.
 - **Installation scope**: The app must be installed on the specific repository or organization.
 
 Check the source-controller logs for detailed error messages:
@@ -228,4 +228,4 @@ kubectl logs -n flux-system deployment/source-controller | grep -i "auth\|error\
 
 ## Summary
 
-Using GitHub App authentication with Flux CD provides a more secure and manageable approach compared to personal access tokens. The key benefits are scoped permissions, organization-level ownership, and automatic token rotation. Once configured, Flux handles the token lifecycle transparently, and you can use the same GitHub App across multiple repositories and clusters.
+Using GitHub App authentication with Flux CD provides a more secure and manageable approach compared to personal access tokens. The key benefits are scoped permissions, organization-level ownership, and short-lived installation tokens. Once configured, Flux handles the token lifecycle transparently, and you can use the same GitHub App across multiple repositories and clusters.
