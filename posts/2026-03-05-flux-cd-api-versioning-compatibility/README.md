@@ -66,7 +66,7 @@ kind: ImagePolicy
 When Flux introduces a new API version, it follows this lifecycle:
 
 1. The new version is introduced alongside the old version. Both are served by the CRD.
-2. The old version is marked as deprecated. Flux logs warnings when deprecated versions are used.
+2. The old version is marked as deprecated. The Kubernetes API server returns warning headers when deprecated custom resource versions are used, and Flux controllers may surface those warnings during reconciliation.
 3. After a transition period, the old version is removed from the CRD.
 
 The CRD stores resources in one version internally (the storage version) and converts between served versions. You can check which versions a CRD serves.
@@ -96,7 +96,7 @@ grep -r "helm.toolkit.fluxcd.io/v2beta1" ./clusters/
 flux check
 ```
 
-Flux's notification controller can also alert you when deprecated APIs are in use if you configure an Alert resource for warning events.
+Flux's notification controller can alert on Flux `Warning` events from Flux resources, but API server deprecation warnings should be tracked with manifest checks, Kubernetes audit logs, or the `apiserver_requested_deprecated_apis` metric.
 
 ## Migrating Between API Versions
 
@@ -148,6 +148,8 @@ spec:
 ```
 
 In many cases, the migration is as simple as changing the apiVersion string. However, some transitions involve field renames or structural changes, so always consult the Flux changelog for the specific version.
+
+For Flux v2.7 and later, you can also use the `flux migrate` command to migrate Flux custom resources in a cluster or in files before a minor version upgrade.
 
 ## Compatibility Matrix
 
@@ -213,7 +215,9 @@ DEPRECATED_APIS=(
   "kustomize.toolkit.fluxcd.io/v1beta1"
   "kustomize.toolkit.fluxcd.io/v1beta2"
   "image.toolkit.fluxcd.io/v1beta1"
+  "image.toolkit.fluxcd.io/v1beta2"
   "notification.toolkit.fluxcd.io/v1beta1"
+  "notification.toolkit.fluxcd.io/v1beta2"
 )
 
 for api in "${DEPRECATED_APIS[@]}"; do
