@@ -8,7 +8,7 @@ Description: Step-by-step guide on deploy krakend api gateway using Red Hat Ente
 
 ---
 
-Deploying KrakenD API Gateway on RHEL provides a stable and secure foundation for your workload. This guide covers the installation, configuration, and operational considerations.
+Deploying KrakenD API Gateway on RHEL provides a stable and secure foundation for your workload. This guide covers the configuration and operational considerations.
 
 ## Prerequisites
 
@@ -16,41 +16,41 @@ Deploying KrakenD API Gateway on RHEL provides a stable and secure foundation fo
 - Root or sudo access
 - A terminal session
 
-## Step 2: Configure the Service
+## Step 1: Configure the Service
 
 Edit the configuration file to match your environment:
 
 ```bash
 # Open the configuration file
 
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/krakend/krakend.json
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include the listening port, listening IP address, backend endpoints, authentication settings, and logging options.
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart krakend
 ```
 
-## Step 3: Enable and Start the Service
+## Step 2: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable krakend
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start krakend
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status krakend
 ```
 
-## Step 4: Configure the Firewall
+## Step 3: Configure the Firewall
 
 ```bash
 # Open the required port
-sudo firewall-cmd --permanent --add-port=<PORT>/tcp
+sudo firewall-cmd --permanent --add-port=8080/tcp
 sudo firewall-cmd --reload
 
 # Verify the rule
@@ -64,17 +64,17 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status krakend
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u krakend --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
+- If the service fails to start, check the logs with `journalctl -u krakend -e --no-pager`.
 - Verify firewall rules allow traffic on the required ports: `firewall-cmd --list-all`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- Ensure all required packages are installed: `rpm -qa | grep krakend`.
 
 ## Conclusion
 
