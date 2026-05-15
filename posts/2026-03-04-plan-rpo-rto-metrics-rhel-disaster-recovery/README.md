@@ -31,7 +31,7 @@ echo '0 2 * * * root /usr/local/bin/daily-backup.sh' > /etc/cron.d/backup
 echo '0 * * * * root rsync -az /data/ backup-server:/backup/data/' > /etc/cron.d/backup
 
 # RPO: Near zero - Use real-time replication
-# DRBD for block-level replication (near-zero RPO)
+# Synchronous DRBD for block-level replication (near-zero RPO)
 # or database-level replication (PostgreSQL streaming, MySQL replication)
 ```
 
