@@ -257,7 +257,7 @@ flowchart TD
 When upgrading CRDs, new fields may be added and old fields deprecated. Flux handles this by applying the updated CRD manifest. However, changing the CRD storage version does not automatically rewrite existing custom resources in etcd, so there are important considerations:
 
 1. CRD upgrades that remove fields can break existing resources. Always review CRD changelogs before upgrading.
-2. If a CRD introduces a new storage version, existing resources need to be migrated with a storage-version migration procedure, such as the Kubernetes Storage Version Migrator or a manual rewrite of existing objects.
+2. If a CRD introduces a new storage version, existing resources are not rewritten immediately. Migrate them with a storage-version migration procedure, such as the Kubernetes Storage Version Migrator or a manual rewrite of existing objects, before dropping the old stored version.
 3. Apply CRD upgrades before upgrading the controller that uses them. The `dependsOn` chain naturally enforces this ordering.
 
 ```bash
