@@ -45,6 +45,7 @@ sudo sysctl --system
 
 ```bash
 # Add Docker repository for containerd
+sudo dnf -y install dnf-plugins-core
 sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
 sudo dnf install -y containerd.io
 
@@ -63,15 +64,16 @@ sudo systemctl enable --now containerd
 cat << 'REPO' | sudo tee /etc/yum.repos.d/kubernetes.repo
 [kubernetes]
 name=Kubernetes
-baseurl=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/
+baseurl=https://pkgs.k8s.io/core:/stable:/v1.36/rpm/
 enabled=1
 gpgcheck=1
-gpgkey=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1.36/rpm/repodata/repomd.xml.key
+exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
 REPO
 
 # Install packages
-sudo dnf install -y kubelet kubeadm kubectl
-sudo systemctl enable kubelet
+sudo dnf install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+sudo systemctl enable --now kubelet
 ```
 
 ## Initializing the Control Plane
@@ -79,7 +81,7 @@ sudo systemctl enable kubelet
 ```bash
 # On the control plane node only
 sudo kubeadm init \
-  --pod-network-cidr=10.244.0.0/16 \
+  --pod-network-cidr=192.168.0.0/16 \
   --apiserver-advertise-address=192.168.1.100
 
 # Set up kubectl for the current user
@@ -92,7 +94,7 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
 ```bash
 # Install Calico CNI
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/calico.yaml
 
 # Verify all pods are running
 kubectl get pods -n kube-system
@@ -117,10 +119,14 @@ kubeadm token create --print-join-command
 sudo firewall-cmd --add-port=6443/tcp --permanent   # API server
 sudo firewall-cmd --add-port=2379-2380/tcp --permanent  # etcd
 sudo firewall-cmd --add-port=10250/tcp --permanent   # kubelet
+sudo firewall-cmd --add-port=10257/tcp --permanent   # controller manager
+sudo firewall-cmd --add-port=10259/tcp --permanent   # scheduler
 
 # Worker nodes
 sudo firewall-cmd --add-port=10250/tcp --permanent   # kubelet
+sudo firewall-cmd --add-port=10256/tcp --permanent   # kube-proxy
 sudo firewall-cmd --add-port=30000-32767/tcp --permanent  # NodePort
+sudo firewall-cmd --add-port=30000-32767/udp --permanent  # NodePort
 
 sudo firewall-cmd --reload
 ```
