@@ -12,7 +12,7 @@ Not every organization uses GitHub, GitLab, or another major Git hosting platfor
 
 ## Prerequisites
 
-- A running Kubernetes cluster (v1.26 or later)
+- A running Kubernetes cluster supported by your Flux release (Flux v2.0 required Kubernetes v1.26 or later; current Flux releases support the latest three Kubernetes minor versions)
 - `kubectl` configured to access your cluster
 - Flux CLI installed (v2.0 or later)
 - A Git repository accessible via SSH or HTTPS
@@ -115,7 +115,7 @@ The bootstrap command will:
 
 ## Step 4: Bootstrap with HTTPS
 
-If SSH is not available, use HTTPS with username and password (or token) authentication.
+If SSH is not available, use HTTPS with basic username and password authentication. For Git servers that use personal access tokens with basic authentication, pass the token as the password.
 
 ```bash
 # Bootstrap Flux CD with HTTPS authentication
@@ -124,11 +124,10 @@ flux bootstrap git \
   --branch=main \
   --path=./clusters/production \
   --username=flux-user \
-  --password=<your-password-or-token> \
-  --token-auth
+  --password=<your-password-or-token>
 ```
 
-The `--token-auth` flag tells Flux to store and use the HTTPS credentials for Git operations instead of SSH keys.
+Flux stores the HTTPS credentials in the Git authentication secret and uses them for future Git operations.
 
 ## Step 5: Handle Custom CA Certificates
 
@@ -142,7 +141,6 @@ flux bootstrap git \
   --path=./clusters/production \
   --username=flux-user \
   --password=<your-password-or-token> \
-  --token-auth \
   --ca-file=./internal-ca.crt
 ```
 
@@ -354,7 +352,6 @@ flux bootstrap git \
   --branch=main \
   --path=./clusters/production \
   --ca-file=./ca.crt \
-  --token-auth \
   --username=user \
   --password=token
 
