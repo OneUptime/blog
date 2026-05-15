@@ -15,13 +15,13 @@ NCPA (Nagios Cross-Platform Agent) is a modern alternative to NRPE. It provides 
 ```bash
 # Add the Nagios NCPA repository
 
-sudo rpm -Uvh https://repo.nagios.com/nagios/7/nagios-repo-7-1.el9.noarch.rpm
+sudo rpm -Uvh https://repo.nagios.com/nagios/9/nagios-repo-9-2.el9.noarch.rpm
 
 # Install NCPA
 sudo dnf install -y ncpa
 
 # Start and enable the NCPA service
-sudo systemctl enable --now ncpa_listener
+sudo systemctl enable --now ncpa
 ```
 
 ## Configure NCPA
@@ -38,21 +38,23 @@ sudo vi /usr/local/ncpa/etc/ncpa.cfg
 # [api]
 # community_string = mytoken123
 #
-# [passive checks]
+# [passive]
 # handlers = nrdp
-# nrdp_url = http://nagios-server/nrdp
-# nrdp_token = your_nrdp_token
+#
+# [nrdp]
+# parent = http://nagios-server/nrdp
+# token = your_nrdp_token
 ```
 
 Set a secure community string (token):
 
 ```bash
 # Edit the config and change the community_string
-sudo sed -i 's/community_string = .*/community_string = mySecureToken123/' \
+sudo sed -i 's/^community_string = .*/community_string = mySecureToken123/' \
     /usr/local/ncpa/etc/ncpa.cfg
 
 # Restart NCPA
-sudo systemctl restart ncpa_listener
+sudo systemctl restart ncpa
 ```
 
 ## Open the Firewall
@@ -93,9 +95,6 @@ Open `https://192.168.1.50:5693` in a browser. Enter the community string token 
 cd /usr/local/nagios/libexec/
 sudo wget https://raw.githubusercontent.com/NagiosEnterprises/ncpa/master/client/check_ncpa.py
 sudo chmod +x check_ncpa.py
-
-# Or use the packaged version
-# sudo dnf install -y ncpa-plugin
 ```
 
 ## Define NCPA Commands in Nagios
@@ -106,7 +105,7 @@ sudo tee -a /usr/local/nagios/etc/objects/commands.cfg << 'EOF'
 
 define command {
     command_name    check_ncpa
-    command_line    $USER1$/check_ncpa.py -H $HOSTADDRESS$ -t $ARG1$ -M $ARG2$ $ARG3$
+    command_line    $USER1$/check_ncpa.py -H $HOSTADDRESS$ $ARG1$
 }
 EOF
 ```
@@ -126,28 +125,28 @@ define service {
     use                 generic-service
     host_name           rhel-ncpa-01
     service_description CPU Usage
-    check_command       check_ncpa!mySecureToken123!cpu/percent!-w 80 -c 90 --aggregate avg
+    check_command       check_ncpa!-t 'mySecureToken123' -P 5693 -M cpu/percent -w 80 -c 90 -q 'aggregate=avg'
 }
 
 define service {
     use                 generic-service
     host_name           rhel-ncpa-01
     service_description Memory Usage
-    check_command       check_ncpa!mySecureToken123!memory/virtual!-w 80 -c 90 -u G
+    check_command       check_ncpa!-t 'mySecureToken123' -P 5693 -M memory/virtual -w 80 -c 90 -u G
 }
 
 define service {
     use                 generic-service
     host_name           rhel-ncpa-01
     service_description Disk /
-    check_command       check_ncpa!mySecureToken123!disk/logical/|!-w 80 -c 90
+    check_command       check_ncpa!-t 'mySecureToken123' -P 5693 -M 'disk/logical/|' -w 80 -c 90
 }
 
 define service {
     use                 generic-service
     host_name           rhel-ncpa-01
     service_description Process Count
-    check_command       check_ncpa!mySecureToken123!processes!-w 200 -c 300
+    check_command       check_ncpa!-t 'mySecureToken123' -P 5693 -M processes -w 200 -c 300
 }
 EOF
 
