@@ -8,7 +8,7 @@ Description: Learn how to safely share resources like Helm repositories, ConfigM
 
 ---
 
-When tenant isolation is configured in multi-tenant Flux CD, there are legitimate cases where tenants need to share resources. Shared Helm repositories, common configuration, or inter-service communication between teams are all common scenarios. This guide covers how to configure cross-tenant resource sharing while maintaining security boundaries.
+In multi-tenant Flux CD environments, there are legitimate cases where tenants need to share resources. Shared Helm repositories, common configuration, or inter-service communication between teams are all common scenarios. This guide covers how to configure cross-tenant resource sharing while maintaining security boundaries.
 
 ## When to Share Resources
 
@@ -45,7 +45,7 @@ spec:
   url: https://kubernetes.github.io/ingress-nginx
 ```
 
-For tenants to reference sources in another namespace, cross-namespace references must be enabled on the Flux controllers (this is the default behavior).
+For tenants to reference sources in another namespace, cross-namespace references must be enabled on the helm-controller. This is the default behavior, but Flux's multi-tenancy lockdown guidance disables it with `--no-cross-namespace-refs=true`, so only use this pattern for platform-approved shared sources.
 
 ## Step 2: Create the Shared Sources Namespace
 
@@ -307,10 +307,11 @@ kubectl run test-pod --rm -it --image=busybox -n team-alpha \
 ## Security Best Practices
 
 - Only the platform admin should manage shared resources and cross-tenant network policies
+- If cross-namespace references are enabled for shared sources, enforce tenant RBAC or admission policies so tenants cannot reference unauthorized Flux objects
 - Use network policies to explicitly allow only required cross-tenant traffic
 - Audit cross-namespace references regularly to ensure no unauthorized sharing
 - Prefer duplicating small resources (like ConfigMaps) into tenant namespaces over cross-namespace references for better isolation
 
 ## Summary
 
-Cross-tenant resource sharing in Flux CD is achieved through cross-namespace references for sources, shared namespaces for common services, and targeted network policies for inter-service communication. The platform admin controls all sharing configurations, ensuring that tenants cannot create unauthorized access paths. Balance convenience with security by sharing only what is necessary and maintaining explicit network policies for all cross-tenant traffic.
+Cross-tenant resource sharing in Flux CD is achieved through cross-namespace references for sources, shared namespaces for common services, and targeted network policies for inter-service communication. The platform admin controls shared resources with RBAC, admission policies, and reviews, ensuring that tenants cannot create unauthorized access paths. Balance convenience with security by sharing only what is necessary and maintaining explicit network policies for all cross-tenant traffic.
