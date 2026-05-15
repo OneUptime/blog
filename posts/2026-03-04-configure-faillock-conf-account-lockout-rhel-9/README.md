@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Faillock, Account Lockout, Security, Linux
 
-Description: A detailed guide to configuring /etc/security/faillock.conf on RHEL for precise account lockout behavior, including all available options and compliance examples.
+Description: A detailed guide to configuring /etc/security/faillock.conf on RHEL for precise account lockout behavior, including commonly used options and compliance examples.
 
 ---
 
-The `/etc/security/faillock.conf` file is the central place to configure account lockout behavior on RHEL. Rather than scattering options across PAM files, RHEL consolidates faillock settings into this single configuration file. This guide covers every option and shows how to tune lockout policies for different environments.
+The `/etc/security/faillock.conf` file is the central place to configure account lockout behavior on RHEL. Rather than scattering options across PAM files, RHEL uses faillock.conf as the preferred place for faillock settings. This guide covers the common options and shows how to tune lockout policies for different environments.
 
 ## The faillock.conf File
 
@@ -16,7 +16,7 @@ The `/etc/security/faillock.conf` file is the central place to configure account
 sudo vi /etc/security/faillock.conf
 ```
 
-Here is a fully documented configuration:
+Here is a documented configuration:
 
 ```bash
 # Directory where failure records are stored
@@ -25,7 +25,7 @@ Here is a fully documented configuration:
 # Use /var/lib/faillock for persistent storage
 dir = /var/run/faillock
 
-# Audit failed attempts to syslog
+# Log unknown user names to syslog
 audit
 
 # Display failure information to the user during authentication
@@ -49,13 +49,13 @@ unlock_time = 900
 # Also apply lockout to the root account
 # even_deny_root
 
-# Separate unlock time for root (only used with even_deny_root)
+# Separate unlock time for root; this implies even_deny_root
 # root_unlock_time = 60
 
 # Only apply to local users (not LDAP/AD users managed by SSSD)
 # local_users_only
 
-# Admin group whose members are never locked
+# Admin group whose members are handled like root
 # admin_group = wheel
 ```
 
@@ -106,14 +106,14 @@ graph TD
 
 ### even_deny_root
 
-By default, root is immune to lockout. Enable this for compliance:
+By default, root is not locked by failed authentication attempts. Enable this for compliance:
 
 ```bash
 even_deny_root
 root_unlock_time = 60
 ```
 
-Always set a shorter `root_unlock_time` if you enable this. Locking root for 15 minutes on a production server is painful.
+If your policy permits root to unlock automatically, set a shorter `root_unlock_time`. Locking root for 15 minutes on a production server is painful.
 
 ### silent
 
@@ -128,13 +128,13 @@ Without `silent`, a locked user sees something like "Account locked due to 5 fai
 
 ### audit
 
-Sends failure events to syslog:
+Logs the user name to syslog when the user is not found:
 
 ```bash
 audit
 ```
 
-Always enable this. Without it, you have no visibility into lockout events.
+Enable this when you want failed attempts for unknown user names to be visible in syslog.
 
 ### local_users_only
 
@@ -148,13 +148,13 @@ Use this when LDAP or AD users have their own lockout policies managed by the di
 
 ### admin_group
 
-Exempt members of a specific group from lockout:
+Handle members of a specific group the same way as the root account:
 
 ```bash
 admin_group = wheel
 ```
 
-This is a safety net to prevent admins from getting locked out during legitimate troubleshooting.
+This can be a safety net to prevent admins from getting locked out during legitimate troubleshooting, as long as root lockout is not enabled for the same policy.
 
 ## Compliance Configurations
 
@@ -187,12 +187,12 @@ deny = 3
 fail_interval = 900
 unlock_time = 0
 even_deny_root
-root_unlock_time = 60
+dir = /var/log/faillock
 audit
 silent
 ```
 
-STIG is the strictest, requiring only 3 attempts and permanent lockout.
+STIG is the strictest, requiring only 3 attempts, permanent lockout, and persistent faillock records.
 
 ## Verifying the Configuration
 
@@ -213,7 +213,7 @@ You should see both `preauth` and `authfail` entries.
 sudo useradd flocktest
 sudo passwd flocktest
 
-# Attempt to log in with wrong password (repeat deny+1 times)
+# Attempt to log in with wrong password (repeat until the deny threshold is reached)
 ssh flocktest@localhost
 
 # Check lockout status
@@ -297,7 +297,7 @@ sudo authselect enable-feature with-faillock
 
 ### Accounts lock immediately (on first attempt)
 
-Check the `deny` value. If it is set to 0, accounts lock on the first failure:
+Check the `deny` value. If it is set to 1, accounts lock on the first failure:
 
 ```bash
 grep "^deny" /etc/security/faillock.conf
@@ -305,13 +305,13 @@ grep "^deny" /etc/security/faillock.conf
 
 ### Root keeps getting locked out
 
-Either disable `even_deny_root` or set `admin_group = wheel`:
+Either disable `even_deny_root` or set a shorter `root_unlock_time`:
 
 ```bash
-# admin_group exempts wheel members from lockout
-admin_group = wheel
+# root_unlock_time implies even_deny_root
+root_unlock_time = 60
 ```
 
 ## Wrapping Up
 
-faillock.conf is the single source of truth for account lockout policy on RHEL. Configure it once, and it applies across all PAM services that use the system-auth and password-auth stacks. The main decisions are the lockout threshold, timeout period, and whether to lock root. Test your settings, enable audit logging, and make sure your operations team knows how to unlock accounts when users inevitably call in.
+faillock.conf is the preferred source of account lockout policy on RHEL. Configure it once, and it applies across all PAM services that use the system-auth and password-auth stacks, unless a PAM module line overrides the settings directly. The main decisions are the lockout threshold, timeout period, and whether to lock root. Test your settings, enable the logging you need, and make sure your operations team knows how to unlock accounts when users inevitably call in.
