@@ -8,61 +8,70 @@ Description: Step-by-step guide on deploy rhel image builder via cockpit web con
 
 ---
 
-Deploying RHEL Image Builder via Cockpit Web Console on RHEL provides a stable and secure foundation for your workload. This guide covers the installation, configuration, and operational considerations.
+Deploying RHEL Image Builder via Cockpit Web Console on RHEL provides a stable and secure foundation for your workload. This guide covers the installation, access, and operational considerations.
 
 ## Prerequisites
 
-- RHEL with a valid subscription or CentOS Stream 9
+- RHEL 9 with a valid Red Hat Subscription Manager or Red Hat Satellite subscription
+- BaseOS and AppStream repositories enabled
 - Root or sudo access
 - A terminal session
 
-## Step 2: Configure the Service
+## Step 1: Install RHEL Image Builder
 
-Edit the configuration file to match your environment:
-
-```bash
-# Open the configuration file
-
-sudo vi /etc/<service>/config.conf
-```
-
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Install the packages required for RHEL Image Builder and the Cockpit web console integration:
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Install RHEL Image Builder and the Cockpit integration
+sudo dnf install osbuild-composer composer-cli cockpit-composer
 ```
 
-## Step 3: Enable and Start the Service
+## Step 2: Enable and Start the Services
+
+Enable the Image Builder and Cockpit sockets. The services start automatically on first access.
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Enable RHEL Image Builder
+sudo systemctl enable --now osbuild-composer.socket
 
-# Start the service
-sudo systemctl start <service-name>
-
-# Check the status
-sudo systemctl status <service-name>
+# Enable the Cockpit web console
+sudo systemctl enable --now cockpit.socket
 ```
 
+If the system firewall is running, allow access to the Cockpit web console:
+
+```bash
+# Allow Cockpit for the current runtime and persistently
+sudo firewall-cmd --add-service=cockpit
+sudo firewall-cmd --add-service=cockpit --permanent
+```
+
+## Step 3: Access Image Builder in Cockpit
+
+Open the Cockpit web console at `https://localhost:9090/` from the RHEL system, or use the system hostname or IP address for remote access.
+
+Log in with an administrative user account, then select **Apps** and open **Image Builder**.
 
 ## Verification
 
 Confirm everything is working by checking the status and logs:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
+# Check Image Builder status
+sudo composer-cli status show
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# Check the sockets
+sudo systemctl status osbuild-composer.socket cockpit.socket
+
+# Review recent Image Builder logs
+journalctl -u osbuild-composer.service --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If Image Builder fails to start, check the logs with `journalctl -u osbuild-composer.service -e --no-pager`.
+- If Cockpit is not reachable remotely, verify that `cockpit.socket` is enabled and that the firewall allows the `cockpit` service.
+- Ensure all required packages are installed: `rpm -q osbuild-composer composer-cli cockpit-composer`.
 
 ## Conclusion
 
