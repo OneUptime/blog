@@ -15,13 +15,20 @@ RHEL ships with MariaDB by default, but you can install MySQL 8.0 from the offic
 ```bash
 # Download and install the MySQL repository package
 
-sudo dnf install -y https://dev.mysql.com/get/mysql80-community-release-el9-1.noarch.rpm
+sudo dnf install -y https://dev.mysql.com/get/mysql84-community-release-el9-4.noarch.rpm
+
+# Select the MySQL 8.0 repository instead of the default release series
+sudo dnf install -y dnf-plugins-core
+sudo dnf config-manager --disable mysql-8.4-lts-community
+sudo dnf config-manager --disable mysql-tools-8.4-lts-community
+sudo dnf config-manager --enable mysql80-community
+sudo dnf config-manager --enable mysql-tools-community
 
 # Verify the repository is enabled
 sudo dnf repolist | grep mysql
 
-# Disable the default MariaDB module if it conflicts
-sudo dnf module disable -y mariadb
+# On RHEL 8 only, disable the default MySQL module if it masks Oracle packages:
+# sudo dnf module disable -y mysql
 ```
 
 ## Install MySQL 8.0
@@ -103,7 +110,7 @@ port = 3306
 
 # InnoDB settings
 innodb_buffer_pool_size = 1G
-innodb_log_file_size = 256M
+innodb_redo_log_capacity = 512M
 innodb_flush_log_at_trx_commit = 1
 
 # Logging
@@ -141,7 +148,7 @@ sudo firewall-cmd --reload
 mysql -u root -p -e "
 SELECT VERSION();
 SHOW DATABASES;
-SHOW VARIABLES LIKE 'default_authentication_plugin';
+SELECT user, host, plugin FROM mysql.user WHERE user IN ('root', 'appuser');
 SHOW VARIABLES LIKE 'innodb_buffer_pool_size';
 "
 ```
@@ -151,7 +158,7 @@ SHOW VARIABLES LIKE 'innodb_buffer_pool_size';
 If older clients cannot connect due to `caching_sha2_password`:
 
 ```bash
-# Create a user with the older mysql_native_password plugin
+# Create a user with the older, deprecated mysql_native_password plugin
 mysql -u root -p -e "
 CREATE USER 'legacyuser'@'%' IDENTIFIED WITH mysql_native_password BY 'Legacy!Pass#123';
 GRANT ALL PRIVILEGES ON appdb.* TO 'legacyuser'@'%';
@@ -159,4 +166,4 @@ FLUSH PRIVILEGES;
 "
 ```
 
-MySQL 8.0 on RHEL gives you access to the latest MySQL features while running on a stable, supported enterprise platform.
+MySQL 8.0 on RHEL gives you access to MySQL 8.0 features while running on a stable, supported enterprise platform.
