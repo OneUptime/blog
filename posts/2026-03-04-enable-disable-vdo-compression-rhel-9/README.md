@@ -14,7 +14,7 @@ VDO on RHEL 9 provides both deduplication and compression as separate, independe
 
 - A RHEL 9 system with root or sudo access
 - An existing LVM-VDO volume
-- The `lvm2` and `kmod-kvdo` packages installed
+- The `lvm2`, `kmod-kvdo`, and `vdo` packages installed
 
 ## Understanding VDO Compression
 
@@ -49,10 +49,10 @@ States:
 
 ## Step 2: Disable Compression
 
-To disable compression on an existing VDO volume:
+To disable compression on an existing VDO pool logical volume:
 
 ```bash
-sudo lvchange --compression n vg_vdo/lv_vdo
+sudo lvchange --compression n vg_vdo/vpool0
 ```
 
 Verify:
@@ -68,7 +68,7 @@ The change takes effect immediately. Existing compressed data remains compressed
 To re-enable compression:
 
 ```bash
-sudo lvchange --compression y vg_vdo/lv_vdo
+sudo lvchange --compression y vg_vdo/vpool0
 ```
 
 Verify:
@@ -98,7 +98,7 @@ sudo lvcreate --type vdo --name lv_nodedup --size 100G --virtualsize 150G \
 Or disable deduplication on an existing volume:
 
 ```bash
-sudo lvchange --deduplication n vg_vdo/lv_vdo
+sudo lvchange --deduplication n vg_vdo/vpool0
 ```
 
 ## When to Disable Compression
@@ -108,7 +108,7 @@ sudo lvchange --deduplication n vg_vdo/lv_vdo
 If your data is already compressed (ZIP, GZIP, JPEG, MP4, encrypted), VDO compression adds CPU overhead without reducing size:
 
 ```bash
-sudo lvchange --compression n vg_vdo/lv_media
+sudo lvchange --compression n vg_vdo/vpool_media
 ```
 
 ### CPU-Constrained Systems
@@ -116,7 +116,7 @@ sudo lvchange --compression n vg_vdo/lv_media
 On systems where CPU resources are limited and storage I/O is not the bottleneck:
 
 ```bash
-sudo lvchange --compression n vg_vdo/lv_vdo
+sudo lvchange --compression n vg_vdo/vpool0
 ```
 
 ### Latency-Sensitive Workloads
@@ -128,7 +128,7 @@ For workloads that require the lowest possible write latency, disabling compress
 Encrypted data appears random and does not compress. Compression adds overhead with no benefit:
 
 ```bash
-sudo lvchange --compression n vg_vdo/lv_encrypted_data
+sudo lvchange --compression n vg_vdo/vpool_encrypted_data
 ```
 
 ## When to Keep Compression Enabled
@@ -163,7 +163,7 @@ sudo vdostats --verbose /dev/mapper/vg_vdo-vpool | grep -i compress
 
 Key metrics:
 - **compressed fragments written**: Blocks that were compressed
-- **compressed blocks in use**: Current compressed block count
+- **compressed blocks written**: Physical blocks of compressed data written since the VDO volume was last restarted
 
 ### Compare With and Without Compression
 
@@ -178,7 +178,7 @@ sudo vdostats --human-readable
 2. Disable compression and write new data:
 
 ```bash
-sudo lvchange --compression n vg_vdo/lv_vdo
+sudo lvchange --compression n vg_vdo/vpool0
 # Write data, then check
 
 sudo vdostats --human-readable
@@ -187,7 +187,7 @@ sudo vdostats --human-readable
 3. Re-enable and compare:
 
 ```bash
-sudo lvchange --compression y vg_vdo/lv_vdo
+sudo lvchange --compression y vg_vdo/vpool0
 ```
 
 ### Benchmark Impact
@@ -200,14 +200,14 @@ sudo fio --name=write_test --directory=/vdo-data --rw=write --bs=64K \
   --size=2G --numjobs=1 --runtime=30 --time_based --group_reporting
 
 # Disable compression
-sudo lvchange --compression n vg_vdo/lv_vdo
+sudo lvchange --compression n vg_vdo/vpool0
 
 # Without compression
 sudo fio --name=write_test --directory=/vdo-data --rw=write --bs=64K \
   --size=2G --numjobs=1 --runtime=30 --time_based --group_reporting
 
 # Re-enable
-sudo lvchange --compression y vg_vdo/lv_vdo
+sudo lvchange --compression y vg_vdo/vpool0
 ```
 
 ## Configuration Combinations
