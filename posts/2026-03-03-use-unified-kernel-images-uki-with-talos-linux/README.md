@@ -8,7 +8,7 @@ Description: Learn how Talos Linux uses Unified Kernel Images for secure, tamper
 
 ---
 
-Unified Kernel Images (UKI) represent a modern approach to Linux booting that bundles the kernel, initramfs, kernel command line, and other boot components into a single signed EFI binary. Talos Linux has adopted UKI as its preferred boot method on UEFI systems, bringing significant security and reliability improvements to Kubernetes node booting.
+Unified Kernel Images (UKI) represent a modern approach to Linux booting that bundles the kernel, initramfs, kernel command line, and other boot components into a single signed EFI binary. Starting with Talos Linux 1.10, new UEFI installations use `systemd-boot` with UKIs by default, bringing significant security and reliability improvements to Kubernetes node booting.
 
 This guide explains what UKI is, how Talos Linux uses it, and how you can leverage it in your deployments.
 
@@ -45,7 +45,7 @@ This single binary is placed on the EFI System Partition and can be directly exe
 
 ## How Talos Linux Uses UKI
 
-Talos Linux generates UKI binaries during installation and upgrades. When you install Talos on a UEFI system, the installer creates UKI binaries for both the A and B boot slots:
+Talos Linux generates UKI binaries during installation and upgrades on systems using the `systemd-boot` bootloader. When you install Talos 1.10 or later on a UEFI system, the installer creates UKI binaries for both the A and B boot slots:
 
 ```text
 /boot/EFI/Linux/
@@ -58,7 +58,7 @@ systemd-boot discovers these automatically based on their location in the `EFI/L
 ```bash
 # View the UKI files on a running Talos system
 
-talosctl ls /boot/EFI/Linux/ --nodes <NODE_IP>
+talosctl list /boot/EFI/Linux/ --nodes <NODE_IP>
 
 # Check which one is currently active
 talosctl read /proc/cmdline --nodes <NODE_IP>
@@ -96,9 +96,9 @@ UKI works with TPM (Trusted Platform Module) measured boot. Each component of th
 
 ```bash
 # TPM PCR measurements for UKI components:
-# PCR 11: Unified kernel image
-# PCR 12: Kernel command line
-# PCR 13: System extensions
+# PCR 11: UKI sections and Talos boot phases
+# PCR 12: Overridden kernel command line and configuration extensions
+# PCR 13: System extension images for the initrd
 ```
 
 This enables disk encryption keys to be sealed to specific boot configurations, ensuring that the disk can only be decrypted when the system boots with the expected UKI.
@@ -109,15 +109,15 @@ If you need a custom UKI for your Talos deployment (for example, with additional
 
 ```bash
 # Build a custom UKI with extra extensions
-docker run --rm -v $(pwd)/_out:/out \
-  ghcr.io/siderolabs/imager:v1.9.0 metal \
+docker run --rm -v $(pwd)/_out:/out -v /dev:/dev --privileged \
+  ghcr.io/siderolabs/imager:v1.11.0 metal \
   --arch amd64 \
   --system-extension-image ghcr.io/siderolabs/iscsi-tools:v0.1.4 \
   --system-extension-image ghcr.io/siderolabs/intel-ucode:20231114 \
   --extra-kernel-arg net.ifnames=0
 ```
 
-The imager produces a UKI-based image by default for UEFI targets. The resulting ISO or raw image contains the UKI binary on the EFI System Partition.
+For Talos 1.10 and later, the imager produces a UKI-based image by default for UEFI targets. The resulting ISO or raw image contains the UKI binary on the EFI System Partition.
 
 You can also use the Talos Image Factory for an easier approach:
 
@@ -150,7 +150,7 @@ The upgrade process:
 
 ```bash
 # After upgrade, verify the active boot entry
-talosctl ls /boot/EFI/Linux/ --nodes <NODE_IP>
+talosctl list /boot/EFI/Linux/ --nodes <NODE_IP>
 
 # Check the running version
 talosctl version --nodes <NODE_IP>
@@ -160,19 +160,18 @@ talosctl version --nodes <NODE_IP>
 
 To use UKI with UEFI Secure Boot:
 
-### Option 1: Talos Default Keys
+### Option 1: Sidero Labs Secure Boot Images
 
-Talos Linux ships with its own signing keys. To use them with Secure Boot:
+Sidero Labs provides Talos Secure Boot images signed with the Sidero Labs Secure Boot key through the Talos Image Factory. To use them with Secure Boot:
 
-1. Enter UEFI firmware setup
-2. Go to Secure Boot key management
-3. Enroll the Talos Linux signing certificate
-4. Enable Secure Boot
+1. Enable Secure Boot in UEFI firmware setup
+2. Put the firmware in setup mode for the first boot
+3. Boot a Secure Boot ISO from the Talos Image Factory
+4. Let the ISO bootloader enroll the keys, or use the `Enroll Secure Boot keys: auto` boot menu entry if needed
 
 ```bash
-# Talos provides its signing certificates in the release
-# Download the certificate for enrollment
-wget https://github.com/siderolabs/talos/releases/download/v1.9.0/talos-uki-signing-cert.pem
+# Example Secure Boot installer image for Talos v1.11.0
+factory.talos.dev/installer-secureboot/376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba:v1.11.0
 ```
 
 ### Option 2: Custom Signing Keys
@@ -180,23 +179,18 @@ wget https://github.com/siderolabs/talos/releases/download/v1.9.0/talos-uki-sign
 For organizations that manage their own PKI:
 
 ```bash
-# Generate your own signing keys
-openssl req -new -x509 -newkey rsa:2048 \
-  -keyout uki-signing.key \
-  -out uki-signing.crt \
-  -days 3650 \
-  -nodes \
-  -subj "/CN=My Organization UKI Signing Key"
+# Generate your own UKI signing key and PCR signing key
+talosctl gen secureboot uki --common-name "My Organization UKI Signing Key"
+talosctl gen secureboot pcr
+talosctl gen secureboot database
 
 # Build a Talos image signed with your keys
-docker run --rm \
+docker run --rm -t \
+  -v $(pwd)/_out:/secureboot:ro \
   -v $(pwd)/_out:/out \
-  -v $(pwd)/uki-signing.key:/keys/uki-signing.key \
-  -v $(pwd)/uki-signing.crt:/keys/uki-signing.crt \
-  ghcr.io/siderolabs/imager:v1.9.0 metal \
-  --arch amd64 \
-  --uki-signing-key-path /keys/uki-signing.key \
-  --uki-signing-cert-path /keys/uki-signing.crt
+  -v /dev:/dev --privileged \
+  ghcr.io/siderolabs/imager:v1.11.0 secureboot-metal \
+  --arch amd64
 ```
 
 Then enroll your custom certificate in the UEFI firmware.
@@ -207,8 +201,8 @@ UKI is not limited to x86_64. Talos Linux supports UKI on ARM64 UEFI systems:
 
 ```bash
 # Build ARM64 UKI image
-docker run --rm -v $(pwd)/_out:/out \
-  ghcr.io/siderolabs/imager:v1.9.0 metal \
+docker run --rm -v $(pwd)/_out:/out -v /dev:/dev --privileged \
+  ghcr.io/siderolabs/imager:v1.11.0 metal \
   --arch arm64
 ```
 
@@ -252,7 +246,7 @@ This is useful for verifying that the correct kernel parameters and components a
 
 ```bash
 # Check that the UKI is in the correct directory
-talosctl ls /boot/EFI/Linux/ --nodes <NODE_IP>
+talosctl list /boot/EFI/Linux/ --nodes <NODE_IP>
 
 # Verify the file has the correct extension (.efi)
 # systemd-boot only auto-discovers .efi files in EFI/Linux/
@@ -279,7 +273,7 @@ pesign -S -i talos-A.efi
 
 # If fallback does not work, boot from USB
 # Check the UKI files on the ESP
-talosctl ls /boot/EFI/Linux/ --insecure --nodes <NODE_IP>
+talosctl list /boot/EFI/Linux/ --insecure --nodes <NODE_IP>
 ```
 
 ## Future of UKI in Talos Linux
@@ -293,4 +287,4 @@ The UKI approach aligns well with Talos Linux's philosophy of immutability and s
 
 ## Conclusion
 
-Unified Kernel Images bring a meaningful security improvement to the Talos Linux boot process. By bundling all boot components into a single signed binary, UKI eliminates several classes of boot-time attacks and simplifies the verification chain. For UEFI systems, UKI is the recommended boot method, and Talos Linux makes it the default. Whether you are running a small cluster or a large fleet, the security and reliability benefits of UKI make it worth understanding and using.
+Unified Kernel Images bring a meaningful security improvement to the Talos Linux boot process. By bundling all boot components into a single signed binary, UKI eliminates several classes of boot-time attacks and simplifies the verification chain. For new UEFI installations on Talos 1.10 and later, UKI is the default boot method. Whether you are running a small cluster or a large fleet, the security and reliability benefits of UKI make it worth understanding and using.
