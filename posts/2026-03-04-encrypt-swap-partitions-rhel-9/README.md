@@ -52,7 +52,8 @@ free -h | grep Swap
 ### Step 3: Configure Encrypted Swap in crypttab
 
 ```bash
-# Get the device path or UUID of the swap partition
+# Get a stable device path for the swap partition
+# Do not use the swap UUID here; mkswap recreates it on the encrypted device
 sudo blkid | grep swap
 
 # Add entry to /etc/crypttab for random-key encrypted swap
@@ -98,6 +99,7 @@ sudo cryptsetup status swap_encrypted
 ## Method 2: LUKS-Encrypted Swap (Persistent)
 
 If you need swap that supports hibernation (suspend-to-disk), you need a persistent LUKS-encrypted swap partition because the system must be able to read the swap data on resume.
+You must also configure your boot loader and initramfs resume settings for your system; random-key encrypted swap cannot be used for hibernation because the key changes on every boot.
 
 ### Step 1: Create LUKS Swap Partition
 
@@ -139,6 +141,7 @@ echo "swap_encrypted UUID=YOUR-UUID-HERE /root/swap.keyfile luks" | \
     sudo tee -a /etc/crypttab
 
 # Add to /etc/fstab
+# Comment out any old raw swap entry first
 echo "/dev/mapper/swap_encrypted none swap defaults 0 0" | \
     sudo tee -a /etc/fstab
 ```
@@ -152,7 +155,7 @@ sudo systemctl reboot
 
 ## Method 3: Encrypted Swap with LVM
 
-If your system uses LVM, you can encrypt the entire volume group and swap is automatically protected:
+If your system uses LVM inside an already encrypted LUKS device, a swap logical volume in that volume group is protected by the same encryption:
 
 ```bash
 # If root is already on LUKS+LVM, just create a swap LV
