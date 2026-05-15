@@ -36,7 +36,7 @@ Key columns:
 |--------|-------------|
 | `r` | Runnable processes (running or waiting for CPU time) |
 | `b` | Processes blocked waiting for I/O |
-| `swpd` | Virtual memory used (swap) |
+| `swpd` | Swap memory used |
 | `free` | Free memory |
 | `buff` | Buffer cache |
 | `cache` | Page cache |
@@ -116,6 +116,7 @@ sudo systemctl edit sysstat-collect.timer
 
 ```ini
 [Timer]
+OnCalendar=
 OnCalendar=*:00/2
 ```
 
