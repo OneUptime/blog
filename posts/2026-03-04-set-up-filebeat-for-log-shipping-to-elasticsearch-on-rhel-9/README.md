@@ -8,42 +8,63 @@ Description: Step-by-step guide on set up filebeat for log shipping to elasticse
 
 ---
 
-Setting up Filebeat for Log Shipping to Elasticsearch on RHEL requires proper planning and configuration. This guide walks through each step from initial installation to verification.
+Setting up Filebeat for Log Shipping to Elasticsearch on RHEL requires proper planning and configuration. This guide walks through each step from configuration to verification.
 
 ## Prerequisites
 
 - RHEL with a valid subscription or CentOS Stream 9
 - Root or sudo access
 - A terminal session
+- Filebeat installed from the Elastic RPM package or YUM repository
+- Access to an Elasticsearch endpoint and credentials or an API key
 
-## Step 2: Configure the Service
+## Step 2: Configure Filebeat
 
 Edit the configuration file to match your environment:
 
 ```bash
 # Open the configuration file
 
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/filebeat/filebeat.yml
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include the log input paths, the Elasticsearch endpoint, authentication settings, and logging options.
+
+```yaml
+filebeat.inputs:
+- type: filestream
+  id: rhel-system-logs
+  enabled: true
+  paths:
+    - /var/log/*.log
+
+output.elasticsearch:
+  hosts: ["https://elasticsearch.example.com:9200"]
+  api_key: "YOUR_API_KEY"
+```
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Test the configuration
+sudo filebeat test config -e
+
+# Test the Elasticsearch output
+sudo filebeat test output -e
+
+# Restart Filebeat to apply changes
+sudo systemctl restart filebeat
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable filebeat
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start filebeat
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status filebeat
 ```
 
 
@@ -53,16 +74,16 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status filebeat
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u filebeat.service --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If Filebeat fails to start, check the logs with `journalctl -u filebeat.service -e --no-pager`.
+- Ensure the Filebeat package is installed: `rpm -q filebeat`.
 
 ## Conclusion
 
