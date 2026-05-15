@@ -15,13 +15,15 @@ Chef InSpec is a testing framework that lets you write human-readable compliance
 ```bash
 # Download and install InSpec
 
-curl -L https://omnitruck.chef.io/install.sh | bash -s -- -P inspec
+curl -L "https://chefdownload-commercial.chef.io/install.sh?license_id=<LICENSE_ID>" | \
+  sudo bash -s -- -P inspec
 
 # Verify the installation
 inspec version
 
-# Accept the license (required for first run)
+# Accept the EULA and provide a Chef InSpec license key
 export CHEF_LICENSE=accept
+export CHEF_LICENSE_KEY=<LICENSE_KEY>
 ```
 
 ## Get the RHEL STIG InSpec Profile
@@ -30,11 +32,11 @@ The MITRE SAF team publishes InSpec profiles on GitHub:
 
 ```bash
 # Clone the RHEL STIG InSpec profile
-git clone https://github.com/mitre/redhat-enterprise-linux-9-stig-baseline.git \
+git clone --branch v2.4.0 https://github.com/mitre/redhat-enterprise-linux-9-stig-baseline.git \
   /opt/rhel9-stig-inspec
 
 # Or use the profile directly from GitHub without cloning
-inspec exec https://github.com/mitre/redhat-enterprise-linux-9-stig-baseline/archive/main.tar.gz \
+inspec exec https://github.com/mitre/redhat-enterprise-linux-9-stig-baseline/archive/refs/tags/v2.4.0.tar.gz \
   --reporter cli json:/tmp/stig-results.json
 ```
 
