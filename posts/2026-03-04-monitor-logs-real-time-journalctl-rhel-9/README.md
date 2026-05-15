@@ -23,10 +23,16 @@ Monitor system logs in real time using journalctl -f on RHEL 9 for live troubles
 Ensure the relevant packages are installed:
 
 ```bash
-sudo dnf install -y rsyslog systemd
+rpm -q systemd rsyslog
 ```
 
-rsyslog and systemd-journald ship by default on RHEL 9.
+`systemd` provides `systemd-journald` and `journalctl`. If `rsyslog` is missing and you need `/var/log/messages` or syslog forwarding, install it:
+
+```bash
+sudo dnf install -y rsyslog
+```
+
+rsyslog and systemd-journald are included in a typical RHEL 9 installation.
 
 ## Step 2 - Understand the Logging Architecture
 
@@ -37,9 +43,21 @@ RHEL 9 uses two logging systems:
 
 The two work together: journald collects everything, and rsyslog can read from the journal or receive messages directly via the syslog socket.
 
-## Step 3 - Apply the Configuration
+## Step 3 - Monitor Logs in Real Time
 
-To monitor logs in real time with journalctl -f, you need to edit the appropriate configuration files. The main files are:
+To monitor all journal logs in real time, run:
+
+```bash
+sudo journalctl -f
+```
+
+You can also follow logs for a specific systemd unit:
+
+```bash
+sudo journalctl -u rsyslog -f
+```
+
+No configuration change is required just to use `journalctl -f`. If you are changing log storage, forwarding, or rsyslog rules, the main files are:
 
 - `/etc/rsyslog.conf` and `/etc/rsyslog.d/*.conf` for rsyslog
 - `/etc/systemd/journald.conf` for journald
@@ -75,8 +93,11 @@ If your setup involves remote logging, open the necessary ports:
 
 ```bash
 sudo firewall-cmd --permanent --add-port=514/tcp
+sudo firewall-cmd --permanent --add-port=514/udp
 sudo firewall-cmd --reload
 ```
+
+Use the TCP or UDP port that matches your rsyslog remote logging configuration.
 
 ## Troubleshooting
 
