@@ -31,37 +31,48 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y logrotate
 ```
 
 ## Step 2: Install Required Packages
 
+If RabbitMQ is not already installed, configure the official RabbitMQ and Erlang RPM repositories for your RHEL version, then install the server package:
+
 ```bash
-sudo dnf install -y <package-name>
+sudo dnf install -y rabbitmq-server
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+rpm -qi rabbitmq-server
 ```
 
 ## Step 3: Configure the Service
 
-Create or edit the main configuration file:
+Enable the RabbitMQ management plugin:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo rabbitmq-plugins enable rabbitmq_management
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+The management UI uses port `15672` by default. If you need to set it explicitly, create or edit the main RabbitMQ configuration file:
+
+```bash
+sudo vi /etc/rabbitmq/rabbitmq.conf
+```
+
+Add the management listener setting:
+
+```ini
+management.tcp.port = 15672
+```
 
 ## Step 4: Start and Enable the Service
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo systemctl enable --now rabbitmq-server
+sudo systemctl status rabbitmq-server
 ```
 
 ## Step 5: Verify the Configuration
@@ -69,21 +80,28 @@ sudo systemctl status <service>
 Test the setup:
 
 ```bash
-sudo <service> --test
+sudo rabbitmq-diagnostics -q ping
+sudo rabbitmq-diagnostics -s listeners
 ```
 
 Check the logs for any errors:
 
 ```bash
-journalctl -u <service> -f
+journalctl -u rabbitmq-server -f
+```
+
+Open the management UI from the server or an allowed client:
+
+```text
+http://localhost:15672/
 ```
 
 ## Step 6: Configure Firewall Rules
 
-If the service needs network access:
+If the management UI needs network access from another host, open the management UI port:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo firewall-cmd --permanent --add-port=15672/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -92,8 +110,8 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+systemctl show rabbitmq-server --property=MemoryCurrent
+top -p $(pidof beam.smp)
 ```
 
 ## Security Considerations
@@ -107,9 +125,10 @@ top -p $(pidof <service>)
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
+1. **Service fails to start**: Check `journalctl -u rabbitmq-server -xe` for error messages
 2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
 3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
+4. **Remote login with guest fails**: The default `guest` user can only connect from localhost. Create a separate user for remote management access.
 
 ## Conclusion
 
