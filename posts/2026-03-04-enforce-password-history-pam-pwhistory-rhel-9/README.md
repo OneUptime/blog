@@ -25,27 +25,46 @@ graph TD
 
 ## Enabling pam_pwhistory
 
-On RHEL, the cleanest way to add pam_pwhistory is through the PAM configuration. If you are using authselect, you can create a custom profile or add it to the existing one.
+On RHEL, the cleanest way to add pam_pwhistory is through authselect. Newer RHEL 9 systems can enable the module with the built-in authselect feature; otherwise, create a custom profile rather than editing the generated files in `/etc/pam.d` directly.
 
 ### Check the current password stack
 
 ```bash
-# Look at the password section of system-auth
+# Look at the password sections managed by authselect
 
 grep "^password" /etc/pam.d/system-auth
+grep "^password" /etc/pam.d/password-auth
 ```
 
 ### Configure pam_pwhistory via authselect custom profile
 
-```bash
-# Create a custom profile if you do not have one
-sudo authselect create-profile myorg --base-on sssd
+If your authselect version supports the feature, enable it directly:
 
-# Edit the system-auth template
-sudo vi /etc/authselect/custom/myorg/system-auth
+```bash
+sudo authselect enable-feature with-pwhistory
+sudo authselect apply-changes
 ```
 
-Add the pam_pwhistory line in the password section, before pam_unix:
+Then set the policy in `/etc/security/pwhistory.conf`:
+
+```bash
+remember = 12
+enforce_for_root
+retry = 3
+```
+
+If the feature is not available, use a custom profile:
+
+```bash
+# Create a custom profile if you do not have one
+sudo authselect create-profile myorg -b sssd
+
+# Edit the system-auth and password-auth templates
+sudo vi /etc/authselect/custom/myorg/system-auth
+sudo vi /etc/authselect/custom/myorg/password-auth
+```
+
+Add the pam_pwhistory line in the password section, before pam_unix in both templates:
 
 ```bash
 password    requisite     pam_pwquality.so retry=3
@@ -73,13 +92,13 @@ sudo authselect select custom/myorg with-faillock --force
 
 The `remember` value determines how many old passwords are stored. Common compliance requirements:
 
-- **CIS Benchmark**: remember=24
+- **CIS Benchmark for RHEL 9 profiles**: remember=5 or greater
 - **PCI DSS**: remember=4
 - **STIG**: remember=5
 
 ```bash
-# For CIS compliance
-password    required    pam_pwhistory.so remember=24 use_authtok enforce_for_root
+# For CIS or STIG compliance on RHEL 9
+password    required    pam_pwhistory.so remember=5 use_authtok enforce_for_root
 ```
 
 ## Understanding the opasswd File
@@ -173,7 +192,7 @@ By default, pam_pwhistory does not apply to root. Adding `enforce_for_root` chan
 password    required    pam_pwhistory.so remember=12 use_authtok enforce_for_root
 ```
 
-Without this option, root can set any password regardless of history. Most compliance frameworks require this setting.
+Without this option, root can set any password regardless of history. Enable it when your baseline requires root password changes to follow the same history rule.
 
 ## Troubleshooting
 
@@ -183,15 +202,15 @@ Check the module order. pam_pwhistory must come before pam_unix in the password 
 
 ```bash
 grep "^password" /etc/pam.d/system-auth
+grep "^password" /etc/pam.d/password-auth
 ```
 
 ### "Password has been already used" even for a new password
 
-This can happen if the hash algorithm changed. Check that both pam_pwhistory and pam_unix use the same hash algorithm:
+Check the user's entry in the configured history file. pam_pwhistory compares the proposed password against hashes already stored in `/etc/security/opasswd`, so a stale or unexpected history entry can still trigger the rejection:
 
 ```bash
-# Verify the hashing algorithm in use
-grep ENCRYPT_METHOD /etc/login.defs
+sudo grep '^testuser:' /etc/security/opasswd
 ```
 
 ### opasswd file is empty
