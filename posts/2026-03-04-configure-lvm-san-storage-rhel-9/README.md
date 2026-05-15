@@ -28,7 +28,7 @@ sudo cat /sys/class/fc_host/host*/port_state
 You should see `Online` for each HBA port. Scan for new LUNs:
 
 ```bash
-sudo rescan-scsi-bus.sh
+sudo rescan-scsi-bus.sh -a
 ```
 
 Or manually trigger a rescan:
@@ -58,7 +58,7 @@ Install and enable multipath:
 
 ```bash
 sudo dnf install device-mapper-multipath -y
-sudo mpathconf --enable --with_multipathd y
+sudo mpathconf --enable
 ```
 
 Start the multipath daemon:
@@ -86,19 +86,26 @@ size=100G features='0' hwhandler='0' wp=rw
 
 ## Step 3: Configure LVM to Use Multipath Devices
 
-Edit the LVM configuration to filter out individual path devices and only use multipath devices:
+On RHEL 9, LVM uses `/etc/lvm/devices/system.devices` by default to control device visibility. Add the multipath devices that LVM should use:
+
+```bash
+sudo lvmdevices --adddev /dev/mapper/mpatha
+sudo lvmdevices --adddev /dev/mapper/mpathb
+```
+
+If you disable the LVM devices file feature and use `lvm.conf` filters instead, edit the LVM configuration to filter out individual path devices and only use multipath devices:
 
 ```bash
 sudo vi /etc/lvm/lvm.conf
 ```
 
-Find the `filter` line and set it to accept only multipath devices:
+Find the `filter` line in the `devices` section and set it to accept only multipath devices and any required local disks by persistent names:
 
 ```bash
-filter = [ "a|/dev/mapper/mpath.*|", "a|/dev/sda|", "r|.*|" ]
+filter = [ "a|/dev/mapper/mpath.*|", "a|/dev/disk/by-id/<boot-disk-id>|", "r|.*|" ]
 ```
 
-This accepts multipath devices and your local boot disk (`/dev/sda`) while rejecting everything else. This prevents LVM from seeing the same LUN through individual paths.
+This accepts multipath devices and your local boot disk while rejecting everything else. Avoid using kernel names such as `/dev/sda` in filters because they can change after reboot or hardware changes. Filtering prevents LVM from seeing the same LUN through individual paths.
 
 Also ensure the `preferred_names` setting prioritizes multipath names:
 
@@ -176,7 +183,7 @@ echo '/dev/vg_san/lv_data /data xfs defaults,_netdev 0 0' | sudo tee -a /etc/fst
 echo '/dev/vg_san/lv_logs /logs xfs defaults,_netdev 0 0' | sudo tee -a /etc/fstab
 ```
 
-The `_netdev` option tells the system that the filesystem depends on network access, which ensures it waits for SAN connectivity before attempting to mount.
+The `_netdev` option tells systemd to treat the mount as network-dependent, which is useful for network block devices such as iSCSI.
 
 ## Step 9: Test the Configuration
 
@@ -213,6 +220,8 @@ multipaths {
 }
 ```
 
+If these LUNs are visible to more than one host, keep alias definitions identical on each host or use WWID-based names instead.
+
 Reload multipath after changes:
 
 ```bash
@@ -221,7 +230,7 @@ sudo systemctl reload multipathd
 
 ### Set Appropriate Queue Depth
 
-For high-performance SAN workloads, adjust the SCSI queue depth:
+For high-performance SAN workloads, adjust the SCSI queue depth only after confirming the supported value with your storage vendor. Apply the setting to each path device that requires it:
 
 ```bash
 echo 64 | sudo tee /sys/block/sdb/device/queue_depth
@@ -264,4 +273,4 @@ sudo vgchange --systemid $(uname -n) vg_san
 
 ## Conclusion
 
-Configuring LVM on SAN storage in RHEL combines the flexibility of logical volume management with the reliability and performance of enterprise SAN infrastructure. By properly configuring multipath, LVM filters, and persistent mounts with the `_netdev` option, you create a robust storage stack that handles path failures gracefully and provides the volume management features you need for production workloads.
+Configuring LVM on SAN storage in RHEL combines the flexibility of logical volume management with the reliability and performance of enterprise SAN infrastructure. By properly configuring multipath, LVM device visibility, and persistent mounts with the `_netdev` option, you create a robust storage stack that handles path failures gracefully and provides the volume management features you need for production workloads.
