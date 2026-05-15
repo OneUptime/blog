@@ -58,7 +58,7 @@ global
     # Stats socket for runtime management
     stats socket /var/lib/haproxy/stats mode 660 level admin
 
-    # Use system SSL settings
+    # Set TLS defaults if you add HTTPS binds later
     ssl-default-bind-ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256
     ssl-default-bind-options ssl-min-ver TLSv1.2
 
@@ -198,7 +198,7 @@ backend web_back
 sudo firewall-cmd --permanent --add-service=http
 sudo firewall-cmd --reload
 
-# Configure SELinux to allow HAProxy to bind to ports
+# Configure SELinux to allow HAProxy to connect to backend ports
 sudo setsebool -P haproxy_connect_any on
 
 # Test the configuration
@@ -219,8 +219,11 @@ for i in $(seq 1 10); do
     curl -s http://localhost/ | grep "Server:"
 done
 
-# Check HAProxy logs
+# Check HAProxy service logs
 sudo journalctl -u haproxy -f
+
+# Check syslog for request logs sent through the log /dev/log directives
+sudo journalctl -t haproxy -f
 ```
 
 ## Troubleshooting
