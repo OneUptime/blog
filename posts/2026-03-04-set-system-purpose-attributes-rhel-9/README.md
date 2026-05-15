@@ -12,7 +12,7 @@ System purpose attributes are metadata you set on each RHEL system to describe w
 
 ## What Are System Purpose Attributes?
 
-RHEL supports three system purpose attributes:
+RHEL system purpose commonly uses three primary attributes:
 
 - **Role**: What the system does (e.g., Red Hat Enterprise Linux Server, Red Hat Enterprise Linux Workstation, Red Hat Enterprise Linux Compute Node)
 - **Service Level Agreement (SLA)**: The support level required (e.g., Premium, Standard, Self-Support)
@@ -35,9 +35,9 @@ flowchart TD
     E --> F[Best Matching Subscription Attached]
 ```
 
-## Setting System Purpose with syspurpose
+## Setting System Purpose with subscription-manager syspurpose
 
-RHEL includes the `syspurpose` tool as part of `subscription-manager`. Set attributes individually:
+On RHEL 9, system purpose is managed through the `subscription-manager syspurpose` subcommand. Set attributes individually:
 
 ```bash
 # Set the system role
@@ -111,37 +111,35 @@ This sets the attributes before the system is even registered, so the first auto
 
 ## Setting System Purpose During Registration
 
-You can also set these values as part of the registration command:
+You can also set these values before registration, then register the system:
 
 ```bash
-# Register and set system purpose in one command
+# Set purpose before registration
+sudo subscription-manager syspurpose role --set="Red Hat Enterprise Linux Server"
+sudo subscription-manager syspurpose service-level --set="Premium"
+sudo subscription-manager syspurpose usage --set="Production"
+
+# Register the system
 sudo subscription-manager register \
     --username=your_username \
-    --password=your_password \
-    --service-level=Premium \
-    --usage=Production
+    --password=your_password
 ```
 
-For activation key registration, configure the purpose attributes on the activation key in the Customer Portal or Satellite, and they will be applied automatically during registration.
+For activation key registration, configure the purpose attributes on the activation key in the Red Hat Hybrid Cloud Console or Satellite, and they will be applied automatically during registration.
 
 ## Setting Addons
 
-Beyond role, SLA, and usage, you can set addon attributes for systems that need specific product content:
-
-```bash
-# Set an addon
-sudo subscription-manager syspurpose addons --set="RHEL EUS"
-
-# Add multiple addons
-sudo subscription-manager syspurpose addons --set="RHEL EUS" --set="Smart Management"
-```
-
-To list addons:
+Beyond role, SLA, and usage, `subscription-manager syspurpose` also includes an `addons` attribute. Add-on values are specific to your organization and are used as system purpose metadata, not as a way to enable repositories:
 
 ```bash
 # Show current addons
 sudo subscription-manager syspurpose addons --show
+
+# List available addon values
+sudo subscription-manager syspurpose addons --list
 ```
+
+If your organization uses add-on values, set them with the syntax shown by `subscription-manager syspurpose addons --help` for your installed subscription-manager version.
 
 ## Removing System Purpose Attributes
 
@@ -170,7 +168,7 @@ It then selects the subscription that best matches all of these criteria. Withou
 
 ## System Purpose with Simple Content Access
 
-If your organization uses SCA, system purpose attributes are still useful for reporting and compliance tracking, even though explicit subscription attachment is not required. Setting purpose attributes helps you track:
+If your organization uses SCA, system purpose attributes are still useful for reporting and subscription usage analysis, even though explicit subscription attachment is not required and system purpose status is shown as disabled. Setting purpose attributes helps you track:
 
 - How many production vs. development systems you have
 - Which systems require Premium support
@@ -213,10 +211,10 @@ Or use the `redhat_subscription` module with purpose attributes:
 
 ## Viewing System Purpose in the Customer Portal
 
-After setting system purpose, the attributes are visible in the Red Hat Customer Portal:
+After setting system purpose, the attributes are visible in Red Hat subscription reporting and inventory tools:
 
-1. Log in to access.redhat.com
-2. Navigate to Subscriptions, then Systems
+1. Log in to the Red Hat Hybrid Cloud Console at console.redhat.com
+2. Navigate to the subscription inventory or subscriptions service views
 3. Find your system
 4. View the system details to see the purpose attributes
 
@@ -235,4 +233,4 @@ This is a simple JSON file. While you could edit it directly, using the `subscri
 
 ## Summary
 
-System purpose attributes are a small configuration step that pays off in better subscription matching and clearer reporting. Set the role, SLA, and usage on every system, whether through Kickstart, registration commands, or post-install configuration. Even with SCA enabled, these attributes help your organization understand its subscription landscape and ensure that systems get the right level of support.
+System purpose attributes are a small configuration step that pays off in better subscription matching and clearer reporting. Set the role, SLA, and usage on every system, whether through Kickstart, pre-registration commands, or post-install configuration. Even with SCA enabled, these attributes help your organization understand its subscription landscape and ensure that systems get the right level of support.
