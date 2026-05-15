@@ -161,12 +161,12 @@ sudo lvextend -i 4 -I 64k -L +100G data_vg/striped_lv
 sudo xfs_growfs /data
 ```
 
-The extension must use the same number of stripes as the original.
+Use the same number of stripes and stripe size for the extension if you want the new space to keep the same layout and performance characteristics as the original volume.
 
 ## Important Considerations
 
 - **No redundancy** - Striping alone provides no data protection. If any disk fails, all data is lost.
-- **Stripe count** - You cannot change the stripe count after creation.
+- **Stripe count** - Existing striped segments keep the stripe count they were created with.
 - **Equal disk sizes** - Disks should be the same size for even distribution.
 - **Backup strategy** - Always have backups for striped volumes.
 
