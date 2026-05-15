@@ -21,7 +21,7 @@ graph TB
     end
     subgraph "OpenShift"
         D[CRI-O Runtime]
-        E[Always rootless by default]
+        E[Non-root containers by default]
         F[Orchestrated with Kubernetes]
         G[SecurityContextConstraints]
     end
@@ -57,7 +57,7 @@ RUN sed -i 's/Listen 80/Listen 8080/' /etc/httpd/conf/httpd.conf
 
 EXPOSE 8080
 
-# Do NOT set USER to a specific UID - OpenShift will assign one
+# Set a numeric non-root USER; OpenShift may assign a different UID at runtime
 USER 1001
 
 CMD ["/usr/sbin/httpd", "-D", "FOREGROUND"]
@@ -67,7 +67,7 @@ EOF
 Key changes:
 - Group ownership set to `0` (root group) with group-write permissions
 - Listen on ports above 1024
-- Set USER to a non-root value
+- Set USER to a numeric non-root value
 
 ## Build and test locally
 ```bash
@@ -83,7 +83,7 @@ podman run --rm -u 1000650000:0 -p 8080:8080 my-app:openshift
 
 OpenShift needs to pull your image from a registry it can reach:
 
-## Log in to the OpenShift internal registry
+## Log in to the OpenShift internal registry route
 ```bash
 podman login -u $(oc whoami) -p $(oc whoami -t) default-route-openshift-image-registry.apps.cluster.example.com
 ```
@@ -106,7 +106,7 @@ podman push quay.io/myorg/my-app:latest
 Export your running Podman pod to YAML:
 
 ```bash
-podman kube generate my-app > my-app-k8s.yaml
+podman kube generate --type deployment --replicas 2 my-app > my-app-k8s.yaml
 ```
 
 Edit the YAML for OpenShift:
@@ -183,7 +183,7 @@ This section covers step 4: deploy to openshift.
 oc login https://api.cluster.example.com:6443
 ```
 
-## Create or switch to your project
+## Create your project
 ```bash
 oc new-project my-app-project
 ```
