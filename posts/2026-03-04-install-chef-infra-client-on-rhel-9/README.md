@@ -15,47 +15,56 @@ This guide provides step-by-step instructions for completing this task on RHEL. 
 - RHEL with a valid subscription or CentOS Stream 9
 - Root or sudo access
 - A terminal session
+- A Chef license ID
+- Chef Infra Server URL and node credentials
 
-## Step 1: Install Required Packages
+## Step 1: Install Chef Infra Client
 
 ```bash
 # Update the system first
-
 sudo dnf update -y
 
-# Install the required packages
-sudo dnf install -y <package-name>
+# Install curl if it is not already available
+sudo dnf install -y curl
+
+# Install the latest Chef Infra Client 19 or later
+curl -L "https://chefdownload-commercial.chef.io/install.sh?license_id=<LICENSE_ID>" | sudo bash -s -- -P chef-ice
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+Replace `<LICENSE_ID>` with your Chef license ID.
 
-## Step 2: Configure the Service
+## Step 2: Configure Chef Infra Client
 
-Edit the configuration file to match your environment:
+Create or edit the Chef Infra Client configuration file to match your environment:
 
 ```bash
 # Open the configuration file
-sudo vi /etc/<service>/config.conf
+sudo mkdir -p /etc/chef
+sudo vi /etc/chef/client.rb
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include the Chef Infra Server URL, node name, client key, and logging options.
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+chef_server_url 'https://chef.example.com/organizations/ORG_NAME'
+node_name 'rhel9-node.example.com'
+client_key '/etc/chef/client.pem'
+log_location STDOUT
 ```
 
-## Step 3: Enable and Start the Service
+Make sure the node's client key exists at the path configured in `client_key`.
+
+## Step 3: Run Chef Infra Client
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Check the installed version
+chef-client --version
 
-# Start the service
-sudo systemctl start <service-name>
+# Run Chef Infra Client
+sudo chef-client
 
-# Check the status
-sudo systemctl status <service-name>
+# Run Chef Infra Client with debug logging if needed
+sudo chef-client --log_level debug
 ```
 
 
@@ -64,18 +73,18 @@ sudo systemctl status <service-name>
 Confirm everything is working by checking the status and logs:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
+# Check the installed version
+chef-client --version
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# Run Chef Infra Client and review the command output
+sudo chef-client
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If Chef Infra Client fails to connect, verify `chef_server_url`, `node_name`, and `client_key` in `/etc/chef/client.rb`.
+- Ensure Chef Infra Client is installed: `chef-client --version`.
 
 ## Conclusion
 
-You have successfully completed the setup described in this guide. Remember to monitor the service and review logs regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
+You have successfully completed the setup described in this guide. Remember to monitor Chef Infra Client runs and review logs regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
