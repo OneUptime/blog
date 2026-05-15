@@ -15,7 +15,7 @@ Deploying Rails in production requires a proper application server and reverse p
 ```bash
 # Install Ruby, Nginx, and build dependencies
 
-sudo dnf module enable ruby:3.2 -y
+sudo dnf module enable ruby:3.3 -y
 sudo dnf install -y ruby ruby-devel rubygem-bundler nginx \
   gcc gcc-c++ make postgresql-devel nodejs
 ```
@@ -39,16 +39,16 @@ bundle config set --local without "development test"
 bundle install
 '
 
+# Generate a secret key
+SECRET_KEY_BASE=$(sudo -u deploy bash -c 'cd /var/www/railsapp && bundle exec rails secret')
+
 # Set up environment variables
-sudo -u deploy tee /var/www/railsapp/.env << 'ENVFILE'
+sudo -u deploy tee /var/www/railsapp/.env << ENVFILE
 RAILS_ENV=production
 RAILS_LOG_TO_STDOUT=1
-SECRET_KEY_BASE=your_generated_secret_key_base_here
+SECRET_KEY_BASE=$SECRET_KEY_BASE
 DATABASE_URL=postgresql://user:pass@localhost/railsapp_production
 ENVFILE
-
-# Generate a secret key
-sudo -u deploy bash -c 'cd /var/www/railsapp && bundle exec rails secret'
 ```
 
 ## Configure Puma
@@ -56,8 +56,8 @@ sudo -u deploy bash -c 'cd /var/www/railsapp && bundle exec rails secret'
 ```ruby
 # /var/www/railsapp/config/puma.rb
 
-# Bind to a Unix socket
-bind "unix:///var/www/railsapp/tmp/sockets/puma.sock"
+# Bind to localhost
+bind "tcp://127.0.0.1:3000"
 
 # Set the environment
 environment ENV.fetch("RAILS_ENV") { "production" }
@@ -96,7 +96,7 @@ User=deploy
 Group=deploy
 WorkingDirectory=/var/www/railsapp
 EnvironmentFile=/var/www/railsapp/.env
-ExecStart=/usr/local/bin/bundle exec puma -C config/puma.rb
+ExecStart=/usr/bin/bundle exec puma -C config/puma.rb
 ExecReload=/bin/kill -USR1 $MAINPID
 Restart=always
 RestartSec=5
@@ -107,7 +107,7 @@ WantedBy=multi-user.target
 UNIT
 
 # Create required directories
-sudo -u deploy mkdir -p /var/www/railsapp/tmp/{sockets,pids}
+sudo -u deploy mkdir -p /var/www/railsapp/tmp/pids
 sudo -u deploy mkdir -p /var/www/railsapp/log
 
 sudo systemctl daemon-reload
@@ -119,7 +119,7 @@ sudo systemctl enable --now puma
 ```bash
 sudo tee /etc/nginx/conf.d/railsapp.conf << 'CONF'
 upstream puma_backend {
-    server unix:/var/www/railsapp/tmp/sockets/puma.sock fail_timeout=0;
+    server 127.0.0.1:3000 fail_timeout=0;
 }
 
 server {
@@ -160,6 +160,9 @@ sudo nginx -t && sudo systemctl enable --now nginx
 ```bash
 sudo -u deploy bash -c '
 cd /var/www/railsapp
+set -a
+. ./.env
+set +a
 RAILS_ENV=production bundle exec rails db:migrate
 RAILS_ENV=production bundle exec rails assets:precompile
 '
