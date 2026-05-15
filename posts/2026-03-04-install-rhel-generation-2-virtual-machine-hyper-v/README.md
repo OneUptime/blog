@@ -34,7 +34,7 @@ Set-VMMemory -VMName "RHEL9-Server" -DynamicMemoryEnabled $true `
 
 ## Configure Secure Boot for Linux
 
-Generation 2 VMs have Secure Boot enabled by default with a Microsoft UEFI CA. You need to switch to the Microsoft UEFI Certificate Authority that supports Linux.
+Generation 2 VMs have Secure Boot enabled by default. You need to switch to the Microsoft UEFI Certificate Authority template that supports Linux.
 
 ```powershell
 # Set the Secure Boot template to support Linux
@@ -102,7 +102,7 @@ systemd-detect-virt
 # Output: microsoft
 
 # Verify network connectivity
-ip addr show eth0
+ip addr show
 
 # Register with Red Hat
 sudo subscription-manager register --username your_username --password your_password
