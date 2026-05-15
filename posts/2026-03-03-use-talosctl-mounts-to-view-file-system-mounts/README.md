@@ -20,29 +20,28 @@ To view all file system mounts on a node:
 talosctl mounts --nodes 192.168.1.10
 ```
 
-The output shows each mounted filesystem with its source, target, filesystem type, and mount options:
+The output shows each mounted filesystem with its node, source, disk usage, percent used, and mount point:
 
 ```text
-FILESYSTEM    SIZE       USED       AVAILABLE  PERCENT    MOUNTED ON
-/dev/sda6     50.0 GB    12.3 GB    37.7 GB    24%        /
-/dev/sda5     1.0 GB     200 MB     800 MB     20%        /system
-tmpfs         8.0 GB     256 MB     7.7 GB     3%         /run
+NODE           FILESYSTEM   SIZE(GB)   USED(GB)   AVAILABLE(GB)   PERCENT USED   MOUNTED ON
+192.168.1.10   /dev/sda6    50.00      12.30      37.70           24.60%         /var
+192.168.1.10   /dev/sda5    0.10       0.02       0.08            20.00%         /system/state
+192.168.1.10   tmpfs        8.00       0.26       7.74            3.25%          /run
 ```
 
 ## Understanding Talos Linux Partitions
 
-Talos Linux has a specific partition layout that is different from traditional Linux distributions. When you look at the mounts, you will see several Talos-specific partitions:
+Talos Linux has a specific partition layout that is different from traditional Linux distributions. When you look at discovered volumes and mounts, you will see several Talos-specific partitions:
 
 - **EFI**: The EFI system partition for UEFI boot
-- **BIOS**: The BIOS boot partition for legacy boot
-- **BOOT**: Contains the Talos boot assets
 - **META**: Stores metadata about the node
 - **STATE**: Contains the machine configuration and other persistent state
 - **EPHEMERAL**: The writable partition where Kubernetes data is stored
+- **BIOS** and **BOOT**: Legacy GRUB boot partitions that may appear on older or legacy-boot installations
 
 ```bash
-# View mounts to see the Talos partition layout
-talosctl mounts --nodes 192.168.1.10
+# View discovered volumes to see the Talos partition layout
+talosctl get discoveredvolumes --nodes 192.168.1.10
 ```
 
 The EPHEMERAL partition is particularly important because it holds containerd data, kubelet data, and etcd data (on control plane nodes). If this partition fills up, your node will have serious problems.
@@ -56,7 +55,7 @@ The most common reason to check mounts is to verify disk space:
 talosctl mounts --nodes 192.168.1.20
 ```
 
-Pay special attention to the PERCENT column. If any partition is above 80% usage, you should investigate and take action:
+Pay special attention to the PERCENT USED column. If any partition is above 80% usage, you should investigate and take action:
 
 ```bash
 # Look for high disk usage across all nodes
@@ -82,14 +81,14 @@ echo "Disk space check - $(date)"
 echo "========================="
 
 for node in $NODES; do
-  MOUNTS=$(talosctl mounts --nodes "$node" 2>/dev/null)
+  MOUNTS=$(talosctl mounts --nodes "$node" 2>/dev/null | tail -n +2)
 
   # Parse and check each mount point
   while IFS= read -r line; do
-    PERCENT=$(echo "$line" | awk '{print $5}' | tr -d '%')
+    PERCENT=$(echo "$line" | awk '{gsub(/%/, "", $6); print int($6)}')
 
     if [ -n "$PERCENT" ] && [ "$PERCENT" -ge "$THRESHOLD" ] 2>/dev/null; then
-      MOUNT_POINT=$(echo "$line" | awk '{print $6}')
+      MOUNT_POINT=$(echo "$line" | awk '{print $7}')
       echo "ALERT: Node $node - $MOUNT_POINT is ${PERCENT}% full"
     fi
   done <<< "$MOUNTS"
@@ -108,13 +107,13 @@ talosctl mounts --nodes 192.168.1.10 | grep tmpfs
 tmpfs mounts include:
 - `/run`: Runtime data for services
 - `/tmp`: Temporary files
-- Various Kubernetes secret and configmap mounts
+- Kubernetes secret mounts and other runtime tmpfs entries
 
 These mounts use RAM instead of disk, so they do not contribute to disk space usage. However, they do count against your node's memory.
 
 ## Checking Kubernetes Volume Mounts
 
-When Kubernetes pods use persistent volumes, those volumes show up in the node's mount list:
+When Kubernetes pods use filesystem-backed persistent volumes or local host paths, the underlying mounts may show up in the node's mount list:
 
 ```bash
 # View all mounts including Kubernetes volumes
@@ -124,10 +123,11 @@ talosctl mounts --nodes 192.168.1.20
 You might see entries like:
 
 ```text
-/dev/sdb1     100 GB     45 GB      55 GB      45%        /var/mnt/data
+NODE           FILESYSTEM   SIZE(GB)   USED(GB)   AVAILABLE(GB)   PERCENT USED   MOUNTED ON
+192.168.1.20   /dev/sdb1    100.00     45.00      55.00           45.00%         /var/mnt/data
 ```
 
-These are persistent volumes that pods are using for data storage.
+These are mounted storage paths that pods can use for data storage.
 
 ## Investigating Mount Issues
 
@@ -161,8 +161,9 @@ If an expected mount is missing:
 # Check the current mounts
 talosctl mounts --nodes 192.168.1.20
 
-# Check the machine configuration for expected mounts
-talosctl get machineconfig --nodes 192.168.1.20 -o yaml | grep -A10 disks
+# Check volume and mount status for expected mounts
+talosctl get volumestatus --nodes 192.168.1.20
+talosctl get mountstatus --nodes 192.168.1.20
 
 # Check kernel messages for mount errors
 talosctl dmesg --nodes 192.168.1.20 | grep -iE "mount|error|fail"
@@ -173,8 +174,8 @@ talosctl dmesg --nodes 192.168.1.20 | grep -iE "mount|error|fail"
 If a filesystem becomes read-only, it usually indicates a hardware problem:
 
 ```bash
-# Check mount options to see if anything is read-only
-talosctl mounts --nodes 192.168.1.20
+# Check /proc/mounts to see if anything is read-only
+talosctl read /proc/mounts --nodes 192.168.1.20 | grep -E "[[:space:]]ro([,[:space:]]|$)"
 
 # Check kernel messages for filesystem errors
 talosctl dmesg --nodes 192.168.1.20 | grep -iE "ext4|xfs|read.only|error"
@@ -200,23 +201,24 @@ The main difference is that control plane nodes have etcd data stored on the EPH
 
 ## Configuring Additional Mounts
 
-You can add additional disks and mount points through the machine configuration:
+You can add additional local storage through a `UserVolumeConfig` document in the machine configuration:
 
 ```yaml
-# Machine configuration for additional disk mounts
-machine:
-  disks:
-    - device: /dev/sdb
-      partitions:
-        - mountpoint: /var/mnt/storage
-          size: 0  # Use the entire disk
+# user-volume.patch.yaml
+apiVersion: v1alpha1
+kind: UserVolumeConfig
+name: storage
+provisioning:
+  diskSelector:
+    match: disk.transport == 'sata'
+  minSize: 100GB
 ```
 
 After applying this configuration:
 
 ```bash
 # Apply the configuration
-talosctl apply-config --nodes 192.168.1.20 --file updated-config.yaml
+talosctl --nodes 192.168.1.20 patch mc --patch @user-volume.patch.yaml
 
 # Verify the new mount appears
 talosctl mounts --nodes 192.168.1.20
@@ -243,12 +245,12 @@ for node in $NODES; do
   MOUNTS=$(talosctl mounts --nodes "$node" 2>/dev/null | tail -n +2)
 
   while IFS= read -r line; do
-    FS=$(echo "$line" | awk '{print $1}')
-    SIZE=$(echo "$line" | awk '{print $2}')
-    USED=$(echo "$line" | awk '{print $3}')
-    AVAIL=$(echo "$line" | awk '{print $4}')
-    PCT=$(echo "$line" | awk '{print $5}')
-    MOUNT=$(echo "$line" | awk '{print $6}')
+    FS=$(echo "$line" | awk '{print $2}')
+    SIZE=$(echo "$line" | awk '{print $3}')
+    USED=$(echo "$line" | awk '{print $4}')
+    AVAIL=$(echo "$line" | awk '{print $5}')
+    PCT=$(echo "$line" | awk '{print $6}')
+    MOUNT=$(echo "$line" | awk '{print $7}')
 
     if [ -n "$FS" ] && [ -n "$MOUNT" ]; then
       echo "$TIMESTAMP,$node,$MOUNT,$SIZE,$USED,$AVAIL,$PCT" >> "$LOG_FILE"
@@ -261,19 +263,19 @@ Run this via cron every hour to build a useful dataset for capacity planning.
 
 ## Combining Mounts with Disks
 
-For a complete storage picture, use `talosctl mounts` alongside `talosctl disks`:
+For a complete storage picture, use `talosctl mounts` alongside `talosctl get disks`:
 
 ```bash
 # Physical disk inventory
 echo "=== Physical Disks ==="
-talosctl disks --nodes 192.168.1.20
+talosctl get disks --nodes 192.168.1.20
 
 # Logical mount points
 echo "=== Mount Points ==="
 talosctl mounts --nodes 192.168.1.20
 ```
 
-The disks command shows you what hardware is available, while the mounts command shows how that hardware is being used.
+The disks resource shows you what hardware is available, while the mounts command shows how that hardware is being used.
 
 ## Best Practices
 
