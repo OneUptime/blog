@@ -16,85 +16,57 @@ Back up and restore PostgreSQL databases on RHEL using pg_dump and pg_restore. P
 
 - A RHEL system with a valid subscription or configured repositories
 - Root or sudo access
-- Sufficient disk space for database storage
+- Sufficient disk space for database backups
 
-## Step 1 - Install the Database Packages
-
-For PostgreSQL:
+## Step 1 - Install the PostgreSQL Packages
 
 ```bash
 sudo dnf install -y postgresql-server postgresql
+```
+
+Initialize the database cluster and start PostgreSQL:
+
+```bash
 sudo postgresql-setup --initdb
-sudo systemctl enable --now postgresql
+sudo systemctl enable --now postgresql.service
 ```
-
-For MariaDB:
-
-```bash
-sudo dnf install -y mariadb-server
-sudo systemctl enable --now mariadb
-sudo mysql_secure_installation
-```
-
-For MySQL 8.0:
-
-```bash
-sudo dnf install -y mysql-community-server
-sudo systemctl enable --now mysqld
-```
-
-Choose the appropriate commands for your database engine.
 
 ## Step 2 - Perform Initial Configuration
 
 Edit the main configuration file:
 
-- PostgreSQL: `/var/lib/pgsql/data/postgresql.conf` and `pg_hba.conf`
-- MariaDB/MySQL: `/etc/my.cnf.d/server.cnf`
+- PostgreSQL: `/var/lib/pgsql/data/postgresql.conf` and `/var/lib/pgsql/data/pg_hba.conf`
 
 Adjust memory settings, connection limits, and authentication methods to match your workload.
 
 ## Step 3 - Create Users and Databases
 
-For PostgreSQL:
-
 ```bash
-sudo -u postgres createuser myappuser
+sudo -u postgres psql -c "CREATE USER myappuser WITH PASSWORD 'secure-password';"
 sudo -u postgres createdb myappdb -O myappuser
 ```
 
-For MariaDB/MySQL:
+Use a strong password and store application credentials securely.
 
-```sql
-CREATE DATABASE myappdb;
-CREATE USER 'myappuser'@'localhost' IDENTIFIED BY 'secure-password';
-GRANT ALL PRIVILEGES ON myappdb.* TO 'myappuser'@'localhost';
-FLUSH PRIVILEGES;
-```
+## Step 4 - Back Up the Database
 
-## Step 4 - Configure Network Access
-
-If remote connections are needed, update the listen address and authentication rules, then open the firewall:
+Create a backup directory and dump the database in PostgreSQL's custom archive format:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=postgresql
-# or
-
-sudo firewall-cmd --permanent --add-service=mysql
-sudo firewall-cmd --reload
+sudo install -d -o postgres -g postgres -m 700 /var/lib/pgsql/backups
+sudo -u postgres pg_dump -F c -d myappdb -f /var/lib/pgsql/backups/myappdb.dump
 ```
 
-## Step 5 - Verify the Setup
+## Step 5 - Restore and Verify the Backup
 
-Connect to the database and run a test query:
+Restore the custom-format backup with `pg_restore` into a new database:
 
 ```bash
-# PostgreSQL
-psql -h localhost -U myappuser myappdb -c "SELECT version();"
-# MariaDB/MySQL
-mysql -u myappuser -p myappdb -e "SELECT VERSION();"
+sudo -u postgres createdb myappdb_restore -O myappuser
+sudo -u postgres pg_restore -d myappdb_restore /var/lib/pgsql/backups/myappdb.dump
+sudo -u postgres psql -d myappdb_restore -c "SELECT current_database();"
 ```
 
 ## Summary
 
-You have learned how to back up and restore postgresql databases. Always secure your database with strong passwords, restricted network access, and regular backups.
+You have learned how to back up and restore PostgreSQL databases. Always secure your database with strong passwords, restricted network access, and regular backups.
