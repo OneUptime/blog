@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, ActiveMQ, Message Broker, JMS, Java
 
-Description: Learn how to install and configure Apache ActiveMQ Classic on RHEL as a JMS-compliant message broker.
+Description: Learn how to install and configure Apache ActiveMQ Classic on RHEL as a Jakarta Messaging/JMS-compatible message broker.
 
 ---
 
@@ -23,10 +23,10 @@ java -version
 
 ```bash
 # Download ActiveMQ Classic
-curl -L https://downloads.apache.org/activemq/6.1.0/apache-activemq-6.1.0-bin.tar.gz \
+curl -L https://downloads.apache.org/activemq/6.2.5/apache-activemq-6.2.5-bin.tar.gz \
   -o /tmp/activemq.tar.gz
 sudo tar xzf /tmp/activemq.tar.gz -C /opt/
-sudo mv /opt/apache-activemq-6.1.0 /opt/activemq
+sudo mv /opt/apache-activemq-6.2.5 /opt/activemq
 
 # Create a system user
 sudo useradd -r -s /sbin/nologin activemq
@@ -53,10 +53,15 @@ Edit the main configuration file:
 ## Setting Up Authentication
 
 ```bash
-# Edit /opt/activemq/conf/jetty-realm.properties
-# Format: username: password, role
-# admin: admin123, admin
-# user: user123, user
+# Edit /opt/activemq/conf/users.properties
+# Format: username=password
+# admin=admin123
+# user=user123
+
+# Edit /opt/activemq/conf/groups.properties
+# Format: groupname=user1,user2
+# admins=admin
+# users=user
 ```
 
 ## Creating a systemd Service
