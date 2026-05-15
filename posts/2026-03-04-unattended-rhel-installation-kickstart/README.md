@@ -167,7 +167,7 @@ You can also run scripts before installation begins. This is less common but use
 %pre --log=/tmp/ks-pre.log
 # Pre-installation script - runs in the installer environment
 
-# Example: find the largest disk and write it to a file for partitioning
+# Example: find the largest disk and log it for review
 DISK=$(lsblk -dno NAME,SIZE | sort -k2 -h | tail -1 | awk '{print $1}')
 echo "Selected disk: $DISK" >> /tmp/ks-pre.log
 
@@ -274,7 +274,7 @@ Here are the most commonly used boot parameters for Kickstart installations:
 | `inst.repo=URL` | Location of the installation repository |
 | `inst.text` | Force text mode installation |
 | `inst.vnc` | Enable VNC access to the installer |
-| `inst.vnc.password=pass` | Set VNC password for remote viewing |
+| `inst.vncpassword=pass` | Set VNC password for remote viewing |
 | `ip=dhcp` | Use DHCP for installer networking |
 | `nameserver=IP` | DNS server for the installer |
 | `inst.stage2=URL` | Location of the installer runtime image |
@@ -285,7 +285,7 @@ Here is a quick reference for directives you will use frequently:
 
 ```bash
 # Use network installation source
-url --url="http://repo-server/rhel9/BaseOS/"
+url --url="http://repo-server/rhel9/"
 
 # Configure multiple network interfaces
 network --bootproto=dhcp --device=ens192 --activate
