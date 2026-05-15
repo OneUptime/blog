@@ -209,9 +209,9 @@ If you have an existing Flux installation in `flux-system` and want to move it t
 
 ```bash
 # Step 1: Export existing Flux resources
-flux export source git --all > sources.yaml
-flux export kustomization --all > kustomizations.yaml
-flux export helmrelease --all --all-namespaces > helmreleases.yaml
+flux export source git --all --namespace=flux-system > sources.yaml
+flux export kustomization --all --namespace=flux-system > kustomizations.yaml
+flux export helmrelease --all --namespace=flux-system > helmreleases.yaml
 
 # Step 2: Uninstall Flux from the default namespace
 flux uninstall
@@ -225,6 +225,8 @@ kubectl apply -f sources.yaml
 kubectl apply -f kustomizations.yaml
 kubectl apply -f helmreleases.yaml
 ```
+
+Repeat the export and apply steps with `--namespace=<namespace>` for Flux resources that live outside `flux-system`.
 
 Note that this approach causes brief downtime in reconciliation. For production clusters, consider a staged migration and avoid running two default installations that reconcile the same Flux resources at the same time.
 
