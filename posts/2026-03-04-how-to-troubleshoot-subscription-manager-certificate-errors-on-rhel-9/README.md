@@ -55,9 +55,10 @@ sudo subscription-manager attach --auto
 # Reinstall the CA certificate
 sudo dnf reinstall -y subscription-manager-rhsm-certificates
 
-# Or download manually
-sudo curl -o /etc/rhsm/ca/redhat-uep.pem \
-  https://ftp.redhat.com/redhat/convert2rhel/redhat-uep.pem
+# Or copy redhat-uep.pem from another RHEL system
+sudo cp /path/to/redhat-uep.pem /etc/rhsm/ca/redhat-uep.pem
+sudo chown root:root /etc/rhsm/ca/redhat-uep.pem
+sudo chmod 644 /etc/rhsm/ca/redhat-uep.pem
 ```
 
 ## Fix Clock-Related Certificate Errors
@@ -97,4 +98,3 @@ sudo subscription-manager attach --auto
 ## Conclusion
 
 Certificate issues with Subscription Manager usually stem from expired certificates, clock drift, or network problems. Start with refreshing certificates and checking system time before resorting to a clean re-registration.
-
