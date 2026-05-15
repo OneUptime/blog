@@ -8,7 +8,7 @@ Description: Learn how to install and Configure Unbound as a Recursive DNS Resol
 
 ---
 
-Unbound is a fast, secure, and validating DNS resolver that is well-suited for use as RHELl or network-wide recursive resolver. Unlike BIND, Unbound focuses purelyRHELe resolver role and does not serve authoritative zones, making it simpler to configure and maintain.
+Unbound is a fast, secure, and validating DNS resolver that is well-suited for use as a RHEL or network-wide recursive resolver. Unlike BIND, Unbound focuses purely on the resolver role and does not serve authoritative zones, making it simpler to configure and maintain.
 
 ## Prerequisites
 
@@ -30,7 +30,7 @@ Edit the main configuration:
 sudo vi /etc/unbound/unbound.conf
 ```
 
-```yaml
+```conf
 server:
     interface: 0.0.0.0
     access-control: 10.0.0.0/8 allow
@@ -77,6 +77,7 @@ sudo firewall-cmd --reload
 ## Step 5: Start and Enable Unbound
 
 ```bash
+sudo systemctl restart unbound-keygen
 sudo systemctl enable --now unbound
 sudo systemctl status unbound
 ```
@@ -90,11 +91,11 @@ dig @127.0.0.1 google.com +short
 
 ## Step 7: Configure Clients
 
-Point /etc/resolv.conf to Unbound:
+On the resolver host, point `/etc/resolv.conf` to the local Unbound service. On other clients, use the Unbound server's LAN IP address instead of `127.0.0.1`:
 
 ```bash
-sudo nmcli con mod "System eth0" ipv4.dns "127.0.0.1"
-sudo nmcli con up "System eth0"
+sudo nmcli con mod "<connection-name>" ipv4.dns "127.0.0.1" ipv4.ignore-auto-dns yes
+sudo nmcli con up "<connection-name>"
 ```
 
 ## Step 8: Verify Cache Performance
@@ -108,4 +109,3 @@ Run the same query twice and note the faster response on the second attempt.
 ## Conclusion
 
 Unbound provides a high-performance recursive DNS resolver on RHEL 9 with built-in DNSSEC validation and extensive caching. It is simpler to configure than BIND for resolver-only deployments and offers excellent security defaults.
-RHEL
