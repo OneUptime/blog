@@ -95,7 +95,7 @@ After=network-online.target postgresql.service
 # Soft dependency - try to start these, but do not fail if they are unavailable
 Wants=network-online.target
 
-# Hard dependency - if postgresql fails, this service fails too
+# Hard dependency - start postgresql too, and stop this service if postgresql is explicitly stopped
 Requires=postgresql.service
 ```
 
