@@ -36,7 +36,7 @@ ls -Z /var/lib/libvirt/images/
 # Example:
 # system_u:object_r:svirt_image_t:s0:c123,c456 rhel9-vm.qcow2
 
-# The disk image label matches the VM process label
+# The disk image uses the same MCS categories as the VM process label
 # Other VMs with different categories cannot access this file
 ```
 
@@ -57,7 +57,7 @@ sudo virsh dumpxml rhel9-vm | grep -A10 '<seclabel'
 
 ## Configuring Static SELinux Labels
 
-For shared resources between specific VMs, you can set static labels:
+For controlled access to the same labeled resources, you can set static labels:
 
 ```bash
 # Edit the VM XML
@@ -68,7 +68,9 @@ sudo virsh edit rhel9-vm
 #   <label>system_u:system_r:svirt_t:s0:c100,c200</label>
 # </seclabel>
 
-# Two VMs with the same static labels can share disk images
+# Two VMs with the same static labels can access the same labeled resources.
+# Do not attach the same writable disk image to multiple VMs unless the
+# storage and guest file system are designed for concurrent access.
 ```
 
 ## Troubleshooting SELinux Issues with VMs
@@ -92,7 +94,7 @@ sudo ausearch -m avc -c qemu-kvm --raw | audit2why
 ```bash
 # If VM images are stored outside the default path,
 # set the correct SELinux context
-sudo semanage fcontext -a -t svirt_image_t "/data/vm-images(/.*)?"
+sudo semanage fcontext -a -t virt_image_t "/data/vm-images(/.*)?"
 sudo restorecon -Rv /data/vm-images/
 ```
 
