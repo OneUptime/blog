@@ -19,8 +19,8 @@ sequenceDiagram
     participant B as BIND DNS Server
     C->>D: DHCPREQUEST (hostname: workstation1)
     D->>D: Assign IP 192.168.1.150
-    D->>B: nsupdate: Add A record workstation1 -> 192.168.1.150
-    D->>B: nsupdate: Add PTR record 150 -> workstation1.example.com
+    D->>B: DNS UPDATE: Add A record workstation1 -> 192.168.1.150
+    D->>B: DNS UPDATE: Add PTR record 150 -> workstation1.example.com
     B->>B: Update forward and reverse zones
     D->>C: DHCPACK (IP: 192.168.1.150)
 ```
@@ -171,7 +171,7 @@ zone 1.168.192.in-addr.arpa. {
     key ddns-key;
 }
 
-# Tell clients to send their hostname
+# Tell clients which DNS domain and resolver to use
 option domain-name "example.com";
 option domain-name-servers 192.168.1.10;
 
@@ -201,6 +201,7 @@ Validate and start BIND:
 ```bash
 named-checkconf /etc/named.conf
 named-checkzone example.com /var/named/dynamic/example.com.zone
+named-checkzone 1.168.192.in-addr.arpa /var/named/dynamic/192.168.1.rev
 systemctl enable --now named
 ```
 
@@ -305,4 +306,4 @@ Check BIND logs for "update denied" messages. Make sure `allow-update` in named.
 chown -R named:named /var/named/dynamic
 ```
 
-Dynamic DNS with BIND and DHCP is one of those setups that, once working, saves a huge amount of manual work. Every device that joins your network automatically gets a DNS name, and when it leaves or gets a new IP, the records update automatically.
+Dynamic DNS with BIND and DHCP is one of those setups that, once working, saves a huge amount of manual work. Devices that provide a hostname when they join your network automatically get a DNS name, and when they leave or get a new IP, the records update automatically.
