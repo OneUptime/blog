@@ -33,9 +33,10 @@ First, create a simple gRPC service for testing. Using Go:
 ```bash
 # Install Go and gRPC tools
 
-sudo dnf install -y golang
+sudo dnf install -y golang protobuf-compiler
 go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+export PATH="$PATH:$(go env GOPATH)/bin"
 ```
 
 Create a simple greeting service:
@@ -44,7 +45,7 @@ Create a simple greeting service:
 // greeter.proto
 syntax = "proto3";
 package greeter;
-option go_package = "./greeter";
+option go_package = "example/greeter";
 
 service Greeter {
   rpc SayHello (HelloRequest) returns (HelloReply) {}
@@ -57,6 +58,14 @@ message HelloRequest {
 message HelloReply {
   string message = 1;
 }
+```
+
+Generate the Go code:
+
+```bash
+go mod init example
+protoc --go_out=. --go_opt=module=example --go-grpc_out=. --go-grpc_opt=module=example greeter.proto
+go mod tidy
 ```
 
 A minimal Go server implementation:
@@ -73,6 +82,7 @@ import (
     "google.golang.org/grpc"
     "google.golang.org/grpc/health"
     healthpb "google.golang.org/grpc/health/grpc_health_v1"
+    "google.golang.org/grpc/reflection"
     pb "example/greeter"
 )
 
@@ -96,6 +106,7 @@ func main() {
     healthServer := health.NewServer()
     healthpb.RegisterHealthServer(s, healthServer)
     healthServer.SetServingStatus("greeter.Greeter", healthpb.HealthCheckResponse_SERVING)
+    reflection.Register(s)
 
     log.Println("gRPC server listening on :50051")
     if err := s.Serve(lis); err != nil {
@@ -110,6 +121,12 @@ The key to proxying gRPC is making sure both the listener and the cluster use HT
 
 ```yaml
 # envoy-grpc.yaml
+admin:
+  address:
+    socket_address:
+      address: 127.0.0.1
+      port_value: 8001
+
 static_resources:
   listeners:
   - name: grpc_listener
@@ -140,6 +157,10 @@ static_resources:
                 route:
                   cluster: greeter_service
           http_filters:
+          - name: envoy.filters.http.grpc_stats
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_stats.v3.FilterConfig
+              stats_for_all_methods: true
           - name: envoy.filters.http.router
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -226,7 +247,7 @@ load_assignment:
             port_value: 50051
 ```
 
-For gRPC, `ROUND_ROBIN` works well because HTTP/2 multiplexes many requests over a single connection. If you need request-level balancing, use `LEAST_REQUEST`:
+For gRPC, `ROUND_ROBIN` works well for evenly distributing homogeneous requests. If you want Envoy to prefer hosts with fewer active requests, use `LEAST_REQUEST`:
 
 ```yaml
 lb_policy: LEAST_REQUEST
@@ -286,7 +307,7 @@ Route different gRPC methods to different clusters:
 ```yaml
 routes:
 - match:
-    prefix: "/greeter.Greeter/SayHello"
+    path: "/greeter.Greeter/SayHello"
   route:
     cluster: greeter_v2
 - match:
@@ -326,7 +347,7 @@ Check Envoy stats for gRPC-specific metrics:
 curl -s http://localhost:8001/stats | grep grpc
 ```
 
-Key metrics include `grpc.greeter.Greeter.SayHello.total`, response code distribution, and upstream connection counts.
+Key metrics include `cluster.greeter_service.grpc.greeter.Greeter.SayHello.total`, response code distribution, and upstream connection counts.
 
 ## Conclusion
 
