@@ -10,7 +10,7 @@ Description: Use sepolicy generate on RHEL to create a custom SELinux policy mod
 
 ## When to Use sepolicy generate
 
-While `audit2allow` patches an existing policy based on denials, `sepolicy generate` creates a complete, new policy module from scratch for an unconfined application. If you have installed third-party software, a custom-built application, or a service that runs as `unconfined_t`, `sepolicy generate` gives it a proper SELinux domain with sensible default rules.
+While `audit2allow` suggests policy rules based on denials, `sepolicy generate` creates an initial new policy module template for an unconfined application. If you have installed third-party software, a custom-built application, or a service that runs as `unconfined_t` or `unconfined_service_t`, `sepolicy generate` gives it a proper SELinux domain with sensible default rules.
 
 This is the right approach when you want to properly confine an application rather than just allowing specific denials.
 
@@ -50,7 +50,7 @@ which myapp
 ls -Z /usr/local/bin/myapp
 ```
 
-If the process shows `unconfined_t`, it is running without SELinux confinement.
+If the process shows `unconfined_t` or `unconfined_service_t`, it is running without SELinux confinement.
 
 ## Step 2: Generate the Policy Template
 
@@ -70,8 +70,8 @@ sepolicy generate --cgi /var/www/cgi-bin/myscript.cgi
 # For a user application
 sepolicy generate --application /usr/local/bin/myapp
 
-# For a confined user role
-sepolicy generate --confined_admin -n myapp_admin
+# For a confined administrator role that manages Apache domains
+sepolicy generate --confined_admin -n web_admin -a apache
 
 # For an inetd service
 sepolicy generate --inetd /usr/local/bin/myapp
@@ -224,6 +224,8 @@ sudo semodule -i myapp.pp
 sudo restorecon -Rv /usr/local/bin/myapp
 sudo restorecon -Rv /etc/myapp/
 sudo restorecon -Rv /var/log/myapp/
+sudo restorecon -Rv /var/run/myapp/
+sudo restorecon -Rv /var/lib/myapp/
 ```
 
 ## Step 6: Test and Iterate
