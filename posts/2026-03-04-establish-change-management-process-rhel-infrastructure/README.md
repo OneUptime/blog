@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Change Management, Operation, Best Practice, Linux
 
-Description: Set up a change management process for RHEL infrastructure using built-in tools for tracking, auditing, and rolling back system changes.
+Description: Set up a change management process for RHEL infrastructure using common tools for tracking, auditing, and rolling back system changes.
 
 ---
 
@@ -22,7 +22,7 @@ sudo dnf history list
 # Get details of a specific transaction
 sudo dnf history info 15
 
-# Roll back a problematic transaction
+# Undo a supported transaction
 sudo dnf history undo 15
 ```
 
@@ -32,6 +32,7 @@ Use etckeeper to put /etc under version control:
 
 ```bash
 # Install etckeeper
+# Enable EPEL or an approved internal repository first if etckeeper is not in your enabled RHEL repositories.
 sudo dnf install etckeeper git
 
 # Initialize the repository
@@ -43,7 +44,7 @@ sudo git -C /etc diff
 sudo git -C /etc log --oneline -10
 ```
 
-etckeeper hooks into DNF automatically, so package installs and updates trigger a commit.
+When installed with DNF integration, etckeeper hooks into DNF automatically, so package installs and updates trigger a commit.
 
 ## Pre-Change Checklist
 
@@ -63,7 +64,9 @@ rpm -qa --queryformat '%{NAME}-%{VERSION}-%{RELEASE}\n' | sort > "$OUTDIR/packag
 systemctl list-units --type=service --state=running > "$OUTDIR/services.txt"
 ip addr show > "$OUTDIR/network.txt"
 df -h > "$OUTDIR/disk.txt"
-sudo iptables-save > "$OUTDIR/firewall.txt" 2>/dev/null
+command -v firewall-cmd >/dev/null && sudo firewall-cmd --list-all-zones > "$OUTDIR/firewalld.txt" 2>/dev/null
+command -v nft >/dev/null && sudo nft list ruleset > "$OUTDIR/nftables.txt" 2>/dev/null
+command -v iptables-save >/dev/null && sudo iptables-save > "$OUTDIR/iptables.txt" 2>/dev/null
 cat /etc/fstab > "$OUTDIR/fstab.txt"
 
 echo "Pre-change snapshot saved to $OUTDIR"
@@ -84,8 +87,8 @@ echo "=== Post-Change Verification for $CHANGE_ID ==="
 FAILED=$(systemctl --failed --no-legend | wc -l)
 echo "Failed services: $FAILED"
 
-# Check SELinux denials since the change
-echo "SELinux denials:"
+# Check recent SELinux denials
+echo "Recent SELinux denials:"
 sudo ausearch -m AVC --start recent 2>/dev/null | head -5
 
 # Compare package list
@@ -101,6 +104,7 @@ Always document how to roll back before making a change:
 
 ```bash
 # Rollback a DNF transaction
+# Note: DNF undo is not supported for downgrading core RHEL system packages.
 sudo dnf history undo <transaction-id>
 
 # Rollback a configuration change using etckeeper
