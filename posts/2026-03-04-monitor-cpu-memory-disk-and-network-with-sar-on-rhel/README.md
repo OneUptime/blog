@@ -66,9 +66,10 @@ sar -S
 # Show disk I/O activity for all devices
 sar -d
 
-# Show I/O for specific device
-sar -d -p 1 5
-# -p makes device names human-readable (sda instead of dev8-0)
+# Show I/O for a specific device
+sar -d -p --dev=sda 1 5
+# -p makes reports easier to read
+# --dev=sda limits the report to the sda device
 
 # Key columns:
 # tps    - transfers per second
@@ -122,10 +123,16 @@ sar -r -f /var/log/sa/sa$(date -d yesterday +%d)
 ## Change Collection Interval
 
 ```bash
-# Edit the sysstat collection frequency
+# On RHEL systems that use systemd timers, edit the collection timer
+sudo systemctl edit sysstat-collect.timer
+# Example override for every 5 minutes:
+# [Timer]
+# OnCalendar=
+# OnCalendar=*:00/5
+
+# On older cron-based systems, edit the sysstat cron file instead
 sudo vi /etc/cron.d/sysstat
-# Default line: */10 * * * * root /usr/lib64/sa/sa1 1 1
-# Change to every 5 minutes:
+# Change the collection line from */10 to */5:
 # */5 * * * * root /usr/lib64/sa/sa1 1 1
 ```
 
