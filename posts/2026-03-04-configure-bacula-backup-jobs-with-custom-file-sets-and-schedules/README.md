@@ -31,37 +31,76 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo subscription-manager repos --enable "codeready-builder-for-rhel-$(rpm -E %rhel)-$(arch)-rpms"
+sudo dnf install -y "https://dl.fedoraproject.org/pub/epel/epel-release-latest-$(rpm -E %rhel).noarch.rpm"
 ```
 
 ## Step 2: Install Required Packages
 
 ```bash
-sudo dnf install -y <package-name>
+sudo dnf install -y bacula-director bacula-storage bacula-client bacula-console
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+rpm -qi bacula-director bacula-storage bacula-client bacula-console
 ```
 
 ## Step 3: Configure the Service
 
-Create or edit the main configuration file:
+Create or edit the Bacula Director configuration file:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/bacula/bacula-dir.conf
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+Add a custom `FileSet`, `Schedule`, and `Job` resource. Replace `appserver-fd`, `File1`, and `File` with the Client, Storage, and Pool resource names already defined in your Bacula configuration:
+
+```conf
+FileSet {
+  Name = "AppServerFiles"
+  Include {
+    Options {
+      signature = MD5
+      compression = GZIP
+    }
+    File = /etc
+    File = /var/www
+  }
+  Exclude {
+    File = /tmp
+    File = /var/tmp
+  }
+}
+
+Schedule {
+  Name = "WeeklyCycle"
+  Run = Full 1st sun at 23:05
+  Run = Differential 2nd-5th sun at 23:05
+  Run = Incremental mon-sat at 23:05
+}
+
+Job {
+  Name = "Backup-AppServer"
+  Type = Backup
+  Level = Incremental
+  Client = appserver-fd
+  FileSet = "AppServerFiles"
+  Schedule = "WeeklyCycle"
+  Storage = File1
+  Pool = File
+  Messages = Standard
+}
+```
+
+Apply the recommended settings for your environment. Start with the defaults and adjust the File paths, Client, Storage, Pool, and retention settings based on your workload and hardware.
 
 ## Step 4: Start and Enable the Service
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo systemctl enable --now bacula-dir bacula-sd bacula-fd
+sudo systemctl status bacula-dir bacula-sd bacula-fd
 ```
 
 ## Step 5: Verify the Configuration
@@ -69,13 +108,28 @@ sudo systemctl status <service>
 Test the setup:
 
 ```bash
-sudo <service> --test
+sudo bacula-dir -t -c /etc/bacula/bacula-dir.conf
+sudo bacula-sd -t -c /etc/bacula/bacula-sd.conf
+sudo bacula-fd -t -c /etc/bacula/bacula-fd.conf
 ```
 
 Check the logs for any errors:
 
 ```bash
-journalctl -u <service> -f
+journalctl -u bacula-dir -u bacula-sd -u bacula-fd -f
+```
+
+Use `bconsole` to confirm that the Director can read the new job and schedule:
+
+```bash
+sudo bconsole -c /etc/bacula/bconsole.conf
+```
+
+At the `*` prompt, run:
+
+```text
+status director
+show jobs
 ```
 
 ## Step 6: Configure Firewall Rules
@@ -83,7 +137,9 @@ journalctl -u <service> -f
 If the service needs network access:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo firewall-cmd --permanent --add-port=9101/tcp
+sudo firewall-cmd --permanent --add-port=9102/tcp
+sudo firewall-cmd --permanent --add-port=9103/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -92,24 +148,24 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+systemctl show bacula-dir --property=MemoryCurrent
+top -p $(pidof -s bacula-dir)
 ```
 
 ## Security Considerations
 
-- Run the service with a dedicated non-root user when possible
-- Enable TLS/SSL for network communication
-- Restrict access with firewall rules
+- Run the Director and Storage Daemon with a dedicated non-root user when possible. The File Daemon often needs root privileges to read protected files during backups.
+- Enable Bacula TLS/PSK or TLS certificate settings for network communication
+- Restrict access to Bacula ports 9101, 9102, and 9103 with firewall rules
 - Keep packages updated with `dnf update`
 
 ## Troubleshooting
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
+1. **Service fails to start**: Check `journalctl -u bacula-dir -u bacula-sd -u bacula-fd -xe` for error messages
 2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
-3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
+3. **Port conflicts**: Use `ss -tlnp` to identify processes using ports 9101, 9102, or 9103
 
 ## Conclusion
 
