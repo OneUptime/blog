@@ -8,7 +8,7 @@ Description: A hands-on guide to using GnuTLS tools on RHEL for generating keys,
 
 ---
 
-Most RHEL admins reach for OpenSSL by default when working with certificates. That is totally fine, but GnuTLS is actually the preferred TLS library on many Red Hat systems, and its command-line tool `certtool` is worth knowing. Several RHEL components, including libvirt and GNOME, use GnuTLS under the hood.
+Most RHEL admins reach for OpenSSL by default when working with certificates. That is totally fine, but GnuTLS is also widely used on Red Hat systems, and its command-line tool `certtool` is worth knowing. Several RHEL components, including libvirt and GNOME, use GnuTLS under the hood.
 
 This post covers practical GnuTLS usage on RHEL for day-to-day certificate management tasks.
 
@@ -85,6 +85,7 @@ country = US
 cn = "MyOrg Internal CA"
 ca
 cert_signing_key
+crl_signing_key
 expiration_days = 3650
 EOF
 ```
@@ -171,7 +172,7 @@ Verify that a server certificate chains properly to a CA:
 certtool --verify --load-ca-certificate ca.crt --infile webapp.crt
 ```
 
-For a chain with intermediate certificates:
+For a chain with intermediate certificates, use an ordered PEM file that ends with the trusted root certificate:
 
 ```bash
 # Verify with a full chain file
@@ -194,7 +195,7 @@ Test against your own server:
 gnutls-cli --x509cafile ca.crt myserver.internal -p 443
 ```
 
-Check which TLS versions and ciphersuites a server supports:
+Check which TLS version and ciphersuite are negotiated:
 
 ```bash
 # Display the negotiated protocol version and cipher
@@ -230,10 +231,10 @@ certtool --to-p12 --load-privkey server.key --load-certificate server.crt --p12-
 
 You will be prompted for an export password.
 
-Extract from a PKCS#12 bundle:
+Inspect a PKCS#12 bundle:
 
 ```bash
-# Extract the certificate from a PKCS#12 file
+# Display information from a PKCS#12 file
 certtool --p12-info --inder --infile server.p12
 ```
 
@@ -246,8 +247,8 @@ Common priority strings:
 ```bash
 NORMAL          - Sensible defaults
 SECURE128       - 128-bit security level minimum
-SECURE256       - 256-bit security level minimum
-PERFORMANCE     - Prioritize speed over security level
+SECURE256       - Enables 256-bit-key ciphers, with an overall level equivalent to SECURE192
+PERFORMANCE     - Secure 128-bit ciphersuites sorted for speed
 ```
 
 Test what a priority string enables:
