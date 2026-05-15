@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, Talosctl, Container Monitoring, Performance, Kubernetes
 
-Description: Learn how to use talosctl stats to get real-time container resource statistics on Talos Linux nodes for performance analysis
+Description: Learn how to use talosctl stats to get container resource statistics on Talos Linux nodes for performance analysis
 
 ---
 
-When debugging performance issues in a Kubernetes cluster running on Talos Linux, you need to see exactly how much CPU and memory each container is using. The `talosctl stats` command provides real-time container statistics directly from the containerd runtime, giving you granular visibility into resource consumption at the container level.
+When debugging performance issues in a Kubernetes cluster running on Talos Linux, you need to see exactly how much CPU and memory each container is using. The `talosctl stats` command provides container statistics directly from the container runtime, giving you granular visibility into resource consumption at the container level.
 
 ## What talosctl stats Shows
 
-The `talosctl stats` command queries containerd on the target node and returns resource usage metrics for each container. This is similar to `docker stats` if you are familiar with Docker, but it works through the Talos API instead of a local Docker socket.
+The `talosctl stats` command queries the container runtime on the target node and returns resource usage metrics for each container. This is similar to `docker stats` if you are familiar with Docker, but it works through the Talos API instead of a local Docker socket.
 
 ```bash
 # Get container statistics for a node
@@ -23,22 +23,22 @@ talosctl stats --nodes 192.168.1.20
 The output includes information like:
 
 ```text
-NAMESPACE   ID              MEM(MB)    CPU        DISK(MB)
-k8s.io      pause-abc123    1.2        0.00       0.0
-k8s.io      coredns-xyz     32.5       0.15       0.5
-k8s.io      nginx-def456    48.7       0.23       1.2
-system      kubelet         156.3      1.45       0.0
+NODE          NAMESPACE   ID              MEMORY(MB)   CPU
+worker-1      k8s.io      pause-abc123    1.20         1000000
+worker-1      k8s.io      coredns-xyz     32.50        150000000
+worker-1      k8s.io      nginx-def456    48.70        230000000
+worker-1      system      kubelet         156.30       1450000000
 ```
 
 ## Understanding the Metrics
 
 Each column tells you something specific about container resource usage:
 
-- **NAMESPACE**: Whether the container is a system container or a Kubernetes container.
+- **NODE**: The node that returned the container statistics.
+- **NAMESPACE**: The containerd namespace, such as `system` or `k8s.io`.
 - **ID**: The container identifier (often truncated).
-- **MEM(MB)**: Current memory usage in megabytes.
-- **CPU**: CPU usage, typically shown as a percentage of one CPU core.
-- **DISK(MB)**: Disk space used by the container's writable layer.
+- **MEMORY(MB)**: Current memory usage in megabytes.
+- **CPU**: Cumulative CPU usage reported by the runtime, in nanoseconds.
 
 ## Filtering by Namespace
 
@@ -75,13 +75,13 @@ When a node is under stress, you need to find which containers are consuming the
 
 ```bash
 # Get stats and sort by memory usage
-talosctl stats --nodes 192.168.1.20 -k | sort -k3 -rn | head -10
+talosctl stats --nodes 192.168.1.20 -k | awk 'NR == 1 {next} {print $(NF-1) "\t" $0}' | sort -k1 -rn | head -10 | cut -f2-
 
-# Get stats and sort by CPU usage
-talosctl stats --nodes 192.168.1.20 -k | sort -k4 -rn | head -10
+# Get stats and sort by cumulative CPU usage
+talosctl stats --nodes 192.168.1.20 -k | awk 'NR == 1 {next} {print $NF "\t" $0}' | sort -k1 -rn | head -10 | cut -f2-
 ```
 
-The top consumers are usually the first place to look when investigating performance problems.
+The top memory consumers are usually the first place to look when investigating performance problems. The cumulative CPU column is useful for finding containers that have used the most CPU time since they started.
 
 ## Correlating Stats with Kubernetes Pods
 
@@ -154,8 +154,8 @@ STATS=$(talosctl stats --nodes "$NODE" -k 2>/dev/null | tail -n +2)
 
 # Store baseline memory values
 while IFS= read -r line; do
-  ID=$(echo "$line" | awk '{print $2}')
-  MEM=$(echo "$line" | awk '{print $3}')
+  ID=$(echo "$line" | awk '{print $(NF-2)}')
+  MEM=$(echo "$line" | awk '{print $(NF-1)}')
   BASELINE[$ID]=$MEM
 done <<< "$STATS"
 
@@ -168,8 +168,8 @@ for i in $(seq 1 $CHECK_COUNT); do
   STATS=$(talosctl stats --nodes "$NODE" -k 2>/dev/null | tail -n +2)
 
   while IFS= read -r line; do
-    ID=$(echo "$line" | awk '{print $2}')
-    MEM=$(echo "$line" | awk '{print $3}')
+    ID=$(echo "$line" | awk '{print $(NF-2)}')
+    MEM=$(echo "$line" | awk '{print $(NF-1)}')
 
     if [ -n "${BASELINE[$ID]}" ]; then
       GROWTH=$(echo "$MEM - ${BASELINE[$ID]}" | bc 2>/dev/null)
@@ -194,7 +194,7 @@ kubectl top pods --sort-by=memory -A
 kubectl top nodes
 ```
 
-The talosctl stats command shows raw containerd metrics, while `kubectl top` relies on the metrics server and may include overhead from the pod abstraction. Both are useful - use `talosctl stats` for container-level debugging and `kubectl top` for Kubernetes-level capacity management.
+The talosctl stats command shows raw container runtime metrics, while `kubectl top` relies on the metrics server and may include overhead from the pod abstraction. Both are useful - use `talosctl stats` for container-level debugging and `kubectl top` for Kubernetes-level capacity management.
 
 ## Automating Resource Reports
 
@@ -218,10 +218,10 @@ for node in $NODES; do
   talosctl memory --nodes "$node" >> "$REPORT_FILE" 2>&1
 
   echo "--- Top 10 Containers by Memory ---" >> "$REPORT_FILE"
-  talosctl stats --nodes "$node" -k 2>/dev/null | sort -k3 -rn | head -10 >> "$REPORT_FILE"
+  talosctl stats --nodes "$node" -k 2>/dev/null | awk 'NR == 1 {next} {print $(NF-1) "\t" $0}' | sort -k1 -rn | head -10 | cut -f2- >> "$REPORT_FILE"
 
-  echo "--- Top 10 Containers by CPU ---" >> "$REPORT_FILE"
-  talosctl stats --nodes "$node" -k 2>/dev/null | sort -k4 -rn | head -10 >> "$REPORT_FILE"
+  echo "--- Top 10 Containers by Cumulative CPU ---" >> "$REPORT_FILE"
+  talosctl stats --nodes "$node" -k 2>/dev/null | awk 'NR == 1 {next} {print $NF "\t" $0}' | sort -k1 -rn | head -10 | cut -f2- >> "$REPORT_FILE"
 done
 
 echo "" >> "$REPORT_FILE"
@@ -251,17 +251,16 @@ If containers consistently use much less than their requests, you can reduce the
 
 ## Checking System Container Overhead
 
-System containers run Talos services and Kubernetes components. Understanding their resource usage helps with capacity planning:
+System containers run Talos services such as kubelet. Kubernetes pod containers, including control plane static pods, are shown in the `k8s.io` namespace with `-k`. Understanding their resource usage helps with capacity planning:
 
 ```bash
 # Check system container resource usage
 talosctl stats --nodes 192.168.1.10
 
-# Typical system overhead:
+# Typical overhead:
 # kubelet: 100-300MB memory, moderate CPU
 # containerd: 50-100MB memory, low CPU
-# etcd: 200MB-2GB memory (grows with cluster size), moderate CPU
-# kube-apiserver: 200-500MB memory, moderate CPU
+# etcd and kube-apiserver: check with -k on control plane nodes
 ```
 
 ## Best Practices
