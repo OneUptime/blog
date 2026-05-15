@@ -75,7 +75,7 @@ runcmd:
   - echo "Deployed on $(date)" > /var/www/html/index.html
 
 # Final message
-final_message: "Cloud-init completed after $UPTIME seconds"
+final_message: "Cloud-init completed after $uptime seconds"
 ```
 
 ### Launching the Instance
@@ -119,8 +119,5 @@ systemctl status firewalld
 cat /var/log/cloud-init.log | tail -50
 
 # Re-run cloud-init (for testing)
-sudo cloud-init clean
-sudo cloud-init init
-sudo cloud-init modules --mode=config
-sudo cloud-init modules --mode=final
+sudo cloud-init clean --logs --reboot
 ```
