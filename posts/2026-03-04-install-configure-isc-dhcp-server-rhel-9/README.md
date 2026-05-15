@@ -8,7 +8,7 @@ Description: Install and configure the ISC DHCP server on RHEL to automatically 
 
 ---
 
-DHCP automates IP address management on your network. Without it, you'd manually configure every device, keeping track of which IPs are in use, updating settings when things change. The ISC DHCP server is the standard implementation on Linux and handles everything from simple home networks to complex enterprise deployments with multiple subnets and VLANs.
+DHCP automates IP address management on your network. Without it, you'd manually configure every device, keeping track of which IPs are in use, updating settings when things change. The ISC DHCP server is a widely used implementation on Linux and handles everything from simple home networks to complex enterprise deployments with multiple subnets and VLANs. On RHEL 9, the ISC DHCP client-side and server-side packages are deprecated and will not be distributed in later major RHEL releases, so plan migrations to alternatives such as ISC Kea for new long-term deployments.
 
 ## Installing ISC DHCP Server
 
@@ -81,7 +81,7 @@ flowchart TD
 
 ## Specifying the Listening Interface
 
-By default, dhcpd tries to listen on all interfaces. If you have multiple interfaces and want DHCP only on one:
+By default, `dhcpd` processes requests only on interfaces that have an IP address in a subnet defined in `/etc/dhcp/dhcpd.conf`. If you have multiple matching interfaces and want DHCP only on one:
 
 ```bash
 # Edit the service configuration
@@ -146,8 +146,10 @@ filename "pxelinux.0";
 # WINS server (for Windows networks)
 option netbios-name-servers 192.168.1.15;
 
-# Custom option for vendor-specific needs
-option vendor-class-identifier "PXEClient";
+# Match PXE clients by vendor class
+class "pxeclients" {
+    match if substring(option vendor-class-identifier, 0, 9) = "PXEClient";
+}
 ```
 
 ## Validating the Configuration
@@ -250,4 +252,4 @@ systemctl restart rsyslog
 
 **Clients not receiving addresses** - Check the firewall, verify the interface is correct, and make sure the DHCP range doesn't overlap with any static IPs on the network.
 
-ISC DHCP is reliable and battle-tested. Once configured, it runs quietly in the background doing its job. Just remember to monitor your lease pool utilization so you don't run out of addresses.
+ISC DHCP is reliable and battle-tested, but deprecated in RHEL 9. Once configured, it runs quietly in the background doing its job. Just remember to monitor your lease pool utilization so you don't run out of addresses, and plan a migration before moving to a later major RHEL release.
