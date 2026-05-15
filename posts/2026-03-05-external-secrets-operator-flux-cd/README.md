@@ -50,7 +50,7 @@ spec:
   chart:
     spec:
       chart: external-secrets
-      version: ">=0.9.0"
+      version: ">=0.17.0"
       sourceRef:
         kind: HelmRepository
         name: external-secrets
@@ -91,7 +91,7 @@ The SecretStore defines the connection to your external secret provider. This ex
 
 ```yaml
 # apps/my-app/secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-secrets-manager
@@ -115,7 +115,7 @@ Alternatively, use a ClusterSecretStore for cluster-wide access.
 
 ```yaml
 # infrastructure/external-secrets/cluster-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -142,7 +142,7 @@ The ExternalSecret resource defines which secrets to fetch and how to map them t
 
 ```yaml
 # apps/my-app/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secret
@@ -235,7 +235,7 @@ Sync all key-value pairs from an external secret at once.
 
 ```yaml
 # apps/my-app/external-secret-bulk.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-all-secrets
@@ -260,7 +260,7 @@ Use templates to customize the generated Kubernetes Secret.
 
 ```yaml
 # apps/my-app/external-secret-templated.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-db-url
