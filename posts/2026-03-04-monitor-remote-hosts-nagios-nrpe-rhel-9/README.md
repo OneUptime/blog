@@ -16,70 +16,73 @@ Use Nagios NRPE on RHEL 9 to monitor remote hosts and execute remote checks. Eff
 
 - A RHEL 9 system with a valid subscription or configured repositories
 - Root or sudo access
-- Network access for remote monitoring tools (if applicable)
+- Network access from the Nagios monitoring server to the remote host
 
 ## Step 1 - Install Required Packages
 
 Install the monitoring tools relevant to this guide:
 
 ```bash
-sudo dnf install -y pcp pcp-system-tools sysstat net-snmp net-snmp-utils
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+sudo dnf install -y nrpe nagios-plugins-nrpe nagios-plugins-load
 ```
 
-Select only the packages you need for your specific setup.
+Select only the Nagios plugins you need for your specific checks.
 
 ## Step 2 - Enable and Start Services
 
 ```bash
-sudo systemctl enable --now pmcd pmlogger
-# or for sysstat:
-
-sudo systemctl enable --now sysstat
+sudo systemctl enable --now nrpe.service
 ```
 
 ## Step 3 - Configure the Monitoring Tool
 
-Edit the relevant configuration file for your monitoring setup. Common locations include:
+Edit the NRPE configuration file on the remote host:
 
-- `/etc/pcp/` for PCP configuration
-- `/etc/snmp/snmpd.conf` for SNMP
-- `/etc/prometheus/prometheus.yml` for Prometheus
-- `/etc/grafana/grafana.ini` for Grafana
+```bash
+sudo vi /etc/nagios/nrpe.cfg
+```
+
+Allow your Nagios monitoring server and define the remote checks you want NRPE to run:
+
+```text
+allowed_hosts=127.0.0.1,<nagios-server-ip>
+command[check_load]=/usr/lib64/nagios/plugins/check_load -w 15,10,5 -c 30,25,20
+```
 
 Apply your changes and restart the service:
 
 ```bash
-sudo systemctl restart <service-name>
+sudo systemctl restart nrpe.service
 ```
 
 ## Step 4 - Open Firewall Ports
 
 ```bash
-# Common monitoring ports
-sudo firewall-cmd --permanent --add-port=9090/tcp   # Prometheus
-sudo firewall-cmd --permanent --add-port=9100/tcp   # Node Exporter
-sudo firewall-cmd --permanent --add-port=3000/tcp   # Grafana
-sudo firewall-cmd --permanent --add-service=snmp     # SNMP
+sudo firewall-cmd --permanent --add-port=5666/tcp
 sudo firewall-cmd --reload
 ```
 
 ## Step 5 - Verify Data Collection
 
-Confirm that metrics are being collected:
+Confirm that NRPE is responding locally on the remote host:
 
 ```bash
-# PCP
-pmstat -s 3
-# sysstat
-sar -u 1 3
-# Prometheus endpoint
-curl -s http://localhost:9090/api/v1/query?query=up
+/usr/lib64/nagios/plugins/check_nrpe -H 127.0.0.1
+/usr/lib64/nagios/plugins/check_nrpe -H 127.0.0.1 -c check_load
+```
+
+From the Nagios monitoring server, replace `remote-host-ip` with the remote host address and run the same check.
+
+```bash
+/usr/lib64/nagios/plugins/check_nrpe -H remote-host-ip -c check_load
 ```
 
 ## Step 6 - Set Up Alerting (Optional)
 
-Configure alerts based on thresholds so you are notified before issues become critical. Use Prometheus Alertmanager, Nagios notifications, or Red Hat Insights recommendations depending on your stack.
+Configure alerts based on thresholds so you are notified before issues become critical. Add Nagios host and service definitions that call `check_nrpe` with the remote command name you configured, then verify and reload your Nagios configuration.
 
 ## Summary
 
-You now know how to monitor remote hosts with nagios nrpe. Regular monitoring helps you detect performance degradation, plan capacity, and respond to incidents quickly on your RHEL 9 systems.
+You now know how to monitor remote hosts with Nagios NRPE. Regular monitoring helps you detect performance degradation, plan capacity, and respond to incidents quickly on your RHEL 9 systems.
