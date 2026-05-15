@@ -37,14 +37,26 @@ RHEL uses two logging systems:
 
 The two work together: journald collects everything, and rsyslog can read from the journal or receive messages directly via the syslog socket.
 
-## Step 3 - Apply the Configuration
+## Step 3 - Export the Logs
 
-To export journal logs to a file for analysis, you need to edit the appropriate configuration files. The main files are:
+To export journal logs to a file for analysis, use `journalctl` and redirect the output to the target file:
+
+```bash
+sudo journalctl --since "24 hours ago" --no-pager > journal-export.log
+```
+
+For structured analysis, export in JSON format:
+
+```bash
+sudo journalctl --since "24 hours ago" --no-pager -o json > journal-export.json
+```
+
+If you need ongoing logging to files under `/var/log`, edit the appropriate configuration files. The main files are:
 
 - `/etc/rsyslog.conf` and `/etc/rsyslog.d/*.conf` for rsyslog
 - `/etc/systemd/journald.conf` for journald
 
-Make your changes, then restart the relevant service:
+After configuration changes, restart the relevant service:
 
 ```bash
 sudo systemctl restart rsyslog
@@ -62,10 +74,11 @@ systemctl status rsyslog
 systemctl status systemd-journald
 ```
 
-Review recent logs to confirm your changes are working:
+Review recent logs and the exported file to confirm your changes are working:
 
 ```bash
 journalctl --since "5 minutes ago"
+ls -lh journal-export.log
 tail -20 /var/log/messages
 ```
 
