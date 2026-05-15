@@ -12,7 +12,7 @@ Image Builder blueprints define the content and configuration of custom RHEL ima
 
 ## Blueprint Structure
 
-A complete blueprint with all customization types:
+A blueprint with several common customization types:
 
 ```toml
 # full-server.toml
@@ -44,7 +44,7 @@ version = "*"
 
 # Package groups
 [[groups]]
-name = "Development Tools"
+name = "development"
 
 # Hostname and timezone
 [customizations]
@@ -66,7 +66,7 @@ home = "/home/appuser"
 shell = "/bin/bash"
 groups = ["wheel"]
 uid = 1001
-password = "$6$rounds=4096$salt$hashedpassword"
+password = "$6$rhelblueprint$IrzFK7KpGLxqvv0i0gYZ90CA5nFzhgFshOmebAZcabionkpBBsJt03b4B0K22tdvc6u/jJAiS2kZ6RBMyzHqM0"
 
 [[customizations.user]]
 name = "deploy"
@@ -77,7 +77,7 @@ key = "ssh-ed25519 AAAAC3NzaC1... deploy@workstation"
 # Service configuration
 [customizations.services]
 enabled = ["httpd", "postgresql", "firewalld", "sshd"]
-disabled = ["bluetooth", "cups"]
+disabled = []
 
 # Firewall configuration
 [customizations.firewall]
@@ -86,15 +86,15 @@ ports = ["22:tcp", "80:tcp", "443:tcp", "5432:tcp"]
 # Filesystem customization
 [[customizations.filesystem]]
 mountpoint = "/var"
-size = "10 GiB"
+minsize = "10 GiB"
 
 [[customizations.filesystem]]
 mountpoint = "/home"
-size = "20 GiB"
+minsize = "20 GiB"
 
 [[customizations.filesystem]]
 mountpoint = "/var/log"
-size = "5 GiB"
+minsize = "5 GiB"
 ```
 
 ## Managing Blueprints
@@ -134,14 +134,17 @@ composer-cli blueprints changes full-server
 
 ## Freezing Package Versions
 
-Lock specific package versions for reproducible builds:
+Inspect or save a frozen blueprint with resolved package versions for reproducible builds:
 
 ```bash
-# Freeze the current package versions
+# Show resolved package versions
 composer-cli blueprints freeze full-server
 
 # Show the frozen blueprint with exact versions
 composer-cli blueprints freeze show full-server
+
+# Save the frozen blueprint to a TOML file
+composer-cli blueprints freeze save full-server
 ```
 
-This ensures that builds produce identical images regardless of when they are built, which is important for production environments where consistency matters.
+Building from the frozen blueprint helps produce consistent images as long as the referenced package versions remain available in your repositories, which is important for production environments where consistency matters.
