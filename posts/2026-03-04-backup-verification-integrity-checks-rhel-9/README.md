@@ -98,7 +98,13 @@ LOG="/var/log/backup-checksum.log"
 generate_checksums() {
     echo "$(date): Generating checksums" >> "$LOG"
     cd "$BACKUP_DIR" || exit 1
-    sha256sum *.tar.gz > "$CHECKSUM_FILE" 2>> "$LOG"
+    shopt -s nullglob
+    BACKUPS=( *.tar.gz )
+    if [ "${#BACKUPS[@]}" -eq 0 ]; then
+        echo "ERROR: No backup archives found" >> "$LOG"
+        return 1
+    fi
+    sha256sum "${BACKUPS[@]}" > "$CHECKSUM_FILE" 2>> "$LOG"
     echo "$(date): Checksums generated" >> "$LOG"
 }
 
@@ -157,7 +163,11 @@ fi
 
 # Restore the backup
 echo "Restoring $LATEST to $RESTORE_DIR" >> "$LOG"
-tar -xzf "$LATEST" -C "$RESTORE_DIR" 2>> "$LOG"
+if ! tar -xzf "$LATEST" -C "$RESTORE_DIR" 2>> "$LOG"; then
+    echo "ERROR: Restore failed for $LATEST" >> "$LOG"
+    rm -rf "$RESTORE_DIR"
+    exit 1
+fi
 
 # Compare restored files with current system
 echo "Comparing restored files with current system" >> "$LOG"
@@ -211,16 +221,16 @@ fi
 ```bash
 #!/bin/bash
 # Verify an rsync backup by comparing checksums
-# This does a checksum comparison without transferring data
+# This does a dry-run checksum comparison without transferring data
 
-rsync -avnc \
+rsync -ainc \
     --exclude='*.tmp' \
     --exclude='.cache' \
     /etc/ /backup/daily/$(date +%Y-%m-%d)/etc/ \
     > /var/log/rsync-verify.log 2>&1
 
 # Check if there are differences
-DIFF_COUNT=$(grep -c "^" /var/log/rsync-verify.log)
+DIFF_COUNT=$(grep -Ec '^[<>ch.*][fdLDS]' /var/log/rsync-verify.log)
 echo "Differences found: $DIFF_COUNT"
 ```
 
