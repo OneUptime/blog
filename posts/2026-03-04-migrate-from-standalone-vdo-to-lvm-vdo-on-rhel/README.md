@@ -49,7 +49,7 @@ RHEL provides a conversion tool:
 sudo dnf install -y lvm2
 
 # Convert the standalone VDO volume to LVM-VDO
-# This converts in place without data loss
+# This preserves data, but the conversion is not reversible
 sudo lvm_import_vdo --name vg-vdo/lv-data /dev/sdb
 
 # The command:
@@ -107,4 +107,4 @@ sudo xfs_growfs /mnt/vdo-data
 sudo lvs -o+vdo_compression_state,vdo_index_state vg-vdo
 ```
 
-The migration preserves all data and deduplication indexes. After migration, standalone VDO commands (`vdo create`, `vdo status`) are no longer needed.
+The migration preserves all data and deduplication indexes. After migration, standalone VDO commands (`vdo create`, `vdo status`) no longer manage the converted volume.
