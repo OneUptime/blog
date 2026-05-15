@@ -23,6 +23,9 @@ HashiCorp Nomad is a workload orchestrator that can schedule containers, VMs, an
 
 sudo dnf update -y
 
+# Install the DNF plugin that provides config-manager
+sudo dnf install -y dnf-plugins-core
+
 # Add HashiCorp repository
 sudo dnf config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
 
@@ -36,27 +39,42 @@ Edit the configuration file to match your environment:
 
 ```bash
 # Open the configuration file
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/nomad.d/nomad.hcl
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+For a single-node test setup, add the following basic configuration. Adjust the settings according to your requirements. Key parameters to configure include datacenter, data directory, listening addresses, server or client mode, and logging options.
+
+```hcl
+datacenter = "dc1"
+data_dir   = "/opt/nomad"
+bind_addr  = "0.0.0.0"
+
+server {
+  enabled          = true
+  bootstrap_expect = 1
+}
+
+client {
+  enabled = true
+}
+```
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart nomad
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable nomad
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start nomad
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status nomad
 ```
 
 
@@ -66,16 +84,16 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status nomad
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u nomad --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u nomad -e --no-pager`.
+- Ensure Nomad is installed: `rpm -qa | grep nomad`.
 
 ## Conclusion
 
