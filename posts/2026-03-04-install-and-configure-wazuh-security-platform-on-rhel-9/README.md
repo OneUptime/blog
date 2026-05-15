@@ -12,50 +12,53 @@ Wazuh Security Platform can be installed and configured on RHEL to provide robus
 
 ## Prerequisites
 
-- RHEL with a valid subscription or CentOS Stream 9
+- RHEL 9 with a valid subscription on a 64-bit x86_64 or ARM64 host
 - Root or sudo access
-- A terminal session
+- A terminal session and internet access
 
 ## Step 1: Install Required Packages
 
 ```bash
 # Update the system first
-
 sudo dnf update -y
 
-# Install the required packages
-sudo dnf install -y <package-name>
+# Download and run the Wazuh installation assistant
+curl -sO https://packages.wazuh.com/4.14/wazuh-install.sh
+sudo bash ./wazuh-install.sh -a
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+The installation assistant installs and configures the Wazuh server, Wazuh indexer, and Wazuh dashboard on the same host. When it finishes, it prints the dashboard URL and the generated `admin` password.
 
 ## Step 2: Configure the Service
 
 Edit the configuration file to match your environment:
 
 ```bash
-# Open the configuration file
-sudo vi /etc/<service>/config.conf
+# Open the Wazuh manager configuration file
+sudo vi /var/ossec/etc/ossec.conf
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. For example, the Wazuh manager agent connection service is configured in the `<remote>` block, where you can review the connection type, port, protocol, and queue size.
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart wazuh-manager
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Reload systemd units after installation
+sudo systemctl daemon-reload
 
-# Start the service
-sudo systemctl start <service-name>
+# Enable the Wazuh services to start on boot
+sudo systemctl enable wazuh-manager wazuh-indexer wazuh-dashboard
+
+# Start the Wazuh services
+sudo systemctl start wazuh-manager wazuh-indexer wazuh-dashboard
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status wazuh-manager wazuh-indexer wazuh-dashboard
 ```
 
 
@@ -64,18 +67,18 @@ sudo systemctl status <service-name>
 Confirm everything is working by checking the status and logs:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
+# Check the Wazuh service status
+sudo systemctl status wazuh-manager wazuh-indexer wazuh-dashboard
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u wazuh-manager --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
+- If the Wazuh manager fails to start, check the logs with `journalctl -u wazuh-manager -e --no-pager`.
 - SELinux may block access. Check for denials with `ausearch -m avc -ts recent` and apply appropriate policies.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- Ensure all required Wazuh packages are installed: `rpm -qa | grep wazuh`.
 
 ## Conclusion
 
