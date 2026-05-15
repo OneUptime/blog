@@ -173,13 +173,13 @@ kubectl logs -n flux-system deployment/source-controller -f
 kubectl logs -n flux-system deployment/helm-controller -f
 
 # Filter for specific reconciliation events
-kubectl logs -n flux-system deployment/source-controller | grep "Reconciling"
+kubectl logs -n flux-system deployment/source-controller | grep -i "reconcil"
 
 # Filter for a specific resource
 kubectl logs -n flux-system deployment/kustomize-controller | grep "my-app"
 
 # View logs with timestamps for the last 10 minutes
-kubectl logs -n flux-system deployment/source-controller --since=10m
+kubectl logs -n flux-system deployment/source-controller --since=10m --timestamps
 ```
 
 ## What Debug Logs Reveal
