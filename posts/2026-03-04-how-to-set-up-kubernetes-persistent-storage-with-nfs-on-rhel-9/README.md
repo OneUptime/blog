@@ -48,6 +48,8 @@ parameters:
   share: /srv/nfs/k8s-data
 reclaimPolicy: Retain
 volumeBindingMode: Immediate
+mountOptions:
+  - nfsvers=4.1
 ```
 
 ## Create a PersistentVolumeClaim
@@ -98,4 +100,3 @@ spec:
 ## Conclusion
 
 NFS persistent storage on RHEL 9 Kubernetes provides shared ReadWriteMany storage across pods. Use the NFS CSI driver for dynamic provisioning and proper lifecycle management.
-
