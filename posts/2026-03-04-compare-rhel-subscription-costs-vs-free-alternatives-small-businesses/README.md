@@ -15,10 +15,10 @@ Small businesses need reliable Linux servers but must watch costs carefully. RHE
 Red Hat offers several subscription options:
 
 ```bash
-# Self-Support: ~$349/year per server (business hours, web only)
+# Self-Support: ~$384/year per server (no Red Hat customer support; not intended for production)
 
-# Standard: ~$799/year per server (business hours, web + phone)
-# Premium: ~$1,299/year per server (24/7 support, web + phone)
+# Standard: ~$879/year per server (business hours, web + phone)
+# Premium: ~$1,429/year per server (24/7 for severity 1 and 2 cases, web + phone)
 
 # Check your current subscription details
 sudo subscription-manager list --consumed
@@ -29,7 +29,7 @@ sudo subscription-manager list --consumed
 Red Hat provides RHEL at no cost for several scenarios:
 
 ```bash
-# Individual Developer Subscription: Free, up to 16 systems
+# Individual Developer Subscription: Free for individuals, up to 16 systems
 # Register at developers.redhat.com
 sudo subscription-manager register
 sudo subscription-manager attach --auto
@@ -37,7 +37,7 @@ sudo subscription-manager attach --auto
 # This gives you full RHEL with updates but no support SLA
 ```
 
-For small businesses with under 16 servers, this is a genuine option. You get real RHEL packages and errata, just without the ability to open support cases.
+For an individual developer or owner-operator with under 16 systems, this is a genuine option for small production use cases. The subscription is assigned to the individual Red Hat account, not to the business as an organization. You get real RHEL packages and errata, just without the ability to open support cases.
 
 ## Free RHEL-Compatible Alternatives
 
@@ -53,7 +53,7 @@ cat /etc/rocky-release
 cat /etc/almalinux-release
 ```
 
-Both are binary-compatible with RHEL, so the same packages, configurations, and automation scripts work across all three.
+Rocky Linux aims to be bug-for-bug compatible with RHEL, while AlmaLinux aims for RHEL ABI/binary compatibility. Most packages, configurations, and automation scripts built for RHEL work across all three, but vendor support, certifications, package timing, and exact package contents can differ.
 
 ## Total Cost of Ownership
 
@@ -67,9 +67,9 @@ For a small business with 5 servers running customer-facing applications:
 
 ```bash
 # Cost comparison per year (approximate)
-# RHEL Standard: 5 x $799 = $3,995
-# RHEL Self-Support: 5 x $349 = $1,745
-# RHEL Developer (if under 16 servers): $0
+# RHEL Standard: 5 x $879 = $4,395
+# RHEL Self-Support: 5 x $384 = $1,920
+# RHEL Developer for Individuals (if eligible and under 16 systems): $0
 # Rocky Linux / AlmaLinux: $0
 
 # But factor in engineering time for self-support:
@@ -79,15 +79,15 @@ For a small business with 5 servers running customer-facing applications:
 
 ## Practical Approach for Small Businesses
 
-Use the free RHEL Developer Subscription for up to 16 systems. This gives you genuine RHEL with access to the customer portal knowledge base:
+If the systems are owned and managed by an eligible individual, use the free RHEL Developer Subscription for up to 16 systems. This gives you genuine RHEL with access to the customer portal knowledge base:
 
 ```bash
 # Register your systems with the free developer subscription
-sudo subscription-manager register --username your-username --password your-password
+sudo subscription-manager register --username=your-username --password=your-password
 sudo subscription-manager attach --auto
 
 # Verify your subscription
 sudo subscription-manager status
 ```
 
-If you outgrow 16 systems or need phone support, upgrade to a paid subscription for your critical servers and keep free alternatives for development and testing. This hybrid approach balances cost with reliability.
+If you need organization-managed subscriptions, outgrow 16 systems, or need phone support, upgrade to a paid subscription for your critical servers and keep free alternatives for development and testing. This hybrid approach balances cost with reliability.
