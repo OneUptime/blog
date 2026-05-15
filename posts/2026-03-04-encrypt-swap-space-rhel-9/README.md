@@ -8,7 +8,7 @@ Description: Learn how to encrypt swap space on RHEL to protect sensitive data t
 
 ---
 
-When an application writes sensitive data to memory - passwords, encryption keys, personal information - that data can end up in swap. Anyone with physical access to the disk can read swap contents with simple forensic tools. Encrypting swap eliminates this risk.
+When an application writes sensitive data to memory - passwords, encryption keys, personal information - that data can end up in swap. Anyone with physical access to the disk can read swap contents with simple forensic tools. Encrypting swap reduces this risk by protecting the data at rest.
 
 ## Why Encrypt Swap
 
@@ -21,7 +21,7 @@ Data in swap is written to disk in plaintext by default. This means:
 
 ```mermaid
 graph TD
-    A[Application Memory] -->|Low memory pressure| B[Swap - Unencrypted Disk]
+    A[Application Memory] -->|Memory pressure| B[Swap - Unencrypted Disk]
     B --> C[Physical access = data exposure]
     A -->|With encrypted swap| D[Swap - Encrypted Disk]
     D --> E[Physical access = encrypted data only]
@@ -97,9 +97,9 @@ swapon --show
 
 After rebooting, the system should automatically set up encrypted swap.
 
-## Method 2: LUKS Encryption (Required for Hibernation)
+## Method 2: LUKS Encryption (For Hibernation-Capable Systems)
 
-If you need hibernation support, you need a persistent encryption key (so the system can read swap after resume). LUKS provides this.
+If you need hibernation support, you need a persistent encryption key (so the system can read swap after resume). LUKS provides this, but you still need to configure your system's hibernation resume device.
 
 ### Step 1: Create a LUKS Encrypted Swap Volume
 
@@ -165,7 +165,7 @@ Update crypttab to use the keyfile:
 swap_crypt    /dev/rhel/swap    /root/.swap-keyfile    luks
 ```
 
-Make sure the root filesystem (where the keyfile lives) is on an encrypted volume too, otherwise the keyfile is exposed.
+Make sure the root filesystem (where the keyfile lives) is on an encrypted volume too, otherwise the keyfile is exposed. If you use a keyfile for hibernation, make sure it is also available in the initramfs path that unlocks the swap device during resume.
 
 ## Verifying Encryption Is Working
 
@@ -200,7 +200,7 @@ Encrypted swap has a performance cost, but on modern CPUs with AES-NI hardware a
 grep aes /proc/cpuinfo | head -1
 ```
 
-If you see `aes` in the flags, hardware acceleration is available and the performance impact is typically under 5%.
+If you see `aes` in the flags, hardware acceleration is available and the performance impact is usually low, but it depends on the workload and storage device.
 
 ## Troubleshooting
 
@@ -231,4 +231,4 @@ For the random-key method, make sure crypttab specifies `/dev/urandom` as the ke
 
 ## Summary
 
-Encrypting swap on RHEL protects sensitive data that gets paged out of memory. Use random-key encryption (via `/dev/urandom` in crypttab) for systems that do not hibernate - it is simpler and more secure since keys are never stored. Use LUKS encryption if you need hibernation support. The performance impact is negligible on modern hardware with AES-NI. Always verify with `swapon --show` and `cryptsetup status` after setup.
+Encrypting swap on RHEL protects sensitive data that gets paged out of memory. Use random-key encryption (via `/dev/urandom` in crypttab) for systems that do not hibernate - it is simpler and more secure since keys are never stored. Use LUKS encryption if you need hibernation support, and configure the resume path for your system. The performance impact is usually low on modern hardware with AES-NI, but it is workload-dependent. Always verify with `swapon --show` and `cryptsetup status` after setup.
