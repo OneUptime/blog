@@ -8,60 +8,82 @@ Description: Step-by-step guide on deploy kafka with kraft mode (without zookeep
 
 ---
 
-ZooKeeper has traditionally been Kafka's coordination service, managing broker metadata and leader elections. While KRaft mode is replacing ZooKeeper, many existing deployments still use this architecture.
+ZooKeeper has traditionally been Kafka's coordination service, managing broker metadata and leader elections. KRaft mode removes the ZooKeeper dependency by managing cluster metadata inside Kafka itself.
 
 ## Prerequisites
 
 - RHEL with a valid subscription or CentOS Stream 9
+- Apache Kafka extracted under `/opt/kafka` and Java installed
 - Root or sudo access
 - A terminal session
 
 ## Step 2: Configure the Service
 
-Configure ZooKeeper and Kafka:
+Configure Kafka in KRaft mode:
 
 ```bash
-# Configure ZooKeeper
+# Create the KRaft configuration directory
+sudo mkdir -p /opt/kafka/config/kraft /var/lib/kafka-logs
 
-cat <<EOF > /opt/kafka/config/zookeeper.properties
-dataDir=/var/lib/zookeeper
-clientPort=2181
-maxClientCnxns=0
-EOF
-
-# Start ZooKeeper
-/opt/kafka/bin/zookeeper-server-start.sh -daemon /opt/kafka/config/zookeeper.properties
-
-# Configure Kafka broker
-cat <<EOF > /opt/kafka/config/server.properties
-broker.id=0
-listeners=PLAINTEXT://:9092
+# Configure a single-node Kafka broker and controller
+sudo tee /opt/kafka/config/kraft/server.properties > /dev/null <<EOF
+node.id=1
+process.roles=broker,controller
+listeners=PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+advertised.listeners=PLAINTEXT://localhost:9092
+listener.security.protocol.map=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+inter.broker.listener.name=PLAINTEXT
+controller.listener.names=CONTROLLER
+controller.quorum.voters=1@localhost:9093
 log.dirs=/var/lib/kafka-logs
-zookeeper.connect=localhost:2181
+offsets.topic.replication.factor=1
+transaction.state.log.replication.factor=1
+transaction.state.log.min.isr=1
 EOF
 
-# Start Kafka
-/opt/kafka/bin/kafka-server-start.sh -daemon /opt/kafka/config/server.properties
+# Format the KRaft metadata storage before the first startup
+KAFKA_CLUSTER_ID="$(/opt/kafka/bin/kafka-storage.sh random-uuid)"
+sudo /opt/kafka/bin/kafka-storage.sh format --cluster-id "$KAFKA_CLUSTER_ID" --config /opt/kafka/config/kraft/server.properties
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
+# Create a systemd service for Kafka
+sudo tee /etc/systemd/system/kafka.service > /dev/null <<EOF
+[Unit]
+Description=Apache Kafka Server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/kraft/server.properties
+ExecStop=/opt/kafka/bin/kafka-server-stop.sh
+Restart=on-failure
+LimitNOFILE=100000
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Reload systemd after adding the unit file
+sudo systemctl daemon-reload
+
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable kafka.service
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start kafka.service
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status kafka.service
 ```
 
 ## Step 4: Configure the Firewall
 
 ```bash
-# Open the required port
-sudo firewall-cmd --permanent --add-port=<PORT>/tcp
+# Open the Kafka client port
+sudo firewall-cmd --permanent --add-port=9092/tcp
 sudo firewall-cmd --reload
 
 # Verify the rule
@@ -86,9 +108,9 @@ Confirm everything is working by checking the status and logs:
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
+- If the service fails to start, check the logs with `journalctl -u kafka.service -e --no-pager`.
 - SELinux may block access. Check for denials with `ausearch -m avc -ts recent` and apply appropriate policies.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- Ensure Java is installed: `java -version`.
 
 ## Conclusion
 
