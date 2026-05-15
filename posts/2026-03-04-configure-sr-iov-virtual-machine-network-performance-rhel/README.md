@@ -25,20 +25,20 @@ dmesg | grep -i iommu
 
 # Enable IOMMU in the kernel boot parameters
 sudo grubby --update-kernel=ALL --args="intel_iommu=on iommu=pt"
-# For AMD systems: amd_iommu=on iommu=pt
+# For AMD systems: iommu=pt
 
 # Reboot to apply
 sudo systemctl reboot
 
 # Verify IOMMU is active after reboot
-dmesg | grep -i "IOMMU enabled"
+dmesg | grep -Ei "DMAR|IOMMU"
 ```
 
 ## Creating Virtual Functions
 
 ```bash
 # Check if the NIC supports SR-IOV
-lspci | grep -i ethernet
+lspci -v | grep -i "Single Root I/O Virtualization"
 # Note the PCI address (e.g., 03:00.0)
 
 # Check the maximum number of VFs supported
@@ -80,17 +80,8 @@ sudo systemctl enable sriov-vfs.service
 lspci | grep "Virtual Function"
 # Example output: 03:10.0 Ethernet controller: Intel Virtual Function
 
-# Create a hostdev XML for the VF
-cat << 'EOF' > /tmp/sriov-vf.xml
-<interface type='hostdev' managed='yes'>
-  <source>
-    <address type='pci' domain='0x0000' bus='0x03' slot='0x10' function='0x0'/>
-  </source>
-</interface>
-EOF
-
 # Attach the VF to a VM
-sudo virsh attach-device rhel9-vm /tmp/sriov-vf.xml --live --config
+sudo virsh attach-interface rhel9-vm hostdev 0000:03:10.0 --mac 52:54:00:00:01:01 --managed --live --config
 ```
 
 ## Verifying SR-IOV in the Guest
