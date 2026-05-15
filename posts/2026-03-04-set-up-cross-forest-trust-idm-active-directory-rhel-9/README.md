@@ -8,12 +8,12 @@ Description: Learn how to establish a cross-forest trust between Red Hat Identit
 
 ---
 
-A cross-forest trust between IdM and Active Directory allows AD users to access resources managed by IdM and vice versa. This is the recommended approach for organizations running both Windows and RHEL environments, enabling a unified identity solution without migrating users between directories.
+A cross-forest trust between IdM and Active Directory allows AD users to access resources managed by IdM. This is the recommended approach for organizations running both Windows and RHEL environments, enabling a unified identity solution without migrating users between directories.
 
 ## Prerequisites
 
 - IdM server on RHEL 9 with integrated DNS
-- Active Directory domain controller (Windows Server 2012 R2 or later)
+- Active Directory domain controller (Windows Server 2012 or later; Windows Server 2022 requires RHEL 9.1 or later)
 - DNS resolution working between both domains
 - Non-overlapping DNS namespaces (e.g., idm.example.com and ad.example.com)
 - Non-overlapping ID ranges
@@ -52,7 +52,7 @@ nslookup idm1.idm.example.com
 On the IdM server:
 
 ```bash
-sudo dnf install ipa-server-trust-ad
+sudo dnf install ipa-server-trust-ad samba-client
 ```
 
 ## Preparing IdM for the Trust
@@ -76,8 +76,13 @@ For non-interactive:
 sudo ipa-adtrust-install \
     --netbios-name=IDM \
     --add-sids \
-    --add-agents \
     --unattended
+```
+
+Restart IdM services after the trust components are installed:
+
+```bash
+sudo ipactl restart
 ```
 
 ## Opening Firewall Ports
@@ -92,26 +97,28 @@ sudo firewall-cmd --reload
 This opens:
 
 - TCP/UDP 135 - Microsoft RPC
-- TCP 138 - NetBIOS
-- TCP 139 - NetBIOS
-- TCP 445 - SMB
-- TCP 1024-1300 - Dynamic RPC
+- TCP/UDP 445 - SMB
+- TCP 49152-65535 - Dynamic RPC
+
+The installer might also mention NetBIOS ports 138 and 139, but they are not required for a RHEL 9 IdM-AD trust.
 
 ## Establishing the Trust
 
 ### One-Way Trust (AD users can access IdM resources)
 
 ```bash
-ipa trust-add --type=ad ad.example.com --admin=Administrator --password
+ipa trust-add --type=ad ad.example.com --admin=Administrator --password --range-type=ipa-ad-trust
 ```
 
 Enter the AD Administrator password when prompted.
 
-### Two-Way Trust (Bidirectional)
+### Two-Way Trust (for S4U Cross-Realm Scenarios)
 
 ```bash
-ipa trust-add --type=ad ad.example.com --two-way=true --admin=Administrator --password
+ipa trust-add --type=ad ad.example.com --two-way=true --admin=Administrator --password --range-type=ipa-ad-trust
 ```
+
+Two-way trust in IdM is mainly for applications that need Microsoft `S4U2Self` or `S4U2Proxy` Kerberos extensions across the trust boundary. It does not allow IdM users to log in to Windows systems or grant extra AD-side rights compared with one-way trust.
 
 ## Verifying the Trust
 
@@ -139,16 +146,16 @@ kinit aduser@AD.EXAMPLE.COM
 
 ## Configuring ID Ranges
 
-IdM assigns POSIX IDs to AD users. Check the ID range:
+IdM creates an ID range for the trusted AD domain. With the `ipa-ad-trust` range type, SSSD maps POSIX IDs from AD SIDs. Check the ID range:
 
 ```bash
 ipa idrange-find
 ```
 
-If needed, adjust:
+If you need a specific mapped ID range, define it when creating the trust:
 
 ```bash
-ipa idrange-mod AD.EXAMPLE.COM_id_range --base-id=200000 --range-size=200000
+ipa trust-add --type=ad ad.example.com --admin=Administrator --password --range-type=ipa-ad-trust --base-id=200000 --range-size=200000
 ```
 
 ## Allowing AD Users to Access IdM Resources
@@ -156,12 +163,17 @@ ipa idrange-mod AD.EXAMPLE.COM_id_range --base-id=200000 --range-size=200000
 ### Create HBAC Rules for AD Users
 
 ```bash
-# Create a group for AD users
+# Create a non-POSIX external group for AD users
+ipa group-add ad-users-external --desc="Active Directory users external map" --external
 
-ipa group-add ad-users --desc="Active Directory users" --external
+# Create a POSIX group for HBAC and sudo policies
+ipa group-add ad-users --desc="Active Directory users"
 
-# Add AD groups as external members
-ipa group-add-member ad-users --external="AD\\Domain Users"
+# Add an AD global or universal security group as an external member
+ipa group-add-member ad-users-external --external="AD\\Linux Users"
+
+# Nest the external group in the POSIX group
+ipa group-add-member ad-users --groups=ad-users-external
 
 # Create HBAC rule
 ipa hbacrule-add allow_ad_users_devservers
@@ -173,6 +185,7 @@ ipa hbacrule-add-service allow_ad_users_devservers --hbacsvcs=sshd
 ### Configure sudo for AD Users
 
 ```bash
+ipa sudocmd-add /usr/bin/systemctl
 ipa sudorule-add ad-sudo-rule
 ipa sudorule-add-user ad-sudo-rule --groups=ad-users
 ipa sudorule-add-host ad-sudo-rule --hostgroups=devservers
