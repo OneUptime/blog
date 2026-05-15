@@ -23,8 +23,7 @@ sequenceDiagram
     U->>K: Request service ticket for host/server
     K-->>U: Service ticket granted
     U->>S: SSH connection with GSSAPI token
-    S->>K: Validate ticket
-    K-->>S: Ticket valid
+    S->>S: Validate ticket using host keytab
     S-->>U: Authentication successful
 ```
 
@@ -34,7 +33,7 @@ Before configuring GSSAPI SSH authentication, you need:
 
 1. A working Kerberos realm (MIT Kerberos or Active Directory)
 2. The SSH server enrolled in the Kerberos realm
-3. Proper DNS configuration (forward and reverse lookups must work)
+3. Proper DNS configuration (the server's hostname must resolve consistently)
 4. Synchronized time across all systems (Kerberos is time-sensitive)
 
 ## Step 1: Install Required Packages
@@ -90,10 +89,10 @@ The SSH server needs a keytab file containing the host principal's key:
 sudo kadmin.local -q "addprinc -randkey host/server.example.com"
 
 # Extract the keytab
-sudo kadmin.local -q "ktadd -k /etc/krb5.keytab host/server.example.com"
+sudo kadmin.local -q "ktadd -k /tmp/server.example.com.keytab host/server.example.com"
 
 # Copy the keytab to the SSH server
-sudo scp /etc/krb5.keytab root@server.example.com:/etc/krb5.keytab
+sudo scp /tmp/server.example.com.keytab root@server.example.com:/etc/krb5.keytab
 ```
 
 ### For Active Directory (using adcli)
@@ -151,7 +150,7 @@ Add or modify these settings:
 # Enable GSSAPI authentication
 GSSAPIAuthentication yes
 
-# Enable GSSAPI key exchange for stronger security
+# Enable GSSAPI key exchange so host identity can be verified with Kerberos
 GSSAPIKeyExchange yes
 
 # Clean up credentials on logout
@@ -160,7 +159,7 @@ GSSAPICleanupCredentials yes
 # Allow GSSAPI to be used for authentication
 GSSAPIStrictAcceptorCheck yes
 
-# Store delegated credentials
+# Update delegated credentials after a compatible GSSAPI rekey
 GSSAPIStoreCredentialsOnRekey yes
 ```
 
@@ -225,7 +224,7 @@ debug1: Authentication succeeded (gssapi-with-mic).
 
 ### DNS Issues
 
-GSSAPI relies on proper DNS resolution. Verify both forward and reverse lookups:
+GSSAPI relies on proper hostname resolution. Verify the server name that clients use resolves correctly, and check reverse DNS if your Kerberos or SSH configuration uses DNS canonicalization:
 
 ```bash
 # Forward lookup
@@ -234,7 +233,7 @@ dig server.example.com +short
 # Reverse lookup
 dig -x 192.168.1.100 +short
 
-# The reverse lookup must match the forward lookup
+# If reverse DNS is used, it should match the expected host principal name
 ```
 
 ### Time Synchronization
