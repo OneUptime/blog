@@ -8,7 +8,7 @@ Description: Install and configure vsftpd (Very Secure FTP Daemon) on RHEL to se
 
 ---
 
-vsftpd is the default FTP server on RHEL, designed with security in mind. This guide covers a basic installation and configuration for serving files to authenticated users.
+vsftpd is the FTP daemon provided by RHEL, designed with security in mind. This guide covers a basic installation and configuration for serving files to authenticated users.
 
 ## Install vsftpd
 
@@ -118,11 +118,8 @@ sudo firewall-cmd --reload
 ## Configure SELinux
 
 ```bash
-# Allow FTP to access home directories
-sudo setsebool -P ftp_home_dir 1
-
-# Allow FTP to read/write files
-sudo setsebool -P ftpd_full_access 1
+# Allow FTP to read/write files using normal Linux permissions
+sudo setsebool -P allow_ftpd_full_access 1
 
 # If using non-standard directories
 # sudo semanage fcontext -a -t public_content_rw_t "/data/ftp(/.*)?"
