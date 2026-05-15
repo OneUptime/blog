@@ -40,9 +40,8 @@ sudo tee /etc/audit/rules.d/50-ssh-auth.rules << 'EOF'
 -w /etc/ssh/sshd_config -p wa -k sshd_config
 -w /etc/ssh/sshd_config.d/ -p wa -k sshd_config
 
-# Monitor authorized_keys files
--w /root/.ssh/ -p wa -k ssh_keys
--w /etc/ssh/authorized_keys/ -p wa -k ssh_keys
+# Monitor root's authorized_keys file
+-w /root/.ssh/authorized_keys -p wa -k ssh_keys
 
 # Monitor PAM configuration for SSH
 -w /etc/pam.d/sshd -p wa -k ssh_pam
@@ -58,6 +57,13 @@ sudo tee /etc/audit/rules.d/50-ssh-auth.rules << 'EOF'
 # Monitor faillock directory for account lockouts
 -w /var/run/faillock/ -p wa -k account_lockout
 EOF
+
+# Create optional paths before loading rules if they are not already present.
+# Audit watch rules fail to load when the watched path does not exist.
+sudo install -d -m 700 /root/.ssh
+sudo touch /root/.ssh/authorized_keys
+sudo chmod 600 /root/.ssh/authorized_keys
+sudo install -d -m 700 /var/run/faillock
 
 # Load the rules
 sudo augenrules --load
@@ -135,7 +141,7 @@ sudo grep "Failed password" /var/log/secure | \
 
 # Count successful logins by user
 sudo grep "Accepted" /var/log/secure | \
-    awk '{print $9}' | sort | uniq -c | sort -rn
+    awk '{for (i=1; i<=NF; i++) if ($i=="for") print $(i+1)}' | sort | uniq -c | sort -rn
 
 # Find brute force attempts (more than 10 failures from one IP)
 sudo grep "Failed password" /var/log/secure | \
@@ -192,7 +198,7 @@ echo ""
 echo "--- Failed Login Count by IP (Today) ---"
 sudo journalctl -u sshd --since today --no-pager 2>/dev/null | \
     grep "Failed password" | \
-    grep -oP 'from \K[\d.]+' | sort | uniq -c | sort -rn | head -10
+    grep -oP 'from \K\S+' | sort | uniq -c | sort -rn | head -10
 
 echo ""
 echo "--- Failed Login Count by Username (Today) ---"
@@ -204,7 +210,15 @@ echo ""
 echo "--- Successful Logins Today ---"
 sudo journalctl -u sshd --since today --no-pager 2>/dev/null | \
     grep "Accepted" | \
-    awk '{print $1, $2, $3, "User:", $9, "From:", $11, "Method:", $7}'
+    awk '{
+        method = user = source = "";
+        for (i=1; i<=NF; i++) {
+            if ($i == "Accepted") method = $(i+1);
+            if ($i == "for") user = $(i+1);
+            if ($i == "from") source = $(i+1);
+        }
+        print $1, $2, $3, "User:", user, "From:", source, "Method:", method
+    }'
 
 echo ""
 echo "--- Audit Login Events (Today) ---"
@@ -228,7 +242,7 @@ HOSTNAME=$(hostname)
 # Count failures per IP in the timeframe
 ATTACKERS=$(sudo journalctl -u sshd --since "$TIMEFRAME" --no-pager 2>/dev/null | \
     grep "Failed password" | \
-    grep -oP 'from \K[\d.]+' | sort | uniq -c | sort -rn | \
+    grep -oP 'from \K\S+' | sort | uniq -c | sort -rn | \
     awk -v threshold="$THRESHOLD" '$1 >= threshold {print $1, $2}')
 
 if [ -n "$ATTACKERS" ]; then
@@ -264,8 +278,8 @@ Recommended logging settings:
 # Set log level to VERBOSE for detailed authentication logging
 LogLevel VERBOSE
 
-# Log to AUTH facility
-SyslogFacility AUTH
+# Log to the facility RHEL commonly routes to /var/log/secure
+SyslogFacility AUTHPRIV
 
 # Show last login information
 PrintLastLog yes
