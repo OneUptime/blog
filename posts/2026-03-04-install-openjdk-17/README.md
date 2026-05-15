@@ -33,15 +33,21 @@ sudo dnf install -y java-17-openjdk-devel
 
 ```bash
 java -version
+```
+
+If you installed the JDK package, verify the compiler:
+
+```bash
 javac -version
 ```
 
 Expected output:
 
 ```bash
-openjdk version "17.0.x" 2024-xx-xx
+openjdk version "17.0.x" 20xx-xx-xx
 OpenJDK Runtime Environment (Red_Hat-17.0.x) (build 17.0.x+x)
 OpenJDK 64-Bit Server VM (Red_Hat-17.0.x) (build 17.0.x+x, mixed mode, sharing)
+javac 17.0.x
 ```
 
 ## Step 3: Set JAVA_HOME
