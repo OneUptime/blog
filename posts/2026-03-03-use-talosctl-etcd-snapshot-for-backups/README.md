@@ -52,11 +52,11 @@ After creating a snapshot, verify that it is valid and contains data:
 # Check the file size - a valid snapshot should be at least a few KB
 ls -lh ./etcd-backup-*.snapshot
 
-# If you have etcdctl installed, you can check the snapshot status
-etcdctl snapshot status ./etcd-backup-20240301-120000.snapshot --write-out=table
+# If you have etcdutl installed, you can check the snapshot status
+etcdutl snapshot status ./etcd-backup-20240301-120000.snapshot --write-out=table
 ```
 
-The `etcdctl snapshot status` command shows you the hash, revision, total keys, and total size of the snapshot. This gives you confidence that the backup is complete and valid.
+The `etcdutl snapshot status` command shows you the hash, revision, total keys, and total size of the snapshot. This gives you confidence that the backup is complete and valid.
 
 ## Automating Backups with Cron
 
@@ -124,6 +124,9 @@ S3_BUCKET="s3://my-etcd-backups/production"
 DATE=$(date +%Y%m%d-%H%M%S)
 SNAPSHOT_FILE="etcd-backup-$DATE.snapshot"
 
+# Create backup directory if it does not exist
+mkdir -p "$BACKUP_DIR"
+
 # Create local snapshot
 talosctl etcd snapshot "$BACKUP_DIR/$SNAPSHOT_FILE" --nodes 192.168.1.10
 
@@ -167,7 +170,7 @@ spec:
         spec:
           containers:
           - name: etcd-backup
-            image: ghcr.io/siderolabs/talosctl:v1.7.0
+            image: ghcr.io/siderolabs/talosctl:v1.12.1
             command:
             - /bin/sh
             - -c
@@ -200,11 +203,11 @@ Always take a backup before performing any risky operation on your cluster:
 ```bash
 # Before upgrading Talos Linux
 talosctl etcd snapshot ./pre-upgrade-backup.snapshot --nodes 192.168.1.10
-talosctl upgrade --nodes 192.168.1.10 --image ghcr.io/siderolabs/installer:v1.7.0
+talosctl upgrade --nodes 192.168.1.10 --image ghcr.io/siderolabs/installer:v1.12.1
 
 # Before upgrading Kubernetes
 talosctl etcd snapshot ./pre-k8s-upgrade-backup.snapshot --nodes 192.168.1.10
-talosctl upgrade-k8s --nodes 192.168.1.10 --to 1.30.0
+talosctl upgrade-k8s --nodes 192.168.1.10 --to 1.35.0
 
 # Before making major configuration changes
 talosctl etcd snapshot ./pre-config-change-backup.snapshot --nodes 192.168.1.10
@@ -255,6 +258,6 @@ exit 0
 - Compress and encrypt backups before storing them remotely.
 - Keep at least 30 days of backup history.
 - Document your backup and restore procedures in your runbook.
-- Use the snapshot command against a non-leader etcd member to reduce load on the leader.
+- Use the snapshot command against any healthy control plane node.
 
 The `talosctl etcd snapshot` command is simple to use, but building a reliable backup strategy around it requires planning. Invest the time now, and you will be grateful when you need to recover your cluster later.
