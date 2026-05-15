@@ -93,13 +93,13 @@ sudo vi /etc/iscsi/iscsid.conf
 Key timeout settings:
 
 ```bash
-# Time to wait for a response before declaring the connection dead (seconds)
+# Time to wait for session re-establishment before failing SCSI commands (seconds)
 node.session.timeo.replacement_timeout = 120
 
 # Number of times to retry login
 node.session.initial_login_retry_max = 8
 
-# Delay between login retries (seconds)
+# Time to wait for login to complete (seconds)
 node.conn[0].timeo.login_timeout = 15
 
 # NOP-out interval and timeout for connection health checks
