@@ -17,8 +17,8 @@ Organizations are the top-level resource isolation boundary.
 ```bash
 # Using the awx CLI tool
 
-# Install the awx CLI
-pip install awxkit
+# Install the Automation Controller CLI on RHEL 9
+sudo dnf install --enablerepo=ansible-automation-platform-2.6-for-rhel-9-x86_64-rpms automation-controller-cli
 
 # Create a new organization
 awx organizations create \
@@ -55,9 +55,10 @@ awx users create \
   --password "TempPass123"
 
 # Associate user with a team
-awx teams associate \
-  --name "Platform Engineers" \
-  --user "jdoe"
+awx users grant \
+  --team "Platform Engineers" \
+  --role member \
+  "jdoe"
 ```
 
 ## Configuring Role-Based Permissions
@@ -66,25 +67,22 @@ The controller provides granular roles for each resource type.
 
 ```bash
 # Grant a team admin access to a project
-awx roles grant \
-  --type "admin" \
-  --team "Platform Engineers" \
-  --resource-type "project" \
-  --resource-name "RHEL Patching"
+awx teams grant \
+  --project "RHEL Patching" \
+  --role admin \
+  "Platform Engineers"
 
 # Grant execute permission on a job template
-awx roles grant \
-  --type "execute" \
-  --team "SRE Team" \
-  --resource-type "job_template" \
-  --resource-name "Deploy Application"
+awx teams grant \
+  --job_template "Deploy Application" \
+  --role execute \
+  "SRE Team"
 
 # Grant read-only access to an inventory
-awx roles grant \
-  --type "read" \
-  --team "SRE Team" \
-  --resource-type "inventory" \
-  --resource-name "Production Servers"
+awx teams grant \
+  --inventory "Production Servers" \
+  --role read \
+  "SRE Team"
 ```
 
 ## Built-in Role Types
@@ -98,19 +96,19 @@ awx roles grant \
 # - update: Can modify the resource
 # - member: Team membership
 
-# List all roles for a specific team
-awx roles list --team "Platform Engineers"
+# List role assignments for a specific team
+TEAM_ID=$(awx teams list --name "Platform Engineers" -f jq --filter '.results[0].id')
+awx role_team_assignments list --team "$TEAM_ID"
 ```
 
 ## Organization-Level Permissions
 
 ```bash
 # Grant an organization-wide role
-awx roles grant \
-  --type "auditor" \
-  --user "auditor_user" \
-  --resource-type "organization" \
-  --resource-name "Engineering"
+awx users grant \
+  --organization "Engineering" \
+  --role auditor \
+  "auditor_user"
 
 # This gives the user read access to all resources in the org
 ```
