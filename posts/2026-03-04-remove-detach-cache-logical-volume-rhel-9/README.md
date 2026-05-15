@@ -57,11 +57,14 @@ If you want to detach the cache but keep the cache LV for later reuse:
 lvconvert --splitcache vg_data/lv_data
 ```
 
-This detaches the cache pool and leaves it as a separate LV. The origin returns to a normal LV. You can reattach the cache later:
+This detaches the cache pool or cache volume and leaves it as a separate LV. The origin returns to a normal LV. You can reattach the fast LV later as a new cache, but the old cached contents are not reused:
 
 ```bash
-# Reattach later
+# Reattach later with dm-cache and a cache pool
 lvconvert --type cache --cachepool vg_data/cachedata vg_data/lv_data
+
+# Or reattach later with dm-writecache and a cache volume
+lvconvert --type writecache --cachevol vg_data/cachedata vg_data/lv_data
 ```
 
 ## Removing dm-writecache
@@ -94,7 +97,7 @@ pvs -a
 vgs
 ```
 
-### Writethough Mode Recovery
+### Writethrough Mode Recovery
 
 If the cache was in writethrough mode, the origin has all the data. You can safely remove the failed cache:
 
@@ -112,14 +115,18 @@ If the cache was in writeback mode and the SSD failed, data may be lost. The dir
 lvconvert --uncache --force vg_data/lv_data
 ```
 
-After this, check the filesystem for consistency:
+After this, unmount the filesystem and check it for consistency:
 
 ```bash
+umount /data
+
 # For XFS
 xfs_repair /dev/vg_data/lv_data
 
 # For ext4
 e2fsck -f /dev/vg_data/lv_data
+
+mount /dev/vg_data/lv_data /data
 ```
 
 ## Step-by-Step Safe Removal Process
@@ -217,9 +224,11 @@ lvconvert --uncache --force vg_data/lv_data
 
 ## Verifying Data Integrity After Removal
 
-After removing the cache, verify the filesystem:
+After removing the cache, unmount the filesystem before checking it:
 
 ```bash
+umount /data
+
 # Check XFS
 xfs_repair -n /dev/vg_data/lv_data
 
@@ -227,7 +236,7 @@ xfs_repair -n /dev/vg_data/lv_data
 e2fsck -n /dev/vg_data/lv_data
 ```
 
-Mount and verify applications work:
+Mount it again and verify applications work:
 
 ```bash
 mount /dev/vg_data/lv_data /data
