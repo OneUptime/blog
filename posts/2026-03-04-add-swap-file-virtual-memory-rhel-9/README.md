@@ -17,7 +17,7 @@ Swap files have some practical advantages over swap partitions:
 - No need to repartition or modify LVM
 - Easy to resize by creating a new file
 - Can be added to a running system in minutes
-- Works on any filesystem (XFS, ext4)
+- Works on common RHEL filesystems such as XFS and ext4
 - Simple to remove when no longer needed
 
 The performance difference between a swap file and a swap partition is negligible on modern kernels and storage.
@@ -33,16 +33,23 @@ free -h
 
 ## Step 1: Create the Swap File
 
-Use `dd` or `fallocate` to create the file. On XFS, use `dd` since `fallocate` may create files with holes that swap does not support:
+Use `dd` or `fallocate` to create the file. On RHEL 9, `fallocate` is preferred on modern filesystems such as XFS and ext4 because it is faster and avoids unnecessary disk I/O. Use `dd` when you want the most portable method:
 
 ```bash
-# Create a 4 GB swap file using dd (works on all filesystems)
+# Create a 4 GB swap file using dd (portable for XFS and ext4)
 dd if=/dev/zero of=/swapfile bs=1M count=4096 status=progress
 ```
 
 This writes 4096 blocks of 1 MB each, creating a 4 GB file filled with zeros.
 
-Do not use `fallocate` on XFS for swap files. It can create extents that `mkswap` will reject.
+If you use `fallocate`, the equivalent command is:
+
+```bash
+# Create a 4 GB swap file using fallocate
+fallocate -l 4G /swapfile
+```
+
+Some filesystems and file creation methods can create files with holes that `swapon` will reject. If that happens, recreate the file with `dd`.
 
 ## Step 2: Set Correct Permissions
 
@@ -91,6 +98,7 @@ Add the swap file to `/etc/fstab`:
 ```bash
 # Add swap file entry to fstab
 echo "/swapfile  none  swap  defaults  0 0" >> /etc/fstab
+systemctl daemon-reload
 ```
 
 Verify the entry:
@@ -111,7 +119,7 @@ As a general guideline:
 | 8-64 GB | At least 4 GB |
 | 64 GB+ | At least 4 GB, depends on workload |
 
-If the system needs to hibernate, swap must be at least equal to the amount of RAM.
+If the system needs to hibernate, follow RHEL's hibernation swap guidance. It can require more than the amount of RAM, and hibernation is not recommended on systems with more than 64 GiB of RAM.
 
 ## Creating Multiple Swap Files
 
@@ -136,7 +144,7 @@ Higher priority swap is used first.
 
 ## Resizing a Swap File
 
-You cannot resize a swap file in place. Instead, create a new one and replace the old one:
+You cannot resize a swap file while it is active. Disable it first, then create a new one and replace the old one:
 
 ```bash
 # Disable the current swap file
@@ -168,13 +176,14 @@ rm /swapfile
 
 # Remove the fstab entry
 sed -i '/\/swapfile/d' /etc/fstab
+systemctl daemon-reload
 ```
 
 ## Troubleshooting
 
 ### "swapon: /swapfile: skipping - it appears to have holes"
 
-This happens when the file was created with `fallocate` on XFS. Recreate it with `dd`:
+This happens when the swap file has holes or unsupported extents. Recreate it with `dd`:
 
 ```bash
 swapoff /swapfile 2>/dev/null
@@ -209,7 +218,7 @@ journalctl -b -u swap.target
 A swap file on a modern SSD performs nearly identically to a swap partition. On spinning disks, a swap partition may have a slight edge because the file could be fragmented. To check fragmentation:
 
 ```bash
-# Check if the swap file is fragmented (ext4 only)
+# Check if the swap file is fragmented
 filefrag -v /swapfile
 ```
 
