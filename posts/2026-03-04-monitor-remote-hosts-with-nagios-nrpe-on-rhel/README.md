@@ -13,9 +13,10 @@ NRPE (Nagios Remote Plugin Executor) is an agent that runs on remote RHEL hosts 
 ## Install NRPE on the Remote RHEL Host
 
 ```bash
-# Enable EPEL repository
+# Enable CodeReady Builder and EPEL on RHEL 9
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
 
-sudo dnf install -y epel-release
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 
 # Install NRPE and Nagios plugins
 sudo dnf install -y nrpe nagios-plugins-all
@@ -45,8 +46,8 @@ Add custom check commands:
 # Add custom NRPE commands
 sudo tee -a /etc/nagios/nrpe.cfg << 'EOF'
 
-# Check memory usage
-command[check_mem]=/usr/lib64/nagios/plugins/check_swap -w 20% -c 10%
+# Check swap usage
+command[check_swap]=/usr/lib64/nagios/plugins/check_swap -w 20% -c 10%
 
 # Check specific service is running
 command[check_httpd]=/usr/lib64/nagios/plugins/check_procs -c 1: -w 3: -C httpd
@@ -71,7 +72,8 @@ sudo firewall-cmd --reload
 
 ```bash
 # On the Nagios server, install the check_nrpe plugin
-sudo dnf install -y epel-release
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 sudo dnf install -y nagios-plugins-nrpe
 
 # Or if built from source, the plugin is at:
