@@ -34,14 +34,21 @@ Using AWS Backint Agent as an example:
 # Download the AWS Backint Agent
 
 cd /tmp
-curl -LO https://s3.amazonaws.com/aws-sap-hana-backup/aws-backint-agent-latest.tar.gz
+curl -L https://s3.amazonaws.com/awssap-backint-agent/binary/latest/aws-backint-agent.tar.gz -o aws-backint-agent.tar.gz
 
 # Extract and install
-sudo mkdir -p /opt/aws-backint-agent
-sudo tar xzf aws-backint-agent-latest.tar.gz -C /opt/aws-backint-agent/
+sudo mkdir -p /hana/shared/aws-backint-agent
+sudo tar xzf aws-backint-agent.tar.gz -C /hana/shared/aws-backint-agent/
+
+# Create the links SAP HANA expects for Backint
+sudo ln -sf /hana/shared/aws-backint-agent/aws-backint-agent /usr/sap/HDB/SYS/global/hdb/opt/hdbbackint
+sudo mkdir -p /usr/sap/HDB/SYS/global/hdb/opt/hdbconfig
+sudo ln -sf /hana/shared/aws-backint-agent/aws-backint-agent-config.yaml /usr/sap/HDB/SYS/global/hdb/opt/hdbconfig/aws-backint-agent-config.yaml
 
 # Set ownership for the HANA admin user
-sudo chown -R hdbadm:sapsys /opt/aws-backint-agent
+sudo chown -R hdbadm:sapsys /hana/shared/aws-backint-agent
+sudo chown -h hdbadm:sapsys /usr/sap/HDB/SYS/global/hdb/opt/hdbbackint \
+  /usr/sap/HDB/SYS/global/hdb/opt/hdbconfig/aws-backint-agent-config.yaml
 ```
 
 ## Step 2: Configure the Backint Agent
@@ -50,27 +57,24 @@ sudo chown -R hdbadm:sapsys /opt/aws-backint-agent
 # Create the agent configuration
 sudo su - hdbadm
 
-cat <<'CONFIG' > /opt/aws-backint-agent/aws-backint-agent-config.yaml
+cat <<'CONFIG' > /hana/shared/aws-backint-agent/aws-backint-agent-config.yaml
 # AWS Backint Agent Configuration
-s3_bucket: "your-hana-backup-bucket"
-region: "us-east-1"
-# Use instance profile for authentication (preferred)
-use_instance_profile: true
+S3BucketName: "your-hana-backup-bucket"
+S3BucketAwsRegion: "us-east-1"
+S3BucketOwnerAccountID: "123456789012"
+S3BucketFolder: "hana-backups"
 
 # Parallel upload settings for large databases
-multipart_upload_part_size: 134217728   # 128 MB parts
-max_concurrent_uploads: 4
+UploadConcurrency: 100
+UploadChannelSize: 10
 
 # Encryption settings
-server_side_encryption: "aws:kms"
-kms_key_id: "arn:aws:kms:us-east-1:123456789:key/your-key-id"
-
-# Compression
-compress: true
+S3SseEnabled: true
+S3SseKmsArn: "arn:aws:kms:us-east-1:123456789012:key/your-key-id"
 
 # Logging
-log_file: "/opt/aws-backint-agent/backint.log"
-log_level: "info"
+LogFile: "/hana/shared/aws-backint-agent/aws-backint-agent.log"
+LogLevel: "info"
 CONFIG
 ```
 
@@ -85,7 +89,11 @@ SET ('backup', 'catalog_backup_using_backint') = 'true'
 WITH RECONFIGURE;
 
 ALTER SYSTEM ALTER CONFIGURATION ('global.ini', 'SYSTEM')
-SET ('backup', 'data_backup_parameter_file') = '/opt/aws-backint-agent/aws-backint-agent-config.yaml'
+SET ('backup', 'catalog_backup_parameter_file') = '/usr/sap/HDB/SYS/global/hdb/opt/hdbconfig/aws-backint-agent-config.yaml'
+WITH RECONFIGURE;
+
+ALTER SYSTEM ALTER CONFIGURATION ('global.ini', 'SYSTEM')
+SET ('backup', 'data_backup_parameter_file') = '/usr/sap/HDB/SYS/global/hdb/opt/hdbconfig/aws-backint-agent-config.yaml'
 WITH RECONFIGURE;
 
 ALTER SYSTEM ALTER CONFIGURATION ('global.ini', 'SYSTEM')
@@ -93,7 +101,7 @@ SET ('backup', 'log_backup_using_backint') = 'true'
 WITH RECONFIGURE;
 
 ALTER SYSTEM ALTER CONFIGURATION ('global.ini', 'SYSTEM')
-SET ('backup', 'log_backup_parameter_file') = '/opt/aws-backint-agent/aws-backint-agent-config.yaml'
+SET ('backup', 'log_backup_parameter_file') = '/usr/sap/HDB/SYS/global/hdb/opt/hdbconfig/aws-backint-agent-config.yaml'
 WITH RECONFIGURE;
 SQL
 ```
@@ -103,7 +111,7 @@ SQL
 ```bash
 # Run a full data backup via Backint
 hdbsql -i 00 -u SYSTEM -p YourPassword \
-  "BACKUP DATA USING BACKINT ('COMPLETE_DATA_BACKUP')"
+  "BACKUP DATA USING BACKINT ('/usr/sap/HDB/SYS/global/hdb/backint/SYSTEMDB/COMPLETE_DATA_BACKUP')"
 
 # Verify the backup in the catalog
 hdbsql -i 00 -u SYSTEM -p YourPassword \
@@ -114,14 +122,14 @@ hdbsql -i 00 -u SYSTEM -p YourPassword \
 
 ```bash
 # Create a backup script
-cat <<'SCRIPT' > /opt/aws-backint-agent/run_backup.sh
+cat <<'SCRIPT' > /hana/shared/aws-backint-agent/run_backup.sh
 #!/bin/bash
 # SAP HANA automated backup script
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 # Run the data backup
 /usr/sap/HDB/HDB00/exe/hdbsql -i 00 -u BACKUP_USER -p BackupPass \
-  "BACKUP DATA USING BACKINT ('AUTO_BACKUP_${TIMESTAMP}')"
+  "BACKUP DATA USING BACKINT ('/usr/sap/HDB/SYS/global/hdb/backint/SYSTEMDB/AUTO_BACKUP_${TIMESTAMP}')"
 
 # Check exit code
 if [ $? -eq 0 ]; then
@@ -132,10 +140,10 @@ else
 fi
 SCRIPT
 
-chmod +x /opt/aws-backint-agent/run_backup.sh
+chmod +x /hana/shared/aws-backint-agent/run_backup.sh
 
 # Schedule with cron (as hdbadm)
-crontab -l 2>/dev/null; echo "0 2 * * * /opt/aws-backint-agent/run_backup.sh" | crontab -
+(crontab -l 2>/dev/null; echo "0 2 * * * /hana/shared/aws-backint-agent/run_backup.sh") | crontab -
 ```
 
 ## Step 6: Test Backup Recovery
@@ -149,9 +157,9 @@ hdbsql -i 00 -u SYSTEM -p YourPassword \
 # Stop the tenant database first
 hdbsql -i 00 -u SYSTEM -p YourPassword "ALTER SYSTEM STOP DATABASE TENANT_DB"
 
-# Recover using Backint
+# Recover a specific data backup using the Backint catalog
 hdbsql -i 00 -u SYSTEM -p YourPassword \
-  "RECOVER DATA FOR TENANT_DB USING BACKINT UNTIL TIMESTAMP '2026-03-04 02:00:00' CLEAR LOG"
+  "RECOVER DATA FOR TENANT_DB USING BACKUP_ID 1234567890123 USING CATALOG BACKINT USING DATA PATH ('/usr/sap/HDB/SYS/global/hdb/backint/DB_TENANT_DB/') CLEAR LOG"
 ```
 
 ## Conclusion
