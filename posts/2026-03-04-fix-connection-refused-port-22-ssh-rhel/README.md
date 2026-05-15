@@ -74,7 +74,7 @@ nc -zv server.example.com 22
 # Check iptables rules on the server
 sudo iptables -L -n | grep 22
 
-# Check if TCP wrappers are blocking access
+# On RHEL 7 and older, check if TCP wrappers are blocking access
 cat /etc/hosts.deny
 cat /etc/hosts.allow
 ```
