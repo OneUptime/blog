@@ -21,7 +21,7 @@ The slab cache is a kernel memory allocation mechanism that maintains pools of f
 sudo slabtop
 ```
 
-This shows a top-like view of slab caches sorted by size. Key columns:
+This shows a top-like view of slab caches sorted by number of objects by default. Key columns:
 - `OBJS` - Number of objects
 - `ACTIVE` - Active objects
 - `USE` - Utilization percentage
@@ -72,7 +72,7 @@ grep dentry /proc/slabinfo
 ## Step 6: Check Total Slab Memory
 
 ```bash
-grep Slab /proc/meminfo
+grep -E '^(Slab|SReclaimable|SUnreclaim):' /proc/meminfo
 ```
 
 ```bash
