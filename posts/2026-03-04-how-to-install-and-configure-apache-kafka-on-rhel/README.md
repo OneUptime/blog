@@ -25,10 +25,10 @@ java -version
 
 ```bash
 # Download Kafka (includes KRaft mode, no separate ZooKeeper needed)
-curl -L https://downloads.apache.org/kafka/3.7.0/kafka_2.13-3.7.0.tgz \
+curl -L https://downloads.apache.org/kafka/4.2.0/kafka_2.13-4.2.0.tgz \
   -o /tmp/kafka.tgz
 sudo tar xzf /tmp/kafka.tgz -C /opt/
-sudo mv /opt/kafka_2.13-3.7.0 /opt/kafka
+sudo mv /opt/kafka_2.13-4.2.0 /opt/kafka
 
 # Create a kafka user
 sudo useradd -r -s /sbin/nologin kafka
@@ -38,22 +38,18 @@ sudo chown -R kafka:kafka /opt/kafka
 ## Configuring Kafka with KRaft (No ZooKeeper)
 
 ```bash
-# Generate a cluster UUID
-KAFKA_CLUSTER_ID=$(/opt/kafka/bin/kafka-storage.sh random-uuid)
-
-# Format the storage directory
-sudo -u kafka /opt/kafka/bin/kafka-storage.sh format \
-  -t $KAFKA_CLUSTER_ID \
-  -c /opt/kafka/config/kraft/server.properties
+# Create log directory before formatting storage
+sudo mkdir -p /var/kafka-logs
+sudo chown kafka:kafka /var/kafka-logs
 ```
 
-Edit the configuration:
+Edit the configuration before formatting storage:
 
 ```bash
-# Edit /opt/kafka/config/kraft/server.properties
+# Edit /opt/kafka/config/server.properties
 # Key settings to modify:
 
-# Broker ID
+# Node ID
 # node.id=1
 
 # Listeners
@@ -62,10 +58,17 @@ Edit the configuration:
 
 # Log directory
 # log.dirs=/var/kafka-logs
+```
 
-# Create log directory
-sudo mkdir -p /var/kafka-logs
-sudo chown kafka:kafka /var/kafka-logs
+```bash
+# Generate a cluster UUID
+KAFKA_CLUSTER_ID=$(/opt/kafka/bin/kafka-storage.sh random-uuid)
+
+# Format the storage directory
+sudo -u kafka /opt/kafka/bin/kafka-storage.sh format \
+  --standalone \
+  -t $KAFKA_CLUSTER_ID \
+  -c /opt/kafka/config/server.properties
 ```
 
 ## Creating a systemd Service
@@ -79,7 +82,7 @@ After=network.target
 [Service]
 Type=simple
 User=kafka
-ExecStart=/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/kraft/server.properties
+ExecStart=/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/server.properties
 ExecStop=/opt/kafka/bin/kafka-server-stop.sh
 Restart=on-failure
 LimitNOFILE=100000
