@@ -170,7 +170,7 @@ Use it in fstab:
 PARTUUID=12345678-1234-1234-1234-123456789012  /data  xfs  defaults  0 0
 ```
 
-PARTUUID is useful when the file system has not been created yet or for identifying partitions independently of their content.
+PARTUUID is useful when you want the identifier to remain tied to the partition rather than the file system, such as after reformatting, or for identifying partitions independently of their content.
 
 ## Choosing Between UUIDs and Labels
 
