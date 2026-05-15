@@ -169,10 +169,10 @@ Key fields to check:
 
 ## Firewall Configuration
 
-NTP uses UDP port 123. As a client, outbound traffic is usually allowed, but if you have strict egress rules:
+NTP uses UDP port 123. As a client, outbound traffic to remote UDP port 123 is usually allowed by default. The `firewall-cmd --add-service=ntp` command opens inbound NTP service access, so use it only if this system also serves time to other clients:
 
 ```bash
-# Allow outbound NTP traffic (usually not needed with default firewall)
+# Allow inbound NTP traffic when this host is also an NTP server
 sudo firewall-cmd --permanent --add-service=ntp
 sudo firewall-cmd --reload
 ```
@@ -192,14 +192,14 @@ Then bring them online when the network is up:
 
 ```bash
 # Tell chrony the network is available
-chronyc online
+sudo chronyc online
 ```
 
 And mark them offline when disconnected:
 
 ```bash
 # Tell chrony the network is down
-chronyc offline
+sudo chronyc offline
 ```
 
 ## Configuring NTP Authentication
@@ -220,6 +220,7 @@ Add a key:
 Reference it in `/etc/chrony.conf`:
 
 ```bash
+keyfile /etc/chrony.keys
 server ntp1.corp.example.com iburst key 1
 ```
 
