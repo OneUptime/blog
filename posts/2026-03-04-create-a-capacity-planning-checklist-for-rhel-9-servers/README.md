@@ -15,6 +15,7 @@ Production environments require systematic verification before, during, and afte
 - RHEL with a valid subscription or CentOS Stream 9
 - Root or sudo access
 - A terminal session
+- The `sysstat` package installed for the `sar` command
 
 ## Step 2: Configure the Service
 
@@ -34,7 +35,8 @@ Production environments require systematic verification before, during, and afte
 
 sar -u 1 10 > cpu_baseline.txt
 sar -r 1 10 > memory_baseline.txt
-sar -d 1 10 > disk_baseline.txt
+df -h > disk_capacity_baseline.txt
+sar -d 1 10 > disk_io_baseline.txt
 sar -n DEV 1 10 > network_baseline.txt
 ```
 
