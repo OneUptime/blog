@@ -93,16 +93,16 @@ All data written to this filesystem is automatically encrypted.
 
 ## Step 4: Configure Persistent Mounts
 
-Get the UUID:
+Get the pool UUID:
 
 ```bash
-sudo blkid /dev/stratis/encrypted_pool/secure_data
+sudo stratis pool list
 ```
 
 Add to `/etc/fstab`:
 
 ```bash
-UUID=your-uuid /secure xfs defaults,x-systemd.requires=stratisd.service 0 0
+/dev/stratis/encrypted_pool/secure_data /secure xfs defaults,x-systemd.requires=stratis-fstab-setup@pool-uuid.service,x-systemd.after=stratis-fstab-setup@pool-uuid.service 0 0
 ```
 
 ## Step 5: Configure Automatic Unlocking
@@ -111,11 +111,11 @@ For the pool to be available after reboot without manual intervention, configure
 
 ### Using a Key File
 
-Create a key file:
+A key file can be used to load the key into the kernel keyring noninteractively, but by itself it does not provide unattended boot-time unlocking. If you created the pool with a key file, keep the protected file and use it to recreate the key after reboot:
 
 ```bash
-sudo dd if=/dev/urandom of=/root/.stratis-key bs=1 count=64
 sudo chmod 600 /root/.stratis-key
+sudo stratis key set --keyfile-path /root/.stratis-key mykey
 ```
 
 ### Using Tang Server (Network-Bound Disk Encryption)
@@ -128,7 +128,7 @@ For enterprise environments, use a Tang server with Clevis for automatic unlocki
 sudo dnf install clevis clevis-luks -y
 
 # Bind the pool to a Tang server
-sudo stratis pool bind nbde encrypted_pool mykey --trust-url http://tang-server:port
+sudo stratis pool bind nbde --trust-url encrypted_pool http://tang-server:port
 ```
 
 ### Using TPM2
@@ -136,7 +136,7 @@ sudo stratis pool bind nbde encrypted_pool mykey --trust-url http://tang-server:
 Bind to the system's TPM for automatic unlocking on the same hardware:
 
 ```bash
-sudo stratis pool bind tpm2 encrypted_pool mykey
+sudo stratis pool bind tpm encrypted_pool
 ```
 
 ## Step 6: Unlock the Pool After Reboot
@@ -154,7 +154,7 @@ sudo stratis pool list
 If the pool does not appear:
 
 ```bash
-sudo stratis pool unlock keyring
+sudo stratis pool start --unlock-method keyring --name encrypted_pool
 ```
 
 ## Step 7: Change the Encryption Key
@@ -239,7 +239,7 @@ Ensure the key is set in the keyring:
 
 ```bash
 sudo stratis key set --capture-key mykey
-sudo stratis pool unlock keyring
+sudo stratis pool start --unlock-method keyring --name encrypted_pool
 ```
 
 ### "Key not found" Error
