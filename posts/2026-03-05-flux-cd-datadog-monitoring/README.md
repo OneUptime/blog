@@ -40,6 +40,7 @@ patches:
               ad.datadoghq.com/manager.checks: |
                 {
                   "openmetrics": {
+                    "init_config": {},
                     "instances": [
                       {
                         "openmetrics_endpoint": "http://%%host%%:8080/metrics",
@@ -69,6 +70,7 @@ patches:
               ad.datadoghq.com/manager.checks: |
                 {
                   "openmetrics": {
+                    "init_config": {},
                     "instances": [
                       {
                         "openmetrics_endpoint": "http://%%host%%:8080/metrics",
@@ -98,6 +100,7 @@ patches:
               ad.datadoghq.com/manager.checks: |
                 {
                   "openmetrics": {
+                    "init_config": {},
                     "instances": [
                       {
                         "openmetrics_endpoint": "http://%%host%%:8080/metrics",
@@ -129,7 +132,7 @@ kubectl exec -n datadog $(kubectl get pods -n datadog -l app=datadog -o jsonpath
 
 ## Step 3: Create a Datadog Dashboard
 
-In the Datadog UI, create a new dashboard with widgets using these queries:
+In the Datadog UI, enable percentile aggregations for `flux.gotk_reconcile_duration_seconds`, then create a new dashboard with widgets using these queries:
 
 **Reconciliation Failures:**
 
@@ -158,7 +161,7 @@ sum:flux.controller_runtime_reconcile.count{result:error}.as_rate() by {controll
 **Requeued Reconciliations:**
 
 ```text
-sum:flux.controller_runtime_reconcile.count{result:requeue} by {controller}
+sum:flux.controller_runtime_reconcile.count{result:requeue}.as_rate() by {controller}
 ```
 
 ## Step 4: Set Up Datadog Monitors
@@ -183,7 +186,7 @@ curl -X POST "https://api.datadoghq.com/api/v1/monitor" \
 Additional monitors to configure:
 
 - **High reconciliation error rate**: Alert when `sum:flux.controller_runtime_reconcile.count{result:error}.as_rate()` is above 0.1 for 5 minutes.
-- **Reconciliation duration spike**: Alert when `p95:flux.gotk_reconcile_duration_seconds{*}` is above 120 seconds for 15 minutes.
+- **Reconciliation duration spike**: Alert when `p95:flux.gotk_reconcile_duration_seconds{*}` is above 120 seconds for 15 minutes, after percentile aggregations are enabled for the distribution metric.
 
 ## Step 5: Forward Flux Events to Datadog
 
