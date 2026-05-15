@@ -50,11 +50,14 @@ Alternatively, use the AWS CLI with the OSS S3-compatible endpoint.
 ```bash
 # Configure virtual-hosted-style requests for OSS
 aws configure set default.s3.addressing_style virtual
+aws configure set default.s3.signature_version s3
 
 # Upload using the AWS CLI with Alibaba Cloud OSS endpoint
 aws s3 sync ./manifests/ s3://flux-manifests/ \
   --endpoint-url https://s3.oss-cn-hangzhou.aliyuncs.com
 ```
+
+For new OSS users accessing buckets in Chinese mainland regions, Alibaba Cloud requires a custom domain name (CNAME) for data API operations. In that case, use your custom domain instead of the default public `s3.oss-{region}.aliyuncs.com` endpoint.
 
 ## Creating an AccessKey for Flux
 
