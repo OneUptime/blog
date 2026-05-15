@@ -14,11 +14,13 @@ This guide covers how to Deploy Ingress-Nginx Controller on Kubernetes on RHEL. 
 
 - RHEL with a minimal or standard installation
 - Root or sudo access
+- An existing Kubernetes cluster
+- A kubeconfig file with cluster-admin permissions
 - A stable network connection
 
 ## Overview
 
-Deploy Ingress-Nginx Controller on Kubernetes requires careful planning and execution. This guide walks through the complete process from installation to verification.
+Deploying Ingress-Nginx Controller on Kubernetes requires careful planning and execution. This guide walks through the complete process from installation to verification.
 
 ## Step 1: Prepare the System
 
@@ -31,37 +33,38 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y curl ca-certificates
 ```
 
-## Step 2: Install Required Packages
+## Step 2: Install kubectl
 
 ```bash
-sudo dnf install -y <package-name>
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+kubectl version --client
+kubectl cluster-info
 ```
 
-## Step 3: Configure the Service
+## Step 3: Deploy the Ingress-Nginx Controller
 
-Create or edit the main configuration file:
+For a bare-metal Kubernetes cluster on RHEL, apply the official ingress-nginx bare-metal manifest:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/baremetal/deploy.yaml
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+This creates the `ingress-nginx` namespace, controller Deployment, Service, RBAC resources, and admission webhook resources.
 
-## Step 4: Start and Enable the Service
+## Step 4: Wait for the Controller
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx
+kubectl get pods -n ingress-nginx
 ```
 
 ## Step 5: Verify the Configuration
@@ -69,21 +72,30 @@ sudo systemctl status <service>
 Test the setup:
 
 ```bash
-sudo <service> --test
+kubectl get ingressclass
+kubectl get svc -n ingress-nginx
 ```
 
 Check the logs for any errors:
 
 ```bash
-journalctl -u <service> -f
+kubectl logs -n ingress-nginx deployment/ingress-nginx-controller
 ```
 
 ## Step 6: Configure Firewall Rules
 
-If the service needs network access:
+The bare-metal manifest exposes the controller through a NodePort Service. Open the NodePort range on any RHEL nodes that should receive ingress traffic:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo firewall-cmd --permanent --add-port=30000-32767/tcp
+sudo firewall-cmd --reload
+```
+
+If you later expose the controller with host networking or an external load balancer on standard web ports, open HTTP and HTTPS instead:
+
+```bash
+sudo firewall-cmd --permanent --add-service=http
+sudo firewall-cmd --permanent --add-service=https
 sudo firewall-cmd --reload
 ```
 
@@ -92,25 +104,27 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+kubectl top pods -n ingress-nginx
+kubectl describe deployment ingress-nginx-controller -n ingress-nginx
 ```
+
+The `kubectl top` command requires the Kubernetes metrics API to be available in the cluster.
 
 ## Security Considerations
 
-- Run the service with a dedicated non-root user when possible
-- Enable TLS/SSL for network communication
+- Use TLS secrets for HTTPS ingress traffic
 - Restrict access with firewall rules
-- Keep packages updated with `dnf update`
+- Keep the ingress-nginx controller manifest and image updated
+- Review RBAC permissions and admission webhook settings before production use
 
 ## Troubleshooting
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
-2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
-3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
+1. **Controller pods fail to start**: Check `kubectl describe pod -n ingress-nginx <pod-name>` and `kubectl logs -n ingress-nginx <pod-name>`
+2. **Ingress has no external address**: On bare-metal clusters, NodePort does not assign a load-balancer IP. Use the Service node ports, MetalLB, or another external load balancer.
+3. **Traffic cannot reach the controller**: Verify the NodePort Service with `kubectl get svc -n ingress-nginx` and confirm the RHEL firewall allows the required ports.
 
 ## Conclusion
 
-You have successfully configured deploy ingress-nginx controller on kubernetes on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
+You have successfully deployed ingress-nginx controller on Kubernetes on RHEL. Monitor the controller regularly and keep it updated to maintain security and performance.
