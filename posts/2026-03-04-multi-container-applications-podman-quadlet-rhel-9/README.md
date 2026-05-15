@@ -156,7 +156,7 @@ WantedBy=default.target
 EOF
 ```
 
-The `Requires=` and `After=` directives ensure the database and cache start before the application server.
+The `Requires=` and `After=` directives ensure systemd starts the database and cache units before the application server unit. They do not wait for the containers to become healthy; health checks monitor container health after startup.
 
 ## Define the Reverse Proxy
 
@@ -197,7 +197,7 @@ systemctl --user daemon-reload
 systemctl --user start proxy
 ```
 
-Because of the dependency chain, systemd starts them in order: database and cache first, then appserver, then proxy.
+Because of the dependency chain, systemd starts the units in order: database and cache first, then appserver, then proxy.
 
 ## Check the status of all services
 ```bash
@@ -291,7 +291,7 @@ This section covers stopping the entire stack.
 systemctl --user stop proxy appserver cache database
 ```
 
-Or just stop the top-level service and let dependencies be handled:
+Stopping only the top-level service leaves its required services running:
 
 ```bash
 systemctl --user stop proxy
