@@ -8,7 +8,7 @@ Description: Learn how to use RHEL System Roles to manage configurations consist
 
 ---
 
-Most organizations do not run a single RHEL version everywhere. You probably have RHEL 7 machines that refuse to die, RHEL 8 servers in production, and RHEL for new deployments. RHEL System Roles are designed to work across multiple versions, abstracting away the differences so you can write one playbook that works on all of them.
+Most organizations do not run a single RHEL version everywhere. You probably have RHEL 7 machines that refuse to die, RHEL 8 servers in production, and RHEL 9 for new deployments. RHEL System Roles are designed to work across multiple versions, abstracting away the differences so you can write one playbook that works on all of them.
 
 ## How Cross-Version Support Works
 
@@ -18,19 +18,19 @@ RHEL System Roles handle version differences internally. The role detects which 
 graph TD
     A[Single Ansible Playbook] --> B[RHEL System Role]
     B --> C{Detect RHEL Version}
-    C -->|RHEL 7| D[Use ntp, ifcfg, etc.]
+    C -->|RHEL 7| D[Use chrony or ntp, NetworkManager/ifcfg, etc.]
     C -->|RHEL 8| E[Use chrony, NetworkManager, etc.]
-    C -->|RHEL| F[Use chrony, NetworkManager, etc.]
+    C -->|RHEL 9| F[Use chrony, NetworkManager, etc.]
     D --> G[Consistent Outcome]
     E --> G
     F --> G
 ```
 
-For example, the `timesync` role uses ntpd on RHEL 7 and chrony on RHEL 8/9. You do not need to worry about which time daemon is available. You just tell the role what NTP servers you want and it figures out the rest.
+For example, the `timesync` role uses chrony by default on RHEL 7, 8, and 9, and can use ntpd on RHEL 7 if ntpd is already installed or selected with `timesync_ntp_provider`. You do not need to worry about which time daemon is available. You just tell the role what NTP servers you want and it figures out the rest.
 
 ## Installing System Roles
 
-On the Ansible control node:
+On a RHEL 8 or 9 Ansible control node:
 
 ```bash
 # Install the system roles package
@@ -41,12 +41,20 @@ sudo dnf install rhel-system-roles
 ls /usr/share/ansible/roles/ | grep rhel-system-roles
 ```
 
-If you manage RHEL 7 hosts from a RHEL control node, you can also install roles via Ansible Galaxy:
+On a RHEL 7 control node, use `yum` instead:
+
+```bash
+sudo yum install rhel-system-roles
+```
+
+You can also install roles via Ansible Galaxy:
 
 ```bash
 # Alternative: install from Ansible Galaxy
 ansible-galaxy collection install redhat.rhel_system_roles
 ```
+
+When you install the collection this way, use collection role names such as `redhat.rhel_system_roles.timesync` instead of the package-style `rhel-system-roles.timesync` names shown below.
 
 ## Inventory for Mixed Environments
 
@@ -95,9 +103,9 @@ Note the `ansible_python_interpreter` setting for RHEL 7 hosts, which default to
 ```
 
 This single playbook will:
-- On RHEL 7: configure ntpd with these servers
+- On RHEL 7: configure chronyd by default, or ntpd if selected or already installed, with these servers
 - On RHEL 8: configure chrony with these servers
-- On RHEL: configure chrony with these servers
+- On RHEL 9: configure chrony with these servers
 
 ## Example: Network Configuration Across Versions
 
@@ -229,15 +237,15 @@ ansible-playbook -i inventory-test playbook-timesync.yml
 
 ## Available System Roles and Version Support
 
-| Role | RHEL 7 | RHEL 8 | RHEL |
+| Role | RHEL 7 | RHEL 8 | RHEL 9 |
 |------|--------|--------|--------|
-| timesync | Yes (ntpd) | Yes (chrony) | Yes (chrony) |
+| timesync | Yes (chrony by default; ntpd if selected or already installed) | Yes (chrony) | Yes (chrony) |
 | network | Yes | Yes | Yes |
 | firewall | Yes | Yes | Yes |
 | logging | Yes | Yes | Yes |
 | sshd | Yes | Yes | Yes |
 | certificate | Yes | Yes | Yes |
-| ha_cluster | No | Yes | Yes |
+| ha_cluster | Yes | Yes | Yes |
 | postfix | Yes | Yes | Yes |
 
 ## Common Gotchas
