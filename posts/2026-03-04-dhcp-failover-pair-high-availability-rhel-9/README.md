@@ -8,7 +8,7 @@ Description: Set up ISC DHCP failover on RHEL so two DHCP servers share the addr
 
 ---
 
-A single DHCP server is a single point of failure. If it dies, no new devices can get IP addresses, and existing leases eventually expire. ISC DHCP supports a failover protocol where two servers share the address pool and keep their lease databases synchronized. If one goes down, the other takes over automatically.
+A single DHCP server is a single point of failure. If it dies, no new devices can get IP addresses, and existing leases eventually expire. ISC DHCP supports a failover protocol where two servers share the address pool and keep their lease databases synchronized. If one goes down, the other continues serving its available leases and can take over the full pool after it is put into partner-down state.
 
 ## How DHCP Failover Works
 
@@ -21,7 +21,7 @@ flowchart TD
     B --> D
 ```
 
-The two servers communicate over TCP (default port 647) to synchronize lease state. The pool is split between them: the primary handles one portion, the secondary handles the other. If either server goes down, the surviving server can serve the entire pool after a configured delay (MCLT - Maximum Client Lead Time).
+The two servers communicate over TCP (default port 647) to synchronize lease state. The pool is split between them: the primary handles one portion, the secondary handles the other. If either server goes down, the surviving server can continue serving its portion of the available leases. To let it reclaim and serve the entire pool during a prolonged outage, put the peer into partner-down state manually, or configure `auto-partner-down` only in environments where the split-brain risk is acceptable.
 
 ## Prerequisites
 
@@ -71,7 +71,7 @@ failover peer "dhcp-failover" {
     peer port 647;
 
     # Maximum Client Lead Time
-    # How long the surviving server waits before taking full control
+    # How long either peer can renew a lease without contacting its partner
     max-response-delay 60;
     max-unacked-updates 10;
     mclt 3600;
@@ -158,9 +158,10 @@ Note: The secondary does NOT have `mclt` or `split` parameters. Those are primar
 |-----------|-------------|
 | `mclt` | Maximum Client Lead Time - how long the partner can extend a lease beyond what the other server knows about. Only set on primary. |
 | `split` | How the pool is divided. 128 = 50/50 split. 256 = primary gets all. 0 = secondary gets all. Only set on primary. |
-| `max-response-delay` | How many seconds to wait for a response from the peer before declaring it down. |
+| `max-response-delay` | How many seconds may pass without receiving a message from the peer before treating the failover connection as failed. |
 | `max-unacked-updates` | How many lease updates can be pending before waiting for acknowledgment. |
 | `load balance max seconds` | Seconds of transaction ID hash to use for load balancing. |
+| `auto-partner-down` | Optional timer that automatically moves a server from communications-interrupted to partner-down. Use carefully because it can cause duplicate leases if the peer is still serving clients. |
 
 ## Starting the Failover Pair
 
@@ -215,7 +216,7 @@ systemctl stop dhcpd
 dhclient -r eth0 && dhclient eth0
 ```
 
-4. The client should still get an IP from the secondary server. Check the secondary's logs:
+4. The client should still get an IP if the secondary has suitable available leases for that client. For a prolonged primary outage where the secondary must reclaim the full pool, move the secondary into partner-down state or use a carefully planned `auto-partner-down` value. Check the secondary's logs:
 
 ```bash
 journalctl -u dhcpd --no-pager -n 10
