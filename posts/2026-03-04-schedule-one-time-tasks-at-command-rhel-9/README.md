@@ -140,7 +140,7 @@ atrm 3 5 7
 
 ## The batch Command
 
-The `batch` command is a close relative of `at`. Instead of running at a specific time, it runs when the system load drops below a threshold (default is 1.5 on RHEL). This is excellent for resource-intensive tasks that should only run when the system is not busy.
+The `batch` command is a close relative of `at`. Instead of running at a specific time, it runs when the system load drops below a threshold (default is 0.8 on RHEL). This is excellent for resource-intensive tasks that should only run when the system is not busy.
 
 ```bash
 # Schedule a heavy compression task to run when load is low
@@ -159,7 +159,7 @@ Add the following override:
 ```ini
 [Service]
 ExecStart=
-ExecStart=/usr/sbin/atd -l 0.8
+ExecStart=/usr/sbin/atd -f -l 0.8
 ```
 
 Then reload and restart:
