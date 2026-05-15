@@ -29,7 +29,7 @@ The first step is to boot into a working kernel from the GRUB menu:
 Once booted into a working kernel:
 
 ```bash
-# Check which kernel caused the panic
+# Check the kernel you booted successfully
 uname -r
 
 # List installed kernels
@@ -51,14 +51,16 @@ sudo grubby --default-kernel
 # If the error is "VFS: Unable to mount root fs"
 # Boot from rescue media (RHEL installation ISO)
 
-# In rescue mode, check the root filesystem
-fsck /dev/mapper/rhel-root
-
-# For XFS:
-xfs_repair /dev/mapper/rhel-root
-
 # If LVM, activate volumes first
 vgchange -ay
+
+# Make sure the filesystem is not mounted before repair
+umount /dev/mapper/rhel-root
+
+# For ext4:
+e2fsck -f /dev/mapper/rhel-root
+
+# For XFS:
 xfs_repair /dev/mapper/rhel-root
 ```
 
@@ -81,8 +83,9 @@ sudo cat /boot/grub2/grubenv
 # Verify the root device
 sudo grubby --info=ALL | grep -E "kernel|root"
 
-# If the root device is wrong, update it
+# If the root device is wrong, replace the root argument
 sudo grubby --update-kernel=/boot/vmlinuz-$(uname -r) \
+  --remove-args="root" \
   --args="root=/dev/mapper/rhel-root"
 
 # Regenerate the GRUB configuration
@@ -110,8 +113,8 @@ If you cannot boot any kernel:
 # Boot from RHEL installation media
 # Select "Troubleshooting" > "Rescue a Red Hat Enterprise Linux system"
 
-# The rescue environment will mount your system under /mnt/sysimage
-chroot /mnt/sysimage
+# The rescue environment will mount your system under /mnt/sysroot
+chroot /mnt/sysroot
 
 # From here you can fix GRUB, rebuild initramfs, or repair filesystems
 ```
