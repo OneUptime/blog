@@ -24,12 +24,12 @@ sudo dnf install -y ltrace
 ## Step 2: Trace a Command
 
 ```bash
-ltrace ls /tmp
+ltrace ./myapp
 ```
 
-You will see calls to libc functions like `opendir`, `readdir`, `strcmp`, and `printf`.
+You will see calls to shared library functions that the program invokes.
 
-On RHEL 8, a known issue prevents `ltrace` from tracing system executables such as `/usr/bin/ls`; use it with user-built executables on those systems.
+On RHEL 8, RHEL 9, and RHEL 10, a known issue prevents `ltrace` from tracing system executables such as `/usr/bin/ls`; use it with user-built executables on those systems.
 
 ## Step 3: Trace a Running Process
 
@@ -42,7 +42,7 @@ ltrace -p $(pidof -s myapp)
 Trace only calls to a specific library:
 
 ```bash
-ltrace -l libssl.so.* openssl s_client -connect example.com:443
+ltrace -l 'libssl.so*' ./myapp
 ```
 
 ## Step 5: Show Return Values
@@ -50,13 +50,13 @@ ltrace -l libssl.so.* openssl s_client -connect example.com:443
 ltrace shows return values by default. To also see the time spent:
 
 ```bash
-ltrace -T ls /tmp
+ltrace -T ./myapp
 ```
 
 ## Step 6: Count Calls
 
 ```bash
-ltrace -c ls /tmp
+ltrace -c ./myapp
 ```
 
 This produces a summary of how many times each library function was called:
@@ -71,13 +71,13 @@ This produces a summary of how many times each library function was called:
 ## Step 7: Trace Child Processes
 
 ```bash
-ltrace -f /usr/bin/make
+ltrace -f ./myapp
 ```
 
 ## Step 8: Save Output
 
 ```bash
-ltrace -o /tmp/ltrace.log myapp
+ltrace -o /tmp/ltrace.log ./myapp
 ```
 
 ## Comparing strace and ltrace
@@ -85,7 +85,7 @@ ltrace -o /tmp/ltrace.log myapp
 | Feature | strace | ltrace |
 |---------|--------|--------|
 | Traces | System calls (kernel) | Library calls (user space) |
-| Overhead | Lower | Higher |
+| Overhead | Can be significant | Usually lightweight, but workload-dependent |
 | Use case | Permission, I/O, network issues | Application logic, library bugs |
 
 ## Conclusion
