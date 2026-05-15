@@ -232,7 +232,7 @@ Here are some of the most commonly used connection properties:
 | `ipv4.dns` | DNS servers | `8.8.8.8,8.8.4.4` |
 | `ipv4.dns-search` | DNS search domains | `example.com` |
 | `connection.autoconnect` | Auto-activate on boot | `yes`, `no` |
-| `connection.autoconnect-priority` | Priority for auto-activation | `0` to `999` |
+| `connection.autoconnect-priority` | Priority for auto-activation | `-999` to `999` |
 | `802-3-ethernet.mtu` | Interface MTU | `9000` |
 
 ## Practical Tips
