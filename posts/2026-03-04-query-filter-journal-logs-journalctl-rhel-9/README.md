@@ -37,12 +37,21 @@ RHEL 9 uses two logging systems:
 
 The two work together: journald collects everything, and rsyslog can read from the journal or receive messages directly via the syslog socket.
 
-## Step 3 - Apply the Configuration
+## Step 3 - Query and Filter the Journal
 
-To query and filter systemd journal logs with journalctl, you need to edit the appropriate configuration files. The main files are:
+You do not need to edit configuration files for normal `journalctl` queries. Use `journalctl` options and journal field matches to filter entries:
+
+```bash
+journalctl -b
+journalctl -u sshd.service
+journalctl -p warning..alert
+journalctl _SYSTEMD_UNIT=sshd.service --since "1 hour ago"
+```
+
+Edit configuration files only when you want to change storage, retention, forwarding, or rsyslog routing behavior. The main files are:
 
 - `/etc/rsyslog.conf` and `/etc/rsyslog.d/*.conf` for rsyslog
-- `/etc/systemd/journald.conf` for journald
+- `/etc/systemd/journald.conf` and `/etc/systemd/journald.conf.d/*.conf` for journald
 
 Make your changes, then restart the relevant service:
 
@@ -71,12 +80,14 @@ tail -20 /var/log/messages
 
 ## Step 5 - Open Firewall Ports (If Applicable)
 
-If your setup involves remote logging, open the necessary ports:
+If your setup involves remote logging over TCP, open the necessary port:
 
 ```bash
 sudo firewall-cmd --permanent --add-port=514/tcp
 sudo firewall-cmd --reload
 ```
+
+For UDP-based remote logging, use `514/udp` instead.
 
 ## Troubleshooting
 
