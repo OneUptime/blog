@@ -164,7 +164,7 @@ def read_current_params(filepath):
             for line in f:
                 line = line.strip()
                 # Skip comments and empty lines
-                if not line or line.startswith("#"):
+                if not line or line.startswith(("#", ";")):
                     continue
                 if "=" in line:
                     key, value = line.split("=", 1)
@@ -184,7 +184,13 @@ def write_params(filepath, params, header):
 def apply_params(module):
     """Apply sysctl parameters."""
     rc, stdout, stderr = module.run_command(["sysctl", "--system"])
-    return rc, stdout, stderr
+    if rc != 0:
+        module.fail_json(
+            msg="Failed to apply sysctl parameters",
+            rc=rc,
+            stdout=stdout,
+            stderr=stderr,
+        )
 
 
 def main():
@@ -352,7 +358,7 @@ cat > /tmp/test_args.json << ARGS
 ARGS
 
 # Run the module directly
-python3 library/rhel_kernel_params.py < /tmp/test_args.json
+python3 library/rhel_kernel_params.py /tmp/test_args.json
 ```
 
 ## Wrapping Up
