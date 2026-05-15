@@ -20,7 +20,7 @@ RHEL ships with OpenSCAP, which can evaluate your system against CIS benchmarks,
 sudo dnf install openscap-scanner scap-security-guide
 
 # List available security profiles
-oscap info /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml | grep "Profile:"
+oscap info /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml | grep -E "Title:|Id:"
 ```
 
 Run a scan against the CIS benchmark:
@@ -28,7 +28,7 @@ Run a scan against the CIS benchmark:
 ```bash
 # Run a CIS Level 1 Server scan and generate an HTML report
 sudo oscap xccdf eval \
-  --profile xccdf_org.ssgproject.content_profile_cis \
+  --profile xccdf_org.ssgproject.content_profile_cis_server_l1 \
   --report /tmp/cis-audit-report.html \
   --results /tmp/cis-audit-results.xml \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
@@ -43,8 +43,9 @@ sudo oscap xccdf eval \
 # Generate a remediation script for failed items
 sudo oscap xccdf generate fix \
   --fix-type bash \
-  --result-id "" \
-  /tmp/cis-audit-results.xml > /tmp/remediation.sh
+  --result-id xccdf_org.open-scap_testresult_xccdf_org.ssgproject.content_profile_cis_server_l1 \
+  --output /tmp/remediation.sh \
+  /tmp/cis-audit-results.xml
 
 # Review the script before running it
 cat /tmp/remediation.sh
@@ -64,7 +65,7 @@ sudo auditctl -l
 # Search for privilege escalation attempts
 sudo ausearch -m USER_AUTH,USER_ACCT --success no --start today
 
-# Search for unauthorized file access attempts
+# Search for unauthorized file access attempts if you have rules tagged with this key
 sudo ausearch -m SYSCALL -k unauthorized-access --start today
 ```
 
@@ -75,7 +76,7 @@ sudo ausearch -m SYSCALL -k unauthorized-access --start today
 sudo dnf updateinfo list security --available
 
 # Check for critical vulnerabilities specifically
-sudo dnf updateinfo list --security --severity Critical --available
+sudo dnf updateinfo list --security --sec-severity=Critical --available
 
 # Get details on a specific advisory
 sudo dnf updateinfo info RHSA-2024:1234
@@ -107,7 +108,7 @@ sudo ss -tulnp
 ```bash
 # Run a weekly OpenSCAP scan via cron
 sudo tee /etc/cron.d/security-audit << 'EOF'
-0 3 * * 0 root oscap xccdf eval --profile xccdf_org.ssgproject.content_profile_cis --report /var/log/audit/weekly-scan-$(date +\%Y\%m\%d).html /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml > /dev/null 2>&1
+0 3 * * 0 root oscap xccdf eval --profile xccdf_org.ssgproject.content_profile_cis_server_l1 --report /var/log/audit/weekly-scan-$(date +\%Y\%m\%d).html /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml > /dev/null 2>&1
 EOF
 ```
 
