@@ -47,7 +47,7 @@ This opens an interactive view showing which functions consumed the most CPU tim
 ## Step 4: Profile a Running Process
 
 ```bash
-sudo perf record -g -p $(pidof myapp) -- sleep 30
+sudo perf record -g -p $(pidof -s myapp) -- sleep 30
 ```
 
 This profiles the process for 30 seconds.
@@ -84,13 +84,13 @@ This shows which functions are consuming CPU right now across the entire system.
 For a specific process:
 
 ```bash
-sudo perf top -p $(pidof myapp)
+sudo perf top -p $(pidof -s myapp)
 ```
 
 ## Step 7: Generate a Flamegraph
 
 ```bash
-sudo perf record -g -p $(pidof myapp) -- sleep 30
+sudo perf record -g -p $(pidof -s myapp) -- sleep 30
 sudo perf script > out.perf
 ```
 
