@@ -21,7 +21,7 @@ Sharding is appropriate when:
 
 ## How Flux Sharding Works
 
-Flux sharding uses Kubernetes labels to partition resources across controller instances. Each controller shard watches only resources that match its shard label. Resources without a shard label are handled by the default controller.
+Flux sharding uses Kubernetes labels to partition resources across controller instances. Each controller shard watches only resources that match its shard label. When the default controllers are configured with a negated shard selector, resources without a shard label are handled by the default controller.
 
 ```mermaid
 flowchart TD
@@ -59,7 +59,7 @@ Decide how to partition your workloads. Common strategies include:
 - **By environment** -- Separate shards for staging and production resources
 - **By resource type** -- Separate shards for Helm-heavy vs Kustomize-heavy workloads
 
-For this guide, we will create two additional shards alongside the default controllers.
+For this guide, we will create one additional shard alongside the default controllers. You can add more shard directories using the same pattern.
 
 ## Step 2: Create a Shard Controller Deployment
 
@@ -234,8 +234,8 @@ Apply this exclusion to the default source-controller, kustomize-controller, and
 Apply the shard configurations and verify that controllers are running.
 
 ```bash
-# Build and apply the shard manifests
-kubectl apply -k clusters/my-cluster/flux-system/shard1/
+# Build and apply the Flux manifests, including the shard and default-controller exclusion
+kubectl apply -k clusters/my-cluster/flux-system/
 
 # Verify all shard controllers are running
 kubectl get deployments -n flux-system
@@ -243,7 +243,7 @@ kubectl get deployments -n flux-system
 # Check that sharded resources are being reconciled by the correct controller
 kubectl logs -n flux-system deployment/kustomize-controller-shard1 | head -20
 
-# Verify the default controllers are not processing sharded resources
+# Verify the default controllers are not processing sharded resources; this should print no lines
 kubectl logs -n flux-system deployment/kustomize-controller | grep "team-a-app"
 ```
 
