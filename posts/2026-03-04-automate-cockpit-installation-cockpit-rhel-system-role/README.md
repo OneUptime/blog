@@ -21,7 +21,7 @@ Use the cockpit RHEL System Role to deploy Cockpit across RHEL systems. RHEL Sys
 ## Step 1 - Install RHEL System Roles
 
 ```bash
-sudo dnf install -y rhel-system-roles
+sudo dnf install -y rhel-system-roles ansible-core
 ```
 
 The roles are installed to `/usr/share/ansible/roles/`.
@@ -47,14 +47,14 @@ Create `configure-cockpit.yml`:
   hosts: managed_hosts
   become: true
   roles:
-    - role: rhel-system-roles.cockpit
+    - role: redhat.rhel_system_roles.cockpit
 ```
 
 Add the role-specific variables. Check the role documentation for available options:
 
 ```bash
-ls /usr/share/doc/rhel-system-roles/cockpit/
-cat /usr/share/doc/rhel-system-roles/cockpit/README.md
+ls /usr/share/ansible/roles/rhel-system-roles.cockpit/
+cat /usr/share/ansible/roles/rhel-system-roles.cockpit/README.md
 ```
 
 ## Step 4 - Run the Playbook
@@ -68,10 +68,8 @@ ansible-playbook -i inventory.ini configure-cockpit.yml
 On the managed hosts, verify that the configuration was applied:
 
 ```bash
-# Check relevant service or configuration
-
-systemctl status <service>
-cat <config-file>
+systemctl status cockpit.socket
+curl --insecure https://server1.example.com:9090
 ```
 
 ## Idempotency
