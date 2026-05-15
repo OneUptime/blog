@@ -15,11 +15,21 @@ Docker Swarm provides simple container orchestration on RHEL 9. This guide cover
 ```bash
 sudo dnf install -y dnf-plugins-core
 sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
-sudo dnf install -y docker-ce docker-ce-cli containerd.io
+sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 sudo systemctl enable --now docker
 ```
 
 ## Initialize the Swarm
+
+Before enabling Swarm mode, allow the Swarm ports between trusted cluster nodes:
+
+```bash
+sudo firewall-cmd --permanent --add-port=2377/tcp
+sudo firewall-cmd --permanent --add-port=7946/tcp
+sudo firewall-cmd --permanent --add-port=7946/udp
+sudo firewall-cmd --permanent --add-port=4789/udp
+sudo firewall-cmd --reload
+```
 
 On the manager node:
 
@@ -81,4 +91,3 @@ sudo docker stack services myapp
 ## Conclusion
 
 Docker Swarm on RHEL 9 provides straightforward container orchestration for small to medium deployments. For larger environments, consider Kubernetes or OpenShift.
-
