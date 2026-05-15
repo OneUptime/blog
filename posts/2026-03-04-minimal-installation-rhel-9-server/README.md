@@ -69,7 +69,7 @@ Configure your network interface during installation. For servers, set a static 
 
 ### Root Password and User Account
 
-Set a strong root password. Also create a regular user account and add it to the `wheel` group so it can use `sudo`. In RHEL, direct root SSH login is disabled by default in the installer if you create a regular user, which is a good security practice.
+Set a strong root password. Also create a regular user account and add it to the `wheel` group so it can use `sudo`. In RHEL 9, password-based root SSH access is disabled by default in the installer unless you explicitly allow it, which is a good security practice.
 
 ## Post-Install Essentials
 
@@ -81,12 +81,11 @@ After the reboot, you will land at a bare terminal login prompt. No GUI, no fril
 # Register with Red Hat Subscription Manager
 sudo subscription-manager register --username <your-rh-username> --password <your-rh-password>
 
-# Attach a subscription
-sudo subscription-manager attach --auto
-
 # Verify repos are available
 sudo dnf repolist
 ```
+
+With Simple Content Access, registration is enough to access entitled Red Hat content. Older entitlement-based accounts may still require attaching a subscription, but `subscription-manager attach` is deprecated and is not needed for the current default subscription model.
 
 ### Update Everything
 
@@ -116,7 +115,6 @@ sudo dnf install -y \
   net-tools \
   tcpdump \
   lsof \
-  htop \
   rsync \
   man-pages \
   policycoreutils-python-utils
@@ -181,6 +179,7 @@ PermitRootLogin no
 
 # Disable password authentication (use keys only)
 PasswordAuthentication no
+KbdInteractiveAuthentication no
 
 # Limit authentication attempts
 MaxAuthTries 3
@@ -192,8 +191,8 @@ PermitEmptyPasswords no
 X11Forwarding no
 EOF
 
-# Restart SSH to apply
-sudo systemctl restart sshd
+# Reload SSH to apply
+sudo systemctl reload sshd
 ```
 
 Before you disable password authentication, make sure you have copied your SSH public key to the server.
