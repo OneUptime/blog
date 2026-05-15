@@ -98,7 +98,7 @@ flowchart TD
     I --> J["Group 'alice' has no other members"]
 ```
 
-RHEL sets the default umask to `0022` in `/etc/profile` and `/etc/bashrc`. With UPG in place, you could safely change it to `0002` to make files group-writable by default, since the group is private anyway. This becomes useful when you set up collaboration directories.
+RHEL's bash startup files commonly set a default umask of `002` for regular users when the user's primary group name matches the login name, and `022` otherwise. With UPG in place, a `0002` umask makes files group-writable by default, since the group is private anyway. This becomes useful when you set up collaboration directories.
 
 ## UPG and Collaboration Directories
 
