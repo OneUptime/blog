@@ -124,7 +124,7 @@ sudo smartctl -H /dev/nvme0
 
 ```bash
 # Edit the smartd configuration
-sudo vi /etc/smartd.conf
+sudo vi /etc/smartmontools/smartd.conf
 
 # Monitor all disks and send email alerts on errors
 # Add this line:
@@ -149,7 +149,7 @@ echo "=== Disk Health ==="
 for disk in /dev/sd? /dev/nvme?; do
     if [ -e "$disk" ]; then
         echo -n "$disk: "
-        sudo smartctl -H "$disk" 2>/dev/null | grep "result"
+        sudo smartctl -H "$disk" 2>/dev/null | grep -E "result|SMART Health Status"
     fi
 done
 SCRIPT
