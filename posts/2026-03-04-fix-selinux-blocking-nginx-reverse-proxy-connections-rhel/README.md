@@ -51,13 +51,14 @@ sudo setsebool -P httpd_can_network_connect_db on
 sudo getsebool -a | grep httpd
 ```
 
-## If Using a Non-Standard Backend Port
+## If SELinux Still Denies a Backend Port
 
 ```bash
-# Check if the port is already defined in SELinux
+# Check how the port is defined in SELinux
 sudo semanage port -l | grep 8080
 
-# If the port is not in the http_port_t list, add it
+# If the backend should be treated as an HTTP port and the audit log still
+# reports a port-label denial, add it to http_port_t
 sudo semanage port -a -t http_port_t -p tcp 8080
 
 # Or if the port is already assigned to another type, modify it
