@@ -8,7 +8,7 @@ Description: Practice the SELinux tasks required for the RHCSA exam, including c
 
 ---
 
-SELinux is always tested on the RHCSA exam. You need to be comfortable changing modes, managing contexts, toggling booleans, and reading audit logs.
+SELinux is part of the RHCSA exam objectives. You need to be comfortable changing modes, managing contexts, toggling booleans, and reading audit logs.
 
 ## Check and Change SELinux Modes
 
@@ -68,10 +68,10 @@ getsebool httpd_enable_homedirs
 
 ```bash
 # Install the troubleshooting tools
-sudo dnf install -y setroubleshoot-server
+sudo dnf install -y policycoreutils-python-utils setroubleshoot-server
 
 # Check the audit log for denials
-sudo ausearch -m avc --start recent
+sudo ausearch -m AVC,USER_AVC,SELINUX_ERR,USER_SELINUX_ERR -ts recent
 
 # Use sealert for human-readable analysis
 sudo sealert -a /var/log/audit/audit.log | head -50
