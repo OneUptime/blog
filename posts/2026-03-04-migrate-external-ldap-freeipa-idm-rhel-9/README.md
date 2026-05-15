@@ -82,17 +82,17 @@ You will be prompted for the bind password.
 
 ### Migration Options
 
-If your LDAP uses a different schema, specify the object classes:
+If your LDAP uses a different schema, specify the schema and object classes:
 
 ```bash
-# Custom schema mapping
+# RFC2307 POSIX user and group schema
 ipa migrate-ds \
   --bind-dn="cn=admin,dc=example,dc=com" \
   --user-container="ou=people" \
   --group-container="ou=groups" \
-  --user-objectclass=inetOrgPerson \
-  --group-objectclass=groupOfNames \
-  --group-member-attribute=member \
+  --schema=RFC2307 \
+  --user-objectclass=posixAccount \
+  --group-objectclass=posixGroup \
   ldap://old-ldap.example.com:389
 ```
 
@@ -104,7 +104,9 @@ ipa migrate-ds \
   --bind-dn="cn=admin,dc=example,dc=com" \
   --user-container="ou=people" \
   --group-container="ou=groups" \
-  --exclude-users="admin,nologin,nobody" \
+  --exclude-users=admin \
+  --exclude-users=nologin \
+  --exclude-users=nobody \
   ldap://old-ldap.example.com:389
 ```
 
@@ -143,17 +145,14 @@ ldapsearch -x -H ldap://old-ldap.example.com \
 
 Passwords cannot be migrated directly because they are stored as hashes and FreeIPA needs to create Kerberos keys. FreeIPA handles this through first-login migration.
 
-When migration mode is enabled, the first time a user logs in to FreeIPA with their old LDAP password:
-1. FreeIPA forwards the authentication to the migration page
-2. The password is used to create Kerberos keys
-3. Subsequent logins use Kerberos
+When migration mode is enabled, users can migrate their passwords in one of two supported ways:
+1. They enter their old LDAP credentials at the FreeIPA migration page, `https://ipa.example.com/ipa/migration`
+2. They log in through an enrolled SSSD client, which falls back to a secure LDAP bind if Kerberos authentication initially fails
+3. FreeIPA uses the password to create Kerberos keys, and subsequent logins use Kerberos
 
 ```bash
-# Users can trigger password migration by logging into the FreeIPA web UI
-# Or by using kinit:
+# After password migration, verify Kerberos authentication:
 kinit jsmith
-# Enter the old LDAP password
-# FreeIPA creates the Kerberos principal
 ```
 
 For users who cannot log in interactively, reset their passwords:
@@ -233,7 +232,7 @@ If FreeIPA already has users with conflicting UIDs:
 
 ```bash
 # Check for conflicts
-ipa user-find --uid=10001
+ipa user-find --uidnumber=10001
 ```
 
 ### Group Membership Issues
