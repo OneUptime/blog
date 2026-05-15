@@ -20,62 +20,69 @@ RKHunter Rootkit Detection can be installed and configured on RHEL to provide ro
 
 ```bash
 # Update the system first
-
 sudo dnf update -y
 
-# Install the required packages
-sudo dnf install -y <package-name>
+# On RHEL 9, enable CodeReady Builder and install EPEL
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+
+# On CentOS Stream 9, enable CRB and install EPEL
+sudo dnf config-manager --set-enabled crb
+sudo dnf install -y epel-release epel-next-release
+
+# Install rkhunter
+sudo dnf install -y rkhunter
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+Use the RHEL commands on Red Hat Enterprise Linux and the CentOS Stream commands on CentOS Stream 9.
 
-## Step 2: Configure the Service
+## Step 2: Configure RKHunter
 
 Edit the configuration file to match your environment:
 
 ```bash
 # Open the configuration file
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/rkhunter.conf
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include update mirror settings, warning email recipients, and the log file location.
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Validate the configuration
+sudo rkhunter --config-check
 ```
 
-## Step 3: Enable and Start the Service
+## Step 3: Update Databases and Run a Check
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Create the file properties baseline on a known-good system
+sudo rkhunter --propupd
 
-# Start the service
-sudo systemctl start <service-name>
+# Update rkhunter data files
+sudo rkhunter --update
 
-# Check the status
-sudo systemctl status <service-name>
+# Run a scan without interactive prompts
+sudo rkhunter --check --skip-keypress
 ```
 
 
 ## Verification
 
-Confirm everything is working by checking the status and logs:
+Confirm everything is working by running a warning-only scan and checking the logs:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
+# Show warnings only
+sudo rkhunter --check --skip-keypress --report-warnings-only
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# Review recent logs on the Fedora/EPEL RPM build
+sudo tail -n 50 /var/log/rkhunter/rkhunter.log
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the configuration is invalid, check it with `sudo rkhunter --config-check`.
+- Ensure rkhunter is installed: `rpm -q rkhunter`.
 
 ## Conclusion
 
-You have successfully completed the setup described in this guide. Remember to monitor the service and review logs regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
+You have successfully completed the setup described in this guide. Remember to run scans and review logs regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
