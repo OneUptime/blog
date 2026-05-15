@@ -30,7 +30,7 @@ graph TB
 
 ## Prerequisites
 
-- RHEL.x with an active subscription (SAP Solutions subscription recommended)
+- RHEL 9 with an active Red Hat Enterprise Linux for SAP Solutions subscription
 - Minimum 64 GB RAM (128 GB or more for production)
 - At least 4 CPU cores
 - Separate disks for /hana/data, /hana/log, and /hana/shared
@@ -47,12 +47,16 @@ sudo subscription-manager register --username=your_username --password=your_pass
 # Attach the SAP Solutions subscription
 sudo subscription-manager attach --pool=your_sap_pool_id
 
-# Enable the required repositories for SAP HANA
+# Set the RHEL 9 minor release to an E4S release supported for your HANA version
+sudo subscription-manager release --set=9.4
+
+# Enable the required repositories for SAP HANA on RHEL 9
 sudo subscription-manager repos \
-  --enable=rhel-9-for-x86_64-baseos-rpms \
-  --enable=rhel-9-for-x86_64-appstream-rpms \
-  --enable=rhel-9-for-x86_64-sap-solutions-rpms \
-  --enable=rhel-9-for-x86_64-sap-netweaver-rpms
+  --disable="*" \
+  --enable="rhel-9-for-$(uname -m)-baseos-e4s-rpms" \
+  --enable="rhel-9-for-$(uname -m)-appstream-e4s-rpms" \
+  --enable="rhel-9-for-$(uname -m)-sap-solutions-e4s-rpms" \
+  --enable="rhel-9-for-$(uname -m)-sap-netweaver-e4s-rpms"
 ```
 
 ## Step 2: Run the SAP Preconfigure Ansible Role
@@ -60,8 +64,8 @@ sudo subscription-manager repos \
 Red Hat provides Ansible roles that automatically configure RHEL for SAP workloads.
 
 ```bash
-# Install the SAP preconfigure roles
-sudo dnf install -y rhel-system-roles-sap
+# Install Ansible and the SAP preconfigure roles
+sudo dnf install -y ansible-core rhel-system-roles rhel-system-roles-sap
 
 # Create an Ansible playbook for SAP HANA preparation
 cat <<'EOF' > /tmp/sap-hana-prepare.yml
@@ -69,13 +73,25 @@ cat <<'EOF' > /tmp/sap-hana-prepare.yml
 - name: Prepare RHEL for SAP HANA
   hosts: localhost
   become: true
+  vars:
+    ansible_connection: local
+    sap_general_preconfigure_max_hostname_length: 64
+    sap_general_preconfigure_reboot_ok: false
+    sap_general_preconfigure_fail_if_reboot_required: false
+    sap_hana_preconfigure_reboot_ok: false
+    sap_hana_preconfigure_fail_if_reboot_required: false
+    sap_hana_preconfigure_update: true
   roles:
     - role: sap_general_preconfigure
     - role: sap_hana_preconfigure
 EOF
 
 # Run the playbook
-sudo ansible-playbook /tmp/sap-hana-prepare.yml
+sudo ansible-playbook /tmp/sap-hana-prepare.yml \
+  -e 'ansible_python_interpreter=/usr/libexec/platform-python'
+
+# Reboot after the role completes successfully
+sudo reboot
 ```
 
 ## Step 3: Configure Storage for SAP HANA
@@ -122,34 +138,16 @@ df -hT /hana/data /hana/log /hana/shared
 ## Step 4: Configure Kernel Parameters
 
 ```bash
-# Set the kernel parameters required by SAP HANA
-sudo tee /etc/sysctl.d/sap-hana.conf > /dev/null <<'EOF'
-# Shared memory - set to total RAM in bytes
-kernel.shmmax = 137438953472
-kernel.shmall = 33554432
+# The sap_general_preconfigure and sap_hana_preconfigure roles apply
+# the kernel and network settings required by the relevant SAP Notes.
+sudo sysctl kernel.shmmax kernel.shmall kernel.sem vm.swappiness
 
-# Semaphores: SEMMSL SEMMNS SEMOPM SEMMNI
-kernel.sem = 1250 256000 100 8192
+# Check Transparent Huge Pages after the role has run
+cat /sys/kernel/mm/transparent_hugepage/enabled
 
-# Network tuning for SAP HANA
-net.core.somaxconn = 4096
-net.core.netdev_max_backlog = 300000
-net.ipv4.tcp_max_syn_backlog = 16384
-net.ipv4.tcp_slow_start_after_idle = 0
-
-# Memory overcommit settings
-vm.overcommit_memory = 0
-vm.swappiness = 10
-
-# Transparent Huge Pages must be disabled for SAP HANA
-# (handled via kernel command line below)
-EOF
-
-# Apply the sysctl settings immediately
-sudo sysctl --system
-
-# Disable Transparent Huge Pages (required by SAP HANA)
-sudo grubby --update-kernel=ALL --args="transparent_hugepage=never"
+# If your SAP Note level requires a persistent THP override, set it with grubby.
+# Current SAP HANA guidance for supported RHEL 9 combinations commonly uses madvise.
+sudo grubby --update-kernel=ALL --args="transparent_hugepage=madvise"
 ```
 
 ## Step 5: Install Required Packages
@@ -240,15 +238,13 @@ hdbsql -i 00 -u SYSTEM -p YourSecurePassword \
 ## Step 9: Configure Firewall for SAP HANA
 
 ```bash
-# Open the standard SAP HANA ports
-# Instance number 00 uses ports 300xx and 5xx13-5xx14
-sudo firewall-cmd --permanent --add-port=30013/tcp  # SQL/MDX access
-sudo firewall-cmd --permanent --add-port=30015/tcp  # SQL/MDX access
-sudo firewall-cmd --permanent --add-port=30017/tcp  # Internal communication
-sudo firewall-cmd --permanent --add-port=30040/tcp  # HTTP access
-sudo firewall-cmd --permanent --add-port=30041/tcp  # HTTPS access
-sudo firewall-cmd --permanent --add-port=50013/tcp  # Instance agent HTTP
-sudo firewall-cmd --permanent --add-port=50014/tcp  # Instance agent HTTPS
+# Open only the SAP HANA ports your clients and administrators require.
+# Instance number 00 commonly uses 30013 for SYSTEMDB SQL access,
+# 30015 for the first tenant SQL access, and 50013-50014 for SAPControl.
+sudo firewall-cmd --permanent --add-port=30013/tcp  # SYSTEMDB SQL access
+sudo firewall-cmd --permanent --add-port=30015/tcp  # First tenant SQL access
+sudo firewall-cmd --permanent --add-port=50013/tcp  # SAPControl HTTP
+sudo firewall-cmd --permanent --add-port=50014/tcp  # SAPControl HTTPS
 
 # Reload the firewall
 sudo firewall-cmd --reload
