@@ -53,7 +53,7 @@ sudo kadmin -p admin/admin@EXAMPLE.COM
 addprinc -randkey HTTP/webserver.example.com@EXAMPLE.COM
 
 # Export the key to a keytab file
-ktadd -k /etc/krb5.keytab HTTP/webserver.example.com@EXAMPLE.COM
+ktadd -k /etc/http.keytab HTTP/webserver.example.com@EXAMPLE.COM
 
 # Exit kadmin
 quit
@@ -133,10 +133,7 @@ Periodically rotate keys for security:
 # Connect to kadmin
 sudo kadmin -p admin/admin@EXAMPLE.COM
 
-# Change the key (generates a new random key)
-change_password -randkey HTTP/webserver.example.com@EXAMPLE.COM
-
-# Export the new key to the keytab
+# Rotate the service key and export it to the keytab
 ktadd -k /etc/http.keytab HTTP/webserver.example.com@EXAMPLE.COM
 
 quit
@@ -176,4 +173,3 @@ kdestroy
 ## Summary
 
 Keytab files are the standard way to enable passwordless Kerberos authentication for services and automated processes on RHEL. Keep them properly secured with restrictive file permissions, rotate keys periodically, and always test after making changes.
-
