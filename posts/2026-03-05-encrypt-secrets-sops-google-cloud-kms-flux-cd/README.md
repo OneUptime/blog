@@ -87,6 +87,10 @@ gcloud iam service-accounts add-iam-policy-binding \
 kubectl annotate serviceaccount kustomize-controller \
   --namespace flux-system \
   iam.gke.io/gcp-service-account=flux-kustomize@my-project.iam.gserviceaccount.com
+
+# Restart the controller if the annotation is applied after bootstrap
+kubectl rollout restart deployment/kustomize-controller \
+  --namespace flux-system
 ```
 
 Alternatively, for non-GKE clusters, use a service account key file.
@@ -178,7 +182,8 @@ creation_rules:
 
 ```bash
 # Now encrypt without specifying the key
-sops --encrypt secret.yaml > secret.enc.yaml
+cp secret.yaml secret.enc.yaml
+sops --encrypt --in-place secret.enc.yaml
 ```
 
 ## Step 8: Commit and Verify
