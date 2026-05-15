@@ -113,7 +113,7 @@ Monitor resource usage and adjust configuration parameters based on your workloa
 
 ```bash
 systemctl show httpd --property=MemoryCurrent
-top -p $(pidof httpd)
+top -p "$(pgrep -d, httpd)"
 ```
 
 ## Security Considerations
