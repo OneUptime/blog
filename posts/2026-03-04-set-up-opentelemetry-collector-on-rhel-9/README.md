@@ -16,34 +16,71 @@ Setting up OpenTelemetry Collector on RHEL requires proper planning and configur
 - Root or sudo access
 - A terminal session
 
-## Step 2: Configure the Service
+## Step 1: Install and Configure the Collector
+
+Install the OpenTelemetry Collector RPM package:
+
+```bash
+# Install wget if it is not already installed
+sudo yum -y install wget
+
+# Download and install the OpenTelemetry Collector RPM for AMD64
+wget https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.152.0/otelcol_0.152.0_linux_amd64.rpm
+sudo rpm -ivh otelcol_0.152.0_linux_amd64.rpm
+```
 
 Edit the configuration file to match your environment:
 
 ```bash
 # Open the configuration file
 
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/otelcol/config.yaml
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include receivers, processors, exporters, service pipelines, authentication extensions, and logging options. A minimal local test configuration can receive OTLP data and write it to the Collector logs:
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      exporters: [debug]
+    logs:
+      receivers: [otlp]
+      exporters: [debug]
+```
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart otelcol
 ```
 
-## Step 3: Enable and Start the Service
+## Step 2: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable otelcol
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start otelcol
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status otelcol
 ```
 
 
@@ -53,16 +90,17 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status otelcol
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u otelcol --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u otelcol -e --no-pager`.
+- Validate the configuration before restarting with `otelcol validate --config=/etc/otelcol/config.yaml`.
+- Ensure the Collector package is installed: `rpm -qa | grep otelcol`.
 
 ## Conclusion
 
