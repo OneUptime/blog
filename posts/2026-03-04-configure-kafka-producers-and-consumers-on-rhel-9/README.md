@@ -13,44 +13,52 @@ Kafka producers send records to topics, and consumers read them. Understanding h
 ## Prerequisites
 
 - RHEL with a valid subscription or CentOS Stream 9
+- Kafka installed in `/opt/kafka` and a `kafka` service user
 - Root or sudo access
 - A terminal session
 
-## Step 2: Configure the Service
+## Step 2: Configure the Kafka Clients
 
-Edit the configuration file to match your environment:
+Edit the producer and consumer configuration files to match your environment:
 
 ```bash
-# Open the configuration file
+# Open the producer configuration file
+sudo vi /opt/kafka/config/producer.properties
 
-sudo vi /etc/<service>/config.conf
+# Open the consumer configuration file
+sudo vi /opt/kafka/config/consumer.properties
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+Adjust the settings according to your requirements. Key parameters to configure include the Kafka bootstrap server, authentication settings, and client IDs.
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Example producer settings
+bootstrap.servers=localhost:9092
+client.id=rhel-producer
+acks=all
+
+# Example consumer settings
+bootstrap.servers=localhost:9092
+group.id=rhel-consumer-group
+client.id=rhel-consumer
+auto.offset.reset=earliest
 ```
 
-## Step 3: Enable and Start the Service
+## Step 3: Start Kafka
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+# Start the Kafka broker
+sudo -u kafka /opt/kafka/bin/kafka-server-start.sh -daemon /opt/kafka/config/server.properties
 
-# Start the service
-sudo systemctl start <service-name>
-
-# Check the status
-sudo systemctl status <service-name>
+# Check that Kafka is running
+jcmd | grep kafka
 ```
 
 ## Step 4: Configure the Firewall
 
 ```bash
-# Open the required port
-sudo firewall-cmd --permanent --add-port=<PORT>/tcp
+# Open the Kafka broker port
+sudo firewall-cmd --permanent --add-port=9092/tcp
 sudo firewall-cmd --reload
 
 # Verify the rule
@@ -60,7 +68,7 @@ sudo firewall-cmd --list-all
 
 ## Verification
 
-Confirm everything is working by checking the status and logs:
+Confirm everything is working by checking the broker and sending messages:
 
 ```bash
 # Check Kafka broker status
@@ -71,14 +79,20 @@ Confirm everything is working by checking the status and logs:
 
 # List topics
 /opt/kafka/bin/kafka-topics.sh --list --bootstrap-server localhost:9092
+
+# Start a producer and send messages to the topic
+/opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --producer.config /opt/kafka/config/producer.properties --topic test
+
+# Start a consumer in another terminal and read messages from the beginning
+/opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --consumer.config /opt/kafka/config/consumer.properties --topic test --from-beginning
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
+- If Kafka fails to start, check the logs in `/opt/kafka/logs/server.log`.
 - SELinux may block access. Check for denials with `ausearch -m avc -ts recent` and apply appropriate policies.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- Ensure Kafka is installed in `/opt/kafka` and Java is available on the system.
 
 ## Conclusion
 
-You have successfully completed the setup described in this guide. Remember to monitor the service and review logs regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
+You have successfully completed the setup described in this guide. Remember to monitor Kafka and review logs regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
