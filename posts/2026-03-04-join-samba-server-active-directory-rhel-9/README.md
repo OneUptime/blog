@@ -26,7 +26,8 @@ Joining your Samba server to Active Directory means users authenticate with thei
 # Install Samba, AD integration, and Kerberos packages
 
 sudo dnf install -y samba samba-client samba-winbind samba-winbind-clients \
-    krb5-workstation realmd oddjob oddjob-mkhomedir sssd adcli
+    samba-common-tools samba-winbind-krb5-locator \
+    krb5-workstation realmd oddjob oddjob-mkhomedir
 ```
 
 ## Step 2 - Configure DNS
@@ -41,7 +42,7 @@ sudo nmcli connection up ens192
 
 # Test DNS resolution
 host example.com
-host _ldap._tcp.example.com
+host -t SRV _ldap._tcp.example.com
 ```
 
 ## Step 3 - Configure Time Synchronization
@@ -73,11 +74,11 @@ This shows information about the domain, including the required packages and joi
 sudo realm join --membership-software=samba --client-software=winbind example.com
 ```
 
-Alternatively, using Samba's net command:
+Alternatively, after creating the Samba configuration shown below, use Samba's net command:
 
 ```bash
 # Join using net ads
-sudo net ads join -U administrator
+sudo net ads join -U "EXAMPLE\\administrator"
 ```
 
 Verify the join:
@@ -97,6 +98,7 @@ Edit /etc/samba/smb.conf:
     workgroup = EXAMPLE
     realm = EXAMPLE.COM
     security = ads
+    passdb backend = tdbsam
 
     # ID mapping configuration
     idmap config * : backend = tdb
@@ -122,8 +124,12 @@ Edit /etc/samba/smb.conf:
 ## Step 7 - Start Services
 
 ```bash
+# Check the Samba configuration
+sudo testparm
+
 # Enable and start winbind and Samba
-sudo systemctl enable --now winbind smb
+sudo systemctl enable --now winbind
+sudo systemctl enable --now smb
 
 # Verify winbind can talk to AD
 wbinfo -t    # Test trust relationship
@@ -164,7 +170,7 @@ Create home directories automatically when AD users log in:
 
 ```bash
 # Enable automatic home directory creation
-sudo authselect select sssd with-mkhomedir --force
+sudo authselect select winbind with-mkhomedir --force
 sudo systemctl enable --now oddjobd
 ```
 
