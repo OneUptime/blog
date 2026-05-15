@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Pacemaker, Hacluster, Authentication, Cluster, Security, Linux
 
-Description: Learn how to configure cluster node authentication using the hacluster account on RHEL for secure Pacemaker cluster communication.
+Description: Learn how to configure cluster node authentication using the hacluster account on RHEL for secure pcs management communication.
 
 ---
 
-Pacemaker clusters on RHEL use the `hacluster` system account for node-to-node authentication through the pcsd (pcs daemon) service. Proper authentication setup is the first step in creating a secure cluster.
+Pacemaker clusters on RHEL use the `hacluster` system account as the `pcs` administration account for authenticating `pcs` to the pcsd (pcs daemon) service on cluster nodes. Proper authentication setup is the first step in creating a secure cluster.
 
 ## Prerequisites
 
@@ -18,17 +18,17 @@ Pacemaker clusters on RHEL use the `hacluster` system account for node-to-node a
 
 ## Understanding hacluster Authentication
 
-The `hacluster` user is created automatically when the pcs package is installed. The pcsd service uses this account to authenticate management operations between nodes. Authentication tokens are generated during the `pcs host auth` process and stored locally.
+The `hacluster` user is created automatically when the pcs and pacemaker packages are installed. The pcsd service uses this account to authenticate management operations between nodes. Authentication tokens are generated during the `pcs host auth` process and stored locally.
 
 ## Step 1: Set the hacluster Password
 
-On every cluster node, set the same password:
+On every cluster node, set a password:
 
 ```bash
 sudo passwd hacluster
 ```
 
-Use a strong password. All nodes must have the same password for initial authentication.
+Use a strong password. Red Hat recommends using the same password on each node, and the password must be the same when you authenticate multiple nodes in one `pcs host auth` command.
 
 ## Step 2: Start the pcsd Service
 
@@ -52,29 +52,29 @@ From any one node, authenticate all cluster nodes:
 sudo pcs host auth node1 node2 node3 -u hacluster
 ```
 
-Enter the password when prompted. This generates authentication tokens on each node.
+Enter the password when prompted. This generates authentication tokens for `pcs` and pcsd communication.
 
-Verify authentication:
+Run the authentication command again if you want to confirm that the nodes are already authorized:
 
 ```bash
 sudo pcs host auth node1 node2 node3
 ```
 
-If already authenticated, it shows "Already authorized".
+If already authenticated, the command reports the hosts as authorized or already authorized.
 
 ## Understanding Authentication Tokens
 
-After authentication, tokens are stored in `/var/lib/pcsd/tokens`:
+When you run `pcs` with root privileges, authentication tokens are stored in `/var/lib/pcsd/tokens`:
 
 ```bash
 sudo ls -la /var/lib/pcsd/
 ```
 
-These tokens allow pcsd to communicate securely between nodes without passwords.
+These tokens allow `pcs` and pcsd to communicate with remote pcsd instances without prompting for passwords.
 
 ## Re-Authenticating Nodes
 
-If authentication expires or tokens are lost:
+If authentication no longer works or tokens are lost:
 
 ```bash
 sudo pcs host deauth node2
@@ -119,12 +119,11 @@ pcsd uses TLS for encrypted communication. View the certificate:
 sudo openssl x509 -in /var/lib/pcsd/pcsd.crt -text -noout
 ```
 
-Replace with a custom certificate:
+Install a custom certificate and key:
 
 ```bash
-sudo cp my-cert.pem /var/lib/pcsd/pcsd.crt
-sudo cp my-key.pem /var/lib/pcsd/pcsd.key
-sudo systemctl restart pcsd
+sudo pcs pcsd certkey my-cert.pem my-key.pem
+sudo pcs pcsd sync-certificates
 ```
 
 ## Firewall Configuration
@@ -136,7 +135,7 @@ sudo firewall-cmd --permanent --add-service=high-availability
 sudo firewall-cmd --reload
 ```
 
-The high-availability service opens ports 2224 (pcsd), 3121 (pacemaker), 5403 (corosync qdevice), and 5404-5405 (corosync).
+The high-availability service covers the ports generally required by the RHEL High Availability Add-On, including TCP 2224 for pcsd, TCP 3121 when Pacemaker Remote nodes are used, TCP 5403 on a quorum-device host, UDP 5404-5412 for corosync, TCP 21064 for DLM resources such as GFS2, and TCP/UDP 9929 when Booth ticket management is used.
 
 ## Troubleshooting Authentication Issues
 
@@ -154,7 +153,7 @@ Check firewall:
 ssh node2 "firewall-cmd --list-services"
 ```
 
-### Token Expired
+### Token Lost
 
 Re-authenticate:
 
@@ -172,4 +171,4 @@ ssh node2 "sudo passwd hacluster"
 
 ## Conclusion
 
-Proper hacluster authentication is the foundation of a secure Pacemaker cluster on RHEL. Set strong passwords, ensure pcsd is running on all nodes, and use TLS for encrypted communication. Re-authenticate nodes if tokens expire or are lost.
+Proper hacluster authentication is the foundation of a secure Pacemaker cluster on RHEL. Set strong passwords, ensure pcsd is running on all nodes, and use TLS for encrypted communication. Re-authenticate nodes if authentication stops working or tokens are lost.
