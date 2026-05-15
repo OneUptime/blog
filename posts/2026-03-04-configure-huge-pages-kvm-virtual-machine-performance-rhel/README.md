@@ -99,7 +99,7 @@ sudo virsh start rhel9-vm
 
 # Check that huge pages are consumed
 cat /proc/meminfo | grep HugePages
-# HugePages_Free should decrease by the VM's memory allocation
+# HugePages_Total - (HugePages_Free + HugePages_Rsvd) shows pages in use
 
 # Check the QEMU process memory mapping
 sudo grep -i huge /proc/$(pgrep -f "qemu.*rhel9-vm")/smaps | head
@@ -115,8 +115,13 @@ mount | grep hugetlbfs
 # If not mounted:
 sudo mount -t hugetlbfs hugetlbfs /dev/hugepages
 
+# For a non-default page size such as 1GB, mount hugetlbfs with the page size:
+sudo mkdir -p /dev/hugepages1G
+sudo mount -t hugetlbfs -o pagesize=1G none /dev/hugepages1G
+
 # Make it persistent
 echo "hugetlbfs /dev/hugepages hugetlbfs defaults 0 0" | sudo tee -a /etc/fstab
+echo "none /dev/hugepages1G hugetlbfs pagesize=1G 0 0" | sudo tee -a /etc/fstab
 ```
 
 Allocate enough huge pages to cover all VMs that need them, plus a small buffer. Huge pages are reserved and not available to the host for regular use, so do not over-allocate. Monitor with `cat /proc/meminfo | grep HugePages` to track utilization.
