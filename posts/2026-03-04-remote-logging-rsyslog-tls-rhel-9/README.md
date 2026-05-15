@@ -40,7 +40,7 @@ sudo dnf install rsyslog-gnutls -y
 
 ## Step 2: Generate TLS Certificates
 
-You need a Certificate Authority (CA), a server certificate, and optionally client certificates. For production, use your organization's CA. For testing, you can create a self-signed CA.
+You need a Certificate Authority (CA), a server certificate, and client certificates for the mutual TLS configuration shown below. For production, use your organization's CA. For testing, you can create a self-signed CA.
 
 ```bash
 # Install certtool from GnuTLS utils
@@ -167,7 +167,8 @@ Add the following:
 module(load="imtcp"
     StreamDriver.Name="gtls"
     StreamDriver.Mode="1"
-    StreamDriver.Authmode="x509/name"
+    StreamDriver.AuthMode="x509/name"
+    PermittedPeer="client1.example.com"
 )
 
 # Set global TLS parameters
@@ -278,11 +279,13 @@ You can also verify the TLS connection is actually encrypted:
 
 ```bash
 # On the server, check active TLS connections
-sudo ss -tlnp | grep 6514
+sudo ss -tnp | grep 6514
 
-# Use openssl to test the TLS handshake
+# From a client with the client certificate installed, use openssl to test the TLS handshake
 openssl s_client -connect logserver.example.com:6514 \
-    -CAfile /etc/pki/rsyslog/ca-cert.pem
+    -CAfile /etc/pki/rsyslog/ca-cert.pem \
+    -cert /etc/pki/rsyslog/client-cert.pem \
+    -key /etc/pki/rsyslog/client-key.pem
 ```
 
 ## Using Anonymous TLS (Simpler Setup)
@@ -314,7 +317,7 @@ On the client:
 )
 ```
 
-This is simpler but provides only encryption without mutual authentication.
+This is simpler but provides encryption without peer authentication and is vulnerable to man-in-the-middle attacks.
 
 ## Troubleshooting
 
@@ -334,7 +337,9 @@ certtool --verify --load-ca-certificate /etc/pki/rsyslog/ca-cert.pem \
 
 # Test TLS connectivity
 openssl s_client -connect logserver.example.com:6514 \
-    -CAfile /etc/pki/rsyslog/ca-cert.pem 2>&1 | head -20
+    -CAfile /etc/pki/rsyslog/ca-cert.pem \
+    -cert /etc/pki/rsyslog/client-cert.pem \
+    -key /etc/pki/rsyslog/client-key.pem 2>&1 | head -20
 ```
 
 ## Summary
