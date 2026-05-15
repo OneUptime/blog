@@ -66,6 +66,7 @@ Install the controller with a base configuration:
 helm install haproxy-ingress haproxy-ingress/haproxy-ingress \
   --namespace haproxy-ingress \
   --set controller.replicaCount=2 \
+  --set controller.ingressClassResource.enabled=true \
   --set controller.service.type=LoadBalancer
 ```
 
@@ -103,9 +104,8 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: web-ingress
-  annotations:
-    kubernetes.io/ingress.class: haproxy
 spec:
+  ingressClassName: haproxy
   rules:
   - host: web.example.com
     http:
@@ -158,9 +158,9 @@ kind: Ingress
 metadata:
   name: web-ingress
   annotations:
-    kubernetes.io/ingress.class: haproxy
     haproxy-ingress.github.io/ssl-redirect: "true"
 spec:
+  ingressClassName: haproxy
   tls:
   - hosts:
     - web.example.com
@@ -194,10 +194,10 @@ kind: Ingress
 metadata:
   name: web-ingress
   annotations:
-    kubernetes.io/ingress.class: haproxy
     haproxy-ingress.github.io/limit-rps: "10"
     haproxy-ingress.github.io/limit-connections: "5"
 spec:
+  ingressClassName: haproxy
   rules:
   - host: web.example.com
     http:
@@ -211,7 +211,7 @@ spec:
               number: 80
 ```
 
-This limits each source IP to 10 requests per second and 5 concurrent connections.
+This limits each source IP to 10 new connections per second and 5 concurrent connections.
 
 ## Backend Health Checks
 
@@ -221,8 +221,8 @@ Configure active health checking for your backends:
 metadata:
   annotations:
     haproxy-ingress.github.io/health-check-interval: "5s"
-    haproxy-ingress.github.io/health-check-rise: "2"
-    haproxy-ingress.github.io/health-check-fall: "3"
+    haproxy-ingress.github.io/health-check-rise-count: "2"
+    haproxy-ingress.github.io/health-check-fall-count: "3"
 ```
 
 These annotations tell HAProxy to check backends every 5 seconds, mark them as healthy after 2 successful checks, and mark them as down after 3 consecutive failures.
@@ -274,12 +274,14 @@ You can also expose Prometheus metrics:
 
 ```yaml
 controller:
+  stats:
+    enabled: true
   metrics:
     enabled: true
     service:
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "10254"
+        prometheus.io/port: "9101"
 ```
 
 ## Troubleshooting Common Issues
@@ -300,10 +302,10 @@ kubectl -n haproxy-ingress exec -it deploy/haproxy-ingress -- cat /etc/haproxy/h
 
 Common issues include:
 
-- Ingress class mismatch: make sure the annotation matches what the controller expects
+- Ingress class mismatch: make sure the Ingress `ingressClassName` matches what the controller expects
 - Missing TLS secret: the secret must be in the same namespace as the ingress
 - Backend pods not ready: check that your pods pass readiness probes
 
 ## Conclusion
 
-HAProxy Ingress gives you a high-performance, production-grade ingress controller on RHEL Kubernetes clusters. With annotation-based configuration, TLS termination, rate limiting, and active health checking, it covers the needs of most production workloads without adding unnecessary complexity.
+HAProxy Ingress gives you a high-performance, production-grade ingress controller on RHEL Kubernetes clusters. With IngressClass and annotation-based configuration, TLS termination, rate limiting, and active health checking, it covers the needs of most production workloads without adding unnecessary complexity.
