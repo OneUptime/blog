@@ -31,20 +31,23 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y python3 python3-pip python3-devel gcc openssl
 ```
 
 ## Step 2: Install Required Packages
 
 ```bash
-sudo dnf install -y <package-name>
+sudo useradd --system --create-home --home-dir /var/lib/jupyter --shell /sbin/nologin jupyter
+sudo -u jupyter python3 -m venv /var/lib/jupyter/venv
+sudo -u jupyter /var/lib/jupyter/venv/bin/python -m pip install --upgrade pip
+sudo -u jupyter /var/lib/jupyter/venv/bin/python -m pip install notebook
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+rpm -q python3 python3-pip
+sudo -u jupyter /var/lib/jupyter/venv/bin/jupyter notebook --version
 ```
 
 ## Step 3: Configure the Service
@@ -52,16 +55,43 @@ rpm -qi <package-name>
 Create or edit the main configuration file:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/systemd/system/jupyter-notebook.service
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+Use a dedicated service account and run Jupyter from the virtual environment:
+
+```ini
+[Unit]
+Description=Jupyter Notebook Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jupyter
+Group=jupyter
+WorkingDirectory=/var/lib/jupyter
+Environment=JUPYTER_CONFIG_DIR=/var/lib/jupyter/.jupyter
+ExecStart=/var/lib/jupyter/venv/bin/jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Set a password before exposing the server on the network:
+
+```bash
+sudo -u jupyter /var/lib/jupyter/venv/bin/jupyter server password
+```
 
 ## Step 4: Start and Enable the Service
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo systemctl daemon-reload
+sudo systemctl enable --now jupyter-notebook.service
+sudo systemctl status jupyter-notebook.service
 ```
 
 ## Step 5: Verify the Configuration
@@ -69,13 +99,14 @@ sudo systemctl status <service>
 Test the setup:
 
 ```bash
-sudo <service> --test
+systemctl is-active jupyter-notebook.service
+ss -tlnp | grep ':8888'
 ```
 
 Check the logs for any errors:
 
 ```bash
-journalctl -u <service> -f
+journalctl -u jupyter-notebook.service -f
 ```
 
 ## Step 6: Configure Firewall Rules
@@ -83,7 +114,7 @@ journalctl -u <service> -f
 If the service needs network access:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo firewall-cmd --permanent --add-port=8888/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -92,8 +123,8 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+systemctl show jupyter-notebook.service --property=MemoryCurrent
+top -p $(systemctl show -p MainPID --value jupyter-notebook.service)
 ```
 
 ## Security Considerations
@@ -107,10 +138,10 @@ top -p $(pidof <service>)
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
+1. **Service fails to start**: Check `journalctl -u jupyter-notebook.service -xe` for error messages
 2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
-3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
+3. **Port conflicts**: Use `ss -tlnp | grep ':8888'` to identify processes using the port
 
 ## Conclusion
 
-You have successfully configured set up jupyter notebook server on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
+You have successfully configured a Jupyter Notebook server on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
