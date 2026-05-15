@@ -101,7 +101,9 @@ sudo virsh shutdown rhel9-vm
 #   <target type='serial' port='0'/>
 # </console>
 
-# The guest OS also needs to enable the serial console:
+# The guest OS also needs to enable the serial console in its kernel command line
+# and start a getty on the serial device:
+# grubby --update-kernel=ALL --args="console=ttyS0"
 # systemctl enable serial-getty@ttyS0.service
 ```
 
