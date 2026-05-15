@@ -1,28 +1,28 @@
-# How to Automate RHEL 9 Image Builds with Ansible and composer-cli
+# How to Automate RHEL 9 Image Builds with composer-cli
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Image Builder, Ansible, Composer-cli
+Tags: RHEL, Image Builder, Composer-cli
 
-Description: Automate RHEL 9 image builds using Ansible and composer-cli.
+Description: Automate RHEL 9 image builds using composer-cli.
 
 ---
 
 ## Overview
 
-Automate RHEL 9 image builds using Ansible and composer-cli. RHEL Image Builder lets you create customized, deployable operating system images for physical, virtual, and cloud environments.
+Automate RHEL 9 image builds using composer-cli. RHEL Image Builder lets you create customized, deployable operating system images for physical, virtual, and cloud environments.
 
 ## Prerequisites
 
 - A RHEL 9 system with a valid subscription
-- Root or sudo access
+- Root access or a user in the `weldr` group for `composer-cli`
 - The osbuild-composer and composer-cli packages
 
 ## Step 1 - Install Image Builder
 
 ```bash
 sudo dnf install -y osbuild-composer composer-cli cockpit-composer
-sudo systemctl enable --now osbuild-composer.socket
+sudo systemctl enable --now osbuild-composer.socket cockpit.socket
 ```
 
 ## Step 2 - Create a Blueprint
@@ -87,8 +87,8 @@ Deploy the image to your target platform (KVM, AWS, Azure, VMware) following the
 
 ## Using the Cockpit Web Console
 
-You can also manage Image Builder through the Cockpit web console at `https://your-host:9090`. Navigate to "Image Builder" to create blueprints and start composes from the browser.
+You can also manage Image Builder through the Cockpit web console at `https://your-host:9090` after enabling `cockpit.socket`. Navigate to "Image Builder" to create blueprints and start composes from the browser.
 
 ## Summary
 
-You have learned how to automate rhel 9 image builds with ansible and composer-cli. Image Builder provides a consistent workflow for creating RHEL images across all deployment targets.
+You have learned how to automate RHEL 9 image builds with composer-cli. Image Builder provides a consistent workflow for creating RHEL images across many deployment targets.
