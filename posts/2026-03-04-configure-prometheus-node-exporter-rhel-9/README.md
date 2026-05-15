@@ -20,36 +20,74 @@ Install and configure Prometheus Node Exporter on RHEL to expose system metrics.
 
 ## Step 1 - Install Required Packages
 
-Install the monitoring tools relevant to this guide:
+Install the tools needed to download and install Node Exporter:
 
 ```bash
-sudo dnf install -y pcp pcp-system-tools sysstat net-snmp net-snmp-utils
+sudo dnf install -y wget tar
 ```
 
-Select only the packages you need for your specific setup.
+Download and install the Node Exporter binary:
+
+```bash
+VERSION="1.11.1"
+ARCH="amd64"
+
+wget "https://github.com/prometheus/node_exporter/releases/download/v${VERSION}/node_exporter-${VERSION}.linux-${ARCH}.tar.gz"
+tar xvf "node_exporter-${VERSION}.linux-${ARCH}.tar.gz"
+id -u node_exporter >/dev/null 2>&1 || sudo useradd --no-create-home --shell /sbin/nologin node_exporter
+sudo install -o node_exporter -g node_exporter -m 0755 "node_exporter-${VERSION}.linux-${ARCH}/node_exporter" /usr/local/bin/node_exporter
+```
+
+Select the correct release and architecture for your specific setup.
 
 ## Step 2 - Enable and Start Services
 
-```bash
-sudo systemctl enable --now pmcd pmlogger
-# or for sysstat:
+Create a systemd service for Node Exporter:
 
-sudo systemctl enable --now sysstat
+```bash
+sudo tee /etc/systemd/system/node_exporter.service >/dev/null <<'EOF'
+[Unit]
+Description=Prometheus Node Exporter
+After=network-online.target
+
+[Service]
+User=node_exporter
+Group=node_exporter
+Type=simple
+ExecStart=/usr/local/bin/node_exporter
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+Enable and start the service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now node_exporter
 ```
 
 ## Step 3 - Configure the Monitoring Tool
 
-Edit the relevant configuration file for your monitoring setup. Common locations include:
+Edit the Prometheus configuration file for your monitoring setup. Common locations include:
 
-- `/etc/pcp/` for PCP configuration
-- `/etc/snmp/snmpd.conf` for SNMP
 - `/etc/prometheus/prometheus.yml` for Prometheus
 - `/etc/grafana/grafana.ini` for Grafana
 
-Apply your changes and restart the service:
+Add Node Exporter as a Prometheus scrape target:
+
+```yaml
+scrape_configs:
+  - job_name: node_exporter
+    static_configs:
+      - targets: ["localhost:9100"]
+```
+
+Apply your changes and restart Prometheus:
 
 ```bash
-sudo systemctl restart <service-name>
+sudo systemctl restart prometheus
 ```
 
 ## Step 4 - Open Firewall Ports
@@ -59,7 +97,6 @@ sudo systemctl restart <service-name>
 sudo firewall-cmd --permanent --add-port=9090/tcp   # Prometheus
 sudo firewall-cmd --permanent --add-port=9100/tcp   # Node Exporter
 sudo firewall-cmd --permanent --add-port=3000/tcp   # Grafana
-sudo firewall-cmd --permanent --add-service=snmp     # SNMP
 sudo firewall-cmd --reload
 ```
 
@@ -68,12 +105,11 @@ sudo firewall-cmd --reload
 Confirm that metrics are being collected:
 
 ```bash
-# PCP
-pmstat -s 3
-# sysstat
-sar -u 1 3
-# Prometheus endpoint
-curl -s http://localhost:9090/api/v1/query?query=up
+# Node Exporter metrics endpoint
+curl -s http://localhost:9100/metrics | grep node_exporter_build_info
+
+# Prometheus query API
+curl -s 'http://localhost:9090/api/v1/query?query=up'
 ```
 
 ## Step 6 - Set Up Alerting (Optional)
