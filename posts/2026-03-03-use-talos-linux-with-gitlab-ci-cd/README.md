@@ -37,12 +37,12 @@ Register a runner with the Docker executor that supports DinD:
   url = "https://gitlab.com/"
   executor = "docker"
   [runners.docker]
-    image = "docker:24-dind"
+    image = "docker:29.0.0-cli"
     privileged = true
     volumes = ["/certs/client", "/cache"]
 ```
 
-The `privileged = true` setting is required because Talos's Docker provider needs access to the Docker socket.
+The `privileged = true` setting is required because the Docker-in-Docker service needs privileged mode to start nested containers.
 
 ### Using Shell Executor
 
@@ -69,8 +69,10 @@ stages:
   - deploy
 
 variables:
-  TALOS_VERSION: "v1.7.0"
+  TALOS_VERSION: "v1.13.0"
+  KUBECTL_VERSION: "v1.36.0"
   CLUSTER_NAME: "ci-${CI_PIPELINE_ID}"
+  APP_IMAGE: "${CI_REGISTRY_IMAGE}/myapp:${CI_COMMIT_SHA}"
 
 .install_talosctl: &install_talosctl
   - |
@@ -81,38 +83,45 @@ variables:
     fi
   - talosctl version --client
 
+.install_kubectl: &install_kubectl
+  - |
+    if ! command -v kubectl &> /dev/null; then
+      curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+      chmod +x kubectl
+      mv kubectl /usr/local/bin/kubectl
+    fi
+  - kubectl version --client
+
 build:
   stage: build
-  image: docker:24
+  image: docker:29.0.0-cli
   services:
-    - docker:24-dind
+    - docker:29.0.0-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
   script:
-    - docker build -t myapp:${CI_COMMIT_SHA} .
-    - docker save myapp:${CI_COMMIT_SHA} > /tmp/myapp.tar
-  artifacts:
-    paths:
-      - /tmp/myapp.tar
-    expire_in: 1 hour
+    - echo "${CI_REGISTRY_PASSWORD}" | docker login "${CI_REGISTRY}" -u "${CI_REGISTRY_USER}" --password-stdin
+    - docker build -t "${APP_IMAGE}" .
+    - docker push "${APP_IMAGE}"
 
 integration-test:
   stage: test
-  image: docker:24
+  image: docker:29.0.0-cli
   services:
-    - docker:24-dind
+    - docker:29.0.0-dind
   variables:
     DOCKER_HOST: tcp://docker:2376
     DOCKER_TLS_CERTDIR: "/certs"
   before_script:
-    - apk add --no-cache curl kubectl
+    - apk add --no-cache curl
     - *install_talosctl
+    - *install_kubectl
   script:
     # Create cluster
-    - talosctl cluster create
-        --provisioner docker
+    - talosctl cluster create docker
         --name "${CLUSTER_NAME}"
-        --controlplanes 1
         --workers 1
-        --wait-timeout 5m
 
     # Get kubeconfig
     - talosctl kubeconfig --force /tmp/kubeconfig --merge=false
@@ -121,11 +130,15 @@ integration-test:
     # Wait for readiness
     - kubectl wait --for=condition=Ready nodes --all --timeout=300s
 
-    # Load the application image into the cluster
-    - docker load < /tmp/myapp.tar
-
     # Deploy and test
     - kubectl apply -f manifests/
+    - kubectl create secret docker-registry gitlab-registry
+        --docker-server="${CI_REGISTRY}"
+        --docker-username="${CI_REGISTRY_USER}"
+        --docker-password="${CI_REGISTRY_PASSWORD}"
+        --dry-run=client -o yaml | kubectl apply -f -
+    - kubectl patch serviceaccount default -p '{"imagePullSecrets":[{"name":"gitlab-registry"}]}'
+    - kubectl set image deployment/myapp myapp="${APP_IMAGE}"
     - kubectl rollout status deployment/myapp --timeout=120s
     - kubectl run test --image=busybox --rm -it --restart=Never --
         wget -qO- http://myapp-service/health
@@ -135,7 +148,7 @@ integration-test:
   artifacts:
     when: on_failure
     paths:
-      - /tmp/test-logs/
+      - test-logs/
     expire_in: 1 week
 ```
 
@@ -145,9 +158,9 @@ The Docker-in-Docker setup requires careful configuration. Here are the critical
 
 ```yaml
 integration-test:
-  image: docker:24
+  image: docker:29.0.0-cli
   services:
-    - name: docker:24-dind
+    - name: docker:29.0.0-dind
       alias: docker
       command: ["--storage-driver=overlay2"]
   variables:
@@ -162,7 +175,7 @@ If you are using a self-hosted runner with the shell executor, you do not need t
 
 ## Caching for Faster Pipelines
 
-Cache the talosctl binary and Docker images between runs:
+Cache the talosctl binary between runs:
 
 ```yaml
 integration-test:
@@ -187,9 +200,20 @@ integration-test:
 
 ## Multi-Stage Pipeline with Cluster Reuse
 
-For pipelines that need the cluster across multiple stages, use artifacts or GitLab environments:
+For pipelines that need the cluster across multiple stages, use a shell runner or another self-hosted runner with a persistent Docker daemon, and pass the generated kubeconfig as an artifact:
 
 ```yaml
+variables:
+  TALOS_VERSION: "v1.13.0"
+
+.install_talosctl: &install_talosctl
+  - |
+    if ! command -v talosctl &> /dev/null; then
+      curl -LO "https://github.com/siderolabs/talos/releases/download/${TALOS_VERSION}/talosctl-linux-amd64"
+      chmod +x talosctl-linux-amd64
+      mv talosctl-linux-amd64 /usr/local/bin/talosctl
+    fi
+
 stages:
   - setup
   - test
@@ -199,12 +223,9 @@ setup-cluster:
   stage: setup
   script:
     - *install_talosctl
-    - talosctl cluster create
-        --provisioner docker
+    - talosctl cluster create docker
         --name "${CLUSTER_NAME}"
-        --controlplanes 1
         --workers 1
-        --wait-timeout 5m
     - talosctl kubeconfig --force kubeconfig --merge=false
     - talosctl config info -o json > cluster-info.json
   artifacts:
@@ -250,22 +271,30 @@ cleanup-cluster:
 Use GitLab's parallel matrix feature:
 
 ```yaml
+variables:
+  TALOS_VERSION: "v1.13.0"
+
+.install_talosctl: &install_talosctl
+  - |
+    if ! command -v talosctl &> /dev/null; then
+      curl -LO "https://github.com/siderolabs/talos/releases/download/${TALOS_VERSION}/talosctl-linux-amd64"
+      chmod +x talosctl-linux-amd64
+      mv talosctl-linux-amd64 /usr/local/bin/talosctl
+    fi
+
 integration-test:
   stage: test
   parallel:
     matrix:
-      - K8S_VERSION: ["1.28.0", "1.29.0", "1.30.0"]
+      - K8S_VERSION: ["1.34.0", "1.35.0", "1.36.0"]
   variables:
     CLUSTER_NAME: "ci-${CI_PIPELINE_ID}-k8s-${K8S_VERSION}"
   script:
     - *install_talosctl
-    - talosctl cluster create
-        --provisioner docker
+    - talosctl cluster create docker
         --name "${CLUSTER_NAME}"
-        --controlplanes 1
         --workers 1
         --kubernetes-version "${K8S_VERSION}"
-        --wait-timeout 5m
     - talosctl kubeconfig --force /tmp/kubeconfig --merge=false
     - export KUBECONFIG=/tmp/kubeconfig
     - kubectl get nodes
@@ -280,9 +309,29 @@ integration-test:
 For production deployments through GitLab CI:
 
 ```yaml
+variables:
+  TALOS_VERSION: "v1.13.0"
+  KUBECTL_VERSION: "v1.36.0"
+
+.install_talosctl: &install_talosctl
+  - |
+    if ! command -v talosctl &> /dev/null; then
+      curl -LO "https://github.com/siderolabs/talos/releases/download/${TALOS_VERSION}/talosctl-linux-amd64"
+      chmod +x talosctl-linux-amd64
+      mv talosctl-linux-amd64 /usr/local/bin/talosctl
+    fi
+
+.install_kubectl: &install_kubectl
+  - |
+    if ! command -v kubectl &> /dev/null; then
+      curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+      chmod +x kubectl
+      mv kubectl /usr/local/bin/kubectl
+    fi
+
 deploy-production:
   stage: deploy
-  image: bitnami/kubectl:latest
+  image: alpine:3.22
   environment:
     name: production
     url: https://app.example.com
@@ -290,10 +339,11 @@ deploy-production:
     - if: $CI_COMMIT_BRANCH == "main"
       when: manual
   before_script:
+    - apk add --no-cache curl
     - *install_talosctl
+    - *install_kubectl
     # Retrieve kubeconfig from the production cluster
-    - echo "${TALOSCONFIG}" > /tmp/talosconfig
-    - talosctl --talosconfig /tmp/talosconfig kubeconfig --force /tmp/kubeconfig --merge=false
+    - talosctl --talosconfig "${TALOSCONFIG}" kubeconfig --force /tmp/kubeconfig --merge=false
     - export KUBECONFIG=/tmp/kubeconfig
   script:
     - kubectl apply -f manifests/production/
@@ -301,7 +351,7 @@ deploy-production:
     - kubectl get pods -l app=myapp
 ```
 
-Store the Talos configuration as a CI/CD variable (`TALOSCONFIG`) under Settings > CI/CD > Variables, with the "Masked" and "Protected" flags enabled.
+Store the Talos configuration as a file-type CI/CD variable (`TALOSCONFIG`) under Settings > CI/CD > Variables, with the "Protected" flag enabled.
 
 ## Troubleshooting GitLab CI Issues
 
@@ -327,14 +377,12 @@ GitLab shared runners have limited resources. If cluster creation fails or is ve
 ```yaml
 # Use a smaller cluster
 script:
-  - talosctl cluster create
-      --provisioner docker
+  - talosctl cluster create docker
       --name "${CLUSTER_NAME}"
-      --controlplanes 1
       --workers 0
       --config-patch '[{"op":"add","path":"/cluster/allowSchedulingOnControlPlanes","value":true}]'
-      --cpus 2
-      --memory 2048
+      --cpus-controlplanes 2.0
+      --memory-controlplanes 2GiB
 ```
 
 ### Pipeline Cleanup
