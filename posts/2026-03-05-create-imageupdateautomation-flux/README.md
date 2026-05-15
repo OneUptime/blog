@@ -128,10 +128,10 @@ spec:
 
 The marker `{"$imagepolicy": "flux-system:my-app"}` tells the image automation controller to update this field with the image selected by the `my-app` ImagePolicy in the `flux-system` namespace.
 
-You can also update just the tag portion:
+For manifests that separate image fields, such as Helm values, you can also update just the tag portion:
 
 ```yaml
-image: ghcr.io/my-org/my-app:1.0.0 # {"$imagepolicy": "flux-system:my-app:tag"}
+tag: 1.0.0 # {"$imagepolicy": "flux-system:my-app:tag"}
 ```
 
 ## Step 4: Create the ImageUpdateAutomation
