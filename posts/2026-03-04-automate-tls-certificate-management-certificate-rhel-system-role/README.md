@@ -24,7 +24,7 @@ Use the certificate RHEL System Role to automate TLS certificate management. RHE
 sudo dnf install -y rhel-system-roles
 ```
 
-The roles are installed to `/usr/share/ansible/roles/`.
+The collection is installed to `/usr/share/ansible/collections/ansible_collections/redhat/rhel_system_roles/`.
 
 ## Step 2 - Create an Inventory File
 
@@ -46,15 +46,22 @@ Create `configure-certificate.yml`:
 - name: How to Automate TLS Certificate Management Using the certificate RHEL System Role
   hosts: managed_hosts
   become: true
-  roles:
-    - role: rhel-system-roles.certificate
+  tasks:
+    - name: Create a self-signed certificate
+      ansible.builtin.include_role:
+        name: redhat.rhel_system_roles.certificate
+      vars:
+        certificate_requests:
+          - name: web-server
+            ca: self-sign
+            dns: "{{ inventory_hostname }}"
 ```
 
 Add the role-specific variables. Check the role documentation for available options:
 
 ```bash
-ls /usr/share/doc/rhel-system-roles/certificate/
-cat /usr/share/doc/rhel-system-roles/certificate/README.md
+ls /usr/share/ansible/collections/ansible_collections/redhat/rhel_system_roles/roles/certificate/
+cat /usr/share/ansible/collections/ansible_collections/redhat/rhel_system_roles/roles/certificate/README.md
 ```
 
 ## Step 4 - Run the Playbook
@@ -68,10 +75,7 @@ ansible-playbook -i inventory.ini configure-certificate.yml
 On the managed hosts, verify that the configuration was applied:
 
 ```bash
-# Check relevant service or configuration
-
-systemctl status <service>
-cat <config-file>
+ansible managed_hosts -i inventory.ini -m command -a 'getcert list'
 ```
 
 ## Idempotency
