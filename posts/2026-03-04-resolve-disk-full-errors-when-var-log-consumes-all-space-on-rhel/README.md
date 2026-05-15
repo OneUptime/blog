@@ -21,7 +21,7 @@ df -h
 sudo du -ah /var/log | sort -rh | head -20
 
 # Common culprits:
-# /var/log/messages or /var/log/syslog
+# /var/log/messages
 # /var/log/audit/audit.log
 # /var/log/journal/
 # Application-specific logs
@@ -42,7 +42,7 @@ sudo rm -f /var/log/messages-20250*
 sudo rm -f /var/log/secure-20250*
 
 # Clear the systemd journal
-sudo journalctl --vacuum-size=100M
+sudo journalctl --rotate --vacuum-size=100M
 ```
 
 ## Step 3: Find Deleted but Open Files
@@ -110,7 +110,7 @@ sudo vi /etc/audit/auditd.conf
 # num_logs = 5
 # max_log_file_action = ROTATE
 
-sudo systemctl restart auditd
+sudo service auditd restart
 ```
 
 ## Step 7: Move /var/log to a Separate Partition
