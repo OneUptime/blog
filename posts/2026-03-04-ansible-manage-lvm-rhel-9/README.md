@@ -71,7 +71,9 @@ graph TD
   tasks:
     - name: Install LVM packages
       ansible.builtin.dnf:
-        name: lvm2
+        name:
+          - lvm2
+          - xfsprogs
         state: present
 
     - name: Create physical volumes
