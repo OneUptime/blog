@@ -23,9 +23,12 @@ sudo usbguard generate-policy
 This outputs rules for every USB device currently connected. Review the output before saving it:
 
 ```bash
-# Generate and save to the rules file
-sudo usbguard generate-policy > /etc/usbguard/rules.conf
+# Generate, review, and install the rules file
+sudo usbguard generate-policy --no-hashes > ./rules.conf
+sudo install -m 0600 -o root -g root ./rules.conf /etc/usbguard/rules.conf
 ```
+
+On RHEL, Red Hat recommends `--no-hashes` because hash attributes might not be persistent.
 
 ## Understanding the Generated Rules
 
@@ -79,10 +82,11 @@ Servers typically only need internal USB controllers:
 
 ```bash
 # Start with a clean rules file
-sudo cp /dev/null /etc/usbguard/rules.conf
+sudo install -m 0600 -o root -g root /dev/null /etc/usbguard/rules.conf
 
 # Allow only internal USB host controllers
-sudo usbguard generate-policy | grep "Host Controller" | sudo tee /etc/usbguard/rules.conf
+sudo usbguard generate-policy --no-hashes | grep "Host Controller" | sudo tee /etc/usbguard/rules.conf
+sudo chmod 0600 /etc/usbguard/rules.conf
 
 # Block everything else (set in daemon config)
 sudo sed -i 's/^ImplicitPolicyTarget=.*/ImplicitPolicyTarget=block/' /etc/usbguard/usbguard-daemon.conf
@@ -112,6 +116,7 @@ allow id 0951:1666 name "DataTraveler 3.0"
 
 # Block everything else via ImplicitPolicyTarget=block
 EOF
+sudo chmod 0600 /etc/usbguard/rules.conf
 ```
 
 ## Adding Devices to the Whitelist
@@ -120,7 +125,7 @@ When a new legitimate device needs to be added:
 
 ```bash
 # Plug in the device, then find it in the blocked list
-sudo usbguard list-devices | grep block
+sudo usbguard list-devices --blocked
 
 # Note the device details and create a rule
 # Example output: 15: block id 046d:c52b ...
@@ -148,19 +153,19 @@ flowchart TD
     J --> G
 ```
 
-## Using Hash-Based Rules for Maximum Security
+## Using Hash-Based Rules for Maximum Specificity
 
-For the strictest security, use device hashes. This ensures only the exact physical device is allowed, not just any device with the same vendor/product IDs:
+USBGuard can match device hashes when you need the most specific rule possible. On RHEL, use these carefully because Red Hat recommends avoiding hash attributes in persistent configuration when they are not stable for your devices:
 
 ```bash
-# Get the hash of a specific device
-sudo usbguard list-devices -b
+# Get device details, including hashes when present
+sudo usbguard list-devices
 
 # Create a hash-based rule
 echo 'allow hash "jEP/6WzviqdJ5VSeTUY8PatCNBKeaREvo2OqdplND/o="' | sudo tee -a /etc/usbguard/rules.conf
 ```
 
-Hash-based rules prevent spoofed devices that fake vendor/product IDs from being accepted.
+Hash-based rules can reduce reliance on vendor/product IDs alone, but test them on your hardware before using them in a persistent RHEL policy.
 
 ## Exporting and Importing Policies
 
@@ -168,7 +173,7 @@ For deploying the same policy across multiple systems:
 
 ```bash
 # Export the current policy
-sudo cat /etc/usbguard/rules.conf > /tmp/usbguard-policy-export.conf
+sudo cp /etc/usbguard/rules.conf /tmp/usbguard-policy-export.conf
 
 # Import on another system
 sudo cp /tmp/usbguard-policy-export.conf /etc/usbguard/rules.conf
@@ -201,7 +206,7 @@ sudo systemctl restart usbguard
 sudo usbguard list-devices
 
 # Try plugging in an unapproved device to confirm it is blocked
-sudo usbguard list-devices | grep block
+sudo usbguard list-devices --blocked
 ```
 
 A solid whitelist takes some initial effort to build but provides ongoing protection with minimal maintenance. Review it during regular security audits and update it as hardware changes.
