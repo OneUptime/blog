@@ -8,12 +8,12 @@ Description: Configure Postfix on RHEL as a send-only mail server for system not
 
 ---
 
-Postfix is the default MTA (Mail Transfer Agent) on RHEL. This guide covers configuring it to send outgoing emails, either directly or through an SMTP relay like Gmail or Amazon SES.
+Postfix is the standard MTA (Mail Transfer Agent) documented for RHEL mail server deployments. This guide covers configuring it to send outgoing emails, either directly or through an SMTP relay like Gmail or Amazon SES.
 
 ## Install and Start Postfix
 
 ```bash
-# Postfix is typically installed by default, but verify
+# Install Postfix if it is not already installed
 
 sudo dnf install -y postfix
 
@@ -49,8 +49,11 @@ sudo postconf -e "inet_interfaces = loopback-only"
 sudo postconf -e "mydomain = example.com"
 sudo postconf -e "myorigin = \$mydomain"
 
-# Restrict relay to local only
+# Set local destination domains
 sudo postconf -e "mydestination = \$myhostname, localhost.\$mydomain, localhost"
+
+# Allow local submissions only
+sudo postconf -e "mynetworks = 127.0.0.0/8, [::1]/128"
 
 # Restart to apply changes
 sudo systemctl restart postfix
@@ -59,8 +62,8 @@ sudo systemctl restart postfix
 ## Send a Test Email
 
 ```bash
-# Install mailx for testing
-sudo dnf install -y mailx
+# Install s-nail for the mail command on RHEL 9 and later
+sudo dnf install -y s-nail
 
 # Send a test email
 echo "This is a test from RHEL Postfix" | mail -s "Test Email" recipient@example.com
@@ -77,6 +80,9 @@ sudo tail -20 /var/log/maillog
 For reliable delivery, relay through an external SMTP server:
 
 ```bash
+# Install SASL support for authenticated SMTP relays
+sudo dnf install -y cyrus-sasl-plain
+
 # Configure relay host
 sudo postconf -e "relayhost = [smtp.gmail.com]:587"
 sudo postconf -e "smtp_sasl_auth_enable = yes"
