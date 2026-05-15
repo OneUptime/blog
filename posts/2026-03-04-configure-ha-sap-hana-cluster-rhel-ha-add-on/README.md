@@ -21,9 +21,16 @@ Configure a high-availability SAP HANA cluster using the RHEL HA Add-On. Running
 
 ## Step 1 - Register and Enable SAP Repositories
 
+Replace `9.0` with the supported RHEL 9 minor release for your SAP HANA deployment:
+
 ```bash
-sudo subscription-manager repos --enable=rhel-9-for-x86_64-sap-solutions-rpms
-sudo subscription-manager repos --enable=rhel-9-for-x86_64-sap-netweaver-rpms
+sudo subscription-manager release --set=9.0
+sudo subscription-manager repos \
+  --enable=rhel-9-for-$(uname -m)-baseos-e4s-rpms \
+  --enable=rhel-9-for-$(uname -m)-appstream-e4s-rpms \
+  --enable=rhel-9-for-$(uname -m)-sap-solutions-e4s-rpms \
+  --enable=rhel-9-for-$(uname -m)-sap-netweaver-e4s-rpms \
+  --enable=rhel-9-for-$(uname -m)-highavailability-e4s-rpms
 ```
 
 ## Step 2 - Install SAP-Specific Packages
@@ -32,7 +39,7 @@ sudo subscription-manager repos --enable=rhel-9-for-x86_64-sap-netweaver-rpms
 sudo dnf install -y tuned-profiles-sap-hana resource-agents-sap-hana
 # For RHEL System Roles for SAP:
 
-sudo dnf install -y rhel-system-roles-sap
+sudo dnf install -y ansible-core rhel-system-roles-sap
 ```
 
 ## Step 3 - Apply SAP Tuning Profile
@@ -45,21 +52,9 @@ This configures kernel parameters, memory settings, and I/O schedulers as recomm
 
 ## Step 4 - Configure Kernel Parameters
 
-Verify the critical settings in `/etc/sysctl.conf`:
+Use the RHEL System Roles for SAP, such as `sap_general_preconfigure` and `sap_hana_preconfigure`, to apply the supported kernel, network, and package settings for your RHEL and SAP HANA versions. If you manage settings manually, verify the resulting values with the current SAP notes and Red Hat documentation instead of copying fixed values into `/etc/sysctl.conf`.
 
-```text
-vm.swappiness = 10
-vm.dirty_ratio = 10
-vm.dirty_background_ratio = 3
-net.core.somaxconn = 4096
-net.ipv4.tcp_max_syn_backlog = 8192
-```
-
-Apply:
-
-```bash
-sudo sysctl -p
-```
+Do not override settings already managed by `tuned` or RHEL System Roles unless SAP or Red Hat support directs you to do so.
 
 ## Step 5 - Set Up High Availability (If Required)
 
@@ -75,7 +70,7 @@ Configure the cluster with pcs commands following the SAP-specific resource agen
 
 ## Step 6 - Validate the Configuration
 
-Use the SAP HANA Hardware Configuration Check Tool (HWCCT) or the RHEL System Roles validation tasks to confirm your system meets SAP requirements.
+Use the SAP HANA Hardware and Cloud Measurement Tools (HCMT) or the RHEL System Roles validation tasks to confirm your system meets SAP requirements.
 
 ## Summary
 
