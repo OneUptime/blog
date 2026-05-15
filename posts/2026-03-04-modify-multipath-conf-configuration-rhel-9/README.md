@@ -12,20 +12,21 @@ The `/etc/multipath.conf` file controls how DM-Multipath handles storage paths. 
 
 ## Configuration File Sections
 
-The file has five main sections:
+The file has six main sections:
 
 1. **defaults**: Global default settings
 2. **blacklist**: Devices to exclude from multipath
 3. **blacklist_exceptions**: Override blacklist for specific devices
 4. **devices**: Per-vendor/product device settings
 5. **multipaths**: Per-LUN settings
+6. **overrides**: Settings that override defaults and device-specific settings for all devices
 
 ## The defaults Section
 
 ```bash
 defaults {
     user_friendly_names yes
-    find_multipaths yes
+    find_multipaths on
     path_grouping_policy failover
     path_selector "round-robin 0"
     failback immediate
@@ -41,7 +42,7 @@ defaults {
 | Parameter | Description | Common Values |
 |---|---|---|
 | `user_friendly_names` | Use mpathX names | yes, no |
-| `find_multipaths` | Only multipath if multiple paths exist | yes, no, smart, greedy |
+| `find_multipaths` | Controls when multipath maps are created for non-blacklisted devices | on, off, strict, smart, greedy |
 | `path_grouping_policy` | How to group paths | failover, multibus, group_by_prio, group_by_node_name |
 | `path_selector` | Algorithm for choosing paths within a group | "round-robin 0", "queue-length 0", "service-time 0" |
 | `failback` | When to return to preferred path | immediate, manual, N (seconds) |
@@ -109,9 +110,10 @@ multipaths {
 Settings are applied with this priority (highest to lowest):
 
 1. `multipaths` section (per-LUN)
-2. `devices` section (per-vendor)
-3. `defaults` section
-4. Built-in defaults
+2. `overrides` section
+3. `devices` section (per-vendor)
+4. `defaults` section
+5. Built-in defaults
 
 ## Applying Changes
 
@@ -149,7 +151,7 @@ sudo multipathd show config local
 ### Change All Devices to Active/Active Load Balancing
 
 ```bash
-defaults {
+overrides {
     path_grouping_policy multibus
     path_selector "service-time 0"
 }
