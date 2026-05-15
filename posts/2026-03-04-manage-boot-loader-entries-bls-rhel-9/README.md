@@ -35,7 +35,7 @@ initrd /initramfs-5.14.0-362.el9.x86_64.img
 options root=/dev/mapper/rhel-root ro crashkernel=256M resume=/dev/mapper/rhel-swap rd.lvm.lv=rhel/root rd.lvm.lv=rhel/swap
 grub_users $grub_users
 grub_arg --unrestricted
-grub_class rhel
+grub_class kernel
 ```
 
 | Field | Purpose |
@@ -46,6 +46,7 @@ grub_class rhel
 | initrd | Path to the initramfs image |
 | options | Kernel command-line parameters |
 | grub_users | GRUB password protection scope |
+| grub_arg | GRUB-specific arguments for the menu entry |
 | grub_class | Used for theming the menu entry |
 
 ## Managing Entries with grubby
