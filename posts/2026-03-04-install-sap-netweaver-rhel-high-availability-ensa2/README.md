@@ -17,7 +17,7 @@ Prepare two RHEL nodes for SAP:
 ```bash
 # Install SAP preparation roles on both nodes
 
-sudo dnf install -y rhel-system-roles-sap
+sudo dnf install -y ansible-core rhel-system-roles-sap rhel-system-roles
 
 # Run the SAP NetWeaver preparation role
 # (via Ansible playbook - see SAP preparation guide)
@@ -28,16 +28,18 @@ sudo dnf install -y pacemaker pcs fence-agents-all resource-agents-sap
 
 ## Setting Up Shared Filesystems
 
-ENSA2 requires shared filesystems for SAP directories:
+SAP HA setups require shared filesystems for SAP directories:
 
 ```bash
 # Mount NFS shares for SAP (on both nodes)
 # /etc/fstab entries
+sudo mkdir -p /sapmnt /usr/sap/trans
 cat >> /etc/fstab << 'NFS'
-nfs-server:/sapmnt     /sapmnt     nfs  defaults  0 0
-nfs-server:/usr/sap/trans  /usr/sap/trans  nfs  defaults  0 0
+nfs-server:/sapmnt         /sapmnt         nfs4  defaults  0 0
+nfs-server:/usr/sap/trans  /usr/sap/trans  nfs4  defaults  0 0
 NFS
 
+sudo systemctl daemon-reload
 sudo mount -a
 ```
 
@@ -65,16 +67,18 @@ Set up the cluster:
 # On both nodes: set hacluster password
 sudo passwd hacluster
 
+# On both nodes: enable the pcs daemon
+sudo systemctl enable --now pcsd.service
+
 # Authenticate nodes
 sudo pcs host auth node1 node2 -u hacluster
 
 # Create the cluster
-sudo pcs cluster setup sap-nw-ha node1 node2
-sudo pcs cluster start --all
+sudo pcs cluster setup sap-nw-ha --start node1 node2
 sudo pcs cluster enable --all
 
-# Disable STONITH temporarily for initial setup
-sudo pcs property set stonith-enabled=false
+# Configure and test fencing/STONITH before adding production resources
+# (choose the fence agent and parameters for your platform)
 ```
 
 ## Creating SAP Cluster Resources
@@ -85,7 +89,11 @@ sudo pcs resource create ascs_fs Filesystem \
   device="nfs-server:/usr/sap/NW1/ASCS00" \
   directory="/usr/sap/NW1/ASCS00" \
   fstype=nfs \
-  --group g-ascs
+  force_unmount=safe \
+  --group g-ascs \
+  op start interval=0 timeout=60 \
+  op stop interval=0 timeout=120 \
+  op monitor interval=200 timeout=40
 
 sudo pcs resource create ascs_ip IPaddr2 \
   ip=10.0.1.100 cidr_netmask=24 \
@@ -94,15 +102,25 @@ sudo pcs resource create ascs_ip IPaddr2 \
 sudo pcs resource create ascs_inst SAPInstance \
   InstanceName="NW1_ASCS00_sap-ascs" \
   START_PROFILE="/sapmnt/NW1/profile/NW1_ASCS00_sap-ascs" \
-  AUTOMATIC_RECOVER=true \
-  --group g-ascs
+  AUTOMATIC_RECOVER=false \
+  meta resource-stickiness=5000 \
+  --group g-ascs \
+  op monitor interval=20 on-fail=restart timeout=60 \
+  op start interval=0 timeout=600 \
+  op stop interval=0 timeout=600
+
+sudo pcs resource meta g-ascs resource-stickiness=3000
 
 # Create the ERS resource group
 sudo pcs resource create ers_fs Filesystem \
   device="nfs-server:/usr/sap/NW1/ERS10" \
   directory="/usr/sap/NW1/ERS10" \
   fstype=nfs \
-  --group g-ers
+  force_unmount=safe \
+  --group g-ers \
+  op start interval=0 timeout=60 \
+  op stop interval=0 timeout=120 \
+  op monitor interval=200 timeout=40
 
 sudo pcs resource create ers_ip IPaddr2 \
   ip=10.0.1.101 cidr_netmask=24 \
@@ -111,15 +129,18 @@ sudo pcs resource create ers_ip IPaddr2 \
 sudo pcs resource create ers_inst SAPInstance \
   InstanceName="NW1_ERS10_sap-ers" \
   START_PROFILE="/sapmnt/NW1/profile/NW1_ERS10_sap-ers" \
-  AUTOMATIC_RECOVER=true \
+  AUTOMATIC_RECOVER=false \
   IS_ERS=true \
-  --group g-ers
+  --group g-ers \
+  op monitor interval=20 on-fail=restart timeout=60 \
+  op start interval=0 timeout=600 \
+  op stop interval=0 timeout=600
 
 # Colocation: ASCS and ERS should prefer different nodes
 sudo pcs constraint colocation add g-ers with g-ascs -5000
 
 # Order: After ASCS failover, ERS follows to the other node
-sudo pcs constraint order start g-ascs then stop g-ers symmetrical=false
+sudo pcs constraint order start g-ascs then stop g-ers symmetrical=false kind=Optional
 ```
 
 Verify the cluster:
