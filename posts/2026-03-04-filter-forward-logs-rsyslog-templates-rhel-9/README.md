@@ -51,12 +51,12 @@ template(name="DetailedFormat" type="list") {
     property(name="hostname")
     constant(value=" ")
     property(name="syslogtag")
-    property(name="msg" spifno1teleading="on")
+    property(name="msg" spIfNo1stSp="on")
     constant(value="\n")
 }
 ```
 
-### Plugin Templates
+### JSON List Templates
 
 Used for structured output like JSON:
 
@@ -120,7 +120,7 @@ Filter based on any message property:
 :msg, contains, "sshd" action(type="omfile" file="/var/log/ssh-activity.log")
 
 # Filter by message content using regex
-:msg, regex, "error|fail|critical" action(type="omfile" file="/var/log/problems.log")
+:msg, ereregex, "error|fail|critical" action(type="omfile" file="/var/log/problems.log")
 ```
 
 ### RainerScript Filters (Advanced)
@@ -150,7 +150,7 @@ if ($programname == 'sshd') and ($msg contains 'Failed password') then {
 # Complex filter with negation
 if not ($hostname == 'localhost' or $fromhost-ip == '127.0.0.1') then {
     action(type="omfile"
-        dynaFile="RemoteHostLogs"
+        file="/var/log/remote-hosts.log"
     )
 }
 ```
@@ -177,12 +177,12 @@ template(name="AppLogFormat" type="list") {
     constant(value=" ")
     property(name="programname")
     constant(value=": ")
-    property(name="msg" spifno1stleading="on")
+    property(name="msg" spIfNo1stSp="on")
     constant(value="\n")
 }
 
 # Route application logs to per-app files with custom format
-if $programname == ['nginx', 'httpd', 'php-fpm', 'mysql', 'postgresql'] then {
+if ($programname == 'nginx' or $programname == 'httpd' or $programname == 'php-fpm' or $programname == 'mysql' or $programname == 'postgresql') then {
     action(type="omfile"
         dynaFile="PerAppLog"
         template="AppLogFormat"
