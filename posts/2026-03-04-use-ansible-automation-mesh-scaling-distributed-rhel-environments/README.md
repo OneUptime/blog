@@ -12,12 +12,14 @@ Ansible Automation Mesh is a peer-to-peer overlay network that extends automatio
 
 ## Understanding Mesh Topology
 
-Automation mesh uses three node types:
-- **Control nodes**: Run the automation controller
+Automation mesh uses control, hybrid, hop, and execution node types. A distributed execution topology commonly uses:
+- **Control nodes**: Run persistent automation controller services, project updates, inventory updates, and system jobs, but not regular jobs
 - **Hop nodes**: Route traffic between network zones (no execution)
 - **Execution nodes**: Run the actual automation jobs
 
 ## Configuring the Installer Inventory
+
+For a VM-based or RPM-based Ansible Automation Platform installation, configure mesh nodes in the installer inventory.
 
 ```bash
 # Edit the AAP installer inventory
@@ -41,14 +43,14 @@ hop1.example.com node_type=hop
 [hop_nodes]
 hop1.example.com
 
-[remote_execution_nodes]
+[instance_group_remote]
 exec1.dc1.example.com
 exec2.dc2.example.com
 
 [hop_nodes:vars]
 peers=automationcontroller
 
-[remote_execution_nodes:vars]
+[instance_group_remote:vars]
 peers=hop_nodes
 
 [all:vars]
