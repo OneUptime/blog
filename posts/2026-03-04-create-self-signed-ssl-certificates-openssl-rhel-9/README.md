@@ -30,7 +30,11 @@ The simplest approach, one command that creates both the private key and certifi
 ```bash
 # Generate a self-signed certificate valid for 365 days
 
-openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days 365 -nodes -subj "/C=US/ST=California/L=San Francisco/O=MyOrg/CN=myserver.internal"
+openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days 365 -noenc \
+  -subj "/C=US/ST=California/L=San Francisco/O=MyOrg/CN=myserver.internal" \
+  -addext "basicConstraints=critical,CA:FALSE" \
+  -addext "keyUsage=critical,digitalSignature,keyEncipherment" \
+  -addext "extendedKeyUsage=serverAuth"
 ```
 
 Breaking down the flags:
@@ -40,8 +44,9 @@ Breaking down the flags:
 - `-keyout server.key` writes the private key to this file
 - `-out server.crt` writes the certificate to this file
 - `-days 365` sets the validity period
-- `-nodes` means no DES encryption on the private key (so services can read it without a passphrase)
+- `-noenc` means no encryption on the private key (so services can read it without a passphrase)
 - `-subj` sets the subject fields inline so you are not prompted interactively
+- `-addext` adds X.509 extensions such as key usage and server authentication
 
 ## Generating with Subject Alternative Names
 
@@ -49,12 +54,15 @@ Modern TLS validation requires Subject Alternative Names (SANs). The Common Name
 
 ```bash
 # Generate a certificate with SANs for multiple hostnames and IPs
-openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days 365 -nodes \
+openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days 365 -noenc \
   -subj "/C=US/ST=California/O=MyOrg/CN=myserver.internal" \
+  -addext "basicConstraints=critical,CA:FALSE" \
+  -addext "keyUsage=critical,digitalSignature,keyEncipherment" \
+  -addext "extendedKeyUsage=serverAuth" \
   -addext "subjectAltName=DNS:myserver.internal,DNS:myserver.local,IP:192.168.1.100"
 ```
 
-The `-addext` flag (available in OpenSSL 1.1.1+, which ships with RHEL) lets you add extensions directly on the command line.
+The `-addext` flag (available in OpenSSL 1.1.1+ and OpenSSL 3, which ships with RHEL 9) lets you add extensions directly on the command line.
 
 ## Step-by-Step: Key, CSR, and Certificate Separately
 
@@ -79,7 +87,11 @@ openssl req -new -key server.key -out server.csr -subj "/C=US/ST=California/O=My
 ```bash
 # Sign the CSR to produce a self-signed certificate
 openssl x509 -req -in server.csr -signkey server.key -out server.crt -days 365 \
-  -extfile <(echo "subjectAltName=DNS:myserver.internal,IP:192.168.1.100")
+  -extfile <(printf "%s\n" \
+    "basicConstraints=critical,CA:FALSE" \
+    "keyUsage=critical,digitalSignature,keyEncipherment" \
+    "extendedKeyUsage=serverAuth" \
+    "subjectAltName=DNS:myserver.internal,IP:192.168.1.100")
 ```
 
 ## Creating a Local Certificate Authority
@@ -101,7 +113,10 @@ graph TD
 openssl genrsa -out ca.key 4096
 
 # Create the CA certificate, valid for 10 years
-openssl req -x509 -new -key ca.key -out ca.crt -days 3650 -subj "/C=US/ST=California/O=MyOrg/CN=MyOrg Internal CA"
+openssl req -x509 -new -key ca.key -out ca.crt -days 3650 \
+  -subj "/C=US/ST=California/O=MyOrg/CN=MyOrg Internal CA" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign"
 ```
 
 ### Sign a Server Certificate with Your CA
@@ -114,7 +129,11 @@ openssl req -new -key webapp.key -out webapp.csr -subj "/C=US/O=MyOrg/CN=webapp.
 # Sign the CSR with the CA, including SANs
 openssl x509 -req -in webapp.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
   -out webapp.crt -days 365 \
-  -extfile <(echo "subjectAltName=DNS:webapp.internal,DNS:webapp.local")
+  -extfile <(printf "%s\n" \
+    "basicConstraints=critical,CA:FALSE" \
+    "keyUsage=critical,digitalSignature,keyEncipherment" \
+    "extendedKeyUsage=serverAuth" \
+    "subjectAltName=DNS:webapp.internal,DNS:webapp.local")
 ```
 
 The `-CAcreateserial` flag creates a serial number file on first use.
@@ -232,8 +251,11 @@ If you want smaller keys with equivalent security, use ECDSA:
 ```bash
 # Generate a self-signed certificate with an ECDSA key
 openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
-  -keyout server-ec.key -out server-ec.crt -days 365 -nodes \
+  -keyout server-ec.key -out server-ec.crt -days 365 -noenc \
   -subj "/C=US/O=MyOrg/CN=myserver.internal" \
+  -addext "basicConstraints=critical,CA:FALSE" \
+  -addext "keyUsage=critical,digitalSignature" \
+  -addext "extendedKeyUsage=serverAuth" \
   -addext "subjectAltName=DNS:myserver.internal"
 ```
 
