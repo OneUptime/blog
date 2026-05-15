@@ -14,21 +14,25 @@ Predictable network interface naming was introduced to fix this. RHEL enables it
 
 ## How Predictable Naming Works
 
-The naming scheme uses information from the system firmware (BIOS/UEFI), PCI bus topology, and MAC addresses to generate stable names. systemd's udev rules handle the assignment.
+The naming policy uses information from the system firmware (BIOS/UEFI), PCI bus topology, and, if explicitly enabled, MAC addresses to generate stable names. systemd's udev rules handle the assignment.
 
-There are five naming schemes, applied in priority order:
+On RHEL 9, the default policy order is `keep kernel database onboard slot path`. The `mac` policy is available, but Red Hat does not use it by default.
 
 ```mermaid
 flowchart TD
-    A[Network Interface Detected] --> B{Scheme 1: Firmware/BIOS Index?}
-    B -->|Available| C[eno1, eno2, ...]
-    B -->|Not Available| D{Scheme 2: Firmware/BIOS PCI Express Hotplug?}
-    D -->|Available| E[ens1, ens2, ...]
-    D -->|Not Available| F{Scheme 3: Physical Location?}
-    F -->|Available| G[enp2s0, enp0s25, ...]
-    F -->|Not Available| H{Scheme 4: MAC Address?}
-    H -->|Available| I[enx00112233aabb]
-    H -->|Not Available| J[Fallback: eth0, eth1, ...]
+    A[Network Interface Detected] --> B{Already named by userspace?}
+    B -->|Yes| C[Keep existing name]
+    B -->|No| D{Kernel says name is predictable?}
+    D -->|Yes| E[Keep kernel name]
+    D -->|No| F{Hardware database name?}
+    F -->|Available| G[idrac, ...]
+    F -->|Not Available| H{Firmware/BIOS onboard index?}
+    H -->|Available| I[eno1, eno2, ...]
+    H -->|Not Available| J{Firmware/BIOS PCI Express hotplug slot?}
+    J -->|Available| K[ens1, ens2, ...]
+    J -->|Not Available| L{Physical location?}
+    L -->|Available| M[enp2s0, enp0s25, ...]
+    L -->|Not Available| N[No udev rename; keep kernel name such as eth0]
 ```
 
 ### Naming Scheme Breakdown
@@ -38,7 +42,7 @@ flowchart TD
 | eno | Firmware/BIOS onboard index | eno1 | Built-in NICs with firmware-provided index |
 | ens | Firmware/BIOS PCI Express hotplug slot | ens3 | Slot number from firmware |
 | enp | PCI bus/slot/function | enp0s25 | Physical PCI topology location |
-| enx | MAC address | enx00112233aabb | Based on hardware MAC (rarely used) |
+| enx | MAC address | enx00112233aabb | Based on hardware MAC (available, but not used by default on RHEL) |
 
 For wireless interfaces, the `en` prefix is replaced with `wl` (e.g., `wlp3s0`).
 
@@ -52,8 +56,11 @@ ip link show
 # Get more details including PCI location
 udevadm info /sys/class/net/enp0s25
 
-# See the naming scheme that was applied
-udevadm info --query=property /sys/class/net/enp0s25 | grep ID_NET_NAME
+# See the RHEL naming scheme that was applied
+udevadm info --query=property --property=ID_NET_NAMING_SCHEME /sys/class/net/enp0s25
+
+# See the name candidates exported by udev
+udevadm info --query=property /sys/class/net/enp0s25 | grep '^ID_NET_NAME'
 ```
 
 The output from `udevadm info` shows all the name candidates:
@@ -65,7 +72,7 @@ ID_NET_NAME_PATH=enp0s25
 ID_NET_NAME_MAC=enx001122334455
 ```
 
-The first one that matches is used.
+The first candidate that matches the enabled `NamePolicy` order is used. With the RHEL 9 default policy, `ID_NET_NAME_MAC` is only a candidate and is not selected unless you enable the `mac` policy.
 
 ## Understanding biosdevname
 
@@ -79,7 +86,7 @@ rpm -q biosdevname
 biosdevname -d
 ```
 
-On RHEL, systemd's built-in naming takes precedence over biosdevname in most cases. The two systems can coexist, but if you want consistent behavior, it is best to stick with one approach.
+On Dell systems with the `biosdevname` package installed and enabled, the biosdevname udev rule runs before systemd's `net_setup_link` rule. If biosdevname renames the interface, systemd does not rename it again. The two systems can coexist, but if you want consistent behavior, it is best to stick with one approach.
 
 ## The net.ifnames and biosdevname Kernel Parameters
 
@@ -136,13 +143,13 @@ If you want full control over interface names, create custom udev rules.
 
 ```bash
 # Create a custom udev rule file
-sudo vi /etc/udev/rules.d/70-custom-net-names.rules
+sudo vi /etc/udev/rules.d/70-persistent-net.rules
 ```
 
 ```bash
 # Assign a custom name based on MAC address
-SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="00:11:22:33:44:55", NAME="mgmt0"
-SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="00:11:22:33:44:66", NAME="data0"
+SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="00:11:22:33:44:55", ATTR{type}=="1", NAME="mgmt0"
+SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="00:11:22:33:44:66", ATTR{type}=="1", NAME="data0"
 ```
 
 ### Naming by PCI Slot
@@ -154,7 +161,7 @@ udevadm info /sys/class/net/enp0s25 | grep PCI_SLOT_NAME
 
 ```bash
 # Assign name based on PCI slot
-SUBSYSTEM=="net", ACTION=="add", KERNELS=="0000:02:00.0", NAME="lan0"
+SUBSYSTEM=="net", ACTION=="add", KERNELS=="0000:02:00.0", ATTR{type}=="1", NAME="lan0"
 ```
 
 After creating udev rules:
@@ -163,11 +170,11 @@ After creating udev rules:
 # Reload udev rules
 sudo udevadm control --reload-rules
 
-# Trigger the rules (or reboot for a clean start)
+# Trigger the rules for testing, or reboot for a clean start
 sudo udevadm trigger --action=add --subsystem-match=net
 ```
 
-Custom udev rules in `/etc/udev/rules.d/` take priority over the default rules in `/usr/lib/udev/rules.d/`.
+udev processes rule files in lexical order across `/etc/udev/rules.d/` and `/usr/lib/udev/rules.d/`. Files in `/etc/udev/rules.d/` override files with the same name from `/usr/lib/udev/rules.d/`, and a `70-` custom rule runs before RHEL's default network setup rules.
 
 ## NetworkManager and Interface Names
 
