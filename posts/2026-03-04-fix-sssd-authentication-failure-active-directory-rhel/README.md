@@ -18,7 +18,7 @@ SSSD authentication failures with Active Directory can be caused by DNS issues, 
 realm list
 
 # If not joined, rejoin
-sudo realm join AD.EXAMPLE.COM -U admin
+sudo realm join ad.example.com -U admin
 
 # Verify the Kerberos keytab
 sudo klist -kt /etc/krb5.keytab
@@ -77,16 +77,14 @@ sudo tail -100 /var/log/sssd/sssd_pam.log
 
 ```bash
 # Renew the machine password
-sudo adcli update --domain=ad.example.com --verbose
+sudo adcli update --domain=ad.example.com --computer-password-lifetime=0 --verbose
 ```
 
 **SSSD cache corruption:**
 
 ```bash
 # Clear the SSSD cache
-sudo systemctl stop sssd
-sudo rm -rf /var/lib/sss/db/*
-sudo systemctl start sssd
+sudo sssctl cache-remove
 ```
 
 **Incorrect access controls:**
