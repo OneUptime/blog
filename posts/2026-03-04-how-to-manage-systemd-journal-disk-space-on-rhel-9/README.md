@@ -48,19 +48,19 @@ sudo systemctl restart systemd-journald
 
 ## Manually Vacuum Old Entries
 
-Remove journal entries by size:
+Remove archived journal files by size:
 
 ```bash
 sudo journalctl --vacuum-size=200M
 ```
 
-Remove entries older than a time period:
+Remove archived journal files older than a time period:
 
 ```bash
 sudo journalctl --vacuum-time=2weeks
 ```
 
-Remove entries keeping only a number of files:
+Remove archived journal files keeping only a number of files:
 
 ```bash
 sudo journalctl --vacuum-files=5
@@ -68,7 +68,7 @@ sudo journalctl --vacuum-files=5
 
 ## Configure Persistent vs Volatile Storage
 
-By default, RHEL 9 stores journals persistently in /var/log/journal/.
+By default, RHEL 9 stores journals in volatile storage under /run/log/journal/.
 
 For volatile storage (RAM only):
 
@@ -101,7 +101,7 @@ ForwardToSyslog=yes
 journalctl --verify
 
 # View journal file details
-ls -lh /var/log/journal/*/
+ls -lh /run/log/journal/*/ /var/log/journal/*/ 2>/dev/null
 ```
 
 ## Automate Journal Cleanup
@@ -135,5 +135,4 @@ sudo systemctl enable --now journal-cleanup.timer
 
 ## Conclusion
 
-Managing systemd journal disk space prevents /var from filling up on RHEL 9 servers. Set appropriate size limits and retention periods based on your logging requirements and available disk space.
-
+Managing systemd journal disk space prevents log storage from filling up on RHEL 9 servers. Set appropriate size limits and retention periods based on your logging requirements and available disk space.
