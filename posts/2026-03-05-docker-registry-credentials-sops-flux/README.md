@@ -184,7 +184,7 @@ kubectl create secret docker-registry dockerhub-pull-secret \
 kubectl create secret docker-registry ecr-pull-secret \
   --docker-server=123456789.dkr.ecr.us-east-1.amazonaws.com \
   --docker-username=AWS \
-  --docker-password="$(aws ecr get-login-password)" \
+  --docker-password="$(aws ecr get-login-password --region us-east-1)" \
   --namespace=my-app \
   --dry-run=client -o yaml > clusters/my-cluster/secrets/ecr-pull-secret.yaml
 ```
@@ -228,7 +228,9 @@ kubectl create secret docker-registry ghcr-pull-secret \
   --namespace=my-app \
   --dry-run=client -o yaml > /tmp/new-secret.yaml
 
-sops --encrypt /tmp/new-secret.yaml > clusters/my-cluster/secrets/ghcr-pull-secret.yaml
+sops --encrypt \
+  --filename-override clusters/my-cluster/secrets/ghcr-pull-secret.yaml \
+  /tmp/new-secret.yaml > clusters/my-cluster/secrets/ghcr-pull-secret.yaml
 rm /tmp/new-secret.yaml
 ```
 
@@ -249,6 +251,7 @@ The type should be `kubernetes.io/dockerconfigjson`. A server-side dry run only 
 kubectl run test-pull \
   --image=ghcr.io/my-org/my-app:v1.0.0 \
   --image-pull-policy=Always \
+  --overrides='{"spec":{"imagePullSecrets":[{"name":"ghcr-pull-secret"}]}}' \
   --restart=Never \
   -n my-app
 kubectl describe pod test-pull -n my-app
