@@ -21,7 +21,7 @@ uptime
 sudo dnf install sysstat
 sudo systemctl enable --now sysstat
 
-# View CPU utilization for the past hour
+# View CPU utilization for today
 sar -u -f /var/log/sa/sa$(date +%d)
 ```
 
@@ -123,7 +123,8 @@ fi
 
 ```bash
 # Add to cron
-echo "*/5 * * * * /usr/local/bin/health-check.sh" | sudo tee /etc/cron.d/health-check
+sudo chmod +x /usr/local/bin/health-check.sh
+echo "*/5 * * * * root /usr/local/bin/health-check.sh" | sudo tee /etc/cron.d/health-check
 ```
 
 Review this checklist quarterly and adjust thresholds based on your workload patterns.
