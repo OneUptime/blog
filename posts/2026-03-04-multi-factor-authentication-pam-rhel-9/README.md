@@ -40,9 +40,11 @@ sequenceDiagram
 The package is available from the EPEL repository.
 
 ```bash
-# Enable the EPEL repository
+# Enable the CodeReady Builder repository required by EPEL on RHEL 9
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
 
-sudo dnf install epel-release -y
+# Enable the EPEL repository
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 
 # Install the Google Authenticator PAM module
 sudo dnf install google-authenticator -y
@@ -115,7 +117,7 @@ auth       required     pam_google_authenticator.so nullok
 
 The `nullok` option allows users who have not set up MFA yet to still log in with just a password. Remove `nullok` once all users have enrolled.
 
-### Configure SSH to support challenge-response
+### Configure SSH to support keyboard-interactive authentication
 
 ```bash
 sudo vi /etc/ssh/sshd_config
@@ -124,14 +126,14 @@ sudo vi /etc/ssh/sshd_config
 Make sure these settings are present:
 
 ```bash
-ChallengeResponseAuthentication yes
-AuthenticationMethods keyboard-interactive
+KbdInteractiveAuthentication yes
+AuthenticationMethods keyboard-interactive:pam
 ```
 
 Or if you want to require both a public key and TOTP:
 
 ```bash
-AuthenticationMethods publickey,keyboard-interactive
+AuthenticationMethods publickey,keyboard-interactive:pam
 ```
 
 ### Restart the SSH service
