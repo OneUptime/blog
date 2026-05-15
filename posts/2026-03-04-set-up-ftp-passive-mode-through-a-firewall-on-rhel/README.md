@@ -77,7 +77,7 @@ sudo firewall-cmd --list-all
 
 ## Load the FTP Connection Tracking Module
 
-The kernel needs the `nf_conntrack_ftp` module to track FTP connections:
+If you rely on FTP connection tracking instead of only explicit passive-port firewall rules, load the `nf_conntrack_ftp` module:
 
 ```bash
 # Load the module
@@ -89,13 +89,13 @@ echo "nf_conntrack_ftp" | sudo tee /etc/modules-load.d/nf_conntrack_ftp.conf
 
 ## SELinux Configuration
 
-If SELinux is enforcing, allow FTP to use the passive port range:
+If SELinux is enforcing, allow FTP to bind to passive data ports. You can enable the broader passive-mode boolean, or label only your chosen passive port range:
 
 ```bash
-# Allow FTP to bind to the passive port range
+# Allow FTP to bind to unreserved passive ports
 sudo setsebool -P ftpd_use_passive_mode on
 
-# If using non-standard ports, set the SELinux port context
+# Or, label only the chosen passive port range
 sudo semanage port -a -t ftp_port_t -p tcp 30000-30100
 ```
 
