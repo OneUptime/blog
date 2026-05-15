@@ -86,7 +86,7 @@ If your backend runs on a standard port and you only need database connectivity,
 
 ## When the Port Matters
 
-SELinux also cares about the port type. Standard HTTP ports (80, 443, 8080, etc.) are labeled `http_port_t`. If your backend runs on a non-standard port, you might need to add it:
+SELinux also cares about the port type. Standard HTTP ports such as 80, 443, 8008, 8009, and 8443 are labeled `http_port_t` on RHEL. If the web server itself needs to listen on a non-standard HTTP port, you might need to add it:
 
 ```bash
 # Check if a port is already labeled for HTTP
@@ -96,7 +96,7 @@ sudo semanage port -l | grep http_port_t
 sudo semanage port -a -t http_port_t -p tcp 3000
 ```
 
-This is an alternative to using `httpd_can_network_connect`. Instead of allowing connections to any port, you label specific ports as HTTP-accessible.
+This is different from `httpd_can_network_connect`. The boolean allows Nginx to make outbound connections for reverse proxying. Port labels tell SELinux which ports are valid for a given service type, especially when a confined web server listens on a non-standard port.
 
 ## Troubleshooting Decision Flow
 
@@ -108,9 +108,10 @@ flowchart TD
     D -->|Permission denied| E{Check SELinux audit log}
     E --> F{httpd_can_network_connect?}
     F -->|Off| G[Enable the boolean]
-    F -->|On| H{Check port label}
-    H -->|Not labeled| I[Add port to http_port_t]
-    H -->|Labeled| J[Check other causes]
+    F -->|On| H{Listening on custom port?}
+    H -->|Yes| I[Check port label]
+    H -->|No| J[Check other causes]
+    I --> J
     D -->|Connection refused| K[Backend not listening on expected port]
 ```
 
