@@ -205,7 +205,7 @@ With the default server-side apply behavior, Flux overwrites manual changes to f
 
 ## Step 7: Verify Drift Detection Alerts
 
-Test that drift alerts work by manually modifying a Flux-managed resource.
+Test that drift alerts work by manually modifying a field declared in Git on a Flux-managed resource.
 
 ```bash
 # Manually modify a Flux-managed resource to simulate drift
