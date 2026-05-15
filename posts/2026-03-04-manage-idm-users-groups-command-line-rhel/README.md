@@ -63,7 +63,7 @@ ipa group-add developers --desc="Development team"
 
 # Add users to a group
 ipa group-add-member developers --users=jsmith
-ipa group-add-member developers --users=jdoe,alee
+ipa group-add-member developers --users=jdoe --users=alee
 
 # List all groups
 ipa group-find
