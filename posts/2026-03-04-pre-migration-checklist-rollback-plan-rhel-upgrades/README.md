@@ -26,7 +26,7 @@ Before any migration:
 1. Create a full backup (see backup guides in this series)
 2. Document current system configuration
 3. Verify subscription status: `subscription-manager status`
-4. Check disk space: `df -h` (at least 5 GB free in `/`)
+4. Check disk space: `df -h` (ensure there is enough free space for the upgrade, including up to 4 GB for the pre-upgrade assessment in `/var/lib/leapp`)
 
 ## Step 2 - Install Migration Tools
 
@@ -36,10 +36,11 @@ For Leapp-based upgrades:
 sudo dnf install -y leapp leapp-upgrade
 ```
 
-For CentOS conversions:
+For supported CentOS 8 conversions, install the current Convert2RHEL repository file first, then install the utility:
 
 ```bash
-sudo dnf install -y convert2rhel
+sudo curl -o /etc/yum.repos.d/convert2rhel.repo https://cdn-public.redhat.com/content/public/repofiles/convert2rhel-for-rhel-8-x86_64.repo
+sudo yum -y install convert2rhel
 ```
 
 ## Step 3 - Run Pre-Migration Assessment
@@ -79,10 +80,11 @@ systemctl list-units --failed
 
 ## Step 6 - Clean Up
 
-Remove old packages and kernels:
+Clean up remaining Leapp packages after reviewing the transaction:
 
 ```bash
-sudo dnf remove leapp leapp-upgrade
+sudo dnf config-manager --save --setopt exclude=''
+sudo dnf remove 'leapp-deps-*' 'leapp-repository-deps-*'
 sudo dnf autoremove
 ```
 
@@ -90,8 +92,8 @@ sudo dnf autoremove
 
 If the migration fails, you can:
 - Restore from your pre-migration backup
-- Use LVM snapshots to revert to the previous state
-- Boot from the old kernel if available
+- Use LVM snapshots to revert to the previous state, but do not treat them as a full backup
+- Boot from a rescue or previous kernel for troubleshooting if available; this is not a complete rollback
 
 ## Summary
 
