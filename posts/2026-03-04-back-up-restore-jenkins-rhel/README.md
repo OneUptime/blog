@@ -12,11 +12,13 @@ Losing a Jenkins server without backups can halt your entire development pipelin
 
 ## What to Back Up
 
-The Jenkins home directory (default: `/var/lib/jenkins`) contains everything:
+The Jenkins home directory (default: `/var/lib/jenkins`) contains the controller data you normally need to restore Jenkins:
 - Job configurations and build history
 - Plugin configurations
 - Credentials and secrets
 - System configuration
+
+Store the controller key file (`/var/lib/jenkins/secrets/master.key`) separately in a secure location. You need it to decrypt secrets after a restore, but Jenkins recommends keeping it out of routine backups.
 
 ## Create a Backup Script
 
@@ -41,8 +43,9 @@ tar czf "$BACKUP_FILE" \
   --exclude="$JENKINS_HOME/workspace" \
   --exclude="$JENKINS_HOME/.cache" \
   --exclude="$JENKINS_HOME/caches" \
-  -C "$(dirname $JENKINS_HOME)" \
-  "$(basename $JENKINS_HOME)"
+  --exclude="$JENKINS_HOME/secrets/master.key" \
+  -C "$(dirname "$JENKINS_HOME")" \
+  "$(basename "$JENKINS_HOME")"
 
 # Start Jenkins again
 sudo systemctl start jenkins
@@ -51,14 +54,14 @@ sudo systemctl start jenkins
 find "$BACKUP_DIR" -name "jenkins-backup-*.tar.gz" -mtime +30 -delete
 
 echo "Backup created: $BACKUP_FILE"
-echo "Size: $(du -h $BACKUP_FILE | cut -f1)"
+echo "Size: $(du -h "$BACKUP_FILE" | cut -f1)"
 ```
 
 Make it executable and schedule it:
 
 ```bash
 # Make the script executable
-chmod +x /opt/backup-jenkins.sh
+sudo chmod +x /opt/backup-jenkins.sh
 
 # Schedule a daily backup at 2 AM via cron
 sudo crontab -e
@@ -73,7 +76,9 @@ If downtime is not acceptable, use the ThinBackup plugin:
 1. Install ThinBackup from Manage Jenkins > Plugins
 2. Configure at Manage Jenkins > ThinBackup > Settings
 3. Set the backup directory and schedule
-4. ThinBackup handles incremental and full backups while Jenkins runs
+4. ThinBackup handles differential and full configuration backups while Jenkins runs
+
+ThinBackup does not back up workspaces, archived artifacts, or server keys by default. If you need to migrate or fully restore credentials on a fresh server, configure additional files or restore the required secrets separately.
 
 ## Restore Jenkins from Backup
 
@@ -89,6 +94,9 @@ sudo tar xzf /opt/jenkins-backups/jenkins-backup-20260301_020000.tar.gz -C /var/
 
 # Ensure ownership is correct
 sudo chown -R jenkins:jenkins /var/lib/jenkins
+
+# Restore the separately stored controller key before starting Jenkins
+sudo install -o jenkins -g jenkins -m 600 /path/to/secure/master.key /var/lib/jenkins/secrets/master.key
 
 # Start Jenkins
 sudo systemctl start jenkins
