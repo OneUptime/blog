@@ -34,6 +34,21 @@ su - prdadm -c "HDB info"
 su - qasadm -c "HDB info"
 ```
 
+Limit memory for the shared secondary host:
+
+```ini
+# /hana/shared/PRD/global/hdb/custom/config/global.ini
+[memorymanager]
+global_allocation_limit = <size_in_mb_for_prd_secondary>
+
+[system_replication]
+preload_column_tables = false
+
+# /hana/shared/QAS/global/hdb/custom/config/global.ini
+[memorymanager]
+global_allocation_limit = <size_in_mb_for_qas>
+```
+
 ## Setting Up HANA System Replication
 
 On the primary node:
@@ -71,42 +86,38 @@ The key difference is adding a resource for the QAS instance that must stop on f
 # Create the standard HANA HA resources (topology and SAPHana)
 # ... (same as standard HA setup)
 
-# Add a resource for the non-production HANA
-sudo pcs resource create SAPHana_QAS SAPHana \
-  SID=QAS InstanceNumber=01 \
+# Add a resource for the non-production HANA instance
+sudo pcs resource create SAPInstance_QAS_HDB01 SAPInstance \
+  InstanceName=QAS_HDB01_hana02 \
+  START_PROFILE=/usr/sap/QAS/SYS/profile/QAS_HDB01_hana02 \
+  MONITOR_SERVICES="hdbindexserver|hdbnameserver" \
   op start timeout=3600 \
   op stop timeout=3600 \
   op monitor interval=120 timeout=700
 
-# Create a constraint: QAS must run on the secondary node only
-sudo pcs constraint location SAPHana_QAS prefers hana02=100
+# Create constraints: QAS must run on the secondary node only
+sudo pcs constraint location SAPInstance_QAS_HDB01 prefers hana02=INFINITY
+sudo pcs constraint location SAPInstance_QAS_HDB01 avoids hana01=INFINITY
 
-# Create a constraint: QAS must stop before PRD takes over on the secondary
-sudo pcs constraint order stop SAPHana_QAS then \
+# Create constraints: QAS must stop before PRD takes over on the secondary
+sudo pcs constraint colocation add SAPInstance_QAS_HDB01 with \
+  promoted SAPHana_PRD_00-clone -INFINITY
+sudo pcs constraint order stop SAPInstance_QAS_HDB01 then \
   promote SAPHana_PRD_00-clone
 ```
 
-## Configuring the Pre-Takeover Hook
+## Configuring Cost-Optimized HANA Parameters
 
-Create a hook script that stops QAS before failover:
-
-```bash
-# /usr/share/pacemaker/sap/pre_takeover_hook.sh
-#!/bin/bash
-# This script runs before HANA takeover
-# It stops the non-production instance to free memory
-
-LOG="/var/log/sap-takeover-hook.log"
-echo "$(date) Pre-takeover: Stopping QAS instance" >> "$LOG"
-
-su - qasadm -c "HDB stop" >> "$LOG" 2>&1
-
-echo "$(date) QAS stopped, proceeding with takeover" >> "$LOG"
-exit 0
-```
+Do not rely on an unmanaged Pacemaker hook script for the takeover path. The Pacemaker ordering and anti-colocation constraints stop QAS before the production HANA resource is promoted on the secondary node.
 
 ```bash
-sudo chmod 755 /usr/share/pacemaker/sap/pre_takeover_hook.sh
+# Verify that the production secondary is configured for reduced memory use
+su - prdadm -c "grep -E 'global_allocation_limit|preload_column_tables' \
+  /hana/shared/PRD/global/hdb/custom/config/global.ini"
+
+# Verify that QAS has a memory cap on the shared host
+su - qasadm -c "grep global_allocation_limit \
+  /hana/shared/QAS/global/hdb/custom/config/global.ini"
 ```
 
 ## Verifying the Setup
