@@ -39,7 +39,7 @@ log_file = /var/log/audit/audit.log
 log_group = root
 log_format = ENRICHED
 flush = INCREMENTAL_ASYNC
-freq = 50
+freq = 100
 max_log_file = 25
 num_logs = 5
 priority_boost = 4
@@ -47,9 +47,9 @@ name_format = hostname
 max_log_file_action = ROTATE
 space_left = 25%
 space_left_action = email
-action_mail_acct = root
 verify_email = yes
-admin_space_left = 50
+action_mail_acct = root
+admin_space_left = 5%
 admin_space_left_action = single
 disk_full_action = HALT
 disk_error_action = HALT
@@ -66,6 +66,8 @@ Key STIG requirements:
 - `disk_error_action = HALT` - The system must halt on disk errors
 - `space_left_action = email` - Alert administrators when space is low
 - `max_log_file_action = ROTATE` - Rotate logs to preserve audit data
+- `freq = 100` - Flush audit records at the STIG-required threshold when using incremental flushing
+- `admin_space_left = 5%` - Take the configured administrative action when only 5 percent of the audit storage volume remains
 
 ## Step 2: Base Audit Rules
 
@@ -244,6 +246,8 @@ sudo auditctl -s | grep enabled
 
 # Reload the daemon to pick up auditd.conf changes
 sudo service auditd reload
+
+# Immutable mode requires a reboot before audit rules can be changed again
 ```
 
 ## Step 9: Verify STIG Compliance
@@ -252,7 +256,7 @@ Check specific STIG requirements:
 
 ```bash
 # Verify audit is running
-sudo systemctl is-active auditd
+sudo service auditd status
 
 # Verify audit is enabled at boot
 sudo systemctl is-enabled auditd
