@@ -18,7 +18,7 @@ The umask is a permission filter. When a process creates a new file or directory
 umask
 ```
 
-With the RHEL default umask of `0022`:
+With a umask of `0022`:
 - Files: `666 - 022 = 644` (rw-r--r--)
 - Directories: `777 - 022 = 755` (rwxr-xr-x)
 
@@ -137,7 +137,7 @@ Find the umask block and change the values:
 if [ $UID -gt 199 ] && [ "$(id -gn)" = "$(id -un)" ]; then
     umask 027
 else
-    umask 022
+    umask 027
 fi
 ```
 
@@ -170,7 +170,7 @@ umask 027
 ```
 
 ```bash
-# Make it executable
+# Set readable permissions
 sudo chmod 644 /etc/profile.d/custom-umask.sh
 ```
 
@@ -199,10 +199,13 @@ sudo vi /etc/login.defs
 UMASK           027
 ```
 
-The priority order when `pam_umask` is in use:
-1. Per-user PAM config (if using `pam_umask` with `usergroups` option)
-2. `/etc/login.defs` UMASK value
-3. Shell profile files
+The priority order inside `pam_umask` is:
+1. A `umask=` entry in the user's GECOS field
+2. A `umask=` argument on the `pam_umask.so` line
+3. The `/etc/login.defs` `UMASK` value
+4. The `/etc/default/login` `UMASK` value, if present
+
+Shell profile files can still override the value later when a shell starts.
 
 ## Setting Per-User Umask
 
@@ -217,7 +220,7 @@ echo "umask 077" >> /home/jsmith/.bashrc
 
 ### Through pam_umask with /etc/login.defs
 
-You can set per-user umask values using the user's entry in `/etc/shadow` or through PAM configuration, but the shell method is more practical and easier to manage.
+You can set per-user umask values using a `umask=` entry in the user's GECOS field or through PAM configuration, but the shell method is more practical and easier to manage.
 
 ## Common Umask Values Reference
 
@@ -275,7 +278,7 @@ The default for systemd services is `0022`. You can override it in the unit file
 UMask=0027
 ```
 
-This is important for services that create files users need to access. A web server creating files with umask `0077` would produce files that only root can read.
+This is important for services that create files users need to access. A web server creating files with umask `0077` would produce files that only the service user can read.
 
 ## Umask Gotchas
 
@@ -291,13 +294,13 @@ find /srv/data -type d -exec chmod 750 {} \;
 
 ### Umask and cp vs mv
 
-When you copy a file with `cp`, the new file is created with the umask applied. When you move a file with `mv`, the file keeps its original permissions (no new file is created). This surprises people.
+When you copy a file with `cp`, the new file is created with the umask applied. When you move a file with `mv` on the same file system, the file keeps its original permissions because it is renamed rather than recreated. This surprises people.
 
 ```bash
 # cp applies umask to the new file
 cp original.txt copy.txt  # copy.txt gets umask-filtered permissions
 
-# mv preserves original permissions
+# mv within the same file system preserves original permissions
 mv original.txt moved.txt  # moved.txt keeps original permissions
 ```
 
