@@ -15,8 +15,8 @@ Implement the 3-2-1 backup strategy on RHEL 9 with proper redundancy. A solid ba
 ## Prerequisites
 
 - A RHEL 9 system with root or sudo access
-- Sufficient storage for backup files (local or remote)
-- For remote backups: SSH access to the backup destination
+- Sufficient local storage for backup files
+- SSH access to an off-site backup destination
 
 ## Step 1 - Choose Your Backup Tool
 
@@ -44,6 +44,13 @@ Using rsync for incremental backup:
 sudo rsync -aAXv --delete / /backups/latest/ --exclude={/proc,/sys,/dev,/run,/tmp,/backups}
 ```
 
+Copy the local backup to an off-site destination:
+
+```bash
+BACKUP_FILE=$(ls -t /backups/full-backup-*.tar.gz | head -n 1)
+rsync -av "$BACKUP_FILE" backupuser@backup.example.com:/srv/backups/rhel9-server/
+```
+
 ## Step 3 - Automate with Cron
 
 ```bash
@@ -57,7 +64,8 @@ Always verify that backups are readable:
 ```bash
 # For tar
 
-tar tzf /backups/full-backup-*.tar.gz | head -20
+BACKUP_FILE=$(ls -t /backups/full-backup-*.tar.gz | head -n 1)
+tar tzf "$BACKUP_FILE" | head -20
 
 # For rsync
 ls -la /backups/latest/
@@ -69,7 +77,8 @@ Periodically restore backups to a test environment to confirm they work:
 
 ```bash
 # Restore a single file from tar
-tar xzf /backups/full-backup-*.tar.gz -C /tmp/restore-test etc/hostname
+BACKUP_FILE=$(ls -t /backups/full-backup-*.tar.gz | head -n 1)
+tar xzf "$BACKUP_FILE" -C /tmp/restore-test etc/hostname
 ```
 
 ## Summary
