@@ -109,8 +109,8 @@ talosctl dashboard --nodes 10.0.0.1,10.0.0.2,10.0.0.3
 
 The dashboard displays one node at a time. Use keyboard shortcuts to switch between them:
 
-- **Tab** or **Right Arrow** to see the next node
-- **Shift+Tab** or **Left Arrow** to see the previous node
+- **l** or **Right Arrow** to see the next node
+- **h** or **Left Arrow** to see the previous node
 
 This makes it easy to quickly compare resource usage across nodes.
 
@@ -120,10 +120,14 @@ The dashboard responds to several keyboard shortcuts:
 
 | Key | Action |
 |-----|--------|
-| Tab | Switch to next node |
-| Shift+Tab | Switch to previous node |
-| Right Arrow | Switch to next node |
-| Left Arrow | Switch to previous node |
+| l or Right Arrow | Switch to next node |
+| h or Left Arrow | Switch to previous node |
+| j or Down Arrow | Scroll logs or process list down |
+| k or Up Arrow | Scroll logs or process list up |
+| Ctrl+d | Scroll logs or process list half page down |
+| Ctrl+u | Scroll logs or process list half page up |
+| Ctrl+f | Scroll logs or process list one page down |
+| Ctrl+b | Scroll logs or process list one page up |
 | q | Quit the dashboard |
 
 ## Real-Time Monitoring Scenarios
@@ -228,15 +232,15 @@ Node Exporter provides the same metrics (and more) to Prometheus, but requires s
 
 The talosctl dashboard requires zero setup. It is always available if you have talosctl configured.
 
-### vs. talosctl services
+### vs. talosctl service
 
-`talosctl services` gives a static snapshot of service status:
+`talosctl service` gives a static snapshot of service status:
 
 ```bash
-talosctl services --nodes <node-ip>
+talosctl service --nodes <node-ip>
 ```
 
-The dashboard provides the same service visibility plus live resource metrics, all in a continuously updating view.
+The dashboard complements service status checks with live logs and resource metrics in a continuously updating view.
 
 ## Tips for Effective Dashboard Use
 
