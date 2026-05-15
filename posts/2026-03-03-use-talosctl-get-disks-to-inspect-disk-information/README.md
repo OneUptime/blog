@@ -20,13 +20,13 @@ The simplest form of the command lists all disks detected on a node:
 talosctl get disks --nodes 192.168.1.10
 
 # Example output:
-# NODE          NAMESPACE   TYPE   ID         VERSION   SIZE      MODEL              SERIAL
-# 192.168.1.10  runtime     Disk   sda        1         480 GB    INTEL SSDSC2KB48   PHYG012345
-# 192.168.1.10  runtime     Disk   sdb        1         4.0 TB    HGST HUS726T4TA    V0HK12345
-# 192.168.1.10  runtime     Disk   nvme0n1    1         1.0 TB    Samsung 980 PRO    S5GYNG0R1234
+# NODE          NAMESPACE   TYPE   ID         VERSION   SIZE      READ ONLY   TRANSPORT   ROTATIONAL   WWID                 MODEL              SERIAL
+# 192.168.1.10  runtime     Disk   sda        1         480 GB    false       sata        false        naa.55cd2e414f5eab  INTEL SSDSC2KB48   PHYG012345
+# 192.168.1.10  runtime     Disk   sdb        1         4.0 TB    false       sata        true         naa.5000cca0123456   HGST HUS726T4TA    V0HK12345
+# 192.168.1.10  runtime     Disk   nvme0n1    1         1.0 TB    false       nvme                     nvme.eui.12345678    Samsung 980 PRO    S5GYNG0R1234
 ```
 
-Each row represents a physical disk (or virtual disk in a VM environment). The ID column shows the device name you would use in configuration files.
+Each row represents a physical disk (or virtual disk in a VM environment). The ID column shows the Linux block device name.
 
 ## Understanding the Output Fields
 
@@ -43,6 +43,14 @@ Let's break down each field in the output:
 **VERSION** - The resource version in the Talos API. This increments when the resource changes.
 
 **SIZE** - The total capacity of the disk in a human-readable format.
+
+**READ ONLY** - Whether the disk is in a read-only state.
+
+**TRANSPORT** - The storage transport, such as `sata`, `nvme`, or `virtio`, when Talos can determine it.
+
+**ROTATIONAL** - Whether the disk is rotational media. HDDs typically show `true`; SSDs and NVMe devices typically show `false`.
+
+**WWID** - The disk's World Wide Identifier, when available.
 
 **MODEL** - The disk model string as reported by the hardware.
 
@@ -63,32 +71,48 @@ This produces output like:
 node: 192.168.1.10
 metadata:
   namespace: runtime
-  type: Disks.runtime.talos.dev
+  type: Disks.block.talos.dev
   id: sda
   version: 1
+  owner: block.DisksController
+  phase: running
 spec:
+  dev_path: /dev/sda
   size: 480103981056
+  pretty_size: 480 GB
+  io_size: 512
+  sector_size: 512
+  readonly: false
+  cdrom: false
   model: INTEL SSDSC2KB480G8
   serial: PHYG012345678
   modalias: scsi:t-0x00
   wwid: naa.55cd2e414f5eabcd
-  busPath: /pci0000:00/0000:00:1f.2/ata1/host0/target0:0:0/0:0:0:0
-  subsystem: /sys/class/block
+  bus_path: /pci0000:00/0000:00:1f.2/ata1/host0/target0:0:0/0:0:0:0
+  sub_system: /sys/class/block
+  transport: sata
   rotational: false
-  systemDisk: true
-  readonly: false
+  symlinks:
+    - /dev/disk/by-id/wwn-0x55cd2e414f5eabcd
+    - /dev/disk/by-path/pci-0000:00:1f.2-ata-1
 ```
 
 The YAML output includes several additional fields that are not in the table view:
 
+- **dev_path**: Full block device path, such as `/dev/sda`
 - **size**: Exact size in bytes
+- **pretty_size**: Human-readable disk size
+- **io_size**: I/O size in bytes
+- **sector_size**: Sector size in bytes
+- **readonly**: Whether the disk is in a read-only state
+- **cdrom**: Whether the device is a CD-ROM
 - **modalias**: Kernel module alias for the disk controller
 - **wwid**: World Wide Identifier, a globally unique disk identifier
-- **busPath**: The physical path through the system bus to the disk
-- **subsystem**: The kernel subsystem the disk belongs to
+- **bus_path**: The physical path through the system bus to the disk
+- **sub_system**: The kernel subsystem the disk belongs to
+- **transport**: Storage transport for the disk
 - **rotational**: Whether the disk is a spinning HDD (true) or SSD/NVMe (false)
-- **systemDisk**: Whether Talos is currently installed on this disk
-- **readonly**: Whether the disk is in a read-only state
+- **symlinks**: Stable disk symlink paths, such as `/dev/disk/by-id/...` or `/dev/disk/by-path/...`
 
 ## Querying Multiple Nodes
 
@@ -110,10 +134,10 @@ If you know the disk ID and want to see only that disk:
 
 ```bash
 # Get information about a specific disk
-talosctl get disks sda --nodes 192.168.1.10
+talosctl get disk sda --nodes 192.168.1.10
 
 # Or with YAML output
-talosctl get disks sda --nodes 192.168.1.10 -o yaml
+talosctl get disk sda --nodes 192.168.1.10 -o yaml
 ```
 
 This is helpful when you are troubleshooting a specific disk and do not need the full list.
@@ -152,10 +176,10 @@ done
 After installing Talos, confirm that it installed on the intended disk:
 
 ```bash
-# Check which disk is marked as the system disk
-talosctl get disks --nodes 192.168.1.10 -o yaml | grep -A 2 "systemDisk"
+# Check which disk Talos is using as the system disk
+talosctl get systemdisk --nodes 192.168.1.10 -o yaml
 
-# The systemDisk field will be true for the disk where Talos is installed
+# The disk_id and dev_path fields identify the disk where Talos is installed
 ```
 
 ### Identifying Disks for Storage Configuration
@@ -165,9 +189,10 @@ When setting up additional storage (for Rook-Ceph, Longhorn, or local persistent
 ```bash
 # Find disks that are NOT the system disk
 talosctl get disks --nodes 192.168.1.10 -o yaml
+talosctl get systemdisk --nodes 192.168.1.10 -o yaml
 
-# Look for disks where systemDisk: false
-# These are candidates for additional storage
+# Compare the disk list with the systemdisk output
+# Non-system disks are candidates for additional storage
 ```
 
 ### Monitoring Disk Fleet Consistency
@@ -207,17 +232,17 @@ The properties returned by `talosctl get disks` map directly to the disk selecto
 
 ```yaml
 # Disk selector using properties from talosctl get disks
-machine:
-  install:
-    diskSelector:
-      size: '>= 480GB'       # Maps to the size field
-      model: 'INTEL*'        # Maps to the model field
-      serial: 'PHYG012345*'  # Maps to the serial field
-      type: ssd              # Derived from the rotational field
-      busPath: '/pci0000*'   # Maps to the busPath field
+apiVersion: v1alpha1
+kind: RawVolumeConfig
+name: example-data
+provisioning:
+  diskSelector:
+    match: "disk.size >= 480u * GB && disk.model.startsWith('INTEL') && disk.serial.startsWith('PHYG012345') && !disk.rotational && disk.bus_path.startsWith('/pci0000')"
+  minSize: 100GB
+  maxSize: 100GB
 ```
 
-This direct relationship between the inspection command and the configuration options makes it easy to build reliable disk selectors based on actual hardware data.
+This direct relationship between the inspection command and the configuration options makes it easy to build reliable disk selector expressions based on actual hardware data.
 
 ## Combining with Other Commands
 
@@ -228,7 +253,7 @@ The `talosctl get disks` command works well alongside other Talos resource comma
 talosctl get disks --nodes 192.168.1.10
 
 # Check mount points to see how partitions are used
-talosctl get mounts --nodes 192.168.1.10
+talosctl get mountstatus --nodes 192.168.1.10
 
 # Check block devices for partition-level detail
 talosctl get blockdevices --nodes 192.168.1.10
@@ -249,7 +274,7 @@ talosctl get disks --nodes 192.168.1.10 -o json
 
 # Parse with jq to extract specific fields
 talosctl get disks --nodes 192.168.1.10 -o json | \
-  jq '.spec | {id: .id, size: .size, model: .model, systemDisk: .systemDisk}'
+  jq '{id: .metadata.id, size: .spec.size, model: .spec.model, transport: .spec.transport, rotational: .spec.rotational}'
 ```
 
 This lets you build automation pipelines that make decisions based on disk properties. For example, you could automatically generate machine configurations based on the discovered hardware.
@@ -262,7 +287,7 @@ If things are not working as expected, `talosctl get disks` is usually the first
 
 **Fewer disks than expected** - A disk controller might not have its driver loaded, or a disk might be in a failed state. Check the kernel logs with `talosctl dmesg`.
 
-**Wrong system disk** - If `systemDisk: true` is on the wrong disk, you may need to reinstall Talos on the correct disk.
+**Wrong system disk** - If `talosctl get systemdisk` identifies the wrong disk, you may need to reinstall Talos on the correct disk.
 
 ```bash
 # Check kernel messages for disk-related errors
