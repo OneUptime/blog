@@ -20,25 +20,27 @@ To see all running processes on a node:
 talosctl processes --nodes 192.168.1.10
 ```
 
-The output resembles a standard `ps` listing, showing process IDs, CPU usage, memory usage, command names, and other relevant information:
+The output resembles a standard `ps` listing, showing process IDs, CPU time, memory usage, command names, and other relevant information:
 
 ```text
-PID     STATE    THREADS   CPU-TIME    VIRT-MEM    RES-MEM     COMMAND
-1       S        1         0:05.23     4096        1024        /sbin/init
-234     S        12        2:15.67     524288      65536       /usr/local/bin/machined
-345     S        8         1:45.12     262144      32768       /usr/local/bin/containerd
+NODE           PID   STATE   THREADS   CPU-TIME   VIRTMEM   RESMEM   LABEL   COMMAND
+192.168.1.10     1   S             1       0.45    4.1 kB   1.0 kB           /sbin/init
+192.168.1.10   234   S            12     135.67    524 MB    66 MB           /usr/local/bin/machined
+192.168.1.10   345   S             8     105.12    262 MB    33 MB           /usr/local/bin/containerd
 ```
 
 ## Understanding the Output
 
 Each column in the process listing provides important information:
 
+- **NODE**: The node reporting the process.
 - **PID**: The process ID, a unique identifier for each running process.
 - **STATE**: The process state (R for running, S for sleeping, D for disk wait, Z for zombie).
 - **THREADS**: The number of threads the process is using.
 - **CPU-TIME**: How much CPU time the process has consumed since it started.
-- **VIRT-MEM**: Virtual memory allocated to the process (not all of it may be in physical RAM).
-- **RES-MEM**: Resident memory, which is the actual physical RAM being used.
+- **VIRTMEM**: Virtual memory allocated to the process (not all of it may be in physical RAM).
+- **RESMEM**: Resident memory, which is the actual physical RAM being used.
+- **LABEL**: The process label reported by Talos, if one is available.
 - **COMMAND**: The command or binary that started the process.
 
 ## Identifying Key Processes
@@ -71,14 +73,14 @@ When a node is slow or unresponsive, check for processes consuming excessive res
 talosctl processes --nodes 192.168.1.20
 ```
 
-To identify the top consumers, you can pipe the output through standard tools:
+To identify the top consumers, use the built-in sort option:
 
 ```bash
-# Sort processes by resident memory (adjust column numbers based on output)
-talosctl processes --nodes 192.168.1.20 | sort -k6 -rn | head -20
+# Sort processes by resident memory
+talosctl processes --nodes 192.168.1.20 --sort rss
 
 # Sort by CPU time
-talosctl processes --nodes 192.168.1.20 | sort -k4 -rn | head -20
+talosctl processes --nodes 192.168.1.20 --sort cpu
 ```
 
 ## Checking Processes Across Multiple Nodes
@@ -93,7 +95,7 @@ talosctl processes --nodes 192.168.1.10,192.168.1.11,192.168.1.12
 talosctl processes --nodes 192.168.1.20,192.168.1.21,192.168.1.22
 ```
 
-When comparing, pay attention to any unexpected differences. All control plane nodes should have similar sets of processes. All worker nodes should also look alike.
+When comparing, pay attention to any unexpected differences. Control plane nodes should have similar sets of system processes. Worker nodes should have similar system processes, though workload processes can differ based on pod scheduling.
 
 ## Debugging with Process Information
 
@@ -110,12 +112,12 @@ Zombie processes are child processes that have completed but whose parent has no
 
 ### Checking for Process Crashes
 
-If a service keeps restarting, you might see a low PID uptime or recent start time:
+If a service keeps restarting, correlate the process list with service status:
 
 ```bash
 # Check processes and correlate with service status
 talosctl processes --nodes 192.168.1.20
-talosctl services --nodes 192.168.1.20
+talosctl service --nodes 192.168.1.20
 ```
 
 If a process has a very low CPU-TIME compared to other similar processes, it might have recently restarted.
@@ -145,7 +147,6 @@ Here is a script that regularly checks processes and alerts on anomalies:
 # process-monitor.sh - Monitor processes for anomalies
 
 NODE=$1
-MAX_PROCESS_MEM_MB=4096  # Alert if any process uses more than 4GB
 
 if [ -z "$NODE" ]; then
   echo "Usage: $0 <node-address>"
@@ -174,7 +175,7 @@ fi
 # Check for high-memory processes
 echo ""
 echo "Top 5 processes by memory:"
-echo "$PROCESSES" | tail -n +2 | sort -k6 -rn | head -5
+talosctl processes --nodes "$NODE" --sort rss | tail -n +2 | head -5
 ```
 
 ## Processes vs. Containers
@@ -197,7 +198,7 @@ Processes with many threads can be heavy consumers of system resources:
 
 ```bash
 # Look for processes with high thread counts
-talosctl processes --nodes 192.168.1.20 | sort -k3 -rn | head -10
+talosctl processes --nodes 192.168.1.20 | tail -n +2 | sort -k4 -rn | head -10
 ```
 
 The Kubernetes API server and etcd typically have high thread counts. If you see an application container with unexpectedly many threads, it might indicate a thread leak.
