@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix GPG key retrieval failures when addin
 
 ---
 
-When you add a new repository to RHEL and run `dnf install`, you may encounter the error "GPG key retrieval failed" or "Couldn't open file /etc/pki/rpm-gpg/RPM-GPG-KEY-...". This happens when the repository metadata is signed with a GPG key that your system does not have or cannot fetch.
+When you add a new repository to RHEL and run `dnf install`, you may encounter the error "GPG key retrieval failed" or "Couldn't open file /etc/pki/rpm-gpg/RPM-GPG-KEY-...". This happens when DNF needs a GPG key for package signature verification, or for repository metadata verification when `repo_gpgcheck=1` is enabled, and your system does not have or cannot fetch that key.
 
 ## Identifying the Problem
 
