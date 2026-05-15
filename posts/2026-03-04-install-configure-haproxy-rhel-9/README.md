@@ -37,7 +37,7 @@ haproxy -v
 
 ## Step 2 - Understand the Configuration Structure
 
-The main configuration file is `/etc/haproxy/haproxy.cfg`. It has four main sections:
+The main configuration file is `/etc/haproxy/haproxy.cfg`. It commonly uses these sections:
 
 | Section | Purpose |
 |---------|---------|
@@ -45,6 +45,7 @@ The main configuration file is `/etc/haproxy/haproxy.cfg`. It has four main sect
 | `defaults` | Default parameters for frontend and backend sections |
 | `frontend` | Defines how client requests are received |
 | `backend` | Defines the pool of servers that handle requests |
+| `listen` | Combines frontend and backend behavior in one section, often for stats or simple services |
 
 ## Step 3 - Configure a Basic HTTP Load Balancer
 
@@ -188,7 +189,7 @@ done
 
 ## Step 10 - View Logs
 
-HAProxy logs via syslog. On RHEL, check the journal:
+For service startup logs, check the journal:
 
 ```bash
 # View HAProxy logs
@@ -200,6 +201,7 @@ For more detailed logging, configure rsyslog to write HAProxy logs to a dedicate
 ```bash
 # Create rsyslog config for HAProxy
 sudo tee /etc/rsyslog.d/99-haproxy.conf > /dev/null <<'EOF'
+input(type="imuxsock" Socket="/var/lib/haproxy/dev/log" CreatePath="on")
 local0.* /var/log/haproxy.log
 local1.* /var/log/haproxy-notice.log
 EOF
