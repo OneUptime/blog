@@ -48,21 +48,23 @@ Create a filesystem on the shared device (once only):
 sudo mkfs.xfs /dev/sdb
 ```
 
-Create the export directory on both nodes:
+Create the shared filesystem mount point on both nodes:
 
 ```bash
-sudo mkdir -p /export/data
+sudo mkdir -p /export
 ```
 
 ## Step 3: Configure NFS Exports
 
-On both nodes, create the exports file:
+On one node, mount the shared filesystem, create the export directory and the shared NFS state directory, then unmount it:
 
 ```bash
-sudo tee /etc/exports << 'EXPORTS'
-/export/data *(rw,sync,no_root_squash,no_subtree_check)
-EXPORTS
+sudo mount /dev/sdb /export
+sudo mkdir -p /export/data /export/.nfsinfo
+sudo umount /export
 ```
+
+Do not add the clustered export to `/etc/exports`. Pacemaker will manage the export with the `exportfs` resource.
 
 ## Step 4: Configure Firewall
 
@@ -80,35 +82,48 @@ sudo firewall-cmd --reload
 Create the resources in the correct order:
 
 ```bash
-# Virtual IP
-
-sudo pcs resource create NFS-VIP ocf:heartbeat:IPaddr2 \
-    ip=192.168.1.100 cidr_netmask=24 \
-    op monitor interval=30s
-
 # Shared filesystem
 sudo pcs resource create NFS-FS ocf:heartbeat:Filesystem \
-    device=/dev/sdb directory=/export/data fstype=xfs \
-    op monitor interval=20s
+    device=/dev/sdb directory=/export fstype=xfs \
+    op monitor interval=20s \
+    --group NFS-Group
 
 # NFS server
-sudo pcs resource create NFS-Server systemd:nfs-server \
-    op monitor interval=30s
+sudo pcs resource create NFS-Server ocf:heartbeat:nfsserver \
+    nfs_shared_infodir=/export/.nfsinfo nfs_no_notify=true \
+    op monitor interval=30s \
+    --group NFS-Group
 
-# NFS export
-sudo pcs resource create NFS-Export ocf:heartbeat:exportfs \
+# NFSv4 pseudo-root
+sudo pcs resource create NFS-Root ocf:heartbeat:exportfs \
+    clientspec="*" options="ro,sync,no_root_squash" \
+    directory=/export fsid=0 \
+    op monitor interval=30s \
+    --group NFS-Group
+
+# NFS data export
+sudo pcs resource create NFS-Data ocf:heartbeat:exportfs \
     clientspec="*" options="rw,sync,no_root_squash" \
     directory=/export/data fsid=1 \
-    op monitor interval=30s
+    op monitor interval=30s \
+    --group NFS-Group
+
+# Virtual IP
+sudo pcs resource create NFS-VIP ocf:heartbeat:IPaddr2 \
+    ip=192.168.1.100 cidr_netmask=24 \
+    op monitor interval=30s \
+    --group NFS-Group
+
+# NFSv3 notification
+sudo pcs resource create NFS-Notify ocf:heartbeat:nfsnotify \
+    source_host=192.168.1.100 \
+    op monitor interval=30s \
+    --group NFS-Group
 ```
 
 ## Step 6: Group the Resources
 
-```bash
-sudo pcs resource group add NFS-Group NFS-VIP NFS-FS NFS-Server NFS-Export
-```
-
-Resources start in order: VIP, filesystem, NFS server, then exports.
+The `--group NFS-Group` option adds each resource to the group as it is created. Resources start in order: filesystem, NFS server, exports, VIP, then NFS notifications.
 
 ## Step 7: Verify the Setup
 
@@ -119,7 +134,7 @@ sudo pcs status
 Test from a client:
 
 ```bash
-sudo mount 192.168.1.100:/export/data /mnt
+sudo mount -o vers=4 192.168.1.100:/data /mnt
 ls /mnt
 ```
 
@@ -145,18 +160,18 @@ sudo pcs node unstandby node1
 
 ## NFS Client Configuration for HA
 
-Configure NFS clients with soft mount options for better failover handling:
+Configure NFS clients with hard mounts so I/O waits for the server to recover instead of returning errors to applications:
 
 ```bash
-sudo mount -o soft,timeo=50,retrans=3 192.168.1.100:/export/data /mnt
+sudo mount -o vers=4,hard 192.168.1.100:/data /mnt
 ```
 
 Or in /etc/fstab:
 
 ```bash
-192.168.1.100:/export/data /mnt nfs soft,timeo=50,retrans=3 0 0
+192.168.1.100:/data /mnt nfs vers=4,hard 0 0
 ```
 
 ## Conclusion
 
-A high availability NFS server on RHEL with Pacemaker ensures continuous access to shared storage. The key is proper resource ordering: VIP, filesystem, NFS server, then exports. Test failover to verify that NFS clients handle the transition smoothly.
+A high availability NFS server on RHEL with Pacemaker ensures continuous access to shared storage. The key is proper resource ordering: filesystem, NFS server, exports, VIP, then NFS notifications. Test failover to verify that NFS clients handle the transition smoothly.
