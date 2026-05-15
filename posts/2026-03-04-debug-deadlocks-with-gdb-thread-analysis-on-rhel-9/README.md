@@ -14,9 +14,10 @@ A deadlock occurs when two or more threads are each waiting for the other to rel
 
 - RHEL with a valid subscription or CentOS Stream 9
 - Root or sudo access
+- gdb installed (`sudo dnf install gdb` if needed)
 - A terminal session
 
-## Step 2: Configure the Service
+## Step 1: Analyze the Process with gdb
 
 Analyze deadlocks with gdb:
 
@@ -43,37 +44,34 @@ sudo gdb -p <PID>
 
 Look for threads blocked on `pthread_mutex_lock`, `__lll_lock_wait`, or similar functions. If two threads are each waiting for a lock held by the other, you have found your deadlock.
 
-## Step 3: Enable and Start the Service
+## Step 2: Detach from the Process
 
-```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
+```gdb
+# Detach and let the process continue
+(gdb) detach
 
-# Start the service
-sudo systemctl start <service-name>
-
-# Check the status
-sudo systemctl status <service-name>
+# Exit gdb
+(gdb) quit
 ```
 
 
 ## Verification
 
-Confirm everything is working by checking the status and logs:
+Confirm everything is working by checking the generated output:
 
 ```bash
 # Review the generated output or log file
 # Look for error patterns, failed calls, or resource issues
 
-# Check that debug tools are installed
-rpm -q gdb strace ltrace valgrind
+# Check that gdb is installed
+rpm -q gdb
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If gdb cannot attach, confirm the PID is correct and run gdb with sufficient privileges.
+- If backtraces only show addresses, install the matching debuginfo packages for the program and its libraries.
 
 ## Conclusion
 
-You have successfully completed the setup described in this guide. Remember to monitor the service and review logs regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
+You have successfully completed the analysis described in this guide. Remember to monitor the application and review logs regularly to catch issues early. For production environments, always test changes in a staging environment first and keep your RHEL system updated with the latest security patches.
