@@ -39,6 +39,7 @@ Messages pass through milters in the order they are listed. Each milter can:
 
 - RHEL with Postfix installed
 - Milter packages installed for each filter you want to use
+- EPEL enabled for OpenDKIM, OpenDMARC, ClamAV milter, and spamass-milter packages on RHEL 9
 
 ## Postfix Milter Configuration
 
@@ -59,7 +60,7 @@ smtpd_milters =
     inet:localhost:8891,
     inet:localhost:8893,
     unix:/run/clamav-milter/clamav-milter.sock,
-    unix:/run/spamass-milter/postfix/sock
+    unix:/run/spamass-milter/spamass-milter.sock
 
 # Milters for locally-generated mail
 non_smtpd_milters =
@@ -91,6 +92,11 @@ inet:milter-server.example.com:8891
 ## Setting Up Common Milters
 
 ### OpenDKIM (DKIM Signing and Verification)
+
+```bash
+# Enable EPEL for RHEL 9 milter packages
+sudo dnf install -y epel-release
+```
 
 ```bash
 # Install OpenDKIM
@@ -138,7 +144,6 @@ sudo systemctl enable --now opendmarc
 
 ```bash
 # Install ClamAV milter
-sudo dnf install -y epel-release
 sudo dnf install -y clamav-milter clamd clamav-update
 ```
 
@@ -182,7 +187,7 @@ smtpd_milters =
     inet:localhost:8891,
     inet:localhost:8893,
     unix:/run/clamav-milter/clamav-milter.sock,
-    unix:/run/spamass-milter/postfix/sock
+    unix:/run/spamass-milter/spamass-milter.sock
 ```
 
 1. **OpenDKIM** - Verify incoming DKIM signatures first (before any modifications)
@@ -195,11 +200,11 @@ smtpd_milters =
 If a milter is slow, you do not want it to hold up mail delivery:
 
 ```bash
-# Timeout for milter connections (default: 10s)
+# Timeout for milter connections (default: 30s)
 milter_connect_timeout = 30s
 
-# Timeout for milter commands (default: 300s)
-milter_command_timeout = 300s
+# Timeout for milter commands (default: 30s)
+milter_command_timeout = 30s
 
 # Timeout for milter content (default: 300s)
 milter_content_timeout = 300s
@@ -215,7 +220,6 @@ In `/etc/postfix/master.cf`:
 # Submission port with different milter settings
 submission inet n       -       n       -       -       smtpd
   -o smtpd_milters=inet:localhost:8891
-  -o non_smtpd_milters=inet:localhost:8891
 ```
 
 This only applies DKIM signing on the submission port, skipping virus and spam scanning for outbound mail from authenticated users.
@@ -242,7 +246,7 @@ sudo ss -tlnp | grep -E '889[0-9]'
 
 # Check Unix socket milters
 sudo ls -la /run/clamav-milter/clamav-milter.sock
-sudo ls -la /run/spamass-milter/postfix/sock
+sudo ls -la /run/spamass-milter/spamass-milter.sock
 
 # Check milter-related log entries
 sudo grep -E "milter|opendkim|opendmarc|clamav-milter|spamass" /var/log/maillog | tail -20
