@@ -22,7 +22,7 @@ sudo pcs node standby node1
 # Verify resources moved away from node1
 sudo pcs status
 
-# You should see all resources running on node2
+# You should see resources running on another eligible node
 ```
 
 ## Perform Maintenance on the Standby Node
@@ -72,7 +72,7 @@ sudo pcs resource unmanage my_resource
 sudo pcs resource manage my_resource
 
 # Force a probe to sync resource state
-sudo pcs resource cleanup my_resource
+sudo pcs resource refresh my_resource
 ```
 
 ## Rolling Upgrade Procedure
