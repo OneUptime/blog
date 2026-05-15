@@ -62,7 +62,7 @@ Every Talos node runs a set of system services. View their status:
 
 ```bash
 # List all services on a node
-talosctl services --nodes 192.168.1.101
+talosctl service --nodes 192.168.1.101
 
 # Output shows service name, state, health, and last event
 # SERVICE      STATE     HEALTH   LAST EVENT
@@ -92,7 +92,7 @@ talosctl logs kubelet --nodes 192.168.1.101 --follow
 talosctl logs etcd --nodes 192.168.1.101
 
 # View logs for the API server
-talosctl logs kube-apiserver --nodes 192.168.1.101
+talosctl logs -k kube-apiserver --nodes 192.168.1.101
 
 # View kernel messages (like dmesg)
 talosctl dmesg --nodes 192.168.1.101
@@ -106,24 +106,24 @@ talosctl dmesg --nodes 192.168.1.101 --follow
 Get detailed information about nodes:
 
 ```bash
-# View system information (CPU, memory, etc.)
+# View cluster members
 talosctl get members
 
 # Check the Talos version running on a node
 talosctl version --nodes 192.168.1.101
 
 # View CPU and memory info
-talosctl get cpuinfo --nodes 192.168.1.101
-talosctl get memoryinfo --nodes 192.168.1.101
+talosctl get cpu --nodes 192.168.1.101
+talosctl memory --nodes 192.168.1.101
 
-# List network interfaces
+# List IP addresses
 talosctl get addresses --nodes 192.168.1.101
 
 # List routes
 talosctl get routes --nodes 192.168.1.101
 
 # List disks
-talosctl disks --nodes 192.168.1.101
+talosctl get disks --nodes 192.168.1.101
 
 # Check system time
 talosctl time --nodes 192.168.1.101
@@ -162,7 +162,7 @@ talosctl upgrade --nodes 192.168.1.101 \
   --image ghcr.io/siderolabs/installer:v1.9.0
 
 # Check the upgrade progress
-talosctl services --nodes 192.168.1.101
+talosctl service --nodes 192.168.1.101
 
 # Upgrade with a custom image from Image Factory
 talosctl upgrade --nodes 192.168.1.101 \
@@ -201,7 +201,7 @@ Many talosctl commands accept multiple nodes:
 
 ```bash
 # Check services on all control plane nodes
-talosctl services --nodes 192.168.1.101,192.168.1.102,192.168.1.103
+talosctl service --nodes 192.168.1.101,192.168.1.102,192.168.1.103
 
 # View version on all nodes
 talosctl version --nodes 192.168.1.101,192.168.1.102,192.168.1.103
@@ -218,7 +218,8 @@ Manage the running configuration:
 
 ```bash
 # View the current machine configuration
-talosctl get machineconfig --nodes 192.168.1.101 -o yaml
+talosctl get machineconfig v1alpha1 --nodes 192.168.1.101 \
+  -o jsonpath='{.spec}'
 
 # Apply a new configuration
 talosctl apply-config --nodes 192.168.1.101 --file controlplane.yaml
@@ -266,7 +267,7 @@ Here are some practical command combinations for daily operations:
 talosctl health && kubectl get nodes && kubectl get pods -A | grep -v Running
 
 # Check disk usage across all nodes
-talosctl disks --nodes 192.168.1.101,192.168.1.102,192.168.1.103
+talosctl usage --nodes 192.168.1.101,192.168.1.102,192.168.1.103 -H
 
 # Find which node is holding the VIP
 talosctl get addresses --nodes 192.168.1.101,192.168.1.102,192.168.1.103 | grep "192.168.1.100"
