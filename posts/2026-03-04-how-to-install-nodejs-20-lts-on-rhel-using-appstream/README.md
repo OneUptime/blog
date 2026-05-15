@@ -1,14 +1,14 @@
-# How to Install Node.js 20 LTS on RHEL Using AppStream
+# How to Install Node.js 20 on RHEL Using AppStream
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Node.js, AppStream, JavaScript, LTS
+Tags: RHEL, Node.js, AppStream, JavaScript
 
-Description: Learn how to install Node.js 20 LTS on RHEL using the AppStream module system for a supported and maintained Node.js runtime.
+Description: Learn how to install Node.js 20 on RHEL using the AppStream module system for a Red Hat-packaged Node.js runtime.
 
 ---
 
-RHEL provides Node.js through its AppStream repository using modular packages. This allows you to install specific Node.js versions that are supported and receive security updates from Red Hat.
+RHEL provides Node.js through its AppStream repository using modular packages. This allows you to install specific Node.js versions from Red Hat-packaged streams. Node.js 20 was supported as a RHEL Application Stream until April 2026; for new production deployments, use a currently supported stream such as Node.js 22.
 
 ## Listing Available Node.js Modules
 
@@ -17,9 +17,9 @@ RHEL provides Node.js through its AppStream repository using modular packages. T
 
 sudo dnf module list nodejs
 
-# Output shows available streams like:
-# nodejs  18  [d]  common  Node.js 18
-# nodejs  20      common  Node.js 20
+# Output shows available streams and profiles like:
+# nodejs  20      common [d], development, minimal, s2i  Javascript runtime
+# nodejs  22      common [d], development, minimal, s2i  Javascript runtime
 ```
 
 ## Installing Node.js 20
@@ -28,11 +28,8 @@ sudo dnf module list nodejs
 # Reset any previously enabled Node.js module
 sudo dnf module reset nodejs -y
 
-# Enable the Node.js 20 stream
-sudo dnf module enable nodejs:20 -y
-
-# Install Node.js
-sudo dnf install -y nodejs
+# Install the default profile from the Node.js 20 stream
+sudo dnf module install nodejs:20 -y
 
 # Verify the installation
 node --version
@@ -69,10 +66,8 @@ which pm2
 ## Switching Node.js Versions
 
 ```bash
-# Switch from Node.js 20 to Node.js 18
-sudo dnf module reset nodejs -y
-sudo dnf module enable nodejs:18 -y
-sudo dnf distro-sync -y
+# Switch from Node.js 20 to Node.js 22
+sudo dnf module switch-to nodejs:22 -y
 
 # Verify
 node --version
@@ -116,4 +111,4 @@ curl http://localhost:3000
 kill %1
 ```
 
-The AppStream module approach is recommended for production RHEL servers because Red Hat provides security patches and updates. Use nvm for development environments where you need to switch between multiple versions frequently.
+The AppStream module approach is recommended for production RHEL servers when you choose a stream that is still within Red Hat's Application Streams lifecycle. Use nvm for development environments where you need to switch between multiple versions frequently.
