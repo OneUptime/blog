@@ -23,17 +23,14 @@ sudo chown prometheus:prometheus /var/lib/prometheus
 
 # Download Prometheus
 cd /tmp
-curl -LO https://github.com/prometheus/prometheus/releases/download/v2.48.0/prometheus-2.48.0.linux-amd64.tar.gz
-tar xzf prometheus-2.48.0.linux-amd64.tar.gz
+curl -LO https://github.com/prometheus/prometheus/releases/download/v3.11.3/prometheus-3.11.3.linux-amd64.tar.gz
+tar xzf prometheus-3.11.3.linux-amd64.tar.gz
 
 # Install binaries
-sudo cp prometheus-2.48.0.linux-amd64/prometheus /usr/local/bin/
-sudo cp prometheus-2.48.0.linux-amd64/promtool /usr/local/bin/
+sudo cp prometheus-3.11.3.linux-amd64/prometheus /usr/local/bin/
+sudo cp prometheus-3.11.3.linux-amd64/promtool /usr/local/bin/
 sudo chown prometheus:prometheus /usr/local/bin/prometheus /usr/local/bin/promtool
 
-# Copy console templates
-sudo cp -r prometheus-2.48.0.linux-amd64/consoles /etc/prometheus/
-sudo cp -r prometheus-2.48.0.linux-amd64/console_libraries /etc/prometheus/
 sudo chown -R prometheus:prometheus /etc/prometheus
 ```
 
@@ -75,6 +72,24 @@ EOF
 sudo chown prometheus:prometheus /etc/prometheus/prometheus.yml
 ```
 
+```bash
+sudo tee /etc/prometheus/alert_rules.yml << 'EOF'
+groups:
+  - name: node-alerts
+    rules:
+      - alert: InstanceDown
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Instance {{ $labels.instance }} is down"
+          description: "Prometheus has not scraped {{ $labels.instance }} for more than 5 minutes."
+EOF
+
+sudo chown prometheus:prometheus /etc/prometheus/alert_rules.yml
+```
+
 ## Create Prometheus systemd Service
 
 ```bash
@@ -90,9 +105,7 @@ Type=simple
 ExecStart=/usr/local/bin/prometheus \
     --config.file=/etc/prometheus/prometheus.yml \
     --storage.tsdb.path=/var/lib/prometheus/ \
-    --storage.tsdb.retention.time=30d \
-    --web.console.templates=/etc/prometheus/consoles \
-    --web.console.libraries=/etc/prometheus/console_libraries
+    --storage.tsdb.retention.time=30d
 Restart=always
 
 [Install]
@@ -103,15 +116,67 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now prometheus
 ```
 
+## Install Alertmanager
+
+```bash
+sudo useradd --no-create-home --shell /bin/false alertmanager
+sudo mkdir -p /etc/alertmanager /var/lib/alertmanager
+
+cd /tmp
+curl -LO https://github.com/prometheus/alertmanager/releases/download/v0.32.1/alertmanager-0.32.1.linux-amd64.tar.gz
+tar xzf alertmanager-0.32.1.linux-amd64.tar.gz
+
+sudo cp alertmanager-0.32.1.linux-amd64/alertmanager /usr/local/bin/
+sudo cp alertmanager-0.32.1.linux-amd64/amtool /usr/local/bin/
+sudo chown alertmanager:alertmanager /usr/local/bin/alertmanager /usr/local/bin/amtool
+
+sudo tee /etc/alertmanager/alertmanager.yml << 'EOF'
+route:
+  receiver: default
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: default
+EOF
+
+sudo chown -R alertmanager:alertmanager /etc/alertmanager /var/lib/alertmanager
+```
+
+```bash
+sudo tee /etc/systemd/system/alertmanager.service << 'EOF'
+[Unit]
+Description=Alertmanager
+After=network-online.target
+
+[Service]
+User=alertmanager
+Group=alertmanager
+Type=simple
+ExecStart=/usr/local/bin/alertmanager \
+    --config.file=/etc/alertmanager/alertmanager.yml \
+    --storage.path=/var/lib/alertmanager
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now alertmanager
+```
+
 ## Install Node Exporter on Each Host
 
 ```bash
 # On each monitored host
 sudo useradd --no-create-home --shell /bin/false node_exporter
 cd /tmp
-curl -LO https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
-tar xzf node_exporter-1.7.0.linux-amd64.tar.gz
-sudo cp node_exporter-1.7.0.linux-amd64/node_exporter /usr/local/bin/
+curl -LO https://github.com/prometheus/node_exporter/releases/download/v1.11.1/node_exporter-1.11.1.linux-amd64.tar.gz
+tar xzf node_exporter-1.11.1.linux-amd64.tar.gz
+sudo cp node_exporter-1.11.1.linux-amd64/node_exporter /usr/local/bin/
 sudo chown node_exporter:node_exporter /usr/local/bin/node_exporter
 
 sudo tee /etc/systemd/system/node_exporter.service << 'EOF'
@@ -158,6 +223,7 @@ sudo systemctl enable --now grafana-server
 
 ```bash
 sudo firewall-cmd --permanent --add-port=9090/tcp  # Prometheus
+sudo firewall-cmd --permanent --add-port=9093/tcp  # Alertmanager
 sudo firewall-cmd --permanent --add-port=9100/tcp  # Node Exporter
 sudo firewall-cmd --permanent --add-port=3000/tcp  # Grafana
 sudo firewall-cmd --reload
@@ -172,9 +238,12 @@ curl -s http://localhost:9090/api/v1/targets | python3 -m json.tool | head -20
 # Check Node Exporter
 curl -s http://localhost:9100/metrics | head -5
 
+# Check Alertmanager
+curl -s http://localhost:9093/-/ready
+
 # Access Grafana at http://your-server:3000
 # Add Prometheus as a data source (URL: http://localhost:9090)
 # Import dashboard ID 1860 for Node Exporter metrics
 ```
 
-This stack provides metrics collection, long-term storage, alerting, and visualization for your entire RHEL infrastructure.
+This stack provides metrics collection, 30-day local metrics retention, alerting, and visualization for your entire RHEL infrastructure.
