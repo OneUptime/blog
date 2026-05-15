@@ -87,6 +87,8 @@ static_resources:
     health_checks:
     - timeout: 5s
       interval: 10s
+      unhealthy_threshold: 2
+      healthy_threshold: 1
       grpc_health_check: {}
 ```
 
