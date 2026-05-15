@@ -17,11 +17,13 @@ Backing up your 389 Directory Server is essential for disaster recovery. There a
 ```bash
 # Export all data to an LDIF file while the server is running
 
-sudo dsconf localhost backend export userroot --ldif /tmp/backup-$(date +%Y%m%d).ldif
+sudo dsconf localhost backend export userRoot \
+    -l /var/lib/dirsrv/slapd-localhost/ldif/backup-$(date +%Y%m%d).ldif
 
 # Or export with the server stopped for consistency
 sudo dsctl localhost stop
-sudo dsctl localhost export --suffix "dc=example,dc=com" /tmp/backup-$(date +%Y%m%d).ldif
+sudo dsctl localhost db2ldif userRoot \
+    /var/lib/dirsrv/slapd-localhost/ldif/backup-$(date +%Y%m%d).ldif
 sudo dsctl localhost start
 ```
 
@@ -45,7 +47,8 @@ sudo dsconf localhost backup create
 ls -la /var/lib/dirsrv/slapd-localhost/bak/
 
 # Create a backup with a custom name
-sudo dsconf localhost backup create --archive /tmp/ds-backup-$(date +%Y%m%d)
+sudo install -d -o dirsrv -g dirsrv /backup/389ds
+sudo dsconf localhost backup create /backup/389ds/ds-backup-$(date +%Y%m%d)
 ```
 
 ## Back Up Configuration Files
@@ -59,8 +62,8 @@ sudo tar czf /tmp/ds-config-backup.tar.gz \
 # Back up custom schema
 sudo cp -r /etc/dirsrv/slapd-localhost/schema/ /tmp/schema-backup/
 
-# Back up certificates
-sudo dsctl localhost tls export-cert --nickname "Server-Cert" > /tmp/server-cert.pem
+# Export a copy of the server certificate
+sudo certutil -L -d /etc/dirsrv/slapd-localhost/ -n "Server-Cert" -a > /tmp/server-cert.pem
 ```
 
 ## Automate Backups with Cron
@@ -73,12 +76,14 @@ BACKUP_DIR="/backup/389ds"
 DATE=$(date +%Y%m%d_%H%M%S)
 
 mkdir -p $BACKUP_DIR
+chown dirsrv:dirsrv $BACKUP_DIR
 
 # LDIF export
-dsconf localhost backend export userroot --ldif ${BACKUP_DIR}/data-${DATE}.ldif
+dsconf localhost backend export userRoot -l /var/lib/dirsrv/slapd-localhost/ldif/data-${DATE}.ldif
+cp /var/lib/dirsrv/slapd-localhost/ldif/data-${DATE}.ldif ${BACKUP_DIR}/
 
 # Database backup
-dsconf localhost backup create --archive ${BACKUP_DIR}/db-${DATE}
+dsconf localhost backup create ${BACKUP_DIR}/db-${DATE}
 
 # Configuration backup
 tar czf ${BACKUP_DIR}/config-${DATE}.tar.gz /etc/dirsrv/slapd-localhost/
@@ -102,7 +107,7 @@ echo "0 2 * * * root /usr/local/bin/ds-backup.sh" | sudo tee /etc/cron.d/ds-back
 sudo dsctl localhost stop
 
 # Import the LDIF backup
-sudo dsctl localhost import /tmp/backup-20260304.ldif
+sudo dsctl localhost ldif2db userRoot /var/lib/dirsrv/slapd-localhost/ldif/backup-20260304.ldif
 
 # Start the server
 sudo dsctl localhost start
@@ -118,7 +123,7 @@ ldapsearch -x -H ldap://localhost -b "dc=example,dc=com" "(objectClass=*)" dn | 
 sudo dsctl localhost stop
 
 # Restore from the database backup
-sudo dsctl localhost restore /var/lib/dirsrv/slapd-localhost/bak/backup-20260304
+sudo dsctl localhost bak2db /var/lib/dirsrv/slapd-localhost/bak/localhost-2026_03_04_02_00_00/
 
 # Start the server
 sudo dsctl localhost start
