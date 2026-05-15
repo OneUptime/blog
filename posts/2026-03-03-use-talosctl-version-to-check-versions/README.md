@@ -126,22 +126,22 @@ talosctl version --nodes 192.168.1.20
 
 ## JSON Output for Automation
 
-For scripting and automation purposes, you can get the version information in JSON format:
+For scripting and automation purposes, you can get the server version information in JSON format with the hidden `--json` flag:
 
 ```bash
 # Get version info as JSON
-talosctl version --nodes 192.168.1.10 -o json
+talosctl version --nodes 192.168.1.10 --json
 ```
 
 This outputs structured data that you can parse with tools like `jq`:
 
 ```bash
 # Extract just the server tag from JSON output
-talosctl version --nodes 192.168.1.10 -o json | jq -r '.server[0].version.tag'
+talosctl version --nodes 192.168.1.10 --json | jq -r '.version.tag'
 
 # Check if all nodes are running the same version
-talosctl version --nodes 192.168.1.10,192.168.1.11,192.168.1.12 -o json | \
-  jq -r '.server[].version.tag' | sort -u
+talosctl version --nodes 192.168.1.10,192.168.1.11,192.168.1.12 --json | \
+  jq -r '.version.tag' | sort -u
 ```
 
 If the `sort -u` command returns a single line, all nodes are running the same version. If it returns multiple lines, you have a version mismatch.
@@ -152,8 +152,8 @@ Talos Linux maintains compatibility between the client and server within the sam
 
 ```bash
 # Check for version mismatch
-CLIENT_VERSION=$(talosctl version --client -o json | jq -r '.client.version.tag')
-SERVER_VERSION=$(talosctl version --nodes 192.168.1.10 -o json | jq -r '.server[0].version.tag')
+CLIENT_VERSION=$(talosctl version --client --short | awk '/^(Client|Talos) v/ {print $NF}')
+SERVER_VERSION=$(talosctl version --nodes 192.168.1.10 --json | jq -r '.version.tag')
 
 if [ "$CLIENT_VERSION" != "$SERVER_VERSION" ]; then
   echo "WARNING: Version mismatch detected"
@@ -165,14 +165,14 @@ fi
 
 ## Checking the Kubernetes Version
 
-While `talosctl version` shows the Talos Linux version, you might also want to know which Kubernetes version your cluster is running. Each Talos Linux release ships with a specific Kubernetes version:
+While `talosctl version` shows the Talos Linux version, you might also want to know which Kubernetes version your cluster is running. Each Talos Linux release supports a specific set of Kubernetes versions:
 
 ```bash
 # Check Kubernetes version via kubectl
 kubectl version
 
-# Or check the kubelet version on a specific node
-talosctl services --nodes 192.168.1.10 | grep kubelet
+# Or check the kubelet versions reported by nodes
+kubectl get nodes -o wide
 ```
 
 Talos Linux documentation provides a compatibility matrix that maps Talos versions to supported Kubernetes versions. Checking this matrix before upgrading ensures you pick compatible versions.
@@ -189,7 +189,7 @@ EXPECTED_VERSION="v1.7.0"
 ALL_NODES="192.168.1.10,192.168.1.11,192.168.1.12,192.168.1.20,192.168.1.21"
 
 # Get unique versions across all nodes
-VERSIONS=$(talosctl version --nodes "$ALL_NODES" -o json | jq -r '.server[].version.tag' | sort -u)
+VERSIONS=$(talosctl version --nodes "$ALL_NODES" --json | jq -r '.version.tag' | sort -u)
 VERSION_COUNT=$(echo "$VERSIONS" | wc -l)
 
 # Check that all nodes are on the expected version
@@ -232,7 +232,7 @@ If the client version is significantly newer than the server version, some comma
 - Run `talosctl version` before any maintenance operation to establish a baseline.
 - Check versions after every upgrade to confirm success.
 - Keep your `talosctl` client version matched to your cluster version.
-- Use JSON output and scripting to automate version checks across large clusters.
+- Use structured output and scripting to automate version checks across large clusters.
 - Include version checks in your monitoring and alerting.
 - Document the expected version for each cluster in your runbooks.
 
