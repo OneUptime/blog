@@ -89,8 +89,9 @@ wrk -t4 -c100 -d30s -s /tmp/auth.lua http://localhost/
 #   Latency   Avg     Stdev     Max   +/- Stdev
 #             1.2ms   0.5ms    15ms     85%
 #   Req/Sec   25k     2k       30k      90%
-#   Requests: 3000000  Total: 30s
+#   3000000 requests in 30.00s, 1.20GB read
 #   Requests/sec: 100000
+#   Transfer/sec: 40.96MB
 ```
 
-A high standard deviation in latency indicates inconsistent server response times. Focus on the max latency and the percentage within one standard deviation for reliability analysis.
+A high standard deviation in latency indicates inconsistent server response times. Use `--latency` to inspect percentiles, and watch max latency for outliers during reliability analysis.
