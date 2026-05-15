@@ -19,7 +19,7 @@ A cross-forest trust between IdM and Active Directory (AD) lets AD users access 
 # - Samba packages installed for trust support
 
 # Install trust-related packages on the IdM server
-sudo dnf install -y ipa-server-trust-ad
+sudo dnf install -y ipa-server-trust-ad samba-client
 
 # Verify DNS resolution between domains
 dig ad.example.com
@@ -48,6 +48,7 @@ ipa dnsforwardzone-add ad.example.com \
 
 ```bash
 # Run the trust preparation on the IdM server
+kinit admin
 sudo ipa-adtrust-install \
   --netbios-name=IDM \
   --add-sids
@@ -63,12 +64,14 @@ sudo ipactl restart
 # Create a one-way trust (AD users can access IdM resources)
 ipa trust-add ad.example.com \
   --type=ad \
+  --range-type=ipa-ad-trust \
   --admin=Administrator \
   --password
 
-# For a two-way trust (both directions)
+# For a two-way trust needed by services that require cross-forest Kerberos S4U
 ipa trust-add ad.example.com \
   --type=ad \
+  --range-type=ipa-ad-trust \
   --two-way=true \
   --admin=Administrator \
   --password
@@ -105,9 +108,14 @@ id aduser@ad.example.com
 ## Granting AD Users Access
 
 ```bash
-# Add AD users or groups to IdM HBAC rules
+# Map an AD security group into an IdM group, then add that group to HBAC rules
+ipa group-add --desc="AD users external map" ad_linux_users_external --external
+ipa group-add --desc="AD Linux users" ad_linux_users
+ipa group-add-member ad_linux_users_external --external "ad-linux-users@ad.example.com"
+ipa group-add-member ad_linux_users --groups=ad_linux_users_external
+
 ipa hbacrule-add ad-user-access
-ipa hbacrule-add-user ad-user-access --groups="ad-linux-users@ad.example.com"
+ipa hbacrule-add-user ad-user-access --groups=ad_linux_users
 ipa hbacrule-add-host ad-user-access --hostgroups=linux-servers
 ipa hbacrule-add-service ad-user-access --hbacsvcs=sshd
 ```
