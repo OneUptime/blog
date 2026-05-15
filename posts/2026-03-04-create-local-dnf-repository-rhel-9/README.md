@@ -33,11 +33,18 @@ sudo dnf install -y createrepo_c
 sudo dnf install -y httpd
 ```
 
-If you plan to mirror remote repos, you will also need the `dnf-utils` package:
+If you plan to mirror remote repos, you will also need the `yum-utils` package:
 
 ```bash
-# Install dnf-utils for the reposync command
-sudo dnf install -y dnf-utils
+# Install yum-utils for the reposync command
+sudo dnf install -y yum-utils
+```
+
+For the SELinux commands later in this guide, install the package that provides `semanage`:
+
+```bash
+# Install semanage for managing SELinux file contexts
+sudo dnf install -y policycoreutils-python-utils
 ```
 
 ## Architecture Overview
@@ -162,7 +169,8 @@ sudo mkdir -p /var/www/html/repos/rhel9-baseos
 # Sync packages from the BaseOS repo
 sudo reposync --repoid=rhel-9-for-x86_64-baseos-rpms \
   --download-metadata \
-  --downloaddir=/var/www/html/repos/rhel9-baseos
+  --download-path=/var/www/html/repos/rhel9-baseos \
+  --norepopath
 ```
 
 The `--download-metadata` flag pulls the original repository metadata, so you may not need to run `createrepo_c` separately.
@@ -175,7 +183,8 @@ sudo mkdir -p /var/www/html/repos/rhel9-appstream
 
 sudo reposync --repoid=rhel-9-for-x86_64-appstream-rpms \
   --download-metadata \
-  --downloaddir=/var/www/html/repos/rhel9-appstream
+  --download-path=/var/www/html/repos/rhel9-appstream \
+  --norepopath
 ```
 
 ### Mirror Only the Latest Versions
@@ -186,7 +195,8 @@ By default, reposync downloads all versions of every package. To save space, dow
 # Sync only the newest versions of each package
 sudo reposync --repoid=rhel-9-for-x86_64-baseos-rpms \
   --newest-only \
-  --downloaddir=/var/www/html/repos/rhel9-baseos
+  --download-path=/var/www/html/repos/rhel9-baseos \
+  --norepopath
 ```
 
 After syncing with `--newest-only`, you need to generate metadata yourself:
@@ -203,7 +213,7 @@ Set up a cron job to sync daily (or weekly, depending on your update policy):
 ```bash
 # Add a cron job to sync repos nightly at 2 AM
 sudo tee /etc/cron.d/reposync << 'EOF'
-0 2 * * * root reposync --repoid=rhel-9-for-x86_64-baseos-rpms --newest-only --downloaddir=/var/www/html/repos/rhel9-baseos && createrepo_c --update /var/www/html/repos/rhel9-baseos
+0 2 * * * root reposync --repoid=rhel-9-for-x86_64-baseos-rpms --newest-only --download-path=/var/www/html/repos/rhel9-baseos --norepopath && createrepo_c --update /var/www/html/repos/rhel9-baseos
 EOF
 ```
 
