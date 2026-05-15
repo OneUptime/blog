@@ -38,7 +38,8 @@ If the filesystem is busy:
 
 ```bash
 sudo fuser -mv /data
-sudo umount -l /data
+sudo fuser -km /data
+sudo umount /data
 ```
 
 For the root filesystem, boot from rescue media.
@@ -65,11 +66,11 @@ The tool runs through several phases:
 
 1. **Phase 1**: Find and verify the superblock
 2. **Phase 2**: Scan internal log and clear it
-3. **Phase 3**: Scan inode allocation data
-4. **Phase 4**: Check inode data and verify directory structures
-5. **Phase 5**: Rebuild allocation group headers
-6. **Phase 6**: Rebuild free space maps
-7. **Phase 7**: Final cleanup
+3. **Phase 3**: Process allocation groups and discover inodes
+4. **Phase 4**: Check for duplicate blocks
+5. **Phase 5**: Rebuild allocation group headers and trees
+6. **Phase 6**: Check inode connectivity and reconnect orphaned files
+7. **Phase 7**: Verify and correct link counts
 
 ## Step 4: Handle Log Corruption
 
@@ -105,10 +106,10 @@ For severely damaged filesystems, use verbose mode to get detailed information:
 sudo xfs_repair -v /dev/sdb1
 ```
 
-If the primary superblock is corrupted, `xfs_repair` automatically tries alternate superblocks. You can also specify one manually:
+If the primary superblock is corrupted, `xfs_repair` automatically searches for and validates secondary superblocks. If geometry information cannot be validated, only use `force_geometry` after validating the geometry yourself, and run it in no-modify mode first:
 
 ```bash
-sudo xfs_repair -o ag_stride=4 /dev/sdb1
+sudo xfs_repair -n -o force_geometry /dev/sdb1
 ```
 
 ## Step 6: Recover Files from lost+found
