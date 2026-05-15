@@ -21,7 +21,7 @@ flowchart LR
     B -->|NOTIFY| C
 ```
 
-The primary server is authoritative for the zone and accepts updates. When the zone changes, it sends a NOTIFY message to the secondary. The secondary then requests a zone transfer (AXFR for full, IXFR for incremental) to get the updated data.
+The primary server is authoritative for the zone and holds the copy that you update. When the zone changes, it sends a NOTIFY message to the secondary. The secondary then requests a zone transfer (AXFR for full, IXFR for incremental) to get the updated data.
 
 ## Setting Up the Primary Server
 
@@ -50,7 +50,7 @@ options {
 
 logging {
     channel default_log {
-        file "/var/log/named/default.log" versions 3 size 5m;
+        file "/var/named/log/default.log" versions 3 size 5m;
         severity info;
         print-time yes;
     };
@@ -130,9 +130,10 @@ Set permissions and start:
 
 ```bash
 chown named:named /var/named/example.com.zone /var/named/192.168.1.rev
-mkdir -p /var/log/named && chown named:named /var/log/named
+mkdir -p /var/named/log && chown named:named /var/named/log && chmod 700 /var/named/log
 named-checkconf /etc/named.conf
 named-checkzone example.com /var/named/example.com.zone
+named-checkzone 1.168.192.in-addr.arpa /var/named/192.168.1.rev
 systemctl enable --now named
 firewall-cmd --permanent --add-service=dns && firewall-cmd --reload
 ```
@@ -161,7 +162,7 @@ options {
 
 logging {
     channel default_log {
-        file "/var/log/named/default.log" versions 3 size 5m;
+        file "/var/named/log/default.log" versions 3 size 5m;
         severity info;
         print-time yes;
     };
@@ -176,7 +177,7 @@ zone "." IN {
 zone "example.com" IN {
     type secondary;
     file "slaves/example.com.zone";
-    masters { 192.168.1.10; };
+    primaries { 192.168.1.10; };
 
     // Don't allow transfers from secondary (unless you have tertiaries)
     allow-transfer { none; };
@@ -185,7 +186,7 @@ zone "example.com" IN {
 zone "1.168.192.in-addr.arpa" IN {
     type secondary;
     file "slaves/192.168.1.rev";
-    masters { 192.168.1.10; };
+    primaries { 192.168.1.10; };
     allow-transfer { none; };
 };
 EOF
@@ -196,7 +197,7 @@ Create the slaves directory and start:
 ```bash
 mkdir -p /var/named/slaves
 chown named:named /var/named/slaves
-mkdir -p /var/log/named && chown named:named /var/log/named
+mkdir -p /var/named/log && chown named:named /var/named/log && chmod 700 /var/named/log
 named-checkconf /etc/named.conf
 systemctl enable --now named
 firewall-cmd --permanent --add-service=dns && firewall-cmd --reload
