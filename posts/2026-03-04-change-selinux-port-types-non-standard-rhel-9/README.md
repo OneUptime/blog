@@ -10,7 +10,7 @@ Description: Configure SELinux port labels on RHEL to allow services to listen o
 
 ## Why Port Types Matter
 
-SELinux does not just control file access. It also controls which ports processes can bind to. Apache is allowed to listen on port 80 and 443 because those ports are labeled `http_port_t`. If you configure Apache to listen on port 8443, SELinux will block it because that port is not labeled for HTTP use. The same applies to SSH, databases, mail services, and everything else.
+SELinux does not just control file access. It also controls which ports processes can bind to. Apache is allowed to listen on port 80 and 443 because those ports are labeled `http_port_t`. If you configure Apache to listen on port 9090, SELinux will block it because that port is not labeled for HTTP use. The same applies to SSH, databases, mail services, and everything else.
 
 Instead of disabling SELinux when you move a service to a non-standard port, just label the port correctly.
 
@@ -92,7 +92,7 @@ Use `-m` (modify) in that case.
 
 ```bash
 # Remove a custom port assignment
-sudo semanage port -d -t http_port_t -p tcp 8888
+sudo semanage port -d -p tcp 8888
 ```
 
 You can only delete custom (locally added) port assignments, not the default ones from the policy.
@@ -110,7 +110,7 @@ This is useful for auditing what you have changed.
 
 | Port Type | Service | Default Ports |
 |---|---|---|
-| http_port_t | Apache/Nginx | 80, 443, 8008, 8009, 8443 |
+| http_port_t | Apache/Nginx | 80, 81, 443, 488, 8008, 8009, 8443, 9000 |
 | ssh_port_t | SSH | 22 |
 | smtp_port_t | Postfix SMTP | 25, 587 |
 | pop_port_t | POP3 | 110, 995 |
