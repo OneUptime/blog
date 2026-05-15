@@ -8,7 +8,7 @@ Description: A hands-on guide to working with module streams in RHEL AppStream, 
 
 ---
 
-Module streams are one of the more powerful features in RHEL, but they can be confusing if you have not worked with them before. They let you install different versions of the same software side by side across your fleet, without fighting dependency conflicts. This guide covers everything you need to manage modules day to day.
+Module streams are one of the more powerful features in RHEL, but they can be confusing if you have not worked with them before. They let you run different versions of the same software on different systems across your fleet, without fighting dependency conflicts. This guide covers everything you need to manage modules day to day.
 
 ## What Are Module Streams?
 
@@ -23,10 +23,10 @@ graph TD
     A[Module: nodejs] --> B[Stream: 18]
     A --> C[Stream: 20]
     B --> D[Profile: common]
-    B --> E[Profile: devel]
+    B --> E[Profile: development]
     B --> F[Profile: minimal]
     C --> G[Profile: common]
-    C --> H[Profile: devel]
+    C --> H[Profile: development]
     C --> I[Profile: minimal]
 ```
 
@@ -86,10 +86,10 @@ dnf module info php:8.2
 
 This displays the summary, description, list of included packages, default profile, and other metadata.
 
-To see which specific RPM packages a profile includes:
+To see which specific RPM packages the profiles include:
 
 ```bash
-# List packages in the common profile of php 8.2
+# List packages in the profiles of php 8.2
 dnf module info --profile php:8.2
 ```
 
@@ -111,7 +111,7 @@ sudo dnf install php
 
 ### Why Enable Before Install?
 
-Enabling a stream locks DNF to that version. Without it, you get the default stream. If you explicitly enable a stream first, you have a clear record of which version you chose, and DNF will not accidentally pull in packages from a different stream.
+Enabling a stream locks DNF to that version. In RHEL 9, AppStream does not define default module streams, so you normally need to specify the stream when installing modular content. If you explicitly enable a stream first, you have a clear record of which version you chose, and DNF will not accidentally pull in packages from a different stream.
 
 ## Installing a Module with a Profile
 
@@ -145,33 +145,25 @@ sudo dnf module install php:8.2/devel
 
 ## Switching Between Streams
 
-This is one of the trickier operations. You cannot just enable a new stream while another is active. You need to reset the module first.
+This is one of the trickier operations. You cannot just enable a new stream while another is active. Use `dnf module switch-to` to move installed packages to a different stream.
 
 ### Step-by-Step Stream Switch
 
 Let's say you are running PHP 8.1 and want to move to 8.2:
 
 ```bash
-# Step 1: Reset the module to clear the current stream
-sudo dnf module reset php
-
-# Step 2: Enable the new stream
-sudo dnf module enable php:8.2
-
-# Step 3: Synchronize installed packages to the new stream versions
-sudo dnf distro-sync
+# Switch installed PHP packages to the 8.2 stream
+sudo dnf module switch-to php:8.2
 ```
 
-The `distro-sync` step is critical. It updates (or downgrades) installed packages to match the versions available in the newly enabled stream.
+The `switch-to` operation enables the target stream and synchronizes installed modular packages to the versions available in that stream.
 
 ### Process Flow for Stream Switching
 
 ```mermaid
 flowchart LR
-    A[Current: php:8.1] --> B[dnf module reset php]
-    B --> C[dnf module enable php:8.2]
-    C --> D[dnf distro-sync]
-    D --> E[Now running: php:8.2]
+    A[Current: php:8.1] --> B[dnf module switch-to php:8.2]
+    B --> C[Now running: php:8.2]
 ```
 
 ## Disabling a Module Stream
@@ -198,7 +190,7 @@ sudo dnf module enable nodejs:20
 
 ## Resetting a Module
 
-Resetting a module returns it to its initial state. The stream is no longer enabled or disabled, and the module goes back to using defaults:
+Resetting a module returns it to its initial state. The stream is no longer enabled or disabled. If a default stream is configured, that default becomes active:
 
 ```bash
 # Reset the php module to its initial state
@@ -213,14 +205,14 @@ To remove the packages installed by a module profile:
 
 ```bash
 # Remove packages installed by the nodejs:20/common profile
-sudo dnf module remove nodejs:20
+sudo dnf module remove nodejs:20/common
 ```
 
 After removing, you should also reset or disable the module to clean up:
 
 ```bash
 # Remove and reset in sequence
-sudo dnf module remove nodejs:20
+sudo dnf module remove nodejs:20/common
 sudo dnf module reset nodejs
 ```
 
@@ -229,15 +221,15 @@ sudo dnf module reset nodejs
 Modules can depend on other modules. When you enable or install a module, DNF handles these dependencies automatically. But it is good to know about them for troubleshooting:
 
 ```bash
-# Check module dependencies
-dnf module info --profile php:8.2
+# Check module dependencies and metadata
+dnf module info php:8.2
 ```
 
-If you run into dependency conflicts during a stream switch, the most common fix is:
+If you run into dependency conflicts during a stream switch, use `--allowerasing` only after reviewing what DNF plans to remove:
 
 ```bash
-# Force a full sync to resolve version mismatches
-sudo dnf distro-sync --allowerasing
+# Allow DNF to remove conflicting packages during the stream switch
+sudo dnf --allowerasing module switch-to php:8.2
 ```
 
 The `--allowerasing` flag lets DNF remove conflicting packages to resolve the dependency tree. Use it carefully and review the transaction summary before confirming.
@@ -271,7 +263,7 @@ php --version
 
 3. **Check module lifecycle dates.** Not all streams are supported for the full RHEL lifecycle. Some are shorter-lived and require you to switch streams before they hit EOL.
 
-4. **Use `dnf module list --installed` regularly.** It gives you a quick snapshot of what module streams are active on a system, which is invaluable for inventory and compliance.
+4. **Use `dnf module list --installed` regularly.** It gives you a quick snapshot of what module profiles are installed on a system, which is invaluable for inventory and compliance.
 
 5. **Do not mix module and non-module packages.** If a module provides `php`, do not also install PHP from a third-party repo. That path leads to dependency nightmares.
 
