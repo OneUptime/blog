@@ -17,7 +17,7 @@ For databases, virtualization hosts, and anything with heavy mixed read/write wo
 ## Prerequisites
 
 - RHEL with root access
-- At least four disks (must be an even number)
+- At least four disks for a conventional RAID 10 set
 - mdadm installed
 
 ## Step 1 - Install and Prepare
@@ -147,7 +147,7 @@ Rebuild times for RAID 10 are much faster than RAID 5 or RAID 6 because only the
 
 ## Scaling Beyond Four Disks
 
-You can create RAID 10 with 6, 8, or more disks (always even numbers):
+You can create conventional RAID 10 sets with 6, 8, or more disks. mdadm RAID10 layouts can also support other device counts, but adding disks in pairs keeps the usual mirrored-pair layout simple:
 
 ```bash
 # Six-disk RAID 10
