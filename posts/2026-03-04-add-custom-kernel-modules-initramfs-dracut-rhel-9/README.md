@@ -45,8 +45,7 @@ add_drivers+=" vfio vfio_pci vfio_iommu_type1 "
 # Add a specific storage driver
 add_drivers+=" mpt3sas "
 
-# Force-add modules even if dracut thinks they are not needed
-# (useful in hostonly mode where dracut only includes detected hardware)
+# Include modules and make dracut try to load them early with modprobe
 force_drivers+=" nvme nvme-core "
 EOF
 
@@ -123,8 +122,8 @@ cat <<'EOF' | sudo tee /etc/dracut.conf.d/firmware.conf
 # Include all firmware for the custom driver
 install_items+=" /lib/firmware/custom_network_driver/firmware.bin "
 
-# Or include an entire firmware directory
-install_items+=" /lib/firmware/custom_network_driver/ "
+# Or add an additional firmware search directory
+fw_dir+=" :/lib/firmware/custom_network_driver "
 EOF
 
 sudo dracut --force
@@ -132,10 +131,10 @@ sudo dracut --force
 
 ## Using DKMS for Persistent Module Management
 
-For modules that need to survive kernel updates, use DKMS (Dynamic Kernel Module Support):
+For modules that need to survive kernel updates, use DKMS (Dynamic Kernel Module Support). On RHEL, DKMS is typically provided by EPEL or a vendor repository rather than the base RHEL repositories:
 
 ```bash
-# Install DKMS
+# Install DKMS after enabling an appropriate repository such as EPEL or a vendor repo
 sudo dnf install -y dkms
 
 # Set up DKMS for your custom module
@@ -161,7 +160,7 @@ sudo dkms add -m custom_driver -v 1.0
 sudo dkms build -m custom_driver -v 1.0
 sudo dkms install -m custom_driver -v 1.0
 
-# The REMAKE_INITRD=yes flag tells DKMS to rebuild initramfs automatically
+# The REMAKE_INITRD=yes flag tells DKMS to rebuild initramfs when DKMS installs the module
 # Verify it worked
 lsinitrd /boot/initramfs-$(uname -r).img | grep custom_driver
 ```
@@ -176,7 +175,7 @@ sudo dracut --force --verbose 2>&1 | grep -i "module\|driver\|skip"
 # In hostonly mode, dracut only includes modules for detected hardware
 grep hostonly /etc/dracut.conf.d/*.conf
 
-# Force inclusion regardless of hostonly detection
+# Include the module and try to load it early with modprobe
 echo 'force_drivers+=" problematic_module "' | \
     sudo tee /etc/dracut.conf.d/force-module.conf
 
