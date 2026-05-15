@@ -66,7 +66,7 @@ sudo virsh dommemstat rhel9-vm
 # List network interfaces and their MAC addresses
 sudo virsh domiflist rhel9-vm
 
-# Get IP address of a VM
+# Get IP address of a running VM when available from lease, guest agent, or ARP data
 sudo virsh domifaddr rhel9-vm
 
 # List block devices
@@ -85,10 +85,10 @@ sudo virsh edit rhel9-vm
 # Define a VM from an XML file
 sudo virsh define /path/to/vm.xml
 
-# Undefine (delete) a VM definition
+# Remove a VM definition (does not stop a running VM)
 sudo virsh undefine rhel9-vm
 
-# Undefine and remove all storage
+# Undefine and remove libvirt-managed storage volumes for an inactive VM
 sudo virsh undefine rhel9-vm --remove-all-storage
 
 # Rename a VM (must be shut down)
@@ -101,7 +101,7 @@ sudo virsh domrename old-name new-name
 # Open a serial console to a VM
 sudo virsh console rhel9-vm
 
-# Open a graphical console
+# Show the graphical console URI
 sudo virsh domdisplay rhel9-vm
 # Returns the VNC/SPICE connection URI
 ```
