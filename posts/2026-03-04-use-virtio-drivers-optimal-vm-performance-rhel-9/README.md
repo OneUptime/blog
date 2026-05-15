@@ -17,7 +17,7 @@ Traditional emulated devices require the hypervisor to translate guest I/O opera
 - **virtio-blk/virtio-scsi** - Block device access with much lower overhead than IDE emulation
 - **virtio-net** - Network throughput approaching native speeds
 - **virtio-balloon** - Dynamic memory management
-- **virtio-rng** - Hardware random number generation
+- **virtio-rng** - Paravirtualized random number generation
 
 ## Configuring virtio for Disk I/O
 
@@ -52,7 +52,7 @@ sudo virt-install --disk path=vm1.qcow2,bus=virtio ...
 
 virtio-scsi advantages over virtio-blk:
 
-- Supports more disks (up to thousands vs 28 for virtio-blk)
+- Supports more disks (hundreds or more, compared with about 28 for typical virtio-blk-over-PCI setups)
 - SCSI command passthrough
 - Better for enterprise workloads
 
@@ -111,7 +111,7 @@ Provide entropy to the guest from the host:
 </rng>
 ```
 
-This prevents entropy starvation in guests.
+This helps avoid entropy starvation in guests.
 
 ## Verifying virtio Drivers Inside the Guest
 
