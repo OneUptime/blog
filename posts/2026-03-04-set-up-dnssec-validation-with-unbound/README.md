@@ -8,7 +8,7 @@ Description: Learn how to set Up DNSSEC Validation with Unbound on RHEL with ste
 
 ---
 
-DNSSEC (Domain Name System Security Extensions) adds cryptographicRHELtures to DNS records, allowing resolvers to verify that responses have noRHEL tampered with. Unbound on RHEL 9 supports DNSSEC validation out of the box.
+DNSSEC (Domain Name System Security Extensions) adds cryptographic signatures to DNS records, allowing resolvers to verify that responses have not been tampered with. Unbound on RHEL 9 supports DNSSEC validation out of the box.
 
 ## Prerequisites
 
@@ -23,7 +23,7 @@ Unbound enables DNSSEC by default. Verify the configuration:
 sudo vi /etc/unbound/unbound.conf
 ```
 
-```yaml
+```conf
 server:
     # DNSSEC root trust anchor (auto-updated)
     auto-trust-anchor-file: /var/lib/unbound/root.key
@@ -50,7 +50,7 @@ sudo systemctl restart unbound
 
 ## Step 4: Test DNSSEC Validation
 
-Test with a signed domain:
+Test with an intentionally broken signed domain:
 
 ```bash
 dig @127.0.0.1 dnssec-failed.org +dnssec
@@ -84,7 +84,7 @@ sudo unbound-control stats | grep num.answer.secure
 
 If a legitimate domain fails DNSSEC validation, you can temporarily disable validation for that specific domain:
 
-```yaml
+```conf
 server:
     domain-insecure: "broken-domain.example"
 ```
@@ -94,4 +94,3 @@ This should only be used as a temporary workaround.
 ## Conclusion
 
 DNSSEC validation with Unbound on RHEL 9 protects against DNS spoofing and cache poisoning attacks. With automatic trust anchor management, Unbound keeps DNSSEC validation up to date without manual intervention.
-RHEL
