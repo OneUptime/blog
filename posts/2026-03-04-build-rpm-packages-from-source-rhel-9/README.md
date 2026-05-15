@@ -85,7 +85,7 @@ install -m 0755 hello %{buildroot}%{_bindir}/hello
 %{_bindir}/hello
 
 %changelog
-* Tue Mar 04 2026 Your Name <you@example.com> - 1.0.0-1
+* Wed Mar 04 2026 Your Name <you@example.com> - 1.0.0-1
 - Initial package
 SPECEOF
 ```
@@ -120,7 +120,7 @@ Key sections:
 
 ### Prepare the Source
 
-Put your source tarball in the SOURCES directory. The tarball name must match what `Source0` in the spec file expects:
+Put your source tarball in the SOURCES directory. The tarball name must match what `Source0` in the spec file expects. With `%setup -q`, it should also unpack into a top-level `hello-1.0.0` directory:
 
 ```bash
 # Place your source archive in the SOURCES directory
@@ -182,6 +182,9 @@ rpmbuild -bb ~/rpmbuild/SPECS/some-package.spec
 If the source RPM is in a repository:
 
 ```bash
+# Install the dnf download plugin if needed
+sudo dnf install -y dnf-plugins-core
+
 # Download the source RPM
 dnf download --source httpd
 
@@ -243,7 +246,7 @@ If you are not sure what you need, try building, see what fails, and add the mis
 
 ### Runtime Dependencies
 
-DNF automatically detects many runtime dependencies (shared libraries), but you should explicitly list anything that auto-detection might miss:
+RPM automatically generates many runtime dependencies (shared libraries), but you should explicitly list anything that auto-detection might miss:
 
 ```spec
 # Runtime dependencies
@@ -304,7 +307,7 @@ rpmlint ~/rpmbuild/SPECS/hello.spec
 rpmlint ~/rpmbuild/RPMS/x86_64/hello-1.0.0-1.el9.x86_64.rpm
 ```
 
-3. **Keep the changelog updated.** It is required by RPM and useful for tracking what changed between releases.
+3. **Keep the changelog updated.** It is useful for tracking what changed between releases and is expected by many packaging guidelines.
 
 4. **Test installs on a clean system.** Build in mock, then test the installation on a fresh VM or container.
 
