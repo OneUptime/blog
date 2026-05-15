@@ -12,9 +12,17 @@ Deploying Valkey (Redis Fork) on RHEL provides a stable and secure foundation fo
 
 ## Prerequisites
 
-- RHEL with a valid subscription or CentOS Stream 9
+- RHEL 9.7 or later with a valid subscription, or CentOS Stream 9 with the AppStream repository enabled
 - Root or sudo access
 - A terminal session
+
+## Step 1: Install Valkey
+
+Install the Valkey package from the enabled RHEL repositories:
+
+```bash
+sudo dnf install valkey
+```
 
 ## Step 2: Configure the Service
 
@@ -23,27 +31,27 @@ Edit the configuration file to match your environment:
 ```bash
 # Open the configuration file
 
-sudo vi /etc/<service>/config.conf
+sudo vi /etc/valkey/valkey.conf
 ```
 
 Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
 
 ```bash
 # Restart the service to apply changes
-sudo systemctl restart <service-name>
+sudo systemctl restart valkey
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
 # Enable the service to start on boot
-sudo systemctl enable <service-name>
+sudo systemctl enable valkey
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start valkey
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status valkey
 ```
 
 
@@ -53,16 +61,19 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status valkey
+
+# Test the Valkey server
+valkey-cli PING
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u valkey --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u valkey -e --no-pager`.
+- Ensure the required package is installed: `rpm -q valkey`.
 
 ## Conclusion
 
