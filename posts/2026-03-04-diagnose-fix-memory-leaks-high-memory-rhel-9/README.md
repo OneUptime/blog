@@ -59,7 +59,7 @@ Watch a specific process for memory growth over time:
 pidstat -r -p $(pgrep my-app | head -1) 5 60
 ```
 
-This samples every 5 seconds for 60 intervals. If RSS grows continuously, you likely have a memory leak.
+This samples every 5 seconds for 60 intervals. If RSS grows continuously without falling after workload activity stops, you may have a memory leak.
 
 ## Step 4: Check for OOM Events
 
@@ -94,7 +94,7 @@ Key columns:
 
 - **Kbytes** - Size of the mapping
 - **RSS** - Resident pages
-- **Dirty** - Modified pages (potentially leaked)
+- **Dirty** - Modified pages; growing private dirty memory can help identify writable memory growth
 
 ## Step 6: Trace Memory Allocations
 
@@ -104,7 +104,7 @@ Trace outstanding allocations that are not freed:
 
 ```bash
 sudo dnf install bcc-tools -y
-sudo /usr/share/bcc/tools/memleak -p $(pgrep my-app | head -1) 30
+sudo /usr/share/bcc/tools/memleak -p $(pgrep my-app | head -1) -o 30000 5
 ```
 
 This shows stack traces for allocations not freed after 30 seconds.
@@ -136,9 +136,11 @@ cat /proc/meminfo | grep -E "Slab|SReclaimable|SUnreclaim"
 
 ## Step 8: Free Cached Memory
 
-If the system is under memory pressure, drop caches:
+For memory testing, or as a temporary emergency measure, drop clean caches:
 
 ```bash
+sync
+
 # Drop page cache
 
 echo 1 | sudo tee /proc/sys/vm/drop_caches
@@ -157,9 +159,10 @@ This is a temporary measure. The caches will rebuild.
 Prevent a process from using too much memory:
 
 ```bash
+PID=$(pgrep my-app | head -1)
 sudo mkdir -p /sys/fs/cgroup/mem-limited
-echo "2G" | sudo tee /sys/fs/cgroup/mem-limited/memory.max
-echo "1G" | sudo tee /sys/fs/cgroup/mem-limited/memory.high
+echo 2147483648 | sudo tee /sys/fs/cgroup/mem-limited/memory.max
+echo 1073741824 | sudo tee /sys/fs/cgroup/mem-limited/memory.high
 echo $PID | sudo tee /sys/fs/cgroup/mem-limited/cgroup.procs
 ```
 
