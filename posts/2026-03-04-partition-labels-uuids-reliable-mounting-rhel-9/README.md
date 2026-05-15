@@ -18,7 +18,7 @@ UUIDs (Universally Unique Identifiers) and filesystem labels solve this problem 
 
 ### UUID
 
-Every filesystem gets a unique UUID when formatted. It does not change unless you reformat the partition.
+Every filesystem gets a unique UUID when formatted. It does not change unless you reformat the partition or explicitly change it with filesystem tools.
 
 ```bash
 # View UUIDs for all block devices
@@ -109,7 +109,7 @@ echo "UUID=${UUID}  /mnt/data  xfs  defaults  0 0"
 
 ## Using Labels in /etc/fstab
 
-Labels are more readable but require you to keep them unique:
+Labels are more readable but require you to keep them unique across detected filesystems:
 
 ```bash
 # Label-based mount entry
@@ -118,7 +118,7 @@ LABEL=data  /mnt/data  xfs  defaults  0 0
 
 ## Using PARTUUIDs in /etc/fstab
 
-PARTUUID is useful when you have not yet formatted the partition or when you want to identify the partition regardless of filesystem:
+PARTUUID is useful when you want to identify the partition regardless of filesystem:
 
 ```bash
 # PARTUUID mount entry
@@ -158,7 +158,7 @@ sudo parted /dev/sdb name 1 "data-partition"
 sudo xfs_admin -L "data" /dev/sdb1
 ```
 
-GPT partition names are not usable in fstab. You need filesystem labels or UUIDs for mounting.
+GPT partition names are not filesystem labels. To use a GPT partition name in fstab, use `PARTLABEL=`, not `LABEL=`.
 
 ## Best Practices
 
