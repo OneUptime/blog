@@ -57,11 +57,15 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
+    }
+    http = {
+      source  = "hashicorp/http"
+      version = "~> 3.5"
     }
     talos = {
       source  = "siderolabs/talos"
-      version = "~> 0.5"
+      version = "~> 0.11"
     }
   }
 }
@@ -116,13 +120,13 @@ variable "worker_instance_type" {
 variable "talos_version" {
   description = "Talos Linux version"
   type        = string
-  default     = "v1.6.0"
+  default     = "v1.13.2"
 }
 
 variable "kubernetes_version" {
   description = "Kubernetes version"
   type        = string
-  default     = "v1.29.0"
+  default     = "v1.36.0"
 }
 
 variable "vpc_cidr" {
@@ -270,10 +274,12 @@ resource "talos_machine_secrets" "this" {}
 
 # Get the Talos machine configuration for control plane
 data "talos_machine_configuration" "controlplane" {
-  cluster_name     = var.cluster_name
-  machine_type     = "controlplane"
-  cluster_endpoint = "https://${aws_lb.talos_api.dns_name}:6443"
-  machine_secrets  = talos_machine_secrets.this.machine_secrets
+  cluster_name       = var.cluster_name
+  machine_type       = "controlplane"
+  cluster_endpoint   = "https://${aws_lb.talos_api.dns_name}:6443"
+  machine_secrets    = talos_machine_secrets.this.machine_secrets
+  talos_version      = var.talos_version
+  kubernetes_version = var.kubernetes_version
 
   config_patches = [
     yamlencode({
@@ -281,14 +287,13 @@ data "talos_machine_configuration" "controlplane" {
         install = {
           image = "ghcr.io/siderolabs/installer:${var.talos_version}"
         }
-        certSANs = [
-          aws_lb.talos_api.dns_name
-        ]
       }
       cluster = {
         allowSchedulingOnControlPlanes = false
-        proxy = {
-          disabled = true  # Using Cilium for kube-proxy replacement
+        apiServer = {
+          certSANs = [
+            aws_lb.talos_api.dns_name
+          ]
         }
       }
     })
@@ -297,10 +302,12 @@ data "talos_machine_configuration" "controlplane" {
 
 # Get the Talos machine configuration for workers
 data "talos_machine_configuration" "worker" {
-  cluster_name     = var.cluster_name
-  machine_type     = "worker"
-  cluster_endpoint = "https://${aws_lb.talos_api.dns_name}:6443"
-  machine_secrets  = talos_machine_secrets.this.machine_secrets
+  cluster_name       = var.cluster_name
+  machine_type       = "worker"
+  cluster_endpoint   = "https://${aws_lb.talos_api.dns_name}:6443"
+  machine_secrets    = talos_machine_secrets.this.machine_secrets
+  talos_version      = var.talos_version
+  kubernetes_version = var.kubernetes_version
 
   config_patches = [
     yamlencode({
@@ -343,7 +350,7 @@ resource "talos_machine_bootstrap" "this" {
 }
 
 # Retrieve the kubeconfig
-data "talos_cluster_kubeconfig" "this" {
+resource "talos_cluster_kubeconfig" "this" {
   depends_on = [talos_machine_bootstrap.this]
 
   client_configuration = talos_machine_secrets.this.client_configuration
@@ -357,22 +364,23 @@ data "talos_cluster_kubeconfig" "this" {
 ```hcl
 # instances.tf
 
-# Find the Talos AMI
-data "aws_ami" "talos" {
-  most_recent = true
-  owners      = ["540036508848"]  # Sidero Labs
+data "http" "talos_cloud_images" {
+  url = "https://github.com/siderolabs/talos/releases/download/${var.talos_version}/cloud-images.json"
+}
 
-  filter {
-    name   = "name"
-    values = ["talos-${var.talos_version}-*-amd64"]
-  }
+locals {
+  talos_aws_amis = [
+    for image in jsondecode(data.http.talos_cloud_images.response_body) : image
+    if image.cloud == "aws" && image.region == var.aws_region && image.arch == "amd64"
+  ]
+  talos_ami_id = one(local.talos_aws_amis).id
 }
 
 # Control plane instances
 resource "aws_instance" "controlplane" {
   count = var.controlplane_count
 
-  ami                    = data.aws_ami.talos.id
+  ami                    = local.talos_ami_id
   instance_type          = var.controlplane_instance_type
   subnet_id              = aws_subnet.talos[count.index % 3].id
   vpc_security_group_ids = [aws_security_group.talos.id]
@@ -400,7 +408,7 @@ resource "aws_lb_target_group_attachment" "controlplane" {
 resource "aws_instance" "worker" {
   count = var.worker_count
 
-  ami                    = data.aws_ami.talos.id
+  ami                    = local.talos_ami_id
   instance_type          = var.worker_instance_type
   subnet_id              = aws_subnet.talos[count.index % 3].id
   vpc_security_group_ids = [aws_security_group.talos.id]
@@ -423,7 +431,7 @@ resource "aws_instance" "worker" {
 # outputs.tf
 output "kubeconfig" {
   description = "Kubeconfig for the cluster"
-  value       = data.talos_cluster_kubeconfig.this.kubeconfig_raw
+  value       = talos_cluster_kubeconfig.this.kubeconfig_raw
   sensitive   = true
 }
 
