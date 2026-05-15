@@ -44,7 +44,9 @@ Or use an include directive:
 
 ```nginx
 # In /etc/nginx/nginx.conf, add at the top level:
-include /etc/nginx/stream.d/*.conf;
+stream {
+    include /etc/nginx/stream.d/*.conf;
+}
 ```
 
 ```bash
@@ -226,9 +228,11 @@ server {
 ## Step 9: Configure SELinux and Firewall
 
 ```bash
-# Allow Nginx to bind to non-standard ports
+# Allow Nginx to bind to non-standard TCP ports
 sudo semanage port -a -t http_port_t -p tcp 3306
-sudo semanage port -a -t http_port_t -p udp 53
+
+# Standard DNS port 53 is already labeled for DNS by SELinux.
+# If SELinux blocks a UDP listener, review the AVC denial and add a custom policy.
 
 # Allow Nginx to connect to backend ports
 sudo setsebool -P httpd_can_network_connect on
@@ -278,4 +282,4 @@ sudo tail -f /var/log/nginx/stream-mysql-error.log
 
 ## Summary
 
-The Nginx stream module on RHEL provides TCP and UDP load balancing for any network service. You can load balance databases, DNS servers, mail servers, and any other TCP/UDP service. SNI-based routing allows multiplexing multiple TLS services on a single IP address. Health checks automatically remove failing backends from the pool.
+The Nginx stream module on RHEL provides TCP and UDP load balancing for any network service. You can load balance databases, DNS servers, mail servers, and any other TCP/UDP service. SNI-based routing allows multiplexing multiple TLS services on a single IP address. Passive failure handling with `max_fails` and `fail_timeout` temporarily removes failing backends from the pool.
