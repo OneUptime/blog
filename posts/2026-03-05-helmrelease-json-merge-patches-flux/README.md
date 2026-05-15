@@ -208,7 +208,7 @@ After applying the HelmRelease, verify that your patches were applied correctly:
 
 ```bash
 # Check the HelmRelease status
-flux get helmrelease my-app
+flux get helmreleases -n default
 
 # Inspect the actual resource to confirm the patch was applied
 kubectl get deployment my-app -o yaml | grep -A 5 labels
