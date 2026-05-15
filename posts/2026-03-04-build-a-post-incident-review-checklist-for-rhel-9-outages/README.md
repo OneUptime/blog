@@ -35,14 +35,14 @@ Production environments require systematic verification before, during, and afte
 
 ```bash
 # Enable the service to start on boot
-
-sudo systemctl enable <service-name>
+SERVICE_NAME=sshd.service
+sudo systemctl enable "$SERVICE_NAME"
 
 # Start the service
-sudo systemctl start <service-name>
+sudo systemctl start "$SERVICE_NAME"
 
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status "$SERVICE_NAME"
 ```
 
 
@@ -61,8 +61,8 @@ uptime
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u sshd.service -e --no-pager`.
+- Ensure all required packages are installed: `rpm -q package-name`.
 
 ## Conclusion
 
