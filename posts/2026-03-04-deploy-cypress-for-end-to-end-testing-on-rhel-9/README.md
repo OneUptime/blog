@@ -13,15 +13,15 @@ Cypress is a JavaScript end-to-end testing framework that runs directly in the b
 ## Prerequisites
 
 - RHEL with root or sudo access
-- Node.js 18 or newer
+- Node.js 20 or newer
 - A web application to test
 
 ## Installing Node.js
 
 ```bash
-# Install Node.js 18 from AppStream
+# Install Node.js 20 from AppStream
 
-sudo dnf module install -y nodejs:18
+sudo dnf module install -y nodejs:20
 ```
 
 Verify:
@@ -40,13 +40,9 @@ Cypress requires several system libraries for running browsers:
 # Install Cypress system dependencies
 sudo dnf install -y \
   xorg-x11-server-Xvfb \
-  gtk3 \
+  gtk3-devel \
   nss \
-  alsa-lib \
-  libXScrnSaver \
-  GConf2 \
-  at-spi2-atk \
-  mesa-libgbm
+  alsa-lib
 ```
 
 ## Setting Up a Cypress Project
@@ -230,7 +226,6 @@ describe('Dashboard', () => {
 ## Using Fixtures
 
 ```json
-// cypress/fixtures/users.json
 {
   "validUser": {
     "email": "user@example.com",
@@ -274,8 +269,11 @@ npx cypress run --browser firefox
 For parallel runs, use Cypress Cloud or split tests manually:
 
 ```bash
-# Run specific specs in parallel CI jobs
-npx cypress run --spec "cypress/e2e/login.cy.js,cypress/e2e/homepage.cy.js"
+# CI job 1
+npx cypress run --spec "cypress/e2e/login.cy.js"
+
+# CI job 2
+npx cypress run --spec "cypress/e2e/homepage.cy.js"
 ```
 
 ## CI/CD Integration
@@ -289,7 +287,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: cypress-io/github-action@v6
+      - uses: cypress-io/github-action@v7
         with:
           build: npm run build
           start: npm start
