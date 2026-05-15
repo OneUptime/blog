@@ -13,9 +13,9 @@ fio (Flexible I/O Tester) is the standard tool for disk benchmarking on Linux. I
 ## Installing fio
 
 ```bash
-# Install fio from the base RHEL repository
+# Install fio and the libaio engine from the RHEL repositories
 
-sudo dnf install -y fio
+sudo dnf install -y fio fio-engine-libaio
 ```
 
 ## Sequential Read/Write Test
