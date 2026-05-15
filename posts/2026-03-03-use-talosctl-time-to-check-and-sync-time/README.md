@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, Talosctl, Time Synchronization, NTP, Cluster Administration
 
-Description: Learn how to use the talosctl time command to check and synchronize time across Talos Linux nodes for cluster reliability
+Description: Learn how to use the talosctl time command to check time across Talos Linux nodes for cluster reliability
 
 ---
 
-Accurate time synchronization is surprisingly important in a Kubernetes cluster. Certificates, TLS handshakes, log correlation, distributed consensus in etcd, and many other operations depend on nodes having consistent time. The `talosctl time` command lets you check the time on your Talos Linux nodes and verify that time synchronization is working correctly.
+Accurate time synchronization is surprisingly important in a Kubernetes cluster. Certificates, TLS handshakes, log correlation, distributed consensus in etcd, and many other operations depend on nodes having consistent time. The `talosctl time` command lets you check the time on your Talos Linux nodes and compare it with an NTP server.
 
 ## Why Time Matters in Kubernetes
 
@@ -32,14 +32,25 @@ To check the time on a node:
 talosctl time --nodes 192.168.1.10
 ```
 
-The output shows the node's current time and information about its NTP synchronization status:
+The output shows the node's current time:
 
 ```text
-NTP-SERVER          NTP-OFFSET
-pool.ntp.org        +0.002s
+NODE           NODE-TIME
+192.168.1.10   2026-03-03 12:00:00.000000000 +0000 UTC
 ```
 
-The offset tells you how far the node's clock is from the NTP server. A small offset (under 100 milliseconds) is normal and healthy.
+To compare the node's clock with an NTP server, use `--check`:
+
+```bash
+talosctl time --nodes 192.168.1.10 --check time.cloudflare.com
+```
+
+```text
+NODE           NTP-SERVER            NODE-TIME                                 NTP-SERVER-TIME
+192.168.1.10   time.cloudflare.com   2026-03-03 12:00:00.000000000 +0000 UTC   2026-03-03 12:00:00.002000000 +0000 UTC
+```
+
+The difference between `NODE-TIME` and `NTP-SERVER-TIME` tells you how far the node's clock is from the NTP server. A small difference (under 100 milliseconds) is normal and healthy.
 
 ## Checking Time Across Multiple Nodes
 
@@ -50,27 +61,27 @@ To verify time consistency across your cluster:
 talosctl time --nodes 192.168.1.10,192.168.1.11,192.168.1.12,192.168.1.20,192.168.1.21
 ```
 
-The output shows the NTP offset for each node. All offsets should be small and in the same general range. If one node has a significantly different offset, it may have a time synchronization problem.
+The output shows the current time for each node. All node times should be close to one another. If one node has a significantly different time, it may have a time synchronization problem.
 
 ## Understanding NTP in Talos Linux
 
-Talos Linux includes a built-in NTP client that automatically synchronizes the system clock with NTP servers. By default, it uses `pool.ntp.org` as the NTP server, but you can configure custom NTP servers in the machine configuration.
+Talos Linux includes a built-in time sync service that implements SNTP and automatically synchronizes the system clock with time servers. By default, it uses `time.cloudflare.com` as the NTP server, but you can configure custom NTP servers with a `TimeSyncConfig` document.
 
-The NTP client runs as part of the Talos system services and does not require any manual configuration for basic usage. It starts automatically when the node boots and continuously adjusts the clock to stay synchronized.
+The time sync service runs as part of the Talos system services and does not require any manual configuration for basic usage. It starts automatically when the node boots and continuously adjusts the clock to stay synchronized.
 
 ## Configuring NTP Servers
 
-If you need to use specific NTP servers (for example, internal NTP servers in an air-gapped environment), configure them in the machine configuration:
+If you need to use specific NTP servers (for example, internal NTP servers in an air-gapped environment), configure them with `TimeSyncConfig`:
 
 ```yaml
-# Machine configuration for custom NTP servers
-machine:
-  time:
-    disabled: false
-    servers:
-      - ntp1.internal.example.com
-      - ntp2.internal.example.com
-      - ntp3.internal.example.com
+# TimeSyncConfig for custom NTP servers
+apiVersion: v1alpha1
+kind: TimeSyncConfig
+ntp:
+  servers:
+    - ntp1.internal.example.com
+    - ntp2.internal.example.com
+    - ntp3.internal.example.com
 ```
 
 After applying this configuration:
@@ -80,7 +91,7 @@ After applying this configuration:
 talosctl apply-config --nodes 192.168.1.10 --file updated-config.yaml
 
 # Verify the time sync is using the new servers
-talosctl time --nodes 192.168.1.10
+talosctl get timeservers --nodes 192.168.1.10
 ```
 
 ## Scripting Time Checks
@@ -92,34 +103,31 @@ Automate time synchronization verification across your cluster:
 # time-check.sh - Verify time synchronization across the cluster
 
 NODES="192.168.1.10 192.168.1.11 192.168.1.12 192.168.1.20 192.168.1.21 192.168.1.22"
-MAX_OFFSET_SECONDS=1
-
 echo "Time Synchronization Check - $(date)"
 echo "======================================"
 
 ALL_OK=true
 
 for node in $NODES; do
-  TIME_OUTPUT=$(talosctl time --nodes "$node" 2>&1)
+  TIME_OUTPUT=$(talosctl time --nodes "$node" --check time.cloudflare.com 2>&1)
   echo "Node $node: $TIME_OUTPUT"
 
-  # Parse the offset value (this will depend on the exact output format)
-  OFFSET=$(echo "$TIME_OUTPUT" | tail -1 | awk '{print $2}' | tr -d '+s')
+  SYNC_STATUS=$(talosctl get timestatus --nodes "$node" --output yaml 2>/dev/null | grep "synced:" | awk '{print $2}')
 
-  if [ -n "$OFFSET" ]; then
-    # Convert to absolute value and check threshold
-    ABS_OFFSET=$(echo "$OFFSET" | tr -d '-')
-    # Simple check - would need more sophisticated parsing for real use
-    echo "  Offset: ${OFFSET}s"
+  if [ "$SYNC_STATUS" != "true" ]; then
+    ALL_OK=false
+    echo "  Time sync status: not synced"
+  else
+    echo "  Time sync status: synced"
   fi
 done
 
 if [ "$ALL_OK" = true ]; then
   echo ""
-  echo "All nodes are within acceptable time offset."
+  echo "All nodes report synchronized time."
 else
   echo ""
-  echo "WARNING: Some nodes have excessive time offset!"
+  echo "WARNING: Some nodes do not report synchronized time!"
 fi
 ```
 
@@ -127,17 +135,23 @@ fi
 
 ### Large NTP Offset
 
-If a node has a large NTP offset (more than a second), it might be having trouble reaching the NTP server:
+If a node's time differs from the NTP server by more than a second, it might be having trouble reaching the NTP server:
 
 ```bash
 # Check time on the problematic node
-talosctl time --nodes 192.168.1.20
+talosctl time --nodes 192.168.1.20 --check time.cloudflare.com
 
-# Check network connectivity to NTP servers
-talosctl dmesg --nodes 192.168.1.20 | grep -i ntp
+# Check time sync status
+talosctl get timestatus --nodes 192.168.1.20
 
-# Check the machine configuration for NTP settings
-talosctl get machineconfig --nodes 192.168.1.20 -o yaml | grep -A5 time:
+# Check which time servers Talos is using
+talosctl get timeservers --nodes 192.168.1.20
+
+# Check all configured time server sources
+talosctl get timeserverspec --namespace=network-config --nodes 192.168.1.20
+
+# Check time sync logs
+talosctl logs controller-runtime --nodes 192.168.1.20 | grep -i time.Sync
 ```
 
 Common causes of large offsets:
@@ -152,10 +166,11 @@ If the node cannot reach any NTP server:
 
 ```bash
 # Check the configured NTP servers
-talosctl get machineconfig --nodes 192.168.1.20 -o yaml | grep -A10 time:
+talosctl get timeservers --nodes 192.168.1.20
 
-# Test network connectivity
-talosctl dmesg --nodes 192.168.1.20 | grep -iE "ntp|time"
+# Check time sync status and logs
+talosctl get timestatus --nodes 192.168.1.20
+talosctl logs controller-runtime --nodes 192.168.1.20 | grep -i time.Sync
 ```
 
 Solutions:
@@ -169,8 +184,8 @@ Solutions:
 If you notice the clock jumping (large sudden changes), it might be due to VM hypervisor time synchronization conflicting with NTP:
 
 ```bash
-# Check kernel messages for time adjustments
-talosctl dmesg --nodes 192.168.1.20 | grep -i "clock\|time"
+# Check time sync logs for time adjustments
+talosctl logs controller-runtime --nodes 192.168.1.20 | grep -i "time.Sync"
 ```
 
 In virtualized environments, disable hypervisor time synchronization and let Talos handle time sync through NTP instead.
@@ -180,13 +195,13 @@ In virtualized environments, disable hypervisor time synchronization and let Tal
 In environments without internet access, you need to run your own NTP servers:
 
 ```yaml
-# Machine configuration for air-gapped NTP
-machine:
-  time:
-    disabled: false
-    servers:
-      - 10.0.0.1  # Internal NTP server 1
-      - 10.0.0.2  # Internal NTP server 2
+# TimeSyncConfig for air-gapped NTP
+apiVersion: v1alpha1
+kind: TimeSyncConfig
+ntp:
+  servers:
+    - 10.0.0.1  # Internal NTP server 1
+    - 10.0.0.2  # Internal NTP server 2
 ```
 
 Make sure your internal NTP servers are:
@@ -202,7 +217,7 @@ After bootstrapping a new cluster, one of the first things to verify is time syn
 # Check time on all nodes immediately after bootstrap
 ALL_NODES="192.168.1.10,192.168.1.11,192.168.1.12,192.168.1.20,192.168.1.21"
 
-talosctl time --nodes "$ALL_NODES"
+talosctl time --nodes "$ALL_NODES" --check time.cloudflare.com
 ```
 
 If time is not synchronized at bootstrap time, you may encounter certificate issues and etcd problems from the very start.
@@ -222,8 +237,9 @@ echo "=== Cluster Health Check ==="
 # Check services
 for node in $NODES; do
   echo "Node $node:"
-  echo "  Services: $(talosctl services --nodes "$node" 2>/dev/null | grep -c Running) running"
-  echo "  Time: $(talosctl time --nodes "$node" 2>/dev/null | tail -1)"
+  echo "  Services: $(talosctl service --nodes "$node" 2>/dev/null | grep -c Running) running"
+  echo "  Time: $(talosctl time --nodes "$node" --check time.cloudflare.com 2>/dev/null | tail -1)"
+  echo "  Sync: $(talosctl get timestatus --nodes "$node" 2>/dev/null | tail -1)"
   echo "  Memory: $(talosctl memory --nodes "$node" 2>/dev/null | tail -1)"
   echo ""
 done
