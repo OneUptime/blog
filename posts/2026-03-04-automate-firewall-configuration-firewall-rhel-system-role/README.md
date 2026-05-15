@@ -24,7 +24,7 @@ Use the firewall RHEL System Role to manage firewalld zones and rules with Ansib
 sudo dnf install -y rhel-system-roles
 ```
 
-The roles are installed to `/usr/share/ansible/roles/`.
+On current RHEL releases, the collection is installed to `/usr/share/ansible/collections/ansible_collections/redhat/rhel_system_roles/`.
 
 ## Step 2 - Create an Inventory File
 
@@ -46,15 +46,23 @@ Create `configure-firewall.yml`:
 - name: How to Automate Firewall Configuration Using the firewall RHEL System Role
   hosts: managed_hosts
   become: true
-  roles:
-    - role: rhel-system-roles.firewall
+  tasks:
+    - name: Allow HTTPS traffic
+      ansible.builtin.include_role:
+        name: redhat.rhel_system_roles.firewall
+      vars:
+        firewall:
+          - service: https
+            state: enabled
+            runtime: true
+            permanent: true
 ```
 
-Add the role-specific variables. Check the role documentation for available options:
+Adjust the role-specific variables for your environment. Check the role documentation for available options:
 
 ```bash
 ls /usr/share/doc/rhel-system-roles/firewall/
-cat /usr/share/doc/rhel-system-roles/firewall/README.md
+cat /usr/share/ansible/collections/ansible_collections/redhat/rhel_system_roles/roles/firewall/README.md
 ```
 
 ## Step 4 - Run the Playbook
@@ -68,10 +76,8 @@ ansible-playbook -i inventory.ini configure-firewall.yml
 On the managed hosts, verify that the configuration was applied:
 
 ```bash
-# Check relevant service or configuration
-
-systemctl status <service>
-cat <config-file>
+systemctl status firewalld
+firewall-cmd --list-services
 ```
 
 ## Idempotency
