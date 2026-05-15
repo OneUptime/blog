@@ -19,7 +19,7 @@ Getting dependencies right means your services start in the correct order, fail 
 The first thing to understand is that systemd separates two concepts that people often confuse:
 
 - **Ordering** (After/Before): Controls the sequence. "Start A after B is started."
-- **Requirements** (Requires/Wants): Controls whether to start at all. "A needs B to be running."
+- **Requirements** (Requires/Wants): Controls whether related units are pulled into the same start transaction. "Starting A should also start B."
 
 These are independent. You can have ordering without requirements, or requirements without ordering. Usually you want both.
 
@@ -51,7 +51,7 @@ Description=My Web Application
 After=network-online.target postgresql.service
 ```
 
-This means: "Start my web app only after the network is ready AND PostgreSQL has started."
+This means: "Start my web app only after `network-online.target` has been reached and PostgreSQL's start job has finished."
 
 `Before` is the reverse. It is less commonly used in custom services but works the same way:
 
@@ -69,7 +69,7 @@ Note that `After` only affects ordering, not whether the other service starts at
 
 ## Requires: Hard Dependencies
 
-`Requires` creates a hard dependency. If the required unit fails to start, the requiring unit also fails:
+`Requires` creates a hard dependency. It pulls in the required unit, and when combined with `After`, a failed required unit prevents the requiring unit from starting:
 
 ```ini
 [Unit]
@@ -80,9 +80,9 @@ Requires=postgresql.service
 
 With this configuration:
 - If PostgreSQL fails to start, the web app will not start either
-- If PostgreSQL is stopped while the web app is running, systemd will also stop the web app
+- If PostgreSQL is explicitly stopped or restarted while the web app is running, systemd will also stop or restart the web app
 
-That second behavior catches people off guard. If you do not want the web app to be stopped when PostgreSQL stops, use `Wants` instead.
+That second behavior catches people off guard. If you do not want the web app to be stopped when PostgreSQL is explicitly stopped, use `Wants` instead.
 
 ---
 
@@ -108,7 +108,7 @@ In this example:
 
 ## BindsTo: Tight Coupling
 
-`BindsTo` is even stronger than `Requires`. If the bound unit stops, is restarted, or enters a failed state, the binding unit is stopped too:
+`BindsTo` is even stronger than `Requires`. If the bound unit stops or unexpectedly becomes inactive, the binding unit is stopped too:
 
 ```ini
 [Unit]
@@ -123,7 +123,7 @@ This is useful for sidecar processes, log shippers, or monitoring agents that ha
 flowchart LR
     A[mywebapp.service] -->|BindsTo| B[sidecar.service]
     A -->|If mywebapp stops| C[sidecar also stops]
-    A -->|If mywebapp restarts| D[sidecar also restarts]
+    A -->|If mywebapp becomes inactive| D[sidecar stops]
 ```
 
 ---
@@ -153,7 +153,7 @@ Description=iptables Firewall
 Conflicts=firewalld.service
 ```
 
-Starting iptables will stop firewalld, and starting firewalld will stop iptables. Use this when two services provide the same functionality and running both would cause problems.
+Starting iptables will stop firewalld, and starting firewalld will stop iptables. If you need one service to be fully stopped before the other starts, add an ordering directive such as `After=` or `Before=`. Use this when two services provide the same functionality and running both would cause problems.
 
 ---
 
@@ -310,7 +310,7 @@ systemd-analyze verify /etc/systemd/system/myapp-*.service
 
 ## Common Mistakes
 
-**Using After without Requires.** `After=postgresql.service` does not start PostgreSQL. It only says "if PostgreSQL is starting, wait for it." If you need PostgreSQL to be running, add `Requires=` or `Wants=` as well.
+**Using After without Requires or Wants.** `After=postgresql.service` does not start PostgreSQL. It only says "if PostgreSQL is starting, wait for its start job to finish." If you need PostgreSQL to be pulled in, add `Requires=` or `Wants=` as well.
 
 **Circular dependencies.** If A depends on B and B depends on A, systemd will break the cycle but the result is unpredictable. Use `systemd-analyze verify` to catch these before they bite you.
 
