@@ -39,20 +39,27 @@ version: 3
 
 images:
   base_image:
-    name: registry.redhat.io/ansible-automation-platform/de-minimal-rhel9:latest
+    name: registry.redhat.io/ansible-automation-platform-26/de-minimal-rhel9:latest
 
 dependencies:
   galaxy:
     collections:
-      - name: ansible.eda
-        version: ">=1.4.0"
       - name: community.general
       - name: redhat.insights
   python:
     - requests>=2.28.0
     - jmespath
+  python_interpreter:
+    package_system: "python3.12"
   system:
     - java-17-openjdk-headless [platform:rpm]
+  exclude:
+    all_from_collections:
+      # ansible.eda is already installed in de-minimal
+      - ansible.eda
+
+options:
+  package_manager_path: /usr/bin/microdnf
 
 additional_build_steps:
   prepend_base:
@@ -79,10 +86,13 @@ podman images | grep my-custom-de
 
 ```bash
 # Run a rulebook inside the custom DE
-ansible-rulebook \
+podman run --rm -it \
+  -v "$PWD:/runner:Z" \
+  -w /runner \
+  my-custom-de:latest \
+  ansible-rulebook \
   --rulebook test-rulebook.yml \
-  --inventory inventory.yml \
-  --decision-env my-custom-de:latest
+  --inventory inventory.yml
 ```
 
 ## Pushing to a Registry
@@ -104,7 +114,7 @@ podman push registry.example.com/eda/my-custom-de:latest
 If you need custom event sources, include them as a local collection.
 
 ```bash
-# Create a requirements file with local sources
+# Create a directory for local collection artifacts
 mkdir -p collections
 # Place your custom collection in collections/
 
@@ -116,8 +126,8 @@ mkdir -p collections
 dependencies:
   galaxy:
     collections:
-      - name: myorg.custom_sources
-        source: ./collections/myorg-custom_sources-1.0.0.tar.gz
+      - name: ./collections/myorg-custom_sources-1.0.0.tar.gz
+        type: file
 ```
 
 Custom decision environments give you full control over the runtime that executes your EDA rulebooks, ensuring consistent behavior across development and production.
