@@ -8,7 +8,7 @@ Description: Learn how to use RHEL's system-wide cryptographic policies to contr
 
 ---
 
-One of the best features Red Hat introduced in recent RHEL releases is the system-wide crypto policy. Instead of configuring TLS settings in every single application, you set a policy once and everything on the system follows it. Apache, Nginx, OpenSSH, GnuTLS, OpenSSL, NSS-based apps - they all pick up the same baseline.
+One of the best features Red Hat introduced in recent RHEL releases is the system-wide crypto policy. Instead of configuring TLS settings in every single application, you set a policy once and supported applications on the system follow it by default. Apache, Nginx, OpenSSH, GnuTLS, OpenSSL, NSS-based apps - they all pick up the same baseline unless you explicitly override it.
 
 This post explains how these policies work, how to switch between them, and how to create custom sub-policies for your specific requirements.
 
@@ -45,16 +45,16 @@ RHEL ships with four standard policies:
 
 | Policy | TLS Minimum | Key Sizes | Use Case |
 |--------|-------------|-----------|----------|
-| LEGACY | TLS 1.0 | 1024-bit RSA | Compatibility with old systems |
+| LEGACY | TLS 1.2 | 2048-bit RSA | Compatibility with old systems |
 | DEFAULT | TLS 1.2 | 2048-bit RSA | General purpose, balanced |
 | FUTURE | TLS 1.2 | 3072-bit RSA | Forward-looking, stricter |
-| FIPS | TLS 1.2 | 2048-bit RSA | FIPS 140-2/140-3 compliance |
+| FIPS | TLS 1.2 | 2048-bit RSA | Helps meet FIPS 140 requirements when the system is running in FIPS mode |
 
-View the details of any policy:
+View the expanded details of the current policy:
 
 ```bash
-# Show what a specific policy enables
-update-crypto-policies --show --show-modules
+# Show the expanded settings for the current policy
+cat /etc/crypto-policies/state/CURRENT.pol
 ```
 
 ## Switching Policies
@@ -66,7 +66,7 @@ Changing the system-wide policy is a single command:
 sudo update-crypto-policies --set FUTURE
 ```
 
-This takes effect immediately for new connections. Running services need to be restarted to pick up the change:
+This updates the generated policy files immediately. Running services need to be restarted to pick up the change:
 
 ```bash
 # Restart services to apply the new crypto policy
@@ -84,14 +84,14 @@ sudo systemctl reboot
 
 ## Setting the LEGACY Policy
 
-If you need to connect to old systems that only support TLS 1.0 or weak ciphers:
+If you need to connect to old systems that require weaker algorithms:
 
 ```bash
 # Switch to LEGACY for backward compatibility
 sudo update-crypto-policies --set LEGACY
 ```
 
-Only do this if you absolutely must. LEGACY enables protocols and ciphers that have known weaknesses.
+Only do this if you absolutely must. LEGACY enables algorithms and ciphers that have known weaknesses.
 
 ## Setting the FIPS Policy
 
@@ -123,14 +123,14 @@ fips-mode-setup --check
 
 The built-in policies are a starting point. Sub-policies let you tweak specific settings without writing a full policy from scratch.
 
-### Disabling a Specific Cipher
+### Disabling CBC Mode Ciphers
 
 Create a sub-policy file:
 
 ```bash
 # Create a sub-policy that disables CBC mode ciphers
 sudo tee /etc/crypto-policies/policies/modules/NO-CBC.pmod << 'EOF'
-cipher = -AES-256-CBC -AES-128-CBC -CAMELLIA-256-CBC -CAMELLIA-128-CBC
+cipher = -*-CBC
 EOF
 ```
 
@@ -144,9 +144,9 @@ sudo update-crypto-policies --set DEFAULT:NO-CBC
 ### Enforcing TLS 1.3 Only
 
 ```bash
-# Create a sub-policy that requires TLS 1.3 minimum
+# Create a sub-policy that allows only TLS 1.3 for TLS clients and servers
 sudo tee /etc/crypto-policies/policies/modules/TLS13-ONLY.pmod << 'EOF'
-min_tls_version = TLS1.3
+protocol@TLS = -TLS1.2 -DTLS1.2
 EOF
 ```
 
@@ -222,11 +222,13 @@ SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1
 SSLCipherSuite ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384
 ```
 
-For OpenSSH, in `/etc/ssh/sshd_config`:
+For OpenSSH server overrides on RHEL 9, use a drop-in file in `/etc/ssh/sshd_config.d/` with a two-digit prefix lower than `50`, so it is read before Red Hat's crypto policy include:
 
 ```bash
 # Override crypto policy for SSH only
+sudo tee /etc/ssh/sshd_config.d/49-crypto-policy-override.conf << 'EOF'
 Ciphers aes256-gcm@openssh.com,aes128-gcm@openssh.com
+EOF
 ```
 
 Keep in mind that per-application overrides can be tricky to maintain. The system-wide policy is generally the better approach unless you have a specific reason.
@@ -249,7 +251,7 @@ To check if any services are deviating from the system policy:
 ```bash
 # Check for any local overrides in common config files
 grep -r "SSLProtocol\|SSLCipherSuite" /etc/httpd/ 2>/dev/null
-grep -r "Ciphers\|MACs\|KexAlgorithms" /etc/ssh/sshd_config 2>/dev/null
+grep -r "Ciphers\|MACs\|KexAlgorithms" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/ 2>/dev/null
 ```
 
 ## Reverting to the Default Policy
