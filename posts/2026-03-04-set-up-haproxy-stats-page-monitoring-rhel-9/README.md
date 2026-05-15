@@ -25,6 +25,8 @@ Add a stats section to your HAProxy configuration:
 # Add this as a new frontend/listen section
 
 listen stats
+    mode http
+
     # Listen on port 8404 for the stats page
     bind *:8404
 
@@ -46,6 +48,7 @@ listen stats
 
 ```haproxy
 listen stats
+    mode http
     bind *:8404
 
     stats enable
@@ -68,6 +71,7 @@ listen stats
 
 ```haproxy
 listen stats
+    mode http
     bind *:8404 ssl crt /etc/haproxy/certs/stats.pem
 
     stats enable
@@ -99,11 +103,11 @@ The dashboard shows:
 
 - **Frontend**: Incoming connection metrics (current sessions, rates, bytes)
 - **Backend**: Overall backend health and metrics
-- **Server rows**: Individual server status with color coding
-  - Green: Server is UP and healthy
-  - Red: Server is DOWN
-  - Yellow: Server is in maintenance mode
-  - Blue: Server has not been checked yet
+- **Server rows**: Individual server status and health details
+  - `UP`: Server is healthy
+  - `DOWN`: Server is unavailable
+  - `MAINT`: Server is in maintenance mode
+  - `no check`: Health checks are not enabled for this server
 
 Key metrics to watch:
 - **Cur**: Current active sessions
@@ -117,6 +121,9 @@ Key metrics to watch:
 ## Step 7: Stats via the Socket (Programmatic Access)
 
 ```bash
+# Make sure the runtime socket is enabled in the global section:
+# stats socket /var/lib/haproxy/stats mode 600 level admin
+
 # Get stats in CSV format via the socket
 echo "show stat" | sudo socat stdio /var/lib/haproxy/stats
 
@@ -136,6 +143,7 @@ For integration with monitoring systems like Prometheus:
 
 ```haproxy
 frontend prometheus
+    mode http
     bind *:8405
     http-request use-service prometheus-exporter if { path /metrics }
     stats enable
