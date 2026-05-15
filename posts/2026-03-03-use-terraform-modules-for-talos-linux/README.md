@@ -10,7 +10,7 @@ Description: Learn how to build and use Terraform modules for Talos Linux to cre
 
 As your Talos Linux infrastructure grows, you will find yourself repeating the same Terraform patterns across clusters and environments. Terraform modules solve this by encapsulating common patterns into reusable components. Instead of copying and pasting Terraform code for each new cluster, you define a module once and instantiate it with different parameters.
 
-This guide covers building Terraform modules for Talos Linux, from simple single-purpose modules to comprehensive cluster modules that handle the entire deployment.
+This guide covers building Terraform modules for Talos Linux, from simple single-purpose modules to comprehensive cluster modules that handle cluster configuration and bootstrap.
 
 ## Why Use Modules?
 
@@ -24,7 +24,7 @@ Modules solve these problems by providing a single, versioned source of truth fo
 
 ## Building a Basic Talos Cluster Module
 
-Let's build a module that creates a complete Talos cluster:
+Let's build a module that configures and bootstraps a Talos cluster:
 
 ```text
 modules/
@@ -46,7 +46,7 @@ terraform {
   required_providers {
     talos = {
       source  = "siderolabs/talos"
-      version = "~> 0.5.0"
+      version = "~> 0.11.0"
     }
   }
 }
@@ -62,13 +62,13 @@ variable "cluster_name" {
 variable "talos_version" {
   description = "Talos Linux version"
   type        = string
-  default     = "v1.7.0"
+  default     = "v1.12.6"
 }
 
 variable "kubernetes_version" {
   description = "Kubernetes version"
   type        = string
-  default     = "v1.30.0"
+  default     = "v1.35.0"
 }
 
 variable "cluster_endpoint" {
@@ -275,7 +275,7 @@ output "cluster_name" {
 
 ## Using the Module
 
-Now you can create clusters with a few lines of code:
+Now you can configure and bootstrap clusters with a few lines of code:
 
 ```hcl
 # environments/production/main.tf
@@ -284,7 +284,7 @@ module "production_cluster" {
 
   cluster_name     = "production"
   cluster_endpoint = "https://10.0.0.1:6443"
-  talos_version    = "v1.7.0"
+  talos_version    = "v1.12.6"
 
   controlplane_nodes = [
     { ip = "10.0.0.10", hostname = "prod-cp-01" },
@@ -298,7 +298,7 @@ module "production_cluster" {
     { ip = "10.0.0.22", hostname = "prod-worker-03", labels = {} },
   ]
 
-  installer_image = "factory.talos.dev/installer/abc123:v1.7.0"
+  installer_image = "factory.talos.dev/installer/abc123:v1.12.6"
 
   common_patches = [
     file("${path.module}/patches/network.yaml"),
@@ -362,6 +362,15 @@ Create a module that handles Image Factory schematics:
 
 ```hcl
 # modules/talos-image/main.tf
+terraform {
+  required_providers {
+    http = {
+      source  = "hashicorp/http"
+      version = "~> 3.5"
+    }
+  }
+}
+
 variable "extensions" {
   description = "List of system extensions"
   type        = list(string)
@@ -425,7 +434,7 @@ output "iso_url" {
 module "talos_image" {
   source = "../../modules/talos-image"
 
-  talos_version = "v1.7.0"
+  talos_version = "v1.12.6"
   extensions = [
     "siderolabs/intel-ucode",
     "siderolabs/iscsi-tools",
