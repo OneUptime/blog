@@ -72,7 +72,7 @@ sudo fuser -mv /documents
 sudo umount /documents
 ```
 
-Or force unmount:
+Or use a lazy unmount:
 
 ```bash
 sudo umount -l /documents
@@ -89,7 +89,7 @@ sudo vi /etc/fstab
 Remove lines like:
 
 ```bash
-UUID=xxx /documents xfs defaults,x-systemd.requires=stratisd.service 0 0
+/dev/stratis/datapool/documents /documents xfs defaults,x-systemd.requires=stratis-fstab-setup@pool-uuid.service,x-systemd.after=stratis-fstab-setup@pool-uuid.service 0 0
 ```
 
 Verify no Stratis entries remain:
@@ -181,9 +181,9 @@ if [ "$confirm" != "yes" ]; then
 fi
 
 # Unmount all filesystems in the pool
-for fs in $(stratis filesystem list "$POOL" --no-headers 2>/dev/null | awk '{print $2}'); do
+for fs in $(stratis filesystem list "$POOL" 2>/dev/null | awk 'NR > 1 {print $2}'); do
     device="/dev/stratis/${POOL}/${fs}"
-    mountpoint=$(findmnt -n -o TARGET "$device" 2>/dev/null)
+    mountpoint=$(findmnt -n -o TARGET --source "$device" 2>/dev/null)
     if [ -n "$mountpoint" ]; then
         echo "Unmounting $mountpoint..."
         umount "$mountpoint"
@@ -191,7 +191,7 @@ for fs in $(stratis filesystem list "$POOL" --no-headers 2>/dev/null | awk '{pri
 done
 
 # Destroy all filesystems
-for fs in $(stratis filesystem list "$POOL" --no-headers 2>/dev/null | awk '{print $2}'); do
+for fs in $(stratis filesystem list "$POOL" 2>/dev/null | awk 'NR > 1 {print $2}'); do
     echo "Destroying filesystem: $fs"
     stratis filesystem destroy "$POOL" "$fs"
 done
@@ -226,9 +226,9 @@ sudo systemctl stop stratisd
 sudo wipefs -a /dev/sdb
 sudo wipefs -a /dev/sdc
 
-# Clear device mapper entries
+# Clear only Stratis-related device mapper entries
 sudo dmsetup ls | grep stratis
-sudo dmsetup remove_all --force
+sudo dmsetup ls | awk '/stratis/ {print $1}' | xargs -r sudo dmsetup remove --force
 
 # Restart stratisd
 sudo systemctl start stratisd
