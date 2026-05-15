@@ -115,9 +115,12 @@ sudo umount /mnt/encrypted-data 2>/dev/null
 sudo cryptsetup luksClose data_encrypted 2>/dev/null
 
 # Test crypttab and fstab without rebooting
-sudo cryptdisks_start data_encrypted 2>/dev/null || \
-    sudo cryptsetup luksOpen --key-file /root/luks-data.keyfile \
-    UUID=12345678-1234-1234-1234-123456789abc data_encrypted
+sudo systemctl daemon-reload
+sudo systemctl start systemd-cryptsetup@data_encrypted.service
+
+# Alternatively, test the keyfile directly instead of the systemd unit:
+# sudo cryptsetup luksOpen --key-file /root/luks-data.keyfile \
+#     /dev/disk/by-uuid/12345678-1234-1234-1234-123456789abc data_encrypted
 
 sudo mount -a
 
@@ -127,15 +130,21 @@ df -h /mnt/encrypted-data
 
 ## Step 6: Update the initramfs
 
-If the encrypted volume needs to be available early in the boot process:
+For secondary volumes unlocked after the root filesystem is mounted, you usually do not need to rebuild the initramfs. If the encrypted volume needs to be available early in the boot process, the keyfile must also be available in the initramfs:
 
 ```bash
-# Rebuild the initramfs to include the keyfile
-sudo dracut --force
+# Include the keyfile in the initramfs
+echo 'install_items+=" /root/luks-data.keyfile "' | \
+    sudo tee /etc/dracut.conf.d/99-luks-keyfile.conf
+
+# Rebuild the initramfs
+sudo dracut -f --regenerate-all
 
 # Verify the initramfs was rebuilt
 ls -la /boot/initramfs-$(uname -r).img
 ```
+
+Only include a keyfile in the initramfs if you understand the security tradeoff, because the initramfs is commonly stored on an unencrypted `/boot` filesystem.
 
 ## Reboot and Verify
 
@@ -218,7 +227,7 @@ sudo cryptsetup luksOpen --key-file /root/luks-data.keyfile /dev/sdb data_encryp
 
 ### Keyfile Path Not Found During Boot
 
-Make sure the keyfile is on a filesystem that is mounted before the LUKS device is processed. The root filesystem is always available, making `/root/` a safe location for keyfiles.
+Make sure the keyfile is on a filesystem that is mounted before the LUKS device is processed. For secondary volumes unlocked after root is mounted, `/root/` is a safe location for keyfiles. For volumes unlocked in the initramfs, `/root/` is not available unless you explicitly include the keyfile in the initramfs.
 
 ## Summary
 
