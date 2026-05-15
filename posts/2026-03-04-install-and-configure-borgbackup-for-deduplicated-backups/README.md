@@ -31,37 +31,38 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-$(rpm -E %rhel).noarch.rpm
 ```
 
 ## Step 2: Install Required Packages
 
 ```bash
-sudo dnf install -y <package-name>
+sudo dnf install -y borgbackup
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+borg --version
+rpm -qi borgbackup
 ```
 
-## Step 3: Configure the Service
+## Step 3: Initialize the Repository
 
-Create or edit the main configuration file:
+Create a backup repository. The encryption mode must be selected when the repository is initialized:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+sudo mkdir -p /backup/borg
+sudo borg init --encryption=repokey /backup/borg
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+Keep the passphrase and exported key in a safe location. Without them, encrypted backups cannot be restored.
 
-## Step 4: Start and Enable the Service
+## Step 4: Create a Backup Archive
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+sudo borg create --stats --compression lz4 /backup/borg::'{hostname}-{now}' /etc /home
+sudo borg list /backup/borg
 ```
 
 ## Step 5: Verify the Configuration
@@ -69,22 +70,29 @@ sudo systemctl status <service>
 Test the setup:
 
 ```bash
-sudo <service> --test
+sudo borg check /backup/borg
 ```
 
-Check the logs for any errors:
+List the latest archive and confirm that expected files are present:
 
 ```bash
-journalctl -u <service> -f
+sudo borg list /backup/borg::$(sudo borg list --short /backup/borg | tail -n 1)
 ```
 
-## Step 6: Configure Firewall Rules
+## Step 6: Configure Remote Repository Access
 
-If the service needs network access:
+If you store backups on a remote server, Borg normally connects over SSH. Make sure SSH is available on the backup server:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo firewall-cmd --permanent --add-service=ssh
 sudo firewall-cmd --reload
+```
+
+Use a remote repository path when initializing and creating archives:
+
+```bash
+borg init --encryption=repokey backupuser@backup.example.com:/srv/borg/repo
+borg create --stats --compression lz4 backupuser@backup.example.com:/srv/borg/repo::'{hostname}-{now}' /etc /home
 ```
 
 ## Step 7: Performance Tuning
@@ -92,25 +100,27 @@ sudo firewall-cmd --reload
 Monitor resource usage and adjust configuration parameters based on your workload:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+borg create --progress --stats --compression zstd,3 /backup/borg::'{hostname}-{now}' /etc /home
+borg prune --list --keep-daily=7 --keep-weekly=4 --keep-monthly=6 /backup/borg
+borg compact /backup/borg
 ```
 
 ## Security Considerations
 
-- Run the service with a dedicated non-root user when possible
-- Enable TLS/SSL for network communication
-- Restrict access with firewall rules
+- Run backups with the least-privileged user that can read the files being backed up
+- Use repository encryption and protect the Borg passphrase
+- Export and store the repository key separately with `borg key export`
+- Restrict remote access with SSH keys and firewall rules
 - Keep packages updated with `dnf update`
 
 ## Troubleshooting
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
+1. **Repository cannot be opened**: Verify the repository path and that the Borg passphrase is available
 2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
-3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
+3. **Remote connection fails**: Test SSH access with `ssh backupuser@backup.example.com`
 
 ## Conclusion
 
-You have successfully configured install and configure borgbackup for deduplicated backups on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
+You have successfully configured BorgBackup for deduplicated backups on RHEL. Monitor backup jobs regularly and keep BorgBackup updated to maintain security and performance.
