@@ -28,7 +28,13 @@ sudo dnf install mariadb-server -y
 
 ### Step 2: Configure Shared Storage
 
-The database directory must be on shared storage. Do not start MariaDB yet.
+The database directory must be on shared storage. Mount it on one node and initialize it once:
+
+```bash
+sudo mariadb-install-db --user=mysql --datadir=/var/lib/mysql
+```
+
+Then unmount it before Pacemaker manages the filesystem resource. Do not start MariaDB outside the cluster after this point.
 
 ### Step 3: Create Pacemaker Resources
 
@@ -56,12 +62,12 @@ sudo pcs resource create MariaDB ocf:heartbeat:mysql \
     op stop timeout=120s
 
 # Group resources
-sudo pcs resource group add DB-Group DB-VIP DB-FS MariaDB
+sudo pcs resource group add DB-Group DB-FS MariaDB DB-VIP
 ```
 
-### Step 4: Initialize the Database
+### Step 4: Start and Secure the Database
 
-Start the group and initialize:
+Start the group:
 
 ```bash
 sudo pcs resource enable DB-Group
@@ -70,7 +76,7 @@ sudo pcs resource enable DB-Group
 On the active node:
 
 ```bash
-mysql_secure_installation
+mariadb-secure-installation
 ```
 
 ## Option B: PostgreSQL with Streaming Replication
@@ -92,7 +98,11 @@ sudo postgresql-setup --initdb
 sudo systemctl start postgresql
 ```
 
-Configure for replication (see the PostgreSQL HA guide for detailed steps).
+Configure for replication (see the PostgreSQL HA guide for detailed steps), verify replication, and then stop PostgreSQL on all nodes before Pacemaker starts managing it:
+
+```bash
+sudo systemctl stop postgresql
+```
 
 ### Step 3: Create Pacemaker Resources
 
@@ -109,7 +119,10 @@ sudo pcs resource create PostgreSQL ocf:heartbeat:pgsql \
     pgdata="/var/lib/pgsql/data" \
     rep_mode="sync" \
     node_list="node1 node2" \
+    master_ip="192.168.1.100" \
     repuser="replicator" \
+    restore_command='cp /var/lib/pgsql/pg_archive/%f "%p"' \
+    restart_on_promote=true \
     op monitor interval=15s role=Promoted \
     op monitor interval=30s role=Unpromoted
 
@@ -120,7 +133,8 @@ sudo pcs resource promotable PostgreSQL \
 
 # Constraints
 sudo pcs constraint colocation add PG-VIP with Promoted PostgreSQL-clone INFINITY
-sudo pcs constraint order promote PostgreSQL-clone then start PG-VIP
+sudo pcs constraint order promote PostgreSQL-clone then start PG-VIP symmetrical=false score=INFINITY
+sudo pcs constraint order demote PostgreSQL-clone then stop PG-VIP symmetrical=false score=0
 ```
 
 ## Verifying the Setup
@@ -179,7 +193,7 @@ reconnect=true
 
 ### For PostgreSQL Clients
 
-Use a connection string with multiple hosts:
+Use a connection string that targets the VIP:
 
 ```bash
 postgresql://192.168.1.100:5432/mydb?connect_timeout=10&target_session_attrs=read-write
@@ -199,4 +213,4 @@ sudo pcs resource update PostgreSQL op monitor interval=15s timeout=10s role=Pro
 
 ## Conclusion
 
-Both MariaDB and PostgreSQL can be made highly available on RHEL 9 with Pacemaker. Use shared storage with MariaDB for simple active-passive setups, or streaming replication with PostgreSQL for zero-data-loss failover. Test failover regularly and configure applications for reconnection.
+Both MariaDB and PostgreSQL can be made highly available on RHEL 9 with Pacemaker. Use shared storage with MariaDB for simple active-passive setups, or synchronous streaming replication with PostgreSQL to minimize data loss when fencing and replication are configured correctly. Test failover regularly and configure applications for reconnection.
