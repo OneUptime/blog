@@ -10,6 +10,8 @@ Description: Expand your GlusterFS cluster on RHEL by adding new bricks to exist
 
 When your GlusterFS cluster runs low on storage, you can expand it by adding new bricks. The process varies slightly depending on the volume type. Adding bricks to a distributed volume is simpler than expanding a replicated or dispersed volume, which requires adding bricks in matching sets.
 
+On RHEL 9, this guidance applies only where you are using community or third-party GlusterFS packages. Red Hat Gluster Storage reached end of life on December 31, 2024, so it is no longer a Red Hat-supported storage product.
+
 ## Adding a New Node to the Trusted Pool
 
 Before adding bricks from a new server, the server must join the trusted storage pool:
@@ -68,7 +70,7 @@ sudo gluster volume add-brick dispvol \
 
 ## Rebalancing After Expansion
 
-After adding bricks, existing files are not automatically redistributed. You need to run a rebalance:
+After adding bricks, existing directory layouts are not automatically updated and existing files are not automatically redistributed. Run a rebalance on the target volume to fix layouts and migrate data:
 
 ```bash
 sudo gluster volume rebalance distvol start
@@ -145,4 +147,4 @@ sudo gluster volume rebalance <volname> status
 
 ## Conclusion
 
-Expanding a GlusterFS cluster is a non-disruptive operation. Clients continue to read and write data during the process. The rebalance step is important for distributing existing data to new bricks. Without it, only new files will land on the newly added bricks. Always add bricks in the correct multiples for your volume type to maintain the intended redundancy.
+Expanding a GlusterFS cluster is a non-disruptive operation. Clients continue to read and write data during the process. The rebalance step is important for updating layouts and distributing existing data to new bricks. Without a layout fix or full rebalance, new files created in existing directories may continue to use the old layout, and existing files will not migrate to the newly added bricks. Always add bricks in the correct multiples for your volume type to maintain the intended redundancy.
