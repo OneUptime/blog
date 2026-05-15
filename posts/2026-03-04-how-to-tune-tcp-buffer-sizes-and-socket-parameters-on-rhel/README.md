@@ -58,7 +58,7 @@ net.core.wmem_max = 16777216
 net.core.rmem_default = 262144
 net.core.wmem_default = 262144
 
-# Increase the connection backlog
+# Increase the listen backlog and network device backlog
 net.core.somaxconn = 65535
 net.core.netdev_max_backlog = 65535
 
@@ -79,8 +79,9 @@ The optimal buffer size depends on the Bandwidth-Delay Product (BDP):
 # Example: 10 Gbps link with 10ms RTT
 # BDP = (10,000,000,000 / 8) * 0.010 = 12,500,000 bytes (~12MB)
 
-# Set max buffer to at least the BDP
-# For the example above, 16MB is a good max value
+# Set max buffer to at least the BDP; on RHEL, two to three times
+# the BDP is often sufficient for the maximum buffer value.
+# For the example above, 25MB to 37.5MB is a better starting range.
 ```
 
 ## Tuning the Listen Backlog
@@ -91,6 +92,8 @@ sudo sysctl -w net.ipv4.tcp_max_syn_backlog=65535
 
 # Increase the connection backlog
 sudo sysctl -w net.core.somaxconn=65535
+
+# Make sure the application listen backlog is configured to use the higher limit
 ```
 
 After tuning, verify improvements with iperf3 or your application's own metrics. Always test changes in a staging environment before applying to production.
