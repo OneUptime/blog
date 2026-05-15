@@ -94,6 +94,7 @@ The `$upstream_cache_status` variable tells you what happened:
 | `STALE` | Served an expired cached response (backend unreachable) |
 | `BYPASS` | Cache was bypassed due to rules |
 | `UPDATING` | Stale content served while cache is being refreshed |
+| `REVALIDATED` | Cached content was revalidated with the backend |
 
 ## Step 4 - Define the Cache Key
 
@@ -101,14 +102,14 @@ The cache key determines what makes a cached response unique:
 
 ```nginx
 # Default cache key (usually sufficient)
-proxy_cache_key $scheme$request_method$host$request_uri;
+proxy_cache_key $scheme$proxy_host$request_uri;
 ```
 
-For APIs that depend on query parameters:
+The default cache key already includes query parameters through `$request_uri`. For APIs that vary by request method or another request value, include that value explicitly:
 
 ```nginx
-# Include query string in cache key
-proxy_cache_key $scheme$request_method$host$request_uri$is_args$args;
+# Include request method in the cache key
+proxy_cache_key $scheme$request_method$proxy_host$request_uri;
 ```
 
 ## Step 5 - Bypass Cache for Dynamic Content
@@ -140,7 +141,7 @@ location / {
     proxy_cache_valid 200 10m;
 
     # Serve stale content when the backend is down
-    proxy_cache_use_stale error timeout http_500 http_502 http_503 http_504;
+    proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
 
     # Update cache in background while serving stale content
     proxy_cache_background_update on;
@@ -182,10 +183,10 @@ location / {
 
 ## Step 8 - Purge Cached Content
 
-To purge specific cached items, you can use a custom location:
+Nginx Open Source does not include a built-in HTTP purge endpoint. With Nginx Plus, you can purge specific cached items with `proxy_cache_purge`; otherwise, remove files from the cache directory:
 
 ```nginx
-# Simple cache purge by restarting Nginx or clearing files
+# Simple cache purge by clearing files
 # For manual purging, remove files from the cache directory
 ```
 
