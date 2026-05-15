@@ -12,7 +12,7 @@ SonarQube is a platform for continuous inspection of code quality. It detects bu
 
 ## Prerequisites
 
-SonarQube requires Java 17 and PostgreSQL:
+SonarQube 10.4 requires Java 17 and PostgreSQL 11 or later:
 
 ```bash
 # Install Java 17
@@ -20,8 +20,12 @@ SonarQube requires Java 17 and PostgreSQL:
 sudo dnf install -y java-17-openjdk
 
 # Install and configure PostgreSQL
+# On RHEL 8, enable a supported PostgreSQL module first, such as:
+# sudo dnf module enable -y postgresql:13
 sudo dnf install -y postgresql-server
 sudo postgresql-setup --initdb
+sudo sed -i 's/^\(host[[:space:]]\+all[[:space:]]\+all[[:space:]]\+127\.0\.0\.1\/32[[:space:]]\+\).*/\1scram-sha-256/' /var/lib/pgsql/data/pg_hba.conf
+sudo sed -i 's/^\(host[[:space:]]\+all[[:space:]]\+all[[:space:]]\+::1\/128[[:space:]]\+\).*/\1scram-sha-256/' /var/lib/pgsql/data/pg_hba.conf
 sudo systemctl enable --now postgresql
 
 # Create the SonarQube database
