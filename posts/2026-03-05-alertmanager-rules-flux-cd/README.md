@@ -68,8 +68,8 @@ spec:
             severity: warning
             team: platform
           annotations:
-            summary: "Flux reconciliation failing for {{ $labels.kind }}/{{ $labels.name }}"
-            description: "{{ $labels.kind }}/{{ $labels.name }} in namespace {{ $labels.namespace }} has not been ready for more than 10 minutes."
+            summary: "Flux reconciliation failing for {{ $labels.customresource_kind }}/{{ $labels.name }}"
+            description: "{{ $labels.customresource_kind }}/{{ $labels.name }} in namespace {{ $labels.exported_namespace }} has not been ready for more than 10 minutes."
             runbook_url: "https://fluxcd.io/flux/monitoring/alerts/"
 
         - alert: FluxReconciliationStalled
@@ -79,8 +79,8 @@ spec:
             severity: critical
             team: platform
           annotations:
-            summary: "Flux resource stalled: {{ $labels.kind }}/{{ $labels.name }}"
-            description: "{{ $labels.kind }}/{{ $labels.name }} in namespace {{ $labels.namespace }} is stalled. The controller has stopped retrying reconciliation."
+            summary: "Flux resource stalled: {{ $labels.customresource_kind }}/{{ $labels.name }}"
+            description: "{{ $labels.customresource_kind }}/{{ $labels.name }} in namespace {{ $labels.exported_namespace }} is stalled. The controller has stopped retrying reconciliation."
 
         - alert: FluxSuspendedResource
           expr: gotk_resource_info{suspended="true"} == 1
@@ -89,8 +89,8 @@ spec:
             severity: info
             team: platform
           annotations:
-            summary: "Flux resource suspended for over 24h: {{ $labels.kind }}/{{ $labels.name }}"
-            description: "{{ $labels.kind }}/{{ $labels.name }} in namespace {{ $labels.namespace }} has been suspended for more than 24 hours."
+            summary: "Flux resource suspended for over 24h: {{ $labels.customresource_kind }}/{{ $labels.name }}"
+            description: "{{ $labels.customresource_kind }}/{{ $labels.name }} in namespace {{ $labels.exported_namespace }} has been suspended for more than 24 hours."
 ```
 
 ## Performance Alert Rules
@@ -117,7 +117,8 @@ Add rules for reconciliation duration to catch performance degradation:
 
         - alert: FluxReconciliationNotProgressing
           expr: |
-            rate(gotk_reconcile_duration_seconds_count[30m]) == 0
+            (sum(rate(gotk_reconcile_duration_seconds_count[30m])) == 0)
+            or absent(gotk_reconcile_duration_seconds_count)
           for: 30m
           labels:
             severity: critical
@@ -142,8 +143,8 @@ spec:
     receiver: flux-default
     groupBy:
       - alertname
-      - kind
-      - namespace
+      - customresource_kind
+      - exported_namespace
     groupWait: 30s
     groupInterval: 5m
     repeatInterval: 4h
@@ -170,7 +171,7 @@ spec:
           title: '{{ .GroupLabels.alertname }}'
           text: >-
             {{ range .Alerts }}
-            *{{ .Labels.kind }}/{{ .Labels.name }}* in {{ .Labels.namespace }}
+            *{{ .Labels.customresource_kind }}/{{ .Labels.name }}* in {{ .Labels.exported_namespace }}
             {{ .Annotations.description }}
             {{ end }}
     - name: flux-critical
