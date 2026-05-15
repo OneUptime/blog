@@ -58,7 +58,7 @@ sudo restorecon -Rv /data/website/uploads/
 | httpd_sys_content_t | Read only | Static web content |
 | httpd_sys_rw_content_t | Read/Write | Upload directories, caches |
 | httpd_sys_script_exec_t | Execute | CGI scripts |
-| httpd_sys_ra_content_t | Read/Append | Log directories |
+| httpd_sys_ra_content_t | Read/Append | Files that scripts read from and append to |
 
 ## Reverse Proxy Configuration
 
@@ -69,10 +69,10 @@ Apache acting as a reverse proxy needs to make outbound network connections. By 
 sudo setsebool -P httpd_can_network_connect on
 ```
 
-If the backend is on a specific port:
+If Apache is relaying traffic as part of a proxy setup:
 
 ```bash
-# Allow Apache to connect to any network port
+# Allow Apache to act as a network relay
 sudo setsebool -P httpd_can_network_relay on
 ```
 
@@ -142,10 +142,10 @@ sudo setsebool -P httpd_use_cifs on
 
 ## PHP-FPM with Apache
 
-If using PHP-FPM (FastCGI Process Manager):
+If using PHP-FPM (FastCGI Process Manager) over TCP:
 
 ```bash
-# Allow Apache to connect to PHP-FPM socket
+# Allow Apache to connect to PHP-FPM over TCP
 sudo setsebool -P httpd_can_network_connect on
 ```
 
@@ -210,7 +210,7 @@ sudo ausearch -m avc -c httpd -ts recent
 
 ```bash
 # Analyze the denials
-sudo ausearch -m avc -c httpd -ts recent | sealert -a -
+sudo sealert -a /var/log/audit/audit.log
 ```
 
 ### Step 3: Common Error Messages
