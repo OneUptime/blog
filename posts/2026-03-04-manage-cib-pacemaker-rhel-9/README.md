@@ -50,10 +50,10 @@ View only constraints:
 sudo cibadmin --query --scope constraints
 ```
 
-View the CIB in a readable format using pcs:
+View the cluster configuration in a readable format using pcs:
 
 ```bash
-sudo pcs cluster cib
+sudo pcs config
 ```
 
 ## Exporting the CIB
@@ -78,10 +78,10 @@ A shadow CIB lets you make changes without affecting the live cluster. Create a 
 sudo crm_shadow --create my-changes
 ```
 
-This creates a copy of the live CIB for editing. Make changes using pcs:
+This creates a copy of the live CIB for editing and opens a shadow shell. Make changes using pcs inside that shell:
 
 ```bash
-sudo pcs resource create TestResource systemd:httpd
+shadow[my-changes] # pcs resource create TestResource systemd:httpd
 ```
 
 Review the changes:
@@ -109,7 +109,8 @@ Make multiple changes atomically:
 ```bash
 # Export the CIB
 
-sudo pcs cluster cib /tmp/working-cib.xml
+sudo pcs cluster cib /tmp/original-cib.xml
+sudo cp /tmp/original-cib.xml /tmp/working-cib.xml
 
 # Make changes against the file
 sudo pcs -f /tmp/working-cib.xml resource create VIP ocf:heartbeat:IPaddr2 ip=192.168.1.100 cidr_netmask=24
@@ -117,7 +118,7 @@ sudo pcs -f /tmp/working-cib.xml resource create WebServer ocf:heartbeat:apache 
 sudo pcs -f /tmp/working-cib.xml resource group add WebGroup VIP WebServer
 
 # Push all changes at once
-sudo pcs cluster cib-push /tmp/working-cib.xml
+sudo pcs cluster cib-push /tmp/working-cib.xml diff-against=/tmp/original-cib.xml
 ```
 
 This is useful for making multiple related changes atomically.
@@ -165,7 +166,7 @@ If synchronization is broken, the cluster status will show errors.
 Validate the CIB XML:
 
 ```bash
-sudo crm_verify -V
+sudo crm_verify --live-check --verbose
 ```
 
 This checks for configuration errors and reports warnings.
