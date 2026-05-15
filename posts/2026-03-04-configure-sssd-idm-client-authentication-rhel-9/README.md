@@ -99,8 +99,10 @@ entry_cache_timeout = 5400
 # How long to cache user credentials for offline login
 offline_credentials_expiration = 7
 
-# How long to cache failed login attempts
+# How many failed offline login attempts are allowed
 offline_failed_login_attempts = 5
+
+# Delay after the failed-attempt limit is reached (minutes)
 offline_failed_login_delay = 60
 ```
 
@@ -125,7 +127,7 @@ The `_srv_` entry tells SSSD to also discover servers through DNS SRV records. T
 
 ## Step 5 - Configure Home Directory Creation
 
-By default, IdM users may not have local home directories on the client. Configure PAM to create them automatically.
+By default, IdM users may not have local home directories on the client. If you did not enroll the client with `--mkhomedir`, configure PAM to create them automatically.
 
 ```bash
 # Enable automatic home directory creation
@@ -237,8 +239,8 @@ For environments with thousands of users, tweak SSSD to avoid performance proble
 
 ```ini
 [domain/example.com]
-# Only resolve users from specific groups (much faster)
-ldap_access_filter = memberOf=cn=allowed_users,cn=groups,cn=accounts,dc=example,dc=com
+# Avoid expanding every group member during group lookups
+ignore_group_members = True
 
 # Disable full user/group enumeration (critical for large directories)
 enumerate = False
