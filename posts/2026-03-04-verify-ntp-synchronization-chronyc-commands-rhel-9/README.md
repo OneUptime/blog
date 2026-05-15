@@ -72,7 +72,7 @@ Here is what each field means:
 | Skew | Estimated error bound on the frequency |
 | Root delay | Total network path delay to the stratum-1 source |
 | Root dispersion | Total accumulated dispersion back to the stratum-1 source |
-| Leap status | Normal, or indicates an upcoming leap second |
+| Leap status | Normal, upcoming leap second, or not synchronized |
 
 For a healthy system, `System time` should be within your tolerance, and `Leap status` should be `Normal`. LAN systems are often below 1 millisecond; Internet-synchronized systems can be a few milliseconds.
 
@@ -88,7 +88,7 @@ chronyc sources -v
 The columns:
 
 - **M**: Mode (`^` = server, `=` = peer, `#` = local reference clock)
-- **S**: State (`*` = current best, `+` = combined, `-` = not combined, `?` = unreachable, `x` = falseticker)
+- **S**: State (`*` = current best, `+` = combined, `-` = selectable but not selected, `?` = not selectable for reasons such as unreachable or too few measurements, `x` = falseticker, `~` = too variable)
 - **Name**: Server hostname or IP
 - **Stratum**: The server's stratum level
 - **Poll**: Current polling interval as a base-2 logarithm of seconds
@@ -101,8 +101,8 @@ graph LR
     A[chronyc sources] --> B[Check S column for *]
     B --> C{* present?}
     C -->|Yes| D[System is synchronized]
-    C -->|No| E[Check ? or x states]
-    E --> F[Investigate connectivity or falseticker]
+    C -->|No| E[Check ?, x, or ~ states]
+    E --> F[Investigate connectivity, falseticker, or variable source]
 ```
 
 ## The sourcestats Command
@@ -241,11 +241,11 @@ chronyc tracking | grep -q "Leap status.*Normal" && echo "Synced" || echo "NOT s
 chronyc tracking | grep "System time" | awk '{print $4}'
 ```
 
-### Check if a Specific Source is Reachable
+### Check Which Sources Are Not Selectable
 
 ```bash
-# Check reachability of sources
-chronyc sources | awk '$1 ~ /\?/ {print "UNREACHABLE:", $2}'
+# Check sources that are not selectable
+chronyc sources | awk '$1 ~ /\?/ {print "NOT SELECTABLE:", $2}'
 ```
 
 ### Monitor Offset Over Time
