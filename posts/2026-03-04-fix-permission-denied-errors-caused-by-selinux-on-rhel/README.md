@@ -98,7 +98,7 @@ sudo setsebool -P httpd_can_sendmail on
 sudo semanage port -l | grep http
 
 # Add a custom port
-sudo semanage port -a -t http_port_t -p tcp 8443
+sudo semanage port -a -t http_port_t -p tcp 9876
 
 # Verify
 sudo semanage port -l | grep http
