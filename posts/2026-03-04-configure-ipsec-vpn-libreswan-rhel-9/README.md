@@ -27,7 +27,7 @@ IPsec with Libreswan makes sense when:
 
 ## Installing Libreswan
 
-Libreswan is usually installed by default on RHEL.
+Libreswan is available in the RHEL repositories.
 
 ```bash
 # Install Libreswan if it's not already present
@@ -158,12 +158,9 @@ echo "net.ipv4.ip_forward = 1" | sudo tee /etc/sysctl.d/99-ipsec.conf
 ## Configuring the Firewall
 
 ```bash
-# Allow IPsec traffic through the firewall
+# Allow IPsec traffic through the firewall.
+# The ipsec service includes UDP 500/4500 and the ESP/AH protocols.
 sudo firewall-cmd --permanent --add-service=ipsec
-
-# Allow the ESP protocol and IKE port
-sudo firewall-cmd --permanent --add-port=500/udp
-sudo firewall-cmd --permanent --add-port=4500/udp
 
 # Reload
 sudo firewall-cmd --reload
@@ -229,11 +226,14 @@ conn site-to-site-cert
     left=203.0.113.10
     leftsubnet=192.168.10.0/24
     leftcert=gateway-a
-    leftid=@gateway-a.example.com
+    leftid=%fromcert
+    leftrsasigkey=%cert
+    leftsendcert=always
 
     right=198.51.100.20
     rightsubnet=192.168.20.0/24
-    rightid=@gateway-b.example.com
+    rightid=%fromcert
+    rightrsasigkey=%cert
 
     authby=rsasig
     auto=start
@@ -250,8 +250,9 @@ EOF
 # Check Libreswan logs
 journalctl -u ipsec --since "5 minutes ago"
 
-# Run pluto with debug logging
-sudo ipsec pluto --stderrlog
+# Run pluto in the foreground with debug logging
+sudo systemctl stop ipsec
+sudo ipsec pluto --nofork --stderrlog
 
 # Verify configuration syntax
 sudo ipsec verify
@@ -263,8 +264,8 @@ sudo ipsec verify
 # Check that IKE proposals match on both sides
 sudo ipsec whack --status | grep "IKE"
 
-# Verify PSK matches
-sudo ipsec showhostkey --list
+# Verify the PSK entry matches on both gateways
+sudo grep 'PSK' /etc/ipsec.d/site-to-site.secrets
 
 # Check time synchronization (important for cert auth)
 timedatectl
