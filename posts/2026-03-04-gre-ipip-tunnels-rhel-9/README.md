@@ -26,6 +26,7 @@ graph LR
 
 - Two RHEL hosts with public or routable IP addresses
 - Root or sudo access on both hosts
+- IPv4 forwarding enabled on both hosts if they route traffic between private networks
 
 ## Step 1: Create an IPIP Tunnel
 
@@ -137,8 +138,8 @@ traceroute 10.20.20.2
 sudo firewall-cmd --add-protocol=gre --permanent
 
 # Allow IPIP protocol (protocol number 4)
-sudo firewall-cmd --direct --add-rule ipv4 filter INPUT 0 -p 4 -j ACCEPT
-sudo firewall-cmd --direct --add-rule ipv4 filter OUTPUT 0 -p 4 -j ACCEPT
+sudo firewall-cmd --permanent --direct --add-rule ipv4 filter INPUT 0 -p 4 -j ACCEPT
+sudo firewall-cmd --permanent --direct --add-rule ipv4 filter OUTPUT 0 -p 4 -j ACCEPT
 
 # Reload firewall
 sudo firewall-cmd --reload
@@ -156,6 +157,7 @@ sudo nmcli connection add type ip-tunnel \
     ip-tunnel.remote 198.51.100.1 \
     ip-tunnel.ttl 255 \
     ipv4.addresses 10.20.20.1/30 \
+    ipv4.routes "192.168.2.0/24 10.20.20.2" \
     ipv4.method manual \
     connection.autoconnect yes
 
