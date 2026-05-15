@@ -76,23 +76,27 @@ version = "*"
 name = "libpwquality"
 version = "*"
 
-# Remove unnecessary packages
 [[packages]]
-name = "cups"
+name = "ansible-core"
+version = "*"
+
+[[packages]]
+name = "rhc-worker-playbook"
 version = "*"
 
 # Security customizations
 [customizations]
 hostname = "hardened-rhel9"
+fips = true
 
-[customizations.kernel]
-append = "fips=1"
+[customizations.openscap]
+profile_id = "xccdf_org.ssgproject.content_profile_stig"
 
 [customizations.services]
 enabled = ["sshd", "firewalld", "auditd", "chronyd", "rsyslog"]
-disabled = ["cups", "avahi-daemon", "bluetooth"]
+disabled = ["cups", "avahi-daemon", "bluetooth", "rpcbind"]
 
-[[customizations.firewall.services]]
+[customizations.firewall.services]
 enabled = ["ssh"]
 
 [[customizations.user]]
@@ -181,7 +185,8 @@ cat > /tmp/post-build-harden.sh << 'SCRIPT'
 echo "Applying security hardening..."
 
 # Apply STIG settings using SSG Ansible playbook
-ansible-playbook -i localhost, -c local \
+ANSIBLE_COLLECTIONS_PATH=/usr/share/rhc-worker-playbook/ansible/collections/ansible_collections/ \
+  ansible-playbook -i "localhost," -c local \
   /usr/share/scap-security-guide/ansible/rhel9-playbook-stig.yml
 
 # Set kernel parameters
@@ -230,8 +235,8 @@ oscap xccdf eval \
   --report /var/log/compliance/build-scan.html \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml || true
 
-PASS=$(grep -c 'result="pass"' /var/log/compliance/build-scan.xml)
-FAIL=$(grep -c 'result="fail"' /var/log/compliance/build-scan.xml)
+PASS=$(grep -c '<result>pass</result>' /var/log/compliance/build-scan.xml)
+FAIL=$(grep -c '<result>fail</result>' /var/log/compliance/build-scan.xml)
 echo "Build scan: $PASS passed, $FAIL failed"
 
 # Clean up for image distribution
@@ -276,6 +281,7 @@ aide --init
 mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
 
 # Run initial compliance scan
+mkdir -p /var/log/compliance
 oscap xccdf eval \
   --profile xccdf_org.ssgproject.content_profile_stig \
   --results /var/log/compliance/first-boot-scan.xml \
@@ -304,8 +310,8 @@ oscap xccdf eval \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml || true
 
 # Check the results
-echo "Pass: $(grep -c 'result="pass"' /tmp/image-validation.xml)"
-echo "Fail: $(grep -c 'result="fail"' /tmp/image-validation.xml)"
+echo "Pass: $(grep -c '<result>pass</result>' /tmp/image-validation.xml)"
+echo "Fail: $(grep -c '<result>fail</result>' /tmp/image-validation.xml)"
 ```
 
 Pre-hardened images are the gold standard for security compliance at scale. Build the image once, validate it thoroughly, and deploy it everywhere. Every server that boots from your hardened image starts its life in a compliant state, and you have the scan reports to prove it.
