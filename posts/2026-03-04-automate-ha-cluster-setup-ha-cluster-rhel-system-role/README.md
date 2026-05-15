@@ -17,6 +17,7 @@ Use the ha_cluster RHEL System Role to automate Pacemaker cluster setup. RHEL Sy
 - Ansible installed on a control node
 - RHEL System Roles package installed
 - SSH key-based access to managed RHEL hosts
+- Active RHEL and RHEL High Availability Add-On subscription coverage on the cluster hosts
 
 ## Step 1 - Install RHEL System Roles
 
@@ -46,15 +47,19 @@ Create `configure-ha_cluster.yml`:
 - name: How to Automate High Availability Cluster Setup Using the ha_cluster RHEL System Role
   hosts: managed_hosts
   become: true
+  vars:
+    ha_cluster_cluster_name: my-new-cluster
+    ha_cluster_hacluster_password: "replace-with-a-secure-password"
+    ha_cluster_manage_firewall: true
+    ha_cluster_manage_selinux: true
   roles:
-    - role: rhel-system-roles.ha_cluster
+    - role: redhat.rhel_system_roles.ha_cluster
 ```
 
 Add the role-specific variables. Check the role documentation for available options:
 
 ```bash
-ls /usr/share/doc/rhel-system-roles/ha_cluster/
-cat /usr/share/doc/rhel-system-roles/ha_cluster/README.md
+cat /usr/share/ansible/roles/rhel-system-roles.ha_cluster/README.md
 ```
 
 ## Step 4 - Run the Playbook
@@ -68,10 +73,8 @@ ansible-playbook -i inventory.ini configure-ha_cluster.yml
 On the managed hosts, verify that the configuration was applied:
 
 ```bash
-# Check relevant service or configuration
-
-systemctl status <service>
-cat <config-file>
+pcs status
+systemctl status pcsd pacemaker corosync
 ```
 
 ## Idempotency
