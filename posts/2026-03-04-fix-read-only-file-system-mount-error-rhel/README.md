@@ -8,7 +8,7 @@ Description: Diagnose and fix 'Read-only file system' errors on RHEL caused by f
 
 ---
 
-A "Read-only file system" error means the filesystem has been remounted as read-only. This typically happens due to filesystem corruption, disk errors, or explicit mount options.
+A "Read-only file system" error means the filesystem is mounted as read-only. This typically happens due to filesystem corruption, disk errors, or explicit mount options.
 
 ## Identify Which Filesystem Is Read-Only
 
@@ -18,7 +18,7 @@ A "Read-only file system" error means the filesystem has been remounted as read-
 mount | grep "ro,"
 
 # Or use findmnt for a cleaner view
-findmnt -o TARGET,FSTYPE,OPTIONS | grep "\bro\b"
+findmnt -O ro -o TARGET,FSTYPE,OPTIONS
 ```
 
 ## Check for Filesystem Errors
