@@ -19,7 +19,7 @@ ext4 filesystem corruption can occur due to hardware failures, power outages, or
 
 ## Step 1: Unmount the Filesystem
 
-e2fsck must never be run on a mounted filesystem:
+e2fsck repairs should be run on an unmounted filesystem:
 
 ```bash
 sudo umount /data
@@ -29,7 +29,8 @@ If the filesystem is busy:
 
 ```bash
 sudo fuser -mv /data
-sudo umount -f /data
+sudo fuser -km /data
+sudo umount /data
 ```
 
 For the root filesystem, boot from rescue media.
@@ -106,22 +107,28 @@ Run e2fsck with a backup superblock:
 sudo e2fsck -b 32768 /dev/vg_data/lv_data
 ```
 
-Common backup superblock locations: 32768, 98304, 163840, 229376.
+Backup superblock locations depend on the filesystem layout, block size, and ext4 features. Common examples include 32768, 98304, 163840, and 229376, but verify the correct values for your filesystem before using one.
 
 ## Step 5: Handle Journal Corruption
 
-If the journal is corrupted:
+For an internal ext4 journal, run e2fsck normally and let it replay or repair the journal:
 
 ```bash
-sudo e2fsck -j /dev/vg_data/lv_data
+sudo e2fsck -f /dev/vg_data/lv_data
 ```
 
-If that fails, remove and recreate the journal:
+If the filesystem uses an external journal device, specify that journal with `-j`:
+
+```bash
+sudo e2fsck -j /dev/vg_data/journal /dev/vg_data/lv_data
+```
+
+If journal recovery fails, back up the block device first, then remove and recreate the journal:
 
 ```bash
 # Remove the journal
 
-sudo tune2fs -O ^has_journal /dev/vg_data/lv_data
+sudo tune2fs -f -O ^has_journal /dev/vg_data/lv_data
 
 # Run e2fsck without journal
 sudo e2fsck -f /dev/vg_data/lv_data
@@ -156,7 +163,7 @@ head /data/lost+found/#12345
 Boot from RHEL installation media in rescue mode:
 
 1. Choose "Troubleshooting" then "Rescue a Red Hat Enterprise Linux system"
-2. Choose option 3 (Skip) to avoid mounting
+2. Choose the option to skip mounting the installed system
 3. Activate LVM:
 
 ```bash
@@ -193,15 +200,15 @@ The `-c` flag runs `badblocks` to check for physical media errors.
 sudo e2fsck -E fragcheck /dev/vg_data/lv_data
 ```
 
-### Rebuild Entire Directory
+### Optimize and Re-index Directories
 
-If directory structures are severely damaged:
+If directory indexes are corrupted or directory entries need optimization:
 
 ```bash
 sudo e2fsck -D /dev/vg_data/lv_data
 ```
 
-The `-D` flag optimizes and rebuilds directories.
+The `-D` flag optimizes directories, re-indexes indexed directories when supported, and can detect duplicate names within a directory.
 
 ## Step 9: Verify the Repair
 
@@ -250,7 +257,7 @@ Similar to inode bitmap, but for data blocks. Fixed automatically.
 
 ### "Multiply-claimed blocks"
 
-Two or more files claim the same data blocks. e2fsck will clone the blocks, giving each file its own copy.
+Two or more files claim the same data blocks. e2fsck can prompt to clone or otherwise resolve the shared blocks so the files no longer claim the same storage.
 
 ## Preventing Corruption
 
