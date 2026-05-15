@@ -109,10 +109,11 @@ sudo timedatectl set-timezone America/New_York
 
 ```bash
 # NTP uses UDP port 123
-# Ensure it is not blocked
-sudo firewall-cmd --list-services | grep ntp
+# For a client, ensure outbound UDP 123 to the domain controllers
+# is allowed by your host or network firewall.
 
-# If NTP is blocked, allow it
+# Only open inbound NTP if this RHEL host will serve time to other systems
+sudo firewall-cmd --query-service=ntp
 sudo firewall-cmd --add-service=ntp --permanent
 sudo firewall-cmd --reload
 ```
