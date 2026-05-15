@@ -26,9 +26,10 @@ sudo dnf install -y openssl
 
 ```bash
 # Download the Harbor offline installer
-curl -L https://github.com/goharbor/harbor/releases/download/v2.10.0/harbor-offline-installer-v2.10.0.tgz \
+curl -L https://github.com/goharbor/harbor/releases/download/v2.15.0/harbor-offline-installer-v2.15.0.tgz \
   -o /tmp/harbor.tar.gz
 sudo tar xzf /tmp/harbor.tar.gz -C /opt/
+sudo chown -R "$(id -u):$(id -g)" /opt/harbor
 cd /opt/harbor
 ```
 
