@@ -77,7 +77,7 @@ The syntax is similar to regular `oscap`, with the addition of `user@host port` 
 
 ```bash
 # Use a specific SSH key
-OSCAP_SSH_KEY=~/.ssh/scanner_key \
+SSH_ADDITIONAL_OPTIONS="-i $HOME/.ssh/scanner_key" \
 oscap-ssh sysadmin@target-host.example.com 22 \
   xccdf eval \
   --profile xccdf_org.ssgproject.content_profile_stig \
@@ -232,20 +232,34 @@ ssh sysadmin@target-host "rpm -q openscap-scanner"
 
 ### Sudo requirements
 
-Some scan checks need root access on the target:
+Some scan checks need root access on the target. Use `oscap-ssh` with the `--sudo` option, which must be the first `oscap-ssh` argument:
 
 ```bash
 # Configure sudo on the target for the scanning user
 # On the target host:
+echo "Defaults!/usr/bin/oscap !requiretty" > /etc/sudoers.d/oscap-scanning
 echo "sysadmin ALL=(root) NOPASSWD: /usr/bin/oscap" >> /etc/sudoers.d/oscap-scanning
+
+# Run the scan from the scanner host
+oscap-ssh --sudo sysadmin@target-host.example.com 22 \
+  xccdf eval \
+  --profile xccdf_org.ssgproject.content_profile_stig \
+  --results /var/log/compliance/target-results.xml \
+  --report /var/log/compliance/target-report.html \
+  /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
 ```
 
 ### Large content transfer
 
 ```bash
-# If the content transfer is slow, pre-install the content on targets
-# Then use a local path reference instead
-ssh sysadmin@target-host "dnf install -y scap-security-guide"
+# oscap-ssh always copies the input content from the scanner to the target.
+# If content transfer is too slow, pre-install the content and run oscap over SSH instead.
+ssh sysadmin@target-host "sudo dnf install -y openscap-scanner scap-security-guide"
+ssh sysadmin@target-host "sudo oscap xccdf eval \
+  --profile xccdf_org.ssgproject.content_profile_stig \
+  --results /var/log/compliance/target-results.xml \
+  --report /var/log/compliance/target-report.html \
+  /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml"
 ```
 
 oscap-ssh turns compliance scanning from a per-server task into a centralized operation. Set up a scanning station, schedule regular fleet scans, and use the collected reports to track compliance across your entire infrastructure.
