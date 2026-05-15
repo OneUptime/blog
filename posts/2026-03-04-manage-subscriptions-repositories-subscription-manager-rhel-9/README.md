@@ -38,7 +38,7 @@ sudo subscription-manager status
 
 ## Understanding Simple Content Access
 
-Starting with recent RHEL versions, Red Hat introduced Simple Content Access (SCA). If your account has SCA enabled, you do not need to manually attach subscriptions. Once registered, you automatically get access to all the content your subscription entitles you to.
+Red Hat's Simple Content Access (SCA) changes the old per-system entitlement workflow. For Red Hat Subscription Management accounts, SCA is now the default workflow. If your account has SCA enabled, you do not need to manually attach subscriptions. Once registered, you get access to the content your subscription entitles you to.
 
 ```bash
 # Check if Simple Content Access is enabled
@@ -58,9 +58,9 @@ flowchart TD
     F --> G[Install Packages with DNF]
 ```
 
-## Attaching Subscriptions (Non-SCA)
+## Attaching Subscriptions (Legacy Non-SCA)
 
-If your account does not use SCA, you need to attach a subscription manually.
+If your environment still uses the older entitlement-based workflow, such as some older Satellite environments, you need to attach a subscription manually. In current RHEL 9 releases, the `attach` and `auto-attach` modules are deprecated because Red Hat subscription services have moved toward SCA, so use this workflow only when your environment still requires it.
 
 ```bash
 # List all available subscriptions for your account
@@ -134,10 +134,10 @@ Here are the repos you will use most often:
 
 ## Setting a Release Version
 
-Sometimes you need to lock your system to a specific RHEL minor release. This is common in environments where you need to stay on, say, RHEL.2 and not jump to 9.3.
+Sometimes you need to lock your system to a specific RHEL minor release. This is common in environments where you need to stay on, say, RHEL 9.2 and not jump to 9.3.
 
 ```bash
-# Lock the system to RHEL.2
+# Lock the system to RHEL 9.2
 sudo subscription-manager release --set=9.2
 
 # Check the current release setting
@@ -160,12 +160,12 @@ If your subscription was just renewed or changed, the local system might not kno
 # Refresh the subscription data from the server
 sudo subscription-manager refresh
 
-# Also clean and regenerate the local cache
+# Reset local subscription data before re-registering
 sudo subscription-manager clean
 sudo subscription-manager register --username your-rh-username --password your-rh-password
 ```
 
-Note that `subscription-manager clean` removes all local subscription data. You will need to re-register afterward. Use it only when you are actually troubleshooting - `refresh` is usually enough.
+Note that `subscription-manager clean` removes local subscription and identity data, but it does not remove the system profile from the subscription management service. You will need to re-register afterward. Use it only when you are actually troubleshooting - `refresh` is usually enough.
 
 ## Viewing System Identity and Facts
 
@@ -203,7 +203,7 @@ sudo subscription-manager config --list
 
 ## Unregistering a System
 
-When you decommission a server, unregister it to free up the subscription entitlement:
+When you decommission a server, unregister it to remove the system from your Red Hat account. In legacy entitlement mode, this also releases any attached subscription entitlements:
 
 ```bash
 # Remove all subscriptions and unregister the system
@@ -224,6 +224,8 @@ sudo subscription-manager identity
 
 # If not registered, re-register
 sudo subscription-manager register --username your-rh-username --password your-rh-password
+
+# If you are using legacy entitlement mode, attach a subscription
 sudo subscription-manager attach --auto
 ```
 
@@ -261,7 +263,7 @@ subscription-manager repos --enable=codeready-builder-for-rhel-9-x86_64-rpms
 %end
 ```
 
-Activation keys are the way to go for automation. They let you register without exposing passwords and can pre-assign subscriptions, repos, and service levels.
+Activation keys are the way to go for automation. They let you register without exposing passwords and can apply preconfigured settings such as repositories and system purpose attributes. In legacy entitlement mode, they can also attach subscriptions and service levels.
 
 ## Summary
 
