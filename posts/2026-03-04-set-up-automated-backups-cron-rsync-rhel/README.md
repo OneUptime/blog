@@ -21,10 +21,11 @@ Write a backup script with logging and retention:
 # Automated rsync backup with rotation
 
 # Configuration
-SOURCE="/home /etc /var/www"
+SOURCES=("/home" "/etc" "/var/www")
 BACKUP_DIR="/backup/daily"
 LOG_FILE="/var/log/backup.log"
 RETENTION_DAYS=30
+STATUS=0
 
 # Create timestamp
 TIMESTAMP=$(date +%Y-%m-%d_%H%M%S)
@@ -34,21 +35,30 @@ DEST="${BACKUP_DIR}/${TIMESTAMP}"
 echo "=== Backup started: $(date) ===" >> "$LOG_FILE"
 
 # Create destination directory
-mkdir -p "$DEST"
+if ! mkdir -p "$DEST"; then
+  echo "Failed to create backup destination: $DEST" >> "$LOG_FILE"
+  exit 1
+fi
 
 # Run rsync for each source directory
-for SRC in $SOURCE; do
+for SRC in "${SOURCES[@]}"; do
   DIR_NAME=$(basename "$SRC")
-  rsync -az --delete \
+  if ! rsync -az --delete \
     --exclude='*.tmp' \
     --exclude='*.swp' \
-    "$SRC/" "${DEST}/${DIR_NAME}/" 2>> "$LOG_FILE"
+    "$SRC/" "${DEST}/${DIR_NAME}/" 2>> "$LOG_FILE"; then
+    STATUS=1
+  fi
 done
 
 # Remove backups older than retention period
-find "$BACKUP_DIR" -maxdepth 1 -type d -mtime +${RETENTION_DAYS} -exec rm -rf {} \;
+if ! find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d -mtime +"${RETENTION_DAYS}" -exec rm -rf {} +; then
+  STATUS=1
+fi
 
 echo "=== Backup completed: $(date) ===" >> "$LOG_FILE"
+
+exit "$STATUS"
 ```
 
 Make the script executable:
@@ -75,16 +85,13 @@ Add the following entry:
 ```cron
 # Daily backup at 2:00 AM
 0 2 * * * /usr/local/bin/auto-backup.sh
-
-# Weekly full backup on Sundays at 1:00 AM
-0 1 * * 0 /usr/local/bin/full-backup.sh
 ```
 
 Alternatively, use a cron drop-in file:
 
 ```bash
 # Create a cron file for backups
-sudo cat > /etc/cron.d/system-backup << 'CRON'
+sudo tee /etc/cron.d/system-backup > /dev/null << 'CRON'
 # Run daily backup at 2:00 AM as root
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
@@ -97,8 +104,8 @@ CRON
 Set up a simple email notification on failure:
 
 ```bash
-# Add this to the end of auto-backup.sh
-if [ $? -ne 0 ]; then
+# Add this before the final exit in auto-backup.sh
+if [ "$STATUS" -ne 0 ]; then
   echo "Backup FAILED on $(hostname) at $(date)" | \
     mail -s "Backup Failure Alert" admin@example.com
 fi
