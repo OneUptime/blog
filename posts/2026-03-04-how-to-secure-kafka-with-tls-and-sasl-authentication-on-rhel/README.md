@@ -23,17 +23,18 @@ openssl req -new -x509 -keyout ca-key.pem -out ca-cert.pem \
 
 # Generate a broker keystore
 keytool -keystore kafka.server.keystore.jks -alias localhost \
-  -keyalg RSA -genkey -storepass changeit -keypass changeit \
-  -dname "CN=kafka-broker"
+  -keyalg RSA -genkeypair -storepass changeit -keypass changeit \
+  -dname "CN=your-hostname" -ext SAN=DNS:your-hostname
 
 # Create a certificate signing request
 keytool -keystore kafka.server.keystore.jks -alias localhost \
-  -certreq -file server-cert-request.pem -storepass changeit
+  -certreq -file server-cert-request.pem -storepass changeit \
+  -ext SAN=DNS:your-hostname
 
 # Sign the certificate with the CA
 openssl x509 -req -CA ca-cert.pem -CAkey ca-key.pem \
   -in server-cert-request.pem -out server-cert-signed.pem \
-  -days 365 -CAcreateserial
+  -days 365 -CAcreateserial -copy_extensions copy
 
 # Import CA and signed cert into keystore
 keytool -keystore kafka.server.keystore.jks -alias CARoot \
@@ -55,6 +56,7 @@ keytool -keystore kafka.server.truststore.jks -alias CARoot \
 listeners=SASL_SSL://0.0.0.0:9093,CONTROLLER://0.0.0.0:9094
 advertised.listeners=SASL_SSL://your-hostname:9093
 listener.security.protocol.map=SASL_SSL:SASL_SSL,CONTROLLER:PLAINTEXT
+inter.broker.listener.name=SASL_SSL
 
 ssl.keystore.location=/opt/kafka/ssl/kafka.server.keystore.jks
 ssl.keystore.password=changeit
@@ -75,13 +77,16 @@ listener.name.sasl_ssl.scram-sha-512.sasl.jaas.config=org.apache.kafka.common.se
 ## Creating SASL Users
 
 ```bash
-# Create admin user
-/opt/kafka/bin/kafka-configs.sh --bootstrap-server localhost:9092 \
-  --alter --add-config 'SCRAM-SHA-512=[password=admin-secret]' \
-  --entity-type users --entity-name admin
+# For a new KRaft cluster, create the inter-broker admin credential before the first start
+/opt/kafka/bin/kafka-storage.sh format \
+  -t "$(/opt/kafka/bin/kafka-storage.sh random-uuid)" \
+  -c /opt/kafka/config/kraft/server.properties \
+  --add-scram 'SCRAM-SHA-512=[name="admin",password="admin-secret"]'
 
-# Create an application user
-/opt/kafka/bin/kafka-configs.sh --bootstrap-server localhost:9092 \
+# Create an application user after the broker is running
+# /opt/kafka/admin-client.properties must use SASL_SSL with the admin credentials
+/opt/kafka/bin/kafka-configs.sh --bootstrap-server your-hostname:9093 \
+  --command-config /opt/kafka/admin-client.properties \
   --alter --add-config 'SCRAM-SHA-512=[password=app-secret]' \
   --entity-type users --entity-name myapp
 ```
