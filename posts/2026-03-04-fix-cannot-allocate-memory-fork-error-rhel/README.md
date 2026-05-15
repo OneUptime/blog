@@ -17,14 +17,14 @@ The "Cannot allocate memory" error during fork() can be caused by insufficient m
 
 free -h
 
-# Check process count against limits
-ps aux | wc -l
+# Check task count against limits
+ps -eLf | wc -l
 cat /proc/sys/kernel/pid_max
 
 # Check user-level process limits
 ulimit -u
 
-# Check system-wide process count
+# Check system-wide task limit
 cat /proc/sys/kernel/threads-max
 ```
 
@@ -52,8 +52,8 @@ echo "/swapfile none swap defaults 0 0" | sudo tee -a /etc/fstab
 # Check the user's process limit
 ulimit -u
 
-# Check how many processes the user is running
-ps -u $(whoami) | wc -l
+# Check how many tasks the user is running
+ps -u $(whoami) -L | wc -l
 
 # Increase the nproc limit
 sudo vi /etc/security/limits.d/99-nproc.conf
@@ -65,13 +65,13 @@ sudo vi /etc/security/limits.d/99-nproc.conf
 ```
 
 ```bash
-# For systemd services
+# For systemd services, prefer a per-service task limit
 sudo systemctl edit myservice.service
 ```
 
 ```ini
 [Service]
-LimitNPROC=65536
+TasksMax=65536
 ```
 
 ## Cause 3: PID Space Exhausted
@@ -80,7 +80,7 @@ LimitNPROC=65536
 # Check the maximum PID value
 cat /proc/sys/kernel/pid_max
 
-# If process count is near the PID max, increase it
+# If task count is near the PID max, increase it
 sudo sysctl -w kernel.pid_max=4194304
 echo "kernel.pid_max = 4194304" | sudo tee /etc/sysctl.d/99-pidmax.conf
 
@@ -99,7 +99,7 @@ cat /proc/sys/vm/overcommit_memory
 # Check the commit limit vs current committed memory
 grep -E "CommitLimit|Committed_AS" /proc/meminfo
 
-# If Committed_AS exceeds CommitLimit, fork will fail
+# If a fork would push Committed_AS over CommitLimit, it can fail
 # Options:
 # 1. Add more memory or swap
 # 2. Increase overcommit_ratio
@@ -113,7 +113,7 @@ sudo sysctl -w vm.overcommit_memory=0
 
 ```bash
 # Check if a cgroup is limiting the process
-cat /sys/fs/cgroup/system.slice/myservice.service/memory.max
+systemctl show myservice.service -p MemoryMax
 
 # If the service has a memory limit, increase it
 sudo systemctl edit myservice.service
