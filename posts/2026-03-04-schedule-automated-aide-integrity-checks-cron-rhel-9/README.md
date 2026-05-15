@@ -58,6 +58,7 @@ sudo tee /usr/local/sbin/aide-check.sh << 'SCRIPT'
 LOGDIR="/var/log/aide"
 LOGFILE="${LOGDIR}/aide-check-$(date +%Y%m%d-%H%M%S).log"
 MAILTO="root"
+MAIL_CMD="/usr/bin/s-nail"
 
 # Make sure log directory exists
 mkdir -p "${LOGDIR}"
@@ -75,11 +76,11 @@ echo "Exit code: ${EXIT_CODE}" >> "${LOGFILE}"
 
 # AIDE exit codes:
 # 0 = no changes
-# 1-6 = changes detected (added, removed, changed)
-# 7+ = errors
+# 1-7 = changes detected (added, removed, changed, or a combination)
+# 14+ = errors
 if [ ${EXIT_CODE} -ne 0 ]; then
     # Send the report via mail
-    mail -s "AIDE Alert: Changes detected on $(hostname)" "${MAILTO}" < "${LOGFILE}"
+    "${MAIL_CMD}" -s "AIDE Alert: Changes detected on $(hostname)" "${MAILTO}" < "${LOGFILE}"
 fi
 
 # Clean up logs older than 90 days
@@ -157,11 +158,11 @@ sudo time aide --check
 If checks take too long, consider:
 
 ```bash
-# Run with nice to lower CPU priority
-0 3 * * * nice -n 19 /usr/local/sbin/aide-check.sh
+# Run with nice to lower CPU priority in /etc/cron.d
+0 3 * * * root nice -n 19 /usr/local/sbin/aide-check.sh
 
-# Run with ionice to lower I/O priority
-0 3 * * * ionice -c 3 nice -n 19 /usr/local/sbin/aide-check.sh
+# Run with ionice to lower I/O priority in /etc/cron.d
+0 3 * * * root ionice -c 3 nice -n 19 /usr/local/sbin/aide-check.sh
 ```
 
 ## Log Rotation
@@ -206,8 +207,8 @@ flowchart TD
     C --> D[Run aide --check]
     D --> E{Exit code?}
     E -->|0 - No changes| F[Log clean result]
-    E -->|1-6 - Changes found| G[Log changes + Send email alert]
-    E -->|7+ - Error| H[Log error + Send email alert]
+    E -->|1-7 - Changes found| G[Log changes + Send email alert]
+    E -->|14+ - Error| H[Log error + Send email alert]
     F --> I[Clean up old logs]
     G --> I
     H --> I
@@ -253,7 +254,7 @@ sudo rm /etc/aide-cron-test
 During planned changes (patching, deployments), you may want to skip AIDE checks or suppress alerts. One approach is to add a maintenance mode flag to your wrapper script:
 
 ```bash
-# Add this near the top of aide-check.sh
+# Add this after the log directory is created in aide-check.sh
 MAINTENANCE_FILE="/var/run/aide-maintenance"
 if [ -f "${MAINTENANCE_FILE}" ]; then
     echo "AIDE check skipped - maintenance mode active" >> "${LOGFILE}"
@@ -271,7 +272,7 @@ sudo touch /var/run/aide-maintenance
 
 # Update the AIDE database
 sudo aide --update
-sudo cp /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
+sudo mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
 
 # Disable maintenance mode
 sudo rm /var/run/aide-maintenance
