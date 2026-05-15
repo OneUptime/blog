@@ -8,13 +8,13 @@ Description: Learn how to use the talosctl cp command to copy files and director
 
 ---
 
-Talos Linux is an immutable operating system with no SSH access, which means you cannot simply SCP files off a node like you would with a traditional Linux server. The `talosctl cp` command fills this gap by letting you copy files from nodes through the Talos API. This is especially useful for debugging, collecting logs, and extracting diagnostic information.
+Talos Linux is an immutable operating system with no SSH access, which means you cannot simply SCP files off a node like you would with a traditional Linux server. The `talosctl cp` command fills this gap by letting you copy data from nodes through the Talos API. This is especially useful for debugging, collecting logs, and extracting diagnostic information.
 
 ## Understanding File Access in Talos Linux
 
 Since Talos Linux is designed to be minimal and secure, the filesystem is quite different from what you might expect on Ubuntu or CentOS. Most of the operating system is read-only, and there is no package manager to install additional tools. The files you can access through `talosctl cp` include system logs, configuration files, kernel data from /proc and /sys, and any files created by Talos services.
 
-The `talosctl cp` command connects to the Talos API, reads the specified file from the node's filesystem, and transfers it to your local machine. It works for both individual files and directories.
+The `talosctl cp` command connects to the Talos API, creates a `.tar.gz` archive from the specified path on the node, and transfers it to your local machine. It works for both individual files and directories, but when you give it a local path, that path must be a directory where the archive is extracted.
 
 ## Basic Usage
 
@@ -23,13 +23,13 @@ To copy a file from a node to your local machine:
 ```bash
 # Copy a file from a node
 
-talosctl cp --nodes 192.168.1.10 /var/log/audit/audit.log ./audit.log
+talosctl cp --nodes 192.168.1.10 /var/log/audit/audit.log ./audit-log/
 ```
 
 The general syntax is:
 
 ```bash
-talosctl cp --nodes <node-address> <remote-path> <local-path>
+talosctl cp --nodes <node-address> <remote-path> <local-directory>
 ```
 
 ## Copying Common System Files
@@ -40,58 +40,59 @@ Here are some files you might frequently want to copy from Talos Linux nodes:
 
 ```bash
 # Copy the current machine configuration
-talosctl cp --nodes 192.168.1.10 /system/state/config.yaml ./node-config.yaml
+talosctl read --nodes 192.168.1.10 /system/state/config.yaml > ./node-config.yaml
 ```
 
-Note that you can also retrieve the machine configuration using `talosctl get machineconfig`, which is often more convenient. But `talosctl cp` gives you the raw file.
+Note that you can also retrieve the machine configuration using `talosctl get machineconfig`, which is often more convenient. But `talosctl read` gives you the raw file.
 
 ### Kernel Messages
 
 ```bash
 # Copy kernel log messages
-talosctl cp --nodes 192.168.1.10 /proc/kmsg ./kmsg.log
+talosctl dmesg --nodes 192.168.1.10 > ./kmsg.log
 ```
 
 ### System Information
 
 ```bash
 # Copy CPU information
-talosctl cp --nodes 192.168.1.10 /proc/cpuinfo ./cpuinfo.txt
+talosctl read --nodes 192.168.1.10 /proc/cpuinfo > ./cpuinfo.txt
 
 # Copy memory information
-talosctl cp --nodes 192.168.1.10 /proc/meminfo ./meminfo.txt
+talosctl read --nodes 192.168.1.10 /proc/meminfo > ./meminfo.txt
 
 # Copy disk partition table
-talosctl cp --nodes 192.168.1.10 /proc/partitions ./partitions.txt
+talosctl read --nodes 192.168.1.10 /proc/partitions > ./partitions.txt
 ```
 
 ### Network Configuration
 
 ```bash
 # Copy network interface information
-talosctl cp --nodes 192.168.1.10 /proc/net/dev ./netdev.txt
+talosctl read --nodes 192.168.1.10 /proc/net/dev > ./netdev.txt
 
 # Copy routing table
-talosctl cp --nodes 192.168.1.10 /proc/net/route ./routes.txt
+talosctl read --nodes 192.168.1.10 /proc/net/route > ./routes.txt
 
 # Copy the resolv.conf
-talosctl cp --nodes 192.168.1.10 /etc/resolv.conf ./resolv.conf
+talosctl read --nodes 192.168.1.10 /etc/resolv.conf > ./resolv.conf
 ```
 
 ## Copying Directories
 
-You can copy entire directories from a node. The content is transferred as a tar archive:
+You can copy entire directories from a node. The content is transferred as a `.tar.gz` archive and extracted into the local directory:
 
 ```bash
 # Copy a directory from the node
 talosctl cp --nodes 192.168.1.10 /var/log/ ./node-logs/
 ```
 
-When copying directories, `talosctl cp` creates a tar archive of the directory contents. You may need to extract it depending on how the copy behaves:
+When copying directories, `talosctl cp` creates a `.tar.gz` archive of the directory contents. If you use `-` as the local path, you need to extract the archive yourself:
 
 ```bash
 # Copy the log directory and extract it
-talosctl cp --nodes 192.168.1.10 /var/log/ - | tar xf - -C ./node-logs/
+mkdir -p ./node-logs/
+talosctl cp --nodes 192.168.1.10 /var/log/ - | tar xzf - -C ./node-logs/
 ```
 
 ## Debugging Use Cases
@@ -111,22 +112,22 @@ mkdir -p "$OUTPUT_DIR"
 echo "Collecting diagnostics from $NODE..."
 
 # System information
-talosctl cp --nodes "$NODE" /proc/cpuinfo "$OUTPUT_DIR/cpuinfo.txt"
-talosctl cp --nodes "$NODE" /proc/meminfo "$OUTPUT_DIR/meminfo.txt"
-talosctl cp --nodes "$NODE" /proc/loadavg "$OUTPUT_DIR/loadavg.txt"
-talosctl cp --nodes "$NODE" /proc/uptime "$OUTPUT_DIR/uptime.txt"
+talosctl read --nodes "$NODE" /proc/cpuinfo > "$OUTPUT_DIR/cpuinfo.txt"
+talosctl read --nodes "$NODE" /proc/meminfo > "$OUTPUT_DIR/meminfo.txt"
+talosctl read --nodes "$NODE" /proc/loadavg > "$OUTPUT_DIR/loadavg.txt"
+talosctl read --nodes "$NODE" /proc/uptime > "$OUTPUT_DIR/uptime.txt"
 
 # Network state
-talosctl cp --nodes "$NODE" /proc/net/dev "$OUTPUT_DIR/netdev.txt"
-talosctl cp --nodes "$NODE" /proc/net/tcp "$OUTPUT_DIR/tcp-connections.txt"
-talosctl cp --nodes "$NODE" /proc/net/udp "$OUTPUT_DIR/udp-connections.txt"
+talosctl read --nodes "$NODE" /proc/net/dev > "$OUTPUT_DIR/netdev.txt"
+talosctl read --nodes "$NODE" /proc/net/tcp > "$OUTPUT_DIR/tcp-connections.txt"
+talosctl read --nodes "$NODE" /proc/net/udp > "$OUTPUT_DIR/udp-connections.txt"
 
 # Disk and filesystem info
-talosctl cp --nodes "$NODE" /proc/mounts "$OUTPUT_DIR/mounts.txt"
-talosctl cp --nodes "$NODE" /proc/diskstats "$OUTPUT_DIR/diskstats.txt"
+talosctl read --nodes "$NODE" /proc/mounts > "$OUTPUT_DIR/mounts.txt"
+talosctl read --nodes "$NODE" /proc/diskstats > "$OUTPUT_DIR/diskstats.txt"
 
 # Process info
-talosctl cp --nodes "$NODE" /proc/stat "$OUTPUT_DIR/stat.txt"
+talosctl read --nodes "$NODE" /proc/stat > "$OUTPUT_DIR/stat.txt"
 
 # Also collect service logs
 talosctl logs machined --nodes "$NODE" > "$OUTPUT_DIR/machined.log" 2>&1
@@ -141,10 +142,10 @@ ls -la "$OUTPUT_DIR"
 
 ```bash
 # Copy kubelet configuration files
-talosctl cp --nodes 192.168.1.10 /etc/kubernetes/kubelet.conf ./kubelet.conf
+talosctl read --nodes 192.168.1.10 /etc/kubernetes/kubelet.conf > ./kubelet.conf
 
 # Copy kubelet bootstrap config
-talosctl cp --nodes 192.168.1.10 /etc/kubernetes/bootstrap-kubelet.conf ./bootstrap-kubelet.conf
+talosctl read --nodes 192.168.1.10 /etc/kubernetes/bootstrap-kubelet.conf > ./bootstrap-kubelet.conf
 ```
 
 ### Checking Certificate Files
@@ -173,7 +174,7 @@ FILE="/proc/meminfo"
 
 for node in $NODES; do
   echo "Copying from $node..."
-  talosctl cp --nodes "$node" "$FILE" "./meminfo-${node}.txt"
+  talosctl read --nodes "$node" "$FILE" > "./meminfo-${node}.txt"
 done
 
 # Compare the files
@@ -187,20 +188,20 @@ done
 
 ## Working with Piped Output
 
-You can pipe the output of `talosctl cp` to other commands for on-the-fly processing:
+For individual files, you can pipe the output of `talosctl read` to other commands for on-the-fly processing:
 
 ```bash
 # Copy and immediately search through a file
-talosctl cp --nodes 192.168.1.10 /proc/mounts - | grep ext4
+talosctl read --nodes 192.168.1.10 /proc/mounts | grep ext4
 
 # Copy and count lines
-talosctl cp --nodes 192.168.1.10 /proc/net/tcp - | wc -l
+talosctl read --nodes 192.168.1.10 /proc/net/tcp | wc -l
 
 # Copy and analyze network connections
-talosctl cp --nodes 192.168.1.10 /proc/net/tcp - | awk '{print $4}' | sort | uniq -c | sort -rn
+talosctl read --nodes 192.168.1.10 /proc/net/tcp | awk '{print $4}' | sort | uniq -c | sort -rn
 ```
 
-Using `-` as the local path sends the file content to stdout, which you can then pipe into any tool.
+Using `talosctl read` sends the file content to stdout, which you can then pipe into any tool. Using `-` with `talosctl cp` sends the `.tar.gz` archive to stdout instead.
 
 ## Limitations
 
@@ -230,7 +231,7 @@ talosctl mounts --nodes 192.168.1.10
 talosctl disks --nodes 192.168.1.10
 ```
 
-Use `talosctl cp` when you need the raw file content or when no dedicated command exists for the information you need.
+Use `talosctl cp` when you need to copy and extract a path as an archive, and use `talosctl read` when you need raw file content.
 
 ## Best Practices
 
@@ -239,7 +240,7 @@ Use `talosctl cp` when you need the raw file content or when no dedicated comman
 - Create reusable diagnostic collection scripts to speed up troubleshooting.
 - When collecting diagnostics, timestamp your output directories for easy reference.
 - Be cautious about copying large files over slow networks.
-- Use piped output with `-` for quick one-off inspections.
+- Use `talosctl read` for quick one-off inspections of individual files.
 - Remember that `talosctl cp` is read-only - you cannot push files to nodes with this command.
 
 The `talosctl cp` command bridges the gap between Talos Linux's secure, SSH-free design and the practical need to inspect files on your nodes. It is an essential tool in your debugging toolkit.
