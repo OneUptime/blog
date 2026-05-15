@@ -12,7 +12,8 @@ OpenShift Local (formerly CodeReady Containers) provides a single-node OpenShift
 
 ## Prerequisites
 
-- RHEL 9 with at least 9 GB RAM, 4 CPU cores, 35 GB disk
+- RHEL 9 with at least 10.5 GB available RAM, 4 physical CPU cores, 35 GB disk
+- NetworkManager installed
 - Red Hat account for pull secret
 
 ## Download and Install
@@ -40,8 +41,10 @@ crc start -p pull-secret.txt
 
 ```bash
 eval $(crc oc-env)
-oc login -u developer -p developer https://api.crc.testing:6443
+oc login -u developer https://api.crc.testing:6443
 ```
+
+Use the `developer` password printed by `crc start`, or view it with `crc console --credentials`.
 
 ## Access the Console
 
@@ -68,5 +71,4 @@ crc delete
 
 ## Conclusion
 
-OpenShift Local on RHEL 9 provides a full OpenShift experience for development. Use it to test OpenShift-specific features like Routes, BuildConfigs, and Operators before deploying to production clusters.
-
+OpenShift Local on RHEL 9 provides a local OpenShift experience for development. Use it to test OpenShift-specific features like Routes, BuildConfigs, and Operators before deploying to production clusters.
