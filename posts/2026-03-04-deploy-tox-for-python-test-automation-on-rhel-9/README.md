@@ -63,8 +63,8 @@ tox --version
 
 ```bash
 # Create a project directory
-mkdir -p /opt/mypackage
-cd /opt/mypackage
+mkdir -p ~/mypackage
+cd ~/mypackage
 ```
 
 Create a simple Python package:
@@ -112,7 +112,7 @@ Create a pyproject.toml:
 # pyproject.toml
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "mypackage"
@@ -131,7 +131,6 @@ Create a tox.ini file:
 # tox.ini
 [tox]
 envlist = py39, py311, lint, typecheck
-isolated_build = True
 
 [testenv]
 deps =
@@ -196,7 +195,6 @@ Instead of tox.ini, you can configure tox in pyproject.toml:
 legacy_tox_ini = """
 [tox]
 envlist = py39, py311, lint
-isolated_build = True
 
 [testenv]
 deps =
@@ -287,7 +285,7 @@ tox -re py39
 # List all configured environments
 tox -l
 
-# List with descriptions
+# List all defined environments
 tox -a
 ```
 
