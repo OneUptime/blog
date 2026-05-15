@@ -111,19 +111,10 @@ sudo chown bobj:bobj /businessobjects/data
 BusinessObjects requires a CMS repository database:
 
 ```bash
-# Install PostgreSQL as the CMS database (or use SAP HANA)
-sudo dnf install -y postgresql-server postgresql
-
-# Initialize and start PostgreSQL
-sudo postgresql-setup --initdb
-sudo systemctl enable --now postgresql
-
-# Create the CMS database
-sudo -u postgres psql <<'SQL'
-CREATE USER bobj_cms WITH PASSWORD 'SecureDBPassword';
-CREATE DATABASE bobj_cms OWNER bobj_cms;
-GRANT ALL PRIVILEGES ON DATABASE bobj_cms TO bobj_cms;
-SQL
+# For a basic installation, use the bundled SQL Anywhere database.
+# For production, create a supported external CMS database for your
+# BusinessObjects version before running the installer, such as Oracle,
+# SQL Server, DB2, Sybase ASE, or MaxDB where listed in the SAP PAM.
 ```
 
 ## Step 5: Run the BusinessObjects Installer
@@ -135,14 +126,8 @@ sudo su - bobj
 # Navigate to the installation media
 cd /path/to/bobj/media
 
-# Run the installer in console mode
-./setup.sh -InstallDir /opt/sap_bobj \
-  -CMSDatabaseType postgresql \
-  -CMSDatabaseHost localhost \
-  -CMSDatabasePort 5432 \
-  -CMSDatabaseName bobj_cms \
-  -CMSDatabaseUser bobj_cms \
-  -CMSDatabasePassword SecureDBPassword
+# Run the installer and follow the prompts
+./setup.sh -InstallDir /opt/sap_bobj
 ```
 
 ## Step 6: Configure Firewall
@@ -151,7 +136,7 @@ cd /path/to/bobj/media
 # Open ports for BusinessObjects
 sudo firewall-cmd --permanent --add-port=8080/tcp   # Web interface
 sudo firewall-cmd --permanent --add-port=6400/tcp   # CMS
-sudo firewall-cmd --permanent --add-port=6410/tcp   # CMS
+sudo firewall-cmd --permanent --add-port=6410/tcp   # SIA
 sudo firewall-cmd --permanent --add-port=8443/tcp   # HTTPS
 sudo firewall-cmd --reload
 ```
@@ -160,14 +145,14 @@ sudo firewall-cmd --reload
 
 ```bash
 # Start BusinessObjects services
-sudo su - bobj -c '/opt/sap_bobj/sap_bobj/startservers'
+sudo su - bobj -c '/opt/sap_bobj/sap_bobj/ccm.sh -start all'
 
 # Check the status
-sudo su - bobj -c '/opt/sap_bobj/sap_bobj/listprocesses'
+sudo su - bobj -c '/opt/sap_bobj/sap_bobj/ccm.sh -display -username Administrator -password <password>'
 
 # Access the web interface at http://your-server:8080/BOE/BI
 ```
 
 ## Conclusion
 
-RHEL provides a solid foundation for SAP BusinessObjects BI Platform. The key steps are installing the correct 32-bit and 64-bit libraries, tuning system parameters, and configuring the CMS database before running the installer. For production environments, configure HTTPS, integrate with your LDAP/SSO provider, and set up high availability for the CMS.
+RHEL provides a solid foundation for SAP BusinessObjects BI Platform. The key steps are installing the correct 32-bit and 64-bit libraries, tuning system parameters, and selecting a supported CMS database during installation. For production environments, configure HTTPS, integrate with your LDAP/SSO provider, and set up high availability for the CMS.
