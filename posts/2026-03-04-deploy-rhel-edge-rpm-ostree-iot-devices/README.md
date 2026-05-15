@@ -16,7 +16,7 @@ Deploy RHEL for Edge with rpm-ostree on IoT devices for immutable updates. RHEL 
 
 - A RHEL system for building edge images (with Image Builder)
 - Root or sudo access
-- For MicroShift: a system with at least 2 CPU cores and 2 GB RAM
+- For MicroShift: a supported RHEL for Edge and MicroShift version, active subscriptions and repositories, a pull secret, and a system with at least 2 CPU cores and 2 GB RAM
 
 ## Step 1 - Understand the Edge Architecture
 
@@ -24,7 +24,7 @@ RHEL for Edge uses rpm-ostree to deliver immutable OS images:
 
 - The OS is deployed as a single atomic unit
 - Updates are applied as new image versions
-- Rollback is automatic if a health check fails (Greenboot)
+- Greenboot can automatically roll back to a previous deployment if required health checks keep failing after the configured boot retries
 - Applications run in containers on Podman or MicroShift (Kubernetes)
 
 ## Step 2 - Build an Edge Image
@@ -38,7 +38,7 @@ composer-cli compose start my-edge-blueprint edge-commit
 For an installer image:
 
 ```bash
-composer-cli compose start my-edge-blueprint edge-installer
+composer-cli compose start-ostree --ref rhel/9/x86_64/edge --url http://example.com/repo my-edge-blueprint edge-installer
 ```
 
 ## Step 3 - Deploy to Edge Devices
@@ -51,12 +51,21 @@ sudo dd if=edge-installer.iso of=/dev/sdX bs=4M status=progress
 
 ## Step 4 - Configure Automatic Updates
 
-RHEL for Edge supports automatic OS updates with Greenboot health checks:
+RHEL for Edge supports automatic OS image updates through rpm-ostreed, with Greenboot health checks validating the booted deployment:
 
 ```bash
-# Greenboot scripts in /etc/greenboot/check/required.d/
+# In /etc/rpm-ostreed.conf:
+[Daemon]
+AutomaticUpdatePolicy=stage
+IdleExitTimeout=60
 
-# If any script fails, the system rolls back to the previous version
+sudo systemctl reload rpm-ostreed
+sudo systemctl enable --now rpm-ostreed-automatic.timer
+
+# Required Greenboot health checks go in /etc/greenboot/check/required.d/
+
+# If required scripts keep failing after the configured boot retries,
+# Greenboot rolls back to the previous deployment if one is available.
 ```
 
 ## Step 5 - Deploy Workloads
