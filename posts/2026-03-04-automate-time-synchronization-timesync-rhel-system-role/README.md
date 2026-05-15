@@ -46,6 +46,11 @@ Create `configure-timesync.yml`:
 - name: How to Automate Time Synchronization Using the timesync RHEL System Role
   hosts: managed_hosts
   become: true
+  vars:
+    timesync_ntp_servers:
+      - hostname: 0.rhel.pool.ntp.org
+        pool: yes
+        iburst: yes
   roles:
     - role: rhel-system-roles.timesync
 ```
@@ -68,10 +73,9 @@ ansible-playbook -i inventory.ini configure-timesync.yml
 On the managed hosts, verify that the configuration was applied:
 
 ```bash
-# Check relevant service or configuration
-
-systemctl status <service>
-cat <config-file>
+systemctl status chronyd
+chronyc sources
+cat /etc/chrony.conf
 ```
 
 ## Idempotency
