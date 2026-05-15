@@ -14,7 +14,7 @@ HashiCorp Nomad is a workload orchestrator that can schedule containers, binarie
 
 ```bash
 # Add the HashiCorp repository
-
+sudo dnf install -y dnf-plugins-core
 sudo dnf config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
 
 # Install Nomad
@@ -79,8 +79,9 @@ On worker nodes that will run jobs:
 sudo dnf install nomad -y
 
 # Install container runtime (for Docker driver)
+sudo dnf install -y dnf-plugins-core
 sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
-sudo dnf install docker-ce -y
+sudo dnf install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
 sudo systemctl enable --now docker
 
 # Create the client configuration
@@ -165,7 +166,7 @@ nomad job allocs web
 
 ```bash
 # Scale the job
-nomad job scale web web 5
+nomad job scale web 5
 
 # Update the job (edit the job file and resubmit)
 # Nomad performs rolling updates by default
