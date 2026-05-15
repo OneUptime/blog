@@ -30,9 +30,9 @@ This is the safer and more common operation.
 ### Step 1 - Check Current Layout
 
 ```bash
-# See the current partition table and free space
+# See the current partition table and free space, including exact boundaries
 
-sudo parted /dev/sdb print free
+sudo parted /dev/sdb unit GiB print free
 
 # Check filesystem usage
 df -h /mnt/data
@@ -53,7 +53,7 @@ sudo umount /mnt/data
 # Resize partition 1 to use all available space
 sudo parted /dev/sdb resizepart 1 100%
 
-# Or resize to a specific size
+# Or resize to a specific end position from the beginning of the disk
 sudo parted /dev/sdb resizepart 1 200GiB
 ```
 
@@ -110,15 +110,15 @@ sudo e2fsck -f /dev/sdb1
 ### Step 3 - Shrink the Filesystem First
 
 ```bash
-# Shrink the ext4 filesystem to 50 GB
-sudo resize2fs /dev/sdb1 50G
+# Shrink the ext4 filesystem smaller than the target partition
+sudo resize2fs /dev/sdb1 49G
 ```
 
 ### Step 4 - Shrink the Partition
 
 ```bash
-# Now shrink the partition to match
-# The partition must be at least as large as the filesystem
+# Now shrink the partition by setting its new end position
+# The partition must still be larger than the filesystem
 sudo parted /dev/sdb resizepart 1 50GiB
 ```
 
@@ -155,7 +155,7 @@ echo 1 | sudo tee /sys/class/block/sdb/device/rescan
 # Verify the new size
 lsblk /dev/sdb
 
-# Fix the GPT backup header (required after disk expansion)
+# If this is a GPT disk, fix the backup GPT header after disk expansion
 sudo parted /dev/sdb print
 # parted will offer to fix the GPT header - accept
 
