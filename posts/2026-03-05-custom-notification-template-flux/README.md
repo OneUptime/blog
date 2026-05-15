@@ -23,7 +23,7 @@ Flux provides several ways to customize notification content:
 - The `spec.eventMetadata.summary` field on Alert resources adds summary context to notifications
 - Provider-level channel configuration controls where messages go
 - The generic provider type sends Flux event JSON to webhooks that can transform the payload
-- Event metadata from the source resources is automatically included
+- Event metadata annotations from the source resources are automatically included
 
 ## Step 1: Add Context with the Summary Field
 
@@ -145,7 +145,7 @@ The generic provider sends a JSON payload with the following structure to your e
 
 ## Step 4: Build a Custom Webhook Handler
 
-Create a simple webhook handler that formats notifications with custom templates. Here is an example that transforms Flux events into a custom Slack message format.
+Create a simple webhook handler that formats notifications with custom templates. Here is an example alert that routes Flux events to the custom webhook handler.
 
 ```yaml
 # Alert routing events to the custom webhook handler
@@ -174,7 +174,7 @@ spec:
 
 ## Step 5: Channel-Based Customization
 
-Use different Slack channels for different types of notifications by creating separate providers.
+Use different Slack channels for different types of notifications by creating separate providers. When using Slack channels this way, configure the Slack provider with the Slack API endpoint and a bot token.
 
 ```yaml
 # Provider for deployment notifications
@@ -185,9 +185,10 @@ metadata:
   namespace: flux-system
 spec:
   type: slack
+  address: https://slack.com/api/chat.postMessage
   channel: deployments
   secretRef:
-    name: slack-webhook
+    name: slack-token
 ---
 # Provider for security notifications
 apiVersion: notification.toolkit.fluxcd.io/v1beta3
@@ -197,9 +198,10 @@ metadata:
   namespace: flux-system
 spec:
   type: slack
+  address: https://slack.com/api/chat.postMessage
   channel: security-alerts
   secretRef:
-    name: slack-webhook
+    name: slack-token
 ---
 # Provider for infrastructure notifications
 apiVersion: notification.toolkit.fluxcd.io/v1beta3
@@ -209,9 +211,10 @@ metadata:
   namespace: flux-system
 spec:
   type: slack
+  address: https://slack.com/api/chat.postMessage
   channel: infrastructure
   secretRef:
-    name: slack-webhook
+    name: slack-token
 ```
 
 ## Step 6: Team-Specific Notification Templates
