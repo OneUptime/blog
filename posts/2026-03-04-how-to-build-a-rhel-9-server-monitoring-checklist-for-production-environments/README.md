@@ -58,16 +58,16 @@ iostat -x 1 5
 
 # Network
 ss -s
-ip -s link show eth0
+ip -s link show <interface>
 ```
 
 ## Set Up Prometheus Node Exporter
 
 ```bash
 sudo useradd --no-create-home --shell /bin/false node_exporter
-curl -LO https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
-tar xzf node_exporter-1.7.0.linux-amd64.tar.gz
-sudo cp node_exporter-1.7.0.linux-amd64/node_exporter /usr/local/bin/
+curl -LO https://github.com/prometheus/node_exporter/releases/download/v1.10.2/node_exporter-1.10.2.linux-amd64.tar.gz
+tar xzf node_exporter-1.10.2.linux-amd64.tar.gz
+sudo cp node_exporter-1.10.2.linux-amd64/node_exporter /usr/local/bin/
 sudo chown node_exporter:node_exporter /usr/local/bin/node_exporter
 
 sudo tee /etc/systemd/system/node_exporter.service <<EOF
@@ -84,6 +84,7 @@ Restart=always
 WantedBy=multi-user.target
 EOF
 
+sudo systemctl daemon-reload
 sudo systemctl enable --now node_exporter
 ```
 
@@ -100,4 +101,3 @@ sudo systemctl enable --now node_exporter
 ## Conclusion
 
 A comprehensive monitoring checklist for RHEL 9 covers system resources, processes, logs, and network metrics. Deploy automated monitoring with Prometheus, Grafana, or Red Hat Insights for continuous visibility.
-
