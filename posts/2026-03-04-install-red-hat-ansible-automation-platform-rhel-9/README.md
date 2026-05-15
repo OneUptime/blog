@@ -1,20 +1,21 @@
-# How to Install Red Hat Ansible Automation Platform on RHEL 9
+# How to Install Ansible Core on RHEL 9
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Ansible Automation Platform, Red Hat, Automation
+Tags: RHEL, Ansible Core, Red Hat, Automation
 
-Description: Install Red Hat Ansible Automation Platform on RHEL 9 for enterprise automation.
+Description: Install Ansible Core on RHEL 9 for enterprise automation.
 
 ---
 
 ## Overview
 
-Install Red Hat Ansible Automation Platform on RHEL 9 for enterprise automation. Ansible provides agentless automation that connects to RHEL hosts over SSH and applies desired-state configuration.
+Install Ansible Core on RHEL 9 for enterprise automation. Ansible provides agentless automation that connects to RHEL hosts over SSH and applies desired-state configuration.
 
 ## Prerequisites
 
 - A RHEL 9 system to serve as the Ansible control node
+- Access to the RHEL 9 AppStream repository
 - SSH access to managed hosts
 - Python 3 installed on managed hosts (included by default on RHEL 9)
 
@@ -32,7 +33,7 @@ ansible --version
 
 ## Step 2 - Configure Inventory
 
-Create `/etc/ansible/hosts` or a local inventory file:
+Create `/etc/ansible/hosts` or a local inventory file such as `inventory.ini`:
 
 ```ini
 [webservers]
@@ -64,11 +65,11 @@ Create a playbook YAML file:
         name:
           - vim
           - tmux
-          - htop
+          - rsync
         state: present
 
     - name: Ensure services are running
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: sshd
         state: started
         enabled: true
@@ -89,9 +90,9 @@ ansible-playbook -i inventory.ini playbook.yml --check
 ## Step 5 - Verify Results
 
 ```bash
-ansible all -i inventory.ini -m command -a "rpm -q htop"
+ansible all -i inventory.ini -m command -a "rpm -q rsync"
 ```
 
 ## Summary
 
-You have learned how to install red hat ansible automation platform. Ansible's agentless architecture and declarative playbooks make it ideal for managing RHEL systems at scale.
+You have learned how to install Ansible Core. Ansible's agentless architecture and declarative playbooks make it ideal for managing RHEL systems at scale.
