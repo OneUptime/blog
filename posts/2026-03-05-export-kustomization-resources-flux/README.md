@@ -48,7 +48,7 @@ spec:
   wait: true
 ```
 
-Notice that the output contains the resource definition -- no status, no managed fields, and no generated runtime metadata. This is a clean, reusable definition.
+Notice that the output contains the resource definition -- no status, no managed fields, and no Kubernetes-generated identifiers. This is a clean, reusable definition.
 
 ## Saving the Export to a File
 
@@ -213,15 +213,17 @@ You might wonder why to use `flux export ks` instead of `kubectl get kustomizati
 # kubectl output includes runtime metadata and status (noisy)
 kubectl get kustomization my-app -n flux-system -o yaml
 
-# flux export output is clean and reusable (just spec)
+# flux export output is clean and reusable (metadata and spec)
 flux export ks my-app
 ```
 
-The kubectl output includes dozens of lines of managed fields, status conditions, and runtime annotations that you would need to manually remove before reusing the YAML. The Flux export command handles this cleanup automatically.
+The kubectl output includes dozens of lines of managed fields, status conditions, and Kubernetes-generated metadata that you would need to manually remove before reusing the YAML. The Flux export command handles this cleanup automatically while preserving configured labels and annotations.
 
 ## Automating Exports with CronJobs
 
 For regular backups of your Flux configuration, you can create a CronJob:
+
+Make sure the referenced ServiceAccount, RBAC permissions, and PersistentVolumeClaim exist before applying the CronJob.
 
 ```yaml
 # flux-backup-cronjob.yaml - Automated Flux configuration backup
