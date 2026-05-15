@@ -74,14 +74,16 @@ dd is commonly used to write ISO images to USB drives:
 sudo dd if=rhel-9.4-x86_64-dvd.iso of=/dev/sdc bs=4M status=progress oflag=sync
 ```
 
-## Wiping a Disk Securely
+## Wiping a Disk
 
 ```bash
 # Write zeros to a disk (single pass wipe)
 sudo dd if=/dev/zero of=/dev/sdb bs=4M status=progress
 
-# Write random data for more secure wiping
+# Write random data over the visible disk area
 sudo dd if=/dev/urandom of=/dev/sdb bs=4M status=progress
 ```
+
+Overwrite-based wiping may not securely erase all data on SSDs, flash storage, or drives with remapped bad blocks. Use device-supported secure erase or sanitization features when you need verified media sanitization.
 
 Always double-check device names before running dd. Writing to the wrong device will destroy data permanently.
