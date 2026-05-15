@@ -1,14 +1,14 @@
-# How to Install and Configure Cockpit-Navigator File Manager on RHEL
+# How to Install and Configure Cockpit File Manager on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, Linux
 
-Description: Step-by-step guide on install and configure cockpit-navigator file manager using Red Hat Enterprise Linux 9.
+Description: Step-by-step guide on installing and configuring the Cockpit file manager using Red Hat Enterprise Linux 9.
 
 ---
 
-Cockpit-Navigator File Manager can be installed and configured on RHEL to provide robust functionality for your infrastructure. This guide walks through the installation, basic configuration, and verification steps.
+The Cockpit file manager can be installed and configured on RHEL to provide robust functionality for your infrastructure. This guide walks through the installation, basic configuration, and verification steps.
 
 ## Prerequisites
 
@@ -24,38 +24,33 @@ Cockpit-Navigator File Manager can be installed and configured on RHEL to provid
 sudo dnf update -y
 
 # Install the required packages
-sudo dnf install -y <package-name>
+sudo dnf install -y cockpit cockpit-files
 ```
 
-Replace `<package-name>` with the specific package for your use case.
+The `cockpit` package provides the RHEL web console, and `cockpit-files` provides the file manager add-on.
 
 ## Step 2: Configure the Service
 
-Edit the configuration file to match your environment:
+Enable and start the Cockpit socket, which runs the web console on port 9090:
 
 ```bash
-# Open the configuration file
-sudo vi /etc/<service>/config.conf
+# Enable and start the Cockpit web console
+sudo systemctl enable --now cockpit.socket
 ```
 
-Adjust the settings according to your requirements. Key parameters to configure include listening addresses, authentication settings, and logging options.
+If you use `firewalld`, allow Cockpit through the firewall:
 
 ```bash
-# Restart the service to apply changes
-sudo systemctl restart <service-name>
+# Open the Cockpit service in the firewall
+sudo firewall-cmd --add-service=cockpit --permanent
+sudo firewall-cmd --reload
 ```
 
 ## Step 3: Enable and Start the Service
 
 ```bash
-# Enable the service to start on boot
-sudo systemctl enable <service-name>
-
-# Start the service
-sudo systemctl start <service-name>
-
 # Check the status
-sudo systemctl status <service-name>
+sudo systemctl status cockpit.socket
 ```
 
 
@@ -65,16 +60,16 @@ Confirm everything is working by checking the status and logs:
 
 ```bash
 # Check the service status
-sudo systemctl status <service-name>
+sudo systemctl status cockpit.socket
 
 # Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+journalctl -u cockpit.socket --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- If the service fails to start, check the logs with `journalctl -u cockpit.socket -e --no-pager`.
+- Ensure all required packages are installed: `rpm -q cockpit cockpit-files`.
 
 ## Conclusion
 
