@@ -27,17 +27,20 @@ graph LR
 
 - RHEL with Postfix installed and running
 - EPEL repository enabled (ClamAV packages are in EPEL)
-- Sufficient disk space for virus definitions (about 400 MB)
+- Sufficient resources for ClamAV (at least 3 GiB RAM and 5 GiB free disk space recommended)
 
 ## Installing ClamAV
 
 ```bash
 # Enable EPEL repository
-
-sudo dnf install -y epel-release
+sudo subscription-manager repos --enable "codeready-builder-for-rhel-9-$(arch)-rpms"
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 
 # Install ClamAV and the milter interface
 sudo dnf install -y clamav clamd clamav-milter clamav-update
+
+# Allow Postfix to access the Fedora/EPEL milter runtime directory
+sudo usermod -a -G clamilt postfix
 ```
 
 ## Configuring ClamAV Daemon
@@ -104,7 +107,7 @@ sudo freshclam
 Enable automatic updates:
 
 ```bash
-# Enable the freshclam timer for automatic updates
+# Enable the freshclam service for automatic updates
 sudo systemctl enable --now clamav-freshclam
 ```
 
@@ -117,9 +120,9 @@ The milter is the component that integrates ClamAV with Postfix. Edit `/etc/mail
 # Example
 
 # Socket for Postfix communication
-MilterSocket /run/clamav-milter/clamav-milter.sock
+MilterSocket /run/clamav-milter/clamav-milter.socket
 MilterSocketMode 660
-MilterSocketGroup postfix
+MilterSocketGroup clamilt
 
 # ClamAV daemon socket
 ClamdSocket unix:/run/clamd.scan/clamd.sock
@@ -149,16 +152,16 @@ Add the milter to Postfix. Edit `/etc/postfix/main.cf`:
 
 ```bash
 # ClamAV milter for virus scanning
-smtpd_milters = unix:/run/clamav-milter/clamav-milter.sock
-non_smtpd_milters = unix:/run/clamav-milter/clamav-milter.sock
+smtpd_milters = unix:/run/clamav-milter/clamav-milter.socket
+non_smtpd_milters = unix:/run/clamav-milter/clamav-milter.socket
 milter_default_action = accept
 ```
 
 If you already have other milters (like OpenDKIM), add ClamAV to the list:
 
 ```bash
-smtpd_milters = inet:localhost:8891, unix:/run/clamav-milter/clamav-milter.sock
-non_smtpd_milters = inet:localhost:8891, unix:/run/clamav-milter/clamav-milter.sock
+smtpd_milters = inet:localhost:8891, unix:/run/clamav-milter/clamav-milter.socket
+non_smtpd_milters = inet:localhost:8891, unix:/run/clamav-milter/clamav-milter.socket
 ```
 
 ## Starting Services
@@ -170,8 +173,8 @@ sudo systemctl enable --now clamd@scan
 # Start ClamAV milter
 sudo systemctl enable --now clamav-milter
 
-# Reload Postfix
-sudo postfix reload
+# Restart Postfix so group membership changes take effect
+sudo systemctl restart postfix
 ```
 
 Verify everything is running:
@@ -270,7 +273,7 @@ sudo clamdtop
 # Check freshclam update log
 sudo tail -20 /var/log/freshclam.log
 
-# Count infected messages in the last day
+# Count infected messages in the milter log
 sudo grep "FOUND" /var/log/clamav-milter.log | wc -l
 ```
 
@@ -320,7 +323,7 @@ sudo freshclam --verbose
 
 **High memory usage:**
 
-ClamAV loads virus definitions into memory. The current definitions require about 1-1.5 GB of RAM. If memory is tight, consider running ClamAV on a dedicated server and connecting via TCP socket.
+ClamAV loads virus definitions into memory. The engine uses more than 1 GB of RAM just for signatures, and database reloads can temporarily use much more. If memory is tight, consider running ClamAV on a dedicated server and connecting via TCP socket.
 
 ## Wrapping Up
 
