@@ -46,15 +46,20 @@ Create `configure-sshd.yml`:
 - name: How to Automate SSH Configuration Using the sshd RHEL System Role
   hosts: managed_hosts
   become: true
-  roles:
-    - role: rhel-system-roles.sshd
+  tasks:
+    - name: Configure sshd
+      ansible.builtin.include_role:
+        name: redhat.rhel_system_roles.sshd
+      vars:
+        sshd_config:
+          PermitRootLogin: no
+          PasswordAuthentication: no
 ```
 
 Add the role-specific variables. Check the role documentation for available options:
 
 ```bash
-ls /usr/share/doc/rhel-system-roles/sshd/
-cat /usr/share/doc/rhel-system-roles/sshd/README.md
+cat /usr/share/ansible/roles/rhel-system-roles.sshd/README.md
 ```
 
 ## Step 4 - Run the Playbook
@@ -68,10 +73,8 @@ ansible-playbook -i inventory.ini configure-sshd.yml
 On the managed hosts, verify that the configuration was applied:
 
 ```bash
-# Check relevant service or configuration
-
-systemctl status <service>
-cat <config-file>
+systemctl status sshd
+cat /etc/ssh/sshd_config.d/00-ansible_system_role.conf
 ```
 
 ## Idempotency
