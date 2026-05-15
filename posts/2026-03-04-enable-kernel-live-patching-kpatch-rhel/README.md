@@ -19,7 +19,7 @@ You need an active RHEL subscription that includes kernel live patching support.
 
 sudo subscription-manager status
 
-# Enable the kernel live patching repository
+# Enable the BaseOS repository if it is not already enabled
 sudo subscription-manager repos --enable=rhel-9-for-x86_64-baseos-rpms
 ```
 
@@ -36,12 +36,11 @@ rpm -q kpatch-dnf
 ## Enable Automatic Live Patching
 
 ```bash
-# Enable the kpatch DNF plugin to automatically apply live patches
-# during regular system updates
-sudo dnf install -y kpatch-dnf
+# Enable automatic subscription to kernel live patches for installed kernels
+sudo dnf kpatch auto
 
 # Check available live patches for your current kernel
-sudo dnf list available kpatch-patch-$(uname -r | sed 's/\.[^.]*$//')* 2>/dev/null
+sudo dnf search "$(uname -r)"
 ```
 
 ## Install a Live Patch
@@ -63,7 +62,7 @@ sudo dnf install -y "kpatch-patch = $(uname -r)"
 sudo kpatch list
 
 # Check the status of applied patches
-sudo kpatch info
+sudo kpatch info kpatch_5_14_0_1_0_1
 
 # Verify the patch is loaded in the kernel
 lsmod | grep kpatch
@@ -90,9 +89,9 @@ dmesg | grep kpatch
 
 ```bash
 # Enable automatic installation of live patches via DNF
-# The kpatch-dnf plugin handles this automatically
+# The kpatch-dnf plugin handles this after auto mode is enabled
 # Verify the plugin is enabled
-sudo dnf config-manager --dump kpatch-dnf 2>/dev/null
+sudo dnf kpatch status
 
 # Live patches are included in regular dnf update operations
 sudo dnf update
@@ -101,14 +100,17 @@ sudo dnf update
 ## Remove a Live Patch
 
 ```bash
-# Unload a live patch from the running kernel
-sudo kpatch unload <patch-module-name>
+# Select the installed live patch package
+sudo dnf list installed | grep kpatch-patch
 
-# Remove the kpatch package
-sudo dnf remove kpatch-patch-*
+# Remove the kpatch package for the kernel
+sudo dnf remove kpatch-patch-5_14_0-1.x86_64
+
+# Reboot so the kernel is no longer patched
+sudo reboot
 
 # Verify it was removed
-sudo kpatch list
+sudo dnf list installed | grep kpatch-patch
 ```
 
 ## Check if a Reboot Is Still Needed
@@ -117,17 +119,17 @@ Some fixes cannot be live patched and still require a reboot.
 
 ```bash
 # Check if the system needs a reboot for any pending updates
-sudo needs-restarting -r
+sudo dnf needs-restarting -r
 
 # List services that need restarting
-sudo needs-restarting -s
+sudo dnf needs-restarting -s
 ```
 
 ## Limitations
 
 Live patching has some constraints:
 
-- Only critical and important security fixes are provided as live patches
+- Live patches cover selected security and bug fixes, but not all critical or important CVEs
 - Data structure changes cannot be live patched
 - Live patches are available for the latest minor release kernels
 - A full kernel update and reboot is still recommended during maintenance windows
