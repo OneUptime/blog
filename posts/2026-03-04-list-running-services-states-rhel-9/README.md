@@ -37,10 +37,10 @@ systemd-journald.service loaded active running Journal Service
 systemd-logind.service   loaded active running User Login Management
 ```
 
-By default, this only shows units that systemd has loaded into memory. To include units that are installed but not loaded, add `--all`:
+By default, this only shows active, failed, or queued units that systemd has loaded into memory. To include loaded but inactive units, add `--all`:
 
 ```bash
-# List all services including inactive ones
+# List all loaded services including inactive ones
 systemctl list-units --type=service --all
 ```
 
@@ -101,7 +101,7 @@ Common SUB states for services:
 | SUB State | Meaning |
 |-----------|---------|
 | running | The service process is actively running |
-| exited | The process ran and exited (normal for Type=oneshot) |
+| exited | The process ran and exited, while the unit remains active |
 | dead | The service is not running |
 | waiting | The service is waiting for an event |
 | failed | The service crashed or could not start |
@@ -215,14 +215,14 @@ sudo systemctl reset-failed
 Here are some commands I use regularly:
 
 ```bash
-# Quick system health check: any failed services?
+# Quick system health check: any failed units?
 systemctl is-system-running
 ```
 
-This returns one of: `running` (all good), `degraded` (something failed), `maintenance`, `initializing`, or `stopping`.
+This returns one of: `running` (all good), `degraded` (something failed), `maintenance`, `initializing`, `starting`, `stopping`, `offline`, or `unknown`.
 
 ```bash
-# Show services sorted by startup time (slowest first)
+# Show units sorted by startup time (slowest first)
 systemd-analyze blame | head -20
 ```
 
@@ -276,7 +276,7 @@ if [ "$MASKED" -gt 0 ]; then
 fi
 
 echo ""
-echo "=== Top 10 Slowest Services to Start ==="
+echo "=== Top 10 Slowest Units to Start ==="
 systemd-analyze blame 2>/dev/null | head -10
 ```
 
@@ -315,4 +315,4 @@ systemctl list-units
 
 ## Wrapping Up
 
-Knowing how to quickly list and filter services is one of those skills that pays off every day. Use `list-units` for what is running right now, `list-unit-files` for what is installed and configured, and `--state` to filter down to exactly what you need. Build the `systemctl --failed` check into your login routine or your monitoring setup, and you will catch problems before they become incidents.
+Knowing how to quickly list and filter services is one of those skills that pays off every day. Use `list-units` for loaded runtime units, `list-unit-files` for what is installed and configured, and `--state` to filter down to exactly what you need. Build the `systemctl --failed` check into your login routine or your monitoring setup, and you will catch problems before they become incidents.
