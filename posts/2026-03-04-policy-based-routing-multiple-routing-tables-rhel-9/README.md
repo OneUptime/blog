@@ -69,11 +69,11 @@ sudo ip rule add from 10.0.2.0/24 table isp2 priority 200
 ip rule show
 ```
 
-## Step 4: Route by Source Port or Protocol
+## Step 4: Route by Destination Port or Protocol
 
 ```bash
-# Route all HTTP traffic (destination port 80) through ISP1
-# First, mark packets with iptables
+# Route incoming or forwarded HTTP traffic (destination port 80) through ISP1
+# First, mark packets with nftables
 sudo nft add table inet mangle
 sudo nft add chain inet mangle prerouting '{ type filter hook prerouting priority -150; }'
 sudo nft add rule inet mangle prerouting tcp dport 80 meta mark set 0x1
@@ -91,12 +91,18 @@ sudo nmcli connection modify ens3 +ipv4.routing-rules "priority 100 from 10.0.1.
 # Add a route to the custom table through NetworkManager
 sudo nmcli connection modify ens3 +ipv4.routes "0.0.0.0/0 203.0.113.1 table=100"
 
+# Add the matching routing rule and route for ens4
+sudo nmcli connection modify ens4 +ipv4.routing-rules "priority 200 from 10.0.2.0/24 table 200"
+sudo nmcli connection modify ens4 +ipv4.routes "0.0.0.0/0 198.51.100.1 table=200"
+
 # Reapply the connection
 sudo nmcli connection up ens3
+sudo nmcli connection up ens4
 
 # Verify the rules persist after reboot
 ip rule show
 ip route show table 100
+ip route show table 200
 ```
 
 ## Step 6: Test Policy-Based Routing
