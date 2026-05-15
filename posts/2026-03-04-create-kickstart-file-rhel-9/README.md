@@ -82,6 +82,9 @@ ignoredisk --only-use=sda
 clearpart --all --drives=sda --initlabel
 zerombr
 
+# Install the boot loader on the target disk
+bootloader --location=mbr --boot-drive=sda
+
 # Partition layout using LVM
 part /boot --fstype=xfs --size=1024
 part /boot/efi --fstype=efi --size=600
@@ -158,12 +161,12 @@ subscription-manager register --username=your-username --password=your-password 
 # Update all packages
 dnf update -y
 
-# Enable and start chronyd for NTP
+# Enable chronyd for NTP on first boot
 systemctl enable chronyd
 
 # Configure SSH - disable root login, disable password auth
-sed -i 's/^#PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
-sed -i 's/^#PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
 
 # Add an SSH public key for the sysadmin user
 mkdir -p /home/sysadmin/.ssh
@@ -225,22 +228,22 @@ Copy the output and use it with `rootpw --iscrypted` or `user --iscrypted --pass
 
 ## Validating Your Kickstart File
 
-Before deploying a Kickstart file, validate it with `ksvalidator`. This catches syntax errors and unsupported directives.
+Before deploying a Kickstart file, validate it with `ksvalidator`. This catches syntax errors and unsupported directives for the RHEL version you specify.
 
 ```bash
 # Install the pykickstart package (contains ksvalidator)
 sudo dnf install -y pykickstart
 
 # Validate the kickstart file
-ksvalidator ks.cfg
+ksvalidator -v RHEL9 ks.cfg
 ```
 
-If the file is clean, there will be no output. Errors show the line number and a description of the problem.
+If the file is clean, there will be no output. Errors show the line number and a description of the problem. `ksvalidator` checks Kickstart syntax, but it does not prove that your `%pre`, `%post`, and `%packages` contents will succeed at install time.
 
 You can also use `ksverdiff` to check compatibility between different RHEL versions:
 
 ```bash
-# Compare kickstart syntax differences between RHEL 8 and RHEL
+# Compare kickstart syntax differences between RHEL 8 and RHEL 9
 ksverdiff --from RHEL8 --to RHEL9
 ```
 
