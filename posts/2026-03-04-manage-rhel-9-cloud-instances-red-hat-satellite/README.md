@@ -15,8 +15,9 @@ Manage RHEL 9 cloud instances with Red Hat Satellite. RHEL 9 is fully supported 
 ## Prerequisites
 
 - A RHEL 9 subscription or cloud marketplace entitlement
+- A Red Hat Satellite Server with a RHEL 9 activation key and synced RHEL 9 content
 - An account on the target cloud platform (AWS, Azure, or GCP)
-- CLI tools installed: aws-cli, az-cli, or gcloud
+- CLI tools installed: AWS CLI, Azure CLI, or Google Cloud CLI
 
 ## Step 1 - Choose Your Deployment Method
 
@@ -32,19 +33,19 @@ You can deploy RHEL 9 in the cloud using:
 For AWS:
 
 ```bash
-aws ec2 run-instances --image-id ami-rhel9-xxxxx --instance-type m5.large --key-name mykey
+aws ec2 run-instances --image-id ami-0abcdef1234567890 --instance-type m5.large --count 1 --key-name mykey
 ```
 
 For Azure:
 
 ```bash
-az vm create --resource-group myRG --name myVM --image RedHat:RHEL:9:latest --size Standard_D2s_v3
+az vm create --resource-group myRG --name myVM --image RedHat:RHEL:9-lvm-gen2:latest --size Standard_D2s_v3 --admin-username azureuser --generate-ssh-keys
 ```
 
 For GCP:
 
 ```bash
-gcloud compute instances create myvm --image-project=rhel-cloud --image-family=rhel-9 --machine-type=e2-medium
+gcloud compute instances create myvm --image-project=rhel-cloud --image-family=rhel-9 --machine-type=e2-medium --zone=us-central1-a
 ```
 
 ## Step 3 - Configure cloud-init
@@ -57,6 +58,7 @@ hostname: my-rhel-server
 users:
   - name: admin
     groups: wheel
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
     ssh_authorized_keys:
       - ssh-rsa AAAA...your-key-here
 packages:
@@ -66,8 +68,10 @@ packages:
 
 ## Step 4 - Register with Red Hat
 
+Generate a host registration command in Satellite from **Hosts > Register Host**, select the activation key for your RHEL 9 content, and run the generated command on the instance as root:
+
 ```bash
-sudo subscription-manager register --auto-attach
+curl -sS 'https://satellite.example.com/register?...' | sudo bash
 # Or connect to Red Hat Insights:
 
 sudo insights-client --register
