@@ -14,6 +14,8 @@ The Grafana Agent (now called Grafana Alloy) is a lightweight telemetry collecto
 
 ```bash
 # Add the Grafana repository
+wget -q -O gpg.key https://rpm.grafana.com/gpg.key
+sudo rpm --import gpg.key
 
 sudo tee /etc/yum.repos.d/grafana.repo << 'EOF'
 [grafana]
@@ -66,11 +68,11 @@ prometheus.scrape "node" {
 // Send metrics to Grafana Cloud (or any Prometheus remote write endpoint)
 prometheus.remote_write "grafana_cloud" {
   endpoint {
-    url = "https://prometheus-us-central1.grafana.net/api/prom/push"
+    url = "YOUR_GRAFANA_CLOUD_PROMETHEUS_REMOTE_WRITE_URL"
 
     basic_auth {
-      username = "YOUR_GRAFANA_CLOUD_USER_ID"
-      password = "YOUR_GRAFANA_CLOUD_API_KEY"
+      username = "YOUR_GRAFANA_CLOUD_PROMETHEUS_USERNAME"
+      password = "YOUR_GRAFANA_CLOUD_ACCESS_POLICY_TOKEN"
     }
   }
 }
@@ -120,10 +122,10 @@ loki.source.file "system" {
 
 loki.write "grafana_cloud" {
   endpoint {
-    url = "https://logs-prod-us-central1.grafana.net/loki/api/v1/push"
+    url = "YOUR_GRAFANA_CLOUD_LOKI_PUSH_URL"
     basic_auth {
-      username = "YOUR_LOKI_USER_ID"
-      password = "YOUR_GRAFANA_CLOUD_API_KEY"
+      username = "YOUR_GRAFANA_CLOUD_LOKI_USERNAME"
+      password = "YOUR_GRAFANA_CLOUD_ACCESS_POLICY_TOKEN"
     }
   }
 }
@@ -134,7 +136,7 @@ EOF
 
 ```bash
 # Validate the configuration
-alloy fmt /etc/alloy/config.alloy
+alloy validate /etc/alloy/config.alloy
 
 # Restart to pick up changes
 sudo systemctl restart alloy
@@ -142,14 +144,16 @@ sudo systemctl restart alloy
 # Check for errors
 sudo journalctl -u alloy -f --no-pager -n 20
 
-# Verify the agent is scraping metrics
+# Verify Alloy's built-in HTTP server is responding
 curl -s http://localhost:12345/metrics | head -5
 ```
 
 ## Firewall Configuration
 
 ```bash
-# Allow the agent's built-in HTTP server (for health checks)
+# Optional: expose the built-in HTTP server for remote health checks
+sudo sh -c 'grep -q "^CUSTOM_ARGS=" /etc/sysconfig/alloy && sed -i "s|^CUSTOM_ARGS=.*|CUSTOM_ARGS=\"--server.http.listen-addr=0.0.0.0:12345\"|" /etc/sysconfig/alloy || echo "CUSTOM_ARGS=\"--server.http.listen-addr=0.0.0.0:12345\"" >> /etc/sysconfig/alloy'
+sudo systemctl restart alloy
 sudo firewall-cmd --permanent --add-port=12345/tcp
 sudo firewall-cmd --reload
 ```
