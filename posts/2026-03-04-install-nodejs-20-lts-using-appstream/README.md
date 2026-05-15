@@ -1,18 +1,18 @@
-# How to Install Node.js 20 LTS on RHEL 9 Using AppStream
+# How to Install Node.js 20 on RHEL 9 Using AppStream
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Node.js, JavaScript, Linux
 
-Description: Learn how to install Node.js 20 LTS Using AppStream on RHEL 9 with step-by-step instructions, configuration examples, and best practices.
+Description: Learn how to install Node.js 20 using AppStream on RHEL 9 with step-by-step instructions, configuration examples, and lifecycle caveats.
 
 ---
 
-Node.js 20 LTS is available in the RHEL 9 AppStream repository, providing an easy installation path with official Red Hat support and security updates.
+Node.js 20 is available in the RHEL 9 AppStream repository for RHEL 9.3 and later. Red Hat lists the Node.js 20 Application Stream with an April 2026 retirement date, so use it only when you specifically need Node.js 20 and choose a currently supported stream for new deployments.
 
 ## Prerequisites
 
-- RHEL 9
+- RHEL 9.3 or later with AppStream enabled
 - Root or sudo access
 
 ## Step 1: List Available Node.js Versions
@@ -21,11 +21,10 @@ Node.js 20 LTS is available in the RHEL 9 AppStream repository, providing an eas
 dnf module list nodejs
 ```
 
-## Step 2: Enable and Install Node.js 20
+## Step 2: Install Node.js 20
 
 ```bash
-sudo dnf module enable nodejs:20 -y
-sudo dnf install -y nodejs
+sudo dnf module install nodejs:20 -y
 ```
 
 ## Step 3: Verify Installation
@@ -60,12 +59,12 @@ echo 'export PATH=~/.npm-global/bin:$PATH' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-## Step 7: Update npm
+## Step 7: Update Node.js and npm
 
 ```bash
-npm install -g npm@latest
+sudo dnf upgrade -y nodejs npm
 ```
 
 ## Conclusion
 
-Installing Node.js 20 LTS from RHEL 9 AppStream provides a stable, supported runtime with seamless integration into the RHEL package management system. Updates are delivered through standard dnf commands.
+Installing Node.js 20 from RHEL 9 AppStream provides a runtime that integrates with the RHEL package management system. Check the RHEL Application Stream lifecycle before using it in production, and apply available updates through standard dnf commands.
