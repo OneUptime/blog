@@ -151,6 +151,9 @@ graph TD
         permanent: true
       notify: Reload firewalld
 
+    - name: Reload firewalld before using the new zone
+      ansible.builtin.meta: flush_handlers
+
     - name: Assign interface to internal zone
       ansible.posix.firewalld:
         zone: internal-apps
@@ -172,9 +175,14 @@ graph TD
         - nfs
         - postgresql
 
+    - name: Get the current default zone
+      ansible.builtin.command: firewall-cmd --get-default-zone
+      register: firewalld_default_zone
+      changed_when: false
+
     - name: Set the default zone
       ansible.builtin.command: firewall-cmd --set-default-zone=public
-      changed_when: false
+      when: firewalld_default_zone.stdout != "public"
 
   handlers:
     - name: Reload firewalld
@@ -249,7 +257,7 @@ For more complex filtering:
 ## Verifying Firewall Configuration
 
 ```bash
-# List all active zones and their rules
+# List all zones and their rules
 sudo firewall-cmd --list-all-zones
 
 # Show the default zone configuration
@@ -258,10 +266,10 @@ sudo firewall-cmd --list-all
 # Check a specific zone
 sudo firewall-cmd --zone=internal-apps --list-all
 
-# List all rich rules
+# List rich rules in the default zone
 sudo firewall-cmd --list-rich-rules
 
-# Verify a specific port is open
+# Verify a specific port is open in the default zone
 sudo firewall-cmd --query-port=8080/tcp
 ```
 
