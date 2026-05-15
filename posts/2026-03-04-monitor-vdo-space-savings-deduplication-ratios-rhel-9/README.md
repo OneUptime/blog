@@ -14,7 +14,7 @@ Monitoring VDO performance metrics is essential for understanding how effectivel
 
 - A RHEL 9 system with root or sudo access
 - Existing LVM-VDO volumes
-- The `lvm2` and `kmod-kvdo` packages installed
+- The `lvm2`, `kmod-kvdo`, and `vdo` packages installed
 
 ## Step 1: Basic Space Savings Overview
 
@@ -83,7 +83,7 @@ From the verbose output:
 
 ## Step 3: Calculate Effective Ratios
 
-### Deduplication Ratio
+### Data Reduction Ratio
 
 ```bash
 # Get the statistics
@@ -91,7 +91,11 @@ From the verbose output:
 LOGICAL=$(sudo vdostats --verbose /dev/mapper/vg_vdo-vpool | grep "logical blocks used" | awk '{print $NF}')
 DATA=$(sudo vdostats --verbose /dev/mapper/vg_vdo-vpool | grep "data blocks used" | awk '{print $NF}')
 
-echo "Deduplication ratio: $(echo "scale=2; $LOGICAL / $DATA" | bc):1"
+if [ "$DATA" -gt 0 ]; then
+    echo "Data reduction ratio: $(echo "scale=2; $LOGICAL / $DATA" | bc):1"
+else
+    echo "Data reduction ratio: no data blocks used yet"
+fi
 ```
 
 ### Space Saving Percentage
@@ -117,7 +121,7 @@ LOG_FILE="/var/log/vdo-stats.csv"
 DEVICE="/dev/mapper/vg_vdo-vpool"
 
 if [ ! -f "$LOG_FILE" ]; then
-    echo "timestamp,device,physical_size,physical_used,logical_used,saving_percent" > "$LOG_FILE"
+    echo "timestamp,device,physical_size,physical_used,physical_available,saving_percent" > "$LOG_FILE"
 fi
 
 STATS=$(vdostats "$DEVICE" | tail -1)
@@ -146,7 +150,7 @@ sudo tee /usr/local/bin/vdo-alert.sh << 'SCRIPT'
 WARN_THRESHOLD=75
 CRIT_THRESHOLD=90
 
-for device in $(vdostats --all 2>/dev/null | grep "^/" | awk '{print $1}'); do
+for device in $(vdostats 2>/dev/null | awk 'NR > 1 {print $1}'); do
     USE_PCT=$(vdostats "$device" | tail -1 | awk '{gsub(/%/,""); print $5}')
 
     if [ "$USE_PCT" -ge "$CRIT_THRESHOLD" ]; then
@@ -204,14 +208,19 @@ Index states:
 - **online**: Normal operation
 - **opening**: Index is being loaded
 - **closing**: Index is being saved
+- **closed**: Index is closed, such as when deduplication is disabled
 - **offline**: Index is not available (deduplication disabled)
 - **error**: Index has encountered an error
+- **unknown**: Index state could not be determined
 
 If the index is in an error state:
 
 ```bash
-sudo lvchange --rebuild-full vg_vdo/lv_vdo
+sudo journalctl -k | grep -i vdo
+sudo lvs -o+vdo_deduplication,vdo_index_state vg_vdo/lv_vdo
 ```
+
+Review the kernel log and LVM status before taking corrective action. If the VDO volume is read-only or the index remains in an error state, consult Red Hat support or the `lvmvdo(7)` and `lvchange(8)` man pages for the supported recovery path for your failure mode.
 
 ## Step 7: Performance Metrics
 
