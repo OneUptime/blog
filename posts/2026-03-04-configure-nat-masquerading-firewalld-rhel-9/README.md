@@ -77,10 +77,16 @@ firewall-cmd --reload
 
 ## Step 4: Configure the Internal Zone
 
-Allow the internal network to use the gateway:
+Allow the internal network to use the gateway and forward traffic to the external zone:
 
 ```bash
-# Allow DNS, DHCP, and other internal services
+# Allow forwarding from the internal zone to the external zone
+firewall-cmd --permanent --new-policy internal-to-external
+firewall-cmd --permanent --policy internal-to-external --add-ingress-zone internal
+firewall-cmd --permanent --policy internal-to-external --add-egress-zone external
+firewall-cmd --permanent --policy internal-to-external --set-target ACCEPT
+
+# Allow DNS, DHCP, and other services hosted on the gateway
 firewall-cmd --zone=internal --add-service=dns --permanent
 firewall-cmd --zone=internal --add-service=dhcp --permanent
 firewall-cmd --zone=internal --add-service=ssh --permanent
@@ -193,17 +199,11 @@ You might want to limit what the private network can access:
 
 ```bash
 # Only allow HTTP, HTTPS, and DNS outbound
-# Use direct rules for outbound filtering
-firewall-cmd --direct --add-rule ipv4 filter FORWARD 0 -i eth1 -o eth0 -p tcp --dport 80 -j ACCEPT --permanent
-firewall-cmd --direct --add-rule ipv4 filter FORWARD 0 -i eth1 -o eth0 -p tcp --dport 443 -j ACCEPT --permanent
-firewall-cmd --direct --add-rule ipv4 filter FORWARD 0 -i eth1 -o eth0 -p udp --dport 53 -j ACCEPT --permanent
-firewall-cmd --direct --add-rule ipv4 filter FORWARD 0 -i eth1 -o eth0 -p tcp --dport 53 -j ACCEPT --permanent
-
-# Allow return traffic for established connections
-firewall-cmd --direct --add-rule ipv4 filter FORWARD 0 -i eth0 -o eth1 -m state --state RELATED,ESTABLISHED -j ACCEPT --permanent
-
-# Drop everything else forwarded
-firewall-cmd --direct --add-rule ipv4 filter FORWARD 10 -i eth1 -o eth0 -j DROP --permanent
+# Change the forwarding policy from allow-all to reject-by-default
+firewall-cmd --permanent --policy internal-to-external --set-target REJECT
+firewall-cmd --permanent --policy internal-to-external --add-service=http
+firewall-cmd --permanent --policy internal-to-external --add-service=https
+firewall-cmd --permanent --policy internal-to-external --add-service=dns
 
 firewall-cmd --reload
 ```
