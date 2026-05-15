@@ -14,10 +14,10 @@ VDO (Virtual Data Optimizer) provides inline deduplication and compression for b
 
 - A RHEL system with root or sudo access
 - An LVM volume group with available space
-- The `lvm2` and `kmod-kvdo` packages installed
+- The `lvm2`, `kmod-kvdo`, and `vdo` packages installed
 
 ```bash
-sudo dnf install lvm2 kmod-kvdo -y
+sudo dnf install lvm2 kmod-kvdo vdo -y
 ```
 
 ## Understanding VDO
@@ -64,12 +64,13 @@ sudo vgs vg_vdo
 Create a VDO logical volume:
 
 ```bash
-sudo lvcreate --type vdo --name lv_vdo --size 100G --virtualsize 300G vg_vdo
+sudo lvcreate --type vdo --name lv_vdo --vdopool vpool_vdo --size 100G --virtualsize 300G vg_vdo
 ```
 
 Parameters:
 - `--type vdo`: Specifies VDO logical volume type
 - `--name lv_vdo`: Name of the logical volume
+- `--vdopool vpool_vdo`: Name of the VDO pool logical volume
 - `--size 100G`: Physical size (actual disk space used)
 - `--virtualsize 300G`: Logical size presented to the filesystem (3:1 overprovisioning)
 
@@ -113,10 +114,14 @@ sudo mount /dev/vg_vdo/lv_vdo /vdo-data
 Add to `/etc/fstab`:
 
 ```bash
-/dev/vg_vdo/lv_vdo /vdo-data xfs defaults,x-systemd.requires=vdo.service,discard 0 0
+/dev/vg_vdo/lv_vdo /vdo-data xfs defaults 0 0
 ```
 
-The `discard` option enables online TRIM, which allows VDO to reclaim space when files are deleted.
+Enable periodic TRIM so VDO can reclaim space when files are deleted:
+
+```bash
+sudo systemctl enable --now fstrim.timer
+```
 
 ## Step 7: Verify Deduplication and Compression
 
@@ -138,12 +143,12 @@ Check space savings:
 sudo lvs -o name,size,data_percent,vdo_saving_percent vg_vdo
 ```
 
-The `vdo_saving_percent` shows the deduplication and compression ratio.
+The `vdo_saving_percent` shows the percentage of space saved by deduplication and compression.
 
 For detailed VDO statistics:
 
 ```bash
-sudo vdostats --human-readable
+sudo vdostats --human-readable /dev/mapper/vg_vdo-vpool_vdo-vpool
 ```
 
 ## Step 8: Configure VDO Settings
@@ -154,20 +159,20 @@ Compression is enabled by default. To toggle it:
 
 ```bash
 # Disable compression
-sudo lvchange --compression n vg_vdo/lv_vdo
+sudo lvchange --compression n vg_vdo/vpool_vdo
 
 # Enable compression
-sudo lvchange --compression y vg_vdo/lv_vdo
+sudo lvchange --compression y vg_vdo/vpool_vdo
 ```
 
 ### Adjust Deduplication
 
 ```bash
 # Disable deduplication
-sudo lvchange --deduplication n vg_vdo/lv_vdo
+sudo lvchange --deduplication n vg_vdo/vpool_vdo
 
 # Enable deduplication
-sudo lvchange --deduplication y vg_vdo/lv_vdo
+sudo lvchange --deduplication y vg_vdo/vpool_vdo
 ```
 
 ## Virtual Size Planning
@@ -185,7 +190,7 @@ Choosing the right virtual-to-physical ratio is important:
 Start conservatively and increase the virtual size as you observe actual savings:
 
 ```bash
-sudo lvextend --virtualsize 500G vg_vdo/lv_vdo
+sudo lvextend --size 500G vg_vdo/lv_vdo
 sudo xfs_growfs /vdo-data
 ```
 
@@ -193,9 +198,9 @@ sudo xfs_growfs /vdo-data
 
 - **Start with a conservative virtual-to-physical ratio** and adjust based on observed savings.
 - **Monitor space savings regularly** to ensure the physical device does not fill up.
-- **Use the `discard` mount option** so VDO can reclaim space when files are deleted.
+- **Use `fstrim.timer`** so VDO can reclaim space when files are deleted without the performance cost of continuous online discard.
 - **Use `-K` with mkfs.xfs** and `-E nodiscard` with mkfs.ext4 to avoid slow formatting.
-- **Plan for the UDS index**: The deduplication index (UDS) uses memory. Plan approximately 1 GB of RAM per 1 TB of physical storage.
+- **Plan for the UDS index**: The deduplication index (UDS) uses memory. A dense index with 1 GiB of RAM maintains a 1 TiB deduplication window, while a sparse index with 1 GiB of RAM maintains a 10 TiB deduplication window.
 
 ## Conclusion
 
