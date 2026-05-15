@@ -14,7 +14,7 @@ I use Skopeo constantly for CI/CD pipelines where I need to move images between 
 
 ## Installing Skopeo
 
-Skopeo comes with the container-tools module:
+Skopeo is available as part of the container-tools meta-package, or you can install the skopeo package directly:
 
 ## Install skopeo (or install container-tools for the full suite)
 ```bash
@@ -52,7 +52,7 @@ skopeo inspect docker://docker.io/library/nginx:latest | jq '.Layers | length'
 
 For deeper inspection, get the raw manifest:
 
-## Get the image manifest (OCI format)
+## Get the raw image manifest
 ```bash
 skopeo inspect --raw docker://docker.io/library/nginx:latest | jq .
 ```
@@ -198,12 +198,12 @@ skopeo sync --src yaml --dest docker sync-config.yaml registry.example.com/mirro
 
 Remove images from a registry (if the registry supports the deletion API):
 
-## Delete a specific tag from a registry
+## Mark an image for deletion from a registry
 ```bash
 skopeo delete docker://registry.example.com/my-app:old-tag
 ```
 
-Note that most public registries disable the deletion API. This works mainly with self-hosted registries.
+Note that most public registries disable the deletion API. This works mainly with self-hosted registries. When you delete by tag, Skopeo resolves the tag to a manifest digest and marks that manifest for deletion, which can affect other tags that point to the same manifest.
 
 ## Using Skopeo in CI/CD Pipelines
 
