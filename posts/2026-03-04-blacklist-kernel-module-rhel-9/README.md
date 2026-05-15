@@ -30,10 +30,10 @@ flowchart TD
     C --> E{"Another module depends on it?"}
     E -->|"Yes"| F["May still load as dependency"]
     E -->|"No"| G["Module stays unloaded"]
-    F --> H["Use install directive to fully block"]
+    F --> H["Use install directive to block modprobe"]
 ```
 
-A simple `blacklist` directive prevents automatic loading, but a module can still be loaded manually or as a dependency. For a complete block, you also need an `install` directive that redirects the load to `/bin/true` or `/bin/false`.
+A simple `blacklist` directive prevents automatic loading, but a module can still be loaded manually or as a dependency. To block normal `modprobe`-based loading too, you also need an `install` directive that redirects the load to `/bin/true` or `/bin/false`.
 
 ## Basic Blacklisting
 
@@ -56,12 +56,12 @@ blacklist usb-storage
 EOF
 ```
 
-## Complete Module Blocking
+## Stronger Module Blocking
 
-The `blacklist` directive alone does not prevent a module from loading as a dependency or via direct `modprobe` calls. For a complete block, combine it with an `install` directive.
+The `blacklist` directive alone does not prevent a module from loading as a dependency or via direct `modprobe` calls. To block those `modprobe` paths too, combine it with an `install` directive.
 
 ```bash
-# Completely prevent a module from ever loading
+# Prevent normal modprobe-based loading
 sudo tee /etc/modprobe.d/blacklist-nouveau.conf <<EOF
 blacklist nouveau
 install nouveau /bin/false
@@ -82,7 +82,7 @@ install btusb /bin/false
 EOF
 ```
 
-The `install` directive tells the kernel to run `/bin/false` instead of actually loading the module, which effectively makes it impossible to load.
+The `install` directive tells `modprobe` to run `/bin/false` instead of inserting the module, which prevents normal `modprobe`-based loading.
 
 ## Updating the initramfs
 
@@ -201,7 +201,7 @@ lsmod | grep nouveau
 # Check modprobe configuration for the module
 modprobe -c | grep nouveau
 
-# Try to load it (should fail silently or show blocked)
+# Try to load it (should fail with a non-zero exit code if install uses /bin/false)
 sudo modprobe nouveau
 echo $?  # Non-zero exit code means it was blocked
 
@@ -236,4 +236,4 @@ grep -r "^install.*\/bin\/false\|^install.*\/bin\/true" /etc/modprobe.d/ /usr/li
 
 ## Wrapping Up
 
-Module blacklisting on RHEL is a two-step process: add the `blacklist` and `install` directives to a file in `/etc/modprobe.d/`, then rebuild the initramfs with `dracut --force` if the module loads during early boot. For security-related blacklisting like USB storage, always use both directives to prevent the module from loading under any circumstances. And remember to test on a non-production system first, because blacklisting the wrong module can leave you with a system that will not boot properly.
+Module blacklisting on RHEL is a two-step process: add the `blacklist` and `install` directives to a file in `/etc/modprobe.d/`, then rebuild the initramfs with `dracut --force` if the module loads during early boot. For security-related blacklisting like USB storage, always use both directives to prevent normal automatic and `modprobe`-based loading. And remember to test on a non-production system first, because blacklisting the wrong module can leave you with a system that will not boot properly.
