@@ -27,7 +27,7 @@ A few important notes:
 
 ### Step 1: Reboot and Access GRUB
 
-Reboot the server and watch the console. When the GRUB boot menu appears, press any key to stop the countdown timer.
+Reboot the server and watch the console. When the GRUB boot menu appears, press any key except `Enter` to stop the countdown timer.
 
 If GRUB appears very briefly or not at all, try pressing `Esc` or holding `Shift` during the BIOS/UEFI phase to interrupt the boot process.
 
@@ -188,8 +188,8 @@ If the GRUB method does not work for your situation, you can boot from the RHEL 
 1. Boot from the RHEL ISO
 2. Select **Troubleshooting** from the boot menu
 3. Select **Rescue a Red Hat Enterprise Linux system**
-4. The rescue environment will find and mount your installed system at `/mnt/sysimage`
-5. Run `chroot /mnt/sysimage`
+4. The rescue environment will find and mount your installed system at `/mnt/sysroot`
+5. Run `chroot /mnt/sysroot`
 6. Run `passwd` to change the root password
 7. Run `touch /.autorelabel`
 8. Exit and reboot, removing the ISO
