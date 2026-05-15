@@ -4,18 +4,18 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, KVM, Live Migration, Virtualization, High Availability, Linux
 
-Description: Learn how to perform live migration of KVM virtual machines between RHEL 9 hosts with zero downtime.
+Description: Learn how to perform live migration of KVM virtual machines between RHEL 9 hosts with minimal downtime.
 
 ---
 
-Live migration moves a running virtual machine from one physical host to another without any downtime. The VM's memory, storage, and network connections are transferred seamlessly. On RHEL 9, live migration is essential for hardware maintenance, load balancing, and high availability.
+Live migration moves a running virtual machine from one physical host to another without shutting down the VM. The VM's memory and device state are transferred while its disk images remain available from shared storage or are copied with a non-shared storage migration option. On RHEL 9, live migration is essential for hardware maintenance, load balancing, and high availability.
 
 ## Prerequisites
 
 - Two RHEL 9 hosts with KVM installed
 - Same CPU architecture and compatible CPU features
 - Shared storage accessible from both hosts (NFS, iSCSI, Ceph, or GFS2)
-- Network connectivity between hosts on the libvirt ports
+- Network connectivity between hosts on the required libvirt and QEMU migration ports
 - Same libvirt version on both hosts (recommended)
 
 ## Configuring Shared Storage
@@ -30,7 +30,19 @@ sudo mount nfs-server:/vm-images /var/lib/libvirt/images
 
 ## Configuring libvirt for Migration
 
-Enable TCP listening on the destination host. Edit `/etc/libvirt/libvirtd.conf`:
+For SSH-based migration on a fresh RHEL 9 installation, make sure the modular QEMU libvirt socket is enabled on the destination host:
+
+```bash
+sudo systemctl enable --now virtqemud.socket
+```
+
+If you want to use a TCP connection instead of SSH, enable the virtualization proxy TCP socket on the destination host:
+
+```bash
+sudo systemctl enable --now virtproxyd-tcp.socket
+```
+
+On hosts upgraded from RHEL 8 that still use the monolithic `libvirtd` daemon, TCP listening is configured in `/etc/libvirt/libvirtd.conf`:
 
 ```text
 listen_tls = 0
@@ -38,7 +50,7 @@ listen_tcp = 1
 auth_tcp = "sasl"
 ```
 
-Or use SSH-based migration (more secure, no extra configuration needed).
+Or use SSH-based migration, which is more secure and usually requires only SSH access plus the `virtqemud.socket` service on RHEL 9.
 
 ## Performing Live Migration via SSH
 
@@ -57,7 +69,7 @@ sudo virsh migrate --live --persistent --undefinesource \
 
 Options:
 
-- `--live` - Perform live migration (no downtime)
+- `--live` - Perform live migration without shutting down the VM
 - `--persistent` - Define the VM on the destination
 - `--undefinesource` - Remove the VM definition from the source
 
@@ -112,17 +124,17 @@ This only migrates the VM definition, not the running state.
 
 ### CPU Incompatibility
 
-If migration fails due to CPU differences:
+If migration fails due to CPU differences, calculate a common CPU baseline with `virsh hypervisor-cpu-baseline` and configure the VM to use that CPU model.
 
 ```bash
-sudo virsh migrate --live --unsafe vmname qemu+ssh://destination-host/system
+sudo virsh hypervisor-cpu-baseline domCaps-CPUs.xml
 ```
 
-Or configure VMs to use a common CPU model:
+Then configure the VM to use the resulting common CPU model:
 
 ```xml
 <cpu mode='custom' match='exact'>
-  <model fallback='allow'>Nehalem</model>
+  <model fallback='forbid'>IvyBridge-IBRS</model>
 </cpu>
 ```
 
@@ -144,4 +156,4 @@ ssh destination-host "ls /var/lib/libvirt/images/"
 
 ## Summary
 
-Live migration on RHEL 9 enables zero-downtime VM mobility between hosts. Use SSH-based migration for security, shared storage for disk images, and monitor progress with `virsh domjobinfo`. Set bandwidth limits and maximum downtime thresholds to control the migration behavior for your environment.
+Live migration on RHEL 9 enables VM mobility between hosts with only a brief switchover pause. Use SSH-based migration for security, shared storage for disk images, and monitor progress with `virsh domjobinfo`. Set bandwidth limits and maximum downtime thresholds to control the migration behavior for your environment.
