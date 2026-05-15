@@ -23,7 +23,7 @@ The `vm.swappiness` parameter controls how aggressively the kernel swaps memory 
 - **10** - Minimal swapping, good for servers with plenty of RAM
 - **30** - Default on some systems
 - **60** - Default on RHEL
-- **100** - Kernel swaps aggressively
+- **100** - Kernel treats swap I/O and filesystem paging as roughly equal cost
 
 Check the current value:
 
@@ -55,7 +55,7 @@ sudo sysctl -p /etc/sysctl.d/swappiness.conf
 
 ## Configuring vm.dirty_ratio
 
-Controls the maximum percentage of system memory that can hold dirty (modified, not yet written) pages before the kernel forces synchronous writeback:
+Controls the maximum percentage of available memory that can hold dirty (modified, not yet written) pages before processes generating writes start writing dirty data:
 
 ```bash
 # View current value
@@ -70,7 +70,7 @@ Lower values reduce the risk of data loss on crash but may reduce write performa
 
 ## Configuring vm.dirty_background_ratio
 
-Controls when background writeback begins:
+Controls when background kernel flusher threads begin writing dirty data:
 
 ```bash
 # View current value
@@ -80,11 +80,11 @@ sysctl vm.dirty_background_ratio
 sudo sysctl -w vm.dirty_background_ratio=5
 ```
 
-This means the kernel starts writing dirty pages in the background when they reach 5% of memory.
+This means the kernel starts writing dirty pages in the background when they reach 5% of available memory.
 
 ## Configuring vm.dirty_expire_centisecs
 
-How long dirty pages can stay in memory before they must be written (in centiseconds):
+How long dirty pages can stay in memory before they become eligible for writeback (in centiseconds):
 
 ```bash
 # Default is 3000 (30 seconds)
@@ -111,7 +111,7 @@ sudo sysctl -w vm.dirty_writeback_centisecs=300
 Controls the kernel's memory overcommit behavior:
 
 - **0** - Heuristic overcommit (default)
-- **1** - Always overcommit (never deny malloc)
+- **1** - Always overcommit (allow allocations until memory actually runs out)
 - **2** - Strict overcommit (deny if total > swap + ratio*RAM)
 
 ```bash
@@ -157,7 +157,7 @@ sudo sysctl -w vm.vfs_cache_pressure=200
 
 ## Making All Settings Persistent
 
-Save all virtual memory tuning:
+Save selected virtual memory tuning:
 
 ```bash
 cat << 'SYSCTL' | sudo tee /etc/sysctl.d/vm-tuning.conf
@@ -182,10 +182,10 @@ vmstat 2 10
 
 Key columns:
 
-- **si** - Swap in (pages/s)
-- **so** - Swap out (pages/s)
-- **bi** - Block in (reads)
-- **bo** - Block out (writes)
+- **si** - Swap in (amount/s)
+- **so** - Swap out (amount/s)
+- **bi** - Blocks received from a block device (blocks/s)
+- **bo** - Blocks sent to a block device (blocks/s)
 - **wa** - I/O wait percentage
 
 If si and so are consistently high, the system needs more RAM or lower swappiness.
