@@ -8,7 +8,7 @@ Description: Replace a failed brick in a GlusterFS volume on RHEL using the repl
 
 ---
 
-When a brick fails in a GlusterFS replicated or dispersed volume, the volume continues to serve data from the remaining bricks. However, you should replace the failed brick as soon as possible to restore full redundancy. GlusterFS provides a `replace-brick` command that swaps the failed brick with a new one and triggers self-healing.
+When a brick fails in a GlusterFS replicated or dispersed volume, the volume continues to serve data from the remaining bricks as long as the volume still has enough healthy bricks to satisfy its replica or disperse redundancy rules. However, you should replace the failed brick as soon as possible to restore full redundancy. GlusterFS provides a `replace-brick` command that swaps the failed brick with a new one and triggers self-healing.
 
 ## Identifying a Failed Brick
 
@@ -49,6 +49,8 @@ If replacing on a different node, prepare the brick on the new node and make sur
 ```bash
 sudo gluster peer probe newnode
 ```
+
+Make sure the replacement brick directory is empty before adding it to the volume. For a dispersed volume, all bricks other than the brick being replaced must be online before you run the replacement.
 
 ## Step 2: Replace the Brick
 
@@ -124,13 +126,11 @@ sudo mkfs.xfs -i size=512 /dev/sdc
 sudo mount /dev/sdc /data/glusterfs/replica/brick1
 sudo mkdir -p /data/glusterfs/replica/brick1/data
 
-# Replace the brick with itself (same path, new disk)
-# First, remove the old .glusterfs directory entries
-sudo setfattr -x trusted.glusterfs.volume-id /data/glusterfs/replica/brick1/data
-sudo setfattr -x trusted.gfid /data/glusterfs/replica/brick1/data
+# Restart the brick at the same location
+sudo gluster volume reset-brick repvol \
+    node1:/data/glusterfs/replica/brick1/data start
 
-# Replace
-sudo gluster volume replace-brick repvol \
+sudo gluster volume reset-brick repvol \
     node1:/data/glusterfs/replica/brick1/data \
     node1:/data/glusterfs/replica/brick1/data \
     commit force
