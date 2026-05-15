@@ -8,7 +8,7 @@ Description: Learn how to configure bridge, NAT, and macvtap networking modes fo
 
 ---
 
-RHEL 9 provides three primary networking modes for KVM virtual machines: NAT for isolated environments with internet access, bridged for direct network participation, and macvtap for a lightweight bridge alternative. Each mode serves different use cases and has distinct advantages.
+RHEL 9 provides several networking modes for KVM virtual machines. Three common options are NAT for isolated environments with internet access, bridged networking for direct network participation, and macvtap for direct attachment to a physical interface without creating a Linux bridge. Each mode serves different use cases and has distinct advantages.
 
 ## NAT Networking
 
@@ -43,6 +43,9 @@ The default network XML:
 Use iptables/nftables on the host:
 
 ```bash
+sudo nft add table ip nat
+sudo nft -- add chain ip nat prerouting { type nat hook prerouting priority -100 \; }
+sudo nft add chain ip nat postrouting { type nat hook postrouting priority 100 \; }
 sudo nft add rule ip nat prerouting tcp dport 8080 dnat to 192.168.122.50:80
 ```
 
@@ -59,8 +62,8 @@ Bridged networking connects VMs directly to the physical network. VMs appear as 
 
 sudo nmcli connection add type bridge ifname br0 con-name br0
 
-# Add the physical interface as a slave
-sudo nmcli connection add type bridge-slave ifname ens192 con-name br0-port1 master br0
+# Add the physical interface as a bridge port
+sudo nmcli connection add type ethernet port-type bridge ifname ens192 con-name br0-port1 controller br0
 
 # Configure IP (or use DHCP)
 sudo nmcli connection modify br0 ipv4.addresses '192.168.1.10/24'
@@ -130,7 +133,7 @@ sudo virt-install --network type=direct,source=ens192,source_mode=bridge,model=v
 
 - No bridge configuration needed
 - Simple setup
-- Good performance
+- Direct attachment to the physical network interface
 
 ### Limitations
 
@@ -166,4 +169,4 @@ Add a second NAT interface for host-VM communication:
 
 ## Summary
 
-RHEL 9 provides flexible VM networking through NAT, bridge, and macvtap modes. Use NAT for isolated development environments, bridged networking for production servers that need direct network access, and macvtap when you need direct network attachment without bridge configuration. Each mode has trade-offs between simplicity, performance, and functionality.
+RHEL 9 provides flexible VM networking through NAT, bridge, and macvtap modes. Use NAT for isolated development environments, bridged networking for production servers that need direct network access, and macvtap when you need direct network attachment without bridge configuration. Red Hat recommends using a Linux bridge instead of macvtap bridge mode unless your use case explicitly requires macvtap. Each mode has trade-offs between simplicity, direct network access, and functionality.
