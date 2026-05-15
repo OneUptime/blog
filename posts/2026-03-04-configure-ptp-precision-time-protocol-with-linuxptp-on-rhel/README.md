@@ -29,8 +29,8 @@ PTP works best with NICs that support hardware timestamping:
 # Check if your NIC supports hardware timestamping
 ethtool -T enp1s0
 
-# Look for "hardware-transmit" and "hardware-receive" in the output
-# If both are listed, your NIC supports hardware timestamping
+# Look for SOF_TIMESTAMPING_TX_HARDWARE, SOF_TIMESTAMPING_RX_HARDWARE,
+# SOF_TIMESTAMPING_RAW_HARDWARE, and a PTP Hardware Clock index in the output
 ```
 
 ## Configure ptp4l
@@ -74,14 +74,16 @@ sudo ptp4l -i enp1s0 -s -f /etc/ptp4l.conf
 # -f specifies the config file
 ```
 
-## Run ptp4l as a Grandmaster (Master)
+## Run ptp4l as a Potential Grandmaster (Master)
 
 On the reference clock server:
 
 ```bash
-# Run as grandmaster clock
+# Run as a clock that can become grandmaster through the Best Master Clock Algorithm
 sudo ptp4l -i enp1s0 -f /etc/ptp4l.conf -m
 ```
+
+To prefer this host as the grandmaster, set clock quality or priority values such as `priority1` in `/etc/ptp4l.conf`, and make sure its time source is synchronized before serving time.
 
 ## Synchronize the System Clock with phc2sys
 
@@ -114,7 +116,8 @@ sudo pmc -u -b 0 'GET CURRENT_DATA_SET'
 
 # Check the offset from the master
 journalctl -u ptp4l -f
-# Look for "master offset" values - should be under 100 nanoseconds with hardware timestamping
+# Look for "master offset" values - lower offsets indicate better synchronization,
+# but the expected value depends on the NIC, switches, and network topology
 ```
 
 ## Firewall Rules
@@ -126,4 +129,4 @@ sudo firewall-cmd --permanent --add-port=320/udp
 sudo firewall-cmd --reload
 ```
 
-PTP with linuxptp gives RHEL systems nanosecond-level time accuracy, essential for financial trading, telecom, and industrial control systems.
+PTP with linuxptp can give RHEL systems sub-microsecond time accuracy with suitable hardware and network design, essential for financial trading, telecom, and industrial control systems.
