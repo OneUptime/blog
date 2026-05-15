@@ -8,9 +8,9 @@ Description: A practical walkthrough of registering RHEL systems with Red Hat Su
 
 ---
 
-A freshly installed RHEL system cannot install or update packages until it is registered with Red Hat and has a subscription attached. The tool that handles this is `subscription-manager`, and it connects your system to either Red Hat's CDN (Customer Delivery Network) or a local Satellite/Capsule server. Without registration, you are stuck with whatever packages were on the installation media and nothing more.
+A freshly installed RHEL system cannot install or update packages from Red Hat's protected repositories until it is registered with Red Hat and has access to a valid subscription. The tool that handles this is `subscription-manager`, and it connects your system to either Red Hat's CDN (Content Delivery Network) or a local Satellite/Capsule server. Without registration, you are stuck with whatever packages were on the installation media and nothing more.
 
-This guide covers the registration process from start to finish, including manual registration, auto-attach, activation keys, and repository management.
+This guide covers the registration process from start to finish, including manual registration, activation keys, repository management, and auto-attach for older entitlement-based environments.
 
 ## How Subscription Manager Works
 
@@ -23,7 +23,7 @@ flowchart LR
     D -->|5. dnf install| A
 ```
 
-The workflow is straightforward: register your system with credentials or an activation key, attach a subscription entitlement, enable the repositories you need, and then `dnf` works normally.
+The workflow is straightforward: register your system with credentials or an activation key, enable the repositories you need, and then `dnf` works normally. In older entitlement-based environments, you also attach a subscription entitlement.
 
 ## Prerequisites
 
@@ -55,18 +55,18 @@ The system has been registered with ID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 The registered system name is: rhel9-server.example.com
 ```
 
-At this point, the system is registered but does not have a subscription attached yet. No repositories are available.
+At this point, the system is registered. If your organization uses Simple Content Access, attach commands are not required and you can move on to repository management. If your organization still uses the older entitlement-based model, you need to attach a subscription before repositories are available.
 
 ## Attaching a Subscription
 
-After registration, you need to attach a subscription. The easiest way is auto-attach:
+If your organization uses the older entitlement-based subscription model, you need to attach a subscription after registration. The easiest way is auto-attach:
 
 ```bash
 # Automatically find and attach the best matching subscription
 sudo subscription-manager attach --auto
 ```
 
-Auto-attach looks at the system's architecture, installed products, and available subscriptions, then picks the best match. For most setups with a single RHEL subscription, this just works.
+Auto-attach looks at the system's architecture, installed products, system purpose, and available subscriptions, then picks the best match. For most entitlement-based setups with a single RHEL subscription, this just works.
 
 If you need to attach a specific subscription (useful when you have multiple subscription types):
 
@@ -96,7 +96,7 @@ sudo subscription-manager list --consumed
 sudo subscription-manager list --installed
 ```
 
-The `status` command should show "Overall Status: Current" if everything is working. If it shows "Invalid" or "Insufficient," your subscription is not properly attached.
+In entitlement-based environments, the `status` command should show "Overall Status: Current" if everything is working. If it shows "Invalid" or "Insufficient," your subscription is not properly attached. In Simple Content Access environments, subscription status can show as disabled because content access is based on registration and valid account-level subscriptions rather than per-system attachment.
 
 ## Method 2: Register with an Activation Key
 
@@ -107,7 +107,7 @@ Activation keys are the proper way to handle registration in automated environme
 sudo subscription-manager register --activationkey=my-rhel9-key --org=12345678
 ```
 
-The organization ID is a numeric value you can find in your Red Hat Customer Portal under Subscription Management.
+The organization ID is a numeric value you can find with your activation keys in the Red Hat Hybrid Cloud Console.
 
 Activation keys are better than username/password for several reasons:
 
@@ -158,7 +158,7 @@ You might want to enable additional repos:
 # CodeReady Builder (needed for some development dependencies)
 sudo subscription-manager repos --enable=codeready-builder-for-rhel-9-x86_64-rpms
 
-# Supplementary (additional packages like flash, etc.)
+# Supplementary (additional optional packages)
 sudo subscription-manager repos --enable=rhel-9-for-x86_64-supplementary-rpms
 ```
 
@@ -224,7 +224,7 @@ sudo subscription-manager syspurpose service-level --set="Premium"
 sudo subscription-manager syspurpose --show
 ```
 
-Setting system purpose before running `attach --auto` improves the matching accuracy, especially in environments with multiple subscription types.
+Setting system purpose before running `attach --auto` improves the matching accuracy in entitlement-based environments with multiple subscription types. In Simple Content Access environments, system purpose is still useful for subscription reporting and filtering.
 
 ### Check Certificate Expiry
 
@@ -263,6 +263,8 @@ sudo subscription-manager identity
 # If it returns an error, re-register
 sudo subscription-manager clean
 sudo subscription-manager register --username=your_rh_username --password=your_rh_password
+
+# Entitlement-based environments only
 sudo subscription-manager attach --auto
 ```
 
@@ -273,7 +275,10 @@ The `clean` command removes all local subscription data so you can start fresh.
 Registration succeeded but no repos show up:
 
 ```bash
-# Check if subscriptions are actually attached
+# Check whether your organization uses Simple Content Access
+sudo subscription-manager status
+
+# In entitlement-based environments, check if subscriptions are actually attached
 sudo subscription-manager list --consumed
 
 # If nothing is attached, run auto-attach
@@ -297,4 +302,4 @@ sudo subscription-manager config --server.proxy_hostname=proxy.example.com --ser
 
 ## Wrapping Up
 
-Registration is the first thing you should do after installing RHEL. Without it, your system cannot receive security updates, bug fixes, or new packages. For single systems, username/password registration with auto-attach is fine. For anything beyond a handful of machines, set up activation keys and automate the process through Kickstart. And when you decommission a server, always unregister it so you are not wasting subscription entitlements on machines that no longer exist.
+Registration is the first thing you should do after installing RHEL. Without it, your system cannot receive security updates, bug fixes, or new packages from Red Hat's protected repositories. For single systems, username/password registration is fine. For anything beyond a handful of machines, set up activation keys and automate the process through Kickstart. And when you decommission a server, always unregister it so systems inventory and subscription reporting stay accurate.
