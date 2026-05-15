@@ -14,7 +14,7 @@ BCC (BPF Compiler Collection) provides a set of tools built on eBPF (extended Be
 
 - A RHEL system with an active subscription
 - Root or sudo access
-- Kernel 5.14 or later (included in RHEL)
+- Kernel 5.14 or later (included in RHEL 9)
 
 ## Installing BCC Tools
 
@@ -24,7 +24,7 @@ Install the BCC tools package:
 sudo dnf install bcc-tools -y
 ```
 
-The tools are installed in `/usr/share/bcc/tools/`. Add this to your PATH:
+The tools are installed in `/usr/share/bcc/tools/`. Add this to your PATH for root shell sessions:
 
 ```bash
 export PATH=$PATH:/usr/share/bcc/tools
@@ -37,7 +37,7 @@ export PATH=$PATH:/usr/share/bcc/tools
 Track every new process execution:
 
 ```bash
-sudo execsnoop
+sudo /usr/share/bcc/tools/execsnoop
 ```
 
 This shows the command, PID, parent PID, and return value for every `exec()` call.
@@ -47,13 +47,13 @@ This shows the command, PID, parent PID, and return value for every `exec()` cal
 Monitor file opens system-wide:
 
 ```bash
-sudo opensnoop
+sudo /usr/share/bcc/tools/opensnoop
 ```
 
 Filter by process name:
 
 ```bash
-sudo opensnoop -n httpd
+sudo /usr/share/bcc/tools/opensnoop -n httpd
 ```
 
 ### biolatency - Block I/O Latency
@@ -61,7 +61,7 @@ sudo opensnoop -n httpd
 Show disk I/O latency as a histogram:
 
 ```bash
-sudo biolatency
+sudo /usr/share/bcc/tools/biolatency
 ```
 
 Press Ctrl+C to see the histogram. This helps identify slow disk operations.
@@ -71,7 +71,7 @@ Press Ctrl+C to see the histogram. This helps identify slow disk operations.
 Trace individual disk I/O operations:
 
 ```bash
-sudo biosnoop
+sudo /usr/share/bcc/tools/biosnoop
 ```
 
 This shows each I/O request with latency, device, and process information.
@@ -81,7 +81,7 @@ This shows each I/O request with latency, device, and process information.
 Monitor TCP connections with duration and data transfer:
 
 ```bash
-sudo tcplife
+sudo /usr/share/bcc/tools/tcplife
 ```
 
 ### tcpconnect - Trace Outbound TCP Connections
@@ -89,7 +89,7 @@ sudo tcplife
 Track all outbound TCP connection attempts:
 
 ```bash
-sudo tcpconnect
+sudo /usr/share/bcc/tools/tcpconnect
 ```
 
 ### tcpaccept - Trace Inbound TCP Connections
@@ -97,7 +97,7 @@ sudo tcpconnect
 Track all accepted TCP connections:
 
 ```bash
-sudo tcpaccept
+sudo /usr/share/bcc/tools/tcpaccept
 ```
 
 ### cachestat - Page Cache Hit/Miss
@@ -105,7 +105,7 @@ sudo tcpaccept
 Monitor page cache hit rates:
 
 ```bash
-sudo cachestat
+sudo /usr/share/bcc/tools/cachestat
 ```
 
 ### funccount - Count Function Calls
@@ -113,7 +113,7 @@ sudo cachestat
 Count kernel function calls matching a pattern:
 
 ```bash
-sudo funccount 'tcp_send*'
+sudo /usr/share/bcc/tools/funccount 'tcp_send*'
 ```
 
 ### trace - Dynamic Tracing
@@ -121,7 +121,7 @@ sudo funccount 'tcp_send*'
 Trace a specific kernel function with arguments:
 
 ```bash
-sudo trace 'do_sys_open "%s", arg2'
+sudo /usr/share/bcc/tools/trace 'do_sys_open "%s", arg2@user'
 ```
 
 ### hardirqs and softirqs - Interrupt Tracing
@@ -129,13 +129,13 @@ sudo trace 'do_sys_open "%s", arg2'
 Monitor hardware interrupt latency:
 
 ```bash
-sudo hardirqs
+sudo /usr/share/bcc/tools/hardirqs
 ```
 
 Monitor software interrupt time:
 
 ```bash
-sudo softirqs
+sudo /usr/share/bcc/tools/softirqs
 ```
 
 ## CPU Analysis Tools
@@ -145,7 +145,7 @@ sudo softirqs
 Show CPU on-time distribution:
 
 ```bash
-sudo cpudist
+sudo /usr/share/bcc/tools/cpudist
 ```
 
 ### runqlat - Scheduler Run Queue Latency
@@ -153,7 +153,7 @@ sudo cpudist
 Show how long tasks wait in the run queue:
 
 ```bash
-sudo runqlat
+sudo /usr/share/bcc/tools/runqlat
 ```
 
 High values indicate CPU saturation.
@@ -163,7 +163,7 @@ High values indicate CPU saturation.
 Profile CPU stack traces:
 
 ```bash
-sudo profile -f 30
+sudo /usr/share/bcc/tools/profile -f 30
 ```
 
 This samples stack traces for 30 seconds.
@@ -175,7 +175,7 @@ This samples stack traces for 30 seconds.
 Trace outstanding memory allocations:
 
 ```bash
-sudo memleak -p 12345
+sudo /usr/share/bcc/tools/memleak -p 12345
 ```
 
 ### oomkill - OOM Killer Tracing
@@ -183,7 +183,7 @@ sudo memleak -p 12345
 Monitor OOM killer events:
 
 ```bash
-sudo oomkill
+sudo /usr/share/bcc/tools/oomkill
 ```
 
 ## Listing All Available Tools
@@ -194,10 +194,16 @@ See all BCC tools:
 ls /usr/share/bcc/tools/
 ```
 
-Each tool has a man page:
+Tool-specific examples are available in the `doc` directory:
 
 ```bash
-man execsnoop-bpfcc
+less /usr/share/bcc/tools/doc/execsnoop_example.txt
+```
+
+Some tools also have RHEL man pages with a `bcc-` prefix:
+
+```bash
+man bcc-execsnoop
 ```
 
 ## Conclusion
