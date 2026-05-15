@@ -71,7 +71,7 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          name: ingress
+          kubernetes.io/metadata.name: ingress
     ports:
     - port: 80
 ```
@@ -91,4 +91,3 @@ sudo mv calicoctl /usr/local/bin/
 ## Conclusion
 
 Calico on RHEL 9 Kubernetes provides flexible networking with powerful network policy enforcement. Use default-deny policies and explicit allow rules for secure microservice communication.
-
