@@ -61,6 +61,12 @@ systemctl --user status podman.socket
 export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
 ```
 
+If you need the rootless socket to be available after reboot without logging in first, enable lingering for that user:
+
+```bash
+sudo loginctl enable-linger "$USER"
+```
+
 
 ## Verification
 
