@@ -130,9 +130,9 @@ spec:
     name: azure-sas-creds
 ```
 
-## Option 3: Azure Managed Identity (Recommended for AKS)
+## Option 3: Azure Managed Identity
 
-Azure Managed Identity eliminates the need for static credentials on AKS clusters. Flux's source-controller can authenticate using the pod's managed identity.
+Azure Managed Identity eliminates the need for static credentials on AKS clusters. Flux's source-controller can authenticate using a managed identity that is available to the pod through the Azure SDK authentication chain. For pod-scoped access on AKS, Azure Workload Identity is the preferred production approach.
 
 ```bash
 # Enable Managed Identity on your AKS cluster (if not already enabled)
@@ -140,6 +140,14 @@ az aks update \
   --resource-group flux-rg \
   --name my-aks-cluster \
   --enable-managed-identity
+
+# If you migrated an existing service principal-based cluster, upgrade the node image
+# so kubelet also uses managed identity.
+az aks nodepool upgrade \
+  --resource-group flux-rg \
+  --cluster-name my-aks-cluster \
+  --name <node-pool-name> \
+  --node-image-only
 
 # Get the kubelet managed identity's client and object IDs
 IDENTITY_CLIENT_ID=$(az aks show \
