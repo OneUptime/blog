@@ -18,7 +18,7 @@ This is conceptually similar to `kubectl patch` if you are familiar with Kuberne
 
 ## Patch Formats
 
-talosctl supports strategic merge patches in YAML format. You specify the fields you want to add or change, and Talos merges them into the existing configuration.
+talosctl supports strategic merge patches and JSON Patch documents. You specify the fields you want to add or change, and Talos merges them into the existing configuration.
 
 ### Basic Patch Syntax
 
@@ -27,9 +27,10 @@ A patch file contains the same YAML structure as the machine configuration, but 
 ```yaml
 # hostname-patch.yaml
 
-machine:
-    network:
-        hostname: my-new-hostname
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: my-new-hostname
+auto: off
 ```
 
 Apply it:
@@ -44,8 +45,8 @@ talosctl patch mc --nodes <node-ip> --patch @hostname-patch.yaml
 For small changes, specify the patch directly on the command line:
 
 ```bash
-# Set hostname using an inline patch
-talosctl patch mc --nodes <node-ip> --patch '{"machine": {"network": {"hostname": "my-node"}}}'
+# Add a node label using an inline patch
+talosctl patch mc --nodes <node-ip> --patch '{"machine": {"nodeLabels": {"node-type": "gpu"}}}'
 ```
 
 YAML also works inline:
@@ -53,9 +54,10 @@ YAML also works inline:
 ```bash
 # Using YAML inline (with proper shell quoting)
 talosctl patch mc --nodes <node-ip> --patch "$(cat <<'EOF'
-machine:
-  network:
-    hostname: my-node
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: my-node
+auto: off
 EOF
 )"
 ```
@@ -66,9 +68,10 @@ EOF
 
 ```yaml
 # set-hostname.yaml
-machine:
-    network:
-        hostname: talos-worker-01
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: talos-worker-01
+auto: off
 ```
 
 ```bash
@@ -79,11 +82,11 @@ talosctl patch mc --nodes <node-ip> --patch @set-hostname.yaml
 
 ```yaml
 # add-dns.yaml
-machine:
-    network:
-        nameservers:
-            - 8.8.8.8
-            - 8.8.4.4
+apiVersion: v1alpha1
+kind: ResolverConfig
+nameservers:
+    - address: 8.8.8.8
+    - address: 8.8.4.4
 ```
 
 ```bash
@@ -123,11 +126,12 @@ talosctl patch mc --nodes <node-ip> --patch @node-labels.yaml
 
 ```yaml
 # ntp-config.yaml
-machine:
-    time:
-        servers:
-            - time.google.com
-            - time.cloudflare.com
+apiVersion: v1alpha1
+kind: TimeSyncConfig
+ntp:
+    servers:
+        - time.google.com
+        - time.cloudflare.com
 ```
 
 ```bash
@@ -188,7 +192,7 @@ Always preview changes before applying to production:
 talosctl patch mc --nodes <node-ip> --patch @patch.yaml --dry-run
 ```
 
-Dry run shows you the resulting configuration and whether a reboot would be required.
+Dry run prints a change summary and patch preview without applying the change.
 
 ## Applying Patches to Multiple Nodes
 
@@ -238,7 +242,7 @@ For more precise control, you can use JSON Patch format (RFC 6902):
 ```bash
 # Add a field
 talosctl patch mc --nodes <node-ip> \
-    --patch '[{"op": "add", "path": "/machine/network/hostname", "value": "my-node"}]'
+    --patch '[{"op": "add", "path": "/machine/nodeLabels", "value": {"node-type": "gpu"}}]'
 
 # Replace a field
 talosctl patch mc --nodes <node-ip> \
@@ -246,7 +250,7 @@ talosctl patch mc --nodes <node-ip> \
 
 # Remove a field
 talosctl patch mc --nodes <node-ip> \
-    --patch '[{"op": "remove", "path": "/machine/network/nameservers"}]'
+    --patch '[{"op": "remove", "path": "/machine/nodeLabels/node-type"}]'
 ```
 
 JSON Patch is more explicit about what operation is being performed (add, replace, remove, move, copy, test).
