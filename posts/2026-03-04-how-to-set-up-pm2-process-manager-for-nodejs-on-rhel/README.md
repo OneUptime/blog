@@ -27,6 +27,10 @@ pm2 --version
 # Start a Node.js application
 pm2 start app.js --name myapp
 
+# Create the custom log directory and make it writable by the app user
+sudo mkdir -p /var/log/myapp
+sudo chown "$USER":"$USER" /var/log/myapp
+
 # Start with specific options
 pm2 start app.js \
   --name myapp \
@@ -75,6 +79,10 @@ module.exports = {
 ```
 
 ```bash
+# Create the custom log directory and make it writable by the app user
+sudo mkdir -p /var/log/myapp
+sudo chown "$USER":"$USER" /var/log/myapp
+
 # Start using the ecosystem file
 pm2 start ecosystem.config.js
 
@@ -140,4 +148,4 @@ pm2 show myapp
 pm2 jlist
 ```
 
-PM2's cluster mode uses Node.js built-in cluster module to distribute connections across worker processes. Use `pm2 reload` instead of `pm2 restart` in production for zero-downtime deployments.
+PM2's cluster mode uses Node.js built-in cluster module to distribute connections across worker processes. For cluster-mode HTTP applications, use `pm2 reload` instead of `pm2 restart` in production for zero-downtime deployments.
