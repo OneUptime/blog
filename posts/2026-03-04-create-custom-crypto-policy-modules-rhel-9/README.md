@@ -18,7 +18,7 @@ flowchart TD
     C[Custom Module] --> D[Organization-specific tweaks]
     B --> E[Combined Policy]
     D --> E
-    E --> F[Applied to all crypto libraries]
+    E --> F[Applied to supported crypto back ends]
 ```
 
 A custom module modifies a base policy by enabling or disabling specific algorithms, setting minimum key sizes, or restricting protocol versions.
@@ -61,7 +61,7 @@ mac = -HMAC-SHA1
 key_exchange = -DHE-RSA -DHE-DSS
 
 # Disable specific signature algorithms
-sign = -RSA-PSS-SHA1 -RSA-SHA1
+sign = -*-SHA1
 ```
 
 The `-` prefix means "remove this algorithm from the allowed list."
@@ -75,8 +75,9 @@ sudo mkdir -p /etc/crypto-policies/policies/modules/
 sudo tee /etc/crypto-policies/policies/modules/NO-SHA1.pmod << 'EOF'
 # Disable SHA-1 in all contexts
 hash = -SHA1
-sign = -RSA-SHA1 -ECDSA-SHA1
+sign = -*-SHA1
 mac = -HMAC-SHA1
+sha1_in_certs = 0
 EOF
 
 # Apply with a base policy
@@ -87,7 +88,7 @@ sudo update-crypto-policies --set DEFAULT:NO-SHA1
 
 ```bash
 sudo tee /etc/crypto-policies/policies/modules/TLS13-ONLY.pmod << 'EOF'
-# Only allow TLS 1.3
+# Only allow TLS 1.3 for TLS
 protocol = -TLS1.0 -TLS1.1 -TLS1.2 -DTLS1.0 -DTLS1.2
 
 # Only AES-256 and ChaCha20
@@ -113,7 +114,8 @@ min_dh_size = 3072
 hash = -SHA1 -MD5
 
 # Disable weak signatures
-sign = -RSA-SHA1 -ECDSA-SHA1 -RSA-PSS-SHA1
+sign = -*-SHA1
+sha1_in_certs = 0
 
 # Disable weak MACs
 mac = -HMAC-SHA1 -HMAC-MD5 -UMAC-64
@@ -145,8 +147,8 @@ cipher@SSH = -AES-128-GCM -AES-128-CTR -AES-128-CBC -AES-256-CBC -AES-256-CTR
 # Restrict SSH MACs
 mac@SSH = -HMAC-SHA1 -UMAC-64 -UMAC-128 -HMAC-SHA2-256
 
-# Only allow Ed25519 and ECDSA for SSH keys
-key@SSH = -RSA
+# Disable RSA-based SSH signature algorithms
+sign@SSH = -RSA-*
 EOF
 
 # Apply
@@ -165,7 +167,7 @@ sudo tee /etc/crypto-policies/policies/MYORG.pol << 'EOF'
 # This is a standalone policy, not a module
 
 # Protocol versions
-protocol = TLS1.2+ DTLS1.2+
+protocol = TLS1.3 TLS1.2 DTLS1.2
 
 # Ciphers
 cipher = AES-256-GCM AES-256-CCM CHACHA20-POLY1305 AES-128-GCM
@@ -202,8 +204,8 @@ sudo update-crypto-policies --set MYORG
 # Check the policy for errors
 sudo update-crypto-policies --check
 
-# Test with a dry run
-sudo update-crypto-policies --set DEFAULT:ENTERPRISE --show
+# Display the currently configured policy
+update-crypto-policies --show
 
 # After applying, verify the back-end configurations
 cat /etc/crypto-policies/back-ends/opensslcnf.config
@@ -234,7 +236,7 @@ sudo sshd -T | grep -E "ciphers|macs|kexalgorithms"
 sudo update-crypto-policies --set DEFAULT
 
 # Restart services
-sudo systemctl restart sshd
+sudo reboot
 ```
 
 ## Distributing Custom Policies
