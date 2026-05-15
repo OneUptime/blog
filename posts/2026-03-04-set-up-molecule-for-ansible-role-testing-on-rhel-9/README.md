@@ -37,14 +37,16 @@ sudo dnf install -y python3-pip python3-devel gcc
 
 ```bash
 # Install Molecule with the Podman driver
-pip3 install --user molecule molecule-plugins[podman] ansible-lint yamllint
+pip3 install --user ansible-core molecule "molecule-plugins[podman]" ansible-lint yamllint
+ansible-galaxy collection install ansible.posix
 ```
 
 For Docker instead of Podman:
 
 ```bash
 # Install Molecule with the Docker driver
-pip3 install --user molecule molecule-plugins[docker]
+pip3 install --user ansible-core molecule "molecule-plugins[docker]" ansible-lint yamllint
+ansible-galaxy collection install ansible.posix
 ```
 
 Verify the installation:
@@ -57,9 +59,10 @@ molecule --version
 ## Creating an Ansible Role with Molecule
 
 ```bash
-# Create a new role with Molecule scaffolding
-molecule init role my_webserver --driver-name podman
+# Create a new role and add Molecule scaffolding
+ansible-galaxy role init my_webserver
 cd my_webserver
+molecule init scenario default
 ```
 
 This creates the standard Ansible role directory structure with a `molecule/default/` scenario.
@@ -86,7 +89,7 @@ driver:
   name: podman
 
 platforms:
-  - name: rhel9-instance
+  - name: ubi9-instance
     image: registry.access.redhat.com/ubi9/ubi-init:latest
     command: /usr/sbin/init
     tmpfs:
@@ -99,8 +102,6 @@ platforms:
 
 provisioner:
   name: ansible
-  lint:
-    name: ansible-lint
 
 verifier:
   name: ansible
@@ -134,13 +135,16 @@ Create the tasks for a web server role:
     state: started
     enabled: true
 
+- name: Gather service facts
+  ansible.builtin.service_facts:
+
 - name: Open firewall for HTTP
   ansible.posix.firewalld:
     service: http
     permanent: true
     state: enabled
     immediate: true
-  when: ansible_facts.services['firewalld.service'] is defined
+  when: ansible_facts['services']['firewalld.service'] is defined
 ```
 
 ## Writing the Converge Playbook
@@ -231,13 +235,11 @@ molecule idempotence
 
 ## Adding Linting
 
-Configure linting in molecule.yml:
+Run linting alongside Molecule:
 
-```yaml
-lint: |
-  set -e
-  yamllint .
-  ansible-lint
+```bash
+yamllint .
+ansible-lint
 ```
 
 Create a yamllint configuration:
@@ -271,7 +273,7 @@ Create additional scenarios for different test cases:
 
 ```bash
 # Create a new scenario
-molecule init scenario --driver-name podman --scenario-name multi-os
+molecule init scenario multi-os
 ```
 
 Configure it to test on multiple platforms:
@@ -279,7 +281,7 @@ Configure it to test on multiple platforms:
 ```yaml
 # molecule/multi-os/molecule.yml
 platforms:
-  - name: rhel9
+  - name: ubi9
     image: registry.access.redhat.com/ubi9/ubi-init:latest
     command: /usr/sbin/init
     privileged: true
@@ -302,7 +304,7 @@ Install Testinfra for Python-based tests:
 
 ```bash
 # Install Testinfra
-pip3 install --user testinfra
+pip3 install --user pytest-testinfra
 ```
 
 Update the verifier:
@@ -355,7 +357,9 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install dependencies
-        run: pip install molecule molecule-plugins[docker] ansible-lint
+        run: pip install ansible-core molecule "molecule-plugins[docker]" ansible-lint
+      - name: Install Ansible collections
+        run: ansible-galaxy collection install ansible.posix
       - name: Run Molecule
         run: molecule test
 ```
