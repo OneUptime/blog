@@ -30,7 +30,7 @@ graph LR
 
 ## Prerequisites
 
-- RHEL.1 or later (MPTCP support is included in the kernel)
+- RHEL 9.0 or later (MPTCP support is included in the kernel)
 - At least two network interfaces
 - Root or sudo access
 
@@ -63,7 +63,7 @@ sudo ip mptcp endpoint add 10.0.2.5 dev ens4 subflow
 
 # Set the path manager limits
 # This controls how many additional subflows can be created
-sudo ip mptcp limits set subflow 2 add_addr_accepted 2
+sudo ip mptcp limits set subflows 2 add_addr_accepted 2
 
 # Verify the configuration
 ip mptcp endpoint show
@@ -74,8 +74,8 @@ ip mptcp limits show
 
 ```bash
 # Enable MPTCP flags on a connection
-sudo nmcli connection modify ens3 connection.mptcp-flags "subflow,signal"
-sudo nmcli connection modify ens4 connection.mptcp-flags "subflow,signal"
+sudo nmcli connection modify ens3 connection.mptcp-flags "subflow,signal,also-without-default-route"
+sudo nmcli connection modify ens4 connection.mptcp-flags "subflow,signal,also-without-default-route"
 
 # Reapply the connections
 sudo nmcli connection up ens3
@@ -91,10 +91,13 @@ sudo dnf install -y mptcpd
 # Run curl with MPTCP support
 mptcpize run curl https://check.mptcp.dev
 
-# Monitor MPTCP subflows in real time
-ss -M
+# List MPTCP sockets
+ss -Mani
 # or
 ip mptcp monitor
+
+# View TCP subflows
+sudo ss -tani | grep tcp-ulp-mptcp
 
 # Check active MPTCP connections
 ss -tM
@@ -104,19 +107,23 @@ ss -tM
 
 ```bash
 # Set the path manager to in-kernel mode
-sudo ip mptcp pm nl flush
+sudo sysctl -w net.mptcp.path_manager=kernel
+
+# Clear existing endpoint configuration
+sudo ip mptcp endpoint flush
 
 # Add endpoints with specific flags
 # "signal" means the address is announced to the peer
 # "subflow" means the host will create a subflow to the peer
-sudo ip mptcp pm nl add 10.0.1.5 flags signal,subflow dev ens3 id 1
-sudo ip mptcp pm nl add 10.0.2.5 flags signal,subflow dev ens4 id 2
+sudo ip mptcp endpoint add 10.0.1.5 dev ens3 id 1 signal subflow
+sudo ip mptcp endpoint add 10.0.2.5 dev ens4 id 2 signal subflow
 
 # Set limits
-sudo ip mptcp pm nl limits set subflow 2 add_addr_accepted 2
+sudo ip mptcp limits set subflows 2 add_addr_accepted 2
 
 # Show the configuration
-ip mptcp pm nl dump
+ip mptcp endpoint show
+ip mptcp limits show
 ```
 
 ## Step 6: Server-Side MPTCP Configuration
@@ -130,7 +137,7 @@ sudo ip mptcp endpoint add 203.0.113.10 dev ens3 signal
 sudo ip mptcp endpoint add 203.0.113.20 dev ens4 signal
 
 # Set server limits
-sudo ip mptcp limits set subflow 4 add_addr_accepted 4
+sudo ip mptcp limits set subflows 4 add_addr_accepted 4
 ```
 
 ## Monitoring and Debugging
@@ -140,13 +147,13 @@ sudo ip mptcp limits set subflow 4 add_addr_accepted 4
 ip mptcp monitor &
 
 # Check MPTCP statistics
-nstat -az | grep -i mptcp
+nstat -asz | grep MPTcpExt
 
 # View detailed subflow information
 ss -tiM
 
-# Check MPTCP path manager counters
-cat /proc/net/mptcp_net/snmp
+# Check MPTCP path manager events with timestamps
+ip -ts mptcp monitor
 ```
 
 ## Summary
