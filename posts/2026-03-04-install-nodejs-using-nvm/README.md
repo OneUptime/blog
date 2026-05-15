@@ -18,7 +18,7 @@ This guide covers how to Install Node.js Using nvm on RHEL. Following these step
 
 ## Overview
 
-Install Node.js Using nvm requires careful planning and execution. This guide walks through the complete process from installation to verification.
+Installing Node.js using nvm gives each user account its own Node.js versions without replacing the Node.js packages managed by RHEL. This guide walks through the complete process from installation to verification.
 
 ## Step 1: Prepare the System
 
@@ -31,86 +31,99 @@ sudo dnf update -y
 Install any required dependencies:
 
 ```bash
-sudo dnf install -y epel-release
-sudo dnf groupinstall -y "Development Tools"
+sudo dnf install -y curl git
+sudo dnf group install -y "Development Tools"
 ```
 
 ## Step 2: Install Required Packages
 
+Install nvm for your regular user account:
+
 ```bash
-sudo dnf install -y <package-name>
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
+```
+
+Load nvm in your current shell session:
+
+```bash
+export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 ```
 
 Verify the installation:
 
 ```bash
-rpm -qi <package-name>
+command -v nvm
 ```
 
-## Step 3: Configure the Service
+## Step 3: Install Node.js with nvm
 
-Create or edit the main configuration file:
+Install the latest Long Term Support (LTS) release of Node.js and set it as the default for new shell sessions:
 
 ```bash
-sudo vi /etc/<service>/config.conf
+nvm install --lts
+nvm alias default 'lts/*'
 ```
 
-Apply the recommended settings for your environment. Start with the defaults and adjust based on your workload and hardware.
+## Step 4: Load nvm in New Shells
 
-## Step 4: Start and Enable the Service
+nvm does not run as a systemd service. Open a new terminal or reload your shell profile so the nvm initialization added by the installer takes effect:
 
 ```bash
-sudo systemctl enable --now <service>
-sudo systemctl status <service>
+source ~/.bashrc
 ```
+
+If you use a different shell profile, source that file instead, such as `~/.bash_profile`, `~/.zshrc`, or `~/.profile`.
 
 ## Step 5: Verify the Configuration
 
 Test the setup:
 
 ```bash
-sudo <service> --test
-```
-
-Check the logs for any errors:
-
-```bash
-journalctl -u <service> -f
+node --version
+npm --version
+npx --version
 ```
 
 ## Step 6: Configure Firewall Rules
 
-If the service needs network access:
+Node.js installed through nvm does not require firewall rules by itself. Configure the firewall only for applications you run with Node.js. For example, if your application listens on TCP port 3000:
 
 ```bash
-sudo firewall-cmd --permanent --add-service=<service>
+sudo firewall-cmd --permanent --add-port=3000/tcp
 sudo firewall-cmd --reload
 ```
 
-## Step 7: Performance Tuning
+## Step 7: Use Project Versions and Monitor Apps
 
-Monitor resource usage and adjust configuration parameters based on your workload:
+Keep project Node.js versions consistent with an `.nvmrc` file:
 
 ```bash
-systemctl show <service> --property=MemoryCurrent
-top -p $(pidof <service>)
+echo "lts/*" > .nvmrc
+nvm install
+nvm use
 ```
+
+Monitor the resource usage of your Node.js application process and adjust the application configuration based on your workload.
 
 ## Security Considerations
 
-- Run the service with a dedicated non-root user when possible
-- Enable TLS/SSL for network communication
-- Restrict access with firewall rules
-- Keep packages updated with `dnf update`
+- Install and use nvm as a regular user, not with `sudo`
+- Review the nvm install script before running it in sensitive environments
+- Avoid running global npm installs with `sudo`; nvm manages global packages per Node.js version
+- Enable TLS/SSL in your Node.js application when it handles network traffic
+- Restrict access with firewall rules for the application ports you expose
+- Keep RHEL packages updated with `dnf update` and update nvm separately when new nvm releases are available
 
 ## Troubleshooting
 
 Common issues and solutions:
 
-1. **Service fails to start**: Check `journalctl -u <service> -xe` for error messages
-2. **Permission denied**: Verify file ownership and SELinux contexts with `ls -laZ`
-3. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
+1. **`nvm: command not found`**: Open a new terminal or source your shell profile, such as `source ~/.bashrc`
+2. **Node.js version does not persist**: Run `nvm alias default 'lts/*'` after installing the LTS release
+3. **Permission denied during npm installs**: Do not use `sudo`; reinstall packages under the nvm-managed Node.js version
+4. **Port conflicts**: Use `ss -tlnp` to identify processes using the port
 
 ## Conclusion
 
-You have successfully configured install node.js using nvm on RHEL. Monitor the service regularly and keep it updated to maintain security and performance.
+You have successfully installed Node.js using nvm on RHEL. Keep nvm and Node.js updated, and monitor your Node.js applications regularly to maintain security and performance.
