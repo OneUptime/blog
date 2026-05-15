@@ -18,7 +18,7 @@ Helm is the package manager for Kubernetes, simplifying the deployment and manag
 ## Step 1: Install Helm
 
 ```bash
-curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | bash
 helm version
 ```
 
@@ -65,7 +65,7 @@ controller:
 ```
 
 ```bash
-helm install my-nginx ingress-nginx/ingress-nginx -f my-values.yaml --namespace ingress
+helm upgrade my-nginx ingress-nginx/ingress-nginx -f my-values.yaml --namespace ingress
 ```
 
 ## Step 6: Manage Releases
