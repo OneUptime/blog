@@ -23,6 +23,7 @@ Find the partition with GRUB files:
 
 ```bash
 grub rescue> ls (hd0,gpt2)/grub2/
+grub rescue> ls (hd0,gpt2)/boot/grub2/
 ```
 
 Set the root and prefix:
@@ -30,6 +31,8 @@ Set the root and prefix:
 ```bash
 grub rescue> set root=(hd0,gpt2)
 grub rescue> set prefix=(hd0,gpt2)/grub2
+# If /boot is not a separate partition, use:
+grub rescue> set prefix=(hd0,gpt2)/boot/grub2
 grub rescue> insmod normal
 grub rescue> normal
 ```
@@ -58,8 +61,8 @@ grub2-mkconfig -o /boot/grub2/grub.cfg
 For UEFI systems:
 
 ```bash
-dnf reinstall grub2-efi-x64 shim-x64
-grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
+dnf reinstall grub2-efi shim
+grub2-mkconfig -o /boot/grub2/grub.cfg
 ```
 
 ## Rebuild the GRUB Configuration
@@ -81,9 +84,16 @@ blkid
 # Repair the filesystem
 fsck /dev/sda1
 
-# Remount and rebuild GRUB
+# Remount and rebuild GRUB on BIOS systems
 mount /dev/sda1 /boot
 grub2-install /dev/sda
+grub2-mkconfig -o /boot/grub2/grub.cfg
+```
+
+On UEFI systems, reinstall the GRUB EFI and shim packages instead of running `grub2-install`:
+
+```bash
+dnf reinstall grub2-efi shim
 grub2-mkconfig -o /boot/grub2/grub.cfg
 ```
 
@@ -103,4 +113,3 @@ reboot
 ## Conclusion
 
 GRUB rescue situations on RHEL 9 require booting from rescue media to reinstall the bootloader and rebuild its configuration. Maintain a rescue USB and know your partition layout for quick recovery.
-
