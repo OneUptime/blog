@@ -31,7 +31,7 @@ Add the OpenSCAP addon to your Kickstart file:
 ```bash
 # The OpenSCAP addon section in Kickstart
 
-%addon org_fedora_oscap
+%addon com_redhat_oscap
   content-type = scap-security-guide
   profile = xccdf_org.ssgproject.content_profile_stig
 %end
@@ -89,7 +89,7 @@ chrony
 %end
 
 # Apply SCAP profile during installation
-%addon org_fedora_oscap
+%addon com_redhat_oscap
   content-type = scap-security-guide
   profile = xccdf_org.ssgproject.content_profile_stig
 %end
@@ -118,25 +118,25 @@ Change the profile line in the addon section to use different compliance framewo
 
 ```bash
 # CIS Level 1 Server
-%addon org_fedora_oscap
+%addon com_redhat_oscap
   content-type = scap-security-guide
   profile = xccdf_org.ssgproject.content_profile_cis_server_l1
 %end
 
 # CIS Level 2 Server
-%addon org_fedora_oscap
+%addon com_redhat_oscap
   content-type = scap-security-guide
   profile = xccdf_org.ssgproject.content_profile_cis
 %end
 
 # PCI-DSS
-%addon org_fedora_oscap
+%addon com_redhat_oscap
   content-type = scap-security-guide
   profile = xccdf_org.ssgproject.content_profile_pci-dss
 %end
 
 # OSPP (NIST 800-53)
-%addon org_fedora_oscap
+%addon com_redhat_oscap
   content-type = scap-security-guide
   profile = xccdf_org.ssgproject.content_profile_ospp
 %end
@@ -148,11 +148,12 @@ If you have custom or tailored SCAP content:
 
 ```bash
 # Reference custom content from a URL
-%addon org_fedora_oscap
-  content-type = datastream
-  content-url = http://buildserver.example.com/scap/custom-rhel9-ds.xml
+%addon com_redhat_oscap
+  content-type = archive
+  content-url = http://buildserver.example.com/scap/custom-rhel9-content.zip
+  content-path = custom-rhel9-ds.xml
   profile = xccdf_org.ssgproject.content_profile_stig_customized
-  tailoring-path = /usr/share/xml/tailoring/custom-tailoring.xml
+  tailoring-path = custom-tailoring.xml
 %end
 ```
 
@@ -184,7 +185,7 @@ cp /usr/share/scap-security-guide/kickstart/ssg-rhel9-stig-ks.cfg \
 ```bash
 # Validate syntax
 dnf install -y pykickstart
-ksvalidator /var/www/html/ks/rhel9-stig.cfg
+ksvalidator -v RHEL9 /var/www/html/ks/rhel9-stig.cfg
 ```
 
 ## Serve the Kickstart File
@@ -193,7 +194,8 @@ ksvalidator /var/www/html/ks/rhel9-stig.cfg
 # Via HTTP
 dnf install -y httpd
 systemctl enable --now httpd
-cp /var/www/html/ks/rhel9-stig.cfg /var/www/html/ks/
+mkdir -p /var/www/html/ks
+cp rhel9-stig.cfg /var/www/html/ks/
 
 # Boot a server with:
 # inst.ks=http://buildserver.example.com/ks/rhel9-stig.cfg
