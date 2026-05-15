@@ -30,10 +30,10 @@ This shows:
 - Fencing status
 - Failed actions
 
-Compact view:
+Hide inactive resources:
 
 ```bash
-sudo pcs status --brief
+sudo pcs status --hide-inactive
 ```
 
 ## Monitoring Node Health
@@ -99,7 +99,7 @@ sudo tail -f /var/log/cluster/corosync.log
 Real-time monitoring of all cluster events:
 
 ```bash
-sudo pcs status --watch
+watch -n 2 sudo pcs status
 ```
 
 ## Troubleshooting Resource Failures
@@ -226,7 +226,7 @@ Resource Keeps Failing Over
 Check the migration threshold:
 
 ```bash
-sudo pcs resource show WebServer
+sudo pcs resource config WebServer
 ```
 
 Increase the threshold or fix the underlying issue:
@@ -248,7 +248,7 @@ sudo pcs cluster config update totem token=10000
 This is prevented by proper fencing. Verify STONITH is enabled:
 
 ```bash
-sudo pcs property show stonith-enabled
+sudo pcs property config stonith-enabled
 ```
 
 ## Using crm_mon for Monitoring
