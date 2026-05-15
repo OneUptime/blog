@@ -8,17 +8,17 @@ Description: Learn how to configure DNS Failover and High Availability with Unbo
 
 ---
 
-DNS is a critical service - if it goes down, name resolution fails and applications stRHELking. This guide covers how to set up Unbound in a highly available confiRHELon with failover on RHEL 9.
+DNS is a critical service - if it goes down, name resolution fails and applications stop working. This guide covers how to set up Unbound in a highly available configuration with failover on RHEL 9.
 
 ## Prerequisites
 
-- RHEL more RHEL 9 servers
+- Two or more RHEL 9 servers
 - Root or sudo access
 - A shared virtual IP address (VIP)
 
 ## Strategy 1: Multiple Resolvers in resolv.conf
 
-The simplest approach is listing multiple DNS servers:
+The simplest approach is listing multiple DNS servers. On RHEL, configure this through NetworkManager for a persistent setup, or edit `/etc/resolv.conf` if you manage it manually:
 
 ```bash
 sudo vi /etc/resolv.conf
@@ -78,9 +78,9 @@ sudo systemctl enable --now keepalived
 
 ## Strategy 3: Unbound with Stub Zones for Redundancy
 
-Configure Unbound to forward specific zones to multiple servers:
+Configure Unbound to query multiple authoritative servers for a specific zone:
 
-```yaml
+```text
 stub-zone:
     name: "internal.example.com"
     stub-addr: <PRIMARY_DNS_IP>
@@ -105,6 +105,8 @@ ip addr show eth0
 
 ## Monitoring
 
+If Unbound remote control is enabled, monitor it with:
+
 ```bash
 sudo unbound-control status
 sudo unbound-control stats | grep total.num
@@ -113,4 +115,3 @@ sudo unbound-control stats | grep total.num
 ## Conclusion
 
 DNS high availability on RHEL 9 can be achieved through multiple resolvers, keepalived VIP failover, or a combination of both. Keepalived with health checks provides the fastest failover with transparent client behavior.
-RHEL
