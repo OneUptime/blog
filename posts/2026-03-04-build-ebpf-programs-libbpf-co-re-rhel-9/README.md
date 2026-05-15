@@ -8,7 +8,7 @@ Description: A hands-on guide to building portable eBPF programs using libbpf an
 
 ---
 
-Building eBPF programs used to mean compiling them on every target machine because kernel data structures change between versions. CO-RE (Compile Once, Run Everywhere) fixes this by using BTF (BPF Type Format) information to automatically adjust your program to the running kernel. On RHEL, CO-RE works out of the box because the kernel ships with BTF enabled.
+Building eBPF programs used to mean compiling them on every target machine because kernel data structures change between versions. CO-RE (Compile Once, Run Everywhere) fixes this by using BTF (BPF Type Format) information to automatically adjust your program to the running kernel. On RHEL 9, CO-RE works out of the box when the running kernel exposes BTF at `/sys/kernel/btf/vmlinux`.
 
 ## How CO-RE Works
 
@@ -19,9 +19,8 @@ graph TD
     C --> D[libbpf Loader]
     D --> E{BTF Available?}
     E -->|Yes| F[Relocate struct offsets using BTF]
-    E -->|No| G[Fall back to compiled offsets]
+    E -->|No| G[CO-RE relocation fails]
     F --> H[Load into Kernel BPF VM]
-    G --> H
     H --> I[Attach to Hook Points]
 ```
 
@@ -102,9 +101,8 @@ int tracepoint__syscalls__sys_enter_execve(
     /* Read the command name */
     bpf_get_current_comm(&e->comm, sizeof(e->comm));
 
-    /* Read the filename argument using CO-RE-safe read
-     * BPF_CORE_READ handles struct offset relocation automatically */
-    const char *filename_ptr = (const char *)ctx->args[0];
+    /* Read the filename argument from the tracepoint context */
+    const char *filename_ptr = (const char *)BPF_CORE_READ(ctx, args[0]);
     bpf_probe_read_user_str(&e->filename, sizeof(e->filename), filename_ptr);
 
     /* Submit the event to userspace */
@@ -125,16 +123,17 @@ char LICENSE[] SEC("license") = "GPL";
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <errno.h>
 #include <unistd.h>
 #include <bpf/libbpf.h>
 #include "execsnoop.skel.h"  /* Auto-generated skeleton header */
 
 /* Flag for clean shutdown */
-static volatile bool running = true;
+static volatile sig_atomic_t running = 1;
 
 static void sig_handler(int sig)
 {
-    running = false;
+    running = 0;
 }
 
 /* Callback for processing events from the ring buffer */
@@ -154,7 +153,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
 int main(int argc, char **argv)
 {
     struct execsnoop_bpf *skel;
-    struct ring_buffer *rb;
+    struct ring_buffer *rb = NULL;
     int err;
 
     /* Set up signal handling for graceful shutdown */
@@ -198,18 +197,21 @@ int main(int argc, char **argv)
     while (running) {
         err = ring_buffer__poll(rb, 100);  /* 100ms timeout */
         if (err == -EINTR) {
+            err = 0;
             break;
         }
         if (err < 0) {
             fprintf(stderr, "Error polling ring buffer: %d\n", err);
-            break;
+            goto cleanup;
         }
     }
+    err = 0;
 
 cleanup:
-    ring_buffer__free(rb);
+    if (rb)
+        ring_buffer__free(rb);
     execsnoop_bpf__destroy(skel);
-    return err < 0 ? 1 : 0;
+    return err ? 1 : 0;
 }
 ```
 
@@ -290,8 +292,8 @@ if (bpf_core_field_exists(task->loginuid)) {
 When things go wrong, these debugging steps help:
 
 ```bash
-# Check if your BPF object has proper CO-RE relocations
-bpftool btf dump file execsnoop.bpf.o
+# Check if your BPF object has BTF and BTF.ext metadata for CO-RE
+llvm-readelf -S execsnoop.bpf.o | grep -E 'BTF|BTF.ext'
 
 # Verify the kernel's BTF data is readable
 bpftool btf dump file /sys/kernel/btf/vmlinux | head -50
