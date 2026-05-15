@@ -107,13 +107,13 @@ sudo pcs resource config VIP
 
 ## Starting and Stopping Resources
 
-Stop a resource:
+Disable a resource and prevent the cluster from starting it:
 
 ```bash
 sudo pcs resource disable VIP
 ```
 
-Start a resource:
+Allow the cluster to start a resource:
 
 ```bash
 sudo pcs resource enable VIP
@@ -133,7 +133,7 @@ Move a resource to a specific node:
 sudo pcs resource move VIP node2
 ```
 
-This creates a temporary location constraint. Remove it after the move:
+By default, `pcs` removes the move constraint automatically after the resource moves. If a move or ban constraint remains, remove it with:
 
 ```bash
 sudo pcs resource clear VIP
@@ -171,14 +171,14 @@ sudo pcs resource op remove VIP monitor interval=30s
 
 Resource Meta Attributes
 
-Set how long to wait before moving a resource after a failure:
+Set how many failures cause a resource to move, and how long failure counts are retained:
 
 ```bash
 sudo pcs resource meta VIP migration-threshold=3
 sudo pcs resource meta VIP failure-timeout=60s
 ```
 
-Make a resource prefer a specific node:
+Make a resource prefer staying on its current node:
 
 ```bash
 sudo pcs resource meta VIP resource-stickiness=100
