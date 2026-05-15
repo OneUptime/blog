@@ -34,7 +34,7 @@ Each log entry is a single JSON object on one line. This format is ideal for str
 
 ```bash
 # One JSON object per line
-journalctl -o json -n 3 --no-pager
+journalctl -o json -n 2 --no-pager
 ```
 
 Output:
@@ -79,13 +79,13 @@ journalctl -u nginx -o json \
     --since "7 days ago" \
     --no-pager > /tmp/nginx-week.json
 
-# Export all error-level logs from today
+# Export error and higher-priority logs from today
 journalctl -p err -o json \
     --since today \
     --no-pager > /tmp/errors-today.json
 
 # Export authentication logs
-journalctl -u sshd -u sudo -o json \
+journalctl -t sshd -t sudo -o json \
     --since "30 days ago" \
     --no-pager > /tmp/auth-month.json
 ```
