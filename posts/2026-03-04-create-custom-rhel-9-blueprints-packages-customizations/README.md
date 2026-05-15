@@ -15,7 +15,7 @@ Create custom RHEL 9 blueprints with specific packages and customizations. RHEL 
 ## Prerequisites
 
 - A RHEL 9 system with a valid subscription
-- Root or sudo access
+- Root access or a user in the `weldr` group for `composer-cli` commands
 - The osbuild-composer and composer-cli packages
 
 ## Step 1 - Install Image Builder
@@ -23,6 +23,7 @@ Create custom RHEL 9 blueprints with specific packages and customizations. RHEL 
 ```bash
 sudo dnf install -y osbuild-composer composer-cli cockpit-composer
 sudo systemctl enable --now osbuild-composer.socket
+sudo systemctl enable --now cockpit.socket
 ```
 
 ## Step 2 - Create a Blueprint
