@@ -8,24 +8,25 @@ Description: Learn how to use eBPF tools and custom programs to profile and anal
 
 ---
 
-Network latency issues can be notoriously hard to track down. Traditional tools like ping and traceroute show you the surface, but eBPF lets you look inside the kernel itself to see exactly where packets are spending their time. On RHEL, the eBPF ecosystem is mature enough that you can get production-grade latency profiling without writing a single line of C if you use the right tools.
+Network latency issues can be notoriously hard to track down. Traditional tools like ping and traceroute show you the surface, but eBPF lets you look inside the kernel itself to see where packets and TCP events are spending time. On RHEL, the eBPF ecosystem is mature enough that you can get production-grade latency profiling without writing a single line of C if you use the right tools.
 
 ## What eBPF Brings to Latency Profiling
 
-eBPF (extended Berkeley Packet Filter) programs attach to kernel hooks and run safely in a sandboxed virtual machine. For network latency profiling, this means you can timestamp packets at various points in the network stack and calculate exactly how long each stage takes.
+eBPF (extended Berkeley Packet Filter) programs attach to kernel hooks and run safely in a sandboxed virtual machine. For network latency profiling, this means you can timestamp events at various points in the network stack and estimate how long important stages take.
 
 ```mermaid
 graph LR
     A[Packet Arrives at NIC] --> B[Driver / softirq]
-    B --> C[tc / XDP Layer]
+    B --> C[tc Layer]
     C --> D[Netfilter / nftables]
     D --> E[Socket Receive Buffer]
     E --> F[Application read()]
+    G[XDP hook] -. earliest driver hook .-> B
     style A fill:#f9f,stroke:#333
     style F fill:#9f9,stroke:#333
 ```
 
-Each of those transitions is a place where latency can hide, and eBPF can instrument every one of them.
+Each of those transitions is a place where latency can hide, and eBPF can instrument many of them. Exact hook availability depends on the RHEL kernel and enabled tracepoints.
 
 ## Installing the Required Tools
 
@@ -56,14 +57,14 @@ sudo /usr/share/bcc/tools/tcpconnlat 1
 # Example output:
 # PID    COMM         IP SADDR            DADDR            DPORT LAT(ms)
 # 12345  curl         4  10.0.0.5         93.184.216.34    443   23.45
-# 12389  python3      4  10.0.0.5         10.0.0.10        5432  0.82
+# 12389  python3      4  10.0.0.5         10.0.0.10        5432  1.82
 ```
 
 This immediately tells you which connections are slow and to which destinations.
 
-## Measuring TCP Retransmit Latency
+## Tracing TCP Retransmissions
 
-Retransmissions are a major source of latency spikes. The `tcpretrans` tool catches them in real time:
+Retransmissions are a major source of latency spikes. The `tcpretrans` tool catches retransmission events in real time:
 
 ```bash
 # Monitor TCP retransmissions as they happen
@@ -97,24 +98,20 @@ interval:s:10 { exit(); }
 
 This gives you a histogram showing how long the kernel spends processing received TCP segments.
 
-## Profiling Socket Read Latency
+## Profiling Socket Receive Latency
 
-Sometimes the latency is not in the network but in how long data sits in the socket buffer before the application reads it:
+Sometimes the latency is not in the network path but in how long socket receive calls spend in the kernel waiting for or copying data:
 
 ```bash
-# Trace time between data arriving at socket and application calling read()
+# Trace socket receive syscall time in the kernel
 sudo bpftrace -e '
-tracepoint:sock:sock_rcv_queue {
-    @queued[args->sk] = nsecs;
+kprobe:sock_recvmsg {
+    @recv_start[tid] = nsecs;
 }
 
-tracepoint:syscalls:sys_enter_read {
-    @read_start[tid] = nsecs;
-}
-
-tracepoint:syscalls:sys_exit_read /args->ret > 0 && @read_start[tid]/ {
-    @read_latency_us = hist((nsecs - @read_start[tid]) / 1000);
-    delete(@read_start[tid]);
+kretprobe:sock_recvmsg /@recv_start[tid]/ {
+    @recv_latency_us[comm] = hist((nsecs - @recv_start[tid]) / 1000);
+    delete(@recv_start[tid]);
 }
 
 interval:s:30 { exit(); }
@@ -130,20 +127,18 @@ It is useful to compare network latency with storage latency to understand what 
 # This helps distinguish network-bound from disk-bound applications
 sudo /usr/share/bcc/tools/biolatency -D 10 1
 
-# Meanwhile, measure network round-trip times
+# Meanwhile, sample the kernel's TCP smoothed RTT estimate
 sudo bpftrace -e '
-kprobe:tcp_sendmsg {
-    @send_time[tid] = nsecs;
-}
-
-kprobe:tcp_rcv_established /@send_time[tid]/ {
-    @rtt_us = hist((nsecs - @send_time[tid]) / 1000);
-    delete(@send_time[tid]);
+kprobe:tcp_rcv_established {
+    $tp = (struct tcp_sock *)arg0;
+    @srtt_us = hist($tp->srtt_us >> 3);
 }
 
 interval:s:10 { exit(); }
 '
 ```
+
+This samples the kernel's current TCP smoothed RTT estimate when established TCP segments are processed. It is not a per-message application round trip timer.
 
 ## Creating a Comprehensive Latency Dashboard Script
 
