@@ -38,7 +38,7 @@ Before configuring Postfix, you need to enable SMTP AUTH for the sending account
 4. Click on the Mail tab
 5. Under Email apps, enable Authenticated SMTP
 
-If your tenant has security defaults enabled, you may need to create an app password or configure an exception. Check your Azure AD settings.
+If your tenant has security defaults enabled, this username/password SMTP AUTH setup will not work. To use SMTP AUTH, disable security defaults and use Conditional Access policies if you need a legacy authentication exception. Check your Microsoft Entra ID settings.
 
 ## Office 365 SMTP Details
 
@@ -56,7 +56,7 @@ If your tenant has security defaults enabled, you may need to create an app pass
 ```bash
 # Install Postfix and SASL support
 
-sudo dnf install -y postfix cyrus-sasl cyrus-sasl-plain
+sudo dnf install -y postfix cyrus-sasl cyrus-sasl-plain s-nail
 ```
 
 ### Main Configuration
@@ -90,7 +90,7 @@ smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
 smtp_sasl_security_options = noanonymous
 smtp_sasl_tls_security_options = noanonymous
 
-# Sender address rewriting (Office 365 requires the sender to match the auth account)
+# Sender address rewriting (Office 365 requires the sender to match the auth account, an alias, or an address the auth account has Send As permission for)
 sender_canonical_maps = hash:/etc/postfix/sender_canonical
 ```
 
@@ -119,7 +119,7 @@ sudo postmap /etc/postfix/sasl_passwd
 
 ### Sender Address Rewriting
 
-Office 365 requires the sender address to match the authenticated account (or an alias of that account). Create a sender canonical map to rewrite local sender addresses:
+Office 365 requires the sender address to match the authenticated account, an alias of that account, or an address the authenticated account has Send As permission for. Create a sender canonical map to rewrite local sender addresses:
 
 ```bash
 sudo vi /etc/postfix/sender_canonical
@@ -208,9 +208,9 @@ SASL authentication failed: UGFzc3dvcmQ6
 - SMTP AUTH is not enabled for the account
 - Wrong username or password
 - Multi-factor authentication is blocking the connection
-- Security defaults are enabled in Azure AD
+- Security defaults are enabled in Microsoft Entra ID
 
-**Fix:** Enable SMTP AUTH in the admin center. If MFA is enabled, create an app password.
+**Fix:** Enable SMTP AUTH in the admin center. If per-user MFA is enabled and app passwords are allowed, use an app password. If security defaults or Conditional Access policies block legacy authentication, app passwords will not fix the connection.
 
 ### Sender Address Rejected (550 5.7.60)
 
@@ -218,9 +218,9 @@ SASL authentication failed: UGFzc3dvcmQ6
 550 5.7.60 SMTP; Client does not have permissions to send as this sender
 ```
 
-**Cause:** The From address does not match the authenticated account or its aliases.
+**Cause:** The From address does not match the authenticated account, its aliases, or an address the authenticated account has Send As permission for.
 
-**Fix:** Add the sender address as an alias on the account, or use sender_canonical_maps to rewrite the From address.
+**Fix:** Add the sender address as an alias on the account, grant Send As permission, or use sender_canonical_maps to rewrite the From address.
 
 ### TLS Handshake Failed
 
@@ -244,7 +244,7 @@ If you hit these limits, messages will be deferred and retried later.
 
 ## Using a Shared Mailbox
 
-Instead of a licensed user account, you can use a shared mailbox for relaying. Shared mailboxes do not require a license. Assign Send As permissions to the user account authenticating the SMTP connection.
+You cannot authenticate directly as a shared mailbox because shared mailbox sign-in is disabled by default. Authenticate as a licensed user account, then assign Send As permissions to that user if you want messages to come from the shared mailbox address.
 
 ## Security Best Practices
 
