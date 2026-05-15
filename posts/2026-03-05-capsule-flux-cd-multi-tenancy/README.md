@@ -16,7 +16,7 @@ Capsule introduces a Tenant custom resource that groups namespaces and enforces 
 
 - Limits which namespaces a tenant can create
 - Enforces resource quotas across all tenant namespaces combined
-- Applies network policies automatically
+- Distributes network policies to tenant namespaces
 - Restricts which storage classes, ingress classes, and registries tenants can use
 - Provides tenant-scoped resource quota management
 
@@ -78,9 +78,8 @@ metadata:
 spec:
   # Tenant owners who can create namespaces
   owners:
-    - name: team-alpha
+    - name: system:serviceaccount:team-alpha:team-alpha
       kind: ServiceAccount
-      namespace: team-alpha
   # Maximum number of namespaces the tenant can create
   namespaceOptions:
     quota: 5
@@ -156,19 +155,10 @@ spec:
 
 ## Step 3: Restrict Allowed Registries
 
-Capsule can restrict which container registries tenants can pull from.
+Capsule can restrict which container registries tenants can pull from. Add these fields to the same Tenant spec.
 
 ```yaml
-# tenants/team-alpha/capsule-tenant-registries.yaml
-apiVersion: capsule.clastix.io/v1beta2
-kind: Tenant
-metadata:
-  name: team-alpha
 spec:
-  owners:
-    - name: team-alpha
-      kind: ServiceAccount
-      namespace: team-alpha
   # Only allow images from approved registries
   rules:
     - enforce:
@@ -262,7 +252,7 @@ kubectl get tenants
 kubectl describe tenant team-alpha
 
 # Check namespace count against quota
-kubectl get tenant team-alpha -o jsonpath='{.status.namespaces}'
+kubectl get tenant team-alpha -o jsonpath='{.status.size}'
 
 # Check resource usage across all tenant namespaces
 kubectl get resourcequota -l capsule.clastix.io/tenant=team-alpha --all-namespaces
