@@ -108,10 +108,11 @@ For CI/CD pipelines that do not have cluster access, you can provide the Kustomi
 ```bash
 flux build kustomization my-app \
   --path ./apps/my-app \
-  --kustomization-file ./clusters/production/my-app.yaml
+  --kustomization-file ./clusters/production/my-app.yaml \
+  --dry-run
 ```
 
-When using `--kustomization-file`, the CLI reads the Kustomization spec from the file rather than the cluster. If you also use `--dry-run`, the command does not connect to the cluster, and `substituteFrom` references to ConfigMaps and Secrets are skipped. You can work around this by putting the required values in `spec.postBuild.substitute` in the local Kustomization file:
+When using `--kustomization-file`, the CLI reads the Kustomization spec from the file rather than the cluster. With `--dry-run`, the command does not connect to the cluster, and `substituteFrom` references to ConfigMaps and Secrets are skipped. You can work around this by putting the required values in `spec.postBuild.substitute` in the local Kustomization file:
 
 ```yaml
 spec:
@@ -144,7 +145,7 @@ flux build kustomization my-app --path ./apps/my-app | kubectl apply --dry-run=c
 flux build kustomization my-app --path ./apps/my-app | kubectl apply --dry-run=server -f -
 ```
 
-Server-side dry run is more thorough because it validates against admission webhooks and the current cluster state, catching issues like invalid resource references or RBAC violations.
+Server-side dry run is more thorough because it sends the objects to the API server for validation, defaulting, authorization, and admission checks. It can catch issues such as missing namespaces, schema errors, quota or policy violations, and RBAC problems for the credentials running the command, but it does not prove that every referenced object exists unless an admission policy enforces that.
 
 **Validate with kubeconform**:
 
@@ -185,10 +186,11 @@ jobs:
           flux build kustomization my-app \
             --path ./apps/my-app \
             --kustomization-file ./clusters/production/my-app.yaml \
+            --dry-run \
             | kubeconform -strict -summary -output json
 ```
 
-This pipeline runs on every pull request and fails if the Kustomization produces invalid manifests.
+This pipeline runs on every pull request and fails if the Kustomization produces invalid manifests. Because it uses `--dry-run`, any values normally loaded through `substituteFrom` should be supplied through `spec.postBuild.substitute` in the local Kustomization file.
 
 ## Common Build Errors
 
