@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, Reverse Proxy, Web Server, Linux
 
-Description: A step-by-step guide to configuring Nginx as a reverse proxy on RHEL, including upstream configuration, WebSocket support, and caching.
+Description: A step-by-step guide to configuring Nginx as a reverse proxy on RHEL, including upstream configuration, WebSocket support, timeouts, and buffering.
 
 ---
 
@@ -12,7 +12,7 @@ Nginx excels as a reverse proxy thanks to its event-driven architecture and low 
 
 ## Prerequisites
 
-- A RHEL system with Nginx installed
+- A RHEL system
 - A backend application running on a local or remote port
 - Root or sudo access
 
@@ -202,7 +202,7 @@ server {
 # Allow Nginx to make outbound network connections
 sudo setsebool -P httpd_can_network_connect on
 
-# If connecting to a non-standard port, you may need to add it
+# If Nginx listens on a non-standard HTTP port, you may need to add it
 sudo semanage port -a -t http_port_t -p tcp 3000
 
 # Verify the boolean
