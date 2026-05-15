@@ -8,7 +8,7 @@ Description: A practical guide to verifying and monitoring time synchronization 
 
 ---
 
-Verifying that time synchronization is working correctly across your Talos Linux cluster is not something you do once and forget about. It should be part of your regular operational checks and monitoring setup. A node with bad time can silently corrupt your logs, break TLS connections, and cause scheduling chaos. This post covers every method available for checking time sync status on Talos nodes.
+Verifying that time synchronization is working correctly across your Talos Linux cluster is not something you do once and forget about. It should be part of your regular operational checks and monitoring setup. A node with bad time can silently corrupt your logs, break TLS connections, and cause scheduling chaos. This post covers several practical methods for checking time sync status on Talos nodes.
 
 ## Quick Health Check
 
@@ -55,11 +55,11 @@ The key field here is `synced`. When it reads `true`, the node has successfully 
 
 ## Checking the Configured Time Servers
 
-To see which NTP servers a node is configured to use:
+To see which NTP servers a node is currently using:
 
 ```bash
 # View time server configuration
-talosctl -n 192.168.1.10 get timeserverconfig -o yaml
+talosctl -n 192.168.1.10 get timeservers -o yaml
 ```
 
 The output shows the list of configured NTP servers:
@@ -76,29 +76,28 @@ Cross-reference this with your intended configuration to make sure the right ser
 
 ## Inspecting the Time Service Logs
 
-The time daemon logs provide the most detailed picture of synchronization activity:
+The time sync controller logs provide the most detailed picture of synchronization activity:
 
 ```bash
 # View recent time service logs
-talosctl -n 192.168.1.10 logs timed
+talosctl -n 192.168.1.10 logs controller-runtime | grep -i "time.Sync"
 
 # Follow logs in real time
-talosctl -n 192.168.1.10 logs timed -f
+talosctl -n 192.168.1.10 logs controller-runtime -f | grep -i "time.Sync"
 ```
 
 Healthy synchronization logs look something like this:
 
 ```text
-timed: synced to time.cloudflare.com, offset: +0.002341s
-timed: adjusted clock by 0.002341 seconds
+172.20.0.2: 2024-04-17T18:32:16.690Z DEBUG NTP response {"component": "controller-runtime", "controller": "time.SyncController", "clock_offset": "37.060204ms", "rtt": "3.044816ms"}
+172.20.0.2: 2024-04-17T18:32:16.690Z DEBUG adjusting time (slew) by 37.060204ms via 162.159.200.1, state TIME_OK, status STA_PLL | STA_NANO {"component": "controller-runtime", "controller": "time.SyncController"}
 ```
 
 Warning signs in the logs include:
 
 ```text
-timed: failed to query time.cloudflare.com: i/o timeout
-timed: no reachable time servers
-timed: clock offset too large: 3600.001s
+controller failed {"component": "controller-runtime", "controller": "time.SyncController", "error": "failed to query time.cloudflare.com: i/o timeout"}
+controller failed {"component": "controller-runtime", "controller": "time.SyncController", "error": "no reachable time servers"}
 ```
 
 ## Comparing Time Across Nodes
@@ -227,7 +226,7 @@ Certain events should trigger a time sync verification:
 ```bash
 # After a node comes back from reboot
 talosctl -n 192.168.1.10 get timestatus
-talosctl -n 192.168.1.10 logs timed | tail -20
+talosctl -n 192.168.1.10 logs controller-runtime --tail 200 | grep -i "time.Sync"
 ```
 
 ### After Upgrade
@@ -235,7 +234,7 @@ talosctl -n 192.168.1.10 logs timed | tail -20
 ```bash
 # After upgrading Talos on a node
 talosctl -n 192.168.1.10 get timestatus
-talosctl -n 192.168.1.10 service timed
+talosctl -n 192.168.1.10 services
 ```
 
 ### After Network Changes
@@ -245,7 +244,7 @@ talosctl -n 192.168.1.10 service timed
 for node in 192.168.1.10 192.168.1.11 192.168.1.12; do
   echo "Checking $node..."
   talosctl -n "$node" get timestatus
-  talosctl -n "$node" logs timed | tail -5
+  talosctl -n "$node" logs controller-runtime --tail 100 | grep -i "time.Sync"
 done
 ```
 
@@ -253,9 +252,9 @@ done
 
 ```bash
 # After changing NTP servers
-talosctl -n 192.168.1.10 get timeserverconfig -o yaml
+talosctl -n 192.168.1.10 get timeservers -o yaml
 talosctl -n 192.168.1.10 get timestatus
-talosctl -n 192.168.1.10 logs timed | tail -20
+talosctl -n 192.168.1.10 logs controller-runtime --tail 200 | grep -i "time.Sync"
 ```
 
 ## Understanding Time Sync Behavior
@@ -270,7 +269,7 @@ Talos handles time synchronization differently depending on the offset:
 
 ```bash
 # Check for time step events in logs
-talosctl -n 192.168.1.10 logs timed | grep -i "step\|jump\|adjust"
+talosctl -n 192.168.1.10 logs controller-runtime | grep -i "step\|jump\|adjust"
 ```
 
 ## Building a Verification Checklist
@@ -295,16 +294,16 @@ echo "2. Sync status:"
 talosctl -n "$NODE" get timestatus
 
 echo ""
-echo "3. Configured servers:"
-talosctl -n "$NODE" get timeserverconfig -o yaml
+echo "3. Current time servers:"
+talosctl -n "$NODE" get timeservers -o yaml
 
 echo ""
-echo "4. Time service health:"
-talosctl -n "$NODE" service timed
+echo "4. Time sync controller logs:"
+talosctl -n "$NODE" logs controller-runtime --tail 200 | grep -i "time.Sync"
 
 echo ""
-echo "5. Recent time service logs:"
-talosctl -n "$NODE" logs timed | tail -10
+echo "5. Recent time sync logs:"
+talosctl -n "$NODE" logs controller-runtime --tail 200 | grep -i "time.Sync" | tail -10
 
 echo ""
 echo "6. Overall service health:"
