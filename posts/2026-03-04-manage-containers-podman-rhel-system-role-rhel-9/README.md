@@ -46,16 +46,19 @@ cat > deploy-containers.yml << 'EOF'
     podman_quadlet_specs:
       - name: web
         type: container
-        Container:
-          Image: docker.io/library/nginx:latest
-          PublishPort: "8080:80"
-        Service:
-          Restart: always
-        Install:
-          WantedBy: default.target
+        file_content: |
+          [Container]
+          Image=docker.io/library/nginx:latest
+          PublishPort=8080:80
+
+          [Service]
+          Restart=always
+
+          [Install]
+          WantedBy=default.target
 
   roles:
-    - rhel-system-roles.podman
+    - redhat.rhel_system_roles.podman
 EOF
 ```
 
@@ -95,50 +98,58 @@ cat > deploy-app-stack.yml << 'EOF'
     podman_quadlet_specs:
       - name: app-net
         type: network
-        Network:
-          Subnet: "10.89.5.0/24"
-          Gateway: "10.89.5.1"
+        file_content: |
+          [Network]
+          Subnet=10.89.5.0/24
+          Gateway=10.89.5.1
 
       - name: db-data
         type: volume
+        file_content: |
+          [Volume]
 
       - name: database
         type: container
-        Container:
-          Image: docker.io/library/mariadb:latest
-          Network: app-net.network
-          Volume: "db-data.volume:/var/lib/mysql:Z"
-          Environment:
-            MYSQL_ROOT_PASSWORD: "{{ vault_db_root_password }}"
-            MYSQL_DATABASE: myapp
-        Service:
-          Restart: always
-        Install:
-          WantedBy: default.target
+        file_content: |
+          [Container]
+          Image=docker.io/library/mariadb:latest
+          Network=app-net.network
+          Volume=db-data.volume:/var/lib/mysql:Z
+          Environment=MYSQL_ROOT_PASSWORD={{ vault_db_root_password }}
+          Environment=MYSQL_DATABASE=myapp
+
+          [Service]
+          Restart=always
+
+          [Install]
+          WantedBy=default.target
 
       - name: webapp
         type: container
-        Unit:
-          Requires: database.service
-          After: database.service
-        Container:
-          Image: registry.example.com/myapp:latest
-          Network: app-net.network
-          PublishPort: "8080:8000"
-          Environment:
-            DATABASE_HOST: database
-            DATABASE_PORT: "3306"
-        Service:
-          Restart: always
-        Install:
-          WantedBy: default.target
+        file_content: |
+          [Unit]
+          Requires=database.container
+          After=database.container
+
+          [Container]
+          Image=registry.example.com/myapp:latest
+          Network=app-net.network
+          PublishPort=8080:8000
+          Environment=DATABASE_HOST=database
+          Environment=DATABASE_PORT=3306
+
+          [Service]
+          Restart=always
+
+          [Install]
+          WantedBy=default.target
 
     podman_firewall:
       - port: 8080/tcp
         state: enabled
 
   roles:
-    - rhel-system-roles.podman
+    - redhat.rhel_system_roles.podman
 EOF
 ```
 
@@ -162,21 +173,24 @@ cat > deploy-rootless.yml << 'EOF'
 - name: Deploy rootless containers
   hosts: webservers
   become: true
-  become_user: appuser
   vars:
+    podman_run_as_user: appuser
     podman_quadlet_specs:
       - name: web
         type: container
-        Container:
-          Image: docker.io/library/nginx:latest
-          PublishPort: "8080:80"
-        Service:
-          Restart: always
-        Install:
-          WantedBy: default.target
+        file_content: |
+          [Container]
+          Image=docker.io/library/nginx:latest
+          PublishPort=8080:80
+
+          [Service]
+          Restart=always
+
+          [Install]
+          WantedBy=default.target
 
   roles:
-    - rhel-system-roles.podman
+    - redhat.rhel_system_roles.podman
 EOF
 ```
 
@@ -189,16 +203,21 @@ cat > configure-registries.yml << 'EOF'
   hosts: all
   become: true
   vars:
-    podman_registry_logins:
-      - registry: registry.redhat.io
-        username: "{{ vault_rh_username }}"
-        password: "{{ vault_rh_password }}"
-      - registry: registry.example.com
-        username: "{{ vault_private_username }}"
-        password: "{{ vault_private_password }}"
+    podman_credential_files:
+      - file_content: |
+          {
+            "auths": {
+              "registry.redhat.io": {
+                "auth": "{{ (vault_rh_username ~ ':' ~ vault_rh_password) | b64encode }}"
+              },
+              "registry.example.com": {
+                "auth": "{{ (vault_private_username ~ ':' ~ vault_private_password) | b64encode }}"
+              }
+            }
+          }
 
   roles:
-    - rhel-system-roles.podman
+    - redhat.rhel_system_roles.podman
 EOF
 ```
 
@@ -222,8 +241,9 @@ cat > deploy-kube.yml << 'EOF'
     podman_quadlet_specs:
       - name: myapp
         type: kube
-        Kube:
-          Yaml: /etc/containers/myapp.yaml
+        file_content: |
+          [Kube]
+          Yaml=/etc/containers/myapp.yaml
 
   pre_tasks:
     - name: Copy Kubernetes YAML
@@ -233,7 +253,7 @@ cat > deploy-kube.yml << 'EOF'
         mode: '0644'
 
   roles:
-    - rhel-system-roles.podman
+    - redhat.rhel_system_roles.podman
 EOF
 ```
 
@@ -276,7 +296,7 @@ cat > verify-deployment.yml << 'EOF'
   become: true
   tasks:
     - name: Check container is running
-      ansible.builtin.command: podman ps --filter name=web --format "{{.Status}}"
+      ansible.builtin.command: podman ps --filter name=web --format "{{ '{{.Status}}' }}"
       register: container_status
       changed_when: false
 
