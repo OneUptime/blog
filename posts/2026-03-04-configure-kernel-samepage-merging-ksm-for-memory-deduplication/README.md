@@ -14,6 +14,7 @@ Kernel Samepage Merging (KSM) scans memory for identical pages and merges them i
 
 - RHEL
 - Root or sudo access
+- `ksmtuned` package installed
 
 ## How KSM Works
 
@@ -42,11 +43,11 @@ cat /sys/kernel/mm/ksm/pages_sharing
 cat /sys/kernel/mm/ksm/pages_unshared
 ```
 
-- `pages_shared` - Unique pages being shared
-- `pages_sharing` - Total pages using shared copies (this is your savings)
-- `pages_unshared` - Pages scanned but not merged
+- `pages_shared` - Shared KSM pages being used
+- `pages_sharing` - Additional mappings sharing those pages (this is the approximate pages saved)
+- `pages_unshared` - Unique pages repeatedly checked for merging
 
-Memory saved = `pages_sharing` x 4 KB
+Memory saved = `pages_sharing` x system page size
 
 ## Step 3: Tune KSM Parameters
 
@@ -71,6 +72,7 @@ sudo vi /etc/ksmtuned.conf
 KSM_THRES_COEF=20
 KSM_THRES_CONST=2048
 LOGFILE=/var/log/ksmtuned
+DEBUG=1
 ```
 
 ## Step 5: Monitor KSM Performance
@@ -82,8 +84,9 @@ watch -n 5 'grep -H . /sys/kernel/mm/ksm/pages_*'
 ## Step 6: Verify Memory Savings
 
 ```bash
-echo "Shared pages: $(cat /sys/kernel/mm/ksm/pages_sharing)"
-echo "Memory saved: $(( $(cat /sys/kernel/mm/ksm/pages_sharing) * 4 / 1024 )) MB"
+echo "Pages saved: $(cat /sys/kernel/mm/ksm/pages_sharing)"
+page_size=$(getconf PAGESIZE)
+echo "Memory saved: $(( $(cat /sys/kernel/mm/ksm/pages_sharing) * page_size / 1024 / 1024 )) MB"
 ```
 
 ## When to Use KSM
