@@ -17,9 +17,9 @@ A connection profile is a collection of settings that NetworkManager applies to 
 Key things to understand:
 
 - A single device (like `ens192`) can have multiple connection profiles
-- Only one profile per device can be active at a time
+- Only one Ethernet profile per device is typically active at a time
 - Profiles persist across reboots
-- Profiles are independent of the device they are configured for
+- Profiles can be bound to a specific device, or left unbound so they can be applied to matching devices
 
 ```mermaid
 flowchart TD
@@ -91,14 +91,15 @@ method=disabled
 [proxy]
 EOF
 
-# Set proper permissions (required for NetworkManager to read the file)
+# Set proper ownership and permissions (required for NetworkManager to read the file)
+chown root:root /etc/NetworkManager/system-connections/datacenter.nmconnection
 chmod 600 /etc/NetworkManager/system-connections/datacenter.nmconnection
 
 # Tell NetworkManager to load the new profile
 nmcli connection load /etc/NetworkManager/system-connections/datacenter.nmconnection
 ```
 
-The file permissions must be 600 (owner read/write only). NetworkManager will refuse to load files with more permissive settings because they may contain sensitive data like Wi-Fi passwords or 802.1X credentials.
+The file must be owned by `root:root` and readable and writable only by root. NetworkManager will refuse to load files that are readable or writable by other users because they may contain sensitive data like Wi-Fi passwords or 802.1X credentials.
 
 ## Modifying Connection Profiles
 
@@ -211,7 +212,7 @@ nmcli -t -f ipv4.addresses,ipv4.gateway connection show office-static
 To compare two connection profiles:
 
 ```bash
-# Export both profiles and diff them
+# Diff the displayed properties of both profiles
 diff <(nmcli connection show prod-network) <(nmcli connection show mgmt-network)
 ```
 
@@ -270,7 +271,7 @@ mtu=9000
 
 **Use descriptive connection names.** Names like "ens192" tell you nothing about the purpose. Use names like "prod-app-network" or "mgmt-oob" instead.
 
-**Set autoconnect-priority on all profiles.** If a device has multiple profiles without priorities, NetworkManager picks one based on internal heuristics. Explicit priorities prevent surprises.
+**Set autoconnect-priority on all profiles.** If a device has multiple profiles with the same priority, NetworkManager prefers the most recently connected profile. Explicit priorities prevent surprises.
 
 **Back up profiles before changes.** Clone the profile or copy the keyfile before modifying it on production systems.
 
