@@ -13,6 +13,7 @@ SELinux (used by RHEL) and AppArmor (used by Ubuntu) are both mandatory access c
 ## Prerequisites
 
 - RHEL with a valid subscription or CentOS Stream 9
+- Ubuntu Server for AppArmor comparison
 - Root or sudo access
 - A terminal session
 
@@ -23,7 +24,7 @@ SELinux (used by RHEL) and AppArmor (used by Ubuntu) are both mandatory access c
 | Feature | SELinux (RHEL) | AppArmor (Ubuntu) |
 |---------|---------------|-------------------|
 | Approach | Label-based | Path-based |
-| Default Mode | Enforcing | Enabled |
+| Default Mode | Enforcing | Loaded by default; profiles can enforce or complain |
 | Complexity | Higher | Lower |
 | Granularity | Very fine | Moderate |
 | Profile Creation | More involved | Simpler |
@@ -31,25 +32,28 @@ SELinux (used by RHEL) and AppArmor (used by Ubuntu) are both mandatory access c
 ## Step 3: Enable and Start the Service
 
 ```bash
-# Enable the service to start on boot
+# SELinux is a kernel security module, not a regular systemd service.
+# Check SELinux mode and status on RHEL:
+getenforce
+sestatus
 
-sudo systemctl enable <service-name>
+# AppArmor is managed through profiles and the apparmor service on Ubuntu.
+# Check AppArmor status on Ubuntu Server:
+sudo aa-status
 
-# Start the service
-sudo systemctl start <service-name>
-
-# Check the status
-sudo systemctl status <service-name>
+# Check whether the AppArmor service is active
+sudo systemctl status apparmor
 ```
 
 ## Step 4: Configure the Firewall
 
 ```bash
-# Open the required port
+# Comparing SELinux and AppArmor does not require opening firewall ports.
+# If you later configure a network service on RHEL, open only the required port:
 sudo firewall-cmd --permanent --add-port=<PORT>/tcp
-sudo firewall-cmd --reload
 
-# Verify the rule
+# Reload firewalld to apply the permanent change to the runtime configuration
+sudo firewall-cmd --reload
 sudo firewall-cmd --list-all
 ```
 
@@ -59,19 +63,21 @@ sudo firewall-cmd --list-all
 Confirm everything is working by checking the status and logs:
 
 ```bash
-# Check the service status
-sudo systemctl status <service-name>
+# Check SELinux status on RHEL
+getenforce
+sestatus
 
-# Review recent logs
-journalctl -u <service-name> --no-pager -n 20
+# Check AppArmor status and logs on Ubuntu Server
+sudo aa-status
+journalctl -u apparmor --no-pager -n 20
 ```
 
 ## Troubleshooting
 
-- If the service fails to start, check the logs with `journalctl -u <service-name> -e --no-pager`.
+- If AppArmor fails to start, check the logs with `journalctl -u apparmor -e --no-pager`.
 - SELinux may block access. Check for denials with `ausearch -m avc -ts recent` and apply appropriate policies.
-- Verify firewall rules allow traffic on the required ports: `firewall-cmd --list-all`.
-- Ensure all required packages are installed: `rpm -qa | grep <package-name>`.
+- Verify firewall rules allow traffic on the required ports only if you are testing a network service: `firewall-cmd --list-all`.
+- Ensure all required packages are installed, such as `policycoreutils` on RHEL or `apparmor-utils` on Ubuntu.
 
 ## Conclusion
 
