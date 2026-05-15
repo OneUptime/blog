@@ -20,9 +20,9 @@ OpenVPN has been the workhorse of Linux VPN solutions for years. While WireGuard
 ## Installing OpenVPN and Easy-RSA
 
 ```bash
-# Enable EPEL
-
-sudo dnf install -y epel-release
+# Enable the RHEL 9 CodeReady Linux Builder repository, then install EPEL
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 
 # Install OpenVPN and the certificate management tool
 sudo dnf install -y openvpn easy-rsa
@@ -58,7 +58,7 @@ cd ~/easy-rsa
 ./easyrsa gen-dh
 
 # Generate a TLS auth key for additional security
-openvpn --genkey secret /etc/openvpn/server/ta.key
+sudo openvpn --genkey secret /etc/openvpn/server/ta.key
 ```
 
 ## Copying Certificates to the Right Location
@@ -106,7 +106,7 @@ push "dhcp-option DNS 1.0.0.1"
 ifconfig-pool-persist /var/log/openvpn/ipp.txt
 
 # Encryption settings
-cipher AES-256-GCM
+data-ciphers AES-256-GCM:AES-128-GCM
 auth SHA256
 
 # Keep connections alive
@@ -175,19 +175,28 @@ cd ~/easy-rsa
 # Generate client certificate
 ./easyrsa gen-req client1 nopass
 ./easyrsa sign-req client client1
+
+# Copy client files into one directory for distribution
+mkdir -p ~/client1
+cp ~/easy-rsa/pki/ca.crt ~/client1/
+cp ~/easy-rsa/pki/issued/client1.crt ~/client1/
+cp ~/easy-rsa/pki/private/client1.key ~/client1/
+sudo cp /etc/openvpn/server/ta.key ~/client1/
+sudo chown "$USER:$USER" ~/client1/ta.key
 ```
 
 ## Creating the Client Configuration
 
 ```bash
 # Create a client configuration file
-tee ~/client1.ovpn > /dev/null << 'EOF'
+tee ~/client1/client1.ovpn > /dev/null << 'EOF'
 client
 dev tun
 proto udp
 
 # Your server's public IP or hostname
 remote YOUR_SERVER_IP 1194
+remote-cert-tls server
 
 resolv-retry infinite
 nobind
@@ -200,7 +209,7 @@ cert client1.crt
 key client1.key
 tls-auth ta.key 1
 
-cipher AES-256-GCM
+data-ciphers AES-256-GCM:AES-128-GCM
 auth SHA256
 verb 3
 EOF
