@@ -8,7 +8,7 @@ Description: Safely upgrade PHP from 7.4 to 8.x on RHEL by testing compatibility
 
 ---
 
-Upgrading PHP from 7.4 to 8.x brings performance improvements and new features but also introduces breaking changes. This guide covers a safe migration path on RHEL.
+Upgrading PHP from 7.4 to 8.x brings performance improvements and new features but also introduces breaking changes. This guide covers a safe migration path on RHEL 8/9 systems using DNF and the Remi repository.
 
 ## Pre-Upgrade Checklist
 
@@ -29,6 +29,9 @@ sudo cp -r /etc/php-fpm.d /etc/php-fpm.d.bak
 ## Test Compatibility Before Upgrading
 
 ```bash
+# Make sure EPEL, Remi, and CodeReady Builder are configured first.
+# Use the remi-release package that matches your RHEL major version.
+
 # Install PHP 8.2 alongside 7.4 using Remi (does not replace 7.4)
 sudo dnf install -y php82-php-cli php82-php-mysqlnd php82-php-xml \
   php82-php-mbstring php82-php-curl
@@ -77,7 +80,7 @@ sudo dnf module reset php -y
 sudo dnf module enable php:remi-8.2 -y
 
 # Synchronize installed PHP packages to the enabled stream
-sudo dnf distro-sync --allowerasing -y
+sudo dnf distro-sync --allowerasing -y 'php*'
 
 # Or more explicitly:
 sudo dnf remove -y php php-cli php-common php-fpm
@@ -97,8 +100,8 @@ diff /tmp/php74-modules.txt /tmp/php82-modules.txt
 # Do not blindly copy 7.4 configs as some directives changed
 diff /etc/php.ini /etc/php.ini.bak
 
-# Restore PHP-FPM pool settings (these are usually compatible)
-sudo cp /etc/php-fpm.d.bak/www.conf /etc/php-fpm.d/www.conf
+# Review and merge PHP-FPM pool settings (these are usually compatible)
+sudo diff -u /etc/php-fpm.d.bak/www.conf /etc/php-fpm.d/www.conf
 
 # Start PHP-FPM
 sudo systemctl start php-fpm
@@ -121,4 +124,4 @@ sudo tail -f /var/log/php-fpm/www-error.log
 cd /var/www/myapp && php vendor/bin/phpunit
 ```
 
-If issues arise, you can quickly switch back by enabling the PHP 7.4 module stream and reinstalling the old packages.
+If issues arise and PHP 7.4 packages are still available from your configured repositories, you can switch back by enabling the PHP 7.4 module stream and reinstalling the old packages.
