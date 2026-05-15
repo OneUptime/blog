@@ -12,15 +12,15 @@ Amazon Linux 2023 (AL2023) is Amazon's own Linux distribution optimized for AWS.
 
 ## Cost Differences
 
-Amazon Linux 2023 is free on AWS with no per-hour OS licensing charge. RHEL on AWS includes a per-hour subscription fee on top of the EC2 instance cost:
+Amazon Linux 2023 is provided at no additional charge. RHEL on AWS includes Red Hat subscription charges in the EC2 price; current RHEL pricing is based on vCPU-hour charges:
 
 ```bash
-# Launch an Amazon Linux 2023 instance (no OS cost)
+# Launch an Amazon Linux 2023 instance (replace the AMI ID with a regional AL2023 AMI)
 
 aws ec2 run-instances --image-id ami-0abcdef1234567890 \
   --instance-type t3.medium --key-name mykey
 
-# RHEL instances include hourly subscription cost in the instance price
+# RHEL instances include Red Hat subscription charges in the instance price
 # Or use RHEL with BYOS (Bring Your Own Subscription) for lower cost
 ```
 
@@ -45,13 +45,13 @@ AL2023 comes pre-configured with AWS tools and optimized kernel settings:
 # AL2023: AWS CLI v2 is pre-installed
 aws --version
 
-# RHEL: You need to install AWS CLI manually
+# RHEL: On images that do not include AWS CLI v2, install it manually
 sudo dnf install unzip
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
 unzip awscliv2.zip && sudo ./aws/install
 ```
 
-AL2023 also has IMDSv2 enforced by default and Nitro Enclaves support built in.
+AL2023 also has IMDSv2 enforced by default, and Nitro Enclaves CLI packages are available in the AL2023 repositories.
 
 ## Update Model
 
@@ -59,22 +59,25 @@ AL2023 uses a versioned repository model where you lock to a specific release an
 
 ```bash
 # AL2023: Check current repository version
-dnf check-release-update
+sudo dnf check-release-update
 
-# Lock to a specific release version
-sudo dnf install system-release-2023.3.20231211
+# Update to and lock future dnf operations to a specific release version
+sudo dnf upgrade --releasever=2023.3.20231211
 ```
 
 RHEL uses the standard minor release model with optional EUS:
 
 ```bash
-# RHEL: Lock to a minor release
+# RHEL BYOS/non-cloud: Lock to a minor release
 sudo subscription-manager release --set=9.2
+
+# RHEL PAYG cloud images using RHUI: set the releasever variable instead
+echo "9.2" | sudo tee /etc/dnf/vars/releasever
 ```
 
 ## Portability
 
-RHEL runs on AWS, Azure, GCP, on-premises, and bare metal. Amazon Linux only runs on AWS (and local development with Docker):
+RHEL runs on AWS, Azure, GCP, on-premises, and bare metal. Amazon Linux is optimized for AWS, but AL2023 also provides container images and VM images for KVM, VMware, and Hyper-V:
 
 ```bash
 # Test AL2023 locally in Docker
