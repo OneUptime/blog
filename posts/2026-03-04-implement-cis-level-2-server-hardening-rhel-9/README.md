@@ -10,7 +10,7 @@ Description: Go beyond CIS Level 1 with Level 2 server hardening on RHEL, implem
 
 CIS Level 2 takes everything from Level 1 and adds controls that provide deeper defense. These additional rules can affect system functionality or performance, so they are not recommended for every environment. But if you are running servers in regulated industries, handling sensitive data, or operating in a high-threat environment, Level 2 is where you want to be.
 
-This guide focuses specifically on the controls that are in Level 2 but not in Level 1.
+This guide highlights stricter controls and examples commonly validated by the Level 2 Server profile. Because Level 2 extends Level 1, some inherited Level 1 controls are included where they are important to the Level 2 scan.
 
 ## What Level 2 Adds Over Level 1
 
@@ -50,20 +50,51 @@ If your applications have SELinux issues, fix the policies rather than disabling
 
 ## System-Wide Cryptographic Policy
 
-Level 2 requires a stronger cryptographic policy:
+Level 2 requires a stronger cryptographic policy than the base RHEL defaults. For current RHEL 9 CIS content, use the `DEFAULT` policy with CIS-specific custom modules:
 
 ```bash
 # Check current crypto policy
 update-crypto-policies --show
 
-# Set to FUTURE policy (stricter than DEFAULT)
-update-crypto-policies --set FUTURE
+# Create CIS custom crypto policy modules
+expected_crypto_policy="DEFAULT:NO-SHA1"
+
+expected_crypto_policy="${expected_crypto_policy}:NO-SSHCBC"
+cat > /etc/crypto-policies/policies/modules/NO-SSHCBC.pmod << 'EOF'
+cipher@SSH = -*-CBC
+EOF
+
+expected_crypto_policy="${expected_crypto_policy}:NO-SSHWEAKCIPHERS"
+cat > /etc/crypto-policies/policies/modules/NO-SSHWEAKCIPHERS.pmod << 'EOF'
+cipher@SSH = -3DES-CBC -AES-128-CBC -AES-192-CBC -AES-256-CBC -CHACHA20-POLY1305
+EOF
+
+expected_crypto_policy="${expected_crypto_policy}:NO-SSHWEAKMACS"
+cat > /etc/crypto-policies/policies/modules/NO-SSHWEAKMACS.pmod << 'EOF'
+mac@SSH = -HMAC-MD5* -UMAC-64* -UMAC-128*
+EOF
+
+expected_crypto_policy="${expected_crypto_policy}:NO-WEAKMAC"
+cat > /etc/crypto-policies/policies/modules/NO-WEAKMAC.pmod << 'EOF'
+mac = -*-128*
+EOF
+
+# This module applies only when the rpm-sequoia backend is present
+if [[ -f /etc/crypto-policies/back-ends/rpm-sequoia.config ]]; then
+  expected_crypto_policy="${expected_crypto_policy}:NO-RPMSHA1"
+  cat > /etc/crypto-policies/policies/modules/NO-RPMSHA1.pmod << 'EOF'
+hash@rpm = -SHA1
+EOF
+fi
+
+# Set the CIS crypto policy
+update-crypto-policies --set "$expected_crypto_policy"
 
 # Verify the change
 update-crypto-policies --show
 ```
 
-The FUTURE policy disables SHA-1, DSA, and protocols below TLS 1.2. This can break older clients, so test thoroughly.
+These policy modules disable SHA-1 where required by the profile, remove SSH CBC ciphers and weak SSH MACs, and tighten weak MAC usage globally. This can break older clients, so test thoroughly.
 
 ## Extended Audit Rules
 
@@ -100,7 +131,8 @@ cat > /etc/audit/rules.d/cis-level2.rules << 'EOF'
 -w /sbin/insmod -p x -k modules
 -w /sbin/rmmod -p x -k modules
 -w /sbin/modprobe -p x -k modules
--a always,exit -F arch=b64 -S init_module -S delete_module -k modules
+-a always,exit -F arch=b64 -S create_module -S init_module -S finit_module -S delete_module -S query_module -F auid>=1000 -F auid!=unset -k modules
+-a always,exit -F arch=b32 -S create_module -S init_module -S finit_module -S delete_module -S query_module -F auid>=1000 -F auid!=unset -k modules
 
 # Make rules immutable (requires reboot to change)
 -e 2
@@ -179,12 +211,13 @@ rmmod usb-storage 2>/dev/null
 ## Restrict Access to su
 
 ```bash
-# Only allow wheel group members to use su
-grep "pam_wheel.so" /etc/pam.d/su
+# CIS uses an empty sugroup so no regular user can use su
+groupadd -f sugroup
+gpasswd -M "" sugroup
 
-# If not present, add it
-# Ensure pam_wheel.so is enabled in /etc/pam.d/su
-sed -i 's/^#auth\s*required\s*pam_wheel.so/auth required pam_wheel.so/' /etc/pam.d/su
+# Require pam_wheel with the CIS group parameter
+grep "pam_wheel.so.*group=sugroup" /etc/pam.d/su || \
+  echo "auth required pam_wheel.so use_uid group=sugroup" >> /etc/pam.d/su
 ```
 
 ## Configure Login Banners
