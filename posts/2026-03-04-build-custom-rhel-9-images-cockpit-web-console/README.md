@@ -23,6 +23,7 @@ Use the Cockpit web console for building custom RHEL 9 images. RHEL Image Builde
 ```bash
 sudo dnf install -y osbuild-composer composer-cli cockpit-composer
 sudo systemctl enable --now osbuild-composer.socket
+sudo systemctl enable --now cockpit.socket
 ```
 
 ## Step 2 - Create a Blueprint
