@@ -8,11 +8,11 @@ Description: Configure DM-Multipath failover policies on RHEL so that SAN storag
 
 ---
 
-Failover is the most common multipath policy for SAN storage. In failover mode, all I/O goes through a single active path. If that path fails, I/O automatically switches to the next available path. This is simpler and more predictable than load balancing, and it is the default for most storage arrays.
+Failover is the default DM-Multipath path grouping policy on RHEL. In failover mode, all I/O goes through a single active path group. If that path fails, I/O automatically switches to the next available path group. This is simpler and more predictable than load balancing, and is a common choice for active/passive storage arrays.
 
 ## Failover vs Load Balancing
 
-- **Failover (active/passive)**: One path handles all I/O. Others are standby. Simpler, works with all storage arrays.
+- **Failover (active/passive)**: One path group handles all I/O. Others are standby. Simpler, and broadly compatible with active/passive storage arrays.
 - **Load balancing (active/active)**: I/O is distributed across multiple paths. Higher throughput but requires array support.
 
 ## Configuring Failover Policy
@@ -65,9 +65,9 @@ failback 30
 
 For storage arrays that have preferred ports, `immediate` failback ensures I/O returns to the optimal path quickly. For arrays where all ports are equal, `manual` avoids unnecessary path switches.
 
-## Setting Path Priorities
+## Setting Per-LUN Failover Policy
 
-For active/passive arrays, set path priorities so the preferred path is always used first:
+For a specific LUN, set the failover policy in the `multipaths` section so that it overrides the defaults:
 
 ```bash
 multipaths {
@@ -80,13 +80,13 @@ multipaths {
 }
 ```
 
-Some arrays report path priorities through ALUA (Asymmetric Logical Unit Access). To use ALUA:
+Some arrays report path priorities through ALUA (Asymmetric Logical Unit Access). To use ALUA path priorities:
 
 ```bash
 devices {
     device {
-        vendor "DGC"
-        product ".*"
+        vendor "YOUR_VENDOR"
+        product "YOUR_PRODUCT"
         path_grouping_policy group_by_prio
         prio alua
         failback immediate
@@ -102,7 +102,7 @@ devices {
 sudo multipath -ll
 ```
 
-Note which path is active (status=active) and which are standby (status=enabled).
+Note which path group is active (`status=active`) and which path groups are available but not currently selected (`status=enabled`).
 
 ### Simulate a Path Failure
 
@@ -127,7 +127,7 @@ dd if=/dev/mapper/mpatha of=/dev/null bs=1M count=10
 sudo multipath -ll
 ```
 
-The previously standby path should now be active.
+The previously standby path group should now be active.
 
 ### Restore the Path
 
