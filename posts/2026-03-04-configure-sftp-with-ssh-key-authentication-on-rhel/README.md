@@ -45,7 +45,7 @@ sudo chmod 600 /home/sftpuser/.ssh/authorized_keys
 
 ## Configure SSHD for Key-Only SFTP
 
-Edit `/etc/ssh/sshd_config` to enforce key authentication for SFTP users:
+Edit `/etc/ssh/sshd_config` to enforce key authentication for SFTP users. Replace the existing `Subsystem sftp` line with `internal-sftp`:
 
 ```text
 Subsystem sftp internal-sftp
@@ -53,6 +53,7 @@ Subsystem sftp internal-sftp
 Match User sftpuser
     ForceCommand internal-sftp
     PasswordAuthentication no
+    KbdInteractiveAuthentication no
     PubkeyAuthentication yes
     AllowTcpForwarding no
     X11Forwarding no
