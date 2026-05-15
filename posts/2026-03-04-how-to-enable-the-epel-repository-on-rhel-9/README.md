@@ -69,16 +69,15 @@ sudo dnf config-manager --set-enabled epel
 
 ## Configure EPEL Priority
 
-To prioritize base RHEL repos over EPEL, install the priorities plugin:
+To prioritize base RHEL repos over EPEL, set a lower priority for EPEL by using a higher numeric value than the default:
 
 ```bash
 # Set priority in the repo file
 
 sudo vi /etc/yum.repos.d/epel.repo
-# Add: priority=10
+# Add: priority=100
 ```
 
 ## Conclusion
 
 EPEL extends the available software for RHEL 9 with community-maintained packages. Always prioritize official Red Hat repositories for production workloads and use EPEL selectively for additional tools.
-
