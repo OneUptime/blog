@@ -297,7 +297,7 @@ While Flux's auto-generation is convenient, there are situations where you shoul
 
 1. **Dependencies matter.** A single auto-generated Kustomization is not a substitute for explicitly modeling dependencies. If one set of resources must be reconciled before another (for example, CRDs before custom resources), use separate Flux Kustomizations with `dependsOn`, and use a `kustomization.yaml` where you need precise composition.
 
-2. **You need Kustomize transformers.** Features like `commonLabels`, `commonAnnotations`, `namePrefix`, `images`, and `replicas` require a `kustomization.yaml`.
+2. **You need Kustomize transformers that are not exposed in the Flux Kustomization spec.** Features like `configMapGenerator`, `secretGenerator`, `replacements`, and `replicas` require a `kustomization.yaml`.
 
 3. **You want to exclude files.** If the directory contains YAML files that should not be applied (such as example files or documentation), the auto-generated `kustomization.yaml` will include them unless they are excluded by `.sourceignore` or the Source object's `spec.ignore` rules. An explicit `kustomization.yaml` lets you list only the files you want.
 
