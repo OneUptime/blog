@@ -27,7 +27,7 @@ sudo lvextend -L 150G /dev/vg_iscsi/lun_web
 
 ### File-Backed LUN
 
-For fileio backstores, resize in targetcli:
+For fileio backstores, inspect the current size in targetcli:
 
 ```bash
 sudo targetcli
@@ -42,7 +42,8 @@ You may need to recreate the backstore with a larger file:
 # Extend the backing file
 sudo truncate -s 100G /var/iscsi/lun0.img
 
-# In targetcli, the backstore should reflect the new size
+# In targetcli, verify that the backstore reflects the new size
+# If it does not, recreate the backstore with the larger file
 ```
 
 ### Block Device Resize
@@ -71,7 +72,7 @@ sudo iscsiadm -m node -T iqn.2024.com.example:target1 -p 192.168.1.10:3260 --res
 sudo iscsiadm -m session -P 3 | grep "Host Number"
 
 # Rescan that host
-echo 1 | sudo tee /sys/class/scsi_host/host3/scan
+echo "- - -" | sudo tee /sys/class/scsi_host/host3/scan
 
 # Or rescan the specific device
 echo 1 | sudo tee /sys/class/scsi_device/3\:0\:0\:0/device/rescan
