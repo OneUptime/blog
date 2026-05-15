@@ -32,7 +32,7 @@ Edit the SSSD configuration to set caching parameters.
 sudo vi /etc/sssd/sssd.conf
 ```
 
-Key settings for the domain section:
+Key settings for the domain and PAM sections:
 
 ```ini
 [domain/example.com]
@@ -43,16 +43,19 @@ cache_credentials = True
 # Default is 5400 (90 minutes)
 entry_cache_timeout = 14400
 
-# How long cached credentials remain valid for offline login
-# 0 means forever, default is 0
-offline_credentials_expiration = 30
-
-# Number of days cached credentials can be used for offline login
+# Number of days cached account entries remain in the cache
 # Applies per-user from their last successful online login
+# Must be greater than or equal to offline_credentials_expiration
 account_cache_expiration = 30
 
-# How often to refresh cached entries in the background (seconds)
+# Refresh cached entries in the background after this percentage
+# of entry_cache_timeout has elapsed
 entry_cache_nowait_percentage = 50
+
+[pam]
+# How long cached credentials remain valid for offline login, in days
+# 0 means forever, default is 0
+offline_credentials_expiration = 30
 ```
 
 ## Applying the Configuration
@@ -91,10 +94,10 @@ sudo iptables -D OUTPUT -d ldap-server.example.com -j DROP
 # Check if SSSD is operating in online or offline mode
 sudo sssctl domain-status example.com
 
-# List cached users
+# Run NSS and PAM checks for a user
 sudo sssctl user-checks testuser
 
-# View cache statistics
+# Show only the domain online status
 sudo sssctl domain-status example.com --online
 ```
 
