@@ -243,13 +243,14 @@ Using `serviceAccountName` provides several security benefits:
 - **Namespace isolation**: Tenants cannot modify resources outside their namespace
 - **Resource type restriction**: You can limit which resource types a tenant can create
 - **Verb restriction**: You can allow read-only access for certain resource types
-- **Prevents privilege escalation**: Tenants cannot create ClusterRoles or modify RBAC
+- **Reduces privilege escalation risk**: Tenants cannot create ClusterRoles or modify RBAC unless you explicitly grant those permissions
 
 However, be aware that:
 
 - The service account must exist before the Kustomization reconciles
 - RBAC changes require careful planning to avoid breaking existing deployments
 - Over-restrictive permissions will cause legitimate deployments to fail
+- Granting access to sensitive resources such as Secrets or allowing workloads to use more privileged service accounts in the same namespace can still create escalation paths
 
 ## Best Practices
 
