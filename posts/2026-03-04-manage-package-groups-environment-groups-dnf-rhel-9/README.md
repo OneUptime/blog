@@ -152,8 +152,8 @@ DNF supports a convenient shorthand with the `@` prefix:
 # The @ prefix is shorthand for group install
 sudo dnf install @development
 
-# For environment groups, use @^ prefix
-sudo dnf install @"Development Tools"
+# The same shorthand can install environment groups
+sudo dnf install @"Server with GUI"
 ```
 
 ## Working with Environment Groups
@@ -211,7 +211,7 @@ DNF tracks which packages were installed as part of a group. When you remove a g
 
 ```bash
 # Check which packages are associated with a group
-dnf group info --installed "Development Tools"
+dnf group info "Development Tools"
 ```
 
 ## Updating Groups
@@ -223,7 +223,7 @@ When a group definition changes (new packages added to mandatory or default list
 sudo dnf group upgrade "Development Tools"
 ```
 
-This installs any newly added mandatory and default packages without touching what is already there.
+This installs any newly added mandatory and default packages. It can also remove packages that were dropped from the group definition, as long as they were not installed explicitly by the user.
 
 ## Practical Scenarios
 
@@ -275,11 +275,11 @@ sudo systemctl reboot
 dnf group list --installed
 ```
 
-### Check Group Installation Status
+### Inspect a Specific Group
 
 ```bash
-# Detailed status of a specific group
-dnf group info --installed "Development Tools"
+# Detailed information for a specific group
+dnf group info "Development Tools"
 ```
 
 ### The Group Mark Commands
