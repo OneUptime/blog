@@ -24,7 +24,7 @@ flowchart LR
     G --> I[Custom script via Unix socket]
 ```
 
-Starting with RHEL, the audisp dispatcher is built directly into auditd rather than running as a separate `audispd` process. Plugins are configured in `/etc/audit/plugins.d/`.
+Starting with RHEL 8, the audisp dispatcher functionality is built directly into auditd rather than running as a separate `audispd` process. Plugins are configured in `/etc/audit/plugins.d/`.
 
 ## Listing Available Plugins
 
@@ -65,7 +65,7 @@ Fields:
 - `active` - Whether the plugin is enabled
 - `direction` - Always `out` for current plugins
 - `path` - The plugin executable or `builtin_af_unix` for the built-in socket
-- `type` - `builtin` for built-in plugins, `always` for external plugins
+- `type` - `builtin` for internal plugins such as `af_unix`, `always` for external plugin executables
 - `args` - Arguments passed to the plugin
 - `format` - `string` for text output, `binary` for binary format
 
@@ -84,9 +84,10 @@ format = string
 EOF
 ```
 
-The `args` field specifies the syslog facility. Common choices:
+The `args` field can specify the syslog facility, log level, and `interpret` option. Common choices:
 - `LOG_LOCAL6` - a dedicated local facility for audit events
-- `LOG_WARNING` - send as warning-level messages to the default facility
+- `LOG_LOCAL6 LOG_INFO` - send audit events to the `local6` facility at info level
+- `LOG_LOCAL6 LOG_WARNING` - send audit events to the `local6` facility at warning level
 
 Reload auditd to activate:
 
