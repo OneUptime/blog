@@ -42,12 +42,13 @@ sudo dnf install -y iproute
 
 ## Step 2: Write an XDP Program
 
-Create a simple XDP program that drops all ICMP (ping) packets and passes everything else.
+Create a simple XDP program that drops IPv4 ICMP (ping) packets and passes everything else.
 
 ```c
-/* xdp_drop_icmp.c - Drop all ICMP packets */
+/* xdp_drop_icmp.c - Drop IPv4 ICMP packets */
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
+#include <linux/in.h>
 #include <linux/ip.h>
 #include <bpf/bpf_endian.h>
 #include <bpf/bpf_helpers.h>
@@ -73,8 +74,8 @@ int xdp_drop_icmp_func(struct xdp_md *ctx) {
     if ((void *)(ip + 1) > data_end)
         return XDP_PASS;
 
-    /* Drop ICMP packets (protocol number 1) */
-    if (ip->protocol == 1) {
+    /* Drop IPv4 ICMP packets */
+    if (ip->protocol == IPPROTO_ICMP) {
         return XDP_DROP;
     }
 
@@ -120,7 +121,7 @@ sudo bpftool prog list
 ```bash
 # From another machine, try pinging the RHEL host
 ping 192.168.1.100
-# You should see 100% packet loss because ICMP is dropped
+# You should see 100% packet loss because IPv4 ICMP is dropped
 
 # Test that other traffic still works (SSH, HTTP, etc.)
 ssh user@192.168.1.100
@@ -155,9 +156,10 @@ ip link show ens3
 Here is a more advanced example that uses a BPF map to count dropped packets:
 
 ```c
-/* xdp_counter.c - Count and drop ICMP packets */
+/* xdp_counter.c - Count and drop IPv4 ICMP packets */
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
+#include <linux/in.h>
 #include <linux/ip.h>
 #include <bpf/bpf_endian.h>
 #include <bpf/bpf_helpers.h>
@@ -188,7 +190,7 @@ int xdp_counter_func(struct xdp_md *ctx) {
     if ((void *)(ip + 1) > data_end)
         return XDP_PASS;
 
-    if (ip->protocol == 1) {
+    if (ip->protocol == IPPROTO_ICMP) {
         /* Increment the drop counter (key 0) */
         key = 0;
         count = bpf_map_lookup_elem(&pkt_count, &key);
