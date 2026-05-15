@@ -28,7 +28,7 @@ java -version
 
 ```bash
 cd /opt
-sudo curl -L https://downloads.apache.org/kafka/3.7.0/kafka_2.13-3.7.0.tgz | sudo tar xz
+sudo curl -L https://archive.apache.org/dist/kafka/3.7.0/kafka_2.13-3.7.0.tgz | sudo tar xz
 sudo ln -s kafka_2.13-3.7.0 kafka
 ```
 
@@ -41,7 +41,7 @@ sudo chown -R kafka:kafka /opt/kafka*
 
 ## Step 4: Configure Kafka with KRaft (No ZooKeeper)
 
-Kafka 3.x supports KRaft mode, eliminating the ZooKeeper dependency:
+Kafka 3.x supports KRaft mode, eliminating the ZooKeeper dependency. For a single-node development setup:
 
 ```bash
 sudo vi /opt/kafka/config/kraft/server.properties
@@ -63,6 +63,8 @@ log.retention.hours=168
 ## Step 5: Format the Storage
 
 ```bash
+sudo mkdir -p /var/lib/kafka/data
+sudo chown -R kafka:kafka /var/lib/kafka
 KAFKA_CLUSTER_ID=$(/opt/kafka/bin/kafka-storage.sh random-uuid)
 sudo -u kafka /opt/kafka/bin/kafka-storage.sh format   -t $KAFKA_CLUSTER_ID   -c /opt/kafka/config/kraft/server.properties
 ```
@@ -92,8 +94,6 @@ WantedBy=multi-user.target
 ```
 
 ```bash
-sudo mkdir -p /var/lib/kafka/data
-sudo chown -R kafka:kafka /var/lib/kafka
 sudo systemctl daemon-reload
 sudo systemctl enable --now kafka
 ```
@@ -103,13 +103,13 @@ sudo systemctl enable --now kafka
 Create a topic:
 
 ```bash
-/opt/kafka/bin/kafka-topics.sh --create --topic test   --bootstrap-server localhost:9092 --partitions 3
+/opt/kafka/bin/kafka-topics.sh --create --topic test   --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1
 ```
 
 Produce messages:
 
 ```bash
-echo "Hello Kafka" | /opt/kafka/bin/kafka-console-producer.sh   --broker-list localhost:9092 --topic test
+echo "Hello Kafka" | /opt/kafka/bin/kafka-console-producer.sh   --bootstrap-server localhost:9092 --topic test
 ```
 
 Consume messages:
