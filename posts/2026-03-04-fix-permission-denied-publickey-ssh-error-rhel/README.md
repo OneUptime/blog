@@ -58,7 +58,7 @@ chmod 600 ~/.ssh/authorized_keys
 chmod 700 ~/.ssh
 
 # Check home directory permissions (must not be writable by others)
-chmod 755 ~
+chmod go-w ~
 ```
 
 ## Check SSH Daemon Configuration
