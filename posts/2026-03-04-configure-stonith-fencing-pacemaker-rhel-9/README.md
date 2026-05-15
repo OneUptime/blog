@@ -124,10 +124,16 @@ sudo pcs property set stonith-enabled=true
 
 ## Testing Fencing
 
-Test a fence device without actually fencing:
+Test the IPMI fence device interface without actually fencing:
 
 ```bash
-sudo pcs stonith fence node2 --off
+sudo fence_ipmilan -P -a 10.0.0.102 -l admin -p secretpassword -o status
+```
+
+Test the configured cluster fencing path:
+
+```bash
+sudo pcs stonith fence node2
 ```
 
 Verify the node is fenced:
