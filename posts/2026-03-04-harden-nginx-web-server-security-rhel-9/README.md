@@ -43,8 +43,8 @@ add_header X-Content-Type-Options "nosniff" always;
 # Prevent clickjacking
 add_header X-Frame-Options "SAMEORIGIN" always;
 
-# Enable XSS protection
-add_header X-XSS-Protection "1; mode=block" always;
+# Disable legacy browser XSS filtering; use CSP for XSS mitigation
+add_header X-XSS-Protection "0" always;
 
 # Control referrer information
 add_header Referrer-Policy "strict-origin-when-cross-origin" always;
@@ -60,6 +60,8 @@ If you are fully on HTTPS, add HSTS in your SSL server block:
 # Only add HSTS in SSL server blocks
 add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 ```
+
+If you add HSTS in a `server` block, repeat the other `add_header` directives there as well. Nginx only inherits `add_header` directives from a higher level when none are defined at the current level.
 
 ## Step 3 - Restrict HTTP Methods
 
@@ -228,7 +230,7 @@ flowchart TD
 sudo dnf check-update nginx
 
 # Apply updates
-sudo dnf update -y nginx
+sudo dnf upgrade -y nginx
 ```
 
 ## Step 12 - Validate and Apply
