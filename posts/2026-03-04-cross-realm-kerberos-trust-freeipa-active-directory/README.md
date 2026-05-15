@@ -30,12 +30,13 @@ flowchart LR
 
 Before setting up the trust, verify these requirements:
 
-- FreeIPA server with integrated DNS and CA
+- FreeIPA server installed. Integrated DNS simplifies the setup; if IdM does not use integrated DNS, add the IdM SRV records to your DNS manually after running `ipa-adtrust-install`.
 - Active Directory domain functional level of Windows Server 2012 or later
 - Unique NetBIOS names for both domains
-- Non-overlapping IP ranges and DNS namespaces
+- IPv6 enabled on IdM servers, and clocks synchronized between IdM and AD
+- Non-overlapping DNS namespaces
 - DNS forwarding between IdM and AD DNS
-- Ports 88, 464, 389, 636, 135, 138, 139, 445, 1024-1300 open between IdM and AD
+- Ports 88, 464, 53, 135, 389, 445, 3268, and the Dynamic RPC range 49152-65535 open as required between IdM and AD. Port 636 is only needed if your AD policy requires LDAPS.
 
 ## Step 1 - Prepare DNS
 
@@ -63,9 +64,11 @@ Verify bidirectional DNS resolution:
 host dc1.ad.example.com
 
 # Verify SRV records for AD
-dig _ldap._tcp.ad.example.com SRV
+dig _kerberos._tcp.dc._msdcs.ad.example.com SRV
+dig _ldap._tcp.dc._msdcs.ad.example.com SRV
 
 # Verify IdM SRV records resolve from AD (test from an AD-joined machine)
+# nslookup _kerberos._udp.ipa.example.com
 # nslookup _ldap._tcp.ipa.example.com
 ```
 
@@ -73,7 +76,10 @@ dig _ldap._tcp.ad.example.com SRV
 
 ```bash
 # Install the trust components
-sudo dnf install ipa-server-trust-ad -y
+sudo dnf install ipa-server-trust-ad samba-client -y
+
+# Authenticate as the IdM admin user
+kinit admin
 
 # Run the trust preparation
 sudo ipa-adtrust-install
@@ -83,15 +89,22 @@ The `ipa-adtrust-install` command will:
 - Configure Samba services on the IdM server
 - Set the NetBIOS name for the IdM domain
 - Generate the SID for the IdM domain
-- Configure the necessary DNS SRV records
+- Configure the necessary DNS SRV records if IdM uses integrated DNS
 
-You will be prompted for the IdM Directory Manager password and the NetBIOS name.
+You will be prompted for the IdM admin credentials, the NetBIOS name, and whether to run the SID generation task for existing users. If IdM does not use integrated DNS, add the DNS records that `ipa-adtrust-install` prints. After the command finishes, verify DNS and restart IdM:
+
+```bash
+sudo ipactl restart
+
+# Verify that Samba responds to Kerberos authentication from the IdM side
+smbclient -L ipaserver.ipa.example.com -U admin --use-kerberos=required
+```
 
 ## Step 3 - Establish the Trust
 
 ```bash
-# Create a one-way trust (AD trusts IdM, but not the reverse)
-# This means AD users can access IdM resources
+# Create the default one-way trust.
+# IdM trusts the AD forest, which allows AD users to access IdM resources.
 ipa trust-add --type=ad ad.example.com --admin=Administrator --password
 
 # Or create a two-way trust
@@ -130,7 +143,18 @@ getent group "Domain Users@ad.example.com"
 
 ## Step 5 - Create ID Ranges
 
-IdM maps AD SIDs to POSIX UIDs/GIDs using ID ranges. The default range is created automatically, but you can customize it.
+IdM maps AD SIDs to POSIX UIDs/GIDs using ID ranges. The default range is created automatically. If you need a specific range, set it when you create the trust:
+
+```bash
+ipa trust-add --type=ad ad.example.com \
+  --admin=Administrator \
+  --password \
+  --range-type=ipa-ad-trust \
+  --base-id=200000 \
+  --range-size=200000
+```
+
+After the trust exists, view the generated ID range:
 
 ```bash
 # View existing ID ranges
@@ -140,7 +164,7 @@ ipa idrange-find
 ipa idrange-show "AD.EXAMPLE.COM_id_range"
 ```
 
-If you need to adjust the range (for example, to avoid UID collisions):
+If you need to modify an existing range, first make sure the new range does not overlap with any other IdM range and that you understand the effect on existing SID-to-UID mappings:
 
 ```bash
 # Modify the ID range
