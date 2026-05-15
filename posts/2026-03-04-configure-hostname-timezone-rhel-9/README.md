@@ -20,13 +20,13 @@ RHEL actually maintains three separate hostnames:
 | **Transient** | Assigned dynamically by the kernel or DHCP | Lost on reboot |
 | **Pretty** | Free-form UTF-8 name for display purposes | Survives reboot |
 
-In most cases, you only care about the static hostname. The transient hostname defaults to the static one unless something (like DHCP) overrides it. The pretty hostname is optional and mostly useful for desktops.
+In most cases, you only care about the static hostname. By default, `hostnamectl set-hostname` updates both the static and transient hostnames; later, something like DHCP can still provide a different transient hostname. The pretty hostname is optional and mostly useful for desktops.
 
 ```mermaid
 flowchart TD
     A[hostnamectl set-hostname] --> B[Static Hostname]
+    A --> D[Transient Hostname]
     B --> C[/etc/hostname]
-    B --> D[Transient Hostname - defaults to static]
     E[DHCP / cloud-init] --> D
     F[hostnamectl set-hostname --pretty] --> G[Pretty Hostname]
     G --> H[/etc/machine-info]
@@ -133,11 +133,11 @@ If your server gets its IP via DHCP, the DHCP client may overwrite the transient
 
 ```bash
 # Check the current DHCP hostname setting
-nmcli connection show "Wired connection 1" | grep dhcp-hostname
+nmcli connection show "Wired connection 1" | grep hostname.from-dhcp
 
-# Tell NetworkManager not to set the hostname from DHCP
+# Tell NetworkManager not to accept the hostname from DHCP
 sudo nmcli connection modify "Wired connection 1" \
-  ipv4.dhcp-send-hostname no
+  hostname.from-dhcp no
 
 # Apply the change
 sudo nmcli connection up "Wired connection 1"
