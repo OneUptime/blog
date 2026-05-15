@@ -10,83 +10,109 @@ Description: Perform an in-place upgrade of RHEL images on Azure.
 
 ## Overview
 
-Perform an in-place upgrade of RHEL images on Azure. RHEL is fully supported on major cloud platforms with official images and integrated tooling.
+Perform an in-place upgrade of Red Hat Enterprise Linux (RHEL) virtual machines on Azure with Leapp. In-place upgrades are supported for specific RHEL major-version paths and require preparation, a backup, and a successful Leapp pre-upgrade report before the system is upgraded.
 
 ## Prerequisites
 
-- A RHEL subscription or cloud marketplace entitlement
-- An account on the target cloud platform (AWS, Azure, or GCP)
-- CLI tools installed: aws-cli, az-cli, or gcloud
+- A supported RHEL VM on Azure
+- A current backup or managed disk snapshot before starting
+- Azure CLI installed and signed in
+- RHEL package access through Azure RHUI for pay-as-you-go images or Red Hat Subscription Management/Satellite for BYOS images
+- Root or sudo access to the VM
 
 ## Step 1 - Choose Your Deployment Method
 
-You can deploy RHEL in the cloud using:
+Choose the right upgrade path for the image and subscription model:
 
-1. **Marketplace images** - pre-built, official Red Hat images
-2. **Custom images** - built with Image Builder and uploaded
-3. **Terraform** - infrastructure as code provisioning
-4. **Red Hat Hybrid Cloud Console** - centralized management
+1. **Azure pay-as-you-go RHEL images** - use Azure RHUI repositories and the Azure-specific Leapp packages when available
+2. **BYOS or custom RHEL images** - register the VM with Red Hat Subscription Management or Satellite and enable the required RHEL and Leapp repositories
+3. **Unsupported or heavily customized images** - rebuild on a supported RHEL image instead of attempting an in-place upgrade
+4. **Production systems** - test the same upgrade path on a cloned VM before upgrading the original VM
 
-## Step 2 - Launch a RHEL Instance
+## Step 2 - Back Up the RHEL Instance
 
-For AWS:
-
-```bash
-aws ec2 run-instances --image-id ami-rhel9-xxxxx --instance-type m5.large --key-name mykey
-```
-
-For Azure:
+Create a snapshot or backup before running Leapp. For example, snapshot the OS disk:
 
 ```bash
-az vm create --resource-group myRG --name myVM --image RedHat:RHEL:9:latest --size Standard_D2s_v3
+OS_DISK_ID=$(az vm show \
+  --resource-group myRG \
+  --name myVM \
+  --query "storageProfile.osDisk.managedDisk.id" \
+  --output tsv)
+
+az snapshot create \
+  --resource-group myRG \
+  --name myVM-osdisk-before-leapp \
+  --source "$OS_DISK_ID"
 ```
 
-For GCP:
+## Step 3 - Prepare the VM
+
+Update the current RHEL system, reboot if the kernel was updated, and confirm the VM is healthy before starting the upgrade:
 
 ```bash
-gcloud compute instances create myvm --image-project=rhel-cloud --image-family=rhel-9 --machine-type=e2-medium
+sudo dnf update -y
+sudo reboot
 ```
 
-## Step 3 - Configure cloud-init
+For RHEL 7, use `yum` instead of `dnf`:
 
-RHEL cloud images use cloud-init for first-boot customization. Create a user-data script:
-
-```yaml
-#cloud-config
-hostname: my-rhel-server
-users:
-  - name: admin
-    groups: wheel
-    ssh_authorized_keys:
-      - ssh-rsa AAAA...your-key-here
-packages:
-  - vim
-  - tmux
+```bash
+sudo yum update -y
+sudo reboot
 ```
 
-## Step 4 - Register with Red Hat
+## Step 4 - Install Leapp
+
+On a pay-as-you-go Azure image, use the Azure RHUI repositories configured for the VM:
+
+```bash
+sudo dnf config-manager --set-enabled rhui-microsoft-azure-rhel8
+sudo dnf -y install rhui-azure-rhel8 leapp-rhui-azure
+sudo dnf install -y leapp-upgrade
+```
+
+For RHEL 7 pay-as-you-go images, use `yum` and the RHEL 7 RHUI repositories instead:
+
+```bash
+sudo yum-config-manager --enable rhui-microsoft-azure-rhel7
+sudo yum -y install rhui-azure-rhel7
+sudo yum-config-manager --enable rhui-rhel-7-server-rhui-extras-rpms
+sudo yum -y install leapp-rhui-azure
+sudo yum install -y leapp-upgrade
+```
+
+On a BYOS image, register the system and enable the required Red Hat repositories before installing Leapp.
 
 ```bash
 sudo subscription-manager register --auto-attach
-# Or connect to Red Hat Insights:
-
-sudo insights-client --register
 ```
 
-## Step 5 - Configure Security and Networking
+## Step 5 - Run the Pre-Upgrade Check
 
-Set up security groups, NSGs, or firewall rules to allow only necessary traffic. Enable SELinux (it is on by default) and configure firewalld.
-
-## Step 6 - Set Up Monitoring
-
-Connect your cloud instances to your monitoring infrastructure:
+Make sure you can recover the VM if network access is interrupted during the upgrade. Keep Azure serial console access available, confirm SSH is allowed by the VM's network security group, and review the Leapp pre-upgrade report before proceeding.
 
 ```bash
-# Install Node Exporter for Prometheus
-# Or register with Red Hat Insights
-sudo insights-client
+sudo -r unconfined_r -t unconfined_t leapp preupgrade --target 9.6 --no-rhsm
+sudo less /var/log/leapp/leapp-report.txt
 ```
+
+Replace `9.6` with the target minor version for your supported upgrade path. Omit `--no-rhsm` for BYOS VMs that are using Red Hat Subscription Management. Resolve all inhibitors reported by Leapp. Do not continue until the pre-upgrade report is clean enough for the upgrade path you are using.
+
+## Step 6 - Run the Upgrade
+
+Run the upgrade, reboot into the upgrade environment, and verify the final RHEL release:
+
+```bash
+sudo -r unconfined_r -t unconfined_t leapp upgrade --target 9.6 --no-rhsm
+sudo reboot
+cat /etc/redhat-release
+uname -r
+sudo dnf repolist
+```
+
+After the VM comes back online, check your application, logs, monitoring agent, Azure VM agent, and any Red Hat Insights or security tooling you use.
 
 ## Summary
 
-You have learned how to perform an in-place upgrade of rhel images on azure. RHEL on cloud platforms benefits from official support, pre-configured images, and integration with Red Hat management tools.
+You have learned how to perform an in-place upgrade of RHEL images on Azure. The important steps are to confirm that the RHEL upgrade path is supported, create a backup, prepare the VM, install Leapp from the correct repositories, resolve all pre-upgrade inhibitors, and verify the system after the reboot.
