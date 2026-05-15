@@ -48,6 +48,9 @@ podman ps -a
 mkdir -p ~/web-data
 echo "RHCSA Practice" > ~/web-data/index.html
 
+# Stop the earlier example container before reusing port 8080
+podman rm -f web
+
 # Run a container with a bind mount
 podman run -d --name web-persistent \
   -p 8080:8080 \
