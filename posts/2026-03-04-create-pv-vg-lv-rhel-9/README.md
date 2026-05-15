@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, LVM, PV, VG, LVS, Linux
+Tags: RHEL, LVM, PV, VG, LV, Linux
 
 Description: Step-by-step guide to creating and managing LVM physical volumes, volume groups, and logical volumes on RHEL with practical examples.
 
@@ -64,7 +64,7 @@ sudo pvs
 # Detailed info about a specific PV
 sudo pvdisplay /dev/sdb
 
-# Show PV segments (how space is allocated)
+# Show used and free space on each PV
 sudo pvs -o+pv_used,pv_free
 ```
 
