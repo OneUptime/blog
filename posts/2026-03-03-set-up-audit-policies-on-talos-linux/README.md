@@ -126,7 +126,7 @@ cluster:
       - hostPath: /var/log/audit
         mountPath: /var/log/audit
         name: audit-log
-      - hostPath: /var/etc/kubernetes/audit
+      - hostPath: /var/etc/kubernetes/audit-policy.yaml
         mountPath: /etc/kubernetes/audit-policy.yaml
         name: audit-policy
         readOnly: true
@@ -368,7 +368,7 @@ spec:
       rules:
         - alert: UnauthorizedSecretAccess
           expr: |
-            increase(apiserver_audit_event_total{verb=~"get|list",resource="secrets",code="403"}[5m]) > 5
+            increase(apiserver_request_total{verb=~"GET|LIST",resource="secrets",code="403"}[5m]) > 5
           for: 1m
           labels:
             severity: critical
@@ -376,7 +376,7 @@ spec:
             summary: "Multiple unauthorized secret access attempts detected"
         - alert: ClusterRoleBindingChange
           expr: |
-            increase(apiserver_audit_event_total{resource="clusterrolebindings",verb=~"create|update|delete"}[5m]) > 0
+            increase(apiserver_request_total{resource="clusterrolebindings",verb=~"CREATE|UPDATE|PATCH|DELETE"}[5m]) > 0
           for: 0m
           labels:
             severity: warning
