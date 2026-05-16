@@ -20,7 +20,7 @@ The three Pod Security Standards levels are cumulative, with each stricter level
 
 **Baseline**: Prevents known privilege escalations. Blocks hostNetwork, hostPID, privileged containers, and other dangerous configurations. This is a reasonable starting point for most workloads.
 
-**Restricted**: The most hardened level. Requires pods to run as non-root, with read-only root filesystems, drop all capabilities, and use specific seccomp profiles. This is the target for production workloads.
+**Restricted**: The most hardened level. Requires pods to run as non-root, drop all capabilities, restrict allowed volume types, and use a `RuntimeDefault` or `Localhost` seccomp profile. This is the target for production workloads.
 
 ## Understanding PSA Modes
 
@@ -341,17 +341,21 @@ Fields that are NOT allowed under the restricted standard:
 - `privileged: true`
 - `hostPath` volumes
 - Container port `hostPort`
-- Adding any capabilities
+- Adding capabilities other than `NET_BIND_SERVICE` (which is the only capability Restricted permits to be added back)
 
 ## Monitoring Compliance
 
 Use Kyverno or OPA Gatekeeper alongside PSA for richer reporting. PSA provides enforcement, while policy engines provide detailed compliance reports.
 
 ```bash
-# Quick compliance check using dry-run
-kubectl auth can-i create pods \
-  --namespace production-app \
-  --as system:serviceaccount:production-app:default
+# Quick compliance check using server-side dry-run
+# Test a specific pod manifest against the namespace's PSA policy
+kubectl apply -f restricted-pod.yaml --dry-run=server
+
+# Test what would happen if you raised the enforce level across all namespaces
+# (returns warnings for existing pods that would violate, without persisting the label)
+kubectl label --dry-run=server --overwrite ns --all \
+  pod-security.kubernetes.io/enforce=restricted
 ```
 
 ## Wrapping Up
