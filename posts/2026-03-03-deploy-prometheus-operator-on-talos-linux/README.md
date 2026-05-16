@@ -266,12 +266,12 @@ stringData:
       repeat_interval: 4h
       receiver: 'slack-notifications'
       routes:
-      - match:
-          severity: critical
+      - matchers:
+        - severity = "critical"
         receiver: 'slack-critical'
         repeat_interval: 1h
-      - match:
-          severity: warning
+      - matchers:
+        - severity = "warning"
         receiver: 'slack-warnings'
         repeat_interval: 4h
 
