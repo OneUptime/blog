@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, Device Selectors, Networking, Configuration, Infrastructure
 
-Description: Learn how to use device selectors in Talos Linux for reliable network interface identification that survives reboots and hardware changes.
+Description: Learn how to use device selectors in Talos Linux for reliable network interface identification that survives reboots and some hardware changes.
 
 ---
 
@@ -51,7 +51,18 @@ deviceSelector:
   hardwareAddr: "aa:bb:cc:dd:ee:ff"
 ```
 
-MAC addresses are globally unique (in theory) and burned into the NIC. They do not change with reboots, PCI slot changes, or driver updates. This is the recommended selector for most use cases.
+MAC addresses are globally unique (in theory) and usually stable for a specific NIC. They do not change with reboots, PCI slot changes, or driver updates. This is the recommended selector for most use cases.
+
+### Permanent Hardware Address
+
+Identifies the NIC by its permanent hardware address:
+
+```yaml
+deviceSelector:
+  permanentAddr: "aa:bb:cc:dd:ee:ff"
+```
+
+This is especially useful for bond members because the current hardware address can change after the interface is enslaved to a bond.
 
 ### Bus Path
 
@@ -74,6 +85,17 @@ deviceSelector:
 ```
 
 This selects all interfaces using the Intel igb driver. Useful when you have different types of NICs and want to configure all interfaces of a certain type the same way. Be careful though - if you have multiple NICs with the same driver, this matches all of them.
+
+### PCI ID
+
+Matches interfaces by PCI vendor and device ID:
+
+```yaml
+deviceSelector:
+  pciID: "8086:10fb"
+```
+
+This is useful when you want to target a specific NIC model rather than a specific port.
 
 ### Physical Interface
 
@@ -158,8 +180,8 @@ machine:
         bond:
           mode: 802.3ad
           deviceSelectors:
-            - hardwareAddr: "aa:bb:cc:11:22:33"
-            - hardwareAddr: "aa:bb:cc:44:55:66"
+            - permanentAddr: "aa:bb:cc:11:22:33"
+            - permanentAddr: "aa:bb:cc:44:55:66"
         addresses:
           - 192.168.1.10/24
         routes:
@@ -167,7 +189,7 @@ machine:
             gateway: 192.168.1.1
 ```
 
-Notice the difference in syntax. For bonded interfaces, you use `deviceSelectors` (plural) inside the `bond` section, providing a list of selectors that identify each member interface.
+Notice the difference in syntax. For bonded interfaces, you use `deviceSelectors` (plural) inside the `bond` section, providing a list of selectors that identify each member interface. Use `permanentAddr` for bond members because `hardwareAddr` can change when the link becomes part of the bond.
 
 ### Select All Physical Interfaces of a Certain Type
 
@@ -195,7 +217,7 @@ talosctl get links --nodes 192.168.1.10
 talosctl get links --nodes 192.168.1.10 -o yaml
 ```
 
-The output includes MAC addresses, driver names, bus paths, and other properties you can use in selectors.
+The output includes MAC addresses, permanent hardware addresses, driver names, bus paths, PCI IDs, and other properties you can use in selectors.
 
 If the node is in maintenance mode during initial setup:
 
@@ -223,9 +245,9 @@ Here is a comparison to help you decide:
 
 Some important rules about how selectors work:
 
-**Single match expected** - When using `deviceSelector` for a regular interface (not bonding), it should match exactly one interface. If it matches multiple interfaces, the first match is used, which might not be what you expect.
+**Multiple matches apply to multiple devices** - When using `deviceSelector` for a regular interface (not bonding), a selector that matches multiple devices applies the configuration to all of them. Use additional criteria when you need to target exactly one interface.
 
-**No match is an error** - If the selector does not match any interface, the configuration for that interface is skipped. The node may boot without that network configuration, which can cause connectivity issues.
+**No match means no configuration is applied** - If the selector does not match any interface, the configuration for that interface is skipped. The node may boot without that network configuration, which can cause connectivity issues.
 
 **Selectors are evaluated at boot** - Device matching happens during network initialization. If hardware is added after boot (hot-plug), it is not automatically matched.
 
@@ -288,4 +310,4 @@ talosctl logs networkd --nodes 192.168.1.10
 
 ## Conclusion
 
-Device selectors are the recommended way to identify network interfaces in Talos Linux production deployments. They decouple your configuration from interface names, which can change unpredictably. MAC addresses are the most reliable selector for targeting specific NICs, while bus paths work well for homogeneous hardware fleets. Take the time to catalog your hardware properties before deploying, and your network configuration will be rock-solid across reboots, upgrades, and hardware replacements.
+Device selectors are the recommended way to identify network interfaces in Talos Linux production deployments. They decouple your configuration from interface names, which can change unpredictably. MAC addresses are the most reliable selector for targeting specific NICs, while bus paths work well for homogeneous hardware fleets and slot-based hardware replacement. Take the time to catalog your hardware properties before deploying, and your network configuration will be rock-solid across reboots and upgrades.
