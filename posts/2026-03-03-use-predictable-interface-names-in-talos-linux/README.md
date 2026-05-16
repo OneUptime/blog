@@ -21,7 +21,7 @@ Instead of sequential names like `eth0`, predictable naming uses schemes based o
 3. **enp** - Names based on the PCI bus path (e.g., `enp0s3`, `enp0s8`, `enp3s0f0`)
 4. **enx** - Names based on MAC address (e.g., `enx001122334455`)
 
-The kernel tries these in order and uses the first scheme that produces a valid name. If none of them work, it falls back to the traditional `ethN` naming.
+Talos applies these in order and uses the first scheme that produces a valid name. If none of them work, it falls back to the traditional `ethN` naming.
 
 ## What the Names Mean
 
@@ -69,47 +69,50 @@ talosctl get links --nodes <maintenance-ip> --insecure
 When you know your interface names, use them directly in the machine config:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      # Using predictable name for a specific PCI slot
-      - interface: enp3s0f0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-      # Second port of the same dual-port NIC
-      - interface: enp3s0f1
-        addresses:
-          - 10.10.0.10/24
+apiVersion: v1alpha1
+kind: LinkConfig
+name: enp3s0f0
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.1
+---
+apiVersion: v1alpha1
+kind: LinkConfig
+name: enp3s0f1
+addresses:
+  - address: 10.10.0.10/24
 ```
 
 The advantage here is that these names are tied to the physical hardware location. Moving the NIC to a different PCI slot changes the name (which is good - it prevents accidentally using the wrong port). Keeping the NIC in the same slot keeps the name the same across reboots and OS reinstalls.
 
 ## Disabling Predictable Naming
 
-If you prefer the traditional `eth0`, `eth1` naming, you can disable predictable naming with a kernel argument:
+If you prefer the traditional `eth0`, `eth1` naming, you can disable predictable naming with a kernel argument. For current Talos boot assets, add it to the Image Factory schematic used to build the ISO, PXE, or disk image:
 
 ```yaml
-machine:
-  install:
-    extraKernelArgs:
-      - net.ifnames=0
-      - biosdevname=0
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
+customization:
+  extraKernelArgs:
+    - net.ifnames=0
 ```
 
-The `net.ifnames=0` argument disables systemd's predictable naming, and `biosdevname=0` disables Dell's biosdevname scheme. With both disabled, the kernel uses the traditional sequential naming.
+Then reference the traditional name in the network config:
 
-After adding these kernel arguments, you need to upgrade or reinstall the node for them to take effect (kernel arguments are boot-time settings).
+```yaml
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.1
+```
+
+The `net.ifnames=0` argument disables predictable naming. With it disabled, the kernel uses the traditional sequential naming.
+
+After changing kernel arguments, you need to boot or upgrade into assets that contain the new kernel command line. On older GRUB-based installations, `.machine.install.extraKernelArgs` can be used followed by an upgrade, but on systemd-boot/UKI installations those arguments are embedded in the boot assets.
 
 ## When to Use Predictable Names
 
@@ -128,40 +131,39 @@ Traditional naming might be better when:
 - **Simple single-NIC setups** - If you only have one interface, `eth0` is simpler than `enp0s3`
 - **Cross-platform scripts** - Scripts that assume `eth0` do not work with predictable names
 
-## Device Selectors as an Alternative
+## Link Aliases as an Alternative
 
-Instead of relying on interface names at all, you can use device selectors to identify interfaces by their properties:
+Instead of relying on the hardware-generated interface name in the rest of your network configuration, you can use a link alias to identify an interface by its properties and give it your own stable name:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - deviceSelector:
-          hardwareAddr: "aa:bb:cc:dd:ee:ff"
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
+apiVersion: v1alpha1
+kind: LinkAliasConfig
+name: int0
+selector:
+  match: glob("aa:bb:cc:*", mac(link.permanent_addr))
+---
+apiVersion: v1alpha1
+kind: LinkConfig
+name: int0
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.1
 ```
 
-Device selectors match interfaces by MAC address, driver, bus path, or other properties. This approach is completely independent of the naming scheme and works regardless of whether predictable naming is enabled or not.
+Link aliases match interfaces with a CEL expression against link properties, such as the permanent MAC address or kernel driver. This approach is independent of the predictable hardware name; use an alias like `int0` or `lan0` rather than `eth0` or `enp0s2`, because aliases that look like system interface names can conflict with real links.
 
-Available selector fields:
+Example selectors:
 
 ```yaml
-deviceSelector:
-  # Match by MAC address (most reliable)
-  hardwareAddr: "aa:bb:cc:dd:ee:ff"
-
+selector:
+  # Match by permanent MAC address
+  match: glob("aa:bb:cc:*", mac(link.permanent_addr))
+---
+selector:
   # Match by kernel driver
-  driver: "igb"
-
-  # Match by PCI bus path
-  busPath: "0000:03:00.0"
-
-  # Only match physical interfaces (not virtual)
-  physical: true
+  match: link.driver == "igb"
 ```
 
 ## Predictable Names on Different Platforms
@@ -195,8 +197,8 @@ eth0        # Hyper-V often uses traditional names
 
 ### AWS EC2
 ```text
-ens5        # Primary ENI
-ens6        # Second ENI
+eth0        # Primary ENI
+eth1        # Second ENI
 ```
 
 ## Migrating Between Naming Schemes
@@ -210,20 +212,14 @@ If you need to switch from predictable to traditional naming (or vice versa) on 
 
 ```yaml
 # Switching from predictable to traditional
-machine:
-  install:
-    extraKernelArgs:
-      - net.ifnames=0
-      - biosdevname=0
-  network:
-    interfaces:
-      # Changed from enp3s0f0 to eth0
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.1
 ```
 
 Do this one node at a time and verify connectivity after each change. If something goes wrong, you need out-of-band access (IPMI/iDRAC/iLO) to fix it.
@@ -243,4 +239,4 @@ talosctl get links --nodes 192.168.1.10
 
 ## Conclusion
 
-Predictable interface naming in Talos Linux prevents the "interface name roulette" that plagued traditional Linux deployments. The names are derived from hardware properties and remain stable across reboots and reinstalls. For bare metal, predictable naming is the right default. For simple VM setups, you might prefer traditional naming with `net.ifnames=0`. And for maximum flexibility, device selectors let you identify interfaces by properties like MAC address, completely bypassing the naming question. Whichever approach you choose, the key is consistency - pick a scheme and stick with it across your entire fleet.
+Predictable interface naming in Talos Linux prevents the "interface name roulette" that plagued traditional Linux deployments. The names are derived from hardware properties and remain stable across reboots and reinstalls. For bare metal, predictable naming is the right default. For simple VM setups, you might prefer traditional naming with `net.ifnames=0`. And for maximum flexibility, link aliases let you identify interfaces by properties like MAC address, then use your own stable alias in configuration. Whichever approach you choose, the key is consistency - pick a scheme and stick with it across your entire fleet.
