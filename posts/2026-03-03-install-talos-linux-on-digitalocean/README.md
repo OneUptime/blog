@@ -116,8 +116,6 @@ machine:
     interfaces:
       - interface: eth0
         dhcp: true
-      - interface: eth1
-        dhcp: true
 EOF
 
 # Apply patches
@@ -231,8 +229,10 @@ kubectl create secret generic digitalocean \
   --namespace kube-system \
   --from-literal=access-token=your-digitalocean-api-token
 
-# Install the CSI driver
-kubectl apply -f https://raw.githubusercontent.com/digitalocean/csi-digitalocean/master/deploy/kubernetes/releases/csi-digitalocean-latest.yaml
+# Install the CSI driver (CRDs, driver, and snapshot controller)
+kubectl apply -f https://raw.githubusercontent.com/digitalocean/csi-digitalocean/master/deploy/kubernetes/releases/csi-digitalocean-v4.10.0/crds.yaml
+kubectl apply -f https://raw.githubusercontent.com/digitalocean/csi-digitalocean/master/deploy/kubernetes/releases/csi-digitalocean-v4.10.0/driver.yaml
+kubectl apply -f https://raw.githubusercontent.com/digitalocean/csi-digitalocean/master/deploy/kubernetes/releases/csi-digitalocean-v4.10.0/snapshot-controller.yaml
 ```
 
 Create a storage class:
