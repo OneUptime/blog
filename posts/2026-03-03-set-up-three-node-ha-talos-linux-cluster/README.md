@@ -70,15 +70,13 @@ You have several options for the API endpoint. The simplest for bare metal is Ta
 # vip-patch.yaml
 
 # This patch configures a shared VIP on the control plane nodes
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        vip:
-          ip: 192.168.1.100
+apiVersion: v1alpha1
+kind: Layer2VIPConfig
+name: 192.168.1.100
+link: eth0
 ```
 
-The VIP floats between control plane nodes. If the current holder goes down, another node takes over the IP automatically.
+The VIP floats between control plane nodes. If the current holder goes down, another node takes over the IP automatically after a new etcd-backed VIP election.
 
 Alternatively, you can use an external load balancer like HAProxy, nginx, or a hardware load balancer. We will use the VIP approach in this guide since it requires no additional infrastructure.
 
@@ -104,50 +102,65 @@ If you want each node to have a specific hostname or static IP, create per-node 
 
 ```yaml
 # cp1-patch.yaml
-machine:
-  network:
-    hostname: cp1
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.101/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-        vip:
-          ip: 192.168.1.100
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: cp1
+auto: off
+---
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.101/24
+routes:
+  - gateway: 192.168.1.1
+---
+apiVersion: v1alpha1
+kind: Layer2VIPConfig
+name: 192.168.1.100
+link: eth0
 ```
 
 ```yaml
 # cp2-patch.yaml
-machine:
-  network:
-    hostname: cp2
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.102/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-        vip:
-          ip: 192.168.1.100
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: cp2
+auto: off
+---
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.102/24
+routes:
+  - gateway: 192.168.1.1
+---
+apiVersion: v1alpha1
+kind: Layer2VIPConfig
+name: 192.168.1.100
+link: eth0
 ```
 
 ```yaml
 # cp3-patch.yaml
-machine:
-  network:
-    hostname: cp3
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.103/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-        vip:
-          ip: 192.168.1.100
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: cp3
+auto: off
+---
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.103/24
+routes:
+  - gateway: 192.168.1.1
+---
+apiVersion: v1alpha1
+kind: Layer2VIPConfig
+name: 192.168.1.100
+link: eth0
 ```
 
 Then generate individual configs:
@@ -251,7 +264,7 @@ talosctl get addresses --nodes 192.168.1.101 192.168.1.102 192.168.1.103 | grep 
 kubectl get nodes
 ```
 
-If you shut down the node holding the VIP, another node picks it up within seconds. The Kubernetes API remains accessible, and existing workloads continue running on the surviving nodes.
+If you shut down the node holding the VIP gracefully, another node picks it up almost immediately. If the node fails unexpectedly, failover can take longer, typically up to a minute. Existing workloads continue running on the surviving nodes while external API clients reconnect to the VIP.
 
 ## Adding Worker Nodes
 
