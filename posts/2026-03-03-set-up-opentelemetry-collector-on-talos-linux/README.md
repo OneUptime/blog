@@ -27,10 +27,11 @@ First, install cert-manager, which the operator requires:
 ```bash
 # Install cert-manager (required by the OpenTelemetry Operator)
 
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Wait for cert-manager to be ready
 kubectl wait --for=condition=Available deployment/cert-manager -n cert-manager --timeout=120s
+kubectl wait --for=condition=Available deployment/cert-manager-cainjector -n cert-manager --timeout=120s
 kubectl wait --for=condition=Available deployment/cert-manager-webhook -n cert-manager --timeout=120s
 ```
 
@@ -47,7 +48,7 @@ kubectl wait --for=condition=Available deployment/opentelemetry-operator-control
 
 ## Deploying the Collector as a DaemonSet
 
-A DaemonSet deployment places one Collector instance on every node. This is ideal for collecting node-level metrics, container logs, and receiving traces from applications on the same node.
+A DaemonSet deployment places one Collector instance on every node. This is ideal for collecting node-level metrics, receiving traces from applications on the same node, and, with a filelog receiver, collecting container logs.
 
 ```yaml
 # otel-collector-daemonset.yaml
@@ -59,9 +60,33 @@ metadata:
   namespace: observability
 spec:
   mode: daemonset
+  image: otel/opentelemetry-collector-k8s:0.153.0
+  serviceAccount: otel-collector
+  observability:
+    metrics:
+      enableMetrics: true
+  env:
+    - name: K8S_NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+  ports:
+    - name: prometheus
+      port: 8889
+      targetPort: 8889
+      protocol: TCP
   tolerations:
     - operator: Exists
       effect: NoSchedule
+  volumeMounts:
+    - name: hostfs
+      mountPath: /hostfs
+      readOnly: true
+      mountPropagation: HostToContainer
+  volumes:
+    - name: hostfs
+      hostPath:
+        path: /
   config:
     receivers:
       # Receive OTLP data from applications
@@ -85,6 +110,7 @@ spec:
 
       # Collect host metrics
       hostmetrics:
+        root_path: /hostfs
         collection_interval: 30s
         scrapers:
           cpu: {}
@@ -151,6 +177,9 @@ Apply the configuration:
 # Create the namespace
 kubectl create namespace observability
 
+# Apply the RBAC manifest from below
+kubectl apply -f otel-rbac.yaml
+
 # Deploy the collector
 kubectl apply -f otel-collector-daemonset.yaml
 ```
@@ -169,6 +198,7 @@ metadata:
   namespace: observability
 spec:
   mode: deployment
+  image: otel/opentelemetry-collector-k8s:0.153.0
   replicas: 2
   config:
     receivers:
@@ -191,10 +221,10 @@ spec:
 
       # Filter out low-value traces
       filter:
-        traces:
-          span:
-            - 'attributes["http.target"] == "/healthz"'
-            - 'attributes["http.target"] == "/readyz"'
+        error_mode: ignore
+        trace_conditions:
+          - 'span.attributes["http.target"] == "/healthz"'
+          - 'span.attributes["http.target"] == "/readyz"'
 
     exporters:
       otlp/backend:
@@ -216,7 +246,7 @@ spec:
 
 ## Configuring Applications to Send Telemetry
 
-With the Collector running, configure your applications to send data to it. The DaemonSet Collector is accessible via the node's IP on ports 4317 (gRPC) and 4318 (HTTP).
+With the Collector running, configure your applications to send data to it. The Operator-created Collector service is accessible in the cluster on ports 4317 (gRPC) and 4318 (HTTP).
 
 Set environment variables on your application pods:
 
@@ -228,13 +258,19 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: app
           image: my-app:latest
           env:
-            # Point to the node-local OTel Collector
+            # Point to the OTel Collector service
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://otel-node-collector-collector.observability.svc:4317"
             - name: OTEL_SERVICE_NAME
@@ -294,7 +330,7 @@ kubectl get pods -n observability -o wide
 kubectl logs -n observability -l app.kubernetes.io/name=otel-node-collector-collector --tail=20
 
 # Verify the Prometheus metrics endpoint
-kubectl port-forward -n observability svc/otel-node-collector-collector-monitoring 8889:8889
+kubectl port-forward -n observability svc/otel-node-collector-collector 8889:8889
 # Then visit http://localhost:8889/metrics in your browser
 ```
 
@@ -304,19 +340,16 @@ The OpenTelemetry Collector exposes its own metrics that you should monitor to e
 
 ```yaml
 # collector-monitoring.yaml
-# ServiceMonitor for scraping OTel Collector metrics
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+# Enable a ServiceMonitor for OTel Collector internal metrics
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
 metadata:
-  name: otel-collector
+  name: otel-node-collector
   namespace: observability
 spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: otel-node-collector-collector
-  endpoints:
-    - port: monitoring
-      interval: 30s
+  observability:
+    metrics:
+      enableMetrics: true
 ```
 
 Key metrics to watch include `otelcol_receiver_accepted_spans`, `otelcol_exporter_sent_spans`, `otelcol_processor_dropped_spans`, and `otelcol_exporter_send_failed_spans`. A growing number of failed exports indicates a problem with your backend connection.
