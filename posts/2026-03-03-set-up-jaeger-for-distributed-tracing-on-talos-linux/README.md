@@ -22,7 +22,7 @@ A production Jaeger deployment on Talos Linux consists of:
 
 - **Jaeger Collector**: Receives spans from applications and writes them to storage
 - **Jaeger Query**: Serves the UI and handles trace queries
-- **Jaeger Agent** (optional): A local daemon that batches and forwards spans to the collector
+- **Jaeger Agent** (optional for legacy clients): A local daemon that batches and forwards spans to the collector
 - **Storage backend**: Elasticsearch or Cassandra for production, in-memory for development
 
 ## Prerequisites
@@ -105,7 +105,7 @@ kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager-we
 
 # Install the Jaeger Operator
 kubectl create namespace observability
-kubectl apply -f https://github.com/jaegertracing/jaeger-operator/releases/latest/download/jaeger-operator.yaml -n observability
+kubectl apply -f https://github.com/jaegertracing/jaeger-operator/releases/download/v1.65.0/jaeger-operator.yaml -n observability
 ```
 
 Now create a Jaeger instance:
@@ -143,10 +143,6 @@ spec:
       limits:
         cpu: 500m
         memory: 512Mi
-    options:
-      query:
-        # Base path for the UI
-        base-path: /jaeger
   storage:
     type: elasticsearch
     options:
@@ -190,7 +186,7 @@ Open http://localhost:16686 in your browser. You should see the Jaeger UI with a
 
 ## Step 4: Instrument Your Applications
 
-Applications need to send trace data to Jaeger. The recommended approach is using OpenTelemetry SDKs, which support Jaeger as an export target.
+Applications need to send trace data to Jaeger. The recommended approach is using OpenTelemetry SDKs with OTLP, which Jaeger can receive directly on the collector service.
 
 Here is an example for a Python application:
 
@@ -199,26 +195,24 @@ Here is an example for a Python application:
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.jaeger.thrift import JaegerExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 
 def setup_tracing(service_name):
-    """Initialize OpenTelemetry tracing with Jaeger exporter."""
+    """Initialize OpenTelemetry tracing with the OTLP exporter."""
     resource = Resource.create({
         "service.name": service_name,
         "deployment.environment": "production",
     })
 
-    # Configure the Jaeger exporter
-    jaeger_exporter = JaegerExporter(
-        # Point to the Jaeger collector service
-        agent_host_name="jaeger-production-agent.tracing.svc.cluster.local",
-        agent_port=6831,
+    # Configure the OTLP exporter for the Jaeger collector service
+    otlp_exporter = OTLPSpanExporter(
+        endpoint="http://jaeger-production-collector.tracing.svc.cluster.local:4318/v1/traces",
     )
 
     # Set up the tracer provider
     provider = TracerProvider(resource=resource)
-    processor = BatchSpanProcessor(jaeger_exporter)
+    processor = BatchSpanProcessor(otlp_exporter)
     provider.add_span_processor(processor)
     trace.set_tracer_provider(provider)
 
@@ -232,20 +226,21 @@ For a Go application:
 package tracing
 
 import (
+    "context"
+
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/exporters/jaeger"
+    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 func InitTracer(serviceName string) (*sdktrace.TracerProvider, error) {
-    // Create the Jaeger exporter
-    exporter, err := jaeger.New(
-        jaeger.WithAgentEndpoint(
-            jaeger.WithAgentHost("jaeger-production-agent.tracing.svc.cluster.local"),
-            jaeger.WithAgentPort("6831"),
-        ),
+    // Create the OTLP exporter for the Jaeger collector
+    exporter, err := otlptracehttp.New(
+        context.Background(),
+        otlptracehttp.WithEndpoint("jaeger-production-collector.tracing.svc.cluster.local:4318"),
+        otlptracehttp.WithInsecure(),
     )
     if err != nil {
         return nil, err
@@ -271,28 +266,23 @@ For a Node.js application:
 
 ```javascript
 // tracing.js
-const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
-const { JaegerExporter } = require('@opentelemetry/exporter-jaeger');
-const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const opentelemetry = require('@opentelemetry/sdk-node');
+const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-proto');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 function initTracing(serviceName) {
-  const provider = new NodeTracerProvider({
-    resource: new Resource({
-      [SemanticResourceAttributes.SERVICE_NAME]: serviceName,
+  const sdk = new opentelemetry.NodeSDK({
+    resource: resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: serviceName,
+    }),
+    traceExporter: new OTLPTraceExporter({
+      url: 'http://jaeger-production-collector.tracing.svc.cluster.local:4318/v1/traces',
     }),
   });
 
-  // Configure the Jaeger exporter
-  const exporter = new JaegerExporter({
-    endpoint: 'http://jaeger-production-collector.tracing.svc.cluster.local:14268/api/traces',
-  });
-
-  provider.addSpanProcessor(new BatchSpanProcessor(exporter));
-  provider.register();
-
-  return provider;
+  sdk.start();
+  return sdk;
 }
 
 module.exports = { initTracing };
@@ -300,7 +290,7 @@ module.exports = { initTracing };
 
 ## Step 5: Configure Sampling
 
-In production, you do not want to trace every single request. Sampling lets you collect a representative subset of traces:
+In production, you do not want to trace every single request. Sampling lets you collect a representative subset of traces. The Jaeger Operator can publish this strategy to compatible remote samplers:
 
 ```yaml
 # Update the Jaeger instance with sampling configuration
