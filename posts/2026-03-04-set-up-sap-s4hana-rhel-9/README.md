@@ -31,8 +31,8 @@ graph TB
 ## Prerequisites
 
 - Two RHEL servers (or one large server for all-in-one)
-- Database server: 128 GB+ RAM, 8+ CPUs
-- Application server: 32 GB+ RAM, 4+ CPUs
+- Database server sized with SAP Quick Sizer or HANA sizing reports, using SAP-certified hardware
+- Application server sized for your workload and SAPS requirements
 - SAP S/4HANA installation media (Software Provisioning Manager)
 - SAP HANA already installed on the database server
 
@@ -41,31 +41,38 @@ graph TB
 ```bash
 # On both servers, run the SAP preconfigure roles
 
-sudo dnf install -y rhel-system-roles-sap ansible-core
+sudo dnf install -y ansible-core rhel-system-roles rhel-system-roles-sap
 
 # For the database server
 cat <<'PLAY' > /tmp/prep-db.yml
 ---
 - name: Prepare DB server
   hosts: localhost
+  vars:
+    ansible_connection: local
   become: true
   roles:
     - sap_general_preconfigure
     - sap_hana_preconfigure
 PLAY
-sudo ansible-playbook /tmp/prep-db.yml
+sudo ansible-playbook /tmp/prep-db.yml -e 'ansible_python_interpreter=/usr/libexec/platform-python'
 
 # For the application server
 cat <<'PLAY' > /tmp/prep-app.yml
 ---
 - name: Prepare App server
   hosts: localhost
+  vars:
+    ansible_connection: local
   become: true
   roles:
     - sap_general_preconfigure
     - sap_netweaver_preconfigure
 PLAY
-sudo ansible-playbook /tmp/prep-app.yml
+sudo ansible-playbook /tmp/prep-app.yml -e 'ansible_python_interpreter=/usr/libexec/platform-python'
+
+# Reboot each server after the roles complete successfully
+sudo reboot
 ```
 
 ## Step 2: Configure Hostname Resolution
@@ -121,16 +128,17 @@ The SWPM wizard will guide you through:
 2. Specifying the HANA database connection
 3. Configuring the ASCS instance
 4. Setting up the Primary Application Server
-5. Loading the initial data
+5. Performing the database load
 
 ## Step 5: Post-Installation Verification
 
 ```bash
 # Check SAP processes on the application server
-sudo su - sidadm -c 'sapcontrol -nr 00 -function GetProcessList'
+sid=s4h  # lower-case SAP system ID
+sudo su - "${sid}adm" -c 'sapcontrol -nr 00 -function GetProcessList'
 
 # Verify the HANA connection
-sudo su - sidadm -c 'R3trans -d'
+sudo su - "${sid}adm" -c 'R3trans -d'
 
 # Check the SAP system in transaction SM51
 # Log in to SAP GUI or Fiori launchpad to verify
@@ -139,14 +147,12 @@ sudo su - sidadm -c 'R3trans -d'
 ## Step 6: Configure Web Dispatcher for Fiori
 
 ```bash
-# The Web Dispatcher configuration for S/4HANA Fiori
-sudo su - sidadm
-
 # Edit the Web Dispatcher profile
-cat <<'PROFILE' >> /usr/sap/SID/SYS/profile/SID_W00_s4app
+sudo tee -a /usr/sap/<SID>/SYS/profile/<SID>_W00_s4app > /dev/null <<'PROFILE'
 # Fiori Launchpad settings
-icm/HTTP/redirect_0 = PREFIX=/, FROM=*, FROMPROT=http, TOPROT=https, TOPORT=44300
-wdisp/system_0 = SID=SID, MSHOST=s4app, MSPORT=3600, APTS=1
+icm/server_port_0 = PROT=HTTPS, PORT=44300
+icm/HTTP/redirect_0 = PREFIX=/, FROM=*, FROMPROT=http, PROT=https, HOST=s4app, PORT=44300
+wdisp/system_0 = SID=<SID>, MSHOST=s4app, MSPORT=8100, SRCSRV=*:44300
 PROFILE
 ```
 
@@ -159,6 +165,7 @@ sudo firewall-cmd --permanent --add-port=3300/tcp    # RFC
 sudo firewall-cmd --permanent --add-port=8000/tcp    # ICM HTTP
 sudo firewall-cmd --permanent --add-port=44300/tcp   # ICM HTTPS
 sudo firewall-cmd --permanent --add-port=3600/tcp    # Message Server
+sudo firewall-cmd --permanent --add-port=8100/tcp    # Message Server HTTP
 sudo firewall-cmd --reload
 ```
 
