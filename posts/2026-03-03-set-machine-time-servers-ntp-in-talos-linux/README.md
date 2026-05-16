@@ -14,7 +14,7 @@ This post walks through how to configure NTP time servers in Talos Linux, why it
 
 ## Default Time Synchronization
 
-Out of the box, Talos Linux uses `pool.ntp.org` as its default time server. For many deployments, this works fine. The NTP pool project provides a large collection of volunteer-run time servers distributed around the world, and your nodes will automatically connect to the geographically closest ones.
+Out of the box, Talos Linux uses `time.cloudflare.com` as its default time server. For many deployments, this works fine. Cloudflare's time service is anycast, has good IPv6 support, and tends to be low-latency from most networks.
 
 However, there are good reasons to override the default:
 
@@ -39,7 +39,7 @@ machine:
       - pool.ntp.org
 ```
 
-The `servers` field takes a list of NTP server hostnames or IP addresses. Talos will try them in order and use the first one that responds. Having multiple servers provides redundancy - if one server is unreachable, Talos falls back to the next one.
+The `servers` field takes a list of NTP server hostnames or IP addresses. Talos will use the configured servers to synchronize time, and having multiple servers provides redundancy - if one server is unreachable, Talos can still sync from the others.
 
 ## Applying the Configuration
 
@@ -129,14 +129,14 @@ talosctl logs timed --nodes 192.168.1.10
 
 The logs will show which NTP server was contacted and whether synchronization was successful. You should see messages indicating successful time adjustments.
 
-You can also check the current time on a node:
+You can also query an NTP server from the node to confirm reachability:
 
 ```bash
-# View current node time
+# Query an NTP server from the node (defaults to pool.ntp.org)
 talosctl time --nodes 192.168.1.10
 ```
 
-Compare this with your local machine's time or a known-accurate time source. They should match within a few milliseconds.
+This reports the node's clock alongside the NTP server's time. They should match within a few milliseconds.
 
 ## Why Time Accuracy Matters for Kubernetes
 
