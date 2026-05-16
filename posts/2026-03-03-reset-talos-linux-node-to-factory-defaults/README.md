@@ -71,7 +71,7 @@ A graceful reset does the following in order:
 3. Leaves the etcd cluster (for control plane nodes)
 4. Stops all services
 5. Wipes the STATE and EPHEMERAL partitions
-6. Reboots into maintenance mode
+6. Shuts the node down (or reboots into maintenance mode if `--reboot` is passed)
 
 This is the recommended approach when the node is still healthy and connected to the cluster.
 
@@ -94,7 +94,7 @@ A non-graceful reset skips the drain and etcd leave steps. It immediately stops 
 By default, the reset wipes both the STATE and EPHEMERAL partitions. You can control which partitions are wiped:
 
 ```bash
-# Reset and specify which system disk to target
+# Reset and specify which system disk partitions to wipe by label
 talosctl reset --nodes <node-ip> --system-labels-to-wipe STATE --system-labels-to-wipe EPHEMERAL
 ```
 
@@ -120,11 +120,11 @@ After the reset, you can choose whether the node reboots or shuts down:
 # Reset and reboot into maintenance mode
 talosctl reset --nodes <node-ip> --reboot
 
-# Reset and shut down instead of rebooting
-talosctl reset --nodes <node-ip> --shutdown
+# Reset and shut down instead of rebooting (default behavior)
+talosctl reset --nodes <node-ip>
 ```
 
-The `--reboot` option is the default. The node will come back up in maintenance mode, ready to accept a new configuration. The `--shutdown` option powers the node off after wiping, which is useful for decommissioning.
+By default, `--reboot` is `false`, so the node powers off after wiping, which is useful for decommissioning. Pass `--reboot` to have the node come back up in maintenance mode, ready to accept a new configuration.
 
 ## Resetting Multiple Nodes
 
@@ -155,7 +155,7 @@ Use `--graceful=false` for control plane nodes during a full teardown because th
 
 ## What Happens After Reset
 
-After the reset completes and the node reboots, it enters maintenance mode. In this state:
+After the reset completes and the node comes back up (either after a reboot with `--reboot` or after you power it on following the default shutdown), it enters maintenance mode. In this state:
 
 - The Talos API is listening but only accepts configuration apply requests
 - No Kubernetes components are running
