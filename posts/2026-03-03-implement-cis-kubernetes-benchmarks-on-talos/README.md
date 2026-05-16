@@ -119,7 +119,7 @@ Apply this configuration with talosctl:
 
 ```bash
 # Apply the API server configuration patch
-talosctl apply-config --nodes <control-plane-ip> --patch @talos-patch-apiserver.yaml
+talosctl patch mc --nodes <control-plane-ip> --patch @talos-patch-apiserver.yaml
 ```
 
 ## Setting Up Encryption at Rest
