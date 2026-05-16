@@ -22,19 +22,19 @@ The system relies on several components working together: the Talos discovery se
 
 The discovery service is the starting point for KubeSpan. Before nodes can establish WireGuard tunnels, they need to know about each other. The discovery service handles this.
 
-By default, Talos uses a public discovery service hosted at `https://discovery.talos.dev`. Each cluster registers with a unique cluster ID derived from the cluster's secrets. Nodes periodically announce their presence and endpoints to the discovery service and retrieve information about other nodes.
+By default, Talos uses a public discovery service hosted at `https://discovery.talos.dev`. Each cluster registers with a unique cluster ID generated as part of the cluster secrets. Nodes periodically announce their presence and endpoints to the discovery service and retrieve information about other nodes.
 
 ```bash
-# View discovery members from a node
+# View discovered affiliates from a node
 
-talosctl get discoveredmembers --nodes <node-ip>
+talosctl get affiliates --nodes <node-ip>
 
-# Output shows each cluster member and their endpoints
-# NODE           NAMESPACE   TYPE               ID          VERSION   ADDRESSES
-# 192.168.1.10   cluster     DiscoveredMember   <id>        1         ["192.168.1.20:51820"]
+# Output shows discovered potential cluster members and their addresses
+# ID                                             VERSION   HOSTNAME                       MACHINE TYPE   ADDRESSES
+# 2VfX3nu67ZtZPl57IdJrU87BMjVWkSBJiL9ulP9TCnF    2         talos-default-controlplane-2   controlplane   ["172.20.0.3","fd83:b1f7:fcb5:2802:986b:7eff:fec5:889d"]
 ```
 
-The discovery data is encrypted end-to-end. The discovery service itself cannot read the endpoint information because it is encrypted with keys derived from the cluster's trust domain. This means even if someone compromised the discovery service, they could not learn your cluster's topology.
+The discovery data is encrypted end-to-end. The discovery service itself cannot read the node information because it does not have the cluster's encryption key. This means even if someone compromised the discovery service, they could not read the decrypted cluster topology.
 
 ### WireGuard Integration
 
@@ -42,20 +42,22 @@ WireGuard is the transport layer for KubeSpan. Each node generates a WireGuard k
 
 ```bash
 # View the KubeSpan identity (includes the WireGuard public key)
-talosctl get kubespanidentity --nodes <node-ip>
+talosctl get kubespanidentities --nodes <node-ip> -o yaml
 
 # Output:
-# NODE           NAMESPACE   TYPE               ID          VERSION   PUBLIC KEY
-# 192.168.1.10   network     KubeSpanIdentity   kubespan    1         <base64-encoded-public-key>
+# spec:
+#   address: fd83:b1f7:fcb5:2802:8c13:71ff:feaf:7c94/128
+#   subnet: fd83:b1f7:fcb5:2802::/64
+#   publicKey: <base64-encoded-public-key>
 ```
 
-Talos creates a WireGuard network interface called `kubespan` on each node. This interface has an IP address from a special subnet used only for KubeSpan:
+Talos creates a WireGuard network interface called `kubespan` on each node. This interface has a unique IPv6 address from a cluster-specific ULA prefix used for KubeSpan:
 
 ```bash
 # View the KubeSpan interface and its address
 talosctl get addresses --nodes <node-ip> | grep kubespan
 
-# The KubeSpan address is derived from the node's WireGuard public key
+# The KubeSpan address is shown on the kubespan interface
 ```
 
 ### The Controller Runtime
@@ -64,9 +66,9 @@ The intelligence behind KubeSpan lives in several controllers within the Talos r
 
 The KubeSpan Identity Controller generates and manages the WireGuard identity for the node. It creates the keypair and publishes the identity resource that other components use.
 
-The KubeSpan Manager Controller is the main orchestrator. It watches for discovered members, creates WireGuard peer configurations, and manages the WireGuard interface. When a new node is discovered, this controller adds it as a WireGuard peer. When a node disappears, it removes the peer.
+The KubeSpan Peer Spec Controller watches discovered affiliates and creates WireGuard peer specifications. The KubeSpan Manager Controller manages the WireGuard interface from those peer specifications. When a new node is discovered, it is added as a WireGuard peer. When a node disappears, the peer specification is removed.
 
-The KubeSpan Endpoint Controller manages endpoint resolution. It determines which IP addresses and ports to use when connecting to a peer. If a peer has multiple endpoints (for example, both a public and private IP), this controller handles endpoint selection and rotation.
+The KubeSpan Endpoint Controller harvests additional working endpoints from peer status when endpoint harvesting is enabled. If a peer has multiple endpoints (for example, both a public and private IP), Talos cycles through available endpoints until it finds one that works.
 
 ```bash
 # View controller logs related to KubeSpan
@@ -92,7 +94,7 @@ KubeSpan manages routes on each node to direct traffic through the WireGuard mes
 
 When `advertiseKubernetesNetworks` is `false` (the default), KubeSpan only routes traffic destined for other nodes' KubeSpan addresses through the mesh. Regular pod-to-pod traffic uses the CNI's normal routing.
 
-When `advertiseKubernetesNetworks` is `true`, KubeSpan also adds routes for the pod CIDR and service CIDR. This means all inter-node pod traffic goes through the WireGuard tunnels:
+When `advertiseKubernetesNetworks` is `true`, KubeSpan advertises Kubernetes pod networks from the node, and Talos can route inter-node pod traffic through the WireGuard tunnels instead of relying on the CNI's node-to-node encapsulation:
 
 ```bash
 # Check routes related to KubeSpan
@@ -112,29 +114,29 @@ fd7a:115c:a1e0::/48 via kubespan  # KubeSpan address space
 
 ## Peer State Machine
 
-Each KubeSpan peer goes through several states:
+Each KubeSpan peer status uses one of three states:
 
 ```text
-Unknown -> Establishing -> Up -> (Down -> Establishing -> Up)
+unknown -> up -> down
 ```
 
 The peer status resource tracks the current state:
 
 ```bash
 # View peer states
-talosctl get kubespanpeerstatus --nodes <node-ip>
+talosctl get kubespanpeerstatuses --nodes <node-ip>
 
 # Detailed peer status
-talosctl get kubespanpeerstatus --nodes <node-ip> -o yaml
+talosctl get kubespanpeerstatuses --nodes <node-ip> -o yaml
 ```
 
-A peer is considered `up` when WireGuard has completed its handshake and traffic can flow. A peer transitions to `down` when no handshake has been received within a timeout period (typically two minutes). The controller then retries connection using alternative endpoints if available.
+A peer is considered `up` when there is a recent WireGuard handshake from the peer. A peer is `down` when there is no recent handshake. The controller then cycles through alternative endpoints if available, and peer status information is updated every 30 seconds.
 
 ## Endpoint Selection
 
 Nodes can have multiple network endpoints. For example, a node in a cloud environment might have a private IP (10.0.1.5) and a public IP (203.0.113.10). KubeSpan advertises all available endpoints through the discovery service.
 
-When establishing a connection, the endpoint controller tries each endpoint in order. If the first endpoint fails (for example, the private IP is not routable from the connecting node), it moves to the next one. This is how KubeSpan supports mixed environments where some nodes can reach each other directly and others need to use public endpoints.
+When establishing a connection, Talos cycles through available endpoints. If one endpoint fails (for example, the private IP is not routable from the connecting node), it can move to another one. This is how KubeSpan supports mixed environments where some nodes can reach each other directly and others need to use public endpoints.
 
 ```yaml
 # You can filter which endpoints are advertised
@@ -144,21 +146,22 @@ machine:
       enabled: true
       filters:
         endpoints:
+          - "0.0.0.0/0"         # Advertise IPv4 addresses
           - "!10.0.0.0/8"      # Do not advertise private IPs
-          - "0.0.0.0/0"         # Advertise everything else
+          - "::/0"              # Advertise IPv6 addresses
 ```
 
 ## Security Model
 
-KubeSpan's security model is built on several layers. WireGuard provides authenticated encryption using Curve25519 for key exchange, ChaCha20Poly1305 for data encryption, and BLAKE2s for hashing. The discovery service data is encrypted end-to-end using the cluster's trust domain keys, so the discovery service operator cannot see peer information. Node identity is tied to the cluster membership, so only nodes that are part of the cluster can establish KubeSpan tunnels.
+KubeSpan's security model is built on several layers. WireGuard provides authenticated encryption using Curve25519 for key exchange, ChaCha20-Poly1305 for authenticated data encryption, and BLAKE2s for hashing. The discovery service data is encrypted end-to-end using cluster discovery secrets, so the discovery service operator cannot see peer information. Node identity is tied to cluster discovery data, so only nodes that share the cluster discovery credentials can publish and consume the KubeSpan information needed to establish tunnels.
 
 The trust chain looks like this:
 
 ```text
-Cluster CA -> Node Certificate -> KubeSpan Identity -> WireGuard Tunnel
+Cluster discovery secrets -> KubeSpan Identity -> WireGuard Tunnel
 ```
 
-A node cannot participate in the KubeSpan mesh without being a valid member of the cluster. This is fundamentally different from manually setting up WireGuard, where any node with the right keys can connect.
+A node cannot participate in the KubeSpan mesh without the cluster discovery credentials and KubeSpan peer data. This is fundamentally different from manually setting up WireGuard, where any node with the right keys can connect.
 
 ## Performance Considerations
 
