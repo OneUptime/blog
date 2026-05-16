@@ -98,12 +98,13 @@ spec:
       hostNetwork: true
       containers:
       - name: node-exporter
-        image: prom/node-exporter:v1.7.0
+        image: quay.io/prometheus/node-exporter:v1.11.1
         args:
         - '--path.procfs=/host/proc'
         - '--path.sysfs=/host/sys'
         - '--path.rootfs=/host/root'
-        - '--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/kubelet/.+)($|/)'
+        - '--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|run/containerd/.+|var/lib/kubelet/.+|var/lib/containerd/.+|system)($|/)'
+        - '--collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|erofs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs|tmpfs)$'
         - '--collector.netclass.ignored-devices=^(veth.*)$'
         ports:
         - containerPort: 9100
@@ -193,8 +194,8 @@ Exclude Talos-specific mount points that are not relevant:
 
 ```yaml
 args:
-- '--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/kubelet/.+|var/lib/containerd/.+|system)($|/)'
-- '--collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs|tmpfs)$'
+- '--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|run/containerd/.+|var/lib/kubelet/.+|var/lib/containerd/.+|system)($|/)'
+- '--collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|erofs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs|tmpfs)$'
 ```
 
 ## Configuring Prometheus to Scrape Node Exporter
