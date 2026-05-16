@@ -184,10 +184,10 @@ spec:
           annotations:
             summary: "etcd proposal failures indicate possible partition"
 
-        # Detect when etcd members disagree on the leader
+        # Detect when more than one etcd member reports itself as leader
         - alert: EtcdLeaderDisagreement
           expr: |
-            count(count by (leader_id) (etcd_server_is_leader == 0)) > 1
+            count(etcd_server_is_leader == 1) > 1
           labels:
             severity: critical
           annotations:
