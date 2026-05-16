@@ -55,10 +55,10 @@ sleep 30
 
 # SSH into the server and write the Talos image to disk
 ssh root@${BUILDER_IP} << 'REMOTEOF'
-# Download the Talos image for Hetzner (nocloud variant)
-curl -LO https://github.com/siderolabs/talos/releases/download/v1.7.0/nocloud-amd64.raw.xz
+# Download the Talos image for Hetzner (hcloud variant)
+curl -LO https://github.com/siderolabs/talos/releases/download/v1.7.0/hcloud-amd64.raw.xz
 # Write directly to the primary disk
-xz -d -c nocloud-amd64.raw.xz | dd of=/dev/sda bs=4M status=progress
+xz -d -c hcloud-amd64.raw.xz | dd of=/dev/sda bs=4M status=progress
 sync
 REMOTEOF
 
@@ -111,19 +111,16 @@ hcloud load-balancer create \
 hcloud load-balancer attach-to-network talos-lb \
   --network talos-network
 
-# Add a service for the Kubernetes API
+# Add a service for the Kubernetes API with a health check
 hcloud load-balancer add-service talos-lb \
   --protocol tcp \
   --listen-port 6443 \
-  --destination-port 6443
-
-# Add a health check
-hcloud load-balancer update-health-check talos-lb \
-  --protocol tcp \
-  --port 6443 \
-  --interval 10 \
-  --timeout 5 \
-  --retries 3
+  --destination-port 6443 \
+  --health-check-protocol tcp \
+  --health-check-port 6443 \
+  --health-check-interval 10 \
+  --health-check-timeout 5 \
+  --health-check-retries 3
 
 # Get the load balancer IP
 LB_IP=$(hcloud load-balancer describe talos-lb -o json | jq -r '.public_net.ipv4.ip')
