@@ -37,7 +37,7 @@ A healthy routing table should have at least:
 
 - A default route (0.0.0.0/0) pointing to your gateway
 - A route for the local subnet
-- Routes for the pod and service CIDRs (added by the CNI and kube-proxy)
+- Routes for pod CIDRs when your CNI exposes them in the host routing table. Kubernetes Service CIDRs are handled by kube-proxy rules rather than normal Linux routes.
 
 If the default route is missing, the node cannot reach anything outside its local network. This is the most common cause of "no route to host" for external destinations.
 
@@ -78,7 +78,7 @@ If you have a default route but it points to an unreachable gateway, you will ge
 
 ```bash
 # Check the gateway from the route output
-talosctl -n <node-ip> get routes | grep default
+talosctl -n <node-ip> get routes | grep "0.0.0.0/0"
 ```
 
 Verify that the gateway IP is actually reachable. You can check this indirectly by looking at the ARP table:
@@ -120,10 +120,10 @@ If pods can reach other pods but not external services, the issue may be with NA
 
 ```bash
 # Check if the flannel DaemonSet is running
-kubectl -n kube-system get pods -l app=flannel
+kubectl -n kube-system get pods -l k8s-app=flannel
 
 # Check flannel logs for routing issues
-kubectl -n kube-system logs -l app=flannel --tail=50
+kubectl -n kube-system logs -l k8s-app=flannel --tail=50
 ```
 
 If pods cannot reach external services, check whether IP masquerading is enabled. Flannel should handle this automatically, but misconfigurations can break it.
@@ -145,7 +145,7 @@ Each node should have routes to the pod CIDRs of all other nodes. If these route
 
 ```bash
 # Restart flannel
-kubectl -n kube-system rollout restart daemonset kube-flannel-ds
+kubectl -n kube-system rollout restart daemonset kube-flannel
 ```
 
 ## Step 7: Service CIDR Routing
@@ -209,7 +209,7 @@ When you cannot figure out where packets are going wrong, capture them:
 
 ```bash
 # Capture packets on the primary interface
-talosctl -n <node-ip> pcap --interface eth0 --duration 30s > capture.pcap
+talosctl -n <node-ip> pcap --interface eth0 --duration 30s --output capture.pcap
 
 # Analyze with Wireshark or tcpdump
 tcpdump -r capture.pcap host <destination-ip>
