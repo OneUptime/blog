@@ -34,8 +34,16 @@ Before starting, make sure you have:
 
 ```bash
 # Install talosctl on your workstation
+TALOS_VERSION=v1.9.0
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
+[ "$ARCH" = "x86_64" ] && ARCH=amd64
+[ "$ARCH" = "aarch64" ] && ARCH=arm64
 
-curl -sL https://talos.dev/install | sh
+curl -Lo talosctl \
+  "https://github.com/siderolabs/talos/releases/download/${TALOS_VERSION}/talosctl-${OS}-${ARCH}"
+chmod +x talosctl
+sudo mv talosctl /usr/local/bin/
 
 # Verify
 talosctl version --client
@@ -59,7 +67,8 @@ Download the Talos Linux ISO and write it to a USB drive:
 
 ```bash
 # Download the Talos Linux ISO for x86_64
-wget https://github.com/siderolabs/talos/releases/download/v1.9.0/metal-amd64.iso
+TALOS_VERSION=v1.9.0
+wget "https://github.com/siderolabs/talos/releases/download/${TALOS_VERSION}/metal-amd64.iso"
 
 # Write the ISO to a USB drive
 # Find your USB device
@@ -173,7 +182,7 @@ Three Intel NUCs make a solid high-availability Kubernetes cluster. Here is how 
 # Generate config with an HA endpoint
 # Use a virtual IP or load balancer address
 talosctl gen config nuc-cluster https://192.168.1.100:6443 \
-  --config-patch '[{"op": "add", "path": "/machine/network/interfaces/0/vip", "value": {"ip": "192.168.1.100"}}]'
+  --config-patch-control-plane '{"machine":{"network":{"interfaces":[{"interface":"eno1","dhcp":true,"vip":{"ip":"192.168.1.100"}}]}}}'
 
 # Flash all three NUCs with Talos Linux via USB
 # Boot them and note their IPs
@@ -231,7 +240,7 @@ machine:
 
 If the NUC does not boot from USB, check that the BIOS boot order is correct and that Legacy Boot or UEFI boot mode matches what the Talos ISO expects. Modern Talos Linux images support UEFI boot, which is what most NUCs use.
 
-If Talos installs but the NUC boots into a blank screen after removing the USB drive, check that the install disk path in your configuration matches the actual SSD device. Use `talosctl disks` while booted from USB to see available disks.
+If Talos installs but the NUC boots into a blank screen after removing the USB drive, check that the install disk path in your configuration matches the actual SSD device. Use `talosctl get disks --insecure --nodes <NUC_IP>` while booted from USB to see available disks.
 
 For network issues, Intel NUCs use Intel Ethernet controllers that are well-supported by the Linux kernel. If you have connectivity problems, check physical connections and DHCP server configuration first.
 
