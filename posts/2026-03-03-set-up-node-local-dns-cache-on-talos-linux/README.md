@@ -116,6 +116,7 @@ data:
             force_tcp
         }
         prometheus :9253
+        health 169.254.20.10:8080
     }
     in-addr.arpa:53 {
         errors
@@ -184,7 +185,7 @@ spec:
       priorityClassName: system-node-critical
       containers:
       - name: node-cache
-        image: registry.k8s.io/dns/k8s-dns-node-cache:1.23.0
+        image: registry.k8s.io/dns/k8s-dns-node-cache:1.26.8
         resources:
           requests:
             cpu: 25m
@@ -244,7 +245,7 @@ spec:
           name: node-local-dns
 ```
 
-Create an upstream service for CoreDNS that bypasses iptables:
+Create an upstream service for CoreDNS:
 
 ```yaml
 # kube-dns-upstream.yaml
@@ -284,20 +285,20 @@ You need to tell pods to use 169.254.20.10 instead of the default ClusterDNS IP.
 
 ```yaml
 # talos-kubelet-dns-patch.yaml
-machine:
-  kubelet:
-    clusterDNS:
-      - 169.254.20.10
+- op: add
+  path: /machine/kubelet/clusterDNS
+  value:
+    - 169.254.20.10
 ```
 
 Apply to all nodes:
 
 ```bash
 talosctl patch machineconfig --nodes 10.0.0.10,10.0.0.11,10.0.0.12 \
-    --patch-file talos-kubelet-dns-patch.yaml
+    --patch @talos-kubelet-dns-patch.yaml
 
 talosctl patch machineconfig --nodes 10.0.0.20,10.0.0.21 \
-    --patch-file talos-kubelet-dns-patch.yaml
+    --patch @talos-kubelet-dns-patch.yaml
 ```
 
 After applying, new pods will use 169.254.20.10 as their DNS server. Existing pods will continue using the old DNS IP until they are restarted.
@@ -344,6 +345,23 @@ kubectl run dns-test --rm -it --restart=Never --image=alpine -- sh -c '
 NodeLocal DNSCache exposes Prometheus metrics on port 9253:
 
 ```yaml
+# Headless Service for NodeLocal DNS metrics
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-local-dns
+  namespace: kube-system
+  labels:
+    k8s-app: node-local-dns
+spec:
+  clusterIP: None
+  ports:
+  - name: metrics
+    port: 9253
+    targetPort: 9253
+  selector:
+    k8s-app: node-local-dns
+---
 # ServiceMonitor for NodeLocal DNS
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
