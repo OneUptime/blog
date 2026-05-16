@@ -31,7 +31,7 @@ Talos supports two discovery backends that can be used independently or together
 
 The default discovery backend uses a centralized discovery service hosted by Sidero Labs at https://discovery.talos.dev. Nodes register with this service using a cluster-specific identifier, and the service helps them find each other.
 
-The discovery service does not receive any sensitive information. It only sees encrypted endpoint data and cluster IDs. The actual connection details are encrypted with keys derived from the cluster's trust bundle, so even the discovery service operator cannot read them.
+The discovery service does not receive any sensitive information. It only sees encrypted affiliate data, encrypted endpoint data, and cluster IDs. Only cluster members have the encryption material needed to decrypt the discovery data, so even the discovery service operator cannot read the actual node information.
 
 ```yaml
 # Machine config: using the discovery service (default)
@@ -48,7 +48,7 @@ cluster:
 
 The second backend uses Kubernetes itself as a discovery registry. Nodes register their endpoints as annotations on their Kubernetes Node objects. Other nodes read these annotations to discover peers.
 
-This approach keeps all discovery data within your cluster and does not require external connectivity. However, it only works after Kubernetes is running, so it cannot help with initial cluster formation.
+This approach keeps all discovery data within your cluster and does not require external connectivity. However, it only works after Kubernetes is running, so it cannot help with initial cluster formation. The Kubernetes registry is also deprecated in current Talos releases because Kubernetes 1.32 and later restrict Node resource read access in the default configuration in a way that prevents this registry from functioning correctly.
 
 ```yaml
 # Machine config: using Kubernetes-based discovery
@@ -67,10 +67,10 @@ cluster:
 The discovery process follows these steps:
 
 1. A node boots and reads its machine configuration
-2. The node generates a discovery identity based on the cluster's trust bundle
+2. The node loads its unique node identity and cluster discovery credentials
 3. The node registers itself with the configured discovery backend(s)
 4. The node queries the backend for other members with the same cluster identity
-5. Discovered members are verified using the cluster's PKI
+5. Affiliates with matching cluster credentials are confirmed as members
 6. The node maintains a list of known peers and continuously updates it
 
 ```bash
@@ -88,16 +88,16 @@ The output of `get members` shows all nodes that the current node has discovered
 
 ## The Cluster Identity
 
-Each Talos cluster has a unique identity derived from its trust bundle (certificates and tokens). When a node registers with a discovery backend, it uses this identity to associate itself with the correct cluster.
+Each Talos cluster has a unique cluster ID and secret generated as part of the cluster secrets in the machine configuration. When a node registers with a discovery backend, it uses these values to associate itself with the correct cluster.
 
-This means that even if multiple Talos clusters use the same discovery service, they will not see each other's nodes. The cluster identity acts as a namespace that separates clusters.
+This means that even if multiple Talos clusters use the same discovery service, they will not see or decrypt each other's node information. The cluster ID separates clusters, and the cluster secret is part of the discovery encryption material.
 
 ```bash
-# View the cluster identity
-talosctl -n 10.0.0.11 get clusterid
+# View the cluster ID from the machine configuration
+talosctl -n 10.0.0.11 get machineconfig v1alpha1 -o jsonpath='{.spec.cluster.id}'
 
-# The cluster ID is derived from the cluster CA certificate
-# It is the same for all nodes in the cluster
+# The cluster ID is generated with the cluster secrets
+# It should be the same for all nodes in the cluster
 ```
 
 ## Discovery and KubeSpan
@@ -131,7 +131,7 @@ talosctl -n 10.0.0.11 get kubespanpeerspecs
 talosctl -n 10.0.0.11 get kubespanpeerstatuses
 
 # Check WireGuard interface
-talosctl -n 10.0.0.11 get links kubespan
+talosctl -n 10.0.0.11 get links | grep -i kubespan
 ```
 
 ## Discovery in Air-Gapped Environments
@@ -140,14 +140,11 @@ If your cluster runs in an air-gapped environment without internet access, you c
 
 ### Self-Hosted Discovery Service
 
-You can run your own instance of the discovery service inside your network.
+You can run a private instance of the discovery service inside your network if you have access to Sidero Labs' self-hosted discovery service distribution.
 
 ```bash
-# Run the discovery service container
-docker run -d \
-  --name talos-discovery \
-  -p 443:443 \
-  ghcr.io/siderolabs/discovery-service:latest
+# Deploy the private discovery service according to Sidero Labs' release instructions,
+# then expose it at a reachable HTTPS endpoint.
 ```
 
 ```yaml
@@ -196,7 +193,7 @@ When nodes cannot discover each other, here is how to diagnose the problem.
 
 ```bash
 # Verify discovery is enabled
-talosctl -n 10.0.0.11 get machineconfig -o yaml | grep -A10 "discovery"
+talosctl -n 10.0.0.11 get machineconfig v1alpha1 -o yaml | grep -A10 "discovery"
 
 # List discovered members
 talosctl -n 10.0.0.11 get members
@@ -211,14 +208,14 @@ All nodes in a cluster must share the same cluster identity. If they do not, the
 
 ```bash
 # Compare cluster IDs across nodes
-talosctl -n 10.0.0.11 get clusterid
-talosctl -n 10.0.0.12 get clusterid
+talosctl -n 10.0.0.11 get machineconfig v1alpha1 -o jsonpath='{.spec.cluster.id}'
+talosctl -n 10.0.0.12 get machineconfig v1alpha1 -o jsonpath='{.spec.cluster.id}'
 # These should match
 ```
 
 ### Check Network Connectivity
 
-Nodes need network access to the discovery service (or to each other for Kubernetes-based discovery).
+Nodes need network access to the discovery service, or to the Kubernetes API server for Kubernetes-based discovery.
 
 ```bash
 # Check if the discovery service is reachable
@@ -228,25 +225,25 @@ talosctl -n 10.0.0.11 netstat | grep discovery
 talosctl -n 10.0.0.11 get resolvers
 ```
 
-### Review Certificates
+### Review Cluster Credentials
 
-Discovery uses the cluster's PKI for verification. Expired or mismatched certificates will cause discovery failures.
+Discovery depends on nodes sharing the same cluster ID and secret. Certificate problems can still affect `talosctl` access and the Kubernetes registry, so check certificates separately when API access is failing.
 
 ```bash
-# Check certificate status
-talosctl -n 10.0.0.11 get certificate -o yaml
+# Check Kubernetes dynamic certificate status on a control plane node
+talosctl -n 10.0.0.11 get KubernetesDynamicCerts -o yaml
 ```
 
 ## Discovery Security
 
 The discovery mechanism is designed with security in mind.
 
-Node identities are verified using the cluster's CA. A rogue node cannot join the discovery group without a valid certificate signed by the cluster CA.
+Nodes must have the cluster ID and secret to participate in the discovery group and decrypt discovery data. A rogue node without those credentials cannot read the cluster's discovery information.
 
-Data sent to the external discovery service is encrypted. The service sees only opaque blobs that it cannot decrypt. Only nodes with the cluster's trust bundle can decrypt the discovery data.
+Data sent to the external discovery service is encrypted. The service sees only opaque blobs that it cannot decrypt. Only nodes with the cluster's discovery credentials can decrypt the discovery data.
 
 The Kubernetes-based registry stores data as annotations on Node objects, which are protected by Kubernetes RBAC.
 
 ## Conclusion
 
-Cluster discovery in Talos Linux automates the process of nodes finding each other. The dual-backend approach - with both an external service and Kubernetes-based registry - provides flexibility for different deployment scenarios. For internet-connected clusters, the default Sidero Labs discovery service works out of the box. For air-gapped environments, you can self-host the service or rely on Kubernetes-only discovery. Combined with KubeSpan, discovery enables automatic mesh networking across complex network topologies. Understanding how discovery works helps you configure it correctly for your environment and troubleshoot issues when nodes fail to find each other.
+Cluster discovery in Talos Linux automates the process of nodes finding each other. The dual-backend approach - with both an external service and Kubernetes-based registry - provides flexibility for different deployment scenarios, although the Kubernetes registry is deprecated in current Talos releases. For internet-connected clusters, the default Sidero Labs discovery service works out of the box. For air-gapped environments, you can run a private discovery service if available to your organization or rely on Kubernetes-only discovery with the compatibility caveat above. Combined with KubeSpan, discovery enables automatic mesh networking across complex network topologies. Understanding how discovery works helps you configure it correctly for your environment and troubleshoot issues when nodes fail to find each other.
