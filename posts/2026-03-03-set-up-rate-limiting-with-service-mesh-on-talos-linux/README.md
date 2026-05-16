@@ -33,8 +33,10 @@ You need:
 
 kubectl get pods -n istio-system
 
-# Deploy a test application
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/httpbin/httpbin.yaml
+# Enable automatic sidecar injection and deploy test applications
+kubectl label namespace default istio-injection=enabled --overwrite
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/httpbin/httpbin.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/sleep/sleep.yaml
 ```
 
 ## Local Rate Limiting with Envoy
@@ -96,9 +98,8 @@ This limits each pod to 100 requests per 60 seconds. Apply and test:
 kubectl apply -f local-rate-limit.yaml
 
 # Send requests rapidly to trigger the rate limit
-for i in $(seq 1 200); do
-  curl -s -o /dev/null -w "%{http_code} " http://httpbin.default.svc.cluster.local/get
-done
+kubectl exec deploy/sleep -c sleep -- sh -c \
+  'for i in $(seq 1 200); do curl -s -o /dev/null -w "%{http_code} " http://httpbin.default.svc.cluster.local:8000/get; done'
 ```
 
 You should see 200 responses for the first ~100 requests and 429 (Too Many Requests) after that.
@@ -128,20 +129,33 @@ spec:
     spec:
       containers:
       - name: ratelimit
-        image: envoyproxy/ratelimit:latest
+        image: docker.io/envoyproxy/ratelimit:30a4ce1a
+        command: ["/bin/ratelimit"]
         ports:
         - containerPort: 8080
         - containerPort: 8081
         - containerPort: 6070
         env:
+        - name: LOG_LEVEL
+          value: debug
+        - name: USE_STATSD
+          value: "false"
         - name: RUNTIME_ROOT
           value: /data
         - name: RUNTIME_SUBDIRECTORY
           value: ratelimit
+        - name: RUNTIME_WATCH_ROOT
+          value: "false"
+        - name: RUNTIME_IGNOREDOTFILES
+          value: "true"
         - name: REDIS_SOCKET_TYPE
           value: tcp
         - name: REDIS_URL
-          value: redis.default.svc.cluster.local:6379
+          value: redis:6379
+        - name: HOST
+          value: "::"
+        - name: GRPC_HOST
+          value: "::"
         volumeMounts:
         - name: config
           mountPath: /data/ratelimit/config
@@ -261,6 +275,8 @@ spec:
         filterChain:
           filter:
             name: envoy.filters.network.http_connection_manager
+            subFilter:
+              name: envoy.filters.http.router
     patch:
       operation: INSERT_BEFORE
       value:
@@ -273,7 +289,31 @@ spec:
             grpc_service:
               envoy_grpc:
                 cluster_name: outbound|8081||ratelimit.default.svc.cluster.local
+                authority: ratelimit.default.svc.cluster.local
             transport_api_version: V3
+  - applyTo: HTTP_ROUTE
+    match:
+      context: SIDECAR_INBOUND
+      routeConfiguration:
+        vhost:
+          name: "inbound|http|8000"
+          route:
+            action: ANY
+    patch:
+      operation: MERGE
+      value:
+        route:
+          rate_limits:
+          - actions:
+            - remote_address: {}
+          - actions:
+            - request_headers:
+                header_name: ":path"
+                descriptor_key: "path"
+          - actions:
+            - request_headers:
+                header_name: "x-user-id"
+                descriptor_key: "user_id"
 ```
 
 ## Rate Limiting by Header
@@ -301,16 +341,14 @@ With the corresponding rate limit configuration:
 ```yaml
 descriptors:
 - key: api_key
+  value: "premium-key-123"
+  rate_limit:
+    unit: minute
+    requests_per_unit: 1000
+- key: api_key
   rate_limit:
     unit: minute
     requests_per_unit: 100
-  descriptors:
-  # Different limits for different API keys
-  - key: api_key
-    value: "premium-key-123"
-    rate_limit:
-      unit: minute
-      requests_per_unit: 1000
 ```
 
 ## Testing Rate Limits
@@ -320,16 +358,13 @@ Verify rate limiting is working:
 ```bash
 # Test local rate limiting
 for i in $(seq 1 150); do
-  STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://httpbin.default.svc.cluster.local/get)
+  STATUS=$(kubectl exec deploy/sleep -c sleep -- curl -s -o /dev/null -w "%{http_code}" http://httpbin.default.svc.cluster.local:8000/get)
   echo "Request $i: $STATUS"
 done
 
 # Test with specific API key
-for i in $(seq 1 50); do
-  curl -s -o /dev/null -w "%{http_code} " \
-    -H "x-api-key: test-key" \
-    http://httpbin.default.svc.cluster.local/get
-done
+kubectl exec deploy/sleep -c sleep -- sh -c \
+  'for i in $(seq 1 50); do curl -s -o /dev/null -w "%{http_code} " -H "x-api-key: test-key" http://httpbin.default.svc.cluster.local:8000/get; done'
 ```
 
 ## Monitoring Rate Limit Activity
