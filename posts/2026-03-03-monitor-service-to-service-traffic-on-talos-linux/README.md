@@ -241,10 +241,10 @@ spec:
 
 ## Distributed Tracing
 
-For deeper visibility into request flows across services, add distributed tracing:
+For deeper visibility into request flows across services, add distributed tracing. Install Jaeger with its OTLP collector enabled so the Linkerd proxy can ship spans to it directly:
 
 ```bash
-# Install Jaeger
+# Install Jaeger (OTLP gRPC is enabled by default on port 4317)
 helm install jaeger jaegertracing/jaeger \
   --namespace monitoring \
   --set provisionDataStore.cassandra=false \
@@ -252,14 +252,16 @@ helm install jaeger jaegertracing/jaeger \
   --set query.service.type=NodePort
 ```
 
-Configure your services to send traces. If using Linkerd, enable trace context propagation:
+Configure the Linkerd proxy to export spans over OTLP to the Jaeger collector. Set the collector endpoint when installing or upgrading Linkerd via Helm:
 
-```yaml
-# Annotate deployments to enable trace propagation
-metadata:
-  annotations:
-    config.linkerd.io/trace-collector: "jaeger-collector.monitoring:14268"
+```bash
+helm upgrade linkerd-control-plane linkerd/linkerd-control-plane \
+  --namespace linkerd \
+  --reuse-values \
+  --set proxy.tracing.collector.endpoint=jaeger-collector.monitoring:4317
 ```
+
+The proxy will then export spans to the Jaeger collector for any request that already carries trace context headers (`b3` or W3C `traceparent`). Your applications still need to initiate traces - the proxy enriches existing traces with span data, but does not generate them on its own. Once spans are flowing, Jaeger's UI will show you end-to-end request flows across all meshed services.
 
 ## Talos Linux Monitoring Tips
 
