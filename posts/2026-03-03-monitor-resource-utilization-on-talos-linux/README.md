@@ -17,7 +17,7 @@ This guide covers the tools, configurations, and metrics you need to effectively
 The talosctl command provides direct access to system information through the Talos API. This is your first line of investigation for any resource utilization questions.
 
 ```bash
-# CPU and memory overview
+# Per-container CPU, memory, and disk stats
 
 talosctl stats --nodes 10.0.0.1
 
@@ -276,7 +276,7 @@ Import these community dashboards for comprehensive visualization:
 
 - Dashboard 1860: Node Exporter Full - Detailed node metrics
 - Dashboard 315: Kubernetes cluster monitoring
-- Dashboard 747: Pod resource usage
+- Dashboard 747: Kubernetes Pod Metrics
 
 ```bash
 # Create a custom dashboard via ConfigMap
