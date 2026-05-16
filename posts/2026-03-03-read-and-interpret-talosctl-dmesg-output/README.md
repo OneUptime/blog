@@ -46,30 +46,32 @@ This is particularly useful when you are actively troubleshooting and want to se
 
 ## Understanding the Output Format
 
-Each line in the dmesg output typically follows this structure:
+Unlike traditional `dmesg` on a regular Linux system, `talosctl dmesg` enriches each kernel message with extra metadata. Every line follows this structure:
 
 ```text
-[timestamp] facility.level: message
+<node>: <facility>: <level>: [<ISO timestamp>]: <message>
 ```
 
 Here is an example of what you might see:
 
 ```text
-[    0.000000] Linux version 6.1.58-talos ...
-[    0.000000] Command line: talos.platform=metal ...
-[    1.234567] ACPI: Core revision 20220331
-[    2.345678] PCI: Using configuration type 1 for base access
-[    5.678901] e1000e 0000:00:1f.6: eth0: Intel(R) PRO/1000 Network Connection
-[   10.123456] EXT4-fs (sda1): mounted filesystem with ordered data mode
+192.168.1.10: kern:    info: [2026-03-03T10:09:37.662764956Z]: Linux version 6.1.58-talos ...
+192.168.1.10: kern:    info: [2026-03-03T10:09:37.662801234Z]: Command line: talos.platform=metal ...
+192.168.1.10: kern:    info: [2026-03-03T10:09:38.897123456Z]: ACPI: Core revision 20220331
+192.168.1.10: kern:    info: [2026-03-03T10:09:40.008234567Z]: PCI: Using configuration type 1 for base access
+192.168.1.10: kern:    info: [2026-03-03T10:09:43.341345678Z]: e1000e 0000:00:1f.6: eth0: Intel(R) PRO/1000 Network Connection
+192.168.1.10: kern:    info: [2026-03-03T10:09:47.786456789Z]: EXT4-fs (sda1): mounted filesystem with ordered data mode
 ```
 
-The timestamp in square brackets indicates seconds since boot. The rest of the line is the actual kernel message.
+The leading address tells you which node the message came from (useful when targeting multiple nodes at once). The facility (usually `kern`) and level (`info`, `warn`, `err`, etc.) come from the kernel's own classification of the message. The bracketed timestamp is a wall-clock ISO 8601 time, not the seconds-since-boot value you would see from a plain `dmesg` on a regular Linux host. Everything after the final colon is the actual kernel message.
+
+For brevity, the examples in the rest of this guide show only the kernel message portion (what follows the final colon), since that is the part that carries the diagnostic content.
 
 ## Key Sections to Pay Attention To
 
 ### Boot Messages
 
-The earliest messages (timestamps near 0) show hardware detection and initialization. Look here if a node is not booting properly or if hardware is not being recognized. You will see CPU information, memory maps, ACPI tables, and PCI device enumeration.
+The earliest messages in the output show hardware detection and initialization. Look here if a node is not booting properly or if hardware is not being recognized. You will see CPU information, memory maps, ACPI tables, and PCI device enumeration.
 
 ```bash
 # Filter for early boot messages by piping through grep
@@ -81,10 +83,9 @@ talosctl dmesg --nodes 192.168.1.10 | grep -i "boot\|acpi\|pci"
 Network issues are common in Kubernetes clusters. The dmesg output shows when network interfaces are detected and initialized:
 
 ```text
-[    3.456789] igb 0000:01:00.0: eth0: igb
-[    3.567890] igb 0000:01:00.0: eth0: (PCIe:5.0Gb/s:Width x4)
-[    4.678901] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
-[    5.789012] igb 0000:01:00.0 eth0: igb: eth0 NIC Link is Up 1000 Mbps
+igb 0000:01:00.0: eth0: (PCIe:5.0Gb/s:Width x4)
+IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+igb 0000:01:00.0 eth0: igb: eth0 NIC Link is Up 1000 Mbps
 ```
 
 If you see "link is not ready" messages that never resolve, it points to a physical cabling issue or a driver problem.
@@ -94,19 +95,19 @@ If you see "link is not ready" messages that never resolve, it points to a physi
 Storage problems show up clearly in dmesg. Look for messages about disk detection, partition scanning, and filesystem errors:
 
 ```text
-[    2.123456] sd 0:0:0:0: [sda] 976773168 512-byte logical blocks
-[    2.234567] sd 0:0:0:0: [sda] Write Protect is off
-[    2.345678]  sda: sda1 sda2 sda3 sda4 sda5 sda6
+sd 0:0:0:0: [sda] 976773168 512-byte logical blocks
+sd 0:0:0:0: [sda] Write Protect is off
+ sda: sda1 sda2 sda3 sda4 sda5 sda6
 ```
 
 If a disk is failing, you might see messages like:
 
 ```text
-[  123.456789] ata1.00: exception Emask 0x0 SAct 0x0 SErr 0x0 action 0x0
-[  123.567890] ata1.00: irq_stat 0x40000001
-[  123.678901] ata1.00: failed command: READ DMA
-[  123.789012] ata1.00: status: { DRDY ERR }
-[  123.890123] ata1.00: error: { UNC }
+ata1.00: exception Emask 0x0 SAct 0x0 SErr 0x0 action 0x0
+ata1.00: irq_stat 0x40000001
+ata1.00: failed command: READ DMA
+ata1.00: status: { DRDY ERR }
+ata1.00: error: { UNC }
 ```
 
 These "UNC" (uncorrectable) errors typically indicate a failing drive that needs replacement.
@@ -116,8 +117,8 @@ These "UNC" (uncorrectable) errors typically indicate a failing drive that needs
 Out-of-memory (OOM) situations are critical in Kubernetes environments. The kernel OOM killer will log its actions in dmesg:
 
 ```text
-[  456.789012] node1 invoked oom-killer: gfp_mask=0x100cca(GFP_HIGHUSER_MOVABLE)
-[  456.890123] Out of memory: Killed process 12345 (kubelet) total-vm:2048000kB
+node1 invoked oom-killer: gfp_mask=0x100cca(GFP_HIGHUSER_MOVABLE)
+Out of memory: Killed process 12345 (kubelet) total-vm:2048000kB
 ```
 
 When you see OOM messages, it means the node ran out of memory and the kernel had to kill processes. If the kubelet gets killed, the node will become NotReady.
@@ -143,7 +144,7 @@ Kernel warnings might indicate driver issues, misconfigured hardware, or softwar
 ### EDAC Memory Errors
 
 ```text
-[  789.012345] EDAC MC0: 1 CE memory read error on CPU_SrcID#0_Ha#0_Chan#0_DIMM#1
+EDAC MC0: 1 CE memory read error on CPU_SrcID#0_Ha#0_Chan#0_DIMM#1
 ```
 
 CE stands for Correctable Error. A few of these are normal, but a growing count suggests a failing memory module.
@@ -151,9 +152,9 @@ CE stands for Correctable Error. A few of these are normal, but a growing count 
 ### NIC Link Flapping
 
 ```text
-[  100.123456] e1000e: eth0 NIC Link is Down
-[  105.234567] e1000e: eth0 NIC Link is Up 1000 Mbps Full Duplex
-[  110.345678] e1000e: eth0 NIC Link is Down
+e1000e: eth0 NIC Link is Down
+e1000e: eth0 NIC Link is Up 1000 Mbps Full Duplex
+e1000e: eth0 NIC Link is Down
 ```
 
 Repeated link up/down messages indicate a flapping network connection. Check cables, switch ports, and NIC settings.
@@ -161,7 +162,7 @@ Repeated link up/down messages indicate a flapping network connection. Check cab
 ### Filesystem Errors
 
 ```text
-[  200.456789] EXT4-fs error (device sda3): ext4_lookup:1690: inode #131073: comm systemd
+EXT4-fs error (device sda3): ext4_lookup:1690: inode #131073: comm systemd
 ```
 
 Filesystem errors can lead to data corruption. If these appear, the underlying storage might be failing.
@@ -180,8 +181,8 @@ talosctl dmesg --nodes 192.168.1.10 | grep "nvme"
 # Look for anything related to networking
 talosctl dmesg --nodes 192.168.1.10 | grep -iE "eth|bond|vlan|bridge|link"
 
-# Find timestamp ranges (messages after 60 seconds since boot)
-talosctl dmesg --nodes 192.168.1.10 | awk -F'[][]' '$2 > 60'
+# Find messages within a specific time window using the ISO timestamp
+talosctl dmesg --nodes 192.168.1.10 | grep "2026-03-03T10:1"
 ```
 
 ## Comparing Across Nodes
