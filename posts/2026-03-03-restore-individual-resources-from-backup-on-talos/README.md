@@ -53,8 +53,8 @@ ls resources/
 # List all resources in the backup
 find resources/ -name "*.json" | head -50
 
-# View a specific resource
-cat resources/deployments.apps/namespaces/production/my-app.json | jq '.metadata.name, .spec.replicas'
+# View a specific resource (paths include the API version segment, e.g. v1-preferredversion)
+cat resources/deployments.apps/v1-preferredversion/namespaces/production/my-app.json | jq '.metadata.name, .spec.replicas'
 ```
 
 ## Restoring a Single Deployment
@@ -101,7 +101,7 @@ velero restore create restore-secrets \
   --wait
 ```
 
-If the resource already exists and you want to overwrite it with the backup version, you need to delete it first. By default, Velero skips resources that already exist.
+If the resource already exists and you want to overwrite it with the backup version, you have two options: delete the resource first, or use `--existing-resource-policy=update` (added in Velero 1.9). By default Velero's policy is `none`, which skips resources that already exist.
 
 ```bash
 # Delete the current (broken) configmap
@@ -223,7 +223,7 @@ tar -xzf daily-full-20240115020000-data.tar.gz -C backup-contents
 find backup-contents/resources -name "*.json" | grep "my-app"
 
 # Extract and convert the resource to YAML
-cat backup-contents/resources/deployments.apps/namespaces/production/my-app.json | \
+cat backup-contents/resources/deployments.apps/v1-preferredversion/namespaces/production/my-app.json | \
   jq 'del(.metadata.resourceVersion, .metadata.uid, .metadata.creationTimestamp, .metadata.generation, .status)' | \
   yq eval -P - > my-app-restored.yaml
 
@@ -242,7 +242,7 @@ Before restoring, compare the backup version with what is currently running.
 # Extract the backup version of a deployment
 velero backup download daily-full-20240115020000
 tar -xzf daily-full-20240115020000-data.tar.gz
-cat resources/deployments.apps/namespaces/production/my-app.json | \
+cat resources/deployments.apps/v1-preferredversion/namespaces/production/my-app.json | \
   jq 'del(.metadata.resourceVersion, .metadata.uid, .metadata.creationTimestamp, .metadata.generation, .metadata.managedFields, .status)' > backup-version.json
 
 # Get the current version
@@ -313,9 +313,9 @@ velero restore describe "${RESTORE_NAME}"
 
 When restoring resources that already exist, Velero follows these rules:
 
-- **Existing resources are skipped by default**
-- **There is no built-in overwrite option**
-- **You must delete the existing resource first if you want to restore from backup**
+- **Existing resources are skipped by default** (the default `--existing-resource-policy=none`)
+- **Use `--existing-resource-policy=update` to patch existing resources** (added in Velero 1.9; best-effort, with some limitations around PVCs and Pods)
+- **Otherwise, delete the existing resource first if you want a clean restore from backup**
 
 For a safe restore workflow:
 
