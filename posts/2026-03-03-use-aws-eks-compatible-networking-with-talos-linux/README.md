@@ -8,11 +8,11 @@ Description: Learn how to configure AWS VPC CNI networking on Talos Linux for EK
 
 ---
 
-One of the things that makes EKS networking appealing is that every pod gets a real VPC IP address. This means pods can communicate directly with other AWS resources without NAT, and security groups work at the pod level. You do not need EKS to get this behavior. By running the AWS VPC CNI plugin on Talos Linux, you can have the same networking model on your self-managed clusters. This guide explains how to set it up and what trade-offs to consider.
+One of the things that makes EKS networking appealing is that every pod gets a real VPC IP address. This means pods can communicate directly with other AWS resources without NAT. You do not need EKS to get this pod IP behavior. By running the AWS VPC CNI plugin on Talos Linux, you can have the same VPC-native pod networking model on your self-managed clusters. This guide explains how to set it up and what trade-offs to consider.
 
 ## How AWS VPC CNI Works
 
-Traditional CNI plugins like Calico or Flannel create an overlay network. Pods get IPs from a virtual address space, and traffic between nodes goes through encapsulation (VXLAN, IPIP, or WireGuard). The AWS VPC CNI takes a different approach. It uses the Elastic Network Interface (ENI) system to assign real VPC IP addresses directly to pods.
+Traditional CNI plugins like Flannel, and some Calico configurations, create an overlay network. Pods get IPs from a virtual address space, and traffic between nodes goes through encapsulation (VXLAN, IPIP, or WireGuard). The AWS VPC CNI takes a different approach. It uses the Elastic Network Interface (ENI) system to assign real VPC IP addresses directly to pods.
 
 Each EC2 instance can have multiple ENIs, and each ENI can have multiple secondary IP addresses. The VPC CNI plugin manages these ENIs and IPs, allocating them to pods as they get scheduled. The result is that pod-to-pod traffic stays within the VPC fabric with no overlay, no encapsulation, and no extra latency.
 
@@ -68,12 +68,20 @@ The VPC CNI needs permissions to manage ENIs and IP addresses:
         "ec2:DescribeTags",
         "ec2:DescribeNetworkInterfaces",
         "ec2:DescribeInstanceTypes",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeSecurityGroups",
         "ec2:DetachNetworkInterface",
         "ec2:ModifyNetworkInterfaceAttribute",
-        "ec2:UnassignPrivateIpAddresses",
-        "ec2:CreateTags"
+        "ec2:UnassignPrivateIpAddresses"
       ],
       "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ec2:CreateTags"
+      ],
+      "Resource": "arn:aws:ec2:*:*:network-interface/*"
     }
   ]
 }
@@ -93,8 +101,8 @@ helm repo update
 # Install the VPC CNI plugin
 helm install aws-vpc-cni eks/aws-vpc-cni \
   --namespace kube-system \
-  --set init.image.tag=v1.15.1 \
-  --set image.tag=v1.15.1 \
+  --set init.image.tag=v1.21.1 \
+  --set image.tag=v1.21.1 \
   --set env.WARM_ENI_TARGET="1" \
   --set env.MINIMUM_IP_TARGET="10" \
   --set env.ENABLE_PREFIX_DELEGATION="false"
@@ -118,7 +126,7 @@ You can check the IP allocation status on any node:
 kubectl get nodes -o custom-columns=NAME:.metadata.name,PODS:.status.allocatable.pods
 
 # Look at the ENI configuration on a specific node
-kubectl exec -n kube-system $(kubectl get pods -n kube-system -l k8s-app=aws-node -o jsonpath='{.items[0].metadata.name}') -- /app/grpc-health-probe -addr=:50051 || true
+kubectl exec -n kube-system -c aws-node $(kubectl get pods -n kube-system -l k8s-app=aws-node -o jsonpath='{.items[0].metadata.name}') -- curl -s http://localhost:61679/v1/enis
 kubectl logs -n kube-system -l k8s-app=aws-node
 ```
 
@@ -138,7 +146,7 @@ With prefix delegation, a `m5.xlarge` can support over 100 pods instead of 58. T
 
 ## Security Groups for Pods
 
-One of the unique features of VPC CNI is the ability to assign security groups directly to pods. This lets you control network access at the pod level using AWS security groups, not just Kubernetes NetworkPolicies.
+On EKS, one of the unique VPC CNI features is the ability to assign security groups directly to pods. This depends on the EKS-managed VPC resource controller, so it is not available just by installing the VPC CNI on a self-managed Talos cluster. In a self-managed cluster, pods use VPC IPs, but security groups apply to the node and ENIs unless you also provide a compatible controller.
 
 ```yaml
 # security-group-policy.yaml
@@ -156,11 +164,11 @@ spec:
       - sg-xxxxxxxxxxxxxxxxx
 ```
 
-Any pod with the label `role: database-client` will get the specified security group attached to its ENI. This is powerful for enforcing network boundaries between your Kubernetes workloads and other AWS resources like RDS databases.
+On an EKS cluster with Security Groups for Pods enabled, any pod with the label `role: database-client` will get the specified security group attached to its branch ENI. This is powerful for enforcing network boundaries between your Kubernetes workloads and other AWS resources like RDS databases.
 
 ## Network Policy Support
 
-The VPC CNI also supports Kubernetes NetworkPolicies natively, without needing Calico or another policy engine:
+The VPC CNI also supports Kubernetes NetworkPolicies natively on version 1.14.0 and later. On self-managed Kubernetes clusters, you need the VPC CNI network policy agent and the Amazon network policy controller:
 
 ```bash
 # Enable network policy support
