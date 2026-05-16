@@ -264,14 +264,14 @@ def build_inventory():
             },
             "children": ["controlplane", "workers"]
         },
-        "controlplane": {"hosts": {}},
-        "workers": {"hosts": {}},
+        "controlplane": {"hosts": []},
+        "workers": {"hosts": []},
         "_meta": {"hostvars": {}}
     }
 
     for name, ip, role in instances:
         group = "controlplane" if role == "controlplane" else "workers"
-        inventory[group]["hosts"][name] = {}
+        inventory[group]["hosts"].append(name)
         inventory["_meta"]["hostvars"][name] = {
             "node_ip": ip,
             "node_role": role
@@ -327,7 +327,7 @@ Create a simple playbook to validate your inventory:
 
     - name: Report reachability
       ansible.builtin.debug:
-        msg: "{{ inventory_hostname }} ({{ node_ip }}): {{ 'reachable' if reach_check.state is defined else 'unreachable' }}"
+        msg: "{{ inventory_hostname }} ({{ node_ip }}): {{ 'reachable' if reach_check is succeeded else 'unreachable' }}"
 
 - name: Summarize inventory
   hosts: localhost
