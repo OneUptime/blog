@@ -8,11 +8,11 @@ Description: Understand and analyze cgroups resource controls on Talos Linux for
 
 ---
 
-Control groups (cgroups) are the Linux kernel feature that makes container resource isolation possible. Every container running on your Talos Linux cluster has cgroup limits controlling its CPU, memory, I/O, and network resources. When a pod is being throttled, OOM-killed, or showing unexplained performance issues, understanding cgroups is essential for diagnosing the root cause. This guide explains how cgroups work on Talos Linux and how to analyze them for troubleshooting.
+Control groups (cgroups) are the Linux kernel feature that makes container resource isolation possible. Every container running on your Talos Linux cluster has cgroup resource controls for resources such as CPU, memory, and I/O. When a pod is being throttled, OOM-killed, or showing unexplained performance issues, understanding cgroups is essential for diagnosing the root cause. This guide explains how cgroups work on Talos Linux and how to analyze them for troubleshooting.
 
 ## What Are Cgroups
 
-Cgroups is a Linux kernel feature that organizes processes into hierarchical groups and applies resource limits to those groups. In Kubernetes, each container gets its own cgroup, and the resource requests and limits you define in your pod spec translate directly to cgroup settings.
+Cgroups is a Linux kernel feature that organizes processes into hierarchical groups and applies resource controls to those groups. In Kubernetes, each container gets its own cgroup, and the resource requests and limits you define in your pod spec are passed to the container runtime, which typically configures cgroup settings.
 
 Talos Linux uses cgroups v2 (the unified hierarchy), which is the modern implementation that provides better resource control and simpler management compared to the older cgroups v1.
 
@@ -34,7 +34,7 @@ Kubernetes translates this into cgroup settings:
 
 - **CPU request (500m)**: Sets `cpu.weight` proportional to the share of CPU this container should get under contention
 - **CPU limit (1000m)**: Sets `cpu.max` to limit the container to 1 full CPU core per scheduling period
-- **Memory request (256Mi)**: Used by the scheduler for placement, does not directly set a cgroup parameter
+- **Memory request (256Mi)**: Used by the scheduler for placement. On cgroups v2 nodes, the container runtime might also use it as a hint for `memory.min` and `memory.low`
 - **Memory limit (512Mi)**: Sets `memory.max` to 512 MiB. If the container exceeds this, it gets OOM-killed
 
 ## Cgroups Hierarchy on Talos Linux
@@ -44,10 +44,11 @@ Talos Linux organizes cgroups in a specific hierarchy:
 ```text
 /sys/fs/cgroup/
   /init/                 # Talos init process
-  /system/               # Talos system services
+  /system/               # Talos system services and extension services
+  /podruntime/           # Kubernetes runtime services
     /etcd/               # etcd service
     /kubelet/            # kubelet service
-    /containerd/         # container runtime
+    /runtime/            # CRI containerd runtime
   /kubepods/             # All Kubernetes pods
     /burstable/          # Burstable QoS pods
       /pod<uid>/         # Individual pod
@@ -62,8 +63,10 @@ Since Talos Linux has no shell access, you use talosctl to inspect cgroup data:
 
 ```bash
 # List all cgroups on a node
-
 talosctl list /sys/fs/cgroup --nodes 10.0.0.10
+
+# View cgroup resource usage with Talos' built-in cgroups command
+talosctl cgroups --preset=cpu --nodes 10.0.0.10
 
 # View the kubepods cgroup hierarchy
 talosctl list /sys/fs/cgroup/kubepods --nodes 10.0.0.10
@@ -179,7 +182,7 @@ talosctl read /sys/fs/cgroup/kubepods/burstable/pod<uid>/<container-id>/memory.e
 # low 0
 # high 0
 # max 3       <-- Number of times the cgroup hit its memory limit
-# oom 1       <-- Number of OOM kills
+# oom 1       <-- Number of times the cgroup reached an OOM condition
 # oom_kill 1  <-- Number of processes killed by OOM
 
 # Detailed memory breakdown
@@ -227,8 +230,8 @@ Check the parent cgroup for the entire kubepods hierarchy to understand overall 
 # Overall kubepods CPU allocation
 talosctl read /sys/fs/cgroup/kubepods/cpu.max --nodes 10.0.0.10
 
-# Reserved CPU for system services
-talosctl read /sys/fs/cgroup/system/cpu.weight --nodes 10.0.0.10
+# Reserved CPU for Kubernetes runtime services
+talosctl read /sys/fs/cgroup/podruntime/cpu.weight --nodes 10.0.0.10
 
 # Overall memory allocation for pods
 talosctl read /sys/fs/cgroup/kubepods/memory.max --nodes 10.0.0.10
@@ -264,8 +267,12 @@ spec:
 
         - alert: ContainerMemoryNearOOM
           expr: |
-            container_memory_working_set_bytes{container!=""}
-            / container_spec_memory_limit_bytes{container!=""} > 0.95
+            (
+              container_memory_working_set_bytes{container!=""}
+              / container_spec_memory_limit_bytes{container!=""}
+            ) > 0.95
+            and on(namespace, pod, container)
+            container_spec_memory_limit_bytes{container!=""} > 0
           for: 5m
           labels:
             severity: critical
