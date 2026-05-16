@@ -32,7 +32,7 @@ Cassandra has specific system requirements that need to be configured at the OS 
 
 machine:
   sysctls:
-    # Cassandra needs higher file descriptor limits
+    # Cassandra recommends higher mmap counts, larger socket queues, and tuned TCP keepalives
     vm.max_map_count: "1048575"
     net.core.somaxconn: "65535"
     net.ipv4.tcp_keepalive_time: "60"
@@ -67,12 +67,11 @@ metadata:
 data:
   cassandra-env.sh: |
     # JVM heap settings - adjust based on your node resources
+    # Do not set HEAP_NEWSIZE when using G1GC; G1 sizes the young generation dynamically.
     MAX_HEAP_SIZE="2G"
-    HEAP_NEWSIZE="400M"
   jvm.options: |
     -Xms2G
     -Xmx2G
-    -Xmn400M
     -XX:+UseG1GC
     -XX:MaxGCPauseMillis=500
     -XX:+ParallelRefProcEnabled
@@ -119,8 +118,6 @@ spec:
           env:
             - name: MAX_HEAP_SIZE
               value: "2G"
-            - name: HEAP_NEWSIZE
-              value: "400M"
             - name: CASSANDRA_SEEDS
               value: "cassandra-0.cassandra.cassandra.svc.cluster.local"
             - name: CASSANDRA_CLUSTER_NAME
