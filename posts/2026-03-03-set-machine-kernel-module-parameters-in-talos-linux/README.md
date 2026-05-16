@@ -59,7 +59,7 @@ machine:
       - name: br_netfilter    # Bridge netfilter
 ```
 
-Without these modules, kube-proxy in IPVS mode will fail to start or fall back to iptables mode silently, which defeats the purpose of choosing IPVS.
+Without these modules, kube-proxy in IPVS mode will log an error about the missing kernel modules and fall back to iptables mode, which defeats the purpose of choosing IPVS.
 
 ## Network-Related Modules
 
