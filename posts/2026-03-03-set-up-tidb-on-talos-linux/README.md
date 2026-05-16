@@ -49,8 +49,8 @@ machine:
 
 ```bash
 # Apply to worker nodes
-talosctl apply-config --nodes 10.0.0.2,10.0.0.3,10.0.0.4 \
-  --file talos-tidb-patch.yaml
+talosctl patch machineconfig --nodes 10.0.0.2,10.0.0.3,10.0.0.4 \
+  --patch @talos-tidb-patch.yaml
 ```
 
 ## Step 2: Install TiDB Operator
@@ -59,26 +59,27 @@ The TiDB Operator manages the lifecycle of TiDB clusters on Kubernetes:
 
 ```bash
 # Add the PingCAP Helm repository
-helm repo add pingcap https://charts.pingcap.org/
+helm repo add pingcap https://charts.pingcap.com/
 helm repo update
 
-# Create namespace for TiDB
+# Create namespaces for TiDB Operator and TiDB
+kubectl create namespace tidb-admin
 kubectl create namespace tidb
 
 # Install Custom Resource Definitions
-kubectl create -f https://raw.githubusercontent.com/pingcap/tidb-operator/v1.6.0/manifests/crd.yaml
+kubectl create -f https://raw.githubusercontent.com/pingcap/tidb-operator/v1.6.5/manifests/crd.yaml
 
 # Install the TiDB Operator
 helm install tidb-operator pingcap/tidb-operator \
-  --namespace tidb \
-  --version v1.6.0
+  --namespace tidb-admin \
+  --version v1.6.5
 ```
 
 Verify the operator is running:
 
 ```bash
 # Check operator pods
-kubectl get pods -n tidb -l app.kubernetes.io/name=tidb-operator
+kubectl get pods -n tidb-admin -l app.kubernetes.io/instance=tidb-operator
 ```
 
 ## Step 3: Deploy a TiDB Cluster
@@ -91,12 +92,15 @@ metadata:
   name: tidb-prod
   namespace: tidb
 spec:
-  version: v7.5.0
+  version: v8.5.5
   timezone: UTC
   pvReclaimPolicy: Retain
+  enableDynamicConfiguration: true
+  configUpdateStrategy: RollingUpdate
 
   # PD configuration - cluster brain
   pd:
+    baseImage: pingcap/pd
     replicas: 3
     requests:
       storage: 10Gi
@@ -116,6 +120,7 @@ spec:
 
   # TiKV configuration - storage layer
   tikv:
+    baseImage: pingcap/tikv
     replicas: 3
     requests:
       storage: 100Gi
@@ -135,6 +140,7 @@ spec:
 
   # TiDB configuration - SQL layer
   tidb:
+    baseImage: pingcap/tidb
     replicas: 2
     service:
       type: ClusterIP
@@ -211,11 +217,17 @@ SELECT * FROM information_schema.tikv_region_status LIMIT 5;
 TiDB includes a built-in dashboard for monitoring:
 
 ```bash
-# Forward the PD dashboard port
-kubectl port-forward svc/tidb-prod-pd -n tidb 2379:2379
+# Enable dashboard proxying through the discovery service
+kubectl patch tidbcluster tidb-prod -n tidb --type merge \
+  -p '{"spec":{"pd":{"config":{"dashboard":{"internal-proxy":true}}}}}'
 ```
 
-Access the dashboard at `http://localhost:2379/dashboard` to view cluster topology, slow queries, SQL analysis, and key metrics.
+```bash
+# Forward the TiDB Dashboard port
+kubectl port-forward svc/tidb-prod-discovery -n tidb 10262:10262
+```
+
+Access the dashboard at `http://localhost:10262/dashboard` to view cluster topology, slow queries, SQL analysis, and key metrics.
 
 ## Step 7: Deploy TiDB Monitor
 
@@ -231,9 +243,10 @@ metadata:
 spec:
   clusters:
     - name: tidb-prod
+      namespace: tidb
   prometheus:
     baseImage: prom/prometheus
-    version: v2.48.0
+    version: v2.27.1
     service:
       type: ClusterIP
     resources:
@@ -242,7 +255,7 @@ spec:
         cpu: "500m"
   grafana:
     baseImage: grafana/grafana
-    version: "10.2.0"
+    version: "7.5.11"
     service:
       type: ClusterIP
     resources:
@@ -251,10 +264,13 @@ spec:
         cpu: "250m"
   initializer:
     baseImage: pingcap/tidb-monitor-initializer
-    version: v7.5.0
+    version: v8.5.5
   reloader:
     baseImage: pingcap/tidb-monitor-reloader
     version: v1.0.1
+  prometheusReloader:
+    baseImage: quay.io/prometheus-operator/prometheus-config-reloader
+    version: v0.49.0
   imagePullPolicy: IfNotPresent
 ```
 
@@ -283,6 +299,14 @@ TiDB will automatically rebalance data across new TiKV nodes without downtime.
 
 Use the TiDB Backup and Restore (BR) tool through Kubernetes:
 
+```bash
+# Create the RBAC resources and S3 credentials required by the Backup job
+kubectl apply -n tidb -f https://raw.githubusercontent.com/pingcap/tidb-operator/v1.6.5/manifests/backup/backup-rbac.yaml
+kubectl create secret generic s3-secret -n tidb \
+  --from-literal=access_key=${AWS_ACCESS_KEY_ID} \
+  --from-literal=secret_key=${AWS_SECRET_ACCESS_KEY}
+```
+
 ```yaml
 # tidb-backup.yaml
 apiVersion: pingcap.com/v1alpha1
@@ -292,15 +316,13 @@ metadata:
   namespace: tidb
 spec:
   backupType: full
+  serviceAccount: tidb-backup-manager
   br:
     cluster: tidb-prod
     clusterNamespace: tidb
-  from:
-    host: tidb-prod-tidb.tidb.svc
-    port: 4000
-    user: root
   s3:
     provider: aws
+    secretName: s3-secret
     region: us-east-1
     bucket: tidb-backups
     prefix: full-backup
