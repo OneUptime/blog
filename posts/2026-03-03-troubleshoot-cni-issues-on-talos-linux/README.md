@@ -42,7 +42,7 @@ kubectl describe node <node-name> | grep -A 5 Conditions
 talosctl -n <node-ip> logs kubelet --tail 100 | grep -i "cni\|network"
 ```
 
-If nodes show "NetworkReady: False", the CNI plugin is not functioning on those nodes.
+If nodes show `Ready: False` with a message such as `NetworkPluginNotReady` or `network plugin is not ready`, the CNI plugin is not functioning on those nodes.
 
 ## Step 2: Check CNI Pod Status
 
@@ -55,6 +55,8 @@ kubectl get pods -n kube-system -l app.kubernetes.io/name=cilium-operator
 
 # For Calico
 kubectl get pods -n calico-system -l k8s-app=calico-node -o wide
+# Some Calico manifest-based installs use kube-system instead
+kubectl get pods -n kube-system -l k8s-app=calico-node -o wide
 kubectl get pods -n tigera-operator
 
 # For Flannel
@@ -110,7 +112,7 @@ IPAM (IP Address Management) issues are a common source of CNI problems. If the 
 
 ```bash
 # For Cilium, check IPAM status
-kubectl exec -n kube-system ds/cilium -- cilium status --verbose | grep -A 10 IPAM
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg status --verbose | grep -A 10 IPAM
 
 # For Calico, check IP pools
 calicoctl get ippool -o wide
@@ -122,7 +124,7 @@ kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.pod
 kubectl get pods -A -o wide --no-headers | awk '{print $8}' | sort | uniq -c | sort -rn
 ```
 
-If IP exhaustion is the problem, you can increase the IPAM pool or reduce the block size:
+If IP exhaustion is the problem, you can increase the IPAM pool or adjust the block size:
 
 ```yaml
 # For Calico, adjust the IP pool
@@ -132,7 +134,7 @@ metadata:
   name: default-ipv4-ippool
 spec:
   cidr: 10.244.0.0/14  # Larger CIDR = more IPs
-  blockSize: 24         # Smaller blocks per node
+  blockSize: 24         # Larger IPv4 allocation blocks per node than the default /26
 ```
 
 ## Step 5: Test Pod-to-Pod Connectivity
@@ -141,36 +143,39 @@ Create debug pods to test connectivity systematically:
 
 ```bash
 # Create test pods on specific nodes
-kubectl run debug-node1 --image=busybox:1.36 --restart=Never \
+kubectl run debug-node1a --image=busybox:1.36 --restart=Never \
+  --overrides='{"spec":{"nodeName":"worker-1"}}' -- sleep 3600
+kubectl run debug-node1b --image=busybox:1.36 --restart=Never \
   --overrides='{"spec":{"nodeName":"worker-1"}}' -- sleep 3600
 kubectl run debug-node2 --image=busybox:1.36 --restart=Never \
   --overrides='{"spec":{"nodeName":"worker-2"}}' -- sleep 3600
 
 # Wait for pods
-kubectl wait --for=condition=Ready pod/debug-node1 pod/debug-node2
+kubectl wait --for=condition=Ready pod/debug-node1a pod/debug-node1b pod/debug-node2
 
 # Get IPs
-NODE1_POD_IP=$(kubectl get pod debug-node1 -o jsonpath='{.status.podIP}')
+NODE1A_POD_IP=$(kubectl get pod debug-node1a -o jsonpath='{.status.podIP}')
+NODE1B_POD_IP=$(kubectl get pod debug-node1b -o jsonpath='{.status.podIP}')
 NODE2_POD_IP=$(kubectl get pod debug-node2 -o jsonpath='{.status.podIP}')
 
-echo "Pod on node1: $NODE1_POD_IP"
+echo "Pods on node1: $NODE1A_POD_IP, $NODE1B_POD_IP"
 echo "Pod on node2: $NODE2_POD_IP"
 
-# Test same-node connectivity (should always work)
-kubectl exec debug-node1 -- ping -c 3 -W 2 $NODE1_POD_IP
+# Test same-node connectivity
+kubectl exec debug-node1a -- ping -c 3 -W 2 $NODE1B_POD_IP
 
 # Test cross-node connectivity (tests the CNI overlay)
-kubectl exec debug-node1 -- ping -c 3 -W 2 $NODE2_POD_IP
+kubectl exec debug-node1a -- ping -c 3 -W 2 $NODE2_POD_IP
 
 # Test service DNS
-kubectl exec debug-node1 -- nslookup kubernetes.default
+kubectl exec debug-node1a -- nslookup kubernetes.default
 
 # Test external connectivity
-kubectl exec debug-node1 -- ping -c 3 -W 2 8.8.8.8
-kubectl exec debug-node1 -- wget -qO- --timeout=5 http://google.com
+kubectl exec debug-node1a -- ping -c 3 -W 2 8.8.8.8
+kubectl exec debug-node1a -- wget -qO- --timeout=5 http://google.com
 
 # Clean up
-kubectl delete pod debug-node1 debug-node2
+kubectl delete pod debug-node1a debug-node1b debug-node2
 ```
 
 The results tell you where the problem is:
@@ -189,20 +194,20 @@ If cross-node connectivity fails, the overlay network (VXLAN, IPIP, or WireGuard
 talosctl -n <node-ip> get links | grep -i "vxlan\|cilium\|calico\|flannel"
 
 # Check routing tables
-talosctl -n <node-ip> routes
+talosctl -n <node-ip> get routes
 
 # For Cilium, check BPF maps
-kubectl exec -n kube-system ds/cilium -- cilium bpf tunnel list
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg bpf tunnel list
 
 # For Calico, check BGP peering
 calicoctl node status
 ```
 
-Check if the overlay ports are not blocked. VXLAN uses UDP port 4789, Cilium uses port 8472, and WireGuard uses port 51871:
+Check if the overlay ports are not blocked. Calico VXLAN uses UDP port 4789, Cilium VXLAN uses UDP port 8472, Cilium WireGuard uses UDP port 51871, and Calico WireGuard uses UDP ports 51820 for IPv4 and 51821 for IPv6 by default:
 
 ```bash
 # Check if the required ports are in use
-talosctl -n <node-ip> netstat | grep -E "4789|8472|51871"
+talosctl -n <node-ip> netstat | grep -E "4789|8472|51820|51821|51871"
 ```
 
 ## Step 7: Check DNS (CoreDNS)
@@ -234,16 +239,16 @@ The resolv.conf should point to the kube-dns service IP (usually 10.96.0.10).
 
 ```bash
 # Full status check
-kubectl exec -n kube-system ds/cilium -- cilium status --verbose
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg status --verbose
 
 # Check endpoint health
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg endpoint list
 
 # Check for dropped packets
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type drop
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg monitor --type drop
 
 # Verify BPF programs are loaded
-kubectl exec -n kube-system ds/cilium -- cilium bpf endpoint list
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg bpf endpoint list
 
 # Run Cilium connectivity test
 cilium connectivity test
@@ -265,7 +270,7 @@ calicoctl ipam show
 calicoctl get networkpolicy -A
 
 # Verify Felix status
-kubectl exec -n calico-system ds/calico-node -- calico-node -felix-live
+kubectl exec -n calico-system ds/calico-node -- calico-node -bird-ready -felix-ready
 ```
 
 ## Step 9: Nuclear Options
@@ -282,7 +287,8 @@ kubectl rollout restart daemonset/cilium -n kube-system
 # For Cilium
 helm uninstall cilium -n kube-system
 # Wait for cleanup
-helm install cilium cilium/cilium --namespace kube-system [your-values]
+# Add your Helm values file or --set flags as needed
+helm install cilium cilium/cilium --namespace kube-system
 
 # Restart all pods to get fresh network setup
 kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' | \
@@ -296,7 +302,7 @@ kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.me
 Monitor your CNI health continuously. Set up alerts for:
 
 - CNI pods in CrashLoopBackOff
-- Nodes with NetworkReady: False
+- Nodes with `Ready: False` due to `NetworkPluginNotReady`
 - IP pool utilization above 80%
 - Packet drop rates
 
