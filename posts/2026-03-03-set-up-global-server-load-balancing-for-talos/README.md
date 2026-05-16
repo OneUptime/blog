@@ -46,8 +46,8 @@ Route users to the nearest cluster based on their location:
 aws route53 create-health-check --caller-reference "talos-eu-$(date +%s)" \
     --health-check-config '{
         "IPAddress": "203.0.113.10",
-        "Port": 443,
-        "Type": "HTTPS",
+        "Port": 80,
+        "Type": "HTTP",
         "ResourcePath": "/healthz",
         "RequestInterval": 10,
         "FailureThreshold": 3
@@ -56,8 +56,8 @@ aws route53 create-health-check --caller-reference "talos-eu-$(date +%s)" \
 aws route53 create-health-check --caller-reference "talos-us-$(date +%s)" \
     --health-check-config '{
         "IPAddress": "203.0.113.20",
-        "Port": 443,
-        "Type": "HTTPS",
+        "Port": 80,
+        "Type": "HTTP",
         "ResourcePath": "/healthz",
         "RequestInterval": 10,
         "FailureThreshold": 3
@@ -185,10 +185,10 @@ curl -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/load_balancers
         "default_pools": ["pool-eu-id", "pool-us-id", "pool-asia-id"],
         "fallback_pool": "pool-eu-id",
         "steering_policy": "geo",
-        "pop_pools": {
-            "FRA": ["pool-eu-id"],
-            "IAD": ["pool-us-id"],
-            "NRT": ["pool-asia-id"]
+        "country_pools": {
+            "DE": ["pool-eu-id"],
+            "US": ["pool-us-id"],
+            "JP": ["pool-asia-id"]
         },
         "session_affinity": "cookie",
         "session_affinity_ttl": 3600
@@ -208,8 +208,8 @@ helm repo update
 helm install k8gb k8gb/k8gb \
     --namespace k8gb \
     --create-namespace \
-    --set k8gb.dnsZone="example.com" \
-    --set k8gb.edgeDNSZone="dns.example.com" \
+    --set k8gb.dnsZones[0].parentZone="example.com" \
+    --set k8gb.dnsZones[0].loadBalancedZone="dns.example.com" \
     --set k8gb.edgeDNSServers[0]="ns1.example.com" \
     --set k8gb.clusterGeoTag="eu" \
     --set k8gb.extGslbClustersGeoTags="us\,asia"
@@ -218,29 +218,40 @@ helm install k8gb k8gb/k8gb \
 Create a Gslb resource:
 
 ```yaml
-apiVersion: k8gb.absa.oss/v1beta1
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: my-app
+  namespace: production
+  labels:
+    app: my-app
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: app.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: my-app
+            port:
+              number: 80
+---
+apiVersion: k8gb.io/v1beta1
 kind: Gslb
 metadata:
   name: my-app
   namespace: production
 spec:
-  ingress:
-    ingressClassName: nginx
-    rules:
-    - host: app.example.com
-      http:
-        paths:
-        - path: /
-          pathType: Prefix
-          backend:
-            service:
-              name: my-app
-              port:
-                number: 80
+  resourceRef:
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    name: my-app
   strategy:
     type: roundRobin          # or geoip, failover
     dnsTtlSeconds: 30
-    splitBrainThresholdSeconds: 300
 ```
 
 ## Health Checks for Each Cluster
@@ -336,8 +347,8 @@ for entry in "${CLUSTERS[@]}"; do
     NAME="${entry%%:*}"
     IP="${entry##*:}"
 
-    STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "https://$IP/healthz")
-    LATENCY=$(curl -s -o /dev/null -w "%{time_total}" --connect-timeout 5 "https://$IP/healthz")
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "http://$IP/healthz")
+    LATENCY=$(curl -s -o /dev/null -w "%{time_total}" --connect-timeout 5 "http://$IP/healthz")
 
     if [ "$STATUS" -eq 200 ]; then
         echo "$NAME ($IP): HEALTHY - ${LATENCY}s"
@@ -380,12 +391,12 @@ data:
 Verify traffic is being routed correctly:
 
 ```bash
-# Test from different DNS resolvers to simulate geo-location
+# Test from clients or resolvers in different regions
 echo "US resolver:"
-dig +short app.example.com @8.8.8.8
+dig +short app.example.com @"$US_RESOLVER_IP"
 
 echo "EU resolver:"
-dig +short app.example.com @1.1.1.1
+dig +short app.example.com @"$EU_RESOLVER_IP"
 
 # Test failover by stopping health endpoint in one cluster
 kubectl --context eu-cluster scale deployment gslb-health --replicas=0 -n monitoring
