@@ -16,7 +16,7 @@ This guide covers how to configure extra manifests in Talos Linux and explores p
 
 Extra manifests are Kubernetes YAML files or URLs pointing to YAML files that Talos applies to the cluster during the bootstrap process. They are defined in the cluster section of the Talos machine configuration and are applied by the bootstrap node after the API server becomes available.
 
-Think of extra manifests as the initial set of resources your cluster needs to be functional. They run once during bootstrap and are applied in order.
+Think of extra manifests as the initial set of resources your cluster needs to be functional. Talos reconciles them during bootstrap, on boot, after apply failures, and when the manifest configuration changes.
 
 ## Basic Configuration
 
@@ -56,7 +56,7 @@ cluster:
             purpose: applications
 ```
 
-Inline manifests have a `name` field for identification and a `contents` field with the actual YAML. The name is used for tracking which manifests have been applied.
+Inline manifests have a `name` field for identification and a `contents` field with the actual YAML. The name should be unique within the list.
 
 ## Deploying a CNI Plugin
 
@@ -66,13 +66,13 @@ One of the most common uses of extra manifests is deploying a CNI plugin. Withou
 cluster:
   network:
     cni:
-      name: custom
+      name: none
   extraManifests:
-    # Deploy Cilium as the CNI
-    - https://raw.githubusercontent.com/cilium/cilium/v1.15.0/install/kubernetes/quick-install.yaml
+    # Deploy a Talos-compatible Cilium manifest rendered with Helm
+    - https://server.example.com/manifests/cilium.yaml
 ```
 
-When using a custom CNI, set the CNI name to `custom` in the network configuration so Talos does not deploy its default CNI.
+When using a CNI from `extraManifests`, set the CNI name to `none` in the network configuration so Talos does not deploy its default CNI. If you want Talos to manage a hosted CNI manifest directly through the CNI configuration, use `name: custom` with `cluster.network.cni.urls` instead.
 
 ## Deploying Storage Drivers
 
@@ -187,9 +187,9 @@ These headers are applied to all URL-based extra manifest fetches.
 
 ## Ordering and Dependencies
 
-Extra manifests and inline manifests are applied in order. Inline manifests are applied first, then URL-based extra manifests. Within each group, they are applied in the order they appear in the configuration.
+Talos automatically sorts inline manifests, extra manifests, and built-in manifests before applying them. Namespaces are applied first, then CustomResourceDefinitions, then other resources sorted alphabetically by `metadata.name`.
 
-Use this to your advantage by putting dependencies first:
+Use this to your advantage by keeping hard dependencies in the same manifest set when possible, and by making namespace and CRD dependencies explicit:
 
 ```yaml
 cluster:
@@ -201,7 +201,7 @@ cluster:
         kind: Namespace
         metadata:
           name: infra
-    # 2. Then create resources in those namespaces
+    # 2. Resources in those namespaces can follow in the same manifest set
     - name: infra-config
       contents: |
         apiVersion: v1
@@ -213,21 +213,22 @@ cluster:
           cluster-name: "production"
           region: "us-east-1"
   extraManifests:
-    # 3. Then deploy applications that depend on the above
+    # 3. Application manifests should not rely on list order for dependency handling
     - https://example.com/manifests/app.yaml
 ```
 
 ## Applying Changes After Bootstrap
 
-Extra manifests are primarily designed for bootstrap. If you need to update them after the cluster is running, you have two options:
+Extra manifests are primarily designed for bootstrap and static infrastructure. Talos uses a conservative, additive approach for these resources: it creates missing resources, but it does not update or delete resources that already exist just because the manifest changed.
 
-First, you can modify the machine configuration and reapply it:
+If you need to change the manifest list after the cluster is running, you can modify the machine configuration and reapply it:
+
 
 ```bash
 talosctl apply-config --nodes 10.0.0.2 --file updated-controlplane.yaml
 ```
 
-Second, and more commonly, you manage ongoing resource changes through kubectl, Helm, or a GitOps tool like Flux or ArgoCD. Extra manifests get your cluster to a baseline state, and GitOps takes over from there.
+For ongoing resource updates, manage changes through kubectl, Helm, or a GitOps tool like Flux or ArgoCD. Extra manifests get your cluster to a baseline state, and GitOps takes over from there.
 
 ## Practical Bootstrap Pattern
 
