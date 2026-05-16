@@ -34,26 +34,26 @@ Linux supports several bonding modes. The ones most commonly used with Talos Lin
 Here is how to configure a basic active-backup bond in Talos Linux:
 
 ```yaml
-# machine-config.yaml
+# bond-config.yaml
 
-machine:
-  network:
-    interfaces:
-      # Define the bond interface
-      - interface: bond0
-        bond:
-          mode: active-backup
-          interfaces:
-            - eth0
-            - eth1
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-    nameservers:
-      - 8.8.8.8
-      - 8.8.4.4
+apiVersion: v1alpha1
+kind: BondConfig
+name: bond0
+links:
+  - eth0
+  - eth1
+bondMode: active-backup
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.1
+---
+apiVersion: v1alpha1
+kind: ResolverConfig
+nameservers:
+  - address: 8.8.8.8
+  - address: 8.8.4.4
 ```
 
 This creates a `bond0` interface that combines `eth0` and `eth1` in active-backup mode. If `eth0` goes down, traffic automatically switches to `eth1` with no manual intervention.
@@ -63,22 +63,20 @@ This creates a `bond0` interface that combines `eth0` and `eth1` in active-backu
 For environments where the network switches support LACP (Link Aggregation Control Protocol), mode 4 provides the best performance:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: bond0
-        bond:
-          mode: 802.3ad
-          lacpRate: fast
-          xmitHashPolicy: layer3+4
-          interfaces:
-            - eth0
-            - eth1
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
+apiVersion: v1alpha1
+kind: BondConfig
+name: bond0
+links:
+  - eth0
+  - eth1
+bondMode: 802.3ad
+lacpRate: fast
+xmitHashPolicy: layer3+4
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.1
 ```
 
 The additional options:
@@ -89,42 +87,53 @@ Remember that LACP mode requires the switch ports to also be configured for LACP
 
 ## Bond with Device Selectors
 
-Instead of using interface names (which can change), you can use device selectors to identify the physical interfaces:
+Instead of using interface names directly (which can change), you can create link aliases that select the physical interfaces and use those stable aliases in the bond:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: bond0
-        bond:
-          mode: active-backup
-          deviceSelectors:
-            - hardwareAddr: "aa:bb:cc:dd:ee:01"
-            - hardwareAddr: "aa:bb:cc:dd:ee:02"
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
+apiVersion: v1alpha1
+kind: LinkAliasConfig
+name: bond-link0
+selector:
+  match: glob("aa:bb:cc:dd:ee:01", mac(link.permanent_addr))
+---
+apiVersion: v1alpha1
+kind: LinkAliasConfig
+name: bond-link1
+selector:
+  match: glob("aa:bb:cc:dd:ee:02", mac(link.permanent_addr))
+---
+apiVersion: v1alpha1
+kind: BondConfig
+name: bond0
+links:
+  - bond-link0
+  - bond-link1
+bondMode: active-backup
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.1
 ```
 
-Using MAC addresses ensures the correct physical interfaces are always bonded together, regardless of how the kernel names them.
+Using MAC addresses to create aliases ensures the correct physical interfaces are always bonded together, regardless of how the kernel names them.
 
 ## Bond with DHCP
 
 You can also use DHCP on a bonded interface:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: bond0
-        bond:
-          mode: active-backup
-          interfaces:
-            - eth0
-            - eth1
-        dhcp: true
+apiVersion: v1alpha1
+kind: BondConfig
+name: bond0
+links:
+  - eth0
+  - eth1
+bondMode: active-backup
+---
+apiVersion: v1alpha1
+kind: DHCPv4Config
+name: bond0
 ```
 
 ## Advanced Bond Options
@@ -132,28 +141,26 @@ machine:
 Talos supports additional bonding parameters for fine-tuning:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: bond0
-        bond:
-          mode: active-backup
-          interfaces:
-            - eth0
-            - eth1
-          # Time in milliseconds between link checks
-          miimon: 100
-          # Time to wait before enabling a link after it comes up
-          updelay: 200
-          # Time to wait before disabling a link after it goes down
-          downdelay: 200
-          # Which interface is preferred as the primary
-          primary: eth0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
+apiVersion: v1alpha1
+kind: BondConfig
+name: bond0
+links:
+  - eth0
+  - eth1
+bondMode: active-backup
+# Time in milliseconds between link checks
+miimon: 100
+# Time to wait before enabling a link after it comes up
+updelay: 200
+# Time to wait before disabling a link after it goes down
+downdelay: 200
+# MAC address handling during active-backup failover
+failOverMac: none
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.1
 ```
 
 The `miimon` parameter sets how often the bond driver checks link status (in milliseconds). Lower values detect failures faster but add slightly more overhead. 100ms is a good balance.
@@ -165,22 +172,29 @@ The `updelay` and `downdelay` parameters add a delay before acting on link state
 You can stack VLANs on top of a bonded interface:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: bond0
-        bond:
-          mode: 802.3ad
-          interfaces:
-            - eth0
-            - eth1
-        vlans:
-          - vlanId: 100
-            addresses:
-              - 10.100.0.10/24
-          - vlanId: 200
-            addresses:
-              - 10.200.0.10/24
+apiVersion: v1alpha1
+kind: BondConfig
+name: bond0
+links:
+  - eth0
+  - eth1
+bondMode: 802.3ad
+---
+apiVersion: v1alpha1
+kind: VLANConfig
+name: bond0.100
+parent: bond0
+vlanID: 100
+addresses:
+  - address: 10.100.0.10/24
+---
+apiVersion: v1alpha1
+kind: VLANConfig
+name: bond0.200
+parent: bond0
+vlanID: 200
+addresses:
+  - address: 10.200.0.10/24
 ```
 
 This is common in data center deployments where different traffic types (management, storage, workload) are separated by VLANs but all travel over the same bonded physical links.
@@ -231,7 +245,7 @@ To test that failover works, you need to physically disconnect one of the bonded
 2. Disconnect the primary link
 3. Verify that traffic continues over the secondary link
 4. Reconnect the primary link
-5. Verify that the primary takes over again (if `primary_reselect` is set)
+5. Verify that traffic returns to the expected link or aggregator based on the bond mode and switch configuration
 
 Monitor the bond status during the test:
 
