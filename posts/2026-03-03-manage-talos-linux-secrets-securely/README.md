@@ -76,7 +76,7 @@ talosctl gen secrets --output-file secrets.yaml
 # Generate machine configs using the secrets
 talosctl gen config my-cluster https://k8s.example.com:6443 \
   --with-secrets secrets.yaml \
-  --output-dir configs/
+  --output configs/
 
 # The secrets.yaml file contains all sensitive data
 # Store it securely and separately from the configs
@@ -183,7 +183,7 @@ Configure a SecretStore:
 
 ```yaml
 # vault-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-store
@@ -206,7 +206,7 @@ Create ExternalSecrets that sync from Vault to Kubernetes:
 
 ```yaml
 # database-external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -222,11 +222,11 @@ spec:
   data:
     - secretKey: username
       remoteRef:
-        key: secret/data/production/database
+        key: production/database
         property: username
     - secretKey: password
       remoteRef:
-        key: secret/data/production/database
+        key: production/database
         property: password
 ```
 
