@@ -8,7 +8,7 @@ Description: A complete guide to deploying Talos Linux on Microsoft Hyper-V for 
 
 ---
 
-Microsoft Hyper-V is the built-in hypervisor for Windows Server and Windows 10/11 Pro. If your organization runs Windows infrastructure, Hyper-V is a natural choice for hosting Talos Linux virtual machines. Talos publishes a VHD image specifically for Hyper-V, making the deployment process straightforward. This guide covers everything from creating VMs to bootstrapping a Kubernetes cluster.
+Microsoft Hyper-V is the built-in hypervisor for Windows Server and Windows 10/11 Pro. If your organization runs Windows infrastructure, Hyper-V is a natural choice for hosting Talos Linux virtual machines. Talos publishes a bare-metal ISO and a raw disk image that can be converted to VHDX for Hyper-V, making the deployment process straightforward. This guide covers everything from creating VMs to bootstrapping a Kubernetes cluster.
 
 ## Prerequisites
 
@@ -66,8 +66,8 @@ Alternatively, use the Talos ISO approach which is simpler:
 
 ```powershell
 # Download the Talos ISO
-$IsoUrl = "https://github.com/siderolabs/talos/releases/download/v1.7.0/talos-amd64.iso"
-Invoke-WebRequest -Uri $IsoUrl -OutFile "C:\Hyper-V\Images\talos-amd64.iso"
+$IsoUrl = "https://github.com/siderolabs/talos/releases/download/v1.7.0/metal-amd64.iso"
+Invoke-WebRequest -Uri $IsoUrl -OutFile "C:\Hyper-V\Images\metal-amd64.iso"
 ```
 
 ## Setting Up Networking
@@ -104,7 +104,7 @@ Create the virtual machines using PowerShell:
 ```powershell
 # Base path for VM files
 $VMPath = "C:\Hyper-V\VMs"
-$ISOPath = "C:\Hyper-V\Images\talos-amd64.iso"
+$ISOPath = "C:\Hyper-V\Images\metal-amd64.iso"
 
 # Function to create a Talos VM
 function New-TalosVM {
