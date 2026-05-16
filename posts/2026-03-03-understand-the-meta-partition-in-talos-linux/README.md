@@ -22,22 +22,22 @@ In a traditional Linux system, metadata about the OS installation might be scatt
 
 The META partition gives Talos a dedicated place to store things like:
 
-- The current installed Talos version
-- Upgrade status and rollback information
-- Network configuration hints used during early boot
-- Server-specific identifiers that survive reinstalls
-- Tags and labels that the machine configuration references
+- Upgrade and staged-upgrade information
+- Network configuration used during early boot on the `metal` platform
+- State partition encryption configuration
+- User-reserved metadata
+- Unique machine tokens or UUID overrides
 
 This separation of concerns is intentional. By isolating metadata from the OS image (which is read-only) and from the state data (which holds machine configuration), Talos can make targeted decisions during boot without loading the full configuration.
 
 ## How Talos Uses the META Partition During Boot
 
-When a Talos node starts up, the boot process follows a predictable sequence. Early in this sequence, the system reads the META partition to determine basic facts about the installation. For example, the META partition tells the bootloader which Talos version is currently installed and which version should be booted after an upgrade.
+When a Talos node starts up, the boot process follows a predictable sequence. Early in this sequence, the system reads the META partition to determine basic facts about the installation. For example, staged upgrades use metadata that is checked very early in the boot process, and upgrade metadata records the previous boot entry so Talos can complete or roll back an A-B upgrade flow.
 
-This is particularly useful in upgrade scenarios. When you run an upgrade command, Talos writes the new version information to the META partition before rebooting. On the next boot, the system checks the META partition to know whether it should boot the new version or fall back to the previous one.
+This is particularly useful in upgrade scenarios. During an upgrade, Talos uses an A-B image scheme and keeps the previous Talos kernel and OS image available. If you use a staged upgrade, Talos writes staged upgrade metadata before rebooting so the upgrade can be applied early on the next boot.
 
 ```bash
-# Check the current Talos version stored in metadata
+# List metadata keys stored in META
 
 talosctl get meta --nodes 192.168.1.10
 
@@ -55,14 +55,13 @@ Here is what the partition layout typically looks like on a Talos disk:
 
 ```text
 Disk Layout:
-  - EFI or BIOS boot partition
-  - BOOT partition (contains kernel and initramfs)
+  - EFI boot partition
   - META partition (node metadata, key-value store)
   - STATE partition (machine configuration)
   - EPHEMERAL partition (Kubernetes workload data)
 ```
 
-The META partition is usually very small, often just a few megabytes. Its position on the disk is fixed during installation and does not change during upgrades.
+The META partition is very small, typically around 1 MB. Talos hardcodes the layout for the EFI, META, and STATE partitions, and upgrades do not repartition the disk.
 
 ## Inspecting the META Partition
 
@@ -74,15 +73,17 @@ talosctl get meta --nodes 10.0.0.5
 
 # Example output might look like:
 # NODE       NAMESPACE   TYPE   ID   VERSION   VALUE
-# 10.0.0.5   runtime     Meta   0x06   1        v1.7.0
-# 10.0.0.5   runtime     Meta   0x0a   1        <encoded-data>
+# 10.0.0.5   runtime     Meta   0x06   1        A
+# 10.0.0.5   runtime     Meta   0x0a   1        <network-config>
 ```
 
 The key IDs are hexadecimal values. Some commonly used keys include:
 
-- `0x06` - Stores the Talos version that was used during installation
-- `0x07` - Tracks upgrade-related data
-- `0x0a` - May store network configuration or server identity data
+- `0x06` - Stores upgrade metadata, such as the previous boot entry
+- `0x07` - Stores the image reference for a staged upgrade
+- `0x08` - Stores install options for a staged upgrade
+- `0x09` - Stores STATE partition encryption configuration
+- `0x0a` - Stores `metal` platform network configuration
 
 These keys are internal to Talos, and their exact meaning can shift between versions. The important thing is that they provide the system with the context it needs to boot correctly.
 
@@ -96,22 +97,22 @@ talosctl upgrade --nodes 192.168.1.10 \
   --image ghcr.io/siderolabs/installer:v1.7.0
 ```
 
-Talos writes the target version and upgrade state into the META partition before initiating the reboot. After the reboot, the boot process reads these values and decides whether to proceed with the new version or roll back.
+Talos writes upgrade metadata to the META partition as part of the upgrade flow. For staged upgrades, Talos writes the target image reference and install options before initiating the reboot. After the reboot, the boot process reads these values and applies the staged upgrade early.
 
-If the upgrade fails (for example, the new kernel cannot boot), Talos can detect this through the META partition data and automatically revert to the previous working version. This automatic rollback capability depends entirely on the META partition being intact and correctly written.
+If the upgrade fails (for example, the new kernel cannot boot), Talos can automatically revert to the previous working version using its A-B image and boot reference scheme. The META partition is part of the upgrade flow, but the rollback mechanism also depends on the retained previous kernel and OS image and the bootloader state.
 
 ## What Happens If the META Partition Is Corrupted?
 
-Corruption of the META partition is rare, but it can happen due to hardware failures, power loss during writes, or disk errors. If the META partition becomes unreadable, Talos may not be able to determine which version to boot or may lose track of upgrade state.
+Corruption of the META partition is rare, but it can happen due to hardware failures, power loss during writes, or disk errors. If the META partition becomes unreadable, Talos may lose metadata such as staged upgrade details, `metal` network configuration, or STATE encryption settings.
 
-In practice, this usually means the node will boot into a default state, and you may need to re-apply the machine configuration. The good news is that Talos is designed to be recoverable. You can reinstall Talos on the node and rejoin it to the cluster without losing workloads, as long as the Kubernetes control plane is healthy and the workloads are scheduled across multiple nodes.
+In practice, recovery depends on which metadata was affected and whether the node can still boot and unlock its state. The good news is that Talos is designed to be recoverable. You can reinstall Talos on the node and rejoin it to the cluster, but resetting or reinstalling a node can wipe local data, so workload safety depends on the Kubernetes control plane, storage design, and whether workloads are replicated across multiple nodes.
 
 ```bash
-# If a node has issues, you can reset and reinstall
-talosctl reset --nodes 192.168.1.10 --graceful=false
+# If a node has issues, you can reset it
+talosctl reset --nodes 192.168.1.10 --graceful=false --reboot
 
 # Then re-apply the machine configuration
-talosctl apply-config --nodes 192.168.1.10 --file controlplane.yaml
+talosctl apply-config --nodes 192.168.1.10 --file controlplane.yaml --insecure
 ```
 
 ## META Partition vs STATE Partition
@@ -121,9 +122,9 @@ It is easy to confuse the META partition with the STATE partition, since both st
 | Feature | META Partition | STATE Partition |
 |---------|---------------|-----------------|
 | Purpose | Node metadata and boot hints | Machine configuration |
-| Size | A few megabytes | Larger, varies |
+| Size | Around 1 MB | Larger, varies |
 | Format | Custom key-value binary | Standard filesystem |
-| Content | Version info, upgrade state | Full machine config, certificates |
+| Content | Upgrade metadata, staged upgrade data, early-boot metadata | Full machine config, certificates |
 | Survives upgrade | Yes | Yes |
 | Survives reset | Depends on reset type | Depends on reset type |
 
@@ -134,10 +135,10 @@ The STATE partition holds the full machine configuration YAML, TLS certificates,
 Since the META partition is managed entirely by Talos, there is not much you need to do to maintain it. However, keeping these practices in mind will help:
 
 1. Do not attempt to write to the META partition manually. Talos manages it through its own internal processes.
-2. When troubleshooting boot issues, always check the META partition contents using `talosctl get meta` to verify version and upgrade state data.
+2. When troubleshooting boot issues, check the META partition contents using `talosctl get meta` to verify upgrade, staged-upgrade, or early-boot metadata.
 3. Before performing major upgrades, ensure you have a backup strategy for your cluster. While the META partition handles rollback, having a full cluster recovery plan is still important.
 4. If a node refuses to boot after an upgrade, the META partition data can help you understand whether the node is trying to boot a new version or has already rolled back.
 
 ## Conclusion
 
-The META partition is a small but essential component of the Talos Linux disk layout. It acts as a persistent notepad for the system, storing version information, upgrade state, and other metadata that the boot process relies on. Understanding its role helps you troubleshoot boot problems, plan upgrades confidently, and appreciate the careful design that makes Talos Linux a reliable platform for running Kubernetes in production.
+The META partition is a small but essential component of the Talos Linux disk layout. It acts as a persistent notepad for the system, storing upgrade state, staged-upgrade data, and other metadata that early boot can rely on. Understanding its role helps you troubleshoot boot problems, plan upgrades confidently, and appreciate the careful design that makes Talos Linux a reliable platform for running Kubernetes in production.
