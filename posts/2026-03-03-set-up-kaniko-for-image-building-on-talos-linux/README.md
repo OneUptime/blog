@@ -16,7 +16,7 @@ This guide covers setting up Kaniko on Talos Linux for building container images
 
 Talos Linux does not have a Docker daemon. The container runtime is containerd, and there is no way to run Docker commands on the host. Even if you could, running privileged containers or mounting host sockets would undermine the security model that makes Talos valuable in the first place.
 
-Kaniko builds images from a Dockerfile within a standard, unprivileged container. It does not need the Docker daemon, it does not need privileged access, and it does not need to mount any host paths. This makes it the ideal image building tool for Talos Linux.
+Kaniko builds images from a Dockerfile within a standard, unprivileged container. It does not need the Docker daemon, it does not need privileged access, and it does not need to mount any host paths. This makes it a good fit for Talos Linux, though the upstream Kaniko project is now archived and no longer maintained.
 
 ## How Kaniko Works
 
@@ -55,7 +55,8 @@ kubectl create secret docker-registry kaniko-registry-credentials \
 # Alternatively, create from an existing Docker config
 kubectl create secret generic kaniko-registry-credentials \
   --namespace ci \
-  --from-file=config.json=$HOME/.docker/config.json
+  --type=kubernetes.io/dockerconfigjson \
+  --from-file=.dockerconfigjson=$HOME/.docker/config.json
 ```
 
 ## Basic Kaniko Build
@@ -403,9 +404,9 @@ spec:
 
 ```yaml
 args:
-  # Use compressed layers for smaller images
-  - --compressed-caching
-  # Reproduce builds with specific snapshot mode
+  # Disable compressed caching to reduce memory usage on large builds
+  - --compressed-caching=false
+  # Use a faster snapshot mode that checks file metadata
   - --snapshot-mode=redo
   # Skip TLS verification for internal registries
   - --skip-tls-verify
@@ -416,7 +417,7 @@ args:
   - --target=runtime
   # Custom labels
   - --label=maintainer=team@example.com
-  - --label=build-date=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  - --label=build-date=2026-03-03T00:00:00Z
 ```
 
 ## Troubleshooting
@@ -440,4 +441,4 @@ kubectl logs kaniko-build -n ci
 
 ## Wrapping Up
 
-Kaniko is the standard tool for building container images on Talos Linux. It requires no privileged access, no Docker daemon, and no host mounts, making it perfectly compatible with Talos's security model. With remote layer caching enabled, rebuild times drop dramatically, making Kaniko comparable in speed to local Docker builds. Integrate it with your CI/CD pipeline of choice, configure caching for your most frequently built images, and let Kaniko handle image building while Talos handles the secure execution environment underneath.
+Kaniko is one option for building container images on Talos Linux. It requires no privileged access, no Docker daemon, and no host mounts, making it compatible with Talos's security model. With remote layer caching enabled, rebuild times can drop dramatically, making Kaniko comparable in speed to local Docker builds for some workloads. Integrate it with your CI/CD pipeline of choice, configure caching for your most frequently built images, and let Kaniko handle image building while Talos handles the secure execution environment underneath.
