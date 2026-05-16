@@ -365,7 +365,8 @@ users:
 - name: ad-user
   user:
     exec:
-      apiVersion: client.authentication.k8s.io/v1beta1
+      apiVersion: client.authentication.k8s.io/v1
+      interactiveMode: IfAvailable
       command: kubectl
       args:
       - oidc-login
