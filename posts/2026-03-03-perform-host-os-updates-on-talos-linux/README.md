@@ -180,14 +180,13 @@ echo "All workers updated"
 
 ## Handling Configuration Patches During Updates
 
-Sometimes an OS update requires configuration changes. Talos lets you apply configuration patches as part of the upgrade process:
+Sometimes an OS update requires configuration changes. The `talosctl upgrade` command itself does not accept config patches, so you apply the patch to the machine config first with `talosctl patch machineconfig` and then run the upgrade:
 
 ```bash
-# Apply a config patch along with the upgrade
-talosctl upgrade \
-    --image ghcr.io/siderolabs/installer:v1.9.1 \
+# Apply a config patch before the upgrade
+talosctl patch machineconfig \
     -n <node-ip> \
-    --config-patch '[{"op": "add", "path": "/machine/sysctls/net.core.somaxconn", "value": "65535"}]'
+    --patch '[{"op": "add", "path": "/machine/sysctls/net.core.somaxconn", "value": "65535"}]'
 ```
 
 Or use a patch file:
@@ -201,10 +200,14 @@ machine:
 ```
 
 ```bash
+talosctl patch machineconfig \
+    -n <node-ip> \
+    --patch @upgrade-patch.yaml
+
+# Then perform the upgrade
 talosctl upgrade \
     --image ghcr.io/siderolabs/installer:v1.9.1 \
-    -n <node-ip> \
-    --config-patch @upgrade-patch.yaml
+    -n <node-ip>
 ```
 
 ## Verifying the Update
@@ -258,8 +261,11 @@ Rollback is fast because it just switches which image the bootloader loads. No d
 **Network configuration changes**: Some OS updates may include changes to the network stack. Test network connectivity thoroughly after updating the first node.
 
 ```bash
-# Test network connectivity after update
-talosctl ping 8.8.8.8 -n <updated-node-ip>
+# Inspect network state after update
+talosctl get links -n <updated-node-ip>
+talosctl get addresses -n <updated-node-ip>
+talosctl get routes -n <updated-node-ip>
+talosctl netstat -n <updated-node-ip>
 
 # Check that DNS works
 kubectl run dns-test --image=busybox --restart=Never -- nslookup kubernetes.default
