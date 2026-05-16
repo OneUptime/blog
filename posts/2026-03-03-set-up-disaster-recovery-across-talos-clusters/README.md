@@ -31,8 +31,7 @@ talosctl etcd snapshot /tmp/etcd-backup.db \
   --nodes 10.0.1.10
 
 # Verify the snapshot
-talosctl etcd snapshot /tmp/etcd-backup-verify.db \
-  --nodes 10.0.1.11
+etcdutl --write-out=table snapshot status /tmp/etcd-backup.db
 
 # Upload to object storage
 aws s3 cp /tmp/etcd-backup.db \
@@ -94,7 +93,7 @@ velero install \
   --secret-file ./aws-credentials \
   --backup-location-config region=us-east-1 \
   --snapshot-location-config region=us-east-1 \
-  --plugins velero/velero-plugin-for-aws:v1.8.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.0 \
   --use-volume-snapshots=true
 ```
 
@@ -135,6 +134,9 @@ spec:
     matchLabels:
       app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
         - name: api
@@ -154,6 +156,11 @@ metadata:
   namespace: databases
 spec:
   instances: 3
+  storage:
+    size: 100Gi
+  bootstrap:
+    pg_basebackup:
+      source: app-db-primary
   replica:
     enabled: true
     source: app-db-primary
@@ -223,16 +230,15 @@ talosctl apply-config --insecure \
   --nodes 10.0.1.10 \
   --file generated/prod-us/controlplane.yaml
 
-# Step 3: Bootstrap the cluster
-talosctl bootstrap --nodes 10.0.1.10
+# Step 3: Bootstrap the cluster and recover etcd from the snapshot
+talosctl bootstrap \
+  --nodes 10.0.1.10 \
+  --recover-from /tmp/etcd-backup.db
 
 # Step 4: Wait for the cluster to be ready
 talosctl health --wait-timeout 600s
 
-# Step 5: Restore etcd from backup (if not starting fresh)
-talosctl etcd restore /tmp/etcd-backup.db --nodes 10.0.1.10
-
-# Step 6: Restore Kubernetes resources from Velero backup
+# Step 5: Restore Kubernetes resources from Velero backup
 velero restore create --from-backup full-backup-20260301-060000 \
   --restore-volumes=true
 ```
