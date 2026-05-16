@@ -23,16 +23,16 @@ Install the required packages on your system:
 ```bash
 # On Ubuntu/Debian
 
-sudo apt install qemu-system-x86 qemu-utils ovmf
+sudo apt install qemu-system-x86 qemu-utils ovmf dnsmasq zstd iptables
 
 # On Fedora
-sudo dnf install qemu-system-x86 edk2-ovmf
+sudo dnf install qemu-system-x86 edk2-ovmf dnsmasq zstd iptables
 
 # On macOS (using Homebrew)
-brew install qemu
+brew install qemu zstd
 
 # On Arch Linux
-sudo pacman -S qemu-full edk2-ovmf
+sudo pacman -S qemu-full edk2-ovmf dnsmasq zstd iptables
 ```
 
 You also need `talosctl` and `kubectl`:
@@ -53,8 +53,8 @@ Download the metal image for QEMU:
 
 ```bash
 # Download the Talos metal image (AMD64)
-curl -LO https://github.com/siderolabs/talos/releases/download/v1.7.0/metal-amd64.raw.xz
-xz -d metal-amd64.raw.xz
+curl -L https://github.com/siderolabs/talos/releases/download/v1.13.2/metal-amd64.raw.zst -o ~/metal-amd64.raw.zst
+zstd -d ~/metal-amd64.raw.zst -o ~/metal-amd64.raw
 ```
 
 ## Creating VM Disks
@@ -81,14 +81,18 @@ Locate the OVMF firmware files on your system:
 # On Ubuntu/Debian
 ls /usr/share/OVMF/
 # Look for OVMF_CODE.fd and OVMF_VARS.fd
+OVMF_CODE=/usr/share/OVMF/OVMF_CODE.fd
+OVMF_VARS_TEMPLATE=/usr/share/OVMF/OVMF_VARS.fd
 
 # On Fedora
 ls /usr/share/edk2/ovmf/
-# Look for OVMF_CODE.fd
+# Look for OVMF_CODE.fd and OVMF_VARS.fd
+OVMF_CODE=/usr/share/edk2/ovmf/OVMF_CODE.fd
+OVMF_VARS_TEMPLATE=/usr/share/edk2/ovmf/OVMF_VARS.fd
 
 # Copy the VARS file for each VM (the CODE file is shared, but VARS must be per-VM)
 for node in cp1 cp2 cp3 worker1 worker2; do
-  cp /usr/share/OVMF/OVMF_VARS.fd ~/talos-qemu/$node/OVMF_VARS.fd
+  cp "$OVMF_VARS_TEMPLATE" ~/talos-qemu/$node/OVMF_VARS.fd
 done
 ```
 
@@ -97,6 +101,8 @@ Each VM needs its own copy of OVMF_VARS.fd because the UEFI variables are stored
 ## Creating a Network Bridge
 
 For VMs to communicate with each other and with your host, create a bridge network:
+
+The manual bridge/TAP setup below is for Linux hosts. On macOS, use `talosctl cluster create qemu` or QEMU networking that uses Apple's vmnet support instead of Linux TAP devices.
 
 ```bash
 # Create a bridge interface
@@ -109,6 +115,23 @@ sudo sysctl -w net.ipv4.ip_forward=1
 
 # Set up NAT for internet access from VMs
 sudo iptables -t nat -A POSTROUTING -s 10.5.0.0/24 -j MASQUERADE
+```
+
+Start a DHCP server so Talos nodes receive the IP addresses used later in the guide:
+
+```bash
+sudo dnsmasq \
+  --interface=br0 \
+  --bind-interfaces \
+  --dhcp-range=10.5.0.50,10.5.0.100,12h \
+  --dhcp-host=52:54:00:00:00:01,10.5.0.2 \
+  --dhcp-host=52:54:00:00:00:02,10.5.0.3 \
+  --dhcp-host=52:54:00:00:00:03,10.5.0.4 \
+  --dhcp-host=52:54:00:00:00:04,10.5.0.5 \
+  --dhcp-host=52:54:00:00:00:05,10.5.0.6 \
+  --dhcp-option=3,10.5.0.1 \
+  --dhcp-option=6,1.1.1.1 \
+  --pid-file=/tmp/talos-qemu-dnsmasq.pid
 ```
 
 Create TAP interfaces for each VM:
@@ -134,7 +157,7 @@ qemu-system-x86_64 \
   -cpu host \
   -smp 2 \
   -m 4096 \
-  -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd \
+  -drive if=pflash,format=raw,readonly=on,file=$OVMF_CODE \
   -drive if=pflash,format=raw,file=$HOME/talos-qemu/cp1/OVMF_VARS.fd \
   -drive file=$HOME/talos-qemu/cp1/disk.qcow2,format=qcow2,if=virtio \
   -netdev tap,id=net0,ifname=tap0,script=no,downscript=no \
@@ -149,7 +172,7 @@ Launch the remaining nodes with different MAC addresses and TAP interfaces:
 # Launch CP2
 qemu-system-x86_64 \
   -name cp2 -machine q35,accel=kvm -cpu host -smp 2 -m 4096 \
-  -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd \
+  -drive if=pflash,format=raw,readonly=on,file=$OVMF_CODE \
   -drive if=pflash,format=raw,file=$HOME/talos-qemu/cp2/OVMF_VARS.fd \
   -drive file=$HOME/talos-qemu/cp2/disk.qcow2,format=qcow2,if=virtio \
   -netdev tap,id=net0,ifname=tap1,script=no,downscript=no \
@@ -159,7 +182,7 @@ qemu-system-x86_64 \
 # Launch Worker1
 qemu-system-x86_64 \
   -name worker1 -machine q35,accel=kvm -cpu host -smp 4 -m 8192 \
-  -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd \
+  -drive if=pflash,format=raw,readonly=on,file=$OVMF_CODE \
   -drive if=pflash,format=raw,file=$HOME/talos-qemu/worker1/OVMF_VARS.fd \
   -drive file=$HOME/talos-qemu/worker1/disk.qcow2,format=qcow2,if=virtio \
   -netdev tap,id=net0,ifname=tap3,script=no,downscript=no \
@@ -173,7 +196,7 @@ Once the VMs are running, generate the Talos config and apply it:
 
 ```bash
 # Generate config pointing to the first CP node
-talosctl gen config qemu-cluster https://10.5.0.2:6443
+talosctl gen config qemu-cluster https://10.5.0.2:6443 --install-disk /dev/vda
 
 # Apply config to control plane nodes
 talosctl apply-config --insecure --nodes 10.5.0.2 --file controlplane.yaml
@@ -241,6 +264,9 @@ Gracefully shut down the VMs:
 ```bash
 # Shutdown through Talos
 talosctl shutdown --nodes 10.5.0.2,10.5.0.3,10.5.0.4,10.5.0.5,10.5.0.6
+
+# Stop the DHCP server
+sudo kill "$(cat /tmp/talos-qemu-dnsmasq.pid)"
 
 # Or kill the QEMU processes
 pkill -f "qemu-system-x86_64.*talos"
