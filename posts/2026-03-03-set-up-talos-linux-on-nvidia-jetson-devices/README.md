@@ -8,9 +8,9 @@ Description: A walkthrough for installing Talos Linux on the NVIDIA Jetson Nano 
 
 ---
 
-NVIDIA Jetson devices are purpose-built for AI and GPU computing at the edge. The Jetson Nano packs an NVIDIA GPU, ARM64 CPU, and hardware video codecs into a compact, power-efficient module. Running Talos Linux on the Jetson Nano gives you a secure, immutable Kubernetes platform with direct GPU access - suitable for lightweight inference serving, computer vision, and other AI workloads that need to run close to the data source.
+NVIDIA Jetson devices are purpose-built for AI and GPU computing at the edge. The Jetson Nano packs an NVIDIA GPU, ARM64 CPU, and hardware video codecs into a compact, power-efficient module. Running Talos Linux on the Jetson Nano gives you a secure, immutable Kubernetes platform for edge workloads - suitable for lightweight inference serving, computer vision, and other AI workloads that need to run close to the data source.
 
-This guide covers the installation and configuration of Talos Linux on the NVIDIA Jetson Nano, from device preparation through to running GPU-accelerated pods.
+This guide covers the installation and configuration of Talos Linux on the NVIDIA Jetson Nano, from device preparation through to verifying an ARM64 Kubernetes workload.
 
 ## Supported Jetson Platforms
 
@@ -29,27 +29,38 @@ As of Talos v1.9, the only officially supported Jetson device is the Jetson Nano
 You will need:
 
 - An NVIDIA Jetson Nano (4 GB model recommended)
-- A host computer running Ubuntu 18.04 (for firmware flashing via NVIDIA SDK Manager or L4T tools)
+- A Linux host computer for firmware flashing with NVIDIA L4T tools
 - Micro-USB cable for flashing
 - microSD card (32 GB or larger) for boot media
 - Ethernet connection for the Jetson Nano
 - USB-to-serial adapter (optional, for console access)
-- `talosctl` and `kubectl` on your workstation
+- `talosctl`, `kubectl`, and `crane` on your workstation
 
 ## Step 1: Flash the Jetson Nano Firmware
 
 Before installing Talos, flash the Jetson Nano with the patched u-boot firmware. This only needs to be done once.
 
-1. Download JetPack 4.6.4 (L4T R32.7.4) from NVIDIA's developer site.
-2. Put the Jetson Nano into Force Recovery Mode by placing a jumper on the recovery header pins (FC REC and GND), then connecting power.
-3. Flash the patched u-boot provided by Siderolabs:
+1. Download the Jetson Nano L4T R32.7.2 release from NVIDIA's developer site.
+2. Extract the L4T archive and replace the bundled u-boot with the patched u-boot provided by Siderolabs.
+3. Put the Jetson Nano into Force Recovery Mode by placing a jumper on the recovery header pins, then connecting power. On board revision A02, these are pins 3 and 4 of header J40. On board revision B01, these are pins 9 and 10 of header J50.
+4. Flash the firmware to the SPI flash:
 
 ```bash
-# Download the patched u-boot from siderolabs/sbc-jetson releases
-# Replace the default u-boot with the patched version in the L4T directory
+# Download and extract the L4T release
+curl -SLO https://developer.nvidia.com/embedded/l4t/r32_release_v7.1/t210/jetson-210_linux_r32.7.2_aarch64.tbz2
+tar xf jetson-210_linux_r32.7.2_aarch64.tbz2
+cd Linux_for_Tegra
+
+# Replace the default u-boot with the patched version
+crane --platform=linux/arm64 export ghcr.io/siderolabs/sbc-jetson:v0.1.0 - \
+  | tar xf - --strip-components=4 -C bootloader/t210ref/p3450-0000/ \
+    artifacts/arm64/u-boot/jetson_nano/u-boot.bin
+
+# Confirm the board is in Force Recovery Mode
+lsusb | grep -i "nvidia"
 
 # Flash the firmware
-sudo ./flash.sh p3448-0002 internal
+sudo ./flash.sh p3448-0000-max-spi external
 ```
 
 After flashing, remove the jumper and reboot the device.
@@ -105,36 +116,23 @@ nmap -sn 192.168.1.0/24
 # Or check your DHCP server's lease table
 ```
 
-## Step 5: Generate and Apply Talos Configuration
+## Step 5: Apply Talos Configuration
 
-Generate the machine configuration with Jetson-specific settings:
+Insert the SD card or USB storage into the Jetson Nano, power it on, and wait for the console to show the Talos maintenance-mode instructions. Apply the initial configuration with the interactive installer:
 
 ```bash
-# Generate base config
-talosctl gen config jetson-cluster https://<JETSON_IP>:6443
-
-# Create a Jetson Nano-specific patch
-cat <<EOF > jetson-patch.yaml
-- op: add
-  path: /machine/install/disk
-  value: /dev/mmcblk0
-EOF
-
-# Apply with the Jetson patch
-talosctl apply-config --insecure --nodes <JETSON_IP> \
-  --file controlplane.yaml \
-  --config-patch @jetson-patch.yaml
+talosctl apply-config --insecure --mode=interactive --nodes <JETSON_IP>
 ```
 
 ## Step 6: Bootstrap and Verify
 
 ```bash
-# Configure talosctl
+# Configure talosctl if you generated a local talosconfig
 talosctl config endpoint <JETSON_IP>
 talosctl config node <JETSON_IP>
 talosctl config merge talosconfig
 
-# Bootstrap
+# Bootstrap the first control plane node if the interactive flow did not do it for you
 talosctl bootstrap
 
 # Check health
@@ -170,7 +168,7 @@ kubectl get nodes -o wide
 kubectl describe node <JETSON_NODE> | grep "Architecture"
 ```
 
-## Step 9: Run a GPU Workload
+## Step 9: Run an ARM64 Workload
 
 Test with a simple ARM64 workload to verify the cluster is operational:
 
@@ -195,7 +193,7 @@ kubectl logs arm64-test
 # You should see the ARM64 architecture confirmed in the output
 ```
 
-Note: GPU-accelerated container workloads on the Jetson Nano through Kubernetes require additional configuration beyond the standard NVIDIA device plugin, since the Jetson Nano uses an integrated Tegra GPU rather than a discrete GPU. The `nvidia-container-toolkit` extension in your Talos image provides the necessary runtime support.
+Note: GPU-accelerated container workloads on the Jetson Nano through Kubernetes require additional configuration beyond the standard NVIDIA GPU Operator and device plugin, since the Jetson Nano uses an integrated Tegra GPU rather than a discrete PCIe GPU. The `nvidia-container-toolkit` extension can be part of that runtime setup, but it is not sufficient by itself to make Kubernetes advertise `nvidia.com/gpu` resources on Jetson.
 
 ## Power Management
 
@@ -206,6 +204,9 @@ The Jetson Nano supports two power modes: 10W (MaxN) and 5W mode. In Talos Linux
 For a multi-node Jetson cluster, designate one device as the control plane and the rest as GPU workers:
 
 ```bash
+# Generate cluster config once and reuse the same talosconfig for every node
+talosctl gen config jetson-cluster https://<JETSON_1_IP>:6443
+
 # Apply control plane config to first Jetson
 talosctl apply-config --insecure --nodes <JETSON_1_IP> --file controlplane.yaml
 
@@ -218,15 +219,15 @@ Each worker node will join the cluster, and you can distribute workloads across 
 
 ## Troubleshooting
 
-If the GPU is not detected after boot, verify that the NVIDIA kernel modules are loaded:
+If the GPU is not detected after boot, verify the Tegra-related kernel messages:
 
 ```bash
 talosctl -n <JETSON_IP> dmesg | grep -i "nvidia\|nouveau\|tegra"
 ```
 
-If you see "nouveau" driver messages instead of NVIDIA, the proprietary modules are not loading. Make sure the NVIDIA extensions are included in the Talos image.
+If you do not see Tegra GPU messages, confirm that the Jetson-specific overlay image was used and that the patched u-boot was flashed correctly. The standard Talos NVIDIA proprietary-driver extensions are intended for supported discrete NVIDIA GPUs, not Jetson's integrated Tegra GPU.
 
-If the device does not boot at all, verify the firmware version. Make sure you flashed the patched u-boot from the Siderolabs sbc-jetson releases. The Jetson Nano requires L4T R32.7.2 or later.
+If the device does not boot at all, verify the firmware version. Make sure you flashed the patched u-boot from the Siderolabs `sbc-jetson` image. The Talos Jetson Nano instructions use L4T R32.7.2.
 
 If container images fail to pull, remember that Jetson requires ARM64 container images. Many popular ML images are available for ARM64 through NVIDIA's NGC catalog (nvcr.io).
 
