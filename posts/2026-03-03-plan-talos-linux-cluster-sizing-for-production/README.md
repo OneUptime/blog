@@ -233,17 +233,23 @@ For bare metal, have a scaling plan that answers:
 - How long does it take to provision and add a new node?
 - Do we have spare hardware available for emergency scaling?
 
-Resource Reservations
+## Resource Reservations
 
 Talos Linux automatically reserves some resources for system components. You can adjust the kubelet's resource reservation:
 
 ```yaml
 machine:
   kubelet:
-    extraArgs:
-      system-reserved: "cpu=500m,memory=1Gi"
-      kube-reserved: "cpu=500m,memory=1Gi"
-      eviction-hard: "memory.available<500Mi,nodefs.available<10%"
+    extraConfig:
+      systemReserved:
+        cpu: "500m"
+        memory: "1Gi"
+      kubeReserved:
+        cpu: "500m"
+        memory: "1Gi"
+      evictionHard:
+        memory.available: "500Mi"
+        nodefs.available: "10%"
 ```
 
 These reservations prevent workload pods from consuming all resources and starving system components.
