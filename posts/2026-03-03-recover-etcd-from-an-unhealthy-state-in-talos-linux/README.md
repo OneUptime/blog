@@ -149,7 +149,8 @@ talosctl etcd remove-member --nodes <healthy-cp-node> <corrupted-member-id>
 # Step 3: Wipe etcd data on the corrupted node
 talosctl reset --nodes <corrupted-node> \
   --system-labels-to-wipe EPHEMERAL \
-  --graceful=false
+  --graceful=false \
+  --reboot
 
 # Step 4: Apply the machine configuration again
 # The node will rejoin the etcd cluster with fresh data
