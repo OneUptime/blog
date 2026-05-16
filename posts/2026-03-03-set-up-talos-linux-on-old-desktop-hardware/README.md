@@ -17,8 +17,8 @@ This guide covers how to evaluate, prepare, and install Talos Linux on desktop h
 Not all old hardware is worth running. Here are the minimum requirements for Talos Linux:
 
 - **CPU**: 64-bit processor (x86_64). Anything from the last 12-15 years works. Intel Core 2 Duo or AMD Phenom II and later.
-- **RAM**: 2GB minimum for a worker node, 4GB minimum for a control plane node. 8GB or more is ideal.
-- **Storage**: 10GB minimum. Any SATA SSD or even a spinning hard drive works, though an SSD makes a noticeable difference.
+- **RAM**: 1GB minimum for a worker node, 2GB minimum for a control plane node. For a smoother lab, use at least 2GB for workers and 4GB for control plane nodes.
+- **Storage**: 10GB minimum, 100GB recommended. Any SATA SSD or even a spinning hard drive works, though an SSD makes a noticeable difference.
 - **Network**: At least one Ethernet port. Wi-Fi is not supported by Talos.
 
 Check what you have:
@@ -67,8 +67,8 @@ Before installing Talos, do some basic hardware prep:
 Download the Talos metal image and flash it to a USB drive:
 
 ```bash
-# Download the latest Talos metal ISO
-TALOS_VERSION="v1.6.0"
+# Download a current Talos metal ISO
+TALOS_VERSION="v1.13.2"
 curl -LO "https://github.com/siderolabs/talos/releases/download/$TALOS_VERSION/metal-amd64.iso"
 
 # Flash to USB drive
@@ -94,7 +94,7 @@ Generate the cluster configuration on your workstation:
 ```bash
 # Generate configs with your cluster name and endpoint
 talosctl gen config desktop-lab https://192.168.1.50:6443 \
-  --output-dir ./desktop-lab-config \
+  --output ./desktop-lab-config \
   --install-disk /dev/sda
 ```
 
@@ -105,26 +105,31 @@ Customize for each machine. Old desktops often have different disk devices and n
 machine:
   install:
     disk: /dev/sda  # Verify with lsblk on each machine
-    image: ghcr.io/siderolabs/installer:v1.6.0
+    image: ghcr.io/siderolabs/installer:v1.13.2
     wipe: true
-  network:
-    hostname: desk-cp-01
-    interfaces:
-      - interface: enp3s0  # Check actual interface name
-        dhcp: false
-        addresses:
-          - 192.168.1.50/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-    nameservers:
-      - 1.1.1.1
-      - 8.8.8.8
   # Optimize for older hardware
   kubelet:
     extraArgs:
       system-reserved: cpu=200m,memory=512Mi
       kube-reserved: cpu=200m,memory=512Mi
+---
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: desk-cp-01
+---
+apiVersion: v1alpha1
+kind: LinkConfig
+name: enp3s0  # Check actual interface name
+addresses:
+  - address: 192.168.1.50/24
+routes:
+  - gateway: 192.168.1.1
+---
+apiVersion: v1alpha1
+kind: ResolverConfig
+nameservers:
+  - address: 1.1.1.1
+  - address: 8.8.8.8
 ```
 
 ## Installation
@@ -199,7 +204,9 @@ Older desktops may use legacy BIOS instead of UEFI. Talos supports both, but you
 Old desktops can be power-hungry. A typical desktop from 2012-2015 draws 40-80 watts at idle. To reduce this:
 
 ```yaml
-# Add power-saving kernel parameters
+# Add power-saving kernel parameters on BIOS/GRUB installs.
+# On UEFI/systemd-boot installs, extraKernelArgs is ignored;
+# use custom boot assets if you need persistent kernel arguments.
 machine:
   install:
     extraKernelArgs:
@@ -228,7 +235,7 @@ cluster:
       max-mutating-requests-inflight: "50"
   etcd:
     extraArgs:
-      quota-backend-bytes: "4294967296"  # 4GB, down from default 8GB
+      quota-backend-bytes: "2147483648"  # 2 GiB default; 8 GiB is the recommended maximum
 ```
 
 ## Reliability Considerations
@@ -243,7 +250,7 @@ Old hardware is more likely to fail than new hardware. Plan for it:
 ```bash
 # Schedule etcd backup as a cron job on your workstation
 # Run every 6 hours
-0 */6 * * * talosctl etcd snapshot /backups/etcd-$(date +\%Y\%m\%d-\%H\%M).db --nodes 192.168.1.50
+0 */6 * * * TALOSCONFIG=/path/to/desktop-lab-config/talosconfig talosctl etcd snapshot /backups/etcd-$(date +\%Y\%m\%d-\%H\%M).db --nodes 192.168.1.50
 ```
 
 ## Summary
