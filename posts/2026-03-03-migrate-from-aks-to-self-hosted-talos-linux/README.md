@@ -12,7 +12,7 @@ Azure Kubernetes Service provides a managed control plane and tight integration 
 
 ## Reasons to Leave AKS
 
-AKS does not charge for the control plane (unlike EKS and GKE), but the total cost of ownership extends far beyond that. You are paying for Azure VMs, Azure Disk storage, Azure Load Balancers, Virtual Networks, and all the Azure services your workloads consume. AKS also has its own set of constraints: upgrade windows, node pool limitations, and the occasional Azure-specific issue that you would not encounter on a self-hosted cluster.
+AKS offers a Free tier with no control plane charge, but the Standard tier (which provides an uptime SLA) costs around $0.10 per cluster per hour and the Premium tier around $0.60 per cluster per hour. Beyond the control plane, the total cost of ownership extends much further. You are paying for Azure VMs, Azure Disk storage, Azure Load Balancers, Virtual Networks, and all the Azure services your workloads consume. AKS also has its own set of constraints: upgrade windows, node pool limitations, and the occasional Azure-specific issue that you would not encounter on a self-hosted cluster.
 
 Talos Linux eliminates the dependency on any cloud provider. You get a consistent experience whether you run on bare metal, Azure, AWS, or your own hardware. The immutable OS design means nodes cannot be tampered with, and upgrades are atomic operations that take seconds.
 
@@ -66,6 +66,7 @@ Create reliable backups before any migration work:
 # Install Velero with Azure provider
 velero install \
   --provider azure \
+  --plugins velero/velero-plugin-for-microsoft-azure:v1.14.0 \
   --bucket velero-backups \
   --secret-file ./azure-credentials \
   --backup-location-config resourceGroup=my-rg,storageAccount=myvelero \
