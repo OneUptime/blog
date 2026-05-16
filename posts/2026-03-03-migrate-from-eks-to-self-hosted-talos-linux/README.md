@@ -99,7 +99,7 @@ For bare metal or a colocation facility:
 talosctl gen secrets -o secrets.yaml
 talosctl gen config eks-migrated https://your-vip:6443 \
   --with-secrets secrets.yaml \
-  --output-dir _out
+  --output _out
 
 # Customize the configuration for your environment
 # Example patch for production-grade settings
