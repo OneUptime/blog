@@ -20,9 +20,9 @@ This duplication creates maintenance headaches. Change the NTP server? You need 
 
 ## How Multi-Document Configuration Works
 
-Talos supports YAML multi-document syntax, where you separate documents with the standard `---` delimiter. Each document is a complete or partial configuration that gets merged in order. Later documents override earlier ones when there are conflicts.
+Talos supports YAML multi-document syntax, where you separate documents with the standard `---` delimiter. The legacy `version: v1alpha1` document appears once and still contains most machine and cluster settings. Additional documents use `apiVersion` and `kind`, and Talos merges all documents into one effective configuration before applying it.
 
-Here is a simple example with two documents:
+Here is a simple example with multiple documents:
 
 ```yaml
 # Base machine configuration
@@ -30,29 +30,27 @@ Here is a simple example with two documents:
 version: v1alpha1
 machine:
   type: controlplane
-  network:
-    hostname: cp-node-1
   install:
     disk: /dev/sda
-    image: ghcr.io/siderolabs/installer:v1.6.0
+    image: ghcr.io/siderolabs/installer:v1.13.0
 cluster:
   clusterName: my-cluster
   controlPlane:
     endpoint: https://192.168.1.100:6443
 ---
-# Override document - adds extra settings
-version: v1alpha1
-machine:
-  network:
-    nameservers:
-      - 8.8.8.8
-      - 8.8.4.4
-  time:
-    servers:
-      - time.cloudflare.com
+# Hostname document
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: cp-node-1
+---
+# Kernel log forwarding document
+apiVersion: v1alpha1
+kind: KmsgLogConfig
+name: remote-log
+url: tcp://10.0.0.50:5044/
 ```
 
-When Talos processes this, it merges both documents. The result is a single configuration that has the hostname, install disk, cluster settings from the first document, plus the nameservers and time servers from the second document.
+When Talos processes this, it validates the documents and builds one effective configuration. The result has the machine type, install disk, and cluster settings from the legacy document, plus the hostname and kernel log forwarding settings from the additional documents.
 
 ## Using Config Patches as Separate Documents
 
@@ -61,7 +59,7 @@ The practical way to use multi-document configs is through config patches. You c
 ```bash
 # Generate the base config
 talosctl gen config my-cluster https://192.168.1.100:6443 \
-  --output-dir ./configs
+  --output ./configs
 
 # Apply multiple patches when configuring a node
 talosctl apply-config --nodes 192.168.1.10 \
@@ -102,7 +100,7 @@ machine:
 
 ```yaml
 # patches/monitoring.yaml
-# Enable metrics and tracing
+# API server and CoreDNS settings
 cluster:
   apiServer:
     extraArgs:
@@ -113,22 +111,19 @@ cluster:
 
 ## Merge Behavior and Ordering
 
-Understanding how Talos merges documents is important. The merge strategy works like this:
+Understanding how Talos merges patches is important. Strategic merge patches work like this:
 
 - **Maps (objects)** are merged recursively. Keys from later documents override keys from earlier ones.
-- **Lists (arrays)** are replaced entirely, not appended. If your base config has two nameservers and your patch specifies three different nameservers, you get the three from the patch.
+- **Most lists (arrays)** are appended, not replaced. There are documented exceptions: `cluster.network.podSubnets` and `cluster.network.serviceSubnets` are overwritten, `machine.network.interfaces` and VLANs are merged by their matching keys, and `cluster.apiServer.auditPolicy` is replaced.
 - **Scalar values** (strings, numbers, booleans) are replaced by later documents.
 
-This means you need to be careful with list-type fields. If you want to add an item to a list, you need to include the full list in your patch:
+This means you need to be careful with list-type fields. If your base config has two nameservers and your patch adds one more, the effective config includes all three:
 
 ```yaml
-# This patch replaces the entire nameservers list
-# Make sure to include all the nameservers you want
+# This patch appends another nameserver to the existing list
 machine:
   network:
     nameservers:
-      - 10.0.0.2
-      - 10.0.0.3
       - 8.8.8.8
 ```
 
@@ -171,7 +166,7 @@ talosctl apply-config --nodes 192.168.1.50 \
 
 ## Inline Multi-Document Format
 
-You can also combine everything into a single file using YAML document separators. This is useful when you want to ship a single file but still keep logical sections separated:
+You can also combine the legacy machine config and additional document-style config into a single file using YAML document separators. This is useful when you want to ship a single file but still keep newer configuration documents separated:
 
 ```yaml
 # All-in-one config with clear separation
@@ -180,26 +175,13 @@ machine:
   type: worker
   install:
     disk: /dev/sda
-    image: ghcr.io/siderolabs/installer:v1.6.0
-cluster:
-  clusterName: my-cluster
-  controlPlane:
-    endpoint: https://192.168.1.100:6443
----
-# Network layer
-version: v1alpha1
-machine:
+    image: ghcr.io/siderolabs/installer:v1.13.0
   network:
-    hostname: worker-1
     interfaces:
       - interface: eth0
         dhcp: true
     nameservers:
       - 10.0.0.2
----
-# Operational settings
-version: v1alpha1
-machine:
   time:
     servers:
       - time.cloudflare.com
@@ -207,6 +189,15 @@ machine:
     destinations:
       - endpoint: "udp://10.0.0.50:514"
         format: json_lines
+cluster:
+  clusterName: my-cluster
+  controlPlane:
+    endpoint: https://192.168.1.100:6443
+---
+# Hostname document
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: worker-1
 ```
 
 ## Validating Merged Configuration
@@ -221,7 +212,7 @@ talosctl validate --config controlplane.yaml --mode metal
 talosctl get machineconfig --nodes 192.168.1.10 -o yaml
 ```
 
-This shows you exactly what Talos sees after merging all documents together, which is helpful for debugging merge issues.
+The `get machineconfig` command returns the current node configuration API resource, with the machine configuration in the `.spec` field. That is helpful for debugging merge issues because it shows what Talos has stored after applying the configuration.
 
 ## Practical Tips
 
@@ -237,4 +228,4 @@ Fourth, test your merge results in a staging environment before rolling changes 
 
 ## Conclusion
 
-Multi-document machine configuration in Talos Linux is a practical tool for keeping your cluster configs organized. Instead of maintaining massive monolithic YAML files with lots of duplication, you can break things down into focused, reusable patches. The merge behavior is straightforward once you understand that lists are replaced and maps are merged. Combined with good directory organization and validation before applying, this approach scales well from small home labs to large production deployments.
+Multi-document machine configuration in Talos Linux is a practical tool for keeping your cluster configs organized. Instead of maintaining massive monolithic YAML files with lots of duplication, you can break things down into focused, reusable patches. The merge behavior is straightforward once you understand that maps are merged, scalar values are replaced, and most lists are appended with a few documented exceptions. Combined with good directory organization and validation before applying, this approach scales well from small home labs to large production deployments.
