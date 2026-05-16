@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, VIP, etcd, Leader Election, High Availability, Kubernetes
 
-Description: In-depth explanation of how Talos Linux uses etcd leader election to manage Virtual IP ownership and coordinate VIP failover across control plane nodes.
+Description: In-depth explanation of how Talos Linux uses etcd elections to manage Virtual IP ownership and coordinate VIP failover across control plane nodes.
 
 ---
 
@@ -16,7 +16,7 @@ This guide digs into the details of how VIP elections work through etcd in Talos
 
 etcd is the distributed key-value store that Kubernetes uses for all cluster data. In Talos Linux, etcd also serves as the coordination mechanism for VIP ownership. This is a natural choice because etcd is already running on every control plane node and provides the consistency guarantees needed for leader election.
 
-The VIP election uses etcd's lease mechanism, which works like a distributed lock with an expiration timer. Only one node can hold the lock (and therefore the VIP) at a time, and the lock expires if the holder fails to renew it.
+The VIP election uses etcd's concurrency election mechanism, backed by leases. It works like a distributed leadership primitive with an expiration timer. Only one node can be the election leader (and therefore hold the VIP) at a time, and that leadership expires if the holder fails to keep its etcd session alive.
 
 ## How the Election Process Works
 
@@ -24,11 +24,11 @@ Here is the step-by-step process of a VIP election:
 
 ### Initial Election
 
-1. When a control plane node starts, its networkd service detects VIP configuration in the machine config
+1. When a control plane node starts, the Talos network operator detects VIP configuration in the machine config
 2. The node connects to the local etcd instance
-3. The node creates an etcd lease with a specific TTL (time-to-live)
-4. The node attempts to write a key in etcd with its lease attached
-5. The first node to successfully write the key wins the election
+3. The node creates an etcd concurrency session backed by a lease
+4. The node campaigns in an etcd election under the VIP election key prefix
+5. The first eligible campaigner becomes the election leader
 6. The winning node assigns the VIP to its network interface
 7. The winning node sends a gratuitous ARP to announce the VIP
 
@@ -47,7 +47,7 @@ The VIP owner must continuously renew its etcd lease to maintain ownership:
 
 1. The owner sends periodic lease renewal requests to etcd
 2. Each successful renewal resets the lease TTL
-3. Other nodes monitor the lease and stay in standby mode
+3. Other nodes remain blocked in the election or observe the current leader
 4. As long as renewals succeed, the VIP stays on the current owner
 
 The renewal interval is shorter than the lease TTL, providing a buffer for temporary network hiccups or etcd latency.
@@ -59,10 +59,10 @@ When the VIP owner fails:
 1. The failed node stops renewing its etcd lease
 2. The lease TTL counts down to zero
 3. etcd automatically revokes the expired lease
-4. The attached key is deleted
-5. Standby nodes detect the key deletion through etcd watches
-6. Standby nodes race to create a new key with their own leases
-7. The first node to succeed becomes the new VIP owner
+4. The failed node's election key is deleted
+5. Waiting campaigners detect the election key deletion through etcd watches
+6. The next eligible campaigner becomes the new election leader
+7. The new leader becomes the new VIP owner
 8. The new owner assigns the VIP and sends gratuitous ARP
 
 ```bash
@@ -77,21 +77,21 @@ etcd leases are the foundation of the VIP election. Here is how they work concep
 ```text
 # Simplified lease flow
 
-Node A creates lease (TTL=10s) -> etcd grants lease (ID: abc123)
-Node A writes key /talos/vip/eth0 with lease abc123 -> SUCCESS (Node A owns VIP)
-Node B tries to write same key -> FAIL (key already exists)
-Node C tries to write same key -> FAIL (key already exists)
+Node A creates an etcd session lease -> etcd grants lease (ID: abc123)
+Node A campaigns under talos:v1:vip:election:<vip>/... with lease abc123 -> Node A owns VIP
+Node B campaigns under the same election prefix with its own lease -> waits
+Node C campaigns under the same election prefix with its own lease -> waits
 
-Every ~3s: Node A renews lease abc123 -> etcd resets TTL to 10s
+etcd keep-alives renew lease abc123 -> etcd refreshes the session TTL
 
 # If Node A fails:
-10s passes without renewal -> etcd revokes lease abc123
-Key /talos/vip/eth0 is automatically deleted
-Node B writes key with its own lease -> SUCCESS (Node B now owns VIP)
-Node C tries to write same key -> FAIL
+the session TTL passes without renewal -> etcd revokes lease abc123
+Node A's election key is automatically deleted
+Node B becomes the next election leader -> Node B now owns VIP
+Node C continues waiting
 ```
 
-The key path and exact TTL values are internal to Talos, but the mechanism follows this pattern.
+The exact election key suffix and TTL values are internal to Talos and the etcd client, but the mechanism follows this pattern.
 
 ## etcd Quorum Requirements
 
@@ -121,7 +121,7 @@ talosctl -n <node-ip> etcd alarm list
 
 If etcd loses quorum (majority of members are down), no VIP election can occur:
 
-- If the current VIP owner is healthy and still has quorum, VIP stays put
+- If the current VIP owner remains healthy but the cluster has no quorum, it cannot keep the VIP indefinitely because the etcd session cannot be maintained
 - If the current VIP owner is the one that went down, VIP cannot fail over
 - The surviving nodes cannot elect a new VIP owner without quorum
 
@@ -163,11 +163,13 @@ talosctl -n <node-ip> logs etcd | grep -i "slow\|latency\|took too long"
 talosctl -n <node-ip> service etcd
 talosctl -n <node-ip> get etcdmembers
 
-# Check networkd logs for VIP-related messages
-talosctl -n <node-ip> logs networkd | grep -i "vip\|virtual"
+# Check controller-runtime logs for VIP-related messages
+talosctl -n <node-ip> logs controller-runtime | grep -i "vip\|shared IP\|etcd session"
 
-# Check if the VIP key exists in etcd
-talosctl -n <node-ip> etcd get /talos/ --prefix --keys-only 2>/dev/null
+# Check whether the VIP address is present on any control plane node
+for node in <cp1> <cp2> <cp3>; do
+  talosctl -n $node get addresses 2>/dev/null | grep "<vip>" || true
+done
 ```
 
 ### VIP Flapping Between Nodes
@@ -199,11 +201,10 @@ Common causes of VIP flapping:
 etcd performance directly affects VIP stability. The most common fix is ensuring etcd runs on fast storage:
 
 ```yaml
-# Place etcd on a dedicated disk (if available)
+# Install Talos on fast storage so etcd uses fast local storage
 machine:
   install:
     disk: /dev/sda
-  # Optionally, configure etcd data directory
 ```
 
 Other performance tips:
@@ -222,11 +223,11 @@ Network partitions create interesting scenarios for VIP elections:
 
 ### Scenario: Two control plane nodes can reach etcd but not the third
 
-The two nodes that can communicate maintain etcd quorum (2 out of 3). The VIP election works normally among these two nodes. The isolated node loses its etcd membership and cannot hold the VIP.
+The two nodes that can communicate maintain etcd quorum (2 out of 3). The VIP election works normally among these two nodes. The isolated node remains an etcd member, but it cannot maintain a healthy etcd session with quorum and cannot hold or obtain the VIP.
 
 ### Scenario: All three nodes partitioned from each other
 
-No node has etcd quorum. The current VIP owner continues to hold the VIP based on its cached state, but cannot renew the lease. Eventually the lease expires, and no new election can occur. All three nodes end up without the VIP.
+No node has etcd quorum. The current VIP owner cannot keep its etcd election session healthy. Eventually the session is lost or the lease expires, and no new election can occur. All three nodes end up without the VIP.
 
 ### Scenario: Two partitions (1 node vs 2 nodes)
 
@@ -264,4 +265,4 @@ done
 
 ## Conclusion
 
-The VIP election mechanism in Talos Linux is built on etcd's proven lease and leader election primitives. It is simple and reliable when etcd is healthy, which means keeping etcd healthy is the single most important thing you can do for VIP stability. Use three or more control plane nodes, give etcd fast storage, maintain stable networking between nodes, and monitor etcd health metrics. When VIP problems occur, the first place to look is always etcd. If etcd is happy, the VIP election will be happy too.
+The VIP election mechanism in Talos Linux is built on etcd's proven lease and election primitives. It is simple and reliable when etcd and the local control plane health checks are healthy, which means keeping etcd healthy is the single most important thing you can do for VIP stability. Use three or more control plane nodes, give etcd fast storage, maintain stable networking between nodes, and monitor etcd health metrics. When VIP problems occur, the first place to look is always etcd and the Talos controller-runtime logs.
