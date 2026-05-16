@@ -38,17 +38,20 @@ Look for backups with a status of "Completed" and zero errors. Warnings are wort
 # Validates that recent backups completed without errors
 
 HOURS_THRESHOLD=24
+VELERO_NAMESPACE=velero
 
 # Get backups from the last N hours
 RECENT_BACKUPS=$(velero backup get -o json | jq -r --arg hours "$HOURS_THRESHOLD" \
     '[.items[] | select(
+        .status.completionTimestamp != null and
         (.status.completionTimestamp | fromdateiso8601) > (now - ($hours | tonumber * 3600))
     )] | .[] | .metadata.name')
 
 FAILED=0
 for backup in $RECENT_BACKUPS; do
-    STATUS=$(velero backup get "$backup" -o json | jq -r '.status.phase')
-    ERRORS=$(velero backup get "$backup" -o json | jq -r '.status.errors // 0')
+    BACKUP_JSON=$(kubectl -n "$VELERO_NAMESPACE" get backup "$backup" -o json)
+    STATUS=$(echo "$BACKUP_JSON" | jq -r '.status.phase')
+    ERRORS=$(echo "$BACKUP_JSON" | jq -r '.status.errors // 0')
 
     if [ "$STATUS" != "Completed" ] || [ "$ERRORS" -gt 0 ]; then
         echo "FAIL: $backup - Status: $STATUS, Errors: $ERRORS"
@@ -74,13 +77,14 @@ The quickest integrity check verifies that backup metadata is intact and the bac
 # Checks that a backup contains expected resources
 
 BACKUP_NAME=$1
+VELERO_NAMESPACE=velero
 
 # Get the backup contents summary
 velero backup describe "$BACKUP_NAME" --details
 
 # Check resource counts
-RESOURCE_COUNT=$(velero backup describe "$BACKUP_NAME" -o json | \
-    jq '.status.progress.itemsBackedUp')
+RESOURCE_COUNT=$(kubectl -n "$VELERO_NAMESPACE" get backup "$BACKUP_NAME" -o json | \
+    jq '.status.progress.itemsBackedUp // 0')
 
 if [ "$RESOURCE_COUNT" -lt 1 ]; then
     echo "ERROR: Backup contains no resources"
@@ -91,11 +95,11 @@ echo "Backup contains $RESOURCE_COUNT resources"
 
 # Verify expected namespaces are included
 EXPECTED_NAMESPACES=("production" "staging" "monitoring")
-BACKED_UP_NS=$(velero backup describe "$BACKUP_NAME" -o json | \
-    jq -r '.spec.includedNamespaces[]' 2>/dev/null)
+BACKED_UP_NS=$(kubectl -n "$VELERO_NAMESPACE" get backup "$BACKUP_NAME" -o json | \
+    jq -r '.spec.includedNamespaces[]?' 2>/dev/null)
 
 for ns in "${EXPECTED_NAMESPACES[@]}"; do
-    if echo "$BACKED_UP_NS" | grep -q "$ns"; then
+    if echo "$BACKED_UP_NS" | grep -qx '\*' || echo "$BACKED_UP_NS" | grep -qx "$ns"; then
         echo "OK: Namespace $ns is included"
     else
         echo "WARNING: Namespace $ns may not be included"
@@ -215,7 +219,8 @@ APP_URL=$(kubectl get svc -n "$TEST_NS" my-app -o jsonpath='{.spec.clusterIP}')
 
 # Run health checks
 HTTP_STATUS=$(kubectl run curl-test --rm -i --restart=Never \
-    --image=curlimages/curl -- \
+    --image=curlimages/curl \
+    --quiet -- \
     curl -s -o /dev/null -w "%{http_code}" "http://$APP_URL:8080/health")
 
 echo "Health check returned: $HTTP_STATUS"
@@ -227,7 +232,8 @@ fi
 
 # Run smoke tests
 kubectl run smoke-test --rm -i --restart=Never \
-    --image=curlimages/curl -- \
+    --image=curlimages/curl \
+    --quiet -- \
     curl -s "http://$APP_URL:8080/api/v1/status" | jq .
 ```
 
@@ -250,7 +256,7 @@ spec:
           serviceAccountName: backup-tester
           containers:
           - name: tester
-            image: bitnami/kubectl:latest
+            image: ghcr.io/your-org/backup-tools:latest # must include velero, kubectl, jq, and bash
             command: ["/bin/bash", "-c"]
             args:
             - |
@@ -278,13 +284,13 @@ On Talos Linux, you should also verify your machine configuration backups:
 
 ```bash
 # Export and verify current machine config
-talosctl get machineconfig -o yaml --nodes $NODE_IP > config-backup.yaml
+talosctl get machineconfig v1alpha1 -o jsonpath='{.spec}' --nodes $NODE_IP > config-backup.yaml
 
 # Validate the config syntax
 talosctl validate --config config-backup.yaml --mode metal
 
 # Compare with your stored backup
-diff <(talosctl get machineconfig -o yaml --nodes $NODE_IP) \
+diff <(talosctl get machineconfig v1alpha1 -o jsonpath='{.spec}' --nodes $NODE_IP) \
      /backups/talos-configs/node1-config.yaml
 ```
 
