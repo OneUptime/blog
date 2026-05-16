@@ -67,13 +67,19 @@ Kubelet should reserve resources for system processes to prevent pods from consu
 # talos-machine-config.yaml
 machine:
   kubelet:
-    extraArgs:
-      system-reserved: "cpu=500m,memory=1Gi,ephemeral-storage=10Gi"
-      kube-reserved: "cpu=500m,memory=1Gi,ephemeral-storage=10Gi"
-      enforce-node-allocatable: "pods,system-reserved,kube-reserved"
+    extraConfig:
+      systemReserved:
+        cpu: 500m
+        memory: 1Gi
+      kubeReserved:
+        cpu: 500m
+        memory: 1Gi
+        ephemeral-storage: 10Gi
+      enforceNodeAllocatable:
+        - pods
 ```
 
-The `system-reserved` covers the OS, containerd, and Talos system services. The `kube-reserved` covers kubelet itself and kube-proxy. These reservations ensure that even under heavy pod load, the node's system services have enough resources to function.
+The `systemReserved` covers the OS, containerd, and Talos system services. The `kubeReserved` covers kubelet itself and kube-proxy. These reservations reduce the node allocatable capacity available to pods so that, even under heavy pod load, the node's system services have enough resources to function.
 
 Poorly configured reservations lead to two problems: too little reservation means system services starve under load, too much reservation wastes node capacity. Monitor actual system resource usage and adjust accordingly.
 
@@ -85,12 +91,22 @@ Kubelet evicts pods when node resources become scarce. The eviction thresholds d
 # talos-machine-config.yaml
 machine:
   kubelet:
-    extraArgs:
-      eviction-hard: "memory.available<500Mi,nodefs.available<10%,imagefs.available<15%"
-      eviction-soft: "memory.available<1Gi,nodefs.available<15%,imagefs.available<20%"
-      eviction-soft-grace-period: "memory.available=1m30s,nodefs.available=1m30s,imagefs.available=1m30s"
-      eviction-max-pod-grace-period: "60"
-      eviction-pressure-transition-period: "30s"
+    extraConfig:
+      evictionHard:
+        memory.available: 500Mi
+        nodefs.available: 10%
+        imagefs.available: 15%
+      evictionSoft:
+        memory.available: 1Gi
+        nodefs.available: 15%
+        imagefs.available: 20%
+      evictionSoftGracePeriod:
+        memory.available: 1m30s
+        nodefs.available: 1m30s
+        imagefs.available: 1m30s
+      evictionMaxPodGracePeriod: 60
+      evictionPressureTransitionPeriod: "30s"
+      mergeDefaultEvictionSettings: true
 ```
 
 Hard eviction thresholds trigger immediate pod termination. Soft eviction thresholds start evicting pods after the grace period expires. The `eviction-pressure-transition-period` controls how long the node stays in a pressure condition after it has recovered, preventing rapid oscillation between pressure and no-pressure states.
@@ -151,10 +167,6 @@ The CPU manager controls how CPUs are allocated to containers. The static policy
 # talos-machine-config.yaml
 machine:
   kubelet:
-    extraArgs:
-      cpu-manager-policy: static
-      cpu-manager-reconcile-period: "5s"
-      reserved-cpus: "0-1"              # Reserve CPUs 0-1 for system
     extraConfig:
       cpuManagerPolicy: static
       cpuManagerReconcilePeriod: "5s"
@@ -200,14 +212,14 @@ Parallel image pulls are essential for nodes that need to start many different p
 Track kubelet metrics to identify tuning opportunities:
 
 ```bash
-# Check kubelet metrics endpoint
+# Check the rendered kubelet configuration
 talosctl read /var/lib/kubelet/config.yaml --nodes 10.0.0.1
 
 # Key kubelet metrics to monitor in Prometheus:
 # kubelet_pod_start_duration_seconds - Time to start a pod
 # kubelet_pod_worker_duration_seconds - Pod sync duration
 # kubelet_runtime_operations_duration_seconds - Container runtime latency
-# kubelet_node_config_error - Configuration errors
+# kubelet_runtime_operations_errors_total - Container runtime errors
 # kubelet_evictions - Number of pod evictions
 # kubelet_pleg_relist_duration_seconds - Pod lifecycle event latency
 ```
