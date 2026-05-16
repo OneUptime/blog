@@ -28,15 +28,10 @@ Deploy the Metrics Server using its official manifest:
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 ```
 
-On some Talos Linux configurations, especially single-node or bare-metal setups, you might need to adjust the Metrics Server deployment to use the node's internal IP and skip TLS verification for kubelet certificates:
+On some Talos Linux configurations, especially single-node or bare-metal setups, you might need to adjust the Metrics Server deployment to use the node's internal IP. For lab clusters, you can also skip TLS verification for kubelet certificates; for production, prefer enabling kubelet serving certificate rotation and approving those CSRs instead.
 
 ```yaml
 # metrics-server-patch.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: metrics-server
-  namespace: kube-system
 spec:
   template:
     spec:
@@ -48,13 +43,13 @@ spec:
         - --kubelet-preferred-address-types=InternalIP
         - --kubelet-use-node-status-port
         - --metric-resolution=15s
-        # Only add this if using self-signed kubelet certs
+        # For lab clusters only; prefer trusted kubelet serving certificates in production
         - --kubelet-insecure-tls
 ```
 
 ```bash
 # Apply the patch
-kubectl apply -f metrics-server-patch.yaml
+kubectl patch deployment metrics-server -n kube-system --type='strategic' --patch-file metrics-server-patch.yaml
 
 # Verify Metrics Server is running
 kubectl -n kube-system get pods -l k8s-app=metrics-server
@@ -283,7 +278,7 @@ spec:
 
 On Talos Linux, keep these things in mind when configuring HPA:
 
-The kubelet on Talos collects metrics at a default interval. If your HPA seems slow to respond, check the metrics-resolution setting on the Metrics Server and the HPA controller's sync period (default is 15 seconds).
+Metrics Server collects metrics from the kubelets at its configured resolution. If your HPA seems slow to respond, check the metrics-resolution setting on the Metrics Server and the HPA controller's sync period (default is 15 seconds).
 
 If you are running a small Talos cluster, be mindful of setting maxReplicas too high. Your nodes have finite capacity, and the HPA will create pods that stay in Pending state if there is no room to schedule them.
 
