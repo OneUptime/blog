@@ -20,7 +20,7 @@ A LimitRange object can set several types of constraints within a namespace.
 
 **Minimum and maximum values** restrict how small or large a container's resource specification can be. This prevents someone from requesting 64 cores for a single container when they should be scaling horizontally.
 
-**Default request-to-limit ratios** control the relationship between requests and limits, preventing extreme overcommitment at the container level.
+**Maximum request-to-limit ratios** control the relationship between requests and limits, preventing extreme overcommitment at the container level.
 
 ## Creating a Basic Limit Range
 
@@ -45,11 +45,11 @@ spec:
       defaultRequest:
         cpu: 100m
         memory: 128Mi
-      # Maximum any single container can request
+      # Maximum any single container can specify
       max:
         cpu: "4"
         memory: 8Gi
-      # Minimum any container must request
+      # Minimum any container must specify
       min:
         cpu: 50m
         memory: 64Mi
@@ -189,7 +189,7 @@ spec:
 
 Limit ranges and resource quotas work together. Resource quotas set the total for the namespace. Limit ranges set the constraints for individual objects.
 
-When both are active and a compute resource quota is defined, every pod must specify resource requests and limits (either explicitly or through limit range defaults). If the limit range provides defaults, pods without explicit specifications will use those defaults and count against the quota.
+When both are active and a compute resource quota includes request or limit resources, every container must specify those quoted requests or limits (either explicitly or through limit range defaults). If the limit range provides defaults, pods without explicit specifications will use those defaults and count against the quota.
 
 ```yaml
 # A complete namespace setup with both quotas and limits
@@ -239,7 +239,7 @@ When a pod specification violates a limit range, the creation is rejected with a
 ```bash
 # Try to create a container that exceeds the max CPU
 kubectl -n team-backend run too-big --image=nginx \
-  --overrides='{"spec":{"containers":[{"name":"too-big","image":"nginx","resources":{"requests":{"cpu":"8"},"limits":{"cpu":"8"}}}]}}'
+  --overrides='{"apiVersion":"v1","spec":{"containers":[{"name":"too-big","image":"nginx","resources":{"requests":{"cpu":"8"},"limits":{"cpu":"8"}}}]}}'
 
 # Error: pods "too-big" is forbidden: maximum cpu usage per Container is 4, but limit is 8
 ```
@@ -247,7 +247,7 @@ kubectl -n team-backend run too-big --image=nginx \
 ```bash
 # Try to create a container below the minimum
 kubectl -n team-backend run too-small --image=nginx \
-  --overrides='{"spec":{"containers":[{"name":"too-small","image":"nginx","resources":{"requests":{"cpu":"10m"},"limits":{"cpu":"20m"}}}]}}'
+  --overrides='{"apiVersion":"v1","spec":{"containers":[{"name":"too-small","image":"nginx","resources":{"requests":{"cpu":"10m"},"limits":{"cpu":"20m"}}}]}}'
 
 # Error: pods "too-small" is forbidden: minimum cpu usage per Container is 50m, but request is 10m
 ```
@@ -272,13 +272,13 @@ kubectl -n team-backend rollout restart deployment my-app
 Track how often pods use default values versus specifying their own. This tells you how much the limit range defaults are being relied upon.
 
 ```bash
-# Find pods using default resource values
-# These will match the limit range defaults exactly
+# Find pods whose CPU request matches the default value
+# This is a heuristic because explicitly set values can match defaults
 kubectl -n team-backend get pods -o json | \
   jq '.items[] | select(.spec.containers[].resources.requests.cpu == "100m") | .metadata.name'
 ```
 
-If most pods are using defaults, it might mean teams are not setting resources intentionally, which could lead to poor scheduling decisions. Encourage teams to specify resources that match their actual needs rather than relying on defaults.
+If most pods match the default values, it might mean teams are not setting resources intentionally, which could lead to poor scheduling decisions. Encourage teams to specify resources that match their actual needs rather than relying on defaults.
 
 ## Automation Script
 
