@@ -305,7 +305,7 @@ helm install external-secrets external-secrets/external-secrets \
 
 ```yaml
 # Create a SecretStore pointing to your vault
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend
@@ -321,7 +321,7 @@ spec:
 
 ---
 # Create an ExternalSecret that syncs from the vault
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-credentials
