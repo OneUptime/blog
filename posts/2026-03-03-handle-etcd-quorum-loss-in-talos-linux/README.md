@@ -116,7 +116,8 @@ If you have a recent etcd snapshot:
 # Wipe etcd on the surviving node(s)
 talosctl reset --nodes <surviving-cp-node> \
   --system-labels-to-wipe EPHEMERAL \
-  --graceful=false
+  --graceful=false \
+  --reboot
 
 # Wait for the node to come back
 talosctl services --nodes <surviving-cp-node>
@@ -140,20 +141,24 @@ If you do not have a backup but have one surviving member with its etcd data int
 # This is a drastic operation - the surviving node's etcd
 # becomes the entire cluster
 
-# First, wipe the EPHEMERAL partition to reset etcd
-talosctl reset --nodes <surviving-cp-node> \
-  --system-labels-to-wipe EPHEMERAL \
-  --graceful=false
-
-# Then bootstrap it as if it were a new cluster
-# but using the --recover-from flag with the local snapshot
-
-# Take a snapshot first (if possible)
+# Step 1: Take a snapshot of the surviving member FIRST
+# (before wiping anything - the wipe will destroy /var/lib/etcd)
 # If etcd is not responding, this may not work
 talosctl etcd snapshot ./emergency-backup.db \
   --nodes <surviving-cp-node>
 
-# Then follow the bootstrap-from-backup procedure
+# If the etcd service is fully down, copy the on-disk snapshot directly:
+# talosctl cp /var/lib/etcd/member/snap/db ./emergency-backup.db \
+#   --nodes <surviving-cp-node>
+
+# Step 2: Wipe the EPHEMERAL partition to reset etcd
+talosctl reset --nodes <surviving-cp-node> \
+  --system-labels-to-wipe EPHEMERAL \
+  --graceful=false \
+  --reboot
+
+# Step 3: Bootstrap it as if it were a new cluster,
+# using the --recover-from flag with the snapshot taken in step 1
 talosctl bootstrap --nodes <surviving-cp-node> \
   --recover-from ./emergency-backup.db
 ```
