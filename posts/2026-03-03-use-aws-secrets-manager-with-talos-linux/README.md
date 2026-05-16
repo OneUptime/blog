@@ -99,7 +99,7 @@ Create an IAM policy for the credentials that grants read access to Secrets Mana
 
 ```yaml
 # aws-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -132,7 +132,7 @@ Now pull the database credentials into your cluster.
 
 ```yaml
 # db-external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-db-creds
@@ -176,7 +176,7 @@ kubectl get secret my-app-db-credentials -o jsonpath='{.data.DB_USERNAME}' | bas
 
 ## Approach 2: AWS Secrets Store CSI Driver
 
-The Secrets Store CSI Driver mounts secrets as files in your pod's filesystem. This approach avoids creating Kubernetes Secret objects entirely, which some security teams prefer.
+The Secrets Store CSI Driver mounts secrets as files in your pod's filesystem. This approach can avoid creating Kubernetes Secret objects entirely if you do not enable sync-as-secret, which some security teams prefer.
 
 ### Installing the CSI Driver
 
@@ -188,10 +188,26 @@ helm repo update
 helm install csi-secrets-store secrets-store-csi-driver/secrets-store-csi-driver \
   --namespace kube-system \
   --set syncSecret.enabled=true \
-  --set enableSecretRotation=true
+  --set enableSecretRotation=true \
+  --set 'tokenRequests[0].audience=sts.amazonaws.com' \
+  --set 'tokenRequests[1].audience=pods.eks.amazonaws.com'
 
 # Install the AWS provider
 kubectl apply -f https://raw.githubusercontent.com/aws/secrets-store-csi-driver-provider-aws/main/deployment/aws-provider-installer.yaml
+```
+
+The AWS provider uses IAM Roles for Service Accounts (IRSA) by default, or EKS Pod Identity when `usePodIdentity: "true"` is set. For self-managed Talos clusters, configure an IAM OIDC provider and service account role before using this approach.
+
+For IRSA, annotate the service account used by your workload with the IAM role that has Secrets Manager access.
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: my-app-sa
+  namespace: default
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/my-app-secrets-role
 ```
 
 ### Creating a SecretProviderClass
@@ -206,16 +222,17 @@ metadata:
 spec:
   provider: aws
   parameters:
+    region: us-east-1
     objects: |
       - objectName: "production/my-app/database"
         objectType: "secretsmanager"
         jmesPath:
           - path: username
-            objectAlias: db-username
+            objectAlias: '"db-username"'
           - path: password
-            objectAlias: db-password
+            objectAlias: '"db-password"'
           - path: host
-            objectAlias: db-host
+            objectAlias: '"db-host"'
   # Optionally sync to a Kubernetes Secret as well
   secretObjects:
     - secretName: my-app-db-synced
@@ -296,8 +313,12 @@ helm upgrade csi-secrets-store secrets-store-csi-driver/secrets-store-csi-driver
   --namespace kube-system \
   --set syncSecret.enabled=true \
   --set enableSecretRotation=true \
-  --set rotationPollInterval=120s
+  --set rotationPollInterval=120s \
+  --set 'tokenRequests[0].audience=sts.amazonaws.com' \
+  --set 'tokenRequests[1].audience=pods.eks.amazonaws.com'
 ```
+
+If you consume a synced Kubernetes Secret through environment variables, restart the pod after rotation so the environment variables are refreshed.
 
 ## Talos Linux Networking Considerations
 
@@ -322,7 +343,8 @@ Set up monitoring for your secrets sync pipeline.
 
 ```bash
 # Check ESO metrics
-kubectl get --raw /metrics | grep externalsecret
+kubectl -n external-secrets port-forward deploy/external-secrets 8080:8080
+curl -s http://127.0.0.1:8080/metrics | grep externalsecret
 
 # Check sync failures
 kubectl get externalsecrets --all-namespaces -o custom-columns=NAME:.metadata.name,STATUS:.status.conditions[0].reason,LAST_SYNC:.status.conditions[0].lastTransitionTime
@@ -332,4 +354,4 @@ You should also set up CloudWatch alarms for Secrets Manager API errors and thro
 
 ## Wrapping Up
 
-Integrating AWS Secrets Manager with a Talos Linux cluster gives you centralized, auditable secrets management backed by a fully managed AWS service. Whether you choose the External Secrets Operator for its flexibility or the CSI Driver for its file-based approach, both methods work well on Talos Linux. The key is to set up proper IAM policies with least-privilege access, configure appropriate refresh intervals for rotation, and monitor the sync pipeline to catch failures early. With this setup, your Talos Linux workloads can consume secrets from AWS without ever storing plaintext credentials in Kubernetes manifests or etcd.
+Integrating AWS Secrets Manager with a Talos Linux cluster gives you centralized, auditable secrets management backed by a fully managed AWS service. Whether you choose the External Secrets Operator for its flexibility or the CSI Driver for its file-based approach, both methods can work well on Talos Linux when AWS authentication and network access are configured correctly. The key is to set up proper IAM policies with least-privilege access, configure appropriate refresh intervals for rotation, and monitor the sync pipeline to catch failures early. With this setup, your Talos Linux workloads can consume secrets from AWS without ever storing plaintext credentials in Kubernetes manifests or etcd.
