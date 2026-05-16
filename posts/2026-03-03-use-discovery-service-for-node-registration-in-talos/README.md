@@ -24,12 +24,12 @@ When a Talos Linux node starts up with the discovery service enabled, it goes th
 This all happens automatically. You do not need to manually register nodes or maintain a list of cluster members.
 
 ```bash
-# View the node's own identity as seen by the discovery service
+# View the node's own discovery identity
 
-talosctl get kubespanidentity --nodes <node-ip>
+talosctl get identities --nodes <node-ip> -o yaml
 
-# View all members the node has discovered
-talosctl get discoveredmembers --nodes <node-ip>
+# View all confirmed cluster members the node knows about
+talosctl get members --nodes <node-ip>
 ```
 
 ## The Registration Payload
@@ -38,11 +38,11 @@ Each node publishes several pieces of information through the discovery service:
 
 ```bash
 # View detailed discovery member information
-talosctl get discoveredmembers --nodes <node-ip> -o yaml
+talosctl get affiliates --nodes <node-ip> -o yaml
 ```
 
 The payload typically includes:
-- The node's machine ID
+- The node's discovery identity
 - Network endpoints (IP addresses and ports)
 - KubeSpan public key (if KubeSpan is enabled)
 - Operating system version
@@ -56,7 +56,7 @@ You can watch the discovery process as nodes join:
 
 ```bash
 # Watch for new members appearing
-talosctl get discoveredmembers --nodes <node-ip> --watch
+talosctl get members --nodes <node-ip> --watch
 ```
 
 This is particularly useful during cluster bootstrapping or when adding new nodes. You can see each node appear as it registers with the discovery service.
@@ -83,7 +83,7 @@ You can track the process:
 
 ```bash
 # Watch from an existing node as the new node appears
-talosctl get discoveredmembers --nodes <existing-node-ip> --watch
+talosctl get members --nodes <existing-node-ip> --watch
 
 # Check Kubernetes node status
 kubectl get nodes --watch
@@ -99,59 +99,56 @@ For intentional removal:
 # Reset a node (this removes it from the cluster)
 talosctl reset --nodes <node-to-remove-ip> --graceful
 
-# The node's discovery registration will expire on its own
-# Other nodes will eventually stop seeing it as a member
+# A reset node removes itself from the discovery service
+# If it does not reset cleanly, the entry expires after the TTL
 ```
 
 You can verify that a node has been deregistered:
 
 ```bash
 # Check discovered members - the removed node should disappear
-talosctl get discoveredmembers --nodes <existing-node-ip>
+talosctl get members --nodes <existing-node-ip>
 ```
 
 ## Using Discovery for Cluster Bootstrap
 
-During initial cluster creation, the discovery service helps control plane nodes find each other. This is especially important for multi-node control planes where etcd needs to form a cluster:
+During initial cluster creation, the discovery service helps Talos resolve peer and control plane endpoints. This is especially useful for multi-node control planes and later troubleshooting:
 
 ```bash
 # Bootstrap the first control plane node
 talosctl bootstrap --nodes <first-cp-ip>
 
-# The second and third control plane nodes use discovery
-# to find the first node and join the etcd cluster
+# Other control plane nodes can use discovery data
+# as part of endpoint resolution
 ```
 
-Without the discovery service, you would need to manually specify each control plane node's address in the configuration. With discovery, nodes find each other automatically.
+Without the discovery service, Talos can still operate, but endpoint resolution depends more heavily on configured endpoints and Kubernetes API availability. With discovery, nodes publish and read peer information automatically.
 
 ## Discovery Service Endpoints
 
-The discovery service communicates over HTTPS. By default, nodes use `https://discovery.talos.dev/`. The communication pattern is simple:
-
-- POST to register/update the node's own information
-- GET to retrieve other cluster members' information
+The discovery service communicates over TCP port 443. By default, nodes use `https://discovery.talos.dev/`. Nodes publish their own encrypted affiliate data and read encrypted peer data from the service registry.
 
 ```bash
 # Check if the node can reach the discovery service
 talosctl logs controller-runtime --nodes <node-ip> | grep discovery
 ```
 
-If the discovery service is unreachable, nodes fall back to the Kubernetes registry (if enabled) for discovery. However, the Kubernetes registry only works after Kubernetes is running, so it cannot help with initial bootstrap.
+If the discovery service is unreachable, nodes can still use the Kubernetes registry if it is enabled. However, the Kubernetes registry is disabled by default, depends on Kubernetes being available, and is deprecated because it is not compatible with the default Kubernetes 1.32+ authorization configuration.
 
 ## Managing Registration in Large Clusters
 
-For large clusters (50+ nodes), the discovery service handles the load well because each cluster's data is isolated. However, there are a few things to consider:
+For large clusters, remember that each node keeps a local view of the members it discovers. There are a few things to consider:
 
 ```bash
 # Check how many members are registered
-talosctl get discoveredmembers --nodes <node-ip> -o json | jq 'length'
+talosctl get members --nodes <node-ip> -o json | jq '.items | length'
 ```
 
-Each node queries for all members of its cluster and maintains the full list locally. The discovery service response size grows linearly with the number of nodes, but the data per node is small (a few hundred bytes), so even a 1000-node cluster produces a manageable response.
+Each node receives discovery information for members of its cluster and maintains that list locally. The amount of discovery data grows with the number of nodes, so validate scale expectations in your own environment.
 
 ## Registration with Multiple Registries
 
-Talos supports two registries simultaneously: the external service registry and the Kubernetes registry. Having both enabled provides redundancy:
+Talos supports two registries simultaneously: the external service registry and the Kubernetes registry. Peers from enabled registries are aggregated and merged. The Kubernetes registry is disabled by default and deprecated for Kubernetes 1.32+, but the configuration looks like this when both registries are enabled:
 
 ```yaml
 cluster:
@@ -165,16 +162,16 @@ cluster:
         endpoint: https://discovery.talos.dev/
 ```
 
-The service registry is the primary source for initial discovery and bootstrap. The Kubernetes registry acts as a secondary source once Kubernetes is running. Nodes check both registries and merge the results.
+The service registry is the default source for discovery and does not depend on Kubernetes or etcd. When both registries are enabled, nodes check both registries and merge the results.
 
 ```bash
-# View which registries are providing data
-talosctl logs controller-runtime --nodes <node-ip> | grep -i "registry\|discovery"
+# View which registries are providing raw affiliate data
+talosctl get affiliates --nodes <node-ip> --namespace=cluster-raw
 ```
 
 ## Troubleshooting Registration Issues
 
-When a node fails to register or does not appear in the discovered members list:
+When a node fails to register or does not appear in the members list:
 
 ```bash
 # Step 1: Check if discovery is enabled
@@ -186,10 +183,8 @@ talosctl logs controller-runtime --nodes <node-ip> | grep -i discovery
 # Step 3: Check network connectivity to the discovery endpoint
 talosctl logs controller-runtime --nodes <node-ip> | grep -i "discovery.talos.dev"
 
-# Step 4: Verify the node has the correct cluster ID
-talosctl get clusteridentity --nodes <node-ip>
-# Compare with another working node
-talosctl get clusteridentity --nodes <working-node-ip>
+# Step 4: Verify whether the node appears as an affiliate
+talosctl get affiliates --nodes <working-node-ip>
 ```
 
 Common registration failures include:
@@ -205,10 +200,10 @@ talosctl time --nodes <node-ip>
 
 ## Security Considerations
 
-The discovery service design includes several security properties. Data is encrypted end-to-end, so the discovery service operator cannot read registration data. Nodes can only discover members of their own cluster because they need the cluster secrets to decrypt the data. The cluster ID is derived from the cluster secrets, so it cannot be guessed.
+The discovery service design includes several security properties. Data is encrypted end-to-end, so the discovery service operator cannot read registration data. Nodes can only decrypt affiliate data for their own cluster because they need the cluster secrets. The cluster ID is a random value generated as part of the cluster secrets in the machine configuration.
 
 However, be aware that the discovery service knows the cluster ID and the approximate number of nodes (based on registration count). If this metadata leaks, an attacker knows the cluster exists and its size, but nothing about the actual node addresses or identities.
 
-For environments where even this metadata is sensitive, consider running a self-hosted discovery service or disabling the service registry entirely and relying solely on the Kubernetes registry (with manual bootstrap).
+For environments where even this metadata is sensitive, consider running a self-hosted discovery service or disabling the service registry. Relying only on the Kubernetes registry is not recommended for new clusters because that registry is deprecated and unavailable until Kubernetes is running.
 
 Node registration through the Talos discovery service is one of those features that simplifies cluster operations significantly. Nodes automatically find each other, KubeSpan tunnels establish themselves, and the cluster topology adjusts dynamically. Understanding how it works helps you plan node additions, handle failures, and troubleshoot connectivity issues with confidence.
