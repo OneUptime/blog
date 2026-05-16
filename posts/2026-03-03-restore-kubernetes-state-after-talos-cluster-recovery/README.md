@@ -225,7 +225,8 @@ Go through each application and verify it is working correctly:
 kubectl get deployments --all-namespaces
 
 # Check for deployments with unavailable replicas
-kubectl get deployments --all-namespaces | awk '$3 != $4 {print}'
+# Compares UP-TO-DATE ($4) with AVAILABLE ($5) - if they differ, the deployment has issues
+kubectl get deployments --all-namespaces | awk 'NR==1 || $4 != $5'
 
 # Check StatefulSets
 kubectl get statefulsets --all-namespaces
@@ -338,7 +339,7 @@ kubectl get pvc --all-namespaces | grep -v Bound | grep -v NAME
 echo ""
 
 echo "--- Deployment Status ---"
-kubectl get deployments --all-namespaces | awk 'NR==1 || $3 != $4'
+kubectl get deployments --all-namespaces | awk 'NR==1 || $4 != $5'
 echo ""
 
 echo "--- DaemonSet Status ---"
