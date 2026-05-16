@@ -67,7 +67,7 @@ helm repo add eks https://aws.github.io/eks-charts
 helm repo update
 
 # Install the CRDs
-kubectl apply -k "github.com/aws/eks-charts/stable/aws-load-balancer-controller//crds?ref=master"
+kubectl apply -k "github.com/aws/eks-charts/stable/aws-load-balancer-controller/crds?ref=master"
 
 # Install the controller
 helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
@@ -141,8 +141,6 @@ kind: Ingress
 metadata:
   name: sample-ingress
   annotations:
-    # Tell Kubernetes to use the AWS ALB ingress class
-    kubernetes.io/ingress.class: alb
     # Use internet-facing scheme for public access
     alb.ingress.kubernetes.io/scheme: internet-facing
     # Route traffic to targets using IP mode
@@ -152,6 +150,8 @@ metadata:
     # Specify the ACM certificate ARN for TLS
     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:123456789012:certificate/xxxxx
 spec:
+  # Use the AWS ALB ingress class (created by the controller's Helm chart)
+  ingressClassName: alb
   rules:
     - host: app.example.com
       http:
