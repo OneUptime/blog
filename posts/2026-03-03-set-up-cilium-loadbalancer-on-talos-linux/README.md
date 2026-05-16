@@ -28,7 +28,7 @@ Historically, people used MetalLB to solve this. But if you are already running 
 ## Prerequisites
 
 - Talos Linux cluster with Cilium installed as the CNI
-- Cilium version 1.13 or newer (LB-IPAM was introduced in 1.13)
+- Cilium version 1.14 or newer (LB-IPAM was introduced in 1.13, but L2 Announcements requires 1.14)
 - kube-proxy replacement enabled in Cilium
 - A range of IP addresses available for LoadBalancer services
 
@@ -70,7 +70,7 @@ Define the range of IPs that Cilium can assign to LoadBalancer services:
 
 ```yaml
 # lb-ip-pool.yaml
-apiVersion: cilium.io/v2alpha1
+apiVersion: cilium.io/v2
 kind: CiliumLoadBalancerIPPool
 metadata:
   name: main-pool
@@ -84,7 +84,7 @@ You can also use CIDR notation:
 
 ```yaml
 # lb-ip-pool-cidr.yaml
-apiVersion: cilium.io/v2alpha1
+apiVersion: cilium.io/v2
 kind: CiliumLoadBalancerIPPool
 metadata:
   name: secondary-pool
@@ -97,7 +97,7 @@ For multiple pools with service selection:
 
 ```yaml
 # multi-pool.yaml
-apiVersion: cilium.io/v2alpha1
+apiVersion: cilium.io/v2
 kind: CiliumLoadBalancerIPPool
 metadata:
   name: production-pool
@@ -109,7 +109,7 @@ spec:
     matchLabels:
       env: production
 ---
-apiVersion: cilium.io/v2alpha1
+apiVersion: cilium.io/v2
 kind: CiliumLoadBalancerIPPool
 metadata:
   name: staging-pool
