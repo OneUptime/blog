@@ -43,17 +43,16 @@ Talos Linux supports both UEFI and legacy BIOS boot, but UEFI is recommended for
 
 Talos Linux uses one of two boot loaders:
 
-**GRUB**: The traditional GNU GRand Unified Bootloader. It is the default for legacy BIOS systems and is also used on some UEFI installations. GRUB reads its configuration from a file and loads the kernel and initramfs.
+**GRUB**: The traditional GNU GRand Unified Bootloader. It is used for legacy BIOS systems on x86_64 and may also be present on UEFI systems that were upgraded from older Talos versions. GRUB reads its configuration from a file and loads the kernel and initramfs.
 
-**systemd-boot**: A simpler boot loader that is part of the systemd project. It is used on newer Talos Linux installations with UEFI. systemd-boot is faster and simpler than GRUB but only works with UEFI.
+**systemd-boot**: A simpler boot loader that is part of the systemd project. It is the default boot loader for new UEFI installations starting with Talos 1.10. systemd-boot is faster and simpler than GRUB but only works with UEFI.
 
 The boot loader's job is to:
 
 1. Present a boot menu (if configured)
-2. Load the Talos Linux kernel into memory
-3. Load the initramfs (initial RAM filesystem)
-4. Pass kernel command-line parameters
-5. Transfer control to the kernel
+2. Load the Talos Linux kernel and initramfs into memory, either separately with GRUB or as a Unified Kernel Image (UKI) with systemd-boot
+3. Pass kernel command-line parameters (embedded in the UKI when using systemd-boot)
+4. Transfer control to the kernel
 
 ```bash
 # You can see the kernel command line on a running system
@@ -99,8 +98,8 @@ Machined is responsible for:
 - Managing all subsequent system services
 
 ```bash
-# Check the status of machined services
-talosctl services
+# Check the status of Talos services
+talosctl service
 ```
 
 This is where Talos Linux diverges significantly from other Linux distributions. There is no systemd, no init scripts, and no runlevels. Machined manages a fixed set of services that are all directly related to running Kubernetes.
@@ -109,21 +108,22 @@ This is where Talos Linux diverges significantly from other Linux distributions.
 
 Machined discovers and mounts the necessary disk partitions:
 
-- **EFI System Partition (ESP)**: Contains the boot loader (mounted at /boot/EFI)
-- **BOOT partition**: Contains the kernel and initramfs
+- **EFI System Partition (ESP)**: Contains the boot loader and, on systemd-boot systems, Talos UKIs
+- **BOOT partition**: Contains GRUB configuration and Talos boot assets on GRUB-based installations
 - **META partition**: Stores machine metadata and configuration
-- **STATE partition**: Holds the machine configuration (encrypted)
-- **EPHEMERAL partition**: Working space for Kubernetes data (etcd, kubelet)
+- **STATE partition**: Holds system state, including machine configuration
+- **EPHEMERAL partition**: Working space for container data, logs, and Kubernetes data such as etcd on control plane nodes
 
 ```bash
 # View disk and partition information
-talosctl disks
+talosctl get disks
+talosctl get discoveredvolumes
 
 # Check mounted partitions
-talosctl mounts
+talosctl get mountstatus
 ```
 
-The STATE partition is particularly important because it stores the machine configuration in an encrypted format. This means even if someone removes the disk from a machine, they cannot read the configuration without the encryption key.
+The STATE partition is particularly important because it stores sensitive node data such as machine configuration, secrets, and certificates. Talos supports LUKS2 encryption for STATE and EPHEMERAL, but disk encryption must be configured; it is not automatically enabled on every installation.
 
 ## Stage 6: Machine Configuration
 
@@ -169,21 +169,20 @@ Once networking is up, machined starts the Kubernetes components. The order depe
 **Control Plane Nodes:**
 
 1. etcd starts and initializes (or joins an existing cluster)
-2. The Kubernetes API server starts
-3. The controller manager starts
-4. The scheduler starts
-5. The kubelet starts and registers the node
-6. kube-proxy or the configured CNI starts
+2. The kubelet service starts
+3. The Kubernetes API server, controller manager, and scheduler start as static pods via the kubelet
+4. The kubelet obtains its client certificate and registers the node
+5. kube-proxy and the configured CNI start from the Kubernetes bootstrap manifests, if enabled
 
 **Worker Nodes:**
 
 1. The kubelet starts and connects to the API server
-2. kube-proxy or the configured CNI starts
+2. kube-proxy and the configured CNI start from Kubernetes manifests, if enabled
 3. The node registers with the cluster
 
 ```bash
 # Monitor service startup
-talosctl services
+talosctl service
 
 # Watch etcd status (control plane only)
 talosctl service etcd
@@ -216,10 +215,10 @@ talosctl health
 
 ## The Upgrade Boot Process
 
-When you upgrade Talos Linux, the boot process has an additional twist. Talos uses an A/B partition scheme:
+When you upgrade Talos Linux, the boot process has an additional twist. Talos uses an A/B image scheme:
 
-1. The new Talos version is written to the inactive boot partition
-2. The boot loader is updated to point to the new partition
+1. The new Talos version is written as the inactive boot image
+2. The boot loader is updated to point to the new image
 3. The machine reboots into the new version
 4. If the boot fails, the machine can fall back to the previous version
 
@@ -229,7 +228,7 @@ talosctl upgrade --image ghcr.io/siderolabs/installer:v1.10.0
 
 # The upgrade process:
 # 1. Downloads the new installer image
-# 2. Writes to the inactive partition
+# 2. Writes the new boot image
 # 3. Updates boot loader config
 # 4. Reboots
 ```
@@ -257,7 +256,7 @@ When something goes wrong during boot, use these tools:
 talosctl dmesg
 
 # Check service status
-talosctl services
+talosctl service
 
 # View logs for a specific service
 talosctl logs machined
