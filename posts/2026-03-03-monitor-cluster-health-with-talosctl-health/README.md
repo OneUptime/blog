@@ -61,8 +61,8 @@ waiting for all k8s nodes to report schedulable: OK
 By default, the health command waits a certain amount of time for each check to pass. You can adjust this:
 
 ```bash
-# Set a custom wait timeout (default is around 10 minutes)
-talosctl health --nodes <cp-ip> --wait-timeout 15m
+# Set a custom wait timeout (default is 20 minutes)
+talosctl health --nodes <cp-ip> --wait-timeout 25m
 ```
 
 A longer timeout is useful when:
