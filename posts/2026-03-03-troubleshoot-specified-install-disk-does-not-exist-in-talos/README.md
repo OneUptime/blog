@@ -67,19 +67,19 @@ The first step in fixing this error is figuring out which disks are actually ava
 ```bash
 # Connect to a node in maintenance mode
 
-# The --insecure flag is needed because TLS is not configured yet
+# The --insecure flag is needed because Talos PKI/authentication is not configured yet
 talosctl get disks --nodes 192.168.1.10 --insecure
 
 # Example output:
-# NODE          NAMESPACE   TYPE   ID        VERSION   SIZE      MODEL
-# 192.168.1.10  runtime     Disk   vda       1         50 GB     QEMU HARDDISK
-# 192.168.1.10  runtime     Disk   nvme0n1   1         500 GB    Samsung 980 PRO
+# NODE           NAMESPACE   TYPE   ID        VERSION   SIZE     READ ONLY   TRANSPORT   ROTATIONAL   WWID   MODEL            SERIAL
+# 192.168.1.10   runtime     Disk   vda       1         50 GB    false       virtio      true                 QEMU HARDDISK
+# 192.168.1.10   runtime     Disk   nvme0n1   1         500 GB   false       nvme                            Samsung 980 PRO
 ```
 
 This output tells you exactly which devices Talos can see. Compare this to what your machine configuration specifies.
 
 ```bash
-# You can also check all block devices
+# On Talos 1.9 and newer, you can also check lower-level block devices
 talosctl get blockdevices --nodes 192.168.1.10 --insecure
 ```
 
@@ -199,7 +199,7 @@ If your server has a hardware RAID controller, individual disks might not be vis
 
 ## Missing Driver Solutions
 
-If no disks appear at all, you likely need a system extension that includes the missing storage driver.
+If no disks appear at all, you likely need boot media or an installer image that includes the missing storage driver or storage-related system extension.
 
 ```bash
 # Check if any storage-related kernel modules are needed
@@ -212,14 +212,14 @@ lsmod | grep -i nvme\|ahci\|scsi
 Talos supports system extensions that can add kernel modules:
 
 ```bash
-# Build a custom Talos image with additional drivers
+# Build a custom Talos installer image with a storage-related extension
 docker run --rm -t -v /tmp/out:/out \
   ghcr.io/siderolabs/imager:v1.7.0 \
   installer \
   --system-extension-image ghcr.io/siderolabs/drbd:9.2.4-v1.7.0
 ```
 
-Check the Talos extensions repository for available storage drivers. If your controller needs a driver that is not available as an extension, you may need to build a custom Talos kernel with the driver included.
+Check the Talos extensions repository for available storage and driver extensions, and use an extension version that matches your Talos release. If your controller needs a driver that is not available as an extension, you may need to build a custom Talos kernel with the driver included.
 
 ## Preventing This Error
 
