@@ -75,13 +75,11 @@ The Completely Fair Scheduler (CFS) is the default Linux scheduler. While it wor
 # talos-machine-config.yaml
 machine:
   sysctls:
-    kernel.sched_min_granularity_ns: "1000000"   # 1ms minimum slice
-    kernel.sched_wakeup_granularity_ns: "500000"  # 0.5ms wakeup granularity
     kernel.sched_migration_cost_ns: "5000000"     # Reduce cross-CPU migration
     kernel.sched_rt_runtime_us: "990000"          # Allow 99% RT scheduling
 ```
 
-These values reduce the scheduler's tendency to preempt running tasks and keep processes on their assigned cores longer.
+These values reduce the scheduler's tendency to migrate tasks across cores and increase the share of CPU time available to real-time scheduling classes. Note that since Linux 6.6 the CFS scheduler has been replaced by EEVDF, and the old CFS-only tunables such as `sched_min_granularity_ns` and `sched_wakeup_granularity_ns` no longer exist as sysctls. EEVDF exposes its slice tuning through `/sys/kernel/debug/sched/base_slice_ns` instead.
 
 ## Configuring Huge Pages for Memory Performance
 
@@ -114,11 +112,11 @@ machine:
     net.core.netdev_budget: "600"         # Increase NAPI polling budget
     net.core.somaxconn: "65535"           # Increase connection backlog
     net.ipv4.tcp_fastopen: "3"            # Enable TCP Fast Open
-    net.ipv4.tcp_low_latency: "1"         # Prefer latency over throughput
-    net.ipv4.tcp_nodelay: "1"             # Disable Nagle's algorithm
 ```
 
 Busy polling trades CPU cycles for lower network latency by actively polling the network device instead of waiting for interrupts. This is particularly effective when combined with CPU isolation.
+
+Disabling Nagle's algorithm is not done through a sysctl. `TCP_NODELAY` is a per-socket option that applications set via `setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, ...)`. The legacy `net.ipv4.tcp_low_latency` sysctl has been a no-op since Linux 4.14, so it is no longer worth setting.
 
 ## Interrupt Affinity and NAPI Configuration
 
