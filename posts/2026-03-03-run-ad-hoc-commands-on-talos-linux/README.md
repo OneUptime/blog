@@ -23,7 +23,7 @@ Talos Linux exposes many common operations directly through talosctl. These cove
 
 talosctl processes --nodes 192.168.1.10
 
-# Get system stats (similar to top)
+# Get container resource statistics (similar to docker stats)
 talosctl stats --nodes 192.168.1.10
 ```
 
@@ -44,7 +44,7 @@ talosctl read --nodes 192.168.1.10 /proc/loadavg
 
 ```bash
 # List disks and partitions
-talosctl disks --nodes 192.168.1.10
+talosctl get disks --nodes 192.168.1.10
 
 # Check mount points
 talosctl mounts --nodes 192.168.1.10
@@ -271,10 +271,10 @@ echo "=== Memory ==="
 talosctl memory --nodes $NODE
 
 echo "=== Disks ==="
-talosctl disks --nodes $NODE
+talosctl get disks --nodes $NODE
 
 echo "=== Recent Events ==="
-talosctl get events --nodes $NODE
+talosctl events --nodes $NODE
 
 echo "=== Recent Kernel Messages ==="
 talosctl dmesg --nodes $NODE | tail -20
