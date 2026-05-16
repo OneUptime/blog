@@ -27,15 +27,14 @@ The kernel always picks the most specific route. A route for `10.20.0.0/24` is m
 The default route (`0.0.0.0/0`) is where traffic goes when no other route matches. This is typically your internet gateway:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.1
 ```
 
 Every node needs a default route to communicate with the broader network. Without one, the node can only reach addresses on its directly-connected subnets.
@@ -45,22 +44,21 @@ Every node needs a default route to communicate with the broader network. Withou
 Static routes are defined per interface in the `routes` list:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          # Default route - internet gateway
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-          # Route to office network through a specific gateway
-          - network: 10.10.0.0/16
-            gateway: 192.168.1.254
-          # Route to data center network
-          - network: 172.16.0.0/12
-            gateway: 192.168.1.253
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  # Default route - internet gateway
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.1
+  # Route to office network through a specific gateway
+  - destination: 10.10.0.0/16
+    gateway: 192.168.1.254
+  # Route to data center network
+  - destination: 172.16.0.0/12
+    gateway: 192.168.1.253
 ```
 
 Each route entry specifies which destination network should be reached through which gateway. The gateway must be directly reachable from the interface where the route is defined.
@@ -70,31 +68,36 @@ Each route entry specifies which destination network should be reached through w
 When your node has multiple interfaces on different networks, you need routes to tell the kernel which interface to use for which destinations:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      # Management interface
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-      # Storage interface
-      - interface: eth1
-        addresses:
-          - 10.10.0.10/24
-        routes:
-          # Route storage traffic through the storage network
-          - network: 10.10.0.0/16
-            gateway: 10.10.0.1
-      # Application interface
-      - interface: eth2
-        addresses:
-          - 10.20.0.10/24
-        routes:
-          - network: 10.20.0.0/16
-            gateway: 10.20.0.1
+# Management interface
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.1
+---
+# Storage interface
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth1
+addresses:
+  - address: 10.10.0.10/24
+routes:
+  # Route storage traffic through the storage network
+  - destination: 10.10.0.0/16
+    gateway: 10.10.0.1
+---
+# Application interface
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth2
+addresses:
+  - address: 10.20.0.10/24
+routes:
+  - destination: 10.20.0.0/16
+    gateway: 10.20.0.1
 ```
 
 Only one interface should have the default route. The other interfaces have specific routes for their networks.
@@ -104,25 +107,27 @@ Only one interface should have the default route. The other interfaces have spec
 When two routes point to the same destination, the route with the lower metric is preferred. This is useful for failover scenarios:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          # Primary default route - metric 100 (preferred)
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-            metric: 100
-      - interface: eth1
-        addresses:
-          - 192.168.2.10/24
-        routes:
-          # Backup default route - metric 200 (fallback)
-          - network: 0.0.0.0/0
-            gateway: 192.168.2.1
-            metric: 200
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  # Primary default route - metric 100 (preferred)
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.1
+    metric: 100
+---
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth1
+addresses:
+  - address: 192.168.2.10/24
+routes:
+  # Backup default route - metric 200 (fallback)
+  - destination: 0.0.0.0/0
+    gateway: 192.168.2.1
+    metric: 200
 ```
 
 In this setup, traffic normally goes through `eth0` (metric 100). If `eth0` is down, the kernel uses the route through `eth1` (metric 200).
@@ -132,24 +137,30 @@ In this setup, traffic normally goes through `eth0` (metric 100). If `eth0` is d
 When you have VPN tunnels (like WireGuard), you need routes to direct traffic for remote networks through the tunnel:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-      - interface: wg0
-        wireguard:
-          # WireGuard configuration...
-        addresses:
-          - 10.0.0.1/24
-        routes:
-          # Route remote site traffic through the tunnel
-          - network: 10.20.0.0/16
-          - network: 10.30.0.0/16
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.1
+---
+apiVersion: v1alpha1
+kind: WireguardConfig
+name: wg0
+privateKey: <base64-private-key>
+peers:
+  - publicKey: <base64-peer-public-key>
+    allowedIPs:
+      - 10.20.0.0/16
+      - 10.30.0.0/16
+addresses:
+  - address: 10.0.0.1/24
+routes:
+  # Route remote site traffic through the tunnel
+  - destination: 10.20.0.0/16
+  - destination: 10.30.0.0/16
 ```
 
 For WireGuard, the gateway is often omitted because the kernel knows to use the tunnel interface based on WireGuard's `allowedIPs` configuration.
@@ -159,21 +170,20 @@ For WireGuard, the gateway is often omitted because the kernel knows to use the 
 Kubernetes pod-to-pod traffic usually goes through the CNI plugin's overlay network, so you do not need explicit routes for the pod CIDR. However, in some CNI setups (like Calico with direct routing), you might need routes to peer nodes:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-          # Direct routes to pod subnets on other nodes
-          # (only needed for specific CNI configurations)
-          - network: 10.244.1.0/24
-            gateway: 192.168.1.11
-          - network: 10.244.2.0/24
-            gateway: 192.168.1.12
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.1
+  # Direct routes to pod subnets on other nodes
+  # (only needed for specific CNI configurations)
+  - destination: 10.244.1.0/24
+    gateway: 192.168.1.11
+  - destination: 10.244.2.0/24
+    gateway: 192.168.1.12
 ```
 
 This is not typical - most CNI plugins handle this routing automatically. But it can be useful for troubleshooting or custom networking setups.
@@ -193,10 +203,10 @@ For existing nodes:
 # Add routes to a running node
 
 talosctl patch machineconfig --nodes 192.168.1.10 \
-  --patch '{"machine": {"network": {"interfaces": [{"interface": "eth0", "addresses": ["192.168.1.10/24"], "routes": [{"network": "0.0.0.0/0", "gateway": "192.168.1.1"}, {"network": "10.10.0.0/16", "gateway": "192.168.1.254"}]}]}}}'
+  --patch @routes-patch.yaml --mode=try
 ```
 
-Remember that the routes field is a list, and patches replace lists entirely. Include all routes you want, not just the new ones.
+Remember that the routes field is a list, and patches replace lists entirely. Include all routes you want, not just the new ones. When changing routes on a live node, `--mode=try` gives Talos a rollback window if the new network configuration breaks access.
 
 ## Verifying Routes
 
@@ -209,11 +219,11 @@ talosctl get routes --nodes 192.168.1.10
 
 This shows the complete routing table including directly-connected routes (from interface addresses), configured static routes, and any dynamically-added routes.
 
-To test that a specific route works:
+To confirm traffic is using the expected interface while you test from another host:
 
 ```bash
-# Test reaching a destination through a specific route
-talosctl ping 10.10.0.1 --nodes 192.168.1.10
+# Watch traffic while testing from another host
+talosctl pcap --nodes 192.168.1.10 --interface eth0
 ```
 
 ## Blackhole Routes
@@ -221,16 +231,17 @@ talosctl ping 10.10.0.1 --nodes 192.168.1.10
 A blackhole route silently drops traffic to a specific destination. This can be useful for blocking traffic or preventing routing loops:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-          # Drop traffic to this range
-          - network: 10.99.0.0/16
-            blackhole: true
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+routes:
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.1
+---
+# Drop traffic to this range
+apiVersion: v1alpha1
+kind: BlackholeRouteConfig
+name: 10.99.0.0/16
 ```
 
 ## Common Routing Patterns
@@ -241,18 +252,26 @@ One node acts as a router for traffic between subnets:
 
 ```yaml
 # On the hub node with multiple interfaces
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.1/24
+---
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth1
+addresses:
+  - address: 10.10.0.1/24
+---
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth2
+addresses:
+  - address: 10.20.0.1/24
+---
+version: v1alpha1
 machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.1/24
-      - interface: eth1
-        addresses:
-          - 10.10.0.1/24
-      - interface: eth2
-        addresses:
-          - 10.20.0.1/24
   # Enable IP forwarding
   sysctls:
     net.ipv4.ip_forward: "1"
@@ -261,21 +280,20 @@ machine:
 ### Access to Multiple Data Centers
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-          # DC1 networks
-          - network: 10.1.0.0/16
-            gateway: 192.168.1.251
-          # DC2 networks
-          - network: 10.2.0.0/16
-            gateway: 192.168.1.252
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.1
+  # DC1 networks
+  - destination: 10.1.0.0/16
+    gateway: 192.168.1.251
+  # DC2 networks
+  - destination: 10.2.0.0/16
+    gateway: 192.168.1.252
 ```
 
 ## Troubleshooting
