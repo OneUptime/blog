@@ -26,13 +26,13 @@ Before resetting anything, understand what state the nodes are in:
 talosctl version --nodes <cp-node-ip>
 
 # Check what services are running
-talosctl services --nodes <cp-node-ip>
+talosctl service --nodes <cp-node-ip>
 
 # Check the machine status
 talosctl get machinestatus --nodes <cp-node-ip>
 
 # Check if etcd is running (and possibly in a bad state)
-talosctl services --nodes <cp-node-ip> | grep etcd
+talosctl service etcd --nodes <cp-node-ip>
 ```
 
 Nodes can be in several states:
@@ -58,11 +58,14 @@ If control plane nodes are still running but the cluster needs recovery (e.g., e
 
 talosctl reset --nodes <cp-node-1> \
   --system-labels-to-wipe EPHEMERAL \
-  --graceful=false
+  --graceful=false \
+  --reboot
 
 # The --graceful=false flag skips the drain and
 # cordon steps, which would fail anyway if the
-# cluster is not operational
+# cluster is not operational. The --reboot flag
+# makes the node reboot after the reset instead
+# of shutting down.
 ```
 
 The EPHEMERAL wipe preserves:
@@ -75,7 +78,7 @@ This is the most common preparation method because it cleans up etcd data withou
 ```bash
 # Wait for the node to come back after reset
 # It will reboot and start services fresh
-talosctl services --nodes <cp-node-1>
+talosctl service --nodes <cp-node-1>
 
 # etcd should NOT be running yet
 # It waits for the bootstrap command
@@ -91,7 +94,8 @@ for node in 10.0.0.1 10.0.0.2 10.0.0.3; do
     echo "Resetting ${node}..."
     talosctl reset --nodes ${node} \
       --system-labels-to-wipe EPHEMERAL \
-      --graceful=false
+      --graceful=false \
+      --reboot
 done
 
 # Wait for all nodes to come back
@@ -102,7 +106,7 @@ sleep 60
 for node in 10.0.0.1 10.0.0.2 10.0.0.3; do
     echo "Checking ${node}..."
     talosctl version --nodes ${node}
-    talosctl services --nodes ${node}
+    talosctl service --nodes ${node}
 done
 ```
 
@@ -174,10 +178,10 @@ for node in 10.0.0.1 10.0.0.2 10.0.0.3; do
     talosctl version --nodes ${node}
 
     # Should have the correct machine config
-    talosctl get machineconfig --nodes ${node} -o yaml | head -20
+    talosctl get machineconfig v1alpha1 --nodes ${node} -o yaml | head -20
 
     # etcd should NOT be running (waiting for bootstrap)
-    talosctl services --nodes ${node} | grep etcd
+    talosctl service etcd --nodes ${node}
 
     # Check disk space on EPHEMERAL partition
     talosctl get disks --nodes ${node}
@@ -220,9 +224,9 @@ After a hard reboot, the node should come back and you can try the reset again.
 # with etcd data wiped
 
 # Verify the bootstrap node is ready
-talosctl services --nodes <bootstrap-node>
+talosctl service etcd --nodes <bootstrap-node>
 
-# etcd should be in "Waiting" state, not "Running"
+# etcd should be in "Preparing" state, not "Running"
 # If etcd is running, reset the EPHEMERAL partition
 
 # The other control plane nodes should also be reset
@@ -238,7 +242,8 @@ talosctl services --nodes <bootstrap-node>
 # Only reset the problematic node
 talosctl reset --nodes <bad-node> \
   --system-labels-to-wipe EPHEMERAL \
-  --graceful=false
+  --graceful=false \
+  --reboot
 
 # Leave the healthy nodes alone
 # They will accept the recovered node when it rejoins
@@ -267,7 +272,7 @@ for node in "${CP_NODES[@]}"; do
     echo "  OK: Node is reachable"
 
     # Config applied?
-    if ! talosctl get machineconfig --nodes ${node} 2>/dev/null; then
+    if ! talosctl get machineconfig v1alpha1 --nodes ${node} 2>/dev/null; then
         echo "  FAIL: No machine configuration"
         ((ERRORS++))
         continue
@@ -275,7 +280,7 @@ for node in "${CP_NODES[@]}"; do
     echo "  OK: Machine configuration present"
 
     # Check services
-    ETCD_STATE=$(talosctl services --nodes ${node} 2>/dev/null | grep etcd | awk '{print $2}')
+    ETCD_STATE=$(talosctl service etcd --nodes ${node} 2>/dev/null | awk '/STATE/ {print $2}')
     if [ "${ETCD_STATE}" = "Running" ]; then
         echo "  WARN: etcd is still running (may need reset)"
     else
