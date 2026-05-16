@@ -342,12 +342,25 @@ Kubernetes does not have a built-in certificate revocation mechanism. If a certi
 3. **Use short-lived certificates** so compromised ones expire quickly
 
 ```bash
-# Quick revocation: Remove all RBAC bindings for the user
-kubectl delete rolebinding --all-namespaces \
-    --field-selector="subjects[0].name=jane@example.com"
+# Quick revocation: Remove all RBAC bindings for the user.
+# Note: RoleBinding/ClusterRoleBinding do not support field selectors on
+# .subjects, so we filter with jq and delete the matching bindings by name.
 
-kubectl delete clusterrolebinding \
-    --field-selector="subjects[0].name=jane@example.com"
+USER_NAME="jane@example.com"
+
+# Delete matching RoleBindings across all namespaces
+kubectl get rolebindings --all-namespaces -o json | \
+    jq -r --arg u "$USER_NAME" \
+        '.items[] | select(.subjects[]?.name == $u) | "\(.metadata.namespace) \(.metadata.name)"' | \
+    while read -r ns name; do
+        kubectl delete rolebinding -n "$ns" "$name"
+    done
+
+# Delete matching ClusterRoleBindings
+kubectl get clusterrolebindings -o json | \
+    jq -r --arg u "$USER_NAME" \
+        '.items[] | select(.subjects[]?.name == $u) | .metadata.name' | \
+    xargs -r -I {} kubectl delete clusterrolebinding {}
 ```
 
 ## Combining with Other Authentication Methods
