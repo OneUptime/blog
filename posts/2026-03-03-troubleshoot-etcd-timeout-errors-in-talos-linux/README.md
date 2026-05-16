@@ -18,7 +18,7 @@ In the etcd logs:
 
 ```text
 {"level":"warn","msg":"etcdserver: request timed out"}
-{"level":"warn","msg":"etcdserver: failed to send out heartbeat on time (exceeded the 500ms timeout for 1.2s)"}
+{"level":"warn","msg":"etcdserver: failed to send out heartbeat on time"}
 {"level":"warn","msg":"apply request took too long (2.5s)"}
 ```
 
@@ -36,7 +36,7 @@ Error from server: etcdserver: request timed out
 
 ## Understanding etcd Timing
 
-etcd uses a leader-based consensus protocol. The leader sends heartbeats to followers at regular intervals (default 500ms). If followers do not respond within the election timeout (default 5000ms), a new leader election happens. During elections, the cluster is temporarily unavailable.
+etcd uses a leader-based consensus protocol. The leader sends heartbeats to followers at regular intervals (default 100ms). If a follower does not hear from the leader within the election timeout (default 1000ms), a new leader election happens. During elections, the cluster is temporarily unavailable.
 
 Timeouts happen when:
 
@@ -67,21 +67,21 @@ If the WAL fsync duration consistently exceeds 10ms, your disk is too slow for e
 Solutions:
 
 1. **Use SSDs.** This is the single most effective fix. NVMe drives are even better.
-2. **Move etcd to a dedicated disk** by configuring a separate mount point in the Talos machine config.
+2. **Move etcd data to faster storage** by configuring the Talos `EPHEMERAL` volume, which contains `/var/lib/etcd`, on an SSD or NVMe disk before the volume is provisioned.
 3. **Reduce disk contention** by not running I/O-heavy workloads on control plane nodes.
 
 ```yaml
-# Talos machine config for a dedicated etcd disk
-machine:
-  disks:
-    - device: /dev/sdb
-      partitions:
-        - mountpoint: /var/lib/etcd
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+provisioning:
+  diskSelector:
+    match: disk.transport == "nvme"
 ```
 
 ## Cause 2: Network Latency
 
-etcd members must communicate with low latency. The recommended maximum round-trip time between etcd members is 10ms. Higher latency causes missed heartbeats.
+etcd members must communicate with low latency. Keep round-trip time between members low; etcd recommends setting the heartbeat interval around the measured RTT, and a 10ms RTT is a reasonable target for a healthy local control plane. Higher latency causes missed heartbeats.
 
 Test network latency between control plane nodes:
 
@@ -93,7 +93,7 @@ kubectl run nettest --image=busybox --restart=Never --overrides='{"spec":{"nodeN
 kubectl exec nettest -- ping -c 20 <cp-2-ip>
 ```
 
-If latency is above 10ms:
+If latency is consistently high:
 
 1. Make sure control plane nodes are in the same data center or availability zone
 2. Check for network congestion between nodes
@@ -101,7 +101,7 @@ If latency is above 10ms:
 
 ## Cause 3: Large etcd Database
 
-The default etcd database size limit is 2GB. As the database grows, operations take longer:
+The default etcd database size limit in Talos is 2 GiB. As the database grows, operations can take longer:
 
 ```bash
 # Check etcd database size
@@ -114,32 +114,13 @@ If the database is larger than 100MB, consider whether you have too many resourc
 - Thousands of CRD instances
 - Event objects (cleaned up automatically but can accumulate)
 
-Compact and defragment to reclaim space:
+Kubernetes automatically compacts the etcd database, but disk space is not actually freed until the database is defragmented. Defragment one member at a time:
 
 ```bash
-# Get the current revision
-ETCDCTL_API=3 etcdctl \
-  --endpoints=https://<cp-ip>:2379 \
-  --cacert=etcd-ca.crt \
-  --cert=etcd.crt \
-  --key=etcd.key \
-  endpoint status --write-out=json
-
-# Compact to the current revision
-ETCDCTL_API=3 etcdctl \
-  --endpoints=https://<cp-ip>:2379 \
-  --cacert=etcd-ca.crt \
-  --cert=etcd.crt \
-  --key=etcd.key \
-  compact <revision>
-
 # Defragment each member
-ETCDCTL_API=3 etcdctl \
-  --endpoints=https://<cp-1>:2379 \
-  --cacert=etcd-ca.crt \
-  --cert=etcd.crt \
-  --key=etcd.key \
-  defrag
+talosctl -n <cp-1-ip> etcd defrag
+talosctl -n <cp-2-ip> etcd defrag
+talosctl -n <cp-3-ip> etcd defrag
 ```
 
 Run defrag on one member at a time to avoid cluster disruption.
@@ -188,8 +169,8 @@ If you cannot immediately fix the underlying cause, you can increase etcd timeou
 cluster:
   etcd:
     extraArgs:
-      heartbeat-interval: "1000"     # Increase from default 500ms
-      election-timeout: "10000"      # Increase from default 5000ms
+      heartbeat-interval: "500"      # Increase from default 100ms
+      election-timeout: "5000"       # Increase from default 1000ms
 ```
 
 Apply this to all control plane nodes:
@@ -240,7 +221,10 @@ talosctl -n <cp-1-ip> etcd status
 talosctl -n <cp-2-ip> etcd status
 talosctl -n <cp-3-ip> etcd status
 
-# 3. If one member is causing issues, remove it temporarily
+# 3. If one member is causing issues and is still accessible, make it leave
+talosctl -n <slow-cp-ip> etcd leave
+
+# If the member is broken or inaccessible, remove it from a healthy member
 talosctl -n <healthy-cp-ip> etcd remove-member <slow-member-id>
 
 # 4. Fix the slow member (replace disk, fix network, etc.)
@@ -259,7 +243,7 @@ The best approach to etcd timeouts is prevention:
 1. Always use SSD storage for control plane nodes
 2. Keep control plane nodes in the same network segment
 3. Monitor etcd metrics continuously
-4. Compact and defragment etcd regularly (weekly or monthly)
+4. Defragment etcd regularly (weekly or monthly)
 5. Keep the etcd database small by cleaning up unused resources
 6. Do not run I/O or CPU-intensive workloads on control plane nodes
 
