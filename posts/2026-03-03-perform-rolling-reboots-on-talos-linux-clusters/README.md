@@ -112,7 +112,7 @@ kubectl drain <cp-node-name> \
 talosctl reboot -n <cp-node-ip>
 
 # Wait for the node to rejoin
-talosctl health -n <cp-node-ip> --wait-timeout 10m
+talosctl health --control-plane-nodes <cp-node-ip> --wait-timeout 10m
 
 # Verify etcd is healthy with all members
 talosctl etcd status -n <another-cp-ip>
