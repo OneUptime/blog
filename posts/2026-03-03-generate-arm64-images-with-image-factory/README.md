@@ -56,11 +56,14 @@ Notice that the schematic ID is the same regardless of architecture. The archite
 
 ## Raspberry Pi Images
 
-Raspberry Pi is one of the most popular ARM64 platforms for running Talos Linux. You need a specific image variant and some additional considerations:
+Raspberry Pi is one of the most popular ARM64 platforms for running Talos Linux. The schematic must include an `overlay` so Image Factory bakes in the board-specific U-Boot, device tree, and firmware. Without the overlay you would just get a generic ARM64 metal image that will not boot on a Pi:
 
 ```yaml
 # rpi-schematic.yaml
 # Raspberry Pi specific schematic
+overlay:
+  name: rpi_generic
+  image: siderolabs/sbc-raspberrypi
 customization:
   systemExtensions:
     officialExtensions:
@@ -89,7 +92,7 @@ sudo dd if=metal-arm64.raw of=/dev/sdX bs=4M status=progress conv=fsync
 
 Raspberry Pi has a unique boot process that differs from standard UEFI systems. Some things to keep in mind:
 
-- **Pi 4 and newer**: Supports UEFI boot through the EEPROM firmware. Update your Pi firmware to the latest version for the best experience.
+- **Firmware**: The `rpi_generic` overlay sets up U-Boot as the bootloader rather than UEFI. Keep the Pi's bootloader EEPROM up to date with `rpi-eeprom-update` for the best experience.
 - **Storage**: While SD cards work, USB SSDs provide significantly better performance and reliability. Talos writes frequently to its state partition, and SD cards can wear out.
 - **Memory**: Raspberry Pi 4 with 4GB or 8GB RAM works well. The 2GB model is marginal for Kubernetes workloads.
 
@@ -198,15 +201,17 @@ wget "https://factory.talos.dev/image/${SCHEMATIC_ID}/${TALOS_VERSION}/oracle-ar
 
 ## Checking Extension Availability for ARM64
 
-Not all extensions are available for ARM64. Check availability before creating your schematic:
+Most official Talos system extensions are multi-arch container images that include both AMD64 and ARM64 variants — Image Factory pulls the right one based on the requested image architecture. A few extensions are inherently x86-only (for example `intel-ucode`, `amd-ucode`, and certain firmware blobs for x86-specific hardware) and will not be usable in an ARM64 schematic.
+
+List the extensions available for a given Talos version:
 
 ```bash
-# List extensions and check for ARM64 support
+# List all official extensions for this Talos version
 curl -s https://factory.talos.dev/version/${TALOS_VERSION}/extensions/official | \
-  jq '.[] | select(.targets | contains(["arm64"]))'
+  jq '.[] | {name, ref, description}'
 ```
 
-If an extension is not available for ARM64, Image Factory will return an error when you try to generate an ARM64 image with that schematic.
+If you include an extension that has no ARM64 build, Image Factory will return an error when you try to generate the ARM64 image — so when in doubt, submit the schematic and let the factory tell you.
 
 ## Performance Considerations
 
