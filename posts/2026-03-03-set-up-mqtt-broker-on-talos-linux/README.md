@@ -14,7 +14,7 @@ This guide covers deploying both Eclipse Mosquitto (lightweight) and EMQX (enter
 
 ## Why MQTT on Talos Linux
 
-IoT deployments often face security challenges. Devices connect from untrusted networks, and the broker handles potentially sensitive sensor data. Talos Linux's immutable OS means the broker infrastructure cannot be compromised at the OS level. Combined with MQTT's built-in TLS support and authentication, you get a secure messaging layer for your IoT fleet.
+IoT deployments often face security challenges. Devices connect from untrusted networks, and the broker handles potentially sensitive sensor data. Talos Linux's immutable OS reduces OS-level attack surface and configuration drift. Combined with broker TLS support and MQTT authentication, you get a secure messaging layer for your IoT fleet.
 
 ## Prerequisites
 
@@ -71,30 +71,26 @@ data:
     max_inflight_messages 100
     max_queued_messages 1000
 
-    # Message size limit
-    message_size_limit 1048576
-  passwords: |
-    device1:$7$101$password-hash-here
-    device2:$7$101$password-hash-here
-    admin:$7$101$password-hash-here
+    # Packet size limit
+    max_packet_size 1048576
 ```
 
 ### Step 2: Generate Password File
 
 ```bash
-# Create a temporary pod to generate the password file
-kubectl run mosquitto-passwd --rm -it --restart=Never \
-  --image=eclipse-mosquitto:2.0 \
-  --namespace=mqtt \
-  -- mosquitto_passwd -c -b /dev/stdout device1 device1-password
-
 # Create the secret with hashed passwords
+kubectl run mosquitto-passwd --rm -i --restart=Never --quiet \
+  --image=eclipse-mosquitto:2.0 --namespace=mqtt \
+  -- sh -c 'touch /tmp/passwords && chmod 0700 /tmp/passwords && \
+    mosquitto_passwd -b /tmp/passwords device1 device1-pass && \
+    mosquitto_passwd -b /tmp/passwords admin admin-pass && \
+    cat /tmp/passwords' > /tmp/mosquitto-passwords
+
 kubectl create secret generic mosquitto-passwords \
-  --from-literal=passwords="$(kubectl run mosquitto-passwd --rm -it --restart=Never \
-    --image=eclipse-mosquitto:2.0 --namespace=mqtt \
-    -- sh -c 'mosquitto_passwd -c -b /dev/stdout device1 device1-pass && \
-    mosquitto_passwd -b /dev/stdout admin admin-pass' 2>/dev/null)" \
+  --from-file=passwords=/tmp/mosquitto-passwords \
   --namespace=mqtt
+
+rm /tmp/mosquitto-passwords
 ```
 
 ### Step 3: Deploy Mosquitto
@@ -287,7 +283,6 @@ data:
     protocol mqtt
     certfile /mosquitto/certs/tls.crt
     keyfile /mosquitto/certs/tls.key
-    cafile /mosquitto/certs/ca.crt
     tls_version tlsv1.2
     require_certificate false
 
@@ -322,9 +317,11 @@ spec:
     - mqtt.yourdomain.com
 ```
 
+Mount the generated `mqtt-tls-secret` at `/mosquitto/certs` in the Mosquitto StatefulSet before switching to this TLS configuration.
+
 ## MQTT Bridge to Kafka
 
-For integrating IoT data with your event streaming platform, bridge MQTT to Kafka:
+For integrating IoT data with your event streaming platform, prepare a Kafka Connect worker for an MQTT source connector:
 
 ```yaml
 # mqtt-kafka-bridge.yaml
@@ -351,7 +348,25 @@ spec:
               value: "kafka-bootstrap.kafka.svc.cluster.local:9092"
             - name: CONNECT_GROUP_ID
               value: "mqtt-bridge"
+            - name: CONNECT_CONFIG_STORAGE_TOPIC
+              value: "mqtt-bridge-configs"
+            - name: CONNECT_OFFSET_STORAGE_TOPIC
+              value: "mqtt-bridge-offsets"
+            - name: CONNECT_STATUS_STORAGE_TOPIC
+              value: "mqtt-bridge-status"
+            - name: CONNECT_KEY_CONVERTER
+              value: "org.apache.kafka.connect.storage.StringConverter"
+            - name: CONNECT_VALUE_CONVERTER
+              value: "org.apache.kafka.connect.json.JsonConverter"
+            - name: CONNECT_REST_ADVERTISED_HOST_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: CONNECT_PLUGIN_PATH
+              value: "/usr/share/java,/usr/share/confluent-hub-components"
 ```
+
+Build this image with your MQTT source connector plugin installed, then create the connector configuration that subscribes to the Mosquitto topics and writes them to Kafka.
 
 ## Monitoring MQTT
 
