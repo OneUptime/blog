@@ -47,7 +47,9 @@ The fastest way to get a Talos cluster running on QEMU/KVM is using the built-in
 
 ```bash
 # Create a local Talos cluster with 3 control plane and 3 worker nodes
-talosctl cluster create \
+# Note: --provisioner qemu is required; talosctl cluster create defaults to docker
+sudo -E talosctl cluster create \
+  --provisioner qemu \
   --controlplanes 3 \
   --workers 3 \
   --cpus 2 \
@@ -322,7 +324,7 @@ virsh net-destroy talos
 virsh net-undefine talos
 
 # Or if using talosctl cluster create
-talosctl cluster destroy
+sudo -E talosctl cluster destroy --provisioner qemu
 ```
 
 ## Conclusion
