@@ -34,6 +34,7 @@ kubectl create namespace logging
 # Install Fluentd with basic configuration
 helm install fluentd fluent/fluentd \
   --namespace logging \
+  --set mountDockerContainersDirectory=false \
   --set tolerations[0].operator=Exists \
   --set tolerations[0].effect=NoSchedule
 ```
@@ -44,6 +45,9 @@ For production use, create a custom values file:
 # fluentd-values.yaml
 # Fluentd Helm values for Talos Linux
 kind: DaemonSet
+
+mountVarLogDirectory: false
+mountDockerContainersDirectory: false
 
 tolerations:
   - operator: Exists
@@ -60,26 +64,18 @@ resources:
 
 # Mount Talos Linux paths for log collection
 volumes:
-  - name: varlogpods
-    hostPath:
-      path: /var/log/pods
-  - name: varlogcontainers
-    hostPath:
-      path: /var/log/containers
-  - name: varlibdockercontainers
+  - name: varlog
     hostPath:
       path: /var/log
+  - name: buffer
+    emptyDir: {}
 
 volumeMounts:
-  - name: varlogpods
-    mountPath: /var/log/pods
-    readOnly: true
-  - name: varlogcontainers
-    mountPath: /var/log/containers
-    readOnly: true
-  - name: varlibdockercontainers
+  - name: varlog
     mountPath: /var/log
     readOnly: true
+  - name: buffer
+    mountPath: /fluentd/buffer
 
 # Fluentd configuration
 fileConfigs:
@@ -88,12 +84,19 @@ fileConfigs:
       @type tail
       @id in_tail_container_logs
       path /var/log/pods/**/*.log
-      pos_file /var/log/fluentd-containers.log.pos
+      pos_file /fluentd/buffer/fluentd-containers.log.pos
       tag kubernetes.*
       read_from_head true
       <parse>
         @type cri
       </parse>
+    </source>
+
+    <source>
+      @type prometheus
+      bind 0.0.0.0
+      port 24231
+      metrics_path /metrics
     </source>
 
   02_filters.conf: |
@@ -116,7 +119,7 @@ fileConfigs:
       include_tag_key true
       <buffer>
         @type file
-        path /var/log/fluentd-buffers/kubernetes.buffer
+        path /fluentd/buffer/kubernetes.buffer
         flush_mode interval
         flush_interval 10s
         retry_type exponential_backoff
@@ -156,7 +159,7 @@ data:
       @type tail
       @id container_logs
       path /var/log/pods/**/*.log
-      pos_file /var/log/fluentd/containers.log.pos
+      pos_file /fluentd/buffer/containers.log.pos
       tag kubernetes.*
       read_from_head true
       <parse>
@@ -189,7 +192,7 @@ data:
       index_name kube-system-logs
       <buffer>
         @type file
-        path /var/log/fluentd-buffers/kube-system
+        path /fluentd/buffer/kube-system
         flush_interval 15s
       </buffer>
     </match>
@@ -202,7 +205,7 @@ data:
       logstash_prefix app-logs
       <buffer>
         @type file
-        path /var/log/fluentd-buffers/app-logs
+        path /fluentd/buffer/app-logs
         flush_interval 10s
         chunk_limit_size 5M
         total_limit_size 1G
@@ -232,12 +235,14 @@ spec:
         app: fluentd
     spec:
       serviceAccountName: fluentd
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       tolerations:
         - operator: Exists
           effect: NoSchedule
       containers:
         - name: fluentd
-          image: fluent/fluentd-kubernetes-daemonset:v1.16-debian-elasticsearch8-1
+          image: fluent/fluentd-kubernetes-daemonset:v1.19.2-debian-elasticsearch8-1.6
           env:
             - name: K8S_NODE_NAME
               valueFrom:
@@ -250,6 +255,10 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+          ports:
+            - name: talos-logs
+              containerPort: 5140
+              protocol: TCP
           volumeMounts:
             - name: config
               mountPath: /fluentd/etc
@@ -260,7 +269,7 @@ spec:
               mountPath: /var/log/containers
               readOnly: true
             - name: buffer
-              mountPath: /var/log/fluentd-buffers
+              mountPath: /fluentd/buffer
       volumes:
         - name: config
           configMap:
@@ -273,13 +282,6 @@ spec:
             path: /var/log/containers
         - name: buffer
           emptyDir: {}
-```
-
-Apply both resources:
-
-```bash
-kubectl apply -f fluentd-configmap.yaml
-kubectl apply -f fluentd-daemonset.yaml
 ```
 
 ## RBAC for Fluentd
@@ -318,7 +320,17 @@ subjects:
     namespace: logging
 ```
 
+Apply the resources:
+
+```bash
+kubectl apply -f fluentd-rbac.yaml
+kubectl apply -f fluentd-configmap.yaml
+kubectl apply -f fluentd-daemonset.yaml
+```
+
 ## Forwarding to Different Backends
+
+Make sure the Fluentd image includes the output plugin for the backend you configure, such as `fluent-plugin-grafana-loki` for Loki or the S3 variant of the Fluentd Kubernetes DaemonSet image for S3.
 
 ### Forwarding to Loki
 
@@ -335,7 +347,7 @@ subjects:
   </label>
   <buffer>
     @type file
-    path /var/log/fluentd-buffers/loki
+    path /fluentd/buffer/loki
     flush_interval 10s
   </buffer>
 </match>
@@ -354,7 +366,7 @@ subjects:
   path kubernetes-logs/
   <buffer time>
     @type file
-    path /var/log/fluentd-buffers/s3
+    path /fluentd/buffer/s3
     timekey 3600
     timekey_wait 10m
     chunk_limit_size 256m
@@ -386,7 +398,7 @@ To also collect Talos machine-level logs, add a TCP input source that receives f
   index_name talos-machine-logs
   <buffer>
     @type file
-    path /var/log/fluentd-buffers/talos-machine
+    path /fluentd/buffer/talos-machine
     flush_interval 15s
   </buffer>
 </match>
@@ -399,7 +411,7 @@ Then configure Talos to send machine logs to Fluentd:
 machine:
   logging:
     destinations:
-      - endpoint: "tcp://fluentd.logging.svc:5140"
+      - endpoint: "tcp://127.0.0.1:5140/"
         format: json_lines
 ```
 
@@ -429,7 +441,7 @@ For high-throughput clusters, tune Fluentd's performance:
 <!-- Performance-tuned buffer configuration -->
 <buffer>
   @type file
-  path /var/log/fluentd-buffers/output
+  path /fluentd/buffer/output
   flush_mode interval
   flush_interval 5s
   flush_thread_count 4
