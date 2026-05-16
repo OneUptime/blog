@@ -41,15 +41,15 @@ kubectl get packagemanifests
 
 ## Deploying an Operator with kubectl
 
-The simplest way to deploy an Operator is by applying its manifests directly. Let us deploy the NGINX Ingress Operator as an example:
+The simplest way to deploy an Operator is by applying its manifests directly. Let us deploy cert-manager as an example:
 
 ```bash
-# Apply the CRDs first
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml
+# Apply the Operator manifests (includes CRDs, controller, webhook, and cainjector)
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Verify the deployment
-kubectl get pods -n ingress-nginx
-kubectl get ingressclass
+kubectl get pods -n cert-manager
+kubectl get crds | grep cert-manager
 ```
 
 For Operators distributed as a collection of YAML files:
@@ -90,7 +90,7 @@ Once the Operator is running, you can create Redis clusters using custom resourc
 
 ```yaml
 # redis-cluster.yaml
-apiVersion: redis.redis.opstreelabs.in/v1beta1
+apiVersion: redis.redis.opstreelabs.in/v1beta2
 kind: RedisCluster
 metadata:
   name: redis-cluster
@@ -127,7 +127,7 @@ Let us walk through a complete example with the CloudNativePG Operator:
 
 ```bash
 # Install CloudNativePG
-kubectl apply -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.22/releases/cnpg-1.22.0.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.29/releases/cnpg-1.29.1.yaml
 
 # Wait for the operator to be ready
 kubectl rollout status deployment cnpg-controller-manager -n cnpg-system
