@@ -8,21 +8,20 @@ Description: A detailed breakdown of the Talos Linux machine configuration struc
 
 ---
 
-The machine configuration is the central piece of any Talos Linux deployment. It is a single YAML document that defines everything about how a node operates, from network settings to Kubernetes parameters to security policies. Understanding this structure is essential for effective cluster management. This guide breaks down every major section with explanations and examples.
+The machine configuration is the central piece of any Talos Linux deployment. It is a YAML file that can contain multiple configuration documents and defines everything about how a node operates, from network settings to Kubernetes parameters to security policies. Understanding this structure is essential for effective cluster management. This guide breaks down every major section with explanations and examples.
 
 ## The Top-Level Structure
 
-A Talos machine configuration has four top-level fields:
+The main Talos `v1alpha1` machine configuration document has four top-level fields:
 
 ```yaml
 version: v1alpha1      # Configuration schema version
 debug: false           # Enable debug mode (never in production)
-persist: true          # Persist configuration across reboots
 machine: {}            # Machine-specific settings
 cluster: {}            # Cluster-wide settings
 ```
 
-The `machine` section controls the individual node. The `cluster` section controls Kubernetes cluster behavior. Both are required for a functional configuration.
+The `machine` section controls the individual node. The `cluster` section controls Kubernetes cluster behavior. Both are required for a functional `v1alpha1` configuration. Current Talos versions may also include additional YAML documents, separated by `---`, for resources such as hostnames, links, resolvers, VLANs, bonds, VIPs, and user volumes.
 
 ## The Machine Section
 
@@ -34,10 +33,10 @@ Defines the role of the node:
 
 ```yaml
 machine:
-  type: controlplane  # or "worker" or "init" (deprecated)
+  type: controlplane  # or "worker"
 ```
 
-The `init` type was used for the first control plane node in older Talos versions. In current versions, use `controlplane` for all control plane nodes and bootstrap using `talosctl bootstrap`.
+Current Talos versions use `controlplane` for control plane nodes and `worker` for worker nodes. Older `init` and `join` values have been replaced by these roles; bootstrap the cluster with `talosctl bootstrap`.
 
 ### machine.token
 
@@ -77,45 +76,55 @@ machine:
 
 This is important when accessing nodes through load balancers or DNS names that are not the node's primary IP.
 
-### machine.network
+### Network configuration
 
 The complete network configuration for the node:
 
 ```yaml
-machine:
-  network:
-    hostname: worker-1
-    nameservers:
-      - 8.8.8.8
-      - 8.8.4.4
-    interfaces:
-      - interface: eth0
-        dhcp: false
-        addresses:
-          - 10.0.1.20/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 10.0.1.1
-            metric: 100
-        mtu: 1500
-        vip:
-          ip: 10.0.1.100  # Only on control plane nodes
-        vlans:
-          - vlanId: 100
-            addresses:
-              - 192.168.100.20/24
-        bond:
-          mode: 802.3ad
-          interfaces:
-            - eth0
-            - eth1
-    extraHostEntries:
-      - ip: 10.0.1.100
-        aliases:
-          - api.cluster.local
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: worker-1
+---
+apiVersion: v1alpha1
+kind: ResolverConfig
+nameservers:
+  - address: 8.8.8.8
+  - address: 8.8.4.4
+---
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+mtu: 1500
+addresses:
+  - address: 10.0.1.20/24
+routes:
+  - destination: 0.0.0.0/0
+    gateway: 10.0.1.1
+    metric: 100
+---
+apiVersion: v1alpha1
+kind: Layer2VIPConfig
+name: 10.0.1.100  # Only on control plane nodes
+link: eth0
+---
+apiVersion: v1alpha1
+kind: VLANConfig
+name: eth0.100
+vlanID: 100
+parent: eth0
+addresses:
+  - address: 192.168.100.20/24
+---
+apiVersion: v1alpha1
+kind: BondConfig
+name: bond0
+links:
+  - eth0
+  - eth1
+bondMode: 802.3ad
 ```
 
-The network section is one of the most frequently customized parts of the configuration. Each interface can have static addresses, DHCP, VLANs, bonding, and VIP configuration.
+Network configuration is one of the most frequently customized parts of the configuration. Current Talos versions model hostnames, resolvers, links, routes, VLANs, bonds, and Layer 2 VIPs as separate configuration documents in the machine configuration file.
 
 ### machine.install
 
@@ -125,16 +134,12 @@ Controls how Talos is installed to disk:
 machine:
   install:
     disk: /dev/sda                    # Target disk for installation
-    image: ghcr.io/siderolabs/installer:v1.6.0  # Installer image
-    bootloader: true                   # Install bootloader
+    image: ghcr.io/siderolabs/installer:v1.13.0  # Installer image
     wipe: false                        # Wipe disk before install
-    extraKernelArgs:                   # Additional kernel parameters
-      - net.core.somaxconn=65535
-    extensions:                        # System extensions to install
-      - image: ghcr.io/siderolabs/iscsi-tools:v0.1.0
+    grubUseUKICmdline: true            # Use the UKI kernel command line with legacy GRUB
 ```
 
-The `extensions` field is how you add functionality to the immutable Talos OS, such as storage drivers, monitoring agents, or hardware support.
+System extensions are added by generating boot assets or installer images with the required extensions included, then pointing `machine.install.image` at that installer image.
 
 ### machine.kubelet
 
@@ -142,13 +147,13 @@ Configures the Kubernetes kubelet on the node:
 
 ```yaml
 machine:
+  nodeLabels:                         # Kubernetes node labels
+    environment: production
+    node-role.kubernetes.io/worker: ""
+  nodeTaints:                         # Kubernetes node taints
+    special-hardware: "true:NoSchedule"
   kubelet:
-    image: ghcr.io/siderolabs/kubelet:v1.29.0  # Kubelet image
-    nodeLabels:                        # Kubernetes node labels
-      environment: production
-      node-role.kubernetes.io/worker: ""
-    nodeTaints:                        # Kubernetes node taints
-      special-hardware: "true:NoSchedule"
+    image: ghcr.io/siderolabs/kubelet:v1.36.0  # Kubelet image
     nodeIP:
       validSubnets:                    # Subnets for node IP selection
         - 10.0.1.0/24
@@ -166,18 +171,19 @@ machine:
       - 10.96.0.10
 ```
 
-### machine.time
+### Time configuration
 
 NTP configuration:
 
 ```yaml
-machine:
-  time:
-    disabled: false
-    servers:
-      - time.cloudflare.com
-      - time.google.com
-    bootTimeout: 2m0s
+apiVersion: v1alpha1
+kind: TimeSyncConfig
+enabled: true
+bootTimeout: 2m0s
+ntp:
+  servers:
+    - time.cloudflare.com
+    - time.google.com
 ```
 
 Accurate time is critical for certificate validation and etcd consensus. Always configure at least two NTP servers.
@@ -195,31 +201,34 @@ machine:
     fs.inotify.max_user_watches: "524288"
 ```
 
-### machine.registries
+### Registry configuration
 
 Container registry configuration:
 
 ```yaml
-machine:
-  registries:
-    mirrors:
-      docker.io:
-        endpoints:
-          - https://registry-mirror.internal:5000
-      gcr.io:
-        endpoints:
-          - https://gcr-mirror.internal:5000
-    config:
-      registry-mirror.internal:5000:
-        tls:
-          insecureSkipVerify: false
-          ca: <base64-encoded-ca>
-        auth:
-          username: myuser
-          password: mypassword
+apiVersion: v1alpha1
+kind: RegistryMirrorConfig
+name: docker.io
+endpoints:
+  - url: https://registry-mirror.internal:5000
+---
+apiVersion: v1alpha1
+kind: RegistryTLSConfig
+name: registry-mirror.internal:5000
+insecureSkipVerify: false
+ca: |
+  -----BEGIN CERTIFICATE-----
+  ...
+  -----END CERTIFICATE-----
+---
+apiVersion: v1alpha1
+kind: RegistryAuthConfig
+name: registry-mirror.internal:5000
+username: myuser
+password: mypassword
 ```
 
-Registry mirrors reduce external bandwidth usage and speed up image pulls. The `config` section handles authentication and TLS for private registries.
+Registry mirrors reduce external bandwidth usage and speed up image pulls. Separate registry configuration documents handle mirrors, authentication, and TLS for private registries.
 
 ### machine.kernel
 
@@ -234,18 +243,22 @@ machine:
       - name: nf_conntrack
 ```
 
-### machine.disks
+### User volume configuration
 
-Additional disk configuration beyond the install disk:
+Additional user volume configuration beyond the install disk:
 
 ```yaml
-machine:
-  disks:
-    - device: /dev/sdb
-      partitions:
-        - mountpoint: /var/mnt/data
-          size: 0  # Use entire disk
+apiVersion: v1alpha1
+kind: UserVolumeConfig
+name: data
+provisioning:
+  diskSelector:
+    match: disk.name == "sdb"
+  minSize: 100GB
+  grow: true
 ```
+
+User volumes are provisioned on a matching disk and mounted under `/var/mnt/<name>`, which makes this example available at `/var/mnt/data`.
 
 ## The Cluster Section
 
@@ -285,7 +298,7 @@ cluster:
     serviceSubnets:
       - 10.96.0.0/12
     cni:
-      name: flannel  # or "none" for custom CNI
+      name: flannel  # or "custom" with urls, or "none" for a separately managed CNI
 ```
 
 ### cluster.apiServer
@@ -295,7 +308,7 @@ API server configuration:
 ```yaml
 cluster:
   apiServer:
-    image: registry.k8s.io/kube-apiserver:v1.29.0
+    image: registry.k8s.io/kube-apiserver:v1.36.0
     certSANs:
       - api.example.com
       - 10.0.1.100
@@ -318,7 +331,7 @@ etcd configuration:
 ```yaml
 cluster:
   etcd:
-    image: gcr.io/etcd-development/etcd:v3.5.12
+    image: registry.k8s.io/etcd:v3.6.9
     ca:
       crt: <base64-encoded-cert>
       key: <base64-encoded-key>
@@ -336,7 +349,7 @@ Kubernetes proxy configuration:
 cluster:
   proxy:
     disabled: false  # Set to true when using Cilium
-    image: registry.k8s.io/kube-proxy:v1.29.0
+    image: registry.k8s.io/kube-proxy:v1.36.0
     mode: ipvs
     extraArgs:
       ipvs-strict-arp: "true"
@@ -352,7 +365,7 @@ cluster:
     enabled: true
     registries:
       kubernetes:
-        disabled: false
+        disabled: true
       service:
         disabled: false
 ```
@@ -385,16 +398,13 @@ cluster:
     - https://raw.githubusercontent.com/cilium/cilium/v1.15/install/kubernetes/quick-install.yaml
 ```
 
-## Version and Persistence
+## Version
 
 ```yaml
 version: v1alpha1
-persist: true
 ```
 
 The `version` field is always `v1alpha1` in current Talos versions. Despite the "alpha" name, this is the stable and production configuration format.
-
-The `persist` field controls whether the configuration is saved to disk. It should always be `true` in production so that nodes retain their configuration across reboots.
 
 ## Viewing the Full Configuration Schema
 
@@ -410,4 +420,4 @@ talosctl gen config example-cluster https://10.0.1.100:6443
 
 ## Conclusion
 
-The Talos Linux machine configuration is comprehensive but well-organized. The `machine` section handles everything about the individual node - its identity, networking, storage, and runtime behavior. The `cluster` section handles everything about the Kubernetes cluster - API server settings, networking, etcd, and cluster-wide features. Understanding this structure lets you confidently customize configurations, write patches, and troubleshoot issues. When in doubt about a field, generate a default configuration and use it as a reference. The configuration is your complete source of truth for every aspect of the node's behavior, and mastering it is the key to effective Talos Linux operations.
+The Talos Linux machine configuration is comprehensive but well-organized. The `machine` section handles the individual node's identity, installation, kernel settings, and runtime behavior, while additional machine configuration documents handle areas such as networking, storage, time, and registry settings. The `cluster` section handles everything about the Kubernetes cluster - API server settings, networking, etcd, and cluster-wide features. Understanding this structure lets you confidently customize configurations, write patches, and troubleshoot issues. When in doubt about a field, generate a default configuration and use it as a reference. The configuration is your complete source of truth for every aspect of the node's behavior, and mastering it is the key to effective Talos Linux operations.
