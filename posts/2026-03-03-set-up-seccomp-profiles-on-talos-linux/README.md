@@ -16,33 +16,22 @@ This guide covers setting up seccomp profiles on Talos Linux, from using the bui
 
 Kubernetes supports three types of seccomp profiles:
 
-- **RuntimeDefault** - Uses the container runtime's default seccomp profile. For containerd (which Talos uses), this blocks around 44 dangerous syscalls while allowing the roughly 300 that most applications need.
+- **RuntimeDefault** - Uses the container runtime's default seccomp profile. For containerd (which Talos uses), this allows common application syscalls while blocking or restricting dangerous ones; the exact profile can change between containerd releases.
 - **Localhost** - Uses a custom profile stored on the node's filesystem.
 - **Unconfined** - No seccomp filtering at all (not recommended).
 
-The RuntimeDefault profile is a solid starting point. It blocks syscalls like ptrace, reboot, mount, and others that containers should never need.
+The RuntimeDefault profile is a solid starting point. It commonly blocks or restricts syscalls like ptrace, reboot, mount, and others that containers should never need.
 
 ## Enabling RuntimeDefault Seccomp on Talos Linux
 
-Starting with Kubernetes 1.27, you can set the RuntimeDefault seccomp profile as the default for all pods in your cluster. On Talos Linux, this is configured through the Talos machine configuration.
+Starting with Kubernetes 1.27, the kubelet seccomp defaulting feature is stable. When enabled, pods that do not specify a seccomp profile use the RuntimeDefault profile instead of running unconfined. On Talos Linux, this is configured through the Talos machine configuration. Newer Talos configurations enable this by default; set it explicitly if you are auditing or updating an older configuration.
 
 ```yaml
 # Talos machine config patch to enable default seccomp
 
-cluster:
-  apiServer:
-    admissionControl:
-      - name: PodSecurity
-        configuration:
-          apiVersion: pod-security.admission.config.k8s.io/v1
-          kind: PodSecurityConfiguration
-          defaults:
-            enforce: "restricted"
-            enforce-version: "latest"
-            audit: "restricted"
-            audit-version: "latest"
-            warn: "restricted"
-            warn-version: "latest"
+machine:
+  kubelet:
+    defaultRuntimeSeccompProfileEnabled: true
 ```
 
 You can also apply the RuntimeDefault profile at the pod level.
@@ -70,7 +59,7 @@ spec:
 
 ## What RuntimeDefault Blocks
 
-The RuntimeDefault profile in containerd blocks dangerous syscalls including:
+The RuntimeDefault profile is defined by the container runtime and can change between containerd releases. It commonly blocks or restricts dangerous syscalls including:
 
 ```text
 # Syscalls blocked by RuntimeDefault
@@ -117,6 +106,8 @@ For tighter security, create custom profiles that only allow the specific syscal
 
 First, run your application with logging enabled to discover which syscalls it uses.
 
+Create the audit profile on each Talos node first, using the same `machine.seccompProfiles` mechanism shown in the deployment section.
+
 ```yaml
 # pod-with-logging.yaml
 apiVersion: v1
@@ -137,9 +128,7 @@ The audit profile logs all syscalls without blocking them.
 
 ```json
 {
-  "defaultAction": "SCMP_ACT_LOG",
-  "architectures": ["SCMP_ARCH_X86_64"],
-  "syscalls": []
+  "defaultAction": "SCMP_ACT_LOG"
 }
 ```
 
@@ -209,52 +198,84 @@ Based on the audit logs, create a profile that allows only the needed syscalls.
 
 ## Deploying Custom Profiles on Talos Linux
 
-Since Talos is immutable, you cannot simply copy files to the node. Use the Talos machine configuration to place seccomp profiles.
+Since Talos is immutable, you cannot simply copy files to the node. Use the Talos machine configuration to create seccomp profiles.
 
 ```yaml
 # Talos machine config patch for custom seccomp profiles
 machine:
-  files:
-    - content: |
-        {
-          "defaultAction": "SCMP_ACT_ERRNO",
-          "architectures": ["SCMP_ARCH_X86_64", "SCMP_ARCH_AARCH64"],
-          "syscalls": [
-            {
-              "names": [
-                "accept4", "access", "arch_prctl", "bind", "brk",
-                "clone", "close", "connect", "epoll_create1",
-                "epoll_ctl", "epoll_wait", "execve", "exit_group",
-                "fcntl", "fstat", "futex", "getdents64", "getpeername",
-                "getpid", "getsockname", "getsockopt", "listen",
-                "lseek", "madvise", "mmap", "mprotect", "munmap",
-                "nanosleep", "newfstatat", "openat", "pipe2", "read",
-                "recvfrom", "rt_sigaction", "rt_sigprocmask",
-                "rt_sigreturn", "sendto", "set_robust_list",
-                "set_tid_address", "setsockopt", "sigaltstack",
-                "socket", "write"
-              ],
-              "action": "SCMP_ACT_ALLOW"
-            }
-          ]
-        }
-      path: /var/lib/kubelet/seccomp/profiles/custom-app.json
-      permissions: 0644
-      op: create
+  seccompProfiles:
+    - name: custom-app.json
+      value:
+        defaultAction: SCMP_ACT_ERRNO
+        architectures:
+          - SCMP_ARCH_X86_64
+          - SCMP_ARCH_AARCH64
+        syscalls:
+          - names:
+              - accept4
+              - access
+              - arch_prctl
+              - bind
+              - brk
+              - clone
+              - close
+              - connect
+              - epoll_create1
+              - epoll_ctl
+              - epoll_wait
+              - execve
+              - exit_group
+              - fcntl
+              - fstat
+              - futex
+              - getdents64
+              - getpeername
+              - getpid
+              - getsockname
+              - getsockopt
+              - listen
+              - lseek
+              - madvise
+              - mmap
+              - mprotect
+              - munmap
+              - nanosleep
+              - newfstatat
+              - openat
+              - pipe2
+              - read
+              - recvfrom
+              - rt_sigaction
+              - rt_sigprocmask
+              - rt_sigreturn
+              - sendto
+              - set_robust_list
+              - set_tid_address
+              - setsockopt
+              - sigaltstack
+              - socket
+              - write
+            action: SCMP_ACT_ALLOW
 ```
 
 ```bash
 # Apply the machine config patch
 talosctl patch machineconfig \
   --nodes <node-ip> \
-  --patch-file seccomp-profiles-patch.yaml
+  --patch @seccomp-profiles-patch.yaml
 ```
+
+This creates `/var/lib/kubelet/seccomp/profiles/custom-app.json` on the node.
 
 ## Using the Security Profile Operator
 
 For a more dynamic approach, use the Security Profile Operator (SPO) to manage seccomp profiles as Kubernetes resources.
 
 ```bash
+# Install cert-manager first if your cluster does not already provide it
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.17.2/cert-manager.yaml
+kubectl --namespace cert-manager wait --for condition=ready pod -l app.kubernetes.io/instance=cert-manager
+
 # Install the Security Profile Operator
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/security-profiles-operator/main/deploy/operator.yaml
 
@@ -311,7 +332,7 @@ spec:
 kubectl apply -f seccomp-profile.yaml
 
 # Reference it in your pod
-# The SPO installs the profile to the node automatically
+# The SPO installs the profile to the node automatically under /var/lib/kubelet/seccomp/operator/<namespace>/
 ```
 
 ## Applying Seccomp to Workloads
