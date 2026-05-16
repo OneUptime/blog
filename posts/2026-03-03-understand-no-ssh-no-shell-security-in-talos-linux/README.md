@@ -60,7 +60,7 @@ Without SSH, you manage Talos nodes through the Talos API using the `talosctl` c
 talosctl health --nodes <node-ip>
 
 # View running services - replaces SSH + ps/top
-talosctl services --nodes <node-ip>
+talosctl service --nodes <node-ip>
 
 # View system logs - replaces SSH + journalctl
 talosctl logs kubelet --nodes <node-ip>
@@ -83,15 +83,15 @@ talosctl reboot --nodes <node-ip>
 The Talos API uses mutual TLS (mTLS) authentication. Both the client and the server must present valid certificates for a connection to be established. This is significantly more secure than SSH key-based authentication for several reasons:
 
 1. **Certificates expire** - Unlike SSH keys, TLS certificates have a built-in expiration. If a certificate is compromised, the window of exploitation is limited.
-2. **Certificate rotation** - Talos automatically rotates its certificates, reducing the risk of long-lived credentials.
+2. **Certificate rotation** - Talos automatically rotates server-side certificates, while client certificates such as `talosconfig` and `kubeconfig` are the user's responsibility.
 3. **Purpose-built protocol** - The Talos API only exposes operations that are relevant to node management. There is no general-purpose command execution.
-4. **Audit logging** - Every API call can be logged and audited.
+4. **Logging and auditing** - Talos service logs can be inspected with `talosctl` or forwarded to a central logging system.
 
 ```bash
 # The talosctl configuration uses certificates for authentication
 talosctl config info
 
-# View the certificate details
+# List configured contexts
 talosctl config contexts
 ```
 
@@ -128,8 +128,11 @@ talosctl netstat --nodes <node-ip>
 ### System Information
 
 ```bash
-# View CPU and memory usage
+# View container CPU and memory usage
 talosctl stats --nodes <node-ip>
+
+# View host memory usage
+talosctl memory --nodes <node-ip>
 
 # View disk usage
 talosctl usage /var --nodes <node-ip>
@@ -142,7 +145,7 @@ talosctl mounts --nodes <node-ip>
 
 ```bash
 # Capture network packets for debugging (replaces SSH + tcpdump)
-talosctl pcap --nodes <node-ip> -i eth0 --duration 30s > capture.pcap
+talosctl pcap --nodes <node-ip> -i eth0 --duration 30s --output capture.pcap
 ```
 
 ## What About Emergency Access?
@@ -181,7 +184,8 @@ The no-SSH, no-shell approach provides measurable security improvements:
 # Q: Is SSH access restricted to authorized users?
 # A: SSH is not available on the system.
 # Q: Are SSH keys rotated regularly?
-# A: SSH is not available. mTLS certificates rotate automatically.
+# A: SSH is not available. Talos rotates server-side certificates automatically,
+# and client certificates are managed through talosconfig/kubeconfig renewal.
 # Q: Is SSH brute force protection in place?
 # A: SSH is not available on the system.
 ```
@@ -193,7 +197,7 @@ Moving to a no-SSH world requires some workflow changes:
 1. **Configuration management** - Instead of Ansible/Chef/Puppet, use Talos machine configuration patches
 2. **Log access** - Instead of SSH + tail, use `talosctl logs` or ship logs to a central system
 3. **File inspection** - Instead of SSH + cat, use `talosctl read`
-4. **Process management** - Instead of SSH + systemctl, use `talosctl services`
+4. **Process management** - Instead of SSH + systemctl, use `talosctl service`
 5. **Debugging** - Instead of SSH + strace/gdb, use ephemeral debug containers in Kubernetes
 
 ```yaml
