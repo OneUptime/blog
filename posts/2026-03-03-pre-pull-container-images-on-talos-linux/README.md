@@ -107,7 +107,7 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
                 matchLabels:
-                  job-name: prepull-new-version
+                  batch.kubernetes.io/job-name: prepull-new-version
               topologyKey: kubernetes.io/hostname
   backoffLimit: 3
 ```
@@ -292,10 +292,10 @@ Check which images are cached on each node:
 
 ```bash
 # List images on a specific node
-talosctl images --nodes 10.0.0.5
+talosctl image list --nodes 10.0.0.5
 
 # Check if a specific image is cached
-talosctl images --nodes 10.0.0.5 | grep myapp
+talosctl image list --nodes 10.0.0.5 | grep myapp
 ```
 
 ## Conclusion
