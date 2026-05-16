@@ -29,7 +29,7 @@ machine:
   files:
     - content: |
         # Your file content here
-      permissions: 0644
+      permissions: 0o644
       path: /etc/kubernetes/custom/my-config.yaml
       op: create
 
@@ -38,8 +38,7 @@ cluster:
     extraVolumes:
       - hostPath: /etc/kubernetes/custom
         mountPath: /etc/kubernetes/custom
-        name: my-custom-config
-        readOnly: true
+        readonly: true
     extraArgs:
       my-config-flag: /etc/kubernetes/custom/my-config.yaml
 ```
@@ -83,7 +82,7 @@ machine:
           - level: Metadata
             omitStages:
               - RequestReceived
-      permissions: 0644
+      permissions: 0o644
       path: /etc/kubernetes/audit/audit-policy.yaml
       op: create
 
@@ -93,12 +92,10 @@ cluster:
       # Mount the audit policy directory
       - hostPath: /etc/kubernetes/audit
         mountPath: /etc/kubernetes/audit
-        name: audit-policy
-        readOnly: true
+        readonly: true
       # Mount the audit log directory (writable)
       - hostPath: /var/log/kubernetes/audit
         mountPath: /var/log/kubernetes/audit
-        name: audit-log
     extraArgs:
       audit-policy-file: /etc/kubernetes/audit/audit-policy.yaml
       audit-log-path: /var/log/kubernetes/audit/kube-apiserver-audit.log
@@ -111,7 +108,7 @@ Apply to control plane nodes:
 
 ```bash
 # Apply audit configuration to all control plane nodes
-talosctl apply-config --nodes 192.168.1.10,192.168.1.11,192.168.1.12 \
+talosctl patch mc --nodes 192.168.1.10,192.168.1.11,192.168.1.12 \
   --patch @audit-policy-volume.yaml
 ```
 
@@ -136,7 +133,7 @@ machine:
                     - name: key1
                       secret: <base64-encoded-32-byte-key>
               - identity: {}
-      permissions: 0600
+      permissions: 0o600
       path: /etc/kubernetes/encryption/config.yaml
       op: create
 
@@ -145,8 +142,7 @@ cluster:
     extraVolumes:
       - hostPath: /etc/kubernetes/encryption
         mountPath: /etc/kubernetes/encryption
-        name: encryption-config
-        readOnly: true
+        readonly: true
     extraArgs:
       encryption-provider-config: /etc/kubernetes/encryption/config.yaml
 ```
@@ -171,7 +167,7 @@ machine:
         -----BEGIN CERTIFICATE-----
         YOUR_CA_CERTIFICATE_CONTENT_HERE
         -----END CERTIFICATE-----
-      permissions: 0644
+      permissions: 0o644
       path: /etc/kubernetes/oidc/ca.crt
       op: create
 
@@ -180,8 +176,7 @@ cluster:
     extraVolumes:
       - hostPath: /etc/kubernetes/oidc
         mountPath: /etc/kubernetes/oidc
-        name: oidc-ca
-        readOnly: true
+        readonly: true
     extraArgs:
       oidc-issuer-url: "https://auth.example.com/realms/kubernetes"
       oidc-client-id: "kubernetes"
@@ -212,14 +207,14 @@ machine:
             context:
               cluster: auth-webhook
         current-context: auth-webhook
-      permissions: 0644
+      permissions: 0o644
       path: /etc/kubernetes/webhook-auth/config.yaml
       op: create
     - content: |
         -----BEGIN CERTIFICATE-----
         WEBHOOK_CA_CERTIFICATE_HERE
         -----END CERTIFICATE-----
-      permissions: 0644
+      permissions: 0o644
       path: /etc/kubernetes/webhook-auth/ca.crt
       op: create
 
@@ -228,8 +223,7 @@ cluster:
     extraVolumes:
       - hostPath: /etc/kubernetes/webhook-auth
         mountPath: /etc/kubernetes/webhook-auth
-        name: webhook-auth
-        readOnly: true
+        readonly: true
     extraArgs:
       authentication-token-webhook-config-file: /etc/kubernetes/webhook-auth/config.yaml
 ```
@@ -264,7 +258,7 @@ machine:
                 namespaces:
                   - kube-system
                   - kube-node-lease
-      permissions: 0644
+      permissions: 0o644
       path: /etc/kubernetes/admission/config.yaml
       op: create
 
@@ -273,8 +267,7 @@ cluster:
     extraVolumes:
       - hostPath: /etc/kubernetes/admission
         mountPath: /etc/kubernetes/admission
-        name: admission-config
-        readOnly: true
+        readonly: true
     extraArgs:
       admission-control-config-file: /etc/kubernetes/admission/config.yaml
 ```
@@ -294,7 +287,7 @@ machine:
         kind: Policy
         rules:
           - level: Metadata
-      permissions: 0644
+      permissions: 0o644
       path: /etc/kubernetes/audit/policy.yaml
       op: create
     - content: |
@@ -309,7 +302,7 @@ machine:
                     - name: key1
                       secret: YOUR_KEY_HERE
               - identity: {}
-      permissions: 0600
+      permissions: 0o600
       path: /etc/kubernetes/encryption/config.yaml
       op: create
     - content: |
@@ -324,7 +317,7 @@ machine:
               defaults:
                 enforce: baseline
                 enforce-version: latest
-      permissions: 0644
+      permissions: 0o644
       path: /etc/kubernetes/admission/config.yaml
       op: create
 
@@ -333,19 +326,15 @@ cluster:
     extraVolumes:
       - hostPath: /etc/kubernetes/audit
         mountPath: /etc/kubernetes/audit
-        name: audit-policy
-        readOnly: true
+        readonly: true
       - hostPath: /var/log/kubernetes/audit
         mountPath: /var/log/kubernetes/audit
-        name: audit-log
       - hostPath: /etc/kubernetes/encryption
         mountPath: /etc/kubernetes/encryption
-        name: encryption-config
-        readOnly: true
+        readonly: true
       - hostPath: /etc/kubernetes/admission
         mountPath: /etc/kubernetes/admission
-        name: admission-config
-        readOnly: true
+        readonly: true
     extraArgs:
       audit-policy-file: /etc/kubernetes/audit/policy.yaml
       audit-log-path: /var/log/kubernetes/audit/api-audit.log
@@ -371,7 +360,7 @@ kubectl get pod -n kube-system -l component=kube-apiserver -o yaml | grep -E "^\
 talosctl -n 192.168.1.10 logs kube-apiserver --tail 50 | grep -i "error\|file\|mount\|permission"
 
 # Verify the files exist on the host
-talosctl -n 192.168.1.10 ls /etc/kubernetes/audit/
+talosctl -n 192.168.1.10 list /etc/kubernetes/audit/
 talosctl -n 192.168.1.10 read /etc/kubernetes/audit/policy.yaml
 ```
 
@@ -384,10 +373,10 @@ If the API server fails to start after adding extra volumes:
 talosctl -n 192.168.1.10 get machineconfig -o yaml | grep -A 20 "extraVolumes"
 
 # Check if the files were created
-talosctl -n 192.168.1.10 ls /etc/kubernetes/
+talosctl -n 192.168.1.10 list /etc/kubernetes/
 
 # View the API server service status
-talosctl -n 192.168.1.10 services kube-apiserver
+talosctl -n 192.168.1.10 service kube-apiserver
 
 # Check for errors in machined logs
 talosctl -n 192.168.1.10 logs machined | grep -i "api\|file\|error" | tail -20
