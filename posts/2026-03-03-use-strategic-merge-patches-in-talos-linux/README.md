@@ -8,7 +8,9 @@ Description: A hands-on guide to using strategic merge patches in Talos Linux fo
 
 ---
 
-Strategic merge patches are the default and most commonly used patching method in Talos Linux. They let you describe configuration changes using the same YAML structure as the machine configuration itself, making them intuitive to write and easy to understand. Instead of specifying operations like "add this field" or "replace that value," you simply provide the partial configuration you want, and Talos merges it with the existing config. This guide covers how strategic merge patches work in Talos, their merging rules, and practical patterns for using them effectively.
+Strategic merge patches are the easiest and most commonly used patching method in Talos Linux. They let you describe configuration changes using the same YAML structure as the machine configuration itself, making them intuitive to write and easy to understand. Instead of specifying operations like "add this field" or "replace that value," you simply provide the partial configuration you want, and Talos merges it with the existing config. This guide covers how strategic merge patches work in Talos, their merging rules, and practical patterns for using them effectively.
+
+The examples below use the traditional single-document machine configuration format where it keeps the examples focused on patching behavior. In Talos v1.12 and later, several `machine.network` fields such as `hostname`, `interfaces`, and `nameservers`, along with legacy `.machine.registries`, are deprecated in favor of multi-document configuration, but the strategic merge patch behavior is the same.
 
 ## What Makes a Strategic Merge Patch
 
@@ -22,13 +24,13 @@ machine:
 
 That is it. No special syntax, no operation types, no JSON Pointer paths. You provide the part of the configuration you care about, and Talos handles the rest.
 
-Compare this with a JSON Patch (RFC 6902) that does the same thing:
+Compare this with a JSON Patch (RFC 6902) that does the same thing when the field is not already present:
 
 ```json
-[{"op": "replace", "path": "/machine/network/hostname", "value": "my-worker-node"}]
+[{"op": "add", "path": "/machine/network/hostname", "value": "my-worker-node"}]
 ```
 
-The strategic merge patch is more readable, easier to review in pull requests, and less error-prone to write.
+If the field already exists, the JSON Patch operation would be `replace` instead. The strategic merge patch is more readable, easier to review in pull requests, and less error-prone to write.
 
 ## How Merging Works
 
@@ -63,31 +65,28 @@ Maps are merged recursively. Fields in the patch are added to or override fields
 ```yaml
 # Base config has:
 machine:
-  kubelet:
-    nodeLabels:
-      environment: staging
-      team: platform
+  nodeLabels:
+    environment: staging
+    team: platform
 
 # Patch adds a new label:
 machine:
-  kubelet:
-    nodeLabels:
-      region: us-east
+  nodeLabels:
+    region: us-east
 
 # Result - all three labels are present:
 machine:
-  kubelet:
-    nodeLabels:
-      environment: staging
-      team: platform
-      region: us-east
+  nodeLabels:
+    environment: staging
+    team: platform
+    region: us-east
 ```
 
 This is one of the most useful behaviors of strategic merge patches. You can add labels, sysctls, or other map entries without having to repeat the existing values.
 
 ### Lists with Merge Keys
 
-Some lists in the Talos configuration have merge keys, which means items in the list are matched by a specific field and merged individually. The most important example is network interfaces, which use the `interface` field as the merge key:
+Some lists in the Talos configuration have merge keys, which means items in the list are matched by a specific field and merged individually. The most important example is network interfaces, which use the `interface` or `deviceSelector` field as the merge key:
 
 ```yaml
 # Base config has eth0:
@@ -126,7 +125,7 @@ machine:
 
 ### Lists without Merge Keys
 
-Lists without merge keys are replaced entirely. This is important to understand because it can cause unexpected data loss:
+Most lists without merge keys are appended to the existing list:
 
 ```yaml
 # Base config has two nameservers:
@@ -136,20 +135,22 @@ machine:
       - 8.8.8.8
       - 8.8.4.4
 
-# Patch sets one nameserver:
+# Patch adds one nameserver:
 machine:
   network:
     nameservers:
       - 1.1.1.1
 
-# Result - only one nameserver (the original two are gone):
+# Result - all three nameservers are present:
 machine:
   network:
     nameservers:
+      - 8.8.8.8
+      - 8.8.4.4
       - 1.1.1.1
 ```
 
-When patching list fields without merge keys, always include the complete list you want in the result.
+There are important exceptions: `cluster.network.podSubnets`, `cluster.network.serviceSubnets`, and `cluster.apiServer.auditPolicy` are replaced on merge. When patching those fields, include the complete value you want in the result.
 
 ## Practical Patch Examples
 
@@ -174,27 +175,29 @@ talosctl gen config my-cluster https://10.0.1.100:6443 \
 
 ```yaml
 # registry-patch.yaml
-machine:
-  registries:
-    mirrors:
-      docker.io:
-        endpoints:
-          - https://mirror.internal:5000
-      ghcr.io:
-        endpoints:
-          - https://ghcr-mirror.internal:5000
+apiVersion: v1alpha1
+kind: RegistryMirrorConfig
+name: docker.io
+endpoints:
+  - url: https://mirror.internal:5000
+---
+apiVersion: v1alpha1
+kind: RegistryMirrorConfig
+name: ghcr.io
+endpoints:
+  - url: https://ghcr-mirror.internal:5000
 ```
 
 ### Setting Up System Extensions
 
 ```yaml
-# extensions-patch.yaml
+# installer-patch.yaml
 machine:
   install:
-    extensions:
-      - image: ghcr.io/siderolabs/iscsi-tools:v0.1.4
-      - image: ghcr.io/siderolabs/util-linux-tools:2.39.3
+    image: factory.talos.dev/installer/<schematic-id>:v1.12.1
 ```
+
+The older `.machine.install.extensions` field is deprecated. For current Talos releases, build or select a boot asset or installer image that already includes the extensions you need, then point `machine.install.image` at that installer image.
 
 ### Configuring the API Server
 
@@ -246,16 +249,18 @@ The order matters for conflicting values. If `common.yaml` sets the hostname and
 
 ```yaml
 # patches/common.yaml - Applied to all nodes
-machine:
-  time:
-    servers:
-      - time.cloudflare.com
-      - time.google.com
-  registries:
-    mirrors:
-      docker.io:
-        endpoints:
-          - https://registry-mirror.internal:5000
+apiVersion: v1alpha1
+kind: TimeSyncConfig
+ntp:
+  servers:
+    - time.cloudflare.com
+    - time.google.com
+---
+apiVersion: v1alpha1
+kind: RegistryMirrorConfig
+name: docker.io
+endpoints:
+  - url: https://registry-mirror.internal:5000
 ```
 
 ```yaml
@@ -306,7 +311,7 @@ talosctl gen config my-cluster https://10.0.1.100:6443 \
 
 # Inspect specific sections
 cat /tmp/preview/controlplane.yaml | yq '.machine.kubelet'
-cat /tmp/preview/controlplane.yaml | yq '.machine.registries'
+cat /tmp/preview/controlplane.yaml | yq 'select(.kind == "RegistryMirrorConfig")'
 ```
 
 Or use `machineconfig patch` for existing configurations:
@@ -322,19 +327,26 @@ diff existing.yaml preview.yaml
 
 ## Common Pitfalls
 
-### Accidentally Replacing Lists
+### Accidentally Duplicating Lists
 
-The most common mistake is forgetting that some lists get replaced entirely:
+The most common mistake is forgetting that most lists are appended, so repeating an existing item can duplicate it:
 
 ```yaml
-# WRONG - This replaces ALL certSANs with just the new one
+# Base config already has this SAN:
 machine:
   certSANs:
+    - existing-endpoint.example.com
+
+# Patch repeats it and adds another one:
+machine:
+  certSANs:
+    - existing-endpoint.example.com
     - new-endpoint.example.com
 
-# RIGHT - Include all SANs you want in the final config
+# Result - the repeated SAN appears twice:
 machine:
   certSANs:
+    - existing-endpoint.example.com
     - existing-endpoint.example.com
     - new-endpoint.example.com
 ```
@@ -352,17 +364,25 @@ kubelet:
 
 # RIGHT - proper nesting
 machine:
-  kubelet:
-    nodeLabels:
-      env: prod
+  nodeLabels:
+    env: prod
 ```
 
-### Trying to Remove Fields
+### Removing Fields
 
-Strategic merge patches cannot remove fields. If you need to remove a field, use a JSON Patch (RFC 6902) instead:
+Strategic merge patches can remove fields with `$patch: delete`:
+
+```yaml
+machine:
+  nodeLabels:
+    old-label:
+      $patch: delete
+```
+
+You can also use a JSON Patch (RFC 6902) for removals:
 
 ```json
-[{"op": "remove", "path": "/machine/kubelet/nodeLabels/old-label"}]
+[{"op": "remove", "path": "/machine/nodeLabels/old-label"}]
 ```
 
 ## When to Use Strategic Merge vs JSON Patches
@@ -373,7 +393,7 @@ Use strategic merge patches when:
 - The change is straightforward and readable as YAML
 
 Use JSON patches when:
-- Removing fields or list items
+- Removing fields or list items with explicit JSON Pointer paths
 - Replacing entire lists with precise control
 - The strategic merge behavior does not give you the result you need
 
@@ -381,4 +401,4 @@ In practice, strategic merge patches cover about 90% of configuration changes.
 
 ## Conclusion
 
-Strategic merge patches are the most natural way to customize Talos Linux configurations. They use the same YAML structure as the machine configuration, making them easy to write, review, and maintain. The key to using them effectively is understanding the merging rules: maps merge recursively, keyed lists merge by their key field, and unkeyed lists are replaced entirely. Build your configuration management around layered strategic merge patches for a clean, maintainable system that scales from single-node test clusters to large production deployments.
+Strategic merge patches are the most natural way to customize Talos Linux configurations. They use the same YAML structure as the machine configuration, making them easy to write, review, and maintain. The key to using them effectively is understanding the merging rules: maps merge recursively, keyed lists merge by their key field, most unkeyed lists append, and a few special list fields are replaced. Build your configuration management around layered strategic merge patches for a clean, maintainable system that scales from single-node test clusters to large production deployments.
