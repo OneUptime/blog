@@ -55,11 +55,11 @@ For an existing cluster, apply the patch:
 ```bash
 # Apply to all control plane nodes
 talosctl apply-config --nodes 192.168.1.10,192.168.1.11,192.168.1.12 \
-  --patch @disable-kube-proxy.yaml
+  --config-patch @disable-kube-proxy.yaml
 
 # Apply to all worker nodes
 talosctl apply-config --nodes 192.168.1.20,192.168.1.21,192.168.1.22 \
-  --patch @disable-kube-proxy.yaml
+  --config-patch @disable-kube-proxy.yaml
 ```
 
 If you are migrating from an existing kube-proxy setup, delete the kube-proxy DaemonSet after Cilium is running:
@@ -286,14 +286,19 @@ kubectl exec -n kube-system $(kubectl get pods -n kube-system -l k8s-app=cilium 
 kubectl get services --all-namespaces | wc -l
 
 # 5. If the numbers match, disable kube-proxy in Talos
-talosctl apply-config --nodes 192.168.1.10,192.168.1.20 --patch @disable-kube-proxy.yaml
+talosctl apply-config --nodes 192.168.1.10,192.168.1.20 --config-patch @disable-kube-proxy.yaml
 
-# 6. Delete the kube-proxy DaemonSet
+# 6. Delete the kube-proxy DaemonSet and ConfigMap
 kubectl delete ds kube-proxy -n kube-system
+kubectl delete cm kube-proxy -n kube-system
 
-# 7. Clean up iptables rules left by kube-proxy
-kubectl exec -n kube-system $(kubectl get pods -n kube-system -l k8s-app=cilium -o name | head -1) \
-  -- cilium cleanup-kube-proxy-rules
+# 7. Clean up iptables rules left by kube-proxy on each node.
+#    The recommended approach from the Cilium docs is to run on each node:
+#      iptables-save | grep -v KUBE | iptables-restore
+#    On Talos (where you cannot SSH in), the simplest path is to reboot
+#    the nodes so the stale rules are cleared on boot:
+talosctl reboot --nodes 192.168.1.10,192.168.1.11,192.168.1.12
+talosctl reboot --nodes 192.168.1.20,192.168.1.21,192.168.1.22
 ```
 
 ## Troubleshooting
