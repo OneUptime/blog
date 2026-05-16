@@ -41,20 +41,20 @@ talosctl -n 10.0.0.11 processes | head -5
 
 Let us trace what happens from power-on to a fully running Kubernetes node.
 
-The BIOS or UEFI firmware loads the bootloader (GRUB or systemd-boot). The bootloader loads the Talos kernel and initramfs. The kernel initializes hardware, mounts the initramfs, and starts machined as PID 1.
+The BIOS or UEFI firmware loads the bootloader. On current Talos releases, GRUB is used for legacy BIOS systems and systemd-boot with Unified Kernel Images is used for new UEFI installations. The bootloader loads the Talos kernel and initramfs, the kernel initializes hardware, and machined becomes PID 1.
 
-machined's first job is to mount the root filesystem. It finds the SquashFS image on the boot partition and mounts it as a read-only root. Then it sets up overlay mounts for the few directories that need to be writable (/var, /etc/cni, /etc/kubernetes).
+machined's first job is to bring up the root filesystem. Talos uses a read-only SquashFS root filesystem with tmpfs mounts for runtime-specific paths and a persistent EPHEMERAL volume mounted at /var.
 
 Next, machined reads the machine configuration. The configuration can come from several sources:
 
-- A configuration partition on the disk (most common for installed systems)
-- A URL specified on the kernel command line (for PXE/iPXE booting)
-- Cloud provider metadata (for cloud deployments)
-- A configuration server discovered via DHCP
+- The STATE partition on the disk (most common for installed systems)
+- Platform metadata, including cloud provider metadata or a URL specified with the `talos.config` kernel argument on bare metal
+- Configuration documents provided directly with kernel arguments such as `talos.config.early` or `talos.config.inline`
+- An embedded configuration in the bootable image
 
 ```bash
-# See where the configuration came from
-talosctl -n 10.0.0.11 get machineconfig -o yaml
+# View the current machine configuration resource
+talosctl -n 10.0.0.11 get machineconfig v1alpha1 -o yaml
 
 # View the kernel command line (may contain config URL)
 talosctl -n 10.0.0.11 read /proc/cmdline
@@ -80,9 +80,9 @@ talosctl -n 10.0.0.11 logs apid
 
 ### trustd - The Trust Daemon
 
-trustd manages certificate operations in the cluster. Its primary job is to handle certificate signing requests (CSRs) from worker nodes joining the cluster.
+trustd helps establish trust within the Talos cluster. It is involved in sensitive trust and PKI distribution operations used by the control plane.
 
-When a worker node boots and applies its configuration, it needs certificates to communicate with the control plane. trustd runs on control plane nodes and signs these certificates. It validates that the requesting node has the correct cluster token before issuing certificates.
+When nodes boot and apply their configuration, Talos and Kubernetes both rely on certificates. The kubelet gets its Kubernetes client certificate through the normal Kubernetes bootstrap flow via the control plane endpoint, while `trustd` provides Talos' root-of-trust services for operations that require trusted communication between nodes.
 
 ```bash
 # Check trustd status (only on control plane nodes)
@@ -146,14 +146,14 @@ talosctl -n 10.0.0.11 service kubelet
 talosctl -n 10.0.0.11 logs kubelet
 
 # View kubelet configuration
-talosctl -n 10.0.0.11 get kubeletconfig
+talosctl -n 10.0.0.11 get machineconfig v1alpha1 -o yaml
 ```
 
 ```yaml
 # Kubelet configuration in machine config
 machine:
   kubelet:
-    image: ghcr.io/siderolabs/kubelet:v1.29.0
+    image: ghcr.io/siderolabs/kubelet:v1.35.0
     extraArgs:
       rotate-server-certificates: "true"
     extraMounts:
@@ -191,12 +191,12 @@ The controller runtime is what makes Talos self-healing at the OS level. If a ne
 Talos starts services in a specific order based on their dependencies. Here is the typical startup sequence:
 
 1. machined starts and mounts filesystems
-2. containerd starts (needed for running containers)
-3. networkd configures networking
-4. trustd starts on control plane nodes
-5. etcd starts on control plane nodes
-6. apid starts and begins accepting API connections
-7. kubelet starts and joins the Kubernetes cluster
+2. networkd configures host networking
+3. containerd starts for system and Kubernetes containers
+4. apid starts and begins accepting Talos API connections
+5. trustd starts on control plane nodes
+6. etcd starts on control plane nodes
+7. kubelet starts; after etcd is bootstrapped, Talos renders the Kubernetes control plane static pods and kubelet starts them
 
 If a service fails to start, machined will retry it with exponential backoff. You can see the service state and any errors through the Talos API.
 
@@ -214,7 +214,7 @@ When something goes wrong, understanding these components helps you narrow down 
 
 If kubelet is not starting, check its logs and the containerd logs. Kubelet depends on containerd.
 
-If nodes cannot join the cluster, check trustd logs on the control plane and apid logs on both sides. Certificate issues are usually the culprit.
+If nodes cannot join the cluster, check kubelet logs, the Kubernetes control plane, and apid connectivity on both sides. Certificate bootstrap or API connectivity issues are common causes.
 
 If etcd is unhealthy, check etcd member status and logs. etcd problems cascade into Kubernetes API server issues.
 
