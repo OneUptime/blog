@@ -17,7 +17,7 @@ Talos Linux supports air-gapped deployments, but it requires careful planning. T
 Before you disconnect from the internet, you need to collect everything your cluster requires:
 
 1. Talos Linux installation images (ISO or PXE boot images)
-2. Talos system images (containerd, kubelet, etcd, etc.)
+2. Talos system images (installer, kubelet, etcd, CNI installer, etc.)
 3. Kubernetes control plane images (API server, scheduler, controller manager)
 4. CNI plugin images
 5. CoreDNS images
@@ -52,11 +52,12 @@ You need to know exactly which images your cluster will need. Here is how to fin
 
 ```bash
 # Get the list of Talos system images for your version
-talosctl images --talos-version v1.7.0
+talosctl image default
 
 # This gives you a list like:
-# ghcr.io/siderolabs/containerd:v1.7.x
+# ghcr.io/siderolabs/installer:v1.7.x
 # ghcr.io/siderolabs/kubelet:v1.30.x
+# ghcr.io/siderolabs/install-cni:v1.x
 # gcr.io/etcd-development/etcd:v3.5.x
 # registry.k8s.io/kube-apiserver:v1.30.x
 # registry.k8s.io/kube-controller-manager:v1.30.x
@@ -74,30 +75,25 @@ On a machine with internet access, pull all required images and save them:
 #!/bin/bash
 # pull-and-save.sh - Run this on a machine with internet access
 
-IMAGES=(
-  "ghcr.io/siderolabs/kubelet:v1.30.0"
-  "gcr.io/etcd-development/etcd:v3.5.12"
-  "registry.k8s.io/kube-apiserver:v1.30.0"
-  "registry.k8s.io/kube-controller-manager:v1.30.0"
-  "registry.k8s.io/kube-scheduler:v1.30.0"
-  "registry.k8s.io/kube-proxy:v1.30.0"
-  "registry.k8s.io/coredns/coredns:v1.11.1"
-  "registry.k8s.io/pause:3.9"
-  # Add your application images
-  "nginx:1.25"
-  "redis:7.2"
-  "postgres:16"
-)
+talosctl image default > images.txt
+
+# Add your application images
+cat >> images.txt <<'EOF'
+nginx:1.25
+redis:7.2
+postgres:16
+EOF
 
 # Pull all images
-for img in "${IMAGES[@]}"; do
+while read -r img; do
+  [ -z "$img" ] && continue
   echo "Pulling $img"
   docker pull "$img"
-done
+done < images.txt
 
 # Save all images to a single tar file
 echo "Saving images to images-bundle.tar"
-docker save "${IMAGES[@]}" -o images-bundle.tar
+docker save $(cat images.txt) -o images-bundle.tar
 
 echo "Bundle size: $(du -h images-bundle.tar | cut -f1)"
 ```
@@ -112,31 +108,30 @@ Transfer the image bundle to the air-gapped network and load it:
 
 LOCAL_REGISTRY="local-registry.internal:5000"
 
-# Load images from the tar file
+# Load images from the tar file. Transfer images.txt with images-bundle.tar.
 docker load -i images-bundle.tar
 
-# Re-tag and push each image to the local registry
-IMAGES=(
-  "ghcr.io/siderolabs/kubelet:v1.30.0"
-  "gcr.io/etcd-development/etcd:v3.5.12"
-  "registry.k8s.io/kube-apiserver:v1.30.0"
-  "registry.k8s.io/kube-controller-manager:v1.30.0"
-  "registry.k8s.io/kube-scheduler:v1.30.0"
-  "registry.k8s.io/kube-proxy:v1.30.0"
-  "registry.k8s.io/coredns/coredns:v1.11.1"
-  "registry.k8s.io/pause:3.9"
-  "nginx:1.25"
-  "redis:7.2"
-  "postgres:16"
-)
+local_name() {
+  image="$1"
+  first="${image%%/*}"
 
-for img in "${IMAGES[@]}"; do
-  # Create local tag
-  local_tag="${LOCAL_REGISTRY}/${img}"
+  # Strip the source registry host. For Docker Hub official images, add library/.
+  if [ "$first" = "$image" ]; then
+    echo "${LOCAL_REGISTRY}/library/${image}"
+  elif echo "$first" | grep -qE '(\.|:)|^localhost$'; then
+    echo "${LOCAL_REGISTRY}/${image#*/}"
+  else
+    echo "${LOCAL_REGISTRY}/${image}"
+  fi
+}
+
+while read -r img; do
+  [ -z "$img" ] && continue
+  local_tag="$(local_name "$img")"
   echo "Tagging and pushing $img -> $local_tag"
   docker tag "$img" "$local_tag"
   docker push "$local_tag"
-done
+done < images.txt
 ```
 
 ## Configuring Talos for Air-Gapped Operation
@@ -162,34 +157,32 @@ machine:
       quay.io:
         endpoints:
           - http://local-registry.internal:5000
-    config:
-      local-registry.internal:5000:
-        tls:
-          insecureSkipVerify: true  # Only if not using TLS
 ```
+
+If your local registry uses HTTPS with a private or self-signed certificate, add the registry certificate authority to Talos trusted roots instead of using a plain HTTP endpoint.
 
 ## Configuring Kubernetes Component Images
 
-Tell Talos to use specific images from the local registry for system components:
+Tell Talos to use specific component image versions that match what you mirrored:
 
 ```yaml
 cluster:
   etcd:
-    image: local-registry.internal:5000/gcr.io/etcd-development/etcd:v3.5.12
+    image: gcr.io/etcd-development/etcd:v3.5.12
   apiServer:
-    image: local-registry.internal:5000/registry.k8s.io/kube-apiserver:v1.30.0
+    image: registry.k8s.io/kube-apiserver:v1.30.0
   controllerManager:
-    image: local-registry.internal:5000/registry.k8s.io/kube-controller-manager:v1.30.0
+    image: registry.k8s.io/kube-controller-manager:v1.30.0
   scheduler:
-    image: local-registry.internal:5000/registry.k8s.io/kube-scheduler:v1.30.0
+    image: registry.k8s.io/kube-scheduler:v1.30.0
   proxy:
-    image: local-registry.internal:5000/registry.k8s.io/kube-proxy:v1.30.0
+    image: registry.k8s.io/kube-proxy:v1.30.0
   coreDNS:
-    image: local-registry.internal:5000/registry.k8s.io/coredns/coredns:v1.11.1
+    image: registry.k8s.io/coredns/coredns:v1.11.1
 
 machine:
   kubelet:
-    image: local-registry.internal:5000/ghcr.io/siderolabs/kubelet:v1.30.0
+    image: ghcr.io/siderolabs/kubelet:v1.30.0
 ```
 
 ## Generating Talos Configuration
@@ -212,14 +205,14 @@ Boot nodes with the Talos ISO (transferred via USB or local PXE server) and appl
 # Apply control plane configuration
 talosctl apply-config --insecure --nodes 10.0.0.2 --file controlplane.yaml
 
-# Wait for the node to be ready
-talosctl health --nodes 10.0.0.2
-
 # Bootstrap the cluster
-talosctl bootstrap --nodes 10.0.0.2
+talosctl bootstrap --nodes 10.0.0.2 --endpoints 10.0.0.2 --talosconfig ./talosconfig
 
 # Apply worker configurations
 talosctl apply-config --insecure --nodes 10.0.0.5 --file worker.yaml
+
+# Wait for the cluster to be ready
+talosctl health --nodes 10.0.0.2 --endpoints 10.0.0.2 --talosconfig ./talosconfig
 ```
 
 ## Updating Images
@@ -234,8 +227,8 @@ docker save myapp:v2.0.0 -o update-bundle.tar
 # Transfer to air-gapped network
 # On the air-gapped machine
 docker load -i update-bundle.tar
-docker tag myapp:v2.0.0 local-registry.internal:5000/myapp:v2.0.0
-docker push local-registry.internal:5000/myapp:v2.0.0
+docker tag myapp:v2.0.0 local-registry.internal:5000/library/myapp:v2.0.0
+docker push local-registry.internal:5000/library/myapp:v2.0.0
 ```
 
 ## Verifying the Setup
@@ -250,7 +243,7 @@ talosctl logs containerd --nodes 10.0.0.2 | grep "local-registry"
 kubectl get pods -n kube-system
 
 # Test deploying a workload
-kubectl run test --image=local-registry.internal:5000/nginx:1.25 --restart=Never
+kubectl run test --image=nginx:1.25 --restart=Never
 kubectl get pod test
 kubectl delete pod test
 ```
@@ -267,11 +260,11 @@ docker save ghcr.io/siderolabs/installer:v1.7.1 -o talos-installer.tar
 # Transfer and load into local registry
 docker load -i talos-installer.tar
 docker tag ghcr.io/siderolabs/installer:v1.7.1 \
-  local-registry.internal:5000/ghcr.io/siderolabs/installer:v1.7.1
-docker push local-registry.internal:5000/ghcr.io/siderolabs/installer:v1.7.1
+  local-registry.internal:5000/siderolabs/installer:v1.7.1
+docker push local-registry.internal:5000/siderolabs/installer:v1.7.1
 
 # Perform the upgrade
-talosctl upgrade --image local-registry.internal:5000/ghcr.io/siderolabs/installer:v1.7.1 \
+talosctl upgrade --image ghcr.io/siderolabs/installer:v1.7.1 \
   --nodes 10.0.0.2
 ```
 
