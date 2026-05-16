@@ -26,60 +26,75 @@ Omni addresses each of these challenges through centralized management with decl
 
 ## Setting Up the Multi-Cluster Environment
 
-Start by organizing your machines and clusters in Omni:
+Start by organizing your machines and clusters in Omni. Initial machine labels are applied when you generate boot media, so machines arrive in Omni already grouped by environment, region, and role:
 
 ```bash
-# Register all machines with appropriate labels
+# Production machines in us-east-1
+omnictl download iso --arch amd64 \
+  --initial-labels environment=production,region=us-east-1,tier=compute \
+  --output prod-us-east-1.iso
 
-omnictl machine label $MACHINE_ID \
-  --label environment=production \
-  --label region=us-east-1 \
-  --label tier=compute
-
-omnictl machine label $MACHINE_ID \
-  --label environment=staging \
-  --label region=eu-west-1 \
-  --label tier=compute
+# Staging machines in eu-west-1
+omnictl download iso --arch amd64 \
+  --initial-labels environment=staging,region=eu-west-1,tier=compute \
+  --output staging-eu-west-1.iso
 ```
 
-Create machine classes to categorize your hardware:
+Any additional labels can be edited later from the Omni dashboard or by patching the `Machines.omni.sidero.dev` resource through `omnictl apply`.
+
+Create machine classes to categorize your hardware. Machine classes are declarative resources, so define them in YAML and apply them with `omnictl apply`:
+
+```yaml
+# machineclass-cp-large.yaml
+metadata:
+  namespace: default
+  type: MachineClasses.omni.sidero.dev
+  id: cp-large
+spec:
+  matchlabels:
+    - hardware=high-mem,storage=nvme
+```
+
+```yaml
+# machineclass-worker-general.yaml
+metadata:
+  namespace: default
+  type: MachineClasses.omni.sidero.dev
+  id: worker-general
+spec:
+  matchlabels:
+    - hardware=standard
+```
+
+```yaml
+# machineclass-worker-gpu.yaml
+metadata:
+  namespace: default
+  type: MachineClasses.omni.sidero.dev
+  id: worker-gpu
+spec:
+  matchlabels:
+    - hardware=gpu
+```
 
 ```bash
-# Control plane machines (high memory, NVMe)
-omnictl machineclass create cp-large \
-  --match-labels hardware=high-mem,storage=nvme
-
-# General worker machines
-omnictl machineclass create worker-general \
-  --match-labels hardware=standard
-
-# GPU worker machines
-omnictl machineclass create worker-gpu \
-  --match-labels hardware=gpu
+omnictl apply -f machineclass-cp-large.yaml
+omnictl apply -f machineclass-worker-general.yaml
+omnictl apply -f machineclass-worker-gpu.yaml
 ```
 
 ## Creating Clusters Across Environments
 
-Use a consistent naming convention and cluster templates:
+Use a consistent naming convention and cluster templates. An Omni cluster template is a multi-document YAML file: one `Cluster` document, one `ControlPlane`, and one or more `Workers` sets. Machines are selected through the machine classes you created above by name and size:
 
 ```yaml
-# production-cluster-template.yaml
+# production-us-east.yaml
 kind: Cluster
 name: prod-us-east-1
 kubernetes:
-  version: "1.29.2"
-controlPlane:
-  machineCount: 3
-  machineClass:
-    name: cp-large
-    matchLabels:
-      region: us-east-1
-workers:
-  machineCount: 10
-  machineClass:
-    name: worker-general
-    matchLabels:
-      region: us-east-1
+  version: v1.29.2
+talos:
+  version: v1.6.7
 patches:
   - name: production-defaults
     inline:
@@ -93,14 +108,29 @@ patches:
       cluster:
         proxy:
           disabled: true
+---
+kind: ControlPlane
+machineClass:
+  name: cp-large
+  size: 3
+---
+kind: Workers
+name: workers
+machineClass:
+  name: worker-general
+  size: 10
 ```
 
 ```bash
-# Create clusters from templates
-omnictl cluster template apply -f production-us-east.yaml
-omnictl cluster template apply -f production-eu-west.yaml
-omnictl cluster template apply -f staging-us-east.yaml
-omnictl cluster template apply -f dev-us-east.yaml
+# Validate, preview, then sync the template to Omni
+omnictl cluster template validate --file production-us-east.yaml
+omnictl cluster template diff --file production-us-east.yaml
+omnictl cluster template sync --file production-us-east.yaml
+
+# Repeat for the other environments
+omnictl cluster template sync --file production-eu-west.yaml
+omnictl cluster template sync --file staging-us-east.yaml
+omnictl cluster template sync --file dev-us-east.yaml
 ```
 
 ## Fleet-Wide Configuration Management
@@ -109,10 +139,10 @@ One of the biggest advantages of Omni is applying configuration consistently acr
 
 ### Shared Configuration Patches
 
-Create patches that apply to all clusters in a category:
+Create patches that apply to all clusters in a category. Reference the file from each cluster template so the patch is versioned with the rest of the template:
 
 ```yaml
-# production-security-patch.yaml
+# patches/production-security.yaml
 machine:
   sysctls:
     kernel.kptr_restrict: "2"
@@ -121,15 +151,19 @@ machine:
     net.ipv4.conf.all.log_martians: "1"
     net.ipv4.conf.all.send_redirects: "0"
     net.ipv4.conf.all.accept_redirects: "0"
-  install:
-    extraKernelArgs:
-      - random.trust_cpu=on
+```
+
+```yaml
+# Add to the Cluster document of each production template
+patches:
+  - file: patches/production-security.yaml
 ```
 
 ```bash
-# Apply security patch to all production clusters
-for cluster in prod-us-east-1 prod-eu-west-1 prod-ap-south-1; do
-  omnictl machineconfig patch "$cluster" --patch @production-security-patch.yaml
+# Re-sync each production cluster template to roll out the patch
+for cluster in production-us-east production-eu-west production-ap-south; do
+  omnictl cluster template diff --file "${cluster}.yaml"
+  omnictl cluster template sync --file "${cluster}.yaml"
 done
 ```
 
@@ -171,60 +205,74 @@ Upgrading multiple clusters requires a structured rollout strategy. The typical 
 4. Run integration tests
 5. Upgrade production clusters one region at a time
 
+Omni performs Talos and Kubernetes upgrades by reconciling the cluster to its declared template. To upgrade, bump `talos.version` and `kubernetes.version` in the `Cluster` document and re-sync:
+
 ```bash
 # Step 1: Upgrade development cluster
-omnictl cluster upgrade dev-us-east-1 --talos-version v1.7.0
-omnictl cluster kubernetes-upgrade dev-us-east-1 --to 1.30.0
+# Edit dev-us-east-1.yaml so the Cluster document has:
+#   talos:
+#     version: v1.7.0
+#   kubernetes:
+#     version: v1.30.0
+omnictl cluster kubernetes upgrade-pre-checks dev-us-east-1 --to v1.30.0
+omnictl cluster template diff --file dev-us-east-1.yaml
+omnictl cluster template sync --file dev-us-east-1.yaml
 
 # Step 2: Wait and verify
-omnictl cluster status dev-us-east-1
+omnictl cluster template status --file dev-us-east-1.yaml
 # Run automated tests against dev cluster
 
 # Step 3: Upgrade staging
-omnictl cluster upgrade staging-us-east-1 --talos-version v1.7.0
-omnictl cluster kubernetes-upgrade staging-us-east-1 --to 1.30.0
+omnictl cluster kubernetes upgrade-pre-checks staging-us-east-1 --to v1.30.0
+omnictl cluster template diff --file staging-us-east-1.yaml
+omnictl cluster template sync --file staging-us-east-1.yaml
 
 # Step 4: Run integration tests
 # Wait for staging validation
 
 # Step 5: Upgrade production (one region at a time)
-omnictl cluster upgrade prod-us-east-1 --talos-version v1.7.0
+omnictl cluster template sync --file prod-us-east-1.yaml
 # Verify
-omnictl cluster upgrade prod-eu-west-1 --talos-version v1.7.0
+omnictl cluster template sync --file prod-eu-west-1.yaml
 # Verify
-omnictl cluster upgrade prod-ap-south-1 --talos-version v1.7.0
+omnictl cluster template sync --file prod-ap-south-1.yaml
 ```
 
 ### Automating Upgrade Rollouts
 
+The automation script edits each cluster template in place with the new versions, then runs `omnictl cluster template sync` and waits for the cluster to reach `Ready`.
+
 ```bash
 #!/bin/bash
 # upgrade-fleet.sh - Automated fleet upgrade script
+set -euo pipefail
 
 TALOS_VERSION="v1.7.0"
-K8S_VERSION="1.30.0"
+K8S_VERSION="v1.30.0"
 
-# Define upgrade order
-DEV_CLUSTERS=("dev-us-east-1")
-STAGING_CLUSTERS=("staging-us-east-1")
-PROD_CLUSTERS=("prod-us-east-1" "prod-eu-west-1" "prod-ap-south-1")
+# Define upgrade order: NAME:TEMPLATE pairs
+DEV_CLUSTERS=("dev-us-east-1:dev-us-east-1.yaml")
+STAGING_CLUSTERS=("staging-us-east-1:staging-us-east-1.yaml")
+PROD_CLUSTERS=(
+  "prod-us-east-1:prod-us-east-1.yaml"
+  "prod-eu-west-1:prod-eu-west-1.yaml"
+  "prod-ap-south-1:prod-ap-south-1.yaml"
+)
 
 upgrade_cluster() {
-  local cluster=$1
+  local cluster="${1%%:*}"
+  local template="${1##*:}"
   echo "Upgrading $cluster to Talos $TALOS_VERSION, K8s $K8S_VERSION"
 
-  omnictl cluster upgrade "$cluster" --talos-version "$TALOS_VERSION"
+  # Update versions in the Cluster document of the template
+  yq -i "(select(.kind == \"Cluster\") | .talos.version) = \"$TALOS_VERSION\"" "$template"
+  yq -i "(select(.kind == \"Cluster\") | .kubernetes.version) = \"$K8S_VERSION\"" "$template"
 
-  # Wait for Talos upgrade to complete
-  while true; do
-    STATUS=$(omnictl cluster status "$cluster" -o json | jq -r '.phase')
-    if [ "$STATUS" = "Running" ]; then
-      break
-    fi
-    sleep 30
-  done
+  omnictl cluster kubernetes upgrade-pre-checks "$cluster" --to "$K8S_VERSION"
+  omnictl cluster template sync --file "$template"
 
-  omnictl cluster kubernetes-upgrade "$cluster" --to "$K8S_VERSION"
+  # Wait for the cluster to converge to the new template
+  omnictl cluster template status --file "$template"
 
   echo "$cluster upgraded successfully"
 }
@@ -250,7 +298,7 @@ if [ "$confirm" != "y" ]; then exit 1; fi
 # Upgrade production clusters (one at a time)
 for cluster in "${PROD_CLUSTERS[@]}"; do
   upgrade_cluster "$cluster"
-  echo "Cluster $cluster done. Continue? (y/n)"
+  echo "Cluster ${cluster%%:*} done. Continue? (y/n)"
   read -r confirm
   if [ "$confirm" != "y" ]; then exit 1; fi
 done
@@ -258,34 +306,34 @@ done
 
 ## Multi-Cluster Access Management
 
-Control who can access which clusters:
+Control who can access which clusters. Omni roles are `Admin`, `Operator`, `Reader`, and `None`, and per-cluster restrictions are expressed through Access Control Lists (ACLs):
 
 ```bash
-# Create roles for different teams
-omnictl user invite platform-admin@company.com --role admin
-omnictl user invite dev-lead@company.com --role operator
-omnictl user invite developer@company.com --role reader
+# Create users with the desired role
+omnictl user create platform-admin@company.com --role Admin
+omnictl user create dev-lead@company.com --role Operator
+omnictl user create developer@company.com --role Reader
 
-# Get kubeconfig for specific clusters
-omnictl kubeconfig --cluster prod-us-east-1 > prod-east.kubeconfig
-omnictl kubeconfig --cluster staging-us-east-1 > staging.kubeconfig
+# Get kubeconfig for specific clusters and write it to a file
+omnictl kubeconfig --cluster prod-us-east-1 --force prod-east.kubeconfig
+omnictl kubeconfig --cluster staging-us-east-1 --force staging.kubeconfig
 ```
 
-For teams that need access to multiple clusters, create a merged kubeconfig:
+For teams that need access to multiple clusters, merge the per-cluster kubeconfigs into one file:
 
 ```bash
-# Get kubeconfigs for all accessible clusters
+# Download kubeconfigs for all accessible clusters
 for cluster in prod-us-east-1 staging-us-east-1 dev-us-east-1; do
-  omnictl kubeconfig --cluster "$cluster" > "/tmp/$cluster.kubeconfig"
+  omnictl kubeconfig --cluster "$cluster" --force "/tmp/$cluster.kubeconfig"
 done
 
 # Merge kubeconfigs
 KUBECONFIG="/tmp/prod-us-east-1.kubeconfig:/tmp/staging-us-east-1.kubeconfig:/tmp/dev-us-east-1.kubeconfig" \
   kubectl config view --flatten > multi-cluster.kubeconfig
 
-# Switch between clusters
-kubectl --kubeconfig multi-cluster.kubeconfig config use-context prod-us-east-1
-kubectl --kubeconfig multi-cluster.kubeconfig config use-context staging-us-east-1
+# Switch between clusters (Omni names contexts admin@<cluster>)
+kubectl --kubeconfig multi-cluster.kubeconfig config use-context admin@prod-us-east-1
+kubectl --kubeconfig multi-cluster.kubeconfig config use-context admin@staging-us-east-1
 ```
 
 ## Monitoring Across Clusters
@@ -293,21 +341,27 @@ kubectl --kubeconfig multi-cluster.kubeconfig config use-context staging-us-east
 Get a fleet-wide view of your infrastructure:
 
 ```bash
-# List all clusters and their status
-omnictl get clusters -o table
+# List all clusters
+omnictl get clusters
 
-# Expected output:
-# NAME              PHASE     MACHINES   K8S VERSION    TALOS VERSION
-# prod-us-east-1    Running   13         v1.29.2        v1.6.7
-# prod-eu-west-1    Running   10         v1.29.2        v1.6.7
-# staging-us-east   Running   6          v1.30.0        v1.7.0
-# dev-us-east-1     Running   4          v1.30.0        v1.7.0
+# List all machines across the Omni instance
+omnictl get machines
 
-# Check all machines across all clusters
-omnictl get machines -o table
+# Get the per-cluster status of a specific cluster
+omnictl cluster status prod-us-east-1
 
-# Check specific machine health
-omnictl talosctl --nodes $MACHINE_ID -- health
+# Discover other available resource types
+omnictl get resourcedefinitions
+```
+
+For node-level Talos diagnostics, download a talosconfig from Omni and use the standard `talosctl` binary against it:
+
+```bash
+# Download a talosconfig scoped to the cluster
+omnictl talosconfig --cluster prod-us-east-1 --force prod-east.talosconfig
+
+# Check the health of a specific node
+talosctl --talosconfig prod-east.talosconfig --nodes 10.0.0.10 health
 ```
 
 For detailed monitoring, deploy Prometheus in each cluster and aggregate with Thanos or Cortex:
@@ -330,11 +384,12 @@ prometheus:
 Having multiple clusters is itself a disaster recovery strategy. If one cluster fails, workloads can be redirected to another:
 
 ```bash
-# Export cluster configuration for backup
-omnictl cluster template export prod-us-east-1 > backup-prod-east.yaml
+# Export cluster template for backup
+omnictl cluster template export --cluster prod-us-east-1 \
+  --output backup-prod-east.yaml
 
-# If a cluster needs to be recreated
-omnictl cluster template apply -f backup-prod-east.yaml
+# If a cluster needs to be recreated, sync the saved template
+omnictl cluster template sync --file backup-prod-east.yaml
 
 # Migrate workloads between clusters using GitOps
 # ArgoCD or Flux managing multiple cluster targets
