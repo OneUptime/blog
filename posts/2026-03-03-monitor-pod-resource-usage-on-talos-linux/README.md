@@ -282,8 +282,10 @@ kubectl apply -f pod-resource-alerts.yaml
 The Vertical Pod Autoscaler (VPA) can analyze resource usage and provide recommendations:
 
 ```bash
-# Install VPA
-kubectl apply -f https://github.com/kubernetes/autoscaler/releases/latest/download/vertical-pod-autoscaler.yaml
+# Install VPA from source using the official install script
+git clone https://github.com/kubernetes/autoscaler.git
+cd autoscaler/vertical-pod-autoscaler
+./hack/vpa-up.sh
 ```
 
 Create a VPA in recommendation-only mode:
@@ -330,8 +332,8 @@ CPU_LIM:.spec.containers[*].resources.limits.cpu,\
 MEM_REQ:.spec.containers[*].resources.requests.memory,\
 MEM_LIM:.spec.containers[*].resources.limits.memory"
 
-# Use talosctl for node-level resource view
-talosctl stats --nodes 10.0.0.10
+# Use talosctl to view container stats on a node
+talosctl stats --nodes 10.0.0.10 --kubernetes
 ```
 
 ## Conclusion
