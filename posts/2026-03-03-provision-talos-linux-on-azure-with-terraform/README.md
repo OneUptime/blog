@@ -36,7 +36,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -239,6 +239,28 @@ resource "azurerm_network_interface" "cp" {
     subnet_id                     = azurerm_subnet.talos.id
     private_ip_address_allocation = "Dynamic"
   }
+}
+
+# Network interfaces for worker nodes
+resource "azurerm_network_interface" "worker" {
+  count               = var.worker_count
+  name                = "${var.cluster_name}-worker-nic-${count.index}"
+  location            = azurerm_resource_group.talos.location
+  resource_group_name = azurerm_resource_group.talos.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.talos.id
+    private_ip_address_allocation = "Dynamic"
+  }
+}
+
+# Attach control plane NICs to the load balancer backend pool
+resource "azurerm_network_interface_backend_address_pool_association" "cp" {
+  count                   = var.control_plane_count
+  network_interface_id    = azurerm_network_interface.cp[count.index].id
+  ip_configuration_name   = "internal"
+  backend_address_pool_id = azurerm_lb_backend_address_pool.cp.id
 }
 
 # Control plane virtual machines
