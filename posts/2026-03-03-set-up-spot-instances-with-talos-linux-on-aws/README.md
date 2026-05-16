@@ -25,12 +25,12 @@ You need:
 - A Talos worker machine configuration
 - `kubectl` and the AWS CLI
 
-## Creating a Spot Launch Template
+## Creating a Worker Launch Template
 
-The launch template for spot instances is almost identical to an on-demand template, but you add the spot market options:
+When you use a mixed instance policy, keep the launch template purchase-option neutral. Amazon EC2 Auto Scaling will reject a mixed instances group if the launch template itself sets `InstanceMarketOptions` for Spot; the Spot and On-Demand split belongs in the Auto Scaling group policy:
 
 ```bash
-# Create a launch template with spot instance configuration
+# Create a launch template for Talos workers
 
 aws ec2 create-launch-template \
   --launch-template-name talos-spot-workers \
@@ -47,13 +47,6 @@ aws ec2 create-launch-template \
         "Encrypted": true
       }
     }],
-    "InstanceMarketOptions": {
-      "MarketType": "spot",
-      "SpotOptions": {
-        "SpotInstanceType": "one-time",
-        "InstanceInterruptionBehavior": "terminate"
-      }
-    },
     "TagSpecifications": [{
       "ResourceType": "instance",
       "Tags": [
@@ -64,7 +57,7 @@ aws ec2 create-launch-template \
   }'
 ```
 
-Notice that we set `InstanceInterruptionBehavior` to `terminate`. This is cleaner for Kubernetes than `stop` because Kubernetes expects nodes to either be present or gone, not suspended.
+The ASG in the next step decides which launches are Spot and which launches are On-Demand.
 
 ## Mixed Instance ASG
 
@@ -95,13 +88,14 @@ aws autoscaling create-auto-scaling-group \
     "InstancesDistribution": {
       "OnDemandBaseCapacity": 2,
       "OnDemandPercentageAboveBaseCapacity": 0,
-      "SpotAllocationStrategy": "capacity-optimized",
+      "SpotAllocationStrategy": "price-capacity-optimized",
       "SpotMaxPrice": ""
     }
   }' \
   --min-size 2 \
   --max-size 30 \
   --desired-capacity 5 \
+  --capacity-rebalance \
   --vpc-zone-identifier "subnet-aaaa,subnet-bbbb,subnet-cccc" \
   --tags \
     "Key=kubernetes.io/cluster/my-cluster,Value=owned,PropagateAtLaunch=true" \
@@ -113,26 +107,30 @@ Key settings in this configuration:
 
 - `OnDemandBaseCapacity: 2` ensures you always have two on-demand instances for baseline stability
 - `OnDemandPercentageAboveBaseCapacity: 0` means everything above the base is spot
-- `SpotAllocationStrategy: capacity-optimized` picks the pool with the most available capacity, reducing interruption risk
-- `SpotMaxPrice: ""` means you will pay up to the on-demand price (but usually much less)
+- `SpotAllocationStrategy: price-capacity-optimized` balances price and capacity to choose Spot pools with low interruption risk and low price
+- `SpotMaxPrice: ""` removes any previously set maximum price. In most cases, omit a maximum price so Auto Scaling uses the default On-Demand-price cap
+- `--capacity-rebalance` lets Auto Scaling proactively replace Spot Instances that receive an EC2 rebalance recommendation
 
 ## Handling Spot Interruptions
 
 When AWS reclaims a spot instance, it sends an interruption notice two minutes before termination. You should deploy the AWS Node Termination Handler to gracefully drain the node:
 
 ```bash
-# Deploy the AWS Node Termination Handler
-helm repo add eks https://aws.github.io/eks-charts
-helm repo update
+CHART_VERSION=0.27.6
 
-helm install aws-node-termination-handler eks/aws-node-termination-handler \
+aws ecr-public get-login-password --region us-east-1 | \
+  helm registry login --username AWS --password-stdin public.ecr.aws
+
+helm upgrade --install aws-node-termination-handler \
   --namespace kube-system \
   --set enableSpotInterruptionDraining=true \
   --set enableScheduledEventDraining=true \
-  --set enableRebalanceMonitoring=true
+  --set enableRebalanceMonitoring=true \
+  oci://public.ecr.aws/aws-ec2/helm/aws-node-termination-handler \
+  --version "$CHART_VERSION"
 ```
 
-The termination handler watches for spot interruption notices and instance rebalance recommendations. When it detects either event, it cordons the node and drains pods before the instance is terminated. This gives your pods a graceful shutdown window.
+The termination handler watches for spot interruption notices, scheduled events, and instance rebalance recommendations. In IMDS mode, it cordons and drains for interruption and scheduled-event notices; for rebalance recommendations, it cordons by default so Auto Scaling Capacity Rebalancing can launch replacement capacity. This gives your pods a graceful shutdown window when a termination notice arrives.
 
 ## Pod Disruption Budgets
 
@@ -151,7 +149,7 @@ spec:
       app: web-app
 ```
 
-This ensures at least 2 replicas of your web app are always available, even when nodes are being drained for spot reclamation.
+This helps keep at least 2 replicas of your web app available during voluntary evictions, such as node drains that use the Kubernetes Eviction API.
 
 ## Topology Spread Constraints
 
@@ -165,7 +163,13 @@ metadata:
   name: web-app
 spec:
   replicas: 6
+  selector:
+    matchLabels:
+      app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       topologySpreadConstraints:
         - maxSkew: 1
@@ -188,7 +192,7 @@ You might want to taint spot nodes so that only workloads that explicitly tolera
 machine:
   kubelet:
     extraArgs:
-      register-with-taints: "spot=true:PreferNoSchedule"
+      register-with-taints: "spot=true:NoSchedule"
 ```
 
 Then add tolerations to workloads that are safe to run on spot:
@@ -198,7 +202,7 @@ tolerations:
   - key: "spot"
     operator: "Equal"
     value: "true"
-    effect: "PreferNoSchedule"
+    effect: "NoSchedule"
 ```
 
 ## Cost Monitoring
