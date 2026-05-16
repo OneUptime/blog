@@ -79,34 +79,28 @@ The `zone_reclaim_mode` setting determines what happens when a NUMA node runs ou
 
 ## Kubernetes Topology Manager
 
-The Kubernetes Topology Manager coordinates resource allocation decisions across multiple hint providers (CPU Manager, Device Manager, Memory Manager) to ensure resources come from the same NUMA node. This is the key component for NUMA-aware pod scheduling.
+The Kubernetes Topology Manager coordinates resource allocation decisions across multiple hint providers (CPU Manager, Device Manager, Memory Manager) to ensure resources come from the same NUMA node. This is the key kubelet component for NUMA-aware pod admission on a node.
 
 ```yaml
 # talos-machine-config.yaml
 machine:
   kubelet:
-    extraArgs:
-      topology-manager-policy: single-numa-node
-      topology-manager-scope: container
-      cpu-manager-policy: static
-      memory-manager-policy: Static
-      reserved-memory: "0:memory=2Gi;1:memory=2Gi"
-      reserved-cpus: "0-1,16-17"
     extraConfig:
       topologyManagerPolicy: single-numa-node
       topologyManagerScope: container
       cpuManagerPolicy: static
       memoryManagerPolicy: Static
+      reservedSystemCPUs: "0-1,16-17"
 ```
 
-The topology manager policies available are:
+The Topology Manager policies available are:
 
 - `none` - No NUMA awareness (default)
-- `best-effort` - Try to align resources on a single NUMA node, but allow scheduling even if alignment is not possible
-- `restricted` - Only allow scheduling if resources can be aligned, unless the pod has no topology preferences
+- `best-effort` - Try to align resources on a single NUMA node, but admit the pod even if alignment is not possible
+- `restricted` - Only admit the pod if resources can be aligned, unless the pod has no topology preferences
 - `single-numa-node` - All resources must come from a single NUMA node, or the pod is rejected
 
-For performance-critical workloads, `single-numa-node` is the right choice. It guarantees that your pod's CPUs and memory are all on the same NUMA node.
+For performance-critical workloads, `single-numa-node` is the strictest choice. It admits a pod only when the requested resources can be aligned to a single NUMA node.
 
 ## Memory Manager Configuration
 
@@ -152,7 +146,7 @@ spec:
         memory: "32Gi"            # Must match requests for Guaranteed QoS
 ```
 
-When this pod is scheduled, the Topology Manager ensures that all 8 CPUs and 32GB of memory come from the same NUMA node. If the node cannot satisfy this requirement, the pod will stay pending until a suitable node is available.
+When this pod reaches a node, the Topology Manager ensures that all 8 CPUs and 32GB of memory can come from the same NUMA node before the kubelet admits it. If the selected node cannot satisfy this requirement, the kubelet rejects the pod admission; with a Deployment or another controller, Kubernetes can create a replacement pod that may land on a suitable node.
 
 ## Handling Multi-Container Pods
 
@@ -211,7 +205,7 @@ spec:
         nvidia.com/gpu: "1"
 ```
 
-With `single-numa-node` policy, the Topology Manager will place the CPUs, memory, and GPU all on the same NUMA node. This ensures that GPU memory transfers and CPU-GPU communication use the shortest possible path.
+With `single-numa-node` policy, the Topology Manager will align the CPUs, memory, and GPU to the same NUMA node when the device plugin reports NUMA topology information and such an allocation is possible. This ensures that GPU memory transfers and CPU-GPU communication use the shortest possible path.
 
 ## Monitoring NUMA Performance
 
@@ -242,8 +236,9 @@ talosctl apply-config --nodes 10.0.0.1 --file talos-machine-config.yaml
 # Reboot for kernel args
 talosctl reboot --nodes 10.0.0.1
 
-# Verify Topology Manager is active
+# Verify CPU and Memory Manager state
 talosctl read /var/lib/kubelet/cpu_manager_state --nodes 10.0.0.1
+talosctl read /var/lib/kubelet/memory_manager_state --nodes 10.0.0.1
 ```
 
 ## Conclusion
