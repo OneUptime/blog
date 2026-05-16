@@ -23,31 +23,30 @@ Both types use label selectors to match against node labels. The key to making n
 
 ## Labeling Nodes in Talos Linux
 
-In Talos Linux, you can add labels to nodes through the machine configuration. This is the preferred approach because it ensures labels persist across reboots and upgrades. Here is how you add node labels in your Talos machine config:
+In Talos Linux, you can add some labels to nodes through the machine configuration. This is the preferred approach for labels that the kubelet is allowed to set, such as topology labels, because it ensures labels persist across reboots and upgrades. Here is how you add node labels in your Talos machine config:
 
 ```yaml
 # talos-machine-config-patch.yaml
 
-# Add custom labels to the node through machine config
+# Add kubelet-allowed labels to the node through machine config
 machine:
   nodeLabels:
-    node-role.kubernetes.io/gpu: "true"
-    disktype: ssd
-    environment: production
+    topology.kubernetes.io/zone: us-east-1a
+    topology.kubernetes.io/region: us-east-1
 ```
 
 Apply this patch to your node using talosctl:
 
 ```bash
 # Apply the machine config patch to a specific node
-talosctl apply-config --nodes 192.168.1.10 --patch @talos-machine-config-patch.yaml
+talosctl patch machineconfig --nodes 192.168.1.10 --patch @talos-machine-config-patch.yaml
 ```
 
-You can also label nodes directly through kubectl, though these labels will not persist through a Talos upgrade unless they are in the machine config:
+For arbitrary workload-placement labels, use kubectl with a cluster-admin account or a controller that manages node labels. Talos writes `machine.nodeLabels` using the node's kubelet identity, and the Kubernetes NodeRestriction admission controller rejects labels outside the kubelet's allowed set, including conventional `node-role.kubernetes.io/*` role labels and custom keys such as `disktype`.
 
 ```bash
-# Label a node using kubectl (non-persistent through upgrades)
-kubectl label nodes talos-worker-1 disktype=ssd
+# Label a node using kubectl
+kubectl label nodes talos-worker-1 disktype=ssd environment=production hardware.example.com/gpu=true
 
 # Verify the label was applied
 kubectl get nodes --show-labels | grep disktype
@@ -87,6 +86,9 @@ spec:
       containers:
       - name: postgres
         image: postgres:16
+        env:
+        - name: POSTGRES_PASSWORD
+          value: "change-me"
         ports:
         - containerPort: 5432
         resources:
@@ -104,7 +106,7 @@ The operators you can use in matchExpressions include In, NotIn, Exists, DoesNot
 # Schedule on any node that is NOT a GPU node
 nodeSelectorTerms:
 - matchExpressions:
-  - key: node-role.kubernetes.io/gpu
+  - key: hardware.example.com/gpu
     operator: DoesNotExist
 ```
 
@@ -142,7 +144,7 @@ spec:
           - weight: 20
             preference:
               matchExpressions:
-              - key: zone
+              - key: topology.kubernetes.io/zone
                 operator: In
                 values:
                 - us-east-1a
@@ -189,17 +191,16 @@ There are a few things to keep in mind when working with node affinity on Talos 
 
 First, Talos automatically applies certain labels to nodes based on their role. Control plane nodes get the `node-role.kubernetes.io/control-plane` label. You can use this to keep workloads off control plane nodes or direct specific monitoring tools to them.
 
-Second, since Talos is immutable, any labels you apply through kubectl may disappear after a node upgrade or reset. Always put important labels in your machine configuration to ensure they survive lifecycle events.
+Second, since Talos is immutable, kubelet-allowed labels that should be part of the node's base configuration belong in the machine configuration. For custom scheduling labels that NodeRestriction prevents the kubelet from setting, use kubectl with cluster-admin credentials or manage them with a controller so they can be recreated if the Kubernetes Node object is replaced.
 
-Third, if you are running a mixed cluster with different hardware profiles, use the machine config to tag each node type at provisioning time. This way, your affinity rules work from the moment the cluster is up.
+Third, if you are running a mixed cluster across different zones or regions, use the machine config to tag each node at provisioning time with allowed topology labels. This way, your topology-based affinity rules work from the moment the cluster is up.
 
 ```yaml
-# Example: Talos machine config for a high-memory worker node
+# Example: Talos machine config for a worker node in a specific zone
 machine:
   nodeLabels:
-    hardware-profile: high-memory
-    memory-tier: "64gb"
-    node-role.kubernetes.io/worker: ""
+    topology.kubernetes.io/zone: us-east-1a
+    topology.kubernetes.io/region: us-east-1
 ```
 
 ## Debugging Node Affinity
@@ -221,4 +222,4 @@ A common mistake is using labels that do not exist on any node, or misspelling a
 
 ## Wrapping Up
 
-Node affinity on Talos Linux works just like any other Kubernetes cluster, with the important addition that you should declare your node labels in the Talos machine configuration for persistence. Use required affinity when you absolutely need a pod on a specific type of node, and preferred affinity when you want to influence placement without blocking scheduling entirely. The combination of Talos Linux's declarative configuration and Kubernetes node affinity gives you reliable, repeatable control over workload placement across your cluster.
+Node affinity on Talos Linux works just like any other Kubernetes cluster, with the important addition that kubelet-allowed node labels can be declared in the Talos machine configuration for persistence, while custom scheduling labels should be managed through Kubernetes with cluster-admin credentials or a controller. Use required affinity when you absolutely need a pod on a specific type of node, and preferred affinity when you want to influence placement without blocking scheduling entirely. The combination of Talos Linux's declarative configuration and Kubernetes node affinity gives you reliable, repeatable control over workload placement across your cluster.
