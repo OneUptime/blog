@@ -30,21 +30,23 @@ talosctl get extensions --nodes <node-ip>
 
 ## Finding Compatible Extension Versions
 
-Every Talos release has a corresponding set of extension builds. The Siderolabs team publishes extensions in the `ghcr.io/siderolabs` container registry, tagged with the Talos version they support.
+Every Talos release has a corresponding extension catalog. The Siderolabs team publishes this catalog as `ghcr.io/siderolabs/extensions:<talos-version>`, and Image Factory uses it to resolve each extension name to the correct container image and digest for that Talos release.
 
 ```bash
-# Extension images follow this naming pattern:
-# ghcr.io/siderolabs/<extension-name>:<extension-version>
+# Look up the extension image reference for a specific Talos release:
+crane export ghcr.io/siderolabs/extensions:v1.7.0 | \
+  tar x -O image-digests | grep iscsi-tools
 
-# For example:
-# ghcr.io/siderolabs/iscsi-tools:v0.1.4
-# ghcr.io/siderolabs/qemu-guest-agent:v8.2.0
+# Or query Image Factory for the official extensions available
+# for a specific release:
+curl -fsS https://factory.talos.dev/version/v1.7.0/extensions/official | \
+  jq '.[] | select(.name == "siderolabs/iscsi-tools")'
 
 # Check the extensions repository for available versions
 # https://github.com/siderolabs/extensions
 ```
 
-The key point is that you cannot mix extension versions across Talos versions. If you are upgrading to Talos v1.7.0, you need extensions that were built for v1.7.0.
+The key point is that you should use the extension references selected for your target Talos release. If you are upgrading to Talos v1.7.0, use the extension catalog for v1.7.0.
 
 ## Using Image Factory
 
@@ -81,9 +83,11 @@ curl -X POST https://factory.talos.dev/schematics \
 # The response will include a schematic ID, for example:
 # {"id":"abc123def456..."}
 
-# Use the schematic ID to construct the installer image URL
-# Format: factory.talos.dev/installer/<schematic-id>:<talos-version>
-INSTALLER_IMAGE="factory.talos.dev/installer/abc123def456:v1.7.0"
+# Use the schematic ID to construct the installer image URL.
+# Use the installer for your platform, such as metal-installer,
+# aws-installer, or gcp-installer.
+# Format: factory.talos.dev/<platform>-installer/<schematic-id>:<talos-version>
+INSTALLER_IMAGE="factory.talos.dev/metal-installer/abc123def456:v1.7.0"
 ```
 
 This gives you a stable, reproducible way to generate installer images with the same set of extensions for any Talos version.
@@ -136,8 +140,8 @@ WORKER_SCHEMATIC_ID=$(curl -s -X POST https://factory.talos.dev/schematics \
   --data-binary @worker-schematic.yaml | jq -r '.id')
 
 # Construct installer image URLs
-CP_IMAGE="factory.talos.dev/installer/${CP_SCHEMATIC_ID}:v1.7.0"
-WORKER_IMAGE="factory.talos.dev/installer/${WORKER_SCHEMATIC_ID}:v1.7.0"
+CP_IMAGE="factory.talos.dev/metal-installer/${CP_SCHEMATIC_ID}:v1.7.0"
+WORKER_IMAGE="factory.talos.dev/metal-installer/${WORKER_SCHEMATIC_ID}:v1.7.0"
 
 echo "Control plane image: ${CP_IMAGE}"
 echo "Worker image: ${WORKER_IMAGE}"
@@ -145,13 +149,17 @@ echo "Worker image: ${WORKER_IMAGE}"
 
 ### 3. Verify the Images
 
-Before using the images for a real upgrade, verify they contain the expected extensions:
+Before using the images for a real upgrade, verify that the schematics and target release contain the expected extensions, and that the installer image resolves:
 
 ```bash
-# Pull and inspect the image
-crane config ${CP_IMAGE} | jq '.config.Labels'
+# Inspect the uploaded schematic
+curl -fsS https://factory.talos.dev/schematics/${CP_SCHEMATIC_ID}
 
-# Or check the image manifest
+# Confirm the extension is available for the target Talos release
+curl -fsS https://factory.talos.dev/version/v1.7.0/extensions/official | \
+  jq '.[] | select(.name == "siderolabs/intel-ucode")'
+
+# Check that the installer image manifest can be resolved
 crane manifest ${CP_IMAGE} | jq .
 ```
 
