@@ -14,16 +14,22 @@ Controlling outbound traffic from your Kubernetes pods is just as important as c
 
 Most people start with ingress rules because they are thinking about who can access their services. But egress is where a compromised pod becomes truly dangerous. Without egress controls, a pod that gets exploited can reach out to command-and-control servers, exfiltrate data to external endpoints, scan your internal network for other vulnerable services, or make API calls to cloud provider metadata endpoints.
 
-On Talos Linux, you cannot fall back on host-level firewall rules because the OS is immutable. Network policies are your only practical option for controlling outbound traffic.
+Talos Linux has host-level firewalling for node services, but that is not a replacement for controlling pod-to-pod or pod-to-external traffic. For Kubernetes workloads, CNI-enforced network policies are the practical mechanism for controlling outbound traffic.
 
 ## Prerequisites
 
-You need a CNI that enforces network policies. On Talos Linux, Cilium is the most popular choice:
+You need a CNI that enforces network policies. On Talos Linux, Cilium is a common choice. Make sure your Talos cluster is created without the default CNI before installing Cilium:
 
 ```bash
-# Install Cilium on your Talos cluster
-
-cilium install --version 1.15.0
+# Install Cilium on a Talos cluster prepared for a custom CNI
+cilium install \
+  --version 1.19.3 \
+  --set ipam.mode=kubernetes \
+  --set kubeProxyReplacement=false \
+  --set securityContext.capabilities.ciliumAgent="{CHOWN,KILL,NET_ADMIN,NET_RAW,IPC_LOCK,SYS_ADMIN,SYS_RESOURCE,DAC_OVERRIDE,FOWNER,SETGID,SETUID}" \
+  --set securityContext.capabilities.cleanCiliumState="{NET_ADMIN,SYS_ADMIN,SYS_RESOURCE}" \
+  --set cgroup.autoMount.enabled=false \
+  --set cgroup.hostRoot=/sys/fs/cgroup
 
 # Verify it is running
 cilium status --wait
@@ -189,18 +195,20 @@ spec:
             cidr: 0.0.0.0/0
             except:
               - 10.0.0.0/8
+              - 100.64.0.0/10
               - 172.16.0.0/12
               - 192.168.0.0/16
+              - 169.254.0.0/16
       ports:
         - protocol: TCP
           port: 443
 ```
 
-The second rule is a useful pattern - it allows HTTPS traffic to any external IP while blocking traffic to private IP ranges. This prevents pods from reaching internal services while still allowing them to call external APIs.
+The second rule is a useful pattern - it allows HTTPS traffic to any external IP while blocking traffic to private, carrier-grade NAT, and link-local ranges. This helps prevent pods from reaching internal services or common cloud metadata endpoints while still allowing them to call external APIs.
 
 ## Egress to Kubernetes API Server
 
-Some applications need to interact with the Kubernetes API. The API server usually runs on the control plane nodes and listens on port 6443:
+Some applications need to interact with the Kubernetes API. The API server usually runs on the control plane nodes and listens on port 6443. Standard Kubernetes network policies do not select Services directly, so use the actual control-plane endpoint or load-balancer address rather than relying on the `kubernetes` Service ClusterIP:
 
 ```yaml
 # allow-kube-api-egress.yaml
@@ -219,17 +227,19 @@ spec:
     # Allow traffic to the Kubernetes API server
     - to:
         - ipBlock:
-            cidr: 10.96.0.1/32  # Cluster IP of kubernetes service
+            cidr: 10.0.0.10/32  # API server endpoint or load balancer IP
       ports:
         - protocol: TCP
-          port: 443
+          port: 6443
 ```
 
-Find your API server's cluster IP:
+Find your API server endpoint addresses:
 
 ```bash
-# Get the Kubernetes service cluster IP
-kubectl get svc kubernetes -n default -o jsonpath='{.spec.clusterIP}'
+# Get the backend addresses and port for the kubernetes service
+kubectl get endpointslice -n default \
+  -l kubernetes.io/service-name=kubernetes \
+  -o yaml
 ```
 
 ## Combining Multiple Egress Rules
@@ -285,8 +295,10 @@ spec:
             cidr: 0.0.0.0/0
             except:
               - 10.0.0.0/8
+              - 100.64.0.0/10
               - 172.16.0.0/12
               - 192.168.0.0/16
+              - 169.254.0.0/16
       ports:
         - protocol: TCP
           port: 443
@@ -299,11 +311,11 @@ After applying your policies, test that they work as expected:
 ```bash
 # Verify allowed traffic works
 kubectl exec -n production deploy/web-api -- \
-  curl -s --connect-timeout 3 http://postgres:5432
+  nc -vz -w 3 postgres 5432
 
 # Verify blocked traffic is actually blocked
 kubectl exec -n production deploy/web-api -- \
-  curl -s --connect-timeout 3 http://some-other-service:8080
+  nc -vz -w 3 some-other-service 8080
 
 # Test external connectivity
 kubectl exec -n production deploy/web-api -- \
@@ -323,14 +335,16 @@ When egress rules do not work as expected on Talos Linux, use these approaches:
 kubectl get networkpolicies -n production -o yaml
 
 # If using Cilium, monitor policy decisions
-cilium monitor --type policy-verdict --to-identity <identity>
+kubectl -n kube-system exec <cilium-pod> -c cilium-agent -- \
+  cilium-dbg monitor --type policy-verdict --to <endpoint-id>
 
 # Check endpoint status in Cilium
-cilium endpoint list
+kubectl -n kube-system exec <cilium-pod> -c cilium-agent -- \
+  cilium-dbg endpoint list
 
 # Use talosctl to check node-level networking
 talosctl get addresses --nodes <node-ip>
-talosctl logs -k --nodes <node-ip> | grep -i drop
+talosctl dmesg --nodes <node-ip> | grep -i drop
 ```
 
 A common debugging technique is to temporarily apply a wide-open egress rule and narrow it down:
@@ -359,6 +373,6 @@ kubectl delete networkpolicy debug-allow-all-egress -n production
 
 ## Tips and Gotchas
 
-Remember these things when working with egress rules on Talos Linux. Network policies are additive, meaning a pod only needs one policy to allow specific traffic. You cannot write a policy that overrides another policy's allow rule with a deny. Always include both UDP and TCP for DNS because some queries use TCP. When you specify a `to` block with both `namespaceSelector` and `podSelector` on the same level (same list item), they are ANDed together. When they are on separate list items, they are ORed. This distinction trips people up constantly. And finally, if you are blocking egress to all internal IPs using the `except` trick, make sure your cluster's pod and service CIDRs are included in the exception list.
+Remember these things when working with egress rules on Talos Linux. Network policies are additive, meaning a pod only needs one policy to allow specific traffic. You cannot write a policy that overrides another policy's allow rule with a deny. Always include both UDP and TCP for DNS because some queries use TCP. When you specify a `to` block with both `namespaceSelector` and `podSelector` on the same level (same list item), they are ANDed together. When they are on separate list items, they are ORed. This distinction trips people up constantly. And finally, if you are blocking egress to all internal IPs using the `except` trick, make sure your cluster's pod and service CIDRs, node subnets, link-local ranges, and any cloud-provider metadata addresses are included in the exception list.
 
 Egress rules are a critical part of a defense-in-depth strategy for your Talos Linux Kubernetes cluster. Start with deny-all, add DNS first, then layer on the specific rules your applications need. Test everything, and keep your policies as tight as possible.
