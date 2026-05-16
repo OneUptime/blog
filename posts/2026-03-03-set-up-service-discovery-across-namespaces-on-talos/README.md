@@ -23,7 +23,7 @@ By default, pods can resolve services in any namespace using this fully qualifie
 ```bash
 # From a pod in the "web" namespace
 
-curl http://api-server.backend.svc.cluster.local:8080/v1/users
+curl http://api-server.backend.svc.cluster.local:80/v1/users
 ```
 
 The short name `api-server` only works within the same namespace. To reach a different namespace, you need at least `api-server.backend`.
@@ -50,7 +50,7 @@ The search domains determine how short names are expanded. For a pod in the `web
 - `api-server` tries `api-server.web.svc.cluster.local` first (same namespace)
 - `api-server.backend` tries `api-server.backend.web.svc.cluster.local` (fails), then `api-server.backend.svc.cluster.local` (succeeds)
 
-This means cross-namespace lookups with two-part names like `api-server.backend` generate an extra failing query before succeeding. For frequently accessed cross-namespace services, use the full FQDN to avoid this wasted query:
+This means cross-namespace lookups with two-part names like `api-server.backend` generate an extra failing query before succeeding. For frequently accessed cross-namespace services, use the full DNS name with a trailing dot to force an absolute lookup and avoid this wasted query:
 
 ```python
 # In your application configuration
@@ -58,7 +58,7 @@ This means cross-namespace lookups with two-part names like `api-server.backend`
 DATABASE_HOST = "postgres.data"
 
 # More efficient - goes directly to the right answer
-DATABASE_HOST = "postgres.data.svc.cluster.local"
+DATABASE_HOST = "postgres.data.svc.cluster.local."
 ```
 
 ## Creating Services for Cross-Namespace Discovery
@@ -204,7 +204,7 @@ spec:
   - Ingress
 ```
 
-Make sure DNS traffic is also allowed when using default-deny policies:
+Make sure DNS traffic is also allowed when using default-deny egress policies:
 
 ```yaml
 # Allow DNS egress from the backend namespace
@@ -250,7 +250,7 @@ Query the SRV record from any namespace:
 
 ```bash
 # SRV record format: _<port-name>._<protocol>.<service>.<namespace>.svc.cluster.local
-kubectl run dns-test --rm -it --restart=Never --image=busybox -- \
+kubectl run dns-test --rm -it --restart=Never --image=busybox --command -- \
     nslookup -type=SRV _pg._tcp.postgres.data.svc.cluster.local
 ```
 
@@ -277,7 +277,7 @@ for ns in "${NAMESPACES[@]}"; do
     echo "=== Testing from namespace: $ns ==="
     for svc in "${SERVICES[@]}"; do
         RESULT=$(kubectl run dns-test-$RANDOM --rm -i --restart=Never \
-            --namespace="$ns" --image=busybox -- \
+            --namespace="$ns" --image=busybox --command -- \
             nslookup "$svc.svc.cluster.local" 2>/dev/null | grep "Address" | tail -1)
         echo "  $svc -> $RESULT"
     done
@@ -354,11 +354,11 @@ When cross-namespace discovery fails, check these things:
 # 1. Verify the service exists in the target namespace
 kubectl get svc -n backend api-server
 
-# 2. Verify the service has endpoints (pods are running and selected)
-kubectl get endpoints -n backend api-server
+# 2. Verify the service has EndpointSlices (pods are running and selected)
+kubectl get endpointslice -n backend -l kubernetes.io/service-name=api-server
 
 # 3. Test DNS resolution explicitly
-kubectl run dns-debug --rm -it --restart=Never --image=alpine -- sh -c '
+kubectl run dns-debug --rm -it --restart=Never --image=alpine --command -- sh -c '
     apk add --no-cache bind-tools > /dev/null 2>&1
     dig api-server.backend.svc.cluster.local @10.96.0.10
 '
@@ -367,10 +367,10 @@ kubectl run dns-debug --rm -it --restart=Never --image=alpine -- sh -c '
 kubectl get networkpolicies -n backend
 
 # 5. Test actual connectivity (not just DNS)
-kubectl run conn-test --rm -it --restart=Never --namespace web --image=busybox -- \
+kubectl run conn-test --rm -it --restart=Never --namespace web --image=busybox --command -- \
     wget -q -O- -T5 http://api-server.backend.svc.cluster.local:80/health
 ```
 
 ## Wrapping Up
 
-Cross-namespace service discovery on Talos Linux works through standard Kubernetes DNS. The key things to remember are: use fully qualified domain names for efficiency, set up ExternalName services for clean abstraction, implement network policies to control cross-namespace traffic, and always make sure DNS egress is allowed when using default-deny policies. Keep your namespace structure intentional and document which services are meant to be accessed from other namespaces.
+Cross-namespace service discovery on Talos Linux works through standard Kubernetes DNS. The key things to remember are: use absolute DNS names for efficiency, set up ExternalName services for clean abstraction, implement network policies to control cross-namespace traffic, and always make sure DNS egress is allowed when using default-deny egress policies. Keep your namespace structure intentional and document which services are meant to be accessed from other namespaces.
