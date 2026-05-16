@@ -25,7 +25,7 @@ Image scanning policies address these risks by automatically checking images aga
 
 ## Setting Up Image Policy Admission
 
-Kubernetes has a built-in ImagePolicyWebhook admission controller that can check images before allowing pods to start. On Talos Linux, you enable this through the machine configuration:
+Kubernetes has a built-in ImagePolicyWebhook admission controller that can call a TLS webhook backend before allowing pods to start. On Talos Linux, you enable this through the machine configuration. Replace the webhook server URL and certificate data with values for your image policy service:
 
 ```yaml
 # talos-image-policy.yaml
@@ -36,12 +36,16 @@ cluster:
     extraArgs:
       enable-admission-plugins: "NodeRestriction,PodSecurity,ImagePolicyWebhook"
       admission-control-config-file: "/etc/kubernetes/admission-control-config.yaml"
+      runtime-config: "imagepolicy.k8s.io/v1alpha1=true"
     extraVolumes:
       - hostPath: /var/etc/kubernetes/admission-control-config.yaml
         mountPath: /etc/kubernetes/admission-control-config.yaml
         readonly: true
       - hostPath: /var/etc/kubernetes/image-policy-webhook.yaml
         mountPath: /etc/kubernetes/image-policy-webhook.yaml
+        readonly: true
+      - hostPath: /var/etc/kubernetes/image-policy-kubeconfig.yaml
+        mountPath: /etc/kubernetes/image-policy-kubeconfig.yaml
         readonly: true
 
 machine:
@@ -68,6 +72,30 @@ machine:
       path: /var/etc/kubernetes/image-policy-webhook.yaml
       permissions: 0644
       op: create
+
+    # Kubeconfig used by the API server to reach the image policy webhook
+    - content: |
+        apiVersion: v1
+        kind: Config
+        clusters:
+          - name: image-policy-webhook
+            cluster:
+              server: https://image-policy.example.com/policy
+              certificate-authority-data: <base64-ca-certificate>
+        users:
+          - name: kube-apiserver
+            user:
+              client-certificate-data: <base64-client-certificate>
+              client-key-data: <base64-client-key>
+        contexts:
+          - name: image-policy-webhook
+            context:
+              cluster: image-policy-webhook
+              user: kube-apiserver
+        current-context: image-policy-webhook
+      path: /var/etc/kubernetes/image-policy-kubeconfig.yaml
+      permissions: 0600
+      op: create
 ```
 
 ## Using Kyverno for Image Policies
@@ -84,16 +112,19 @@ helm repo update
 helm install kyverno kyverno/kyverno \
   --namespace kyverno \
   --create-namespace \
-  --set replicaCount=3
+  --set admissionController.replicas=3 \
+  --set backgroundController.replicas=2 \
+  --set cleanupController.replicas=2 \
+  --set reportsController.replicas=2
 ```
 
 ### Require Image Scanning Before Deployment
 
-Create a policy that requires all images to have a passing Trivy scan:
+Create a policy that requires a passing Trivy scan marker from your CI pipeline before the pod is admitted:
 
 ```yaml
 # require-scan-results.yaml
-# Blocks pods unless vulnerability scan results exist
+# Blocks pods unless CI has marked the workload as passing a Trivy scan
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -104,10 +135,9 @@ metadata:
       Requires all container images to have been scanned
       by Trivy with no critical vulnerabilities.
 spec:
-  validationFailureAction: Enforce
   background: false
   rules:
-    - name: check-vulnerability-report
+    - name: require-trivy-scan-annotation
       match:
         any:
           - resources:
@@ -119,17 +149,17 @@ spec:
             operator: In
             value: ["CREATE", "UPDATE"]
       validate:
+        failureAction: Enforce
         message: >
-          Image {{ element.image }} has not been scanned or contains
-          critical vulnerabilities. Please scan images before deployment.
+          Pod must include scan.myorg.io/trivy-status=passed before deployment.
         foreach:
-          - list: "request.object.spec.containers"
+          - list: "request.object.spec.[initContainers, containers, ephemeralContainers][]"
             deny:
               conditions:
                 any:
-                  - key: "{{ element.image }}"
-                    operator: AnyNotIn
-                    value: "{{ images.containers.*.registry_url }}"
+                  - key: "{{ request.object.metadata.annotations.\"scan.myorg.io/trivy-status\" || '' }}"
+                    operator: NotEquals
+                    value: "passed"
 ```
 
 ### Restrict Image Registries
@@ -144,7 +174,6 @@ kind: ClusterPolicy
 metadata:
   name: restrict-image-registries
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: validate-registries
@@ -154,6 +183,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: >
           Images must come from approved registries.
           Allowed: ghcr.io/myorg, myregistry.azurecr.io,
@@ -183,7 +213,6 @@ kind: ClusterPolicy
 metadata:
   name: require-image-digest
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: require-digest
@@ -193,9 +222,10 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Images must use a digest (sha256) instead of a mutable tag."
         foreach:
-          - list: "request.object.spec.containers"
+          - list: "request.object.spec.[initContainers, containers, ephemeralContainers][]"
             deny:
               conditions:
                 all:
@@ -206,7 +236,7 @@ spec:
 
 ### Block Images with Critical Vulnerabilities
 
-Use Kyverno to check Trivy Operator vulnerability reports:
+Use Kyverno to check Trivy Operator vulnerability reports. This example expects image references to include digests so the policy can match them to the digest stored in the VulnerabilityReport:
 
 ```yaml
 # block-critical-vulns.yaml
@@ -216,8 +246,7 @@ kind: ClusterPolicy
 metadata:
   name: block-critical-vulnerabilities
 spec:
-  validationFailureAction: Enforce
-  background: true
+  background: false
   rules:
     - name: check-critical-count
       match:
@@ -225,19 +254,30 @@ spec:
           - resources:
               kinds:
                 - Pod
-      context:
-        - name: vulnReports
-          apiCall:
-            urlPath: "/apis/aquasecurity.github.io/v1alpha1/namespaces/{{request.namespace}}/vulnerabilityreports"
-            jmesPath: "items[?report.artifact.repository == '{{request.object.spec.containers[0].image}}'].report.summary.criticalCount | [0]"
       validate:
-        message: "Image has {{ vulnReports }} critical vulnerabilities. Maximum allowed: 0"
-        deny:
-          conditions:
-            any:
-              - key: "{{ vulnReports }}"
-                operator: GreaterThan
-                value: 0
+        failureAction: Enforce
+        message: "Image {{ element.image }} has no Trivy Operator report or has critical vulnerabilities."
+        foreach:
+          - list: "request.object.spec.[initContainers, containers, ephemeralContainers][]"
+            preconditions:
+              all:
+                - key: "{{ contains(element.image, '@sha256:') }}"
+                  operator: Equals
+                  value: true
+            context:
+              - name: criticalCount
+                apiCall:
+                  urlPath: "/apis/aquasecurity.github.io/v1alpha1/namespaces/{{request.namespace}}/vulnerabilityreports"
+                  jmesPath: "items[?join('', [report.artifact.registry.server, '/', report.artifact.repository, '@', report.artifact.digest]) == '{{ element.image }}'].report.summary.criticalCount | [0] || `-1`"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ criticalCount }}"
+                    operator: LessThan
+                    value: 0
+                  - key: "{{ criticalCount }}"
+                    operator: GreaterThan
+                    value: 0
 ```
 
 ## Using OPA Gatekeeper as an Alternative
@@ -280,9 +320,21 @@ spec:
         package k8sallowedrepos
 
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
+          container := all_containers[_]
           not startswith_any(container.image, input.parameters.repos)
           msg := sprintf("Container image %v is not from an allowed registry. Allowed: %v", [container.image, input.parameters.repos])
+        }
+
+        all_containers[container] {
+          container := input.review.object.spec.containers[_]
+        }
+
+        all_containers[container] {
+          container := input.review.object.spec.initContainers[_]
+        }
+
+        all_containers[container] {
+          container := input.review.object.spec.ephemeralContainers[_]
         }
 
         startswith_any(str, prefixes) {
@@ -321,8 +373,8 @@ kind: ClusterPolicy
 metadata:
   name: verify-image-signature
 spec:
-  validationFailureAction: Enforce
-  webhookTimeoutSeconds: 30
+  webhookConfiguration:
+    timeoutSeconds: 30
   rules:
     - name: verify-signature
       match:
@@ -333,6 +385,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "ghcr.io/myorg/*"
+          failureAction: Enforce
           attestors:
             - entries:
                 - keys:
