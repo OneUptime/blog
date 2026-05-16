@@ -8,13 +8,13 @@ Description: A practical guide to implementing ReadOnlyRootFilesystem for contai
 
 ---
 
-The ReadOnlyRootFilesystem setting in Kubernetes makes a container's root filesystem immutable. No process inside the container can write to the image filesystem, create new files, or modify existing binaries. This is a powerful security control that prevents attackers from writing malicious scripts, modifying configuration files, or installing backdoors even after gaining code execution inside a container. On Talos Linux, where the host OS itself is read-only, enabling ReadOnlyRootFilesystem for your containers extends that same immutability principle to the application layer.
+The ReadOnlyRootFilesystem setting in Kubernetes mounts a container's root filesystem as read-only. No process inside the container can write to the image-backed root filesystem, create new files there, or modify existing binaries there. This is a powerful security control that prevents attackers from writing malicious scripts, modifying configuration files, or installing backdoors in the image filesystem even after gaining code execution inside a container. On Talos Linux, where the host OS itself is read-only, enabling ReadOnlyRootFilesystem for your containers extends that same immutability principle to the application layer.
 
 This guide covers how to implement ReadOnlyRootFilesystem effectively, handle applications that need writable directories, and troubleshoot the issues that come up during adoption.
 
 ## Why ReadOnlyRootFilesystem Matters
 
-When an attacker compromises a container, one of their first steps is usually to write files - downloading additional tools, creating reverse shells, or modifying application code to maintain persistence. With a read-only root filesystem, these actions fail immediately. The attacker cannot modify the container's binaries, libraries, or configuration files.
+When an attacker compromises a container, one of their first steps is usually to write files - downloading additional tools, creating reverse shells, or modifying application code to maintain persistence. With a read-only root filesystem, these actions fail on the image-backed filesystem. The attacker cannot modify the container's binaries, libraries, or configuration files unless those paths are explicitly backed by writable volumes.
 
 This control is especially valuable on Talos Linux because it creates consistency between the host and the containers. Talos itself is immutable, and with ReadOnlyRootFilesystem, your containers follow the same pattern. What you build into the image is what runs, period.
 
@@ -325,12 +325,9 @@ kubectl run debug --image=myapp:latest --rm -it --restart=Never \
 
 ## Enforcing ReadOnlyRootFilesystem Cluster-Wide
 
-Use Pod Security Standards on Talos Linux to enforce ReadOnlyRootFilesystem.
+Pod Security Standards on Talos Linux do not strictly require ReadOnlyRootFilesystem. Use an admission policy engine like OPA Gatekeeper or Kyverno for explicit enforcement.
 
 ```bash
-# The restricted standard does not strictly require readOnlyRootFilesystem
-# but it is part of a comprehensive security policy
-
 # Use OPA Gatekeeper or Kyverno for explicit enforcement
 ```
 
@@ -343,7 +340,6 @@ kind: ClusterPolicy
 metadata:
   name: require-readonly-rootfs
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: validate-readonlyrootfilesystem
       match:
@@ -352,6 +348,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "All containers must use readOnlyRootFilesystem"
         pattern:
           spec:
