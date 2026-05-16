@@ -40,7 +40,7 @@ data:
     .:53 {
         errors
         health {
-           lazystart
+           lameduck 5s
         }
         ready
         kubernetes cluster.local in-addr.arpa ip6.arpa {
@@ -108,7 +108,7 @@ data:
     .:53 {
         errors
         health {
-           lazystart
+           lameduck 5s
         }
         ready
         kubernetes cluster.local in-addr.arpa ip6.arpa {
@@ -183,7 +183,9 @@ data:
             900        ; retry
             604800     ; expire
             86400 )    ; minimum TTL
+    @       3600 IN NS    ns1.example.com.
 
+    ns1     300 IN A     10.96.1.100
     @       300 IN A     10.96.1.100
     app     300 IN A     10.96.1.100
     api     300 IN A     10.96.1.101
@@ -226,6 +228,8 @@ example.com:53 {
 }
 ```
 
+Mount the `coredns-zone-data` ConfigMap at `/etc/coredns/zones` the same way the hosts ConfigMap is mounted in the previous example.
+
 The `example.com` server block takes priority over the catch-all `.` block for queries matching that domain. Queries for any other domain pass through to the public DNS forwarders.
 
 ## Automating Record Updates
@@ -247,6 +251,8 @@ echo "" >> "$OUTPUT_FILE"
 kubectl get services --all-namespaces -o json | jq -r '
     .items[] |
     select(.metadata.annotations["dns.example.com/split-horizon"] == "true") |
+    select(.spec.clusterIP != null and .spec.clusterIP != "None") |
+    select(.metadata.annotations["dns.example.com/hostname"] != null) |
     "\(.spec.clusterIP)  \(.metadata.annotations["dns.example.com/hostname"])"
 ' >> "$OUTPUT_FILE"
 
