@@ -138,7 +138,7 @@ Update your talosctl endpoints to include the new node:
 
 ```bash
 # Update talosctl endpoints with the new IP
-talosctl config endpoints <cp-ip-1> <cp-ip-2> <new-cp-ip>
+talosctl config endpoint <cp-ip-1> <cp-ip-2> <new-cp-ip>
 ```
 
 Also update any load balancer configurations that route traffic to the Kubernetes API server.
