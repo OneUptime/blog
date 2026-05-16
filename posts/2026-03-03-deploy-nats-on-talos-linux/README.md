@@ -46,13 +46,15 @@ config:
     replicas: 3
   jetstream:
     enabled: true
-    memStorage:
+    memoryStore:
       enabled: true
-      size: "1Gi"
-    fileStorage:
+      maxSize: 1Gi
+    fileStore:
       enabled: true
-      size: "10Gi"
-      storageClassName: "local-path"
+      pvc:
+        enabled: true
+        size: 10Gi
+        storageClassName: local-path
   monitor:
     enabled: true
     port: 8222
@@ -64,7 +66,7 @@ podTemplate:
   topologySpreadConstraints:
     kubernetes.io/hostname:
       maxSkew: 1
-      whenUnsatisfied: DoNotSchedule
+      whenUnsatisfiable: DoNotSchedule
 
 container:
   merge:
