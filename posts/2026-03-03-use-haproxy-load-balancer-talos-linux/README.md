@@ -145,7 +145,7 @@ backend k8s_api_backend
     server cp3 192.168.1.103:6443 check fall 3 rise 2 inter 10s
 
 #---------------------------------------------------------------------
-# Talos API - Frontend (optional but recommended)
+# Talos API - Frontend (optional; prefer direct Talos endpoints)
 #---------------------------------------------------------------------
 frontend talos_api_frontend
     bind *:50000
@@ -154,7 +154,7 @@ frontend talos_api_frontend
     default_backend talos_api_backend
 
 #---------------------------------------------------------------------
-# Talos API - Backend (optional but recommended)
+# Talos API - Backend (optional; prefer direct Talos endpoints)
 #---------------------------------------------------------------------
 backend talos_api_backend
     mode tcp
@@ -243,7 +243,7 @@ talosctl gen config my-cluster https://192.168.1.50:6443 \
   --config-patch-control-plane '[{"op": "add", "path": "/cluster/apiServer/certSANs", "value": ["192.168.1.50", "k8s-api.example.com"]}]'
 ```
 
-Adding the HAProxy IP (and optionally a DNS name) to the certSANs ensures the API server's TLS certificate is valid for these addresses.
+Adding the HAProxy IP (and optionally a DNS name) to the certSANs ensures the Kubernetes API server's TLS certificate is valid for these addresses. If you also route the Talos API through HAProxy on port 50000, add the load balancer address to `/machine/certSANs` and configure `talosctl` endpoints carefully; Talos recommends using control plane addresses as Talos API endpoints rather than the VIP.
 
 ## Using the Stats Dashboard
 
@@ -264,8 +264,8 @@ backend k8s_api_backend
     mode tcp
     balance roundrobin
 
-    # Use an HTTP health check on the /healthz endpoint
-    option httpchk GET /healthz
+    # Use an HTTP health check on the /readyz endpoint
+    option httpchk GET /readyz
     http-check expect status 200
 
     server cp1 192.168.1.101:6443 check check-ssl verify none fall 3 rise 2 inter 10s
@@ -273,7 +273,7 @@ backend k8s_api_backend
     server cp3 192.168.1.103:6443 check check-ssl verify none fall 3 rise 2 inter 10s
 ```
 
-This sends an HTTPS request to `/healthz` on each server and expects a 200 response. A control plane node that is running but not healthy (for example, etcd is down but the port is open) will be correctly removed from rotation.
+This sends an HTTPS request to `/readyz` on each server and expects a 200 response. A control plane node that is running but not ready (for example, etcd is down but the port is open) will be correctly removed from rotation.
 
 ## Making HAProxy Highly Available
 
@@ -362,7 +362,7 @@ Now 192.168.1.50 is a floating VIP between your two HAProxy hosts. If the primar
 
 ```bash
 # Verify HAProxy is working
-curl -k https://192.168.1.50:6443/healthz
+curl -k https://192.168.1.50:6443/readyz
 
 # Check kubectl works through HAProxy
 kubectl get nodes
