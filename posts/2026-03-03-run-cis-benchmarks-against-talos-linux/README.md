@@ -126,9 +126,9 @@ Some checks reference files or paths that do not exist on Talos because the syst
 kubectl logs job/kube-bench-master | grep -E "^\[FAIL\]|^\[WARN\]"
 ```
 
-## Using the Talos-Specific kube-bench Configuration
+## Selecting a Specific Benchmark Version
 
-Talos provides a custom kube-bench configuration that accounts for its unique architecture. You can use this to get more accurate results:
+By default, kube-bench auto-detects the Kubernetes version on the node and picks a matching benchmark. You can pin the benchmark version explicitly to make runs reproducible and to ensure you are testing against the CIS revision you care about:
 
 ```yaml
 # kube-bench-talos.yaml
