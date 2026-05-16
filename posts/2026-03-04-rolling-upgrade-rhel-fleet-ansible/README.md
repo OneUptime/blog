@@ -1,23 +1,23 @@
-# How to Perform a Rolling Upgrade of RHEL Across a Fleet Using Ansible
+# How to Perform a Rolling Upgrade of RHEL Across a Fleet Using Leapp
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Rolling Upgrade, Ansible, Automation
+Tags: RHEL, Rolling Upgrade, Leapp, Automation
 
-Description: Perform a rolling upgrade of RHEL across your fleet using Ansible.
+Description: Perform a rolling upgrade of RHEL across your fleet using Leapp.
 
 ---
 
 ## Overview
 
-Perform a rolling upgrade of RHEL across your fleet using Ansible. Careful planning and testing are essential for successful RHEL migrations.
+Perform a rolling upgrade of RHEL across your fleet using Leapp. Careful planning and testing are essential for successful RHEL migrations.
 
 ## Prerequisites
 
 - A RHEL system with an active subscription
 - Root or sudo access
 - A full backup of the system before any migration or upgrade
-- For Leapp upgrades: the leapp and leapp-upgrade packages
+- For Leapp upgrades: the leapp-upgrade package
 
 ## Step 1 - Prepare the System
 
@@ -33,13 +33,13 @@ Before any migration:
 For Leapp-based upgrades:
 
 ```bash
-sudo dnf install -y leapp leapp-upgrade
+sudo dnf install -y leapp-upgrade
 ```
 
-For CentOS conversions:
+For CentOS conversions, install the current Convert2RHEL repository file for your target RHEL major version, then install the utility:
 
 ```bash
-sudo dnf install -y convert2rhel
+sudo yum -y install convert2rhel
 ```
 
 ## Step 3 - Run Pre-Migration Assessment
@@ -48,7 +48,13 @@ sudo dnf install -y convert2rhel
 sudo leapp preupgrade
 ```
 
-Review the report:
+For Convert2RHEL conversions:
+
+```bash
+sudo convert2rhel analyze
+```
+
+For Leapp upgrades, review the report:
 
 ```bash
 cat /var/log/leapp/leapp-report.txt
@@ -61,10 +67,17 @@ Address all inhibitors before proceeding.
 Once all inhibitors are resolved:
 
 ```bash
-sudo leapp upgrade
+sudo leapp upgrade --target <target_os_version>
+sudo reboot
 ```
 
-The system will reboot into a special initramfs to complete the upgrade.
+For Leapp upgrades, the system will reboot into a special initramfs to complete the upgrade. You can also use `leapp upgrade --reboot` to let Leapp reboot automatically.
+
+For Convert2RHEL conversions:
+
+```bash
+sudo convert2rhel
+```
 
 ## Step 5 - Post-Migration Verification
 
@@ -79,10 +92,10 @@ systemctl list-units --failed
 
 ## Step 6 - Clean Up
 
-Remove old packages and kernels:
+Follow Red Hat's post-upgrade tasks to remove old kernel packages, then remove remaining Leapp dependency packages. For RHEL 8 to 9:
 
 ```bash
-sudo dnf remove leapp leapp-upgrade
+sudo dnf remove leapp-deps-el9 leapp-repository-deps-el9
 sudo dnf autoremove
 ```
 
@@ -95,4 +108,4 @@ If the migration fails, you can:
 
 ## Summary
 
-You have learned how to perform a rolling upgrade of rhel across a fleet using ansible. Always test upgrades in a staging environment first and maintain a reliable rollback plan.
+You have learned how to perform a rolling upgrade of RHEL across a fleet using Leapp. Always test upgrades in a staging environment first and maintain a reliable rollback plan.
