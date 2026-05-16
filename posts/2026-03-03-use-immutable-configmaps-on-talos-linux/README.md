@@ -26,7 +26,7 @@ This is a one-way switch. Once a ConfigMap is immutable, there is no going back.
 
 There are several good reasons to make your ConfigMaps immutable:
 
-**Performance at scale.** For clusters with thousands of ConfigMaps, the kubelet maintains watches on all of them to detect changes. Immutable ConfigMaps are excluded from this watch, reducing load on the API server and the kubelet. On large Talos Linux clusters, this can make a noticeable difference.
+**Performance at scale.** For clusters with many ConfigMaps mounted by Pods, the kubelet normally watches those ConfigMaps to detect changes. Immutable ConfigMaps are excluded from this watch, reducing load on the API server and the kubelet. On large Talos Linux clusters, this can make a noticeable difference.
 
 **Protection against accidental changes.** In a shared cluster, someone might accidentally modify a ConfigMap that multiple applications depend on. Making it immutable prevents this.
 
@@ -148,7 +148,7 @@ spec:
 
 ## Using Content Hashes for Versioning
 
-Another approach is to use a hash of the ConfigMap content as the version identifier. This is what tools like Kustomize and Helm do:
+Another approach is to use a hash of the ConfigMap content as the version identifier. This is what tools like Kustomize do automatically, and what Helm charts often implement explicitly:
 
 ```bash
 # Generate a hash-based name
@@ -185,7 +185,7 @@ configMapGenerator:
     immutable: true
 ```
 
-When you run `kustomize build`, it generates a ConfigMap with a content-based hash suffix and automatically updates all references in your Deployments and other resources.
+When you run `kustomize build`, it generates a ConfigMap with a content-based hash suffix and automatically updates supported references in your Deployments and other resources.
 
 ## Converting Existing ConfigMaps to Immutable
 
@@ -259,7 +259,7 @@ Each time you update the `configVersion` and run `helm upgrade`, a new immutable
 
 The performance benefit of immutable ConfigMaps becomes significant at scale. Here is what happens under the hood:
 
-1. For mutable ConfigMaps, the kubelet watches each one through the API server, polling for updates every sync cycle (default 60 seconds).
+1. For mutable ConfigMaps consumed by Pods, the kubelet detects changes using its configured change detection strategy. The default strategy is watch-based, and projected volume updates can be delayed by the kubelet sync period plus cache propagation delay.
 2. For immutable ConfigMaps, the kubelet skips the watch entirely after the initial fetch.
 
 On a Talos Linux cluster with hundreds of nodes and thousands of ConfigMaps, reducing the number of active watches can lower API server CPU usage and network traffic measurably. If you have ConfigMaps that rarely or never change, making them immutable is an easy performance win.
