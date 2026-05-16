@@ -45,6 +45,7 @@ kubectl describe svc my-app | tail -20
 ```bash
 # Cause 1: No load balancer controller installed
 # Fix: Install MetalLB or kube-vip
+helm repo add metallb https://metallb.github.io/metallb
 helm install metallb metallb/metallb --namespace metallb-system --create-namespace
 
 # Cause 2: No IP address pool configured
@@ -109,8 +110,8 @@ kubectl logs -n metallb-system -l app.kubernetes.io/component=speaker --tail=50
 kubectl get events -n metallb-system --sort-by=.lastTimestamp | grep 192.168.1.200
 
 # Step 5: Verify the service has healthy endpoints
-kubectl get endpoints my-app
-# If ENDPOINTS is <none>, no pods are matching the selector
+kubectl get endpointslices -l kubernetes.io/service-name=my-app
+# If there are no ready endpoints in the EndpointSlices, no ready pods are matching the selector
 
 # Step 6: Test from inside the cluster
 kubectl run test --rm -it --restart=Never --image=busybox -- \
@@ -157,7 +158,7 @@ kubectl get pods -l app=my-app -o wide
 kubectl get pods -l app=my-app --sort-by=.status.containerStatuses[0].restartCount
 
 # Step 3: Check endpoint updates
-kubectl get endpoints my-app -w
+kubectl get endpointslices -l kubernetes.io/service-name=my-app -w
 # Watch for endpoints being added/removed frequently
 
 # Step 4: Check node health
@@ -211,7 +212,7 @@ kubectl get configmap kube-proxy -n kube-system -o yaml | grep mode
 kubectl get svc my-app -o yaml | grep externalTrafficPolicy
 
 # Step 4: Verify all endpoints are healthy
-kubectl get endpoints my-app -o yaml | grep -c "ip:"
+kubectl get endpointslices -l kubernetes.io/service-name=my-app -o yaml | grep -c "addresses:"
 ```
 
 ### Fixes
@@ -232,14 +233,14 @@ spec:
 ```
 
 ```yaml
-# Switch to Cluster externalTrafficPolicy for better distribution
+# Switch to Cluster externalTrafficPolicy for cluster-wide endpoint selection
 # (but lose client IP preservation)
 apiVersion: v1
 kind: Service
 metadata:
   name: my-app
 spec:
-  externalTrafficPolicy: Cluster  # Default - distributes evenly
+  externalTrafficPolicy: Cluster  # Default - can select endpoints on any node
   type: LoadBalancer
   ports:
   - port: 80
@@ -255,7 +256,7 @@ Traffic fails during rolling updates:
 
 ```bash
 # Watch endpoints during a deployment
-kubectl get endpoints my-app -w &
+kubectl get endpointslices -l kubernetes.io/service-name=my-app -w &
 
 # Trigger a rollout
 kubectl rollout restart deployment my-app
@@ -271,11 +272,17 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   strategy:
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0  # Never reduce below desired replicas
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       terminationGracePeriodSeconds: 60
       containers:
@@ -312,7 +319,7 @@ talosctl netstat --nodes $NODE_IP
 talosctl dmesg --nodes $NODE_IP | grep -i "net\|eth\|link\|arp"
 
 # Check Talos service health
-talosctl services --nodes $NODE_IP
+talosctl service --nodes $NODE_IP
 
 # Read system logs
 talosctl logs kubelet --nodes $NODE_IP | tail -50
@@ -343,8 +350,8 @@ echo "--- Service YAML (relevant fields) ---"
 kubectl get svc "$SERVICE" -n "$NAMESPACE" -o yaml | grep -E "type:|externalTrafficPolicy:|loadBalancerIP:|sessionAffinity:|externalIP"
 
 echo ""
-echo "--- Endpoints ---"
-kubectl get endpoints "$SERVICE" -n "$NAMESPACE"
+echo "--- EndpointSlices ---"
+kubectl get endpointslices -l kubernetes.io/service-name="$SERVICE" -n "$NAMESPACE"
 
 echo ""
 echo "--- Pod Status ---"
