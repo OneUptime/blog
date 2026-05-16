@@ -21,7 +21,7 @@ The kubelet on each node sends regular heartbeats to the API server. These heart
 - **PIDPressure** - Too many processes on the node
 - **NetworkUnavailable** - The node network is not properly configured
 
-If the API server does not receive a heartbeat within the node monitor grace period (default 40 seconds), it marks the node as NotReady.
+If the API server does not receive a heartbeat within the node monitor grace period (default 50 seconds), it marks the node as NotReady or Unknown.
 
 ## Checking Node Status
 
@@ -38,7 +38,7 @@ Look at the Conditions section in the describe output:
 
 ```bash
 # Check node conditions specifically
-kubectl get nodes -o custom-columns=NAME:.metadata.name,STATUS:.status.conditions[-1].type,REASON:.status.conditions[-1].reason,MESSAGE:.status.conditions[-1].message
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .status.conditions[*]}{.type}={.status}{" "}{end}{"\n"}{end}'
 ```
 
 ## Common Cause: Kubelet Not Running
@@ -76,8 +76,8 @@ If the node loses network connectivity to the API server, heartbeats will not ar
 talosctl -n <node-ip> get addresses
 talosctl -n <node-ip> get routes
 
-# Check if the node can reach the API server
-talosctl -n <node-ip> service kubelet
+# Check kubelet logs for API server connection errors
+talosctl -n <node-ip> logs kubelet --tail 100
 ```
 
 If the node is completely unreachable from your workstation, the network may be down at a physical level. Check the network switch, cables, or cloud provider networking.
@@ -135,7 +135,7 @@ If the flannel DaemonSet is healthy but the CNI config is missing:
 
 ```bash
 # Check CNI config directory
-talosctl -n <node-ip> ls /etc/cni/net.d/
+talosctl -n <node-ip> list /etc/cni/net.d/
 ```
 
 ## Common Cause: Resource Pressure
@@ -238,7 +238,7 @@ talosctl -n <node-ip> logs kubelet --follow
 
 ## Forcing Pod Eviction from NotReady Nodes
 
-When a node is NotReady, Kubernetes waits for the `pod-eviction-timeout` (default 5 minutes) before evicting pods. If you know the node is not coming back:
+When a node is NotReady or unreachable, Kubernetes applies `NoExecute` taints. By default, pods get `node.kubernetes.io/not-ready` and `node.kubernetes.io/unreachable` tolerations with `tolerationSeconds=300`, so they usually remain bound for 5 minutes before eviction. If you know the node is not coming back:
 
 ```bash
 # Drain the node to reschedule pods immediately
