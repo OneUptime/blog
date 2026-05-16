@@ -10,11 +10,11 @@ Description: Learn how to set up Kubernetes federation across multiple Talos Lin
 
 Cluster federation lets you treat multiple Kubernetes clusters as a single logical unit. Instead of deploying applications to each cluster individually, you define your workloads once and let the federation layer distribute them. For organizations running Talos Linux clusters across regions or environments, federation simplifies operations significantly.
 
-This guide covers setting up Kubernetes federation across Talos Linux clusters using both the KubeFed project and newer approaches like Admiralty or Liqo.
+This guide covers setting up Kubernetes federation across Talos Linux clusters using the archived KubeFed project and newer approaches like Liqo.
 
 ## What Federation Gives You
 
-Federation is not just about convenience. It provides real operational benefits. You can deploy workloads across clusters for high availability. If one cluster goes down, traffic shifts to another. You can distribute workloads based on capacity, latency, or cost. Compliance requirements that demand data locality become easier to handle when you can control where workloads land.
+Federation is not just about convenience. It provides real operational benefits. You can deploy workloads across clusters for high availability. With the right health checks and global traffic routing in place, if one cluster goes down, traffic can shift to another. You can distribute workloads based on capacity, latency, or cost. Compliance requirements that demand data locality become easier to handle when you can control where workloads land.
 
 The tradeoff is complexity. Federation adds another layer to manage. But for teams already running multiple Talos clusters, that complexity often pays for itself.
 
@@ -38,7 +38,7 @@ kubectl get nodes
 
 ## Setting Up KubeFed
 
-KubeFed (Kubernetes Federation v2) is the official federation project. It uses a host cluster to manage member clusters. The host cluster runs the federation control plane, and member clusters join the federation.
+KubeFed (Kubernetes Federation v2) is the retired Kubernetes SIG Multicluster federation project. It uses a host cluster to manage member clusters. The host cluster runs the federation control plane, and member clusters join the federation.
 
 First, install KubeFed on your host cluster:
 
@@ -54,7 +54,7 @@ helm repo update
 helm install kubefed kubefed-charts/kubefed \
   --namespace kube-federation-system \
   --create-namespace \
-  --set controllermanager.replicaCount=2
+  --set controllermanager.controller.replicaCount=2
 ```
 
 Wait for the KubeFed components to come up:
@@ -109,6 +109,9 @@ KubeFed works by federating existing Kubernetes resource types. You enable feder
 kubefedctl enable deployments.apps
 kubefedctl enable services
 kubefedctl enable configmaps
+
+# Federate the namespace that will contain namespaced federated resources
+kubefedctl federate namespace default
 ```
 
 Now create a federated deployment:
@@ -166,25 +169,30 @@ This creates the nginx deployment on both clusters, with 2 replicas on cluster-a
 Liqo is a newer approach to multi-cluster that works differently from KubeFed. Instead of federating resources, Liqo creates virtual nodes that represent remote clusters. Pods scheduled on virtual nodes actually run on the remote cluster.
 
 ```bash
+# Install liqoctl on your workstation
+curl --fail -LS "https://github.com/liqotech/liqo/releases/download/v1.1.1/liqoctl-linux-amd64.tar.gz" | tar -xz
+sudo install -o root -g root -m 0755 liqoctl /usr/local/bin/liqoctl
+
+# Replace the Pod and Service CIDRs below with the actual ranges for each cluster.
 # Install Liqo on cluster-a
-curl -sL https://get.liqo.io | bash
+export KUBECONFIG=~/talos-clusters/cluster-a/kubeconfig
+liqoctl install --cluster-id cluster-a \
+  --pod-cidr 10.244.0.0/16 \
+  --service-cidr 10.96.0.0/12
 
 # Install Liqo on cluster-b
 export KUBECONFIG=~/talos-clusters/cluster-b/kubeconfig
-curl -sL https://get.liqo.io | bash
+liqoctl install --cluster-id cluster-b \
+  --pod-cidr 10.245.0.0/16 \
+  --service-cidr 10.97.0.0/12
 ```
 
 Peer the clusters together:
 
 ```bash
-# On cluster-a, generate the peering command
+# Peer cluster-a with cluster-b from the consumer cluster
 export KUBECONFIG=~/talos-clusters/cluster-a/kubeconfig
-liqoctl generate peer-command
-
-# The output gives you a command to run on cluster-b
-# Run it on cluster-b
-export KUBECONFIG=~/talos-clusters/cluster-b/kubeconfig
-liqoctl peer --remote-kubeconfig ~/talos-clusters/cluster-a/kubeconfig
+liqoctl peer --remote-kubeconfig ~/talos-clusters/cluster-b/kubeconfig
 ```
 
 Once peered, you will see virtual nodes appear:
@@ -198,7 +206,12 @@ kubectl get nodes
 # liqo-cluster-b      Ready    agent    # virtual node representing cluster-b
 ```
 
-Now you can schedule pods on the remote cluster just by using node affinity or tolerations:
+Now create and offload a namespace, then schedule pods on the remote cluster by using node affinity. Liqo's webhook adds the required toleration for pods in offloaded namespaces:
+
+```bash
+kubectl create namespace liqo-demo
+liqoctl offload namespace liqo-demo
+```
 
 ```yaml
 # deploy-to-remote.yaml
@@ -206,6 +219,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nginx-remote
+  namespace: liqo-demo
 spec:
   replicas: 2
   selector:
@@ -234,7 +248,7 @@ spec:
 
 For federation to work properly, clusters need network connectivity. With Talos Linux, you have several options. If clusters are on the same network, direct connectivity works. For clusters in different networks or cloud regions, you need a mesh VPN or tunnel.
 
-Cilium ClusterMesh is an excellent option for Talos clusters already using Cilium as their CNI:
+Cilium ClusterMesh is an excellent option for Talos clusters already using Cilium as their CNI. Make sure the clusters have non-overlapping Pod CIDRs and that nodes in each cluster can reach the other cluster's node InternalIPs before enabling it:
 
 ```bash
 # Enable ClusterMesh on both clusters
@@ -245,7 +259,7 @@ cilium clustermesh enable --context cluster-b
 cilium clustermesh connect --context cluster-a --destination-context cluster-b
 ```
 
-This establishes encrypted tunnels between clusters and enables cross-cluster service discovery.
+This enables cross-cluster pod connectivity and service discovery. Encryption depends on your Cilium datapath and encryption configuration, so enable Cilium WireGuard or IPsec if you need encrypted inter-cluster pod traffic.
 
 ## Handling Failures
 
@@ -279,7 +293,7 @@ Keep an eye on federation health by monitoring the KubeFed controller manager lo
 
 ```bash
 # Check federation controller logs
-kubectl logs -n kube-federation-system -l control-plane=controller-manager -f
+kubectl logs -n kube-federation-system -l kubefed-control-plane=controller-manager -f
 
 # Check status of federated deployments
 kubectl get federateddeployments -A -o wide
