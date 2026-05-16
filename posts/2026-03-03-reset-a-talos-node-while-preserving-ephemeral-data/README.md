@@ -114,7 +114,7 @@ kubectl get nodes --watch
 talosctl health --nodes "${NODE_IP}" --wait-timeout 10m
 
 # Verify container images are still cached
-talosctl images --nodes "${NODE_IP}"
+talosctl image list --nodes "${NODE_IP}"
 ```
 
 You should see that many container images are already present on the node, which means pods can start immediately without pulling.
