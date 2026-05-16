@@ -34,13 +34,12 @@ Since Talos does not include IPSec tools by default, you have two approaches:
 
 ### Approach 1: System Extension
 
-If an IPSec system extension is available, it runs at the OS level:
+If an IPSec system extension is available, include it in the Talos boot assets or installer image. Modern Talos installs system extensions through generated boot assets or a custom installer image:
 
 ```yaml
 machine:
   install:
-    extensions:
-      - image: ghcr.io/siderolabs/ipsec-tools:v1.0.0  # Example
+    image: ghcr.io/example/talos-installer-with-ipsec:v1.10.0  # Example custom installer
 ```
 
 ### Approach 2: Containerized IPSec (strongSwan/Libreswan)
@@ -76,8 +75,9 @@ spec:
                 - SYS_MODULE
                 - SYS_ADMIN
           volumeMounts:
-            - name: ipsec-config
+            - name: ipsec-certs
               mountPath: /etc/ipsec.d
+              readOnly: true
             - name: ipsec-secrets
               mountPath: /etc/ipsec.secrets
               subPath: ipsec.secrets
@@ -92,8 +92,17 @@ spec:
               hostPort: 4500
               protocol: UDP
       volumes:
-        - name: ipsec-config
-          emptyDir: {}
+        - name: ipsec-certs
+          secret:
+            secretName: ipsec-certs
+            optional: true
+            items:
+              - key: server.key
+                path: private/server.key
+              - key: server.crt
+                path: certs/server.crt
+              - key: ca.crt
+                path: cacerts/ca.crt
         - name: ipsec-secrets
           secret:
             secretName: ipsec-secrets
@@ -168,7 +177,7 @@ stringData:
     @talos-cluster @remote-site : PSK "your-very-strong-pre-shared-key-here"
 ```
 
-For production, use certificates instead of pre-shared keys:
+For production, use certificates instead of pre-shared keys. Keep the strongSwan secrets file in the `ipsec-secrets` Secret:
 
 ```yaml
 apiVersion: v1
@@ -179,7 +188,18 @@ metadata:
 type: Opaque
 stringData:
   ipsec.secrets: |
-    : RSA /etc/ipsec.d/private/server.key
+    : RSA server.key
+```
+
+Store the private key, certificate, and CA certificate in the `ipsec-certs` Secret so the DaemonSet can mount them under `/etc/ipsec.d/private`, `/etc/ipsec.d/certs`, and `/etc/ipsec.d/cacerts`:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ipsec-certs
+  namespace: kube-system
+type: Opaque
 data:
   server.key: <base64-encoded-private-key>
   server.crt: <base64-encoded-certificate>
@@ -202,7 +222,7 @@ machine:
     net.ipv4.conf.all.accept_redirects: "0"
     net.ipv4.conf.default.accept_redirects: "0"
 
-    # Increase xfrm (IPSec transform) state table
+    # Drop packets while waiting for an xfrm state to be acquired
     net.core.xfrm_larval_drop: "1"
 
   kernel:
