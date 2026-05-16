@@ -67,7 +67,7 @@ If you have multiple talosconfigs for different clusters, make sure you are usin
 
 ```bash
 # Explicitly specify the talosconfig
-talosctl --talosconfig /path/to/correct/talosconfig services --nodes 192.168.1.10
+talosctl --talosconfig /path/to/correct/talosconfig service --nodes 192.168.1.10
 
 # Or set the environment variable
 export TALOSCONFIG=/path/to/correct/talosconfig
@@ -123,7 +123,7 @@ Obtain the new talosconfig that matches the regenerated certificates:
 
 ```bash
 # Generate a new talosconfig from the cluster secrets
-talosctl gen config my-cluster https://192.168.1.10:6443
+talosctl gen config my-cluster https://192.168.1.10:6443 --with-secrets secrets.yaml
 
 # The generated talosconfig will be in the current directory
 # Merge it with your existing config or replace it
@@ -150,20 +150,21 @@ If the Talos node's clock is wrong, configure NTP in the machine configuration:
 
 ```yaml
 # In your machine config
-machine:
-  time:
-    servers:
-      - time.cloudflare.com
-      - pool.ntp.org
+apiVersion: v1alpha1
+kind: TimeSyncConfig
+ntp:
+  servers:
+    - time.cloudflare.com
+    - pool.ntp.org
 ```
 
 Apply the corrected configuration:
 
 ```bash
-talosctl apply-config --nodes 192.168.1.10 --file config.yaml --insecure
+talosctl apply-config --nodes 192.168.1.10 --file config.yaml
 ```
 
-The `--insecure` flag is needed here because you cannot establish a TLS connection with the current credentials.
+If the node is still in maintenance mode because it has not been configured yet, add `--insecure` and connect directly to the node.
 
 ### Cause 4: Certificate SANs Mismatch
 
@@ -182,12 +183,11 @@ Regenerate the machine configuration with the correct SANs:
 
 ```yaml
 # Include additional SANs in the machine configuration
-cluster:
-  apiServer:
-    certSANs:
-      - 192.168.1.10
-      - k8s.example.com
-      - loadbalancer.example.com
+machine:
+  certSANs:
+    - 192.168.1.10
+    - talos.example.com
+    - loadbalancer.example.com
 ```
 
 ### Cause 5: Corrupted talosconfig
@@ -228,17 +228,17 @@ Configure the proxy or load balancer to pass through TLS traffic without termina
 
 ## Recovery with --insecure Flag
 
-When TLS is completely broken and you need to fix the configuration, the `--insecure` flag bypasses certificate verification:
+The `--insecure` flag is for Talos maintenance mode, such as applying the first machine configuration before the node has the cluster PKI. It does not bypass mTLS for every command on an already configured node:
 
 ```bash
-# Apply a new configuration without TLS verification
+# Apply the first machine configuration over the maintenance API
 talosctl apply-config --nodes 192.168.1.10 --file new-config.yaml --insecure
 
-# Check disks without TLS verification
-talosctl disks --nodes 192.168.1.10 --insecure --endpoints 192.168.1.10
+# Check resources exposed by the maintenance API
+talosctl get rd --nodes 192.168.1.10 --insecure
 ```
 
-Use `--insecure` only as a recovery mechanism, not as a regular practice. It disables the security that protects your cluster from unauthorized access.
+Use `--insecure` only for initial setup or maintenance operations that explicitly support it. Once a node has a machine configuration, use a valid talosconfig and authenticated mTLS for normal operations.
 
 ## Prevention
 
