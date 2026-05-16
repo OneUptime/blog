@@ -34,17 +34,17 @@ Before writing any Terraform, import the Talos Linux image into your GCP project
 ```bash
 # Download the Talos GCP image
 
-wget https://github.com/siderolabs/talos/releases/download/v1.7.0/gcp-amd64.tar.gz
+wget https://github.com/siderolabs/talos/releases/download/v1.7.0/gcp-amd64.raw.tar.gz
 
 # Create a GCS bucket for the image
 gsutil mb gs://talos-images-${PROJECT_ID}
 
 # Upload the image
-gsutil cp gcp-amd64.tar.gz gs://talos-images-${PROJECT_ID}/
+gsutil cp gcp-amd64.raw.tar.gz gs://talos-images-${PROJECT_ID}/
 
 # Create the compute image from the uploaded file
 gcloud compute images create talos-v1-7-0 \
-  --source-uri=gs://talos-images-${PROJECT_ID}/gcp-amd64.tar.gz \
+  --source-uri=gs://talos-images-${PROJECT_ID}/gcp-amd64.raw.tar.gz \
   --guest-os-features=VIRTIO_SCSI_MULTIQUEUE
 ```
 
