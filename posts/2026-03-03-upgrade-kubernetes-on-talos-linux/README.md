@@ -47,7 +47,7 @@ kubectl get nodes -o wide
 Each Talos release supports specific Kubernetes versions. Check the Talos documentation or release notes to confirm compatibility:
 
 ```bash
-# General rule: Talos v1.7.x supports Kubernetes v1.28.x through v1.30.x
+# Example: Talos v1.7.x supports Kubernetes v1.25.x through v1.30.x
 # Always verify with the official compatibility matrix
 ```
 
@@ -65,9 +65,10 @@ talosctl upgrade-k8s --nodes 192.168.1.10 \
 
 This command upgrades the Kubernetes components in the correct order:
 
-1. Updates the control plane components (API server, controller manager, scheduler)
-2. Updates the kubelet on each node
-3. Updates CoreDNS and other add-ons
+1. Pre-pulls images for the new Kubernetes components
+2. Updates the control plane components (API server, controller manager, scheduler)
+3. Updates kube-proxy and Talos-managed bootstrap manifests such as CoreDNS
+4. Updates the kubelet on each node when `--upgrade-kubelet` is enabled
 
 The `--nodes` flag should point to a control plane node. The command manages the entire cluster-wide upgrade from there.
 
@@ -151,7 +152,9 @@ talosctl upgrade-k8s --nodes 192.168.1.10 \
   --to 1.30.0 \
   --apiserver-image myregistry.com/kube-apiserver \
   --controller-manager-image myregistry.com/kube-controller-manager \
-  --scheduler-image myregistry.com/kube-scheduler
+  --scheduler-image myregistry.com/kube-scheduler \
+  --proxy-image myregistry.com/kube-proxy \
+  --kubelet-image myregistry.com/kubelet
 ```
 
 This is common in air-gapped environments where you cannot pull images from public registries.
@@ -170,8 +173,8 @@ The `talosctl upgrade-k8s` command upgrades these components:
 - kube-proxy (if used)
 
 **Add-ons:**
-- CoreDNS
 - kube-proxy DaemonSet
+- Talos-managed bootstrap manifests such as CoreDNS
 
 **What does NOT get upgraded:**
 - Talos OS itself (use `talosctl upgrade` for that)
@@ -191,7 +194,7 @@ helm upgrade cilium cilium/cilium \
   --version 1.15.0
 
 # Example: Upgrade Flannel
-kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
+kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
 ```
 
 Check your CNI's compatibility matrix to ensure it supports the new Kubernetes version.
@@ -207,7 +210,7 @@ If the API server does not come up after the upgrade:
 talosctl logs kube-apiserver --nodes 192.168.1.10
 
 # Check system events
-talosctl get events --nodes 192.168.1.10
+talosctl events --nodes 192.168.1.10 --tail 50
 
 # If the API server has a configuration issue, you may need to
 # revert the Kubernetes version
@@ -241,8 +244,8 @@ talosctl logs etcd --nodes 192.168.1.10
 talosctl etcd members --nodes 192.168.1.10
 
 # If etcd is in a bad state, restore from the pre-upgrade snapshot
-talosctl etcd recover --nodes 192.168.1.10 \
-  --snapshot /tmp/etcd-pre-k8s-upgrade.snapshot
+talosctl bootstrap --nodes 192.168.1.10 \
+  --recover-from /tmp/etcd-pre-k8s-upgrade.snapshot
 ```
 
 ## Post-Upgrade Checklist
