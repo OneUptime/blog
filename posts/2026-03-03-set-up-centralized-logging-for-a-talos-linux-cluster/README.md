@@ -208,7 +208,7 @@ Apply the resources:
 kubectl apply -f vector-machine-logs.yaml
 
 # Apply the logging patch to all Talos nodes
-talosctl apply-config --nodes 192.168.1.10,192.168.1.20 --patch @talos-logging-patch.yaml
+talosctl patch mc --nodes 192.168.1.10,192.168.1.20 --patch @talos-logging-patch.yaml
 ```
 
 ## Deploying Grafana
