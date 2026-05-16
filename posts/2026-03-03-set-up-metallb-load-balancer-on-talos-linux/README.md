@@ -50,7 +50,7 @@ cluster:
 Apply it:
 
 ```bash
-talosctl patch machineconfig --nodes $CP_NODES --patch-file talos-proxy-patch.yaml
+talosctl patch machineconfig --nodes $CP_NODES --patch @talos-proxy-patch.yaml
 ```
 
 ## Installing MetalLB
@@ -62,8 +62,12 @@ Install MetalLB using Helm:
 helm repo add metallb https://metallb.github.io/metallb
 helm repo update
 
-# Create the namespace
+# Create the namespace and allow MetalLB speaker's required network privileges
 kubectl create namespace metallb-system
+kubectl label namespace metallb-system \
+    pod-security.kubernetes.io/enforce=privileged \
+    pod-security.kubernetes.io/audit=privileged \
+    pod-security.kubernetes.io/warn=privileged
 
 # Install MetalLB
 helm install metallb metallb/metallb \
@@ -116,7 +120,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-  - 10.0.0.200/28  # 10.0.0.200 through 10.0.0.215
+  - 10.0.0.192/28  # 10.0.0.192 through 10.0.0.207
   autoAssign: true  # Automatically assign IPs from this pool
 ```
 
@@ -217,10 +221,10 @@ metadata:
   name: critical-app
   namespace: production
   annotations:
-    metallb.universe.tf/address-pool: production  # Use the production pool
+    metallb.io/address-pool: production  # Use the production pool
+    metallb.io/loadBalancerIPs: 192.168.1.201  # Request this specific IP
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.201  # Request this specific IP
   ports:
   - port: 443
     targetPort: 8443
@@ -238,10 +242,10 @@ kind: Service
 metadata:
   name: http-service
   annotations:
-    metallb.universe.tf/allow-shared-ip: "shared-web"
+    metallb.io/allow-shared-ip: "shared-web"
+    metallb.io/loadBalancerIPs: 192.168.1.200
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.200
   ports:
   - port: 80
     targetPort: 8080
@@ -253,10 +257,10 @@ kind: Service
 metadata:
   name: https-service
   annotations:
-    metallb.universe.tf/allow-shared-ip: "shared-web"
+    metallb.io/allow-shared-ip: "shared-web"
+    metallb.io/loadBalancerIPs: 192.168.1.200
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.200
   ports:
   - port: 443
     targetPort: 8443
@@ -278,7 +282,7 @@ curl -s http://localhost:7472/metrics | grep metallb
 # Key metrics:
 # metallb_allocator_addresses_in_use_total - IPs currently assigned
 # metallb_allocator_addresses_total - Total IPs available
-# metallb_layer2_requests_received - L2 requests handled
+# metallb_k8s_client_config_loaded_bool - Whether MetalLB loaded a valid config
 ```
 
 ## Troubleshooting MetalLB on Talos
@@ -302,17 +306,17 @@ arping 192.168.1.200
 
 # Issue: Failover not working
 # Check which node is handling the IP
-kubectl get events -n metallb-system --sort-by=.lastTimestamp
+kubectl get servicel2statuses.metallb.io -n metallb-system
 
-# Check the speaker status on each node
-kubectl exec -n metallb-system -it $(kubectl get pod -n metallb-system -l app.kubernetes.io/component=speaker -o jsonpath='{.items[0].metadata.name}') -- speaker --help
+# Check service events
+kubectl describe svc web-app -n production
 ```
 
 ## Talos-Specific Considerations
 
 On Talos Linux, there are a few things to keep in mind:
 
-1. Talos does not run a traditional firewall, so MetalLB's ARP responses are not blocked by iptables rules
+1. Talos does not manage host firewall rules with a traditional Linux firewall, but if you enable the Talos ingress firewall or upstream ACLs, allow the relevant MetalLB traffic
 2. Make sure your IP pool does not conflict with the Talos node IPs or the Kubernetes service CIDR
 3. If you are using Cilium as your CNI on Talos, MetalLB works well alongside it in L2 mode
 
