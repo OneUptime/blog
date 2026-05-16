@@ -128,10 +128,10 @@ talosctl upgrade --nodes 192.168.1.10 \
   --preserve
 
 # Option B: If already on the latest version, use the same image
-# The --preserve flag keeps the machine configuration
+# The --preserve flag keeps the existing EPHEMERAL partition data
 ```
 
-The `--preserve` flag is important here. It tells Talos to keep the existing machine configuration and only update the system components. Without this flag, you would lose the machine configuration and need to re-apply it.
+The `--preserve` flag tells Talos to keep the contents of the EPHEMERAL partition (container images, pod data, logs) intact across the upgrade. Without it, Talos wipes EPHEMERAL by default. The machine configuration lives on the STATE partition and is preserved across upgrades regardless of this flag. Because the EPHEMERAL partition is defined with a grow flag, Talos still resizes it to fill the newly available space on the disk even when `--preserve` is set.
 
 ### Step 3: Verify the Expansion
 
@@ -205,7 +205,7 @@ talosctl etcd snapshot /tmp/etcd-backup.snapshot --nodes 192.168.1.10
 
 ## Important Considerations
 
-**Data on the EPHEMERAL partition is not preserved during repartitioning.** When you trigger an upgrade that causes repartitioning, the existing data on the EPHEMERAL partition may be wiped. This is why draining the node first is critical. Make sure all important data is either:
+**EPHEMERAL data is wiped by default on upgrade.** Unless you pass `--preserve`, an upgrade wipes the EPHEMERAL partition. Even with `--preserve`, you should still treat anything on this partition as disposable, because it is not designed for long-term storage and a future operation (reset, reinstall, or an upgrade run without `--preserve`) will clear it. This is why draining the node first is critical. Make sure all important data is either:
 - Stored on persistent volumes backed by external storage
 - Replicated across multiple nodes
 - Backed up before the operation
