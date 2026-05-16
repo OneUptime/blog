@@ -74,10 +74,10 @@ needs-restarting -s
 
 ```bash
 # Check for accounts with no password set
-sudo awk -F: '($2 == "" || $2 == "!") {print $1}' /etc/shadow
+sudo awk -F: '($2 == "") {print $1}' /etc/shadow
 
 # List users who have not logged in for 90 days
-sudo lastlog | awk '$NF != "in" && NR > 1 {print $1}'
+sudo lastlog --before 90
 
 # Review sudo access
 sudo cat /etc/sudoers.d/*

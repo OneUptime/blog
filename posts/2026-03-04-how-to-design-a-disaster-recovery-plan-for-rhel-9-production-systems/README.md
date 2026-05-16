@@ -44,7 +44,7 @@ sudo rear mkbackup
 sudo rsync -aAXv --delete /important-data/ backup-server:/backups/data/
 
 # Database backup
-sudo -u postgres pg_dumpall > /backup/postgresql-full.sql
+sudo -u postgres pg_dumpall | sudo tee /backup/postgresql-full.sql > /dev/null
 ```
 
 ### Configuration Backup
@@ -65,9 +65,14 @@ sudo tar czf /backup/system-config.tar.gz \
 
 ```bash
 # Replace disk in RAID array
-sudo mdadm /dev/md0 --add /dev/sdc1
-# Or replace LVM PV
+sudo mdadm --manage /dev/md0 --fail /dev/sdb1
+sudo mdadm --manage /dev/md0 --remove /dev/sdb1
+sudo mdadm --manage /dev/md0 --add /dev/sdc1
+# Or migrate data off a still-readable LVM PV before replacement
+sudo pvcreate /dev/sdc
+sudo vgextend my_vg /dev/sdc
 sudo pvmove /dev/sdb /dev/sdc
+sudo vgreduce my_vg /dev/sdb
 ```
 
 ### Scenario 2 - Complete Server Loss
@@ -97,4 +102,3 @@ Schedule quarterly DR tests:
 ## Conclusion
 
 A tested disaster recovery plan for RHEL 9 combines system backups with rear, data backups with rsync, and documented recovery procedures. Test your plan quarterly to ensure it works when you need it.
-

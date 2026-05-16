@@ -65,6 +65,14 @@ Run this on all 6 nodes:
 sudo swapoff -a
 sudo sed -i '/ swap / s/^/#/' /etc/fstab
 
+# Calico manages Kubernetes networking rules on the nodes
+sudo systemctl disable --now firewalld
+sudo tee /etc/NetworkManager/conf.d/calico.conf << 'EOF'
+[keyfile]
+unmanaged-devices=interface-name:cali*;interface-name:tunl*;interface-name:vxlan.calico;interface-name:vxlan-v6.calico;interface-name:wireguard.cali;interface-name:wg-v6.cali
+EOF
+sudo systemctl reload NetworkManager
+
 # Kernel modules and sysctl
 sudo tee /etc/modules-load.d/k8s.conf << 'EOF'
 overlay
@@ -80,6 +88,7 @@ EOF
 sudo sysctl --system
 
 # Install containerd
+sudo dnf install dnf-plugins-core -y
 sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
 sudo dnf install containerd.io -y
 sudo containerd config default | sudo tee /etc/containerd/config.toml
@@ -90,13 +99,14 @@ sudo systemctl enable --now containerd
 sudo tee /etc/yum.repos.d/kubernetes.repo << 'EOF'
 [kubernetes]
 name=Kubernetes
-baseurl=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/
+baseurl=https://pkgs.k8s.io/core:/stable:/v1.36/rpm/
 enabled=1
 gpgcheck=1
-gpgkey=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1.36/rpm/repodata/repomd.xml.key
+exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
 EOF
-sudo dnf install -y kubelet kubeadm kubectl
-sudo systemctl enable kubelet
+sudo dnf install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+sudo systemctl enable --now kubelet
 ```
 
 ## Initializing the First Control Plane Node
@@ -114,7 +124,7 @@ sudo cp /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
 # Install Calico CNI
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/calico.yaml
 ```
 
 ## Joining Additional Control Plane Nodes

@@ -58,7 +58,7 @@ For AWS Route53, create an IAM policy and user:
             "Action": [
                 "route53:ListHostedZones",
                 "route53:ListResourceRecordSets",
-                "route53:ListTagsForResource"
+                "route53:ListTagsForResources"
             ],
             "Resource": [
                 "*"
@@ -98,7 +98,7 @@ helm install external-dns external-dns/external-dns \
 
 ### Cloudflare Setup
 
-For Cloudflare, create an API token with DNS edit permissions:
+For Cloudflare, create an API token with Zone Read and DNS Edit permissions for the zone you want ExternalDNS to manage:
 
 ```bash
 kubectl create namespace external-dns
@@ -276,7 +276,7 @@ dig app.example.com +short
 nslookup app.example.com
 
 # Check TXT ownership records
-dig _externaldns.app.example.com TXT +short
+dig app.example.com TXT +short
 ```
 
 ExternalDNS creates TXT records alongside your A/CNAME records to track ownership. This prevents it from modifying records it did not create.
@@ -316,7 +316,10 @@ metadata:
   name: external-dns
 rules:
 - apiGroups: [""]
-  resources: ["services", "endpoints", "pods", "nodes"]
+  resources: ["services", "pods", "nodes"]
+  verbs: ["get", "watch", "list"]
+- apiGroups: ["discovery.k8s.io"]
+  resources: ["endpointslices"]
   verbs: ["get", "watch", "list"]
 - apiGroups: ["extensions", "networking.k8s.io"]
   resources: ["ingresses"]

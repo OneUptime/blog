@@ -59,14 +59,14 @@ cd /opt/infra-test
 kitchen init --driver=vagrant --provisioner=shell
 ```
 
-This creates a `.kitchen.yml` file and a `test/` directory.
+This creates a `kitchen.yml` file and a `test/` directory.
 
-## Configuring .kitchen.yml
+## Configuring kitchen.yml
 
 Edit the configuration file:
 
 ```yaml
-# .kitchen.yml
+# kitchen.yml
 driver:
   name: vagrant
   provider: libvirt
@@ -102,9 +102,10 @@ cat > provision.sh << 'EOF'
 #!/bin/bash
 set -e
 
-# Install and configure Apache
-dnf install -y httpd mod_ssl
+# Install and configure Apache and firewalld
+dnf install -y httpd mod_ssl firewalld
 systemctl enable --now httpd
+systemctl enable --now firewalld
 
 # Configure firewall
 firewall-cmd --permanent --add-service=http
@@ -193,7 +194,7 @@ Install the Ansible provisioner:
 gem install kitchen-ansible
 ```
 
-Update .kitchen.yml:
+Update kitchen.yml:
 
 ```yaml
 provisioner:
@@ -212,20 +213,37 @@ Create the playbook:
 - hosts: all
   become: true
   tasks:
-    - name: Install httpd
+    - name: Install httpd and firewalld
       dnf:
-        name: httpd
+        name:
+          - httpd
+          - firewalld
         state: present
 
     - name: Start httpd
-      systemd:
+      systemd_service:
         name: httpd
         state: started
         enabled: true
 
+    - name: Start firewalld
+      systemd_service:
+        name: firewalld
+        state: started
+        enabled: true
+
+    - name: Allow web services through firewalld
+      command: firewall-cmd --permanent --add-service={{ item }}
+      loop:
+        - http
+        - https
+
+    - name: Reload firewalld
+      command: firewall-cmd --reload
+
     - name: Create index page
       copy:
-        content: "<h1>Ansible Provisioned Server</h1>"
+        content: "<h1>Test Kitchen Provisioned Server</h1>"
         dest: /var/www/html/index.html
 ```
 

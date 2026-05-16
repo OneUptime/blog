@@ -47,16 +47,15 @@ ansible-galaxy collection install community.docker
       ansible.builtin.dnf:
         name:
           - podman
+          - runc
           - buildah
           - containers-common
         state: absent
 
-    - name: Install required dependencies
+    - name: Install repository tooling
       ansible.builtin.dnf:
         name:
           - dnf-plugins-core
-          - device-mapper-persistent-data
-          - lvm2
         state: present
 
     - name: Add Docker CE repository
@@ -74,6 +73,7 @@ ansible-galaxy collection install community.docker
           - docker-ce
           - docker-ce-cli
           - containerd.io
+          - docker-buildx-plugin
           - docker-compose-plugin
         state: present
 
@@ -209,15 +209,12 @@ For more complex applications, use Docker Compose through Ansible:
         dest: /opt/myapp/docker-compose.yml
         mode: "0644"
         content: |
-          version: "3.8"
           services:
             web:
               image: nginx:1.25
               ports:
                 - "80:80"
                 - "443:443"
-              volumes:
-                - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
               depends_on:
                 - app
               restart: unless-stopped
@@ -239,7 +236,7 @@ For more complex applications, use Docker Compose through Ansible:
               environment:
                 - POSTGRES_DB=myapp
                 - POSTGRES_USER=myapp
-                - POSTGRES_PASSWORD_FILE=/run/secrets/db_password
+                - POSTGRES_PASSWORD=change-me-example
               restart: unless-stopped
 
             cache:
@@ -294,4 +291,4 @@ sudo firewall-cmd --reload
 
 ## Wrapping Up
 
-Using Ansible to deploy Docker containers on RHEL gives you a repeatable deployment process. The `community.docker` collection provides modules for every Docker operation. For new projects on RHEL, consider Podman instead since it is the native container runtime, but if you need Docker for compatibility, this approach gets you there cleanly.
+Using Ansible to deploy Docker containers on RHEL gives you a repeatable deployment process. The `community.docker` collection provides modules for many common Docker operations. For new projects on RHEL, consider Podman instead since it is the native container runtime, but if you need Docker for compatibility, this approach gets you there cleanly.

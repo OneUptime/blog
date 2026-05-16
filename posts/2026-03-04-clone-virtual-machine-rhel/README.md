@@ -57,8 +57,8 @@ sudo virt-clone \
 After cloning, the clone has the same hostname, SSH keys, and machine ID as the original. Use `virt-sysprep` to clean up:
 
 ```bash
-# Install libguestfs-tools if not present
-sudo dnf install -y libguestfs-tools
+# Install guestfs-tools if not present
+sudo dnf install -y guestfs-tools
 
 # Run virt-sysprep on the cloned disk image
 sudo virt-sysprep -d rhel9-clone
@@ -67,7 +67,7 @@ sudo virt-sysprep -d rhel9-clone
 # - SSH host keys (regenerated on first boot)
 # - Machine ID
 # - DHCP leases
-# - User accounts passwords (optional)
+# - User accounts (only if the user-account operation is enabled)
 # - Log files
 # - Temporary files
 ```
@@ -96,7 +96,7 @@ sudo virsh start rhel9-clone
 # Connect to the console to verify
 sudo virsh console rhel9-clone
 
-# The clone will have a new MAC address and get a new DHCP lease
+# If the guest uses DHCP, the clone will request a lease with its new MAC address
 sudo virsh domifaddr rhel9-clone
 ```
 
@@ -117,4 +117,4 @@ sudo virt-clone --original rhel9-template --name new-vm --auto-clone
 sudo virsh start new-vm
 ```
 
-Always run `virt-sysprep` on clones before starting them to avoid duplicate identifiers on your network. This prevents IP conflicts, SSH key warnings, and other issues caused by identical machine identities.
+Run `virt-sysprep` on the template or clone before starting cloned VMs to avoid duplicate identifiers on your network. This prevents IP conflicts, SSH key warnings, and other issues caused by identical machine identities.

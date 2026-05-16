@@ -71,10 +71,10 @@ sudo pcs cluster enable --all
 For two-node clusters, Corosync uses special quorum handling. Verify:
 
 ```bash
-sudo pcs quorum config
+sudo pcs quorum status
 ```
 
-The `two_node: 1` option should be set automatically, which enables `wait_for_all` to prevent split-brain on simultaneous startup.
+The runtime status should show `Quorum: 1` and a `2Node` flag. In RHEL, `wait_for_all` is enabled automatically for a two-node cluster that does not use a quorum device and does not enable `auto_tie_breaker`, which helps avoid startup quorum races.
 
 ## Step 4: Configure STONITH Fencing
 

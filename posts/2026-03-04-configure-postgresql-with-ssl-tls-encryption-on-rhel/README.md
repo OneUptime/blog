@@ -8,7 +8,7 @@ Description: Enable SSL/TLS encryption for PostgreSQL connections on RHEL to pro
 
 ---
 
-By default, PostgreSQL connections are unencrypted. This means passwords and query data travel in plain text. Enabling SSL/TLS encrypts all traffic between the client and server. This is essential for any production PostgreSQL deployment on RHEL.
+By default, PostgreSQL connections are unencrypted. This means query data and connection metadata travel in plain text, and password protection depends on the configured authentication method. Enabling SSL/TLS encrypts all traffic between the client and server. This is essential for any production PostgreSQL deployment on RHEL.
 
 ## Generate SSL Certificates
 
@@ -21,14 +21,22 @@ cd /var/lib/pgsql/certs
 # Generate a CA key and certificate
 sudo openssl genrsa -out ca-key.pem 4096
 sudo openssl req -new -x509 -key ca-key.pem -out ca.pem -days 3650 \
-    -subj "/CN=PostgreSQL CA"
+    -subj "/CN=PostgreSQL CA" \
+    -addext "basicConstraints=critical,CA:TRUE" \
+    -addext "keyUsage=critical,keyCertSign,cRLSign"
 
 # Generate server key and certificate
+HOSTNAME=$(hostname)
 sudo openssl genrsa -out server-key.pem 4096
 sudo openssl req -new -key server-key.pem -out server-req.pem \
-    -subj "/CN=$(hostname)"
+    -subj "/CN=${HOSTNAME}"
+cat <<EOF | sudo tee server-ext.cnf >/dev/null
+subjectAltName = DNS:${HOSTNAME}
+extendedKeyUsage = serverAuth
+EOF
 sudo openssl x509 -req -in server-req.pem \
     -CA ca.pem -CAkey ca-key.pem -CAcreateserial \
+    -extfile server-ext.cnf \
     -out server-cert.pem -days 3650
 
 # Set proper ownership and permissions
@@ -43,13 +51,14 @@ sudo chmod 644 /var/lib/pgsql/certs/ca.pem
 ```bash
 # Edit postgresql.conf
 sudo vi /var/lib/pgsql/data/postgresql.conf
+```
 
-# Enable SSL and set certificate paths
-# ssl = on
-# ssl_cert_file = '/var/lib/pgsql/certs/server-cert.pem'
-# ssl_key_file = '/var/lib/pgsql/certs/server-key.pem'
-# ssl_ca_file = '/var/lib/pgsql/certs/ca.pem'
-# ssl_min_protocol_version = 'TLSv1.2'
+```conf
+ssl = on
+ssl_cert_file = '/var/lib/pgsql/certs/server-cert.pem'
+ssl_key_file = '/var/lib/pgsql/certs/server-key.pem'
+ssl_ca_file = '/var/lib/pgsql/certs/ca.pem'
+ssl_min_protocol_version = 'TLSv1.2'
 ```
 
 ## Require SSL for Connections
@@ -57,13 +66,15 @@ sudo vi /var/lib/pgsql/data/postgresql.conf
 ```bash
 # Edit pg_hba.conf to require SSL for remote connections
 sudo vi /var/lib/pgsql/data/pg_hba.conf
+```
 
+```conf
 # Change "host" to "hostssl" for entries that should require SSL
-# hostssl  all  all  192.168.1.0/24  scram-sha-256
+hostssl  all  all  192.168.1.0/24  scram-sha-256
 
 # You can keep local connections without SSL
-# local    all  all                  peer
-# host     all  all  127.0.0.1/32   scram-sha-256
+local    all  all                  peer
+host     all  all  127.0.0.1/32   scram-sha-256
 ```
 
 ## Restart PostgreSQL
@@ -83,10 +94,10 @@ sudo -u postgres psql -c "SHOW ssl;"
 psql "host=192.168.1.50 dbname=mydb user=myuser sslmode=require"
 
 # Connect with full certificate verification
-psql "host=192.168.1.50 dbname=mydb user=myuser sslmode=verify-full sslrootcert=/path/to/ca.pem"
+psql "host=db.example.com dbname=mydb user=myuser sslmode=verify-full sslrootcert=/path/to/ca.pem"
 
 # Check the current connection's SSL status
-psql -h 192.168.1.50 -U myuser -d mydb -c "SELECT ssl_is_used FROM pg_stat_ssl WHERE pid = pg_backend_pid();"
+psql "host=db.example.com dbname=mydb user=myuser sslmode=require" -c "SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid();"
 ```
 
 ## SSL Modes Explained
@@ -95,7 +106,7 @@ psql -h 192.168.1.50 -U myuser -d mydb -c "SELECT ssl_is_used FROM pg_stat_ssl W
 # sslmode=disable     - no SSL at all
 # sslmode=allow       - try non-SSL first, use SSL if server requires it
 # sslmode=prefer      - try SSL first, fall back to non-SSL (default)
-# sslmode=require     - require SSL but do not verify certificate
+# sslmode=require     - require SSL; use verify-ca or verify-full for explicit certificate verification
 # sslmode=verify-ca   - require SSL and verify the CA certificate
 # sslmode=verify-full - require SSL, verify CA, and verify hostname
 ```
@@ -110,12 +121,17 @@ sudo openssl genrsa -out /var/lib/pgsql/certs/client-key.pem 4096
 sudo openssl req -new -key /var/lib/pgsql/certs/client-key.pem \
     -out /var/lib/pgsql/certs/client-req.pem \
     -subj "/CN=myuser"
+cat <<EOF | sudo tee /var/lib/pgsql/certs/client-ext.cnf >/dev/null
+extendedKeyUsage = clientAuth
+EOF
 sudo openssl x509 -req -in /var/lib/pgsql/certs/client-req.pem \
     -CA /var/lib/pgsql/certs/ca.pem -CAkey /var/lib/pgsql/certs/ca-key.pem \
-    -CAcreateserial -out /var/lib/pgsql/certs/client-cert.pem -days 3650
+    -CAcreateserial -extfile /var/lib/pgsql/certs/client-ext.cnf \
+    -out /var/lib/pgsql/certs/client-cert.pem -days 3650
+```
 
-# In pg_hba.conf, use cert authentication
-# hostssl all all 192.168.1.0/24 cert clientcert=verify-full
+```conf
+hostssl all all 192.168.1.0/24 cert
 ```
 
 ## Verify SSL Connection Details
@@ -123,7 +139,7 @@ sudo openssl x509 -req -in /var/lib/pgsql/certs/client-req.pem \
 ```bash
 # Check all SSL connections
 sudo -u postgres psql -c "
-SELECT datname, usename, ssl, client_addr, ssl_version, ssl_cipher
+SELECT datname, usename, ssl, client_addr, version, cipher
 FROM pg_stat_ssl
 JOIN pg_stat_activity ON pg_stat_ssl.pid = pg_stat_activity.pid;
 "
