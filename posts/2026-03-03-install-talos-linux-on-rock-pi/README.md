@@ -16,7 +16,7 @@ In this guide, we will walk through the full process of installing Talos Linux o
 
 Running Kubernetes on single board computers used to be a painful experience. You would install a general-purpose Linux distribution, then spend hours configuring kubeadm, managing packages, and dealing with system drift. Talos Linux removes all of that complexity. It ships with only the components needed to run Kubernetes, and it is managed entirely through an API rather than SSH.
 
-Rock Pi boards, particularly the Rock Pi 4 and Rock Pi X, offer enough RAM and processing power to handle small Kubernetes workloads. When combined with Talos Linux, you get a secure, predictable, and easy-to-manage cluster node.
+Rock Pi boards, particularly the Rock Pi 4 and Rock 5B, offer enough RAM and processing power to handle small Kubernetes workloads. When combined with Talos Linux, you get a secure, predictable, and easy-to-manage cluster node.
 
 ## Prerequisites
 
