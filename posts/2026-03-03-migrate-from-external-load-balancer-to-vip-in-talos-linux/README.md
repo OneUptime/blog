@@ -19,7 +19,7 @@ There are good reasons to move from an external load balancer to the built-in VI
 - **Fewer moving parts**: No separate load balancer machine or service to maintain
 - **Lower cost**: No additional hardware or VM needed
 - **Simpler architecture**: VIP is built into Talos - nothing extra to install or configure
-- **Faster failover**: VIP failover is typically 3-12 seconds, comparable to most load balancers
+- **Built-in failover**: VIP reassigns almost instantly on graceful shutdown, and up to roughly a minute on unexpected failure (the delay is intentional, since Talos coordinates VIP ownership through etcd election to avoid split-brain)
 - **Less operational overhead**: One less thing to monitor, patch, and troubleshoot
 
 ## Prerequisites
