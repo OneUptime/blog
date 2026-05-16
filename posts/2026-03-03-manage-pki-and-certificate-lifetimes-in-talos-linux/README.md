@@ -43,12 +43,12 @@ This CA signs certificates for etcd communication.
 Used for Kubernetes API aggregation layer certificates.
 
 ```bash
-# View all certificates and their CAs on a control plane node
+# View Kubernetes dynamic certificates on a control plane node
 
-talosctl -n 10.0.1.10 get certificate
+talosctl -n 10.0.1.10 get KubernetesDynamicCerts
 
 # Check specific certificate details
-talosctl -n 10.0.1.10 read /etc/kubernetes/pki/apiserver.crt | \
+talosctl -n 10.0.1.10 read /system/secrets/kubernetes/kube-apiserver/apiserver.crt | \
   openssl x509 -text -noout
 ```
 
@@ -73,8 +73,8 @@ Talos automatically renews leaf certificates (those signed by the CAs) before th
 ### Using talosctl
 
 ```bash
-# Check all certificates on a node
-talosctl -n 10.0.1.10 get certificate -o yaml
+# Check all Kubernetes dynamic certificates on a node
+talosctl -n 10.0.1.10 get KubernetesDynamicCerts -o yaml
 
 # Check the Talos CA expiration
 talosctl -n 10.0.1.10 get machineconfig -o yaml | \
@@ -87,7 +87,7 @@ talosctl -n 10.0.1.10 get machineconfig -o yaml | \
   openssl x509 -noout -enddate
 
 # Check the API server certificate
-talosctl -n 10.0.1.10 read /etc/kubernetes/pki/apiserver.crt | \
+talosctl -n 10.0.1.10 read /system/secrets/kubernetes/kube-apiserver/apiserver.crt | \
   openssl x509 -noout -subject -enddate
 ```
 
@@ -154,7 +154,7 @@ check_cert "Kubernetes CA" "$K8S_CA"
 echo ""
 echo "=== Leaf Certificates ==="
 # API Server
-APISERVER_CERT=$(talosctl -n $CONTROL_PLANE read /etc/kubernetes/pki/apiserver.crt 2>/dev/null)
+APISERVER_CERT=$(talosctl -n $CONTROL_PLANE read /system/secrets/kubernetes/kube-apiserver/apiserver.crt 2>/dev/null)
 check_cert "API Server" "$APISERVER_CERT"
 
 # Kubelet
@@ -239,7 +239,7 @@ Talos automatically renews leaf certificates before they expire. This happens du
 
 ```bash
 # Check when the API server certificate was last issued
-talosctl -n 10.0.1.10 read /etc/kubernetes/pki/apiserver.crt | \
+talosctl -n 10.0.1.10 read /system/secrets/kubernetes/kube-apiserver/apiserver.crt | \
   openssl x509 -noout -startdate -enddate
 ```
 
