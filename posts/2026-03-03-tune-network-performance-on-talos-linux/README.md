@@ -180,7 +180,7 @@ kubeProxyReplacement: true          # Replace kube-proxy with eBPF
 enableIPv4Masquerade: true
 bpf:
   masquerade: true
-  hostRouting: true                  # Use BPF host routing
+  hostLegacyRouting: false           # Use BPF host routing when supported
   tproxy: true
   lbExternalClusterIP: true
 bandwidthManager:
@@ -208,13 +208,11 @@ If your network infrastructure supports it, enabling jumbo frames (MTU 9000) red
 
 ```yaml
 # talos-machine-config.yaml
-machine:
-  network:
-    interfaces:
-    - interface: eth0
-      mtu: 9000                     # Enable jumbo frames
-      addresses:
-        - 10.0.0.1/24
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+mtu: 9000                           # Enable jumbo frames
+up: true
 ```
 
 Make sure every device in the network path supports the larger MTU, including switches, routers, and any virtual network infrastructure. A single device with a lower MTU will cause fragmentation and actually hurt performance.
@@ -225,7 +223,8 @@ After applying your tuning, measure the results. Deploy iperf3 pods to test thro
 
 ```bash
 # Run iperf3 server
-kubectl run iperf-server --image=networkstatic/iperf3 -- -s
+kubectl run iperf-server --image=networkstatic/iperf3 --port=5201 -- -s
+kubectl expose pod iperf-server --port=5201 --target-port=5201
 
 # Run iperf3 client
 kubectl run iperf-client --image=networkstatic/iperf3 --rm -it -- \
