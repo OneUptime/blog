@@ -10,7 +10,7 @@ Description: Step-by-step guide to deploying and configuring Falco for runtime s
 
 Runtime security is about detecting suspicious behavior as it happens. While image scanning catches known vulnerabilities before deployment, runtime security tools watch for actual malicious activity inside running containers. Falco, originally created by Sysdig and now a CNCF graduated project, is the leading open-source tool for this purpose.
 
-Running Falco on Talos Linux presents some unique considerations. Since Talos is an immutable operating system without a traditional package manager or shell, you cannot install kernel modules the usual way. Instead, you need to use the eBPF probe or the modern libs driver approach. This guide covers the complete setup from installation through custom rule creation.
+Running Falco on Talos Linux presents some unique considerations. Since Talos is an immutable operating system without a traditional package manager or shell, you cannot install kernel modules the usual way. Instead, you need to use the modern eBPF driver approach. This guide covers the complete setup from installation through custom rule creation.
 
 ## Why Falco on Talos Linux
 
@@ -29,11 +29,11 @@ Together, Talos and Falco create a defense-in-depth strategy where the OS preven
 
 Falco uses a system call capture driver to monitor kernel events. There are three options:
 
-1. **Kernel module** - Not practical on Talos since you cannot install kernel modules
-2. **eBPF probe** - Works on Talos, requires BPF support in the kernel
-3. **Modern eBPF** - The newest option, built into Falco, no external dependencies
+1. **Kernel module** - Not practical on Talos for most deployments because you cannot install kernel headers or modules the usual way
+2. **Legacy eBPF probe** - Works on systems with BPF support, but is deprecated in current Falco releases
+3. **Modern eBPF** - The current default option, built into Falco and based on CO-RE
 
-For Talos Linux, the modern eBPF driver is the best choice. It does not require any external components and works with the Talos kernel configuration.
+For Talos Linux, the modern eBPF driver is the best choice. It avoids external driver artifacts and kernel headers, and works with kernels that provide the required eBPF features.
 
 ## Installing Falco with Helm
 
@@ -77,28 +77,22 @@ resources:
     memory: 1024Mi
 
 # Talos-specific volume mounts
-extra:
+mounts:
   volumes:
     - name: etc-os-release
       hostPath:
         path: /etc/os-release
-  mounts:
+  volumeMounts:
     - mountPath: /host/etc/os-release
       name: etc-os-release
       readOnly: true
 
-# Enable output to stdout for log collection
-stdout_output:
-  enabled: true
-
-# Enable gRPC output for Falcosidekick
-grpc:
-  enabled: true
-  bind_address: "unix:///run/falco/falco.sock"
-  threadiness: 8
-
-grpc_output:
-  enabled: true
+# Enable output to stdout for log collection.
+# When falcosidekick.enabled=true, the chart also enables Falco HTTP output
+# to Falcosidekick and JSON output automatically.
+falco:
+  stdout_output:
+    enabled: true
 
 # Falcosidekick for forwarding alerts
 falcosidekick:
@@ -206,7 +200,7 @@ customRules:
       condition: >
         outbound and container and
         k8s.pod.label.app = "database" and
-        not fd.sip in (rfc_1918_addresses)
+        not fd.snet in (rfc_1918_addresses)
       output: >
         Database pod made unexpected outbound connection
         (pod=%k8s.pod.name connection=%fd.name
@@ -215,12 +209,13 @@ customRules:
       tags: [security, network, database]
 ```
 
-Add custom rules during installation:
+Add custom rules during installation or an upgrade:
 
 ```bash
 # Install Falco with custom rules
-helm upgrade falco falcosecurity/falco \
+helm upgrade --install falco falcosecurity/falco \
   --namespace falco \
+  --create-namespace \
   -f falco-values.yaml \
   -f custom-rules.yaml
 ```
@@ -244,7 +239,7 @@ falcosidekick:
       address: "https://your-webhook-endpoint.com/falco"
       minimumpriority: "warning"
 
-    # Store alerts in Prometheus for dashboarding
+    # Expose Falcosidekick Prometheus metrics for dashboarding
     prometheus:
       extralabels: "cluster:production,environment:prod"
 ```
@@ -255,25 +250,39 @@ You can pair Falco with the Falco Talon response engine to take automatic action
 
 ```yaml
 # talon-rules.yaml
-# Automated response rules
+# Reusable actions
 - action: Terminate Pod
   description: Kill pods that spawn shells
-  match:
-    rules:
-      - Terminal shell in container
-    priority: WARNING
+  actionner: kubernetes:terminate
   parameters:
     grace_period_seconds: 0
 
 - action: Label Pod
   description: Label suspicious pods for investigation
-  match:
-    rules:
-      - Unexpected Outbound Connection
-    priority: NOTICE
+  actionner: kubernetes:label
   parameters:
+    level: pod
     labels:
       security.falco.org/suspicious: "true"
+
+# Rules that map Falco events to actions
+- rule: Terminate Shell Pod
+  description: Terminate pods that spawn shells
+  match:
+    rules:
+      - Terminal shell in container
+    priority: ">=WARNING"
+  actions:
+    - action: Terminate Pod
+
+- rule: Label Suspicious Database Pod
+  description: Label suspicious pods for investigation
+  match:
+    rules:
+      - Unexpected Outbound Connection from Database Pod
+    priority: ">=NOTICE"
+  actions:
+    - action: Label Pod
 ```
 
 ## Performance Tuning
@@ -282,20 +291,29 @@ Falco can generate significant overhead if not tuned properly. Here are some tip
 
 ```yaml
 # Performance-tuned Falco settings
+driver:
+  modernEbpf:
+    # Tune the shared syscall buffer used by the modern eBPF driver
+    bufSizePreset: 4
+    # Drop failed syscall exit events before pushing them to userspace
+    dropFailedExit: true
+
 falco:
-  # Use adaptive syscall buffer
-  syscall_buf_size_preset: 4
-  # Drop events rather than block under load
-  syscall_drop_failed_exit: true
-  # Limit output rate
-  outputs:
-    rate: 100
-    max_burst: 1000
-  # Skip rules for trusted namespaces
-  rules:
-    - rule: any
-      condition: k8s.ns.name in (kube-system, falco, monitoring)
-      enabled: false
+  # Reduce output buffering for log collection
+  buffered_outputs: false
+  # Limit how often Falco emits syscall drop alerts
+  syscall_event_drops:
+    actions:
+      - log
+      - alert
+    rate: 0.03333
+    max_burst: 1
+
+customRules:
+  namespace-tuning.yaml: |-
+    # Suppress the noisy default shell rule in trusted namespaces
+    - rule: Terminal shell in container
+      condition: and not k8s.ns.name in (kube-system, falco, monitoring)
       override:
         condition: append
 ```
