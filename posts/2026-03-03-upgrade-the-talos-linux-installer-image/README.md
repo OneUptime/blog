@@ -34,7 +34,7 @@ To see which installer image a node was installed with:
 ```bash
 # Check the machine configuration for the install image
 
-talosctl get machineconfig --nodes 192.168.1.10 -o yaml | grep -A 5 "install:"
+talosctl get machineconfig v1alpha1 --nodes 192.168.1.10 -o yaml | grep -A 5 "install:"
 
 # Example output:
 # install:
@@ -69,7 +69,7 @@ Many production deployments need custom installer images that include system ext
 The official way to build custom installer images is with the `imager` tool:
 
 ```bash
-# Build a custom installer with NVIDIA drivers and iSCSI tools
+# Build a custom installer with NVIDIA container toolkit and iSCSI tools
 docker run --rm -t -v /tmp/out:/out \
   ghcr.io/siderolabs/imager:v1.7.0 \
   installer \
@@ -89,7 +89,7 @@ docker run --rm -t -v /tmp/out:/out \
   --system-extension-image ghcr.io/siderolabs/nvidia-container-toolkit:535.54.03-v1.13.5 \
   --system-extension-image ghcr.io/siderolabs/iscsi-tools:v0.1.4 \
   --system-extension-image ghcr.io/siderolabs/qemu-guest-agent:8.2.2 \
-  --system-extension-image ghcr.io/siderolabs/gasket-driver:1.0-v1.7.0
+  --system-extension-image ghcr.io/siderolabs/gasket-driver:09385d4-v1.7.0
 ```
 
 ### Pushing to a Container Registry
@@ -101,8 +101,8 @@ After building, push the image to your container registry:
 crane push /tmp/out/installer-amd64.tar myregistry.com/talos-installer:v1.7.0-custom
 
 # Or use docker
-docker load -i /tmp/out/installer-amd64.tar
-docker tag ghcr.io/siderolabs/installer:v1.7.0 myregistry.com/talos-installer:v1.7.0-custom
+LOADED_IMAGE=$(docker load -i /tmp/out/installer-amd64.tar | awk -F': ' '{print $2}' | tail -n 1)
+docker tag "${LOADED_IMAGE}" myregistry.com/talos-installer:v1.7.0-custom
 docker push myregistry.com/talos-installer:v1.7.0-custom
 ```
 
@@ -129,12 +129,12 @@ customization:
       - siderolabs/qemu-guest-agent
 EOF
 
-# Generate the schematic ID
-# (The factory uses a hash-based ID system)
+SCHEMATIC_ID=$(curl -s -X POST --data-binary @schematic.yaml \
+  https://factory.talos.dev/schematics | jq -r '.id')
 
 # Use the factory URL in your upgrade
 talosctl upgrade --nodes 192.168.1.10 \
-  --image factory.talos.dev/installer/<schematic-id>:v1.7.0
+  --image factory.talos.dev/installer/${SCHEMATIC_ID}:v1.7.0
 ```
 
 The Image Factory is convenient because you do not need to build and host images yourself. The factory caches generated images, so subsequent requests for the same schematic are fast.
@@ -172,9 +172,9 @@ REGISTRY="myregistry.com"
 IMAGE_NAME="talos-installer"
 
 EXTENSIONS=(
-  "--system-extension-image ghcr.io/siderolabs/nvidia-container-toolkit:535.54.03-v1.13.5"
-  "--system-extension-image ghcr.io/siderolabs/iscsi-tools:v0.1.4"
-  "--system-extension-image ghcr.io/siderolabs/qemu-guest-agent:8.2.2"
+  --system-extension-image ghcr.io/siderolabs/nvidia-container-toolkit:535.54.03-v1.13.5
+  --system-extension-image ghcr.io/siderolabs/iscsi-tools:v0.1.4
+  --system-extension-image ghcr.io/siderolabs/qemu-guest-agent:8.2.2
 )
 
 echo "Building Talos installer image for $TALOS_VERSION..."
@@ -182,7 +182,7 @@ echo "Building Talos installer image for $TALOS_VERSION..."
 docker run --rm -t -v /tmp/out:/out \
   "ghcr.io/siderolabs/imager:$TALOS_VERSION" \
   installer \
-  ${EXTENSIONS[@]}
+  "${EXTENSIONS[@]}"
 
 echo "Pushing to registry..."
 crane push "/tmp/out/installer-amd64.tar" \
@@ -231,7 +231,7 @@ Verify that an installer image is valid before using it for upgrades:
 # Check the image manifest
 crane manifest ghcr.io/siderolabs/installer:v1.7.0
 
-# Check the image size and layers
+# List available tags
 crane ls ghcr.io/siderolabs/installer
 
 # Verify the image architecture
@@ -242,7 +242,10 @@ For security, you can verify image signatures if the images are signed:
 
 ```bash
 # Check for cosign signatures (Talos images are signed)
-cosign verify --key <key-file> ghcr.io/siderolabs/installer:v1.7.0
+cosign verify \
+  --certificate-identity-regexp '@siderolabs\.com$' \
+  --certificate-oidc-issuer https://accounts.google.com \
+  ghcr.io/siderolabs/installer:v1.7.0
 ```
 
 ## Multi-Architecture Considerations
