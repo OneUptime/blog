@@ -87,7 +87,7 @@ This is the most significant consequence of disabling discovery. KubeSpan depend
 
 ```bash
 # Check if KubeSpan is affected
-talosctl get kubespanpeerstatus --nodes <node-ip>
+talosctl get kubespanpeerstatuses --nodes <node-ip>
 # With discovery disabled, this will show no peers
 ```
 
@@ -119,10 +119,10 @@ If you want to disable discovery on a running cluster, plan the transition caref
 
 ```bash
 # Check if KubeSpan is in use
-talosctl get kubespanpeerstatus --nodes <node-ip>
+talosctl get kubespanpeerstatuses --nodes <node-ip>
 
 # Check discovery members
-talosctl get discoveredmembers --nodes <node-ip>
+talosctl get members --nodes <node-ip>
 ```
 
 ### Step 2: Disable KubeSpan First (If Enabled)
@@ -212,7 +212,7 @@ After disabling, confirm the change:
 talosctl get machineconfig --nodes <node-ip> -o yaml | grep -A15 "discovery:"
 
 # Verify no discovery members are reported
-talosctl get discoveredmembers --nodes <node-ip>
+talosctl get members --nodes <node-ip>
 # Should return nothing or an error
 
 # Check controller logs to confirm discovery is not running
