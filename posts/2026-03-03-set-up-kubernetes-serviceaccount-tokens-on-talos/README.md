@@ -250,8 +250,8 @@ volumes:
 Check how the API server is configured for ServiceAccount tokens:
 
 ```bash
-# Check API server flags related to service accounts
-talosctl logs kube-apiserver -n <control-plane-ip> | grep -i "service-account"
+# Check the rendered API server configuration on a control plane node
+talosctl -n <control-plane-ip> get apiserverconfig -o yaml | grep -i "service-account"
 
 # Key flags to look for:
 # --service-account-issuer
@@ -276,13 +276,13 @@ The signing key used for ServiceAccount tokens is critical. If it is compromised
 
 ```bash
 # On Talos, the SA key is managed as part of the cluster secrets
-# You can rotate it by generating new cluster secrets
+# Keep a secure copy of the current Talos machine configuration before changing it
 
-# First, back up current secrets
-talosctl gen secrets -o secrets-backup.yaml
+# Generate a new secrets bundle to use when preparing updated machine configs
+talosctl gen secrets -o new-secrets.yaml
 
-# The rotation process is part of a cluster config refresh
-# This is a disruptive operation - plan accordingly
+# Apply the updated serviceAccount key through a machine configuration update
+# This invalidates tokens signed by the old key - plan accordingly
 ```
 
 ## Troubleshooting Token Issues
