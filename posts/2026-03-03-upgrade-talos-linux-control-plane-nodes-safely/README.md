@@ -12,7 +12,7 @@ Control plane nodes are the heart of your Kubernetes cluster. They run the API s
 
 ## Understanding the Risks
 
-When you upgrade a control plane node, you are temporarily removing it from the cluster. During the reboot, the node's etcd member goes offline, the local API server becomes unavailable, and any leader elections for Kubernetes controllers may trigger. With a three-node control plane, losing one node means you are down to two - still enough for quorum, but with zero margin for error.
+When you upgrade a control plane node, you are temporarily taking it offline. During the reboot, the node's etcd member goes offline, the local API server becomes unavailable, and any leader elections for Kubernetes controllers may trigger. With a three-node control plane, losing one node means you are down to two - still enough for quorum, but with zero margin for error.
 
 If you have a single control plane node, the cluster will be completely unavailable during the upgrade. For production environments, always use three or more control plane nodes.
 
@@ -25,7 +25,7 @@ This is the most critical pre-check. Never start a control plane upgrade with an
 ```bash
 # Check etcd status
 
-talosctl etcd status --nodes <cp-node-1>
+talosctl etcd status --nodes <cp-node-1>,<cp-node-2>,<cp-node-3>
 
 # Verify all members are present and healthy
 talosctl etcd members --nodes <cp-node-1>
@@ -65,7 +65,8 @@ This backup is your safety net. If something goes catastrophically wrong during 
 ```bash
 # Back up each control plane node's config
 for node in cp-node-1 cp-node-2 cp-node-3; do
-    talosctl get machineconfig --nodes ${node} -o yaml > ${node}-config-backup.yaml
+    talosctl get machineconfig v1alpha1 --nodes ${node} \
+      -o jsonpath='{.spec}' > ${node}-config-backup.yaml
 done
 ```
 
@@ -77,7 +78,7 @@ Pick the node that is NOT the current etcd leader if possible. This reduces the 
 
 ```bash
 # Check who the etcd leader is
-talosctl etcd status --nodes <cp-node-1>
+talosctl etcd status --nodes <cp-node-1>,<cp-node-2>,<cp-node-3>
 # The output shows which member is the leader
 
 # Upgrade a non-leader node first
@@ -106,8 +107,8 @@ talosctl version --nodes <cp-node-2>
 Make sure all three etcd members are healthy before proceeding. This is not optional.
 
 ```bash
-# Double-check etcd health
-talosctl etcd status --nodes <cp-node-1>
+# Double-check etcd health across all members
+talosctl etcd status --nodes <cp-node-1>,<cp-node-2>,<cp-node-3>
 
 # All members should show a valid status
 # The cluster ID should be consistent
@@ -143,7 +144,7 @@ talosctl upgrade --nodes <cp-node-1> \
 talosctl health --nodes <cp-node-1> --wait-timeout 10m
 
 # Final verification of etcd
-talosctl etcd status --nodes <cp-node-2>
+talosctl etcd status --nodes <cp-node-1>,<cp-node-2>,<cp-node-3>
 talosctl etcd members --nodes <cp-node-2>
 ```
 
@@ -156,18 +157,19 @@ After all control plane nodes are upgraded, run a thorough check:
 talosctl version --nodes <cp-node-1>,<cp-node-2>,<cp-node-3>
 
 # etcd cluster is healthy
-talosctl etcd status --nodes <cp-node-1>
+talosctl etcd status --nodes <cp-node-1>,<cp-node-2>,<cp-node-3>
 
 # All system services running
-talosctl services --nodes <cp-node-1>
-talosctl services --nodes <cp-node-2>
-talosctl services --nodes <cp-node-3>
+talosctl service --nodes <cp-node-1>
+talosctl service --nodes <cp-node-2>
+talosctl service --nodes <cp-node-3>
 
 # Kubernetes API is responsive
 kubectl get nodes
 kubectl get pods -n kube-system
 
 # API server components are on the expected version
+# Talos OS upgrades do not upgrade Kubernetes by default
 kubectl get pods -n kube-system -l component=kube-apiserver -o yaml | \
   grep "image:"
 ```
@@ -186,9 +188,8 @@ talosctl logs etcd --nodes <problem-node>
 # data directory corruption, or TLS errors
 
 # If etcd data is corrupted, you may need to remove
-# and re-add the member
+# the broken member and recover the node with fresh state
 talosctl etcd remove-member --nodes <healthy-node> <member-id>
-talosctl etcd join --nodes <problem-node>
 ```
 
 ### Node Stuck in NotReady
@@ -197,7 +198,7 @@ If a control plane node comes back from reboot but stays NotReady in Kubernetes:
 
 ```bash
 # Check kubelet status
-talosctl services --nodes <problem-node>
+talosctl service kubelet --nodes <problem-node>
 
 # Check kubelet logs
 talosctl logs kubelet --nodes <problem-node>
@@ -217,7 +218,7 @@ If the upgrade command itself times out:
 talosctl dmesg --nodes <node-ip> | grep -i pull
 
 # The image might be large or the registry might be slow
-# You can increase the timeout or pre-pull the image
+# You can increase the timeout
 talosctl upgrade --nodes <node-ip> \
   --image ghcr.io/siderolabs/installer:v1.7.0 \
   --timeout 15m
