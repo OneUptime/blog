@@ -32,7 +32,7 @@ When `apid` receives a request, it either handles it directly or forwards it to 
 
 ## Authentication and Security
 
-One of the key responsibilities of `apid` is authentication. Every request to the Talos API must be authenticated using mutual TLS (mTLS). This means both the client and the server present certificates during the TLS handshake.
+One of the key responsibilities of `apid` is authentication. In normal operation, after a node has been configured, requests to the Talos API are authenticated using mutual TLS (mTLS). This means both the client and the server present certificates during the TLS handshake.
 
 When you generate a Talos configuration using `talosctl gen config`, the tooling creates a certificate authority (CA) along with client certificates. The `talosconfig` file that you use with `talosctl` contains these client credentials.
 
@@ -50,7 +50,7 @@ contexts:
         key: <base64-encoded-client-key>
 ```
 
-The `apid` service validates every incoming connection against the cluster CA. If the client certificate is not signed by the trusted CA, the connection is rejected immediately. There is no username/password fallback or token-based authentication - it is mTLS or nothing.
+The `apid` service validates incoming connections against the trusted Talos API CA. If the client certificate is not signed by the trusted CA, the connection is rejected. There is no username/password fallback for normal API access. The main exception is maintenance mode on an unconfigured node, where a limited set of commands can use `talosctl --insecure` before the node has its PKI configured.
 
 ## Request Routing and Proxying
 
@@ -63,7 +63,7 @@ For example, if you run:
 talosctl -e 192.168.1.10 -n 192.168.1.20 get members
 ```
 
-In this case, `talosctl` connects to `apid` on `192.168.1.10` (the endpoint), but the request is proxied to `192.168.1.20` (the target node). This is extremely useful because you do not need direct network access to every node in your cluster. As long as you can reach one `apid` instance, you can manage the entire cluster.
+In this case, `talosctl` connects to `apid` on `192.168.1.10` (the endpoint), but the request is proxied to `192.168.1.20` (the target node). This is extremely useful because, after the cluster is established, you do not need direct network access to every node in your cluster. As long as you can reach a control plane endpoint running `apid`, you can manage the rest of the cluster through that endpoint.
 
 The proxying works because `apid` instances within a cluster trust each other through the shared cluster CA. When `apid` on node A receives a request destined for node B, it establishes its own mTLS connection to node B's `apid` and forwards the request.
 
