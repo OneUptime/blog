@@ -303,8 +303,8 @@ kubectl get cronjobs --all-namespaces
 # Check the last scheduled time
 kubectl get cronjob <name> -n <namespace> -o wide
 
-# List recent jobs created by a CronJob
-kubectl get jobs -n <namespace> -l job-name=<cronjob-name>
+# List recent jobs created by a CronJob (CronJob-created jobs are named <cronjob-name>-<suffix>)
+kubectl get jobs -n <namespace> | grep <cronjob-name>
 
 # Check logs from the most recent job run
 kubectl logs job/<job-name> -n <namespace>
