@@ -45,14 +45,12 @@ curl -X POST https://factory.talos.dev/schematics \
   }'
 ```
 
-Include it in your machine configuration:
+Include it in your machine configuration. The schematic ID returned by Image Factory already contains the extension, so you only need to point `machine.install.image` at the resulting installer image:
 
 ```yaml
 machine:
   install:
     image: factory.talos.dev/installer/<schematic-with-qga>:v1.7.0
-    extensions:
-      - image: ghcr.io/siderolabs/qemu-guest-agent:v1.7.0
 ```
 
 Or upgrade an existing node:
@@ -116,9 +114,9 @@ qm snapshot <vmid> my-snapshot --vmstate 0
 # The guest agent will automatically handle freeze/thaw
 ```
 
-## VMware Open VM Tools
+## VMware vmtoolsd Guest Agent
 
-For VMware environments (ESXi, vSphere, Workstation), the open-vm-tools extension provides guest agent functionality.
+For VMware environments (ESXi, vSphere, Workstation), the `vmtoolsd-guest-agent` extension provides guest agent functionality. It ships `talos-vmtoolsd`, a slim Go reimplementation of `vmtoolsd` purpose-built for Talos (rather than the full upstream `open-vm-tools` package).
 
 ### Installation
 
@@ -130,7 +128,7 @@ curl -X POST https://factory.talos.dev/schematics \
     "customization": {
       "systemExtensions": {
         "officialExtensions": [
-          "siderolabs/open-vm-tools"
+          "siderolabs/vmtoolsd-guest-agent"
         ]
       }
     }
@@ -143,38 +141,36 @@ Include in machine configuration:
 machine:
   install:
     image: factory.talos.dev/installer/<schematic-with-vmtools>:v1.7.0
-    extensions:
-      - image: ghcr.io/siderolabs/open-vm-tools:v1.7.0
 ```
 
 ### VMware-Side Configuration
 
-On the vSphere side, VMware Tools status will automatically change to "Running" once the extension is active:
+On the vSphere side, the VMware Tools status will automatically change to "Running" once the extension is active:
 
 ```text
-vSphere Client -> VM -> Summary -> VMware Tools: Running (open-vm-tools)
+vSphere Client -> VM -> Summary -> VMware Tools: Running
 ```
 
-### Features Enabled by VMware Tools
+### Features Enabled by talos-vmtoolsd
 
-- IP address reporting in vCenter
-- Clean shutdown through vCenter "Shut Down Guest OS"
-- Quiesced snapshots
+- IP address and hostname reporting in vCenter
+- Clean shutdown and reboot through vCenter "Shut Down Guest OS"
+- Heartbeat for VM health monitoring
 - Time synchronization with ESXi host
-- Guest customization (hostname, network settings)
-- vMotion optimization
+
+Some features available with the full `open-vm-tools` package (filesystem quiescing for VM-level quiesced snapshots, VIX guest operations, and full guest customization) are not implemented by `talos-vmtoolsd` and are not needed in Talos's immutable, API-driven model.
 
 ### Verifying VMware Tools
 
 ```bash
 # Check extension on the Talos node
-talosctl -n 192.168.1.10 get extensions | grep vm-tools
+talosctl -n 192.168.1.10 get extensions | grep vmtoolsd
 
 # Check service status
-talosctl -n 192.168.1.10 services | grep vmtools
+talosctl -n 192.168.1.10 services | grep vmtoolsd
 
 # View logs
-talosctl -n 192.168.1.10 logs ext-open-vm-tools
+talosctl -n 192.168.1.10 logs ext-vmtoolsd-guest-agent
 ```
 
 ## Installing on Multiple Nodes
