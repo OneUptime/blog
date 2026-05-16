@@ -15,7 +15,7 @@ Shutting down a Talos Linux node is different from rebooting it. When you reboot
 Shutting down is appropriate when:
 
 - You are performing physical hardware maintenance (replacing disks, memory, NICs)
-- The node is being decommissioned permanently
+- The node is being taken offline before a separate decommissioning or reset process
 - You are moving hardware to a different data center or rack
 - Power maintenance is planned for the facility
 - You want to save costs in a cloud environment during low-traffic periods
@@ -32,7 +32,7 @@ Talos Linux provides a clean shutdown command:
 talosctl shutdown --nodes <node-ip>
 ```
 
-This command tells the Talos OS to gracefully stop all services and power off the machine. But as with reboots, running this without preparation can cause problems.
+This command cordons and drains the node, then tells the Talos OS to gracefully stop all services and power off the machine. But as with reboots, running this without checking workload and quorum impact first can cause problems.
 
 ## Graceful Shutdown Procedure for Worker Nodes
 
@@ -215,7 +215,7 @@ If even the talosctl command cannot reach the node, you will need to use out-of-
 - Cloud provider console for VMs
 - Physical power button as a last resort
 
-After a forced shutdown, the cluster will eventually mark the node as NotReady, and pods will be rescheduled. This process can take several minutes because Kubernetes uses timeouts to detect node failure.
+After a forced shutdown, the cluster will eventually mark the node as NotReady. Controller-managed workloads can be replaced on other nodes after Kubernetes detects the failure and evicts the old pods, but standalone pods and some stateful workloads may need manual attention. This process can take several minutes because Kubernetes uses timeouts to detect node failure.
 
 ## Persistent Storage Considerations
 
@@ -226,8 +226,8 @@ If the node being shut down has local persistent volumes, the pods using those v
 - Back up critical data before planned shutdowns
 
 ```bash
-# Check for persistent volume claims on the target node
-kubectl get pv -o wide | grep <node-name>
+# Check for local persistent volumes pinned to the target node
+kubectl get pv -o jsonpath='{range .items[?(@.spec.nodeAffinity)]}{.metadata.name}{"\t"}{.spec.claimRef.namespace}{"/"}{.spec.claimRef.name}{"\t"}{.spec.nodeAffinity.required.nodeSelectorTerms[*].matchExpressions[*].values[*]}{"\n"}{end}' | grep <node-name>
 ```
 
 ## Automating Shutdown Procedures
@@ -240,7 +240,7 @@ For environments with regular maintenance windows, create a shutdown script:
 # Usage: ./graceful-shutdown.sh <node-ip>
 
 NODE_IP=$1
-NODE_NAME=$(kubectl get nodes -o wide | grep $NODE_IP | awk '{print $1}')
+NODE_NAME=$(kubectl get nodes -o wide | grep "$NODE_IP" | awk '{print $1}')
 
 if [ -z "$NODE_NAME" ]; then
     echo "Node not found for IP $NODE_IP"
@@ -250,21 +250,19 @@ fi
 echo "Starting graceful shutdown of $NODE_NAME ($NODE_IP)"
 
 # Check if this is a control plane node
-IS_CP=$(kubectl get node $NODE_NAME -o jsonpath='{.metadata.labels.node-role\.kubernetes\.io/control-plane}')
-
-if [ -n "$IS_CP" ]; then
+if kubectl get node "$NODE_NAME" --show-labels | grep -q 'node-role.kubernetes.io/control-plane'; then
     echo "This is a control plane node. Checking etcd quorum..."
-    MEMBER_COUNT=$(talosctl etcd members --nodes $NODE_IP 2>/dev/null | wc -l)
+    MEMBER_COUNT=$(talosctl etcd members --nodes "$NODE_IP" 2>/dev/null | awk 'NR > 1 { count++ } END { print count + 0 }')
     if [ "$MEMBER_COUNT" -le 3 ]; then
         echo "Warning: Only $MEMBER_COUNT etcd members. Proceed with caution."
     fi
 fi
 
-kubectl cordon $NODE_NAME
-kubectl drain $NODE_NAME --ignore-daemonsets --delete-emptydir-data --timeout=300s
+kubectl cordon "$NODE_NAME"
+kubectl drain "$NODE_NAME" --ignore-daemonsets --delete-emptydir-data --timeout=300s
 
 echo "Shutting down $NODE_NAME..."
-talosctl shutdown --nodes $NODE_IP
+talosctl shutdown --nodes "$NODE_IP"
 
 echo "Shutdown complete."
 ```
