@@ -266,7 +266,7 @@ spec:
         # Also tolerate not-ready during bootstrap
         - key: node.kubernetes.io/not-ready
           operator: Exists
-          effect: NoSchedule
+          effect: NoExecute
       containers:
         - name: calico-node
           image: calico/node:v3.27.0
