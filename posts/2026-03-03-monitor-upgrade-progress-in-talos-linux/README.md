@@ -254,7 +254,7 @@ UPGRADED=0
 TOTAL=${#NODES[@]}
 
 for node in "${NODES[@]}"; do
-    VERSION=$(talosctl version --nodes ${node} 2>/dev/null | grep "Tag:" | head -1 | awk '{print $2}')
+    VERSION=$(talosctl version --nodes ${node} 2>/dev/null | grep "Tag:" | tail -1 | awk '{print $2}')
     if [ "${VERSION}" = "${TARGET_VERSION}" ]; then
         echo "${node}: UPGRADED (${VERSION})"
         ((UPGRADED++))
