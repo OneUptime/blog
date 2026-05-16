@@ -8,7 +8,7 @@ Description: Learn how Talos Linux restricts process capabilities to minimize th
 
 ---
 
-Linux capabilities are a way to divide the traditional all-or-nothing root privilege into smaller, more granular permissions. Instead of giving a process full root access, you can give it only the specific capabilities it needs. Talos Linux takes this concept seriously, applying strict capability restrictions to every process on the system.
+Linux capabilities are a way to divide the traditional all-or-nothing root privilege into smaller, more granular permissions. Instead of giving a process full root access, you can give it only the specific capabilities it needs. Talos Linux takes this concept seriously, preventing any process from gaining some especially sensitive capabilities.
 
 Understanding how Talos handles capabilities helps you appreciate the security model and troubleshoot issues where a process might be denied an operation it needs.
 
@@ -31,41 +31,40 @@ A process can have a subset of these capabilities, getting only the privileges i
 
 ## How Talos Linux Uses Capabilities
 
-Talos Linux runs with a minimal set of capabilities for each process. The init system (machined) starts with full capabilities because it needs to set up the system, but every other process gets only what it requires.
+Talos Linux prevents any process from gaining CAP_SYS_MODULE or CAP_SYS_BOOT. The init system (machined) starts the system services it needs to set up the node, while workloads still receive only the capabilities granted by their container runtime and Kubernetes security context.
 
-Since Talos has no shell and no way to run arbitrary processes on the host, the capability restrictions mainly affect three categories: Talos system services, containerd and its children, and Kubernetes pods.
+Since Talos has no SSH access, no general-purpose shell, and no package manager, the capability restrictions mainly affect three categories: Talos system services, containerd and its children, and Kubernetes pods.
 
 ### System Services
 
-Talos system services like apid, trustd, and networkd run with restricted capability sets. Each service gets the minimum capabilities needed for its function.
+Talos system services like apid and networkd run as dedicated services instead of through a general-purpose host shell. Each service should have only the privileges needed for its function.
 
-For example, networkd needs CAP_NET_ADMIN to configure network interfaces but does not need CAP_SYS_MODULE or CAP_DAC_OVERRIDE. The Talos developers have carefully audited each service to determine its required capabilities.
+For example, networkd needs network-administration privileges to configure interfaces, while Talos prevents any service from gaining CAP_SYS_MODULE or CAP_SYS_BOOT.
 
 ```bash
 # Check running processes and their states
 
 talosctl -n 10.0.0.11 processes
 
-# View detailed process information
-talosctl -n 10.0.0.11 processes -o json
+# Stream running process information
+talosctl -n 10.0.0.11 processes --watch
 ```
 
 ### Container Runtime
 
-containerd runs with a controlled set of capabilities. The containers it spawns (both system containers and Kubernetes pods) inherit a restricted capability set by default.
+containerd runs with a controlled set of capabilities. The containers it spawns (both system containers and Kubernetes pods) use the capability set configured by the runtime and the Kubernetes pod security context.
 
-Talos configures containerd to drop unnecessary capabilities from containers. The default capability set for Kubernetes pods follows the Kubernetes defaults, which include a reasonable baseline.
+Talos also prevents containers, including privileged pods, from gaining CAP_SYS_MODULE or CAP_SYS_BOOT.
 
 ## Kubernetes Pod Capabilities
 
 When pods run on a Talos node, their capability set is determined by several factors: the container runtime defaults, the pod security context, and any PodSecurityStandards or admission policies in place.
 
-The default capabilities for a container in Kubernetes include:
+Kubernetes itself does not define one fixed default capability list for every runtime. The container runtime provides its own default subset, and Kubernetes Pod Security Standards control which capabilities a pod may add. Under the Baseline standard, pods may add only these capabilities:
 
 ```yaml
-# Default capabilities granted to containers
-# These are the Kubernetes defaults, not Talos-specific
-defaultCapabilities:
+# Capabilities allowed by the Kubernetes Baseline Pod Security Standard
+allowedAddCapabilities:
   - AUDIT_WRITE
   - CHOWN
   - DAC_OVERRIDE
@@ -74,7 +73,6 @@ defaultCapabilities:
   - KILL
   - MKNOD
   - NET_BIND_SERVICE
-  - NET_RAW
   - SETFCAP
   - SETGID
   - SETPCAP
@@ -116,7 +114,7 @@ Even if an attacker escapes a container, they land on a host with:
 - Restricted process capabilities
 - No SSH daemon or other remote access services
 
-The lack of a shell is particularly important. Many container escape techniques rely on executing commands on the host. Without a shell binary, there is nothing to execute.
+The lack of a shell is particularly important. Many container escape techniques rely on invoking host command interpreters or installing tools. Without shell binaries or a package manager, there is much less host tooling available to an attacker.
 
 ```bash
 # Compare what is available on Talos vs traditional Linux
@@ -137,15 +135,15 @@ The lack of a shell is particularly important. Many container escape techniques 
 
 Linux has a concept called the capability bounding set, which is an upper limit on the capabilities that any process can acquire. Even if a process is setuid root, it cannot gain capabilities outside the bounding set.
 
-Talos configures a restricted bounding set at boot time. This means that even if there were a privilege escalation vulnerability, the attacker would still be limited by the bounding set.
+Talos prevents CAP_SYS_MODULE and CAP_SYS_BOOT from being added to a process capability set. This means that even if there were a privilege escalation vulnerability, the attacker would still be limited by that ceiling.
 
-The bounding set is inherited by all child processes, including containerd and every pod it runs. This creates a hard ceiling on what any process on the system can do.
+The capability bounding set is inherited by child processes and preserved across exec. This creates a hard ceiling on what a process can gain through normal Linux capability transitions.
 
 ## Secure Computing Mode (seccomp)
 
-In addition to capabilities, Talos uses seccomp (secure computing mode) to restrict which system calls processes can make. seccomp is complementary to capabilities. While capabilities control which privileged operations are allowed, seccomp controls which system calls can be invoked at all.
+In addition to capabilities, Talos supports seccomp (secure computing mode) profiles for Kubernetes workloads. seccomp is complementary to capabilities. While capabilities control which privileged operations are allowed, seccomp controls which system calls can be invoked at all.
 
-Kubernetes applies a default seccomp profile that blocks dangerous system calls. On Talos, you can enforce this at the cluster level.
+Kubernetes can use the runtime's default seccomp profile to block dangerous system calls. If kubelet seccomp defaulting is enabled, pods without an explicit seccomp profile use RuntimeDefault; otherwise, set RuntimeDefault explicitly in the pod or container security context.
 
 ```yaml
 # Pod with seccomp profile
@@ -185,7 +183,7 @@ metadata:
     pod-security.kubernetes.io/warn: restricted
 ```
 
-The Restricted standard drops all capabilities, prevents privilege escalation, requires non-root users, and mandates a read-only root filesystem. This aligns well with the Talos security model.
+The Restricted standard requires containers to drop all capabilities, only allows adding NET_BIND_SERVICE, prevents privilege escalation, requires non-root users, and requires an explicit seccomp profile. This aligns well with the Talos security model.
 
 ```bash
 # Check which namespaces have Pod Security Standards enforced
@@ -206,7 +204,13 @@ metadata:
   name: cilium
   namespace: kube-system
 spec:
+  selector:
+    matchLabels:
+      app: cilium
   template:
+    metadata:
+      labels:
+        app: cilium
     spec:
       containers:
       - name: cilium-agent
@@ -215,8 +219,7 @@ spec:
             add:
               - NET_ADMIN
               - NET_RAW
-              - SYS_MODULE
-              - SYS_ADMIN  # Required for BPF operations
+              - SYS_ADMIN  # Often required for BPF operations
           privileged: false  # Avoid full privilege when possible
 ```
 
@@ -236,4 +239,4 @@ kubectl get pods --all-namespaces -o json | \
 
 ## Conclusion
 
-Talos Linux applies the principle of least privilege throughout the system. Every process runs with the minimum set of capabilities it needs, the bounding set limits what any process can acquire, and seccomp further restricts available system calls. Combined with the read-only filesystem and absence of shell access, this creates multiple layers of defense. For your Kubernetes workloads, follow the same principle: drop all capabilities by default and add back only what each container actually needs. This defense-in-depth approach significantly reduces the impact of any security breach.
+Talos Linux applies the principle of least privilege throughout the system. Talos prevents processes from gaining CAP_SYS_MODULE and CAP_SYS_BOOT, while Kubernetes security contexts and seccomp profiles let you further restrict workload privileges and system calls. Combined with the read-only filesystem and absence of shell access, this creates multiple layers of defense. For your Kubernetes workloads, follow the same principle: drop all capabilities by default and add back only what each container actually needs. This defense-in-depth approach significantly reduces the impact of any security breach.
