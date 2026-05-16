@@ -21,9 +21,9 @@ Key capabilities of the CSI driver include standard and SSD persistent disks, ba
 Before starting:
 
 - A running Talos Linux cluster on GCP with the external cloud provider configured
-- `kubectl` and Helm installed
+- `kubectl` and `gcloud` installed
 - A GCP service account with disk management permissions
-- Persistent Disk API enabled in your GCP project
+- Compute Engine API enabled in your GCP project
 
 ## IAM Permissions
 
@@ -36,7 +36,7 @@ gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:talos-cloud-provider@my-project.iam.gserviceaccount.com" \
   --role="roles/compute.storageAdmin"
 
-# The driver also needs snapshot permissions
+# The driver also needs to impersonate node service accounts when attaching and detaching disks
 gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:talos-cloud-provider@my-project.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountUser"
@@ -53,38 +53,44 @@ gcloud iam service-accounts create pd-csi-driver \
 gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:pd-csi-driver@my-project.iam.gserviceaccount.com" \
   --role="roles/compute.storageAdmin"
+
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:pd-csi-driver@my-project.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
 ```
 
 ## Deploying the CSI Driver
 
-The GCP PD CSI driver is best deployed through its official Helm chart or manifest files:
+The upstream GCP PD CSI driver repository provides Kustomize manifest files and a deployment script. Manual deployment is not officially supported by Google for GKE clusters, but it is the path used for non-GKE Kubernetes clusters such as Talos on GCP:
 
 ```bash
 # Clone the CSI driver repository
-git clone https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver.git
-cd gcp-compute-persistent-disk-csi-driver
+export GOPATH="${GOPATH:-$HOME/go}"
+mkdir -p "$GOPATH/src/sigs.k8s.io"
+git clone https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver.git \
+  "$GOPATH/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver"
+cd "$GOPATH/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver"
+
+# Create the driver namespace
+kubectl create namespace gce-pd-csi-driver
 
 # Create the secret with service account credentials
 kubectl create secret generic cloud-sa \
   --namespace gce-pd-csi-driver \
   --from-file=cloud-sa.json=gcp-cloud-provider-key.json
 
-# Deploy using the stable overlay
-kubectl apply -k deploy/kubernetes/overlays/stable/
+# Deploy using the stable-master overlay
+kubectl apply -k deploy/kubernetes/overlays/stable-master/
 ```
 
-Alternatively, if you prefer Helm:
+Alternatively, use the repository's deployment script, which creates the namespace and `cloud-sa` secret from a `cloud-sa.json` file:
 
 ```bash
-# Add the Helm repository
-helm repo add gcp-pd-csi-driver https://kubernetes-sigs.github.io/gcp-compute-persistent-disk-csi-driver/
-helm repo update
+# Store the key as cloud-sa.json in this directory
+export GCE_PD_SA_DIR=/my/safe/credentials/directory
+export GCE_PD_DRIVER_VERSION=stable-master
 
-# Install the driver
-helm install gcp-pd-csi-driver gcp-pd-csi-driver/gcp-compute-persistent-disk-csi-driver \
-  --namespace gce-pd-csi-driver \
-  --create-namespace \
-  --set controller.saSecret.name=cloud-sa
+./deploy/kubernetes/deploy-driver.sh
 ```
 
 ## Verifying the Installation
@@ -232,6 +238,8 @@ kubectl exec test-pd-pod -- cat /data/test.txt
 ## Volume Snapshots
 
 Set up volume snapshots for backup:
+
+Make sure the Kubernetes snapshot CRDs and snapshot controller are installed first. The CSI driver includes the `csi-snapshotter` sidecar, but Kubernetes distributions are responsible for the snapshot CRDs and controller.
 
 ```yaml
 # snapshot-class.yaml
