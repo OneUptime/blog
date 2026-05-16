@@ -285,7 +285,7 @@ kubectl logs ceph-test-pod
 Deploy the Rook toolbox for ongoing management:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/rook/rook/release-1.13/deploy/examples/toolbox.yaml
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/release-1.15/deploy/examples/toolbox.yaml
 
 # Access Ceph CLI
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
