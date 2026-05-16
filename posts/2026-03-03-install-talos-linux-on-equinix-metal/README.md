@@ -250,15 +250,24 @@ spec:
   addresses:
     - "${API_VIP}/32"
 ---
-apiVersion: metallb.io/v1beta1
+apiVersion: metallb.io/v1beta2
 kind: BGPPeer
 metadata:
-  name: equinix-peer
+  name: equinix-peer-1
   namespace: metallb-system
 spec:
   myASN: 65000
   peerASN: 65530
   peerAddress: 169.254.255.1
+---
+apiVersion: metallb.io/v1beta2
+kind: BGPPeer
+metadata:
+  name: equinix-peer-2
+  namespace: metallb-system
+spec:
+  myASN: 65000
+  peerASN: 65530
   peerAddress: 169.254.255.2
 ---
 apiVersion: metallb.io/v1beta1
@@ -281,12 +290,12 @@ kubectl apply -f metallb-config.yaml
 # Install Cilium
 cilium install --helm-set ipam.mode=kubernetes
 
-# For persistent storage, you can use local volumes or
-# attach Equinix Metal Block Storage
-# Block storage requires the CSI driver
-kubectl apply -f https://raw.githubusercontent.com/packethost/csi-packet/master/deploy/kubernetes/setup.yaml
-kubectl apply -f https://raw.githubusercontent.com/packethost/csi-packet/master/deploy/kubernetes/node.yaml
-kubectl apply -f https://raw.githubusercontent.com/packethost/csi-packet/master/deploy/kubernetes/controller.yaml
+# For persistent storage, you can use local volumes or a
+# cluster-native solution. Equinix retired its hosted Block
+# Storage (and the packethost/csi-packet driver is archived),
+# so a common choice on bare metal is Longhorn, which builds
+# replicated block storage directly from the local NVMe disks.
+kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.6.0/deploy/longhorn.yaml
 ```
 
 ## Performance Benefits of Bare Metal
