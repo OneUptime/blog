@@ -54,24 +54,24 @@ Talos tracks its time synchronization state through resources:
 talosctl -n 192.168.1.10 get timestatus -o yaml
 
 # Check which NTP servers are configured
-talosctl -n 192.168.1.10 get timeserverconfig -o yaml
+talosctl -n 192.168.1.10 get timeservers -o yaml
 ```
 
-The `timestatus` resource will tell you whether synchronization is active, the current offset from the NTP source, and the last time a successful sync occurred.
+The `timestatus` resource will tell you whether synchronization is active. For current offset, jitter, and NTP response details, inspect the time sync controller logs.
 
-## Step 3: Inspect the Time Service
+## Step 3: Inspect the Time Sync Controller
 
-The time daemon (`timed`) is the service responsible for NTP synchronization:
+Talos runs time synchronization through the time sync controller in `controller-runtime`:
 
 ```bash
-# Check timed service status
-talosctl -n 192.168.1.10 service timed
+# Check the controller-runtime service status
+talosctl -n 192.168.1.10 service controller-runtime
 
-# View timed logs for errors
-talosctl -n 192.168.1.10 logs timed
+# View time sync logs for errors
+talosctl -n 192.168.1.10 logs controller-runtime | grep -i time.Sync
 
-# Follow timed logs to see real-time sync attempts
-talosctl -n 192.168.1.10 logs timed -f
+# Follow controller logs to see real-time sync attempts
+talosctl -n 192.168.1.10 logs controller-runtime -f | grep -i time.Sync
 ```
 
 Look for messages like:
@@ -86,7 +86,7 @@ If the time service is running but not syncing, the problem might be network-lev
 
 ```bash
 # Check which NTP servers are configured
-talosctl -n 192.168.1.10 get timeserverconfig -o yaml
+talosctl -n 192.168.1.10 get timeservers -o yaml
 ```
 
 Common connectivity blockers include:
@@ -103,7 +103,7 @@ talosctl -n 192.168.1.10 get resolvers -o yaml
 talosctl -n 192.168.1.10 get hostnamestatus
 ```
 
-3. **Network policies**: Kubernetes network policies might be blocking outbound NTP traffic from the node. Although NTP runs at the OS level (not in a pod), some network configurations can still interfere.
+3. **Node or network egress controls**: Kubernetes `NetworkPolicy` objects normally apply to pod traffic, not Talos host traffic, but cloud firewalls, host-level rules, CNI egress gateways, or upstream network controls can still interfere with outbound NTP.
 
 ## Step 5: Check for Large Time Offsets
 
@@ -127,11 +127,14 @@ Once you have addressed the root cause, verify that time sync is working correct
 # Check sync status
 talosctl -n 192.168.1.10 get timestatus
 
+# Check configured time servers
+talosctl -n 192.168.1.10 get timeservers
+
 # Compare time across all nodes
 talosctl -n 192.168.1.10,192.168.1.11,192.168.1.12,192.168.1.20,192.168.1.21 time
 
 # Check that services are healthy
-talosctl -n 192.168.1.10 services
+talosctl -n 192.168.1.10 service
 ```
 
 Also verify that the symptoms you originally observed have resolved. If you were seeing certificate errors, test TLS connections. If etcd was unstable, check the etcd member status and leader election frequency.
@@ -144,20 +147,7 @@ If the current NTP servers are unreachable, switch to servers that work in your 
 
 ```bash
 # Patch the NTP configuration
-talosctl -n 192.168.1.10 patch machineconfig -p '[
-  {
-    "op": "replace",
-    "path": "/machine/time",
-    "value": {
-      "disabled": false,
-      "servers": [
-        "time.cloudflare.com",
-        "time1.google.com",
-        "time2.google.com"
-      ]
-    }
-  }
-]'
+talosctl -n 192.168.1.10 patch machineconfig --patch $'apiVersion: v1alpha1\nkind: TimeSyncConfig\nntp:\n  servers:\n    - time.cloudflare.com\n    - time1.google.com\n    - time2.google.com'
 ```
 
 ### Fix 2: Open Firewall Rules
@@ -178,17 +168,7 @@ If UDP port 123 is blocked, update your firewall rules to allow outbound NTP tra
 If DNS is flaky, use IP addresses for NTP servers to eliminate the DNS dependency:
 
 ```bash
-talosctl -n 192.168.1.10 patch machineconfig -p '[
-  {
-    "op": "replace",
-    "path": "/machine/time/servers",
-    "value": [
-      "162.159.200.1",
-      "216.239.35.0",
-      "216.239.35.4"
-    ]
-  }
-]'
+talosctl -n 192.168.1.10 patch machineconfig --patch $'apiVersion: v1alpha1\nkind: TimeSyncConfig\nntp:\n  servers:\n    - 162.159.200.1\n    - 216.239.35.0\n    - 216.239.35.4'
 ```
 
 ### Fix 4: Deploy a Local NTP Server
@@ -198,11 +178,12 @@ For air-gapped environments or clusters with strict egress policies, deploy an N
 ```yaml
 # Run chrony as a container in your infrastructure
 # Then point Talos nodes to it
-machine:
-  time:
-    servers:
-      - 10.0.0.50   # Local NTP server
-      - 10.0.0.51   # Backup NTP server
+apiVersion: v1alpha1
+kind: TimeSyncConfig
+ntp:
+  servers:
+    - 10.0.0.50   # Local NTP server
+    - 10.0.0.51   # Backup NTP server
 ```
 
 ### Fix 5: Reset the Hardware Clock
@@ -213,7 +194,7 @@ If a virtual machine's hardware clock is way off, you may need to intervene at t
 
 1. **Monitor time offset**: Add time drift monitoring to your observability stack. Alert when any node's offset exceeds a threshold (e.g., 100ms).
 
-2. **Use multiple NTP sources**: Configure at least three NTP servers so the client can use majority voting to detect a bad time source.
+2. **Use multiple NTP sources**: Configure multiple reliable NTP servers so Talos has fallback sources if one server becomes unreachable.
 
 3. **Test NTP connectivity during setup**: Before deploying workloads, verify that all nodes can reach their configured NTP servers.
 
