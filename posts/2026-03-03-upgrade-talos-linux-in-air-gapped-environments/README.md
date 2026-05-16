@@ -27,15 +27,13 @@ Beyond the installer image, you also need to consider:
 Start by figuring out exactly which images the new Talos version needs. The Talos project publishes image lists with each release.
 
 ```bash
-# On a machine with internet access, pull the image list
+# On a machine with internet access, check the release notes
+# for the target Talos version, or use talosctl to list defaults
+talosctl image default
 
-# for the target Talos version
-crane export ghcr.io/siderolabs/installer:v1.7.0 - | \
-  tar -xf - images.txt
-
-# Alternatively, check the release notes for the image list
-# or use the Talos image list tool
-talosctl images --kubernetes-version 1.30.0
+# With newer talosctl versions, you can also list the bundles separately
+talosctl image k8s-bundle --k8s-version v1.30.0
+talosctl image talos-bundle v1.7.0
 ```
 
 Create a comprehensive list that includes:
@@ -51,13 +49,16 @@ registry.k8s.io/kube-scheduler:v1.30.0
 registry.k8s.io/kube-proxy:v1.30.0
 
 # etcd
-gcr.io/etcd-development/etcd:v3.5.12
+gcr.io/etcd-development/etcd:v3.5.13
 
 # CoreDNS
 registry.k8s.io/coredns/coredns:v1.11.1
 
-# Flannel or your CNI
-docker.io/flannel/flannel:v0.25.0
+# Kubelet, pause, and default CNI images
+ghcr.io/siderolabs/kubelet:v1.30.0
+registry.k8s.io/pause:3.8
+ghcr.io/siderolabs/flannel:v0.25.1
+ghcr.io/siderolabs/install-cni:v1.7.0-1-gbb76755
 
 # System extensions (if used)
 ghcr.io/siderolabs/iscsi-tools:v0.1.4
@@ -146,10 +147,7 @@ machine:
     config:
       registry.internal.example.com:
         tls:
-          ca: |
-            -----BEGIN CERTIFICATE-----
-            <your CA certificate here>
-            -----END CERTIFICATE-----
+          ca: <base64-encoded-ca-certificate>
 ```
 
 ## Step 4: Handle System Extensions
@@ -162,7 +160,7 @@ If you use system extensions (like iscsi-tools, qemu-guest-agent, or others), yo
 # Visit https://factory.talos.dev or use the API
 
 # Then mirror the custom installer to your local registry
-crane copy ghcr.io/siderolabs/installer:<custom-hash>:v1.7.0 \
+crane copy factory.talos.dev/installer/<schematic-id>:v1.7.0 \
   ${LOCAL_REGISTRY}/siderolabs/installer:v1.7.0-custom
 ```
 
