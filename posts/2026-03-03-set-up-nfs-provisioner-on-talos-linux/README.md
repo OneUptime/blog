@@ -129,14 +129,14 @@ persistence:
   accessMode: ReadWriteOnce
 
 storageClass:
+  create: true
   name: nfs
   defaultClass: false
   reclaimPolicy: Delete
   allowVolumeExpansion: true
   mountOptions:
-    - nfsvers=4.1
+    - vers=4.1
     - hard
-    - noresvport
 
 resources:
   requests:
@@ -179,7 +179,7 @@ spec:
   resources:
     requests:
       storage: 50Gi
-  storageClassName: nfs-shared
+  storageClassName: nfs-shared  # Use "nfs" if you installed the in-cluster provisioner above
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -247,18 +247,7 @@ In this example, three writer pods and five reader pods all share the same NFS v
 
 ## Talos Linux NFS Configuration
 
-Talos Linux includes NFS client support by default, but you may need to load additional kernel modules for certain NFS versions:
-
-```yaml
-# If you need NFSv4 support patches
-machine:
-  kernel:
-    modules:
-      - name: nfs
-      - name: nfsd
-```
-
-Most of the time, the default Talos configuration handles NFS mounts through the CSI driver without any additional patches.
+Talos Linux runs kubelet in a container image that includes the NFS client utilities needed by Kubernetes NFS volumes. Most of the time, the default Talos configuration handles NFS mounts through the CSI driver without any additional patches.
 
 ## Static NFS Volumes
 
@@ -327,8 +316,8 @@ mountOptions:
 ## Monitoring NFS Health
 
 ```bash
-# Check NFS mount status on a node (through a debug pod)
-kubectl run nfs-debug --rm -it --image=busybox -- sh -c "mount | grep nfs"
+# Check NFS mount status on a node
+kubectl debug node/<node-name> -it --image=busybox -- sh -c "grep nfs /host/proc/mounts"
 
 # Check NFS provisioner logs
 kubectl -n nfs-provisioner logs -l app=nfs-server-provisioner --tail=50
@@ -358,4 +347,4 @@ kubectl run nfs-test --rm -it --image=busybox -- \
 
 ## Summary
 
-NFS provisioning on Talos Linux gives you a simple, well-understood shared storage solution. Whether you connect to an external NFS server or run one inside your cluster, the NFS CSI driver handles dynamic provisioning through standard StorageClasses and PersistentVolumeClaims. While NFS does not match the performance of local storage or specialized distributed systems like Ceph, it is perfectly adequate for many use cases like shared configuration files, media storage, and data processing pipelines. The simplicity of NFS makes it a good starting point for teams that need ReadWriteMany storage on Talos Linux without the operational complexity of more advanced solutions.
+NFS provisioning on Talos Linux gives you a simple, well-understood shared storage solution. Whether you connect to an external NFS server or run one inside your cluster, Kubernetes can handle dynamic provisioning through standard StorageClasses and PersistentVolumeClaims. While NFS does not match the performance of local storage or specialized distributed systems like Ceph, it is perfectly adequate for many use cases like shared configuration files, media storage, and data processing pipelines. The simplicity of NFS makes it a good starting point for teams that need ReadWriteMany storage on Talos Linux without the operational complexity of more advanced solutions.
