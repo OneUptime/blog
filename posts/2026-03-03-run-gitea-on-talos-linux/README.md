@@ -66,7 +66,7 @@ replicaCount: 1
 
 image:
   repository: gitea/gitea
-  tag: "1.21"
+  tag: "1.23"
   pullPolicy: IfNotPresent
 
 # Persistent storage for Gitea data
@@ -76,6 +76,11 @@ persistence:
   storageClass: local-path
 
 # Built-in PostgreSQL database
+# The Gitea chart enables postgresql-ha by default; disable it
+# and use the simpler non-HA postgresql subchart instead.
+postgresql-ha:
+  enabled: false
+
 postgresql:
   enabled: true
   global:
@@ -167,7 +172,8 @@ spec:
       protocol: TCP
       name: ssh
   selector:
-    app: gitea
+    app.kubernetes.io/name: gitea
+    app.kubernetes.io/instance: gitea
 ```
 
 Apply this service:
@@ -180,14 +186,14 @@ Now users can clone repositories over SSH using port 30022 on any node in the cl
 
 ## Configuring Persistent Storage on Talos
 
-One thing to keep in mind with Talos Linux is that the filesystem is read-only except for specific paths. When using local-path-provisioner, data is stored under `/var/local-path-provisioner` by default. You may need to configure Talos to allow writes to this path through a machine configuration patch:
+One thing to keep in mind with Talos Linux is that the root filesystem is read-only except for specific paths such as `/var`. When using local-path-provisioner, data is stored under `/opt/local-path-provisioner` by default, but `/opt` is not writable on Talos. The fix is to bind-mount a writable path under `/var` to `/opt/local-path-provisioner` through a kubelet extra-mount in your machine configuration:
 
 ```yaml
 # talos-storage-patch.yaml
 machine:
   kubelet:
     extraMounts:
-      - destination: /var/local-path-provisioner
+      - destination: /opt/local-path-provisioner
         type: bind
         source: /var/local-path-provisioner
         options:
@@ -200,7 +206,7 @@ Apply the patch to your worker nodes:
 
 ```bash
 # Apply the storage patch to worker nodes
-talosctl apply-config --patch @talos-storage-patch.yaml --nodes <worker-node-ip>
+talosctl patch machineconfig --patch @talos-storage-patch.yaml --nodes <worker-node-ip>
 ```
 
 ## Configuring Gitea for Production Use
@@ -280,7 +286,8 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: gitea
+      app.kubernetes.io/name: gitea
+      app.kubernetes.io/instance: gitea
   endpoints:
     - port: http
       path: /metrics
