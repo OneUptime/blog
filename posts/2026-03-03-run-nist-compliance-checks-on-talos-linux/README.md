@@ -16,7 +16,7 @@ This guide covers running NIST compliance checks on Talos Linux clusters and map
 
 There are two main NIST documents relevant to Kubernetes and infrastructure security:
 
-**NIST Cybersecurity Framework (CSF)**: A high-level framework organized around five functions - Identify, Protect, Detect, Respond, and Recover. It provides a strategic view of cybersecurity risk management.
+**NIST Cybersecurity Framework (CSF) 2.0**: A high-level framework organized around six functions - Govern, Identify, Protect, Detect, Respond, and Recover. CSF 2.0 (released February 2024) added Govern as the sixth function alongside the original five. It provides a strategic view of cybersecurity risk management.
 
 **NIST SP 800-53**: A detailed catalog of security controls organized into families like Access Control (AC), Audit and Accountability (AU), Configuration Management (CM), and System and Information Integrity (SI). This is where the specific technical requirements live.
 
@@ -102,34 +102,26 @@ kubectl get vulnerabilityreport -n production \
   deployment-api-server-api -o yaml
 ```
 
-### Using Kubescape for NIST Mapping
+### Using Kubescape for NIST-Adjacent Mapping
 
-Kubescape can scan your cluster against NIST SP 800-53 controls directly:
+The open-source Kubescape CLI does not ship a built-in NIST 800-53 framework. Its built-in frameworks are NSA-CISA Kubernetes Hardening, MITRE ATT&CK, and several CIS Benchmarks. The NSA-CISA hardening guidance overlaps heavily with NIST 800-53 controls (RBAC, audit logging, isolation, image security), so it is the practical option from the CLI. For direct NIST 800-53 reporting and dashboards, use the ARMO Platform (the SaaS that backs Kubescape).
 
 ```bash
 # Install kubescape
 curl -s https://raw.githubusercontent.com/kubescape/kubescape/master/install.sh | bash
 
-# Run NIST SP 800-53 compliance scan
-kubescape scan framework nist --submit
+# Run the NSA-CISA hardening scan (broad overlap with NIST 800-53)
+kubescape scan framework nsa
+
+# Or run a CIS Kubernetes Benchmark scan
+kubescape scan framework cis-v1.10.0
 
 # Run specific control checks
-kubescape scan control C-0005  # API server access control
-kubescape scan control C-0034  # Automatic mapping of service accounts
+kubescape scan control C-0005  # API server insecure port is enabled
+kubescape scan control C-0034  # Automatic mapping of service account
 ```
 
-Kubescape outputs a compliance score and lists specific controls that pass or fail:
-
-```bash
-# Example output
-# Control: Ensure that the API server --authorization-mode includes RBAC
-# Status: PASSED
-# NIST Mapping: AC-3, AC-6
-
-# Control: Ensure pods do not run with privileged containers
-# Status: 3 resources failed
-# NIST Mapping: AC-6, CM-7
-```
+Kubescape outputs a compliance score and lists specific controls that pass or fail. You can then manually cross-reference the failing controls with the NIST 800-53 families they relate to (for example, RBAC findings map to AC-3 / AC-6; privileged-container findings map to AC-6 / CM-7).
 
 ### Using Polaris for Configuration Checks
 
@@ -285,8 +277,8 @@ mkdir -p "$REPORT_DIR"
 
 echo "Generating NIST Compliance Report..."
 
-# Run kubescape scan
-kubescape scan framework nist -o json > "$REPORT_DIR/kubescape-nist.json"
+# Run kubescape scan (NSA-CISA hardening overlaps NIST 800-53; use ARMO Platform for direct NIST reports)
+kubescape scan framework nsa --format json --output "$REPORT_DIR/kubescape-nsa.json"
 
 # Get vulnerability reports
 kubectl get vulnerabilityreports -A -o json > "$REPORT_DIR/vulnerability-reports.json"
@@ -300,8 +292,8 @@ kubectl get clusterroles,clusterrolebindings -o yaml > "$REPORT_DIR/rbac-config.
 # Get network policies
 kubectl get networkpolicies -A -o yaml > "$REPORT_DIR/network-policies.yaml"
 
-# Get pod security policies/standards
-kubectl get podsecuritypolicies -o yaml > "$REPORT_DIR/pod-security.yaml" 2>/dev/null
+# Get Pod Security Admission labels (PodSecurityPolicy was removed in Kubernetes 1.25)
+kubectl get namespaces -L pod-security.kubernetes.io/enforce,pod-security.kubernetes.io/audit,pod-security.kubernetes.io/warn > "$REPORT_DIR/pod-security.txt"
 
 echo "Report generated in $REPORT_DIR"
 ```
@@ -330,12 +322,11 @@ spec:
                 - kubescape
                 - scan
                 - framework
-                - nist
-                - --submit
+                - nsa
                 - --format
                 - json
                 - --output
-                - /reports/nist-scan.json
+                - /reports/nsa-scan.json
               volumeMounts:
                 - name: reports
                   mountPath: /reports
@@ -348,4 +339,4 @@ spec:
 
 ## Summary
 
-NIST compliance on Talos Linux starts from a strong foundation. The immutable OS, API-only management, and minimal attack surface satisfy many controls automatically. Your job is to configure the Kubernetes layer properly (RBAC, audit logging, network policies), run automated compliance scanners, and document everything for auditors. Use kubescape for direct NIST framework mapping, Trivy for vulnerability management, and kube-bench for CIS benchmark checks. Run these scans regularly, track the results over time, and address findings promptly. Compliance is not a one-time achievement - it is an ongoing process that requires continuous monitoring and improvement.
+NIST compliance on Talos Linux starts from a strong foundation. The immutable OS, API-only management, and minimal attack surface satisfy many controls automatically. Your job is to configure the Kubernetes layer properly (RBAC, audit logging, network policies), run automated compliance scanners, and document everything for auditors. Use kubescape's NSA-CISA framework (or the ARMO Platform for direct NIST 800-53 reporting), Trivy for vulnerability management, and kube-bench for CIS benchmark checks. Run these scans regularly, track the results over time, and address findings promptly. Compliance is not a one-time achievement - it is an ongoing process that requires continuous monitoring and improvement.
