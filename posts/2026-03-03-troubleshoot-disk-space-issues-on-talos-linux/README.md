@@ -15,7 +15,8 @@ Disk space issues on Talos Linux nodes can lead to a cascade of problems. etcd w
 Talos uses a specific partition layout that differs from traditional Linux distributions:
 
 - **EFI/BOOT** - Contains the bootloader
-- **STATE** - Stores the machine configuration (encrypted)
+- **META** - Stores Talos metadata
+- **STATE** - Stores the machine configuration and system state (encrypted only if disk encryption is enabled)
 - **EPHEMERAL** - Mounted at `/var`, holds all runtime data including container images, logs, etcd data, and kubelet state
 
 The ephemeral partition is where nearly all disk space issues occur. It contains everything that the node writes during operation.
@@ -30,7 +31,7 @@ Start by checking overall disk usage:
 talosctl -n <node-ip> usage /var
 
 # Check the ephemeral partition specifically
-talosctl -n <node-ip> mounts | grep ephemeral
+talosctl -n <node-ip> mounts | grep -i ephemeral
 ```
 
 You can drill into specific directories to find what is consuming the most space:
@@ -70,16 +71,16 @@ Apply the updated configuration:
 talosctl apply-config -n <node-ip> --file worker.yaml
 ```
 
-You can also manually trigger garbage collection from Kubernetes:
+You can also inspect the images reported on a node from Kubernetes:
 
 ```bash
-# List unused images on a node (from kubectl)
+# List images reported in node status (from kubectl)
 kubectl get nodes <node-name> -o jsonpath='{.status.images[*].names}' | tr ' ' '\n'
 ```
 
 ## Common Cause: Container Logs
 
-Containers that produce a lot of output will fill up the disk with log files. By default, containerd stores logs under `/var/log/pods/`. Check log sizes:
+Containers that produce a lot of output will fill up the disk with log files. By default, the kubelet directs the container runtime to write pod logs under `/var/log/pods/`. Check log sizes:
 
 ```bash
 # Check the total size of pod logs
@@ -106,14 +107,21 @@ On control plane nodes, etcd data can grow significantly, especially if you have
 # Check etcd data directory size
 talosctl -n <cp-ip> usage /var/lib/etcd
 
-# Check etcd database size through the etcd API
+# Check etcd database size through Talos
 talosctl -n <cp-ip> etcd status
 ```
 
-If etcd is consuming too much space, you should compact and defragment it:
+If etcd is consuming too much space, check whether the database is fragmented. Kubernetes API server performs automatic etcd compaction, but defragmentation is what releases unused space back to the filesystem:
 
 ```bash
-# Using etcdctl from a machine with the proper certificates
+# Defragment to reclaim space, one control plane node at a time
+talosctl -n <cp-ip> etcd defrag
+```
+
+If you need to compact manually, use etcdctl from a machine with the proper certificates and compact to a known safe revision:
+
+```bash
+# Check the current revision
 ETCDCTL_API=3 etcdctl \
   --endpoints=https://<cp-ip>:2379 \
   --cacert=etcd-ca.crt \
@@ -128,19 +136,11 @@ ETCDCTL_API=3 etcdctl \
   --cert=etcd.crt \
   --key=etcd.key \
   compact <revision-number>
-
-# Defragment to reclaim space
-ETCDCTL_API=3 etcdctl \
-  --endpoints=https://<cp-ip>:2379 \
-  --cacert=etcd-ca.crt \
-  --cert=etcd.crt \
-  --key=etcd.key \
-  defrag
 ```
 
 ## Common Cause: Persistent Volume Data
 
-If you are using local persistent volumes (like with OpenEBS LocalPV or hostPath volumes), data written by pods is stored on the node disk:
+If you are using local persistent volumes (like with OpenEBS LocalPV or hostPath volumes), data written by pods is stored on the node disk. Some pod volume data is visible under the kubelet pod directory:
 
 ```bash
 # Check persistent volume data
