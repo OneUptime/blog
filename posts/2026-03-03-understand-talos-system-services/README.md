@@ -12,7 +12,7 @@ Talos Linux runs a minimal set of system services that together provide everythi
 
 ## The Talos Service Architecture
 
-Talos Linux does not use systemd. Instead, it has its own lightweight init system that manages services in a specific order with well-defined dependencies. This is one of the things that makes Talos different from every other Linux distribution.
+Talos Linux does not use systemd. Instead, it has its own lightweight init system that manages services in a specific order with well-defined dependencies. This is one of the things that makes Talos different from many other Linux distributions.
 
 The init process in Talos is called `machined`. It is responsible for:
 
@@ -22,20 +22,20 @@ The init process in Talos is called `machined`. It is responsible for:
 - Coordinating upgrades and reboots
 
 ```bash
-# List all services running on a node
+# List services running on a node
 
-talosctl services -n <node-ip>
+talosctl service -n <node-ip>
 
 # You will see something like:
-# SERVICE     STATE     HEALTH
-# apid        Running   OK
-# containerd  Running   OK
-# cri         Running   OK
-# etcd        Running   OK
-# kubelet     Running   OK
-# machined    Running   OK
-# trustd      Running   OK
-# udevd       Running   OK
+# NODE        SERVICE     STATE     HEALTH   LAST CHANGE   LAST EVENT
+# <node-ip>   apid        Running   OK       ...           Health check successful
+# <node-ip>   containerd  Running   OK       ...           Health check successful
+# <node-ip>   cri         Running   OK       ...           Health check successful
+# <node-ip>   etcd        Running   OK       ...           Health check successful
+# <node-ip>   kubelet     Running   OK       ...           Health check successful
+# <node-ip>   machined    Running   OK       ...           Health check successful
+# <node-ip>   trustd      Running   OK       ...           Health check successful
+# <node-ip>   udevd       Running   OK       ...           Health check successful
 ```
 
 ## Core System Services
@@ -51,7 +51,7 @@ talosctl service machined -n <node-ip>
 # machined is always running - if it stops, the node is dead
 ```
 
-The Talos API that `talosctl` connects to is served by machined. When you run any `talosctl` command, you are talking to machined.
+Many Talos API requests handled by `talosctl` are routed to machined through apid. When you run node-management commands, apid is the entry point and machined handles the machine-level API operations.
 
 ### apid
 
@@ -65,11 +65,11 @@ talosctl service apid -n <node-ip>
 talosctl logs apid -n <node-ip>
 ```
 
-Apid listens on port 50000 by default. All `talosctl` commands go through this service.
+Apid listens on port 50000 by default. `talosctl` uses this service as the Talos API entry point.
 
 ### containerd
 
-Containerd is the container runtime. It manages container images, creates and runs containers, and handles container lifecycle. In Talos, containerd runs both system containers (Kubernetes components) and user workload containers.
+Containerd is the container runtime. It manages container images, creates and runs containers, and handles container lifecycle. In Talos, containerd is used for Talos-managed system containers and Kubernetes workloads.
 
 ```bash
 # Check containerd status
@@ -155,17 +155,19 @@ talosctl service udevd -n <node-ip>
 
 ## Service Dependencies
 
-Services in Talos start in a specific order based on their dependencies:
+Services in Talos start based on their dependencies. A simplified view looks like this:
 
 ```text
 machined (PID 1)
   -> udevd (hardware detection)
+  -> networkd (host networking)
   -> containerd (container runtime)
   -> apid (Talos API)
   -> trustd (certificate distribution)
+  -> timed (time synchronization)
+  -> CRI (container runtime for pods)
   -> etcd (control plane only)
   -> kubelet (Kubernetes node agent)
-    -> CRI (container runtime for pods)
 ```
 
 If a service fails to start, all services that depend on it will also fail.
@@ -199,7 +201,7 @@ Talos runs health checks on its services. You can see the health status:
 
 ```bash
 # Quick health overview of all services
-talosctl services -n <node-ip>
+talosctl service -n <node-ip>
 
 # Detailed health check
 talosctl health -n <node-ip>
@@ -222,6 +224,8 @@ Not all services run on every node:
 - CRI
 - etcd
 - kubelet
+- networkd
+- timed
 - trustd
 - udevd
 
@@ -231,6 +235,8 @@ Not all services run on every node:
 - containerd
 - CRI
 - kubelet
+- networkd
+- timed
 - trustd
 - udevd
 
@@ -239,10 +245,10 @@ The key difference is that worker nodes do not run etcd.
 ```bash
 # Compare services on control plane vs worker
 echo "Control plane services:"
-talosctl services -n <control-plane-ip>
+talosctl service -n <control-plane-ip>
 
 echo "Worker services:"
-talosctl services -n <worker-ip>
+talosctl service -n <worker-ip>
 ```
 
 ## Kubernetes Components as Static Pods
@@ -261,13 +267,13 @@ These are not Talos services but are managed by the kubelet:
 talosctl list /etc/kubernetes/manifests -n <control-plane-ip>
 
 # View kube-apiserver logs
-talosctl logs kube-apiserver -n <control-plane-ip>
+talosctl logs --kubernetes kube-apiserver -n <control-plane-ip>
 
 # View kube-controller-manager logs
-talosctl logs kube-controller-manager -n <control-plane-ip>
+talosctl logs --kubernetes kube-controller-manager -n <control-plane-ip>
 
 # View kube-scheduler logs
-talosctl logs kube-scheduler -n <control-plane-ip>
+talosctl logs --kubernetes kube-scheduler -n <control-plane-ip>
 ```
 
 ## Extensions and Additional Services
