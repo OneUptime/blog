@@ -40,10 +40,10 @@ On Talos Linux, container logs are stored at `/var/log/pods/` on each node. Veri
 
 ```bash
 # List log files for a specific namespace/pod on a node
-talosctl -n 192.168.1.20 ls /var/log/pods/
+talosctl -n 192.168.1.20 list /var/log/pods/
 
 # Look deeper into a specific pod's log directory
-talosctl -n 192.168.1.20 ls /var/log/pods/default_my-app-abc123_uid/main-container/
+talosctl -n 192.168.1.20 list /var/log/pods/default_my-app-abc123_uid/main-container/
 
 # Read the actual log file
 talosctl -n 192.168.1.20 read /var/log/pods/default_my-app-abc123_uid/main-container/0.log
@@ -53,17 +53,17 @@ If the log files exist but your collector is not picking them up, the problem is
 
 ### Check the Log Collector
 
-If you are running Promtail, Fluentd, or another log collector as a DaemonSet, verify it is running on the node where the pod is scheduled:
+If you are running Grafana Alloy, Fluentd, or another log collector as a DaemonSet, verify it is running on the node where the pod is scheduled:
 
 ```bash
 # Check if the log collector is running on all nodes
 kubectl get pods -n logging -o wide
 
 # Check the collector's own logs for errors
-kubectl logs -n logging -l app.kubernetes.io/name=promtail --tail=50
+kubectl logs -n logging -l app.kubernetes.io/name=alloy --tail=50
 
 # Verify the collector has the right volume mounts
-kubectl get pod -n logging promtail-xxxxx -o yaml | grep -A 10 volumeMounts
+kubectl get pod -n logging alloy-xxxxx -o yaml | grep -A 10 volumeMounts
 ```
 
 Common issues include the collector not having access to `/var/log/pods`, missing tolerations that prevent it from running on control plane nodes, or incorrect path configurations.
@@ -122,8 +122,8 @@ logging:
 If the logging section is missing, the configuration was not applied correctly. Re-apply it:
 
 ```bash
-# Re-apply the logging configuration
-talosctl apply-config --nodes 192.168.1.10 --patch @logging-patch.yaml
+# Patch the logging configuration on a running node
+talosctl patch machineconfig --nodes 192.168.1.10 --patch @logging-patch.yaml
 ```
 
 ### Test Network Connectivity
@@ -178,16 +178,16 @@ Containerd has a default maximum log line size. On Talos Linux, you can adjust t
 machine:
   files:
     - content: |
-        [plugins."io.containerd.grpc.v1.cri"]
+        [plugins."io.containerd.cri.v1.runtime"]
           max_container_log_line_size = 65536
-      path: /var/cri/conf.d/20-max-log-line.toml
+      path: /etc/cri/conf.d/20-customization.part
       op: create
 ```
 
 Apply to all nodes:
 
 ```bash
-talosctl apply-config --nodes 192.168.1.10,192.168.1.20 --patch @increase-log-line-size.yaml
+talosctl patch machineconfig --nodes 192.168.1.10,192.168.1.20 --patch @increase-log-line-size.yaml
 ```
 
 ## Log Collector Crashing with OOM
@@ -196,7 +196,7 @@ If your log collector DaemonSet keeps getting OOM killed, the collector is using
 
 ```bash
 # Check for OOM events
-kubectl get events -n logging --field-selector reason=OOMKilled
+kubectl get events -n logging --sort-by='.lastTimestamp' | grep -i oom
 
 # Check the collector's resource usage
 kubectl top pods -n logging
@@ -205,7 +205,7 @@ kubectl top pods -n logging
 Fix this by increasing memory limits or reducing the collector's buffer sizes:
 
 ```yaml
-# Adjust Promtail resource limits
+# Adjust Alloy resource limits
 resources:
   requests:
     memory: 128Mi
@@ -237,12 +237,17 @@ kubectl get pods -n logging -o wide | sort -k 7
 kubectl get daemonsets -n logging
 ```
 
-If you have both Promtail and Fluentd running, remove one. If the issue is reprocessing after restarts, ensure the collector is using a position file to track its read progress:
+If you have both Alloy and Fluentd running, remove one. If the issue is reprocessing after restarts, ensure the collector is using persistent read-offset tracking.
 
-```yaml
-# Promtail position file configuration
-positions:
-  filename: /run/promtail/positions.yaml
+```river
+# Alloy file sources store positions under the configured storage path.
+loki.source.file "pods" {
+  targets    = [{ __path__ = "/var/log/pods/*/*/*.log" }]
+  forward_to = [loki.write.local.receiver]
+  file_match {
+    enabled = true
+  }
+}
 ```
 
 ## Missing Logs After Node Reboot
@@ -279,13 +284,13 @@ kubectl get events -n logging --sort-by='.lastTimestamp' | tail -20
 talosctl -n 192.168.1.10 get machineconfig -o yaml | grep -A 15 logging
 
 # 5. Are container log files being created?
-talosctl -n 192.168.1.20 ls /var/log/pods/ | head -20
+talosctl -n 192.168.1.20 list /var/log/pods/ | head -20
 
 # 6. Is disk space available?
 talosctl -n 192.168.1.20 usage /var/log
 
 # 7. Can the collector reach the backend?
-kubectl exec -n logging deployment/promtail -- wget -qO- http://loki:3100/ready
+kubectl exec -n logging deployment/alloy -- wget -qO- http://loki:3100/ready
 ```
 
 Logging problems in Talos Linux clusters are systematic to diagnose once you understand the two-layer architecture - machine logs through the Talos API and container logs through the Kubernetes logging pipeline. Working through each layer independently and verifying connectivity, configuration, and resource availability at each step will get you to the root cause efficiently.
