@@ -25,15 +25,15 @@ Every official Talos release is signed and can be verified before deployment. He
 ```bash
 # Download the Talos image and its signature
 
-curl -LO https://github.com/siderolabs/talos/releases/download/v1.7.0/talos-amd64.iso
-curl -LO https://github.com/siderolabs/talos/releases/download/v1.7.0/talos-amd64.iso.sig
+curl -LO https://github.com/siderolabs/talos/releases/download/v1.11.0/metal-amd64.iso
+curl -LO https://github.com/siderolabs/talos/releases/download/v1.11.0/metal-amd64.iso.sig
 
 # Verify the signature using cosign
 cosign verify-blob \
-  --signature talos-amd64.iso.sig \
+  --signature metal-amd64.iso.sig \
   --certificate-identity-regexp "https://github.com/siderolabs/talos" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-  talos-amd64.iso
+  metal-amd64.iso
 ```
 
 You can also verify the container images that make up Talos:
@@ -43,7 +43,7 @@ You can also verify the container images that make up Talos:
 cosign verify \
   --certificate-identity-regexp "https://github.com/siderolabs/talos" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-  ghcr.io/siderolabs/installer:v1.7.0
+  ghcr.io/siderolabs/installer:v1.11.0
 ```
 
 ## Working with SBOMs
@@ -51,14 +51,14 @@ cosign verify \
 Talos Linux publishes Software Bill of Materials (SBOM) documents for its releases. SBOMs let you inspect exactly what components are included in the image and cross-reference them against vulnerability databases.
 
 ```bash
-# Download the SBOM for a Talos release
-cosign download sbom ghcr.io/siderolabs/talos:v1.7.0 > talos-sbom.json
+# Download the SBOM for a Talos release (published in SPDX format as a release artifact)
+curl -LO https://github.com/siderolabs/talos/releases/download/v1.11.0/talos-amd64.spdx.json
 
 # Inspect the SBOM contents
-cat talos-sbom.json | jq '.components | length'
+cat talos-amd64.spdx.json | jq '.packages | length'
 
 # Scan the SBOM for known vulnerabilities using grype
-grype sbom:talos-sbom.json
+grype sbom:talos-amd64.spdx.json
 ```
 
 You can integrate SBOM scanning into your CI/CD pipeline to catch vulnerabilities before they reach production:
@@ -82,12 +82,12 @@ jobs:
           cosign verify \
             --certificate-identity-regexp "https://github.com/siderolabs/talos" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-            ghcr.io/siderolabs/installer:v1.7.0
+            ghcr.io/siderolabs/installer:v1.11.0
 
       - name: Download and Scan SBOM
         run: |
-          cosign download sbom ghcr.io/siderolabs/talos:v1.7.0 > sbom.json
-          grype sbom:sbom.json --fail-on critical
+          curl -LO https://github.com/siderolabs/talos/releases/download/v1.11.0/talos-amd64.spdx.json
+          grype sbom:talos-amd64.spdx.json --fail-on critical
 ```
 
 ## Securing Your Container Image Supply Chain
@@ -146,11 +146,10 @@ docker push ghcr.io/your-org/myapp:v1.0.0
 # Sign the image using cosign with keyless signing
 cosign sign ghcr.io/your-org/myapp:v1.0.0
 
-# Attach an SBOM to the image
+# Generate an SBOM for the image
 syft ghcr.io/your-org/myapp:v1.0.0 -o spdx-json > app-sbom.json
-cosign attach sbom --sbom app-sbom.json ghcr.io/your-org/myapp:v1.0.0
 
-# Attest the SBOM
+# Attest the SBOM (recommended over the deprecated `cosign attach sbom`)
 cosign attest --predicate app-sbom.json \
   --type spdxjson \
   ghcr.io/your-org/myapp:v1.0.0
@@ -173,11 +172,10 @@ SCHEMATICEOF
 
 # Upload the schematic to the Image Factory
 curl -X POST --data-binary @schematic.yaml \
-  https://factory.talos.dev/schematics \
-  -H "Content-Type: application/x-yaml"
+  https://factory.talos.dev/schematics
 
 # The response gives you an image ID that you can use to pull a verified image
-# Example: factory.talos.dev/installer/<schematic-id>:v1.7.0
+# Example: factory.talos.dev/installer/<schematic-id>:v1.11.0
 ```
 
 ## Implementing Runtime Verification
@@ -218,7 +216,8 @@ Set up ongoing monitoring to detect supply chain issues:
 # supply-chain-monitor.sh
 # Periodically verify Talos image signatures and scan for CVEs
 
-TALOS_VERSION=$(talosctl version --client --short)
+# Set this to the Talos version you are running
+TALOS_VERSION="v1.11.0"
 
 # Verify the running Talos version signature
 cosign verify \
@@ -232,7 +231,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Check for new CVEs against the current SBOM
-cosign download sbom "ghcr.io/siderolabs/talos:${TALOS_VERSION}" | \
+curl -sL "https://github.com/siderolabs/talos/releases/download/${TALOS_VERSION}/talos-amd64.spdx.json" | \
   grype sbom:/dev/stdin --fail-on critical
 ```
 
