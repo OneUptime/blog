@@ -91,7 +91,7 @@ sudo dd if=metal-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync
 ```bash
 # Generate cluster configs
 talosctl gen config minipc-lab https://192.168.1.100:6443 \
-  --output-dir ./minipc-config
+  --output ./minipc-config
 ```
 
 Customize for your mini PCs. Most modern mini PCs use NVMe drives:
