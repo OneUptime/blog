@@ -158,7 +158,7 @@ If you lost the node and do not have an etcd backup, the cluster state is gone. 
 ```bash
 # Step 1: Generate new cluster configuration
 talosctl gen config my-cluster https://<new-node-ip>:6443 \
-  --output-dir ./new-configs
+  --output ./new-configs
 
 # Step 2: Apply the configuration
 talosctl apply-config --nodes <new-node-ip> \
