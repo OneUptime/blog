@@ -30,10 +30,12 @@ Maintain a small Talos Linux cluster that mirrors your production topology. It d
 # Minimal staging cluster config for DR testing
 
 # 3 control plane nodes + 2 workers
+version: v1alpha1
 cluster:
-  name: dr-staging
-  endpoint: https://dr-staging.internal:6443
-  clusterNetwork:
+  clusterName: dr-staging
+  controlPlane:
+    endpoint: https://dr-staging.internal:6443
+  network:
     podSubnets:
       - 10.244.0.0/16
     serviceSubnets:
@@ -47,7 +49,8 @@ For teams without spare hardware, QEMU or libvirt works great for spinning up th
 ```bash
 # Create a virtual Talos cluster for DR testing
 # Download the Talos QEMU image
-wget https://github.com/siderolabs/talos/releases/download/v1.9.0/nocloud-amd64.raw.xz
+TALOS_VERSION=v1.13.0
+wget "https://github.com/siderolabs/talos/releases/download/${TALOS_VERSION}/nocloud-amd64.raw.xz"
 xz -d nocloud-amd64.raw.xz
 
 # Create control plane VM
@@ -68,11 +71,9 @@ The fastest option for basic testing uses Talos in Docker containers.
 
 ```bash
 # Create a disposable cluster with talosctl
-talosctl cluster create \
+talosctl cluster create docker \
   --name dr-test \
-  --controlplanes 3 \
-  --workers 2 \
-  --wait-timeout 5m
+  --workers 2
 ```
 
 ## Test Scenario 1: Single Node Recovery
@@ -92,7 +93,7 @@ talosctl -n 10.0.2.10 shutdown --force
 
 # Step 4: Wait for Kubernetes to notice
 kubectl get nodes -w
-# The node should transition to NotReady after ~40 seconds
+# The node should transition to NotReady after about 50 seconds by default
 
 # Step 5: Execute recovery procedure
 # Remove the old node
@@ -120,7 +121,7 @@ This is more critical because it involves etcd.
 
 ```bash
 # Step 1: Check current etcd health
-talosctl -n 10.0.1.10 etcd member list
+talosctl -n 10.0.1.10 etcd members
 talosctl -n 10.0.1.10 etcd status
 
 # Step 2: Simulate control plane node failure
@@ -132,10 +133,10 @@ talosctl -n 10.0.1.10 etcd status
 
 # Step 4: Verify Kubernetes API is still responding
 kubectl get nodes
-kubectl get cs
+kubectl get --raw='/readyz?verbose'
 
 # Step 5: Remove failed etcd member
-MEMBER_ID=$(talosctl -n 10.0.1.10 etcd member list | grep cp-3 | awk '{print $1}')
+MEMBER_ID=$(talosctl -n 10.0.1.10 etcd members | grep cp-3 | awk '{print $1}')
 talosctl -n 10.0.1.10 etcd remove-member $MEMBER_ID
 
 # Step 6: Bring up replacement node
@@ -144,7 +145,7 @@ talosctl apply-config --insecure \
   --file controlplane-config.yaml
 
 # Step 7: Verify etcd cluster is healthy with 3 members again
-talosctl -n 10.0.1.10 etcd member list
+talosctl -n 10.0.1.10 etcd members
 ```
 
 ## Test Scenario 3: Full Cluster Recovery from Backup
@@ -164,22 +165,23 @@ talosctl cluster destroy --name dr-test
 # Step 4: Create fresh nodes (no existing state)
 # Boot new VMs or containers
 
-# Step 5: Apply control plane config to first node
+# Step 5: Apply control plane config to the replacement control plane nodes
 talosctl apply-config --insecure \
   --nodes 10.0.1.10 \
   --file controlplane-config.yaml
-
-# Step 6: Bootstrap with etcd recovery
-talosctl bootstrap --recover-from=./pre-test-backup.snapshot \
-  --nodes 10.0.1.10
-
-# Step 7: Join remaining control plane nodes
 talosctl apply-config --insecure \
   --nodes 10.0.1.11 \
   --file controlplane-config.yaml
 talosctl apply-config --insecure \
   --nodes 10.0.1.12 \
   --file controlplane-config.yaml
+
+# Step 6: Bootstrap with etcd recovery after etcd is in Preparing state
+talosctl bootstrap --recover-from=./pre-test-backup.snapshot \
+  --nodes 10.0.1.10
+
+# Step 7: Verify remaining control plane nodes join
+talosctl -n 10.0.1.10 etcd members
 
 # Step 8: Join worker nodes
 talosctl apply-config --insecure \
@@ -233,10 +235,9 @@ test_etcd_snapshot_exists() {
 test_configs_current() {
   # Verify stored configs match running configs
   for node in 10.0.1.10 10.0.1.11 10.0.1.12; do
-    talosctl -n $node get machineconfig -o yaml > /tmp/running-config.yaml
-    # Compare with stored config (ignoring dynamic fields)
-    diff <(yq 'del(.metadata)' /tmp/running-config.yaml) \
-         <(yq 'del(.metadata)' /backups/talos/${node}-config.yaml) || return 1
+    talosctl -n $node get machineconfig v1alpha1 -o jsonpath='{.spec}' > /tmp/running-config.yaml
+    # Compare with stored machine config
+    diff /tmp/running-config.yaml /backups/talos/${node}-config.yaml || return 1
   done
 }
 
