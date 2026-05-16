@@ -30,17 +30,17 @@ Talos system services, Kubernetes components, and most applications all use vari
 
 ## Filtering Talos System Service Logs
 
-Talos system services output structured log entries. When you use `talosctl logs` with JSON output, each entry includes a severity field that you can filter on.
+Talos system services emit structured log entries as JSON by default. Each entry includes a `talos-level` field that you can filter on with `jq`.
 
 ```bash
-# Get JSON output from machined and filter for errors
-talosctl -n 192.168.1.10 logs machined -o json | jq 'select(.level == "error")'
+# Filter machined logs for errors
+talosctl -n 192.168.1.10 logs machined | jq 'select(.["talos-level"] == "error")'
 
 # Filter for warnings and errors
-talosctl -n 192.168.1.10 logs machined -o json | jq 'select(.level == "warning" or .level == "error")'
+talosctl -n 192.168.1.10 logs machined | jq 'select(.["talos-level"] == "warn" or .["talos-level"] == "error")'
 
-# Show only fatal/critical messages
-talosctl -n 192.168.1.10 logs machined -o json | jq 'select(.level == "fatal" or .level == "critical")'
+# Show only fatal messages
+talosctl -n 192.168.1.10 logs machined | jq 'select(.["talos-level"] == "fatal")'
 ```
 
 Without JSON output, you can use grep to filter by common severity keywords:
@@ -165,7 +165,7 @@ When you have logs flowing to a centralized system like Loki, Elasticsearch, or 
 {namespace=~".+"} | json | level=~"error|ERROR|err"
 
 # Filter warnings from the kube-system namespace
-{namespace="kube-system"} |= "W0" or |= "warning"
+{namespace="kube-system"} |= "W0" or "warning"
 
 # Show errors from Talos machine logs
 {source="talos-machine"} | json | talos_level="error"
