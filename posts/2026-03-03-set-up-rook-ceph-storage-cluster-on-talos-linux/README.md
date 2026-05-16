@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, Rook-Ceph, Kubernetes, Storage, Distributed Storage, Ceph
 
-Description: Complete walkthrough for deploying a Rook-Ceph distributed storage cluster on Talos Linux with block, filesystem, and object storage.
+Description: Complete walkthrough for deploying a Rook-Ceph distributed storage cluster on Talos Linux with Kubernetes-native block storage.
 
 ---
 
@@ -29,54 +29,20 @@ Verify your cluster is ready:
 kubectl get nodes
 
 # Verify the raw disks are available on worker nodes
-talosctl disks --nodes <worker-ip>
+talosctl get disks --nodes <worker-ip>
 ```
 
 ## Preparing Talos Linux for Rook-Ceph
 
-Talos Linux requires specific machine configuration patches to support Rook-Ceph. The key changes are enabling certain kernel modules and allowing Ceph to use the required host paths.
+Talos Linux works with Rook-Ceph without a special Rook-Ceph system extension for a basic host-storage cluster. The main Talos-specific preparation is allowing Rook's privileged Ceph pods in the namespace where the cluster runs.
 
-Create a machine config patch:
-
-```yaml
-# rook-ceph-patch.yaml
-machine:
-  install:
-    extensions:
-      - image: ghcr.io/siderolabs/rook-ceph:v0.1.0
-  files:
-    - content: |
-        [plugins."io.containerd.grpc.v1.cri"]
-          enable_unprivileged_ports = true
-          enable_unprivileged_icmp = true
-      path: /var/cri/conf.d/20-customization.part
-      op: create
-  kubelet:
-    extraMounts:
-      - destination: /var/lib/rook
-        type: bind
-        source: /var/lib/rook
-        options:
-          - bind
-          - rshared
-          - rw
-```
-
-Apply the patch to your worker nodes:
+Label the Rook namespace for privileged pod security enforcement:
 
 ```bash
-# Apply the patch to each worker node
-talosctl patch machineconfig \
-  --nodes <worker-1-ip> \
-  --patch @rook-ceph-patch.yaml
-
-talosctl patch machineconfig \
-  --nodes <worker-2-ip> \
-  --patch @rook-ceph-patch.yaml
-
-talosctl patch machineconfig \
-  --nodes <worker-3-ip> \
-  --patch @rook-ceph-patch.yaml
+kubectl create namespace rook-ceph
+kubectl label namespace rook-ceph \
+  pod-security.kubernetes.io/enforce=privileged \
+  --overwrite
 ```
 
 ## Installing the Rook Operator
@@ -84,16 +50,19 @@ talosctl patch machineconfig \
 Deploy the Rook operator using Helm:
 
 ```bash
-# Add the Rook Helm repository
+# Add the Rook and Ceph-CSI Helm repositories
 helm repo add rook-release https://charts.rook.io/release
+helm repo add ceph-csi-operator https://ceph.github.io/ceph-csi-operator
 helm repo update
 
 # Install the Rook operator
 helm install rook-ceph rook-release/rook-ceph \
   --namespace rook-ceph \
-  --create-namespace \
-  --set csi.enableRbdDriver=true \
-  --set csi.enableCephfsDriver=true
+  --create-namespace
+
+# Install the Ceph-CSI drivers
+helm install ceph-csi-drivers ceph-csi-operator/ceph-csi-drivers \
+  --namespace rook-ceph
 
 # Wait for the operator to be ready
 kubectl -n rook-ceph rollout status deployment rook-ceph-operator
@@ -122,7 +91,7 @@ metadata:
   namespace: rook-ceph
 spec:
   cephVersion:
-    image: quay.io/ceph/ceph:v18.2.1
+    image: quay.io/ceph/ceph:v20.2.1
     allowUnsupported: false
   dataDirHostPath: /var/lib/rook
   mon:
@@ -225,6 +194,8 @@ kind: Deployment
 metadata:
   name: rook-ceph-tools
   namespace: rook-ceph
+  labels:
+    app: rook-ceph-tools
 spec:
   replicas: 1
   selector:
@@ -235,45 +206,102 @@ spec:
       labels:
         app: rook-ceph-tools
     spec:
+      dnsPolicy: ClusterFirstWithHostNet
+      serviceAccountName: rook-ceph-default
       containers:
         - name: rook-ceph-tools
-          image: quay.io/ceph/ceph:v18.2.1
+          image: quay.io/ceph/ceph:v20.2.1
           command:
             - /bin/bash
             - -c
             - |
-              # Keep the toolbox running
+              CEPH_CONFIG="/etc/ceph/ceph.conf"
+              MON_CONFIG="/etc/rook/mon-endpoints"
+              KEYRING_FILE="/etc/ceph/keyring"
+              CONFIG_OVERRIDE="/etc/rook-config-override/config"
+
+              write_endpoints() {
+                endpoints=$(cat ${MON_CONFIG})
+                mon_endpoints=$(echo "${endpoints}" | sed 's/[a-z0-9_-]\+=//g')
+
+                cat <<EOF > ${CEPH_CONFIG}
+              [global]
+              mon_host = ${mon_endpoints}
+
+              [client.admin]
+              keyring = ${KEYRING_FILE}
+              EOF
+
+                if [ -f "${CONFIG_OVERRIDE}" ] && [ -s "${CONFIG_OVERRIDE}" ]; then
+                  echo "" >> ${CEPH_CONFIG}
+                  cat ${CONFIG_OVERRIDE} >> ${CEPH_CONFIG}
+                fi
+              }
+
+              ceph_secret=$(cat /var/lib/rook-ceph-mon/secret.keyring)
+
+              cat <<EOF > ${KEYRING_FILE}
+              [${ROOK_CEPH_USERNAME}]
+              key = ${ceph_secret}
+              EOF
+
+              write_endpoints
               while true; do sleep 600; done
+          imagePullPolicy: IfNotPresent
+          tty: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 2016
+            runAsGroup: 2016
+            capabilities:
+              drop: ["ALL"]
           env:
             - name: ROOK_CEPH_USERNAME
               valueFrom:
                 secretKeyRef:
                   name: rook-ceph-mon
                   key: ceph-username
-            - name: ROOK_CEPH_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: rook-ceph-mon
-                  key: ceph-secret
           volumeMounts:
             - mountPath: /etc/ceph
               name: ceph-config
+            - name: mon-endpoint-volume
+              mountPath: /etc/rook
+            - name: ceph-admin-secret
+              mountPath: /var/lib/rook-ceph-mon
+              readOnly: true
+            - name: rook-config-override
+              mountPath: /etc/rook-config-override
+              readOnly: true
       volumes:
+        - name: ceph-admin-secret
+          secret:
+            secretName: rook-ceph-mon
+            optional: false
+            items:
+              - key: ceph-secret
+                path: secret.keyring
+        - name: mon-endpoint-volume
+          configMap:
+            name: rook-ceph-mon-endpoints
+            items:
+              - key: data
+                path: mon-endpoints
+        - name: rook-config-override
+          configMap:
+            name: rook-config-override
+            optional: true
         - name: ceph-config
-          projected:
-            sources:
-              - configMap:
-                  name: rook-ceph-mon-endpoints
-                  items:
-                    - key: data
-                      path: mon-endpoints
-              - secret:
-                  name: rook-ceph-mon
+          emptyDir: {}
+      tolerations:
+        - key: "node.kubernetes.io/unreachable"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 5
 ```
 
-## Creating Storage Classes
+## Creating a Storage Class
 
-With the cluster running, create storage classes for different use cases:
+With the cluster running, create a block storage class:
 
 ```yaml
 # block-storage-class.yaml
@@ -301,14 +329,17 @@ parameters:
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+  csi.storage.k8s.io/fstype: ext4
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 ```
 
 ```bash
-# Apply the storage classes
+# Apply the storage class
 kubectl apply -f block-storage-class.yaml
 ```
 
@@ -322,9 +353,9 @@ kubectl -n rook-ceph get secret rook-ceph-dashboard-password \
   -o jsonpath="{['data']['password']}" | base64 -d
 
 # Port forward to the dashboard
-kubectl -n rook-ceph port-forward svc/rook-ceph-mgr-dashboard 7000:7000
+kubectl -n rook-ceph port-forward svc/rook-ceph-mgr-dashboard 8443:8443
 
-# Open https://localhost:7000 in your browser
+# Open https://localhost:8443 in your browser
 # Username: admin, Password: from the command above
 ```
 
@@ -361,4 +392,4 @@ kubectl delete pvc test-ceph-pvc
 
 ## Summary
 
-Setting up Rook-Ceph on Talos Linux requires preparing the nodes with the right machine configuration patches, deploying the Rook operator, and then creating the CephCluster resource. Once running, you get a fully distributed storage system that provides block, filesystem, and object storage through Kubernetes-native storage classes. The initial setup takes some effort, but the result is a production-grade storage layer that scales with your cluster and handles node failures gracefully.
+Setting up Rook-Ceph on Talos Linux requires preparing the namespace for privileged Ceph pods, deploying the Rook operator and Ceph-CSI drivers, and then creating the CephCluster resource. Once running, you get a fully distributed storage system that can provide block, filesystem, and object storage, with the block storage class in this guide ready for Kubernetes PersistentVolumeClaims. The initial setup takes some effort, but the result is a production-grade storage layer that scales with your cluster and handles node failures gracefully.
