@@ -27,8 +27,8 @@ On Talos Linux, where the OS is immutable and stateless, Velero is especially im
 brew install velero
 
 # Linux
-VELERO_VERSION=$(curl -s https://api.github.com/repos/vmware-tanzu/velero/releases/latest | grep tag_name | cut -d '"' -f4)
-wget "https://github.com/vmware-tanzu/velero/releases/download/${VELERO_VERSION}/velero-${VELERO_VERSION}-linux-amd64.tar.gz"
+VELERO_VERSION=$(curl -s https://api.github.com/repos/velero-io/velero/releases/latest | grep tag_name | cut -d '"' -f4)
+wget "https://github.com/velero-io/velero/releases/download/${VELERO_VERSION}/velero-${VELERO_VERSION}-linux-amd64.tar.gz"
 tar -xzf velero-${VELERO_VERSION}-linux-amd64.tar.gz
 sudo mv velero-${VELERO_VERSION}-linux-amd64/velero /usr/local/bin/
 
@@ -41,6 +41,11 @@ velero version
 For AWS S3 as the backup storage location:
 
 ```bash
+# Make sure the bucket exists before installing Velero
+aws s3api create-bucket \
+  --bucket velero-backups-talos \
+  --region us-east-1
+
 # Create a credentials file for AWS
 cat > credentials-velero <<EOF
 [default]
@@ -51,7 +56,7 @@ EOF
 # Install Velero
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.0 \
   --bucket velero-backups-talos \
   --backup-location-config region=us-east-1 \
   --secret-file ./credentials-velero \
@@ -71,6 +76,23 @@ First, deploy MinIO.
 
 ```yaml
 # minio-deployment.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: velero
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-data
+  namespace: velero
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -132,6 +154,15 @@ spec:
 Create the MinIO bucket and install Velero.
 
 ```bash
+kubectl apply -f minio-deployment.yaml
+kubectl -n velero rollout status deployment/minio
+
+kubectl -n velero run minio-client \
+  --rm -i \
+  --restart=Never \
+  --image=minio/mc:latest \
+  --command -- sh -c 'mc alias set minio http://minio:9000 minioadmin minioadmin123 && mc mb --ignore-existing minio/velero-backups'
+
 # Create the credentials file for MinIO
 cat > credentials-minio <<EOF
 [default]
@@ -142,7 +173,7 @@ EOF
 # Install Velero pointing to MinIO
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.0 \
   --bucket velero-backups \
   --backup-location-config region=minio,s3ForcePathStyle=true,s3Url=http://minio.velero.svc:9000 \
   --secret-file ./credentials-minio \
@@ -253,11 +284,10 @@ spec:
 
 ### Volume Snapshots (CSI)
 
-If your storage provider supports CSI snapshots, Velero can use those instead.
+If your storage provider supports CSI snapshots, Velero can use those instead. Enable CSI support during installation and do not install Velero with `--default-volumes-to-fs-backup` if you want snapshot backups to be the default.
 
 ```bash
-# Install the CSI snapshot plugin
-velero plugin add velero/velero-plugin-for-csi:v0.7.0
+# Add --features=EnableCSI to the Velero install command above
 
 # Enable CSI snapshots in the backup
 velero backup create snapshot-backup \
@@ -374,14 +404,14 @@ On Talos Linux, remember these additional backup needs:
 
 ```bash
 # Back up Talos machine configs
-talosctl get machineconfig -o yaml --nodes 10.0.0.10 > talos-config-backup.yaml
+talosctl -n 10.0.0.10 get mc v1alpha1 -o yaml | yq eval '.spec' - > talos-config-backup.yaml
 ```
 
 2. **etcd snapshots**: For the most thorough backup, also take etcd snapshots.
 
 ```bash
 # Take an etcd snapshot via talosctl
-talosctl etcd snapshot db.snapshot --nodes 10.0.0.10
+talosctl -n 10.0.0.10 etcd snapshot db.snapshot
 ```
 
 3. **Encryption keys**: If you have secrets encryption enabled, back up the encryption keys outside the cluster.
