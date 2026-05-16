@@ -221,7 +221,7 @@ spec:
 
 ## Combining Priority Classes with Autoscaling
 
-Priority classes work well with the cluster autoscaler. When a high-priority pod preempts a lower-priority pod, the evicted pod becomes unschedulable, triggering the cluster autoscaler to add a new node:
+Priority classes work well with the cluster autoscaler. When a high-priority pod preempts a lower-priority pod, the controller that owns the evicted pod may create a replacement pod. If that replacement pod is pending and is not below the autoscaler's expendable priority cutoff, it can trigger the cluster autoscaler to add a new node:
 
 ```yaml
 # cluster-autoscaler-priority-config.yaml
@@ -230,17 +230,18 @@ extraArgs:
   # Consider pod priority when deciding scale-down
   expendable-pods-priority-cutoff: "100000"
   # Pods below this priority value are considered expendable
-  # and will not prevent scale-down
+  # and will not trigger scale-up or prevent scale-down
 
-  # Do not evict pods above this priority during scale-down
+  # Avoid scaling down nodes that run non-DaemonSet, non-mirror kube-system pods
   skip-nodes-with-system-pods: "true"
 ```
 
 This creates a natural flow:
 1. High-priority pod needs scheduling
 2. Low-priority pod is preempted to make room
-3. Cluster autoscaler adds a node for the evicted pod
-4. When demand decreases, low-priority pods are candidates for scale-down
+3. The workload controller creates a replacement for the evicted pod
+4. If that replacement pod is not below the expendable cutoff, the cluster autoscaler can add capacity
+5. When demand decreases, pods below the cutoff do not prevent scale-down
 
 ## Enforcing Priority Class Usage
 
@@ -254,7 +255,6 @@ kind: ClusterPolicy
 metadata:
   name: restrict-priority-classes
 spec:
-  validationFailureAction: Enforce
   rules:
     # Development namespaces cannot use critical or high priority
     - name: restrict-dev-priority
@@ -267,10 +267,16 @@ spec:
                 - "development"
                 - "staging"
       validate:
-        message: "Development namespaces can only use 'standard', 'low', or 'preemptible' priority classes"
-        pattern:
-          spec:
-            priorityClassName: "standard | low | preemptible | non-preempting-low"
+        failureAction: Enforce
+        message: "Development namespaces cannot use 'critical' or 'high' priority classes"
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.priorityClassName || '' }}"
+                operator: AnyIn
+                value:
+                  - critical
+                  - high
 
     # Only specific service accounts can use critical priority
     - name: restrict-critical-priority
@@ -285,6 +291,7 @@ spec:
             operator: Equals
             value: "critical"
       validate:
+        failureAction: Enforce
         message: "Only authorized service accounts can use the 'critical' priority class"
         pattern:
           spec:
@@ -322,7 +329,7 @@ spec:
       rules:
         - alert: HighPreemptionRate
           expr: >
-            increase(kube_pod_preemption_victims[1h]) > 10
+            increase(scheduler_preemption_victims_sum[1h]) > 10
           for: 30m
           labels:
             severity: warning
@@ -336,7 +343,7 @@ spec:
           expr: >
             kube_pod_status_phase{phase="Pending"} == 1
             and on(pod, namespace)
-            kube_pod_spec_priority > 750000
+            kube_pod_info{priority_class=~"critical|high"}
           for: 2m
           labels:
             severity: critical
