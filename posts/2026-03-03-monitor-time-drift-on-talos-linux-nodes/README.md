@@ -276,11 +276,12 @@ Not all drift is the same. Understanding the pattern helps you fix the root caus
 The clock slowly moves away from the reference. This usually means NTP is not running or cannot reach its servers:
 
 ```bash
-# Check if NTP is actually running
-talosctl -n 192.168.1.10 service timed
+# Check the time-sync controller logs (time sync runs inside machined,
+# not as a standalone service in Talos)
+talosctl -n 192.168.1.10 logs controller-runtime | grep -i "time.Sync"
 
 # Check NTP server reachability
-talosctl -n 192.168.1.10 logs timed | grep -i "error\|timeout\|unreachable"
+talosctl -n 192.168.1.10 logs controller-runtime | grep -iE "time.Sync.*(error|timeout|unreachable)"
 ```
 
 ### Oscillating Drift
@@ -290,7 +291,7 @@ The clock bounces back and forth. This usually means two time sources are fighti
 ```bash
 # Check for competing time sync
 talosctl -n 192.168.1.10 dmesg | grep -i "time\|clock"
-talosctl -n 192.168.1.10 get timeserverconfig -o yaml
+talosctl -n 192.168.1.10 get timeservers -o yaml
 ```
 
 ### Sudden Jump
@@ -299,7 +300,7 @@ The clock suddenly jumps by a large amount. This could be NTP correcting a large
 
 ```bash
 # Check system logs around the time of the jump
-talosctl -n 192.168.1.10 logs timed | grep -i "step\|jump"
+talosctl -n 192.168.1.10 logs controller-runtime | grep -i "time.Sync"
 talosctl -n 192.168.1.10 dmesg | grep -i "suspend\|resume\|migration"
 ```
 
@@ -320,21 +321,21 @@ for node in $NODES; do
 
   if [ "$synced" != "true" ]; then
     # Log the issue
-    echo "$(date -u): $node not synced, checking time service..."
+    echo "$(date -u): $node not synced, checking configured time servers..."
 
-    # Check if time service is running
-    timed_state=$(talosctl -n "$node" service timed 2>/dev/null | \
-      grep "STATE" | awk '{print $2}')
+    # Check configured NTP servers (time sync runs inside machined,
+    # not as a standalone service)
+    servers=$(talosctl -n "$node" get timeservers -o yaml 2>/dev/null)
 
-    if [ "$timed_state" != "Running" ]; then
-      echo "$(date -u): $node timed service not running"
+    if [ -z "$servers" ]; then
+      echo "$(date -u): $node has no time servers configured"
       # Send alert
       curl -X POST -H 'Content-type: application/json' \
-        --data "{\"text\":\"Time sync alert: $node timed service not running\"}" \
+        --data "{\"text\":\"Time sync alert: $node has no time servers configured\"}" \
         "$ALERT_WEBHOOK"
     else
-      echo "$(date -u): $node timed running but not synced - checking NTP servers"
-      talosctl -n "$node" logs timed | tail -5
+      echo "$(date -u): $node has time servers but is not synced - checking controller logs"
+      talosctl -n "$node" logs controller-runtime | grep -i "time.Sync" | tail -5
     fi
   fi
 done
