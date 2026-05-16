@@ -150,16 +150,16 @@ spec:
           env:
             - name: TZ
               value: "America/New_York"
-            - name: WEBPASSWORD
+            - name: FTLCONF_webserver_api_password
               valueFrom:
                 secretKeyRef:
                   name: pihole-admin
                   key: password
-            - name: PIHOLE_DNS_
+            - name: FTLCONF_dns_upstreams
               value: "1.1.1.1;8.8.8.8"
-            - name: DNSSEC
+            - name: FTLCONF_dns_dnssec
               value: "true"
-            - name: DNSMASQ_LISTENING
+            - name: FTLCONF_dns_listeningMode
               value: "all"
           volumeMounts:
             - name: pihole-config
@@ -301,13 +301,9 @@ https://v.firebog.net/hosts/Easyprivacy.txt
 https://v.firebog.net/hosts/Prigent-Crypto.txt
 ```
 
-You can also add these via the command line:
+After adding blocklists in the admin UI, refresh gravity to fetch and consolidate them:
 
 ```bash
-# Add a blocklist through the Pi-hole CLI
-kubectl exec -n pihole deployment/pihole -- pihole -a adlist add \
-  "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
-
 # Update gravity (process blocklists)
 kubectl exec -n pihole deployment/pihole -- pihole -g
 ```
@@ -321,8 +317,8 @@ Pi-hole can also serve as a local DNS resolver for your home network. Add custom
 kubectl exec -n pihole deployment/pihole -- sh -c \
   'echo "192.168.1.100 myserver.home.local" >> /etc/pihole/custom.list'
 
-# Restart DNS to pick up changes
-kubectl exec -n pihole deployment/pihole -- pihole restartdns
+# Reload DNS to pick up changes
+kubectl exec -n pihole deployment/pihole -- pihole reloaddns
 ```
 
 Or use a ConfigMap for more structured management:
