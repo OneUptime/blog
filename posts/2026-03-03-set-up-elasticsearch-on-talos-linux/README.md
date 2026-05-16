@@ -32,16 +32,12 @@ machine:
   sysctls:
     # Required by Elasticsearch for memory-mapped files
     vm.max_map_count: "262144"
-  disks:
-    - device: /dev/sdb
-      partitions:
-        - mountpoint: /var/lib/elasticsearch
 ```
 
 ```bash
 # Apply to all worker nodes
-talosctl apply-config --nodes 10.0.0.2,10.0.0.3,10.0.0.4 \
-  --file talos-es-patch.yaml
+talosctl patch machineconfig --nodes 10.0.0.2,10.0.0.3,10.0.0.4 \
+  --patch @talos-es-patch.yaml
 ```
 
 This is critical. Without `vm.max_map_count` set to at least 262144, Elasticsearch will fail to start. On traditional Linux, you would run `sysctl -w`, but Talos requires the machine config approach.
@@ -54,24 +50,15 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: elasticsearch
----
-# es-secret.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: es-credentials
-  namespace: elasticsearch
-type: Opaque
-stringData:
-  ELASTIC_PASSWORD: "strong-elastic-password"
 ```
 
 ```bash
 kubectl apply -f es-namespace.yaml
-kubectl apply -f es-secret.yaml
 ```
 
 ## Step 3: Elasticsearch Configuration
+
+The manual StatefulSet below disables Elasticsearch security so the example can focus on Talos tuning, storage, and cluster formation. For production security with TLS and user management, use the ECK operator section below.
 
 ```yaml
 # es-configmap.yaml
@@ -92,8 +79,7 @@ data:
       - elasticsearch-0
       - elasticsearch-1
       - elasticsearch-2
-    xpack.security.enabled: true
-    xpack.security.transport.ssl.enabled: false
+    xpack.security.enabled: false
     bootstrap.memory_lock: false
     path.data: /usr/share/elasticsearch/data
 ```
@@ -139,11 +125,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
-            - name: ELASTIC_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: es-credentials
-                  key: ELASTIC_PASSWORD
             - name: ES_JAVA_OPTS
               value: "-Xms2g -Xmx2g"
           volumeMounts:
@@ -164,18 +145,12 @@ spec:
             httpGet:
               path: /_cluster/health
               port: 9200
-              httpHeaders:
-                - name: Authorization
-                  value: "Basic ZWxhc3RpYzpzdHJvbmctZWxhc3RpYy1wYXNzd29yZA=="
             initialDelaySeconds: 30
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /
               port: 9200
-              httpHeaders:
-                - name: Authorization
-                  value: "Basic ZWxhc3RpYzpzdHJvbmctZWxhc3RpYy1wYXNzd29yZA=="
             initialDelaySeconds: 60
             periodSeconds: 20
       volumes:
@@ -226,7 +201,7 @@ spec:
       name: transport
   clusterIP: None
 ---
-# External access service
+# Internal client access service
 apiVersion: v1
 kind: Service
 metadata:
@@ -243,8 +218,8 @@ spec:
 
 ```bash
 kubectl apply -f es-configmap.yaml
-kubectl apply -f es-statefulset.yaml
 kubectl apply -f es-service.yaml
+kubectl apply -f es-statefulset.yaml
 
 # Watch the cluster come up
 kubectl get pods -n elasticsearch -w
@@ -255,11 +230,11 @@ kubectl get pods -n elasticsearch -w
 ```bash
 # Check cluster health
 kubectl exec -it elasticsearch-0 -n elasticsearch -- \
-  curl -s -u elastic:strong-elastic-password http://localhost:9200/_cluster/health?pretty
+  curl -s http://localhost:9200/_cluster/health?pretty
 
 # Check node information
 kubectl exec -it elasticsearch-0 -n elasticsearch -- \
-  curl -s -u elastic:strong-elastic-password http://localhost:9200/_cat/nodes?v
+  curl -s http://localhost:9200/_cat/nodes?v
 ```
 
 ## Using the ECK Operator
@@ -284,8 +259,6 @@ spec:
   nodeSets:
     - name: default
       count: 3
-      config:
-        node.store.allow_mmap: true
       podTemplate:
         spec:
           containers:
@@ -317,7 +290,7 @@ Configure automatic index management to prevent storage from filling up:
 ```bash
 # Create an ILM policy
 kubectl exec -it elasticsearch-0 -n elasticsearch -- \
-  curl -X PUT -u elastic:strong-elastic-password \
+  curl -X PUT \
   "http://localhost:9200/_ilm/policy/logs-policy" \
   -H 'Content-Type: application/json' -d '{
     "policy": {
@@ -337,7 +310,7 @@ Set up snapshot repositories for backup and recovery. On Talos Linux, you would 
 ```bash
 # Register an S3 snapshot repository
 kubectl exec -it elasticsearch-0 -n elasticsearch -- \
-  curl -X PUT -u elastic:strong-elastic-password \
+  curl -X PUT \
   "http://localhost:9200/_snapshot/s3-backups" \
   -H 'Content-Type: application/json' -d '{
     "type": "s3",
