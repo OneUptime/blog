@@ -58,15 +58,16 @@ Since Talos does not have `dig` or `nslookup`, you need alternative methods to t
 # by looking at image pull status
 talosctl -n <node-ip> containers
 
-# Check system logs for DNS-related errors
-talosctl -n <node-ip> dmesg | grep -i dns
+# Check host DNS resolver logs and upstream health
+talosctl -n <node-ip> logs dns-resolve-cache
+talosctl -n <node-ip> get dnsupstream
 ```
 
 You can also test indirectly by seeing if containers can be pulled:
 
 ```bash
 # If images pull successfully, host DNS is working
-talosctl -n <node-ip> images
+talosctl -n <node-ip> image list
 ```
 
 ## Troubleshooting CoreDNS
@@ -164,7 +165,7 @@ If pods can resolve internal names (like `kubernetes.default`) but not external 
 kubectl -n kube-system exec -it <coredns-pod> -- cat /etc/resolv.conf
 ```
 
-The resolv.conf inside the CoreDNS pod comes from the host. If the host DNS is wrong, CoreDNS will also be wrong. Fix the host DNS configuration first.
+The resolv.conf inside the CoreDNS pod is normally derived from the node resolver configuration used by kubelet. On Talos 1.8 and later, new clusters with host DNS enabled may instead have CoreDNS forward to the Talos host DNS resolver. If the host DNS or host DNS forwarding is wrong, CoreDNS will also be wrong. Fix the host DNS configuration first.
 
 You can also configure CoreDNS to use specific upstream servers by editing the ConfigMap:
 
@@ -226,7 +227,7 @@ If DNS stops working after you modify the Talos machine configuration, the new D
 
 ```bash
 # View the current machine configuration
-talosctl -n <node-ip> get machineconfiguration -o yaml | grep -A5 nameservers
+talosctl -n <node-ip> get machineconfig -o yaml | grep -A5 nameservers
 ```
 
 Revert to known-good nameservers if needed:
@@ -242,7 +243,7 @@ The kubelet on each node is configured to tell pods which IP to use for DNS. Thi
 
 ```bash
 # Check what kubelet tells pods to use
-talosctl -n <node-ip> get machineconfiguration -o yaml | grep -A2 clusterDNS
+talosctl -n <node-ip> get machineconfig -o yaml | grep -A2 clusterDNS
 
 # Check the actual CoreDNS service IP
 kubectl -n kube-system get svc kube-dns
