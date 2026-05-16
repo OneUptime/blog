@@ -65,7 +65,7 @@ rules:
   - apiGroups: [""]
     resources: ["pods", "pods/log"]
     verbs: ["get", "list", "watch"]
-  # Explicit deny for secrets - ePHI credentials managed separately
+  # No secrets permissions - ePHI credentials managed separately
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "list"]
@@ -102,7 +102,7 @@ subjects:
 
 ### Automatic Logoff
 
-Configure session timeouts for Kubernetes access:
+Configure short-lived admin kubeconfigs and service account tokens:
 
 ```yaml
 cluster:
@@ -114,7 +114,7 @@ cluster:
       service-account-max-token-expiration: "4h"
 ```
 
-For application-level session management, implement token expiration in your healthcare applications.
+For OIDC user sessions and application-level session management, implement token expiration in your identity provider and healthcare applications.
 
 ## Encryption Requirements
 
@@ -132,6 +132,15 @@ For persistent volumes containing ePHI, use encrypted storage:
 
 ```yaml
 # encrypted-storage-class.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: longhorn-crypto
+  namespace: longhorn-system
+stringData:
+  CRYPTO_KEY_VALUE: "replace-with-a-strong-passphrase"
+  CRYPTO_KEY_PROVIDER: "secret"
+---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -142,6 +151,14 @@ parameters:
   dataLocality: "best-effort"
   # Enable encryption at the volume level
   encrypted: "true"
+  csi.storage.k8s.io/provisioner-secret-name: "longhorn-crypto"
+  csi.storage.k8s.io/provisioner-secret-namespace: "longhorn-system"
+  csi.storage.k8s.io/node-publish-secret-name: "longhorn-crypto"
+  csi.storage.k8s.io/node-publish-secret-namespace: "longhorn-system"
+  csi.storage.k8s.io/node-stage-secret-name: "longhorn-crypto"
+  csi.storage.k8s.io/node-stage-secret-namespace: "longhorn-system"
+  csi.storage.k8s.io/node-expand-secret-name: "longhorn-crypto"
+  csi.storage.k8s.io/node-expand-secret-namespace: "longhorn-system"
 reclaimPolicy: Retain  # Never auto-delete ePHI volumes
 ```
 
@@ -166,23 +183,15 @@ machine:
 Enforce mTLS between services using a service mesh:
 
 ```bash
-# Install Istio with strict mTLS
-istioctl install -f - <<EOF
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-spec:
-  meshConfig:
-    defaultConfig:
-      holdApplicationUntilProxyStarts: true
-  values:
-    global:
-      mtls:
-        enabled: true
-EOF
+# Install Istio
+istioctl install --set profile=default -y
+
+# Enable sidecar injection in the healthcare namespace
+kubectl label namespace healthcare istio-injection=enabled
 
 # Enforce strict mTLS in the healthcare namespace
 kubectl apply -f - <<EOF
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: strict-mtls
@@ -198,36 +207,39 @@ EOF
 HIPAA requires recording and examining all activity related to ePHI. Set up comprehensive audit logging:
 
 ```yaml
-# Kubernetes audit policy for HIPAA
-apiVersion: audit.k8s.io/v1
-kind: Policy
-rules:
-  # Log all access to the healthcare namespace at RequestResponse level
-  - level: RequestResponse
-    namespaces: ["healthcare"]
-    omitStages:
-      - RequestReceived
+# Talos cluster config - Kubernetes audit policy for HIPAA
+cluster:
+  apiServer:
+    auditPolicy:
+      apiVersion: audit.k8s.io/v1
+      kind: Policy
+      rules:
+        # Log all access to the healthcare namespace at RequestResponse level
+        - level: RequestResponse
+          namespaces: ["healthcare"]
+          omitStages:
+            - RequestReceived
 
-  # Log all secret access (ePHI credentials)
-  - level: Metadata
-    resources:
-      - group: ""
-        resources: ["secrets"]
+        # Log all secret access (ePHI credentials)
+        - level: Metadata
+          resources:
+            - group: ""
+              resources: ["secrets"]
 
-  # Log all authentication events
-  - level: Request
-    resources:
-      - group: "authentication.k8s.io"
+        # Log all authentication events
+        - level: Request
+          resources:
+            - group: "authentication.k8s.io"
 
-  # Log all RBAC changes
-  - level: RequestResponse
-    resources:
-      - group: "rbac.authorization.k8s.io"
+        # Log all RBAC changes
+        - level: RequestResponse
+          resources:
+            - group: "rbac.authorization.k8s.io"
 
-  # Default metadata logging
-  - level: Metadata
-    omitStages:
-      - RequestReceived
+        # Default metadata logging
+        - level: Metadata
+          omitStages:
+            - RequestReceived
 ```
 
 Ship audit logs to a tamper-proof storage:
@@ -242,7 +254,7 @@ machine:
 
 ### Audit Log Retention
 
-HIPAA requires retaining audit logs for a minimum of 6 years:
+HIPAA requires retaining Security Rule documentation for a minimum of 6 years; many organizations align audit log retention to the same period:
 
 ```bash
 # Configure long-term log retention
@@ -305,7 +317,7 @@ spec:
         - namespaceSelector:
             matchLabels:
               trusted: "true"
-        - podSelector:
+          podSelector:
             matchLabels:
               role: api-gateway
       ports:
@@ -346,16 +358,24 @@ spec:
 Protect ePHI from unauthorized modification:
 
 ```yaml
-# Use Pod Security Admission to enforce immutable containers
-# In the healthcare namespace, all containers run as read-only
+# Set container security controls for workloads in the healthcare namespace
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ehr-api
   namespace: healthcare
 spec:
+  selector:
+    matchLabels:
+      app: ehr-api
   template:
+    metadata:
+      labels:
+        app: ehr-api
     spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: ehr-api
           image: ehr-api:v3.2.1
@@ -399,12 +419,12 @@ Run continuous compliance checks:
 
 ```bash
 # Install Kubescape with HIPAA-relevant checks
-kubescape scan framework nist \
-  --include-namespaces healthcare \
-  --submit
+kubescape scan framework nsa \
+  --include-namespaces healthcare
 
 # Monitor for policy violations with OPA/Gatekeeper
 kubectl apply -f - <<EOF
+# Assumes the K8sRequiredLabels ConstraintTemplate from the Gatekeeper library is installed
 apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: K8sRequiredLabels
 metadata:
@@ -418,10 +438,7 @@ spec:
       matchLabels:
         hipaa: "true"
   parameters:
-    labels:
-      - key: data-classification
-      - key: hipaa
-      - key: phi-access-level
+    labels: ["data-classification", "hipaa", "phi-access-level"]
 EOF
 ```
 
@@ -431,4 +448,4 @@ If you use cloud services (AWS, GCP, Azure) for storage or compute, ensure you h
 
 ## Summary
 
-HIPAA compliance on Talos Linux requires attention to five key areas: access control with unique user identification and RBAC, comprehensive audit logging with 6-year retention, encryption at rest and in transit, network segmentation to isolate ePHI, and integrity controls to prevent unauthorized modification. Talos Linux provides a strong foundation with its immutable OS and API-only management, but the Kubernetes layer requires careful configuration. The most important thing to remember is that HIPAA compliance is not just about technology - it requires documented policies, employee training, risk assessments, and Business Associate Agreements. The technical controls described here are one piece of a larger compliance program.
+HIPAA compliance on Talos Linux requires attention to five key areas: access control with unique user identification and RBAC, comprehensive audit logging with documented retention, encryption at rest and in transit, network segmentation to isolate ePHI, and integrity controls to prevent unauthorized modification. Talos Linux provides a strong foundation with its immutable OS and API-only management, but the Kubernetes layer requires careful configuration. The most important thing to remember is that HIPAA compliance is not just about technology - it requires documented policies, employee training, risk assessments, and Business Associate Agreements. The technical controls described here are one piece of a larger compliance program.
