@@ -261,7 +261,7 @@ command:
 - --scale-down-utilization-threshold=0.5
 # Delay scale-down after a node deletion
 - --scale-down-delay-after-delete=1m
-# Maximum number of nodes that can be removed simultaneously
+# Maximum seconds to wait for pod termination when draining a node
 - --max-graceful-termination-sec=600
 ```
 
