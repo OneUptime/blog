@@ -142,32 +142,32 @@ NODE="10.0.0.10"
 
 # Check the number of discovered members
 # A sudden increase might indicate unauthorized nodes trying to join
-MEMBERS=$(talosctl get discoveredmembers --nodes $NODE -o json | jq 'length')
+MEMBERS=$(talosctl get members --nodes $NODE -o json | jq -s 'length')
 EXPECTED=5  # Set to your expected cluster size
 
 if [ "$MEMBERS" -gt "$EXPECTED" ]; then
   echo "ALERT: More discovered members ($MEMBERS) than expected ($EXPECTED)"
   echo "Possible unauthorized node attempting to join"
   # Show details of all members for investigation
-  talosctl get discoveredmembers --nodes $NODE -o yaml
+  talosctl get members --nodes $NODE -o yaml
 fi
 ```
 
 If you self-host the discovery service, enable access logging:
 
 ```nginx
-# Nginx access log for the discovery service
+# Nginx access log for the discovery service (gRPC on port 3000)
 server {
-    listen 443 ssl;
+    listen 443 ssl http2;
     server_name discovery.internal.corp.com;
 
     access_log /var/log/nginx/discovery-access.log combined;
 
     # Log the client IP for audit purposes
     location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        grpc_pass grpc://127.0.0.1:3000;
+        grpc_set_header X-Real-IP $remote_addr;
+        grpc_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 }
 ```
@@ -195,9 +195,9 @@ This eliminates the external dependency but limits discovery to the Kubernetes r
 For self-hosted discovery services, use strong TLS configuration:
 
 ```nginx
-# Strong TLS configuration for the discovery service
+# Strong TLS configuration for the discovery service (gRPC requires HTTP/2)
 server {
-    listen 443 ssl;
+    listen 443 ssl http2;
     server_name discovery.internal.corp.com;
 
     # Use strong cipher suites
@@ -246,7 +246,7 @@ talosctl get machineconfig --nodes <node-ip> -o yaml | grep "endpoint:"
 # Verify cluster identity matches across all nodes
 for node in 10.0.0.10 10.0.0.11 10.0.0.12; do
   echo -n "Node $node: "
-  talosctl get clusteridentity --nodes $node -o json | jq -r '.[0].spec.id'
+  talosctl get infos --nodes $node -o json | jq -r '.spec.clusterId'
 done
 # All nodes should show the same cluster ID
 ```
@@ -293,13 +293,13 @@ echo "Discovery endpoint:"
 talosctl get machineconfig --nodes <node-ip> -o yaml | grep "endpoint:"
 echo ""
 echo "Cluster identity:"
-talosctl get clusteridentity --nodes <node-ip>
+talosctl get infos --nodes <node-ip>
 echo ""
 echo "Discovered members:"
-talosctl get discoveredmembers --nodes <node-ip>
+talosctl get members --nodes <node-ip>
 echo ""
 echo "KubeSpan status:"
-talosctl get kubespanpeerstatus --nodes <node-ip>
+talosctl get kubespanpeerstatuses --nodes <node-ip>
 ```
 
 ## Incident Response
@@ -319,7 +319,7 @@ talosctl patch machineconfig \
   --nodes <all-node-ips>
 
 # Check for unauthorized members
-talosctl get discoveredmembers --nodes <node-ip> -o yaml
+talosctl get members --nodes <node-ip> -o yaml
 ```
 
 Securing cluster discovery in Talos Linux is largely about understanding and verifying the built-in protections, then adding layers based on your security requirements. The default encryption model is strong, and for most clusters, it provides sufficient security. For high-security environments, self-hosting the discovery service, restricting network access, and implementing monitoring and auditing close the remaining gaps.
