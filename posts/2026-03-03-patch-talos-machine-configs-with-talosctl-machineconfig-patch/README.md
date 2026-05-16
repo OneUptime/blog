@@ -8,7 +8,7 @@ Description: A detailed walkthrough of using the talosctl machineconfig patch co
 
 ---
 
-The `talosctl machineconfig patch` command is a tool for modifying Talos Linux machine configurations offline, before they ever touch a running node. Unlike `talosctl apply-config --patch`, which patches and applies in one step, `machineconfig patch` lets you preview changes, validate them, and build configuration pipelines. This guide covers the command in depth with practical examples.
+The `talosctl machineconfig patch` command is a tool for modifying Talos Linux machine configurations offline, before they ever touch a running node. Unlike `talosctl apply-config --config-patch`, which patches and applies in one step, `machineconfig patch` lets you preview changes, validate them, and build configuration pipelines. This guide covers the command in depth with practical examples.
 
 ## What machineconfig patch Does
 
@@ -58,9 +58,8 @@ Strategic merge patches use the same YAML structure as the machine configuration
 machine:
   network:
     hostname: production-cp-1
-  kubelet:
-    nodeLabels:
-      environment: production
+  nodeLabels:
+    environment: production
 ```
 
 JSON patches (RFC 6902) use explicit operations and are more precise:
@@ -68,7 +67,7 @@ JSON patches (RFC 6902) use explicit operations and are more precise:
 ```json
 [
     {"op": "replace", "path": "/machine/network/hostname", "value": "production-cp-1"},
-    {"op": "add", "path": "/machine/kubelet/nodeLabels/environment", "value": "production"}
+    {"op": "add", "path": "/machine/nodeLabels/environment", "value": "production"}
 ]
 ```
 
@@ -196,7 +195,7 @@ SECRETS="secrets.yaml"
 
 # Step 1: Generate base configs
 talosctl gen config "$CLUSTER" "$ENDPOINT" \
-    --from-secrets "$SECRETS" \
+    --with-secrets "$SECRETS" \
     -o base/
 
 # Step 2: Apply common patches
