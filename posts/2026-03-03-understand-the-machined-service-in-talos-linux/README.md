@@ -27,12 +27,12 @@ When `apid` receives a management request from `talosctl`, many of those request
 
 ## How machined Starts
 
-During the boot process, `machined` is one of the first services to start. It reads the machine configuration from the system partition, validates it, and then begins setting up the node according to that configuration. The boot sequence looks roughly like this:
+During the boot process, `machined` is one of the first services to start. On an installed node, it reads the machine configuration from the `STATE` partition, validates it, and then begins setting up the node according to that configuration. The boot sequence looks roughly like this:
 
 ```text
 BIOS/UEFI --> Bootloader --> Kernel --> machined starts
     |
-    |--> Read machine config from disk
+    |--> Read machine config from the STATE partition
     |--> Validate configuration
     |--> Set up networking
     |--> Start system services (apid, trustd, etcd, kubelet)
@@ -48,6 +48,7 @@ The most important job of `machined` is processing the machine configuration. Th
 ```yaml
 # Simplified machine configuration structure
 
+version: v1alpha1
 machine:
   type: controlplane
   network:
@@ -61,7 +62,7 @@ machine:
   certSANs:
     - 192.168.1.10
 cluster:
-  clusterNetwork:
+  network:
     podSubnets:
       - 10.244.0.0/16
     serviceSubnets:
@@ -115,7 +116,7 @@ The `machined` service also acts as the service manager for all other Talos serv
 
 ```bash
 # List all services managed by machined
-talosctl -n 192.168.1.10 services
+talosctl -n 192.168.1.10 service
 
 # Example output
 # NODE           SERVICE      STATE     HEALTH   LAST CHANGE
@@ -127,7 +128,7 @@ talosctl -n 192.168.1.10 services
 # 192.168.1.10   trustd       Running   OK       5h ago
 ```
 
-Each service has a defined dependency graph. For example, `etcd` depends on networking being available, and `kubelet` depends on `etcd` being healthy (on control plane nodes). The `machined` service respects these dependencies and starts services in the correct order.
+Each service has a defined dependency graph. For example, `etcd` depends on networking being available, and `kubelet` depends on containerd and the required host setup being ready. The `machined` service respects these dependencies and starts services in the correct order.
 
 ## Handling Upgrades
 
@@ -203,7 +204,7 @@ If a node seems stuck during boot, `machined` might be waiting for a dependency.
 
 ```bash
 # From another node that can proxy the request
-talosctl -n <stuck-node-ip> services
+talosctl -n <stuck-node-ip> service
 
 # Check machined logs for what it is waiting on
 talosctl -n <stuck-node-ip> logs machined
