@@ -96,9 +96,9 @@ customization:
       # QEMU/KVM guest agent
       - siderolabs/qemu-guest-agent
       # VMware guest tools
-      - siderolabs/vmtoolsd
-      # Hyper-V guest tools
-      - siderolabs/hyperv-tools
+      - siderolabs/vmtoolsd-guest-agent
+      # Xen guest agent
+      - siderolabs/xen-guest-agent
 ```
 
 When running Talos as a virtual machine, guest agents improve integration with the hypervisor. They enable features like graceful shutdown, IP address reporting, and host-to-guest communication.
@@ -126,11 +126,9 @@ customization:
     officialExtensions:
       # Tailscale VPN
       - siderolabs/tailscale
-      # WireGuard VPN
-      - siderolabs/wireguard
 ```
 
-Network extensions add VPN capabilities and additional networking tools directly at the OS level.
+Network extensions add VPN capabilities and additional networking tools directly at the OS level. Note that WireGuard support is built directly into the Talos kernel, so no extension is required to use it.
 
 ## Building an Image with Multiple Extensions
 
@@ -179,8 +177,8 @@ Once your nodes are running, confirm that all extensions loaded correctly:
 # List extensions on a specific node
 talosctl get extensions --nodes 10.0.0.10
 
-# Get detailed information about a specific extension
-talosctl get extensions --nodes 10.0.0.10 intel-ucode -o yaml
+# Get detailed information about a specific extension by its numeric ID
+talosctl get extensions --nodes 10.0.0.10 0 -o yaml
 
 # Check system logs for extension loading messages
 talosctl dmesg --nodes 10.0.0.10 | grep -i "extension"
