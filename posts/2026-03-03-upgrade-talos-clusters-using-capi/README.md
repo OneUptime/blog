@@ -8,7 +8,7 @@ Description: A complete guide to upgrading Talos Linux clusters through Cluster 
 
 ---
 
-Upgrading Kubernetes clusters is one of the most anxiety-inducing operations in infrastructure management. Cluster API takes much of the stress out of this process by providing a declarative, controller-driven upgrade mechanism. For Talos Linux clusters managed through CAPI, upgrades to both the Talos OS and the Kubernetes version can be triggered by updating resource specifications. CAPI then orchestrates the rolling update automatically. This guide covers everything you need to know about upgrading Talos clusters through CAPI.
+Upgrading Kubernetes clusters is one of the most anxiety-inducing operations in infrastructure management. Cluster API takes much of the stress out of this process by providing a declarative, controller-driven upgrade mechanism. For Talos Linux clusters managed through CAPI, upgrades to both the Talos OS and the Kubernetes version can be triggered by updating resource specifications and referencing new immutable templates. CAPI then orchestrates the rolling update automatically. This guide covers everything you need to know about upgrading Talos clusters through CAPI.
 
 ## Understanding CAPI Upgrade Mechanics
 
@@ -20,7 +20,7 @@ When you update the version specification on a TalosControlPlane or MachineDeplo
 4. Removes the old machine from the cluster
 5. Deletes the old machine and its underlying infrastructure
 
-This approach ensures that your cluster always has the desired number of healthy nodes during the upgrade. If a new machine fails to come up, the rollout pauses, giving you time to investigate.
+This approach keeps availability within the rollout strategy you configure. If a new machine fails to come up, the rollout pauses, giving you time to investigate.
 
 ## Upgrading the Kubernetes Version
 
@@ -31,7 +31,7 @@ To upgrade the Kubernetes version, update the `version` field on both the TalosC
 
 kubectl patch taloscontrolplane my-cluster-cp \
   --type merge \
-  -p '{"spec":{"version":"v1.31.0"}}'
+  -p '{"spec":{"version":"v1.35.0"}}'
 
 # Watch the rolling update progress
 kubectl get machines -l cluster.x-k8s.io/control-plane-name=my-cluster-cp -w
@@ -45,7 +45,7 @@ After the control plane is upgraded, upgrade the workers:
 # Upgrade worker Kubernetes version
 kubectl patch machinedeployment my-cluster-workers \
   --type merge \
-  -p '{"spec":{"template":{"spec":{"version":"v1.31.0"}}}}'
+  -p '{"spec":{"template":{"spec":{"version":"v1.35.0"}}}}'
 
 # Watch worker rollout
 kubectl get machines -l cluster.x-k8s.io/deployment-name=my-cluster-workers -w
@@ -53,7 +53,7 @@ kubectl get machines -l cluster.x-k8s.io/deployment-name=my-cluster-workers -w
 
 ## Upgrading the Talos OS Version
 
-To upgrade the Talos OS version, update the `talosVersion` in the config patches:
+To upgrade the Talos OS version, update the generated Talos configuration version and point the CAPI resources at new immutable templates that boot the new Talos image:
 
 ```yaml
 # Update the TalosControlPlane with new Talos version
@@ -62,7 +62,7 @@ kind: TalosControlPlane
 metadata:
   name: my-cluster-cp
 spec:
-  version: v1.31.0
+  version: v1.35.0
   replicas: 3
   infrastructureTemplate:
     apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
@@ -71,7 +71,7 @@ spec:
   controlPlaneConfig:
     controlplane:
       generateType: controlplane
-      talosVersion: v1.8.0  # Updated Talos version
+      talosVersion: v1.13.0  # Updated Talos config generation version
 ```
 
 You also need to update the machine template to use the new Talos image:
@@ -87,20 +87,54 @@ spec:
     spec:
       instanceType: m5.xlarge
       ami:
-        id: ami-yyyyyyyyyyyyyyyyy  # New Talos v1.8.0 AMI
+        id: ami-yyyyyyyyyyyyyyyyy  # New Talos v1.13.0 AMI
       rootVolume:
         size: 50
         type: gp3
 ```
 
+For worker nodes, create a new `TalosConfigTemplate` with the updated `talosVersion` and reference it from the `MachineDeployment` along with a new worker machine template:
+
+```yaml
+apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+kind: TalosConfigTemplate
+metadata:
+  name: my-cluster-workers-v2
+spec:
+  template:
+    spec:
+      generateType: worker
+      talosVersion: v1.13.0
+```
+
 Apply the changes:
 
 ```bash
-# Create the new machine template
-kubectl apply -f new-machine-template.yaml
+# Create the new machine and bootstrap templates
+kubectl apply -f new-control-plane-machine-template.yaml
+kubectl apply -f new-worker-machine-template.yaml
+kubectl apply -f new-worker-talosconfigtemplate.yaml
 
 # Update the TalosControlPlane to use the new template and version
 kubectl apply -f updated-control-plane.yaml
+
+# Update the MachineDeployment to use the new worker templates
+kubectl patch machinedeployment my-cluster-workers --type merge -p '{
+  "spec": {
+    "template": {
+      "spec": {
+        "bootstrap": {
+          "configRef": {
+            "name": "my-cluster-workers-v2"
+          }
+        },
+        "infrastructureRef": {
+          "name": "my-cluster-workers-v2"
+        }
+      }
+    }
+  }
+}'
 
 # Watch the rolling update
 kubectl get machines -w
@@ -114,13 +148,31 @@ You can upgrade both the Talos OS and Kubernetes version in a single operation b
 # Apply a comprehensive update
 kubectl patch taloscontrolplane my-cluster-cp --type merge -p '{
   "spec": {
-    "version": "v1.31.0",
+    "version": "v1.35.0",
     "infrastructureTemplate": {
       "name": "my-cluster-cp-v2"
     },
     "controlPlaneConfig": {
       "controlplane": {
-        "talosVersion": "v1.8.0"
+        "talosVersion": "v1.13.0"
+      }
+    }
+  }
+}'
+
+kubectl patch machinedeployment my-cluster-workers --type merge -p '{
+  "spec": {
+    "template": {
+      "spec": {
+        "version": "v1.35.0",
+        "bootstrap": {
+          "configRef": {
+            "name": "my-cluster-workers-v2"
+          }
+        },
+        "infrastructureRef": {
+          "name": "my-cluster-workers-v2"
+        }
       }
     }
   }
@@ -173,7 +225,7 @@ spec:
     spec:
       nodeDrainTimeout: 300s  # 5 minutes to drain
       clusterName: my-cluster
-      version: v1.31.0
+      version: v1.35.0
       # ... rest of spec
 ```
 
@@ -221,18 +273,18 @@ kubectl logs -n cabpt-system deployment/cabpt-controller-manager -f
 kubectl logs -n cacppt-system deployment/cacppt-controller-manager -f
 ```
 
-If you need to roll back, revert the version changes:
+If you need to roll back, revert the version and template reference changes:
 
 ```bash
-# Roll back the Kubernetes version on the control plane
+# Roll back the Kubernetes version and machine template on the control plane
 kubectl patch taloscontrolplane my-cluster-cp \
   --type merge \
-  -p '{"spec":{"version":"v1.30.0"}}'
+  -p '{"spec":{"version":"v1.34.0","infrastructureTemplate":{"name":"my-cluster-cp-v1"}}}'
 
-# Roll back workers
+# Roll back workers to the previous version and templates
 kubectl patch machinedeployment my-cluster-workers \
   --type merge \
-  -p '{"spec":{"template":{"spec":{"version":"v1.30.0"}}}}'
+  -p '{"spec":{"template":{"spec":{"version":"v1.34.0","bootstrap":{"configRef":{"name":"my-cluster-workers-v1"}},"infrastructureRef":{"name":"my-cluster-workers-v1"}}}}}'
 ```
 
 ## Staged Upgrades Across Environments
@@ -242,15 +294,15 @@ For production safety, upgrade your clusters in order:
 ```bash
 # 1. Upgrade the development cluster
 kubectl --context dev-mgmt patch taloscontrolplane dev-cluster-cp \
-  --type merge -p '{"spec":{"version":"v1.31.0"}}'
+  --type merge -p '{"spec":{"version":"v1.35.0"}}'
 
 # 2. After dev is verified, upgrade staging
 kubectl --context staging-mgmt patch taloscontrolplane staging-cluster-cp \
-  --type merge -p '{"spec":{"version":"v1.31.0"}}'
+  --type merge -p '{"spec":{"version":"v1.35.0"}}'
 
 # 3. Finally, upgrade production
 kubectl --context prod-mgmt patch taloscontrolplane prod-cluster-cp \
-  --type merge -p '{"spec":{"version":"v1.31.0"}}'
+  --type merge -p '{"spec":{"version":"v1.35.0"}}'
 ```
 
 ## Upgrade Best Practices
