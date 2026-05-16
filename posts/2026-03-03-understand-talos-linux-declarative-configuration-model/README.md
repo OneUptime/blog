@@ -8,7 +8,7 @@ Description: Explore how the declarative configuration model in Talos Linux work
 
 ---
 
-Talos Linux takes a strongly declarative approach to system configuration. Instead of running a sequence of commands to set up a node (install this package, create that user, edit this file), you describe the desired state in a single YAML document. Talos then makes the system match that description.
+Talos Linux takes a strongly declarative approach to system configuration. Instead of running a sequence of commands to set up a node (install this package, create that user, edit this file), you describe the desired state in a single YAML file. Current Talos releases support multi-document machine configuration, where related documents are separated with `---`. Talos then makes the system match that description.
 
 This is the same principle that drives Kubernetes itself, where you declare what you want and controllers reconcile the actual state to match. Talos applies this concept at the operating system level.
 
@@ -31,29 +31,37 @@ In declarative configuration, you describe what the system should look like:
 
 ```yaml
 # Declarative approach (Talos Linux)
-machine:
-  network:
-    hostname: worker-01
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 10.0.0.11/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 10.0.0.1
-    nameservers:
-      - 8.8.8.8
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: worker-01
+auto: off
+---
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 10.0.0.11/24
+routes:
+  - destination: 0.0.0.0/0
+    gateway: 10.0.0.1
+---
+apiVersion: v1alpha1
+kind: ResolverConfig
+nameservers:
+  - address: 8.8.8.8
 ```
 
 The difference might seem subtle, but it has profound implications. With the imperative approach, the result depends on the current state of the system and the order of operations. With the declarative approach, the result is always the same regardless of the starting state.
 
 ## The Machine Configuration Document
 
-The machine configuration is the single source of truth for a Talos node. It covers everything:
+The machine configuration file is the single source of truth for a Talos node. It covers everything:
 
 **Machine section** - node type, network, storage, kernel parameters, kubelet settings, system extensions, and disk encryption.
 
 **Cluster section** - cluster name, control plane endpoint, certificates, networking, and etcd configuration.
+
+**Additional documents** - current Talos releases use separate documents for some configuration areas, including hostname and detailed network configuration.
 
 ```yaml
 # Complete machine configuration structure
@@ -68,20 +76,14 @@ machine:
     key: <base64-key>
   certSANs: []
   kubelet:
-    image: ghcr.io/siderolabs/kubelet:v1.29.0
+    image: ghcr.io/siderolabs/kubelet:v1.35.0
     extraArgs:
       rotate-server-certificates: "true"
     extraMounts: []
-  network:
-    hostname: cp-01
-    interfaces:
-      - interface: eth0
-        dhcp: true
-    nameservers:
-      - 8.8.8.8
+  network: {}
   install:
     disk: /dev/sda
-    image: ghcr.io/siderolabs/installer:v1.6.0
+    image: ghcr.io/siderolabs/installer:v1.12.1
     extensions: []
   sysctls:
     net.core.somaxconn: "65535"
@@ -104,6 +106,20 @@ cluster:
   ca:
     crt: <base64-certificate>
     key: <base64-key>
+---
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: cp-01
+auto: off
+---
+apiVersion: v1alpha1
+kind: DHCPv4Config
+name: eth0
+---
+apiVersion: v1alpha1
+kind: ResolverConfig
+nameservers:
+  - address: 8.8.8.8
 ```
 
 ## Generating Configuration
@@ -122,8 +138,8 @@ talosctl gen config my-cluster https://10.0.0.10:6443
 # Generate with specific options
 talosctl gen config my-cluster https://10.0.0.10:6443 \
   --install-disk /dev/sda \
-  --install-image ghcr.io/siderolabs/installer:v1.6.0 \
-  --kubernetes-version 1.29.0 \
+  --install-image ghcr.io/siderolabs/installer:v1.12.1 \
+  --kubernetes-version 1.35.0 \
   --with-secrets secrets.yaml
 ```
 
@@ -148,7 +164,7 @@ When a node boots for the first time, it needs its configuration. This can come 
 
 - A kernel command line parameter pointing to a URL
 - Cloud provider metadata service
-- A configuration server discovered via DHCP
+- Embedded configuration in a boot asset
 - Manual application via talosctl
 
 ```bash
@@ -165,13 +181,12 @@ Once a node is running, you can update its configuration through the Talos API.
 talosctl -n 10.0.0.11 apply-config --file updated-worker.yaml
 
 # Apply a patch to the existing configuration
-talosctl -n 10.0.0.11 patch machineconfig --patch '[
-  {
-    "op": "replace",
-    "path": "/machine/network/hostname",
-    "value": "new-hostname"
-  }
-]'
+talosctl -n 10.0.0.11 patch machineconfig --patch '
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: new-hostname
+auto: off
+'
 
 # Apply a patch from a file
 talosctl -n 10.0.0.11 patch machineconfig --patch @patch.yaml
@@ -196,26 +211,26 @@ Validation checks include YAML syntax, required fields, certificate validity, ne
 
 Not all configuration changes are equal. Some take effect immediately, while others require a reboot. Talos tells you what is needed after each configuration change.
 
-**Immediate changes** (no reboot needed):
-- Network interface configuration
+**Immediate changes** (no reboot needed, when applied with `--mode=no-reboot`):
+- Network configuration
 - DNS servers
 - NTP servers
 - Hostname
-- Kubelet extra arguments (in some cases)
+- Kubelet configuration
+- Kernel configuration
 
-**Reboot required**:
-- Disk configuration
-- Kernel parameters
+**Changes that often require installation, upgrade, or a staged/reboot flow**:
+- Base runtime spec overrides
 - System extensions
 - Install image changes
 - Machine type changes
 
 ```bash
-# After applying config, check if reboot is needed
-talosctl -n 10.0.0.11 get machineconfig -o yaml
+# Check how Talos would apply the change
+talosctl -n 10.0.0.11 apply-config --file updated-worker.yaml --dry-run
 
-# If reboot is required
-talosctl -n 10.0.0.11 reboot
+# Force a reboot-mode apply when a reboot is desired
+talosctl -n 10.0.0.11 apply-config --file updated-worker.yaml --mode=reboot
 ```
 
 ## Configuration Diff and Dry Run
@@ -224,7 +239,7 @@ Before applying changes, you can compare the new configuration with the current 
 
 ```bash
 # View the current machine configuration
-talosctl -n 10.0.0.11 get machineconfig -o yaml > current-config.yaml
+talosctl -n 10.0.0.11 get machineconfig v1alpha1 -o jsonpath='{.spec}' > current-config.yaml
 
 # Diff against the new configuration
 diff current-config.yaml new-config.yaml
@@ -242,28 +257,35 @@ For larger clusters, you often need slightly different configurations for each n
 # Patches per node:
 
 # worker-01-patch.yaml
-machine:
-  network:
-    hostname: worker-01
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 10.0.0.21/24
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: worker-01
+auto: off
+---
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 10.0.0.21/24
 
 # worker-02-patch.yaml
-machine:
-  network:
-    hostname: worker-02
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 10.0.0.22/24
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: worker-02
+auto: off
+---
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 10.0.0.22/24
 ```
 
 ```bash
 # Generate config with patches
 talosctl gen config my-cluster https://10.0.0.10:6443 \
   --config-patch-worker @worker-01-patch.yaml \
+  --output-types worker \
   --output worker-01.yaml
 ```
 
@@ -300,4 +322,4 @@ This approach gives you audit trails, rollback capability, and collaborative man
 
 ## Conclusion
 
-The declarative configuration model in Talos Linux eliminates the complexity and inconsistency of imperative system management. By expressing the entire node configuration in a single YAML document, Talos makes infrastructure reproducible, version-controllable, and self-healing. The configuration is validated before application, changes are reconciled continuously, and the system always converges toward the desired state. This model works well for small clusters managed by hand and scales to large deployments managed through GitOps pipelines. Understanding how to work with the machine configuration is the most important skill for operating Talos Linux.
+The declarative configuration model in Talos Linux eliminates the complexity and inconsistency of imperative system management. By expressing the entire node configuration in a YAML machine configuration file, Talos makes infrastructure reproducible, version-controllable, and self-healing. The configuration is validated before application, changes are reconciled continuously, and the system always converges toward the desired state. This model works well for small clusters managed by hand and scales to large deployments managed through GitOps pipelines. Understanding how to work with the machine configuration is the most important skill for operating Talos Linux.
