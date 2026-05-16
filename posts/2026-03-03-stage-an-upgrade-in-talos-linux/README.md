@@ -2,39 +2,41 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Staged Upgrade, Maintenance Window, Upgrade Planning, Kubernetes
+Tags: Talos Linux, Staged Upgrade, Upgrade Planning, Kubernetes
 
-Description: Learn how to stage upgrades in Talos Linux to prepare nodes for an upgrade ahead of time and apply the changes during a controlled maintenance window.
+Description: Learn what staged upgrades do in Talos Linux, when to use them, and how to run them safely during a controlled upgrade window.
 
 ---
 
-Staging an upgrade in Talos Linux lets you separate the preparation phase from the execution phase. Instead of downloading the new image and rebooting immediately, you can pre-load the upgrade on all nodes and then trigger the actual reboot during a planned maintenance window. This approach gives you more control over when the disruption happens and reduces the time nodes spend rebooting during the maintenance window.
+Staging an upgrade in Talos Linux changes how the upgrade is applied on the node. Instead of trying to stop services, unmount filesystems, and write the new installation immediately from the running system, Talos writes upgrade metadata to disk and reboots. Very early in the next boot, Talos sees the staged upgrade, applies the new kernel and OS image, and then reboots again into the upgraded version.
+
+This is useful when a regular upgrade cannot cleanly unmount filesystems because a process is holding a file open. It is not a way to download an upgrade during business hours and leave it pending for a later manual reboot.
+
+> Note: In Talos v1.13, `--stage` is a legacy upgrade flag used when falling back to the legacy upgrade API for older Talos versions. The Talos docs mark legacy upgrade flags including `--stage` as deprecated and scheduled for removal in Talos v1.18.
 
 ## What Does Staging an Upgrade Mean?
 
-When you stage an upgrade in Talos Linux, the system downloads the new installer image and writes the new kernel and initramfs to the inactive boot slot, but it does not reboot the node. The node continues running the current version until you explicitly reboot it.
+When you stage an upgrade in Talos Linux, the system records upgrade artifacts and metadata so the upgrade can be performed immediately after a reboot, before the full running system starts. After the staged upgrade is applied, Talos reboots again into the new version.
 
 ```text
 Normal Upgrade:
-  1. Download new image     -|
-  2. Write to inactive slot  |-- Happens immediately
-  3. Reboot the node        -|
+  1. Drain node and stop services
+  2. Unmount filesystems
+  3. Write new installation
+  4. Reboot into the new version
 
 Staged Upgrade:
-  1. Download new image     -|
-  2. Write to inactive slot  |-- Happens during staging
-  3. (Node keeps running)   -|
-
-  ... later, during maintenance window ...
-
-  4. Reboot the node        --- Happens when you are ready
+  1. Record upgrade metadata
+  2. Reboot the node
+  3. Apply the upgrade early in boot
+  4. Reboot into the new version
 ```
 
-This decoupling is useful when you need to coordinate upgrades with other teams, plan around business hours, or prepare many nodes in advance.
+This flow helps when the normal upgrade path fails because the running system cannot release disk access cleanly.
 
 ## Staging an Upgrade on a Single Node
 
-The `--stage` flag tells Talos to prepare the upgrade without rebooting:
+The `--stage` flag tells Talos to use the staged upgrade path:
 
 ```bash
 # Stage an upgrade on a specific node
@@ -43,28 +45,29 @@ talosctl upgrade --nodes 192.168.1.10 \
   --image ghcr.io/siderolabs/installer:v1.7.0 \
   --stage
 
-# The command completes quickly - the node does NOT reboot
-# The new image is downloaded and written to the inactive boot slot
+# The node reboots, applies the upgrade early in boot, and reboots again
+# into the upgraded Talos version.
 ```
 
-After staging, you can verify that the upgrade was staged:
+After the command completes, verify the node version:
 
 ```bash
-# Check machine status for upgrade information
-talosctl get machinestatus --nodes 192.168.1.10 -o yaml
+# Check the Talos version on the node
+talosctl version --nodes 192.168.1.10
 
-# You should see information about the staged upgrade
+# Check overall cluster health
+talosctl health --nodes 192.168.1.10 --wait-timeout 10m
 ```
 
-The node continues running normally on the current version. No workloads are disrupted.
+The node is disrupted during the reboot sequence, so treat this like any other node upgrade.
 
 ## Staging Across Multiple Nodes
 
-You can stage upgrades on all nodes in advance, then reboot them during the maintenance window:
+You can run staged upgrades across multiple nodes, but you should still roll through them carefully. Avoid upgrading every node at once unless you have confirmed your workloads and quorum-dependent systems can tolerate it.
 
 ```bash
 #!/bin/bash
-# Stage upgrades on all nodes
+# Stage upgrades on nodes one at a time
 TALOS_IMAGE="ghcr.io/siderolabs/installer:v1.7.0"
 
 ALL_NODES=(
@@ -77,41 +80,44 @@ ALL_NODES=(
   "192.168.1.23"  # worker-04
 )
 
-echo "Staging upgrades on all nodes..."
+echo "Running staged upgrades..."
 for NODE in "${ALL_NODES[@]}"; do
-  echo "  Staging on $NODE..."
+  echo "  Upgrading $NODE..."
   talosctl upgrade --nodes "$NODE" \
     --image "$TALOS_IMAGE" \
     --stage
-  echo "  $NODE staged successfully"
-done
 
-echo ""
-echo "All nodes staged. Upgrades will apply on next reboot."
-echo "Run the apply script during the maintenance window."
+  talosctl health --nodes "$NODE" --wait-timeout 10m
+  talosctl version --nodes "$NODE"
+  echo "  $NODE upgraded successfully"
+done
 ```
 
-Since staging does not reboot the nodes, you can run this during business hours without any impact on running workloads.
+Because staging reboots the node, run this during an upgrade window, not during normal business hours.
 
 ## Applying the Staged Upgrade
 
-During your maintenance window, trigger the reboots. For a rolling upgrade, reboot nodes one at a time:
+There is no separate "apply later" step for a staged Talos upgrade. The upgrade is applied automatically during the reboot sequence started by the staged upgrade flow.
+
+For a rolling upgrade, upgrade nodes one at a time:
 
 ```bash
 #!/bin/bash
-# Apply staged upgrades during maintenance window
+# Run staged upgrades during an upgrade window
 
 CP_NODES=("192.168.1.10" "192.168.1.11" "192.168.1.12")
 WORKER_NODES=("192.168.1.20" "192.168.1.21" "192.168.1.22" "192.168.1.23")
+TALOS_IMAGE="ghcr.io/siderolabs/installer:v1.7.0"
 
 # Upgrade control plane nodes first (one at a time)
-echo "=== Rebooting Control Plane Nodes ==="
+echo "=== Upgrading Control Plane Nodes ==="
 for NODE in "${CP_NODES[@]}"; do
-  echo "Rebooting $NODE..."
-  talosctl reboot --nodes "$NODE"
+  echo "Upgrading $NODE..."
+  talosctl upgrade --nodes "$NODE" \
+    --image "$TALOS_IMAGE" \
+    --stage
 
-  echo "Waiting for $NODE to come back..."
-  sleep 30
+  echo "Waiting for $NODE to be healthy..."
   talosctl health --nodes "$NODE" --wait-timeout 10m
 
   # Verify version
@@ -125,19 +131,20 @@ for NODE in "${CP_NODES[@]}"; do
 done
 
 # Upgrade worker nodes (one at a time)
-echo "=== Rebooting Worker Nodes ==="
+echo "=== Upgrading Worker Nodes ==="
 for NODE in "${WORKER_NODES[@]}"; do
-  HOSTNAME=$(talosctl get hostname --nodes "$NODE" -o json | jq -r '.spec.hostname')
+  HOSTNAME=$(talosctl get nodename --nodes "$NODE" -o json | jq -r '.spec.nodename')
 
   echo "Draining $HOSTNAME..."
   kubectl drain "$HOSTNAME" --ignore-daemonsets --delete-emptydir-data --timeout=300s
 
-  echo "Rebooting $NODE..."
-  talosctl reboot --nodes "$NODE"
+  echo "Upgrading $NODE..."
+  talosctl upgrade --nodes "$NODE" \
+    --image "$TALOS_IMAGE" \
+    --stage
 
-  echo "Waiting for $NODE to come back..."
-  sleep 30
-  talosctl health --nodes "$NODE" --wait-timeout 5m
+  echo "Waiting for $NODE to be healthy..."
+  talosctl health --nodes "$NODE" --wait-timeout 10m
 
   echo "Uncordoning $HOSTNAME..."
   kubectl uncordon "$HOSTNAME"
@@ -153,68 +160,70 @@ kubectl get nodes -o wide
 
 ## Canceling a Staged Upgrade
 
-If you staged an upgrade but decide not to proceed, you need to clear the staged state. The simplest way is to stage the current version again (which overwrites the staged upgrade with the same version):
+A staged upgrade is not a long-lived pending change that you normally cancel later. Once you run the staged upgrade command, Talos reboots and applies the upgrade in the next boot sequence.
+
+If you need to undo a completed Talos OS upgrade, use the normal rollback flow:
 
 ```bash
-# Find current version
-CURRENT=$(talosctl version --nodes 192.168.1.10 | grep "Tag:" | tail -1 | awk '{print $2}')
-
-# Stage the current version to cancel the pending upgrade
-talosctl upgrade --nodes 192.168.1.10 \
-  --image "ghcr.io/siderolabs/installer:$CURRENT" \
-  --stage
+# Roll back the node to the previous installation
+talosctl rollback --nodes 192.168.1.10
 ```
 
-If the node reboots for any reason (power outage, hardware issue), it will boot the staged version. So if you do not want the upgrade to happen, canceling the staged upgrade is important.
+The rollback command updates the boot reference and reboots the node into the previous installation.
 
 ## Benefits of Staged Upgrades
 
-### 1. Controlled Timing
+### 1. Avoiding Filesystem Unmount Failures
 
-The biggest advantage is separating preparation from execution. You can download large installer images during off-peak hours when bandwidth is available, and then execute the quick reboot during a tight maintenance window.
+The biggest advantage is that staging moves the actual upgrade work into an early boot environment. If a normal upgrade fails because Talos cannot stop every disk access point and unmount filesystems cleanly, the staged path avoids that running-system conflict.
 
-### 2. Reduced Maintenance Window Duration
+### 2. Predictable Upgrade Flow
 
-Since the image is already downloaded and written to disk, the maintenance window only needs to cover the reboot time and health verification. On most hardware, a Talos reboot takes 2-5 minutes.
+The upgrade window still needs to cover the node reboot sequence and health verification. With staging, expect an extra reboot because Talos reboots once to apply the staged upgrade and then reboots again into the upgraded version.
 
 ```text
-Without staging (per node):
-  Download image: 2-5 minutes (depends on bandwidth)
-  Write to disk: 1-2 minutes
-  Reboot: 2-5 minutes
-  Total: 5-12 minutes per node
+Normal upgrade:
+  Drain and stop services
+  Unmount filesystems
+  Write new installation
+  Reboot
+  Verify health
 
-With staging (per node):
-  Reboot: 2-5 minutes
-  Total: 2-5 minutes per node
+Staged upgrade:
+  Record staged upgrade metadata
+  Reboot
+  Apply upgrade early in boot
+  Reboot
+  Verify health
 ```
 
-For a cluster with 20 nodes, this difference adds up significantly.
+For a cluster with many nodes, roll through nodes in a controlled order.
 
-### 3. Pre-Validation
+### 3. Health Validation
 
-After staging, you can verify that the image was downloaded and written correctly before committing to the reboot:
+After each node upgrades, verify that the node is running the expected version and that the cluster is healthy:
 
 ```bash
-# Verify the staged image
-talosctl get machinestatus --nodes 192.168.1.10
+# Verify the upgraded version
+talosctl version --nodes 192.168.1.10
 
-# Check that the inactive boot slot has the new version
+# Check cluster health
+talosctl health --nodes 192.168.1.10 --wait-timeout 10m
 ```
 
-### 4. Batch Preparation
+### 4. Controlled Execution
 
-In large environments, you can stage upgrades across hundreds of nodes in parallel without any service impact:
+In large environments, automate staged upgrades with the same caution you use for regular upgrades:
 
 ```bash
-# Stage all nodes in parallel
+# Upgrade all nodes sequentially
 for NODE in "${ALL_NODES[@]}"; do
   talosctl upgrade --nodes "$NODE" \
     --image "$TALOS_IMAGE" \
-    --stage &
+    --stage
+  talosctl health --nodes "$NODE" --wait-timeout 10m
 done
-wait
-echo "All nodes staged"
+echo "All nodes upgraded"
 ```
 
 ## Staged Upgrades in CI/CD Pipelines
@@ -224,60 +233,53 @@ You can integrate staged upgrades into your CI/CD pipeline for automated cluster
 ```yaml
 # Example GitOps pipeline stages
 stages:
-  - name: stage-upgrade
-    # Runs during business hours - no impact
-    schedule: "0 10 * * MON"  # Monday at 10 AM
-    steps:
-      - stage upgrades on all nodes
-
-  - name: apply-upgrade-cp
+  - name: upgrade-cp
     # Runs during maintenance window
     schedule: "0 2 * * SAT"  # Saturday at 2 AM
     steps:
-      - reboot control plane nodes sequentially
+      - upgrade control plane nodes sequentially with --stage
       - verify etcd health
 
-  - name: apply-upgrade-workers
+  - name: upgrade-workers
     # Runs after control plane is upgraded
-    depends_on: apply-upgrade-cp
+    depends_on: upgrade-cp
     steps:
-      - drain and reboot worker nodes sequentially
+      - drain and upgrade worker nodes sequentially with --stage
       - verify workload health
 ```
 
 ## Staged Upgrades and Automatic Rollback
 
-The automatic rollback mechanism still works with staged upgrades. If the staged version fails to boot, the bootloader reverts to the previous version. The only difference is the timing - with a staged upgrade, the rollback happens when you reboot (during the maintenance window), not immediately after the upgrade command.
+The automatic rollback mechanism still works with staged upgrades. If the upgraded Talos system fails to start, Talos reboots and the bootloader uses the previous Talos kernel and OS image. If Talos upgrades successfully but workloads fail after the node rejoins the cluster, use `talosctl rollback` to revert the node to the previous Talos version.
 
 ```bash
-# After rebooting a node with a staged upgrade
-# Check which version it is running
+# After a staged upgrade completes, check which version is running
 talosctl version --nodes 192.168.1.10
 
-# If it rolled back, you will see the old version
-# If the upgrade succeeded, you will see the new version
+# If the node needs to be reverted, roll it back
+talosctl rollback --nodes 192.168.1.10
 ```
 
 ## Handling Mixed States
 
-If some nodes in the cluster have staged upgrades and others do not, there is no compatibility issue. The staged upgrade is purely a local node operation. Nodes run their current version until rebooted, regardless of what is staged on other nodes.
+If some nodes in the cluster have been upgraded and others have not, follow the same compatibility rules as any other Talos rolling upgrade. Talos recommends upgrading through adjacent minor releases, because upgrade migrations are tested between adjacent minor versions.
 
-This means you can stage upgrades in batches across your fleet without worrying about version conflicts. Only when nodes are rebooted do they start running the new version.
+This means you can upgrade in batches across your fleet, but you should plan the rollout order and version path before starting.
 
 ## Best Practices for Staged Upgrades
 
-1. Stage all nodes within 24-48 hours of the planned maintenance window. Staging too far in advance increases the risk of an unplanned reboot applying the upgrade unexpectedly.
+1. Use `--stage` when the normal upgrade path cannot cleanly unmount filesystems or when you explicitly need the staged boot-time upgrade behavior.
 
-2. Always cancel staged upgrades if the maintenance window is postponed.
+2. Treat the staged upgrade command as disruptive because it starts a reboot-driven upgrade flow.
 
-3. Verify staging was successful on all target nodes before the maintenance window.
+3. Verify each node after upgrade with `talosctl version` and `talosctl health`.
 
-4. Keep the reboot order the same as a regular rolling upgrade: control plane first, then workers.
+4. Keep the order the same as a regular rolling upgrade: control plane first, then workers.
 
-5. Have the rollback procedure ready even though automatic rollback should handle most failures.
+5. Have the rollback procedure ready even though automatic rollback should handle boot failures.
 
-6. Document which version is staged on each node so there is no confusion during the maintenance window.
+6. Check the Talos version you are running. In Talos v1.13 and newer, `--stage` is a deprecated legacy flag and is planned for removal in Talos v1.18.
 
 ## Conclusion
 
-Staging upgrades in Talos Linux gives you control over when the disruptive part of an upgrade (the reboot) happens. By separating the image download and installation from the reboot, you can prepare during business hours and execute during a narrow maintenance window. This approach is especially valuable for large clusters where download times add up and for organizations with strict change management processes that require precise control over when changes take effect.
+Staging upgrades in Talos Linux gives you a fallback upgrade path when the normal running-system upgrade cannot safely unmount filesystems. It does not create a pending upgrade that waits for a later manual reboot. The staged upgrade command records the upgrade metadata, reboots the node, applies the upgrade early in boot, and then reboots into the new version. Use it during a controlled upgrade window, roll through nodes carefully, and verify each node before moving on.
