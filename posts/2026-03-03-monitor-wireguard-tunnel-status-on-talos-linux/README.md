@@ -24,46 +24,64 @@ WireGuard exposes several metrics that tell you about tunnel health.
 
 ## Manual Monitoring with talosctl
 
-The quickest way to check WireGuard status on a Talos node is through talosctl.
+The quickest way to inspect WireGuard link state on a Talos node is through talosctl.
 
 ```bash
-# Read the WireGuard interface status
-
-talosctl -n 192.168.1.1 read /proc/net/wireguard
-
-# Example output:
-# interface: wg0 fwmark: 0 public key: XK9Ct4hQLnP3V... listen port: 51820
-#   peer: YH7Bs3gPLqM2W...
-#     endpoint: 203.0.113.10:51820
-#     allowed ips: 10.10.0.2/32
-#     latest handshake: 1709488234
-#     transfer: 15234567 received, 12345678 sent
-#     persistent keepalive: every 25 seconds
-```
-
-You can also check the interface link status and addresses:
-
-```bash
-# Check the WireGuard interface is up
-talosctl -n 192.168.1.1 get links | grep wg0
+# Check the WireGuard interface link state
+talosctl -n 192.168.1.1 get links wg0
 
 # Check the assigned addresses
 talosctl -n 192.168.1.1 get addresses | grep wg0
-
-# Test connectivity through the tunnel
-talosctl -n 192.168.1.1 ping 10.10.0.2
 ```
 
-For a quick health check across multiple nodes, script it:
+WireGuard does not expose status through `/proc`; the kernel module communicates over generic netlink, which is accessed by the `wg` binary from `wireguard-tools`. talosctl can show you link and address state, but it does not surface per-peer handshake or transfer information directly. To get the full peer view on Talos, run `wg show` from a temporary pod that has `hostNetwork: true` and the `NET_ADMIN` capability:
+
+```yaml
+# wg-debug-pod.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: wg-debug
+spec:
+  hostNetwork: true
+  nodeName: <your-node-name>
+  restartPolicy: Never
+  containers:
+    - name: wg-debug
+      image: alpine:3.19
+      command: ["sh", "-c", "apk add --no-cache wireguard-tools && wg show && sleep 3600"]
+      securityContext:
+        capabilities:
+          add: ["NET_ADMIN"]
+```
 
 ```bash
-# Check WireGuard status across all nodes
+kubectl apply -f wg-debug-pod.yaml
+kubectl logs wg-debug
+
+# Example output of wg show:
+# interface: wg0
+#   public key: XK9Ct4hQLnP3V...
+#   private key: (hidden)
+#   listening port: 51820
+#
+# peer: YH7Bs3gPLqM2W...
+#   endpoint: 203.0.113.10:51820
+#   allowed ips: 10.10.0.2/32
+#   latest handshake: 30 seconds ago
+#   transfer: 15.23 MiB received, 12.34 MiB sent
+#   persistent keepalive: every 25 seconds
+```
+
+For a quick link-state health check across multiple nodes, script it with talosctl:
+
+```bash
+# Check WireGuard link state across all nodes
 NODES=("192.168.1.1" "192.168.1.2" "192.168.1.3")
 
 for node in "${NODES[@]}"; do
   echo "=== Node: $node ==="
-  talosctl -n "$node" read /proc/net/wireguard 2>/dev/null | \
-    grep -E "peer|latest handshake|transfer"
+  talosctl -n "$node" get links wg0 2>/dev/null
   echo ""
 done
 ```
@@ -72,7 +90,7 @@ done
 
 For continuous monitoring, deploy a Prometheus exporter that collects WireGuard metrics and makes them available for scraping. The `prometheus-wireguard-exporter` is a popular choice.
 
-Since Talos is immutable, you run the exporter as a Kubernetes DaemonSet with access to the host network and the WireGuard proc file.
+Since Talos is immutable, you run the exporter as a Kubernetes DaemonSet with access to the host network namespace. The exporter container ships with the `wg` binary and shells out to `wg show all dump` to gather metrics, so it needs `hostNetwork: true` (to see the host's WireGuard interfaces) and `NET_ADMIN` (to talk to the WireGuard netlink family).
 
 ```yaml
 # wireguard-exporter-daemonset.yaml
@@ -112,15 +130,6 @@ spec:
             capabilities:
               add:
                 - NET_ADMIN
-          volumeMounts:
-            - name: proc-wireguard
-              mountPath: /proc/net/wireguard
-              readOnly: true
-      volumes:
-        - name: proc-wireguard
-          hostPath:
-            path: /proc/net/wireguard
-            type: File
       tolerations:
         - effect: NoSchedule
           operator: Exists
@@ -283,16 +292,22 @@ spec:
           containers:
             - name: checker
               image: alpine:3.19
+              securityContext:
+                capabilities:
+                  add: ["NET_ADMIN"]
               command:
                 - /bin/sh
                 - -c
                 - |
-                  # Read WireGuard status
-                  HANDSHAKE=$(cat /proc/net/wireguard | grep "latest handshake" | awk '{print $3}')
+                  # Install wg from wireguard-tools
+                  apk add --no-cache wireguard-tools >/dev/null
+
+                  # Read the most recent handshake timestamp (Unix seconds) across all peers
+                  HANDSHAKE=$(wg show wg0 latest-handshakes | awk '{print $2}' | sort -n | tail -1)
                   NOW=$(date +%s)
                   AGE=$((NOW - HANDSHAKE))
 
-                  if [ $AGE -gt 300 ]; then
+                  if [ "$HANDSHAKE" = "0" ] || [ $AGE -gt 300 ]; then
                     echo "WARNING: WireGuard handshake is ${AGE}s old"
                     # Send alert via webhook
                     wget -qO- --post-data="{\"text\":\"WireGuard tunnel stale: ${AGE}s since last handshake\"}" \
@@ -300,14 +315,6 @@ spec:
                   else
                     echo "OK: WireGuard handshake is ${AGE}s old"
                   fi
-              volumeMounts:
-                - name: proc-wireguard
-                  mountPath: /proc/net/wireguard
-                  readOnly: true
-          volumes:
-            - name: proc-wireguard
-              hostPath:
-                path: /proc/net/wireguard
           restartPolicy: OnFailure
 ```
 
