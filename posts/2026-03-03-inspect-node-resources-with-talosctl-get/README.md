@@ -52,7 +52,7 @@ This returns a long list. Some of the most commonly used types include:
 - `members` - Cluster member information
 - `services` - Service status
 - `cpus` - CPU information
-- `memory` - Memory information
+- `memorymodules` - Memory module hardware information
 
 ## Inspecting Hardware Information
 
@@ -76,7 +76,7 @@ For current memory usage statistics:
 
 ```bash
 # Get runtime memory stats
-talosctl get systemstat --nodes <node-ip> -o yaml
+talosctl get memorystats --nodes <node-ip> -o yaml
 ```
 
 ### Disk Information
@@ -249,8 +249,8 @@ talosctl get mounts --nodes <node-ip>
 ### Certificate Issues
 
 ```bash
-# Check Kubernetes certificates
-talosctl get kubernetesstatus --nodes <node-ip> -o yaml
+# Check the status of Kubernetes secrets (including certificates)
+talosctl get secretstatuses --nodes <node-ip> -o yaml
 ```
 
 ## Watching Resources for Changes
