@@ -249,7 +249,7 @@ Here are the most important metrics to track on a Talos Linux cluster:
 While Prometheus gives you historical data and dashboards, you can also use `talosctl` for real-time spot checks:
 
 ```bash
-# Check node resource usage
+# Check container resource usage (CPU/memory per container)
 talosctl stats --nodes 10.0.0.10
 
 # View system processes
