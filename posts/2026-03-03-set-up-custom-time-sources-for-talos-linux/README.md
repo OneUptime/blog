@@ -102,7 +102,7 @@ This change takes effect immediately without a reboot.
 
 ## Cloud Provider Time Sources
 
-Each major cloud provider offers optimized NTP endpoints. Using these instead of public NTP pools gives you better accuracy and reliability within the provider's network.
+Major cloud providers offer optimized time sources. Using these instead of public NTP pools gives you better accuracy and reliability within the provider's network.
 
 ### AWS
 
@@ -115,34 +115,30 @@ machine:
       - 169.254.169.123
 ```
 
-This endpoint is accessible from any EC2 instance without any network configuration. It supports both NTP and PTP (Precision Time Protocol) on Nitro-based instances.
+This endpoint is accessible from EC2 instances without VPC configuration changes. On supported Nitro-based instances, AWS also exposes a local PTP (Precision Time Protocol) hardware clock separately from the NTP endpoint.
 
 ### Google Cloud
 
-GCP provides its own time servers:
+GCP provides its own internal time server:
 
 ```yaml
 machine:
   time:
     servers:
       - metadata.google.internal
-      - time1.google.com
-      - time2.google.com
-      - time3.google.com
-      - time4.google.com
 ```
 
 Note that Google handles leap seconds differently from the rest of the NTP ecosystem. Google "smears" the leap second over a period of time rather than inserting it all at once. If you mix Google time sources with non-Google sources, you may see small discrepancies during leap second events.
 
 ### Azure
 
-Azure VMs can use the Hyper-V host as a time reference:
+Azure VMs can use the Hyper-V host as a time reference through a PTP device when the device is available to the guest. For Talos, verify the device first with `talosctl ls /sys/class/ptp/`, then configure the device path:
 
 ```yaml
 machine:
   time:
     servers:
-      - time.windows.com
+      - /dev/ptp0
 ```
 
 ### On-Premises VMware
@@ -242,11 +238,11 @@ After configuration, validate that everything is working:
 # Check sync status
 talosctl -n 192.168.1.10 get timestatus -o yaml
 
-# Verify the configured servers
-talosctl -n 192.168.1.10 get timeserverconfig -o yaml
+# Verify the effective configured servers
+talosctl -n 192.168.1.10 get timeservers -o yaml
 
 # Check time service logs for successful sync
-talosctl -n 192.168.1.10 logs timed | tail -20
+talosctl -n 192.168.1.10 logs controller-runtime | grep -i time.Sync | tail -20
 
 # Compare time across nodes
 talosctl -n 192.168.1.10,192.168.1.11,192.168.1.12 time
@@ -292,6 +288,6 @@ machine:
       - time1.google.com
 ```
 
-The NTP client will try servers in order and fall back to the next one if the previous is unreachable.
+Talos will use the configured sources and continue syncing from another available source if one becomes unreachable.
 
 Setting up custom time sources is a small investment that pays off in reliability and control. By owning your time infrastructure, you eliminate a class of external dependencies and gain the ability to meet specific accuracy or compliance requirements for your Talos Linux clusters.
