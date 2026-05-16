@@ -17,7 +17,7 @@ When Kubernetes says a pod is in CrashLoopBackOff, it means:
 1. The container started and exited (either with an error or successfully)
 2. The kubelet restarted it (because the restart policy says to)
 3. It crashed again
-4. The backoff timer increases with each crash (10s, 20s, 40s, 80s, up to 5 minutes)
+4. The backoff timer increases with each crash (by default: 10s, 20s, 40s, 80s, up to 5 minutes)
 
 The pod is not stuck - it is actively being restarted, just with increasing delays between attempts.
 
@@ -74,7 +74,7 @@ Common exit codes:
 
 ## Step 3: OOM Kill Investigation (Exit Code 137)
 
-Exit code 137 almost always means the container was killed for using too much memory:
+Exit code 137 means the container was killed with SIGKILL, and in Kubernetes this is often because it was OOM killed. Confirm the termination reason before changing limits:
 
 ```bash
 # Check the pod's memory limits
@@ -127,7 +127,7 @@ livenessProbe:
 
 ## Step 5: Missing Configuration or Secrets
 
-Applications often crash because required ConfigMaps, Secrets, or environment variables are missing:
+Applications often crash because required environment variables or configuration values are missing. If a non-optional referenced ConfigMap or Secret is missing, the pod usually will not start; if optional references are empty or keys are missing, the application may start and then crash:
 
 ```bash
 # Check if all referenced ConfigMaps exist
@@ -141,7 +141,7 @@ kubectl get configmaps -n <namespace>
 kubectl get secrets -n <namespace>
 ```
 
-If a ConfigMap or Secret is missing, create it:
+If a ConfigMap, Secret, or required key is missing, create it:
 
 ```bash
 # Create a missing ConfigMap
@@ -167,7 +167,7 @@ On Talos Linux, certain paths are read-only. If you are trying to use a hostPath
 
 ```bash
 # Check if the path exists on the Talos node
-talosctl -n <node-ip> ls /path/to/volume
+talosctl -n <node-ip> list /path/to/volume
 ```
 
 ## Step 7: Image Issues
@@ -222,7 +222,7 @@ On Talos Linux, some system-level pods may CrashLoopBackOff for Talos-specific r
 
 **CoreDNS CrashLoopBackOff:**
 
-Usually caused by a DNS loop. Check the CoreDNS logs:
+Can be caused by a DNS loop. Check the CoreDNS logs:
 
 ```bash
 kubectl -n kube-system logs -l k8s-app=kube-dns --previous
@@ -260,4 +260,4 @@ This lets you investigate the container environment without the crash.
 
 ## Summary
 
-CrashLoopBackOff on Talos Linux is diagnosed the same way as on any Kubernetes cluster - start with the container logs and exit code. The logs will tell you what is happening inside the container, and the exit code will tell you how it died. From there, check for OOM kills, liveness probe failures, missing configurations, and network dependency issues. For Talos-specific system pods, check the Talos service logs for additional context.
+CrashLoopBackOff on Talos Linux is diagnosed the same way as on any Kubernetes cluster - start with the container logs and exit code. The logs will tell you what is happening inside the container, and the exit code will tell you how it died. From there, check for OOM kills, liveness probe failures, missing configurations, and network dependency issues. For Talos-specific system pods, check Kubernetes pod logs and Talos service logs for additional context.
