@@ -43,10 +43,10 @@ Apply this patch to your nodes:
 
 ```bash
 # Apply the logging patch to a control plane node
-talosctl apply-config --nodes 192.168.1.10 --patch @datadog-logging-patch.yaml
+talosctl patch mc --nodes 192.168.1.10 --patch @datadog-logging-patch.yaml
 
 # Apply to all worker nodes
-talosctl apply-config --nodes 192.168.1.20,192.168.1.21 --patch @datadog-logging-patch.yaml
+talosctl patch mc --nodes 192.168.1.20,192.168.1.21 --patch @datadog-logging-patch.yaml
 ```
 
 ## Deploying the Datadog Agent on Talos Linux
@@ -102,7 +102,7 @@ datadog:
     enabled: true
     processCollection: true
   kubelet:
-    # Talos uses a non-standard kubelet path
+    # Talos requires connecting to the kubelet by host IP rather than node name
     host:
       valueFrom:
         fieldRef:
