@@ -49,10 +49,10 @@ talosctl gen config my-cluster https://192.168.1.10:6443 \
   --config-patch @calico-talos-patch.yaml
 
 # For existing clusters, apply to each node
-talosctl apply-config --nodes 192.168.1.10 --patch @calico-talos-patch.yaml
-talosctl apply-config --nodes 192.168.1.11 --patch @calico-talos-patch.yaml
-talosctl apply-config --nodes 192.168.1.12 --patch @calico-talos-patch.yaml
-talosctl apply-config --nodes 192.168.1.20 --patch @calico-talos-patch.yaml
+talosctl apply-config --nodes 192.168.1.10 --config-patch @calico-talos-patch.yaml
+talosctl apply-config --nodes 192.168.1.11 --config-patch @calico-talos-patch.yaml
+talosctl apply-config --nodes 192.168.1.12 --config-patch @calico-talos-patch.yaml
+talosctl apply-config --nodes 192.168.1.20 --config-patch @calico-talos-patch.yaml
 ```
 
 ## Step 2: Bootstrap the Cluster
@@ -167,7 +167,7 @@ calicoctl is the Calico CLI tool for managing network policies and configuration
 
 ```bash
 # Install calicoctl (macOS)
-brew install calico
+brew install calicoctl
 
 # Or download directly
 curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 -o calicoctl
