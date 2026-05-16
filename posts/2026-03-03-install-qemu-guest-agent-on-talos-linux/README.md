@@ -260,11 +260,11 @@ qm snapshot <vmid> pre-upgrade
 
 ### Time Synchronization
 
-After restoring a VM from a snapshot or resuming from suspend, the guest agent can sync the clock.
+After restoring a VM from a snapshot or resuming from suspend, the guest agent automatically syncs the guest clock. You can query the current guest time to verify.
 
 ```bash
-# Sync the guest clock from the Proxmox host
-qm agent <vmid> set-user-password
+# Read the current time from the guest (returns nanoseconds since epoch)
+qm agent <vmid> get-time
 ```
 
 ## Using with libvirt
