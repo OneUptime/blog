@@ -204,11 +204,8 @@ kubectl run latency-checker \
   --restart=Never \
   -- /bin/sh -c "
     while true; do
-      START=\$(date +%s%N)
-      curl -s -o /dev/null http://test-app.default.svc.cluster.local
-      END=\$(date +%s%N)
-      ELAPSED=\$(( (END - START) / 1000000 ))
-      echo \"\$(date +%H:%M:%S) Response time: \${ELAPSED}ms\"
+      TIME=\$(curl -s -o /dev/null -w '%{time_total}' http://test-app.default.svc.cluster.local)
+      echo \"\$(date +%H:%M:%S) Response time: \${TIME}s\"
       sleep 1
     done
   "
