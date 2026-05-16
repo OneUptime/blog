@@ -8,7 +8,7 @@ Description: A practical troubleshooting guide for diagnosing and fixing DNS res
 
 ---
 
-DNS issues are among the most common problems in Kubernetes clusters, and Talos Linux is no exception. When DNS breaks, almost everything breaks with it. Services cannot find each other, pods cannot pull images from registries, and your applications start throwing connection errors everywhere. The good news is that DNS problems on Talos Linux follow predictable patterns, and with a systematic approach, you can diagnose and fix them quickly.
+DNS issues are among the most common problems in Kubernetes clusters, and Talos Linux is no exception. When DNS breaks, almost everything breaks with it. Services cannot find each other, nodes may fail to pull images from registries, and your applications start throwing connection errors everywhere. The good news is that DNS problems on Talos Linux follow predictable patterns, and with a systematic approach, you can diagnose and fix them quickly.
 
 ## The DNS Resolution Chain
 
@@ -58,8 +58,8 @@ kubectl get pods -n kube-system -l k8s-app=kube-dns
 # Check CoreDNS logs for errors
 kubectl logs -n kube-system -l k8s-app=kube-dns --tail=50
 
-# Check if the CoreDNS service has endpoints
-kubectl get endpoints kube-dns -n kube-system
+# Check if the CoreDNS service has EndpointSlices
+kubectl get endpointslice -n kube-system -l kubernetes.io/service-name=kube-dns
 
 # Check CoreDNS resource usage
 kubectl top pods -n kube-system -l k8s-app=kube-dns
@@ -67,7 +67,7 @@ kubectl top pods -n kube-system -l k8s-app=kube-dns
 
 Common issues you might find:
 - Pods in CrashLoopBackOff: usually a configuration error
-- Pods running but no endpoints: service selector mismatch
+- Pods running but no EndpointSlices: service selector mismatch
 - High CPU/memory usage: too many queries or a loop condition
 
 ## Step 3: Verify Pod DNS Configuration
@@ -114,7 +114,7 @@ spec:
     image: my-app:latest
 ```
 
-## Step 4: Test DNS from the Node Level
+## Step 4: Inspect DNS from the Node Level
 
 Talos Linux does not have SSH, so you use `talosctl` to diagnose node-level DNS:
 
@@ -122,8 +122,11 @@ Talos Linux does not have SSH, so you use `talosctl` to diagnose node-level DNS:
 # Check the node's resolv.conf
 talosctl read /etc/resolv.conf --nodes 10.0.0.10
 
-# Test DNS resolution from the node
-talosctl dns resolve google.com --nodes 10.0.0.10
+# Check the node's configured upstream DNS resolvers
+talosctl get resolvers --nodes 10.0.0.10
+
+# Check host DNS upstream health on Talos 1.7 and later
+talosctl get dnsupstream --nodes 10.0.0.10
 
 # Check if CoreDNS pods are reachable from the node
 talosctl netstat --nodes 10.0.0.10 | grep 53
@@ -161,6 +164,9 @@ spec:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
     ports:
     - protocol: UDP
       port: 53
@@ -176,17 +182,15 @@ CoreDNS has a `loop` plugin that detects and stops forwarding loops. If you see 
 Loop (127.0.0.1:43051 -> :53) detected for zone ".", see https://coredns.io/plugins/loop
 ```
 
-This usually means CoreDNS is forwarding to itself. On Talos Linux, this can happen when the node's `/etc/resolv.conf` points to the CoreDNS service IP. Fix it by using explicit upstream forwarders instead of `/etc/resolv.conf`:
+This usually means CoreDNS is forwarding to itself, often through a local resolver address in `/etc/resolv.conf` or another upstream that routes back to CoreDNS. On Talos Linux, check the host DNS resolver and upstreams before changing CoreDNS forwarding:
 
-```text
-# Instead of this:
-forward . /etc/resolv.conf
-
-# Use explicit servers:
-forward . 8.8.8.8 1.1.1.1
+```bash
+talosctl read /etc/resolv.conf --nodes 10.0.0.10
+talosctl get resolvers --nodes 10.0.0.10
+talosctl get dnsupstream --nodes 10.0.0.10
 ```
 
-Or fix the Talos machine configuration to use proper nameservers:
+If `/etc/resolv.conf` points to a resolver that loops back to CoreDNS, fix the Talos machine configuration to use proper upstream nameservers:
 
 ```yaml
 machine:
@@ -238,11 +242,11 @@ kubectl port-forward -n kube-system svc/kube-dns 9153:9153 &
 # Check key metrics
 curl -s localhost:9153/metrics | grep coredns_dns_requests_total
 curl -s localhost:9153/metrics | grep coredns_dns_responses_total
-curl -s localhost:9153/metrics | grep coredns_forward_request_duration_seconds
+curl -s localhost:9153/metrics | grep coredns_proxy_request_duration_seconds
 curl -s localhost:9153/metrics | grep coredns_panics_total
 ```
 
-High latency in `coredns_forward_request_duration_seconds` points to slow upstream servers. High counts in responses with rcode=SERVFAIL indicate upstream issues.
+High latency in `coredns_proxy_request_duration_seconds{proxy_name="forward", ...}` points to slow upstream servers. High counts in responses with rcode=SERVFAIL indicate upstream issues.
 
 ## Step 9: Restart CoreDNS
 
@@ -266,8 +270,8 @@ Here is a reference table for the most common DNS issues:
 kubectl get configmap coredns -n kube-system -o yaml | grep forward
 
 # Problem: Pods cannot resolve cluster services
-# Fix: Check CoreDNS is running and has endpoints
-kubectl get endpoints kube-dns -n kube-system
+# Fix: Check CoreDNS is running and has EndpointSlices
+kubectl get endpointslice -n kube-system -l kubernetes.io/service-name=kube-dns
 
 # Problem: DNS is slow (queries take seconds)
 # Fix: Reduce ndots or add nodelocaldns cache
