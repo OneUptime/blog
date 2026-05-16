@@ -166,7 +166,7 @@ spec:
 When you apply this, cert-manager will:
 1. Detect the annotation and create a Certificate resource
 2. Create an ACME order with Let's Encrypt
-3. Solve the HTTP-01 challenge by temporarily creating an Ingress and a pod
+3. Solve the HTTP-01 challenge by temporarily creating a Pod, Service, and Ingress
 4. Store the issued certificate in the `myapp-tls` secret
 5. Automatically renew the certificate before it expires
 
@@ -287,7 +287,7 @@ curl -v http://myapp.example.com/.well-known/acme-challenge/test
 
 ## Automatic Renewal
 
-cert-manager handles renewal automatically. By default, it renews certificates 30 days before expiry (Let's Encrypt certificates are valid for 90 days). You can customize this with the `renewBefore` field on the Certificate resource.
+cert-manager handles renewal automatically. By default, it renews certificates 2/3 of the way through the issued certificate's duration, which is 30 days before expiry for standard 90-day Let's Encrypt certificates. You can customize this with the `renewBefore` field on the Certificate resource.
 
 To verify renewal is working:
 
