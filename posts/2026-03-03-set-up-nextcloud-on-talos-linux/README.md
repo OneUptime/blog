@@ -8,13 +8,13 @@ Description: Deploy Nextcloud self-hosted cloud platform on Talos Linux with per
 
 ---
 
-Nextcloud is a self-hosted cloud platform that provides file storage, calendar, contacts, video calls, and collaborative document editing. It is a privacy-focused alternative to services like Google Drive and Dropbox. Running Nextcloud on Talos Linux gives you full control over your data on an infrastructure where the OS itself cannot be compromised. This is particularly valuable for organizations with strict data sovereignty requirements.
+Nextcloud is a self-hosted cloud platform that provides file storage, calendar, contacts, video calls, and collaborative document editing. It is a privacy-focused alternative to services like Google Drive and Dropbox. Running Nextcloud on Talos Linux gives you full control over your data on an infrastructure with a minimal, immutable OS attack surface. This is particularly valuable for organizations with strict data sovereignty requirements.
 
 This guide covers deploying Nextcloud on Talos Linux with a PostgreSQL database, Redis caching, and persistent storage for user files.
 
 ## Why Nextcloud on Talos Linux
 
-Data privacy is the primary reason organizations choose Nextcloud. By hosting it on Talos Linux, you add an extra layer of security. The immutable OS prevents unauthorized access at the system level, and all management happens through the Kubernetes API. No one can SSH into a node and access Nextcloud files directly on disk. Combined with Kubernetes RBAC and network policies, this creates a defense-in-depth approach for your self-hosted cloud.
+Data privacy is the primary reason organizations choose Nextcloud. By hosting it on Talos Linux, you add an extra layer of security. The immutable OS reduces the system-level attack surface, and node management happens through the Talos API while workloads are managed through the Kubernetes API. Talos does not ship SSH or a shell, so there is no SSH path into a node to browse Nextcloud files directly on disk. Combined with Kubernetes RBAC and network policies, this creates a defense-in-depth approach for your self-hosted cloud.
 
 ## Prerequisites
 
@@ -187,7 +187,7 @@ spec:
     spec:
       containers:
         - name: nextcloud
-          image: nextcloud:28-apache
+          image: nextcloud:33-apache
           ports:
             - containerPort: 80
           env:
@@ -227,6 +227,8 @@ spec:
               value: "512M"
             - name: PHP_UPLOAD_LIMIT
               value: "10G"
+            - name: APACHE_BODY_LIMIT
+              value: "10737418240"
           volumeMounts:
             - name: nextcloud-data
               mountPath: /var/www/html
@@ -307,6 +309,8 @@ spec:
 
 ```bash
 kubectl apply -f nextcloud-namespace.yaml
+kubectl apply -f nextcloud-db-secret.yaml
+kubectl apply -f postgres-statefulset.yaml
 kubectl apply -f nextcloud-redis.yaml
 kubectl apply -f nextcloud-deployment.yaml
 ```
@@ -373,7 +377,7 @@ spec:
         spec:
           containers:
             - name: cron
-              image: nextcloud:28-apache
+              image: nextcloud:33-apache
               command:
                 - /bin/sh
                 - -c
@@ -395,7 +399,7 @@ spec:
 
 ## Step 6: Using the Nextcloud Helm Chart
 
-For a simplified deployment, use the official Helm chart:
+For a simplified deployment, use the community-maintained Nextcloud Helm chart:
 
 ```bash
 helm repo add nextcloud https://nextcloud.github.io/helm/
@@ -468,4 +472,4 @@ kubectl exec -it deploy/nextcloud -n nextcloud -- \
 
 ## Conclusion
 
-Nextcloud on Talos Linux gives you a self-hosted cloud platform with strong security guarantees. The immutable OS prevents unauthorized access at the infrastructure level, while Nextcloud provides encrypted storage and granular access controls at the application level. The key deployment considerations are adequate storage for user files, PostgreSQL for the database, Redis for caching, and proper ingress configuration with high upload limits. With regular backups and the Nextcloud background job running on schedule, this setup provides a reliable, private alternative to commercial cloud storage services.
+Nextcloud on Talos Linux gives you a self-hosted cloud platform with strong security properties. The immutable OS reduces the infrastructure attack surface, while Nextcloud provides encryption features and granular access controls at the application level. The key deployment considerations are adequate storage for user files, PostgreSQL for the database, Redis for caching, and proper ingress configuration with high upload limits. With regular backups and the Nextcloud background job running on schedule, this setup provides a reliable, private alternative to commercial cloud storage services.
