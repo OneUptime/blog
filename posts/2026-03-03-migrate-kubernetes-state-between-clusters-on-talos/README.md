@@ -122,10 +122,18 @@ Restoring an etcd snapshot on a Talos cluster requires bootstrapping a new clust
 
 ```bash
 # On the target cluster, before bootstrapping:
-# 1. Generate new configs with matching cluster settings
-talosctl gen secrets -o new-secrets.yaml
+# 1. Reuse the ORIGINAL secrets bundle from the source cluster.
+#    Do NOT generate a new one - the etcd snapshot contains Secrets
+#    encrypted with the source cluster's encryption key, and the
+#    embedded ServiceAccount tokens and kubelet certs are signed
+#    by the source cluster's CAs. A fresh secrets.yaml will make
+#    the restored state unusable.
+#
+#    If you only have the original controlplane.yaml, you can
+#    extract the secrets bundle from it:
+#    talosctl gen secrets --from-controlplane-config controlplane.yaml -o secrets.yaml
 talosctl gen config migrated-cluster https://new-vip:6443 \
-  --with-secrets new-secrets.yaml \
+  --with-secrets secrets.yaml \
   --output-dir _out
 
 # 2. Apply configs to nodes
@@ -136,7 +144,7 @@ talosctl bootstrap --recover-from=./etcd-snapshot.db \
   --nodes 10.1.0.10
 ```
 
-Note: When restoring an etcd snapshot to a new cluster, the certificates and service accounts from the old cluster are embedded in the snapshot. This means the new cluster needs to use the same CA certificates, or you will need to regenerate service account tokens after the restore.
+Note: When restoring an etcd snapshot to a new cluster, the certificates, encryption keys, and service accounts from the old cluster are embedded in the snapshot. The new cluster must be initialized with the same secrets bundle (PKI and encryption keys) from the source cluster. If you generate a fresh secrets bundle, the restored Secrets in etcd will be undecryptable and existing worker nodes will not be able to rejoin.
 
 ## Approach 3: GitOps-Based State Migration
 
