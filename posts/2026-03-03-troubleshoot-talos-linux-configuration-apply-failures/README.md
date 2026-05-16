@@ -49,18 +49,26 @@ Common validation errors include:
     * machine.type: required field is missing
 ```
 
-Make sure your configuration has all required sections:
+Make sure your configuration has the required sections and do not remove generated secrets, IDs, or CA material:
 
 ```yaml
 version: v1alpha1
 machine:
   type: worker  # or controlplane
   token: <machine-token>
+  ca:
+    crt: <base64-encoded-ca-certificate>
+    key: <base64-encoded-ca-key>
 cluster:
+  id: <cluster-id>
+  token: <cluster-token>
   controlPlane:
     endpoint: https://10.0.0.1:6443
   clusterName: my-cluster
   secret: <cluster-secret>
+  ca:
+    crt: <base64-encoded-ca-certificate>
+    key: <base64-encoded-ca-key>
 ```
 
 **Invalid field values:**
@@ -74,13 +82,13 @@ Check that all values are correct types and within valid ranges.
 
 ## Version Mismatch
 
-If the configuration version does not match the Talos version running on the node, the apply will fail:
+If the configuration schema or fields are not supported by the Talos version running on the node, the apply can fail. The main machine configuration schema is still `v1alpha1`, but fields and additional configuration documents can change between Talos releases:
 
 ```bash
 # Check the Talos version on the node
 talosctl -n <node-ip> version
 
-# Check the configuration version
+# Check the machine configuration schema
 head -1 worker.yaml  # Should show: version: v1alpha1
 ```
 
@@ -137,7 +145,7 @@ Fix by regenerating your talosconfig or using the insecure flag (for nodes in ma
 # For maintenance mode nodes
 talosctl apply-config --insecure -n <node-ip> --file worker.yaml
 
-# For running nodes, regenerate kubeconfig and talosconfig
+# Generate a fresh talosconfig and machine configs
 talosctl gen config my-cluster https://10.0.0.1:6443
 ```
 
@@ -180,8 +188,8 @@ Instead of replacing the entire configuration, you can use patches to modify spe
 talosctl -n <node-ip> patch machineconfig --patch '[
   {
     "op": "replace",
-    "path": "/machine/network/nameservers",
-    "value": ["8.8.8.8", "1.1.1.1"]
+    "path": "/cluster/coreDNS/disabled",
+    "value": true
   }
 ]'
 ```
@@ -189,13 +197,13 @@ talosctl -n <node-ip> patch machineconfig --patch '[
 Patches are useful when you want to change one thing without risking other configuration values. However, patches can fail if the path does not exist:
 
 ```bash
-# This will fail if /machine/network/nameservers does not exist
+# This will fail if /cluster/coreDNS does not exist
 # Use "add" instead of "replace" for new fields
 talosctl -n <node-ip> patch machineconfig --patch '[
   {
     "op": "add",
-    "path": "/machine/network/nameservers",
-    "value": ["8.8.8.8"]
+    "path": "/cluster/coreDNS",
+    "value": {"disabled": true}
   }
 ]'
 ```
@@ -229,7 +237,7 @@ If one node fails, the others still succeed. Check each node individually:
 
 ```bash
 # Verify configuration was applied
-talosctl -n <node-ip> get machineconfiguration -o yaml
+talosctl -n <node-ip> get machineconfig v1alpha1 -o yaml
 ```
 
 For large clusters, consider using a configuration management approach:
@@ -239,19 +247,19 @@ For large clusters, consider using a configuration management approach:
 talosctl gen config my-cluster https://10.0.0.1:6443
 
 # Apply with node-specific patches
-talosctl apply-config -n 10.0.0.2 --file worker.yaml --config-patch '[{"op":"replace","path":"/machine/network/hostname","value":"worker-1"}]'
+talosctl apply-config -n 10.0.0.2 --file worker.yaml --config-patch '{"apiVersion":"v1alpha1","kind":"HostnameConfig","hostname":"worker-1","auto":"off"}'
 ```
 
-## Configuration Apply Timeout
+## Try Mode Rollback Timeout
 
-If the node is slow to respond, the apply command may time out:
+If you use `--mode try`, Talos applies the change and automatically rolls it back unless another configuration update confirms it before the timeout expires:
 
 ```bash
-# Increase the timeout for slow nodes
-talosctl apply-config -n <node-ip> --file worker.yaml --timeout 5m
+# Increase the rollback timeout for try mode
+talosctl apply-config -n <node-ip> --file worker.yaml --mode try --timeout 5m
 ```
 
-Slow responses usually indicate the node is under heavy load or processing a previous configuration change.
+The `--timeout` flag on `apply-config` controls the rollback window for try mode. It is not a general request timeout for slow nodes.
 
 ## Recovering from a Bad Configuration
 
