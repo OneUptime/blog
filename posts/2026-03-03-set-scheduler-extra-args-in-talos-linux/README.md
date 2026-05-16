@@ -58,7 +58,7 @@ cluster:
       secure-port: "10259"
 ```
 
-By default, the scheduler binds to localhost, making metrics inaccessible from other pods. Setting `bind-address` to `0.0.0.0` allows your monitoring stack to scrape scheduler metrics.
+The scheduler exposes its metrics endpoint on `secure-port` (default `10259`). Setting `bind-address` to `0.0.0.0` ensures the endpoint listens on all interfaces so your monitoring stack can scrape scheduler metrics from other nodes. Note that the metrics endpoint requires authenticated and authorized clients.
 
 ## Logging and Debugging
 
@@ -100,8 +100,6 @@ machine:
                     weight: 2
                   - name: ImageLocality
                     weight: 1
-                disabled:
-                  - name: NodeResourcesLeastAllocated
             pluginConfig:
               - name: NodeResourcesBalancedAllocation
                 args:
@@ -124,7 +122,7 @@ cluster:
         readOnly: true
 ```
 
-This custom configuration changes how the scheduler scores nodes, prioritizing balanced resource allocation across the cluster rather than packing pods onto the least-loaded nodes.
+This custom configuration changes how the scheduler scores nodes by giving extra weight to balanced resource allocation and image locality, encouraging the scheduler to spread workloads evenly across the cluster.
 
 ## Scheduling Profiles
 
@@ -145,11 +143,16 @@ machine:
                   - name: NodeResourcesBalancedAllocation
                     weight: 1
           - schedulerName: high-throughput-scheduler
-            plugins:
-              score:
-                enabled:
-                  - name: NodeResourcesLeastAllocated
-                    weight: 1
+            pluginConfig:
+              - name: NodeResourcesFit
+                args:
+                  scoringStrategy:
+                    type: LeastAllocated
+                    resources:
+                      - name: cpu
+                        weight: 1
+                      - name: memory
+                        weight: 1
       permissions: 0o644
       path: /var/etc/kubernetes/scheduler-config.yaml
       op: create
