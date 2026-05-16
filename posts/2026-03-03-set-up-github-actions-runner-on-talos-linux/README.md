@@ -22,7 +22,7 @@ Self-hosted runners give you control over the execution environment. On Talos Li
 - No per-minute billing for build time
 - Network access to internal resources without exposing them to the internet
 
-The Actions Runner Controller makes these runners ephemeral - each job gets a fresh runner pod, and the pod is destroyed after the job completes. This prevents state leakage between builds.
+The Actions Runner Controller creates ephemeral runner pods - each job gets a fresh runner pod, and the pod is destroyed after the job completes. This prevents state leakage between builds.
 
 ## Prerequisites
 
@@ -36,22 +36,22 @@ You will need:
 
 ## Authentication Setup
 
-ARC supports two authentication methods. GitHub App authentication is recommended for production use.
+ARC supports GitHub App and personal access token authentication. GitHub App authentication is recommended for production use.
 
 ### Option 1: GitHub App (Recommended)
 
 Create a GitHub App in your organization settings with the following permissions:
 
-- Repository: Actions (read), Metadata (read)
+- Repository: Administration (read/write, required for repository-level runners), Metadata (read)
 - Organization: Self-hosted runners (read/write)
 
 ```bash
-# Create a Kubernetes secret with the GitHub App credentials
+# Create the runner namespace and a Kubernetes secret with the GitHub App credentials
 
-kubectl create namespace arc-system
+kubectl create namespace arc-runners
 
 kubectl create secret generic github-app-secret \
-  --namespace arc-system \
+  --namespace arc-runners \
   --from-literal=github_app_id=YOUR_APP_ID \
   --from-literal=github_app_installation_id=YOUR_INSTALLATION_ID \
   --from-file=github_app_private_key=path/to/private-key.pem
@@ -59,76 +59,67 @@ kubectl create secret generic github-app-secret \
 
 ### Option 2: Personal Access Token
 
+For a classic PAT, use the `repo` scope for repository runners or `admin:org` for organization runners.
+
 ```bash
-kubectl create namespace arc-system
+kubectl create namespace arc-runners
 
 kubectl create secret generic github-pat-secret \
-  --namespace arc-system \
+  --namespace arc-runners \
   --from-literal=github_token=ghp_YOUR_TOKEN_HERE
 ```
 
 ## Installing Actions Runner Controller
 
 ```bash
-# Add the ARC Helm repository
-helm repo add actions-runner-controller \
-  https://actions-runner-controller.github.io/actions-runner-controller
-
-# Update the chart cache
-helm repo update
-
-# Install ARC with GitHub App authentication
+# Install the ARC controller and CRDs
 helm install arc \
-  actions-runner-controller/actions-runner-controller \
-  --namespace arc-system \
-  --set authSecret.create=false \
-  --set authSecret.name=github-app-secret \
-  --set image.actionsRunnerImagePullSecrets[0].name=ghcr-pull-secret
+  --namespace arc-systems \
+  --create-namespace \
+  oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller
 ```
 
 Verify the installation.
 
 ```bash
 # Check the controller pods
-kubectl get pods -n arc-system
+kubectl get pods -n arc-systems
 
 # Verify the CRDs are installed
-kubectl get crds | grep actions.summerwind.dev
+kubectl get crds | grep actions.github.com
 ```
 
-## Creating Runner Deployments
+## Creating Runner Scale Sets
 
 ### Repository-Level Runner
 
 Create runners that serve a specific repository.
 
 ```yaml
-# runner-deployment.yaml
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: RunnerDeployment
-metadata:
-  name: myorg-myapp-runner
-  namespace: arc-system
-spec:
-  replicas: 2
-  template:
-    spec:
-      repository: myorg/myapp
-      labels:
-        - self-hosted
-        - talos-linux
-        - x64
-      # Ephemeral runners are destroyed after each job
-      ephemeral: true
-      # Container configuration
-      dockerEnabled: false
-      resources:
-        requests:
-          cpu: "500m"
-          memory: "1Gi"
-        limits:
-          cpu: "4"
-          memory: "8Gi"
+# repo-runner-values.yaml
+githubConfigUrl: "https://github.com/myorg/myapp"
+githubConfigSecret: github-app-secret
+
+minRunners: 2
+maxRunners: 10
+
+scaleSetLabels:
+  - talos-linux
+  - x64
+
+template:
+  spec:
+    containers:
+      - name: runner
+        image: ghcr.io/actions/actions-runner:latest
+        command: ["/home/runner/run.sh"]
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "4"
+            memory: "8Gi"
 ```
 
 ### Organization-Level Runner
@@ -136,81 +127,85 @@ spec:
 For runners shared across all repositories in an organization.
 
 ```yaml
-# org-runner-deployment.yaml
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: RunnerDeployment
-metadata:
-  name: org-runner
-  namespace: arc-system
-spec:
-  replicas: 3
-  template:
-    spec:
-      organization: myorg
-      labels:
-        - self-hosted
-        - talos-linux
-        - x64
-      ephemeral: true
-      resources:
-        requests:
-          cpu: "1"
-          memory: "2Gi"
-        limits:
-          cpu: "4"
-          memory: "8Gi"
+# org-runner-values.yaml
+githubConfigUrl: "https://github.com/myorg"
+githubConfigSecret: github-app-secret
+
+minRunners: 3
+maxRunners: 20
+
+scaleSetLabels:
+  - talos-linux
+  - x64
+
+template:
+  spec:
+    containers:
+      - name: runner
+        image: ghcr.io/actions/actions-runner:latest
+        command: ["/home/runner/run.sh"]
+        resources:
+          requests:
+            cpu: "1"
+            memory: "2Gi"
+          limits:
+            cpu: "4"
+            memory: "8Gi"
 ```
 
 ```bash
-# Deploy the runners
-kubectl apply -f runner-deployment.yaml
+# Deploy the repository runner scale set
+helm upgrade --install myapp-runner \
+  --namespace arc-runners \
+  --create-namespace \
+  -f repo-runner-values.yaml \
+  oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
 
-# Check the runner pods
-kubectl get runners -n arc-system
+# Deploy the organization runner scale set
+helm upgrade --install org-runner \
+  --namespace arc-runners \
+  --create-namespace \
+  -f org-runner-values.yaml \
+  oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
+
+# Check the runner scale sets
+kubectl get autoscalingrunnersets.actions.github.com -n arc-runners
 
 # Verify runners appear in GitHub
-# Go to your repository Settings > Actions > Runners
+# Go to your repository or organization Settings > Actions > Runners
 ```
 
 ## Autoscaling Runners
 
-The real power of ARC is autoscaling. Runners scale up when workflows queue and scale down when idle.
+The real power of ARC is autoscaling. Runner scale sets scale up when workflows queue and scale down when idle. The `minRunners` value keeps idle runners warm, and `maxRunners` caps the number of runners ARC can create.
 
 ```yaml
-# runner-autoscaler.yaml
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: HorizontalRunnerAutoscaler
-metadata:
-  name: myorg-runner-autoscaler
-  namespace: arc-system
-spec:
-  scaleTargetRef:
-    kind: RunnerDeployment
-    name: org-runner
-  # Minimum number of runners to keep warm
-  minReplicas: 1
-  # Maximum runners to scale to
-  maxReplicas: 20
-  # Scale based on the percentage of busy runners
-  metrics:
-    - type: PercentageRunnersBusy
-      scaleUpThreshold: "0.75"
-      scaleDownThreshold: "0.25"
-      scaleUpFactor: "2"
-      scaleDownFactor: "0.5"
-  # How long to wait between scale operations
-  scaleUpTriggers:
-    - githubEvent:
-        workflowJob: {}
-      duration: "5m"
+# runner-autoscaler-values.yaml
+githubConfigUrl: "https://github.com/myorg"
+githubConfigSecret: github-app-secret
+
+# Minimum number of idle runners to keep warm
+minRunners: 1
+
+# Maximum runners to scale to
+maxRunners: 20
+
+runnerScaleSetName: "org-runner"
+
+scaleSetLabels:
+  - talos-linux
+  - x64
 ```
 
 ```bash
-# Apply the autoscaler
-kubectl apply -f runner-autoscaler.yaml
+# Apply the autoscaling settings
+helm upgrade --install org-runner \
+  --namespace arc-runners \
+  -f runner-autoscaler-values.yaml \
+  oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
 
-# Monitor the autoscaler
-kubectl get horizontalrunnerautoscaler -n arc-system -w
+# Monitor the autoscaling runner set
+kubectl get autoscalingrunnersets.actions.github.com -n arc-runners -w
 ```
 
 ## Custom Runner Images
@@ -224,31 +219,53 @@ FROM ghcr.io/actions/actions-runner:latest
 # Install additional tools
 USER root
 RUN apt-get update && apt-get install -y \
-    docker-ce-cli \
-    kubectl \
-    helm \
+    ca-certificates \
+    curl \
+    gnupg \
     jq \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Docker CLI
+RUN curl -fsSL https://get.docker.com | sh
+
+# Install kubectl
+RUN curl -fsSL -o /usr/local/bin/kubectl \
+    "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+    && chmod +x /usr/local/bin/kubectl
+
+# Install Helm
+RUN curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
 # Install Go
-RUN curl -L https://go.dev/dl/go1.22.0.linux-amd64.tar.gz | tar -C /usr/local -xzf -
+ARG GO_VERSION=1.26.3
+RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" | tar -C /usr/local -xzf -
 ENV PATH="/usr/local/go/bin:${PATH}"
 
 # Install Node.js
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y nodejs
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
+    apt-get update && apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
 
 # Switch back to runner user
 USER runner
 ```
 
-Reference the custom image in your runner deployment.
+Reference the custom image in your runner scale set values.
 
 ```yaml
-spec:
-  template:
-    spec:
-      image: registry.example.com/custom-runner:latest
+template:
+  spec:
+    containers:
+      - name: runner
+        image: registry.example.com/custom-runner:latest
+        command: ["/home/runner/run.sh"]
+```
+
+If your workflows need Docker commands such as `docker build`, configure the runner scale set with Docker-in-Docker.
+
+```yaml
+containerMode:
+  type: dind
 ```
 
 ## Using Self-Hosted Runners in Workflows
@@ -267,8 +284,8 @@ on:
 
 jobs:
   test:
-    # Run on self-hosted runners with the talos-linux label
-    runs-on: [self-hosted, talos-linux]
+    # Run on the ARC runner scale set labels
+    runs-on: [talos-linux, x64]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -276,13 +293,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.26"
 
       - name: Run tests
         run: go test -v -race ./...
 
   build:
-    runs-on: [self-hosted, talos-linux]
+    runs-on: [talos-linux, x64]
     needs: test
     if: github.ref == 'refs/heads/main'
     steps:
@@ -295,7 +312,7 @@ jobs:
           docker push registry.example.com/myapp:${{ github.sha }}
 
   deploy:
-    runs-on: [self-hosted, talos-linux]
+    runs-on: [talos-linux, x64]
     needs: build
     if: github.ref == 'refs/heads/main'
     steps:
@@ -318,11 +335,11 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: runner-policy
-  namespace: arc-system
+  namespace: arc-runners
 spec:
   podSelector:
     matchLabels:
-      app: runner
+      actions.github.com/scale-set-name: org-runner
   policyTypes:
     - Egress
   egress:
@@ -330,12 +347,16 @@ spec:
     - ports:
         - port: 53
           protocol: UDP
+        - port: 53
+          protocol: TCP
     # Allow HTTPS for GitHub API and container registries
     - ports:
         - port: 443
+          protocol: TCP
     # Allow SSH for Git operations
     - ports:
         - port: 22
+          protocol: TCP
 ```
 
 Resource Quotas
@@ -348,7 +369,7 @@ apiVersion: v1
 kind: ResourceQuota
 metadata:
   name: runner-quota
-  namespace: arc-system
+  namespace: arc-runners
 spec:
   hard:
     requests.cpu: "20"
@@ -361,14 +382,19 @@ spec:
 ## Monitoring Runners
 
 ```bash
-# List all runners and their status
-kubectl get runners -n arc-system
+# List runner scale set resources and their status
+kubectl get autoscalingrunnersets.actions.github.com -n arc-runners
+kubectl get ephemeralrunnersets.actions.github.com -n arc-runners
+kubectl get ephemeralrunners.actions.github.com -n arc-runners
 
-# Check runner logs
-kubectl logs -n arc-system -l app=runner --tail=50
+# Check runner and listener pods
+kubectl get pods -n arc-runners
 
-# Monitor autoscaler decisions
-kubectl describe horizontalrunnerautoscaler -n arc-system
+# Check runner logs for one pod
+kubectl logs -n arc-runners POD_NAME --tail=50
+
+# Monitor autoscaling decisions
+kubectl describe autoscalingrunnerset.actions.github.com org-runner -n arc-runners
 ```
 
 ## Wrapping Up
