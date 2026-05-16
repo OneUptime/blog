@@ -19,13 +19,13 @@ The most direct way to check disk usage on a Talos node is through the `talosctl
 ```bash
 # View all mounted filesystems and their usage
 
-talosctl get mounts --nodes 192.168.1.10
+talosctl mounts --nodes 192.168.1.10
 
-# For detailed output including usage percentages
-talosctl get mounts --nodes 192.168.1.10 -o yaml
+# For detailed mount metadata as a structured resource
+talosctl get mountstatus --nodes 192.168.1.10 -o yaml
 ```
 
-The output shows each mounted partition, its total size, used space, and available space. Pay particular attention to the EPHEMERAL partition, which is where Kubernetes workloads store their data.
+The `talosctl mounts` output shows each mounted filesystem, its total size, used space, available space, and usage percentage in a `df`-like format. Pay particular attention to the `/var` mount, which is backed by the EPHEMERAL partition and is where Kubernetes workloads store their data.
 
 ### Checking Disk Information
 
@@ -40,12 +40,17 @@ talosctl get blockdevices --nodes 192.168.1.10
 ### Checking System Statistics
 
 ```bash
-# Get overall system statistics including disk IO
-talosctl get systemstat --nodes 192.168.1.10
+# View CPU performance statistics (user/system time, IRQs, context switches)
+talosctl get cpustats --nodes 192.168.1.10
 
-# Check system resource usage
+# View memory statistics
+talosctl get memorystats --nodes 192.168.1.10
+
+# Check container resource usage (CPU and memory per container)
 talosctl stats --nodes 192.168.1.10
 ```
+
+Note: `talosctl stats` shows per-container resource consumption, not host-level disk IO. For host-level disk IO metrics, use Prometheus and Node Exporter as described below.
 
 ### Querying Multiple Nodes
 
@@ -53,10 +58,10 @@ For a fleet-wide view, query all nodes at once:
 
 ```bash
 # Check mounts across all control plane nodes
-talosctl get mounts --nodes 192.168.1.10,192.168.1.11,192.168.1.12
+talosctl mounts --nodes 192.168.1.10,192.168.1.11,192.168.1.12
 
 # Check mounts across all worker nodes
-talosctl get mounts --nodes 192.168.1.20,192.168.1.21,192.168.1.22
+talosctl mounts --nodes 192.168.1.20,192.168.1.21,192.168.1.22
 ```
 
 ## Monitoring with Kubernetes
@@ -297,14 +302,14 @@ WORKERS=("192.168.1.20" "192.168.1.21" "192.168.1.22" "192.168.1.23")
 echo "=== Control Plane Nodes ==="
 for NODE in "${CONTROL_PLANE[@]}"; do
   echo "Node: $NODE"
-  talosctl get mounts --nodes "$NODE" 2>/dev/null | grep -E "EPHEMERAL|STATE"
+  talosctl mounts --nodes "$NODE" 2>/dev/null | grep -E "/var|/system/state"
   echo ""
 done
 
 echo "=== Worker Nodes ==="
 for NODE in "${WORKERS[@]}"; do
   echo "Node: $NODE"
-  talosctl get mounts --nodes "$NODE" 2>/dev/null | grep -E "EPHEMERAL"
+  talosctl mounts --nodes "$NODE" 2>/dev/null | grep -E "/var"
   echo ""
 done
 
