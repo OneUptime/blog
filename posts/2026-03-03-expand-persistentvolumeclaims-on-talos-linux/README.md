@@ -31,11 +31,12 @@ If your StorageClass does not have `allowVolumeExpansion: true`, you need to upd
 kubectl patch storageclass local-path -p '{"allowVolumeExpansion": true}'
 ```
 
-Second, your CSI driver must support the `VolumeExpansion` capability. Most modern CSI drivers do, but you should verify.
+Second, your CSI driver must support the `EXPAND_VOLUME` controller capability. Most modern CSI drivers do, but you should verify. This capability is not exposed on the `CSIDriver` object — the canonical kubectl-level signal is whether the cluster admin has enabled `allowVolumeExpansion: true` on a StorageClass backed by that driver, and whether the driver's `external-resizer` sidecar is running.
 
 ```bash
-# Check CSI driver capabilities
-kubectl get csidriver -o yaml | grep -A5 "volumeLifecycleModes"
+# Confirm the external-resizer sidecar is running for your driver
+kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{"\t"}{range .spec.containers[*]}{.image}{"\n"}{end}{end}' \
+  | grep external-resizer
 ```
 
 Third, the PVC must be in the `Bound` state. You cannot expand a pending or failed PVC.
@@ -163,11 +164,14 @@ kubectl apply -f statefulset.yaml
 Longhorn supports online volume expansion. When you patch the PVC, Longhorn automatically expands the volume and the filesystem.
 
 ```bash
+# Longhorn volume names match the PV name (pvc-<uuid>), not the PVC name.
+PV=$(kubectl get pvc my-data-pvc -o jsonpath='{.spec.volumeName}')
+
 # Verify Longhorn volume expansion
-kubectl -n longhorn-system get volumes.longhorn.io my-data-pvc -o jsonpath='{.spec.size}'
+kubectl -n longhorn-system get volumes.longhorn.io "$PV" -o jsonpath='{.spec.size}'
 
 # Check the engine for resize status
-kubectl -n longhorn-system get engines.longhorn.io -l longhornvolume=my-data-pvc
+kubectl -n longhorn-system get engines.longhorn.io -l longhornvolume="$PV"
 ```
 
 ### Rook-Ceph Volume Expansion
@@ -195,7 +199,7 @@ machine:
     - device: /dev/sdb
       partitions:
         - mountpoint: /var/mnt/storage
-          size: 0  # Use entire disk
+          # Omit size to use the full remaining disk
 ```
 
 ```bash
@@ -231,7 +235,7 @@ kubectl -n longhorn-system get nodes.longhorn.io -o json | \
   jq '.items[].status.diskStatus | to_entries[] | {disk: .key, available: .value.storageAvailable}'
 
 # For the node level, use talosctl
-talosctl -n 10.0.0.11 usage /var
+talosctl -n 10.0.0.11 df
 ```
 
 ## Automating Volume Expansion
