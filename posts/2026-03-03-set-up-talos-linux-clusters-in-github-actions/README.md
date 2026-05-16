@@ -41,12 +41,9 @@ jobs:
 
       - name: Create Talos cluster
         run: |
-          talosctl cluster create \
-            --provisioner docker \
+          talosctl cluster create docker \
             --name ci-cluster \
-            --controlplanes 1 \
-            --workers 1 \
-            --wait-timeout 5m
+            --workers 1
 
       - name: Get kubeconfig
         run: |
@@ -93,25 +90,27 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Cache talosctl
+        id: cache-talosctl
         uses: actions/cache@v4
         with:
           path: /usr/local/bin/talosctl
-          key: talosctl-v1.7.0
+          key: talosctl-v1.13.0
 
       - name: Install talosctl
         run: |
           if ! command -v talosctl &> /dev/null; then
-            curl -LO https://github.com/siderolabs/talos/releases/download/v1.7.0/talosctl-linux-amd64
+            curl -LO https://github.com/siderolabs/talos/releases/download/v1.13.0/talosctl-linux-amd64
             chmod +x talosctl-linux-amd64
             sudo mv talosctl-linux-amd64 /usr/local/bin/talosctl
           fi
           talosctl version --client
 
       - name: Cache Talos images
+        id: cache-talos-images
         uses: actions/cache@v4
         with:
           path: /tmp/talos-images
-          key: talos-images-v1.7.0
+          key: talos-images-v1.13.0
 
       - name: Load Talos images
         run: |
@@ -121,18 +120,15 @@ jobs:
 
       - name: Create cluster
         run: |
-          talosctl cluster create \
-            --provisioner docker \
+          talosctl cluster create docker \
             --name ci-cluster \
-            --controlplanes 1 \
-            --workers 1 \
-            --wait-timeout 5m
+            --workers 1
 
       - name: Save Talos images for cache
-        if: steps.cache-talos.outputs.cache-hit != 'true'
+        if: steps.cache-talos-images.outputs.cache-hit != 'true'
         run: |
           mkdir -p /tmp/talos-images
-          docker save ghcr.io/siderolabs/talos:v1.7.0 > /tmp/talos-images/talos.tar
+          docker save ghcr.io/siderolabs/talos:v1.13.0 > /tmp/talos-images/talos.tar
 ```
 
 ## Matrix Testing Across Kubernetes Versions
@@ -145,7 +141,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        kubernetes-version: ["1.28.0", "1.29.0", "1.30.0"]
+        kubernetes-version: ["1.34.0", "1.35.0", "1.36.0"]
       fail-fast: false
 
     steps:
@@ -157,13 +153,10 @@ jobs:
 
       - name: Create cluster with K8s ${{ matrix.kubernetes-version }}
         run: |
-          talosctl cluster create \
-            --provisioner docker \
+          talosctl cluster create docker \
             --name ci-k8s-${{ matrix.kubernetes-version }} \
-            --controlplanes 1 \
             --workers 1 \
-            --kubernetes-version ${{ matrix.kubernetes-version }} \
-            --wait-timeout 5m
+            --kubernetes-version ${{ matrix.kubernetes-version }}
 
       - name: Get kubeconfig
         run: |
@@ -184,7 +177,7 @@ jobs:
 
 ## Reusable Workflow
 
-Create a reusable workflow that other repositories can call:
+Create a reusable workflow that other workflows can call:
 
 ```yaml
 # .github/workflows/talos-cluster.yml
@@ -208,18 +201,19 @@ on:
       talos-version:
         required: false
         type: string
-        default: "v1.7.0"
-    outputs:
-      kubeconfig-path:
-        description: "Path to the kubeconfig file"
-        value: ${{ jobs.create.outputs.kubeconfig }}
+        default: "v1.13.0"
+      test-command:
+        required: false
+        type: string
+        default: "make test"
 
 jobs:
   create:
     runs-on: ubuntu-latest
-    outputs:
-      kubeconfig: /tmp/${{ inputs.cluster-name }}-kubeconfig
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Install talosctl
         run: |
           curl -LO https://github.com/siderolabs/talos/releases/download/${{ inputs.talos-version }}/talosctl-linux-amd64
@@ -228,15 +222,24 @@ jobs:
 
       - name: Create cluster
         run: |
-          ARGS="--provisioner docker --name ${{ inputs.cluster-name }} --controlplanes 1 --workers ${{ inputs.workers }} --wait-timeout 5m"
+          ARGS="--name ${{ inputs.cluster-name }} --workers ${{ inputs.workers }}"
           if [ -n "${{ inputs.kubernetes-version }}" ]; then
             ARGS="$ARGS --kubernetes-version ${{ inputs.kubernetes-version }}"
           fi
-          talosctl cluster create $ARGS
+          talosctl cluster create docker $ARGS
 
       - name: Export kubeconfig
         run: |
           talosctl kubeconfig --force /tmp/${{ inputs.cluster-name }}-kubeconfig --merge=false
+          echo "KUBECONFIG=/tmp/${{ inputs.cluster-name }}-kubeconfig" >> $GITHUB_ENV
+
+      - name: Run tests
+        run: ${{ inputs.test-command }}
+
+      - name: Destroy cluster
+        if: always()
+        run: |
+          talosctl cluster destroy --name ${{ inputs.cluster-name }}
 ```
 
 Use it in your workflow:
@@ -247,22 +250,12 @@ name: Test
 on: push
 
 jobs:
-  setup-cluster:
+  test:
     uses: ./.github/workflows/talos-cluster.yml
     with:
       cluster-name: my-test
       workers: 2
-
-  run-tests:
-    needs: setup-cluster
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Test
-        env:
-          KUBECONFIG: ${{ needs.setup-cluster.outputs.kubeconfig-path }}
-        run: make test
+      test-command: make test
 ```
 
 ## Deploying to Talos Clusters from GitHub Actions
@@ -291,7 +284,7 @@ jobs:
       - name: Configure talosctl
         run: |
           # Use secrets for the talos config
-          echo "${{ secrets.TALOSCONFIG }}" > /tmp/talosconfig
+          printf '%s' "${{ secrets.TALOSCONFIG }}" > /tmp/talosconfig
           talosctl --talosconfig /tmp/talosconfig kubeconfig --force /tmp/kubeconfig --merge=false
           echo "KUBECONFIG=/tmp/kubeconfig" >> $GITHUB_ENV
 
@@ -304,7 +297,7 @@ jobs:
         run: |
           kubectl get pods -l app=myapp
           # Run smoke tests
-          kubectl run smoke-test --image=busybox --rm -it --restart=Never -- \
+          kubectl run smoke-test --image=busybox --rm --restart=Never -- \
             wget -qO- http://myapp-service/health
 ```
 
@@ -330,8 +323,8 @@ If you run multiple clusters in the same workflow, make sure they use different 
 ```yaml
 - name: Create clusters with unique names
   run: |
-    talosctl cluster create --provisioner docker --name cluster-a --cidr 10.5.0.0/24
-    talosctl cluster create --provisioner docker --name cluster-b --cidr 10.6.0.0/24
+    talosctl cluster create docker --name cluster-a --subnet 10.5.0.0/24
+    talosctl cluster create docker --name cluster-b --subnet 10.6.0.0/24
 ```
 
 ### Timeout Issues
