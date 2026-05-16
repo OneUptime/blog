@@ -184,7 +184,7 @@ Verify that the DNS name works with the Kubernetes API:
 
 ```bash
 # Test API server connectivity through DNS
-curl -k https://k8s-api.example.com:6443/healthz
+curl -k https://k8s-api.example.com:6443/readyz
 
 # Use kubectl
 kubectl get nodes
@@ -227,20 +227,20 @@ For better automation, use a DNS provider that supports health checks:
 - **Cloudflare** offers similar functionality
 - **PowerDNS** with Lua scripting can implement health-based responses
 
-With Route 53 health checks:
+With Route 53 health checks, create one health check per control plane endpoint. Route 53 endpoint health checks must target public, routable endpoints; for private-only control planes, use a private monitoring system or a Route 53 health check based on a CloudWatch metric.
 
 ```bash
 # Create a health check for each control plane node
 aws route53 create-health-check --caller-reference cp1 \
   --health-check-config '{
-    "IPAddress": "192.168.1.101",
+    "FullyQualifiedDomainName": "cp1-api.example.com",
     "Port": 6443,
     "Type": "TCP",
     "RequestInterval": 10,
     "FailureThreshold": 3
   }'
 
-# Associate the health check with the DNS record
+# Associate each health check with its own multivalue answer record
 # (done via the Route 53 console or API)
 ```
 
