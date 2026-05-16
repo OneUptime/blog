@@ -12,7 +12,7 @@ Running a Talos Linux upgrade directly in production without testing it first is
 
 ## Why Staging Matters for Talos Upgrades
 
-Talos Linux upgrades touch the OS layer, the Kubernetes components, and potentially system extensions. Each of these layers can introduce subtle changes that interact with your workloads in unexpected ways. A new kernel version might change networking behavior. An updated kubelet might handle resource limits differently. An extension update might change how storage drivers work.
+Talos Linux upgrades touch the OS layer, the node runtime environment for Kubernetes, and potentially system extensions. Each of these layers can introduce subtle changes that interact with your workloads in unexpected ways. A new kernel version might change networking behavior. Runtime behavior might change how workloads interact with node resources. An extension update might change how storage drivers work.
 
 Testing in staging lets you validate all of these interactions without risk.
 
@@ -36,7 +36,7 @@ talosctl gen config staging-cluster https://staging-endpoint:6443 \
 
 The key elements to match are:
 
-- Number of control plane nodes (always use 3 for quorum testing)
+- Number of control plane nodes (use at least 3 for quorum testing)
 - Talos version (same as current production)
 - Kubernetes version
 - System extensions
@@ -49,8 +49,8 @@ Pull the machine configurations from your production cluster and adapt them for 
 
 ```bash
 # Export production configs
-talosctl get machineconfig --nodes <prod-cp-ip> -o yaml > prod-cp-config.yaml
-talosctl get machineconfig --nodes <prod-worker-ip> -o yaml > prod-worker-config.yaml
+talosctl get machineconfig --nodes <prod-cp-ip> -o yaml | yq eval '.spec' - > prod-cp-config.yaml
+talosctl get machineconfig --nodes <prod-worker-ip> -o yaml | yq eval '.spec' - > prod-worker-config.yaml
 
 # Compare with staging configs to find differences
 diff prod-cp-config.yaml staging-configs/controlplane.yaml
@@ -90,9 +90,10 @@ With your staging cluster ready, follow the same upgrade procedure you would use
 talosctl version --nodes <staging-cp-1>,<staging-cp-2>,<staging-cp-3>
 talosctl etcd status --nodes <staging-cp-1>
 
-# Check all nodes are healthy
+# Check all nodes and pods are healthy
 kubectl get nodes
-kubectl get pods --all-namespaces | grep -v Running | grep -v Completed
+kubectl get pods --all-namespaces \
+  --field-selector=status.phase!=Running,status.phase!=Succeeded
 ```
 
 Save these outputs. You will compare them against post-upgrade state.
@@ -104,7 +105,7 @@ Upgrade control plane nodes one at a time, just as you would in production:
 ```bash
 # Upgrade first control plane node
 talosctl upgrade --nodes <staging-cp-1> \
-  --image ghcr.io/siderolabs/installer:v1.7.0
+  --image ghcr.io/siderolabs/installer:<target-talos-version>
 
 # Wait for the node to come back and verify
 talosctl health --nodes <staging-cp-1> --wait-timeout 5m
@@ -114,10 +115,10 @@ talosctl etcd status --nodes <staging-cp-2>
 
 # Continue with remaining control plane nodes
 talosctl upgrade --nodes <staging-cp-2> \
-  --image ghcr.io/siderolabs/installer:v1.7.0
+  --image ghcr.io/siderolabs/installer:<target-talos-version>
 
 talosctl upgrade --nodes <staging-cp-3> \
-  --image ghcr.io/siderolabs/installer:v1.7.0
+  --image ghcr.io/siderolabs/installer:<target-talos-version>
 ```
 
 Then upgrade workers:
@@ -125,10 +126,10 @@ Then upgrade workers:
 ```bash
 # Upgrade worker nodes
 talosctl upgrade --nodes <staging-worker-1> \
-  --image ghcr.io/siderolabs/installer:v1.7.0
+  --image ghcr.io/siderolabs/installer:<target-talos-version>
 
 talosctl upgrade --nodes <staging-worker-2> \
-  --image ghcr.io/siderolabs/installer:v1.7.0
+  --image ghcr.io/siderolabs/installer:<target-talos-version>
 ```
 
 ## What to Validate After the Upgrade
@@ -142,7 +143,7 @@ This is where the real value of staging comes in. Run through a comprehensive va
 talosctl version --nodes <all-staging-nodes>
 
 # Confirm all system services are running
-talosctl services --nodes <staging-cp-1>
+talosctl service --nodes <staging-cp-1>
 
 # Check etcd cluster health
 talosctl etcd status --nodes <staging-cp-1>
@@ -159,13 +160,14 @@ talosctl logs controller-runtime --nodes <staging-cp-1> | grep -i error
 kubectl get nodes -o wide
 
 # No unexpected pod failures
-kubectl get pods --all-namespaces | grep -v Running | grep -v Completed
+kubectl get pods --all-namespaces \
+  --field-selector=status.phase!=Running,status.phase!=Succeeded
 
 # API server responding normally
 kubectl cluster-info
 
 # Check component health
-kubectl get componentstatuses
+kubectl get --raw='/readyz?verbose'
 ```
 
 ### Application-Level Checks
