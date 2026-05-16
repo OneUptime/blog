@@ -185,10 +185,10 @@ After booting from your custom ISO, you can verify that all expected extensions 
 talosctl get extensions --nodes 10.0.0.50
 
 # You should see output listing each extension, for example:
-# NODE       NAMESPACE   TYPE        ID              VERSION
-# 10.0.0.50  runtime     Extension   intel-ucode     1
-# 10.0.0.50  runtime     Extension   i915-ucode      1
-# 10.0.0.50  runtime     Extension   iscsi-tools     1
+# NODE       NAMESPACE   TYPE              ID   VERSION   NAME          VERSION
+# 10.0.0.50  runtime     ExtensionStatus   0    1         intel-ucode   microcode-20240910
+# 10.0.0.50  runtime     ExtensionStatus   1    1         i915-ucode    20240910
+# 10.0.0.50  runtime     ExtensionStatus   2    1         iscsi-tools   v0.1.6
 ```
 
 If an extension is missing, double-check your schematic file for typos in the extension names.
