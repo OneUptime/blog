@@ -190,7 +190,7 @@ echo ""
 
 echo "Testing workload scheduling..."
 kubectl run rotation-test --image=alpine --restart=Never -- echo "CA rotation bundle working"
-kubectl wait --for=condition=completed pod/rotation-test --timeout=60s
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/rotation-test --timeout=60s
 kubectl delete pod rotation-test
 echo ""
 
@@ -246,8 +246,12 @@ done
 Existing service account tokens were signed with the old key. They need to be refreshed.
 
 ```bash
-# Delete existing service account token secrets
-# Kubernetes will automatically regenerate them
+# Delete any legacy long-lived service account token secrets that may exist.
+# Note: in Kubernetes 1.24+ these secrets are no longer auto-generated, and
+# deleting them will NOT cause Kubernetes to recreate them. Pods use projected
+# tokens served via the TokenRequest API (mounted at
+# /var/run/secrets/kubernetes.io/serviceaccount/token) which are automatically
+# re-issued by the new CA after the rotation.
 kubectl get secrets --all-namespaces -o json | \
   jq -r '.items[] | select(.type=="kubernetes.io/service-account-token") | "\(.metadata.namespace) \(.metadata.name)"' | \
   while read ns name; do
@@ -255,8 +259,11 @@ kubectl get secrets --all-namespaces -o json | \
     kubectl delete secret -n $ns $name
   done
 
-# Restart pods that may be caching old tokens
-kubectl rollout restart deployment --all-namespaces
+# Restart pods that may be caching old tokens. kubectl rollout restart does not
+# support --all-namespaces, so loop through each namespace.
+for ns in $(kubectl get ns -o jsonpath='{.items[*].metadata.name}'); do
+  kubectl -n $ns rollout restart deployment
+done
 ```
 
 ## Step 9: Post-Rotation Validation
