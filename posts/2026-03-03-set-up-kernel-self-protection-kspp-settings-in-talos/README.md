@@ -29,14 +29,14 @@ Talos Linux comes with a comprehensive set of kernel security options. Here are 
 ### Memory Protection
 
 ```bash
-# Verify kernel address space layout randomization (KASLR)
+# Verify userspace address space layout randomization (ASLR)
 
 talosctl read /proc/sys/kernel/randomize_va_space --nodes <node-ip>
 # Expected value: 2 (full randomization)
 
 # Verify kernel pointer restriction
 talosctl read /proc/sys/kernel/kptr_restrict --nodes <node-ip>
-# Expected value: 1 (hide kernel pointers from non-root)
+# Expected value: 1 (hide kernel pointers from users without CAP_SYSLOG)
 
 # Verify dmesg restriction
 talosctl read /proc/sys/kernel/dmesg_restrict --nodes <node-ip>
@@ -147,13 +147,13 @@ Apply this configuration:
 
 ```bash
 # Apply sysctl settings to a node
-talosctl apply-config --nodes <node-ip> \
-  --config-patch @machine-config-sysctl.yaml
+talosctl patch machineconfig --nodes <node-ip> \
+  --patch @machine-config-sysctl.yaml
 ```
 
-## Network-Related KSPP Settings
+## Network-Related Hardening Settings
 
-In addition to memory and process protections, KSPP includes network hardening settings that are relevant for Kubernetes:
+In addition to memory and process protections, network hardening sysctls are relevant for Kubernetes:
 
 ```yaml
 # machine-config-network-hardening.yaml
@@ -179,9 +179,9 @@ machine:
 
 ## Understanding What Talos Cannot Change
 
-Because Talos uses a pre-built kernel, you cannot change compile-time kernel configuration options. Settings like CONFIG_STACKPROTECTOR_STRONG are baked into the kernel binary and cannot be toggled at runtime. However, Talos includes all the important KSPP compile-time options by default.
+Because Talos uses a pre-built kernel, you cannot change compile-time kernel configuration options. Settings like CONFIG_STACKPROTECTOR_STRONG are baked into the kernel binary and cannot be toggled at runtime. However, Talos includes many important KSPP compile-time options by default.
 
-If you need a custom kernel configuration, Talos supports building custom kernel images through the Image Factory or by building from source. This is an advanced use case:
+If you need a custom kernel configuration, Talos supports building custom kernel images from source. This is an advanced use case:
 
 ```bash
 # Building a custom Talos kernel is done through the pkgs repository
@@ -189,10 +189,13 @@ If you need a custom kernel configuration, Talos supports building custom kernel
 # cannot be achieved through sysctl
 git clone https://github.com/siderolabs/pkgs.git
 cd pkgs
+git checkout release-<talos-version>
 
-# Modify the kernel config
-# Then build the custom package
-make kernel
+# Modify kernel/build/config-ARCH, or use menuconfig
+make kernel-menuconfig
+
+# Then build and push the custom kernel package
+make kernel REGISTRY=<registry> PUSH=true PLATFORM=linux/amd64
 ```
 
 ## Monitoring Kernel Security Events
@@ -210,16 +213,15 @@ talosctl dmesg --nodes <node-ip> | grep "stack-protector"
 talosctl dmesg --nodes <node-ip> | grep "usercopy"
 ```
 
-You can forward these events to your monitoring system. Talos supports kernel log forwarding through its logging configuration:
+You can forward these events to your monitoring system. Talos supports kernel log forwarding through a `KmsgLogConfig` document:
 
 ```yaml
 # machine-config-logging.yaml
 # Forward kernel logs to an external system for security monitoring
-machine:
-  logging:
-    destinations:
-      - endpoint: "udp://syslog.example.com:514"
-        format: json_lines
+apiVersion: v1alpha1
+kind: KmsgLogConfig
+name: remote-log
+url: udp://syslog.example.com:514
 ```
 
 ## Comparing Talos to Other Distributions
@@ -231,7 +233,7 @@ One of the advantages of Talos Linux is that these settings are part of the base
 3. Rebuild the kernel if you need compile-time KSPP options
 4. Continuously audit for configuration drift
 
-With Talos, the immutable nature of the system guarantees that these settings persist and cannot be changed by a compromised workload or misconfigured automation. The read-only filesystem prevents any modification to the kernel parameters outside of the Talos API.
+With Talos, the immutable nature of the system and declarative machine configuration help these settings persist and reduce configuration drift. Persistent changes to the machine configuration go through the Talos API.
 
 ## Conclusion
 
