@@ -101,9 +101,9 @@ spec:
     - name: ETCDCTL_CACERT
       value: "/etc/kubernetes/pki/etcd/ca.crt"
     - name: ETCDCTL_CERT
-      value: "/etc/kubernetes/pki/etcd/peer.crt"
+      value: "/etc/kubernetes/pki/etcd/admin.crt"
     - name: ETCDCTL_KEY
-      value: "/etc/kubernetes/pki/etcd/peer.key"
+      value: "/etc/kubernetes/pki/etcd/admin.key"
     volumeMounts:
     - name: etcd-certs
       mountPath: /etc/kubernetes/pki/etcd
