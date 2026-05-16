@@ -43,21 +43,27 @@ Management Cluster (runs CAPI controllers)
 ## Prerequisites
 
 - An existing Kubernetes cluster to serve as the management cluster
-- clusterctl CLI installed
+- clusterctl and clusterawsadm CLIs installed
 - Cloud provider credentials (we will use AWS in this guide)
 - kubectl configured for the management cluster
 
-## Step 1: Install clusterctl
+## Step 1: Install clusterctl and clusterawsadm
 
 ```bash
 # macOS
 
 brew install clusterctl
+brew install clusterawsadm
 
-# Linux
+# Linux: install clusterctl
 curl -L https://github.com/kubernetes-sigs/cluster-api/releases/latest/download/clusterctl-linux-amd64 -o clusterctl
 chmod +x clusterctl
 sudo mv clusterctl /usr/local/bin/
+
+# Linux: install clusterawsadm
+curl -L https://github.com/kubernetes-sigs/cluster-api-provider-aws/releases/latest/download/clusterawsadm-linux-amd64 -o clusterawsadm
+chmod +x clusterawsadm
+sudo mv clusterawsadm /usr/local/bin/
 ```
 
 ## Step 2: Initialize the Management Cluster
@@ -69,6 +75,7 @@ Initialize CAPI with the Talos providers:
 export AWS_REGION=us-east-1
 export AWS_ACCESS_KEY_ID=<your-access-key>
 export AWS_SECRET_ACCESS_KEY=<your-secret-key>
+clusterawsadm bootstrap iam create-cloudformation-stack
 export AWS_B64ENCODED_CREDENTIALS=$(clusterawsadm bootstrap credentials encode-as-profile)
 
 # Initialize CAPI with Talos bootstrap and control plane providers
@@ -92,7 +99,7 @@ Verify the installation:
 kubectl get pods -A | grep -E 'capi|cabpt|cacppt|capa'
 
 # Check the provider versions
-clusterctl describe --showspec
+kubectl get providers.clusterctl.cluster.x-k8s.io -A
 ```
 
 ## Step 3: Create a Workload Cluster
@@ -156,7 +163,7 @@ metadata:
   name: talos-workload-1-cp
   namespace: default
 spec:
-  version: v1.29.0
+  version: v1.34.0
   replicas: 3
   infrastructureTemplate:
     apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
@@ -165,16 +172,20 @@ spec:
   controlPlaneConfig:
     controlplane:
       generateType: controlplane
-      talosVersion: v1.6
+      talosVersion: v1.11
       configPatches:
         - op: add
           path: /machine/install
           value:
             disk: /dev/xvda
-            image: ghcr.io/siderolabs/installer:v1.6.0
+            image: ghcr.io/siderolabs/installer:v1.11.0
         - op: add
           path: /cluster/allowSchedulingOnControlPlanes
           value: false
+        - op: add
+          path: /cluster/network/cni
+          value:
+            name: none
         - op: add
           path: /cluster/proxy
           value:
@@ -214,7 +225,7 @@ spec:
   template:
     spec:
       clusterName: talos-workload-1
-      version: v1.29.0
+      version: v1.34.0
       bootstrap:
         configRef:
           apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
@@ -234,13 +245,21 @@ spec:
   template:
     spec:
       generateType: worker
-      talosVersion: v1.6
+      talosVersion: v1.11
       configPatches:
         - op: add
           path: /machine/install
           value:
             disk: /dev/xvda
-            image: ghcr.io/siderolabs/installer:v1.6.0
+            image: ghcr.io/siderolabs/installer:v1.11.0
+        - op: add
+          path: /cluster/network/cni
+          value:
+            name: none
+        - op: add
+          path: /cluster/proxy
+          value:
+            disabled: true  # Using Cilium
         - op: add
           path: /machine/nodeLabels
           value:
@@ -325,18 +344,92 @@ kubectl get machines --watch
 
 Upgrade both Kubernetes and Talos versions:
 
-```yaml
+```bash
 # Update the control plane version
 kubectl patch taloscontrolplane talos-workload-1-cp --type merge -p '{
   "spec": {
-    "version": "v1.29.1",
+    "version": "v1.34.1",
     "controlPlaneConfig": {
       "controlplane": {
         "configPatches": [
           {
-            "op": "replace",
-            "path": "/machine/install/image",
-            "value": "ghcr.io/siderolabs/installer:v1.6.1"
+            "op": "add",
+            "path": "/machine/install",
+            "value": {
+              "disk": "/dev/xvda",
+              "image": "ghcr.io/siderolabs/installer:v1.11.1"
+            }
+          },
+          {
+            "op": "add",
+            "path": "/cluster/allowSchedulingOnControlPlanes",
+            "value": false
+          },
+          {
+            "op": "add",
+            "path": "/cluster/network/cni",
+            "value": {
+              "name": "none"
+            }
+          },
+          {
+            "op": "add",
+            "path": "/cluster/proxy",
+            "value": {
+              "disabled": true
+            }
+          }
+        ]
+      }
+    }
+  }
+}'
+
+# Update worker Kubernetes version
+kubectl patch machinedeployment talos-workload-1-workers --type merge -p '{
+  "spec": {
+    "template": {
+      "spec": {
+        "version": "v1.34.1"
+      }
+    }
+  }
+}'
+
+# Update the worker Talos installer image for newly rolled machines
+kubectl patch talosconfigtemplate talos-workload-1-workers --type merge -p '{
+  "spec": {
+    "template": {
+      "spec": {
+        "configPatches": [
+          {
+            "op": "add",
+            "path": "/machine/install",
+            "value": {
+              "disk": "/dev/xvda",
+              "image": "ghcr.io/siderolabs/installer:v1.11.1"
+            }
+          },
+          {
+            "op": "add",
+            "path": "/cluster/network/cni",
+            "value": {
+              "name": "none"
+            }
+          },
+          {
+            "op": "add",
+            "path": "/cluster/proxy",
+            "value": {
+              "disabled": true
+            }
+          },
+          {
+            "op": "add",
+            "path": "/machine/nodeLabels",
+            "value": {
+              "node.kubernetes.io/pool": "general"
+            }
           }
         ]
       }
