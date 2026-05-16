@@ -12,12 +12,12 @@ Dex is a lightweight, open-source identity service that speaks OIDC and can fede
 
 ## Why Dex?
 
-Kubernetes API server can only be configured with a single OIDC provider. That is a hard limitation. If you want users to authenticate through different methods, you need a broker. Dex fills that role by presenting a single OIDC interface while supporting multiple upstream connectors.
+Kubernetes API server's traditional OIDC command-line flags configure one issuer. Newer Kubernetes versions also support structured authentication configuration for multiple JWT authenticators, but using a broker is still the simplest way to give clusters one stable OIDC interface. Dex fills that role while supporting multiple upstream connectors.
 
 Common use cases:
 
 - Merge LDAP and GitHub authentication into one system
-- Support SAML-based SSO alongside local accounts
+- Support OIDC/OAuth2-based SSO alongside local accounts
 - Provide a consistent authentication experience across multiple clusters
 - Add a layer of abstraction between Kubernetes and your identity infrastructure
 
@@ -84,8 +84,6 @@ config:
     skipApprovalScreen: true
     responseTypes:
       - code
-      - token
-      - id_token
 
   connectors:
     # GitHub connector
@@ -315,8 +313,9 @@ users:
 - name: dex-user
   user:
     exec:
-      apiVersion: client.authentication.k8s.io/v1beta1
+      apiVersion: client.authentication.k8s.io/v1
       command: kubectl
+      interactiveMode: Never
       args:
       - oidc-login
       - get-token
@@ -333,18 +332,21 @@ users:
 One of Dex's strengths is that you can add new identity sources without changing the API server configuration. Just update the Dex config:
 
 ```yaml
-# Add a SAML connector for enterprise SSO
+# Add an OIDC connector for enterprise SSO
 connectors:
-  - type: saml
+  - type: oidc
     id: okta
-    name: Okta SSO
+    name: Okta OIDC
     config:
-      ssoURL: https://company.okta.com/app/xxxxx/sso/saml
-      ca: /etc/dex/tls/okta-ca.crt
+      issuer: https://company.okta.com/oauth2/default
+      clientID: okta-client-id
+      clientSecret: okta-client-secret
       redirectURI: https://dex.example.com/callback
-      usernameAttr: name
-      emailAttr: email
-      groupsAttr: groups
+      scopes:
+        - profile
+        - email
+        - groups
+      insecureEnableGroups: true
 
   # Add a GitLab connector
   - type: gitlab
