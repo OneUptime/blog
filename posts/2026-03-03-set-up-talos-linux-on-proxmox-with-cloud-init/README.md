@@ -20,7 +20,7 @@ Cloud-init support in Proxmox lets you pass configuration data to VMs at boot ti
 
 You need:
 
-- A Proxmox VE 7.x or 8.x installation
+- A Proxmox VE 8.x or 9.x installation
 - At least 32 GB RAM and 4 CPU cores available for VMs
 - Storage space for VM disks (at least 200 GB recommended)
 - `talosctl` and `kubectl` installed on your workstation
@@ -33,7 +33,7 @@ Download the Talos Linux image for the nocloud platform, which is compatible wit
 ```bash
 # Download the Talos nocloud image on your Proxmox host
 
-wget https://github.com/siderolabs/talos/releases/download/v1.7.0/nocloud-amd64.raw.xz
+wget https://factory.talos.dev/image/376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba/v1.13.0/nocloud-amd64.raw.xz
 
 # Decompress the image
 xz -d nocloud-amd64.raw.xz
@@ -62,8 +62,8 @@ qm set 9000 --ide2 local-lvm:cloudinit
 # Configure the serial console (required for Talos)
 qm set 9000 --serial0 socket --vga serial0
 
-# Enable the QEMU guest agent
-qm set 9000 --agent enabled=1
+# Enable the QEMU guest agent only if your Talos image includes the siderolabs/qemu-guest-agent extension
+# qm set 9000 --agent enabled=1
 
 # Convert to template
 qm template 9000
@@ -100,6 +100,14 @@ machine:
 talosctl machineconfig patch controlplane.yaml --patch @vip-patch.yaml -o controlplane-vip.yaml
 ```
 
+After copying the generated machine configs to the Proxmox host, place them on a Proxmox storage that supports snippets so Proxmox can add them to the cloud-init drive:
+
+```bash
+# Run these on the Proxmox host
+install -D -m 0644 controlplane-vip.yaml /var/lib/vz/snippets/talos-controlplane.yaml
+install -D -m 0644 worker.yaml /var/lib/vz/snippets/talos-worker.yaml
+```
+
 ## Creating Control Plane VMs
 
 Clone the template for each control plane node:
@@ -120,6 +128,16 @@ qm set 101 --memory 4096 --cores 2
 qm set 102 --memory 4096 --cores 2
 qm set 103 --memory 4096 --cores 2
 
+# Attach the Talos machine config as NoCloud user-data
+qm set 101 --cicustom user=local:snippets/talos-controlplane.yaml
+qm set 102 --cicustom user=local:snippets/talos-controlplane.yaml
+qm set 103 --cicustom user=local:snippets/talos-controlplane.yaml
+
+# Regenerate the cloud-init drive after changing custom user-data
+qm cloudinit update 101
+qm cloudinit update 102
+qm cloudinit update 103
+
 # Start the VMs
 qm start 101
 qm start 102
@@ -128,16 +146,11 @@ qm start 103
 
 ## Applying Talos Configuration
 
-After the VMs boot into maintenance mode, apply the machine configuration. Find the IP addresses of your VMs from the Proxmox network or DHCP server:
+After the VMs boot, Talos reads the machine configuration from the NoCloud user-data on the Proxmox cloud-init drive. Find the IP addresses of your VMs from the Proxmox network or DHCP server, then bootstrap the first control plane node:
 
 ```bash
-# Apply configuration to each control plane node
-talosctl apply-config --insecure --nodes 10.0.0.11 --file controlplane-vip.yaml
-talosctl apply-config --insecure --nodes 10.0.0.12 --file controlplane-vip.yaml
-talosctl apply-config --insecure --nodes 10.0.0.13 --file controlplane-vip.yaml
-
 # Bootstrap the first control plane node
-talosctl config endpoint 10.0.0.100
+talosctl config endpoint 10.0.0.11 10.0.0.12 10.0.0.13
 talosctl config node 10.0.0.11
 talosctl bootstrap
 
@@ -165,20 +178,23 @@ qm set 201 --memory 8192 --cores 4
 qm set 202 --memory 8192 --cores 4
 qm set 203 --memory 8192 --cores 4
 
+# Attach the Talos worker config as NoCloud user-data
+qm set 201 --cicustom user=local:snippets/talos-worker.yaml
+qm set 202 --cicustom user=local:snippets/talos-worker.yaml
+qm set 203 --cicustom user=local:snippets/talos-worker.yaml
+
+# Regenerate the cloud-init drive after changing custom user-data
+qm cloudinit update 201
+qm cloudinit update 202
+qm cloudinit update 203
+
 # Start worker VMs
 qm start 201
 qm start 202
 qm start 203
 ```
 
-Apply the worker configuration:
-
-```bash
-# Apply worker configuration
-talosctl apply-config --insecure --nodes 10.0.0.21 --file worker.yaml
-talosctl apply-config --insecure --nodes 10.0.0.22 --file worker.yaml
-talosctl apply-config --insecure --nodes 10.0.0.23 --file worker.yaml
-```
+Talos reads the worker machine config from the NoCloud user-data on first boot, so no manual `talosctl apply-config` step is needed for the worker nodes.
 
 ## Automation with Proxmox API
 
@@ -230,7 +246,7 @@ If you have a GPU in your Proxmox host and need it for ML workloads, configure P
 qm set 201 --hostpci0 01:00,pcie=1
 ```
 
-Use the Talos NVIDIA extension image for the VM that gets the GPU.
+Use a Talos image built with the matching NVIDIA system extension for the VM that gets the GPU.
 
 ## Backup and Snapshots
 
@@ -244,8 +260,8 @@ qm snapshot 101 pre-upgrade --vmstate 1
 vzdump 101 --storage backup-storage --mode snapshot
 ```
 
-Snapshots are particularly useful before upgrading Talos. If something goes wrong, you can roll back instantly.
+Snapshots are particularly useful before upgrading Talos. If something goes wrong, you can roll back the VM, but coordinate this carefully with etcd and Kubernetes state in multi-node clusters.
 
 ## Conclusion
 
-Proxmox and Talos Linux together create a powerful, cost-effective Kubernetes platform. The template-based workflow makes provisioning new nodes fast, and cloud-init integration handles the initial configuration. Whether you are running a home lab or a small production environment, this combination gives you enterprise-grade Kubernetes with minimal overhead. The Proxmox API and Terraform integration make it easy to scale up as your needs grow.
+Proxmox and Talos Linux together create a powerful, cost-effective Kubernetes platform. The template-based workflow makes provisioning new nodes fast, and Proxmox cloud-init integration can pass the initial Talos machine configuration through NoCloud user-data. Whether you are running a home lab or a small production environment, this combination gives you enterprise-grade Kubernetes with minimal overhead. The Proxmox API and Terraform integration make it easy to scale up as your needs grow.
