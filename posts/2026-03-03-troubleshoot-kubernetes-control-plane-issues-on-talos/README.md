@@ -8,7 +8,7 @@ Description: Complete troubleshooting guide for Kubernetes control plane problem
 
 ---
 
-The Kubernetes control plane consists of several components that work together to manage the cluster. On Talos Linux, these components run as static pods on control plane nodes, managed by the kubelet. When any control plane component fails, the impact can range from degraded functionality to a complete cluster outage. This guide covers how to troubleshoot each control plane component on Talos Linux.
+The Kubernetes control plane consists of several components that work together to manage the cluster. On Talos Linux, the Kubernetes control plane components run as static pods on control plane nodes, managed by the kubelet, while etcd runs as a Talos service. When any control plane component fails, the impact can range from degraded functionality to a complete cluster outage. This guide covers how to troubleshoot each control plane component on Talos Linux.
 
 ## Control Plane Components Overview
 
@@ -19,19 +19,19 @@ The Kubernetes control plane on Talos Linux includes:
 - **kube-scheduler** - Assigns pods to nodes
 - **etcd** - Distributed key-value store for all cluster data
 
-Each of these runs as a static pod, which means the kubelet manages them directly from manifest files rather than through the API server.
+The Kubernetes components run as static pods, which means the kubelet manages them directly from manifest files rather than through the API server.
 
 ## Checking Overall Control Plane Health
 
 Start with a high-level health check:
 
 ```bash
-# Check if the API server responds
+# Check if the API server is ready
 
-kubectl get --raw='/healthz'
+kubectl get --raw='/readyz'
 
-# Check component statuses
-kubectl get componentstatuses
+# Check API server readiness details
+kubectl get --raw='/readyz?verbose'
 
 # Check all control plane pods
 kubectl -n kube-system get pods -l tier=control-plane
@@ -41,7 +41,7 @@ On Talos, you can also use `talosctl`:
 
 ```bash
 # Check all services on a control plane node
-talosctl -n <cp-ip> services
+talosctl -n <cp-ip> service
 
 # Quick health check
 talosctl -n <cp-ip> health
@@ -53,10 +53,11 @@ The API server is the most critical component. If it is down, nothing works.
 
 ```bash
 # Check API server status
-talosctl -n <cp-ip> service kube-apiserver
+talosctl -n <cp-ip> get staticpodstatus | grep kube-apiserver
 
-# View API server logs
-talosctl -n <cp-ip> logs kube-apiserver --tail 100
+# Find the API server container, then view its logs
+talosctl -n <cp-ip> containers -k | grep kube-apiserver
+talosctl -n <cp-ip> logs -k <kube-apiserver-container-id> --tail 100
 ```
 
 Common API server issues:
@@ -97,10 +98,11 @@ The controller manager runs all the built-in controllers. If it fails, pods will
 
 ```bash
 # Check controller manager status
-talosctl -n <cp-ip> service kube-controller-manager
+talosctl -n <cp-ip> get staticpodstatus | grep kube-controller-manager
 
-# View logs
-talosctl -n <cp-ip> logs kube-controller-manager --tail 100
+# Find the controller manager container, then view logs
+talosctl -n <cp-ip> containers -k | grep kube-controller-manager
+talosctl -n <cp-ip> logs -k <kube-controller-manager-container-id> --tail 100
 ```
 
 Common controller manager issues:
@@ -111,7 +113,7 @@ In a multi-node control plane, only one controller manager instance is active (t
 
 ```bash
 # Check controller manager logs for election issues
-talosctl -n <cp-ip> logs kube-controller-manager | grep -i "leader\|election"
+talosctl -n <cp-ip> logs -k <kube-controller-manager-container-id> | grep -i "leader\|election"
 ```
 
 Leader election requires the API server to be healthy. Fix the API server first if it is down.
@@ -122,7 +124,7 @@ The controller manager uses certificates to communicate with the API server. If 
 
 ```bash
 # Check for certificate errors
-talosctl -n <cp-ip> logs kube-controller-manager | grep -i "tls\|cert\|x509"
+talosctl -n <cp-ip> logs -k <kube-controller-manager-container-id> | grep -i "tls\|cert\|x509"
 ```
 
 Regenerate the cluster configuration and re-apply to fix certificate issues.
@@ -133,20 +135,22 @@ The scheduler assigns pods to nodes. If it fails, new pods will remain in Pendin
 
 ```bash
 # Check scheduler status
-talosctl -n <cp-ip> service kube-scheduler
+talosctl -n <cp-ip> get staticpodstatus | grep kube-scheduler
 
-# View scheduler logs
-talosctl -n <cp-ip> logs kube-scheduler --tail 100
+# Find the scheduler container, then view scheduler logs
+talosctl -n <cp-ip> containers -k | grep kube-scheduler
+talosctl -n <cp-ip> logs -k <kube-scheduler-container-id> --tail 100
 ```
 
 Common scheduler issues:
 
 **Scheduler not running:**
 
-If the scheduler pod is not running, check the static pod manifest:
+If the scheduler pod is not running, check the static pod definition and status:
 
 ```bash
-# Check static pod status
+# Check static pod definition and status
+talosctl -n <cp-ip> get staticpods
 talosctl -n <cp-ip> get staticpodstatus
 ```
 
@@ -156,7 +160,7 @@ The scheduler needs to connect to the API server. Check connectivity:
 
 ```bash
 # Look for connection errors in scheduler logs
-talosctl -n <cp-ip> logs kube-scheduler | grep -i "error\|failed"
+talosctl -n <cp-ip> logs -k <kube-scheduler-container-id> | grep -i "error\|failed"
 ```
 
 ## Troubleshooting etcd
@@ -241,10 +245,7 @@ If the control plane node is resource-constrained:
 If a control plane component needs to be restarted on Talos:
 
 ```bash
-# Restart a specific service
-talosctl -n <cp-ip> service kube-apiserver restart
-
-# Restart the kubelet (which manages all static pods)
+# Restart the kubelet (which manages the control plane static pods)
 talosctl -n <cp-ip> service kubelet restart
 ```
 
@@ -274,11 +275,11 @@ talosctl -n <cp-1-ip> service etcd
 talosctl -n <cp-1-ip> logs etcd --tail 50
 
 # 2. Once etcd is up, check the API server
-talosctl -n <cp-1-ip> service kube-apiserver
+talosctl -n <cp-1-ip> get staticpodstatus | grep kube-apiserver
 
 # 3. Then check the remaining components
-talosctl -n <cp-1-ip> service kube-controller-manager
-talosctl -n <cp-1-ip> service kube-scheduler
+talosctl -n <cp-1-ip> get staticpodstatus | grep kube-controller-manager
+talosctl -n <cp-1-ip> get staticpodstatus | grep kube-scheduler
 ```
 
 If etcd has completely failed and you need to restore from backup:
@@ -290,4 +291,4 @@ talosctl -n <cp-1-ip> bootstrap --recover-from=/path/to/snapshot.db
 
 ## Summary
 
-Control plane troubleshooting on Talos Linux follows a clear priority order: check etcd first (it is the foundation), then the API server (everything depends on it), then the controller manager and scheduler. Use `talosctl services` and `talosctl logs` for diagnosis, and remember that on Talos, control plane settings are managed through the machine configuration rather than by editing files directly.
+Control plane troubleshooting on Talos Linux follows a clear priority order: check etcd first (it is the foundation), then the API server (everything depends on it), then the controller manager and scheduler. Use `talosctl service`, `talosctl get staticpodstatus`, `talosctl containers -k`, and `talosctl logs -k` for diagnosis, and remember that on Talos, control plane settings are managed through the machine configuration rather than by editing files directly.
