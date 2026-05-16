@@ -12,7 +12,7 @@ CoreDNS is the DNS server that handles all name resolution within a Kubernetes c
 
 ## How CoreDNS Works in Talos Linux
 
-CoreDNS runs as a Deployment in the `kube-system` namespace, typically with two replicas. It serves DNS queries on port 53 and is exposed through a ClusterIP service called `kube-dns`. Every pod on the cluster has its `/etc/resolv.conf` configured to point to this service IP.
+CoreDNS runs as a Deployment in the `kube-system` namespace, typically with two replicas. It serves DNS queries on port 53 and is exposed through a ClusterIP service called `kube-dns`. By default, pods using the `ClusterFirst` DNS policy have their `/etc/resolv.conf` configured to point to this service IP.
 
 The kubelet on each node tells pods which DNS server to use. This is configured in the Talos machine configuration:
 
@@ -35,11 +35,11 @@ kubectl -n kube-system get pods -l k8s-app=kube-dns
 # Check the CoreDNS service
 kubectl -n kube-system get svc kube-dns
 
-# Check CoreDNS endpoints
-kubectl -n kube-system get endpoints kube-dns
+# Check CoreDNS EndpointSlices
+kubectl -n kube-system get endpointslice -l kubernetes.io/service-name=kube-dns
 ```
 
-If the pods are not Running, or the endpoints list is empty, CoreDNS is not functional.
+If the pods are not Running, or the EndpointSlices do not list any ready addresses, CoreDNS is not functional.
 
 ## Issue: CoreDNS Pods in CrashLoopBackOff
 
@@ -102,7 +102,7 @@ The `loop` plugin detects forwarding loops and will cause CoreDNS to crash with 
 [FATAL] plugin/loop: Loop detected for zone "."
 ```
 
-This happens when CoreDNS forwards queries to itself. The most common cause is that the node's `/etc/resolv.conf` points to 127.0.0.1 or to the kube-dns service IP. On Talos Linux, this is usually because the host DNS resolver is pointing to localhost.
+This happens when CoreDNS forwards queries to itself. The most common cause is that the resolver file used by CoreDNS points to a loopback address such as 127.0.0.1 or 127.0.0.53, or to an upstream resolver that forwards back to CoreDNS.
 
 Fix by configuring CoreDNS to use specific upstream servers instead of `/etc/resolv.conf`:
 
@@ -132,7 +132,7 @@ On Talos Linux, this usually happens because:
 
 1. All nodes are control plane nodes with taints, and CoreDNS does not have tolerations (unlikely with default Talos setup, as CoreDNS is configured with proper tolerations)
 2. There are not enough resources on any node
-3. A PodDisruptionBudget is preventing scheduling
+3. Node selectors, affinity, or topology constraints do not match any available node
 
 Check node resources:
 
@@ -162,11 +162,11 @@ kubectl -n kube-system exec <coredns-pod> -- cat /etc/resolv.conf
 If the resolvers are wrong, fix the host DNS configuration in the Talos machine config:
 
 ```yaml
-machine:
-  network:
-    nameservers:
-      - 8.8.8.8
-      - 1.1.1.1
+apiVersion: v1alpha1
+kind: ResolverConfig
+nameservers:
+  - address: 8.8.8.8
+  - address: 1.1.1.1
 ```
 
 Or override the upstream servers directly in the CoreDNS ConfigMap as shown above.
@@ -186,8 +186,8 @@ Check if the service exists and has endpoints:
 # Verify the service exists
 kubectl get svc myservice -n mynamespace
 
-# Check endpoints
-kubectl get endpoints myservice -n mynamespace
+# Check EndpointSlices
+kubectl get endpointslice -n mynamespace -l kubernetes.io/service-name=myservice
 ```
 
 If the service exists but DNS fails, check the CoreDNS Kubernetes plugin configuration:
@@ -295,7 +295,7 @@ Key metrics to watch:
 
 - `coredns_dns_requests_total` - Total query count
 - `coredns_dns_responses_total` - Response count by rcode (watch for SERVFAIL)
-- `coredns_forward_requests_total` - Upstream forwarding count
+- `coredns_proxy_request_duration_seconds_count{proxy_name="forward"}` - Upstream forwarding count
 - `coredns_cache_hits_total` - Cache hit ratio
 
 ## Summary
