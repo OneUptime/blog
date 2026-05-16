@@ -8,7 +8,7 @@ Description: Learn how to configure Nginx as a reverse proxy for the Talos Linux
 
 ---
 
-When running Talos Linux in production, you need a reliable way to access the Talos API across multiple control plane nodes. Placing Nginx in front of your Talos API endpoints gives you load balancing, TLS termination options, and a single stable endpoint for all API interactions. This guide walks through the complete setup process.
+When running Talos Linux in production, you need a reliable way to access the Talos API across multiple control plane nodes. Placing Nginx in front of your Talos API endpoints gives you load balancing, TLS passthrough, and a single stable endpoint for all API interactions. This guide walks through the complete setup process.
 
 ## Why Use a Reverse Proxy for the Talos API
 
@@ -27,7 +27,7 @@ Before starting, make sure you have the following in place:
 
 ## Installing Nginx
 
-On a Debian or Ubuntu host, install Nginx with the stream module. The stream module is critical because the Talos API uses gRPC, which runs over HTTP/2 and requires Layer 4 (TCP) proxying rather than Layer 7 (HTTP) proxying.
+On a Debian or Ubuntu host, install Nginx with the stream module. The stream module is critical for this setup because the Talos API uses gRPC over TLS, and TCP passthrough preserves Talos' mutual TLS authentication and server certificate validation.
 
 ```bash
 # Install Nginx with stream module support
@@ -92,7 +92,7 @@ The `least_conn` directive ensures that new connections go to the node with the 
 
 Nginx open source does not include active health checks for stream upstreams, but the passive health check mechanism works well enough for most setups. The `max_fails` and `fail_timeout` parameters handle this. When a node fails to respond 3 times within 30 seconds, Nginx marks it as unavailable and stops sending traffic to it.
 
-If you need active health checks, you can use a simple script that runs periodically:
+If you need additional health visibility, you can use a simple script that runs periodically:
 
 ```bash
 #!/bin/bash
@@ -115,15 +115,6 @@ done
 
 When you generate your Talos configuration, you need to include the Nginx proxy's IP address or DNS name in the certificate Subject Alternative Names (SANs). This allows talosctl to verify the server certificate when connecting through the proxy.
 
-```bash
-# Generate Talos configs with the proxy address in the SANs
-talosgen config my-cluster https://talos-proxy.example.com:50000 \
-    --additional-sans talos-proxy.example.com \
-    --additional-sans 10.0.1.100
-```
-
-If you already have a running cluster, you can update the certificate SANs by patching the machine configuration:
-
 ```yaml
 # sans-patch.yaml
 machine:
@@ -132,13 +123,27 @@ machine:
     - 10.0.1.100
 ```
 
+Use that patch when generating the Talos configuration. The cluster endpoint argument is the Kubernetes API endpoint, so use your existing Kubernetes API endpoint here, or the proxy on port 6443 if you also proxy the Kubernetes API as shown later.
+
+```bash
+# Generate Talos configs with the proxy address in the Talos API certificate SANs
+talosctl gen config my-cluster https://talos-proxy.example.com:6443 \
+    --config-patch-control-plane @sans-patch.yaml \
+    --additional-sans talos-proxy.example.com \
+    --additional-sans 10.0.1.100
+```
+
+The `--additional-sans` flags add SANs to the Kubernetes API server certificate. The `--config-patch-control-plane @sans-patch.yaml` flag applies the `machine.certSANs` patch for the Talos API certificate.
+
+If you already have a running cluster, you can update the certificate SANs by patching the machine configuration.
+
 Apply this patch to all control plane nodes:
 
 ```bash
 # Apply the SAN patch to each control plane node
-talosctl apply-config --nodes 10.0.1.10 --patch @sans-patch.yaml
-talosctl apply-config --nodes 10.0.1.11 --patch @sans-patch.yaml
-talosctl apply-config --nodes 10.0.1.12 --patch @sans-patch.yaml
+talosctl patch mc --nodes 10.0.1.10 --patch @sans-patch.yaml
+talosctl patch mc --nodes 10.0.1.11 --patch @sans-patch.yaml
+talosctl patch mc --nodes 10.0.1.12 --patch @sans-patch.yaml
 ```
 
 ## Configuring talosctl to Use the Proxy
@@ -186,7 +191,7 @@ stream {
 
 ## Also Proxying the Kubernetes API
 
-Since you already have Nginx running, you can proxy the Kubernetes API server as well. Add another upstream and server block:
+Since you already have Nginx running, you can proxy the Kubernetes API server as well. Make sure the proxy address is also included in the Kubernetes API server certificate SANs, such as with `--additional-sans` during config generation, and add another upstream and server block:
 
 ```nginx
 stream {
@@ -240,7 +245,7 @@ Then verify connectivity through the proxy:
 
 ```bash
 # Check Talos API connectivity
-talosctl version --endpoints talos-proxy.example.com
+talosctl version --endpoints talos-proxy.example.com --nodes 10.0.1.10
 
 # Check Kubernetes API connectivity
 kubectl --server=https://talos-proxy.example.com:6443 get nodes
