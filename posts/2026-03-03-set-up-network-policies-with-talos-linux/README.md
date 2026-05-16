@@ -61,22 +61,30 @@ helm repo add cilium https://helm.cilium.io/
 helm repo update
 
 # Install Cilium with policy enforcement
-helm install cilium cilium/cilium \
+helm install cilium cilium/cilium --version 1.19.4 \
   --namespace kube-system \
+  --set ipam.mode=kubernetes \
   --set kubeProxyReplacement=true \
+  --set securityContext.capabilities.ciliumAgent="{CHOWN,KILL,NET_ADMIN,NET_RAW,IPC_LOCK,SYS_ADMIN,SYS_RESOURCE,DAC_OVERRIDE,FOWNER,SETGID,SETUID}" \
+  --set securityContext.capabilities.cleanCiliumState="{NET_ADMIN,SYS_ADMIN,SYS_RESOURCE}" \
+  --set cgroup.autoMount.enabled=false \
+  --set cgroup.hostRoot=/sys/fs/cgroup \
+  --set bpf.hostLegacyRouting=true \
+  --set k8sServiceHost=localhost \
+  --set k8sServicePort=7445 \
   --set policyEnforcementMode=default \
   --set hubble.enabled=true \
   --set hubble.relay.enabled=true
 ```
 
-Verify that Cilium is running and network policy enforcement is active:
+Verify that Cilium is running:
 
 ```bash
 # Check Cilium pods
 kubectl get pods -n kube-system -l k8s-app=cilium
 
-# Verify policy enforcement mode
-kubectl exec -n kube-system ds/cilium -- cilium status | grep "Policy Enforcement"
+# Verify Cilium agent status
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status
 ```
 
 ## Writing Your First Network Policy
@@ -246,6 +254,7 @@ spec:
   ingress:
     - fromEndpoints:
         - matchLabels:
+            k8s:io.kubernetes.pod.namespace: frontend
             app: frontend
       toPorts:
         - ports:
@@ -265,9 +274,12 @@ With Cilium's Hubble observability tool, you can see exactly which traffic is be
 
 ```bash
 # Install Hubble CLI
-export HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/master/stable.txt)
-curl -L --remote-name-all https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-amd64.tar.gz
-tar xzvf hubble-linux-amd64.tar.gz
+export HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/main/stable.txt)
+export HUBBLE_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then HUBBLE_ARCH=arm64; fi
+curl -L --fail --remote-name-all https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
+sha256sum --check hubble-linux-${HUBBLE_ARCH}.tar.gz.sha256sum
+sudo tar xzvfC hubble-linux-${HUBBLE_ARCH}.tar.gz /usr/local/bin
 
 # Port-forward to Hubble relay
 kubectl port-forward -n kube-system svc/hubble-relay 4245:80 &
