@@ -47,21 +47,21 @@ Apply this patch when generating your Talos configuration:
 talosctl gen config my-cluster https://192.168.1.10:6443 \
   --config-patch @cilium-talos-patch.yaml
 
-# Or apply the patch to existing configs
-talosctl apply-config --nodes 192.168.1.10 --patch @cilium-talos-patch.yaml
+# Or patch the machine config of an existing node
+talosctl patch mc --nodes 192.168.1.10 --patch @cilium-talos-patch.yaml
 ```
 
 If you are applying this to an existing cluster, you need to apply it to all nodes (both control plane and workers):
 
 ```bash
-# Apply to all control plane nodes
-talosctl apply-config --nodes 192.168.1.10 --patch @cilium-talos-patch.yaml
-talosctl apply-config --nodes 192.168.1.11 --patch @cilium-talos-patch.yaml
-talosctl apply-config --nodes 192.168.1.12 --patch @cilium-talos-patch.yaml
+# Patch all control plane nodes
+talosctl patch mc --nodes 192.168.1.10 --patch @cilium-talos-patch.yaml
+talosctl patch mc --nodes 192.168.1.11 --patch @cilium-talos-patch.yaml
+talosctl patch mc --nodes 192.168.1.12 --patch @cilium-talos-patch.yaml
 
-# Apply to worker nodes
-talosctl apply-config --nodes 192.168.1.20 --patch @cilium-talos-patch.yaml
-talosctl apply-config --nodes 192.168.1.21 --patch @cilium-talos-patch.yaml
+# Patch worker nodes
+talosctl patch mc --nodes 192.168.1.20 --patch @cilium-talos-patch.yaml
+talosctl patch mc --nodes 192.168.1.21 --patch @cilium-talos-patch.yaml
 ```
 
 ## Step 2: Configure Kernel Parameters
@@ -81,7 +81,7 @@ machine:
 Apply this to all nodes:
 
 ```bash
-talosctl apply-config --nodes 192.168.1.10 --patch @kernel-params-patch.yaml
+talosctl patch mc --nodes 192.168.1.10 --patch @kernel-params-patch.yaml
 ```
 
 ## Step 3: Install Cilium Using Helm
