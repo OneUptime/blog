@@ -46,10 +46,10 @@ Talos Linux provides generic ARM64 metal images that work with most ARM boards. 
 
 ```bash
 # Download the ARM64 metal image
-wget https://github.com/siderolabs/talos/releases/download/v1.9.0/metal-arm64.raw.xz
+wget https://github.com/siderolabs/talos/releases/download/v1.9.0/metal-arm64.raw.zst
 
 # Extract the image
-xz -d metal-arm64.raw.xz
+zstd -d metal-arm64.raw.zst
 ```
 
 For boards like the ROCKPro64 that use the Rockchip platform, you may need to use the Talos Linux Image Factory to generate an image with the proper board overlay:
