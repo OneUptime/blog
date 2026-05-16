@@ -21,36 +21,36 @@ The critical thing to understand is that the EPHEMERAL partition is designed to 
 ```bash
 # View the disk partitions on a Talos node
 
-talosctl -n 10.0.0.11 get blockdevices
+talosctl -n 10.0.0.11 get discoveredvolumes
 
 # Check usage of the ephemeral partition
 talosctl -n 10.0.0.11 usage /var
 
-# The ephemeral partition is typically mounted at /var
-talosctl -n 10.0.0.11 mounts | grep ephemeral
+# The ephemeral volume is typically mounted at /var
+talosctl -n 10.0.0.11 get mountstatus EPHEMERAL
 ```
 
 ## The Partition Layout
 
 A typical Talos disk layout looks like this:
 
-| Partition | Size | Purpose | Survives Reset? |
-|-----------|------|---------|-----------------|
-| EFI/BIOS | ~100MB | Boot loader | Yes |
-| BOOT | ~1GB | Kernel and initramfs | Yes |
-| META | ~1MB | Node metadata | Yes |
-| STATE | ~100MB | Machine config (encrypted) | Depends on reset type |
+| Partition | Size | Purpose | Survives Default Reset? |
+|-----------|------|---------|-------------------------|
+| EFI | ~1GB | Boot loader and boot assets | No |
+| META | ~1MB | Node metadata | No |
+| STATE | ~100MB | Machine config and system state (optionally encrypted) | No |
 | EPHEMERAL | Remaining | Runtime data | No |
 
 The EPHEMERAL partition gets the bulk of the disk space because it needs to store container images, writable container layers, and pod volumes.
 
 ```yaml
-# You can customize the disk layout in the machine config
-machine:
-  install:
-    disk: /dev/sda
-    # The installer automatically creates the partition layout
-    # EPHEMERAL gets all remaining space after other partitions
+# You can customize the EPHEMERAL volume in the machine config
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+provisioning:
+  # By default, EPHEMERAL grows to use available space on the system disk.
+  maxSize: 100GiB
 ```
 
 ## What Lives on the Ephemeral Partition
@@ -88,28 +88,33 @@ Even though ephemeral data is temporary, it can still contain sensitive informat
 
 ```yaml
 # Enable encryption for the ephemeral partition
-machine:
-  systemDiskEncryption:
-    ephemeral:
-      provider: luks2
-      keys:
-        - nodeID: {}
-          slot: 0
-    state:
-      provider: luks2
-      keys:
-        - nodeID: {}
-          slot: 0
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+encryption:
+  provider: luks2
+  keys:
+    - nodeID: {}
+      slot: 0
+---
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: STATE
+encryption:
+  provider: luks2
+  keys:
+    - nodeID: {}
+      slot: 0
 ```
 
-With encryption enabled, the ephemeral data is protected at rest. If someone physically removes the disk from the server, they cannot read the data without the encryption key. The key is derived from the node's identity (TPM-based or based on node-specific characteristics), so it is unique to each node.
+With encryption enabled, the ephemeral data is protected at rest. The `nodeID` key is generated from the node UUID and partition label. Talos also supports other key kinds, including TPM-based keys, if you want the LUKS2 key sealed by the machine's TPM.
 
 ```bash
-# Apply the config with encryption
-talosctl -n 10.0.0.11 apply-config --file encrypted-config.yaml
+# Stage the config with encryption
+talosctl -n 10.0.0.11 apply-config --file encrypted-config.yaml --mode=staged
 
-# Note: Enabling encryption on an existing node requires a reinstall
-talosctl -n 10.0.0.11 upgrade --image ghcr.io/siderolabs/installer:v1.6.0
+# Wipe the existing unencrypted ephemeral partition so it is encrypted on next boot
+talosctl -n 10.0.0.11 reset --system-labels-to-wipe EPHEMERAL --reboot=true
 ```
 
 ## Managing Ephemeral Storage Capacity
@@ -148,12 +153,13 @@ If you have workloads that need significant local storage, consider using separa
 
 ```yaml
 # Configure additional disks for workload storage
-machine:
-  disks:
-    - device: /dev/sdb
-      partitions:
-        - mountpoint: /var/mnt/data
-          size: 0  # Use the entire disk
+apiVersion: v1alpha1
+kind: UserVolumeConfig
+name: data
+provisioning:
+  diskSelector:
+    match: "'/dev/disk/by-path/pci-0000:00:1f.2-ata-1' in disk.symlinks"
+  minSize: 100GiB
 ```
 
 This keeps workload data separate from the system's ephemeral storage, preventing one from affecting the other.
@@ -166,8 +172,8 @@ On control plane nodes, etcd data lives on the ephemeral partition at /var/lib/e
 # Take an etcd snapshot (do this regularly!)
 talosctl -n 10.0.0.11 etcd snapshot db.snapshot
 
-# Verify the snapshot
-talosctl -n 10.0.0.11 etcd snapshot db.snapshot --verify
+# Check etcd member status
+talosctl -n 10.0.0.11 etcd status
 ```
 
 If a control plane node's ephemeral partition is lost, you can recover etcd from a snapshot or from the remaining etcd members (if you have more than one control plane node).
@@ -185,7 +191,7 @@ Different operations have different effects on the ephemeral partition.
 
 **Upgrade** preserves the ephemeral partition. Container images and pod data are retained, which speeds up the process because images do not need to be re-pulled.
 
-**Reset (graceful)** wipes the ephemeral partition. The node returns to a clean state and can rejoin the cluster with a fresh configuration.
+**Reset (graceful)** drains the node, leaves etcd if applicable, and wipes the node's disks according to the reset mode. With the default reset behavior, the system disk is erased, so the node returns to a clean state and needs configuration again.
 
 **Reset (with --system-labels-to-wipe)** selectively wipes specific partitions.
 
