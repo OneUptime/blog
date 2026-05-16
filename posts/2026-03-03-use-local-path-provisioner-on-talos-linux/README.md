@@ -37,44 +37,45 @@ Not ideal for:
 
 ## Talos Machine Configuration
 
-Local Path Provisioner needs a base directory on each node. Configure this in the Talos machine config:
+Local Path Provisioner needs a base directory on each node. On current Talos Linux releases, create a user volume for it:
 
 ```yaml
-machine:
-  kubelet:
-    extraMounts:
-      - destination: /var/local-path-provisioner
-        type: bind
-        source: /var/local-path-provisioner
-        options:
-          - bind
-          - rshared
+apiVersion: v1alpha1
+kind: UserVolumeConfig
+name: local-path-provisioner
+provisioning:
+  diskSelector:
+    match: disk.transport == 'nvme'
+  minSize: 200GB
+  maxSize: 200GB
 ```
 
-For nodes with a dedicated disk for local storage:
+Talos mounts this volume under `/var/mnt/local-path-provisioner`, which is the path the provisioner should use.
+
+For older Talos configurations that use `machine.disks`, omit `size` to use the remaining disk:
 
 ```yaml
 machine:
   disks:
     - device: /dev/sdb
       partitions:
-        - mountpoint: /var/local-path-provisioner
-          size: 0  # Use entire disk
+        - mountpoint: /var/mnt/local-path-provisioner
   kubelet:
     extraMounts:
-      - destination: /var/local-path-provisioner
+      - destination: /var/mnt/local-path-provisioner
         type: bind
-        source: /var/local-path-provisioner
+        source: /var/mnt/local-path-provisioner
         options:
           - bind
           - rshared
+          - rw
 ```
 
 Apply to your worker nodes:
 
 ```bash
 for node in 192.168.1.11 192.168.1.12 192.168.1.13; do
-  talosctl apply-config --nodes "$node" --file worker-local-path.yaml
+  talosctl --nodes "$node" patch mc --patch @local-storage.yaml
 done
 ```
 
@@ -85,18 +86,20 @@ done
 ```bash
 # Deploy the Local Path Provisioner
 
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.26/deploy/local-path-storage.yaml
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.36/deploy/local-path-storage.yaml
+kubectl label namespace local-path-storage pod-security.kubernetes.io/enforce=privileged --overwrite
+kubectl -n local-path-storage patch configmap local-path-config --type merge -p '{"data":{"config.json":"{\"nodePathMap\":[{\"node\":\"DEFAULT_PATH_FOR_NON_LISTED_NODES\",\"paths\":[\"/var/mnt/local-path-provisioner\"]}]}"}}'
 ```
 
 ### Using Helm
 
 ```bash
-helm repo add local-path-provisioner https://rancher.github.io/local-path-provisioner/
-helm repo update
+git clone --depth 1 --branch v0.0.36 https://github.com/rancher/local-path-provisioner.git
+kubectl create namespace local-path-storage --dry-run=client -o yaml | kubectl apply -f -
+kubectl label namespace local-path-storage pod-security.kubernetes.io/enforce=privileged --overwrite
 
-helm install local-path-provisioner local-path-provisioner/local-path-provisioner \
+helm install local-path-provisioner ./local-path-provisioner/deploy/chart/local-path-provisioner \
   --namespace local-path-storage \
-  --create-namespace \
   --values local-path-values.yaml
 ```
 
@@ -112,7 +115,7 @@ storageClass:
 nodePathMap:
   - node: DEFAULT_PATH_FOR_NON_LISTED_NODES
     paths:
-      - /var/local-path-provisioner
+      - /var/mnt/local-path-provisioner
 
 # Resource limits
 resources:
@@ -142,7 +145,7 @@ provisioner: rancher.io/local-path
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
 parameters:
-  nodePath: /var/local-path-provisioner
+  nodePath: /var/mnt/local-path-provisioner
 ```
 
 The `volumeBindingMode: WaitForFirstConsumer` is critical. It delays volume creation until a pod actually needs it, which ensures the volume is created on the same node where the pod runs.
@@ -212,15 +215,15 @@ data:
       "nodePathMap": [
         {
           "node": "worker-01",
-          "paths": ["/var/local-path-provisioner/ssd"]
+          "paths": ["/var/mnt/local-path-provisioner/ssd"]
         },
         {
           "node": "worker-02",
-          "paths": ["/var/local-path-provisioner/nvme"]
+          "paths": ["/var/mnt/local-path-provisioner/nvme"]
         },
         {
           "node": "DEFAULT_PATH_FOR_NON_LISTED_NODES",
-          "paths": ["/var/local-path-provisioner"]
+          "paths": ["/var/mnt/local-path-provisioner"]
         }
       ]
     }
@@ -230,7 +233,7 @@ This lets you direct different nodes to use different storage devices based on t
 
 ## Using Multiple Storage Classes
 
-Create different storage classes for different tiers:
+Create different storage classes for different tiers. Each `nodePath` must also be present in the provisioner's `nodePathMap` or `storageClassConfigs`:
 
 ```yaml
 # Fast local storage (NVMe-backed nodes)
@@ -242,7 +245,7 @@ provisioner: rancher.io/local-path
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
 parameters:
-  nodePath: /var/local-path-provisioner/fast
+  nodePath: /var/mnt/local-path-provisioner/fast
 ---
 # Standard local storage (SSD-backed nodes)
 apiVersion: storage.k8s.io/v1
@@ -253,7 +256,7 @@ provisioner: rancher.io/local-path
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
 parameters:
-  nodePath: /var/local-path-provisioner/standard
+  nodePath: /var/mnt/local-path-provisioner/standard
 ```
 
 ## Node Affinity and Scheduling
@@ -299,11 +302,11 @@ Each replica will get its own local volume on the node where it is scheduled.
 
 ## Monitoring Storage Usage
 
-Local path volumes share the node's filesystem, so monitor at the node level:
+Local path volumes share the node's filesystem, and Local Path Provisioner does not enforce PVC capacity limits, so monitor at the node level:
 
 ```bash
-# Check disk usage on nodes
-kubectl top nodes
+# Check local path usage on nodes
+talosctl --nodes 192.168.1.11 usage -H /var/mnt/local-path-provisioner
 
 # Check specific volume sizes
 kubectl get pv -o wide
@@ -315,8 +318,8 @@ Set up Prometheus alerts for filesystem capacity:
 # Alert when local path storage is running low
 - alert: LocalPathStorageLow
   expr: |
-    (1 - node_filesystem_avail_bytes{mountpoint="/var/local-path-provisioner"}
-    / node_filesystem_size_bytes{mountpoint="/var/local-path-provisioner"}) > 0.85
+    (1 - node_filesystem_avail_bytes{mountpoint="/var/mnt/local-path-provisioner"}
+    / node_filesystem_size_bytes{mountpoint="/var/mnt/local-path-provisioner"}) > 0.85
   for: 10m
   labels:
     severity: warning
