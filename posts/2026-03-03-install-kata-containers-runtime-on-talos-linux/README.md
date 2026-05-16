@@ -42,7 +42,7 @@ Check virtualization support on your nodes.
 talosctl -n <node-ip> read /proc/cpuinfo | grep -c "vmx\|svm"
 
 # Check if /dev/kvm exists
-talosctl -n <node-ip> ls /dev/kvm
+talosctl -n <node-ip> list /dev/ | grep kvm
 ```
 
 If `/dev/kvm` does not exist, hardware virtualization may not be enabled in the BIOS or, if Talos is running in a VM, nested virtualization is not enabled on the hypervisor.
@@ -118,7 +118,7 @@ talosctl -n 10.0.0.20 list /usr/local/bin/ | grep kata
 talosctl -n 10.0.0.20 list /usr/share/kata-containers/
 
 # Check that KVM device is accessible
-talosctl -n 10.0.0.20 ls /dev/kvm
+talosctl -n 10.0.0.20 list /dev/ | grep kvm
 
 # Look at dmesg for Kata-related messages
 talosctl -n 10.0.0.20 dmesg | grep -i kata
@@ -142,16 +142,7 @@ kubectl apply -f kata-runtime-class.yaml
 kubectl get runtimeclass
 ```
 
-If you want to use Cloud Hypervisor instead of QEMU (for better performance), create a separate RuntimeClass.
-
-```yaml
-# kata-clh-runtime-class.yaml
-apiVersion: node.k8s.io/v1
-kind: RuntimeClass
-metadata:
-  name: kata-clh
-handler: kata-clh
-```
+The Sidero Labs kata-containers extension ships with the QEMU hypervisor and registers the containerd handler as `kata`. Cloud Hypervisor and Firecracker are not bundled with the official Talos extension.
 
 ## Running Your First Kata Pod
 
@@ -295,7 +286,6 @@ machine:
         [hypervisor.qemu]
         path = "/usr/bin/qemu-system-x86_64"
         kernel = "/usr/share/kata-containers/vmlinux.container"
-        image = ""
         initrd = "/usr/share/kata-containers/kata-containers-initrd.img"
         default_vcpus = 1
         default_memory = 256
@@ -364,7 +354,7 @@ kubectl describe pod <pod-name>
 talosctl -n <node-ip> logs containerd | grep -i kata
 
 # Verify KVM access
-talosctl -n <node-ip> ls /dev/kvm
+talosctl -n <node-ip> list /dev/ | grep kvm
 
 # Check vhost modules
 talosctl -n <node-ip> read /proc/modules | grep vhost
