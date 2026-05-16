@@ -124,7 +124,7 @@ machine:
       op: create
 ```
 
-Some system paths are bind-mounted from `/var/etc/` to their expected locations. For example, Talos can pick up custom DNS configuration from `/var/etc/resolv.conf`. Check the Talos documentation for your specific version to see which paths support this.
+Note that not every file you write under `/var/etc/` is automatically picked up by the OS - many subsystems have their own dedicated configuration mechanisms. For example, DNS resolvers should be set via `machine.network.nameservers` rather than by writing to `/var/etc/resolv.conf`, because Talos generates `/etc/resolv.conf` itself through its host DNS resolver. Check the Talos documentation for your specific version to confirm which paths and subsystems work this way.
 
 ## Practical Use Case: Custom CA Certificates
 
@@ -158,11 +158,11 @@ machine:
           enable_unprivileged_ports = true
           enable_unprivileged_icmp = true
       permissions: 0o644
-      path: /var/cri/conf.d/20-custom.toml
+      path: /etc/cri/conf.d/20-customization.part
       op: create
 ```
 
-This lets you tune containerd without modifying the base Talos image. The exact paths and supported configuration options depend on your Talos version.
+The base containerd configuration in Talos merges any additional configs present in `/etc/cri/conf.d/20-customization.part`, so this is the expected path and filename pattern for CRI customization. This lets you tune containerd without modifying the base Talos image. The exact supported configuration options depend on your Talos version.
 
 ## Practical Use Case: Udev Rules via Files
 
