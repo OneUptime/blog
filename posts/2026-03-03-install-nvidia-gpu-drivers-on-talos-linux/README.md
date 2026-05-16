@@ -24,9 +24,9 @@ Before starting, make sure you have:
 Verify that your nodes have NVIDIA GPUs detected at the hardware level.
 
 ```bash
-# Check PCI devices on a node
+# Check PCI devices on a node (NVIDIA's PCI vendor ID is 10de)
 
-talosctl -n <node-ip> read /proc/bus/pci/devices | grep -i nvidia
+talosctl -n <node-ip> read /proc/bus/pci/devices | grep -i 10de
 
 # Or check dmesg for GPU detection
 talosctl -n <node-ip> dmesg | grep -i nvidia
@@ -139,13 +139,13 @@ talosctl -n <gpu-node-ip> read /proc/modules | grep nvidia
 # nvidia
 
 # Check for the NVIDIA device files
-talosctl -n <gpu-node-ip> ls /dev/nvidia*
+talosctl -n <gpu-node-ip> ls /dev | grep nvidia
 
 # Expected output:
-# /dev/nvidia0
-# /dev/nvidiactl
-# /dev/nvidia-uvm
-# /dev/nvidia-uvm-tools
+# nvidia0
+# nvidiactl
+# nvidia-uvm
+# nvidia-uvm-tools
 
 # Check GPU information
 talosctl -n <gpu-node-ip> dmesg | grep -i "NVIDIA\|gpu"
