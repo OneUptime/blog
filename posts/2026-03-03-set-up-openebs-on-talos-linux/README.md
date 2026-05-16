@@ -27,23 +27,38 @@ For Talos Linux, Mayastor and Local PV are the most commonly used engines.
 
 Depending on which engine you plan to use, the Talos configuration varies:
 
+### Control Plane Pod Security
+
+Replicated PV Mayastor needs privileged access. On Talos, exempt the OpenEBS namespace from the default Pod Security admission profile:
+
+```yaml
+cluster:
+  apiServer:
+    admissionControl:
+      - name: PodSecurity
+        configuration:
+          apiVersion: pod-security.admission.config.k8s.io/v1beta1
+          kind: PodSecurityConfiguration
+          exemptions:
+            namespaces:
+              - openebs
+```
+
 ### For Mayastor (Replicated Storage)
 
 ```yaml
 machine:
-  kernel:
-    modules:
-      - name: nvme_tcp       # Required for NVMe over TCP
-      - name: nvme_core      # NVMe core module
-      - name: nvme_fabrics   # NVMe fabrics support
+  nodeLabels:
+    openebs.io/engine: "mayastor"
   kubelet:
     extraMounts:
-      - destination: /var/local/openebs
+      - destination: /var/local
         type: bind
-        source: /var/local/openebs
+        source: /var/local
         options:
           - bind
           - rshared
+          - rw
   sysctls:
     # HugePages for Mayastor (required)
     vm.nr_hugepages: "1024"
@@ -61,16 +76,20 @@ machine:
         options:
           - bind
           - rshared
+          - rw
 ```
 
 Apply the configuration:
 
 ```bash
-# Apply to worker nodes
+# Patch worker nodes
 
 for node in 192.168.1.11 192.168.1.12 192.168.1.13; do
-  talosctl apply-config --nodes "$node" --file worker-openebs.yaml
+  talosctl patch --mode=no-reboot machineconfig --nodes "$node" --patch @worker-openebs.yaml
 done
+
+# Restart kubelet if vm.nr_hugepages changed on an existing node
+talosctl -n 192.168.1.11 service kubelet restart
 ```
 
 ## Installing OpenEBS with Helm
@@ -94,38 +113,51 @@ helm install openebs openebs/openebs \
 ```yaml
 # openebs-values.yaml
 # Enable only the engines you need
+engines:
+  local:
+    lvm:
+      enabled: false
+    zfs:
+      enabled: false
+    rawfile:
+      enabled: false
+  replicated:
+    mayastor:
+      enabled: true
+
 mayastor:
-  enabled: true
+  csi:
+    node:
+      # Talos has nvme_tcp built in; disable the init container that checks for it.
+      initContainers:
+        enabled: false
   etcd:
     replicaCount: 3
+  io_engine:
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+        hugepages2Mi: "2Gi"
+      limits:
+        cpu: "2000m"
+        memory: "2Gi"
+        hugepages2Mi: "2Gi"
   agents:
-    node:
-      resources:
-        requests:
-          cpu: "500m"
-          memory: "512Mi"
-        limits:
-          cpu: "2000m"
-          memory: "2Gi"
     core:
       resources:
         requests:
           cpu: "250m"
           memory: "256Mi"
 
-localProvisioner:
-  enabled: true
-  basePath: /var/openebs/local
+localpv-provisioner:
+  localpv:
+    enabled: true
+    basePath: /var/openebs/local
   hostpathClass:
     enabled: true
     name: openebs-hostpath
     isDefaultClass: false
-
-# Jiva and cStor disabled for Talos (require additional dependencies)
-jivaOperator:
-  enabled: false
-cstor:
-  enabled: false
 ```
 
 ### Wait for Deployment
@@ -144,7 +176,7 @@ Mayastor needs disk pools to allocate storage from. Create a pool on each node:
 
 ```yaml
 # mayastor-pool.yaml
-apiVersion: openebs.io/v1beta2
+apiVersion: openebs.io/v1beta3
 kind: DiskPool
 metadata:
   name: pool-worker-01
@@ -152,9 +184,9 @@ metadata:
 spec:
   node: worker-01
   disks:
-    - "aio:///dev/sdb"  # Dedicated disk for Mayastor
+    - "aio:///dev/disk/by-id/scsi-36000c299example01"  # Dedicated disk for Mayastor
 ---
-apiVersion: openebs.io/v1beta2
+apiVersion: openebs.io/v1beta3
 kind: DiskPool
 metadata:
   name: pool-worker-02
@@ -162,9 +194,9 @@ metadata:
 spec:
   node: worker-02
   disks:
-    - "aio:///dev/sdb"
+    - "aio:///dev/disk/by-id/scsi-36000c299example02"
 ---
-apiVersion: openebs.io/v1beta2
+apiVersion: openebs.io/v1beta3
 kind: DiskPool
 metadata:
   name: pool-worker-03
@@ -172,7 +204,7 @@ metadata:
 spec:
   node: worker-03
   disks:
-    - "aio:///dev/sdb"
+    - "aio:///dev/disk/by-id/scsi-36000c299example03"
 ```
 
 ```bash
@@ -196,8 +228,6 @@ provisioner: io.openebs.csi-mayastor
 parameters:
   protocol: nvmf
   repl: "3"
-  ioTimeout: "30"
-  local: "true"
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 volumeBindingMode: Immediate
@@ -211,9 +241,14 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: openebs-local
+  annotations:
+    openebs.io/cas-type: local
+    cas.openebs.io/config: |
+      - name: StorageType
+        value: hostpath
+      - name: BasePath
+        value: /var/openebs/local
 provisioner: openebs.io/local
-parameters:
-  hostpath: /var/openebs/local
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
 ```
@@ -330,11 +365,11 @@ Local PV provides the best possible performance since there is no network replic
 ### Check Mayastor Volume Replicas
 
 ```bash
-# List all Mayastor volumes
-kubectl -n openebs get mayastorvolumes
+# List all Mayastor volumes with the kubectl plugin
+kubectl mayastor get volumes
 
 # Check replica status
-kubectl -n openebs get mayastorvolumes -o yaml
+kubectl mayastor get volume-replica-topology <volume_id>
 ```
 
 ### Prometheus Metrics
@@ -351,7 +386,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: openebs
+      app: metrics-exporter-io-engine
   endpoints:
   - port: metrics
     interval: 30s
@@ -361,7 +396,8 @@ spec:
 
 **Mayastor pods failing to start:**
 - Verify HugePages are configured: check `vm.nr_hugepages` sysctl
-- Ensure NVMe kernel modules are loaded
+- On Talos, disable the Mayastor CSI node init container that checks for the `nvme_tcp` module
+- Ensure storage nodes have the `openebs.io/engine=mayastor` label
 - Check that dedicated disks are available and not partitioned by Talos
 
 **Local PV provisioning failures:**
@@ -372,16 +408,16 @@ spec:
 **NVMe-oF connection issues:**
 - Verify `nvme_tcp` module is loaded
 - Check network connectivity between nodes
-- Verify firewall rules allow NVMe-oF ports
+- Verify firewall rules allow Mayastor gRPC and NVMe-oF ports
 
 ```bash
 # Check module status
 talosctl get kernelmodules --nodes 192.168.1.11
 
-# Check OpenEBS agent logs
-kubectl -n openebs logs -l app=openebs-agent-core
+# Check OpenEBS core agent logs
+kubectl -n openebs logs -l app=agent-core
 ```
 
 ## Summary
 
-OpenEBS on Talos Linux provides flexible storage options ranging from high-performance replicated Mayastor volumes to simple local PV storage. The container-attached storage model fits naturally with Talos's Kubernetes-centric design. Key setup requirements include kernel modules (NVMe for Mayastor, iSCSI for Jiva), HugePages configuration, and dedicated disks for storage pools. Start with Local PV for simple use cases and graduate to Mayastor when you need replicated storage with high performance.
+OpenEBS on Talos Linux provides flexible storage options ranging from high-performance replicated Mayastor volumes to simple local PV storage. The container-attached storage model fits naturally with Talos's Kubernetes-centric design. Key setup requirements include Talos Pod Security configuration, HugePages configuration, the Mayastor node label, and dedicated disks for storage pools. Start with Local PV for simple use cases and graduate to Mayastor when you need replicated storage with high performance.
