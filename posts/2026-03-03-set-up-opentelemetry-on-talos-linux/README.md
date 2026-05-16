@@ -54,6 +54,43 @@ kubectl get pods -n opentelemetry-operator-system
 The agent collector runs on every node and collects telemetry from local pods:
 
 ```yaml
+# otel-agent-rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-agent
+  namespace: observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-agent
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces", "nodes/stats"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["extensions"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-agent
+subjects:
+  - kind: ServiceAccount
+    name: otel-agent
+    namespace: observability
+```
+
+```yaml
 # otel-agent.yaml
 apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
@@ -62,6 +99,8 @@ metadata:
   namespace: observability
 spec:
   mode: daemonset
+  image: otel/opentelemetry-collector-contrib:latest
+  serviceAccount: otel-agent
   config:
     receivers:
       # Receive OTLP data from applications
@@ -75,6 +114,7 @@ spec:
       # Collect host metrics from the node
       hostmetrics:
         collection_interval: 30s
+        root_path: /hostfs
         scrapers:
           cpu: {}
           disk: {}
@@ -119,7 +159,7 @@ spec:
 
       # Add resource detection
       resourcedetection:
-        detectors: [env, system, gcp, aws]
+        detectors: [env, system]
         timeout: 5s
 
       # Memory limiter to prevent OOM
@@ -143,15 +183,15 @@ spec:
       pipelines:
         traces:
           receivers: [otlp]
-          processors: [memory_limiter, k8sattributes, batch]
+          processors: [memory_limiter, resourcedetection, k8sattributes, batch]
           exporters: [otlp]
         metrics:
           receivers: [otlp, hostmetrics, kubeletstats]
-          processors: [memory_limiter, k8sattributes, batch]
+          processors: [memory_limiter, resourcedetection, k8sattributes, batch]
           exporters: [otlp]
         logs:
           receivers: [otlp]
-          processors: [memory_limiter, k8sattributes, batch]
+          processors: [memory_limiter, resourcedetection, k8sattributes, batch]
           exporters: [otlp]
 
   env:
@@ -167,6 +207,16 @@ spec:
     limits:
       cpu: 500m
       memory: 512Mi
+
+  volumeMounts:
+    - name: hostfs
+      mountPath: /hostfs
+      readOnly: true
+
+  volumes:
+    - name: hostfs
+      hostPath:
+        path: /
 ```
 
 ## Step 3: Deploy the Collector as a Gateway
@@ -182,7 +232,8 @@ metadata:
   namespace: observability
 spec:
   mode: deployment
-  replicas: 2
+  replicas: 1
+  image: otel/opentelemetry-collector-contrib:latest
   config:
     receivers:
       otlp:
@@ -272,6 +323,7 @@ Apply both collectors:
 
 ```bash
 kubectl create namespace observability
+kubectl apply -f otel-agent-rbac.yaml
 kubectl apply -f otel-agent.yaml
 kubectl apply -f otel-gateway.yaml
 ```
@@ -306,6 +358,8 @@ spec:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-nodejs:latest
   java:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:latest
+  dotnet:
+    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-dotnet:latest
 ```
 
 Then annotate your deployments to enable auto-instrumentation:
@@ -325,6 +379,11 @@ metadata:
 metadata:
   annotations:
     instrumentation.opentelemetry.io/inject-java: "true"
+
+# For .NET apps
+metadata:
+  annotations:
+    instrumentation.opentelemetry.io/inject-dotnet: "true"
 ```
 
 ### Manual SDK Configuration
