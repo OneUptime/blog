@@ -238,7 +238,7 @@ spec:
           image: ghcr.io/huggingface/text-generation-inference:latest
           args:
             - --model-id
-            - mistralai/Mistral-7B-Instruct-v0.2
+            - TheBloke/Mistral-7B-Instruct-v0.2-AWQ
             - --max-input-length
             - "4096"
             - --max-total-tokens
@@ -315,7 +315,7 @@ spec:
       volumes:
         - name: ollama-data
           persistentVolumeClaim:
-            claimName: ollama-storage
+            claimName: model-cache
 ---
 apiVersion: v1
 kind: Service
