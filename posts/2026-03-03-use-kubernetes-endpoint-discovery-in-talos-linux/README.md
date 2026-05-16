@@ -8,15 +8,15 @@ Description: Learn how to leverage Kubernetes-based endpoint discovery in Talos 
 
 ---
 
-Talos Linux supports two discovery registries: the external service registry (which communicates with a discovery endpoint) and the Kubernetes registry (which stores discovery data directly in the Kubernetes cluster). The Kubernetes registry is often overlooked, but it provides a self-contained discovery mechanism that does not depend on any external service. This guide explains how to use Kubernetes endpoint discovery effectively.
+Talos Linux supports two discovery registries: the external service registry (which communicates with a discovery endpoint) and the Kubernetes registry (which stores discovery data directly in the Kubernetes cluster). The Kubernetes registry is deprecated in current Talos releases and disabled by default because Kubernetes 1.32 and later restrict Node read access in a way that prevents it from working in the default configuration. For older clusters or environments that explicitly enable it, it can provide a self-contained discovery mechanism that does not depend on an external discovery service. This guide explains how to use Kubernetes endpoint discovery effectively when that trade-off is acceptable.
 
 ## How the Kubernetes Registry Works
 
 The Kubernetes discovery registry stores node information as annotations on Kubernetes Node objects. When a Talos node registers itself, it writes its discovery data (endpoints, capabilities, identity) to its own Node object's annotations. Other nodes read these annotations to discover cluster members.
 
-This approach has a key advantage: it does not require any external infrastructure. The Kubernetes API server, which is already part of your cluster, acts as the discovery backend.
+This approach has a key advantage: it does not require an external discovery service. The Kubernetes API server and etcd, which are already part of your cluster, act as the discovery backend.
 
-The trade-off is that the Kubernetes registry only works after Kubernetes is running. During initial cluster bootstrap, before the API server is available, the Kubernetes registry cannot help nodes find each other. That is why Talos uses the service registry for initial bootstrap and the Kubernetes registry as an ongoing complement.
+The trade-off is that the Kubernetes registry only works after Kubernetes is running. During initial cluster bootstrap, before the API server is available, the Kubernetes registry cannot help nodes find each other. Current Talos releases use the service registry by default and leave the Kubernetes registry disabled unless you explicitly enable it.
 
 ## Viewing Kubernetes Discovery Data
 
@@ -25,21 +25,24 @@ You can inspect the discovery data stored in Kubernetes:
 ```bash
 # View node annotations related to discovery
 
-kubectl get nodes -o json | jq '.items[] | {name: .metadata.name, discovery: [.metadata.annotations | to_entries[] | select(.key | startswith("cluster.talos.dev"))]}'
+kubectl get nodes -o json | jq '.items[] | {name: .metadata.name, discovery: [(.metadata.annotations // {}) | to_entries[] | select(.key | startswith("cluster.talos.dev") or startswith("networking.talos.dev"))]}'
 ```
 
-The annotations contain encrypted discovery information that other Talos nodes can decrypt using the cluster secrets. The Kubernetes API server does not know the contents of these annotations.
+The annotations include Talos discovery metadata such as the node ID, assigned prefixes, and node addresses.
 
 You can also check the discovery from the Talos side:
 
 ```bash
-# View discovered members (includes data from both registries)
-talosctl get discoveredmembers --nodes <node-ip>
+# View confirmed cluster members
+talosctl get members --nodes <node-ip>
+
+# View affiliates from each raw registry source
+talosctl get affiliates --namespace=cluster-raw --nodes <node-ip>
 ```
 
 ## Enabling the Kubernetes Registry
 
-The Kubernetes registry is enabled by default. Verify it:
+The Kubernetes registry is disabled by default in current Talos releases. Enable it only if your Kubernetes version and API server authorization configuration support it:
 
 ```yaml
 cluster:
@@ -50,7 +53,7 @@ cluster:
         disabled: false
 ```
 
-If it was disabled, enable it:
+Apply the change to a running node with:
 
 ```bash
 talosctl patch machineconfig --patch '{"cluster": {"discovery": {"registries": {"kubernetes": {"disabled": false}}}}}' \
@@ -59,7 +62,7 @@ talosctl patch machineconfig --patch '{"cluster": {"discovery": {"registries": {
 
 ## Using Only the Kubernetes Registry
 
-If you want to avoid any external discovery service and rely solely on the Kubernetes registry, disable the service registry:
+If you want to avoid any external discovery service and rely solely on the Kubernetes registry, disable the service registry only after confirming that the Kubernetes registry works with your Kubernetes version and API server authorization settings:
 
 ```yaml
 # kubernetes-only-discovery.yaml
@@ -84,8 +87,9 @@ talosctl patch machineconfig \
 There are important implications to this choice:
 
 1. Initial cluster bootstrap does not benefit from service-based discovery. You need to make sure your cluster can bootstrap without it.
-2. KubeSpan will use the Kubernetes registry for peer discovery once Kubernetes is running.
+2. KubeSpan can use the Kubernetes registry for peer discovery once Kubernetes is running, but the service registry is the recommended default for KubeSpan.
 3. Adding new nodes to the cluster requires the API server to be available.
+4. Kubernetes 1.32 and later do not support this registry in the default configuration because of the `AuthorizeNodeWithSelectors` feature gate.
 
 ## Bootstrap Considerations
 
@@ -129,11 +133,11 @@ talosctl apply-config --insecure \
 KubeSpan uses discovered members to set up WireGuard peers. When using the Kubernetes registry, KubeSpan gets its peer information from the Node annotations:
 
 ```bash
-# Check KubeSpan peer status (sourced from Kubernetes discovery)
-talosctl get kubespanpeerstatus --nodes <node-ip>
+# Check KubeSpan peer status
+talosctl get kubespanpeerstatuses --nodes <node-ip>
 
-# Compare with discovered members
-talosctl get discoveredmembers --nodes <node-ip>
+# Compare with registry affiliates
+talosctl get affiliates --namespace=cluster-raw --nodes <node-ip>
 ```
 
 The process looks like this:
@@ -142,7 +146,7 @@ The process looks like this:
 3. Node B extracts the endpoint and KubeSpan identity
 4. Node B establishes a WireGuard tunnel to Node A
 
-This works well for clusters where all nodes can reach the API server, but it adds latency to peer discovery compared to the service registry (because nodes must poll the API server for changes).
+This works for clusters where all nodes can reach the API server and the Kubernetes registry is compatible with the cluster's authorization settings.
 
 ## Performance and Scaling
 
@@ -162,7 +166,7 @@ Each node makes approximately:
 - 1 write per refresh interval (to update its own annotation)
 - 1 read per refresh interval (to fetch all node annotations)
 
-The total load is O(N) for N nodes, which is manageable for most clusters.
+The request count is roughly O(N) for N nodes, while the amount of data returned by each full-node read grows with cluster size.
 
 ## Monitoring Kubernetes Discovery Health
 
@@ -174,8 +178,8 @@ Monitor the health of Kubernetes-based discovery:
 
 NODE_IP="10.0.0.10"
 
-# Check discovered members
-MEMBER_COUNT=$(talosctl get discoveredmembers --nodes $NODE_IP -o json | jq 'length')
+# Check confirmed members
+MEMBER_COUNT=$(talosctl get members --nodes $NODE_IP | awk 'NR > 1 {count++} END {print count+0}')
 NODE_COUNT=$(kubectl get nodes --no-headers | wc -l)
 
 echo "Discovered members: $MEMBER_COUNT"
@@ -189,16 +193,16 @@ fi
 Check that discovery annotations are being updated:
 
 ```bash
-# View the timestamp of discovery annotations
+# Count discovery annotations
 kubectl get nodes -o json | jq '.items[] | {
   name: .metadata.name,
-  annotations: [.metadata.annotations | to_entries[] | select(.key | startswith("cluster.talos.dev")) | .key] | length
+  annotations: [(.metadata.annotations // {}) | to_entries[] | select(.key | startswith("cluster.talos.dev") or startswith("networking.talos.dev")) | .key] | length
 }'
 ```
 
 ## Combining Both Registries
 
-The most robust configuration uses both registries:
+If the Kubernetes registry is compatible with your cluster, you can enable both registries:
 
 ```yaml
 cluster:
@@ -214,10 +218,10 @@ cluster:
 
 In this setup:
 - The service registry handles initial bootstrap and provides fast peer discovery
-- The Kubernetes registry provides redundancy if the service registry is unreachable
+- The Kubernetes registry can provide redundancy if the service registry is unreachable, as long as the Kubernetes API remains available and the registry is supported by your Kubernetes version
 - Nodes merge results from both registries
 
-This dual-registry approach means that even if the external discovery service goes down, nodes can still discover each other through the Kubernetes API. And if the Kubernetes API is temporarily unavailable (during a control plane upgrade, for example), the service registry keeps discovery working.
+This dual-registry approach means that even if the external discovery service goes down, nodes can still discover each other through the Kubernetes API when the Kubernetes registry is working. And if the Kubernetes API is temporarily unavailable (during a control plane upgrade, for example), the service registry keeps discovery working.
 
 ## Troubleshooting
 
@@ -231,9 +235,9 @@ talosctl logs controller-runtime --nodes <node-ip> | grep -i "kube.*discover\|an
 kubectl get node <node-name> -o yaml | grep -A2 "cluster.talos.dev"
 
 # Check RBAC - the node needs permission to read/write annotations
-kubectl auth can-i update nodes --as system:node:<node-name>
+kubectl auth can-i patch node <node-name> --as=system:node:<node-name> --as-group=system:nodes
 ```
 
-If annotations are missing, the node may not have the right permissions, or the annotation update is failing silently. Check the controller logs for specific errors.
+If annotations are missing, the node may not have the right permissions, the Kubernetes registry may be disabled, or the annotation update may be failing. On Kubernetes 1.32 and later, the default `AuthorizeNodeWithSelectors` behavior prevents the Kubernetes registry from functioning correctly. Check the controller logs for specific errors.
 
-The Kubernetes endpoint discovery registry is a powerful feature that makes Talos clusters more self-contained and resilient. Whether you use it as your sole discovery mechanism or as a complement to the service registry, it reduces your dependency on external infrastructure and provides a reliable fallback for node discovery.
+The Kubernetes endpoint discovery registry can make older or specially configured Talos clusters more self-contained. In current Talos releases, the service registry remains the default and recommended registry, while the Kubernetes registry should be treated as a deprecated compatibility option.
