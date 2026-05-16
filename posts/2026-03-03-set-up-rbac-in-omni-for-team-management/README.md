@@ -8,7 +8,7 @@ Description: Learn how to configure role-based access control in Sidero Omni to 
 
 ---
 
-When multiple people manage Talos Linux clusters, you need to control who can do what. Sidero Omni provides role-based access control (RBAC) that lets you define permissions at the organization and cluster level. This means your platform engineers can have full access while developers get read-only views, and nobody accidentally deletes a production cluster.
+When multiple people manage Talos Linux clusters, you need to control who can do what. Sidero Omni provides role-based access control (RBAC) that lets you define account-level permissions, and Access Policies (ACLs) can refine access at the cluster level. This means your platform engineers can have full access while developers get read-only views, and nobody accidentally deletes a production cluster.
 
 In this post, we will cover how to set up RBAC in Omni, define roles for different team members, and implement a practical access control strategy for your Talos infrastructure.
 
@@ -22,6 +22,10 @@ Without RBAC, everyone who has access to Omni has the same level of permissions.
 
 Omni uses a role-based model with several predefined roles. Each role grants a specific set of permissions.
 
+### None Role
+
+The None role is the most restrictive role. Users with this role have no access to Omni-managed resources beyond limited public information. This is commonly used as a safe default, especially when users are created through SAML.
+
 ### Admin Role
 
 Admins have full access to everything in Omni. They can create and delete clusters, manage machines, configure RBAC settings, and modify organization settings. This role should be limited to platform engineers and infrastructure leads.
@@ -34,30 +38,27 @@ Operators can manage clusters and machines but cannot modify organization-level 
 
 Readers have view-only access to the Omni dashboard. They can see cluster status, machine information, and configuration details but cannot make any changes. This is the right role for developers who need to check on cluster health or verify deployments.
 
-## Inviting Team Members
+## Adding Team Members
 
-The first step in setting up RBAC is inviting your team members to your Omni organization. Each person needs an account, and you assign their role during the invitation process.
+The first step in setting up RBAC is adding your team members to your Omni organization. Each person needs an account, and you assign their role during user creation or after their first login.
 
 ```bash
-# Invite a team member using the Omni CLI
+# Add a team member using the Omni CLI
 
 # Assign the operator role
-omnictl access invite \
-  --email engineer@company.com \
+omnictl user create engineer@company.com \
   --role Operator
 
-# Invite someone with read-only access
-omnictl access invite \
-  --email developer@company.com \
+# Add someone with read-only access
+omnictl user create developer@company.com \
   --role Reader
 
-# Invite an admin (use sparingly)
-omnictl access invite \
-  --email platform-lead@company.com \
+# Add an admin (use sparingly)
+omnictl user create platform-lead@company.com \
   --role Admin
 ```
 
-You can also manage invitations through the Omni dashboard under the Organization settings. The dashboard shows you all current team members, their roles, and when they last accessed the system.
+You can also manage users through the Omni dashboard under the Organization settings. The dashboard shows you all current team members, their roles, and when they last accessed the system.
 
 ## Setting Up Role Assignments
 
@@ -65,20 +66,18 @@ For an existing team, you might need to change roles as responsibilities shift. 
 
 ```bash
 # Change a user's role from Reader to Operator
-omnictl access update \
-  --email engineer@company.com \
+omnictl user set-role engineer@company.com \
   --role Operator
 
 # Downgrade someone to Reader
-omnictl access update \
-  --email former-admin@company.com \
+omnictl user set-role former-admin@company.com \
   --role Reader
 
 # List all current users and their roles
-omnictl access list
+omnictl user list
 ```
 
-Role changes take effect immediately. The next time the user loads the dashboard or makes an API call, their new permissions apply.
+The next time the user authenticates through the dashboard or CLI, their new permissions apply.
 
 ## Implementing a Practical RBAC Strategy
 
@@ -123,10 +122,12 @@ For CI/CD pipelines and automation tools that interact with Omni, you will want 
 ```bash
 # Create a service account for CI/CD with Operator permissions
 omnictl serviceaccount create ci-pipeline \
+  --use-user-role=false \
   --role Operator
 
 # Create a service account for monitoring with Reader permissions
 omnictl serviceaccount create monitoring-bot \
+  --use-user-role=false \
   --role Reader
 
 # List service accounts
@@ -180,17 +181,17 @@ rules:
 Omni tracks all actions taken through the dashboard and CLI. This audit trail shows who did what and when. For compliance requirements, this is essential.
 
 ```bash
-# View recent actions in Omni
-omnictl audit list --limit 50
+# Stream audit logs from Omni
+omnictl audit-log
 
 # Filter by user
-omnictl audit list --user engineer@company.com
+omnictl audit-log | jq 'select(.event_data.session.email == "engineer@company.com")'
 
-# Filter by action type
-omnictl audit list --action cluster.create
+# Filter by cluster creation events
+omnictl audit-log | jq 'select(.resource_type == "Clusters.omni.sidero.dev" and .event_type == "create")'
 ```
 
-Review the audit logs regularly. If someone is performing actions that seem outside their normal scope, it might be time to adjust their role or have a conversation about responsibilities.
+Review the audit logs regularly. Accessing audit logs requires the Admin role. If someone is performing actions that seem outside their normal scope, it might be time to adjust their role or have a conversation about responsibilities.
 
 ## Revoking Access
 
@@ -198,10 +199,10 @@ When someone leaves the team or changes roles, revoke their access promptly.
 
 ```bash
 # Remove a user from the organization
-omnictl access revoke --email former-employee@company.com
+omnictl user delete former-employee@company.com
 
 # Revoke a service account
-omnictl serviceaccount delete old-ci-pipeline
+omnictl serviceaccount destroy old-ci-pipeline
 ```
 
 Make access revocation part of your offboarding process. If you use an identity provider with SSO, disabling the user in your IdP will also prevent them from accessing Omni.
