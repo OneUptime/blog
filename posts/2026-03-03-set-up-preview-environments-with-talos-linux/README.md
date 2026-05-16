@@ -61,6 +61,8 @@ Post URL to PR
 
 Here is a complete GitHub Actions workflow for preview environments:
 
+This example assumes same-repository pull requests and a dedicated self-hosted Linux runner with Docker, because the Talos Docker provider stores the cluster on the runner's Docker host.
+
 ```yaml
 # .github/workflows/preview.yml
 
@@ -70,10 +72,15 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
 
+permissions:
+  contents: read
+  packages: write
+  issues: write
+
 jobs:
   deploy-preview:
     if: github.event.action != 'closed'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, preview-runner]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -110,17 +117,36 @@ jobs:
           # Wait for readiness
           kubectl wait --for=condition=Ready nodes --all --timeout=300s
 
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build and deploy application
         env:
           KUBECONFIG: /tmp/preview-kubeconfig
         run: |
-          # Build the application
-          docker build -t myapp:pr-${{ github.event.pull_request.number }} .
+          # Build and push the application image so the Talos cluster can pull it
+          IMAGE_REPO="ghcr.io/${GITHUB_REPOSITORY,,}/myapp"
+          IMAGE="${IMAGE_REPO}:pr-${{ github.event.pull_request.number }}-${{ github.sha }}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+
+          # Allow the preview cluster to pull the private GHCR image
+          kubectl create secret docker-registry ghcr-pull-secret \
+            --docker-server=ghcr.io \
+            --docker-username="${{ github.actor }}" \
+            --docker-password="${{ secrets.GITHUB_TOKEN }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl patch serviceaccount default \
+            -p '{"imagePullSecrets":[{"name":"ghcr-pull-secret"}]}'
 
           # Deploy to the preview cluster
           kubectl apply -f manifests/
           kubectl set image deployment/myapp \
-            myapp=myapp:pr-${{ github.event.pull_request.number }}
+            myapp="$IMAGE"
           kubectl rollout status deployment/myapp --timeout=120s
 
       - name: Get preview URL
@@ -176,7 +202,7 @@ jobs:
 
   destroy-preview:
     if: github.event.action == 'closed'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, preview-runner]
     steps:
       - name: Install talosctl
         run: curl -sL https://talos.dev/install | sh
@@ -288,7 +314,7 @@ spec:
         - |
           tailscaled &
           tailscale up --authkey=\$TS_AUTHKEY --hostname=preview-pr-123
-          tailscale funnel 80
+          tailscale funnel --yes --https=443 http://myapp:80
           sleep infinity
 EOF
 ```
@@ -300,7 +326,7 @@ Preview environments can quickly consume resources if not managed:
 ```bash
 # Limit the total number of concurrent preview environments
 MAX_PREVIEWS=5
-CURRENT=$(talosctl cluster show 2>/dev/null | grep -c "preview-" || echo "0")
+CURRENT=$(talosctl cluster show 2>/dev/null | grep -c "preview-" || true)
 
 if [ "$CURRENT" -ge "$MAX_PREVIEWS" ]; then
   echo "Maximum preview environments reached ($MAX_PREVIEWS)"
@@ -337,7 +363,7 @@ on:
 
 jobs:
   cleanup:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, preview-runner]
     steps:
       - name: Install talosctl
         run: curl -sL https://talos.dev/install | sh
