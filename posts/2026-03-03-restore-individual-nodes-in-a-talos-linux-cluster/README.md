@@ -148,10 +148,10 @@ Before doing anything, verify the remaining control plane nodes have a healthy e
 talosctl -n 10.0.1.11 etcd status
 
 # List current etcd members
-talosctl -n 10.0.1.11 etcd member list
+talosctl -n 10.0.1.11 etcd members
 
 # Verify Kubernetes API is responsive
-kubectl get cs
+kubectl get --raw='/readyz?verbose'
 kubectl get nodes
 ```
 
@@ -161,14 +161,14 @@ With a 3-node control plane, losing one node means etcd still has quorum (2 out 
 
 ```bash
 # Find the member ID of the failed node
-talosctl -n 10.0.1.11 etcd member list
+talosctl -n 10.0.1.11 etcd members
 # Note the member ID for the failed node (e.g., "abc123def456")
 
 # Remove the failed member
 talosctl -n 10.0.1.11 etcd remove-member abc123def456
 
 # Verify the member was removed
-talosctl -n 10.0.1.11 etcd member list
+talosctl -n 10.0.1.11 etcd members
 # Should now show 2 members
 ```
 
@@ -196,7 +196,7 @@ The new control plane node will automatically attempt to join the existing etcd 
 talosctl -n 10.0.1.12 logs etcd
 
 # Check etcd member list again
-talosctl -n 10.0.1.11 etcd member list
+talosctl -n 10.0.1.11 etcd members
 # Should show 3 members again
 ```
 
@@ -210,7 +210,7 @@ talosctl -n 10.0.1.12 etcd status
 
 # Kubernetes health check
 kubectl get nodes
-kubectl get cs
+kubectl get --raw='/readyz?verbose'
 
 # Run a quick workload test
 kubectl run test-pod --image=alpine --restart=Never -- sleep 30
