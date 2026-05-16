@@ -267,9 +267,10 @@ talosctl upgrade --nodes 10.0.0.20 \
 # Upgrade Kubernetes version
 talosctl upgrade-k8s --to 1.31.0
 
-# For automated upgrades, consider the Talos System Upgrade Controller
-# This watches for new Talos releases and applies them automatically
-kubectl apply -f https://raw.githubusercontent.com/siderolabs/talos/main/website/content/v1.9/talos-guides/upgrading-talos/system-upgrade-controller.yaml
+# For automated upgrades, consider the System Upgrade Controller (from Rancher)
+# This watches for new Talos releases and applies them automatically when paired
+# with a Plan that runs `talosctl upgrade`
+kubectl apply -f https://raw.githubusercontent.com/rancher/system-upgrade-controller/master/manifests/system-upgrade-controller.yaml
 ```
 
 ## Step 7: Verify the Migration
