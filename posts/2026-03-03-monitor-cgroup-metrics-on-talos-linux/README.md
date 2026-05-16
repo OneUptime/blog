@@ -80,7 +80,7 @@ spec:
             - --max_housekeeping_interval=15s
             - --storage_duration=1m0s
             - --allow_dynamic_housekeeping=true
-            - --disable_metrics=accelerator,disk,diskIO,network,tcp,udp,percpu,sched,process,hugetlb,referenced_memory,resctrl,advtcp
+            - --disable_metrics=disk,diskIO,network,tcp,udp,percpu,sched,process,hugetlb,referenced_memory,resctrl,advtcp
             # Only collect the metrics we care about
             - --enable_metrics=cpu,memory,cpuLoad
           ports:
@@ -143,7 +143,7 @@ spec:
       metricRelabelings:
         # Drop high-cardinality metrics to save storage
         - sourceLabels: [__name__]
-          regex: "container_tasks_state|container_memory_failures_total"
+          regex: "container_tasks_state"
           action: drop
         # Keep only relevant labels
         - action: labeldrop
@@ -238,14 +238,14 @@ spec:
         - record: container:memory_pgfault_rate:5m
           expr: >
             rate(container_memory_failures_total{
-              container!="", type="pgfault"
+              container!="", failure_type="pgfault"
             }[5m])
 
         # Major page fault rate (serious memory pressure)
         - record: container:memory_pgmajfault_rate:5m
           expr: >
             rate(container_memory_failures_total{
-              container!="", type="pgmajfault"
+              container!="", failure_type="pgmajfault"
             }[5m])
 
     - name: cgroup.io
@@ -399,7 +399,7 @@ prometheus-node-exporter:
     - --collector.cgroups
 ```
 
-PSI provides three metrics per resource (CPU, memory, IO):
+PSI provides two metrics per resource (CPU, memory, IO):
 - **some**: The percentage of time at least one process is waiting
 - **full**: The percentage of time all processes are waiting
 
