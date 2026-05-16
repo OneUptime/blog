@@ -57,7 +57,7 @@ data:
         - 0.0.0.0
       port: 53
       upstream_dns:
-        - https://dns.cloudflare.com/dns-query
+        - https://cloudflare-dns.com/dns-query
         - https://dns.google/dns-query
         - 1.1.1.1
         - 8.8.8.8
@@ -69,8 +69,8 @@ data:
       cache_ttl_min: 300
       cache_ttl_max: 86400
     filtering:
-      enabled: true
-      url: https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt
+      protection_enabled: true
+      filtering_enabled: true
     filters:
       - enabled: true
         url: https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt
@@ -80,6 +80,18 @@ data:
         name: Steven Black Unified
 ---
 # adguard-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: adguard-config
+  namespace: adguard
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -172,7 +184,7 @@ spec:
       volumes:
         - name: config
           persistentVolumeClaim:
-            claimName: adguard-data
+            claimName: adguard-config
         - name: data
           persistentVolumeClaim:
             claimName: adguard-data
