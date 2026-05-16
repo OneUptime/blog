@@ -139,7 +139,10 @@ If you are using Proxmox, the process is a bit more streamlined through its conf
 
 ```bash
 # Edit the VM config to add PCI passthrough
-qm set 100 --hostpci0 03:00.0,03:00.1
+# Multiple PCI IDs in one hostpci entry are separated by semicolons,
+# so the shell needs to quote them. Alternatively, use the shortened
+# form "03:00" to pass through all functions of the device.
+qm set 100 --hostpci0 '03:00.0;03:00.1'
 
 # If the device requires a specific ROM, you can specify it
 qm set 100 --hostpci0 03:00.0,rombar=1
@@ -156,7 +159,7 @@ Once the Talos VM boots with the passed-through device, you can verify that it s
 
 ```bash
 # List PCI devices visible to the Talos node
-talosctl -n <NODE_IP> get hardwareaddresses
+talosctl -n <NODE_IP> get pcidevices
 
 # Check kernel messages for device detection
 talosctl -n <NODE_IP> dmesg | grep -i "03:00"
