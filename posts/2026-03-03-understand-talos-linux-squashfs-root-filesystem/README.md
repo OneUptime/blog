@@ -16,7 +16,7 @@ SquashFS is a compressed, read-only filesystem for Linux. It was originally deve
 
 Some key characteristics of SquashFS:
 
-- Files are compressed individually, so random access is efficient
+- File data is split into compressed blocks, so random access is efficient without decompressing the whole filesystem
 - The entire filesystem is read-only at the format level
 - Block deduplication reduces size further
 - Metadata is compact and fast to traverse
@@ -34,13 +34,13 @@ talosctl -n 10.0.0.11 mounts | head -5
 
 ## How Talos Uses SquashFS
 
-When a Talos node boots, the kernel loads an initramfs that contains machined (the init system). machined locates the SquashFS image on the boot partition and mounts it as the root filesystem. From this point forward, the root filesystem is immutable.
+When a Talos node boots, the bootloader loads the kernel and initramfs. The Talos root filesystem is a SquashFS image carried with the boot assets and mounted as a loop device. From this point forward, the root filesystem is immutable.
 
 The SquashFS image contains everything the operating system needs:
 
 - System binaries (machined, containerd, kubelet, etcd)
 - Shared libraries
-- Kernel modules (compiled into the image)
+- Kernel modules packaged with the OS image
 - CA certificates for TLS validation
 - Basic filesystem structure (/proc, /sys, /dev mount points)
 
@@ -95,9 +95,9 @@ This is a much stronger guarantee than file permissions, SELinux policies, or ev
 
 Of course, a completely read-only system would be useless. Kubernetes needs to write container images, pod data, logs, and configuration files somewhere. Talos handles this with carefully scoped overlay mounts and tmpfs filesystems.
 
-The /var directory is mounted from the EPHEMERAL partition on disk. This is a regular ext4 filesystem that supports writes. Containerd stores its data here, kubelet writes pod logs here, and ephemeral pod storage lives here.
+The /var directory is mounted from the EPHEMERAL partition on disk. This is a regular writable filesystem, commonly XFS in current Talos layouts. Containerd stores its data here, kubelet writes pod logs here, and ephemeral pod storage lives here.
 
-The /etc/cni and /etc/kubernetes directories use tmpfs (in-memory filesystem) mounts. These are populated by machined during boot with configuration generated from the machine config. They disappear on reboot.
+The /etc/cni directory is created as a runtime mount, and /etc/kubernetes is an overlayfs backed by the filesystem mounted at /var. Talos also uses tmpfs and bind mounts for runtime-specific files such as /etc/hosts and /etc/resolv.conf. The result is that only specific paths become writable while the base root remains read-only.
 
 ```bash
 # View all mount points on a Talos node
@@ -105,10 +105,10 @@ talosctl -n 10.0.0.11 mounts
 
 # Typical output:
 # /          squashfs  ro
-# /var       ext4      rw
+# /var       xfs       rw
 # /etc/cni   tmpfs     rw
-# /etc/kubernetes tmpfs rw
-# /system/state ext4   rw (encrypted)
+# /etc/kubernetes overlay rw
+# /system    tmpfs     rw
 ```
 
 The key principle is that the SquashFS root provides the base layer of the system, and only specific, well-defined directories are writable. A process cannot create new files in /usr/bin or modify files in /etc unless there is an explicit overlay mount allowing it.
@@ -129,24 +129,24 @@ talosctl gen config my-cluster https://10.0.0.10:6443 \
 You can also use system extensions, which are additional SquashFS layers that get mounted alongside the base image. This is a cleaner approach for adding components because you do not need to rebuild the entire base image.
 
 ```yaml
-# Machine config with system extensions
-machine:
-  install:
-    extensions:
-      - image: ghcr.io/siderolabs/iscsi-tools:v0.1.4
-      - image: ghcr.io/siderolabs/intel-ucode:20231114
-      - image: ghcr.io/siderolabs/i915-ucode:20231114
+# Image Factory schematic with official system extensions
+customization:
+  systemExtensions:
+    officialExtensions:
+      - siderolabs/iscsi-tools
+      - siderolabs/intel-ucode
+      - siderolabs/i915
 ```
 
 Each extension is its own SquashFS image that gets overlaid on the root filesystem. The extensions can add files to the system without modifying the base image, maintaining the integrity and verifiability of the core OS.
 
 ## Integrity Verification
 
-Because the root filesystem is a single SquashFS image file, verifying its integrity is straightforward. The image has a known checksum that can be validated at boot time.
+Because the root filesystem is delivered as part of immutable Talos boot assets, verifying its integrity is straightforward. The image has a known digest or signature that can be validated before deployment, and Secure Boot can validate the booted operating system on supported UEFI systems.
 
-Talos supports Secure Boot, which creates a chain of trust from the UEFI firmware through the bootloader to the kernel and initramfs. The initramfs contains machined, which then verifies the SquashFS image before mounting it.
+Talos supports Secure Boot, which creates a chain of trust from the UEFI firmware through the bootloader to the Unified Kernel Image (UKI), which contains the kernel, initramfs, and command line.
 
-If someone tampers with the SquashFS image, the verification will fail and the system will refuse to boot. This protects against supply chain attacks where a modified OS image is deployed to your nodes.
+If someone tampers with signed Secure Boot assets, firmware verification fails and the system refuses to boot those assets. This protects against supply chain attacks where a modified OS image is deployed to your nodes.
 
 ```bash
 # Check the installed image and its version
@@ -170,11 +170,11 @@ Block-level deduplication in SquashFS also means that identical file contents ar
 
 Other container-optimized operating systems take different approaches to filesystem immutability.
 
-Flatcar Container Linux uses a dual-partition A/B update scheme with a regular filesystem that is mounted read-only. The filesystem format (ext4) supports writes, but it is mounted with the read-only flag. This provides a weaker guarantee than SquashFS.
+Flatcar Container Linux uses a dual-partition A/B update scheme for its OS partition. The active /usr partition is mounted read-only and protected with dm-verity, while stateful data lives on a separate writable root partition. This provides strong integrity protection, but the OS partition is not read-only because of the filesystem format itself.
 
-Bottlerocket uses dm-verity for integrity verification on top of an ext4 filesystem. This provides integrity checking but the filesystem format still supports writes.
+Bottlerocket uses dm-verity for its root filesystem, and dm-verity devices are read-only. This provides integrity checking and read-only behavior through the block device layer rather than through a filesystem format that is inherently read-only.
 
-Talos's use of SquashFS provides the strongest immutability guarantee because the format itself is incapable of storing writes, regardless of how it is mounted or what permissions are in play.
+Talos's use of SquashFS provides a different immutability guarantee: the root filesystem format itself is incapable of storing writes, regardless of how it is mounted or what permissions are in play.
 
 ## Conclusion
 
