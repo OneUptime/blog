@@ -45,20 +45,21 @@ config:
     replicas: 3
   jetstream:
     enabled: true
-    memStorage:
+    memoryStore:
       enabled: true
-      size: "2Gi"
-    fileStorage:
+      maxSize: "2Gi"
+    fileStore:
       enabled: true
-      size: "20Gi"
-      storageClassName: "local-path"
+      pvc:
+        enabled: true
+        size: "20Gi"
+        storageClassName: "<your-storage-class>"
 
 container:
-  merge:
-    resources:
-      requests:
-        memory: "1Gi"
-        cpu: "500m"
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
 ```
 
 ```bash
@@ -79,18 +80,27 @@ nats stream add ORDER_EVENTS \
   --subjects "orders.>" \
   --retention limits --max-age 72h \
   --storage file --replicas 3 \
+  --defaults \
   --server nats://nats:4222
 
 nats stream add USER_EVENTS \
   --subjects "users.>" \
   --retention limits --max-age 168h \
   --storage file --replicas 3 \
+  --defaults \
   --server nats://nats:4222
 
 nats stream add NOTIFICATION_EVENTS \
   --subjects "notifications.>" \
   --retention limits --max-age 24h \
   --storage file --replicas 3 \
+  --defaults \
+  --server nats://nats:4222
+
+nats consumer add ORDER_EVENTS inventory-service \
+  --filter "orders.created" \
+  --ack explicit --pull --deliver all \
+  --max-deliver 5 --defaults \
   --server nats://nats:4222
 ```
 
@@ -116,7 +126,14 @@ spec:
       containers:
         - name: order-service
           image: node:20-alpine
-          command: ["node", "/app/server.js"]
+          command:
+            - sh
+            - -c
+            - |
+              cd /tmp
+              npm init -y >/dev/null
+              npm install @nats-io/transport-node @nats-io/jetstream --omit=dev
+              NODE_PATH=/tmp/node_modules node /app/server.js
           env:
             - name: NATS_URL
               value: "nats://nats:4222"
@@ -140,9 +157,10 @@ metadata:
 data:
   server.js: |
     const http = require('http');
-    const { connect, JSONCodec } = require('nats');
+    const { connect } = require('@nats-io/transport-node');
+    const { jetstream } = require('@nats-io/jetstream');
 
-    const codec = JSONCodec();
+    const encoder = new TextEncoder();
     let nc;
 
     async function init() {
@@ -151,7 +169,7 @@ data:
       console.log('Connected to NATS');
 
       // Get JetStream context
-      const js = nc.jetstream();
+      const js = jetstream(nc);
 
       const server = http.createServer(async (req, res) => {
         if (req.method === 'POST' && req.url === '/orders') {
@@ -165,7 +183,7 @@ data:
             // Publish the event
             await js.publish(
               'orders.created',
-              codec.encode(order)
+              encoder.encode(JSON.stringify(order))
             );
 
             console.log(`Order created: ${order.id}`);
@@ -184,7 +202,8 @@ data:
   package.json: |
     {
       "dependencies": {
-        "nats": "^2.19.0"
+        "@nats-io/jetstream": "^3.4.0",
+        "@nats-io/transport-node": "^3.4.0"
       }
     }
 ---
@@ -223,7 +242,14 @@ spec:
       containers:
         - name: consumer
           image: node:20-alpine
-          command: ["node", "/app/consumer.js"]
+          command:
+            - sh
+            - -c
+            - |
+              cd /tmp
+              npm init -y >/dev/null
+              npm install @nats-io/transport-node @nats-io/jetstream --omit=dev
+              NODE_PATH=/tmp/node_modules node /app/consumer.js
           env:
             - name: NATS_URL
               value: "nats://nats:4222"
@@ -246,13 +272,14 @@ metadata:
   namespace: events
 data:
   consumer.js: |
-    const { connect, JSONCodec, AckPolicy, DeliverPolicy } = require('nats');
+    const { connect } = require('@nats-io/transport-node');
+    const { jetstream } = require('@nats-io/jetstream');
 
-    const codec = JSONCodec();
+    const decoder = new TextDecoder();
 
     async function main() {
       const nc = await connect({ servers: process.env.NATS_URL });
-      const js = nc.jetstream();
+      const js = jetstream(nc);
 
       // Create a durable consumer
       const consumer = await js.consumers.get('ORDER_EVENTS', 'inventory-service');
@@ -264,7 +291,7 @@ data:
 
       for await (const msg of messages) {
         try {
-          const event = codec.decode(msg.data);
+          const event = JSON.parse(decoder.decode(msg.data));
           const subject = msg.subject;
 
           if (subject === 'orders.created') {
@@ -287,7 +314,8 @@ data:
   package.json: |
     {
       "dependencies": {
-        "nats": "^2.19.0"
+        "@nats-io/jetstream": "^3.4.0",
+        "@nats-io/transport-node": "^3.4.0"
       }
     }
 ```
@@ -343,6 +371,7 @@ nats stream add DEAD_LETTERS \
   --subjects "deadletter.>" \
   --retention limits --max-age 720h \
   --storage file --replicas 3 \
+  --defaults \
   --server nats://nats:4222
 ```
 
@@ -375,9 +404,9 @@ spec:
           args:
             - -s
             - nats://nats:4222
-            - --accounts
-            - --observe
-            - ">"
+            - --jsz=all
+            - --jsz-leaders-only
+            - --jsz-filter=consumer_num_pending,consumer_num_ack_pending,consumer_num_waiting
           ports:
             - containerPort: 7777
 ```
