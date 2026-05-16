@@ -17,7 +17,7 @@ This guide covers deploying Harbor on Talos Linux, configuring it for production
 Running your own container registry gives you control over your images. You decide what gets stored, who can access it, and which images pass security scanning. Harbor adds enterprise-grade features on top of the basic registry functionality:
 
 - Built-in vulnerability scanning with Trivy
-- Image signing and content trust
+- Image signing with Cosign and Notation
 - Replication to and from other registries
 - Robot accounts for CI/CD automation
 - Quota management per project
@@ -156,10 +156,6 @@ jobservice:
     limits:
       cpu: 1
       memory: 512Mi
-
-# Notary for image signing (optional)
-notary:
-  enabled: true
 ```
 
 ```bash
@@ -377,7 +373,7 @@ curl -k -u admin:your-password \
   -H "Content-Type: application/json" \
   -d '{
     "schedule": {
-      "type": "Weekly",
+      "type": "Custom",
       "cron": "0 0 0 * * 0"
     },
     "parameters": {
