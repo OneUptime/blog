@@ -89,7 +89,7 @@ Generate the Talos configuration for your HA cluster:
 ```bash
 # Generate cluster configs with the VIP as the endpoint
 talosctl gen config my-cluster https://192.168.1.100:6443 \
-  --output-dir _out \
+  --output _out \
   --with-docs=false \
   --with-examples=false
 ```
