@@ -147,7 +147,7 @@ machine:
                 - 10.1.0.0/16    # Cluster B pod CIDR
                 - 10.97.0.0/16   # Cluster B service CIDR
                 - 192.168.2.0/24 # Cluster B node network
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
         addresses:
           - 172.16.0.1/32
 ```
@@ -169,7 +169,7 @@ machine:
                 - 10.0.0.0/16    # Cluster A pod CIDR
                 - 10.96.0.0/16   # Cluster A service CIDR
                 - 192.168.1.0/24 # Cluster A node network
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
         addresses:
           - 172.16.0.2/32
 ```
@@ -265,9 +265,8 @@ machine:
   network:
     kubespan:
       enabled: false  # Disable if using your own tunneling
-  install:
-    extraKernelArgs:
-      - net.ipv4.ip_forward=1
+  sysctls:
+    net.ipv4.ip_forward: "1"
 ```
 
 ## Monitoring Peering Health
