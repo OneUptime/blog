@@ -212,8 +212,8 @@ machine:
       # Disable CPU vulnerability mitigations for performance
       # WARNING: Only do this in trusted environments
       # - mitigations=off
-      # Use deadline I/O scheduler
-      - elevator=deadline
+      # Use mq-deadline I/O scheduler (multi-queue block layer)
+      - elevator=mq-deadline
       # Disable transparent hugepages (for database workloads)
       - transparent_hugepage=never
 ```
