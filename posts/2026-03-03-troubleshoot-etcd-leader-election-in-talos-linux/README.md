@@ -34,7 +34,7 @@ talosctl -n 192.168.1.10,192.168.1.11,192.168.1.12 etcd status
 talosctl -n 192.168.1.10 etcd members
 ```
 
-If the status command shows different leaders for different members, or if no member claims to be the leader, you have a split-brain or quorum loss situation.
+If the status command shows different leaders for different members, you may be observing a partitioned or transitioning cluster and should check quorum and logs. If no member claims to be the leader, you have a quorum loss or election failure situation.
 
 Using Prometheus metrics:
 
@@ -60,9 +60,9 @@ talosctl -n 192.168.1.10 logs etcd | grep -i "unreachable\|connection\|dial\|tim
 # Look for specific heartbeat failures
 talosctl -n 192.168.1.10 logs etcd | grep -i "failed to reach\|lost leader"
 
-# Check network connectivity between nodes
+# Check node addresses and cluster membership information
 talosctl -n 192.168.1.10 get addresses
-talosctl -n 192.168.1.11 get addresses
+talosctl -n 192.168.1.10 get members
 ```
 
 Check Prometheus for peer network failures:
@@ -77,7 +77,7 @@ histogram_quantile(0.99,
 )
 ```
 
-If network latency between members is high (above 50ms), consider moving etcd members closer together or improving the network path.
+If network latency between members is high or has frequent spikes, consider moving etcd members closer together, improving the network path, or tuning the etcd timeouts carefully.
 
 ## Common Cause 2: Disk I/O Bottlenecks
 
@@ -108,16 +108,17 @@ If WAL fsync consistently takes more than 10ms at P99, your storage is too slow 
 - Using dedicated disks for etcd (not shared with other workloads)
 - Ensuring your cloud provider volumes have sufficient IOPS
 
-On Talos Linux, you can configure a dedicated disk for etcd in the machine config:
+On Talos Linux, etcd data lives under the `EPHEMERAL` (`/var`) system volume on control plane nodes. You can place that volume on a fast disk in the machine config:
 
 ```yaml
-# Dedicate a fast disk for etcd
-machine:
-  disks:
-  - device: /dev/nvme0n1
-    partitions:
-    - mountpoint: /var/lib/etcd
-      size: 20GB
+# Place the EPHEMERAL volume, which contains /var/lib/etcd, on a fast disk
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+provisioning:
+  diskSelector:
+    match: disk.transport == 'nvme' && !system_disk
+  minSize: 20GiB
 ```
 
 ## Common Cause 3: CPU Starvation
@@ -193,11 +194,11 @@ cluster:
       election-timeout: "2000"
 ```
 
-The election timeout should be at least 5x the round-trip time between etcd members and at least 5x the heartbeat interval.
+The election timeout should be at least 10x the round-trip time between etcd members, and the heartbeat interval should be close to the average round-trip time. Use the same heartbeat interval and election timeout values for every etcd member.
 
-## Recovering from a Split-Brain
+## Recovering from Quorum Loss or a Partition
 
-In rare cases, a network partition can cause a split-brain where two parts of the cluster each elect their own leader. When the partition heals, one side will step down, but there might be data inconsistency.
+In rare cases, a network partition can leave one side of the cluster without quorum and unable to elect or keep a leader. etcd's Raft implementation is designed to prevent split-brain: only a majority side can make progress. When the partition heals, members should converge on the leader elected by the quorum side.
 
 ```bash
 # Check if members disagree on the leader
@@ -205,9 +206,9 @@ talosctl -n 192.168.1.10 etcd status
 talosctl -n 192.168.1.11 etcd status
 talosctl -n 192.168.1.12 etcd status
 
-# If members report different leaders:
-# 1. The minority side should have been read-only during the partition
-# 2. After the partition heals, Raft will reconcile
+# If members report no leader or inconsistent leader information:
+# 1. Verify which members have quorum and can reach each other
+# 2. After the partition heals, Raft should converge on the quorum-side leader
 # 3. Monitor logs for convergence
 talosctl -n 192.168.1.10 logs etcd -f | grep -i "leader\|election\|campaign"
 ```
