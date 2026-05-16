@@ -68,6 +68,7 @@ Make sure the API token has the following permissions:
 # Create a secret with AWS credentials
 kubectl create secret generic route53-credentials \
   --namespace cert-manager \
+  --from-literal=access-key-id=YOUR_AWS_ACCESS_KEY_ID \
   --from-literal=secret-access-key=YOUR_AWS_SECRET_KEY
 ```
 
