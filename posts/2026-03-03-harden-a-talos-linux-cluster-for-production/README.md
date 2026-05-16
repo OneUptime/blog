@@ -55,10 +55,10 @@ openssl req -new -key backup.key -out backup.csr \
 
 ## 2. Restrict Network Access
 
-Limit which networks can reach the Talos and Kubernetes APIs.
+Limit which networks can reach the Talos and Kubernetes APIs. Talos ships with a built-in nftables-based ingress firewall (available in Talos 1.6+) that you configure via `NetworkDefaultActionConfig` and `NetworkRuleConfig` documents — don't try to shell out to `iptables`, as Talos has no shell to run it with.
 
 ```yaml
-# Machine configuration - restrict API access
+# Machine configuration - network interfaces
 machine:
   network:
     interfaces:
@@ -68,17 +68,22 @@ machine:
         routes:
           - network: 0.0.0.0/0
             gateway: 10.0.1.1
-  # Firewall rules for the Talos API
-  kernel:
-    modules:
-      - name: iptables
-  files:
-    - content: |
-        # Allow Talos API only from management network
-        iptables -A INPUT -p tcp --dport 50000 -s 10.0.0.0/16 -j ACCEPT
-        iptables -A INPUT -p tcp --dport 50000 -j DROP
-      permissions: 0o755
-      path: /var/etc/iptables/rules.sh
+---
+# Block all ingress by default
+apiVersion: v1alpha1
+kind: NetworkDefaultActionConfig
+ingress: block
+---
+# Allow the Talos API only from the management network
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: ingress-talos-apid
+portSelector:
+  ports:
+    - 50000
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/16
 ```
 
 For cloud deployments, also configure security groups or firewall rules at the infrastructure level:
@@ -243,15 +248,13 @@ cluster:
       # TLS settings
       tls-min-version: "VersionTLS12"
       tls-cipher-suites: "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
-      # Disable service account token auto-mount
+      # Validate that service account tokens still reference an existing SA
       service-account-lookup: "true"
 
   controllerManager:
     extraArgs:
       # Bind to localhost only
       bind-address: "127.0.0.1"
-      # Rotate kubelet certificates
-      rotate-certificates: "true"
 
   scheduler:
     extraArgs:
@@ -394,13 +397,13 @@ spec:
   groups:
     - name: security
       rules:
-        - alert: PrivilegedContainerRunning
-          expr: kube_pod_container_status_running{container!=""} * on(pod, namespace) group_left kube_pod_spec_containers_security_context_privileged{} > 0
-          for: 5m
+        - alert: PodSecurityViolation
+          expr: increase(apiserver_admission_controller_admission_duration_seconds_count{name="PodSecurity",rejected="true"}[5m]) > 0
+          for: 0m
           labels:
             severity: warning
           annotations:
-            summary: "Privileged container detected"
+            summary: "Pod Security Admission rejected a workload"
 
         - alert: NodeNotReady
           expr: kube_node_status_condition{condition="Ready",status="true"} == 0
