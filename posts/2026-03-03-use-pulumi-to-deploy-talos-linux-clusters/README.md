@@ -118,7 +118,7 @@ const sg = new aws.ec2.SecurityGroup(`${clusterName}-sg`, {
         // Kubernetes API
         { protocol: "tcp", fromPort: 6443, toPort: 6443, cidrBlocks: ["0.0.0.0/0"] },
         // Talos API
-        { protocol: "tcp", fromPort: 50000, toPort: 50000, cidrBlocks: ["0.0.0.0/0"] },
+        { protocol: "tcp", fromPort: 50000, toPort: 50001, cidrBlocks: ["0.0.0.0/0"] },
     ],
     egress: [
         { protocol: "-1", fromPort: 0, toPort: 0, cidrBlocks: ["0.0.0.0/0"] },
@@ -158,21 +158,23 @@ new aws.lb.Listener(`${clusterName}-api-listener`, {
     }],
 });
 
-// Find the Talos AMI
-const talosAmi = aws.ec2.getAmi({
-    mostRecent: true,
-    owners: ["540036508848"],
-    filters: [{
-        name: "name",
-        values: [`talos-${talosVersion}-*-amd64`],
-    }],
+// Find the Talos AMI from the official release metadata
+const currentRegion = aws.getRegion();
+const talosAmiId = pulumi.output(currentRegion).apply(async region => {
+    const response = await fetch(`https://github.com/siderolabs/talos/releases/download/${talosVersion}/cloud-images.json`);
+    const images: { cloud: string; region: string; arch: string; id: string }[] = await response.json();
+    const image = images.find(i => i.cloud === "aws" && i.region === region.name && i.arch === "amd64");
+    if (!image) {
+        throw new Error(`No Talos ${talosVersion} amd64 AMI found for ${region.name}`);
+    }
+    return image.id;
 });
 
 // Create control plane instances
 const controlplaneInstances: aws.ec2.Instance[] = [];
 for (let i = 0; i < controlplaneCount; i++) {
     const instance = new aws.ec2.Instance(`${clusterName}-cp-${i}`, {
-        ami: talosAmi.then(ami => ami.id),
+        ami: talosAmiId,
         instanceType: instanceType,
         subnetId: subnets[i % 3].id,
         vpcSecurityGroupIds: [sg.id],
@@ -199,7 +201,7 @@ for (let i = 0; i < controlplaneCount; i++) {
 const workerInstances: aws.ec2.Instance[] = [];
 for (let i = 0; i < workerCount; i++) {
     const instance = new aws.ec2.Instance(`${clusterName}-worker-${i}`, {
-        ami: talosAmi.then(ami => ami.id),
+        ami: talosAmiId,
         instanceType: workerInstanceType,
         subnetId: subnets[i % 3].id,
         vpcSecurityGroupIds: [sg.id],
@@ -218,56 +220,62 @@ for (let i = 0; i < workerCount; i++) {
 
 ## Step 4: Generate Talos Configuration and Bootstrap
 
-Since Pulumi does not have a native Talos provider, we use the command provider to run talosctl:
+This example uses the command provider to run talosctl:
 
 ```typescript
 // Generate Talos secrets
 const talosSecrets = new command.local.Command("talos-gen-secrets", {
-    create: "talosctl gen secrets -o /tmp/talos-secrets.yaml && cat /tmp/talos-secrets.yaml",
+    create: "talosctl gen secrets --output-file /tmp/talos-secrets.yaml && cat /tmp/talos-secrets.yaml",
 });
 
 // Generate machine configurations
 const genConfig = new command.local.Command("talos-gen-config", {
     create: pulumi.interpolate`talosctl gen config ${clusterName} https://${apiLb.dnsName}:6443 \
-        --from /tmp/talos-secrets.yaml \
-        --output-dir /tmp/talos-config \
+        --with-secrets /tmp/talos-secrets.yaml \
+        --output /tmp/talos-config \
         --force && echo "done"`,
 }, { dependsOn: [talosSecrets, apiLb] });
 
 // Apply configuration to control plane nodes
+const controlplaneApplyCommands: command.local.Command[] = [];
 controlplaneInstances.forEach((instance, i) => {
-    new command.local.Command(`apply-cp-config-${i}`, {
+    const applyCommand = new command.local.Command(`apply-cp-config-${i}`, {
         create: pulumi.interpolate`sleep 60 && talosctl apply-config \
             --insecure \
             --nodes ${instance.publicIp} \
             --file /tmp/talos-config/controlplane.yaml`,
     }, { dependsOn: [genConfig, instance] });
+    controlplaneApplyCommands.push(applyCommand);
 });
 
 // Apply configuration to worker nodes
+const workerApplyCommands: command.local.Command[] = [];
 workerInstances.forEach((instance, i) => {
-    new command.local.Command(`apply-worker-config-${i}`, {
+    const applyCommand = new command.local.Command(`apply-worker-config-${i}`, {
         create: pulumi.interpolate`sleep 60 && talosctl apply-config \
             --insecure \
             --nodes ${instance.publicIp} \
             --file /tmp/talos-config/worker.yaml`,
     }, { dependsOn: [genConfig, instance] });
+    workerApplyCommands.push(applyCommand);
 });
 
 // Bootstrap the cluster
 const bootstrap = new command.local.Command("talos-bootstrap", {
     create: pulumi.interpolate`sleep 120 && talosctl bootstrap \
+        --endpoints ${controlplaneInstances[0].publicIp} \
         --nodes ${controlplaneInstances[0].publicIp} \
         --talosconfig /tmp/talos-config/talosconfig`,
-}, { dependsOn: controlplaneInstances.map((_, i) => `apply-cp-config-${i}`) });
+}, { dependsOn: controlplaneApplyCommands });
 
 // Get kubeconfig
 const kubeconfig = new command.local.Command("get-kubeconfig", {
     create: pulumi.interpolate`sleep 60 && talosctl kubeconfig \
+        --endpoints ${controlplaneInstances[0].publicIp} \
         --nodes ${controlplaneInstances[0].publicIp} \
         --talosconfig /tmp/talos-config/talosconfig \
-        -f /tmp/talos-kubeconfig && cat /tmp/talos-kubeconfig`,
-}, { dependsOn: [bootstrap] });
+        --force /tmp/talos-kubeconfig && cat /tmp/talos-kubeconfig`,
+}, { dependsOn: [bootstrap, ...workerApplyCommands] });
 ```
 
 ## Step 5: Create a Reusable Component
@@ -277,8 +285,6 @@ Wrap the cluster creation in a reusable Pulumi component:
 ```typescript
 // talos-cluster.ts
 import * as pulumi from "@pulumi/pulumi";
-import * as aws from "@pulumi/aws";
-
 interface TalosClusterArgs {
     name: string;
     controlplaneCount: number;
@@ -304,12 +310,18 @@ export class TalosCluster extends pulumi.ComponentResource {
         // Create all resources as children of this component
         // (VPC, subnets, instances, etc. - same as above but with parent: this)
 
-        this.apiEndpoint = pulumi.interpolate`https://api-lb-dns:6443`;
-        this.controlplaneIps = [];
-        this.workerIps = [];
+        this.apiEndpoint = pulumi.output("https://api-lb-dns:6443");
+        this.controlplaneIps = Array.from({ length: args.controlplaneCount }, (_, i) =>
+            pulumi.output(`controlplane-${i}-ip`),
+        );
+        this.workerIps = Array.from({ length: args.workerCount }, (_, i) =>
+            pulumi.output(`worker-${i}-ip`),
+        );
 
         this.registerOutputs({
             apiEndpoint: this.apiEndpoint,
+            controlplaneIps: this.controlplaneIps,
+            workerIps: this.workerIps,
         });
     }
 }
