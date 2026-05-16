@@ -12,7 +12,7 @@ When you have multiple control plane nodes in a Talos Linux cluster, you need a 
 
 ## How the Talos VIP Works
 
-Talos implements VIP using a simple leader election mechanism. All control plane nodes participate in an election, and the winner assigns the VIP to its network interface. The other nodes monitor the leader, and if it becomes unreachable, a new election happens and the VIP moves to another node.
+Talos implements VIP using an etcd-backed leader election mechanism. All control plane nodes participate in an election, and the winner assigns the VIP to its network interface. The other nodes monitor the leader, and if it becomes unreachable, a new election happens and the VIP moves to another node.
 
 ```mermaid
 graph TD
@@ -43,7 +43,7 @@ graph TD
     style CP1 fill:#ff6666
 ```
 
-The failover typically happens within a few seconds.
+Graceful failover typically happens very quickly. Unexpected failures can take longer, sometimes up to about a minute.
 
 ## Prerequisites
 
@@ -73,14 +73,10 @@ The cleanest approach is to configure the VIP when you first generate your clust
 ### Create the VIP Patch
 
 ```yaml
-# vip-patch.yaml
-
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        vip:
-          ip: 192.168.1.100
+apiVersion: v1alpha1
+kind: Layer2VIPConfig
+name: 192.168.1.100
+link: eth0
 ```
 
 Replace `eth0` with the actual interface name on your nodes. To find the interface name, you can check the console output when Talos boots, or query it after the fact:
@@ -127,7 +123,7 @@ talosctl patch machineconfig --nodes 192.168.1.103 \
   --patch @vip-patch.yaml
 ```
 
-The VIP becomes active after the configuration is applied. No reboot is required for VIP changes.
+The VIP becomes active after the configuration is applied, once etcd and kube-apiserver are healthy. Use `--mode no-reboot` if you want `talosctl` to reject the change instead of rebooting when Talos cannot apply it live.
 
 Keep in mind that if the cluster was originally configured with a different endpoint (like a single node's IP), worker nodes and your kubeconfig will still use the old endpoint. You would need to update the cluster endpoint separately, which requires more careful planning.
 
@@ -178,36 +174,33 @@ talosctl reboot --nodes 192.168.1.101
 # Immediately check if the VIP moved
 ping 192.168.1.100
 
-# After a few seconds, the VIP should be reachable again
+# After failover completes, the VIP should be reachable again
 # Check which node now holds it
 talosctl get addresses --nodes 192.168.1.102,192.168.1.103 | grep 192.168.1.100
 ```
 
-The failover should complete within 5-10 seconds. During the failover, API requests will fail, but kubectl and other clients will retry automatically.
+Graceful failover should complete almost immediately. Unexpected failures can take up to about a minute. During the failover, API requests may fail, but kubectl and other clients will retry automatically.
 
 ## VIP with Static IPs
 
 If your control plane nodes use static IPs, configure them together with the VIP:
 
 ```yaml
-# cp1-config.yaml
-machine:
-  network:
-    hostname: cp1
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.101/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-        vip:
-          ip: 192.168.1.100
-    nameservers:
-      - 8.8.8.8
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.101/24
+routes:
+  - gateway: 192.168.1.1
+---
+apiVersion: v1alpha1
+kind: Layer2VIPConfig
+name: 192.168.1.100
+link: eth0
 ```
 
-Note that the VIP is configured on the same interface as the static IP. The VIP is added as a secondary address on the interface.
+Note that the VIP is configured on the same link as the static IP. The VIP is added as a secondary address on the interface.
 
 ## VIP Limitations
 
