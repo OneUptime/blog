@@ -24,7 +24,7 @@ There are several scenarios you might encounter:
 
 **Scenario 1: Some nodes public, some behind NAT.** This is the easiest case. Nodes behind NAT can reach public nodes directly, and WireGuard handles the rest.
 
-**Scenario 2: All nodes behind NAT but different NATs.** This is harder. Neither node can initiate a connection to the other because both are behind NAT. You need at least one node with a public endpoint or use STUN-like techniques.
+**Scenario 2: All nodes behind NAT but different NATs.** This is harder. KubeSpan can often establish connections when both ends send UDP packets in a close time window, but restrictive NATs or firewalls can still prevent the connection. Best practice is to make sure at least one end of each node-to-node path can receive UDP 51820 inbound.
 
 **Scenario 3: Nodes behind the same NAT.** Nodes on the same LAN behind the same NAT can reach each other using private IPs. The challenge is making sure KubeSpan uses private IPs for local peers and public IPs for remote peers.
 
@@ -37,30 +37,34 @@ For nodes with public IPs:
 ```yaml
 # public-node-config.yaml
 
-machine:
-  network:
-    kubespan:
-      enabled: true
-      filters:
-        endpoints:
-          - "0.0.0.0/0"  # Advertise all endpoints
+apiVersion: v1alpha1
+kind: KubeSpanConfig
+enabled: true
+filters:
+  endpoints:
+    - "0.0.0.0/0"  # Advertise all IPv4 endpoints
+    - "::/0"       # Advertise all IPv6 endpoints
 ```
 
-For nodes behind NAT, you need to make sure the NAT router forwards UDP port 51820:
+For nodes behind NAT, you need to make sure the NAT router forwards UDP port 51820 and announce that inbound NAT mapping explicitly:
 
 ```yaml
 # nat-node-config.yaml
-machine:
-  network:
-    kubespan:
-      enabled: true
-      filters:
-        endpoints:
-          # Only advertise the public (NAT) IP, not the private LAN IP
-          - "!192.168.0.0/16"
-          - "!10.0.0.0/8"
-          - "!172.16.0.0/12"
-          - "0.0.0.0/0"
+apiVersion: v1alpha1
+kind: KubeSpanConfig
+enabled: true
+filters:
+  endpoints:
+    # Only advertise local routable addresses discovered on the node
+    - "!192.168.0.0/16"
+    - "!10.0.0.0/8"
+    - "!172.16.0.0/12"
+    - "0.0.0.0/0"
+---
+apiVersion: v1alpha1
+kind: KubeSpanEndpointsConfig
+extraAnnouncedEndpoints:
+  - "198.51.100.5:51820"  # Public NAT address and forwarded UDP port
 ```
 
 Set up port forwarding on the NAT router:
@@ -77,33 +81,32 @@ Endpoint filtering is crucial in NAT environments. Without proper filters, a nod
 
 ```yaml
 # Filter endpoints to only advertise routable IPs
-machine:
-  network:
-    kubespan:
-      enabled: true
-      filters:
-        endpoints:
-          # Exclude RFC1918 private ranges
-          - "!10.0.0.0/8"
-          - "!172.16.0.0/12"
-          - "!192.168.0.0/16"
-          # Exclude link-local
-          - "!169.254.0.0/16"
-          # Allow everything else (public IPs)
-          - "0.0.0.0/0"
+apiVersion: v1alpha1
+kind: KubeSpanConfig
+enabled: true
+filters:
+  endpoints:
+    # Exclude RFC1918 private ranges
+    - "!10.0.0.0/8"
+    - "!172.16.0.0/12"
+    - "!192.168.0.0/16"
+    # Exclude link-local
+    - "!169.254.0.0/16"
+    # Allow everything else (public IPv4 addresses)
+    - "0.0.0.0/0"
 ```
 
 However, if some of your nodes are on the same private network, you DO want them to use private IPs to communicate with each other (to avoid hairpin NAT). In this case, advertise both private and public endpoints:
 
 ```yaml
 # Advertise both private and public IPs
-machine:
-  network:
-    kubespan:
-      enabled: true
-      filters:
-        endpoints:
-          - "0.0.0.0/0"  # Advertise everything
+apiVersion: v1alpha1
+kind: KubeSpanConfig
+enabled: true
+filters:
+  endpoints:
+    - "0.0.0.0/0"  # Advertise all IPv4 endpoints
+    - "::/0"       # Advertise all IPv6 endpoints
 ```
 
 KubeSpan will try multiple endpoints and use whichever works. Nodes on the same LAN will connect using the private IP, while remote nodes will connect using the public IP.
@@ -121,26 +124,25 @@ In this case, you typically need to:
 1. Configure port forwarding on Router 2 (inner NAT) to forward UDP 51820 to the Talos node
 2. Configure port forwarding on Router 1 (outer NAT) to forward UDP 51820 to Router 2
 
-If you cannot configure Router 1 (like an ISP's carrier-grade NAT), you will need to use a relay node with a public IP. More on that below.
+If you cannot configure Router 1 (like an ISP's carrier-grade NAT), you will need at least one reachable node with a public IP, or another routing/VPN design for peers that cannot connect directly. More on that below.
 
 ## Using a Relay Node
 
-When nodes cannot establish direct connections (both behind restrictive NATs), you can use a relay node. This is a Talos node with a public IP that acts as an intermediary:
+When nodes cannot establish direct connections (both behind restrictive NATs), adding a Talos node with a public IP gives every other node at least one reachable KubeSpan peer:
 
 ```yaml
 # relay-node-config.yaml
-# This node has a public IP and acts as a relay
-machine:
-  network:
-    kubespan:
-      enabled: true
-      advertiseKubernetesNetworks: true
-      filters:
-        endpoints:
-          - "0.0.0.0/0"
+# This node has a public IP and is reachable on UDP 51820
+apiVersion: v1alpha1
+kind: KubeSpanConfig
+enabled: true
+filters:
+  endpoints:
+    - "0.0.0.0/0"
+    - "::/0"
 ```
 
-The relay node does not need special configuration. KubeSpan automatically routes traffic through nodes that can reach both sides. However, this adds latency and puts extra load on the relay node. For production use, make sure the relay has sufficient bandwidth.
+The public node does not need special KubeSpan configuration beyond being reachable on UDP 51820. KubeSpan does not automatically turn that node into a generic relay for traffic between two other peers, so traffic between two private nodes still needs a direct KubeSpan connection or another routing/VPN design if restrictive NAT prevents the direct peer link.
 
 ## Testing NAT Traversal
 
@@ -148,7 +150,7 @@ After configuring KubeSpan, verify that NAT traversal is working:
 
 ```bash
 # Check peer status - look at the endpoint column
-talosctl get kubespanpeerstatus --nodes <public-node-ip>
+talosctl get kubespanpeerstatuses --nodes <public-node-ip>
 
 # You should see the public (NAT) IP of nodes behind NAT
 # NODE           NAMESPACE   TYPE                 ID     LABEL      ENDPOINT              STATE
@@ -158,10 +160,10 @@ talosctl get kubespanpeerstatus --nodes <public-node-ip>
 If the endpoint shows a private IP for a node that should be using its public IP, your endpoint filters are not configured correctly.
 
 ```bash
-# Check what endpoints a node is advertising
-talosctl get kubespanendpoint --nodes <node-behind-nat> -o yaml
+# Check what endpoints peers have learned from discovery
+talosctl get kubespanpeerspecs --nodes <public-node-ip> -o yaml
 
-# You should see the public IP, not the private one
+# You should see the public NAT endpoint for the node behind NAT
 ```
 
 ## Adjusting Keepalive Timers
@@ -174,7 +176,7 @@ Check the current keepalive behavior:
 
 ```bash
 # Look at last handshake times to see if connections stay alive
-talosctl get kubespanpeerstatus --nodes <node-ip> -o yaml | grep -i handshake
+talosctl get kubespanpeerstatuses --nodes <node-ip> -o yaml | grep -i handshake
 ```
 
 If handshakes are happening frequently (every few seconds instead of the normal every ~2 minutes), it might indicate NAT timeouts. The WireGuard keepalive in KubeSpan is set to 25 seconds by default, which should handle most NATs.
@@ -184,11 +186,10 @@ If handshakes are happening frequently (every few seconds instead of the normal 
 NAT does not change the packet size, but it does add complexity to path MTU discovery. WireGuard already reduces the MTU to 1420 (from the typical 1500) to account for its own overhead. If your NAT environment also uses encapsulation (like when running in a cloud VPC), lower the MTU further:
 
 ```yaml
-machine:
-  network:
-    kubespan:
-      enabled: true
-      mtu: 1360  # Conservative MTU for NAT + cloud environments
+apiVersion: v1alpha1
+kind: KubeSpanConfig
+enabled: true
+mtu: 1360  # Conservative MTU for NAT + cloud environments
 ```
 
 ## Troubleshooting NAT Issues
@@ -197,13 +198,13 @@ When KubeSpan NAT traversal is not working:
 
 ```bash
 # Step 1: Verify the node can reach the discovery service
-talosctl get discoveredmembers --nodes <node-ip>
+talosctl get members --nodes <node-ip>
 
-# Step 2: Check what endpoints are advertised
-talosctl get kubespanendpoint --nodes <node-ip> -o yaml
+# Step 2: Check what KubeSpan peer endpoints were learned
+talosctl get kubespanpeerspecs --nodes <node-ip> -o yaml
 
 # Step 3: Check peer status for connection state
-talosctl get kubespanpeerstatus --nodes <node-ip>
+talosctl get kubespanpeerstatuses --nodes <node-ip>
 
 # Step 4: Check for NAT-related issues in logs
 talosctl logs controller-runtime --nodes <node-ip> | grep -i "endpoint\|kubespan"
@@ -212,4 +213,4 @@ talosctl logs controller-runtime --nodes <node-ip> | grep -i "endpoint\|kubespan
 nc -zu <public-nat-ip> 51820
 ```
 
-NAT traversal with KubeSpan on Talos Linux is mostly automatic, but it requires attention to endpoint filtering and port forwarding. The key takeaway is that at least one node needs to be reachable on its WireGuard port from the other nodes. If all your nodes are behind NAT, invest in a small relay node with a public IP. It is a small cost for reliable cluster connectivity.
+NAT traversal with KubeSpan on Talos Linux is mostly automatic, but it requires attention to endpoint filtering and port forwarding. The key takeaway is that at least one end of each node-to-node path should be reachable on its WireGuard port. If all your nodes are behind restrictive NAT, invest in a small public node or another routing/VPN design that gives the cluster reliable connectivity.
