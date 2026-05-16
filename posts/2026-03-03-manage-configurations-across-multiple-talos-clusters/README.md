@@ -44,7 +44,7 @@ machine:
     net.ipv4.ip_forward: "1"
   kubelet:
     extraArgs:
-      rotate-server-certificates: true
+      rotate-server-certificates: "true"
       event-qps: "5"
     nodeIP:
       validSubnets:
