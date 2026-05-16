@@ -367,10 +367,11 @@ volumes:
 
 ## Handling Conflicts
 
-If two sources project files with the same path, the last source in the list wins. Be careful with naming:
+If two sources project files to the same path, the API server rejects the Pod at admission time with a `conflicting duplicate paths` validation error. The Pod will not be created. Be careful with naming:
 
 ```yaml
-# This will cause the second secret's 'config' to overwrite the first
+# This Pod will be rejected by the API server because both sources
+# project to the same path "config"
 volumes:
 - name: projected
   projected:
@@ -379,12 +380,12 @@ volumes:
         name: secret-a
         items:
         - key: data
-          path: config  # This file...
+          path: config  # This path...
     - secret:
         name: secret-b
         items:
         - key: data
-          path: config  # ...gets overwritten by this one
+          path: config  # ...conflicts with this one
 ```
 
 To avoid conflicts, use unique paths or organize files into subdirectories as shown in the multi-secret example earlier.
