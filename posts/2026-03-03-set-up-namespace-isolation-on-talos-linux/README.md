@@ -8,7 +8,7 @@ Description: A practical guide to implementing namespace isolation on Talos Linu
 
 ---
 
-Kubernetes namespaces provide a logical boundary for organizing workloads, but by default they offer almost no isolation. A pod in one namespace can freely communicate with pods in any other namespace, access cluster-wide resources, and potentially interfere with workloads it has no business touching. On a Talos Linux cluster where you run workloads for multiple teams or applications, proper namespace isolation is essential for security and stability.
+Kubernetes namespaces provide a logical boundary for organizing workloads, but by default they offer almost no isolation. A pod in one namespace can freely communicate with pods in any other namespace, and any workload with overly broad API permissions can access resources it has no business touching. On a Talos Linux cluster where you run workloads for multiple teams or applications, proper namespace isolation is essential for security and stability.
 
 This post walks through how to set up meaningful namespace isolation on Talos Linux, covering network policies, RBAC restrictions, resource quotas, and other controls that turn namespaces from organizational labels into actual security boundaries.
 
@@ -22,13 +22,21 @@ By default, any pod can send traffic to any other pod in the cluster, regardless
 
 The first and most important isolation mechanism is network policies. These control which pods can communicate with which other pods.
 
-Start by deploying a CNI that supports network policies. On Talos Linux, Cilium is a popular choice.
+Start by deploying a CNI that supports network policies. On Talos Linux, Cilium is a popular choice. If you are replacing the default CNI on a new Talos cluster, set `cluster.network.cni.name` to `none` in the Talos machine configuration before bootstrapping the cluster, then install Cilium with Talos-compatible Helm values.
 
 ```bash
-# Install Cilium with network policy support
+# Install Cilium with network policy support on Talos
+helm repo add cilium https://helm.cilium.io/
+helm repo update
 
 helm install cilium cilium/cilium \
   --namespace kube-system \
+  --set ipam.mode=kubernetes \
+  --set kubeProxyReplacement=false \
+  --set securityContext.capabilities.ciliumAgent="{CHOWN,KILL,NET_ADMIN,NET_RAW,IPC_LOCK,SYS_ADMIN,SYS_RESOURCE,DAC_OVERRIDE,FOWNER,SETGID,SETUID}" \
+  --set securityContext.capabilities.cleanCiliumState="{NET_ADMIN,SYS_ADMIN,SYS_RESOURCE}" \
+  --set cgroup.autoMount.enabled=false \
+  --set cgroup.hostRoot=/sys/fs/cgroup \
   --set policyEnforcementMode=default
 ```
 
@@ -43,7 +51,6 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny-all
-  namespace: team-a
 spec:
   podSelector: {}
   policyTypes:
@@ -84,7 +91,9 @@ spec:
         - podSelector: {}
     # Allow DNS resolution (required for service discovery)
     - to:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
           podSelector:
             matchLabels:
               k8s-app: kube-dns
@@ -115,7 +124,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: ingress-nginx
+              kubernetes.io/metadata.name: ingress-nginx
 ```
 
 ## Step 2: RBAC Isolation
@@ -135,10 +144,15 @@ metadata:
   namespace: team-a
 rules:
   # Full access to common resources within the namespace
-  - apiGroups: ["", "apps", "batch"]
-    resources: ["pods", "deployments", "services", "configmaps",
-                "secrets", "jobs", "cronjobs", "replicasets",
-                "statefulsets", "persistentvolumeclaims"]
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "secrets",
+                "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   # Read-only access to events
   - apiGroups: [""]
@@ -260,14 +274,14 @@ metadata:
     # Enforce restricted Pod Security Standard
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
-    # Warn on baseline violations
+    # Warn on restricted policy violations
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/warn-version: latest
 ```
 
 ```bash
 # Apply the Pod Security Standard labels
-kubectl label namespace team-a \
+kubectl label namespace team-a --overwrite \
   pod-security.kubernetes.io/enforce=restricted \
   pod-security.kubernetes.io/enforce-version=latest \
   pod-security.kubernetes.io/warn=restricted \
@@ -326,7 +340,9 @@ spec:
     - to:
         - podSelector: {}
     - to:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
           podSelector:
             matchLabels:
               k8s-app: kube-dns
@@ -335,6 +351,43 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+EOF
+
+# Apply namespace-scoped RBAC
+kubectl -n "$NAMESPACE" apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: namespace-admin
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "secrets", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/exec", "pods/log", "pods/portforward"]
+    verbs: ["get", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: namespace-admin
+subjects:
+  - kind: Group
+    name: "$TEAM_GROUP"
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: namespace-admin
+  apiGroup: rbac.authorization.k8s.io
 EOF
 
 # Apply resource quota
@@ -350,6 +403,33 @@ spec:
     requests.memory: 16Gi
     limits.memory: 32Gi
     pods: "50"
+EOF
+
+# Apply default per-container limits
+kubectl -n "$NAMESPACE" apply -f - <<EOF
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: default-limits
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      max:
+        cpu: "4"
+        memory: 8Gi
+      min:
+        cpu: 50m
+        memory: 64Mi
+    - type: Pod
+      max:
+        cpu: "8"
+        memory: 16Gi
 EOF
 
 echo "Namespace $NAMESPACE created with full isolation controls."
