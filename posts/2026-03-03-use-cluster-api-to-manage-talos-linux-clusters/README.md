@@ -40,7 +40,7 @@ You need a management cluster before you can create workload clusters. This can 
 kind create cluster --name capi-management
 
 # Install clusterctl - the CAPI CLI tool
-curl -L https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.7.0/clusterctl-linux-amd64 -o clusterctl
+curl -L https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.13.1/clusterctl-linux-amd64 -o clusterctl
 chmod +x clusterctl
 sudo mv clusterctl /usr/local/bin/
 
@@ -56,7 +56,8 @@ Verify the providers are installed:
 ```bash
 # Check that all providers are running
 kubectl get pods -n capi-system
-kubectl get pods -n capt-system
+kubectl get pods -n cabpt-system
+kubectl get pods -n cacppt-system
 kubectl get pods -n capa-system  # AWS infrastructure provider
 ```
 
@@ -66,7 +67,7 @@ A Talos workload cluster is defined by several interconnected resources:
 
 ```yaml
 # The Cluster resource ties everything together
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: Cluster
 metadata:
   name: production-cluster
@@ -130,7 +131,7 @@ metadata:
   name: production-cluster-cp
   namespace: default
 spec:
-  version: v1.30.0
+  version: v1.35.0
   replicas: 3
   infrastructureTemplate:
     apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
@@ -139,7 +140,7 @@ spec:
   controlPlaneConfig:
     controlplane:
       generateType: controlplane
-      talosVersion: v1.7.0
+      talosVersion: v1.13.0
       configPatches:
         - op: add
           path: /machine/time
@@ -193,7 +194,7 @@ Use MachineDeployment resources to manage worker node pools:
 
 ```yaml
 # Worker node pool
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: MachineDeployment
 metadata:
   name: production-cluster-workers
@@ -206,7 +207,7 @@ spec:
   template:
     spec:
       clusterName: production-cluster
-      version: v1.30.0
+      version: v1.35.0
       bootstrap:
         configRef:
           apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
@@ -228,7 +229,7 @@ spec:
   template:
     spec:
       generateType: worker
-      talosVersion: v1.7.0
+      talosVersion: v1.13.0
 ```
 
 ## Creating the Cluster
@@ -272,7 +273,7 @@ kubectl patch machinedeployment production-cluster-workers \
 
 # Upgrade Kubernetes version
 kubectl patch taloscontrolplane production-cluster-cp \
-  --type merge -p '{"spec":{"version":"v1.31.0"}}'
+  --type merge -p '{"spec":{"version":"v1.36.1"}}'
 
 # Delete the cluster
 kubectl delete cluster production-cluster
