@@ -61,7 +61,7 @@ wget https://github.com/siderolabs/talos/releases/download/v1.9.0/talosctl-linux
 chmod +x talosctl-linux-amd64
 
 # Download kubectl
-wget https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl
+wget https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl
 chmod +x kubectl
 ```
 
@@ -75,14 +75,14 @@ talosctl image default
 
 # This outputs a list like:
 # ghcr.io/siderolabs/installer:v1.9.0
-# registry.k8s.io/kube-apiserver:v1.31.0
-# registry.k8s.io/kube-controller-manager:v1.31.0
-# registry.k8s.io/kube-scheduler:v1.31.0
-# registry.k8s.io/kube-proxy:v1.31.0
-# registry.k8s.io/coredns/coredns:v1.11.1
-# registry.k8s.io/etcd:v3.5.12
+# registry.k8s.io/kube-apiserver:v1.32.0
+# registry.k8s.io/kube-controller-manager:v1.32.0
+# registry.k8s.io/kube-scheduler:v1.32.0
+# registry.k8s.io/kube-proxy:v1.32.0
+# registry.k8s.io/coredns/coredns:v1.11.3
+# registry.k8s.io/etcd:v3.5.16
 # registry.k8s.io/pause:3.9
-# ghcr.io/siderolabs/flannel:v0.25.1
+# ghcr.io/siderolabs/flannel:v0.26.1
 # ... and more
 ```
 
@@ -245,7 +245,9 @@ When a new version of Talos Linux is released, you need to repeat the image down
 ```bash
 # On the connected machine - download new version assets
 NEW_VERSION="v1.10.0"
-talosctl image default --kubernetes-version 1.32.0 > image-list-new.txt
+
+# Use the new talosctl version to print the default images for that release
+./talosctl-${NEW_VERSION}-linux-amd64 image default > image-list-new.txt
 
 # Download new images
 while read -r image; do
