@@ -49,38 +49,42 @@ talosctl -n 10.0.0.11 get links eth0 -o yaml
 You configure links through the machine configuration. The spec includes interface name, addressing, bonding, VLAN tags, and more.
 
 ```yaml
-# Machine config: interface configuration
-machine:
-  network:
-    interfaces:
-      # Simple DHCP interface
-      - interface: eth0
-        dhcp: true
-
-      # Static IP interface
-      - interface: eth1
-        addresses:
-          - 192.168.1.100/24
-        routes:
-          - network: 10.0.0.0/8
-            gateway: 192.168.1.1
-
-      # Bond interface
-      - interface: bond0
-        bond:
-          mode: 802.3ad
-          lacpRate: fast
-          interfaces:
-            - eth2
-            - eth3
-        addresses:
-          - 10.0.0.11/24
-        mtu: 9000
-
-      # VLAN interface
-      - interface: eth0.100
-        addresses:
-          - 172.16.0.10/24
+# Machine config: physical link with static addressing
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth1
+addresses:
+  - address: 192.168.1.100/24
+routes:
+  - destination: 10.0.0.0/8
+    gateway: 192.168.1.1
+---
+# Simple DHCP interface
+apiVersion: v1alpha1
+kind: DHCPv4Config
+name: eth0
+---
+# Bond interface
+apiVersion: v1alpha1
+kind: BondConfig
+name: bond0
+links:
+  - eth2
+  - eth3
+bondMode: 802.3ad
+lacpRate: fast
+addresses:
+  - address: 10.0.0.11/24
+mtu: 9000
+---
+# VLAN interface
+apiVersion: v1alpha1
+kind: VLANConfig
+name: eth0.100
+parent: eth0
+vlanID: 100
+addresses:
+  - address: 172.16.0.10/24
 ```
 
 ## Address Resources
@@ -116,21 +120,19 @@ Routes are configured through the machine configuration alongside interface addr
 
 ```yaml
 # Machine config: routing configuration
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 10.0.0.11/24
-        routes:
-          # Default route
-          - network: 0.0.0.0/0
-            gateway: 10.0.0.1
-            metric: 100
-          # Specific network route
-          - network: 192.168.0.0/16
-            gateway: 10.0.0.254
-            metric: 200
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 10.0.0.11/24
+routes:
+  # Default route
+  - gateway: 10.0.0.1
+    metric: 100
+  # Specific network route
+  - destination: 192.168.0.0/16
+    gateway: 10.0.0.254
+    metric: 200
 ```
 
 ## DNS and Resolver Resources
@@ -147,15 +149,15 @@ talosctl -n 10.0.0.11 read /etc/resolv.conf
 
 ```yaml
 # Machine config: DNS configuration
-machine:
-  network:
-    nameservers:
-      - 8.8.8.8
-      - 8.8.4.4
-      - 1.1.1.1
+apiVersion: v1alpha1
+kind: ResolverConfig
+nameservers:
+  - address: 8.8.8.8
+  - address: 8.8.4.4
+  - address: 1.1.1.1
 ```
 
-Talos also runs a local DNS proxy that handles DNS resolution for both the host and Kubernetes pods. This proxy caches responses and can forward to upstream resolvers defined in the configuration.
+Talos can also run a local host DNS caching resolver for host workloads, including host-network pods. When configured to forward kube-dns to host DNS, Kubernetes CoreDNS uses the host resolver as its upstream so the cache is shared between the host and kube-dns.
 
 ## Hostname Resources
 
@@ -171,9 +173,10 @@ talosctl -n 10.0.0.11 get nodename
 
 ```yaml
 # Machine config: hostname configuration
-machine:
-  network:
-    hostname: worker-01
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: worker-01
+auto: off
 ```
 
 ## The Networking Controller
@@ -193,16 +196,13 @@ The controller handles several key operations:
 
 ```bash
 # Apply a network configuration change
-talosctl -n 10.0.0.11 patch machineconfig --patch '[
-  {
-    "op": "add",
-    "path": "/machine/network/interfaces/-",
-    "value": {
-      "interface": "eth1",
-      "addresses": ["192.168.1.100/24"]
-    }
-  }
-]'
+talosctl -n 10.0.0.11 patch machineconfig --mode=no-reboot --patch '
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth1
+addresses:
+  - address: 192.168.1.100/24
+'
 
 # The controller applies the change immediately
 # Verify the new address
@@ -215,7 +215,8 @@ When an interface is configured for DHCP, Talos runs its own DHCP client. The DH
 
 ```bash
 # Check DHCP lease information
-talosctl -n 10.0.0.11 get addresses -o yaml | grep -A5 "layer: operator"
+talosctl -n 10.0.0.11 get operatorspecs
+talosctl -n 10.0.0.11 get addressspecs --namespace network-config
 ```
 
 ## Network Diagnostics
@@ -223,10 +224,10 @@ talosctl -n 10.0.0.11 get addresses -o yaml | grep -A5 "layer: operator"
 Since you cannot SSH into a Talos node and run traditional network tools, you use talosctl for diagnostics.
 
 ```bash
-# Check network connectivity
+# View sockets
 talosctl -n 10.0.0.11 netstat
 
-# View active connections
+# View listening sockets
 talosctl -n 10.0.0.11 netstat -l
 
 # Capture packets (replaces tcpdump)
@@ -250,7 +251,7 @@ The CNI (Container Network Interface) is not part of Talos itself. You deploy a 
 cluster:
   network:
     cni:
-      name: custom  # Use "custom" to deploy your own CNI
+      name: none  # Use "none" when installing your own CNI manually
     podSubnets:
       - 10.244.0.0/16
     serviceSubnets:
@@ -263,21 +264,19 @@ Talos has built-in support for WireGuard VPN interfaces. You can configure WireG
 
 ```yaml
 # Machine config: WireGuard interface
-machine:
-  network:
-    interfaces:
-      - interface: wg0
-        addresses:
-          - 10.10.0.1/24
-        wireguard:
-          privateKey: <base64-encoded-private-key>
-          listenPort: 51820
-          peers:
-            - publicKey: <peer-public-key>
-              endpoint: remote-host:51820
-              allowedIPs:
-                - 10.10.0.2/32
-              persistentKeepaliveInterval: 25s
+apiVersion: v1alpha1
+kind: WireguardConfig
+name: wg0
+privateKey: <base64-encoded-private-key>
+listenPort: 51820
+addresses:
+  - address: 10.10.0.1/24
+peers:
+  - publicKey: <peer-public-key>
+    endpoint: 203.0.113.10:51820
+    allowedIPs:
+      - 10.10.0.2/32
+    persistentKeepaliveInterval: 25s
 ```
 
 ## Troubleshooting Network Issues
@@ -297,7 +296,7 @@ talosctl -n 10.0.0.11 get addresses      # Step 2: Check IPs
 talosctl -n 10.0.0.11 get routes         # Step 3: Check routing
 talosctl -n 10.0.0.11 get resolvers      # Step 4: Check DNS
 talosctl -n 10.0.0.11 netstat            # Step 5: Check connections
-talosctl -n 10.0.0.11 logs networkd      # Check for errors in the network controller
+talosctl -n 10.0.0.11 logs controller-runtime  # Check for errors in network controllers
 ```
 
 ## Conclusion
