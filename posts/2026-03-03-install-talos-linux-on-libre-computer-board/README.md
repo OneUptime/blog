@@ -48,10 +48,10 @@ Libre Computer boards use ARM64 processors, so you need the ARM64 metal image:
 
 ```bash
 # Download the ARM64 image
-wget https://github.com/siderolabs/talos/releases/download/v1.9.0/metal-arm64.raw.xz
+wget https://github.com/siderolabs/talos/releases/download/v1.9.0/metal-arm64.raw.zst
 
 # Extract the compressed image
-xz -d metal-arm64.raw.xz
+zstd -d metal-arm64.raw.zst
 ```
 
 Since Libre Computer boards use specific SoCs, you may get better results with a board-specific image from the Talos Image Factory:
