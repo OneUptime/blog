@@ -35,6 +35,7 @@ The log-based alerting stack on Talos Linux consists of:
 Install Loki using Helm:
 
 ```bash
+helm repo add grafana-community https://grafana-community.github.io/helm-charts
 helm repo add grafana https://grafana.github.io/helm-charts
 helm repo update
 ```
@@ -48,8 +49,33 @@ loki:
     type: filesystem
   commonConfig:
     replication_factor: 1
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  rulerConfig:
+    alertmanager_url: http://prometheus-stack-kube-prometheus-alertmanager.monitoring.svc.cluster.local:9093
+    storage:
+      type: local
+      local:
+        directory: /etc/loki/rules
+    rule_path: /var/loki/rules-temp
+    ring:
+      kvstore:
+        store: inmemory
+    enable_api: true
+  limits_config:
+    retention_period: 168h  # 7 days
+    max_query_length: 0h
+    max_query_parallelism: 2
 
-# Single binary mode for simplicity (use distributed mode for production)
+# Monolithic mode for simplicity (use scalable or distributed mode with object storage for production)
+deploymentMode: Monolithic
 singleBinary:
   replicas: 1
   persistence:
@@ -63,92 +89,120 @@ singleBinary:
       cpu: 1000m
       memory: 1Gi
 
+# Disable other deployment modes
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+ingester:
+  replicas: 0
+querier:
+  replicas: 0
+queryFrontend:
+  replicas: 0
+queryScheduler:
+  replicas: 0
+distributor:
+  replicas: 0
+compactor:
+  replicas: 0
+indexGateway:
+  replicas: 0
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
+  replicas: 0
+bloomGateway:
+  replicas: 0
+
 # Enable the ruler for log-based alerting
 ruler:
   enabled: true
-  alertmanager_url: http://prometheus-stack-kube-prometheus-alertmanager.monitoring.svc.cluster.local:9093
-  storage:
-    type: local
-    local:
-      directory: /var/loki/rules
-  rule_path: /var/loki/rules-temp
-  ring:
-    kvstore:
-      store: inmemory
-  enable_api: true
-
-# Retention configuration
-limits_config:
-  retention_period: 168h  # 7 days
-  max_query_length: 0h
-  max_query_parallelism: 2
 ```
 
 ```bash
 kubectl create namespace logging
 
-helm install loki grafana/loki \
+helm install loki grafana-community/loki \
   --namespace logging \
   --values loki-values.yaml
 ```
 
 ## Step 2: Deploy Promtail
 
-Promtail runs as a DaemonSet and collects logs from all pods:
+Promtail runs as a DaemonSet and collects logs from all pods. Promtail reached end-of-life on March 2, 2026, so use Grafana Alloy for new deployments; this example is for existing Promtail-based clusters.
 
 ```yaml
 # promtail-values.yaml
 config:
   clients:
-    - url: http://loki.logging.svc.cluster.local:3100/loki/api/v1/push
+    - url: http://loki-gateway.logging.svc.cluster.local/loki/api/v1/push
 
   snippets:
-    # Add Talos-specific pipeline stages
+    # Parse Kubernetes CRI-format pod logs
     pipelineStages:
       - cri: {}
       - multiline:
           firstline: '^\d{4}-\d{2}-\d{2}'
           max_wait_time: 3s
-      - labeldrop:
-          - filename
 
-  # Scrape pod logs
-  scrapeConfigs: |
-    - job_name: kubernetes-pods
-      pipeline_stages:
-        {{- toYaml .Values.config.snippets.pipelineStages | nindent 8 }}
-      kubernetes_sd_configs:
-        - role: pod
-      relabel_configs:
-        - source_labels:
-            - __meta_kubernetes_pod_controller_name
-          regex: ([0-9a-z-.]+?)(-[0-9a-f]{8,10})?
-          action: replace
-          target_label: __tmp_controller_name
-        - source_labels:
-            - __meta_kubernetes_pod_label_app_kubernetes_io_name
-            - __meta_kubernetes_pod_label_app
-            - __tmp_controller_name
-            - __meta_kubernetes_pod_name
-          regex: ^;*([^;]+)(;.*)?$
-          action: replace
-          target_label: app
-        - source_labels:
-            - __meta_kubernetes_pod_node_name
-          action: replace
-          target_label: node_name
-        - source_labels:
-            - __meta_kubernetes_namespace
-          action: replace
-          target_label: namespace
-        - source_labels:
-            - __meta_kubernetes_pod_name
-          action: replace
-          target_label: pod
-        - source_labels:
-            - __meta_kubernetes_pod_container_name
-          action: replace
-          target_label: container
+    # Scrape pod logs
+    scrapeConfigs: |
+      - job_name: kubernetes-pods
+        pipeline_stages:
+          {{- toYaml .Values.config.snippets.pipelineStages | nindent 10 }}
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels:
+              - __meta_kubernetes_pod_controller_name
+            regex: ([0-9a-z-.]+?)(-[0-9a-f]{8,10})?
+            action: replace
+            target_label: __tmp_controller_name
+          - source_labels:
+              - __meta_kubernetes_pod_label_app_kubernetes_io_name
+              - __meta_kubernetes_pod_label_app
+              - __tmp_controller_name
+              - __meta_kubernetes_pod_name
+            regex: ^;*([^;]+)(;.*)?$
+            action: replace
+            target_label: app
+          - source_labels:
+              - __meta_kubernetes_pod_node_name
+            action: replace
+            target_label: node_name
+          - source_labels:
+              - __meta_kubernetes_namespace
+            action: replace
+            target_label: namespace
+          - source_labels:
+              - __meta_kubernetes_pod_name
+            action: replace
+            target_label: pod
+          - source_labels:
+              - __meta_kubernetes_pod_container_name
+            action: replace
+            target_label: container
+          - source_labels:
+              - __meta_kubernetes_pod_uid
+              - __meta_kubernetes_pod_container_name
+            separator: /
+            replacement: /var/log/pods/*$1/*.log
+            action: replace
+            target_label: __path__
+          - source_labels:
+              - __meta_kubernetes_pod_annotationpresent_kubernetes_io_config_hash
+              - __meta_kubernetes_pod_annotation_kubernetes_io_config_hash
+              - __meta_kubernetes_pod_container_name
+            separator: /
+            regex: true/(.*)
+            replacement: /var/log/pods/*$1/*.log
+            action: replace
+            target_label: __path__
+          - action: labeldrop
+            regex: filename
 
 # Tolerations for Talos control plane nodes
 tolerations:
@@ -188,7 +242,7 @@ data:
       - name: Loki
         type: loki
         access: proxy
-        url: http://loki.logging.svc.cluster.local:3100
+        url: http://loki-gateway.logging.svc.cluster.local
         jsonData:
           maxLines: 1000
 ```
@@ -202,104 +256,104 @@ kubectl apply -f grafana-loki-datasource.yaml
 Now the important part. Create alerting rules that fire based on log content. Loki uses LogQL for querying logs.
 
 ```yaml
-# loki-alert-rules.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: loki-alert-rules
-  namespace: logging
-data:
-  rules.yaml: |
-    groups:
-      - name: application-errors
-        rules:
-          # Alert when error log rate is high
-          - alert: HighErrorLogRate
-            expr: |
-              sum(rate({namespace="default"} |= "ERROR" [5m])) by (app) > 1
-            for: 5m
-            labels:
-              severity: warning
-            annotations:
-              summary: "High error log rate for {{ $labels.app }}"
-              description: "Application {{ $labels.app }} is logging {{ $value }} errors per second."
+# Add this to loki-values.yaml
+ruler:
+  enabled: true
+  directories:
+    fake:
+      rules.yaml: |
+        groups:
+          - name: application-errors
+            rules:
+              # Alert when error log rate is high
+              - alert: HighErrorLogRate
+                expr: |
+                  sum(rate({namespace="default"} |= "ERROR" [5m])) by (app) > 1
+                for: 5m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "High error log rate for {{ $labels.app }}"
+                  description: "Application {{ $labels.app }} is logging {{ $value }} errors per second."
 
-          # Alert on specific critical error patterns
-          - alert: DatabaseConnectionError
-            expr: |
-              sum(rate({namespace="default"} |= "database connection" |= "failed" [5m])) by (app) > 0
-            for: 2m
-            labels:
-              severity: critical
-            annotations:
-              summary: "Database connection failures in {{ $labels.app }}"
-              description: "Application {{ $labels.app }} is logging database connection failures."
+              # Alert on specific critical error patterns
+              - alert: DatabaseConnectionError
+                expr: |
+                  sum(rate({namespace="default"} |= "database connection" |= "failed" [5m])) by (app) > 0
+                for: 2m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "Database connection failures in {{ $labels.app }}"
+                  description: "Application {{ $labels.app }} is logging database connection failures."
 
-          # Alert on out of memory errors in logs
-          - alert: OutOfMemoryInLogs
-            expr: |
-              sum(rate({namespace=~".+"} |~ "(?i)(out of memory|oom|cannot allocate memory)" [5m])) by (namespace, app) > 0
-            for: 1m
-            labels:
-              severity: critical
-            annotations:
-              summary: "OOM errors detected in logs for {{ $labels.app }}"
-              description: "Application {{ $labels.app }} in {{ $labels.namespace }} is logging out of memory errors."
+              # Alert on out of memory errors in logs
+              - alert: OutOfMemoryInLogs
+                expr: |
+                  sum(rate({namespace=~".+"} |~ "(?i)(out of memory|oom|cannot allocate memory)" [5m])) by (namespace, app) > 0
+                for: 1m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "OOM errors detected in logs for {{ $labels.app }}"
+                  description: "Application {{ $labels.app }} in {{ $labels.namespace }} is logging out of memory errors."
 
-      - name: security-alerts
-        rules:
-          # Alert on authentication failures
-          - alert: HighAuthenticationFailures
-            expr: |
-              sum(rate({namespace=~".+"} |~ "(?i)(authentication failed|unauthorized|invalid credentials|login failed)" [5m])) by (app) > 5
-            for: 5m
-            labels:
-              severity: warning
-            annotations:
-              summary: "High authentication failure rate for {{ $labels.app }}"
-              description: "{{ $labels.app }} is logging {{ $value }} auth failures per second. Possible brute force attack."
+          - name: security-alerts
+            rules:
+              # Alert on authentication failures
+              - alert: HighAuthenticationFailures
+                expr: |
+                  sum(rate({namespace=~".+"} |~ "(?i)(authentication failed|unauthorized|invalid credentials|login failed)" [5m])) by (app) > 5
+                for: 5m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "High authentication failure rate for {{ $labels.app }}"
+                  description: "{{ $labels.app }} is logging {{ $value }} auth failures per second. Possible brute force attack."
 
-          # Alert on permission denied errors
-          - alert: PermissionDeniedSpike
-            expr: |
-              sum(rate({namespace=~".+"} |~ "(?i)(permission denied|access denied|forbidden)" [5m])) by (app) > 2
-            for: 5m
-            labels:
-              severity: warning
-            annotations:
-              summary: "Permission denied errors in {{ $labels.app }}"
-              description: "{{ $labels.app }} is logging frequent permission denied errors."
+              # Alert on permission denied errors
+              - alert: PermissionDeniedSpike
+                expr: |
+                  sum(rate({namespace=~".+"} |~ "(?i)(permission denied|access denied|forbidden)" [5m])) by (app) > 2
+                for: 5m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Permission denied errors in {{ $labels.app }}"
+                  description: "{{ $labels.app }} is logging frequent permission denied errors."
 
-      - name: infrastructure-alerts
-        rules:
-          # Alert on Kubernetes system component errors
-          - alert: KubeSystemErrors
-            expr: |
-              sum(rate({namespace="kube-system"} |= "error" [5m])) by (pod) > 0.5
-            for: 10m
-            labels:
-              severity: warning
-            annotations:
-              summary: "Error logs from kube-system pod {{ $labels.pod }}"
-              description: "Pod {{ $labels.pod }} in kube-system is logging errors at {{ $value }}/s."
+          - name: infrastructure-alerts
+            rules:
+              # Alert on Kubernetes system component errors
+              - alert: KubeSystemErrors
+                expr: |
+                  sum(rate({namespace="kube-system"} |= "error" [5m])) by (pod) > 0.5
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Error logs from kube-system pod {{ $labels.pod }}"
+                  description: "Pod {{ $labels.pod }} in kube-system is logging errors at {{ $value }}/s."
 
-          # Alert when log volume drops suddenly (might indicate pod issues)
-          - alert: LogVolumeDrop
-            expr: |
-              sum(rate({namespace="default"}[5m])) by (app)
-              < 0.1 * sum(rate({namespace="default"}[5m] offset 1h)) by (app)
-            for: 10m
-            labels:
-              severity: warning
-            annotations:
-              summary: "Log volume dropped significantly for {{ $labels.app }}"
-              description: "Log volume for {{ $labels.app }} dropped to less than 10% of the rate seen 1 hour ago. The application may have stopped logging or crashed."
+              # Alert when log volume drops suddenly (might indicate pod issues)
+              - alert: LogVolumeDrop
+                expr: |
+                  sum(rate({namespace="default"}[5m])) by (app)
+                  < 0.1 * sum(rate({namespace="default"}[5m] offset 1h)) by (app)
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Log volume dropped significantly for {{ $labels.app }}"
+                  description: "Log volume for {{ $labels.app }} dropped to less than 10% of the rate seen 1 hour ago. The application may have stopped logging or crashed."
 ```
 
-Mount the rules into the Loki pod. If using the Loki Helm chart, add them through the ruler configuration:
+Apply the updated Helm values so the chart mounts the rules into the Loki pod:
 
 ```bash
-kubectl apply -f loki-alert-rules.yaml
+helm upgrade loki grafana-community/loki \
+  --namespace logging \
+  --values loki-values.yaml
 ```
 
 ## Step 5: Test Log-Based Alerts
@@ -354,9 +408,9 @@ Then in your Alertmanager configuration, route based on these labels:
 
 ```yaml
 routes:
-  - match:
-      source: loki
-      severity: critical
+  - matchers:
+      - source="loki"
+      - severity="critical"
     receiver: 'slack-critical'
 ```
 
