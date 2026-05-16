@@ -70,14 +70,14 @@ contexts:
     key: <client-private-key>    # Client's proof of possession
 ```
 
-Without all three pieces, access is impossible. There is no fallback mechanism, no password authentication, and no way to bypass certificate verification.
+Without all three pieces, access to a configured node is impossible. There is no password authentication. Talos does have a limited `--insecure` maintenance-mode API before a machine configuration is applied, but after configuration the node expects authenticated communication using certificates from a `talosconfig` file.
 
 ### Kubernetes API Authentication
 
-The Kubernetes API uses the same mTLS approach:
+Talos-generated admin kubeconfigs use client-certificate authentication for Kubernetes API access:
 
 ```bash
-# kubectl requires client certificates
+# Talos-generated admin kubeconfigs contain client certificates
 # The kubeconfig contains:
 # - Cluster CA (to verify the API server)
 # - Client certificate (to prove identity)
@@ -86,9 +86,11 @@ The Kubernetes API uses the same mTLS approach:
 kubectl get nodes
 # Behind the scenes:
 # 1. Client verifies API server cert against Kubernetes CA
-# 2. API server verifies client cert against Kubernetes CA
-# 3. Connection established only if both sides verify
+# 2. API server authenticates the client certificate
+# 3. Kubernetes RBAC authorizes the requested action
 ```
+
+Kubernetes also supports other authentication methods, such as bearer tokens and external identity providers, so mTLS applies specifically to client-certificate based kubeconfigs.
 
 ### etcd Authentication
 
@@ -146,7 +148,7 @@ rules:
 
 ## Principle 4: Encryption of All Communication
 
-Zero trust requires that all communication is encrypted, even on trusted networks. Talos Linux encrypts every communication channel.
+Zero trust requires that communication is encrypted, even on trusted networks. Talos Linux encrypts management and control-plane communication, and can encrypt node-to-node traffic with KubeSpan.
 
 ### Node-to-Node Encryption with KubeSpan
 
@@ -162,8 +164,8 @@ machine:
 
 With KubeSpan enabled:
 
-- All pod-to-pod traffic is encrypted
 - All node-to-node traffic is encrypted
+- Pod-to-pod traffic is encrypted only when it is carried over the KubeSpan mesh, for example when `advertiseKubernetesNetworks` is enabled and supported by the CNI
 - Traffic between nodes in different networks is encrypted
 - Even if someone captures network traffic, they cannot read it
 
@@ -172,7 +174,7 @@ With KubeSpan enabled:
 ```text
 All API communication is TLS-encrypted:
 - Talos API (port 50000): mTLS
-- Kubernetes API (port 6443): mTLS
+- Kubernetes API (port 6443): TLS, with mTLS when using client-certificate authentication
 - etcd (ports 2379/2380): mTLS
 - Kubelet (port 10250): TLS
 ```
@@ -207,25 +209,25 @@ Zero trust means verifying not just identity but also integrity. Talos Linux ver
 ```text
 UEFI Firmware
   |-- Verifies bootloader signature
-       |-- Verifies kernel signature
-            |-- Verifies filesystem integrity
+       |-- Verifies signed Talos UKI
+            |-- UKI contains kernel, initramfs, and kernel command line
 ```
 
-With SecureBoot enabled, the boot chain is verified from firmware to operating system. A tampered kernel or bootloader will not boot.
+With SecureBoot enabled, the boot chain is verified from firmware to the signed Talos Unified Kernel Image (UKI). A tampered bootloader or UKI will not boot.
 
 ### Image Verification
 
 ```bash
 # Verify the Talos image before deployment
 cosign verify \
-  --certificate-identity-regexp "https://github.com/siderolabs/talos" \
-  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  --certificate-identity-regexp "@siderolabs\\.com$" \
+  --certificate-oidc-issuer "https://accounts.google.com" \
   ghcr.io/siderolabs/installer:v1.9.0
 ```
 
 ### Runtime Verification
 
-The immutable root filesystem acts as continuous runtime verification. If the SquashFS image is the correct one (verified at boot), then all system binaries are correct. There is no way for them to be modified at runtime.
+The immutable root filesystem reduces runtime drift. If the SquashFS image is the correct one (verified as part of the booted Talos image), then the system binaries come from that image. The root filesystem is not modified in place at runtime.
 
 ## Principle 6: Microsegmentation
 
@@ -299,12 +301,12 @@ spec:
   groups:
     - name: access-control
       rules:
-        - alert: UnauthorizedAPIAccess
-          expr: increase(apiserver_authentication_attempts{result="failure"}[5m]) > 5
+        - alert: UnauthorizedOrForbiddenAPIAccess
+          expr: increase(apiserver_request_total{code=~"401|403"}[5m]) > 5
           labels:
             severity: warning
           annotations:
-            summary: "Multiple failed authentication attempts detected"
+            summary: "Multiple unauthorized or forbidden API requests detected"
 ```
 
 ## Comparing Traditional vs. Zero-Trust Approach
@@ -314,7 +316,7 @@ spec:
 | Network trust | Trust internal network | Trust no network |
 | Authentication | Password/key-based | Certificate-based mTLS |
 | Authorization | All-or-nothing | Fine-grained RBAC |
-| Encryption | Optional | Mandatory everywhere |
+| Encryption | Optional | Mandatory for management/control-plane APIs; configurable for workload traffic |
 | Verification | Trust on first use | Verify every request |
 | OS access | Shell/SSH available | API only |
 | File system | Read-write | Read-only/immutable |
@@ -337,4 +339,4 @@ Each step reduces the implicit trust in your environment and moves you closer to
 
 ## Conclusion
 
-Talos Linux's zero-trust security model is not a marketing label - it is a fundamental design principle that permeates every layer of the system. From the absence of SSH and shell access, to mTLS on every API call, to the immutable filesystem that prevents runtime modification, Talos eliminates the implicit trust that traditional operating systems depend on. Understanding this model helps you make better decisions about cluster architecture, access management, and incident response. The zero-trust approach requires more upfront planning, but the security benefits are substantial and measurable. Every request is authenticated, every action is authorized, and every communication is encrypted. That is what zero trust looks like in practice.
+Talos Linux's zero-trust security model is not a marketing label - it is a fundamental design principle that permeates every layer of the system. From the absence of SSH and shell access, to mTLS on every Talos API call, to the immutable filesystem that prevents runtime modification, Talos eliminates the implicit trust that traditional operating systems depend on. Understanding this model helps you make better decisions about cluster architecture, access management, and incident response. The zero-trust approach requires more upfront planning, but the security benefits are substantial and measurable. Every management request is authenticated, every action is authorized, and every control-plane communication path is encrypted. That is what zero trust looks like in practice.
