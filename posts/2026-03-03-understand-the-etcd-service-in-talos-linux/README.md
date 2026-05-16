@@ -48,7 +48,7 @@ Node 2 (etcd) : Starts and syncs data
 
 ## etcd Data Storage
 
-Talos stores etcd data on a dedicated partition to protect it from OS-level changes. When you upgrade Talos, the OS partitions change but the etcd data partition remains untouched. This separation is critical for data safety.
+Talos stores etcd data under `/var/lib/etcd` on the `EPHEMERAL` partition, which is separate from the boot and system state partitions. The `EPHEMERAL` partition also stores container data, images, and logs by default, but it can be placed on another disk or resized when you need different storage characteristics.
 
 ```bash
 # Check etcd member list
@@ -119,14 +119,14 @@ Losing quorum (more than half of etcd members) is a serious situation. If you ha
 In this scenario, you have a few options:
 
 1. **Bring failed nodes back online** - The simplest solution if the nodes can be recovered
-2. **Remove failed members and recover** - If nodes cannot be recovered, remove them from the etcd cluster and bootstrap new ones
+2. **Recover from a snapshot** - If quorum cannot be restored, prepare the control plane nodes for disaster recovery and restore from a known-good snapshot
 
 ```bash
-# Remove a failed etcd member
+# If quorum still exists, remove a failed etcd member
 talosctl -n 192.168.1.10 etcd remove-member <member-id>
 
-# In case of total cluster loss, restore from snapshot
-talosctl -n 192.168.1.10 etcd recover-from-snapshot --snapshot ./etcd-backup.snapshot
+# If quorum cannot be restored, recover from a snapshot
+talosctl -n 192.168.1.10 bootstrap --recover-from=./etcd-backup.snapshot
 ```
 
 ### Full Cluster Recovery
@@ -142,11 +142,11 @@ This process reinitializes etcd with the data from your snapshot and restarts th
 
 ## Performance Tuning
 
-etcd performance is heavily dependent on disk I/O. Talos does not expose direct etcd configuration tuning through the machine config in the same way you might tune etcd flags manually, but there are still things you can do:
+etcd performance is heavily dependent on disk I/O. Talos exposes some etcd configuration through `cluster.etcd.extraArgs`, while reserving internally managed settings such as peer URLs, client URLs, data directory, certificates, and initial cluster state. For most clusters, the most important tuning is still the underlying infrastructure:
 
 1. **Use fast storage** - SSDs or NVMe drives are strongly recommended for control plane nodes. etcd writes every operation to its WAL synchronously, so disk latency directly impacts cluster performance.
 
-2. **Separate etcd storage** - If possible, put etcd data on a dedicated disk rather than sharing with the OS.
+2. **Plan etcd storage** - If possible, place the `EPHEMERAL` partition that contains `/var/lib/etcd` on fast, reliable storage.
 
 3. **Network latency** - Keep control plane nodes in the same network zone. etcd consensus requires frequent communication between members, and high network latency slows everything down.
 
@@ -160,19 +160,19 @@ talosctl -n 192.168.1.10 logs etcd | grep "took too long"
 
 ## etcd and Talos Upgrades
 
-When you upgrade a Talos node, the etcd data is preserved because it lives on a separate partition. However, Talos may also upgrade the etcd binary version as part of an OS upgrade. The upgrade process handles this gracefully:
+When you upgrade a Talos control plane node, Talos protects etcd quorum, drains and cordons the node, upgrades the OS image, reboots, and then rejoins the cluster. Talos may also change the etcd image version as part of an OS upgrade. The upgrade process handles this gracefully:
 
 1. The node is cordoned (no new pods scheduled)
-2. The etcd member on that node is observed to be healthy
+2. Talos verifies that the control plane upgrade would not break etcd quorum
 3. The OS upgrade proceeds
-4. On reboot, etcd starts with the new binary and the existing data
-5. The member rejoins the cluster
+4. On reboot, etcd starts with the new image
+5. The member rejoins the cluster and the node is uncordoned
 
 For control plane upgrades, always upgrade one node at a time and verify etcd health between each upgrade:
 
 ```bash
 # Upgrade first control plane node
-talosctl -n 192.168.1.10 upgrade --image ghcr.io/siderolabs/installer:v1.8.0
+talosctl -n 192.168.1.10 upgrade --image ghcr.io/siderolabs/installer:<target-version>
 
 # Wait for the node to come back and verify etcd
 talosctl -n 192.168.1.10 etcd status
