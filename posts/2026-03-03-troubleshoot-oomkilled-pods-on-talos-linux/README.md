@@ -8,7 +8,7 @@ Description: Practical guide to diagnosing and preventing OOMKilled pod terminat
 
 ---
 
-OOMKilled is one of the clearest error states in Kubernetes - it means a container was terminated because it used more memory than its configured limit. On Talos Linux, OOM kills can affect both your application pods and system-level components. While the fix seems obvious (give it more memory), the real challenge is understanding why the container is using too much memory and finding the right balance between resource limits and application needs.
+OOMKilled is one of the clearest error states in Kubernetes - it usually means a container was terminated because it used more memory than its configured limit, or because the node itself ran out of memory. On Talos Linux, OOM kills can affect both your application pods and system-level components. While the fix seems obvious (give it more memory), the real challenge is understanding why the container is using too much memory and finding the right balance between resource limits and application needs.
 
 ## Identifying OOMKilled Pods
 
@@ -31,7 +31,7 @@ Last State:     Terminated
   Exit Code:    137
 ```
 
-Exit code 137 is the standard indicator of an OOM kill.
+Exit code 137 means the process was killed with `SIGKILL`; when the reason is `OOMKilled`, it indicates an OOM kill.
 
 ## Understanding Memory Limits on Kubernetes
 
@@ -111,7 +111,7 @@ For containers running multiple processes, identify which process is consuming t
 kubectl exec -it <pod-name> -n <namespace> -- top
 
 # Or check from Talos
-talosctl -n <node-ip> processes | sort -k4 -rn | head -20
+talosctl -n <node-ip> processes --sort rss | head -20
 ```
 
 ## Step 5: Increase Memory Limits
@@ -195,10 +195,13 @@ Configure kubelet memory reservations to protect system components:
 ```yaml
 machine:
   kubelet:
-    extraArgs:
-      system-reserved: "memory=1Gi"
-      kube-reserved: "memory=512Mi"
-      eviction-hard: "memory.available<200Mi"
+    extraConfig:
+      systemReserved:
+        memory: "1Gi"
+      kubeReserved:
+        memory: "512Mi"
+      evictionHard:
+        memory.available: "200Mi"
 ```
 
 ## Step 8: Pod QoS Classes and Eviction
@@ -236,7 +239,7 @@ spec:
     kind: Deployment
     name: myapp
   updatePolicy:
-    updateMode: Auto
+    updateMode: Recreate
   resourcePolicy:
     containerPolicies:
       - containerName: myapp
@@ -246,7 +249,7 @@ spec:
           memory: "2Gi"
 ```
 
-VPA automatically adjusts memory requests and limits based on observed usage.
+VPA automatically adjusts memory requests and, depending on policy, limits based on observed usage.
 
 ## Step 10: Prevention and Monitoring
 
@@ -269,4 +272,4 @@ Good monitoring practices:
 
 ## Summary
 
-OOMKilled pods on Talos Linux are caused by containers exceeding their memory limits. The fix involves understanding the application's memory needs, setting appropriate limits, and fixing memory leaks if they exist. Use `kubectl top` for quick checks, kernel dmesg for node-level OOM kills, and proper monitoring for ongoing prevention. On Talos specifically, make sure to reserve system memory for kubelet and other system services to prevent node-level instability.
+OOMKilled pods on Talos Linux are usually caused by containers exceeding their memory limits, but they can also happen when the node runs out of memory. The fix involves understanding the application's memory needs, setting appropriate limits, and fixing memory leaks if they exist. Use `kubectl top` for quick checks, kernel dmesg for node-level OOM kills, and proper monitoring for ongoing prevention. On Talos specifically, make sure to reserve system memory for kubelet and other system services to prevent node-level instability.
