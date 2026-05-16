@@ -40,7 +40,6 @@ helm install monitoring prometheus-community/kube-prometheus-stack \
   --set prometheus.prometheusSpec.externalLabels.region="us-east" \
   --set prometheus.prometheusSpec.retention=24h \
   --set prometheus.prometheusSpec.replicas=2 \
-  --set prometheus.prometheusSpec.thanos.create=true \
   --set prometheus.prometheusSpec.thanos.objectStorageConfig.existingSecret.name=thanos-storage \
   --set prometheus.prometheusSpec.thanos.objectStorageConfig.existingSecret.key=config
 ```
@@ -49,7 +48,7 @@ The key settings here are:
 
 - `externalLabels`: Tags every metric with the cluster name and region so you can filter in the central dashboard
 - `retention=24h`: Keep only recent data locally since Thanos handles long-term storage
-- `thanos.create=true`: Adds the Thanos sidecar to each Prometheus pod
+- `thanos.objectStorageConfig`: Populating any field under `prometheus.prometheusSpec.thanos` causes the Prometheus Operator to inject the Thanos sidecar into each Prometheus pod
 
 Create the object storage config for Thanos to upload metric blocks:
 
@@ -74,7 +73,9 @@ stringData:
 
 ## Monitoring Talos-Specific Metrics
 
-Talos Linux exposes its own metrics through the machine API. You want to scrape these in addition to standard Kubernetes metrics. Create a ServiceMonitor or use a Prometheus scrape config:
+Because Talos is immutable and you cannot install packages on the host, node-level metrics come from a `node-exporter` DaemonSet running on the host network (kube-prometheus-stack already deploys this on every node). Talos itself exposes additional runtime data through its gRPC machine API, which a small Talos exporter can convert into Prometheus metrics.
+
+The example below shows a static scrape config pointing at `node-exporter` on each node (port `9100` is the node-exporter default). Use a `ServiceMonitor` instead if you have the kube-prometheus-stack DaemonSet, since it will be auto-discovered:
 
 ```yaml
 # talos-metrics-scrape.yaml
@@ -230,7 +231,7 @@ groups:
           summary: "High memory usage in cluster {{ $labels.cluster }}"
 
       - alert: ClusterMetricsStale
-        expr: time() - max by (cluster) (prometheus_build_info) > 600
+        expr: time() - max by (cluster) (timestamp(up{job="prometheus"})) > 600
         for: 5m
         labels:
           severity: critical
