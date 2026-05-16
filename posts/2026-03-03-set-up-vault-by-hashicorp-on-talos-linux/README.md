@@ -8,7 +8,7 @@ Description: Learn how to deploy and configure HashiCorp Vault on Talos Linux fo
 
 ---
 
-HashiCorp Vault is the industry standard for secrets management, providing a centralized place to store, access, and distribute secrets like API keys, passwords, certificates, and encryption keys. Running Vault on Talos Linux is a natural fit because both tools share the same philosophy of minimal attack surface and security by default. Talos's immutable OS means the host running your secrets infrastructure cannot be tampered with, which adds an extra layer of protection to your most sensitive data.
+HashiCorp Vault is the industry standard for secrets management, providing a centralized place to store, access, and distribute secrets like API keys, passwords, certificates, and encryption keys. Running Vault on Talos Linux is a natural fit because both tools share the same philosophy of minimal attack surface and security by default. Talos's immutable OS and API-only management model reduce host-level configuration drift and remove traditional SSH or shell access, which adds an extra layer of protection to your most sensitive data.
 
 This guide walks you through deploying Vault on Talos Linux using Helm, configuring the storage backend, initializing and unsealing Vault, and integrating it with Kubernetes workloads.
 
@@ -18,7 +18,8 @@ Make sure you have:
 
 - A Talos Linux Kubernetes cluster with at least three nodes (recommended for HA)
 - kubectl configured for your cluster
-- Helm v3 installed
+- Helm v3.6 or later installed
+- jq installed
 - A storage provisioner for persistent volumes
 - An ingress controller (optional, for UI access)
 
@@ -77,6 +78,7 @@ server:
   dataStorage:
     enabled: true
     size: 10Gi
+    # Replace this with the StorageClass available in your cluster.
     storageClass: local-path
 
   resources:
@@ -168,7 +170,7 @@ kubectl exec -n vault vault-0 -- sh -c "
   vault login $ROOT_TOKEN
   vault auth enable kubernetes
   vault write auth/kubernetes/config \
-    kubernetes_host=https://kubernetes.default.svc:443
+    kubernetes_host=https://\$KUBERNETES_SERVICE_HOST:\$KUBERNETES_SERVICE_PORT
 "
 ```
 
@@ -245,7 +247,7 @@ spec:
       containers:
         - name: myapp
           image: myapp:latest
-          command: ["sh", "-c", "source /vault/secrets/config && exec myapp"]
+          command: ["sh", "-c", ". /vault/secrets/config && exec myapp"]
 ```
 
 ## Auto-Unseal Configuration
@@ -281,35 +283,52 @@ You will also need to provide AWS credentials through environment variables or I
 
 ## Monitoring Vault
 
-Vault exposes Prometheus metrics that you can scrape. Enable telemetry in the Vault config:
-
-```bash
-kubectl exec -n vault vault-0 -- sh -c "
-  vault write sys/config/auditing/enable-raw-body true
-"
-```
-
-Create a ServiceMonitor to scrape metrics:
+Vault exposes Prometheus metrics that you can scrape. Enable telemetry in the Vault config before installing or upgrading the release:
 
 ```yaml
-# vault-servicemonitor.yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: vault
-  namespace: vault
-spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: vault
-  endpoints:
-    - port: http
-      path: /v1/sys/metrics
-      params:
-        format: ["prometheus"]
-      interval: 30s
+# Add these settings to vault-values.yaml
+server:
+  ha:
+    raft:
+      config: |
+        ui = true
+
+        listener "tcp" {
+          tls_disable = 1
+          address = "[::]:8200"
+          cluster_address = "[::]:8201"
+
+          telemetry {
+            unauthenticated_metrics_access = "true"
+          }
+        }
+
+        storage "raft" {
+          path = "/vault/data"
+          retry_join {
+            leader_api_addr = "http://vault-0.vault-internal:8200"
+          }
+          retry_join {
+            leader_api_addr = "http://vault-1.vault-internal:8200"
+          }
+          retry_join {
+            leader_api_addr = "http://vault-2.vault-internal:8200"
+          }
+        }
+
+        service_registration "kubernetes" {}
+
+        telemetry {
+          prometheus_retention_time = "30s"
+          disable_hostname = true
+        }
+
+serverTelemetry:
+  serviceMonitor:
+    enabled: true
+    interval: 30s
 ```
 
 ## Conclusion
 
-HashiCorp Vault on Talos Linux is a powerful combination for secrets management. Talos's immutable infrastructure means your secrets server runs on a host that cannot be compromised through OS-level attacks, while Vault provides fine-grained access control and audit logging for every secret access. With HA mode, auto-unseal, and Kubernetes integration configured, you have a production-grade secrets management platform that scales with your infrastructure.
+HashiCorp Vault on Talos Linux is a powerful combination for secrets management. Talos's immutable infrastructure reduces the host-level attack surface for your secrets server, while Vault provides fine-grained access control and audit logging for every secret access. With HA mode, auto-unseal, TLS, and Kubernetes integration configured, you have a production-ready secrets management platform that scales with your infrastructure.
