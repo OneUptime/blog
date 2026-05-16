@@ -49,14 +49,14 @@ This proxy model means you only need network access to your control plane nodes.
 
 ## Setting Endpoints
 
-Endpoints should almost always be your control plane nodes. They are the machines running the Talos API that your workstation connects to directly.
+Endpoints should almost always point to your control plane nodes, either directly or through a load balancer. They are the Talos API addresses that your workstation connects to directly.
 
 ```bash
 # Set endpoints in your talosconfig
 talosctl config endpoint 192.168.1.101 192.168.1.102 192.168.1.103
 ```
 
-When you specify multiple endpoints, talosctl tries them in order. If the first one is down, it moves to the second, and so on. This gives you resilience - you can still manage the cluster even if one control plane node is down.
+When you specify multiple endpoints, talosctl automatically load balances requests and fails over between them. This gives you resilience - you can still manage the cluster even if one control plane node is down.
 
 You can also use a load balancer or VIP as the endpoint:
 
@@ -91,17 +91,17 @@ Nodes are the targets of your commands. When you want to check the health of a s
 talosctl config node 192.168.1.101
 
 # Or specify per-command
-talosctl services --nodes 192.168.1.102
+talosctl service --nodes 192.168.1.102
 ```
 
 You can target multiple nodes at once:
 
 ```bash
 # Check services on all control plane nodes
-talosctl services --nodes 192.168.1.101,192.168.1.102,192.168.1.103
+talosctl service --nodes 192.168.1.101,192.168.1.102,192.168.1.103
 
 # Or using the flag multiple times
-talosctl services --nodes 192.168.1.101 --nodes 192.168.1.102
+talosctl service --nodes 192.168.1.101 --nodes 192.168.1.102
 ```
 
 When you target multiple nodes, talosctl sends the command to each one and aggregates the results.
@@ -134,7 +134,7 @@ Worker nodes are typically not endpoints. You connect through the control plane:
 talosctl config endpoint 192.168.1.101 192.168.1.102 192.168.1.103
 
 # Target a worker node
-talosctl services --nodes 192.168.1.110
+talosctl service --nodes 192.168.1.110
 
 # talosctl connects to a control plane endpoint
 # then proxies the request to the worker at .110
@@ -159,7 +159,7 @@ When applying the first configuration to a node in maintenance mode, there is no
 talosctl apply-config --insecure --nodes 192.168.1.101 --file controlplane.yaml
 ```
 
-In insecure mode, talosctl ignores the endpoint setting and connects directly to the node specified.
+When using `--insecure`, you cannot specify an endpoint; talosctl must directly access the node on port 50000.
 
 ## How They Are Stored in talosconfig
 
@@ -181,16 +181,15 @@ The `nodes` field here sets the default node for commands. You can override it p
 
 ## Command-Line Override Priority
 
-talosctl resolves endpoints and nodes in this order:
+talosctl resolves endpoints and nodes from command-line flags first, then from the selected talosconfig context. The talosconfig file itself is selected in this order:
 
-1. Command-line flags (`--endpoints`, `--nodes`) take highest priority
-2. Environment variables (`TALOSCONFIG`)
-3. Values in the talosconfig file
-4. Default talosconfig location (`~/.talos/config`)
+1. The `--talosconfig` command-line flag
+2. The `TALOSCONFIG` environment variable
+3. Default config locations (`$HOME/.talos/config`, then `/var/run/secrets/talos.dev/config`)
 
 ```bash
 # This overrides everything in the config file
-talosctl services \
+talosctl service \
   --endpoints 10.0.0.1 \
   --nodes 10.0.0.5
 ```
@@ -215,7 +214,7 @@ talosctl version --endpoints 192.168.1.101 --nodes 192.168.1.110
 
 Common mistakes:
 
-- **Using a worker node as an endpoint**: Worker nodes can technically serve as endpoints, but they do not have the same trust relationships. Stick with control plane nodes.
+- **Using a worker node as an endpoint**: Endpoints must be members of the same Talos cluster as the target nodes, and the recommended endpoints are control plane nodes or a load balancer in front of them.
 - **Not setting endpoints at all**: If your talosconfig has no endpoints, talosctl has nowhere to connect. Always set endpoints after generating your config.
 - **Using the wrong node**: Double-check which node you are targeting, especially for destructive operations like reset or upgrade.
 
