@@ -29,7 +29,7 @@ Zone C (192.168.3.0/24):
   - cp-3 (control plane)
   - worker-c1, worker-c2
 
-Load Balancer / VIP: Accessible from all zones
+Load Balancer: Accessible from all zones
 ```
 
 Each zone has one control plane node and multiple workers. This way, losing any single zone still leaves two control plane nodes available for etcd quorum.
@@ -55,7 +55,6 @@ machine:
   nodeLabels:
     topology.kubernetes.io/zone: zone-a
     topology.kubernetes.io/region: us-east
-    failure-domain.beta.kubernetes.io/zone: zone-a
 ```
 
 Apply zone-specific patches to each group of nodes:
@@ -94,9 +93,9 @@ machine:
             gateway: 192.168.2.1
 ```
 
-## etcd Topology Configuration
+## etcd Network Configuration
 
-etcd needs to be aware of zone topology for optimal leader election and data distribution. Configure the etcd members to advertise their zone:
+etcd needs stable, routable peer addresses for reliable quorum across zones. Configure the etcd members to advertise addresses from the inter-zone networks:
 
 ```yaml
 # controlplane-zone-a-patch.yaml
@@ -107,7 +106,6 @@ cluster:
       - 192.168.2.0/24
       - 192.168.3.0/24
     extraArgs:
-      initial-cluster-state: new
       # Longer timeouts for cross-zone latency
       election-timeout: "10000"
       heartbeat-interval: "1000"
@@ -121,7 +119,7 @@ For the Kubernetes API endpoint, you need a load balancer that is accessible fro
 
 ### DNS-Based Load Balancing
 
-```bash
+```text
 # Create DNS records pointing to all control plane nodes
 api.cluster.example.com -> 192.168.1.10 (Zone A)
 api.cluster.example.com -> 192.168.2.11 (Zone B)
@@ -194,31 +192,42 @@ Longhorn can replicate volumes across zones:
 
 ```yaml
 # longhorn-cross-zone-sc.yaml
-apiVersion: storage.longhorn.io/v1beta2
 kind: StorageClass
+apiVersion: storage.k8s.io/v1
 metadata:
   name: longhorn-cross-zone
 provisioner: driver.longhorn.io
+volumeBindingMode: WaitForFirstConsumer
 parameters:
   numberOfReplicas: "3"
   staleReplicaTimeout: "30"
   dataLocality: disabled
   replicaAutoBalance: best-effort
-  # Distribute replicas across zones
   diskSelector: ""
   nodeSelector: ""
+allowedTopologies:
+  - matchLabelExpressions:
+      - key: topology.kubernetes.io/zone
+        values:
+          - zone-a
+          - zone-b
+          - zone-c
 ```
 
-Configure Longhorn node tags for zone awareness:
+Enable Longhorn topology-aware provisioning by setting the CSI allowed topology key to `topology.kubernetes.io/zone`, then restart the CSI plugin so the setting takes effect:
 
 ```bash
-# Tag Longhorn nodes with their zone
-kubectl -n longhorn-system patch nodes.longhorn.io worker-a1 \
-  --type=merge -p '{"spec":{"tags":["zone-a"]}}'
-kubectl -n longhorn-system patch nodes.longhorn.io worker-b1 \
-  --type=merge -p '{"spec":{"tags":["zone-b"]}}'
-kubectl -n longhorn-system patch nodes.longhorn.io worker-c1 \
-  --type=merge -p '{"spec":{"tags":["zone-c"]}}'
+kubectl -n longhorn-system patch settings.longhorn.io csi-allowed-topology-keys \
+  --type=merge -p '{"value":"topology.kubernetes.io/zone"}'
+kubectl -n longhorn-system rollout restart daemonset/longhorn-csi-plugin
+```
+
+You can also configure Longhorn node tags for use with StorageClasses that set `nodeSelector: "storage"` to restrict volumes to a storage node pool:
+
+```bash
+kubectl annotate node worker-a1 node.longhorn.io/default-node-tags='["storage"]'
+kubectl annotate node worker-b1 node.longhorn.io/default-node-tags='["storage"]'
+kubectl annotate node worker-c1 node.longhorn.io/default-node-tags='["storage"]'
 ```
 
 ### Zone-Aware StatefulSets
@@ -262,13 +271,12 @@ spec:
 
 ## Testing Cross-Zone Failover
 
-Simulate a zone failure by cordoning all nodes in one zone:
+Simulate a worker-zone outage by cordoning and draining the worker nodes in one zone. To test control plane and etcd failover, stop or power off one control plane node in a lab environment instead of draining it.
 
 ```bash
 # Simulate Zone A failure
-kubectl cordon worker-a1
-kubectl cordon worker-a2
-kubectl cordon cp-1
+kubectl drain worker-a1 --ignore-daemonsets --delete-emptydir-data
+kubectl drain worker-a2 --ignore-daemonsets --delete-emptydir-data
 
 # Verify workloads redistribute
 kubectl get pods -o wide
@@ -280,12 +288,11 @@ talosctl etcd members --nodes 192.168.2.11
 # Restore Zone A
 kubectl uncordon worker-a1
 kubectl uncordon worker-a2
-kubectl uncordon cp-1
 ```
 
 ## Network Policies for Cross-Zone Traffic
 
-If zones have different network segments, ensure your CNI allows cross-zone traffic:
+If you use NetworkPolicies, ensure your application policies allow the required pod-to-pod traffic across zones. Inter-zone routing and firewalls still need to allow the node and pod CIDRs at the network layer.
 
 ```yaml
 # allow-cross-zone-traffic.yaml
@@ -301,17 +308,15 @@ spec:
     - Egress
   ingress:
     - from:
-        - ipBlock:
-            cidr: 192.168.0.0/16
+        - namespaceSelector: {}
   egress:
     - to:
-        - ipBlock:
-            cidr: 192.168.0.0/16
+        - namespaceSelector: {}
 ```
 
 ## Monitoring Zone Health
 
-Track per-zone health metrics:
+Track per-zone health metrics. These expressions assume kube-state-metrics is configured to export the `topology.kubernetes.io/zone` node label:
 
 ```yaml
 # zone-health-alerts.yaml
@@ -325,18 +330,33 @@ spec:
       rules:
         - alert: ZoneNodesDown
           expr: |
-            count by (zone) (
-              kube_node_status_condition{condition="Ready",status="true"} == 1
+            sum by (label_topology_kubernetes_io_zone) (
+              (kube_node_status_condition{condition="Ready",status="true"} == 1)
+              * on (node) group_left(label_topology_kubernetes_io_zone)
+              kube_node_labels{label_topology_kubernetes_io_zone!=""}
             ) < 1
           for: 2m
           labels:
             severity: critical
           annotations:
-            summary: "No healthy nodes in zone {{ $labels.zone }}"
+            summary: "No healthy nodes in zone {{ $labels.label_topology_kubernetes_io_zone }}"
         - alert: ZoneImbalance
           expr: |
-            max(count by (zone) (kube_node_info)) -
-            min(count by (zone) (kube_node_info)) > 2
+            max(
+              count by (label_topology_kubernetes_io_zone) (
+                kube_node_info
+                * on (node) group_left(label_topology_kubernetes_io_zone)
+                kube_node_labels{label_topology_kubernetes_io_zone!=""}
+              )
+            )
+            -
+            min(
+              count by (label_topology_kubernetes_io_zone) (
+                kube_node_info
+                * on (node) group_left(label_topology_kubernetes_io_zone)
+                kube_node_labels{label_topology_kubernetes_io_zone!=""}
+              )
+            ) > 2
           for: 10m
           labels:
             severity: warning
