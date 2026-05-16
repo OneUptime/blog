@@ -17,7 +17,7 @@ This guide covers how to combine VIP with other techniques to build truly redund
 While VIP is great for most scenarios, it has limitations:
 
 - It only works within a single Layer 2 broadcast domain
-- During failover (3-12 seconds), the API server is unreachable
+- During an unexpected failover, the API server can be unreachable for up to a minute
 - If all control plane nodes go down, the VIP goes down too
 - A network issue on the VIP's subnet makes the entire cluster unreachable
 
@@ -48,17 +48,18 @@ Start with the standard VIP setup on all control plane nodes:
 ```yaml
 # Control plane node configuration with VIP
 
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-        vip:
-          ip: 192.168.1.100
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - gateway: 192.168.1.1
+---
+apiVersion: v1alpha1
+kind: Layer2VIPConfig
+name: 192.168.1.100
+link: eth0
 ```
 
 ```bash
@@ -87,6 +88,8 @@ curl -sk https://k8s-api.example.com:6443/healthz
 ```
 
 For better DNS failover, use a DNS service that supports health checks and removes unhealthy records automatically.
+
+Make sure every DNS name, VIP, and direct IP address you use for Kubernetes API access is included in the API server certificate SANs, for example with `cluster.apiServer.certSANs` or `talosctl gen config --additional-sans`.
 
 ## Layer 3: Multiple Kubeconfig Contexts
 
@@ -155,7 +158,7 @@ machine:
 
 KubePrism provides redundancy for internal cluster communication. The kubelet on each node connects to the local KubePrism endpoint (127.0.0.1:7445) instead of the VIP. KubePrism then load balances across all control plane nodes.
 
-This means that even if the VIP is temporarily unreachable, pods can still communicate with the API server through KubePrism:
+This means that even if the VIP is temporarily unreachable, host-networked control plane components and other clients configured to use KubePrism can still communicate with the API server:
 
 ```bash
 # Verify KubePrism is running
@@ -171,24 +174,29 @@ If your nodes have multiple network interfaces, you can configure a secondary VI
 
 ```yaml
 # Dual VIP on different interfaces
-machine:
-  network:
-    interfaces:
-      # Primary interface with VIP
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-        vip:
-          ip: 192.168.1.100
-      # Secondary interface with backup VIP
-      - interface: eth1
-        addresses:
-          - 10.0.1.10/24
-        vip:
-          ip: 10.0.1.100
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - gateway: 192.168.1.1
+---
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth1
+addresses:
+  - address: 10.0.1.10/24
+---
+apiVersion: v1alpha1
+kind: Layer2VIPConfig
+name: 192.168.1.100
+link: eth0
+---
+apiVersion: v1alpha1
+kind: Layer2VIPConfig
+name: 10.0.1.100
+link: eth1
 ```
 
 This protects against a switch failure on one network. If the switch serving eth0 goes down, clients can still reach the cluster through eth1's VIP.
@@ -267,17 +275,21 @@ Here is a complete redundant access configuration for a production Talos Linux c
 
 ```yaml
 # Control plane machine config with full redundancy
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - gateway: 192.168.1.1
+---
+apiVersion: v1alpha1
+kind: Layer2VIPConfig
+name: 192.168.1.100
+link: eth0
+---
+version: v1alpha1
 machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-        vip:
-          ip: 192.168.1.100    # Primary VIP
   features:
     kubePrism:
       enabled: true             # Internal LB for node-local access
@@ -286,12 +298,12 @@ machine:
 
 Access priority for external clients:
 1. VIP (192.168.1.100) - primary, fastest failover
-2. DNS round-robin (k8s-api.example.com) - backup, handles VIP subnet failure
+2. DNS round-robin or an external load balancer (k8s-api.example.com) - backup path
 3. Direct node IP - last resort, manual failover
 
 Access for internal cluster components (kubelet, etc.):
-1. KubePrism (127.0.0.1:7445) - always available, local to each node
-2. Falls back to individual control plane nodes automatically
+1. KubePrism (127.0.0.1:7445) - local to each node
+2. KubePrism filters unhealthy endpoints and can use individual control plane nodes automatically
 
 ## Testing Redundant Access
 
@@ -309,8 +321,9 @@ for node in 192.168.1.10 192.168.1.11 192.168.1.12; do
   curl -sk "https://${node}:6443/healthz" && echo "Node $node: OK"
 done
 
-# Test 4: KubePrism (from inside a pod)
-kubectl run test-prism --rm -it --image=curlimages/curl -- \
+# Test 4: KubePrism (from a host-networked pod)
+kubectl run test-prism --rm -it --restart=Never --image=curlimages/curl \
+  --overrides='{"spec":{"hostNetwork":true}}' -- \
   curl -sk https://127.0.0.1:7445/healthz
 ```
 
@@ -319,11 +332,11 @@ Test failover scenarios:
 ```bash
 # Scenario 1: VIP owner goes down
 # Action: Reboot VIP owner, verify VIP moves
-# Expected: 3-12 second interruption, then recovery via VIP
+# Expected: near-instant reassignment on graceful shutdown; up to a minute after an unexpected failure
 
 # Scenario 2: Entire VIP subnet has issues
 # Action: Block traffic on eth0 on all nodes
-# Expected: DNS backup path still works via alternate network
+# Expected: Only backup paths on another network, such as the secondary eth1 VIP or an external load balancer, continue to work
 
 # Scenario 3: Two control plane nodes down
 # Action: Stop 2 of 3 CP nodes
