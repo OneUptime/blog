@@ -99,6 +99,7 @@ metadata:
   name: pre-scale-morning
 spec:
   schedule: "45 7 * * 1-5"  # 7:45 AM weekdays
+  timeZone: "America/New_York"
   jobTemplate:
     spec:
       template:
@@ -121,6 +122,7 @@ metadata:
   name: scale-down-evening
 spec:
   schedule: "0 20 * * *"  # 8 PM every day
+  timeZone: "America/New_York"
   jobTemplate:
     spec:
       template:
@@ -167,14 +169,12 @@ spec:
           )
         ) * 60
       threshold: "10"   # Scale if traffic is growing by 10 req/s per minute
-      metricName: traffic_growth_rate
   # Also react to current load
   - type: prometheus
     metadata:
       serverAddress: http://prometheus.monitoring.svc:9090
       query: sum(rate(http_requests_total{deployment="webapp"}[2m]))
       threshold: "100"
-      metricName: current_request_rate
 ```
 
 ## Strategy 3: Day-of-Week Pattern Matching
@@ -201,7 +201,6 @@ spec:
       query: |
         sum(rate(http_requests_total{deployment="webapp"}[1h] offset 7d)) * 1.2
       threshold: "80"
-      metricName: predicted_load
 ```
 
 ## Strategy 4: Custom Predictive Controller
@@ -264,9 +263,10 @@ MAX_REPLICAS = 30
 
 def get_historical_traffic(hours_ahead=0.25):
     """Query Prometheus for same time last week, adjusted for growth."""
+    offset_minutes = int((7 * 24 * 60) - (hours_ahead * 60))
     query = f'''
     sum(rate(http_requests_total{{deployment="{DEPLOYMENT}"}}[5m]
-        offset {int(168 - hours_ahead * 60)}m))
+        offset {offset_minutes}m))
     '''
     response = requests.get(f"{PROMETHEUS_URL}/api/v1/query", params={"query": query})
     result = response.json()
@@ -326,14 +326,14 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: webapp-reactive-hpa
-  annotations:
-    # This HPA acts as a floor, ensuring reactive scaling works
-    autoscaling.alpha.kubernetes.io/behavior: '{"scaleUp":{"stabilizationWindowSeconds":30}}'
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
     name: webapp
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
   minReplicas: 2
   maxReplicas: 50
   metrics:
