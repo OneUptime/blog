@@ -36,7 +36,9 @@ Before you start, gather the following:
 curl -sL https://talos.dev/install | sh
 
 # Install the CloudStack CLI (cloudmonkey)
-pip install cloudmonkey
+curl -L https://github.com/apache/cloudstack-cloudmonkey/releases/latest/download/cmk.linux.x86-64 -o cmk
+chmod +x cmk
+sudo mv cmk /usr/local/bin/cmk
 
 # Configure cloudmonkey
 cmk set url http://cloudstack.example.com:8080/client/api
@@ -49,14 +51,14 @@ cmk set secretkey YOUR_SECRET_KEY
 Download the Talos Linux image and register it as a CloudStack template:
 
 ```bash
-# Download the Talos Linux image
-wget https://github.com/siderolabs/talos/releases/download/v1.9.0/nocloud-amd64.raw.xz
+# Download the Talos Linux CloudStack image from the Talos Image Factory
+wget -O cloudstack-amd64.raw.gz https://factory.talos.dev/image/<SCHEMATIC_ID>/v1.13.0/cloudstack-amd64.raw.gz
 
 # Decompress
-xz -d nocloud-amd64.raw.xz
+gunzip cloudstack-amd64.raw.gz
 
 # Convert to qcow2 format (CloudStack often prefers qcow2)
-qemu-img convert -f raw -O qcow2 nocloud-amd64.raw nocloud-amd64.qcow2
+qemu-img convert -f raw -O qcow2 cloudstack-amd64.raw cloudstack-amd64.qcow2
 ```
 
 Register the template in CloudStack. You can either upload directly or host it on an HTTP server:
@@ -64,13 +66,13 @@ Register the template in CloudStack. You can either upload directly or host it o
 ```bash
 # Option 1: Register from a URL
 cmk register template \
-  name="Talos-Linux-v1.9.0" \
-  displaytext="Talos Linux v1.9.0 for Kubernetes" \
+  name="Talos-Linux-v1.13.0" \
+  displaytext="Talos Linux v1.13.0 for Kubernetes" \
   format=QCOW2 \
   hypervisor=KVM \
   ostypeid=<LINUX_OS_TYPE_ID> \
   zoneid=<ZONE_ID> \
-  url="http://your-server/nocloud-amd64.qcow2" \
+  url="http://your-server/cloudstack-amd64.qcow2" \
   requireshvm=true
 
 # Option 2: Upload via the CloudStack UI
@@ -184,7 +186,7 @@ Edit the machine configuration:
 machine:
   install:
     disk: /dev/vda
-    image: ghcr.io/siderolabs/installer:v1.9.0
+    image: ghcr.io/siderolabs/installer:v1.13.0
   network:
     interfaces:
       - interface: eth0
@@ -257,9 +259,9 @@ kind: StorageClass
 metadata:
   name: cloudstack-storage
 provisioner: csi.cloudstack.apache.org
+volumeBindingMode: WaitForFirstConsumer
 parameters:
-  diskOfferingId: <DISK_OFFERING_ID>
-  zoneId: <ZONE_ID>
+  csi.cloudstack.apache.org/disk-offering-id: <DISK_OFFERING_ID>
 ```
 
 ## Load Balancing Options
@@ -324,7 +326,7 @@ cmk deploy virtualmachine \
 
 ## Troubleshooting
 
-If VMs fail to boot with the Talos template, check that the template format matches your hypervisor (KVM uses QCOW2, VMware uses OVA). Also verify that the OS type is set correctly - use a generic Linux 64-bit type.
+If VMs fail to boot with the Talos template, check that the template format matches your hypervisor (KVM supports RAW and QCOW2, while VMware uses OVA). Also verify that the OS type is set correctly - use a generic Linux 64-bit type.
 
 If nodes cannot communicate, review your CloudStack network configuration and security group rules. In isolated networks, inter-VM communication should work by default, but verify with the CloudStack UI.
 
