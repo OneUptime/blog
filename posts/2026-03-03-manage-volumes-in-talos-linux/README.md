@@ -42,38 +42,41 @@ talosctl apply-config --nodes 192.168.1.10 --file machine-config.yaml
 
 ## Using Disk Selectors Instead of Device Paths
 
-Hard-coding device paths like `/dev/sdb` is fragile because device names can change between reboots. Talos supports disk selectors that let you target disks based on stable properties:
+Hard-coding device paths like `/dev/sdb` is fragile because device names can change between reboots. The modern volume API in Talos supports disk selectors that let you target disks based on stable properties. User volumes are declared as separate `UserVolumeConfig` documents in the machine configuration:
 
 ```yaml
-machine:
-  disks:
-    - deviceSelector:
-        size: '>= 100GB'
-        type: ssd
-        busPath: /pci0000:00/0000:00:1d.0/*
-      partitions:
-        - mountpoint: /var/mnt/data
-          size: 0  # Use all available space
+apiVersion: v1alpha1
+kind: UserVolumeConfig
+name: data
+provisioning:
+  diskSelector:
+    match: disk.size >= 100u * GB && disk.transport == 'nvme'
+  maxSize: 0  # Use all available space
+filesystem:
+  type: xfs
 ```
 
-Disk selectors can match on size, type (SSD or HDD), bus path, model, serial number, and other attributes. This makes your configurations portable across different hardware.
+The `diskSelector.match` field is a Common Expression Language (CEL) expression that evaluates against each available disk. You can match on attributes such as `disk.size`, `disk.transport` (e.g. `'nvme'`, `'sata'`), `disk.model`, `disk.serial`, `disk.wwid`, `disk.bus_path`, and `disk.dev_path`. User volumes created this way are mounted at `/var/mnt/<name>` and the partition label is set to `u-<name>`.
 
 ## Managing the EPHEMERAL Volume
 
-The EPHEMERAL volume is special in Talos. It stores container images, pod data, and other Kubernetes runtime state. By default, Talos creates it on the system disk and lets it grow to fill available space.
+The EPHEMERAL volume is special in Talos. It stores container images, pod data, and other Kubernetes runtime state. By default, Talos provisions it on the system disk with a minimum size of 2 GiB and lets it grow to fill the available space.
 
-You can customize the EPHEMERAL volume in the machine config:
+You can customize the EPHEMERAL volume by adding a `VolumeConfig` document to the machine configuration:
 
 ```yaml
-machine:
-  install:
-    disk: /dev/sda
-    ephemeral:
-      minSize: 20GB
-      maxSize: 100GB
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+provisioning:
+  diskSelector:
+    match: system_disk
+  minSize: 20GB
+  maxSize: 100GB
+  grow: false
 ```
 
-Setting size constraints helps when you need to reserve space on the system disk for other purposes.
+Setting size constraints helps when you need to reserve space on the system disk for other purposes. Note that volume configuration only applies when the volume has not been provisioned yet — resizing a provisioned EPHEMERAL volume requires wiping it first.
 
 ## Resizing Volumes
 
@@ -97,14 +100,17 @@ Keep in mind that growing a partition is straightforward, but shrinking requires
 
 ## Monitoring Volume State
 
-After applying configuration changes, monitor the volume state to confirm everything provisioned correctly:
+After applying configuration changes, monitor the volume state to confirm everything provisioned correctly. Talos exposes two resources for this: `VolumeConfig` (the desired state) and `VolumeStatus` (the actual state):
 
 ```bash
-# Check volume status
-talosctl get volumes --nodes 192.168.1.10
+# List the configured volumes
+talosctl get volumeconfigs --nodes 192.168.1.10
+
+# Check current volume status
+talosctl get volumestatus --nodes 192.168.1.10
 
 # Watch for changes in real time
-talosctl get volumes --nodes 192.168.1.10 --watch
+talosctl get volumestatus --nodes 192.168.1.10 --watch
 
 # Get detailed status including any errors
 talosctl get volumestatus --nodes 192.168.1.10 -o yaml
@@ -126,7 +132,7 @@ You can observe each phase through the volume resources:
 
 ```bash
 # Track volume lifecycle events
-talosctl get volumes --nodes 192.168.1.10 --watch
+talosctl get volumestatus --nodes 192.168.1.10 --watch
 ```
 
 ## Managing Multiple Volumes
@@ -184,7 +190,7 @@ When volumes fail to provision, Talos provides diagnostic information through th
 
 ```bash
 # Check for volume errors
-talosctl get volumes --nodes 192.168.1.10 -o yaml | grep -A 5 "phase: Failed"
+talosctl get volumestatus --nodes 192.168.1.10 -o yaml | grep -A 5 "phase: failed"
 
 # Check system logs for disk-related errors
 talosctl logs machined --nodes 192.168.1.10 | grep -i "disk\|volume\|partition"
@@ -229,4 +235,4 @@ Here are some guidelines that will save you trouble down the road:
 
 ## Summary
 
-Managing volumes in Talos Linux is a configuration-driven process. You declare your desired storage layout in machine configs, apply them through `talosctl`, and let Talos handle the details. The key tools are `talosctl apply-config` for making changes and `talosctl get volumes` for monitoring state. By embracing the declarative model and following best practices around disk selectors and monitoring, you can maintain reliable storage across your Talos Linux cluster.
+Managing volumes in Talos Linux is a configuration-driven process. You declare your desired storage layout in machine configs, apply them through `talosctl`, and let Talos handle the details. The key tools are `talosctl apply-config` for making changes and `talosctl get volumestatus` for monitoring state. By embracing the declarative model and following best practices around disk selectors and monitoring, you can maintain reliable storage across your Talos Linux cluster.
