@@ -345,10 +345,10 @@ Keep an eye on your CephFS filesystem performance:
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph fs status myfs
 
 # Check MDS performance counters
-kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph daemon mds.myfs-a perf dump
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph tell mds.myfs-a perf dump
 
-# Check filesystem usage
-kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph fs df myfs
+# Check cluster and pool usage (includes CephFS metadata and data pools)
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph df
 
 # List active CephFS clients
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph tell mds.myfs-a client ls
