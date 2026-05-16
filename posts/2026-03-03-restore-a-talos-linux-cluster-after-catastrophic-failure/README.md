@@ -111,8 +111,9 @@ The `--insecure` flag is required because the nodes do not yet have TLS trust es
 Wait for the nodes to install and reboot:
 
 ```bash
-# Monitor installation progress
-talosctl dmesg --nodes <cp-node-1-ip> --follow --insecure
+# Monitor installation progress (run once the node has rebooted into Talos
+# and TLS trust is established; before that, watch the machine console)
+talosctl dmesg --nodes <cp-node-1-ip> --follow
 ```
 
 ## Step 3: Bootstrap from etcd Backup
