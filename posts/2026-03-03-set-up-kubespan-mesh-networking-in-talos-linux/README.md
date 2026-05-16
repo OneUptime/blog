@@ -32,7 +32,7 @@ KubeSpan builds on three components:
 
 2. **Peer Discovery** - Nodes discover each other using the Talos Discovery Service (or a local discovery mechanism). Each node announces its WireGuard public key and its reachable endpoints.
 
-3. **Route Management** - KubeSpan automatically configures routes so that pod and service traffic between nodes goes through the WireGuard tunnels.
+3. **Route Management** - KubeSpan automatically configures routes so that node-to-node traffic goes through the WireGuard tunnels. Pod-to-pod traffic is usually encapsulated by the CNI and then carried as node-to-node traffic, unless you explicitly enable Kubernetes network advertisement.
 
 The result is that from a Kubernetes perspective, all nodes appear to be on the same network, even if they are physically on different continents.
 
@@ -47,6 +47,9 @@ machine:
   network:
     kubespan:
       enabled: true
+cluster:
+  discovery:
+    enabled: true
 ```
 
 That is it for the basic case. When KubeSpan is enabled, Talos automatically:
@@ -54,7 +57,7 @@ That is it for the basic case. When KubeSpan is enabled, Talos automatically:
 - Creates a WireGuard interface
 - Discovers other nodes in the cluster
 - Establishes tunnels to all peers
-- Routes pod and service traffic through the tunnels
+- Routes node-to-node traffic through the tunnels
 
 ## Enabling KubeSpan During Cluster Creation
 
@@ -63,7 +66,7 @@ The easiest way to enable KubeSpan is during initial config generation:
 ```bash
 # Generate config with KubeSpan enabled
 talosctl gen config my-cluster https://192.168.1.100:6443 \
-  --config-patch '{"machine": {"network": {"kubespan": {"enabled": true}}}}'
+  --with-kubespan
 ```
 
 Or use a patch file:
@@ -74,6 +77,9 @@ machine:
   network:
     kubespan:
       enabled: true
+cluster:
+  discovery:
+    enabled: true
 ```
 
 ```bash
@@ -83,16 +89,16 @@ talosctl gen config my-cluster https://192.168.1.100:6443 \
 
 ## Enabling KubeSpan on an Existing Cluster
 
-You can enable KubeSpan on a running cluster by patching each node:
+You can enable KubeSpan on a running cluster by patching each node. Discovery is enabled by default in current Talos releases, but include it in the patch if it has been disabled:
 
 ```bash
 # Enable KubeSpan on a control plane node
 talosctl patch machineconfig --nodes 192.168.1.10 \
-  --patch '{"machine": {"network": {"kubespan": {"enabled": true}}}}'
+  --patch '{"machine": {"network": {"kubespan": {"enabled": true}}}, "cluster": {"discovery": {"enabled": true}}}'
 
 # Enable on worker nodes
 talosctl patch machineconfig --nodes 192.168.1.20 \
-  --patch '{"machine": {"network": {"kubespan": {"enabled": true}}}}'
+  --patch '{"machine": {"network": {"kubespan": {"enabled": true}}}, "cluster": {"discovery": {"enabled": true}}}'
 ```
 
 KubeSpan takes effect without a reboot. Nodes will start discovering peers and forming tunnels within seconds.
@@ -111,15 +117,15 @@ cluster:
     enabled: true
     registries:
       kubernetes:
-        disabled: false
+        disabled: true
       service:
         disabled: false
         endpoint: https://discovery.talos.dev/
 ```
 
 The two discovery registries are:
-- **kubernetes** - Uses Kubernetes API to store discovery information (works without external services)
-- **service** - Uses the Talos Discovery Service (helps with initial bootstrap when Kubernetes is not yet running)
+- **kubernetes** - Uses Kubernetes API to store discovery information, but is disabled by default and deprecated because of Kubernetes 1.32 node authorization changes
+- **service** - Uses the Talos Discovery Service and is enabled by default (helps with initial bootstrap when Kubernetes is not yet running)
 
 ## KubeSpan Configuration Options
 
@@ -135,12 +141,18 @@ machine:
       # Allow traffic from nodes in the same subnet to bypass KubeSpan
       allowDownPeerBypass: false
       # Harvest additional endpoints from peer connections
-      harvestExtraEndpoints: true
+      harvestExtraEndpoints: false
+      # WireGuard MTU
+      mtu: 1420
+      filters:
+        endpoints:
+          - 0.0.0.0/0
+          - ::/0
 ```
 
 ### advertiseKubernetesNetworks
 
-When `true`, KubeSpan advertises the Kubernetes pod and service CIDRs through the WireGuard tunnels. This ensures that pod-to-pod traffic between nodes flows through the encrypted mesh. This is generally what you want.
+When `true`, KubeSpan advertises the Kubernetes pod and service CIDRs through the WireGuard tunnels. By default, this is disabled: KubeSpan carries node-to-node traffic, while pod-to-pod traffic is routed or encapsulated by the CNI. Do not enable this blindly with CNIs such as Calico or Cilium, because they may allocate pod IPs in ways KubeSpan cannot fully detect.
 
 ### allowDownPeerBypass
 
@@ -148,7 +160,7 @@ When `true`, if a KubeSpan peer is unreachable, traffic to that peer is allowed 
 
 ### harvestExtraEndpoints
 
-When `true`, KubeSpan learns additional endpoints from active connections. This helps with NAT traversal by discovering the external addresses that peers use.
+When `true`, KubeSpan learns additional endpoints from active connections. This helps with NAT traversal by discovering the external addresses that peers use. Talos disables it by default, and the official docs warn against enabling it for large KubeSpan networks with more than about 50 peers because of performance concerns.
 
 ## Multi-Site Cluster Example
 
@@ -206,13 +218,13 @@ With KubeSpan enabled on both nodes, they discover each other through the discov
 
 ## Firewall Requirements
 
-KubeSpan uses WireGuard, which requires UDP connectivity between nodes. The default port is 51820, but KubeSpan can also work on other ports.
+KubeSpan uses WireGuard and carries its encrypted traffic over UDP port 51820.
 
 Make sure your firewalls allow:
-- **UDP port 51820** (or whatever port KubeSpan uses) between all nodes
+- **UDP port 51820** for KubeSpan traffic. Best practice is to ensure at least one end of each possible node-to-node path can receive inbound UDP 51820.
 - **TCP port 443** to the discovery service (if using the public Talos Discovery Service)
 
-If nodes are behind NAT, KubeSpan handles traversal automatically using its endpoint harvesting feature.
+If nodes are behind NAT, KubeSpan can often establish connectivity automatically because peers exchange observed endpoints through discovery. If both sides are behind restrictive firewalls, you may still need to allow inbound UDP 51820 on one side.
 
 ## Verifying KubeSpan
 
@@ -229,7 +241,7 @@ talosctl get kubespanpeerstatuses --nodes 192.168.1.10
 talosctl get links --nodes 192.168.1.10
 
 # View KubeSpan identity
-talosctl get kubespanidentity --nodes 192.168.1.10
+talosctl get kubespanidentities --nodes 192.168.1.10
 ```
 
 The peer status shows which nodes are connected, their endpoints, and the tunnel state. All peers should show as "up" with recent handshake times.
@@ -238,7 +250,7 @@ The peer status shows which nodes are connected, their endpoints, and the tunnel
 
 KubeSpan adds WireGuard encryption overhead to all inter-node traffic. In practice, this overhead is small:
 
-- **CPU** - WireGuard is highly optimized and runs in the kernel. On modern CPUs with AES-NI, the crypto overhead is negligible.
+- **CPU** - WireGuard is highly optimized and uses efficient modern cryptography such as ChaCha20-Poly1305. On modern CPUs, the crypto overhead is usually small.
 - **Latency** - Adds 1-2ms for the encapsulation/decapsulation, plus any additional latency from the tunnel path.
 - **Bandwidth** - WireGuard header adds about 60-80 bytes per packet. For most workloads, this is not noticeable.
 
