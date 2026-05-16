@@ -66,30 +66,25 @@ log tracking measurements statistics
 Once your GPS-synced NTP server is running, point Talos nodes to it:
 
 ```yaml
-machine:
-  time:
-    disabled: false
-    servers:
-      - 10.0.1.50   # GPS-synced NTP server
-      - 10.0.1.51   # Backup NTP server
+apiVersion: v1alpha1
+kind: TimeSyncConfig
+ntp:
+  servers:
+    - 10.0.1.50   # GPS-synced NTP server
+    - 10.0.1.51   # Backup NTP server
 ```
 
 Apply to your nodes:
 
 ```bash
-talosctl -n 192.168.1.10 patch machineconfig -p '[
-  {
-    "op": "replace",
-    "path": "/machine/time",
-    "value": {
-      "disabled": false,
-      "servers": [
-        "10.0.1.50",
-        "10.0.1.51"
-      ]
-    }
-  }
-]'
+talosctl -n 192.168.1.10 patch machineconfig --patch '
+apiVersion: v1alpha1
+kind: TimeSyncConfig
+ntp:
+  servers:
+    - 10.0.1.50
+    - 10.0.1.51
+'
 ```
 
 ## Option 2: Rubidium or OCXO Oscillator
@@ -101,12 +96,13 @@ These devices connect to your NTP server and provide a stable frequency referenc
 ```bash
 # /etc/chrony/chrony.conf for OCXO/rubidium reference
 
+# Use one of the following local reference clocks.
 # Local hardware clock as reference
-refclock PHC /dev/ptp0 poll 0 precision 1e-7
+refclock PHC /dev/ptp0 poll 0 precision 1e-7 local
 
 # Or use the system's RTC as a reference
 # (less accurate but works without special hardware)
-refclock RTC precision 1e-3
+# refclock RTC /dev/rtc0:utc precision 1e-3 local
 
 # Allow network clients
 allow 10.0.0.0/8
@@ -139,10 +135,11 @@ driftfile /var/lib/chrony/drift
 Then configure Talos nodes to use this server:
 
 ```yaml
-machine:
-  time:
-    servers:
-      - 10.0.1.50
+apiVersion: v1alpha1
+kind: TimeSyncConfig
+ntp:
+  servers:
+    - 10.0.1.50
 ```
 
 ## Building Redundant NTP Infrastructure
@@ -189,30 +186,33 @@ local stratum 3 orphan
 Then configure Talos to use both:
 
 ```yaml
-machine:
-  time:
-    servers:
-      - 10.0.1.50
-      - 10.0.1.51
+apiVersion: v1alpha1
+kind: TimeSyncConfig
+ntp:
+  servers:
+    - 10.0.1.50
+    - 10.0.1.51
 ```
 
 ## Configuring Talos for Air-Gapped NTP
 
-Here is a complete machine configuration snippet for air-gapped time sync:
+Here is a complete Talos configuration snippet for air-gapped time sync:
 
 ```yaml
-machine:
-  time:
-    disabled: false
-    servers:
-      - 10.0.1.50    # Primary NTP server
-      - 10.0.1.51    # Secondary NTP server
-  # Make sure DNS points to internal resolvers
-  # (or use IP addresses for NTP servers to avoid DNS dependency)
-  network:
-    nameservers:
-      - 10.0.1.10    # Internal DNS
-      - 10.0.1.11
+apiVersion: v1alpha1
+kind: TimeSyncConfig
+ntp:
+  servers:
+    - 10.0.1.50    # Primary NTP server
+    - 10.0.1.51    # Secondary NTP server
+---
+# Make sure DNS points to internal resolvers
+# (or use IP addresses for NTP servers to avoid DNS dependency)
+apiVersion: v1alpha1
+kind: ResolverConfig
+nameservers:
+  - address: 10.0.1.10    # Internal DNS
+  - address: 10.0.1.11
 ```
 
 Apply across all cluster nodes:
@@ -225,19 +225,14 @@ NODES="192.168.1.10 192.168.1.11 192.168.1.12 192.168.1.20 192.168.1.21"
 
 for node in $NODES; do
   echo "Configuring $node..."
-  talosctl -n "$node" patch machineconfig -p '[
-    {
-      "op": "replace",
-      "path": "/machine/time",
-      "value": {
-        "disabled": false,
-        "servers": [
-          "10.0.1.50",
-          "10.0.1.51"
-        ]
-      }
-    }
-  ]'
+  talosctl -n "$node" patch machineconfig --patch '
+apiVersion: v1alpha1
+kind: TimeSyncConfig
+ntp:
+  servers:
+    - 10.0.1.50
+    - 10.0.1.51
+'
 done
 
 # Verify sync status
@@ -321,7 +316,7 @@ In air-gapped environments, leap second announcements need special attention. GP
 # Copy to your NTP servers
 # Configure chrony to use it
 # /etc/chrony/chrony.conf
-leapsectz right/UTC
+leapseclist /etc/chrony/leap-seconds.list
 ```
 
 ## Testing Your Air-Gapped NTP Setup
