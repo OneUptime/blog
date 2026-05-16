@@ -38,8 +38,9 @@ For this guide, you need:
 
 - Two or more Talos Linux clusters
 - `kubectl` access to all clusters (with separate kubeconfig contexts)
-- Network connectivity between clusters (at least between gateway pods)
-- Helm 3 installed
+- Network connectivity between clusters (between Linkerd gateways, or pod-to-pod for the Istio single-network example below)
+- Linkerd CLI, Istio CLI (`istioctl`), `step`, `openssl`, and `make` installed
+- Gateway API CRDs installed before installing Linkerd
 
 ```bash
 # Set up kubeconfig contexts
@@ -139,50 +140,50 @@ This creates a mirror service in cluster 1 named `backend-api-cluster2`. Service
 
 ### Traffic Splitting Across Clusters
 
-Use TrafficSplit to distribute traffic between local and remote services:
+Use an HTTPRoute to distribute traffic between local and remote services:
 
 ```yaml
 # cross-cluster-split.yaml
-apiVersion: split.smi-spec.io/v1alpha2
-kind: TrafficSplit
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: backend-api-split
   namespace: default
 spec:
-  service: backend-api
-  backends:
-  - service: backend-api
-    weight: 800  # 80% local
-  - service: backend-api-cluster2
-    weight: 200  # 20% remote
+  parentRefs:
+  - group: ""
+    kind: Service
+    name: backend-api
+    port: 8080
+  rules:
+  - backendRefs:
+    - name: backend-api
+      port: 8080
+      weight: 80  # 80% local
+    - name: backend-api-cluster2
+      port: 8080
+      weight: 20  # 20% remote
 ```
 
 ## Multi-Cluster Istio
 
-Istio supports multi-cluster through several models. The most common is the multi-primary model where each cluster has its own Istio control plane.
+Istio supports multi-cluster through several models. The most common is the multi-primary model where each cluster has its own Istio control plane. The example below uses a single-network multi-primary mesh; for clusters on different networks, install Istio east-west gateways and use separate network names.
 
 ### Configure Cluster Certificates
 
 Both clusters need to trust the same root CA:
 
 ```bash
-# Create a root CA
+# From the top-level directory of the Istio release package
 mkdir -p certs
-cd certs
+pushd certs
 
-# Generate root CA
-openssl req -x509 -nodes -days 3650 -newkey rsa:4096 \
-  -keyout root-key.pem -out root-cert.pem \
-  -subj "/O=Istio/CN=Root CA"
+# Generate the root CA and a per-cluster intermediate CA
+make -f ../tools/certs/Makefile.selfsigned.mk root-ca
+make -f ../tools/certs/Makefile.selfsigned.mk cluster1-cacerts
+make -f ../tools/certs/Makefile.selfsigned.mk cluster2-cacerts
 
-# Generate intermediate CA for cluster 1
-openssl req -nodes -newkey rsa:4096 \
-  -keyout cluster1-ca-key.pem -out cluster1-ca-cert.csr \
-  -subj "/O=Istio/CN=Cluster1 CA"
-openssl x509 -req -days 730 -CA root-cert.pem -CAkey root-key.pem \
-  -CAcreateserial -in cluster1-ca-cert.csr -out cluster1-ca-cert.pem
-
-# Repeat for cluster 2
+popd
 ```
 
 ### Install Istio on Both Clusters
@@ -191,12 +192,19 @@ openssl x509 -req -days 730 -CA root-cert.pem -CAkey root-key.pem \
 # Create secrets for the CA certificates
 kubectl --context=$CTX_CLUSTER1 create namespace istio-system
 kubectl --context=$CTX_CLUSTER1 create secret generic cacerts -n istio-system \
-  --from-file=ca-cert.pem=cluster1-ca-cert.pem \
-  --from-file=ca-key.pem=cluster1-ca-key.pem \
-  --from-file=root-cert.pem=root-cert.pem \
-  --from-file=cert-chain.pem=cluster1-cert-chain.pem
+  --from-file=ca-cert.pem=certs/cluster1/ca-cert.pem \
+  --from-file=ca-key.pem=certs/cluster1/ca-key.pem \
+  --from-file=root-cert.pem=certs/cluster1/root-cert.pem \
+  --from-file=cert-chain.pem=certs/cluster1/cert-chain.pem
 
-# Install Istio with multi-cluster settings
+kubectl --context=$CTX_CLUSTER2 create namespace istio-system
+kubectl --context=$CTX_CLUSTER2 create secret generic cacerts -n istio-system \
+  --from-file=ca-cert.pem=certs/cluster2/ca-cert.pem \
+  --from-file=ca-key.pem=certs/cluster2/ca-key.pem \
+  --from-file=root-cert.pem=certs/cluster2/root-cert.pem \
+  --from-file=cert-chain.pem=certs/cluster2/cert-chain.pem
+
+# Install Istio with multi-cluster settings on cluster 1
 istioctl install --context=$CTX_CLUSTER1 -f - <<EOF
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
@@ -206,6 +214,19 @@ spec:
       meshID: mesh1
       multiCluster:
         clusterName: cluster1
+      network: network1
+EOF
+
+# Install Istio with multi-cluster settings on cluster 2
+istioctl install --context=$CTX_CLUSTER2 -f - <<EOF
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  values:
+    global:
+      meshID: mesh1
+      multiCluster:
+        clusterName: cluster2
       network: network1
 EOF
 ```
@@ -231,6 +252,19 @@ With Istio multi-cluster, services with the same name and namespace are automati
 ```yaml
 # Deploy the same service in both clusters
 # Traffic is automatically distributed
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-api
+  namespace: default
+spec:
+  selector:
+    app: backend-api
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -259,17 +293,24 @@ Configure automatic failover so that if a service fails in one cluster, traffic 
 
 ```yaml
 # failover-dr.yaml (Istio)
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-api-failover
   namespace: default
 spec:
-  host: backend-api
+  host: backend-api.default.svc.cluster.local
   trafficPolicy:
     connectionPool:
-      tcp:
-        maxConnections: 100
+      http:
+        maxRequestsPerConnection: 1
+    loadBalancer:
+      simple: ROUND_ROBIN
+      localityLbSetting:
+        enabled: true
+        failover:
+        - from: region1
+          to: region2
     outlierDetection:
       consecutive5xxErrors: 3
       interval: 10s
@@ -284,7 +325,7 @@ When pods in one cluster start failing, outlier detection ejects them and traffi
 # Linkerd - check cross-cluster traffic
 linkerd --context=$CTX_CLUSTER1 viz stat \
   --from deploy/frontend \
-  --to deploy/backend-api-cluster2 \
+  --to svc/backend-api-cluster2 \
   -n default
 
 # Istio - check traffic to remote endpoints
