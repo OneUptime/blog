@@ -246,9 +246,9 @@ spec:
               - namespaceSelector:
                   matchLabels:
                     kubernetes.io/metadata.name: kube-system
-              podSelector:
-                matchLabels:
-                  k8s-app: kube-dns
+                podSelector:
+                  matchLabels:
+                    k8s-app: kube-dns
             ports:
               - protocol: UDP
                 port: 53
@@ -436,7 +436,7 @@ metadata:
 value: 100
 globalDefault: false
 description: "Priority class for tenant workloads"
-
+---
 # System components should have higher priority
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
