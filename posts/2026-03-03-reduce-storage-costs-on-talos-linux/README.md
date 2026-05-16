@@ -39,7 +39,7 @@ SIZE:.spec.resources.requests.storage,\
 STORAGECLASS:.spec.storageClassName,\
 VOLUME:.spec.volumeName
 
-# Find PVCs that are not bound to any pod
+# List all bound PVCs with their size and storage class
 kubectl get pvc -A -o json | jq '
   .items[] |
   select(.status.phase == "Bound") |
