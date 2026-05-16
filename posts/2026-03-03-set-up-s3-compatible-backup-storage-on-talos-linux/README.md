@@ -99,12 +99,12 @@ docker run -d \
   -v /data/minio:/data \
   -e MINIO_ROOT_USER=minio-admin \
   -e MINIO_ROOT_PASSWORD=minio-secret-key \
-  minio/minio server /data --console-address ":9001"
+  quay.io/minio/minio server /data --console-address ":9001"
 
 # Create the backup bucket using the MinIO client
 docker run --rm \
   --entrypoint sh \
-  minio/mc -c "
+  quay.io/minio/mc -c "
     mc alias set local http://minio-host:9000 minio-admin minio-secret-key &&
     mc mb local/velero-backups &&
     mc mb local/etcd-backups
@@ -197,7 +197,7 @@ EOF
 # Install Velero
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.0 \
   --bucket talos-cluster-backups \
   --backup-location-config region=us-east-1 \
   --secret-file ./credentials-velero \
@@ -220,7 +220,7 @@ EOF
 # Install Velero pointing to MinIO
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.0 \
   --bucket velero-backups \
   --backup-location-config \
     region=minio,s3ForcePathStyle=true,s3Url=http://minio.minio.svc:9000 \
@@ -242,7 +242,7 @@ EOF
 
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.0 \
   --bucket velero-backups \
   --backup-location-config \
     region=minio,s3ForcePathStyle=true,s3Url=http://minio-host.example.com:9000 \
@@ -345,7 +345,7 @@ spec:
                   echo "Timestamp: $(date)"
 
                   # Check if the bucket is accessible
-                  aws s3 ls s3://talos-cluster-backups/ \
+                  aws s3 ls s3://velero-backups/ \
                     --endpoint-url "${S3_ENDPOINT}" \
                     --region minio 2>&1
 
@@ -357,7 +357,7 @@ spec:
                   fi
 
                   # Check total backup size
-                  TOTAL_SIZE=$(aws s3 ls s3://talos-cluster-backups/ \
+                  TOTAL_SIZE=$(aws s3 ls s3://velero-backups/ \
                     --endpoint-url "${S3_ENDPOINT}" \
                     --region minio \
                     --recursive \
@@ -366,7 +366,7 @@ spec:
                   echo "Total backup size: ${TOTAL_SIZE}"
 
                   # Count backup objects
-                  OBJECT_COUNT=$(aws s3 ls s3://talos-cluster-backups/ \
+                  OBJECT_COUNT=$(aws s3 ls s3://velero-backups/ \
                     --endpoint-url "${S3_ENDPOINT}" \
                     --region minio \
                     --recursive \
@@ -376,16 +376,16 @@ spec:
               env:
                 - name: S3_ENDPOINT
                   value: "http://minio.minio.svc:9000"
-                - name: AWS_ACCESS_KEY_ID
-                  valueFrom:
-                    secretKeyRef:
-                      name: velero
-                      key: aws-access-key-id
-                - name: AWS_SECRET_ACCESS_KEY
-                  valueFrom:
-                    secretKeyRef:
-                      name: velero
-                      key: aws-secret-access-key
+                - name: AWS_SHARED_CREDENTIALS_FILE
+                  value: /credentials/cloud
+              volumeMounts:
+                - name: cloud-credentials
+                  mountPath: /credentials
+                  readOnly: true
+          volumes:
+            - name: cloud-credentials
+              secret:
+                secretName: cloud-credentials
           restartPolicy: OnFailure
 ```
 
@@ -396,8 +396,8 @@ For critical environments, replicate backup data to a secondary location.
 ```bash
 # Using MinIO's built-in replication
 mc replicate add local/velero-backups \
-  --remote-bucket velero-backups-replica \
-  --remote-target secondary
+  --remote-bucket https://replication-user:replication-secret@secondary.example.com:9000/velero-backups-replica \
+  --replicate "delete,delete-marker,existing-objects"
 
 # Or use aws s3 sync for cross-region replication
 aws s3 sync s3://talos-cluster-backups s3://talos-cluster-backups-dr \
