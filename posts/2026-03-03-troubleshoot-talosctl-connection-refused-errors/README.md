@@ -11,7 +11,7 @@ Description: Practical steps for diagnosing and resolving connection refused err
 You are sitting at your terminal, ready to manage your Talos Linux cluster, and you run a command:
 
 ```bash
-talosctl services --nodes 192.168.1.10
+talosctl service --nodes 192.168.1.10
 ```
 
 And the response comes back: "connection refused." This is one of the most common errors people encounter with Talos Linux, and it can happen for several reasons. The good news is that it is almost always fixable once you understand what is going on.
@@ -36,7 +36,7 @@ If the node was just started or restarted, simply wait a minute or two and try a
 # Wait and retry
 
 sleep 60
-talosctl services --nodes 192.168.1.10
+talosctl service --nodes 192.168.1.10
 ```
 
 If you have console access (physical or virtual), you can watch the Talos boot screen to see when the API becomes available. The boot screen shows the node IP address and the status of each service.
@@ -56,25 +56,25 @@ This command shows all cluster members and their IP addresses. If the target nod
 
 ```bash
 # Use the correct IP
-talosctl services --nodes <correct-ip>
+talosctl service --nodes <correct-ip>
 ```
 
 For production environments, use static IP addresses or DHCP reservations to prevent IP changes.
 
 ## Cause 3: Wrong Port
 
-If you have customized the Talos API port in your machine configuration, the default port 50000 will not work:
+The Talos API port is 50000 and is not currently configurable in the machine configuration. If you are connecting through NAT, port forwarding, or a load balancer that exposes a different external port, the endpoint must match that external mapping:
 
 ```bash
-# Specify a custom port using the endpoint format
-talosctl services --endpoints 192.168.1.10:50001 --nodes 192.168.1.10
+# Specify the externally exposed port using the endpoint format
+talosctl service --endpoints 192.168.1.10:50001 --nodes 192.168.1.10
 ```
 
-Check your machine configuration to verify what port apid is configured to use.
+Check your forwarding or load balancer rules. If you are connecting directly to the Talos node, use port 50000.
 
 ## Cause 4: Firewall Blocking the Port
 
-If there is a firewall between your workstation and the Talos node, port 50000 might be blocked. Talos Linux itself does not run a firewall that would block its own API, but network-level firewalls, cloud security groups, or host-based firewalls on your workstation could interfere.
+If there is a firewall between your workstation and the Talos node, port 50000 might be blocked. Network-level firewalls, cloud security groups, host-based firewalls on your workstation, or Talos Ingress Firewall rules can interfere.
 
 **Diagnosis:**
 
@@ -129,11 +129,11 @@ kubectl describe node <node-name>
 talosctl apply-config --nodes 192.168.1.10 --file corrected-config.yaml --insecure
 ```
 
-The `--insecure` flag bypasses TLS verification, which can be necessary if the certificates are the problem.
+Use `--insecure` only when the node is still in maintenance mode, before a machine configuration has been applied. After the node is configured, use the certificates in your talosconfig.
 
 ## Cause 6: The Node Is Using a Different Network Interface
 
-If the node has multiple network interfaces, apid might be listening on one interface while you are trying to connect to another:
+If the node has multiple network interfaces, the IP address you are trying to use might not be reachable from your workstation, or Talos Ingress Firewall rules might only allow access from another network:
 
 ```bash
 # If you can reach the node on any interface, check all addresses
@@ -142,15 +142,15 @@ talosctl get addresses --nodes 192.168.1.10
 
 This is common in environments where nodes have separate management and data networks.
 
-**Fix:** Connect to the IP address of the interface where apid is listening, or reconfigure Talos to listen on all interfaces.
+**Fix:** Connect to the IP address that is reachable from your workstation, or adjust routing and firewall rules so port 50000 is reachable on the intended interface.
 
 ## Cause 7: Talos Configuration Not Applied
 
-On a fresh node, if the machine configuration has not been applied yet, apid might be running in maintenance mode on a different port or with different settings:
+On a fresh node, if the machine configuration has not been applied yet, the Talos API runs in maintenance mode on port 50000. In this mode, you must connect directly to the node and use `--insecure`:
 
 ```bash
 # Try connecting in insecure mode for unconfigured nodes
-talosctl disks --nodes 192.168.1.10 --insecure --endpoints 192.168.1.10
+talosctl get disks --nodes 192.168.1.10 --insecure
 ```
 
 Maintenance mode allows you to perform initial configuration tasks before the full Talos configuration is applied.
@@ -190,7 +190,7 @@ cat ~/.talos/config | grep -A5 "endpoints"
 talosctl config info
 
 # 5. Try with explicit endpoints
-talosctl services --endpoints 192.168.1.10 --nodes 192.168.1.10
+talosctl service --endpoints 192.168.1.10 --nodes 192.168.1.10
 ```
 
 ## Checking Your talosconfig
