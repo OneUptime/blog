@@ -18,31 +18,31 @@ Immutability in Talos Linux operates at several levels.
 
 ### Read-Only Root Filesystem
 
-The base operating system is stored as a SquashFS image that is mounted read-only at boot. This image contains the kernel, system binaries, and Talos runtime. Nothing can modify these files at runtime.
+The base root filesystem is stored as a SquashFS image that is mounted read-only at boot. Boot assets such as the kernel and initramfs are stored separately, while the root filesystem contains Talos user space and runtime components. Nothing can modify the immutable root filesystem at runtime.
 
 ```text
 /            -> SquashFS (read-only)
-/system      -> System binaries (read-only)
-/etc         -> Managed by Talos (not directly writable)
-/var         -> Ephemeral storage (writable, but cleared on reset)
+/system      -> Runtime tmpfs state, recreated on each boot
+/etc         -> Read-only except specific Talos-managed bind mounts
+/var         -> Ephemeral partition (writable, survives reboots/upgrades, cleared on reset)
 /var/lib/etcd -> etcd data (writable, control plane only)
 ```
 
-The writable areas are limited to `/var` for ephemeral data like container images, logs, and etcd data. Even these writable areas are tightly controlled - there is no way for a user to put arbitrary files on the system.
+Persistent writable areas are limited to `/var` for ephemeral data like container images, logs, and etcd data, plus Talos-managed overlay filesystems backed by `/var` where persistence is required. Runtime-only filesystems such as `/run`, `/tmp`, and `/system` are recreated at boot.
 
 ### No User-Accessible Shell
 
-Traditional Linux systems have at least one way to get a shell: SSH, serial console, or local login. Talos removes all of them. There is literally no way to run arbitrary commands on the host OS.
+Traditional Linux systems have at least one way to get a shell: SSH, serial console, or local login. Talos removes all of them from the host OS. There is no built-in interactive shell, SSH daemon, or local login prompt.
 
 ```bash
-# These are all impossible on Talos Linux:
+# These are all unavailable on the Talos host OS:
 
 ssh root@talos-node           # No SSH daemon
 talosctl -n 10.0.1.10 exec    # No exec/shell functionality
 # Physical console access     # No login prompt
 ```
 
-This is not just security through obscurity. The shell binaries (bash, sh, zsh) do not exist on the system. Neither do common utilities like ls, cat, grep, or wget. An attacker who gains code execution on the host has very limited tools available.
+This is not just security through obscurity. The shell binaries (bash, sh, zsh) do not exist in the base host OS. Neither do common utilities like ls, cat, grep, or wget. Current Talos versions do provide an authenticated `talosctl debug` workflow that starts a temporary privileged container from an image you supply, but that is not a shell shipped in the host OS. An attacker who gains code execution on the host has very limited built-in tools available.
 
 ### API-Driven Configuration
 
@@ -55,7 +55,7 @@ talosctl -n 10.0.1.10 apply-config --file new-config.yaml
 # This requires:
 # 1. A valid client certificate signed by the Talos CA
 # 2. Network access to the Talos API (port 50000)
-# 3. Appropriate RBAC role (if RBAC is enabled)
+# 3. Appropriate RBAC role (RBAC is enabled by default in new clusters created with talosctl v0.11+)
 ```
 
 ### Image-Based Updates
@@ -64,12 +64,12 @@ Talos does not use package managers. Updates replace the entire OS image atomica
 
 ```bash
 # Upgrade replaces the entire OS image
-talosctl -n 10.0.1.10 upgrade --image ghcr.io/siderolabs/installer:v1.9.1
+talosctl -n 10.0.1.10 upgrade --image ghcr.io/siderolabs/installer:v1.13.0
 
 # The process:
-# 1. Download new image
-# 2. Write to alternate partition
-# 3. Reboot into new image
+# 1. Use the installer image for the target Talos version
+# 2. Retain the previous kernel and OS image in the A-B image scheme
+# 3. Reboot into the new image
 # 4. If boot fails, automatic rollback to previous image
 ```
 
@@ -97,12 +97,12 @@ None of these exist on Talos Linux. There is no cron, no systemd, no shell profi
 
 Configuration drift happens when systems that should be identical gradually diverge due to manual changes, hotfixes, or different update histories. Drift creates security inconsistencies - one server might have a firewall rule while another does not.
 
-Talos eliminates drift because the system state is defined entirely by the machine configuration. Two nodes with the same configuration file are guaranteed to be identical. There is no way for them to drift.
+Talos reduces drift because the desired OS configuration is defined by the machine configuration and applied through the API. Two nodes with the same effective configuration should have the same managed OS settings, although hardware, node identity, and runtime state can still differ.
 
 ```bash
 # Verify two nodes have identical configurations
-CONFIG_1=$(talosctl -n 10.0.1.10 get machineconfig -o yaml | sha256sum)
-CONFIG_2=$(talosctl -n 10.0.1.11 get machineconfig -o yaml | sha256sum)
+CONFIG_1=$(talosctl -n 10.0.1.10 get machineconfig -o json | jq -S '.spec' | sha256sum)
+CONFIG_2=$(talosctl -n 10.0.1.11 get machineconfig -o json | jq -S '.spec' | sha256sum)
 
 if [ "$CONFIG_1" = "$CONFIG_2" ]; then
   echo "Configurations are identical"
@@ -125,7 +125,7 @@ The absence of a shell is one of the most significant security features. Conside
 4. **Data exfiltration**: Copy data out (scp, rsync)
 5. **Persistence**: Install backdoors (crontab, systemctl)
 
-Steps 1 through 5 all require a shell or at minimum the ability to run commands. Without a shell, the entire attack playbook breaks down. An attacker who manages code execution in a container still faces the challenge of breaking out to a host that provides no useful tooling.
+Steps 1 through 5 all require a shell or at minimum the ability to run commands. Without a built-in host shell, much of the traditional attack playbook breaks down. An attacker who manages code execution in a container still faces the challenge of breaking out to a host that provides very little built-in tooling, while access to the Talos debug container requires authenticated Talos API access.
 
 ## Trade-offs of Immutability
 
@@ -146,7 +146,7 @@ talosctl -n 10.0.1.10 dmesg
 talosctl -n 10.0.1.10 processes
 
 # Instead of SSH + top
-talosctl -n 10.0.1.10 stats
+talosctl -n 10.0.1.10 dashboard
 ```
 
 ### Custom Software is Constrained
