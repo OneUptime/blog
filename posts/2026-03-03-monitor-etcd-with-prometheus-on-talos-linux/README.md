@@ -16,7 +16,7 @@ etcd problems are some of the hardest to debug in Kubernetes because the symptom
 
 ## How etcd Runs on Talos Linux
 
-On Talos Linux, etcd is not a Kubernetes pod. It runs as a system service managed by Talos directly. This means you cannot just describe a pod to check its health. Instead, etcd metrics are exposed on each control plane node, typically on port 2379.
+On Talos Linux, etcd is not a Kubernetes pod. It runs as a system service managed by Talos directly. This means you cannot just describe a pod to check its health. Instead, etcd metrics are exposed on each control plane node on a dedicated metrics port (2381 by default). The standard client port 2379 serves the etcd API and is protected by mutual TLS, so it is not what Prometheus should scrape.
 
 You can verify etcd is running and check its health using talosctl:
 
@@ -171,7 +171,7 @@ etcd_server_is_leader
 # Number of leader changes in the last hour (should be near zero)
 increase(etcd_server_leader_changes_seen_total[1h])
 
-# Number of active peers
+# Whether this member currently has a leader (1 = yes, 0 = no)
 etcd_server_has_leader
 ```
 
@@ -278,7 +278,7 @@ kubectl apply -f etcd-alerts.yaml
 The community provides an excellent etcd dashboard for Grafana. You can import it by ID:
 
 1. Open Grafana and go to Dashboards > Import
-2. Enter dashboard ID `3070` (the official etcd dashboard)
+2. Enter dashboard ID `3070` (the popular "Etcd by Prometheus" community dashboard)
 3. Select your Prometheus data source
 4. Click Import
 
