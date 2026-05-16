@@ -103,21 +103,21 @@ Once Prometheus is scraping etcd metrics, use these queries to monitor latency:
 ```promql
 # P50 (median) request latency for range queries
 histogram_quantile(0.50,
-  rate(etcd_request_duration_seconds_bucket{type="Range"}[5m])
+  rate(grpc_server_handling_seconds_bucket{grpc_method="Range", grpc_type="unary"}[5m])
 )
 
 # P99 request latency for range queries
 histogram_quantile(0.99,
-  rate(etcd_request_duration_seconds_bucket{type="Range"}[5m])
+  rate(grpc_server_handling_seconds_bucket{grpc_method="Range", grpc_type="unary"}[5m])
 )
 
 # P99 request latency for put (write) operations
 histogram_quantile(0.99,
-  rate(etcd_request_duration_seconds_bucket{type="Put"}[5m])
+  rate(grpc_server_handling_seconds_bucket{grpc_method="Put", grpc_type="unary"}[5m])
 )
 
-# Request rate by type
-sum(rate(etcd_request_duration_seconds_count[5m])) by (type)
+# Request rate by gRPC method
+sum(rate(grpc_server_handled_total[5m])) by (grpc_method)
 ```
 
 ### Disk Latency
@@ -235,13 +235,15 @@ spec:
     - alert: EtcdHighRequestLatency
       expr: |
         histogram_quantile(0.99,
-          rate(etcd_request_duration_seconds_bucket[5m])
-        ) > 0.05
+          sum by (instance, le) (
+            rate(grpc_server_handling_seconds_bucket{grpc_type="unary", grpc_method!="Defragment"}[5m])
+          )
+        ) > 0.15
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "etcd request P99 latency exceeds 50ms"
+        summary: "etcd gRPC request P99 latency exceeds 150ms"
 
     - alert: EtcdHighPeerLatency
       expr: |
