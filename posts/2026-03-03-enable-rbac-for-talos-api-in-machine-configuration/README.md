@@ -8,7 +8,7 @@ Description: Learn how to enable and configure Role-Based Access Control for the
 
 ---
 
-The Talos API is the primary interface for managing Talos Linux nodes. Through it, you apply configurations, trigger upgrades, reboot nodes, read logs, and perform virtually every administrative operation. By default, any client with a valid certificate has full administrative access. This is fine for a home lab, but in production environments with multiple operators and automation systems, you need finer-grained access control. That is where RBAC for the Talos API comes in.
+The Talos API is the primary interface for managing Talos Linux nodes. Through it, you apply configurations, trigger upgrades, reboot nodes, read logs, and perform virtually every administrative operation. When RBAC is disabled, any client with a valid certificate has full administrative access. RBAC is enabled by default in new clusters created with talosctl v0.11+, but if you are working with older clusters or want to confirm the setting, you should explicitly configure it. In production environments with multiple operators and automation systems, you need finer-grained access control. That is where RBAC for the Talos API comes in.
 
 This guide explains how to enable RBAC, what roles are available, how to generate certificates with specific roles, and how to manage access for different team members and systems.
 
@@ -16,11 +16,12 @@ This guide explains how to enable RBAC, what roles are available, how to generat
 
 RBAC (Role-Based Access Control) for the Talos API restricts what actions a client can perform based on the role encoded in their client certificate. Without RBAC, every authenticated client is effectively an admin. With RBAC enabled, clients are assigned roles that determine their permissions.
 
-The three built-in roles are:
+The built-in roles are:
 
 - **os:admin** - Full access to all Talos API operations
 - **os:operator** - Can perform operational tasks like rebooting, upgrading, and reading configs, but cannot change the machine configuration
-- **os:reader** - Read-only access to logs, metrics, and status information
+- **os:reader** - Read-only access to "safe" methods (for example, list files but not read file contents), logs, and status information
+- **os:etcd:backup** - Grants access only to the etcd snapshot/backup method, useful for automated backup jobs
 
 ## Enabling RBAC
 
@@ -47,29 +48,21 @@ talosctl apply-config \
 
 ## Generating Role-Specific Certificates
 
-When you create a cluster with `talosctl gen config`, the generated `talosconfig` file gets an `os:admin` role by default. For other team members, you want to generate certificates with limited roles.
-
-Here is how to create a talosconfig with a specific role:
+When you create a cluster with `talosctl gen config`, the generated `talosconfig` file gets an `os:admin` role by default. For other team members, you want to generate certificates with limited roles. Use `talosctl config new`, which connects to the cluster and issues a new client certificate with the requested roles:
 
 ```bash
 # Generate a new talosconfig with the reader role
-talosctl gen config my-cluster https://10.0.0.1:6443 \
-  --with-secrets secrets.yaml \
-  --roles os:reader \
-  --output reader-talosconfig
+talosctl config new --roles=os:reader reader-talosconfig
 ```
 
 You can also generate configs for the operator role:
 
 ```bash
 # Generate a talosconfig with operator role
-talosctl gen config my-cluster https://10.0.0.1:6443 \
-  --with-secrets secrets.yaml \
-  --roles os:operator \
-  --output operator-talosconfig
+talosctl config new --roles=os:operator operator-talosconfig
 ```
 
-Distribute these role-specific talosconfigs to the appropriate team members.
+By default these certificates are valid for ten years; pass `--crt-ttl` to choose a shorter lifetime. Distribute the resulting role-specific talosconfigs to the appropriate team members.
 
 ## Role Permissions Breakdown
 
