@@ -75,7 +75,7 @@ helm install redpanda-operator redpanda/operator \
 
 ```yaml
 # redpanda-cluster.yaml
-apiVersion: cluster.redpanda.com/v1alpha1
+apiVersion: cluster.redpanda.com/v1alpha2
 kind: Redpanda
 metadata:
   name: redpanda-prod
@@ -93,9 +93,6 @@ spec:
       memory:
         container:
           max: "4Gi"
-        redpanda:
-          memory: "3Gi"
-          reserveMemory: "1Gi"
     storage:
       persistentVolume:
         enabled: true
@@ -107,28 +104,28 @@ spec:
         secretRef: redpanda-users
     tls:
       enabled: true
+      certs:
+        default:
+          caEnabled: true
     listeners:
       kafka:
         port: 9092
         tls:
-          enabled: true
+          cert: default
       admin:
         port: 9644
         tls:
-          enabled: true
+          cert: default
       schemaRegistry:
         port: 8081
         tls:
-          enabled: true
+          cert: default
       http:
         port: 8082
         tls:
-          enabled: true
+          cert: default
     tuning:
       tune_aio_events: true
-      tune_clocksource: true
-      tune_ballast_file: true
-      ballast_file_size: "1GiB"
 ```
 
 ```yaml
@@ -284,7 +281,7 @@ kubectl apply -f kafka-client-test.yaml
 
 # Use Kafka CLI tools against Redpanda
 kubectl exec -it kafka-client -n redpanda -- \
-  kafka-console-producer --broker-list redpanda-prod-0.redpanda-prod:9092 \
+  kafka-console-producer --bootstrap-server redpanda-prod-0.redpanda-prod:9092 \
   --topic orders
 
 kubectl exec -it kafka-client -n redpanda -- \
@@ -354,7 +351,7 @@ kubectl exec -it redpanda-prod-0 -n redpanda -- \
   curl http://localhost:9644/public_metrics
 ```
 
-Key metrics to track include `redpanda_kafka_request_latency_seconds`, `redpanda_storage_disk_used_bytes`, `redpanda_kafka_under_replicated_replicas`, and `redpanda_kafka_consumer_group_lag`.
+Key metrics to track include `redpanda_kafka_request_latency_seconds`, `redpanda_storage_disk_free_bytes`, `redpanda_kafka_under_replicated_replicas`, and `redpanda_kafka_consumer_group_lag_sum`.
 
 ## Conclusion
 
