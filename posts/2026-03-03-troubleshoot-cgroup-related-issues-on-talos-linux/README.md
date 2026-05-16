@@ -24,7 +24,7 @@ Since Talos Linux is immutable and does not have SSH, you need two tools for cgr
 talosctl read /sys/fs/cgroup/kubepods.slice/cpu.stat --nodes <node-ip>
 
 # List cgroup directory contents
-talosctl ls /sys/fs/cgroup/kubepods.slice --nodes <node-ip>
+talosctl list /sys/fs/cgroup/kubepods.slice --nodes <node-ip>
 
 # View kernel logs for OOM events
 talosctl dmesg --nodes <node-ip> | grep -i "oom\|killed\|out of memory"
@@ -81,20 +81,22 @@ spec:
 talosctl dmesg --nodes <node-ip> | grep -i "oom-kill\|out of memory"
 
 # Check the memory events for a specific pod cgroup
+# Pod UID dashes are usually escaped as underscores in systemd cgroup names.
 kubectl exec cgroup-troubleshoot -n kube-system -- \
-  cat /sys/fs/cgroup/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod<uid>.slice/memory.events
+  cat /sys/fs/cgroup/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod<uid_with_underscores>.slice/memory.events
 
 # Look for:
-# oom > 0 indicates OOM killer was triggered
-# max > 0 indicates the hard limit was reached
+# oom_kill > 0 indicates the OOM killer killed a process in the cgroup
+# oom > 0 indicates the cgroup entered an OOM state
+# max > 0 indicates memory usage was about to exceed memory.max
 
-# Check what the actual memory usage was at the time
+# Check current memory usage
 kubectl exec cgroup-troubleshoot -n kube-system -- \
-  cat /sys/fs/cgroup/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod<uid>.slice/memory.current
+  cat /sys/fs/cgroup/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod<uid_with_underscores>.slice/memory.current
 
 # Compare with the limit
 kubectl exec cgroup-troubleshoot -n kube-system -- \
-  cat /sys/fs/cgroup/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod<uid>.slice/memory.max
+  cat /sys/fs/cgroup/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod<uid_with_underscores>.slice/memory.max
 ```
 
 **Solutions:**
@@ -131,9 +133,9 @@ resources:
 ```bash
 # Check CPU throttling statistics
 kubectl exec cgroup-troubleshoot -n kube-system -- sh -c '
-  for cg in /sys/fs/cgroup/kubepods.slice/*/kubepods-*-pod*.slice; do
+  find /sys/fs/cgroup/kubepods.slice -name "kubepods*pod*.slice" -type d | while read -r cg; do
     [ -f "$cg/cpu.stat" ] || continue
-    name=$(basename "$cg" | sed "s/kubepods-.*-pod/pod-/;s/.slice//")
+    name=$(basename "$cg" | sed "s/^kubepods-burstable-pod/pod-/;s/^kubepods-besteffort-pod/pod-/;s/^kubepods-pod/pod-/;s/.slice//")
     throttled=$(grep "^nr_throttled " "$cg/cpu.stat" | awk "{print \$2}")
     periods=$(grep "^nr_periods " "$cg/cpu.stat" | awk "{print \$2}")
     if [ "$periods" -gt 0 ] 2>/dev/null && [ "$throttled" -gt 0 ] 2>/dev/null; then
@@ -145,7 +147,7 @@ kubectl exec cgroup-troubleshoot -n kube-system -- sh -c '
 
 # Check the CPU limit (quota/period)
 kubectl exec cgroup-troubleshoot -n kube-system -- \
-  cat /sys/fs/cgroup/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod<uid>.slice/cpu.max
+  cat /sys/fs/cgroup/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod<uid_with_underscores>.slice/cpu.max
 
 # Check actual CPU usage
 kubectl top pod <pod-name> -n <namespace>
@@ -174,6 +176,7 @@ resources:
 machine:
   kubelet:
     extraArgs:
+      feature-gates: "CustomCPUCFSQuotaPeriod=true"
       cpu-cfs-quota-period: "20ms"  # Shorter period, smoother throttling
 ```
 
@@ -239,11 +242,11 @@ machine:
 ```bash
 # Check IO statistics per cgroup
 kubectl exec cgroup-troubleshoot -n kube-system -- sh -c '
-  for cg in /sys/fs/cgroup/kubepods.slice/*/kubepods-*-pod*.slice; do
+  find /sys/fs/cgroup/kubepods.slice -name "kubepods*pod*.slice" -type d | while read -r cg; do
     [ -f "$cg/io.stat" ] || continue
     stat=$(cat "$cg/io.stat")
     if [ -n "$stat" ]; then
-      name=$(basename "$cg" | sed "s/kubepods-.*-pod/pod-/;s/.slice//")
+      name=$(basename "$cg" | sed "s/^kubepods-burstable-pod/pod-/;s/^kubepods-besteffort-pod/pod-/;s/^kubepods-pod/pod-/;s/.slice//")
       echo "$name:"
       echo "$stat"
       echo "---"
@@ -257,7 +260,7 @@ kubectl exec cgroup-troubleshoot -n kube-system -- \
 
 # Check PSI for the specific pod
 kubectl exec cgroup-troubleshoot -n kube-system -- \
-  cat /sys/fs/cgroup/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod<uid>.slice/io.pressure
+  cat /sys/fs/cgroup/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod<uid_with_underscores>.slice/io.pressure
 ```
 
 **Solutions:**
