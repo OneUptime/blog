@@ -12,11 +12,11 @@ Flannel is the default Container Network Interface (CNI) plugin on Talos Linux. 
 
 ## How Flannel Works on Talos Linux
 
-Flannel runs as a DaemonSet in the `kube-system` namespace. It allocates a subnet from the pod CIDR to each node and creates either VXLAN tunnels or host-gateway routes between nodes. On Talos Linux, VXLAN is the default backend.
+Flannel runs as a DaemonSet in the `kube-system` namespace. It allocates a subnet from the pod CIDR to each node and creates either VXLAN tunnels or host-gw routes between nodes. On Talos Linux, VXLAN is the default backend.
 
 Each flannel pod:
 
-1. Registers the node's pod subnet with etcd (through the Kubernetes API)
+1. Uses the Kubernetes API as the subnet manager for node pod CIDR information
 2. Creates a `flannel.1` VXLAN interface on the host
 3. Sets up routes so that traffic destined for other nodes' pod subnets goes through the VXLAN tunnel
 4. Configures a CNI configuration file that the kubelet uses when creating new pods
@@ -28,14 +28,14 @@ Start by verifying that flannel pods are running on every node:
 ```bash
 # Check flannel DaemonSet status
 
-kubectl -n kube-system get daemonset kube-flannel-ds
+kubectl -n kube-system get daemonset kube-flannel
 
 # Check individual flannel pods
-kubectl -n kube-system get pods -l app=flannel -o wide
+kubectl -n kube-system get pods -l k8s-app=flannel -o wide
 
 # Verify there is one flannel pod per node
 kubectl get nodes --no-headers | wc -l
-kubectl -n kube-system get pods -l app=flannel --no-headers | wc -l
+kubectl -n kube-system get pods -l k8s-app=flannel --no-headers | wc -l
 ```
 
 If the numbers do not match, some nodes are not running flannel, and those nodes will have networking problems.
@@ -78,32 +78,36 @@ Flannel needs to know which network interface to use for inter-node communicatio
 kubectl -n kube-system logs <flannel-pod-name> | grep -i interface
 ```
 
-On Talos Linux, especially on machines with multiple network interfaces, flannel may pick the wrong one. Configure the correct interface in the flannel ConfigMap:
+On Talos Linux, especially on machines with multiple network interfaces, flannel may pick the wrong one. For Talos-managed flannel, configure the correct interface in the Talos machine config:
+
+```yaml
+cluster:
+  network:
+    cni:
+      name: flannel
+      flannel:
+        extraArgs:
+          - --iface=eth0
+```
+
+Use the interface name for your environment. You can also use `--iface-can-reach=<ip-address>` to let flannel select the interface that can reach a specific address:
+
+```yaml
+cluster:
+  network:
+    cni:
+      name: flannel
+      flannel:
+        extraArgs:
+          - --iface-can-reach=192.168.1.1
+```
+
+After applying the machine config change, restart the flannel DaemonSet if the pods do not roll automatically:
 
 ```bash
-# Edit the flannel ConfigMap
-kubectl -n kube-system get configmap kube-flannel-cfg -o yaml
+# Restart flannel
+kubectl -n kube-system rollout restart daemonset kube-flannel
 ```
-
-Look for the `net-conf.json` section and the flannel arguments. You can specify the interface:
-
-```json
-{
-  "Network": "10.244.0.0/16",
-  "Backend": {
-    "Type": "vxlan"
-  }
-}
-```
-
-And in the DaemonSet, add the `--iface` argument:
-
-```bash
-# Edit the flannel DaemonSet
-kubectl -n kube-system edit daemonset kube-flannel-ds
-```
-
-Add `--iface=eth0` (or your correct interface name) to the container args.
 
 ## Issue: Pod-to-Pod Communication Between Nodes Fails
 
@@ -138,15 +142,15 @@ kubectl -n kube-system logs <flannel-pod-on-node-1> --tail=100
 
 ## Issue: VXLAN Port Blocked
 
-VXLAN uses UDP port 8472 by default. If this port is blocked between nodes, the overlay network will not function:
+Talos-managed flannel configures VXLAN to use UDP port 4789. If this port is blocked between nodes, the overlay network will not function:
 
 ```bash
 # From a debug pod on one node, test connectivity to VXLAN port on another
 kubectl run nettest --image=nicolaka/netshoot --restart=Never -- sleep 3600
-kubectl exec nettest -- nc -zuv <other-node-ip> 8472
+kubectl exec nettest -- nc -zuv <other-node-ip> 4789
 ```
 
-If port 8472 is blocked, update your firewall rules or security groups to allow UDP traffic on this port between all cluster nodes.
+If port 4789 is blocked, update your firewall rules or security groups to allow UDP traffic on this port between all cluster nodes.
 
 ## Issue: MTU Mismatch
 
@@ -157,9 +161,9 @@ MTU mismatches cause subtle failures where small packets work but larger ones do
 talosctl -n <node-ip> get links | grep flannel
 ```
 
-The flannel VXLAN interface should have an MTU 50 bytes smaller than the physical interface (to account for VXLAN encapsulation overhead). If your physical network has an MTU of 1500, the flannel interface should be 1450.
+The flannel VXLAN interface is commonly configured with an MTU 50 bytes smaller than the physical interface (to account for VXLAN encapsulation overhead). If your physical network has an MTU of 1500, the flannel interface is commonly 1450.
 
-Configure the MTU in the flannel ConfigMap:
+Talos does not expose flannel MTU as a machine config field for the managed flannel deployment. If you need to set a custom flannel MTU, disable the managed CNI and deploy a custom flannel manifest with the MTU in the `net-conf.json` backend configuration:
 
 ```json
 {
@@ -171,11 +175,11 @@ Configure the MTU in the flannel ConfigMap:
 }
 ```
 
-After changing the ConfigMap, restart the flannel pods:
+After changing the manifest, restart the flannel pods:
 
 ```bash
 # Restart flannel
-kubectl -n kube-system rollout restart daemonset kube-flannel-ds
+kubectl -n kube-system rollout restart daemonset kube-flannel
 ```
 
 ## Issue: Subnet Overlap
@@ -198,7 +202,7 @@ If flannel is running but new pods fail to get network configuration, the CNI co
 
 ```bash
 # Check if the CNI configuration exists
-talosctl -n <node-ip> ls /etc/cni/net.d/
+talosctl -n <node-ip> list /etc/cni/net.d/
 ```
 
 You should see a file like `10-flannel.conflist`. If it is missing, flannel may not have the correct permissions or the CNI directory may be misconfigured. Restart the flannel pod on that node:
@@ -208,20 +212,20 @@ You should see a file like `10-flannel.conflist`. If it is missing, flannel may 
 kubectl -n kube-system delete pod <flannel-pod-on-affected-node>
 ```
 
-## Issue: Flannel Subnet Lease Expired
+## Issue: Node Pod CIDR Changed
 
-Flannel leases subnets for each node. If a lease expires (which can happen if the node was offline for a long time), the node may get a different subnet when it comes back:
+With Talos-managed flannel, Kubernetes node PodCIDR assignments are the source of truth for each node's pod subnet:
 
 ```bash
 # Check subnet assignments
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.podCIDR}{"\n"}{end}'
 ```
 
-This is usually handled automatically, but existing pods on the node may have IPs from the old subnet. Restarting the pods will assign new IPs from the current subnet.
+This is usually stable, but if a node is rebuilt or its PodCIDR changes, existing pods on the node may have IPs from the old subnet. Restarting the pods will assign new IPs from the current subnet.
 
 ## Switching from Flannel to Another CNI
 
-If flannel is consistently giving you problems, Talos Linux supports other CNI plugins like Cilium or Calico. To switch, configure the CNI in the machine config:
+If flannel is consistently giving you problems, Talos Linux supports other CNI plugins like Cilium or Calico. To switch to a CNI that is distributed as static manifests, configure the manifest URL in the machine config:
 
 ```yaml
 cluster:
@@ -229,10 +233,10 @@ cluster:
     cni:
       name: custom
       urls:
-        - https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/quick-install.yaml
+        - https://example.com/path/to/cni-manifest.yaml
 ```
 
-Or install the CNI manually after disabling the default:
+Or install the CNI manually with Helm or kubectl after disabling the default, which is the common Talos approach for Cilium:
 
 ```yaml
 cluster:
@@ -245,4 +249,4 @@ Then install your preferred CNI using Helm or kubectl.
 
 ## Summary
 
-Flannel issues on Talos Linux most commonly involve wrong interface selection, blocked VXLAN ports, MTU mismatches, or subnet overlaps. Start by checking that all flannel pods are running, then verify VXLAN interface creation and inter-node connectivity on UDP port 8472. For persistent issues, check the flannel logs and ConfigMap configuration. If flannel continues to be problematic, consider switching to a more feature-rich CNI like Cilium.
+Flannel issues on Talos Linux most commonly involve wrong interface selection, blocked VXLAN ports, MTU mismatches, or subnet overlaps. Start by checking that all flannel pods are running, then verify VXLAN interface creation and inter-node connectivity on UDP port 4789. For persistent issues, check the flannel logs and ConfigMap configuration. If flannel continues to be problematic, consider switching to a more feature-rich CNI like Cilium.
