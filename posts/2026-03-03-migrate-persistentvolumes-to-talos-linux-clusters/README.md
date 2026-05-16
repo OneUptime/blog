@@ -144,14 +144,18 @@ kubectl exec -n production postgres-0 -- \
 kubectl exec -n production mysql-0 -- \
   mysqldump -u root --all-databases > all-databases.sql
 kubectl cp all-databases.sql production/mysql-0:/tmp/all-databases.sql
+# Wrap with sh -c so the < redirect runs inside the pod, not the local shell
 kubectl exec -n production mysql-0 -- \
-  mysql -u root < /tmp/all-databases.sql
+  sh -c "mysql -u root < /tmp/all-databases.sql"
 
 # Redis
 kubectl exec -n production redis-0 -- redis-cli BGSAVE
 kubectl cp production/redis-0:/data/dump.rdb ./redis-dump.rdb
 kubectl cp ./redis-dump.rdb production/redis-0:/data/dump.rdb
-kubectl exec -n production redis-0 -- redis-cli DEBUG RELOAD
+# Restart the pod so Redis loads the imported dump.rdb on startup.
+# Do not use `DEBUG RELOAD` without `NOSAVE` here — it would rdbSave the
+# current (empty) in-memory state first and overwrite the file you just copied.
+kubectl delete pod -n production redis-0
 
 # Elasticsearch
 # Use the snapshot and restore API
@@ -235,17 +239,14 @@ KUBECONFIG=./target-kubeconfig kubectl cp \
 KUBECONFIG=./target-kubeconfig kubectl exec -n production rsync-target -- \
   tar xzf /tmp/data-backup.tar.gz -C /data
 
-# Option B: Direct rsync over port-forward (more efficient for large datasets)
-# On the target pod, start an rsync daemon
-KUBECONFIG=./target-kubeconfig kubectl exec -n production rsync-target -- \
-  rsync --daemon --no-detach --port=8730 &
-
-# Port-forward from target cluster
-KUBECONFIG=./target-kubeconfig kubectl port-forward -n production rsync-target 8730:8730 &
-
-# Copy from source to target through the port-forward
+# Option B: Stream a tar archive directly between the two clusters
+# (more efficient than staging a temp file on the local workstation).
+# This pipes `tar` stdout from a kubectl exec on the source cluster into
+# `tar` stdin of a kubectl exec on the target cluster — no intermediate file.
 KUBECONFIG=./source-kubeconfig kubectl exec -n production rsync-source -- \
-  rsync -avz /data/ rsync://localhost:8730/data/
+  tar czf - -C /data . | \
+  KUBECONFIG=./target-kubeconfig kubectl exec -i -n production rsync-target -- \
+  tar xzf - -C /data
 ```
 
 ## Strategy 4: Shared Storage Migration
