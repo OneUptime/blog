@@ -41,8 +41,8 @@ talosctl etcd members --nodes 10.0.0.10
 # Output shows member IDs, names, and peer URLs
 # MEMBER ID         NAME        PEER URLS
 # 8e9e05c52164694d  node-10     https://10.0.0.10:2380
-# a1b2c3d4e5f6g7h8  node-11     https://10.0.0.11:2380
-# i9j0k1l2m3n4o5p6  node-12     https://10.0.0.12:2380
+# a1b2c3d4e5f6a7b8  node-11     https://10.0.0.11:2380
+# 19a0b1c2d3e4f5a6  node-12     https://10.0.0.12:2380
 
 # Step 2: Remove the member from the etcd cluster
 # Execute this from a DIFFERENT healthy control plane node
@@ -131,9 +131,9 @@ for node in 10.0.0.10 10.0.0.11 10.0.0.12; do
     --system-labels-to-wipe EPHEMERAL
 done
 
-# Bootstrap the first node
+# Bootstrap the first node, recovering etcd state from the snapshot
 talosctl apply-config --insecure --nodes 10.0.0.10 --file controlplane.yaml
-talosctl bootstrap --nodes 10.0.0.10
+talosctl bootstrap --nodes 10.0.0.10 --recover-from=/tmp/etcd-snapshot.db
 
 # Then add the other control plane nodes
 talosctl apply-config --insecure --nodes 10.0.0.11 --file controlplane.yaml
