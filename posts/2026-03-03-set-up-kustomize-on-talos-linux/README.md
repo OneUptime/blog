@@ -20,7 +20,7 @@ Kustomize is also a good fit when you prefer working with plain Kubernetes YAML 
 
 ## Installing Kustomize
 
-Kustomize is built into kubectl (version 1.14 and later), so you may already have it:
+Kustomize is built into kubectl (version 1.14 and later), so you may already have it. For current Kustomize fields such as `labels`, use a supported kubectl release or the standalone Kustomize binary:
 
 ```bash
 # Use Kustomize through kubectl
@@ -139,8 +139,10 @@ resources:
   - deployment.yaml
   - service.yaml
 
-commonLabels:
-  managed-by: kustomize
+labels:
+  - pairs:
+      managed-by: kustomize
+    includeSelectors: true
 ```
 
 ## Building and Applying the Base
@@ -188,11 +190,11 @@ secretGenerator:
     type: Opaque
 ```
 
-Kustomize appends a hash suffix to generated ConfigMap and Secret names, which triggers a rolling update when values change. This is an important behavior to understand because it ensures your pods always pick up the latest configuration.
+Kustomize appends a hash suffix to generated ConfigMap and Secret names. When your workloads reference those generated names in their pod specs, Kustomize updates the references and Kubernetes creates a new rollout when the generated content changes.
 
-## Adding Namespace and Common Labels
+## Adding Namespace and Labels
 
-Kustomize can add a namespace and common labels to all resources:
+Kustomize can add a namespace and labels to all resources:
 
 ```yaml
 # base/kustomization.yaml
@@ -201,10 +203,12 @@ kind: Kustomization
 
 namespace: my-app-namespace
 
-commonLabels:
-  app.kubernetes.io/name: my-app
-  app.kubernetes.io/managed-by: kustomize
-  environment: base
+labels:
+  - pairs:
+      app.kubernetes.io/name: my-app
+      app.kubernetes.io/managed-by: kustomize
+      environment: base
+    includeSelectors: true
 
 commonAnnotations:
   team: platform-engineering
@@ -214,9 +218,9 @@ resources:
   - service.yaml
 ```
 
-## Using Kustomize with Talos-Specific Resources
+## Using Kustomize with Cluster-Level Resources on Talos
 
-When deploying to Talos Linux, you often need to include storage classes, network policies, or other cluster-level resources:
+When deploying workloads to Kubernetes on Talos Linux, you may need to include storage classes, network policies, or other cluster-level Kubernetes resources:
 
 ```yaml
 # base/network-policy.yaml
@@ -235,14 +239,14 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: ingress-nginx
+              kubernetes.io/metadata.name: ingress-nginx
       ports:
         - port: 8080
   egress:
     - to:
         - namespaceSelector:
             matchLabels:
-              name: databases
+              kubernetes.io/metadata.name: databases
       ports:
         - port: 5432
 ```
@@ -289,8 +293,8 @@ kustomize build base/ | kubectl apply --dry-run=client -f -
 # Build and validate against the cluster API
 kustomize build base/ | kubectl apply --dry-run=server -f -
 
-# Check for YAML syntax errors
-kustomize build base/ | kubeval -
+# Run local schema validation
+kustomize build base/ | kubeconform -strict -summary -
 ```
 
 ## Integrating with GitOps Tools
@@ -322,6 +326,7 @@ metadata:
   name: my-app
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/my-app.git
     targetRevision: main
