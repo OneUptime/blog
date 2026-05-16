@@ -48,9 +48,9 @@ Not everything on a Talos node is read-only. The system is carefully partitioned
 
 The root filesystem (/) is the immutable SquashFS image containing the kernel, system binaries, and libraries. This is read-only and cannot be changed.
 
-The /var partition is writable and contains runtime data. This is where containerd stores container images and layers, where Kubernetes stores pod data, and where logs are written. However, even /var is carefully controlled. Only specific system processes can write to specific paths.
+The /var directory is backed by the EPHEMERAL volume and contains runtime data. This is where containerd stores container images and layers, where Kubernetes stores pod data, and where logs are written. However, even /var is carefully controlled. Only specific system processes can write to specific paths.
 
-The /system/state partition stores the machine configuration. This is encrypted and can only be read and written by the Talos system services.
+The STATE volume is mounted at /system/state and stores the machine configuration and other persistent node state. It can be encrypted when disk encryption is configured, and it is managed by Talos system services.
 
 ```bash
 # View the mount points on a Talos node
@@ -58,10 +58,10 @@ talosctl -n 10.0.0.11 mounts
 
 # You will see something like:
 # / (squashfs, ro)
-# /var (ext4, rw)
-# /system/state (ext4, rw, encrypted)
-# /etc/cni (tmpfs, rw)
-# /etc/kubernetes (tmpfs, rw)
+# /var (xfs, rw, EPHEMERAL)
+# /system/state (xfs, rw, STATE)
+# /etc/cni (managed mount)
+# /etc/kubernetes (managed mount)
 ```
 
 ## Why SquashFS?
@@ -72,7 +72,7 @@ Compression reduces the image size significantly. A full Talos root filesystem i
 
 Read-only enforcement is at the filesystem level, not just permission-based. Even if a process runs as root, it cannot write to a SquashFS filesystem. The filesystem format itself does not support writes. This is a stronger guarantee than file permissions or SELinux policies.
 
-Integrity is built in. Since the filesystem is a single compressed image, you can verify its checksum. If the image has been tampered with, the checksum will not match. Talos uses this for Secure Boot verification.
+Integrity is built in. Since the filesystem is delivered as part of versioned Talos boot assets, you can verify exactly which image is installed. With Secure Boot, Talos uses signed boot assets, such as UKI-based images on supported platforms, to verify the boot chain.
 
 ```bash
 # Check the Talos OS image information
@@ -88,7 +88,7 @@ On a traditional Linux system, you configure services by editing files in /etc. 
 
 Talos takes a completely different approach. All configuration comes from a single YAML document - the machine configuration. This document is provided at boot time and is applied by the machined init system. System services read their configuration from machined, not from files on disk.
 
-For the few cases where Kubernetes components need configuration files (like kubelet or the CNI), Talos uses tmpfs mounts. These are in-memory filesystems that are populated by machined during boot. They appear as regular files to the processes that need them, but they are generated from the machine configuration, not stored on disk.
+For the few cases where Kubernetes components need configuration files (like kubelet or the CNI), Talos creates managed mounts and runtime files that are populated by machined during boot. They appear as regular files to the processes that need them, but they are generated from the machine configuration, not edited manually on disk.
 
 ```yaml
 # All configuration lives in the machine config
@@ -109,8 +109,8 @@ machine:
 # Apply configuration changes through the API
 talosctl -n 10.0.0.11 apply-config --file machine-config.yaml
 
-# View the current configuration
-talosctl -n 10.0.0.11 get machineconfig
+# View the current configuration resource
+talosctl -n 10.0.0.11 get machineconfig -o yaml
 ```
 
 ## Security Benefits
@@ -123,7 +123,7 @@ The immutable filesystem provides several layers of security protection.
 
 **Reduced attack surface.** There are no compilers, no package managers, no scripting languages, and no diagnostic tools on the root filesystem. An attacker who breaks into a container has very little to work with on the host. There is no bash, no curl, no wget, no python.
 
-**Tamper evidence.** Because the root filesystem is a single image with a known checksum, any modification is immediately detectable. Combined with Secure Boot, this creates a chain of trust from the firmware through the OS to the running workloads.
+**Tamper evidence.** Because the root filesystem is delivered as a known image and Talos boot assets can be verified cryptographically, unauthorized changes to the OS image are detectable. Combined with Secure Boot, this creates a chain of trust from the firmware through the OS to the running workloads.
 
 ## What About Kernel Modules?
 
@@ -135,18 +135,18 @@ You can build a custom Talos image that includes the additional modules. Talos p
 # Generate a custom Talos image with additional extensions
 # Using the Image Factory
 talosctl gen config my-cluster https://10.0.0.10:6443 \
-  --install-image=factory.talos.dev/installer/<schematic-id>:v1.6.0
+  --install-image=factory.talos.dev/installer/<schematic-id>:<talos-version>
 ```
 
-Alternatively, you can use Talos system extensions, which are additional SquashFS layers that are mounted alongside the root filesystem. Extensions can add kernel modules, firmware, and other system components without modifying the base image.
+Alternatively, you can use Talos system extensions, which are additional SquashFS layers that are included in Talos boot assets during installation or upgrade. Extensions can add kernel modules, firmware, and other system components without modifying the base image.
 
 ```yaml
-# Machine config with system extensions
-machine:
-  install:
-    extensions:
-      - image: ghcr.io/siderolabs/iscsi-tools:v0.1.4
-      - image: ghcr.io/siderolabs/drbd:9.2.4-v1.6.0
+# Image Factory schematic with system extensions
+customization:
+  systemExtensions:
+    officialExtensions:
+      - siderolabs/iscsi-tools
+      - siderolabs/drbd
 ```
 
 ## Operational Implications
