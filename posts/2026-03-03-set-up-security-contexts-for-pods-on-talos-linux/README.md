@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, Security Context, Kubernetes, Pod Security, Container Hardening
 
-Description: Comprehensive guide to setting up and managing security contexts for pods on Talos Linux, covering every field and practical deployment patterns.
+Description: Comprehensive guide to setting up and managing security contexts for pods on Talos Linux, covering key fields and practical deployment patterns.
 
 ---
 
@@ -74,7 +74,7 @@ This is important on Talos Linux because even though the OS prevents direct SSH 
 
 ### Filesystem Group
 
-The fsGroup field is critical for pods that use persistent volumes. It sets the group ownership of all files in mounted volumes.
+The fsGroup field is critical for pods that use persistent volumes. For volume types that support ownership management, it sets the group ownership of mounted volume contents.
 
 ```yaml
 securityContext:
@@ -112,7 +112,7 @@ securityContext:
 
 ### SELinux Options
 
-While Talos Linux does not use SELinux by default, if you have enabled it, you can set SELinux labels on pods.
+While SELinux support on Talos Linux is experimental and permissive by default, if you have enabled enforcement, you can set SELinux labels on pods.
 
 ```yaml
 securityContext:
@@ -132,7 +132,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: secure-app
-  namespace: production
+  namespace: secure-apps
 spec:
   replicas: 3
   selector:
@@ -325,7 +325,7 @@ kubectl get pods -A -o json | jq '.items[] |
   select(.spec.securityContext == null or .spec.securityContext == {}) |
   {namespace: .metadata.namespace, name: .metadata.name}'
 
-# Find containers running as root
+# Find pods that do not explicitly require containers to run as non-root
 kubectl get pods -A -o json | jq '.items[] |
   select(.spec.containers[].securityContext.runAsNonRoot != true) |
   {namespace: .metadata.namespace, name: .metadata.name}'
