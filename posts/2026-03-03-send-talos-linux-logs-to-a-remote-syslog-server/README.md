@@ -163,10 +163,10 @@ type = "remap"
 inputs = ["talos_logs"]
 source = '''
   .facility = "local0"
-  .severity = if .talos-level == "error" { "err" }
-    else if .talos-level == "warning" { "warning" }
+  .severity = if ."talos-level" == "error" { "err" }
+    else if ."talos-level" == "warning" { "warning" }
     else { "info" }
-  .appname = .talos-service
+  .appname = ."talos-service"
   .message = .msg
 '''
 
@@ -296,17 +296,17 @@ machine:
 
 ### Encrypted Transport
 
-For sensitive environments, use TLS-encrypted syslog (port 6514 by convention):
+Talos Linux's logging destination only supports the `tcp` and `udp` URL schemes natively, so it cannot establish a TLS session directly with a remote syslog server. For sensitive environments, run a local TLS-terminating relay (such as stunnel, or a Vector or rsyslog instance) on the same network as your Talos nodes, point Talos at the relay over plain TCP, and let the relay forward to your syslog server over TLS (port 6514 by convention, per RFC 5425):
 
 ```yaml
 machine:
   logging:
     destinations:
-      - endpoint: "tcp://syslog.example.com:6514/"
+      - endpoint: "tcp://syslog-relay.internal:5514/"
         format: json_lines
 ```
 
-Make sure your syslog server is configured to accept TLS connections.
+Make sure the relay is configured to terminate Talos's plain-TCP connection and forward to the upstream syslog server using TLS.
 
 ### Network Segmentation
 
