@@ -215,6 +215,8 @@ kind: Service
 metadata:
   name: keycloak
   namespace: keycloak
+  labels:
+    app: keycloak
 spec:
   ports:
     - port: 8080
@@ -257,6 +259,7 @@ Apply all resources:
 ```bash
 kubectl apply -f keycloak-deployment.yaml
 kubectl apply -f keycloak-service.yaml
+kubectl apply -f keycloak-ingress.yaml
 ```
 
 ## Verifying the Deployment
