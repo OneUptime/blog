@@ -75,14 +75,11 @@ talosctl apply-config --insecure \
 
 ### Discovering Nodes
 
-Nodes in maintenance mode can be discovered on your network:
+There is no built-in `talosctl` command that discovers arbitrary Talos nodes on a network (`talosctl cluster show` only reports on clusters created locally via `talosctl cluster create`). To find a node that has just entered maintenance mode, check your DHCP server's lease table or scan the subnet for the Talos API port:
 
 ```bash
-# Use talosctl to discover nodes in maintenance mode
-talosctl cluster show
-
-# Or scan a subnet for Talos maintenance mode nodes
-# Talos listens on port 50000 in maintenance mode
+# Scan a subnet for Talos maintenance mode nodes
+# Talos apid listens on port 50000 in maintenance mode
 nmap -p 50000 10.0.0.0/24
 ```
 
