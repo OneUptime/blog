@@ -8,7 +8,7 @@ Description: Learn how to configure multi-tenant RBAC on Talos Linux clusters to
 
 ---
 
-Running multiple teams or customers on a single Kubernetes cluster is a common pattern. It saves infrastructure costs and simplifies management. But it also creates a challenge: how do you make sure one tenant cannot access another tenant's resources? RBAC is a core piece of this puzzle. Combined with namespaces, network policies, and resource quotas, RBAC lets you build strong isolation boundaries on a shared Talos Linux cluster.
+Running multiple teams or customers on a single Kubernetes cluster is a common pattern. It saves infrastructure costs and simplifies management. But it also creates a challenge: how do you make sure one tenant cannot access another tenant's resources? RBAC is a core piece of this puzzle. Combined with namespaces, network policies enforced by a compatible CNI, and resource quotas, RBAC lets you build isolation boundaries on a shared Talos Linux cluster.
 
 ## Multi-Tenancy Models
 
@@ -18,7 +18,7 @@ Before diving into configuration, understand the two main multi-tenancy models:
 
 **Hard multi-tenancy** - Different customers or business units share a cluster. Trust levels are low. You need strong isolation because tenants may be adversarial.
 
-This guide covers both models, starting with soft multi-tenancy and building up to harder isolation.
+This guide focuses on namespace-scoped controls that fit soft multi-tenancy and can be one layer in a harder isolation design.
 
 ## Namespace-Per-Tenant Architecture
 
@@ -185,12 +185,21 @@ metadata:
   name: tenant-viewer
   namespace: team-frontend
 rules:
-  - apiGroups: ["", "apps", "batch", "networking.k8s.io", "autoscaling"]
-    resources: ["*"]
-    verbs: ["get", "list", "watch"]
-  # Explicitly exclude secrets from view
+  # Intentionally omit secrets; RBAC has no deny or exclude rule.
   - apiGroups: [""]
-    resources: ["pods", "services", "configmaps", "events", "endpoints"]
+    resources: ["pods", "pods/log", "services", "endpoints", "configmaps", "events", "persistentvolumeclaims", "serviceaccounts"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
     verbs: ["get", "list", "watch"]
 ```
 
@@ -219,13 +228,13 @@ Some resources are cluster-scoped and shared across all namespaces. Tenants gene
 # - StorageClasses (read-only at most)
 ```
 
-If tenants need to see some cluster-scoped resources (like StorageClasses), create a limited ClusterRole:
+If tenants need to see some cluster-scoped resources (like StorageClasses), create a limited ClusterRole per tenant and bind it with a ClusterRoleBinding:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: tenant-cluster-view
+  name: tenant-cluster-view-team-frontend
 rules:
   - apiGroups: ["storage.k8s.io"]
     resources: ["storageclasses"]
@@ -233,7 +242,20 @@ rules:
   - apiGroups: [""]
     resources: ["namespaces"]
     verbs: ["get"]
-    resourceNames: []  # Will be set per-tenant via binding
+    resourceNames: ["team-frontend"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tenant-cluster-view-team-frontend
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tenant-cluster-view-team-frontend
+subjects:
+  - kind: Group
+    name: "team-frontend-admins"
+    apiGroup: rbac.authorization.k8s.io
 ```
 
 ## Automating Tenant Onboarding
@@ -332,6 +354,7 @@ subjects:
 EOF
 
 # Apply network policy to isolate the namespace
+# Requires a CNI plugin that enforces Kubernetes NetworkPolicy.
 cat <<EOF | kubectl apply -f -
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -359,6 +382,8 @@ spec:
           kubernetes.io/metadata.name: kube-system
     ports:
     - protocol: UDP
+      port: 53
+    - protocol: TCP
       port: 53
 EOF
 
@@ -416,4 +441,4 @@ kubectl auth can-i list nodes \
 
 ## Conclusion
 
-Multi-tenant RBAC on Talos Linux is about layering multiple isolation mechanisms. Namespaces provide the logical boundary. RBAC controls who can do what within those boundaries. Network policies prevent cross-tenant network traffic. Resource quotas ensure fair resource sharing. Together, these create a secure multi-tenant environment on a shared cluster. Start with the namespace-per-tenant model, automate tenant onboarding, and audit access regularly to maintain your security posture.
+Multi-tenant RBAC on Talos Linux is about layering multiple isolation mechanisms. Namespaces provide the logical boundary. RBAC controls who can do what within those boundaries. Network policies prevent cross-tenant network traffic when your CNI enforces them. Resource quotas ensure fair resource sharing. Together, these create a secure multi-tenant environment on a shared cluster. Start with the namespace-per-tenant model, automate tenant onboarding, and audit access regularly to maintain your security posture.
