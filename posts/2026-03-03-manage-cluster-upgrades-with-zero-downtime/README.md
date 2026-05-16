@@ -316,7 +316,7 @@ done
 # Check Kubernetes version
 echo ""
 echo "Kubernetes version:"
-kubectl version --short 2>/dev/null
+kubectl version 2>/dev/null
 
 # Check all pods
 echo ""
