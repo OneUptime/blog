@@ -8,7 +8,7 @@ Description: Learn how to safely run Talos Linux worker nodes on spot instances 
 
 ---
 
-Spot instances (called Spot VMs on Azure and Preemptible VMs on GCP) offer the same compute capacity as regular instances at a fraction of the cost - often 60-90% cheaper. The catch is that the cloud provider can reclaim them with short notice when demand for that capacity increases. This makes them a perfect fit for Kubernetes worker nodes, especially on Talos Linux where the fast boot times and stateless design minimize the impact of interruptions.
+Spot instances (called Spot VMs on Azure and Google Cloud) offer the same compute capacity as regular instances at a fraction of the cost - often 60-90% cheaper. The catch is that the cloud provider can reclaim them with short notice when demand for that capacity increases. This makes them a perfect fit for Kubernetes worker nodes, especially on Talos Linux where the fast boot times and stateless design minimize the impact of interruptions.
 
 This guide covers how to safely integrate spot instances into your Talos Linux clusters across different cloud providers.
 
@@ -39,7 +39,7 @@ Never run control plane nodes on spot instances. The etcd cluster running on con
 
 ## Setting Up Spot Workers on AWS
 
-Using the AWS provider, create a launch template for Talos spot workers:
+Using the AWS provider, create a launch template for Talos spot workers. Replace `<talos-ami-id>` with the AMI ID for the Talos image in your AWS region:
 
 ```bash
 # Create a launch template for Talos spot instances
@@ -48,7 +48,7 @@ aws ec2 create-launch-template \
   --launch-template-name talos-spot-workers \
   --version-description "Talos Linux spot worker v1" \
   --launch-template-data '{
-    "ImageId": "ami-talos-linux-latest",
+    "ImageId": "<talos-ami-id>",
     "InstanceMarketOptions": {
       "MarketType": "spot",
       "SpotOptions": {
@@ -101,7 +101,7 @@ aws autoscaling create-auto-scaling-group \
 Key points about this configuration:
 
 - Multiple instance types increase the chance of getting spot capacity
-- The `capacity-optimized` strategy picks from the pool with the lowest interruption rate
+- The `capacity-optimized` strategy picks from the Spot pools with the most available capacity
 - Spreading across multiple subnets (availability zones) further reduces interruption risk
 - No max price is set, which means you pay the current spot price
 
@@ -111,12 +111,12 @@ When AWS decides to reclaim a spot instance, it sends a two-minute warning. Conf
 
 ```bash
 # Install the AWS Node Termination Handler
-helm repo add eks https://aws.github.io/eks-charts
-helm install aws-node-termination-handler eks/aws-node-termination-handler \
+helm upgrade --install aws-node-termination-handler \
   --namespace kube-system \
   --set enableSpotInterruptionDraining=true \
-  --set enableRebalanceRecommendation=true \
-  --set enableScheduledEventDraining=true
+  --set enableRebalanceMonitoring=true \
+  --set enableScheduledEventDraining=true \
+  oci://public.ecr.aws/aws-ec2/helm/aws-node-termination-handler
 ```
 
 This handler watches for interruption notices and automatically cordons and drains the affected node, giving your pods time to migrate to other nodes.
@@ -168,11 +168,12 @@ machine:
   nodeLabels:
     node.kubernetes.io/lifecycle: spot
     node-pool: spot-workers
-  nodeTaints:
-    spot-instance: "true:PreferNoSchedule"
   kubelet:
-    extraArgs:
-      node-labels: "node.kubernetes.io/lifecycle=spot"
+    extraConfig:
+      registerWithTaints:
+        - key: spot-instance
+          value: "true"
+          effect: PreferNoSchedule
 ```
 
 Then configure your workloads with appropriate tolerations:
@@ -242,9 +243,9 @@ spec:
       rules:
         - alert: HighSpotInterruptionRate
           expr: >
-            rate(kube_node_status_condition{
+            sum(changes(kube_node_status_condition{
               condition="Ready", status="false"
-            }[1h]) > 0.1
+            }[1h])) > 3
           for: 30m
           labels:
             severity: warning
