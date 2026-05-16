@@ -113,7 +113,7 @@ spec:
 
 ### Mixed TCP/UDP LoadBalancer
 
-For services that need both TCP and UDP on the same IP, you need two separate services that share an IP. This is because Kubernetes requires separate services for different protocols:
+For services that need both TCP and UDP on the same IP, Kubernetes supports mixed-protocol LoadBalancer services in current releases, but load balancer implementations can still impose protocol restrictions. With MetalLB, you can also use two separate services that share an IP:
 
 ```yaml
 # TCP service
@@ -123,16 +123,16 @@ metadata:
   name: voip-tcp
   namespace: communications
   annotations:
-    metallb.universe.tf/allow-shared-ip: "voip-shared"
+    metallb.io/allow-shared-ip: "voip-shared"
+    metallb.io/loadBalancerIPs: 192.168.1.200
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.200
   ports:
   - name: sip-tcp
     port: 5060
     targetPort: 5060
     protocol: TCP
-  - name: srtp
+  - name: sip-tls
     port: 5061
     targetPort: 5061
     protocol: TCP
@@ -146,16 +146,16 @@ metadata:
   name: voip-udp
   namespace: communications
   annotations:
-    metallb.universe.tf/allow-shared-ip: "voip-shared"
+    metallb.io/allow-shared-ip: "voip-shared"
+    metallb.io/loadBalancerIPs: 192.168.1.200
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.200
   ports:
   - name: sip-udp
     port: 5060
     targetPort: 5060
     protocol: UDP
-  - name: rtp-range
+  - name: rtp-10000
     port: 10000
     targetPort: 10000
     protocol: UDP
@@ -169,6 +169,9 @@ The Nginx Ingress Controller on Talos Linux can proxy TCP and UDP streams, not j
 
 ```bash
 # Install Nginx Ingress with TCP/UDP proxying enabled
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+
 helm install ingress-nginx ingress-nginx/ingress-nginx \
     --namespace ingress-nginx \
     --create-namespace \
@@ -285,10 +288,7 @@ frontend postgres
 
 backend postgres-backend
     balance leastconn
-    option tcp-check
-    tcp-check connect
-    tcp-check send-binary 0000003d00030000   # PostgreSQL startup packet
-    tcp-check expect binary 52               # Authentication request
+    option pgsql-check
     server pg-1 10.0.0.20:30432 check inter 5s
     server pg-2 10.0.0.21:30432 check inter 5s
     server pg-3 10.0.0.22:30432 check inter 5s
@@ -300,10 +300,7 @@ frontend redis
 
 backend redis-backend
     balance roundrobin
-    option tcp-check
-    tcp-check connect
-    tcp-check send PING\r\n
-    tcp-check expect string +PONG
+    option redis-check
     server redis-1 10.0.0.20:30379 check inter 5s
     server redis-2 10.0.0.21:30379 check inter 5s
 
