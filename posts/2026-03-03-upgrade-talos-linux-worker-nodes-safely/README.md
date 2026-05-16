@@ -113,7 +113,7 @@ kubectl drain <worker-node-name> \
 Watch the drain progress:
 
 ```bash
-# In another terminal, watch pods being evicted and rescheduled
+# In another terminal, watch pods being evicted from this node
 kubectl get pods --all-namespaces --watch \
   --field-selector spec.nodeName=<worker-node-name>
 ```
@@ -135,11 +135,13 @@ Once the node is drained, proceed with the Talos upgrade:
 ```bash
 # Upgrade the worker node
 talosctl upgrade --nodes <worker-node-ip> \
-  --image ghcr.io/siderolabs/installer:v1.7.0
+  --image ghcr.io/siderolabs/installer:<target-talos-version>
 
 # Wait for the node to come back
 talosctl health --nodes <worker-node-ip> --wait-timeout 10m
 ```
+
+Talos recommends upgrading through adjacent minor versions and using the latest patch release for each intermediate minor version.
 
 ### Step 4: Verify and Uncordon
 
@@ -162,7 +164,7 @@ kubectl uncordon <worker-node-name>
 kubectl get nodes
 ```
 
-Pods will gradually be scheduled back onto the node as Kubernetes balances the workload.
+New or restarted pods can be scheduled onto the node again after it is uncordoned. Kubernetes does not automatically move already-running pods back just to rebalance the workload.
 
 ### Step 5: Move to the Next Node
 
@@ -190,7 +192,7 @@ wait
 
 # Upgrade both nodes
 talosctl upgrade --nodes <worker-1-ip>,<worker-2-ip> \
-  --image ghcr.io/siderolabs/installer:v1.7.0
+  --image ghcr.io/siderolabs/installer:<target-talos-version>
 ```
 
 A good rule of thumb is to never upgrade more than 25% of your worker nodes at the same time. This ensures the cluster always has at least 75% capacity available.
@@ -201,9 +203,9 @@ Stateful workloads (databases, message queues, etc.) need extra attention:
 
 ```bash
 # Check for pods with persistent volumes on the node
-kubectl get pods --all-namespaces -o wide \
-  --field-selector spec.nodeName=<worker-node-name> | \
-  xargs -I {} kubectl get pvc -n {} 2>/dev/null
+kubectl get pods --all-namespaces \
+  --field-selector spec.nodeName=<worker-node-name> \
+  -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,PVCS:.spec.volumes[*].persistentVolumeClaim.claimName'
 
 # For StatefulSets, verify the pod has been rescheduled
 # and its PV has been reattached before proceeding
@@ -221,7 +223,7 @@ For large clusters, scripting the upgrade process saves time and reduces errors:
 #!/bin/bash
 # upgrade-workers.sh
 
-IMAGE="ghcr.io/siderolabs/installer:v1.7.0"
+IMAGE="ghcr.io/siderolabs/installer:<target-talos-version>"
 WORKERS=("10.0.0.10" "10.0.0.11" "10.0.0.12" "10.0.0.13" "10.0.0.14")
 
 for worker_ip in "${WORKERS[@]}"; do
@@ -262,10 +264,10 @@ talosctl version --nodes <all-worker-ips>
 kubectl get nodes
 
 # All application pods running
-kubectl get pods --all-namespaces | grep -v Running | grep -v Completed
+kubectl get pods --all-namespaces | awk 'NR==1 || ($4!="Running" && $4!="Completed")'
 
 # No persistent volume issues
-kubectl get pv | grep -v Bound
+kubectl get pv | awk 'NR==1 || $5!="Bound"'
 ```
 
 ## Summary
