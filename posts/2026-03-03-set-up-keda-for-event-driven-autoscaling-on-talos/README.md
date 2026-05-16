@@ -102,7 +102,8 @@ spec:
   - type: rabbitmq
     metadata:
       queueName: orders
-      queueLength: "5"  # Each replica handles 5 messages
+      mode: QueueLength
+      value: "5"  # Each replica handles 5 messages
       protocol: amqp
     authenticationRef:
       name: rabbitmq-auth
@@ -227,10 +228,9 @@ spec:
   - type: prometheus
     metadata:
       serverAddress: http://prometheus-kube-prometheus-prometheus.monitoring.svc:9090
-      metricName: http_requests_per_second
       query: sum(rate(http_requests_total{deployment="webapp"}[2m]))
       threshold: "100"
-      activationThreshold: "5"  # Scale from zero only when above 5
+      activationThreshold: "5"  # Mark the scaler active only when above 5
 ```
 
 ## Scaling Based on Cron Schedule
@@ -291,7 +291,8 @@ spec:
   - type: rabbitmq
     metadata:
       queueName: background-jobs
-      queueLength: "10"
+      mode: QueueLength
+      value: "10"
     authenticationRef:
       name: rabbitmq-auth
   # And ensure minimum during business hours
@@ -334,7 +335,8 @@ spec:
   - type: rabbitmq
     metadata:
       queueName: image-processing
-      queueLength: "1"
+      mode: QueueLength
+      value: "1"
     authenticationRef:
       name: rabbitmq-auth
 ```
