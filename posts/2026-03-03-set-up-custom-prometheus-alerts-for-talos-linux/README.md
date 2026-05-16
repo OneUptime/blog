@@ -155,13 +155,13 @@ spec:
 
         # Alert when deployments have unavailable replicas
         - alert: DeploymentReplicasMismatch
-          expr: kube_deployment_status_replicas_available != kube_deployment_spec_replicas
+          expr: kube_deployment_spec_replicas - kube_deployment_status_replicas_available > 0
           for: 10m
           labels:
             severity: warning
           annotations:
             summary: "Deployment {{ $labels.namespace }}/{{ $labels.deployment }} replica mismatch"
-            description: "Deployment {{ $labels.deployment }} has {{ $value }} available replicas but expects {{ $labels.replicas }}."
+            description: "Deployment {{ $labels.deployment }} is missing {{ $value }} available replicas."
 
         # Alert when pods are stuck in pending state
         - alert: PodStuckPending
@@ -175,7 +175,7 @@ spec:
 
         # Alert on high container CPU throttling
         - alert: ContainerCPUThrottling
-          expr: rate(container_cpu_cfs_throttled_seconds_total[5m]) > 0.25
+          expr: sum by (namespace, pod, container) (increase(container_cpu_cfs_throttled_periods_total[5m])) / sum by (namespace, pod, container) (increase(container_cpu_cfs_periods_total[5m])) > 0.25
           for: 10m
           labels:
             severity: warning
@@ -221,12 +221,12 @@ stringData:
 
       routes:
         # Critical alerts go to PagerDuty and Slack
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: 'pagerduty-critical'
           continue: true
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: 'slack-critical'
 
     receivers:
@@ -235,6 +235,9 @@ stringData:
           - channel: '#kubernetes-alerts'
             title: '[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}'
             text: '{{ range .Alerts }}*{{ .Annotations.summary }}*\n{{ .Annotations.description }}\n{{ end }}'
+            send_resolved: true
+        email_configs:
+          - to: 'oncall@example.com'
             send_resolved: true
 
       - name: 'slack-critical'
@@ -246,7 +249,7 @@ stringData:
 
       - name: 'pagerduty-critical'
         pagerduty_configs:
-          - service_key: 'your-pagerduty-service-key'
+          - routing_key: 'your-pagerduty-routing-key'
             severity: 'critical'
 ```
 
@@ -279,17 +282,17 @@ Sometimes you need to silence alerts during maintenance windows. Alertmanager su
 ```yaml
 # Add inhibition rules to your alertmanager config
 inhibit_rules:
-  # If a node is down, suppress all pod alerts on that node
-  - source_match:
-      alertname: TalosNodeNotReady
-    target_match_re:
-      alertname: Pod.*
+  # If a node is down, suppress pod alerts that carry the same node label
+  - source_matchers:
+      - alertname="TalosNodeNotReady"
+    target_matchers:
+      - alertname=~"Pod.*"
     equal: ['node']
   # Warning alerts are suppressed if a critical alert exists for the same thing
-  - source_match:
-      severity: critical
-    target_match:
-      severity: warning
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
     equal: ['alertname', 'instance']
 ```
 
