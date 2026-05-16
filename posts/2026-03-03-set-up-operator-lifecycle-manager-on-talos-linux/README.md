@@ -37,7 +37,7 @@ brew install operator-sdk
 # Or download the binary directly
 export ARCH=$(case $(uname -m) in x86_64) echo -n amd64 ;; aarch64) echo -n arm64 ;; *) echo -n $(uname -m) ;; esac)
 export OS=$(uname | awk '{print tolower($0)}')
-export OPERATOR_SDK_DL_URL=https://github.com/operator-framework/operator-sdk/releases/download/v1.33.0
+export OPERATOR_SDK_DL_URL=https://github.com/operator-framework/operator-sdk/releases/download/v1.42.2
 curl -LO ${OPERATOR_SDK_DL_URL}/operator-sdk_${OS}_${ARCH}
 chmod +x operator-sdk_${OS}_${ARCH}
 sudo mv operator-sdk_${OS}_${ARCH} /usr/local/bin/operator-sdk
@@ -50,7 +50,7 @@ operator-sdk olm install
 
 ```bash
 # Download and apply the OLM release manifests
-export OLM_VERSION=v0.27.0
+export OLM_VERSION=v0.38.0
 kubectl apply -f https://github.com/operator-framework/operator-lifecycle-manager/releases/download/${OLM_VERSION}/crds.yaml
 kubectl apply -f https://github.com/operator-framework/operator-lifecycle-manager/releases/download/${OLM_VERSION}/olm.yaml
 ```
@@ -80,6 +80,9 @@ The key CRDs installed by OLM are:
 - `ClusterServiceVersion` (CSV) - Describes an Operator version and its requirements
 - `InstallPlan` - Defines the resources needed to install an Operator
 - `OperatorGroup` - Controls which namespaces an Operator watches
+- `OLMConfig` - Configures cluster-wide OLM behavior
+- `OperatorCondition` - Lets Operators communicate status back to OLM
+- `Operator` - Represents an installed Operator
 
 ## Browsing Available Operators
 
@@ -90,13 +93,13 @@ OLM comes with a default catalog of community Operators:
 kubectl get catalogsources -n olm
 
 # List available operators from the catalog
-kubectl get packagemanifests
+kubectl get packagemanifests -n olm
 
 # Get details about a specific operator
-kubectl describe packagemanifest prometheus
+kubectl describe packagemanifest prometheus -n olm
 
 # See available channels and versions
-kubectl get packagemanifest prometheus -o jsonpath='{.status.channels[*].name}'
+kubectl get packagemanifest prometheus -n olm -o jsonpath='{.status.channels[*].name}'
 ```
 
 ## Installing an Operator with OLM
@@ -112,15 +115,15 @@ The OperatorGroup defines where the Operator can watch for resources:
 apiVersion: operators.coreos.com/v1
 kind: OperatorGroup
 metadata:
-  name: default-og
-  namespace: operators
+  name: monitoring-og
+  namespace: monitoring
 spec:
   targetNamespaces:
-  - default
   - monitoring
 ```
 
 ```bash
+kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f operator-group.yaml
 ```
 
@@ -132,7 +135,7 @@ apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
 metadata:
   name: prometheus
-  namespace: operators
+  namespace: monitoring
 spec:
   channel: beta
   name: prometheus
@@ -145,9 +148,9 @@ spec:
 kubectl apply -f prometheus-subscription.yaml
 
 # Watch the installation progress
-kubectl get subscription prometheus -n operators -w
-kubectl get installplan -n operators
-kubectl get csv -n operators
+kubectl get subscription prometheus -n monitoring -w
+kubectl get installplan -n monitoring
+kubectl get csv -n monitoring
 ```
 
 The OLM will:
@@ -234,7 +237,7 @@ kubectl apply -f custom-catalog.yaml
 
 # Verify the catalog is available
 kubectl get catalogsource -n olm
-kubectl get packagemanifests --field-selector metadata.name=my-operator
+kubectl get packagemanifests -n olm --field-selector metadata.name=my-operator
 ```
 
 ## Controlling Operator Scope
@@ -253,7 +256,7 @@ metadata:
 spec: {}  # Empty spec means all namespaces
 ```
 
-### Namespace-Scoped Operator
+### Multi-Namespace Operator
 
 ```yaml
 # namespace-scoped-og.yaml
@@ -275,11 +278,11 @@ spec:
 apiVersion: operators.coreos.com/v1
 kind: OperatorGroup
 metadata:
-  name: monitoring-operators
-  namespace: monitoring
+  name: logging-operators
+  namespace: logging
 spec:
   targetNamespaces:
-  - monitoring
+  - logging
 ```
 
 ## Monitoring OLM
@@ -287,7 +290,7 @@ spec:
 ```bash
 # Check overall OLM health
 kubectl get pods -n olm
-kubectl get pods -n operators
+kubectl get pods -n monitoring
 
 # View all installed operators
 kubectl get csv --all-namespaces
@@ -315,10 +318,11 @@ To remove an Operator installed through OLM:
 
 ```bash
 # Delete the subscription
-kubectl delete subscription prometheus -n operators
+kubectl delete subscription prometheus -n monitoring
 
 # Delete the CSV (this removes the operator deployment)
-kubectl delete csv prometheusoperator.v0.65.1 -n operators
+kubectl get csv -n monitoring
+kubectl delete csv <csv-name> -n monitoring
 
 # Optionally remove CRDs (WARNING: this deletes all custom resources!)
 kubectl delete crd prometheuses.monitoring.coreos.com
@@ -342,7 +346,7 @@ kubectl delete crd alertmanagers.monitoring.coreos.com
 ```bash
 # Check resource usage of OLM components
 kubectl top pods -n olm
-kubectl top pods -n operators
+kubectl top pods -n monitoring
 ```
 
 ## Wrapping Up
