@@ -22,15 +22,13 @@ iSCSI fills a specific niche in storage architecture:
 
 ## Talos Machine Configuration for iSCSI
 
-iSCSI on Talos requires the iSCSI kernel modules and initiator configuration:
+iSCSI on Talos requires the iSCSI initiator module, the iSCSI tools system extension, and initiator configuration:
 
 ```yaml
 machine:
   kernel:
     modules:
       - name: iscsi_tcp      # iSCSI TCP transport
-      - name: iscsi_target_mod # iSCSI target module (if running targets)
-      - name: libiscsi        # iSCSI library module
   kubelet:
     extraMounts:
       # iSCSI initiator data directory
@@ -69,56 +67,19 @@ machine:
 
 Each node should have a unique initiator name. The naming convention is typically `iqn.YYYY-MM.reverse-domain:hostname`.
 
-## Installing the iSCSI Tools in Kubernetes
+## Installing the iSCSI Tools on Talos
 
-Since Talos does not have a traditional package manager, iSCSI management tools run as containers. Deploy the open-iscsi DaemonSet:
+Since Talos does not have a traditional package manager, install iSCSI support with the official Talos system extension. Add the `siderolabs/iscsi-tools` extension when building the Talos boot asset, or use the pinned image for your Talos release from the extensions image:
 
-```yaml
-# iscsi-tools-daemonset.yaml
+```bash
+crane export ghcr.io/siderolabs/extensions:v<TALOS_VERSION> | tar x -O image-digests | grep iscsi-tools
+```
 
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: iscsi-tools
-  namespace: kube-system
-spec:
-  selector:
-    matchLabels:
-      app: iscsi-tools
-  template:
-    metadata:
-      labels:
-        app: iscsi-tools
-    spec:
-      hostNetwork: true
-      hostPID: true
-      containers:
-      - name: iscsi
-        image: ghcr.io/siderolabs/iscsi-tools:latest
-        securityContext:
-          privileged: true
-        volumeMounts:
-        - name: iscsi
-          mountPath: /etc/iscsi
-        - name: iscsi-lib
-          mountPath: /var/lib/iscsi
-        - name: dev
-          mountPath: /dev
-        - name: sys
-          mountPath: /sys
-      volumes:
-      - name: iscsi
-        hostPath:
-          path: /etc/iscsi
-      - name: iscsi-lib
-        hostPath:
-          path: /var/lib/iscsi
-      - name: dev
-        hostPath:
-          path: /dev
-      - name: sys
-        hostPath:
-          path: /sys
+After the node boots with the extension, verify that the extension and `ext-iscsid` service are present:
+
+```bash
+talosctl get extensions --nodes 192.168.1.10
+talosctl service ext-iscsid --nodes 192.168.1.10
 ```
 
 ## Using iSCSI with Kubernetes CSI
@@ -197,6 +158,7 @@ metadata:
 spec:
   capacity:
     storage: 50Gi
+  storageClassName: ""
   accessModes:
     - ReadWriteOnce
   iscsi:
@@ -213,6 +175,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: iscsi-database-pvc
 spec:
+  storageClassName: ""
   accessModes:
     - ReadWriteOnce
   resources:
@@ -234,6 +197,7 @@ metadata:
 spec:
   capacity:
     storage: 100Gi
+  storageClassName: ""
   accessModes:
     - ReadWriteOnce
   iscsi:
@@ -259,7 +223,7 @@ data:
 
 ## Multi-Path iSCSI
 
-For high availability, configure multi-path iSCSI with multiple target portals:
+For high availability, configure iSCSI with multiple target portals. If your setup requires device-mapper multipath, also include the Talos `multipath-tools` system extension.
 
 ```yaml
 apiVersion: v1
@@ -269,6 +233,7 @@ metadata:
 spec:
   capacity:
     storage: 100Gi
+  storageClassName: ""
   accessModes:
     - ReadWriteOnce
   iscsi:
@@ -328,8 +293,6 @@ machine:
     net.core.wmem_max: "16777216"
     net.ipv4.tcp_rmem: "4096 87380 16777216"
     net.ipv4.tcp_wmem: "4096 65536 16777216"
-    # Disable Nagle's algorithm for low latency
-    net.ipv4.tcp_nodelay: "1"
 ```
 
 ### Dedicated Network
@@ -359,11 +322,11 @@ machine:
 
 **Module not loaded:**
 - Verify kernel modules in machine config
-- Check: `talosctl get kernelmodules --nodes <ip>`
+- Check: `talosctl get loadedkernelmodules --nodes <ip>`
 
 **Volume attach failures:**
 - Check kubelet logs: `talosctl logs kubelet --nodes <ip>`
-- Verify the iSCSI tools DaemonSet is running on the node
+- Verify the `iscsi-tools` system extension and `ext-iscsid` service are running on the node
 
 ## Summary
 
