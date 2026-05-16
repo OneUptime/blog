@@ -52,7 +52,7 @@ You can verify what repositories you have configured:
 # List all configured repositories
 helm repo list
 
-# Output will show name, URL, and status for each repository
+# Output will show the name and URL for each repository
 ```
 
 ## Searching for Charts
@@ -97,7 +97,7 @@ helm repo add my-mtls-repo https://charts.internal.example.com \
 
 ChartMuseum is a popular open-source Helm chart repository server. You can deploy it directly on your Talos Linux cluster.
 
-First, create a values file for ChartMuseum:
+First, create a values file for ChartMuseum. This example assumes your Talos cluster already has a `local-path` StorageClass installed:
 
 ```yaml
 # chartmuseum-values.yaml
@@ -108,33 +108,33 @@ env:
     # Storage backend configuration
     STORAGE: local
     STORAGE_LOCAL_ROOTDIR: /charts
+    # Allow chart overwrite for development
+    ALLOW_OVERWRITE: true
+
+  secret:
     # Enable basic auth
     BASIC_AUTH_USER: admin
     BASIC_AUTH_PASS: changeme123
-    # Allow chart overwrite for development
-    ALLOW_OVERWRITE: true
 
 persistence:
   enabled: true
   accessMode: ReadWriteOnce
   size: 10Gi
   storageClass: "local-path"
+  path: /charts
 
 service:
   type: ClusterIP
-  servicePort: 8080
+  externalPort: 8080
 
 ingress:
   enabled: true
-  annotations:
-    kubernetes.io/ingress.class: nginx
+  ingressClassName: nginx
   hosts:
     - name: charts.example.com
       path: /
-  tls:
-    - secretName: chartmuseum-tls
-      hosts:
-        - charts.example.com
+      tls: true
+      tlsSecret: chartmuseum-tls
 
 resources:
   requests:
@@ -213,7 +213,7 @@ helm install my-release oci://ghcr.io/myorg/charts/my-chart --version 0.1.0
 
 ## Setting Up Harbor as a Chart Repository on Talos Linux
 
-Harbor is a full-featured container and chart registry that you can run on your Talos cluster:
+Harbor is a full-featured container registry that can store Helm charts as OCI artifacts on your Talos cluster. This example also assumes your cluster has a `local-path` StorageClass installed:
 
 ```yaml
 # harbor-values.yaml
@@ -222,8 +222,7 @@ expose:
   ingress:
     hosts:
       core: registry.example.com
-    annotations:
-      kubernetes.io/ingress.class: nginx
+    className: nginx
   tls:
     enabled: true
     certSource: secret
@@ -238,9 +237,6 @@ persistence:
     registry:
       size: 50Gi
       storageClass: "local-path"
-    chartmuseum:
-      size: 10Gi
-      storageClass: "local-path"
     database:
       size: 5Gi
       storageClass: "local-path"
@@ -249,9 +245,6 @@ persistence:
       storageClass: "local-path"
 
 harborAdminPassword: "secure-admin-password"
-
-chartmuseum:
-  enabled: true
 ```
 
 ```bash
