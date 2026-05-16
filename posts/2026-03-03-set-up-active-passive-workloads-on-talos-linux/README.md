@@ -106,8 +106,8 @@ kind: Role
 metadata:
   name: leader-election-role
 rules:
-  - apiGroups: ["coordination.k8s.io"]
-    resources: ["leases"]
+  - apiGroups: [""]
+    resources: ["endpoints"]
     verbs: ["get", "create", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
