@@ -43,10 +43,10 @@ talosctl get kubespanpeerstatus --nodes <node-ip>
 The output looks something like this:
 
 ```text
-NODE           NAMESPACE   TYPE                 ID        VERSION   LABEL       ENDPOINT              STATE
-192.168.1.10   network     KubeSpanPeerStatus   <id-1>    3         cp-2        192.168.1.11:51820    up
-192.168.1.10   network     KubeSpanPeerStatus   <id-2>    5         worker-1    192.168.1.20:51820    up
-192.168.1.10   network     KubeSpanPeerStatus   <id-3>    2         worker-2    192.168.1.21:51820    up
+NODE           NAMESPACE   TYPE                 ID        VERSION   LABEL       ENDPOINT              STATE   RX         TX
+192.168.1.10   network     KubeSpanPeerStatus   <id-1>    3         cp-2        192.168.1.11:51820    up      1048576    524288
+192.168.1.10   network     KubeSpanPeerStatus   <id-2>    5         worker-1    192.168.1.20:51820    up      2097152    1048576
+192.168.1.10   network     KubeSpanPeerStatus   <id-3>    2         worker-2    192.168.1.21:51820    up      524288     262144
 ```
 
 For detailed information about a specific peer:
