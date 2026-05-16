@@ -86,9 +86,10 @@ spec:
     toPorts:
     - ports:
       - port: "53"
-        protocol: UDP
-      - port: "53"
-        protocol: TCP
+        protocol: ANY
+      rules:
+        dns:
+        - matchPattern: "*"
 ```
 
 ```bash
@@ -111,7 +112,7 @@ spec:
     matchLabels:
       app: frontend
   ingress:
-  # Allow traffic from any source on port 80
+  # Allow traffic from outside the cluster on port 80
   - fromEntities:
     - world
     toPorts:
@@ -247,7 +248,10 @@ spec:
     toPorts:
     - ports:
       - port: "53"
-        protocol: UDP
+        protocol: ANY
+      rules:
+        dns:
+        - matchPattern: "*"
   # Allow HTTPS to specific external domains
   - toFQDNs:
     - matchName: "api.stripe.com"
@@ -277,18 +281,15 @@ spec:
     matchLabels:
       app: monitoring
   egress:
-  # Allow traffic to the internal monitoring network
-  - toCIDR:
-    - "10.100.0.0/16"
+  # Allow traffic to the internal monitoring network except the restricted subnet
+  - toCIDRSet:
+    - cidr: "10.100.0.0/16"
+      except:
+      - "10.100.50.0/24"
     toPorts:
     - ports:
       - port: "9090"
         protocol: TCP
-  # Block traffic to specific IPs even within allowed CIDRs
-  - toCIDRSet:
-    - cidr: "10.100.0.0/16"
-      except:
-      - "10.100.50.0/24"  # Restricted subnet
 ```
 
 ## Cluster-Wide Policies
@@ -317,17 +318,17 @@ Label any pod with `internet-access: restricted` and it will be blocked from rea
 Cilium provides tools to debug network policies:
 
 ```bash
-# Check which policies apply to a specific pod
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list
+# List Cilium endpoints and find the endpoint ID for your pod
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list
 
-# Get the Cilium endpoint ID for your pod
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep <pod-name>
+# Show realized policy details for a specific endpoint
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint get <endpoint-id>
 
-# Check policy verdict for a specific endpoint
-kubectl exec -n kube-system ds/cilium -- cilium policy get --numeric <endpoint-id>
+# Inspect policy rules loaded on the node
+kubectl exec -n kube-system ds/cilium -- cilium-dbg policy get
 
 # Monitor policy decisions in real time
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type policy-verdict
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type policy-verdict
 
 # Use Hubble to see dropped traffic
 hubble observe --verdict DROPPED --namespace production
@@ -339,7 +340,7 @@ If traffic is unexpectedly blocked:
 
 ```bash
 # Check Cilium identity for the source pod
-kubectl exec -n kube-system ds/cilium -- cilium identity list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg identity list
 
 # Verify the policy was correctly applied
 kubectl get cnp -n production -o yaml
