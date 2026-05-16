@@ -91,7 +91,7 @@ spec:
               import os
 
               # Export ResNet50 to ONNX
-              model = models.resnet50(pretrained=True)
+              model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
               model.eval()
               dummy = torch.randn(1, 3, 224, 224)
 
@@ -169,7 +169,6 @@ spec:
           args:
             - tritonserver
             - --model-repository=/models
-            - --strict-model-config=false
             - --log-verbose=1
             - --allow-metrics=true
             - --allow-gpu-metrics=true
