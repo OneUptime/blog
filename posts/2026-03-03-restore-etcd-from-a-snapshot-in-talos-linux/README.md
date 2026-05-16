@@ -49,22 +49,29 @@ If the snapshot shows valid data (non-zero revision and key count), you can proc
 
 ## Scenario 1: Restoring a Single Control Plane Node
 
-If you have a single control plane node (common in development environments), the process is straightforward:
+If you have a single control plane node (common in development environments), the process is straightforward. Talos does not have a dedicated `etcd snapshot restore` command — recovery is performed via `talosctl bootstrap --recover-from`. First reset the node to wipe etcd's data, then bootstrap from the snapshot:
 
 ```bash
-# Step 1: Upload the snapshot to the node using talosctl
-talosctl -n 192.168.1.10 etcd snapshot restore ./etcd-snapshot.db
+# Step 1: Reset the node, wiping the EPHEMERAL partition where etcd data lives
+talosctl -n 192.168.1.10 reset --graceful=false --reboot --system-labels-to-wipe=EPHEMERAL
 
-# Step 2: The node will restart etcd with the restored data
-# Monitor the restoration process
+# Step 2: Wait until the etcd service reaches the "Preparing" state
+talosctl -n 192.168.1.10 service etcd
+
+# Step 3: Bootstrap the node from the snapshot
+talosctl -n 192.168.1.10 bootstrap --recover-from=./etcd-snapshot.db
+
+# Step 4: Monitor the restoration process
 talosctl -n 192.168.1.10 logs etcd --tail 50
 ```
+
+If the snapshot was copied directly from `/var/lib/etcd/member/snap/db` rather than generated with `talosctl etcd snapshot`, add `--recover-skip-hash-check` to the bootstrap command.
 
 After the restore, your Kubernetes API server will reconnect to etcd and start reconciling the cluster state. Pods that exist in reality but not in the restored snapshot will be cleaned up, and resources in the snapshot that are missing from reality will be recreated.
 
 ## Scenario 2: Restoring a Multi-Node etcd Cluster
 
-Restoring a multi-node etcd cluster is more involved because you need to bootstrap a new cluster from the snapshot. Here is the process for a 3-node control plane:
+Restoring a multi-node etcd cluster is more involved because you need to bootstrap a new cluster from the snapshot. All existing control plane nodes must be reset first so that etcd is wiped on each of them — only then can you bootstrap a single node from the snapshot, and the remaining nodes will rejoin automatically once the control plane endpoint comes up. Here is the process for a 3-node control plane:
 
 ```bash
 # Step 1: Take note of your current control plane node IPs
@@ -72,60 +79,57 @@ Restoring a multi-node etcd cluster is more involved because you need to bootstr
 # CP2: 192.168.1.11
 # CP3: 192.168.1.12
 
-# Step 2: Bootstrap the restore on the first control plane node
-talosctl -n 192.168.1.10 etcd snapshot restore ./etcd-snapshot.db
+# Step 2: Reset ALL control plane nodes, wiping the EPHEMERAL partition
+talosctl -n 192.168.1.10 reset --graceful=false --reboot --system-labels-to-wipe=EPHEMERAL
+talosctl -n 192.168.1.11 reset --graceful=false --reboot --system-labels-to-wipe=EPHEMERAL
+talosctl -n 192.168.1.12 reset --graceful=false --reboot --system-labels-to-wipe=EPHEMERAL
 ```
 
-Wait for the first node to come up with the restored data:
+Wait for every node to reboot and for the etcd service on each one to enter the "Preparing" state:
 
 ```bash
-# Step 3: Monitor the first node
-talosctl -n 192.168.1.10 etcd status
-
-# The node should show as the sole member initially
-talosctl -n 192.168.1.10 etcd members
+# Step 3: Confirm etcd is "Preparing" on every control plane node
+talosctl -n 192.168.1.10,192.168.1.11,192.168.1.12 service etcd
 ```
 
-Then reset and rejoin the other control plane nodes:
+Now bootstrap a single node from the snapshot. The remaining control plane nodes will discover the new cluster and join it automatically:
 
 ```bash
-# Step 4: Reset the second control plane node's etcd
-talosctl -n 192.168.1.11 reset --graceful --reboot
+# Step 4: Bootstrap the first control plane node from the snapshot
+talosctl -n 192.168.1.10 bootstrap --recover-from=./etcd-snapshot.db
 
-# Step 5: Wait for it to rejoin and sync
-# Monitor until it appears in the member list
+# Step 5: Watch the member list — the other nodes will rejoin once the
+# control plane endpoint is available
 talosctl -n 192.168.1.10 etcd members
 
-# Step 6: Repeat for the third node
-talosctl -n 192.168.1.12 reset --graceful --reboot
-
-# Step 7: Verify all members are healthy
+# Step 6: Verify all members are healthy
 talosctl -n 192.168.1.10,192.168.1.11,192.168.1.12 etcd status
 ```
 
 ## Scenario 3: Restoring to a Completely New Cluster
 
-If you are restoring to entirely new hardware or a fresh Talos installation, the process starts with generating a new cluster configuration:
+If you are restoring to entirely new hardware or a fresh Talos installation, the process starts with generating a new cluster configuration. The key difference from a normal install is that `bootstrap` takes `--recover-from` instead of running with no arguments:
 
 ```bash
 # Step 1: Generate a new Talos cluster config
 talosctl gen config my-cluster https://192.168.1.10:6443
 
-# Step 2: Apply the controlplane config to the first node
+# Step 2: Apply the controlplane config to every control plane node
 talosctl apply-config --insecure --nodes 192.168.1.10 --file controlplane.yaml
-
-# Step 3: Wait for the node to boot
-talosctl -n 192.168.1.10 health
-
-# Step 4: Bootstrap etcd on the first node
-talosctl -n 192.168.1.10 bootstrap
-
-# Step 5: Stop the current etcd and restore from snapshot
-talosctl -n 192.168.1.10 etcd snapshot restore ./etcd-snapshot.db
-
-# Step 6: Apply worker and additional controlplane configs
 talosctl apply-config --insecure --nodes 192.168.1.11 --file controlplane.yaml
 talosctl apply-config --insecure --nodes 192.168.1.12 --file controlplane.yaml
+
+# Step 3: Wait for the first node to be ready for bootstrap
+# (etcd will be in the "Preparing" state)
+talosctl -n 192.168.1.10 service etcd
+
+# Step 4: Bootstrap the first node directly from the snapshot.
+# Do NOT run a regular `talosctl bootstrap` first — that would create
+# an empty etcd cluster and prevent the restore.
+talosctl -n 192.168.1.10 bootstrap --recover-from=./etcd-snapshot.db
+
+# Step 5: Apply worker configs
+talosctl apply-config --insecure --nodes 192.168.1.20 --file worker.yaml
 ```
 
 ## Post-Restore Verification
@@ -187,8 +191,8 @@ kubectl get endpoints -A
 **Certificate issues** - If you restored to new nodes with different IPs, certificates may not match. Talos handles most certificate management automatically, but check:
 
 ```bash
-# Verify API server certificate is valid
-talosctl -n 192.168.1.10 get certificates
+# Inspect the dynamic Kubernetes certificates Talos manages
+talosctl -n 192.168.1.10 get KubernetesDynamicCerts -o yaml
 ```
 
 **Node registration** - Worker nodes that were registered with the old cluster need to reconnect:
