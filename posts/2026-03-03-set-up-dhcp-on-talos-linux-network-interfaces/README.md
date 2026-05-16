@@ -23,54 +23,43 @@ Once you apply a machine configuration, the default behavior changes. If you spe
 To explicitly configure DHCP on a specific interface:
 
 ```yaml
-# machine-config.yaml
-
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        dhcp: true
+# dhcp-eth0.yaml
+apiVersion: v1alpha1
+kind: DHCPv4Config
+name: eth0
 ```
 
-That is the minimal configuration. When `dhcp: true` is set, the interface will:
+That is the minimal configuration. When a `DHCPv4Config` document is present for a link, the interface will:
 - Request an IP address from the DHCP server
 - Accept the gateway, DNS servers, NTP servers, and other options provided by the server
 - Renew the lease automatically before it expires
 
 ## DHCP with Specific Options
 
-You can configure more granular DHCP behavior using the `dhcpOptions` field:
+You can configure more granular DHCP behavior using fields on the DHCP configuration document:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        dhcp: true
-        dhcpOptions:
-          # Only request IPv4 address (skip IPv6)
-          ipv4: true
-          ipv6: false
-          # Set a specific route metric for DHCP-assigned routes
-          routeMetric: 100
+apiVersion: v1alpha1
+kind: DHCPv4Config
+name: eth0
+# Set a specific route metric for DHCP-assigned routes
+routeMetric: 100
 ```
 
 The `routeMetric` option is particularly useful when you have multiple interfaces with DHCP. The route metric determines which interface is preferred for routing - lower metrics are preferred:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      # Primary interface - lower metric means preferred
-      - interface: eth0
-        dhcp: true
-        dhcpOptions:
-          routeMetric: 100
-      # Secondary interface - higher metric as fallback
-      - interface: eth1
-        dhcp: true
-        dhcpOptions:
-          routeMetric: 200
+# Primary interface - lower metric means preferred
+apiVersion: v1alpha1
+kind: DHCPv4Config
+name: eth0
+routeMetric: 100
+---
+# Secondary interface - higher metric as fallback
+apiVersion: v1alpha1
+kind: DHCPv4Config
+name: eth1
+routeMetric: 200
 ```
 
 ## DHCP with Overrides
@@ -78,16 +67,20 @@ machine:
 Sometimes you want DHCP for the IP address but want to override certain settings like DNS servers or the hostname. You can combine DHCP with static settings:
 
 ```yaml
-machine:
-  network:
-    hostname: worker-node-1
-    interfaces:
-      - interface: eth0
-        dhcp: true
-    # Override DNS servers from DHCP
-    nameservers:
-      - 10.0.0.2
-      - 10.0.0.3
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: worker-node-1
+---
+apiVersion: v1alpha1
+kind: DHCPv4Config
+name: eth0
+---
+# Override DNS servers from DHCP
+apiVersion: v1alpha1
+kind: ResolverConfig
+nameservers:
+  - address: 10.0.0.2
+  - address: 10.0.0.3
 ```
 
 In this configuration, the interface gets its IP address and gateway from DHCP, but the DNS servers and hostname are set statically. The static settings take priority over whatever the DHCP server provides.
@@ -97,37 +90,36 @@ In this configuration, the interface gets its IP address and gateway from DHCP, 
 Talos supports DHCP for both IPv4 and IPv6:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        dhcp: true
-        dhcpOptions:
-          ipv4: true
-          ipv6: true
+apiVersion: v1alpha1
+kind: DHCPv4Config
+name: eth0
+---
+apiVersion: v1alpha1
+kind: DHCPv6Config
+name: eth0
 ```
 
-With `ipv6: true`, the interface will attempt DHCPv6 in addition to regular DHCPv4. Note that IPv6 autoconfiguration (SLAAC) may also be active depending on the network's router advertisements.
+With a `DHCPv6Config` document, the interface will attempt DHCPv6 in addition to regular DHCPv4. Note that IPv6 autoconfiguration (SLAAC) may also be active depending on the network's router advertisements.
 
 ## DHCP for Worker Nodes
 
 DHCP is commonly used for worker nodes in environments where the DHCP server provides consistent leases. Here is a typical worker node configuration:
 
 ```yaml
+version: v1alpha1
 machine:
   type: worker
-  network:
-    interfaces:
-      - interface: eth0
-        dhcp: true
-        dhcpOptions:
-          routeMetric: 100
   install:
     disk: /dev/sda
-    image: ghcr.io/siderolabs/installer:v1.6.0
+    image: ghcr.io/siderolabs/installer:v1.13.0
 cluster:
   controlPlane:
     endpoint: https://192.168.1.100:6443
+---
+apiVersion: v1alpha1
+kind: DHCPv4Config
+name: eth0
+routeMetric: 100
 ```
 
 The worker gets its network configuration from DHCP but has a static reference to the control plane endpoint. This works because the control plane endpoint should always be at a known, stable address.
@@ -140,11 +132,9 @@ For nodes that need stable IP addresses (especially control plane nodes), you ha
 
 ```yaml
 # On the Talos side, this is just regular DHCP
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        dhcp: true
+apiVersion: v1alpha1
+kind: DHCPv4Config
+name: eth0
 ```
 
 The DHCP server is configured to reserve an IP for the node's MAC address. This works but adds a dependency on the DHCP server. If the DHCP server is down during a node reboot, the node cannot get its address.
@@ -186,14 +176,15 @@ DHCP might not work on VLAN-tagged interfaces if the DHCP server is not configur
 
 ```yaml
 # DHCP on a VLAN interface
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        dhcp: false
-        vlans:
-          - vlanId: 100
-            dhcp: true
+apiVersion: v1alpha1
+kind: VLANConfig
+name: eth0.100
+parent: eth0
+vlanID: 100
+---
+apiVersion: v1alpha1
+kind: DHCPv4Config
+name: eth0.100
 ```
 
 ## Monitoring DHCP Leases
@@ -215,7 +206,24 @@ If you started with DHCP and want to switch to a static IP (a common progression
 ```bash
 # Patch the machine config to replace DHCP with static IP
 talosctl patch machineconfig --nodes 192.168.1.10 \
-  --patch '{"machine": {"network": {"interfaces": [{"interface": "eth0", "dhcp": false, "addresses": ["192.168.1.10/24"], "routes": [{"network": "0.0.0.0/0", "gateway": "192.168.1.1"}]}]}}}'
+  --patch @static-eth0.yaml
+```
+
+Where `static-eth0.yaml` contains:
+
+```yaml
+apiVersion: v1alpha1
+kind: DHCPv4Config
+name: eth0
+$patch: delete
+---
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - gateway: 192.168.1.1
 ```
 
 This changes the interface from DHCP to a static configuration. The node will keep the same IP if you specify the address it currently has.
@@ -226,14 +234,15 @@ In cloud environments like AWS, Azure, or GCP, DHCP is typically the only option
 
 ```yaml
 # Cloud VM configuration - DHCP is standard
+version: v1alpha1
 machine:
-  network:
-    interfaces:
-      - interface: eth0
-        dhcp: true
   install:
     disk: /dev/xvda
-    image: ghcr.io/siderolabs/installer:v1.6.0
+    image: ghcr.io/siderolabs/installer:v1.13.0
+---
+apiVersion: v1alpha1
+kind: DHCPv4Config
+name: eth0
 ```
 
 In these environments, do not fight the DHCP setup. The cloud provider manages the IP assignment, and the addresses are typically stable for the lifetime of the VM.
@@ -254,4 +263,4 @@ Always configure the control plane endpoint as a static address, even if worker 
 
 ## Conclusion
 
-DHCP in Talos Linux is simple to configure and works out of the box for most networks. Set `dhcp: true` on the interface, optionally configure DHCP options for metrics and protocol preferences, and let the DHCP server handle the rest. For more control, combine DHCP with static overrides for DNS and hostname. Just remember that DHCP introduces a dependency on an external service, so plan accordingly for production environments where node availability is critical.
+DHCP in Talos Linux is simple to configure and works out of the box for most networks. Add a `DHCPv4Config` or `DHCPv6Config` document for the link, optionally configure DHCP options such as route metrics, and let the DHCP server handle the rest. For more control, combine DHCP with static overrides for DNS and hostname. Just remember that DHCP introduces a dependency on an external service, so plan accordingly for production environments where node availability is critical.
