@@ -10,7 +10,7 @@ Description: Learn how to automate certificate authority rotation in Talos Linux
 
 Manually rotating CA certificates in a Talos Linux cluster works fine for small environments, but it does not scale. When you have dozens of nodes and multiple clusters, you need automation. Automated CA rotation reduces human error, ensures consistency, and makes it possible to rotate certificates on a regular schedule without disrupting operations.
 
-This guide covers building an automated CA rotation pipeline for Talos Linux, from certificate generation to rolling deployment and validation.
+This guide covers building an automated CA rotation pipeline for Talos Linux, from certificate generation to rolling deployment and validation. It assumes Talos v1.7 or later, which is when the `acceptedCAs` configuration fields and the underlying rotation workflow were introduced. If you want a fully turnkey approach, Talos also ships a built-in `talosctl rotate-ca` command that performs the same trust-bundle rotation flow described below; the scripts here are useful when you need finer control or to integrate with your own pipeline.
 
 ## Why Automate CA Rotation
 
@@ -26,9 +26,9 @@ Manual certificate rotation is tedious and error-prone. Teams often delay it bec
 
 The pipeline has four main stages:
 
-1. **Certificate Generation**: Create new CA certificates and the CA bundle
-2. **Bundle Deployment**: Roll out the CA bundle to all nodes (trust both old and new)
-3. **Final Deployment**: Roll out the configuration with only the new CA
+1. **Certificate Generation**: Create the new CA certificates
+2. **Trust Bundle Deployment**: Add the new CA to each node's `acceptedCAs` so the cluster trusts both the old and the new CA
+3. **Final Deployment**: Swap the active `ca` to the new CA (keeping the old CA in `acceptedCAs` for a grace period)
 4. **Validation**: Verify the entire cluster is healthy
 
 ```text
@@ -40,13 +40,13 @@ The pipeline has four main stages:
 
 ## Step 1: Certificate Generation Script
 
-Start with a script that generates the new CA and creates the bundle.
+Start with a script that generates the new CA and extracts the current CA from the cluster (we keep the old certificate around so it can be added to `acceptedCAs` during the final phase).
 
 ```bash
 #!/bin/bash
 # generate-new-ca.sh
 
-# Generates new CA certificates and creates the transition bundle
+# Generates new CA certificates and snapshots the existing CAs for the rotation
 
 set -euo pipefail
 
@@ -78,7 +78,9 @@ openssl req -x509 -new -nodes \
 echo "Extracting current CAs from the cluster..."
 CONTROL_PLANE_IP="${CONTROL_PLANE_IP:-10.0.1.10}"
 
-talosctl -n "$CONTROL_PLANE_IP" get machineconfig -o yaml > current-config.yaml
+# talosctl get machineconfig wraps the v1alpha1 config inside a COSI resource,
+# so the actual config lives under .spec — strip the wrapper before parsing.
+talosctl -n "$CONTROL_PLANE_IP" get machineconfig -o yaml | yq '.spec' > current-config.yaml
 
 # Extract current Talos CA
 yq '.machine.ca.crt' current-config.yaml | base64 -d > talos-ca-old.crt
@@ -86,17 +88,13 @@ yq '.machine.ca.crt' current-config.yaml | base64 -d > talos-ca-old.crt
 # Extract current Kubernetes CA
 yq '.cluster.ca.crt' current-config.yaml | base64 -d > k8s-ca-old.crt
 
-# Create CA bundles
-cat talos-ca-old.crt talos-ca-new.crt > talos-ca-bundle.crt
-cat k8s-ca-old.crt k8s-ca-new.crt > k8s-ca-bundle.crt
-
-# Encode everything to base64
-base64 -w0 talos-ca-bundle.crt > talos-ca-bundle.b64
+# Encode everything to base64 (single line, no wrapping)
 base64 -w0 talos-ca-new.crt > talos-ca-new.b64
 base64 -w0 talos-ca-new.key > talos-ca-new-key.b64
-base64 -w0 k8s-ca-bundle.crt > k8s-ca-bundle.b64
+base64 -w0 talos-ca-old.crt > talos-ca-old.b64
 base64 -w0 k8s-ca-new.crt > k8s-ca-new.b64
 base64 -w0 k8s-ca-new.key > k8s-ca-new-key.b64
+base64 -w0 k8s-ca-old.crt > k8s-ca-old.b64
 
 echo "Certificate generation complete. Files in: $OUTPUT_DIR"
 ls -la "$OUTPUT_DIR"
@@ -109,7 +107,7 @@ Create a script that builds the machine configurations for each phase.
 ```bash
 #!/bin/bash
 # generate-configs.sh
-# Generates machine configurations for bundle phase and final phase
+# Generates machine configurations for the trust-bundle phase and the final phase
 
 set -euo pipefail
 
@@ -131,45 +129,69 @@ BUNDLE_DIR="${CA_DIR}/configs-bundle"
 FINAL_DIR="${CA_DIR}/configs-final"
 mkdir -p "$BUNDLE_DIR" "$FINAL_DIR"
 
-# Read base configs from the cluster
-FIRST_CP=$(yq '.control_plane[0].ip' "$NODES_FILE")
-talosctl -n "$FIRST_CP" get machineconfig -o yaml > "${CA_DIR}/base-config.yaml"
+TALOS_NEW=$(cat "${CA_DIR}/talos-ca-new.b64")
+TALOS_NEW_KEY=$(cat "${CA_DIR}/talos-ca-new-key.b64")
+TALOS_OLD=$(cat "${CA_DIR}/talos-ca-old.b64")
+K8S_NEW=$(cat "${CA_DIR}/k8s-ca-new.b64")
+K8S_NEW_KEY=$(cat "${CA_DIR}/k8s-ca-new-key.b64")
+K8S_OLD=$(cat "${CA_DIR}/k8s-ca-old.b64")
 
-# Generate bundle phase configs
-generate_bundle_config() {
+# Generate per-node configs for both phases
+generate_node_configs() {
   local node_ip=$1
   local node_name=$2
   local node_type=$3
 
-  # Get the current config for this node
-  talosctl -n "$node_ip" get machineconfig -o yaml > "${BUNDLE_DIR}/${node_name}-original.yaml"
+  # Fetch the live config and strip the COSI resource wrapper so we end up
+  # with the flat v1alpha1 document that apply-config expects.
+  local base="${CA_DIR}/${node_name}-base.yaml"
+  talosctl -n "$node_ip" get machineconfig -o yaml | yq '.spec' > "$base"
 
-  # Patch with CA bundle
-  yq eval ".machine.ca.crt = \"$(cat ${CA_DIR}/talos-ca-bundle.b64)\"" \
-    "${BUNDLE_DIR}/${node_name}-original.yaml" > "${BUNDLE_DIR}/${node_name}-temp1.yaml"
+  # Bundle phase: keep the existing ca, just add the new CA to acceptedCAs.
+  yq eval "
+    .machine.acceptedCAs = ((.machine.acceptedCAs // []) + [{\"crt\": \"$TALOS_NEW\"}])
+  " "$base" > "${BUNDLE_DIR}/${node_name}-tmp.yaml"
 
   if [ "$node_type" = "controlplane" ]; then
-    yq eval ".cluster.ca.crt = \"$(cat ${CA_DIR}/k8s-ca-bundle.b64)\"" \
-      "${BUNDLE_DIR}/${node_name}-temp1.yaml" > "${BUNDLE_DIR}/${node_name}.yaml"
+    yq eval "
+      .cluster.acceptedCAs = ((.cluster.acceptedCAs // []) + [{\"crt\": \"$K8S_NEW\"}])
+    " "${BUNDLE_DIR}/${node_name}-tmp.yaml" > "${BUNDLE_DIR}/${node_name}.yaml"
   else
-    cp "${BUNDLE_DIR}/${node_name}-temp1.yaml" "${BUNDLE_DIR}/${node_name}.yaml"
+    cp "${BUNDLE_DIR}/${node_name}-tmp.yaml" "${BUNDLE_DIR}/${node_name}.yaml"
   fi
 
-  # Clean up temp files
-  rm -f "${BUNDLE_DIR}/${node_name}-temp1.yaml" "${BUNDLE_DIR}/${node_name}-original.yaml"
+  # Final phase: swap the active ca to the new CA and keep the old CA in
+  # acceptedCAs so any client still presenting an old-CA-signed cert keeps working.
+  yq eval "
+    .machine.ca.crt = \"$TALOS_NEW\" |
+    .machine.ca.key = \"$TALOS_NEW_KEY\" |
+    .machine.acceptedCAs = [{\"crt\": \"$TALOS_OLD\"}]
+  " "$base" > "${FINAL_DIR}/${node_name}-tmp.yaml"
+
+  if [ "$node_type" = "controlplane" ]; then
+    yq eval "
+      .cluster.ca.crt = \"$K8S_NEW\" |
+      .cluster.ca.key = \"$K8S_NEW_KEY\" |
+      .cluster.acceptedCAs = [{\"crt\": \"$K8S_OLD\"}]
+    " "${FINAL_DIR}/${node_name}-tmp.yaml" > "${FINAL_DIR}/${node_name}.yaml"
+  else
+    cp "${FINAL_DIR}/${node_name}-tmp.yaml" "${FINAL_DIR}/${node_name}.yaml"
+  fi
+
+  rm -f "${BUNDLE_DIR}/${node_name}-tmp.yaml" "${FINAL_DIR}/${node_name}-tmp.yaml" "$base"
 }
 
 # Generate configs for all nodes
 for row in $(yq -o=json '.control_plane[]' "$NODES_FILE" | jq -c '.'); do
   ip=$(echo "$row" | jq -r '.ip')
   name=$(echo "$row" | jq -r '.name')
-  generate_bundle_config "$ip" "$name" "controlplane"
+  generate_node_configs "$ip" "$name" "controlplane"
 done
 
 for row in $(yq -o=json '.workers[]' "$NODES_FILE" | jq -c '.'); do
   ip=$(echo "$row" | jq -r '.ip')
   name=$(echo "$row" | jq -r '.name')
-  generate_bundle_config "$ip" "$name" "worker"
+  generate_node_configs "$ip" "$name" "worker"
 done
 
 echo "Bundle phase configs generated in: $BUNDLE_DIR"
@@ -213,8 +235,13 @@ check_node_health() {
 check_cluster_health() {
   echo "Checking overall cluster health..."
 
-  # Check Kubernetes nodes
-  NOT_READY=$(kubectl get nodes --no-headers 2>/dev/null | grep -cv "Ready" || echo "999")
+  # Check Kubernetes nodes. Compare the STATUS column with awk; `grep -v Ready`
+  # would miss NotReady nodes because "NotReady" contains "Ready" as a substring.
+  NODES_OUTPUT=$(kubectl get nodes --no-headers 2>/dev/null) || {
+    echo "  WARNING: Could not query Kubernetes nodes"
+    return 1
+  }
+  NOT_READY=$(echo "$NODES_OUTPUT" | awk '$2 != "Ready"' | wc -l)
   if [ "$NOT_READY" -gt 0 ]; then
     echo "  WARNING: $NOT_READY nodes not Ready"
     return 1
@@ -377,11 +404,11 @@ check_expiry() {
 }
 
 # Check Talos API CA
-TALOS_CA=$(talosctl -n 10.0.1.10 get machineconfig -o yaml | yq '.machine.ca.crt' | base64 -d)
+TALOS_CA=$(talosctl -n 10.0.1.10 get machineconfig -o yaml | yq '.spec.machine.ca.crt' | base64 -d)
 check_expiry "Talos API CA" "$TALOS_CA"
 
 # Check Kubernetes CA
-K8S_CA=$(talosctl -n 10.0.1.10 get machineconfig -o yaml | yq '.cluster.ca.crt' | base64 -d)
+K8S_CA=$(talosctl -n 10.0.1.10 get machineconfig -o yaml | yq '.spec.cluster.ca.crt' | base64 -d)
 check_expiry "Kubernetes CA" "$K8S_CA"
 ```
 
