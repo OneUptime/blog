@@ -143,41 +143,28 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
-            - name: CLUSTER_SIZE
-              value: "3"
           command:
-            - /bin/sh
-            - -c
-            - |
-              # Build the initial cluster string
-              PEERS=""
-              for i in $(seq 0 $((${CLUSTER_SIZE} - 1))); do
-                if [ -n "$PEERS" ]; then
-                  PEERS="${PEERS},"
-                fi
-                PEERS="${PEERS}etcd-${i}=https://etcd-${i}.etcd-headless.etcd-standalone.svc.cluster.local:2380"
-              done
-
-              exec etcd \
-                --name=${POD_NAME} \
-                --data-dir=/var/lib/etcd/data \
-                --listen-peer-urls=https://0.0.0.0:2380 \
-                --listen-client-urls=https://0.0.0.0:2379 \
-                --advertise-client-urls=https://${POD_NAME}.etcd-headless.etcd-standalone.svc.cluster.local:2379 \
-                --initial-advertise-peer-urls=https://${POD_NAME}.etcd-headless.etcd-standalone.svc.cluster.local:2380 \
-                --initial-cluster=${PEERS} \
-                --initial-cluster-token=etcd-cluster-talos \
-                --initial-cluster-state=new \
-                --peer-cert-file=/etc/etcd/peer/tls.crt \
-                --peer-key-file=/etc/etcd/peer/tls.key \
-                --peer-trusted-ca-file=/etc/etcd/peer/ca.crt \
-                --cert-file=/etc/etcd/server/tls.crt \
-                --key-file=/etc/etcd/server/tls.key \
-                --trusted-ca-file=/etc/etcd/server/ca.crt \
-                --client-cert-auth=true \
-                --peer-client-cert-auth=true \
-                --auto-compaction-retention=1 \
-                --quota-backend-bytes=8589934592
+            - etcd
+          args:
+            - --name=$(POD_NAME)
+            - --data-dir=/var/lib/etcd/data
+            - --listen-peer-urls=https://0.0.0.0:2380
+            - --listen-client-urls=https://0.0.0.0:2379
+            - --advertise-client-urls=https://$(POD_NAME).etcd-headless.etcd-standalone.svc.cluster.local:2379
+            - --initial-advertise-peer-urls=https://$(POD_NAME).etcd-headless.etcd-standalone.svc.cluster.local:2380
+            - --initial-cluster=etcd-0=https://etcd-0.etcd-headless.etcd-standalone.svc.cluster.local:2380,etcd-1=https://etcd-1.etcd-headless.etcd-standalone.svc.cluster.local:2380,etcd-2=https://etcd-2.etcd-headless.etcd-standalone.svc.cluster.local:2380
+            - --initial-cluster-token=etcd-cluster-talos
+            - --initial-cluster-state=new
+            - --peer-cert-file=/etc/etcd/peer/tls.crt
+            - --peer-key-file=/etc/etcd/peer/tls.key
+            - --peer-trusted-ca-file=/etc/etcd/peer/ca.crt
+            - --cert-file=/etc/etcd/server/tls.crt
+            - --key-file=/etc/etcd/server/tls.key
+            - --trusted-ca-file=/etc/etcd/server/ca.crt
+            - --client-cert-auth=true
+            - --peer-client-cert-auth=true
+            - --auto-compaction-retention=1
+            - --quota-backend-bytes=8589934592
           volumeMounts:
             - name: etcd-data
               mountPath: /var/lib/etcd
@@ -197,14 +184,13 @@ spec:
           livenessProbe:
             exec:
               command:
-                - /bin/sh
-                - -c
-                - |
-                  etcdctl endpoint health \
-                    --endpoints=https://localhost:2379 \
-                    --cacert=/etc/etcd/server/ca.crt \
-                    --cert=/etc/etcd/server/tls.crt \
-                    --key=/etc/etcd/server/tls.key
+                - etcdctl
+                - --endpoints=https://localhost:2379
+                - --cacert=/etc/etcd/server/ca.crt
+                - --cert=/etc/etcd/server/tls.crt
+                - --key=/etc/etcd/server/tls.key
+                - endpoint
+                - health
             initialDelaySeconds: 15
             periodSeconds: 10
       volumes:
@@ -245,6 +231,8 @@ kind: Service
 metadata:
   name: etcd-headless
   namespace: etcd-standalone
+  labels:
+    app: etcd
 spec:
   selector:
     app: etcd
@@ -260,6 +248,8 @@ kind: Service
 metadata:
   name: etcd-client
   namespace: etcd-standalone
+  labels:
+    app: etcd
 spec:
   selector:
     app: etcd
@@ -343,17 +333,21 @@ spec:
           containers:
             - name: backup
               image: quay.io/coreos/etcd:v3.5.12
+              env:
+                - name: JOB_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.labels['job-name']
               command:
-                - /bin/sh
-                - -c
-                - |
-                  etcdctl snapshot save /backups/snapshot-$(date +%Y%m%d-%H%M).db \
-                    --endpoints=https://etcd-0.etcd-headless.etcd-standalone.svc:2379 \
-                    --cacert=/etc/etcd/server/ca.crt \
-                    --cert=/etc/etcd/server/tls.crt \
-                    --key=/etc/etcd/server/tls.key
-                  # Keep only last 7 days of snapshots
-                  find /backups -name "*.db" -mtime +7 -delete
+                - etcdctl
+              args:
+                - snapshot
+                - save
+                - /backups/snapshot-$(JOB_NAME).db
+                - --endpoints=https://etcd-0.etcd-headless.etcd-standalone.svc:2379
+                - --cacert=/etc/etcd/server/ca.crt
+                - --cert=/etc/etcd/server/tls.crt
+                - --key=/etc/etcd/server/tls.key
               volumeMounts:
                 - name: etcd-server-tls
                   mountPath: /etc/etcd/server
