@@ -39,18 +39,17 @@ Compare this to a typical Ubuntu or CentOS server, where you might see 150 or mo
 
 ## Verifying Module Loading Restrictions
 
-You can verify that module loading restrictions are in place on a Talos node:
+Talos restricts kernel module loading through several layered mechanisms: kernel module signature enforcement (`module.sig_enforce=1`), kernel lockdown in confidentiality mode, and revocation of the `CAP_SYS_MODULE` capability from all processes. You can verify these are active on a Talos node:
 
 ```bash
-# Check if module loading is restricted
-talosctl read /proc/sys/kernel/modules_disabled --nodes <node-ip>
-# A value of 1 means new module loading is disabled
+# Check the kernel lockdown mode (expect: confidentiality)
+talosctl read /sys/kernel/security/lockdown --nodes <node-ip>
 
-# Check the kernel lockdown mode
-talosctl dmesg --nodes <node-ip> | grep "lockdown"
+# Verify module signature enforcement is on the kernel command line
+talosctl read /proc/cmdline --nodes <node-ip> | grep module.sig_enforce
 ```
 
-When `modules_disabled` is set to 1, even processes running as root inside a container cannot load kernel modules. This is a one-way switch in the Linux kernel; once it is set to 1, it cannot be changed back to 0 without rebooting.
+At kernel build time, Talos generates a throwaway module signing key and discards it after signing the in-tree modules. Because `module.sig_enforce=1` is set on the kernel command line, the kernel refuses to load any module that isn't signed by that key, and no one outside the Talos build pipeline can produce a matching signature. Combined with the lockdown LSM in confidentiality mode (which blocks `kexec` and other paths that could bypass module signing), this prevents arbitrary kernel code from being loaded, even by processes that somehow obtained `CAP_SYS_MODULE`.
 
 ## What Modules Are Included
 
@@ -60,7 +59,7 @@ Talos includes kernel modules that are needed for common Kubernetes networking, 
 - Bridge networking (bridge)
 - VXLAN overlay networking (vxlan)
 - IP tables and netfilter modules
-- WireGuard (if the extension is installed)
+- WireGuard (built into the upstream Linux kernel since 5.6)
 
 **Storage modules:**
 - Common filesystem drivers (ext4, xfs)
@@ -88,11 +87,11 @@ If you need a kernel module that is not included in the default Talos image, the
 # Visit the extensions repository: https://github.com/siderolabs/extensions
 
 # Common extensions that include additional kernel modules:
-# - siderolabs/drbd         (DRBD replication)
-# - siderolabs/gasket       (Google Coral TPU driver)
-# - siderolabs/nvidia-open  (NVIDIA GPU driver)
-# - siderolabs/thunderbolt  (Thunderbolt support)
-# - siderolabs/usb-modem    (USB modem drivers)
+# - siderolabs/drbd                              (DRBD replication)
+# - siderolabs/gasket-driver                     (Google Coral TPU driver)
+# - siderolabs/nvidia-open-gpu-kernel-modules-lts (NVIDIA GPU driver)
+# - siderolabs/thunderbolt                       (Thunderbolt support)
+# - siderolabs/usb-modem-drivers                 (USB modem drivers)
 ```
 
 To include an extension in your Talos image, use the Image Factory:
@@ -103,7 +102,7 @@ To include an extension in your Talos image, use the Image Factory:
 customization:
   systemExtensions:
     officialExtensions:
-      - siderolabs/nvidia-open
+      - siderolabs/nvidia-open-gpu-kernel-modules-lts
       - siderolabs/intel-ucode
 ```
 
@@ -141,8 +140,8 @@ For NVIDIA GPUs, use the nvidia-open system extension:
 customization:
   systemExtensions:
     officialExtensions:
-      - siderolabs/nvidia-open
-      - siderolabs/nvidia-container-toolkit
+      - siderolabs/nvidia-open-gpu-kernel-modules-lts
+      - siderolabs/nvidia-container-toolkit-lts
 ```
 
 ### Storage Controllers
@@ -166,7 +165,8 @@ Talos is not the only operating system that restricts kernel module loading. Fla
 # On Talos, these attacks are not possible:
 # No shell access means you cannot run insmod/modprobe
 # No writable filesystem means you cannot store a malicious module
-# modules_disabled=1 means the kernel will refuse new modules
+# module.sig_enforce=1 means the kernel will refuse unsigned modules,
+#   and the build-time signing key is discarded after the kernel is built
 # No package manager means you cannot install kernel-module packages
 ```
 
