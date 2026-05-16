@@ -102,7 +102,7 @@ kubectl get pods -n external-secrets -w
 
 ```yaml
 # gcp-cluster-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: gcp-secret-manager
@@ -133,7 +133,7 @@ Create an ExternalSecret to pull your Google Cloud secrets into Kubernetes.
 
 ```yaml
 # app-external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -200,7 +200,7 @@ You can combine multiple secret values into a single formatted output using ESO 
 
 ```yaml
 # connection-string-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-connection-string
@@ -213,6 +213,7 @@ spec:
   target:
     name: db-connection
     template:
+      engineVersion: v2
       type: Opaque
       data:
         # Build a connection string from individual secrets
@@ -230,8 +231,13 @@ spec:
 
 As an alternative to ESO, you can use the Secrets Store CSI Driver with the GCP provider to mount secrets directly as files in your pods.
 
+The GCP provider authenticates with the workload identity of the pod that mounts the secret. On non-GKE Talos clusters, plan to configure Workload Identity Federation or another supported workload identity path before using this approach.
+
 ```bash
 # Install the CSI driver
+helm repo add secrets-store-csi-driver https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts
+helm repo update
+
 helm install csi-secrets-store \
   secrets-store-csi-driver/secrets-store-csi-driver \
   --namespace kube-system \
@@ -308,11 +314,11 @@ gcloud pubsub topics create secret-rotation-events
 
 # Set up a notification on the secret
 gcloud secrets update database-password \
-  --add-topics=projects/YOUR_PROJECT_ID/topics/secret-rotation-events \
-  --event-types=SECRET_VERSION_ADD
+  --project=YOUR_PROJECT_ID \
+  --add-topics=projects/YOUR_PROJECT_ID/topics/secret-rotation-events
 ```
 
-You can then build a small controller or use a Pub/Sub subscriber to trigger a refresh of the ExternalSecret when a notification arrives, rather than waiting for the refresh interval.
+You can then build a small controller or use a Pub/Sub subscriber to trigger a refresh of the ExternalSecret when a `SECRET_VERSION_ADD` notification arrives, rather than waiting for the refresh interval.
 
 ## Least Privilege Access
 
