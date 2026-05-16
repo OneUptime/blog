@@ -172,8 +172,10 @@ With VMs running, generate and apply Talos configurations:
 
 ```bash
 # Generate configs with a VIP for the control plane
+# Use --config-patch-control-plane so the VIP is only applied to control plane nodes
+# (workers cannot participate in VIP election and will fail validation if it is applied to them)
 talosctl gen config lab-cluster https://10.10.0.10:6443 \
-  --config-patch '[
+  --config-patch-control-plane '[
     {"op": "add", "path": "/machine/network/interfaces", "value": [
       {"interface": "eth0", "dhcp": true, "vip": {"ip": "10.10.0.10"}}
     ]}
@@ -240,8 +242,9 @@ talosctl etcd remove-member <member-id>
 
 ```bash
 # Patch a running node's configuration
+# Since /machine/sysctls does not exist by default, add the whole object in one go
 talosctl patch machineconfig --nodes 10.10.0.100 \
-  --patch '[{"op": "add", "path": "/machine/sysctls/net.core.somaxconn", "value": "4096"}]'
+  --patch '[{"op": "add", "path": "/machine/sysctls", "value": {"net.core.somaxconn": "4096"}}]'
 ```
 
 ### Exercise 4: Deploy a Full Application Stack
@@ -359,13 +362,15 @@ When you want to start fresh:
 
 ```bash
 # Destroy and recreate
-talosctl cluster destroy --name lab
+# Pass --provisioner explicitly when the cluster was created with qemu
+# (the default provisioner is docker, and destroy uses it unless told otherwise)
+talosctl cluster destroy --name lab --provisioner qemu
 
 # Or for VMs, just re-apply configs
 # The immutable nature means a config re-apply resets everything
 ```
 
-Resource Planning
+## Resource Planning
 
 Here are the recommended minimum resources for different lab configurations:
 
