@@ -45,11 +45,11 @@ talosctl health --nodes 192.168.1.10
 
 ### Check Version Compatibility
 
-Talos versions are tied to specific Kubernetes versions. Make sure the Talos version you are upgrading to supports the Kubernetes version you want to run:
+Talos releases support specific Kubernetes version ranges, but upgrading the Talos OS does not upgrade Kubernetes by default. Make sure the Talos version you are upgrading to supports the Kubernetes version you want to run:
 
 ```bash
 # Check current Kubernetes version
-kubectl version --short
+kubectl version
 
 # The Talos release notes specify which Kubernetes versions are supported
 ```
@@ -64,7 +64,8 @@ talosctl etcd snapshot /tmp/etcd-backup-pre-upgrade.snapshot \
   --nodes 192.168.1.10
 
 # Keep a copy of your machine configuration
-talosctl get machineconfig --nodes 192.168.1.10 -o yaml > cp-01-config-backup.yaml
+talosctl get machineconfig v1alpha1 --nodes 192.168.1.10 -o yaml \
+  | yq eval '.spec' - > cp-01-config-backup.yaml
 ```
 
 ## The Upgrade Process
@@ -80,19 +81,20 @@ talosctl upgrade --nodes 192.168.1.10 \
 ```
 
 This command does the following:
-1. Downloads the new Talos installer image
-2. Writes the new kernel and initramfs to the inactive boot slot
-3. Updates the bootloader configuration
-4. Reboots the node
-5. The node boots with the new Talos version
+1. Cordons the node and drains workloads
+2. Downloads the new Talos installer image
+3. Writes the new kernel and initramfs to the inactive boot slot
+4. Updates the bootloader configuration
+5. Reboots the node
+6. Verifies the new boot, makes it permanent, and uncordons the node
 
-The `--preserve` flag keeps the existing machine configuration and ephemeral data:
+On older Talos releases that expose the `--preserve` flag, it preserves the EPHEMERAL partition. This is commonly needed for single-node control plane clusters:
 
 ```bash
-# Upgrade while preserving configuration and data
+# Upgrade while preserving ephemeral data
 talosctl upgrade --nodes 192.168.1.10 \
   --image ghcr.io/siderolabs/installer:v1.7.0 \
-  --preserve
+  --preserve=true
 ```
 
 ### Upgrade Order
@@ -177,7 +179,7 @@ docker run --rm -t -v /tmp/out:/out \
   --system-extension-image ghcr.io/siderolabs/iscsi-tools:v0.1.4
 
 # Push the custom image to your registry
-docker push myregistry.com/talos-installer:v1.7.0-custom
+crane push /tmp/out/metal-amd64-installer.tar myregistry.com/talos-installer:v1.7.0-custom
 
 # Upgrade using the custom image
 talosctl upgrade --nodes 192.168.1.10 \
@@ -248,7 +250,7 @@ Upgrade one node at a time, wait for full health verification, and move on:
 
 ### Staged Upgrade
 
-Use the `--stage` flag to prepare the upgrade without rebooting immediately:
+Use the `--stage` flag when a normal upgrade cannot safely unmount filesystems. It stages the upgrade, reboots, applies the upgrade early in boot, then reboots again into the new version:
 
 ```bash
 # Stage the upgrade on all nodes
@@ -258,9 +260,7 @@ for NODE in 192.168.1.10 192.168.1.11 192.168.1.12; do
     --stage
 done
 
-# Nodes will apply the upgrade on next reboot
-# You can then reboot nodes during a maintenance window
-talosctl reboot --nodes 192.168.1.10
+# Nodes reboot and apply the staged upgrade automatically
 ```
 
 ### Skip Version Upgrades
