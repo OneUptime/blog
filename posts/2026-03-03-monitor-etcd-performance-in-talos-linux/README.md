@@ -26,7 +26,7 @@ Catching these issues early through monitoring saves you from the painful experi
 
 ## Accessing etcd Metrics on Talos Linux
 
-etcd exposes Prometheus metrics on port 2381 by default in Talos Linux. Unlike traditional setups where you might curl the metrics endpoint directly, Talos provides access through its API.
+etcd uses port 2381 for its Prometheus metrics endpoint. In Talos Linux, the metrics endpoint is not exposed externally by default - you need to enable it via the Talos machine configuration by setting `cluster.etcd.extraArgs.listen-metrics-urls` to `http://0.0.0.0:2381`. Unlike traditional setups where you might curl the metrics endpoint directly, Talos also provides access to etcd state through its API.
 
 First, check that etcd is running and healthy:
 
@@ -49,7 +49,7 @@ To access raw etcd metrics through the Talos API:
 talosctl -n 192.168.1.10 get etcdmembers
 
 # You can also check etcd service status
-talosctl -n 192.168.1.10 services etcd
+talosctl -n 192.168.1.10 service etcd
 ```
 
 ## Setting Up Prometheus to Scrape etcd
@@ -92,9 +92,9 @@ metadata:
   labels:
     component: etcd
 spec:
-  selector:
-    # Talos runs etcd as a static pod on control plane nodes
-    component: etcd
+  # Talos runs etcd as a system service managed by machined (not as a Kubernetes pod),
+  # so the Service has no pod selector and you must create matching Endpoints/EndpointSlices
+  # manually pointing to your control plane node IPs on port 2381.
   ports:
   - name: metrics
     port: 2381
@@ -103,7 +103,7 @@ spec:
   clusterIP: None
 ```
 
-Alternatively, use a PodMonitor if you are scraping etcd pods directly:
+If your distribution runs etcd as a Kubernetes pod (note: Talos does not - it manages etcd as a system service), you can use a PodMonitor instead:
 
 ```yaml
 # etcd-pod-monitor.yaml
@@ -153,12 +153,12 @@ Track how long etcd takes to process requests:
 ```promql
 # P99 range request latency
 histogram_quantile(0.99,
-  rate(etcd_request_duration_seconds_bucket{type="Range"}[5m])
+  rate(grpc_server_handling_seconds_bucket{grpc_service="etcdserverpb.KV",grpc_method="Range"}[5m])
 )
 
 # P99 put request latency
 histogram_quantile(0.99,
-  rate(etcd_request_duration_seconds_bucket{type="Put"}[5m])
+  rate(grpc_server_handling_seconds_bucket{grpc_service="etcdserverpb.KV",grpc_method="Put"}[5m])
 )
 ```
 
