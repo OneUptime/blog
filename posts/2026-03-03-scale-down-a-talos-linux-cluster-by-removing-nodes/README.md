@@ -347,7 +347,7 @@ kubectl get pods -A --field-selector status.phase=Pending
 kubectl get svc -A
 
 # Run a quick smoke test
-kubectl run smoke-test --image=nginx --rm -it -- curl -s http://kubernetes.default
+kubectl run smoke-test --image=curlimages/curl --rm -it --restart=Never -- curl -sk https://kubernetes.default
 
 # Check cluster events for any issues
 kubectl get events --sort-by='.lastTimestamp' -A | tail -20
