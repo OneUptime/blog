@@ -61,7 +61,7 @@ metadata:
   namespace: rabbitmq
 spec:
   replicas: 3
-  image: rabbitmq:3.13-management
+  image: rabbitmq:4.2-management
   resources:
     requests:
       memory: "2Gi"
@@ -77,8 +77,6 @@ spec:
       # Queue and channel limits
       channel_max = 2048
       default_vhost = /
-      default_user = admin
-      default_pass = rabbitmq-secure-password
 
       # Memory and disk thresholds
       vm_memory_high_watermark.relative = 0.7
@@ -91,7 +89,7 @@ spec:
       cluster_formation.k8s.address_type = hostname
 
       # Queue settings
-      queue_master_locator = min-masters
+      queue_leader_locator = balanced
 
       # Management plugin settings
       management.tcp.port = 15672
@@ -144,37 +142,47 @@ kubectl exec -it rabbitmq-prod-server-0 -n rabbitmq -- rabbitmqctl cluster_statu
 # List nodes in the cluster
 kubectl exec -it rabbitmq-prod-server-0 -n rabbitmq -- rabbitmqctl cluster_status --formatter json
 
-# Check queue mirroring status
+# Check queue status
 kubectl exec -it rabbitmq-prod-server-0 -n rabbitmq -- rabbitmqctl list_queues name messages consumers
 ```
 
 ## Step 6: Create Queues and Exchanges
 
-You can manage RabbitMQ through its management API or CLI:
+You can manage RabbitMQ through its management API or CLI. The HTTP API uses the same admin credentials you retrieved earlier:
 
 ```bash
+export RABBITMQ_USER=$(kubectl get secret rabbitmq-prod-default-user -n rabbitmq -o jsonpath='{.data.username}' | base64 --decode)
+export RABBITMQ_PASSWORD=$(kubectl get secret rabbitmq-prod-default-user -n rabbitmq -o jsonpath='{.data.password}' | base64 --decode)
+
 # Declare an exchange
-kubectl exec -it rabbitmq-prod-server-0 -n rabbitmq -- \
-  rabbitmqadmin declare exchange name=events type=topic durable=true
+curl -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" \
+  -H "content-type: application/json" \
+  -X PUT http://localhost:15672/api/exchanges/%2F/events \
+  -d '{"type":"topic","durable":true}'
 
 # Declare a queue with durability
-kubectl exec -it rabbitmq-prod-server-0 -n rabbitmq -- \
-  rabbitmqadmin declare queue name=order-events durable=true \
-  arguments='{"x-queue-type": "quorum"}'
+curl -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" \
+  -H "content-type: application/json" \
+  -X PUT http://localhost:15672/api/queues/%2F/order-events \
+  -d '{"durable":true,"arguments":{"x-queue-type":"quorum"}}'
 
 # Bind the queue to the exchange
-kubectl exec -it rabbitmq-prod-server-0 -n rabbitmq -- \
-  rabbitmqadmin declare binding source=events \
-  destination=order-events routing_key="orders.#"
+curl -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" \
+  -H "content-type: application/json" \
+  -X POST http://localhost:15672/api/bindings/%2F/e/events/q/order-events \
+  -d '{"routing_key":"orders.#"}'
 
 # Publish a test message
-kubectl exec -it rabbitmq-prod-server-0 -n rabbitmq -- \
-  rabbitmqadmin publish exchange=events routing_key="orders.created" \
-  payload='{"order_id": "12345", "status": "created"}'
+curl -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" \
+  -H "content-type: application/json" \
+  -X POST http://localhost:15672/api/exchanges/%2F/events/publish \
+  -d '{"properties":{},"routing_key":"orders.created","payload":"{\"order_id\":\"12345\",\"status\":\"created\"}","payload_encoding":"string"}'
 
 # Consume the message
-kubectl exec -it rabbitmq-prod-server-0 -n rabbitmq -- \
-  rabbitmqadmin get queue=order-events count=1
+curl -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" \
+  -H "content-type: application/json" \
+  -X POST http://localhost:15672/api/queues/%2F/order-events/get \
+  -d '{"count":1,"ackmode":"ack_requeue_false","encoding":"auto","truncate":50000}'
 ```
 
 ## Using Quorum Queues
@@ -182,11 +190,9 @@ kubectl exec -it rabbitmq-prod-server-0 -n rabbitmq -- \
 For production, always use quorum queues instead of classic mirrored queues. Quorum queues use the Raft consensus protocol and provide better data safety:
 
 ```bash
-# Create a quorum queue policy
+# Set the default queue type for the default vhost
 kubectl exec -it rabbitmq-prod-server-0 -n rabbitmq -- \
-  rabbitmqctl set_policy quorum-queues "^" \
-  '{"queue-type":"quorum"}' \
-  --apply-to queues --priority 1
+  rabbitmqctl update_vhost_metadata / --default-queue-type quorum
 ```
 
 ## Step 7: Configure TLS
@@ -205,11 +211,6 @@ spec:
   tls:
     secretName: rabbitmq-tls-secret
     disableNonTLSListeners: true
-  rabbitmq:
-    additionalConfig: |
-      ssl_options.verify = verify_peer
-      ssl_options.fail_if_no_peer_cert = false
-      management.ssl.port = 15671
 ```
 
 ## Monitoring RabbitMQ
@@ -237,13 +238,13 @@ Key metrics to monitor:
 - `rabbitmq_queue_messages_unacked` - unacknowledged messages
 - `rabbitmq_connections` - active connections
 - `rabbitmq_channels` - active channels
-- `rabbitmq_node_mem_used` - memory consumption
+- `rabbitmq_process_resident_memory_bytes` - memory consumption
 
 ## Scaling Considerations
 
 RabbitMQ scaling works differently from databases. Adding more nodes to a RabbitMQ cluster does not automatically distribute existing queues. Quorum queues have a fixed number of replicas set at creation time. To handle more throughput, consider:
 
-- Spreading queues across nodes using the `min-masters` queue master locator
+- Spreading queue leaders across nodes using the `balanced` queue leader locator
 - Using consistent hash exchange for load distribution
 - Sharding queues across multiple queues with a naming convention
 - Scaling consumers rather than broker nodes for most workloads
