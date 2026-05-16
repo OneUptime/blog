@@ -29,9 +29,6 @@ Longhorn requires iSCSI support and specific host paths to be available. Create 
 # longhorn-patch.yaml
 
 machine:
-  install:
-    extensions:
-      - image: ghcr.io/siderolabs/iscsi-tools:v0.1.4
   kubelet:
     extraMounts:
       - destination: /var/lib/longhorn
@@ -41,12 +38,18 @@ machine:
           - bind
           - rshared
           - rw
-  sysctls:
-    vm.max_map_count: "262144"
-  files:
-    - content: ""
-      path: /var/lib/longhorn
-      op: create
+```
+
+Longhorn also requires the `siderolabs/iscsi-tools` and `siderolabs/util-linux-tools` system extensions on every node. On Talos, extensions are baked into the installer image rather than applied via `talosctl patch`, so generate a custom installer schematic with both extensions using the [Talos Image Factory](https://factory.talos.dev) and upgrade your nodes to that image. For example:
+
+```bash
+# Upgrade each worker to a custom installer image that includes
+# the iscsi-tools and util-linux-tools extensions (replace
+# <schematic-id> with the ID returned by factory.talos.dev and
+# <talos-version> with your target Talos release, e.g. v1.9.5).
+talosctl upgrade \
+  --nodes <worker-1-ip> \
+  --image factory.talos.dev/installer/<schematic-id>:<talos-version>
 ```
 
 Apply this patch to all worker nodes:
