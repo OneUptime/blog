@@ -20,8 +20,8 @@ Make sure you have the following ready:
 curl -sL https://talos.dev/install | sh
 
 # Install govc (vSphere CLI tool)
-curl -L -o govc.gz https://github.com/vmware/govmomi/releases/latest/download/govc_Linux_x86_64.tar.gz
-gunzip govc.gz && chmod +x govc && sudo mv govc /usr/local/bin/
+curl -L -o govc.tar.gz https://github.com/vmware/govmomi/releases/latest/download/govc_Linux_x86_64.tar.gz
+tar -xzf govc.tar.gz govc && chmod +x govc && sudo mv govc /usr/local/bin/
 
 # Configure govc with your vSphere credentials
 export GOVC_URL="vcenter.example.com"
@@ -50,7 +50,7 @@ curl -LO https://github.com/siderolabs/talos/releases/download/v1.7.0/vmware-amd
 govc import.ova -name talos-v1.7.0 vmware-amd64.ova
 
 # Mark it as a template
-govc vm.markastemplate talos-v1.7.0
+govc vm.markastemplate -vm talos-v1.7.0
 ```
 
 ## Planning Your Network
