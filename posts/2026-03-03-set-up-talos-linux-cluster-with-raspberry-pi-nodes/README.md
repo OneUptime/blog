@@ -39,13 +39,15 @@ Download the Talos image and flash it to all three SD cards:
 
 ```bash
 # Download the Pi image
+TALOS_VERSION=v1.13.2
+RPI_SCHEMATIC_ID=ee21ef4a5ef808a9b7484cc0dda0f25075021691c8c09a276591eedb638ea1f9
 
-curl -LO https://github.com/siderolabs/talos/releases/latest/download/metal-rpi_generic-arm64.raw.xz
-xz -d metal-rpi_generic-arm64.raw.xz
+curl -LO "https://factory.talos.dev/image/${RPI_SCHEMATIC_ID}/${TALOS_VERSION}/metal-arm64.raw.xz"
+xz -d metal-arm64.raw.xz
 
 # Flash to each SD card (adjust device paths)
 # Card 1 - Control Plane
-sudo dd if=metal-rpi_generic-arm64.raw of=/dev/sdX bs=4M status=progress conv=fsync
+sudo dd if=metal-arm64.raw of=/dev/sdX bs=4M status=progress conv=fsync
 
 # Repeat for cards 2 and 3
 ```
@@ -83,7 +85,14 @@ Create the cluster configurations with a VIP for the control plane endpoint:
 # Generate configs with VIP
 talosctl gen config pi-cluster https://192.168.1.99:6443 \
   --config-patch '[
-    {"op": "add", "path": "/machine/install/disk", "value": "/dev/mmcblk0"},
+    {"op": "add", "path": "/machine/install/disk", "value": "/dev/mmcblk0"}
+  ]' \
+  --config-patch '
+machine:
+  kubelet:
+    extraArgs:
+      rotate-server-certificates: "true"' \
+  --config-patch-control-plane '[
     {"op": "add", "path": "/machine/network/interfaces", "value": [
       {
         "interface": "eth0",
@@ -94,7 +103,7 @@ talosctl gen config pi-cluster https://192.168.1.99:6443 \
   ]'
 ```
 
-The VIP (Virtual IP) gives you a stable endpoint for the Kubernetes API that floats between control plane nodes.
+The VIP (Virtual IP) gives you a stable endpoint for the Kubernetes API that floats between control plane nodes when you run multiple control plane nodes.
 
 For static IP assignments, create separate patches for each node:
 
@@ -160,9 +169,9 @@ Configure your local `talosctl` and bootstrap:
 
 ```bash
 # Set up talosctl
+talosctl config merge talosconfig
 talosctl config endpoint 192.168.1.100
 talosctl config node 192.168.1.100
-talosctl config merge talosconfig
 
 # Bootstrap etcd on the first control plane node
 talosctl bootstrap
@@ -184,9 +193,9 @@ kubectl get nodes -o wide
 
 # Expected output:
 # NAME       STATUS   ROLES           AGE   VERSION   INTERNAL-IP
-# talos-cp   Ready    control-plane   5m    v1.29.x   192.168.1.100
-# talos-w1   Ready    <none>          3m    v1.29.x   192.168.1.101
-# talos-w2   Ready    <none>          3m    v1.29.x   192.168.1.102
+# talos-cp   Ready    control-plane   5m    v1.x.y    192.168.1.100
+# talos-w1   Ready    <none>          3m    v1.x.y    192.168.1.101
+# talos-w2   Ready    <none>          3m    v1.x.y    192.168.1.102
 
 # Check system pods
 kubectl get pods -n kube-system
@@ -281,14 +290,16 @@ spec:
 
 ### Longhorn
 
-Longhorn provides distributed block storage but requires more resources than a Pi cluster can comfortably spare. Only use it if you have 8 GB Pi 5 boards.
+Longhorn provides distributed block storage but requires more resources than a Pi cluster can comfortably spare, and on Talos it also requires the Longhorn prerequisites such as the `siderolabs/iscsi-tools` and `siderolabs/util-linux-tools` system extensions. Only use it if you have 8 GB Pi 5 boards.
 
 ## Monitoring the Cluster
 
 Keep an eye on resource usage with lightweight monitoring:
 
 ```bash
-# Install metrics-server for basic resource monitoring
+# Install kubelet serving certificate approval and metrics-server.
+# This assumes Step 3 included rotate-server-certificates for the kubelet.
+kubectl apply -f https://raw.githubusercontent.com/alex1989hu/kubelet-serving-cert-approver/main/deploy/standalone-install.yaml
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 
 # Check resource usage
@@ -302,20 +313,24 @@ Upgrading Talos on a Pi cluster is straightforward:
 
 ```bash
 # Upgrade one node at a time
+TALOS_VERSION=v1.13.2
+RPI_SCHEMATIC_ID=ee21ef4a5ef808a9b7484cc0dda0f25075021691c8c09a276591eedb638ea1f9
+INSTALLER_IMAGE="factory.talos.dev/installer/${RPI_SCHEMATIC_ID}:${TALOS_VERSION}"
+
 # Start with workers
 talosctl upgrade --nodes 192.168.1.101 \
-  --image ghcr.io/siderolabs/installer:v1.7.0
+  --image "${INSTALLER_IMAGE}"
 
 # Verify the worker is healthy
 talosctl -n 192.168.1.101 health
 
 # Then upgrade the next worker
 talosctl upgrade --nodes 192.168.1.102 \
-  --image ghcr.io/siderolabs/installer:v1.7.0
+  --image "${INSTALLER_IMAGE}"
 
 # Finally upgrade the control plane
 talosctl upgrade --nodes 192.168.1.100 \
-  --image ghcr.io/siderolabs/installer:v1.7.0
+  --image "${INSTALLER_IMAGE}"
 ```
 
 ## Common Issues and Fixes
