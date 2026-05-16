@@ -48,7 +48,7 @@ machine:
   kernel:
     modules:
       - name: cp210x  # Common for Zigbee USB sticks
-      - name: ch341   # Common for Z-Wave sticks
+      - name: ch341   # Common for CH340/CH341 USB serial sticks
 ```
 
 ## Deploying Home Assistant
@@ -94,7 +94,7 @@ spec:
             - name: config
               mountPath: /config
             - name: zigbee
-              mountPath: /dev/ttyUSB0
+              mountPath: /dev/zigbee
           securityContext:
             privileged: true  # Required for USB device access
           resources:
@@ -110,7 +110,7 @@ spec:
             claimName: home-assistant-config
         - name: zigbee
           hostPath:
-            path: /dev/ttyUSB0
+            path: /dev/zigbee
             type: CharDevice
       nodeSelector:
         # Pin to the node with the USB stick
@@ -263,14 +263,14 @@ spec:
             - name: ZIGBEE2MQTT_CONFIG_MQTT_SERVER
               value: "mqtt://mosquitto.home-automation.svc:1883"
             - name: ZIGBEE2MQTT_CONFIG_SERIAL_PORT
-              value: "/dev/ttyUSB0"
-            - name: ZIGBEE2MQTT_CONFIG_FRONTEND
+              value: "/dev/zigbee"
+            - name: ZIGBEE2MQTT_CONFIG_FRONTEND_ENABLED
               value: "true"
           volumeMounts:
             - name: data
               mountPath: /app/data
             - name: zigbee
-              mountPath: /dev/ttyUSB0
+              mountPath: /dev/zigbee
           securityContext:
             privileged: true
           resources:
@@ -283,7 +283,7 @@ spec:
             claimName: zigbee2mqtt-data
         - name: zigbee
           hostPath:
-            path: /dev/ttyUSB0
+            path: /dev/zigbee
             type: CharDevice
       nodeSelector:
         kubernetes.io/hostname: talos-worker-1
@@ -406,7 +406,7 @@ spec:
               command:
                 - sh
                 - -c
-                - "cp -r /source/* /backup/ha-\$(date +%Y%m%d)/"
+                - 'backup_dir=/backup/ha-\$(date +%Y%m%d) && mkdir -p "$backup_dir" && cp -a /source/. "$backup_dir"/'
               volumeMounts:
                 - name: source
                   mountPath: /source
