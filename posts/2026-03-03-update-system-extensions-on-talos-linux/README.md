@@ -12,15 +12,15 @@ System extensions on Talos Linux are tied to the Talos version and the installer
 
 ## How Extension Versioning Works
 
-Each system extension is published as an OCI image with version tags that typically correspond to the Talos version they are compatible with:
+Each system extension is published as an OCI image with its own version tags. Compatibility with a Talos release is handled through the system extension catalog and Image Factory:
 
 ```text
-ghcr.io/siderolabs/iscsi-tools:v1.7.0     # For Talos v1.7.0
-ghcr.io/siderolabs/iscsi-tools:v1.7.1     # For Talos v1.7.1
-ghcr.io/siderolabs/iscsi-tools:v1.8.0     # For Talos v1.8.0
+ghcr.io/siderolabs/iscsi-tools:<extension-version>
+ghcr.io/siderolabs/qemu-guest-agent:<extension-version>
+ghcr.io/siderolabs/tailscale:<extension-version>
 ```
 
-When Talos itself is updated, the extensions usually get new versions too. The extension version and the Talos version should match. Using an extension built for one Talos version with a different Talos version can lead to incompatibilities, especially for kernel module extensions.
+When Talos itself is updated, the extension set for that Talos release can change too. Use Image Factory or the Talos extension catalog to select extension builds that are compatible with your Talos version. Using an extension built for one Talos version with a different Talos version can lead to incompatibilities, especially for kernel module extensions.
 
 ## Checking Current Extension Versions
 
@@ -62,40 +62,39 @@ crane ls ghcr.io/siderolabs/tailscale
 The most common scenario is updating extensions as part of a Talos version upgrade. When you upgrade Talos, you should also update all extensions to their matching versions:
 
 ```bash
-# Create a new schematic with updated extension versions
-curl -X POST https://factory.talos.dev/schematics \
-  -H "Content-Type: application/json" \
-  -d '{
-    "customization": {
-      "systemExtensions": {
-        "officialExtensions": [
-          "siderolabs/iscsi-tools",
-          "siderolabs/qemu-guest-agent"
-        ]
-      }
-    }
-  }'
+# Create a new schematic with the desired extensions
+cat > schematic.yaml <<'EOF'
+customization:
+  systemExtensions:
+    officialExtensions:
+      - siderolabs/iscsi-tools
+      - siderolabs/qemu-guest-agent
+EOF
+
+curl -X POST --data-binary @schematic.yaml https://factory.talos.dev/schematics
 
 # The Image Factory will select the correct extension versions
 # for the Talos version you specify in the installer URL
 
 # Upgrade the node
 talosctl -n 192.168.1.10 upgrade \
-  --image factory.talos.dev/installer/<new-schematic-id>:v1.8.0
+  --image factory.talos.dev/metal-installer/<new-schematic-id>:v1.8.0
 ```
 
 ### Scenario 2: Updating Extensions Without Upgrading Talos
 
-If you need to update an extension but keep the same Talos version (for example, to get a bug fix in an extension), you can create a new installer image with the updated extension:
+If you need to change the extension set but keep the same Talos version, you can create a new installer image with a different schematic:
 
 ```bash
-# Create a new schematic referencing the fixed extension
-# The Image Factory handles version selection
+# Create a new schematic with the desired extension set
+# The Image Factory handles version selection for that Talos release
 
 # Upgrade with the new image (same Talos version)
 talosctl -n 192.168.1.10 upgrade \
-  --image factory.talos.dev/installer/<updated-schematic-id>:v1.7.0
+  --image factory.talos.dev/metal-installer/<updated-schematic-id>:v1.7.0
 ```
+
+For an extension bug fix with the same extension set, prefer upgrading to a Talos patch release that includes the fixed extension catalog, or build a custom installer image with `imager` if you need to pin a custom extension image.
 
 ### Scenario 3: Adding a New Extension
 
@@ -103,23 +102,20 @@ Adding a new extension to an existing cluster also requires creating a new insta
 
 ```bash
 # Create schematic with the additional extension
-curl -X POST https://factory.talos.dev/schematics \
-  -H "Content-Type: application/json" \
-  -d '{
-    "customization": {
-      "systemExtensions": {
-        "officialExtensions": [
-          "siderolabs/iscsi-tools",
-          "siderolabs/qemu-guest-agent",
-          "siderolabs/tailscale"
-        ]
-      }
-    }
-  }'
+cat > schematic.yaml <<'EOF'
+customization:
+  systemExtensions:
+    officialExtensions:
+      - siderolabs/iscsi-tools
+      - siderolabs/qemu-guest-agent
+      - siderolabs/tailscale
+EOF
+
+curl -X POST --data-binary @schematic.yaml https://factory.talos.dev/schematics
 
 # Upgrade with the new image
 talosctl -n 192.168.1.10 upgrade \
-  --image factory.talos.dev/installer/<new-schematic>:v1.7.0
+  --image factory.talos.dev/metal-installer/<new-schematic>:v1.7.0
 ```
 
 ## Rolling Update Strategy
@@ -129,7 +125,7 @@ Never update all nodes simultaneously. Use a rolling strategy:
 ```bash
 #!/bin/bash
 
-IMAGE="factory.talos.dev/installer/<new-schematic-id>:v1.8.0"
+IMAGE="factory.talos.dev/metal-installer/<new-schematic-id>:v1.8.0"
 
 # Update control plane nodes one at a time
 CP_NODES="192.168.1.10 192.168.1.11 192.168.1.12"
@@ -167,16 +163,20 @@ for node in $CP_NODES; do
 done
 
 # Update worker nodes
-WORKER_NODES="192.168.1.20 192.168.1.21 192.168.1.22"
+# Format: <talos-node-ip>:<kubernetes-node-name>
+WORKER_NODES="192.168.1.20:worker-1 192.168.1.21:worker-2 192.168.1.22:worker-3"
 
-for node in $WORKER_NODES; do
+for worker in $WORKER_NODES; do
+  node="${worker%%:*}"
+  k8s_node="${worker#*:}"
+
   echo "=== Updating worker node: $node ==="
 
   # Cordon the node to prevent new pod scheduling
-  kubectl cordon "$node"
+  kubectl cordon "$k8s_node"
 
   # Drain pods from the node
-  kubectl drain "$node" --ignore-daemonsets --delete-emptydir-data --timeout=300s
+  kubectl drain "$k8s_node" --ignore-daemonsets --delete-emptydir-data --timeout=300s
 
   # Start upgrade
   talosctl -n "$node" upgrade --image "$IMAGE"
@@ -189,7 +189,7 @@ for node in $WORKER_NODES; do
   talosctl -n "$node" get extensions
 
   # Uncordon the node
-  kubectl uncordon "$node"
+  kubectl uncordon "$k8s_node"
 
   echo "Worker node $node updated successfully."
   echo ""
@@ -220,7 +220,7 @@ for node in 192.168.1.10 192.168.1.11 192.168.1.12; do
 done > extension-versions-before-update.txt
 
 # 5. Verify the new image is accessible
-crane manifest factory.talos.dev/installer/<new-schematic-id>:v1.8.0
+crane manifest factory.talos.dev/metal-installer/<new-schematic-id>:v1.8.0
 ```
 
 ## Post-Update Verification
@@ -290,7 +290,7 @@ To roll back, upgrade with the previous installer image:
 ```bash
 # Roll back to the previous version
 talosctl -n 192.168.1.10 upgrade \
-  --image factory.talos.dev/installer/<previous-schematic-id>:v1.7.0
+  --image factory.talos.dev/metal-installer/<previous-schematic-id>:v1.7.0
 ```
 
 ## Automating Extension Updates
@@ -303,7 +303,7 @@ For large clusters, automate the update process:
 
 set -e
 
-NEW_IMAGE="factory.talos.dev/installer/<new-schematic>:v1.8.0"
+NEW_IMAGE="factory.talos.dev/metal-installer/<new-schematic>:v1.8.0"
 LOG_FILE="extension-update-$(date +%Y%m%d).log"
 
 log() {
@@ -325,6 +325,7 @@ check_node_health() {
 update_node() {
   local node=$1
   local node_type=$2
+  local k8s_node=${3:-$1}
 
   log "Starting update on $node ($node_type)"
 
@@ -336,7 +337,8 @@ update_node() {
 
   # Drain if worker
   if [ "$node_type" = "worker" ]; then
-    kubectl drain "$node" --ignore-daemonsets --delete-emptydir-data --timeout=300s
+    kubectl cordon "$k8s_node"
+    kubectl drain "$k8s_node" --ignore-daemonsets --delete-emptydir-data --timeout=300s
   fi
 
   # Upgrade
@@ -348,7 +350,7 @@ update_node() {
 
   # Uncordon if worker
   if [ "$node_type" = "worker" ]; then
-    kubectl uncordon "$node"
+    kubectl uncordon "$k8s_node"
   fi
 
   log "Update complete on $node"
@@ -359,9 +361,8 @@ for node in 192.168.1.10 192.168.1.11 192.168.1.12; do
   update_node "$node" "controlplane"
 done
 
-for node in 192.168.1.20 192.168.1.21; do
-  update_node "$node" "worker"
-done
+update_node "192.168.1.20" "worker" "worker-1"
+update_node "192.168.1.21" "worker" "worker-2"
 
 log "All updates complete."
 ```
@@ -370,7 +371,7 @@ log "All updates complete."
 
 1. **Always test in staging** - Update extensions in a non-production environment first.
 
-2. **Match extension and Talos versions** - Use extension versions that are built for your Talos version.
+2. **Use compatible extension builds** - Use Image Factory or the Talos extension catalog to select extensions that are built for your Talos version.
 
 3. **Update one node at a time** - Never update all nodes simultaneously.
 
