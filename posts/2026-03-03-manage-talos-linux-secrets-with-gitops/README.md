@@ -32,15 +32,15 @@ SOPS (Secrets OPerationS) encrypts specific values in YAML files while leaving t
 # Install SOPS
 
 brew install sops  # macOS
-# or
-curl -LO https://github.com/getsops/sops/releases/latest/download/sops-v3-linux-amd64
-chmod +x sops-v3-linux-amd64 && sudo mv sops-v3-linux-amd64 /usr/local/bin/sops
+# or (replace v3.9.4 with the latest release tag)
+curl -LO https://github.com/getsops/sops/releases/download/v3.9.4/sops-v3.9.4.linux.amd64
+chmod +x sops-v3.9.4.linux.amd64 && sudo mv sops-v3.9.4.linux.amd64 /usr/local/bin/sops
 
 # Install age for encryption (simpler alternative to PGP)
 brew install age  # macOS
-# or
-curl -LO https://github.com/FiloSottile/age/releases/latest/download/age-v1-linux-amd64.tar.gz
-tar xf age-v1-linux-amd64.tar.gz && sudo mv age/age /usr/local/bin/
+# or (replace v1.2.1 with the latest release tag)
+curl -LO https://github.com/FiloSottile/age/releases/download/v1.2.1/age-v1.2.1-linux-amd64.tar.gz
+tar xf age-v1.2.1-linux-amd64.tar.gz && sudo mv age/age /usr/local/bin/
 
 # Generate an age key pair
 age-keygen -o age.key
@@ -184,9 +184,10 @@ helm install sealed-secrets sealed-secrets/sealed-secrets \
 # macOS
 brew install kubeseal
 
-# Linux
-curl -LO https://github.com/bitnami-labs/sealed-secrets/releases/latest/download/kubeseal-linux-amd64
-chmod +x kubeseal-linux-amd64 && sudo mv kubeseal-linux-amd64 /usr/local/bin/kubeseal
+# Linux (replace 0.27.3 with the latest release tag)
+curl -LO https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.27.3/kubeseal-0.27.3-linux-amd64.tar.gz
+tar -xzf kubeseal-0.27.3-linux-amd64.tar.gz kubeseal
+sudo mv kubeseal /usr/local/bin/kubeseal
 ```
 
 ### Step 3: Create Sealed Secrets
@@ -266,7 +267,7 @@ For AWS Secrets Manager:
 
 ```yaml
 # aws-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -291,7 +292,7 @@ For HashiCorp Vault:
 
 ```yaml
 # vault-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault
@@ -314,7 +315,7 @@ spec:
 
 ```yaml
 # clusters/production/secrets/database-external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
