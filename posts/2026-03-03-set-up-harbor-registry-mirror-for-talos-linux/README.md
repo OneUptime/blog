@@ -71,7 +71,7 @@ persistence:
 trivy:
   enabled: true
 
-# Configure proxy cache
+# Configure outbound proxy settings if Harbor needs them
 proxy:
   httpProxy: ""
   httpsProxy: ""
@@ -90,7 +90,7 @@ Using the Harbor API:
 
 ```bash
 # Create a Docker Hub proxy cache registry endpoint
-curl -X POST "https://harbor.example.com/api/v2.0/registries" \
+DOCKERHUB_REGISTRY_ID=$(curl -is -X POST "https://harbor.example.com/api/v2.0/registries" \
   -H "Content-Type: application/json" \
   -u "admin:Harbor12345" \
   -d '{
@@ -102,43 +102,43 @@ curl -X POST "https://harbor.example.com/api/v2.0/registries" \
       "access_key": "your-dockerhub-username",
       "access_secret": "your-dockerhub-password"
     }
-  }'
+  }' | awk -F/ '/^Location:/ {print $NF}' | tr -d '\r')
 
 # Create a proxy cache project
 curl -X POST "https://harbor.example.com/api/v2.0/projects" \
   -H "Content-Type: application/json" \
   -u "admin:Harbor12345" \
-  -d '{
-    "project_name": "dockerhub-cache",
-    "registry_id": 1,
-    "public": true,
-    "metadata": {
-      "public": "true"
+  -d "{
+    \"project_name\": \"dockerhub-cache\",
+    \"registry_id\": ${DOCKERHUB_REGISTRY_ID},
+    \"public\": true,
+    \"metadata\": {
+      \"public\": \"true\"
     }
-  }'
+  }"
 ```
 
 You can create similar proxy cache projects for other registries:
 
 ```bash
 # Create a ghcr.io proxy cache
-curl -X POST "https://harbor.example.com/api/v2.0/registries" \
+GHCR_REGISTRY_ID=$(curl -is -X POST "https://harbor.example.com/api/v2.0/registries" \
   -H "Content-Type: application/json" \
   -u "admin:Harbor12345" \
   -d '{
     "name": "ghcr-proxy",
     "type": "github",
     "url": "https://ghcr.io"
-  }'
+  }' | awk -F/ '/^Location:/ {print $NF}' | tr -d '\r')
 
 curl -X POST "https://harbor.example.com/api/v2.0/projects" \
   -H "Content-Type: application/json" \
   -u "admin:Harbor12345" \
-  -d '{
-    "project_name": "ghcr-cache",
-    "registry_id": 2,
-    "public": true
-  }'
+  -d "{
+    \"project_name\": \"ghcr-cache\",
+    \"registry_id\": ${GHCR_REGISTRY_ID},
+    \"public\": true
+  }"
 ```
 
 ## Configuring Talos to Use Harbor
@@ -152,15 +152,15 @@ machine:
       docker.io:
         endpoints:
           - https://harbor.example.com/v2/dockerhub-cache
-          - https://registry-1.docker.io
+        overridePath: true
       ghcr.io:
         endpoints:
           - https://harbor.example.com/v2/ghcr-cache
-          - https://ghcr.io
+        overridePath: true
     config:
       harbor.example.com:
         auth:
-          username: talos-puller
+          username: "robot$talos-puller"
           password: "pull-only-password"
         tls:
           # If using a self-signed cert or internal CA
@@ -217,7 +217,7 @@ machine:
       docker.io:
         endpoints:
           - https://harbor.example.com/v2/dockerhub-cache
-          - https://registry-1.docker.io
+        overridePath: true
     config:
       harbor.example.com:
         auth:
@@ -226,9 +226,9 @@ machine:
 EOF
 
 # Apply to each node
-talosctl patch machineconfig --nodes 10.0.0.2 --patch @harbor-mirror-patch.yaml
-talosctl patch machineconfig --nodes 10.0.0.3 --patch @harbor-mirror-patch.yaml
-talosctl patch machineconfig --nodes 10.0.0.4 --patch @harbor-mirror-patch.yaml
+talosctl patch mc --nodes 10.0.0.2 --patch @harbor-mirror-patch.yaml
+talosctl patch mc --nodes 10.0.0.3 --patch @harbor-mirror-patch.yaml
+talosctl patch mc --nodes 10.0.0.4 --patch @harbor-mirror-patch.yaml
 ```
 
 ## Verifying the Setup
