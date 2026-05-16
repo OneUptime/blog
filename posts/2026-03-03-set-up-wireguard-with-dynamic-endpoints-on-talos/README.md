@@ -43,7 +43,7 @@ machine:
               endpoint: node2.example.com:51820
               allowedIPs:
                 - 10.10.0.2/32
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
 ```
 
 For this to work, you need a dynamic DNS service that updates the DNS record when the node's IP changes. Popular options include services like DynDNS, No-IP, or running your own DNS update script with a provider like Cloudflare or Route53.
@@ -117,10 +117,10 @@ machine:
               allowedIPs:
                 # Route all WireGuard network traffic through the hub
                 - 10.10.0.0/24
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
 ```
 
-The `persistentKeepalive` setting is critical for spoke nodes. It ensures the spoke sends a packet to the hub every 25 seconds, which keeps the NAT mapping alive and allows the hub to know the spoke's current IP address.
+The `persistentKeepaliveInterval` setting is critical for spoke nodes. It ensures the spoke sends a packet to the hub every 25 seconds, which keeps the NAT mapping alive and allows the hub to know the spoke's current IP address.
 
 ## Handling NAT Traversal
 
@@ -150,16 +150,16 @@ machine:
               # Keep the NAT mapping alive
               # Without this, the NAT mapping expires
               # and incoming packets get dropped
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
 ```
 
-Without `persistentKeepalive`, the NAT mapping expires after a period of inactivity (usually 30-120 seconds depending on the router). Once it expires, the hub cannot send packets to the spoke until the spoke sends another packet.
+Without `persistentKeepaliveInterval`, the NAT mapping expires after a period of inactivity (usually 30-120 seconds depending on the router). Once it expires, the hub cannot send packets to the spoke until the spoke sends another packet.
 
 ## Dynamic Endpoint Resolution Interval
 
-WireGuard resolves DNS endpoints when the interface comes up and when it needs to re-establish a connection. However, it does not continuously re-resolve DNS. If a peer's IP changes and the DNS record is updated, WireGuard might still be using the old IP until it detects the connection is broken.
+WireGuard resolves DNS endpoints when the endpoint is applied to the interface. However, it does not continuously re-resolve DNS. If a peer's IP changes and the DNS record is updated, WireGuard might still be using the old IP until the endpoint is re-applied or the interface is recreated.
 
-To force more frequent re-resolution, you can configure the system DNS resolver settings in Talos:
+Talos does not run `systemd-resolved`, so you cannot tune WireGuard endpoint re-resolution with `/etc/systemd/resolved.conf.d` files. You can configure the DNS servers Talos uses for name resolution, but a frequently changing endpoint still needs an external process that detects the change and reapplies the endpoint:
 
 ```yaml
 # Configure DNS settings in Talos
@@ -168,17 +168,9 @@ machine:
     nameservers:
       - 8.8.8.8
       - 1.1.1.1
-  # Set low DNS cache TTL through resolved configuration
-  files:
-    - content: |
-        [Resolve]
-        Cache=no-negative
-        DNSStubListener=no
-      path: /etc/systemd/resolved.conf.d/low-cache.conf
-      op: create
 ```
 
-For environments where IP changes happen frequently, consider running a lightweight monitoring service that detects IP changes and triggers a WireGuard interface restart.
+For environments where IP changes happen frequently, consider running a lightweight monitoring service that detects IP changes and reapplies the peer endpoint or triggers a WireGuard interface restart.
 
 ## Peer Discovery with External Tools
 
@@ -199,19 +191,23 @@ spec:
         spec:
           containers:
             - name: updater
-              image: alpine:3.19
+              image: alpine:3.23
+              securityContext:
+                privileged: true
               command:
                 - /bin/sh
                 - -c
                 - |
+                  apk add --no-cache bind-tools wireguard-tools
                   # Query DNS for current peer IPs
                   # Update WireGuard configuration if IPs changed
-                  PEER_IP=$(dig +short peer-node.example.com)
+                  PEER_IP=$(dig +short A peer-node.example.com | head -n1)
                   CURRENT_ENDPOINT=$(wg show wg0 endpoints | grep "PEER_PUBLIC_KEY" | awk '{print $2}')
                   if [ "${PEER_IP}:51820" != "$CURRENT_ENDPOINT" ]; then
                     echo "Peer IP changed, updating endpoint"
                     wg set wg0 peer PEER_PUBLIC_KEY endpoint ${PEER_IP}:51820
                   fi
+          hostNetwork: true
           restartPolicy: OnFailure
 ```
 
@@ -240,7 +236,7 @@ talosctl -n hub-ip read /proc/net/wireguard
 
 Always have at least one node with a stable, known endpoint. This acts as your anchor point for the network.
 
-Set `persistentKeepalive` to 25 seconds on all nodes with dynamic IPs. This keeps NAT mappings alive and ensures the stable endpoint always knows the current address of dynamic peers.
+Set `persistentKeepaliveInterval` to `25s` on all nodes with dynamic IPs. This keeps NAT mappings alive and ensures the stable endpoint always knows the current address of dynamic peers.
 
 Use DNS names for endpoints whenever possible. Even if an IP is currently static, using DNS gives you flexibility to change it later without updating WireGuard configurations.
 
