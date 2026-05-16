@@ -22,7 +22,7 @@ Talos Linux, on the other hand, does not have SSH access, does not have a packag
 
 Before you begin, make sure you have the following installed on your Mac:
 
-- Parallels Desktop Pro or Business edition (the standard edition lacks some CLI features)
+- Parallels Desktop Pro, Business, or Enterprise edition for full CLI support
 - `talosctl` command-line tool
 - `kubectl` for managing Kubernetes
 - At least 8 GB of RAM available for VMs
@@ -57,14 +57,14 @@ You can also check the Talos releases page for the latest version and download a
 Open Parallels Desktop and create a new virtual machine. You can do this through the GUI or the command line. The CLI approach is more repeatable, so let us go with that.
 
 ```bash
-# Create a new VM from the Talos ISO
+# Create a new VM
 prlctl create "talos-cp-1" --ostype linux --distribution linux-2.6
 
 # Set VM resources
 prlctl set "talos-cp-1" --cpus 2 --memsize 2048
 
 # Attach the ISO as a boot device
-prlctl set "talos-cp-1" --device-set cdrom0 --image /path/to/metal-arm64.iso
+prlctl set "talos-cp-1" --device-set cdrom0 --image /path/to/metal-arm64.iso --connect
 
 # Set the boot order to CD first
 prlctl set "talos-cp-1" --device-bootorder "cdrom0 hdd0"
@@ -102,6 +102,16 @@ talosctl gen config my-cluster https://<CONTROL_PLANE_IP>:6443
 
 Replace `<CONTROL_PLANE_IP>` with the IP address of your control plane VM.
 
+If Parallels exposes the VM disk as something other than `/dev/sda`, pass the correct disk explicitly:
+
+```bash
+# Check available disks while the node is in maintenance mode
+talosctl get disks --insecure --nodes <CONTROL_PLANE_IP>
+
+# Generate configs with the disk Talos should install to
+talosctl gen config my-cluster https://<CONTROL_PLANE_IP>:6443 --install-disk /dev/sda
+```
+
 ## Apply Configuration to the VM
 
 With the configuration files generated, apply the control plane configuration to your VM:
@@ -119,11 +129,9 @@ Configure your `talosctl` client to communicate with the cluster:
 
 ```bash
 # Set the endpoint and node
+talosctl config merge talosconfig
 talosctl config endpoint <CONTROL_PLANE_IP>
 talosctl config node <CONTROL_PLANE_IP>
-
-# Merge the generated talosconfig into your default config
-talosctl config merge talosconfig
 ```
 
 ## Bootstrap the Cluster
@@ -167,7 +175,8 @@ To add worker nodes, create additional VMs in Parallels following the same proce
 # Create a worker VM
 prlctl create "talos-worker-1" --ostype linux --distribution linux-2.6
 prlctl set "talos-worker-1" --cpus 2 --memsize 2048
-prlctl set "talos-worker-1" --device-set cdrom0 --image /path/to/metal-arm64.iso
+prlctl set "talos-worker-1" --device-set cdrom0 --image /path/to/metal-arm64.iso --connect
+prlctl set "talos-worker-1" --device-bootorder "cdrom0 hdd0"
 prlctl start "talos-worker-1"
 
 # Apply worker config (use the worker VM's IP)
@@ -193,7 +202,8 @@ WORKER_COUNT=2
 for i in $(seq 1 $CP_COUNT); do
   prlctl create "${CLUSTER_NAME}-cp-${i}" --ostype linux --distribution linux-2.6
   prlctl set "${CLUSTER_NAME}-cp-${i}" --cpus 2 --memsize 4096
-  prlctl set "${CLUSTER_NAME}-cp-${i}" --device-set cdrom0 --image "$ISO_PATH"
+  prlctl set "${CLUSTER_NAME}-cp-${i}" --device-set cdrom0 --image "$ISO_PATH" --connect
+  prlctl set "${CLUSTER_NAME}-cp-${i}" --device-bootorder "cdrom0 hdd0"
   prlctl start "${CLUSTER_NAME}-cp-${i}"
 done
 
@@ -201,7 +211,8 @@ done
 for i in $(seq 1 $WORKER_COUNT); do
   prlctl create "${CLUSTER_NAME}-worker-${i}" --ostype linux --distribution linux-2.6
   prlctl set "${CLUSTER_NAME}-worker-${i}" --cpus 2 --memsize 2048
-  prlctl set "${CLUSTER_NAME}-worker-${i}" --device-set cdrom0 --image "$ISO_PATH"
+  prlctl set "${CLUSTER_NAME}-worker-${i}" --device-set cdrom0 --image "$ISO_PATH" --connect
+  prlctl set "${CLUSTER_NAME}-worker-${i}" --device-bootorder "cdrom0 hdd0"
   prlctl start "${CLUSTER_NAME}-worker-${i}"
 done
 
@@ -214,7 +225,7 @@ If the VM fails to boot from the ISO, double-check that the boot order is set co
 
 If networking is not working, verify that your firewall is not blocking traffic on ports 6443 (Kubernetes API), 50000 (Talos API), and 50001 (Talos trustd). On macOS, the built-in firewall can sometimes interfere with bridged networking.
 
-If the cluster health check times out, give it a bit more time. On Apple Silicon Macs, the ARM64 image sometimes takes longer to initialize because of the emulation layer differences in Parallels.
+If the cluster health check times out, give it a bit more time. On Apple Silicon Macs, the ARM64 image can still take a few minutes to initialize.
 
 ## Wrapping Up
 
