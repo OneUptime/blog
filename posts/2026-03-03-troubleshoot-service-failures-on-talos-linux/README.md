@@ -24,7 +24,7 @@ Every service failure investigation should follow these steps:
 ```bash
 # Step 1: Identify failing services
 
-talosctl services -n <node-ip>
+talosctl service -n <node-ip>
 # Look for any service not showing Running/OK
 
 # Step 2: Get detailed status
@@ -73,14 +73,14 @@ talosctl logs kubelet -n <node-ip> | grep -i "eviction\|pressure\|oom"
 talosctl get addresses -n <node-ip>
 talosctl get routes -n <node-ip>
 
-# If certificates are expired, trigger renewal
-talosctl health -n <node-ip>
+# If kubelet certificates need rotation, restart kubelet or reboot the node
+talosctl service kubelet restart -n <node-ip>
 
 # If kubelet is just stuck, restart it
 talosctl service kubelet restart -n <node-ip>
 
 # If configuration is wrong, apply a config patch
-talosctl patch machineconfig --patch @fix.yaml -n <node-ip>
+talosctl patch machineconfig -p @fix.yaml -n <node-ip>
 ```
 
 ## Common Failure: etcd Member Not Healthy
@@ -123,9 +123,8 @@ talosctl dmesg -n <control-plane-ip> | grep -i "io\|disk\|nvme\|ata"
 # Check database size
 talosctl etcd status -n <control-plane-ip>
 
-# If over 2GB, compact and defragment
-# First, find a safe revision to compact to
-# Then defragment each member
+# If over the default 2 GiB quota, check for NOSPACE alarms
+# Kubernetes performs automatic compaction; defragment one member at a time
 talosctl etcd defrag -n <member-ip>
 ```
 
@@ -175,8 +174,8 @@ talosctl service containerd -n <node-ip>
 # Check containerd logs
 talosctl logs containerd -n <node-ip> | tail -50
 
-# Check disk space (containerd needs space for images and containers)
-talosctl read /proc/mounts -n <node-ip>
+# Check disk usage (containerd needs space for images and containers)
+talosctl usage /var/lib/containerd /var/lib/kubelet -H -n <node-ip>
 
 # Check kernel messages for storage issues
 talosctl dmesg -n <node-ip> | grep -i "no space\|enospc\|readonly"
@@ -188,7 +187,7 @@ talosctl dmesg -n <node-ip> | grep -i "no space\|enospc\|readonly"
 # If disk is full, the immutable OS itself is fine
 # but the ephemeral partition may be full
 # Check disk usage
-talosctl dmesg -n <node-ip> | grep -i "disk\|space"
+talosctl usage /var/lib/containerd /var/lib/kubelet -H -n <node-ip>
 
 # Restart containerd
 talosctl service containerd restart -n <node-ip>
@@ -250,7 +249,7 @@ When a new or rebooted node fails to join the cluster.
 
 ```bash
 # Check basic service status
-talosctl services -n <node-ip>
+talosctl service -n <node-ip>
 
 # Check network connectivity
 talosctl get addresses -n <node-ip>
@@ -273,7 +272,8 @@ talosctl get machineconfig -n <node-ip> -o yaml
 # Verify the control plane endpoint is reachable
 talosctl read /etc/hosts -n <node-ip>
 
-# If bootstrap token expired, generate a new one
+# If bootstrap token expired, inspect the current bootstrap token secret
+# and update the node's machine config with a valid token
 kubectl get secrets -n kube-system | grep bootstrap
 
 # If the machine config is wrong, apply the correct one
@@ -333,7 +333,7 @@ echo "============================================="
 
 echo ""
 echo "--- Service Status ---"
-talosctl services -n "$NODE_IP" 2>/dev/null || echo "CANNOT CONNECT TO NODE"
+talosctl service -n "$NODE_IP" 2>/dev/null || echo "CANNOT CONNECT TO NODE"
 
 echo ""
 echo "--- Talos Version ---"
@@ -393,7 +393,7 @@ For these situations, you may need to restore from backup, replace hardware, or 
 
 ```bash
 # Emergency: Restore etcd from backup
-talosctl etcd restore --snapshot /backup/etcd-snapshot.db -n <node-ip>
+talosctl bootstrap --recover-from=/backup/etcd-snapshot.db -n <node-ip>
 
 # This is a destructive operation that should only be used
 # when etcd has lost quorum and cannot be recovered normally
