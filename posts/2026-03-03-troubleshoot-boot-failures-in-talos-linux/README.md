@@ -155,10 +155,10 @@ sudo dd if=metal-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync
 # Boot from USB and check the disk
 
 # From a USB boot, check disk status
-talosctl disks --insecure --nodes <NODE_IP>
+talosctl get disks --insecure --nodes <NODE_IP>
 
-# Check for disk errors in dmesg
-talosctl dmesg --insecure --nodes <NODE_IP> | grep -i "error\|fail\|i/o"
+# After the node is reachable with the normal Talos API, check for disk errors in dmesg
+talosctl dmesg --nodes <NODE_IP> | grep -i "error\|fail\|i/o"
 ```
 
 Common disk issues:
@@ -193,7 +193,7 @@ Network issues during init:
 talosctl get machinestatus --insecure --nodes <NODE_IP>
 
 # View machined logs for configuration errors
-talosctl logs machined --insecure --nodes <NODE_IP>
+talosctl logs machined --nodes <NODE_IP>
 ```
 
 To fix a bad configuration:
@@ -267,10 +267,10 @@ Always keep a Talos USB drive available. It is your primary recovery tool:
 # It enters maintenance mode
 
 # Check the existing disk
-talosctl disks --insecure --nodes <NODE_IP>
+talosctl get disks --insecure --nodes <NODE_IP>
 
 # Check existing partitions
-talosctl ls /dev/ --insecure --nodes <NODE_IP>
+talosctl get blockdevices --insecure --nodes <NODE_IP>
 
 # Reinstall while preserving state
 talosctl apply-config --insecure \
@@ -285,8 +285,6 @@ If recovery is not possible, you can reset the node completely:
 ```bash
 # Full reset - removes all data including cluster membership
 talosctl reset --nodes <NODE_IP> \
-  --system-labels-to-wipe EPHEMERAL \
-  --system-labels-to-wipe STATE \
   --graceful=false
 
 # Then reinstall from scratch
@@ -301,7 +299,7 @@ talosctl apply-config --insecure \
 # If an upgrade failed and the node is stuck:
 
 # Check if the fallback worked
-talosctl get installedversions --nodes <NODE_IP>
+talosctl version --nodes <NODE_IP>
 
 # If the node is unreachable, boot from USB
 # The previous boot slot should still have the working version
@@ -323,12 +321,12 @@ talosctl dmesg --nodes <NODE_IP>
 talosctl get machinestatus --nodes <NODE_IP>
 
 # Service status
-talosctl services --nodes <NODE_IP>
+talosctl service --nodes <NODE_IP>
 talosctl service <service-name> --nodes <NODE_IP>
 talosctl logs <service-name> --nodes <NODE_IP>
 
 # Hardware and disk information
-talosctl disks --nodes <NODE_IP>
+talosctl get disks --nodes <NODE_IP>
 talosctl mounts --nodes <NODE_IP>
 
 # Network diagnostics
