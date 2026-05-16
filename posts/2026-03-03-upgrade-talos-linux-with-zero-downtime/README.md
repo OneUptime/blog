@@ -46,6 +46,9 @@ spec:
     matchLabels:
       app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       # Anti-affinity to spread pods across nodes
       affinity:
@@ -60,6 +63,11 @@ spec:
                       values:
                         - web-app
                 topologyKey: kubernetes.io/hostname
+      containers:
+        - name: web-app
+          image: ghcr.io/example/web-app:1.0.0
+          ports:
+            - containerPort: 8080
 ```
 
 **Pod Disruption Budgets** - PDBs ensure that the drain process never takes down too many pods at once:
@@ -122,6 +130,8 @@ REPLICAS:.spec.replicas | sort -t' ' -k3 -n
 talosctl etcd snapshot /tmp/etcd-pre-upgrade.snapshot --nodes 192.168.1.10
 ```
 
+Replace the installer image in the examples with the Talos version you are upgrading to. If you need to cross multiple minor versions, follow the Talos-supported path through the latest patch release of each intermediate minor version.
+
 ### Step 2: Upgrade Control Plane Nodes
 
 Upgrade control plane nodes one at a time. With three control plane nodes, you always maintain quorum:
@@ -130,7 +140,7 @@ Upgrade control plane nodes one at a time. With three control plane nodes, you a
 # Upgrade first control plane node
 echo "Upgrading control plane node 1..."
 talosctl upgrade --nodes 192.168.1.10 \
-  --image ghcr.io/siderolabs/installer:v1.7.0
+  --image ghcr.io/siderolabs/installer:v1.13.2
 
 # Wait for the node to rejoin
 talosctl health --nodes 192.168.1.10 --wait-timeout 10m
@@ -145,7 +155,7 @@ kubectl get nodes
 # Proceed to next control plane node
 echo "Upgrading control plane node 2..."
 talosctl upgrade --nodes 192.168.1.11 \
-  --image ghcr.io/siderolabs/installer:v1.7.0
+  --image ghcr.io/siderolabs/installer:v1.13.2
 
 talosctl health --nodes 192.168.1.11 --wait-timeout 10m
 talosctl etcd status --nodes 192.168.1.12
@@ -153,7 +163,7 @@ talosctl etcd status --nodes 192.168.1.12
 # And the third
 echo "Upgrading control plane node 3..."
 talosctl upgrade --nodes 192.168.1.12 \
-  --image ghcr.io/siderolabs/installer:v1.7.0
+  --image ghcr.io/siderolabs/installer:v1.13.2
 
 talosctl health --nodes 192.168.1.12 --wait-timeout 10m
 ```
@@ -169,7 +179,7 @@ For worker nodes, the drain-upgrade-uncordon cycle ensures workloads are migrate
 # Zero downtime worker upgrade
 
 WORKERS=("192.168.1.20" "192.168.1.21" "192.168.1.22" "192.168.1.23")
-TALOS_IMAGE="ghcr.io/siderolabs/installer:v1.7.0"
+TALOS_IMAGE="ghcr.io/siderolabs/installer:v1.13.2"
 
 for NODE in "${WORKERS[@]}"; do
   HOSTNAME=$(talosctl get hostname --nodes "$NODE" -o json | jq -r '.spec.hostname')
@@ -189,6 +199,7 @@ for NODE in "${WORKERS[@]}"; do
   # Should only show DaemonSet pods
 
   # Step C: Upgrade the node
+  # Talos also cordons, drains, and uncordons during its upgrade flow.
   echo "  Upgrading $NODE..."
   talosctl upgrade --nodes "$NODE" --image "$TALOS_IMAGE"
 
@@ -244,7 +255,13 @@ metadata:
   namespace: ingress-nginx
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ingress-nginx
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ingress-nginx
     spec:
       affinity:
         podAntiAffinity:
@@ -256,9 +273,15 @@ spec:
                     values:
                       - ingress-nginx
               topologyKey: kubernetes.io/hostname
+      containers:
+        - name: controller
+          image: registry.k8s.io/ingress-nginx/controller:v1.15.1
+          ports:
+            - containerPort: 80
+            - containerPort: 443
 ```
 
-With ingress controller pods spread across multiple nodes and a PDB ensuring at least two are always running, external traffic continues flowing even during upgrades.
+With ingress controller pods spread across multiple nodes and a PDB allowing only one voluntary eviction at a time, external traffic continues flowing even during upgrades.
 
 ## Monitoring During Upgrades
 
