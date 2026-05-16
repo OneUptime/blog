@@ -29,115 +29,64 @@ Before installing Multus on Talos Linux, you need:
 - kubectl and talosctl configured
 - Understanding of your secondary network requirements
 
-## Step 1: Configure Talos for Multus
+## Step 1: Confirm CNI Plugins Are Available on Talos
 
-Multus needs the CNI binary directory and configuration directory to be accessible. On Talos Linux, these are at standard locations, but you may need to configure additional CNI plugins as extensions.
+Multus needs the CNI binary directory and configuration directory to be accessible. On Talos Linux, these are at the standard locations: `/opt/cni/bin` for binaries and `/etc/cni/net.d` for configuration.
 
-If you need additional CNI plugins like macvlan, bridge, or host-device, they should be available on the node. Talos Linux includes basic CNI plugins, but you may need to add more through system extensions:
-
-```yaml
-# talos-multus-patch.yaml
-
-machine:
-  install:
-    extensions:
-      # Include additional CNI plugins if needed
-      - image: ghcr.io/siderolabs/cni-plugins:v1.4.0
-  # Ensure the CNI directories are properly configured
-  kubelet:
-    extraArgs:
-      cni-bin-dir: /opt/cni/bin
-      cni-conf-dir: /etc/cni/net.d
-```
-
-Apply the patch to all nodes that will use Multus:
+Starting with Talos v1.8, the standard reference CNI plugins (including `macvlan`, `bridge`, `host-device`, `host-local`, `static`, `loopback`, `ipvlan`, `tuning`, etc.) are bundled with Talos itself, so no extra installation is required for these common plugin types. You can confirm what is present on a node with:
 
 ```bash
-# Apply to worker nodes
-talosctl apply-config --nodes 192.168.1.20 --patch @talos-multus-patch.yaml
-talosctl apply-config --nodes 192.168.1.21 --patch @talos-multus-patch.yaml
+# List CNI binaries on a worker node
+talosctl -n 192.168.1.20 list /opt/cni/bin/
 ```
+
+If you need a specialized CNI binary that is not bundled (for example, an SR-IOV plugin), you will need to build a custom Talos system extension that drops the binary into `/opt/cni/bin`, since Talos is immutable and you cannot install packages on the running OS.
 
 ## Step 2: Install Multus Using the Thick Plugin Method
 
-There are two deployment models for Multus: thin plugin and thick plugin. The thick plugin is recommended for Talos Linux because it bundles everything into a single DaemonSet.
+There are two deployment models for Multus: thin plugin and thick plugin. The thick plugin is recommended for Talos Linux because it runs a long-lived daemon on each node and is the model that Sidero Labs documents for Talos.
+
+Apply the upstream thick DaemonSet manifest as a starting point:
 
 ```bash
-# Install Multus thick plugin
 kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset-thick.yml
 ```
 
-Or install with a custom configuration:
+There is one Talos-specific patch you must apply. Talos exposes the network namespace directory at `/var/run/netns` rather than `/run/netns`, so the `host-run-netns` hostPath in the DaemonSet has to be retargeted. If you do not apply this patch, pods will fail to start with sandbox / netns errors after Multus takes over CNI configuration.
 
-```yaml
-# multus-daemonset.yaml
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: kube-multus-ds
-  namespace: kube-system
-  labels:
-    tier: node
-    app: multus
-    name: multus
-spec:
-  selector:
-    matchLabels:
-      name: multus
-  updateStrategy:
-    type: RollingUpdate
-  template:
-    metadata:
-      labels:
-        tier: node
-        app: multus
-        name: multus
-    spec:
-      hostNetwork: true
-      tolerations:
-      - operator: Exists
-        effect: NoSchedule
-      - operator: Exists
-        effect: NoExecute
-      serviceAccountName: multus
-      containers:
-      - name: kube-multus
-        image: ghcr.io/k8snetworkplumbingwg/multus-cni:v4.0.2-thick
-        command: ["/thick-entrypoint.sh"]
-        args:
-        - "--multus-conf-file=auto"
-        - "--multus-autoconfig-dir=/host/etc/cni/net.d"
-        - "--cni-conf-dir=/host/etc/cni/net.d"
-        resources:
-          requests:
-            cpu: "100m"
-            memory: "50Mi"
-          limits:
-            cpu: "100m"
-            memory: "50Mi"
-        securityContext:
-          privileged: true
-        volumeMounts:
-        - name: cni
-          mountPath: /host/etc/cni/net.d
-        - name: cnibin
-          mountPath: /host/opt/cni/bin
-      volumes:
-      - name: cni
-        hostPath:
-          path: /etc/cni/net.d
-      - name: cnibin
-        hostPath:
-          path: /opt/cni/bin
-```
+You can patch the running DaemonSet with:
 
 ```bash
-# Apply the DaemonSet
-kubectl apply -f multus-daemonset.yaml
+kubectl -n kube-system patch daemonset kube-multus-ds \
+  --type=json \
+  -p='[{"op":"replace","path":"/spec/template/spec/volumes/<INDEX>","value":{"name":"host-run-netns","hostPath":{"path":"/var/run/netns/"}}}]'
+```
+
+Replace `<INDEX>` with the position of the `host-run-netns` volume in the manifest (inspect with `kubectl -n kube-system get ds kube-multus-ds -o yaml` first).
+
+A cleaner approach is to download the manifest, edit the `host-run-netns` volume in place, and apply the edited copy:
+
+```yaml
+# In multus-daemonset-thick.yml, change:
+- name: host-run-netns
+  hostPath:
+    path: /run/netns/
+# to:
+- name: host-run-netns
+  hostPath:
+    path: /var/run/netns/
+```
+
+Then apply and verify:
+
+```bash
+kubectl apply -f multus-daemonset-thick.yml
 
 # Verify Multus pods are running on all nodes
 kubectl get pods -n kube-system -l app=multus -o wide
 ```
+
+The upstream manifest pins a known-good Multus image (currently in the `v4.x` series) and includes the correct daemon command (`/usr/src/multus-cni/bin/multus-daemon`), an `install-multus-binary` init container that drops the Multus CNI binary into `/opt/cni/bin`, and the ConfigMap with the daemon settings — you do not need to assemble any of that yourself.
 
 ## Step 3: Create Network Attachment Definitions
 
