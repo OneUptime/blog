@@ -43,7 +43,7 @@ talosctl upgrade --nodes 192.168.1.10 \
 talosctl get mounts --nodes 192.168.1.10
 ```
 
-The `--preserve` flag keeps the existing machine configuration intact during the upgrade. The repartitioning during upgrade will detect the additional disk space and expand the EPHEMERAL partition.
+The `--preserve` flag preserves the contents of the EPHEMERAL partition (container images, pod data, and other workload state) across the upgrade. The machine configuration itself lives in the STATE partition and is always preserved. After the upgrade-triggered reboot, Talos detects the additional disk space and grows the EPHEMERAL partition to fill the disk.
 
 ## Resizing Kubernetes Persistent Volumes
 
@@ -54,8 +54,8 @@ Persistent Volumes managed by a CSI driver can be resized through the Kubernetes
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: local-storage
-provisioner: kubernetes.io/no-provisioner
+  name: expandable-storage
+provisioner: ebs.csi.aws.com  # Use a CSI driver that supports expansion
 allowVolumeExpansion: true  # This must be true
 reclaimPolicy: Retain
 ```
@@ -175,7 +175,7 @@ Before deciding to resize, verify that disk space is actually the issue. Sometim
 talosctl get mounts --nodes 192.168.1.10
 
 # Check which images are consuming space
-talosctl get images --nodes 192.168.1.10
+talosctl image list --nodes 192.168.1.10
 
 # Check Kubernetes resource usage
 kubectl describe node node-01 | grep -A 10 "Allocated resources"
