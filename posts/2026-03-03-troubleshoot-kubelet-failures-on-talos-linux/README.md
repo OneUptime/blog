@@ -49,7 +49,7 @@ Verify the endpoint in your configuration:
 
 ```bash
 # Check the cluster endpoint configured on this node
-talosctl -n <node-ip> get machineconfiguration -o yaml | grep endpoint
+talosctl -n <node-ip> get machineconfig v1alpha1 -o yaml | grep endpoint
 ```
 
 Then verify you can reach it:
@@ -67,19 +67,21 @@ Kubelet uses client certificates to authenticate with the API server. If the cer
 E0303 10:20:00.000000 kubelet.go:2347] "Error getting node" err="Unauthorized"
 ```
 
-On Talos, certificates are managed automatically. If they become stale, regenerate the machine configuration and re-apply it:
+On Talos, server-side certificates are managed automatically, but kubelet certificates may need the kubelet to restart before rotation takes effect. If the node cannot authenticate, check the kubelet certificate signing requests:
 
 ```bash
-# Regenerate and apply fresh configuration
-talosctl gen config my-cluster https://<endpoint>:6443
-talosctl apply-config -n <node-ip> --file worker.yaml
+# Check kubelet certificate signing requests
+kubectl get csr
+
+# Restart kubelet to trigger certificate rotation if needed
+talosctl -n <node-ip> service kubelet restart
 ```
 
-You can also check the certificate status:
+You can also check Kubernetes dynamic certificate status on a control plane node:
 
 ```bash
 # View current certificate information
-talosctl -n <node-ip> get certificate
+talosctl -n <cp-ip> get KubernetesDynamicCerts -o yaml
 ```
 
 ## Common Kubelet Failure: Container Runtime Not Ready
@@ -158,11 +160,15 @@ talosctl -n <cp-ip> get staticpodstatus
 If a static pod is not starting, check its specific logs:
 
 ```bash
-# View logs for the API server static pod
-talosctl -n <cp-ip> logs kube-apiserver
+# Find the control plane pod names
+kubectl -n kube-system get pods -o wide | grep kube-apiserver
+kubectl -n kube-system get pods -o wide | grep kube-scheduler
 
-# View logs for the scheduler
-talosctl -n <cp-ip> logs kube-scheduler
+# View logs for the API server static pod
+kubectl -n kube-system logs <kube-apiserver-pod> -c kube-apiserver
+
+# View logs for the scheduler static pod
+kubectl -n kube-system logs <kube-scheduler-pod> -c kube-scheduler
 ```
 
 ## Kubelet Configuration Overrides
@@ -220,7 +226,7 @@ If kubelet refuses to work after trying all the above steps, consider these last
 
 ```bash
 # Upgrade Talos on the node
-talosctl -n <node-ip> upgrade --image ghcr.io/siderolabs/installer:v1.7.0
+talosctl -n <node-ip> upgrade --image ghcr.io/siderolabs/installer:<talos-version>
 
 # Or reset the node completely
 talosctl -n <node-ip> reset --graceful=false
