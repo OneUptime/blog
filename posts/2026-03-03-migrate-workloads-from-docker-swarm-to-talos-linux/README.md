@@ -78,10 +78,10 @@ Install talosctl and create your cluster:
 curl -sL https://talos.dev/install | sh
 
 # Generate cluster configuration
-talosctl gen secrets -o secrets.yaml
+talosctl gen secrets --output-file secrets.yaml
 talosctl gen config swarm-replacement https://10.0.0.100:6443 \
   --with-secrets secrets.yaml \
-  --output-dir _out
+  --output _out
 
 # Apply to your nodes
 # Control plane
