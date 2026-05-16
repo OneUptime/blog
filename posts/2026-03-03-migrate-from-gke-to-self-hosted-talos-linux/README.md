@@ -73,6 +73,7 @@ gcloud beta container backup-restore backups create pre-migration \
 # Set up Velero for portable backups
 velero install \
   --provider gcp \
+  --plugins velero/velero-plugin-for-gcp:v1.13.0 \
   --bucket my-velero-bucket \
   --secret-file ./gcp-credentials.json
 
@@ -247,7 +248,8 @@ Convert GKE-specific resource definitions and deploy to the new cluster:
 # After (nginx-ingress):
 # annotations:
 #   nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
-#   nginx.ingress.kubernetes.io/health-check-path: "/health"
+# Note: ingress-nginx has no direct equivalent to BackendConfig's healthCheck.
+# Configure pod readinessProbe/livenessProbe with the desired path instead.
 
 # Deploy updated manifests
 kubectl apply -f ./converted-manifests/
