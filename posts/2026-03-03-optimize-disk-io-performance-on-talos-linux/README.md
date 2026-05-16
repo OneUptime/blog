@@ -18,37 +18,62 @@ On Talos Linux, the root filesystem is read-only and overlay-based, which means 
 
 ## I/O Scheduler Selection
 
-The I/O scheduler determines the order in which disk operations are executed. Different schedulers suit different storage types.
+The I/O scheduler determines the order in which disk operations are executed. Different schedulers suit different storage types. The available blk-mq schedulers in modern Linux kernels are `none`, `mq-deadline`, `kyber`, and `bfq`.
 
-For NVMe drives, use the `none` scheduler. NVMe devices have their own internal command queuing and reordering, so adding another layer of scheduling at the OS level just adds latency:
+Note that the legacy `elevator=` kernel boot parameter is ignored under blk-mq (which is the default for all devices on Linux 5.0+). The scheduler must be selected per-device by writing to `/sys/block/<dev>/queue/scheduler`. On Talos, the practical way to apply this at boot is with a small privileged DaemonSet:
 
 ```yaml
-# talos-machine-config.yaml
-
-machine:
-  install:
-    extraKernelArgs:
-      - elevator=none             # Best for NVMe devices
+# io-scheduler.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: io-scheduler
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: io-scheduler
+  template:
+    metadata:
+      labels:
+        app: io-scheduler
+    spec:
+      containers:
+      - name: scheduler
+        image: busybox:latest
+        securityContext:
+          privileged: true
+        command:
+        - /bin/sh
+        - -c
+        - |
+          # NVMe devices have their own internal command queuing,
+          # so adding another layer of scheduling just adds latency.
+          for dev in /sys/block/nvme*/queue/scheduler; do
+            [ -e "$dev" ] && echo none > "$dev"
+          done
+          # SATA SSDs benefit from mq-deadline: deadline guarantees
+          # prevent starvation while keeping overhead low.
+          for dev in /sys/block/sd*/queue/scheduler; do
+            [ -e "$dev" ] && echo mq-deadline > "$dev"
+          done
+          # For spinning disks used for bulk storage, bfq
+          # (Budget Fair Queueing) provides good interactive performance.
+          # Detect rotational devices and apply bfq:
+          for dev in /sys/block/sd*; do
+            if [ "$(cat $dev/queue/rotational)" = "1" ]; then
+              echo bfq > "$dev/queue/scheduler"
+            fi
+          done
+          sleep infinity
 ```
 
-For SATA SSDs, the `mq-deadline` scheduler works well. It provides deadline guarantees that prevent starvation while keeping overhead low:
+To see what schedulers a device currently supports and which is active, read the scheduler file:
 
-```yaml
-# talos-machine-config.yaml
-machine:
-  install:
-    extraKernelArgs:
-      - elevator=mq-deadline      # Good for SATA SSDs
-```
-
-For spinning disks (if you are using them for bulk storage), `bfq` (Budget Fair Queueing) provides good interactive performance:
-
-```yaml
-# talos-machine-config.yaml
-machine:
-  install:
-    extraKernelArgs:
-      - elevator=bfq              # Best for HDDs
+```bash
+talosctl read /sys/block/nvme0n1/queue/scheduler --nodes 10.0.0.1
+# Output looks like: [none] mq-deadline kyber bfq
+# The value in brackets is the active scheduler.
 ```
 
 ## Dirty Page Management
@@ -160,7 +185,7 @@ Setting swappiness to 0 tells the kernel to avoid swapping as much as possible. 
 
 ## Disk Partitioning Strategy
 
-How you partition your disks affects I/O performance. Talos supports configuring additional disks and partitions through the machine configuration:
+How you partition your disks affects I/O performance. Talos supports configuring additional disks and partitions through the machine configuration. Note that user-defined mountpoints in `machine.disks` cannot overlap with system paths managed by the EPHEMERAL partition (such as `/var/lib/etcd` or `/var/lib/containerd`); they must live under `/var/mnt/...`:
 
 ```yaml
 # talos-machine-config.yaml
@@ -168,21 +193,17 @@ machine:
   install:
     disk: /dev/sda               # OS disk
   disks:
-    - device: /dev/nvme0n1       # Fast NVMe for etcd
+    - device: /dev/nvme0n1       # Fast NVMe for application data
       partitions:
-        - mountpoint: /var/lib/etcd
+        - mountpoint: /var/mnt/fast
           size: 50GB
-    - device: /dev/nvme1n1       # Second NVMe for container storage
-      partitions:
-        - mountpoint: /var/lib/containerd
-          size: 200GB
     - device: /dev/sdb           # SATA SSD for persistent volumes
       partitions:
-        - mountpoint: /var/lib/longhorn
+        - mountpoint: /var/mnt/longhorn
           size: 0                 # Use entire disk
 ```
 
-Separating etcd onto its own NVMe prevents container image pulls and log writes from interfering with etcd's critical fsync operations. This single change can dramatically improve cluster stability.
+The most impactful isolation for cluster stability is putting etcd on its own fast device so that container image pulls and log writes do not interfere with etcd's critical fsync operations. Because `/var/lib/etcd` lives on EPHEMERAL and can't be remounted via `machine.disks`, the supported approach is to install Talos onto a dedicated fast disk (set `machine.install.disk` to the NVMe device), which places the EPHEMERAL partition — and therefore etcd's data directory — on that disk. Additional disks defined under `machine.disks` then host application data and Container Storage Interface (CSI) volumes such as Longhorn.
 
 ## Filesystem Mount Options
 
