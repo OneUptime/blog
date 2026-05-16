@@ -68,11 +68,11 @@ machine:
       # Match by size (supports >=, <=, ==)
       size: '>= 100GB'
 
-      # Match by type: hdd or ssd
+      # Match by type: ssd, hdd, nvme, or sd
       type: ssd
 
-      # Match by model name (substring match)
-      model: 'Samsung SSD 980'
+      # Match by model name (glob/wildcard match)
+      model: 'Samsung SSD 980*'
 
       # Match by serial number (exact match)
       serial: 'S4EVNF0M8'
