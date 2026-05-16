@@ -390,7 +390,7 @@ jobs:
 
           # Get control plane node IPs
           CP_NODES=$(talosctl --talosconfig /tmp/talosconfig get members -o json | \
-            jq -r '.spec.machineType == "controlplane" | select(.) | .spec.addresses[0]')
+            jq -r 'select(.spec.machineType == "controlplane") | .spec.addresses[0]')
 
           for node in $CP_NODES; do
             echo "Upgrading control plane node: ${node}"
@@ -414,7 +414,7 @@ jobs:
           echo "${TALOS_CONFIG}" > /tmp/talosconfig
 
           WORKER_NODES=$(talosctl --talosconfig /tmp/talosconfig get members -o json | \
-            jq -r '.spec.machineType == "worker" | select(.) | .spec.addresses[0]')
+            jq -r 'select(.spec.machineType == "worker") | .spec.addresses[0]')
 
           for node in $WORKER_NODES; do
             echo "Draining worker node: ${node}"
