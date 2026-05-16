@@ -45,7 +45,7 @@ First, create a custom Talos image that includes the NVIDIA system extensions:
 docker run --rm -t -v $PWD/_out:/out \
   ghcr.io/siderolabs/imager:v1.6.0 installer \
   --system-extension-image ghcr.io/siderolabs/nvidia-open-gpu-kernel-modules:535.129.03-v1.6.0 \
-  --system-extension-image ghcr.io/siderolabs/nvidia-container-toolkit:535.129.03-v1.6.0
+  --system-extension-image ghcr.io/siderolabs/nvidia-container-toolkit:535.129.03-v1.14.6
 ```
 
 Push the installer to your registry and upgrade the GPU nodes:
@@ -84,14 +84,14 @@ machine:
                   runtime_type = "io.containerd.runc.v2"
                   [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia.options]
                     BinaryName = "/usr/bin/nvidia-container-runtime"
-      path: /var/cri/conf.d/20-nvidia.toml
+      path: /etc/cri/conf.d/20-customization.part
       op: create
 ```
 
 Apply it:
 
 ```bash
-talosctl apply-config --patch @talos-gpu-config.yaml --nodes <gpu-node-ip>
+talosctl patch machineconfig --patch @talos-gpu-config.yaml --nodes <gpu-node-ip>
 ```
 
 Verify the modules loaded successfully:
@@ -115,7 +115,7 @@ Since we are handling drivers through Talos extensions, we need to disable the d
 ```yaml
 # gpu-operator-values.yaml
 operator:
-  defaultRuntime: containerd
+  runtimeClass: nvidia
 
 # Disable driver installation - handled by Talos extensions
 driver:
@@ -149,10 +149,9 @@ nfd:
 
 # Validator
 validator:
-  driver:
-    env:
-      - name: DISABLE_DEV_CHAR_SYMLINK_CREATION
-        value: "true"
+  env:
+    - name: DISABLE_DEV_CHAR_SYMLINK_CREATION
+      value: "true"
 ```
 
 Install the GPU Operator:
@@ -209,7 +208,7 @@ spec:
 
 ```bash
 kubectl apply -f gpu-validation-pod.yaml
-kubectl wait --for=condition=complete pod/gpu-operator-test --timeout=60s
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/gpu-operator-test --timeout=60s
 kubectl logs gpu-operator-test
 ```
 
