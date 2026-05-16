@@ -140,23 +140,22 @@ spec:
             limits:
               memory: "1Gi"
               cpu: "500m"
-          # Check if Redis is responsive
+          # Check if Redis is responsive. Note: exec probes do not expand $(VAR),
+          # so the password env var is read by a shell wrapper instead.
           livenessProbe:
             exec:
               command:
-                - redis-cli
-                - -a
-                - $(REDIS_PASSWORD)
-                - ping
+                - sh
+                - -c
+                - 'redis-cli -a "$REDIS_PASSWORD" ping'
             initialDelaySeconds: 15
             periodSeconds: 10
           readinessProbe:
             exec:
               command:
-                - redis-cli
-                - -a
-                - $(REDIS_PASSWORD)
-                - ping
+                - sh
+                - -c
+                - 'redis-cli -a "$REDIS_PASSWORD" ping'
             initialDelaySeconds: 5
             periodSeconds: 5
       volumes:
