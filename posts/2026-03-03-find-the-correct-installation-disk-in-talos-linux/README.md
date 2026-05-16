@@ -125,12 +125,12 @@ machine:
     diskSelector:
       serial: S5GYNG0R123456
 
-# Select the smallest available disk
+# Combine multiple criteria (all must match)
 machine:
   install:
     diskSelector:
       size: '>= 50GB'
-      match: smallest
+      type: ssd
 ```
 
 Disk selectors are especially valuable for automated, large-scale deployments where you cannot manually specify the device path for each node.
@@ -162,7 +162,7 @@ After installing Talos and applying the machine configuration, verify that the i
 
 ```bash
 # Check mounted partitions
-talosctl get mounts --nodes 192.168.1.10
+talosctl get mountstatus --nodes 192.168.1.10
 
 # Verify the system disk
 talosctl get systemdisk --nodes 192.168.1.10
@@ -171,7 +171,7 @@ talosctl get systemdisk --nodes 192.168.1.10
 talosctl get disks --nodes 192.168.1.10
 ```
 
-The mounts output will show you which device is used for each Talos partition. Confirm that the partitions are on the disk you intended.
+The mount status output will show you which device is used for each Talos partition. Confirm that the partitions are on the disk you intended.
 
 ## Common Pitfalls
 
