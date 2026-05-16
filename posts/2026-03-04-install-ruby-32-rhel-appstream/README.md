@@ -1,14 +1,14 @@
-# How to Install Ruby 3.2 on RHEL Using AppStream
+# How to Install Ruby 3.3 on RHEL Using AppStream
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ruby, AppStream, Development, Linux
 
-Description: Install Ruby 3.2 on RHEL using the AppStream module system for a supported, easily maintainable Ruby installation.
+Description: Install Ruby 3.3 on RHEL using the AppStream module system for a supported, easily maintainable Ruby installation.
 
 ---
 
-RHEL's AppStream repository provides Ruby through module streams, making it straightforward to install and manage specific versions. This guide covers installing Ruby 3.2 via AppStream.
+RHEL's AppStream repository provides Ruby through module streams, making it straightforward to install and manage specific versions. This guide covers installing Ruby 3.3 via AppStream.
 
 ## Check Available Ruby Streams
 
@@ -17,17 +17,17 @@ RHEL's AppStream repository provides Ruby through module streams, making it stra
 
 sudo dnf module list ruby
 
-# Expected output shows available streams like 3.0, 3.1, 3.2
+# Expected output shows available streams like 3.0 and 3.3
 ```
 
-## Install Ruby 3.2
+## Install Ruby 3.3
 
 ```bash
 # Reset any previously enabled Ruby module
 sudo dnf module reset ruby -y
 
-# Enable the Ruby 3.2 stream
-sudo dnf module enable ruby:3.2 -y
+# Enable the Ruby 3.3 stream
+sudo dnf module enable ruby:3.3 -y
 
 # Install Ruby and development tools
 sudo dnf install -y ruby ruby-devel rubygem-rake rubygem-bundler \
@@ -43,7 +43,7 @@ sudo dnf install -y gcc gcc-c++ make redhat-rpm-config \
 ```bash
 # Check Ruby version
 ruby --version
-# Output: ruby 3.2.x
+# Output: ruby 3.3.x
 
 # Check gem version
 gem --version
@@ -52,7 +52,7 @@ gem --version
 bundle --version
 
 # Launch interactive Ruby
-irb -e 'puts RUBY_VERSION'
+irb
 ```
 
 ## Configure Gem Installation
@@ -62,7 +62,7 @@ irb -e 'puts RUBY_VERSION'
 echo 'gem: --user-install --no-document' > ~/.gemrc
 
 # Add user gem bin to PATH
-echo 'export PATH="$HOME/.local/share/gem/ruby/3.2.0/bin:$PATH"' >> ~/.bashrc
+echo 'export PATH="$HOME/.local/share/gem/ruby/3.3.0/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
@@ -106,10 +106,8 @@ bundle exec ruby -e 'require "sinatra"; puts Sinatra::VERSION'
 ## Switch Between Ruby Versions
 
 ```bash
-# To switch to a different version, reset and enable the new stream
-sudo dnf module reset ruby -y
-sudo dnf module enable ruby:3.1 -y
-sudo dnf distro-sync -y
+# To upgrade from an earlier Ruby module stream, switch to the new stream
+sudo dnf module switch-to ruby:3.3 -y
 
 ruby --version
 ```
