@@ -31,6 +31,11 @@ Create service accounts for your workloads that need specific API access:
 
 ```yaml
 # service-account.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+---
 # Service account for a monitoring application
 apiVersion: v1
 kind: ServiceAccount
@@ -182,7 +187,7 @@ cluster:
 Apply to control plane nodes:
 
 ```bash
-talosctl apply-config --nodes 192.168.1.10,192.168.1.11,192.168.1.12 \
+talosctl patch machineconfig --nodes 192.168.1.10,192.168.1.11,192.168.1.12 \
   --patch @sa-token-config.yaml
 ```
 
@@ -288,7 +293,7 @@ Regularly review which service accounts have powerful permissions:
 kubectl get clusterrolebindings -o json | \
   jq '.items[] | select(.roleRef.name == "cluster-admin") | .subjects[]'
 
-# Find all service accounts with write access
+# List permissions for a specific service account
 kubectl auth can-i --list --as=system:serviceaccount:default:my-sa
 
 # Check what a specific service account can do
@@ -320,7 +325,7 @@ kubectl run test-sa --image=bitnami/kubectl --rm -it \
 On Talos Linux, the service account signing key is part of the cluster secrets managed by Talos. If you need to rotate it:
 
 ```bash
-# View current cluster secrets (be careful with this output)
+# View the rendered secrets status
 talosctl -n 192.168.1.10 get secretstatus
 ```
 
