@@ -257,7 +257,7 @@ On a running cluster, cluster network settings must be applied to all control pl
 ```bash
 # Apply to all control plane nodes
 for node in 10.0.1.10 10.0.1.11 10.0.1.12; do
-    talosctl apply-config --nodes "$node" --patch @cluster-network-patch.yaml
+    talosctl patch machineconfig --nodes "$node" --patch @cluster-network-patch.yaml
 done
 ```
 
@@ -369,7 +369,7 @@ After applying network patches, verify the settings:
 
 ```bash
 # Check the cluster configuration
-talosctl get machineconfig --nodes 10.0.1.10 -o yaml | yq '.cluster.network'
+talosctl get machineconfig --nodes 10.0.1.10 -o yaml | yq '.spec.cluster.network'
 
 # Verify pod subnet allocation is working
 kubectl get pods -A -o wide | head -20
