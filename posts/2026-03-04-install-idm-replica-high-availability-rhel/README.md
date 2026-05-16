@@ -19,7 +19,7 @@ Ensure the first IdM server is installed and running, and the replica host is en
 
 sudo hostnamectl set-hostname idm2.example.com
 
-# Install IdM client packages first
+# Install IdM server packages (a replica is a full IdM server)
 sudo dnf module enable idm:DL1 -y
 sudo dnf install -y ipa-server ipa-server-dns
 
@@ -36,10 +36,10 @@ sudo ipa-client-install \
 ## Installing the Replica
 
 ```bash
-# On the first IdM server, get a Kerberos ticket
+# On the replica host, get a Kerberos ticket
 kinit admin
 
-# Install the replica with CA and DNS
+# Install the replica with CA and DNS (run on the replica host)
 sudo ipa-replica-install \
   --setup-dns \
   --forwarder=8.8.8.8 \
@@ -66,8 +66,8 @@ sudo firewall-cmd --reload
 ```bash
 # Check replication topology
 kinit admin
-ipa topologysegment-find suffix-name=domain
-ipa topologysegment-find suffix-name=ca
+ipa topologysegment-find domain
+ipa topologysegment-find ca
 
 # Check replication status from either server
 ipa-replica-manage list
