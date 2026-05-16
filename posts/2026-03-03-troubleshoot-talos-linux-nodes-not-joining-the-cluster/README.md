@@ -46,27 +46,29 @@ Make sure you are using the correct configuration file. A common mistake is acci
 The worker node needs to reach the control plane endpoint. This is defined in the machine configuration under `cluster.controlPlane.endpoint`. Test connectivity from the worker:
 
 ```bash
-# Check if the worker can reach the control plane endpoint
+# Check the addresses assigned on the worker
 talosctl -n <worker-ip> get addresses
 
-# Verify the node has a valid IP address
+# Verify the node's network links are up
 talosctl -n <worker-ip> get links
 ```
 
-If the node does not have an IP address, there may be a DHCP issue or a static IP misconfiguration. Check the network section of your machine config:
+If the node does not have an IP address, there may be a DHCP issue or a static IP misconfiguration. Check the network configuration in your machine config:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        dhcp: true
-        # Or use a static address:
-        # addresses:
-        #   - 192.168.1.100/24
-        # routes:
-        #   - network: 0.0.0.0/0
-        #     gateway: 192.168.1.1
+# DHCP example:
+apiVersion: v1alpha1
+kind: DHCPv4Config
+name: eth0
+---
+# Static address example:
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.100/24
+routes:
+  - gateway: 192.168.1.1
 ```
 
 ## Step 3: Check the Control Plane Endpoint
@@ -86,7 +88,7 @@ Talos runs several services that are responsible for bootstrapping the node. Che
 
 ```bash
 # List all services running on the node
-talosctl -n <worker-ip> services
+talosctl -n <worker-ip> service
 
 # Check the kubelet service specifically
 talosctl -n <worker-ip> service kubelet
@@ -116,6 +118,7 @@ talosctl apply-config --insecure -n <worker-ip> --file worker.yaml
 ```
 
 Make sure the `cluster.secret` and `cluster.ca` values match between your control plane and worker configurations.
+Also verify that the `machine.token` and `machine.ca` values are from the same generated configuration set.
 
 ## Step 6: Check etcd Membership
 
@@ -181,13 +184,13 @@ If none of the above steps reveal the issue, a clean reset can sometimes help, e
 
 ```bash
 # Reset the node to a clean state
-talosctl -n <worker-ip> reset --graceful=false
+talosctl -n <worker-ip> reset --graceful=false --reboot
 
 # Wait for the node to reboot, then re-apply configuration
 talosctl apply-config --insecure -n <worker-ip> --file worker.yaml
 ```
 
-Be aware that a reset will wipe the node's ephemeral partition, so any data on the node will be lost.
+Be aware that a reset wipes node data according to the selected wipe mode, and the default reset mode wipes all disks.
 
 ## Putting It Together
 
