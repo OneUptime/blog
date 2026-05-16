@@ -105,10 +105,10 @@ cert-manager automates certificate issuance and renewal in Kubernetes.
 
 ```bash
 # Install cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Wait for cert-manager to be ready
-kubectl wait --for=condition=available deployment/cert-manager -n cert-manager --timeout=120s
+kubectl wait --for=condition=available deployment --all -n cert-manager --timeout=120s
 ```
 
 Create an internal CA for mTLS:
@@ -216,6 +216,7 @@ spec:
 ```
 
 ```bash
+kubectl create namespace production --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f mtls-server-cert.yaml
 ```
 
@@ -273,12 +274,14 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1000
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: nginx
-          image: nginx:1.27
+          image: nginxinc/nginx-unprivileged:1.27
           ports:
             - containerPort: 8443
           securityContext:
@@ -298,6 +301,20 @@ spec:
         - name: nginx-config
           configMap:
             name: nginx-mtls-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mtls-server
+  namespace: production
+spec:
+  selector:
+    app: mtls-server
+  ports:
+    - name: https
+      port: 8443
+      targetPort: 8443
 ```
 
 ### Testing mTLS
@@ -319,7 +336,8 @@ kubectl get secret api-client-mtls-tls -n production -o jsonpath='{.data.ca\.crt
   base64 -d > ca.crt
 
 curl --cert client.crt --key client.key --cacert ca.crt \
-  https://localhost:8443/
+  --resolve api-server.production.svc.cluster.local:8443:127.0.0.1 \
+  https://api-server.production.svc.cluster.local:8443/
 # Expected: "mTLS authenticated: api-client"
 ```
 
@@ -360,7 +378,7 @@ kubectl label namespace production istio-injection=enabled
 
 # Configure strict mTLS for the namespace
 kubectl apply -f - <<EOF
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -415,7 +433,8 @@ openssl x509 -in client.crt -text -noout | grep -A2 "Key Usage"
 openssl x509 -in client.crt -noout -dates
 
 # If expired, generate new certificates
-# Talos auto-renews leaf certificates, but check if the CA is still valid
+# Talos auto-renews server-side certificates, but talosconfig and kubeconfig
+# client certificates are the user's responsibility. Check if the CA is still valid.
 ```
 
 ### Connection Refused
