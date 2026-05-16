@@ -14,9 +14,9 @@ This guide covers the most important kernel parameters you should consider tunin
 
 ## How Kernel Parameters Work in Talos Linux
 
-Talos Linux provides two mechanisms for setting kernel parameters. The first is through sysctl values in the machine configuration, which correspond to runtime-tunable parameters under `/proc/sys/`. The second is through extra kernel arguments, which are passed at boot time through the kernel command line.
+Talos Linux provides two mechanisms for setting kernel parameters. The first is through sysctl values in the machine configuration, which correspond to runtime-tunable parameters under `/proc/sys/`. The second is through extra kernel arguments, which are passed at boot time through the kernel command line. On initial ISO or PXE installs, Talos supports `.machine.install.extraKernelArgs`; after installation, those changes require an upgrade cycle to rewrite boot assets, and on systemd-boot/UKI installations the kernel command line is embedded in the boot image.
 
-The key distinction matters. Sysctl parameters can be changed without rebooting the node. Kernel command line arguments require a reboot to take effect. Understanding which parameters fall into which category saves you from unnecessary downtime.
+The key distinction matters. Sysctl parameters can be changed without rebooting the node. Kernel command line arguments require the node to boot from updated boot assets, usually through the initial install path or a Talos upgrade, before they take effect. Understanding which parameters fall into which category saves you from unnecessary downtime.
 
 ```yaml
 # talos-machine-config.yaml - Two ways to set kernel parameters
@@ -27,7 +27,7 @@ machine:
     net.core.somaxconn: "65535"
     vm.swappiness: "10"
 
-  # Boot-time kernel arguments (reboot required)
+  # Boot-time kernel arguments (install/upgrade required)
   install:
     extraKernelArgs:
       - mitigations=off
@@ -138,7 +138,7 @@ The scheduler granularity parameters control how aggressively the kernel preempt
 
 ## Boot-Time Kernel Arguments
 
-Some parameters can only be set at boot time. These are passed through the kernel command line and require a node reboot to take effect.
+Some parameters can only be set at boot time. These are passed through the kernel command line and require the node to boot from updated boot assets. On initial ISO or PXE installs you can provide them with `.machine.install.extraKernelArgs`; after installation, Talos applies these changes through an upgrade cycle. On systemd-boot/UKI installations, the kernel command line is embedded in the boot image, so use Image Factory or another custom image workflow when you need persistent custom kernel arguments.
 
 ```yaml
 # Boot-time kernel arguments
@@ -177,14 +177,14 @@ talosctl apply-config --nodes 10.0.0.1 --file talos-machine-config.yaml
 # Check if a reboot is needed
 talosctl get machinestatus --nodes 10.0.0.1
 
-# If reboot is required (for kernel args changes)
-talosctl reboot --nodes 10.0.0.1
+# If kernel args changed after installation, perform a Talos upgrade
+# so the boot assets are rewritten, then reboot if needed.
 
 # Verify sysctl values after applying
 talosctl read /proc/sys/net/core/somaxconn --nodes 10.0.0.1
 ```
 
-For sysctl changes, the new values take effect as soon as the config is applied. For kernel command line arguments, you need to reboot the node.
+For sysctl changes, the new values take effect as soon as the config is applied. For kernel command line arguments, the node must boot from updated boot assets, which normally means setting them during initial install or applying them through a Talos upgrade.
 
 ## Verifying Your Changes
 
@@ -198,13 +198,13 @@ talosctl read /proc/sys/net/core/somaxconn --nodes 10.0.0.1
 # Check kernel command line
 talosctl read /proc/cmdline --nodes 10.0.0.1
 
-# Check all current sysctl values
-talosctl read /proc/sys/vm/ --nodes 10.0.0.1
+# List sysctl files in a namespace, then read the values you need
+talosctl ls /proc/sys/vm/ --nodes 10.0.0.1
 ```
 
 ## Common Pitfalls
 
-One mistake people make is setting values that conflict with each other. For example, setting `vm.overcommit_memory` to `2` (strict accounting) while also running Kubernetes pods with requests lower than limits will cause scheduling failures.
+One mistake people make is setting values that conflict with each other. For example, setting `vm.overcommit_memory` to `2` (strict accounting) while running workloads that assume Linux's default heuristic overcommit behavior can cause memory allocations inside containers to fail even when Kubernetes has scheduled the pods successfully.
 
 Another common issue is forgetting that some parameters are per-namespace in newer kernels. Network namespace settings like `net.ipv4.ip_local_port_range` may need to be set both at the node level and within pod security contexts.
 
