@@ -143,7 +143,7 @@ machine:
           runtime_type = "io.containerd.runc.v2"
         [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
           SystemdCgroup = true
-      path: /etc/containerd/conf.d/performance.toml
+      path: /etc/cri/conf.d/20-customization.part
       op: create
       permissions: 0644
 ```
@@ -159,7 +159,6 @@ machine:
     extraArgs:
       serialize-image-pulls: "false"
       max-parallel-image-pulls: "5"
-      image-pull-progress-deadline: "5m"
       registry-burst: "20"
       registry-qps: "10"
 ```
