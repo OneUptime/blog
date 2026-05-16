@@ -8,13 +8,13 @@ Description: Learn how to build self-managed Kubernetes clusters on GCP with Tal
 
 ---
 
-Google Kubernetes Engine is the managed Kubernetes offering on GCP, but there are legitimate reasons to run your own clusters: cost control, specific kernel requirements, regulatory constraints, or simply wanting more control over the Kubernetes version and configuration. Talos Linux lets you build self-managed clusters on GCP that closely replicate the GKE experience, including VPC-native networking, Cloud Load Balancing, and Persistent Disk integration. This guide shows you how.
+Google Kubernetes Engine is the managed Kubernetes offering on GCP, but there are legitimate reasons to run your own clusters: cost control, specific kernel requirements, regulatory constraints, or simply wanting more control over the Kubernetes version and configuration. Talos Linux lets you build self-managed clusters on GCP that closely replicate the GKE experience, including VPC-routable networking, Cloud Load Balancing, and Persistent Disk integration. This guide shows you how.
 
 ## What Makes a Cluster GKE-Compatible
 
 When we say GKE-compatible, we mean a cluster that behaves like a GKE cluster from the perspective of other GCP services. Specifically:
 
-- Pods get IP addresses from the VPC (VPC-native networking)
+- Pods use VPC-routable IP ranges, or alias IP ranges when your CNI and node provisioning support them
 - Services of type LoadBalancer create Google Cloud Load Balancers
 - Persistent volumes use GCP Persistent Disks
 - Nodes have proper GCP metadata labels
@@ -40,7 +40,7 @@ gcloud compute networks subnets create talos-subnet \
   --secondary-range pods=10.1.0.0/16,services=10.2.0.0/20
 ```
 
-The secondary ranges (`pods` and `services`) are used by the VPC-native CNI to allocate IP addresses. The pod range needs to be large enough for all your pods, and the service range for all your Kubernetes services.
+The secondary ranges (`pods` and `services`) are used by alias IP capable networking setups to allocate IP addresses. The pod range needs to be large enough for all your pods, and the service range for all your Kubernetes services.
 
 ## Firewall Rules
 
@@ -89,7 +89,7 @@ talosctl gen config gke-compat-cluster https://<lb-ip>:6443 \
   ]'
 ```
 
-Setting the CNI to `none` means you will install the VPC-native CNI separately. The pod and service subnet values should match the secondary ranges you created.
+Setting the CNI to `none` means you will install the CNI separately. The pod and service subnet values should match the ranges you want Kubernetes and the CNI to use.
 
 ## Launching Instances
 
@@ -111,7 +111,7 @@ for zone in us-central1-a us-central1-b us-central1-c; do
     --machine-type=e2-standard-4 \
     --image=talos-v1-7-0 \
     --image-project=my-project \
-    --subnet=talos-subnet \
+    --network-interface="subnet=talos-subnet,aliases=pods:/24" \
     --service-account=talos-nodes@my-project.iam.gserviceaccount.com \
     --scopes=cloud-platform \
     --metadata-from-file=user-data=controlplane.yaml \
@@ -122,19 +122,31 @@ done
 
 The `--can-ip-forward` flag is required for nodes to route pod traffic. Without it, GCP will drop packets with source addresses outside the node's primary IP range.
 
-## Installing VPC-Native CNI
+## Installing VPC-Routable CNI
 
-For GKE compatibility, use the GCP VPC CNI or configure Calico with IP-in-IP disabled to use native GCP routing:
+For GKE-style VPC routing, use an alias IP capable CNI, or configure Calico with IP-in-IP disabled to use native GCP routing:
 
 ```bash
 # Option 1: Install Calico with native routing for GCP
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/master/manifests/calico.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 
-# Then patch Calico to use native routing
-kubectl patch installation default --type=merge -p '{"spec":{"calicoNetwork":{"ipPools":[{"cidr":"10.1.0.0/16","encapsulation":"None","natOutgoing":true}]}}}'
+# Then create an Installation resource that uses native routing
+kubectl apply -f - <<EOF
+apiVersion: operator.tigera.io/v1
+kind: Installation
+metadata:
+  name: default
+spec:
+  calicoNetwork:
+    ipPools:
+      - cidr: 10.1.0.0/16
+        encapsulation: None
+        natOutgoing: Enabled
+EOF
 ```
 
-With `encapsulation: None`, Calico uses direct routing. Combined with the `--can-ip-forward` flag and GCP routes, pods get VPC-routable IP addresses.
+With `encapsulation: None`, Calico uses direct routing. Combined with the `--can-ip-forward` flag and GCP routes, pods get VPC-routable IP addresses. This is route-based native routing; exact GKE VPC-native behavior requires assigning pod CIDRs from alias IP ranges to nodes and using a CNI that consumes those ranges.
 
 ## Cloud Controller Manager
 
@@ -183,6 +195,7 @@ To replicate GKE Workload Identity, set up an OIDC provider for your cluster and
 ```bash
 # Extract the OIDC issuer from the cluster
 kubectl get --raw /.well-known/openid-configuration | jq -r .issuer
+kubectl get --raw /openid/v1/jwks > cluster-jwks.json
 
 # Create a Workload Identity Pool
 gcloud iam workload-identity-pools create talos-pool \
@@ -193,8 +206,9 @@ gcloud iam workload-identity-pools create talos-pool \
 gcloud iam workload-identity-pools providers create-oidc talos-provider \
   --workload-identity-pool=talos-pool \
   --location="global" \
-  --issuer-uri="https://<your-oidc-issuer>" \
-  --attribute-mapping="google.subject=assertion.sub"
+  --issuer-uri="<your-oidc-issuer>" \
+  --attribute-mapping="google.subject=assertion.sub" \
+  --jwk-json-path="cluster-jwks.json"
 ```
 
 ## Testing the Setup
@@ -232,4 +246,4 @@ Your self-managed cluster will differ from GKE in some areas. GKE manages the co
 
 ## Conclusion
 
-Building a GKE-compatible cluster with Talos Linux on GCP gives you the integration benefits of GKE with full control over your infrastructure. VPC-native networking, Cloud Load Balancing, and Persistent Disk storage all work through their respective cloud-native drivers. The main investment is in the initial setup of the cloud provider, CNI, and CSI components. Once those are in place, your cluster interacts with GCP services the same way a GKE cluster would.
+Building a GKE-compatible cluster with Talos Linux on GCP gives you many of the integration benefits of GKE with full control over your infrastructure. VPC-routable networking, Cloud Load Balancing, and Persistent Disk storage all work through their respective cloud-native drivers. The main investment is in the initial setup of the cloud provider, CNI, and CSI components. Once those are in place, your cluster interacts with GCP services much like a GKE cluster would.
