@@ -21,11 +21,11 @@ Traffic shaping operates on outgoing traffic (egress) using queuing disciplines 
 - **fq_codel (Fair Queuing Controlled Delay)**: Low-latency queuing with good default behavior
 - **ingress**: Policing incoming traffic (drop excess, cannot queue)
 
-Traffic shaping can only delay or drop outgoing packets. For incoming traffic, you can only police (drop excess packets) because you cannot control the sender's rate.
+Traffic shaping is most straightforward for outgoing packets. A plain ingress qdisc can only police (drop excess packets), but ingress traffic can still be shaped by redirecting packets through an IFB device or by using a CNI/eBPF implementation that provides ingress bandwidth enforcement.
 
 ## Kubernetes-Native Bandwidth Management
 
-The simplest approach is using Kubernetes bandwidth annotations, which are supported by most CNI plugins:
+The simplest approach is using Kubernetes bandwidth annotations, when your CNI configuration supports them:
 
 ```yaml
 apiVersion: v1
@@ -43,7 +43,7 @@ spec:
       image: myapp:latest
 ```
 
-These annotations work with the bandwidth CNI plugin, which is often included with Flannel and other CNI solutions. The plugin creates tc (traffic control) rules on the pod's virtual ethernet interface.
+These annotations work with the bandwidth CNI plugin, or with CNI implementations such as Cilium and Calico that honor the Kubernetes bandwidth annotations. With the upstream bandwidth CNI plugin, you must add the `bandwidth` plugin to the CNI configuration and ensure the binary exists in the CNI bin directory. The plugin configures tc (traffic control) TBF rules on pod interfaces, using IFB devices for ingress shaping.
 
 ### Verifying Bandwidth Limits
 
@@ -53,9 +53,9 @@ These annotations work with the bandwidth CNI plugin, which is often included wi
 kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
   tc qdisc show
 
-# Look for tc rules on pod interfaces
+# Look for qdiscs such as tbf and IFB devices used for pod bandwidth limits
 kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
-  tc -s class show dev eth0
+  tc -s qdisc show
 ```
 
 ## Node-Level Traffic Shaping
@@ -169,7 +169,7 @@ spec:
 
 ### Ingress Policing
 
-To limit incoming traffic (you can only police, not shape incoming traffic):
+To limit incoming traffic with a plain ingress qdisc (policing drops packets above the configured rate):
 
 ```bash
 # Add an ingress qdisc
@@ -209,7 +209,7 @@ spec:
       image: myapp:latest
 ```
 
-Cilium's bandwidth manager uses EDT (Earliest Departure Time) scheduling, which provides more accurate rate limiting with lower CPU overhead than traditional tc-based approaches.
+Cilium's bandwidth manager enforces egress bandwidth with EDT (Earliest Departure Time) scheduling on native host devices and enforces ingress bandwidth with an eBPF token bucket implementation, which provides efficient per-pod rate limiting without the upstream bandwidth CNI plugin.
 
 ## Quality of Service with DSCP Marking
 
@@ -313,7 +313,7 @@ Consider simplifying the tc configuration or using hardware offload if available
 
 ### Rules Lost After Pod Restart
 
-Since the DaemonSet init container creates the rules, they will be recreated if the pod restarts. However, if the DaemonSet pod is not running, the rules will be missing. Ensure the DaemonSet has appropriate tolerations and priority:
+Since the DaemonSet init container creates the rules, they will be recreated when the DaemonSet pod is recreated after a node reboot or deletion. If only the long-running monitor container restarts, init containers do not run again, and if the DaemonSet cannot be scheduled after a node reboot, the rules will be missing. Ensure the DaemonSet has appropriate tolerations and priority:
 
 ```yaml
 spec:
