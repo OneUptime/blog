@@ -46,14 +46,14 @@ oci os bucket create \
   --name talos-images
 
 # Download the Talos Oracle Cloud image
-curl -LO https://github.com/siderolabs/talos/releases/download/v1.7.0/oracle-amd64.raw.xz
-xz -d oracle-amd64.raw.xz
+curl -LO https://github.com/siderolabs/talos/releases/download/v1.7.0/oracle-amd64.qcow2.xz
+xz -d oracle-amd64.qcow2.xz
 
 # Upload to Object Storage
 oci os object put \
   --bucket-name talos-images \
-  --name talos-v1.7.0.raw \
-  --file oracle-amd64.raw
+  --name talos-v1.7.0.qcow2 \
+  --file oracle-amd64.qcow2
 
 # Get the namespace
 NAMESPACE=$(oci os ns get --query 'data' --raw-output)
@@ -66,7 +66,7 @@ IMAGE_ID=$(oci compute image import from-object \
   --source-image-type QCOW2 \
   --namespace ${NAMESPACE} \
   --bucket-name talos-images \
-  --name talos-v1.7.0.raw \
+  --name talos-v1.7.0.qcow2 \
   --query 'data.id' --raw-output)
 
 echo "Image ID: ${IMAGE_ID}"
