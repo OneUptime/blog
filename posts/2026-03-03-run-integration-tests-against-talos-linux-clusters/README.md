@@ -67,6 +67,8 @@ package integration
 
 import (
     "context"
+    "log"
+    "os"
     "testing"
     "time"
 
@@ -295,7 +297,7 @@ fi
 echo "Rolling update completed with zero downtime"
 ```
 
-Resource Limit Tests
+### Resource Limit Tests
 
 Verify that pods respect their resource limits:
 
@@ -340,11 +342,11 @@ kubectl get events --sort-by='.lastTimestamp' --all-namespaces > "$ARTIFACT_DIR/
 kubectl describe nodes > "$ARTIFACT_DIR/node-details.txt"
 
 # Collect pod logs
-for pod in $(kubectl get pods -o name --all-namespaces); do
-  ns=$(echo "$pod" | cut -d/ -f1)
-  name=$(echo "$pod" | cut -d/ -f2)
-  kubectl logs "$name" -n "$ns" --all-containers > "$ARTIFACT_DIR/${ns}-${name}.log" 2>&1 || true
-done
+kubectl get pods --all-namespaces \
+  -o jsonpath='{range .items[*]}{.metadata.namespace} {.metadata.name}{"\n"}{end}' \
+  | while read -r ns name; do
+      kubectl logs "$name" -n "$ns" --all-containers > "$ARTIFACT_DIR/${ns}-${name}.log" 2>&1 || true
+    done
 
 # Collect Talos diagnostics
 talosctl -n 10.5.0.2 dmesg > "$ARTIFACT_DIR/talos-dmesg.txt" 2>&1 || true
