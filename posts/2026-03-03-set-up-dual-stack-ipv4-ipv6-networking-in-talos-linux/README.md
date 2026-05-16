@@ -14,7 +14,7 @@ In this guide, we will set up dual-stack networking on Talos Linux from scratch,
 
 ## What is Dual-Stack Networking?
 
-Dual-stack means every network interface, every pod, and every Kubernetes service gets both an IPv4 address and an IPv6 address. Traffic is routed over whichever protocol the client prefers or the destination requires. This is different from running IPv6-only or IPv4-only, where you are limited to a single protocol.
+Dual-stack means your nodes, pods, and Kubernetes services can use both IPv4 and IPv6 addresses. Traffic is routed over whichever protocol the client prefers or the destination requires. This is different from running IPv6-only or IPv4-only, where you are limited to a single protocol.
 
 In a Kubernetes context, dual-stack means:
 
@@ -88,10 +88,10 @@ cluster:
       - 10.96.0.0/12                 # IPv4 service CIDR
       - fd00:10:96::/112             # IPv6 service CIDR
     cni:
-      name: custom                   # Use custom CNI for dual-stack
+      name: none                     # Install a dual-stack CNI manually
 ```
 
-The order of the CIDRs matters. The first entry is the primary protocol. If you list IPv4 first, pods will prefer IPv4. If you list IPv6 first, pods will prefer IPv6.
+The order of the service CIDRs matters. The first service subnet is the primary service IP family. If you list IPv4 first, services default to IPv4 as their primary ClusterIP family. If you list IPv6 first, services default to IPv6 as their primary ClusterIP family.
 
 ## Step 3: Disable the Default CNI
 
@@ -112,7 +112,7 @@ cluster:
 Cilium has excellent dual-stack support. Install it with the appropriate settings:
 
 ```bash
-# Install Cilium CLI
+# Add the Cilium Helm repository
 helm repo add cilium https://helm.cilium.io/
 helm repo update
 
@@ -122,10 +122,13 @@ helm install cilium cilium/cilium \
   --set ipv4.enabled=true \
   --set ipv6.enabled=true \
   --set ipam.mode=kubernetes \
-  --set ipam.operator.clusterPoolIPv4PodCIDRList="10.244.0.0/16" \
-  --set ipam.operator.clusterPoolIPv4MaskSize=24 \
-  --set ipam.operator.clusterPoolIPv6PodCIDRList="fd00:10:244::/48" \
-  --set ipam.operator.clusterPoolIPv6MaskSize=120
+  --set k8s.requireIPv4PodCIDR=true \
+  --set k8s.requireIPv6PodCIDR=true \
+  --set kubeProxyReplacement=false \
+  --set securityContext.capabilities.ciliumAgent="{CHOWN,KILL,NET_ADMIN,NET_RAW,IPC_LOCK,SYS_ADMIN,SYS_RESOURCE,DAC_OVERRIDE,FOWNER,SETGID,SETUID}" \
+  --set securityContext.capabilities.cleanCiliumState="{NET_ADMIN,SYS_ADMIN,SYS_RESOURCE}" \
+  --set cgroup.autoMount.enabled=false \
+  --set cgroup.hostRoot=/sys/fs/cgroup
 ```
 
 ### Option B: Calico with Dual-Stack
@@ -134,7 +137,8 @@ Calico also supports dual-stack well:
 
 ```bash
 # Install Calico operator
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 
 # Create dual-stack installation config
 cat <<'EOF' | kubectl apply -f -
@@ -147,8 +151,10 @@ spec:
     ipPools:
       - cidr: 10.244.0.0/16
         encapsulation: VXLAN
+        natOutgoing: Enabled
       - cidr: fd00:10:244::/48
         encapsulation: VXLAN
+        natOutgoing: Enabled
 EOF
 ```
 
