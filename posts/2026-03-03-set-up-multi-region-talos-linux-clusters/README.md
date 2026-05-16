@@ -23,7 +23,7 @@ Cons: etcd is extremely sensitive to inter-region latency. Not recommended for r
 
 ### Pattern 2: Federated Clusters (Recommended)
 
-Separate Kubernetes clusters in each region, managed together through federation tools like Liqo, Admiralty, or KubeFed.
+Separate Kubernetes clusters in each region, managed together through federation tools like Liqo or Admiralty, or Kubernetes SIG Multicluster APIs such as the Multicluster Services API.
 
 Pros: Each cluster is independently stable, no cross-region etcd dependency
 Cons: More complex application deployment, need cross-cluster service discovery
@@ -49,15 +49,17 @@ talosctl gen secrets -o secrets-eu-west.yaml
 
 # Generate configs for US East cluster
 talosctl gen config us-east-cluster https://api.us-east.example.com:6443 \
-    --from-secrets secrets-us-east.yaml \
+    --with-secrets secrets-us-east.yaml \
     --config-patch @patches/common.yaml \
-    --config-patch @patches/us-east.yaml
+    --config-patch @patches/us-east.yaml \
+    -o configs/us-east/
 
 # Generate configs for EU West cluster
 talosctl gen config eu-west-cluster https://api.eu-west.example.com:6443 \
-    --from-secrets secrets-eu-west.yaml \
+    --with-secrets secrets-eu-west.yaml \
     --config-patch @patches/common.yaml \
-    --config-patch @patches/eu-west.yaml
+    --config-patch @patches/eu-west.yaml \
+    -o configs/eu-west/
 ```
 
 Region-specific patches set the appropriate network configuration and labels:
@@ -120,7 +122,7 @@ For clusters to communicate across regions, you need network connectivity betwee
 
 Set up VPN tunnels between regions using WireGuard or IPsec:
 
-```yaml
+```ini
 # WireGuard configuration on a gateway node in US East
 # This would be on a dedicated gateway machine, not on Talos nodes
 [Interface]
@@ -174,16 +176,16 @@ When managing multiple Talos clusters, use named contexts in your talosctl confi
 
 ```bash
 # Merge the US East config
-talosctl config merge talosconfig-us-east --rename us-east
+talosctl config merge configs/us-east/talosconfig
 
 # Merge the EU West config
-talosctl config merge talosconfig-eu-west --rename eu-west
+talosctl config merge configs/eu-west/talosconfig
 
 # Switch between clusters
-talosctl config context us-east
+talosctl config context us-east-cluster
 talosctl version
 
-talosctl config context eu-west
+talosctl config context eu-west-cluster
 talosctl version
 ```
 
@@ -191,8 +193,8 @@ Or specify the context inline:
 
 ```bash
 # Check both clusters without switching context
-talosctl --context us-east version
-talosctl --context eu-west version
+talosctl --context us-east-cluster version
+talosctl --context eu-west-cluster version
 ```
 
 ## Consistent Configuration Across Regions
@@ -231,7 +233,7 @@ $(REGIONS):
 	@echo "Generating configs for $@"
 	sops --decrypt secrets/$@.enc.yaml > /tmp/secrets-$@.yaml
 	talosctl gen config $@-cluster https://api.$@.example.com:6443 \
-		--from-secrets /tmp/secrets-$@.yaml \
+		--with-secrets /tmp/secrets-$@.yaml \
 		--config-patch @patches/common/kubelet.yaml \
 		--config-patch @patches/common/ntp.yaml \
 		--config-patch @patches/regions/$@/network.yaml \
@@ -347,8 +349,8 @@ Right-size each regional cluster independently. Not every region needs the same 
 Regularly test your multi-region setup:
 
 ```bash
-# Test 1: Verify cross-region connectivity
-kubectl --context us-east exec -it test-pod -- curl http://service.eu-west.svc.cluster.local
+# Test 1: Verify cross-cluster service discovery when using the Multicluster Services API
+kubectl --context us-east exec -it test-pod -- curl http://service.default.svc.clusterset.local
 
 # Test 2: Simulate region failure
 # Disable the US East cluster's load balancer and verify traffic shifts
