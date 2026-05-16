@@ -14,14 +14,24 @@ This post covers how to implement network policies per namespace on a Talos Linu
 
 ## Prerequisites: A CNI That Supports Network Policies
 
-Kubernetes network policies are defined through the API, but the CNI plugin is responsible for enforcing them. On Talos Linux, Cilium is the most popular CNI with full network policy support.
+Kubernetes network policies are defined through the API, but the CNI plugin is responsible for enforcing them. On Talos Linux, Cilium is a common CNI with full network policy support.
 
 ```bash
-# Install Cilium on your Talos cluster
+# Install Cilium on your Talos cluster after configuring Talos with
+# cluster.network.cni.name: none and cluster.proxy.disabled: true
 
 helm repo add cilium https://helm.cilium.io/
-helm install cilium cilium/cilium \
+helm install cilium cilium/cilium --version 1.19.3 \
   --namespace kube-system \
+  --set ipam.mode=kubernetes \
+  --set kubeProxyReplacement=true \
+  --set bpf.hostLegacyRouting=true \
+  --set securityContext.capabilities.ciliumAgent="{CHOWN,KILL,NET_ADMIN,NET_RAW,IPC_LOCK,SYS_ADMIN,SYS_RESOURCE,DAC_OVERRIDE,FOWNER,SETGID,SETUID}" \
+  --set securityContext.capabilities.cleanCiliumState="{NET_ADMIN,SYS_ADMIN,SYS_RESOURCE}" \
+  --set cgroup.autoMount.enabled=false \
+  --set cgroup.hostRoot=/sys/fs/cgroup \
+  --set k8sServiceHost=localhost \
+  --set k8sServicePort=7445 \
   --set policyEnforcementMode=default
 ```
 
@@ -38,7 +48,6 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny-all
-  namespace: team-backend
 spec:
   podSelector: {}
   policyTypes:
@@ -67,7 +76,6 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-dns
-  namespace: team-backend
 spec:
   podSelector: {}
   policyTypes:
@@ -98,7 +106,6 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-intra-namespace
-  namespace: team-backend
 spec:
   podSelector: {}
   policyTypes:
@@ -124,7 +131,6 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-from-ingress
-  namespace: team-backend
 spec:
   podSelector:
     matchLabels:
@@ -257,11 +263,11 @@ helm upgrade cilium cilium/cilium \
   --set hubble.ui.enabled=true \
   --reuse-values
 
-# View traffic flows for a namespace
-kubectl -n kube-system exec ds/cilium -- hubble observe --namespace team-backend
+# View traffic flows for a namespace with the Hubble CLI
+hubble observe -P --namespace team-backend
 
 # Check for dropped traffic (policy violations)
-kubectl -n kube-system exec ds/cilium -- hubble observe \
+hubble observe -P \
   --namespace team-backend \
   --verdict DROPPED
 ```
