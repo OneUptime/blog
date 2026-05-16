@@ -16,7 +16,7 @@ Thanos is a set of components that work alongside Prometheus to solve three prob
 
 1. **Long-term storage**: Thanos ships Prometheus blocks to object storage where they can live indefinitely at low cost.
 2. **Global query view**: If you have multiple Prometheus instances, Thanos lets you query all of them from a single endpoint.
-3. **Downsampling**: For older data, Thanos can reduce resolution to save storage while keeping the ability to query historical trends.
+3. **Downsampling**: For older data, Thanos can create lower-resolution blocks to make long-range queries faster while keeping the ability to query historical trends.
 
 ## Architecture Overview
 
@@ -131,7 +131,8 @@ Verify the sidecar is running:
 kubectl get pods -n monitoring -l app.kubernetes.io/name=prometheus
 
 # Check the sidecar logs
-kubectl logs -n monitoring prometheus-prometheus-stack-kube-prometheus-prometheus-0 -c thanos-sidecar
+POD=$(kubectl get pods -n monitoring -l app.kubernetes.io/name=prometheus -o jsonpath='{.items[0].metadata.name}')
+kubectl logs -n monitoring "$POD" -c thanos-sidecar
 ```
 
 ## Step 3: Deploy Thanos Components
@@ -154,10 +155,13 @@ existingObjstoreSecret: thanos-objstore-config
 query:
   enabled: true
   replicaCount: 2
-  # Connect to the Prometheus sidecar
-  stores:
-    - "dnssrv+_grpc._tcp.prometheus-stack-thanos-discovery.monitoring.svc.cluster.local"
-  # Also connect to the Store Gateway for historical data
+  # Connect to the Prometheus sidecar. For the Helm release name used above,
+  # kube-prometheus-stack creates this discovery service.
+  dnsDiscovery:
+    enabled: true
+    sidecarsService: prometheus-stack-kube-prom-thanos-discovery
+    sidecarsNamespace: monitoring
+  # Use downsampled Store Gateway data automatically for long-range queries
   extraFlags:
     - "--query.auto-downsampling"
 
@@ -261,20 +265,20 @@ kubectl port-forward -n monitoring svc/thanos-query 9090:9090
 
 Open http://localhost:9090 and you should see the Thanos Query interface. Check the Stores tab to verify that both the Sidecar and Store Gateway are connected.
 
-Run a test query to see data from both recent (sidecar) and historical (store gateway) sources:
+Run a test query to see recent data from the sidecar. After Prometheus has produced and uploaded blocks, use a longer time range to verify historical data through the Store Gateway:
 
 ```promql
-# This should return data from both sources
 up
 ```
 
 ## Step 6: Verify Object Storage Uploads
 
-Check that Prometheus blocks are being uploaded to your object storage:
+Check that Prometheus blocks are being uploaded to your object storage. The sidecar uploads completed Prometheus blocks, so the first upload usually appears after about two hours:
 
 ```bash
 # Check sidecar logs for upload activity
-kubectl logs -n monitoring prometheus-prometheus-stack-kube-prometheus-prometheus-0 -c thanos-sidecar | grep "upload"
+POD=$(kubectl get pods -n monitoring -l app.kubernetes.io/name=prometheus -o jsonpath='{.items[0].metadata.name}')
+kubectl logs -n monitoring "$POD" -c thanos-sidecar | grep "upload"
 
 # If using MinIO, you can also check the bucket directly
 # mc ls myminio/thanos-metrics/
