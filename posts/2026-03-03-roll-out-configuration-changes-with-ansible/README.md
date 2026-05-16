@@ -38,14 +38,14 @@ The safest approach is to apply changes to a single "canary" node first, verify 
       ansible.builtin.debug:
         msg: "Applying configuration change to canary node: {{ inventory_hostname }} ({{ node_ip }})"
 
-    - name: Get current configuration hash
+    - name: Get current configuration version
       ansible.builtin.command:
         cmd: >
           talosctl get machineconfig
           --nodes {{ node_ip }}
           --talosconfig {{ talosconfig_path }}
-          -o jsonpath='{.metadata.uid}'
-      register: pre_change_hash
+          -o jsonpath='{.metadata.version}'
+      register: pre_change_version
       ignore_errors: true
 
     - name: Apply configuration to canary node
