@@ -14,9 +14,9 @@ This post covers how to set up hierarchical namespaces on Talos Linux using the 
 
 ## What Are Hierarchical Namespaces?
 
-The Hierarchical Namespace Controller (HNC) is a Kubernetes project that adds parent-child relationships to namespaces. When you create a child namespace under a parent, the child automatically inherits certain resources from the parent, such as Roles, RoleBindings, NetworkPolicies, and other objects you configure.
+The Hierarchical Namespace Controller (HNC) is a Kubernetes project that adds parent-child relationships to namespaces. When you create a child namespace under a parent, the child automatically inherits certain resources from the parent, such as Roles and RoleBindings by default, plus NetworkPolicies and other objects you configure.
 
-For example, if you have a parent namespace "engineering" with a NetworkPolicy that allows DNS access, all child namespaces (team-backend, team-frontend, team-data) automatically get that same NetworkPolicy. If you update the parent's policy, all children get the update.
+For example, if you enable NetworkPolicy propagation and have a parent namespace "engineering" with a NetworkPolicy that allows DNS access, all child namespaces (team-backend, team-frontend, team-data) automatically get that same NetworkPolicy. If you update the parent's policy, all children get the update.
 
 ```text
 engineering (parent)
@@ -31,6 +31,8 @@ engineering (parent)
 
 HNC runs as a controller in your Talos Linux cluster. Install it using kubectl.
 
+As of May 2026, v1.1.0 is the latest HNC release and the upstream repository is archived. Check the release page before using it in production.
+
 ```bash
 # Install HNC v1.1.0 (check for latest version)
 
@@ -40,8 +42,9 @@ kubectl apply -f https://github.com/kubernetes-sigs/hierarchical-namespaces/rele
 kubectl get pods -n hnc-system
 
 # Install the kubectl HNC plugin for easier management
-# On macOS
-brew install kubectl-hns
+# With Krew
+kubectl krew update
+kubectl krew install hns
 
 # Or download directly
 curl -L https://github.com/kubernetes-sigs/hierarchical-namespaces/releases/download/v1.1.0/kubectl-hns_darwin_amd64 -o kubectl-hns
@@ -59,6 +62,12 @@ kubectl hns config describe
 # RoleBindings: Propagate
 # Roles: Propagate
 # etc.
+```
+
+Before using inherited NetworkPolicies in this example, enable NetworkPolicy propagation:
+
+```bash
+kubectl hns config set-resource networkpolicies --group networking.k8s.io --mode Propagate --force
 ```
 
 ## Creating a Namespace Hierarchy
@@ -181,20 +190,20 @@ kubectl -n team-backend get networkpolicy allow-dns -o yaml | grep -A 3 labels
 
 ## Configuring What Gets Propagated
 
-By default, HNC propagates Roles, RoleBindings, and a few other resource types. You can configure which resources are propagated.
+By default, HNC propagates Roles and RoleBindings. You can configure which additional resources are propagated.
 
 ```bash
 # View current propagation configuration
 kubectl hns config describe
 
 # Add NetworkPolicy to propagated resources
-kubectl hns config set-resource networkpolicies --group networking.k8s.io --mode Propagate
+kubectl hns config set-resource networkpolicies --group networking.k8s.io --mode Propagate --force
 
 # Add ResourceQuota to propagated resources
-kubectl hns config set-resource resourcequotas --mode Propagate
+kubectl hns config set-resource resourcequotas --mode Propagate --force
 
 # Add LimitRange to propagated resources
-kubectl hns config set-resource limitranges --mode Propagate
+kubectl hns config set-resource limitranges --mode Propagate --force
 
 # Remove a resource type from propagation
 kubectl hns config set-resource configmaps --mode Ignore
@@ -203,6 +212,7 @@ kubectl hns config set-resource configmaps --mode Ignore
 Available modes:
 
 - **Propagate**: Copy resources from parent to child namespaces
+- **AllowPropagate**: Copy only resources that opt in with propagation annotations
 - **Remove**: Delete propagated resources and stop propagating
 - **Ignore**: Do not propagate, but do not remove existing copies
 
@@ -266,7 +276,7 @@ metadata:
   namespace: engineering
   annotations:
     # Do not propagate to team-data (it has different egress needs)
-    hnc.x-k8s.io/exceptions: team-data
+    propagate.hnc.x-k8s.io/treeSelect: "!team-data"
 spec:
   podSelector: {}
   policyTypes:
@@ -293,7 +303,7 @@ subjects:
     apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
-  name: hnc.x-k8s.io:admin
+  name: hnc-admin-role
   apiGroup: rbac.authorization.k8s.io
 ```
 
@@ -316,8 +326,8 @@ Keep track of your namespace hierarchy and catch issues.
 # View the complete hierarchy
 kubectl hns tree --all-namespaces
 
-# Check for hierarchy issues
-kubectl hns config describe
+# Check for hierarchy issues in a namespace
+kubectl hns describe engineering
 
 # Look for namespaces with propagation errors
 kubectl get hierarchyconfigurations.hnc.x-k8s.io --all-namespaces -o json | \
