@@ -8,58 +8,70 @@ Description: Learn how to configure static passphrase-based disk encryption in T
 
 ---
 
-Static passphrases are one of the simplest and most direct ways to encrypt disks in Talos Linux. Unlike node ID keys that derive from hardware or TPM keys that depend on a security chip, static passphrases give you explicit control over the encryption key material. You choose the passphrase, you manage it, and you decide where it is stored. This guide explains how to configure static passphrase encryption in Talos, discusses security considerations, and shares practical patterns for managing passphrases in production.
+Static passphrases are one of the simplest and most direct ways to encrypt disks in Talos Linux. Unlike nodeID keys that derive from the node UUID or TPM keys that depend on a security chip, static passphrases give you explicit control over the encryption key material. You choose the passphrase and you manage it, but Talos still stores `STATE` volume encryption configuration in the `META` partition, so static keys for `STATE` are not considered secure. This guide explains how to configure static passphrase encryption in Talos, discusses security considerations, and shares practical patterns for managing passphrases.
 
 ## When to Use Static Passphrases
 
 Static passphrases work well in several scenarios:
 
 - **Development and testing** - when you want encryption enabled but do not need complex key management
-- **Recovery keys** - as a backup unlock mechanism alongside other key types
-- **Compliance requirements** - when your security policy requires explicitly managed encryption keys
+- **Recovery keys for non-STATE volumes** - as a backup unlock mechanism alongside other key types
+- **Compliance requirements** - when your security policy explicitly accepts managed passphrases and their storage trade-offs
 - **Environments without TPM** - when hardware security modules are not available
 - **Air-gapped deployments** - where external KMS services are unreachable
 
-The trade-off is that you are responsible for keeping the passphrase secure. It appears in your machine configuration, so your configuration management pipeline needs to handle it carefully.
+The trade-off is that you are responsible for keeping the passphrase secure. It appears in your machine configuration, so your configuration management pipeline needs to handle it carefully. For `STATE`, Talos also stores the encryption configuration in cleartext in `META`, so prefer TPM, KMS, or nodeID keys for `STATE` in security-sensitive deployments.
 
 ## Basic Static Passphrase Configuration
 
-Here is how to configure static passphrase encryption for both system partitions:
+Here is how to configure static passphrase encryption for both system volumes:
 
 ```yaml
-machine:
-  systemDiskEncryption:
-    state:
-      provider: luks2
-      keys:
-        - static:
-            passphrase: "my-strong-encryption-passphrase-2024"
-          slot: 0
-    ephemeral:
-      provider: luks2
-      keys:
-        - static:
-            passphrase: "my-strong-encryption-passphrase-2024"
-          slot: 0
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: STATE
+encryption:
+  provider: luks2
+  keys:
+    - static:
+        passphrase: "my-strong-encryption-passphrase-2024"
+      slot: 0
+---
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+encryption:
+  provider: luks2
+  keys:
+    - static:
+        passphrase: "my-strong-encryption-passphrase-2024"
+      slot: 0
+      lockToState: true
 ```
 
 You can use the same passphrase for both partitions or different passphrases for each:
 
 ```yaml
-machine:
-  systemDiskEncryption:
-    state:
-      provider: luks2
-      keys:
-        - static:
-            passphrase: "state-partition-secret-2024"
-          slot: 0
-    ephemeral:
-      provider: luks2
-      keys:
-        - static:
-            passphrase: "ephemeral-partition-secret-2024"
-          slot: 0
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: STATE
+encryption:
+  provider: luks2
+  keys:
+    - static:
+        passphrase: "state-partition-secret-2024"
+      slot: 0
+---
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+encryption:
+  provider: luks2
+  keys:
+    - static:
+        passphrase: "ephemeral-partition-secret-2024"
+      slot: 0
+      lockToState: true
 ```
 
 Using different passphrases adds a layer of separation - compromising one passphrase does not automatically compromise the other partition.
@@ -136,14 +148,16 @@ rm machine-config.yaml
 Your template would reference the environment variable:
 
 ```yaml
-machine:
-  systemDiskEncryption:
-    state:
-      provider: luks2
-      keys:
-        - static:
-            passphrase: "${PASSPHRASE}"
-          slot: 0
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+encryption:
+  provider: luks2
+  keys:
+    - static:
+        passphrase: "${PASSPHRASE}"
+      slot: 0
+      lockToState: true
 ```
 
 ### Using SOPS for Config Encryption
@@ -165,18 +179,24 @@ Keep the base machine configuration separate from encryption secrets:
 ```bash
 # Base config without secrets
 talosctl gen config my-cluster https://192.168.1.100:6443
+```
 
-# Encryption patch file (stored separately, encrypted at rest)
-# encryption-patch.yaml
-machine:
-  systemDiskEncryption:
-    state:
-      provider: luks2
-      keys:
-        - static:
-            passphrase: "the-actual-passphrase"
-          slot: 0
+Encryption patch file (stored separately, encrypted at rest):
 
+```yaml
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+encryption:
+  provider: luks2
+  keys:
+    - static:
+        passphrase: "the-actual-passphrase"
+      slot: 0
+      lockToState: true
+```
+
+```bash
 # Apply with patch
 talosctl apply-config --nodes 192.168.1.10 \
   --file worker.yaml \
@@ -207,67 +227,75 @@ for node in node01 node02 node03; do
   # Store in vault
   vault kv put "secret/talos/encryption/${node}" passphrase="${PASSPHRASE}"
   # Generate node-specific config
-  sed "s/PASSPHRASE_PLACEHOLDER/${PASSPHRASE}/" template.yaml > "${node}-config.yaml"
+  envsubst < template.yaml > "${node}-config.yaml"
 done
 ```
 
 ## Rotating Passphrases
 
-LUKS2 key slots make passphrase rotation possible without downtime:
+LUKS2 key slots make passphrase rotation possible, but Talos applies key rotation after a reboot. Keep at least one working key unchanged while changing the other keys.
 
 **Step 1:** Add the new passphrase to an empty slot:
 
 ```yaml
-machine:
-  systemDiskEncryption:
-    state:
-      provider: luks2
-      keys:
-        - static:
-            passphrase: "old-passphrase-2024"
-          slot: 0
-        - static:
-            passphrase: "new-passphrase-2025"
-          slot: 1
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+encryption:
+  provider: luks2
+  keys:
+    - static:
+        passphrase: "old-passphrase-2024"
+      slot: 0
+    - static:
+        passphrase: "new-passphrase-2025"
+      slot: 1
 ```
 
-**Step 2:** Apply this configuration. The node can now unlock with either passphrase.
+**Step 2:** Apply this configuration with reboot mode:
 
-**Step 3:** Once verified, switch to the new passphrase as primary:
+```bash
+talosctl apply-config --nodes 192.168.1.10 --mode=reboot --file encrypted-config.yaml
+```
+
+**Step 3:** Once verified, remove the old passphrase while keeping the new passphrase in the same slot:
 
 ```yaml
-machine:
-  systemDiskEncryption:
-    state:
-      provider: luks2
-      keys:
-        - static:
-            passphrase: "new-passphrase-2025"
-          slot: 0
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+encryption:
+  provider: luks2
+  keys:
+    - static:
+        passphrase: "new-passphrase-2025"
+      slot: 1
 ```
 
-**Step 4:** Apply again. The old passphrase in slot 0 is replaced with the new one, and slot 1 is freed.
+**Step 4:** Apply again with reboot mode. The old passphrase in slot 0 is removed.
 
 ## Combining Static Passphrases with Other Key Types
 
-Static passphrases work well as recovery keys alongside other primary key types:
+Static passphrases can be used as recovery keys alongside other primary key types for non-`STATE` volumes:
 
 ```yaml
-machine:
-  systemDiskEncryption:
-    state:
-      provider: luks2
-      keys:
-        # Primary: TPM-based key for automated boot
-        - tpm: {}
-          slot: 0
-        # Recovery: static passphrase in case of TPM failure
-        - static:
-            passphrase: "emergency-recovery-passphrase"
-          slot: 1
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+encryption:
+  provider: luks2
+  keys:
+    # Primary: TPM-based key for automated boot
+    - tpm: {}
+      slot: 0
+    # Recovery: static passphrase in case of TPM failure
+    - static:
+        passphrase: "emergency-recovery-passphrase"
+      slot: 1
+      lockToState: true
 ```
 
-This gives you the security benefits of TPM-based keys with the reliability of a passphrase backup.
+This gives you the security benefits of TPM-based keys with the reliability of a passphrase backup for that volume.
 
 ## Verifying Encryption
 
@@ -275,12 +303,14 @@ After applying the configuration, confirm encryption is active:
 
 ```bash
 # Check volume encryption status
+talosctl get volumeconfig STATE --nodes 192.168.1.10 -o yaml
+talosctl get volumeconfig EPHEMERAL --nodes 192.168.1.10 -o yaml
 talosctl get volumestatus STATE --nodes 192.168.1.10 -o yaml
 talosctl get volumestatus EPHEMERAL --nodes 192.168.1.10 -o yaml
 ```
 
-Look for LUKS2 indicators in the output.
+Look for `encryption.provider: luks2` in the volume configuration and a `/dev/mapper/luks2-*` location in the volume status.
 
 ## Summary
 
-Static passphrases in Talos Linux give you direct, explicit control over disk encryption keys. The configuration is simple, but the responsibility for securing the passphrase falls on you. Use a secrets manager, encrypt your configuration files, and rotate passphrases regularly. For production environments, consider using static passphrases as recovery keys alongside more automated key management approaches like TPM or KMS. Whatever approach you take, the important thing is that your data is encrypted and your keys are managed properly.
+Static passphrases in Talos Linux give you direct, explicit control over disk encryption keys. The configuration is simple, but the responsibility for securing the passphrase falls on you. Use a secrets manager, encrypt your configuration files, and rotate passphrases regularly. For production environments, prefer more automated key management approaches like TPM, KMS, or nodeID keys for `STATE`, and consider static passphrases as recovery keys only where their storage trade-offs are acceptable. Whatever approach you take, the important thing is that your data is encrypted and your keys are managed properly.
