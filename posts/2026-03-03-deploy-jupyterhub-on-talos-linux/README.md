@@ -39,19 +39,11 @@ Create a namespace:
 kubectl create namespace jupyterhub
 ```
 
-Generate a secret token for the hub:
-
-```bash
-# Generate a random 32-byte hex token
-openssl rand -hex 32
-```
-
 Create a values file for your deployment:
 
 ```yaml
 # jupyterhub-values.yaml
 proxy:
-  secretToken: "your-generated-hex-token-here"
   service:
     type: ClusterIP
 
@@ -79,7 +71,7 @@ hub:
 singleuser:
   # Default user environment
   image:
-    name: jupyter/scipy-notebook
+    name: quay.io/jupyter/scipy-notebook
     tag: "2024-01-15"
   defaultUrl: "/lab"
   # Storage for user workspaces
@@ -100,13 +92,13 @@ singleuser:
       description: "Standard data science environment with common Python libraries"
       default: true
       kubespawner_override:
-        image: jupyter/scipy-notebook:2024-01-15
+        image: quay.io/jupyter/scipy-notebook:2024-01-15
         cpu_limit: 2
         mem_limit: "4G"
     - display_name: "Machine Learning (GPU)"
       description: "PyTorch and TensorFlow with GPU access"
       kubespawner_override:
-        image: jupyter/tensorflow-notebook:2024-01-15
+        image: quay.io/jupyter/tensorflow-notebook:2024-01-15
         cpu_limit: 4
         mem_limit: "8G"
         extra_resource_limits:
@@ -116,7 +108,7 @@ singleuser:
     - display_name: "R Studio"
       description: "R environment for statistical computing"
       kubespawner_override:
-        image: jupyter/r-notebook:2024-01-15
+        image: quay.io/jupyter/r-notebook:2024-01-15
         cpu_limit: 2
         mem_limit: "4G"
 
@@ -224,7 +216,7 @@ Build custom images with your organization's specific packages:
 
 ```dockerfile
 # Dockerfile.datascience
-FROM jupyter/scipy-notebook:2024-01-15
+FROM quay.io/jupyter/scipy-notebook:2024-01-15
 
 # Install additional Python packages
 RUN pip install --no-cache-dir \
@@ -289,7 +281,7 @@ singleuser:
         readOnly: false
 ```
 
-Resource Management
+## Resource Management
 
 To prevent any single user from consuming all cluster resources, configure resource quotas:
 
