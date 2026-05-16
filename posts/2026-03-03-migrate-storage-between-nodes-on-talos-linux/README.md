@@ -181,7 +181,7 @@ machine:
     - device: /dev/sdb
       partitions:
         - mountpoint: /var/mnt/storage
-          size: 0  # Use entire disk
+          # Omit size to allocate the rest of the disk to this partition
 ```
 
 Apply the configuration change using talosctl.
