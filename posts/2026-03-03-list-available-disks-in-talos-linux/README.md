@@ -73,18 +73,18 @@ For even more detail, you can output the data in YAML or JSON format:
 talosctl get blockdevices --nodes 192.168.1.10 -o yaml
 ```
 
-The YAML output gives you a complete picture of each disk, including partition tables if they exist, filesystem types, and mount points.
+The YAML output gives you the block device hierarchy, including parent/child relationships and partition names and numbers for each device node.
 
-## Inspecting Disk Partitions
+## Inspecting Disk Partitions and Filesystems
 
-To see the partition layout on a specific disk, you can look at the system state:
+To see filesystem types, labels, and partition information that Talos has discovered on each block device, use the `discoveredvolumes` resource:
 
 ```bash
-# View disk partitions through Talos resource API
-talosctl get disks --nodes 192.168.1.10 -o yaml
+# View discovered volumes (partitions, filesystems, labels) through the Talos resource API
+talosctl get discoveredvolumes --nodes 192.168.1.10 -o yaml
 ```
 
-This shows you the current partition table for each disk, including partition sizes, types (like EFI, BIOS boot, Linux filesystem), and labels.
+This shows you the filesystem types (like `ext4`, `vfat`, `xfs`), partition labels, partition UUIDs, and sizes for each volume that Talos has discovered on the node.
 
 ## Checking Disk Health and SMART Data
 
@@ -147,18 +147,18 @@ NODES="192.168.1.10 192.168.1.11 192.168.1.12"
 
 for node in $NODES; do
   echo "=== Disks on $node ==="
-  talosctl disks --nodes "$node" --output table
+  talosctl disks --nodes "$node"
   echo ""
 done
 ```
 
-For programmatic access, the JSON output format works well with tools like `jq`:
+For programmatic access, the resource API supports JSON output that works well with tools like `jq`:
 
 ```bash
 # Get disk info as JSON and extract sizes
-talosctl disks --nodes 192.168.1.10 -o json | jq '.[] | {device: .device, size: .size}'
+talosctl get disks --nodes 192.168.1.10 -o json | jq '{id: .metadata.id, size: .spec.size, model: .spec.model}'
 ```
 
 ## Wrapping Up
 
-Listing and inspecting disks in Talos Linux is straightforward once you understand that everything goes through `talosctl` and the Talos API. The `disks` command gives you a quick overview, while the resource API (`get blockdevices`, `get disks`) provides deeper inspection capabilities. Make disk discovery a standard part of your cluster setup process, and you will avoid surprises when configuring storage later on. With a solid understanding of what hardware is available on each node, you can confidently move on to volume configuration, encryption, and persistent storage setup for your Kubernetes workloads.
+Listing and inspecting disks in Talos Linux is straightforward once you understand that everything goes through `talosctl` and the Talos API. The `disks` command gives you a quick overview, while the resource API (`get disks`, `get blockdevices`, `get discoveredvolumes`) provides deeper inspection capabilities. Make disk discovery a standard part of your cluster setup process, and you will avoid surprises when configuring storage later on. With a solid understanding of what hardware is available on each node, you can confidently move on to volume configuration, encryption, and persistent storage setup for your Kubernetes workloads.
