@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, Akamai, Linode, Cloud, Kubernetes
 
-Description: Step-by-step instructions for deploying Talos Linux on Akamai (formerly Linode) cloud instances for managed Kubernetes clusters.
+Description: Step-by-step instructions for deploying Talos Linux on Akamai (formerly Linode) cloud instances for self-managed Kubernetes clusters.
 
 ---
 
@@ -28,6 +28,7 @@ You will need:
 - An Akamai Cloud (Linode) account with API access
 - The Linode CLI (`linode-cli`) installed and configured
 - `talosctl` installed on your workstation
+- Helm installed on your workstation for the Linode cloud integrations
 - Basic familiarity with Linode's dashboard or API
 
 ```bash
@@ -44,17 +45,16 @@ linode-cli configure
 
 ## Step 1: Download the Talos Linux Disk Image
 
-Talos Linux provides a raw disk image for Akamai/Linode. Download it to your local machine:
+Talos Linux provides a raw disk image for Akamai/Linode through the Talos Image Factory. Download the Akamai image to your local machine:
 
 ```bash
-# Download the Linode-specific image
-wget https://github.com/siderolabs/talos/releases/download/v1.9.0/nocloud-amd64.raw.xz
+# Download the Akamai-specific image from the Image Factory
+# Use the Image Factory UI to generate the URL for your Talos version and schematic.
+wget -O akamai-amd64.raw.gz \
+  "https://factory.talos.dev/image/<SCHEMATIC_ID>/v1.9.0/akamai-amd64.raw.gz"
 
-# Decompress it
-xz -d nocloud-amd64.raw.xz
-
-# Compress as gzip (Linode requires gzip format)
-gzip nocloud-amd64.raw
+# For the default "vanilla" schematic, the schematic ID is:
+# 376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba
 ```
 
 ## Step 2: Upload the Image to Linode
@@ -67,7 +67,7 @@ linode-cli image-upload \
   --label "Talos Linux v1.9.0" \
   --description "Talos Linux for Kubernetes" \
   --region us-east \
-  nocloud-amd64.raw.gz
+  akamai-amd64.raw.gz
 ```
 
 Alternatively, you can use the Linode API directly:
@@ -86,7 +86,7 @@ curl -X POST https://api.linode.com/v4/images/upload \
 # Upload the image to the returned URL
 curl -X PUT "<UPLOAD_URL>" \
   -H "Content-Type: application/octet-stream" \
-  --data-binary @nocloud-amd64.raw.gz
+  --data-binary @akamai-amd64.raw.gz
 ```
 
 Note the image ID returned by the upload - you will need it when creating instances.
@@ -98,6 +98,7 @@ Create instances using your uploaded Talos Linux image:
 ```bash
 # Create a control plane instance
 linode-cli linodes create \
+  --no-defaults \
   --label talos-cp-1 \
   --region us-east \
   --type g6-standard-4 \
@@ -105,7 +106,11 @@ linode-cli linodes create \
   --root_pass "$(openssl rand -base64 32)" \
   --private_ip true
 
-# Note the public and private IPs from the output
+# Note the Linode ID, public IP, and private IP from the output.
+# Then change the Linode configuration to boot the uploaded disk directly.
+linode-cli linodes configs-list <LINODE_ID> --format id --text --no-headers
+linode-cli linodes config-update <LINODE_ID> <CONFIG_ID> \
+  --kernel "linode/direct-disk"
 ```
 
 For a complete cluster, create at least three control plane nodes and two workers:
@@ -114,23 +119,33 @@ For a complete cluster, create at least three control plane nodes and two worker
 # Create additional control plane nodes
 for i in 2 3; do
   linode-cli linodes create \
+    --no-defaults \
     --label "talos-cp-${i}" \
     --region us-east \
     --type g6-standard-4 \
     --image "private/<IMAGE_ID>" \
     --root_pass "$(openssl rand -base64 32)" \
     --private_ip true
+
+  linode_id=$(linode-cli linodes list --label "talos-cp-${i}" --format id --text --no-headers)
+  config_id=$(linode-cli linodes configs-list "${linode_id}" --format id --text --no-headers)
+  linode-cli linodes config-update "${linode_id}" "${config_id}" --kernel "linode/direct-disk"
 done
 
 # Create worker nodes
 for i in 1 2; do
   linode-cli linodes create \
+    --no-defaults \
     --label "talos-worker-${i}" \
     --region us-east \
     --type g6-standard-8 \
     --image "private/<IMAGE_ID>" \
     --root_pass "$(openssl rand -base64 32)" \
     --private_ip true
+
+  linode_id=$(linode-cli linodes list --label "talos-worker-${i}" --format id --text --no-headers)
+  config_id=$(linode-cli linodes configs-list "${linode_id}" --format id --text --no-headers)
+  linode-cli linodes config-update "${linode_id}" "${config_id}" --kernel "linode/direct-disk"
 done
 ```
 
@@ -178,7 +193,8 @@ talosctl gen config talos-linode-cluster \
 Customize the configuration for the Linode environment:
 
 ```yaml
-# Edit controlplane.yaml
+# Edit controlplane.yaml and worker.yaml. The apiServer section is only needed
+# in controlplane.yaml; externalCloudProvider should be present in both files.
 machine:
   install:
     disk: /dev/sda
@@ -191,8 +207,12 @@ machine:
       # Private interface (VLAN)
       - interface: eth1
         dhcp: true
-  certSANs:
-    - <NODEBALANCER_IP>
+cluster:
+  apiServer:
+    certSANs:
+      - <NODEBALANCER_IP>
+  externalCloudProvider:
+    enabled: true
 ```
 
 ## Step 6: Apply Configuration
@@ -239,18 +259,28 @@ kubectl --kubeconfig=./kubeconfig get nodes
 
 ## Setting Up the Linode CSI Driver
 
-To use Linode Block Storage as persistent volumes in your cluster, install the Linode CSI driver:
+To use Linode Block Storage as persistent volumes in your cluster, install the Linode Cloud Controller Manager and the Linode CSI driver with Helm:
 
 ```bash
-# Create a secret with your Linode API token
-kubectl --kubeconfig=./kubeconfig create secret generic linode-token \
-  --from-literal=token="$LINODE_TOKEN" \
-  --from-literal=region="us-east" \
-  -n kube-system
+# Install the Linode Cloud Controller Manager
+helm repo add ccm-linode https://linode.github.io/linode-cloud-controller-manager/
+helm repo update ccm-linode
+helm install ccm-linode \
+  --kubeconfig ./kubeconfig \
+  --namespace kube-system \
+  --set apiToken="$LINODE_TOKEN" \
+  --set region="us-east" \
+  ccm-linode/ccm-linode
 
 # Install the Linode CSI driver
-kubectl --kubeconfig=./kubeconfig apply -f \
-  https://raw.githubusercontent.com/linode/linode-blockstorage-csi-driver/master/pkg/linode-bs/deploy/releases/linode-blockstorage-csi-driver.yaml
+helm repo add linode-csi https://linode.github.io/linode-blockstorage-csi-driver/
+helm repo update linode-csi
+helm install linode-csi-driver \
+  --kubeconfig ./kubeconfig \
+  --namespace kube-system \
+  --set apiToken="$LINODE_TOKEN" \
+  --set region="us-east" \
+  linode-csi/linode-blockstorage-csi-driver
 ```
 
 Now you can create PersistentVolumeClaims backed by Linode Block Storage:
@@ -296,12 +326,16 @@ Adding nodes on Linode is straightforward:
 ```bash
 # Create a new worker instance
 linode-cli linodes create \
+  --no-defaults \
   --label talos-worker-3 \
   --region us-east \
   --type g6-standard-8 \
   --image "private/<IMAGE_ID>" \
   --root_pass "$(openssl rand -base64 32)" \
   --private_ip true
+
+linode-cli linodes config-update <LINODE_ID> <CONFIG_ID> \
+  --kernel "linode/direct-disk"
 
 # Apply the worker configuration
 talosctl apply-config --insecure \
