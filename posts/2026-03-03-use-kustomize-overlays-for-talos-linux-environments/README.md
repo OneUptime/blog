@@ -8,7 +8,7 @@ Description: Learn how to use Kustomize overlays to manage environment-specific 
 
 ---
 
-One of the biggest challenges in running Kubernetes workloads is managing configuration differences between environments. Your staging cluster might need fewer replicas, different resource limits, and separate database credentials compared to production. Kustomize overlays solve this problem elegantly by letting you define a single base configuration and then layer environment-specific changes on top of it.
+One of the biggest challenges in running Kubernetes workloads is managing configuration differences between environments. Your staging cluster might need fewer replicas, different resource limits, and separate database connection settings compared to production. Kustomize overlays solve this problem elegantly by letting you define a single base configuration and then layer environment-specific changes on top of it.
 
 On a Talos Linux cluster, this pattern works particularly well because it aligns with the declarative, version-controlled approach that Talos itself uses for machine configuration.
 
@@ -35,6 +35,7 @@ my-app/
       kustomization.yaml
       replica-patch.yaml
       resource-patch.yaml
+      hpa-patch.yaml
       ingress.yaml
       pdb.yaml
 ```
@@ -171,6 +172,9 @@ spec:
           env:
             - name: NODE_ENV
               value: staging
+          envFrom:
+            - configMapRef:
+                name: app-env
           resources:
             requests:
               cpu: 200m
@@ -265,6 +269,9 @@ spec:
           env:
             - name: NODE_ENV
               value: production
+          envFrom:
+            - configMapRef:
+                name: app-env
 ```
 
 ```yaml
@@ -410,7 +417,7 @@ spec:
 
 2. Talos Linux nodes have labels that differ from cloud-managed Kubernetes. Use node selectors and affinities that match your actual Talos node labels.
 
-3. Since Talos Linux is immutable, you can safely use topology spread constraints knowing that node configurations will not drift over time.
+3. Since Talos Linux manages machine configuration declaratively, topology spread constraints work best when the node labels they depend on are defined consistently in Talos machine configuration or applied through a controlled cluster-admin process.
 
 ## Building a Complete Overlay Structure
 
