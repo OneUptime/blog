@@ -31,8 +31,8 @@ Key rotation on WireGuard is not atomic. You need to update keys on multiple nod
 Here is the general approach:
 
 1. Generate new key pairs for the nodes being rotated
-2. Update the node's own configuration with the new private key
-3. Update all peers that reference the node's public key
+2. Update all peers that reference the node's public key
+3. Update the node's own configuration with the new private key
 4. Verify connectivity after each change
 
 For a cluster with N nodes in a full mesh, rotating one node's key requires updating N configurations (the node itself plus N-1 peers).
@@ -75,13 +75,13 @@ machine:
               endpoint: 192.168.1.1:51820
               allowedIPs:
                 - 10.10.0.1/32
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
             # Node3 stays the same
             - publicKey: "NODE3_PUBLIC_KEY"
               endpoint: 192.168.1.3:51820
               allowedIPs:
                 - 10.10.0.3/32
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
 ```
 
 ```bash
@@ -111,12 +111,12 @@ machine:
               endpoint: 192.168.1.2:51820
               allowedIPs:
                 - 10.10.0.2/32
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
             - publicKey: "NODE3_PUBLIC_KEY"
               endpoint: 192.168.1.3:51820
               allowedIPs:
                 - 10.10.0.3/32
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
 ```
 
 ```bash
@@ -127,16 +127,25 @@ talosctl -n 192.168.1.1 patch machineconfig --patch-file node1-key-update.yaml
 
 After updating node1, the tunnels should re-establish within seconds.
 
-```bash
-# Check handshake status from node1
-talosctl -n 192.168.1.1 read /proc/net/wireguard
+Talos does not ship with a shell or tools like `ping` or `wg`, and WireGuard exposes its state over netlink rather than procfs. Use the Talos resource API to inspect interface state, and run `wg show` from a privileged `hostNetwork` pod to see handshake details.
 
-# Verify connectivity to both peers
-talosctl -n 192.168.1.1 ping 10.10.0.2
-talosctl -n 192.168.1.1 ping 10.10.0.3
+```bash
+# Inspect the wg0 link and its addresses via the Talos resource API
+talosctl -n 192.168.1.1 get links wg0
+talosctl -n 192.168.1.1 get addresses
 
 # Check from the other side too
-talosctl -n 192.168.1.2 read /proc/net/wireguard
+talosctl -n 192.168.1.2 get links wg0
+```
+
+```bash
+# Run wg show from a hostNetwork debug pod for handshake/transfer stats
+kubectl debug node/node1 -it --image=ghcr.io/wireguard/wireguard-go:latest -- wg show
+
+# Test L3 connectivity from a hostNetwork pod scheduled on node1
+kubectl run wg-ping --rm -it --restart=Never \
+  --overrides='{"spec":{"hostNetwork":true,"nodeName":"node1"}}' \
+  --image=busybox -- ping -c 3 10.10.0.2
 ```
 
 ## Rotating All Keys in a Cluster
@@ -170,10 +179,10 @@ for entry in "${NODES[@]}"; do
   echo "  Updating ${name}'s private key..."
   talosctl -n "$ip" patch machineconfig --patch-file "patches/${name}-key-update.yaml"
 
-  # Verify connectivity
-  echo "  Verifying connectivity..."
+  # Verify the interface is up via the Talos resource API
+  echo "  Verifying interface state..."
   sleep 5
-  talosctl -n "$ip" ping 10.10.0.1 -c 3
+  talosctl -n "$ip" get links wg0
 
   echo "  ${name} key rotation complete."
   echo ""
@@ -182,30 +191,13 @@ done
 
 ## Pre-Shared Key Rotation
 
-If you use pre-shared keys, rotate them along with the node keys. Both peers in a relationship need the new PSK applied simultaneously.
+WireGuard supports an optional pre-shared key (PSK) layered on top of the static keys, but as of Talos v1.7 the `DeviceWireguardPeer` machine config schema does not expose a `presharedKey` field — only `publicKey`, `endpoint`, `persistentKeepaliveInterval`, and `allowedIPs` are configurable through Talos's native WireGuard support. If you rely on PSKs, you'll need to manage WireGuard outside of Talos's machine config (for example, by running `wireguard-go` or a `wg-quick` container in a privileged `hostNetwork` pod with its own config secret).
+
+The rotation principle is the same: generate the new PSK with `wg genpsk` and apply it to both peers in a relationship as close to simultaneously as possible. The tunnel will briefly drop while one side has the new PSK and the other still has the old one.
 
 ```bash
 # Generate a new pre-shared key
 wg genpsk > new-psk-node1-node2.key
-
-# Apply the new PSK to both peers at the same time
-# The tunnel will briefly drop during the update
-```
-
-```yaml
-# Update PSK on both node1 and node2
-# node1 patch:
-machine:
-  network:
-    interfaces:
-      - interface: wg0
-        wireguard:
-          peers:
-            - publicKey: "NODE2_PUBLIC_KEY"
-              presharedKey: "NEW_PSK_VALUE"
-              endpoint: 192.168.1.2:51820
-              allowedIPs:
-                - 10.10.0.2/32
 ```
 
 ## Automating Key Rotation
