@@ -21,9 +21,10 @@ curl -sL https://talos.dev/install | sh
 
 # Install the Vultr CLI
 # On macOS
-brew install vultr-cli
+brew install vultr/vultr-cli/vultr-cli
 # On Linux
-curl -sL https://github.com/vultr/vultr-cli/releases/latest/download/vultr-cli_linux_amd64.tar.gz | tar xz
+VULTR_CLI_VERSION=$(curl -s https://api.github.com/repos/vultr/vultr-cli/releases/latest | grep '"tag_name":' | cut -d '"' -f 4)
+curl -sL "https://github.com/vultr/vultr-cli/releases/download/${VULTR_CLI_VERSION}/vultr-cli_${VULTR_CLI_VERSION}_linux_amd64.tar.gz" | tar xz
 sudo mv vultr-cli /usr/local/bin/
 
 # Set your Vultr API key
@@ -42,13 +43,13 @@ Vultr supports custom ISOs, which is the easiest way to get Talos running:
 # Upload the Talos ISO to Vultr
 ISO_ID=$(vultr-cli iso create \
   --url "https://github.com/siderolabs/talos/releases/download/v1.7.0/talos-amd64.iso" \
-  | grep "^ID" | awk '{print $2}')
+  -o json | jq -r '.iso.id')
 
 echo "ISO ID: ${ISO_ID}"
 
 # Wait for the ISO to be downloaded
 while true; do
-  STATUS=$(vultr-cli iso list | grep ${ISO_ID} | awk '{print $3}')
+  STATUS=$(vultr-cli iso get ${ISO_ID} -o json | jq -r '.iso.status')
   echo "ISO status: ${STATUS}"
   if [ "${STATUS}" = "complete" ]; then
     break
@@ -66,13 +67,13 @@ BUILDER_ID=$(vultr-cli instance create \
   --plan vc2-2c-4gb \
   --iso ${ISO_ID} \
   --label "talos-builder" \
-  | grep "^ID" | awk '{print $2}')
+  -o json | jq -r '.instance.id')
 
 # Wait for the instance to boot from ISO and install
 sleep 120
 
 # Get the IP
-BUILDER_IP=$(vultr-cli instance get ${BUILDER_ID} | grep "MAIN IP" | awk '{print $3}')
+BUILDER_IP=$(vultr-cli instance get ${BUILDER_ID} -o json | jq -r '.instance.main_ip')
 ```
 
 ## Setting Up the Network
@@ -87,7 +88,7 @@ VPC_ID=$(vultr-cli vpc2 create \
   --ip-type v4 \
   --ip-block 10.0.0.0 \
   --prefix-length 16 \
-  | grep "^ID" | awk '{print $2}')
+  -o json | jq -r '.vpc.id')
 
 echo "VPC ID: ${VPC_ID}"
 ```
@@ -102,14 +103,19 @@ LB_ID=$(vultr-cli load-balancer create \
   --region ewr \
   --label "talos-k8s-api" \
   --forwarding-rules "frontend_protocol:tcp,frontend_port:6443,backend_protocol:tcp,backend_port:6443" \
-  --health-check "protocol:tcp,port:6443,check_interval:10,response_timeout:5,healthy_threshold:3,unhealthy_threshold:3" \
-  | grep "^ID" | awk '{print $2}')
+  --protocol tcp \
+  --port 6443 \
+  --check-interval 10 \
+  --response-timeout 5 \
+  --healthy-threshold 3 \
+  --unhealthy-threshold 3 \
+  -o json | jq -r '.load_balancer.id')
 
 echo "LB ID: ${LB_ID}"
 
 # Get the load balancer IP
 sleep 30
-LB_IP=$(vultr-cli load-balancer get ${LB_ID} | grep "IPV4" | awk '{print $2}')
+LB_IP=$(vultr-cli load-balancer get ${LB_ID} -o json | jq -r '.load_balancer.ipv4')
 echo "Load Balancer IP: ${LB_IP}"
 ```
 
@@ -159,12 +165,12 @@ for i in 1 2 3; do
     --iso ${ISO_ID} \
     --vpc-ids ${VPC_ID} \
     --label "talos-cp-${i}" \
-    | grep "^ID" | awk '{print $2}')
+    -o json | jq -r '.instance.id')
 
   echo "Control plane ${i} created: ${INSTANCE_ID}"
 
   # Add to load balancer
-  vultr-cli load-balancer rule-update ${LB_ID} \
+  vultr-cli load-balancer update ${LB_ID} \
     --instances ${INSTANCE_ID}
 
   # Store the instance ID
@@ -175,9 +181,9 @@ done
 sleep 120
 
 # Get IPs for control plane nodes
-CP1_IP=$(vultr-cli instance get ${CP1_ID} | grep "MAIN IP" | awk '{print $2}')
-CP2_IP=$(vultr-cli instance get ${CP2_ID} | grep "MAIN IP" | awk '{print $2}')
-CP3_IP=$(vultr-cli instance get ${CP3_ID} | grep "MAIN IP" | awk '{print $2}')
+CP1_IP=$(vultr-cli instance get ${CP1_ID} -o json | jq -r '.instance.main_ip')
+CP2_IP=$(vultr-cli instance get ${CP2_ID} -o json | jq -r '.instance.main_ip')
+CP3_IP=$(vultr-cli instance get ${CP3_ID} -o json | jq -r '.instance.main_ip')
 
 echo "Control plane IPs: ${CP1_IP}, ${CP2_IP}, ${CP3_IP}"
 ```
@@ -211,7 +217,7 @@ for i in 1 2 3; do
     --iso ${ISO_ID} \
     --vpc-ids ${VPC_ID} \
     --label "talos-worker-${i}" \
-    | grep "^ID" | awk '{print $2}')
+    -o json | jq -r '.instance.id')
 
   echo "Worker ${i} created: ${INSTANCE_ID}"
   eval "WORKER${i}_ID=${INSTANCE_ID}"
@@ -222,7 +228,7 @@ sleep 120
 
 for i in 1 2 3; do
   WORKER_VAR="WORKER${i}_ID"
-  WORKER_IP=$(vultr-cli instance get ${!WORKER_VAR} | grep "MAIN IP" | awk '{print $2}')
+  WORKER_IP=$(vultr-cli instance get ${!WORKER_VAR} -o json | jq -r '.instance.main_ip')
 
   # Apply worker configuration
   talosctl apply-config --insecure --nodes ${WORKER_IP} \
@@ -291,7 +297,7 @@ stringData:
 kubectl apply -f vultr-csi-secret.yaml
 
 # Install the Vultr CSI driver
-kubectl apply -f https://raw.githubusercontent.com/vultr/vultr-csi/master/docs/releases/latest.yaml
+kubectl apply -f https://raw.githubusercontent.com/vultr/vultr-csi/master/docs/releases/latest.yml
 ```
 
 ## Cleaning Up
