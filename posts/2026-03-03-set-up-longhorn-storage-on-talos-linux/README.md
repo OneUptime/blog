@@ -78,6 +78,17 @@ machine:
           - rw
 ```
 
+Longhorn also requires privileged pods. Talos applies Kubernetes Pod Security admission by default, so label the Longhorn namespace before installing:
+
+```bash
+kubectl create namespace longhorn-system --dry-run=client -o yaml | kubectl apply -f -
+kubectl label namespace longhorn-system \
+  pod-security.kubernetes.io/enforce=privileged \
+  pod-security.kubernetes.io/audit=privileged \
+  pod-security.kubernetes.io/warn=privileged \
+  --overwrite
+```
+
 ### Extra config for the Longhorn v2 data engine (optional)
 
 The default Longhorn v1 engine only needs the two extensions above. If you plan to enable the v2 data engine (`defaultSettings.v2DataEngine: true`), which uses SPDK over NVMe-over-TCP, also add the v2 engine prerequisites from the Longhorn docs: 2 GiB of 2 MiB hugepages and the `nvme_tcp`, `vfio_pci`, `uio_pci_generic` kernel modules (these ship in the default Talos kernel, so no extension is needed):
@@ -131,7 +142,7 @@ This is simple but not recommended for production because Longhorn data competes
 
 ### Option 2: Dedicated Disk (Production)
 
-Configure a dedicated disk for Longhorn in your Talos machine config:
+On Talos v1.9 and earlier, configure a dedicated disk for Longhorn in your Talos machine config:
 
 ```yaml
 machine:
@@ -143,6 +154,31 @@ machine:
 ```
 
 This gives Longhorn its own disk with isolated I/O.
+
+On Talos v1.10 and later, `.machine.disks` is deprecated. Use a `UserVolumeConfig` instead, which mounts the volume under `/var/mnt/<name>`, and set Longhorn's data path to that mount:
+
+```yaml
+apiVersion: v1alpha1
+kind: UserVolumeConfig
+name: longhorn
+provisioning:
+  diskSelector:
+    match: disk.transport == "sata" && !system_disk
+  minSize: 100GB
+filesystem:
+  type: xfs
+---
+machine:
+  kubelet:
+    extraMounts:
+      - destination: /var/mnt/longhorn
+        type: bind
+        source: /var/mnt/longhorn
+        options:
+          - bind
+          - rshared
+          - rw
+```
 
 ## Installing Longhorn
 
@@ -156,7 +192,6 @@ helm repo update
 # Install Longhorn
 helm install longhorn longhorn/longhorn \
   --namespace longhorn-system \
-  --create-namespace \
   --values longhorn-values.yaml
 ```
 
@@ -168,7 +203,7 @@ Create a values file with Talos-appropriate settings:
 # longhorn-values.yaml
 defaultSettings:
   # Default data path on Talos nodes
-  defaultDataPath: /var/lib/longhorn
+  defaultDataPath: /var/lib/longhorn # Use /var/mnt/longhorn with UserVolumeConfig on Talos v1.10+
   # Default replica count
   defaultReplicaCount: 3
   # Storage over-provisioning percentage
@@ -177,8 +212,8 @@ defaultSettings:
   storageMinimalAvailablePercentage: 15
   # Default data locality
   defaultDataLocality: best-effort
-  # Create default disk on nodes
-  createDefaultDiskLabeledNodes: true
+  # Create the default disk on all new nodes when no disks already exist
+  createDefaultDiskLabeledNodes: false
   # Node drain policy
   nodeDrainPolicy: block-for-eviction
   # Guaranteed instance manager CPU
