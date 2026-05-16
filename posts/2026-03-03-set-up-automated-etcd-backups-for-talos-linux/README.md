@@ -197,7 +197,7 @@ spec:
 kubectl apply -f etcd-backup-cronjob.yaml
 
 # Check backup history
-kubectl get jobs -n kube-system -l job-name=etcd-backup
+kubectl get jobs -n kube-system -l batch.kubernetes.io/cronjob-name=etcd-backup
 
 # View logs of the most recent backup
 kubectl logs -n kube-system job/etcd-backup-<timestamp>
@@ -211,6 +211,7 @@ Tools like Velero can handle etcd backups as part of a broader cluster backup st
 # Install Velero with the appropriate storage provider
 velero install \
   --provider aws \
+  --plugins velero/velero-plugin-for-aws:v1.10.0 \
   --bucket my-cluster-backups \
   --secret-file ./cloud-credentials \
   --backup-location-config region=us-east-1
