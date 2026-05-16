@@ -17,7 +17,7 @@ This guide walks through installing Kubeflow on a Talos Linux cluster, configuri
 Kubeflow is a substantial platform with many components. You will need:
 
 - A Talos Linux cluster with at least 3 worker nodes (8 CPU, 32GB RAM each recommended)
-- GPU nodes if you plan to train models (NVIDIA device plugin installed)
+- GPU nodes if you plan to train models (Talos NVIDIA system extensions, runtime class, and NVIDIA device plugin installed)
 - kubectl configured for your cluster
 - kustomize installed (v5.0 or later)
 - A default StorageClass configured
@@ -51,7 +51,7 @@ Clone the Kubeflow manifests repository:
 # Clone the Kubeflow manifests
 git clone https://github.com/kubeflow/manifests.git
 cd manifests
-git checkout v1.8-branch
+git checkout v1.11-branch
 ```
 
 Kubeflow uses Kustomize for deployment. Install everything with a single command:
@@ -59,9 +59,9 @@ Kubeflow uses Kustomize for deployment. Install everything with a single command
 ```bash
 # Install all Kubeflow components
 # This may take 10-15 minutes
-while ! kustomize build example | kubectl apply -f -; do
+while ! kustomize build example | kubectl apply --server-side --force-conflicts -f -; do
   echo "Retrying..."
-  sleep 10
+  sleep 20
 done
 ```
 
@@ -113,23 +113,27 @@ metadata:
   namespace: auth
 data:
   config.yaml: |
-    issuer: http://dex.auth.svc.cluster.local:5556/dex
+    issuer: https://$KUBEFLOW_INGRESS_URL/dex
     storage:
       type: kubernetes
       config:
         inCluster: true
     web:
       http: 0.0.0.0:5556
+    oauth2:
+      skipApprovalScreen: true
+    enablePasswordDB: true
     staticClients:
       - idEnv: OIDC_CLIENT_ID
         redirectURIs:
-          - /authservice/oidc/callback
+          - /oauth2/callback
         name: 'Dex Login Application'
         secretEnv: OIDC_CLIENT_SECRET
     staticPasswords:
       - email: admin@yourcompany.com
-        hash: "$2y$12$your-bcrypt-hash"
+        hashFromEnv: DEX_USER_PASSWORD
         username: admin
+        userID: "admin"
 ```
 
 ## Creating a Kubeflow Notebook Server
@@ -138,7 +142,7 @@ Kubeflow Notebooks let you run Jupyter environments directly in the cluster. Cre
 
 1. Navigate to Notebooks in the left sidebar
 2. Click "New Notebook"
-3. Select a GPU-enabled image like `kubeflownotebookswg/jupyter-pytorch-cuda-full`
+3. Select a GPU-enabled image like `ghcr.io/kubeflow/kubeflow/notebook-servers/jupyter-pytorch-cuda-full`
 4. Set resource limits (CPU, memory, GPU)
 5. Click "Launch"
 
@@ -158,7 +162,7 @@ spec:
     spec:
       containers:
         - name: ml-workspace
-          image: kubeflownotebookswg/jupyter-pytorch-cuda-full:v1.8.0
+          image: ghcr.io/kubeflow/kubeflow/notebook-servers/jupyter-pytorch-cuda-full:v1.10.0
           resources:
             requests:
               cpu: "2"
@@ -185,23 +189,28 @@ Kubeflow Pipelines let you define reproducible ML workflows as code. Here is a s
 # pipeline.py
 from kfp import dsl
 from kfp import compiler
+from kfp.dsl import Dataset, Input, Model, Output
 
 # Define pipeline components
-@dsl.component(base_image="python:3.10")
-def load_data() -> str:
+@dsl.component(base_image="python:3.10", packages_to_install=["torchvision"])
+def load_data(dataset: Output[Dataset]):
     """Download and prepare training data."""
-    import urllib.request
-    import os
-    data_path = "/tmp/data"
-    os.makedirs(data_path, exist_ok=True)
-    # Download dataset
+    import torchvision
+    import torchvision.transforms as transforms
+
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.5,), (0.5,))
+    ])
+    torchvision.datasets.MNIST(root=dataset.path, train=True,
+                               download=True, transform=transform)
     print("Data loaded successfully")
-    return data_path
 
 @dsl.component(base_image="pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime",
                packages_to_install=["torchvision"])
-def train_model(data_path: str, epochs: int = 10) -> str:
+def train_model(dataset: Input[Dataset], trained_model: Output[Model], epochs: int = 10):
     """Train a PyTorch model."""
+    import os
     import torch
     import torchvision
     import torchvision.transforms as transforms
@@ -213,8 +222,8 @@ def train_model(data_path: str, epochs: int = 10) -> str:
         transforms.ToTensor(),
         transforms.Normalize((0.5,), (0.5,))
     ])
-    trainset = torchvision.datasets.MNIST(root=data_path, train=True,
-                                           download=True, transform=transform)
+    trainset = torchvision.datasets.MNIST(root=dataset.path, train=True,
+                                          download=False, transform=transform)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=64, shuffle=True)
 
     model = torch.nn.Sequential(
@@ -236,14 +245,13 @@ def train_model(data_path: str, epochs: int = 10) -> str:
             optimizer.step()
         print(f"Epoch {epoch+1} complete")
 
-    model_path = "/tmp/model.pth"
-    torch.save(model.state_dict(), model_path)
-    return model_path
+    os.makedirs(trained_model.path, exist_ok=True)
+    torch.save(model.state_dict(), os.path.join(trained_model.path, "model.pth"))
 
 @dsl.component(base_image="python:3.10")
-def evaluate_model(model_path: str) -> float:
+def evaluate_model(model: Input[Model]) -> float:
     """Evaluate the trained model."""
-    print(f"Evaluating model at {model_path}")
+    print(f"Evaluating model at {model.path}")
     # Simplified evaluation
     accuracy = 0.95
     print(f"Model accuracy: {accuracy}")
@@ -253,12 +261,12 @@ def evaluate_model(model_path: str) -> float:
 @dsl.pipeline(name="mnist-training-pipeline")
 def mnist_pipeline(epochs: int = 10):
     data_task = load_data()
-    train_task = train_model(data_path=data_task.output, epochs=epochs)
+    train_task = train_model(dataset=data_task.outputs["dataset"], epochs=epochs)
     train_task.set_gpu_limit(1)
-    evaluate_model(model_path=train_task.output)
+    evaluate_model(model=train_task.outputs["trained_model"])
 
 # Compile the pipeline
-compiler.Compiler().compile(mnist_pipeline, "mnist_pipeline.yaml")
+compiler.Compiler().compile(mnist_pipeline, package_path="mnist_pipeline.yaml")
 ```
 
 Upload the compiled pipeline YAML through the Kubeflow dashboard or use the SDK to submit it:
@@ -317,15 +325,32 @@ spec:
       kind: Job
       spec:
         template:
+          metadata:
+            annotations:
+              sidecar.istio.io/inject: "false"
           spec:
             containers:
               - name: training
                 image: pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime
                 command:
-                  - python
-                  - /scripts/train.py
-                  - --lr=${trialParameters.learningRate}
-                  - --batch-size=${trialParameters.batchSize}
+                  - sh
+                  - -c
+                  - |
+                    python - <<'PY'
+                    import os
+                    import random
+
+                    lr = float(os.environ["LR"])
+                    batch_size = int(os.environ["BATCH_SIZE"])
+                    accuracy = 0.90 + random.random() * 0.09
+                    print(f"lr={lr}, batch_size={batch_size}")
+                    print(f"accuracy={accuracy}")
+                    PY
+                env:
+                  - name: LR
+                    value: ${trialParameters.learningRate}
+                  - name: BATCH_SIZE
+                    value: ${trialParameters.batchSize}
                 resources:
                   limits:
                     nvidia.com/gpu: 1
@@ -336,7 +361,7 @@ spec:
 
 When running Kubeflow on Talos Linux, keep these points in mind:
 
-- Istio requires some additional kernel modules. Ensure they are loaded through Talos machine configuration.
+- If your CNI, service mesh dataplane, or GPU runtime requires kernel modules, load them through Talos machine configuration.
 - Kubeflow components create many pods, so ensure your cluster has sufficient resources.
 - Use node affinity to keep Kubeflow system components on non-GPU nodes, reserving GPUs for actual ML workloads.
 - Configure proper resource quotas per namespace to prevent any single user from consuming all cluster resources.
