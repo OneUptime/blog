@@ -12,13 +12,13 @@ Security in Talos Linux is not an afterthought - it is baked into the foundation
 
 ## What Does trustd Do?
 
-The `trustd` service handles the issuance and management of certificates within a Talos Linux cluster. When a new worker node joins the cluster, it needs a valid certificate signed by the cluster's certificate authority (CA) to participate in secure communications. The `trustd` service on control plane nodes is responsible for signing these certificate requests.
+The `trustd` service handles certificate issuance for worker nodes within a Talos Linux cluster. When a new worker node joins the cluster, it needs a valid Talos API server certificate signed by the cluster's operating system certificate authority (CA) to participate in secure Talos API communications. The `trustd` service on control plane nodes is responsible for signing these certificate requests.
 
-In a traditional Linux environment, you might use tools like `cfssl` or `openssl` to manually generate and distribute certificates. Talos automates this entire process through `trustd`, removing the operational burden and reducing the chance of human error.
+In a traditional Linux environment, you might use tools like `cfssl` or `openssl` to manually generate and distribute certificates. Talos automates worker Talos API certificate issuance through `trustd`, removing the operational burden and reducing the chance of human error.
 
 ## How trustd Works Under the Hood
 
-When you bootstrap a Talos cluster, the initial configuration includes a root CA certificate and key. This CA is the ultimate source of trust for the entire cluster. The `trustd` service on control plane nodes holds the CA key and uses it to sign certificate requests from other nodes.
+When you bootstrap a Talos cluster, the initial configuration includes a root CA certificate and key. This CA is the ultimate source of trust for the entire cluster. The `trustd` service on control plane nodes has access to the CA key and uses it to sign certificate requests from worker nodes.
 
 Here is the general flow when a worker node joins the cluster:
 
@@ -32,14 +32,14 @@ Worker Node                     Control Plane (trustd)
     |                                    |--- Sign certificate
     |<--- Return signed certificate -----|
     |                                    |
-    |--- Use certificate for mTLS ----->|
+    |--- Use certificate for Talos API TLS ->|
 ```
 
-The worker node generates a private key locally, creates a Certificate Signing Request (CSR), and sends it to `trustd` on a control plane node. After verifying the request, `trustd` signs the certificate with the cluster CA and returns it. The worker node then uses this signed certificate for all subsequent mTLS communications.
+The worker node generates a private key locally, creates a Certificate Signing Request (CSR), and sends it to `trustd` on a control plane node. After authenticating the request with the machine token, `trustd` signs a server certificate with the cluster OS CA and returns it. The worker node then uses this signed certificate for Talos API TLS.
 
 ## Where trustd Runs
 
-The `trustd` service runs on control plane nodes by default. It listens on port 50001 and accepts certificate signing requests from nodes that can present a valid bootstrap token or existing cluster credentials.
+The `trustd` service runs on control plane nodes by default. It listens on port 50001 and accepts certificate signing requests from nodes that can present the correct machine token from the Talos machine configuration.
 
 ```bash
 # Check trustd status on a control plane node
@@ -53,43 +53,43 @@ talosctl -n 192.168.1.10 service trustd
 
 Worker nodes do not run `trustd` because they do not need to sign certificates. They are consumers of the trust chain, not providers.
 
-## The Bootstrap Token and Initial Trust
+## The Machine Token and Initial Trust
 
-One of the interesting challenges in distributed systems is the bootstrapping problem: how do you establish trust when no trust exists yet? Talos solves this with a bootstrap token that is embedded in the machine configuration.
+One of the interesting challenges in distributed systems is the bootstrapping problem: how do you establish trust when no trust exists yet? Talos solves this with a machine token that is embedded in the machine configuration.
 
-When you generate a cluster configuration with `talosctl gen config`, a bootstrap token is created:
+When you generate a cluster configuration with `talosctl gen config`, a machine token is created:
 
 ```bash
 # Generate cluster configuration
 talosctl gen config my-cluster https://192.168.1.10:6443
 
-# The generated worker.yaml will contain a bootstrap token
+# The generated worker.yaml will contain a machine token
 # that allows the worker to authenticate with trustd
 ```
 
-The bootstrap token in the worker configuration allows the new node to authenticate with `trustd` during its first contact. Once the node receives its signed certificate, all future communications use mTLS instead of the bootstrap token. This is similar to how Kubernetes itself handles node bootstrap with the TLS bootstrap process.
+The machine token in the worker configuration allows the new node to authenticate with `trustd` while requesting its Talos API server certificate. This is similar in spirit to how Kubernetes itself handles node bootstrap with the TLS bootstrap process, but it is part of Talos machine configuration rather than a Kubernetes bootstrap token.
 
 ## Certificate Rotation
 
-Certificates have expiration dates, and `trustd` plays a role in certificate rotation as well. Talos automatically handles certificate renewal before certificates expire. The node contacts `trustd` to get a fresh certificate signed, and the transition happens without any downtime or manual intervention.
+Certificates have expiration dates, and `trustd` plays a role in worker Talos API certificate rotation as well. Talos automatically handles renewal of server-side certificates before they expire. When a worker needs a fresh Talos API server certificate, it contacts `trustd` to get a new certificate signed.
 
 ```bash
 # View certificate information on a node
-talosctl -n 192.168.1.10 get certificate
+talosctl -n 192.168.1.10 get ApiCertificates.secrets.talos.dev -o yaml
 
-# Check when certificates were last issued
-talosctl -n 192.168.1.10 get certificate -o yaml
+# Check Kubernetes dynamic certificates on a control plane node
+talosctl -n 192.168.1.10 get KubernetesDynamicCerts.secrets.talos.dev -o yaml
 ```
 
 This automatic rotation is a significant advantage over manually managed certificate infrastructure, where expired certificates are a common cause of cluster outages.
 
 ## Relationship with Other Services
 
-The `trustd` service does not operate in isolation. It works closely with other Talos services:
+The `trustd` service does not operate in isolation. It is part of the same Talos PKI model used by other services:
 
-- **apid** depends on certificates issued through the trust chain that `trustd` manages. Without valid certificates, `apid` cannot authenticate clients.
+- **apid** on worker nodes uses the server certificates issued through `trustd`; without a valid certificate, the Talos API endpoint cannot present its identity correctly.
 - **machined** uses the trust infrastructure to verify that configuration changes come from authorized sources.
-- **etcd** requires valid peer certificates for inter-node communication, and these certificates are part of the same trust hierarchy.
+- **etcd** requires valid peer certificates for inter-node communication, and these certificates are generated from Talos-managed PKI on control plane nodes.
 
 ```bash
 # View all running services and their relationships
@@ -115,7 +115,7 @@ talosctl -n 192.168.1.10 logs trustd | grep -i error
 
 Common causes include:
 
-1. **Invalid bootstrap token** - If the worker configuration has an incorrect or expired bootstrap token, `trustd` will reject the signing request.
+1. **Invalid machine token** - If the worker configuration has an incorrect machine token, `trustd` will reject the signing request.
 
 2. **Network issues** - The worker node must be able to reach port 50001 on a control plane node. Firewalls or network segmentation can block this traffic.
 
@@ -127,7 +127,7 @@ If you see warnings about certificate expiration in your logs, verify that `trus
 
 ```bash
 # Check certificate status across all nodes
-talosctl -n 192.168.1.10,192.168.1.11,192.168.1.12 get certificate
+talosctl -n 192.168.1.10,192.168.1.11,192.168.1.12 get ApiCertificates.secrets.talos.dev -o yaml
 
 # Verify trustd is running on all control plane nodes
 talosctl -n 192.168.1.10,192.168.1.11,192.168.1.12 service trustd
@@ -139,11 +139,10 @@ You can inspect the certificates on a node to verify the trust chain is intact:
 
 ```bash
 # Get the CA certificate
-talosctl -n 192.168.1.10 get resource security cacertificates
+talosctl -n 192.168.1.10 get OSRootSecrets.secrets.talos.dev -o yaml
 
-# View the node's own certificate details
-talosctl -n 192.168.1.10 read /system/secrets/os/identity/identity.crt | \
-  openssl x509 -text -noout
+# View the Talos API certificate resource
+talosctl -n 192.168.1.10 get ApiCertificates.secrets.talos.dev -o yaml
 ```
 
 ## Security Considerations
@@ -152,10 +151,10 @@ The `trustd` service holds the CA private key, which makes control plane nodes p
 
 Talos mitigates this risk in several ways:
 
-- The CA key is stored in memory and is part of the encrypted machine configuration
+- The CA key is stored as sensitive machine configuration and secret data on control plane nodes
 - There is no shell access to extract the key from the filesystem
 - All access to node resources goes through authenticated API calls
-- The immutable nature of Talos means there are no writable paths where an attacker could install persistent backdoors
+- The immutable nature of Talos and its controlled persistent state reduce the places where an attacker could install persistent backdoors
 
 ## Comparing trustd to Traditional PKI
 
@@ -165,6 +164,6 @@ This has a practical benefit: the certificate infrastructure is available before
 
 ## Summary
 
-The `trustd` service is one of those components that works quietly in the background but is absolutely critical to cluster security. It handles the initial trust bootstrap, ongoing certificate issuance, and automatic rotation - all without requiring any manual intervention. Understanding how it works gives you the knowledge to diagnose trust-related issues and appreciate the security model that makes Talos Linux different from traditional distributions.
+The `trustd` service is one of those components that works quietly in the background but is absolutely critical to cluster security. It handles worker Talos API certificate issuance and renewal without requiring manual certificate distribution. Understanding how it works gives you the knowledge to diagnose trust-related issues and appreciate the security model that makes Talos Linux different from traditional distributions.
 
-When things go wrong with node joins or inter-node communication, `trustd` logs should be one of the first places you check. And when things are working smoothly, you can thank `trustd` for keeping all those certificates valid and properly signed.
+When things go wrong with worker Talos API certificate issuance or renewal, `trustd` logs should be one of the first places you check. And when things are working smoothly, you can thank `trustd` for keeping those worker API certificates valid and properly signed.
