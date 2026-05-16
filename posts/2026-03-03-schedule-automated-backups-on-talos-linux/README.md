@@ -327,17 +327,17 @@ spec:
         # Alert on high backup duration
         - alert: BackupTakingTooLong
           expr: |
-            velero_backup_duration_seconds{phase="InProgress"} > 3600
+            histogram_quantile(0.95, sum(rate(velero_backup_duration_seconds_bucket[1h])) by (le, schedule)) > 3600
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "Backup has been running for over 1 hour"
+            summary: "Recent backup durations exceed 1 hour at the 95th percentile"
 
         # Alert on backup storage issues
         - alert: BackupStorageUnavailable
           expr: |
-            velero_backup_storage_location_is_available == 0
+            velero_backup_location_status_gauge == 0
           for: 5m
           labels:
             severity: critical
