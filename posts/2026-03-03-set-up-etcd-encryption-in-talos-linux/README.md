@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, etcd, Encryption, Kubernetes Security, Secrets Management
 
-Description: A complete guide to setting up etcd encryption at rest in Talos Linux to protect sensitive Kubernetes data like secrets and configmaps.
+Description: A complete guide to setting up Kubernetes Secrets encryption at rest in Talos Linux to protect sensitive data stored in etcd.
 
 ---
 
-Every Kubernetes cluster stores sensitive data in etcd. This includes secrets, configmaps, service account tokens, and other objects that may contain credentials, API keys, or private certificates. By default, this data is stored in plain text within etcd. Anyone with access to the etcd data files or etcd API can read everything. That is why encrypting etcd data at rest is one of the most important security measures you can take for your cluster.
+Every Kubernetes cluster stores sensitive data in etcd. This includes secrets, service account tokens, and other objects that may contain credentials, API keys, or private certificates. By default, this data is stored in plain text within etcd. Anyone with access to the etcd data files or etcd API can read everything. That is why encrypting Kubernetes Secrets at rest is one of the most important security measures you can take for your cluster.
 
-Talos Linux makes it possible to configure Kubernetes secret encryption through its machine configuration. In this guide, we will cover how to set up etcd encryption in Talos Linux and verify that your sensitive data is actually encrypted.
+Talos Linux makes it possible to configure Kubernetes secret encryption through its machine configuration. In this guide, we will cover how to set up Kubernetes Secrets encryption in Talos Linux and verify that your sensitive data is actually encrypted.
 
 ## Why etcd Encryption Matters
 
-Consider what lives inside etcd in a typical Kubernetes cluster: database passwords, TLS certificates, OAuth tokens, cloud provider credentials, and more. If an attacker gains access to an etcd backup or the underlying storage, they can extract all of this data without needing kubectl access or any RBAC permissions.
+Consider what lives inside Kubernetes Secrets in a typical cluster: database passwords, TLS certificates, OAuth tokens, cloud provider credentials, and more. If an attacker gains access to an etcd backup or the underlying storage, they can extract this data without needing kubectl access or any RBAC permissions unless the stored Secret data is encrypted.
 
 Encryption at rest ensures that even if someone gets physical access to the etcd data files, they cannot read the contents without the encryption keys.
 
@@ -108,14 +108,20 @@ This command reads every secret and writes it back, which triggers encryption wi
 
 ## Verifying Encryption
 
-To confirm that secrets are actually encrypted in etcd, you can use `talosctl` to read raw data from etcd and check that it is not in plain text:
+To confirm that secrets are actually encrypted in etcd, read the raw value from etcd with `etcdctl` and check that it is not in plain text:
 
 ```bash
-# Read a specific key from etcd directly
-talosctl etcd get /registry/secrets/default/my-secret --nodes 10.0.0.2
+# Read a specific key from etcd directly. Supply the CA, certificate, key,
+# and endpoint values that match your Talos control plane.
+ETCDCTL_API=3 etcdctl \
+  --cacert=/path/to/etcd-ca.crt \
+  --cert=/path/to/etcd-client.crt \
+  --key=/path/to/etcd-client.key \
+  --endpoints=https://10.0.0.2:2379 \
+  get /registry/secrets/default/my-secret | hexdump -C
 ```
 
-If encryption is working, the output will be binary data rather than readable YAML or JSON. You should see something starting with `k8s:enc:secretbox:v1:` followed by encrypted bytes.
+If encryption is working, the stored value will not include the plain-text secret value. You should see the Kubernetes encryption prefix `k8s:enc:secretbox:v1:` followed by encrypted bytes.
 
 You can also create a test secret and verify it:
 
@@ -129,8 +135,13 @@ kubectl get secret test-encryption -o jsonpath='{.data.mykey}' | base64 -d
 # Output: myvalue
 
 # Check it directly in etcd (should be encrypted)
-talosctl etcd get /registry/secrets/default/test-encryption --nodes 10.0.0.2
-# Output: binary/encrypted data
+ETCDCTL_API=3 etcdctl \
+  --cacert=/path/to/etcd-ca.crt \
+  --cert=/path/to/etcd-client.crt \
+  --key=/path/to/etcd-client.key \
+  --endpoints=https://10.0.0.2:2379 \
+  get /registry/secrets/default/test-encryption | hexdump -C
+# Output: binary/encrypted data with the k8s:enc:secretbox:v1: prefix
 
 # Clean up
 kubectl delete secret test-encryption
@@ -138,37 +149,13 @@ kubectl delete secret test-encryption
 
 ## Key Rotation
 
-Periodically rotating your encryption keys is a security best practice. To rotate keys in Talos Linux, you follow a multi-step process:
+Periodically rotating your encryption keys is a security best practice, but Talos currently exposes `cluster.secretboxEncryptionSecret` as a single encryption secret. Do not replace this value directly on a running cluster that already has encrypted Secrets. Existing encrypted Secrets need the old key to be decrypted, and changing the field to a new key by itself can make those stored Secrets unreadable.
 
-First, generate a new encryption key:
-
-```bash
-NEW_KEY=$(head -c 32 /dev/urandom | base64)
-```
-
-Then update the Talos machine configuration with the new key:
-
-```yaml
-cluster:
-  secretboxEncryptionSecret: "<new-base64-encoded-key>"
-```
-
-Apply the updated configuration to all control plane nodes:
-
-```bash
-talosctl patch machineconfig --nodes 10.0.0.2,10.0.0.3,10.0.0.4 \
-  --patch '{"cluster": {"secretboxEncryptionSecret": "'"$NEW_KEY"'"}}'
-```
-
-After the API server restarts with the new key, re-encrypt all existing secrets:
-
-```bash
-kubectl get secrets --all-namespaces -o json | kubectl replace -f -
-```
+For planned key rotation, follow the current Talos release notes and documentation for your version before changing this field. If you need a rotation process that keeps multiple decryption keys available during migration, use a Kubernetes `EncryptionConfiguration` workflow that supports multiple keys and test it in a non-production cluster first.
 
 ## Backup Considerations
 
-When you have etcd encryption enabled, your backup strategy must account for the encryption keys. An etcd backup without the corresponding encryption key is useless because you cannot decrypt the data.
+When you have Secrets encryption enabled, your backup strategy must account for the encryption keys. An etcd backup without the corresponding encryption key cannot recover the encrypted Secrets data.
 
 Here are some practical recommendations:
 
@@ -183,7 +170,7 @@ echo "$ENCRYPTION_KEY" > encryption-key.txt
 # Move this to a secure vault - do not leave it on disk
 ```
 
-Document which encryption key corresponds to which backup. If you rotate keys, old backups need the old key to be restored.
+Document which encryption key corresponds to which backup. If you change keys, old backups may need the old key to restore encrypted Secret data.
 
 ## Troubleshooting
 
@@ -198,4 +185,4 @@ Common issues include malformed base64 encoding of the encryption key and mismat
 
 ## Conclusion
 
-Setting up etcd encryption in Talos Linux is straightforward because Talos handles much of the complexity for you. The key steps are ensuring your machine configuration includes the encryption secret, applying it consistently across all control plane nodes, re-encrypting existing secrets, and maintaining a solid backup strategy that includes the encryption keys. With these measures in place, your sensitive Kubernetes data is protected even if someone gains access to the underlying storage.
+Setting up Kubernetes Secrets encryption in Talos Linux is straightforward because Talos handles much of the complexity for you. The key steps are ensuring your machine configuration includes the encryption secret, applying it consistently across all control plane nodes, re-encrypting existing secrets, and maintaining a solid backup strategy that includes the encryption keys. With these measures in place, your sensitive Kubernetes Secret data is protected even if someone gains access to the underlying storage.
