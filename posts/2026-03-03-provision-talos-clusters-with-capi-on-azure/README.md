@@ -144,16 +144,16 @@ spec:
               protocol: "Tcp"
               direction: "Inbound"
               priority: 100
-              sourceAddressPrefix: "*"
-              destinationPortRange: "50000"
-              access: "Allow"
+              source: "*"
+              destinationPorts: "50000"
+              action: "Allow"
             - name: allow-k8s-api
               protocol: "Tcp"
               direction: "Inbound"
               priority: 110
-              sourceAddressPrefix: "*"
-              destinationPortRange: "6443"
-              access: "Allow"
+              source: "*"
+              destinationPorts: "6443"
+              action: "Allow"
       - name: worker-subnet
         role: node
         cidrBlocks:
