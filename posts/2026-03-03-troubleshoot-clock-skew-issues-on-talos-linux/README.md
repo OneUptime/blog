@@ -44,7 +44,7 @@ talosctl -n 192.168.1.10 logs etcd | grep "leader"
 # etcd: became follower at term 6
 ```
 
-etcd uses time-based leases for leader election. If clocks are skewed, nodes may think leases have expired when they have not, causing unnecessary leader elections.
+etcd uses heartbeat intervals and election timeouts for leader election. Clock skew does not directly expire Raft leases, but unsynchronized time can still cause certificate and startup problems, and time jumps or overloaded nodes may show up alongside leader election churn.
 
 ### Log Ordering Problems
 
@@ -58,7 +58,7 @@ Node A 10:30:02 - Processed request
 
 ### Kubernetes Scheduling Issues
 
-Pods may not get scheduled, or they may get evicted unexpectedly. The scheduler and kubelet use timestamps for various decisions, and skew can cause them to disagree.
+Pods may stop scheduling onto affected nodes if clock skew causes kubelet certificate or node heartbeat problems. Kubernetes also uses Lease objects for kubelet node heartbeats, so skewed timestamps can make node status harder to interpret.
 
 ## Step-by-Step Diagnosis
 
@@ -88,40 +88,39 @@ done
 
 Look for nodes where `synced: false` - these are the ones causing skew.
 
-### Step 3: Examine the Time Service
+### Step 3: Examine the Time Sync Controller
 
 ```bash
-# Check if the time service is running
-talosctl -n 192.168.1.10 service timed
+# Check time sync status
+talosctl -n 192.168.1.10 get timestatus
 
-# View time service logs for errors
-talosctl -n 192.168.1.10 logs timed
+# View time sync controller logs for errors
+talosctl -n 192.168.1.10 logs controller-runtime | grep -i "time.Sync"
 ```
 
 Common log messages that indicate problems:
 
 ```text
 # NTP server unreachable
-timed: failed to query time.cloudflare.com: i/o timeout
+time.SyncController: failed to query time.cloudflare.com: i/o timeout
 
 # No servers configured
-timed: no time servers configured
+time.SyncController: no time servers configured
 
 # Large offset detected
-timed: clock offset exceeds threshold
+time.SyncController: clock offset exceeds threshold
 ```
 
 ### Step 4: Test NTP Server Connectivity
 
-If the time service cannot reach its NTP servers, synchronization will fail:
+If the time sync controller cannot reach its NTP servers, synchronization will fail:
 
 ```bash
 # Check configured NTP servers
-talosctl -n 192.168.1.10 get timeserverconfig -o yaml
+talosctl -n 192.168.1.10 get timeservers -o yaml
 
-# Test network connectivity (from a machine on the same network)
-# NTP uses UDP port 123
-nc -zvu time.cloudflare.com 123
+# Ask the node to compare its time with a specific NTP server
+talosctl -n 192.168.1.10 time --check time.cloudflare.com
 ```
 
 ### Step 5: Check for Competing Time Sources
@@ -137,22 +136,18 @@ talosctl -n 192.168.1.10 dmesg | grep -i "time\|clock\|vmware\|hyperv"
 
 ### Cause 1: NTP Servers Unreachable
 
-**Diagnosis**: Time service logs show connection timeouts.
+**Diagnosis**: Time sync controller logs show connection timeouts.
 
 **Fix**: Update the NTP configuration to use reachable servers:
 
 ```bash
-talosctl -n 192.168.1.10 patch machineconfig -p '[
-  {
-    "op": "replace",
-    "path": "/machine/time/servers",
-    "value": [
-      "time.cloudflare.com",
-      "time1.google.com",
-      "time2.google.com"
-    ]
-  }
-]'
+talosctl -n 192.168.1.10 patch machineconfig --patch 'apiVersion: v1alpha1
+kind: TimeSyncConfig
+ntp:
+  servers:
+    - time.cloudflare.com
+    - time1.google.com
+    - time2.google.com'
 ```
 
 ### Cause 2: Firewall Blocking NTP Traffic
@@ -165,7 +160,7 @@ talosctl -n 192.168.1.10 patch machineconfig -p '[
 
 **Diagnosis**: Virtual machines that were suspended and resumed often have large clock offsets.
 
-**Fix**: The NTP daemon should correct this automatically, but if the offset is very large, you may need to reboot the node to force a fresh sync. For VMware environments, consider these settings:
+**Fix**: Talos time synchronization should correct this automatically, but if the offset is very large, you may need to reboot the node to force a fresh sync. For VMware environments, consider these settings:
 
 ```yaml
 # Disable VMware time sync (let NTP handle it)
@@ -186,13 +181,9 @@ talosctl -n 192.168.1.10 patch machineconfig -p '[
 **Fix**: Enable it:
 
 ```bash
-talosctl -n 192.168.1.10 patch machineconfig -p '[
-  {
-    "op": "replace",
-    "path": "/machine/time/disabled",
-    "value": false
-  }
-]'
+talosctl -n 192.168.1.10 patch machineconfig --patch 'apiVersion: v1alpha1
+kind: TimeSyncConfig
+enabled: true'
 ```
 
 ### Cause 6: DNS Failure Preventing NTP Resolution
@@ -203,23 +194,19 @@ talosctl -n 192.168.1.10 patch machineconfig -p '[
 
 ```bash
 # Use IP addresses to eliminate DNS dependency
-talosctl -n 192.168.1.10 patch machineconfig -p '[
-  {
-    "op": "replace",
-    "path": "/machine/time/servers",
-    "value": [
-      "162.159.200.1",
-      "216.239.35.0"
-    ]
-  }
-]'
+talosctl -n 192.168.1.10 patch machineconfig --patch 'apiVersion: v1alpha1
+kind: TimeSyncConfig
+ntp:
+  servers:
+    - 162.159.200.1
+    - 216.239.35.0'
 ```
 
 ## Impact of Clock Skew on Specific Components
 
 ### etcd
 
-etcd is particularly sensitive to clock skew. The default election timeout is 1000ms, and clock skew of even a few hundred milliseconds can cause false timeouts:
+etcd is particularly sensitive to time-related issues during startup because certificates depend on the system clock, and Talos waits for time sync before starting etcd. The default etcd election timeout is 1000ms, so slow heartbeats or delayed processing can also cause false timeouts:
 
 ```bash
 # Check etcd health
@@ -246,7 +233,7 @@ If you run stateful workloads like CockroachDB or TiDB that use timestamps for t
 
 1. **Monitor time sync continuously** - Set up alerts for nodes that fall out of sync.
 
-2. **Use multiple NTP servers** - Three or more servers allow the NTP algorithm to detect and discard a faulty time source.
+2. **Use multiple NTP servers** - Multiple servers provide fallback and reduce dependence on a single faulty or unreachable time source.
 
 3. **Verify after maintenance** - Check time sync after reboots, upgrades, or network changes.
 
