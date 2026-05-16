@@ -118,6 +118,8 @@ spec:
 
 ```bash
 kubectl apply -f ghost-namespace.yaml
+kubectl apply -f ghost-db-secret.yaml
+kubectl apply -f ghost-mysql.yaml
 ```
 
 ## Step 2: Create Ghost Configuration
@@ -230,13 +232,13 @@ spec:
               cpu: "500m"
           readinessProbe:
             httpGet:
-              path: /ghost/api/v4/admin/site/
+              path: /ghost/api/admin/site/
               port: 2368
             initialDelaySeconds: 30
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /ghost/api/v4/admin/site/
+              path: /ghost/api/admin/site/
               port: 2368
             initialDelaySeconds: 60
             periodSeconds: 30
