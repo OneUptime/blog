@@ -18,7 +18,7 @@ When you run `talosctl gen config`, the tool generates several pieces of sensiti
 - **etcd CA certificate and key** - Used for etcd mutual TLS
 - **Kubernetes SA key** - Used to sign service account tokens
 - **Bootstrap token** - Used for initial node bootstrapping
-- **Aescbc encryption key** - Used for encrypting secrets at rest in etcd
+- **Secretbox encryption key** - Used for encrypting secrets at rest in etcd
 - **Talos API CA and keys** - Used for talosctl authentication
 
 All of this gets embedded directly into the `controlplane.yaml` and `worker.yaml` configuration files. If someone gains access to these files, they have everything they need to take over your cluster.
@@ -40,24 +40,24 @@ cluster:
   id: <cluster-id>
   secret: <cluster-secret>
 secrets:
-  bootstrapToken: <token>
-  secretboxEncryptionSecret: <encryption-key>
-trustdInfo:
+  bootstraptoken: <token>
+  secretboxencryptionsecret: <encryption-key>
+trustdinfo:
   token: <trustd-token>
 certs:
   etcd:
-    cert: <base64-encoded-cert>
+    crt: <base64-encoded-cert>
     key: <base64-encoded-key>
   k8s:
-    cert: <base64-encoded-cert>
+    crt: <base64-encoded-cert>
     key: <base64-encoded-key>
-  k8sAggregator:
-    cert: <base64-encoded-cert>
+  k8saggregator:
+    crt: <base64-encoded-cert>
     key: <base64-encoded-key>
-  k8sServiceAccount:
+  k8sserviceaccount:
     key: <base64-encoded-key>
   os:
-    cert: <base64-encoded-cert>
+    crt: <base64-encoded-cert>
     key: <base64-encoded-key>
 ```
 
@@ -68,7 +68,7 @@ Now that you have secrets in a separate file, generate machine configurations th
 ```bash
 # Generate configs using the pre-existing secrets
 talosctl gen config my-cluster https://10.0.1.100:6443 \
-    --from-secrets secrets.yaml
+    --with-secrets secrets.yaml
 ```
 
 This produces `controlplane.yaml`, `worker.yaml`, and `talosconfig` files that use the secrets from your bundle. The machine configurations still contain the secrets (they need to for the node to operate), but the source of truth for those secrets is now the separate `secrets.yaml` file.
@@ -82,7 +82,7 @@ First, you can regenerate machine configurations without changing secrets. If yo
 ```bash
 # Regenerate configs with different settings but same secrets
 talosctl gen config my-cluster https://new-endpoint.example.com:6443 \
-    --from-secrets secrets.yaml \
+    --with-secrets secrets.yaml \
     --config-patch @my-patches.yaml
 ```
 
@@ -104,7 +104,7 @@ sops --encrypt --age age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx secrets.yaml > se
 
 # Later, decrypt when you need to generate configs
 sops --decrypt secrets.enc.yaml > secrets.yaml
-talosctl gen config my-cluster https://10.0.1.100:6443 --from-secrets secrets.yaml
+talosctl gen config my-cluster https://10.0.1.100:6443 --with-secrets secrets.yaml
 
 # Clean up the decrypted file
 rm secrets.yaml
@@ -120,7 +120,7 @@ vault kv put secret/talos/my-cluster @secrets.yaml
 
 # Retrieve secrets when needed
 vault kv get -format=yaml secret/talos/my-cluster > secrets.yaml
-talosctl gen config my-cluster https://10.0.1.100:6443 --from-secrets secrets.yaml
+talosctl gen config my-cluster https://10.0.1.100:6443 --with-secrets secrets.yaml
 rm secrets.yaml
 ```
 
@@ -172,7 +172,7 @@ EOF
 # Step 4: When deploying, decrypt secrets and generate configs
 sops --decrypt secrets.enc.yaml > secrets.yaml
 talosctl gen config my-cluster https://10.0.1.100:6443 \
-    --from-secrets secrets.yaml \
+    --with-secrets secrets.yaml \
     --config-patch @cluster-config.yaml
 rm secrets.yaml
 ```
@@ -202,7 +202,8 @@ jobs:
           # Install talosctl
           curl -sL https://talos.dev/install | sh
           # Install sops
-          curl -sL https://github.com/getsops/sops/releases/latest/download/sops-linux-amd64 -o /usr/local/bin/sops
+          SOPS_VERSION=v3.13.0
+          curl -sL https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.linux.amd64 -o /usr/local/bin/sops
           chmod +x /usr/local/bin/sops
 
       - name: Generate configs
@@ -214,7 +215,7 @@ jobs:
 
           # Generate configs
           talosctl gen config my-cluster https://10.0.1.100:6443 \
-              --from-secrets /tmp/secrets.yaml \
+              --with-secrets /tmp/secrets.yaml \
               --config-patch @talos/cluster-config.yaml
 
           # Clean up
@@ -235,7 +236,7 @@ talosctl gen secrets -o new-secrets.yaml
 
 # Generate new configurations from new secrets
 talosctl gen config my-cluster https://10.0.1.100:6443 \
-    --from-secrets new-secrets.yaml \
+    --with-secrets new-secrets.yaml \
     --config-patch @cluster-config.yaml
 
 # Apply new configurations to all nodes
