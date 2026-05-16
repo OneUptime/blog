@@ -81,8 +81,8 @@ Verify the installation.
 # Check OpenCost pods
 kubectl get pods -n opencost
 
-# Port-forward to access the UI
-kubectl port-forward -n opencost svc/opencost 9090:9090
+# Port-forward to access the UI (9090) and the API (9003)
+kubectl port-forward -n opencost svc/opencost 9090 9003
 
 # Open http://localhost:9090 in your browser
 ```
@@ -134,15 +134,15 @@ OpenCost exposes a REST API for programmatic access to cost data.
 
 ```bash
 # Get cost allocation for the last 24 hours grouped by namespace
-curl -s "http://localhost:9090/allocation/compute?window=1d&aggregate=namespace" | \
+curl -s "http://localhost:9003/allocation/compute?window=1d&aggregate=namespace" | \
   jq '.data[] | to_entries[] | {namespace: .key, totalCost: .value.totalCost}'
 
 # Get cost allocation for the last 7 days
-curl -s "http://localhost:9090/allocation/compute?window=7d&aggregate=namespace" | \
+curl -s "http://localhost:9003/allocation/compute?window=7d&aggregate=namespace" | \
   jq '.data[] | to_entries[] | {namespace: .key, cpuCost: .value.cpuCost, ramCost: .value.ramCost, totalCost: .value.totalCost}'
 
 # Get cost per controller (deployment, statefulset, etc.)
-curl -s "http://localhost:9090/allocation/compute?window=1d&aggregate=controller" | \
+curl -s "http://localhost:9003/allocation/compute?window=1d&aggregate=controller" | \
   jq '.data[] | to_entries[] | select(.value.totalCost > 0.01) | {controller: .key, totalCost: .value.totalCost}'
 ```
 
@@ -264,13 +264,13 @@ spec:
                   echo ""
 
                   # Query OpenCost API
-                  curl -s "http://opencost.opencost:9090/allocation/compute?window=7d&aggregate=namespace" | \
+                  curl -s "http://opencost.opencost:9003/allocation/compute?window=7d&aggregate=namespace" | \
                     jq -r '.data[] | to_entries[] | select(.value.totalCost > 0) | "\(.key): $\(.value.totalCost | . * 100 | round / 100)"' | \
                     sort -t'$' -k2 -rn
 
                   echo ""
                   echo "Total cluster cost (last 7 days):"
-                  curl -s "http://opencost.opencost:9090/allocation/compute?window=7d&aggregate=cluster" | \
+                  curl -s "http://opencost.opencost:9003/allocation/compute?window=7d&aggregate=cluster" | \
                     jq -r '.data[] | to_entries[] | "  $\(.value.totalCost | . * 100 | round / 100)"'
 
                   # In production, you would send this via email or Slack
