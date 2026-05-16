@@ -46,10 +46,10 @@ Download the ARM64 metal image from the Talos Linux releases page:
 
 ```bash
 # Download the generic ARM64 image
-wget https://github.com/siderolabs/talos/releases/download/v1.9.0/metal-arm64.raw.xz
+wget https://github.com/siderolabs/talos/releases/download/v1.9.0/metal-arm64.raw.zst
 
 # Decompress it
-xz -d metal-arm64.raw.xz
+zstd -d metal-arm64.raw.zst
 ```
 
 Some Banana Pi boards use Amlogic or MediaTek SoCs that require specific device tree configurations. If the generic image does not boot on your board, you will need to use the Talos Image Factory:
