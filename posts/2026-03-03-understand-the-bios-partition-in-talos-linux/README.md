@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, BIOS, Boot Process, Partition, Legacy Boot, Disk Management
 
-Description: A guide to understanding the BIOS boot partition in Talos Linux, how legacy BIOS boot works, and when and why this partition is used instead of EFI.
+Description: A guide to understanding the BIOS boot partition in Talos Linux, how legacy BIOS boot works, and when and why this partition is used.
 
 ---
 
-While most modern servers and desktops ship with UEFI firmware, there is still a significant amount of hardware running legacy BIOS. Talos Linux supports both boot modes, and when running on a BIOS-based system, it creates a dedicated BIOS boot partition instead of an EFI System Partition. Understanding this partition helps you work with older hardware, troubleshoot boot issues, and make informed decisions about your cluster's infrastructure.
+While most modern servers and desktops ship with UEFI firmware, there is still a significant amount of hardware running legacy BIOS. Talos Linux supports both boot modes, and when running on a BIOS-based system, it uses a dedicated BIOS boot partition for GRUB. Understanding this partition helps you work with older hardware, troubleshoot boot issues, and make informed decisions about your cluster's infrastructure.
 
 ## What Is the BIOS Boot Partition?
 
@@ -22,14 +22,14 @@ On a system with legacy BIOS, Talos creates this disk layout:
 
 ```text
 Legacy BIOS Talos Disk Layout:
-  /dev/sda1 - BIOS boot partition - ~1MB
-  /dev/sda2 - BOOT partition - kernel and initramfs
-  /dev/sda3 - META partition - metadata key-value store
-  /dev/sda4 - STATE partition - machine configuration
-  /dev/sda5 - EPHEMERAL partition - Kubernetes data
+  BIOS - BIOS boot partition - ~1MB
+  BOOT - GRUB configuration, kernel, and initramfs
+  META - metadata key-value store
+  STATE - machine configuration
+  EPHEMERAL - Kubernetes data
 ```
 
-Notice that the BIOS boot partition replaces the EFI System Partition in the layout. It is much smaller (typically 1MB compared to the ESP's 100MB) because it only needs to hold the GRUB core image, not a full FAT32 filesystem.
+Notice that the BIOS boot partition is much smaller than an EFI System Partition because it only needs to hold GRUB's embedded boot code, not a full FAT filesystem with EFI binaries.
 
 ## How Legacy BIOS Boot Works with Talos
 
@@ -46,7 +46,7 @@ The critical difference from UEFI is that legacy BIOS does not understand GPT pa
 
 ## When Does Talos Create a BIOS Partition?
 
-Talos automatically detects the boot mode during installation. If the system firmware is legacy BIOS, Talos creates a BIOS boot partition. If the firmware is UEFI, it creates an EFI System Partition instead. You do not need to specify this in the machine configuration.
+Talos automatically detects the boot mode during installation. If the system firmware is legacy BIOS, Talos uses the GRUB layout with a BIOS boot partition. For new UEFI installations in current Talos releases, Talos uses `systemd-boot` with an EFI partition and Unified Kernel Images. You do not need to specify this in the machine configuration.
 
 ```bash
 # Talos detects the boot mode automatically during installation
@@ -67,13 +67,16 @@ If you need to determine whether a running Talos node is using BIOS or UEFI boot
 talosctl get disks --nodes 192.168.1.10
 
 # Check for the presence of EFI or BIOS boot partition
-talosctl get blockdevices --nodes 192.168.1.10
+talosctl get discoveredvolumes --nodes 192.168.1.10
 
 # You can also check the kernel command line for hints
-talosctl get kernelparams --nodes 192.168.1.10
+talosctl get cmdline --nodes 192.168.1.10
+
+# Check whether the node booted with a UKI, which indicates systemd-boot
+talosctl get securitystate --nodes 192.168.1.10 -o yaml
 ```
 
-If the first partition on the system disk is very small (around 1MB) and does not have a FAT32 filesystem, it is a BIOS boot partition. If the first partition is around 100MB with FAT32, it is an EFI System Partition.
+If a partition is very small (around 1MB), has the `BIOS` partition label, and does not have a FAT filesystem, it is a BIOS boot partition. If a boot partition has the `EFI` partition label and a FAT filesystem, it is an EFI System Partition.
 
 ## BIOS Boot Partition and GPT
 
@@ -107,7 +110,7 @@ However, there are valid reasons to use BIOS boot:
 
 ## Migrating from BIOS to UEFI
 
-If you start with a BIOS-booted Talos node and later want to switch to UEFI (for example, after a firmware update that adds UEFI support), you cannot simply change the boot mode. The disk partition layout is different between the two modes.
+If you start with a BIOS-booted Talos node and later want to switch to UEFI (for example, after a firmware update that adds UEFI support), you cannot simply change the boot mode and expect the node to boot with the new UEFI bootloader. The installed bootloader path is different between the two modes.
 
 To migrate, you would need to:
 
@@ -124,7 +127,7 @@ kubectl drain node-01 --ignore-daemonsets --delete-emptydir-data
 # Step 2: Change firmware to UEFI (hardware/BIOS specific)
 
 # Step 3: Boot from Talos ISO in UEFI mode and install
-# The installation will detect UEFI and create an ESP
+# The installation will detect UEFI and create the appropriate EFI boot layout
 
 # Step 4: Apply machine configuration
 talosctl apply-config --nodes 192.168.1.10 --file worker.yaml --insecure
@@ -167,12 +170,12 @@ grep firmware /path/to/vm.vmx
 
 ## BIOS Boot Partition and Upgrades
 
-During a Talos upgrade, the bootloader code in the BIOS boot partition may be updated along with the kernel and initramfs in the BOOT partition. This process is handled automatically by the Talos upgrade mechanism.
+During a Talos upgrade on a GRUB-based legacy BIOS node, the bootloader code in the BIOS boot partition may be updated along with the kernel and initramfs in the BOOT partition. This process is handled automatically by the Talos upgrade mechanism.
 
 ```bash
 # Standard upgrade works the same regardless of boot mode
 talosctl upgrade --nodes 192.168.1.10 \
-  --image ghcr.io/siderolabs/installer:v1.7.0
+  --image ghcr.io/siderolabs/installer:v1.13.0
 ```
 
 The upgrade process is aware of the boot mode and updates the appropriate boot components. You do not need to specify whether the node uses BIOS or UEFI boot when running an upgrade.
