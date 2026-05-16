@@ -8,35 +8,33 @@ Description: A deep dive into the Public Key Infrastructure that secures all com
 
 ---
 
-Security in Talos Linux is built on a foundation of Public Key Infrastructure (PKI). Every API call, every node-to-node communication, every certificate signing request goes through a system of certificates and keys that establish trust. There is no username/password authentication, no token-based auth for the OS layer, and no SSH keys. Everything is certificates.
+Security in Talos Linux is built on a foundation of Public Key Infrastructure (PKI). Steady-state Talos API access and node-to-node communication go through a system of certificates and keys that establish trust. There is no username/password authentication and no SSH keys. A machine token is used when a node joins the Talos PKI, but ongoing OS access is certificate-based.
 
 Understanding the PKI model is essential because it affects how you create clusters, add nodes, manage access, and troubleshoot connectivity issues.
 
 ## The Trust Chain
 
-When you create a Talos cluster, a Certificate Authority (CA) is generated. This CA is the root of trust for the entire cluster. Every certificate in the cluster is either the CA certificate itself or is signed by it.
+When you create a Talos cluster, several Certificate Authorities (CAs) are generated. The Talos CA is the root of trust for the Talos API, while Kubernetes and etcd use separate CAs for their own certificate chains.
 
 The trust chain looks like this:
 
 ```text
-Cluster CA (Root of Trust)
+Talos CA
     |
-    +-- Control Plane Node Certificates
-    |       |
-    |       +-- apid server certificate
-    |       +-- etcd peer certificates
-    |       +-- etcd client certificates
-    |       +-- Kubernetes CA (separate chain)
+    +-- Talos API server certificates
+    +-- talosctl client certificates
+    +-- Additional operator certificates
+
+Kubernetes CA
     |
-    +-- Worker Node Certificates
-    |       |
-    |       +-- apid server certificate
-    |       +-- kubelet client certificate
+    +-- Kubernetes API server certificates
+    +-- Kubernetes client certificates
+    +-- kubelet client certificates
+
+etcd CA
     |
-    +-- Admin Client Certificates
-            |
-            +-- talosctl admin certificate
-            +-- Additional operator certificates
+    +-- etcd peer certificates
+    +-- etcd client certificates
 ```
 
 ```bash
@@ -55,20 +53,14 @@ talosctl gen config my-cluster https://10.0.0.10:6443
 
 The Talos CA secures all Talos API communication. It is separate from the Kubernetes CA, which secures Kubernetes API communication.
 
-When a node boots, it uses the CA certificate from its machine configuration to verify other nodes and to present its own identity. The CA key is included only in the talosconfig (admin configuration) and the control plane configuration. Worker nodes receive only the CA certificate, not the key.
+When a node boots, it uses the CA certificate from its machine configuration to verify other nodes and to present its own identity. The CA key is included in control plane machine configurations so control plane nodes can issue node certificates. Worker nodes receive only the CA certificate, not the key. The talosconfig contains the CA certificate plus a client certificate and key; it does not contain the Talos CA private key.
 
 ```yaml
 # Machine configuration: CA section
 machine:
   ca:
-    crt: |
-      -----BEGIN CERTIFICATE-----
-      MIIBPzCB8qADAgECAhAK...
-      -----END CERTIFICATE-----
-    key: |
-      -----BEGIN ED25519 PRIVATE KEY-----
-      MC4CAQAwBQYDK2VwBCIE...
-      -----END ED25519 PRIVATE KEY-----
+    crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t...
+    key: LS0tLS1CRUdJTiBFRDI1NTE5IFBSSVZBVEUgS0VZLS0tLS0...
 ```
 
 The CA uses Ed25519 keys by default, which provides strong security with small key sizes and fast operations.
@@ -104,14 +96,8 @@ Talos manages a separate PKI for Kubernetes. The Kubernetes CA signs certificate
 # Cluster configuration: Kubernetes CA
 cluster:
   ca:
-    crt: |
-      -----BEGIN CERTIFICATE-----
-      ...
-      -----END CERTIFICATE-----
-    key: |
-      -----BEGIN RSA PRIVATE KEY-----
-      ...
-      -----END RSA PRIVATE KEY-----
+    crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t...
+    key: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0t...
 ```
 
 The Kubernetes PKI includes several certificate pairs:
@@ -123,11 +109,8 @@ The Kubernetes PKI includes several certificate pairs:
 - **kubelet certificates** - For each node's kubelet
 
 ```bash
-# View Kubernetes certificates through the Talos API
-talosctl -n 10.0.0.11 get certificate -o yaml
-
-# Check Kubernetes API server certificate
-kubectl get secret -n kube-system
+# View Kubernetes dynamic certificates through the Talos API
+talosctl -n 10.0.0.11 get KubernetesDynamicCerts -o yaml
 ```
 
 ## etcd PKI
@@ -153,7 +136,7 @@ On control plane nodes, the trustd service acts as a certificate signing authori
 
 The validation process checks:
 1. The CSR is properly formatted
-2. The requesting node has the correct cluster token
+2. The requesting node has the correct machine token
 3. The node's identity matches the request
 
 ```bash
@@ -172,14 +155,14 @@ Certificates have expiration dates, and they need to be rotated before they expi
 
 ### Talos API Certificates
 
-The Talos CA certificate and node certificates are generated during cluster creation. They have long lifetimes (typically 10 years) to reduce operational overhead.
+The Talos CA certificate is generated during cluster creation and has a long lifetime, typically 10 years. Talos automatically manages and rotates server-side certificates for the Talos API, Kubernetes, and etcd. Client certificates in `talosconfig` and `kubeconfig` are the user's responsibility.
 
 ### Kubernetes Certificates
 
-Kubernetes component certificates are managed by Talos and are rotated automatically. The kubelet certificate rotation is enabled by default.
+Kubernetes component certificates are managed by Talos and are rotated automatically. The kubelet must be restarted at least once a year for its certificates to be rotated; a node reboot or Talos upgrade is sufficient.
 
 ```yaml
-# Kubelet certificate rotation (enabled by default in Talos)
+# Kubelet server certificate rotation can be requested with this kubelet argument
 machine:
   kubelet:
     extraArgs:
@@ -191,15 +174,13 @@ machine:
 If you need to rotate the Talos CA (for example, if the CA key is compromised), you can do so, but it requires careful planning.
 
 ```bash
-# Generate new secrets
-talosctl gen secrets -o new-secrets.yaml
+# Preview Talos API CA rotation
+talosctl -n 10.0.0.11 rotate-ca --dry-run=true --talos=true --kubernetes=false
 
-# Generate new configs with the new secrets
-talosctl gen config my-cluster https://10.0.0.10:6443 \
-  --with-secrets new-secrets.yaml
+# Rotate the Talos API CA
+talosctl -n 10.0.0.11 rotate-ca --dry-run=false --talos=true --kubernetes=false
 
-# Apply the new configuration to each node
-# This must be done carefully to avoid disruption
+# Save the new CA output and update stored secrets/configs as needed
 ```
 
 ## Securing the Secrets
@@ -228,12 +209,12 @@ talosctl gen config my-cluster https://10.0.0.10:6443 \
 
 Not every operator needs full admin access. Talos supports creating client certificates with different roles.
 
-The admin role has full access to all API operations. The reader role can query system state but cannot make changes. The operator role can perform some operations like rebooting nodes but cannot change configuration.
+The `os:admin` role has full access to all API operations. The `os:reader` role can query safe system state but cannot make changes. The `os:operator` role includes reader access plus operational methods such as rebooting, shutting down, and etcd maintenance.
 
 ```bash
 # The talosconfig generated by gen config has admin access
-# To create restricted access, you can generate additional configs
-# with the appropriate role in the certificate
+# Generate a restricted reader talosconfig from a control plane node
+talosctl -n 10.0.0.11 config new talosconfig-reader --roles os:reader --crt-ttl 24h
 ```
 
 ## Troubleshooting PKI Issues
@@ -244,7 +225,7 @@ Certificate problems are one of the most common issues in Talos clusters. Here a
 
 ```bash
 # Check if apid is running
-talosctl -n 10.0.0.11 services
+talosctl -n 10.0.0.11 service
 
 # If you cannot connect at all, verify network connectivity
 ping 10.0.0.11
@@ -259,17 +240,17 @@ nc -zv 10.0.0.11 50000
 talosctl config info
 
 # Compare with the CA on the node
-talosctl -n 10.0.0.11 get machineconfig -o yaml | grep -A5 "ca:"
+talosctl -n 10.0.0.11 get machineconfig v1alpha1 -o yaml | grep -A5 "ca:"
 ```
 
 ### Certificate Expired
 
 ```bash
 # Check certificate expiration
-talosctl -n 10.0.0.11 get certificate -o yaml
+talosctl -n 10.0.0.11 get KubernetesDynamicCerts -o yaml
 
-# If Kubernetes certificates are expired, Talos can regenerate them
-talosctl -n 10.0.0.11 apply-config --file config.yaml
+# If Kubernetes certificates are stale, restarting or upgrading the node allows Talos to rotate them
+talosctl -n 10.0.0.11 reboot
 ```
 
 ### Worker Node Cannot Join
@@ -279,7 +260,7 @@ talosctl -n 10.0.0.11 apply-config --file config.yaml
 talosctl -n 10.0.0.11 service trustd
 talosctl -n 10.0.0.11 logs trustd
 
-# Verify the worker has the correct cluster token
+# Verify the worker has the correct machine token
 # The token must match between the worker and control plane configs
 ```
 
