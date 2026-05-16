@@ -30,7 +30,7 @@ kubectl get nodes
 # Error: Unable to connect to the server: dial tcp 10.0.0.10:6443: i/o timeout
 ```
 
-These two error messages actually point to different problems. "Connection refused" means something is listening at that IP but not on that port, or the service is down. "I/O timeout" means you cannot even reach the IP address.
+These two error messages actually point to different problems. "Connection refused" usually means the endpoint is reachable, but nothing is accepting connections on that port, or a firewall is actively rejecting the connection. "I/O timeout" usually means the client cannot reach the IP address or the traffic is being silently dropped.
 
 ## Step 1: Verify the Control Plane Endpoint
 
@@ -45,14 +45,15 @@ This should show you the control plane endpoint URL. Make sure this matches what
 
 ## Step 2: Check if the API Server Process Is Running
 
-Use `talosctl` to check the kube-apiserver status on your control plane nodes:
+Use `talosctl` to check the kube-apiserver static pod status on your control plane nodes:
 
 ```bash
-# Check the API server service status
-talosctl -n <cp-ip> service kube-apiserver
+# Check the API server static pod status
+talosctl -n <cp-ip> get staticpodstatus | grep kube-apiserver
 
-# If it shows as not running, check the logs
-talosctl -n <cp-ip> logs kube-apiserver --tail 100
+# Find the kube-apiserver container ID, then check the logs
+talosctl -n <cp-ip> containers -k | grep kube-apiserver
+talosctl -n <cp-ip> logs -k <kube-apiserver-container-id> --tail 100
 ```
 
 If the API server is not running, the logs will tell you why. Common reasons include etcd being unavailable, certificate errors, or bind address conflicts.
@@ -77,12 +78,12 @@ If you are using a load balancer (which is recommended for multi-node control pl
 
 ```bash
 # Test direct connectivity to each control plane node
-curl -k https://<cp-1-ip>:6443/healthz
-curl -k https://<cp-2-ip>:6443/healthz
-curl -k https://<cp-3-ip>:6443/healthz
+curl -k https://<cp-1-ip>:6443/readyz
+curl -k https://<cp-2-ip>:6443/readyz
+curl -k https://<cp-3-ip>:6443/readyz
 
 # Test the load balancer endpoint
-curl -k https://<load-balancer-ip>:6443/healthz
+curl -k https://<load-balancer-ip>:6443/readyz
 ```
 
 If individual nodes respond but the load balancer does not, the issue is with your load balancer setup. Check that it is configured to forward traffic to port 6443 on all control plane nodes.
@@ -104,14 +105,14 @@ Port 6443 must be open on all control plane nodes for incoming connections from 
 
 ```bash
 # For cloud environments, check security groups
-# For bare metal, check iptables on the host network
-# Talos does not have iptables CLI, so check from outside
+# For bare metal, check firewall rules on the network path
+# Talos does not have a shell or iptables CLI, so check from outside
 
-# Try connecting from a worker node
-talosctl -n <worker-ip> read /proc/net/tcp
+# Try connecting from a host on the same network path as your workers or clients
+nc -vz <control-plane-endpoint> 6443
 ```
 
-Make sure that no network policy or security group is blocking traffic to port 6443.
+Make sure that no firewall rule, security group, or network ACL is blocking traffic to port 6443.
 
 ## Step 6: Certificate Validation Failures
 
@@ -132,15 +133,16 @@ talosctl -n <cp-ip> kubeconfig --force
 
 ## Step 7: API Server Audit and Admission Webhook Failures
 
-If you have configured audit logging or admission webhooks that are unreachable, the API server may fail to start or become extremely slow:
+If you have configured audit logging or admission webhooks that are unreachable or misconfigured, API requests may fail or become extremely slow:
 
 ```bash
-# Check API server logs for webhook-related errors
-talosctl -n <cp-ip> logs kube-apiserver | grep -i webhook
-talosctl -n <cp-ip> logs kube-apiserver | grep -i admission
+# Find the kube-apiserver container ID, then check API server logs for webhook-related errors
+talosctl -n <cp-ip> containers -k | grep kube-apiserver
+talosctl -n <cp-ip> logs -k <kube-apiserver-container-id> | grep -i webhook
+talosctl -n <cp-ip> logs -k <kube-apiserver-container-id> | grep -i admission
 ```
 
-If a webhook is causing the API server to hang, you may need to update your machine configuration to remove the problematic admission plugin configuration.
+If a webhook is causing API requests to hang, you may need to update or remove the problematic webhook configuration. If the issue comes from API server extra arguments in the Talos machine configuration, update that machine configuration and re-apply it.
 
 ## Step 8: Resource Exhaustion on Control Plane Nodes
 
@@ -165,7 +167,7 @@ On Talos, the API server runs as a static pod. Check if the manifest is being ge
 talosctl -n <cp-ip> get staticpodstatus
 
 # View the generated manifest
-talosctl -n <cp-ip> get staticpod kube-apiserver -o yaml
+talosctl -n <cp-ip> get staticpods kube-apiserver -o yaml
 ```
 
 If the static pod manifest has errors, there may be a problem with your machine configuration. Review the control plane configuration carefully.
@@ -191,7 +193,7 @@ If the API server is completely down and you cannot recover it through the steps
 talosctl -n <cp-ip> etcd status
 
 # 2. Reset the problematic control plane node
-talosctl -n <broken-cp-ip> reset --graceful=false
+talosctl -n <broken-cp-ip> reset --graceful=false --reboot
 
 # 3. Re-apply the control plane configuration
 talosctl apply-config --insecure -n <broken-cp-ip> --file controlplane.yaml
