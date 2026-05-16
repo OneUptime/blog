@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, SOPS, Age, Secrets Management, GitOps, Encryption
 
-Description: A practical guide to using Mozilla SOPS with Age encryption for managing Kubernetes secrets on Talos Linux clusters.
+Description: A practical guide to using SOPS with Age encryption for managing Kubernetes secrets on Talos Linux clusters.
 
 ---
 
-SOPS (Secrets OPerationS) is a tool created by Mozilla for encrypting files while keeping the structure readable. When paired with Age, a modern and simple encryption tool, it becomes a powerful way to manage secrets in GitOps workflows. Unlike Sealed Secrets which creates a custom resource type, SOPS encrypts standard YAML or JSON files in place, making it versatile and easy to integrate with existing tooling.
+SOPS (Secrets OPerationS) is a tool originally launched at Mozilla for encrypting files while keeping the structure readable. When paired with Age, a modern and simple encryption tool, it becomes a powerful way to manage secrets in GitOps workflows. Unlike Sealed Secrets which creates a custom resource type, SOPS encrypts standard YAML or JSON files in place, making it versatile and easy to integrate with existing tooling.
 
 For Talos Linux users who rely on declarative configurations and Git repositories for cluster management, SOPS with Age provides a clean way to encrypt sensitive values in your manifests while keeping the file structure and non-sensitive keys visible. This guide covers the full setup process.
 
@@ -79,9 +79,13 @@ cat age-key.txt
 The file contains both the public key (which you share) and the secret key (which you keep private). Store the secret key securely.
 
 ```bash
-# Set up the Age key for SOPS to find automatically
+# Set up the Age key for SOPS to find automatically on Linux
 mkdir -p ~/.config/sops/age/
 cp age-key.txt ~/.config/sops/age/keys.txt
+
+# On macOS, SOPS also checks this path by default
+mkdir -p ~/Library/Application\ Support/sops/age/
+cp age-key.txt ~/Library/Application\ Support/sops/age/keys.txt
 
 # Or set the environment variable
 export SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt
@@ -94,9 +98,10 @@ Create a `.sops.yaml` configuration file in your repository root. This tells SOP
 ```yaml
 # .sops.yaml
 creation_rules:
-  # Encrypt all files matching this pattern with the specified Age key
+  # Encrypt Kubernetes Secret data fields in files matching this pattern
   - path_regex: .*secrets.*\.yaml$
     age: age1qy3rz5mvad7dp7qcyp5hpnwhxlgp68n6ycxjaa7n4dp6qfkyx9s3tvr4t
+    encrypted_regex: "^(data|stringData)$"
 
   # You can have different rules for different paths
   - path_regex: environments/production/.*\.yaml$
@@ -221,32 +226,29 @@ Now you can commit encrypted secret files to your Git repository. When Flux sync
 
 ## Integrating with ArgoCD on Talos Linux
 
-For ArgoCD users, you need to install the SOPS plugin.
+For ArgoCD users, you need to install SOPS in an Argo CD config management plugin sidecar.
 
 ```yaml
-# argocd-cm configmap patch
-apiVersion: v1
-kind: ConfigMap
+# plugin.yaml mounted into the argocd-repo-server sidecar
+apiVersion: argoproj.io/v1alpha1
+kind: ConfigManagementPlugin
 metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  configManagementPlugins: |
-    - name: sops
-      generate:
-        command: ["bash", "-c"]
-        args:
-          - |
-            for f in *.yaml; do
-              if grep -q "sops:" "$f"; then
-                sops --decrypt "$f"
-              else
-                cat "$f"
-              fi
-            done
+  name: sops
+spec:
+  generate:
+    command: ["bash", "-c"]
+    args:
+      - |
+        for f in *.yaml; do
+          if grep -q "sops:" "$f"; then
+            sops --decrypt "$f"
+          else
+            cat "$f"
+          fi
+        done
 ```
 
-You also need to make the Age key available to ArgoCD by mounting it as a secret into the repo-server pods.
+You also need to make the Age key available to ArgoCD by mounting it as a secret into the repo-server sidecar.
 
 ## Working with Multiple Keys
 
@@ -280,13 +282,15 @@ To rotate your Age keys, generate a new key pair and update the SOPS configurati
 age-keygen -o new-age-key.txt
 
 # Update .sops.yaml with the new public key
-# Then rotate all encrypted files
+# Then update the recipients for all encrypted files
 find . -name "*.enc.yaml" -o -name "*secrets*.yaml" | while read f; do
   if grep -q "sops:" "$f"; then
     sops updatekeys "$f" --yes
   fi
 done
 ```
+
+If you also want to rotate the SOPS data encryption key, run `sops rotate -i "$f"` on each encrypted file.
 
 ## Wrapping Up
 
