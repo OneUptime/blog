@@ -27,7 +27,7 @@ Each of these steps can be optimized. Let us work through them.
 
 ## Choosing and Configuring Your CNI
 
-The CNI plugin is the single biggest factor in pod networking performance. On Talos Linux, Cilium is the default CNI and offers the best performance through eBPF-based data plane.
+The CNI plugin is the single biggest factor in pod networking performance. Talos Linux ships with Flannel as the default CNI, but for maximum performance you can install Cilium instead (set `cluster.network.cni.name: none` in the machine config so Talos skips Flannel, then deploy Cilium via Helm). Cilium offers the best performance through its eBPF-based data plane.
 
 ### Cilium with eBPF Optimization
 
@@ -52,8 +52,7 @@ bandwidthManager:
 loadBalancer:
   algorithm: maglev                   # Consistent hashing for load balancing
   mode: dsr                          # Direct Server Return
-endpointRoutes:
-  enabled: true                       # Per-endpoint routes for better locality
+  dsrDispatch: opt                    # Required with DSR mode (opt | ipip | geneve)
 hubble:
   enabled: false                      # Disable Hubble in production for performance
 ```
