@@ -8,7 +8,7 @@ Description: A complete guide to understanding and using PersistentVolumes and P
 
 ---
 
-PersistentVolumes (PVs) are the foundation of stateful storage in Kubernetes. They abstract the underlying storage technology, whether it is local disk, network-attached storage, or a distributed system, into a uniform interface that pods can consume. On Talos Linux, understanding PersistentVolumes is especially important because the operating system is immutable, so all persistent data must go through Kubernetes storage primitives.
+PersistentVolumes (PVs) are the foundation of stateful storage in Kubernetes. They abstract the underlying storage technology, whether it is local disk, network-attached storage, or a distributed system, into a uniform interface that pods can consume. On Talos Linux, understanding PersistentVolumes is especially important because the operating system is immutable, so persistent workload data should be managed through Kubernetes storage primitives.
 
 This guide covers the concepts, configurations, and practical patterns for using PersistentVolumes on Talos Linux.
 
@@ -45,7 +45,7 @@ spec:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
   local:
-    path: /var/local-storage/vol-001
+    path: /var/mnt/local-storage/vol-001
   nodeAffinity:
     required:
       nodeSelectorTerms:
@@ -74,7 +74,7 @@ spec:
 
 ### Dynamic Provisioning
 
-With dynamic provisioning, Kubernetes creates PVs automatically when a PVC is submitted:
+With dynamic provisioning, a storage provisioner creates PVs automatically when a PVC is submitted:
 
 ```yaml
 # dynamic-pvc.yaml
@@ -96,7 +96,7 @@ Dynamic provisioning is the preferred approach on Talos Linux because it elimina
 
 ## Access Modes
 
-PVs support three access modes:
+PVs support four access modes:
 
 ```yaml
 # ReadWriteOnce - can be mounted as read-write by a single node
@@ -110,11 +110,15 @@ accessModes:
 # ReadWriteMany - can be mounted as read-write by many nodes
 accessModes:
   - ReadWriteMany  # Needed for shared storage (NFS, CephFS)
+
+# ReadWriteOncePod - can be mounted as read-write by a single pod
+accessModes:
+  - ReadWriteOncePod  # CSI volumes only; stable in Kubernetes 1.29+
 ```
 
 Not all storage backends support all access modes. On Talos Linux:
 
-- Block storage (Ceph RBD, Longhorn): typically ReadWriteOnce
+- Block storage (Ceph RBD, Longhorn): typically ReadWriteOnce; Longhorn also supports ReadWriteMany when RWX prerequisites are installed
 - Filesystem storage (CephFS, NFS): supports ReadWriteMany
 - Local PV: ReadWriteOnce only
 
@@ -136,27 +140,19 @@ persistentVolumeReclaimPolicy: Recycle
 For production on Talos Linux, use `Retain` for critical data and `Delete` for ephemeral data:
 
 ```yaml
-# production-pv.yaml
-apiVersion: v1
-kind: PersistentVolume
+# production-storageclass.yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
 metadata:
-  name: production-db
-spec:
-  capacity:
-    storage: 100Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain  # Protect production data
-  storageClassName: ceph-block
-  csi:
-    driver: rook-ceph.rbd.csi.ceph.com
-    volumeHandle: pvc-abc-123
-    nodeStageSecretRef:
-      name: rook-csi-rbd-node
-      namespace: rook-ceph
-    volumeAttributes:
-      clusterID: rook-ceph
-      pool: replicated-pool
+  name: ceph-block-retain
+provisioner: rook-ceph.rbd.csi.ceph.com
+reclaimPolicy: Retain  # Protect production data
+allowVolumeExpansion: true
+parameters:
+  clusterID: rook-ceph
+  pool: replicated-pool
+  imageFormat: "2"
+  imageFeatures: layering
 ```
 
 ## Using PVs with StatefulSets
@@ -217,7 +213,7 @@ This creates three PVCs: `data-postgres-0`, `data-postgres-1`, and `data-postgre
 
 ## Using PVs with Deployments
 
-Deployments can also use PVCs, but remember that ReadWriteOnce volumes can only be attached to one pod at a time:
+Deployments can also use PVCs, but remember that ReadWriteOnce volumes can only be attached to one node at a time. For a single-writer workload, keep one replica or use ReadWriteOncePod with a CSI driver that supports it:
 
 ```yaml
 # deployment-with-pv.yaml
@@ -240,7 +236,7 @@ metadata:
   name: my-app
   namespace: my-app
 spec:
-  replicas: 1  # Must be 1 for ReadWriteOnce
+  replicas: 1  # Use 1 replica for single-writer workloads
   selector:
     matchLabels:
       app: my-app
@@ -309,7 +305,7 @@ spec:
 
 ## Expanding PersistentVolumes
 
-Most modern storage classes on Talos Linux support volume expansion:
+Many CSI-backed storage classes on Talos Linux support volume expansion when `allowVolumeExpansion` is set to `true`:
 
 ```bash
 # Check if your StorageClass supports expansion
@@ -373,4 +369,4 @@ kubectl logs -n kube-system -l app=csi-node-driver --tail=50
 
 ## Summary
 
-PersistentVolumes are how you manage all stateful data on Talos Linux. The immutable operating system means there is no other way to persist data across pod restarts and rescheduling. By understanding the relationship between PVs, PVCs, and StorageClasses, you can design storage architectures that match your workload requirements. Use dynamic provisioning when possible, choose the right access mode for your workload, and set reclaim policies that protect critical data. These fundamentals apply regardless of which storage backend you are running underneath.
+PersistentVolumes are how you manage stateful workload data on Talos Linux. The immutable operating system means you should rely on Kubernetes storage primitives for data that must survive pod restarts and rescheduling. By understanding the relationship between PVs, PVCs, and StorageClasses, you can design storage architectures that match your workload requirements. Use dynamic provisioning when possible, choose the right access mode for your workload, and set reclaim policies that protect critical data. These fundamentals apply regardless of which storage backend you are running underneath.
