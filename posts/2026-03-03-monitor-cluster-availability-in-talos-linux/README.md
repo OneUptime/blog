@@ -51,9 +51,11 @@ prometheus:
           resources:
             requests:
               storage: 50Gi
-    # Scrape Talos API metrics
+    # Scrape node-exporter metrics from Talos nodes
+    # (node-exporter is deployed on Talos via the official system extension and listens on port 9100;
+    # the Talos API itself runs on port 50000 over gRPC/mTLS and is not Prometheus-scrapable)
     additionalScrapeConfigs:
-      - job_name: talos-api
+      - job_name: talos-nodes
         static_configs:
           - targets:
               - 192.168.1.10:9100
@@ -318,7 +320,7 @@ spec:
       rules:
         - alert: DeploymentReplicasMismatch
           expr: |
-            kube_deployment_spec_replicas != kube_deployment_status_available_replicas
+            kube_deployment_spec_replicas != kube_deployment_status_replicas_available
           for: 10m
           labels:
             severity: warning
