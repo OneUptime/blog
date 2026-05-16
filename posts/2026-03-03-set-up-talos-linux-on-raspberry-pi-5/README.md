@@ -8,7 +8,7 @@ Description: A hands-on guide to running Talos Linux on the Raspberry Pi 5, cove
 
 ---
 
-The Raspberry Pi 5 brings a significant performance leap over its predecessor. With the BCM2712 quad-core Cortex-A76 processor running at 2.4 GHz, up to 8 GB of RAM, and a dedicated I/O controller (the RP1 chip), the Pi 5 is a much more capable platform for running Kubernetes. Talos Linux runs well on this hardware, and the improved CPU and I/O performance makes the cluster noticeably snappier compared to the Pi 4.
+The Raspberry Pi 5 brings a significant performance leap over its predecessor. With the BCM2712 quad-core Cortex-A76 processor running at 2.4 GHz, up to 8 GB of RAM, and a dedicated I/O controller (the RP1 chip), the Pi 5 is a much more capable platform for running Kubernetes. Talos Linux can be run on Raspberry Pi boards with the generic Raspberry Pi ARM64 image, but Raspberry Pi 5 support should be treated as community-tested rather than an officially tested Talos platform. The improved CPU and I/O performance makes the cluster noticeably snappier compared to the Pi 4.
 
 This guide covers the complete setup process for getting Talos Linux running on a Raspberry Pi 5.
 
@@ -51,17 +51,17 @@ You can also use the Raspberry Pi Imager to flash a bootloader update image. Sel
 
 ## Step 2: Download the Talos Image
 
-Talos provides ARM64 images that work on the Raspberry Pi 5. Use the generic ARM64 metal image with the RPi overlay:
+Talos provides ARM64 images that can be built with the generic Raspberry Pi overlay. Use the Image Factory URL for the vanilla `rpi_generic` schematic and the Talos release you want to run:
 
 ```bash
 # Download the SBC image for Raspberry Pi
-curl -LO https://github.com/siderolabs/talos/releases/latest/download/metal-rpi_generic-arm64.raw.xz
+curl -LO https://factory.talos.dev/image/ee21ef4a5ef808a9b7484cc0dda0f25075021691c8c09a276591eedb638ea1f9/v1.13.2/metal-arm64.raw.xz
 
 # Decompress
-xz -d metal-rpi_generic-arm64.raw.xz
+xz -d metal-arm64.raw.xz
 ```
 
-If the generic image does not work with your Pi 5 revision, check the Talos release notes for a Pi 5-specific image or overlay.
+If the generic image does not work with your Pi 5 revision, check the Talos release notes and the Image Factory for updated Raspberry Pi overlay support.
 
 ## Step 3: Flash the Image
 
@@ -76,7 +76,7 @@ diskutil list
 lsblk
 
 # Flash to SD card (replace /dev/sdX)
-sudo dd if=metal-rpi_generic-arm64.raw of=/dev/sdX bs=4M status=progress conv=fsync
+sudo dd if=metal-arm64.raw of=/dev/sdX bs=4M status=progress conv=fsync
 
 # Sync to make sure all data is written
 sync
@@ -93,6 +93,7 @@ The Pi 5 supports NVMe SSDs through an M.2 HAT or third-party adapter board. NVM
 # In the EEPROM config, set:
 # BOOT_ORDER=0xf416
 # This tries NVMe (6), then USB (4), then SD (1)
+# For a non-HAT+ adapter, also set PCIE_PROBE=1
 sudo rpi-eeprom-config --edit
 ```
 
@@ -100,7 +101,7 @@ Flash the Talos image to the NVMe drive:
 
 ```bash
 # Flash to NVMe (typically /dev/nvme0n1)
-sudo dd if=metal-rpi_generic-arm64.raw of=/dev/nvme0n1 bs=4M status=progress conv=fsync
+sudo dd if=metal-arm64.raw of=/dev/nvme0n1 bs=4M status=progress conv=fsync
 ```
 
 The performance difference is substantial. Random read/write speeds on NVMe are 10-50x faster than SD cards, which makes a huge difference for etcd and container image pulls.
@@ -113,8 +114,7 @@ Connect the ethernet cable and power supply, then power on the Pi. It will boot 
 # Scan the network
 nmap -sn 192.168.1.0/24
 
-# Look for the Pi 5's MAC address prefix
-# Pi 5 uses D8:3A:DD prefix
+# Look for Raspberry Pi MAC address prefixes, such as D8:3A:DD
 arp -a | grep -i "d8:3a:dd"
 ```
 
@@ -135,6 +135,8 @@ talosctl gen config pi5-cluster https://<PI5_IP>:6443 \
   --config-patch '[{"op": "add", "path": "/machine/install/disk", "value": "/dev/nvme0n1"}]'
 ```
 
+The `machine.install.disk` setting is used by Talos installer workflows such as ISO or PXE boots. When you boot from the raw SBC disk image written above, Talos is already on that disk and the install section is ignored.
+
 ## Step 7: Apply Configuration
 
 Apply the configuration to your Pi 5:
@@ -144,7 +146,7 @@ Apply the configuration to your Pi 5:
 talosctl apply-config --insecure --nodes <PI5_IP> --file controlplane.yaml
 ```
 
-The node will reboot and install Talos to the target disk. On NVMe, this takes about a minute. On SD card, expect 3-5 minutes.
+The node will write the machine configuration and reboot into the configured role. On NVMe, this takes about a minute. On SD card, expect 3-5 minutes.
 
 ## Step 8: Bootstrap and Verify
 
@@ -212,7 +214,7 @@ machine:
 
 ## Thermal Management
 
-The Pi 5 runs hotter than the Pi 4 due to its faster CPU. Talos does not have a way to control the fan directly (since there is no userspace), but the Pi 5's firmware handles fan control automatically when using the official active cooler.
+The Pi 5 runs hotter than the Pi 4 due to its faster CPU. The Pi 5's firmware handles fan control automatically when using the official active cooler. For GPIO or PWM fans, Talos can use Raspberry Pi device-tree overlays, but those `config.txt` changes need to be built into the image with the Talos Image Factory.
 
 Without cooling, the Pi 5 will thermal throttle under sustained Kubernetes workloads. The active cooler or a third-party heatsink with a fan is strongly recommended.
 
