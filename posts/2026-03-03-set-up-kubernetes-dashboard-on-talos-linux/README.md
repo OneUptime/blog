@@ -24,12 +24,12 @@ That said, the dashboard should complement your CLI tools, not replace them. For
 
 ## Step 1: Install the Kubernetes Dashboard
 
-The latest version of Kubernetes Dashboard (v3+) uses a Helm chart for installation:
+Kubernetes Dashboard 7.x uses a Helm chart for installation. The project is now archived and no longer actively maintained, so consider Headlamp for new installations. If you are running Dashboard already or need it for compatibility, install it from the archived chart repository:
 
 ```bash
 # Add the Kubernetes Dashboard Helm repository
 
-helm repo add kubernetes-dashboard https://kubernetes.github.io/dashboard/
+helm repo add kubernetes-dashboard https://kubernetes-retired.github.io/dashboard/
 helm repo update
 ```
 
@@ -41,14 +41,19 @@ app:
   ingress:
     enabled: false  # We will handle access via port-forward or ingress separately
   settings:
-    # Items per page in resource lists
-    itemsPerPage: 50
-    # Default namespace to show
-    defaultNamespace: "_all"
-    # Resource auto-refresh interval
-    autoRefreshTimeInterval: 10
+    global:
+      # Items per page in resource lists
+      itemsPerPage: 50
+      # Default namespace to show
+      defaultNamespace: "_all"
+      # Resource auto-refresh interval
+      resourceAutoRefreshTimeInterval: 10
 
-# Enable metrics scraper for resource usage graphs
+# Enable the dashboard metrics scraper for resource usage graphs
+metricsScraper:
+  enabled: true
+
+# Do not install a bundled Metrics Server when one already exists
 metrics-server:
   enabled: false  # We already have metrics-server installed
 
@@ -200,7 +205,6 @@ metadata:
   namespace: kubernetes-dashboard
   annotations:
     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
-    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
     # Restrict access by IP if possible
     nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8,192.168.0.0/16"
 spec:
@@ -255,8 +259,14 @@ metadata:
   name: team-a-role
   namespace: team-a
 rules:
-  - apiGroups: ["", "apps", "batch"]
-    resources: ["pods", "deployments", "services", "configmaps", "jobs", "cronjobs"]
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["pods/log"]
@@ -328,7 +338,7 @@ If the dashboard is not working as expected:
 
 ```bash
 # Check pod logs
-kubectl logs -n kubernetes-dashboard -l app.kubernetes.io/name=kubernetes-dashboard
+kubectl logs -n kubernetes-dashboard -l app.kubernetes.io/part-of=kubernetes-dashboard
 
 # Verify service endpoints
 kubectl get endpoints -n kubernetes-dashboard
