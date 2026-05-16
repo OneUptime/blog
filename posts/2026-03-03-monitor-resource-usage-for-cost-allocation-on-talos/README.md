@@ -314,7 +314,7 @@ spec:
           annotations:
             summary: "Team {{ $labels.label_team }} has low CPU efficiency"
             description: >
-              CPU efficiency is {{ $value | printf "%.1f" }}%.
+              CPU efficiency is {{ $value | humanizePercentage }}.
               Resources are significantly over-provisioned.
 ```
 
