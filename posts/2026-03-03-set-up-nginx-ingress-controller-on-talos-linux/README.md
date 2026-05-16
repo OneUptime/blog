@@ -218,7 +218,7 @@ talosctl get routes -n <NODE_IP>
 
 ## Monitoring the Ingress Controller
 
-The Nginx Ingress Controller exposes Prometheus metrics by default. You can scrape these to get visibility into request rates, latencies, and error codes. If you have Prometheus running in your cluster, add the following annotations to the controller service to enable auto-discovery:
+The Nginx Ingress Controller can expose Prometheus metrics when metrics are enabled in the Helm chart. You can scrape these to get visibility into request rates, latencies, and error codes. If you have Prometheus running in your cluster, set the following Helm values to enable metrics and create a ServiceMonitor:
 
 ```yaml
 # These are typically set in the Helm values
