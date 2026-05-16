@@ -54,10 +54,11 @@ concourse:
   web:
     # External URL for the Concourse web interface
     externalUrl: https://concourse.example.com
-    # Authentication
-    auth:
-      mainTeam:
-        localUser: "admin"
+    # Authentication - grant the "admin" local user the owner role on the main team
+    mainTeam:
+      localUser: "admin"
+    localAuth:
+      enabled: true
     # Kubernetes configuration
     kubernetes:
       enabled: true
@@ -327,7 +328,7 @@ fly -t talos workers
 fly -t talos prune-worker -w <worker-name>
 ```
 
-Resource Type Extensions
+## Resource Type Extensions
 
 Concourse uses resource types to interact with external systems. Add custom resource types for your specific needs.
 
@@ -358,14 +359,14 @@ jobs:
 
 Monitor Concourse with Prometheus metrics.
 
-```bash
-# Concourse exposes metrics on the /api/v1/info endpoint
+```yaml
+# Concourse exposes Prometheus metrics at /metrics on the dedicated prometheus bind port
 # Enable Prometheus metrics in the Helm values
 concourse:
   web:
     prometheus:
       enabled: true
-      port: 9391
+      bindPort: 9391
 ```
 
 ## Wrapping Up
