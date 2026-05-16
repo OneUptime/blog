@@ -200,7 +200,6 @@ Install ArgoCD on a management cluster:
 helm install argocd argo/argo-cd \
   --namespace argocd \
   --create-namespace \
-  --set server.extraArgs[0]="--insecure" \
   --set configs.params."server\.insecure"=true
 ```
 
@@ -334,7 +333,7 @@ You can also manage Talos machine configurations through GitOps. Store your Talo
 # This gets applied by a CI pipeline when merged
 machine:
   install:
-    image: ghcr.io/siderolabs/installer:v1.6.1
+    image: ghcr.io/siderolabs/installer:v1.13.2
   kubelet:
     extraArgs:
       rotate-server-certificates: true
