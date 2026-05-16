@@ -12,16 +12,14 @@ If you are coming from traditional Linux administration, Talos Linux's disk layo
 
 ## The System Disk Layout
 
-When Talos installs onto a disk, it creates a specific set of partitions in a fixed order. Here is what a typical system disk looks like on a UEFI-based system:
+When Talos installs onto a disk, it creates a specific set of partitions. On current UEFI-based installations, Talos uses `systemd-boot` and the system disk typically looks like this:
 
 ```text
 /dev/sda
-  |- /dev/sda1  EFI     (100 MB)   - EFI System Partition
-  |- /dev/sda2  BIOS    (1 MB)     - BIOS Boot Partition (for legacy boot)
-  |- /dev/sda3  BOOT    (1 GB)     - Boot partition with kernel and initramfs
-  |- /dev/sda4  META    (1 MB)     - Talos metadata
-  |- /dev/sda5  STATE   (100 MB)   - Machine configuration storage
-  |- /dev/sda6  EPHEMERAL (rest)   - Runtime data (mounted at /var)
+  |- /dev/sda1  EFI       (~1 GB)   - EFI System Partition and Talos boot assets
+  |- /dev/sda2  META      (~1 MB)   - Talos metadata
+  |- /dev/sda3  STATE     (~100 MB) - Machine configuration storage
+  |- /dev/sda4  EPHEMERAL (rest)    - Runtime data (mounted at /var)
 ```
 
 Each of these partitions serves a specific purpose, and Talos maintains strict control over all of them.
@@ -32,30 +30,29 @@ The EFI System Partition (ESP) is created on UEFI-based systems. It contains the
 
 ```bash
 # View the EFI partition details
-
-talosctl get volumes EFI --nodes 192.168.1.10 -o yaml
+talosctl get discoveredvolumes --nodes 192.168.1.10 -o yaml
 ```
 
-Size: approximately 100 MB. This is more than enough for the bootloader and related files. You should never need to resize or modify this partition.
+Size: approximately 1 GB. This is enough for the bootloader and Talos boot assets. You should never need to resize or modify this partition.
 
 ## BIOS Boot Partition
 
-On systems that support legacy BIOS booting, Talos creates a small BIOS boot partition. This is used by GRUB to store its second-stage bootloader code when booting from a GPT-partitioned disk.
+On systems that use the GRUB bootloader, Talos may create a small BIOS boot partition. This is used by GRUB to store bootloader code when booting from a GPT-partitioned disk.
 
-Size: 1 MB. This partition is only meaningful on BIOS-based systems, but Talos creates it on all systems for compatibility.
+Size: 1 MB. This partition is meaningful for legacy BIOS booting and GRUB-based layouts. Current UEFI installations use `systemd-boot` by default, so they do not rely on this partition.
 
 ## BOOT Partition
 
-The BOOT partition contains the Linux kernel, initramfs, and bootloader configuration. When Talos upgrades, the new kernel is written to this partition before the system reboots.
+The BOOT partition is used by GRUB-based Talos installations. It contains the GRUB configuration file and Talos boot assets such as `vmlinuz` and `initramfs`. Current UEFI installations use `systemd-boot` and store Talos UKIs in the EFI partition instead.
 
 ```bash
 # Check the BOOT partition status
-talosctl get volumes BOOT --nodes 192.168.1.10 -o yaml
+talosctl get discoveredvolumes --nodes 192.168.1.10 -o yaml
 ```
 
-Size: approximately 1 GB. This provides enough room for multiple kernel versions during upgrades, ensuring rollback capability if an upgrade fails.
+Size: approximately 1 GB when present. This provides room for Talos boot assets on GRUB-based systems.
 
-The BOOT partition uses the VFAT filesystem for maximum compatibility with bootloaders.
+The BOOT partition uses XFS on Talos GRUB-based layouts.
 
 ## META Partition
 
@@ -68,7 +65,7 @@ The META partition stores Talos-specific metadata, including:
 
 ```bash
 # Inspect META partition
-talosctl get volumes META --nodes 192.168.1.10 -o yaml
+talosctl get volumestatus META --nodes 192.168.1.10 -o yaml
 ```
 
 Size: 1 MB. Despite its tiny size, this partition is critical for Talos operations. It maintains state that survives reboots and upgrades.
@@ -79,7 +76,7 @@ The STATE partition is where Talos stores the machine configuration. When you ap
 
 ```bash
 # Check STATE partition details
-talosctl get volumes STATE --nodes 192.168.1.10 -o yaml
+talosctl get volumestatus STATE --nodes 192.168.1.10 -o yaml
 ```
 
 Size: approximately 100 MB. The machine configuration itself is small (usually a few kilobytes), but the STATE partition also stores:
@@ -96,7 +93,7 @@ The EPHEMERAL partition is the largest partition on the system disk. It gets all
 
 ```bash
 # View EPHEMERAL partition details
-talosctl get volumes EPHEMERAL --nodes 192.168.1.10 -o yaml
+talosctl get volumestatus EPHEMERAL --nodes 192.168.1.10 -o yaml
 ```
 
 Mounted at: `/var`
@@ -118,41 +115,44 @@ Talos uses GPT (GUID Partition Table) rather than the older MBR partitioning sch
 You can inspect the partition table through Talos:
 
 ```bash
-# View all disk resources including partition info
+# View all disk resources
 talosctl get disks --nodes 192.168.1.10 -o yaml
+
+# View discovered partition and filesystem details
+talosctl get discoveredvolumes --nodes 192.168.1.10 -o yaml
 ```
 
 ## Partition Ordering and Stability
 
-The order of partitions on the system disk is fixed and determined by Talos. You cannot rearrange them or insert custom partitions between system partitions. This design ensures consistency across all nodes and simplifies upgrade logic.
+The order of Talos-managed system partitions is determined by Talos. You cannot rearrange them manually through the host OS. This design ensures consistency across nodes and simplifies upgrade logic.
 
-The partition layout is:
+On a current UEFI installation, the base partition layout is:
 
 ```text
-Partition 1: EFI (or BIOS boot on legacy systems)
-Partition 2: BIOS (compatibility)
-Partition 3: BOOT
-Partition 4: META
-Partition 5: STATE
-Partition 6: EPHEMERAL
+Partition 1: EFI
+Partition 2: META
+Partition 3: STATE
+Partition 4: EPHEMERAL
 ```
 
-This order is the same on every Talos node, regardless of hardware. The consistency makes automation and troubleshooting more predictable.
+GRUB-based and older upgraded systems can also include BIOS and BOOT partitions. The consistency makes automation and troubleshooting more predictable, but the exact boot-related partitions depend on the bootloader and installation history.
 
 ## Additional Disks
 
-Beyond the system disk, you can configure additional disks for workload storage. These disks have a simpler layout because they do not need system partitions:
+Beyond the system disk, you can configure additional user volumes for workload storage. These volumes have a simpler layout because they do not need system partitions:
 
 ```yaml
-machine:
-  disks:
-    - device: /dev/sdb
-      partitions:
-        - mountpoint: /var/mnt/data
-          size: 0  # Use entire disk
+apiVersion: v1alpha1
+kind: UserVolumeConfig
+name: data
+provisioning:
+  diskSelector:
+    match: disk.dev_path == "/dev/sdb"
+  minSize: 1GB
+  grow: true
 ```
 
-On additional disks, Talos creates a GPT partition table and the partitions you define. There is no EFI, BOOT, META, or STATE partition on non-system disks.
+For a user volume, Talos provisions a matching disk or partition and mounts it at `/var/mnt/<volume-name>`. There is no EFI, BOOT, META, or STATE partition on non-system workload volumes.
 
 ## Viewing the Complete Layout
 
@@ -160,17 +160,17 @@ To get a full picture of all partitions across all disks:
 
 ```bash
 # List all disks
-talosctl disks --nodes 192.168.1.10
+talosctl get disks --nodes 192.168.1.10
 
 # Get detailed partition info for each disk
-talosctl get blockdevices --nodes 192.168.1.10 -o yaml
+talosctl get discoveredvolumes --nodes 192.168.1.10 -o yaml
 ```
 
 You can also combine multiple node queries:
 
 ```bash
 # Check partition layout across all nodes
-talosctl get blockdevices --nodes 192.168.1.10,192.168.1.11,192.168.1.12 -o yaml
+talosctl get discoveredvolumes --nodes 192.168.1.10,192.168.1.11,192.168.1.12 -o yaml
 ```
 
 ## Control Plane vs Worker Partition Layout
@@ -185,10 +185,10 @@ The partition structure itself is identical. The difference is purely in how the
 
 ## What Happens During Upgrades
 
-When you upgrade Talos, the new system image is written to the BOOT partition. The upgrade process:
+When you upgrade Talos, the node updates its boot assets before rebooting. On current UEFI installations these assets live in the EFI partition; on GRUB-based installations they live in the BOOT partition. The upgrade process:
 
 1. Downloads the new Talos image
-2. Writes the new kernel and initramfs to BOOT
+2. Writes the new boot assets
 3. Updates META with upgrade status
 4. Reboots the node
 5. The new kernel boots and continues using the existing STATE and EPHEMERAL partitions
@@ -211,4 +211,4 @@ Resetting EPHEMERAL wipes container images, pod data, and Kubernetes state. Rese
 
 ## Summary
 
-The Talos Linux disk partition layout is purposeful and consistent. Six partitions on the system disk (EFI, BIOS, BOOT, META, STATE, EPHEMERAL) provide everything needed for a secure, upgradable Kubernetes node. Understanding what each partition does helps you plan storage, troubleshoot issues, and make informed decisions about encryption and backup strategies. Additional disks for workload storage use simpler layouts with just the partitions you define.
+The Talos Linux disk partition layout is purposeful and consistent. The core system partitions (EFI, META, STATE, EPHEMERAL), plus BIOS and BOOT on GRUB-based layouts, provide everything needed for a secure, upgradable Kubernetes node. Understanding what each partition does helps you plan storage, troubleshoot issues, and make informed decisions about encryption and backup strategies. Additional disks for workload storage use simpler layouts with the user volumes you define.
