@@ -80,13 +80,13 @@ maintenance_windows:
 
 ## Implementing Maintenance Windows with System Upgrade Controller
 
-The Talos System Upgrade Controller can be configured to respect maintenance windows. It works by scheduling upgrades and ensuring they only happen during allowed time periods.
+System Upgrade Controller can be configured to respect maintenance windows. It works by scheduling upgrade jobs and ensuring they only start during allowed time periods.
 
 First, install the system upgrade controller if you have not already:
 
 ```bash
 # Apply the system upgrade controller
-kubectl apply -f https://github.com/siderolabs/system-upgrade-controller/releases/latest/download/system-upgrade-controller.yaml
+kubectl apply -f https://raw.githubusercontent.com/rancher/system-upgrade-controller/master/manifests/system-upgrade-controller.yaml
 ```
 
 Then create upgrade plans that respect your maintenance windows:
@@ -106,24 +106,25 @@ spec:
   serviceAccountName: system-upgrade
   tolerations:
     - operator: Exists
+  window:
+    days:
+      - Tuesday
+    startTime: "02:00"
+    endTime: "06:00"
+    timeZone: "UTC"
+  secrets:
+    - name: talosconfig
+      path: /var/run/secrets/talos.dev
   upgrade:
-    image: ghcr.io/siderolabs/installer
+    image: ghcr.io/siderolabs/talosctl:v1.9.1
     command:
-      - /bin/sh
-      - -c
-      - |
-        # Check if we are inside a maintenance window
-        HOUR=$(date -u +%H)
-        DAY=$(date -u +%u)  # 1=Monday, 2=Tuesday
-
-        # Only proceed on Tuesdays between 02:00 and 06:00 UTC
-        if [ "$DAY" != "2" ] || [ "$HOUR" -lt 2 ] || [ "$HOUR" -ge 6 ]; then
-          echo "Outside maintenance window. Skipping upgrade."
-          exit 0
-        fi
-
-        # Proceed with upgrade
-        talosctl upgrade --image ghcr.io/siderolabs/installer:v1.9.1
+      - talosctl
+    args:
+      - upgrade
+      - --nodes
+      - <target-node-ip>
+      - --image
+      - ghcr.io/siderolabs/installer:v1.9.1
 ```
 
 ## Enforcing Windows with Admission Webhooks
@@ -149,7 +150,7 @@ webhooks:
         resources: ["nodes"]
       - apiGroups: [""]
         apiVersions: ["v1"]
-        operations: ["CREATE", "UPDATE"]
+        operations: ["UPDATE"]
         resources: ["nodes/status"]
     failurePolicy: Ignore
     sideEffects: None
@@ -171,6 +172,7 @@ metadata:
 spec:
   # Run 2 hours before the Tuesday maintenance window
   schedule: "0 0 * * 2"
+  timeZone: "Etc/UTC"
   jobTemplate:
     spec:
       template:
@@ -209,7 +211,7 @@ Before the maintenance window opens, run automated health checks to confirm the 
 echo "Running pre-maintenance health checks..."
 
 # Check node health
-NODES_NOT_READY=$(kubectl get nodes --no-headers | grep -v "Ready" | wc -l)
+NODES_NOT_READY=$(kubectl get nodes --no-headers | awk '$2 != "Ready" { count++ } END { print count+0 }')
 if [ "$NODES_NOT_READY" -gt 0 ]; then
     echo "FAIL: $NODES_NOT_READY nodes are not Ready"
     exit 1
@@ -295,7 +297,7 @@ for node in $(kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.typ
 done
 
 # Check certificate status
-talosctl get certificate -n <control-plane-ip>
+talosctl get KubernetesDynamicCerts -n <control-plane-ip>
 
 # Verify etcd
 talosctl etcd status -n <control-plane-ip>
