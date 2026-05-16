@@ -14,14 +14,12 @@ This guide covers the different approaches to local Talos development and testin
 
 ## Local Development Options
 
-Talos supports several local cluster provisioners:
+`talosctl cluster create` ships with two built-in local provisioners:
 
-- **Docker** - The fastest option, runs Talos nodes as Docker containers
-- **QEMU** - Full virtual machines for testing bare-metal-like behavior
-- **VirtualBox** - Desktop VM manager integration
-- **VMware** - VMware Fusion/Workstation support
+- **Docker** - The fastest option, runs Talos nodes as Docker containers (works on Linux and macOS)
+- **QEMU** - Full virtual machines for testing bare-metal-like behavior (Linux only, requires KVM)
 
-Docker is best for rapid development cycles. QEMU is best when you need to test features that require real VM behavior, like kernel modules, disk operations, or boot processes.
+Docker is best for rapid development cycles. QEMU is best when you need to test features that require real VM behavior, like kernel modules, disk operations, or boot processes. Other virtualization platforms such as VirtualBox or VMware are supported as Talos boot targets via downloadable images, but they are not exposed as `--provisioner` options for the local cluster command.
 
 ## Docker-Based Local Clusters
 
@@ -64,8 +62,8 @@ talosctl cluster create \
 # Check cluster status
 talosctl cluster show --name dev-cluster
 
-# Get kubectl access
-export KUBECONFIG=~/.talos/kubeconfig
+# Get kubectl access (talosctl cluster create merges the cluster
+# into your default kubeconfig at ~/.kube/config)
 kubectl get nodes
 
 # View cluster details
@@ -87,22 +85,27 @@ QEMU provides more realistic testing by running Talos in actual virtual machines
 sudo apt-get install -y \
   qemu-system-x86 \
   qemu-utils \
-  libvirt-daemon-system \
   bridge-utils \
+  iptables \
   ovmf
 
 # Verify KVM support
 ls /dev/kvm
 
-# Set permissions
-sudo chmod 666 /dev/kvm
+# Add your user to the kvm group so /dev/kvm is accessible
+# without elevated privileges (log out and back in to apply)
+sudo usermod -aG kvm "$USER"
 ```
+
+The QEMU provisioner also relies on the standard CNI plugins (`bridge`, `static`, `firewall`) plus `tc-redirect-tap`, installed under `/opt/cni/bin`. See the official QEMU local-platform guide for the up-to-date list of dependencies.
 
 ### Creating a QEMU Cluster
 
 ```bash
 # Create a QEMU-based cluster
-talosctl cluster create \
+# The QEMU provisioner needs root for networking (tap devices, iptables);
+# --preserve-env=HOME keeps the talosconfig in your user's home directory.
+sudo --preserve-env=HOME talosctl cluster create \
   --name qemu-cluster \
   --provisioner qemu \
   --controlplanes 1 \
@@ -123,7 +126,7 @@ cd /path/to/talos
 make iso TAG=dev
 
 # Create cluster with custom ISO
-talosctl cluster create \
+sudo --preserve-env=HOME talosctl cluster create \
   --name qemu-cluster \
   --provisioner qemu \
   --iso-path _out/talos-amd64.iso \
@@ -190,33 +193,30 @@ talosctl cluster destroy --name feature-test
 
 ### Workflow 3: Testing System Extensions
 
+Modern Talos releases bake system extensions into the installer image rather than installing them at runtime — the `.machine.install.extensions` field is deprecated. For local development, build a custom installer that includes the extension and then upgrade the node to that installer.
+
 ```bash
-# 1. Build your extension
+# 1. Build your extension as an OCI image
 cd /path/to/my-extension
 docker build -t localhost:5000/my-extension:dev .
 
-# 2. Run a local registry
+# 2. Run a local registry and push the extension
 docker run -d -p 5000:5000 --name registry registry:2
-
-# 3. Push your extension to the local registry
 docker push localhost:5000/my-extension:dev
 
-# 4. Create a cluster and install the extension
+# 3. Build a custom installer image that includes your extension.
+#    See the Talos "Boot Assets" guide for the imager command,
+#    or use the Image Factory at https://factory.talos.dev for
+#    images that pull in official extensions by schematic ID.
+#    The result is an installer image tag you can point upgrade at,
+#    for example: ghcr.io/my-org/installer:dev-with-ext
+
+# 4. Create a cluster and upgrade it to your custom installer
 talosctl cluster create --name ext-test
-
-# 5. Apply config with your extension
-cat > ext-config.yaml << 'EOF'
-machine:
-  install:
-    extensions:
-      - image: localhost:5000/my-extension:dev
-EOF
-
-talosctl -n 10.5.0.2 patch machineconfig --patch @ext-config.yaml
 talosctl -n 10.5.0.2 upgrade \
-  --image ghcr.io/siderolabs/installer:v1.7.0
+  --image ghcr.io/my-org/installer:dev-with-ext
 
-# 6. Verify extension
+# 5. Verify the extension is present
 talosctl -n 10.5.0.2 get extensions
 ```
 
@@ -256,14 +256,16 @@ go test ./pkg/machinery/...
 
 ### End-to-End Testing
 
+The Talos Makefile exposes platform-specific E2E targets such as `e2e-docker` and `e2e-qemu`. Each one provisions a fresh cluster on the chosen provisioner and runs the integration suite against it.
+
 ```bash
-# Create a test cluster
-talosctl cluster create --name e2e-test
+# Run the Docker-based E2E suite (fastest)
+make e2e-docker
 
-# Run the e2e test suite
-make e2e-test
+# Or run the QEMU-based E2E suite (more realistic)
+make e2e-qemu
 
-# This runs comprehensive tests including:
+# These run comprehensive tests including:
 # - Node provisioning
 # - Configuration application
 # - Kubernetes functionality
@@ -351,7 +353,6 @@ jobs:
 
       - name: Run tests
         run: |
-          export KUBECONFIG=~/.talos/kubeconfig
           kubectl get nodes
           kubectl get pods -A
 
