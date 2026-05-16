@@ -76,13 +76,14 @@ Create comprehensive backups before making any changes:
 rke etcd snapshot-save --config cluster.yml --name pre-migration
 
 # Or manually snapshot etcd
-docker exec etcd etcdctl snapshot save /tmp/etcd-snapshot.db \
+docker exec -e ETCDCTL_API=3 etcd etcdctl snapshot save /tmp/etcd-snapshot.db \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/etc/kubernetes/ssl/kube-ca.pem \
   --cert=/etc/kubernetes/ssl/kube-node.pem \
   --key=/etc/kubernetes/ssl/kube-node-key.pem
 
-# Copy the snapshot from the node
+# Copy the snapshot out of the container, then off the node
+docker cp etcd:/tmp/etcd-snapshot.db /tmp/etcd-snapshot.db
 scp user@rke-node:/tmp/etcd-snapshot.db ./
 
 # Back up all Kubernetes resources
@@ -90,6 +91,7 @@ kubectl get all --all-namespaces -o yaml > full-cluster-backup.yaml
 
 # Install and use Velero for application-level backups
 velero install --provider aws --bucket my-backups \
+  --plugins velero/velero-plugin-for-aws:v1.10.0 \
   --secret-file ./cloud-credentials \
   --backup-location-config region=us-east-1
 
