@@ -41,7 +41,7 @@ talosctl get members -n <control-plane-ip>
 talosctl version -n <node-ip>
 
 # Get the current Kubernetes version
-kubectl version --short
+kubectl version
 ```
 
 Create a spreadsheet or configuration file that tracks:
@@ -121,8 +121,11 @@ kubectl get pods --all-namespaces --field-selector=status.phase!=Running,status.
 # Verify etcd health
 talosctl etcd status -n <control-plane-ip>
 
-# Check certificate expiration dates
-talosctl get certificate -n <control-plane-ip>
+# Check certificate expiration dates (talosctl client cert)
+talosctl config info
+
+# Inspect Kubernetes API server / kubelet client certs
+talosctl get kubernetesdynamiccerts -n <control-plane-ip> -o yaml
 
 # Take an etcd snapshot as backup
 talosctl etcd snapshot /tmp/etcd-backup-$(date +%Y%m%d).db -n <control-plane-ip>
