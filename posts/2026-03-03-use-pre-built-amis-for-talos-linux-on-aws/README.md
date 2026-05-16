@@ -12,41 +12,47 @@ One of the biggest advantages of running Talos Linux on AWS is that the Sidero L
 
 ## Understanding Talos Linux AMIs
 
-Talos publishes AMIs in every AWS region for both amd64 and arm64 architectures. Each release produces multiple AMI variants. The main ones you will encounter are the standard image for general use and the cloud image that includes AWS-specific optimizations. For most deployments, the standard cloud image is what you want.
+Talos publishes AMIs in AWS regions for both amd64 and arm64 architectures. Each official AMI is the AWS disk image for that Talos release, region, and architecture. For most deployments, the official AMI for your region and architecture is what you want.
 
 The AMIs are published under the Sidero Labs AWS account and are publicly available. They are not listed in the AWS Marketplace (though there is a marketplace listing too), so you find them through the Talos documentation or the AWS CLI.
 
 ## Finding the Latest AMIs
 
-The fastest way to find the current AMIs is through the Talos release page or the AWS CLI:
+The fastest way to find the current AMIs is through the `cloud-images.json` file attached to the Talos release, or through the AWS CLI:
 
 ```bash
 # Find Talos Linux AMIs in your region (replace with your region)
 
 aws ec2 describe-images \
   --owners 540036508848 \
-  --filters "Name=name,Values=talos-v1.7*" \
+  --filters \
+    "Name=name,Values=talos-v1.7*-amd64" \
+    "Name=architecture,Values=x86_64" \
   --region us-east-1 \
   --query 'Images | sort_by(@, &CreationDate) | [-5:].{Name:Name, ImageId:ImageId, Arch:Architecture, Date:CreationDate}' \
   --output table
 ```
 
-The owner ID `540036508848` is Sidero Labs' AWS account. You can also use the `talosctl` tool to look up AMIs:
+The owner ID `540036508848` is Sidero Labs' AWS account. You can also use the release asset directly:
 
 ```bash
 # Get the AMI for a specific Talos version and region
-talosctl image default --talos-version v1.7.0 --platform aws --arch amd64
+TALOS_VERSION=v1.7.0
+AWS_REGION=us-east-1
+
+curl -sL "https://github.com/siderolabs/talos/releases/download/${TALOS_VERSION}/cloud-images.json" | \
+  jq -r --arg region "${AWS_REGION}" '.[] | select(.cloud == "aws") | select(.region == $region) | select(.arch == "amd64") | .id'
 ```
 
 ## Choosing the Right AMI Variant
 
-Talos provides several image variants for AWS:
+Talos provides one official AWS AMI per release, region, and architecture. For specialized needs, build a custom AWS image with the Talos Image Factory:
 
-- **Standard**: The default image with built-in kernel modules for most hardware. This covers the vast majority of use cases.
-- **NVIDIA GPU**: Includes NVIDIA drivers for GPU instances like p3, p4, and g4 families. Use this if you need GPU workloads.
-- **ZFS**: Includes ZFS kernel modules if your storage layer requires ZFS support.
+- **Official AMI**: The default AWS image for general use. This covers the vast majority of use cases.
+- **NVIDIA GPU**: Build a custom AWS image with NVIDIA system extensions for GPU instances like p3, p4, and g4 families.
+- **ZFS**: Build a custom AWS image with ZFS system extensions if your storage layer requires ZFS support.
 
-For a typical Kubernetes cluster without specialized hardware needs, the standard image is the correct choice.
+For a typical Kubernetes cluster without specialized hardware needs, the official AMI is the correct choice.
 
 ## Launching Instances with Talos AMIs
 
@@ -112,11 +118,11 @@ The Talos OS itself is minimal and needs very little disk space. The root disk p
 }]'
 ```
 
-Always encrypt your root volumes with EBS encryption. There is no performance penalty for gp3 volumes with encryption enabled.
+Always encrypt your root volumes with EBS encryption. AWS documents the same IOPS performance for encrypted and unencrypted EBS volumes, with only a minimal effect on latency.
 
 ## Bootstrapping the Cluster
 
-After your instances launch, they boot into maintenance mode and wait for configuration. Since you provided the config through user-data, Talos applies it automatically. Bootstrap the cluster by running:
+After your instances launch, Talos reads the machine configuration from EC2 user-data and applies it automatically. If you launch without user-data, the node will wait in maintenance mode for configuration. Bootstrap the cluster by running:
 
 ```bash
 # Configure talosctl to talk to your cluster
