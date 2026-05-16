@@ -24,7 +24,27 @@ The most straightforward approach uses DNS to route traffic. You configure DNS r
 
 ### Using Cloudflare Load Balancing
 
-Cloudflare is a popular choice for DNS-based global load balancing. Set up a pool for each Talos cluster:
+Cloudflare is a popular choice for DNS-based global load balancing. Start by creating a health monitor to check your clusters:
+
+```bash
+# Create a health check monitor
+curl -X POST "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/load_balancers/monitors" \
+  -H "Authorization: Bearer $CF_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data '{
+    "type": "http",
+    "description": "Talos cluster health",
+    "method": "GET",
+    "path": "/healthz",
+    "port": 80,
+    "interval": 30,
+    "retries": 2,
+    "timeout": 5,
+    "expected_codes": "200"
+  }'
+```
+
+Then set up a pool for each Talos cluster:
 
 ```bash
 # Create origin pools (using Cloudflare API)
@@ -42,8 +62,7 @@ curl -X POST "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/load_bal
         "enabled": true
       }
     ],
-    "monitor": "'$HEALTH_MONITOR_ID'",
-    "notification_email": "ops@example.com"
+    "monitor": "'$HEALTH_MONITOR_ID'"
   }'
 
 # Pool for EU cluster
@@ -60,26 +79,6 @@ curl -X POST "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/load_bal
       }
     ],
     "monitor": "'$HEALTH_MONITOR_ID'"
-  }'
-```
-
-Create a health monitor to check your clusters:
-
-```bash
-# Create a health check monitor
-curl -X POST "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/load_balancers/monitors" \
-  -H "Authorization: Bearer $CF_TOKEN" \
-  -H "Content-Type: application/json" \
-  --data '{
-    "type": "https",
-    "description": "Talos cluster health",
-    "method": "GET",
-    "path": "/healthz",
-    "port": 443,
-    "interval": 30,
-    "retries": 2,
-    "timeout": 5,
-    "expected_codes": "200"
   }'
 ```
 
@@ -112,8 +111,8 @@ If your Talos clusters run on AWS, Route53 provides latency-based and geolocatio
 aws route53 create-health-check --caller-reference "talos-us-$(date +%s)" \
   --health-check-config '{
     "IPAddress": "203.0.113.10",
-    "Port": 443,
-    "Type": "HTTPS",
+    "Port": 80,
+    "Type": "HTTP",
     "ResourcePath": "/healthz",
     "RequestInterval": 30,
     "FailureThreshold": 3
@@ -156,36 +155,50 @@ helm repo update
 helm install k8gb k8gb/k8gb \
   --namespace k8gb \
   --create-namespace \
-  --set k8gb.dnsZone="example.com" \
-  --set k8gb.edgeDNSZone="dns.example.com" \
+  --set k8gb.dnsZones[0].parentZone="example.com" \
+  --set k8gb.dnsZones[0].loadBalancedZone="gslb.example.com" \
+  --set k8gb.dnsZones[0].dnsZoneNegTTL=30 \
   --set k8gb.edgeDNSServers[0]="1.2.3.4" \
   --set k8gb.clusterGeoTag="us" \
   --set k8gb.extGslbClustersGeoTags="eu"
 ```
 
-Then create a Gslb resource that defines your load balancing strategy:
+Then create an Ingress and a Gslb resource that defines your load balancing strategy:
 
 ```yaml
 # gslb.yaml
-apiVersion: k8gb.absa.oss/v1beta1
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app
+  namespace: default
+  labels:
+    app: app
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: app.gslb.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: app-service
+                port:
+                  number: 80
+---
+apiVersion: k8gb.io/v1beta1
 kind: Gslb
 metadata:
   name: app-gslb
   namespace: default
 spec:
-  ingress:
-    ingressClassName: nginx
-    rules:
-      - host: app.example.com
-        http:
-          paths:
-            - path: /
-              pathType: Prefix
-              backend:
-                service:
-                  name: app-service
-                  port:
-                    number: 80
+  resourceRef:
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    matchLabels:
+      app: app
   strategy:
     type: roundRobin
     # Or use failover strategy
@@ -262,7 +275,7 @@ spec:
   selector:
     app: cluster-health
   ports:
-    - port: 443
+    - port: 80
       targetPort: 8080
 ```
 
