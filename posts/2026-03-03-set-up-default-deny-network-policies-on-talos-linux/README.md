@@ -18,13 +18,13 @@ Before diving into configuration, it is important to understand how these two la
 
 **Host-level rules (NetworkRuleConfig)**: Control traffic to and from the node itself. These protect system services like the Talos API, etcd, and the kubelet. They operate at the nftables level, before Kubernetes sees any traffic.
 
-**Kubernetes NetworkPolicies**: Control traffic between pods. These are enforced by your CNI plugin (Cilium, Calico, etc.) and only affect traffic within the Kubernetes network.
+**Kubernetes NetworkPolicies**: Control ingress and egress for pods. These are enforced by your CNI plugin (Cilium, Calico, etc.) and affect traffic to and from selected pods.
 
 For true default-deny, you want both layers in place.
 
 ## Host-Level Default Deny
 
-When you create NetworkRuleConfig documents in Talos, the firewall switches to a default-deny posture for the specified services. You then explicitly allow the traffic you need.
+When you create a `NetworkDefaultActionConfig` document with `ingress: block`, the Talos ingress firewall switches to a default-deny posture. You then add `NetworkRuleConfig` documents to explicitly allow the traffic you need.
 
 Here is a comprehensive default-deny setup for a control plane node:
 
@@ -32,40 +32,63 @@ Here is a comprehensive default-deny setup for a control plane node:
 # Host-level firewall for control plane - allow only necessary traffic
 
 apiVersion: v1alpha1
+kind: NetworkDefaultActionConfig
+ingress: block
+---
+apiVersion: v1alpha1
 kind: NetworkRuleConfig
-name: cp-default-deny
-spec:
-  ingress:
-    # Talos API - management network only
-    - subnet: 10.10.0.0/24
-      protocol: tcp
-      ports:
-        - 50000
-
-    # Kubernetes API - from nodes and authorized clients
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 6443
-
-    # etcd - control plane subnet only
-    - subnet: 10.0.1.0/24
-      protocol: tcp
-      ports:
-        - 2379
-        - 2380
-
-    # Kubelet - from control plane subnet (API server)
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 10250
-
-    # Cluster discovery
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 10250
+name: apid-ingress
+portSelector:
+  ports:
+    - 50000
+  protocol: tcp
+ingress:
+  # Talos API - management network only
+  - subnet: 10.10.0.0/24
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: kubernetes-api-ingress
+portSelector:
+  ports:
+    - 6443
+  protocol: tcp
+ingress:
+  # Kubernetes API - from nodes and authorized clients
+  - subnet: 10.0.0.0/8
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: etcd-ingress
+portSelector:
+  ports:
+    - 2379-2380
+  protocol: tcp
+ingress:
+  # etcd - control plane subnet only
+  - subnet: 10.0.1.0/24
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: kubelet-ingress
+portSelector:
+  ports:
+    - 10250
+  protocol: tcp
+ingress:
+  # Kubelet - from control plane subnet (API server)
+  - subnet: 10.0.0.0/8
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: trustd-ingress
+portSelector:
+  ports:
+    - 50001
+  protocol: tcp
+ingress:
+  # Talos trustd - worker nodes need this to join the cluster
+  - subnet: 10.0.0.0/8
 ```
 
 And for worker nodes:
@@ -73,27 +96,41 @@ And for worker nodes:
 ```yaml
 # Host-level firewall for workers - minimal access
 apiVersion: v1alpha1
+kind: NetworkDefaultActionConfig
+ingress: block
+---
+apiVersion: v1alpha1
 kind: NetworkRuleConfig
-name: worker-default-deny
-spec:
-  ingress:
-    # Talos API - management only
-    - subnet: 10.10.0.0/24
-      protocol: tcp
-      ports:
-        - 50000
-
-    # Kubelet
-    - subnet: 10.0.1.0/24
-      protocol: tcp
-      ports:
-        - 10250
-
-    # NodePort services (if needed)
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 30000-32767
+name: apid-ingress
+portSelector:
+  ports:
+    - 50000
+  protocol: tcp
+ingress:
+  # Talos API - management only
+  - subnet: 10.10.0.0/24
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: kubelet-ingress
+portSelector:
+  ports:
+    - 10250
+  protocol: tcp
+ingress:
+  # Kubelet
+  - subnet: 10.0.1.0/24
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: nodeport-ingress
+portSelector:
+  ports:
+    - 30000-32767
+  protocol: tcp
+ingress:
+  # NodePort services (if needed)
+  - subnet: 10.0.0.0/8
 ```
 
 ## Kubernetes Default Deny NetworkPolicies
@@ -161,6 +198,11 @@ cluster:
             - Ingress
             - Egress
         ---
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: production
+        ---
         apiVersion: networking.k8s.io/v1
         kind: NetworkPolicy
         metadata:
@@ -171,6 +213,11 @@ cluster:
           policyTypes:
             - Ingress
             - Egress
+        ---
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: staging
         ---
         apiVersion: networking.k8s.io/v1
         kind: NetworkPolicy
@@ -204,6 +251,9 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
       ports:
         - protocol: UDP
           port: 53
@@ -239,6 +289,27 @@ spec:
         - protocol: TCP
           port: 8080
 ---
+# Allow web frontend egress to the API backend
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-egress-to-api
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: web-frontend
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: api-backend
+      ports:
+        - protocol: TCP
+          port: 8080
+---
 # Allow API backend to talk to the database
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -256,6 +327,27 @@ spec:
         - podSelector:
             matchLabels:
               app: api-backend
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# Allow API backend egress to the database
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-egress-to-database
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: api-backend
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: database
       ports:
         - protocol: TCP
           port: 5432
@@ -299,6 +391,9 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
       ports:
         - protocol: UDP
           port: 53
@@ -343,6 +438,7 @@ Test that default deny is actually blocking traffic:
 # Deploy test pods
 kubectl -n production run source --image=busybox --command -- sleep 3600
 kubectl -n production run target --image=nginx
+kubectl -n production expose pod target --port=80
 
 # Test connectivity (should fail with default deny)
 kubectl -n production exec source -- wget -T 5 -q -O- http://target
@@ -355,15 +451,16 @@ kubectl -n production exec source -- wget -T 5 -q -O- http://target
 
 # Clean up
 kubectl -n production delete pod source target
+kubectl -n production delete service target
 ```
 
 ## Monitoring Policy Violations
 
-If your CNI supports it, enable logging for dropped traffic. Cilium, for example, can log policy denials:
+If your CNI supports it, enable logging for dropped traffic. Cilium, for example, can show drop events:
 
 ```bash
-# View Cilium policy verdict logs
-kubectl -n kube-system exec -it cilium-agent-xxx -- cilium monitor --type drop
+# View Cilium drop events
+kubectl -n kube-system exec -it ds/cilium -- cilium-dbg monitor --type drop
 ```
 
 This helps you identify legitimate traffic that is being blocked so you can create appropriate allow rules.
