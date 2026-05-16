@@ -264,23 +264,23 @@ kubectl exec webapp-xxxxx -- printenv DATABASE_HOST
 kubectl describe pod webapp-xxxxx | grep -A 5 "Events"
 ```
 
-## Handling Invalid Keys
+## Handling Shell-Unfriendly Keys
 
-ConfigMap keys become environment variable names, so they must follow certain rules. Environment variable names can only contain letters, digits, and underscores, and cannot start with a digit. If your ConfigMap has keys with dots or dashes (like `app.name` or `cache-ttl`), they will cause issues when loaded via `envFrom`.
+ConfigMap keys become environment variable names when loaded with `envFrom`. Kubernetes allows ConfigMap keys to contain letters, digits, dots, dashes, and underscores, so keys with dots or dashes (like `app.name` or `cache-ttl`) can be loaded this way. However, many shells and libraries only handle variable names with letters, digits, and underscores cleanly, so these keys can still be awkward to use from shell scripts.
 
 ```yaml
-# This ConfigMap has keys that won't work as env vars
+# This ConfigMap has keys that may be awkward to use from shell scripts
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: problematic-config
 data:
-  app.name: "myapp"          # Dot is not valid in env var names
-  cache-ttl: "3600"           # Dash is not valid in env var names
-  VALID_KEY: "this-works"     # This one is fine
+  app.name: "myapp"          # Valid in Kubernetes, awkward in many shells
+  cache-ttl: "3600"           # Valid in Kubernetes, awkward in many shells
+  VALID_KEY: "this-works"     # This one is shell-friendly
 ```
 
-When you use `envFrom` with this ConfigMap, Kubernetes will skip the invalid keys and log a warning event. You can still access them via `valueFrom` with explicit variable naming:
+If you want shell-friendly names, access those keys via `valueFrom` with explicit variable naming:
 
 ```yaml
 env:
