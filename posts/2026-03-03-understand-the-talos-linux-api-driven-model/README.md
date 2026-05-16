@@ -18,7 +18,7 @@ SSH has been the standard way to manage Linux servers for decades, so removing i
 
 Talos Linux eliminates this by removing the SSH daemon entirely. There is no sshd binary on the system. There is no way to enable it. Even if an attacker gains access to the node through some other vector, there is no shell to execute commands in.
 
-Instead, all management operations go through a gRPC API that is authenticated using mutual TLS (mTLS). This means both the client and the server present certificates to prove their identity. The API is the only way in, and it only allows the specific operations that Talos exposes.
+Instead, normal management operations go through a gRPC API that is authenticated using mutual TLS (mTLS). This means both the client and the server present certificates to prove their identity. The API is the only way in after a node has been configured, and it only allows the specific operations that Talos exposes.
 
 ## The talosctl Client
 
@@ -28,7 +28,7 @@ talosctl is the command-line tool for interacting with the Talos API. It is the 
 # Basic node operations
 
 talosctl -n 10.0.0.11 version          # Check OS version
-talosctl -n 10.0.0.11 services         # List system services
+talosctl -n 10.0.0.11 service          # List system services
 talosctl -n 10.0.0.11 service kubelet  # Check specific service status
 talosctl -n 10.0.0.11 reboot           # Reboot the node
 talosctl -n 10.0.0.11 shutdown         # Shut down the node
@@ -39,7 +39,7 @@ The key difference from SSH is that talosctl only exposes specific, well-defined
 
 ## API Authentication with mTLS
 
-Every API request is authenticated using mutual TLS. When you generate a Talos cluster configuration, the tool creates a Certificate Authority (CA) and issues certificates for the nodes and the admin client.
+Every normal API request after machine configuration is authenticated using mutual TLS. When you generate a Talos cluster configuration, the tool creates a Certificate Authority (CA) and issues certificates for the nodes and the admin client.
 
 ```bash
 # Generate cluster configuration (creates certificates)
@@ -65,7 +65,7 @@ talosctl config endpoint 10.0.0.11
 talosctl config node 10.0.0.11
 ```
 
-You can create additional client certificates with restricted permissions. For example, you might create a read-only certificate for monitoring systems or an operator certificate that can restart services but not apply configuration changes.
+You can create additional client certificates with restricted permissions. For example, you might create a read-only certificate for monitoring systems or an operator certificate that can perform operational actions such as rebooting or shutting down nodes but not apply configuration changes.
 
 ## What the API Exposes
 
@@ -76,7 +76,7 @@ The Talos API provides a comprehensive set of endpoints organized into several c
 ```bash
 # Hardware and OS information
 talosctl -n 10.0.0.11 version
-talosctl -n 10.0.0.11 disks
+talosctl -n 10.0.0.11 get disks
 talosctl -n 10.0.0.11 memory
 talosctl -n 10.0.0.11 processes
 talosctl -n 10.0.0.11 mounts
@@ -96,8 +96,13 @@ talosctl -n 10.0.0.11 get machineconfig
 # Apply new configuration
 talosctl -n 10.0.0.11 apply-config --file machine-config.yaml
 
-# Patch specific configuration fields
-talosctl -n 10.0.0.11 patch machineconfig --patch '[{"op": "replace", "path": "/machine/network/hostname", "value": "new-hostname"}]'
+# Patch specific configuration documents
+talosctl -n 10.0.0.11 patch machineconfig --patch '
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: new-hostname
+auto: off
+'
 ```
 
 ### Network Diagnostics
@@ -124,7 +129,7 @@ talosctl -n 10.0.0.11 etcd snapshot db.snapshot
 talosctl -n 10.0.0.11 bootstrap
 
 # Upgrade the OS
-talosctl -n 10.0.0.11 upgrade --image ghcr.io/siderolabs/installer:v1.7.0
+talosctl -n 10.0.0.11 upgrade --image ghcr.io/siderolabs/installer:v1.13.0
 ```
 
 Resource Management
@@ -147,24 +152,22 @@ talosctl -n 10.0.0.11 get timeserver    # NTP servers
 One of the most powerful aspects of the API-driven model is how configuration updates work. Instead of editing files and restarting services, you modify the machine configuration through the API, and Talos handles the rest.
 
 ```bash
-# Patch the machine configuration to add a new network interface
-talosctl -n 10.0.0.11 patch machineconfig --patch '[
-  {
-    "op": "add",
-    "path": "/machine/network/interfaces/-",
-    "value": {
-      "interface": "eth1",
-      "addresses": ["192.168.1.100/24"]
-    }
-  }
-]'
+# Patch the machine configuration to add a static address on an interface
+talosctl -n 10.0.0.11 patch machineconfig --patch '
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth1
+up: true
+addresses:
+  - address: 192.168.1.100/24
+'
 ```
 
 The API processes the patch, validates the new configuration, and applies the changes. Some changes (like network configuration) are applied immediately without a reboot. Others (like kernel parameters) require a reboot, and the API will tell you.
 
 ```bash
-# Check if a reboot is needed after configuration change
-talosctl -n 10.0.0.11 get machineconfig -o yaml | grep -A5 "status"
+# Preview how Talos would apply a configuration change
+talosctl -n 10.0.0.11 apply-config --file machine-config.yaml --dry-run
 ```
 
 ## Programmatic Access
@@ -199,8 +202,8 @@ func main() {
 
     for _, msg := range resp.Messages {
         fmt.Printf("Node: %s, Version: %s\n",
-            msg.Metadata.Hostname,
-            msg.Version.Tag,
+            msg.GetMetadata().GetHostname(),
+            msg.GetVersion().GetTag(),
         )
     }
 }
