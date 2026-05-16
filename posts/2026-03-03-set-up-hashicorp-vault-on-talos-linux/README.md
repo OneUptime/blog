@@ -10,7 +10,7 @@ Description: A complete guide to deploying and configuring HashiCorp Vault on Ta
 
 HashiCorp Vault is one of the most popular tools for managing secrets, encryption keys, and certificates in modern infrastructure. Running Vault on Kubernetes gives you a centralized secrets management system that your applications can query at runtime, avoiding the need to bake secrets into container images or environment variables. Talos Linux, with its minimal and immutable design, provides a hardened platform for running Vault securely.
 
-In this guide, we will deploy HashiCorp Vault on a Talos Linux cluster using the official Helm chart, configure it for production use, and integrate it with Kubernetes workloads.
+In this guide, we will deploy HashiCorp Vault on a Talos Linux cluster using the official Helm chart, configure it for a high-availability baseline, and integrate it with Kubernetes workloads.
 
 ## Prerequisites
 
@@ -34,7 +34,7 @@ helm repo add hashicorp https://helm.releases.hashicorp.com
 helm repo update
 ```
 
-Create a values file for a high-availability deployment.
+Create a values file for a high-availability deployment. This walkthrough leaves TLS disabled for brevity; enable TLS before using Vault in production.
 
 ```yaml
 # vault-values.yaml
@@ -44,6 +44,7 @@ server:
     replicas: 3
     raft:
       enabled: true
+      setNodeId: true
       config: |
         ui = true
 
@@ -104,7 +105,7 @@ kubectl get pods -n vault -w
 
 ## Initializing Vault
 
-After installation, Vault needs to be initialized. This process generates the master keys and root token.
+After installation, Vault needs to be initialized. This process generates the unseal key shares and root token.
 
 ```bash
 # Initialize Vault on the first pod
@@ -273,7 +274,7 @@ kubectl logs deployment/sample-app -c app
 
 Manual unsealing is impractical for production clusters. You can configure Vault to auto-unseal using a cloud KMS provider.
 
-```yaml
+```hcl
 # Updated Vault config for AWS KMS auto-unseal
 storage "raft" {
   path = "/vault/data"
@@ -294,7 +295,8 @@ seal "awskms" {
 service_registration "kubernetes" {}
 ```
 
-With auto-unseal configured, Vault will automatically unseal itself after a restart by contacting the KMS service. This is especially important on Talos Linux, where node reboots can happen during upgrades and you cannot manually intervene.
+With auto-unseal configured, Vault will automatically unseal itself after a restart by contacting the KMS service. This is especially important on Talos Linux, where node reboots can happen during upgrades and you cannot SSH into nodes to intervene.
+Make sure the Vault pods also have AWS credentials or an IAM role with permission to use the KMS key.
 
 ## Talos-Specific Considerations
 
@@ -302,7 +304,7 @@ Running Vault on Talos Linux introduces some unique considerations:
 
 1. **Persistent storage**: Vault needs persistent storage for the Raft data. Make sure your Talos cluster has a CSI driver or local path provisioner installed.
 
-2. **No manual intervention**: Since you cannot SSH into Talos nodes, auto-unseal is strongly recommended for production deployments.
+2. **No SSH-based intervention**: Since you cannot SSH into Talos nodes, auto-unseal is strongly recommended for production deployments.
 
 3. **Resource planning**: Vault can be memory-intensive under load. Plan your Talos node resources accordingly.
 
@@ -318,4 +320,4 @@ kubectl cp vault/vault-0:/tmp/vault-snapshot.snap ./vault-snapshot.snap
 
 ## Wrapping Up
 
-HashiCorp Vault on Talos Linux gives you a production-grade secrets management platform on a hardened, immutable operating system. The combination of Vault's dynamic secrets, fine-grained access policies, and audit logging with Talos Linux's minimal attack surface creates a strong security foundation for your Kubernetes workloads. The key takeaway is to always configure auto-unseal for Talos deployments, since manual intervention on nodes is not possible. With the Vault Agent Injector, your applications can consume secrets without any code changes, making adoption straightforward across your teams.
+HashiCorp Vault on Talos Linux gives you a production-grade secrets management platform on a hardened, immutable operating system. The combination of Vault's dynamic secrets, fine-grained access policies, and audit logging with Talos Linux's minimal attack surface creates a strong security foundation for your Kubernetes workloads. The key takeaway is to always configure auto-unseal for Talos deployments, since SSH-based intervention on nodes is not possible. With the Vault Agent Injector, your applications can consume secrets without any code changes, making adoption straightforward across your teams.
