@@ -105,7 +105,7 @@ Common flannel issues include:
 Check the flannel configuration:
 
 ```bash
-# View the flannel ConfigMap
+# View the Talos-managed flannel ConfigMap
 kubectl -n kube-system get configmap kube-flannel-cfg -o yaml
 ```
 
@@ -135,10 +135,10 @@ kubectl -n kube-system logs -l k8s-app=kube-proxy --tail=50
 Verify that service endpoints are being populated:
 
 ```bash
-# Check endpoints for a specific service
-kubectl get endpoints <service-name> -n <namespace>
+# Check EndpointSlices for a specific service
+kubectl get endpointslice -n <namespace> -l kubernetes.io/service-name=<service-name>
 
-# If endpoints are empty, the service selector may not match any pods
+# If EndpointSlices are empty, the service selector may not match any pods
 kubectl get pods -l <service-selector-labels> -n <namespace>
 ```
 
@@ -163,13 +163,13 @@ machine:
         mtu: 1450  # Reduced from default 1500 for overlay overhead
 ```
 
-Also configure the CNI to use the correct MTU:
+For Flannel MTU changes that are not exposed through the Talos machine configuration, disable the Talos-managed CNI and install a custom Flannel manifest with the required MTU:
 
 ```yaml
 cluster:
   network:
     cni:
-      name: flannel
+      name: none  # Install a custom flannel manifest with the required MTU
 ```
 
 ## DNS Issues at the Host Level
@@ -180,8 +180,8 @@ Talos nodes need DNS resolution for things like pulling container images. If the
 # Check DNS resolver configuration
 talosctl -n <node-ip> get resolvers
 
-# Check if DNS resolution works
-talosctl -n <node-ip> get hostdnsconfig
+# Check upstream DNS server health when host DNS is enabled
+talosctl -n <node-ip> get dnsupstream
 ```
 
 Make sure the nameservers in your machine configuration are reachable:
@@ -216,9 +216,12 @@ machine:
             gateway: 192.168.1.1
 
       # VLAN configuration
-      - interface: eth0.100
-        addresses:
-          - 10.100.0.50/24
+      - interface: eth0
+        dhcp: false
+        vlans:
+          - vlanId: 100
+            addresses:
+              - 10.100.0.50/24
 ```
 
 Check that the bond or VLAN is configured correctly:
@@ -237,7 +240,7 @@ When all else fails, you can capture packets on a Talos node using `talosctl pca
 
 ```bash
 # Capture packets on eth0 for 30 seconds
-talosctl -n <node-ip> pcap --interface eth0 --duration 30s > capture.pcap
+talosctl -n <node-ip> pcap --interface eth0 --duration 30s --output capture.pcap
 
 # Open the capture in Wireshark for analysis
 wireshark capture.pcap
