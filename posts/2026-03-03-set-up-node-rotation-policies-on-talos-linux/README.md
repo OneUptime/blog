@@ -222,18 +222,14 @@ talosctl etcd members -n 10.0.0.1
 MEMBER_COUNT=$(talosctl etcd members -n 10.0.0.1 -o json | jq '. | length')
 echo "etcd members: $MEMBER_COUNT"
 
-# Step 4: Remove the old control plane node from etcd
-echo "Removing old node from etcd..."
-talosctl etcd remove-member "$CP_NODE_NAME" -n 10.0.0.1
-
-# Step 5: Drain and remove the old node from Kubernetes
-kubectl drain "$CP_NODE_NAME" --ignore-daemonsets --delete-emptydir-data --timeout=300s
-kubectl delete node "$CP_NODE_NAME"
-
-# Step 6: Reset the old node
+# Step 4: Reset the old control plane node so it leaves etcd
+echo "Resetting old control plane node..."
 talosctl reset -n "$CP_NODE_IP" --graceful
 
-# Step 7: Verify etcd is healthy with 3 members again
+# Step 5: Remove the old node from Kubernetes
+kubectl delete node "$CP_NODE_NAME"
+
+# Step 6: Verify etcd is healthy with 3 members again
 talosctl etcd status -n 10.0.0.1
 talosctl etcd members -n 10.0.0.1
 
