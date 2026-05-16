@@ -41,14 +41,14 @@ kubectl get nodes
 
 ## Step 1: Check Certificate Expiration
 
-The most common certificate issue is expiration. Talos certificates have a default validity period, and if they expire, everything stops working.
+The most common certificate issue is expiration. Talos automatically manages and rotates server-side certificates for etcd, Kubernetes, and the Talos API, but client certificates such as `talosconfig` and `kubeconfig` are your responsibility.
 
 ```bash
-# Check certificate details on a node
-talosctl -n <node-ip> get certificate
-
 # Check the Kubernetes certificates
-talosctl -n <cp-ip> get certificate kubelet
+talosctl -n <cp-ip> get KubernetesDynamicCerts -o yaml
+
+# Check your talosconfig client certificate
+talosctl config info
 ```
 
 You can also check certificates from the client side:
@@ -61,23 +61,25 @@ echo | openssl s_client -connect <cp-ip>:6443 2>/dev/null | openssl x509 -noout 
 echo | openssl s_client -connect <node-ip>:50000 2>/dev/null | openssl x509 -noout -dates
 ```
 
-If the certificates are expired, you need to rotate them.
+If server-side certificates are expired, check whether the node has been rebooted or upgraded recently. The kubelet needs to be restarted at least once a year so its certificates can be rotated. If client certificates are expired, you need to renew the client configuration.
 
-## Step 2: Rotate Expired Certificates
+## Step 2: Renew Expired Client Certificates
 
-Talos provides built-in certificate rotation. For Kubernetes certificates:
-
-```bash
-# Rotate Kubernetes certificates (this will restart affected services)
-talosctl -n <cp-ip> rotate-certs
-```
-
-If `talosctl` itself cannot connect because the Talos API certificate is expired, you will need to use the insecure flag:
+For an expired or soon-to-expire kubeconfig, download a fresh kubeconfig from the cluster. Talos regenerates the client certificate each time you fetch it:
 
 ```bash
-# Connect without TLS verification to apply new configuration
-talosctl apply-config --insecure -n <node-ip> --file machine-config.yaml
+# Renew kubeconfig
+talosctl -n <cp-ip> kubeconfig --force
 ```
+
+For a talosconfig, generate a new client configuration from a valid admin talosconfig:
+
+```bash
+# Generate a fresh talosconfig
+talosctl -n <cp-ip> config new talosconfig
+```
+
+If the root CA has expired or must be replaced, use `talosctl rotate-ca`. This is a CA rotation workflow, not a leaf certificate renewal command, and it is disruptive enough that you should capture the command output and follow the Talos CA rotation procedure carefully.
 
 ## Step 3: Fix CA Mismatch
 
@@ -87,8 +89,8 @@ Check which CA each node is using:
 
 ```bash
 # Get the CA from two different nodes and compare
-talosctl -n <node-1-ip> get machineconfiguration -o yaml | grep -A2 "ca:"
-talosctl -n <node-2-ip> get machineconfiguration -o yaml | grep -A2 "ca:"
+talosctl -n <node-1-ip> get machineconfig v1alpha1 -o jsonpath='{.spec}' | grep -A2 "ca:"
+talosctl -n <node-2-ip> get machineconfig v1alpha1 -o jsonpath='{.spec}' | grep -A2 "ca:"
 ```
 
 If the CAs do not match, you need to re-apply the correct configuration to the nodes with the wrong CA.
@@ -142,10 +144,10 @@ talosctl config info
 Make sure the talosconfig was generated from the same cluster secrets as the machine configuration. If you regenerated the cluster configuration, you also need a new talosconfig:
 
 ```bash
-# Generate fresh talosconfig
-talosctl gen config my-cluster https://<endpoint>:6443
+# Generate fresh talosconfig from saved cluster secrets
+talosctl gen config --with-secrets secrets.yaml --output-types talosconfig -o talosconfig my-cluster https://<endpoint>:6443
 
-# The talosconfig file will be generated alongside the machine configs
+# The talosconfig file will be generated at the path passed to -o
 # Move it to the right location
 cp talosconfig ~/.talos/config
 ```
@@ -213,18 +215,18 @@ This will show you the complete certificate chain, including which CA signed the
 If certificates are thoroughly broken and piecemeal fixes are not working, you may need to regenerate everything. This is disruptive but thorough:
 
 ```bash
-# 1. Generate completely new cluster configuration
-talosctl gen config my-cluster https://<endpoint>:6443
+# 1. Regenerate cluster configuration from the original secrets bundle
+talosctl gen config --with-secrets secrets.yaml my-cluster https://<endpoint>:6443
 
-# 2. Apply to all control plane nodes
+# 2. Apply to all control plane nodes after reset or reinstall into maintenance mode
 talosctl apply-config --insecure -n <cp-1-ip> --file controlplane.yaml
 talosctl apply-config --insecure -n <cp-2-ip> --file controlplane.yaml
 
-# 3. Apply to all worker nodes
+# 3. Apply to all worker nodes after reset or reinstall into maintenance mode
 talosctl apply-config --insecure -n <worker-1-ip> --file worker.yaml
 talosctl apply-config --insecure -n <worker-2-ip> --file worker.yaml
 
-# 4. Update your kubeconfig
+# 4. Update your kubeconfig after the API is healthy
 talosctl -n <cp-1-ip> kubeconfig --force
 ```
 
