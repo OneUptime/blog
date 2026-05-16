@@ -78,22 +78,21 @@ CONF
 sudo systemctl restart tftpd-hpa
 ```
 
-For UEFI PXE boot, you need a PXE bootloader. Download the UEFI PXE boot file from the Talos release:
+For UEFI PXE boot, you need a network bootloader. Talos does not ship its own UEFI PXE bootloader, so we use iPXE, which supports HTTP natively and handles UEFI cleanly:
 
 ```bash
-# Download the UEFI PXE boot file
-wget -O /srv/tftp/talos/snp.efi \
-  https://github.com/siderolabs/talos/releases/download/v1.9.0/metal-amd64-pxe.efi
+# Download the iPXE UEFI binary
+wget -O /srv/tftp/ipxe.efi https://boot.ipxe.org/ipxe.efi
 ```
 
-For legacy BIOS PXE boot, you will use `pxelinux` or `lpxelinux`:
+For legacy BIOS PXE boot, you will use `lpxelinux` (the HTTP-capable variant of `pxelinux.0`, since the kernel and initramfs are served over HTTP):
 
 ```bash
 # Install syslinux for BIOS PXE support
 sudo apt-get install syslinux pxelinux
 
-# Copy the necessary boot files
-cp /usr/lib/PXELINUX/pxelinux.0 /srv/tftp/
+# Copy the necessary boot files (use lpxelinux.0 — it supports HTTP)
+cp /usr/lib/PXELINUX/lpxelinux.0 /srv/tftp/
 cp /usr/lib/syslinux/modules/bios/ldlinux.c32 /srv/tftp/
 
 # Create the pxelinux configuration directory
@@ -102,7 +101,7 @@ mkdir -p /srv/tftp/pxelinux.cfg
 
 ## Step 3: Create the PXE Boot Configuration
 
-Create a PXE configuration that tells the bootloader where to find the Talos kernel:
+Create a PXE configuration that tells the bootloader where to find the Talos kernel. Talos requires `talos.platform=metal`, `slab_nomerge`, and `pti=on` on the kernel command line (the last two are KSPP-mandated and the kernel will refuse certain features without them):
 
 ```bash
 # For BIOS PXE boot - create the default config
@@ -111,8 +110,20 @@ DEFAULT talos
 LABEL talos
   KERNEL http://192.168.1.10/talos/vmlinuz
   INITRD http://192.168.1.10/talos/initramfs.xz
-  APPEND talos.platform=metal console=ttyS0 console=tty0
+  APPEND talos.platform=metal slab_nomerge pti=on console=ttyS0 console=tty0
 PXECONFIG
+```
+
+For UEFI clients booting via iPXE, create a boot script that iPXE will fetch over HTTP:
+
+```bash
+# Create the iPXE boot script for UEFI clients
+cat > /srv/http/talos/boot.ipxe << 'IPXE'
+#!ipxe
+kernel http://192.168.1.10/talos/vmlinuz talos.platform=metal slab_nomerge pti=on console=ttyS0 console=tty0
+initrd http://192.168.1.10/talos/initramfs.xz
+boot
+IPXE
 ```
 
 Replace `192.168.1.10` with the IP address of your HTTP server.
@@ -157,14 +168,15 @@ subnet 192.168.1.0 netmask 255.255.255.0 {
     # PXE boot options
     next-server 192.168.1.10;  # TFTP server IP
 
-    # For BIOS clients
-    if option arch = 00:00 {
-        filename "pxelinux.0";
-    }
-
-    # For UEFI clients
-    if option arch = 00:07 or option arch = 00:09 {
-        filename "talos/snp.efi";
+    # iPXE chainloading: if the client already speaks iPXE, send it the boot script
+    if exists user-class and option user-class = "iPXE" {
+        filename "http://192.168.1.10/talos/boot.ipxe";
+    } else if option arch = 00:07 or option arch = 00:09 {
+        # UEFI x86_64 clients - load iPXE first
+        filename "ipxe.efi";
+    } else {
+        # BIOS clients
+        filename "lpxelinux.0";
     }
 }
 ```
@@ -174,12 +186,18 @@ If you use dnsmasq, the configuration is simpler:
 ```bash
 # dnsmasq PXE configuration
 dhcp-range=192.168.1.100,192.168.1.200,12h
-dhcp-boot=pxelinux.0,pxeserver,192.168.1.10
 
-# For UEFI clients
+# Tag clients that are already running iPXE so we can hand them the script
+dhcp-match=set:ipxe,175
+dhcp-boot=tag:ipxe,http://192.168.1.10/talos/boot.ipxe
+
+# BIOS clients (not yet running iPXE)
+dhcp-boot=tag:!ipxe,lpxelinux.0,pxeserver,192.168.1.10
+
+# UEFI clients (not yet running iPXE) - load iPXE first
 dhcp-match=set:efi-x86_64,option:client-arch,7
 dhcp-match=set:efi-x86_64,option:client-arch,9
-dhcp-boot=tag:efi-x86_64,talos/snp.efi
+dhcp-boot=tag:efi-x86_64,tag:!ipxe,ipxe.efi
 ```
 
 ## Step 6: Boot Your Machines
