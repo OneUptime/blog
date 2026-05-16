@@ -86,22 +86,22 @@ server:
     evaluation_interval: 15s
 
 # Enable node-exporter for node metrics
-nodeExporter:
+prometheus-node-exporter:
   enabled: true
 
 # Enable kube-state-metrics for Kubernetes object metrics
-kubeStateMetrics:
+kube-state-metrics:
   enabled: true
 
 # Alertmanager configuration
 alertmanager:
   enabled: true
-  persistentVolume:
+  persistence:
     enabled: true
     size: 5Gi
 
 # Push gateway for batch jobs
-pushgateway:
+prometheus-pushgateway:
   enabled: false
 ```
 
@@ -123,7 +123,7 @@ kubectl get pods -n monitoring
 
 # You should see:
 # prometheus-server - the main Prometheus server
-# prometheus-node-exporter - runs on each node
+# prometheus-prometheus-node-exporter - runs on each node
 # prometheus-kube-state-metrics - Kubernetes object metrics
 # prometheus-alertmanager - alert routing
 
@@ -135,14 +135,14 @@ Open `http://localhost:9090` to access the Prometheus web interface.
 
 ## Configuring Scrape Targets
 
-Prometheus discovers targets through Kubernetes service discovery. The default configuration scrapes:
+Prometheus discovers targets through Kubernetes service discovery. The default configuration scrapes or discovers:
 
+- Prometheus itself
 - Kubernetes API server
 - Kubelet metrics
-- Node-exporter metrics
-- kube-state-metrics
-- CoreDNS
 - cAdvisor (container metrics)
+- Annotated services and pods
+- Node-exporter metrics and kube-state-metrics when those subcharts are enabled
 
 To add your own applications, use annotations:
 
@@ -185,7 +185,7 @@ For more control over scraping, add custom scrape configs:
 extraScrapeConfigs: |
   - job_name: 'custom-app'
     kubernetes_sd_configs:
-    - role: endpoints
+    - role: endpointslice
       namespaces:
         names:
         - production
@@ -193,7 +193,7 @@ extraScrapeConfigs: |
     - source_labels: [__meta_kubernetes_service_label_app]
       regex: my-custom-app
       action: keep
-    - source_labels: [__meta_kubernetes_endpoint_port_name]
+    - source_labels: [__meta_kubernetes_endpointslice_port_name]
       regex: metrics
       action: keep
     metric_relabel_configs:
@@ -317,16 +317,16 @@ serverFiles:
 
 ## Monitoring Talos-Specific Metrics
 
-Talos exposes some of its own metrics. You can scrape them by adding a scrape config:
+Talos-managed etcd metrics are not exposed by default. After exposing the etcd metrics endpoint on your control plane nodes, you can scrape it by adding a scrape config:
 
 ```yaml
 extraScrapeConfigs: |
-  - job_name: 'talos-nodes'
+  - job_name: 'talos-etcd'
     static_configs:
     - targets:
-      - '10.0.0.1:9100'  # Node 1
-      - '10.0.0.2:9100'  # Node 2
-      - '10.0.0.3:9100'  # Node 3
+      - '10.0.0.1:2381'  # Control plane node 1
+      - '10.0.0.2:2381'  # Control plane node 2
+      - '10.0.0.3:2381'  # Control plane node 3
 ```
 
 Also check Talos system health through `talosctl`:
