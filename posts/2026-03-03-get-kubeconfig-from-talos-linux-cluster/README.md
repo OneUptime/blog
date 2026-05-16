@@ -58,7 +58,7 @@ This is handy when you manage multiple clusters and want to keep their configura
 
 ## Saving to a Directory
 
-You can also pass a directory path, and Talos will write the kubeconfig as a `config` file inside that directory:
+You can also pass a directory path, and Talos will write the kubeconfig as a `kubeconfig` file inside that directory:
 
 ```bash
 # Save to a specific directory
@@ -66,7 +66,7 @@ mkdir -p ~/.kube/clusters/my-cluster
 talosctl kubeconfig ~/.kube/clusters/my-cluster --nodes 192.168.1.101
 
 # The file is created at:
-# ~/.kube/clusters/my-cluster/config
+# ~/.kube/clusters/my-cluster/kubeconfig
 ```
 
 ## Understanding the Generated kubeconfig
