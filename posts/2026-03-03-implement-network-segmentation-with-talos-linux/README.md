@@ -23,65 +23,55 @@ For a Talos Linux cluster, the key boundaries you should establish are:
 
 ## Node-Level Firewall Configuration
 
-Talos Linux allows you to configure firewall rules at the node level through the machine configuration. These rules apply before any Kubernetes networking comes into play:
+Talos Linux allows you to configure host firewall rules through additional configuration documents. The default ingress action and individual port rules are defined as separate documents, applied alongside the main machine config:
 
 ```yaml
 # machine-config-firewall.yaml
 
-# Configure node-level firewall rules for network segmentation
-machine:
-  network:
-    kubespan:
-      enabled: false
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 10.0.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 10.0.1.1
-    # Firewall rules
-    rules:
-      # Allow Talos API from management network only
-      - action: accept
-        direction: in
-        protocol: tcp
-        portRanges:
-          - lo: 50000
-            hi: 50000
-        source:
-          network: 10.0.0.0/24  # Management network
-      # Allow Kubernetes API from internal network
-      - action: accept
-        direction: in
-        protocol: tcp
-        portRanges:
-          - lo: 6443
-            hi: 6443
-        source:
-          network: 10.0.0.0/16
-      # Allow kubelet communication
-      - action: accept
-        direction: in
-        protocol: tcp
-        portRanges:
-          - lo: 10250
-            hi: 10250
-        source:
-          network: 10.0.0.0/16
-      # Drop everything else from outside
-      - action: drop
-        direction: in
-        source:
-          network: 0.0.0.0/0
+# Set a default-deny posture for inbound traffic, then explicitly
+# allow only the ports needed for cluster operation.
+apiVersion: v1alpha1
+kind: NetworkDefaultActionConfig
+ingress: block
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: ingress-talos-api
+portSelector:
+  ports:
+    - 50000
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/24  # Management network
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: ingress-kubernetes-api
+portSelector:
+  ports:
+    - 6443
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/16
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: ingress-kubelet
+portSelector:
+  ports:
+    - 10250
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/16
 ```
 
-Apply the firewall configuration:
+With `NetworkDefaultActionConfig` set to `block`, any inbound traffic that does not match a `NetworkRuleConfig` is dropped, so no explicit deny rule is required.
+
+Apply the firewall configuration as a patch to the running machine config:
 
 ```bash
-# Apply firewall rules to control plane nodes
-talosctl apply-config --nodes 10.0.1.10 \
-  --config-patch @machine-config-firewall.yaml
+# Patch the machine config on the control plane node
+talosctl patch mc --nodes 10.0.1.10 --patch @machine-config-firewall.yaml
 ```
 
 ## VLAN-Based Segmentation
@@ -113,7 +103,7 @@ machine:
           # VLAN for storage network
           - vlanId: 300
             addresses:
-              - 10.0.300.10/24
+              - 10.30.0.10/24
 ```
 
 This creates separate network segments for management, control plane, pod, and storage traffic. Each VLAN can have its own firewall rules and routing policies.
@@ -261,7 +251,7 @@ Install Cilium on your Talos cluster:
 
 ```bash
 # Install Cilium using the CLI
-cilium install --helm-set ipam.mode=kubernetes
+cilium install --set ipam.mode=kubernetes
 
 # Verify Cilium is running
 cilium status
@@ -286,23 +276,22 @@ machine:
       - interface: eth1
         addresses:
           - 192.168.100.10/24  # Management interface
-    rules:
-      # Only allow Talos API access from management network
-      - action: accept
-        direction: in
-        protocol: tcp
-        portRanges:
-          - lo: 50000
-            hi: 50000
-        source:
-          network: 192.168.100.0/24
-      # Block Talos API from all other networks
-      - action: drop
-        direction: in
-        protocol: tcp
-        portRanges:
-          - lo: 50000
-            hi: 50000
+---
+# With ingress blocked by default, the Talos API is reachable
+# only from the subnet listed below.
+apiVersion: v1alpha1
+kind: NetworkDefaultActionConfig
+ingress: block
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: ingress-talos-api-mgmt-only
+portSelector:
+  ports:
+    - 50000
+  protocol: tcp
+ingress:
+  - subnet: 192.168.100.0/24
 ```
 
 ## Monitoring Network Segmentation
