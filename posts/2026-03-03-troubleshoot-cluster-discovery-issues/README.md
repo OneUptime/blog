@@ -8,7 +8,7 @@ Description: A systematic guide to diagnosing and fixing cluster discovery issue
 
 ---
 
-Cluster discovery in Talos Linux usually works without any attention, but when it breaks, the symptoms can be confusing. New nodes might fail to join the cluster, KubeSpan might not establish tunnels, or the cluster might split-brain during a network partition. This guide gives you a systematic approach to diagnosing and fixing discovery issues.
+Cluster discovery in Talos Linux usually works without any attention, but when it breaks, the symptoms can be confusing. New nodes might fail to join the cluster, KubeSpan might not establish tunnels, or nodes might have inconsistent membership views during a network partition. This guide gives you a systematic approach to diagnosing and fixing discovery issues.
 
 ## Symptoms of Discovery Problems
 
@@ -16,7 +16,7 @@ Before diving into debugging, recognize the symptoms that point to discovery iss
 
 - New nodes boot but never appear in `kubectl get nodes`
 - KubeSpan peers stay in "unknown" state
-- `talosctl get discoveredmembers` returns an empty list or is missing nodes
+- `talosctl get affiliates` returns an empty list or is missing nodes
 - Control plane nodes cannot form the etcd cluster during bootstrap
 - Nodes intermittently disappear from and reappear in the cluster
 
@@ -29,11 +29,11 @@ Start with the fundamental checks:
 
 talosctl get machineconfig --nodes <node-ip> -o yaml | grep -A15 "discovery:"
 
-# Are there any discovered members?
-talosctl get discoveredmembers --nodes <node-ip>
+# Are there any discovered affiliates?
+talosctl get affiliates --nodes <node-ip>
 
 # Check the cluster identity
-talosctl get clusteridentity --nodes <node-ip>
+talosctl get machineconfig v1alpha1 --nodes <node-ip> -o jsonpath='{.spec.cluster.id}{"\n"}'
 ```
 
 If discovery is disabled, that explains everything. Enable it:
@@ -47,8 +47,10 @@ cluster:
         disabled: false
         endpoint: https://discovery.talos.dev/
       kubernetes:
-        disabled: false
+        disabled: true
 ```
+
+The Kubernetes registry is deprecated and disabled by default on current Talos releases because it is not compatible with Kubernetes 1.32 and later in the default configuration. Only enable it deliberately on clusters where you have verified the Kubernetes version and API server configuration.
 
 ## Step 2: Check Controller Logs
 
@@ -97,8 +99,8 @@ Common network issues:
 # Check DNS configuration
 talosctl get resolvers --nodes <node-ip>
 
-# Verify DNS is working
-talosctl logs controller-runtime --nodes <node-ip> | grep "nameserver"
+# Check upstream DNS resolver health when host DNS is enabled
+talosctl get dnsupstream --nodes <node-ip>
 ```
 
 **Firewall blocking HTTPS**: The discovery service uses HTTPS (port 443). Make sure outbound HTTPS traffic is allowed.
@@ -119,8 +121,8 @@ Each Talos cluster has a unique identity derived from its secrets. If a node has
 
 ```bash
 # Compare cluster identity between nodes
-talosctl get clusteridentity --nodes <node-1-ip>
-talosctl get clusteridentity --nodes <node-2-ip>
+talosctl get machineconfig v1alpha1 --nodes <node-1-ip> -o jsonpath='{.spec.cluster.id}{"\n"}'
+talosctl get machineconfig v1alpha1 --nodes <node-2-ip> -o jsonpath='{.spec.cluster.id}{"\n"}'
 
 # The IDs should match for nodes in the same cluster
 ```
@@ -158,14 +160,15 @@ date -u
 If the time is wrong, check NTP configuration:
 
 ```yaml
-machine:
-  time:
-    servers:
-      - time.cloudflare.com
-      - pool.ntp.org
+apiVersion: v1alpha1
+kind: TimeSyncConfig
+ntp:
+  servers:
+    - time.cloudflare.com
+    - pool.ntp.org
 ```
 
-**Untrusted CA**: If using a self-hosted discovery service with a private CA, the CA certificate needs to be in the node's trust store.
+**Untrusted CA**: If using a self-hosted discovery service with a private CA, the CA certificate needs to be added with a `TrustedRootsConfig` document.
 
 ## Step 6: Self-Hosted Discovery Service Issues
 
@@ -200,7 +203,7 @@ kubectl top pod -n talos-discovery
 
 ## Step 7: Kubernetes Registry Issues
 
-If you are using the Kubernetes registry as a fallback:
+If you have deliberately enabled the deprecated Kubernetes registry:
 
 ```bash
 # Check if node annotations contain discovery data
@@ -208,10 +211,10 @@ kubectl get nodes -o yaml | grep -A5 "discovery"
 
 # Verify the Kubernetes API is healthy
 kubectl cluster-info
-kubectl get componentstatus
+kubectl get --raw='/readyz?verbose'
 ```
 
-The Kubernetes registry only works when Kubernetes is running. During initial bootstrap, only the service registry is available.
+The Kubernetes registry only works when Kubernetes is running. During initial bootstrap, only the service registry is available. On Kubernetes 1.32 and later, the Kubernetes registry is not compatible with the default `AuthorizeNodeWithSelectors` behavior, so prefer the service registry unless you have a specific reason and a tested workaround.
 
 ## Step 8: Recovery Procedures
 
@@ -226,7 +229,7 @@ talosctl apply-config --insecure \
   --file worker.yaml
 
 # Wait and check
-talosctl get discoveredmembers --nodes <new-node-ip>
+talosctl get affiliates --nodes <new-node-ip>
 ```
 
 ### All Discovery Is Broken
@@ -261,7 +264,7 @@ kubectl get nodes
 To avoid discovery issues in the future:
 
 1. Monitor the discovery service endpoint (add it to your uptime monitoring)
-2. Use both service and Kubernetes registries for redundancy
+2. Use the service registry, or a supported self-hosted discovery service, for discovery
 3. Keep cluster secrets backed up and consistent across all nodes
 4. Ensure NTP is configured on all nodes for accurate time
 5. For self-hosted services, set up proper health checks and alerting
@@ -269,7 +272,7 @@ To avoid discovery issues in the future:
 ```bash
 # Simple monitoring check
 #!/bin/bash
-if ! talosctl get discoveredmembers --nodes <node-ip> -o json | jq -e 'length > 0' > /dev/null; then
+if ! talosctl get affiliates --nodes <node-ip> -o json | jq -e 'length > 0' > /dev/null; then
   echo "ALERT: Discovery returning no members"
 fi
 ```
