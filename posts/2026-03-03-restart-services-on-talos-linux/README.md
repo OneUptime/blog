@@ -74,25 +74,30 @@ kubectl get node <node-name>
 ```
 
 When you restart kubelet:
-- All pods on the node continue running (they are managed by containerd, not kubelet)
+- Running containers on the node keep running (they live under the CRI runtime, independently of kubelet)
 - The node may briefly show as NotReady in Kubernetes
 - kubelet re-registers with the API server
-- Static pods (kube-proxy, etc.) may be restarted
+- Static pods (kube-apiserver, kube-controller-manager, kube-scheduler on control plane nodes) are re-read from disk and adopted by kubelet
 
-## Restarting containerd
+## Restarting containerd and cri
 
-Restarting containerd is more disruptive because it affects all containers on the node:
+Talos runs two containerd instances as separate services:
+
+- **`containerd`** — the system containerd, used for Talos system extensions and other system-level containers.
+- **`cri`** — the containerd instance that kubelet talks to over the CRI for running Kubernetes pods.
+
+Restarting `cri` is the disruptive one because it affects every Kubernetes container on the node:
 
 ```bash
-# Before restarting containerd, consider draining the node first
+# Before restarting cri, consider draining the node first
 kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
 
-# Restart containerd
-talosctl service containerd restart -n <node-ip>
+# Restart the CRI containerd (used by Kubernetes)
+talosctl service cri restart -n <node-ip>
 
 # Wait for it to recover
 sleep 15
-talosctl service containerd -n <node-ip>
+talosctl service cri -n <node-ip>
 
 # Check that kubelet recovered
 talosctl service kubelet -n <node-ip>
@@ -101,7 +106,7 @@ talosctl service kubelet -n <node-ip>
 kubectl uncordon <node-name>
 ```
 
-When you restart containerd, all containers on the node are stopped and must be restarted by kubelet. This means pod disruptions on that node.
+When you restart `cri`, all Kubernetes containers on the node are stopped and must be restarted by kubelet. This means pod disruptions on that node. Restarting the system `containerd` is less disruptive to Kubernetes workloads, but can still affect Talos system extensions.
 
 ## Restarting etcd
 
