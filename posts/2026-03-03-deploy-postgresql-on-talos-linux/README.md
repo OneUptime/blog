@@ -43,7 +43,7 @@ data:
       "nodePathMap": [
         {
           "node": "DEFAULT_PATH_FOR_NON_LISTED_NODES",
-          "paths": ["/var/local-path-provisioner"]
+          "paths": ["/var/mnt/local-path-provisioner"]
         }
       ]
     }
@@ -57,14 +57,14 @@ machine:
   disks:
     - device: /dev/sdb
       partitions:
-        - mountpoint: /var/local-path-provisioner
+        - mountpoint: /var/mnt/local-path-provisioner
 ```
 
 Apply this patch using talosctl:
 
 ```bash
 # Apply the disk configuration to your worker nodes
-talosctl apply-config --nodes 10.0.0.2 --file talos-machine-patch.yaml
+talosctl patch mc --nodes 10.0.0.2 --patch @talos-machine-patch.yaml
 ```
 
 ## Step 2: Create a Namespace and Secrets
@@ -287,9 +287,12 @@ spec:
                 - /bin/sh
                 - -c
                 - pg_dump -h postgresql -U appuser appdb > /backups/backup-$(date +%Y%m%d).sql
-              envFrom:
-                - secretRef:
-                    name: postgres-credentials
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-credentials
+                      key: POSTGRES_PASSWORD
               volumeMounts:
                 - name: backup-volume
                   mountPath: /backups
@@ -306,7 +309,7 @@ For true production high availability, consider using the CloudNativePG operator
 
 ```bash
 # Install CloudNativePG operator
-kubectl apply -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.22/releases/cnpg-1.22.0.yaml
+kubectl apply -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.29/releases/cnpg-1.29.1.yaml
 ```
 
 ```yaml
