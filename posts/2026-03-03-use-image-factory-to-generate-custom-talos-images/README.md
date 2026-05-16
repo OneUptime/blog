@@ -8,7 +8,7 @@ Description: Learn how to use Sidero Labs Image Factory to generate custom Talos
 
 ---
 
-Image Factory is a hosted service from Sidero Labs that generates custom Talos Linux images on demand. Instead of setting up a build environment and compiling images yourself, you describe what you want through a schematic, submit it to the service, and download ready-to-use images. It supports ISOs, raw disk images, cloud provider formats, and installer images, all with your chosen system extensions and kernel parameters pre-configured.
+Image Factory is a hosted service from Sidero Labs that generates custom Talos Linux images on demand. Instead of setting up a build environment and compiling images yourself, you describe what you want through a schematic, submit it to the service, and download ready-to-use images. It supports ISOs, raw disk images, cloud provider formats, and installer images, with your chosen system extensions and supported kernel parameters pre-configured.
 
 This guide covers everything you need to know about using Image Factory effectively for your Talos Linux deployments.
 
@@ -61,14 +61,14 @@ curl -sX POST \
   -H "Content-Type: application/yaml"
 
 # Response looks like:
-# {"id":"376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba"}
+# {"id":"dc7b152cb3ea99b821fcb7340ce7168313ce393d663740b791c36f6e95fc8586"}
 ```
 
 Save the schematic ID - you will use it to download images.
 
 ```bash
 # Store the ID in a variable
-SCHEMATIC_ID="376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba"
+SCHEMATIC_ID="dc7b152cb3ea99b821fcb7340ce7168313ce393d663740b791c36f6e95fc8586"
 ```
 
 ## Downloading Images
@@ -103,7 +103,7 @@ xz -d talos-metal-amd64.raw.xz
 ```bash
 # The installer image URL for use in machine configs
 # Use this in machine.install.image
-echo "factory.talos.dev/installer/${SCHEMATIC_ID}:v1.7.0"
+echo "factory.talos.dev/metal-installer/${SCHEMATIC_ID}:v1.7.0"
 ```
 
 ### Cloud Platform Images
@@ -125,6 +125,8 @@ curl -Lo talos-azure.vhd.xz \
 ## Advanced Schematic Options
 
 Schematics support more than just extension selection. You can also configure kernel arguments and overlay configurations.
+
+Note that not every asset type uses every schematic field. Installer images include system extensions, while kernel arguments are applied to boot assets such as ISOs, disk images, and PXE boot assets.
 
 ### Custom Kernel Arguments
 
@@ -162,11 +164,11 @@ You can reference Image Factory installer images directly in your `talosctl` com
 ```bash
 # Generate config using Image Factory installer
 talosctl gen config my-cluster https://10.0.0.1:6443 \
-  --install-image factory.talos.dev/installer/${SCHEMATIC_ID}:v1.7.0
+  --install-image factory.talos.dev/metal-installer/${SCHEMATIC_ID}:v1.7.0
 
 # Upgrade a node using Image Factory installer
 talosctl upgrade \
-  --image factory.talos.dev/installer/${SCHEMATIC_ID}:v1.7.0 \
+  --image factory.talos.dev/metal-installer/${SCHEMATIC_ID}:v1.7.0 \
   --nodes 10.0.0.10
 ```
 
@@ -180,7 +182,7 @@ Reference the Image Factory installer in your machine configuration files.
 # controlplane.yaml
 machine:
   install:
-    image: factory.talos.dev/installer/376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba:v1.7.0
+    image: factory.talos.dev/metal-installer/dc7b152cb3ea99b821fcb7340ce7168313ce393d663740b791c36f6e95fc8586:v1.7.0
     disk: /dev/sda
 ```
 
@@ -192,16 +194,16 @@ One of the biggest advantages of Image Factory is how it simplifies upgrades. Wh
 
 ```bash
 # Current version
-CURRENT="factory.talos.dev/installer/${SCHEMATIC_ID}:v1.7.0"
+CURRENT="factory.talos.dev/metal-installer/${SCHEMATIC_ID}:v1.7.0"
 
 # Upgrade to new version - just change the version tag
-NEW="factory.talos.dev/installer/${SCHEMATIC_ID}:v1.8.0"
+NEW="factory.talos.dev/metal-installer/${SCHEMATIC_ID}:v1.8.0"
 
 # Perform the upgrade
 talosctl upgrade --image ${NEW} --nodes 10.0.0.10
 ```
 
-Your extensions and kernel arguments carry over to the new version automatically.
+Your extensions carry over to the new installer image automatically. For boot assets such as ISOs, disk images, and PXE boot assets, kernel arguments from the schematic are applied to the new version as well.
 
 ## Managing Multiple Schematics
 
@@ -242,12 +244,48 @@ echo "Control plane schematic: ${CP_ID}"
 For air-gapped environments or when you need complete control, you can run your own Image Factory instance.
 
 ```bash
-# Run Image Factory locally
+# Run a local registry for schematics, cached assets, and installer images
+docker run -d --name registry -p 5000:5000 registry:2
+
+# Create the cache signing key
+openssl ecparam -name prime256v1 -genkey -noout -out signing-key.key
+
+# Create a minimal connected-mode configuration
+cat > image-factory.yaml << 'EOF'
+artifacts:
+  schematic:
+    registry: localhost:5000
+    namespace: image-factory
+    repository: schematic
+    insecure: true
+  installer:
+    internal:
+      registry: localhost:5000
+      namespace: siderolabs
+      insecure: true
+    external:
+      registry: localhost:5000
+      namespace: siderolabs
+      insecure: true
+cache:
+  oci:
+    registry: localhost:5000
+    namespace: image-factory
+    repository: cache
+    insecure: true
+  signingKeyPath: /signing-key.key
+http:
+  externalURL: http://localhost:8080
+EOF
+
+# Run Image Factory locally using the upstream Sidero image registry
 docker run -d \
   --name image-factory \
-  -p 8080:8080 \
-  -v /var/lib/image-factory:/data \
-  ghcr.io/siderolabs/image-factory:latest
+  --network host \
+  -v "${PWD}/image-factory.yaml:/image-factory.yaml:ro" \
+  -v "${PWD}/signing-key.key:/signing-key.key:ro" \
+  ghcr.io/siderolabs/image-factory:latest \
+  --config /image-factory.yaml
 
 # Submit schematics to your local instance
 curl -sX POST \
@@ -289,7 +327,7 @@ curl -Lo "images/${TALOS_VERSION}/talos-metal.raw.xz" \
   "https://factory.talos.dev/image/${SCHEMATIC_ID}/${TALOS_VERSION}/metal-amd64.raw.xz"
 
 echo "Images downloaded to images/${TALOS_VERSION}/"
-echo "Installer: factory.talos.dev/installer/${SCHEMATIC_ID}:${TALOS_VERSION}"
+echo "Installer: factory.talos.dev/metal-installer/${SCHEMATIC_ID}:${TALOS_VERSION}"
 ```
 
 ## Conclusion
