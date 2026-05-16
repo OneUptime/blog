@@ -8,7 +8,7 @@ Description: Learn how to install and configure Container Storage Interface driv
 
 ---
 
-The Container Storage Interface (CSI) is the standard way to expose storage systems to Kubernetes. CSI drivers replace the older in-tree volume plugins and provide a consistent, extensible mechanism for adding storage support to your cluster. On Talos Linux, CSI drivers are the only practical way to provision and manage persistent storage because the immutable operating system does not support installing storage utilities directly on nodes.
+The Container Storage Interface (CSI) is the standard way to expose storage systems to Kubernetes. CSI drivers replace the older in-tree volume plugins and provide a consistent, extensible mechanism for adding storage support to your cluster. On Talos Linux, CSI drivers are the standard way to provision and manage persistent storage because the immutable operating system does not support installing storage utilities with a package manager on nodes.
 
 This guide covers how CSI works, how to install common CSI drivers on Talos Linux, and how to troubleshoot them.
 
@@ -33,13 +33,13 @@ Many CSI drivers need the snapshot controller for volume snapshot support. Insta
 ```bash
 # Install the snapshot CRDs
 
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v7.0.1/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v7.0.1/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v7.0.1/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.5.0/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.5.0/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.5.0/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
 
 # Install the snapshot controller
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v7.0.1/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v7.0.1/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.5.0/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.5.0/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml
 
 # Verify it is running
 kubectl -n kube-system get pods -l app.kubernetes.io/name=snapshot-controller
@@ -56,6 +56,7 @@ helm repo update
 
 helm install csi-driver-nfs csi-driver-nfs/csi-driver-nfs \
   --namespace kube-system \
+  --version 4.12.0 \
   --set controller.replicas=2 \
   --set driver.name=nfs.csi.k8s.io
 ```
@@ -64,7 +65,8 @@ Verify the installation:
 
 ```bash
 # Check CSI pods
-kubectl -n kube-system get pods -l app.kubernetes.io/name=csi-driver-nfs
+kubectl -n kube-system get pods -l app=csi-nfs-controller
+kubectl -n kube-system get pods -l app=csi-nfs-node
 
 # Verify the CSI driver is registered
 kubectl get csidrivers
@@ -79,33 +81,48 @@ The Rook-Ceph CSI driver is installed automatically when you deploy Rook. Howeve
 csi:
   enableRbdDriver: true
   enableCephfsDriver: true
-  enableGrpcMetrics: true
 
   provisionerReplicas: 2
 
-  rbdPluginResource:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 256Mi
+  csiRBDPluginResource: |
+    - name : csi-rbdplugin
+      resource:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
 
-  cephfsPluginResource:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 256Mi
+  csiCephFSPluginResource: |
+    - name : csi-cephfsplugin
+      resource:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
 
-  provisionerResource:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 256Mi
+  csiRBDProvisionerResource: |
+    - name : csi-provisioner
+      resource:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+
+  csiCephFSProvisionerResource: |
+    - name : csi-provisioner
+      resource:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
 ```
 
 ```bash
@@ -124,7 +141,7 @@ If your Talos Linux nodes are running on AWS:
 helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver
 helm repo update
 
-# Install the driver
+# Install the driver after configuring IAM permissions for the controller service account
 helm install aws-ebs-csi-driver aws-ebs-csi-driver/aws-ebs-csi-driver \
   --namespace kube-system \
   --set controller.replicaCount=2
@@ -153,38 +170,28 @@ allowVolumeExpansion: true
 
 For Talos Linux running on VMware vSphere:
 
-```yaml
-# vsphere-csi-values.yaml
-cloudConfig:
-  vcenter: vcenter.example.com
-  user: csi-admin@vsphere.local
-  password: secure-password
-  port: 443
-  insecureFlag: false
-  datacenter: dc01
-  cluster: cluster01
-  datastore: datastore01
+```ini
+# csi-vsphere.conf
+[Global]
+cluster-id = "talos-cluster"
+cluster-distribution = "Kubernetes"
 
-controller:
-  replicas: 2
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-
-node:
-  resources:
-    requests:
-      cpu: 50m
-      memory: 128Mi
+[VirtualCenter "vcenter.example.com"]
+user = "csi-admin@vsphere.local"
+password = "secure-password"
+port = "443"
+insecure-flag = "false"
+datacenters = "dc01"
 ```
 
 ```bash
-# Install the vSphere CSI driver
-helm install vsphere-csi vsphere-csi/vsphere-csi-driver \
-  --namespace vmware-system-csi \
-  --create-namespace \
-  -f vsphere-csi-values.yaml
+# Install the vSphere CSI driver from the official manifests
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/vsphere-csi-driver/v3.7.0/manifests/vanilla/namespace.yaml
+
+kubectl -n vmware-system-csi create secret generic vsphere-config-secret \
+  --from-file=csi-vsphere.conf
+
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/vsphere-csi-driver/v3.7.0/manifests/vanilla/vsphere-csi-driver.yaml
 ```
 
 ## Talos Linux CSI Considerations
@@ -195,7 +202,7 @@ Talos Linux has specific requirements for CSI drivers:
 
 2. **Immutable filesystem**: CSI drivers that need to write to host paths must use paths that Talos allows, typically under `/var`.
 
-3. **Kernel modules**: Some CSI drivers need specific kernel modules. Talos loads common modules by default, but you may need system extensions for others.
+3. **Kernel modules and host utilities**: Some CSI drivers need specific kernel modules or host utilities. Talos loads common modules by default, but you may need system extensions for storage tools such as Open iSCSI.
 
 ```yaml
 # Machine config for kernel modules needed by CSI drivers
@@ -203,7 +210,7 @@ machine:
   kernel:
     modules:
       - name: nbd     # For some block storage drivers
-      - name: iscsi_tcp  # For iSCSI-based storage
+      - name: iscsi_tcp  # For iSCSI-based storage, usually with the iscsi-tools system extension
 ```
 
 4. **Extra kubelet mounts**: Some CSI drivers need access to specific host directories:
@@ -232,8 +239,8 @@ kubectl get csidrivers
 # Check the CSI node info
 kubectl get csinodes
 
-# Verify CSI pods are running
-kubectl get pods -A -l app.kubernetes.io/component=csi-driver
+# Verify CSI pods are running in the driver's namespace
+kubectl get pods -n <namespace>
 
 # Check for CSI-related events
 kubectl get events -A --field-selector reason=ProvisioningSucceeded
@@ -302,7 +309,7 @@ kubectl logs -n <namespace> deploy/<csi-controller> -c csi-provisioner
 kubectl logs -n <namespace> deploy/<csi-controller> -c csi-attacher
 
 # Check node plugin logs on a specific node
-kubectl logs -n <namespace> -l app=csi-node-plugin --field-selector spec.nodeName=<node-name>
+kubectl logs -n <namespace> -l <node-plugin-label> --field-selector spec.nodeName=<node-name>
 
 # Check for volume attachment objects
 kubectl get volumeattachments
