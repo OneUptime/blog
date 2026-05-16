@@ -89,7 +89,7 @@ composer-cli compose start app-server qcow2
 composer-cli compose start app-server vmdk
 
 # AWS
-composer-cli compose start app-server ami
+composer-cli compose start app-server raw
 
 # Azure
 composer-cli compose start app-server vhd
