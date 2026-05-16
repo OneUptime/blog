@@ -23,13 +23,16 @@ The monitoring capabilities in Omni go beyond simple health checks. You get visi
 Before you can monitor anything, you need to register your Talos nodes with Omni. If you have not already done this, the process starts by generating a join token and booting your Talos machines with the Omni-specific image.
 
 ```bash
-# Download the Omni-specific Talos image
+# Download the Omni-specific Talos ISO using omnictl
+# The image is built against your Omni instance and includes the
+# SideroLink configuration needed for the node to register itself
+omnictl download iso
 
-# This image contains the Omni agent that reports back to the dashboard
-curl -LO https://omni.siderolabs.com/image/talos/v1.6.0/metal-amd64.iso
+# See additional options (architecture, schematic, output path, etc.)
+omnictl download iso --help
 
-# Boot your machine with this image
-# The Omni agent will automatically register the node
+# Boot your machine with the resulting image
+# The Omni agent will automatically register the node with your account
 ```
 
 Once the machine boots and connects to the Omni service, it will appear in the Machines section of the dashboard. From there, you can assign it to a cluster or leave it in the available pool.
@@ -83,7 +86,7 @@ talosctl -n 10.0.0.1 etcd members
 # with additional trending data over time
 ```
 
-Resource Usage Monitoring
+## Resource Usage Monitoring
 
 One of the more practical features of the Omni dashboard is resource usage tracking. You can see CPU and memory usage at the node level. This helps you identify nodes that are overloaded or underutilized.
 
