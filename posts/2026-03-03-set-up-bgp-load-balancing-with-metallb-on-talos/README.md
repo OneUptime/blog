@@ -142,11 +142,12 @@ router bgp 64513
   neighbor 192.168.1.10 remote-as 64512
   neighbor 192.168.1.11 remote-as 64512
   neighbor 192.168.1.12 remote-as 64512
-  maximum-paths 8
   address-family ipv4 unicast
+    maximum-paths 8
     neighbor 192.168.1.10 activate
     neighbor 192.168.1.11 activate
     neighbor 192.168.1.12 activate
+  exit-address-family
 ```
 
 ## Configuring Address Pools and BGP Advertisement
