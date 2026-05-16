@@ -99,7 +99,7 @@ cluster:
     cni:
       name: custom
       urls:
-        - https://raw.githubusercontent.com/cilium/cilium/main/install/kubernetes/quick-install.yaml
+        - https://raw.githubusercontent.com/cilium/cilium/v1.9/install/kubernetes/quick-install.yaml
 ```
 
 Apply patches to your generated configurations:
@@ -117,10 +117,12 @@ The approach here depends on your infrastructure. If you are running on bare met
 
 ```bash
 # For bare metal, download the ISO
-wget https://github.com/siderolabs/talos/releases/download/v1.9.0/talos-amd64.iso
+wget https://github.com/siderolabs/talos/releases/download/v1.9.0/metal-amd64.iso
 
-# For VMware, download the OVA
-wget https://github.com/siderolabs/talos/releases/download/v1.9.0/talos-amd64.ova
+# For VMware, generate and download an OVA from the Talos Image Factory
+# (https://factory.talos.dev) - OVAs are not published on GitHub releases.
+# Example using the default schematic:
+wget https://factory.talos.dev/image/376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba/v1.9.0/vmware-amd64.ova
 ```
 
 Boot your new nodes with the Talos image. They will sit in maintenance mode waiting for their configuration.
