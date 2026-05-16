@@ -370,7 +370,9 @@ machine:
 
 ```bash
 # Run PCI-relevant compliance checks with Kubescape
-kubescape scan framework nist \
+# Kubescape does not ship a built-in PCI framework; the NSA/CISA
+# Kubernetes Hardening Guide covers most PCI-relevant controls.
+kubescape scan framework nsa \
   --include-namespaces cardholder-data-env \
   --format json \
   --output pci-scan-results.json
