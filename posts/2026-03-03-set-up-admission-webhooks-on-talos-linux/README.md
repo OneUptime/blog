@@ -156,7 +156,8 @@ openssl genrsa -out server.key 2048
 openssl req -new -key server.key -subj "/CN=resource-validator.webhook-system.svc" \
   -addext "subjectAltName=DNS:resource-validator.webhook-system.svc,DNS:resource-validator.webhook-system.svc.cluster.local" \
   -out server.csr
-openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 365 -out server.crt
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 365 \
+  -copy_extensions copy -out server.crt
 
 # Create the Kubernetes secret
 kubectl create namespace webhook-system
