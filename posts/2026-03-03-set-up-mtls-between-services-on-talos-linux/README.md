@@ -46,10 +46,10 @@ Verify mTLS is active:
 
 ```bash
 # Check mTLS connections
-linkerd viz edges -n default
+linkerd viz edges deployment -n default
 
 # Tap traffic to see TLS status
-linkerd viz tap deployment/my-app -n default
+linkerd viz tap deploy/my-app -n default
 ```
 
 With Linkerd, mTLS is enabled by default for all meshed services. You do not need to configure certificates manually - Linkerd handles the entire certificate lifecycle.
@@ -60,7 +60,7 @@ If you prefer Istio, you can enforce mTLS with a PeerAuthentication policy:
 
 ```yaml
 # strict-mtls.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -236,6 +236,19 @@ spec:
       - name: nginx-config
         configMap:
           name: nginx-mtls-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-server
+  namespace: default
+spec:
+  selector:
+    app: api-server
+  ports:
+  - name: https
+    port: 443
+    targetPort: 443
 ```
 
 ### Configuring the Client for mTLS
@@ -299,10 +312,14 @@ SPIFFE (Secure Production Identity Framework For Everyone) provides a standardiz
 
 ```bash
 # Install SPIRE on your Talos cluster
-helm repo add spiffe https://spiffe.github.io/helm-charts-hardened/
-helm install spire spiffe/spire \
+helm upgrade --install spire-crds spire-crds \
+  --repo https://spiffe.github.io/helm-charts-hardened/ \
   --namespace spire \
   --create-namespace
+
+helm upgrade --install spire spire \
+  --repo https://spiffe.github.io/helm-charts-hardened/ \
+  --namespace spire
 ```
 
 SPIRE issues short-lived X.509 certificates (SVIDs) to workloads based on their identity, without requiring certificate management in your application code.
@@ -313,7 +330,7 @@ Regardless of which approach you use, verify mTLS is active:
 
 ```bash
 # For service mesh approach - check encrypted connections
-linkerd viz tap deployment/api-server -n default | grep tls
+linkerd viz tap deploy/api-server -n default | grep tls
 
 # For application-level approach - test without client cert (should fail)
 kubectl exec -it deployment/web-client -- \
@@ -333,10 +350,10 @@ kubectl exec -it deployment/web-client -- \
 
 Talos Linux enhances mTLS security in several ways:
 
-1. The immutable filesystem prevents certificate tampering at the node level
-2. No shell access means credentials cannot be extracted from nodes
+1. The immutable OS image reduces the risk of node-level certificate tampering
+2. No shell or SSH access reduces direct credential extraction paths on nodes
 3. The minimal attack surface reduces the risk of proxy compromise
-4. etcd encryption protects certificate secrets at rest
+4. Kubernetes secrets encryption at rest, when configured, helps protect certificate secrets stored in etcd
 
 ## Conclusion
 
