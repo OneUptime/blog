@@ -35,7 +35,7 @@ If the interface does not exist, review your Talos machine configuration for syn
 
 ```bash
 # Review the current machine configuration
-talosctl -n 192.168.1.1 get machineconfig -o yaml | grep -A 30 wireguard
+talosctl -n 192.168.1.1 read /system/state/config.yaml | grep -A 30 -i wireguard
 ```
 
 ## Step 2: Check the WireGuard Peer Status
@@ -54,7 +54,7 @@ talosctl -n 192.168.1.1 read /proc/net/wireguard
 # - allowed ips: <cidrs> - shows what traffic is routed to this peer
 ```
 
-The most important field is `latest handshake`. If it shows a recent timestamp (within the last few minutes), the tunnel is working. If it shows no handshake at all, the peers have never successfully connected.
+The most important field is `latest handshake`. If it shows a recent timestamp (within the last few minutes), the peers have completed a handshake recently. If it shows no handshake at all, the peers have never successfully connected.
 
 ## Step 3: Diagnose No Handshake
 
@@ -65,8 +65,8 @@ If there is no handshake, the peers cannot reach each other. Work through these 
 The most common issue is that the endpoint address is not reachable. Verify that you can reach the peer's public IP on the WireGuard port.
 
 ```bash
-# Check if the endpoint IP is reachable
-talosctl -n 192.168.1.1 ping 203.0.113.10
+# Check if the endpoint IP is reachable from a machine on the same network path
+ping 203.0.113.10
 
 # Note: Ping tests ICMP, but WireGuard uses UDP
 # The endpoint might be reachable on ICMP but blocked on UDP
@@ -78,8 +78,12 @@ talosctl -n 192.168.1.1 ping 203.0.113.10
 WireGuard uses UDP on the configured listen port (typically 51820). Both sides need to allow incoming UDP traffic on this port.
 
 ```bash
-# On a Linux machine outside Talos, test UDP connectivity
+# On a Linux machine outside Talos, do a basic UDP reachability check
 nc -zuv 203.0.113.10 51820
+
+# Note: UDP checks with nc are limited. No response does not always prove
+# that the port is blocked, because WireGuard silently drops unauthenticated
+# packets.
 
 # Common firewall issues:
 # - Cloud security groups blocking UDP 51820
@@ -107,7 +111,7 @@ talosctl -n 192.168.1.1 read /proc/net/wireguard | grep peer
 
 # On node 2, check its own public key
 # You need to derive it from the private key in the config
-talosctl -n 192.168.1.2 get machineconfig -o yaml | grep privateKey
+talosctl -n 192.168.1.2 read /system/state/config.yaml | grep privateKey
 # Then derive the public key
 echo "PRIVATE_KEY_FROM_CONFIG" | wg pubkey
 ```
@@ -154,22 +158,20 @@ If the tunnel works sometimes but drops periodically, the issue is usually relat
 
 ### NAT and Keepalive Issues
 
-If either peer is behind NAT and `persistentKeepalive` is not set, the NAT mapping will expire during periods of inactivity.
+If either peer is behind NAT and `persistentKeepaliveInterval` is not set, the NAT mapping can expire during periods of inactivity.
 
 ```yaml
 # Fix: Enable persistent keepalive
-machine:
-  network:
-    interfaces:
-      - interface: wg0
-        wireguard:
-          peers:
-            - publicKey: "PEER_KEY"
-              endpoint: peer.example.com:51820
-              allowedIPs:
-                - 10.10.0.2/32
-              # Add keepalive to maintain NAT mappings
-              persistentKeepalive: 25
+apiVersion: v1alpha1
+kind: WireguardConfig
+name: wg0
+peers:
+  - publicKey: "PEER_KEY"
+    endpoint: peer.example.com:51820
+    allowedIPs:
+      - 10.10.0.2/32
+    # Add keepalive to maintain NAT mappings
+    persistentKeepaliveInterval: 25s
 ```
 
 ### MTU Issues
@@ -184,20 +186,19 @@ talosctl -n 192.168.1.1 get links | grep wg0
 # the physical interface MTU
 # For a standard 1500-byte MTU: set wg0 to 1420
 
-# Test with different packet sizes
-talosctl -n 192.168.1.1 ping -s 1400 10.10.0.2
+# Test with different packet sizes from a Linux host or hostNetwork pod
+ping -M do -s 1372 10.10.0.2
 # If this fails but smaller sizes work, reduce the WireGuard MTU
 ```
 
 Fix the MTU in the Talos configuration:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: wg0
-        # Standard MTU for WireGuard over a 1500-byte link
-        mtu: 1420
+apiVersion: v1alpha1
+kind: WireguardConfig
+name: wg0
+# Standard MTU for WireGuard over a 1500-byte link
+mtu: 1420
 ```
 
 ## Step 6: Check Talos Logs
@@ -238,7 +239,7 @@ Compare the output. If node 1 shows a recent handshake with node 2 but node 2 sh
 | No handshake | Firewall blocking UDP | Open UDP port 51820 |
 | No handshake | Wrong public key | Verify keys match on both sides |
 | Handshake but no traffic | Wrong allowedIPs | Check CIDR ranges match peer IPs |
-| Intermittent drops | NAT timeout | Enable persistentKeepalive |
+| Intermittent drops | NAT timeout | Enable persistentKeepaliveInterval |
 | Large packets fail | MTU too high | Set wg0 MTU to 1420 |
 | One-way traffic | Asymmetric config | Check both peers have correct settings |
 
