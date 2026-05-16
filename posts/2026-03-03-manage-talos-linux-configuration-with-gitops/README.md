@@ -56,13 +56,16 @@ talos-config/
 
 ## Step 1: Generate and Store Base Configuration
 
-Generate your Talos configuration and commit it to Git:
+Generate the cluster secrets bundle first, then the machine configuration that references it. Keeping the secrets bundle in its own file lets you store it securely and reuse it whenever you regenerate the config:
 
 ```bash
-# Generate cluster configuration
+# Generate the cluster secrets bundle (store securely, NOT in Git)
+talosctl gen secrets -o clusters/production/secrets.yaml
 
+# Generate machine configuration using those secrets
 talosctl gen config production-cluster https://10.0.0.100:6443 \
-  --output-dir ./clusters/production
+  --with-secrets clusters/production/secrets.yaml \
+  --output ./clusters/production
 
 # This creates:
 # - controlplane.yaml
@@ -70,13 +73,10 @@ talosctl gen config production-cluster https://10.0.0.100:6443 \
 # - talosconfig
 ```
 
-Before committing, remove secrets from the configuration. You do not want cluster secrets in your Git repository:
+You do not want the secrets bundle or the client `talosconfig` in your Git repository:
 
 ```bash
-# Extract secrets to a separate file (store securely, NOT in Git)
-talosctl gen secrets -o clusters/production/secrets.yaml
-
-# Add secrets file to .gitignore
+# Add secrets file and talosconfig to .gitignore
 echo "clusters/*/secrets.yaml" >> .gitignore
 echo "clusters/*/talosconfig" >> .gitignore
 ```
