@@ -38,6 +38,8 @@ helm install vault hashicorp/vault \
   --namespace vault \
   --create-namespace \
   --set server.ha.enabled=true \
+  --set server.ha.raft.enabled=true \
+  --set server.ha.raft.setNodeId=true \
   --set server.ha.replicas=3 \
   --set server.dataStorage.size=10Gi
 ```
@@ -51,14 +53,16 @@ kubectl exec -n vault vault-0 -- vault operator init \
   -key-threshold=3 \
   -format=json > vault-keys.json
 
-# Unseal (repeat for each replica)
+# Unseal each replica
 UNSEAL_KEY_1=$(jq -r '.unseal_keys_b64[0]' vault-keys.json)
 UNSEAL_KEY_2=$(jq -r '.unseal_keys_b64[1]' vault-keys.json)
 UNSEAL_KEY_3=$(jq -r '.unseal_keys_b64[2]' vault-keys.json)
 
-kubectl exec -n vault vault-0 -- vault operator unseal $UNSEAL_KEY_1
-kubectl exec -n vault vault-0 -- vault operator unseal $UNSEAL_KEY_2
-kubectl exec -n vault vault-0 -- vault operator unseal $UNSEAL_KEY_3
+for pod in vault-0 vault-1 vault-2; do
+  kubectl exec -n vault "$pod" -- vault operator unseal "$UNSEAL_KEY_1"
+  kubectl exec -n vault "$pod" -- vault operator unseal "$UNSEAL_KEY_2"
+  kubectl exec -n vault "$pod" -- vault operator unseal "$UNSEAL_KEY_3"
+done
 ```
 
 Store your secrets in Vault:
@@ -85,17 +89,19 @@ The External Secrets Operator (ESO) runs in each Kubernetes cluster and syncs se
 
 ```bash
 # Install ESO on each cluster
+helm repo add external-secrets https://charts.external-secrets.io
+helm repo update
+
 helm install external-secrets external-secrets/external-secrets \
   --namespace external-secrets \
-  --create-namespace \
-  --set installCRDs=true
+  --create-namespace
 ```
 
 Configure a SecretStore that points to your Vault instance:
 
 ```yaml
 # vault-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend
@@ -107,7 +113,7 @@ spec:
       version: "v2"
       auth:
         kubernetes:
-          mountPath: "kubernetes"
+          mountPath: "kubernetes-cluster-a"
           role: "external-secrets"
           serviceAccountRef:
             name: external-secrets
@@ -118,6 +124,8 @@ spec:
 kubectl apply -f vault-secret-store.yaml
 ```
 
+Use the Vault Kubernetes auth mount path for the cluster where you apply the `ClusterSecretStore`. For example, cluster A uses `kubernetes-cluster-a`, and cluster B would use `kubernetes-cluster-b`.
+
 ### Configuring Vault Authentication per Cluster
 
 Each cluster needs its own Vault authentication. Kubernetes auth is the cleanest approach because it uses the cluster's own service account tokens:
@@ -127,10 +135,12 @@ Each cluster needs its own Vault authentication. Kubernetes auth is the cleanest
 vault auth enable -path=kubernetes-cluster-a kubernetes
 vault auth enable -path=kubernetes-cluster-b kubernetes
 
-# Configure auth for cluster-a
+# Configure auth for cluster-a. The token reviewer JWT must come from
+# a service account in cluster-a that can call the TokenReview API.
 vault write auth/kubernetes-cluster-a/config \
   kubernetes_host="https://cluster-a.example.com:6443" \
-  kubernetes_ca_cert=@cluster-a-ca.pem
+  kubernetes_ca_cert=@cluster-a-ca.pem \
+  token_reviewer_jwt="$(cat cluster-a-token-reviewer.jwt)"
 
 # Create a policy
 vault policy write external-secrets - <<EOF
@@ -153,7 +163,7 @@ Now create ExternalSecret resources that pull secrets from Vault and create Kube
 
 ```yaml
 # database-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -230,7 +240,7 @@ vault kv put apps/database \
 # within the refreshInterval (5 minutes in our example)
 ```
 
-For zero-downtime rotation, your applications need to handle secret changes gracefully. The simplest approach is to use a sidecar that watches for Secret changes and triggers a reload:
+For zero-downtime rotation, your applications need to handle secret changes gracefully. A common approach is to use a controller such as Stakater Reloader that watches for Secret changes and triggers a rollout:
 
 ```yaml
 # deployment-with-reloader.yaml
@@ -241,7 +251,13 @@ metadata:
   annotations:
     reloader.stakater.com/auto: "true"  # Auto-reload on secret change
 spec:
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
         - name: api
@@ -278,7 +294,7 @@ spec:
     - name: external-secrets
       rules:
         - alert: ExternalSecretSyncFailed
-          expr: external_secrets_sync_calls_error > 0
+          expr: increase(externalsecret_sync_calls_error[15m]) > 0
           for: 15m
           labels:
             severity: warning
