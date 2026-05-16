@@ -97,7 +97,7 @@ talosctl gen secrets -o secrets.yaml
 # Generate configuration from secrets
 talosctl gen config my-cluster https://192.168.1.100:6443 \
   --with-secrets secrets.yaml \
-  --output-dir _out
+  --output _out
 ```
 
 Store `secrets.yaml` securely. It contains the CA certificates and keys used by the entire cluster.
@@ -115,8 +115,8 @@ machine:
         dhcp: true
         vip:
           ip: 192.168.1.100
-          equinixMetal:
-            apiToken: ""  # Only for Equinix Metal
+          # For Equinix Metal, add an equinixMetal block with apiToken.
+          # For Hetzner Cloud, add an hcloud block with apiToken.
 ```
 
 For an external HAProxy setup:
@@ -201,7 +201,6 @@ cluster:
     extraArgs:
       node-monitor-period: "5s"
       node-monitor-grace-period: "20s"
-      pod-eviction-timeout: "30s"
       terminated-pod-gc-threshold: "100"
 
   # Scheduler configuration
@@ -214,10 +213,10 @@ cluster:
 
   # Network configuration
   network:
+    # Disable Talos's default CNI so Cilium (or another CNI)
+    # can be installed via Helm after bootstrap.
     cni:
-      name: custom
-      urls:
-        - https://raw.githubusercontent.com/cilium/cilium/v1.14.5/install/kubernetes/quick-install.yaml
+      name: none
     podSubnets:
       - 10.244.0.0/16
     serviceSubnets:
