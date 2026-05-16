@@ -35,7 +35,7 @@ The simplest approach is restarting kubelet. This does not wipe any state but fo
 talosctl service kubelet restart --nodes 10.0.0.50
 
 # Check the service status
-talosctl service kubelet --nodes 10.0.0.50
+talosctl services kubelet --nodes 10.0.0.50
 
 # Watch kubelet logs after restart
 talosctl logs kubelet --nodes 10.0.0.50 --follow
@@ -58,7 +58,7 @@ talosctl reboot --nodes 10.0.0.50
 sleep 60
 
 # Verify kubelet is running
-talosctl service kubelet --nodes 10.0.0.50
+talosctl services kubelet --nodes 10.0.0.50
 
 # Check node status in Kubernetes
 kubectl get node -o wide | grep 10.0.0.50
@@ -107,7 +107,7 @@ If the restart does not fix stuck pods, the container runtime may also be stuck:
 
 ```bash
 # Check containerd service
-talosctl service containerd --nodes 10.0.0.50
+talosctl services containerd --nodes 10.0.0.50
 
 # View containerd logs for errors
 talosctl logs containerd --nodes 10.0.0.50 | tail -50
@@ -134,8 +134,8 @@ talosctl logs kubelet --nodes 10.0.0.50 | grep -i "error\|fail\|not ready"
 Check disk and memory conditions:
 
 ```bash
-# Check disk usage
-talosctl usage --nodes 10.0.0.50
+# Check disk usage for kubelet and containerd directories
+talosctl usage /var/lib/kubelet /var/lib/containerd --nodes 10.0.0.50
 
 # Check memory
 talosctl memory --nodes 10.0.0.50
@@ -168,8 +168,8 @@ talosctl reset --nodes 10.0.0.50 \
 When kubelet cannot pull images or the image cache is corrupted:
 
 ```bash
-# List cached images on the node
-talosctl images --nodes 10.0.0.50
+# List cached images on the node (CRI namespace holds Kubernetes workload images)
+talosctl image list --namespace cri --nodes 10.0.0.50
 
 # Check containerd for image-related errors
 talosctl logs containerd --nodes 10.0.0.50 | grep -i "image\|pull\|error"
@@ -236,7 +236,7 @@ NODES=("10.0.0.50" "10.0.0.51" "10.0.0.52")
 
 for node in "${NODES[@]}"; do
   # Check kubelet service status
-  status=$(talosctl service kubelet --nodes "${node}" 2>&1)
+  status=$(talosctl services kubelet --nodes "${node}" 2>&1)
   if echo "${status}" | grep -q "Running"; then
     echo "OK: ${node} - kubelet running"
   else
@@ -267,7 +267,7 @@ NODE_IP=$1
 echo "Checking kubelet on ${NODE_IP}..."
 
 # Check if kubelet is running
-if ! talosctl service kubelet --nodes "${NODE_IP}" 2>/dev/null | grep -q "Running"; then
+if ! talosctl services kubelet --nodes "${NODE_IP}" 2>/dev/null | grep -q "Running"; then
   echo "Kubelet is not running. Attempting restart..."
   talosctl service kubelet restart --nodes "${NODE_IP}"
   sleep 30
