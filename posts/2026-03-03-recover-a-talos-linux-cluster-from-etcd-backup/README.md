@@ -56,24 +56,29 @@ If your control plane nodes are still running but etcd is corrupted, you need to
 ```bash
 # Reset etcd on each control plane node
 # This wipes the EPHEMERAL partition which contains etcd data
+# --reboot ensures the node comes back up afterward (without it
+# the node would be shut down and you would have to power it on)
 talosctl reset --nodes <cp-node-1> \
   --system-labels-to-wipe EPHEMERAL \
-  --graceful=false
+  --graceful=false \
+  --reboot
 
 talosctl reset --nodes <cp-node-2> \
   --system-labels-to-wipe EPHEMERAL \
-  --graceful=false
+  --graceful=false \
+  --reboot
 
 talosctl reset --nodes <cp-node-3> \
   --system-labels-to-wipe EPHEMERAL \
-  --graceful=false
+  --graceful=false \
+  --reboot
 ```
 
-Wait for all nodes to complete the reset:
+Wait for all nodes to reboot and for the etcd service to enter the "Preparing" state — that means the node is ready to be bootstrapped:
 
 ```bash
-# Verify nodes are in maintenance mode or ready for bootstrap
-talosctl get machinestatus --nodes <cp-node-1>
+# Confirm etcd is "Preparing" on the first node
+talosctl service etcd --nodes <cp-node-1>
 ```
 
 ## Step 2: Bootstrap from the Snapshot
