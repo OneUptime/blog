@@ -17,7 +17,7 @@ A Talos cluster has two distinct APIs that benefit from load balancing:
 1. **Talos API (port 50000)** - Used by `talosctl` for machine management
 2. **Kubernetes API (port 6443)** - Used by `kubectl` and all Kubernetes clients
 
-Both are gRPC-based and use TLS. The load balancing approach is similar for both, and it makes sense to handle them together.
+The Talos API is gRPC-based and the Kubernetes API is HTTP-based (REST); both use TLS over HTTP/2 and require Layer 4 (TCP) load balancing. The load balancing approach is similar for both, and it makes sense to handle them together.
 
 ## Option 1: Talos Built-In VIP
 
@@ -42,7 +42,7 @@ machine:
     - 10.0.1.100
 ```
 
-The VIP uses ARP or BGP to advertise the floating IP. When the active node fails, another control plane node claims the VIP. The failover takes a few seconds.
+Control plane nodes elect a single active VIP holder via etcd, and the active node uses gratuitous ARP to advertise the floating IP on the local network. When the active node fails, another control plane node claims the VIP. The failover takes a few seconds.
 
 Pros:
 - No external infrastructure needed
@@ -51,7 +51,7 @@ Pros:
 
 Cons:
 - Active-passive (only one node handles traffic at a time)
-- Requires all control plane nodes to be on the same Layer 2 network (for ARP mode)
+- Requires all control plane nodes to be on the same Layer 2 network (since it uses ARP)
 - No health checking beyond node availability
 
 ## Option 2: HAProxy
@@ -301,7 +301,7 @@ groups:
 The Talos API uses gRPC, which creates long-lived HTTP/2 connections. This is important for load balancer configuration because:
 
 - Round-robin balancing may not distribute load evenly since connections persist
-- The `least_conn` algorithm works better for gRPC workloads
+- The `leastconn` algorithm works better for gRPC workloads
 - Connection draining during maintenance needs longer timeouts
 
 Configure your load balancer accordingly:
