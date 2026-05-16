@@ -93,7 +93,7 @@ Now create the SecretStore resource.
 
 ```yaml
 # secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: vault-backend
@@ -129,7 +129,7 @@ With the SecretStore configured, you can now create ExternalSecret resources tha
 
 ```yaml
 # external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -173,7 +173,7 @@ If you need secrets accessible across multiple namespaces, use a ClusterSecretSt
 
 ```yaml
 # cluster-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-cluster-store
@@ -194,7 +194,7 @@ Then reference it from any namespace.
 
 ```yaml
 # app-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-config
@@ -220,7 +220,7 @@ Many teams use AWS Secrets Manager. Here is how to set that up on Talos Linux.
 
 ```yaml
 # aws-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-secrets
