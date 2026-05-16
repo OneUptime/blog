@@ -18,7 +18,7 @@ VXLAN wraps each Ethernet frame in a UDP packet with a VXLAN header. The key com
 
 - **VNI (VXLAN Network Identifier)**: A 24-bit ID that identifies the overlay network. Think of it as a VLAN ID, but with a much larger range (up to 16 million networks).
 - **VTEP (VXLAN Tunnel Endpoint)**: The network device that encapsulates and decapsulates VXLAN packets. On Linux, this is a virtual network interface.
-- **UDP Port**: VXLAN uses UDP port 4789 by default.
+- **UDP Port**: VXLAN uses UDP port 4789 by default, although some CNI implementations use a different port.
 
 The encapsulation adds overhead (50 bytes for VXLAN + UDP + outer IP headers), so the MTU on VXLAN interfaces is typically 1450 when the physical network MTU is 1500.
 
@@ -47,7 +47,7 @@ Flannel creates a `flannel.1` VXLAN interface on each node and manages the overl
 
 ### Calico with VXLAN
 
-Calico supports VXLAN as an alternative to its default IPIP encapsulation:
+Calico supports VXLAN encapsulation:
 
 ```yaml
 # Install Calico with VXLAN encapsulation
@@ -75,8 +75,12 @@ Cilium also supports VXLAN tunneling:
 # Install Cilium with VXLAN tunnel mode
 helm install cilium cilium/cilium \
   --namespace kube-system \
-  --set tunnel=vxlan \
-  --set ipam.mode=kubernetes
+  --set tunnelProtocol=vxlan \
+  --set ipam.mode=kubernetes \
+  --set securityContext.capabilities.ciliumAgent="{CHOWN,KILL,NET_ADMIN,NET_RAW,IPC_LOCK,SYS_ADMIN,SYS_RESOURCE,DAC_OVERRIDE,FOWNER,SETGID,SETUID}" \
+  --set securityContext.capabilities.cleanCiliumState="{NET_ADMIN,SYS_ADMIN,SYS_RESOURCE}" \
+  --set cgroup.autoMount.enabled=false \
+  --set cgroup.hostRoot=/sys/fs/cgroup
 ```
 
 ## Talos-Specific VXLAN Configuration
@@ -98,7 +102,7 @@ cluster:
     cni:
       name: custom
       urls:
-        - https://raw.githubusercontent.com/cilium/cilium/v1.15.0/install/kubernetes/quick-install.yaml
+        - https://raw.githubusercontent.com/flannel-io/flannel/v0.26.4/Documentation/kube-flannel.yml
 ```
 
 If your physical network supports jumbo frames, you can increase the physical MTU to accommodate VXLAN overhead:
@@ -114,11 +118,12 @@ machine:
 
 ### Firewall Considerations
 
-VXLAN uses UDP port 4789. Make sure this port is open between all nodes in your cluster:
+Make sure the VXLAN UDP port used by your CNI is open between all nodes in your cluster. Talos documents UDP 4789 for Flannel and Calico, while Cilium's VXLAN datapath uses UDP 8472 by default:
 
 ```yaml
 # No Talos host firewall by default, but check network-level firewalls
-# Required: UDP 4789 between all nodes
+# Required: UDP 4789 between all nodes for Talos Flannel or Calico VXLAN
+# Required: UDP 8472 between all nodes for Cilium VXLAN
 ```
 
 ### Kernel Parameters
@@ -149,7 +154,7 @@ While CNI plugins handle VXLAN automatically for the pod network, you might need
 
 ### Using Machine Configuration Files
 
-You can create VXLAN interfaces using configuration files placed by Talos:
+Talos can write configuration files to disk, but placing systemd-networkd `.netdev` files does not create VXLAN interfaces because Talos does not run systemd-networkd:
 
 ```yaml
 machine:
@@ -165,10 +170,10 @@ machine:
         Remote=192.168.1.11
         Port=4789
       path: /etc/systemd/network/25-vxlan100.netdev
-      permissions: 0644
+      permissions: 0o644
 ```
 
-Note that Talos uses its own networking stack rather than systemd-networkd, so manual VXLAN creation typically requires using a system extension or an init container approach.
+Manual VXLAN creation on Talos typically requires using a system extension or an init container approach.
 
 ### Using a Privileged DaemonSet
 
@@ -291,7 +296,7 @@ kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
 kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- ip link show type vxlan
 kubectl debug node/talos-node-2 -it --image=nicolaka/netshoot -- ip link show type vxlan
 
-# Check if UDP 4789 is reachable between nodes
+# Check if the VXLAN UDP port is reachable between nodes
 kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
   nc -zuv 192.168.1.11 4789
 
@@ -309,7 +314,7 @@ If large packets fail but small packets work, it is likely an MTU issue:
 kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
   ping -M do -s 1400 <pod-ip-on-other-node>
 
-# If 1400 works but 1450 does not, the MTU is set correctly
+# If 1400 works but 1450 does not, the path MTU is lower than the larger test packet
 # If 1400 also fails, check for additional encapsulation overhead
 ```
 
@@ -323,4 +328,4 @@ VXLAN adds CPU overhead for encapsulation/decapsulation. If you see performance 
 
 ## Conclusion
 
-VXLAN overlays are a fundamental building block of Kubernetes networking on Talos Linux. While CNI plugins like Flannel, Calico, and Cilium handle VXLAN configuration automatically for the pod network, understanding how VXLAN works helps you troubleshoot networking issues and configure manual overlays when needed. Pay attention to MTU settings, firewall rules for UDP 4789, and kernel parameters to ensure reliable overlay networking in your cluster.
+VXLAN overlays are a fundamental building block of Kubernetes networking on Talos Linux. While CNI plugins like Flannel, Calico, and Cilium handle VXLAN configuration automatically for the pod network, understanding how VXLAN works helps you troubleshoot networking issues and configure manual overlays when needed. Pay attention to MTU settings, firewall rules for the VXLAN port used by your CNI, and kernel parameters to ensure reliable overlay networking in your cluster.
