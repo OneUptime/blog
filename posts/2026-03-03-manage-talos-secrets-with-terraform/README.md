@@ -33,7 +33,7 @@ terraform {
   required_providers {
     talos = {
       source  = "siderolabs/talos"
-      version = "~> 0.5"
+      version = "~> 0.11.0"
     }
   }
 }
@@ -48,7 +48,7 @@ Use the `talos_machine_secrets` resource to generate cluster secrets:
 ```hcl
 # Generate Talos machine secrets
 resource "talos_machine_secrets" "cluster" {
-  talos_version = "v1.7.0"
+  talos_version = "v1.12.6"
 }
 
 # Generate the machine configuration for control plane nodes
@@ -196,7 +196,7 @@ Rotating Talos secrets is more involved than rotating application secrets becaus
 ```hcl
 # Use a lifecycle rule to recreate secrets on demand
 resource "talos_machine_secrets" "cluster" {
-  talos_version = "v1.7.0"
+  talos_version = "v1.12.6"
 
   lifecycle {
     # Uncomment to force secret regeneration
