@@ -27,10 +27,10 @@ For Talos Linux clusters, Loki is a natural fit because:
 The typical architecture for forwarding Talos logs to Loki involves three components:
 
 1. **Talos Linux nodes** send logs via the built-in log forwarding mechanism
-2. **An intermediary log collector** (like Vector, Promtail, or Fluent Bit) receives the logs and forwards them to Loki
+2. **An intermediary log collector** (like Vector, Fluent Bit, or Grafana Alloy) receives the logs and forwards them to Loki
 3. **Loki** stores and indexes the logs for querying through Grafana
 
-While Talos cannot send logs directly to Loki's HTTP API, you can use a log collector as the bridge.
+While Talos cannot send logs directly to Loki's HTTP API, you can use a log collector as the bridge. Talos's only supported log format is `json_lines` (newline-delimited JSON over TCP/UDP), so the collector must be able to parse raw JSON over a socket.
 
 ## Setting Up Vector as a Bridge
 
@@ -54,13 +54,15 @@ data:
     decoding.codec = "json"
 
     # Add labels for Loki
+    # Talos emits talos-service and talos-level on every JSON log line.
+    # The originating node IP is populated by Vector's socket source
+    # into the `host` field, which we promote to a `node` label.
     [transforms.add_labels]
     type = "remap"
     inputs = ["talos_logs"]
     source = '''
-      .service = del(.talos-service) ?? "unknown"
-      .level = del(.talos-level) ?? "info"
-      .node = del(.talos-node) ?? "unknown"
+      .service = del(."talos-service") ?? "unknown"
+      .level = del(."talos-level") ?? "info"
     '''
 
     # Send to Loki
@@ -72,7 +74,7 @@ data:
     labels.service = "{{ service }}"
     labels.level = "{{ level }}"
     labels.source = "talos"
-    labels.node = "{{ node }}"
+    labels.node = "{{ host }}"
 ```
 
 Deploy Vector as a Deployment or DaemonSet:
@@ -207,8 +209,7 @@ loki:
   config:
     limits_config:
       retention_period: 720h  # 30 days
-    chunk_store_config:
-      max_look_back_period: 720h
+      max_query_lookback: 720h
 
 grafana:
   enabled: true
@@ -223,40 +224,9 @@ helm install loki grafana/loki-stack \
   -f loki-values.yaml
 ```
 
-## Using Promtail as an Alternative Bridge
+## A Note on Promtail
 
-Instead of Vector, you can use Promtail (Loki's native log collector) to receive Talos logs:
-
-```yaml
-# promtail-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: promtail-talos
-  namespace: monitoring
-data:
-  promtail.yaml: |
-    server:
-      http_listen_port: 9080
-
-    positions:
-      filename: /tmp/positions.yaml
-
-    clients:
-      - url: http://loki.monitoring.svc:3100/loki/api/v1/push
-
-    scrape_configs:
-      - job_name: talos
-        syslog:
-          listen_address: 0.0.0.0:5514
-          labels:
-            source: talos
-        relabel_configs:
-          - source_labels: [__syslog_message_hostname]
-            target_label: node
-          - source_labels: [__syslog_message_app_name]
-            target_label: service
-```
+Promtail is Loki's traditional log collector, but it is not a good fit for receiving Talos logs directly. Promtail's `syslog` scrape source expects RFC5424/RFC3164 syslog framing and will not parse the raw JSON lines Talos sends. Promtail has no built-in TCP source for arbitrary JSON, so Talos `json_lines` cannot be ingested by Promtail without an intermediate transformer. In addition, Grafana has merged Promtail into [Grafana Alloy](https://grafana.com/docs/alloy/) and put Promtail into maintenance mode, so for new deployments prefer Vector, Fluent Bit, or Alloy.
 
 ## Querying Talos Logs in Grafana
 
@@ -400,14 +370,14 @@ curl -s "http://loki.monitoring.svc:3100/loki/api/v1/query" \
 
 ## Best Practices
 
-- Use Vector or Promtail as a bridge between Talos and Loki, since Talos cannot push directly to Loki's HTTP API.
+- Use Vector, Fluent Bit, or Grafana Alloy as a bridge between Talos and Loki, since Talos cannot push directly to Loki's HTTP API.
 - Add meaningful labels (node, service, level) for efficient querying in LogQL.
 - Set appropriate retention periods in Loki to manage storage costs.
 - Create Grafana dashboards for visualizing Talos log data.
 - Set up alerts for critical events like etcd errors or service failures.
 - Monitor the log pipeline itself to ensure logs are flowing.
 - Use rate limiting in the log collector to protect Loki from log spikes.
-- Run multiple Vector/Promtail replicas for high availability.
+- Run multiple collector replicas for high availability.
 - Separate Talos system logs from Kubernetes application logs for cleaner organization.
 
 Forwarding Talos Linux logs to Loki gives you a powerful, cost-effective centralized logging solution. Combined with Grafana dashboards and alerts, it provides the observability you need to operate your cluster confidently.
