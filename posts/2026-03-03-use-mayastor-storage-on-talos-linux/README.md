@@ -17,10 +17,10 @@ On Talos Linux, Mayastor is a compelling choice when you need the performance of
 Mayastor has specific hardware and software requirements:
 
 - At least 3 worker nodes with NVMe or fast SSD drives
-- Each node should have at least 1GB of HugePages memory available
+- Each node should have at least 2GiB of 2MiB HugePages memory available
 - CPUs that support SSE4.2 instructions (most modern processors do)
 - Talos Linux configured with the required kernel parameters
-- A minimum of 4 CPU cores per node dedicated to Mayastor
+- A minimum of 2 CPU cores per I/O engine pod dedicated to Mayastor
 
 Check your hardware compatibility:
 
@@ -40,9 +40,6 @@ Mayastor requires HugePages and specific kernel modules. Create a machine config
 ```yaml
 # mayastor-patch.yaml
 machine:
-  install:
-    extensions:
-      - image: ghcr.io/siderolabs/iscsi-tools:v0.1.4
   sysctls:
     vm.nr_hugepages: "1024"
     net.core.optmem_max: "40960"
@@ -57,11 +54,11 @@ machine:
       - name: nvme_fabrics
   kubelet:
     extraMounts:
-      - destination: /var/local/mayastor
+      - destination: /var/local
         type: bind
-        source: /var/local/mayastor
+        source: /var/local
         options:
-          - bind
+          - rbind
           - rshared
           - rw
 ```
@@ -115,8 +112,8 @@ Create a values file:
 
 ```yaml
 # mayastor-values.yaml
-base:
-  tag: v2.5.0
+image:
+  tag: release-2.10
 
 agents:
   core:
@@ -135,13 +132,14 @@ io_engine:
     requests:
       cpu: "2"
       memory: 1Gi
-      hugepages-2Mi: 2Gi
+      hugepages2Mi: 2Gi
     limits:
       cpu: "2"
       memory: 1Gi
-      hugepages-2Mi: 2Gi
+      hugepages2Mi: 2Gi
   nodeSelector:
     openebs.io/engine: mayastor
+    kubernetes.io/arch: amd64
 
 csi:
   node:
@@ -156,10 +154,13 @@ csi:
 etcd:
   replicaCount: 3
   persistence:
-    storageClass: "local-path"
+    storageClass: "mayastor-etcd-localpv"
     size: 2Gi
 
 loki:
+  enabled: false
+
+alloy:
   enabled: false
 
 obs:
@@ -172,6 +173,7 @@ obs:
 helm install mayastor openebs/mayastor \
   --namespace mayastor \
   --create-namespace \
+  --version 2.10.0 \
   -f mayastor-values.yaml
 
 # Watch the pods come up (this takes a few minutes)
@@ -189,7 +191,7 @@ talosctl disks --nodes <worker-1-ip>
 
 ```yaml
 # disk-pool-1.yaml
-apiVersion: "openebs.io/v1beta2"
+apiVersion: "openebs.io/v1beta3"
 kind: DiskPool
 metadata:
   name: pool-worker-1
@@ -197,9 +199,9 @@ metadata:
 spec:
   node: worker-1
   disks:
-    - "aio:///dev/sdb"  # Adjust to your disk device
+    - "aio:///dev/disk/by-id/<disk-id-worker-1>"  # Adjust to your disk device
 ---
-apiVersion: "openebs.io/v1beta2"
+apiVersion: "openebs.io/v1beta3"
 kind: DiskPool
 metadata:
   name: pool-worker-2
@@ -207,9 +209,9 @@ metadata:
 spec:
   node: worker-2
   disks:
-    - "aio:///dev/sdb"
+    - "aio:///dev/disk/by-id/<disk-id-worker-2>"
 ---
-apiVersion: "openebs.io/v1beta2"
+apiVersion: "openebs.io/v1beta3"
 kind: DiskPool
 metadata:
   name: pool-worker-3
@@ -217,7 +219,7 @@ metadata:
 spec:
   node: worker-3
   disks:
-    - "aio:///dev/sdb"
+    - "aio:///dev/disk/by-id/<disk-id-worker-3>"
 ```
 
 ```bash
@@ -244,7 +246,7 @@ metadata:
 provisioner: io.openebs.csi-mayastor
 parameters:
   protocol: nvmf
-  repl_count: "3"
+  repl: "3"
   ioTimeout: "60"
 reclaimPolicy: Delete
 allowVolumeExpansion: true
@@ -258,7 +260,7 @@ metadata:
 provisioner: io.openebs.csi-mayastor
 parameters:
   protocol: nvmf
-  repl_count: "1"
+  repl: "1"
   ioTimeout: "60"
 reclaimPolicy: Delete
 allowVolumeExpansion: true
@@ -275,19 +277,6 @@ Deploy a workload using Mayastor:
 
 ```yaml
 # postgres-mayastor.yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: postgres-data
-  namespace: databases
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 50Gi
-  storageClassName: mayastor-3
----
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -341,23 +330,23 @@ kubectl apply -f postgres-mayastor.yaml
 kubectl get pvc -n databases
 
 # Check the Mayastor volume
-kubectl -n mayastor get volumes
+kubectl mayastor get volumes -n mayastor
 ```
 
 ## Monitoring Mayastor
 
 ```bash
 # Check volume status
-kubectl -n mayastor get volumes -o wide
+kubectl mayastor get volumes -n mayastor
 
 # Check replica status
-kubectl -n mayastor get volumes -o json | jq '.items[].status'
+kubectl mayastor get volumes -n mayastor -o json | jq '.items[].state'
 
 # Check disk pool usage
 kubectl -n mayastor get diskpools -o wide
 
 # View Mayastor agent logs
-kubectl -n mayastor logs deploy/agent-core --tail=50
+kubectl -n mayastor logs deploy/mayastor-agent-core --tail=50
 
 # View I/O engine logs on a specific node
 kubectl -n mayastor logs -l app=io-engine --field-selector spec.nodeName=worker-1 --tail=50
@@ -433,7 +422,7 @@ kubectl -n mayastor describe pod -l app=io-engine | grep hugepages
 kubectl -n mayastor logs -l app=io-engine --tail=100 | grep -i error
 
 # Restart a specific component if needed
-kubectl -n mayastor rollout restart deployment agent-core
+kubectl -n mayastor rollout restart deployment mayastor-agent-core
 ```
 
 ## Summary
