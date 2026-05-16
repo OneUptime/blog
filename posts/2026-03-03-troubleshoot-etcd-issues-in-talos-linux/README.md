@@ -50,9 +50,9 @@ If no member reports being the leader, the cluster cannot process writes. This u
 talosctl -n 192.168.1.10 etcd members
 
 # Check if the etcd service is running on all control plane nodes
-talosctl -n 192.168.1.10 services etcd
-talosctl -n 192.168.1.11 services etcd
-talosctl -n 192.168.1.12 services etcd
+talosctl -n 192.168.1.10 service etcd
+talosctl -n 192.168.1.11 service etcd
+talosctl -n 192.168.1.12 service etcd
 ```
 
 If a member is unreachable, check if the node itself is up:
@@ -118,23 +118,25 @@ talosctl -n 192.168.1.10 etcd status
 # Look at the DB SIZE column
 ```
 
-If the database is large (over 2GB), you need to compact and defragment it.
+If the database is approaching the default 2 GiB quota, check whether it is mostly fragmented space. Kubernetes automatically compacts old revisions, but defragmentation is still needed to return free pages to the filesystem.
 
 ## Issue: etcd Out of Space
 
-etcd has a default space quota of 2GB (Talos may configure this differently). When the database reaches this limit, etcd goes into a maintenance mode that rejects all write requests.
+etcd has a default space quota of 2 GiB. Talos can configure this differently with `cluster.etcd.extraArgs.quota-backend-bytes`. When the database reaches this limit, etcd raises a NOSPACE alarm and stops normal operations until the issue is resolved.
 
 ```bash
 # Check for space alarms
 talosctl -n 192.168.1.10 etcd alarm list
 
-# If you see NOSPACE alarm, you need to compact and defragment
-# First, get the current revision
+# If you see NOSPACE alarm, first check whether the on-disk
+# DB SIZE is much larger than the IN USE size.
 talosctl -n 192.168.1.10 etcd status
 
-# Compact to the latest revision using talosctl
-# Then defragment
+# If the database is heavily fragmented, defragment one member at a time
 talosctl -n 192.168.1.10 etcd defrag
+
+# If the IN USE size is close to the quota, delete unnecessary Kubernetes
+# resources or increase cluster.etcd.extraArgs.quota-backend-bytes instead.
 
 # Clear the alarm after freeing space
 talosctl -n 192.168.1.10 etcd alarm disarm
@@ -154,8 +156,8 @@ talosctl -n 192.168.1.13 logs etcd --tail 100
 talosctl -n 192.168.1.10 etcd members
 talosctl -n 192.168.1.10 etcd remove-member <stale-member-id>
 
-# Then reset the new node and let it rejoin
-talosctl -n 192.168.1.13 reset --graceful
+# Then wipe the new node's EPHEMERAL partition so it can rejoin with clean etcd data
+talosctl -n 192.168.1.13 reset --graceful=false --reboot --system-labels-to-wipe=EPHEMERAL
 ```
 
 ## Issue: Data Corruption
@@ -170,15 +172,15 @@ talosctl -n 192.168.1.10 logs etcd | grep -i "corrupt\|panic\|fatal"
 If you detect corruption on one member:
 
 1. Remove the corrupted member from the cluster
-2. Delete its data directory by resetting the node
+2. Delete its data directory by wiping the node's EPHEMERAL partition
 3. Add it back as a new member - it will replicate data from healthy members
 
 ```bash
 # Remove the corrupted member
 talosctl -n 192.168.1.10 etcd remove-member <corrupted-member-id>
 
-# Reset the corrupted node
-talosctl -n 192.168.1.11 reset --graceful
+# Wipe the corrupted node's EPHEMERAL partition
+talosctl -n 192.168.1.11 reset --graceful=false --reboot --system-labels-to-wipe=EPHEMERAL
 
 # Reconfigure and rejoin the node
 talosctl apply-config --nodes 192.168.1.11 --file controlplane.yaml
@@ -187,8 +189,8 @@ talosctl apply-config --nodes 192.168.1.11 --file controlplane.yaml
 If all members are corrupted, you need to restore from a backup:
 
 ```bash
-# Restore from a snapshot on one control plane node
-talosctl -n 192.168.1.10 etcd snapshot restore /path/to/snapshot.db
+# Recover the cluster from a snapshot on one control plane node
+talosctl -n 192.168.1.10 bootstrap --recover-from=/path/to/snapshot.db
 ```
 
 ## Issue: High Memory Usage
@@ -206,7 +208,7 @@ talosctl -n 192.168.1.10 processes | grep etcd
 
 If memory usage is high, consider:
 
-- Running compaction to remove old revisions
+- Verifying Kubernetes compaction is working and defragmenting etcd when needed
 - Reducing the number of Kubernetes watches (often caused by misbehaving controllers)
 - Increasing the node's memory if using small instances
 
