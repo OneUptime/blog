@@ -16,7 +16,7 @@ The Talos developers chose gRPC over REST for several well-considered reasons.
 
 gRPC uses Protocol Buffers (protobuf) for serialization, which is more efficient than JSON both in terms of message size and serialization speed. When you are querying multiple nodes for system information, this efficiency matters.
 
-gRPC supports bidirectional streaming, which Talos uses for operations like log tailing and packet capture. A REST API would require long polling or WebSockets for these use cases.
+gRPC supports streaming, which Talos uses for operations like log tailing and packet capture. A REST API would require long polling or WebSockets for these use cases.
 
 gRPC generates strongly typed client code from protobuf definitions. This means the Talos client libraries have compile-time type checking, reducing the chance of malformed requests.
 
@@ -112,7 +112,7 @@ talosctl -n 10.0.0.11 version           # Get version info
 talosctl -n 10.0.0.11 reboot            # Reboot the node
 talosctl -n 10.0.0.11 shutdown          # Shut down
 talosctl -n 10.0.0.11 reset             # Factory reset
-talosctl -n 10.0.0.11 services          # List services
+talosctl -n 10.0.0.11 service           # List services
 talosctl -n 10.0.0.11 apply-config      # Apply configuration
 talosctl -n 10.0.0.11 processes         # List processes
 talosctl -n 10.0.0.11 memory            # Memory info
@@ -146,12 +146,12 @@ Handles cluster-level operations, primarily health checks.
 talosctl -n 10.0.0.11 health             # Cluster health check
 ```
 
-### EtcdService
+### Etcd Operations
 
-Manages etcd operations on control plane nodes.
+MachineService also manages etcd operations on control plane nodes.
 
 ```bash
-# EtcdService operations
+# Etcd operations
 talosctl -n 10.0.0.11 etcd members       # List etcd members
 talosctl -n 10.0.0.11 etcd snapshot       # Take a snapshot
 talosctl -n 10.0.0.11 etcd status         # Etcd status
@@ -183,9 +183,6 @@ Some API operations use gRPC streaming for real-time data delivery.
 ```bash
 # Stream logs in real time (uses server-side streaming)
 talosctl -n 10.0.0.11 logs kubelet --follow
-
-# Stream logs from a specific time
-talosctl -n 10.0.0.11 logs kubelet --since "2024-01-01T00:00:00Z"
 
 # Get the last N log lines
 talosctl -n 10.0.0.11 logs kubelet --tail 100
@@ -284,7 +281,7 @@ talosctl config info
 talosctl -n 10.0.0.11 version
 
 # 3. Service availability
-talosctl -n 10.0.0.11 services
+talosctl -n 10.0.0.11 service
 ```
 
 ## Security Considerations
@@ -300,12 +297,20 @@ Use role-based certificates for different levels of access. Not every operator n
 Restrict network access to port 50000. Use firewall rules to limit which networks can reach the API.
 
 ```yaml
-# Machine config: restrict API access to specific networks
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        dhcp: true
+# Extra machine config documents: restrict API access to a management subnet
+apiVersion: v1alpha1
+kind: NetworkDefaultActionConfig
+ingress: block
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: apid-ingress
+portSelector:
+  ports:
+    - 50000
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/24
 ```
 
 ## Conclusion
