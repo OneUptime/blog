@@ -86,7 +86,7 @@ velero schedule create apps-backup \
 # Back up cluster-wide resources daily
 velero schedule create cluster-resources \
     --schedule="0 1 * * *" \
-    --include-cluster-scoped-resources \
+    --include-cluster-scoped-resources="*" \
     --ttl 720h
 
 # Back up everything weekly for long-term retention
@@ -97,7 +97,7 @@ velero schedule create full-backup \
 
 ## Setting Up Storage Replication
 
-The next piece is making sure backups from the primary are accessible to the secondary cluster. There are two main approaches.
+The next piece is making sure backups from the primary are accessible to the secondary cluster. There are three main approaches.
 
 ### Option A: Shared Bucket
 
@@ -115,7 +115,7 @@ For stronger protection, use S3's built-in replication to copy backups to a diff
 
 ```json
 {
-    "Role": "arn:aws:iam::role/s3-replication-role",
+    "Role": "arn:aws:iam::123456789012:role/s3-replication-role",
     "Rules": [
         {
             "Status": "Enabled",
@@ -291,7 +291,7 @@ velero restore create disaster-recovery \
 velero restore describe disaster-recovery
 
 # Verify critical workloads
-kubectl get deployments --all-namespaces | grep -v Running
+kubectl get pods --all-namespaces | grep -v Running
 ```
 
 ## Wrapping Up
