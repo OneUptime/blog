@@ -17,7 +17,7 @@ When you apply a configuration with `--mode staged`, Talos saves the new configu
 ```bash
 # Stage a configuration change
 
-talosctl apply-config --nodes 10.0.1.10 --patch @my-change.yaml --mode staged
+talosctl patch machineconfig --nodes 10.0.1.10 --patch @my-change.yaml --mode staged
 ```
 
 Think of it as "prepare this change but do not activate it yet." It is similar to how you might stage a database migration script to run during the next maintenance window.
@@ -40,11 +40,12 @@ Here is a typical workflow:
 
 ```bash
 # Step 1: Prepare the change during working hours
-talosctl apply-config --nodes 10.0.1.10 \
+talosctl patch machineconfig --nodes 10.0.1.10 \
     --patch @kernel-modules.yaml --mode staged
 
-# Step 2: Verify the staged configuration
-talosctl get machineconfig --nodes 10.0.1.10
+# Step 2: Preview the patch before the maintenance window
+talosctl patch machineconfig --nodes 10.0.1.10 \
+    --patch @kernel-modules.yaml --mode staged --dry-run
 
 # Step 3: During maintenance window, reboot the node
 talosctl reboot --nodes 10.0.1.10
@@ -73,7 +74,7 @@ ALL_NODES=("${CP_NODES[@]}" "${WORKER_NODES[@]}")
 echo "=== Phase 1: Staging configuration on all nodes ==="
 for node in "${ALL_NODES[@]}"; do
     echo "Staging on $node..."
-    talosctl apply-config --nodes "$node" --patch "@$PATCH_FILE" --mode staged
+    talosctl patch machineconfig --nodes "$node" --patch "@$PATCH_FILE" --mode staged
     echo "  Staged successfully"
 done
 
@@ -100,33 +101,32 @@ done
 
 ## Checking for Staged Configuration
 
-After staging a change, you can verify that a staged configuration exists:
+After staging a change, you can verify that the command completed successfully and preview the same patch with `--dry-run`:
 
 ```bash
-# Check the machine status for staged config indicator
-talosctl get machinestatus --nodes 10.0.1.10
+# Preview the patch that was staged
+talosctl patch machineconfig --nodes 10.0.1.10 \
+    --patch @my-change.yaml --mode staged --dry-run
 ```
 
-You can also compare the current running configuration with the staged one to see what will change:
+Because staged mode does not modify the current node configuration until reboot, `talosctl get machineconfig` still shows the running configuration. To compare what will change, save the current configuration and compare it with a locally patched copy:
 
 ```bash
 # Get the current running config
-talosctl get machineconfig --nodes 10.0.1.10 -o yaml > current.yaml
+talosctl get machineconfig v1alpha1 --nodes 10.0.1.10 -o jsonpath='{.spec}' > current.yaml
 
-# After the reboot, the staged config becomes the running config
-# To see what the staged config looks like before rebooting,
-# you can check the applied config:
-talosctl get machineconfig --nodes 10.0.1.10 -o yaml > staged.yaml
+# Build the expected post-reboot configuration locally
+talosctl machineconfig patch current.yaml --patch @my-change.yaml --output staged.yaml
 diff current.yaml staged.yaml
 ```
 
 ## Canceling Staged Changes
 
-If you need to cancel a staged change before the reboot happens, apply the current configuration again with `--mode staged` or `--mode no-reboot`:
+If you need to cancel a staged change before the reboot happens, apply the current configuration again with `--mode staged`:
 
 ```bash
 # Get the current running configuration
-talosctl get machineconfig --nodes 10.0.1.10 -o yaml > current-config.yaml
+talosctl get machineconfig v1alpha1 --nodes 10.0.1.10 -o jsonpath='{.spec}' > current-config.yaml
 
 # Reapply it to overwrite the staged change
 talosctl apply-config --nodes 10.0.1.10 --file current-config.yaml --mode staged
@@ -140,11 +140,11 @@ You can apply no-reboot changes immediately while staging reboot-required change
 
 ```bash
 # Apply labels immediately (no reboot needed)
-talosctl apply-config --nodes 10.0.1.10 \
+talosctl patch machineconfig --nodes 10.0.1.10 \
     --patch @labels.yaml --mode no-reboot
 
 # Stage kernel module changes (reboot needed)
-talosctl apply-config --nodes 10.0.1.10 \
+talosctl patch machineconfig --nodes 10.0.1.10 \
     --patch @kernel-modules.yaml --mode staged
 ```
 
@@ -175,7 +175,7 @@ jobs:
         run: |
           # Stage changes on all nodes
           for node in 10.0.1.10 10.0.1.11 10.0.1.12; do
-            talosctl apply-config --nodes "$node" \
+            talosctl patch machineconfig --nodes "$node" \
                 --patch @talos/patches/update.yaml \
                 --mode staged
           done
@@ -260,24 +260,16 @@ echo "  kubectl get pods --all-namespaces | grep -v Running"
 
 ## Staged Mode for Talos Upgrades
 
-Staged mode is particularly useful for Talos version upgrades, where you update the installer image:
-
-```yaml
-# upgrade-patch.yaml
-machine:
-  install:
-    image: ghcr.io/siderolabs/installer:v1.7.0
-```
+Talos upgrades have their own staged upgrade option, where you specify the installer image with `talosctl upgrade --stage`:
 
 ```bash
 # Stage the upgrade on all nodes
 for node in "${ALL_NODES[@]}"; do
-    talosctl apply-config --nodes "$node" \
-        --patch @upgrade-patch.yaml --mode staged
+    talosctl upgrade --nodes "$node" \
+        --image ghcr.io/siderolabs/installer:v1.12.1 --stage
 done
 
-# Later, during maintenance, use talosctl upgrade for a proper upgrade
-# Or reboot to apply the staged installer image
+# Later, during maintenance, reboot to perform the staged upgrade
 ```
 
 Note that for actual Talos version upgrades, the `talosctl upgrade` command is preferred over staged config changes because it handles the upgrade process more completely. But staged mode works well for configuration changes that accompany an upgrade.
