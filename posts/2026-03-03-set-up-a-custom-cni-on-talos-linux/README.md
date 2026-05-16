@@ -53,7 +53,7 @@ Or patch an existing configuration:
 
 ```bash
 # Patch existing nodes to disable default CNI
-talosctl apply-config --nodes 192.168.1.10 --patch @custom-cni-base.yaml
+talosctl patch mc --nodes 192.168.1.10 --patch @custom-cni-base.yaml
 ```
 
 ## Installing Cilium as the CNI
@@ -81,7 +81,7 @@ machine:
 Apply to all nodes:
 
 ```bash
-talosctl apply-config --nodes 192.168.1.10,192.168.1.20 --patch @talos-cilium-patch.yaml
+talosctl patch mc --nodes 192.168.1.10,192.168.1.20 --patch @talos-cilium-patch.yaml
 ```
 
 ### Step 2: Install Cilium
