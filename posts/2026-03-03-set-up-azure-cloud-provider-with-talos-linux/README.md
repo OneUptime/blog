@@ -166,9 +166,6 @@ apiVersion: v1
 kind: Service
 metadata:
   name: test-lb
-  annotations:
-    # Use a Standard Load Balancer
-    service.beta.kubernetes.io/azure-load-balancer-sku: Standard
 spec:
   type: LoadBalancer
   selector:
@@ -177,6 +174,8 @@ spec:
     - port: 80
       targetPort: 8080
 ```
+
+The load balancer SKU is set cluster-wide via the `loadBalancerSku` field in the cloud config above and cannot be overridden per service.
 
 ```bash
 # Apply and watch for the external IP
