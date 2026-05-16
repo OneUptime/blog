@@ -103,8 +103,8 @@ runners:
           read_only_root_filesystem = false
 
         # Clean up build pods after completion
-        [runners.kubernetes.cleanup]
-          delete_grace_period = 30
+        cleanup_grace_period_seconds = 30
+        pod_termination_grace_period_seconds = 30
 
 # RBAC
 rbac:
@@ -188,7 +188,9 @@ helm install minio \
   --set rootUser=minioadmin \
   --set rootPassword=minioadmin \
   --set persistence.size=50Gi \
-  --set defaultBuckets="gitlab-runner-cache"
+  --set 'buckets[0].name=gitlab-runner-cache' \
+  --set 'buckets[0].policy=none' \
+  --set 'buckets[0].purge=false'
 ```
 
 ## Writing GitLab CI Pipelines
