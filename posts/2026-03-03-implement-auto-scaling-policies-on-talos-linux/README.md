@@ -36,7 +36,7 @@ kubectl top nodes
 kubectl top pods -A
 ```
 
-On Talos Linux, the metrics server should work out of the box since kubelet metrics are exposed by default.
+On Talos Linux, the kubelet's serving certificate is self-signed by default, so metrics-server cannot verify it out of the box. Either enable kubelet certificate rotation along with the Kubelet Serving Certificate Approver, or pass `--kubelet-insecure-tls` to the metrics-server deployment. See the Sidero Labs documentation on deploying metrics-server for the recommended configuration.
 
 ## Horizontal Pod Autoscaler
 
@@ -190,14 +190,13 @@ rules:
 VPA adjusts resource requests and limits based on actual usage patterns:
 
 ```bash
-# Install VPA
-kubectl apply -f https://github.com/kubernetes/autoscaler/releases/latest/download/vpa-v1-crd-gen.yaml
-kubectl apply -f https://github.com/kubernetes/autoscaler/releases/latest/download/vpa-rbac.yaml
+# Install VPA by cloning the autoscaler repo and running the bundled installer
+git clone https://github.com/kubernetes/autoscaler.git
+cd autoscaler/vertical-pod-autoscaler
 
-# Deploy VPA components
-kubectl apply -f https://github.com/kubernetes/autoscaler/releases/latest/download/vpa-admission-controller-deployment.yaml
-kubectl apply -f https://github.com/kubernetes/autoscaler/releases/latest/download/vpa-recommender-deployment.yaml
-kubectl apply -f https://github.com/kubernetes/autoscaler/releases/latest/download/vpa-updater-deployment.yaml
+# The script installs the CRDs, RBAC, and the recommender, updater,
+# and admission-controller Deployments in kube-system.
+./hack/vpa-up.sh
 ```
 
 Configure VPA for a workload:
@@ -277,6 +276,10 @@ resources:
 Deploy the cluster autoscaler:
 
 ```bash
+# Add the autoscaler chart repository
+helm repo add autoscaler https://kubernetes.github.io/autoscaler
+helm repo update
+
 # Install cluster autoscaler
 helm install cluster-autoscaler autoscaler/cluster-autoscaler \
   --namespace kube-system \
@@ -315,8 +318,8 @@ spec:
       metadata:
         host: "amqp://rabbitmq.production.svc.cluster.local:5672"
         queueName: "tasks"
-        queueLength: "10"
         mode: "QueueLength"
+        value: "10"
 ```
 
 ## Scaling Policies Best Practices
