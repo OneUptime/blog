@@ -30,7 +30,8 @@ This is a continuous loop, not a one-shot operation. Controllers never stop watc
 
 talosctl -n 10.0.0.11 get rd
 
-# This lists all resource definitions - each one is managed by a controller
+# This lists all resource definitions. Resource definitions show which resource
+# types are available through the Talos resource API.
 # Examples:
 # addresses.net.talos.dev
 # routes.net.talos.dev
@@ -47,12 +48,15 @@ Let us trace through a concrete example. Say you change the hostname in the mach
 First, you apply the new configuration through the API.
 
 ```bash
-talosctl -n 10.0.0.11 patch machineconfig --patch '[
-  {"op": "replace", "path": "/machine/network/hostname", "value": "new-name"}
-]'
+talosctl -n 10.0.0.11 patch machineconfig --patch '
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: new-name
+auto: off
+'
 ```
 
-The configuration controller detects that the machine config resource has changed. It reads the new hostname from the configuration and updates the HostnameSpec resource.
+The configuration controller detects that the machine config resource has changed. It reads the new `HostnameConfig` document from the configuration, and network configuration controllers create or update the corresponding HostnameSpec resource.
 
 The hostname controller watches HostnameSpec resources. When the spec changes, it takes the new hostname value and applies it to the system (calling the kernel's sethostname). It also updates the HostnameStatus resource to reflect the current state.
 
@@ -143,24 +147,16 @@ The kubelet controller manages the kubelet service. It generates kubelet configu
 
 ## Controller Dependencies
 
-Controllers have dependencies on each other. The network controllers must run before the kubelet controller because kubelet needs a working network. The configuration controller must run before everything because all other controllers depend on the specs it creates.
+Controllers have dependencies on each other through resources. For example, networking controllers produce network state that other controllers can use before starting services that require working networking. Configuration-related controllers produce spec resources that many other controllers consume.
 
-machined handles these dependencies by ordering controller execution and ensuring that controllers wait for their dependencies to produce outputs before they start processing.
+machined handles these dependencies with the controller runtime's input and output graph. Controllers run concurrently, and the runtime can report the current dependency graph for debugging instead of relying on a single fixed execution order.
 
-```text
-Configuration Controller
-    |
-    v
-Network Controllers (address, route, link, resolver)
-    |
-    v
-Time Controller
-    |
-    v
-etcd Controller (control plane only)
-    |
-    v
-Kubelet Controller
+```bash
+# Inspect controller and resource dependencies
+talosctl -n 10.0.0.11 inspect dependencies
+
+# Include resource instances in the graph
+talosctl -n 10.0.0.11 inspect dependencies --with-resources
 ```
 
 ## Self-Healing in Practice
@@ -230,7 +226,7 @@ Resources can come from different layers, and layers have priority. Configuratio
 # View the layer of a resource
 talosctl -n 10.0.0.11 get addressspecs -o yaml
 
-# Look for the "layer" field in the metadata
+# Look for the "layer" field in the spec
 # "configuration" - from machine config
 # "operator" - from DHCP or other dynamic sources
 # "default" - system defaults
