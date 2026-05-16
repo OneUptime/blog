@@ -176,9 +176,10 @@ spec:
 For Intel GPU access on Talos, you need the Intel GPU device plugin:
 
 ```bash
-# Install Intel GPU device plugin
-kubectl apply -f https://raw.githubusercontent.com/intel/intel-device-plugins-for-kubernetes/main/deployments/nfd/overlays/node-feature-discovery/node-feature-discovery-daemonset.yaml
-kubectl apply -f https://raw.githubusercontent.com/intel/intel-device-plugins-for-kubernetes/main/deployments/gpu_plugin/overlays/nfd_managed/kustomization.yaml
+# Install Intel GPU device plugin with Node Feature Discovery
+kubectl apply -k 'https://github.com/intel/intel-device-plugins-for-kubernetes/deployments/nfd?ref=main'
+kubectl apply -k 'https://github.com/intel/intel-device-plugins-for-kubernetes/deployments/nfd/overlays/node-feature-rules?ref=main'
+kubectl apply -k 'https://github.com/intel/intel-device-plugins-for-kubernetes/deployments/gpu_plugin/overlays/nfd_labeled_nodes?ref=main'
 ```
 
 ## Deploying Navidrome for Music
@@ -208,7 +209,7 @@ spec:
           ports:
             - containerPort: 4533
           env:
-            - name: ND_SCANSCHEDULE
+            - name: ND_SCANNER_SCHEDULE
               value: "1h"
             - name: ND_LOGLEVEL
               value: "info"
@@ -347,7 +348,7 @@ spec:
               service:
                 name: immich-server
                 port:
-                  number: 3001
+                  number: 2283
 ```
 
 Add the hostnames to your local DNS or `/etc/hosts` file on your devices:
