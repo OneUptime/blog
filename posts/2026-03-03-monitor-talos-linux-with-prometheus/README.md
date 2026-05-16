@@ -106,9 +106,7 @@ metadata:
 stringData:
   prometheus-additional.yaml: |
     - job_name: 'talos-machine-metrics'
-      scheme: https
-      tls_config:
-        insecure_skip_verify: true
+      scheme: http
       static_configs:
         - targets:
             - '192.168.1.10:9100'
@@ -149,7 +147,7 @@ metadata:
 spec:
   endpoints:
     - interval: 30s
-      port: "2381"
+      port: metrics
       scheme: http
   namespaceSelector:
     matchNames:
