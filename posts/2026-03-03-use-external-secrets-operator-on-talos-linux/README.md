@@ -53,10 +53,7 @@ Wait for the pods to become ready.
 # Verify the installation
 kubectl get pods -n external-secrets
 
-# You should see three pods running:
-# external-secrets-controller
-# external-secrets-webhook
-# external-secrets-cert-controller
+# You should see pods for the controller, webhook, and cert-controller running.
 ```
 
 ## Understanding the ESO Architecture
@@ -89,7 +86,7 @@ Now define a ClusterSecretStore that tells ESO how to reach AWS Secrets Manager.
 
 ```yaml
 # cluster-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -128,7 +125,7 @@ Suppose you have a secret in AWS Secrets Manager called `production/database` th
 
 ```yaml
 # external-secret-db.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -171,7 +168,7 @@ Sometimes you need the secret data in a specific format. ESO supports templates 
 
 ```yaml
 # external-secret-template.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-url
@@ -236,7 +233,7 @@ On Talos Linux, there are a few things to keep in mind when running ESO:
 
 3. **DNS resolution**: Ensure CoreDNS is properly configured so that ESO can resolve the hostnames of external providers like `secretsmanager.us-east-1.amazonaws.com`.
 
-4. **Resource limits**: Set appropriate resource requests and limits for the ESO pods through Helm values to prevent resource contention on your Talos nodes.
+4. **Resource limits**: Set appropriate resource requests and limits for the ESO controller, webhook, and cert-controller pods through Helm values to prevent resource contention on your Talos nodes.
 
 ```yaml
 # Custom Helm values for resource management
@@ -248,6 +245,22 @@ resources:
   limits:
     cpu: 200m
     memory: 256Mi
+webhook:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+certController:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
 ```
 
 ## Security Best Practices
@@ -255,7 +268,7 @@ resources:
 When using ESO on Talos Linux, follow these practices to maintain a strong security posture:
 
 - Use ClusterSecretStore sparingly. Prefer namespace-scoped SecretStore resources to limit the blast radius of compromised credentials.
-- Enable RBAC rules that restrict which namespaces can reference a given SecretStore.
+- Use ClusterSecretStore namespace conditions and RBAC rules to restrict which namespaces can reference shared stores.
 - Set short refresh intervals for critical secrets so that rotations propagate quickly.
 - Use the `creationPolicy: Owner` setting so that Kubernetes secrets are garbage collected when the ExternalSecret is deleted.
 - Regularly audit which secrets are being synced and who has access to the ExternalSecret resources.
