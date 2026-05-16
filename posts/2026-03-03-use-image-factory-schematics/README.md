@@ -14,7 +14,7 @@ This guide dives deep into how schematics work, their structure, and best practi
 
 ## What Is a Schematic?
 
-A schematic is a YAML document that describes the customizations you want applied to a standard Talos Linux image. When you submit a schematic to Image Factory, it gets hashed into a unique identifier. That identifier can then be used to generate images, installer containers, and boot assets that contain your specified customizations.
+A schematic is a YAML document that describes the customizations you want applied to a standard Talos Linux image. When you submit a schematic to Image Factory, it gets hashed into a unique identifier. That identifier can then be used to generate images, installer containers, and boot assets that contain your specified customizations where the asset type supports them.
 
 Here is the simplest possible schematic:
 
@@ -31,10 +31,10 @@ This tells Image Factory to include the iSCSI tools extension. That is it. The s
 
 ## Schematic Structure
 
-The schematic YAML has a defined structure with several top-level fields:
+The schematic YAML has a defined structure. For image customization, the commonly used fields live under `customization`:
 
 ```yaml
-# Full schematic structure
+# Common customization fields
 customization:
   # System extensions to include in the image
   systemExtensions:
@@ -68,7 +68,7 @@ customization:
       - siderolabs/amd-ucode
       # Virtualization
       - siderolabs/qemu-guest-agent
-      - siderolabs/vmtoolsd
+      - siderolabs/vmtoolsd-guest-agent
 ```
 
 ### Extra Kernel Arguments
@@ -157,13 +157,14 @@ OUTPUT_FILE="./schematic-ids.env"
 # Process each schematic file
 for file in "${SCHEMATIC_DIR}"/*.yaml; do
   name=$(basename "$file" .yaml)
+  env_name=$(printf '%s' "$name" | tr '[:lower:]-' '[:upper:]_')
 
   # Submit to Image Factory
   id=$(curl -s -X POST --data-binary @"$file" \
     https://factory.talos.dev/schematics | jq -r '.id')
 
   # Write to env file
-  echo "SCHEMATIC_${name^^}=${id}" >> "${OUTPUT_FILE}"
+  echo "SCHEMATIC_${env_name}=${id}" >> "${OUTPUT_FILE}"
   echo "Processed ${name}: ${id}"
 done
 
@@ -180,8 +181,8 @@ Since schematic IDs are content hashes, you can easily detect changes:
 CURRENT_ID=$(curl -s -X POST --data-binary @schematic.yaml \
   https://factory.talos.dev/schematics | jq -r '.id')
 
-DEPLOYED_ID=$(talosctl get machinestatus --nodes 10.0.0.10 -o yaml | \
-  yq '.spec.status.schematicId')
+DEPLOYED_ID=$(talosctl get extensions --nodes 10.0.0.10 -o yaml | \
+  yq -r 'select(.spec.metadata.name == "schematic") | .spec.metadata.version')
 
 if [ "$CURRENT_ID" != "$DEPLOYED_ID" ]; then
   echo "Schematic has changed. Node needs an upgrade."
@@ -259,9 +260,9 @@ curl -s https://factory.talos.dev/version/v1.7.0/extensions/official | \
   jq -r '.[].name' > valid-extensions.txt
 
 # Check each extension in your schematic against the valid list
-yq '.customization.systemExtensions.officialExtensions[]' my-schematic.yaml | \
+yq -r '.customization.systemExtensions.officialExtensions[]' my-schematic.yaml | \
   while read ext; do
-    if ! grep -q "^${ext}$" valid-extensions.txt; then
+    if ! grep -Fxq "${ext}" valid-extensions.txt; then
       echo "WARNING: Unknown extension: ${ext}"
     fi
   done
