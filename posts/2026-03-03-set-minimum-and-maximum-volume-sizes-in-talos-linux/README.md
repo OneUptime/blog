@@ -23,15 +23,15 @@ Size constraints let you:
 
 ## Setting Minimum Size
 
-The `minSize` parameter ensures a volume gets at least the specified amount of space. If the disk cannot satisfy the minimum, the volume provisioning fails rather than creating an undersized partition:
+The `minSize` parameter ensures a volume gets at least the specified amount of space. If the disk cannot satisfy the minimum, the volume provisioning fails rather than creating an undersized partition. Volume sizing for system volumes like EPHEMERAL is configured through a separate `VolumeConfig` document appended to the machine config:
 
 ```yaml
-machine:
-  volumes:
-    - name: EPHEMERAL
-      provisioning:
-        minSize: 50GB
-        grow: true
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+provisioning:
+  minSize: 50GB
+  grow: true
 ```
 
 In this example, Talos will not provision the EPHEMERAL volume if there is less than 50GB of free space on the target disk. This protects against deploying to nodes with insufficient storage.
@@ -54,13 +54,13 @@ When you specify an exact `size`, that is effectively both the minimum and maxim
 The `maxSize` parameter caps how large a volume can grow. This is important when a volume has `grow: true` set, because without a maximum, it would consume all available space:
 
 ```yaml
-machine:
-  volumes:
-    - name: EPHEMERAL
-      provisioning:
-        minSize: 50GB
-        maxSize: 200GB
-        grow: true
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+provisioning:
+  minSize: 50GB
+  maxSize: 200GB
+  grow: true
 ```
 
 Here, the EPHEMERAL volume will be at least 50GB and at most 200GB. If the disk has 300GB of free space, EPHEMERAL takes 200GB and the remaining 100GB stays unallocated (or available for other partitions).
@@ -71,24 +71,23 @@ The `grow` flag determines whether a volume should expand to fill available spac
 
 ```yaml
 # Without grow - volume is exactly minSize
-
-machine:
-  volumes:
-    - name: EPHEMERAL
-      provisioning:
-        minSize: 50GB
-        grow: false  # Volume will be exactly 50GB
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+provisioning:
+  minSize: 50GB
+  grow: false  # Volume will be exactly 50GB
 ```
 
 ```yaml
 # With grow - volume expands up to maxSize
-machine:
-  volumes:
-    - name: EPHEMERAL
-      provisioning:
-        minSize: 50GB
-        maxSize: 200GB
-        grow: true  # Volume fills available space, up to 200GB
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+provisioning:
+  minSize: 50GB
+  maxSize: 200GB
+  grow: true  # Volume fills available space, up to 200GB
 ```
 
 When `grow` is `true` and no `maxSize` is set, the volume grows to fill all remaining space on the disk. This is the default behavior for the EPHEMERAL volume.
@@ -111,18 +110,20 @@ machine:
           size: 1TB
 ```
 
-In CEL expressions and some volume configurations, you use the unsigned integer syntax with size constants:
+Inside CEL `diskSelector.match` expressions, you use the unsigned integer syntax with size constants:
 
 ```yaml
-machine:
-  volumes:
-    - name: EPHEMERAL
-      provisioning:
-        minSize: 50u * GB  # 50 gigabytes in CEL syntax
-        maxSize: 200u * GB
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+provisioning:
+  diskSelector:
+    match: disk.size > 100u * GB  # 100 gigabytes in CEL syntax
+  minSize: 50GB
+  maxSize: 200GB
 ```
 
-Be consistent with your units. Mixing bytes with gigabytes is a recipe for confusion.
+The `u * GB` form is only valid inside CEL expressions like `diskSelector.match`. The `minSize` and `maxSize` values themselves are always plain size strings. Be consistent with your units. Mixing bytes with gigabytes is a recipe for confusion.
 
 ## Practical Sizing Scenarios
 
@@ -134,17 +135,19 @@ You want the system disk to host both EPHEMERAL and a data partition:
 machine:
   install:
     disk: /dev/sda  # 500GB disk
-  volumes:
-    - name: EPHEMERAL
-      provisioning:
-        minSize: 100GB
-        maxSize: 200GB
-        grow: true
   disks:
     - device: /dev/sda
       partitions:
         - mountpoint: /var/mnt/data
           size: 200GB
+---
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+provisioning:
+  minSize: 100GB
+  maxSize: 200GB
+  grow: true
 ```
 
 This reserves 200GB for data and lets EPHEMERAL use 100-200GB of the remaining space.
@@ -154,13 +157,13 @@ This reserves 200GB for data and lets EPHEMERAL use 100-200GB of the remaining s
 Your workers have varied disk sizes (100GB, 250GB, 500GB). You want EPHEMERAL to be reasonable on all of them:
 
 ```yaml
-machine:
-  volumes:
-    - name: EPHEMERAL
-      provisioning:
-        minSize: 40GB   # Minimum for the smallest nodes
-        maxSize: 400GB  # Cap for the largest nodes
-        grow: true
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+provisioning:
+  minSize: 40GB   # Minimum for the smallest nodes
+  maxSize: 400GB  # Cap for the largest nodes
+  grow: true
 ```
 
 On the 100GB node, EPHEMERAL gets about 40-60GB (after system partitions). On the 500GB node, it caps at 400GB, leaving some room.
@@ -172,12 +175,14 @@ Control plane nodes need enough EPHEMERAL space for etcd, but you do not want co
 ```yaml
 machine:
   type: controlplane
-  volumes:
-    - name: EPHEMERAL
-      provisioning:
-        minSize: 30GB
-        maxSize: 80GB
-        grow: true
+---
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+provisioning:
+  minSize: 30GB
+  maxSize: 80GB
+  grow: true
 ```
 
 This keeps EPHEMERAL manageable on control plane nodes. Etcd typically needs 2-8GB, and the rest handles the minimal set of system pods that run on control plane nodes.
@@ -218,7 +223,7 @@ You can check for sizing failures:
 
 ```bash
 # Check for volume provisioning errors
-talosctl get volumes --nodes 192.168.1.10 -o yaml
+talosctl get volumeconfigs --nodes 192.168.1.10 -o yaml
 ```
 
 Failed volumes will show the error in their status section.
