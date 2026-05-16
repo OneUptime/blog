@@ -184,7 +184,7 @@ Apply the patch to your control plane nodes:
 
 ```bash
 # Apply audit logging configuration to control plane nodes
-talosctl apply-config --nodes 192.168.1.10,192.168.1.11,192.168.1.12 \
+talosctl patch machineconfig --nodes 192.168.1.10,192.168.1.11,192.168.1.12 \
   --patch @audit-logging-patch.yaml
 ```
 
@@ -297,7 +297,7 @@ data:
         Tag audit.*
 
     [OUTPUT]
-        Name forward
+        Name es
         Match audit.*
         Host elasticsearch.logging.svc
         Port 9200
