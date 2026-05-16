@@ -8,13 +8,13 @@ Description: Complete guide to configuring Docker registry Secrets on Talos Linu
 
 ---
 
-When your Kubernetes workloads need to pull container images from private registries, you need to provide authentication credentials. On Talos Linux, this is done through Kubernetes Secrets of type `kubernetes.io/dockerconfigjson`. These secrets store the registry credentials that the kubelet uses when pulling images for your pods.
+When your Kubernetes workloads need to pull container images from private registries, you need to provide authentication credentials. For per-workload credentials on Talos Linux, this is done through Kubernetes Secrets of type `kubernetes.io/dockerconfigjson`. These secrets store the registry credentials that the kubelet uses when pulling images for your pods.
 
 This guide covers creating registry secrets, attaching them to pods and service accounts, and handling multiple registries on Talos Linux.
 
 ## Why Registry Secrets Matter on Talos Linux
 
-Talos Linux does not have a Docker daemon or a local Docker configuration file. You cannot log into a registry on the node itself. Everything goes through Kubernetes, so registry credentials must be provided as Kubernetes Secrets. This is actually a cleaner approach since your credentials are managed centrally through the Kubernetes API rather than scattered across node filesystems.
+Talos Linux does not have a Docker daemon or a local Docker configuration file. You cannot log into a registry on the node itself. For application workloads, registry credentials are commonly provided as Kubernetes Secrets. This is actually a cleaner approach since your credentials are managed centrally through the Kubernetes API rather than scattered across node filesystems.
 
 ## Prerequisites
 
@@ -310,7 +310,7 @@ kubectl create secret docker-registry ecr-secret \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-For automated rotation, consider using a CronJob or a tool like `ecr-credential-helper` deployed as a pod in your Talos cluster.
+For automated rotation, consider using a CronJob to refresh the Secret or configuring the kubelet credential provider for ECR through Talos machine configuration.
 
 ## Configuring Registry Mirrors on Talos Linux
 
