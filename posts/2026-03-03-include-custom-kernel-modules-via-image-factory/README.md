@@ -176,7 +176,7 @@ machine:
       - name: nvidia_modeset
   sysctls:
     # Required for NVIDIA container runtime
-    net.core.bpf_jit_enable: "1"
+    net.core.bpf_jit_harden: "1"
 ```
 
 ## ZFS Configuration
