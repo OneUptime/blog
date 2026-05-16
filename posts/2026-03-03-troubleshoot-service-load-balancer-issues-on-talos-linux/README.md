@@ -37,7 +37,7 @@ MetalLB is the most common load balancer for bare-metal Kubernetes. Install it:
 
 ```bash
 # Install MetalLB
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.3/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.15.3/config/manifests/metallb-native.yaml
 
 # Wait for MetalLB pods to be ready
 kubectl -n metallb-system get pods -w
@@ -138,7 +138,7 @@ In MetalLB's Layer 2 mode, one node responds to ARP requests for the external IP
 
 ```bash
 # Check which node is handling the IP
-kubectl -n metallb-system logs -l component=speaker | grep <external-ip>
+kubectl describe svc <service-name> -n <namespace>
 
 # Verify ARP from your network
 arping <external-ip>
@@ -157,17 +157,17 @@ Check that no firewall is blocking traffic to the external IP on the assigned po
 If the external IP is reachable but the service is not working:
 
 ```bash
-# Check service endpoints
-kubectl get endpoints <service-name> -n <namespace>
+# Check service endpoint slices
+kubectl get endpointslice -n <namespace> -l kubernetes.io/service-name=<service-name>
 
-# If endpoints are empty, check pod labels
+# If endpoint slices are empty, check pod labels
 kubectl get pods -n <namespace> --show-labels
 
 # Compare with service selector
 kubectl get svc <service-name> -n <namespace> -o yaml | grep -A5 selector
 ```
 
-If the service has no endpoints, the pod selector labels do not match any running pods.
+If the service has no endpoint slices, the pod selector labels do not match any running pods.
 
 Also check if kube-proxy is working correctly:
 
