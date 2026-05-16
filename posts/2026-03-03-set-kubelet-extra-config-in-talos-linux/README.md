@@ -14,7 +14,7 @@ This guide shows you how to configure kubelet extra settings in Talos Linux thro
 
 ## Kubelet Configuration in Talos
 
-Talos exposes kubelet configuration through two mechanisms: `cluster.kubelet.extraArgs` for command-line flags and `cluster.kubelet.extraConfig` for the KubeletConfiguration API. The `extraConfig` approach is preferred because it covers more settings and uses the structured Kubernetes configuration format.
+Talos exposes kubelet configuration under `machine.kubelet` through two mechanisms: `extraArgs` for command-line flags and `extraConfig` for the KubeletConfiguration API. The `extraConfig` approach is preferred because it covers more settings and uses the structured Kubernetes configuration format.
 
 ```yaml
 # Basic kubelet extra configuration
@@ -28,7 +28,7 @@ machine:
       serializeImagePulls: false
 ```
 
-Note that in the Talos config, kubelet settings can appear under both `machine.kubelet` and `cluster.kubelet` depending on the specific field. Check the Talos documentation for your version.
+All kubelet-related settings in Talos live under `machine.kubelet`. Check the Talos documentation for the full list of supported fields for your version.
 
 ## Setting Pod Limits
 
@@ -85,7 +85,7 @@ machine:
 
 Hard eviction thresholds trigger immediate pod eviction with no grace period. Soft eviction thresholds give pods a grace period to clean up. Setting these correctly prevents node crashes from resource exhaustion while giving workloads a chance to shut down gracefully.
 
-Resource Reservation
+## Resource Reservation
 
 Reserve resources for system processes to prevent workloads from consuming everything:
 
@@ -159,10 +159,9 @@ machine:
 
       # Cloud provider settings (if applicable)
       cloud-provider: "external"
-
-      # Container runtime settings
-      container-runtime-endpoint: "unix:///run/containerd/containerd.sock"
 ```
+
+Note that the kubelet has deprecated several flags in favour of the configuration file equivalents - for example, `--container-runtime-endpoint` should now be set via `extraConfig.containerRuntimeEndpoint` rather than as a command-line argument.
 
 ## Feature Gates
 
@@ -173,14 +172,13 @@ Enable kubelet-specific feature gates:
 machine:
   kubelet:
     extraArgs:
-      feature-gates: >-
-        GracefulNodeShutdown=true,
-        TopologyManager=true,
-        CPUManager=true
+      feature-gates: "GracefulNodeShutdown=true,TopologyManager=true,CPUManager=true"
     extraConfig:
       cpuManagerPolicy: "static"
       topologyManagerPolicy: "best-effort"
 ```
+
+The `feature-gates` flag value must be a single comma-separated string with no spaces or newlines between entries - the kubelet flag parser rejects whitespace inside the list.
 
 The CPU Manager with a `static` policy pins guaranteed pods to specific CPU cores, which is valuable for latency-sensitive workloads. Topology Manager coordinates resource alignment across NUMA nodes.
 
