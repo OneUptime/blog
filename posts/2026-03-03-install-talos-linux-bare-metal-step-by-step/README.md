@@ -29,7 +29,7 @@ Head over to the Talos Linux GitHub releases page or use the Image Factory to gr
 ```bash
 # Download the latest Talos Linux ISO for amd64
 
-curl -LO https://github.com/siderolabs/talos/releases/latest/download/talos-amd64.iso
+curl -LO https://github.com/siderolabs/talos/releases/latest/download/metal-amd64.iso
 ```
 
 If your servers use UEFI boot, make sure you grab the UEFI-compatible image. Most modern servers do, but older hardware might still use legacy BIOS.
@@ -40,7 +40,7 @@ Once you have the ISO, write it to a USB drive. On Linux or macOS, you can use `
 
 ```bash
 # Write the ISO to a USB drive (replace /dev/sdX with your actual device)
-sudo dd if=talos-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync
+sudo dd if=metal-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync
 ```
 
 On macOS, the device path will look like `/dev/diskN`. Make sure you unmount the disk first:
@@ -48,7 +48,7 @@ On macOS, the device path will look like `/dev/diskN`. Make sure you unmount the
 ```bash
 # On macOS, unmount before writing
 diskutil unmountDisk /dev/disk2
-sudo dd if=talos-amd64.iso of=/dev/rdisk2 bs=4m
+sudo dd if=metal-amd64.iso of=/dev/rdisk2 bs=4m
 ```
 
 Double-check you are writing to the correct device. Writing to the wrong disk can wipe out your data.
