@@ -17,19 +17,19 @@ On Talos Linux, TopoLVM gives you high-performance local storage with proper cap
 - A Talos Linux cluster with at least 2 worker nodes
 - Each worker should have a dedicated disk or partition for LVM
 - The LVM2 utilities available through Talos system extensions
+- cert-manager installed in the cluster, or installed with the TopoLVM chart
 - Helm and kubectl configured for your cluster
 
 ## Preparing Talos Linux for TopoLVM
 
-TopoLVM needs LVM support on the nodes. Create a machine config patch:
+TopoLVM needs LVM support on the nodes. On current Talos Linux releases, system extensions should be included in the Talos boot asset or installer image. Generate a Talos Image Factory installer that includes the `siderolabs/lvm2` extension for your Talos version, then create a machine config patch that points workers at that installer and exposes the TopoLVM socket directory to kubelet:
 
 ```yaml
 # topolvm-patch.yaml
 
 machine:
   install:
-    extensions:
-      - image: ghcr.io/siderolabs/lvm2:v2.03.22-v1.6.0
+    image: factory.talos.dev/installer/<schematic-id>:<talos-version>
   kubelet:
     extraMounts:
       - destination: /run/topolvm
@@ -45,17 +45,30 @@ Apply the patch to worker nodes:
 
 ```bash
 # Apply to each worker node
-talosctl patch machineconfig \
+talosctl patch mc \
   --nodes <worker-1-ip> \
   --patch @topolvm-patch.yaml
 
-talosctl patch machineconfig \
+talosctl patch mc \
   --nodes <worker-2-ip> \
   --patch @topolvm-patch.yaml
 
-talosctl patch machineconfig \
+talosctl patch mc \
   --nodes <worker-3-ip> \
   --patch @topolvm-patch.yaml
+
+# Upgrade each worker into the installer image that contains the lvm2 extension
+talosctl upgrade \
+  --nodes <worker-1-ip> \
+  --image factory.talos.dev/installer/<schematic-id>:<talos-version>
+
+talosctl upgrade \
+  --nodes <worker-2-ip> \
+  --image factory.talos.dev/installer/<schematic-id>:<talos-version>
+
+talosctl upgrade \
+  --nodes <worker-3-ip> \
+  --image factory.talos.dev/installer/<schematic-id>:<talos-version>
 ```
 
 ## Creating LVM Volume Groups
@@ -140,16 +153,28 @@ Create a values file:
 # topolvm-values.yaml
 controller:
   replicaCount: 2
-  resources:
+
+lvmd:
+  managed: true
+  env:
+    - name: LVM_SYSTEM_DIR
+      value: /tmp
+  deviceClasses:
+    - name: ssd
+      volume-group: topolvm-vg
+      default: true
+      spare-gb: 10
+      type: thick
+
+resources:
+  topolvm_controller:
     requests:
       cpu: 100m
       memory: 128Mi
     limits:
       cpu: 500m
       memory: 256Mi
-
-node:
-  resources:
+  topolvm_node:
     requests:
       cpu: 100m
       memory: 128Mi
@@ -157,17 +182,16 @@ node:
       cpu: 500m
       memory: 256Mi
   lvmd:
-    managed: true
-    deviceClasses:
-      - name: ssd
-        volume-group: topolvm-vg
-        default: true
-        spare-gb: 10
-        type: thick
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
 
-# The scheduler extender helps Kubernetes make better scheduling decisions
+# Storage Capacity Tracking lets Kubernetes make scheduling decisions for local volumes
 scheduler:
-  enabled: true
+  enabled: false
 
 storageClasses:
   - name: topolvm-ssd
@@ -182,11 +206,18 @@ storageClasses:
 
 webhook:
   caBundle: null
-  mutatingWebhookConfiguration:
-    enabled: true
+  podMutatingWebhook:
+    enabled: false
+
+cert-manager:
+  enabled: true
 ```
 
 ```bash
+# Install cert-manager CRDs if you are installing cert-manager with the chart
+CERT_MANAGER_VERSION=v1.17.4
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/${CERT_MANAGER_VERSION}/cert-manager.crds.yaml
+
 # Install TopoLVM
 helm install topolvm topolvm/topolvm \
   --namespace topolvm-system \
@@ -206,11 +237,11 @@ kubectl -n topolvm-system get pods
 # Verify the StorageClass was created
 kubectl get storageclass topolvm-ssd
 
-# Check node capacity reporting
-kubectl get nodes -o custom-columns='NAME:.metadata.name,CAPACITY:.status.capacity.topolvm\.io/ssd'
+# Check CSI storage capacity reporting
+kubectl get csistoragecapacities -A
 ```
 
-The capacity column should show the available storage on each node. This is the key feature of TopoLVM - the scheduler uses this information to place pods on nodes with enough space.
+The CSIStorageCapacity objects should show the available storage for TopoLVM topology segments. This is the key feature of TopoLVM - the scheduler uses this information to place pods on nodes with enough space.
 
 ## Using TopoLVM Storage
 
@@ -263,8 +294,8 @@ kubectl get pvc topolvm-test
 # Verify the pod is running
 kubectl get pod topolvm-test-pod
 
-# Check the LVM logical volume was created
-kubectl -n topolvm-system exec ds/topolvm-node -- lvs topolvm-vg
+# Check the TopoLVM LogicalVolume resource was created
+kubectl get logicalvolumes.topolvm.io
 ```
 
 ## StatefulSet with TopoLVM
@@ -273,6 +304,11 @@ TopoLVM works well with StatefulSets for databases and other stateful applicatio
 
 ```yaml
 # redis-topolvm.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cache
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -313,7 +349,7 @@ spec:
             storage: 10Gi
 ```
 
-The scheduler extender ensures each Redis pod is placed on a node with at least 10Gi of available LVM storage.
+Storage Capacity Tracking helps the Kubernetes scheduler place each Redis pod on a node with enough available LVM storage.
 
 ## Multiple Device Classes
 
@@ -321,20 +357,19 @@ You can configure TopoLVM with multiple device classes for different storage tie
 
 ```yaml
 # In the topolvm-values.yaml
-node:
-  lvmd:
-    managed: true
-    deviceClasses:
-      - name: ssd
-        volume-group: topolvm-ssd-vg
-        default: true
-        spare-gb: 10
-        type: thick
-      - name: hdd
-        volume-group: topolvm-hdd-vg
-        default: false
-        spare-gb: 20
-        type: thick
+lvmd:
+  managed: true
+  deviceClasses:
+    - name: ssd
+      volume-group: topolvm-ssd-vg
+      default: true
+      spare-gb: 10
+      type: thick
+    - name: hdd
+      volume-group: topolvm-hdd-vg
+      default: false
+      spare-gb: 20
+      type: thick
 ```
 
 Create separate StorageClasses for each tier:
@@ -360,39 +395,38 @@ TopoLVM supports LVM thin provisioning for overcommitting storage:
 
 ```yaml
 # In topolvm-values.yaml, change the device class type
-node:
-  lvmd:
-    managed: true
-    deviceClasses:
-      - name: ssd-thin
-        volume-group: topolvm-vg
-        default: true
-        spare-gb: 5
-        type: thin
-        thin-pool:
-          name: pool0
-          overprovision-ratio: 5.0
+lvmd:
+  managed: true
+  deviceClasses:
+    - name: ssd-thin
+      volume-group: topolvm-vg
+      default: true
+      spare-gb: 5
+      type: thin
+      thin-pool:
+        name: pool0
+        overprovision-ratio: 5.0
 ```
 
-With thin provisioning, you can allocate more storage than physically available, relying on the fact that applications typically do not use all their allocated space immediately.
+Create the thin pool in the volume group before deploying this configuration. With thin provisioning, you can allocate more storage than physically available, relying on the fact that applications typically do not use all their allocated space immediately.
 
 ## Monitoring and Capacity
 
 ```bash
 # Check per-node capacity
-kubectl get nodes -o custom-columns='NAME:.metadata.name,SSD:.status.capacity.topolvm\.io/ssd'
+kubectl get csistoragecapacities -A
 
-# Check actual LVM usage
-kubectl -n topolvm-system exec ds/topolvm-node -- vgs topolvm-vg --units g
+# Check TopoLVM LogicalVolume objects
+kubectl get logicalvolumes.topolvm.io
 
-# List logical volumes
-kubectl -n topolvm-system exec ds/topolvm-node -- lvs topolvm-vg
+# Check actual LVM usage with a privileged helper pod or from your node maintenance workflow
+vgs topolvm-vg --units g
 
 # Check TopoLVM controller logs
-kubectl -n topolvm-system logs deploy/topolvm-controller --tail=50
+kubectl -n topolvm-system logs deploy/topolvm-controller -c topolvm-controller --tail=50
 
 # Check node agent logs
-kubectl -n topolvm-system logs ds/topolvm-node --tail=50
+kubectl -n topolvm-system logs ds/topolvm-node -c topolvm-node --tail=50
 ```
 
 ## Expanding Volumes
@@ -409,4 +443,4 @@ kubectl get pvc topolvm-test -w
 
 ## Summary
 
-TopoLVM provides intelligent local storage provisioning for Talos Linux by combining LVM with topology-aware scheduling. The key advantage over simpler local storage solutions is that the Kubernetes scheduler knows exactly how much storage is available on each node, preventing scheduling failures due to insufficient disk space. The LVM foundation gives you features like thin provisioning and online volume expansion. For Talos Linux clusters that need fast local storage with proper capacity management, TopoLVM fills the gap between basic hostpath storage and full distributed storage systems.
+TopoLVM provides intelligent local storage provisioning for Talos Linux by combining LVM with topology-aware scheduling. The key advantage over simpler local storage solutions is that the Kubernetes scheduler can use TopoLVM capacity information when placing pods, preventing scheduling failures due to insufficient disk space. The LVM foundation gives you features like thin provisioning and online volume expansion. For Talos Linux clusters that need fast local storage with proper capacity management, TopoLVM fills the gap between basic hostpath storage and full distributed storage systems.
