@@ -53,7 +53,7 @@ metadata:
   annotations:
     owner: "${TEAM}@company.com"
     description: "Namespace for $PURPOSE"
-    expiry-date: "$(date -v+1y +%Y-%m-%d)"
+    expiry-date: "$(date -d '+1 year' +%Y-%m-%d)"
 EOF
 
 # Apply standard policies
@@ -123,7 +123,7 @@ spec:
         - alert: NamespaceQuotaHigh
           expr: |
             kube_resourcequota{type="used"} /
-            kube_resourcequota{type="hard"} > 0.85
+            ignoring(type) kube_resourcequota{type="hard"} > 0.85
           for: 15m
           labels:
             severity: warning
@@ -133,7 +133,7 @@ spec:
         # Alert when a namespace has no running pods for 7 days
         - alert: NamespaceInactive
           expr: |
-            count by (namespace) (kube_pod_status_phase{phase="Running"}) == 0
+            sum by (namespace) (kube_pod_status_phase{phase="Running"}) == 0
           for: 7d
           labels:
             severity: info
