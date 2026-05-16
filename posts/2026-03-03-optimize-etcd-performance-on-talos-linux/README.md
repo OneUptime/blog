@@ -22,35 +22,40 @@ The most common symptoms of poor etcd performance include slow pod scheduling, f
 
 etcd is a write-ahead log database. Every write operation appends to a log file and then synchronizes to disk with an fsync call. The speed of this fsync operation directly determines etcd's write latency.
 
-On Talos Linux, you should dedicate a separate disk or partition for etcd data. You can configure this in the machine configuration:
+On Talos Linux, etcd data lives at `/var/lib/etcd` on the EPHEMERAL partition, which is created on the install disk. The most reliable way to put etcd on fast storage is to install Talos directly on an NVMe drive so that the EPHEMERAL partition (and therefore etcd) ends up on it:
 
 ```yaml
 # talos-machine-config.yaml
 
 machine:
   install:
-    disk: /dev/sda                    # OS disk
+    disk: /dev/nvme0n1                # Install Talos on NVMe so etcd benefits from it
+```
+
+If you want additional disks for non-etcd workloads, Talos lets you mount them under `/var/mnt/`:
+
+```yaml
+machine:
   disks:
-    - device: /dev/nvme0n1            # Dedicated NVMe for etcd
+    - device: /dev/sdb
       partitions:
-        - mountpoint: /var/lib/etcd
-          size: 50GB
+        - mountpoint: /var/mnt/data   # User mountpoints must live under /var/mnt
+          size: 100GB
 ```
 
 NVMe drives are strongly recommended for etcd. A good NVMe drive can deliver fsync latencies under 1ms, while a SATA SSD might take 5-10ms. This difference is huge when etcd performs thousands of fsyncs per second.
 
-If you cannot dedicate a separate disk, at least ensure your etcd data directory is on the fastest storage available. Avoid network-attached storage for etcd at all costs. The added network latency makes etcd unreliable.
+If you cannot install on dedicated NVMe, at least ensure the install disk is the fastest storage available. Avoid network-attached storage for etcd at all costs. The added network latency makes etcd unreliable.
 
 ## Disk I/O Scheduler Tuning
 
-For NVMe drives, the `none` (or `noop`) I/O scheduler is optimal because NVMe devices handle their own request ordering. For SATA SSDs, `mq-deadline` works well.
+For NVMe drives, the `none` I/O scheduler is optimal because NVMe devices handle their own request ordering. On modern (blk-mq) kernels this is already the default for NVMe, so usually no extra configuration is needed. For SATA SSDs, `mq-deadline` is a good choice, set per-device via sysfs (the legacy `elevator=` boot parameter no longer applies to blk-mq devices).
+
+What you should configure through Talos is the kernel's dirty-page behavior, which directly affects etcd fsync latency:
 
 ```yaml
 # talos-machine-config.yaml
 machine:
-  install:
-    extraKernelArgs:
-      - elevator=none                 # Use noop scheduler for NVMe
   sysctls:
     vm.dirty_ratio: "5"               # Keep dirty page ratio low
     vm.dirty_background_ratio: "2"    # Start flushing early
@@ -86,7 +91,7 @@ cluster:
 
 The `auto-compaction-retention` setting is particularly important. Without regular compaction, the etcd database grows continuously and performance degrades. Setting it to 5 minutes keeps the database lean.
 
-The `heartbeat-interval` and `election-timeout` should be tuned based on your network latency. The election timeout must be at least 10 times the heartbeat interval, and the heartbeat interval should be approximately the round-trip time between nodes.
+The `heartbeat-interval` and `election-timeout` should be tuned based on your network latency. The etcd tuning guide recommends the election timeout be at least 5 times the heartbeat interval (5-10x is a common range), and the heartbeat interval should be approximately the round-trip time between nodes.
 
 ## Memory Tuning for etcd
 
@@ -110,9 +115,7 @@ etcd nodes communicate constantly through Raft consensus. Network latency betwee
 # talos-machine-config.yaml
 machine:
   sysctls:
-    # Reduce network latency
-    net.ipv4.tcp_nodelay: "1"             # Disable Nagle's algorithm
-    net.ipv4.tcp_low_latency: "1"         # Prefer latency over throughput
+    # Larger socket buffers help with bursty Raft traffic
     net.core.rmem_max: "8388608"          # 8MB receive buffer max
     net.core.wmem_max: "8388608"          # 8MB send buffer max
 
@@ -120,6 +123,8 @@ machine:
     net.core.somaxconn: "32768"
     net.ipv4.tcp_max_syn_backlog: "32768"
 ```
+
+Note that `TCP_NODELAY` (disabling Nagle's algorithm) is a per-socket option that etcd already sets on its peer connections, so there is no kernel sysctl to flip for it.
 
 Place your etcd nodes in the same availability zone or rack to minimize network round trips. Cross-datacenter etcd clusters are not recommended due to the latency requirements of the Raft protocol.
 
