@@ -34,7 +34,7 @@ When installing Talos Linux, you specify the installation disk in the machine co
 machine:
   install:
     disk: /dev/nvme0n1  # Install to the first NVMe drive
-    image: ghcr.io/siderolabs/installer:v1.7.0
+    image: ghcr.io/siderolabs/installer:v1.13.2
     wipe: true  # Wipe the disk before installation
 ```
 
@@ -72,17 +72,17 @@ This tells you exactly which NVMe devices are present on the node, along with th
 Beyond the system installation disk, you can configure Talos to use additional NVMe disks for storage. This is common in setups where you want fast NVMe storage for databases, caching layers, or distributed storage systems like Ceph.
 
 ```yaml
-# Machine configuration with additional NVMe disk
-machine:
-  install:
-    disk: /dev/nvme0n1  # System disk
-  disks:
-    - device: /dev/nvme1n1  # Additional NVMe disk for storage
-      partitions:
-        - mountpoint: /var/mnt/fast-storage
+# User volume configuration with an additional NVMe disk
+apiVersion: v1alpha1
+kind: UserVolumeConfig
+name: fast-storage
+provisioning:
+  diskSelector:
+    match: disk.dev_path == '/dev/nvme1n1'
+  minSize: 100GB
 ```
 
-This configuration tells Talos to partition the second NVMe drive and mount it at `/var/mnt/fast-storage`. Kubernetes pods can then use this mount point through hostPath volumes or a local persistent volume provisioner.
+This configuration tells Talos to create a user volume on the second NVMe drive and mount it at `/var/mnt/fast-storage`. Kubernetes pods can then use this mount point through hostPath volumes or a local persistent volume provisioner.
 
 ## Setting Up Local Persistent Volumes on NVMe
 
@@ -90,11 +90,13 @@ For Kubernetes workloads that need high-performance local storage, you can creat
 
 ```yaml
 # First, configure the NVMe disk in the Talos machine config
-machine:
-  disks:
-    - device: /dev/nvme1n1
-      partitions:
-        - mountpoint: /var/mnt/nvme-storage
+apiVersion: v1alpha1
+kind: UserVolumeConfig
+name: nvme-storage
+provisioning:
+  diskSelector:
+    match: disk.dev_path == '/dev/nvme1n1'
+  minSize: 500GiB
 
 ---
 # Then create a PersistentVolume in Kubernetes
@@ -191,13 +193,24 @@ For nodes with multiple NVMe drives, you have several options for organizing you
 machine:
   install:
     disk: /dev/nvme0n1  # System
-  disks:
-    - device: /dev/nvme1n1  # Database storage
-      partitions:
-        - mountpoint: /var/mnt/database
-    - device: /dev/nvme2n1  # Cache storage
-      partitions:
-        - mountpoint: /var/mnt/cache
+
+---
+apiVersion: v1alpha1
+kind: UserVolumeConfig
+name: database
+provisioning:
+  diskSelector:
+    match: disk.dev_path == '/dev/nvme1n1'
+  minSize: 100GB
+
+---
+apiVersion: v1alpha1
+kind: UserVolumeConfig
+name: cache
+provisioning:
+  diskSelector:
+    match: disk.dev_path == '/dev/nvme2n1'
+  minSize: 100GB
 ```
 
 **Storage pool** - Hand multiple NVMe drives to a distributed storage system like Ceph, which will pool them together:
@@ -220,12 +233,13 @@ If your NVMe disks are not showing up in Talos, here are some things to check:
 
 2. **Driver support** - Talos Linux includes NVMe drivers in the default kernel. If you are using an unusual NVMe controller, check whether it requires a specific driver that might need a custom Talos extension.
 
-3. **Device naming** - After a reboot, NVMe device names can sometimes change order. Using stable device identifiers (like `/dev/disk/by-id/`) in your machine configuration can prevent issues:
+3. **Device naming** - After a reboot, NVMe device names can sometimes change order. Using stable disk selectors or stable device identifiers from `/dev/disk/by-id/` in your machine configuration can prevent issues:
 
 ```yaml
 machine:
   install:
-    disk: /dev/disk/by-id/nvme-Samsung_SSD_980_PRO_S123456789
+    diskSelector:
+      wwid: nvme.144d-Samsung_SSD_980_PRO-S123456789
 ```
 
 4. **Disk detection** - Use `talosctl get disks` to verify the system can see the NVMe drives. If a drive is missing from the list, it may be a hardware or firmware issue.
