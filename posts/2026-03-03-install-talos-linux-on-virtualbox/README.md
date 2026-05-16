@@ -40,11 +40,11 @@ Download the Talos ISO image:
 
 ```bash
 # Download the Talos ISO
-curl -LO https://github.com/siderolabs/talos/releases/download/v1.7.0/talos-amd64.iso
+curl -LO https://github.com/siderolabs/talos/releases/download/v1.7.0/metal-amd64.iso
 
 # Store it in a convenient location
 mkdir -p ~/talos-vbox
-mv talos-amd64.iso ~/talos-vbox/
+mv metal-amd64.iso ~/talos-vbox/
 ```
 
 ## Creating VMs with VBoxManage
@@ -118,7 +118,7 @@ create_talos_vm() {
     --port 0 \
     --device 0 \
     --type dvddrive \
-    --medium "${VBOX_DIR}/talos-amd64.iso"
+    --medium "${VBOX_DIR}/metal-amd64.iso"
 
   echo "Created VM: ${NAME}"
 }
