@@ -188,11 +188,11 @@ kind: Pod
 spec:
   securityContext:
     sysctls:
-      - name: net.core.somaxconn
-        value: "1024"
+      - name: net.ipv4.tcp_keepalive_time
+        value: "600"
 ```
 
-However, many sysctls are "unsafe" from Kubernetes' perspective and can only be set at the node level. That is where `machine.sysctls` comes in. Parameters like `vm.max_map_count`, `fs.file-max`, and `net.netfilter.nf_conntrack_max` must be set on the node.
+However, many sysctls are "unsafe" from Kubernetes' perspective and can only be set at the node level. That is where `machine.sysctls` comes in. Parameters like `vm.max_map_count`, `fs.file-max`, `net.core.somaxconn`, and `net.netfilter.nf_conntrack_max` must be set on the node.
 
 ## Using Config Patches for Different Node Roles
 
