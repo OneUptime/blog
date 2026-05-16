@@ -59,10 +59,11 @@ Now install Traefik with some sensible defaults:
 # Install Traefik with the dashboard enabled
 helm install traefik traefik/traefik \
   --namespace traefik \
-  --set dashboard.enabled=true \
+  --set api.dashboard=true \
+  --set ingressRoute.dashboard.enabled=true \
   --set ports.web.nodePort=30080 \
   --set ports.websecure.nodePort=30443 \
-  --set service.type=NodePort
+  --set service.spec.type=NodePort
 ```
 
 For bare metal Talos clusters without an external load balancer, NodePort is the simplest approach. If you have MetalLB or another load balancer solution configured, you can use `LoadBalancer` instead:
@@ -71,8 +72,9 @@ For bare metal Talos clusters without an external load balancer, NodePort is the
 # Install with LoadBalancer service type
 helm install traefik traefik/traefik \
   --namespace traefik \
-  --set dashboard.enabled=true \
-  --set service.type=LoadBalancer
+  --set api.dashboard=true \
+  --set ingressRoute.dashboard.enabled=true \
+  --set service.spec.type=LoadBalancer
 ```
 
 ## Verifying the Installation
@@ -98,7 +100,7 @@ Traefik comes with a built-in dashboard that shows all discovered routes, servic
 
 ```bash
 # Forward the dashboard port to your local machine
-kubectl port-forward -n traefik svc/traefik 9000:9000
+kubectl port-forward -n traefik deployment/traefik 9000:9000
 ```
 
 Then open `http://localhost:9000/dashboard/` in your browser. Note the trailing slash - it is required.
@@ -116,7 +118,7 @@ spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`traefik.example.com`)
+    - match: Host(`traefik.example.com`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))
       kind: Rule
       services:
         - name: api@internal
@@ -132,6 +134,16 @@ metadata:
 spec:
   basicAuth:
     secret: dashboard-auth-secret
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dashboard-auth-secret
+  namespace: traefik
+type: kubernetes.io/basic-auth
+stringData:
+  username: admin
+  password: replace-this-password
 ```
 
 ## Routing Traffic with IngressRoute
@@ -282,7 +294,7 @@ If you are running into network issues, check the Talos network configuration:
 # Verify node network interfaces
 talosctl get addresses -n <NODE_IP>
 
-# Check CNI is working
+# Check CNI is working if you are using Cilium
 kubectl get pods -n kube-system -l k8s-app=cilium
 ```
 
@@ -294,10 +306,10 @@ For production workloads, you may want to run multiple Traefik replicas:
 # Scale Traefik to 3 replicas
 helm upgrade traefik traefik/traefik \
   --namespace traefik \
-  --set replicas=3
+  --set deployment.replicas=3
 ```
 
-When running multiple replicas, make sure your service type distributes traffic evenly across all instances. With NodePort on Talos, this happens automatically through kube-proxy.
+When running multiple replicas, make sure your service type distributes traffic evenly across all instances. With NodePort on Talos, this happens through the Kubernetes service proxy implementation, such as kube-proxy or the CNI's kube-proxy replacement.
 
 ## Conclusion
 
