@@ -57,7 +57,7 @@ talosctl health --nodes 192.168.1.10 --wait-timeout 10m
 talosctl dmesg --nodes 192.168.1.10
 
 # Check for machine status events
-talosctl get events --nodes 192.168.1.10
+talosctl events --nodes 192.168.1.10
 ```
 
 If the node comes back on the old version, the automatic rollback worked. If the node does not come back at all, you may need manual intervention.
@@ -195,10 +195,11 @@ If etcd lost quorum during the failed upgrade:
 
 ```bash
 # Restore etcd from a snapshot (if you took one before upgrading)
-talosctl etcd recover --nodes 192.168.1.10 \
-  --snapshot /tmp/etcd-pre-upgrade.snapshot
+talosctl bootstrap --nodes 192.168.1.10 \
+  --recover-from /tmp/etcd-pre-upgrade.snapshot
 
-# Or bootstrap a new etcd cluster on the recovered node
+# Or, as a last resort, bootstrap a new (empty) etcd cluster on the recovered node
+# WARNING: this loses all cluster state
 talosctl bootstrap --nodes 192.168.1.10
 ```
 
