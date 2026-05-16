@@ -47,23 +47,24 @@ You also want to make sure the boot order is set to boot from SD card first:
 vcgencmd bootloader_config | grep BOOT_ORDER
 
 # Set boot order to SD card (1) then USB (4)
-# BOOT_ORDER=0xf14
+# BOOT_ORDER=0xf41
 sudo -E rpi-eeprom-config --edit
 ```
 
 ## Step 2: Download the Talos Linux Image
 
-Talos provides a pre-built image specifically for the Raspberry Pi 4:
+Talos provides a Raspberry Pi generic image through the Talos Image Factory:
 
 ```bash
-# Download the Raspberry Pi 4 image (ARM64)
-curl -LO https://github.com/siderolabs/talos/releases/latest/download/metal-rpi_generic-arm64.raw.xz
+# Download the Raspberry Pi generic image (ARM64)
+TALOS_VERSION=v1.13.2
+curl -LO "https://factory.talos.dev/image/ee21ef4a5ef808a9b7484cc0dda0f25075021691c8c09a276591eedb638ea1f9/${TALOS_VERSION}/metal-arm64.raw.xz"
 
 # Decompress it
-xz -d metal-rpi_generic-arm64.raw.xz
+xz -d metal-arm64.raw.xz
 ```
 
-The `rpi_generic` image includes the specific kernel modules and firmware needed for the Raspberry Pi's hardware, including the Broadcom WiFi/Bluetooth chip and the VideoCore GPU.
+The `rpi_generic` image includes the Raspberry Pi overlay and firmware needed to boot the board. The default overlay disables WiFi and Bluetooth, and VideoCore GPU acceleration requires a custom Image Factory image with the `vc4` system extension.
 
 ## Step 3: Flash the Image to the SD Card
 
@@ -78,10 +79,10 @@ diskutil list
 lsblk
 
 # Flash the image (replace /dev/sdX with your actual device)
-sudo dd if=metal-rpi_generic-arm64.raw of=/dev/sdX bs=4M status=progress conv=fsync
+sudo dd if=metal-arm64.raw of=/dev/sdX bs=4M status=progress conv=fsync
 
 # On macOS, use rdisk for faster writes
-sudo dd if=metal-rpi_generic-arm64.raw of=/dev/rdiskN bs=4m
+sudo dd if=metal-arm64.raw of=/dev/rdiskN bs=4m
 ```
 
 Double-check that you are writing to the correct device. Writing to the wrong disk will destroy data.
@@ -184,10 +185,10 @@ The Raspberry Pi 4 has some quirks that are worth addressing:
 
 ### SD Card Wear
 
-SD cards have limited write endurance. To reduce wear, you can adjust the Talos configuration to limit logging:
+SD cards have limited write endurance. If you collect service logs, send them to a remote log receiver instead of running a local logging stack on the Pi:
 
 ```yaml
-# Reduce log verbosity in machine config
+# Send service logs to a remote receiver
 machine:
   logging:
     destinations:
