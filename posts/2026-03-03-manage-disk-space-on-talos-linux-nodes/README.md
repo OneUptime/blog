@@ -45,11 +45,12 @@ The first step in managing disk space is knowing how much is being used. Here ar
 # Check mount points and their usage
 talosctl get mounts --nodes 192.168.1.10
 
-# Check system statistics
-talosctl get systemstat --nodes 192.168.1.10
+# Check CPU and memory statistics
+talosctl get cpustats --nodes 192.168.1.10
+talosctl get memorystats --nodes 192.168.1.10
 
 # List container images on the node
-talosctl get images --nodes 192.168.1.10
+talosctl image list --nodes 192.168.1.10
 ```
 
 ### Using Kubernetes
