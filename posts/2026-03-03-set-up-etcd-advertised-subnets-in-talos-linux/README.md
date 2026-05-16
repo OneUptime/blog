@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, etcd, Networking, Kubernetes, Cluster Configuration
 
-Description: Learn how to configure etcd advertised subnets in Talos Linux to control which network interface etcd uses for peer communication and client traffic.
+Description: Learn how to configure etcd advertised subnets in Talos Linux to control which network interface etcd advertises for peer communication.
 
 ---
 
@@ -12,9 +12,9 @@ In a Talos Linux cluster, etcd is the backbone of your control plane. It stores 
 
 ## What Are etcd Advertised Subnets
 
-When etcd starts on a Talos Linux control plane node, it needs to advertise an IP address that other etcd members can use to reach it. By default, Talos picks the IP address associated with the default route. In a single-interface setup, this works fine because there is only one choice.
+When etcd starts on a Talos Linux control plane node, it needs to advertise an IP address that other etcd members can use to reach it. By default, Talos picks the first routable address on the node. In a single-interface setup, this works fine because there is only one practical choice.
 
-But when your nodes have multiple interfaces - say one for management traffic and another for storage or a separate pod network - the default choice might not be the right one. The `advertisedSubnets` setting tells Talos which subnet to pick the etcd advertise address from, giving you explicit control over etcd's communication path.
+But when your nodes have multiple interfaces - say one for management traffic and another for storage or a separate pod network - the default choice might not be the right one. The `advertisedSubnets` setting tells Talos which subnet to pick the etcd advertise address from, giving you explicit control over etcd's peer communication path.
 
 ## Why This Matters
 
@@ -39,14 +39,14 @@ Before making changes, check which address etcd is currently advertising:
 talosctl etcd members --nodes 10.0.1.10
 ```
 
-You can also inspect the etcd service to see its current configuration:
+You can also inspect the etcd service status:
 
 ```bash
 # Get the etcd service status
 talosctl service etcd --nodes 10.0.1.10
 ```
 
-This will show you the advertise address etcd is currently using. If it is on the wrong subnet, you know you need to configure `advertisedSubnets`.
+This helps confirm that the etcd service is healthy. Use the member list to confirm the peer and client URLs etcd is currently advertising. If they are on the wrong subnet, you know you need to configure `advertisedSubnets`.
 
 ## Configuring Advertised Subnets
 
@@ -60,14 +60,14 @@ cluster:
       - 10.0.1.0/24  # Use the management network for etcd
 ```
 
-You can specify multiple subnets, and Talos will use the first one that matches an address on the node:
+You can specify multiple subnets, and Talos will pick the advertised IP from addresses that match those subnets:
 
 ```yaml
 cluster:
   etcd:
     advertisedSubnets:
-      - 10.0.1.0/24    # Primary preference
-      - 172.16.0.0/16   # Fallback if primary is not available
+      - 10.0.1.0/24    # Management network
+      - 172.16.0.0/16   # Additional allowed network
 ```
 
 ## Applying the Configuration
@@ -94,16 +94,16 @@ Then apply it to each control plane node:
 
 ```bash
 # Apply the patch to the first control plane node
-talosctl apply-config --nodes 10.0.1.10 --patch @etcd-subnet-patch.yaml --mode no-reboot
+talosctl patch machineconfig --nodes 10.0.1.10 --patch @etcd-subnet-patch.yaml --mode no-reboot
 
 # Apply to the second control plane node
-talosctl apply-config --nodes 10.0.1.11 --patch @etcd-subnet-patch.yaml --mode no-reboot
+talosctl patch machineconfig --nodes 10.0.1.11 --patch @etcd-subnet-patch.yaml --mode no-reboot
 
 # Apply to the third control plane node
-talosctl apply-config --nodes 10.0.1.12 --patch @etcd-subnet-patch.yaml --mode no-reboot
+talosctl patch machineconfig --nodes 10.0.1.12 --patch @etcd-subnet-patch.yaml --mode no-reboot
 ```
 
-The `--mode no-reboot` flag is important here. Changing the etcd advertised subnet does not require a full reboot, and rebooting control plane nodes simultaneously could cause cluster downtime.
+The `--mode no-reboot` flag applies the patch immediately when Talos can do so without a reboot. Some etcd configuration changes are accepted on the fly but are fully applied only after a reboot, so if Talos reports that a reboot is required or the advertised URLs do not change, perform controlled rolling reboots of the control plane nodes rather than rebooting them simultaneously.
 
 ## Handling Subnet Changes on Running Clusters
 
@@ -123,21 +123,21 @@ talosctl get addresses --nodes 10.0.1.11 | grep "172.16"
 talosctl get addresses --nodes 10.0.1.12 | grep "172.16"
 
 # Step 2: Apply to the first node
-talosctl apply-config --nodes 10.0.1.10 --patch @etcd-subnet-patch.yaml --mode no-reboot
+talosctl patch machineconfig --nodes 10.0.1.10 --patch @etcd-subnet-patch.yaml --mode no-reboot
 
 # Step 3: Wait a moment and check etcd health
 talosctl etcd members --nodes 10.0.1.11
 talosctl etcd status --nodes 10.0.1.11
 
 # Step 4: If healthy, proceed to the next node
-talosctl apply-config --nodes 10.0.1.11 --patch @etcd-subnet-patch.yaml --mode no-reboot
+talosctl patch machineconfig --nodes 10.0.1.11 --patch @etcd-subnet-patch.yaml --mode no-reboot
 
 # Step 5: Verify again
 talosctl etcd members --nodes 10.0.1.12
 talosctl etcd status --nodes 10.0.1.12
 
 # Step 6: Apply to the last node
-talosctl apply-config --nodes 10.0.1.12 --patch @etcd-subnet-patch.yaml --mode no-reboot
+talosctl patch machineconfig --nodes 10.0.1.12 --patch @etcd-subnet-patch.yaml --mode no-reboot
 ```
 
 ## Combined Configuration with Kubelet Node IP
@@ -156,7 +156,7 @@ cluster:
       - 10.0.1.0/24
 ```
 
-This way, both the kubelet registration and etcd peer communication happen over the management network, while other interfaces can handle workload traffic.
+This way, etcd peer communication and kubelet node IP selection use the management network, while other interfaces can handle workload traffic.
 
 ## Dual-Stack Considerations
 
@@ -170,7 +170,7 @@ cluster:
       - fd00:db8:1::/64       # IPv6 management network
 ```
 
-Talos will pick one address from each family if dual-stack is configured, or just the matching address for single-stack setups.
+Talos will pick the advertised address from the matching routable node addresses. If you need etcd to listen on more networks than it advertises, configure `cluster.etcd.listenSubnets` explicitly.
 
 ## Verifying the Change
 
