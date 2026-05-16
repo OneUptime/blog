@@ -83,7 +83,7 @@ Before applying configurations, verify that the new nodes are reachable and in m
     - name: Verify node is in maintenance mode
       ansible.builtin.command:
         cmd: >
-          talosctl disks
+          talosctl get disks
           --insecure
           --nodes {{ node_ip }}
       register: disk_check
@@ -131,6 +131,12 @@ Generate the worker configuration for the new nodes using existing cluster secre
       ansible.builtin.fail:
         msg: "Secrets file not found at {{ secrets_path }}. Cannot provision nodes without cluster secrets."
       when: not secrets_file.stat.exists
+
+    - name: Ensure generated configuration directory exists
+      ansible.builtin.file:
+        path: ./generated
+        state: directory
+        mode: "0750"
 
     - name: Generate worker configuration
       ansible.builtin.command:
