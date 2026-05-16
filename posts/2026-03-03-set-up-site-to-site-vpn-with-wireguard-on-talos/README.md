@@ -8,7 +8,7 @@ Description: Learn how to establish a site-to-site VPN using WireGuard on Talos 
 
 ---
 
-When you run Talos Linux clusters in multiple locations, whether that is different data centers, cloud regions, or a mix of on-premises and cloud infrastructure, you need a secure way to connect them. A site-to-site VPN with WireGuard is one of the cleanest solutions for this. It creates encrypted tunnels between the sites, allowing pods and services in one location to communicate with those in another as if they were on the same network.
+When you run Talos Linux clusters in multiple locations, whether that is different data centers, cloud regions, or a mix of on-premises and cloud infrastructure, you need a secure way to connect them. A site-to-site VPN with WireGuard is one of the cleanest solutions for this. It creates encrypted tunnels between the sites, allowing node and pod networks in one location to communicate with those in another.
 
 This post covers how to set up a site-to-site VPN using WireGuard on Talos Linux, including the network design, configuration on both sides, and routing setup.
 
@@ -22,13 +22,12 @@ Here is a typical two-site setup:
 Site A (Data Center)              Site B (Cloud)
   Node CIDR: 10.1.0.0/24           Node CIDR: 10.2.0.0/24
   Pod CIDR:  10.244.0.0/17         Pod CIDR:  10.244.128.0/17
-  Service:   10.96.0.0/17          Service:   10.96.128.0/17
   WG Gateway: 10.1.0.1             WG Gateway: 10.2.0.1
   WG Tunnel:  10.10.0.1/30         WG Tunnel:  10.10.0.2/30
   Public IP:  203.0.113.10         Public IP:  198.51.100.20
 ```
 
-The key principle is that each site uses non-overlapping CIDR ranges. If both sites use the same pod or service CIDR, routing will break. Plan this carefully before deploying your clusters.
+The key principle is that each site uses non-overlapping CIDR ranges. If both sites use the same node or pod CIDR, routing will break. Plan this carefully before deploying your clusters. Kubernetes Service CIDRs are virtual service networks, so do not rely on static routes alone for cross-cluster service access.
 
 ## Generating Keys for Both Sites
 
@@ -76,16 +75,12 @@ machine:
                 - 10.2.0.0/24
                 # Site B pod CIDR
                 - 10.244.128.0/17
-                # Site B service CIDR
-                - 10.96.128.0/17
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
     # Add static routes for Site B networks
     routes:
       - network: 10.2.0.0/24
         gateway: 10.10.0.2
       - network: 10.244.128.0/17
-        gateway: 10.10.0.2
-      - network: 10.96.128.0/17
         gateway: 10.10.0.2
   # Enable IP forwarding so the gateway can route traffic
   sysctls:
@@ -96,7 +91,7 @@ Apply this configuration to the gateway node at Site A:
 
 ```bash
 talosctl -n 10.1.0.1 patch machineconfig \
-  --patch-file site-a-gateway-patch.yaml
+  --patch @site-a-gateway-patch.yaml
 ```
 
 ## Configuring the Site B Gateway
@@ -123,14 +118,11 @@ machine:
                 - 10.10.0.1/32
                 - 10.1.0.0/24
                 - 10.244.0.0/17
-                - 10.96.0.0/17
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
     routes:
       - network: 10.1.0.0/24
         gateway: 10.10.0.1
       - network: 10.244.0.0/17
-        gateway: 10.10.0.1
-      - network: 10.96.0.0/17
         gateway: 10.10.0.1
   sysctls:
     net.ipv4.ip_forward: "1"
@@ -140,7 +132,7 @@ Apply it to the Site B gateway:
 
 ```bash
 talosctl -n 10.2.0.1 patch machineconfig \
-  --patch-file site-b-gateway-patch.yaml
+  --patch @site-b-gateway-patch.yaml
 ```
 
 ## Routing Traffic from Non-Gateway Nodes
@@ -158,15 +150,13 @@ machine:
         gateway: 10.1.0.1
       - network: 10.244.128.0/17
         gateway: 10.1.0.1
-      - network: 10.96.128.0/17
-        gateway: 10.1.0.1
 ```
 
 ```bash
 # Apply routes to all non-gateway nodes at Site A
 for node in 10.1.0.2 10.1.0.3 10.1.0.4; do
   talosctl -n $node patch machineconfig \
-    --patch-file route-patch-site-a-nodes.yaml
+    --patch @route-patch-site-a-nodes.yaml
 done
 ```
 
@@ -181,8 +171,6 @@ machine:
         gateway: 10.2.0.1
       - network: 10.244.0.0/17
         gateway: 10.2.0.1
-      - network: 10.96.0.0/17
-        gateway: 10.2.0.1
 ```
 
 ## Verifying the VPN Connection
@@ -190,21 +178,23 @@ machine:
 With both gateways configured and routes in place, verify the connection end to end.
 
 ```bash
-# Test tunnel connectivity between gateways
-talosctl -n 10.1.0.1 ping 10.10.0.2
-
-# Test cross-site node connectivity
-talosctl -n 10.1.0.2 ping 10.2.0.2
-
 # Check WireGuard handshake status
 talosctl -n 10.1.0.1 read /proc/net/wireguard
+
+# Check that the expected routes are present on the gateway and non-gateway nodes
+talosctl -n 10.1.0.1 get routes
+talosctl -n 10.1.0.2 get routes
+
+# Test cross-site connectivity from a temporary pod
+kubectl run vpn-test --rm -it --image=busybox:1.36 --restart=Never -- \
+  ping -c 3 10.2.0.2
 ```
 
-If pings work between the gateways but not between non-gateway nodes, the issue is likely with the static routes. Verify that the routes are applied correctly on both sides.
+If the WireGuard handshake works but cross-site connectivity does not, the issue is likely with the static routes. Verify that the routes are applied correctly on both sides.
 
 ## Handling Pod-to-Pod Communication Across Sites
 
-For pods to communicate across sites, the CNI plugin needs to be aware of the cross-site routing. If you are using Cilium, you can configure it to use the WireGuard tunnel for cross-cluster communication.
+For pods to communicate across sites, the CNI plugin needs to be aware that pod traffic can be routed through the underlying node network. If you are using Cilium in native routing mode, configure a native routing CIDR that covers both sites and ensure the node network has routes for the remote PodCIDRs.
 
 ```yaml
 # Cilium Helm values for cross-site routing
@@ -215,6 +205,7 @@ cluster:
 ipam:
   mode: kubernetes
 routingMode: native
+ipv4NativeRoutingCIDR: 10.244.0.0/16
 autoDirectNodeRoutes: true
 # Enable cross-cluster connectivity
 clustermesh:
@@ -247,7 +238,7 @@ machine:
                 - 10.10.0.1/32
                 - 10.1.0.0/24
                 - 10.244.0.0/17
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
             # Site B gateway
             - publicKey: "SITE_B_PUBLIC_KEY_HERE"
               endpoint: 198.51.100.20:51820
@@ -255,36 +246,14 @@ machine:
                 - 10.10.0.2/32
                 - 10.2.0.0/24
                 - 10.244.128.0/17
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
 ```
 
 Remember to update the Site A and Site B gateways to include Site C as a peer as well.
 
 ## High Availability for the VPN Gateway
 
-Running a single gateway node per site creates a single point of failure. For production environments, run two gateway nodes per site with identical WireGuard configurations. Use a floating virtual IP or a load balancer in front of the gateways to handle failover.
-
-```yaml
-# Use Talos VIP for gateway failover
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        vip:
-          ip: 10.1.0.100
-      - interface: wg0
-        addresses:
-          - 10.10.0.1/30
-        wireguard:
-          privateKey: "GATEWAY_PRIVATE_KEY"
-          listenPort: 51820
-          peers:
-            - publicKey: "REMOTE_PUBLIC_KEY"
-              endpoint: 198.51.100.20:51820
-              allowedIPs:
-                - 10.10.0.2/32
-                - 10.2.0.0/24
-```
+Running a single gateway node per site creates a single point of failure. For production environments, run an active/passive gateway pair per site and fail over a single gateway address with an external load balancer, router, BGP, or another failover mechanism outside the Talos node configuration. Do not run two active gateways with the same WireGuard tunnel address and key. Talos Layer 2 VIP is intended for Kubernetes API access on control plane nodes, not arbitrary WireGuard gateway failover.
 
 ## Conclusion
 
