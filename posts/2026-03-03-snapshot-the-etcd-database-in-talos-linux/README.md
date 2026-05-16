@@ -64,18 +64,18 @@ ls -la ./etcd-snapshot.db
 # A large cluster could produce hundreds of MB
 ```
 
-For a more thorough verification, you can use the etcdctl tool:
+For a more thorough verification, you can use the etcdutl tool:
 
 ```bash
-# If you have etcdctl installed
-etcdctl snapshot status ./etcd-snapshot.db --write-out=table
+# If you have etcdutl installed
+etcdutl snapshot status ./etcd-snapshot.db --write-out=table
 
 # Expected output shows:
 # HASH, REVISION, TOTAL KEYS, TOTAL SIZE
-# All values should be non-zero
+# REVISION, TOTAL KEYS, and TOTAL SIZE should be non-zero
 ```
 
-If you do not have etcdctl installed locally, you can verify the snapshot by attempting a restore in a test environment (more on this in the recovery section).
+If you do not have etcdutl installed locally, you can verify the snapshot by attempting a restore in a test environment.
 
 ## Naming and Organizing Snapshots
 
@@ -145,20 +145,19 @@ talosctl etcd status --nodes <control-plane-ip>
 
 For very large etcd databases (hundreds of MB), the snapshot operation might take a few seconds longer. During this time, etcd might show slightly higher latency for write operations.
 
-## Compacting etcd Before Snapshotting
+## Defragmenting etcd Before Snapshotting
 
-If your etcd database has grown large due to historical revisions, compacting it before taking a snapshot can reduce the snapshot size:
+If your etcd database has grown large due to fragmentation, defragmenting it before taking a snapshot can reduce the on-disk database size:
 
 ```bash
-# Check current database size
+# Check current database size and in-use size
 talosctl etcd status --nodes <control-plane-ip>
 
-# etcd auto-compacts in Talos, but you can check
-# the compaction status in the logs
-talosctl logs etcd --nodes <control-plane-ip> | grep compact
+# Defragment only when needed, and run it on one node at a time
+talosctl etcd defrag --nodes <control-plane-ip>
 ```
 
-Talos configures etcd with auto-compaction by default, so manual compaction is rarely needed. But if your database is unusually large, it is worth investigating.
+The Kubernetes API server performs automatic compaction of the etcd database, which marks deleted space as free. The space is not released from the database file until etcd is defragmented. Defragmentation is resource-intensive, so it should be done only when needed.
 
 ## Snapshot Retention
 
