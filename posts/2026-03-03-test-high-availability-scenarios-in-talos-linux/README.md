@@ -99,15 +99,16 @@ This is the simplest HA test. Verify that workloads reschedule when a worker nod
 # Record current pod distribution
 kubectl get pods -l app=ha-test -o wide
 
-# Shutdown a worker node
-talosctl shutdown --nodes <worker-node-ip>
+# Simulate an abrupt worker failure by shutting down without cordon/drain
+talosctl shutdown --nodes <worker-node-ip> --force
 
 # Monitor pod rescheduling
 kubectl get pods -l app=ha-test -o wide -w
 
 # Time how long it takes for pods to be rescheduled
-# Expected: pods become Terminating after node-monitor-grace-period
-# New pods start on remaining nodes
+# Expected: the node becomes NotReady/Unknown after missed heartbeats
+# Pod eviction normally starts after the unreachable-node eviction delay
+# New pods then start on remaining nodes
 ```
 
 Observe and record:
@@ -117,9 +118,8 @@ Observe and record:
 - How long before replacement pods are running
 
 ```bash
-# Bring the node back
-talosctl reset --nodes <worker-node-ip> --graceful=false
-# Re-apply config if needed
+# Bring the node back using your VM, cloud, or hardware power controls
+# Example: start the VM or power the physical machine back on
 ```
 
 ## Test 2: Control Plane Node Failure
@@ -131,8 +131,8 @@ talosctl etcd status --nodes <cp1>,<cp2>,<cp3>
 # Record which control plane node holds the VIP
 talosctl get addresses --nodes <cp1>,<cp2>,<cp3> | grep vip
 
-# Shutdown a control plane node (preferably the leader for maximum impact)
-talosctl shutdown --nodes <leader-node-ip>
+# Simulate a control plane failure (preferably the leader for maximum impact)
+talosctl shutdown --nodes <leader-node-ip> --force
 
 # Immediately test API access
 time kubectl get nodes
@@ -170,7 +170,7 @@ kubectl get nodes
 talosctl etcd status --nodes <isolated-cp>
 ```
 
-The majority partition should continue operating normally. The isolated node should detect that it lost quorum and stop serving API requests.
+The majority partition should continue operating normally. The isolated control plane node should lose etcd quorum, so Kubernetes API requests that require etcd on that node should fail until the partition heals.
 
 ## Test 4: Storage Failover
 
@@ -225,8 +225,8 @@ kubectl apply -f storage-test.yaml
 sleep 30
 
 # Fail the node where the writer is running
-NODE=$(kubectl get pod storage-writer -o jsonpath='{.spec.nodeName}')
-talosctl shutdown --nodes $NODE
+NODE_IP=$(kubectl get node "$(kubectl get pod storage-writer -o jsonpath='{.spec.nodeName}')" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
+talosctl shutdown --nodes "$NODE_IP" --force
 
 # Wait for the pod to be rescheduled
 kubectl get pod storage-writer -w
@@ -264,9 +264,7 @@ spec:
           args: ["--vm", "1", "--vm-bytes", "4G", "--vm-hang", "0"]
           resources:
             requests:
-              memory: 4Gi
-            limits:
-              memory: 4Gi
+              memory: 100Mi
 ```
 
 Watch how the cluster handles the pressure:
@@ -282,8 +280,8 @@ kubectl top nodes
 Verify that rolling updates work correctly even when a node is down:
 
 ```bash
-# Take a worker node offline
-talosctl shutdown --nodes <worker-ip>
+# Take a worker node offline without cordon/drain
+talosctl shutdown --nodes <worker-ip> --force
 
 # Trigger a rolling update
 kubectl set image deployment/ha-test-app nginx=nginx:1.25-alpine
