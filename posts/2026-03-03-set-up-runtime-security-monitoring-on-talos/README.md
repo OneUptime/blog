@@ -39,18 +39,21 @@ helm repo add falcosecurity https://falcosecurity.github.io/charts
 # Update the chart cache
 helm repo update
 
-# Install Falco with eBPF driver (required for Talos Linux)
+# Allow Falco's privileged DaemonSet on Talos' default Pod Security Admission setup
+kubectl create namespace falco
+kubectl label namespace falco pod-security.kubernetes.io/enforce=privileged
+
+# Install Falco with the modern eBPF driver (required for Talos Linux)
 helm install falco \
   falcosecurity/falco \
   --namespace falco \
-  --create-namespace \
-  --set driver.kind=ebpf \
+  --set driver.kind=modern_ebpf \
   --set tty=true \
   --set falcosidekick.enabled=true \
   --set falcosidekick.webui.enabled=true
 ```
 
-On Talos Linux, you must use the eBPF driver because the kernel module driver requires a writeable filesystem and build tools, neither of which are available on Talos.
+On Talos Linux, you must use the modern eBPF driver because the kernel module driver requires loading a kernel module on the host, which does not fit Talos' locked-down operating model.
 
 ```bash
 # Verify Falco is running
@@ -71,23 +74,17 @@ Customize Falco's behavior through the Helm values.
 # falco-values.yaml
 falco:
   # Output format for alerts
-  jsonOutput: true
-  jsonIncludeOutputProperty: true
+  json_output: true
+  json_include_output_property: true
 
   # Log level
-  logLevel: info
+  log_level: info
 
   # Time format
-  timeFormatISO8601: true
+  time_format_iso_8601: true
 
   # Rule priorities to alert on
   priority: warning
-
-  # gRPC output for integration with Falcosidekick
-  grpc:
-    enabled: true
-  grpcOutput:
-    enabled: true
 
 # Falcosidekick for forwarding alerts
 falcosidekick:
@@ -123,13 +120,8 @@ helm upgrade falco \
 Write custom rules that match your environment and threat model.
 
 ```yaml
-# custom-rules-configmap.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: falco-custom-rules
-  namespace: falco
-data:
+# custom-rules-values.yaml
+customRules:
   custom-rules.yaml: |
     - rule: Shell Spawned in Container
       desc: Detect shell execution inside a container
@@ -167,11 +159,11 @@ data:
       condition: >
         outbound and
         container and
-        fd.sport in (4444, 5555, 6666, 8888, 1337)
+        fd.rport in (4444, 5555, 6666, 8888, 1337)
       output: >
         Suspicious outbound connection from container
         (user=%user.name container=%container.name
-        connection=%fd.name port=%fd.sport
+        connection=%fd.name port=%fd.rport
         image=%container.image.repository)
       priority: CRITICAL
       tags: [container, network, mitre_command_and_control]
@@ -191,9 +183,25 @@ data:
       tags: [container, crypto, mitre_execution]
 ```
 
+```bash
+# Load the custom rules through the Falco Helm chart
+helm upgrade falco \
+  falcosecurity/falco \
+  --namespace falco \
+  -f falco-values.yaml \
+  -f custom-rules-values.yaml
+```
+
 ## Deploying Tetragon for Advanced Monitoring
 
 Tetragon by Cilium provides deeper eBPF-based security observability with the ability to enforce policies at the kernel level.
+
+```yaml
+# tetragon-values.yaml
+extraHostPathMounts:
+  - name: sys-kernel-tracing
+    mountPath: /sys/kernel/tracing
+```
 
 ```bash
 # Add the Cilium Helm repository
@@ -203,6 +211,7 @@ helm repo add cilium https://helm.cilium.io/
 helm install tetragon \
   cilium/tetragon \
   --namespace kube-system \
+  -f tetragon-values.yaml \
   --set tetragon.enableProcessCred=true \
   --set tetragon.enableProcessNs=true
 ```
@@ -228,21 +237,29 @@ metadata:
   name: file-access-monitoring
 spec:
   kprobes:
-    - call: "fd_install"
+    - call: "security_file_permission"
       syscall: false
+      return: true
       args:
         - index: 0
-          type: int
-        - index: 1
           type: "file"
+        - index: 1
+          type: "int"
+      returnArg:
+        index: 0
+        type: "int"
       selectors:
         - matchArgs:
-            - index: 1
+            - index: 0
               operator: "Prefix"
               values:
                 - "/etc/shadow"
                 - "/etc/passwd"
                 - "/var/run/secrets/kubernetes.io"
+            - index: 1
+              operator: "Equal"
+              values:
+                - "4"
 ```
 
 ```yaml
