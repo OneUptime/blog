@@ -147,7 +147,7 @@ kubectl run minio-client --rm -it --restart=Never \
   -- sh -c "
     mc alias set myminio http://minio:9000 mlflow-minio your-minio-secret-key
     mc mb myminio/mlflow-artifacts
-    mc policy set download myminio/mlflow-artifacts
+    mc anonymous set download myminio/mlflow-artifacts
   "
 ```
 
@@ -247,17 +247,15 @@ spec:
       containers:
         - name: mlflow
           image: ghcr.io/mlflow/mlflow:v2.10.0
-          command:
-            - mlflow
-            - server
-            - --backend-store-uri
-            - postgresql://mlflow:$(DB_PASSWORD)@mlflow-postgres:5432/mlflow
-            - --default-artifact-root
-            - s3://mlflow-artifacts
-            - --host
-            - "0.0.0.0"
-            - --port
-            - "5000"
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              pip install --no-cache-dir psycopg2-binary boto3 &&
+              exec mlflow server \
+                --backend-store-uri "postgresql://mlflow:${DB_PASSWORD}@mlflow-postgres:5432/mlflow" \
+                --default-artifact-root s3://mlflow-artifacts \
+                --host 0.0.0.0 \
+                --port 5000
           ports:
             - containerPort: 5000
               name: http
@@ -393,7 +391,13 @@ with mlflow.start_run(run_name="resnet18-baseline"):
     print("Run logged to MLflow")
 ```
 
-Create a Kubernetes job that runs this script:
+Create a ConfigMap and Kubernetes job that runs this script:
+
+```bash
+kubectl create configmap training-scripts \
+  --namespace mlflow \
+  --from-file=train_with_mlflow.py
+```
 
 ```yaml
 # mlflow-training-job.yaml
@@ -439,26 +443,26 @@ spec:
 
 ## MLflow Model Registry
 
-Use the model registry to manage model versions and promote them through stages:
+Use the model registry to manage model versions and promote them with aliases:
 
 ```python
-import mlflow
+from mlflow import MlflowClient
 
-client = mlflow.MlflowClient("http://mlflow.mlflow.svc.cluster.local:5000")
+client = MlflowClient("http://mlflow.mlflow.svc.cluster.local:5000")
 
 # Register a model from a run
-result = client.create_registered_model("cifar10-classifier")
-client.create_model_version(
+client.create_registered_model("cifar10-classifier")
+model_version = client.create_model_version(
     name="cifar10-classifier",
     source="s3://mlflow-artifacts/0/abc123/artifacts/model",
     run_id="abc123"
 )
 
-# Transition a model version to production
-client.transition_model_version_stage(
+# Assign a production alias to the model version
+client.set_registered_model_alias(
     name="cifar10-classifier",
-    version=1,
-    stage="Production"
+    alias="production",
+    version=model_version.version
 )
 ```
 
@@ -471,7 +475,11 @@ Back up both the PostgreSQL database and MinIO storage:
 kubectl exec -n mlflow mlflow-postgres-0 -- pg_dump -U mlflow mlflow > mlflow-backup.sql
 
 # Backup MinIO using mc client
+kubectl port-forward -n mlflow svc/minio 9000:9000 &
+PORT_FORWARD_PID=$!
+mc alias set myminio http://localhost:9000 mlflow-minio your-minio-secret-key
 mc mirror myminio/mlflow-artifacts ./mlflow-artifacts-backup
+kill $PORT_FORWARD_PID
 ```
 
 ## Conclusion
