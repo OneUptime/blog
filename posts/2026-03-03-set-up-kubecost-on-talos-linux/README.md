@@ -23,7 +23,7 @@ Before diving into installation, here is what Kubecost gives you:
 - Budget alerts and reporting
 - Multi-cluster cost aggregation
 
-The free tier (OpenCost) provides core functionality. The commercial version adds features like multi-cluster views, SAML integration, and longer data retention.
+Kubecost Free and OpenCost provide core functionality. The commercial version adds features like enterprise multi-cluster management, SAML integration, and longer data retention options.
 
 ## Installing Kubecost with Helm
 
@@ -32,27 +32,26 @@ Start with the basic installation:
 ```bash
 # Add the Kubecost Helm repository
 
-helm repo add kubecost https://kubecost.github.io/cost-analyzer/
+helm repo add kubecost https://kubecost.github.io/kubecost/
 helm repo update
 
 # Install Kubecost
-helm install kubecost kubecost/cost-analyzer \
+helm upgrade --install kubecost kubecost/kubecost \
   --namespace kubecost \
   --create-namespace \
-  --set kubecostToken="your-token-here" \
-  --set prometheus.server.retention=30d
+  --set global.clusterId="talos-prod"
 ```
 
-If you already have Prometheus running in your cluster, point Kubecost to your existing instance:
+If you already have a product key for Kubecost Enterprise, pass it as Helm values:
 
 ```bash
-# Install Kubecost using existing Prometheus
-helm install kubecost kubecost/cost-analyzer \
+# Install Kubecost with a product key
+helm upgrade --install kubecost kubecost/kubecost \
   --namespace kubecost \
   --create-namespace \
-  --set kubecostToken="your-token-here" \
-  --set global.prometheus.enabled=false \
-  --set global.prometheus.fqdn="http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090"
+  --set global.clusterId="talos-prod" \
+  --set kubecostProductConfigs.productKey.enabled=true \
+  --set kubecostProductConfigs.productKey.key="your-product-key-here"
 ```
 
 ## Custom Values for Talos Linux
@@ -63,24 +62,19 @@ Create a comprehensive values file for production deployment:
 # kubecost-values.yaml
 # Kubecost configuration for Talos Linux clusters
 
-# Use existing Prometheus if available
 global:
-  prometheus:
-    enabled: false
-    fqdn: "http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090"
+  # Use a descriptive name so this cluster is easy to identify
+  clusterId: "talos-prod"
 
-# Kubecost resource allocation
-kubecostModel:
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 1000m
-      memory: 1Gi
+# Local agent storage for collected Kubernetes metrics
+finopsagent:
+  persistence:
+    enabled: true
+    size: 32Gi
+    storageClass: "standard"
 
 # Frontend resources
-kubecostFrontend:
+frontend:
   resources:
     requests:
       cpu: 50m
@@ -88,12 +82,8 @@ kubecostFrontend:
     limits:
       cpu: 500m
       memory: 512Mi
-
-# Persistent storage for cost data
-persistentVolume:
-  enabled: true
-  size: 32Gi
-  storageClass: "standard"
+  service:
+    type: ClusterIP
 
 # Network costs tracking
 networkCosts:
@@ -105,16 +95,8 @@ networkCosts:
       google-cloud-services: true
 
 # Savings recommendations
-savings:
-  enabled: true
-
-# Grafana dashboards
-grafana:
-  enabled: false  # Use existing Grafana
-
-# Service configuration
-service:
-  type: ClusterIP
+kubecostProductConfigs:
+  clusterProfile: production
 
 # Ingress for external access
 ingress:
@@ -135,7 +117,7 @@ Deploy with the custom values:
 
 ```bash
 # Install Kubecost with production configuration
-helm install kubecost kubecost/cost-analyzer \
+helm upgrade --install kubecost kubecost/kubecost \
   --namespace kubecost \
   --create-namespace \
   -f kubecost-values.yaml
@@ -159,7 +141,11 @@ Create an IAM policy and role for Kubecost:
         "athena:StartQueryExecution",
         "athena:GetQueryExecution",
         "athena:GetQueryResults",
+        "glue:GetDatabase",
+        "glue:GetTable",
+        "glue:GetPartitions",
         "s3:GetObject",
+        "s3:GetBucketLocation",
         "s3:ListBucket",
         "s3:PutObject",
         "cur:DescribeReportDefinitions"
@@ -174,18 +160,27 @@ Configure Kubecost to use the AWS billing integration:
 
 ```yaml
 # kubecost-aws-values.yaml
-# AWS-specific Kubecost configuration
-kubecostProductConfigs:
-  awsServiceKeyName: "your-access-key-id"
-  awsServiceKeyPassword: "your-secret-access-key"
-  awsSpotDataRegion: "us-east-1"
-  awsSpotDataBucket: "your-spot-data-bucket"
-  awsSpotDataPrefix: "spot-data"
-  athenaProjectID: "your-aws-account-id"
-  athenaBucketName: "s3://your-athena-results-bucket"
-  athenaRegion: "us-east-1"
-  athenaDatabase: "your_cur_database"
-  athenaTable: "your_cur_table"
+cloudCost:
+  cloudIntegrationJSON: |-
+    {
+      "aws": {
+        "athena": [
+          {
+            "bucket": "s3://your-athena-results-bucket",
+            "region": "us-east-1",
+            "database": "your_cur_database",
+            "table": "your_cur_table",
+            "workgroup": "primary",
+            "account": "your-aws-account-id",
+            "authorizer": {
+              "authorizerType": "AWSAccessKey",
+              "id": "your-access-key-id",
+              "secret": "your-secret-access-key"
+            }
+          }
+        ]
+      }
+    }
 ```
 
 ### Custom Pricing
@@ -195,13 +190,15 @@ If you are running on bare metal or a provider without billing integration, set 
 ```yaml
 # kubecost-custom-pricing.yaml
 # Custom pricing for self-hosted or bare metal Talos clusters
-kubecostProductConfigs:
-  customPricesEnabled: "true"
-  defaultModelPricing:
-    CPU: "0.031611"      # Cost per CPU core per hour
-    RAM: "0.004237"      # Cost per GB RAM per hour
-    GPU: "0.95"          # Cost per GPU per hour
-    storage: "0.00005479" # Cost per GB storage per hour
+finopsagent:
+  agent:
+    kubecost:
+      customPrices:
+        enabled: true
+        CPU: "0.031611"      # Cost per CPU core per hour
+        RAM: "0.004237"      # Cost per GB RAM per hour
+        GPU: "0.95"          # Cost per GPU per hour
+        storage: "0.00005479" # Cost per GB storage per hour
 ```
 
 ## Accessing the Kubecost Dashboard
@@ -210,7 +207,7 @@ After installation, access the dashboard:
 
 ```bash
 # Port-forward to access Kubecost locally
-kubectl port-forward -n kubecost svc/kubecost-cost-analyzer 9090:9090
+kubectl port-forward -n kubecost svc/kubecost-frontend 9090:9090
 
 # Open http://localhost:9090 in your browser
 ```
@@ -238,42 +235,44 @@ Configure Kubecost to alert when spending exceeds thresholds:
 ```yaml
 # kubecost-alerts.yaml
 # Alert configuration for cost monitoring
-kubecostProductConfigs:
-  alerts:
-    # Alert when daily cluster cost exceeds threshold
-    - type: budget
-      threshold: 100
-      window: daily
-      aggregation: cluster
-      filter: ""
-      ownerContact:
-        - "platform-team@example.com"
+global:
+  notifications:
+    alertConfigs:
+      alerts:
+        # Alert when daily cluster cost exceeds threshold
+        - type: budget
+          threshold: 100
+          window: daily
+          aggregation: cluster
+          filter: ""
+          ownerContact:
+            - "platform-team@example.com"
 
-    # Alert when a namespace exceeds weekly budget
-    - type: budget
-      threshold: 500
-      window: weekly
-      aggregation: namespace
-      filter: "production"
-      ownerContact:
-        - "engineering@example.com"
+        # Alert when a namespace exceeds weekly budget
+        - type: budget
+          threshold: 500
+          window: weekly
+          aggregation: namespace
+          filter: "production"
+          ownerContact:
+            - "engineering@example.com"
 
-    # Alert on significant cost increase
-    - type: recurringUpdate
-      window: weekly
-      aggregation: namespace
-      filter: ""
-      ownerContact:
-        - "finops@example.com"
+        # Alert on significant cost increase
+        - type: recurringUpdate
+          window: weekly
+          aggregation: namespace
+          filter: ""
+          ownerContact:
+            - "finops@example.com"
 
-    # Alert on efficiency drops
-    - type: efficiency
-      threshold: 0.3
-      window: daily
-      aggregation: namespace
-      filter: ""
-      ownerContact:
-        - "platform-team@example.com"
+        # Alert on efficiency drops
+        - type: efficiency
+          threshold: 0.3
+          window: daily
+          aggregation: namespace
+          filter: ""
+          ownerContact:
+            - "platform-team@example.com"
 ```
 
 ## Integrating Kubecost with Slack
@@ -282,12 +281,12 @@ Send cost alerts to Slack for better visibility:
 
 ```yaml
 # Enable Slack notifications
-kubecostProductConfigs:
-  alertConfigs:
-    enabled: true
-    slackWebhookUrl: "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
-    globalAlertEmails:
-      - "finops@example.com"
+global:
+  notifications:
+    alertConfigs:
+      globalSlackWebhookUrl: "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+      globalAlertEmails:
+        - "finops@example.com"
 ```
 
 ## Using Kubecost API for Custom Reports
@@ -299,7 +298,7 @@ Build custom cost reports using the Kubecost API:
 # weekly-cost-report.sh
 # Generate a weekly cost report by team
 
-KUBECOST_URL="http://kubecost-cost-analyzer.kubecost.svc.cluster.local:9090"
+KUBECOST_URL="http://kubecost-frontend.kubecost.svc.cluster.local:9090"
 
 echo "Weekly Cost Report - $(date)"
 echo "================================"
@@ -316,10 +315,10 @@ echo "Top Savings Recommendations:"
 echo "================================"
 
 # Get top savings opportunities
-curl -s "${KUBECOST_URL}/model/savings/requestSizing?window=7d" \
+curl -s "${KUBECOST_URL}/model/savings/requestSizingV2?window=7d" \
   | jq -r '
     .[0:5][] |
-    "  \(.namespace)/\(.controllerName): Save $\(.annualSavings | . * 100 | round / 100)/year"
+    "  \(.namespace)/\(.controllerName): Save $\(((.monthlySavings.cpu + .monthlySavings.memory) * 100 | round) / 100)/month"
   '
 ```
 
@@ -331,14 +330,14 @@ Enable detailed network cost tracking:
 # Network cost monitoring for cross-zone traffic
 networkCosts:
   enabled: true
-  podMonitor:
+  serviceMonitor:
     enabled: true
   config:
     services:
       amazon-web-services: true
     destinations:
       # Track cross-zone traffic specifically
-      cross-zone:
+      in-region:
         - "10.0.0.0/16"
 ```
 
