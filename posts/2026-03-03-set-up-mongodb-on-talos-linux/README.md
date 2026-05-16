@@ -29,22 +29,29 @@ MongoDB works best with specific kernel parameters. Talos Linux lets you configu
 
 ```yaml
 # talos-mongodb-patch.yaml
-
+version: v1alpha1
 machine:
-  sysctls:
-    # MongoDB recommends disabling transparent huge pages
-    vm.max_map_count: "262144"
-  disks:
-    - device: /dev/sdb
-      partitions:
-        - mountpoint: /var/lib/mongo-data
+  sysfs:
+    # MongoDB 7.0 and earlier recommend disabling transparent huge pages
+    /sys/kernel/mm/transparent_hugepage/enabled: "never"
+    /sys/kernel/mm/transparent_hugepage/defrag: "never"
+---
+apiVersion: v1alpha1
+kind: UserVolumeConfig
+name: mongo-data
+provisioning:
+  diskSelector:
+    match: disk.dev_path == '/dev/sdb'
+  minSize: 50GB
 ```
 
 ```bash
 # Apply the configuration to worker nodes
-talosctl apply-config --nodes 10.0.0.2,10.0.0.3,10.0.0.4 \
-  --file talos-mongodb-patch.yaml
+talosctl patch mc --nodes 10.0.0.2,10.0.0.3,10.0.0.4 \
+  --patch @talos-mongodb-patch.yaml
 ```
+
+If you use a node-local provisioner, configure it to place MongoDB volumes on the Talos user volume path, such as `/var/mnt/mongo-data`.
 
 ## Step 2: Create Namespace and Authentication
 
@@ -105,14 +112,29 @@ spec:
         app: mongodb
     spec:
       terminationGracePeriodSeconds: 30
+      initContainers:
+        - name: fix-keyfile
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              cp /keyfile-src/keyfile /keyfile/keyfile
+              chown 999:999 /keyfile/keyfile
+              chmod 400 /keyfile/keyfile
+          volumeMounts:
+            - name: mongodb-keyfile-secret
+              mountPath: /keyfile-src
+              readOnly: true
+            - name: mongodb-keyfile
+              mountPath: /keyfile
       containers:
         - name: mongodb
           image: mongo:7.0
           ports:
             - containerPort: 27017
               name: mongodb
-          command:
-            - mongod
+          args:
             - "--replSet"
             - "rs0"
             - "--bind_ip_all"
@@ -138,25 +160,27 @@ spec:
           livenessProbe:
             exec:
               command:
-                - mongosh
-                - --eval
-                - "db.adminCommand('ping')"
+                - /bin/sh
+                - -c
+                - mongosh --quiet -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "db.adminCommand({ ping: 1 })"
             initialDelaySeconds: 30
             periodSeconds: 10
           # Check if MongoDB is ready to serve traffic
           readinessProbe:
             exec:
               command:
-                - mongosh
-                - --eval
-                - "db.adminCommand('ping')"
+                - /bin/sh
+                - -c
+                - mongosh --quiet -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "db.adminCommand({ ping: 1 })"
             initialDelaySeconds: 10
             periodSeconds: 5
       volumes:
-        - name: mongodb-keyfile
+        - name: mongodb-keyfile-secret
           secret:
             secretName: mongodb-keyfile
             defaultMode: 0400
+        - name: mongodb-keyfile
+          emptyDir: {}
   volumeClaimTemplates:
     - metadata:
         name: mongodb-data
@@ -189,8 +213,8 @@ spec:
 
 ```bash
 # Deploy MongoDB
-kubectl apply -f mongodb-statefulset.yaml
 kubectl apply -f mongodb-service.yaml
+kubectl apply -f mongodb-statefulset.yaml
 
 # Wait for all pods to be ready
 kubectl rollout status statefulset/mongodb -n mongodb
@@ -246,7 +270,10 @@ For a more automated approach, the MongoDB Community Operator handles replica se
 # Install the MongoDB Community Operator
 helm repo add mongodb https://mongodb.github.io/helm-charts
 helm install community-operator mongodb/community-operator \
-  --namespace mongodb
+  --namespace mongodb --create-namespace
+kubectl create secret generic mongodb-admin-password \
+  --from-literal=password="secure-mongo-password" \
+  --namespace=mongodb
 ```
 
 ```yaml
@@ -294,6 +321,19 @@ Set up regular backups using `mongodump`:
 
 ```yaml
 # mongodb-backup.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongodb-backup-pvc
+  namespace: mongodb
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 100Gi
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
