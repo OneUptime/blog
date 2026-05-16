@@ -30,7 +30,7 @@ This is the simplest option. It creates volumes on the local disk of whatever no
 ```bash
 # Install local-path provisioner
 
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.36/deploy/local-path-storage.yaml
 
 # Set as default storage class
 kubectl patch storageclass local-path -p \
@@ -79,43 +79,60 @@ Longhorn is the sweet spot for most home labs. It provides replicated block stor
 
 ### Prerequisites on Talos
 
-Longhorn needs the iscsi-tools extension on Talos nodes. Add it to your machine configuration:
+Longhorn needs the iscsi-tools and util-linux-tools extensions on Talos nodes. Add them to your machine configuration:
 
 ```yaml
 machine:
   install:
     extensions:
       - image: ghcr.io/siderolabs/iscsi-tools:v0.1.4
-  files:
-    - content: |
-        [Service]
-        Environment="ISCSIADM_PREFER_DB_SETTING=true"
-      path: /etc/systemd/system/iscsid.service.d/env.conf
-      op: create
-  # Longhorn also needs these kernel modules
+      - image: ghcr.io/siderolabs/util-linux-tools:2.42.0
+  kubelet:
+    extraMounts:
+      - destination: /var/mnt/longhorn
+        type: bind
+        source: /var/mnt/longhorn
+        options:
+          - bind
+          - rshared
+          - rw
   kernel:
     modules:
       - name: iscsi_tcp
+---
+apiVersion: v1alpha1
+kind: UserVolumeConfig
+name: longhorn
+provisioning:
+  diskSelector:
+    match: disk.transport == "nvme"
+  grow: false
+  maxSize: 1700GB
 ```
 
-Apply the updated configuration and reboot:
+Set Longhorn's default data path to `/var/mnt/longhorn`, then apply the updated configuration. If you are adding extensions to an existing node, upgrade Talos with an installer image that contains those extensions so they are activated:
 
 ```bash
 talosctl apply-config --nodes 192.168.1.100 --file controlplane.yaml --mode auto
 talosctl apply-config --nodes 192.168.1.101 --file worker.yaml --mode auto
 talosctl apply-config --nodes 192.168.1.102 --file worker.yaml --mode auto
+
+talosctl upgrade --nodes 192.168.1.100 --image factory.talos.dev/installer/<schematic-id>:<talos-version>
 ```
 
 ### Installing Longhorn
 
 ```bash
+kubectl create namespace longhorn-system
+kubectl label namespace longhorn-system pod-security.kubernetes.io/enforce=privileged
+
 helm repo add longhorn https://charts.longhorn.io
 helm repo update
 
 helm install longhorn longhorn/longhorn \
   --namespace longhorn-system \
-  --create-namespace \
   --set defaultSettings.defaultReplicaCount=2 \
+  --set defaultSettings.defaultDataPath=/var/mnt/longhorn \
   --set defaultSettings.defaultDataLocality=best-effort \
   --set persistence.defaultClassReplicaCount=2
 ```
@@ -195,6 +212,9 @@ machine:
 
 ```bash
 # Install the Rook operator
+helm repo add rook-release https://charts.rook.io/release
+helm repo update
+
 helm install rook-ceph rook-release/rook-ceph \
   --namespace rook-ceph \
   --create-namespace
@@ -214,7 +234,7 @@ metadata:
   namespace: rook-ceph
 spec:
   cephVersion:
-    image: quay.io/ceph/ceph:v18.2.0
+    image: quay.io/ceph/ceph:v19.2.3
   dataDirHostPath: /var/lib/rook
   mon:
     count: 3
@@ -247,6 +267,7 @@ metadata:
   name: replicapool
   namespace: rook-ceph
 spec:
+  failureDomain: host
   replicated:
     size: 2
 ---
@@ -259,11 +280,18 @@ parameters:
   clusterID: rook-ceph
   pool: replicapool
   imageFormat: "2"
+  imageFeatures: layering
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+  csi.storage.k8s.io/fstype: ext4
 reclaimPolicy: Delete
+allowVolumeExpansion: true
 ```
 
 ## Option 4: NFS from External NAS
@@ -272,6 +300,9 @@ If you have a NAS (Synology, QNAP, TrueNAS, or even a Raspberry Pi with an exter
 
 ```bash
 # Install the NFS CSI driver
+helm repo add csi-driver-nfs https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/charts
+helm repo update
+
 helm install csi-driver-nfs csi-driver-nfs/csi-driver-nfs \
   --namespace kube-system
 ```
@@ -314,8 +345,8 @@ Whatever storage solution you choose, monitor disk usage and performance:
 # Check PVC status
 kubectl get pvc -A
 
-# Check node disk usage
-kubectl top nodes
+# Check node disk usage on Talos
+talosctl usage /var/mnt/longhorn --nodes 192.168.1.100
 
 # For Longhorn, check the dashboard
 kubectl port-forward -n longhorn-system svc/longhorn-frontend 8080:80
