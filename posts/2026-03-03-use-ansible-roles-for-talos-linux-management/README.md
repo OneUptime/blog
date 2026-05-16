@@ -105,6 +105,7 @@ force_regenerate_secrets: false
   ansible.builtin.command:
     cmd: >
       talosctl gen secrets
+      --talos-version {{ talos_version }}
       -o {{ secrets_output_path }}/secrets.yaml
   when: not secrets_file.stat.exists or force_regenerate_secrets
 
@@ -151,7 +152,10 @@ install_disk: "/dev/sda"
     cmd: >
       talosctl gen config {{ cluster_name }} {{ cluster_endpoint }}
       --with-secrets {{ talos_secrets_path }}
-      --output-dir {{ config_output_dir }}
+      --talos-version {{ talos_version }}
+      --kubernetes-version {{ kubernetes_version }}
+      --install-disk {{ install_disk }}
+      --output {{ config_output_dir }}
       --force
 
 - name: Generate control plane patches from template
@@ -343,14 +347,13 @@ With roles defined, your playbooks become clean and focused:
 
 ## Role Dependencies
 
-Define role dependencies in the `meta/main.yml` file so they execute automatically:
+Define role dependencies in the `meta/main.yml` file so they execute automatically. Use this for roles that run in the same host context; for example, the configuration role can depend on the secrets role because both run on `localhost` in this guide:
 
 ```yaml
-# roles/talos-deploy/meta/main.yml
+# roles/talos-config/meta/main.yml
 ---
 dependencies:
   - role: talos-secrets
-  - role: talos-config
 ```
 
 ## Publishing and Sharing Roles
@@ -362,7 +365,7 @@ Package your roles for reuse with Ansible Galaxy:
 ansible-galaxy role init talos-deploy
 
 # Install a role from a Git repository
-ansible-galaxy install git+https://github.com/yourorg/ansible-role-talos-deploy.git
+ansible-galaxy role install git+https://github.com/yourorg/ansible-role-talos-deploy.git
 ```
 
 Using Ansible roles for Talos management brings structure, reusability, and clarity to your automation. Each role encapsulates a specific responsibility, making it easier to understand, test, and maintain your cluster management code as it grows.
