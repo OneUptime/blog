@@ -51,20 +51,22 @@ source openrc.sh
 
 ## Step 1: Upload the Talos Linux Image
 
-Download the OpenStack-compatible Talos Linux image and upload it to Glance:
+Download the OpenStack-compatible Talos Linux image from the Talos Image Factory and upload it to Glance:
 
 ```bash
-# Download the OpenStack (nocloud) image
-wget https://github.com/siderolabs/talos/releases/download/v1.9.0/nocloud-amd64.raw.xz
+# Download the OpenStack image
+SCHEMATIC_ID=376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba
+TALOS_VERSION=v1.9.0
+wget "https://factory.talos.dev/image/${SCHEMATIC_ID}/${TALOS_VERSION}/openstack-amd64.raw.xz"
 
 # Decompress it
-xz -d nocloud-amd64.raw.xz
+xz -d openstack-amd64.raw.xz
 
 # Upload to OpenStack Glance
 openstack image create \
   --disk-format raw \
   --container-format bare \
-  --file nocloud-amd64.raw \
+  --file openstack-amd64.raw \
   --property os_type=linux \
   --public \
   "Talos Linux v1.9.0"
@@ -175,20 +177,21 @@ talosctl gen config openstack-cluster https://${LB_VIP}:6443
 # Customize for OpenStack
 ```
 
+If you will access the Kubernetes API through a floating IP or DNS name instead of the private VIP, use that externally reachable address in the `talosctl gen config` endpoint and in the API server SANs.
+
 Edit the configuration for the OpenStack environment:
 
 ```yaml
 # In controlplane.yaml
 machine:
-  install:
-    disk: /dev/vda
-    image: ghcr.io/siderolabs/installer:v1.9.0
   network:
     interfaces:
       - interface: eth0
         dhcp: true
-  certSANs:
-    - ${LB_VIP}
+cluster:
+  apiServer:
+    certSANs:
+      - <LB_VIP_OR_FLOATING_IP>
 ```
 
 ## Step 6: Create Instances
@@ -204,6 +207,7 @@ for i in 1 2 3; do
     --network talos-net \
     --security-group talos-cluster \
     --key-name my-keypair \
+    --user-data controlplane.yaml \
     "talos-cp-${i}"
 done
 
@@ -214,6 +218,7 @@ for i in 1 2; do
     --image "Talos Linux v1.9.0" \
     --network talos-net \
     --security-group talos-cluster \
+    --user-data worker.yaml \
     "talos-worker-${i}"
 done
 ```
@@ -257,23 +262,9 @@ LB_FIP=$(openstack floating ip create external-net -f value -c floating_ip_addre
 openstack floating ip set --port $(openstack loadbalancer show talos-api-lb -f value -c vip_port_id) $LB_FIP
 ```
 
-## Step 9: Apply Configuration and Bootstrap
+## Step 9: Bootstrap the Cluster
 
 ```bash
-# Apply control plane config to each node
-for ip in <CP1_FIP> <CP2_FIP> <CP3_FIP>; do
-  talosctl apply-config --insecure \
-    --nodes $ip \
-    --file controlplane.yaml
-done
-
-# Apply worker config
-for ip in <WORKER1_IP> <WORKER2_IP>; do
-  talosctl apply-config --insecure \
-    --nodes $ip \
-    --file worker.yaml
-done
-
 # Bootstrap the first control plane node
 talosctl config endpoint <CP1_FIP>
 talosctl config node <CP1_FIP>
