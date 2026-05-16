@@ -156,9 +156,11 @@ machine:
       cpu-cfs-quota-period: "50ms"
       # Enable CFS quota enforcement
       cpu-cfs-quota: "true"
+      # Required to use a non-default cpu-cfs-quota-period value
+      feature-gates: "CustomCPUCFSQuotaPeriod=true"
 ```
 
-A shorter period (like 50ms or even 20ms) can reduce the burstiness of throttling at the cost of slightly higher scheduler overhead. This is particularly useful for latency-sensitive applications.
+A shorter period (like 50ms or even 20ms) can reduce the burstiness of throttling at the cost of slightly higher scheduler overhead. This is particularly useful for latency-sensitive applications. Note that any value other than the default 100ms requires the `CustomCPUCFSQuotaPeriod` feature gate to be enabled.
 
 ## The Case Against CPU Limits
 
