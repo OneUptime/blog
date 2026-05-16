@@ -175,12 +175,15 @@ spec:
 
 Linkerd's load balancer uses an algorithm called EWMA (Exponentially Weighted Moving Average) that naturally sends fewer requests to slow or failing endpoints. This acts as an implicit circuit breaker.
 
-For more explicit control, you can use Linkerd's failure accrual:
+For more explicit control, you can use Linkerd's failure accrual. The annotations are applied to the target Service so that meshed clients trip the circuit breaker on consecutive failures:
 
 ```bash
-# Configure failure accrual through annotations
-kubectl annotate deployment api-service \
-  config.linkerd.io/proxy-log-level=linkerd=info,warn
+# Enable consecutive failure accrual on the target Service
+kubectl annotate service api-service \
+  balancer.linkerd.io/failure-accrual=consecutive \
+  balancer.linkerd.io/failure-accrual-consecutive-max-failures=7 \
+  balancer.linkerd.io/failure-accrual-consecutive-min-penalty=1s \
+  balancer.linkerd.io/failure-accrual-consecutive-max-penalty=60s
 ```
 
 ## Testing Circuit Breaking
