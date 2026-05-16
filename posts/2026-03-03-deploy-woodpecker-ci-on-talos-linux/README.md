@@ -323,12 +323,12 @@ Add secrets through the Woodpecker web UI or API.
 
 ```bash
 # Using the Woodpecker CLI
-woodpecker secret add \
+woodpecker-cli repo secret add \
   --repository myorg/myapp \
   --name docker_username \
   --value your-username
 
-woodpecker secret add \
+woodpecker-cli repo secret add \
   --repository myorg/myapp \
   --name docker_password \
   --value your-password
@@ -363,11 +363,26 @@ agent:
     WOODPECKER_BACKEND_K8S_VOLUME_SIZE: "10G"
     WOODPECKER_BACKEND_K8S_POD_LABELS: "ci=woodpecker"
     WOODPECKER_BACKEND_K8S_POD_ANNOTATIONS: "sidecar.istio.io/inject=false"
-    # Resource defaults for build pods
-    WOODPECKER_BACKEND_K8S_POD_RESOURCES_LIMITS_CPU: "2"
-    WOODPECKER_BACKEND_K8S_POD_RESOURCES_LIMITS_MEMORY: "2Gi"
-    WOODPECKER_BACKEND_K8S_POD_RESOURCES_REQUESTS_CPU: "500m"
-    WOODPECKER_BACKEND_K8S_POD_RESOURCES_REQUESTS_MEMORY: "512Mi"
+```
+
+Woodpecker does not expose agent-level environment variables for default build pod CPU and memory limits. To cap build pod resources, either set them per step using `backend_options.kubernetes.resources` in your pipeline YAML, or apply a Kubernetes `LimitRange` to the builds namespace.
+
+```yaml
+# Per-step resource limits in .woodpecker.yaml
+steps:
+  - name: build
+    image: golang:1.22
+    commands:
+      - go build ./...
+    backend_options:
+      kubernetes:
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+          limits:
+            cpu: "2"
+            memory: "2Gi"
 ```
 
 ## Monitoring and Maintenance
