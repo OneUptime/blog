@@ -203,7 +203,7 @@ volumeBindingMode: WaitForFirstConsumer
 Regularly audit unused persistent volumes:
 
 ```bash
-# Find PVCs that are not mounted by any pod
+# List all bound PVCs with their size, then cross-reference with running pods to identify unused volumes
 kubectl get pvc -A -o json | jq '
   .items[] |
   select(.status.phase == "Bound") |
