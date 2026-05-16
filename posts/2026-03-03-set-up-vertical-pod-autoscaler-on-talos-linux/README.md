@@ -26,6 +26,8 @@ Together, these components ensure your pods always have appropriate resource all
 
 The VPA is not included in Kubernetes by default. Install it from the official repository:
 
+Before installing, make sure Metrics Server is already running in the cluster because the VPA recommender reads pod metrics from the `metrics.k8s.io` API.
+
 ```bash
 # Clone the VPA repository
 
@@ -36,19 +38,11 @@ cd autoscaler/vertical-pod-autoscaler
 ./hack/vpa-up.sh
 ```
 
-Alternatively, install it using the individual manifests:
+Alternatively, apply the processed manifests from the same checkout:
 
 ```bash
-# Apply VPA CRDs
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/autoscaler/master/vertical-pod-autoscaler/deploy/vpa-v1-crd-gen.yaml
-
-# Apply RBAC
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/autoscaler/master/vertical-pod-autoscaler/deploy/vpa-rbac.yaml
-
-# Deploy the VPA components
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/autoscaler/master/vertical-pod-autoscaler/deploy/recommender-deployment.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/autoscaler/master/vertical-pod-autoscaler/deploy/updater-deployment.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/autoscaler/master/vertical-pod-autoscaler/deploy/admission-controller-deployment.yaml
+# Generate the admission controller TLS secret and apply all VPA resources
+./hack/vpa-process-yamls.sh apply
 ```
 
 Verify the installation:
@@ -153,12 +147,12 @@ The fields mean:
 - **Uncapped Target**: Target without considering min/max constraints
 - **Upper Bound**: Maximum recommended resources
 
-## VPA in Auto Mode
+## VPA in Recreate Mode
 
-When you are confident in the recommendations, switch to "Auto" mode. In this mode, the VPA will actually modify pod resources:
+When you are confident in the recommendations, switch to "Recreate" mode. In this mode, the VPA will actually modify pod resources:
 
 ```yaml
-# vpa-auto-mode.yaml
+# vpa-recreate-mode.yaml
 apiVersion: autoscaling.k8s.io/v1
 kind: VerticalPodAutoscaler
 metadata:
@@ -169,7 +163,7 @@ spec:
     kind: Deployment
     name: resource-consumer
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
     - containerName: consumer
@@ -183,10 +177,10 @@ spec:
 ```
 
 ```bash
-kubectl apply -f vpa-auto-mode.yaml
+kubectl apply -f vpa-recreate-mode.yaml
 ```
 
-In Auto mode, the VPA will evict pods that need resource adjustments and the new pods will be created with updated resource requests by the admission controller.
+In Recreate mode, the VPA will evict pods that need resource adjustments and the new pods will be created with updated resource requests by the admission controller. The older "Auto" mode currently behaves like "Recreate", but it is deprecated in VPA 1.4.0 and later.
 
 ## VPA in Initial Mode
 
@@ -234,7 +228,7 @@ spec:
     kind: Deployment
     name: webapp
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
     - containerName: webapp
@@ -260,7 +254,7 @@ spec:
     kind: Deployment
     name: multi-container-app
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
     - containerName: main-app
@@ -300,7 +294,7 @@ spec:
     kind: Deployment
     name: webapp
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
     - containerName: webapp
@@ -361,4 +355,4 @@ kubectl get vpa resource-consumer-vpa -o jsonpath='{.status.recommendation.conta
 
 ## Wrapping Up
 
-The Vertical Pod Autoscaler on Talos Linux helps you maintain optimal resource allocation for your workloads without constant manual tuning. Start with recommendation-only mode to understand your application's resource patterns, then graduate to automatic mode once you trust the recommendations. Combined with the Horizontal Pod Autoscaler for replica scaling, the VPA ensures your pods are right-sized while your cluster handles load efficiently.
+The Vertical Pod Autoscaler on Talos Linux helps you maintain optimal resource allocation for your workloads without constant manual tuning. Start with recommendation-only mode to understand your application's resource patterns, then graduate to Recreate mode once you trust the recommendations. Combined with the Horizontal Pod Autoscaler for replica scaling, the VPA ensures your pods are right-sized while your cluster handles load efficiently.
