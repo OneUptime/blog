@@ -26,7 +26,7 @@ Before starting, confirm you have the following:
 - kubectl configured to communicate with your cluster
 - Helm v3 installed locally
 - Credentials for at least one cloud provider (AWS, GCP, or Azure)
-- Sufficient cluster resources (Crossplane recommends at least 2 CPU cores and 2GB RAM for the controller)
+- Sufficient cluster resources for the Crossplane core pod, RBAC manager, provider pods, and any composition functions you install
 
 ## Installing Crossplane
 
@@ -90,7 +90,7 @@ kubectl get providers -w
 # Wait until the INSTALLED and HEALTHY columns both show True
 ```
 
-For a more comprehensive AWS setup, you can install the provider family that covers multiple services.
+For a more comprehensive AWS setup, you can install the provider family that supplies shared AWS configuration for service-specific AWS providers.
 
 ```yaml
 # aws-provider-family.yaml
@@ -176,11 +176,21 @@ kubectl get bucket my-talos-crossplane-bucket
 kubectl describe bucket my-talos-crossplane-bucket
 ```
 
-The bucket will be created in AWS, and Crossplane will continuously reconcile its state. If someone deletes or modifies the bucket outside of Kubernetes, Crossplane will detect the drift and restore it to the desired state.
+The bucket will be created in AWS, and Crossplane will continuously reconcile its state. If someone deletes the bucket or changes fields that Crossplane manages outside of Kubernetes, Crossplane will detect the drift and restore those fields to the desired state.
 
 ## Building Composite Resources
 
-Raw managed resources are useful, but the real power of Crossplane comes from Compositions. These let you define templates that bundle multiple cloud resources together.
+Raw managed resources are useful, but the real power of Crossplane comes from Compositions. These let you define templates that bundle multiple cloud resources together. For this example, install the Patch and Transform function and make sure you have installed the AWS RDS provider package before applying the Composition.
+
+```yaml
+# function-patch-and-transform.yaml
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-patch-and-transform
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/function-patch-and-transform:v0.8.2
+```
 
 ```yaml
 # composite-definition.yaml
@@ -230,23 +240,33 @@ spec:
   compositeTypeRef:
     apiVersion: custom.example.com/v1alpha1
     kind: XDatabase
-  resources:
-    - name: rds-instance
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            engine: postgres
-            engineVersion: "15"
-            instanceClass: db.t3.medium
-            allocatedStorage: 20
-            skipFinalSnapshot: true
-      patches:
-        - fromFieldPath: "spec.region"
-          toFieldPath: "spec.forProvider.region"
-        - fromFieldPath: "spec.storageGB"
-          toFieldPath: "spec.forProvider.allocatedStorage"
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: rds-instance
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                forProvider:
+                  engine: postgres
+                  engineVersion: "15"
+                  instanceClass: db.t3.medium
+                  allocatedStorage: 20
+                  skipFinalSnapshot: true
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: "spec.region"
+                toFieldPath: "spec.forProvider.region"
+              - type: FromCompositeFieldPath
+                fromFieldPath: "spec.storageGB"
+                toFieldPath: "spec.forProvider.allocatedStorage"
 ```
 
 ## Talos-Specific Considerations
@@ -259,11 +279,11 @@ Make sure your Talos machine configuration allows adequate resources for the Cro
 # Check current resource usage for Crossplane pods
 kubectl top pods -n crossplane-system
 
-# If needed, patch the deployment to adjust resources
-kubectl patch deployment crossplane \
-  -n crossplane-system \
-  --type='json' \
-  -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/memory", "value": "512Mi"}]'
+# If needed, adjust the Helm-managed resource request
+helm upgrade crossplane crossplane-stable/crossplane \
+  --namespace crossplane-system \
+  --reuse-values \
+  --set resourcesCrossplane.requests.memory=512Mi
 ```
 
 Network policies on Talos should allow the Crossplane controllers to reach your cloud provider APIs. Verify outbound connectivity from the crossplane-system namespace.
