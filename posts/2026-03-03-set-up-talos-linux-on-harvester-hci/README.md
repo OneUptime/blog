@@ -38,15 +38,15 @@ Before starting, make sure you have:
 Harvester uses VM images to boot virtual machines. Download the Talos cloud image and upload it to Harvester.
 
 ```bash
-# Download the Talos qcow2 image for cloud/VM environments
+# Download the Talos NoCloud raw image for VM environments
 
-curl -LO https://github.com/siderolabs/talos/releases/latest/download/nocloud-amd64.raw.xz
+curl -LO https://factory.talos.dev/image/376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba/v1.13.2/nocloud-amd64.raw.xz
 
 # Decompress it
 xz -d nocloud-amd64.raw.xz
 ```
 
-Upload the image through the Harvester UI by navigating to Images and clicking Create. Alternatively, use the API:
+Upload the decompressed `nocloud-amd64.raw` image through the Harvester UI by navigating to Images and clicking Create. Alternatively, host the decompressed raw image at a URL that the Harvester cluster can reach and use the API:
 
 ```yaml
 # talos-image.yaml - Harvester VM Image resource
@@ -60,7 +60,7 @@ metadata:
 spec:
   displayName: "Talos Linux"
   sourceType: download
-  url: "https://github.com/siderolabs/talos/releases/latest/download/nocloud-amd64.raw.xz"
+  url: "https://example.com/talos/nocloud-amd64.raw"
 ```
 
 ```bash
@@ -77,29 +77,29 @@ Set up a VM network in Harvester for your Talos nodes to communicate:
 
 ```yaml
 # talos-network.yaml
-apiVersion: network.harvesterhci.io/v1beta1
-kind: ClusterNetwork
-metadata:
-  name: talos-net
----
-apiVersion: network.harvesterhci.io/v1beta1
+apiVersion: k8s.cni.cncf.io/v1
 kind: NetworkAttachmentDefinition
 metadata:
   name: talos-vlan
   namespace: default
+  labels:
+    network.harvesterhci.io/clusternetwork: mgmt
+    network.harvesterhci.io/type: L2VlanNetwork
+    network.harvesterhci.io/vlan-id: "100"
 spec:
   config: |
     {
       "cniVersion": "0.3.1",
       "name": "talos-vlan",
       "type": "bridge",
-      "bridge": "talos-br",
+      "bridge": "mgmt-br",
+      "promiscMode": true,
       "vlan": 100,
       "ipam": {}
     }
 ```
 
-If you want the Talos VMs to use the management network (the same network as Harvester nodes), you can skip this step and use the default `management-network`.
+If you want the Talos VMs to use the management network without a VLAN, you can skip this step and use the default management network. For a custom cluster network, create the Harvester cluster network and network config first, then point the VM network at that cluster network.
 
 ## Step 3: Generate Talos Machine Configurations
 
@@ -108,7 +108,8 @@ Generate the Talos configuration files. You will need to decide on the control p
 ```bash
 # Generate configs with a VIP for the control plane
 talosctl gen config harvester-cluster https://10.0.100.10:6443 \
-  --config-patch '[{"op": "add", "path": "/machine/network/interfaces", "value": [{"interface": "eth0", "dhcp": true, "vip": {"ip": "10.0.100.10"}}]}]'
+  --config-patch-control-plane '[{"op": "replace", "path": "/machine/install/disk", "value": "/dev/vda"}, {"op": "add", "path": "/machine/network/interfaces", "value": [{"interface": "eth0", "dhcp": true, "vip": {"ip": "10.0.100.10"}}]}]' \
+  --config-patch-worker '[{"op": "replace", "path": "/machine/install/disk", "value": "/dev/vda"}]'
 ```
 
 This creates `controlplane.yaml`, `worker.yaml`, and `talosconfig`.
@@ -119,6 +120,25 @@ Define the control plane VM as a Harvester resource:
 
 ```yaml
 # talos-cp.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: talos-cp-1-rootdisk
+  namespace: default
+  annotations:
+    harvesterhci.io/imageId: default/talos-linux
+    volume.beta.kubernetes.io/storage-provisioner: driver.longhorn.io
+    volume.kubernetes.io/storage-provisioner: driver.longhorn.io
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: longhorn-talos-linux
+  volumeMode: Block
+  volumeName: pvc-talos-cp-1-rootdisk
+---
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
@@ -128,7 +148,7 @@ metadata:
     app: talos-cluster
     role: controlplane
 spec:
-  running: true
+  runStrategy: RerunOnFailure
   template:
     metadata:
       labels:
@@ -145,39 +165,21 @@ spec:
             - name: rootdisk
               disk:
                 bus: virtio
-            - name: cloudinit
-              disk:
-                bus: virtio
           interfaces:
-            - name: default
-              masquerade: {}
+            - name: talos-vlan
+              model: virtio
+              bridge: {}
         resources:
           requests:
             memory: 4Gi
       networks:
-        - name: default
-          pod: {}
+        - name: talos-vlan
+          multus:
+            networkName: default/talos-vlan
       volumes:
         - name: rootdisk
-          dataVolume:
-            name: talos-cp-1-rootdisk
-        - name: cloudinit
-          cloudInitNoCloud:
-            userData: ""
-  dataVolumeTemplates:
-    - metadata:
-        name: talos-cp-1-rootdisk
-      spec:
-        source:
-          pvc:
-            name: talos-linux  # Reference to the uploaded image
-            namespace: default
-        pvc:
-          accessModes:
-            - ReadWriteOnce
-          resources:
-            requests:
-              storage: 50Gi
+          persistentVolumeClaim:
+            claimName: talos-cp-1-rootdisk
 ```
 
 ```bash
@@ -193,7 +195,7 @@ kubectl get vmi -w
 Once the VM is running, find its IP address and apply the control plane configuration:
 
 ```bash
-# Get the VM's IP
+# Get the VM's IP if Harvester can report it; otherwise check your DHCP server or VM console
 kubectl get vmi talos-cp-1 -o jsonpath='{.status.interfaces[0].ipAddress}'
 
 # Apply the control plane config
@@ -208,9 +210,9 @@ Configure `talosctl` and bootstrap etcd:
 
 ```bash
 # Configure talosctl
+talosctl config merge ./talosconfig
 talosctl config endpoint <CP_IP>
 talosctl config node <CP_IP>
-talosctl config merge talosconfig
 
 # Bootstrap etcd
 talosctl bootstrap
@@ -225,6 +227,25 @@ Create worker VMs following the same pattern:
 
 ```yaml
 # talos-worker.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: talos-worker-1-rootdisk
+  namespace: default
+  annotations:
+    harvesterhci.io/imageId: default/talos-linux
+    volume.beta.kubernetes.io/storage-provisioner: driver.longhorn.io
+    volume.kubernetes.io/storage-provisioner: driver.longhorn.io
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: longhorn-talos-linux
+  volumeMode: Block
+  volumeName: pvc-talos-worker-1-rootdisk
+---
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
@@ -234,7 +255,7 @@ metadata:
     app: talos-cluster
     role: worker
 spec:
-  running: true
+  runStrategy: RerunOnFailure
   template:
     metadata:
       labels:
@@ -252,32 +273,20 @@ spec:
               disk:
                 bus: virtio
           interfaces:
-            - name: default
-              masquerade: {}
+            - name: talos-vlan
+              model: virtio
+              bridge: {}
         resources:
           requests:
             memory: 4Gi
       networks:
-        - name: default
-          pod: {}
+        - name: talos-vlan
+          multus:
+            networkName: default/talos-vlan
       volumes:
         - name: rootdisk
-          dataVolume:
-            name: talos-worker-1-rootdisk
-  dataVolumeTemplates:
-    - metadata:
-        name: talos-worker-1-rootdisk
-      spec:
-        source:
-          pvc:
-            name: talos-linux
-            namespace: default
-        pvc:
-          accessModes:
-            - ReadWriteOnce
-          resources:
-            requests:
-              storage: 100Gi
+          persistentVolumeClaim:
+            claimName: talos-worker-1-rootdisk
 ```
 
 ```bash
@@ -311,6 +320,14 @@ provider "harvester" {
   kubeconfig = "~/.kube/harvester-config"
 }
 
+resource "harvester_image" "talos" {
+  name         = "talos-linux"
+  namespace    = "default"
+  display_name = "Talos Linux"
+  source_type  = "download"
+  url          = "https://example.com/talos/nocloud-amd64.raw"
+}
+
 resource "harvester_virtualmachine" "talos_cp" {
   count     = 3
   name      = "talos-cp-${count.index + 1}"
@@ -329,8 +346,9 @@ resource "harvester_virtualmachine" "talos_cp" {
   }
 
   network_interface {
-    name = "default"
-    type = "masquerade"
+    name         = "nic-1"
+    type         = "bridge"
+    network_name = "default/talos-vlan"
   }
 }
 ```
