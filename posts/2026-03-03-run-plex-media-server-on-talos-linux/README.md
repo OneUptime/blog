@@ -88,11 +88,6 @@ spec:
 
 ```yaml
 # plex-deployment.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: media
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -236,6 +231,7 @@ spec:
 Apply everything:
 
 ```bash
+kubectl create namespace media
 kubectl apply -f plex-media-pv.yaml
 kubectl apply -f plex-config-pvc.yaml
 kubectl apply -f plex-deployment.yaml
@@ -277,7 +273,7 @@ For a cleaner approach without privileged mode, use the Intel device plugin for 
 
 ```bash
 # Deploy Intel GPU device plugin
-kubectl apply -k https://github.com/intel/intel-device-plugins-for-kubernetes/deployments/gpu_plugin/overlays/nfd_managed
+kubectl apply -k 'https://github.com/intel/intel-device-plugins-for-kubernetes/deployments/gpu_plugin/overlays/nfd_labeled_nodes?ref=main'
 ```
 
 Then request the GPU in your container resources:
@@ -325,6 +321,19 @@ Monitor Plex resource usage with Prometheus:
 
 ```yaml
 # Tautulli - Plex monitoring dashboard
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tautulli-config
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: longhorn  # Or your preferred storage class
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
