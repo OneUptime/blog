@@ -77,12 +77,12 @@ talosctl reset --nodes 10.0.0.50 \
 The flags control the behavior:
 
 - `--graceful=true` (default): Attempts to leave the etcd cluster and cordon/drain the node before wiping. This is the recommended approach for nodes that are still functioning normally.
-- `--reboot=true` (default): Reboots the node after wiping. The node comes back in maintenance mode.
+- `--reboot=true`: Reboots the node after wiping so it comes back in maintenance mode. The default is `false`, which shuts the node down after the wipe, so pass `--reboot=true` explicitly when you want a reboot.
 
 ### What Happens During the Reset
 
 1. **Graceful shutdown**: If `--graceful` is set, Talos attempts to leave the etcd cluster (for control plane nodes) and stops all Kubernetes workloads.
-2. **Partition wipe**: The STATE and EPHEMERAL partitions are wiped. The BOOT partition (containing the Talos OS itself) is preserved.
+2. **Partition wipe**: The STATE and EPHEMERAL partitions are wiped. The BOOT partition (containing the bootloader, kernel, and initramfs) and the EFI/BIOS partitions are preserved, so the node can still boot Talos itself.
 3. **Reboot**: The node reboots and enters maintenance mode.
 4. **Waiting for config**: The node broadcasts its presence on the network and waits for a new machine configuration.
 
@@ -213,11 +213,11 @@ talosctl reset --nodes 10.0.0.50 \
 
 ### Cannot Reach the Node After Reset
 
-After reset, the node gets a new IP address via DHCP unless you have static IP configuration in the machine config. Check your DHCP server logs or use a network scanner to find the node:
+After reset, the node gets a new IP address via DHCP unless you have static IP configuration in the machine config. Check your DHCP server logs or scan the network for the Talos maintenance-mode API port (50000):
 
 ```bash
-# Scan the network for Talos nodes in maintenance mode
-talosctl cluster show --nodes 10.0.0.0/24
+# Scan the subnet for hosts listening on the Talos apid port
+nmap -p 50000 --open 10.0.0.0/24
 ```
 
 ## Wrapping Up
