@@ -40,7 +40,7 @@ First, boot your server into the rescue system through the Robot panel. Then SSH
 ssh root@<server-ip>
 
 # Download the Talos metal image
-curl -LO https://github.com/siderolabs/talos/releases/download/v1.7.0/metal-amd64.raw.xz
+curl -LO https://factory.talos.dev/image/376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba/v1.13.0/metal-amd64.raw.xz
 
 # Write the image to the primary disk
 xz -d -c metal-amd64.raw.xz | dd of=/dev/sda bs=4M status=progress
@@ -61,22 +61,28 @@ Hetzner dedicated servers have public IP addresses assigned directly to the serv
 
 ```yaml
 # network-patch.yaml
-machine:
-  network:
-    hostname: talos-node-1
-    interfaces:
-      - interface: eth0
-        addresses:
-          - <public-ip>/32
-        routes:
-          - network: 0.0.0.0/0
-            gateway: <gateway-ip>
-    nameservers:
-      - 185.12.64.1
-      - 185.12.64.2
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: talos-node-1
+---
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+up: true
+addresses:
+  - address: <public-ip>/32
+routes:
+  - destination: <gateway-ip>/32
+  - gateway: <gateway-ip>
+---
+apiVersion: v1alpha1
+kind: ResolverConfig
+nameservers:
+  - address: 185.12.64.1
+  - address: 185.12.64.2
 ```
 
-Hetzner uses a point-to-point network setup for dedicated servers. The gateway is typically a /32 address, and your server's IP is also configured as /32 with a static route to the gateway.
+Hetzner uses a point-to-point network setup for dedicated servers. The gateway is typically reached through an explicit /32 host route, and your server's IP is also configured as /32 with a default route through the gateway.
 
 ## Generating Talos Configuration
 
@@ -122,19 +128,23 @@ Configure Talos to use the vSwitch VLAN:
 
 ```yaml
 # vswitch-patch.yaml
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - <public-ip>/32
-        routes:
-          - network: 0.0.0.0/0
-            gateway: <gateway-ip>
-        vlans:
-          - vlanId: 4000
-            addresses:
-              - 10.0.0.1/24
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+up: true
+addresses:
+  - address: <public-ip>/32
+routes:
+  - destination: <gateway-ip>/32
+  - gateway: <gateway-ip>
+---
+apiVersion: v1alpha1
+kind: VLANConfig
+name: eth0.4000
+parent: eth0
+vlanID: 4000
+addresses:
+  - address: 10.0.0.1/24
 ```
 
 This creates a VLAN interface on the physical NIC. All servers in the same vSwitch can communicate over the 10.0.0.0/24 network.
@@ -171,14 +181,17 @@ For Kubernetes persistent storage, deploy a local path provisioner or use Rook/C
 
 ```bash
 # Deploy the local path provisioner
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.35/deploy/local-path-storage.yaml
 ```
 
 Or for more advanced storage, use Rook with Ceph across your dedicated servers' extra disks:
 
 ```bash
-# Deploy Rook operator
-kubectl apply -f https://raw.githubusercontent.com/rook/rook/release-1.13/deploy/examples/operator.yaml
+# Deploy Rook CRDs and operator
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/v1.19.2/deploy/examples/crds.yaml
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/v1.19.2/deploy/examples/common.yaml
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/v1.19.2/deploy/examples/csi-operator.yaml
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/v1.19.2/deploy/examples/operator.yaml
 
 # Create a Ceph cluster using the extra disks
 kubectl apply -f - <<EOF
@@ -208,7 +221,7 @@ Since dedicated servers do not have a cloud provider, you need an alternative fo
 
 ```bash
 # Install MetalLB
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/main/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.15.3/config/manifests/metallb-native.yaml
 
 # Configure MetalLB with your server IPs or additional IPs
 kubectl apply -f - <<EOF
@@ -234,7 +247,7 @@ You can order additional IP addresses from Hetzner and assign them to MetalLB fo
 
 ## RAID Configuration
 
-Many Hetzner servers come with multiple identical drives. For reliability, configure software RAID in Talos:
+Many Hetzner servers come with multiple identical drives. Talos can mount additional software RAID devices that you create before or outside the machine configuration:
 
 ```yaml
 machine:
@@ -246,7 +259,7 @@ machine:
         - mountpoint: /var/mnt/data
 ```
 
-For the OS disk, you might want to set up RAID during the rescue system phase before installing Talos.
+For the OS disk, Talos does not create a bootable software RAID array from `machine.disks`; set up and verify the RAID layout during the rescue system phase before installing Talos.
 
 ## Monitoring Hardware Health
 
@@ -259,10 +272,10 @@ helm install prometheus prometheus-community/kube-prometheus-stack \
   --set nodeExporter.enabled=true
 ```
 
-Check SMART status of drives periodically through `talosctl`:
+Check RAID status periodically through `talosctl`:
 
 ```bash
-# Check disk health (requires Talos extensions)
+# Check Linux software RAID status
 talosctl read /proc/mdstat --nodes <node-ip>
 ```
 
