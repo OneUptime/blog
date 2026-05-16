@@ -286,6 +286,12 @@ vrrp_instance VI_1 {
 ```text
 # /etc/keepalived/keepalived.conf on the backup LB
 
+vrrp_script check_haproxy {
+    script "/usr/bin/killall -0 haproxy"
+    interval 2
+    weight 2
+}
+
 vrrp_instance VI_1 {
     state BACKUP
     interface eth0
@@ -321,21 +327,23 @@ KUBECONFIG="/etc/kubernetes/kubeconfig"
 HAPROXY_TEMPLATE="/etc/haproxy/haproxy.cfg.tmpl"
 HAPROXY_CONFIG="/etc/haproxy/haproxy.cfg"
 
-# Get current worker node IPs
-WORKERS=$(kubectl --kubeconfig=$KUBECONFIG get nodes \
-    -l node-role.kubernetes.io/worker \
+# Get current backend node IPs. Talos adds this label to control plane nodes
+# by default so external load balancers exclude them from workload traffic.
+WORKERS=$(kubectl --kubeconfig="$KUBECONFIG" get nodes \
+    --selector='!node.kubernetes.io/exclude-from-external-load-balancers' \
     -o jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}')
 
 # Generate backend server lines
 BACKENDS=""
 COUNT=1
 for ip in $WORKERS; do
-    BACKENDS="${BACKENDS}    server worker-${COUNT} ${ip}:30080 check\n"
+    printf -v BACKENDS '%s    server worker-%d %s:30080 check\n' "$BACKENDS" "$COUNT" "$ip"
     COUNT=$((COUNT + 1))
 done
 
 # Update the config from template
-sed "s|{{WORKER_BACKENDS}}|${BACKENDS}|g" "$HAPROXY_TEMPLATE" > "$HAPROXY_CONFIG"
+awk -v backends="$BACKENDS" '{gsub(/{{WORKER_BACKENDS}}/, backends)} {print}' \
+    "$HAPROXY_TEMPLATE" > "$HAPROXY_CONFIG"
 
 # Reload HAProxy (graceful - no dropped connections)
 systemctl reload haproxy
