@@ -16,7 +16,7 @@ This guide covers setting up the Kubernetes Volume Snapshot feature, creating sn
 
 Kubernetes Volume Snapshots are a cluster-level API for creating point-in-time copies of PersistentVolumes. They work similarly to how snapshots work in cloud environments or with traditional storage arrays. The feature has three main components.
 
-VolumeSnapshot is the request to create a snapshot of a specific PVC. VolumeSnapshotContent is the actual snapshot, analogous to how PersistentVolume relates to PersistentVolumeClaim. VolumeSnapshotClass defines the parameters and driver used for creating snapshots.
+VolumeSnapshot is the request to create a snapshot of a specific PVC. VolumeSnapshotContent represents the provisioned snapshot, analogous to how PersistentVolume relates to PersistentVolumeClaim. VolumeSnapshotClass defines the parameters and driver used for creating snapshots.
 
 ## Setting Up the Snapshot Controller
 
@@ -25,13 +25,13 @@ The snapshot controller is not included in the default Kubernetes installation. 
 ```bash
 # Install the snapshot controller CRDs
 
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-6.3/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-6.3/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-6.3/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-8.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-8.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-8.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
 
 # Install the snapshot controller
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-6.3/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-6.3/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-8.2/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-8.2/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml
 ```
 
 Verify the controller is running.
@@ -152,7 +152,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 50Gi  # Must be >= original PVC size
+      storage: 50Gi  # For Longhorn, this must match the snapshot size
 ```
 
 ```bash
@@ -292,7 +292,7 @@ For comprehensive backup and restore workflows that include not just volumes but
 # Install Velero with Longhorn support
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.8.0 \
+  --plugins velero/velero-plugin-for-aws:v1.13.0 \
   --bucket my-backup-bucket \
   --secret-file ./credentials \
   --backup-location-config region=us-east-1 \
@@ -322,16 +322,13 @@ velero restore create --from-backup pre-migration-backup
 Creating snapshots is only half the equation. You need to regularly test that your restores actually work.
 
 ```bash
-# Create a test restore
-kubectl create namespace restore-test
-
-# Restore snapshot to test namespace
+# Restore snapshot to a test PVC in the same namespace
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: restore-test-pvc
-  namespace: restore-test
+  namespace: database
 spec:
   storageClassName: longhorn
   dataSource:
@@ -346,15 +343,16 @@ spec:
 EOF
 
 # Spin up a test pod to verify the data
-kubectl run restore-check --namespace=restore-test \
+kubectl run restore-check --namespace=database \
   --image=postgres:15 \
   --overrides='{"spec":{"containers":[{"name":"restore-check","image":"postgres:15","volumeMounts":[{"name":"data","mountPath":"/var/lib/postgresql/data"}]}],"volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"restore-test-pvc"}}]}}'
 
 # Verify the data
-kubectl exec -n restore-test restore-check -- psql -U postgres -c "SELECT count(*) FROM important_table;"
+kubectl exec -n database restore-check -- psql -U postgres -c "SELECT count(*) FROM important_table;"
 
 # Clean up
-kubectl delete namespace restore-test
+kubectl delete pod restore-check -n database
+kubectl delete pvc restore-test-pvc -n database
 ```
 
 ## Conclusion
