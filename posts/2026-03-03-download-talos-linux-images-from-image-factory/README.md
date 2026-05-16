@@ -27,10 +27,10 @@ If you do not need any custom extensions, you can download standard images direc
 ```bash
 # Download the standard amd64 ISO
 
-curl -LO https://github.com/siderolabs/talos/releases/latest/download/talos-amd64.iso
+curl -LO https://github.com/siderolabs/talos/releases/latest/download/metal-amd64.iso
 
 # Download the standard arm64 ISO
-curl -LO https://github.com/siderolabs/talos/releases/latest/download/talos-arm64.iso
+curl -LO https://github.com/siderolabs/talos/releases/latest/download/metal-arm64.iso
 ```
 
 ### From the Image Factory Web Interface
@@ -202,13 +202,14 @@ docker pull ghcr.io/siderolabs/imager:v1.9.0
 
 # Build a custom ISO locally
 docker run --rm -t \
+  -v $PWD/_out:/out \
   -v /dev:/dev --privileged \
   ghcr.io/siderolabs/imager:v1.9.0 \
-  metal --system-extension-image ghcr.io/siderolabs/intel-ucode:latest \
+  iso --system-extension-image ghcr.io/siderolabs/intel-ucode:latest \
   --system-extension-image ghcr.io/siderolabs/i915-ucode:latest
 ```
 
-The resulting image is placed in the current directory. This approach is slower but works without internet access to the Image Factory.
+The resulting image is placed in the `_out` directory. This approach is slower but works without internet access to the Image Factory.
 
 ## Verifying Your Image
 
