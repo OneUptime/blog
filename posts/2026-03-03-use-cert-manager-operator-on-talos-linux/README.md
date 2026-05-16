@@ -29,16 +29,12 @@ When you create a Certificate resource, cert-manager automatically requests the 
 Install cert-manager using Helm:
 
 ```bash
-# Add the Jetstack Helm repository
-
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
-
 # Install cert-manager with CRDs
-helm install cert-manager jetstack/cert-manager \
+helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+  --version v1.20.2 \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true \
+  --set crds.enabled=true \
   --set prometheus.enabled=true \
   --set webhook.timeoutSeconds=30
 ```
@@ -114,7 +110,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
 ```
 
 ### Production Issuer
@@ -134,7 +130,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
 ```
 
 ```bash
@@ -196,6 +192,7 @@ metadata:
     # Optional: force HTTPS redirect
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - myapp.example.com
