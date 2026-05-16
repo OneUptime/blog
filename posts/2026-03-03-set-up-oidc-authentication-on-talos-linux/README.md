@@ -41,9 +41,9 @@ First, set up a client application in your identity provider. In Keycloak:
 
 ```text
 Client ID: kubernetes
-Client Protocol: openid-connect
-Access Type: confidential
-Valid Redirect URIs: http://localhost:8000/*
+Client type: OpenID Connect
+Client authentication: On
+Valid Redirect URIs: http://localhost:8000, http://localhost:18000
 ```
 
 4. Create a client scope that includes group membership:
@@ -107,7 +107,7 @@ After the API server restarts, verify the OIDC configuration is active:
 talosctl logs kube-apiserver -n 10.0.0.1 | grep -i oidc
 
 # Verify the API server is healthy
-kubectl get --raw /healthz
+kubectl get --raw /readyz
 ```
 
 ## Step 4: Set Up kubectl for OIDC
@@ -142,8 +142,9 @@ users:
 - name: oidc-user
   user:
     exec:
-      apiVersion: client.authentication.k8s.io/v1beta1
+      apiVersion: client.authentication.k8s.io/v1
       command: kubectl
+      interactiveMode: IfAvailable
       args:
       - oidc-login
       - get-token
@@ -215,28 +216,30 @@ kubectl get pods
 Check the token contents to verify claims:
 
 ```bash
-# Get the token and decode it
-kubectl oidc-login get-token \
+# Run setup to authenticate and print the ID token claims
+kubectl oidc-login setup \
     --oidc-issuer-url=https://keycloak.example.com/realms/my-realm \
     --oidc-client-id=kubernetes \
-    --oidc-client-secret=<secret> | jq -R 'split(".") | .[1] | @base64d | fromjson'
+    --oidc-client-secret=<secret> \
+    --oidc-extra-scope=groups
 ```
 
 ## Step 7: Configure Token Lifetime and Refresh
 
 OIDC tokens expire. Configure appropriate lifetimes in your identity provider. A common setup:
 
-- Access token lifetime: 15 minutes
+- ID token lifetime: 15 minutes
 - Refresh token lifetime: 8 hours (one workday)
 
-The kubelogin plugin handles token refresh automatically. When the access token expires, it uses the refresh token to get a new one without requiring the user to log in again.
+The kubelogin plugin handles token refresh automatically. When the ID token expires, it uses the refresh token to get a new one without requiring the user to log in again.
 
 ## Handling Multiple Identity Providers
 
-If you need to support users from different identity providers, you have two options:
+If you need to support users from different identity providers, you have a few options:
 
 1. **Use a federation broker** like Keycloak that aggregates multiple providers behind a single OIDC endpoint
 2. **Use Dex** as an OIDC intermediary that supports multiple upstream providers
+3. **Use Kubernetes AuthenticationConfiguration** on Kubernetes v1.34 or newer to configure multiple JWT authenticators directly
 
 The single-issuer approach (option 1) is simpler for the Kubernetes configuration since you only need one set of OIDC flags on the API server.
 
@@ -271,8 +274,8 @@ talosctl logs kube-apiserver -n 10.0.0.1 | grep -i "oidc\|token\|auth"
 kubectl run dns-test --image=busybox --restart=Never -- nslookup keycloak.example.com
 kubectl logs dns-test
 
-# Check that the IdP is accessible from control plane nodes
-talosctl ping keycloak.example.com -n 10.0.0.1
+# Check API server logs for DNS, TLS, or OIDC discovery errors
+talosctl logs kube-apiserver -n 10.0.0.1 | grep -i "keycloak\|oidc\|x509\|no such host"
 ```
 
 ## Security Considerations
@@ -290,10 +293,11 @@ When setting up OIDC, keep these security practices in mind:
 # Add audit logging for authentication events
 cluster:
   apiServer:
-    extraArgs:
-      audit-log-path: "/var/log/audit.log"
-      audit-log-maxage: "30"
-      audit-log-maxbackup: "10"
+    auditPolicy:
+      apiVersion: audit.k8s.io/v1
+      kind: Policy
+      rules:
+        - level: Metadata
 ```
 
 ## Conclusion
