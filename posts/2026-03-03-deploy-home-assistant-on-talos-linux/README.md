@@ -53,7 +53,7 @@ machine:
 Apply it to the node where your USB device is connected:
 
 ```bash
-talosctl apply-config --patch @talos-usb-patch.yaml --nodes <node-ip>
+talosctl patch mc --patch @talos-usb-patch.yaml --nodes <node-ip>
 ```
 
 ## Creating the Namespace and Storage
