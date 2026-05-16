@@ -78,14 +78,9 @@ machine:
   ca:
     crt: <base64-encoded-certificate>
     key: <base64-encoded-key>
-  network:
-    hostname: cp-01
-    interfaces:
-      - interface: eth0
-        dhcp: true
   install:
     disk: /dev/sda
-    image: ghcr.io/siderolabs/installer:v1.6.0
+    image: ghcr.io/siderolabs/installer:v1.13.0
 cluster:
   clusterName: my-cluster
   controlPlane:
@@ -97,6 +92,14 @@ cluster:
   ca:
     crt: <base64-encoded-certificate>
     key: <base64-encoded-key>
+---
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: cp-01
+---
+apiVersion: v1alpha1
+kind: DHCPv4Config
+name: eth0
 ```
 
 The configuration is applied during boot and can be updated at runtime through the Talos API. This declarative model means you never need to run ad-hoc commands on nodes. Everything is defined in configuration.
@@ -132,7 +135,7 @@ talosctl -n 10.0.0.11 logs kubelet
 
 The filesystem on a Talos node is carefully partitioned. Here is the typical disk layout.
 
-The EFI or BIOS boot partition is used for booting. The BOOT partition contains the kernel and initramfs. The META partition stores metadata like the machine UUID and install configuration. The STATE partition holds the machine configuration and is encrypted at rest by default. The EPHEMERAL partition is where Kubernetes data lives, including containerd images, pod logs, and ephemeral storage.
+The EFI or BIOS boot partition is used for booting. The BOOT partition contains the kernel and initramfs. The META partition stores metadata like the machine UUID and install configuration. The STATE partition holds the machine configuration and node identity data. The EPHEMERAL partition is mounted at `/var`, where Kubernetes data lives, including containerd images, pod logs, etcd data on control plane nodes, and ephemeral storage. Disk encryption for STATE and EPHEMERAL is supported but must be explicitly enabled.
 
 ```bash
 # View the partition layout
@@ -152,47 +155,55 @@ Talos supports bonding, VLANs, static IPs, DHCP, and WireGuard. Network changes 
 
 ```yaml
 # Network configuration in machine config
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        dhcp: true
-      - interface: bond0
-        bond:
-          mode: 802.3ad
-          interfaces:
-            - eth1
-            - eth2
-        addresses:
-          - 10.0.0.11/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 10.0.0.1
-    nameservers:
-      - 8.8.8.8
-      - 8.8.4.4
+apiVersion: v1alpha1
+kind: DHCPv4Config
+name: eth0
+---
+apiVersion: v1alpha1
+kind: BondConfig
+name: bond0
+links:
+  - eth1
+  - eth2
+bondMode: 802.3ad
+addresses:
+  - address: 10.0.0.11/24
+routes:
+  - gateway: 10.0.0.1
+---
+apiVersion: v1alpha1
+kind: ResolverConfig
+name: default
+nameservers:
+  - address: 8.8.8.8
+  - address: 8.8.4.4
 ```
 
 ## Security Architecture
 
-Security is baked into every layer of Talos. The read-only root filesystem prevents unauthorized changes. All API access requires mutual TLS authentication. There is no shell or SSH, so remote code execution exploits are largely useless. The kernel is hardened with security modules and minimal capabilities.
+Security is baked into every layer of Talos. The read-only root filesystem prevents unauthorized changes. All API access requires mutual TLS authentication. There is no shell or SSH, so entire classes of traditional shell and SSH attack paths are removed. The kernel is configured according to Kernel Self Protection Project recommendations.
 
 Talos also supports disk encryption, Secure Boot, and measured boot with TPM. These features ensure that the boot chain is trusted from firmware to running workloads.
 
 ```yaml
 # Enable disk encryption in machine config
-machine:
-  systemDiskEncryption:
-    state:
-      provider: luks2
-      keys:
-        - nodeID: {}
-          slot: 0
-    ephemeral:
-      provider: luks2
-      keys:
-        - nodeID: {}
-          slot: 0
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: STATE
+encryption:
+  provider: luks2
+  keys:
+    - nodeID: {}
+      slot: 0
+---
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+encryption:
+  provider: luks2
+  keys:
+    - nodeID: {}
+      slot: 0
 ```
 
 ## How Updates Work
@@ -201,7 +212,7 @@ Updating Talos is an atomic operation. Instead of updating individual packages, 
 
 ```bash
 # Upgrade a Talos node to a new version
-talosctl -n 10.0.0.11 upgrade --image ghcr.io/siderolabs/installer:v1.7.0
+talosctl -n 10.0.0.11 upgrade --image ghcr.io/siderolabs/installer:v1.13.0
 
 # Check the upgrade status
 talosctl -n 10.0.0.11 version
