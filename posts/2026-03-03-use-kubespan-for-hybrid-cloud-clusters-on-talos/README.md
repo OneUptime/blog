@@ -31,7 +31,7 @@ GCP Region us-central1
   - Public IPs via static external IPs
 ```
 
-KubeSpan connects all these nodes through encrypted WireGuard tunnels. Control plane traffic, pod-to-pod communication, and etcd replication all flow securely between sites.
+KubeSpan connects all these nodes through encrypted WireGuard tunnels. Control plane traffic and pod-to-pod communication flow securely between sites; etcd replication would also use KubeSpan if you place control plane nodes in more than one site.
 
 ## Setting Up the On-Premises Nodes
 
@@ -64,7 +64,7 @@ machine:
           - "0.0.0.0/0"
 ```
 
-If your on-premises nodes are behind a NAT firewall, configure port forwarding for UDP 51820 and set up endpoint filters:
+If your on-premises nodes are behind a NAT firewall, configure port forwarding for UDP 51820, set up endpoint filters, and announce the external NAT endpoint explicitly:
 
 ```yaml
 # onprem-nat-patch.yaml
@@ -76,7 +76,12 @@ machine:
       filters:
         endpoints:
           - "!10.10.0.0/16"    # Do not advertise private data center IPs
-          - "0.0.0.0/0"        # Advertise the NAT public IP
+          - "0.0.0.0/0"        # Allow public endpoints Talos discovers
+---
+apiVersion: v1alpha1
+kind: KubeSpanEndpointsConfig
+extraAnnouncedEndpoints:
+  - "<onprem-public-ip>:51820"
 ```
 
 Apply the configuration:
@@ -125,13 +130,13 @@ aws ec2 authorize-security-group-ingress \
   --group-id sg-xxxx \
   --protocol tcp \
   --port 50000-50001 \
-  --source <onprem-public-ip>/32
+  --cidr <onprem-public-ip>/32
 
 aws ec2 authorize-security-group-ingress \
   --group-id sg-xxxx \
   --protocol tcp \
   --port 6443 \
-  --source <onprem-public-ip>/32
+  --cidr <onprem-public-ip>/32
 ```
 
 Apply the worker configuration:
@@ -195,19 +200,19 @@ kubectl get nodes -o wide
 
 # You should see nodes from all three locations
 # NAME              STATUS   ROLES           AGE   VERSION   INTERNAL-IP      EXTERNAL-IP
-# onprem-cp-1       Ready    control-plane   10m   v1.29.0   fd7a:...:1       <none>
-# onprem-cp-2       Ready    control-plane   9m    v1.29.0   fd7a:...:2       <none>
-# onprem-cp-3       Ready    control-plane   9m    v1.29.0   fd7a:...:3       <none>
-# aws-worker-1      Ready    <none>          7m    v1.29.0   fd7a:...:4       <none>
-# aws-worker-2      Ready    <none>          7m    v1.29.0   fd7a:...:5       <none>
-# gcp-worker-1      Ready    <none>          5m    v1.29.0   fd7a:...:6       <none>
+# onprem-cp-1       Ready    control-plane   10m   v1.x.x    fd7a:...:1       <none>
+# onprem-cp-2       Ready    control-plane   9m    v1.x.x    fd7a:...:2       <none>
+# onprem-cp-3       Ready    control-plane   9m    v1.x.x    fd7a:...:3       <none>
+# aws-worker-1      Ready    <none>          7m    v1.x.x    fd7a:...:4       <none>
+# aws-worker-2      Ready    <none>          7m    v1.x.x    fd7a:...:5       <none>
+# gcp-worker-1      Ready    <none>          5m    v1.x.x    fd7a:...:6       <none>
 ```
 
 Check KubeSpan connectivity:
 
 ```bash
 # Check peer status from on-prem control plane
-talosctl get kubespanpeerstatus --nodes 10.10.0.10
+talosctl get kubespanpeerstatuses --nodes 10.10.0.10
 
 # All peers should show "up"
 ```
@@ -289,15 +294,15 @@ Set up monitoring to track the health of connections between clouds:
 # hybrid-health-check.sh
 
 echo "=== On-Prem to AWS ==="
-talosctl get kubespanpeerstatus --nodes 10.10.0.10 -o json | \
+talosctl get kubespanpeerstatuses --nodes 10.10.0.10 -o json | \
   jq '[.[] | select(.spec.label | startswith("aws"))] | {total: length, up: [.[] | select(.spec.state == "up")] | length}'
 
 echo "=== On-Prem to GCP ==="
-talosctl get kubespanpeerstatus --nodes 10.10.0.10 -o json | \
+talosctl get kubespanpeerstatuses --nodes 10.10.0.10 -o json | \
   jq '[.[] | select(.spec.label | startswith("gcp"))] | {total: length, up: [.[] | select(.spec.state == "up")] | length}'
 
 echo "=== AWS to GCP ==="
-talosctl get kubespanpeerstatus --nodes <aws-node-ip> -o json | \
+talosctl get kubespanpeerstatuses --nodes <aws-node-ip> -o json | \
   jq '[.[] | select(.spec.label | startswith("gcp"))] | {total: length, up: [.[] | select(.spec.state == "up")] | length}'
 ```
 
@@ -309,7 +314,7 @@ To minimize costs, keep chatty workloads on the same cloud or site, use node aff
 
 ## Failure Scenarios
 
-Consider what happens when connectivity between sites fails. If the on-premises to AWS link goes down, AWS workers will show as NotReady, and pods will be rescheduled to on-prem or GCP workers (unless pinned with node affinity). Setting `allowDownPeerBypass: true` ensures that nodes at the same site can still communicate even if cross-site KubeSpan tunnels are down:
+Consider what happens when connectivity between sites fails. If the on-premises to AWS link goes down, AWS workers will show as NotReady, and pods will be rescheduled to on-prem or GCP workers (unless pinned with node affinity). Setting `allowDownPeerBypass: true` allows traffic to bypass KubeSpan when a peer connection is down, so use it only when a direct network path between those nodes is acceptable:
 
 ```yaml
 machine:
