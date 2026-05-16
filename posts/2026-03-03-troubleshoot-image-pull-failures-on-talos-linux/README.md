@@ -59,16 +59,14 @@ containers:
 
 ## Cause 2: Registry Authentication Required
 
-If your images are in a private registry, containerd needs credentials to pull them. On Talos, you configure registry authentication in the machine config:
+If your images are in a private registry, containerd needs credentials to pull them. On current Talos versions, you configure registry authentication with a `RegistryAuthConfig` machine configuration document:
 
 ```yaml
-machine:
-  registries:
-    config:
-      registry.example.com:
-        auth:
-          username: myuser
-          password: mypassword
+apiVersion: v1alpha1
+kind: RegistryAuthConfig
+name: registry.example.com
+username: myuser
+password: mypassword
 ```
 
 Alternatively, you can use Kubernetes image pull secrets:
@@ -93,7 +91,7 @@ spec:
       image: registry.example.com/myapp:v1.2.3
 ```
 
-If you are using both the Talos machine config and Kubernetes secrets, the machine config takes precedence for the containerd level, while Kubernetes secrets work at the kubelet level.
+If you are using both Talos registry authentication and Kubernetes secrets, remember that the Talos configuration is node-wide, while Kubernetes image pull secrets are scoped to the pod's namespace and pod spec.
 
 ## Cause 3: DNS Resolution Failure
 
@@ -103,18 +101,18 @@ If the node cannot resolve the registry hostname, the pull will fail:
 # Check host DNS configuration
 talosctl -n <node-ip> get resolvers
 
-# Check if DNS is working by looking at container pull history
-talosctl -n <node-ip> containers
+# Check recent kubelet logs for resolver errors
+talosctl -n <node-ip> logs kubelet --tail 50
 ```
 
-Fix DNS by updating the machine configuration:
+Fix DNS by updating the resolver configuration:
 
 ```yaml
-machine:
-  network:
-    nameservers:
-      - 8.8.8.8
-      - 1.1.1.1
+apiVersion: v1alpha1
+kind: ResolverConfig
+nameservers:
+  - address: 8.8.8.8
+  - address: 1.1.1.1
 ```
 
 ## Cause 4: Network Connectivity to Registry
@@ -150,26 +148,22 @@ x509: certificate signed by unknown authority
 Configure Talos to trust the registry's CA:
 
 ```yaml
-machine:
-  registries:
-    config:
-      registry.example.com:
-        tls:
-          ca: |
-            -----BEGIN CERTIFICATE-----
-            MIIDxTCCAq2gAwIBAgIJAN...
-            -----END CERTIFICATE-----
+apiVersion: v1alpha1
+kind: RegistryTLSConfig
+name: registry.example.com
+ca: |-
+  -----BEGIN CERTIFICATE-----
+  MIIDxTCCAq2gAwIBAgIJAN...
+  -----END CERTIFICATE-----
 ```
 
 For registries running without TLS (not recommended), you can mark them as insecure:
 
 ```yaml
-machine:
-  registries:
-    config:
-      registry.example.com:
-        tls:
-          insecureSkipVerify: true
+apiVersion: v1alpha1
+kind: RegistryTLSConfig
+name: registry.example.com
+insecureSkipVerify: true
 ```
 
 ## Cause 6: Disk Space Issues
@@ -200,15 +194,14 @@ Solutions include:
 Configure a registry mirror in Talos:
 
 ```yaml
-machine:
-  registries:
-    mirrors:
-      docker.io:
-        endpoints:
-          - https://mirror.example.com
+apiVersion: v1alpha1
+kind: RegistryMirrorConfig
+name: docker.io
+endpoints:
+  - url: https://mirror.example.com
 ```
 
-## Cause 7: Image Architecture Mismatch
+## Cause 8: Image Architecture Mismatch
 
 If you are running Talos on ARM64 hardware but the image only has an AMD64 variant (or vice versa), the pull will fail:
 
@@ -222,7 +215,7 @@ docker manifest inspect <image-name>:<tag>
 
 Make sure your images are built for the correct architecture, or use multi-arch images.
 
-## Cause 8: containerd Configuration Issues
+## Cause 9: containerd Configuration Issues
 
 If containerd itself is not healthy, no images can be pulled:
 
@@ -247,14 +240,14 @@ To get more detailed information about what is happening during an image pull, y
 
 ```bash
 # Watch containerd events
-talosctl -n <node-ip> events --tail 20
+talosctl -n <node-ip> events --duration 10m
 ```
 
 You can also check the list of images that are currently on the node:
 
 ```bash
 # List all images on the node
-talosctl -n <node-ip> images
+talosctl -n <node-ip> image list
 ```
 
 ## Pre-pulling Images
@@ -290,4 +283,4 @@ EOF
 
 ## Summary
 
-Image pull failures on Talos Linux usually come down to one of these issues: wrong image name, missing registry credentials, DNS failures, network connectivity, TLS certificate problems, or disk space. Start by describing the pod to get the exact error message, then work through the possible causes. Configure registry authentication and mirrors in the Talos machine configuration for the best experience, and always verify that your nodes can reach the registries they need.
+Image pull failures on Talos Linux usually come down to one of these issues: wrong image name, missing registry credentials, DNS failures, network connectivity, TLS certificate problems, disk space, rate limiting, or architecture mismatch. Start by describing the pod to get the exact error message, then work through the possible causes. Configure registry authentication and mirrors in the Talos machine configuration for the best experience, and always verify that your nodes can reach the registries they need.
