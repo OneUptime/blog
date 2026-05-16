@@ -31,11 +31,11 @@ The first step is to update the Talos version in your Terraform variables:
 variable "talos_version" {
   description = "Talos Linux version"
   type        = string
-  default     = "v1.8.0"  # Updated from v1.7.0
+  default     = "v1.12.1"  # Updated from v1.11.0
 }
 ```
 
-If you are using the Talos Terraform provider, update the machine secrets and configuration resources:
+If you are using the Talos Terraform provider, update the machine secrets and configuration resources. The `talos_version` argument controls the version contract used to generate secrets and machine configuration; the installed OS version is controlled by the installer image you use for install or upgrade:
 
 ```hcl
 # Update the machine secrets with the new version
@@ -77,10 +77,7 @@ resource "talos_machine_configuration_apply" "controlplane" {
   machine_configuration_input = data.talos_machine_configuration.controlplane.machine_configuration
   node                        = var.control_plane_ips[count.index]
 
-  # Process nodes one at a time
-  depends_on = [
-    talos_machine_configuration_apply.controlplane[count.index - 1]
-  ]
+  apply_mode = "staged_if_needing_reboot"
 }
 
 # Apply configuration to worker nodes after control plane is done
@@ -95,6 +92,12 @@ resource "talos_machine_configuration_apply" "worker" {
     talos_machine_configuration_apply.controlplane
   ]
 }
+```
+
+Run the apply with reduced parallelism if you want Terraform itself to apply the configuration one node at a time:
+
+```bash
+terraform apply -parallelism=1
 ```
 
 ## Using talosctl for the OS Upgrade
@@ -117,7 +120,8 @@ resource "null_resource" "upgrade_controlplane" {
         --nodes ${var.control_plane_ips[count.index]} \
         --image ghcr.io/siderolabs/installer:${var.talos_version} \
         --talosconfig ${path.module}/talosconfig \
-        --preserve
+        --wait \
+        --timeout 30m
 
       # Wait for the node to come back online
       talosctl health \
@@ -127,9 +131,8 @@ resource "null_resource" "upgrade_controlplane" {
     EOT
   }
 
-  # Upgrade nodes sequentially
   depends_on = [
-    null_resource.upgrade_controlplane[count.index - 1]
+    talos_machine_configuration_apply.controlplane
   ]
 }
 
@@ -147,7 +150,8 @@ resource "null_resource" "upgrade_workers" {
         --nodes ${var.worker_ips[count.index]} \
         --image ghcr.io/siderolabs/installer:${var.talos_version} \
         --talosconfig ${path.module}/talosconfig \
-        --preserve
+        --wait \
+        --timeout 30m
 
       talosctl health \
         --nodes ${var.worker_ips[count.index]} \
@@ -157,11 +161,12 @@ resource "null_resource" "upgrade_workers" {
   }
 
   depends_on = [
-    null_resource.upgrade_controlplane,
-    null_resource.upgrade_workers[count.index - 1]
+    null_resource.upgrade_controlplane
   ]
 }
 ```
+
+As with the configuration apply, use `terraform apply -parallelism=1` or target one node at a time when using `count`, because Terraform dependencies apply to whole resource blocks rather than individual `count` instances.
 
 ## Upgrading Kubernetes Version
 
@@ -171,7 +176,7 @@ Upgrading the Kubernetes version is separate from the OS upgrade. Use the `talos
 variable "kubernetes_version" {
   description = "Kubernetes version to run on the cluster"
   type        = string
-  default     = "1.30.0"
+  default     = "1.35.0"
 }
 
 data "talos_machine_configuration" "controlplane" {
@@ -188,7 +193,7 @@ Or trigger a Kubernetes upgrade with `talosctl`:
 ```bash
 # Upgrade Kubernetes version across the cluster
 talosctl upgrade-k8s \
-  --to 1.30.0 \
+  --to 1.35.0 \
   --nodes <CONTROL_PLANE_IP> \
   --talosconfig talosconfig
 ```
@@ -198,22 +203,16 @@ talosctl upgrade-k8s \
 When upgrading, you may also want to update the machine image (AMI, Azure Image, or GCP Image) used for new nodes:
 
 ```hcl
-# Update the AMI lookup for the new Talos version
-data "aws_ami" "talos" {
-  most_recent = true
-  owners      = ["540036508848"]
-
-  filter {
-    name   = "name"
-    values = ["talos-${var.talos_version}-*"]
-  }
+variable "talos_ami_id" {
+  description = "Talos AWS AMI ID from the cloud-images.json file attached to the Talos release"
+  type        = string
 }
 
 # Existing nodes are upgraded in place
 # New nodes will use the updated AMI
 resource "aws_instance" "worker" {
   count = var.worker_count
-  ami   = data.aws_ami.talos.id
+  ami   = var.talos_ami_id
   # ... rest of configuration
 }
 ```
@@ -243,12 +242,19 @@ talosctl etcd snapshot db.snapshot \
 
 ## Handling Upgrade Failures
 
-If a node fails to upgrade, Talos will automatically roll back to the previous version on reboot. You can also manually revert:
+If a node fails to boot after an upgrade, Talos will automatically roll back to the previous version. You can also manually revert with `talosctl rollback`:
 
 ```bash
 # Check the node status after a failed upgrade
 talosctl dmesg --nodes <NODE_IP> --talosconfig talosconfig
 
+# Roll back to the previous Talos installation
+talosctl rollback --nodes <NODE_IP> --talosconfig talosconfig
+```
+
+If the node is unrecoverable, reset and rejoin it:
+
+```bash
 # If the node is stuck, reset and rejoin
 talosctl reset --nodes <NODE_IP> --talosconfig talosconfig \
   --graceful=false
