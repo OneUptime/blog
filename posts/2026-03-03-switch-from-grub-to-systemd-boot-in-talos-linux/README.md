@@ -8,7 +8,7 @@ Description: A step-by-step guide to migrating your Talos Linux nodes from GRUB 
 
 ---
 
-If you have been running Talos Linux with GRUB on UEFI hardware, migrating to systemd-boot can bring tangible benefits: faster boot times, simpler configuration, and native UEFI Secure Boot support. Newer versions of Talos Linux default to systemd-boot for UEFI installations, but existing systems installed with older versions still use GRUB and need an explicit migration.
+If you have been running Talos Linux with GRUB on UEFI hardware, moving to systemd-boot can bring tangible benefits: faster boot times, simpler configuration, and native UEFI Secure Boot support. Talos Linux 1.10 and later default to systemd-boot for new UEFI installations, but upgrades from older GRUB-based installations retain the existing boot loader. Switching an existing node therefore requires reinstalling or reprovisioning the node with Talos 1.10 or later boot media, not just running a normal Talos upgrade.
 
 This guide walks through the process of switching from GRUB to systemd-boot on your Talos Linux nodes.
 
@@ -17,8 +17,8 @@ This guide walks through the process of switching from GRUB to systemd-boot on y
 There are a few important things to understand:
 
 - This migration only applies to UEFI systems. If your hardware uses legacy BIOS, you must continue using GRUB since systemd-boot does not support BIOS boot.
-- The migration involves a reinstallation of the boot loader, which carries some risk. Always start with non-critical nodes.
-- Your machine configuration, cluster membership, and data are preserved during the migration.
+- The migration involves reinstalling or reprovisioning the node, which carries some risk. Always start with non-critical nodes.
+- Your machine configuration and cluster identity can be reused, but local data should be backed up or drained before reinstalling.
 - Plan for brief node downtime during the process.
 
 ## Prerequisites
@@ -27,7 +27,7 @@ Verify the following before proceeding:
 
 - Your nodes are running on UEFI firmware (not legacy BIOS)
 - You have `talosctl` configured to access your cluster
-- You have a Talos Linux USB drive ready for recovery if needed
+- You have Talos Linux 1.10 or later UEFI boot media ready for reinstall or recovery if needed
 - Your cluster has enough capacity to handle nodes being temporarily offline
 
 ```bash
@@ -46,20 +46,16 @@ talosctl dmesg --nodes <NODE_IP> | grep -i "EFI v"
 Confirm that the node is currently using GRUB:
 
 ```bash
-# Check for GRUB on the boot partition
-talosctl ls /boot/grub/ --nodes <NODE_IP>
+# Check whether the node booted with a UKI
+talosctl get securitystate --nodes <NODE_IP> -o yaml
 
-# You should see grub.cfg and other GRUB files
-# If you see these, the node is running GRUB
-
-# Also confirm there is no systemd-boot
-talosctl ls /boot/EFI/systemd/ --nodes <NODE_IP>
-# This should return empty or an error
+# bootedWithUKI: false indicates a GRUB-based boot
+# bootedWithUKI: true indicates systemd-boot/UKI
 ```
 
 ## Step 2: Check Your Talos Version
 
-The Talos Linux version determines whether systemd-boot is available. Versions 1.4 and later support systemd-boot on UEFI:
+The Talos Linux version determines whether systemd-boot is the default for new UEFI installations. Talos 1.10 and later use systemd-boot with UKIs for fresh UEFI installs:
 
 ```bash
 # Check the running Talos version
@@ -69,25 +65,24 @@ talosctl version --nodes <NODE_IP>
 talosctl get installedversions --nodes <NODE_IP> -o yaml
 ```
 
-If you are running an older version, you will need to upgrade Talos first before the boot loader migration can happen.
+If you are running an older version, plan to reinstall or reprovision the node with Talos 1.10 or later. A normal upgrade keeps the existing boot loader.
 
 ## Step 3: Prepare the Machine Configuration
 
-The migration happens through a combination of upgrading the Talos image and ensuring the configuration supports the new boot loader:
+Prepare the machine configuration you will apply after booting the node from Talos 1.10 or later UEFI media:
 
 ```yaml
 # In your controlplane.yaml or worker.yaml
 machine:
   install:
     disk: /dev/sda  # Your installation disk
-    image: ghcr.io/siderolabs/installer:v1.9.0
-    bootloader: true  # Ensure boot loader is updated
-    wipe: false  # Preserve data
+    image: ghcr.io/siderolabs/installer:v1.12.1
+    wipe: false  # Do not wipe the installation disk before installing
 ```
 
 The key settings are:
-- `bootloader: true` tells the installer to write a new boot loader
-- `wipe: false` preserves your existing data and configuration
+- The Talos 1.10 or later UEFI installer writes the systemd-boot/UKI layout on a fresh UEFI installation
+- `wipe: false` prevents a full disk wipe before installation, but you should still treat local data as at risk and back it up first
 
 ## Step 4: Perform the Migration on a Test Node
 
@@ -103,29 +98,27 @@ kubectl drain <NODE_NAME> \
   --delete-emptydir-data \
   --timeout=120s
 
-# Upgrade the node - this triggers the boot loader migration
-talosctl upgrade --nodes <WORKER_IP> \
-  --image ghcr.io/siderolabs/installer:v1.9.0
+# Boot the node from Talos 1.10 or later UEFI media, then apply the worker config
+talosctl apply-config --insecure \
+  --nodes <WORKER_IP> \
+  --file worker.yaml
 ```
 
-The upgrade process will:
+The reinstall process will:
 
-1. Download the new installer image
-2. Write the new kernel and initramfs
-3. Install systemd-boot on the EFI System Partition
-4. Remove the old GRUB files
-5. Reboot the node
+1. Boot Talos from UEFI media
+2. Apply the existing worker machine configuration
+3. Install Talos using the 1.10 or later installer image
+4. Write systemd-boot and Talos UKIs to the EFI System Partition
+5. Reboot the node from disk
 
 ```bash
 # Wait for the node to come back
 talosctl health --nodes <WORKER_IP> --wait-timeout 5m
 
 # Verify the boot loader changed
-talosctl ls /boot/EFI/systemd/ --nodes <WORKER_IP>
-# You should now see systemd-boot files
-
-talosctl ls /boot/grub/ --nodes <WORKER_IP>
-# This should be empty or missing
+talosctl get securitystate --nodes <WORKER_IP> -o yaml
+# bootedWithUKI should now be true
 ```
 
 ## Step 5: Verify the Migration
@@ -134,7 +127,7 @@ After the node reboots, confirm everything is working:
 
 ```bash
 # Check node health
-talosctl services --nodes <WORKER_IP>
+talosctl service --nodes <WORKER_IP>
 
 # Verify the node is Ready in Kubernetes
 kubectl get node <NODE_NAME>
@@ -164,9 +157,10 @@ for worker in <WORKER2_IP> <WORKER3_IP>; do
   kubectl cordon $NODE_NAME
   kubectl drain $NODE_NAME --ignore-daemonsets --delete-emptydir-data --timeout=120s
 
-  # Upgrade
-  talosctl upgrade --nodes $worker \
-    --image ghcr.io/siderolabs/installer:v1.9.0
+  # Boot the node from Talos 1.10 or later UEFI media, then apply the worker config
+  talosctl apply-config --insecure \
+    --nodes $worker \
+    --file worker.yaml
 
   # Wait for recovery
   echo "Waiting for node to come back..."
@@ -201,9 +195,10 @@ talosctl etcd status --nodes <CP1_IP>
 For each control plane node:
 
 ```bash
-# Upgrade the control plane node
-talosctl upgrade --nodes <CP_IP> \
-  --image ghcr.io/siderolabs/installer:v1.9.0
+# Boot the node from Talos 1.10 or later UEFI media, then apply its control plane config
+talosctl apply-config --insecure \
+  --nodes <CP_IP> \
+  --file controlplane.yaml
 
 # Wait for the node to rejoin
 talosctl health --wait-timeout 10m
@@ -221,9 +216,9 @@ Wait for etcd to fully recover and sync before moving to the next control plane 
 
 If a node fails to boot after the migration:
 
-### Recovery Option 1: Wait for Fallback
+### Recovery Option 1: Check the Boot Target
 
-The A/B boot scheme should automatically fall back to the previous GRUB-based boot. Wait a few minutes and see if the node comes back.
+If the node does not boot from disk, check the firmware boot order and confirm it is booting the new UEFI disk entry instead of the USB media or the old GRUB entry.
 
 ```bash
 # Check if the node recovered
@@ -232,13 +227,13 @@ talosctl version --nodes <NODE_IP>
 
 ### Recovery Option 2: USB Recovery
 
-If the fallback does not work, boot from a Talos USB drive:
+If the node still does not boot, boot from a Talos USB drive:
 
 ```bash
 # Boot from USB
 # The node enters maintenance mode
 
-# Reinstall with explicit boot loader choice
+# Reapply the machine configuration from maintenance mode
 talosctl apply-config --insecure \
   --nodes <NODE_IP> \
   --file controlplane.yaml
@@ -262,9 +257,9 @@ After migrating all nodes, verify the entire cluster:
 # Check boot loader on every node
 for node in <CP1_IP> <CP2_IP> <CP3_IP> <W1_IP> <W2_IP>; do
   echo -n "Node $node: "
-  if talosctl ls /boot/EFI/systemd/ --nodes $node 2>/dev/null | grep -q "efi"; then
+  if talosctl get securitystate --nodes $node -o yaml 2>/dev/null | grep -q "bootedWithUKI: true"; then
     echo "systemd-boot"
-  elif talosctl ls /boot/grub/ --nodes $node 2>/dev/null | grep -q "grub"; then
+  elif talosctl get securitystate --nodes $node -o yaml 2>/dev/null | grep -q "bootedWithUKI: false"; then
     echo "GRUB (migration may not have completed)"
   else
     echo "Unknown"
@@ -299,9 +294,9 @@ After all nodes are migrated:
 
 1. Update your documentation to reflect the new boot loader
 2. Update any recovery procedures that referenced GRUB
-3. Consider enabling UEFI Secure Boot now that you are on systemd-boot
+3. Consider a planned fresh Secure Boot installation if you want Secure Boot; Talos does not support upgrading a non-UKI GRUB installation directly into UKI/Secure Boot mode
 4. Update your Talos USB recovery drives to the latest version
 
 ## Conclusion
 
-Migrating from GRUB to systemd-boot in Talos Linux is a straightforward process that primarily happens during a Talos upgrade. The key is to take it slowly, start with non-critical nodes, and verify each migration before moving on. The benefits - faster boot, simpler architecture, and better Secure Boot support - make the effort worthwhile for production clusters running on UEFI hardware.
+Migrating from GRUB to systemd-boot in Talos Linux is a node-by-node reprovisioning process, not a standard Talos upgrade. The key is to take it slowly, start with non-critical nodes, and verify each migration before moving on. The benefits - faster boot, simpler architecture, and better Secure Boot support - make the effort worthwhile for production clusters running on UEFI hardware.
