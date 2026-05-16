@@ -8,7 +8,7 @@ Description: Learn how to deploy Envoy Gateway on Talos Linux using the Kubernet
 
 ---
 
-Envoy Gateway is the official Kubernetes implementation of the Gateway API using Envoy proxy as its data plane. The Gateway API is the successor to the Ingress resource, offering a more expressive, role-oriented, and portable way to manage traffic routing in Kubernetes. On Talos Linux, Envoy Gateway runs without any special requirements, giving you access to cutting-edge traffic management features on a secure, immutable operating system.
+Envoy Gateway is an Envoy project that implements the Kubernetes Gateway API using Envoy proxy as its data plane. The Gateway API is the successor to the Ingress resource, offering a more expressive, role-oriented, and portable way to manage traffic routing in Kubernetes. On Talos Linux, Envoy Gateway runs without any special requirements, giving you access to cutting-edge traffic management features on a secure, immutable operating system.
 
 This guide covers deploying Envoy Gateway on Talos Linux, understanding the Gateway API resources, and configuring routes for your applications.
 
@@ -26,14 +26,14 @@ This separation allows infrastructure teams to manage GatewayClass and Gateway r
 
 You need:
 
-- A Talos Linux cluster running Kubernetes 1.25 or later
+- A Talos Linux cluster running a Kubernetes version supported by your Envoy Gateway release (for Envoy Gateway v1.8, Kubernetes 1.32 through 1.35)
 - `kubectl` configured for cluster access
 - Helm 3 installed
 
 ```bash
 # Check Kubernetes version
 
-kubectl version --short
+kubectl version
 
 # Verify cluster health
 kubectl get nodes
@@ -44,15 +44,9 @@ kubectl get nodes
 Install Envoy Gateway using Helm:
 
 ```bash
-# Install the Gateway API CRDs
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
-
-# Add the Envoy Gateway Helm repo
-helm repo add envoy-gateway https://charts.envoyproxy.io
-helm repo update
-
-# Install Envoy Gateway
-helm install envoy-gateway envoy-gateway/gateway-helm \
+# Install the Gateway API CRDs and Envoy Gateway
+helm install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
+  --version v1.8.0 \
   --namespace envoy-gateway-system \
   --create-namespace
 ```
@@ -185,7 +179,8 @@ kubectl apply -f http-route.yaml
 kubectl get httproute backend-route
 
 # Find the Gateway service IP
-kubectl get svc -l gateway.envoyproxy.io/owning-gateway-name=main-gateway
+kubectl get svc -n envoy-gateway-system \
+  -l gateway.envoyproxy.io/owning-gateway-namespace=default,gateway.envoyproxy.io/owning-gateway-name=main-gateway
 
 # Test the route
 curl -H "Host: app.example.com" http://<GATEWAY_IP>
@@ -281,12 +276,11 @@ metadata:
   name: rate-limit-policy
   namespace: default
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: backend-route
   rateLimit:
-    type: Global
     global:
       rules:
       - limit:
@@ -299,14 +293,19 @@ spec:
 Envoy Gateway provides built-in observability. You can check the Envoy proxy stats:
 
 ```bash
-# Port-forward to the admin interface
-kubectl port-forward -n envoy-gateway-system svc/envoy-gateway 19001:19001
+# Get the provisioned Envoy proxy deployment
+export ENVOY_DEPLOYMENT=$(kubectl get deploy -n envoy-gateway-system \
+  --selector=gateway.envoyproxy.io/owning-gateway-namespace=default,gateway.envoyproxy.io/owning-gateway-name=main-gateway \
+  -o jsonpath='{.items[0].metadata.name}')
+
+# Port-forward to the Envoy proxy admin interface
+kubectl port-forward -n envoy-gateway-system deploy/${ENVOY_DEPLOYMENT} 19000:19000
 
 # Check stats
-curl http://localhost:19001/stats
+curl http://localhost:19000/stats
 
 # Check cluster health
-curl http://localhost:19001/clusters
+curl http://localhost:19000/clusters
 ```
 
 ## Working with Talos Linux
@@ -318,7 +317,8 @@ Envoy Gateway deploys entirely through Kubernetes resources, making it a natural
 kubectl logs -n envoy-gateway-system -l app.kubernetes.io/name=envoy-gateway
 
 # Check the provisioned Envoy proxy logs
-kubectl logs -l gateway.envoyproxy.io/owning-gateway-name=main-gateway
+kubectl logs -n envoy-gateway-system \
+  -l gateway.envoyproxy.io/owning-gateway-namespace=default,gateway.envoyproxy.io/owning-gateway-name=main-gateway
 
 # Verify Gateway status
 kubectl describe gateway main-gateway
@@ -329,6 +329,7 @@ If you need to expose the Gateway service on specific node ports for bare-metal 
 ```bash
 # Patch the gateway service to use NodePort
 kubectl patch svc <GATEWAY_SVC_NAME> \
+  -n envoy-gateway-system \
   -p '{"spec": {"type": "NodePort", "ports": [{"port": 80, "nodePort": 30080, "name": "http"}]}}'
 ```
 
