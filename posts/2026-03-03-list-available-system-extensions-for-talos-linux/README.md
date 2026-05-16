@@ -17,10 +17,10 @@ System extensions in Talos Linux are OCI (Open Container Initiative) images that
 Unlike Kubernetes add-ons that run as pods, system extensions operate below the container runtime. They become part of the OS itself when the node boots. This makes them ideal for things like:
 
 - Storage drivers (iSCSI, ZFS, DRBD)
-- Network drivers and VPN clients (Tailscale, WireGuard)
+- Network drivers and VPN clients (Tailscale)
 - GPU drivers (NVIDIA)
-- Monitoring agents (QEMU guest agent, VMware tools)
-- Time sync alternatives (Chrony)
+- Virtualization guest agents (QEMU guest agent, VMware tools)
+- Container runtime handlers (gVisor, Kata Containers)
 - Custom kernel modules
 
 ## Listing Official Extensions
@@ -65,10 +65,13 @@ The Talos Image Factory at `factory.talos.dev` provides an interactive way to di
 ```bash
 # The Image Factory provides a web interface and API
 # Web: https://factory.talos.dev
-# API: https://factory.talos.dev/docs
+# API reference: https://github.com/siderolabs/image-factory/blob/main/docs/api.md
 
-# Query available extensions via the API
+# Query supported Talos versions via the API
 curl -s https://factory.talos.dev/versions | jq .
+
+# List the official extensions available for a specific Talos version
+curl -s https://factory.talos.dev/version/v1.7.0/extensions/official | jq .
 ```
 
 ### Method 4: Check Installed Extensions
@@ -132,15 +135,11 @@ ghcr.io/siderolabs/thunderbolt
 # QEMU guest agent
 ghcr.io/siderolabs/qemu-guest-agent
 
-# VMware open-vm-tools
-ghcr.io/siderolabs/open-vm-tools
-```
+# VMware (talos-vmtoolsd)
+ghcr.io/siderolabs/vmtoolsd-guest-agent
 
-### Time Synchronization
-
-```bash
-# Chrony NTP client
-ghcr.io/siderolabs/chrony
+# Xen guest agent
+ghcr.io/siderolabs/xen-guest-agent
 ```
 
 ### Container Runtime Extensions
@@ -149,8 +148,14 @@ ghcr.io/siderolabs/chrony
 # gVisor runtime
 ghcr.io/siderolabs/gvisor
 
+# Kata Containers runtime
+ghcr.io/siderolabs/kata-containers
+
 # Stargz snapshotter for lazy-loading images
 ghcr.io/siderolabs/stargz-snapshotter
+
+# WasmEdge runtime for WebAssembly containers
+ghcr.io/siderolabs/wasmedge
 ```
 
 ### Firmware
@@ -162,46 +167,48 @@ ghcr.io/siderolabs/intel-ucode
 # AMD microcode updates
 ghcr.io/siderolabs/amd-ucode
 
-# Various firmware packages
-ghcr.io/siderolabs/firmware
+# Device-specific firmware packages, for example:
+ghcr.io/siderolabs/amdgpu-firmware
+ghcr.io/siderolabs/chelsio-firmware
+ghcr.io/siderolabs/intel-ice-firmware
+ghcr.io/siderolabs/qlogic-firmware
+ghcr.io/siderolabs/realtek-firmware
 ```
 
 ### Monitoring and Utilities
 
 ```bash
-# Hardware monitoring tools (lm-sensors)
-ghcr.io/siderolabs/lm-sensors
-
 # USB modem support
 ghcr.io/siderolabs/usb-modem-drivers
 
-# Nut UPS monitoring
+# Nut UPS monitoring (network-ups-tools upsmon)
 ghcr.io/siderolabs/nut-client
 ```
 
 ## Checking Extension Compatibility
 
-Not all extensions work with every version of Talos. Extensions are versioned alongside Talos releases. Always check that the extension version matches your Talos version:
+Not all extensions work with every version of Talos. Extension tag conventions vary by extension type: kernel-module extensions (such as `btrfs`, `thunderbolt`, `zfs`, `drbd`) are built against a specific Talos kernel and carry a `-v<talos-version>` suffix, while userspace tools and firmware extensions use their own upstream or date-based versions (for example, `tailscale:1.62.1`, `intel-ucode:20240312`). The Image Factory always returns the correct, compatible tag for a given Talos version:
 
 ```bash
 # Check your Talos version
 talosctl -n 192.168.1.10 version
 
-# List available tags for an extension
-crane ls ghcr.io/siderolabs/iscsi-tools
+# Ask the Image Factory which tag is compatible with your Talos version
+curl -s https://factory.talos.dev/version/v1.7.0/extensions/official | \
+  jq '.[] | select(.name=="siderolabs/iscsi-tools") | .ref'
 
-# Tags typically match Talos versions
-# e.g., v1.7.0, v1.7.1, v1.8.0
+# You can also list all tags for an extension directly from the registry
+crane ls ghcr.io/siderolabs/iscsi-tools
 ```
 
-When selecting an extension image, use the tag that matches your Talos version:
+In modern Talos (v1.5+), extensions are baked into the installer image via the Image Factory rather than declared in the machine config. The legacy `machine.install.extensions` field is deprecated and has no effect in Talos v1.10+. The recommended approach is to reference an Image Factory installer that already contains your extensions:
 
 ```yaml
 machine:
   install:
-    extensions:
-      # Match the extension tag to your Talos version
-      - image: ghcr.io/siderolabs/iscsi-tools:v1.7.0
+    # An installer image built by the Image Factory with the
+    # selected extensions baked in.
+    image: factory.talos.dev/installer/<schematic-id>:v1.7.0
 ```
 
 ## Using the Image Factory to Explore Extensions
@@ -215,7 +222,7 @@ The Talos Image Factory is the most user-friendly way to discover and configure 
 ```bash
 # Using the Image Factory API to list extensions
 # Get available extensions for a specific Talos version
-curl -s https://factory.talos.dev/schematics | jq .
+curl -s https://factory.talos.dev/version/v1.7.0/extensions/official | jq .
 
 # Create a schematic with specific extensions
 curl -X POST https://factory.talos.dev/schematics \
@@ -244,11 +251,11 @@ The API returns a schematic ID that you can use to reference this specific combi
 Before installing an extension, you may want to inspect what it contains:
 
 ```bash
-# Inspect extension manifest
-crane manifest ghcr.io/siderolabs/iscsi-tools:v1.7.0 | jq .
+# Inspect extension manifest (use a tag that actually exists for the extension)
+crane manifest ghcr.io/siderolabs/iscsi-tools:v0.1.4 | jq .
 
 # Pull and examine the extension contents
-crane export ghcr.io/siderolabs/iscsi-tools:v1.7.0 - | tar -tf -
+crane export ghcr.io/siderolabs/iscsi-tools:v0.1.4 - | tar -tf -
 ```
 
 This shows you exactly what files the extension will add to the system.
