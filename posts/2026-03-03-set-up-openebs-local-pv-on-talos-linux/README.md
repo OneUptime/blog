@@ -8,9 +8,9 @@ Description: Learn how to deploy OpenEBS Local PV for high-performance local per
 
 ---
 
-OpenEBS is a popular open-source storage platform for Kubernetes that provides multiple storage engines. The Local PV engine is particularly interesting for Talos Linux because it gives you high-performance local storage with proper Kubernetes integration. Unlike hostPath volumes, OpenEBS Local PV provides a real CSI driver with dynamic provisioning, proper lifecycle management, and capacity tracking.
+OpenEBS is a popular open-source storage platform for Kubernetes that provides multiple storage engines. The Local PV Hostpath engine is particularly interesting for Talos Linux because it gives you high-performance local storage with proper Kubernetes integration. Unlike direct hostPath volumes in application manifests, OpenEBS Local PV Hostpath dynamically provisions Kubernetes Local PersistentVolumes with lifecycle management through StorageClasses and PVCs.
 
-This guide covers setting up OpenEBS Local PV on Talos Linux, including both the hostpath and device-based provisioners.
+This guide covers setting up OpenEBS Local PV Hostpath on Talos Linux. OpenEBS LocalPV Device and Node Disk Manager were deprecated and migrated to the OpenEBS Archive in 2024, so new OpenEBS 4.x installs should use Hostpath, LVM, or ZFS Local PV instead of the older device-based provisioner.
 
 ## Why OpenEBS Local PV?
 
@@ -20,8 +20,8 @@ OpenEBS Local PV adds proper Kubernetes primitives around local storage:
 
 - Dynamic provisioning through StorageClasses
 - Automatic cleanup when PVCs are deleted
-- Capacity tracking and quotas
-- CSI-based driver with proper lifecycle hooks
+- PV and PVC lifecycle management
+- Optional filesystem quotas when configured on supported filesystems
 
 ## Preparing Talos Linux
 
@@ -45,6 +45,11 @@ machine:
 Apply the patch to your worker nodes:
 
 ```bash
+# Create the host path on each worker before adding it as a kubelet bind mount
+talosctl exec --nodes <worker-1-ip> -- mkdir -p /var/openebs/local
+talosctl exec --nodes <worker-2-ip> -- mkdir -p /var/openebs/local
+talosctl exec --nodes <worker-3-ip> -- mkdir -p /var/openebs/local
+
 # Apply to each worker node
 talosctl patch machineconfig \
   --nodes <worker-1-ip> \
@@ -74,39 +79,37 @@ Create a values file that enables only the Local PV engine (we do not need the f
 
 ```yaml
 # openebs-values.yaml
-localprovisioner:
-  enabled: true
-  basePath: /var/openebs/local
-  image:
-    registry: ""
-    repository: openebs/provisioner-localpv
-    tag: ""
-    pullPolicy: IfNotPresent
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
-    limits:
-      cpu: 200m
-      memory: 256Mi
+localpv-provisioner:
+  localpv:
+    basePath: /var/openebs/local
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+  hostpathClass:
+    enabled: true
+    name: openebs-hostpath
+    reclaimPolicy: Delete
 
-ndm:
-  enabled: true
-  image:
-    registry: ""
-    repository: openebs/node-disk-manager
-    tag: ""
-    pullPolicy: IfNotPresent
+# Disable engines and observability components we do not need
+engines:
+  local:
+    lvm:
+      enabled: false
+    zfs:
+      enabled: false
+    rawfile:
+      enabled: false
+  replicated:
+    mayastor:
+      enabled: false
 
-ndmOperator:
-  enabled: true
-
-# Disable engines we do not need
-cstor:
+loki:
   enabled: false
-jiva:
-  enabled: false
-mayastor:
+alloy:
   enabled: false
 ```
 
@@ -130,11 +133,9 @@ kubectl -n openebs get pods
 # Verify the StorageClasses were created
 kubectl get storageclass | grep openebs
 
-# Check the Node Disk Manager discovered your disks
-kubectl -n openebs get blockdevices
 ```
 
-You should see at least two storage classes: `openebs-hostpath` for hostpath-based local PVs and `openebs-device` for raw device-based local PVs.
+You should see the `openebs-hostpath` storage class for hostpath-based local PVs.
 
 ## Using OpenEBS Hostpath Local PV
 
@@ -227,12 +228,16 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: openebs-local-fast
+  annotations:
+    openebs.io/cas-type: local
+    cas.openebs.io/config: |
+      - name: StorageType
+        value: "hostpath"
+      - name: BasePath
+        value: "/var/openebs/local"
 provisioner: openebs.io/local
 reclaimPolicy: Retain
 volumeBindingMode: WaitForFirstConsumer
-parameters:
-  storageType: "hostpath"
-  basePath: "/var/openebs/local"
 ```
 
 ```yaml
@@ -241,55 +246,23 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: openebs-local-temp
+  annotations:
+    openebs.io/cas-type: local
+    cas.openebs.io/config: |
+      - name: StorageType
+        value: "hostpath"
+      - name: BasePath
+        value: "/var/openebs/local"
 provisioner: openebs.io/local
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
-parameters:
-  storageType: "hostpath"
-  basePath: "/var/openebs/local"
 ```
 
 The `WaitForFirstConsumer` binding mode is important because it ensures the PV is created on the same node where the pod is scheduled.
 
-## Using Device-Based Local PV
+## Using Dedicated Disks
 
-If you have dedicated disks on your Talos nodes, you can use them with the device provisioner:
-
-```bash
-# List discovered block devices
-kubectl -n openebs get blockdevices
-
-# Output shows device paths and their status
-```
-
-```yaml
-# device-sc.yaml
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: openebs-device
-provisioner: openebs.io/local
-reclaimPolicy: Delete
-volumeBindingMode: WaitForFirstConsumer
-parameters:
-  storageType: "device"
-```
-
-```yaml
-# device-pvc.yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: raw-device-data
-  namespace: my-app
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 50Gi
-  storageClassName: openebs-device
-```
+OpenEBS LocalPV Device and Node Disk Manager are deprecated in current OpenEBS releases, so the `openebs-device` StorageClass from older OpenEBS 3.x documentation should not be used for new OpenEBS 4.x installs. If you have dedicated disks on your Talos nodes, use OpenEBS Local PV LVM or ZFS instead.
 
 ## Node Affinity and Scheduling
 
@@ -324,16 +297,15 @@ spec:
                       - elasticsearch
               topologyKey: kubernetes.io/hostname
       containers:
-        - name: elasticsearch
-          image: elasticsearch:8.12.0
-          env:
-            - name: discovery.type
-              value: "zen"
-            - name: cluster.name
-              value: "my-cluster"
+        - name: app
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - "while true; do date >> /data/heartbeat.log; sleep 30; done"
           volumeMounts:
             - name: data
-              mountPath: /usr/share/elasticsearch/data
+              mountPath: /data
           resources:
             requests:
               cpu: 1
@@ -353,7 +325,7 @@ spec:
             storage: 100Gi
 ```
 
-The pod anti-affinity rule ensures each Elasticsearch pod runs on a different node, and WaitForFirstConsumer binding ensures the PVs are created on the correct nodes.
+The pod anti-affinity rule ensures each pod runs on a different node, and WaitForFirstConsumer binding ensures the PVs are created on the correct nodes.
 
 ## Monitoring Storage Usage
 
