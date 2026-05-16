@@ -213,13 +213,13 @@ kubectl get externalsecret rotating-db-secret -w
 
 ## Dual-Password Rotation Pattern
 
-For database credentials, a common pattern is to maintain two passwords simultaneously. This allows zero-downtime rotation.
+For database credentials, a common pattern is to maintain two passwords simultaneously. This allows zero-downtime rotation. MySQL 8.0.14+ supports this natively with the `RETAIN CURRENT PASSWORD` and `DISCARD OLD PASSWORD` clauses.
 
 ```bash
-# Step 1: Add a second password to the database
-# (The database accepts both passwords during the transition)
-psql -h db.example.com -U postgres -c \
-  "ALTER USER dbadmin WITH PASSWORD 'new-password-456';"
+# Step 1: Add a secondary password to the database
+# MySQL 8.0.14+ accepts both the current and the new password during the transition
+mysql -h db.example.com -u admin -p -e \
+  "ALTER USER 'dbadmin'@'%' IDENTIFIED BY 'new-password-456' RETAIN CURRENT PASSWORD;"
 
 # Step 2: Update the Kubernetes secret with the new password
 kubectl create secret generic db-credentials \
@@ -233,9 +233,13 @@ kubectl rollout restart deployment/my-app
 # Step 4: Wait for all old pods to terminate
 kubectl rollout status deployment/my-app
 
-# Step 5: Remove the old password from the database
+# Step 5: Discard the old password from the database
 # (Only after all pods are using the new password)
+mysql -h db.example.com -u admin -p -e \
+  "ALTER USER 'dbadmin'@'%' DISCARD OLD PASSWORD;"
 ```
+
+Standard PostgreSQL does not support holding two passwords simultaneously; `ALTER USER ... WITH PASSWORD` replaces the existing one immediately. For PostgreSQL, the equivalent pattern is to create a second role with the new credentials, migrate applications to it, and then drop the old role.
 
 ## TLS Certificate Rotation
 
@@ -250,8 +254,8 @@ metadata:
   namespace: default
 spec:
   secretName: my-app-tls-secret
-  duration: 90d
-  renewBefore: 30d
+  duration: 2160h # 90 days
+  renewBefore: 720h # 30 days
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer
@@ -310,15 +314,20 @@ spec:
 
 Talos Linux has some unique aspects to consider for secret rotation:
 
-1. **Talos machine config secrets**: The Talos machine configuration contains its own secrets (cluster CA, bootstrap token, etc.). These can be rotated using talosctl.
+1. **Talos machine config secrets**: The Talos machine configuration contains its own secrets (cluster CA, bootstrap token, etc.). The cluster certificate authorities can be rotated in place with `talosctl rotate-ca`. Run against a control plane node and always preview with `--dry-run=true` first, since the output contains the new CA material.
 
 ```bash
-# Rotate the Talos cluster secrets
-talosctl gen secrets --from-controlplane-config controlplane.yaml > new-secrets.yaml
+# Preview a Talos API CA rotation
+talosctl -n 10.0.0.10 rotate-ca --dry-run=true --talos=true --kubernetes=false
 
-# Apply updated machine config with new secrets
-talosctl apply-config --nodes 10.0.0.10 --file updated-controlplane.yaml
+# Apply the Talos API CA rotation
+talosctl -n 10.0.0.10 rotate-ca --dry-run=false --talos=true --kubernetes=false
+
+# Rotate the Kubernetes CA
+talosctl -n 10.0.0.10 rotate-ca --dry-run=false --talos=false --kubernetes=true
 ```
+
+Talos root CAs default to a 10-year lifetime, so this is typically only needed on suspected compromise.
 
 2. **etcd encryption keys**: If you have encryption at rest enabled, rotate those keys periodically (covered in a separate guide).
 
