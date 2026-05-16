@@ -99,12 +99,13 @@ Install Blackbox Exporter:
 ```bash
 helm install blackbox-exporter prometheus-community/prometheus-blackbox-exporter \
   --namespace monitoring \
+  --create-namespace \
   --values blackbox-exporter-values.yaml
 ```
 
 ## Step 2: Configure Prometheus to Probe Your Services
 
-Create a Prometheus scrape configuration or ServiceMonitor that uses Blackbox Exporter to probe your endpoints:
+Create a Prometheus scrape configuration or Probe that uses Blackbox Exporter to probe your endpoints:
 
 ```yaml
 # uptime-probes.yaml
@@ -193,6 +194,17 @@ Apply the configuration:
 ```bash
 kubectl apply -f uptime-probes.yaml
 kubectl apply -f additional-scrape-config.yaml
+```
+
+If you use kube-prometheus-stack, also reference the Secret in your Prometheus values so the additional scrape jobs are loaded:
+
+```yaml
+prometheus:
+  prometheusSpec:
+    additionalScrapeConfigsSecret:
+      enabled: true
+      name: uptime-scrape-configs
+      key: uptime-scrape.yaml
 ```
 
 ## Step 3: Create Uptime Alerts
@@ -293,12 +305,11 @@ probe_dns_lookup_time_seconds{job="uptime-monitoring"}
 
 ## Step 5: Set Up External Uptime Checks
 
-For monitoring from outside your cluster, you can deploy Blackbox Exporter on a separate machine or use a SaaS uptime monitoring service. Here is how to set up an external Blackbox Exporter that reports back to your Prometheus:
+For monitoring from outside your cluster, you can deploy Blackbox Exporter on a separate machine or use a SaaS uptime monitoring service. Here is how to set up an external Blackbox Exporter that your Prometheus can scrape:
 
 ```yaml
 # On an external machine or cloud VM
 # docker-compose.yml
-version: '3'
 services:
   blackbox-exporter:
     image: prom/blackbox-exporter:latest
@@ -335,6 +346,10 @@ Make sure your applications expose proper health check endpoints. Here is a best
 
 ```python
 # Python/Flask health check endpoint
+from datetime import datetime, timezone
+
+from flask import jsonify
+
 @app.route('/health')
 def health_check():
     checks = {
@@ -350,7 +365,7 @@ def health_check():
     return jsonify({
         'status': 'healthy' if all_healthy else 'unhealthy',
         'checks': checks,
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.now(timezone.utc).isoformat()
     }), status_code
 ```
 
