@@ -117,11 +117,11 @@ VMware environments use OVA files that can be imported directly into vSphere:
 customization:
   systemExtensions:
     officialExtensions:
-      - siderolabs/vmtoolsd
+      - siderolabs/vmtoolsd-guest-agent
       - siderolabs/iscsi-tools
 ```
 
-The `vmtoolsd` extension is critical for VMware deployments. It provides the open-vm-tools guest agent that enables vSphere features like guest OS information, graceful shutdown, and network configuration reporting.
+The `vmtoolsd-guest-agent` extension is critical for VMware deployments. It provides the talos-vmtoolsd guest agent that enables vSphere features like guest OS information, graceful shutdown, and network configuration reporting.
 
 ```bash
 # Submit the VMware-specific schematic
@@ -265,7 +265,7 @@ Different platforms need different extensions. Here is a quick reference:
 | AWS | iscsi-tools |
 | Azure | iscsi-tools |
 | GCP | iscsi-tools |
-| VMware | vmtoolsd, iscsi-tools |
+| VMware | vmtoolsd-guest-agent, iscsi-tools |
 | QEMU/KVM | qemu-guest-agent |
 | Bare Metal | intel-ucode or amd-ucode, hardware-specific firmware |
 | Hetzner | iscsi-tools |
