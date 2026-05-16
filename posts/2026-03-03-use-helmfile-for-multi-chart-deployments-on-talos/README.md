@@ -32,10 +32,11 @@ brew install helmfile
 
 ```bash
 # Download the latest release
-wget https://github.com/helmfile/helmfile/releases/latest/download/helmfile_linux_amd64.tar.gz
+HELMFILE_VERSION=$(curl -s https://api.github.com/repos/helmfile/helmfile/releases/latest | grep -oP '"tag_name": "\K[^"]+')
+curl -L "https://github.com/helmfile/helmfile/releases/download/${HELMFILE_VERSION}/helmfile_${HELMFILE_VERSION#v}_linux_amd64.tar.gz" -o helmfile.tar.gz
 
 # Extract and install
-tar -zxvf helmfile_linux_amd64.tar.gz
+tar -zxvf helmfile.tar.gz
 sudo mv helmfile /usr/local/bin/helmfile
 
 # Verify the installation
@@ -138,7 +139,7 @@ grafana:
   persistence:
     enabled: true
     size: 5Gi
-    storageClass: local-path
+    storageClassName: local-path
 
 alertmanager:
   alertmanagerSpec:
@@ -183,6 +184,8 @@ environments:
   production:
     values:
       - environments/production.yaml
+
+---
 
 repositories:
   - name: bitnami
@@ -239,7 +242,7 @@ releases:
     chart: ./charts/cert-manager-issuers
     needs:
       - cert-manager/cert-manager
-    # This release will wait for cert-manager to be fully deployed
+    # This release will be deployed after cert-manager
 
   - name: ingress-nginx
     namespace: ingress-nginx
@@ -262,11 +265,17 @@ helmfile.d/
   30-applications.yaml
 ```
 
-Helmfile automatically picks up all YAML files in the `helmfile.d` directory when you run commands from the parent directory:
+Helmfile automatically picks up all YAML files in the `helmfile.d` directory when it cannot find a `helmfile.yaml` in the current directory:
 
 ```bash
 # Apply all files in helmfile.d/
 helmfile apply
+```
+
+By default, multiple files in `helmfile.d` can be processed in parallel. If those files depend on one another and need alphabetical ordering, use:
+
+```bash
+helmfile --sequential-helmfiles apply
 ```
 
 Or reference them explicitly:
