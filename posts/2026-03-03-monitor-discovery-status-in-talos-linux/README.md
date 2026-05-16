@@ -17,10 +17,10 @@ Talos exposes several resources related to discovery that you can query:
 ```bash
 # Discovered members - the list of known cluster members
 
-talosctl get discoveredmembers --nodes <node-ip>
+talosctl get members --nodes <node-ip>
 
-# Cluster identity - the cluster ID used for discovery
-talosctl get clusteridentity --nodes <node-ip>
+# Cluster identity - the node identity used for discovery
+talosctl get identity --nodes <node-ip>
 
 # KubeSpan identity - includes the WireGuard identity shared via discovery
 talosctl get kubespanidentity --nodes <node-ip>
@@ -29,7 +29,7 @@ talosctl get kubespanidentity --nodes <node-ip>
 talosctl get kubespanpeerstatus --nodes <node-ip>
 ```
 
-The most important one for monitoring is `discoveredmembers`. If this list is incomplete or empty, something is wrong with discovery.
+The most important one for monitoring is `members`. If this list is incomplete or empty, something is wrong with discovery.
 
 ## Quick Health Check
 
@@ -37,7 +37,7 @@ Here is a simple one-liner to check if discovery is healthy:
 
 ```bash
 # Compare discovered members to actual Kubernetes nodes
-DISCOVERED=$(talosctl get discoveredmembers --nodes <node-ip> -o json | jq 'length')
+DISCOVERED=$(talosctl get members --nodes <node-ip> -o json | jq 'length')
 K8S_NODES=$(kubectl get nodes --no-headers | wc -l)
 echo "Discovered: $DISCOVERED, K8s Nodes: $K8S_NODES"
 ```
@@ -62,23 +62,23 @@ ISSUES=()
 
 for node in "${NODES[@]}"; do
   # Check if the node is reachable
-  if ! talosctl get discoveredmembers --nodes "$node" > /dev/null 2>&1; then
+  if ! talosctl get members --nodes "$node" > /dev/null 2>&1; then
     ISSUES+=("Cannot reach node $node via talosctl")
     continue
   fi
 
   # Count discovered members
-  MEMBER_COUNT=$(talosctl get discoveredmembers --nodes "$node" -o json 2>/dev/null | jq 'length')
+  MEMBER_COUNT=$(talosctl get members --nodes "$node" -o json 2>/dev/null | jq 'length')
 
   if [ -z "$MEMBER_COUNT" ]; then
     ISSUES+=("Node $node returned invalid discovery data")
     continue
   fi
 
-  MISSING=$((EXPECTED_MEMBERS - MEMBER_COUNT - 1))  # Subtract 1 because a node does not discover itself
+  MISSING=$((EXPECTED_MEMBERS - MEMBER_COUNT))
 
   if [ "$MISSING" -gt "$ALERT_THRESHOLD" ]; then
-    ISSUES+=("Node $node sees only $MEMBER_COUNT members (expected $((EXPECTED_MEMBERS - 1)))")
+    ISSUES+=("Node $node sees only $MEMBER_COUNT members (expected $EXPECTED_MEMBERS)")
   fi
 done
 
@@ -101,7 +101,7 @@ When troubleshooting or during maintenance, watch discovery in real time:
 
 ```bash
 # Watch for member changes
-talosctl get discoveredmembers --nodes <node-ip> --watch
+talosctl get members --nodes <node-ip> --watch
 ```
 
 This shows live updates as nodes register, deregister, or update their information. It is particularly useful during:
@@ -179,7 +179,7 @@ def collect():
         start_time = time.time()
         try:
             result = subprocess.run(
-                ['talosctl', 'get', 'discoveredmembers',
+                ['talosctl', 'get', 'members',
                  '--nodes', node, '-o', 'json'],
                 capture_output=True, text=True, timeout=10
             )
@@ -218,7 +218,7 @@ spec:
     - name: talos-discovery
       rules:
         - alert: TalosDiscoveryMembersMissing
-          expr: talos_discovered_members_total < (count(kube_node_info) - 1)
+          expr: talos_discovered_members_total < count(kube_node_info)
           for: 10m
           labels:
             severity: warning
@@ -318,8 +318,8 @@ NODES=("10.0.0.10" "10.0.0.11" "10.0.0.12")
 ALL_HEALTHY=true
 
 for node in "${NODES[@]}"; do
-  MEMBERS=$(talosctl get discoveredmembers --nodes "$node" -o json 2>/dev/null | jq 'length')
-  if [ -z "$MEMBERS" ] || [ "$MEMBERS" -lt 2 ]; then
+  MEMBERS=$(talosctl get members --nodes "$node" -o json 2>/dev/null | jq 'length')
+  if [ -z "$MEMBERS" ] || [ "$MEMBERS" -lt "${#NODES[@]}" ]; then
     ALL_HEALTHY=false
     break
   fi
