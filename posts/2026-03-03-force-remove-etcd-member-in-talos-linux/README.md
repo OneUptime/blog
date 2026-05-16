@@ -72,11 +72,13 @@ talosctl etcd members --nodes <healthy-cp-ip>
 Output looks like:
 
 ```text
-NODE        MEMBERS
-10.0.0.1    10.0.0.1 (id: 7c2a7a1d4d1e2f3a), 10.0.0.2 (id: 8b3c9e4f5a6b7c8d), 10.0.0.3 (id: 9d4e0f1a2b3c4d5e)
+NODE       ID                 HOSTNAME      PEER URLS                CLIENT URLS              LEARNER
+10.0.0.1   7c2a7a1d4d1e2f3a   talos-cp-01   https://10.0.0.1:2380    https://10.0.0.1:2379    false
+10.0.0.1   8b3c9e4f5a6b7c8d   talos-cp-02   https://10.0.0.2:2380    https://10.0.0.2:2379    false
+10.0.0.1   9d4e0f1a2b3c4d5e   talos-cp-03   https://10.0.0.3:2380    https://10.0.0.3:2379    false
 ```
 
-If node 10.0.0.2 is the failed node, its member ID is `8b3c9e4f5a6b7c8d`.
+Member IDs are 16-character hexadecimal strings. If node 10.0.0.2 is the failed node, its member ID is `8b3c9e4f5a6b7c8d`.
 
 Verify this is the right one by cross-referencing with your infrastructure records:
 
@@ -214,7 +216,7 @@ HEALTHY_NODE=$2
 
 # Find the member ID for the failed node
 MEMBER_ID=$(talosctl etcd members --nodes $HEALTHY_NODE 2>/dev/null | \
-    grep "$FAILED_NODE" | grep -o 'id: [a-f0-9]*' | awk '{print $2}')
+    grep "$FAILED_NODE" | grep -oE '[a-f0-9]{16}' | head -1)
 
 if [ -z "$MEMBER_ID" ]; then
     echo "Could not find member ID for $FAILED_NODE"
