@@ -70,9 +70,11 @@ Apply this configuration to your control plane nodes:
 
 ```bash
 # Apply to each control plane node
+# The file above is a partial machine config, so apply it as a strategic
+# merge patch rather than a full apply-config.
 for cp in 10.0.1.10 10.0.1.11 10.0.1.12; do
   echo "Applying PSA config to $cp..."
-  talosctl -n $cp apply-config --file talos-config-psa.yaml
+  talosctl -n $cp patch machineconfig --patch @talos-config-psa.yaml
 
   # Wait for the API server to restart
   sleep 30
