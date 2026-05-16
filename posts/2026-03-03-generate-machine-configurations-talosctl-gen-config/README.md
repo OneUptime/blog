@@ -20,7 +20,7 @@ At its simplest, `talosctl gen config` takes two required arguments: a cluster n
 talosctl gen config my-cluster https://192.168.1.100:6443
 ```
 
-This produces four files in your current directory:
+This produces three files in your current directory:
 
 | File | Purpose |
 |------|---------|
@@ -220,8 +220,8 @@ After generating the files, inspect them to understand what was produced:
 # View the control plane configuration
 cat controlplane.yaml
 
-# View just the cluster section
-talosctl machineconfig info controlplane.yaml
+# View just the cluster section using yq
+yq '.cluster' controlplane.yaml
 ```
 
 The configuration is a standard YAML document with two top-level sections:
