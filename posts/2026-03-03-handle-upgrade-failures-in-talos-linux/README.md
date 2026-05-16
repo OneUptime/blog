@@ -249,8 +249,10 @@ talosctl etcd status --nodes 192.168.1.10
 # or bootstrap a new etcd cluster
 
 # Option 1: Recover from snapshot (preferred)
-talosctl etcd recover --nodes 192.168.1.10 \
-  --snapshot /tmp/etcd-pre-upgrade.snapshot
+# After resetting all control plane nodes, bootstrap one of them
+# from a previously taken snapshot
+talosctl bootstrap --nodes 192.168.1.10 \
+  --recover-from=/tmp/etcd-pre-upgrade.snapshot
 
 # Option 2: Bootstrap new cluster (last resort)
 # This requires resetting all control plane nodes
@@ -288,7 +290,7 @@ Upgrade Failure Response Runbook:
 4. Recovery:
    - For auto-rollback: Investigate and retry with fixes
    - For post-boot failure: talosctl upgrade --image <old-version>
-   - For etcd quorum loss: talosctl etcd recover
+   - For etcd quorum loss: talosctl bootstrap --recover-from=<snapshot>
 
 5. Post-recovery:
    - Verify all nodes are healthy
