@@ -362,9 +362,17 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  # Delete indices older than 7 days
-                  CUTOFF_DATE=$(date -d "-7 days" +%Y.%m.%d 2>/dev/null || date -v-7d +%Y.%m.%d)
-                  curl -X DELETE "http://zipkin-elasticsearch.tracing.svc.cluster.local:9200/zipkin:span-*,-zipkin:span-${CUTOFF_DATE}*"
+                  # Delete Zipkin daily span indices older than 7 days.
+                  # Zipkin's default daily index name is "zipkin:span-YYYY-MM-DD"
+                  # (or "zipkin-span-YYYY-MM-DD" on Elasticsearch 7+).
+                  CUTOFF_DATE=$(date -d "-7 days" +%Y-%m-%d 2>/dev/null || date -v-7d +%Y-%m-%d)
+                  ES_URL="http://zipkin-elasticsearch.tracing.svc.cluster.local:9200"
+                  for INDEX in $(curl -s "${ES_URL}/_cat/indices/*zipkin*span-*?h=index"); do
+                    INDEX_DATE=$(echo "$INDEX" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}')
+                    if [ -n "$INDEX_DATE" ] && [ "$INDEX_DATE" \< "$CUTOFF_DATE" ]; then
+                      curl -X DELETE "${ES_URL}/${INDEX}"
+                    fi
+                  done
           restartPolicy: OnFailure
 ```
 
