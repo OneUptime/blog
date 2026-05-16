@@ -21,12 +21,12 @@ Talos Linux uses a multi-layered certificate system. There are several types of 
 **etcd certificates** - Separate from the Kubernetes certificates, these secure etcd peer and client communication.
 
 ```bash
-# View the Talos-level certificates
+# View the Kubernetes certificates managed by Talos
 
-talosctl get certificate -n <control-plane-ip>
+talosctl get KubernetesDynamicCerts -n <control-plane-ip>
 
 # Check specific certificate details
-talosctl get certificate kubernetes -n <control-plane-ip> -o yaml
+talosctl get KubernetesDynamicCerts -n <control-plane-ip> -o yaml
 ```
 
 ## Checking Certificate Expiration Dates
@@ -35,14 +35,14 @@ The first step in certificate management is knowing when your certificates expir
 
 ```bash
 # Check Kubernetes PKI certificate expiration
-talosctl get certificate -n <control-plane-ip> -o json | \
-    jq -r '.[] | "\(.metadata.id): \(.spec.notAfter)"'
+talosctl get KubernetesDynamicCerts -n <control-plane-ip> -o json | \
+    jq -r '"\(.metadata.id): \(.spec.notAfter)"'
 
 # Check the Kubernetes API server certificate
 kubectl get --raw /healthz -v=6 2>&1 | grep -i cert
 
 # For a more detailed view, use openssl
-talosctl read /system/secrets/kubernetes/certs/apiserver.crt -n <control-plane-ip> | \
+talosctl read /system/secrets/kubernetes/kube-apiserver/apiserver.crt -n <control-plane-ip> | \
     openssl x509 -noout -dates
 ```
 
@@ -60,8 +60,8 @@ echo "Certificate Expiration Report"
 echo "============================="
 
 # List all certificates and their expiration
-talosctl get certificate -n "$CONTROL_PLANE_IP" -o json | \
-    jq -r '.[] | "\(.metadata.id) \(.spec.notAfter)"' | \
+talosctl get KubernetesDynamicCerts -n "$CONTROL_PLANE_IP" -o json | \
+    jq -r '"\(.metadata.id) \(.spec.notAfter)"' | \
     while read -r cert_id expiry_date; do
         if [ -z "$expiry_date" ] || [ "$expiry_date" = "null" ]; then
             echo "$cert_id: No expiration date (CA or self-signed)"
@@ -105,18 +105,21 @@ kubectl get csr -o json | jq '.items[] | {name: .metadata.name, condition: .stat
 For cases where automatic renewal is not sufficient, or when you need to force a renewal, Talos provides the `talosctl` commands:
 
 ```bash
-# Renew all Kubernetes certificates
-talosctl config rotate-certs -n <control-plane-ip>
+# Rotate the Talos API CA (preview the steps first with --dry-run)
+talosctl -n <control-plane-ip> rotate-ca --dry-run=true --talos=true --kubernetes=false
 
-# This will regenerate the Talos API certificates
-# and the Kubernetes PKI certificates
+# Rotate the Kubernetes API PKI CA
+talosctl -n <control-plane-ip> rotate-ca --dry-run=true --talos=false --kubernetes=true
+
+# Once you have reviewed the dry-run output, run without --dry-run to perform the rotation
+talosctl -n <control-plane-ip> rotate-ca --talos=true --kubernetes=true
 ```
 
-After renewing certificates, you need to update your `talosconfig` file because the Talos API certificate has changed:
+After rotating the Talos CA, a new client `talosconfig` is written to the current directory. Merge it into your default talosconfig location:
 
 ```bash
-# Generate a new talosconfig with the updated certificates
-talosctl config merge /path/to/new/talosconfig
+# Merge the new talosconfig into your default configuration
+talosctl config merge ./talosconfig
 ```
 
 ## Renewing the Kubernetes CA Certificate
@@ -125,7 +128,7 @@ The CA certificate is the most critical certificate in your cluster. When it exp
 
 ```bash
 # Check the CA certificate expiration
-talosctl read /system/secrets/kubernetes/certs/ca.crt -n <control-plane-ip> | \
+talosctl read /system/secrets/kubernetes/kube-apiserver/ca.crt -n <control-plane-ip> | \
     openssl x509 -noout -dates -subject
 
 # The output will show:
@@ -200,8 +203,8 @@ spec:
               # Check each control plane node
               ALERTS=""
               for NODE in 10.0.0.1 10.0.0.2 10.0.0.3; do
-                talosctl get certificate -n "$NODE" -o json | \
-                  jq -r '.[] | select(.spec.notAfter != null) |
+                talosctl get KubernetesDynamicCerts -n "$NODE" -o json | \
+                  jq -r 'select(.spec.notAfter != null) |
                   select((.spec.notAfter | fromdateiso8601) - now < (30*86400)) |
                   "Node '$NODE': \(.metadata.id) expires \(.spec.notAfter)"' >> /tmp/alerts.txt
               done
@@ -221,10 +224,10 @@ When you upgrade Talos Linux, the upgrade process handles certificate migration 
 
 ```bash
 # Before upgrading, verify certificate status
-talosctl get certificate -n <control-plane-ip>
+talosctl get KubernetesDynamicCerts -n <control-plane-ip>
 
 # After upgrading, verify certificates were preserved or renewed
-talosctl get certificate -n <control-plane-ip>
+talosctl get KubernetesDynamicCerts -n <control-plane-ip>
 
 # Check that the API server is using the correct certificate
 openssl s_client -connect <control-plane-ip>:6443 -showcerts < /dev/null 2>/dev/null | \
