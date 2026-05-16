@@ -8,13 +8,13 @@ Description: Learn how to integrate the AWS cloud provider with Talos Linux for 
 
 ---
 
-Running Kubernetes on AWS is a common choice for teams that want elastic infrastructure and a mature ecosystem of managed services. When you combine that with Talos Linux, you get an immutable, minimal operating system that removes a lot of the operational baggage that comes with traditional Linux distributions. But to get the most out of AWS-native features like load balancers, EBS volumes, and node lifecycle management, you need the AWS cloud provider properly configured. This guide walks you through the entire process.
+Running Kubernetes on AWS is a common choice for teams that want elastic infrastructure and a mature ecosystem of managed services. When you combine that with Talos Linux, you get an immutable, minimal operating system that removes a lot of the operational baggage that comes with traditional Linux distributions. But to get the most out of AWS-native features like load balancers, node metadata, and node lifecycle management, you need the AWS cloud provider properly configured. This guide walks you through the entire process.
 
 ## Why Use the AWS Cloud Provider?
 
 The AWS cloud provider integration allows Kubernetes to talk directly to AWS APIs. Without it, your cluster has no awareness of the underlying infrastructure. You lose the ability to automatically provision Elastic Load Balancers when you create a Service of type LoadBalancer, and your nodes will not have proper AWS metadata attached. The cloud provider bridges the gap between your Kubernetes abstractions and the actual AWS resources backing them.
 
-With the cloud provider enabled, nodes get labeled with their availability zone, instance type, and region. Persistent volumes can be automatically provisioned on EBS. Load balancers get created and destroyed as Services come and go.
+With the cloud provider enabled, nodes get labeled with their availability zone, instance type, and region. Load balancers get created and destroyed as Services come and go. For persistent volumes on EBS, use the AWS EBS CSI driver alongside the cloud provider rather than relying on the deprecated in-tree volume plugin.
 
 ## Prerequisites
 
@@ -72,28 +72,64 @@ For the control plane role, create a policy with these permissions:
 }
 ```
 
-Worker nodes need a subset of these permissions. At minimum, they need `ec2:DescribeInstances`, `ec2:DescribeRegions`, and `ec2:DescribeRouteTables`.
+Worker nodes need a smaller node policy. The upstream AWS cloud provider prerequisites list EC2 instance and region discovery plus ECR read permissions for nodes:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeInstances",
+        "ec2:DescribeRegions",
+        "ecr:GetAuthorizationToken",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:GetRepositoryPolicy",
+        "ecr:DescribeRepositories",
+        "ecr:ListImages",
+        "ecr:BatchGetImage"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
 
 ## Configuring Talos Linux Machine Config
 
 Talos uses a YAML-based machine configuration. To enable the external AWS cloud provider, you need to patch your machine config. First, generate your base configuration:
 
 ```bash
-# Generate Talos machine configuration for AWS
+# Render a version-pinned AWS cloud controller manager manifest.
+# Match the image tag to your Kubernetes minor version.
+helm repo add aws-cloud-controller-manager https://kubernetes.github.io/cloud-provider-aws
+helm repo update aws-cloud-controller-manager
+helm template aws-cloud-controller-manager \
+  aws-cloud-controller-manager/aws-cloud-controller-manager \
+  --namespace kube-system \
+  --set image.tag=v1.35.0 \
+  > aws-cloud-controller-manager.yaml
+
+# Host aws-cloud-controller-manager.yaml at a URL your nodes can fetch during bootstrap,
+# then generate Talos machine configuration for AWS.
 
 talosctl gen config my-cluster https://my-cluster-endpoint:6443 \
+  --with-examples=false \
+  --with-docs=false \
+  --install-disk /dev/xvda \
   --config-patch='[
     {"op": "add", "path": "/cluster/externalCloudProvider", "value": {
       "enabled": true,
       "manifests": [
-        "https://raw.githubusercontent.com/kubernetes/cloud-provider-aws/master/manifests/rbac.yaml",
-        "https://raw.githubusercontent.com/kubernetes/cloud-provider-aws/master/manifests/aws-cloud-controller-manager-daemonset.yaml"
+        "https://example.com/aws-cloud-controller-manager.yaml"
       ]
     }}
   ]'
 ```
 
-This tells Talos to configure the kubelet with `--cloud-provider=external` and deploy the AWS cloud controller manager automatically during bootstrap.
+This tells Talos to configure Kubernetes for an external cloud provider and deploy the AWS cloud controller manager manifest during bootstrap. The AWS cloud provider release should match your Kubernetes minor version, so avoid tracking the `master` branch for bootstrap manifests.
 
 ## Tagging AWS Resources
 
