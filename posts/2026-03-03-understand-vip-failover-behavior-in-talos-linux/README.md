@@ -20,25 +20,17 @@ The primary use case for VIP in Talos Linux is providing a stable endpoint for t
 
 ## How VIP is Configured
 
-VIP is configured in the machine config of your control plane nodes:
+VIP is configured on your control plane nodes with a `Layer2VIPConfig` document:
 
 ```yaml
-# Control plane machine config with VIP
-
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-        vip:
-          ip: 192.168.1.100    # The shared virtual IP
+# Layer 2 VIP config
+apiVersion: v1alpha1
+kind: Layer2VIPConfig
+name: 192.168.1.100    # The shared virtual IP
+link: eth0             # The link to assign the VIP to
 ```
 
-All control plane nodes should have the same VIP configuration but different primary addresses:
+Patch each control plane node with the same VIP configuration. The nodes still have different primary addresses:
 
 ```yaml
 # Node 1: 192.168.1.10, VIP: 192.168.1.100
@@ -56,7 +48,7 @@ Talos Linux uses etcd to coordinate VIP ownership. Here is how the election work
 4. The winning node sends a gratuitous ARP announcement to inform the network
 5. Other nodes monitor the election and stand ready to take over
 
-The election is based on an etcd lease mechanism. The current VIP owner holds a lease in etcd, and as long as it keeps renewing the lease, it keeps the VIP.
+The election is coordinated through etcd. As long as the current owner remains responsive to the election process, it keeps the VIP.
 
 ```bash
 # Check which node currently owns the VIP
@@ -71,15 +63,15 @@ talosctl -n 192.168.1.12 get addresses | grep 192.168.1.100
 
 When the node currently holding the VIP fails, the following sequence occurs:
 
-### Step 1: etcd Lease Expires
+### Step 1: Election Timeout Passes
 
-The failed node can no longer renew its etcd lease. The lease has a TTL (time-to-live), and once it expires, other nodes know the VIP is available.
+The failed node can no longer participate in the etcd election. Talos waits out the election timeout before another node takes the VIP, which avoids a split-brain situation where more than one node advertises the same address.
 
-The default lease TTL determines how long it takes before failover begins. This is typically a few seconds.
+Graceful shutdowns usually move the VIP almost instantly. Unexpected failures, such as power loss or a crash, can take longer and may take up to about a minute.
 
 ### Step 2: New Leader Election
 
-Once the lease expires, the remaining control plane nodes compete for the VIP. The first node to successfully acquire the etcd lease becomes the new VIP owner.
+Once the election timeout has passed, the remaining control plane nodes compete for the VIP. The node that wins the election becomes the new VIP owner.
 
 ### Step 3: VIP Assignment
 
@@ -100,7 +92,7 @@ The new owner sends a gratuitous ARP announcement to update the ARP caches of al
 
 ```bash
 # Capture gratuitous ARP during failover
-talosctl -n <observer-node> pcap --interface eth0 --bpf-filter "arp" --duration 60s -o failover-arp.pcap
+talosctl -n <observer-node> pcap --interface eth0 --bpf-filter "$(tcpdump -dd -y EN10MB 'arp')" --duration 60s -o failover-arp.pcap
 ```
 
 ### Step 5: Traffic Redirects
@@ -113,11 +105,12 @@ The total failover time depends on several factors:
 
 | Phase | Typical Duration |
 |-------|-----------------|
-| etcd lease expiry | 2-10 seconds |
+| Graceful owner shutdown | Almost instant |
+| Unexpected owner failure / election timeout | Up to about 1 minute |
 | New leader election | < 1 second |
 | VIP assignment | < 1 second |
 | Gratuitous ARP propagation | < 1 second |
-| **Total failover time** | **3-12 seconds** |
+| **Total failover time** | **Usually seconds for graceful shutdowns; up to about 1 minute for sudden failures** |
 
 During this window, API server requests to the VIP will fail. Kubernetes clients (including kubelet) have built-in retry logic that handles this gracefully for most operations.
 
@@ -168,21 +161,21 @@ done
 
 ### All Control Plane Nodes Down
 
-If all control plane nodes go down, the VIP has nowhere to go. When nodes come back up, the VIP will be assigned to whichever node successfully bootstraps etcd first.
+If all control plane nodes go down, the VIP has nowhere to go. When nodes come back up, the VIP will not become active until etcd is available and a control plane node wins the VIP election.
 
 ### Network Partition (Split Brain)
 
-If a network partition separates control plane nodes, the etcd quorum determines which side gets the VIP. The side with the etcd majority keeps the VIP. The minority side loses the VIP because it cannot maintain the etcd lease without quorum.
+If a network partition separates control plane nodes, the etcd quorum determines which side gets the VIP. The side with the etcd majority keeps the VIP. The minority side loses the VIP because it cannot participate in the etcd election without quorum.
 
 ```bash
 # Check etcd health to diagnose partition issues
-talosctl -n <node-ip> get etcdmembers
+talosctl -n <node-ip> etcd members
 talosctl -n <node-ip> service etcd
 ```
 
 ### etcd Unhealthy but Node is Running
 
-If etcd is unhealthy on the VIP owner but the node is otherwise running, the VIP may not fail over properly because the lease mechanism depends on etcd. This is a less common scenario but worth being aware of.
+If etcd is unhealthy on the VIP owner but the node is otherwise running, VIP availability can be affected because the election mechanism depends on etcd. This is why Talos recommends not using the VIP as the Talos API endpoint: if etcd is down, the VIP may also be unavailable when you need Talos API access for recovery.
 
 ```bash
 # Check etcd health
@@ -234,4 +227,4 @@ kubectl config view | grep server
 
 ## Conclusion
 
-VIP failover in Talos Linux provides a simple and effective way to maintain Kubernetes API server availability without external load balancers. The etcd-based election mechanism is straightforward and reliable for environments where all control plane nodes share a Layer 2 network. Failover typically completes in under 12 seconds, which is fast enough for Kubernetes clients to handle transparently. The most important thing you can do is test failover in your specific environment, understand the timing, and set up monitoring so you know when failover events occur.
+VIP failover in Talos Linux provides a simple and effective way to maintain Kubernetes API server availability without external load balancers. The etcd-based election mechanism is straightforward and reliable for environments where all control plane nodes share a Layer 2 network. Graceful failover is usually very fast, while sudden failures can take up to about a minute. The most important thing you can do is test failover in your specific environment, understand the timing, and set up monitoring so you know when failover events occur.
