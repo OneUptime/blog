@@ -33,11 +33,14 @@ helm install gatekeeper gatekeeper/gatekeeper \
   --namespace gatekeeper-system \
   --create-namespace \
   --set replicas=3 \
-  --set audit.replicas=1 \
-  --set resources.requests.cpu=100m \
-  --set resources.requests.memory=256Mi \
-  --set resources.limits.cpu=500m \
-  --set resources.limits.memory=512Mi
+  --set controllerManager.resources.requests.cpu=100m \
+  --set controllerManager.resources.requests.memory=256Mi \
+  --set controllerManager.resources.limits.cpu=500m \
+  --set controllerManager.resources.limits.memory=512Mi \
+  --set audit.resources.requests.cpu=100m \
+  --set audit.resources.requests.memory=256Mi \
+  --set audit.resources.limits.cpu=500m \
+  --set audit.resources.limits.memory=512Mi
 ```
 
 Verify the installation.
@@ -360,12 +363,15 @@ spec:
 
 ```bash
 # Check Gatekeeper metrics
-kubectl get --raw /metrics -n gatekeeper-system | grep gatekeeper
+kubectl -n gatekeeper-system port-forward deploy/gatekeeper-controller-manager 8888:8888
+
+# In another terminal
+curl http://127.0.0.1:8888/metrics | grep gatekeeper
 
 # Key metrics to monitor:
-# gatekeeper_violations - current violation count
-# gatekeeper_constraint_template_status - template health
-# gatekeeper_request_duration_seconds - webhook latency
+# gatekeeper_violations - total audited violations
+# gatekeeper_constraint_templates - template health by status
+# gatekeeper_validation_request_duration_seconds - validation webhook latency
 ```
 
 High webhook latency can slow down all API requests, so monitor this closely and scale up Gatekeeper replicas if needed.
