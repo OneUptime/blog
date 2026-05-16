@@ -20,7 +20,7 @@ Traditional WordPress deployments face constant security challenges. The host OS
 
 - Talos Linux cluster with at least two worker nodes
 - `kubectl` configured
-- A StorageClass for persistent volumes
+- A StorageClass for persistent volumes (a ReadWriteMany-capable StorageClass such as NFS or Longhorn is required if running multiple WordPress replicas that share `wp-content`)
 - A domain name (optional but recommended)
 
 ## Step 1: Deploy MySQL Database
@@ -241,7 +241,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteMany
-  storageClassName: local-path
+  storageClassName: nfs-client
   resources:
     requests:
       storage: 20Gi
