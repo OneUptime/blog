@@ -280,17 +280,6 @@ spec:
         - operator: Exists
 ```
 
-## Container Runtime Environment Variables
-
-To set environment variables that affect the containerd runtime itself:
-
-```yaml
-machine:
-  env:
-    # These affect containerd behavior
-    CONTAINERD_SNAPSHOTTER: "overlayfs"
-```
-
 ## Environment Variables for etcd
 
 For etcd-specific tuning on control plane nodes:
