@@ -64,6 +64,19 @@ kubectl create namespace pulsar
 
 ```yaml
 # pulsar-values.yaml
+# Cluster name (used by brokers, BookKeeper, and admin commands)
+clusterName: pulsar
+
+# Toggle which components the chart deploys
+components:
+  zookeeper: true
+  bookkeeper: true
+  autorecovery: true
+  broker: true
+  proxy: true
+  toolset: true
+  pulsar_manager: false
+
 # ZooKeeper configuration
 zookeeper:
   replicaCount: 3
@@ -123,12 +136,9 @@ proxy:
   service:
     type: ClusterIP
 
-# Disable components we do not need initially
-pulsar_manager:
+# Disable the bundled monitoring stack initially
+kube-prometheus-stack:
   enabled: false
-monitoring:
-  prometheus: false
-  grafana: false
 ```
 
 ```bash
@@ -156,9 +166,9 @@ kubectl get pods -n pulsar -l component=bookkeeper
 # Check Brokers
 kubectl get pods -n pulsar -l component=broker
 
-# Verify broker health
+# Verify broker health (pass the cluster name set in values.yaml)
 kubectl exec -it pulsar-broker-0 -n pulsar -- \
-  bin/pulsar-admin brokers list pulsar-cluster
+  bin/pulsar-admin brokers list pulsar
 ```
 
 ## Step 4: Create Tenants, Namespaces, and Topics
@@ -265,7 +275,7 @@ Pulsar Functions provide lightweight stream processing:
 # Deploy a simple function
 kubectl exec -it pulsar-broker-0 -n pulsar -- \
   bin/pulsar-admin functions create \
-  --function-name word-count \
+  --name word-count \
   --tenant mycompany \
   --namespace events \
   --inputs persistent://mycompany/events/input \
@@ -285,16 +295,17 @@ Enable Prometheus monitoring for all components:
 
 ```yaml
 # Add to pulsar-values.yaml
-monitoring:
-  prometheus: true
-  grafana: true
-  alert_manager: false
-
-grafana:
-  service:
-    type: ClusterIP
-  admin:
-    password: "grafana-admin-password"
+kube-prometheus-stack:
+  enabled: true
+  prometheus:
+    enabled: true
+  alertmanager:
+    enabled: false
+  grafana:
+    enabled: true
+    service:
+      type: ClusterIP
+    adminPassword: "grafana-admin-password"
 ```
 
 Key metrics to watch include broker throughput rates, BookKeeper write and read latency, topic backlog size, and consumer acknowledgment rates.
