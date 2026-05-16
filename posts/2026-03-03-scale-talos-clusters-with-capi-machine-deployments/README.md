@@ -57,11 +57,11 @@ kubectl edit machinedeployment my-cluster-workers
 When scaling down, CAPI selects machines to delete. You can influence which machines get removed:
 
 ```bash
-# Annotate a specific machine for deletion priority
-kubectl annotate machine my-cluster-workers-abc123 \
+# Label a specific machine for deletion priority
+kubectl label machine my-cluster-workers-abc123 \
   cluster.x-k8s.io/delete-machine=yes
 
-# Then scale down - the annotated machine will be removed first
+# Then scale down - the labeled machine will be removed first
 kubectl scale machinedeployment my-cluster-workers --replicas=2
 ```
 
