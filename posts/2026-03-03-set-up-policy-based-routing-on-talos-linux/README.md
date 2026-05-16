@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, Policy-Based Routing, Networking, Routing Rules, Kubernetes, Network Configuration
 
-Description: Guide to configuring policy-based routing on Talos Linux to route traffic based on source address, protocol, or other criteria.
+Description: Guide to configuring policy-based routing on Talos Linux to route traffic based on source address, destination address, interface, packet mark, or other supported criteria.
 
 ---
 
@@ -36,44 +36,46 @@ Each routing table can have its own set of routes with different default gateway
 
 ## Configuring PBR in Talos Machine Configuration
 
-Talos supports routing rules and multiple routing tables through the network interface configuration:
+Talos supports routing rules and multiple routing tables through network configuration documents. Use `LinkConfig` for interface addresses and routes, and `RoutingRuleConfig` for Linux policy routing rules:
 
 ### Basic Setup with Two Uplinks
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      # Primary interface - connected to ISP1
-      - interface: eth0
-        addresses:
-          - 203.0.113.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 203.0.113.1
-            metric: 100
-          # Also add this route to a custom routing table
-          - network: 0.0.0.0/0
-            gateway: 203.0.113.1
-            table: 100
-        # Define routing rules for this interface
-        routingRules:
-          - from: 203.0.113.10/32
-            table: 100
-            priority: 100
-
-      # Secondary interface - connected to ISP2
-      - interface: eth1
-        addresses:
-          - 198.51.100.20/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 198.51.100.1
-            table: 200
-        routingRules:
-          - from: 198.51.100.20/32
-            table: 200
-            priority: 200
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0 # Primary interface - connected to ISP1
+addresses:
+  - address: 203.0.113.10/24
+routes:
+  - destination: 0.0.0.0/0
+    gateway: 203.0.113.1
+    metric: 100
+  # Also add this route to a custom routing table
+  - destination: 0.0.0.0/0
+    gateway: 203.0.113.1
+    table: "100"
+---
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth1 # Secondary interface - connected to ISP2
+addresses:
+  - address: 198.51.100.20/24
+routes:
+  - destination: 0.0.0.0/0
+    gateway: 198.51.100.1
+    table: "200"
+---
+apiVersion: v1alpha1
+kind: RoutingRuleConfig
+name: "100" # Priority of the routing rule
+src: 203.0.113.10/32
+table: "100"
+---
+apiVersion: v1alpha1
+kind: RoutingRuleConfig
+name: "200" # Priority of the routing rule
+src: 198.51.100.20/32
+table: "200"
 ```
 
 This configuration ensures that traffic originating from the IP on eth0 goes through ISP1, and traffic originating from the IP on eth1 goes through ISP2. This is essential for asymmetric routing prevention.
@@ -85,8 +87,8 @@ This configuration ensures that traffic originating from the IP on eth0 goes thr
 
 talosctl apply-config --nodes 192.168.1.10 --file config.yaml
 
-# Verify routing rules
-talosctl read --nodes 192.168.1.10 /proc/net/fib_rules
+# Verify configured routes from the Talos API
+talosctl get routes --nodes 192.168.1.10
 ```
 
 ## Verifying the Configuration
@@ -96,7 +98,7 @@ After applying, verify that the routing rules and tables are set up correctly:
 ```bash
 # Check routing rules
 # Use a debug pod since talosctl doesn't have a direct 'ip rule' equivalent
-kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- ip rule show
+kubectl debug node/talos-node-1 -it --profile=sysadmin --image=nicolaka/netshoot -- ip rule show
 
 # Expected output:
 # 0:      from all lookup local
@@ -110,13 +112,13 @@ Check the individual routing tables:
 
 ```bash
 # Check table 100
-kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- ip route show table 100
+kubectl debug node/talos-node-1 -it --profile=sysadmin --image=nicolaka/netshoot -- ip route show table 100
 
 # Expected output:
 # default via 203.0.113.1 dev eth0
 
 # Check table 200
-kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- ip route show table 200
+kubectl debug node/talos-node-1 -it --profile=sysadmin --image=nicolaka/netshoot -- ip route show table 200
 
 # Expected output:
 # default via 198.51.100.1 dev eth1
@@ -129,30 +131,34 @@ kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- ip route show t
 Route entire subnets through different paths:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-            table: 100
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.254
-            table: 200
-        routingRules:
-          # Management traffic through gateway 1
-          - from: 10.10.0.0/16
-            table: 100
-            priority: 100
-          # Application traffic through gateway 254
-          - from: 10.20.0.0/16
-            table: 200
-            priority: 200
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.1
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.1
+    table: "100"
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.254
+    table: "200"
+---
+apiVersion: v1alpha1
+kind: RoutingRuleConfig
+name: "100"
+# Management traffic through gateway 1
+src: 10.10.0.0/16
+table: "100"
+---
+apiVersion: v1alpha1
+kind: RoutingRuleConfig
+name: "200"
+# Application traffic through gateway 254
+src: 10.20.0.0/16
+table: "200"
 ```
 
 ### Routing Based on Destination
@@ -160,42 +166,48 @@ machine:
 You can also create rules based on the destination:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-          # Route specific destination through a different gateway
-          - network: 10.50.0.0/16
-            gateway: 192.168.1.254
-            table: 300
-        routingRules:
-          # Traffic to 10.50.0.0/16 uses table 300
-          - to: 10.50.0.0/16
-            table: 300
-            priority: 150
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.1
+  # Route specific destination through a different gateway
+  - destination: 10.50.0.0/16
+    gateway: 192.168.1.254
+    table: "300"
+---
+apiVersion: v1alpha1
+kind: RoutingRuleConfig
+name: "150"
+# Traffic to 10.50.0.0/16 uses table 300
+dst: 10.50.0.0/16
+table: "300"
 ```
 
 ### Combined Source and Destination Rules
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        routingRules:
-          # Traffic from management subnet to monitoring network
-          # goes through the security appliance
-          - from: 10.10.0.0/16
-            to: 10.99.0.0/16
-            table: 400
-            priority: 50
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - destination: 10.99.0.0/16
+    gateway: 192.168.1.254
+    table: "400"
+---
+apiVersion: v1alpha1
+kind: RoutingRuleConfig
+name: "50"
+# Traffic from management subnet to monitoring network
+# goes through the security appliance
+src: 10.10.0.0/16
+dst: 10.99.0.0/16
+table: "400"
 ```
 
 ## PBR with Kubernetes Networking
@@ -207,38 +219,37 @@ Policy-based routing can interact with Kubernetes networking in important ways.
 If your pods need different routing based on their IP ranges:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-        routingRules:
-          # Pod traffic (CIDR 10.244.0.0/16) uses a specific table
-          - from: 10.244.0.0/16
-            table: 500
-            priority: 100
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+addresses:
+  - address: 192.168.1.10/24
+routes:
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.1
+  - destination: 0.0.0.0/0
+    gateway: 192.168.1.254
+    table: "500"
+---
+apiVersion: v1alpha1
+kind: RoutingRuleConfig
+name: "100"
+# Pod traffic (CIDR 10.244.0.0/16) uses a specific table
+src: 10.244.0.0/16
+table: "500"
 ```
 
 ### Service Traffic Routing
 
-For routing Kubernetes service traffic through specific paths:
+For routing traffic to Kubernetes service IPs through specific paths:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        routingRules:
-          # Service CIDR traffic uses main table (default behavior)
-          - from: 10.96.0.0/12
-            table: main
-            priority: 50
+apiVersion: v1alpha1
+kind: RoutingRuleConfig
+name: "50"
+# Traffic to the Service CIDR uses the main table (default behavior)
+dst: 10.96.0.0/12
+table: "254"
 ```
 
 ## Kernel Parameters for PBR
@@ -256,8 +267,8 @@ machine:
     net.ipv4.conf.all.rp_filter: "2"
     net.ipv4.conf.default.rp_filter: "2"
 
-    # Accept source routing (if needed)
-    # net.ipv4.conf.all.accept_source_route: "1"
+    # Source routing is not required for PBR and should normally remain disabled
+    net.ipv4.conf.all.accept_source_route: "0"
 ```
 
 The reverse path filter setting is particularly important. The default strict mode (1) drops packets that arrive on an interface that is not the one the kernel would use to reach the source. With PBR, this check can incorrectly drop valid traffic. Setting it to loose mode (2) prevents this.
@@ -268,7 +279,7 @@ The reverse path filter setting is particularly important. The default strict mo
 
 ```bash
 # Check which table is being used for a specific flow
-kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
+kubectl debug node/talos-node-1 -it --profile=sysadmin --image=nicolaka/netshoot -- \
   ip route get 8.8.8.8 from 203.0.113.10
 
 # Output shows which table and route is selected:
@@ -279,7 +290,7 @@ kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
 
 ```bash
 # Verify rules are present
-kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- ip rule show
+kubectl debug node/talos-node-1 -it --profile=sysadmin --image=nicolaka/netshoot -- ip rule show
 
 # Check for conflicting rules with lower priority numbers (higher priority)
 # Lower number = higher priority
@@ -291,7 +302,7 @@ If you see connection timeouts or reset packets, asymmetric routing might be the
 
 ```bash
 # Check conntrack for problematic connections
-kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
+kubectl debug node/talos-node-1 -it --profile=sysadmin --image=nicolaka/netshoot -- \
   conntrack -L | grep "UNREPLIED"
 ```
 
@@ -299,15 +310,15 @@ Fix by ensuring that PBR rules are set up for both directions of the traffic flo
 
 ## Monitoring PBR
 
-Track PBR rule hits and routing table usage:
+Inspect PBR rules and routing table state:
 
 ```bash
-# Monitor routing decisions
-kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
-  ip -s rule show
+# Inspect routing rules
+kubectl debug node/talos-node-1 -it --profile=sysadmin --image=nicolaka/netshoot -- \
+  ip rule show
 
-# Check per-table route usage
-kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
+# Check per-table routes
+kubectl debug node/talos-node-1 -it --profile=sysadmin --image=nicolaka/netshoot -- \
   ip -s route show table 100
 ```
 
