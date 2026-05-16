@@ -33,7 +33,7 @@ Tekton components are installed directly from their release manifests.
 # Install Tekton Pipelines
 
 kubectl apply --filename \
-  https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
+  https://infra.tekton.dev/tekton-releases/pipeline/latest/release.yaml
 
 # Wait for the installation to complete
 kubectl get pods -n tekton-pipelines -w
@@ -50,7 +50,7 @@ Install the Tekton Dashboard for a visual interface.
 ```bash
 # Install the Tekton Dashboard
 kubectl apply --filename \
-  https://storage.googleapis.com/tekton-releases/dashboard/latest/release-full.yaml
+  https://infra.tekton.dev/tekton-releases/dashboard/latest/release-full.yaml
 
 # Access the dashboard
 kubectl port-forward -n tekton-pipelines svc/tekton-dashboard 9097:9097
@@ -129,7 +129,7 @@ spec:
       description: The workspace containing source code
   steps:
     - name: build
-      image: golang:1.22
+      image: golang:1.26
       workingDir: $(workspaces.source.path)/src
       script: |
         #!/usr/bin/env sh
@@ -139,7 +139,7 @@ spec:
         echo "Build completed successfully"
 
     - name: test
-      image: golang:1.22
+      image: golang:1.26
       workingDir: $(workspaces.source.path)/src
       script: |
         #!/usr/bin/env sh
@@ -167,11 +167,9 @@ spec:
   workspaces:
     - name: source
       description: The workspace with source code and Dockerfile
-    - name: docker-credentials
-      description: Docker registry credentials
   steps:
     - name: build-and-push
-      image: gcr.io/kaniko-project/executor:latest
+      image: gcr.io/kaniko-project/executor:v1.24.0
       args:
         - --dockerfile=$(workspaces.source.path)/src/$(params.dockerfile)
         - --context=$(workspaces.source.path)/src
@@ -184,6 +182,9 @@ spec:
     - name: docker-config
       secret:
         secretName: docker-registry-credentials
+        items:
+          - key: .dockerconfigjson
+            path: config.json
 ```
 
 ## Building a Pipeline
@@ -208,7 +209,6 @@ spec:
       type: string
   workspaces:
     - name: shared-workspace
-    - name: docker-credentials
 
   tasks:
     # Step 1: Clone the repository
@@ -246,8 +246,6 @@ spec:
       workspaces:
         - name: source
           workspace: shared-workspace
-        - name: docker-credentials
-          workspace: docker-credentials
 ```
 
 ## Running the Pipeline
@@ -278,17 +276,14 @@ spec:
           resources:
             requests:
               storage: 1Gi
-    - name: docker-credentials
-      secret:
-        secretName: docker-registry-credentials
 ```
 
 ```bash
 # Create the pipeline run
-kubectl create -f pipeline-run.yaml
+PIPELINE_RUN=$(kubectl create -f pipeline-run.yaml -o jsonpath='{.metadata.name}')
 
 # Watch the pipeline execution
-tkn pipelinerun logs -f -n default
+tkn pipelinerun logs "$PIPELINE_RUN" -f -n default
 
 # List all pipeline runs
 tkn pipelinerun list -n default
@@ -343,9 +338,6 @@ spec:
                 resources:
                   requests:
                     storage: 1Gi
-          - name: docker-credentials
-            secret:
-              secretName: docker-registry-credentials
 ```
 
 ```yaml
@@ -356,6 +348,7 @@ metadata:
   name: ci-event-listener
   namespace: default
 spec:
+  serviceAccountName: tekton-triggers-sa
   triggers:
     - name: github-push
       interceptors:
@@ -371,12 +364,6 @@ spec:
           value: $(body.repository.clone_url)
       template:
         ref: ci-trigger-template
-  resources:
-    kubernetesResource:
-      spec:
-        template:
-          spec:
-            serviceAccountName: tekton-triggers-sa
 ```
 
 ## Cleanup and Resource Management
@@ -384,29 +371,28 @@ spec:
 Tekton creates pods for each task run. Clean up completed runs to save resources.
 
 ```bash
-# Delete completed pipeline runs older than 24 hours
+# Keep only the 10 most recent pipeline runs
 tkn pipelinerun delete --keep 10 -n default
 
-# Set up automatic pruning
+# Install Tekton Pruner
+kubectl apply -f https://raw.githubusercontent.com/tektoncd/pruner/main/release.yaml
+
+# Set up automatic pruning for completed runs
 kubectl apply -f - <<EOF
-apiVersion: batch/v1
-kind: CronJob
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: tekton-cleanup
-  namespace: default
-spec:
-  schedule: "0 */6 * * *"
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          containers:
-            - name: cleanup
-              image: bitnami/kubectl:latest
-              command: ["sh", "-c"]
-              args: ["tkn pipelinerun delete --keep 20 -f -n default"]
-          restartPolicy: OnFailure
-          serviceAccountName: tekton-cleanup-sa
+  name: tekton-pruner-default-spec
+  namespace: tekton-pipelines
+  labels:
+    app.kubernetes.io/part-of: tekton-pruner
+    pruner.tekton.dev/config-type: global
+data:
+  global-config: |
+    enforcedConfigLevel: global
+    ttlSecondsAfterFinished: 86400
+    successfulHistoryLimit: 20
+    failedHistoryLimit: 20
 EOF
 ```
 
