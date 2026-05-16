@@ -139,7 +139,7 @@ talosctl gen config prod-cluster https://10.0.3.100:6443
 talosctl config merge ./talosconfig
 ```
 
-If two clusters have the same context name, the merge will fail to avoid accidentally overwriting credentials. In that case, you can edit the talosconfig file to change the context name before merging:
+If two clusters have the same context name, talosctl automatically renames the incoming context by appending a numeric suffix (for example, `cluster-a-1`) so existing credentials are never overwritten. If you would rather pick the name yourself, edit the talosconfig file before merging:
 
 ```bash
 # Check what the context name is
