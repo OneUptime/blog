@@ -44,11 +44,11 @@ talosctl -n 10.0.0.11 get blockdevices
 
 ### Checking SMART Data
 
-If your disks support SMART (Self-Monitoring, Analysis and Reporting Technology), you can check their health through the Talos API.
+Talos does not bundle smartctl, and SMART attributes are not exposed directly through the Talos API. You can still inspect detailed disk metadata and watch for disk errors in the kernel log to spot early signs of trouble.
 
 ```bash
-# Get disk health information
-talosctl -n 10.0.0.11 get hardwareinfo
+# Get detailed disk metadata (model, serial, transport, rotational, etc.)
+talosctl -n 10.0.0.11 get disks -o yaml
 
 # Check system logs for disk errors
 talosctl -n 10.0.0.11 dmesg | grep -i "error\|fault\|fail\|scsi\|ata"
