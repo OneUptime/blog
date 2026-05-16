@@ -8,16 +8,16 @@ Description: Learn how to use Talos Image Factory to build custom installer imag
 
 ---
 
-Image Factory is a service provided by Siderolabs that generates custom Talos Linux images on demand. Instead of manually building installer images that include your system extensions, kernel arguments, and other customizations, you submit a specification (called a schematic) and Image Factory produces the image for you. This is especially valuable during upgrades when you need matching images for a new Talos version.
+Image Factory is a service provided by Siderolabs that generates custom Talos Linux images on demand. Instead of manually building boot assets with kernel arguments or installer images with system extensions, you submit a specification (called a schematic) and Image Factory produces the image for you. This is especially valuable during upgrades when you need matching images for a new Talos version.
 
 ## What Image Factory Does
 
-At its core, Image Factory takes a base Talos release and layers your customizations on top. The result is a container image that you can use with `talosctl upgrade` or for fresh installations.
+At its core, Image Factory takes a base Talos release and layers your customizations on top. The result can be an installer container image that you use with `talosctl upgrade`, or boot assets for fresh installations.
 
 Customizations include:
 
 - System extensions (iscsi-tools, qemu-guest-agent, nvidia drivers, etc.)
-- Extra kernel arguments
+- Extra kernel arguments for boot assets that support them
 - Custom overlay configurations
 - Platform-specific settings
 
@@ -89,10 +89,10 @@ The schematic ID is a hash of your schematic content. The same input always prod
 
 ```bash
 # The installer image URL follows this pattern:
-# factory.talos.dev/installer/<schematic-id>:<talos-version>
+# factory.talos.dev/<platform>-installer/<schematic-id>:<talos-version>
 
 TALOS_VERSION="v1.7.0"
-INSTALLER_IMAGE="factory.talos.dev/installer/${SCHEMATIC_ID}:${TALOS_VERSION}"
+INSTALLER_IMAGE="factory.talos.dev/metal-installer/${SCHEMATIC_ID}:${TALOS_VERSION}"
 
 echo "Installer image: ${INSTALLER_IMAGE}"
 ```
@@ -104,7 +104,7 @@ echo "Installer image: ${INSTALLER_IMAGE}"
 talosctl upgrade --nodes <node-ip> --image ${INSTALLER_IMAGE}
 ```
 
-That is it. Image Factory builds the image on demand when it is first pulled, and caches it for subsequent requests.
+That is it. Image Factory builds the image on demand when it is first pulled, and caches it for subsequent requests. Installer images support system extensions; kernel arguments from the schematic apply to boot assets such as ISOs, disk images, and PXE boot scripts.
 
 ## Generating Different Image Types
 
@@ -117,7 +117,7 @@ Image Factory can produce various image types beyond just installer containers:
 # Raw disk image
 # https://factory.talos.dev/image/<schematic-id>/<talos-version>/metal-amd64.raw.xz
 
-# AWS AMI
+# AWS raw disk image for AMI import
 # https://factory.talos.dev/image/<schematic-id>/<talos-version>/aws-amd64.raw.xz
 
 # VMware OVA
@@ -160,8 +160,8 @@ WORKER_ID=$(curl -s -X POST https://factory.talos.dev/schematics \
   --data-binary @worker-schematic.yaml | jq -r '.id')
 
 # Use different images for different node types
-CP_IMAGE="factory.talos.dev/installer/${CP_ID}:v1.7.0"
-WORKER_IMAGE="factory.talos.dev/installer/${WORKER_ID}:v1.7.0"
+CP_IMAGE="factory.talos.dev/metal-installer/${CP_ID}:v1.7.0"
+WORKER_IMAGE="factory.talos.dev/metal-installer/${WORKER_ID}:v1.7.0"
 ```
 
 ## Upgrading Across Talos Versions with the Same Schematic
@@ -170,8 +170,8 @@ One of the best features of Image Factory is schematic reuse. When you upgrade t
 
 ```bash
 # Same schematic, different versions
-V16_IMAGE="factory.talos.dev/installer/${SCHEMATIC_ID}:v1.6.7"
-V17_IMAGE="factory.talos.dev/installer/${SCHEMATIC_ID}:v1.7.0"
+V16_IMAGE="factory.talos.dev/metal-installer/${SCHEMATIC_ID}:v1.6.7"
+V17_IMAGE="factory.talos.dev/metal-installer/${SCHEMATIC_ID}:v1.7.0"
 
 # The schematic ID stays the same as long as your
 # extension requirements do not change
@@ -229,8 +229,8 @@ WORKER_ID=$(curl -s -X POST https://factory.talos.dev/schematics \
   -H "Content-Type: application/yaml" \
   --data-binary @schematics/worker-standard.yaml | jq -r '.id')
 
-CP_IMAGE="factory.talos.dev/installer/${CP_ID}:${TARGET_VERSION}"
-WORKER_IMAGE="factory.talos.dev/installer/${WORKER_ID}:${TARGET_VERSION}"
+CP_IMAGE="factory.talos.dev/metal-installer/${CP_ID}:${TARGET_VERSION}"
+WORKER_IMAGE="factory.talos.dev/metal-installer/${WORKER_ID}:${TARGET_VERSION}"
 
 echo "Control plane image: ${CP_IMAGE}"
 echo "Worker image: ${WORKER_IMAGE}"
