@@ -26,7 +26,7 @@ The STATE partition contains several categories of data:
 
 **Cluster Identity** - Information about the cluster the node belongs to, including the cluster name, cluster ID, and endpoint addresses for the control plane.
 
-**etcd Data Directory Pointers** - For control plane nodes, the STATE partition may also reference data related to etcd membership, which helps the node rejoin the etcd cluster after a restart.
+**Node Secrets** - The STATE partition also contains sensitive node data such as secrets and certificates. For control plane nodes, the etcd data directory itself lives on the EPHEMERAL partition, not on STATE.
 
 ```bash
 # View the current machine configuration stored on a node
@@ -43,11 +43,12 @@ Talos creates several partitions during installation. Here is a quick comparison
 
 ```text
 Disk Layout on a Talos Node:
-  EFI/BIOS  - Boot firmware partition
+  EFI       - Boot firmware partition
+  BIOS      - BIOS boot partition on BIOS systems
   BOOT      - Kernel and initramfs
   META      - Small metadata key-value store
   STATE     - Machine configuration and certificates
-  EPHEMERAL - Kubernetes pods, container images, logs
+  EPHEMERAL - Kubernetes pods, container images, logs, and etcd data on control plane nodes
 ```
 
 The STATE partition is distinct from the EPHEMERAL partition in an important way. The EPHEMERAL partition is designed to be wiped or rebuilt without losing the node's identity. If you drain a node's workloads and wipe the EPHEMERAL partition, the node can still rejoin the cluster because its configuration lives on the STATE partition.
@@ -100,16 +101,17 @@ Talos Linux supports encrypting the STATE partition for security-sensitive envir
 
 ```yaml
 # Example machine configuration snippet for STATE partition encryption
-machine:
-  systemDiskEncryption:
-    state:
-      provider: luks2
-      keys:
-        - nodeID: {}
-          slot: 0
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: STATE
+encryption:
+  provider: luks2
+  keys:
+    - nodeID: {}
+      slot: 0
 ```
 
-With encryption enabled, the STATE partition is decrypted during boot using keys derived from the node's identity. This means the data is protected if someone removes the disk and tries to read it on another machine.
+With encryption enabled, the STATE partition is decrypted during boot using the configured key method, such as a key derived from the node's UUID when `nodeID` is used. This means the data is protected if someone removes the disk and tries to read it on another machine, though `nodeID` encryption is not meant to protect against an attacker who has physical access to the whole machine.
 
 ## What Happens During a Reset?
 
@@ -130,7 +132,7 @@ This is useful in scenarios where you want to rebuild a node's container runtime
 
 ## STATE Partition Size and Format
 
-The STATE partition uses a standard filesystem (typically ext4 or xfs depending on the Talos version). Its size is determined during installation and is generally small compared to the EPHEMERAL partition. The machine configuration YAML, certificates, and related files do not take much space.
+The STATE partition uses a standard filesystem and is commonly shown as `xfs`, or as a LUKS-backed volume when encryption is enabled. Its size is determined during installation and is generally small compared to the EPHEMERAL partition. The machine configuration YAML, certificates, and related files do not take much space.
 
 You can check the partition layout using `talosctl`:
 
@@ -140,7 +142,7 @@ talosctl get disks --nodes 192.168.1.10
 talosctl get mounts --nodes 192.168.1.10
 
 # Example output showing partition sizes
-# /dev/sda1 - EFI     - 100MB
+# /dev/sda1 - EFI     - 1GB
 # /dev/sda2 - BIOS    - 1MB
 # /dev/sda3 - BOOT    - 1GB
 # /dev/sda4 - META    - 1MB
