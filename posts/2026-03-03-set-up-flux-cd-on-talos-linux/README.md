@@ -24,7 +24,7 @@ Talos Linux is configured through machine configuration files. You cannot SSH in
 
 Before starting, you need:
 
-- A Talos Linux Kubernetes cluster with kubectl access
+- A Talos Linux Kubernetes cluster with cluster-admin kubectl access
 - A Git repository (GitHub, GitLab, or Bitbucket) for storing manifests
 - The Flux CLI installed on your workstation
 - A personal access token for your Git provider
@@ -57,10 +57,12 @@ export GITHUB_USER=<your-username>
 
 # Bootstrap Flux with GitHub
 flux bootstrap github \
+  --components-extra=image-reflector-controller,image-automation-controller \
   --owner=$GITHUB_USER \
   --repository=talos-fleet \
   --branch=main \
   --path=./clusters/production \
+  --read-write-key \
   --personal
 ```
 
@@ -99,6 +101,7 @@ talos-fleet/
       /apps.yaml
   /infrastructure/
     /controllers/
+      /kustomization.yaml
       /ingress-nginx/
         /kustomization.yaml
         /release.yaml
@@ -151,6 +154,20 @@ spec:
 Define a HelmRelease for ingress-nginx:
 
 ```yaml
+# infrastructure/controllers/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ingress-nginx
+  - cert-manager
+---
+# infrastructure/controllers/ingress-nginx/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - release.yaml
+---
 # infrastructure/controllers/ingress-nginx/namespace.yaml
 apiVersion: v1
 kind: Namespace
@@ -371,7 +388,7 @@ Set up Prometheus monitoring for Flux:
 ```yaml
 # flux-monitoring.yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: flux-system
   namespace: monitoring
@@ -382,7 +399,7 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/part-of: flux
-  endpoints:
+  podMetricsEndpoints:
     - port: http-prom
 ```
 
