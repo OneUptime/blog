@@ -33,14 +33,19 @@ talosctl etcd members --nodes <control-plane-ip>
 Typical output for a three-node cluster:
 
 ```text
-NODE        MEMBERS
-10.0.0.1    10.0.0.1 (id: 7c2a7a1d4d1e2f3a), 10.0.0.2 (id: 8b3c9e4f5a6b7c8d), 10.0.0.3 (id: 9d4e0f1a2b3c4d5e)
+NODE        ID                 HOSTNAME     PEER URLS                   CLIENT URLS                 LEARNER
+10.0.0.1    7c2a7a1d4d1e2f3a   talos-cp-1   https://10.0.0.1:2380       https://10.0.0.1:2379       false
+10.0.0.1    8b3c9e4f5a6b7c8d   talos-cp-2   https://10.0.0.2:2380       https://10.0.0.2:2379       false
+10.0.0.1    9d4e0f1a2b3c4d5e   talos-cp-3   https://10.0.0.3:2380       https://10.0.0.3:2379       false
 ```
 
-Each member has:
+Each member row shows:
 
-- An IP address or hostname
 - A unique member ID (hexadecimal)
+- The hostname
+- Peer URLs (used for member-to-member communication)
+- Client URLs (used by etcd clients)
+- Whether the member is a learner
 
 ## Checking Membership Consistency
 
@@ -218,7 +223,7 @@ The `talosctl health` command includes etcd membership checks:
 
 ```bash
 # This checks etcd membership as part of the overall health assessment
-talosctl health --nodes <cp-ip>
+talosctl health --control-plane-nodes <cp-ip-1>,<cp-ip-2>,<cp-ip-3> --worker-nodes <worker-ip-1>,<worker-ip-2>
 ```
 
 Specifically, it verifies:
