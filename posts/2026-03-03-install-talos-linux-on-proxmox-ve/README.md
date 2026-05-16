@@ -40,7 +40,7 @@ ssh root@proxmox-server
 
 # Download the Talos ISO to the ISO storage
 cd /var/lib/vz/template/iso/
-wget https://github.com/siderolabs/talos/releases/download/v1.7.0/talos-amd64.iso
+wget https://github.com/siderolabs/talos/releases/download/v1.7.0/metal-amd64.iso
 
 # Alternatively, download the nocloud image for cloud-init-like provisioning
 cd /var/lib/vz/template/
@@ -67,7 +67,7 @@ qm create 201 \
   --net0 virtio,bridge=vmbr0 \
   --scsihw virtio-scsi-pci \
   --scsi0 local-lvm:50,discard=on \
-  --ide2 local:iso/talos-amd64.iso,media=cdrom \
+  --ide2 local:iso/metal-amd64.iso,media=cdrom \
   --boot order=ide2 \
   --ostype l26 \
   --agent enabled=0
@@ -82,7 +82,7 @@ qm create 202 \
   --net0 virtio,bridge=vmbr0 \
   --scsihw virtio-scsi-pci \
   --scsi0 local-lvm:50,discard=on \
-  --ide2 local:iso/talos-amd64.iso,media=cdrom \
+  --ide2 local:iso/metal-amd64.iso,media=cdrom \
   --boot order=ide2 \
   --ostype l26 \
   --agent enabled=0
@@ -97,7 +97,7 @@ qm create 203 \
   --net0 virtio,bridge=vmbr0 \
   --scsihw virtio-scsi-pci \
   --scsi0 local-lvm:50,discard=on \
-  --ide2 local:iso/talos-amd64.iso,media=cdrom \
+  --ide2 local:iso/metal-amd64.iso,media=cdrom \
   --boot order=ide2 \
   --ostype l26 \
   --agent enabled=0
@@ -114,7 +114,7 @@ for i in 1 2 3; do
     --net0 virtio,bridge=vmbr0 \
     --scsihw virtio-scsi-pci \
     --scsi0 local-lvm:100,discard=on \
-    --ide2 local:iso/talos-amd64.iso,media=cdrom \
+    --ide2 local:iso/metal-amd64.iso,media=cdrom \
     --boot order=ide2 \
     --ostype l26 \
     --agent enabled=0
@@ -196,7 +196,7 @@ After applying the configuration, each node will install Talos to the disk and r
 ```bash
 # SSH into Proxmox and remove the ISO from each VM
 for vmid in 201 202 203 211 212 213; do
-  qm set ${vmid} --ide2 none
+  qm set ${vmid} --ide2 none,media=cdrom
   qm set ${vmid} --boot order=scsi0
 done
 ```
@@ -269,7 +269,7 @@ Apply this to all control plane nodes. The VIP will be assigned to one of the co
 
 ```bash
 # Install Cilium as the CNI
-cilium install --helm-set ipam.mode=kubernetes
+cilium install --set ipam.mode=kubernetes
 
 # For storage, use the Proxmox CSI driver or local-path-provisioner
 # Local path provisioner is simpler for homelabs
