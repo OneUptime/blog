@@ -104,22 +104,21 @@ If your nodes have AES-NI (most x86_64 processors from the last 10+ years do), t
 
 ## EPHEMERAL on a Dedicated Disk with Encryption
 
-For the best combination of performance and security, put EPHEMERAL on a dedicated fast disk with encryption:
+For the best combination of performance and security, put EPHEMERAL on a dedicated fast disk with encryption. This is configured as a separate `VolumeConfig` document appended to the machine config:
 
 ```yaml
-machine:
-  volumes:
-    - name: EPHEMERAL
-      provisioning:
-        diskSelector:
-          match: 'disk.transport == "nvme" && !disk.systemDisk'
-        grow: true
-  systemDiskEncryption:
-    ephemeral:
-      provider: luks2
-      keys:
-        - nodeID: {}
-          slot: 0
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+provisioning:
+  diskSelector:
+    match: disk.transport == "nvme" && !disk.systemDisk
+  grow: true
+encryption:
+  provider: luks2
+  keys:
+    - nodeID: {}
+      slot: 0
 ```
 
 This gives you:
