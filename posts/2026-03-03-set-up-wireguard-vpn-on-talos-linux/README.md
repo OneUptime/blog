@@ -28,12 +28,8 @@ WireGuard runs in the kernel, so it has very low overhead compared to userspace 
 Before configuring WireGuard, you need to generate key pairs. You can do this on any machine that has the `wg` tool installed:
 
 ```bash
-# Generate a private key
-
-wg genkey > privatekey
-
-# Derive the public key from the private key
-cat privatekey | wg pubkey > publickey
+# Generate a private key and derive the public key
+wg genkey | tee privatekey | wg pubkey > publickey
 
 # View the keys
 cat privatekey
@@ -49,55 +45,37 @@ Here is how to set up a WireGuard tunnel between two Talos nodes:
 ### Node A Configuration (192.168.1.10)
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      # Regular network interface
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-      # WireGuard tunnel interface
-      - interface: wg0
-        wireguard:
-          privateKey: "uFZwN3gO3gYFnGmt6dGMnM3VhP7CbXkRWEL/vXpJfUE="
-          listenPort: 51820
-          peers:
-            - publicKey: "7aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890ABCDE="
-              endpoint: "192.168.2.10:51820"
-              allowedIPs:
-                - 10.0.0.2/32
-              persistentKeepalive: 25
-        addresses:
-          - 10.0.0.1/24
+apiVersion: v1alpha1
+kind: WireguardConfig
+name: wg0
+privateKey: "NODE_A_PRIVATE_KEY"
+listenPort: 51820
+peers:
+  - publicKey: "NODE_B_PUBLIC_KEY"
+    endpoint: "192.168.2.10:51820"
+    allowedIPs:
+      - 10.0.0.2/32
+    persistentKeepaliveInterval: 25s
+addresses:
+  - address: 10.0.0.1/24
 ```
 
 ### Node B Configuration (192.168.2.10)
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.2.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.2.1
-      - interface: wg0
-        wireguard:
-          privateKey: "aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890ABCDEFG="
-          listenPort: 51820
-          peers:
-            - publicKey: "xYzAbCdEfGhIjKlMnOpQrStUvWxYz1234567890abc="
-              endpoint: "192.168.1.10:51820"
-              allowedIPs:
-                - 10.0.0.1/32
-              persistentKeepalive: 25
-        addresses:
-          - 10.0.0.2/24
+apiVersion: v1alpha1
+kind: WireguardConfig
+name: wg0
+privateKey: "NODE_B_PRIVATE_KEY"
+listenPort: 51820
+peers:
+  - publicKey: "NODE_A_PUBLIC_KEY"
+    endpoint: "192.168.1.10:51820"
+    allowedIPs:
+      - 10.0.0.1/32
+    persistentKeepaliveInterval: 25s
+addresses:
+  - address: 10.0.0.2/24
 ```
 
 Let me break down the key fields:
@@ -107,8 +85,8 @@ Let me break down the key fields:
 - **peers** - List of remote nodes to connect to
 - **publicKey** - The remote node's public key
 - **endpoint** - The remote node's public IP and port
-- **allowedIPs** - Which IP ranges can be reached through this peer
-- **persistentKeepalive** - Sends a keepalive packet every N seconds (useful for NAT traversal)
+- **allowedIPs** - Which IP ranges can be reached through this peer and accepted from it
+- **persistentKeepaliveInterval** - Sends a keepalive packet at the configured interval (useful for NAT traversal)
 
 ## Multi-Site Mesh Configuration
 
@@ -116,26 +94,24 @@ For connecting three or more sites, each node needs to know about all other node
 
 ```yaml
 # Node A (Site 1)
-machine:
-  network:
-    interfaces:
-      - interface: wg0
-        wireguard:
-          privateKey: "NODE_A_PRIVATE_KEY"
-          listenPort: 51820
-          peers:
-            - publicKey: "NODE_B_PUBLIC_KEY"
-              endpoint: "site2.example.com:51820"
-              allowedIPs:
-                - 10.0.0.2/32
-                - 10.20.0.0/24
-            - publicKey: "NODE_C_PUBLIC_KEY"
-              endpoint: "site3.example.com:51820"
-              allowedIPs:
-                - 10.0.0.3/32
-                - 10.30.0.0/24
-        addresses:
-          - 10.0.0.1/24
+apiVersion: v1alpha1
+kind: WireguardConfig
+name: wg0
+privateKey: "NODE_A_PRIVATE_KEY"
+listenPort: 51820
+peers:
+  - publicKey: "NODE_B_PUBLIC_KEY"
+    endpoint: "203.0.113.20:51820"
+    allowedIPs:
+      - 10.0.0.2/32
+      - 10.20.0.0/24
+  - publicKey: "NODE_C_PUBLIC_KEY"
+    endpoint: "203.0.113.30:51820"
+    allowedIPs:
+      - 10.0.0.3/32
+      - 10.30.0.0/24
+addresses:
+  - address: 10.0.0.1/24
 ```
 
 The `allowedIPs` for each peer includes both the peer's WireGuard address and any subnets behind that peer. This tells WireGuard to route traffic for those subnets through the tunnel.
@@ -145,25 +121,22 @@ The `allowedIPs` for each peer includes both the peer's WireGuard address and an
 To reach networks behind a WireGuard peer, add routes pointing to the WireGuard interface:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: wg0
-        wireguard:
-          privateKey: "NODE_PRIVATE_KEY"
-          listenPort: 51820
-          peers:
-            - publicKey: "REMOTE_PUBLIC_KEY"
-              endpoint: "remote.example.com:51820"
-              allowedIPs:
-                - 10.0.0.0/24
-                - 10.20.0.0/16
-        addresses:
-          - 10.0.0.1/32
-        routes:
-          # Route traffic for the remote network through the tunnel
-          - network: 10.20.0.0/16
-            gateway: ""
+apiVersion: v1alpha1
+kind: WireguardConfig
+name: wg0
+privateKey: "NODE_PRIVATE_KEY"
+listenPort: 51820
+peers:
+  - publicKey: "REMOTE_PUBLIC_KEY"
+    endpoint: "203.0.113.20:51820"
+    allowedIPs:
+      - 10.0.0.0/24
+      - 10.20.0.0/16
+addresses:
+  - address: 10.0.0.1/32
+routes:
+  # Route traffic for the remote network through the tunnel
+  - destination: 10.20.0.0/16
 ```
 
 ## Applying the Configuration
@@ -181,10 +154,11 @@ For existing nodes:
 ```bash
 # Apply WireGuard configuration
 talosctl patch machineconfig --nodes 192.168.1.10 \
-  --patch @wireguard-patch.yaml
+  --patch @wireguard-patch.yaml \
+  --mode no-reboot
 ```
 
-WireGuard configuration takes effect without a reboot. Talos creates the interface and establishes the tunnel almost immediately.
+WireGuard configuration can be applied with `--mode no-reboot`. Talos creates the interface and establishes the tunnel almost immediately.
 
 ## Verifying the Tunnel
 
@@ -197,8 +171,8 @@ talosctl get links --nodes 192.168.1.10
 # Check WireGuard-specific details
 talosctl get addresses --nodes 192.168.1.10
 
-# Test connectivity through the tunnel
-talosctl ping 10.0.0.2 --nodes 192.168.1.10
+# Check routes through the tunnel
+talosctl get routes --nodes 192.168.1.10
 ```
 
 ## Firewall Considerations
@@ -206,22 +180,22 @@ talosctl ping 10.0.0.2 --nodes 192.168.1.10
 WireGuard uses a single UDP port (default 51820). Make sure this port is open in any firewalls between the nodes:
 
 - Allow UDP port 51820 inbound on each WireGuard node
-- If nodes are behind NAT, use `persistentKeepalive` to maintain the NAT mapping
+- If nodes are behind NAT, use `persistentKeepaliveInterval` to maintain the NAT mapping
 - On cloud providers, update security groups to allow the WireGuard port
 
 ## NAT Traversal
 
-WireGuard works behind NAT with the `persistentKeepalive` option. When one or both sides are behind NAT:
+WireGuard works behind NAT with the `persistentKeepaliveInterval` option. When one or both sides are behind NAT:
 
 ```yaml
 # Node behind NAT
 peers:
   - publicKey: "REMOTE_PUBLIC_KEY"
-    endpoint: "public-ip.example.com:51820"
+    endpoint: "203.0.113.20:51820"
     allowedIPs:
       - 10.0.0.0/24
     # Send keepalive every 25 seconds to maintain NAT mapping
-    persistentKeepalive: 25
+    persistentKeepaliveInterval: 25s
 ```
 
 The node behind NAT initiates the connection, and the keepalive packets keep the NAT mapping alive. The other side does not need to know the NATted node's real IP - WireGuard learns it from the handshake.
@@ -231,25 +205,23 @@ The node behind NAT initiates the connection, and the keepalive packets keep the
 If you are connecting Kubernetes nodes across sites, you can route pod traffic through WireGuard:
 
 ```yaml
-machine:
-  network:
-    interfaces:
-      - interface: wg0
-        wireguard:
-          privateKey: "NODE_PRIVATE_KEY"
-          listenPort: 51820
-          peers:
-            - publicKey: "REMOTE_PUBLIC_KEY"
-              endpoint: "remote.example.com:51820"
-              allowedIPs:
-                - 10.0.0.0/24
-                - 10.244.0.0/16  # Pod CIDR
-                - 10.96.0.0/12   # Service CIDR
-        addresses:
-          - 10.0.0.1/32
+apiVersion: v1alpha1
+kind: WireguardConfig
+name: wg0
+privateKey: "NODE_PRIVATE_KEY"
+listenPort: 51820
+peers:
+  - publicKey: "REMOTE_PUBLIC_KEY"
+    endpoint: "203.0.113.20:51820"
+    allowedIPs:
+      - 10.0.0.0/24
+      - 10.244.0.0/16  # Remote pod CIDR
+      - 10.96.0.0/12   # Remote service CIDR
+addresses:
+  - address: 10.0.0.1/32
 ```
 
-By including the pod and service CIDRs in `allowedIPs`, Kubernetes traffic between sites flows through the encrypted tunnel. This requires that your CNI plugin knows how to route to the remote pod and service subnets.
+By including non-overlapping remote pod and service CIDRs in `allowedIPs`, Kubernetes traffic between sites flows through the encrypted tunnel. This requires that your CNI plugin knows how to route to the remote pod and service subnets.
 
 ## Security Best Practices
 
@@ -267,7 +239,7 @@ Use unique keys for every node. Never reuse a private key across multiple nodes.
 
 **Can connect but no traffic flows** - Check `allowedIPs`. If the destination IP is not covered by the peer's `allowedIPs`, WireGuard will not send it through the tunnel.
 
-**Intermittent connectivity** - If one side is behind NAT, make sure `persistentKeepalive` is set. Without it, the NAT mapping may expire and the tunnel drops.
+**Intermittent connectivity** - If one side is behind NAT, make sure `persistentKeepaliveInterval` is set. Without it, the NAT mapping may expire and the tunnel drops.
 
 **Performance issues** - WireGuard itself is very efficient, but if you are routing all traffic through a tunnel, the remote endpoint becomes a bottleneck. Check the bandwidth of the tunnel endpoint's internet connection.
 
