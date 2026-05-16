@@ -36,15 +36,6 @@ cluster:
       # Time to wait before triggering a leader election (milliseconds)
       election-timeout: "5000"
 
-  apiServer:
-    extraArgs:
-      # Lease duration for leader election
-      leader-elect-lease-duration: "15s"
-      # Time between leader renewal attempts
-      leader-elect-renew-deadline: "10s"
-      # Time between leader election retries
-      leader-elect-retry-period: "2s"
-
   controllerManager:
     extraArgs:
       leader-elect-lease-duration: "15s"
@@ -61,7 +52,7 @@ cluster:
       leader-elect-retry-period: "2s"
 ```
 
-The election timeout must be at least 5 times the heartbeat interval. For cross-zone deployments with higher latency, increase both values proportionally.
+Etcd's tuning guide recommends setting the heartbeat interval close to the round-trip time (RTT) between members and the election timeout to at least 10 times that RTT. For cross-zone deployments with higher latency, increase both values proportionally.
 
 ## VIP Failover with Talos
 
@@ -229,7 +220,7 @@ spec:
 
         - alert: LeaderElectionDuration
           expr: |
-            rate(leader_election_master_status[5m]) > 0.1
+            changes(leader_election_master_status[5m]) > 2
           for: 5m
           labels:
             severity: warning
@@ -253,8 +244,8 @@ talosctl shutdown --nodes 192.168.1.11
 kubectl get events -A --watch
 
 # Test 3: Verify recovery after bringing node back
-talosctl boot --nodes 192.168.1.11
-# Verify the node rejoins
+# Talos has no boot subcommand — power the node back on via your hypervisor or BMC
+# Then verify the node rejoins
 talosctl etcd members --nodes 192.168.1.10
 ```
 
