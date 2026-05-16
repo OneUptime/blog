@@ -117,7 +117,7 @@ cluster:
         mountPath: /var/log/audit
         name: audit-log
         readOnly: false
-      - hostPath: /etc/kubernetes/audit
+      - hostPath: /etc/kubernetes/audit/audit-policy.yaml
         mountPath: /etc/kubernetes/audit-policy.yaml
         name: audit-policy
         readOnly: true
@@ -281,12 +281,15 @@ Beyond Kubernetes API audit logs, Talos itself generates system logs that are va
 
 ```yaml
 # Configure Talos to send system logs to a central collector
+# Talos machine logging only supports udp:// and tcp:// endpoints (raw JSON lines).
+# To ship to Loki or Elasticsearch, send to a TCP collector (Vector, Fluent Bit,
+# Promtail with syslog input, etc.) that forwards to your storage backend.
 machine:
   logging:
     destinations:
       - endpoint: "udp://syslog.example.com:514"
         format: json_lines
-      - endpoint: "tcp://loki.logging.svc:3100/loki/api/v1/push"
+      - endpoint: "tcp://log-collector.logging.svc:6514"
         format: json_lines
 ```
 
