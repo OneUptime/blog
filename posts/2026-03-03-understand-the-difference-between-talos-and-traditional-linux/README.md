@@ -33,7 +33,7 @@ sudo systemctl restart nginx
 # Talos Linux workflow
 talosctl -n 10.0.0.11 version
 talosctl -n 10.0.0.11 apply-config --file config.yaml
-talosctl -n 10.0.0.11 services
+talosctl -n 10.0.0.11 service
 talosctl -n 10.0.0.11 logs kubelet
 ```
 
@@ -53,12 +53,10 @@ pip install ansible
 **Talos Linux:** There is no package manager. The entire operating system is delivered as a single SquashFS image. If you need additional software on the host, you build a custom Talos image with system extensions or run the software as a Kubernetes pod.
 
 ```yaml
-# Talos: Adding system extensions through machine config
+# Talos: Using an installer image that includes system extensions
 machine:
   install:
-    extensions:
-      - image: ghcr.io/siderolabs/iscsi-tools:v0.1.4
-      - image: ghcr.io/siderolabs/qemu-guest-agent:8.1.3
+    image: registry.example.com/talos/installer-with-extensions:v1.12.1
 ```
 
 This means there is no concept of "patch Tuesday" where you update hundreds of packages individually. Updating Talos is a single atomic operation that replaces the entire OS image.
@@ -75,11 +73,11 @@ sudo systemctl status nginx
 sudo journalctl -u nginx -f
 ```
 
-**Talos Linux:** machined is the init system (PID 1). It manages a fixed set of system services. You cannot add new services. You cannot write unit files. The only services that run are the ones Talos is designed to run: containerd, kubelet, etcd (on control plane nodes), apid, trustd, and networkd.
+**Talos Linux:** machined is the init system (PID 1). It manages a fixed set of system services. You cannot add new services. You cannot write unit files. The services that run are the ones Talos is designed to run, such as containerd, kubelet, etcd (on control plane nodes), apid, trustd, networkd, and udevd.
 
 ```bash
 # Talos service management
-talosctl -n 10.0.0.11 services
+talosctl -n 10.0.0.11 service
 talosctl -n 10.0.0.11 service kubelet restart
 talosctl -n 10.0.0.11 logs kubelet
 ```
@@ -101,7 +99,7 @@ Any additional workloads run as Kubernetes pods, not as host-level services.
 # ... hundreds more
 ```
 
-**Talos Linux:** Everything is in one YAML document - the machine configuration. Network settings, storage, Kubernetes parameters, kernel arguments, system extensions, disk encryption - all in one place.
+**Talos Linux:** Core operating system settings are managed declaratively in the machine configuration YAML. Network settings, storage, Kubernetes parameters, kernel arguments, installer images with system extensions, disk encryption - all in one place.
 
 ```yaml
 # Talos: Single configuration document
@@ -134,7 +132,7 @@ touch /usr/local/bin/my-script.sh
 chmod +x /usr/local/bin/my-script.sh
 ```
 
-**Talos Linux:** The root filesystem is a read-only SquashFS image. You cannot modify it. Only /var (the ephemeral partition) and a few tmpfs mounts are writable, and those are used by system processes.
+**Talos Linux:** The root filesystem is a read-only SquashFS image. You cannot modify it directly. `/var` is mounted from the EPHEMERAL partition, runtime tmpfs mounts are writable, and Talos makes only specific paths such as selected files under `/etc` writable through bind mounts or overlay filesystems.
 
 ## Updates and Upgrades
 
@@ -149,11 +147,11 @@ sudo apt dist-upgrade  # May change more
 # Each node can end up at a slightly different patch level
 ```
 
-**Talos Linux:** Updates replace the entire OS image atomically. The new image is written to a standby partition, and the node reboots into it. If it fails, it rolls back automatically.
+**Talos Linux:** Updates replace the entire OS image atomically. Talos uses an A-B image scheme, sets the bootloader to try the new kernel and OS image, and reboots into it. If it fails to boot, it rolls back automatically.
 
 ```bash
 # Talos upgrade - replaces the entire OS
-talosctl -n 10.0.0.11 upgrade --image ghcr.io/siderolabs/installer:v1.7.0
+talosctl -n 10.0.0.11 upgrade --image ghcr.io/siderolabs/installer:v1.12.1
 
 # Every node runs exactly the same image
 # No partial updates, no dependency conflicts
@@ -174,7 +172,7 @@ talosctl -n 10.0.0.11 upgrade --image ghcr.io/siderolabs/installer:v1.7.0
 # - Scan for CVEs in installed packages
 ```
 
-**Talos Linux:** Security is built into the design. No SSH means no SSH attacks. No writable filesystem means no persistent malware. No package manager means no supply chain attacks through packages. No shell means container escapes are far less useful.
+**Talos Linux:** Security is built into the design. No SSH means no SSH attacks. A read-only root filesystem reduces host-level persistence paths. No package manager reduces package-manager supply chain exposure. No shell means container escapes are less straightforward to turn into arbitrary host changes.
 
 ## Debugging and Troubleshooting
 
