@@ -117,12 +117,11 @@ The output should show encryption-related information:
 
 ```yaml
 spec:
-  phase: Ready
+  phase: ready
   location: /dev/sda5
-  encryption:
-    provider: luks2
+  encryptionProvider: luks2
   filesystem: xfs
-  mountpoint: /system/state
+  mountLocation: /system/state
 ```
 
 You can also check the overall volume list:
@@ -186,7 +185,7 @@ machine:
 
 ## Cipher Options for STATE
 
-The default cipher (AES-XTS-plain64 with 256-bit key) works well for the STATE partition. Since STATE is small (typically around 100MB), even without hardware acceleration the performance impact is negligible:
+If you do not specify `cipher` or `keySize`, Talos falls back to the LUKS2 defaults from cryptsetup (currently AES-XTS-plain64 with a 512-bit key, i.e. AES-256-XTS). This works well for the STATE partition. Since STATE is small (typically around 100MB), even without hardware acceleration the performance impact is negligible:
 
 ```yaml
 machine:
@@ -240,12 +239,28 @@ talosctl get volumestatus STATE --nodes 192.168.1.10
 talosctl logs machined --nodes 192.168.1.10 | grep -i "state\|encrypt"
 ```
 
-Set up automated monitoring:
+Talos does not expose volume status as a Prometheus metric out of the box, so automated monitoring requires a small adapter. A common pattern is a cron job that runs `talosctl get volumestatus STATE -o json` against each node and writes a metric file consumed by the node_exporter textfile collector:
+
+```bash
+#!/usr/bin/env bash
+# /usr/local/bin/talos-state-status.sh
+# Output goes to a directory served by node_exporter's --collector.textfile.directory
+OUT=/var/lib/node_exporter/textfile_collector/talos_state.prom
+NODE=192.168.1.10
+PHASE=$(talosctl get volumestatus STATE --nodes "$NODE" -o json | jq -r '.spec.phase')
+if [ "$PHASE" = "ready" ]; then VAL=1; else VAL=0; fi
+cat > "$OUT" <<EOF
+# HELP talos_state_ready STATE volume reports phase=ready (1) or not (0).
+# TYPE talos_state_ready gauge
+talos_state_ready{node="$NODE"} $VAL
+EOF
+```
+
+You can then alert on the synthesized metric:
 
 ```yaml
-# Prometheus alert for STATE partition issues
 - alert: TalosStatePartitionUnhealthy
-  expr: talos_volume_status{volume="STATE", phase!="Ready"} == 1
+  expr: talos_state_ready == 0
   for: 5m
   labels:
     severity: critical
