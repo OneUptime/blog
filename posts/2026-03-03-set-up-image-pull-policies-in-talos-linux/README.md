@@ -8,7 +8,7 @@ Description: A hands-on guide to configuring image pull policies in Talos Linux 
 
 ---
 
-Image pull policies in Kubernetes determine when the kubelet fetches container images from a registry versus using a locally cached copy. Getting this right matters for deployment speed, bandwidth usage, and reliability. In Talos Linux, where you cannot manually pull images onto nodes, understanding and properly configuring image pull policies is even more important.
+Image pull policies in Kubernetes determine when the kubelet fetches container images from a registry versus using a locally cached copy. Getting this right matters for deployment speed, bandwidth usage, and reliability. In Talos Linux, where you typically do not SSH to nodes and run container runtime commands manually, understanding and properly configuring image pull policies is even more important.
 
 This guide explains how image pull policies work in a Talos Linux environment and how to configure them for different scenarios.
 
@@ -16,11 +16,11 @@ This guide explains how image pull policies work in a Talos Linux environment an
 
 Kubernetes supports three image pull policies:
 
-- **Always** - The kubelet always pulls the image from the registry, even if a local copy exists. This ensures you always get the latest version but adds latency to every pod start.
+- **Always** - The kubelet always checks the registry to resolve the image name, even if a local copy exists. If the exact image digest is already cached, the cached image layers can still be reused, but this policy adds registry lookup latency to every pod start.
 - **IfNotPresent** - The kubelet only pulls the image if it is not already cached locally. This is faster for subsequent deployments but may use a stale image if the tag was overwritten.
 - **Never** - The kubelet never pulls the image and only uses locally cached images. The pod fails if the image is not available locally.
 
-The default behavior depends on the image tag. If you use the `latest` tag or no tag at all, Kubernetes defaults to `Always`. For any other tag, it defaults to `IfNotPresent`.
+The default behavior depends on the image reference. If you use the `latest` tag or no tag at all, Kubernetes defaults to `Always`. For any other tag, or for an image referenced by digest, it defaults to `IfNotPresent`.
 
 ## Setting Image Pull Policies in Pod Specs
 
@@ -82,7 +82,7 @@ containers:
     image: myregistry.com/myapp:latest
 ```
 
-Using specific tags with `IfNotPresent` gives you the best balance of reliability and performance. You know exactly which version is running, and the kubelet only downloads it once per node.
+Using specific, non-overwritten tags with `IfNotPresent` gives you the best balance of reliability and performance. You know which version is intended to run, and the kubelet only downloads it once per node.
 
 ### Use Digest References for Maximum Reproducibility
 
@@ -176,8 +176,8 @@ To diagnose pull issues on the node level:
 # Check containerd logs for image pull errors
 talosctl logs containerd --nodes 10.0.0.5 | grep -i "pull\|image\|error"
 
-# List cached images on the node
-talosctl images --nodes 10.0.0.5
+# List cached CRI images on the node
+talosctl image list --nodes 10.0.0.5
 ```
 
 ## Pre-Pulling Images
@@ -185,7 +185,7 @@ talosctl images --nodes 10.0.0.5
 For workloads that need fast startup times, you can pre-pull images using a DaemonSet:
 
 ```yaml
-# DaemonSet that pre-pulls an image and then exits
+# DaemonSet that pre-pulls an image and keeps a lightweight pod on each node
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -209,7 +209,7 @@ spec:
           image: registry.k8s.io/pause:3.9
 ```
 
-This ensures the image is cached on every node before you deploy your actual workload.
+This ensures the image is cached on every node before you deploy your actual workload. If you only need a one-off manual pre-pull, current Talos versions also provide `talosctl image pull <image> --nodes <node>`.
 
 ## Admission Controllers for Policy Enforcement
 
@@ -221,7 +221,6 @@ kind: ClusterPolicy
 metadata:
   name: require-always-pull
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: check-pull-policy
       match:
@@ -230,6 +229,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "imagePullPolicy must be Always for production namespaces"
         pattern:
           spec:
