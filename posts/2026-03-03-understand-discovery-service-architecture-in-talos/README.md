@@ -16,9 +16,9 @@ The discovery service was designed with several principles in mind:
 
 **Minimal trust**: The service itself is untrusted. It stores and relays encrypted data but cannot read it. Even if the service is compromised, an attacker cannot learn the cluster topology or impersonate a node.
 
-**Stateless operation**: The service keeps data in memory with TTLs. There is no database, no persistent storage, and no state that survives a restart. Nodes re-register automatically, so a service restart causes only a brief delay in discovery.
+**Ephemeral operation**: The service keeps active data in memory with TTLs. Current deployments may snapshot encrypted state to disk to speed recovery after restarts, but the service still does not store plaintext node data. Nodes re-register automatically, so a service restart causes only a brief delay in discovery.
 
-**Simplicity**: The service is a small Go binary that accepts HTTP requests. There are no complex protocols, no distributed consensus, and no clustering requirements.
+**Simplicity**: The service is a small Go binary that accepts gRPC requests. There is no distributed consensus requirement in the service itself.
 
 ## Data Flow
 
@@ -36,14 +36,16 @@ When a node registers with the discovery service:
 
 2. Node encrypts the payload using the cluster's shared secret:
    - Derive encryption key from cluster secrets
-   - Encrypt payload with AES-256-GCM (or similar)
+   - Encrypt affiliate data with AES-GCM
+   - Encrypt endpoints separately so the service can deduplicate encrypted endpoint values
    - The encrypted blob is opaque to the discovery service
 
-3. Node sends HTTP POST to the discovery service:
-   POST /clusters/{cluster-id}/affiliates/{affiliate-id}
-   Body: encrypted_payload
+3. Node sends a gRPC AffiliateUpdate request to the discovery service:
+   service: sidero.discovery.server.Cluster
+   method: AffiliateUpdate
+   fields: cluster_id, affiliate_id, affiliate_data, affiliate_endpoints, ttl
 
-4. Discovery service stores the encrypted blob:
+4. Discovery service stores the encrypted data:
    - Indexed by cluster ID and affiliate ID
    - TTL timer started
 ```
@@ -53,11 +55,12 @@ When a node registers with the discovery service:
 When a node queries for other members:
 
 ```text
-1. Node sends HTTP GET to the discovery service:
-   GET /clusters/{cluster-id}/affiliates
+1. Node uses the discovery service gRPC API:
+   - List returns a snapshot of affiliates for a cluster
+   - Watch streams the current snapshot and later affiliate updates
 
-2. Discovery service returns all stored blobs for that cluster ID:
-   Response: [encrypted_payload_1, encrypted_payload_2, ...]
+2. Discovery service returns stored affiliate records for that cluster ID:
+   Response: affiliates with encrypted data and encrypted endpoints
 
 3. Node decrypts each payload using the cluster's shared secret:
    - Only nodes with the correct cluster secrets can decrypt
@@ -71,10 +74,10 @@ You can observe this from the Talos side:
 ```bash
 # View the result of the query (decrypted members)
 
-talosctl get discoveredmembers --nodes <node-ip>
+talosctl get members --nodes <node-ip>
 
 # View detailed member data
-talosctl get discoveredmembers --nodes <node-ip> -o yaml
+talosctl get members --nodes <node-ip> -o yaml
 ```
 
 ## The Cluster ID
@@ -82,11 +85,11 @@ talosctl get discoveredmembers --nodes <node-ip> -o yaml
 Each cluster has a unique identifier that serves as the namespace for its discovery data. The cluster ID is derived from the cluster's secret bundle:
 
 ```bash
-# View the cluster identity
-talosctl get clusteridentity --nodes <node-ip>
+# View raw affiliates learned from each discovery registry
+talosctl get affiliates --nodes <node-ip> --namespace=cluster-raw
 ```
 
-The cluster ID is the only piece of information the discovery service can see in the clear. It is derived from the cluster secrets using a one-way hash, so an attacker who knows the cluster ID cannot reverse-engineer the cluster secrets.
+The cluster ID is one of the pieces of information the discovery service can see in the clear. It is derived from the cluster secrets using a one-way hash, so an attacker who knows the cluster ID cannot reverse-engineer the cluster secrets.
 
 Two clusters with different secrets will have different cluster IDs and will not see each other's discovery data, even if they use the same discovery service. This is how the public discovery service safely handles multiple clusters.
 
@@ -110,28 +113,29 @@ Key Derivation Function (KDF)
 
 The discovery service only sees:
 - The cluster ID (a hash, not reversible)
-- The affiliate ID (a hash of the node identity)
-- The encrypted blob (opaque, cannot be decrypted without cluster secrets)
+- The affiliate ID (the node identity used as the affiliate identifier)
+- The client version
+- The number of affiliates in the cluster
+- The encrypted affiliate data and encrypted endpoints (opaque, cannot be decrypted without cluster secrets)
 
 It does not see:
 - IP addresses or endpoints of nodes
 - KubeSpan keys
 - Node hostnames or metadata
-- The number of distinct pieces of information (the blob is a single encrypted unit)
 
 ## The Affiliate Model
 
 Within a cluster's namespace, each node is identified as an "affiliate." Each affiliate has:
 
-- An affiliate ID (derived from the node's machine ID and cluster secrets)
-- One or more encrypted data blobs
-- Endpoints that other affiliates can use to reach it
+- An affiliate ID (the node's unique identity, generated as a base62-encoded random 32-byte value)
+- Encrypted affiliate data
+- Encrypted endpoints that other affiliates can use to reach it
 
-The affiliate model allows nodes to have multiple pieces of discovery data. For example, a node might publish both its service registry data and additional metadata.
+The affiliate model allows the discovery service to track a proposed cluster member that has the same cluster ID and secret. The merged `affiliates` view is built from data pulled from the enabled registries.
 
 ```bash
-# The affiliate identity is part of the KubeSpan identity
-talosctl get kubespanidentity --nodes <node-ip>
+# View the node identity used as the affiliate identifier
+talosctl get identities --nodes <node-ip> -o yaml
 ```
 
 ## TTL and Refresh Mechanism
@@ -143,7 +147,7 @@ The lifecycle looks like this:
 ```text
 Node boots -> Register (TTL = 30 minutes)
               |
-              +-- Refresh every ~5 minutes
+              +-- Refresh periodically before the TTL expires
               |
 Node stops -> No more refreshes
               |
@@ -154,33 +158,35 @@ This automatic cleanup means the discovery service never accumulates stale entri
 
 ```bash
 # You can observe entries appearing and disappearing
-talosctl get discoveredmembers --nodes <node-ip> --watch
+talosctl get members --nodes <node-ip> --watch
 ```
 
-## The HTTP API
+## The Service API
 
-The discovery service exposes a simple HTTP API:
+The discovery service exposes a simple gRPC API:
 
 ```text
-POST /clusters/{cluster-id}/affiliates/{affiliate-id}
-  - Register or update an affiliate
-  - Body: encrypted discovery data
-  - Response: 200 OK
+service sidero.discovery.server.Cluster
 
-GET /clusters/{cluster-id}/affiliates
+Hello
+  - First request sent by the client
+  - Can return the client IP as seen by the server or a redirect
+
+AffiliateUpdate
+  - Register or update encrypted affiliate data and endpoints
+  - Includes cluster ID, affiliate ID, encrypted data, encrypted endpoints, and TTL
+
+AffiliateDelete
+  - Remove an affiliate
+
+List
   - List all affiliates for a cluster
-  - Response: JSON array of encrypted blobs
 
-DELETE /clusters/{cluster-id}/affiliates/{affiliate-id}
-  - Remove an affiliate (used during graceful shutdown)
-  - Response: 200 OK
-
-GET /healthz
-  - Health check endpoint
-  - Response: 200 OK
+Watch
+  - Stream the current affiliate snapshot and later updates
 ```
 
-The API is intentionally minimal. There is no authentication at the HTTP level because the encryption model provides the necessary security. Any client can POST to any cluster ID, but only clients with the correct cluster secrets can produce valid encrypted data that other nodes will accept.
+The API is intentionally minimal. The discovery data is protected by the encryption model rather than by the service being trusted to read the data. Only clients with the correct cluster secrets can produce valid encrypted data that other nodes will accept.
 
 ## Dual Registry Architecture
 
@@ -196,7 +202,7 @@ Discovery Controller|
                         - No external dependencies
 ```
 
-The discovery controller merges results from both registries. If a member appears in both, the most recent data is used. This provides redundancy: if the service registry is down, the Kubernetes registry keeps discovery working (and vice versa).
+The discovery controller merges results from enabled registries. In the raw namespace, Talos prefixes affiliate IDs with `service/` for data from the discovery service and `k8s/` for data from the Kubernetes registry. This provides redundancy: if the service registry is down, the Kubernetes registry can keep discovery working after Kubernetes is available.
 
 ```bash
 # View which registries are configured
@@ -209,10 +215,9 @@ The discovery service scales well because of its simplicity:
 
 - Memory usage is proportional to the number of cluster-affiliate entries
 - Each entry is small (a few KB of encrypted data)
-- There is no inter-instance coordination (each instance is independent)
 - CPU usage is minimal (just storing and serving encrypted blobs)
 
-For a cluster with 100 nodes, the discovery service stores approximately 100 entries per cluster. The total memory for the encrypted data is well under 1MB. The service can comfortably handle thousands of clusters on a single small instance.
+For a cluster with 100 nodes, the discovery service stores approximately 100 affiliate records plus encrypted endpoint data for that cluster. Actual memory use depends on how many endpoints are reported and deduplicated.
 
 ```bash
 # If self-hosting, monitor resource usage
@@ -224,7 +229,7 @@ docker stats talos-discovery
 
 The discovery service is designed to tolerate failures gracefully:
 
-**Service restart**: Nodes re-register within their next refresh cycle (typically a few minutes). During the gap, nodes continue operating with their last known peer list.
+**Service restart**: Nodes re-register automatically, and current service deployments may restore encrypted snapshots to reduce the recovery delay. During the gap, nodes continue operating with their last known peer list.
 
 **Service unavailable**: Nodes fall back to the Kubernetes registry if enabled. Existing peer connections (KubeSpan tunnels) remain up because they do not depend on continuous discovery.
 
@@ -232,7 +237,7 @@ The discovery service is designed to tolerate failures gracefully:
 
 ```bash
 # Even if discovery is down, existing connections persist
-talosctl get kubespanpeerstatus --nodes <node-ip>
+talosctl get kubespanpeerstatuses --nodes <node-ip>
 # Will still show peers that were discovered before the outage
 ```
 
@@ -242,7 +247,7 @@ The discovery service's security model is strong for several reasons:
 
 1. **Confidentiality**: All discovery data is encrypted. The service operator cannot read it.
 2. **Integrity**: The encryption scheme includes authentication (AEAD), so tampered data is detected and discarded.
-3. **Availability**: The service is stateless and can be easily replicated for high availability.
+3. **Availability**: The service keeps active data ephemeral and nodes refresh their registrations automatically.
 4. **Cluster isolation**: Different clusters are completely isolated by their cluster IDs.
 
 The main attack surface is availability (an attacker could DDoS the discovery service) and metadata (an attacker could learn that a cluster exists and approximately how many nodes it has). Neither of these reveals the actual cluster topology or allows unauthorized access.
