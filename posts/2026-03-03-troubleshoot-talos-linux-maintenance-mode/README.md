@@ -19,7 +19,7 @@ When a node is in maintenance mode:
 - The Talos API is accessible with the `--insecure` flag
 - No kubelet, etcd, or Kubernetes components are running
 - The node has basic networking (DHCP by default)
-- The configuration partition is empty or contains an invalid configuration
+- The STATE partition is empty or contains an invalid machine configuration
 
 ## Checking If a Node Is in Maintenance Mode
 
@@ -77,7 +77,7 @@ If the node cannot communicate with you, even the insecure apply will fail. Chec
 
 ```bash
 # Check if you can reach the Talos API port
-curl -k https://<node-ip>:50000
+nc -vz <node-ip> 50000
 ```
 
 ## Scenario 2: Node Returns to Maintenance Mode After Reboot
@@ -86,7 +86,7 @@ If a previously configured node reboots into maintenance mode, the machine confi
 
 ```bash
 # Check if the configuration is present
-talosctl -n <node-ip> get machineconfiguration --insecure
+talosctl -n <node-ip> get machineconfig --insecure
 ```
 
 If the configuration is missing, possible causes include:
@@ -99,7 +99,7 @@ Check the disk status:
 
 ```bash
 # Check disk information
-talosctl -n <node-ip> disks --insecure
+talosctl -n <node-ip> get disks --insecure
 ```
 
 If the disk is healthy, re-apply the configuration:
@@ -111,11 +111,12 @@ talosctl apply-config --insecure -n <node-ip> --file worker.yaml
 
 ## Scenario 3: Configuration Applied but Node Stays in Maintenance
 
-Sometimes the configuration is applied successfully (no error returned), but the node does not progress beyond maintenance mode. Check the Talos logs:
+Sometimes the configuration is applied successfully (no error returned), but the node does not progress beyond maintenance mode. Check the machine status and events:
 
 ```bash
-# Check machine config controller logs
-talosctl -n <node-ip> logs controller-runtime --insecure --tail 100
+# Check machine status and recent events
+talosctl -n <node-ip> get machinestatus --insecure -o yaml
+talosctl -n <node-ip> get events --insecure
 ```
 
 Look for errors in the configuration processing. The node might be stuck because:
@@ -182,7 +183,14 @@ If the upgrade failed, the node might have booted into the wrong partition. Talo
 talosctl -n <node-ip> get systeminformation --insecure
 ```
 
-You may need to force the node back to the previous good configuration:
+If the node is still reachable with normal authenticated Talos API access, you may need to roll it back to the previous installation:
+
+```bash
+# Roll back to the previous Talos installation
+talosctl -n <node-ip> rollback
+```
+
+If the node is only reachable through the maintenance API, re-apply the configuration or do a fresh reset:
 
 ```bash
 # Re-apply the configuration
@@ -199,7 +207,7 @@ Sometimes you want a node in maintenance mode - for example, to change its confi
 
 ```bash
 # Get the current configuration from a maintenance mode node
-talosctl -n <node-ip> get machineconfiguration --insecure -o yaml > current-config.yaml
+talosctl -n <node-ip> get machineconfig --insecure -o yaml | yq eval .spec - > current-config.yaml
 
 # Edit the configuration
 # ... make your changes ...
@@ -219,7 +227,7 @@ To avoid unexpected maintenance mode situations:
 
 ```bash
 # Save a node's current configuration
-talosctl -n <node-ip> get machineconfiguration -o yaml > backup-$(date +%Y%m%d).yaml
+talosctl -n <node-ip> get machineconfig -o yaml | yq eval .spec - > backup-$(date +%Y%m%d).yaml
 ```
 
 ## Summary
