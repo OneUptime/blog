@@ -58,7 +58,7 @@ Different Talos versions support different Kubernetes versions. Make sure your c
 
 ```bash
 # Check current Kubernetes version
-kubectl version --short
+kubectl version
 
 # Verify this version is in the support matrix
 # for the target Talos release
