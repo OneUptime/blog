@@ -58,28 +58,32 @@ sudo mv kubectl /usr/local/bin/
 For a VM, download the appropriate image. If you are using QEMU/KVM:
 
 ```bash
-# Download the QEMU disk image
-curl -LO https://github.com/siderolabs/talos/releases/latest/download/nocloud-amd64.raw.xz
-xz -d nocloud-amd64.raw.xz
+# Download the ISO image
+curl -L -O https://github.com/siderolabs/talos/releases/latest/download/metal-amd64.iso
 ```
 
-For VirtualBox, grab the VHD image. For VMware, grab the OVA. The Talos Image Factory at https://factory.talos.dev provides pre-built images for dozens of platforms.
+For VirtualBox or VMware, use the appropriate platform image from the Talos Image Factory at https://factory.talos.dev, which provides pre-built images for dozens of platforms.
 
 ## Creating the Virtual Machine
 
-If you are using QEMU, create a VM like this:
+If you are using KVM/libvirt, create a VM like this:
 
 ```bash
-# Create a VM with 2 CPUs, 4 GB RAM, and the Talos image as the disk
-qemu-system-x86_64 \
-  -m 4096 \
-  -smp 2 \
-  -drive file=nocloud-amd64.raw,format=raw \
-  -net nic -net user,hostfwd=tcp::50000-:50000 \
-  -enable-kvm
+# Create a VM with 2 CPUs, 4 GB RAM, and the Talos ISO
+virt-install \
+  --virt-type kvm \
+  --name talos-control-plane \
+  --ram 4096 \
+  --vcpus 2 \
+  --disk path=talos-control-plane.qcow2,bus=virtio,size=40,format=qcow2 \
+  --cdrom metal-amd64.iso \
+  --os-variant=linux2022 \
+  --network network=default \
+  --boot hd,cdrom \
+  --noautoconsole
 ```
 
-The VM will boot into Talos maintenance mode. You will see a screen showing the node's IP address. Write this down.
+The VM will boot into Talos maintenance mode. You can find the node's IP address from the VM console or with `virsh domifaddr talos-control-plane`. Write this down.
 
 ## Generating Your Cluster Configuration
 
@@ -88,7 +92,8 @@ This is where Talos differs from other approaches. Instead of running an install
 ```bash
 # Generate the cluster configuration
 # "my-first-cluster" is the name, and the URL is where the Kubernetes API will listen
-talosctl gen config my-first-cluster https://192.168.1.50:6443
+talosctl gen config my-first-cluster https://192.168.1.50:6443 \
+  --install-disk /dev/vda
 ```
 
 This produces three files:
@@ -114,6 +119,7 @@ Regenerate the config with this patch:
 ```bash
 # Regenerate with the scheduling patch
 talosctl gen config my-first-cluster https://192.168.1.50:6443 \
+  --install-disk /dev/vda \
   --config-patch @allow-scheduling.yaml
 ```
 
