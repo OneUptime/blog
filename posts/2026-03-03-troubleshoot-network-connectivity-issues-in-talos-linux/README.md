@@ -14,11 +14,11 @@ This guide covers the most common network connectivity problems in Talos Linux a
 
 ## Understanding the Talos Networking Stack
 
-Before diving into troubleshooting, it helps to understand how Talos Linux handles networking. Talos uses a declarative networking model where all network configuration is specified in the machine configuration file. The `networkd` service processes this configuration and applies it at boot time.
+Before diving into troubleshooting, it helps to understand how Talos Linux handles networking. Talos uses a declarative networking model where network configuration is specified in the machine configuration. Talos networking controllers translate that configuration into resources and reconcile the Linux network state.
 
 Key components in the Talos networking stack include:
 
-- **networkd**: Manages interfaces, addresses, routes, and DNS
+- **Networking controllers**: Manage interfaces, addresses, routes, and DNS
 - **containerd**: Handles container networking for system services
 - **CNI plugin**: Manages pod networking (Flannel by default)
 - **kube-proxy or its replacement**: Handles service networking
@@ -57,8 +57,8 @@ DNS issues are one of the most common causes of connectivity problems. Talos Lin
 # Check configured DNS resolvers
 talosctl -n <node-ip> get resolvers
 
-# Verify DNS resolution is working
-talosctl -n <node-ip> get hostdns
+# Check upstream DNS health when Host DNS is enabled
+talosctl -n <node-ip> get dnsupstream
 
 # Check the actual resolve configuration
 talosctl -n <node-ip> read /etc/resolv.conf
@@ -71,7 +71,8 @@ If DNS is not resolving properly, check that your upstream DNS servers are reach
 talosctl -n <node-ip> netstat | grep :53
 
 # Check for DNS-related errors in system logs
-talosctl -n <node-ip> logs networkd | grep -i dns
+talosctl -n <node-ip> logs dns-resolve-cache
+talosctl -n <node-ip> logs controller-runtime | grep -i dns
 ```
 
 ## Step 3: Test Connectivity Between Nodes
@@ -83,10 +84,10 @@ If individual nodes have network access but cannot communicate with each other, 
 talosctl -n <node-ip> get members
 
 # Verify etcd cluster connectivity
-talosctl -n <node-ip> get etcdmembers
+talosctl -n <node-ip> etcd members
 
 # Check the Kubernetes node status
-talosctl -n <node-ip> get nodestatus
+kubectl get nodes -o wide
 ```
 
 For pod-to-pod networking issues, examine the CNI plugin:
@@ -107,8 +108,8 @@ Sometimes the issue is a misconfiguration in the machine config. Review the appl
 # Dump the current machine configuration
 talosctl -n <node-ip> get machineconfig -o yaml
 
-# Check the network section specifically
-talosctl -n <node-ip> get machineconfig -o yaml | grep -A 50 "network:"
+# Check network configuration documents or sections specifically
+talosctl -n <node-ip> get machineconfig -o yaml | grep -E -A 20 "kind: (LinkConfig|ResolverConfig|DHCPv4Config)|network:"
 ```
 
 Common configuration mistakes include:
@@ -120,21 +121,26 @@ Common configuration mistakes include:
 
 ```yaml
 # Example of a correct network configuration
-machine:
-  network:
-    hostname: worker-01
-    interfaces:
-      - interface: eth0
-        dhcp: true
-        # Or use static addressing
-        # addresses:
-        #   - 192.168.1.100/24
-        # routes:
-        #   - network: 0.0.0.0/0
-        #     gateway: 192.168.1.1
-    nameservers:
-      - 8.8.8.8
-      - 8.8.4.4
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+up: true
+addresses:
+  - address: 192.168.1.100/24
+routes:
+  - gateway: 192.168.1.1
+---
+apiVersion: v1alpha1
+kind: ResolverConfig
+nameservers:
+  - address: 8.8.8.8
+  - address: 8.8.4.4
+
+# Or use DHCPv4 instead of static addressing
+---
+apiVersion: v1alpha1
+kind: DHCPv4Config
+name: eth0
 ```
 
 ## Step 5: Check Firewall and Packet Filtering
@@ -157,17 +163,17 @@ talosctl -n <node-ip> dmesg | grep conntrack
 If your node uses DHCP and is not getting an address, walk through these checks:
 
 ```bash
-# Check DHCP client status
-talosctl -n <node-ip> get dhcpclientstatus
+# Check DHCP operator status
+talosctl -n <node-ip> get operatorspecs
 
 # Look for DHCP-related logs
-talosctl -n <node-ip> logs networkd | grep -i dhcp
+talosctl -n <node-ip> logs controller-runtime | grep -i dhcp
 
 # Verify the correct interface is configured for DHCP
-talosctl -n <node-ip> get machineconfig -o yaml | grep -B 2 -A 5 dhcp
+talosctl -n <node-ip> get machineconfig -o yaml | grep -B 2 -A 5 "DHCPv4Config\|dhcp"
 ```
 
-DHCP problems often come down to the interface name being different than expected. Talos names interfaces based on the kernel driver, so `eth0` on one machine might be `enp0s3` on another. Check what interfaces are actually present:
+DHCP problems often come down to the interface name being different than expected. Current Talos releases use predictable interface names by default, so `eth0` on one machine might be `enp0s3` or another predictable name on another. Check what interfaces are actually present:
 
 ```bash
 # List all available interfaces and their driver names
@@ -205,11 +211,10 @@ If you are running on a cloud provider or inside VMs with overlay networking, yo
 
 ```yaml
 # Adjust MTU in machine config
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        mtu: 1450  # Reduced for VXLAN overlay
+apiVersion: v1alpha1
+kind: LinkConfig
+name: eth0
+mtu: 1450  # Reduced for VXLAN overlay
 ```
 
 ## Step 9: Examine Kernel Network Parameters
@@ -245,7 +250,7 @@ When all else fails, you can capture packets on a Talos node using the `talosctl
 talosctl -n <node-ip> pcap --interface eth0 --duration 30s -o capture.pcap
 
 # Capture only specific traffic
-talosctl -n <node-ip> pcap --interface eth0 --bpf-filter "port 6443" -o api-traffic.pcap
+talosctl -n <node-ip> pcap --interface eth0 --bpf-filter "$(tcpdump -dd -y EN10MB 'port 6443')" -o api-traffic.pcap
 
 # Analyze the capture with Wireshark or tcpdump on your local machine
 tcpdump -r capture.pcap -nn
