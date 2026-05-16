@@ -55,7 +55,7 @@ Talos provides a nocloud-specific image that is configured to read from the nocl
 
 ```bash
 # Download the nocloud image
-wget https://github.com/siderolabs/talos/releases/download/v1.9.0/nocloud-amd64.raw.xz
+wget https://factory.talos.dev/image/376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba/v1.9.0/nocloud-amd64.raw.xz
 
 # Decompress it
 xz -d nocloud-amd64.raw.xz
@@ -65,7 +65,7 @@ For ARM64 platforms:
 
 ```bash
 # ARM64 variant
-wget https://github.com/siderolabs/talos/releases/download/v1.9.0/nocloud-arm64.raw.xz
+wget https://factory.talos.dev/image/376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba/v1.9.0/nocloud-arm64.raw.xz
 xz -d nocloud-arm64.raw.xz
 ```
 
@@ -188,18 +188,26 @@ virt-install \
 
 ## Step 5: Using Network-Based Configuration
 
-Instead of creating a configuration ISO, you can pass the configuration URL as a kernel parameter:
+Instead of creating a configuration ISO, you can pass the nocloud source URL through the SMBIOS serial number:
 
 ```bash
 # Host the configuration on an HTTP server
-cp controlplane.yaml /var/www/html/talos/controlplane.yaml
+mkdir -p /var/www/html/talos/configs
+cp controlplane.yaml /var/www/html/talos/configs/user-data
 
-# Boot Talos with the config URL as a kernel parameter
-# Add to your boot configuration:
-# talos.config=http://192.168.1.10/talos/controlplane.yaml
+# Boot Talos with the nocloud source URL in SMBIOS
+qemu-system-x86_64 \
+  -m 4096 \
+  -cpu host \
+  -smp 2 \
+  -drive file=talos-disk.raw,format=raw,if=virtio \
+  -net nic,model=virtio \
+  -net bridge,br=br0 \
+  -smbios type=1,serial=ds=nocloud-net;s=http://192.168.1.10/talos/configs/ \
+  -enable-kvm
 ```
 
-This method is cleaner for environments where you do not want to manage ISO files for each machine. The Talos Linux boot process will fetch the configuration from the HTTP endpoint.
+This method is cleaner for environments where you do not want to manage ISO files for each machine. The Talos Linux boot process will fetch the machine configuration from the `user-data` file at the HTTP endpoint.
 
 ## Step 6: Bootstrap the Cluster
 
@@ -297,7 +305,7 @@ genisoimage -output nocloud-config.iso \
 
 If Talos does not pick up the nocloud configuration, verify that:
 
-1. The ISO volume label is exactly `cidata` (case-sensitive)
+1. The ISO volume label is `cidata` or `CIDATA`
 2. The files are named `user-data` and `meta-data` (with hyphens)
 3. The ISO is attached as a CD-ROM device, not a disk
 4. The machine config in `user-data` is valid YAML
