@@ -28,7 +28,7 @@ Also confirm that your Talos version supports KubeSpan:
 talosctl version --nodes <node-ip>
 ```
 
-KubeSpan has been available since Talos 1.0 and is stable in all recent versions.
+KubeSpan was introduced as an alpha feature in Talos v0.11 and has been stable in all 1.x releases.
 
 ## Enabling KubeSpan During Cluster Creation
 
@@ -205,7 +205,7 @@ If KubeSpan is not establishing connections, check the following:
 
 ```bash
 # Check if the discovery service is working
-talosctl get discoveredmembers --nodes <node-ip>
+talosctl get members --nodes <node-ip>
 
 # Check KubeSpan logs
 talosctl logs controller-runtime --nodes <node-ip> | grep -i kubespan
