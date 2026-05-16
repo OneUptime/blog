@@ -38,8 +38,8 @@ talosctl dmesg --nodes 10.0.0.1 | grep -i watchdog
 # Check which watchdog modules are loaded
 talosctl read /proc/modules --nodes 10.0.0.1 | grep -i wdt
 
-# Check the watchdog device
-talosctl read /sys/class/watchdog/ --nodes 10.0.0.1
+# Check the watchdog devices
+talosctl ls /sys/class/watchdog/ --nodes 10.0.0.1
 ```
 
 ## Enabling Intel TCO Watchdog
@@ -49,20 +49,32 @@ The Intel TCO watchdog is the most common on datacenter servers. Enable it throu
 ```yaml
 # talos-machine-config.yaml
 machine:
-  install:
-    extraKernelArgs:
-      # Enable Intel TCO watchdog
-      - iTCO_wdt.heartbeat=60       # 60 second timeout
-      - iTCO_wdt.nowayout=1         # Cannot be stopped once started
   kernel:
     modules:
       - name: iTCO_wdt              # Ensure the module is loaded
+        parameters:
+          - heartbeat=60            # 60 second timeout
+          - nowayout=1              # Cannot be stopped once started
       - name: iTCO_vendor_support   # Vendor support module
 ```
 
 The `heartbeat` parameter sets the watchdog timeout in seconds. If the system does not pet the watchdog within this period, a reset is triggered.
 
 The `nowayout` parameter is critical for reliability. When set to 1, the watchdog cannot be disabled once activated, even if the process that opened it crashes or closes the file descriptor. Without this, a process crash could leave the watchdog disabled.
+
+After the driver is loaded, enable Talos to manage and reset the watchdog timer:
+
+```yaml
+# watchdog.yaml
+apiVersion: v1alpha1
+kind: WatchdogTimerConfig
+device: /dev/watchdog0
+timeout: 60s
+```
+
+```bash
+talosctl patch mc --nodes 10.0.0.1 -p @watchdog.yaml
+```
 
 ## Enabling AMD SP5100 TCO Watchdog
 
@@ -71,13 +83,12 @@ For AMD-based servers, the SP5100 TCO watchdog is the equivalent:
 ```yaml
 # talos-machine-config.yaml
 machine:
-  install:
-    extraKernelArgs:
-      - sp5100_tco.heartbeat=60
-      - sp5100_tco.nowayout=1
   kernel:
     modules:
       - name: sp5100_tco
+        parameters:
+          - heartbeat=60
+          - nowayout=1
 ```
 
 ## Enabling WDAT (ACPI) Watchdog
@@ -87,13 +98,12 @@ Some systems expose a watchdog through ACPI tables. This is common on modern UEF
 ```yaml
 # talos-machine-config.yaml
 machine:
-  install:
-    extraKernelArgs:
-      - wdat_wdt.heartbeat=60
-      - wdat_wdt.nowayout=1
   kernel:
     modules:
       - name: wdat_wdt
+        parameters:
+          - timeout=60
+          - nowayout=1
 ```
 
 ## Configuring IPMI Watchdog
@@ -134,19 +144,18 @@ spec:
           apk add --no-cache ipmitool
 
           # Configure IPMI watchdog
-          # Timer use: 4 = SMS/OS (appropriate for OS monitoring)
-          # Pre-timeout action: 0 = None
-          # Timeout action: 1 = Hard reset
-          # Pre-timeout interval: 10 seconds (warning before timeout)
+          # Timer use: SMS/OS (appropriate for OS monitoring)
+          # Pre-timeout interrupt: none
+          # Timeout action: hard reset
           # Timeout: 120 seconds
-          ipmitool mc watchdog set timer use 4 \
-            pretimeout 10 \
-            action 1 \
-            pretime_action 0 \
-            timeout 120
+          ipmitool mc watchdog set \
+            use=sms \
+            int=none \
+            action=reset \
+            timeout=120
 
-          # Start the watchdog
-          ipmitool mc watchdog set running
+          # Start or restart the watchdog countdown
+          ipmitool mc watchdog reset
 
           echo "IPMI watchdog started with 120s timeout"
 
@@ -178,8 +187,10 @@ talosctl read /sys/class/watchdog/watchdog0/identity --nodes 10.0.0.1
 talosctl read /sys/class/watchdog/watchdog0/timeout --nodes 10.0.0.1
 # Output: 60
 
-talosctl read /sys/class/watchdog/watchdog0/status --nodes 10.0.0.1
+talosctl read /sys/class/watchdog/watchdog0/state --nodes 10.0.0.1
 # Output should show the watchdog is active
+
+talosctl get watchdogtimerstatus --nodes 10.0.0.1
 
 # Check kernel log for watchdog initialization
 talosctl dmesg --nodes 10.0.0.1 | grep -i "watchdog\|iTCO\|wdt"
@@ -252,8 +263,10 @@ cluster:
     extraArgs:
       node-monitor-period: "5s"          # Check node status every 5s
       node-monitor-grace-period: "40s"   # Mark NotReady after 40s
-      pod-eviction-timeout: "30s"        # Start evicting pods after 30s
+      node-eviction-rate: "0.1"          # Limit pod eviction rate after node failure
 ```
+
+Pod eviction timing after a node becomes NotReady is controlled by the `node.kubernetes.io/not-ready` and `node.kubernetes.io/unreachable` `NoExecute` tolerations. Kubernetes adds 300-second tolerations by default; set shorter `tolerationSeconds` values on workloads that should move sooner.
 
 ## Monitoring Watchdog Events
 
@@ -275,8 +288,11 @@ Set up alerts for watchdog reboots. If a node is being rebooted by the watchdog 
 # Apply the machine configuration
 talosctl apply-config --nodes 10.0.0.1 --file talos-machine-config.yaml
 
-# Reboot for kernel module and arg changes
+# Reboot for kernel module changes
 talosctl reboot --nodes 10.0.0.1
+
+# Enable Talos watchdog management
+talosctl patch mc --nodes 10.0.0.1 -p @watchdog.yaml
 
 # Verify watchdog is active after reboot
 talosctl dmesg --nodes 10.0.0.1 | grep watchdog
