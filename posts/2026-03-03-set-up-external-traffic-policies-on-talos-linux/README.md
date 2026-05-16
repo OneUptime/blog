@@ -65,7 +65,7 @@ The output should show `Local`.
 
 ## Configuring Health Check Node Ports
 
-When you set `externalTrafficPolicy: Local`, Kubernetes automatically allocates a health check node port. External load balancers use this port to determine which nodes have ready pods for the service. Nodes without matching pods will fail the health check and stop receiving traffic.
+When you set `externalTrafficPolicy: Local` on a LoadBalancer service, Kubernetes automatically allocates a health check node port. External load balancers use this port to determine which nodes have ready pods for the service. Nodes without matching pods will fail the health check and stop receiving traffic.
 
 You can specify a custom health check node port if needed:
 
@@ -167,29 +167,49 @@ spec:
 
 ## Using Cilium as a kube-proxy Replacement
 
-If you have replaced kube-proxy with Cilium on your Talos cluster, external traffic policies work similarly but with some additional options. You can configure Cilium through the Talos machine config:
+If you have replaced kube-proxy with Cilium on your Talos cluster, external traffic policies work similarly but with some additional options. The `externalTrafficPolicy` setting still belongs on the Kubernetes Service. On Talos, disable kube-proxy in the machine config and deploy rendered Cilium manifests with Helm values such as these when KubePrism is available on `localhost:7445`:
 
 ```yaml
-# talos-machine-config snippet for Cilium
-cluster:
-  inlineManifests:
-    - name: cilium
-      contents: |
-        # Cilium HelmChart values
-        kubeProxyReplacement: true
-        externalTrafficPolicy: Local
-        bpf:
-          masquerade: true
-        loadBalancer:
-          algorithm: maglev
+# Cilium Helm values for a kube-proxy-free Talos cluster
+kubeProxyReplacement: true
+k8sServiceHost: localhost
+k8sServicePort: 7445
+ipam:
+  mode: kubernetes
+cgroup:
+  autoMount:
+    enabled: false
+  hostRoot: /sys/fs/cgroup
+securityContext:
+  capabilities:
+    ciliumAgent:
+      - CHOWN
+      - KILL
+      - NET_ADMIN
+      - NET_RAW
+      - IPC_LOCK
+      - SYS_ADMIN
+      - SYS_RESOURCE
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    cleanCiliumState:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - SYS_RESOURCE
+loadBalancer:
+  algorithm: maglev
 ```
 
 With Cilium, you also get support for Direct Server Return (DSR) mode, which can further reduce latency for external traffic:
 
 ```yaml
 # Cilium DSR configuration
+routingMode: native
 loadBalancer:
   mode: dsr
+  dsrDispatch: opt
   algorithm: maglev
 ```
 
@@ -209,7 +229,7 @@ kubectl expose pod echoserver --type=LoadBalancer --port=80 --target-port=8080 \
 curl http://<loadbalancer-ip>/
 ```
 
-In the response, look for the `x-real-ip` or `x-forwarded-for` headers. With the Local policy, these should show your actual client IP instead of a cluster-internal IP.
+In the response, look for the `client_address` value. With the Local policy, this should show your actual client IP instead of a cluster-internal IP. If your external load balancer or proxy adds headers such as `x-real-ip` or `x-forwarded-for`, those should also reflect the external client.
 
 ## Monitoring Traffic Distribution
 
