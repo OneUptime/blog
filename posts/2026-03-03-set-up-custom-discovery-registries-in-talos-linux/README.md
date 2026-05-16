@@ -24,7 +24,7 @@ The public discovery service is reliable and encrypted end-to-end, but it is sti
 
 The Talos discovery service is a lightweight HTTP server that stores and serves encrypted blobs. It does not process or decrypt the discovery data - it simply acts as a relay. Each cluster is identified by a cluster ID, and the service stores encrypted member information indexed by that ID.
 
-The service is stateless by design. It stores data in memory with TTLs, so if the service restarts, nodes re-register automatically within their next refresh cycle. There is no database backend to manage.
+The service stores data in memory with TTLs and writes encrypted snapshots to disk to speed up recovery after restarts. If the service restarts, nodes re-register automatically within their next refresh cycle. There is no database backend to manage.
 
 ## Deploying the Discovery Service
 
@@ -61,22 +61,20 @@ spec:
           image: ghcr.io/siderolabs/discovery-service:latest
           args:
             - --addr=:3000
-            - --landing-page=false
+            - --landing-addr=
             - --metrics-addr=:9090
           ports:
-            - name: http
+            - name: grpc
               containerPort: 3000
             - name: metrics
               containerPort: 9090
           livenessProbe:
-            httpGet:
-              path: /healthz
+            tcpSocket:
               port: 3000
             initialDelaySeconds: 5
             periodSeconds: 10
           readinessProbe:
-            httpGet:
-              path: /healthz
+            tcpSocket:
               port: 3000
             initialDelaySeconds: 5
             periodSeconds: 5
@@ -98,7 +96,7 @@ spec:
   selector:
     app: discovery-service
   ports:
-    - name: http
+    - name: grpc
       port: 3000
       targetPort: 3000
     - name: metrics
@@ -117,7 +115,7 @@ metadata:
   namespace: talos-discovery
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
 spec:
   ingressClassName: nginx
   tls:
@@ -158,18 +156,17 @@ Put a reverse proxy with TLS in front of it:
 ```nginx
 # nginx configuration for the discovery service
 server {
-    listen 443 ssl;
+    listen 443 ssl http2;
     server_name discovery.internal.example.com;
 
     ssl_certificate /etc/ssl/certs/discovery.pem;
     ssl_certificate_key /etc/ssl/private/discovery-key.pem;
 
     location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        grpc_pass grpc://127.0.0.1:3000;
+        grpc_set_header Host $host;
+        grpc_set_header X-Real-IP $remote_addr;
+        grpc_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 }
 ```
@@ -218,7 +215,7 @@ cluster:
         disabled: false
         endpoint: https://discovery.internal.example.com/
       kubernetes:
-        disabled: false
+        disabled: true
 ```
 
 Apply to all nodes:
@@ -242,7 +239,10 @@ After configuration, verify that nodes are using the custom registry:
 
 ```bash
 # Check discovered members
-talosctl get discoveredmembers --nodes <node-ip>
+talosctl get members --nodes <node-ip>
+
+# Check raw affiliates reported by each discovery registry
+talosctl get affiliates --namespace=cluster-raw --nodes <node-ip>
 
 # Check controller logs for the custom endpoint
 talosctl logs controller-runtime --nodes <node-ip> | grep -i discovery
@@ -312,7 +312,7 @@ spec:
       maxUnavailable: 1
 ```
 
-Since the discovery service is stateless, each instance independently serves requests. Nodes re-register with whichever instance handles their request, so there is no data synchronization needed between instances. If one instance goes down, nodes automatically re-register with a healthy instance on the next refresh cycle.
+Discovery service data is held in each instance's memory and local encrypted snapshot. If you run multiple instances, keep clients pinned to the same backend or provide a shared failover strategy so discovery data is not split across independent instances. If one instance goes down, nodes re-register with a healthy instance on the next refresh cycle.
 
 ## TLS Certificate Requirements
 
@@ -321,14 +321,13 @@ The discovery service endpoint must use HTTPS. Make sure your TLS certificate is
 For internal CAs, you need to add the CA certificate to the Talos machine configuration:
 
 ```yaml
-machine:
-  files:
-    - content: |
-        -----BEGIN CERTIFICATE-----
-        <your internal CA certificate>
-        -----END CERTIFICATE-----
-      path: /etc/ssl/certs/internal-ca.pem
-      permissions: 0644
+apiVersion: v1alpha1
+kind: TrustedRootsConfig
+name: internal-ca
+certificates: |-
+    -----BEGIN CERTIFICATE-----
+    <your internal CA certificate>
+    -----END CERTIFICATE-----
 ```
 
-Self-hosting the Talos discovery service is a straightforward process. The service is lightweight, stateless, and designed to be easy to operate. Whether you deploy it in Kubernetes, as a Docker container, or as a systemd service, the end result is full control over your cluster's discovery infrastructure with no external dependencies.
+Self-hosting the Talos discovery service is a straightforward process. The service is lightweight and designed to be easy to operate. Whether you deploy it in Kubernetes, as a Docker container, or as a systemd service, the end result is full control over your cluster's discovery infrastructure with no external dependencies.
