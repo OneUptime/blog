@@ -55,7 +55,7 @@ talosctl get links --nodes 192.168.1.25 | grep kubespan
 # Should return nothing
 
 # Check that other nodes no longer see this as a KubeSpan peer
-talosctl get kubespanpeerstatus --nodes 192.168.1.10
+talosctl get kubespanpeerstatuses --nodes 192.168.1.10
 # The disabled node should not appear in the peer list
 ```
 
@@ -164,7 +164,7 @@ talosctl patch machineconfig --patch @enable-kubespan.yaml \
   --nodes 192.168.1.25
 
 # Verify KubeSpan is back up
-talosctl get kubespanpeerstatus --nodes 192.168.1.25
+talosctl get kubespanpeerstatuses --nodes 192.168.1.25
 
 # Check the WireGuard interface
 talosctl get links --nodes 192.168.1.25 | grep kubespan
@@ -198,7 +198,7 @@ KUBESPAN_NODES=$(kubectl get nodes -l 'kubespan!=disabled' -o jsonpath='{.items[
 
 for node in $KUBESPAN_NODES; do
   echo "Checking KubeSpan on $node"
-  talosctl get kubespanpeerstatus --nodes "$node" -o json | \
+  talosctl get kubespanpeerstatuses --nodes "$node" -o json | \
     jq '{node: "'$node'", peers_up: [.[] | select(.spec.state == "up")] | length, peers_down: [.[] | select(.spec.state != "up")] | length}'
 done
 
