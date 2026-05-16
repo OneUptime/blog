@@ -34,25 +34,38 @@ talosctl -n 192.168.1.10 etcd snapshot ./etcd-backup-$(date +%Y%m%d-%H%M%S).snap
 ls -la etcd-backup-*.snapshot
 ```
 
-This downloads a consistent snapshot of the etcd database to your local machine. The snapshot file is self-contained and can be used to restore etcd on any compatible cluster.
+This downloads a consistent snapshot of the etcd database to your local machine. The snapshot file can be used with Talos disaster recovery on a compatible cluster when you also have the required Talos machine configuration and secret material.
 
 ## Method 2: Automated Backups with a Kubernetes CronJob
 
-For automated backups, create a CronJob that takes regular snapshots and stores them in a persistent location. Here is a setup that backs up etcd to an S3-compatible storage bucket:
+For automated backups from inside the cluster, use Talos API access from Kubernetes instead of mounting Talos host secrets and calling `etcdctl` directly. First enable Kubernetes access to the Talos API for the namespace and backup role:
+
+```yaml
+machine:
+  features:
+    kubernetesTalosAPIAccess:
+      enabled: true
+      allowedRoles:
+        - os:etcd:backup
+      allowedKubernetesNamespaces:
+        - kube-system
+```
+
+Then create a CronJob that takes regular snapshots and stores the latest snapshot on a PersistentVolume. Use a `talosctl` image version that matches your Talos Linux version:
 
 ```yaml
 # etcd-backup-cronjob.yaml
 apiVersion: v1
-kind: Secret
+kind: PersistentVolumeClaim
 metadata:
-  name: etcd-backup-s3-credentials
+  name: etcd-backup
   namespace: kube-system
-type: Opaque
-stringData:
-  AWS_ACCESS_KEY_ID: "your-access-key"
-  AWS_SECRET_ACCESS_KEY: "your-secret-key"
-  AWS_DEFAULT_REGION: "us-east-1"
-  S3_BUCKET: "my-etcd-backups"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -75,67 +88,31 @@ spec:
           tolerations:
           - key: node-role.kubernetes.io/control-plane
             effect: NoSchedule
-          hostNetwork: true
           containers:
           - name: etcd-backup
-            image: gcr.io/etcd-development/etcd:v3.5.12
+            image: ghcr.io/siderolabs/talosctl:v1.12.7
             command:
-            - /bin/sh
-            - -c
-            - |
-              set -e
-
-              # Configuration
-              BACKUP_DIR="/tmp/etcd-backup"
-              TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-              SNAPSHOT_FILE="${BACKUP_DIR}/etcd-snapshot-${TIMESTAMP}.db"
-
-              mkdir -p ${BACKUP_DIR}
-
-              echo "Taking etcd snapshot..."
-              etcdctl snapshot save ${SNAPSHOT_FILE}
-
-              echo "Verifying snapshot..."
-              etcdctl snapshot status ${SNAPSHOT_FILE} --write-out=table
-
-              echo "Snapshot size: $(du -h ${SNAPSHOT_FILE} | cut -f1)"
-              echo "Snapshot complete: ${SNAPSHOT_FILE}"
-
-              # Upload to S3 using the AWS CLI container
-              # (handled by the sidecar container or post-snapshot script)
-            env:
-            - name: ETCDCTL_API
-              value: "3"
-            - name: ETCDCTL_ENDPOINTS
-              value: "https://127.0.0.1:2379"
-            - name: ETCDCTL_CACERT
-              value: "/etc/kubernetes/pki/etcd/ca.crt"
-            - name: ETCDCTL_CERT
-              value: "/etc/kubernetes/pki/etcd/peer.crt"
-            - name: ETCDCTL_KEY
-              value: "/etc/kubernetes/pki/etcd/peer.key"
-            envFrom:
-            - secretRef:
-                name: etcd-backup-s3-credentials
+            - talosctl
+            args:
+            - -n
+            - "192.168.1.10"
+            - etcd
+            - snapshot
+            - /backup/latest.snapshot
             volumeMounts:
-            - name: etcd-certs
-              mountPath: /etc/kubernetes/pki/etcd
-              readOnly: true
             - name: backup-dir
-              mountPath: /tmp/etcd-backup
+              mountPath: /backup
           volumes:
-          - name: etcd-certs
-            hostPath:
-              path: /system/secrets/etcd
-              type: Directory
           - name: backup-dir
-            emptyDir: {}
+            persistentVolumeClaim:
+              claimName: etcd-backup
           restartPolicy: OnFailure
 ```
 
 ```bash
-# Apply the CronJob
-kubectl apply -f etcd-backup-cronjob.yaml
+# Inject the Talos API ServiceAccount and apply the CronJob
+talosctl inject serviceaccount --roles=os:etcd:backup -f etcd-backup-cronjob.yaml > etcd-backup-cronjob-injected.yaml
+kubectl apply -f etcd-backup-cronjob-injected.yaml
 
 # Verify the CronJob was created
 kubectl get cronjobs -n kube-system
@@ -152,10 +129,21 @@ kubectl logs job/etcd-backup-test -n kube-system
 
 ## Method 3: Backup with S3 Upload
 
-For a more complete solution that includes uploading to S3, use an init container or a multi-step script:
+For a more complete solution that includes uploading to S3, use an init container to take the snapshot and a main container to upload it:
 
 ```yaml
 # etcd-backup-s3-cronjob.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: etcd-backup-s3-credentials
+  namespace: kube-system
+type: Opaque
+stringData:
+  AWS_ACCESS_KEY_ID: "your-access-key"
+  AWS_SECRET_ACCESS_KEY: "your-secret-key"
+  AWS_DEFAULT_REGION: "us-east-1"
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -173,57 +161,35 @@ spec:
           tolerations:
           - key: node-role.kubernetes.io/control-plane
             effect: NoSchedule
-          hostNetwork: true
           initContainers:
           # Step 1: Take the etcd snapshot
           - name: snapshot
-            image: gcr.io/etcd-development/etcd:v3.5.12
+            image: ghcr.io/siderolabs/talosctl:v1.12.7
             command:
-            - /bin/sh
-            - -c
-            - |
-              etcdctl snapshot save /backup/snapshot.db
-              etcdctl snapshot status /backup/snapshot.db --write-out=table
-            env:
-            - name: ETCDCTL_API
-              value: "3"
-            - name: ETCDCTL_ENDPOINTS
-              value: "https://127.0.0.1:2379"
-            - name: ETCDCTL_CACERT
-              value: "/etc/kubernetes/pki/etcd/ca.crt"
-            - name: ETCDCTL_CERT
-              value: "/etc/kubernetes/pki/etcd/peer.crt"
-            - name: ETCDCTL_KEY
-              value: "/etc/kubernetes/pki/etcd/peer.key"
+            - talosctl
+            args:
+            - -n
+            - "192.168.1.10"
+            - etcd
+            - snapshot
+            - /backup/snapshot.db
             volumeMounts:
-            - name: etcd-certs
-              mountPath: /etc/kubernetes/pki/etcd
-              readOnly: true
             - name: backup
               mountPath: /backup
           containers:
           # Step 2: Upload to S3
           - name: upload
             image: amazon/aws-cli:2.15.0
-            command:
-            - /bin/sh
-            - -c
-            - |
-              TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-              CLUSTER_NAME="my-talos-cluster"
-
-              aws s3 cp /backup/snapshot.db \
-                s3://${S3_BUCKET}/${CLUSTER_NAME}/etcd-snapshot-${TIMESTAMP}.db
-
-              echo "Uploaded to s3://${S3_BUCKET}/${CLUSTER_NAME}/etcd-snapshot-${TIMESTAMP}.db"
-
-              # Clean up old backups (keep last 30)
-              aws s3 ls s3://${S3_BUCKET}/${CLUSTER_NAME}/ | \
-                sort | head -n -30 | \
-                awk '{print $4}' | \
-                xargs -I {} aws s3 rm s3://${S3_BUCKET}/${CLUSTER_NAME}/{}
-
-              echo "Cleanup complete"
+            args:
+            - s3
+            - cp
+            - /backup/snapshot.db
+            - s3://my-etcd-backups/my-talos-cluster/$(POD_NAME).snapshot
+            env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             envFrom:
             - secretRef:
                 name: etcd-backup-s3-credentials
@@ -232,15 +198,13 @@ spec:
               mountPath: /backup
               readOnly: true
           volumes:
-          - name: etcd-certs
-            hostPath:
-              path: /system/secrets/etcd
-              type: Directory
           - name: backup
             emptyDir:
               sizeLimit: 10Gi
           restartPolicy: OnFailure
 ```
+
+Apply this manifest the same way as the previous CronJob, by running `talosctl inject serviceaccount --roles=os:etcd:backup -f etcd-backup-s3-cronjob.yaml > etcd-backup-s3-cronjob-injected.yaml` before `kubectl apply`.
 
 ## Method 4: Using talosctl in an External Script
 
@@ -291,8 +255,8 @@ Add this to your crontab:
 A backup you have never tested is not really a backup. Regularly verify that your snapshots are valid:
 
 ```bash
-# Check snapshot integrity using etcdctl
-etcdctl snapshot status ./etcd-snapshot-20260303-120000.snapshot --write-out=table
+# Check snapshot metadata using etcdutl
+etcdutl snapshot status ./etcd-snapshot-20260303-120000.snapshot --write-out=table
 
 # Output shows:
 # +----------+----------+------------+------------+
@@ -302,7 +266,7 @@ etcdctl snapshot status ./etcd-snapshot-20260303-120000.snapshot --write-out=tab
 # +----------+----------+------------+------------+
 ```
 
-A valid snapshot will show a hash, revision number, key count, and size. If any of these are zero or the command returns an error, the snapshot is corrupted.
+A valid snapshot will show a hash, revision number, key count, and size. If the command returns an error, treat the snapshot as invalid.
 
 ## Backup Best Practices
 
@@ -318,4 +282,4 @@ Test restores regularly. At least once a quarter, practice restoring from a back
 
 ## Summary
 
-Setting up automated etcd backups on Talos Linux can be done through Kubernetes CronJobs, external scripts using talosctl, or a combination of both. The key is to automate the process, store backups off-cluster, and regularly verify that your snapshots are valid. With reliable etcd backups in place, you can recover from virtually any cluster failure scenario.
+Setting up automated etcd backups on Talos Linux can be done through Kubernetes CronJobs, external scripts using talosctl, or a combination of both. The key is to automate the process, store backups off-cluster, and regularly verify that your snapshots are valid. With reliable etcd backups in place, you can recover from many control-plane state failures.
