@@ -17,16 +17,16 @@ Before diving into specific problems, collect the basic KubeSpan state from affe
 ```bash
 # Check KubeSpan identity
 
-talosctl get kubespanidentity --nodes <node-ip>
+talosctl get kubespanidentities --nodes <node-ip>
 
 # Check peer status (this is your primary diagnostic tool)
-talosctl get kubespanpeerstatus --nodes <node-ip>
+talosctl get kubespanpeerstatuses --nodes <node-ip>
 
 # Check discovered members
-talosctl get discoveredmembers --nodes <node-ip>
+talosctl get members --nodes <node-ip>
 
 # Check KubeSpan endpoints
-talosctl get kubespanendpoint --nodes <node-ip>
+talosctl get kubespanendpoints --nodes <node-ip>
 
 # Check the KubeSpan interface
 talosctl get links --nodes <node-ip> | grep kubespan
@@ -41,7 +41,7 @@ If peers show as `unknown`, it means the node knows about the peer but has not b
 
 ```bash
 # Check the peer status for details
-talosctl get kubespanpeerstatus --nodes <node-ip> -o yaml
+talosctl get kubespanpeerstatuses --nodes <node-ip> -o yaml
 ```
 
 Common causes:
@@ -53,14 +53,14 @@ Common causes:
 nc -zu <target-node-ip> 51820
 
 # Check if the node is listening
-talosctl get links --nodes <node-ip> | grep kubespan
+talosctl netstat --nodes <node-ip> --all | grep 51820
 ```
 
 **Discovery service unreachable**: If nodes cannot reach the discovery service, they will not learn about each other's endpoints.
 
 ```bash
 # Check discovery status
-talosctl get discoveredmembers --nodes <node-ip>
+talosctl get affiliates --nodes <node-ip>
 
 # If this returns nothing, the discovery service might be unreachable
 # Check network connectivity to the discovery endpoint
@@ -71,23 +71,22 @@ talosctl logs controller-runtime --nodes <node-ip> | grep -i discovery
 
 ```bash
 # Check what endpoints are being advertised
-talosctl get kubespanendpoint --nodes <node-ip> -o yaml
+talosctl get kubespanendpoints --nodes <node-ip> -o yaml
 ```
 
 Fix endpoint issues with endpoint filters:
 
 ```yaml
 # Only advertise public IPs
-machine:
-  network:
-    kubespan:
-      enabled: true
-      filters:
-        endpoints:
-          - "!10.0.0.0/8"
-          - "!172.16.0.0/12"
-          - "!192.168.0.0/16"
-          - "0.0.0.0/0"
+apiVersion: v1alpha1
+kind: KubeSpanConfig
+enabled: true
+filters:
+  endpoints:
+    - "0.0.0.0/0"
+    - "!10.0.0.0/8"
+    - "!172.16.0.0/12"
+    - "!192.168.0.0/16"
 ```
 
 ## Issue 2: Peers Flapping Between "Up" and "Down"
@@ -96,7 +95,7 @@ If peers repeatedly transition between up and down, it usually indicates an unst
 
 ```bash
 # Watch peer status changes in real time
-talosctl get kubespanpeerstatus --nodes <node-ip> --watch
+talosctl get kubespanpeerstatuses --nodes <node-ip> --watch
 
 # Check controller logs for connection issues
 talosctl logs controller-runtime --nodes <node-ip> | grep -i "kubespan\|wireguard" | tail -50
@@ -108,14 +107,13 @@ Common causes:
 
 ```yaml
 # Lower the MTU
-machine:
-  network:
-    kubespan:
-      enabled: true
-      mtu: 1380  # Try progressively lower values
+apiVersion: v1alpha1
+kind: KubeSpanConfig
+enabled: true
+mtu: 1380  # Try progressively lower values
 ```
 
-**Aggressive NAT timeouts**: If nodes are behind NAT, the NAT mapping might expire before WireGuard sends its keepalive. WireGuard has a default keepalive interval of 25 seconds, which should be sufficient for most NATs, but some aggressive firewalls have shorter timeouts.
+**Aggressive NAT timeouts**: If nodes are behind NAT, the NAT mapping might expire before KubeSpan sends its WireGuard keepalive. KubeSpan uses a 25-second keepalive interval, which should be sufficient for most NATs, but some aggressive firewalls have shorter timeouts.
 
 **Network congestion**: If the link between nodes is saturated, WireGuard handshakes may time out. Check the throughput between nodes and consider dedicated bandwidth for the cluster.
 
@@ -125,7 +123,7 @@ If the `kubespan` interface does not exist at all, KubeSpan is either not enable
 
 ```bash
 # Check if KubeSpan is enabled in the machine config
-talosctl get machineconfig --nodes <node-ip> -o yaml | grep -A5 kubespan
+talosctl get machineconfig --nodes <node-ip> -o yaml | grep -A10 -i kubespan
 
 # Check controller logs for initialization errors
 talosctl logs controller-runtime --nodes <node-ip> | grep -i kubespan | head -20
@@ -138,7 +136,7 @@ If KubeSpan is enabled but the interface is missing, check for:
 talosctl dmesg --nodes <node-ip> | grep -i wireguard
 
 # Resource issues
-talosctl get systemstat --nodes <node-ip>
+talosctl stats --nodes <node-ip>
 ```
 
 ## Issue 4: Traffic Not Flowing Through KubeSpan
@@ -156,11 +154,10 @@ talosctl get machineconfig --nodes <node-ip> -o yaml | grep advertiseKubernetes
 If you need pod-to-pod traffic to flow through KubeSpan (typical for multi-site clusters), make sure `advertiseKubernetesNetworks` is `true`:
 
 ```yaml
-machine:
-  network:
-    kubespan:
-      enabled: true
-      advertiseKubernetesNetworks: true
+apiVersion: v1alpha1
+kind: KubeSpanConfig
+enabled: true
+advertiseKubernetesNetworks: true
 ```
 
 ## Issue 5: One-Way Connectivity
@@ -169,12 +166,12 @@ If node A can reach node B through KubeSpan but node B cannot reach node A, the 
 
 ```bash
 # Check peer status from both sides
-talosctl get kubespanpeerstatus --nodes <node-a-ip>
-talosctl get kubespanpeerstatus --nodes <node-b-ip>
+talosctl get kubespanpeerstatuses --nodes <node-a-ip>
+talosctl get kubespanpeerstatuses --nodes <node-b-ip>
 
 # Compare the endpoints each node sees for the other
-talosctl get kubespanendpoint --nodes <node-a-ip> -o yaml
-talosctl get kubespanendpoint --nodes <node-b-ip> -o yaml
+talosctl get kubespanendpoints --nodes <node-a-ip> -o yaml
+talosctl get kubespanendpoints --nodes <node-b-ip> -o yaml
 ```
 
 Make sure both nodes can reach each other on UDP 51820. If one node is behind a strict NAT that does not allow incoming connections, you might need to set up port forwarding or use a cloud instance as a relay.
@@ -185,7 +182,7 @@ If connectivity works but performance is poor, check these areas:
 
 ```bash
 # Check WireGuard interface statistics
-talosctl get kubespanpeerstatus --nodes <node-ip> -o yaml
+talosctl get kubespanpeerstatuses --nodes <node-ip> -o yaml
 
 # Look at receive and transmit bytes to see if traffic is flowing
 # Check for packet loss by comparing sent and received bytes between peers
@@ -204,6 +201,7 @@ To test throughput through KubeSpan:
 # Deploy iperf3 pods on nodes connected via KubeSpan
 kubectl run iperf-server --image=networkstatic/iperf3 -- -s
 kubectl run iperf-client --image=networkstatic/iperf3 \
+  --restart=Never \
   --overrides='{"spec":{"nodeName":"<different-node>"}}' \
   -- -c <iperf-server-pod-ip> -t 30
 
@@ -216,19 +214,19 @@ When you are stuck, follow this systematic approach:
 
 ```bash
 # Step 1: Is KubeSpan enabled?
-talosctl get machineconfig --nodes <node-ip> -o yaml | grep -A10 kubespan
+talosctl get machineconfig --nodes <node-ip> -o yaml | grep -A10 -i kubespan
 
 # Step 2: Does the KubeSpan interface exist?
 talosctl get links --nodes <node-ip> | grep kubespan
 
 # Step 3: Is the discovery service working?
-talosctl get discoveredmembers --nodes <node-ip>
+talosctl get affiliates --nodes <node-ip>
 
 # Step 4: Are endpoints being advertised?
-talosctl get kubespanendpoint --nodes <node-ip>
+talosctl get kubespanendpoints --nodes <node-ip>
 
 # Step 5: What is the peer state?
-talosctl get kubespanpeerstatus --nodes <node-ip>
+talosctl get kubespanpeerstatuses --nodes <node-ip>
 
 # Step 6: Are routes set up?
 talosctl get routes --nodes <node-ip> | grep kubespan
@@ -243,20 +241,18 @@ If you need to reset KubeSpan completely, you can disable and re-enable it:
 
 ```yaml
 # First, disable KubeSpan
-machine:
-  network:
-    kubespan:
-      enabled: false
+apiVersion: v1alpha1
+kind: KubeSpanConfig
+enabled: false
 ```
 
 Apply the change, wait for the node to apply the config, then re-enable:
 
 ```yaml
 # Re-enable KubeSpan
-machine:
-  network:
-    kubespan:
-      enabled: true
+apiVersion: v1alpha1
+kind: KubeSpanConfig
+enabled: true
 ```
 
 ```bash
@@ -266,6 +262,6 @@ talosctl patch machineconfig --patch @disable-kubespan.yaml --nodes <node-ip>
 talosctl patch machineconfig --patch @enable-kubespan.yaml --nodes <node-ip>
 ```
 
-This forces the node to regenerate its WireGuard configuration and re-establish all peer connections.
+This forces the node to remove and re-create its KubeSpan interface and re-establish all peer connections.
 
 KubeSpan troubleshooting on Talos Linux follows a logical progression: check the configuration, check discovery, check endpoints, check peer state, and check routing. Because Talos is immutable and you cannot install debugging tools on the nodes, `talosctl` is your primary tool. Get comfortable with the KubeSpan-related resources, and you will be able to diagnose most issues quickly.
