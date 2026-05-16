@@ -154,10 +154,10 @@ Hubble exports metrics that Prometheus can scrape. Here are the key network metr
 sum(rate(hubble_flows_processed_total[5m])) by (source, destination, type)
 
 # DNS query rate
-sum(rate(hubble_dns_queries_total[5m])) by (query, rcode)
+sum(rate(hubble_dns_queries_total[5m])) by (rcode)
 
-# DNS query latency
-histogram_quantile(0.99, rate(hubble_dns_response_types_total[5m]))
+# DNS response types (NOERROR, NXDOMAIN, etc.)
+sum(rate(hubble_dns_response_types_total[5m])) by (type)
 
 # Dropped packets by reason
 sum(rate(hubble_drop_total[5m])) by (reason)
