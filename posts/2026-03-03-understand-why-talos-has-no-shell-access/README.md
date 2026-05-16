@@ -79,27 +79,25 @@ talosctl memory --nodes 192.168.1.10
 Instead of making changes through shell commands, you declare the desired state in a machine configuration file:
 
 ```yaml
-# Instead of manually editing /etc/hosts
 machine:
+  # Instead of manually editing /etc/hosts
   network:
     extraHostEntries:
       - ip: 192.168.1.100
         aliases:
           - myservice.local
 
-# Instead of manually setting sysctls
-machine:
+  # Instead of manually setting sysctls
   sysctls:
     net.core.somaxconn: "65535"
     vm.swappiness: "0"
 
-# Instead of manually adding files
-machine:
+  # Instead of manually adding files
   files:
     - content: |
         custom configuration
       path: /etc/my-config
-      permissions: 0644
+      permissions: 0o644
 ```
 
 This approach has several advantages:
@@ -117,7 +115,7 @@ For application-level debugging, Kubernetes itself provides the tools you need:
 kubectl logs <pod-name>
 kubectl exec -it <pod-name> -- sh
 
-# Debug a node using a privileged pod
+# Debug a node
 kubectl debug node/talos-worker-1 -it --image=busybox
 
 # Check resource usage
@@ -131,7 +129,7 @@ Talos Linux uses an immutable root filesystem. The OS image is read-only and can
 
 ### Tamper Resistance
 
-If an attacker somehow gains access to a container on a Talos node, they cannot modify the host operating system. The root filesystem is read-only, and there is no shell to execute commands with. This dramatically limits what an attacker can do even if they breach the container boundary.
+If an attacker somehow gains access to a container on a Talos node, they cannot persistently modify the immutable host root filesystem in the usual way by changing packages or system binaries. The root filesystem is read-only, and there is no host shell to log into. This dramatically limits what an attacker can do, especially compared with a mutable host, although container isolation and workload privileges still matter.
 
 ### Consistent Updates
 
@@ -144,7 +142,7 @@ talosctl upgrade --nodes 192.168.1.10 --image ghcr.io/siderolabs/installer:v1.7.
 
 ### Simplified Compliance
 
-For organizations that need to meet compliance requirements (SOC 2, HIPAA, PCI-DSS), an immutable OS with no shell access simplifies auditing enormously. You can prove that the OS has not been tampered with because it physically cannot be tampered with.
+For organizations that need to meet compliance requirements (SOC 2, HIPAA, PCI-DSS), an immutable OS with no shell access simplifies auditing enormously. You can audit the running OS image and declarative configuration instead of trying to reconstruct manual changes made through SSH.
 
 ## Common Objections and Responses
 
@@ -170,7 +168,7 @@ kubectl debug node/talos-worker-1 -it --image=ubuntu -- bash
 
 ### "But what if talosctl is not working?"
 
-If talosctl cannot connect, the Talos dashboard is available through the console (physical or virtual). This shows basic system status and can help you identify the problem.
+If talosctl cannot connect, the Talos interactive dashboard is available on the physical or virtual video console when it is enabled. This shows basic system status and can help you identify the problem.
 
 ## The Bigger Picture
 
