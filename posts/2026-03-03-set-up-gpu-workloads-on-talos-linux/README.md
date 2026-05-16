@@ -36,33 +36,33 @@ The three components you need are:
 Talos provides official NVIDIA extensions. First, check which extensions are available for your Talos version:
 
 ```bash
-# List available NVIDIA extensions
-
-crane ls ghcr.io/siderolabs/nvidia-open-gpu-kernel-modules
+# List NVIDIA extensions compatible with your Talos release
+crane export ghcr.io/siderolabs/extensions:v<talos-version> | \
+  tar x -O image-digests | grep nvidia
 ```
 
 To add the NVIDIA extensions, Talos needs them included in the boot assets or installer image. For a new cluster, build your boot assets with the required extensions. For an existing installed node, build a custom installer image and use it during an upgrade or reinstall. This is why a custom image is recommended: Talos does not install GPU drivers after boot with a package manager, and the NVIDIA kernel modules and container toolkit need to match the Talos release.
 
 ```bash
 # Generate a custom Talos installer with NVIDIA extensions
-# Replace the version numbers with your Talos and driver versions
+# Replace the version numbers with compatible images from the extensions catalog
 docker run --rm -t -v $PWD/_out:/out \
-  ghcr.io/siderolabs/imager:v1.6.0 installer \
-  --system-extension-image ghcr.io/siderolabs/nvidia-open-gpu-kernel-modules:535.129.03-v1.6.0 \
-  --system-extension-image ghcr.io/siderolabs/nvidia-container-toolkit:535.129.03-v1.6.0
+  ghcr.io/siderolabs/imager:v<talos-version> installer \
+  --system-extension-image ghcr.io/siderolabs/nvidia-open-gpu-kernel-modules-lts:<driver-version>-v<talos-version> \
+  --system-extension-image ghcr.io/siderolabs/nvidia-container-toolkit-lts:<driver-version>-<toolkit-version>
 ```
 
 This produces a custom installer image that includes the NVIDIA drivers. Use it to upgrade your GPU nodes:
 
 ```bash
 # Upgrade the GPU node with the custom installer
-talosctl upgrade --image ghcr.io/your-registry/installer:v1.6.0-nvidia \
+talosctl upgrade --image ghcr.io/your-registry/installer:v<talos-version>-nvidia \
   --nodes <gpu-node-ip>
 ```
 
 ## Configuring Machine Settings for GPU
 
-After installing the extensions, configure the machine to load the NVIDIA modules and set up the required kernel parameters:
+After installing the extensions, configure the machine to load the NVIDIA modules and set the required sysctl:
 
 ```yaml
 # gpu-machine-patch.yaml
@@ -233,10 +233,9 @@ metadata:
 spec:
   hard:
     requests.nvidia.com/gpu: "4"
-    limits.nvidia.com/gpu: "4"
 ```
 
-This limits the ml-team namespace to using at most four GPUs.
+This limits the ml-team namespace to requesting at most four GPUs. For extended resources such as `nvidia.com/gpu`, Kubernetes only supports ResourceQuota entries with the `requests.` prefix.
 
 ## Monitoring GPU Usage
 
@@ -247,6 +246,7 @@ Install DCGM Exporter to get GPU metrics into Prometheus:
 helm repo add nvidia https://nvidia.github.io/dcgm-exporter/helm-charts
 helm install dcgm-exporter nvidia/dcgm-exporter \
   --namespace monitoring \
+  --create-namespace \
   --set serviceMonitor.enabled=true
 ```
 
