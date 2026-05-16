@@ -50,7 +50,7 @@ machine:
 
 ```bash
 # Apply storage configuration to worker nodes
-talosctl apply-config --nodes 10.0.0.2,10.0.0.3 --file talos-storage-patch.yaml
+talosctl patch machineconfig --nodes 10.0.0.2,10.0.0.3 --patch @talos-storage-patch.yaml
 ```
 
 ## Step 2: Create Namespace and Secrets
@@ -231,7 +231,7 @@ data:
     log_bin = mysql-bin
     binlog_format = ROW
     server_id = 1
-    expire_logs_days = 7
+    binlog_expire_logs_seconds = 604800
 ```
 
 Add the ConfigMap as a volume in your StatefulSet:
@@ -274,15 +274,28 @@ kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/trunk/de
 kubectl apply -f https://raw.githubusercontent.com/mysql/mysql-operator/trunk/deploy/deploy-operator.yaml
 ```
 
+The InnoDBCluster CRD expects a Secret with specific key names (`rootUser`, `rootHost`, `rootPassword`), so create a dedicated secret for the cluster:
+
 ```yaml
 # mysql-innodb-cluster.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-cluster-secret
+  namespace: mysql
+type: Opaque
+stringData:
+  rootUser: root
+  rootHost: "%"
+  rootPassword: "strong-root-password"
+---
 apiVersion: mysql.oracle.com/v2
 kind: InnoDBCluster
 metadata:
   name: mysql-cluster
   namespace: mysql
 spec:
-  secretName: mysql-credentials
+  secretName: mysql-cluster-secret
   instances: 3
   router:
     instances: 2
@@ -363,9 +376,15 @@ spec:
       containers:
         - name: exporter
           image: prom/mysqld-exporter:latest
+          args:
+            - "--mysqld.address=mysql:3306"
+            - "--mysqld.username=root"
           env:
-            - name: DATA_SOURCE_NAME
-              value: "root:strong-root-password@(mysql:3306)/"
+            - name: MYSQLD_EXPORTER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-credentials
+                  key: MYSQL_ROOT_PASSWORD
           ports:
             - containerPort: 9104
 ```
