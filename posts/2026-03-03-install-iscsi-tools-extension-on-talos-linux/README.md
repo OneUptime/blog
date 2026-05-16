@@ -38,7 +38,7 @@ Add the extension to your Talos machine configuration.
 machine:
   install:
     extensions:
-      - image: ghcr.io/siderolabs/iscsi-tools:v0.1.4
+      - image: ghcr.io/siderolabs/iscsi-tools:v1.7.0
 ```
 
 This is all you need in the machine config. The extension handles loading the kernel modules automatically.
@@ -71,7 +71,7 @@ echo "factory.talos.dev/installer/${SCHEMATIC_ID}:v1.7.0"
 docker run --rm -v /tmp/out:/out \
   ghcr.io/siderolabs/imager:v1.7.0 \
   iso \
-  --system-extension-image ghcr.io/siderolabs/iscsi-tools:v0.1.4
+  --system-extension-image ghcr.io/siderolabs/iscsi-tools:v1.7.0
 ```
 
 ## Applying the Extension
