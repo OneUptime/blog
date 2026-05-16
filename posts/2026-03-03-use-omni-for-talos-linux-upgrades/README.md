@@ -8,7 +8,7 @@ Description: Step-by-step guide to performing Talos Linux upgrades through Sider
 
 ---
 
-Upgrading Talos Linux across a cluster can be nerve-wracking, especially in production. You need to update the OS on every node without losing workloads, breaking etcd quorum, or causing extended downtime. Sidero Omni simplifies this process by providing a managed upgrade workflow that handles the sequencing, health checks, and rollback logic for you.
+Upgrading Talos Linux across a cluster can be nerve-wracking, especially in production. You need to update the OS on every node without losing workloads, breaking etcd quorum, or causing extended downtime. Sidero Omni simplifies this process by providing a managed upgrade workflow that handles the sequencing and health checks for you.
 
 This post walks through how to use Omni to upgrade your Talos Linux clusters safely, covering both the Talos OS upgrades and Kubernetes version upgrades.
 
@@ -45,8 +45,9 @@ kubectl get nodes
 # All nodes should show Ready status
 
 # Check etcd health
-talosctl -n 10.0.0.1 etcd members
-# All members should be healthy with no alarms
+talosctl -n 10.0.0.1 etcd status
+talosctl -n 10.0.0.1 etcd alarm list
+# The member should be healthy and show no active alarms
 ```
 
 Second, review the release notes for the target version. Talos release notes document breaking changes, deprecated features, and required configuration updates. Skipping this step can lead to surprises during the upgrade.
@@ -54,13 +55,27 @@ Second, review the release notes for the target version. Talos release notes doc
 Third, make sure you have a recent etcd backup. While Omni handles upgrades carefully, having a backup means you can recover from worst-case scenarios.
 
 ```bash
-# Create an etcd snapshot before upgrading
-talosctl -n 10.0.0.1 etcd snapshot /tmp/etcd-backup-pre-upgrade.db
+# Check the latest etcd backup status for the cluster
+omnictl get etcdbackupstatus my-cluster -o yaml
+
+# Trigger a manual etcd backup before upgrading
+cat <<EOF > etcd-manual-backup.yaml
+metadata:
+  namespace: ephemeral
+  type: EtcdManualBackups.omni.sidero.dev
+  id: my-cluster
+spec:
+  backupat:
+    seconds: $(date +%s)
+    nanos: 0
+EOF
+
+omnictl apply -f etcd-manual-backup.yaml
 ```
 
 ## Upgrading Talos OS Through Omni
 
-The Talos OS upgrade is performed through the Omni dashboard or CLI. Omni handles the rolling upgrade process, updating one node at a time and waiting for it to come back healthy before moving to the next one.
+The Talos OS upgrade is performed through the Omni dashboard or by updating a cluster template with `omnictl`. Omni handles the rolling upgrade process, updating one node at a time and waiting for it to come back healthy before moving to the next one.
 
 ### Using the Dashboard
 
@@ -70,15 +85,23 @@ The dashboard shows real-time progress as each node is upgraded. You can see whi
 
 ### Using the CLI
 
-For automated workflows or when you prefer the command line, use omnictl.
+For automated workflows or when you prefer the command line, use `omnictl` with a cluster template. Export the current template, change the Talos version in the `kind: Cluster` document, and sync the template back to Omni.
 
 ```bash
-# Start a Talos OS upgrade
-omnictl cluster upgrade my-cluster \
-  --talos-version v1.6.0
+# Export the current cluster template
+omnictl cluster template export my-cluster \
+  --output cluster-template.yaml
+
+# Edit cluster-template.yaml so the Cluster document contains:
+# talos:
+#   version: v1.6.0
+
+# Preview and apply the template change
+omnictl cluster template diff --file cluster-template.yaml
+omnictl cluster template sync --file cluster-template.yaml
 
 # Watch the upgrade progress
-omnictl cluster status my-cluster --watch
+omnictl cluster status my-cluster
 
 # The upgrade proceeds node by node
 # Control plane nodes are upgraded first, then workers
@@ -105,19 +128,28 @@ kubectl get events --field-selector reason=Evicted --watch
 After the Talos OS is upgraded, you can upgrade the Kubernetes version. This is a separate operation in Omni.
 
 ```bash
-# Start a Kubernetes upgrade
-omnictl cluster upgrade my-cluster \
-  --kubernetes-version v1.29.0
+# Export the current cluster template
+omnictl cluster template export my-cluster \
+  --output cluster-template.yaml
+
+# Edit cluster-template.yaml so the Cluster document contains:
+# kubernetes:
+#   version: v1.29.0
+
+# Run Kubernetes upgrade pre-checks, then apply the template change
+omnictl cluster kubernetes upgrade-pre-checks my-cluster --to v1.29.0
+omnictl cluster template diff --file cluster-template.yaml
+omnictl cluster template sync --file cluster-template.yaml
 
 # This upgrades the Kubernetes components:
 # - API server
 # - Controller manager
 # - Scheduler
 # - Kubelet
-# - Kube-proxy (if used)
+# - Kube-proxy
 ```
 
-The Kubernetes upgrade also follows a rolling strategy. Control plane components are updated first, then the kubelet on each node is updated sequentially.
+The Kubernetes upgrade pre-pulls the new component images, renders new static pod definitions, waits for those changes to propagate to the API server, updates the `kube-proxy` daemonset, and then updates the kubelet on each node.
 
 ## Handling Upgrade Failures
 
@@ -129,23 +161,21 @@ If a node fails during upgrade, you have several options.
 # Check the status of the stuck upgrade
 omnictl cluster status my-cluster
 
-# Look at the problematic node's logs
-talosctl -n <node-ip> dmesg | tail -100
+# Look at the problematic machine's logs
+omnictl machine-logs <machine-id> --tail 100
 
 # Check if the node is in maintenance mode
 talosctl -n <node-ip> version
 
-# If the node is truly stuck, you can force the upgrade to continue
-# This skips the failed node and moves to the next one
-omnictl cluster upgrade my-cluster --skip-node <node-id>
+# If the upgrade cannot proceed, cancel it from the Omni UI
+# and inspect the machine before retrying the upgrade.
 ```
 
-For a complete rollback, you would need to downgrade the Talos version on the affected nodes. Omni supports this by allowing you to specify an older Talos version as the target.
+For a rollback, you can cancel the upgrade in the Omni UI if the operation is still in progress and the node is responsive. Talos uses an A/B partition scheme, so canceling can revert the node to the previous version. If you need to downgrade after the upgrade has completed, select an older supported Talos version in the Omni UI or change the template back to that version and sync it.
 
 ```bash
-# Rollback to the previous Talos version
-omnictl cluster upgrade my-cluster \
-  --talos-version v1.5.5
+# After editing cluster-template.yaml back to the previous Talos version
+omnictl cluster template sync --file cluster-template.yaml
 ```
 
 ## Scheduling Upgrades
@@ -167,9 +197,10 @@ jobs:
       - name: Install omnictl
         run: |
           # Download and install the Omni CLI
-          curl -LO https://omni.siderolabs.com/omnictl/latest/omnictl-linux-amd64
-          chmod +x omnictl-linux-amd64
-          sudo mv omnictl-linux-amd64 /usr/local/bin/omnictl
+          OMNICTL="omnictl-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')"
+          curl -LO "https://github.com/siderolabs/omni/releases/latest/download/${OMNICTL}"
+          chmod +x "${OMNICTL}"
+          sudo mv "${OMNICTL}" /usr/local/bin/omnictl
 
       - name: Verify cluster health
         run: |
@@ -177,8 +208,8 @@ jobs:
 
       - name: Start Talos upgrade
         run: |
-          omnictl cluster upgrade production-cluster \
-            --talos-version v1.6.0
+          omnictl cluster template diff --file production-cluster.yaml
+          omnictl cluster template sync --file production-cluster.yaml
 ```
 
 ## Upgrading Multiple Clusters
@@ -187,13 +218,13 @@ If you manage multiple clusters, upgrade them in order of risk. Start with your 
 
 ```bash
 # Upgrade dev cluster first
-omnictl cluster upgrade dev-cluster --talos-version v1.6.0
+omnictl cluster template sync --file dev-cluster.yaml
 
 # After verification, upgrade staging
-omnictl cluster upgrade staging-cluster --talos-version v1.6.0
+omnictl cluster template sync --file staging-cluster.yaml
 
 # Finally, upgrade production
-omnictl cluster upgrade production-cluster --talos-version v1.6.0
+omnictl cluster template sync --file production-cluster.yaml
 ```
 
 ## Post-Upgrade Verification
@@ -217,4 +248,4 @@ talosctl -n 10.0.0.1 health
 
 ## Conclusion
 
-Upgrading Talos Linux through Omni takes much of the risk out of the process. The rolling upgrade logic, built-in health checks, and ability to pause and rollback give you confidence that your clusters will survive the upgrade without incidents. Start with non-production clusters, always have an etcd backup, and use the dashboard to monitor progress in real time. Combined with scheduled upgrades through CI/CD, you can keep your Talos infrastructure up to date without losing sleep.
+Upgrading Talos Linux through Omni takes much of the risk out of the process. The rolling upgrade logic, built-in health checks, and ability to pause or cancel in-progress upgrades give you confidence that your clusters will survive the upgrade without incidents. Start with non-production clusters, always have an etcd backup, and use the dashboard to monitor progress in real time. Combined with scheduled upgrades through CI/CD, you can keep your Talos infrastructure up to date without losing sleep.
