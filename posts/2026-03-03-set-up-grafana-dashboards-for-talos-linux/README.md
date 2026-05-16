@@ -25,6 +25,7 @@ helm repo update
 # Install Grafana with persistent storage
 helm install grafana grafana/grafana \
   --namespace monitoring \
+  --create-namespace \
   --set persistence.enabled=true \
   --set persistence.size=10Gi \
   --set adminPassword=your-secure-password \
@@ -98,6 +99,7 @@ Install with the custom values:
 # Deploy Grafana with auto-provisioned dashboards
 helm install grafana grafana/grafana \
   --namespace monitoring \
+  --create-namespace \
   -f grafana-values.yaml
 ```
 
@@ -240,6 +242,12 @@ data:
         "tags": ["talos", "kubernetes"],
         "timezone": "browser",
         "refresh": "30s",
+        "schemaVersion": 39,
+        "version": 1,
+        "time": {
+          "from": "now-6h",
+          "to": "now"
+        },
         "templating": {
           "list": [
             {
@@ -250,31 +258,34 @@ data:
             }
           ]
         },
-        "rows": [
+        "panels": [
           {
-            "title": "Cluster Overview",
-            "panels": [
-              {
-                "title": "Total Nodes",
-                "type": "stat",
-                "targets": [{"expr": "count(node_uname_info)"}]
-              },
-              {
-                "title": "Total Pods",
-                "type": "stat",
-                "targets": [{"expr": "sum(kubelet_running_pods)"}]
-              },
-              {
-                "title": "Cluster CPU Usage",
-                "type": "gauge",
-                "targets": [{"expr": "avg(100 - (avg by (instance) (rate(node_cpu_seconds_total{mode='idle'}[5m])) * 100))"}]
-              },
-              {
-                "title": "Cluster Memory Usage",
-                "type": "gauge",
-                "targets": [{"expr": "avg((1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100)"}]
-              }
-            ]
+            "id": 1,
+            "title": "Total Nodes",
+            "type": "stat",
+            "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+            "targets": [{"expr": "count(node_uname_info)"}]
+          },
+          {
+            "id": 2,
+            "title": "Total Pods",
+            "type": "stat",
+            "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+            "targets": [{"expr": "sum(kubelet_running_pods)"}]
+          },
+          {
+            "id": 3,
+            "title": "Cluster CPU Usage",
+            "type": "gauge",
+            "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0},
+            "targets": [{"expr": "avg(100 - (avg by (instance) (rate(node_cpu_seconds_total{mode='idle'}[5m])) * 100))"}]
+          },
+          {
+            "id": 4,
+            "title": "Cluster Memory Usage",
+            "type": "gauge",
+            "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0},
+            "targets": [{"expr": "avg((1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100)"}]
           }
         ]
       }
