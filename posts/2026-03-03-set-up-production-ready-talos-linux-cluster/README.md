@@ -69,8 +69,8 @@ Build your configuration with production settings:
 # Generate config with saved secrets
 talosctl gen config prod-cluster https://k8s-api.example.com:6443 \
   --with-secrets cluster-secrets.yaml \
-  --kubernetes-version 1.29.0 \
-  --output-dir ./prod-configs \
+  --kubernetes-version 1.36.0 \
+  --output ./prod-configs \
   --config-patch @common.yaml \
   --config-patch-control-plane @controlplane.yaml \
   --config-patch-worker @worker.yaml
@@ -90,7 +90,7 @@ machine:
       - time.cloudflare.com
       - time.google.com
   install:
-    image: factory.talos.dev/installer/<your-schematic>:v1.9.0
+    image: factory.talos.dev/installer/<your-schematic>:v1.13.0
   logging:
     destinations:
       - endpoint: "tcp://syslog.example.com:514"
@@ -98,6 +98,10 @@ machine:
   sysctls:
     net.core.somaxconn: "65535"
     net.ipv4.ip_local_port_range: "1024 65535"
+cluster:
+  network:
+    cni:
+      name: none
 ```
 
 ### Control Plane Patch
@@ -250,14 +254,20 @@ spec:
         spec:
           containers:
             - name: backup
-              image: ghcr.io/siderolabs/talosctl:v1.9.0
-              command:
-                - /bin/sh
-                - -c
-                - |
-                  talosctl etcd snapshot /backup/etcd-$(date +%Y%m%d-%H%M%S).snapshot \
-                    --talosconfig /etc/talos/config \
-                    --nodes 192.168.1.101
+              image: ghcr.io/siderolabs/talosctl:v1.13.0
+              args:
+                - etcd
+                - snapshot
+                - /backup/etcd-$(POD_NAME).snapshot
+                - --talosconfig
+                - /etc/talos/config
+                - --nodes
+                - 192.168.1.101
+              env:
+                - name: POD_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
               volumeMounts:
                 - name: talosconfig
                   mountPath: /etc/talos
@@ -279,14 +289,19 @@ A production cluster needs several additional components:
 
 ### CNI Plugin
 
-If you want something more advanced than Flannel:
+If you want something more advanced than Flannel, keep `cluster.network.cni.name: none` in the Talos configuration before bootstrap, then install Cilium:
 
 ```bash
 # Install Cilium as the CNI
 helm repo add cilium https://helm.cilium.io/
 helm install cilium cilium/cilium \
   --namespace kube-system \
-  --set ipam.mode=kubernetes
+  --set ipam.mode=kubernetes \
+  --set kubeProxyReplacement=false \
+  --set securityContext.capabilities.ciliumAgent="{CHOWN,KILL,NET_ADMIN,NET_RAW,IPC_LOCK,SYS_ADMIN,SYS_RESOURCE,DAC_OVERRIDE,FOWNER,SETGID,SETUID}" \
+  --set securityContext.capabilities.cleanCiliumState="{NET_ADMIN,SYS_ADMIN,SYS_RESOURCE}" \
+  --set cgroup.autoMount.enabled=false \
+  --set cgroup.hostRoot=/sys/fs/cgroup
 ```
 
 ### Ingress Controller
@@ -349,7 +364,7 @@ Upgrade one node at a time:
 for node in 192.168.1.101 192.168.1.102 192.168.1.103; do
   echo "Upgrading ${node}..."
   talosctl upgrade --nodes ${node} \
-    --image factory.talos.dev/installer/<schematic>:v1.9.1
+    --image factory.talos.dev/installer/<schematic>:<new-talos-version>
 
   # Wait for the node to rejoin and be healthy
   talosctl health --wait-timeout 10m
