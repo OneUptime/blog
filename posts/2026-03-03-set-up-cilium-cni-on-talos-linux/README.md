@@ -39,8 +39,8 @@ You need to disable both the default CNI (Flannel) and kube-proxy in your Talos 
 # Control plane machine config for Cilium
 
 machine:
-  # Allow scheduling on control plane if needed
-  # (remove if you have dedicated worker nodes)
+  # KubePrism provides a local load balancer for the Kubernetes API
+  # on every node, which Cilium can target via localhost:7445
   features:
     kubePrism:
       enabled: true
