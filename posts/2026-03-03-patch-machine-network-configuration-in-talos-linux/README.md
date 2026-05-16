@@ -50,7 +50,7 @@ machine:
 ```
 
 ```bash
-talosctl apply-config --nodes 10.0.1.21 --patch @hostname-patch.yaml --mode no-reboot
+talosctl apply-config --nodes 10.0.1.21 --config-patch @hostname-patch.yaml --mode no-reboot
 ```
 
 ## Patching DNS Configuration
@@ -65,7 +65,7 @@ machine:
       - 10.0.1.1
       - 1.1.1.1
       - 8.8.8.8
-    search:
+    searchDomains:
       - cluster.local
       - example.com
 ```
@@ -93,7 +93,7 @@ machine:
 ```
 
 ```bash
-talosctl apply-config --nodes 10.0.1.21 --patch @static-interface-patch.yaml
+talosctl apply-config --nodes 10.0.1.21 --config-patch @static-interface-patch.yaml
 ```
 
 ## Switching from DHCP to Static
@@ -278,7 +278,7 @@ machine:
     nameservers:
       - 10.0.1.1
       - 1.1.1.1
-    search:
+    searchDomains:
       - prod.internal
       - cluster.local
     interfaces:
@@ -370,7 +370,7 @@ To remove a network interface or VLAN, use JSON Patches:
 ```
 
 ```bash
-talosctl apply-config --nodes 10.0.1.21 --patch @remove-eth1.yaml
+talosctl apply-config --nodes 10.0.1.21 --config-patch @remove-eth1.yaml
 ```
 
 ## Troubleshooting Network Patches
@@ -385,8 +385,9 @@ If a network patch causes connectivity issues:
 # If you can still reach the node, revert to the backup config
 talosctl apply-config --nodes 10.0.1.21 --file backup-config.yaml
 
-# Check for network errors in logs
-talosctl logs networkd --nodes 10.0.1.21
+# Check for network-related kernel and machined messages
+talosctl dmesg --nodes 10.0.1.21
+talosctl logs machined --nodes 10.0.1.21
 ```
 
 ## Network Patching Best Practices
