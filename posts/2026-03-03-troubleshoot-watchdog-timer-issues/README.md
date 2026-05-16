@@ -21,7 +21,7 @@ The most basic issue is the watchdog kernel module not loading at all. This mean
 ```bash
 # No watchdog device present
 
-talosctl read /sys/class/watchdog/ --nodes 10.0.0.1
+talosctl list /sys/class/watchdog/ --nodes 10.0.0.1
 # Empty or missing directory
 
 # Module not in loaded list
@@ -87,7 +87,7 @@ The watchdog is triggering reboots even though the system is functioning normall
 
 ### Diagnosis
 
-Check the kernel logs from before the last reboot:
+Check the kernel logs. `talosctl dmesg` shows the current boot, so for messages from before a reset you need serial/IPMI console capture or remote kernel logging already in place:
 
 ```bash
 # Check for soft lockup messages
@@ -175,10 +175,12 @@ Verify the watchdog is properly configured and the `nowayout` flag is set:
 
 ```yaml
 machine:
-  install:
-    extraKernelArgs:
-      - iTCO_wdt.heartbeat=60
-      - iTCO_wdt.nowayout=1            # Critical: prevent watchdog from stopping
+  kernel:
+    modules:
+      - name: iTCO_wdt
+        parameters:
+          - heartbeat=60
+          - nowayout=1                 # Critical: prevent watchdog from stopping
 ```
 
 Check BIOS settings. Some servers require the watchdog to be explicitly enabled in the BIOS/UEFI:
@@ -213,9 +215,11 @@ Increase the timeout to accommodate maintenance operations:
 
 ```yaml
 machine:
-  install:
-    extraKernelArgs:
-      - iTCO_wdt.heartbeat=120          # 2 minutes instead of 1
+  kernel:
+    modules:
+      - name: iTCO_wdt
+        parameters:
+          - heartbeat=120               # 2 minutes instead of 1
   sysctls:
     kernel.hung_task_timeout_secs: "300" # 5 minutes for hung task
 ```
@@ -227,7 +231,7 @@ For scheduled maintenance, consider temporarily adjusting the watchdog. With Tal
 talosctl apply-config --nodes 10.0.0.1 --file maintenance-config.yaml
 
 # Perform maintenance
-talosctl upgrade --nodes 10.0.0.1 --image ghcr.io/siderolabs/installer:v1.7.0
+talosctl upgrade --nodes 10.0.0.1 --image ghcr.io/siderolabs/installer:v1.12.1
 
 # Revert to normal config after maintenance
 talosctl apply-config --nodes 10.0.0.1 --file production-config.yaml
@@ -288,9 +292,8 @@ Add a boot delay to break the loop and give the system time to stabilize:
 
 ```yaml
 machine:
-  install:
-    extraKernelArgs:
-      - panic=30                      # Wait 30 seconds before rebooting on panic
+  sysctls:
+    kernel.panic: "30"                # Wait 30 seconds before rebooting on panic
 ```
 
 Investigate the root cause from the kernel logs. Use a serial console or IPMI console to capture the panic messages during the boot loop:
@@ -309,7 +312,7 @@ When troubleshooting watchdog issues, work through this checklist:
 talosctl read /proc/modules --nodes NODE | grep -i wdt
 
 # 2. Is the watchdog device present?
-talosctl dmesg --nodes NODE | grep -i "watchdog.*initialized"
+talosctl list /sys/class/watchdog/ --nodes NODE
 
 # 3. What is the current timeout?
 talosctl read /sys/class/watchdog/watchdog0/timeout --nodes NODE
