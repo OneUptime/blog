@@ -43,8 +43,8 @@ machine:
 ```
 
 ```bash
-talosctl apply-config --nodes 10.0.0.2,10.0.0.3 \
-  --file talos-clickhouse-patch.yaml
+talosctl patch mc --nodes 10.0.0.2,10.0.0.3 \
+  --patch @talos-clickhouse-patch.yaml
 ```
 
 ## Step 2: Install the ClickHouse Operator
@@ -159,6 +159,16 @@ spec:
       labels:
         app: zookeeper
     spec:
+      initContainers:
+        - name: init-myid
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - 'echo $((${HOSTNAME##*-} + 1)) > /data/myid'
+          volumeMounts:
+            - name: zk-data
+              mountPath: /data
       containers:
         - name: zookeeper
           image: zookeeper:3.9
@@ -170,10 +180,6 @@ spec:
             - containerPort: 3888
               name: leader-election
           env:
-            - name: ZOO_MY_ID
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
             - name: ZOO_SERVERS
               value: "server.1=zookeeper-0.zookeeper:2888:3888;2181 server.2=zookeeper-1.zookeeper:2888:3888;2181 server.3=zookeeper-2.zookeeper:2888:3888;2181"
           volumeMounts:
