@@ -92,7 +92,7 @@ Start with a simple playbook that checks the health of all nodes:
         msg: "{{ health_report }}"
 ```
 
-Resource Monitoring Playbook
+## Resource Monitoring Playbook
 
 Collect resource utilization data from all nodes:
 
@@ -105,7 +105,7 @@ Collect resource utilization data from all nodes:
   connection: local
 
   tasks:
-    - name: Get CPU and memory usage
+    - name: Get container CPU and memory stats
       ansible.builtin.command:
         cmd: >
           talosctl stats
