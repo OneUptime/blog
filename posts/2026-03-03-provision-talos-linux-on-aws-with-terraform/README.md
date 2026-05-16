@@ -153,6 +153,26 @@ resource "aws_internet_gateway" "talos" {
     Name = "${var.cluster_name}-igw"
   }
 }
+
+# Route table that sends default traffic through the internet gateway
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.talos.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.talos.id
+  }
+
+  tags = {
+    Name = "${var.cluster_name}-public"
+  }
+}
+
+resource "aws_route_table_association" "public" {
+  count          = 3
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
+}
 ```
 
 ## Creating Security Groups
@@ -271,6 +291,17 @@ resource "aws_lb_target_group_attachment" "cp" {
   target_id        = aws_instance.control_plane[count.index].id
   port             = 6443
 }
+
+resource "aws_lb_listener" "k8s_api" {
+  load_balancer_arn = aws_lb.talos_api.arn
+  port              = 6443
+  protocol          = "TCP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.k8s_api.arn
+  }
+}
 ```
 
 ## Generating Talos Configuration and Bootstrapping
@@ -302,7 +333,8 @@ talosctl bootstrap --nodes <FIRST_CP_IP> \
 
 # Retrieve the kubeconfig
 talosctl kubeconfig --nodes <FIRST_CP_IP> \
-  --endpoints <FIRST_CP_IP>
+  --endpoints <FIRST_CP_IP> \
+  --talosconfig talosconfig
 ```
 
 ## Outputs
