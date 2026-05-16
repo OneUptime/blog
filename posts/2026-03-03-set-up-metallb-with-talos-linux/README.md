@@ -22,7 +22,7 @@ MetalLB consists of two main components:
 MetalLB supports two advertisement modes:
 
 - **Layer 2 mode**: Uses ARP (IPv4) or NDP (IPv6) to announce service IPs on the local network. Simple to set up, but all traffic for a service goes through a single node.
-- **BGP mode**: Announces service IPs via BGP to your network routers. More complex to set up, but provides true load balancing across nodes.
+- **BGP mode**: Announces service IPs via BGP to your network routers. More complex to set up, but can distribute traffic across nodes when your routers use ECMP.
 
 ## Prerequisites
 
@@ -40,6 +40,7 @@ Talos Linux requires some specific configuration to work well with MetalLB. In p
 
 cluster:
   proxy:
+    mode: ipvs
     extraArgs:
       ipvs-strict-arp: "true"    # Required for MetalLB L2 mode with IPVS
 ```
@@ -59,7 +60,7 @@ talosctl -n <cp-ip> apply-config --file controlplane.yaml
 
 ```bash
 # Install MetalLB using the official manifests
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.15.3/config/manifests/metallb-native.yaml
 
 # Wait for all MetalLB pods to be ready
 kubectl wait --namespace metallb-system \
@@ -94,7 +95,7 @@ kubectl get deployment -n metallb-system
 
 ## Configuring Layer 2 Mode
 
-Layer 2 mode is the simplest to set up and works in any network environment. Create an IP address pool and an L2 advertisement:
+Layer 2 mode is the simplest to set up and works on a local L2 network where clients can reach the service IPs with ARP or NDP. Create an IP address pool and an L2 advertisement:
 
 ```yaml
 # metallb-l2-config.yaml
@@ -141,7 +142,7 @@ kubectl get svc test-lb
 # Should show an EXTERNAL-IP from your pool
 
 # Test access
-curl http://192.168.1.200
+curl http://<external-ip>
 ```
 
 ## Configuring BGP Mode
@@ -228,7 +229,7 @@ kind: Service
 metadata:
   name: production-service
   annotations:
-    metallb.universe.tf/address-pool: production-pool
+    metallb.io/address-pool: production-pool
 spec:
   type: LoadBalancer
   ports:
@@ -245,9 +246,10 @@ apiVersion: v1
 kind: Service
 metadata:
   name: specific-ip-service
+  annotations:
+    metallb.io/loadBalancerIPs: 192.168.1.205    # Request this specific IP
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.205    # Request this specific IP
   ports:
     - port: 80
   selector:
@@ -265,10 +267,10 @@ kind: Service
 metadata:
   name: http-service
   annotations:
-    metallb.universe.tf/allow-shared-ip: shared-web
+    metallb.io/allow-shared-ip: "shared-web"
+    metallb.io/loadBalancerIPs: 192.168.1.200
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.200
   ports:
     - port: 80
   selector:
@@ -279,10 +281,10 @@ kind: Service
 metadata:
   name: https-service
   annotations:
-    metallb.universe.tf/allow-shared-ip: shared-web
+    metallb.io/allow-shared-ip: "shared-web"
+    metallb.io/loadBalancerIPs: 192.168.1.200
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.200
   ports:
     - port: 443
   selector:
@@ -336,9 +338,7 @@ kubectl logs -n metallb-system -l component=speaker | grep -i "leader\|election\
 # Check BGP peer status
 kubectl logs -n metallb-system -l component=speaker | grep -i "bgp"
 
-# Verify network connectivity to the BGP peer
-# The speaker pods need TCP port 179 access to the router
-kubectl exec -n metallb-system $(kubectl get pods -n metallb-system -l component=speaker -o name | head -1) -- netstat -tn | grep 179
+# Verify the router's BGP neighbor table and confirm the speaker nodes can reach TCP port 179 on the router
 ```
 
 ## Performance Considerations
@@ -358,7 +358,7 @@ spec:
   ipAddressPools:
     - production-pool
   communities:
-    - 64500:100    # Mark with BGP community
+    - "64500:100"    # Mark with BGP community
 ```
 
 ## Conclusion
