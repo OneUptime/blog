@@ -34,30 +34,30 @@ talosctl -n 10.0.0.11 get rd
 
 Resource Definitions
 
-A resource definition (RD) describes a type of resource. It is like a schema that tells you what fields a resource of that type will have. You can think of it as a CustomResourceDefinition (CRD) in Kubernetes.
+A resource definition (RD) describes a type of resource. It tells Talos the resource type, default namespace, aliases, and table columns used when printing resources. You can think of it as similar to the discovery part of a CustomResourceDefinition (CRD) in Kubernetes.
 
 ```bash
 # List all resource definitions
 talosctl -n 10.0.0.11 get rd
 
 # Example output (abbreviated):
-# NAMESPACE  TYPE                    ID
-# ...        AddressSpec             addressspecs.net.talos.dev
-# ...        AddressStatus           addressstatuses.net.talos.dev
-# ...        HostnameSpec            hostnamespecs.net.talos.dev
-# ...        HostnameStatus          hostnamestatuses.net.talos.dev
-# ...        LinkSpec                linkspecs.net.talos.dev
-# ...        LinkStatus              linkstatuses.net.talos.dev
-# ...        MemberSpec              memberspecs.cluster.talos.dev
-# ...        RouteSpec               routespecs.net.talos.dev
-# ...        RouteStatus             routestatuses.net.talos.dev
+# NAMESPACE  TYPE                 ID
+# meta       ResourceDefinition   addressspecs.net.talos.dev
+# meta       ResourceDefinition   addressstatuses.net.talos.dev
+# meta       ResourceDefinition   hostnamespecs.net.talos.dev
+# meta       ResourceDefinition   hostnamestatuses.net.talos.dev
+# meta       ResourceDefinition   linkspecs.net.talos.dev
+# meta       ResourceDefinition   linkstatuses.net.talos.dev
+# meta       ResourceDefinition   members.cluster.talos.dev
+# meta       ResourceDefinition   routespecs.net.talos.dev
+# meta       ResourceDefinition   routestatuses.net.talos.dev
 ```
 
 Each resource definition describes:
 - The type name
-- The namespace it belongs to
-- The version of the resource schema
-- Whether it is a spec (desired state) or status (actual state)
+- The default namespace it belongs to
+- Aliases that can be used with `talosctl get`
+- Table columns used in the default output
 
 ```bash
 # Get detailed information about a specific resource definition
@@ -122,8 +122,8 @@ talosctl -n 10.0.0.11 get members
 # Shows all nodes in the cluster with their roles and addresses
 
 # Cluster identity
-talosctl -n 10.0.0.11 get clusterid
-# Shows the unique identifier for this cluster
+talosctl -n 10.0.0.11 get infos -o yaml
+# Shows cluster information, including the cluster ID
 
 # Node name
 talosctl -n 10.0.0.11 get nodename
@@ -153,11 +153,11 @@ talosctl -n 10.0.0.11 get machinestatus
 Certificate resources track the PKI state of the node.
 
 ```bash
-# View certificates
-talosctl -n 10.0.0.11 get certificate -o yaml
+# View API certificate material
+talosctl -n 10.0.0.11 get apicertificates -o yaml
 
 # View the etcd PKI (control plane only)
-talosctl -n 10.0.0.11 get etcdpki -o yaml
+talosctl -n 10.0.0.11 get pkistatuses -o yaml
 ```
 
 ## Querying Resources
@@ -220,13 +220,14 @@ Resources are organized into namespaces. This is not the same as Kubernetes name
 
 ```bash
 # Common Talos resource namespaces:
-# network    - Network configuration and state
-# config     - Machine configuration
-# k8s        - Kubernetes-related resources
-# cluster    - Cluster membership and discovery
-# hardware   - Hardware information
-# runtime    - Runtime state
-# etcd       - etcd cluster state (control plane)
+# network        - Network configuration and state
+# network-config - Unmerged network configuration resources
+# config         - Machine configuration
+# k8s            - Kubernetes-related resources
+# cluster        - Cluster membership and discovery
+# hardware       - Hardware information
+# runtime        - Runtime state
+# etcd           - etcd cluster state (control plane)
 ```
 
 Resource Layers and Priority
@@ -235,17 +236,21 @@ Resources can originate from different layers, and layers have priority. This ma
 
 The **configuration** layer has the highest priority and comes from the machine configuration. When you set a static IP in the config, it always wins.
 
-The **operator** layer comes from dynamic sources like DHCP or cloud metadata. It provides values when the configuration layer does not specify them.
+The **operator** layer comes from dynamic sources like DHCP or the virtual IP operator. It provides values when higher-priority layers do not specify them.
+
+The **platform** layer comes from cloud or platform metadata, and the **cmdline** layer comes from kernel command line network options.
 
 The **default** layer provides system defaults for resources that are not configured explicitly.
+
+From lowest to highest priority, the network configuration layers are: `default`, `cmdline`, `platform`, `operator`, and `configuration`.
 
 ```bash
 # View the layer of address resources
 talosctl -n 10.0.0.11 get addressspecs -o yaml
 
 # In the output, look for:
-# metadata:
-#   layer: configuration  # or "operator" or "default"
+# spec:
+#   layer: configuration  # or "operator", "platform", "cmdline", or "default"
 ```
 
 ## Using Resources for Troubleshooting
@@ -302,17 +307,30 @@ package main
 import (
     "context"
     "fmt"
+    "log"
+
+    "github.com/cosi-project/runtime/pkg/resource"
     "github.com/siderolabs/talos/pkg/machinery/client"
     "github.com/siderolabs/talos/pkg/machinery/resources/network"
 )
 
 func main() {
     ctx := context.Background()
-    c, _ := client.New(ctx, client.WithDefaultConfig())
+    ctx = client.WithNode(ctx, "10.0.0.11")
+
+    c, err := client.New(ctx, client.WithDefaultConfig())
+    if err != nil {
+        log.Fatal(err)
+    }
     defer c.Close()
 
     // List all address resources
-    items, _ := c.COSI.List(ctx, network.AddressStatusType)
+    kind := resource.NewMetadata(network.NamespaceName, network.AddressStatusType, "", resource.VersionUndefined)
+    items, err := c.COSI.List(ctx, kind)
+    if err != nil {
+        log.Fatal(err)
+    }
+
     for _, item := range items.Items {
         fmt.Printf("Address: %s\n", item.Metadata().ID())
     }
