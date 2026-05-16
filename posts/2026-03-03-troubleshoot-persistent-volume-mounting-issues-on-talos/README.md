@@ -61,11 +61,11 @@ kubectl get storageclass
 kubectl get pvc <pvc-name> -n <namespace> -o jsonpath='{.spec.storageClassName}'
 ```
 
-If the StorageClass does not exist or has no provisioner running, the PVC will never be fulfilled. Install the appropriate CSI driver:
+If the StorageClass does not exist or has no provisioner running, the PVC will never be fulfilled. Install the appropriate CSI driver. For example, on Talos, Local Path Provisioner should be installed with a configuration that uses a writable path such as `/var/mnt/local-path-provisioner` instead of the upstream default `/opt/local-path-provisioner`:
 
 ```bash
-# Example: Install local-path-provisioner for local storage
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+# Example: install a Talos-adjusted Local Path Provisioner kustomization
+kustomize build <directory-with-local-path-provisioner-kustomization> | kubectl apply -f -
 ```
 
 **No available PV matching the claim:**
@@ -143,24 +143,26 @@ volumes:
       type: DirectoryOrCreate
 ```
 
-Paths outside `/var` are read-only and cannot be used for writable hostPath volumes. If you try to use a path like `/opt/data`, the mount will fail.
+Paths outside `/var` are generally read-only and should not be used for writable hostPath volumes. If you try to use a path like `/opt/data`, the mount will fail. For reliable Talos hostPath storage, use a path under a Talos user volume such as `/var/mnt/local-storage`, or bind-mount the host path into the kubelet with `machine.kubelet.extraMounts`.
 
-Create the directory on each node:
+You can verify the directory on each node:
 
 ```bash
-# Create the directory on the node
-talosctl -n <node-ip> mkdir /var/my-data
+# List the directory on the node
+talosctl -n <node-ip> ls /var/my-data
 ```
 
-Or configure it in the machine config:
+Or configure a Talos user volume and use its mount path:
 
 ```yaml
-machine:
-  files:
-    - content: ""
-      permissions: 0o755
-      path: /var/my-data
-      op: create
+apiVersion: v1alpha1
+kind: UserVolumeConfig
+name: local-storage
+provisioning:
+  diskSelector:
+    match: "!system_disk"
+  minSize: 10GB
+  maxSize: 10GB
 ```
 
 ## Issue: Permission Denied on Mounted Volume
@@ -248,7 +250,7 @@ Make sure the pod's scheduling constraints allow it to land on the correct node.
 
 ## Issue: NFS Volumes on Talos
 
-NFS is a common choice for shared storage, but Talos does not include NFS client utilities by default. You need to use an NFS CSI driver:
+NFS is a common choice for shared storage, but Kubernetes does not include an internal NFS dynamic provisioner. Use an external provisioner such as the NFS CSI driver:
 
 ```bash
 # Install NFS CSI driver
@@ -278,7 +280,7 @@ If you try to resize a PVC but it fails:
 kubectl get storageclass <sc-name> -o yaml | grep allowVolumeExpansion
 ```
 
-If `allowVolumeExpansion` is not set to true, you cannot resize volumes with that StorageClass. Update the StorageClass:
+If `allowVolumeExpansion` is not set to true, you cannot resize volumes with that StorageClass. The storage backend and CSI driver must also support volume expansion. Update the StorageClass:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
