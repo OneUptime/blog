@@ -43,8 +43,7 @@ cluster:
     extraArgs:
       max-requests-inflight: "100"        # Default is 400
       max-mutating-requests-inflight: "50" # Default is 200
-      event-ttl: "1h"                      # Reduce from 1h default
-      watch-cache-sizes: ""                # Disable watch cache sizing
+      event-ttl: "30m"                     # Reduce from 1h default
     resources:
       requests:
         cpu: 100m
@@ -68,7 +67,8 @@ cluster:
       # Auto-compact to prevent unbounded growth
       auto-compaction-mode: periodic
       auto-compaction-retention: "5m"
-      # Reduce heartbeat interval for faster leader election on slow networks
+      # Increase heartbeat interval to reduce CPU overhead on slow networks
+      # (defaults are 100ms / 1000ms; keep the 10:1 ratio between them)
       heartbeat-interval: "500"
       election-timeout: "5000"
 ```
@@ -133,14 +133,11 @@ machine:
     # Reduce swappiness (Talos has no swap, but this affects cache behavior)
     vm.swappiness: "10"
 
-    # Free page cache more aggressively
+    # Reclaim dentry and inode caches more aggressively (default is 100)
     vm.vfs_cache_pressure: "200"
 
     # Reduce the minimum free memory threshold
     vm.min_free_kbytes: "16384"
-
-    # Compact memory proactively
-    vm.compact_memory: "1"
 ```
 
 ### Disable Transparent Huge Pages
@@ -179,9 +176,10 @@ machine:
       container-log-max-size: "5Mi"
       container-log-max-files: "2"
 
-      # Reduce kubelet event recording
-      event-qps: "5"
-      event-burst: "10"
+      # Reduce kubelet event recording (defaults are 5 / 10 already,
+      # set lower if you want even fewer events)
+      event-qps: "2"
+      event-burst: "5"
 
       # Lower the pod eviction thresholds for low-memory devices
       eviction-hard: "memory.available<100Mi,nodefs.available<5%"
@@ -242,10 +240,10 @@ On low-resource devices, the time and bandwidth to pull container images matters
 # Scratch (static binary): <10 MB
 ```
 
-Pre-pull images to avoid runtime delays:
+Configure a local registry mirror so images can be served from a nearby cache (such as a registry-proxy on your LAN) rather than pulled from the public internet on every node:
 
 ```yaml
-# Pre-pull critical images in the machine config
+# Point docker.io at a local registry mirror in the machine config
 machine:
   registries:
     mirrors:
@@ -254,6 +252,8 @@ machine:
           - https://registry-1.docker.io
         overridePath: false
 ```
+
+To actually pre-pull images onto a node, run `crictl pull <image>` after the node joins, or deploy a DaemonSet whose only job is to reference the images you want cached.
 
 ## Workload Resource Management
 
