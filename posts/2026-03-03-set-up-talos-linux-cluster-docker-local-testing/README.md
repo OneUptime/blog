@@ -39,11 +39,11 @@ kubectl version --client
 
 ## Creating a Simple Cluster
 
-The `talosctl cluster create` command handles everything:
+The `talosctl cluster create docker` command handles everything:
 
 ```bash
 # Create a single-node cluster
-talosctl cluster create --name local-test
+talosctl cluster create docker --name local-test --workers 0
 ```
 
 This command:
@@ -61,26 +61,25 @@ After about 2-3 minutes, you have a working cluster:
 # Check it worked
 kubectl get nodes
 # NAME                          STATUS   ROLES           AGE   VERSION
-# local-test-controlplane-1     Ready    control-plane   2m    v1.29.x
+# local-test-controlplane-1     Ready    control-plane   2m    v1.36.x
 ```
 
 ## Multi-Node Clusters
 
-For testing HA or scheduling behavior, create a multi-node cluster:
+For testing scheduling behavior, create a multi-node cluster:
 
 ```bash
-# Three control plane nodes and two workers
-talosctl cluster create \
-  --name ha-test \
-  --controlplanes 3 \
+# One control plane node and two workers
+talosctl cluster create docker \
+  --name scheduling-test \
   --workers 2
 ```
 
-This takes a bit longer (5-8 minutes) but gives you a realistic multi-node cluster. The control plane nodes form an etcd cluster, and worker nodes join for scheduling.
+This takes a bit longer but gives you a realistic multi-node cluster for workload placement. The control plane node runs etcd, and worker nodes join for scheduling.
 
 ```bash
 # See all the Docker containers
-docker ps --filter "name=ha-test"
+docker ps --filter "name=scheduling-test"
 
 # Check the Kubernetes nodes
 kubectl get nodes
@@ -94,10 +93,10 @@ Pin the Talos and Kubernetes versions:
 
 ```bash
 # Use specific versions
-talosctl cluster create \
+talosctl cluster create docker \
   --name version-test \
-  --talos-version v1.9.0 \
-  --kubernetes-version 1.29.0
+  --image ghcr.io/siderolabs/talos:v1.13.0 \
+  --kubernetes-version 1.36.0
 ```
 
 ### Custom Machine Configuration Patches
@@ -116,7 +115,7 @@ machine:
 EOF
 
 # Create cluster with the patch
-talosctl cluster create \
+talosctl cluster create docker \
   --name custom-test \
   --config-patch @/tmp/test-patch.yaml
 ```
@@ -127,23 +126,24 @@ Control how much resources each node gets:
 
 ```bash
 # Set CPU and memory limits for nodes
-talosctl cluster create \
+talosctl cluster create docker \
   --name resource-test \
-  --cpus 4 \
-  --memory 4096 \
-  --controlplanes 1 \
+  --cpus-controlplanes 4 \
+  --cpus-workers 2 \
+  --memory-controlplanes 4096 \
+  --memory-workers 2048 \
   --workers 1
 ```
 
-The `--memory` value is in megabytes.
+The memory values accept megabytes or gigabytes.
 
 ### Custom Network Settings
 
 ```bash
 # Use a specific CIDR for the Docker network
-talosctl cluster create \
+talosctl cluster create docker \
   --name net-test \
-  --cidr 172.30.0.0/24
+  --subnet 172.30.0.0/24
 ```
 
 ## Working with the Cluster
@@ -152,7 +152,7 @@ Once the cluster is running, interact with it normally:
 
 ```bash
 # Use talosctl
-talosctl services --nodes 10.5.0.2
+talosctl service --nodes 10.5.0.2
 
 # View logs
 talosctl logs kubelet --nodes 10.5.0.2
@@ -178,6 +178,8 @@ kubectl get nodes -o wide
 curl http://<node-ip>:<node-port>
 ```
 
+On Docker Desktop for macOS or Windows, container IPs might not be directly reachable from the host. In that case, expose the ports you need when creating the cluster with `--exposed-ports`.
+
 For LoadBalancer services, you will need something like MetalLB since there is no cloud load balancer in a local setup.
 
 ## Running Multiple Clusters
@@ -186,10 +188,10 @@ You can run several Docker-based Talos clusters simultaneously:
 
 ```bash
 # Create cluster A
-talosctl cluster create --name cluster-a --controlplanes 1 --workers 0
+talosctl cluster create docker --name cluster-a --workers 0
 
 # Create cluster B
-talosctl cluster create --name cluster-b --controlplanes 1 --workers 0
+talosctl cluster create docker --name cluster-b --workers 0
 
 # List running clusters
 docker ps --format "table {{.Names}}\t{{.Status}}" | grep -E "cluster-a|cluster-b"
@@ -208,7 +210,7 @@ Docker clusters are great for testing machine configuration changes before apply
 
 ```bash
 # Create a test cluster
-talosctl cluster create --name config-test
+talosctl cluster create docker --name config-test --workers 0
 
 # Try applying a configuration change
 talosctl patch machineconfig --nodes 10.5.0.2 \
@@ -222,22 +224,16 @@ If the change causes problems, just destroy the cluster and start over. Nothing 
 
 ## Testing Upgrades
 
-You can simulate Talos upgrades in Docker:
+Talos OS upgrades are not supported in Docker mode. The Docker platform runs Talos as containers, so upgrade and reset APIs do not apply the way they do on installed machines. To test a different Talos version, create a fresh Docker cluster with the target image:
 
 ```bash
-# Create a cluster running an older version
-talosctl cluster create \
+# Create a cluster running a specific version
+talosctl cluster create docker \
   --name upgrade-test \
-  --talos-version v1.8.0
+  --image ghcr.io/siderolabs/talos:v1.13.0 \
+  --workers 0
 
 # Verify the version
-talosctl version --nodes 10.5.0.2
-
-# Upgrade to a newer version
-talosctl upgrade --nodes 10.5.0.2 \
-  --image ghcr.io/siderolabs/installer:v1.9.0
-
-# Verify the upgrade
 talosctl version --nodes 10.5.0.2
 ```
 
@@ -245,7 +241,7 @@ talosctl version --nodes 10.5.0.2
 
 While Docker clusters are very useful, they have some limitations:
 
-- **Networking**: The container shares the host kernel's network stack. Advanced networking features like VLAN tagging or custom network interfaces behave differently than on real hardware.
+- **Networking**: The container shares the host kernel and uses Docker networking. Advanced networking features like VLAN tagging or custom network interfaces behave differently than on real hardware.
 - **Performance**: Container overhead means performance is not representative of bare metal.
 - **Disk**: There is no real disk installation. Talos runs from the container image directly.
 - **VIP**: Virtual IP functionality does not work in Docker mode.
@@ -278,10 +274,10 @@ docker rm -f $(docker ps -a --filter "label=talos.owned=true" -q)
 
 ```bash
 # Create a basic cluster
-talosctl cluster create --name test
+talosctl cluster create docker --name test --workers 0
 
 # Create a multi-node cluster
-talosctl cluster create --name test --controlplanes 3 --workers 2
+talosctl cluster create docker --name test --workers 2
 
 # Destroy a cluster
 talosctl cluster destroy --name test
