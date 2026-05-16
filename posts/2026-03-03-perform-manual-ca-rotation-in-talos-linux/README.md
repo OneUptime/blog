@@ -24,7 +24,7 @@ Document your current cluster state before making changes.
 kubectl get nodes -o wide > cluster-nodes.txt
 
 # Record etcd member list
-talosctl -n 10.0.1.10 etcd member list > etcd-members.txt
+talosctl -n 10.0.1.10 etcd members > etcd-members.txt
 
 # Record current certificate expiration dates
 talosctl -n 10.0.1.10 get machineconfig -o yaml | \
@@ -199,7 +199,7 @@ talosctl -n 10.0.1.11 apply-config --file cp2-bundle-config.yaml
 sleep 60
 talosctl -n 10.0.1.11 health
 talosctl -n 10.0.1.11 etcd status
-talosctl -n 10.0.1.10 etcd member list
+talosctl -n 10.0.1.10 etcd members
 kubectl get nodes
 echo "CP-2 updated successfully"
 echo "---"
@@ -224,13 +224,13 @@ kubectl get nodes
 echo "---"
 
 # etcd fully healthy
-talosctl -n 10.0.1.10 etcd member list
+talosctl -n 10.0.1.10 etcd members
 talosctl -n 10.0.1.10 etcd status
 echo "---"
 
 # Test workload deployment
 kubectl run test-rotation --image=busybox --restart=Never -- echo "bundle phase OK"
-kubectl wait --for=condition=completed pod/test-rotation --timeout=60s
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/test-rotation --timeout=60s
 kubectl logs test-rotation
 kubectl delete pod test-rotation
 echo "---"
@@ -310,7 +310,7 @@ echo ""
 
 # etcd health
 echo "etcd:"
-talosctl -n 10.0.1.10 etcd member list
+talosctl -n 10.0.1.10 etcd members
 echo ""
 
 # System pods
@@ -322,7 +322,7 @@ echo ""
 echo "API test:"
 kubectl create namespace rotation-test
 kubectl run test -n rotation-test --image=alpine --restart=Never -- echo "rotation complete"
-kubectl wait -n rotation-test --for=condition=completed pod/test --timeout=60s
+kubectl wait -n rotation-test --for=jsonpath='{.status.phase}'=Succeeded pod/test --timeout=60s
 kubectl delete namespace rotation-test
 echo ""
 
