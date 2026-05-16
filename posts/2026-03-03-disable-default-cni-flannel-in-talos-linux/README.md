@@ -103,12 +103,16 @@ kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
 ### Step 3: Remove Flannel
 
 ```bash
-# Delete Flannel DaemonSet and related resources
-kubectl delete namespace kube-flannel
+# Delete Flannel DaemonSet and related resources (Talos deploys Flannel in kube-system)
+kubectl delete daemonset -n kube-system kube-flannel
+kubectl delete configmap -n kube-system kube-flannel-cfg
+kubectl delete serviceaccount -n kube-system flannel
+kubectl delete clusterrolebinding flannel
+kubectl delete clusterrole flannel
 
-# Clean up Flannel CNI configuration files
+# Inspect Flannel CNI configuration files
 # On each node (via talosctl)
-talosctl -n <node-ip> read /etc/cni/net.d/
+talosctl -n <node-ip> ls /etc/cni/net.d/
 ```
 
 ### Step 4: Update Machine Configuration
@@ -173,8 +177,8 @@ If you are installing Calico instead, keep kube-proxy enabled because Calico wor
 After applying the configuration, verify that Flannel is not running:
 
 ```bash
-# Check for Flannel pods (should be empty)
-kubectl get pods -n kube-flannel 2>/dev/null || echo "kube-flannel namespace does not exist"
+# Check for Flannel pods (Talos installs Flannel in kube-system as the kube-flannel DaemonSet)
+kubectl get daemonset -n kube-system kube-flannel 2>/dev/null || echo "kube-flannel DaemonSet does not exist"
 
 # Check for CNI configuration files
 talosctl -n <node-ip> ls /etc/cni/net.d/
