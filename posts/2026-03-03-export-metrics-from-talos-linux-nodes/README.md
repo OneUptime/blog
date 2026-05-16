@@ -14,21 +14,25 @@ This guide covers all the ways to get metrics out of your Talos Linux nodes and 
 
 ## Talos Built-in Metrics
 
-Talos Linux exposes a Prometheus-compatible metrics endpoint on each node. This endpoint provides machine-level metrics without requiring any additional software.
+Talos Linux exposes machine-level statistics through the Talos API as COSI resources. These provide a baseline level of monitoring without deploying anything into the cluster.
 
-The metrics are available through the Talos API:
+The metrics are available through `talosctl`:
 
 ```bash
-# Retrieve raw Prometheus metrics from a Talos node
+# View CPU performance statistics (user/system time, IRQs, context switches)
+talosctl -n 192.168.1.10 get cpustats
 
-talosctl -n 192.168.1.10 get metrics
+# View memory statistics
+talosctl -n 192.168.1.10 get memorystats
 
-# You can also access metrics through the HTTP endpoint
-# The Talos metrics endpoint is typically at port 9100 on the machine
-curl -k https://192.168.1.10:9100/metrics
+# View per-container resource consumption
+talosctl -n 192.168.1.10 stats
+
+# Live terminal dashboard with CPU, memory, network and process info
+talosctl -n 192.168.1.10 dashboard
 ```
 
-These built-in metrics include basic system information like CPU usage, memory utilization, and disk I/O. They provide a baseline level of monitoring without deploying anything into the cluster.
+These built-in views include basic system information like CPU usage, memory utilization, and per-container resource consumption. They provide a baseline level of monitoring without deploying anything into the cluster, but they are not a Prometheus scrape endpoint — for time-series collection, deploy the exporters described below.
 
 ## Deploying Node Exporter
 
@@ -153,7 +157,15 @@ spec:
 
 ## Exporting etcd Metrics
 
-On control plane nodes, etcd exposes metrics that are critical for monitoring cluster health. Talos Linux configures etcd to listen for metrics on port 2381.
+On control plane nodes, etcd exposes metrics that are critical for monitoring cluster health. Configure etcd to listen for metrics on port 2381 by adding `listen-metrics-urls` to the etcd `extraArgs` in your Talos machine configuration:
+
+```yaml
+# Patch for control plane machine config
+cluster:
+  etcd:
+    extraArgs:
+      listen-metrics-urls: http://0.0.0.0:2381
+```
 
 ```yaml
 # etcd-servicemonitor.yaml
