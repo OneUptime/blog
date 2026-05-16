@@ -199,6 +199,8 @@ spec:
               value: "27017"
             - name: MONGO_DBNAME
               value: "unifi"
+            - name: MONGO_AUTHSOURCE
+              value: "admin"
           volumeMounts:
             - name: config
               mountPath: /config
@@ -310,7 +312,7 @@ set-inform http://192.168.1.220:8080/inform
 
 ### DHCP Option 43
 
-For automatic device discovery, configure DHCP Option 43 on your router to point to the controller IP. The format varies by router, but the value should be the hex-encoded inform URL.
+For automatic device discovery, configure DHCP Option 43 on your router to point to the controller IP. UniFi uses a TLV (Type-Length-Value) sub-option format: `01:04:XX:XX:XX:XX`, where `01` is the UniFi suboption, `04` is the length (4 bytes), and the remaining four bytes are the controller IP in hex. For `192.168.1.220`, that gives `01:04:C0:A8:01:DC`. The exact way to enter this varies by router (some accept the colon-separated hex string directly, others need it as a continuous hex blob).
 
 ## Configuring the Controller Override
 
@@ -327,7 +329,6 @@ data:
   system.properties: |
     # Override controller hostname for device communication
     system_ip=192.168.1.220
-    is_default=true
 ```
 
 Mount this in the controller container:
@@ -395,7 +396,7 @@ spec:
           restartPolicy: OnFailure
 ```
 
-Resource Monitoring
+## Resource Monitoring
 
 The Unifi Controller with MongoDB can be memory-hungry. Monitor resource usage:
 
