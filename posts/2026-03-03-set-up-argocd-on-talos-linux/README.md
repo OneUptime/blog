@@ -77,11 +77,6 @@ controller:
       cpu: 1000m
       memory: 1Gi
 
-  # Processing settings
-  args:
-    appResyncPeriod: "180"  # Resync every 3 minutes
-    repoServerTimeoutSeconds: "120"
-
 repoServer:
   replicas: 2
   resources:
@@ -108,7 +103,10 @@ configs:
     controller.status.processors: "20"
     controller.operation.processors: "10"
     controller.self.heal.timeout.seconds: "5"
-    # Ignore differences in fields managed by mutating webhooks
+    # Resync applications every 3 minutes
+    controller.app.resync: "180"
+    controller.repo.server.timeout.seconds: "120"
+    # Disable TLS on the server (terminate TLS at ingress)
     server.insecure: "true"
 
   # Repository credentials
