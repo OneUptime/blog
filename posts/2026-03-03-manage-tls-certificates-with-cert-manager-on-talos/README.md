@@ -48,10 +48,10 @@ Verify the installation.
 # Check that all cert-manager pods are running
 kubectl get pods -n cert-manager
 
-# You should see three pods:
-# cert-manager
-# cert-manager-cainjector
-# cert-manager-webhook
+# You should see three pods (one per Deployment), with names like:
+# cert-manager-xxxxxxxxxx-xxxxx
+# cert-manager-cainjector-xxxxxxxxxx-xxxxx
+# cert-manager-webhook-xxxxxxxxxx-xxxxx
 
 # Test the installation with a self-signed certificate
 kubectl apply -f - <<EOF
@@ -112,7 +112,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ---
 # letsencrypt-prod-issuer.yaml
 apiVersion: cert-manager.io/v1
@@ -128,7 +128,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 ```bash
@@ -160,7 +160,6 @@ spec:
     solvers:
       - dns01:
           cloudflare:
-            email: your-email@example.com
             apiTokenSecretRef:
               name: cloudflare-api-token
               key: api-token
@@ -366,10 +365,10 @@ Common issues and how to debug them:
 
 ```bash
 # Check cert-manager controller logs
-kubectl logs -n cert-manager -l app=cert-manager
+kubectl logs -n cert-manager -l app.kubernetes.io/name=cert-manager
 
 # Check webhook logs (often the source of issues)
-kubectl logs -n cert-manager -l app=webhook
+kubectl logs -n cert-manager -l app.kubernetes.io/name=webhook
 
 # Debug a specific certificate
 kubectl describe certificate my-app-tls
