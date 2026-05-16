@@ -169,12 +169,18 @@ For clusters managed with GitOps or infrastructure as code, include the host ent
 To change an existing host entry, you need to replace the entire `extraHostEntries` section:
 
 ```bash
-# Get the current configuration
-talosctl get machineconfig --nodes 192.168.1.10 -o yaml > current-config.yaml
+# Get the current configuration (extract the spec, since `get` returns a resource wrapper)
+talosctl get machineconfig --nodes 192.168.1.10 -o yaml | yq .spec > current-config.yaml
 
 # Edit the extraHostEntries section in current-config.yaml
 # Then apply the updated configuration
 talosctl apply-config --nodes 192.168.1.10 --file current-config.yaml
+```
+
+Or edit the configuration in place with your `$EDITOR`:
+
+```bash
+talosctl edit machineconfig --nodes 192.168.1.10
 ```
 
 Or use a patch to replace the entire section:
@@ -237,22 +243,43 @@ spec:
 
 ### CoreDNS Custom Records
 
-For cluster-wide custom DNS, modify the CoreDNS configuration:
+For cluster-wide custom DNS, edit the `coredns` ConfigMap in `kube-system` and add a `hosts` block to the Corefile:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: coredns-custom
-  namespace: kube-system
-data:
-  custom.server: |
-    registry.internal:53 {
-        hosts {
-            192.168.1.100 registry.internal
-            fallthrough
-        }
+```bash
+kubectl -n kube-system edit configmap coredns
+```
+
+```text
+.:53 {
+    errors
+    health {
+       lameduck 5s
     }
+    ready
+    hosts {
+        192.168.1.100 registry.internal
+        fallthrough
+    }
+    kubernetes cluster.local in-addr.arpa ip6.arpa {
+       pods insecure
+       fallthrough in-addr.arpa ip6.arpa
+       ttl 30
+    }
+    prometheus :9153
+    forward . /etc/resolv.conf {
+       max_concurrent 1000
+    }
+    cache 30
+    loop
+    reload
+    loadbalance
+}
+```
+
+After saving, restart CoreDNS so the new Corefile is picked up:
+
+```bash
+kubectl -n kube-system rollout restart deployment/coredns
 ```
 
 ### Using hostNetwork
