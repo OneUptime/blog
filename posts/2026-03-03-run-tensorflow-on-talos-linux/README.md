@@ -24,20 +24,35 @@ You need:
 
 ## Verifying GPU Access
 
-Before running TensorFlow, confirm that GPUs are accessible:
+Before running TensorFlow, confirm that GPUs are accessible. Apply a small Pod manifest that requests a GPU:
+
+```yaml
+# tf-gpu-check.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: tf-gpu-check
+spec:
+  restartPolicy: Never
+  containers:
+    - name: tf-gpu-check
+      image: tensorflow/tensorflow:2.15.0-gpu
+      command: ["python", "-c"]
+      args:
+        - |
+          import tensorflow as tf
+          print('TensorFlow version:', tf.__version__)
+          print('GPU devices:', tf.config.list_physical_devices('GPU'))
+          print('Built with CUDA:', tf.test.is_built_with_cuda())
+      resources:
+        limits:
+          nvidia.com/gpu: 1
+```
 
 ```bash
-# Quick GPU verification test
-
-kubectl run tf-gpu-check --rm -it --restart=Never \
-  --image=tensorflow/tensorflow:2.15.0-gpu \
-  --limits=nvidia.com/gpu=1 \
-  -- python -c "
-import tensorflow as tf
-print('TensorFlow version:', tf.__version__)
-print('GPU devices:', tf.config.list_physical_devices('GPU'))
-print('Built with CUDA:', tf.test.is_built_with_cuda())
-"
+kubectl apply -f tf-gpu-check.yaml
+kubectl logs -f tf-gpu-check
+kubectl delete pod tf-gpu-check
 ```
 
 This should print the TensorFlow version and list available GPU devices.
@@ -154,9 +169,11 @@ data:
         callbacks=callbacks
     )
 
-    # Save the final model
-    model.save('/models/cifar10/saved_model')
-    print("Training complete. Model saved to /models/cifar10/saved_model")
+    # Save the final model into a versioned subdirectory so TensorFlow Serving
+    # can discover it (TF Serving expects numbered version directories under
+    # the model base path).
+    model.save('/models/cifar10/1')
+    print("Training complete. Model saved to /models/cifar10/1")
 ```
 
 Apply and run:
@@ -282,10 +299,10 @@ spec:
     spec:
       containers:
         - name: tf-serving
-          image: tensorflow/serving:2.15.0-gpu
+          image: tensorflow/serving:2.15.1-gpu
           args:
             - --model_name=cifar10
-            - --model_base_path=/models/cifar10/saved_model
+            - --model_base_path=/models/cifar10
             - --port=8500
             - --rest_api_port=8501
           ports:
