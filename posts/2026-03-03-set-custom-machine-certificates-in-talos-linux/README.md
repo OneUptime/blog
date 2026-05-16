@@ -132,28 +132,32 @@ This is a security best practice. Worker nodes should never have access to the C
 
 Certificate rotation is something you need to plan for before your certificates expire. Talos handles some rotation automatically, but CA certificates require manual intervention.
 
-To check the current certificate expiration:
+To inspect certificate SANs currently configured on a node:
 
 ```bash
-# Check certificate status on a node
-talosctl get certificates --nodes 192.168.1.100
+# View certificate SANs resource on a node
+talosctl get certsans --nodes 192.168.1.100
 
-# View detailed certificate information
-talosctl get certificate --nodes 192.168.1.100 -o yaml
+# View detailed certificate SAN information
+talosctl get certsans --nodes 192.168.1.100 -o yaml
 ```
 
-For rotating the Talos CA, you need to generate a new CA and distribute it to all nodes. This is a multi-step process:
+You can also extract certificates from your `talosconfig` or `kubeconfig` and use `openssl` to inspect their expiration dates.
+
+For rotating the Talos or Kubernetes CA, Talos provides the dedicated `talosctl rotate-ca` command:
 
 ```bash
-# Step 1: Generate new CA certificates
-talosctl gen secrets -o new-secrets.yaml
+# Preview a Talos API CA rotation without applying changes
+talosctl rotate-ca --dry-run --talos
 
-# Step 2: Generate new configs using the new secrets
-talosctl gen config my-cluster https://10.0.0.1:6443 \
-  --with-secrets new-secrets.yaml
+# Rotate the Talos API CA
+talosctl rotate-ca --talos
+
+# Rotate the Kubernetes API CA
+talosctl rotate-ca --kubernetes
 ```
 
-Then you apply the new configuration to each node, starting with control plane nodes and then workers.
+Rotating the Talos API CA does not interrupt the cluster, while rotating the Kubernetes API CA typically requires pods to be restarted to pick up the new credentials.
 
 ## Adding Trusted CA Certificates
 
@@ -221,16 +225,16 @@ When working with certificates in Talos Linux, follow these practices:
 5. Monitor certificate expiration dates and set up alerts well before they expire.
 
 ```bash
-# Automate certificate expiry checking
-talosctl get certificates --nodes 192.168.1.100 -o yaml | grep notAfter
+# Automate certificate expiry checking by inspecting the client cert from talosconfig
+yq '.contexts.*.crt' ~/.talos/config | base64 -d | openssl x509 -noout -dates
 ```
 
 ## Troubleshooting Certificate Issues
 
 Certificate problems typically manifest as TLS handshake failures or authentication errors. Common issues include:
 
-- Expired certificates (check dates with `talosctl get certificates`)
-- Missing SANs (the client connects through an address not listed in the certificate)
+- Expired certificates (check dates by extracting the client cert from your `talosconfig` and inspecting it with `openssl x509 -noout -dates`)
+- Missing SANs (the client connects through an address not listed in the certificate; verify with `talosctl get certsans`)
 - CA mismatch (the client's CA does not match the server's certificate issuer)
 - Clock skew (certificates appear invalid because the node's time is wrong)
 
