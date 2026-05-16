@@ -48,12 +48,12 @@ talosctl logs etcd --nodes 192.168.1.10 --follow
 
 This is the equivalent of `journalctl -f` or `tail -f` on a traditional system.
 
-### Filtering by Time
+### Limiting the Number of Log Lines
 
-You can limit logs to a specific time range:
+You can limit how many recent log lines are returned with the `--tail` flag:
 
 ```bash
-# Get logs from the last hour
+# Show the last 1000 log lines
 talosctl logs kubelet --nodes 192.168.1.10 --tail 1000
 
 # The --tail flag limits the number of recent log lines returned
@@ -248,9 +248,7 @@ machine:
 
 This sends all Talos service logs (kubelet, etcd, apid, etc.) to the specified endpoint without needing any additional pods or DaemonSets.
 
-Supported formats include:
-- `json_lines` - JSON format, one event per line
-- `syslog` - standard syslog format
+The only currently supported format is `json_lines` — newline-separated JSON messages (one per UDP packet, or newline-delimited over TCP). Supported endpoint protocols are `tcp` and `udp`.
 
 ```yaml
 # Multiple log destinations
@@ -260,7 +258,7 @@ machine:
       - endpoint: "tcp://logstash.example.com:5044/"
         format: json_lines
       - endpoint: "udp://syslog.example.com:514/"
-        format: syslog
+        format: json_lines
 ```
 
 ## Debugging Common Log Access Issues
