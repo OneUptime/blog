@@ -41,11 +41,11 @@ talosctl -n 10.0.1.10 version
 talosctl -n 10.0.1.10 get machineconfig
 talosctl -n 10.0.1.10 logs kubelet
 
-# There is no alternative access path
-# No SSH, no console login, no backdoor
+# There is no alternative shell access path
+# No SSH, no interactive console login
 ```
 
-Both APIs use mutual TLS (mTLS) for authentication. Every request must present a valid client certificate signed by the cluster's certificate authority. Without the correct credentials, you cannot interact with the system at all.
+The Talos API uses mutual TLS (mTLS) with client certificates for authentication. Kubernetes API access is TLS-protected and can use several authentication methods; Talos-generated admin kubeconfigs use client certificates, and Kubernetes components also rely heavily on certificates. Without the correct credentials, you cannot interact with these APIs in an authorized way.
 
 ## Certificate-Based Authentication
 
@@ -67,25 +67,25 @@ contexts:
     key: <base64-encoded-client-key>
 ```
 
-Without these certificates, there is no way to authenticate to the cluster. This is a significant improvement over password-based authentication that can be brute-forced.
+Without these Talos client certificates, there is no way to authenticate to the Talos API. This is a significant improvement over password-based authentication that can be brute-forced.
 
 ## Immutable Root Filesystem
 
-The Talos root filesystem is mounted read-only. The OS image is a SquashFS filesystem that gets verified at boot. You cannot modify system binaries, install additional software, or tamper with the OS at runtime.
+The Talos root filesystem is mounted read-only. The OS image is a SquashFS filesystem and Talos images are signed and immutable. With Secure Boot images, the full operating system is verified through the signed boot chain. You cannot modify system binaries, install additional software, or tamper with the OS at runtime.
 
 ```text
 Filesystem Layout:
 / (root)          - Read-only SquashFS
-/system           - Read-only, contains Talos binaries
+/system           - Runtime filesystem for Talos-managed files
 /var              - Writable, for ephemeral data (logs, container images)
-/etc/kubernetes   - Managed by Talos, not user-writable
+/etc/kubernetes   - Talos-managed overlay backed by /var
 /var/lib/etcd     - etcd data directory (control plane only)
 ```
 
 This immutability provides several security benefits:
 
 - **No rootkit persistence**: Even if an attacker gains code execution, they cannot modify the OS to survive a reboot.
-- **Verified boot**: The OS image can be cryptographically verified to ensure it has not been tampered with.
+- **Verified boot**: With Secure Boot images, the boot assets can be cryptographically verified to ensure they have not been tampered with.
 - **Predictable state**: The OS state is always defined by the machine configuration, making auditing straightforward.
 
 ## Secure Boot Support
@@ -93,8 +93,8 @@ This immutability provides several security benefits:
 Talos Linux supports UEFI Secure Boot, which creates a chain of trust from the firmware to the operating system:
 
 1. UEFI firmware verifies the bootloader signature
-2. The bootloader verifies the Talos kernel and initramfs
-3. The kernel verifies the root filesystem
+2. The signed bootloader loads the signed Talos Unified Kernel Image (UKI)
+3. The UKI contains the Talos kernel, initramfs, and command line, so the full operating system image is covered by the Secure Boot chain
 
 This prevents boot-level attacks where an attacker replaces the kernel or OS image with a compromised version.
 
@@ -102,60 +102,65 @@ This prevents boot-level attacks where an attacker replaces the kernel or OS ima
 
 ### Default-Deny Network Posture
 
-Talos nodes only listen on the ports they need:
+Talos nodes only expose the management and Kubernetes ports they need:
 
 | Port | Service | Access |
 |------|---------|--------|
 | 50000 | Talos API | mTLS required |
-| 6443 | Kubernetes API | mTLS required |
+| 50001 | Talos trustd (control plane) | Cluster internal |
+| 6443 | Kubernetes API | TLS and Kubernetes authentication required |
 | 10250 | Kubelet | mTLS required |
 | 2379/2380 | etcd | mTLS required |
 
-There are no other listening services. No unnecessary daemons, no monitoring agents, no debugging tools with network access.
+Kubernetes components may also use standard Kubernetes ports such as scheduler and controller-manager health endpoints, NodePort ranges, or CNI-specific ports depending on the cluster configuration. The important difference is that Talos does not add SSH, package-management daemons, or debugging tools with network access.
 
 ### Encrypted Communication
 
-All inter-node communication is encrypted:
+Core management and control-plane communication is encrypted:
 
 - etcd peer traffic uses TLS
 - Kubelet to API server communication uses TLS
 - Talos API traffic uses mTLS
-- WireGuard is available for encrypting all pod-to-pod traffic
+- KubeSpan is available for building a WireGuard mesh for node-to-node traffic
 
 ```yaml
-# Enable WireGuard for cluster networking
+# Enable KubeSpan for a WireGuard node-to-node mesh
 machine:
   network:
     kubespan:
       enabled: true
-      # KubeSpan uses WireGuard to encrypt all cluster traffic
+cluster:
+  discovery:
+    enabled: true
 ```
+
+Pod-to-pod encryption depends on the CNI and KubeSpan configuration. By default, KubeSpan handles node-to-node connectivity; pod and service network advertisement is an additional setting and is not appropriate for every CNI.
 
 ## Kernel Hardening
 
 Talos Linux ships with a hardened kernel configuration:
 
-- **AppArmor** and **SELinux** profiles for container isolation
-- **seccomp** profiles restricting system calls
+- **AppArmor** support for default workload profiles when the AppArmor LSM is enabled
+- **SELinux** support, currently experimental and permissive by default in recent Talos releases
+- **seccomp** support through Kubernetes workload security contexts
 - Kernel parameters tuned for security:
 
 ```text
-# Security-relevant kernel parameters Talos sets by default
-kernel.kptr_restrict = 1          # Hide kernel pointers
-kernel.dmesg_restrict = 1         # Restrict dmesg access
-kernel.perf_event_paranoid = 3    # Restrict perf events
-net.core.bpf_jit_harden = 2      # Harden BPF JIT
-kernel.yama.ptrace_scope = 1      # Restrict ptrace
+# Security-relevant kernel command-line parameters Talos requires or recommends
+slab_nomerge        # Required by KSPP
+pti=on              # Required by KSPP
+init_on_alloc=1     # Recommended by KSPP, enabled by default in kernel config
+init_on_free=1      # Recommended by KSPP, enabled by default in kernel config
 ```
 
-These settings are not configurable by default, which prevents accidental weakening of the security posture.
+Talos also restricts dangerous capabilities such as `CAP_SYS_MODULE` and `CAP_SYS_BOOT`, even for privileged Kubernetes pods.
 
 ## Machine Configuration Security
 
 The machine configuration is the single source of truth for a Talos node's state. It contains sensitive data including certificates, encryption keys, and cluster secrets. Talos protects this in several ways:
 
 - The configuration is only accepted over mTLS-authenticated connections (except during initial bootstrap with `--insecure`)
-- Sensitive fields in the configuration are encrypted at rest on the node
+- Sensitive node data such as secrets and certificates lives on the STATE partition, which can be encrypted with Talos system disk encryption
 - The full configuration cannot be read back without proper authentication
 
 ```bash
@@ -175,16 +180,16 @@ Talos runs only the minimum required processes:
 1. The Talos init process (machined)
 2. containerd for container runtime
 3. kubelet for Kubernetes node management
-4. etcd (on control plane nodes only)
+4. etcd and Kubernetes control-plane components (on control plane nodes only)
 
-There are no other system services, cron jobs, or user processes.
+There are no general-purpose system services, cron jobs, or user login sessions.
 
 ### Container Runtime Security
 
 Talos configures containerd with security defaults:
 
 - Containers run with limited capabilities
-- No privileged containers by default (enforced through admission policies)
+- Privileged containers can be controlled with Kubernetes admission policies such as Pod Security Admission
 - Container images are pulled over HTTPS with optional signature verification
 
 ## Auditing and Observability
