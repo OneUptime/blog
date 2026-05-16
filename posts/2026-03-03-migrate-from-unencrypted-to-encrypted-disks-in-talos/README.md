@@ -204,19 +204,22 @@ For a 3-node control plane:
 # Step 1: Check etcd health
 talosctl etcd status --nodes 192.168.1.10
 
-# Step 2: Remove the etcd member for the node being migrated
-talosctl etcd remove-member --nodes 192.168.1.10 192.168.1.12
+# Step 2: List etcd members to find the member ID for the node being migrated
+talosctl etcd members --nodes 192.168.1.10
 
-# Step 3: Reset the node
+# Step 3: Remove the etcd member by its member ID (hex value from the previous output)
+talosctl etcd remove-member --nodes 192.168.1.10 <member-id>
+
+# Step 4: Reset the node
 talosctl reset --nodes 192.168.1.12 --graceful --reboot
 
-# Step 4: Apply encrypted config
+# Step 5: Apply encrypted config
 talosctl apply-config --nodes 192.168.1.12 --file controlplane-encrypted.yaml --insecure
 
-# Step 5: Wait for the node to join and etcd to sync
+# Step 6: Wait for the node to join and etcd to sync
 talosctl etcd status --nodes 192.168.1.10
 
-# Step 6: Verify etcd health before moving to the next node
+# Step 7: Verify etcd health before moving to the next node
 talosctl etcd status --nodes 192.168.1.10,192.168.1.11,192.168.1.12
 ```
 
