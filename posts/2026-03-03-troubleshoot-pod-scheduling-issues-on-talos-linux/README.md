@@ -50,7 +50,7 @@ kubectl describe nodes | grep -A 10 "Allocated resources"
 kubectl top nodes
 ```
 
-On Talos Linux, the system itself consumes some resources. The kubelet also reserves resources for system daemons. Check the actual allocatable capacity:
+On Talos Linux, the system itself consumes some resources. The kubelet can also reserve resources for system daemons, and the scheduler uses the node's allocatable capacity when placing pods. Check the actual allocatable capacity:
 
 ```bash
 # Check allocatable resources
@@ -137,7 +137,7 @@ kubectl label node <node-name> <label-key>=<label-value>
 
 ## Step 5: PersistentVolume Constraints
 
-Pods that request PersistentVolumeClaims (PVCs) can only be scheduled on nodes where the volume is available. This is especially relevant for local storage:
+Pods that request PersistentVolumeClaims (PVCs) can be constrained by volume topology or PersistentVolume node affinity. This is especially relevant for local storage:
 
 ```bash
 # Check PVC status
@@ -147,7 +147,7 @@ kubectl get pvc -n <namespace>
 kubectl describe pvc <pvc-name> -n <namespace>
 ```
 
-If you are using a storage class that provisions local volumes, the pod may be stuck waiting for a volume to be created on a specific node:
+If you are using local storage or a provisioner that creates node-local volumes, the pod may be waiting for a volume that can only be used from specific nodes:
 
 ```bash
 # Check storage classes
@@ -159,7 +159,7 @@ kubectl get pv
 
 ## Step 6: Pod Disruption Budgets
 
-PodDisruptionBudgets (PDBs) can prevent pods from being scheduled during disruptions:
+PodDisruptionBudgets (PDBs) do not normally block initial pod scheduling, but they can prevent voluntary evictions during node drains or maintenance:
 
 ```bash
 # Check PDBs
@@ -169,7 +169,7 @@ kubectl get pdb -A
 kubectl describe pdb <pdb-name> -n <namespace>
 ```
 
-If a PDB is configured too restrictively, it can prevent rescheduling after a node failure.
+If a PDB is configured too restrictively, it can prevent a drain from evicting pods and make recovery workflows look stuck. Node failures are involuntary disruptions, so a PDB cannot prevent the failure itself.
 
 ## Step 7: Resource Quotas
 
@@ -200,7 +200,7 @@ talosctl -n <node-ip> service kubelet
 talosctl -n <node-ip> logs kubelet --tail 50
 ```
 
-**System pod priority:** Talos system pods (like CoreDNS, kube-proxy) run with higher priority. If resources are tight, your workload pods will be preempted in favor of system pods:
+**System pod priority:** Kubernetes system components and critical add-ons may use higher priority classes such as `system-cluster-critical` or `system-node-critical`. If resources are tight, lower-priority workload pods can be preempted to make room for higher-priority pods:
 
 ```bash
 # Check pod priority classes
