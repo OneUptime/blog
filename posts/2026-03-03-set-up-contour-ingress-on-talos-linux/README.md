@@ -8,7 +8,7 @@ Description: Deploy Contour ingress controller with Envoy proxy on Talos Linux f
 
 ---
 
-Contour is an ingress controller for Kubernetes that uses Envoy as its data plane. It was originally created at VMware (now Broadcom) and has since become a CNCF incubating project. What makes Contour interesting is that it combines the simplicity of Kubernetes-native configuration with the power and performance of the Envoy proxy. On Talos Linux, Contour runs cleanly because the OS provides exactly what Kubernetes needs and nothing more.
+Contour is an ingress controller for Kubernetes that uses Envoy as its data plane. It was originally created at Heptio (which was acquired by VMware in 2018, and VMware was later acquired by Broadcom) and has since become a CNCF incubating project. What makes Contour interesting is that it combines the simplicity of Kubernetes-native configuration with the power and performance of the Envoy proxy. On Talos Linux, Contour runs cleanly because the OS provides exactly what Kubernetes needs and nothing more.
 
 This guide takes you through deploying Contour on a Talos Linux cluster, configuring routes with its HTTPProxy custom resource, and handling some common scenarios you will encounter in production.
 
