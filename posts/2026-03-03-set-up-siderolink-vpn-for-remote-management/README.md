@@ -18,7 +18,7 @@ SideroLink establishes a WireGuard tunnel from each Talos node to a central endp
 
 1. **Node-initiated connections** - The node connects outbound to the management endpoint, so no inbound firewall rules are needed on the node
 2. **WireGuard-based encryption** - All traffic is encrypted using WireGuard, which provides modern, high-performance cryptography
-3. **IPv6 overlay** - SideroLink uses an IPv6 overlay network (fdae::/32) for management traffic, keeping it separate from your regular network
+3. **IPv6 overlay** - SideroLink uses ULA IPv6 overlay addresses for management traffic, keeping it separate from your regular network
 4. **Automatic key management** - Cryptographic keys are generated and exchanged automatically during the connection process
 
 The architecture looks like this:
@@ -46,7 +46,7 @@ The easiest way to use SideroLink is through Sidero Omni SaaS. When you boot a T
 ```bash
 # Generate an Omni-enabled image
 
-omnictl download --output talos-omni.iso
+omnictl download iso --output talos-omni.iso
 
 # The image includes kernel arguments for SideroLink:
 # siderolink.api=grpc://omni-endpoint:8099?jointoken=TOKEN
@@ -58,35 +58,35 @@ These kernel arguments tell the node where to establish the SideroLink tunnel. T
 
 ## Setting Up SideroLink with Self-Hosted Omni
 
-For self-hosted Omni deployments, you need to configure the SideroLink server endpoint:
+For self-hosted Omni deployments, you need to configure the Machine API endpoint and the WireGuard endpoint:
 
 ```yaml
 # omni-config.yaml
-apiVersion: v1
-kind: OmniConfig
-metadata:
-  name: default
-spec:
+services:
+  machineAPI:
+    # Public SideroLink API URL where nodes register
+    endpoint: 0.0.0.0:8090
+    advertisedURL: https://api.example.com:8090
+
   siderolink:
-    # Public endpoint where nodes will connect
-    endpoint: vpn.example.com:8099
-
-    # WireGuard listen port
-    wireguardPort: 8099
-
-    # IPv6 network prefix for SideroLink
-    prefix: fdae:41e4:649b:9303::/64
+    wireGuard:
+      # WireGuard listen endpoint and public endpoint advertised to nodes
+      endpoint: 0.0.0.0:50180
+      advertisedEndpoint: 203.0.113.10:50180
 ```
 
-Ensure your Omni server has the SideroLink port accessible:
+Ensure your Omni server has both the SideroLink API and WireGuard endpoints accessible:
 
 ```bash
-# Verify the SideroLink endpoint is reachable
+# Verify the SideroLink API endpoint is reachable
 # From a machine that can reach the endpoint
-nc -zuv vpn.example.com 8099
+nc -zv api.example.com 8090
 
-# Check if the endpoint is listening
-ss -ulnp | grep 8099
+# Verify the WireGuard endpoint is reachable
+nc -zuv 203.0.113.10 50180
+
+# Check if the WireGuard endpoint is listening
+ss -ulnp | grep 50180
 ```
 
 ## Configuring Talos Nodes for SideroLink
@@ -99,7 +99,7 @@ machine:
   install:
     extraKernelArgs:
       # SideroLink API endpoint
-      - siderolink.api=grpc://vpn.example.com:8099?jointoken=your-join-token-here
+      - siderolink.api=https://api.example.com:8090/?jointoken=your-join-token-here
 
       # Event sink (sends Talos events to Omni)
       - talos.events.sink=[fdae:41e4:649b:9303::1]:8090
@@ -128,9 +128,14 @@ SideroLink requires minimal firewall rules because connections are initiated fro
 
 ```text
 # Required outbound rules
+Protocol: TCP
+Port: 443 for Omni SaaS, or your configured Machine API port for self-hosted Omni
+Destination: Your Omni Machine API endpoint
+Direction: Outbound
+
 Protocol: UDP
-Port: 8099 (or your configured WireGuard port)
-Destination: Your Omni endpoint
+Port: Your configured WireGuard port (50180 by default for self-hosted Omni)
+Destination: Your Omni WireGuard endpoint
 Direction: Outbound
 ```
 
@@ -140,8 +145,13 @@ No inbound rules are needed on the Talos nodes. This is one of SideroLink's bigg
 
 ```text
 # Required inbound rules
+Protocol: TCP
+Port: 443 for Omni SaaS-style HTTPS, or your configured Machine API port for self-hosted Omni
+Source: Any (or restrict to known node IP ranges)
+Direction: Inbound
+
 Protocol: UDP
-Port: 8099
+Port: Your configured WireGuard port (50180 by default for self-hosted Omni)
 Source: Any (or restrict to known node IP ranges)
 Direction: Inbound
 
@@ -178,13 +188,14 @@ talosctl get links --nodes 10.0.0.1
 Once SideroLink is established, you can manage nodes remotely through Omni:
 
 ```bash
-# Use omnictl to interact with remote nodes
-omnictl talosctl --nodes machine-uuid -- version
-omnictl talosctl --nodes machine-uuid -- services
-omnictl talosctl --nodes machine-uuid -- logs kubelet
+# Use omnictl to download an Omni-managed talosconfig
+omnictl talosconfig --cluster my-cluster
+talosctl --nodes machine-uuid version
+talosctl --nodes machine-uuid services
+talosctl --nodes machine-uuid logs kubelet
 
 # Get kubeconfig for a remote cluster
-omnictl kubeconfig --cluster my-cluster > kubeconfig.yaml
+omnictl kubeconfig kubeconfig.yaml --cluster my-cluster --merge=false
 
 # Then use kubectl normally
 kubectl --kubeconfig kubeconfig.yaml get nodes
@@ -198,7 +209,7 @@ You can also use the Omni web interface to:
 
 ## SideroLink Network Architecture
 
-SideroLink creates a flat IPv6 network where every node is directly reachable from the Omni endpoint:
+SideroLink creates a point-to-point IPv6 overlay where every node is reachable from the Omni endpoint:
 
 ```text
 SideroLink Network: fdae:41e4:649b:9303::/64
@@ -210,6 +221,7 @@ Node 3:            fdae:41e4:649b:9303::e5f6
 ```
 
 This overlay network is separate from your production network. Management traffic (API calls, logs, events) flows over SideroLink, while production traffic (pod-to-pod, service traffic) uses your regular network.
+Direct node-to-node communication over SideroLink is not supported.
 
 ## Handling Network Address Translation
 
@@ -226,10 +238,8 @@ This means you can manage nodes in environments where:
 - The node is on a private network with no public IP
 
 ```yaml
-# WireGuard keepalive is configured automatically
-# If you have an aggressive NAT that drops idle connections quickly,
-# you may need to adjust the keepalive interval
-# This is handled internally by the SideroLink implementation
+# WireGuard keepalive is configured and handled internally by SideroLink
+# Some NAT configurations may still be incompatible with WireGuard
 ```
 
 ## Multi-Site SideroLink Setup
