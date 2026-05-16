@@ -24,11 +24,12 @@ for node in <cp1-ip> <cp2-ip> <cp3-ip>; do
   talosctl -n $node get addresses 2>/dev/null | grep "<vip-address>" || echo "no VIP"
 done
 
-# 2. Check etcd health
-talosctl -n <cp1-ip> get etcdmembers
+# 2. Check etcd membership and health
+talosctl -n <cp1-ip> etcd members
+talosctl -n <cp1-ip> etcd status
 
 # 3. Check the machine config has VIP configured
-talosctl -n <cp1-ip> get machineconfig -o yaml | grep -A 3 "vip:"
+talosctl -n <cp1-ip> get machineconfig -o yaml | grep -A 4 "Layer2VIPConfig"
 
 # 4. Check the network interface is up
 talosctl -n <cp1-ip> get links <interface-name>
@@ -47,7 +48,7 @@ The VIP election mechanism in Talos Linux depends on etcd. If etcd is not runnin
 talosctl -n <cp1-ip> service etcd
 
 # Check etcd member list
-talosctl -n <cp1-ip> get etcdmembers
+talosctl -n <cp1-ip> etcd members
 
 # Look at etcd logs for errors
 talosctl -n <cp1-ip> logs etcd --tail=50
@@ -80,35 +81,27 @@ The VIP must be explicitly configured in the machine configuration of every cont
 
 ```bash
 # Verify VIP is in the config
-talosctl -n <cp1-ip> get machineconfig -o yaml | grep -B 5 -A 5 "vip:"
+talosctl -n <cp1-ip> get machineconfig -o yaml | grep -A 4 "Layer2VIPConfig"
 ```
 
 Expected output:
 
 ```yaml
-interfaces:
-  - interface: eth0
-    addresses:
-      - 192.168.1.10/24
-    vip:
-      ip: 192.168.1.100
+apiVersion: v1alpha1
+kind: Layer2VIPConfig
+name: 192.168.1.100
+link: eth0
 ```
 
 If the VIP section is missing, add it:
 
 ```yaml
 # Add VIP to machine config
-machine:
-  network:
-    interfaces:
-      - interface: eth0
-        addresses:
-          - 192.168.1.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-        vip:
-          ip: 192.168.1.100
+---
+apiVersion: v1alpha1
+kind: Layer2VIPConfig
+name: 192.168.1.100
+link: eth0
 ```
 
 ```bash
@@ -125,7 +118,7 @@ If the VIP is configured on an interface that does not exist or has a different 
 talosctl -n <cp1-ip> get links
 
 # Compare with what is in the machine config
-talosctl -n <cp1-ip> get machineconfig -o yaml | grep "interface:"
+talosctl -n <cp1-ip> get machineconfig -o yaml | grep "link:"
 ```
 
 Interface names can vary between machines. What is `eth0` on one machine might be `enp0s3` or `eno1` on another, depending on the hardware and kernel drivers.
@@ -194,7 +187,7 @@ talosctl -n <cp1-ip> get addresses | grep 192.168.1.100
 
 # If the VIP is assigned but not reachable from other machines, check ARP
 # Capture ARP traffic
-talosctl -n <cp1-ip> pcap --interface eth0 --bpf-filter "arp" --duration 30s -o arp-debug.pcap
+talosctl -n <cp1-ip> pcap --interface eth0 --bpf-filter "$(tcpdump -dd -y EN10MB 'arp')" --duration 30s -o arp-debug.pcap
 ```
 
 Check your firewall rules (both on the Talos nodes and any network firewalls) to make sure ARP traffic is not being filtered.
@@ -253,7 +246,8 @@ If you have tried everything and the VIP still will not come up, here is a syste
 
 ```bash
 # Step 1: Verify etcd is healthy
-talosctl -n <cp1-ip> get etcdmembers
+talosctl -n <cp1-ip> etcd members
+talosctl -n <cp1-ip> etcd status
 # All members should be listed and healthy
 
 # Step 2: Re-apply the machine config
