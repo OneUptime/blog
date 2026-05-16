@@ -285,9 +285,15 @@ mc alias set site-b http://minio-site-b:9000 admin password
 mc mb site-a/talos-backups
 mc mb site-b/talos-backups
 
+# Enable versioning on both buckets (required for replication)
+mc version enable site-a/talos-backups
+mc version enable site-b/talos-backups
+
 # Enable replication from site-a to site-b
+# --remote-bucket must be a URL with credentials, or an ARN from
+# `mc admin bucket remote add`
 mc replicate add site-a/talos-backups \
-  --remote-bucket site-b/talos-backups \
+  --remote-bucket "http://admin:password@minio-site-b:9000/talos-backups" \
   --replicate "delete,delete-marker,existing-objects"
 ```
 
@@ -303,9 +309,11 @@ BUCKET="s3://talos-backups-primary/machine-configs"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
 # Export configs for all nodes
+# `talosctl get machineconfig -o yaml` returns the COSI resource wrapper;
+# extract `.spec` with yq to get the directly re-appliable config.
 for node in 10.0.1.10 10.0.1.11 10.0.1.12 10.0.2.10 10.0.2.11; do
   CONFIG_FILE="/tmp/config-${node}-${TIMESTAMP}.yaml"
-  talosctl -n $node get machineconfig -o yaml > "$CONFIG_FILE"
+  talosctl -n $node get machineconfig -o yaml | yq '.spec' > "$CONFIG_FILE"
   aws s3 cp "$CONFIG_FILE" "${BUCKET}/${node}/${TIMESTAMP}.yaml"
   rm -f "$CONFIG_FILE"
 done
