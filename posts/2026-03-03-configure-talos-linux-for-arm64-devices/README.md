@@ -19,16 +19,17 @@ ARM64 devices boot differently than x86 systems. While x86 machines use a standa
 The main Talos image variants for ARM64 are:
 
 - `metal-arm64` - Generic ARM64 image for UEFI-capable hardware
-- `metal-rpi_generic-arm64` - Raspberry Pi specific image
 - Platform-specific images for cloud providers (AWS, Azure, GCP, Oracle)
+- SBC images (Raspberry Pi, Rock, Jetson, etc.) generated through the Talos Image Factory using overlays
+
+Starting with Talos v1.7, the board-specific image variants (such as `metal-rpi_generic-arm64`) were deprecated. SBC images are now produced by the Image Factory by combining the generic `metal-arm64` image with a board-specific overlay.
 
 ```bash
-# Download the generic ARM64 metal image
-
+# Download the generic ARM64 metal image (ISO)
 curl -LO https://github.com/siderolabs/talos/releases/latest/download/metal-arm64.iso
 
-# Download the Raspberry Pi variant
-curl -LO https://github.com/siderolabs/talos/releases/latest/download/metal-rpi_generic-arm64.raw.xz
+# Or the raw disk image
+curl -LO https://github.com/siderolabs/talos/releases/latest/download/metal-arm64.raw.zst
 ```
 
 ## Choosing the Right Image
@@ -37,14 +38,14 @@ Selecting the correct image is critical on ARM64 because hardware support varies
 
 | Device | Image | Boot Method |
 |--------|-------|-------------|
-| Raspberry Pi 4/5 | rpi_generic-arm64 | EEPROM/DTB |
-| NVIDIA Jetson | Custom with Jetson extensions | UEFI |
+| Raspberry Pi 4/5 | Image Factory with `rpi_generic` overlay | EEPROM/DTB |
+| NVIDIA Jetson | Image Factory with `sbc-jetson` overlay | UEFI |
 | Ampere Altra | metal-arm64 | UEFI |
 | AWS Graviton | aws-arm64 | Cloud image |
 | Generic UEFI boards | metal-arm64 | UEFI |
-| Pine64/Rock boards | Custom with SBC overlays | U-Boot/DTB |
+| Pine64/Rock boards | Image Factory with the matching SBC overlay | U-Boot/DTB |
 
-For devices that use UEFI boot (like server-grade ARM64 hardware), the generic `metal-arm64` image works out of the box. For SBC devices, you typically need a specialized image.
+For devices that use UEFI boot (like server-grade ARM64 hardware), the generic `metal-arm64` image works out of the box. For SBC devices, you typically need an Image Factory image built with the right overlay.
 
 ## Generating ARM64 Machine Configuration
 
@@ -112,7 +113,7 @@ curl -X POST https://factory.talos.dev/schematics \
     },
     "overlay": {
       "name": "rpi_generic",
-      "image": "siderolabs/sbc-rpi"
+      "image": "siderolabs/sbc-raspberrypi"
     }
   }'
 ```
@@ -208,16 +209,18 @@ machine:
 
 ## CPU Governor and Performance
 
-ARM64 processors often support multiple performance states. By default, Talos uses the `schedutil` CPU frequency governor, which dynamically adjusts clock speeds. For Kubernetes workloads where consistent latency matters, you might want `performance` mode:
+ARM64 processors often support multiple performance states. The Linux kernel default for most modern systems is the `schedutil` CPU frequency governor, which dynamically adjusts clock speeds. For Kubernetes workloads where consistent latency matters, you might prefer the `performance` governor.
+
+Talos does not expose the CPU frequency governor directly through the machine config — the governor is controlled by the kernel cpufreq subsystem (via `/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor`) and depends on the cpufreq driver available for your hardware. You can disable energy-aware scheduling, which biases task placement toward energy efficiency on big.LITTLE systems, with a sysctl:
 
 ```yaml
 machine:
   sysctls:
-    # Force performance governor (requires cpufreq support)
+    # Disable energy-aware scheduling (does not change the cpufreq governor)
     kernel.sched_energy_aware: "0"
 ```
 
-On SBCs with limited cooling, the performance governor can cause thermal throttling. Monitor temperatures and adjust accordingly.
+On SBCs with limited cooling, running at a higher performance level can cause thermal throttling. Monitor temperatures and adjust accordingly.
 
 ## Multi-Architecture Clusters
 
