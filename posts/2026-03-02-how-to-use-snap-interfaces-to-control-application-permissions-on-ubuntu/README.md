@@ -32,8 +32,11 @@ snap connections --all | head -40
 ## Listing Available Interfaces
 
 ```bash
-# List all interfaces the system understands
+# List interfaces currently in use on the system
 snap interface
+
+# List all interfaces, including those not currently used by any snap
+snap interface --all
 
 # Output includes:
 # - Interface name
@@ -47,8 +50,9 @@ snap interface home
 # Shows the interface that grants access to home directory files
 
 # Find which snaps use a specific interface
-snap connections --interface audio-playback
-snap connections --interface network
+# (snap connections has no --interface filter; pipe through grep)
+snap connections --all | grep " audio-playback "
+snap connections --all | grep " network "
 ```
 
 ## Common Interfaces and What They Control
@@ -153,9 +157,9 @@ When you install a snap, some interfaces connect automatically. These are interf
 # See connection type in snap connections output
 snap connections firefox
 
-# 'auto' in Notes column = auto-connected
-# '-' in Notes column = manually connected
-# No entry in Slot column = not connected at all
+# '-' in Notes column = auto-connected (the default)
+# 'manual' in Notes column = manually connected by the user
+# '-' in Slot column = not connected at all
 ```
 
 To see the auto-connect policy for interfaces:
