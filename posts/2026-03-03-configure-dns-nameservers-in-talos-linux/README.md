@@ -29,7 +29,7 @@ machine:
 
 These nameservers are used by the Talos node itself for resolving external hostnames. They are not the same as the DNS servers used by Kubernetes pods (which use CoreDNS).
 
-The nameservers are tried in order. If the first server does not respond, Talos falls back to the second, and so on. Having at least two nameservers provides redundancy.
+Talos runs a host DNS proxy that forwards queries to the configured upstream nameservers. If one upstream fails or times out, the proxy will try the others, so listing multiple nameservers provides redundancy. Note that the order is not a strict primary-then-secondary failover — the host DNS proxy may select among healthy upstreams, so all listed servers should be ones you trust.
 
 ## Where Machine DNS Is Used
 
@@ -177,21 +177,21 @@ It is important to understand the relationship between machine DNS and Kubernete
 
 CoreDNS typically uses the host node's DNS configuration as its upstream resolver. So your machine DNS settings indirectly affect how pods resolve external names too.
 
-If you need to customize CoreDNS behavior (like adding custom stub domains), that is done through Kubernetes, not through the Talos machine config:
+If you need to customize CoreDNS behavior (like adding custom stub domains), that is done through Kubernetes, not through the Talos machine config. Stock Talos CoreDNS does not automatically import a `coredns-custom` ConfigMap, so the simplest approach is to edit the existing `coredns` ConfigMap in `kube-system` directly and add a server block to the Corefile:
 
-```yaml
-# CoreDNS ConfigMap for custom domains
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: coredns-custom
-  namespace: kube-system
-data:
-  custom.server: |
-    corp.internal:53 {
-      forward . 10.0.0.2 10.0.0.3
-    }
+```bash
+kubectl -n kube-system edit configmap coredns
 ```
+
+Then add a block alongside the existing `.:53 { ... }` server:
+
+```
+corp.internal:53 {
+    forward . 10.0.0.2 10.0.0.3
+}
+```
+
+If you want to manage CoreDNS fully yourself, you can disable the built-in deployment via `cluster.coredns.disabled: true` in the machine config and install your own.
 
 ## Multiple DNS Configurations for Different Purposes
 
@@ -241,9 +241,9 @@ talosctl get resolvers --nodes 192.168.1.10
 
 **NTP sync failures** - If time sync fails and you use NTP hostnames, DNS might not be working. Try using IP addresses for NTP servers as a workaround.
 
-**Slow DNS resolution** - If the first DNS server in the list is unreachable, queries will time out before falling back to the next server. This causes delays across the system. Remove unreachable servers from the list.
+**Slow DNS resolution** - If any DNS server in the list is unreachable, queries to that upstream will time out before another is tried, adding latency across the system. Remove unreachable servers from the list.
 
-**DNS server order matters** - Put your fastest, most reliable DNS server first. The fallback servers are only used when the primary fails, and the failover takes time.
+**Only list healthy servers** - The host DNS proxy may forward to any of the configured upstreams, so do not include unreliable servers expecting them to be tried "last." All listed nameservers should be ones you trust to respond quickly.
 
 ## Best Practices
 
