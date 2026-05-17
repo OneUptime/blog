@@ -70,13 +70,13 @@ For CPU, the unit "m" stands for millicores. 1000m equals 1 full CPU core. For m
 
 When a container hits its CPU limit on a Talos Linux node, the kernel's CFS (Completely Fair Scheduler) throttles it. The container does not get killed, but it slows down. This is important to understand because CPU throttling can cause latency spikes that are hard to debug.
 
-You can check if a container is being throttled by looking at its cgroup stats:
+You can check if a container is being throttled by looking at its cgroup stats. Talos Linux uses cgroup v2 by default (since v1.3), with the kubelet's systemd cgroup driver, so the hierarchy uses systemd slice names and pod UID dashes become underscores:
 
 ```bash
 # Find the pod's cgroup on the node (via talosctl)
-talosctl -n 192.168.1.10 read /sys/fs/cgroup/cpu/kubepods/burstable/pod<pod-uid>/cpu.stat
+talosctl -n 192.168.1.10 read /sys/fs/cgroup/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod<pod_uid_with_underscores>.slice/cpu.stat
 
-# Look for nr_throttled and throttled_time values
+# Look for nr_throttled and throttled_usec values
 # High values indicate the container is hitting its CPU limit
 ```
 
@@ -243,8 +243,8 @@ kubectl top pods -n production
 # View node-level resource usage
 kubectl top nodes
 
-# Check for OOMKilled events
-kubectl get events -n production --field-selector reason=OOMKilling
+# Check for node-level OOM events (the kubelet emits these with reason SystemOOM)
+kubectl get events -n production --field-selector reason=SystemOOM
 ```
 
 If you see pods frequently getting OOMKilled, your memory limits are too low. If you see high CPU throttling, your CPU limits might be too restrictive.
