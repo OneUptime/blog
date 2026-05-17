@@ -189,7 +189,7 @@ lxc.net.1.flags = up
 lxc.net.1.name = eth1
 ```
 
-Resource Limits in LXC Config
+## Resource Limits in LXC Config
 
 LXC uses cgroup settings directly in the config file:
 
@@ -242,15 +242,14 @@ Unprivileged containers run as a non-root user on the host, significantly improv
 echo "$USER:100000:65536" | sudo tee -a /etc/subuid
 echo "$USER:100000:65536" | sudo tee -a /etc/subgid
 
-# Create container config directory for your user
+# Allow your user to attach veth devices to lxcbr0 (up to 10)
+echo "$USER veth lxcbr0 10" | sudo tee -a /etc/lxc/lxc-usernet
+
+# Create the user-level LXC config directory
 mkdir -p ~/.config/lxc
 
-# Create an unprivileged container
-lxc-create -n mycontainer -t download -- \
-  -d ubuntu -r noble -a amd64
-
-# Config file for unprivileged container (~/.config/lxc/mycontainer/config)
-cat > ~/.config/lxc/mycontainer/config <<'EOF'
+# Create a default config that new unprivileged containers will inherit
+cat > ~/.config/lxc/default.conf <<'EOF'
 lxc.include = /etc/lxc/default.conf
 lxc.idmap = u 0 100000 65536
 lxc.idmap = g 0 100000 65536
@@ -258,6 +257,13 @@ lxc.net.0.type = veth
 lxc.net.0.link = lxcbr0
 lxc.net.0.flags = up
 EOF
+
+# Create an unprivileged container (rootfs goes to ~/.local/share/lxc/mycontainer/)
+lxc-create -n mycontainer -t download -- \
+  -d ubuntu -r noble -a amd64
+
+# The container's own config file lives at ~/.local/share/lxc/mycontainer/config
+# Edit it if you need to override the defaults.
 
 # Start the unprivileged container (no sudo!)
 lxc-start -n mycontainer
@@ -284,8 +290,9 @@ LXC supports simple container cloning:
 # Clone a container (simple copy)
 sudo lxc-copy -n mycontainer -N myclone
 
-# Clone and start the new container
-sudo lxc-copy -n mycontainer -N myclone --startcontainer
+# Clone and then start the new container
+sudo lxc-copy -n mycontainer -N myclone
+sudo lxc-start -n myclone
 
 # Snapshot (requires overlay or ZFS storage backend)
 sudo lxc-snapshot -n mycontainer
