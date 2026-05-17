@@ -243,7 +243,7 @@ terraform plan
 terraform apply
 ```
 
-The Talos provider applies the new configuration to each node, which triggers an upgrade. Nodes are upgraded one at a time, and each waits for the previous to complete before proceeding.
+The Talos provider applies the new configuration to each node, which triggers an upgrade. Note that Terraform applies resources in parallel by default (up to `-parallelism=10`), so multiple nodes may be reconfigured at once. To roll out upgrades one node at a time, either run `terraform apply -parallelism=1` or add explicit `depends_on` relationships between the `talos_machine_configuration_apply` instances.
 
 ### Upgrading Kubernetes Version
 
@@ -283,11 +283,9 @@ terraform apply -var="talos_version=v1.8.0" -var="kubernetes_version=v1.31.0"
 If you lose nodes but have the Terraform state:
 
 ```bash
-# Taint the destroyed resources to force recreation
-terraform taint 'talos_machine_configuration_apply.controlplane["cp-01"]'
-
-# Apply to reconfigure the replacement node
-terraform apply
+# Mark the destroyed resources for replacement on the next apply
+# (terraform taint was deprecated in Terraform 0.15.2 in favour of -replace)
+terraform apply -replace='talos_machine_configuration_apply.controlplane["cp-01"]'
 ```
 
 ### Recreating from Scratch
