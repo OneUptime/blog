@@ -300,8 +300,9 @@ sudo apt install ddclient
 # Configure it with your DNS provider's API
 sudo nano /etc/ddclient.conf
 
-# WireGuard resolves the endpoint hostname periodically
-# You can also use wg set to update an endpoint manually
+# wg-quick only resolves the endpoint hostname when the interface is brought up.
+# If the address changes, you need to restart the interface or update the endpoint manually.
+# To update an endpoint without restarting:
 sudo wg set wg0 peer PEER_PUBLIC_KEY endpoint new.hostname.example:51820
 ```
 
