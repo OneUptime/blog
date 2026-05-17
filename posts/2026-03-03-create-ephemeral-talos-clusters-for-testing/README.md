@@ -223,7 +223,7 @@ terraform {
   required_providers {
     talos = {
       source  = "siderolabs/talos"
-      version = "~> 0.5"
+      version = "~> 0.7"
     }
   }
 }
@@ -250,7 +250,6 @@ data "talos_machine_configuration" "worker" {
 
 # Output kubeconfig
 data "talos_cluster_kubeconfig" "this" {
-  depends_on = [talos_machine_bootstrap.this]
   client_configuration = talos_machine_secrets.this.client_configuration
   node                 = "10.5.0.2"
 }
