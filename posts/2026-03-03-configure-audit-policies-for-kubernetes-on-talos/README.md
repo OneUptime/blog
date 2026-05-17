@@ -54,7 +54,7 @@ rules:
   - level: None
     verbs: ["watch"]
 
-  # Do not log kube-proxy token requests
+  # Do not log kube-proxy reads of endpoints and services
   - level: None
     users: ["system:kube-proxy"]
     verbs: ["get"]
@@ -67,7 +67,7 @@ rules:
   - level: Metadata
     resources:
       - group: ""
-        resources: ["secrets", "configmaps", "tokenreviews"]
+        resources: ["secrets", "configmaps"]
 
   # Log changes to RBAC at RequestResponse level
   - level: RequestResponse
@@ -160,7 +160,7 @@ machine:
           - level: Metadata
             omitStages: ["RequestReceived"]
       path: /var/etc/kubernetes/audit-policy.yaml
-      permissions: 0644
+      permissions: 0o644
       op: create
 ```
 
@@ -168,7 +168,7 @@ Apply the configuration:
 
 ```bash
 # Apply the audit logging configuration to control plane nodes
-talosctl apply-config --nodes 10.0.0.10,10.0.0.11,10.0.0.12 \
+talosctl patch machineconfig --nodes 10.0.0.10,10.0.0.11,10.0.0.12 \
   --patch @talos-audit-config.yaml
 ```
 
