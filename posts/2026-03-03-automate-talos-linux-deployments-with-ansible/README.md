@@ -63,7 +63,7 @@ all:
     cluster_name: "production-cluster"
     cluster_endpoint: "https://10.0.1.10:6443"
     talos_version: "v1.7.0"
-    talosconfig_path: "./talosconfig"
+    talosconfig_path: "./generated/talosconfig"
 
   children:
     controlplane:
@@ -113,7 +113,7 @@ The main deployment playbook orchestrates the full cluster setup:
           talosctl gen config {{ cluster_name }}
           {{ cluster_endpoint }}
           --with-secrets files/secrets.yaml
-          --output-dir ./generated
+          --output ./generated
       args:
         creates: ./generated/controlplane.yaml
 
