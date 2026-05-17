@@ -88,8 +88,8 @@ smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
 smtp_tls_session_cache_database = btree:${data_directory}/smtp_scache
 smtp_tls_loglevel = 1
 
-# Disable old protocols
-smtp_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
+# Disable old protocols (mandatory_protocols applies when security_level = encrypt)
+smtp_tls_mandatory_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
 ```
 
 ## SASL Authentication Setup
@@ -262,15 +262,15 @@ Mailgun can notify your application about email events via HTTP webhooks:
 
 1. Go to Sending > Webhooks in Mailgun
 2. Click "Add Webhook"
-3. Select event types: delivered, failed, bounced, complained, etc.
+3. Select event types: delivered, permanent failure, temporary failure, opens, clicks, complained, unsubscribed
 4. Enter your webhook URL
 
 Implement a simple webhook receiver:
 
 ```python
 # webhook_receiver.py - simple Flask webhook receiver
+# Modern Mailgun webhooks (HTTP webhooks v3+) POST JSON, not form data
 from flask import Flask, request
-import json
 import logging
 
 app = Flask(__name__)
@@ -278,16 +278,18 @@ logging.basicConfig(level=logging.INFO)
 
 @app.route('/mailgun-webhook', methods=['POST'])
 def mailgun_webhook():
-    data = request.form.to_dict()
-    event = data.get('event', 'unknown')
-    recipient = data.get('recipient', 'unknown')
+    payload = request.get_json(silent=True) or {}
+    event_data = payload.get('event-data', {})
+    event = event_data.get('event', 'unknown')
+    recipient = event_data.get('recipient', 'unknown')
 
     logging.info(f"Mailgun event: {event} for {recipient}")
 
     # Handle specific events
-    if event == 'bounced':
-        # Remove from your mailing list
-        logging.warning(f"Bounce for {recipient}: {data.get('description')}")
+    if event == 'failed':
+        # Permanent failure / bounce - remove from your mailing list
+        reason = event_data.get('reason') or event_data.get('delivery-status', {})
+        logging.warning(f"Delivery failed for {recipient}: {reason}")
     elif event == 'complained':
         # Mark as spam complaint, stop sending to this address
         logging.warning(f"Spam complaint from {recipient}")
