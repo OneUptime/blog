@@ -14,57 +14,73 @@ OvenMediaEngine (OME) is an open-source streaming server built for sub-second la
 
 OvenMediaEngine has specific dependencies. Before installing:
 
-- Ubuntu 20.04 or 22.04 (64-bit)
+- Ubuntu 18.04 or later (64-bit)
 - At least 4GB RAM for moderate loads
-- A public IP address or domain (required for WebRTC STUN/TURN setup)
-- Open ports: 1935 (RTMP), 3333 (WebSocket/WebRTC signaling), 10006-10010 (UDP ICE candidates), 80/443 (HTTP/HTTPS)
+- A public IP address or domain (required for WebRTC ICE/STUN setup)
+- Open ports: 1935 (RTMP), 9999/udp (SRT), 3333 (WebRTC signaling and LLHLS), 3334 (WebRTC/LLHLS over TLS), 10006-10010/udp (WebRTC ICE candidates), 3478 (TURN/TCP relay)
 
 ## Installing Dependencies
 
+If you plan to build from source, install the toolchain first. Docker users can skip this step.
+
 ```bash
 # Update the system and install required base packages
-
 sudo apt update && sudo apt upgrade -y
-sudo apt install -y build-essential cmake git pkg-config \
-    libssl-dev libboost-all-dev libavahi-compat-libdnssd-dev \
-    libevent-dev libpugixml-dev libsrtp2-dev libusrsctp-dev
+sudo apt install -y build-essential cmake git pkg-config tclsh nasm
 ```
 
-## Installing OvenMediaEngine from the Official Package
+OvenMediaEngine ships a `prerequisites.sh` script in its source tree that installs the remaining build dependencies (OpenSSL, SRT, SRTP, etc.) at the exact versions OME has been tested against.
 
-The OME project provides pre-built packages via their repository. This is the recommended approach for production use:
+## Installing OvenMediaEngine with Docker
+
+The officially supported distribution channel is the Docker image on Docker Hub. This is the recommended approach for production use:
 
 ```bash
-# Add the OME GPG key and repository
-curl -fsSL https://pkg.airensoft.com/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/ovenmediaengine.gpg
+# Pull the latest image
+docker pull airensoft/ovenmediaengine:latest
 
-echo "deb [signed-by=/usr/share/keyrings/ovenmediaengine.gpg] https://pkg.airensoft.com/debian stable main" | \
-    sudo tee /etc/apt/sources.list.d/ovenmediaengine.list
-
-# Install OvenMediaEngine
-sudo apt update
-sudo apt install -y ovenmediaengine
+# Run the container with the standard port mappings
+docker run -d --name ome \
+    -e OME_HOST_IP=YOUR_PUBLIC_IP \
+    -p 1935:1935 \
+    -p 9999:9999/udp \
+    -p 9000:9000 \
+    -p 3333:3333 \
+    -p 3334:3334 \
+    -p 3478:3478 \
+    -p 10006-10010:10006-10010/udp \
+    airensoft/ovenmediaengine:latest
 ```
 
-If the repository is unavailable, download the latest release directly from GitHub:
+Replace `YOUR_PUBLIC_IP` with your server's public IP address — OME uses this value to populate ICE candidates when the config references `${OME_HOST_IP}`.
+
+## Building from Source
+
+If you need to compile OME yourself (for custom patches or unsupported platforms), clone the repo and run the prerequisites script:
 
 ```bash
-# Download the latest release tarball
-OME_VERSION=$(curl -s https://api.github.com/repos/AirenSoft/OvenMediaEngine/releases/latest | grep tag_name | cut -d'"' -f4)
-wget "https://github.com/AirenSoft/OvenMediaEngine/releases/download/${OME_VERSION}/ovenmediaengine-${OME_VERSION}-ubuntu2004.tar.gz"
-tar -xzf ovenmediaengine-*.tar.gz
-sudo mv ovenmediaengine /opt/ovenmediaengine
+git clone https://github.com/AirenSoft/OvenMediaEngine.git
+cd OvenMediaEngine/misc
+sudo ./prerequisites.sh
+
+cd ../src
+make release -j$(nproc)
+sudo make install
 ```
+
+After `make install`, the binary lives at `/usr/share/ovenmediaengine/bin/OvenMediaEngine` and a systemd unit is installed.
 
 ## Understanding the Configuration File
 
-OME uses an XML configuration file. The default is located at:
+OME uses an XML configuration file. With the Docker image, the default origin configuration is located at:
 
 ```text
-/usr/share/ovenmediaengine/conf/Server.xml
+/opt/ovenmediaengine/bin/origin_conf/Server.xml
 ```
 
-Back it up before making changes:
+For a source install it is at `/usr/share/ovenmediaengine/conf/Server.xml`. To mount your own configuration into the container, bind a host directory over `/opt/ovenmediaengine/bin/origin_conf` when running `docker run`.
+
+Back up the default before editing (source install shown):
 
 ```bash
 sudo cp /usr/share/ovenmediaengine/conf/Server.xml \
@@ -79,9 +95,11 @@ Here is a practical `Server.xml` configuration for a public-facing streaming ser
 <?xml version="1.0" encoding="UTF-8"?>
 <Server version="8">
     <Name>MyStreamingServer</Name>
-    <!-- IP to bind on; 0.0.0.0 listens on all interfaces -->
-    <IP>0.0.0.0</IP>
+    <Type>origin</Type>
+    <!-- IP to bind on; * listens on all interfaces -->
+    <IP>*</IP>
     <PrivacyProtection>false</PrivacyProtection>
+    <StunServer>stun.ovenmediaengine.com:13478</StunServer>
 
     <!-- Addresses the server is reachable at from the public internet -->
     <Bind>
@@ -96,23 +114,22 @@ Here is a practical `Server.xml` configuration for a public-facing streaming ser
             </SRT>
         </Providers>
         <Publishers>
-            <!-- WebRTC signaling endpoint -->
+            <!-- WebRTC signaling endpoint (LLHLS shares these ports) -->
             <WebRTC>
                 <Signalling>
                     <Port>3333</Port>
+                    <TLSPort>3334</TLSPort>
                 </Signalling>
-                <!-- UDP port range for ICE candidates -->
+                <!-- UDP port range for ICE candidates; format is IP:port-range/protocol -->
                 <IceCandidates>
-                    <IceCandidate>YOUR_PUBLIC_IP/udp:10006-10010</IceCandidate>
+                    <IceCandidate>YOUR_PUBLIC_IP:10006-10010/udp</IceCandidate>
+                    <TcpRelay>YOUR_PUBLIC_IP:3478</TcpRelay>
                 </IceCandidates>
             </WebRTC>
-            <!-- HLS output for fallback players -->
-            <HLS>
-                <Port>8080</Port>
-            </HLS>
-            <!-- Low-latency HLS (LLHLS) -->
+            <!-- Low-latency HLS (LLHLS) served over HTTP/HTTPS on the same ports -->
             <LLHLS>
-                <Port>8080</Port>
+                <Port>3333</Port>
+                <TLSPort>3334</TLSPort>
             </LLHLS>
         </Publishers>
     </Bind>
@@ -137,12 +154,10 @@ Here is a practical `Server.xml` configuration for a public-facing streaming ser
                     </Providers>
                     <Publishers>
                         <WebRTC/>
-                        <HLS>
-                            <SegmentDuration>2</SegmentDuration>
-                            <PlaylistLength>10</PlaylistLength>
-                        </HLS>
                         <LLHLS>
+                            <ChunkDuration>0.5</ChunkDuration>
                             <SegmentDuration>2</SegmentDuration>
+                            <SegmentCount>10</SegmentCount>
                         </LLHLS>
                     </Publishers>
                 </Application>
@@ -156,20 +171,24 @@ Replace `YOUR_PUBLIC_IP` with your server's actual public IP address. This is cr
 
 ## Starting and Enabling the Service
 
+If you are running the Docker image, the container started with `docker run -d` is already serving traffic. Manage it with the usual Docker commands:
+
 ```bash
-# Start OvenMediaEngine
-sudo systemctl start ovenmediaengine
+# Restart the container after editing the mounted config
+docker restart ome
 
-# Enable it to start automatically on boot
-sudo systemctl enable ovenmediaengine
-
-# Check service status
-sudo systemctl status ovenmediaengine
+# Tail live logs
+docker logs -f ome
 ```
 
-View live logs:
+To make the container come up automatically on boot, add `--restart unless-stopped` to your `docker run` command.
+
+For a source install, OME ships a systemd unit:
 
 ```bash
+sudo systemctl start ovenmediaengine
+sudo systemctl enable ovenmediaengine
+sudo systemctl status ovenmediaengine
 sudo journalctl -u ovenmediaengine -f
 ```
 
@@ -182,16 +201,17 @@ sudo ufw allow 1935/tcp
 # Allow SRT ingest
 sudo ufw allow 9999/udp
 
-# Allow WebRTC signaling
+# Allow WebRTC signaling and LLHLS (HTTP)
 sudo ufw allow 3333/tcp
+
+# Allow WebRTC signaling and LLHLS over TLS (HTTPS)
+sudo ufw allow 3334/tcp
+
+# Allow WebRTC TURN/TCP relay fallback
+sudo ufw allow 3478/tcp
 
 # Allow WebRTC ICE UDP candidates
 sudo ufw allow 10006:10010/udp
-
-# Allow HTTP and HTTPS for HLS delivery
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw allow 8080/tcp
 
 sudo ufw reload
 ```
@@ -238,10 +258,10 @@ OvenMediaEngine provides OvenPlayer, its reference web player that uses WebRTC f
 </html>
 ```
 
-The HLS fallback URL is:
+The LLHLS fallback URL is:
 
 ```text
-http://YOUR_SERVER_IP:8080/app/test/playlist.m3u8
+http://YOUR_SERVER_IP:3333/app/test/llhls.m3u8
 ```
 
 ## Setting Up Transcoding Profiles
