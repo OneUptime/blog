@@ -206,12 +206,12 @@ OpenEBS is a popular Kubernetes storage solution that has native ZFS support thr
 ### Installing OpenEBS ZFS LocalPV
 
 ```bash
-# Add the OpenEBS Helm repository
-helm repo add openebs https://openebs.github.io/charts
+# Add the OpenEBS ZFS LocalPV Helm repository
+helm repo add openebs-zfslocalpv https://openebs.github.io/zfs-localpv
 helm repo update
 
 # Install the ZFS LocalPV provisioner
-helm install openebs-zfs openebs/zfs-localpv \
+helm install openebs-zfs openebs-zfslocalpv/zfs-localpv \
   --namespace openebs \
   --create-namespace
 ```
@@ -345,15 +345,18 @@ zfs set recordsize=128K tank/general
 # Adjust ARC size (through kernel parameters in Talos config)
 ```
 
-In your Talos machine config, you can set ZFS kernel parameters.
+In your Talos machine config, you can pass ZFS module parameters at load time through `machine.kernel.modules`. ZFS ARC sizing is a module parameter (exposed under `/sys/module/zfs/parameters/`), not a sysctl, so it must be set this way rather than via `machine.sysctls`.
 
 ```yaml
 machine:
-  sysctls:
-    # Set ARC max size to 4GB
-    module.zfs.zfs_arc_max: "4294967296"
-    # Set ARC min size to 1GB
-    module.zfs.zfs_arc_min: "1073741824"
+  kernel:
+    modules:
+      - name: zfs
+        parameters:
+          # Set ARC max size to 4GB
+          - zfs_arc_max=4294967296
+          # Set ARC min size to 1GB
+          - zfs_arc_min=1073741824
 ```
 
 ## Conclusion
