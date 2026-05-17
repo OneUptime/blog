@@ -34,7 +34,7 @@ customization:
       - siderolabs/iscsi-tools
       - siderolabs/util-linux-tools
       - siderolabs/intel-ucode
-      - siderolabs/i915-ucode
+      - siderolabs/i915
 ```
 
 ### Step 2: Get the Schematic ID
@@ -194,9 +194,8 @@ After a node has been provisioned or upgraded with a custom installer, verify th
 # List installed extensions
 talosctl get extensions --nodes 10.0.0.50
 
-# Check the installed image version
-talosctl get machinestatus --nodes 10.0.0.50 -o yaml | \
-  yq '.spec.status.installedVersion'
+# Check the installed Talos version
+talosctl version --nodes 10.0.0.50
 
 # Verify specific extension functionality
 # For example, check that iSCSI tools are available
