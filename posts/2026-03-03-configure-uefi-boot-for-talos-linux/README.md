@@ -122,11 +122,11 @@ The installer creates the following disk layout:
 
 ```text
 /dev/nvme0n1:
-  ├── p1: EFI System Partition (260MB, FAT32)
-  ├── p2: BIOS Boot Partition (1MB, for legacy compatibility)
-  ├── p3: BOOT partition (1GB)
-  ├── p4: META partition (variable)
-  ├── p5: STATE partition (variable, encrypted)
+  ├── p1: EFI System Partition (~100MB, FAT32)
+  ├── p2: BIOS Boot Partition (~1MB, for hybrid BIOS compatibility)
+  ├── p3: BOOT partition (~1GB)
+  ├── p4: META partition (~1MB)
+  ├── p5: STATE partition (~100MB, encryption optional)
   └── p6: EPHEMERAL partition (remaining space)
 ```
 
@@ -164,14 +164,9 @@ Platform Key (PK)
 
 ### Enrolling Talos Linux Keys
 
-Talos Linux provides its signing certificates. To enable Secure Boot:
+Talos Linux does not ship a pre-built signing certificate on the GitHub releases page. To enable Secure Boot, you either generate your own signing keys (see "Using Custom Secure Boot Keys" below) or use the Image Factory (factory.talos.dev), which produces SecureBoot-enabled assets and provides the corresponding certificate for enrollment.
 
-```bash
-# Download the Talos signing certificate
-wget https://github.com/siderolabs/talos/releases/download/v1.9.0/talos-uki-signing-cert.der
-```
-
-Enroll the certificate in your UEFI firmware:
+Once you have the signing certificate (`.der` or `.pem`), enroll it in your UEFI firmware:
 
 1. Enter UEFI setup
 2. Navigate to Secure Boot configuration
@@ -184,10 +179,10 @@ Some firmware requires certificates in DER format, others in PEM. Convert if nee
 
 ```bash
 # Convert PEM to DER
-openssl x509 -in talos-uki-signing-cert.pem -outform DER -out talos-uki-signing-cert.der
+openssl x509 -in uki-signing-cert.pem -outform DER -out uki-signing-cert.der
 
 # Convert DER to PEM
-openssl x509 -in talos-uki-signing-cert.der -inform DER -out talos-uki-signing-cert.pem
+openssl x509 -in uki-signing-cert.der -inform DER -out uki-signing-cert.pem
 ```
 
 ### Using Custom Secure Boot Keys
@@ -214,18 +209,29 @@ openssl req -new -x509 -newkey rsa:2048 \
 # Then enroll PK, KEK, and db in the firmware
 ```
 
-Build Talos images signed with your keys:
+Build Talos images signed with your keys. The imager reads signing configuration from a profile file rather than CLI flags:
+
+```yaml
+# profile.yaml
+arch: amd64
+platform: metal
+secureboot: true
+output:
+  kind: image
+  outFormat: raw
+secureBootSigner:
+  keyPath: /secureboot/uki-signing-key.pem
+  certPath: /secureboot/uki-signing-cert.pem
+pcrSigner:
+  keyPath: /secureboot/pcr-signing-key.pem
+```
 
 ```bash
 # Build a Talos image with custom signing
-docker run --rm \
+docker run --rm -i \
   -v $(pwd)/_out:/out \
-  -v $(pwd)/db.key:/keys/db.key \
-  -v $(pwd)/db.crt:/keys/db.crt \
-  ghcr.io/siderolabs/imager:v1.9.0 metal \
-  --arch amd64 \
-  --uki-signing-key-path /keys/db.key \
-  --uki-signing-cert-path /keys/db.crt
+  -v $(pwd)/secureboot:/secureboot \
+  ghcr.io/siderolabs/imager:v1.9.0 - < profile.yaml
 ```
 
 ## Managing UEFI Boot Entries
@@ -340,7 +346,7 @@ pesign -S -i talos-A.efi
 # 2. The partition type GUID may be wrong (should be EFI System Partition)
 
 # Boot from USB and check the partition table
-talosctl disks --insecure --nodes <NODE_IP>
+talosctl get disks --insecure --nodes <NODE_IP>
 ```
 
 ### Slow UEFI Boot
