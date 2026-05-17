@@ -142,7 +142,7 @@ sudo nano /etc/apache2/conf-available/deflate.conf
     # Don't compress already-compressed files
     SetEnvIfNoCase Request_URI \.(?:gif|jpe?g|png|webp|mp4|mp3|ogg|gz|bz2|zip|rar)$ no-gzip
 
-    # Minimum compression level for best balance of CPU vs size
+    # Compression level (1-9) - 6 is a good balance of CPU vs size
     DeflateCompressionLevel 6
 </IfModule>
 ```
@@ -208,7 +208,7 @@ sudo systemctl reload apache2
 
 ## Server-Side Caching with mod_cache
 
-For cached content served entirely from memory:
+For cached content served from a persistent on-disk store:
 
 ```bash
 sudo a2enmod cache cache_disk
@@ -219,13 +219,14 @@ sudo nano /etc/apache2/conf-available/mod-cache.conf
 
 ```apache
 <IfModule mod_cache.c>
-    # Cache timeout in seconds (1 hour)
+    # Default expiry when none is provided (1 hour, in seconds)
     CacheDefaultExpire 3600
 
-    # Maximum size of an object to cache (1MB)
+    # Maximum time entries are kept without revalidation (1 day, in seconds)
     CacheMaxExpire 86400
 
-    # Don't cache if Last-Modified is newer than this
+    # Factor for computing an expiry from Last-Modified when no explicit
+    # expiration is set: expiry = now + (now - Last-Modified) * factor
     CacheLastModifiedFactor 0.5
 
     # Disk cache configuration
@@ -272,7 +273,7 @@ sudo systemctl reload apache2
 
 ## Reducing DNS Lookups
 
-By default, Apache logs client hostnames by doing reverse DNS lookups. This adds latency:
+`HostnameLookups` is `Off` by default in modern Apache, but it's worth setting explicitly so a later config change can't silently re-enable reverse DNS lookups (which add latency to every request):
 
 ```bash
 sudo nano /etc/apache2/apache2.conf
