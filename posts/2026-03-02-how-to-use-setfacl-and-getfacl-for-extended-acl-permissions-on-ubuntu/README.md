@@ -248,8 +248,8 @@ ls -la /srv/webapp
 To find all files with ACLs in a directory:
 
 ```bash
-# Find files that have extended ACLs
-sudo find /srv -xdev -exec getfacl {} \; 2>/dev/null | grep -B5 "^user:.*:"
+# Find files that have extended ACLs (skip files with only base entries)
+sudo getfacl -R --skip-base /srv 2>/dev/null
 ```
 
 ACLs are indispensable when the standard Unix permission model's three-level hierarchy isn't granular enough for your access requirements. The combination of `setfacl` and `getfacl` gives you precise, auditable control over who can access what without resorting to adding users to groups they don't belong in.
