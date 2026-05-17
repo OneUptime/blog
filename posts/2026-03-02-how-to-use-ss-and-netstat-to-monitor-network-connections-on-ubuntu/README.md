@@ -26,16 +26,15 @@ sudo apt install net-tools
 
 ## The ss Command
 
-`ss` (socket statistics) reads directly from the kernel's socket structures, making it faster and more accurate than `netstat`, which parsed `/proc/net/tcp` files.
+`ss` (socket statistics) reads directly from the kernel's socket structures via netlink, making it faster and more accurate than `netstat`, which parses files under `/proc/net/`.
 
 ### Basic Usage
 
 ```bash
-# Show all connections
-
+# Show non-listening (established) sockets by default
 ss
 
-# Show all listening and established connections
+# Show all listening and non-listening sockets
 ss -a
 
 # Show only listening sockets
