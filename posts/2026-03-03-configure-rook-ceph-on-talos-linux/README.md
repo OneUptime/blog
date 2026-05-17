@@ -37,13 +37,6 @@ machine:
     # Network tuning for Ceph
     net.core.rmem_max: "8388608"
     net.core.wmem_max: "8388608"
-  files:
-    # Increase open file limits for Ceph OSD processes
-    - content: |
-        [Service]
-        LimitNOFILE=1048576
-      permissions: 0o644
-      path: /var/cri/conf.d/rook-limits.conf
 ```
 
 Apply the configuration to your nodes:
@@ -61,7 +54,7 @@ talosctl apply-config --nodes 192.168.1.13 --file worker-ceph.yaml
 After applying the config, verify the kernel modules are loaded:
 
 ```bash
-talosctl get kernelmodules --nodes 192.168.1.11
+talosctl read /proc/modules --nodes 192.168.1.11
 ```
 
 ### Verify Available Disks
@@ -69,9 +62,9 @@ talosctl get kernelmodules --nodes 192.168.1.11
 Check that each node has available disks for Ceph:
 
 ```bash
-talosctl disks --nodes 192.168.1.11
-talosctl disks --nodes 192.168.1.12
-talosctl disks --nodes 192.168.1.13
+talosctl get disks --nodes 192.168.1.11
+talosctl get disks --nodes 192.168.1.12
+talosctl get disks --nodes 192.168.1.13
 ```
 
 Disks intended for Ceph should not be partitioned or configured in the Talos machine config. Leave them raw.
@@ -99,22 +92,26 @@ Create the values file with Talos-optimized settings:
 csi:
   enableRbdDriver: true
   enableCephfsDriver: true
-  # Plugin resource limits
-  csiRBDPluginResource:
-    requests:
-      cpu: "100m"
-      memory: "128Mi"
-    limits:
-      cpu: "500m"
-      memory: "512Mi"
-  csiCephFSPluginResource:
-    requests:
-      cpu: "100m"
-      memory: "128Mi"
-    limits:
-      cpu: "500m"
-      memory: "512Mi"
-  # Enable volume expansion
+  # Plugin resource limits (YAML-encoded list of containers per Rook chart spec)
+  csiRBDPluginResource: |
+    - name: csi-rbdplugin
+      resource:
+        requests:
+          cpu: "100m"
+          memory: "128Mi"
+        limits:
+          cpu: "500m"
+          memory: "512Mi"
+  csiCephFSPluginResource: |
+    - name: csi-cephfsplugin
+      resource:
+        requests:
+          cpu: "100m"
+          memory: "128Mi"
+        limits:
+          cpu: "500m"
+          memory: "512Mi"
+  # Run CSI plugin pods on the host network
   enableCSIHostNetwork: true
   # Kubelet directory for Talos
   kubeletDirPath: /var/lib/kubelet
@@ -145,7 +142,7 @@ metadata:
   namespace: rook-ceph
 spec:
   cephVersion:
-    image: quay.io/ceph/ceph:v18.2
+    image: quay.io/ceph/ceph:v18.2.4
     allowUnsupported: false
 
   dataDirHostPath: /var/lib/rook
@@ -199,9 +196,8 @@ spec:
           - name: "sdb"
     config:
       osdsPerDevice: "1"
-      # Bluestore tuning
+      # BlueStore tuning
       databaseSizeMB: "1024"
-      journalSizeMB: "1024"
 
   # Resource limits for Ceph daemons
   resources:
