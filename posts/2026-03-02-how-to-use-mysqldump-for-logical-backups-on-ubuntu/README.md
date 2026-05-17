@@ -153,8 +153,8 @@ ls -lh /backup/*.sql.gz
 ## Restoring from a mysqldump Backup
 
 ```bash
-# Restore to an existing database
-mysql --defaults-file=/etc/mysql/backup.cnf myapp_db < /backup/myapp_db.sql
+# Restore to an existing database (use an account with write privileges, not the backup user)
+mysql -u root -p myapp_db < /backup/myapp_db.sql
 
 # Restore compressed backup directly
 zcat /backup/myapp_db.sql.gz | mysql -u root -p myapp_db
