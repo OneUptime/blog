@@ -30,10 +30,17 @@ Download the Windows installer from virtualbox.org and run it. Install the Exten
 
 ```bash
 # Install via Homebrew
-
 brew install --cask virtualbox
-brew install --cask virtualbox-extension-pack
 ```
+
+The Extension Pack is not available as a Homebrew cask. Download it manually from virtualbox.org and install it:
+
+```bash
+# Install the Extension Pack (replace version to match your VirtualBox install)
+VBoxManage extpack install Oracle_VirtualBox_Extension_Pack-7.2.0.vbox-extpack
+```
+
+Or double-click the downloaded `.vbox-extpack` file to install it through the VirtualBox GUI.
 
 ### On Ubuntu Host
 
@@ -42,7 +49,7 @@ brew install --cask virtualbox-extension-pack
 wget -O- https://www.virtualbox.org/download/oracle_vbox_2016.asc | sudo gpg --dearmor --yes --output /usr/share/keyrings/oracle-virtualbox-2016.gpg
 echo "deb [arch=amd64 signed-by=/usr/share/keyrings/oracle-virtualbox-2016.gpg] https://download.virtualbox.org/virtualbox/debian $(lsb_release -cs) contrib" | sudo tee /etc/apt/sources.list.d/virtualbox.list
 sudo apt update
-sudo apt install virtualbox-7.0
+sudo apt install virtualbox-7.2
 ```
 
 ## Creating the Virtual Machine
