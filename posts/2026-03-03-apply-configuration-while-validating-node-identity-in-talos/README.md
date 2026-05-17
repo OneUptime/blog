@@ -46,7 +46,7 @@ Record this UUID in your inventory or configuration management system. When you 
 # safe-apply.sh
 # Apply config only if the machine UUID matches
 
-EXPECTED_UUID="abc12345-def6-7890-ghij-klmnopqrstuv"
+EXPECTED_UUID="abc12345-def6-7890-abcd-ef0123456789"
 NODE_IP="10.0.1.10"
 CONFIG_FILE="controlplane.yaml"
 
@@ -108,19 +108,19 @@ For larger deployments, maintain a registry that maps machine identifiers to the
 nodes:
   - name: cp-1
     role: controlplane
-    uuid: "abc12345-def6-7890-ghij-klmnopqrstuv"
+    uuid: "abc12345-def6-7890-abcd-ef0123456789"
     mac: "aa:bb:cc:dd:ee:01"
     ip: "10.0.1.10"
 
   - name: cp-2
     role: controlplane
-    uuid: "bcd23456-efg7-8901-hijk-lmnopqrstuvw"
+    uuid: "bcd23456-ef78-8901-bcde-f01234567890"
     mac: "aa:bb:cc:dd:ee:02"
     ip: "10.0.1.11"
 
   - name: worker-1
     role: worker
-    uuid: "cde34567-fgh8-9012-ijkl-mnopqrstuvwx"
+    uuid: "cde34567-f089-9012-cdef-012345678901"
     mac: "aa:bb:cc:dd:ee:03"
     ip: "10.0.1.21"
 ```
