@@ -164,7 +164,7 @@ Talos Linux configures Flannel automatically based on the pod subnet. No additio
 # cilium-custom-cidr.yaml
 # Cilium values matching custom pod subnet
 ipam:
-  mode: kubernetes
+  mode: cluster-pool
   operator:
     clusterPoolIPv4PodCIDRList:
       - 172.16.0.0/16
