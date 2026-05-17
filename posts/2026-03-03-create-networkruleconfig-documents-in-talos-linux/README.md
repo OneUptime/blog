@@ -24,12 +24,12 @@ A NetworkRuleConfig document is a standalone configuration document that can be 
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
 name: allow-kubernetes-api
-spec:
-  ingress:
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 6443  # Kubernetes API server port
+portSelector:
+  ports:
+    - 6443           # Kubernetes API server port
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
 ```
 
 ## Document Structure
@@ -40,15 +40,16 @@ NetworkRuleConfig documents have a specific structure:
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
 name: <rule-name>          # Unique name for this rule set
-spec:
-  ingress:                  # List of ingress (incoming) rules
-    - subnet: <CIDR>        # Source subnet
-      protocol: <tcp|udp>   # Protocol
-      ports:                # List of allowed ports
-        - <port-number>
+portSelector:              # Host ports/protocols this rule covers
+  ports:                   # List of port numbers or ranges (e.g. 30000-32767)
+    - <port-or-range>
+  protocol: <tcp|udp|icmp|icmpv6>
+ingress:                   # Source subnets allowed to reach the portSelector
+  - subnet: <CIDR>         # Allowed source subnet
+    # except: <CIDR>       # Optional: subnet to exclude from `subnet`
 ```
 
-The `name` field uniquely identifies the rule set. You can have multiple NetworkRuleConfig documents, each with a different name. The `ingress` section defines which incoming traffic is allowed.
+The `name` field uniquely identifies the rule set. You can have multiple NetworkRuleConfig documents, each with a different name. The `portSelector` specifies which host ports and protocol the rule covers, and the `ingress` list defines the source subnets allowed to reach them. Each NetworkRuleConfig document has a single `portSelector`, so different port/protocol combinations require separate documents.
 
 ## Creating Your First NetworkRuleConfig
 
@@ -59,49 +60,60 @@ Let us start with a simple rule that allows SSH-like access from your management
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
 name: allow-talos-api
-spec:
-  ingress:
-    - subnet: 10.10.0.0/24   # Management network
-      protocol: tcp
-      ports:
-        - 50000              # Talos API port
+portSelector:
+  ports:
+    - 50000              # Talos API port
+  protocol: tcp
+ingress:
+  - subnet: 10.10.0.0/24   # Management network
 ```
 
 ## Allowing Kubernetes Traffic
 
-For a functional Kubernetes cluster, certain ports must be accessible. Here is a NetworkRuleConfig for control plane nodes:
+For a functional Kubernetes cluster, certain ports must be accessible. Since each NetworkRuleConfig covers a single `portSelector`, the rules for a control plane node are expressed as several documents in a single multi-document YAML:
 
 ```yaml
 # Allow Kubernetes control plane traffic
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
-name: allow-control-plane
-spec:
-  ingress:
-    # Kubernetes API server
-    - subnet: 0.0.0.0/0
-      protocol: tcp
-      ports:
-        - 6443
-
-    # etcd peer communication (from other control plane nodes)
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 2379
-        - 2380
-
-    # Talos API
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 50000
-
-    # Kubelet API
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 10250
+name: allow-kube-apiserver
+portSelector:
+  ports:
+    - 6443
+  protocol: tcp
+ingress:
+  - subnet: 0.0.0.0/0
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-etcd
+portSelector:
+  ports:
+    - 2379
+    - 2380
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-talos-api-cp
+portSelector:
+  ports:
+    - 50000
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-kubelet-cp
+portSelector:
+  ports:
+    - 10250
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
 ```
 
 And for worker nodes:
@@ -110,62 +122,67 @@ And for worker nodes:
 # Allow Kubernetes worker node traffic
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
-name: allow-worker
-spec:
-  ingress:
-    # Kubelet API
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 10250
-
-    # Talos API
-    - subnet: 10.10.0.0/24
-      protocol: tcp
-      ports:
-        - 50000
-
-    # NodePort range
-    - subnet: 0.0.0.0/0
-      protocol: tcp
-      ports:
-        - 30000-32767
+name: allow-kubelet-worker
+portSelector:
+  ports:
+    - 10250
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-talos-api-worker
+portSelector:
+  ports:
+    - 50000
+  protocol: tcp
+ingress:
+  - subnet: 10.10.0.0/24
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-nodeport-tcp
+portSelector:
+  ports:
+    - 30000-32767
+  protocol: tcp
+ingress:
+  - subnet: 0.0.0.0/0
 ```
 
 ## Multiple Subnets and Ports
 
-You can specify multiple subnets and port ranges in a single rule:
+A single NetworkRuleConfig can list multiple subnets that share the same `portSelector`, and multiple ports or ranges within that selector. When subnets need different port sets, use one document per group:
 
 ```yaml
-# Allow traffic from multiple source networks
+# Office and VPN networks share the same management ports
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
-name: allow-multi-source
-spec:
-  ingress:
-    # From office network
-    - subnet: 192.168.1.0/24
-      protocol: tcp
-      ports:
-        - 6443
-        - 50000
-
-    # From VPN network
-    - subnet: 172.16.0.0/16
-      protocol: tcp
-      ports:
-        - 6443
-        - 50000
-
-    # From other cluster nodes
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 2379
-        - 2380
-        - 10250
-        - 10259
-        - 10257
+name: allow-management
+portSelector:
+  ports:
+    - 6443
+    - 50000
+  protocol: tcp
+ingress:
+  - subnet: 192.168.1.0/24   # Office network
+  - subnet: 172.16.0.0/16    # VPN network
+---
+# Other cluster nodes need access to a different set of ports
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-cluster-internal
+portSelector:
+  ports:
+    - 2379
+    - 2380
+    - 10250
+    - 10257
+    - 10259
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
 ```
 
 ## Applying NetworkRuleConfig Documents
@@ -183,29 +200,37 @@ talosctl apply-config --insecure \
 You can also include multiple documents in one file separated by `---`:
 
 ```yaml
-# Combined configuration with NetworkRuleConfig
+# Combined patch with multiple NetworkRuleConfig documents
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
 name: allow-api-access
-spec:
-  ingress:
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 6443
-        - 50000
+portSelector:
+  ports:
+    - 6443
+    - 50000
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
 ---
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
 name: allow-node-communication
-spec:
-  ingress:
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 2379
-        - 2380
-        - 10250
+portSelector:
+  ports:
+    - 2379
+    - 2380
+    - 10250
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
+```
+
+Because NetworkRuleConfig only takes effect when ingress is in `block` mode, you usually pair these documents with a `NetworkDefaultActionConfig` to switch the default ingress action from `accept` to `block`:
+
+```yaml
+apiVersion: v1alpha1
+kind: NetworkDefaultActionConfig
+ingress: block
 ```
 
 ## Managing Multiple Rule Sets
@@ -217,13 +242,13 @@ Organizing rules into logical groups makes them easier to manage:
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
 name: management-access
-spec:
-  ingress:
-    - subnet: 10.10.0.0/24
-      protocol: tcp
-      ports:
-        - 50000
-        - 6443
+portSelector:
+  ports:
+    - 50000
+    - 6443
+  protocol: tcp
+ingress:
+  - subnet: 10.10.0.0/24
 ```
 
 ```yaml
@@ -231,16 +256,16 @@ spec:
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
 name: cluster-internal
-spec:
-  ingress:
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 2379
-        - 2380
-        - 10250
-        - 10257
-        - 10259
+portSelector:
+  ports:
+    - 2379
+    - 2380
+    - 10250
+    - 10257
+    - 10259
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
 ```
 
 Apply them together:
@@ -256,14 +281,15 @@ talosctl apply-config \
 
 ## Viewing Active Network Rules
 
-Check which rules are currently active on a node:
+NetworkRuleConfig documents are compiled into nftables chains on the node. Inspect the running ruleset and the merged machine config to confirm what is applied:
 
 ```bash
-# List NetworkRuleConfig resources
-talosctl get networkruleconfigs --nodes 192.168.1.100
+# Show the compiled nftables ruleset
+talosctl get nftableschain --nodes 192.168.1.100 -o yaml
 
-# Get details of a specific rule
-talosctl get networkruleconfig allow-api-access --nodes 192.168.1.100 -o yaml
+# Read the merged machine config and filter for the firewall documents
+talosctl read /system/state/config.yaml --nodes 192.168.1.100 | \
+  yq 'select(.kind == "NetworkDefaultActionConfig"), select(.kind == "NetworkRuleConfig")'
 ```
 
 ## Updating and Removing Rules
