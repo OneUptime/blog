@@ -18,22 +18,21 @@ In the cgroup v2 hierarchy, each pod gets its own cgroup under the kubelet's cgr
 
 ```text
 /sys/fs/cgroup/
-  kubepods/
-    burstable/
-      pod<uid>/
+  kubepods.slice/
+    kubepods-pod<uid>.slice/                       # Guaranteed pods sit directly here
+      <container-id>/
+    kubepods-burstable.slice/
+      kubepods-burstable-pod<uid>.slice/
         <container-id>/
-    guaranteed/
-      pod<uid>/
-        <container-id>/
-    besteffort/
-      pod<uid>/
+    kubepods-besteffort.slice/
+      kubepods-besteffort-pod<uid>.slice/
         <container-id>/
   system.slice/
     kubelet.service/
     containerd.service/
 ```
 
-Kubernetes assigns pods to QoS classes (Guaranteed, Burstable, BestEffort), and each class gets its own cgroup subtree with different resource guarantees.
+Kubernetes assigns pods to QoS classes (Guaranteed, Burstable, BestEffort). Burstable and BestEffort each get their own QoS sub-slice, while Guaranteed pods are placed directly under `kubepods.slice/` without a dedicated QoS sub-slice.
 
 ## Accessing Cgroup Data on Talos
 
@@ -132,7 +131,10 @@ Understanding the CPU statistics:
 # If nr_throttled / nr_periods > 5%, the container needs more CPU
 
 # Script to check throttling across all pods
-for cg in /sys/fs/cgroup/kubepods.slice/*/kubepods-*-pod*.slice; do
+# Matches Guaranteed pods (directly under kubepods.slice) plus
+# Burstable and BestEffort pods (nested under their QoS sub-slice)
+for cg in /sys/fs/cgroup/kubepods.slice/kubepods-pod*.slice \
+          /sys/fs/cgroup/kubepods.slice/*/kubepods-*-pod*.slice; do
   if [ -f "$cg/cpu.stat" ]; then
     name=$(basename $cg)
     throttled=$(grep nr_throttled "$cg/cpu.stat" | awk '{print $2}')
@@ -279,7 +281,8 @@ If some pods have disproportionately high CPU weights, they may starve other pod
 echo "=== Cgroup Health Check ==="
 echo ""
 echo "Most throttled pods:"
-for cg in /sys/fs/cgroup/kubepods.slice/*/kubepods-*-pod*.slice; do
+for cg in /sys/fs/cgroup/kubepods.slice/kubepods-pod*.slice \
+          /sys/fs/cgroup/kubepods.slice/*/kubepods-*-pod*.slice; do
   [ -f "$cg/cpu.stat" ] || continue
   throttled=$(grep throttled_usec "$cg/cpu.stat" | awk '{print $2}')
   echo "$(basename $cg): ${throttled}us throttled"
@@ -287,7 +290,8 @@ done | sort -t: -k2 -rn | head -5
 
 echo ""
 echo "Highest memory usage pods:"
-for cg in /sys/fs/cgroup/kubepods.slice/*/kubepods-*-pod*.slice; do
+for cg in /sys/fs/cgroup/kubepods.slice/kubepods-pod*.slice \
+          /sys/fs/cgroup/kubepods.slice/*/kubepods-*-pod*.slice; do
   [ -f "$cg/memory.current" ] || continue
   usage=$(cat "$cg/memory.current")
   echo "$(basename $cg): $((usage / 1024 / 1024))MB"
