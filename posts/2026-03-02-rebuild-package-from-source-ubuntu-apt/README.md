@@ -35,7 +35,7 @@ deb http://archive.ubuntu.com/ubuntu jammy main restricted
 deb-src http://archive.ubuntu.com/ubuntu jammy main restricted
 ```
 
-Alternatively, on Ubuntu 22.04 and later with the new deb822 format:
+Alternatively, on Ubuntu 24.04 and later (which use the new deb822 format by default):
 
 ```bash
 # Enable source packages in the Ubuntu repositories file
