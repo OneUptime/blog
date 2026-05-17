@@ -53,8 +53,9 @@ machine:
 The `fib_multipath_hash_policy` setting is critical:
 
 - **0** (default): Hash based on Layer 3 (source and destination IP only)
-- **1**: Hash based on Layer 3+4 (source/dest IP plus source/dest port)
-- **2**: Hash based on Layer 3+4 plus the inner header for encapsulated traffic
+- **1**: Hash based on Layer 4 (source/dest IP, protocol, plus source/dest port)
+- **2**: Hash based on Layer 3, or inner Layer 3 if the packet is encapsulated
+- **3**: Custom multipath hash (fields determined by `fib_multipath_hash_fields`)
 
 Policy 1 is usually the best choice because it distributes traffic more evenly across paths. Policy 0 means all traffic between the same two IPs goes through the same path, regardless of how many different connections there are.
 
@@ -167,24 +168,52 @@ The `maximum-paths` setting is the key - it tells the router how many equal-cost
 
 ## ECMP with Cilium
 
-Cilium also supports ECMP when used as the CNI:
+Cilium also supports ECMP when used as the CNI. Recent Cilium versions (1.18+) use the BGPv2 API on the `cilium.io/v2` group; the older `CiliumBGPPeeringPolicy` was deprecated in 1.18 and removed in 1.19.
 
 ```yaml
-apiVersion: cilium.io/v2alpha1
-kind: CiliumBGPPeeringPolicy
+apiVersion: cilium.io/v2
+kind: CiliumBGPClusterConfig
 metadata:
-  name: ecmp-policy
+  name: ecmp-cluster
 spec:
   nodeSelector:
     matchLabels:
       kubernetes.io/os: linux
-  virtualRouters:
-    - localASN: 64512
-      exportPodCIDR: true
-      neighbors:
-        - peerAddress: "192.168.1.1/32"
+  bgpInstances:
+    - name: instance-64512
+      localASN: 64512
+      peers:
+        - name: router-1
           peerASN: 64501
-      serviceSelector:
+          peerAddress: 192.168.1.1
+          peerConfigRef:
+            name: router-peer-config
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPPeerConfig
+metadata:
+  name: router-peer-config
+spec:
+  families:
+    - afi: ipv4
+      safi: unicast
+      advertisements:
+        matchLabels:
+          advertise: "ecmp"
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPAdvertisement
+metadata:
+  name: ecmp-advert
+  labels:
+    advertise: "ecmp"
+spec:
+  advertisements:
+    - advertisementType: Service
+      service:
+        addresses:
+          - LoadBalancerIP
+      selector:
         matchExpressions:
           - key: io.cilium/bgp-announce
             operator: Exists
@@ -248,14 +277,22 @@ A common issue with ECMP is hash polarization, where traffic is not evenly distr
 
 ### Resilient Hashing
 
-When a path goes down in standard ECMP, all flows are rehashed, which can disrupt existing connections. Resilient hashing minimizes flow disruption:
+When a path goes down in standard ECMP, all flows are rehashed, which can disrupt existing connections. Resilient ECMP minimizes flow disruption by using a bucket-based nexthop group that only redistributes flows from the failed path. This is not controlled by `fib_multipath_hash_policy`; it must be configured through the kernel's nexthop API:
 
-```yaml
-machine:
-  sysctls:
-    # Enable resilient ECMP (available in newer kernels)
-    net.ipv4.fib_multipath_hash_policy: "1"
+```bash
+# Create individual nexthops
+ip nexthop add id 1 via 192.168.1.10 dev eth0
+ip nexthop add id 2 via 192.168.1.11 dev eth0
+ip nexthop add id 3 via 192.168.1.12 dev eth0
+
+# Group them as a resilient nexthop group with 64 buckets
+ip nexthop add id 10 group 1/2/3 type resilient buckets 64 idle_timer 60 unbalanced_timer 300
+
+# Install the route using the resilient group
+ip route add 10.100.0.0/24 nhid 10
 ```
+
+Resilient nexthop groups require a kernel with `CONFIG_IP_ROUTE_MULTIPATH` and the resilient nexthop group feature (Linux 5.10+). See `Documentation/networking/nexthop-group-resilient.rst` in the kernel tree for details.
 
 ## Monitoring ECMP Health
 
