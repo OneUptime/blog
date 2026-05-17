@@ -35,11 +35,33 @@ The Tang server should be a separate, hardened machine on your network. Install 
 sudo apt update
 sudo apt install -y tang
 
-# Enable and start the Tang service (listens on port 7500)
+# Enable and start the Tang service (default listens on port 80)
 sudo systemctl enable --now tangd.socket
 
 # Check that Tang is running
 sudo systemctl status tangd.socket
+```
+
+The upstream `tangd.socket` listens on port 80 by default, which conflicts with web servers and is awkward to allow through firewalls. Override it to use a dedicated port such as 7500:
+
+```bash
+# Create a systemd override for tangd.socket
+sudo systemctl edit tangd.socket
+```
+
+Add the following content, then save and exit:
+
+```ini
+[Socket]
+ListenStream=
+ListenStream=7500
+```
+
+The empty `ListenStream=` clears the default before setting the new port. Reload and restart:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart tangd.socket
 ```
 
 Tang generates its own key material automatically on first run. Verify the keys exist:
@@ -62,13 +84,14 @@ sudo ufw allow 7500/tcp comment "Tang NBDE key server"
 Get the Tang server's advertisement (you will need this thumbprint on the client):
 
 ```bash
-# Get the thumbprint of Tang's signing key
+# Get the thumbprint of Tang's signing key (pass the port if not the default 80)
 sudo tang-show-keys 7500
 
-# Or check what key is advertised
-curl -s http://localhost:7500/adv | \
-  python3 -c "import sys,json; [print(k) for k in json.load(sys.stdin)['payload']]"
+# You can also fetch the raw advertisement JWS to inspect manually
+curl -s http://localhost:7500/adv
 ```
+
+The `/adv` endpoint returns a signed JWS document; the `payload` field is a base64url-encoded JSON object containing the advertised keys. `tang-show-keys` decodes this for you and prints the thumbprint, which is what you actually need for verification on the client.
 
 ## Setting Up the Clevis Client
 
@@ -78,8 +101,9 @@ On the Ubuntu system with the encrypted disk:
 # Install Clevis and the LUKS and Tang plugins
 sudo apt install -y clevis clevis-luks clevis-initramfs clevis-tpm2
 
-# Verify installation
-clevis --version
+# Verify installation - clevis with no arguments prints usage and the
+# list of installed pins (tang, tpm2, sss, etc.)
+clevis
 ```
 
 ### Binding a LUKS Volume to Tang
@@ -123,7 +147,8 @@ You will then be prompted for the existing LUKS passphrase to authorize adding t
 # Check that Clevis added a key slot
 sudo clevis luks list -d /dev/sda3
 
-# Try a test unlock (does not actually unlock - just tests the binding)
+# Unlock the volume into a temporary device-mapper node to confirm the
+# binding works, then close it again
 sudo clevis luks unlock -d /dev/sda3 -n test_unlock
 sudo cryptsetup close test_unlock
 ```
@@ -201,23 +226,32 @@ The PCR (Platform Configuration Register) values are measurements of the boot ch
 
 ## Managing Tang Key Rotation
 
-Tang keys should be rotated periodically. The rotation process:
+Tang keys should be rotated periodically. Simply generating new keys is not enough - Tang will advertise every `.jwk` file in `/var/db/tang/`, so unless you hide the old keys they will keep being handed to new clients. The standard rotation procedure is to rename the existing keys with a leading dot (Tang still uses them to satisfy recovery requests from existing clients, but stops advertising them), then generate fresh keys:
 
 ```bash
-# On the Tang server - rotate keys
-sudo tangd-keygen /var/db/tang
+# On the Tang server - hide the current keys so they stop being advertised
+cd /var/db/tang
+sudo sh -c 'for f in *.jwk; do mv "$f" ".$f"; done'
 
-# After rotation, old key is kept for existing clients
-# but new keys are advertised for new bindings
+# Generate a new key pair (tangd-keygen lives in libexec, not on PATH)
+sudo /usr/libexec/tangd-keygen /var/db/tang
+
+# Confirm: new keys are visible, old keys are now hidden dotfiles
 ls -la /var/db/tang/
+```
 
-# On each client - rebind with the new Tang key
-sudo clevis luks edit -d /dev/sda3 -s 2
+Hidden keys are still loaded by `tangd` and can decrypt existing bindings, which gives you a window to rebind clients before deleting them. On each client, replace the binding with one that uses the new advertisement:
 
-# Or remove old binding and add new one
+```bash
+# Re-run bind against the same slot to refresh with the new advertisement
 sudo clevis luks unbind -d /dev/sda3 -s 2
 sudo clevis luks bind -d /dev/sda3 tang '{"url":"http://tang.example.com:7500"}'
+
+# Or use clevis luks edit to modify a binding in-place
+sudo clevis luks edit -d /dev/sda3 -s 2
 ```
+
+Once every client has been rebound, you can delete the hidden old keys from the Tang server.
 
 ## Fallback: Manual Passphrase
 
