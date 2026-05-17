@@ -271,6 +271,7 @@ machine:
           name: authn-webhook
       permissions: 0644
       path: /etc/kubernetes/authn-webhook-config.yaml
+      op: create
 ```
 
 Apply to control plane nodes:
@@ -342,7 +343,7 @@ spec:
       # ... rest of pod spec
 ```
 
-Also consider what happens if the webhook is unavailable. By default, the API server will fail open (allow the request) or fail closed (deny the request) depending on the configuration.
+Also consider what happens if the webhook is unavailable. Unlike admission webhooks, authentication webhooks do not have a configurable `failurePolicy`. If the webhook errors or is unreachable, the API server simply does not authenticate the request through this authenticator and falls through to any other authenticators in the chain. If none authenticate the request, it is treated as anonymous (or rejected, if anonymous auth is disabled).
 
 ## Handling Webhook Failures
 
