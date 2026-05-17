@@ -84,9 +84,9 @@ sudo do-release-upgrade --allow-third-party
 
 By default, `do-release-upgrade` disables third-party PPAs before upgrading. This flag leaves them enabled, which can cause conflicts. Generally, it is better to let the tool disable PPAs and re-enable them manually afterwards.
 
-### Running with a Non-Standard SSH Port
+### Running Over SSH
 
-If you changed SSH to a non-default port, `do-release-upgrade` opens a second SSH server on port 1022 as a backup in case the main SSH service restarts during the upgrade:
+Whenever `do-release-upgrade` detects it is being run over an SSH session, it opens a second SSH server on port 1022 as a backup in case the main SSH service restarts during the upgrade:
 
 ```bash
 # The tool will tell you about the backup SSH port
@@ -134,9 +134,9 @@ sudo do-release-upgrade
 During the download phase, `do-release-upgrade` shows a progress bar. If you want more verbose output:
 
 ```bash
-# The tool logs to a temporary directory
-# Find the log during the upgrade
-cat /tmp/dist-upgrade/apt.log
+# The tool writes live logs under /var/log/dist-upgrade/
+# Tail the apt log during the upgrade
+tail -f /var/log/dist-upgrade/apt.log
 
 # Or watch the dpkg log
 tail -f /var/log/dpkg.log
