@@ -18,7 +18,7 @@ When a process calls `prctl(PR_SET_SECCOMP, ...)` or `seccomp()`, it installs a 
 
 Two modes:
 
-**SECCOMP_MODE_STRICT** - Only allows `read`, `write`, `exit`, and `sigreturn`. Very restrictive, rarely used directly.
+**SECCOMP_MODE_STRICT** - Only allows `read`, `write`, `_exit`, and `sigreturn` (note: `exit_group` is not permitted). Very restrictive, rarely used directly.
 
 **SECCOMP_MODE_FILTER** - Uses BPF programs to allow/deny specific syscalls, optionally based on arguments.
 
@@ -211,8 +211,8 @@ SystemCallFilter=@system-service
 SystemCallFilter=read write open close stat fstat lstat
 SystemCallFilter=~@clock @cpu-emulation @debug @keyring @module @mount @obsolete @privileged @raw-io @reboot @resources @setuid @swap
 
-# Action when a blocked syscall is attempted
-# Options: kill (default), kill-process, trap, log, errno:EPERM
+# When SystemCallErrorNumber is unset, blocked syscalls kill the process via SIGSYS (default).
+# Setting it returns the given errno (number or name like EPERM, EACCES) to the caller instead.
 SystemCallErrorNumber=EPERM
 
 # Also set the architecture for 32-bit syscall table filtering
