@@ -221,8 +221,8 @@ machine:
   files:
     - content: |
         custom content here
-      permissions: 0644
-      path: /etc/custom-file
+      permissions: 0o644
+      path: /var/etc/custom-file
       op: create
 ```
 
