@@ -49,29 +49,31 @@ cut -d: -f1,3,6 /etc/passwd | column -t -s ':'
 
 ### Filling Columns vs. Rows
 
-By default, `column` fills across rows. The `-x` flag fills down columns instead:
+By default, `column` fills down columns before filling rows. The `-x` flag fills across rows instead:
 
 ```bash
-# Fill across (default)
+# Fill down columns (default)
 echo "a b c d e f g h i" | tr ' ' '\n' | column
 
-# Fill down columns instead
+# Fill across rows instead
 echo "a b c d e f g h i" | tr ' ' '\n' | column -x
 ```
 
-### Controlling Number of Columns
+### Controlling Output Width
+
+The `-c` (also known as `--output-width`) flag sets the total output width in characters, not the number of columns:
 
 ```bash
-# Display in exactly 3 columns
-ls /usr/bin | column -c 3
-
-# Set total output width
+# Set total output width to 80 characters
 ls /usr/bin | column -c 80
+
+# Use unlimited width (useful when writing to a file)
+ls /usr/bin | column -c 0
 ```
 
 ### Adding Column Headers
 
-The newer version of `column` (from util-linux 2.35+) supports JSON output and named columns:
+Modern versions of `column` (from util-linux 2.30+) support named columns via `--table-columns`, and JSON output via `--json`:
 
 ```bash
 # Check version
