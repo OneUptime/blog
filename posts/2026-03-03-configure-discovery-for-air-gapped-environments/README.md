@@ -210,14 +210,14 @@ In air-gapped environments, you also need to pre-stage Talos Linux itself. Downl
 ```bash
 # On a machine with internet access
 # Download the Talos ISO
-wget https://github.com/siderolabs/talos/releases/download/v1.7.0/talos-amd64.iso
+wget https://github.com/siderolabs/talos/releases/download/v1.7.0/metal-amd64.iso
 
 # Download the installer image
 docker pull ghcr.io/siderolabs/installer:v1.7.0
 docker save ghcr.io/siderolabs/installer:v1.7.0 -o talos-installer.tar
 
-# Download required Kubernetes images
-talosctl images --kubernetes-version 1.29.0 > required-images.txt
+# List the default images Talos needs (etcd, kube-apiserver, CoreDNS, etc.)
+talosctl image default > required-images.txt
 ```
 
 Transfer these to your air-gapped network and push to your internal registry.
@@ -266,13 +266,13 @@ After setting everything up, validate the configuration:
 talosctl logs controller-runtime --nodes <node-ip> | grep discovery
 
 # Verify discovered members
-talosctl get discoveredmembers --nodes <node-ip>
+talosctl get members --nodes <node-ip>
 
 # Check Kubernetes nodes
 kubectl get nodes
 
 # Test KubeSpan connectivity (if enabled)
-talosctl get kubespanpeerstatus --nodes <node-ip>
+talosctl get kubespanpeerstatuses --nodes <node-ip>
 ```
 
 If discovery is not working, check:
