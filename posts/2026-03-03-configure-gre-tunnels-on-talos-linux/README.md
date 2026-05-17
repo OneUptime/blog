@@ -250,7 +250,7 @@ For IPv6 transport:
 
 ```bash
 # Create GRE tunnel over IPv6
-ip tunnel add gre6-1 mode ip6gre \
+ip link add gre6-1 type ip6gre \
   local 2001:db8::1 \
   remote 2001:db8::2 \
   ttl 255
