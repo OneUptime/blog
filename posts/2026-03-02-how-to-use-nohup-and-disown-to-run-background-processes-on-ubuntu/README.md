@@ -124,7 +124,7 @@ disown -a
 # Disown a process by PID
 disown 12345
 
-# Disown and remove from job list (prevents "Done" messages)
+# Mark job to ignore SIGHUP but keep it in the job list
 disown -h %1
 ```
 
