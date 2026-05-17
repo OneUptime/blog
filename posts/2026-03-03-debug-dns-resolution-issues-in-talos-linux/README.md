@@ -230,8 +230,9 @@ dig +short +timeout=5 problematic-domain.com
 Set up ongoing DNS monitoring to catch issues before they become outages:
 
 ```bash
-# Check CoreDNS metrics
-kubectl port-forward -n kube-system svc/kube-dns-metrics 9153:9153
+# Check CoreDNS metrics (port-forward directly to the deployment,
+# since the default kube-dns service does not expose port 9153)
+kubectl port-forward -n kube-system deployment/coredns 9153:9153
 
 # Query Prometheus metrics
 curl localhost:9153/metrics | grep coredns_dns_requests_total
