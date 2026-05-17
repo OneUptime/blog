@@ -38,10 +38,10 @@ You have two main sources for Talos Linux ISOs: the GitHub releases page and the
 ```bash
 # Download the latest standard ISO for amd64 architecture
 
-curl -LO https://github.com/siderolabs/talos/releases/latest/download/talos-amd64.iso
+curl -LO https://github.com/siderolabs/talos/releases/latest/download/metal-amd64.iso
 
 # For arm64 systems
-curl -LO https://github.com/siderolabs/talos/releases/latest/download/talos-arm64.iso
+curl -LO https://github.com/siderolabs/talos/releases/latest/download/metal-arm64.iso
 ```
 
 ### From the Image Factory
@@ -53,7 +53,7 @@ You can generate a custom ISO through the web interface or via the API:
 ```bash
 # Example: download an ISO from the Image Factory with default extensions
 # The schematic ID defines which extensions to include
-curl -LO "https://factory.talos.dev/image/<schematic-id>/v1.9.0/nocloud-amd64.iso"
+curl -LO "https://factory.talos.dev/image/<schematic-id>/v1.9.0/metal-amd64.iso"
 ```
 
 For most first-time setups, the standard ISO from GitHub releases is all you need.
@@ -80,7 +80,7 @@ lsblk
 
 # Write the ISO to the USB drive
 # Replace /dev/sdX with your actual USB device
-sudo dd if=talos-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync
+sudo dd if=metal-amd64.iso of=/dev/sdX bs=4M status=progress conv=fsync
 ```
 
 ### USB Drive on macOS
@@ -143,7 +143,7 @@ When Talos boots from the ISO, the console shows kernel messages followed by the
 - The node's network interfaces and assigned IP addresses
 - A message indicating the node is waiting for configuration
 
-The IP address shown here is what you will use with `talosctl` to apply the machine configuration. If DHCP is available on your network, the node will get an IP automatically. Without DHCP, Talos will use IPv6 link-local addressing.
+The IP address shown here is what you will use with `talosctl` to apply the machine configuration. If DHCP is available on your network, the node will get an IP automatically. Without DHCP, you will need to configure a static address through kernel command-line arguments or set up DHCP before applying the machine config.
 
 ## Booting in Virtual Machines
 
@@ -166,7 +166,7 @@ VBoxManage modifyvm "talos-node1" --memory 4096 --cpus 2
 VBoxManage createhd --filename "talos-node1.vdi" --size 20480
 VBoxManage storagectl "talos-node1" --name "SATA" --add sata
 VBoxManage storageattach "talos-node1" --storagectl "SATA" --port 0 --type hdd --medium "talos-node1.vdi"
-VBoxManage storageattach "talos-node1" --storagectl "SATA" --port 1 --type dvddrive --medium talos-amd64.iso
+VBoxManage storageattach "talos-node1" --storagectl "SATA" --port 1 --type dvddrive --medium metal-amd64.iso
 VBoxManage modifyvm "talos-node1" --nic1 bridged --bridgeadapter1 "en0"
 VBoxManage startvm "talos-node1"
 ```
@@ -178,7 +178,7 @@ VBoxManage startvm "talos-node1"
 qemu-system-x86_64 \
   -m 4096 \
   -smp 2 \
-  -cdrom talos-amd64.iso \
+  -cdrom metal-amd64.iso \
   -drive file=talos-disk.qcow2,format=qcow2,if=virtio \
   -net nic,model=virtio -net bridge,br=br0 \
   -enable-kvm \
