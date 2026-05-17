@@ -96,9 +96,12 @@ rsn_pairwise=CCMP
 # WiFi password (minimum 8 characters)
 wpa_passphrase=SecurePassword123
 
-# Logging level (0=verbose, 1=info, 2=warning, 3=errors only)
+# Logging - bitmask of module categories to log (-1 = all modules)
 logger_syslog=-1
 logger_stdout=-1
+# Minimum log level: 0=verbose, 1=debug, 2=info, 3=notice, 4=warning
+logger_syslog_level=2
+logger_stdout_level=2
 EOF
 ```
 
