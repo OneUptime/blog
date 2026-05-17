@@ -48,7 +48,7 @@ Apply the configuration:
 
 ```bash
 # Apply IPVS mode to all nodes
-talosctl apply-config --nodes 192.168.1.10,192.168.1.20 --patch @kube-proxy-ipvs.yaml
+talosctl patch machineconfig --nodes 192.168.1.10,192.168.1.20 --patch @kube-proxy-ipvs.yaml
 ```
 
 After applying, verify that IPVS is active:
@@ -73,12 +73,16 @@ cluster:
     extraArgs:
       proxy-mode: ipvs
       # Available schedulers:
-      # rr  - Round Robin (default)
-      # lc  - Least Connections
-      # dh  - Destination Hashing
-      # sh  - Source Hashing
-      # sed - Shortest Expected Delay
-      # nq  - Never Queue
+      # rr    - Round Robin (default)
+      # wrr   - Weighted Round Robin
+      # lc    - Least Connections
+      # wlc   - Weighted Least Connections
+      # lblc  - Locality-Based Least Connections
+      # lblcr - Locality-Based Least Connections with Replication
+      # dh    - Destination Hashing
+      # sh    - Source Hashing
+      # sed   - Shortest Expected Delay
+      # nq    - Never Queue
       ipvs-scheduler: lc
 ```
 
