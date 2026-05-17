@@ -72,12 +72,11 @@ OnUnitActiveSec=1h
 # Allow 5-minute accuracy window (avoids thundering herd if many timers fire together)
 AccuracySec=5min
 
-# If a run was missed (system was off), run it when the system comes back up
-Persistent=true
-
 [Install]
 WantedBy=timers.target
 ```
+
+Note: `Persistent=true` (used in the calendar-based examples below) only has an effect on timers configured with `OnCalendar=`, not on monotonic timers like `OnBootSec=`/`OnUnitActiveSec=`. For monotonic timers, after a reboot the timer simply restarts based on `OnBootSec=`.
 
 ### Step 3: Enable and Start the Timer
 
