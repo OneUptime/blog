@@ -26,7 +26,7 @@ cluster:
     enabled: true
     registries:
       kubernetes:
-        disabled: false
+        disabled: true
       service:
         disabled: false
         endpoint: https://discovery.talos.dev/
@@ -34,8 +34,8 @@ cluster:
 
 There are two types of registries:
 
-1. **Service registry**: Uses the Talos discovery service (an external HTTP endpoint) where nodes register and query cluster membership.
-2. **Kubernetes registry**: Uses Kubernetes annotations on Node objects to store discovery information. This works even without the external discovery service.
+1. **Service registry**: Uses the Talos discovery service (an external gRPC endpoint over TLS) where nodes register and query cluster membership. This is enabled by default.
+2. **Kubernetes registry**: Uses Kubernetes annotations on Node objects to store discovery information. This is disabled by default and is deprecated, as it is not compatible with Kubernetes 1.32 and later in the default configuration.
 
 ## Configuring the Service Registry
 
@@ -69,7 +69,7 @@ We will cover setting up a self-hosted discovery service later in this guide.
 
 ## Configuring the Kubernetes Registry
 
-The Kubernetes registry stores discovery data as annotations on Kubernetes Node objects. It works independently of the service registry and serves as a fallback:
+The Kubernetes registry stores discovery data as annotations on Kubernetes Node objects. It is disabled by default and is deprecated, as it is not compatible with Kubernetes 1.32 and later in the default configuration. If you still want to enable it, set `disabled: false`:
 
 ```yaml
 cluster:
@@ -80,11 +80,11 @@ cluster:
         disabled: false
 ```
 
-The Kubernetes registry is useful because it does not require any external service. However, it only works after Kubernetes is running, so it cannot help with initial cluster bootstrapping.
+The Kubernetes registry only works after Kubernetes is running, so it cannot help with initial cluster bootstrapping. Because it is deprecated, prefer the service registry for new deployments.
 
 ## Using Both Registries Together
 
-The recommended configuration uses both registries:
+If you want to opt into the deprecated Kubernetes registry alongside the service registry, you can enable both:
 
 ```yaml
 cluster:
@@ -98,7 +98,7 @@ cluster:
         endpoint: https://discovery.talos.dev/
 ```
 
-The service registry handles initial discovery and bootstrap, while the Kubernetes registry provides redundancy once the cluster is running. If the external discovery service goes down, the Kubernetes registry ensures nodes can still discover each other.
+The service registry handles initial discovery and bootstrap, while the Kubernetes registry can provide a fallback once the cluster is running. Note that the Kubernetes registry is deprecated and will not work with Kubernetes 1.32 and later in the default configuration, so this layout is only suitable for older clusters.
 
 ## Verifying Discovery Status
 
@@ -107,10 +107,10 @@ Check what the discovery service knows about your cluster:
 ```bash
 # View all discovered cluster members
 
-talosctl get discoveredmembers --nodes <node-ip>
+talosctl get members --nodes <node-ip>
 
 # View detailed discovery information
-talosctl get discoveredmembers --nodes <node-ip> -o yaml
+talosctl get members --nodes <node-ip> -o yaml
 ```
 
 The output shows each cluster member, including their node ID, endpoints, and any additional metadata. This is the information that KubeSpan and other features use.
@@ -227,8 +227,8 @@ Discovery data is encrypted end-to-end. The discovery service itself cannot read
 This means even if someone compromises the discovery service, they cannot learn the cluster topology or intercept endpoint information.
 
 ```bash
-# View the cluster identity used for discovery
-talosctl get clusteridentity --nodes <node-ip>
+# View the discovery identity used by this node
+talosctl get identities --nodes <node-ip>
 ```
 
 ## Adjusting Discovery Behavior
@@ -243,7 +243,7 @@ Monitor the health of your discovery setup:
 
 ```bash
 # Check if discovery is working
-talosctl get discoveredmembers --nodes <node-ip>
+talosctl get members --nodes <node-ip>
 
 # If the list is empty or missing nodes, check the discovery service
 talosctl logs controller-runtime --nodes <node-ip> | grep -i discovery
