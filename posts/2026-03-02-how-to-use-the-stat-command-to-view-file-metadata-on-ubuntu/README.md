@@ -128,7 +128,7 @@ Each timestamp serves a different purpose:
 
 **atime** is often disabled on modern systems for performance (the `noatime` mount option). If atime updates are disabled, Access time won't advance even when the file is read.
 
-**Birth** (btime) requires kernel 4.11+ and a filesystem that records creation time (ext4, XFS with reflink, Btrfs). Older systems show a `-` here.
+**Birth** (btime) requires kernel 4.11+ (for the `statx()` syscall), coreutils 8.31+, and a filesystem that records creation time (ext4, XFS with v5 superblock, Btrfs). Older systems show a `-` here.
 
 ### Checking atime behavior
 
@@ -163,27 +163,32 @@ For directories, the link count reflects the number of hardlinks to the director
 
 ## Stat on Symlinks
 
-By default, `stat` follows symlinks and shows information about the target:
+By default, `stat` does **not** follow symlinks - it shows information about the symlink itself, including its target path on the `File:` line:
 
 ```bash
 stat /usr/bin/python3
-# Shows info about the actual python3.11 binary, not the symlink
-
-# To see info about the symlink itself
-stat -L /usr/bin/python3   # -L follows links (default behavior)
-stat /usr/bin/python3      # Without -L also follows links for stat
-
-# Use readlink to see the link target
-readlink /usr/bin/python3
-# python3.11
 ```
 
-Actually, for symlinks specifically, you need `stat -f` or check the "File:" line:
+```text
+  File: /usr/bin/python3 -> python3.12
+  Size: 10              Blocks: 0          IO Block: 4096   symbolic link
+...
+```
+
+The reported `Size` for a symlink is the length in bytes of the target path, and the type is `symbolic link`.
+
+To follow the symlink and see information about the target instead, use `-L` (or the long form `--dereference`):
 
 ```bash
-# Stat actually shows the target info by default
-# Use -L explicitly to be clear you want target info
-stat --dereference /usr/bin/python3  # equivalent to -L
+stat -L /usr/bin/python3            # Shows info about the actual python3.12 binary
+stat --dereference /usr/bin/python3 # Equivalent to -L
+```
+
+Use `readlink` to print just the link's target path:
+
+```bash
+readlink /usr/bin/python3
+# python3.12
 ```
 
 ## Custom Output Format
@@ -238,9 +243,9 @@ Common format specifiers:
 ### Finding files that might have been tampered with
 
 ```bash
-# Find files whose ctime is very recent compared to mtime
-# (metadata changed but content wasn't - possible permission tampering)
-find /etc -type f -newer /etc/passwd -exec stat -c '%n %z' {} \;
+# Find files in /etc whose ctime is newer than /etc/passwd's ctime
+# (metadata changed more recently - possible permission tampering)
+find /etc -type f -cnewer /etc/passwd -exec stat -c '%n %z' {} \;
 ```
 
 ### Auditing permissions across a directory
