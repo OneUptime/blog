@@ -48,11 +48,11 @@ machine:
                   runtime_type = "io.containerd.runc.v2"
                   [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
                     SystemdCgroup = true
-      path: /var/cri/conf.d/20-customization.toml
+      path: /etc/cri/conf.d/20-customization.part
       op: create
 ```
 
-Talos allows you to drop configuration fragments into `/var/cri/conf.d/` which get merged with the base containerd configuration.
+Talos allows you to drop configuration fragments into `/etc/cri/conf.d/` which get merged with the base containerd configuration.
 
 ## Configuring the Sandbox (Pause) Image
 
@@ -65,7 +65,7 @@ machine:
         [plugins]
           [plugins."io.containerd.grpc.v1.cri"]
             sandbox_image = "my-registry.example.com/pause:3.9"
-      path: /var/cri/conf.d/20-sandbox.toml
+      path: /etc/cri/conf.d/20-sandbox.part
       op: create
 ```
 
@@ -85,7 +85,7 @@ machine:
                   runtime_type = "io.containerd.runsc.v1"
                 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata]
                   runtime_type = "io.containerd.kata.v2"
-      path: /var/cri/conf.d/20-runtimes.toml
+      path: /etc/cri/conf.d/20-runtimes.part
       op: create
 ```
 
@@ -137,7 +137,7 @@ machine:
               discard_unpacked_layers = true
               # Snapshotter to use
               snapshotter = "overlayfs"
-      path: /var/cri/conf.d/20-image-config.toml
+      path: /etc/cri/conf.d/20-image-config.part
       op: create
 ```
 
@@ -154,7 +154,7 @@ machine:
         [plugins]
           [plugins."io.containerd.grpc.v1.cri"]
             max_container_log_line_size = 16384
-      path: /var/cri/conf.d/20-logging.toml
+      path: /etc/cri/conf.d/20-logging.part
       op: create
 ```
 
@@ -194,11 +194,11 @@ machine:
             [plugins."io.containerd.grpc.v1.cri".cni]
               bin_dir = "/opt/cni/bin"
               conf_dir = "/etc/cni/net.d"
-      path: /var/cri/conf.d/20-cni.toml
+      path: /etc/cri/conf.d/20-cni.part
       op: create
 ```
 
-Resource Limits for Containers
+## Resource Limits for Containers
 
 You can set default resource limits at the CRI level that apply to all containers:
 
@@ -212,7 +212,7 @@ machine:
               [plugins."io.containerd.grpc.v1.cri".containerd.default_runtime]
                 [plugins."io.containerd.grpc.v1.cri".containerd.default_runtime.options]
                   SystemdCgroup = true
-      path: /var/cri/conf.d/20-cgroup.toml
+      path: /etc/cri/conf.d/20-cgroup.part
       op: create
 ```
 
@@ -255,4 +255,4 @@ Common issues include invalid TOML syntax in configuration fragments, referencin
 
 ## Conclusion
 
-CRI configuration in Talos Linux gives you control over how containers are created, managed, and networked. The configuration fragment approach using `/var/cri/conf.d/` keeps your customizations separate from the base configuration, making upgrades cleaner. Focus on the settings that matter most for your workloads - runtime classes for security isolation, image handling for storage efficiency, and logging for operational visibility. The defaults work well for most clusters, so only change what you need to.
+CRI configuration in Talos Linux gives you control over how containers are created, managed, and networked. The configuration fragment approach using `/etc/cri/conf.d/` keeps your customizations separate from the base configuration, making upgrades cleaner. Focus on the settings that matter most for your workloads - runtime classes for security isolation, image handling for storage efficiency, and logging for operational visibility. The defaults work well for most clusters, so only change what you need to.
