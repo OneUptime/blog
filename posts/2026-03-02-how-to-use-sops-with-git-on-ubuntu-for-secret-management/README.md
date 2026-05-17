@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Security, SOPS, Secrets Management, GitOps
 
-Description: Learn how to use Mozilla SOPS on Ubuntu to encrypt secrets and commit them safely to Git repositories, with support for AWS KMS, GCP KMS, Azure Key Vault, and GPG keys.
+Description: Learn how to use SOPS on Ubuntu to encrypt secrets and commit them safely to Git repositories, with support for AWS KMS, GCP KMS, Azure Key Vault, and GPG keys.
 
 ---
 
-SOPS (Secrets OPerationS) is a tool that encrypts files before you commit them to Git. Unlike committing plaintext secrets or using a separate secrets manager for every project, SOPS lets you store encrypted YAML, JSON, ENV, and INI files directly in your repository. The encrypted files can be decrypted by anyone with access to the encryption key (AWS KMS, GPG, etc.), making secret rotation as simple as editing a file and committing. This guide covers installing SOPS on Ubuntu and integrating it into a Git workflow.
+SOPS (Secrets OPerationS) is a tool that encrypts files before you commit them to Git. Originally created at Mozilla, SOPS is now a CNCF Sandbox project maintained by the getsops community. Unlike committing plaintext secrets or using a separate secrets manager for every project, SOPS lets you store encrypted YAML, JSON, ENV, and INI files directly in your repository. The encrypted files can be decrypted by anyone with access to the encryption key (AWS KMS, GPG, etc.), making secret rotation as simple as editing a file and committing. This guide covers installing SOPS on Ubuntu and integrating it into a Git workflow.
 
 ## Installing SOPS on Ubuntu
 
 ```bash
 # Download the latest SOPS release
 
-SOPS_VERSION=$(curl -s https://api.github.com/repos/mozilla/sops/releases/latest | \
+SOPS_VERSION=$(curl -s https://api.github.com/repos/getsops/sops/releases/latest | \
     grep '"tag_name"' | sed 's/.*"v//;s/".*//')
 
-curl -LO "https://github.com/mozilla/sops/releases/download/v${SOPS_VERSION}/sops_${SOPS_VERSION}_amd64.deb"
+curl -LO "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops_${SOPS_VERSION}_amd64.deb"
 
 # Install the package
 sudo dpkg -i "sops_${SOPS_VERSION}_amd64.deb"
@@ -32,7 +32,7 @@ Alternatively, install via binary:
 ```bash
 # Direct binary installation
 SOPS_VERSION="3.8.1"
-curl -LO "https://github.com/mozilla/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.amd64"
+curl -LO "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.amd64"
 sudo mv "sops-v${SOPS_VERSION}.linux.amd64" /usr/local/bin/sops
 sudo chmod +x /usr/local/bin/sops
 ```
@@ -49,7 +49,7 @@ sudo apt-get install -y awscli
 aws configure
 
 # Create a KMS key for SOPS
-KEY_ARN=$(aws kms create-key \
+KEY_ID=$(aws kms create-key \
     --description "SOPS encryption key" \
     --query 'KeyMetadata.KeyId' \
     --output text)
@@ -57,7 +57,7 @@ KEY_ARN=$(aws kms create-key \
 # Create an alias for easy reference
 aws kms create-alias \
     --alias-name alias/sops-key \
-    --target-key-id "$KEY_ARN"
+    --target-key-id "$KEY_ID"
 
 echo "KMS Key ARN: $(aws kms describe-key --key-id alias/sops-key --query 'KeyMetadata.Arn' --output text)"
 ```
@@ -91,6 +91,9 @@ gpg --armor --export devops@example.com > devops-sops-public.asc
 ```bash
 # Install age
 sudo apt-get install -y age
+
+# Ensure the SOPS age key directory exists
+mkdir -p ~/.config/sops/age
 
 # Generate an age key pair
 age-keygen -o ~/.config/sops/age/keys.txt
@@ -319,7 +322,7 @@ jobs:
 
       - name: Install SOPS
         run: |
-          curl -LO "https://github.com/mozilla/sops/releases/download/v3.8.1/sops_3.8.1_amd64.deb"
+          curl -LO "https://github.com/getsops/sops/releases/download/v3.8.1/sops_3.8.1_amd64.deb"
           sudo dpkg -i sops_3.8.1_amd64.deb
 
       - name: Deploy with decrypted secrets
