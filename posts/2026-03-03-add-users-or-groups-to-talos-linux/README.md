@@ -58,16 +58,14 @@ The common roles are:
 
 ### Creating Role-Specific Credentials
 
-You can generate talosconfigs with specific roles for different team members:
+You can generate talosconfigs with specific roles for different team members using `talosctl config new`, which connects to the cluster and issues a new client certificate with the requested roles:
 
 ```bash
 # Generate a read-only talosconfig
-talosctl gen config my-cluster https://192.168.1.10:6443 \
-  --roles os:reader
+talosctl config new --roles=os:reader reader.yaml
 
 # Generate an operator talosconfig
-talosctl gen config my-cluster https://192.168.1.10:6443 \
-  --roles os:operator
+talosctl config new --roles=os:operator operator.yaml
 ```
 
 This lets you give your developers read-only access to node information for debugging while restricting configuration changes to administrators.
