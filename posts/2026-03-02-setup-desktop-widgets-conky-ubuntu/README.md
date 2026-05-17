@@ -111,7 +111,7 @@ Kernel:   ${kernel}
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━
 ${color #ff9500}CPU${color}
-Load:  ${loadavg 1} ${loadavg 5} ${loadavg 15}
+Load:  ${loadavg 1} ${loadavg 2} ${loadavg 3}
 Usage: ${cpu cpu0}%  ${cpubar cpu0 8,200}
 Temp:  ${hwmon 0 temp 1}°C
 
@@ -190,7 +190,7 @@ A reference of commonly used variables:
 | `${time %H:%M}` | Current time |
 | `${uptime}` | System uptime |
 | `${battery}` | Battery status |
-| `${loadavg 1}` | 1-minute load average |
+| `${loadavg 1}` | 1-minute load average (use `2` for 5-minute, `3` for 15-minute) |
 | `${execi 300 command}` | Run command every 300 seconds |
 
 ## Adding Weather Data
