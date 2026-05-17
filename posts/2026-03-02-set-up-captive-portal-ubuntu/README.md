@@ -28,8 +28,8 @@ sudo apt update
 sudo apt install hostapd dnsmasq nginx iptables iptables-persistent -y
 
 # For the web application (Python-based portal)
-sudo apt install python3 python3-pip -y
-pip3 install flask
+# Use the apt package since Ubuntu 23.04+ blocks system-wide pip installs (PEP 668)
+sudo apt install python3 python3-flask -y
 
 # Stop services while configuring
 sudo systemctl stop hostapd dnsmasq nginx
@@ -119,8 +119,10 @@ sudo iptables -F
 sudo iptables -t nat -F
 sudo iptables -t mangle -F
 
-# Create a custom chain for captive portal clients
+# Create custom chains: one in the filter table (for FORWARD), one in
+# the nat table (so authenticated clients can bypass the DNAT redirect).
 sudo iptables -N CAPTIVE_PORTAL
+sudo iptables -t nat -N CAPTIVE_AUTH
 
 # Allow established connections
 sudo iptables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
@@ -132,6 +134,11 @@ sudo iptables -A INPUT -i wlan0 -p udp --dport 67 -j ACCEPT
 # Allow access to the portal server itself
 sudo iptables -A INPUT -i wlan0 -p tcp --dport 80 -j ACCEPT
 sudo iptables -A INPUT -i wlan0 -p tcp --dport 443 -j ACCEPT
+
+# Check the CAPTIVE_AUTH chain first; authenticated client IPs RETURN
+# from it (skipping the DNAT rules below). Unauthenticated clients
+# fall through and get redirected to the portal.
+sudo iptables -t nat -A PREROUTING -i wlan0 -j CAPTIVE_AUTH
 
 # Redirect HTTP traffic to the captive portal (before clients authenticate)
 sudo iptables -t nat -A PREROUTING -i wlan0 -p tcp --dport 80 -j DNAT --to-destination 10.10.0.1:80
@@ -154,11 +161,17 @@ sudo netfilter-persistent save
 ```python
 # /opt/captive-portal/portal.py - Simple Flask-based captive portal
 from flask import Flask, request, redirect, render_template_string, session
+from werkzeug.middleware.proxy_fix import ProxyFix
 import subprocess
 import logging
 
 app = Flask(__name__)
 app.secret_key = 'change-this-to-a-random-secret-key'
+
+# Flask sits behind Nginx, so request.remote_addr would otherwise be
+# 127.0.0.1. ProxyFix promotes the X-Forwarded-For header (set by Nginx)
+# into request.remote_addr so we get the real client IP.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 # HTML template for the login page
 LOGIN_TEMPLATE = '''
@@ -207,14 +220,18 @@ SUCCESS_TEMPLATE = '''
 '''
 
 def allow_client(ip_address):
-    """Add the client IP to the iptables allowlist."""
-    # Add rule before the DROP rule in the CAPTIVE_PORTAL chain
-    cmd = [
-        'iptables', '-I', 'CAPTIVE_PORTAL', '1',
-        '-s', ip_address, '-j', 'ACCEPT'
+    """Add the client IP to the iptables allowlists."""
+    # Two rules are needed:
+    #   1. Filter table: allow this client through the FORWARD chain.
+    #   2. NAT table: RETURN early from CAPTIVE_AUTH so PREROUTING's
+    #      DNAT-to-portal rules are skipped for this client.
+    rules = [
+        ['iptables', '-I', 'CAPTIVE_PORTAL', '1', '-s', ip_address, '-j', 'ACCEPT'],
+        ['iptables', '-t', 'nat', '-I', 'CAPTIVE_AUTH', '1', '-s', ip_address, '-j', 'RETURN'],
     ]
     try:
-        subprocess.run(['sudo'] + cmd, check=True)
+        for cmd in rules:
+            subprocess.run(['sudo'] + cmd, check=True)
         logging.info(f"Allowed client: {ip_address}")
     except subprocess.CalledProcessError as e:
         logging.error(f"Failed to allow client {ip_address}: {e}")
@@ -247,7 +264,7 @@ if __name__ == '__main__':
         level=logging.INFO,
         format='%(asctime)s %(message)s'
     )
-    # Listen on all interfaces, port 80
+    # Listen on all interfaces, port 8080 (Nginx proxies port 80 here)
     app.run(host='0.0.0.0', port=8080, debug=False)
 ```
 
@@ -313,8 +330,12 @@ sudo mkdir -p /opt/captive-portal
 sudo cp /tmp/portal.py /opt/captive-portal/
 sudo chown -R www-data:www-data /opt/captive-portal
 
-# Allow www-data to run iptables commands
-echo "www-data ALL=(ALL) NOPASSWD: /usr/sbin/iptables -I CAPTIVE_PORTAL *" | sudo tee /etc/sudoers.d/captive-portal
+# Allow www-data to run the iptables commands the portal uses
+sudo tee /etc/sudoers.d/captive-portal << 'EOF'
+www-data ALL=(ALL) NOPASSWD: /usr/sbin/iptables -I CAPTIVE_PORTAL *
+www-data ALL=(ALL) NOPASSWD: /usr/sbin/iptables -t nat -I CAPTIVE_AUTH *
+EOF
+sudo chmod 0440 /etc/sudoers.d/captive-portal
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now captive-portal
