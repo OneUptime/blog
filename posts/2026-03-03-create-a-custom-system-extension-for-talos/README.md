@@ -14,8 +14,8 @@ Talos Linux system extensions are the official way to add functionality beyond t
 
 A Talos system extension is an OCI (Open Container Initiative) image with a specific structure. When Talos boots, it overlays the extension contents onto the root filesystem. The extension image contains:
 
-- A `manifest.yaml` file describing the extension
-- Files to be placed on the filesystem (binaries, configuration, kernel modules, etc.)
+- A `manifest.yaml` file at the root describing the extension
+- A `rootfs/` directory containing files to be placed on the filesystem (binaries, configuration, kernel modules, etc.) — paths inside `rootfs/` mirror their final installation paths
 
 The extension is not a running container - it is a filesystem layer that gets merged with the base OS at boot time.
 
@@ -57,7 +57,7 @@ These add a new service that runs alongside Talos system services:
 These add kernel modules:
 
 ```text
-/lib/modules/<kernel-version>/extras/my-module.ko
+/usr/lib/modules/<kernel-version>/extras/my-module.ko
 ```
 
 ### Type 3: Library/Binary Extensions
@@ -74,7 +74,7 @@ These add shared libraries or utility binaries:
 These add hardware firmware files:
 
 ```text
-/lib/firmware/my-hardware/firmware.bin
+/usr/lib/firmware/my-hardware/firmware.bin
 ```
 
 ## Building a Service Extension
@@ -131,13 +131,13 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o health-agent main.go
 # Extension packaging stage
 FROM scratch AS extension
 
-# Copy the binary
-COPY --from=build /app/health-agent /usr/local/bin/health-agent
+# Copy the binary into rootfs/
+COPY --from=build /app/health-agent /rootfs/usr/local/bin/health-agent
 
-# Copy the service definition
-COPY health-agent.yaml /usr/local/etc/containers/health-agent.yaml
+# Copy the service definition into rootfs/
+COPY health-agent.yaml /rootfs/usr/local/etc/containers/health-agent.yaml
 
-# Copy the manifest
+# Copy the manifest at the image root
 COPY manifest.yaml /
 ```
 
@@ -151,14 +151,10 @@ name: health-agent
 container:
   entrypoint: /usr/local/bin/health-agent
   environment:
-    HEALTH_PORT: "8081"
-  security:
-    readOnlyRootFilesystem: true
-    runAsUser: 0
-  mounts: []
+    - HEALTH_PORT=8081
 depends:
-  - service: machined
-    condition: running
+  - network:
+      - addresses
 restart: always
 ```
 
@@ -199,7 +195,7 @@ RUN KERNEL_DIR=$(ls -d /lib/modules/*/build) && \
 # Extension stage
 FROM scratch AS extension
 
-COPY --from=build /build/*.ko /lib/modules/
+COPY --from=build /build/*.ko /rootfs/usr/lib/modules/
 COPY manifest.yaml /
 ```
 
@@ -239,28 +235,24 @@ make REGISTRY=my-registry.com TAG=v1.0.0 custom/my-extension
 
 ### Local Testing
 
-Test the extension by building a custom Talos image and running it in a VM or Docker:
+Since Talos v1.5, system extensions are no longer installed via the machine configuration — they must be baked into the installer (or boot) image. For local testing, use the `imager` tool to build a custom installer image that includes your extension:
 
 ```bash
-# Create a Talos cluster with your extension
-talosctl cluster create \
-  --image ghcr.io/siderolabs/installer:v1.7.0 \
-  --extra-kernel-arg="" \
-  --user-disk /dev/vdb:1GB
+# Build a custom installer image with your extension included
+mkdir -p _out
+docker run --rm -t -v /dev:/dev -v "$PWD/_out:/out" --privileged \
+  ghcr.io/siderolabs/imager:v1.7.0 installer \
+  --system-extension-image my-registry.com/health-agent-extension:v1.0.0
 
-# Apply configuration with your extension
-talosctl -n 10.5.0.2 patch machineconfig -p '[
-  {
-    "op": "add",
-    "path": "/machine/install/extensions",
-    "value": [
-      {
-        "image": "my-registry.com/health-agent-extension:v1.0.0"
-      }
-    ]
-  }
-]'
+# Import the resulting installer image into your local Docker
+docker load -i _out/installer-amd64.tar
+
+# Create a Talos cluster using the custom installer
+talosctl cluster create \
+  --installer-image=ghcr.io/siderolabs/installer:v1.7.0
 ```
+
+Alternatively, push your extension to a public registry and use the [Talos Image Factory](https://factory.talos.dev) to build a custom installer image — the Image Factory returns a schematic ID you can reference as `factory.talos.dev/installer/<schematic-id>:v1.7.0`.
 
 ### Verification
 
@@ -284,21 +276,22 @@ talosctl -n 192.168.1.10 read /proc/modules | grep my_module
 
 ### Include in Machine Configuration
 
+Since Talos v1.5, extensions are part of the installer image rather than the machine configuration. Point `.machine.install.image` at a custom installer that has your extensions baked in:
+
 ```yaml
 machine:
   install:
-    image: ghcr.io/siderolabs/installer:v1.7.0
-    extensions:
-      - image: my-registry.com/health-agent-extension:v1.0.0
-      - image: ghcr.io/siderolabs/iscsi-tools:v1.7.0
+    image: factory.talos.dev/installer/<schematic-id>:v1.7.0
 ```
+
+The schematic referenced above is created on the [Image Factory](https://factory.talos.dev) by submitting a customization that lists the desired extensions (for example, `my-registry.com/health-agent-extension:v1.0.0` alongside `siderolabs/iscsi-tools`).
 
 ### Upgrade Existing Nodes
 
 ```bash
-# Upgrade with custom extension
+# Upgrade with custom installer image
 talosctl -n 192.168.1.10 upgrade \
-  --image factory.talos.dev/installer/<schematic-with-extension>:v1.7.0
+  --image factory.talos.dev/installer/<schematic-id>:v1.7.0
 ```
 
 ### Rolling Deployment
@@ -341,7 +334,7 @@ FROM golang:1.22 AS build
 # ... build steps ...
 
 FROM scratch AS extension
-COPY --from=build /app/binary /usr/local/bin/binary
+COPY --from=build /app/binary /rootfs/usr/local/bin/binary
 COPY manifest.yaml /
 
 # Bad: including build tools in the extension
