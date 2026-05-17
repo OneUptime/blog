@@ -250,7 +250,7 @@ kubectl describe pvc <pvc-name> | grep -A 3 "Access Modes"
 kubectl describe pv <pv-name> | grep -A 3 "Access Modes"
 
 # If you need RWX, use a storage system that supports it:
-# NFS, CephFS, or Longhorn with RWXM support
+# NFS, CephFS, or Longhorn with RWX support
 ```
 
 ## Verify Storage After Fixing
