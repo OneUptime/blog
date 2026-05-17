@@ -111,16 +111,16 @@ talosctl dmesg --nodes <NODE_IP> | grep -i "EFI v"
 # If not, it is legacy BIOS, which means GRUB
 ```
 
-## Method 4: Check the Installed Image Type
+## Method 4: Check the Security State Resource
 
-The Talos installer metadata can give you hints about the boot loader:
+The most direct way to confirm whether systemd-boot is in use is to inspect the security state resource:
 
 ```bash
-# View the installed version information
-talosctl get installedversions --nodes <NODE_IP> -o yaml
+# View the security state
+talosctl get securitystate --nodes <NODE_IP> -o yaml
 ```
 
-The output includes information about the installed image, which can indicate whether it was installed with GRUB or systemd-boot support.
+The output includes a `bootedWithUKI` field. If `bootedWithUKI: true`, the node booted via a Unified Kernel Image, which means systemd-boot is the active boot loader. If the field is `false` (or absent on older releases), the node is using GRUB.
 
 ## Method 5: Examine the Disk Partition Table
 
@@ -128,7 +128,7 @@ The partition table format provides indirect evidence:
 
 ```bash
 # Check the partition table
-talosctl disks --nodes <NODE_IP>
+talosctl get disks --nodes <NODE_IP>
 ```
 
 - **GPT partition table with an EFI System Partition**: Could be either GRUB or systemd-boot (UEFI mode)
