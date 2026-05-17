@@ -45,7 +45,7 @@ The Raspberry Pi Imager is the easiest option. Install it on your workstation:
 sudo apt install rpi-imager
 
 # On macOS with Homebrew
-brew install raspberry-pi-imager
+brew install --cask raspberry-pi-imager
 ```
 
 Open the imager, click "Choose OS", scroll to "Other general-purpose OS", then "Ubuntu", and select Ubuntu Server 24.04 LTS (64-bit). Choose your storage device and click Write.
@@ -202,7 +202,7 @@ sudo rpi-eeprom-update
 sudo rpi-eeprom-config --edit
 ```
 
-Set `BOOT_ORDER=0xf416` to try NVMe first, then SD, then USB, then network:
+Set `BOOT_ORDER=0xf416` to try NVMe first, then SD, then USB, then restart the boot sequence (the leading `f` digit means RESTART, so the bootloader loops back to NVMe if nothing booted):
 
 ```text
 BOOT_ORDER=0xf416
@@ -226,15 +226,9 @@ sudo apt install cpufrequtils
 echo 'GOVERNOR="performance"' | sudo tee /etc/default/cpufrequtils
 ```
 
-### Memory Split
+### Memory Allocation
 
-Since you are running Ubuntu Server headless, no GPU memory is needed:
-
-```bash
-# Set GPU memory to minimum (16 MB)
-echo "gpu_mem=16" | sudo tee -a /boot/firmware/config.txt
-sudo reboot
-```
+Unlike earlier Raspberry Pi models, the Pi 5 uses dynamic memory allocation managed by the firmware, so the legacy `gpu_mem` setting in `/boot/firmware/config.txt` has no effect. There is no manual split to tune for a headless server — the firmware allocates GPU memory only as needed, so all RAM is effectively available to userspace.
 
 ### Monitoring Temperature
 
