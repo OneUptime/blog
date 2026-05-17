@@ -26,13 +26,13 @@ cluster:
     enabled: true
     registries:
       kubernetes:
-        disabled: false
+        disabled: true
       service:
         disabled: false
         endpoint: https://discovery.talos.dev/
 ```
 
-By default, both registries are enabled. The Kubernetes registry discovers members through the Kubernetes API, and the service registry uses the Talos cloud discovery endpoint.
+By default, the service registry is enabled and the Kubernetes registry is disabled. The Kubernetes registry discovers members through the Kubernetes API, and the service registry uses the Talos cloud discovery endpoint.
 
 ## The Talos Discovery Service
 
@@ -57,9 +57,12 @@ If you prefer not to use the cloud-hosted service (for compliance, air-gapped en
 
 ```bash
 # Run the discovery service as a Docker container
+# The service listens on port 3000 (gRPC) and 3001 (HTTP/metrics).
+# Put a TLS-terminating reverse proxy in front of it to serve HTTPS.
 docker run -d \
   --name talos-discovery \
-  -p 443:443 \
+  -p 3000:3000 \
+  -p 3001:3001 \
   ghcr.io/siderolabs/discovery-service:latest
 ```
 
