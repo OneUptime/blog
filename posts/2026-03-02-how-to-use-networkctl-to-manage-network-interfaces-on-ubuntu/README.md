@@ -58,8 +58,8 @@ The columns tell you:
 
 ### Operational States
 
-- `off` - no carrier (cable unplugged or interface is down)
-- `no-carrier` - interface is up but no physical link
+- `off` - the device is powered down (administratively down)
+- `no-carrier` - the device is powered up but does not yet have a carrier (e.g., cable unplugged)
 - `dormant` - interface is up and has carrier but not authenticated (e.g., 802.1X)
 - `degraded` - connected but not fully configured
 - `carrier` - has carrier but no address
@@ -118,14 +118,14 @@ networkctl lldp
 networkctl status eth0 | grep -E "Speed|Duplex|Driver|Firmware"
 ```
 
-Or use `networkctl show`:
+For low-level kernel link details, fall back to `ip`:
 
 ```bash
-# Show all properties of an interface
-networkctl show eth0
+# Show detailed link properties from the kernel
+ip -d link show eth0
 ```
 
-This dumps all properties including link-layer information, operational state history, and network configuration parameters.
+This dumps link-layer information that complements what `networkctl status` reports.
 
 ## Reloading Configuration
 
@@ -155,8 +155,8 @@ This is useful after manually modifying the interface's `.network` file.
 # Force a DHCP renew on eth0
 sudo networkctl renew eth0
 
-# Renew all DHCP-configured interfaces
-sudo networkctl renew
+# Renew on multiple interfaces (one or more device names are required)
+sudo networkctl renew eth0 eth1
 ```
 
 ## Bringing Interfaces Up and Down
