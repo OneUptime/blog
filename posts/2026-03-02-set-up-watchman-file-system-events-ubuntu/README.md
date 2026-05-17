@@ -38,10 +38,12 @@ wget "https://github.com/facebook/watchman/releases/download/v${WATCHMAN_VERSION
 cd /tmp
 unzip watchman.zip
 
-# Install binary
-sudo install -d /usr/local/var/run/watchman
-sudo install watchman-v${WATCHMAN_VERSION}-linux/bin/watchman \
-    /usr/local/bin/watchman
+# Install binary and libraries
+sudo mkdir -p /usr/local/{bin,lib} /usr/local/var/run/watchman
+sudo cp watchman-v${WATCHMAN_VERSION}-linux/bin/* /usr/local/bin/
+sudo cp watchman-v${WATCHMAN_VERSION}-linux/lib/* /usr/local/lib/
+sudo chmod 755 /usr/local/bin/watchman
+sudo chmod 2777 /usr/local/var/run/watchman
 ```
 
 ### From Ubuntu Package (Older Version)
@@ -88,11 +90,11 @@ Watchman runs as a background server process. The `watchman` command communicate
 # Start watching a directory
 watchman watch ~/project
 
-# Query for recent changes (files modified in the last 10 seconds)
-watchman find ~/project -- --since 10s
-
 # Get all files in the directory
 watchman find ~/project
+
+# Find files matching a pattern
+watchman find ~/project '*.js'
 ```
 
 ### Getting Changes Since Last Query
@@ -171,14 +173,14 @@ watchman trigger-del ~/project rebuild-on-change
 Watchman uses expression trees for filtering:
 
 ```bash
-# All JavaScript files modified in the last 5 minutes
-watchman query ~/project '{
-    "expression": ["allof",
-        ["match", "*.js", "wholename"],
-        ["since", "5m", "mtime"]
+# All JavaScript files modified in the last 5 minutes (use a unix timestamp from 5 minutes ago)
+watchman query ~/project "{
+    \"expression\": [\"allof\",
+        [\"match\", \"*.js\", \"wholename\"],
+        [\"since\", $(($(date +%s) - 300)), \"mtime\"]
     ],
-    "fields": ["name", "mtime", "size"]
-}'
+    \"fields\": [\"name\", \"mtime\", \"size\"]
+}"
 
 # Files that don't match certain patterns
 watchman query ~/project '{
@@ -197,7 +199,7 @@ watchman query ~/project '{
 | `["match", "*.js", "basename"]` | Glob match against basename |
 | `["match", "src/*.js", "wholename"]` | Glob match against full path |
 | `["type", "f"]` | File type: `f`=file, `d`=directory, `l`=symlink |
-| `["since", "5m", "mtime"]` | Modified within last 5 minutes |
+| `["since", 1706000000, "mtime"]` | Modified since the given unix timestamp |
 | `["allof", ...]` | All conditions must match |
 | `["anyof", ...]` | Any condition must match |
 | `["not", ...]` | Negate condition |
@@ -300,7 +302,7 @@ node watch-changes.js
 
 ## Watchman State Management
 
-Watchman persists its state between restarts. State files are in `~/.watchman/`:
+Watchman persists its state between restarts. By default, state files live in `/usr/local/var/run/watchman/$USER-state/` (the location is configurable at build time and can be overridden with `--statedir`):
 
 ```bash
 # Show all current watches
@@ -333,10 +335,10 @@ sudo nano /etc/watchman.json
 }
 ```
 
-Or user-level configuration:
+Or per-project configuration, placed at the root of the watched directory:
 
 ```bash
-nano ~/.watchmanconfig
+nano ~/project/.watchmanconfig
 ```
 
 ```json
@@ -345,6 +347,8 @@ nano ~/.watchmanconfig
     "settle": 50
 }
 ```
+
+Note: `.watchmanconfig` is loaded from the root of each watched project, not from the user's home directory. Changes require removing and re-adding the watch (`watchman watch-del` then `watchman watch`) to take effect.
 
 The `settle` value (in milliseconds) controls how long Watchman waits after the last event before triggering callbacks - this implements debouncing.
 
@@ -381,14 +385,11 @@ Watchman restores its watches and triggers when it restarts, though it can take 
 ## Debugging and Troubleshooting
 
 ```bash
-# View Watchman logs
-watchman --debug-watchman-version
+# Check the log file (default location)
+tail -f /usr/local/var/run/watchman/$USER-state/log
 
-# Check the log file
-tail -f ~/.watchman/*.log
-
-# Verbose output
-watchman --foreground watch ~/project
+# Run the server in the foreground for debugging
+watchman --foreground
 
 # Recrawl if state seems stale
 watchman watch-del ~/project
