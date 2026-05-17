@@ -28,7 +28,7 @@ Sidero Labs maintains a collection of official extensions that cover common use 
 crane ls ghcr.io/siderolabs
 
 # Some commonly used extensions:
-# ghcr.io/siderolabs/nvidia-open-gpu-kernel-modules
+# ghcr.io/siderolabs/nvidia-open-gpu-kernel-modules-production
 # ghcr.io/siderolabs/zfs
 # ghcr.io/siderolabs/iscsi-tools
 # ghcr.io/siderolabs/tailscale
@@ -40,7 +40,7 @@ You can also check the official Talos documentation for the most up-to-date list
 
 ## Adding Extensions During Installation
 
-The simplest way to add extensions is to include them in your machine configuration before installing Talos.
+The recommended way to add extensions is to bake them into a custom installer image using Image Factory, then point `machine.install.image` at that custom installer. The legacy `.machine.install.extensions` field was deprecated in Talos v1.5 and has no effect starting with Talos v1.10, so any new setup should use Image Factory (covered later in this post).
 
 First, generate your machine configuration.
 
@@ -49,15 +49,14 @@ First, generate your machine configuration.
 talosctl gen config my-cluster https://10.0.0.1:6443
 ```
 
-Then edit the generated configuration to add extensions. Open the `controlplane.yaml` or `worker.yaml` file and add the extensions section.
+Then edit the generated configuration to point at a custom installer image that already contains your extensions (generated via Image Factory — see the section below).
 
 ```yaml
 # controlplane.yaml or worker.yaml
 machine:
   install:
-    extensions:
-      - image: ghcr.io/siderolabs/iscsi-tools:v0.1.4
-      - image: ghcr.io/siderolabs/qemu-guest-agent:v8.2.0
+    # Custom installer built by Image Factory with the extensions baked in
+    image: factory.talos.dev/installer/<schematic-id>:v1.7.6
 ```
 
 Apply the configuration to your node.
@@ -69,33 +68,30 @@ talosctl apply-config --insecure \
   --file controlplane.yaml
 ```
 
-The node will download the extension images and include them in the installation.
+The node will pull the custom installer image, which already contains the extensions, and use it for the installation.
 
 ## Adding Extensions to an Existing Cluster
 
-If you have a running cluster and need to add extensions after the fact, you can update the machine configuration and trigger a reboot.
+If you have a running cluster and need to add extensions after the fact, generate a new Image Factory schematic that includes the extra extensions, then trigger an upgrade pointing at the new custom installer image. Extensions are part of the immutable installer image, so adding them always requires an upgrade — there is no way to load them at runtime without rebooting into a new install image.
 
 ```bash
-# Get the current machine config
-talosctl -n 10.0.0.10 get machineconfig -o yaml > current-config.yaml
+# Submit a schematic that includes the extensions you want
+# (see the Image Factory section for the schematic format)
+curl -X POST --data-binary @schematic.yaml https://factory.talos.dev/schematics
 
-# Edit the config to add extensions
-# Add under machine.install.extensions
+# The response returns a schematic ID, for example:
+# {"id":"376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba"}
 ```
 
-Apply the updated configuration.
+Trigger the upgrade using the custom installer image:
 
 ```bash
-# Apply the config change
-talosctl -n 10.0.0.10 apply-config --file current-config.yaml
-
-# The node needs to be upgraded or reinstalled to apply new extensions
-# Trigger an upgrade (even to the same version) to apply extensions
+# Upgrade to the same (or new) Talos version using the custom installer
 talosctl -n 10.0.0.10 upgrade \
-  --image ghcr.io/siderolabs/installer:v1.7.0
+  --image factory.talos.dev/installer/<schematic-id>:v1.7.6
 ```
 
-The upgrade process will reinstall the OS with the new extensions included.
+The upgrade process will reinstall the OS from the custom installer, which already contains the new extensions.
 
 ## Using Image Factory for Extensions
 
@@ -130,28 +126,23 @@ Some extensions require additional configuration in the machine config. This is 
 
 ### Example: Configuring Tailscale
 
+The Tailscale extension is configured via an `ExtensionServiceConfig` document, which is applied as a separate machine config document alongside the main `MachineConfig`:
+
 ```yaml
-machine:
-  install:
-    extensions:
-      - image: ghcr.io/siderolabs/tailscale:v1.62.0
-  files:
-    - content: |
-        TS_AUTHKEY=tskey-auth-xxxxx
-        TS_ROUTES=10.0.0.0/24
-      permissions: 0o644
-      path: /var/etc/tailscale/auth.env
-      op: create
+apiVersion: v1alpha1
+kind: ExtensionServiceConfig
+name: tailscale
+environment:
+  - TS_AUTHKEY=tskey-auth-xxxxx
+  - TS_ROUTES=10.0.0.0/24
 ```
 
 ### Example: Configuring NVIDIA GPU
 
+NVIDIA extensions are now published in `-production` and `-lts` variants — pick the one matching your driver branch.
+
 ```yaml
 machine:
-  install:
-    extensions:
-      - image: ghcr.io/siderolabs/nvidia-open-gpu-kernel-modules:535.129.03-v1.7.0
-      - image: ghcr.io/siderolabs/nvidia-container-toolkit:535.129.03-v1.14.3
   kernel:
     modules:
       - name: nvidia
@@ -159,6 +150,8 @@ machine:
       - name: nvidia_drm
       - name: nvidia_modeset
 ```
+
+Combine this with an Image Factory schematic that includes both the NVIDIA kernel module extension (for example `siderolabs/nvidia-open-gpu-kernel-modules-production`) and `siderolabs/nvidia-container-toolkit-production`.
 
 ## Verifying Extensions
 
@@ -195,42 +188,38 @@ crane ls ghcr.io/siderolabs/iscsi-tools
 # Example: v0.1.4 (check the extension docs for compatibility)
 ```
 
-When upgrading Talos, make sure to update your extension versions to match.
+When upgrading Talos, make sure to generate a new Image Factory schematic that pins the matching extension versions and use the resulting custom installer for the upgrade.
 
 ```yaml
-# Before Talos upgrade - check extension compatibility
-machine:
-  install:
-    extensions:
-      # Update these versions when upgrading Talos
-      - image: ghcr.io/siderolabs/iscsi-tools:v0.1.5  # Updated for v1.8.0
-      - image: ghcr.io/siderolabs/nvidia-open-gpu-kernel-modules:535.129.03-v1.8.0
+# schematic.yaml — generate a new schematic ID when bumping Talos versions
+customization:
+  systemExtensions:
+    officialExtensions:
+      - siderolabs/iscsi-tools
+      - siderolabs/nvidia-open-gpu-kernel-modules-production
 ```
 
 ## Removing Extensions
 
-To remove an extension, update the machine configuration to remove it from the extensions list and trigger an upgrade.
+To remove an extension, generate a new Image Factory schematic without that extension and trigger an upgrade pointing at the new custom installer.
 
 ```bash
-# Edit the machine config and remove the extension entry
-# Then apply and upgrade
-talosctl -n 10.0.0.10 apply-config --file updated-config.yaml
+# After submitting the new schematic and getting a new ID:
 talosctl -n 10.0.0.10 upgrade \
-  --image ghcr.io/siderolabs/installer:v1.7.0
+  --image factory.talos.dev/installer/<new-schematic-id>:v1.7.6
 ```
 
-## Extension Load Order
+## Extension Dependencies
 
-Extensions are loaded in the order they appear in the configuration. This matters when one extension depends on another. For example, the NVIDIA container toolkit extension depends on the NVIDIA kernel module extension, so the kernel module extension should be listed first.
+Some extensions depend on others — for example, the NVIDIA container toolkit extension depends on the NVIDIA kernel module extension. When using Image Factory, include both in the same schematic; Image Factory will compose them into a single installer image.
 
 ```yaml
-machine:
-  install:
-    extensions:
-      # Kernel modules first
-      - image: ghcr.io/siderolabs/nvidia-open-gpu-kernel-modules:535.129.03-v1.7.0
-      # Then higher-level tools that depend on them
-      - image: ghcr.io/siderolabs/nvidia-container-toolkit:535.129.03-v1.14.3
+# schematic.yaml
+customization:
+  systemExtensions:
+    officialExtensions:
+      - siderolabs/nvidia-open-gpu-kernel-modules-production
+      - siderolabs/nvidia-container-toolkit-production
 ```
 
 ## Troubleshooting Extension Issues
