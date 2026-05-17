@@ -25,7 +25,7 @@ When multiple providers are listed, the first one is used for encryption and all
 
 ## Configuring Encryption in Talos
 
-Talos Linux allows you to specify the encryption configuration in the machine config for control plane nodes. Here is how to set it up.
+Talos Linux provides built-in support for Kubernetes secrets encryption through two top-level cluster fields: `cluster.aescbcEncryptionSecret` and `cluster.secretboxEncryptionSecret`. Both accept a single base64-encoded 32-byte key. Talos translates the field into a Kubernetes `EncryptionConfiguration` and wires it into the kube-apiserver for you.
 
 First, generate a strong encryption key.
 
@@ -36,43 +36,26 @@ head -c 32 /dev/urandom | base64
 # Output example: dGhpcyBpcyBhIHRlc3Qga2V5IGZvciBlbmNyeXB0aW9u
 ```
 
-Now create a Talos machine configuration patch that enables secrets encryption.
-
-```yaml
-# encryption-patch.yaml
-cluster:
-  apiServer:
-    extraArgs:
-      encryption-provider-config: /etc/kubernetes/encryption-config.yaml
-    extraVolumes:
-      - hostPath: /var/etc/kubernetes/encryption-config
-        mountPath: /etc/kubernetes/encryption-config.yaml
-        name: encryption-config
-        readOnly: true
-  secretsEncryption:
-    aescbc:
-      keys:
-        - name: key1
-          secret: dGhpcyBpcyBhIHRlc3Qga2V5IGZvciBlbmNyeXB0aW9u
-```
-
-Wait - Talos Linux actually has a built-in way to handle this without manual volume mounts. Talos provides native support for secrets encryption through the machine configuration.
+Now create a Talos machine configuration patch that enables secrets encryption using the native field.
 
 ```yaml
 # talos-encryption-patch.yaml
 cluster:
-  secretsEncryption:
-    provider: aescbc
-    aescbc:
-      keys:
-        - name: key-2024-01
-          secret: dGhpcyBpcyBhIHRlc3Qga2V5IGZvciBlbmNyeXB0aW9u
+  aescbcEncryptionSecret: dGhpcyBpcyBhIHRlc3Qga2V5IGZvciBlbmNyeXB0aW9u
+```
+
+If you prefer the secretbox provider (modern and fast), use `secretboxEncryptionSecret` instead.
+
+```yaml
+# talos-encryption-patch.yaml
+cluster:
+  secretboxEncryptionSecret: dGhpcyBpcyBhIHRlc3Qga2V5IGZvciBlbmNyeXB0aW9u
 ```
 
 Apply this patch to your control plane nodes.
 
 ```bash
-# Apply the encryption configuration to control plane nodes
+# Generate a patched controlplane.yaml
 talosctl machineconfig patch /path/to/controlplane.yaml \
   --patch @talos-encryption-patch.yaml \
   --output controlplane-encrypted.yaml
@@ -83,6 +66,8 @@ talosctl apply-config --nodes 10.0.0.11 --file controlplane-encrypted.yaml
 talosctl apply-config --nodes 10.0.0.12 --file controlplane-encrypted.yaml
 ```
 
+The native field only accepts a single key and only encrypts the `secrets` resource. If you need multi-key rotation or want to encrypt additional resource types (like ConfigMaps), use the manual approach shown later in this post.
+
 ## Verifying Encryption is Active
 
 After applying the configuration and waiting for the API server to restart, verify that encryption is working.
@@ -92,20 +77,33 @@ After applying the configuration and waiting for the API server to restart, veri
 kubectl create secret generic test-encryption \
   --from-literal=mykey=mysecretvalue \
   --namespace default
-
-# Read the secret directly from etcd using talosctl
-talosctl etcd get /registry/secrets/default/test-encryption \
-  --nodes 10.0.0.10
-
-# If encryption is working, the output should be garbled/encrypted
-# If it is NOT working, you would see the plaintext value
 ```
 
-You can also check the API server logs to confirm the encryption provider loaded successfully.
+`talosctl` does not provide a subcommand to read arbitrary etcd keys, so to inspect the raw value you need to exec into an etcd pod and use `etcdctl`.
+
+```bash
+# Find an etcd pod on a control plane node
+ETCD_POD=$(kubectl -n kube-system get pods -l k8s-app=etcd \
+  -o jsonpath='{.items[0].metadata.name}')
+
+# Read the secret directly from etcd
+kubectl -n kube-system exec -it "$ETCD_POD" -- etcdctl \
+  --cacert=/system/secrets/etcd/ca.crt \
+  --cert=/system/secrets/etcd/server.crt \
+  --key=/system/secrets/etcd/server.key \
+  get /registry/secrets/default/test-encryption
+
+# If encryption is working the value is prefixed with k8s:enc:aescbc:v1:
+# (or k8s:enc:secretbox:v1: when using the secretbox provider)
+# and the payload that follows is ciphertext. If it is NOT working you
+# would see the plaintext value.
+```
+
+You can also check the API server logs to confirm the encryption provider loaded successfully. Because kube-apiserver runs as a Kubernetes static pod (not a Talos service), pass `-k` to read its container logs through talosctl.
 
 ```bash
 # Check API server logs for encryption-related messages
-talosctl logs kube-apiserver --nodes 10.0.0.10 | grep -i encrypt
+talosctl --nodes 10.0.0.10 logs -k kube-system/kube-apiserver | grep -i encrypt
 ```
 
 ## Re-encrypting Existing Secrets
@@ -131,7 +129,7 @@ done
 
 ## Key Rotation
 
-Regular key rotation is a security best practice. The process involves adding a new key, re-encrypting all secrets with the new key, and then removing the old key.
+Regular key rotation is a security best practice. The process involves adding a new key, re-encrypting all secrets with the new key, and then removing the old key. Because the native `cluster.aescbcEncryptionSecret` field only accepts a single key, true multi-key rotation requires switching to a hand-rolled `EncryptionConfiguration` mounted into the API server. You write the config to disk with `machine.files`, point the API server at it with `apiServer.extraArgs`, and expose the directory to the static pod with `apiServer.extraVolumes`.
 
 Step 1: Generate a new encryption key.
 
@@ -141,22 +139,45 @@ head -c 32 /dev/urandom | base64
 # Output: bmV3IGtleSBmb3Igcm90YXRpb24gZXhhbXBsZSBrZXk=
 ```
 
-Step 2: Update the configuration with both keys, placing the new key first.
+Step 2: Build a patch with an `EncryptionConfiguration` that lists both keys, placing the new key first.
 
 ```yaml
 # rotation-patch.yaml
+machine:
+  files:
+    - op: create
+      path: /var/lib/kube-apiserver/encryption-config.yaml
+      permissions: 0o600
+      content: |
+        apiVersion: apiserver.config.k8s.io/v1
+        kind: EncryptionConfiguration
+        resources:
+          - resources:
+              - secrets
+            providers:
+              # New key first - used for encryption
+              - aescbc:
+                  keys:
+                    - name: key-2024-06
+                      secret: bmV3IGtleSBmb3Igcm90YXRpb24gZXhhbXBsZSBrZXk=
+              # Old key second - still used for decryption during transition
+              - aescbc:
+                  keys:
+                    - name: key-2024-01
+                      secret: dGhpcyBpcyBhIHRlc3Qga2V5IGZvciBlbmNyeXB0aW9u
+              - identity: {}
 cluster:
-  secretsEncryption:
-    provider: aescbc
-    aescbc:
-      keys:
-        # New key first - used for encryption
-        - name: key-2024-06
-          secret: bmV3IGtleSBmb3Igcm90YXRpb24gZXhhbXBsZSBrZXk=
-        # Old key second - only used for decryption during transition
-        - name: key-2024-01
-          secret: dGhpcyBpcyBhIHRlc3Qga2V5IGZvciBlbmNyeXB0aW9u
+  apiServer:
+    extraArgs:
+      encryption-provider-config: /var/lib/kube-apiserver/encryption-config.yaml
+    extraVolumes:
+      - hostPath: /var/lib/kube-apiserver
+        mountPath: /var/lib/kube-apiserver
+        name: encryption-config
+        readonly: true
 ```
+
+If you previously enabled encryption via `cluster.aescbcEncryptionSecret`, remove that field when you switch to the manual configuration so the API server only loads one `EncryptionConfiguration`.
 
 Step 3: Apply the updated configuration to all control plane nodes.
 
@@ -178,31 +199,58 @@ Step 5: After verifying re-encryption is complete, remove the old key from the c
 
 ```yaml
 # final-patch.yaml
-cluster:
-  secretsEncryption:
-    provider: aescbc
-    aescbc:
-      keys:
-        - name: key-2024-06
-          secret: bmV3IGtleSBmb3Igcm90YXRpb24gZXhhbXBsZSBrZXk=
+machine:
+  files:
+    - op: overwrite
+      path: /var/lib/kube-apiserver/encryption-config.yaml
+      permissions: 0o600
+      content: |
+        apiVersion: apiserver.config.k8s.io/v1
+        kind: EncryptionConfiguration
+        resources:
+          - resources:
+              - secrets
+            providers:
+              - aescbc:
+                  keys:
+                    - name: key-2024-06
+                      secret: bmV3IGtleSBmb3Igcm90YXRpb24gZXhhbXBsZSBrZXk=
+              - identity: {}
 ```
 
 ## Encrypting Other Resources
 
-While Secrets are the most common target for encryption at rest, you can also encrypt other resource types like ConfigMaps or custom resources.
+While Secrets are the most common target for encryption at rest, you can also encrypt other resource types like ConfigMaps or custom resources. The native Talos field only covers `secrets`, so to extend coverage you again need the manual `EncryptionConfiguration` approach.
 
 ```yaml
 # Encrypt both Secrets and ConfigMaps
+machine:
+  files:
+    - op: overwrite
+      path: /var/lib/kube-apiserver/encryption-config.yaml
+      permissions: 0o600
+      content: |
+        apiVersion: apiserver.config.k8s.io/v1
+        kind: EncryptionConfiguration
+        resources:
+          - resources:
+              - secrets
+              - configmaps
+            providers:
+              - aescbc:
+                  keys:
+                    - name: key-2024-06
+                      secret: bmV3IGtleSBmb3Igcm90YXRpb24gZXhhbXBsZSBrZXk=
+              - identity: {}
 cluster:
-  secretsEncryption:
-    provider: aescbc
-    resources:
-      - secrets
-      - configmaps
-    aescbc:
-      keys:
-        - name: key-2024-06
-          secret: bmV3IGtleSBmb3Igcm90YXRpb24gZXhhbXBsZSBrZXk=
+  apiServer:
+    extraArgs:
+      encryption-provider-config: /var/lib/kube-apiserver/encryption-config.yaml
+    extraVolumes:
+      - hostPath: /var/lib/kube-apiserver
+        mountPath: /var/lib/kube-apiserver
+        name: encryption-config
+        readonly: true
 ```
 
 Only encrypt resources that actually contain sensitive data. Encrypting everything adds CPU overhead to every read and write operation.
