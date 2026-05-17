@@ -35,7 +35,7 @@ sr0     11:0    1  1024M  0 rom
 ### Useful lsblk Options
 
 ```bash
-# Show all devices including empty ones (no mountpoint)
+# Disable built-in filters and list empty devices and RAM disks too
 lsblk -a
 
 # Show filesystem information
@@ -224,7 +224,7 @@ sudo umount /mnt/mydata
 # Unmount by device
 sudo umount /dev/sdb1
 
-# Force unmount (if device is busy)
+# Force unmount (intended for unreachable NFS systems)
 sudo umount -f /mnt/mydata
 
 # Lazy unmount (detach when no longer busy)
