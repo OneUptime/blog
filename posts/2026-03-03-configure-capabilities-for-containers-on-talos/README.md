@@ -26,11 +26,11 @@ CAP_SYS_ADMIN         - Catch-all for many admin operations
 CAP_CHOWN             - Change file ownership
 CAP_DAC_OVERRIDE      - Bypass file permission checks
 CAP_FOWNER            - Bypass ownership checks on files
-CAP_FSETID            - Set SUID/SGID bits
+CAP_FSETID            - Preserve SUID/SGID bits on file modification
 CAP_KILL              - Send signals to other processes
 CAP_SETGID            - Manipulate group IDs
 CAP_SETUID            - Manipulate user IDs
-CAP_SETPCAP           - Transfer capabilities
+CAP_SETPCAP           - Modify process capability sets and bounding set
 CAP_NET_ADMIN         - Network configuration
 CAP_SYS_CHROOT        - Use chroot
 CAP_AUDIT_WRITE       - Write to kernel audit log
