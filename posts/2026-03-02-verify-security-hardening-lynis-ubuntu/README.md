@@ -67,11 +67,14 @@ The audit takes 2 to 5 minutes and checks categories including:
 The output follows a consistent format. Each check shows one of several status indicators:
 
 ```text
-[+]  - Found/Passed (green)
-[-]  - Not found (may or may not be an issue)
-[!]  - Warning (yellow/red)
-[?]  - Could not determine
-[ ]  - Suggestion available
+[ OK ]          - Test passed / expected result (green)
+[ WARNING ]     - Unexpected result that needs attention (red)
+[ FOUND ]       - Item or file was found
+[ NOT FOUND ]   - Item or file was not found
+[ SUGGESTION ]  - Improvement is suggested (yellow)
+[ DONE ]        - Test completed
+[ SKIPPED ]     - Test was skipped
+[ NONE ]        - No items found
 ```
 
 At the end of the audit, Lynis prints a summary section:
