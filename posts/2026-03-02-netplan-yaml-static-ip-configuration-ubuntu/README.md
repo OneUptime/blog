@@ -286,7 +286,7 @@ network:
           - 8.8.8.8
 ```
 
-With NetworkManager as the renderer, the configuration translates to NetworkManager connection profiles. The `nm-cli` or the GUI network settings can then manage these connections.
+With NetworkManager as the renderer, the configuration translates to NetworkManager connection profiles. The `nmcli` command or the GUI network settings can then manage these connections.
 
 ## Complete Production-Ready Example
 
@@ -320,8 +320,8 @@ network:
         addresses:
           - 10.0.1.1
           - 1.1.1.1
-      # Disable IPv6 autoconfiguration if not needed
-      ipv6-address-generation: none
+      # Disable IPv6 autoconfiguration (don't accept Router Advertisements)
+      accept-ra: false
 ```
 
 Netplan's YAML approach makes network configuration auditable and version-controllable, which is a significant improvement over the old interfaces file format. Store your Netplan configs in a git repository and treat them like any other infrastructure-as-code.
