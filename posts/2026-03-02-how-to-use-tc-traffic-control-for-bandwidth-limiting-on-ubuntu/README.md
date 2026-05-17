@@ -179,7 +179,7 @@ sudo tc qdisc add dev eth0 root netem delay 300ms 50ms loss 5% corrupt 0.1%
 ### Adding Packet Reordering
 
 ```bash
-# 10% of packets are delayed by 10ms extra (causing reordering)
+# 10% of packets are sent immediately while the rest are delayed by 10ms (causing reordering)
 sudo tc qdisc add dev eth0 root netem delay 10ms reorder 10% 25%
 ```
 
@@ -243,7 +243,7 @@ tc -s class show dev eth0
 watch -n 1 tc -s qdisc show dev eth0
 ```
 
-The `-s` flag adds packet and byte counters, dropped packet counts, and overlap statistics.
+The `-s` flag adds packet and byte counters, dropped packet counts, and overlimits/requeues statistics.
 
 ## Making tc Rules Persistent
 
