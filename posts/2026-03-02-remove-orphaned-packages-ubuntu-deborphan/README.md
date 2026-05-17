@@ -125,24 +125,25 @@ Sometimes `deborphan` flags packages you want to keep even though nothing depend
 deborphan --add-keep package-name
 
 # List packages in the keep list
-deborphan --show-keep
+deborphan --list-keep
 
 # Remove a package from the keep list
 deborphan --del-keep package-name
 ```
 
-The keep list persists between runs, stored in `~/.deborphan` or `/etc/deborphan/keep`.
+The keep list persists between runs, stored by default in `/var/lib/deborphan/keep`.
 
 ## Using orphaner for Interactive Removal
 
-`deborphan` ships with a companion tool called `orphaner` that provides an interactive curses interface:
+`deborphan` ships with a companion tool called `orphaner` that provides an interactive dialog/whiptail interface:
 
 ```bash
 # Run the interactive orphan remover
 sudo orphaner
 
-# Navigate with arrow keys, space to mark for removal
-# Press 'q' to quit, 'r' to remove marked packages
+# Navigate with arrow keys, space to mark/unmark packages for removal
+# Tab to move between OK/Cancel/Simulate/Help buttons, Enter to activate
+# Press OK to remove marked packages, Cancel to quit
 ```
 
 `orphaner` is more forgiving for manual review since you can examine each package before marking it for removal.
@@ -165,8 +166,9 @@ sudo apt list --installed 2>/dev/null | \
 Or more efficiently with `aptitude`:
 
 ```bash
-# Find packages not in any repository (aptitude must be installed)
-aptitude search '~i !~M !~ahold' | grep "^i A"
+# Find obsolete packages - installed but not available in any repository
+# (aptitude must be installed)
+aptitude search '~o'
 ```
 
 ## Finding Config Files from Removed Packages
