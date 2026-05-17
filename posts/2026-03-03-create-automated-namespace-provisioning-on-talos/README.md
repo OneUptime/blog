@@ -59,9 +59,9 @@ metadata:
 spec:
   hard:
     requests.cpu: "${CPU_QUOTA}"
-    limits.cpu: "$((${CPU_QUOTA%[^0-9]*} * 2))"
+    limits.cpu: "$((${CPU_QUOTA%%[^0-9]*} * 2))"
     requests.memory: "${MEMORY_QUOTA}"
-    limits.memory: "$((${MEMORY_QUOTA%[^0-9]*} * 2))Gi"
+    limits.memory: "$((${MEMORY_QUOTA%%[^0-9]*} * 2))Gi"
     pods: "100"
     services: "30"
     configmaps: "100"
