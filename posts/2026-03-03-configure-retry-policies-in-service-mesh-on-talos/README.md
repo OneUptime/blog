@@ -130,7 +130,7 @@ retries:
 
 ### Controlling Retry Backoff
 
-Istio uses exponential backoff between retries. You can control the base interval:
+Istio uses Envoy's exponential backoff between retries. The `HTTPRetry` resource itself does not expose backoff tuning, but you can set `retryRemoteLocalities` to allow retries to be redirected to upstream instances in other localities:
 
 ```yaml
 retries:
@@ -140,7 +140,7 @@ retries:
   retryRemoteLocalities: true
 ```
 
-The default backoff starts at 25ms and doubles with each attempt, capped at the per-try timeout.
+The default backoff starts at 25ms and doubles with each attempt, with the maximum interval capped at 10x the base (250ms by default). To customize the base or max interval, you have to patch the underlying Envoy retry policy with an `EnvoyFilter`.
 
 ## Retries with Linkerd
 
@@ -187,17 +187,25 @@ By default, Linkerd allows retries to add at most 20% additional request volume.
 
 ### Configuring Retry Budgets in Linkerd
 
+The retry budget is configured directly on the `ServiceProfile` via the `retryBudget` field:
+
 ```yaml
-# You can adjust the retry budget through annotations
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: linkerd.io/v1alpha2
+kind: ServiceProfile
 metadata:
-  name: api-service
+  name: api-service.default.svc.cluster.local
+  namespace: default
 spec:
-  template:
-    metadata:
-      annotations:
-        config.linkerd.io/proxy-retry-budget-ttl: "10s"
+  retryBudget:
+    retryRatio: 0.2          # Allow retries to add at most 20% more requests
+    minRetriesPerSecond: 10  # Always allow at least 10 retries/sec
+    ttl: 10s                 # Window over which the ratio is calculated
+  routes:
+  - name: GET /api/users
+    condition:
+      method: GET
+      pathRegex: /api/users(/.*)?
+    isRetryable: true
 ```
 
 ## Avoiding Retry Storms
