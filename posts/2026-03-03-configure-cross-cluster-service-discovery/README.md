@@ -178,8 +178,8 @@ metadata:
   name: shared-redis
   annotations:
     service.cilium.io/global: "true"
-    # Optional: only use remote endpoints as backup
-    service.cilium.io/shared: "true"
+    # Optional: prefer local backends, only fall back to remote endpoints
+    service.cilium.io/affinity: "local"
 spec:
   selector:
     app: redis
