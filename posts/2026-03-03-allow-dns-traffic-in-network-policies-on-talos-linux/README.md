@@ -264,8 +264,8 @@ kubectl logs -n kube-system -l k8s-app=kube-dns
 # Verify the network policy is applied correctly
 kubectl get networkpolicies -n production -o yaml
 
-# If using Cilium, check policy enforcement
-cilium monitor --type policy-verdict -n production
+# If using Cilium, check policy verdicts with Hubble
+hubble observe --type policy-verdict -n production
 ```
 
 On Talos Linux, you can also inspect the CNI state using talosctl:
