@@ -12,7 +12,7 @@ Scout Suite is an open-source multi-cloud security auditing tool that collects c
 
 ## Installing Scout Suite on Ubuntu
 
-Scout Suite requires Python 3.8 or later. Ubuntu 20.04 and later include Python 3 by default.
+Scout Suite requires Python 3.9 or later. Ubuntu 22.04 and later include a compatible Python 3 by default.
 
 ```bash
 # Install Python and pip
@@ -20,7 +20,7 @@ Scout Suite requires Python 3.8 or later. Ubuntu 20.04 and later include Python 
 sudo apt-get update
 sudo apt-get install -y python3 python3-pip python3-venv
 
-# Verify Python version (needs 3.8+)
+# Verify Python version (needs 3.9+)
 python3 --version
 ```
 
@@ -116,8 +116,8 @@ scout aws --services s3 iam ec2 rds
 # Audit a specific AWS region only
 scout aws --regions us-east-1 us-west-2
 
-# Audit all regions with specific services
-scout aws --services iam s3 vpc cloudtrail --regions all
+# Audit all regions with specific services (omit --regions to scan all)
+scout aws --services iam s3 vpc cloudtrail
 
 # Save results to a specific output directory
 scout aws --report-dir /tmp/scout-reports/$(date +%Y%m%d)
@@ -269,7 +269,7 @@ az login
 
 # Run Scout Suite against Azure subscription
 scout azure --cli \
-  --subscription-ids <subscription-id>
+  --subscriptions <subscription-id>
 ```
 
 ### GCP
