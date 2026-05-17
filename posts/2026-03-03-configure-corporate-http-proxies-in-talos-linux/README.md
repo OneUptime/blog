@@ -189,7 +189,7 @@ Configure your network so that all HTTP/HTTPS traffic is transparently intercept
 
 Some corporate proxies perform TLS interception (also called SSL inspection or MITM). They decrypt HTTPS traffic, inspect it, and re-encrypt it with a corporate CA certificate. For this to work, all clients must trust the corporate CA.
 
-In Talos, you can add custom CA certificates:
+In Talos, you can add custom CA certificates by appending them to the system CA bundle:
 
 ```yaml
 machine:
@@ -200,11 +200,11 @@ machine:
         ... (corporate CA certificate) ...
         -----END CERTIFICATE-----
       permissions: 0644
-      path: /etc/ssl/certs/corporate-ca.crt
-      op: create
+      path: /etc/ssl/certs/ca-certificates
+      op: append
 ```
 
-This ensures that Talos system services trust the proxy's re-signed certificates.
+Talos does not run `update-ca-certificates`, so a custom CA must be appended to the existing `/etc/ssl/certs/ca-certificates` bundle (using `op: append`) rather than dropped in as a standalone file. This ensures that Talos system services trust the proxy's re-signed certificates.
 
 ## Troubleshooting Proxy Issues
 
