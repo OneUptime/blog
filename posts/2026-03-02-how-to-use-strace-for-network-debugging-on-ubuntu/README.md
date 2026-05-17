@@ -76,8 +76,8 @@ strace -e trace=connect,sendto,recvfrom curl https://example.com
 # Show network calls AND file calls (useful for cert verification failures)
 strace -e trace=network,file curl https://example.com
 
-# Trace DNS resolution (includes open, read for /etc/resolv.conf and /etc/hosts)
-strace -e trace=network,read,open curl https://example.com 2>&1 | head -100
+# Trace DNS resolution (includes openat, read for /etc/resolv.conf and /etc/hosts)
+strace -e trace=network,read,openat curl https://example.com 2>&1 | head -100
 ```
 
 ## Practical Examples
@@ -105,8 +105,9 @@ Many network issues are actually DNS failures. Trace how an application resolves
 
 ```bash
 # Trace DNS resolution and connection attempts
-strace -f -e trace=connect,network \
-  -e trace=getaddrinfo,getsockopt \
+# Note: getaddrinfo is a glibc library function, not a syscall, so it cannot
+# be filtered directly with strace; trace the underlying network and file syscalls instead.
+strace -f -e trace=network,getsockopt \
   curl https://example.com 2>&1
 
 # Alternative: trace all socket and connect calls more broadly
