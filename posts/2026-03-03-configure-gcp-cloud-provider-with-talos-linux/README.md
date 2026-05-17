@@ -190,6 +190,7 @@ spec:
           volumeMounts:
             - name: cloud-config
               mountPath: /etc/kubernetes/cloud-config
+              subPath: cloud-config
               readOnly: true
       volumes:
         - name: cloud-config
