@@ -24,10 +24,11 @@ sudo tee /usr/local/bin/uptime-check.sh << 'EOF'
 # Simple HTTP uptime monitor with email alerting
 
 # Configuration
+# Use "|" as the separator since URLs contain ":"
 SERVICES=(
-    "https://example.com:Example Website"
-    "https://api.example.com/health:API Health"
-    "http://internal-app:8080/status:Internal App"
+    "https://example.com|Example Website"
+    "https://api.example.com/health|API Health"
+    "http://internal-app:8080/status|Internal App"
 )
 ALERT_EMAIL="alerts@example.com"
 STATE_DIR="/var/lib/uptime-check"
@@ -36,8 +37,8 @@ TIMEOUT=10
 mkdir -p "$STATE_DIR"
 
 for service_def in "${SERVICES[@]}"; do
-    URL="${service_def%%:*}"
-    NAME="${service_def##*:}"
+    URL="${service_def%%|*}"
+    NAME="${service_def##*|}"
     STATE_FILE="${STATE_DIR}/$(echo "$NAME" | tr ' ' '_').state"
 
     # Perform the check
@@ -179,34 +180,37 @@ ss -tlnp | grep 3001
 
 Access Uptime Kuma at `http://your-server:3001`. Create an admin account on first visit.
 
-## Configuring Monitors in Uptime Kuma via API
+## Configuring Monitors in Uptime Kuma Programmatically
+
+Uptime Kuma does not expose an official REST API for managing monitors. The web UI communicates with the server over Socket.IO, so programmatic monitor management is done either via Socket.IO directly or via a community wrapper such as [`lucasheld/uptime-kuma-api`](https://github.com/lucasheld/uptime-kuma-api) (Python).
 
 ```bash
-# After creating admin account, get auth token
-TOKEN=$(curl -s -X POST \
-  -H "Content-Type: application/json" \
-  http://localhost:3001/api/v1/login \
-  -d '{"username":"admin","password":"yourpassword"}' | \
-  python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+# Install the community Python wrapper
+pip install uptime-kuma-api
+```
 
-# Add an HTTP monitor
-curl -X POST \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ${TOKEN}" \
-  http://localhost:3001/api/v1/monitors \
-  -d '{
-    "type": "http",
-    "name": "Example Website",
-    "url": "https://example.com",
-    "interval": 60,
-    "retryInterval": 60,
-    "maxretries": 3,
-    "timeout": 10,
-    "method": "GET",
-    "keyword": "",
-    "upsideDown": false,
-    "accepted_statuscodes": [["200-299"]]
-  }'
+```python
+# add_monitor.py - add an HTTP monitor via the community wrapper
+from uptime_kuma_api import UptimeKumaApi, MonitorType
+
+with UptimeKumaApi("http://localhost:3001") as api:
+    api.login("admin", "yourpassword")
+    api.add_monitor(
+        type=MonitorType.HTTP,
+        name="Example Website",
+        url="https://example.com",
+        interval=60,
+        retryInterval=60,
+        maxretries=3,
+        accepted_statuscodes=["200-299"],
+    )
+```
+
+Uptime Kuma does ship a built-in Push monitor type. Once you create a Push monitor in the UI, it gives you a token-protected URL that external jobs can ping to report status:
+
+```bash
+# Heartbeat from a cron job, backup script, etc.
+curl "http://localhost:3001/api/push/<your-push-token>?status=up&msg=OK&ping="
 ```
 
 ## Monitoring with Prometheus Blackbox Exporter
