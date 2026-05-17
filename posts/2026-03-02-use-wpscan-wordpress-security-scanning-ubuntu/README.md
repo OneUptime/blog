@@ -81,12 +81,13 @@ wpscan --url https://yoursite.com -v
 
 A basic scan checks:
 - WordPress version
-- Active plugins (visible ones)
 - Active theme
 - WordPress readme.html exposure
 - XML-RPC availability
 - Login page exposure
-- User enumeration
+- Other interesting findings (response headers, exposed paths, wp-cron)
+
+Note: plugin enumeration and user enumeration are NOT performed by default — they require the `--enumerate` flag (see sections below).
 
 ## Enumerating Plugins
 
@@ -166,7 +167,7 @@ WPScan can test passwords against discovered users:
 ```bash
 # Basic password brute force with a wordlist
 wpscan --url https://example.com \
-    --username admin \
+    --usernames admin \
     --passwords /usr/share/wordlists/rockyou.txt
 
 # Brute force for all discovered users
@@ -176,12 +177,12 @@ wpscan --url https://example.com \
 
 # Limit to common passwords first (faster)
 wpscan --url https://example.com \
-    --username admin \
+    --usernames admin \
     --passwords /usr/share/wordlists/fasttrack.txt
 
 # Control number of parallel threads (default is 5)
 wpscan --url https://example.com \
-    --username admin \
+    --usernames admin \
     --passwords wordlist.txt \
     --max-threads 2
 ```
