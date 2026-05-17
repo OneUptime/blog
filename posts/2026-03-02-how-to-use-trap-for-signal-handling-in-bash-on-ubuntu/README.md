@@ -22,7 +22,7 @@ Common signals and conditions:
 - `EXIT` - runs when the script exits (any reason)
 - `INT` - user pressed Ctrl+C (SIGINT)
 - `TERM` - process received SIGTERM (kill without -9)
-- `ERR` - a command returned a non-zero exit code (when `set -e` is active)
+- `ERR` - a command returned a non-zero exit code (fires under the same conditions as `set -e`, but works independently of it)
 - `HUP` - hangup signal (SIGHUP)
 - `QUIT` - quit signal (SIGQUIT, Ctrl+\)
 - `DEBUG` - before each command (useful for tracing)
@@ -298,7 +298,7 @@ The `DEBUG` trap runs before every command - useful for tracing script execution
 
 # Enable debug tracing
 debug_trace() {
-    echo "CMD[$BASH_LINENO]: $BASH_COMMAND" >&2
+    echo "CMD[$LINENO]: $BASH_COMMAND" >&2
 }
 
 trap debug_trace DEBUG
