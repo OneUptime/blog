@@ -8,7 +8,7 @@ Description: Learn how to install and configure Ubuntu Server with UEFI Secure B
 
 ---
 
-Secure Boot is a UEFI feature that verifies each piece of software in the boot chain has been signed by a trusted key before running it. The intent is to prevent rootkits and boot-level malware from loading before the OS. Ubuntu has supported Secure Boot since Ubuntu 12.04 through the use of a pre-signed shim bootloader provided by Canonical. On Ubuntu Server, you can install and run with Secure Boot enabled without any special configuration - but you need to understand how the chain works, especially when you need to load third-party kernel modules.
+Secure Boot is a UEFI feature that verifies each piece of software in the boot chain has been signed by a trusted key before running it. The intent is to prevent rootkits and boot-level malware from loading before the OS. Ubuntu has supported Secure Boot since Ubuntu 12.10 through the use of a pre-signed shim bootloader provided by Canonical. On Ubuntu Server, you can install and run with Secure Boot enabled without any special configuration - but you need to understand how the chain works, especially when you need to load third-party kernel modules.
 
 ## How Ubuntu Implements Secure Boot
 
@@ -50,7 +50,7 @@ The Ubuntu Server installer is fully compatible with Secure Boot. Do not disable
 The installer will:
 - Use the EFI System Partition (ESP) at `/boot/efi`
 - Install the signed `shim`, `grubx64.efi`, and kernel
-- Register Canonical's key with the UEFI MokList if needed
+- Use the Canonical signing certificate that is embedded in `shim` to verify GRUB and the kernel (no MOK enrollment is required for the base system)
 
 No additional steps are required for the base Ubuntu system.
 
@@ -109,18 +109,14 @@ sudo /usr/src/linux-headers-$(uname -r)/scripts/sign-file \
     /path/to/your/module.ko
 ```
 
-For DKMS modules, configure DKMS to auto-sign after each build:
+For DKMS modules, recent Ubuntu releases (20.04 and later) auto-sign during `dkms build` when a MOK key pair is present at `/var/lib/shim-signed/mok/MOK.priv` and `/var/lib/shim-signed/mok/MOK.der`. To override the default paths, set them in `/etc/dkms/framework.conf`:
 
 ```bash
-# Create DKMS signing configuration
-sudo tee /etc/dkms/sign_helper.sh << 'EOF'
-#!/bin/sh
-/usr/src/linux-headers-$(uname -r)/scripts/sign-file sha256 \
-    /var/lib/shim-signed/mok/MOK.priv \
-    /var/lib/shim-signed/mok/MOK.der \
-    "$1"
+# Customize DKMS signing key paths (optional - defaults already point here)
+sudo tee -a /etc/dkms/framework.conf << 'EOF'
+mok_signing_key="/var/lib/shim-signed/mok/MOK.priv"
+mok_certificate="/var/lib/shim-signed/mok/MOK.der"
 EOF
-sudo chmod +x /etc/dkms/sign_helper.sh
 ```
 
 ## Handling Third-Party Drivers
@@ -201,10 +197,10 @@ sudo /usr/src/linux-headers-$(uname -r)/scripts/sign-file sha256 \
 ### Checking Which Keys Are Trusted
 
 ```bash
-# List keys in the UEFI Secure Boot database
+# List MOK keys enrolled via shim
 sudo mokutil --list-enrolled
 
-# List keys in the kernel keyring
+# List keys in the kernel's platform keyring (populated from UEFI db/MOK at boot)
 sudo keyctl list %:.platform
 ```
 
