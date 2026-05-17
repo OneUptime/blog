@@ -35,64 +35,75 @@ Before connecting nodes to Omni, you need:
 4. The `omnictl` command-line tool installed
 
 ```bash
-# Install omnictl
+# Install omnictl via Homebrew (recommended)
+brew install siderolabs/tap/sidero-tools
 
-curl -sL https://omni.siderolabs.com/install | sh
+# Or download the binary directly from GitHub releases
+curl -LO "https://github.com/siderolabs/omni/releases/latest/download/omnictl-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')"
+chmod +x omnictl-*
+sudo mv omnictl-* /usr/local/bin/omnictl
 
 # Verify installation
-omnictl version
+omnictl --help
 
-# Login to your Omni instance
-omnictl auth login --url https://your-omni-instance.siderolabs.com
+# Download omniconfig.yaml from your Omni dashboard, then merge it
+omnictl config merge ./omniconfig.yaml
+
+# Verify your context is set up. The first command run opens a browser to authenticate.
+omnictl config contexts
 ```
 
 ## Method 1: Connect Existing Talos Nodes
 
-If you already have Talos Linux nodes running, you can connect them to Omni by generating a join configuration:
+If you already have Talos Linux nodes running, you can connect them to Omni by generating a machine join configuration:
 
 ```bash
-# Get the join token from Omni
-omnictl get jointoken
+# List existing join tokens
+omnictl jointoken list
 
-# Generate a machine configuration patch for connecting to Omni
-omnictl machineconfig generate --omni-url https://your-omni-instance.siderolabs.com
+# Create a new join token if needed
+omnictl jointoken create --name my-token
+
+# Generate a machine configuration snippet that joins this Omni instance.
+# Pass --join-token <id> if you have multiple tokens.
+omnictl jointoken machine-config
 ```
 
 The join process works through SideroLink, which establishes a secure WireGuard VPN tunnel from each node to the Omni instance. This tunnel carries all management traffic.
 
-To add the Omni connection to an existing Talos node, apply a machine configuration patch:
+The `machine-config` output contains a `siderolink` section that you supply to the node. The kernel-argument form looks like this (and is what Omni-generated installer media bakes into the image):
 
-```yaml
-# omni-connect-patch.yaml
-machine:
-  install:
-    extraKernelArgs:
-      - siderolink.api=https://your-omni-instance.siderolabs.com:8099
-      - talos.events.sink=[fdae:41e4:649b:9303::1]:8090
-      - talos.logging.kernel=tcp://[fdae:41e4:649b:9303::1]:8092
+```text
+siderolink.api=grpc://your-omni-instance.siderolabs.com:8090?jointoken=<token>
+talos.events.sink=[fdae:41e4:649b:9303::1]:8090
+talos.logging.kernel=tcp://[fdae:41e4:649b:9303::1]:8092
 ```
 
-Apply the patch to your nodes:
+To add the Omni connection to an existing Talos node that does not yet have these kernel arguments, apply the generated join config as a machine config patch:
 
 ```bash
-# Apply the connection patch
+# Save the snippet from `omnictl jointoken machine-config` to omni-join.yaml,
+# then apply it to the node
 talosctl apply-config --nodes 10.0.0.1 \
-  --config-patch @omni-connect-patch.yaml \
-  --mode no-reboot
+  --patch @omni-join.yaml
 ```
 
-After applying, the node establishes a SideroLink tunnel to Omni and appears in the Omni dashboard.
+After the configuration is applied, the node establishes a SideroLink tunnel to Omni and appears in the Omni dashboard. Note that a node connected only through machine-config (and not through kernel args) will lose its Omni link if it is reset, so for long-lived nodes prefer reinstalling from an Omni-generated image so the SideroLink kernel args persist.
 
 ## Method 2: Boot New Nodes with Omni Connection
 
-The recommended approach for new nodes is to boot them with an Omni-aware image. Omni generates custom Talos installation images that include the SideroLink configuration:
+The recommended approach for new nodes is to boot them with an Omni-aware image. Omni generates custom Talos installation images that include the SideroLink configuration. The `omnictl download` command pulls installer media for a given image name from the Omni server:
 
 ```bash
-# Download the Omni-enabled Talos image
-omnictl download --output talos-omni.iso
+# Download an ISO (the image name is taken from the Omni "Download Installation Media" page)
+omnictl download iso --output talos-omni.iso
 
-# Or get the image URL for PXE booting
-omnictl image-url
+# You can also select architecture, Talos version, and system extensions
+omnictl download iso \
+  --arch amd64 \
+  --talos-version v1.9.0 \
+  --extensions siderolabs/iscsi-tools \
+  --output talos-omni.iso
 ```
 
 For bare metal servers, use the generated ISO:
@@ -102,20 +113,15 @@ For bare metal servers, use the generated ISO:
 dd if=talos-omni.iso of=/dev/sdb bs=4M status=progress
 
 # Or configure PXE boot with the Omni kernel and initrd
-# The kernel args will include the SideroLink parameters
+# (use --pxe with omnictl download to fetch the PXE-ready assets)
 ```
 
-For cloud environments, use the appropriate image format:
+For cloud environments, download the appropriate image type for your platform from the Omni dashboard or `omnictl download` (Omni surfaces the image types its Image Factory supports — AWS AMI, GCP, Azure VHD, etc.). For example:
 
 ```bash
-# For AWS
-omnictl download --format ami --region us-east-1
-
-# For GCP
-omnictl download --format gcp
-
-# For Azure
-omnictl download --format azure-vhd
+omnictl download "Amazon AWS" --arch amd64 --output talos-aws.raw.xz
+omnictl download "Google Cloud" --arch amd64 --output talos-gcp.tar.gz
+omnictl download "Azure" --arch amd64 --output talos-azure.vhd
 ```
 
 When a node boots with the Omni-enabled image, it automatically connects to your Omni instance and appears in the "Machines" list.
@@ -142,59 +148,85 @@ omnictl get link abc12345-6789-0def-ghij-klmnopqrstuv
 From the Talos node side:
 
 ```bash
-# Check SideroLink interface
-talosctl read /proc/net/dev --nodes 10.0.0.1 | grep siderolink
-
-# Check the WireGuard tunnel
-talosctl get addresses --nodes 10.0.0.1
+# Check the WireGuard tunnel addresses on the node
+talosctl --nodes 10.0.0.1 get addresses
 # Look for the siderolink address (fdae:... prefix)
+
+# Inspect SideroLink-related links
+talosctl --nodes 10.0.0.1 get links
 ```
 
 ## Creating a Cluster from Connected Nodes
 
-Once nodes are connected to Omni, you can create Kubernetes clusters through the Omni interface:
+Once nodes are connected to Omni, you create Kubernetes clusters declaratively from a cluster template. Define the cluster in YAML and apply it with `omnictl cluster template sync`:
 
-```bash
-# Create a new cluster
-omnictl cluster create my-production-cluster
-
-# Add control plane nodes
-omnictl cluster scale my-production-cluster \
-  --control-planes 3 \
-  --machine-class control-plane
-
-# Add worker nodes
-omnictl cluster scale my-production-cluster \
-  --workers 5 \
-  --machine-class worker
+```yaml
+# my-cluster.yaml
+kind: Cluster
+name: my-production-cluster
+kubernetes:
+  version: v1.31.0
+talos:
+  version: v1.9.0
+---
+kind: ControlPlane
+machineClass:
+  name: control-plane
+  size: 3
+---
+kind: Workers
+machineClass:
+  name: worker
+  size: 5
 ```
 
-You can also use machine classes to categorize nodes by their capabilities:
+```bash
+# Validate the template offline
+omnictl cluster template validate -f my-cluster.yaml
+
+# Push the template to Omni — this creates the cluster
+omnictl cluster template sync -f my-cluster.yaml
+
+# Wait for the cluster to converge
+omnictl cluster status my-production-cluster
+```
+
+Machine classes are themselves Omni resources. Define each class as YAML and apply it with `omnictl apply`:
+
+```yaml
+# control-plane-class.yaml
+metadata:
+  namespace: default
+  type: MachineClasses.omni.sidero.dev
+  id: control-plane
+spec:
+  matchlabels:
+    - omni.sidero.dev/role-controlplane = ""
+```
 
 ```bash
-# Define machine classes
-omnictl machineclass create control-plane \
-  --label role=control-plane \
-  --label hardware=high-mem
-
-omnictl machineclass create worker \
-  --label role=worker \
-  --label hardware=standard
+omnictl apply -f control-plane-class.yaml
 ```
 
 ## Configuring Machine Labels
 
-Labels help organize your machines in Omni. Apply labels to machines for easier management:
+Labels help organize your machines in Omni. The Machines view in the Omni UI is the primary place to add or remove labels on a connected machine; the same labels are what Machine Classes match against in their `matchlabels` selectors:
+
+```yaml
+# worker-class.yaml — matches machines labeled environment=production
+metadata:
+  namespace: default
+  type: MachineClasses.omni.sidero.dev
+  id: worker
+spec:
+  matchlabels:
+    - environment = production
+```
+
+You can also list machines filtered by a label selector with `omnictl get`:
 
 ```bash
-# Add labels to a machine
-omnictl machine label abc12345-6789-0def-ghij-klmnopqrstuv \
-  --label environment=production \
-  --label datacenter=us-east-1 \
-  --label rack=r42
-
-# List machines with specific labels
-omnictl get machines --label environment=production
+omnictl get machines -l environment=production
 ```
 
 ## Handling Disconnected Nodes
@@ -204,18 +236,19 @@ If a node loses connectivity to Omni, it continues operating normally. Kubernete
 To troubleshoot connection issues:
 
 ```bash
-# Check if the node can reach the Omni endpoint
-talosctl read /proc/net/dev --nodes 10.0.0.1
+# Inspect SideroLink links and addresses on the node
+talosctl --nodes 10.0.0.1 get links
+talosctl --nodes 10.0.0.1 get addresses
 
-# Check for errors in Talos logs
-talosctl logs controller-runtime --nodes 10.0.0.1 | grep -i siderolink
+# Tail Talos logs and filter for SideroLink
+talosctl --nodes 10.0.0.1 logs controller-runtime | grep -i siderolink
 
-# Verify DNS resolution for the Omni endpoint
-talosctl read /etc/resolv.conf --nodes 10.0.0.1
+# Verify DNS resolvers configured on the node
+talosctl --nodes 10.0.0.1 get resolvers
 ```
 
 Common causes of disconnection:
-- Firewall blocking WireGuard traffic (UDP port 8099)
+- Firewall blocking the outbound WireGuard UDP port assigned to your Omni account
 - DNS resolution failure for the Omni endpoint
 - Network changes affecting the node's outbound connectivity
 - Omni instance downtime
@@ -228,31 +261,34 @@ The connection between Talos nodes and Omni is secured by:
 2. Mutual authentication using cryptographic identities
 3. All management traffic flows through the encrypted tunnel
 
-Ensure your firewall allows outbound UDP traffic to the Omni endpoint:
+Ensure your firewall allows the node's outbound traffic to your Omni instance:
 
 ```text
 Required outbound ports:
-- UDP 8099: SideroLink (WireGuard) tunnel
-- TCP 443: Omni API (for initial connection)
+- TCP 443: Omni gRPC/HTTPS API (initial registration)
+- UDP <wireguard-port>: SideroLink tunnel — the port is assigned per Omni
+  account; check the SideroLink settings in the Omni UI for the exact value
 ```
 
 No inbound ports need to be opened on the Talos nodes. The SideroLink tunnel is initiated from the node to Omni, so nodes behind NAT or firewalls can still connect.
 
 ## Automating Node Registration
 
-For large-scale deployments, automate node registration using infrastructure-as-code:
+For large-scale deployments, automate node registration declaratively. Omni itself is template-driven: define clusters and machine classes as YAML and check them into Git, then apply them with `omnictl cluster template sync` and `omnictl apply -f`:
 
 ```yaml
-# terraform example for cloud nodes
-resource "omni_machine" "workers" {
-  count = 10
-
-  machine_class = "worker"
-  labels = {
-    environment = "production"
-    pool        = "general"
-  }
-}
+# workers.yaml — a Workers MachineSet inside a cluster template
+kind: Workers
+machineClass:
+  name: worker
+  size: 10
+patches:
+  - name: workload-labels
+    inline:
+      machine:
+        nodeLabels:
+          environment: production
+          pool: general
 ```
 
 For bare metal, use PXE booting with the Omni-enabled image. As servers boot, they automatically register with Omni:
