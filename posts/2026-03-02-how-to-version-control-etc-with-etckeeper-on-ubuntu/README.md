@@ -203,20 +203,23 @@ sudo git remote add backup git@github.com:your-org/server01-etc.git
 sudo git push backup master
 
 # Configure auto-push after each etckeeper commit
-sudo nano /etc/etckeeper/post-commit.d/10push
+# Scripts in commit.d/ with a numeric prefix > 50 run after 50vcs-commit (the actual commit)
+sudo nano /etc/etckeeper/commit.d/60push
 ```
 
 ```bash
 #!/bin/bash
-# /etc/etckeeper/post-commit.d/10push
+# /etc/etckeeper/commit.d/60push
 # Push to backup remote after each commit
 
 git push backup master --quiet 2>/dev/null || true
 ```
 
 ```bash
-sudo chmod +x /etc/etckeeper/post-commit.d/10push
+sudo chmod +x /etc/etckeeper/commit.d/60push
 ```
+
+Alternatively, modern versions of etckeeper support a `PUSH_REMOTE` setting in `/etc/etckeeper/etckeeper.conf` that pushes to one or more named remotes after every commit (e.g. `PUSH_REMOTE="backup"`).
 
 Note: If your `/etc` contains secrets (TLS private keys, etc.), ensure the remote repository is private and access-controlled.
 
@@ -265,8 +268,8 @@ sudo etckeeper unclean && echo "Uncommitted changes exist"
 For auditing purposes, send etckeeper commit notifications to a monitoring system:
 
 ```bash
-# Add to /etc/etckeeper/post-commit.d/20notify
-cat << 'EOF' | sudo tee /etc/etckeeper/post-commit.d/20notify
+# Add to /etc/etckeeper/commit.d/70notify
+cat << 'EOF' | sudo tee /etc/etckeeper/commit.d/70notify
 #!/bin/bash
 # Send commit notification to webhook
 
@@ -281,7 +284,7 @@ curl -s -X POST https://hooks.slack.com/services/YOUR/WEBHOOK \
   2>/dev/null || true
 EOF
 
-sudo chmod +x /etc/etckeeper/post-commit.d/20notify
+sudo chmod +x /etc/etckeeper/commit.d/70notify
 ```
 
 ## Daily Automatic Commits
