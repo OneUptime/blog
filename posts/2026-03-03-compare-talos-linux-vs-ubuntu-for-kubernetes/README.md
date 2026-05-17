@@ -142,9 +142,7 @@ On Talos, you replace the entire OS image atomically.
 talosctl -n 10.0.0.11 upgrade --image ghcr.io/siderolabs/installer:v1.7.0
 
 # Kubernetes version is updated separately
-talosctl -n 10.0.0.11 patch machineconfig --patch '[
-  {"op": "replace", "path": "/cluster/kubernetes/version", "value": "1.29.1"}
-]'
+talosctl -n 10.0.0.11 upgrade-k8s --to 1.29.1
 ```
 
 Talos's approach eliminates partial updates and ensures every node runs exactly the same software. Ubuntu's approach is more granular but more error-prone.
@@ -215,7 +213,7 @@ On Talos, configuration drift is impossible. The root filesystem is immutable, a
 # There is no way to make ad-hoc changes
 ```
 
-Resource Usage
+## Resource Usage
 
 Ubuntu has a larger footprint because it includes many packages and services that are not needed for Kubernetes.
 
