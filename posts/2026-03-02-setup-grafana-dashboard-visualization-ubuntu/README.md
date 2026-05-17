@@ -22,11 +22,10 @@ sudo apt install -y apt-transport-https software-properties-common wget
 
 # Add Grafana GPG key
 sudo mkdir -p /etc/apt/keyrings
-wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor | \
-  sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
+wget -q -O /etc/apt/keyrings/grafana.asc https://apt.grafana.com/gpg-full.key
 
 # Add Grafana repository
-echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | \
+echo "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main" | \
   sudo tee /etc/apt/sources.list.d/grafana.list
 
 # Update and install Grafana
@@ -120,18 +119,21 @@ Or through the UI: navigate to Configuration > Data Sources > Add data source > 
 You can import pre-built dashboards from the Grafana dashboard library. The most popular for Node Exporter is Dashboard ID 1860:
 
 ```bash
-# Import dashboard via API
+# Fetch the dashboard JSON from grafana.com, then post it to the import endpoint.
+# The import endpoint expects the full dashboard model in `dashboard`; it does
+# not fetch from grafana.com on your behalf.
+DASHBOARD=$(curl -s https://grafana.com/api/dashboards/1860/revisions/latest/download)
+
 curl -X POST \
   -H "Content-Type: application/json" \
   -u admin:admin \
   http://localhost:3000/api/dashboards/import \
-  -d '{
-    "dashboard": {"id": null},
-    "inputs": [{"name": "DS_PROMETHEUS", "type": "datasource", "pluginId": "prometheus", "value": "Prometheus"}],
-    "folderId": 0,
-    "overwrite": true,
-    "gnetId": 1860
-  }'
+  -d "{
+    \"dashboard\": ${DASHBOARD},
+    \"inputs\": [{\"name\": \"DS_PROMETHEUS\", \"type\": \"datasource\", \"pluginId\": \"prometheus\", \"value\": \"Prometheus\"}],
+    \"folderId\": 0,
+    \"overwrite\": true
+  }"
 ```
 
 Or via UI: Dashboards > Import > enter `1860` > select your Prometheus datasource > Import.
