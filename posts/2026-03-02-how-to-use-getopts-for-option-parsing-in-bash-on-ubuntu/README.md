@@ -282,21 +282,21 @@ output=""
 verbose=false
 help=false
 
-# Process long options before getopts
+# Process long options first; collect everything else into args
 args=()
-for arg in "$@"; do
-    case "$arg" in
-        --output=*) output="${arg#--output=}"; shift ;;
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output=*) output="${1#--output=}"; shift ;;
         --verbose)  verbose=true; shift ;;
         --help)     help=true; shift ;;
-        --)         shift; break ;;
-        --*)        echo "Unknown option: $arg" >&2; exit 1 ;;
-        *)          args+=("$arg") ;;
+        --)         shift; args+=("$@"); break ;;
+        --*)        echo "Unknown option: $1" >&2; exit 1 ;;
+        *)          args+=("$1"); shift ;;
     esac
 done
 
-# Reset positional parameters to remaining args
-set -- "${args[@]:-}" "$@"
+# Reset positional parameters to the non-long-option args
+set -- "${args[@]}"
 
 # Now handle short options
 while getopts ":o:vh" opt; do
