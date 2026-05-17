@@ -18,7 +18,7 @@ Understanding the exact scope of each option and how to combine them with `ReadW
 
 ### ProtectSystem=true
 
-Mounts `/usr` and `/boot` as read-only:
+Mounts `/usr` and the boot loader directories (`/boot` and `/efi`) as read-only:
 
 ```ini
 [Service]
@@ -27,13 +27,13 @@ ProtectSystem=true
 
 This prevents the service from:
 - Modifying system binaries in `/usr/bin`, `/usr/lib`, etc.
-- Altering kernel images or boot files in `/boot`
+- Altering kernel images or boot files in `/boot` and `/efi`
 
 `/etc`, `/var`, and home directories remain writable.
 
 ### ProtectSystem=full
 
-Mounts `/usr`, `/boot`, and `/etc` as read-only:
+Mounts `/usr`, the boot loader directories (`/boot` and `/efi`), and `/etc` as read-only:
 
 ```ini
 [Service]
@@ -59,7 +59,7 @@ ProtectSystem=strict
 Under `strict`, the service cannot write anywhere unless you explicitly permit it with `ReadWritePaths`. This is the most restrictive and recommended setting for well-designed services.
 
 The only writable locations by default are:
-- `/proc/self/` - the service's own process information
+- The API filesystem subtrees `/dev/`, `/proc/`, and `/sys/` are not affected by `ProtectSystem` at all (use `PrivateDevices=`, `ProtectKernelTunables=`, `ProtectControlGroups=` to restrict those separately)
 - `/tmp` and `/var/tmp` (when `PrivateTmp=true`)
 - Paths listed in `ReadWritePaths`
 - Runtime directory at `/run/<service>` (when `RuntimeDirectory` is set)
@@ -97,14 +97,14 @@ This allows reading but not writing to home directories. Use this only when the 
 
 ### ProtectHome=tmpfs
 
-Replaces `/home`, `/root`, and `/run/user` with empty, writable tmpfs mounts:
+Mounts empty, read-only tmpfs filesystems on `/home`, `/root`, and `/run/user`:
 
 ```ini
 [Service]
 ProtectHome=tmpfs
 ```
 
-This is an unusual setting. The service sees an empty `/home` and can write to it, but changes are lost when the service restarts. It is useful for services that might try to create files in home directories and you want to prevent that while still allowing the attempts to succeed.
+The service sees these directories as empty and cannot create files in them. This is useful to hide the contents of home directories from the service while still allowing specific paths to be made visible by listing them in `BindPaths=` or `BindReadOnlyPaths=`. (Setting `ProtectHome=tmpfs` is roughly equivalent to using `TemporaryFileSystem=` with the `:ro` option.)
 
 ## Combining ProtectSystem=strict with ReadWritePaths
 
