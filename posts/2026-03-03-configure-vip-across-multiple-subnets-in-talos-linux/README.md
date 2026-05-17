@@ -145,9 +145,9 @@ DNS-based failover is simpler than a load balancer but has limitations:
 - Some clients cache DNS aggressively
 - No active health checking unless your DNS provider supports it
 
-## Alternative 3: KubeSpan with VIP
+## Alternative 3: KubeSpan for Node-to-Node Connectivity
 
-If you enable KubeSpan in Talos Linux, it creates a WireGuard mesh network between all nodes. This effectively puts all nodes on the same virtual Layer 2 network, which could allow VIP to work across physical subnets:
+If you enable KubeSpan in Talos Linux, it creates a WireGuard mesh network between all nodes. KubeSpan operates at Layer 3 (WireGuard tunnels), not Layer 2, so it does not on its own solve the VIP problem — gratuitous ARP cannot traverse WireGuard tunnels. However, KubeSpan can simplify multi-subnet clusters by giving every node a routable address on the mesh, which you can then combine with one of the other approaches:
 
 ```yaml
 # Enable KubeSpan in machine config
@@ -155,13 +155,16 @@ machine:
   network:
     kubespan:
       enabled: true
+cluster:
+  discovery:
+    enabled: true
 ```
 
-With KubeSpan, nodes communicate over WireGuard tunnels regardless of their physical network location. The VIP would be announced on the KubeSpan interface rather than the physical interface. However, this approach has caveats:
+With KubeSpan enabled, nodes communicate over WireGuard tunnels regardless of their physical network location. You still need an external load balancer, DNS, or BGP for API server high availability across subnets, but intra-cluster traffic (etcd, kubelet, CNI) benefits from the mesh. Caveats:
 
-- External clients not on the KubeSpan network cannot reach the VIP directly
-- You still need another mechanism for external API access
-- KubeSpan adds complexity and overhead
+- KubeSpan is Layer 3, so the native Talos VIP (which depends on Layer 2 ARP) does not work across the mesh
+- External clients not on the KubeSpan network cannot reach KubeSpan addresses directly
+- KubeSpan adds encryption and routing overhead
 
 ## Alternative 4: Move Nodes to the Same Subnet
 
@@ -174,31 +177,31 @@ If possible, the simplest solution is to put all control plane nodes on the same
 ```yaml
 # All control plane nodes on the same management VLAN
 # Node 1 (Rack A)
-- interface: eth0.100
-  addresses:
-    - 10.100.0.10/24
-  vlan:
-    vlanId: 100
-  vip:
-    ip: 10.100.0.50
+- interface: eth0
+  vlans:
+    - vlanId: 100
+      addresses:
+        - 10.100.0.10/24
+      vip:
+        ip: 10.100.0.50
 
 # Node 2 (Rack B)
-- interface: eth0.100
-  addresses:
-    - 10.100.0.11/24
-  vlan:
-    vlanId: 100
-  vip:
-    ip: 10.100.0.50
+- interface: eth0
+  vlans:
+    - vlanId: 100
+      addresses:
+        - 10.100.0.11/24
+      vip:
+        ip: 10.100.0.50
 
 # Node 3 (Rack C)
-- interface: eth0.100
-  addresses:
-    - 10.100.0.12/24
-  vlan:
-    vlanId: 100
-  vip:
-    ip: 10.100.0.50
+- interface: eth0
+  vlans:
+    - vlanId: 100
+      addresses:
+        - 10.100.0.12/24
+      vip:
+        ip: 10.100.0.50
 ```
 
 As long as VLAN 100 is trunked across all racks, the VIP will work because all nodes share the same broadcast domain.
@@ -216,16 +219,14 @@ Node 3 (AS 65000) -> Router: announces 10.0.0.100/32
 
 This requires BGP-capable routers and a more sophisticated network setup, but it provides true multi-subnet high availability with fast failover.
 
-You would not use Talos VIP in this case. Instead, each node would have the API server VIP as a loopback address, and BGP would handle the traffic routing:
+You would not use Talos VIP in this case. Talos's `machine.network.interfaces` schema does not support attaching addresses to the `lo` interface directly, so the anycast address is typically managed by a BGP speaker running on the cluster — for example, kube-vip in BGP mode or MetalLB with a `LoadBalancer` Service for the API server. The BGP speaker advertises the same `/32` from every control plane node, and the upstream routers handle ECMP and withdrawal of routes from failed peers.
+
+Update the cluster endpoint to point at the anycast address:
 
 ```yaml
-# Loopback address for anycast
-machine:
-  network:
-    interfaces:
-      - interface: lo
-        addresses:
-          - 10.0.0.100/32    # Anycast address
+cluster:
+  controlPlane:
+    endpoint: https://10.0.0.100:6443    # Anycast address advertised via BGP
 ```
 
 ## Comparison of Approaches
@@ -234,7 +235,7 @@ machine:
 |----------|-----------|---------------|-----------------|----------|
 | External LB | Medium | Fast (health checks) | Yes | Production multi-subnet |
 | DNS Round Robin | Low | Slow (TTL dependent) | Yes | Simple setups |
-| KubeSpan + VIP | Medium | Fast (etcd-based) | Limited | Internal access only |
+| KubeSpan (combine with LB/BGP) | Medium | Depends on chosen LB | Limited | Encrypted intra-cluster mesh across subnets |
 | Same Subnet (VLAN) | Low | Fast (etcd-based) | Yes | When VLAN spanning is possible |
 | BGP Anycast | High | Fast (BGP convergence) | Yes | Large-scale deployments |
 
