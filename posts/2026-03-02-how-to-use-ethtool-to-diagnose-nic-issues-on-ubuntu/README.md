@@ -103,22 +103,7 @@ sudo ethtool -s eth0 speed 100 duplex full autoneg off
 sudo ethtool eth0 | grep -E 'Speed|Duplex|Auto-neg'
 ```
 
-To make speed changes persistent with Netplan:
-
-```yaml
-# /etc/netplan/00-installer-config.yaml
-network:
-  version: 2
-  ethernets:
-    eth0:
-      dhcp4: true
-      link-local: []
-      wakeonlan: false
-      match:
-        name: eth0
-```
-
-For more granular hardware settings, create a udev rule:
+Netplan does not natively support setting link speed, duplex, or auto-negotiation - those keys are not part of the Netplan schema. To make speed/duplex settings persistent across reboots, use a udev rule or a systemd service. For example, a udev rule:
 
 ```bash
 sudo tee /etc/udev/rules.d/99-nic-settings.rules <<EOF
@@ -210,7 +195,7 @@ sudo ethtool -G eth0 rx 2048 tx 2048
 sudo ethtool -g eth0
 ```
 
-Make it persistent by adding to the Netplan configuration or a network configuration script:
+Make it persistent with a systemd service or a udev rule:
 
 ```bash
 # Add to /etc/rc.local or a systemd service
