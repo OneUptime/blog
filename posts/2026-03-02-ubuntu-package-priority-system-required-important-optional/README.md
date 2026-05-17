@@ -28,9 +28,7 @@ Packages marked `Priority: required` are the bare minimum needed for the system 
 
 ```bash
 # View required packages
-
-dpkg -l | awk '$2 ~ /^lib/ {next} {print}' | head -5
-dpkg-query -Wf '${Package}\t${Priority}\n' | grep "\trequired" | awk '{print $1}' | head -20
+dpkg-query -Wf '${Package}\t${Priority}\n' | awk -F'\t' '$2 == "required" {print $1}' | head -20
 ```
 
 Required packages include:
@@ -46,7 +44,7 @@ Required packages include:
 
 ```bash
 # List important packages
-dpkg-query -Wf '${Package}\t${Priority}\n' | grep "\timportant" | awk '{print $1}' | sort
+dpkg-query -Wf '${Package}\t${Priority}\n' | awk -F'\t' '$2 == "important" {print $1}' | sort
 ```
 
 Important packages include:
@@ -61,7 +59,7 @@ Important packages include:
 `Priority: standard` packages are found on almost every Linux system but aren't strictly required. A minimal server install typically includes these by default:
 
 ```bash
-dpkg-query -Wf '${Package}\t${Priority}\n' | grep "\tstandard" | awk '{print $1}' | sort | head -30
+dpkg-query -Wf '${Package}\t${Priority}\n' | awk -F'\t' '$2 == "standard" {print $1}' | sort | head -30
 ```
 
 Standard packages include mail utilities, basic documentation tools, and commonly-used system tools.
@@ -72,7 +70,7 @@ Standard packages include mail utilities, basic documentation tools, and commonl
 
 ```bash
 # The vast majority of packages are optional
-dpkg-query -Wf '${Package}\t${Priority}\n' | grep "\toptional" | wc -l
+dpkg-query -Wf '${Package}\t${Priority}\n' | awk -F'\t' '$2 == "optional"' | wc -l
 ```
 
 ### Extra
@@ -107,12 +105,13 @@ apt-cache policy
 apt-cache policy nginx
 ```
 
-The default priority numbers:
-- **1001** - Packages installed from the local system (already installed)
-- **990** - Packages targeted for installation (via `apt install`)
-- **500** - Packages from the release that matches the system's pin
-- **100** - Packages from other releases
-- **1** - Packages with `Pin-Priority: 1` (last resort)
+The default priority numbers APT assigns (none of the defaults exceed 990):
+- **990** - Versions belonging to the target release (only when a target release is set via `APT::Default-Release` or `-t`)
+- **500** - Versions that do not belong to the target release (the default for any uninstalled package from a normal source when no target release is set)
+- **100** - The version that is already installed; also versions from archives marked `NotAutomatic: yes` and `ButAutomaticUpgrades: yes` (e.g., `*-backports`)
+- **1** - Versions from archives marked `NotAutomatic: yes` without `ButAutomaticUpgrades` (e.g., Debian `experimental`), and held-back phased updates
+
+Values above 990 (such as `1001`) are not used by default — they can only be set in a preferences file.
 
 ### Creating a Pin Priority File
 
@@ -141,13 +140,15 @@ A priority above 1000 means "install this version even over an already-installed
 ### Pin Priority Values Explained
 
 ```text
-< 0        - Prevent installation
-0 - 99     - Never auto-install, only if explicitly requested
-100 - 499  - Install if no other source has higher priority
-500 - 989  - Normal range (default is 500)
-990 - 999  - Prefer this over default sources
-1000+      - Install even if it's a downgrade
+P < 0          - Prevent the version from being installed
+0 < P < 100    - Install only if no version of the package is already installed
+100 <= P < 500 - Install unless a version from another distribution is available, or the installed version is more recent
+500 <= P < 990 - Install unless a version from the target release is available, or the installed version is more recent
+990 <= P < 1000- Install even if it does not come from the target release, unless the installed version is more recent
+P >= 1000      - Install even if this constitutes a downgrade
 ```
+
+Note: `P = 0` has undefined behaviour — do not use it.
 
 ### Pinning a Specific Version
 
@@ -206,10 +207,10 @@ apt-cache policy package-name
 # Show all sources and their priorities
 apt-cache policy
 
-# The 'Version table' in policy output shows:
-#  *** 1.18.0 500     <- currently installed (500 default priority)
-#         500 http://archive.ubuntu.com/ubuntu jammy/main
-#     1.18.0 100     <- available but lower priority
+# The 'Version table' in policy output shows the available versions,
+# their effective priority, and the sources providing each one:
+#  *** 1.18.0 500     <- *** marks the installed version; 500 is the highest source priority
+#         500 http://archive.ubuntu.com/ubuntu jammy/main amd64 Packages
 #         100 /var/lib/dpkg/status
 ```
 
