@@ -146,7 +146,7 @@ spec:
             - start
             - --logtostderr
             - --certs-dir=/cockroach/cockroach-certs
-            - --advertise-host=$(POD_NAME).cockroachdb.cockroachdb.svc.cluster.local
+            - --advertise-addr=$(POD_NAME).cockroachdb.cockroachdb.svc.cluster.local
             - --http-addr=0.0.0.0
             - --join=cockroachdb-0.cockroachdb.cockroachdb.svc.cluster.local:26257,cockroachdb-1.cockroachdb.cockroachdb.svc.cluster.local:26257,cockroachdb-2.cockroachdb.cockroachdb.svc.cluster.local:26257
             - --cache=.25
@@ -185,6 +185,7 @@ spec:
       volumes:
         - name: certs
           projected:
+            defaultMode: 256
             sources:
               - secret:
                   name: cockroachdb-node-secret
