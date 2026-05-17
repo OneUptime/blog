@@ -125,8 +125,8 @@ sudo systemctl reload nginx
 echo "<?php phpinfo();" | sudo tee /var/www/example.com/public_html/phpinfo.php
 
 # Test
-curl http://example.com/phpinfo.php | grep -i "fpm-fcgi"
-# Should output a line containing "fpm-fcgi" indicating PHP-FPM is handling the request
+curl http://example.com/phpinfo.php | grep -i "FPM/FastCGI"
+# Should output the "Server API" row containing "FPM/FastCGI" indicating PHP-FPM is handling the request
 
 # Test basic PHP output
 echo "<?php echo 'PHP is working via ' . php_sapi_name() . PHP_EOL;" | sudo tee /var/www/example.com/public_html/test.php
