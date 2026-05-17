@@ -152,11 +152,11 @@ Some changes take effect immediately without any disruption:
 
 ### Reboot Required
 
-Other changes require a full node reboot:
+Other changes require a full node reboot (or reinstall/upgrade) to take effect:
 
-- Changing the install disk
-- Modifying kernel parameters
-- Changing the cluster endpoint
+- Changing the install disk (applied on next install or upgrade)
+- Modifying kernel command-line arguments (applied on next reboot)
+- Changing disk encryption settings
 
 You can control how apply-config handles reboots:
 
