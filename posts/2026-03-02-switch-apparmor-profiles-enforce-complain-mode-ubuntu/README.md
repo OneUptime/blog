@@ -169,8 +169,8 @@ sudo journalctl -k | grep 'profile="/usr/sbin/nginx"' | tail -20
 sudo journalctl -k -f | grep "apparmor"
 
 # Use aa-notify for a summary of recent events
-# -p: print events, -s 1: start from 1 day ago, -f: log file
-sudo aa-notify -p -s 1 -f /var/log/syslog 2>/dev/null
+# -s 1: events from the last 1 day, -f: log file to read
+sudo aa-notify -s 1 -f /var/log/syslog 2>/dev/null
 
 # Parse audit log if auditd is installed
 sudo ausearch -m AVC -ts today | grep apparmor
@@ -243,7 +243,7 @@ case "$ACTION" in
     status)
         echo "=== AppArmor Profile Modes ==="
         sudo aa-status 2>/dev/null | grep -E "in enforce mode|in complain mode" -A 100 | \
-            grep -E "^  [^ ]"
+            grep -E "^   [^ ]"
         ;;
     enforce-all)
         echo "Switching all profiles to enforce mode..."
@@ -287,7 +287,8 @@ sudo systemctl restart apparmor
 sudo cat /sys/kernel/security/apparmor/profiles | grep <appname>
 
 # Check for profile errors preventing the switch
-sudo apparmor_parser -p /etc/apparmor.d/usr.sbin.nginx
+# -Q skips loading into the kernel; on success no output is printed
+sudo apparmor_parser -Q /etc/apparmor.d/usr.sbin.nginx
 # No output = no errors
 
 # Check journal for AppArmor errors
