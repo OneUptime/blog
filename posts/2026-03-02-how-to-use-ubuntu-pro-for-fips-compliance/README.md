@@ -37,9 +37,12 @@ Test FIPS in a non-production environment first.
 
 ```bash
 # Verify Ubuntu Pro is attached
-
-pro status | grep "Machine is"
-# Should show: Machine is attached to 'Ubuntu Pro'
+# When attached, pro status shows a SERVICE/ENTITLED/STATUS table plus
+# Account/Subscription/Valid until footer. When not attached it prints
+# "This machine is not attached to an Ubuntu Pro subscription."
+pro status
+# Or check programmatically via the JSON output:
+pro status --format json | grep -o '"attached": true'
 
 # If not attached, attach first
 sudo pro attach <your-token>
@@ -51,12 +54,13 @@ pro status --all | grep -E "fips"
 
 ## Understanding fips vs fips-updates
 
-Ubuntu Pro offers two FIPS-related services:
+Ubuntu Pro offers three FIPS-related services:
 
 - **fips**: The certified, unchanging FIPS modules. Exactly what was validated. No security updates.
 - **fips-updates**: FIPS modules with security patches applied. The updates may affect the validated state but maintain security.
+- **fips-preview**: Modules currently in the NIST recertification queue. Useful for FedRAMP scenarios on newer LTS releases (e.g. 22.04 modules before they completed FIPS 140-3 certification).
 
-For strict FIPS compliance audits, `fips` is required. For environments where security is the primary concern and strict validation status is secondary, `fips-updates` is the better choice since it receives security fixes.
+For strict FIPS compliance audits, `fips` is required. For environments where security is the primary concern and strict validation status is secondary, `fips-updates` is the better choice since it receives security fixes — Canonical also recommends `fips-updates` over plain `fips` for most production use.
 
 ```bash
 # View the description of each
@@ -106,9 +110,15 @@ pro status | grep fips
 
 # Check OpenSSL is in FIPS mode
 openssl md5 /etc/hostname
-# In FIPS mode, MD5 should be disabled:
-# Error setting digest
-# 139...error:060800A3:digital envelope routines:EVP_DigestInit_ex:disabled for FIPS
+# In FIPS mode, MD5 should be disabled. The exact error depends on the
+# OpenSSL version (1.1 on 20.04, 3.x on 22.04+):
+# OpenSSL 1.1:
+#   Error setting digest
+#   139...error:060800A3:digital envelope routines:EVP_DigestInit_ex:disabled for fips
+# OpenSSL 3.x:
+#   Error setting digest
+#   ...error:0308010C:digital envelope routines::unsupported:
+#   ...Global default library context, Algorithm (MD5 : 95), Properties ()
 ```
 
 ## Verifying FIPS Module Status
@@ -167,13 +177,14 @@ sudo tee /etc/ssh/sshd_config.d/fips.conf <<'EOF'
 Ciphers aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,aes192-cbc,aes256-cbc
 
 # FIPS-compliant MACs
-MACs hmac-sha2-256,hmac-sha2-512,hmac-sha1
+# HMAC-SHA1 is disallowed for MAC generation under NIST SP 800-131A
+MACs hmac-sha2-256,hmac-sha2-512
 
 # FIPS-compliant key exchange
 KexAlgorithms ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group-exchange-sha256
 
 # FIPS-compliant host key algorithms
-HostKeyAlgorithms ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,ssh-rsa
+HostKeyAlgorithms ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,rsa-sha2-256,rsa-sha2-512
 EOF
 
 sudo sshd -t  # Validate config
@@ -186,7 +197,7 @@ FIPS modules must not be replaced by standard packages:
 
 ```bash
 # Pin the FIPS packages to prevent accidental replacement
-sudo apt-mark hold openssl libssl*
+sudo apt-mark hold openssl 'libssl*'
 
 # Or use apt pinning
 sudo tee /etc/apt/preferences.d/fips-pin <<'EOF'
@@ -253,7 +264,7 @@ cat /proc/sys/crypto/fips_enabled
 # Should return: 0
 ```
 
-Disabling FIPS on a production system requires careful planning - services configured for FIPS algorithms will need their configuration reviewed, and the transition period may leave the system in a mixed state.
+Note that `pro disable fips` only removes the Ubuntu Pro APT sources for FIPS — it does not uninstall the FIPS packages or revert the kernel. Canonical does not provide a clean rollback path; fully reverting requires reinstalling the system. Disabling FIPS on a production system requires careful planning - services configured for FIPS algorithms will need their configuration reviewed, and the transition period may leave the system in a mixed state.
 
 ## Audit and Compliance Documentation
 
