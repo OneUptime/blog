@@ -20,25 +20,12 @@ The module operates in two modes:
 
 ## Install NAXSI on Ubuntu
 
-```bash
-# Install nginx with the NAXSI module
-
-# The naxsi package provides both nginx and the WAF module
-sudo apt-get update
-sudo apt-get install -y nginx-naxsi
-
-# Verify the NAXSI-enabled nginx is installed
-nginx -V 2>&1 | grep naxsi
-
-# Or build nginx with NAXSI from source if you need a specific version
-# (shown below as an alternative)
-```
-
-### Alternative: Build from Source
+NAXSI is a dynamic nginx module, not a standalone package. The original `nbs-system/naxsi` repository was archived in November 2023; the actively maintained fork lives at `wargio/naxsi`. Modern Ubuntu releases (20.04+) no longer ship a prebuilt `nginx-naxsi` package, so you need to build nginx with the NAXSI module from source.
 
 ```bash
 # Install build dependencies
-sudo apt-get install -y build-essential libpcre3-dev zlib1g-dev libssl-dev libgd-dev
+sudo apt-get update
+sudo apt-get install -y build-essential libpcre3-dev zlib1g-dev libssl-dev libgd-dev wget unzip
 
 # Download nginx and NAXSI source
 NGINX_VERSION=1.24.0
@@ -63,6 +50,9 @@ cd nginx-${NGINX_VERSION}
 
 make -j$(nproc)
 sudo make install
+
+# Verify the NAXSI-enabled nginx is installed
+nginx -V 2>&1 | grep naxsi
 ```
 
 ## Download the Core Rules
@@ -185,15 +175,18 @@ sudo tail -f /var/log/nginx/error.log | grep NAXSI
 # block=1&cscore0=$SQL&score0=8&zone0=ARGS&id0=1001&var_name0=q
 ```
 
-Use the naxsi-ui or nxtool to analyze the logs and generate whitelist rules:
+Use nxtool to analyze the logs and generate whitelist rules. nxtool is not on PyPI; it ships with the NAXSI source tree under `nxapi/`:
 
 ```bash
-# Install nxtool (the NAXSI whitelist generator)
+# Install Python dependencies and grab nxtool from the NAXSI source
 sudo apt-get install -y python3-pip
-pip3 install nxtool
+cd /opt
+sudo unzip ~/naxsi.zip   # the source archive downloaded earlier
+cd naxsi-master/nxapi
+sudo pip3 install -r requirements.txt
 
 # Analyze logs and generate whitelists
-nxtool.py -c naxsi_core.rules \
+./nxtool.py -c naxsi_core.rules \
     --colors \
     -l /var/log/nginx/error.log \
     -o whitelist
