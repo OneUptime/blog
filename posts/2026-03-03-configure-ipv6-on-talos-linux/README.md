@@ -149,9 +149,9 @@ Update your cluster configuration to specify an IPv6 pod CIDR:
 cluster:
   network:
     podSubnets:
-      - 2001:db8:pod::/48       # IPv6 pod CIDR
+      - fd00:10:244::/48        # IPv6 pod CIDR (ULA)
     serviceSubnets:
-      - 2001:db8:svc::/112      # IPv6 service CIDR
+      - fd00:10:96::/112        # IPv6 service CIDR (ULA)
     cni:
       name: custom              # You will likely need a custom CNI for IPv6
 ```
@@ -170,7 +170,7 @@ ipam:
   mode: kubernetes
   operator:
     clusterPoolIPv6PodCIDRList:
-      - 2001:db8:pod::/48
+      - fd00:10:244::/48
     clusterPoolIPv6MaskSize: 120
 ```
 
