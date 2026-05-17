@@ -167,7 +167,7 @@ ssh -p 22 root@192.168.1.100
 
 ## Managing LUKS Keys
 
-LUKS supports up to 8 key slots, allowing multiple passphrases or key files:
+LUKS2 (the default format on modern Ubuntu) supports up to 32 key slots, allowing multiple passphrases or key files. LUKS1 supported only 8 slots.
 
 ```bash
 # Add a second passphrase (useful for key rotation or multiple admins)
