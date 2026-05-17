@@ -42,32 +42,27 @@ Here is the machine configuration for a control plane node with VIP on a VLAN:
 machine:
   network:
     interfaces:
-      # Physical trunk interface - no IP address assigned directly
+      # Physical trunk interface - VLANs are declared as nested children
       - interface: eth0
         mtu: 9000    # Jumbo frames if supported
-      # Management VLAN - carries the VIP
-      - interface: eth0.100
-        addresses:
-          - 192.168.100.10/24    # Node's own IP on the management VLAN
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.100.1
-        vlan:
-          vlanId: 100
-        vip:
-          ip: 192.168.100.50    # Shared VIP address
-      # Application VLAN
-      - interface: eth0.200
-        addresses:
-          - 192.168.200.10/24
-        vlan:
-          vlanId: 200
-      # Storage VLAN
-      - interface: eth0.300
-        addresses:
-          - 10.10.0.10/24
-        vlan:
-          vlanId: 300
+        vlans:
+          # Management VLAN - carries the VIP
+          - vlanId: 100
+            addresses:
+              - 192.168.100.10/24    # Node's own IP on the management VLAN
+            routes:
+              - network: 0.0.0.0/0
+                gateway: 192.168.100.1
+            vip:
+              ip: 192.168.100.50    # Shared VIP address
+          # Application VLAN
+          - vlanId: 200
+            addresses:
+              - 192.168.200.10/24
+          # Storage VLAN
+          - vlanId: 300
+            addresses:
+              - 10.10.0.10/24
     nameservers:
       - 192.168.100.1
 ```
@@ -75,15 +70,15 @@ machine:
 Repeat this for each control plane node, changing only the node-specific addresses:
 
 ```yaml
-# Control plane node 2
-- interface: eth0.100
+# Control plane node 2 - the management VLAN entry under eth0.vlans
+- vlanId: 100
   addresses:
     - 192.168.100.11/24    # Different node IP
   vip:
     ip: 192.168.100.50      # Same VIP
 
-# Control plane node 3
-- interface: eth0.100
+# Control plane node 3 - the management VLAN entry under eth0.vlans
+- vlanId: 100
   addresses:
     - 192.168.100.12/24    # Different node IP
   vip:
@@ -161,7 +156,7 @@ In production environments, you often combine bonding with VLANs. Here is how to
 machine:
   network:
     interfaces:
-      # Bond interface
+      # Bond interface - VLANs are nested under it
       - interface: bond0
         mtu: 9000
         bond:
@@ -171,23 +166,20 @@ machine:
           interfaces:
             - eth0
             - eth1
-      # Management VLAN on bond with VIP
-      - interface: bond0.100
-        addresses:
-          - 192.168.100.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 192.168.100.1
-        vlan:
-          vlanId: 100
-        vip:
-          ip: 192.168.100.50
-      # Other VLANs on bond
-      - interface: bond0.200
-        addresses:
-          - 192.168.200.10/24
-        vlan:
-          vlanId: 200
+        vlans:
+          # Management VLAN on bond with VIP
+          - vlanId: 100
+            addresses:
+              - 192.168.100.10/24
+            routes:
+              - network: 0.0.0.0/0
+                gateway: 192.168.100.1
+            vip:
+              ip: 192.168.100.50
+          # Other VLANs on bond
+          - vlanId: 200
+            addresses:
+              - 192.168.200.10/24
 ```
 
 This gives you both link redundancy (through the bond) and network segmentation (through VLANs) with a highly available API server endpoint (through the VIP).
