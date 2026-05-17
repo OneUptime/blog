@@ -265,7 +265,9 @@ for i in $(seq 1 20); do
 done
 
 # Clean up
-kubectl delete pod -l run=bench-pod --force
+for i in $(seq 1 20); do
+  kubectl delete pod "bench-pod-$i" --force --ignore-not-found
+done
 ```
 
 ## DNS Resolution Benchmark
