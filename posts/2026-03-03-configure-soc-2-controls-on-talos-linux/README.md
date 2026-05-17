@@ -165,7 +165,7 @@ spec:
     - name: soc2-security
       rules:
         - alert: UnauthorizedAccessAttempt
-          expr: sum(increase(apiserver_audit_event_total{responseStatus="403"}[5m])) > 10
+          expr: sum(increase(apiserver_request_total{code=~"401|403"}[5m])) > 10
           for: 5m
           labels:
             severity: warning
@@ -174,16 +174,16 @@ spec:
             summary: "Multiple unauthorized access attempts detected"
 
         - alert: PrivilegedContainerCreated
-          expr: sum(kube_pod_container_info{container_privileged="true"}) > 0
+          expr: sum(increase(pod_security_evaluations_total{decision="deny",mode="enforce"}[5m])) > 0
           for: 1m
           labels:
             severity: critical
             compliance: soc2-cc6.1
           annotations:
-            summary: "Privileged container detected in the cluster"
+            summary: "Pod Security Admission denied a workload in enforce mode"
 
         - alert: SecretAccessAnomaly
-          expr: sum(increase(apiserver_audit_event_total{objectRef_resource="secrets",verb="get"}[1h])) > 100
+          expr: sum(increase(apiserver_request_total{resource="secrets",verb="get"}[1h])) > 100
           for: 5m
           labels:
             severity: warning
