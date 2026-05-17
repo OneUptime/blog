@@ -36,15 +36,14 @@ systemd-nspawn --version
 ## Listing Machines
 
 ```bash
-# List all running machines (containers and VMs)
+# List currently running machines (containers and VMs)
 machinectl list
 
-# List all registered machines (including stopped ones)
-machinectl list-machines
-
-# Show brief image list
+# List all registered images, including those whose machines are not running
 machinectl list-images
 ```
+
+Note: `systemd-machined` only tracks running machines, so `machinectl list` will not show stopped containers. To see all available container rootfs/images (running or not), use `machinectl list-images`.
 
 Initially these are empty. Let's create some containers.
 
@@ -101,7 +100,7 @@ machinectl status mycontainer
 machinectl list
 ```
 
-When you start a machine, machinectl creates a transient systemd service: `systemd-nspawn@mycontainer.service`.
+When you start a machine, `machinectl start` instantiates the `systemd-nspawn@.service` template unit (shipped with `systemd-container`), so the running unit is `systemd-nspawn@mycontainer.service`.
 
 ## Accessing a Container Shell
 
@@ -216,7 +215,7 @@ VirtualEthernet=yes
 # Private=no
 ```
 
-Resource Limits for Containers
+## Resource Limits for Containers
 
 Apply resource limits through systemd's cgroup integration:
 
