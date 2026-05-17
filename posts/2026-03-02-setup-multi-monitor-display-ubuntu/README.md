@@ -199,10 +199,11 @@ gsettings set org.gnome.mutter experimental-features "['scale-monitor-framebuffe
 # Then use Settings > Displays to set fractional scale
 
 # For X11 with xrandr, use the scale parameter
-# Scale down a 4K display to appear as 2K
+# Values >1 compress the screen (framebuffer becomes larger than the mode,
+# so content appears smaller and you get more workspace)
 xrandr --output DP-1 --scale 2x2 --mode 3840x2160
 
-# Scale up a 1080p display (makes content larger)
+# Values <1 zoom in (makes content appear larger, less workspace)
 xrandr --output eDP-1 --scale 0.75x0.75
 ```
 
@@ -233,10 +234,10 @@ gsettings set org.gnome.mutter workspaces-only-on-primary true
 # Configure what happens when you close the laptop lid with an external monitor connected
 # Edit the logind configuration
 sudo tee -a /etc/systemd/logind.conf << 'EOF'
-# When lid is closed while on AC power with external display
+# Default action (applies when on battery and no other condition matches)
 HandleLidSwitch=ignore
-# When lid is closed while on battery
-HandleLidSwitchOnExternalPower=ignore
+# When lid is closed while on external (AC) power
+HandleLidSwitchExternalPower=ignore
 EOF
 
 sudo systemctl restart systemd-logind
