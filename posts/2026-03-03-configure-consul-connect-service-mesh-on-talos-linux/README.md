@@ -294,8 +294,8 @@ kubectl exec -n consul consul-server-0 -- consul catalog services
 # Check service health
 kubectl exec -n consul consul-server-0 -- consul catalog nodes -service=web-frontend
 
-# View proxy configuration
-kubectl exec -n consul consul-server-0 -- consul connect proxy -show-config web-frontend
+# Dump the Envoy sidecar's full proxy configuration via its admin API
+kubectl exec <POD_NAME> -c envoy-sidecar -- curl -s localhost:19000/config_dump
 
 # Check Envoy stats for a specific pod
 kubectl exec <POD_NAME> -c envoy-sidecar -- curl -s localhost:19000/stats
