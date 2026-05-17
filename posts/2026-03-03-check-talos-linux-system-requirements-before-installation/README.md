@@ -99,7 +99,7 @@ The following ports must be open between all cluster nodes:
 | 10250 | TCP | kubelet API |
 | 10259 | TCP | kube-scheduler |
 | 10257 | TCP | kube-controller-manager |
-| 51871 | UDP | Wireguard (if using KubeSpan) |
+| 51820 | UDP | Wireguard (if using KubeSpan) |
 
 ### From Workstation to Nodes
 
