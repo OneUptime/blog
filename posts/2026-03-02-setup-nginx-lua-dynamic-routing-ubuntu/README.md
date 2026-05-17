@@ -140,7 +140,7 @@ server {
     server_name example.com;
 
     location / {
-        set $target "http://127.0.0.1:3000";  -- default backend
+        set $target "http://127.0.0.1:3000";  # default backend
 
         rewrite_by_lua_block {
             -- Send 10% of traffic to the new backend
