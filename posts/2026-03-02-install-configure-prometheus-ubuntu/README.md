@@ -122,6 +122,9 @@ ExecStart=/usr/local/bin/prometheus \
     --web.console.templates=/etc/prometheus/consoles \
     --web.console.libraries=/etc/prometheus/console_libraries
 
+# Reload config on SIGHUP (used by `systemctl reload`)
+ExecReload=/bin/kill -HUP $MAINPID
+
 # Restart if it crashes
 Restart=on-failure
 RestartSec=5
