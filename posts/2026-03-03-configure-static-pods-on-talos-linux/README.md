@@ -76,6 +76,9 @@ machine:
               - name: sys
                 mountPath: /host/sys
                 readOnly: true
+              - name: root
+                mountPath: /host/root
+                readOnly: true
         volumes:
           - name: proc
             hostPath:
@@ -83,6 +86,9 @@ machine:
           - name: sys
             hostPath:
               path: /sys
+          - name: root
+            hostPath:
+              path: /
 ```
 
 This ensures the monitoring agent runs on the node even if the Kubernetes control plane is unavailable.
@@ -185,8 +191,8 @@ Static pods appear in the Kubernetes API with the node name appended to their na
 To update a static pod, modify the pod definition in the machine configuration and reapply:
 
 ```bash
-# Create a patch to update the static pod image
-cat > static-pod-patch.yaml <<EOF
+# Create an updated machine config with the new static pod image
+cat > updated-config.yaml <<EOF
 machine:
   pods:
     - apiVersion: v1
@@ -203,7 +209,7 @@ machine:
                 hostPort: 8080
 EOF
 
-# Apply the patch
+# Apply the updated configuration
 talosctl apply-config --nodes 10.0.0.5 --file updated-config.yaml
 ```
 
