@@ -62,14 +62,13 @@ snap info vlc
 ## Removing Snaps
 
 ```bash
-# Remove a snap
+# Remove a snap (a data snapshot is saved automatically)
 sudo snap remove vlc
 
-# Remove and save a snapshot of snap data first
+# Remove a snap without creating a data snapshot
 sudo snap remove --purge vlc
 
-# The --purge flag removes without creating a data snapshot
-# Without it, snap data is saved and can be restored
+# Without --purge, snap data is saved and can be restored later
 ```
 
 ## Updating Snaps
@@ -124,8 +123,9 @@ sudo snap set system refresh.timer=02:00-04:00
 # Set a specific day and time (Sunday at 3 AM)
 sudo snap set system refresh.timer=sun,03:00-04:00
 
-# Hold all snap updates for a maximum of 60 days
-sudo snap refresh --hold=60d
+# Hold all snap updates for a specific duration (60 days = 1440 hours)
+# The --hold flag accepts Go duration format (h, m, s) — there is no 'd' unit
+sudo snap refresh --hold=1440h
 
 # Hold a specific snap update
 sudo snap refresh --hold vlc
@@ -244,8 +244,8 @@ snap find "video player"
 # Show detailed information about a snap before installing
 snap info mpv
 
-# Filter by publisher
-snap find --publisher=canonical
+# Filter by category/section
+snap find --section=games
 ```
 
 ## Snap Configuration
