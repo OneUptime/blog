@@ -101,7 +101,8 @@ parameters:
   max-age: 12             # maximum time to hold STP info
   ageing-time: 300        # how long to keep MAC address table entries
   priority: 32768         # STP bridge priority (lower = more likely to be root)
-  path-cost: 100          # port cost for STP calculations
+  path-cost:              # per-port cost for STP calculations (mapping)
+    enp3s0: 100
 ```
 
 For a simple host with VMs and no risk of bridge loops:
@@ -203,7 +204,9 @@ ip -s link show br0
 sudo networkctl status br0
 
 # Check STP state (if STP enabled)
-bridge stp show
+ip -d link show br0
+# or, with the legacy bridge-utils package installed:
+# brctl showstp br0
 ```
 
 ## Troubleshooting Bridge Issues
