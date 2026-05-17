@@ -193,11 +193,11 @@ groups:
   rules:
   - record: node:cpu_context_switches:rate5m
     expr: rate(node_context_switches_total[5m])
-  - record: node:cpu_migrations:rate5m
-    expr: rate(node_cpu_guest_seconds_total[5m])
+  - record: node:cpu_schedstat_waiting:rate5m
+    expr: rate(node_schedstat_waiting_seconds_total[5m])
 ```
 
-Look for reduced context switch rates and CPU migration rates on the isolated cores. Your application-level latency metrics should show tighter distributions with fewer outliers.
+Look for reduced context switch rates and lower scheduler waiting time on the isolated cores. The `node_schedstat_*` metrics come from node_exporter's schedstat collector (read from `/proc/schedstat`). Note that node_exporter does not expose a direct CPU-migration counter; for migration counts specifically, use `perf sched` or eBPF-based tooling. Your application-level latency metrics should show tighter distributions with fewer outliers.
 
 ## Applying the Configuration
 
