@@ -73,9 +73,6 @@ EXTRAPACKAGES="apt-utils"
 
 # Build results go here
 BUILDRESULT="/var/cache/pbuilder/result"
-
-# Log file location
-LOGFILE=""
 EOF
 
 # Create required directories
@@ -117,7 +114,7 @@ sudo pbuilder update
 sudo pbuilder update --basetgz /var/cache/pbuilder/jammy-base.tgz
 
 # Schedule regular updates via cron
-cat > /etc/cron.weekly/pbuilder-update << 'EOF'
+sudo tee /etc/cron.weekly/pbuilder-update > /dev/null << 'EOF'
 #!/bin/bash
 pbuilder update
 pbuilder update --basetgz /var/cache/pbuilder/jammy-base.tgz
@@ -133,11 +130,12 @@ sudo chmod +x /etc/cron.weekly/pbuilder-update
 # Run from the source package directory
 cd ~/build/mypackage-1.0
 
-# Build with pbuilder in one step
-sudo pdebuild
+# Build with pbuilder in one step (run as your normal user;
+# pdebuild invokes pbuilder with sudo internally via PBUILDERROOTCMD)
+pdebuild
 
 # Build for a specific distribution
-sudo pdebuild -- --basetgz /var/cache/pbuilder/jammy-base.tgz
+pdebuild -- --basetgz /var/cache/pbuilder/jammy-base.tgz
 ```
 
 ## Using Hooks for Extra Configuration
@@ -154,10 +152,16 @@ sudo mkdir -p /var/cache/pbuilder/hooks
 # Example: Add a custom repository to the chroot
 sudo tee /var/cache/pbuilder/hooks/D05-add-repo << 'EOF'
 #!/bin/bash
-# Add extra repository for build dependencies
-echo "deb http://ppa.launchpad.net/example/ppa/ubuntu $(lsb_release -cs) main" \
-  >> /etc/apt/sources.list
-apt-key adv --keyserver keyserver.ubuntu.com --recv-keys ABCDEF12
+# Add extra repository for build dependencies.
+# On Ubuntu 22.04+ apt-key is deprecated; fetch the key to /etc/apt/keyrings/
+# and reference it with signed-by= in the sources.list entry.
+install -d -m 0755 /etc/apt/keyrings
+gpg --no-default-keyring \
+    --keyring /etc/apt/keyrings/example-ppa.gpg \
+    --keyserver keyserver.ubuntu.com \
+    --recv-keys ABCDEF12
+echo "deb [signed-by=/etc/apt/keyrings/example-ppa.gpg] http://ppa.launchpad.net/example/ppa/ubuntu $(lsb_release -cs) main" \
+  > /etc/apt/sources.list.d/example-ppa.list
 apt-get update
 EOF
 sudo chmod +x /var/cache/pbuilder/hooks/D05-add-repo
@@ -171,11 +175,13 @@ EOF
 sudo chmod +x /var/cache/pbuilder/hooks/B10-test
 ```
 
-Hook naming convention:
-- `A` hooks: before unpacking base tarball
-- `D` hooks: after unpacking, before installing build-deps
-- `E` hooks: after installing build-deps, before build
-- `B` hooks: after build
+Hook naming convention (per `pbuilder(8)`):
+- `D` hooks: run inside the chroot after the chroot is set up, before build-dependencies are installed (good for adding extra repositories)
+- `A` hooks: run inside the chroot after build-dependencies are satisfied, just before the build starts
+- `B` hooks: run after a successful build, before the build results are copied back out
+- `C` hooks: run after a build failure, before cleanup
+- `E` hooks: run during `pbuilder create` / `pbuilder update`, after the apt-get work finishes
+- `F` hooks: run just before the user logs in or the program starts executing (for `pbuilder login` / `pbuilder execute`)
 
 ## Multiple Distribution Chroots
 
