@@ -30,8 +30,9 @@ ls -la /usr/bin/rename
 If you see `util-linux` in the version output, you have the simpler version. Install the Perl one explicitly:
 
 ```bash
-sudo apt install perl
-# The Perl rename is usually packaged as 'rename' in Ubuntu
+sudo apt install rename
+# The Perl rename is packaged as 'rename' in current Ubuntu (binary: file-rename)
+# On older Debian/Ubuntu releases the package was sometimes named 'perl-rename'
 ```
 
 ## Basic Syntax
@@ -45,7 +46,7 @@ The expression `s/PATTERN/REPLACEMENT/` is a Perl substitution. The `s` stands f
 ## Essential Options
 
 ```bash
-# -n / --dry-run: show what would happen without doing it (always use this first)
+# -n / --nono: show what would happen without doing it (always use this first)
 rename -n 's/old/new/' *.txt
 
 # -v / --verbose: show each rename as it happens
