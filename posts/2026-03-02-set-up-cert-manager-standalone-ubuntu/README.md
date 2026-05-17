@@ -8,15 +8,15 @@ Description: Install and configure cert-manager as a standalone tool on Ubuntu t
 
 ---
 
-cert-manager is widely known as a Kubernetes operator for certificate management, but it can also run in standalone mode on a bare Ubuntu server without Kubernetes. Running cert-manager standalone makes sense when you want to manage certificates using the same tooling across Kubernetes clusters and traditional servers, or when you're building infrastructure that will eventually move to Kubernetes and want consistent workflows.
+cert-manager is widely known as a Kubernetes operator for certificate management. It is implemented as a set of Kubernetes controllers and CRDs, so it requires a Kubernetes API server to run — there is no fully standalone mode that operates without Kubernetes. However, you can still get a "single-Ubuntu-server" cert-manager deployment by running a lightweight Kubernetes distribution like [k3s](https://k3s.io/) on the same host. Running cert-manager this way makes sense when you want to manage certificates using the same tooling across Kubernetes clusters and traditional servers, or when you're building infrastructure that will eventually move to Kubernetes and want consistent workflows.
 
-This guide covers installing cert-manager in standalone mode using `cmctl` and the cert-manager controller binary, then configuring it to issue certificates from Let's Encrypt.
+This guide covers installing k3s and cert-manager on a single Ubuntu host, installing the `cmctl` CLI for interacting with cert-manager, and configuring an ACME issuer that obtains certificates from Let's Encrypt.
 
-## Understanding cert-manager Standalone
+## Understanding cert-manager on a Single Host
 
-The standalone mode runs the cert-manager controller as a regular process. It uses custom resource definitions (CRDs) stored in a local CRD directory rather than a Kubernetes API server. Certificates are stored as files on disk.
+In this setup the cert-manager controllers run as pods inside a single-node k3s cluster. They watch cert-manager CRDs (`Issuer`, `ClusterIssuer`, `Certificate`, `CertificateRequest`, `Order`, `Challenge`) and reconcile them by talking to ACME servers and storing issued certificates in Kubernetes `Secret` objects. To make the certificates available to other services on the host (nginx, HAProxy, application processes), you extract them from the secrets to files on disk.
 
-The main tool for standalone cert-manager is `cmctl` - the cert-manager CLI. Starting with cert-manager v1.14, `cmctl` supports an `x509` subcommand and can work with ACME issuers directly.
+The main CLI for working with cert-manager is `cmctl`. It is a Kubernetes-aware tool — it talks to a Kubernetes API server through your kubeconfig and is useful for inspecting cert-manager resources and triggering manual renewals.
 
 ## Installing cmctl
 
@@ -24,13 +24,12 @@ Download the latest `cmctl` binary:
 
 ```bash
 # Get latest version
-
 CMCTL_VERSION=$(curl -s https://api.github.com/repos/cert-manager/cmctl/releases/latest \
     | grep '"tag_name"' | cut -d'"' -f4)
 
 ARCH=$(dpkg --print-architecture)
 
-# Download
+# Download the raw binary asset
 curl -fsSL \
     "https://github.com/cert-manager/cmctl/releases/download/${CMCTL_VERSION}/cmctl_linux_${ARCH}" \
     -o /tmp/cmctl
@@ -38,29 +37,18 @@ curl -fsSL \
 sudo install -o root -g root -m 0755 /tmp/cmctl /usr/local/bin/cmctl
 
 # Verify
-cmctl version
+cmctl version --client
 ```
 
-## Installing the cert-manager Controller Binary
-
-For standalone use without Kubernetes, the cert-manager controller binary handles the actual certificate issuance:
+Point `cmctl` at the k3s cluster once k3s is installed (see below) by exporting `KUBECONFIG`:
 
 ```bash
-# Download cert-manager
-CERT_MANAGER_VERSION="v1.14.4"
-ARCH=$(dpkg --print-architecture)
-
-curl -fsSL \
-    "https://github.com/cert-manager/cert-manager/releases/download/${CERT_MANAGER_VERSION}/cert-manager-controller-linux-${ARCH}" \
-    -o /tmp/cert-manager-controller
-
-sudo install -o root -g root -m 0755 /tmp/cert-manager-controller \
-    /usr/local/bin/cert-manager-controller
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 ```
 
-## Alternative: Using cert-manager with Local Kubernetes (k3s)
+## Installing k3s and cert-manager
 
-If you want the full cert-manager experience with its CRD-based configuration, the most practical standalone approach is running a lightweight Kubernetes distribution:
+Install k3s and the cert-manager Helm chart on a single Ubuntu host:
 
 ```bash
 # Install k3s (lightweight Kubernetes)
@@ -69,9 +57,16 @@ curl -sfL https://get.k3s.io | sh -
 # Wait for k3s to be ready
 sudo k3s kubectl get nodes
 
-# Install cert-manager via Helm
-sudo apt install helm
+# Install Helm (not in the default Ubuntu apt repositories)
+curl -fsSL https://baltocdn.com/helm/signing.asc \
+    | sudo gpg --dearmor -o /usr/share/keyrings/helm.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/helm.gpg] \
+https://baltocdn.com/helm/stable/debian/ all main" \
+    | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
+sudo apt update
+sudo apt install -y helm
 
+# Install cert-manager via Helm
 helm repo add jetstack https://charts.jetstack.io
 helm repo update
 
@@ -79,7 +74,7 @@ sudo k3s kubectl create namespace cert-manager
 
 helm install cert-manager jetstack/cert-manager \
     --namespace cert-manager \
-    --set installCRDs=true \
+    --set crds.enabled=true \
     --kubeconfig /etc/rancher/k3s/k3s.yaml
 
 # Verify cert-manager pods
@@ -373,9 +368,9 @@ dig +short TXT _acme-challenge.example.com @8.8.8.8
 ### Force Certificate Renewal
 
 ```bash
-# Annotate the certificate to trigger renewal
-sudo k3s kubectl annotate certificate example-com-tls \
-    cert-manager.io/issue-temporary-certificate="true"
+# Use cmctl to trigger a manual renewal
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+cmctl renew example-com-tls
 
 # Or delete the certificate request to trigger re-issuance
 sudo k3s kubectl delete certificaterequest example-com-tls-XXXX
