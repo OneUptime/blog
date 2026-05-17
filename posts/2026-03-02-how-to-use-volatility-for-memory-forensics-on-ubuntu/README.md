@@ -129,10 +129,10 @@ Look for:
 
 ```bash
 # Show active network sockets
-python3 vol.py -f $MEMDUMP linux.netstat.Netstat
+python3 vol.py -f $MEMDUMP linux.sockstat.Sockstat
 
 # Network interfaces
-python3 vol.py -f $MEMDUMP linux.ifconfig.Ifconfig
+python3 vol.py -f $MEMDUMP linux.ip.Addr
 ```
 
 When reviewing network connections, look for:
@@ -148,7 +148,7 @@ When reviewing network connections, look for:
 python3 vol.py -f $MEMDUMP linux.lsmod.Lsmod
 
 # Look for hidden modules (modules in memory but not in lsmod)
-python3 vol.py -f $MEMDUMP linux.check_modules.CheckModules
+python3 vol.py -f $MEMDUMP linux.check_modules.Check_modules
 ```
 
 Rootkits commonly hide themselves by removing their entry from the module list. The `check_modules` plugin compares two sources of module information and flags discrepancies.
@@ -201,10 +201,10 @@ python3 vol.py -f $MEMDUMP linux.proc.Maps | grep -E "rwx|r-x" | grep -v ".so"
 pip install yara-python
 
 # Scan memory with YARA rules
-python3 vol.py -f $MEMDUMP yarascan.YaraScan --yara-rules /path/to/rules.yar
+python3 vol.py -f $MEMDUMP yarascan.YaraScan --yara-file /path/to/rules.yar
 
 # Example: scan for Mimikatz signatures
-python3 vol.py -f $MEMDUMP yarascan.YaraScan --yara-rules mimikatz.yar
+python3 vol.py -f $MEMDUMP yarascan.YaraScan --yara-file mimikatz.yar
 ```
 
 ### Dump Process Memory for Further Analysis
@@ -215,7 +215,7 @@ python3 vol.py -f $MEMDUMP yarascan.YaraScan --yara-rules mimikatz.yar
 python3 vol.py -f $MEMDUMP linux.pslist.PsList
 
 # Dump process with PID 1234
-python3 vol.py -f $MEMDUMP -o /tmp/process_dumps/ linux.proc_maps.ProcMaps --pid 1234 --dump
+python3 vol.py -f $MEMDUMP -o /tmp/process_dumps/ linux.proc.Maps --pid 1234 --dump
 ```
 
 ## Automating Analysis
@@ -244,7 +244,7 @@ echo "[*] Running process tree..."
 python3 "$VOL_PATH/vol.py" -f "$MEMDUMP" linux.pstree.PsTree > "$OUTPUT_DIR/pstree.txt"
 
 echo "[*] Running network connections..."
-python3 "$VOL_PATH/vol.py" -f "$MEMDUMP" linux.netstat.Netstat > "$OUTPUT_DIR/netstat.txt"
+python3 "$VOL_PATH/vol.py" -f "$MEMDUMP" linux.sockstat.Sockstat > "$OUTPUT_DIR/netstat.txt"
 
 echo "[*] Checking kernel modules..."
 python3 "$VOL_PATH/vol.py" -f "$MEMDUMP" linux.lsmod.Lsmod > "$OUTPUT_DIR/lsmod.txt"
@@ -253,7 +253,7 @@ echo "[*] Extracting bash history..."
 python3 "$VOL_PATH/vol.py" -f "$MEMDUMP" linux.bash.Bash > "$OUTPUT_DIR/bash_history.txt"
 
 echo "[*] Checking for hidden modules..."
-python3 "$VOL_PATH/vol.py" -f "$MEMDUMP" linux.check_modules.CheckModules > "$OUTPUT_DIR/hidden_modules.txt"
+python3 "$VOL_PATH/vol.py" -f "$MEMDUMP" linux.check_modules.Check_modules > "$OUTPUT_DIR/hidden_modules.txt"
 
 echo "[+] Analysis complete. Results in $OUTPUT_DIR"
 ```
