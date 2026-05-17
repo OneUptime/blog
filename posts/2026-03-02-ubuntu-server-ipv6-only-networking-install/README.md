@@ -36,9 +36,11 @@ For SLAAC (Stateless Address Autoconfiguration) or DHCPv6:
 
 1. Select the interface
 2. Choose "Edit IPv6"
-3. Set method to "DHCPv6" or "Automatic (SLAAC)"
+3. Set method to "Automatic"
 
-SLAAC generates an address from the router advertisement prefix and the interface's MAC address. DHCPv6 gets an address assigned by a DHCP server (similar to DHCPv4 but for IPv6).
+Subiquity exposes three IPv6 methods: "Automatic", "Manual", and "Disabled". "Automatic" handles both SLAAC and DHCPv6 based on the flags in the router advertisements (the `M` and `O` bits), so there is no separate DHCPv6 option in the installer.
+
+SLAAC generates an address from the router advertisement prefix and an interface identifier (historically EUI-64 derived from the MAC address, though modern Linux defaults to RFC 7217 stable privacy addresses). DHCPv6 gets an address assigned by a DHCP server (similar to DHCPv4 but for IPv6).
 
 ## Post-Installation Netplan Configuration
 
@@ -237,7 +239,7 @@ wget --inet6-only https://example.com
 
 ### Applications That Bind to 0.0.0.0
 
-Some applications bind to `0.0.0.0` (all IPv4 interfaces) rather than `::` (all IPv6 interfaces) or `::0` (all interfaces). On IPv6-only systems, these services will fail to start or will be unreachable.
+Some applications bind to `0.0.0.0` (all IPv4 interfaces) rather than `::` (all IPv6 interfaces; `::0` is just an alternate notation for the same address). On IPv6-only systems, these services will fail to start or will be unreachable.
 
 Check which address a service is listening on:
 
