@@ -272,7 +272,7 @@ kubectl delete pod node-exporter-worker-01 -n monitoring
 
 To actually remove a static pod, you need to remove it from the machine configuration and reapply.
 
-Resource Considerations
+## Resource Considerations
 
 Static pods consume resources on your node just like any other pod. Make sure to set resource requests and limits to prevent them from consuming too many resources:
 
