@@ -174,9 +174,9 @@ Common kernel arguments for Talos include:
 - `nomodeset` - Disable kernel mode setting for problematic GPUs during install
 - `talos.platform=metal` - Explicitly set the platform
 
-## Embedding Configuration in the ISO
+## Pointing the ISO at a Machine Configuration
 
-You can embed a partial or complete machine configuration directly into the ISO. This is useful for setting network defaults or machine-specific parameters.
+You can bake a `talos.config` kernel argument into the ISO so each node fetches its machine configuration automatically at boot. Note that `--extra-kernel-arg` only sets a kernel cmdline value — it does not copy a local file into the ISO. The booted node must be able to reach the URL you provide, so host the config on an HTTP(S) endpoint that is reachable from the network where the node boots.
 
 ```bash
 # Create a machine config patch
@@ -197,12 +197,15 @@ cluster:
       - 10.96.0.0/12
 EOF
 
-# Generate ISO with embedded config
-docker run --rm -v /tmp/out:/out -v $(pwd):/config \
+# Host config-patch.yaml on an HTTP(S) server reachable from the node,
+# then bake the URL into the ISO via the talos.config kernel argument.
+docker run --rm -v /tmp/out:/out \
   ghcr.io/siderolabs/imager:v1.7.0 \
   iso \
-  --extra-kernel-arg "talos.config=file:///config/config-patch.yaml"
+  --extra-kernel-arg "talos.config=https://configs.example.com/config-patch.yaml"
 ```
+
+If you need the configuration to ship inside the ISO itself (for air-gapped installs), build a separate "metal-iso" config image with the filesystem label `metal-iso` and pass `--extra-kernel-arg "talos.config=metal-iso"` so Talos reads the config from the attached media.
 
 ## Writing the ISO to Media
 
@@ -236,6 +239,10 @@ python3 -m http.server 8080 --directory /tmp/out/
 Before deploying to production hardware, test your custom ISO in a virtual machine.
 
 ```bash
+# Create a virtual disk for the VM (qemu-img must run before qemu-system-x86_64;
+# -drive does not create disks on its own)
+qemu-img create -f qcow2 test-disk.qcow2 20G
+
 # Test with QEMU
 qemu-system-x86_64 \
   -m 4096 \
@@ -243,7 +250,7 @@ qemu-system-x86_64 \
   -enable-kvm \
   -cdrom /tmp/out/talos-amd64.iso \
   -boot d \
-  -drive file=test-disk.qcow2,format=qcow2,if=virtio,size=20G \
+  -drive file=test-disk.qcow2,format=qcow2,if=virtio \
   -net nic -net user,hostfwd=tcp::50000-:50000
 
 # After the node boots, apply configuration
