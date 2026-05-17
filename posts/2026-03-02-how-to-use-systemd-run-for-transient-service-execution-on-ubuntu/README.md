@@ -24,10 +24,10 @@ systemd-run --unit=mybackup -- /usr/local/bin/backup.sh
 systemd-run --uid=1000 -- /path/to/command
 
 # Check the status while it's running
-systemctl status run-12345.service
+systemctl status run-u123.service
 ```
 
-When you run `systemd-run`, it creates a service unit with a name like `run-PID.service`, starts it, and returns. The service runs in the background and the journal captures its output.
+When you run `systemd-run`, it creates a service unit with a name like `run-u<N>.service` (where `<N>` is an internal counter), starts it, and returns. The service runs in the background and the journal captures its output.
 
 ## Service vs Scope Units
 
@@ -58,7 +58,7 @@ journalctl -u myjob.service -f
 
 The `--wait` flag blocks until the service exits and prints the exit status.
 
-Resource Limits Without Unit Files
+## Resource Limits Without Unit Files
 
 This is one of the most practical uses: running a command with specific resource constraints without writing a permanent unit file.
 
@@ -199,8 +199,8 @@ systemd-run --on-calendar="2026-03-02 22:00:00" -- /path/to/midnight-job.sh
 # Run after a specific monotonic offset from boot
 systemd-run --on-boot="5min" -- /path/to/post-boot-init.sh
 
-# Run 30 minutes after a unit becomes active
-systemd-run --on-unit-active="30min" --unit=postgresql -- /path/to/post-db-task.sh
+# Repeat every 30 minutes after this transient unit was last active
+systemd-run --on-unit-active="30min" --unit=periodic-check -- /path/to/periodic-task.sh
 ```
 
 These create transient timer units. List them:
@@ -236,7 +236,7 @@ echo "Exit code: $?"
 systemd-run --wait --collect -- /path/to/task.sh
 ```
 
-Without `--collect`, the unit remains in a "failed" or "inactive" state after completion and must be manually cleaned up with `systemctl reset-failed` or `systemctl stop`.
+Without `--collect`, successful transient units are garbage-collected automatically once they go inactive, but failed units remain in memory until you clean them up with `systemctl reset-failed`. Passing `--collect` ensures the unit is unloaded even if it failed.
 
 ## Practical Examples
 
