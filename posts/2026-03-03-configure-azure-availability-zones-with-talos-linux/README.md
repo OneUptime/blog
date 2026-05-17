@@ -51,7 +51,7 @@ az network nsg rule create \
   --protocol tcp \
   --direction inbound \
   --priority 1000 \
-  --destination-port-range 6443 \
+  --destination-port-ranges 6443 \
   --access allow
 
 # Allow Talos API access
@@ -62,7 +62,7 @@ az network nsg rule create \
   --protocol tcp \
   --direction inbound \
   --priority 1001 \
-  --destination-port-range 50000 \
+  --destination-port-ranges 50000 \
   --access allow
 
 # Associate NSG with subnet
@@ -197,7 +197,7 @@ az vmss create \
   --vnet-name talos-vnet \
   --subnet nodes-subnet \
   --nsg talos-nsg \
-  --upgrade-policy-mode manual
+  --upgrade-policy-mode Manual
 ```
 
 With `--zones 1 2 3` and an instance count of 6, Azure distributes 2 instances per zone.
