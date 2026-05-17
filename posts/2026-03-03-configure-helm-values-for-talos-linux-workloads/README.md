@@ -40,7 +40,7 @@ helm install my-app bitnami/nginx \
   --set image.tag=1.25.0
 ```
 
-Resource Configuration
+## Resource Configuration
 
 On Talos Linux clusters, setting proper resource requests and limits is critical. Talos runs a minimal set of system services, so you have more node resources available for your workloads, but you still need to plan capacity carefully.
 
