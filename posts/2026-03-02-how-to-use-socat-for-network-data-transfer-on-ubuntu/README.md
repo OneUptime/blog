@@ -29,11 +29,12 @@ Common address types:
 - `TCP:host:port` - TCP connection (client)
 - `TCP-LISTEN:port` - TCP server (listen)
 - `UDP:host:port` - UDP
-- `STDIN` / `STDOUT` - Standard I/O
+- `STDIN` / `STDOUT` / `STDIO` - Standard I/O
 - `FILE:filename` - File
-- `PIPE:command` - Execute command
+- `EXEC:command` - Fork and execute a program
+- `PIPE:filename` - Named pipe (FIFO)
 - `UNIX-LISTEN:path` - Unix domain socket
-- `SSL:host:port` - SSL/TLS connection
+- `OPENSSL:host:port` - SSL/TLS connection
 - `PTY` - Pseudo-terminal
 
 ## Simple Examples
@@ -111,7 +112,9 @@ socat TCP-LISTEN:5432,reuseaddr,fork UNIX-CONNECT:/var/run/postgresql/.s.PGSQL.5
 
 ```bash
 # Map UDP port to TCP (for protocols that can use either)
-socat UDP-LISTEN:1234,fork TCP:target-host:1234
+# Use UDP-RECVFROM with -u (unidirectional) when fork is needed,
+# because UDP-LISTEN has no real connection semantics.
+socat -u UDP-RECVFROM:1234,fork TCP:target-host:1234
 ```
 
 ## SSL/TLS with socat
