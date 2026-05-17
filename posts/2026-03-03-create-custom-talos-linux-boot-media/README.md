@@ -103,24 +103,23 @@ docker run --rm -v $(pwd)/_out:/out \
 
 These kernel arguments are baked into the boot media, so they apply every time the system boots.
 
-## Embedding Machine Configuration
+## Pointing Boot Media at a Machine Configuration
 
-You can embed a machine configuration directly into the boot media. This is useful for automated deployments where you want machines to configure themselves on first boot:
+The `talos.config` kernel argument tells Talos where to fetch its machine configuration on first boot. It accepts a URL (or the special value `metal-iso` to load `config.yaml` from a filesystem labeled `metal-iso`). You can bake the argument into the boot media so machines configure themselves automatically:
 
 ```bash
 # First, generate the machine config
 talosctl gen config my-cluster https://10.0.0.1:6443
 
-# Build an ISO with embedded configuration
-docker run --rm \
-  -v $(pwd)/_out:/out \
-  -v $(pwd)/controlplane.yaml:/config/controlplane.yaml \
+# Host controlplane.yaml on an HTTP server reachable by the booting machine,
+# then build an ISO whose kernel command line fetches it on boot.
+docker run --rm -v $(pwd)/_out:/out \
   ghcr.io/siderolabs/imager:v1.9.0 metal \
   --arch amd64 \
-  --extra-kernel-arg talos.config=/config/controlplane.yaml
+  --extra-kernel-arg talos.config=https://config-server.example.com/controlplane.yaml
 ```
 
-When a machine boots from this media, it will automatically apply the embedded configuration without needing a manual `talosctl apply-config` step.
+The URL supports placeholders like `${uuid}`, `${serial}`, `${mac}`, and `${hostname}` so you can serve per-machine configs from a single endpoint. For air-gapped scenarios, use `--extra-kernel-arg talos.config=metal-iso` and attach a second ISO containing a `config.yaml` at its root with the filesystem label set to `metal-iso`.
 
 ## Building ARM64 Images
 
@@ -134,9 +133,10 @@ docker run --rm -v $(pwd)/_out:/out \
 
 # Build for a specific board (e.g., Raspberry Pi 4)
 docker run --rm -v $(pwd)/_out:/out \
-  ghcr.io/siderolabs/imager:v1.9.0 metal \
+  ghcr.io/siderolabs/imager:v1.9.0 rpi_generic \
   --arch arm64 \
-  --board-overlay ghcr.io/siderolabs/sbc-raspberrypi:v0.1.0
+  --overlay-image ghcr.io/siderolabs/sbc-raspberrypi:v0.1.0 \
+  --overlay-name rpi_generic
 ```
 
 Note that you need to run this on an ARM64 host or use Docker's multi-platform support with QEMU emulation.
@@ -167,12 +167,12 @@ If you use PXE or iPXE for network booting, extract the kernel and initramfs fro
 ```bash
 # Build PXE-compatible assets
 docker run --rm -v $(pwd)/_out:/out \
-  ghcr.io/siderolabs/imager:v1.9.0 metal \
+  ghcr.io/siderolabs/imager:v1.9.0 iso \
   --arch amd64 \
   --output-kind kernel
 
 docker run --rm -v $(pwd)/_out:/out \
-  ghcr.io/siderolabs/imager:v1.9.0 metal \
+  ghcr.io/siderolabs/imager:v1.9.0 iso \
   --arch amd64 \
   --output-kind initramfs
 ```
@@ -181,24 +181,18 @@ Copy these to your PXE server and update your boot configuration to point to the
 
 ## Building Images with Custom Overlays
 
-For hardware that needs specific device tree blobs or firmware, you can create a custom overlay:
+In Talos, an "overlay" is the bootloader, U-Boot, and device-tree material that an SBC platform needs to boot. Overlays are distributed as container images and consumed by the imager through `--overlay-image` together with `--overlay-name`. The available overlays are published under the `siderolabs/sbc-*` repositories:
 
 ```bash
-# Create a custom overlay directory structure
-mkdir -p overlay/firmware
-mkdir -p overlay/dtb
-
-# Copy your firmware files
-cp my-firmware.bin overlay/firmware/
-
-# Build with the overlay
-docker run --rm \
-  -v $(pwd)/_out:/out \
-  -v $(pwd)/overlay:/overlay \
-  ghcr.io/siderolabs/imager:v1.9.0 metal \
-  --arch amd64 \
-  --overlay /overlay
+# Build an image for a Rockchip-based SBC such as the Pine64 Rock 4
+docker run --rm -v $(pwd)/_out:/out \
+  ghcr.io/siderolabs/imager:v1.9.0 rock4 \
+  --arch arm64 \
+  --overlay-image ghcr.io/siderolabs/sbc-rockchip:v0.1.0 \
+  --overlay-name rock4
 ```
+
+For extra firmware on x86 hardware - CPU microcode, NIC firmware, and so on - package the blobs as a system extension and pass it with `--system-extension-image` instead. The `intel-ucode`, `amd-ucode`, and `nonfree-kmod-*` entries in the `siderolabs/extensions` repository are good references for the layout.
 
 ## Reproducible Builds
 
