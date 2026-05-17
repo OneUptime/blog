@@ -23,7 +23,7 @@ With BGP, your Kubernetes cluster announces service IP addresses directly to you
 
 ## Prerequisites
 
-- A Talos Linux cluster with Cilium installed
+- A Talos Linux cluster with Cilium v1.18+ installed (this guide uses the BGPv2 API)
 - A network router that supports BGP (most enterprise routers do)
 - An IP address range for LoadBalancer services (not overlapping with your existing network)
 - Basic understanding of BGP concepts (AS numbers, peering)
@@ -57,7 +57,7 @@ Define the IP range that Cilium will assign to LoadBalancer services:
 
 ```yaml
 # ip-pool.yaml
-apiVersion: cilium.io/v2alpha1
+apiVersion: cilium.io/v2
 kind: CiliumLoadBalancerIPPool
 metadata:
   name: external-pool
@@ -77,12 +77,12 @@ kubectl apply -f ip-pool.yaml
 
 ## Step 3: Configure BGP Peering
 
-Create a BGP peering policy that tells Cilium how to peer with your router:
+Current Cilium releases use the BGPv2 API, which splits the legacy `CiliumBGPPeeringPolicy` into three resources: `CiliumBGPClusterConfig` selects nodes and defines BGP sessions, `CiliumBGPPeerConfig` holds reusable peer timers and advertisement selectors, and `CiliumBGPAdvertisement` defines which prefixes are advertised. (The older `CiliumBGPPeeringPolicy` was deprecated in Cilium 1.18 and removed in 1.19.)
 
 ```yaml
-# bgp-peering-policy.yaml
-apiVersion: cilium.io/v2alpha1
-kind: CiliumBGPPeeringPolicy
+# bgp-peering.yaml
+apiVersion: cilium.io/v2
+kind: CiliumBGPClusterConfig
 metadata:
   name: bgp-peering
 spec:
@@ -90,20 +90,48 @@ spec:
   nodeSelector:
     matchLabels:
       bgp-policy: active
-  virtualRouters:
-  - localASN: 65000
-    exportPodCIDR: false
-    neighbors:
-    - peerAddress: "192.168.1.1/32"
+  bgpInstances:
+  - name: instance-65000
+    localASN: 65000
+    peers:
+    - name: upstream-router
       peerASN: 65001
-      eBGPMultihopTTL: 1
-      connectRetryTimeSeconds: 120
-      holdTimeSeconds: 90
-      keepAliveTimeSeconds: 30
-      gracefulRestart:
-        enabled: true
-        restartTimeSeconds: 120
-    serviceSelector:
+      peerAddress: "192.168.1.1"
+      peerConfigRef:
+        name: upstream-peer-config
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPPeerConfig
+metadata:
+  name: upstream-peer-config
+spec:
+  timers:
+    holdTimeSeconds: 90
+    keepAliveTimeSeconds: 30
+    connectRetryTimeSeconds: 120
+  gracefulRestart:
+    enabled: true
+    restartTimeSeconds: 120
+  families:
+  - afi: ipv4
+    safi: unicast
+    advertisements:
+      matchLabels:
+        advertise: bgp
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPAdvertisement
+metadata:
+  name: service-advertisements
+  labels:
+    advertise: bgp
+spec:
+  advertisements:
+  - advertisementType: "Service"
+    service:
+      addresses:
+      - LoadBalancerIP
+    selector:
       matchExpressions:
       - key: somekey
         operator: NotIn
@@ -116,15 +144,15 @@ The key fields are:
 - **localASN** - The BGP Autonomous System Number for your cluster
 - **peerAddress** - The IP address of your network router
 - **peerASN** - The router's AS number
-- **serviceSelector** - Which services to advertise (the example above selects all services)
+- **CiliumBGPAdvertisement.spec.advertisements[].selector** - Which services to advertise (the example above selects all services)
 
 ```bash
-kubectl apply -f bgp-peering-policy.yaml
+kubectl apply -f bgp-peering.yaml
 ```
 
 ## Step 4: Label Nodes for BGP
 
-Apply the label that matches your peering policy's nodeSelector:
+Apply the label that matches the `CiliumBGPClusterConfig` nodeSelector:
 
 ```bash
 # Label the nodes that should participate in BGP
@@ -240,38 +268,48 @@ curl http://192.168.10.100
 
 ### Advertising Pod CIDRs
 
-If you want external systems to reach pods directly by their IP:
+If you want external systems to reach pods directly by their IP, add a `PodCIDR` advertisement:
 
 ```yaml
-virtualRouters:
-- localASN: 65000
-  exportPodCIDR: true
-  neighbors:
-  - peerAddress: "192.168.1.1/32"
-    peerASN: 65001
+apiVersion: cilium.io/v2
+kind: CiliumBGPAdvertisement
+metadata:
+  name: podcidr-advertisements
+  labels:
+    advertise: bgp
+spec:
+  advertisements:
+  - advertisementType: "PodCIDR"
 ```
 
 ### Multiple BGP Peers
 
-For redundancy, peer with multiple routers:
+For redundancy, add additional peers to the BGP instance:
 
 ```yaml
-virtualRouters:
-- localASN: 65000
-  neighbors:
-  - peerAddress: "192.168.1.1/32"
+bgpInstances:
+- name: instance-65000
+  localASN: 65000
+  peers:
+  - name: router-1
     peerASN: 65001
-  - peerAddress: "192.168.1.2/32"
+    peerAddress: "192.168.1.1"
+    peerConfigRef:
+      name: upstream-peer-config
+  - name: router-2
     peerASN: 65001
+    peerAddress: "192.168.1.2"
+    peerConfigRef:
+      name: upstream-peer-config
 ```
 
 ### Service Selection
 
-Control which services are advertised:
+Control which services are advertised by adjusting the selector on the advertisement:
 
 ```yaml
 # Only advertise services with a specific label
-serviceSelector:
+selector:
   matchLabels:
     bgp-advertise: "true"
 ```
@@ -297,15 +335,17 @@ kubectl exec -n kube-system ds/cilium -- cilium bgp routes received ipv4 unicast
 # View Cilium agent logs for BGP messages
 kubectl logs -n kube-system -l k8s-app=cilium --tail=100 | grep -i bgp
 
-# Verify IP pool allocation
-kubectl get ciliumbgppeeringpolicies
-kubectl get ciliumloadbalancerippool
+# Verify BGP resources and IP pool allocation
+kubectl get ciliumbgpclusterconfigs
+kubectl get ciliumbgppeerconfigs
+kubectl get ciliumbgpadvertisements
+kubectl get ciliumloadbalancerippools
 ```
 
 Common issues:
 
 - **Peer not establishing** - Check firewall rules for TCP port 179 (BGP)
-- **Routes not appearing** - Verify serviceSelector matches your services
+- **Routes not appearing** - Verify the `CiliumBGPAdvertisement` selector matches your services and that the advertisement label is selected by the peer config's `families[].advertisements`
 - **ECMP not working** - Ensure your router is configured for multi-path
 
 ## Summary
