@@ -91,7 +91,6 @@ Version: 22.04
 Architectures: amd64 arm64
 Components: main contrib
 Description: Internal package repository for MyCompany
-
 SignWith: packages@mycompany.internal
 
 # Separate configuration for Ubuntu 24.04 (Noble) if needed
@@ -116,7 +115,7 @@ cat > /var/www/repo/conf/options << 'EOF'
 
 # Verbose logging
 verbose
-# Ask before overwriting packages
+# Prompt for the GPG passphrase if the signing key is protected
 ask-passphrase
 # Log file
 logdir /var/log/reprepro
@@ -175,7 +174,7 @@ reprepro -b /var/www/repo list jammy
 reprepro -b /var/www/repo ls mypackage
 
 # List packages in a specific component
-reprepro -b /var/www/repo listfilter jammy 'Component (== main)'
+reprepro -b /var/www/repo -C main list jammy
 
 # Remove a package from the repository
 reprepro -b /var/www/repo remove jammy mypackage
@@ -263,15 +262,16 @@ Create a filter list to limit what gets mirrored (mirrors can be large):
 
 ```bash
 # packages-to-mirror.list - Only mirror specific packages
+# Each line is: <packagename> <action> (matches dpkg --get-selections format)
 cat > /var/www/repo/conf/packages-to-mirror.list << 'EOF'
-install openssl
-install libssl1.1
-install libssl-dev
-install openssh-server
-install openssh-client
-install curl
-install wget
-install nginx
+openssl install
+libssl1.1 install
+libssl-dev install
+openssh-server install
+openssh-client install
+curl install
+wget install
+nginx install
 EOF
 ```
 
@@ -342,9 +342,9 @@ ls /var/www/repo/db/
 # Verify the signing key is accessible
 gpg --list-secret-keys packages@mycompany.internal
 
-# If using a passphrase-protected key, configure gpg-agent
+# If using a passphrase-protected key, ensure gpg-agent can prompt for it
+# and that 'ask-passphrase' is set in conf/options
 export GPG_TTY=$(tty)
-echo "Acquire::gpgv::Options "--ignore-time-conflict";" | sudo tee /etc/apt/apt.conf.d/99ignore-release-date
 ```
 
 **Clients getting "NO_PUBKEY" errors:**
