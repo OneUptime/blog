@@ -8,7 +8,7 @@ Description: A practical guide to writing efficient Dockerfiles for Ubuntu-based
 
 ---
 
-Ubuntu is a common base for container images, partly because of its familiar package ecosystem and partly because many developers are already comfortable with it. But Ubuntu images are not small - the base image is around 70 MB and grows quickly with additional packages. Writing efficient Dockerfiles means balancing image size, build speed, security, and maintainability.
+Ubuntu is a common base for container images, partly because of its familiar package ecosystem and partly because many developers are already comfortable with it. But Ubuntu images are not small - the base image is around 29 MB compressed (roughly 77 MB uncompressed) and grows quickly with additional packages. Writing efficient Dockerfiles means balancing image size, build speed, security, and maintainability.
 
 This guide covers the techniques that make a real difference in production image sizes and build times.
 
@@ -17,12 +17,8 @@ This guide covers the techniques that make a real difference in production image
 Ubuntu offers several base images with different trade-offs:
 
 ```dockerfile
-# Full Ubuntu - largest, most complete
-
-FROM ubuntu:22.04  # ~70 MB compressed
-
-# Ubuntu minimal - stripped packages
-FROM ubuntu:22.04-minimal  # ~30 MB compressed
+# Standard Ubuntu base image
+FROM ubuntu:22.04  # ~29 MB compressed
 
 # Specific release tag - never use 'latest' in production
 FROM ubuntu:22.04  # Good - specific version
@@ -37,8 +33,8 @@ For many applications, consider whether Ubuntu is actually needed:
 # If you only need a minimal runtime (no shell, no package manager)
 FROM scratch  # truly empty - requires static binaries
 
-# Distroless Ubuntu - no shell, minimal attack surface
-FROM gcr.io/distroless/base-debian11
+# Distroless (Debian-based) - no shell, minimal attack surface
+FROM gcr.io/distroless/base-debian12
 
 # Alpine - 5 MB base, musl libc (may have compatibility issues)
 FROM alpine:3.19
@@ -152,7 +148,7 @@ RUN apt-get update && apt-get install -y nodejs && \
 WORKDIR /app
 COPY package*.json ./
 # Install only production dependencies
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 
@@ -208,7 +204,7 @@ Remove unnecessary setuid/setgid binaries:
 
 ```dockerfile
 # Remove setuid bits from all binaries
-RUN find / -xdev -perm +6000 -exec chmod a-s {} + 2>/dev/null || true
+RUN find / -xdev -perm /6000 -exec chmod a-s {} + 2>/dev/null || true
 ```
 
 ## Effective .dockerignore
@@ -329,7 +325,7 @@ FROM base AS deps
 WORKDIR /app
 COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir -r requirements.txt
+    pip install -r requirements.txt
 
 FROM base AS production
 
