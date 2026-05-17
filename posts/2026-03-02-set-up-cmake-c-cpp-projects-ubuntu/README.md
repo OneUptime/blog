@@ -349,7 +349,7 @@ ln -s build/compile_commands.json compile_commands.json
 
 ## CMakePresets.json
 
-CMake 3.19+ supports presets for standardized configurations:
+CMake 3.19+ supports presets for standardized configurations (the example below uses schema `"version": 3`, which requires CMake 3.21+):
 
 ```json
 {
