@@ -47,7 +47,7 @@ cluster:
       # Snapshot count (number of transactions between snapshots)
       snapshot-count: "10000"
 
-      # Maximum number of committed transactions to keep in memory
+      # Maximum client request size in bytes the server will accept (default 1.5MB)
       max-request-bytes: "10485760"  # 10MB
 ```
 
@@ -96,31 +96,20 @@ Run defragmentation during low-traffic periods because it briefly pauses etcd op
 
 ## Security Configuration
 
-Harden etcd communication with proper TLS settings:
+Talos manages most of etcd's TLS configuration itself and blocks several security-related flags from `extraArgs` — including `client-cert-auth`, `peer-client-cert-auth`, `tls-min-version`, and the cert/key/CA file paths. Mutual TLS between etcd members and client certificate authentication are already enabled by default, so you do not (and cannot) set those flags here.
+
+One TLS-related knob you can still tune through `extraArgs` is the cipher suite allowlist:
 
 ```yaml
 # etcd security settings
 cluster:
   etcd:
     extraArgs:
-      # Require client certificate authentication
-      client-cert-auth: "true"
-
-      # Enable peer certificate authentication
-      peer-client-cert-auth: "true"
-
-      # Set minimum TLS version
-      tls-min-version: "TLS1.2"
-
       # Restrict cipher suites
-      cipher-suites: >-
-        TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-        TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-        TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-        TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+      cipher-suites: TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
 ```
 
-Talos already configures mutual TLS between etcd members by default, but these extra settings tighten the security further by restricting cipher suites and enforcing minimum TLS versions.
+The `cipher-suites` flag takes a comma-separated list with no spaces. Restricting it to modern ECDHE suites tightens etcd's TLS posture without conflicting with the settings Talos manages on your behalf.
 
 ## Monitoring etcd
 
