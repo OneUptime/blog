@@ -15,24 +15,16 @@ Skopeo is part of the containers ecosystem alongside Buildah and Podman. It uses
 ## Installing Skopeo
 
 ```bash
-# Install from Ubuntu repositories
+# Install from Ubuntu repositories (available in 20.10+)
 
 sudo apt update
 sudo apt install -y skopeo
 
 # Verify installation
 skopeo --version
-
-# For a more recent version on Ubuntu 20.04:
-. /etc/os-release
-echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/ /" | \
-    sudo tee /etc/apt/sources.list.d/containers.list
-
-curl -L "https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/Release.key" | \
-    sudo apt-key add -
-
-sudo apt update && sudo apt install -y skopeo
 ```
+
+The distribution package is the recommended installation method. The OpenSUSE OBS `devel:kubic:libcontainers:stable` repository that older guides reference is no longer maintained for Ubuntu — use the Ubuntu package, or build from source (see https://github.com/containers/skopeo/blob/main/install.md) if you need a newer release than your distribution provides.
 
 ## Inspecting Images Without Pulling
 
@@ -157,10 +149,11 @@ The `sync` command mirrors all tags from one location to another:
 
 ```bash
 # Sync an entire repository from Docker Hub to an internal registry
+# (the docker source must be a registry-qualified repository path)
 skopeo sync \
     --src docker \
     --dest docker \
-    nginx \
+    docker.io/library/nginx \
     registry.internal:5000
 
 # Sync using a YAML configuration file (for complex sync setups)
