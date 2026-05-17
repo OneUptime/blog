@@ -91,7 +91,7 @@ cluster:
 Apply this to all control plane nodes:
 
 ```bash
-talosctl apply-config --patch @quorum-config-patch.yaml \
+talosctl patch mc --patch @quorum-config-patch.yaml \
   --nodes 192.168.1.10,192.168.1.11,192.168.1.12
 ```
 
@@ -259,11 +259,13 @@ These leases are stored in etcd, so they depend on etcd quorum. When etcd quorum
 Regularly test your cluster's behavior at quorum boundaries:
 
 ```bash
-# Test with one node down (should still work)
-talosctl shutdown --nodes 192.168.1.12
+# Test with one node briefly down (should still work)
+# Reboot drops the node out of the cluster while it restarts.
+# (talosctl has no "boot" command - powering on a shut-down node
+# requires physical access, IPMI, or a similar out-of-band tool.)
+talosctl reboot --nodes 192.168.1.12
 kubectl create deployment test-quorum --image=nginx
 kubectl delete deployment test-quorum
-talosctl boot --nodes 192.168.1.12
 
 # Verify recovery
 talosctl etcd members --nodes 192.168.1.10
