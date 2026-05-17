@@ -41,6 +41,7 @@ cd my-app-snap
 
 # The YAML file lives at the root of your project
 # or in a snap/ subdirectory
+mkdir snap
 touch snap/snapcraft.yaml
 ```
 
@@ -183,18 +184,20 @@ parts:
     # Override the build step if needed
     override-build: |
       make all
-      make install DESTDIR=$SNAPCRAFT_PART_INSTALL
+      make install DESTDIR=$CRAFT_PART_INSTALL
 ```
 
 ### Common Plugins
 
-**nil** - No build, just stage files:
+**nil** - No build step at all. Useful for parts that only pull in `stage-packages`, or for parts that drive their whole lifecycle through `override-*` scriptlets:
 
 ```yaml
 parts:
-  static-files:
+  utilities:
     plugin: nil
-    source: files/
+    stage-packages:
+      - curl
+      - jq
 ```
 
 **make** - For projects using Makefiles:
@@ -341,11 +344,11 @@ apps:
 Before building, check for errors:
 
 ```bash
-# Snapcraft will validate the YAML and report schema errors
-snapcraft lint
-
-# Or just try to build and see what happens
+# Snapcraft validates the YAML during invocation and reports schema errors
 snapcraft
+
+# After a successful build, lint the produced .snap file for issues
+snapcraft lint ./my-app_1.0_amd64.snap
 ```
 
 Common YAML mistakes that cause failures:
