@@ -28,7 +28,7 @@ Key memory control directives:
 
 The distinction between `MemoryHigh` and `MemoryMax` is important:
 
-- `MemoryHigh` is a throttle point - when the service exceeds this, the kernel starts returning memory more aggressively to the cgroup but does not kill processes
+- `MemoryHigh` is a throttle point - when the service exceeds this, processes are heavily slowed down and the kernel reclaims memory from the cgroup more aggressively, but does not kill processes
 - `MemoryMax` is a hard ceiling - exceeding this triggers the OOM killer within the cgroup, typically killing the service's main process
 
 ## Setting MemoryMax
@@ -113,7 +113,7 @@ cat /sys/fs/cgroup${CGROUP}/memory.high
 # Live view of cgroup resource usage (like top, but for cgroups)
 sudo systemd-cgtop
 
-# Show only memory metrics
+# Order cgroups by memory usage
 sudo systemd-cgtop -m
 ```
 
