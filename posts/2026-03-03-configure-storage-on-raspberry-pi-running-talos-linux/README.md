@@ -26,7 +26,7 @@ Before configuring storage, understand how Talos uses disk space. When Talos ins
 ```bash
 # View the disk layout on a running Talos node
 
-talosctl -n <PI_IP> disks
+talosctl -n <PI_IP> get disks
 
 # View partition details
 talosctl -n <PI_IP> get blockdevices
@@ -93,11 +93,12 @@ sudo rpi-eeprom-config --edit
 # Change BOOT_ORDER=0xf14
 ```
 
-Flash Talos to the USB drive:
+Flash Talos to the USB drive. In current Talos releases, the Raspberry Pi image is built through the [Image Factory](https://factory.talos.dev/) with the `rpi_generic` overlay, and the resulting file is named `metal-arm64.raw.xz`:
 
 ```bash
-# Flash to USB drive
-sudo dd if=metal-rpi_generic-arm64.raw of=/dev/sdX bs=4M status=progress conv=fsync
+# Decompress and flash to USB drive
+xz -d metal-arm64.raw.xz
+sudo dd if=metal-arm64.raw of=/dev/sdX bs=4M status=progress conv=fsync
 ```
 
 ### Adding a USB Drive as Extra Storage
@@ -131,13 +132,13 @@ machine:
     # Talos handles this automatically with the ephemeral partition
 ```
 
-NVMe performance on the Pi 5 is typically:
+NVMe performance on the Pi 5 with the default PCIe Gen 2 x1 link is typically:
 
-- Sequential read: 400-800 MB/s (limited by PCIe Gen2 x1)
-- Sequential write: 300-600 MB/s
-- Random 4K read: 20,000-40,000 IOPS
+- Sequential read: 400-450 MB/s (the link tops out around 500 MB/s)
+- Sequential write: 250-300 MB/s
+- Random 4K read: around 100,000 IOPS
 
-This is a massive improvement over SD cards (typically 2,000-5,000 IOPS for random reads).
+Enabling the unofficial PCIe Gen 3 x1 mode (via `dtparam=pciex1_gen=3` in the firmware config) roughly doubles the sequential numbers and pushes random reads close to 200,000 IOPS, at the cost of stability with some drives. Either way, this is a massive improvement over SD cards (typically 2,000-5,000 IOPS for random reads).
 
 ## NFS for Shared Storage
 
@@ -221,17 +222,17 @@ This stores data on the node's ephemeral partition. Data is lost if the node is 
 
 ## iSCSI Storage
 
-For more advanced setups, Talos supports iSCSI through a system extension:
+For more advanced setups, Talos supports iSCSI through a system extension. Since Talos 1.5, system extensions are no longer installed via `machine.install.extensions`; instead, you build a custom installer image with the extension baked in through the [Image Factory](https://factory.talos.dev/) and point `machine.install.image` at it:
 
 ```yaml
-# Machine config with iSCSI extension
+# Machine config referencing a custom installer image built with the
+# iscsi-tools extension via Image Factory
 machine:
   install:
-    extensions:
-      - image: ghcr.io/siderolabs/iscsi-tools:latest
+    image: factory.talos.dev/installer/<schematic-id>:<talos-version>
 ```
 
-After applying this configuration, you can use iSCSI-based storage solutions like OpenEBS or connect to an iSCSI SAN.
+Generate the `<schematic-id>` by submitting a schematic to Image Factory that includes `siderolabs/iscsi-tools`. After applying this configuration, you can use iSCSI-based storage solutions like OpenEBS or connect to an iSCSI SAN.
 
 ## Storage Performance Tips
 
