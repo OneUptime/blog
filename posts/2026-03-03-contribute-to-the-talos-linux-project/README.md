@@ -67,7 +67,7 @@ git fetch upstream
 # Docker is required
 docker --version
 
-# Go is required (1.21+)
+# Go is required (1.23+; check the Makefile for the exact required version)
 go version
 
 # Make is required
@@ -144,17 +144,14 @@ git checkout -b feat/add-new-feature
 Talos follows standard Go conventions plus some project-specific rules.
 
 ```bash
-# Run the linter to check your code
+# Run the linters (go, vulncheck, deadcode, protobuf, and markdown)
 make lint
 
-# Format your code
-gofmt -w .
-
-# Run static analysis
-make staticcheck
+# Format the source code and protobuf files
+make fmt
 ```
 
-The project uses `golangci-lint` for linting. Make sure your changes pass all lint checks before submitting.
+The `make lint` target runs `golangci-lint` along with other checks. Make sure your changes pass all lint checks before submitting.
 
 ### Writing Tests
 
@@ -228,18 +225,19 @@ talosctl cluster destroy --name pr-test
 
 ### Commit Messages
 
-Talos uses conventional commit messages. Follow this format.
+Talos uses conventional commit messages. Follow this format, and note that **every commit must be signed off** with a Developer Certificate of Origin (DCO) line — this is enforced by CI.
 
 ```bash
 # Format: type(scope): description
+# Scope is optional; most Talos commits use just "type: description".
 
 # Types: feat, fix, chore, docs, refactor, test, ci
 
-# Examples:
-git commit -m "feat(machined): add support for custom DNS servers"
-git commit -m "fix(installer): handle missing disk partition table"
-git commit -m "docs(website): update extension installation guide"
-git commit -m "test(config): add tests for machine config validation"
+# Examples (note the -s / --signoff flag, which is required):
+git commit -s -m "feat(machined): add support for custom DNS servers"
+git commit -s -m "fix(installer): handle missing disk partition table"
+git commit -s -m "docs(website): update extension installation guide"
+git commit -s -m "test(config): add tests for machine config validation"
 ```
 
 ### Pushing and Creating the PR
@@ -295,7 +293,7 @@ After submitting, maintainers will review your PR. Be prepared for feedback and 
 ```bash
 # If changes are requested, make them on the same branch
 git add .
-git commit -m "fix(machined): address review feedback"
+git commit -s -m "fix(machined): address review feedback"
 git push origin fix/issue-1234-description
 ```
 
@@ -323,8 +321,9 @@ hugo serve
 ### Writing Documentation
 
 ```bash
-# Create a new documentation page
-hugo new content/docs/v1.7/guides/my-new-guide.md
+# Create a new documentation page under the appropriate version directory
+# (versioned directories live directly under website/content, e.g. v1.7, v1.8)
+hugo new content/v1.7/talos-guides/my-new-guide.md
 
 # Edit the file with your content
 # Use standard Markdown
