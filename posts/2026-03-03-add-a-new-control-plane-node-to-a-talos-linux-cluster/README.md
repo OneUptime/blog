@@ -125,6 +125,8 @@ qm create 103 \
 qm start 103
 
 # QEMU/KVM example
+qemu-img create -f qcow2 cp-03.qcow2 50G
+
 qemu-system-x86_64 \
   -m 4096 \
   -cpu host \
@@ -132,7 +134,7 @@ qemu-system-x86_64 \
   -smp 2 \
   -cdrom talos.iso \
   -boot d \
-  -drive file=cp-03.qcow2,format=qcow2,if=virtio,size=50G \
+  -drive file=cp-03.qcow2,format=qcow2,if=virtio \
   -net nic,model=virtio -net bridge,br=br0
 ```
 
