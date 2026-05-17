@@ -82,9 +82,11 @@ PCR 7 reflects Secure Boot policy state. Common PCR choices:
 |-----|----------|
 | 0 | BIOS firmware |
 | 1 | BIOS configuration |
+| 2 | UEFI drivers and option ROMs |
+| 4 | Boot loader code (e.g. shim, GRUB) |
 | 7 | Secure Boot state |
-| 8 | Boot manager |
-| 14 | UEFI drivers and applications |
+| 8 | GRUB commands and kernel command line |
+| 14 | Shim MOK (Machine Owner Key) state |
 
 Using multiple PCRs binds the key more tightly to the specific boot state, but also means any firmware or boot configuration change will break unlocking:
 
