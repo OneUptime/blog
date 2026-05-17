@@ -206,8 +206,8 @@ application live {
 
     # Transcode incoming stream to 720p and 480p using FFmpeg
     exec_push ffmpeg -i rtmp://localhost/live/$name
-        -c:v libx264 -b:v 2500k -s 1280x720 -f flv rtmp://localhost/hls/$name_720p
-        -c:v libx264 -b:v 800k  -s 854x480  -f flv rtmp://localhost/hls/$name_480p
+        -c:v libx264 -b:v 2500k -s 1280x720 -f flv rtmp://localhost/hls/${name}_720p
+        -c:v libx264 -b:v 800k  -s 854x480  -f flv rtmp://localhost/hls/${name}_480p
         2>>/var/log/nginx/ffmpeg_$name.log;
 }
 
@@ -236,7 +236,7 @@ location /stat {
 }
 
 location /stat.xsl {
-    root /usr/share/doc/libnginx-mod-rtmp;
+    root /usr/share/doc/libnginx-mod-rtmp/examples;
 }
 ```
 
