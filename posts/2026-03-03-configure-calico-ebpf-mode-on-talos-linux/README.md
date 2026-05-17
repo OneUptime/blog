@@ -20,7 +20,7 @@ The eBPF data plane offers several advantages over the traditional iptables mode
 - **Direct server return (DSR)** - For LoadBalancer services, return traffic goes directly from the pod to the client, bypassing the load balancer node
 - **Better observability** - eBPF programs can expose detailed metrics about packet processing
 
-The tradeoff is that eBPF mode requires a relatively recent kernel (5.3+), which Talos Linux provides.
+The tradeoff is that eBPF mode requires a relatively recent kernel (5.10+, or RHEL with the v4.18.0-305+ backport), which Talos Linux provides.
 
 ## Prerequisites
 
@@ -148,11 +148,14 @@ calicoctl node status
 Check that eBPF programs are loaded on a node:
 
 ```bash
-# List BPF programs through Calico
-kubectl exec -n calico-system ds/calico-node -- calico-node -bpf show
+# Dump Calico's BPF conntrack table
+kubectl exec -n calico-system ds/calico-node -- calico-node -bpf conntrack dump | head -20
 
-# Or check directly on the node via talosctl
-talosctl -n 192.168.1.20 read /proc/net/netfilter/nf_conntrack_count
+# Dump Calico's BPF NAT table (service backends)
+kubectl exec -n calico-system ds/calico-node -- calico-node -bpf nat dump | head -20
+
+# Or list BPF programs directly on the node via bpftool
+kubectl exec -n calico-system ds/calico-node -- bpftool prog show | head -20
 ```
 
 ## Step 5: Test Networking
@@ -186,6 +189,8 @@ kubectl delete svc test-svc
 
 DSR is one of the best features of eBPF mode. It allows return traffic from LoadBalancer services to go directly from the backend pod to the client, bypassing the node that received the initial request. This reduces latency and network hops.
 
+When using the Tigera operator with `linuxDataplane: BPF`, the operator manages `bpfEnabled` on the FelixConfiguration for you. You only need to set the DSR-specific fields:
+
 ```yaml
 # Update the FelixConfiguration for DSR
 apiVersion: projectcalico.org/v3
@@ -193,9 +198,8 @@ kind: FelixConfiguration
 metadata:
   name: default
 spec:
-  bpfEnabled: true
   bpfExternalServiceMode: DSR
-  bpfLogLevel: ""
+  bpfLogLevel: "Off"
   bpfKubeProxyIptablesCleanupEnabled: true
 ```
 
@@ -207,7 +211,6 @@ kind: FelixConfiguration
 metadata:
   name: default
 spec:
-  bpfEnabled: true
   bpfExternalServiceMode: DSR
   bpfKubeProxyIptablesCleanupEnabled: true
 EOF
@@ -241,22 +244,26 @@ kubectl exec -n calico-system ds/calico-node -- \
 
 ## Monitoring eBPF Mode
 
-Calico exposes eBPF-specific metrics through Prometheus:
+Calico exposes eBPF-specific metrics through Felix's Prometheus endpoint. Some useful ones:
 
 ```promql
-# BPF program execution count
-felix_bpf_prog_run_count
+# Endpoints managed by the BPF dataplane on this node
+felix_bpf_dataplane_endpoints
 
-# BPF program execution time
-felix_bpf_prog_run_time_seconds
+# Endpoints whose BPF state is up to date
+felix_bpf_happy_dataplane_endpoints
 
-# BPF map operations
-felix_bpf_map_update_count
-felix_bpf_map_delete_count
+# Endpoints awaiting a BPF dataplane update
+felix_bpf_dirty_dataplane_endpoints
 
-# Conntrack table entries
-felix_bpf_conntrack_entries
+# Number of BPF IP sets programmed on this node
+felix_bpf_num_ip_sets
+
+# Maglev conntrack entries (BPF service load-balancing)
+felix_bpf_conntrack_maglev_entries_total
 ```
+
+Felix's full list of metrics (including BPF ones) is published at the endpoint configured by `prometheusMetricsEnabled` / `prometheusMetricsPort` in FelixConfiguration.
 
 ## Troubleshooting
 
