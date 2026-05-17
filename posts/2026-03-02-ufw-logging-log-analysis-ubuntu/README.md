@@ -102,7 +102,14 @@ sudo grep "UFW BLOCK" /var/log/ufw.log | \
 
 # With protocol information
 sudo grep "UFW BLOCK" /var/log/ufw.log | \
-  grep -oP 'PROTO=\K[A-Z]+.*?DPT=\K[0-9]+' | \
+  awk '{
+    proto=""; dpt="";
+    for (i=1; i<=NF; i++) {
+      if ($i ~ /^PROTO=/) proto=substr($i,7);
+      if ($i ~ /^DPT=/)   dpt=substr($i,5);
+    }
+    if (proto && dpt) print proto, dpt
+  }' | \
   sort | uniq -c | sort -rn | head -20
 ```
 
@@ -121,8 +128,15 @@ Port scans show one source IP targeting many different ports:
 ```bash
 # Find IPs hitting many different ports (potential port scan)
 sudo grep "UFW BLOCK" /var/log/ufw.log | \
-  grep -oP 'SRC=\K[0-9.]+ .*?DPT=\K[0-9]+' | \
-  awk '{print $1}' | \
+  awk '{
+    src=""; dpt="";
+    for (i=1; i<=NF; i++) {
+      if ($i ~ /^SRC=/) src=substr($i,5);
+      if ($i ~ /^DPT=/) dpt=substr($i,5);
+    }
+    if (src && dpt) print src, dpt
+  }' | \
+  sort -u | awk '{print $1}' | \
   sort | uniq -c | sort -rn | head -10
 ```
 
@@ -275,8 +289,9 @@ sudo nano /etc/logrotate.d/ufw
     delaycompress
     missingok
     notifempty
+    sharedscripts
     postrotate
-        invoke-rc.d rsyslog rotate > /dev/null
+        /usr/lib/rsyslog/rsyslog-rotate
     endscript
 }
 ```
