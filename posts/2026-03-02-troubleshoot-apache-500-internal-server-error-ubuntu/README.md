@@ -210,7 +210,9 @@ php -m | grep -i mysql
 php -m | grep -i pdo
 
 # Install missing extension
-sudo apt install php8.3-mysql php8.3-pdo
+# (PDO core ships with PHP; install the driver package for your database,
+# e.g. php8.3-mysql also provides the pdo_mysql driver)
+sudo apt install php8.3-mysql
 
 # Restart PHP-FPM after installing
 sudo systemctl restart php8.3-fpm
