@@ -196,9 +196,9 @@ jobs:
             <details>
             <summary>Test Output</summary>
 
-            ```
+            \`\`\`
             ${testOutput.slice(-3000)}
-            ```
+            \`\`\`
             </details>`;
 
             // Update or create comment
