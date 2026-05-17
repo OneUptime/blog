@@ -38,8 +38,8 @@ ls -la /etc/nginx/
 Output:
 
 ```text
-total 72
-drwxr-xr-x  6 root root  4096 Mar  2 09:00 .
+total 28
+drwxr-xr-x  5 root root  4096 Mar  2 09:00 .
 drwxr-xr-x 85 root root  4096 Mar  1 08:00 ..
 drwxr-xr-x  2 root root  4096 Mar  2 09:00 conf.d
 -rw-r--r--  1 root root  1007 Feb 15 10:00 fastcgi_params
@@ -136,12 +136,12 @@ After the 10-character permissions field, you may see a `+` or `.`:
             └── 1 hard link (typical for regular files)
 ```
 
-For directories, the link count is at least 2 (the directory itself and the `.` entry inside it), plus one more for each subdirectory it contains:
+For directories, the link count is at least 2 (one for the directory's entry in its parent, one for the `.` entry inside it), plus one more for each subdirectory it contains (each subdirectory's `..` entry points back to this directory):
 
 ```text
-drwxr-xr-x  6 root root nginx/
+drwxr-xr-x  5 root root nginx/
              │
-             └── 6 links: nginx/ itself, ., conf.d, sites-available, sites-enabled, + parent's link
+             └── 5 links: parent's entry for nginx/, ., and ../ from conf.d, sites-available, sites-enabled
 ```
 
 ## Field 3 and 4: User and Group Owner
@@ -195,7 +195,7 @@ ls -la --full-time /etc/passwd
 With `-a`, every directory listing shows `.` and `..`:
 
 ```text
-drwxr-xr-x  6 root root 4096 Mar 2 09:00 .
+drwxr-xr-x  5 root root 4096 Mar 2 09:00 .
 drwxr-xr-x 85 root root 4096 Mar 1 08:00 ..
 ```
 
@@ -210,7 +210,7 @@ Symbolic links show the target after an arrow:
 
 ```bash
 ls -la /etc/alternatives/python3
-# lrwxrwxrwx 1 root root 9 Feb 10 2026 python3 -> python3.11
+# lrwxrwxrwx 1 root root 10 Feb 10 2026 python3 -> python3.11
 ```
 
 The permissions shown (`rwxrwxrwx`) are always the symlink's own permissions and are irrelevant - what matters is the target file's permissions.
@@ -223,7 +223,7 @@ The first line of a directory listing:
 total 72
 ```
 
-This is the number of **512-byte blocks** used by all files listed. It's unrelated to the number of files. Use `du -sh directory/` for a more intuitive disk usage figure.
+This is the total disk space used by all files listed, expressed in **1024-byte (1 KB) blocks** by default on GNU `ls` (the default on Ubuntu). With `POSIXLY_CORRECT` set, the unit becomes 512-byte blocks. It's unrelated to the number of files. Use `du -sh directory/` for a more intuitive disk usage figure.
 
 ## Quick Reading Patterns
 
