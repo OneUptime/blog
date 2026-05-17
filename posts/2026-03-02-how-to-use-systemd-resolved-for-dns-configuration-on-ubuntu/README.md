@@ -14,7 +14,7 @@ Description: Configure systemd-resolved for DNS on Ubuntu, set up DNS over TLS, 
 
 systemd-resolved provides DNS resolution through several mechanisms:
 
-1. **Stub resolver**: Listens on `127.0.0.53:53` (and `127.0.0.54:53` for link-local). All DNS queries from the system go here first.
+1. **Stub resolver**: Listens on `127.0.0.53:53` (the primary stub with caching and DNSSEC validation) and `127.0.0.54:53` (a "proxy"/bypass stub that forwards queries to the upstream DNS servers without local processing such as caching, DNSSEC, LLMNR, or mDNS). All DNS queries from the system go here first.
 2. **NSS plugin**: The `nss-resolve` module integrates with the glibc name resolution system.
 3. **D-Bus API**: Applications can query systemd-resolved directly via D-Bus.
 
@@ -153,7 +153,7 @@ Name=eth0
 DHCP=yes
 DNS=10.0.0.1 10.0.0.2
 
-[DHCP]
+[DHCPv4]
 # Don't use DNS from DHCP, use our configured ones
 UseDNS=no
 ```
@@ -210,8 +210,8 @@ resolvectl query 1.1.1.1
 # Query a specific interface's DNS
 resolvectl query --interface=eth0 host.corp.internal
 
-# Test DNSSEC validation
-resolvectl query --validate dnssec-tools.org
+# Test DNSSEC validation (validation is on by default when DNSSEC= is enabled in resolved.conf)
+resolvectl query dnssec-tools.org
 
 # Output:
 # dnssec-tools.org: 69.58.208.77                  -- link: eth0
@@ -293,7 +293,7 @@ resolvectl statistics
 # Look for high cache hit rates vs miss rates
 
 # Check response times
-resolvectl query google.com --json | python3 -m json.tool
+resolvectl query google.com --json=pretty
 ```
 
 **Problem: mDNS not resolving `.local` hostnames**
