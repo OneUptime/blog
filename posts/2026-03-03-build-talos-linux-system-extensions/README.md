@@ -32,16 +32,18 @@ Every Talos extension follows a specific directory structure inside the containe
 /
 ├── manifest.yaml          # Extension metadata
 ├── rootfs/               # Files to overlay onto the root filesystem
-│   ├── lib/
-│   │   └── modules/      # Kernel modules go here
-│   │       └── <version>/
-│   ├── lib/
-│   │   └── firmware/     # Firmware files
-│   └── usr/
-│       └── local/
-│           └── lib/      # Shared libraries
-│               └── containers/
-│                   └── ...
+│   ├── usr/
+│   │   ├── lib/
+│   │   │   ├── modules/  # Kernel modules go here
+│   │   │   │   └── <version>/
+│   │   │   └── firmware/ # Firmware files
+│   │   └── local/
+│   │       └── lib/      # Shared libraries
+│   │           └── containers/
+│   │               └── ...
+│   └── etc/
+│       └── cri/
+│           └── conf.d/   # Container runtime configuration drop-ins
 ```
 
 The `manifest.yaml` file is critical. It describes the extension and its compatibility constraints.
@@ -87,7 +89,7 @@ sudo apt-get install -y docker.io
 go install github.com/google/go-containerregistry/cmd/crane@latest
 
 # bldr - the Sidero Labs build tool
-go install github.com/siderolabs/bldr@latest
+go install github.com/siderolabs/bldr/cmd/bldr@latest
 ```
 
 ## Creating a Simple Extension
@@ -143,7 +145,7 @@ FROM scratch
 COPY manifest.yaml /manifest.yaml
 
 # Copy the compiled module to the correct location
-COPY --from=build /src/driver/*.ko /rootfs/lib/modules/
+COPY --from=build /src/driver/*.ko /rootfs/usr/lib/modules/
 DOCKERFILE
 ```
 
@@ -230,7 +232,7 @@ cat > firmware-extension/Dockerfile << 'DOCKERFILE'
 FROM scratch
 
 COPY manifest.yaml /manifest.yaml
-COPY firmware/ /rootfs/lib/firmware/
+COPY firmware/ /rootfs/usr/lib/firmware/
 DOCKERFILE
 
 cat > firmware-extension/manifest.yaml << 'YAML'
@@ -255,24 +257,42 @@ docker build -t ghcr.io/myorg/custom-firmware:v1.0.0 firmware-extension/
 
 ## Testing Your Extension
 
-Testing is an important step before deploying any custom extension. You can test locally using a QEMU-based Talos cluster.
+Testing is an important step before deploying any custom extension. As of Talos v1.5.0, system extensions are baked into the installer image at build time rather than applied via the machine configuration. The `.machine.install.extensions` field in the machine config is deprecated and emits a warning in v1.7+; use Image Factory or `imager` to produce an installer image that includes your extension instead.
+
+Push your extension image to a registry that Image Factory can pull from (or publish a custom schematic), then generate a tailored installer image:
 
 ```bash
-# Generate a machine configuration with your extension
-talosctl gen config test-cluster https://10.5.0.2:6443 \
-  --install-image ghcr.io/siderolabs/installer:v1.7.0
+# Define a schematic that includes your extension
+cat > schematic.yaml << 'YAML'
+customization:
+  systemExtensions:
+    officialExtensions:
+      - siderolabs/iscsi-tools
+    # Custom extensions are supported via a self-hosted Image Factory
+    # or by building a custom installer image with the `imager` tool.
+YAML
 
-# Edit the machine config to include your extension
-# Add to the install section:
+# Upload the schematic to Image Factory to get a schematic ID
+curl -X POST --data-binary @schematic.yaml \
+  https://factory.talos.dev/schematics
 ```
 
-In your machine configuration, add the extension under the install section.
+For a fully custom extension that lives in a private registry, build the installer locally with `imager`:
+
+```bash
+# Build a custom installer image that bundles your extension
+docker run --rm -t -v /dev:/dev -v $PWD/_out:/out \
+  --privileged ghcr.io/siderolabs/imager:v1.7.0 \
+  installer \
+  --system-extension-image ghcr.io/myorg/custom-driver:v1.0.0
+```
+
+Use the resulting installer image as the `.machine.install.image` value in your machine configuration:
 
 ```yaml
 machine:
   install:
-    extensions:
-      - image: ghcr.io/myorg/custom-driver:v1.0.0
+    image: factory.talos.dev/installer/<schematic-id>:v1.7.0
 ```
 
 Then create the cluster and verify the extension loaded correctly.
