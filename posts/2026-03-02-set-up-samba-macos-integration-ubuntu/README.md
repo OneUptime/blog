@@ -78,6 +78,7 @@ Replace the contents with a macOS-optimized configuration:
 
     # Support for macOS extended attributes and resource forks
     vfs objects = catia fruit streams_xattr
+    fruit:aapl = yes
     fruit:metadata = stream
     fruit:model = MacSamba
     fruit:posix_rename = yes
@@ -93,8 +94,6 @@ Replace the contents with a macOS-optimized configuration:
 
     # Performance tuning
     socket options = TCP_NODELAY IPTOS_LOWDELAY SO_RCVBUF=131072 SO_SNDBUF=131072
-    read raw = yes
-    write raw = yes
     use sendfile = yes
     aio read size = 16384
     aio write size = 16384
@@ -106,7 +105,7 @@ Replace the contents with a macOS-optimized configuration:
 
     # Character encoding
     unix charset = UTF-8
-    dos charset = CP932
+    dos charset = CP850
 
 [public]
     # Public share - read/write for authenticated users
@@ -119,7 +118,6 @@ Replace the contents with a macOS-optimized configuration:
 
     # macOS-specific settings for this share
     vfs objects = catia fruit streams_xattr
-    fruit:aapl = yes
     create mask = 0664
     directory mask = 0775
     force group = sambashare
@@ -258,11 +256,13 @@ sudo ss -ulnp | grep nmbd
 sudo ufw allow samba
 
 # Or manually:
-sudo ufw allow 135/tcp     # RPC endpoint mapper
 sudo ufw allow 137/udp     # NetBIOS name service
 sudo ufw allow 138/udp     # NetBIOS datagram
 sudo ufw allow 139/tcp     # NetBIOS session
 sudo ufw allow 445/tcp     # SMB over TCP (most important)
+
+# For macOS Bonjour/mDNS auto-discovery
+sudo ufw allow 5353/udp    # mDNS
 
 sudo ufw reload
 ```
@@ -278,6 +278,9 @@ sudo ufw reload
 **Terminal method on Mac:**
 
 ```bash
+# Create the mount point first (mount_smbfs requires it to exist)
+mkdir -p /Volumes/ubuntu_public
+
 # Mount a Samba share from macOS Terminal
 mount_smbfs //alice@ubuntuserver.local/public /Volumes/ubuntu_public
 
@@ -287,8 +290,8 @@ smbutil view //alice@ubuntuserver.local
 
 ## Setting Up Time Machine on macOS
 
-1. Go to Apple menu > System Preferences > Time Machine
-2. Click "Select Disk"
+1. Go to Apple menu > System Settings > General > Time Machine (or System Preferences > Time Machine on macOS 12 and earlier)
+2. Click "Add Backup Disk" (or "Select Disk" on older macOS)
 3. Your Ubuntu server should appear with the timemachine share
 4. Select it and enter your credentials
 5. Time Machine will start backing up automatically
