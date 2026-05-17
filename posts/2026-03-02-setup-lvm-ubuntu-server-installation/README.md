@@ -243,10 +243,10 @@ Snapshots work via copy-on-write: the snapshot shares blocks with the origin LV 
 For database backups, freeze the database, create the snapshot, unfreeze, then back up the snapshot:
 
 ```bash
-# PostgreSQL consistent backup example
-sudo -u postgres psql -c "SELECT pg_start_backup('lvm-snapshot');"
+# PostgreSQL consistent backup example (PostgreSQL 15+)
+sudo -u postgres psql -c "SELECT pg_backup_start('lvm-snapshot');"
 sudo lvcreate -L 5G -s -n lv-pgdata-snap /dev/vg-main/lv-pgdata
-sudo -u postgres psql -c "SELECT pg_stop_backup();"
+sudo -u postgres psql -c "SELECT pg_backup_stop();"
 
 # Now back up the snapshot
 sudo mount -o ro /dev/vg-main/lv-pgdata-snap /mnt/pgsnap
@@ -275,7 +275,7 @@ sudo mount /dev/vg-main/lv-thin-01 /mnt/thin01
 sudo lvs vg-main/thin-pool
 ```
 
-Thin provisioning is used heavily by Docker (dm storage driver) and KVM to oversubscribe storage.
+Thin provisioning is used heavily by KVM and container runtimes to oversubscribe storage. (Docker's `devicemapper` storage driver also used LVM thin pools but has been deprecated since Docker 18.09 and removed in newer releases - use `overlay2` instead.)
 
 ## Troubleshooting LVM
 
