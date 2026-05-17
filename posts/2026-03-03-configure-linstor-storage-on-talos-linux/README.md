@@ -71,13 +71,7 @@ talosctl dmesg --nodes <worker-1-ip> | grep drbd
 
 ## Installing the Piraeus Operator
 
-Piraeus is the Kubernetes operator for LINSTOR. It handles deployment and lifecycle management of the LINSTOR components:
-
-```bash
-# Add the Piraeus Helm repository
-helm repo add piraeus-charts https://piraeus.io/helm-charts/
-helm repo update
-```
+Piraeus is the Kubernetes operator for LINSTOR. It handles deployment and lifecycle management of the LINSTOR components. The Piraeus Operator v2 chart is published as an OCI artifact in GitHub Container Registry:
 
 Create a values file for the operator:
 
@@ -94,14 +88,17 @@ operator:
 ```
 
 ```bash
-# Install the Piraeus operator
-helm install piraeus-op piraeus-charts/piraeus-operator \
+# Install the Piraeus operator from the OCI registry
+helm upgrade --install piraeus-op \
+  oci://ghcr.io/piraeusdatastore/piraeus-operator/piraeus \
   --namespace piraeus-system \
   --create-namespace \
-  -f piraeus-operator-values.yaml
+  --set installCRDs=true \
+  -f piraeus-operator-values.yaml \
+  --wait
 
 # Wait for the operator to be ready
-kubectl -n piraeus-system rollout status deployment piraeus-operator
+kubectl -n piraeus-system rollout status deployment piraeus-op-controller-manager
 ```
 
 ## Deploying the LINSTOR Cluster
