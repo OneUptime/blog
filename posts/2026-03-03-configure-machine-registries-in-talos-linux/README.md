@@ -104,7 +104,7 @@ machine:
           identityToken: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
-Keep in mind that these credentials are stored in the machine configuration, which is encrypted at rest on the Talos node. However, you should still follow the principle of least privilege and use service accounts with read-only access to the registry.
+Keep in mind that these credentials are stored in the machine configuration on the Talos node's STATE partition in plain text by default. If you need encryption at rest, enable STATE partition encryption (Talos supports LUKS2 with static, nodeID, KMS, or TPM-derived keys). You should also follow the principle of least privilege and use service accounts with read-only access to the registry.
 
 ## TLS Configuration
 
@@ -150,7 +150,7 @@ The `ca` field contains the PEM-encoded CA certificate. The `clientIdentity` sec
 
 ## Overriding the Default Endpoint
 
-By default, each mirror falls back to the original registry if the mirror endpoint is unreachable. You can control this behavior by listing multiple endpoints in order of preference:
+By default, if an image cannot be pulled from any of the configured mirror endpoints, Talos falls back to the original upstream registry. You can list multiple mirror endpoints in order of preference, and Talos will try each one in turn:
 
 ```yaml
 # Multiple endpoints with fallback
@@ -161,10 +161,21 @@ machine:
         endpoints:
           - https://primary-mirror.internal.com  # Try this first
           - https://backup-mirror.internal.com   # Fall back to this
-          - https://registry-1.docker.io         # Last resort: upstream
 ```
 
-Talos tries each endpoint in order. If the first one fails, it moves to the second, and so on. If you want to prevent any fallback to the public internet (for air-gapped deployments), simply omit the upstream URL from the list.
+Talos tries each endpoint in order. If the first one fails, it moves to the second, and so on. If none of the mirror endpoints have the image, Talos falls back to the upstream registry (`docker.io` in this case). If you want to prevent any fallback to the public internet (for air-gapped deployments), set `skipFallback: true`:
+
+```yaml
+# Disable fallback to the upstream registry
+machine:
+  registries:
+    mirrors:
+      docker.io:
+        endpoints:
+          - https://primary-mirror.internal.com
+          - https://backup-mirror.internal.com
+        skipFallback: true
+```
 
 ## Wildcard Registry Mirrors
 
