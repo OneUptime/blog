@@ -124,7 +124,11 @@ echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward
 sudo iptables -t nat -A POSTROUTING -s 172.16.0.0/24 -o eth0 -j MASQUERADE
 
 # Configure DNS in namespace
-sudo ip netns exec internet-ns bash -c 'echo "nameserver 8.8.8.8" > /etc/resolv.conf'
+# ip netns exec automatically bind-mounts /etc/netns/<name>/ files over /etc/,
+# so create the per-namespace resolv.conf on the host (don't write to /etc/resolv.conf
+# from inside the namespace - that would overwrite the host's file).
+sudo mkdir -p /etc/netns/internet-ns
+echo "nameserver 8.8.8.8" | sudo tee /etc/netns/internet-ns/resolv.conf
 
 # Test internet access from namespace
 sudo ip netns exec internet-ns curl -s https://httpbin.org/ip
