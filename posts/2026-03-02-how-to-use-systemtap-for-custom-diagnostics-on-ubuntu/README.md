@@ -117,7 +117,8 @@ probe kernel.function("tcp_v4_connect") {
 probe kernel.function("inet_csk_accept").return {
     if ($return) {
         # Get details from the accepted socket
-        local_port = ntohs($return->__sk_common->skc_num)
+        # skc_num is already stored in host byte order
+        local_port = $return->__sk_common->skc_num
         printf("[%s] Accept on port %d: pid=%d comm=%s\n",
             ctime(gettimeofday_s()),
             local_port,
@@ -206,8 +207,9 @@ probe timer.s(5) {
 # packet-drops.stp - Monitor packet drops in the kernel
 # Usage: sudo stap packet-drops.stp
 
-probe kernel.function("kfree_skb") {
-    # This function is called when a packet is dropped
+probe kernel.function("kfree_skb_reason") {
+    # This function is called when a packet is dropped (since kernel 5.17)
+    # The reason argument is an skb_drop_reason enum value
     reason = $reason    # Drop reason
     printf("Packet dropped: pid=%d comm=%s reason=%d\n",
         pid(), execname(), reason)
@@ -226,6 +228,8 @@ SystemTap can probe user-space functions in applications:
 ```stap
 # probe-nginx.stp - Probe nginx to log request processing time
 # Requires nginx compiled with debug info
+
+global start_time
 
 probe process("/usr/sbin/nginx").function("ngx_http_process_request") {
     start_time[tid()] = gettimeofday_us()
