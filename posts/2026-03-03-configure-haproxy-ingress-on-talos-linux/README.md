@@ -61,7 +61,8 @@ controller:
 
   # Enable the stats page for monitoring
   config:
-    stats-auth: "admin:password123"
+    stats-config-snippet: |
+      stats auth admin:password123
 
   # Resource requests and limits
   resources:
@@ -209,8 +210,8 @@ metadata:
     # SSL redirect
     haproxy.org/ssl-redirect: "true"
 
-    # Whitelisting
-    haproxy.org/whitelist: "10.0.0.0/8, 172.16.0.0/12"
+    # Allow list (source IP filtering)
+    haproxy.org/allow-list: "10.0.0.0/8, 172.16.0.0/12"
 ```
 
 ## TCP Load Balancing
@@ -229,6 +230,14 @@ data:
   "6379": "default/redis-service:6379"
 ```
 
+The ConfigMap alone is not enough — you also have to point the controller at it via the `--configmap-tcp-services` flag. Add this to your Helm values and upgrade the release:
+
+```yaml
+controller:
+  extraArgs:
+    - --configmap-tcp-services=haproxy-ingress/haproxy-ingress-tcp
+```
+
 This configures HAProxy to forward TCP connections on port 5432 to a PostgreSQL service and port 6379 to a Redis service.
 
 ## Accessing the Stats Page
@@ -237,11 +246,11 @@ HAProxy comes with a built-in statistics dashboard that shows real-time traffic 
 
 ```bash
 # Access the HAProxy stats page
-# Default URL when using NodePort
-curl http://<NODE_IP>:31024/stats
+# The stats listener binds the whole port, so it is served at /
+curl http://<NODE_IP>:31024/
 
 # Or port-forward for local access
-kubectl port-forward -n haproxy-ingress svc/haproxy-ingress 8404:1024
+kubectl port-forward -n haproxy-ingress svc/haproxy-ingress-kubernetes-ingress 8404:1024
 ```
 
 Open `http://localhost:8404` in your browser to see connection counts, response times, error rates, and more.
