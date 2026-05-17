@@ -74,13 +74,11 @@ ls /lib/firmware/ | grep -E "iwl|ath|rtl|brcm"
 ls /lib/firmware/iwlwifi-*.ucode 2>/dev/null
 
 # Install firmware packages
-# Ubuntu provides firmware through several packages:
-sudo apt install firmware-linux-free -y  # Free firmware
-sudo apt install firmware-linux-nonfree -y 2>/dev/null || true
-sudo apt install linux-firmware -y  # Common firmware files
+# On Ubuntu, almost all WiFi firmware ships in a single package: linux-firmware
+sudo apt install linux-firmware -y
 
-# For Intel WiFi specifically
-sudo apt install firmware-iwlwifi -y 2>/dev/null || sudo apt install linux-firmware -y
+# Intel iwlwifi firmware is bundled inside linux-firmware on Ubuntu
+# (Debian splits this into a separate firmware-iwlwifi package; Ubuntu does not)
 ```
 
 After installing firmware, reload the driver:
@@ -112,9 +110,11 @@ lsusb | grep -i broadcom
 
 # Install Broadcom drivers (try in order)
 # Option 1: Open-source brcmfmac driver (preferred)
-sudo apt install firmware-brcm80211 -y 2>/dev/null || sudo apt install linux-firmware -y
+# brcmfmac firmware is bundled inside linux-firmware on Ubuntu
+sudo apt install linux-firmware -y
 
 # Option 2: Proprietary Broadcom driver (if brcmfmac doesn't work)
+# On 24.04+ bcmwl-kernel-source is a transitional package for broadcom-sta-dkms
 sudo apt install bcmwl-kernel-source -y
 
 # If using proprietary driver, blacklist the open-source one
@@ -240,10 +240,15 @@ EOF
 sudo modprobe -r iwlwifi
 sudo modprobe iwlwifi
 
-# For ath9k (Atheros), disable ASPM if you have disconnects
+# For ath9k (Atheros), disable hardware encryption if you have disconnects
+# (forces mac80211 software crypto, which works around some firmware bugs)
 sudo tee /etc/modprobe.d/ath9k.conf << 'EOF'
 options ath9k nohwcrypt=1
 EOF
+
+# Note: ath9k has no module parameter to disable ASPM. If ASPM is causing
+# disconnects, disable it globally with the kernel boot parameter pcie_aspm=off
+# (added to GRUB_CMDLINE_LINUX_DEFAULT in /etc/default/grub).
 ```
 
 ## Step 10: Install Proprietary Drivers via ubuntu-drivers
