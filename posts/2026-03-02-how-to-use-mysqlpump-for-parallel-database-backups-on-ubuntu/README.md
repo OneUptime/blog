@@ -8,7 +8,9 @@ Description: Use mysqlpump to create faster MySQL backups through parallel proce
 
 ---
 
-mysqlpump is MySQL's next-generation backup tool, introduced in MySQL 5.7 as a faster alternative to mysqldump. The key difference is parallelism: mysqlpump can back up multiple databases and tables simultaneously using multiple threads, significantly reducing backup time for servers with many databases or large tables. It also adds built-in compression and progress reporting that mysqldump lacks.
+mysqlpump is a MySQL backup tool introduced in MySQL 5.7.8 as a faster alternative to mysqldump. The key difference is parallelism: mysqlpump can back up multiple databases and tables simultaneously using multiple threads, significantly reducing backup time for servers with many databases or large tables. It also adds built-in compression and progress reporting that mysqldump lacks.
+
+> **Deprecation notice**: mysqlpump was deprecated in MySQL 8.0.34 (July 2023) and removed entirely in MySQL 8.4 (April 2024). The helper utilities `lz4_decompress` and `zlib_decompress` were also removed in 8.4. The information in this post applies to MySQL 5.7 and 8.0 only. For MySQL 8.4 and later, use `mysqldump` for traditional logical backups or MySQL Shell's `util.dumpInstance()` / `util.dumpSchemas()` for modern parallel logical backups with compression.
 
 ## mysqlpump vs mysqldump
 
@@ -83,7 +85,8 @@ The `--parallel-schemas=N:db_name` syntax tells mysqlpump to use N threads for t
 mysqlpump shows progress by default. Control the output interval:
 
 ```bash
-# Show progress every 5 seconds (default is 2000ms)
+# --watch-progress is enabled by default; pass --skip-watch-progress to disable.
+# Progress is written to stderr; redirect 2>&1 to merge it into the output stream.
 mysqlpump --defaults-file=/etc/mysql/backup.cnf \
     --watch-progress \
     --default-parallelism=4 \
@@ -120,8 +123,17 @@ mysqlpump --defaults-file=/etc/mysql/backup.cnf \
     --compress-output=ZLIB \
     --all-databases > /backup/all_databases.sql.zlib
 
-# Decompress to restore
-mysql -u root -p < <(mysqlpump --uncompress /backup/all_databases.sql.lz4)
+# Decompress to restore (mysqlpump does not have an --uncompress option;
+# use the helper utilities shipped with MySQL, or the standard lz4 tool)
+lz4_decompress /backup/all_databases.sql.lz4 /tmp/all_databases.sql
+mysql -u root -p < /tmp/all_databases.sql
+
+# Or with the standard lz4 utility (apt install liblz4-tool)
+lz4 -d /backup/all_databases.sql.lz4 | mysql -u root -p
+
+# For ZLIB-compressed dumps, use zlib_decompress
+zlib_decompress /backup/all_databases.sql.zlib /tmp/all_databases.sql
+mysql -u root -p < /tmp/all_databases.sql
 ```
 
 For compatibility with standard tools, piping through gzip is still an option:
