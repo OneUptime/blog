@@ -65,8 +65,10 @@ grep "^Mar 02" /var/log/syslog
 grep "Connection refused$" /var/log/app.log
 
 # Match specific HTTP status codes
-grep '"5[0-9][0-9] ' /var/log/nginx/access.log  # 5xx errors
-grep '"4[0-9][0-9] ' /var/log/nginx/access.log  # 4xx errors
+# Note the space between " and the digits — nginx combined format puts a space
+# between the closing quote of the request and the status code
+grep '" 5[0-9][0-9] ' /var/log/nginx/access.log  # 5xx errors
+grep '" 4[0-9][0-9] ' /var/log/nginx/access.log  # 4xx errors
 
 # Match IPv4 addresses
 grep -E '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' /var/log/auth.log
@@ -179,7 +181,7 @@ awk -F'"status":' '{print $2}' /var/log/app.log | awk -F',' '{print $1}'
 
 ```bash
 # Find 500 errors and extract the URLs
-grep '"500 ' /var/log/nginx/access.log | awk '{print $7}'
+grep '" 500 ' /var/log/nginx/access.log | awk '{print $7}'
 
 # Find failed SSH logins and extract the IP addresses
 grep "Failed password" /var/log/auth.log | \
@@ -220,9 +222,9 @@ awk '$9 ~ /^5/ {print $7}' /var/log/nginx/access.log | \
 
 ```bash
 # Count 5xx errors per minute
+# substr extracts "DD/Mon/YYYY:HH:MM" (17 chars starting after the leading '[')
 grep '" 5[0-9][0-9] ' /var/log/nginx/access.log | \
   awk '{print substr($4, 2, 17)}' | \
-  sed 's/:[0-9][0-9]$//' | \
   sort | uniq -c
 ```
 
@@ -246,9 +248,9 @@ grep "ERROR" /var/log/app/application.log | \
 grep "Out of memory\|oom_kill" /var/log/syslog | \
   awk '{print $1, $2, $3, $0}' | tail -20
 
-# Which processes got OOM killed
+# Which processes got OOM killed (process name is inside parentheses)
 grep "Killed process" /var/log/kern.log | \
-  awk '{print $NF}' | sort | uniq -c | sort -rn
+  awk -F'[()]' '{print $2}' | sort | uniq -c | sort -rn
 ```
 
 ## Building Reusable Log Analysis Scripts
