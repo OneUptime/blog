@@ -59,12 +59,14 @@ machine:
     kernel.hung_task_panic: "1"          # Panic on hung task
     kernel.hung_task_timeout_secs: "120" # Timeout in seconds
     kernel.hung_task_check_count: "32768" # Max tasks to check
-    kernel.hung_task_warnings: "10"      # Max warnings before panic
+    kernel.hung_task_warnings: "10"      # Max warnings to print (rate-limit)
 ```
 
 ## The softdog Kernel Module
 
 In addition to the built-in watchdog detectors, Linux provides the `softdog` kernel module. This module creates a `/dev/watchdog` device that must be periodically written to by a userspace process. If the process stops writing (because userspace has hung), the module triggers a system reboot.
+
+Note that the default Talos Linux kernel is built without `CONFIG_SOFT_WATCHDOG`, so the `softdog` module is not available out of the box. To use it you must either build a custom Talos kernel that enables the option or supply it via a system extension. The configuration below is what you would apply once that module is available:
 
 ```yaml
 # talos-machine-config.yaml
