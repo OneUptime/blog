@@ -73,7 +73,7 @@ sudo systemctl status grub-btrfsd
 
 ## Creating Snapshots That Appear in GRUB
 
-`grub-btrfs` looks for **read-only** Btrfs subvolumes in specific locations. The default search path is `/.snapshots`. If you're using Snapper or Timeshift in Btrfs mode, snapshots are placed there automatically.
+`grub-btrfs` automatically scans the Btrfs root partition for **read-only** snapshots and lists them in the GRUB menu. The `grub-btrfsd` daemon watches `/.snapshots` by default, which is where Snapper and Yabsnap place their snapshots. (For Timeshift, pass `--timeshift-auto` to the daemon instead.)
 
 ### Using Snapper for Snapshot Management
 
@@ -162,21 +162,20 @@ sudo nano /etc/default/grub-btrfs/config
 Key settings to review:
 
 ```bash
-# Where to look for snapshots (default: /.snapshots)
-GRUB_BTRFS_SNAPSHOT_DIRNAME=".snapshots"
-
-# Prefix shown in GRUB menu for snapshot entries
+# Name appearing in the GRUB submenu (default: derived from /etc/os-release)
 GRUB_BTRFS_SUBMENUNAME="Btrfs Snapshots"
 
-# Show snapshots as a submenu (default) or in main menu
+# Show snapshots found during grub-mkconfig (default: "true")
 GRUB_BTRFS_SHOW_SNAPSHOTS_FOUND="true"
 
-# Limit number of snapshots shown (0 = show all)
+# Limit the number of snapshots populated in the GRUB menu (default: "50")
 GRUB_BTRFS_LIMIT="10"
 
-# Show newest snapshots first
-GRUB_BTRFS_NEWEST_SNAPSHOT_FIRST="true"
+# Sort snapshots; "-rootid" lists newest first (default: "-rootid")
+GRUB_BTRFS_SUBVOLUME_SORT="-rootid"
 ```
+
+Note: there is no variable to set a snapshot search path — `grub-btrfs` scans the whole Btrfs root partition for read-only subvolumes. Use `GRUB_BTRFS_IGNORE_SPECIFIC_PATH` or `GRUB_BTRFS_IGNORE_PREFIX_PATH` to exclude paths you don't want listed.
 
 After changing config, regenerate GRUB:
 
