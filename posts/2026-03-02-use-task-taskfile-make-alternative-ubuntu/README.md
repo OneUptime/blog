@@ -200,6 +200,8 @@ tasks:
 
 ## Running Tasks in Parallel
 
+In Task, commands in `cmds` always run sequentially. To run things in parallel, use `deps` — dependencies always execute concurrently.
+
 ```yaml
 version: '3'
 
@@ -213,14 +215,31 @@ tasks:
     cmds:
       - task: build
 
-  # Run multiple commands in parallel within a single task
-  parallel-commands:
-    desc: Run commands in parallel
+  # Split work into sub-tasks and run them as parallel deps
+  parallel-builds:
+    desc: Build frontend, backend, and images in parallel
+    deps:
+      - task: build-frontend
+      - task: build-backend
+      - task: build-images
+
+  build-frontend:
     cmds:
-      - parallel: true
       - npm run build:frontend
+
+  build-backend:
+    cmds:
       - go build ./...
+
+  build-images:
+    cmds:
       - docker-compose build
+```
+
+You can also run multiple top-level tasks in parallel from the CLI with the `--parallel` flag:
+
+```bash
+task --parallel build-frontend build-backend build-images
 ```
 
 ## A Full Python Project Taskfile
@@ -315,11 +334,11 @@ tasks:
 version: '3'
 
 tasks:
-  download-deps:
-    desc: Download vendor dependencies
+  vendor-deps:
+    desc: Vendor Go module dependencies
     cmds:
-      - go mod download
-    # Only run if go.sum has changed since last download
+      - go mod vendor
+    # Only run if go.mod or go.sum has changed since last vendor
     sources:
       - go.mod
       - go.sum
@@ -404,7 +423,7 @@ source ~/.zshrc
 | Syntax | Custom + TAB required | YAML |
 | Variables | Macro-based | Go templates |
 | Cross-platform | Limited | Full (Go binary) |
-| Parallel tasks | `-j` flag | `parallel: true` or `deps` |
+| Parallel tasks | `-j` flag | `deps` (always parallel) or `--parallel` CLI flag |
 | Conditional run | Timestamp-based | `status` or `sources` |
 | Shell | sh | Any configured shell |
 | Installation | Usually pre-installed | Single binary download |
