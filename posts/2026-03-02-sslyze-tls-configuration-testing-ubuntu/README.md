@@ -18,8 +18,8 @@ SSLyze is a Python tool that analyzes TLS/SSL configurations of servers. Unlike 
 sudo apt install python3 python3-pip -y
 pip3 install sslyze
 
-# Verify installation
-sslyze --version
+# Verify installation (prints the version in the help description)
+sslyze --help | head -1
 
 # Or install as a specific user (avoid sudo pip)
 pip3 install --user sslyze
@@ -247,8 +247,9 @@ from sslyze import (
     ServerNetworkLocation,
     ScanCommand,
     ServerScanRequest,
+    ServerScanStatusEnum,
+    ScanCommandAttemptStatusEnum,
 )
-from sslyze.errors import ConnectionToServerFailed
 
 def scan_server(hostname, port=443):
     """Scan a server and return key TLS information."""
@@ -280,13 +281,14 @@ def scan_server(hostname, port=443):
 
     results = {}
     for scan_result in scanner.get_results():
-        if isinstance(scan_result, ConnectionToServerFailed):
+        # Connectivity failures are reported via scan_status, not as exceptions
+        if scan_result.scan_status == ServerScanStatusEnum.ERROR_NO_CONNECTIVITY:
             print(f"ERROR: Could not connect to {hostname}:{port}")
             return None
 
         # Extract certificate info
         certinfo_result = scan_result.scan_result.certificate_info
-        if certinfo_result.status == "COMPLETED":
+        if certinfo_result.status == ScanCommandAttemptStatusEnum.COMPLETED:
             deployments = certinfo_result.result.certificate_deployments
             if deployments:
                 cert = deployments[0].received_certificate_chain[0]
@@ -296,7 +298,7 @@ def scan_server(hostname, port=443):
 
         # Check for Heartbleed
         heartbleed_result = scan_result.scan_result.heartbleed
-        if heartbleed_result.status == "COMPLETED":
+        if heartbleed_result.status == ScanCommandAttemptStatusEnum.COMPLETED:
             results['heartbleed_vulnerable'] = heartbleed_result.result.is_vulnerable_to_heartbleed
 
     return results
