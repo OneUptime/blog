@@ -178,7 +178,7 @@ sudo ceph osd pool create block-pool replicated
 sudo ceph osd pool set block-pool size 3
 sudo ceph osd pool set block-pool min_size 2
 
-# Create an erasure-coded pool for object storage (more efficient, less CPU intensive)
+# Create an erasure-coded pool for object storage (more space efficient, but more CPU intensive)
 sudo ceph osd erasure-code-profile set ec-profile k=4 m=2
 sudo ceph osd pool create object-pool erasure ec-profile
 
@@ -219,15 +219,10 @@ CephFS provides a POSIX-compliant shared filesystem:
 
 ```bash
 # Deploy MDS (Metadata Servers)
-sudo ceph orch apply mds cephfs --placement="2 ceph-node-01 ceph-node-02"
+sudo ceph orch apply mds myfs --placement="2 ceph-node-01 ceph-node-02"
 
-# Create CephFS
+# Create CephFS volume (this also creates the required data and metadata pools)
 sudo ceph fs volume create myfs
-
-# Create pools for CephFS
-sudo ceph osd pool create cephfs-data
-sudo ceph osd pool create cephfs-metadata
-sudo ceph fs new myfs cephfs-metadata cephfs-data
 
 # Check FS status
 sudo ceph fs status
@@ -258,7 +253,11 @@ sudo ceph mgr services
 # Enable the dashboard module if not already active
 sudo ceph mgr module enable dashboard
 sudo ceph dashboard create-self-signed-cert
-sudo ceph dashboard ac-user-create admin --enabled -r administrator
+
+# Create a dashboard admin user (password is read from a file via -i)
+echo "changeme" | sudo tee /tmp/dashboard-pw.txt
+sudo ceph dashboard ac-user-create admin -i /tmp/dashboard-pw.txt administrator
+sudo rm /tmp/dashboard-pw.txt
 ```
 
 For integration with external monitoring, Ceph exposes Prometheus metrics:
