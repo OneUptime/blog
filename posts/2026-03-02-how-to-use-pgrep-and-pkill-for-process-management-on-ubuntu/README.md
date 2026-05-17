@@ -29,17 +29,17 @@ pgrep nginx
 # Show both PID and process name
 pgrep -l nginx
 
-# Example output:
+# Example output (process name comes from /proc/PID/comm, limited to 15 chars):
 # 1234 nginx
-# 1235 nginx: master process /usr/sbin/nginx
-# 1236 nginx: worker process
+# 1235 nginx
+# 1236 nginx
 
 # Show full command line
 pgrep -a nginx
 
 # Example output:
-# 1234 /usr/sbin/nginx -g daemon on; master_process on;
-# 1235 nginx: master process /usr/sbin/nginx -g daemon on; master_process on;
+# 1234 nginx: master process /usr/sbin/nginx -g daemon on; master_process on;
+# 1235 nginx: worker process
 # 1236 nginx: worker process
 ```
 
@@ -74,8 +74,8 @@ pgrep -u www-data php-fpm
 # Find processes owned by multiple users
 pgrep -u www-data,nginx
 
-# Find processes NOT owned by a user (negation)
-pgrep -U root nginx  # nginx processes not owned by root
+# Match by real user ID (-U) instead of effective user ID (-u)
+pgrep -U root nginx  # nginx processes whose real UID is root
 ```
 
 ### Filtering by Parent PID
@@ -206,8 +206,9 @@ pkill -o myapp
 ### Interactive and Safe Killing
 
 ```bash
-# Echo what would be killed without actually killing (dry run)
-pkill --dry-run nginx
+# pkill has no dry-run option; use pgrep first to see what would match.
+# The -e/--echo flag on pkill prints what was killed AFTER killing it:
+pkill -e nginx
 
 # See which processes match before killing
 pgrep -la nginx
