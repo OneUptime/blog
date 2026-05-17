@@ -311,12 +311,12 @@ hosts: dns files  # Don't do this unless you have a reason
 
 ### Negative Caching
 
-When a lookup fails, the result isn't cached by default. If `getent hosts nonexistent.example.com` fails, the next call checks all sources again. Tools like `nscd` (Name Service Caching Daemon) or `systemd-resolved`'s built-in cache handle negative caching.
+When a lookup fails, the result isn't cached by default. If `getent hosts nonexistent.example.com` fails, the next call checks all sources again. `systemd-resolved`'s built-in cache handles negative caching for hostname lookups. For broader NSS caching, `nsncd` is the modern replacement for the deprecated `nscd` (Name Service Caching Daemon, removed from glibc 2.40 upstream):
 
 ```bash
-# Install nscd for NSS caching
-sudo apt install nscd
-sudo systemctl enable --now nscd
+# Install nsncd for NSS caching (modern replacement for nscd)
+sudo apt install nsncd
+sudo systemctl enable --now nsncd
 ```
 
 ### Avoid Unnecessary Sources
