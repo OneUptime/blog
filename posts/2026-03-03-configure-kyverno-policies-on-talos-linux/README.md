@@ -32,11 +32,10 @@ helm repo update
 helm install kyverno kyverno/kyverno \
   --namespace kyverno \
   --create-namespace \
-  --set replicaCount=3 \
-  --set resources.requests.cpu=100m \
-  --set resources.requests.memory=256Mi \
-  --set resources.limits.cpu=500m \
-  --set resources.limits.memory=512Mi
+  --set admissionController.replicas=3 \
+  --set backgroundController.replicas=2 \
+  --set cleanupController.replicas=2 \
+  --set reportsController.replicas=2
 ```
 
 Verify the installation.
