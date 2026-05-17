@@ -252,7 +252,8 @@ Install VirtIO drivers inside the guest:
 
 ```bash
 # Inside Ubuntu guest VM
-sudo apt install qemu-guest-agent virtio-modules-common
+# VirtIO drivers are already included in the Ubuntu kernel
+sudo apt install qemu-guest-agent
 
 # Start the guest agent
 sudo systemctl enable --now qemu-guest-agent
