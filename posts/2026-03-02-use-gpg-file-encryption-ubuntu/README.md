@@ -191,7 +191,7 @@ GPG encrypts files, not directories. Use tar first:
 
 DIRECTORY="$1"
 PASSPHRASE="$2"
-OUTPUT="${DIRECTORY%.}-$(date +%Y%m%d).tar.gz.gpg"
+OUTPUT="${DIRECTORY%/}-$(date +%Y%m%d).tar.gz.gpg"
 
 if [ -z "$DIRECTORY" ] || [ -z "$PASSPHRASE" ]; then
     echo "Usage: $0 <directory> <passphrase>"
@@ -275,9 +275,9 @@ echo "Done. Encrypted $(ls *.gpg 2>/dev/null | wc -l) files."
 GPG can sign files to verify authenticity without encrypting them:
 
 ```bash
-# Sign a file (creates a separate .sig file)
-gpg --sign --detach-sign --armor document.pdf
-# Creates: document.pdf.asc
+# Sign a file (creates a separate signature file)
+gpg --detach-sign --armor document.pdf
+# Creates: document.pdf.asc (omit --armor to produce a binary .sig file)
 
 # Verify a signature
 gpg --verify document.pdf.asc document.pdf
@@ -293,8 +293,8 @@ gpg --sign --encrypt \
 GPG uses an agent to cache your passphrase so you don't have to enter it for every operation:
 
 ```bash
-# Check if gpg-agent is running
-gpg-agent --daemon --use-standard-socket 2>/dev/null || true
+# Check if gpg-agent is running (starts it on demand if not)
+gpgconf --launch gpg-agent
 
 # Set cache time (seconds)
 # Add to ~/.gnupg/gpg-agent.conf
@@ -306,7 +306,7 @@ gpgconf --reload gpg-agent
 
 # Clear cached passphrases (forces re-entry on next use)
 gpgconf --kill gpg-agent
-gpg-agent --daemon --use-standard-socket
+gpgconf --launch gpg-agent
 ```
 
 ## File Encryption for Backup Scripts
