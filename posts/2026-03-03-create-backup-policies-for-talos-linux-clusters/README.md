@@ -243,12 +243,13 @@ Do not forget about the Talos nodes themselves. Machine configurations should be
 BACKUP_DIR="/backups/talos-configs/$(date +%Y-%m-%d)"
 mkdir -p "$BACKUP_DIR"
 
-# Get all node IPs
-NODES=$(talosctl get members -o json | jq -r '.[].spec.addresses[0]')
+# Get all node IPs (talosctl outputs JSON Lines, one resource per line)
+NODES=$(talosctl get members -o json | jq -r '.spec.addresses[0]')
 
 for node in $NODES; do
     echo "Backing up config for node: $node"
-    talosctl get machineconfig -o yaml --nodes "$node" > "$BACKUP_DIR/$node.yaml"
+    # talosctl get returns a COSI-wrapped resource; extract .spec to get the raw machine config
+    talosctl get machineconfig -o yaml --nodes "$node" | yq '.spec' > "$BACKUP_DIR/$node.yaml"
 
     # Validate the backup
     talosctl validate --config "$BACKUP_DIR/$node.yaml" --mode metal
