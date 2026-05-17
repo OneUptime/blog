@@ -119,14 +119,7 @@ kubectl label node gpu-worker-2 nvidia.com/device-plugin.config=inference-nodes
 
 For A100, A30, or H100 GPUs, MIG provides hardware-level GPU partitioning. Each partition gets its own memory, cache, and compute resources.
 
-First, enable MIG on the GPU node:
-
-```bash
-# Enable MIG mode on all GPUs (requires node reboot)
-talosctl -n <gpu-node-ip> -- nvidia-smi -i 0 --multi-instance-gpu 1
-```
-
-Since Talos is immutable, you need to configure this through the GPU Operator or a machine configuration patch. With the GPU Operator, create a MIG configuration:
+Since Talos is immutable and has no shell on the host, you cannot run `nvidia-smi` directly on the node. Instead, enable MIG and apply a partition layout through the NVIDIA GPU Operator's MIG Manager, which reconciles MIG state based on a node label. With the GPU Operator installed, create a MIG configuration:
 
 ```yaml
 # mig-config.yaml
@@ -248,7 +241,7 @@ spec:
           nvidia.com/gpu: 1
 ```
 
-Resource Quotas for GPU
+## Resource Quotas for GPU
 
 Enforce per-namespace GPU limits to ensure fair sharing:
 
