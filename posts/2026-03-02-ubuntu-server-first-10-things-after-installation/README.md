@@ -76,9 +76,6 @@ PermitRootLogin no
 # Disable empty passwords
 PermitEmptyPasswords no
 
-# Use only SSH protocol 2
-Protocol 2
-
 # Limit authentication attempts
 MaxAuthTries 3
 
