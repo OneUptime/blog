@@ -122,8 +122,8 @@ nmcli device wifi connect "NetworkSSID" password "yourpassword"
 # Connect using a specific device
 nmcli device wifi connect "NetworkSSID" password "yourpassword" ifname wlan0
 
-# Show saved WiFi passwords (requires sudo)
-sudo nmcli connection show "NetworkSSID" | grep psk
+# Show saved WiFi passwords (requires sudo and --show-secrets)
+sudo nmcli --show-secrets connection show "NetworkSSID" | grep psk
 ```
 
 ### Create a WiFi Connection Profile
@@ -171,7 +171,7 @@ nmcli connection modify "old-name" connection.id "new-name"
 # Clone a connection
 nmcli connection clone "existing-connection" "new-connection"
 
-# Export a connection to a file (creates a .nmconnection file)
+# Export a VPN connection to a file (only VPN connections are supported)
 nmcli connection export "my-vpn" /tmp/my-vpn.ovpn
 
 # Import a VPN config
@@ -208,11 +208,11 @@ nmcli monitor
 # Watch device state changes
 nmcli device monitor
 
-# Show connectivity status
+# Show last known connectivity status
 nmcli networking connectivity
 
-# Check if NetworkManager thinks internet is reachable
-nmcli general connectivity
+# Force a re-check of connectivity
+nmcli networking connectivity check
 ```
 
 ## IPv6 Configuration
@@ -288,8 +288,8 @@ nmcli -f NAME,TYPE,STATE connection
 # Pretty format with full details
 nmcli -p connection show
 
-# Output as JSON (useful for scripting)
-nmcli --mode json device
+# Multiline output (one property per line, useful for scripting)
+nmcli --mode multiline device show
 ```
 
 ## Troubleshooting with nmcli
