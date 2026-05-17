@@ -8,7 +8,7 @@ Description: Learn how to deploy and configure the CloudNativePG PostgreSQL Oper
 
 ---
 
-Running PostgreSQL on Kubernetes has matured significantly over the past few years. The CloudNativePG operator, which graduated from the CNCF sandbox, makes it straightforward to deploy highly available PostgreSQL clusters with automated failover, backups, and monitoring. When you run this on Talos Linux, you get the reliability of a battle-tested database on top of an immutable, security-first operating system designed specifically for Kubernetes.
+Running PostgreSQL on Kubernetes has matured significantly over the past few years. The CloudNativePG operator, a CNCF Sandbox project, makes it straightforward to deploy highly available PostgreSQL clusters with automated failover, backups, and monitoring. When you run this on Talos Linux, you get the reliability of a battle-tested database on top of an immutable, security-first operating system designed specifically for Kubernetes.
 
 This guide covers deploying the CloudNativePG operator on Talos Linux, creating a PostgreSQL cluster, configuring backups, and handling day-to-day operations.
 
@@ -123,8 +123,9 @@ spec:
 Create the credentials secret first.
 
 ```bash
-# Create the database credentials secret
+# Create the database credentials secret (must be type kubernetes.io/basic-auth)
 kubectl create secret generic app-database-credentials \
+  --type=kubernetes.io/basic-auth \
   --from-literal=username=appuser \
   --from-literal=password=$(openssl rand -base64 24)
 
@@ -145,7 +146,7 @@ kubectl get pods -l cnpg.io/cluster=app-database
 kubectl describe cluster app-database
 
 # Check which pod is the primary
-kubectl get pods -l cnpg.io/cluster=app-database -l role=primary
+kubectl get pods -l cnpg.io/cluster=app-database -l cnpg.io/instanceRole=primary
 ```
 
 ## Connecting to PostgreSQL
@@ -290,7 +291,7 @@ kubectl delete pod app-database-1
 kubectl get pods -l cnpg.io/cluster=app-database -w
 
 # Check which pod became the new primary
-kubectl get pods -l cnpg.io/cluster=app-database -l role=primary
+kubectl get pods -l cnpg.io/cluster=app-database -l cnpg.io/instanceRole=primary
 ```
 
 The read-write service automatically updates to point to the new primary, so your applications do not need any configuration changes.
