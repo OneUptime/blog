@@ -162,7 +162,7 @@ machine:
 EOF
 
 # Apply the patch
-talosctl apply-config --nodes 192.168.1.10 \
+talosctl patch machineconfig --nodes 192.168.1.10 \
   --patch @/tmp/env-patch.yaml
 ```
 
