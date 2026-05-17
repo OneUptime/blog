@@ -228,10 +228,13 @@ Mount using a backup superblock:
 
 ```bash
 # Use backup superblock at block 32768 (a common backup location)
+# fsck.ext4 -b takes the block number in filesystem block units
 sudo fsck.ext4 -b 32768 /dev/sdb1
 
 # Or mount directly with the backup superblock
-sudo mount -o sb=32768 /dev/sdb1 /mnt/recovery
+# Note: the mount sb= option uses 1k units, so for a 4k-block filesystem
+# the value is the filesystem block number multiplied by 4 (32768 * 4 = 131072)
+sudo mount -o sb=131072 /dev/sdb1 /mnt/recovery
 ```
 
 ## Journal Recovery
@@ -287,7 +290,7 @@ ls /mnt/test/
 
 ## Setting Up Automatic fsck Schedule
 
-By default, Ubuntu runs e2fsck after every 30 mounts or after a certain number of days:
+Modern Ubuntu disables mount-count and time-based periodic checks by default (to avoid unexpectedly long reboots on large filesystems). e2fsck still runs automatically when the filesystem is marked as not cleanly unmounted or has the error flag set. You can opt back in to scheduled checks if you want:
 
 ```bash
 # Check current fsck settings
@@ -299,7 +302,7 @@ sudo tune2fs -c 20 /dev/sda1   # Run fsck every 20 mounts
 # Set maximum time interval (in days)
 sudo tune2fs -i 30d /dev/sda1  # Run fsck every 30 days
 
-# Disable automatic check scheduling (not recommended for production)
+# Disable automatic check scheduling (this is the modern default)
 sudo tune2fs -c 0 -i 0 /dev/sda1
 ```
 
