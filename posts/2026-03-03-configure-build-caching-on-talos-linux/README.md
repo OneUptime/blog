@@ -94,7 +94,10 @@ helm install minio minio/minio \
   --set persistence.size=100Gi \
   --set persistence.storageClass=local-path \
   --set resources.requests.memory=512Mi \
-  --set defaultBuckets="build-cache\,go-cache\,npm-cache\,docker-cache"
+  --set buckets[0].name=build-cache \
+  --set buckets[1].name=go-cache \
+  --set buckets[2].name=npm-cache \
+  --set buckets[3].name=docker-cache
 ```
 
 ### Using MinIO with GitLab Runner
