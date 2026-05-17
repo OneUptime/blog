@@ -186,7 +186,7 @@ kubectl describe node | grep -A5 Taints
 # Or at most, the control plane taint should not be NoSchedule
 ```
 
-Resource Considerations
+## Resource Considerations
 
 A single-node Talos cluster running Kubernetes uses roughly:
 
