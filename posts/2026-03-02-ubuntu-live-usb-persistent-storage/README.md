@@ -22,20 +22,21 @@ The overlay has a size limit set when you create it. Once it fills up, you canno
 
 ## Method 1: Using mkusb (Recommended, GUI)
 
-`mkusb` is the official Canonical-recommended tool for creating persistent Live USB drives. It handles the partition layout and persistence setup automatically.
+`mkusb` is the tool recommended by the Ubuntu community help wiki for creating persistent Live USB drives. It handles the partition layout and persistence setup automatically.
 
 ### Install mkusb
 
 ```bash
 # Add the mkusb PPA
-
 sudo add-apt-repository universe
 sudo add-apt-repository ppa:mkusb/ppa
 sudo apt update
+
+# Install the GUI version (launches as 'dus' = Do USB Stuff)
 sudo apt install mkusb
 
-# Install the GUI version (dus = do USB stuff)
-sudo apt install mkusb-nox    # Command line version
+# Or install the no-X / command line version instead
+sudo apt install mkusb-nox
 ```
 
 ### Create a Persistent Drive
@@ -62,8 +63,8 @@ Ventoy is excellent for keeping multiple ISOs on one USB drive. It also supports
 ### Install Ventoy on USB
 
 ```bash
-# Download Ventoy
-wget https://github.com/ventoy/Ventoy/releases/download/v1.0.97/ventoy-1.0.97-linux.tar.gz
+# Download Ventoy (check the releases page for the latest version)
+wget https://github.com/ventoy/Ventoy/releases/download/v1.1.12/ventoy-1.1.12-linux.tar.gz
 tar xzf ventoy-*.tar.gz
 cd ventoy-*/
 
@@ -162,8 +163,8 @@ Press F10 to boot with this modified configuration. For subsequent boots, this n
 To make persistence the default (so you do not need to press `e` every time):
 
 ```bash
-# Mount the USB's boot partition
-sudo mount /dev/sdX /mnt
+# Mount the USB's boot partition (the ISO9660 partition, usually sdX1)
+sudo mount /dev/sdX1 /mnt
 
 # Find the GRUB configuration
 ls /mnt/boot/grub/grub.cfg
