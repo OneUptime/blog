@@ -28,9 +28,9 @@ Our GitOps upgrade automation consists of:
 - An upgrade operator that performs rolling upgrades node by node
 - Health checks that gate progression between nodes
 
-## Option 1: Using the Talos System Upgrade Controller
+## Option 1: Using the System Upgrade Controller
 
-Talos provides a system upgrade controller that can be managed through Kubernetes resources:
+The Talos documentation recommends Rancher's `system-upgrade-controller` for declaratively managing OS upgrades through Kubernetes resources:
 
 ```yaml
 # Install the system upgrade controller
@@ -39,22 +39,22 @@ Talos provides a system upgrade controller that can be managed through Kubernete
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: talos-upgrade-controller
-  namespace: kube-system
+  name: system-upgrade-controller
+  namespace: system-upgrade
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: talos-upgrade-controller
+      app: system-upgrade-controller
   template:
     metadata:
       labels:
-        app: talos-upgrade-controller
+        app: system-upgrade-controller
     spec:
-      serviceAccountName: talos-upgrade-controller
+      serviceAccountName: system-upgrade-controller
       containers:
         - name: controller
-          image: ghcr.io/siderolabs/talos-cloud-controller-manager:latest
+          image: docker.io/rancher/system-upgrade-controller:v0.13.4
 ```
 
 However, the most GitOps-native approach is to use a custom upgrade workflow tied to your Git repository.
@@ -113,7 +113,7 @@ spec:
 
                   # Get current version from a node
                   CURRENT_VERSION=$(talosctl version --nodes ${NODE_IP} \
-                    --talosconfig /etc/talos/talosconfig -o json | \
+                    --talosconfig /etc/talos/talosconfig --json | \
                     jq -r '.messages[0].version.tag')
 
                   echo "Current Talos version: ${CURRENT_VERSION}"
@@ -192,7 +192,7 @@ spec:
 
                     # Check if already upgraded
                     NODE_VERSION=$(talosctl version --nodes ${node} \
-                      --talosconfig ${TALOSCONFIG} -o json | \
+                      --talosconfig ${TALOSCONFIG} --json | \
                       jq -r '.messages[0].version.tag')
 
                     if [ "${NODE_VERSION}" = "${DESIRED}" ]; then
@@ -235,7 +235,7 @@ spec:
                     echo "=== Upgrading worker node: ${node} ==="
 
                     NODE_VERSION=$(talosctl version --nodes ${node} \
-                      --talosconfig ${TALOSCONFIG} -o json | \
+                      --talosconfig ${TALOSCONFIG} --json | \
                       jq -r '.messages[0].version.tag')
 
                     if [ "${NODE_VERSION}" = "${DESIRED}" ]; then
