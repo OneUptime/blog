@@ -44,19 +44,19 @@ set base_path    /var/spool/apt-mirror
 # Where to store packages
 set mirror_path  $base_path/mirror
 
-# Where to store temporary files
-set spool_path   $base_path/skel
+# Where to store temporary skeleton files
+set skel_path    $base_path/skel
 
-# Log file location
+# Variable data path (used for clean.sh, postmirror.sh, etc.)
+set var_path     $base_path/var
+
+# Don't download files with tilde in their version names
 set _tilde 0
 
 # Number of threads for parallel downloading
 set nthreads     20
 
-# How many attempts to retry failed downloads
-set _retry 3
-
-# Bandwidth limit in kbps (0 = unlimited)
+# Bandwidth limit (uses wget --limit-rate syntax, e.g. 100k = 100 KB/s)
 # set limit_rate 100k
 
 # Ubuntu 22.04 Jammy - main components
