@@ -222,20 +222,25 @@ sudo systemd-nspawn -D /var/lib/machines/mycontainer \
     /usr/local/bin/myapp
 ```
 
-Resource Control
+## Resource Control
 
 nspawn containers integrate with systemd's cgroup-based resource control:
 
 ```bash
-# Limit CPU usage (50% of one core)
+# Limit CPU usage (50% of one core) via a transient unit property
 sudo systemd-nspawn -D /var/lib/machines/mycontainer \
-    --system-call-filter=@basic-io \
+    --property=CPUQuota=50% \
     -b
 
-# Set limits via machinectl
+# Pin the container to specific CPU cores
+sudo systemd-nspawn -D /var/lib/machines/mycontainer \
+    --cpu-affinity=0-1 \
+    -b
+
+# Set the per-image disk quota via machinectl
 sudo machinectl set-limit mycontainer 10G  # disk space limit
 
-# Set CPU and memory limits in the nspawn config file
+# Set CPU affinity in the nspawn config file
 sudo tee -a /etc/systemd/nspawn/mycontainer.nspawn << 'EOF'
 
 [Exec]
@@ -256,14 +261,14 @@ sudo systemctl set-property systemd-nspawn@mycontainer.service \
 machinectl can pull container images directly:
 
 ```bash
-# Pull a raw image from a URL
-sudo machinectl pull-raw \
-    https://cloud-images.ubuntu.com/minimal/releases/jammy/release/ubuntu-22.04-minimal-cloudimg-amd64.root.tar.xz \
+# Pull a tar image (rootfs tarball) from a URL
+sudo machinectl pull-tar \
+    https://cloud-images.ubuntu.com/minimal/releases/jammy/release/ubuntu-22.04-minimal-cloudimg-amd64-root.tar.xz \
     ubuntu-jammy
 
-# Pull a tar image
-sudo machinectl pull-tar \
-    https://example.com/mycontainer.tar.xz \
+# Pull a raw disk image (.raw or .qcow2, optionally compressed)
+sudo machinectl pull-raw \
+    https://example.com/mycontainer.raw.xz \
     mycontainer-image
 
 # List downloaded images
