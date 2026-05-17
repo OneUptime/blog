@@ -288,7 +288,7 @@ kubectl get nodes -L environment,hardware-type,team
 To remove a label from the Talos configuration, update the machine config without that label:
 
 ```bash
-# Patch to remove a label (set to null)
+# Patch to remove a label using a JSON patch remove operation
 talosctl patch machineconfig --nodes 10.0.0.5 \
   --patch '[{"op": "remove", "path": "/machine/nodeLabels/old-label"}]'
 ```
