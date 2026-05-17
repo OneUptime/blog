@@ -272,7 +272,7 @@ The nftables service loads `/etc/nftables.conf` automatically at boot:
 ```bash
 # Verify the service will load your config
 sudo systemctl cat nftables | grep ExecStart
-# Should show: ExecStart=/sbin/nft -f /etc/nftables.conf
+# Should show: ExecStart=/usr/sbin/nft -f /etc/nftables.conf
 ```
 
 ## Production-Ready Ruleset
@@ -350,10 +350,10 @@ table inet filter {
 ## Monitoring nftables
 
 ```bash
-# Show rule hit counts (useful for verifying rules are matching)
+# Show ruleset with rule handles (useful for deleting specific rules by handle)
 sudo nft list ruleset -a
 
-# Show with byte/packet counts
+# Show rules in a specific chain (add `counter` to rules to see byte/packet counts)
 sudo nft list chain inet filter input
 
 # Monitor matched rules in real time (requires kernel support)
