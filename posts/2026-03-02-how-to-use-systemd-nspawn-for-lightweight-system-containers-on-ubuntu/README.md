@@ -249,7 +249,7 @@ sudo systemd-nspawn \
 # BindReadOnly=/etc/ssl:/etc/ssl-host
 ```
 
-Resource Limits
+## Resource Limits
 
 Use systemd slice configuration to limit container resources:
 
@@ -258,8 +258,9 @@ Use systemd slice configuration to limit container resources:
 sudo machinectl set-property mycontainer MemoryMax=512M
 sudo machinectl set-property mycontainer CPUQuota=50%
 
-# Or create a resource configuration file
-sudo tee /etc/systemd/system.control/systemd-nspawn@mycontainer.service.d/limits.conf > /dev/null <<'EOF'
+# Or create a persistent drop-in for the container's service unit
+sudo mkdir -p /etc/systemd/system/systemd-nspawn@mycontainer.service.d
+sudo tee /etc/systemd/system/systemd-nspawn@mycontainer.service.d/limits.conf > /dev/null <<'EOF'
 [Service]
 MemoryMax=512M
 CPUQuota=50%
