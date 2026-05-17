@@ -41,8 +41,8 @@ When you boot a Talos node with an Omni-generated image, the SideroLink configur
 ```text
 # Default kernel arguments for SideroLink
 
-siderolink.api=grpc://omni.example.com:8099?jointoken=TOKEN
-talos.events.sink=[fdae:41e4:649b:9303::1]:8090
+siderolink.api=grpc://omni.example.com:8090?jointoken=TOKEN
+talos.events.sink=[fdae:41e4:649b:9303::1]:8091
 talos.logging.kernel=tcp://[fdae:41e4:649b:9303::1]:8092
 ```
 
@@ -61,10 +61,10 @@ machine:
   install:
     extraKernelArgs:
       # Custom Omni endpoint
-      - siderolink.api=grpc://management.internal.company.com:8099?jointoken=your-token
+      - siderolink.api=grpc://management.internal.company.com:8090?jointoken=your-token
 
       # Event sink using the SideroLink IPv6 address
-      - talos.events.sink=[fdae:41e4:649b:9303::1]:8090
+      - talos.events.sink=[fdae:41e4:649b:9303::1]:8091
 
       # Kernel log forwarding
       - talos.logging.kernel=tcp://[fdae:41e4:649b:9303::1]:8092
@@ -82,26 +82,27 @@ machine:
 
 ## WireGuard Port Configuration
 
-SideroLink uses UDP port 8099 by default for WireGuard traffic. In environments where this port is blocked, you may need to configure an alternative:
+Omni uses UDP port 50180 by default for the SideroLink WireGuard tunnel (advertised to nodes during registration) and TCP port 8090 for the SideroLink gRPC API. The WireGuard tunnel port and the gRPC API port are independent. In environments where the default WireGuard port is blocked, you may need to configure an alternative:
 
 ### On the Omni Server Side
 
-```yaml
-# omni-config.yaml (self-hosted)
-siderolink:
-  wireguardPort: 51820           # Use standard WireGuard port
+Pass the alternative port to Omni via the WireGuard advertised address flag. For example, to advertise WireGuard on the standard port 51820:
+
+```text
+# Omni startup flag (self-hosted)
+--siderolink-wireguard-advertised-addr=<public-ip>:51820
 ```
 
 ### On the Talos Node Side
 
-The port is determined by the Omni endpoint URL:
+Nodes learn the WireGuard endpoint automatically from Omni during registration, so no node-side change is required to switch the WireGuard port. The URL in `siderolink.api` only controls the gRPC API connection. If you want the gRPC API on a different port, change the URL accordingly and bind Omni's `--siderolink-api-bind-addr` to that port:
 
 ```yaml
 machine:
   install:
     extraKernelArgs:
-      # Connect to Omni on port 51820 instead of 8099
-      - siderolink.api=grpc://omni.example.com:51820?jointoken=your-token
+      # Connect to the Omni gRPC API on a custom port
+      - siderolink.api=grpc://omni.example.com:8443?jointoken=your-token
 ```
 
 ### Working Around Port Restrictions
@@ -111,7 +112,7 @@ Some corporate networks block UDP traffic on non-standard ports. Here are strate
 ```text
 Strategy 1: Use standard WireGuard port (51820/UDP)
   - Many firewalls allow common VPN ports
-  - Configure Omni to listen on 51820
+  - Configure Omni to advertise WireGuard on 51820
 
 Strategy 2: Use port 443/UDP
   - Most firewalls allow 443
@@ -186,7 +187,7 @@ For environments without DNS, use an IP address directly:
 machine:
   install:
     extraKernelArgs:
-      - siderolink.api=grpc://203.0.113.10:8099?jointoken=your-token
+      - siderolink.api=grpc://203.0.113.10:8090?jointoken=your-token
 ```
 
 ## SideroLink and Network Interfaces
@@ -316,7 +317,7 @@ machine:
       - talos.logging.kernel=tcp://[fdae:41e4:649b:9303::1]:8092
 
       # Forward Talos events (cluster state changes, errors)
-      - talos.events.sink=[fdae:41e4:649b:9303::1]:8090
+      - talos.events.sink=[fdae:41e4:649b:9303::1]:8091
 ```
 
 If you want to reduce SideroLink traffic, you can disable log forwarding and rely on local log collection instead:
@@ -326,7 +327,7 @@ If you want to reduce SideroLink traffic, you can disable log forwarding and rel
 machine:
   install:
     extraKernelArgs:
-      - siderolink.api=grpc://omni.example.com:8099?jointoken=TOKEN
+      - siderolink.api=grpc://omni.example.com:8090?jointoken=TOKEN
       # Omit events.sink and logging.kernel to reduce traffic
 ```
 
