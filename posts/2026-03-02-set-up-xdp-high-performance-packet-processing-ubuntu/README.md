@@ -36,7 +36,8 @@ ethtool -i eth0 | grep driver
 # i40e (Intel X710)
 # ixgbe (Intel 82599)
 # virtio_net (VMs)
-# bpf (generic mode - works on any NIC)
+# If your driver lacks native XDP, you can fall back to generic (SKB) mode,
+# which works on any NIC but runs after skb allocation.
 ```
 
 XDP has three modes:
@@ -162,8 +163,8 @@ ip link show eth0 | grep xdp
 # List all loaded BPF programs
 sudo bpftool prog list
 
-# Show program details
-sudo bpftool prog show pinned /sys/fs/bpf/xdp
+# Show details for the XDP program by name
+sudo bpftool prog show name xdp_drop_icmp
 ```
 
 ## Unloading the XDP Program
@@ -269,9 +270,9 @@ Understanding XDP return codes is essential:
 Benchmark XDP packet processing rate:
 
 ```bash
-# Install pktgen for packet generation
+# Load the pktgen kernel module (built into mainline Ubuntu kernels)
 # On the sending machine:
-sudo apt install linux-tools-common
+sudo modprobe pktgen
 
 # Use kernel pktgen for high-rate packet generation
 echo "add_device eth1" > /proc/net/pktgen/kpktgend_0
