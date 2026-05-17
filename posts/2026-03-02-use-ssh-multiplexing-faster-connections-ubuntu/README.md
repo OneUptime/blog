@@ -155,7 +155,7 @@ ssh -fN -M -S "$SOCKET" $SERVER
 # All subsequent operations reuse the same connection
 ssh -S "$SOCKET" $SERVER "sudo systemctl stop myapp"
 ssh -S "$SOCKET" $SERVER "cd /opt/myapp && git pull"
-ssh -S "$SOCKET" $SERVER "pip install -r requirements.txt"
+ssh -S "$SOCKET" $SERVER "cd /opt/myapp && pip install -r requirements.txt"
 ssh -S "$SOCKET" $SERVER "sudo systemctl start myapp"
 ssh -S "$SOCKET" $SERVER "systemctl status myapp"
 
@@ -241,9 +241,12 @@ ls -la ~/.ssh/control/
 
 # Check connection with verbose output to confirm mux is used
 ssh -v frequent-server 2>&1 | grep -i "mux\|control"
-# Should show: "ControlSocket ... already exists, disabling multiplexing"
-# Wait - confusing wording - this means it FOUND the socket and IS using mux
-# The actual mux usage shows: "Entering proxy mux mode"
+# When a slave connects to an existing master, look for messages like:
+#   "auto-mux: Trying existing master at ..."
+#   "mux_client_request_session: master session id: ..."
+# If you instead see "ControlSocket ... already exists, disabling multiplexing",
+# it means ssh tried to become the master but the socket already exists
+# (often a stale socket) — multiplexing is being disabled for that attempt.
 ```
 
 ## Troubleshooting
