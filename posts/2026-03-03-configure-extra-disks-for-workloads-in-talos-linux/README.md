@@ -53,13 +53,13 @@ Instead of hard-coding device paths, use disk selectors for portability:
 machine:
   disks:
     - deviceSelector:
-        match: '!disk.systemDisk && disk.type == "ssd" && disk.size >= 100u * GB'
+        match: '!system_disk && !disk.rotational && disk.size >= 100u * GB'
       partitions:
         - mountpoint: /var/mnt/data
           size: 0
 ```
 
-This matches any non-system SSD that is at least 100GB, regardless of its device name.
+This matches any non-system, non-rotational disk (SSD or NVMe) that is at least 100GB, regardless of its device name.
 
 ## Multiple Partitions on One Disk
 
@@ -92,19 +92,19 @@ machine:
   disks:
     # NVMe disk for high-performance workloads
     - deviceSelector:
-        match: 'disk.transport == "nvme" && !disk.systemDisk'
+        match: 'disk.transport == "nvme" && !system_disk'
       partitions:
         - mountpoint: /var/mnt/fast
           size: 0
     # SATA SSD for general workloads
     - deviceSelector:
-        match: 'disk.type == "ssd" && disk.transport != "nvme" && !disk.systemDisk'
+        match: '!disk.rotational && disk.transport != "nvme" && !system_disk'
       partitions:
         - mountpoint: /var/mnt/standard
           size: 0
     # HDD for bulk storage
     - deviceSelector:
-        match: 'disk.type == "hdd" && !disk.systemDisk'
+        match: 'disk.rotational && !system_disk'
       partitions:
         - mountpoint: /var/mnt/bulk
           size: 0
@@ -220,25 +220,27 @@ machine:
 
 ### For Longhorn
 
-Configure the disk and point Longhorn to the mount:
+Talos requires mount points to live under `/var/mnt`, so mount the disk there and configure Longhorn's default data path (and a kubelet bind mount) to use it:
 
 ```yaml
 machine:
   disks:
     - device: /dev/sdb
       partitions:
-        - mountpoint: /var/lib/longhorn
+        - mountpoint: /var/mnt/longhorn
           size: 0
 ```
 
 ### For OpenEBS Local PV
 
+Same `/var/mnt` rule applies - mount the disk under `/var/mnt` and point OpenEBS at that path:
+
 ```yaml
 machine:
   disks:
     - device: /dev/sdb
       partitions:
-        - mountpoint: /var/openebs/local
+        - mountpoint: /var/mnt/openebs
           size: 0
 ```
 
@@ -254,7 +256,7 @@ machine:
   type: controlplane
   disks:
     - deviceSelector:
-        match: 'disk.transport == "nvme" && !disk.systemDisk'
+        match: 'disk.transport == "nvme" && !system_disk'
       partitions:
         - mountpoint: /var/mnt/etcd-backup
           size: 50GB
@@ -357,7 +359,7 @@ machine:
 talosctl apply-config --nodes 192.168.1.10 --file updated-config.yaml
 ```
 
-Talos will grow the partition and filesystem to accommodate the new size. Note that shrinking a partition that contains data is not supported.
+Talos automatically resizes its own system partitions when the underlying block device grows, but it does not grow user-managed partitions defined under `machine.disks` for you. After updating the config, expand the partition and filesystem manually (for example, with `parted` and `xfs_growfs` via a privileged debug pod), or migrate to the newer `UserVolumeConfig` resource which supports `grow: true`. Shrinking a partition that contains data is not supported.
 
 ## Best Practices
 
