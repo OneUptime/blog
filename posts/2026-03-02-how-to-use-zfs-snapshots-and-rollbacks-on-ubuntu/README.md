@@ -118,15 +118,7 @@ If there are newer snapshots than the one you're rolling back to, ZFS will refus
 sudo zfs rollback -r datapool/web@before-upgrade
 ```
 
-```text
-will destroy the following snapshots:
-  datapool/web@20260302_020000
-  datapool/web@20260303_020000
-
-continue? [y/n]: y
-```
-
-After confirmation, the rollback proceeds and all newer snapshots are removed.
+`zfs rollback -r` does not prompt for confirmation - it immediately destroys any snapshots newer than the target and rolls the dataset back. Use the `-R` flag instead if you also need to destroy clones of those newer snapshots.
 
 ### Rollback with confirmation of results
 
@@ -144,9 +136,6 @@ sudo zfs list -t snapshot datapool/web
 ```bash
 # Delete a specific snapshot
 sudo zfs destroy datapool/web@before-upgrade
-
-# Delete all snapshots matching a pattern
-sudo zfs destroy datapool/web@daily_backup
 
 # Delete a range of snapshots (first%last syntax)
 sudo zfs destroy "datapool/web@20260101_020000%20260201_020000"
