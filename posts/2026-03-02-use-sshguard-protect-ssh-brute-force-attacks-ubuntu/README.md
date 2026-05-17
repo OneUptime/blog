@@ -53,8 +53,10 @@ BLOCK_TIME=120
 # How long (seconds) sshguard remembers attacks from an IP
 DETECTION_TIME=1800
 
-# Blacklist threshold: IPs that accumulate this many blocks get permanently listed
-BLACKLIST_FILE=10:/etc/sshguard/blacklist.db
+# Blacklist threshold (in cumulative danger points) and file path.
+# IPs whose accumulated danger score exceeds the threshold are added
+# to the blacklist file and blocked permanently. Optional; no default.
+#BLACKLIST_FILE=120:/var/lib/sshguard/blacklist.db
 ```
 
 With the defaults: an IP that fails SSH login 3 times (3 * 10 = 30 points) within 30 minutes gets blocked for 120 seconds. Each subsequent offense doubles the block time.
@@ -79,8 +81,9 @@ BLOCK_TIME=300
 # Remember attack history for 1 hour
 DETECTION_TIME=3600
 
-# Blacklist after 5 blocks; permanently block persistent attackers
-BLACKLIST_FILE=5:/etc/sshguard/blacklist.db
+# Permanently blacklist IPs that accumulate 60 danger points
+# (roughly six failed SSH attempts within DETECTION_TIME)
+BLACKLIST_FILE=60:/var/lib/sshguard/blacklist.db
 ```
 
 After changing the config:
@@ -105,7 +108,7 @@ sudo nft list table ip sshguard
 # For iptables:
 sudo iptables -L sshguard -n -v
 
-# For UFW (sshguard creates its own chain):
+# For UFW (sshguard inserts rules into UFW's user chain):
 sudo iptables -L ufw-user-input -n -v | grep DROP
 ```
 
@@ -156,7 +159,7 @@ sudo nft list set ip sshguard attackers
 sudo iptables -L sshguard -n
 
 # View the blacklist of permanently blocked IPs
-sudo cat /etc/sshguard/blacklist.db
+sudo cat /var/lib/sshguard/blacklist.db
 ```
 
 Example log output:
@@ -210,14 +213,14 @@ The blacklist contains IPs that have been blocked repeatedly and are now permane
 
 ```bash
 # View blacklisted IPs
-sudo cat /etc/sshguard/blacklist.db
+sudo cat /var/lib/sshguard/blacklist.db
 
 # Remove an IP from the blacklist (if you need to unblock a legitimate IP)
 # Edit the file and remove the line with that IP
-sudo nano /etc/sshguard/blacklist.db
+sudo nano /var/lib/sshguard/blacklist.db
 
 # Or clear the entire blacklist and start fresh
-sudo truncate -s 0 /etc/sshguard/blacklist.db
+sudo truncate -s 0 /var/lib/sshguard/blacklist.db
 sudo systemctl restart sshguard
 ```
 
