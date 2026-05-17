@@ -63,7 +63,7 @@ command > output.log 2>&1
 # This WRONG version sends stderr to the original stdout, not the file:
 command 2>&1 > output.log   # Wrong!
 
-# Bash 4+ shorthand (equivalent to > file 2>&1)
+# Bash shorthand (equivalent to > file 2>&1)
 command &> output.log
 
 # Append both
