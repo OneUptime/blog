@@ -102,8 +102,11 @@ sar -f /var/log/sysstat/sa01 -s 14:00:00 -e 16:00:00
 # CPU usage today
 sar -u
 
-# Per-CPU breakdown (each core separately)
+# All CPU fields (adds %usr, %sys, %irq, %soft, %guest, %gnice)
 sar -u ALL
+
+# Per-CPU breakdown (each core separately)
+sar -P ALL
 
 # Historical CPU for a specific day
 sar -u -f /var/log/sysstat/sa28
@@ -115,7 +118,7 @@ sar -u -f /var/log/sysstat/sa28
 # Memory usage statistics
 sar -r
 
-# Memory utilization percentage
+# All memory fields (adds kbactive, kbinact, kbdirty, etc.)
 sar -r ALL
 ```
 
@@ -133,11 +136,14 @@ High `%commit` values (above 100%) mean the system is overcommitted - more memor
 ## Swap Statistics
 
 ```bash
-# Swap usage over time
+# Swap space utilization over time (kbswpfree, kbswpused, %swpused)
 sar -S
+
+# Swapping activity (pages swapped in/out per second)
+sar -W
 ```
 
-Nonzero `pswpin/s` (pages swapped in) or `pswpout/s` (pages swapped out) during a time window identifies when memory pressure occurred.
+Nonzero `pswpin/s` (pages swapped in) or `pswpout/s` (pages swapped out) from `sar -W` during a time window identifies when memory pressure occurred.
 
 ## Disk I/O Statistics
 
@@ -194,14 +200,17 @@ Columns:
 
 This is critical for post-incident analysis: if the 1-minute load average spiked to 24 on an 8-core system at 14:32, that's exactly when the incident started.
 
-## Context Switches and Interrupts
+## Context Switches and Task Creation
 
 ```bash
-# System-wide context switches and interrupts
+# Task creation and system context switching
 sar -w
+
+# Interrupt statistics per second
+sar -I ALL
 ```
 
-- `proc/s` - New processes per second
+- `proc/s` - New tasks created per second
 - `cswch/s` - Context switches per second
 
 ## Practical Post-Incident Analysis Workflow
@@ -215,8 +224,8 @@ sar -u -f /var/log/sysstat/sa$(date -d yesterday +%d) -s 14:00:00 -e 16:00:00
 # Step 2: Check if it was memory pressure
 sar -r -f /var/log/sysstat/sa$(date -d yesterday +%d) -s 14:00:00 -e 16:00:00
 
-# Step 3: Check for swap activity
-sar -S -f /var/log/sysstat/sa$(date -d yesterday +%d) -s 14:00:00 -e 16:00:00
+# Step 3: Check for swap activity (paging in/out)
+sar -W -f /var/log/sysstat/sa$(date -d yesterday +%d) -s 14:00:00 -e 16:00:00
 
 # Step 4: Check disk I/O
 sar -b -f /var/log/sysstat/sa$(date -d yesterday +%d) -s 14:00:00 -e 16:00:00
@@ -230,26 +239,23 @@ sar -n DEV -f /var/log/sysstat/sa$(date -d yesterday +%d) -s 14:00:00 -e 16:00:0
 For graphing or importing into other tools:
 
 ```bash
-# Convert to CSV format
-sar -u -f /var/log/sysstat/sa01 | awk 'NF > 0' > cpu_data.csv
-
-# Use sadf for proper CSV output
+# Use sadf for a database-friendly format (fields separated by semicolons)
 sadf -d /var/log/sysstat/sa01 -- -u > cpu_data.csv
 
 # JSON output
 sadf -j /var/log/sysstat/sa01 -- -u > cpu_data.json
 ```
 
-`sadf` is a companion tool that converts sysstat data files to various formats.
+`sadf` is a companion tool that converts sysstat data files to various formats. Note that `sadf -d` uses semicolons as the field separator, which most databases and spreadsheet tools can import.
 
-## Generating HTML Reports
+## Generating SVG Graphs
 
 ```bash
-# Generate an HTML report from a day's data
-sadf -g /var/log/sysstat/sa01 > report.html
+# Generate an SVG report from a day's data
+sadf -g /var/log/sysstat/sa01 > report.svg
 ```
 
-Open it in a browser for visual graphs of all metrics over the day.
+Open the resulting SVG file in a browser for visual graphs of all metrics over the day.
 
 ## Retention Configuration
 
