@@ -29,16 +29,16 @@ Talos Linux provides ISO images for USB booting:
 
 wget https://github.com/siderolabs/talos/releases/download/v1.9.0/metal-amd64.iso
 
-# For ARM64 systems (like Raspberry Pi or ARM servers)
-wget https://github.com/siderolabs/talos/releases/download/v1.9.0/metal-arm64.raw.xz
+# For ARM64 systems (like ARM servers)
+wget https://github.com/siderolabs/talos/releases/download/v1.9.0/metal-arm64.iso
 ```
 
 You can also download a raw disk image instead of an ISO if you prefer:
 
 ```bash
 # Raw disk image for x86_64
-wget https://github.com/siderolabs/talos/releases/download/v1.9.0/metal-amd64.raw.xz
-xz -d metal-amd64.raw.xz
+wget https://github.com/siderolabs/talos/releases/download/v1.9.0/metal-amd64.raw.zst
+zstd -d metal-amd64.raw.zst
 ```
 
 ## Step 2: Flash the USB Drive
@@ -215,8 +215,8 @@ If you need a custom Talos image with additional drivers or extensions, create o
 
 ```bash
 # Build a custom image with additional extensions
-docker run --rm -v $(pwd)/_out:/out \
-  ghcr.io/siderolabs/imager:v1.9.0 metal \
+docker run --rm -t -v $(pwd)/_out:/out \
+  ghcr.io/siderolabs/imager:v1.9.0 iso \
   --arch amd64 \
   --system-extension-image ghcr.io/siderolabs/iscsi-tools:v0.1.4
 
