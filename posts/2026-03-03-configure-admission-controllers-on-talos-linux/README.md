@@ -77,7 +77,7 @@ cluster:
 Apply to all control plane nodes:
 
 ```bash
-talosctl apply-config --nodes 192.168.1.10,192.168.1.11,192.168.1.12 \
+talosctl patch mc --nodes 192.168.1.10,192.168.1.11,192.168.1.12 \
   --patch @admission-controllers.yaml
 ```
 
@@ -162,8 +162,7 @@ cluster:
     extraVolumes:
       - hostPath: /etc/kubernetes/admission
         mountPath: /etc/kubernetes/admission
-        name: admission-config
-        readOnly: true
+        readonly: true
 machine:
   files:
     - content: |
@@ -188,7 +187,7 @@ machine:
                   - kube-system
                   - kube-node-lease
                   - kube-public
-      permissions: 0644
+      permissions: 0o644
       path: /etc/kubernetes/admission/admission-config.yaml
       op: create
 ```
@@ -378,7 +377,7 @@ kubectl get endpoints -n admission-system resource-validator
 kubectl apply -f my-pod.yaml --dry-run=server -v=6
 
 # Check API server logs for admission errors
-talosctl -n 192.168.1.10 logs kube-apiserver | grep -i "admission\|webhook"
+talosctl -n 192.168.1.10 logs -k kube-apiserver | grep -i "admission\|webhook"
 ```
 
 ## Performance Considerations
