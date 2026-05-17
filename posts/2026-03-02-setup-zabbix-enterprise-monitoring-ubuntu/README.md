@@ -332,7 +332,7 @@ LIMIT 10;"
 
 # Check history table size growth
 sudo mysql -u zabbix -p zabbix -e "
-SELECT COUNT(*) as rows,
+SELECT COUNT(*) as row_count,
        MIN(FROM_UNIXTIME(clock)) as oldest,
        MAX(FROM_UNIXTIME(clock)) as newest
 FROM history;"
