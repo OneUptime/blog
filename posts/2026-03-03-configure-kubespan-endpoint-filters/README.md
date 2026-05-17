@@ -148,7 +148,7 @@ After applying endpoint filters, check which endpoints the node is actually adve
 talosctl get addresses --nodes <node-ip>
 
 # Check which endpoints KubeSpan is advertising
-talosctl get kubespanendpoint --nodes <node-ip> -o yaml
+talosctl get kubespanendpoints --nodes <node-ip> -o yaml
 ```
 
 Compare the two outputs. Addresses that match an exclude filter should not appear in the KubeSpan endpoint list.
@@ -156,8 +156,8 @@ Compare the two outputs. Addresses that match an exclude filter should not appea
 You can also check what other nodes see for this node:
 
 ```bash
-# From another node, check discovered endpoints for the filtered node
-talosctl get discoveredmembers --nodes <other-node-ip> -o yaml
+# From another node, check discovered cluster members for the filtered node
+talosctl get members --nodes <other-node-ip> -o yaml
 ```
 
 ## Applying Filter Changes
@@ -212,14 +212,14 @@ When endpoint filters cause connectivity problems, follow this process:
 talosctl get addresses --nodes <node-ip>
 
 # Step 2: Check what KubeSpan is advertising after filters
-talosctl get kubespanendpoint --nodes <node-ip> -o yaml
+talosctl get kubespanendpoints --nodes <node-ip> -o yaml
 
 # Step 3: If no endpoints are advertised, your filters are too restrictive
 # Look at the filter config
 talosctl get machineconfig --nodes <node-ip> -o yaml | grep -A20 "kubespan"
 
 # Step 4: Check if peers can see this node
-talosctl get discoveredmembers --nodes <other-node-ip> -o yaml
+talosctl get members --nodes <other-node-ip> -o yaml
 
 # Step 5: Check controller logs for filter-related messages
 talosctl logs controller-runtime --nodes <node-ip> | grep -i endpoint
@@ -237,6 +237,6 @@ Keep your filter rules as simple as possible. Complex filter chains are hard to 
 
 Use consistent filters across nodes at the same site. If one node at a site advertises private IPs and another does not, you will get inconsistent behavior.
 
-Always verify filter results after applying changes. The few seconds it takes to run `talosctl get kubespanendpoint` can save hours of debugging later.
+Always verify filter results after applying changes. The few seconds it takes to run `talosctl get kubespanendpoints` can save hours of debugging later.
 
 Endpoint filters are a small but important configuration detail in KubeSpan. Getting them right ensures that your nodes advertise the correct addresses, which leads to faster tunnel establishment, fewer failed connection attempts, and a more reliable mesh network overall.
