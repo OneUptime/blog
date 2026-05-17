@@ -48,7 +48,8 @@ sudo apt-get install -y \
   nginx \
   pxelinux \
   syslinux-common \
-  syslinux-efi
+  syslinux-efi \
+  ipxe
 ```
 
 We use dnsmasq because it combines DHCP and TFTP in one service, which simplifies configuration.
@@ -71,9 +72,10 @@ sudo wget -O /srv/www/talos/v1.9.0/vmlinuz \
 sudo wget -O /srv/www/talos/v1.9.0/initramfs.xz \
   https://github.com/siderolabs/talos/releases/download/v1.9.0/initramfs-amd64.xz
 
-# For UEFI PXE boot, download the EFI boot file
-sudo wget -O /srv/tftp/talos/ipxe-amd64.efi \
-  https://github.com/siderolabs/talos/releases/download/v1.9.0/ipxe-amd64.efi
+# For UEFI PXE boot, use the iPXE EFI binary from the ipxe package
+# (Talos releases do not ship a pre-built iPXE binary; we chainload to a Talos
+# boot script in Step 3.)
+sudo cp /usr/lib/ipxe/snponly.efi /srv/tftp/talos/ipxe-amd64.efi
 ```
 
 ## Step 2: Set Up BIOS PXE Boot Files
@@ -81,8 +83,9 @@ sudo wget -O /srv/tftp/talos/ipxe-amd64.efi \
 For legacy BIOS machines, set up the pxelinux chain:
 
 ```bash
-# Copy PXE boot files
-sudo cp /usr/lib/PXELINUX/pxelinux.0 /srv/tftp/
+# Copy PXE boot files. Use lpxelinux.0 (not pxelinux.0) because we need
+# HTTP support in KERNEL/INITRD directives; standard pxelinux.0 is TFTP only.
+sudo cp /usr/lib/PXELINUX/lpxelinux.0 /srv/tftp/
 sudo cp /usr/lib/syslinux/modules/bios/ldlinux.c32 /srv/tftp/
 sudo cp /usr/lib/syslinux/modules/bios/menu.c32 /srv/tftp/
 sudo cp /usr/lib/syslinux/modules/bios/libutil.c32 /srv/tftp/
@@ -132,12 +135,18 @@ tftp-root=/srv/tftp
 # PXE boot configuration
 # Tag BIOS clients
 dhcp-match=set:bios,option:client-arch,0
-dhcp-boot=tag:bios,pxelinux.0
+dhcp-boot=tag:bios,lpxelinux.0
 
-# Tag UEFI clients (x86_64)
+# Tag UEFI clients (most firmware reports arch 7 for x86_64, RFC 4578
+# assigns 7 to EBC and 9 to x86_64; tagging both is the pragmatic choice).
 dhcp-match=set:efi64,option:client-arch,7
 dhcp-match=set:efi64,option:client-arch,9
-dhcp-boot=tag:efi64,talos/ipxe-amd64.efi
+dhcp-boot=tag:efi64,tag:!ipxe,talos/ipxe-amd64.efi
+
+# Once iPXE itself is running it sends DHCP option 175; chainload it to a
+# Talos boot script served over HTTP (Image Factory hosts one for stock Talos).
+dhcp-match=set:ipxe,175
+dhcp-boot=tag:ipxe,http://pxe.factory.talos.dev/pxe/376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba/v1.9.0/metal-amd64
 
 # Logging
 log-dhcp
@@ -151,8 +160,9 @@ If you already have a DHCP server on your network and do not want dnsmasq to pro
 # Proxy DHCP mode - does not assign IP addresses
 # Only provides PXE boot information
 dhcp-range=192.168.1.0,proxy
-pxe-service=x86PC,"Talos Linux",pxelinux
-pxe-service=x86-64_EFI,"Talos Linux",talos/ipxe-amd64.efi
+pxe-service=x86PC,"Talos Linux",lpxelinux
+pxe-service=BC_EFI,"Talos Linux",talos/ipxe-amd64.efi
+pxe-service=X86-64_EFI,"Talos Linux",talos/ipxe-amd64.efi
 ```
 
 Restart dnsmasq:
@@ -312,7 +322,7 @@ sudo tcpdump -i eth0 port 67 or port 68 -vvv
 sudo tcpdump -i eth0 port 69
 
 # Test TFTP manually from another machine
-tftp 192.168.1.10 -c get pxelinux.0
+tftp 192.168.1.10 -c get lpxelinux.0
 ```
 
 ### Kernel Downloads But Fails to Boot
