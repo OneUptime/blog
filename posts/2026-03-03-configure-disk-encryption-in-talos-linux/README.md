@@ -94,7 +94,7 @@ machine:
           slot: 0
 ```
 
-Important security note: the passphrase is stored in the machine configuration in plain text. Make sure your machine configs are stored securely and transmitted over encrypted channels. Consider using a secrets management tool to inject passphrases during deployment.
+Important security note: the passphrase is stored in the machine configuration in plain text. Make sure your machine configs are stored securely and transmitted over encrypted channels. Consider using a secrets management tool to inject passphrases during deployment. Note that the official Talos documentation warns against using `static` keys for the `state` volume specifically, because the passphrase ends up persisted in the META partition. Prefer `nodeID`, `tpm`, or `kms` for `state`, and reserve `static` for `ephemeral` if you need it.
 
 ## TPM-Based Encryption
 
@@ -161,7 +161,7 @@ Slot 0 holds the primary key (node ID in this case), and slot 1 holds a recovery
 
 ## Cipher Configuration
 
-By default, Talos uses AES-XTS with 256-bit keys. You can customize the cipher settings if needed:
+By default, Talos uses AES-XTS-512 (AES-256 with a 256-bit tweak, for a total LUKS2 `keySize` of 512 bits). You can customize the cipher settings if needed:
 
 ```yaml
 machine:
@@ -169,7 +169,7 @@ machine:
     state:
       provider: luks2
       cipher: aes-xts-plain64
-      keySize: 256
+      keySize: 512
       blockSize: 4096
       keys:
         - nodeID: {}
@@ -183,10 +183,10 @@ Unless you have specific compliance requirements that mandate a particular ciphe
 After applying the configuration, verify that encryption is active:
 
 ```bash
-# Check volume status for encryption info
-talosctl get volumes --nodes 192.168.1.10 -o yaml
+# List volume configurations to see encryption settings
+talosctl get volumeconfigs --nodes 192.168.1.10 -o yaml
 
-# Look for encryption indicators in volume details
+# Look for encryption indicators in volume status
 talosctl get volumestatus STATE --nodes 192.168.1.10 -o yaml
 talosctl get volumestatus EPHEMERAL --nodes 192.168.1.10 -o yaml
 ```
@@ -201,7 +201,7 @@ To check if your nodes support hardware-accelerated AES:
 
 ```bash
 # Check CPU features (through Talos resource API)
-talosctl get cpuinfo --nodes 192.168.1.10 -o yaml
+talosctl get processors --nodes 192.168.1.10 -o yaml
 ```
 
 Look for `aes` in the CPU flags. If present, AES-NI is available and encryption performance will be excellent.
