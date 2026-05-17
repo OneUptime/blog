@@ -12,7 +12,7 @@ When setting up disk encryption on Talos Linux, one of the simplest key manageme
 
 ## What is a Node ID Key?
 
-A node ID key is an encryption key that Talos derives from the node's unique identity information. Specifically, it combines several hardware and software identifiers to generate a cryptographic key. The exact composition includes the node's machine UUID and other identifying information that is unique to that specific node.
+A node ID key is an encryption key that Talos derives from the node's unique identity information. Specifically, it combines the node's machine UUID with the partition label to generate a cryptographic key that is unique to each partition on that specific node.
 
 The key derivation happens automatically during boot. Talos collects the identifying information, runs it through a key derivation function, and uses the result to unlock the LUKS2 encrypted partitions. No user interaction is required.
 
@@ -21,8 +21,8 @@ The key derivation happens automatically during boot. Talos collects the identif
 The process looks like this:
 
 1. **Boot starts** - Talos begins its boot sequence
-2. **Identity collection** - Talos gathers the node's unique identifiers (machine UUID, etc.)
-3. **Key derivation** - These identifiers are fed into a cryptographic key derivation function
+2. **Identity collection** - Talos gathers the node's machine UUID and the target partition label
+3. **Key derivation** - These inputs are fed into a cryptographic key derivation function
 4. **Partition unlock** - The derived key is used to unlock LUKS2 encrypted partitions
 5. **Normal operation** - The node boots and joins the Kubernetes cluster
 
