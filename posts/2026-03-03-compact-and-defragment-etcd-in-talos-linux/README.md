@@ -227,7 +227,7 @@ Run defragmentation during low-traffic periods. While defragmentation is running
 
 Always defragment one member at a time. Never defragment all members simultaneously, as this could make the entire cluster unavailable.
 
-Monitor the database size regularly. Set up Prometheus alerts when the database size exceeds a threshold, such as 4GB or 6GB. The default space quota in many configurations is 8GB, and hitting it will put etcd into read-only mode.
+Monitor the database size regularly. Set up Prometheus alerts when the database size exceeds a threshold, such as 1.5 GiB or 6 GiB depending on how you have configured the quota. The etcd default backend quota is 2 GiB, and the recommended maximum (also used by many Kubernetes setups) is 8 GiB. Hitting the quota will put etcd into read-only mode until you raise the quota and clear the NOSPACE alarm with `talosctl etcd alarm disarm`.
 
 Take a backup before running manual compaction on a production cluster. While compaction is generally safe, having a snapshot gives you a safety net:
 
