@@ -72,14 +72,13 @@ The `-n` flag on the first pass skips retrying bad sectors - it gets all the eas
 Once you have an image, all further work is done on the image file, not the failing drive. This protects the original.
 
 ```bash
-# Check the image with losetup
-sudo losetup -f /mnt/recovery/disk.img
+# Find the first unused loop device
+sudo losetup -f
 
-# Mount the image as a loop device
-sudo losetup /dev/loop0 /mnt/recovery/disk.img
+# Attach the image to a loop device with partition scanning enabled
+sudo losetup -P /dev/loop0 /mnt/recovery/disk.img
 
 # Identify partitions in the image
-sudo partprobe /dev/loop0
 lsblk /dev/loop0
 
 # Mount a partition from the image (adjust partition number as needed)
@@ -207,7 +206,7 @@ grep -v "^#" "$MAP_FILE" | head -5
 
 echo ""
 echo "Bad sectors remaining:"
-grep -c "^0x.*B" "$MAP_FILE" 2>/dev/null || echo "0"
+grep -c "^0x.*-$" "$MAP_FILE" 2>/dev/null || echo "0"
 ```
 
 ## When Hardware Intervention is Needed
