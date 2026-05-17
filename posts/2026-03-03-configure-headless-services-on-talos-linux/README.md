@@ -234,17 +234,17 @@ kubectl run dns-test --rm -it --restart=Never --image=busybox -- \
 
 Headless services present a caching challenge. Pod IPs change more frequently than ClusterIPs (pods get rescheduled, scaled up/down), so aggressive DNS caching can cause stale records.
 
-On Talos Linux with CoreDNS, the default TTL for Kubernetes records is 30 seconds. You can adjust this:
+On Talos Linux with CoreDNS, the default TTL for Kubernetes records is 5 seconds. You can adjust this:
 
 ```text
 kubernetes cluster.local in-addr.arpa ip6.arpa {
    pods insecure
    fallthrough in-addr.arpa ip6.arpa
-   ttl 5   # Reduce TTL for faster pod discovery updates
+   ttl 5   # Explicit TTL setting (default is 5; set to 0 to disable caching)
 }
 ```
 
-Lower TTLs mean more DNS queries but faster discovery of pod changes. For frequently changing StatefulSets, a TTL of 5-10 seconds is reasonable.
+Lower TTLs mean more DNS queries but faster discovery of pod changes. For frequently changing StatefulSets, the default of 5 seconds is usually reasonable; set `ttl 0` to disable caching entirely if pods churn aggressively.
 
 Also consider the application-side caching. Many language runtimes cache DNS results independently. Java, for instance, caches DNS indefinitely by default:
 
