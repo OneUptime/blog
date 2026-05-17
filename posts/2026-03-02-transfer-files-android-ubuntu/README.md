@@ -263,7 +263,7 @@ mkdir -p "$LOCAL_DIR"
 LAST_SYNC=$(cat "$LAST_SYNC_FILE" 2>/dev/null || echo "0")
 
 # Pull files modified after the last sync
-adb shell find "$PHONE_DIR" -newer /sdcard/Android -name "*.jpg" -o -name "*.mp4" | \
+adb shell find "$PHONE_DIR" -newer /sdcard/Android \( -name "*.jpg" -o -name "*.mp4" \) | \
 while read -r file; do
     local_file="$LOCAL_DIR/$(basename "$file")"
     if [ ! -f "$local_file" ]; then
