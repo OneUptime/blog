@@ -201,7 +201,7 @@ Talos has broader platform support and does not favor any particular cloud provi
 aws eks create-nodegroup --node-role arn:... --ami-type BOTTLEROCKET_x86_64
 
 # Talos: Managed through talosctl
-talosctl cluster create --nodes 3 --controlplanes 1
+talosctl cluster create --controlplanes 1 --workers 2
 ```
 
 Resource Usage
