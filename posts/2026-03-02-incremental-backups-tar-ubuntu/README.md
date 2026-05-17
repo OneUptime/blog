@@ -279,8 +279,8 @@ done
 ## Verifying Archive Integrity
 
 ```bash
-# Test archive integrity without extracting
-tar --test-label --file=/mnt/backup/tar-backups/backup-full-20260302-0100.tar.gz
+# Quick gzip integrity check (verifies the gzip CRC)
+gunzip --test /mnt/backup/tar-backups/backup-full-20260302-0100.tar.gz
 echo "Exit code: $?"  # 0 means success
 
 # More thorough check - lists all files without extracting
@@ -296,18 +296,20 @@ tar \
 
 ## Handling Large Backups with Multiple Volumes
 
-For backups that span multiple disks or have size limits:
+For backups that span multiple disks or have size limits. Note that multi-volume archives cannot be compressed with `--gzip` (or other built-in compressors); tar will refuse the combination. If you need compression, compress the resulting volumes afterwards with `gzip` per file:
 
 ```bash
-# Split backup into 4GB volumes
+# Split backup into 4GB volumes (uncompressed)
 tar \
   --create \
   --multi-volume \
   --tape-length=4G \
-  --file=/mnt/backup/backup-{1..10}.tar.gz \
+  --file=/mnt/backup/backup-{1..10}.tar \
   --listed-incremental=/mnt/backup/snapshots/home.snar \
-  --gzip \
   /home
+
+# Optionally compress each completed volume
+gzip /mnt/backup/backup-*.tar
 ```
 
 tar's incremental backup mode is straightforward and has no external dependencies beyond the tar utility itself. It works well for simple scenarios where you need reliable backups without additional software. For more advanced features like deduplication, encryption, or remote backups, consider pairing tar with tools like rsync or switching to BorgBackup.
