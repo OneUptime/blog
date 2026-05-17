@@ -146,6 +146,7 @@ lego --version
 export CF_DNS_API_TOKEN="your-cloudflare-api-token"
 
 lego \
+    --accept-tos \
     --email admin@yourdomain.com \
     --dns cloudflare \
     --domains yourdomain.com \
@@ -180,8 +181,11 @@ sudo certbot certificates
 ACME is not limited to Let's Encrypt. You can use it with any ACME-compliant CA:
 
 ```bash
-# Use ZeroSSL (alternative free CA)
+# Use ZeroSSL (alternative free CA). ZeroSSL requires EAB credentials
+# generated from the ZeroSSL dashboard (Developer section).
 sudo certbot --server https://acme.zerossl.com/v2/DV90 \
+    --eab-kid YOUR_EAB_KID \
+    --eab-hmac-key YOUR_EAB_HMAC_KEY \
     --agree-tos --email admin@yourdomain.com \
     certonly --standalone -d yourdomain.com
 
