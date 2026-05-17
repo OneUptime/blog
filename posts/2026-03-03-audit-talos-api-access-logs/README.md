@@ -56,12 +56,12 @@ machine:
         format: json_lines
 ```
 
-Apply the logging configuration:
+Apply the logging configuration as a runtime patch:
 
 ```bash
 # Apply logging configuration to forward API logs
-talosctl apply-config --nodes <node-ip> \
-  --config-patch @machine-config-logging.yaml
+talosctl patch mc --nodes <node-ip> \
+  --patch @machine-config-logging.yaml
 ```
 
 For more sophisticated setups, you can deploy a log collector on the cluster that collects from each node:
@@ -259,8 +259,9 @@ For a complete audit trail, correlate Talos API logs with Kubernetes events. Whe
 # View Kubernetes events related to nodes
 kubectl get events --field-selector involvedObject.kind=Node --sort-by=.lastTimestamp
 
-# Correlate with Talos API logs around the same time
-talosctl logs apid --nodes <node-ip> --since "2024-01-15T10:00:00Z"
+# Correlate with Talos API logs around the same time (use --tail or pipe to grep
+# to narrow down by date, since talosctl logs does not support --since)
+talosctl logs apid --nodes <node-ip> --tail 1000 | grep "2024-01-15T10:"
 ```
 
 ## Access Control for the Talos API
@@ -268,9 +269,8 @@ talosctl logs apid --nodes <node-ip> --since "2024-01-15T10:00:00Z"
 Part of a good audit strategy is having well-defined access control. Talos supports role-based access through its certificate system:
 
 ```bash
-# Generate a talosconfig with limited permissions
-talosctl gen config my-cluster https://endpoint:6443 \
-  --roles os:reader
+# Generate a new talosconfig with limited permissions
+talosctl config new --roles os:reader limited-talosconfig
 
 # The roles determine what API methods are available:
 # os:admin   - Full access to all Talos API methods
