@@ -23,7 +23,7 @@ talosctl etcd snapshot ./my-etcd-backup.db --nodes <control-plane-ip>
 # NOT on the Talos node itself
 ```
 
-This command tells the etcd instance on the specified node to create a snapshot and then streams the snapshot data back to your local machine through the Talos API. The snapshot is never written to disk on the Talos node (since the filesystem is read-only and ephemeral storage is limited).
+This command tells the etcd instance on the specified node to create a snapshot and then streams the snapshot data back to your local machine through the Talos API. The snapshot is streamed directly to your `talosctl` client rather than being persisted on the Talos node, so you do not need to worry about cleaning up files on the node afterwards.
 
 ## Understanding What Happens During Snapshot
 
