@@ -281,8 +281,8 @@ sudo corosync-quorumtool -s | grep Quorate
 sudo pcs status | grep -i "failed\|error\|stopped"
 
 # Verify STONITH is configured and working
-sudo pcs stonith show
-sudo pcs property show stonith-enabled
+sudo pcs stonith config
+sudo pcs property config stonith-enabled
 
 # Check corosync ring health
 sudo corosync-cfgtool -s
