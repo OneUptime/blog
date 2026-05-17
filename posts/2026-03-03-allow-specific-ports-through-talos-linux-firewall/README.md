@@ -42,12 +42,12 @@ The simplest case is allowing traffic on a single port from a specific network:
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
 name: allow-https
-spec:
-  ingress:
-    - subnet: 0.0.0.0/0
-      protocol: tcp
-      ports:
-        - 443
+portSelector:
+  ports:
+    - 443
+  protocol: tcp
+ingress:
+  - subnet: 0.0.0.0/0
 ```
 
 This allows TCP traffic on port 443 from any source. Use `0.0.0.0/0` cautiously - it means "from everywhere." For most internal services, restrict the source to your network's CIDR range.
@@ -61,17 +61,13 @@ The Talos API should only be accessible from your management network:
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
 name: allow-talos-api
-spec:
-  ingress:
-    - subnet: 10.10.0.0/24    # Management VLAN
-      protocol: tcp
-      ports:
-        - 50000
-
-    - subnet: 172.16.100.0/24  # VPN network
-      protocol: tcp
-      ports:
-        - 50000
+portSelector:
+  ports:
+    - 50000
+  protocol: tcp
+ingress:
+  - subnet: 10.10.0.0/24    # Management VLAN
+  - subnet: 172.16.100.0/24  # VPN network
 ```
 
 Never open the Talos API to the public internet. Anyone with access to the Talos API and valid credentials can fully control your nodes.
@@ -85,25 +81,17 @@ The Kubernetes API server needs to be accessible from worker nodes, admin workst
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
 name: allow-kubernetes-api
-spec:
-  ingress:
-    # From all cluster nodes
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 6443
-
-    # From admin workstations
-    - subnet: 192.168.1.0/24
-      protocol: tcp
-      ports:
-        - 6443
-
-    # From CI/CD runners
-    - subnet: 172.16.50.0/24
-      protocol: tcp
-      ports:
-        - 6443
+portSelector:
+  ports:
+    - 6443
+  protocol: tcp
+ingress:
+  # From all cluster nodes
+  - subnet: 10.0.0.0/8
+  # From admin workstations
+  - subnet: 192.168.1.0/24
+  # From CI/CD runners
+  - subnet: 172.16.50.0/24
 ```
 
 ## Opening Ports for etcd
@@ -115,19 +103,14 @@ etcd ports should be strictly limited to control plane nodes:
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
 name: allow-etcd
-spec:
-  ingress:
-    # etcd client port - from control plane subnet
-    - subnet: 10.0.1.0/29     # Tight subnet covering only CP nodes
-      protocol: tcp
-      ports:
-        - 2379
-
-    # etcd peer port - from control plane subnet
-    - subnet: 10.0.1.0/29
-      protocol: tcp
-      ports:
-        - 2380
+portSelector:
+  ports:
+    - 2379
+    - 2380
+  protocol: tcp
+ingress:
+  # Tight subnet covering only control plane nodes
+  - subnet: 10.0.1.0/29
 ```
 
 Use the tightest possible subnet that covers your control plane nodes. If your control plane nodes are at 10.0.1.1, 10.0.1.2, and 10.0.1.3, a /29 subnet (10.0.1.0/29) is appropriate.
@@ -137,35 +120,20 @@ Use the tightest possible subnet that covers your control plane nodes. If your c
 Monitoring tools like Prometheus need access to metrics endpoints:
 
 ```yaml
-# Allow monitoring traffic
+# Allow monitoring traffic - groups all TCP metrics ports
+# (node exporter 9100, kubelet 10250, kube-proxy 10249, etcd metrics 2381)
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
 name: allow-monitoring
-spec:
-  ingress:
-    # Node exporter metrics
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 9100
-
-    # Kubelet metrics
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 10250
-
-    # Kube-proxy metrics
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 10249
-
-    # etcd metrics (control plane only)
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 2381
+portSelector:
+  ports:
+    - 9100
+    - 10249
+    - 10250
+    - 2381
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
 ```
 
 ## Opening Ports for CNI Plugins
@@ -173,63 +141,59 @@ spec:
 Your CNI plugin uses specific ports for overlay networking and health checks:
 
 ```yaml
-# Allow Cilium CNI traffic
+# Allow Cilium CNI traffic - one document per protocol because
+# portSelector takes a single protocol per NetworkRuleConfig
+
+# Cilium TCP ports: health checks (4240) and Hubble server (4244)
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
-name: allow-cilium
-spec:
-  ingress:
-    # Cilium health checks
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 4240
-
-    # VXLAN overlay
-    - subnet: 10.0.0.0/8
-      protocol: udp
-      ports:
-        - 8472
-
-    # Hubble relay
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 4244
-
-    # WireGuard (if using encrypted overlay)
-    - subnet: 10.0.0.0/8
-      protocol: udp
-      ports:
-        - 51871
+name: allow-cilium-tcp
+portSelector:
+  ports:
+    - 4240
+    - 4244
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
+---
+# Cilium UDP ports: VXLAN overlay (8472) and WireGuard (51871, if used)
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-cilium-udp
+portSelector:
+  ports:
+    - 8472
+    - 51871
+  protocol: udp
+ingress:
+  - subnet: 10.0.0.0/8
 ```
 
 For Calico:
 
 ```yaml
-# Allow Calico CNI traffic
+# Allow Calico CNI traffic - BGP peering (179) and Typha (5473)
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
-name: allow-calico
-spec:
-  ingress:
-    # BGP peering
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 179
-
-    # VXLAN overlay
-    - subnet: 10.0.0.0/8
-      protocol: udp
-      ports:
-        - 4789
-
-    # Typha
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 5473
+name: allow-calico-tcp
+portSelector:
+  ports:
+    - 179
+    - 5473
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
+---
+# Calico VXLAN overlay
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-calico-vxlan
+portSelector:
+  ports:
+    - 4789
+  protocol: udp
+ingress:
+  - subnet: 10.0.0.0/8
 ```
 
 ## Opening Ports for NodePort Services
@@ -237,23 +201,27 @@ spec:
 NodePort services use ports in the 30000-32767 range:
 
 ```yaml
-# Allow NodePort traffic
+# Allow TCP NodePorts from internal network
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
-name: allow-nodeports
-spec:
-  ingress:
-    # TCP NodePorts from internal network
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 30000-32767
-
-    # UDP NodePorts from internal network
-    - subnet: 10.0.0.0/8
-      protocol: udp
-      ports:
-        - 30000-32767
+name: allow-nodeports-tcp
+portSelector:
+  ports:
+    - 30000-32767
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
+---
+# Allow UDP NodePorts from internal network
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-nodeports-udp
+portSelector:
+  ports:
+    - 30000-32767
+  protocol: udp
+ingress:
+  - subnet: 10.0.0.0/8
 ```
 
 If you expose NodePort services to the internet (through a load balancer or directly), widen the subnet accordingly. But generally, NodePort access should be restricted to your internal network.
@@ -263,75 +231,97 @@ If you expose NodePort services to the internet (through a load balancer or dire
 If you use MetalLB for load balancing:
 
 ```yaml
-# Allow MetalLB traffic
+# MetalLB TCP - speaker memberlist (7946) and BGP (179, if using BGP mode)
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
-name: allow-metallb
-spec:
-  ingress:
-    # MetalLB speaker (memberlist)
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 7946
-
-    - subnet: 10.0.0.0/8
-      protocol: udp
-      ports:
-        - 7946
-
-    # BGP (if using BGP mode)
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 179
+name: allow-metallb-tcp
+portSelector:
+  ports:
+    - 179
+    - 7946
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
+---
+# MetalLB UDP - speaker memberlist
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-metallb-udp
+portSelector:
+  ports:
+    - 7946
+  protocol: udp
+ingress:
+  - subnet: 10.0.0.0/8
 ```
 
 ## Combining Rules Efficiently
 
-Instead of creating many small rule documents, group related rules:
+Each `NetworkRuleConfig` document carries a single `portSelector` (one protocol, one set of ports) and a list of source subnets. To cover a node end-to-end you stitch together multiple documents in the same machine config patch, separated by `---`:
 
 ```yaml
-# Comprehensive control plane rules
+# Management access - Talos API and Kubernetes API from the management VLAN
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
-name: control-plane-all
-spec:
-  ingress:
-    # Management access
-    - subnet: 10.10.0.0/24
-      protocol: tcp
-      ports:
-        - 50000
-        - 6443
-
-    # Cluster internal - control plane services
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 6443
-        - 2379
-        - 2380
-        - 10250
-        - 10257
-        - 10259
-
-    # Monitoring
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 2381
-        - 9100
-
-    # CNI (Cilium)
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 4240
-    - subnet: 10.0.0.0/8
-      protocol: udp
-      ports:
-        - 8472
+name: cp-management
+portSelector:
+  ports:
+    - 6443
+    - 50000
+  protocol: tcp
+ingress:
+  - subnet: 10.10.0.0/24
+---
+# Cluster internal - control plane TCP services
+# (kube-apiserver, etcd client/peer, kubelet, controller-manager, scheduler)
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: cp-internal-tcp
+portSelector:
+  ports:
+    - 2379
+    - 2380
+    - 6443
+    - 10250
+    - 10257
+    - 10259
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
+---
+# Monitoring - etcd metrics and node exporter
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: cp-monitoring
+portSelector:
+  ports:
+    - 2381
+    - 9100
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
+---
+# CNI (Cilium) - health checks
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: cp-cilium-tcp
+portSelector:
+  ports:
+    - 4240
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
+---
+# CNI (Cilium) - VXLAN overlay
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: cp-cilium-vxlan
+portSelector:
+  ports:
+    - 8472
+  protocol: udp
+ingress:
+  - subnet: 10.0.0.0/8
 ```
 
 ## Applying Port Rules
