@@ -64,7 +64,7 @@ metadata:
   name: ecr-token-refresh
   namespace: kube-system
 spec:
-  schedule: "*/6 * * * *"  # Every 6 hours
+  schedule: "0 */6 * * *"  # Every 6 hours
   jobTemplate:
     spec:
       template:
