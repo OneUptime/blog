@@ -26,7 +26,7 @@ watch -n 0.5 free -m
 
 Press `Ctrl+C` to stop `watch`.
 
-The display shows the command being run, the current timestamp, and how long ago the output was generated.
+The header shows the update interval, the command being run, the hostname, and the current time.
 
 ## Highlighting Changes
 
@@ -36,8 +36,8 @@ The `-d` flag highlights differences between the current and previous output. Th
 # Highlight any output that changed since the last update
 watch -d free -m
 
-# Highlight changes, keep them highlighted until they change back
-watch -d=cumulative netstat -an | grep ESTABLISHED
+# Highlight changes, and keep them highlighted permanently (show all changes since the first iteration)
+watch -d=permanent 'netstat -an | grep ESTABLISHED'
 ```
 
 When output changes, the changed portion appears in reverse video (usually white-on-black or bright text). This makes it trivial to notice a counter incrementing or a new connection appearing.
@@ -139,11 +139,18 @@ The `-b` flag triggers a terminal bell sound when the command exits non-zero (us
 watch -b systemctl is-active nginx
 ```
 
-The `-e` flag exits and reports an error when the command's exit status changes:
+The `-e` flag freezes updates when the command returns a non-zero exit status, then exits after a key press:
 
 ```bash
 # Stop watching and report if nginx goes down
 watch -e systemctl is-active nginx
+```
+
+If you want to stop watching when the *output* changes instead, use `-g` (`--chgexit`):
+
+```bash
+# Exit as soon as the output of the command changes
+watch -g 'systemctl is-active nginx'
 ```
 
 ## Practical Monitoring Scenarios
@@ -226,13 +233,16 @@ watch -n SECONDS command
 watch -d command
 
 # Highlight and keep cumulative changes
-watch -d=cumulative command
+watch -d=permanent command
 
 # No header
 watch -t command
 
-# Exit on non-zero command exit
+# Exit on non-zero command exit (freezes, then exits on key press)
 watch -e command
+
+# Exit when the output of command changes
+watch -g command
 
 # Beep on non-zero exit
 watch -b command
