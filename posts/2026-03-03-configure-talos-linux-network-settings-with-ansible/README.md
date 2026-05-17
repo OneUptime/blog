@@ -191,7 +191,7 @@ network_interfaces:
     bond:
       mode: "802.3ad"
       lacpRate: "fast"
-      hashPolicy: "layer3+4"
+      xmitHashPolicy: "layer3+4"
       interfaces:
         - eth0
         - eth1
@@ -205,7 +205,7 @@ Update the template to handle bonds:
         bond:
           mode: {{ iface.bond.mode }}
           lacpRate: {{ iface.bond.lacpRate | default('slow') }}
-          hashPolicy: {{ iface.bond.hashPolicy | default('layer2') }}
+          xmitHashPolicy: {{ iface.bond.xmitHashPolicy | default('layer2') }}
           interfaces:
 {% for member in iface.bond.interfaces %}
             - {{ member }}
