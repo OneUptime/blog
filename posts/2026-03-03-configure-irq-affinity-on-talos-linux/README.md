@@ -31,12 +31,12 @@ The output shows each interrupt source and how many times each CPU has handled i
 
 ## The Default IRQ Distribution Problem
 
-Linux uses the `irqbalance` daemon to distribute interrupts across CPUs. While this provides reasonable performance for general workloads, it has two problems for performance-sensitive environments:
+Many Linux distributions ship the `irqbalance` daemon to distribute interrupts across CPUs at runtime. Talos Linux is a minimal distribution and does not include `irqbalance`, so IRQ routing is governed by the kernel's defaults and whatever each driver requests when it registers its handlers. That avoids irqbalance's periodic rebalances, but it still has problems for performance-sensitive environments:
 
-1. It may route interrupts to cores running latency-sensitive applications
-2. It periodically rebalances, causing interrupt routing changes that create transient performance dips
+1. The kernel's default affinity mask covers all online CPUs, so interrupts can land on cores running latency-sensitive applications
+2. Multi-queue NIC drivers often spread their queue interrupts across every core, including cores you have isolated for your workload
 
-On Talos Linux, `irqbalance` runs as part of the system services. While you cannot disable it directly through configuration, you can override its decisions by explicitly setting IRQ affinity.
+To get predictable IRQ routing on Talos Linux, you need to explicitly set the affinity for each IRQ.
 
 ## Setting IRQ Affinity with a DaemonSet
 
@@ -78,20 +78,15 @@ spec:
           # Binary: 00001111 = Hex: 0f
           IRQ_CPUMASK="0f"
 
-          # Set affinity for all NIC interrupts
+          # Set affinity for all NIC interrupts.
+          # /proc/interrupts is the canonical place to map IRQs to devices:
+          # the last column lists the handler/device names for each IRQ.
           set_nic_affinity() {
             local iface=$1
-            for irq_dir in /proc/irq/*/; do
-              irq_num=$(basename "$irq_dir")
-              # Skip non-numeric directories
-              [ "$irq_num" = "default_smp_affinity" ] && continue
-
-              # Check if this IRQ is associated with our interface
-              if [ -f "$irq_dir/actions" ]; then
-                if grep -q "$iface" "$irq_dir/actions" 2>/dev/null; then
-                  echo "$IRQ_CPUMASK" > "${irq_dir}smp_affinity" 2>/dev/null || true
-                  echo "Set IRQ $irq_num for $iface to mask $IRQ_CPUMASK"
-                fi
+            for irq_num in $(grep -E "[[:space:]]${iface}(-|\$)" /proc/interrupts | awk -F: '{print $1}' | tr -d ' '); do
+              if [ -w "/proc/irq/$irq_num/smp_affinity" ]; then
+                echo "$IRQ_CPUMASK" > "/proc/irq/$irq_num/smp_affinity" 2>/dev/null || true
+                echo "Set IRQ $irq_num for $iface to mask $IRQ_CPUMASK"
               fi
             done
           }
@@ -115,7 +110,7 @@ spec:
           done
 ```
 
-This DaemonSet runs on every node, pins all NIC interrupts to cores 0-3, and re-applies the configuration every 5 minutes in case irqbalance overrides the settings.
+This DaemonSet runs on every node, pins all NIC interrupts to cores 0-3, and re-applies the configuration every 5 minutes in case drivers reload, link state changes, or new IRQs get registered with default affinity.
 
 ## Understanding CPU Affinity Masks
 
