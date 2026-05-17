@@ -56,6 +56,15 @@ LoadPlugin syslog
     LogLevel info
 </Plugin>
 
+# UNIX socket for collectdctl
+LoadPlugin unixsock
+<Plugin unixsock>
+    SocketFile "/var/run/collectd-unixsock"
+    SocketGroup "collectd"
+    SocketPerms "0660"
+    DeleteSocket false
+</Plugin>
+
 # Interval between collections (seconds)
 Interval     10
 
@@ -291,14 +300,15 @@ EOF
 
 sudo systemctl restart collectd
 
-# InfluxDB configuration for receiving Collectd data
+# InfluxDB 1.x configuration for receiving Collectd data
 # In influxdb.conf, enable the Collectd input:
-# [[inputs.collectd]]
-#   port = 25826
-#   bind_address = "0.0.0.0:25826"
+# [[collectd]]
+#   enabled = true
+#   bind-address = ":25826"
 #   database = "collectd"
-#   retention_policy = ""
+#   retention-policy = ""
 #   typesdb = "/usr/share/collectd/types.db"
+#   security-level = "none"
 ```
 
 ## Forwarding Data to Graphite
@@ -334,30 +344,30 @@ sudo systemctl restart collectd
 
 ## Exposing Metrics via HTTP (for Prometheus)
 
-Collectd can expose metrics in various formats for Prometheus scraping:
+Collectd ships a `write_prometheus` plugin that starts an internal HTTP server exposing metrics in the Prometheus text exposition format. Prometheus can then scrape this endpoint directly:
 
 ```bash
-# Write metrics in JSON for an HTTP endpoint
-sudo apt install -y collectd-write-http 2>/dev/null || true
+sudo tee /etc/collectd/collectd.conf.d/write_prometheus.conf << 'EOF'
+LoadPlugin write_prometheus
 
-sudo tee /etc/collectd/collectd.conf.d/write_http.conf << 'EOF'
-LoadPlugin write_http
-
-<Plugin write_http>
-    <Node "prometheus_pushgateway">
-        URL "http://192.168.1.50:9091/metrics/job/collectd/instance/ubuntu-server-01"
-        Format "JSON"
-        StoreRates false
-        BufferSize 65536
-        LowSpeedLimit 0
-        Timeout 0
-        LogHttpError false
-        Header "Content-Type: application/json"
-    </Node>
+<Plugin write_prometheus>
+    Port "9103"
 </Plugin>
 EOF
 
 sudo systemctl restart collectd
+
+# Verify the metrics endpoint
+curl http://localhost:9103/metrics | head -20
+```
+
+Then add a scrape job to your `prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: 'collectd'
+    static_configs:
+      - targets: ['ubuntu-server-01:9103']
 ```
 
 ## Viewing Collected Data
@@ -432,10 +442,10 @@ sudo journalctl -u collectd -n 100
 sudo systemctl stop collectd
 sudo collectd -f -C /etc/collectd/collectd.conf
 
-# Verify plugins are loading
-sudo collectdctl ping
+# List all values currently held by collectd (requires unixsock plugin)
+sudo collectdctl listval | head -20
 
-# Check write queue statistics
+# Count the number of metric identifiers being collected
 sudo collectdctl listval | wc -l
 
 # Test configuration syntax
