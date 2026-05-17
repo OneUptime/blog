@@ -48,7 +48,7 @@ The `dh` command runs a sequence of `dh_*` helpers automatically:
 
 ```bash
 # The simplest possible debian/rules file
-cat debian/rules << 'EOF'
+cat > debian/rules << 'EOF'
 #!/usr/bin/make -f
 
 %:
@@ -127,15 +127,19 @@ The naming convention is `override_dh_STEP`: the override runs instead of the au
 
 ## Build System Detection
 
-`dh_auto_configure` and `dh_auto_build` detect the build system automatically:
+`dh_auto_configure` and `dh_auto_build` detect some build systems automatically out of the box:
 
 - Makefile with `./configure` - autoconf
 - `CMakeLists.txt` - cmake
-- `setup.py` / `pyproject.toml` - Python
-- `Cargo.toml` - Rust (with dh-cargo)
-- `pom.xml` - Maven
+- `Makefile.PL` / `Build.PL` - perl_makemaker / perl_build
 
-Force a specific build system if detection fails:
+Other build systems are available but typically need to be selected explicitly (and may require an add-on package):
+
+- Python - pybuild (provided by `dh-python`)
+- Rust - cargo (provided by `dh-cargo`)
+- Maven - maven (provided by `maven-debian-helper`)
+
+Force a specific build system if detection fails or to select one of the add-on systems:
 
 ```bash
 # Force cmake build system
@@ -169,12 +173,15 @@ EOF
 # In debian/control, add to Build-Depends:
 # Build-Depends: debhelper-compat (= 13), python3-all, dh-python
 
-# Perl module packaging
-sudo apt install dh-perl -y
+# Perl module packaging - the perl_makemaker and perl_build buildsystems
+# ship with debhelper itself. For scaffolding a Debian package from a
+# CPAN module, install dh-make-perl:
+sudo apt install dh-make-perl -y
 
-# Systemd service integration
-sudo apt install dh-systemd -y
-# With compat 13+, systemd integration is built in via dh_installsystemd
+# Systemd service integration is built into debhelper via dh_installsystemd
+# (called by the dh sequencer in compat 10+). The old transitional
+# dh-systemd package was removed in Debian Bullseye / Ubuntu 22.04;
+# no extra package is required.
 ```
 
 ## Key debhelper Commands Reference
@@ -269,21 +276,20 @@ export DH_VERBOSE=1
 
 ## Stripping and Debug Packages
 
-debhelper automatically handles binary stripping and can generate debug symbol packages:
+debhelper automatically handles binary stripping and generates debug symbol packages:
 
 ```bash
-# In debian/control, add a debug package
-cat >> debian/control << 'EOF'
-
-Package: mypackage-dbgsym
-Architecture: any
-Section: debug
-Depends: mypackage (= ${binary:Version})
-Description: Debug symbols for mypackage
-EOF
-
 # dh_strip automatically creates -dbgsym packages in compat 10+
-# No extra configuration needed
+# No extra configuration is needed and you MUST NOT declare a
+# -dbgsym stanza in debian/control - it is generated for you.
+
+# To opt out of automatic dbgsym generation for a build:
+DEB_BUILD_OPTIONS=noautodbgsym dpkg-buildpackage -us -uc
+
+# If you previously shipped a manual -dbg package and are switching
+# to automatic dbgsym, use the migration helper:
+# override_dh_strip:
+# 	dh_strip --dbgsym-migration='mypackage-dbg (<< 1.0-1~)'
 ```
 
 ## Running Lintian
