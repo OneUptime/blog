@@ -135,7 +135,7 @@ The API server needs valid certificates. If the certificates are expired or misc
 
 ```bash
 # Check certificate information
-talosctl get certificates --nodes 192.168.1.10
+talosctl get certificate --nodes 192.168.1.10
 ```
 
 ### Port Conflicts
@@ -220,7 +220,7 @@ Control plane components need adequate CPU and memory. Check resource usage:
 # Check memory usage
 talosctl memory --nodes 192.168.1.10
 
-# Check CPU usage
+# Check per-container CPU and memory stats
 talosctl stats --nodes 192.168.1.10
 ```
 
@@ -231,8 +231,8 @@ If the node is running low on memory, the OOM killer might be terminating contro
 Talos events provide a timeline of what happened:
 
 ```bash
-# Get system events
-talosctl get events --nodes 192.168.1.10
+# Stream runtime events
+talosctl events --nodes 192.168.1.10
 
 # Check kernel messages for hardware issues
 talosctl dmesg --nodes 192.168.1.10 | tail -100
