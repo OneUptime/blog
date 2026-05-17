@@ -159,7 +159,7 @@ node default {
   # Manage the motd banner
   file { '/etc/motd':
     ensure  => file,
-    content => "Managed by Puppet. Do not edit manually.\nServer: ${::fqdn}\n",
+    content => "Managed by Puppet. Do not edit manually.\nServer: ${facts['networking']['fqdn']}\n",
     owner   => 'root',
     group   => 'root',
     mode    => '0644',
@@ -391,7 +391,7 @@ package { 'apache2': ensure => absent }
 # File management
 file { '/etc/app.conf':
   ensure  => file,
-  content => template('myapp/app.conf.epp'),
+  content => epp('myapp/app.conf.epp'),
   mode    => '0640',
   owner   => 'app',
   group   => 'app',
