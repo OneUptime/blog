@@ -125,11 +125,11 @@ Once the machine boots into Talos maintenance mode, find its IP address.
 
 ```bash
 # The machine will display its IP on the console
-# Or discover it via your DHCP server
-# Or use talosctl to discover it
+# Or discover it via your DHCP server lease table
+# Or check your hypervisor's VM IP listing
 
-# If you know the network range, scan for Talos nodes
-talosctl -n 10.0.0.0/24 disks 2>/dev/null
+# Once you know the IP, verify the node is reachable in maintenance mode
+talosctl -n 10.0.0.40 --insecure disks
 ```
 
 Note the IP address of the new machine. We will use `10.0.0.40` in this guide as an example.
@@ -211,8 +211,8 @@ After applying the configuration, the node will:
 1. Install Talos to the specified disk
 2. Reboot
 3. Start Talos services
-4. Contact the Kubernetes API server
-5. Generate a bootstrap TLS certificate
+4. Start the kubelet, which contacts the Kubernetes API server
+5. Bootstrap a kubelet client certificate via the Kubernetes CSR API
 6. Join the cluster as a worker node
 
 ## Step 5: Monitor the Join Process
@@ -330,11 +330,11 @@ If the node does not join the cluster, check these common issues.
 ### Node Not Installing
 
 ```bash
-# Check if the config was received
+# Check if the config was received and the node is reachable
 talosctl -n 10.0.0.40 disks
 
-# Verify disk is available for installation
-talosctl -n 10.0.0.40 get installerconfig
+# Verify the applied machine config
+talosctl -n 10.0.0.40 get machineconfig
 ```
 
 ### Node Not Joining Kubernetes
