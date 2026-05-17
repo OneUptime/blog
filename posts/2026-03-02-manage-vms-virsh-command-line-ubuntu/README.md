@@ -294,7 +294,7 @@ done
 
 # Wait for all VMs to stop
 for vm in $(virsh list --name); do
-    timeout 60 virsh wait "$vm" --state shutoff
+    timeout 60 bash -c "until [ \"\$(virsh domstate \"$vm\")\" = 'shut off' ]; do sleep 1; done"
     echo "$vm stopped"
 done
 
