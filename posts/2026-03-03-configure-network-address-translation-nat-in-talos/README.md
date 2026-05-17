@@ -52,12 +52,12 @@ You can inspect the NAT rules on a Talos node using a debug pod:
 
 ```bash
 # Check iptables NAT rules
-
-kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
+# The netadmin profile (kubectl 1.27+) grants CAP_NET_ADMIN, which iptables/nft require.
+kubectl debug node/talos-node-1 -it --profile=netadmin --image=nicolaka/netshoot -- \
   iptables -t nat -L -n -v
 
 # Check nftables rules (if used instead of iptables)
-kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
+kubectl debug node/talos-node-1 -it --profile=netadmin --image=nicolaka/netshoot -- \
   nft list ruleset
 ```
 
@@ -259,7 +259,10 @@ spec:
       hostNetwork: true
       containers:
         - name: tayga
-          image: nat64/tayga:latest
+          # Use a Tayga image you trust; there is no official upstream image.
+          # Community images include danehans/tayga; you can also build one
+          # from the upstream project at https://github.com/apalrd/tayga.
+          image: danehans/tayga:latest
           securityContext:
             privileged: true
           env:
@@ -273,15 +276,15 @@ spec:
 
 ```bash
 # Check conntrack table usage
-kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
+kubectl debug node/talos-node-1 -it --profile=netadmin --image=nicolaka/netshoot -- \
   conntrack -C
 
 # Check conntrack table capacity
-kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
+kubectl debug node/talos-node-1 -it --profile=netadmin --image=nicolaka/netshoot -- \
   sysctl net.netfilter.nf_conntrack_max
 
 # Monitor for conntrack table overflow
-kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
+kubectl debug node/talos-node-1 -it --profile=netadmin --image=nicolaka/netshoot -- \
   dmesg | grep conntrack
 ```
 
@@ -289,7 +292,7 @@ kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
 
 ```bash
 # Check how many packets each NAT rule has processed
-kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
+kubectl debug node/talos-node-1 -it --profile=netadmin --image=nicolaka/netshoot -- \
   iptables -t nat -L -n -v
 ```
 
@@ -299,11 +302,11 @@ kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
 
 ```bash
 # Check if masquerade rules exist
-kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
+kubectl debug node/talos-node-1 -it --profile=netadmin --image=nicolaka/netshoot -- \
   iptables -t nat -L POSTROUTING -n -v | grep MASQ
 
 # Check IP forwarding
-kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
+kubectl debug node/talos-node-1 -it --profile=netadmin --image=nicolaka/netshoot -- \
   sysctl net.ipv4.ip_forward
 
 # Test from inside a pod
@@ -316,7 +319,7 @@ If you see "nf_conntrack: table full, dropping packet" in dmesg:
 
 ```bash
 # Check current usage
-kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
+kubectl debug node/talos-node-1 -it --profile=netadmin --image=nicolaka/netshoot -- \
   conntrack -C
 
 # The fix is to increase nf_conntrack_max in the machine config
@@ -328,7 +331,7 @@ If traffic goes through NAT in one direction but return traffic takes a differen
 
 ```bash
 # Check conntrack entries for the specific flow
-kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
+kubectl debug node/talos-node-1 -it --profile=netadmin --image=nicolaka/netshoot -- \
   conntrack -L -d <destination-ip>
 ```
 
