@@ -117,7 +117,7 @@ For access time, use `-atime`; for change time (permissions/ownership), use `-ct
 # Files with exact permissions (0644 = rw-r--r--)
 find /etc -perm 644 -name "*.conf"
 
-# Files with at least these permissions set (/ means "any of these bits")
+# Files with ANY of these permission bits set (/ means "any of these bits")
 find /var/www -perm /o+w  # World-writable files (security risk!)
 
 # Files with the setuid bit set (potential privilege escalation)
