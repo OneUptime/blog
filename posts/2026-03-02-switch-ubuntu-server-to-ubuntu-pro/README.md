@@ -168,8 +168,8 @@ cat /proc/sys/crypto/fips_enabled
 ### CIS Hardening
 
 ```bash
-# Enable the CIS compliance tool
-sudo pro enable cis
+# Enable the USG compliance tool (provides CIS profiles on Ubuntu 20.04+)
+sudo pro enable usg
 
 # Run a CIS audit
 sudo usg audit cis_level1_server
@@ -225,10 +225,7 @@ pro status
 # Detailed status
 pro status --all
 
-# Account information
-pro accounts
-
-# Which token is attached
+# Account, subscription, and machine ID summary
 pro status | head -20
 ```
 
