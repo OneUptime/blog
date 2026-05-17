@@ -86,7 +86,8 @@ iftop is interactive. These keys change the display without restarting:
 | `s` | Toggle display of source host |
 | `d` | Toggle display of destination host |
 | `t` | Cycle through display modes (two-line, sent only, received only, totals) |
-| `l` | Set a filter expression |
+| `f` | Edit BPF filter code |
+| `l` | Set screen filter (POSIX regex applied to displayed hostnames) |
 | `L` | Toggle logarithmic scale on the bandwidth bar |
 | `j` / `k` | Scroll the connection list up/down |
 | `q` | Quit |
@@ -149,7 +150,7 @@ sudo iftop -f "not net 192.168.0.0/16"
 
 ### Set Filters Interactively
 
-While iftop is running, press `l` to enter a filter expression on the fly. This is useful when you spot something suspicious and want to isolate it without restarting.
+While iftop is running, press `f` to edit the BPF filter code on the fly. This is useful when you spot something suspicious and want to isolate it without restarting. (Note: `l` sets a separate POSIX regex *screen filter* that only hides matching lines from the display; it does not change which packets are captured.)
 
 ## Common Use Cases
 
