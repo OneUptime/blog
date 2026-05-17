@@ -23,12 +23,11 @@ A Talos-managed Kubernetes cluster uses several sets of certificates:
 **Service account keys** - Used to sign and verify service account tokens.
 
 ```bash
-# View the current certificates on a Talos node
+# View the Kubernetes dynamic certificates on a Talos control plane node
+talosctl get KubernetesDynamicCerts --nodes <node-ip> -o yaml
 
-talosctl get certificates --nodes <node-ip>
-
-# Check certificate expiration dates
-talosctl get certificates --nodes <node-ip> -o yaml | grep -A2 "notAfter"
+# Check certificate expiration dates by inspecting the YAML output
+talosctl get KubernetesDynamicCerts --nodes <node-ip> -o yaml | grep -A2 "notAfter"
 ```
 
 ## Automatic Certificate Rotation
@@ -38,16 +37,17 @@ Talos Linux automatically rotates Kubernetes component certificates before they 
 The automatic rotation process works like this:
 
 1. Talos monitors the expiration dates of all managed certificates
-2. When a certificate approaches its expiration (typically at 70-80% of its lifetime), Talos generates a new certificate
+2. When a certificate approaches its expiration, Talos generates a new certificate
 3. The new certificate is applied to the relevant component
 4. The component is restarted to pick up the new certificate
 
 ```bash
-# Check the status of certificate rotation
+# Inspect the configured cert SANs in the machine configuration
 talosctl get machineconfig --nodes <node-ip> -o yaml | grep -A5 "certSANs"
 
-# View the Kubernetes CA certificate details
-talosctl read /system/secrets/kubernetes/certs/ca/tls.crt --nodes <node-ip> | \
+# View the Kubernetes CA certificate details by reading the kubernetesrootsecrets resource
+talosctl get kubernetesrootsecrets --nodes <node-ip> -o yaml | \
+  yq '.spec.issuingCA.crt' | base64 -d | \
   openssl x509 -text -noout | grep -E "Not Before|Not After|Subject:"
 ```
 
@@ -65,7 +65,7 @@ machine:
   # Additional machine-level certificate settings
 cluster:
   # CA certificate lifetime (default is 10 years)
-  # Component certificates are typically 1 year
+  # Client certificates (kubeconfig / talosconfig) default to ~1 year
   apiServer:
     certSANs:
       - "api.cluster.example.com"
@@ -200,9 +200,10 @@ groups:
 The Talos CA certificate has a long lifetime (typically 10 years) because rotating it requires regenerating all downstream certificates. However, you should plan for CA rotation:
 
 ```bash
-# Check the Talos CA certificate expiration
-talosctl get certificates --nodes <node-ip> -o yaml | \
-  grep -B5 -A5 "talos"
+# Check the Talos OS CA certificate expiration via the rootsecrets resource
+talosctl get osrootsecrets --nodes <node-ip> -o yaml | \
+  yq '.spec.issuingCA.crt' | base64 -d | \
+  openssl x509 -noout -dates -subject
 
 # If you need to rotate the CA, you will need to regenerate
 # the entire cluster configuration
@@ -221,12 +222,11 @@ The talosctl client certificates also need management. Each admin who accesses t
 # View the current talosctl client configuration
 talosctl config info
 
-# Generate a new client certificate for a team member
+# Generate a new client talosconfig for a team member
 # This derives a new certificate from the existing CA
-talosctl gen config my-cluster https://endpoint:6443 \
+talosctl config new \
   --roles os:reader \
-  --output-types talosconfig \
-  -o team-member-talosconfig.yaml
+  team-member-talosconfig.yaml
 
 # The new talosconfig can be distributed to the team member
 # It contains their unique client certificate
@@ -292,7 +292,7 @@ helm repo add jetstack https://charts.jetstack.io
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true
+  --set crds.enabled=true
 ```
 
 6. **Audit certificate usage** - Regularly review which certificates exist and who has access to them.
