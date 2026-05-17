@@ -209,17 +209,18 @@ echo "0 3 1 * * root btrfs scrub start /" | sudo tee /etc/cron.d/btrfs-scrub
 If an update breaks something, rolling back involves making an old snapshot the active subvolume. This requires booting from external media or a working backup:
 
 ```bash
-# From a live USB, mount the Btrfs partition
+# From a live USB, mount the top-level Btrfs subvolume (no subvol option)
 sudo mount /dev/sda3 /mnt
 
-# List subvolumes
+# List subvolumes - you should see @, @home, @snapshots, etc.
 sudo btrfs subvolume list /mnt
 
 # Move the broken root aside
 sudo mv /mnt/@ /mnt/@-broken
 
 # Make the snapshot the new root (rename it to @)
-sudo mv /mnt/.snapshots/root-20240315-143022 /mnt/@
+# Note: snapshots live under the @snapshots subvolume when viewed from the top level
+sudo mv /mnt/@snapshots/root-20240315-143022 /mnt/@
 
 # Reboot into the restored system
 sudo reboot
@@ -253,8 +254,8 @@ mount | grep btrfs
 # Defragment a heavily fragmented subvolume
 sudo btrfs filesystem defragment -r /
 
-# Show fragmentation statistics
-sudo btrfs filesystem defragment -r -v --dryrun / 2>&1 | tail -5
+# Show filesystem usage and allocation
+sudo btrfs filesystem usage /
 
 # Monitor I/O
 sudo btrfs device stats /
