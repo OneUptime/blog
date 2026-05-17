@@ -164,24 +164,23 @@ PATH_add node_modules/.bin
 # Load variables from a file
 dotenv .env.local
 
-# Set a variable only if not already set
-export_function() {
-    local name=$1
-    shift
-    export "$name"="${!name:-$*}"
-}
+# Load a file only if it exists (no error if missing)
+dotenv_if_exists .env.local
 
 # Source another shell file
 source_env .envrc.shared
 
-# Use a specific Python virtualenv
+# Source a parent directory's .envrc
+source_up
+
+# Create and activate a Python virtualenv in the project
 layout python3
 
-# Use a specific Node.js version (with nvm)
-use nvm 20
+# Use a Node.js version from $NODE_VERSIONS
+use node 20
 
-# Use a specific Ruby version (with rvm or rbenv)
-use ruby 3.2
+# Use a Ruby version managed by rbenv
+use rbenv
 ```
 
 ## Integrating with Language Version Managers
@@ -190,38 +189,54 @@ direnv works well with common version managers, letting you switch language vers
 
 ### With nvm (Node Version Manager)
 
+`use_nvm` is not part of direnv's stdlib, so you need to define it once in `~/.config/direnv/direnvrc`:
+
+```bash
+# ~/.config/direnv/direnvrc
+use_nvm() {
+    local node_version=$1
+    nvm_sh="$HOME/.nvm/nvm.sh"
+    if [ -e "$nvm_sh" ]; then
+        \. "$nvm_sh"
+        nvm use "$node_version"
+    fi
+}
+```
+
+Then in your project:
+
 ```bash
 # .envrc
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
 use nvm 20.10.0
 ```
 
-Create a `.nvmrc` file in the project root and direnv picks it up:
+If you already have a `.nvmrc` file in the project root, you can source nvm and call `nvm use` directly, which picks up the version from `.nvmrc`:
 
 ```bash
 # .nvmrc
 20.10.0
+```
 
+```bash
 # .envrc
-use nvm
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+nvm use
 ```
 
 ### With pyenv (Python Version Manager)
 
 ```bash
 # .envrc
-use python 3.11.6
-
-# Or activate a virtualenv
-layout python3
+# Activate a pyenv-managed virtualenv for this project
+layout pyenv 3.11.6
 ```
 
 ### With rbenv (Ruby Version Manager)
 
 ```bash
 # .envrc
-use ruby 3.2.0
+use rbenv
 ```
 
 ## Project-Specific PATH Extensions
