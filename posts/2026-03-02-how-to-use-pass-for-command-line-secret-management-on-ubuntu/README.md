@@ -23,11 +23,9 @@ It sounds minimal, but `pass` is genuinely useful. Shell tab completion works on
 ```bash
 sudo apt-get update
 sudo apt-get install -y pass
-
-# Optionally install password generation support (included in many setups)
-
-sudo apt-get install -y pwgen
 ```
+
+`pass` pulls in `gnupg` and `tree` as dependencies, and recommends `git`, `xclip`, and `qrencode`. Built-in `pass generate` uses `/dev/urandom`, so no separate password generator is required.
 
 ## Setting Up a GPG Key
 
@@ -250,8 +248,9 @@ gpg --import teammate-alice-pubkey.asc
 gpg --import teammate-bob-pubkey.asc
 
 # Reinitialize the store with multiple recipients
+# (your key first, then each teammate's key ID)
 pass init \
-  ABCDEF1234567890 \   # Your key
+  ABCDEF1234567890 \
   ALICE_KEY_ID \
   BOB_KEY_ID
 
