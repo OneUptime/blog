@@ -47,15 +47,15 @@ curl -X POST https://factory.talos.dev/schematics \
 
 ### Method 2: Machine Configuration
 
-Include the extension in your machine configuration:
+Reference the schematic-based installer image in your machine configuration. Extensions are baked into the installer via the Image Factory schematic, so you do not list them again here:
 
 ```yaml
 machine:
   install:
     image: factory.talos.dev/installer/<schematic-with-tailscale>:v1.7.0
-    extensions:
-      - image: ghcr.io/siderolabs/tailscale:v1.7.0
 ```
+
+> Note: The legacy `machine.install.extensions` field has been deprecated and removed. System extensions must be added through the Image Factory schematic.
 
 ### Method 3: Upgrade Existing Nodes
 
@@ -80,36 +80,29 @@ Generate an auth key from the Tailscale admin console:
 
 ### Applying the Configuration
 
-Configure Tailscale through the machine config extension service configuration:
+Configure Tailscale by applying an `ExtensionServiceConfig` document. This is the documented mechanism for passing environment variables to a Talos extension service. Save the following as `tailscale-config.yaml`:
 
 ```yaml
-machine:
-  files:
-    - content: |
-        TS_AUTHKEY=tskey-auth-xxxxx-xxxxxxxxxxxxxxxxxx
-        TS_ROUTES=10.244.0.0/16,10.96.0.0/12
-        TS_EXTRA_ARGS=--advertise-tags=tag:kubernetes --hostname=talos-cp-1
-        TS_ACCEPT_DNS=false
-      path: /var/etc/tailscale/auth.env
-      permissions: 0600
-      op: create
+apiVersion: v1alpha1
+kind: ExtensionServiceConfig
+name: tailscale
+environment:
+  - TS_AUTHKEY=tskey-auth-xxxxx-xxxxxxxxxxxxxxxxxx
+  - TS_ROUTES=10.244.0.0/16,10.96.0.0/12
+  - TS_EXTRA_ARGS=--advertise-tags=tag:kubernetes --hostname=talos-cp-1
+  - TS_ACCEPT_DNS=false
 ```
 
-Apply this to your nodes:
+Apply it to your nodes:
 
 ```bash
-talosctl -n 192.168.1.10 patch machineconfig -p '[
-  {
-    "op": "add",
-    "path": "/machine/files/-",
-    "value": {
-      "content": "TS_AUTHKEY=tskey-auth-xxxxx-xxxxxxxxxxxxxxxxxx\nTS_ROUTES=10.244.0.0/16,10.96.0.0/12\nTS_EXTRA_ARGS=--advertise-tags=tag:kubernetes --hostname=talos-cp-1\nTS_ACCEPT_DNS=false\n",
-      "path": "/var/etc/tailscale/auth.env",
-      "permissions": 384,
-      "op": "create"
-    }
-  }
-]'
+talosctl -n 192.168.1.10 patch machineconfig --patch @tailscale-config.yaml
+```
+
+You can verify the configuration was accepted:
+
+```bash
+talosctl -n 192.168.1.10 get extensionserviceconfigs
 ```
 
 ### Configuration Options Explained
@@ -157,15 +150,13 @@ In the Tailscale admin console, you should see your Talos node listed with the h
 Advertise the Kubernetes API server endpoint through Tailscale:
 
 ```yaml
-machine:
-  files:
-    - content: |
-        TS_AUTHKEY=tskey-auth-xxxxx
-        TS_ROUTES=192.168.1.0/24
-        TS_EXTRA_ARGS=--hostname=talos-gateway
-      path: /var/etc/tailscale/auth.env
-      permissions: 0600
-      op: create
+apiVersion: v1alpha1
+kind: ExtensionServiceConfig
+name: tailscale
+environment:
+  - TS_AUTHKEY=tskey-auth-xxxxx
+  - TS_ROUTES=192.168.1.0/24
+  - TS_EXTRA_ARGS=--hostname=talos-gateway
 ```
 
 After enabling subnet routing and approving it in the Tailscale admin console, you can access your cluster's API from any machine on your tailnet:
@@ -181,24 +172,22 @@ Connect nodes in different data centers:
 
 ```yaml
 # Datacenter A nodes
-machine:
-  files:
-    - content: |
-        TS_AUTHKEY=tskey-auth-xxxxx
-        TS_ROUTES=10.10.0.0/16
-        TS_EXTRA_ARGS=--hostname=dc-a-node-1 --accept-routes
-      path: /var/etc/tailscale/auth.env
-      permissions: 0600
-
+apiVersion: v1alpha1
+kind: ExtensionServiceConfig
+name: tailscale
+environment:
+  - TS_AUTHKEY=tskey-auth-xxxxx
+  - TS_ROUTES=10.10.0.0/16
+  - TS_EXTRA_ARGS=--hostname=dc-a-node-1 --accept-routes
+---
 # Datacenter B nodes
-machine:
-  files:
-    - content: |
-        TS_AUTHKEY=tskey-auth-xxxxx
-        TS_ROUTES=10.20.0.0/16
-        TS_EXTRA_ARGS=--hostname=dc-b-node-1 --accept-routes
-      path: /var/etc/tailscale/auth.env
-      permissions: 0600
+apiVersion: v1alpha1
+kind: ExtensionServiceConfig
+name: tailscale
+environment:
+  - TS_AUTHKEY=tskey-auth-xxxxx
+  - TS_ROUTES=10.20.0.0/16
+  - TS_EXTRA_ARGS=--hostname=dc-b-node-1 --accept-routes
 ```
 
 ### Use Case 3: Secure Admin Access
@@ -262,18 +251,17 @@ for entry in "${ALL_NODES[@]}"; do
   IFS=':' read -r node hostname <<< "$entry"
   echo "Configuring Tailscale on $node ($hostname)..."
 
-  talosctl -n "$node" patch machineconfig -p "[
-    {
-      \"op\": \"add\",
-      \"path\": \"/machine/files/-\",
-      \"value\": {
-        \"content\": \"TS_AUTHKEY=${AUTH_KEY}\nTS_EXTRA_ARGS=--hostname=${hostname} --advertise-tags=tag:kubernetes\nTS_ACCEPT_DNS=false\n\",
-        \"path\": \"/var/etc/tailscale/auth.env\",
-        \"permissions\": 384,
-        \"op\": \"create\"
-      }
-    }
-  ]"
+  cat > /tmp/tailscale-${hostname}.yaml <<EOF
+apiVersion: v1alpha1
+kind: ExtensionServiceConfig
+name: tailscale
+environment:
+  - TS_AUTHKEY=${AUTH_KEY}
+  - TS_EXTRA_ARGS=--hostname=${hostname} --advertise-tags=tag:kubernetes
+  - TS_ACCEPT_DNS=false
+EOF
+
+  talosctl -n "$node" patch machineconfig --patch @/tmp/tailscale-${hostname}.yaml
 done
 
 echo "Done. Check Tailscale admin console for new nodes."
