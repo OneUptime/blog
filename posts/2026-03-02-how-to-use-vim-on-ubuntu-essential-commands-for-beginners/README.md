@@ -233,7 +233,7 @@ You can enable these temporarily from command mode:
 :set ignorecase     - Case-insensitive search
 :set smartcase      - Case-sensitive only when uppercase in pattern
 :set autoindent     - Auto-indent new lines
-:set syntax on      - Enable syntax highlighting
+:syntax on          - Enable syntax highlighting
 ```
 
 To make settings permanent, add them to `~/.vimrc`:
