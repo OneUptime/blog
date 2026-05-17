@@ -157,8 +157,8 @@ sudo apt install -y pluma
 # Image viewer
 sudo apt install -y eom
 
-# Document viewer
-sudo apt install -y evince
+# Document viewer (MATE fork of evince)
+sudo apt install -y atril
 
 # Archive manager
 sudo apt install -y engrampa
@@ -237,11 +237,11 @@ You can have both desktop environments installed and choose at login:
 # MATE session: /usr/share/xsessions/mate.desktop
 # GNOME session: /usr/share/xsessions/gnome.desktop
 
-# To set the default session for a user
-# Edit ~/.dmrc
-tee ~/.dmrc << 'EOF'
-[Desktop]
-Session=mate
+# To set the default session for a user, edit the AccountsService file
+# (modern LightDM/Ubuntu reads this; ~/.dmrc is ignored when AccountsService is active)
+sudo tee /var/lib/AccountsService/users/$USER << 'EOF'
+[User]
+XSession=mate
 EOF
 
 # Or for all users, configure LightDM default session
@@ -271,8 +271,11 @@ Configure custom shortcuts:
 
 ```bash
 # System > Preferences > Hardware > Keyboard Shortcuts
-# Or from command line:
-gsettings set org.mate.keybindings.media-keys terminal '<Ctrl><Alt>t'
+# Or from the command line via dconf (custom keybindings are a relocatable
+# schema, so use dconf write rather than gsettings):
+dconf write /org/mate/desktop/keybindings/custom0/name "'Open Terminal'"
+dconf write /org/mate/desktop/keybindings/custom0/binding "'<Control><Alt>t'"
+dconf write /org/mate/desktop/keybindings/custom0/action "'mate-terminal'"
 ```
 
 ## Removing MATE if Needed
