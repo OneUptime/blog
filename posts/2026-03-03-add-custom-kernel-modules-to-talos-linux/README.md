@@ -58,14 +58,16 @@ cd extensions
 
 # Look at the structure of an existing extension for reference
 ls storage/iscsi-tools/
-# Dockerfile  README.md  manifest.yaml  vars.yaml
+# README.md  iscsid.yaml  manifest.yaml.tmpl  patches  pkg.yaml  vars.yaml
 ```
 
 The key files are:
 
-- **Dockerfile** - Defines the build process for the extension
-- **manifest.yaml** - Describes the extension metadata
+- **pkg.yaml** - Defines the build process using the Siderolabs `bldr` tool
+- **manifest.yaml.tmpl** - Template that produces the extension metadata
 - **vars.yaml** - Build variables including versions
+
+The official extensions are built with the [bldr](https://github.com/siderolabs/bldr) tool rather than plain Dockerfiles. For your own custom kernel module you can either use `bldr` and follow the official pattern, or roll a Dockerfile that produces the same OCI image layout that Talos expects (a `manifest.yaml` at the image root and the kernel module files under `rootfs/`). The examples below take the Dockerfile approach because it is easier to follow as a one-off.
 
 ## Step 3: Create the Extension Structure
 
@@ -98,30 +100,31 @@ The Dockerfile compiles the kernel module and packages it:
 ```dockerfile
 # Dockerfile
 
-# Stage 1: Build the kernel module
+# Stage 1: pull the Talos kernel headers/source from the pkgs image
+# that matches your Talos release. This is critical: the headers must
+# match the running Talos kernel, not the build host.
+FROM ghcr.io/siderolabs/kernel:v1.7.0 AS kernel
+
+# Stage 2: build the kernel module against those headers
 FROM ghcr.io/siderolabs/tools:v1.7.0 AS build
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    linux-headers-$(uname -r) \
-    bc \
-    kmod
+# Bring the kernel source/headers in from the kernel image
+COPY --from=kernel / /
 
 # Copy module source code
 COPY src/ /src/
 WORKDIR /src
 
-# Download kernel headers matching Talos
-# The exact method depends on the Talos version
 ARG KERNEL_VERSION
 RUN make -C /lib/modules/${KERNEL_VERSION}/build M=/src modules
 
-# Stage 2: Package the module
+# Stage 3: package the module as a Talos extension. Talos expects
+# the OCI image to contain a manifest.yaml at the root and a rootfs/
+# directory whose contents are overlaid onto the Talos root filesystem.
 FROM scratch AS extension
 
-# Copy the compiled module
-COPY --from=build /src/*.ko /lib/modules/${KERNEL_VERSION}/extras/
+# Copy the compiled module into the extension rootfs
+COPY --from=build /src/*.ko /rootfs/usr/lib/modules/${KERNEL_VERSION}/extras/
 
 # Copy the manifest
 COPY manifest.yaml /
@@ -155,7 +158,7 @@ RUN make \
 FROM scratch AS extension-layer
 
 COPY --from=build /src/driver-*/my_driver.ko \
-    /lib/modules/
+    /rootfs/usr/lib/modules/
 
 COPY manifest.yaml /
 ```
