@@ -109,7 +109,7 @@ machine:
     config:
       internal-registry.example.com:
         tls:
-          # Provide the CA certificate
+          # Provide a client certificate and key for mutual TLS
           clientIdentity:
             crt: |
               -----BEGIN CERTIFICATE-----
@@ -230,7 +230,7 @@ kubectl run test-pull --image=nginx:latest --restart=Never
 talosctl logs containerd --nodes 10.0.0.5 | grep "pull"
 
 # List cached images
-talosctl images --nodes 10.0.0.5
+talosctl image list --nodes 10.0.0.5
 ```
 
 ## Troubleshooting Registry Issues
