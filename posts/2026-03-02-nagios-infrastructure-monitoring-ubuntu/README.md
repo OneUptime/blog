@@ -19,7 +19,7 @@ Ubuntu's repositories include Nagios, but the version is often outdated. Install
 
 sudo apt update
 sudo apt install -y build-essential apache2 php libapache2-mod-php \
-  libgd-dev libssl-dev libmcrypt-dev openssl wget unzip
+  libgd-dev libssl-dev openssl wget unzip
 
 # Create nagios user and group
 sudo useradd -m -s /bin/bash nagios
@@ -183,7 +183,7 @@ define service {
     use                     generic-service
     host_name               webserver01
     service_description     HTTPS
-    check_command           check_https
+    check_command           check_http!-S
     check_interval          5
     retry_interval          1
     max_check_attempts      4
