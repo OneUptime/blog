@@ -31,7 +31,7 @@ ethtool enp3s0    # requires ethtool package
 
 Modern Ubuntu uses predictable network interface names. The naming convention helps:
 - `en` prefix = ethernet
-- `p3s0` = PCI slot 3, function 0
+- `p3s0` = PCI bus 3, slot 0
 - `enp3s0` = ethernet on PCI bus 3, slot 0
 
 ## Basic Multiple Interface Configuration
