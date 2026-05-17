@@ -100,7 +100,7 @@ This is particularly useful when someone hands you a pcap from a production inci
 
 ## HTTP Traffic Analysis
 
-One of tcpflow's most useful features is its HTTP mode. When you pass `-g` (graphviz) or use the `--httpstats` option, tcpflow can extract and reconstruct HTTP conversations in a much more readable format.
+One of tcpflow's most useful features is its HTTP scanner. When you pass `-a` (enables all scanners) or `-e http` (enables only the HTTP scanner), tcpflow extracts HTTP conversations into separate files for headers and body, and decompresses gzip-encoded responses automatically.
 
 For HTTP analysis on port 80:
 
