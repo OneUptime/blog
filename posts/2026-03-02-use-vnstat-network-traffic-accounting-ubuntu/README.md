@@ -106,10 +106,10 @@ vnstat -y
 ### Top 10 Traffic Days
 
 ```bash
-vnstat --top10
+vnstat --top 10
 ```
 
-This shows the ten days with the highest traffic since monitoring began.
+This shows the ten days with the highest traffic since monitoring began. The default limit is already 10, so `vnstat --top` produces the same result.
 
 ### Live Traffic Rate
 
@@ -241,11 +241,11 @@ vnStat has an optional PHP-based web interface that shows traffic graphs:
 # Install dependencies
 sudo apt install nginx php-fpm php-cli php-gd -y
 
-# Download vnStat PHP
+# Download vnStat PHP (thrau's fork supports vnStat 2.x)
 cd /tmp
-wget https://github.com/sergeifilippov/vnstat-dashboard/archive/refs/heads/master.zip -O vnstat-web.zip
+wget https://github.com/thrau/vnstat2-php-frontend/archive/refs/heads/master.zip -O vnstat-web.zip
 unzip vnstat-web.zip
-sudo mv vnstat-dashboard-master /var/www/vnstat
+sudo mv vnstat2-php-frontend-master /var/www/vnstat
 ```
 
 Configure Nginx to serve it:
@@ -264,12 +264,18 @@ server {
 }
 ```
 
-Alternatively, vnStat's built-in image generation works with just the command line:
+Alternatively, the companion `vnstati` tool generates PNG charts directly from the command line. It ships as a separate package:
+
+```bash
+sudo apt install vnstati -y
+```
+
+Then generate images for daily and monthly traffic:
 
 ```bash
 # Generate PNG charts for daily and monthly traffic
-vnstat --png d -o /var/www/html/daily-traffic.png
-vnstat --png m -o /var/www/html/monthly-traffic.png
+vnstati -d -i enp0s3 -o /var/www/html/daily-traffic.png
+vnstati -m -i enp0s3 -o /var/www/html/monthly-traffic.png
 ```
 
 These can then be served by any web server or embedded in monitoring dashboards.
