@@ -14,32 +14,37 @@ This guide covers how to design and implement ingress firewall rules in Talos Li
 
 ## How Talos Firewall Works
 
-Talos implements its firewall using nftables under the hood. By default, when you create NetworkRuleConfig documents, Talos switches to a default-deny posture for the covered ports. Traffic that does not match any rule is dropped. This is the opposite of the default behavior (which allows everything), giving you explicit control over what traffic reaches your nodes.
+Talos implements its firewall using nftables under the hood. The baseline behavior is set by a `NetworkDefaultActionConfig` document: when its `ingress` field is `accept` (the default), all traffic is allowed unless a rule blocks it; when set to `block`, all traffic is dropped unless a rule allows it. To get a default-deny posture you must explicitly set `ingress: block` — simply creating `NetworkRuleConfig` documents does not change the default action on its own.
 
 The firewall operates on ingress traffic only - it controls what comes into the node. Egress traffic (outbound from the node) is not filtered by this mechanism.
 
 ## Basic Ingress Rule Structure
 
-Ingress rules are defined within NetworkRuleConfig documents:
+Ingress rules are defined within `NetworkRuleConfig` documents. A typical setup pairs a `NetworkDefaultActionConfig` (to switch to default-deny) with one or more `NetworkRuleConfig` documents that whitelist specific ports and source subnets:
 
 ```yaml
+# Switch the default ingress action to block
+apiVersion: v1alpha1
+kind: NetworkDefaultActionConfig
+ingress: block
+---
 # Basic ingress firewall rule
-
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
 name: allow-https
-spec:
-  ingress:
-    - subnet: 0.0.0.0/0    # Allow from any source
-      protocol: tcp
-      ports:
-        - 443              # HTTPS port
+portSelector:
+  ports:
+    - 443              # HTTPS port
+  protocol: tcp
+ingress:
+  - subnet: 0.0.0.0/0  # Allow from any source
 ```
 
-Each ingress rule specifies:
-- `subnet`: The source IP range allowed to send traffic (CIDR notation)
-- `protocol`: Either `tcp` or `udp`
-- `ports`: A list of destination ports to allow
+Each `NetworkRuleConfig` document specifies:
+- `name`: A unique identifier for the rule
+- `portSelector.ports`: A list of destination ports (or port ranges) the rule covers
+- `portSelector.protocol`: Either `tcp` or `udp`
+- `ingress`: A list of allowed sources, each containing a `subnet` (CIDR notation) and optional `except` (a CIDR to exclude from that subnet)
 
 ## Designing a Firewall Policy
 
@@ -55,65 +60,94 @@ A good firewall policy starts with understanding what services run on each node 
 | Scheduler | 10259 | Monitoring (optional) |
 | Controller Manager | 10257 | Monitoring (optional) |
 
+Each `NetworkRuleConfig` covers one `portSelector` (a set of ports plus a protocol), so a complete control plane policy is expressed as several documents:
+
 ```yaml
 # Control plane firewall rules
+
+# Talos API - admin access only
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
-name: control-plane-firewall
-spec:
-  ingress:
-    # Talos API - admin access only
-    - subnet: 10.10.0.0/24
-      protocol: tcp
-      ports:
-        - 50000
-
-    # Kubernetes API - accessible from internal network
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 6443
-
-    # etcd - control plane nodes only
-    - subnet: 10.0.1.0/24
-      protocol: tcp
-      ports:
-        - 2379
-        - 2380
-
-    # Kubelet - internal cluster traffic
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 10250
+name: talos-api
+portSelector:
+  ports:
+    - 50000
+  protocol: tcp
+ingress:
+  - subnet: 10.10.0.0/24
+---
+# Kubernetes API - accessible from internal network
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: kube-api
+portSelector:
+  ports:
+    - 6443
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
+---
+# etcd - control plane nodes only
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: etcd
+portSelector:
+  ports:
+    - 2379
+    - 2380
+  protocol: tcp
+ingress:
+  - subnet: 10.0.1.0/24
+---
+# Kubelet - internal cluster traffic
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: kubelet
+portSelector:
+  ports:
+    - 10250
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
 ```
 
 For worker nodes, the services are different:
 
 ```yaml
 # Worker node firewall rules
+
+# Talos API - admin access only
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
-name: worker-firewall
-spec:
-  ingress:
-    # Talos API - admin access only
-    - subnet: 10.10.0.0/24
-      protocol: tcp
-      ports:
-        - 50000
-
-    # Kubelet - API server needs access
-    - subnet: 10.0.1.0/24
-      protocol: tcp
-      ports:
-        - 10250
-
-    # NodePort services - accessible from internal network
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 30000-32767
+name: talos-api
+portSelector:
+  ports:
+    - 50000
+  protocol: tcp
+ingress:
+  - subnet: 10.10.0.0/24
+---
+# Kubelet - API server needs access
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: kubelet
+portSelector:
+  ports:
+    - 10250
+  protocol: tcp
+ingress:
+  - subnet: 10.0.1.0/24
+---
+# NodePort services - accessible from internal network
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: nodeports
+portSelector:
+  ports:
+    - 30000-32767
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
 ```
 
 ## Port Ranges
@@ -125,46 +159,38 @@ You can specify port ranges using the dash notation:
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
 name: allow-nodeports
-spec:
-  ingress:
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 30000-32767  # Kubernetes NodePort range
+portSelector:
+  ports:
+    - 30000-32767  # Kubernetes NodePort range
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
 ```
 
 This is more concise than listing every individual port and is essential for ranges like NodePorts.
 
 ## Multiple Source Subnets
 
-When different source networks need access to the same ports, list them as separate ingress entries:
+When different source networks need access to the same ports, list each as a separate entry under `ingress`. The optional `except` field can carve out a smaller CIDR from a larger allowed subnet:
 
 ```yaml
-# Allow from multiple networks
+# Allow API access from multiple networks
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
 name: multi-source-api-access
-spec:
-  ingress:
-    # Office network
-    - subnet: 192.168.1.0/24
-      protocol: tcp
-      ports:
-        - 6443
-        - 50000
-
-    # VPN users
-    - subnet: 172.16.0.0/16
-      protocol: tcp
-      ports:
-        - 6443
-        - 50000
-
-    # Cloud network (for managed services)
-    - subnet: 10.100.0.0/16
-      protocol: tcp
-      ports:
-        - 6443
+portSelector:
+  ports:
+    - 6443
+    - 50000
+  protocol: tcp
+ingress:
+  # Office network
+  - subnet: 192.168.1.0/24
+  # VPN users, excluding a reserved range
+  - subnet: 172.16.0.0/16
+    except: 172.16.255.0/24
+  # Cloud network (for managed services)
+  - subnet: 10.100.0.0/16
 ```
 
 ## UDP Rules
@@ -172,29 +198,38 @@ spec:
 Most Kubernetes traffic uses TCP, but some services need UDP:
 
 ```yaml
-# Allow UDP traffic for specific services
+# DNS (if running a node-local DNS cache)
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
-name: allow-udp-services
-spec:
-  ingress:
-    # DNS (if running a node-local DNS cache)
-    - subnet: 10.0.0.0/8
-      protocol: udp
-      ports:
-        - 53
-
-    # VXLAN overlay network traffic
-    - subnet: 10.0.0.0/8
-      protocol: udp
-      ports:
-        - 4789
-
-    # WireGuard (if using WireGuard-based CNI)
-    - subnet: 10.0.0.0/8
-      protocol: udp
-      ports:
-        - 51871
+name: dns
+portSelector:
+  ports:
+    - 53
+  protocol: udp
+ingress:
+  - subnet: 10.0.0.0/8
+---
+# VXLAN overlay network traffic
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: vxlan
+portSelector:
+  ports:
+    - 4789
+  protocol: udp
+ingress:
+  - subnet: 10.0.0.0/8
+---
+# WireGuard (if using WireGuard-based CNI)
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: wireguard
+portSelector:
+  ports:
+    - 51871
+  protocol: udp
+ingress:
+  - subnet: 10.0.0.0/8
 ```
 
 ## Layered Firewall Rules
@@ -206,37 +241,37 @@ You can create multiple NetworkRuleConfig documents that each handle a specific 
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
 name: system-services
-spec:
-  ingress:
-    - subnet: 10.10.0.0/24
-      protocol: tcp
-      ports:
-        - 50000
+portSelector:
+  ports:
+    - 50000
+  protocol: tcp
+ingress:
+  - subnet: 10.10.0.0/24
 ---
 # File: rules-kubernetes.yaml - Kubernetes services
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
 name: kubernetes-services
-spec:
-  ingress:
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 6443
-        - 10250
+portSelector:
+  ports:
+    - 6443
+    - 10250
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
 ---
 # File: rules-monitoring.yaml - Monitoring endpoints
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
 name: monitoring-endpoints
-spec:
-  ingress:
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 9100   # Node exporter
-        - 10249  # Kube-proxy metrics
-        - 10250  # Kubelet metrics
+portSelector:
+  ports:
+    - 9100   # Node exporter
+    - 10249  # Kube-proxy metrics
+    - 10250  # Kubelet metrics
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
 ```
 
 This modular approach makes it easy to add, modify, or remove specific rule sets without touching others.
@@ -259,11 +294,12 @@ Changes take effect immediately without a reboot.
 
 ## Verifying Firewall Rules
 
-After applying, verify that rules are active:
+After applying, verify that the rules are present in the machine config and that the corresponding nftables chains are active:
 
 ```bash
-# List active network rules
-talosctl get networkruleconfigs --nodes 192.168.1.100
+# Extract the firewall documents from the running machine config
+talosctl read /system/state/config.yaml --nodes 192.168.1.100 | \
+  yq 'select(.kind == "NetworkDefaultActionConfig"), select(.kind == "NetworkRuleConfig")'
 
 # Check the nftables ruleset (shows the actual firewall state)
 talosctl get nftableschain --nodes 192.168.1.100 -o yaml
@@ -304,7 +340,7 @@ talosctl apply-config --nodes 192.168.1.111 --file worker.yaml --config-patch @f
 
 ## Emergency Rule Removal
 
-If firewall rules lock you out, you can remove them by reapplying the configuration without the NetworkRuleConfig patches:
+If firewall rules lock you out, reapply the configuration without the `NetworkRuleConfig` and `NetworkDefaultActionConfig` patches. Leaving `NetworkDefaultActionConfig` set to `block` while removing the rule documents would deny everything, so both must be dropped to recover an allow-all posture:
 
 ```bash
 # Remove firewall rules by reapplying without patches
@@ -313,7 +349,7 @@ talosctl apply-config \
   --file controlplane.yaml
 ```
 
-This restores the default allow-all behavior for ingress traffic.
+This restores the default `accept` action for ingress traffic.
 
 ## CNI-Specific Considerations
 
