@@ -144,13 +144,13 @@ Linux has hundreds of kernel tracepoints for network events:
 
 ```bash
 # List available network tracepoints
-sudo perf list | grep -E "net:|sock:|tcp:|udp:|skb:"
+sudo perf list | grep -E "net:|sock:|tcp:|udp:|skb:|napi:"
 
 # Common network tracepoints:
 # net:net_dev_queue          - packet queued on device
 # net:net_dev_xmit           - packet transmitted
 # net:netif_receive_skb      - packet received
-# net:napi_poll              - NAPI polling
+# napi:napi_poll             - NAPI polling
 # sock:inet_sock_set_state   - TCP state transitions
 # tcp:tcp_retransmit_skb     - TCP retransmissions
 # tcp:tcp_probe              - TCP congestion window probe
@@ -239,7 +239,7 @@ sudo perf stat -e syscalls:sys_enter_sendto -I 1000 sleep 30
 
 ```bash
 # Check for TX/RX queue drops
-cat /proc/net/dev | awk 'NR>2{print $1, "rx_drop:"$5, "tx_drop:"$17}'
+cat /proc/net/dev | awk 'NR>2{print $1, "rx_drop:"$5, "tx_drop:"$13}'
 
 # Trace packet drops with perf
 sudo perf record -e skb:kfree_skb -a -g sleep 5
