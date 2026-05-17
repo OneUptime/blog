@@ -67,7 +67,7 @@ If you already have a running cluster and want to apply this change:
 
 ```bash
 # Apply the patch to a running control plane node
-talosctl apply-config --nodes 192.168.1.100 \
+talosctl patch mc --nodes 192.168.1.100 \
   --patch @machine-config-patch.yaml
 ```
 
