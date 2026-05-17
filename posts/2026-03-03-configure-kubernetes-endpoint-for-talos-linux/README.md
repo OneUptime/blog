@@ -24,7 +24,7 @@ When you run `talosctl gen config`, the second argument is this endpoint:
 talosctl gen config my-cluster https://192.168.1.100:6443
 ```
 
-This URL gets baked into the machine configurations for every node in the cluster. Control plane nodes use it to configure the API server's advertise address, worker nodes use it to find the API server, and your kubeconfig uses it to connect from your workstation.
+This URL gets baked into the machine configurations for every node in the cluster. All components - control plane nodes, worker nodes, and your kubeconfig - use this endpoint as the canonical address to reach the Kubernetes API server. It is also included as a SAN in the generated API server certificate.
 
 ## Single Control Plane Node
 
@@ -146,7 +146,7 @@ cluster:
     endpoint: https://192.168.1.100:6443
 ```
 
-Both node types reference the same endpoint. Control plane nodes use it to know their advertise address, and worker nodes use it to discover the API server.
+Both node types reference the same endpoint. It is the canonical address every component uses to reach the Kubernetes API, and it is included as a SAN in the API server certificate.
 
 ## Changing the Endpoint After Cluster Creation
 
