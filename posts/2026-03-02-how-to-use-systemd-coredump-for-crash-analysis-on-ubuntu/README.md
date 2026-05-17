@@ -24,7 +24,7 @@ sudo apt install systemd-coredump
 
 # Verify the core pattern is set to use systemd-coredump
 cat /proc/sys/kernel/core_pattern
-# Should show: |/lib/systemd/systemd-coredump %P %u %g %s %t %c %h
+# Should show: |/usr/lib/systemd/systemd-coredump %P %u %g %s %t %c %h
 ```
 
 ## Configuring systemd-coredump
@@ -38,26 +38,23 @@ sudo nano /etc/systemd/coredump.conf
 ```ini
 [Coredump]
 # What to do with core dumps
-# "store": store to disk
-# "journal": store in journal only (no separate file)
+# "external": store to disk under /var/lib/systemd/coredump
+# "journal": store in the journal only (no separate file)
 # "none": don't store
 Storage=external
 
-# Compress stored core dumps (xz compression)
+# Compress stored core dumps (zstd by default on modern systemd)
 Compress=yes
 
 # Maximum size of a single core dump to store (in bytes)
 # Use suffix: K, M, G
 ProcessSizeMax=2G
 
-# Maximum total space for all stored core dumps
-ExternalSizeMax=10G
+# Maximum total disk space used by stored core dumps
+MaxUse=10G
 
-# How long to keep core dumps (0 = keep forever)
-MaxRetentionSec=1week
-
-# Keep at most this many core dumps
-# MaxCount=100
+# Minimum free disk space to keep on the filesystem
+KeepFree=1G
 ```
 
 After editing:
@@ -132,9 +129,10 @@ Output includes:
 
 ```bash
 # Show the backtrace for the most recent crash
-coredumpctl info --debugger=gdb
+# (systemd-coredump includes a stack trace in 'info' output when symbols are present)
+coredumpctl info
 
-# Or use gdb directly
+# Launch gdb on the crash
 coredumpctl debug
 
 # In GDB, type:
@@ -304,7 +302,7 @@ sudo find /var/lib/systemd/coredump/ -name "*.zst" -mtime +7 -delete
 sudo find /var/lib/systemd/coredump/ -name "*.lz4" -mtime +7 -delete
 ```
 
-The `MaxRetentionSec` and `ExternalSizeMax` settings in `coredump.conf` handle this automatically when configured.
+The `MaxUse`, `KeepFree`, and `ExternalSizeMax` settings in `coredump.conf` handle disk-space cleanup automatically when configured. For age-based retention, the systemd-tmpfiles configuration in `/usr/lib/tmpfiles.d/systemd.conf` controls how long files in `/var/lib/systemd/coredump/` are kept (default: 3 days).
 
 ## Troubleshooting Missing Core Dumps
 
@@ -313,7 +311,7 @@ The `MaxRetentionSec` and `ExternalSizeMax` settings in `coredump.conf` handle t
 ```bash
 # Check if core_pattern is set correctly
 cat /proc/sys/kernel/core_pattern
-# Should be: |/lib/systemd/systemd-coredump %P %u %g %s %t %c %h
+# Should be: |/usr/lib/systemd/systemd-coredump %P %u %g %s %t %c %h
 
 # Check if apport is overriding it (Ubuntu's crash reporter)
 sudo systemctl status apport
