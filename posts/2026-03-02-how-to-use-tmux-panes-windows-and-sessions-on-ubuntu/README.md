@@ -160,8 +160,8 @@ The split inherits the current directory. If you configure tmux (see the configu
 
 ```bash
 # Split pane from command line (useful in scripts)
-tmux split-window -h -t api-project:editor  # horizontal in specific window
-tmux split-window -v -t api-project:editor  # vertical
+tmux split-window -h -t api-project:editor  # split into left/right panes
+tmux split-window -v -t api-project:editor  # split into top/bottom panes
 ```
 
 ### Navigating Panes
@@ -291,8 +291,8 @@ tmux send-keys -t "$SESSION:server" "python manage.py runserver" Enter
 # Window 3: split pane for tests and logs
 tmux new-window -t "$SESSION" -n "tools" -c "$PROJECT_DIR"
 tmux split-window -h -t "$SESSION:tools"
-tmux send-keys -t "$SESSION:tools.left" "pytest -v --watch" Enter
-tmux send-keys -t "$SESSION:tools.right" "tail -f /var/log/app.log" Enter
+tmux send-keys -t "$SESSION:tools.{left}" "pytest -v --watch" Enter
+tmux send-keys -t "$SESSION:tools.{right}" "tail -f /var/log/app.log" Enter
 
 # Attach to session, starting at editor window
 tmux select-window -t "$SESSION:editor"
