@@ -50,7 +50,17 @@ echo "192.168.1.100 foreman.example.com foreman" | sudo tee -a /etc/hosts
 
 ```bash
 # Install required tools
-sudo apt install -y curl wget gnupg2 apt-transport-https
+sudo apt install -y curl wget gnupg2 apt-transport-https ca-certificates
+
+# Foreman depends on Puppet 7 - add the Puppet release package first
+cd /tmp
+wget https://apt.puppet.com/puppet7-release-jammy.deb
+sudo apt install -y /tmp/puppet7-release-jammy.deb
+
+# Add the Foreman signing key (the deprecated apt-key approach is no longer
+# recommended on Ubuntu 22.04+; drop the key into trusted.gpg.d instead)
+sudo wget -q https://deb.theforeman.org/foreman.asc \
+  -O /etc/apt/trusted.gpg.d/foreman.asc
 
 # Add Foreman repository
 source /etc/os-release
@@ -59,10 +69,6 @@ echo "deb http://deb.theforeman.org/ ${VERSION_CODENAME} 3.9" | \
 
 echo "deb http://deb.theforeman.org/ plugins 3.9" | \
   sudo tee -a /etc/apt/sources.list.d/foreman.list
-
-# Add the signing key
-wget -q https://deb.theforeman.org/pubkey.gpg -O- | \
-  sudo apt-key add -
 
 sudo apt update
 ```
@@ -142,7 +148,7 @@ hammer host create \
   --mac "aa:bb:cc:dd:ee:ff" \
   --organization "Default Organization" \
   --location "Default Location" \
-  --environment "production"
+  --puppet-environment "production"
 ```
 
 ## Configuring Ansible Integration
@@ -153,9 +159,11 @@ Foreman's Ansible integration allows you to run playbooks and roles on managed h
 # Install the Ansible plugin during initial setup (or add it later)
 sudo foreman-installer --enable-foreman-plugin-ansible
 
-# On each managed Ubuntu host, install the Foreman Ansible callback
-sudo apt install -y python3-pip
-pip3 install foreman-ansible-modules
+# Optional: install the theforeman.foreman Ansible Collection on a control
+# node if you want to manage Foreman itself (hosts, host groups, products,
+# etc.) from Ansible playbooks. Managed Ubuntu hosts do not need this -
+# Foreman runs Ansible over SSH and only requires Python on the target.
+ansible-galaxy collection install theforeman.foreman
 ```
 
 ### Running Ansible Jobs from Foreman
@@ -174,7 +182,7 @@ Host groups in Foreman define templates that apply to multiple hosts - common Pu
 # Create a host group via hammer
 hammer hostgroup create \
   --name "ubuntu-webservers" \
-  --environment "production" \
+  --puppet-environment "production" \
   --domain "example.com" \
   --architecture "x86_64" \
   --operatingsystem "Ubuntu 22.04" \
