@@ -71,7 +71,7 @@ sudo ipsec pki --pub \
   --cakey /etc/ipsec.d/private/ca-key.pem \
   --dn "CN=vpn.example.com" \
   --san "vpn.example.com" \
-  --san "@203.0.113.1" \
+  --san "203.0.113.1" \
   --flag serverAuth \
   --flag ikeIntermediate \
   --outform pem | sudo tee /etc/ipsec.d/certs/server-cert.pem > /dev/null
@@ -91,9 +91,9 @@ sudo nano /etc/ipsec.conf
 
 ```conf
 config setup
-    # Enable strict CISCO IPsec compliance
+    # Allow connections even if CRL fetch fails
     strictcrlpolicy=no
-    # Enable unique IDs
+    # Allow multiple concurrent connections per identity
     uniqueids=no
 
 # Default connection settings
@@ -130,9 +130,6 @@ conn roadwarrior
     dpddelay=300s
     rekey=no
     fragmentation=yes
-
-    # Assign VPN IP from pool
-    rightsourceip=10.10.10.0/24
 ```
 
 ### Secrets File
@@ -337,8 +334,10 @@ sudo ipsec status
 # Show detailed connection information
 sudo ipsec statusall
 
-# Show security associations
+# Show loaded certificates
 sudo ipsec listcerts
+
+# Show active security associations
 sudo ipsec listsas
 
 # Reload configuration after changes
@@ -346,9 +345,6 @@ sudo ipsec reload
 
 # Reload secrets
 sudo ipsec rereadsecrets
-
-# Test configuration syntax
-sudo ipsec verify
 ```
 
 ## Revoking a User's Access
