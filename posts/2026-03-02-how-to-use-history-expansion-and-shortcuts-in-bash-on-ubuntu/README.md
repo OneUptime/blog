@@ -96,8 +96,9 @@ sudo !!
 # Re-run the most recent command starting with "ssh"
 !ssh
 
-# Re-run the most recent "sudo apt" command
-!sudo apt
+# Re-run the most recent command containing "sudo apt"
+# (!?string? matches a command containing string; the trailing ? is optional at end of line)
+!?sudo apt?
 ```
 
 Be careful with name-based expansion - it runs the command immediately. Use `:p` to preview first:
