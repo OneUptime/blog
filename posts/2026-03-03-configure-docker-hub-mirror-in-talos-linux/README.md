@@ -86,7 +86,7 @@ aws ecr create-pull-through-cache-rule \
   --upstream-registry-url registry-1.docker.io
 ```
 
-Then configure Talos:
+Then configure Talos. Because ECR pull-through cache serves images under a prefix path, you must set `overridePath: true` and include `/v2/<prefix>` in the endpoint URL so containerd uses the path verbatim:
 
 ```yaml
 machine:
@@ -94,8 +94,8 @@ machine:
     mirrors:
       docker.io:
         endpoints:
-          - https://123456789012.dkr.ecr.us-east-1.amazonaws.com/docker-hub
-          - https://registry-1.docker.io
+          - https://123456789012.dkr.ecr.us-east-1.amazonaws.com/v2/docker-hub
+        overridePath: true
     config:
       123456789012.dkr.ecr.us-east-1.amazonaws.com:
         auth:
