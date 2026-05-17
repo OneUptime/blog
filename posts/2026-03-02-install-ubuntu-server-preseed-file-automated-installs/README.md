@@ -120,7 +120,7 @@ openssl passwd -6 "your-secure-password"
 The `atomic` recipe puts everything on one partition. For servers, a custom recipe is better:
 
 ```text
-# Custom partitioning recipe: separate /boot, /, /var, /home
+# Custom partitioning recipe: EFI, separate /boot, root on LVM, and swap
 d-i partman-auto/method string lvm
 d-i partman-auto/choose_recipe select custom-server
 
@@ -134,9 +134,8 @@ d-i partman-auto/expert_recipe string \
             format{ }                   \
         .                               \
         1024 1024 1024 ext4             \
-            $defaultignore{ }           \
             $primary{ }                 \
-            $bootable{ }               \
+            $bootable{ }                \
             method{ format }            \
             format{ }                   \
             use_filesystem{ }           \
