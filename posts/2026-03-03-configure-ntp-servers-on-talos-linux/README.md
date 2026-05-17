@@ -12,15 +12,15 @@ Accurate time synchronization is not optional in a distributed system. Kubernete
 
 ## Default Time Sync Behavior
 
-Out of the box, Talos Linux synchronizes time using NTP. The default configuration points to well-known public NTP pools. However, relying on defaults is not ideal for production environments. Public NTP pools may have variable latency, could be blocked by firewall rules, or might not meet your organization's compliance requirements.
+Out of the box, Talos Linux synchronizes time using NTP. The default configuration points to `time.cloudflare.com`. However, relying on the default is not ideal for production environments. The default server may have variable latency, could be blocked by firewall rules, or might not meet your organization's compliance requirements.
 
 ```bash
 # Check current time sync status
 
 talosctl -n 192.168.1.10 get timestatus
 
-# View the current NTP configuration
-talosctl -n 192.168.1.10 get timeserverconfig -o yaml
+# View the current NTP servers in use
+talosctl -n 192.168.1.10 get timeservers -o yaml
 ```
 
 ## Configuring NTP in the Machine Configuration
@@ -77,7 +77,7 @@ NTP configuration changes are applied live without requiring a reboot. The time 
 
 ```bash
 # Verify the change was applied
-talosctl -n 192.168.1.10 get timeserverconfig -o yaml
+talosctl -n 192.168.1.10 get timeservers -o yaml
 
 # Check that time sync is working with the new servers
 talosctl -n 192.168.1.10 get timestatus
@@ -219,11 +219,12 @@ If NTP synchronization fails, you might see issues like:
 Here is how to diagnose NTP failures:
 
 ```bash
-# Check if the time service is running
-talosctl -n 192.168.1.10 service timed
+# Inspect time sync events from the controller runtime
+talosctl -n 192.168.1.10 logs controller-runtime | grep -i time.Sync
 
-# View time service logs
-talosctl -n 192.168.1.10 logs timed
+# Check the currently active time servers and sync status
+talosctl -n 192.168.1.10 get timeservers
+talosctl -n 192.168.1.10 get timestatus
 
 # Verify network connectivity to NTP servers
 # (from a machine that can reach the same network)
