@@ -21,7 +21,7 @@ sudo apt update
 sudo apt install apache2
 
 # Verify installation
-apache2 -version
+apache2 -v
 # Example output: Server version: Apache/2.4.52 (Ubuntu)
 
 # Check if it's running
