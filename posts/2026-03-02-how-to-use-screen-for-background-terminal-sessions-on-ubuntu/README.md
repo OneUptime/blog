@@ -232,9 +232,6 @@ bind ^k kill
 # Bind split keys
 bind | split -v
 bind - split
-
-# Larger history for copy mode
-defscrollback 5000
 ```
 
 ## Simpler Status Bar
