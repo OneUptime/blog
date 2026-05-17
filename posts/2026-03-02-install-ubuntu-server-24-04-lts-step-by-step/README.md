@@ -35,7 +35,8 @@ Then write the image:
 
 ```bash
 # Replace /dev/sdX with your actual USB device - this will erase everything on it
-sudo dd if=ubuntu-24.04-live-server-amd64.iso of=/dev/sdX bs=4M status=progress oflag=sync
+# Adjust the ISO filename to match the point release you downloaded (e.g., 24.04.4)
+sudo dd if=ubuntu-24.04.4-live-server-amd64.iso of=/dev/sdX bs=4M status=progress oflag=sync
 ```
 
 On Windows, use Rufus: select the ISO, choose GPT partition scheme for UEFI systems, and click Start.
