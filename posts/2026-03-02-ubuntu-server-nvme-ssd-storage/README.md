@@ -110,7 +110,7 @@ sudo nano /etc/udev/rules.d/60-nvme-scheduler.rules
 
 ```text
 # Set none scheduler for NVMe drives
-ACTION=="add|change", KERNEL=="nvme[0-9]*", ATTR{queue/scheduler}="none"
+ACTION=="add|change", KERNEL=="nvme[0-9]*n[0-9]*", ATTR{queue/scheduler}="none"
 ```
 
 ```bash
@@ -128,7 +128,7 @@ NVMe drives support much larger command queue depths than SATA (up to 65535 vs 3
 cat /sys/block/nvme0n1/queue/nr_requests
 # Default is usually 1023
 
-# Check read-ahead (in 512-byte sectors, so 256 = 128KB)
+# Check read-ahead (value is in kilobytes; default is typically 128 KB)
 cat /sys/block/nvme0n1/queue/read_ahead_kb
 ```
 
