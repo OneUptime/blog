@@ -12,7 +12,7 @@ The etcd database is where Kubernetes stores everything - every pod definition, 
 
 ## Why Database Size Matters
 
-etcd enforces a configurable space quota, which defaults to 2GB in upstream etcd but may be configured differently in Talos Linux (commonly 8GB). When the database reaches this quota, etcd switches to a maintenance-only mode where it rejects all new write requests. That means no new pods, no updated ConfigMaps, no changes at all until you resolve the space issue.
+etcd enforces a configurable space quota, which defaults to 2GB in upstream etcd and Talos Linux uses the same default unless you override it (etcd recommends not exceeding 8GB). When the database reaches this quota, etcd switches to a maintenance-only mode where it rejects all new write requests. That means no new pods, no updated ConfigMaps, no changes at all until you resolve the space issue.
 
 Even before hitting the quota, a large database affects performance. Larger databases mean slower snapshots, longer startup times after a restart, and increased memory consumption. Knowing your database size helps you plan maintenance windows and prevent emergencies.
 
@@ -26,8 +26,8 @@ The most direct way to check etcd database size on Talos Linux is through talosc
 talosctl -n 192.168.1.10 etcd status
 
 # Example output:
-# MEMBER    DB SIZE  IN USE   LEADER   RAFT INDEX  RAFT TERM
-# abc123    456 MB   234 MB   abc123   98765       42
+# NODE          MEMBER    DB SIZE  IN USE           LEADER    RAFT INDEX  RAFT TERM  LEARNER
+# 192.168.1.10  abc123    456 MB   234 MB (51.32%)  abc123    98765       42         false
 ```
 
 The output shows two important size values:
@@ -48,7 +48,7 @@ All members should show similar sizes. If one member has a significantly differe
 
 ## Method 2: Using etcdctl from a Pod
 
-If you need more detailed information, you can run etcdctl from within the cluster:
+If you need more detailed information, you can run etcdctl from within the cluster. Note that Talos applies the baseline Pod Security Admission profile by default, which blocks hostPath mounts outside of `kube-system`; the pod below runs in `kube-system` and requires that namespace to permit privileged workloads:
 
 ```yaml
 # etcd-check-pod.yaml
@@ -226,7 +226,7 @@ deriv(etcd_mvcc_db_total_size_in_bytes[24h])
 # Number of keys in etcd
 etcd_debugging_mvcc_keys_total
 
-# Number of revisions (indicates how much compaction could help)
+# Total number of keys removed by past compactions
 etcd_debugging_mvcc_db_compaction_keys_total
 ```
 
