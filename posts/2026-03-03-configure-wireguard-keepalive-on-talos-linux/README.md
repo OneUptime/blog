@@ -14,7 +14,7 @@ This post explains what persistent keepalive does, when you need it, how to conf
 
 ## What Persistent Keepalive Does
 
-When you set `persistentKeepalive` on a WireGuard peer, the local node sends a keepalive packet to that peer at the specified interval (in seconds). The packet is a small encrypted message that serves several purposes.
+When you set `persistentKeepaliveInterval` on a WireGuard peer, the local node sends a keepalive packet to that peer at the specified interval. The packet is a small encrypted message that serves several purposes.
 
 First, it keeps NAT mappings alive. NAT devices track active connections and expire them after a period of inactivity. If the mapping expires, incoming packets from the peer get dropped because the NAT device no longer knows where to forward them. Keepalive packets prevent the mapping from expiring.
 
@@ -57,7 +57,7 @@ If both peers have stable, public IP addresses and there is no NAT or stateful f
 
 ## Configuring Keepalive on Talos Linux
 
-The `persistentKeepalive` setting is configured per peer in the WireGuard interface definition. It is set in seconds.
+The `persistentKeepaliveInterval` setting is configured per peer in the WireGuard interface definition. It takes a Go duration value (for example `25s`, `1m`).
 
 ```yaml
 # Talos machine configuration with keepalive
@@ -78,15 +78,15 @@ machine:
               allowedIPs:
                 - 10.10.0.2/32
               # Send a keepalive every 25 seconds
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
 ```
 
 Apply this configuration with talosctl:
 
 ```bash
 # Apply the configuration patch
-talosctl -n 192.168.1.1 patch machineconfig \
-  --patch-file wireguard-keepalive-patch.yaml
+talosctl -n 192.168.1.1 patch mc \
+  --patch @wireguard-keepalive-patch.yaml
 ```
 
 ## Choosing the Right Keepalive Interval
@@ -107,7 +107,7 @@ peers:
     allowedIPs:
       - 10.10.0.2/32
     # More frequent keepalive for aggressive NAT
-    persistentKeepalive: 15
+    persistentKeepaliveInterval: 15s
 ```
 
 ### Relaxed Networks (60 seconds)
@@ -121,12 +121,12 @@ peers:
     endpoint: peer.example.com:51820
     allowedIPs:
       - 10.10.0.2/32
-    persistentKeepalive: 60
+    persistentKeepaliveInterval: 60s
 ```
 
 ### Zero (Disabled)
 
-Setting keepalive to 0 disables it entirely. Only do this when you are certain there is no NAT between the peers and you do not need the connection-monitoring benefit.
+Omitting `persistentKeepaliveInterval` (or setting it to `0s`) disables it entirely. Only do this when you are certain there is no NAT between the peers and you do not need the connection-monitoring benefit.
 
 ```yaml
 # Disabled keepalive - only for direct, stable connections
@@ -135,7 +135,7 @@ peers:
     endpoint: 203.0.113.10:51820
     allowedIPs:
       - 10.10.0.2/32
-    persistentKeepalive: 0
+    persistentKeepaliveInterval: 0s
 ```
 
 ## Keepalive in Different Topologies
@@ -160,12 +160,12 @@ machine:
               endpoint: 203.0.113.10:51820
               allowedIPs:
                 - 10.10.0.1/32
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
             - publicKey: "PUBLIC_NODE_2_KEY"
               endpoint: 198.51.100.20:51820
               allowedIPs:
                 - 10.10.0.2/32
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
 ```
 
 ### Hub and Spoke
@@ -189,42 +189,38 @@ machine:
               endpoint: hub.example.com:51820
               allowedIPs:
                 - 10.10.0.0/24
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
 ```
 
 ## Monitoring Keepalive Status
 
-You can verify that keepalive is working by checking the last handshake timestamp for each peer. A recent handshake indicates active communication.
+WireGuard does not expose a dedicated "last keepalive" counter — keepalives are transport data packets, not handshake messages, so they do not update the "latest handshake" timestamp shown by `wg show`. The cryptographic handshake is renegotiated separately, roughly every two minutes when traffic is flowing. What you can do on Talos is confirm the interface is configured and watch the link itself.
 
 ```bash
-# Check WireGuard peer status
-talosctl -n 192.168.1.1 read /proc/net/wireguard
+# Inspect the WireGuard link and its current state
+talosctl -n 192.168.1.1 get links wg0 -o yaml
 
-# The output includes for each peer:
-# latest handshake: <timestamp>
-# If this timestamp is within the keepalive interval,
-# the keepalive is working
-
-# Check more frequently to see the pattern
-watch -n 5 "talosctl -n 192.168.1.1 read /proc/net/wireguard"
+# Watch the interface so you can see it stay up over time
+talosctl -n 192.168.1.1 get links wg0 --watch
 ```
 
-If the latest handshake timestamp is much older than your keepalive interval, something is wrong. The keepalive packets are not reaching the peer, which typically means a firewall is blocking UDP traffic or the peer is offline.
+If you need per-peer byte counters or a fresh handshake timestamp, run `wg show` from a peer that has the `wg(8)` userspace tool installed. From the Talos node's perspective, the most reliable signal that keepalive is doing its job is simply that traffic to the peer's allowed IPs continues to work after long idle periods. If connectivity drops after a minute or so of inactivity, the keepalive packets are not reaching the peer — typically because a firewall is blocking UDP, the endpoint is wrong, or the peer is offline.
 
 ## Bandwidth Impact
 
-Keepalive packets are tiny. Each keepalive is a WireGuard packet with no payload, which comes to about 128 bytes on the wire after encryption and UDP headers. At 25-second intervals, that is roughly 5 bytes per second per peer, or about 400 bytes per minute.
+Keepalive packets are tiny. A WireGuard keepalive is a transport data message with an empty payload: 16 bytes of WireGuard header plus a 16-byte Poly1305 tag, giving a 32-byte UDP payload. With an 8-byte UDP header and a 20-byte IPv4 header, that is 60 bytes on the wire (80 bytes over IPv6). At 25-second intervals, that is about 2.4 bytes per second per peer, or roughly 144 bytes per minute.
 
-For a cluster with 10 nodes in a full mesh (each node has 9 peers), the keepalive overhead per node is about 3.6 KB per minute, or 216 KB per hour. This is negligible for any modern network.
+For a cluster with 10 nodes in a full mesh (each node has 9 peers), the keepalive overhead per node is about 1.3 KB per minute, or under 80 KB per hour. This is negligible for any modern network.
 
 ```text
 Per peer keepalive overhead:
-  Packet size: ~128 bytes
+  WireGuard payload: 32 bytes
+  On the wire (IPv4): ~60 bytes
   Interval: 25 seconds
-  Rate: ~5 bytes/second = 300 bytes/minute
+  Rate: ~2.4 bytes/second = ~144 bytes/minute
 
 Per node (9 peers):
-  Rate: ~2700 bytes/minute = ~162 KB/hour
+  Rate: ~22 bytes/second = ~1.3 KB/minute = ~78 KB/hour
 
 Completely negligible for any network connection.
 ```
@@ -244,8 +240,9 @@ Third, check that the endpoint address is correct and reachable. Keepalive does 
 # From a machine that has nc available
 nc -zuv peer.example.com 51820
 
-# Check if the WireGuard port is reachable
-talosctl -n 192.168.1.1 ping peer.example.com
+# From the Talos node, confirm the WireGuard link is up
+# and see the resolved endpoint and listen port
+talosctl -n 192.168.1.1 get links wg0 -o yaml
 ```
 
 ## Conclusion
