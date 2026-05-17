@@ -14,8 +14,8 @@ HTTP-layer denial of service attacks - flooding a web server with requests until
 
 mod_evasive maintains an in-memory hash table tracking:
 
-- Requests per second from each IP address (DOSPageCount/DOSPageInterval)
-- Requests per second to each URL (DOSSiteCount/DOSSiteInterval)
+- Requests per second to the same URL from each client (DOSPageCount/DOSPageInterval)
+- Total requests per second from each client across the listener (DOSSiteCount/DOSSiteInterval)
 - IP addresses that have been blocked (DOSBlockingPeriod)
 
 When a client exceeds the threshold, mod_evasive returns a 403 response and can optionally run a custom command (like adding the IP to a firewall blocklist).
