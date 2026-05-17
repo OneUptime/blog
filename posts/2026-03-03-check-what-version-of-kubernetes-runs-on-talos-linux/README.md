@@ -30,7 +30,7 @@ If you only want the server version:
 
 ```bash
 # Get just the server version in a shorter format
-kubectl version --short 2>/dev/null || kubectl version
+kubectl version
 
 # Or use the API directly
 kubectl get --raw /version | python3 -m json.tool
@@ -222,7 +222,7 @@ For monitoring and alerting, you can automate version checks:
 # check-versions.sh - Report cluster version information
 
 echo "=== Kubernetes Version ==="
-kubectl version --short 2>/dev/null || kubectl version
+kubectl version
 
 echo ""
 echo "=== Node Versions ==="
@@ -268,7 +268,7 @@ When a Kubernetes CVE is announced, you need to quickly determine whether your c
 
 ```bash
 # Quick version check
-kubectl version --short 2>/dev/null | grep "Server"
+kubectl version | grep "Server"
 ```
 
 Compare the output against the affected version range in the advisory.
