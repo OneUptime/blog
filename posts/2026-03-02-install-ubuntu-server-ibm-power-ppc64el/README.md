@@ -14,7 +14,7 @@ IBM POWER processors are high-end server CPUs used in enterprise environments, H
 
 Ubuntu's ppc64el port runs on:
 
-- **IBM POWER8** (2013): First generation with little-endian support; Ubuntu 14.04+
+- **IBM POWER8** (2013): First generation with little-endian support; supported up to Ubuntu 20.04 LTS (the ppc64el baseline shifted to POWER9 in 22.04, so newer releases will not run on POWER8)
 - **IBM POWER9** (2017): Enhanced I/O, NVLink for GPU computing; Ubuntu 16.04+
 - **IBM POWER10** (2021): Enhanced security, AI inferencing; Ubuntu 20.04+
 - **OpenPOWER systems**: Community designs (Raptor Talos II, Blackbird) using the OpenPOWER ISA
@@ -23,16 +23,15 @@ Ubuntu's ppc64el port runs on:
 
 POWER systems commonly run in two contexts:
 
-- **PowerVM LPAR (Logical Partition)**: IBM's proprietary hypervisor, common in enterprise deployments
+- **PowerVM LPAR (Logical Partition)**: IBM's proprietary hypervisor, common in enterprise deployments and typically managed through the HMC (Hardware Management Console) or IVM
 - **PowerNV (bare metal / KVM)**: Running directly on hardware without PowerVM; supports KVM virtualization
-- **PowerVM virtual machines through HMC**: Managed through IBM's Hardware Management Console
 
 ## Downloading ppc64el Ubuntu
 
 ```bash
-# Download Ubuntu Server 24.04 LTS for ppc64el
+# Download Ubuntu Server 24.04 LTS for ppc64el (replace the point release if a newer one is available)
 
-wget https://cdimage.ubuntu.com/releases/24.04/release/ubuntu-24.04-live-server-ppc64el.iso
+wget https://cdimage.ubuntu.com/releases/24.04/release/ubuntu-24.04.4-live-server-ppc64el.iso
 
 # Verify checksum
 wget https://cdimage.ubuntu.com/releases/24.04/release/SHA256SUMS
@@ -157,12 +156,12 @@ storage:
       path: /
 ```
 
-### UEFI-Based POWER Systems
+### Detecting the Active Firmware
 
-POWER9 and POWER10 systems increasingly support UEFI boot alongside the traditional OPAL/OpenFirmware. On UEFI-capable POWER systems, use GPT partitioning with an EFI partition, same as x86_64.
+PowerVM LPARs boot via SLOF (Slimline Open Firmware), and PowerNV systems boot via OPAL/Petitboot. UEFI is not the standard firmware on POWER hardware, so most installs will use the PReP layout above. You can confirm which firmware is active at runtime:
 
 ```bash
-# Check if booted in UEFI mode
+# /sys/firmware/efi exists only on UEFI systems
 [ -d /sys/firmware/efi ] && echo "UEFI" || echo "OpenFirmware/OPAL"
 ```
 
@@ -184,20 +183,12 @@ Petitboot also supports network booting (PXE/PXELINUX) if you have a boot server
 
 ### Disk Layout for PowerNV
 
-PowerNV systems typically use GPT. With UEFI support:
-
-```text
-/dev/sda1  512MB  FAT32     /boot/efi (EFI partition)
-/dev/sda2  1GB    ext4      /boot
-/dev/sda3  rest   LVM/ext4  /
-```
-
-Without UEFI (pure OpenFirmware):
+PowerNV systems boot through OPAL/Petitboot rather than UEFI, so the standard layout is GPT (or MBR) with a small PReP partition holding the GRUB image that Petitboot will kexec:
 
 ```text
 /dev/sda1  8MB    PReP      (bootloader)
 /dev/sda2  1GB    ext4      /boot
-/dev/sda3  rest   ext4      /
+/dev/sda3  rest   ext4/LVM  /
 ```
 
 ## Verifying the ppc64el Architecture
@@ -279,8 +270,8 @@ apt-cache show package-name | grep -A 2 "Package:"
 PowerNV systems can run KVM guests. Ubuntu Server on PowerNV supports hosting KVM virtual machines:
 
 ```bash
-# Install KVM support
-sudo apt install qemu-kvm libvirt-daemon-system virtinst
+# Install KVM support (kvm-ok ships in cpu-checker)
+sudo apt install qemu-kvm libvirt-daemon-system virtinst cpu-checker
 
 # Check KVM acceleration is available
 sudo kvm-ok
@@ -293,8 +284,7 @@ sudo virt-install \
     --vcpus 2 \
     --disk path=/var/lib/libvirt/images/test.qcow2,size=20 \
     --cdrom /path/to/ubuntu.iso \
-    --os-type linux \
-    --os-variant ubuntu24.04 \
+    --osinfo ubuntu24.04 \
     --graphics none \
     --console pty,target_type=serial
 ```
