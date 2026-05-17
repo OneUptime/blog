@@ -180,7 +180,7 @@ openssl s_client -cipher "ECDHE-RSA-AES256-GCM-SHA384" \
     -connect example.com:443 -servername example.com </dev/null 2>&1 | \
     grep -E "Cipher|error"
 
-# List cipher suites the server prefers
+# Show the cipher suite negotiated for this connection
 openssl s_client -connect example.com:443 -servername example.com </dev/null 2>/dev/null | \
     grep "Cipher"
 ```
@@ -199,13 +199,13 @@ openssl s_client -connect mail.example.com:143 -starttls imap
 # LDAP with STARTTLS
 openssl s_client -connect ldap.example.com:389 -starttls ldap
 
-# MySQL TLS
-openssl s_client -connect db.example.com:3306
+# MySQL TLS (MySQL negotiates TLS via its own protocol, not raw TLS)
+openssl s_client -connect db.example.com:3306 -starttls mysql
 
-# PostgreSQL TLS
-openssl s_client -connect db.example.com:5432
+# PostgreSQL TLS (PostgreSQL upgrades to TLS via its own protocol, not raw TLS)
+openssl s_client -connect db.example.com:5432 -starttls postgres
 
-# Redis TLS (port 6380 typically)
+# Redis TLS (port 6380 typically; assumes a TLS-only port)
 openssl s_client -connect redis.example.com:6380
 ```
 
