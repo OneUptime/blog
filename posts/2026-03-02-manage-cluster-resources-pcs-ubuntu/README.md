@@ -36,7 +36,7 @@ Before managing a cluster, authenticate the nodes:
 sudo pcs host auth node1 node2 -u hacluster -p yourpassword
 
 # Verify authentication status
-sudo pcs host status
+sudo pcs pcsd status
 ```
 
 ## Understanding Cluster Resources
@@ -91,13 +91,10 @@ sudo pcs resource create nginx-service \
 sudo pcs status
 
 # Show detailed resource information
-sudo pcs resource show
+sudo pcs resource status
 
 # Show configuration of a specific resource
-sudo pcs resource show cluster-vip
-
-# Show resource operations history
-sudo pcs resource history cluster-vip
+sudo pcs resource config cluster-vip
 ```
 
 Resource Groups
@@ -112,7 +109,7 @@ sudo pcs resource group add webservice cluster-vip apache-web
 sudo pcs resource group add webservice mysql-service --before apache-web
 
 # View group configuration
-sudo pcs resource show webservice
+sudo pcs resource config webservice
 
 # Remove a resource from a group
 sudo pcs resource ungroup webservice apache-web
@@ -219,7 +216,7 @@ sudo pcs node standby node1
 sudo pcs node unstandby node1
 
 # Show node attributes
-sudo pcs node attribute show
+sudo pcs node attribute
 
 # Set a node attribute (useful for location constraint rules)
 sudo pcs node attribute node1 role=primary
@@ -245,7 +242,7 @@ sudo pcs resource update apache-web \
   op start timeout=120s
 
 # View all operations for a resource
-sudo pcs resource show apache-web
+sudo pcs resource config apache-web
 ```
 
 ## Working with the CIB Directly
