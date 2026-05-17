@@ -156,13 +156,13 @@ When using VLANs, pick the VIP from the management VLAN's subnet:
 machine:
   network:
     interfaces:
-      - interface: eth0.100
-        addresses:
-          - 10.100.0.10/24
-        vlan:
-          vlanId: 100
-        vip:
-          ip: 10.100.0.50
+      - interface: eth0
+        vlans:
+          - vlanId: 100
+            addresses:
+              - 10.100.0.10/24
+            vip:
+              ip: 10.100.0.50
 ```
 
 ### Multiple Clusters on the Same Network
