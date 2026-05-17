@@ -20,10 +20,11 @@ When you set memory resources in a Kubernetes pod spec, they map to specific cgr
 Kubernetes                  Cgroup v2 File          Behavior
 -----------                 ---------------         --------
 resources.requests.memory   memory.min              Guaranteed minimum
-                            memory.low              Best-effort protection
 resources.limits.memory     memory.max              Hard limit (OOM on exceed)
                             memory.high             Throttle threshold
 ```
+
+Note: cgroup v2 also exposes `memory.low` (best-effort protection), but Kubernetes Memory QoS does not set it by default.
 
 Here is a concrete example:
 
@@ -37,10 +38,10 @@ resources:
     memory: "1Gi"
 ```
 
-This translates to:
+With Memory QoS enabled, this translates to:
 ```text
 memory.min = 536870912    (512 MiB - guaranteed)
-memory.high = 966367641   (approximately 90% of 1 GiB)
+memory.high = 1020051456  (~973 MiB - request + 0.9 * (limit - request))
 memory.max = 1073741824   (1 GiB - hard limit)
 ```
 
@@ -66,8 +67,8 @@ Memory QoS leverages cgroup v2's memory.min and memory.high controls. Enable it 
 machine:
   kubelet:
     extraConfig:
-      # Memory throttling factor determines memory.high
-      # memory.high = memory.max * memoryThrottlingFactor
+      # Memory throttling factor determines memory.high for Burstable pods:
+      # memory.high = requests.memory + (limits.memory - requests.memory) * memoryThrottlingFactor
       memoryThrottlingFactor: 0.9
       # Enable memory manager for NUMA-aware allocation
       memoryManagerPolicy: "Static"
