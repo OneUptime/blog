@@ -257,18 +257,21 @@ ps aux | grep rsync
 # See what file it is currently transferring
 ls -la /proc/$(pgrep rsync)/fd | grep -v "^total"
 
-# Send SIGUSR1 to get the current transfer status
-kill -USR1 $(pgrep rsync)
-
-# Or just watch the log file if you redirected output
+# Watch the log file if you redirected output
 tail -f /tmp/rsync.log
+
+# For new transfers, use --info=progress2 to see overall progress
+rsync -av --info=progress2 /source/ user@host:/destination/
 ```
 
 ## Useful rsync Patterns
 
 ```bash
-# Sync only files newer than a certain date
-rsync -av --newer-mtime='2026-01-01' /source/ /dest/
+# Sync only files newer than a certain date (rsync has no native flag for this;
+# generate a file list with find, then pass it via --files-from)
+touch -d '2026-01-01' /tmp/marker
+find /source -newer /tmp/marker -type f -printf '%P\n' \
+    | rsync -av --files-from=- /source/ /dest/
 
 # Delete excluded files from destination too (dangerous - test with -n first)
 rsync -av --delete --delete-excluded --exclude='*.tmp' /source/ /dest/
