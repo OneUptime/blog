@@ -21,7 +21,7 @@ A redundant control plane in Kubernetes means running multiple instances of each
 - **kube-scheduler** - Uses leader election. Only one instance is active at a time, but others are on standby.
 - **kube-controller-manager** - Also uses leader election with hot standby replicas.
 
-Talos Linux runs all of these components as static pods managed by the Talos runtime, not by Kubernetes itself. This means they start before Kubernetes is fully running and do not depend on the cluster's own scheduling.
+Talos Linux runs the kube-apiserver, kube-scheduler, and kube-controller-manager as static pods managed by the kubelet, while etcd runs as a service started directly by Talos (machined) outside of Kubernetes. This means the control plane comes up before Kubernetes is fully running and does not depend on the cluster's own scheduling.
 
 ## Planning Your Control Plane
 
@@ -198,11 +198,11 @@ cluster:
       - cp3.example.com
 ```
 
-If you need to rotate certificates:
+If you need to extract a secrets bundle from an existing control plane configuration (for example, to back up cluster secrets or to regenerate machine configs):
 
 ```bash
-# Rotate Talos API certificates
-talosctl gen secrets --from-controlplane-config _out/controlplane.yaml > secrets.yaml
+# Generate a secrets bundle from an existing controlplane config
+talosctl gen secrets --from-controlplane-config _out/controlplane.yaml -o secrets.yaml
 ```
 
 ## Monitoring Control Plane Health
@@ -261,8 +261,8 @@ Regularly back up etcd data from your control plane:
 # Take an etcd snapshot
 talosctl etcd snapshot db.snapshot --nodes 192.168.1.10
 
-# Verify the snapshot
-talosctl etcd snapshot status db.snapshot
+# Verify the snapshot (uses etcdctl on the local file)
+etcdctl --write-out=table snapshot status db.snapshot
 ```
 
 Schedule automatic backups:
