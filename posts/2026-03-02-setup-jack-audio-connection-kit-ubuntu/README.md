@@ -50,11 +50,11 @@ This installs the PipeWire JACK compatibility library, which makes JACK applicat
 
 ### Configure the JACK Override
 
-Set the LD_LIBRARY_PATH to use the PipeWire JACK libraries:
+Add the PipeWire JACK libraries to the dynamic linker search path so that JACK applications load them instead of the real libjack:
 
 ```bash
-# Check if PipeWire JACK is configured
-sudo cat /etc/pipewire/media-session.d/media-session.conf | grep jack
+# Verify the pipewire-jack ld.so.conf example exists
+ls /usr/share/doc/pipewire/examples/ld.so.conf.d/
 
 # Set PipeWire to provide JACK API
 sudo cp /usr/share/doc/pipewire/examples/ld.so.conf.d/pipewire-jack-*.conf \
@@ -125,7 +125,7 @@ Log out and back in after adding yourself to the audio group.
 jackd -d alsa -r 48000 -p 256 -n 2 -D &
 ```
 
-Latency with these settings: 256/48000 * 2 (periods) = 10.7ms round-trip
+JACK system latency with these settings: 256 * 2 / 48000 = 10.7ms (input-to-output through JACK; total round-trip including converters will be higher)
 
 ### Starting JACK via QjackCTL
 
@@ -202,7 +202,7 @@ sudo apt install ardour -y
 Launch Ardour with JACK running:
 
 ```bash
-ardour6
+ardour
 ```
 
 When creating a new session:
@@ -257,7 +257,7 @@ When using JACK through PipeWire, set the quantum for JACK sessions:
 
 ```bash
 # Set quantum before starting JACK application
-PIPEWIRE_QUANTUM=256/48000 ardour6
+PIPEWIRE_QUANTUM=256/48000 ardour
 
 # Or set system-wide in PipeWire config
 nano ~/.config/pipewire/pipewire.conf.d/jack.conf
