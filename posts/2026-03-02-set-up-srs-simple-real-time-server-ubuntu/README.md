@@ -30,9 +30,9 @@ SRS provides pre-built Docker images and release binaries. For a bare-metal Ubun
 sudo apt update
 sudo apt install -y wget tar
 
-# Download SRS 6.x stable release (check GitHub for latest version)
-SRS_VERSION="6.0.50"
-wget "https://github.com/ossrs/srs/releases/download/v${SRS_VERSION}/SRS-CentOS7-x86_64-${SRS_VERSION}.tar.gz"
+# Download SRS 6.x release (check GitHub for the latest tag, e.g. v6.0-r0)
+SRS_VERSION="6.0-r0"
+wget "https://github.com/ossrs/srs/releases/download/v${SRS_VERSION}/SRS-CentOS7-x86_64-${SRS_VERSION}.zip"
 
 # If the binary format doesn't match Ubuntu, build from source instead
 sudo apt install -y gcc g++ make cmake git libssl-dev libst-dev
