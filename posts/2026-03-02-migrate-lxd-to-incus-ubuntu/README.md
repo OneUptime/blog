@@ -34,7 +34,7 @@ lxc export my-container /backup/my-container.tar.gz
 # Export all running containers
 for container in $(lxc list --format csv -c n); do
     echo "Backing up: $container"
-    lxc snapshot create "$container" pre-migration 2>/dev/null || true
+    lxc snapshot "$container" pre-migration 2>/dev/null || true
 done
 ```
 
@@ -94,20 +94,13 @@ The migration is performed with the `lxd-to-incus` tool:
 # Install the migration tool
 sudo apt-get install -y lxd-to-incus
 
-# Run a dry-run first to see what would happen
-sudo lxd-to-incus --dry-run 2>&1 | tee /tmp/migration-dry-run.log
-
-# Review the dry-run output
-cat /tmp/migration-dry-run.log
-```
-
-The dry-run shows any warnings or incompatibilities without making any changes. Address any issues shown before proceeding.
-
-```bash
-# If the dry-run looks good, run the actual migration
-# This will stop LXD containers and migrate them to Incus
+# Run the migration tool
+# It performs validation checks and prints a summary, then prompts
+# "Proceed with the migration?" before making any changes
 sudo lxd-to-incus 2>&1 | tee /tmp/migration-log.log
 ```
+
+The tool first runs validation checks and prints a summary of what will be migrated. It then prompts for confirmation before making any changes - review the analysis output and only answer "yes" once you are satisfied. Pass `--yes` to skip the prompt for unattended migrations.
 
 The migration process:
 1. Stops all running LXD containers
@@ -191,8 +184,8 @@ incus exec webserver -- curl -s http://localhost/ | head -5
 # Check the error
 incus start my-container 2>&1
 
-# Look at the container logs
-incus logs my-container
+# Look at the container's recent log entries
+incus info my-container --show-log
 
 # Check the Incus daemon log
 sudo journalctl -u incus -n 100
@@ -214,8 +207,9 @@ incus config device show my-container
 # Check that dnsmasq is running for the bridge
 ps aux | grep dnsmasq
 
-# Restart the network
-incus network restart incusbr0
+# Restart the Incus daemon to re-apply the network configuration,
+# then restart the container
+sudo systemctl restart incus
 incus restart my-container
 ```
 
