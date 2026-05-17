@@ -265,7 +265,7 @@ table inet filter {
 nftables handles rate limiting natively:
 
 ```bash
-# Rate limit SSH connections - drop if more than 3 new connections per 30 seconds per IP
+# Rate limit SSH connections - drop if more than 3 new connections per minute
 sudo nft add rule inet filter input \
     tcp dport 22 \
     ct state new \
@@ -285,7 +285,7 @@ In a config file:
 chain input {
     type filter hook input priority 0; policy drop;
 
-    # SSH rate limiting - drop if exceeding 3 new connections per 30 seconds
+    # SSH rate limiting - allow up to 3 new connections per minute per source IP
     tcp dport 22 ct state new meter ssh-rate-limit { ip saddr limit rate 3/minute } accept
     tcp dport 22 ct state new drop
 }
@@ -321,8 +321,8 @@ sudo nft add rule ip nat prerouting \
 nftables provides translation tools:
 
 ```bash
-# Install translation tools
-sudo apt install -y iptables-nftables-compat
+# Install iptables (provides iptables-translate and iptables-restore-translate)
+sudo apt install -y iptables
 
 # Translate iptables rules to nftables syntax
 sudo iptables-save | iptables-restore-translate
