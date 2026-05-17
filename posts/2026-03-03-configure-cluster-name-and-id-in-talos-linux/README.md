@@ -71,7 +71,7 @@ kubectl config get-contexts
 talosctl get machineconfig --nodes 192.168.1.10 -o yaml | grep clusterName
 ```
 
-**Certificates** - The cluster name is embedded in the TLS certificates that Talos generates. This helps identify which cluster a certificate belongs to.
+**Cluster info resource** - The cluster name (along with the cluster ID) is exposed by the `Info` resource that Talos maintains on every node. You can view it with `talosctl get info`.
 
 **Logs and metrics** - When forwarding logs or metrics, the cluster name can be used as a label to filter and group data by cluster.
 
@@ -132,8 +132,8 @@ talosctl gen config prod_cluster https://...              # underscores
 The cluster ID is automatically generated when you create a cluster configuration. It is a hash derived from the cluster secrets (root CA certificates). You can view it on a running cluster:
 
 ```bash
-# View the cluster identity
-talosctl get clusteridentity --nodes 192.168.1.10
+# View the cluster info, which includes the cluster ID and name
+talosctl get info --nodes 192.168.1.10
 ```
 
 The cluster ID serves several purposes:
@@ -146,7 +146,7 @@ You do not need to manage the cluster ID manually in most cases. It is generated
 
 ## Changing the Cluster Name
 
-Changing a cluster name after the cluster is running is possible but requires care. The cluster name is embedded in certificates and kubeconfig files, so changing it means updating these as well.
+Changing a cluster name after the cluster is running is possible but requires care. The cluster name is referenced in the kubeconfig and any external tooling that labels data by cluster, so changing it means updating these as well.
 
 To change the cluster name on a running cluster:
 
@@ -156,14 +156,14 @@ talosctl patch machineconfig --nodes 192.168.1.10 \
   --patch '{"cluster": {"clusterName": "new-cluster-name"}}'
 ```
 
-After changing the name, you need to regenerate your kubeconfig:
+After changing the name, regenerate your kubeconfig so the context and cluster entries reflect the new name:
 
 ```bash
 # Get a fresh kubeconfig with the new cluster name
-talosctl kubeconfig --nodes 192.168.1.10
+talosctl kubeconfig --nodes 192.168.1.10 --force
 ```
 
-Note that this does not regenerate the TLS certificates. The old cluster name will still be in the certificates until they are rotated. For a clean rename, it is often easier to set up a new cluster with the desired name and migrate workloads.
+For a clean rename across all tooling and dashboards, it is often easier to set up a new cluster with the desired name and migrate workloads.
 
 ## Multi-Cluster Management
 
@@ -195,7 +195,7 @@ Switch between clusters using:
 talosctl config context staging
 
 # Run a command against a specific context
-talosctl --context production cluster show
+talosctl --context production get info
 ```
 
 Similarly, kubectl uses the cluster name in its context:
