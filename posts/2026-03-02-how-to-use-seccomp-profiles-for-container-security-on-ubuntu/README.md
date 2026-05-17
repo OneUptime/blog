@@ -82,8 +82,8 @@ sudo apt install strace -y
 # Run your application under strace and capture syscalls
 strace -o /tmp/app-trace.txt -f your_application
 
-# Extract unique syscall names
-grep -oP '^\w+' /tmp/app-trace.txt | sort -u > /tmp/needed-syscalls.txt
+# Extract unique syscall names (handles [pid N] prefix added by strace -f)
+grep -oP '^(?:\[pid \d+\] )?\K\w+' /tmp/app-trace.txt | sort -u > /tmp/needed-syscalls.txt
 
 cat /tmp/needed-syscalls.txt
 ```
