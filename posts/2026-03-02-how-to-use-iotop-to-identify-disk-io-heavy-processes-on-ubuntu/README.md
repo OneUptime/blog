@@ -115,10 +115,10 @@ Or press `a` in interactive mode. This shows which process has done the most I/O
 
 ```bash
 # Monitor only processes with name matching "postgres"
-sudo iotop -p $(pgrep postgres | tr '\n' ',' | sed 's/,$//')
+sudo iotop $(pgrep postgres | sed 's/^/-p /' | tr '\n' ' ')
 ```
 
-Or with `-p` for a specific PID:
+The `-p` flag accepts a single PID; pass it multiple times to monitor several processes. For a specific PID:
 
 ```bash
 sudo iotop -p 1234
@@ -223,10 +223,7 @@ echo "Duration: ${DURATION}s, Interval: ${INTERVAL}s"
 
 sudo iotop -b -o -d $INTERVAL -n $(( DURATION / INTERVAL )) > "$OUTPUT"
 
-echo "Done. Top I/O consumers:"
-grep -v "^Total\|^Current\|^TID" "$OUTPUT" | \
-  awk '{read+=$4; write+=$6; cmd=$NF} END {print read, write, cmd}' | \
-  sort -rn | head -10
+echo "Done. Output saved to $OUTPUT"
 ```
 
 ## iotop vs pidstat for I/O Monitoring
