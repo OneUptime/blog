@@ -29,9 +29,6 @@ BCC (BPF Compiler Collection) provides a Python/Lua framework for writing eBPF p
 sudo apt update
 sudo apt install bpfcc-tools linux-headers-$(uname -r) python3-bpfcc
 
-# Or install from the latest packages
-sudo apt install bcc
-
 # Verify installation - list available tools
 ls /usr/sbin/*bcc* 2>/dev/null || ls /usr/share/bcc/tools/
 
@@ -59,13 +56,16 @@ sudo tcptop-bpfcc -C  # Show country as well
 # Trace TCP connection attempts that were retransmitted
 sudo tcpretrans-bpfcc
 
-# Show TCP round-trip time distributions
+# Show TCP round-trip time distributions as histograms
+sudo tcprtt-bpfcc
+
+# Show TCP session lifetimes (duration, bytes sent/received)
 sudo tcplife-bpfcc
 
-# Monitor DNS queries (UDP port 53)
-sudo execsnoop-bpfcc | grep -i dns
+# Monitor DNS/host resolution latency via libc getaddrinfo/gethostbyname
+sudo gethostlatency-bpfcc
 
-# Track connections by IP and port with latency
+# Track TCP connect, accept, and close events by IP and port
 sudo tcptracer-bpfcc
 ```
 
@@ -227,8 +227,8 @@ XDP provides the fastest possible packet processing at the driver level. Here is
 # Install xdp-tools
 sudo apt install xdp-tools
 
-# Load a built-in XDP program that drops all packets (benchmark XDP performance)
-# WARNING: This will drop all network traffic on the interface
+# Load a built-in XDP program that passes all packets through (a no-op,
+# useful to verify XDP is supported on the interface)
 # sudo ip link set dev eth0 xdp obj /usr/lib/bpf/xdp_pass.o sec xdp
 
 # Use xdp-filter for IP-based filtering
@@ -252,7 +252,7 @@ If you are running Kubernetes, Cilium uses eBPF for networking and Hubble provid
 
 ```bash
 # Install Hubble CLI
-export HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/master/stable.txt)
+export HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/main/stable.txt)
 curl -L --remote-name-all https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-amd64.tar.gz
 tar xzvf hubble-linux-amd64.tar.gz
 sudo mv hubble /usr/local/bin/
@@ -289,9 +289,9 @@ sudo apt install dropwatch
 # Start dropwatch to see where packets are being dropped
 sudo dropwatch -l kas
 
-# Or use the BCC tool for drops
-sudo /usr/share/bcc/tools/droptrace
-# Shows: CALLER, PROTOCOL, PKTLEN, MT, HOOK, IFNAME
+# Or use the BCC tool for TCP packets dropped by the kernel
+sudo tcpdrop-bpfcc
+# Shows: TIME, PID, IP, SADDR:SPORT > DADDR:DPORT, STATE (FLAGS), and a kernel stack trace
 
 # With bpftrace - trace kfree_skb (the function called when packets are dropped)
 sudo bpftrace -e '
