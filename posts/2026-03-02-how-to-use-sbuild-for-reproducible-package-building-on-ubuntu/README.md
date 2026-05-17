@@ -69,7 +69,9 @@ $distribution = 'noble';
 # Build architecture
 $build_arch = 'amd64';
 
-# Sign packages with your GPG key
+# Options passed to dpkg-buildpackage related to signing.
+# Default '-us -uc' disables signing of source and .changes.
+# To sign, remove these and pass --sign-with=KEYID on the command line.
 $pgp_options = ['-us', '-uc'];
 
 # Number of parallel build jobs
@@ -199,10 +201,11 @@ Reproducible builds produce identical binary output when given the same source a
 SOURCE_DATE_EPOCH=$(dpkg-parsechangelog -STimestamp)
 export SOURCE_DATE_EPOCH
 
-# Build with reproducibility enabled
-sbuild --dist=noble \
-  --debbuildopt="-DEB_BUILD_OPTIONS=reproducible=+all" \
-  ../mypackage_1.0-1.dsc
+# Enable reproducibility flags inside the build chroot by adding
+# DEB_BUILD_OPTIONS to $build_environment in ~/.sbuildrc, e.g.:
+#   $build_environment = { 'DEB_BUILD_OPTIONS' => 'reproducible=+all' };
+# Then build normally:
+sbuild --dist=noble ../mypackage_1.0-1.dsc
 
 # Verify reproducibility by building twice and comparing
 sbuild --dist=noble ../mypackage_1.0-1.dsc
