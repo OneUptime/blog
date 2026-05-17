@@ -94,7 +94,7 @@ server:
 Install Victoria Metrics:
 
 ```bash
-helm install victoria-metrics vm/victoria-metrics-single \
+helm install victoria-metrics-single vm/victoria-metrics-single \
   --namespace monitoring \
   --values victoria-metrics-single-values.yaml
 ```
@@ -110,7 +110,7 @@ prometheus:
     # Reduce local retention since VM handles long-term storage
     retention: 2h
     remoteWrite:
-      - url: "http://victoria-metrics-server.monitoring.svc.cluster.local:8428/api/v1/write"
+      - url: "http://victoria-metrics-single-server.monitoring.svc.cluster.local:8428/api/v1/write"
         # Queue configuration for reliable delivery
         queueConfig:
           maxSamplesPerSend: 10000
@@ -146,7 +146,7 @@ data:
       - name: VictoriaMetrics
         type: prometheus
         access: proxy
-        url: http://victoria-metrics-server.monitoring.svc.cluster.local:8428
+        url: http://victoria-metrics-single-server.monitoring.svc.cluster.local:8428
         isDefault: true
 ```
 
@@ -232,7 +232,7 @@ Victoria Metrics also provides vmagent, a lightweight metrics scraper that can r
 ```yaml
 # vmagent-values.yaml
 remoteWriteUrls:
-  - "http://victoria-metrics-server.monitoring.svc.cluster.local:8428/api/v1/write"
+  - "http://victoria-metrics-single-server.monitoring.svc.cluster.local:8428/api/v1/write"
 
 # Resource-efficient scraping configuration
 config:
