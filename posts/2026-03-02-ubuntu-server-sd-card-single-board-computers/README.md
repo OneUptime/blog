@@ -13,7 +13,7 @@ Single-board computers (SBCs) like the Raspberry Pi, ODROID, and similar ARM-bas
 ## Supported Boards
 
 Canonical provides official Ubuntu Server images for:
-- **Raspberry Pi 2, 3, 4, 5** (arm64 and armhf)
+- **Raspberry Pi 3, 4, 5, CM4, and Zero 2 W** (arm64)
 - **NVIDIA Jetson** series
 - Various other boards listed at cdimage.ubuntu.com/ubuntu-server/
 
