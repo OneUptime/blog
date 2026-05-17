@@ -221,8 +221,8 @@ talosctl get routes --nodes 192.168.1.10
 # Check DNS resolution
 talosctl get resolvers --nodes 192.168.1.10
 
-# Test connectivity
-talosctl ping 8.8.8.8 --nodes 192.168.1.10
+# Check link status
+talosctl get links --nodes 192.168.1.10
 ```
 
 ## Common Mistakes
