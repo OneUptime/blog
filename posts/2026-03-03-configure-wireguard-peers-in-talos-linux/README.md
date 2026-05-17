@@ -73,7 +73,7 @@ machine:
               # Which traffic to route through this tunnel
               allowedIPs:
                 - 10.10.0.2/32
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
 ```
 
 And the corresponding configuration for the second node:
@@ -97,7 +97,7 @@ machine:
               endpoint: 192.168.1.1:51820
               allowedIPs:
                 - 10.10.0.1/32
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
 ```
 
 ## Applying the Configuration
@@ -138,13 +138,13 @@ machine:
               endpoint: 192.168.1.2:51820
               allowedIPs:
                 - 10.10.0.2/32
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
             # Node 3
             - publicKey: "ZJ8Ds4iPMoN4X..."
               endpoint: 192.168.1.3:51820
               allowedIPs:
                 - 10.10.0.3/32
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
 ```
 
 Each node in the mesh gets a similar configuration, just with different keys and addresses. The number of peers grows linearly with the cluster size, so for very large clusters (50+ nodes), you might want to consider a hub-and-spoke topology instead of a full mesh.
@@ -160,15 +160,15 @@ talosctl -n 192.168.1.1 get links | grep wg0
 # Check that the WireGuard interface has the correct IP
 talosctl -n 192.168.1.1 get addresses | grep wg0
 
-# Ping the remote peer through the tunnel
-talosctl -n 192.168.1.1 ping 10.10.0.2
+# Inspect the link in detail (kind, MTU, operational state)
+talosctl -n 192.168.1.1 get links wg0 -o yaml
 
-# Check WireGuard handshake status
-# A recent handshake means the tunnel is active
-talosctl -n 192.168.1.1 read /proc/net/wireguard
+# Test connectivity through the tunnel from another machine
+# that has a route to the 10.10.0.0/24 network, for example:
+ping 10.10.0.2
 ```
 
-If the handshake timestamp is recent (within the last few minutes), the tunnel is working. If there is no handshake, check that the endpoint addresses are correct, the ports are open, and the public keys match.
+If the interface is up and packets flow across the tunnel, the configuration is working. If traffic does not flow, check that the endpoint addresses are correct, the UDP ports are open, and the public keys match.
 
 ## Routing Subnets Through Peers
 
@@ -194,7 +194,7 @@ machine:
                 - 10.10.0.100/32
                 # Route the entire office subnet through this peer
                 - 172.16.0.0/16
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
 ```
 
 With this configuration, any traffic destined for the 172.16.0.0/16 subnet will be sent through the WireGuard tunnel to the VPN gateway, which then routes it to the office network.
@@ -207,7 +207,7 @@ First, protect your private keys. In Talos, they are stored in the machine confi
 
 Second, use the allowedIPs field to restrict which traffic can come from each peer. If a peer should only send traffic from a single IP, set allowedIPs to that single IP with a /32 mask. Do not use 0.0.0.0/0 unless you specifically want to route all traffic through that peer.
 
-Third, keep the persistentKeepalive setting enabled for peers behind NAT. Without it, the NAT mapping can expire and the tunnel will stop working until the next outgoing packet.
+Third, keep the persistentKeepaliveInterval setting enabled for peers behind NAT. Without it, the NAT mapping can expire and the tunnel will stop working until the next outgoing packet.
 
 ```yaml
 # Good: Restrict allowed IPs to specific addresses
