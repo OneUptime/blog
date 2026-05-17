@@ -75,8 +75,8 @@ systemd-boot uses Type 1 or Type 2 boot entries. Talos Linux typically uses Unif
 # - The kernel command line
 # - Optionally, the OS release information
 
-# You can check the boot entry details
-talosctl read /boot/EFI/Linux/ 2>/dev/null
+# You can list the unified kernel images on the ESP
+talosctl list /boot/EFI/Linux/
 ```
 
 The unified approach means there are fewer files to manage and fewer things that can get out of sync.
@@ -87,7 +87,7 @@ You do not configure systemd-boot directly on a Talos system. Instead, you confi
 
 ### Setting Kernel Parameters
 
-Extra kernel parameters are passed through the Talos machine configuration:
+Extra kernel parameters can be passed through the Talos machine configuration:
 
 ```yaml
 # In your machine config (controlplane.yaml or worker.yaml)
@@ -100,7 +100,7 @@ machine:
       - iommu=pt
 ```
 
-When Talos installs or upgrades, it generates the boot entry with these parameters included.
+Important caveat: when systemd-boot is in use, the `.machine.install.extraKernelArgs` field is ignored, because the kernel command line is embedded inside the UKI (Unified Kernel Image) and cannot be changed without rebuilding the image. To add custom kernel arguments on systemd-boot/UKI systems, build a custom installer or boot image with the desired arguments using the Image Factory (https://factory.talos.dev/) or the `imager` tool, then upgrade the node to that image.
 
 ### Configuring the Boot Timeout
 
@@ -138,8 +138,11 @@ Here is what happens:
 6. If slot B fails to boot, the machine reverts to slot A
 
 ```bash
-# Check which slot is currently active after an upgrade
-talosctl get installedversions
+# Check the running Talos version after an upgrade
+talosctl version
+
+# Inspect the meta partition, which records the active boot label (A or B)
+talosctl get meta
 ```
 
 ## Secure Boot with systemd-boot
@@ -185,8 +188,10 @@ If an upgrade leaves the system unbootable:
 3. Inspect the boot partition to understand what went wrong
 
 ```bash
-# From a USB boot, check the installed system's ESP
-talosctl read /dev/sda1  # Or wherever the ESP is
+# From a USB boot in maintenance mode, list the block devices and
+# inspect the installed system's disks
+talosctl get disks --insecure --nodes <NODE_IP>
+talosctl get blockdevices --insecure --nodes <NODE_IP>
 ```
 
 ### Boot Entry Not Found
@@ -223,7 +228,7 @@ In extreme cases where the system will not boot at all, you can use a Talos USB 
 # The node enters maintenance mode
 
 # Identify the existing installation
-talosctl disks --insecure --nodes <NODE_IP>
+talosctl get disks --insecure --nodes <NODE_IP>
 
 # Reinstall Talos to the existing disk
 # This preserves the STATE partition (and thus configuration)
