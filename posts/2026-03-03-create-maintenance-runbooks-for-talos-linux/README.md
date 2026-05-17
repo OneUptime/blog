@@ -247,8 +247,9 @@ talosctl get certificate -n 10.0.0.1
 # Step 2: Identify expiring certificates
 # Look for certificates expiring within 30 days
 
-# Step 3: Rotate Talos certificates
-talosctl config rotate-certs -n 10.0.0.1
+# Step 3: Rotate the Talos CA (dry-run is the default; set --dry-run=false to apply)
+talosctl -n 10.0.0.1 rotate-ca --dry-run=false --talos=true --kubernetes=false
+# Capture the command output - it contains the new CA certificate and key
 
 # Step 4: Update your local talosconfig
 talosctl config merge /path/to/new-talosconfig
