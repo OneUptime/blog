@@ -94,8 +94,8 @@ ps -eo pid,ppid,user,%cpu,%mem,cmd
 # Show process start time and elapsed time
 ps -eo pid,lstart,etime,cmd
 
-# Show resource limits for a process
-ps -p 1234 -o pid,rlimit
+# Show resource limits for a process (read from /proc)
+cat /proc/1234/limits
 
 # Useful one-liner: show top CPU consumers with their user
 ps -eo user,pid,%cpu,%mem,cmd --sort=-%cpu | head -15
@@ -198,11 +198,13 @@ htop shows:
 - Task counts and uptime
 - A color-coded process list
 
-Color meanings in the process list:
-- **Green**: Regular user processes
-- **Blue**: Low priority (nice > 0) processes
-- **Red**: Kernel threads
-- **Yellow/Orange**: IRQ/softirq time
+Color meanings in the per-CPU bars:
+- **Blue**: Low priority threads (nice > 0)
+- **Green**: Normal priority (user) time
+- **Red**: Kernel time
+- **Orange**: IRQ time
+- **Magenta**: Soft IRQ time
+- **Grey**: I/O wait time
 
 ### htop Keyboard Shortcuts
 
@@ -213,8 +215,8 @@ F3     - Search for a process by name
 F4     - Filter processes (show only matching)
 F5     - Toggle tree view (show process hierarchy)
 F6     - Sort by column
-F7     - Decrease priority (nice)
-F8     - Increase priority (nice)
+F7     - Decrease nice value (increase priority; root required to go below 0)
+F8     - Increase nice value (decrease priority)
 F9     - Kill process (choose signal)
 F10    - Quit
 /      - Search
