@@ -31,22 +31,24 @@ The JSON version lets you filter by component, search by image name, and aggrega
 
 ## Talos Machine Log Format
 
-Talos Linux system services already output logs in a structured format. When you query logs with `talosctl`, you get structured data that includes the service name, timestamp, and message content.
+Talos Linux system services emit logs in their native format. When you query logs with `talosctl`, the raw log lines from the service are streamed back to you, prefixed with the node hostname. Some services (such as those that use the Talos structured logger) already emit JSON lines, while others emit plain text.
 
 ```bash
 # View machine logs in their native format
 talosctl -n 192.168.1.10 logs machined
 
-# Get logs as JSON output
-talosctl -n 192.168.1.10 logs machined -o json
+# Follow logs in real time
+talosctl -n 192.168.1.10 logs machined -f
 ```
 
-The `-o json` flag tells `talosctl` to output each log entry as a JSON object. This is useful when you want to pipe logs into other tools:
+`talosctl logs` does not transform the log output — there is no `-o json` flag on this command. If a service already emits JSON lines you can pipe its output directly into `jq`:
 
 ```bash
-# Pipe JSON logs into jq for filtering
-talosctl -n 192.168.1.10 logs machined -o json | jq 'select(.msg | contains("config"))'
+# Pipe JSON logs into jq for filtering (works only when the service emits JSON)
+talosctl -n 192.168.1.10 logs machined | jq 'select(.msg | contains("config"))'
 ```
+
+To guarantee that every machine log entry is delivered as a JSON object, configure log forwarding with the `json_lines` format as shown in the next section.
 
 ## Configuring Log Forwarding with JSON Format
 
