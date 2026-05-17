@@ -180,9 +180,11 @@ rdiff-backup --remove-older-than 30D /mnt/backup/rdiff-home
 # Remove increments older than 2 months
 rdiff-backup --remove-older-than 2M /mnt/backup/rdiff-home
 
-# Preview what would be removed (dry run)
-rdiff-backup --remove-older-than 30D --test /mnt/backup/rdiff-home
+# Preview what increments exist before removing (list with sizes)
+rdiff-backup --list-increment-sizes /mnt/backup/rdiff-home
 ```
+
+By default, rdiff-backup only removes a single session at a time. If more than one session matches the criterion, use `--force` to remove all of them.
 
 ## Creating an Automated Backup Script
 
@@ -264,13 +266,17 @@ rdiff-backup --compare-at-time now /home /mnt/backup/rdiff-home
 
 ## Checking Backup Statistics
 
-```bash
-# Show statistics for the last backup session
-rdiff-backup --list-session-statistics /mnt/backup/rdiff-home
+rdiff-backup writes a `session_statistics.<timestamp>.data` file into the `rdiff-backup-data` directory after every backup. View the most recent one to see statistics for the last session:
 
-# View the change summary for a specific increment
+```bash
+# Show statistics for the most recent backup session
+ls -t /mnt/backup/rdiff-home/rdiff-backup-data/session_statistics.*.data | head -1 | xargs cat
+
+# View the change summary for files modified in the last day
 rdiff-backup --list-changed-since 1D /mnt/backup/rdiff-home
 ```
+
+Pass `--print-statistics` to a backup invocation to print the same statistics to stdout at the end of the run (as the automated script above already does).
 
 ## Troubleshooting Common Issues
 
