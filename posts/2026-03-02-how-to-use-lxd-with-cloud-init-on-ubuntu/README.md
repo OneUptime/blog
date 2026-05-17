@@ -208,10 +208,9 @@ if ! lxc profile show "$PROFILE" &>/dev/null; then
 package_update: true
 packages:
   - python3
-  - python3-pip
+  - python3-flask
   - gunicorn
 runcmd:
-  - pip3 install flask
   - mkdir -p /opt/app
   - chown ubuntu:ubuntu /opt/app
 CLOUDINIT
@@ -268,6 +267,7 @@ cloud-init normally runs only once per instance. To re-run it during testing:
 # Clean cloud-init state and re-run (use only for testing)
 lxc exec mycontainer -- bash -c "
   cloud-init clean --logs
+  cloud-init init --local
   cloud-init init
   cloud-init modules --mode config
   cloud-init modules --mode final
