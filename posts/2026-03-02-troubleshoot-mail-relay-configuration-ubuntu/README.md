@@ -165,8 +165,8 @@ Diagnosis:
 # Test DNS resolution
 dig smtp.sendgrid.net
 
-# Test from Postfix's perspective
-postfix -e internal_mail_filter_classes= smtp_dns_lookup smtp.sendgrid.net
+# Test using the system resolver (NSS), which is what Postfix uses by default
+getent hosts smtp.sendgrid.net
 
 # Check /etc/resolv.conf
 cat /etc/resolv.conf
