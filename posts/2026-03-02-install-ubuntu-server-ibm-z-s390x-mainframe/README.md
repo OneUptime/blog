@@ -53,16 +53,15 @@ wget https://cdimage.ubuntu.com/releases/24.04/release/ubuntu-24.04-live-server-
 
 ### Define the z/VM Guest
 
-From the z/VM XEDIT or SMAPI interface, define a virtual machine. A minimal definition in DIRECTORY ENTRY format:
+From the z/VM XEDIT or SMAPI interface, define a virtual machine. A minimal definition in USER DIRECTORY format:
 
 ```text
-IDENTITY UBUNTU1 password 512M 4G G
+USER UBUNTU1 password 512M 4G G
   ACCOUNT usergroup billing-code
   CPU 00 BASE
   CPU 01
   CPU 02
   CPU 03
-  MEMORY DEFINE 4096M
   SPOOL 000C 2540 READER
   SPOOL 000D 2540 PUNCH
   SPOOL 000E 1403 PRINTER
@@ -94,8 +93,9 @@ cd /srv/tftp/ubuntu-s390x
 
 # Mount the s390x ISO and extract netboot files
 sudo mount ubuntu-24.04-live-server-s390x.iso /mnt
-sudo cp /mnt/casper/vmlinuz .
-sudo cp /mnt/casper/initrd .
+sudo cp /mnt/boot/kernel.ubuntu .
+sudo cp /mnt/boot/initrd.ubuntu .
+sudo cp /mnt/boot/parmfile.ubuntu .
 sudo umount /mnt
 ```
 
@@ -112,19 +112,23 @@ EOF
 
 ### Booting the z/VM Guest
 
-From the z/VM console, boot the guest using the network or from a punched card reader:
+From the z/VM console, transfer the kernel, initrd, and parmfile to the guest's virtual reader and IPL from device `00C` (the reader):
 
 ```text
-/* IPL the guest from the TFTP server */
-VMFIPLD UBUNTU1 PROFILE EXEC
-/* Or use the HMC to load the kernel/initrd */
+/* From a z/VM session that has the files on its A-disk,        */
+/* punch each file to the target guest's reader, then IPL 00C.  */
+CP SPOOL PUN * RDR
+PUNCH KERNEL UBUNTU A (NOH
+PUNCH PARMFILE UBUNTU A (NOH
+PUNCH INITRD UBUNTU A (NOH
+CP IPL 00C CLEAR
 ```
 
-More commonly, use the HMC's "Load from Removable Media or Server" option for the LPAR.
+For an LPAR install, use the HMC's "Load from Removable Media or Server" option to point at the kernel, initrd, and parmfile served from your install host.
 
 ## Installing Ubuntu as a KVM Guest on IBM Z
 
-KVM on IBM Z allows running standard KVM virtual machines with hardware virtualization acceleration. A z/VM LPAR running Linux with KVM can host many Ubuntu VMs.
+KVM on IBM Z allows running standard KVM virtual machines with hardware virtualization acceleration. An IBM Z LPAR running Linux with KVM can host many Ubuntu VMs.
 
 ### Setting Up the KVM Host
 
@@ -163,7 +167,7 @@ sudo virt-install \
     --os-variant ubuntu24.04
 ```
 
-IBM Z KVM uses `virtio` for all I/O devices - no emulated legacy hardware. The console type is `sclp` (System Console for Linux on POWER and Z).
+IBM Z KVM uses `virtio` for all I/O devices - no emulated legacy hardware. The console type is `sclp` (Service-Call Logical Processor), the standard line-mode console interface on IBM Z.
 
 ## DASD Configuration
 
@@ -227,7 +231,7 @@ target=/boot/zipl
 sudo zipl
 ```
 
-The Ubuntu package manager (`apt`) runs `zipl` automatically during kernel upgrades through the `linux-s390x` package post-install hooks.
+The Ubuntu package manager (`apt`) runs `zipl` automatically during kernel upgrades through the `zz-zipl` post-install hook shipped with the `linux-image-generic` kernel package.
 
 ## Networking on IBM Z
 
@@ -320,12 +324,12 @@ sudo apt install s390-tools
 # Tools included:
 # lsdasd     - list DASD devices
 # lszcrypt   - list cryptographic devices
-# parmfile   - manage IPL parameter files
+# chreipl    - configure the next re-IPL device
 # zipl       - bootloader
 # dbginfo.sh - collect debug information
 
 # Collect system debug information
-sudo /usr/share/s390-tools/dbginfo.sh
+sudo /sbin/dbginfo.sh
 ```
 
 Running Ubuntu on IBM Z gives you access to mainframe-class RAS features - hardware error correction, redundant components, and sub-millisecond failover - while using standard Ubuntu tooling. The architecture is specialized, but Canonical's s390x port ensures that the same Ubuntu packages and workflows you know from x86_64 work on IBM Z.
