@@ -146,11 +146,10 @@ metadata:
   name: default-ipv4-ippool
 spec:
   cidr: 10.244.0.0/16
-  encapsulation: VXLANCrossSubnet
   natOutgoing: true
   nodeSelector: all()
   blockSize: 26
-  # Disable IPIP if using VXLAN
+  # IPPool encapsulation is set via the separate ipipMode/vxlanMode fields
   ipipMode: Never
   vxlanMode: CrossSubnet
 ```
