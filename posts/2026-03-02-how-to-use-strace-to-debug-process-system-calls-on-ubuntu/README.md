@@ -215,13 +215,14 @@ sudo strace -p 1234 -p 5678
 
 ## Practical Example: Debugging a Failing Service
 
-Here's a real-world scenario. A service fails on startup with no useful log message:
+Here's a real-world scenario. A service fails on startup with no useful log message. Run the service binary directly under strace - tracing `systemctl start` would only trace the `systemctl` client itself, since systemd (PID 1) is the process that actually forks and execs the service:
 
 ```bash
-# Trace the service startup and save to file
+# Trace the service binary startup directly and save to file
+# Use the ExecStart command from the unit file (systemctl cat myservice)
 sudo strace -ff -e trace=file,network,process \
   -o /tmp/service_trace \
-  systemctl start myservice
+  /usr/bin/myservice --config /etc/myservice/config.yaml
 
 # After it fails, look for errors
 grep -h "ENOENT\|EACCES\|ECONNREFUSED" /tmp/service_trace.*
