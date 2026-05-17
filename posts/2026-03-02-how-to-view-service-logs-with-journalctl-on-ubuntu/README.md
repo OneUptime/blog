@@ -200,7 +200,7 @@ journalctl _UID=0
 # View kernel messages
 journalctl -k
 
-# View only syslog messages
+# View only messages from the daemon facility (facility 3)
 journalctl SYSLOG_FACILITY=3
 ```
 
