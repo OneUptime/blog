@@ -88,9 +88,10 @@ aws ec2 run-instances \
 
 ```bash
 # Create an Arm64 server on Hetzner
+# (cax11 is an Ampere Altra-based server type)
 hcloud server create \
     --name arm64-server \
-    --type cax11 \    # Ampere Altra-based server type
+    --type cax11 \
     --image ubuntu-24.04 \
     --ssh-key your-key
 ```
