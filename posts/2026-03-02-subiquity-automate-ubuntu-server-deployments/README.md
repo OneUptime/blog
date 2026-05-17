@@ -265,13 +265,12 @@ sudo apt install qemu-kvm libvirt-daemon-system virtinst
 qemu-img create -f qcow2 test-ubuntu.qcow2 20G
 
 # Boot the installer with autoinstall
-# The -kernel/-append approach injects the kernel parameter directly
+# --location extracts the kernel/initrd from the ISO and lets us inject --extra-args
 virt-install \
   --name test-ubuntu \
   --memory 2048 \
   --vcpus 2 \
   --disk path=test-ubuntu.qcow2,size=20 \
-  --cdrom ubuntu-24.04-live-server-amd64.iso \
   --os-variant ubuntu24.04 \
   --location ubuntu-24.04-live-server-amd64.iso,kernel=casper/vmlinuz,initrd=casper/initrd \
   --extra-args "autoinstall ds=nocloud-net;s=http://192.168.122.1:8080/" \
@@ -314,11 +313,11 @@ Before running an install, validate the YAML syntax:
 sudo apt install yq
 
 # Check YAML syntax
-yq eval user-data
+yq . user-data
 
-# Subiquity also provides a validation tool
-pip3 install curtin
-curtin schema --schema autoinstall user-data
+# Subiquity ships a dedicated autoinstall validator. Clone the repo and run:
+git clone https://github.com/canonical/subiquity.git
+./subiquity/scripts/validate-autoinstall-user-data.py user-data
 ```
 
 ## Debugging Failed Autoinstalls
