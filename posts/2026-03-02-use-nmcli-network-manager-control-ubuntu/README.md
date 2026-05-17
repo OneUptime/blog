@@ -210,7 +210,7 @@ ip addr show eth0
 ## VPN Connections
 
 ```bash
-# List available VPN types
+# Show help for `connection add` (lists all supported connection types, including VPN types)
 nmcli connection add help
 
 # Add an OpenVPN connection
@@ -237,9 +237,9 @@ nmcli connection show "MyVPN" | grep -E "GENERAL.STATE|VPN.VPN-STATE"
 # Get just the connection state (no headers)
 nmcli -t -f GENERAL.STATE device show wlan0
 
-# Check if connected (returns "connected" or other state)
+# Check if connected (the state output includes a numeric code and a label, e.g. "100 (connected)")
 STATE=$(nmcli -t -f GENERAL.STATE device show wlan0 | cut -d: -f2)
-if [ "$STATE" = "connected" ]; then
+if echo "$STATE" | grep -q "(connected)"; then
     echo "WiFi is connected"
 else
     echo "WiFi is not connected"
@@ -287,8 +287,9 @@ fi
 # View NetworkManager logs
 sudo journalctl -u NetworkManager -f
 
-# Show verbose output for a connection attempt
-nmcli -v device wifi connect "NetworkName" password "password"
+# Tail the NetworkManager log while attempting a connection to see verbose detail
+# (run in a separate terminal, or background it before running the connect command)
+sudo journalctl -u NetworkManager -f
 
 # Check NetworkManager daemon status
 nmcli general status
