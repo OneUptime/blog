@@ -164,17 +164,23 @@ sudo ufw-docker install
 sudo systemctl restart ufw
 
 # Now use ufw-docker to manage container access
-# Allow external access to a specific container
-sudo ufw-docker allow nginx 80
+# Allow external access to a specific container (any published port)
+sudo ufw-docker allow nginx
 
-# Allow access from a specific IP
-sudo ufw-docker allow from 192.168.1.0/24 to nginx 80
+# Allow a specific port on a container
+sudo ufw-docker allow nginx 80
+sudo ufw-docker allow nginx 443/tcp
+
+# For source-IP restrictions, ufw-docker does not have a "from" syntax.
+# Use ufw's native route command instead:
+sudo ufw route allow proto tcp from 192.168.1.0/24 to any port 80
 
 # List ufw-docker rules
 sudo ufw-docker status
 
-# Remove a rule
-sudo ufw-docker delete allow nginx 80
+# Remove a rule (omit port to remove all rules for the container)
+sudo ufw-docker delete allow nginx 80/tcp
+sudo ufw-docker delete allow nginx
 ```
 
 The `ufw-docker install` command adds iptables rules to `/etc/ufw/after.rules` that block Docker traffic from the outside by default and let you use `ufw-docker allow` to selectively permit access.
