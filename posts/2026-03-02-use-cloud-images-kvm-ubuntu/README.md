@@ -132,7 +132,7 @@ runcmd:
 # Final message logged to the console
 final_message: |
   Cloud-init finished after $UPTIME seconds.
-  Hostname: $HOSTNAME
+  Datasource: $DATASOURCE
 EOF
 ```
 
@@ -168,7 +168,7 @@ EOF
 ### Metadata File
 
 ```bash
-cat > meta-data << 'EOF'
+cat > meta-data << EOF
 instance-id: webserver-01-$(date +%s)
 local-hostname: webserver-01
 EOF
