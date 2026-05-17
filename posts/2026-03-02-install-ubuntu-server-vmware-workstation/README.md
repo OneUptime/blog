@@ -8,11 +8,11 @@ Description: A complete guide to installing Ubuntu Server on VMware Workstation,
 
 ---
 
-VMware Workstation is one of the most capable desktop hypervisors available, supporting advanced features like snapshots, cloning, linked clones, and VM teams. Installing Ubuntu Server in VMware Workstation gives you a fully isolated server environment on your workstation that can be paused, snapshotted, and cloned at will. This makes it ideal for testing, development, and learning server administration without touching production systems.
+VMware Workstation is one of the most capable desktop hypervisors available, supporting advanced features like snapshots, cloning, and linked clones. Installing Ubuntu Server in VMware Workstation gives you a fully isolated server environment on your workstation that can be paused, snapshotted, and cloned at will. This makes it ideal for testing, development, and learning server administration without touching production systems.
 
 ## Prerequisites
 
-- VMware Workstation Pro 17 or later (or Workstation Player for non-commercial use)
+- VMware Workstation Pro 17 or later (free for personal use)
 - Ubuntu Server 24.04 LTS ISO downloaded from ubuntu.com
 - At least 4 GB RAM and 40 GB free disk space on the host
 
@@ -220,7 +220,7 @@ VMware Workstation supports shared folders between host and guest, useful for mo
 
 1. VM - Settings - Options - Shared Folders
 2. Add a host path to share
-3. In the VM, the share appears at `/mnt/hflys/<sharename>`
+3. In the VM, the share appears at `/mnt/hgfs/<sharename>`
 
 ```bash
 # Verify shared folder is accessible (requires open-vm-tools)
@@ -245,7 +245,7 @@ sudo swapoff -a
 # Set in VM Settings - Hard Disk - Advanced - Bus type: Paravirtual
 
 # Enable memory ballooning by ensuring open-vm-tools is running
-systemctl status vmtoolsd
+systemctl status open-vm-tools
 ```
 
 VMware Workstation is an excellent platform for Ubuntu Server development and testing. The snapshot and clone features alone save enormous amounts of time compared to reinstalling from scratch each time.
