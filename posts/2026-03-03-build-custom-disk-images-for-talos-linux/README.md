@@ -49,18 +49,19 @@ ls -lh /tmp/out/
 
 ### Generating QCOW2 Images
 
+The imager produces a raw disk image for the `metal` profile, so you convert it to QCOW2 with `qemu-img`.
+
 ```bash
-# Generate a QCOW2 image for QEMU/KVM
+# Generate a raw image for QEMU/KVM
 docker run --rm -v /tmp/out:/out \
   ghcr.io/siderolabs/imager:v1.7.0 \
   metal \
-  --output-kind image \
-  --image-disk-format qcow2
+  --output-kind image
 
-# Decompress if needed
+# Decompress the raw image
 xz -d /tmp/out/metal-amd64.raw.xz
 
-# Convert to QCOW2 if the imager does not support direct output
+# Convert raw to QCOW2
 qemu-img convert -f raw -O qcow2 \
   /tmp/out/metal-amd64.raw \
   /tmp/out/talos-amd64.qcow2
@@ -74,6 +75,9 @@ docker run --rm -v /tmp/out:/out \
   ghcr.io/siderolabs/imager:v1.7.0 \
   metal \
   --output-kind image
+
+# Decompress the raw image
+xz -d /tmp/out/metal-amd64.raw.xz
 
 # Convert raw to VMDK
 qemu-img convert -f raw -O vmdk \
@@ -143,6 +147,10 @@ docker run --rm -v /tmp/out:/out \
   --output-kind image \
   --system-extension-image ghcr.io/siderolabs/iscsi-tools:v0.1.4
 
+# Decompress and upload the raw image to S3 first
+xz -d /tmp/out/aws-amd64.raw.xz
+aws s3 cp /tmp/out/aws-amd64.raw s3://my-bucket/talos-aws-amd64.raw
+
 # Upload to AWS as an AMI
 aws ec2 import-image \
   --description "Custom Talos v1.7.0" \
@@ -175,6 +183,9 @@ docker run --rm -v /tmp/out:/out \
   ghcr.io/siderolabs/imager:v1.7.0 \
   azure \
   --output-kind image
+
+# Decompress the VHD before uploading
+xz -d /tmp/out/azure-amd64.vhd.xz
 
 # Upload to Azure Blob Storage
 az storage blob upload \
