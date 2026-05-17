@@ -161,8 +161,8 @@ For background tasks scheduled via cron that should not compete with production 
 # In crontab
 0 2 * * * nice -n 19 /usr/local/bin/backup.sh >> /var/log/backup.log 2>&1
 
-# Or use the fnice wrapper if available
-0 3 * * * /usr/local/bin/low-priority-cleanup.sh
+# Combine nice and ionice for both CPU and I/O courtesy
+0 3 * * * nice -n 19 ionice -c 3 /usr/local/bin/low-priority-cleanup.sh
 ```
 
 Inside a script you can also set the nice value of the script itself:
