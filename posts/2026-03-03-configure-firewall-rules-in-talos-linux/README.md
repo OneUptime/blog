@@ -8,65 +8,88 @@ Description: Learn how to configure and manage firewall rules in Talos Linux usi
 
 ---
 
-Talos Linux takes a different approach to firewalling than traditional Linux distributions. There is no iptables command to run, no firewalld service to configure, and no SSH access to manually add rules. Instead, Talos uses a declarative nftables-based firewall configuration that lives in your machine config. This means your firewall rules are version-controlled, reproducible, and applied consistently across all nodes.
+Talos Linux takes a different approach to firewalling than traditional Linux distributions. There is no iptables command to run, no firewalld service to configure, and no SSH access to manually add rules. Instead, Talos uses a declarative ingress firewall configuration that lives in your machine config. Talos translates these declarations into nftables rules that the kernel enforces. This means your firewall rules are version-controlled, reproducible, and applied consistently across all nodes.
 
 In this guide, we will cover how to configure firewall rules in Talos Linux, from basic port filtering to more advanced scenarios.
 
 ## How Firewalling Works in Talos Linux
 
-Starting with Talos Linux v1.6, there is native support for configuring nftables-based firewall rules through the machine configuration. Before this version, you had to rely on external tools or Kubernetes network policies for packet filtering.
+Starting with Talos Linux v1.6, there is native support for configuring an ingress firewall through the machine configuration. Before this version, you had to rely on external tools or Kubernetes network policies for packet filtering.
 
-The firewall rules are processed by the Talos networkd service and translated into nftables rules that the kernel enforces. This gives you kernel-level packet filtering with the convenience of declarative configuration.
+Firewall rules are declared as extra configuration documents and rendered into nftables rules by Talos. This gives you kernel-level packet filtering with the convenience of declarative configuration.
 
 Key concepts:
 
-- Rules are defined in the machine configuration under `machine.network.nftablesRules`
-- Rules are organized into chains within tables
-- The default policy can be set to accept or drop
-- Rules are applied at boot time and whenever the machine config is updated
+- Rules are defined as `NetworkRuleConfig` documents, each appended to the machine configuration
+- A single `NetworkDefaultActionConfig` document sets the default ingress action (`accept` or `block`)
+- The firewall only filters ingress traffic; egress is not filtered by Talos
+- Traffic on `lo`, `siderolink`, and `kubespan` interfaces is always allowed
+- In `block` mode, ICMP/ICMPv6 is allowed at 5 packets/second and traffic between Kubernetes pod/service subnets is allowed for native-routing CNIs
+- Rules are applied whenever the machine configuration is updated
 
 ## Basic Firewall Configuration
 
-Let us start with a basic firewall configuration that allows essential Talos and Kubernetes traffic while blocking everything else:
+Let us start with a basic firewall configuration that allows essential Talos and Kubernetes traffic while blocking everything else. Each rule is a separate YAML document appended to your machine configuration:
 
 ```yaml
-# Basic firewall configuration for a Talos Linux node
-
-machine:
-  network:
-    nftablesRules:
-      - name: talos-firewall
-        table: filter
-        chain: input
-        policy: drop    # Default deny all incoming traffic
-        rules:
-          # Allow established and related connections
-          - match: ct state established,related
-            verdict: accept
-          # Allow loopback traffic
-          - match: iifname "lo"
-            verdict: accept
-          # Allow Talos API (port 50000)
-          - match: tcp dport 50000
-            verdict: accept
-          # Allow Kubernetes API (port 6443)
-          - match: tcp dport 6443
-            verdict: accept
-          # Allow kubelet (port 10250)
-          - match: tcp dport 10250
-            verdict: accept
-          # Allow etcd (ports 2379-2380) from cluster nodes only
-          - match: tcp dport 2379-2380 ip saddr 192.168.1.0/24
-            verdict: accept
-          # Allow ICMP for diagnostics
-          - match: meta l4proto icmp
-            verdict: accept
+# Set the default ingress action to block
+apiVersion: v1alpha1
+kind: NetworkDefaultActionConfig
+ingress: block
+---
+# Allow Talos API (port 50000)
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: apid-ingress
+portSelector:
+  ports:
+    - 50000
+  protocol: tcp
+ingress:
+  - subnet: 192.168.1.0/24
+---
+# Allow Kubernetes API (port 6443)
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: kubernetes-api-ingress
+portSelector:
+  ports:
+    - 6443
+  protocol: tcp
+ingress:
+  - subnet: 0.0.0.0/0
+  - subnet: ::/0
+---
+# Allow kubelet (port 10250)
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: kubelet-ingress
+portSelector:
+  ports:
+    - 10250
+  protocol: tcp
+ingress:
+  - subnet: 192.168.1.0/24
+---
+# Allow etcd (ports 2379-2380) from cluster nodes only
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: etcd-ingress
+portSelector:
+  ports:
+    - 2379-2380
+  protocol: tcp
+ingress:
+  - subnet: 192.168.1.0/24
 ```
 
-Apply this configuration:
+Apply this configuration. It is strongly recommended to use `--mode=try` first, so the change is reverted automatically if it leaves the node unreachable:
 
 ```bash
-# Apply the firewall rules
+# Try the firewall rules (auto-reverts after a timeout if you can't confirm)
+talosctl -n <node-ip> apply-config --file machine-config.yaml --mode=try
+
+# Once verified, apply normally
 talosctl -n <node-ip> apply-config --file machine-config.yaml
 
 # Verify the rules were applied
@@ -88,7 +111,7 @@ Before locking down your firewall, you need to know which ports Talos Linux and 
 | 10250 | TCP | Kubelet |
 | 10259 | TCP | kube-scheduler |
 | 10257 | TCP | kube-controller-manager |
-| 51871 | UDP | WireGuard (KubeSpan) |
+| 51820 | UDP | WireGuard (KubeSpan) |
 
 ### Worker Nodes
 
@@ -97,57 +120,86 @@ Before locking down your firewall, you need to know which ports Talos Linux and 
 | 50000 | TCP | Talos API |
 | 10250 | TCP | Kubelet |
 | 30000-32767 | TCP/UDP | NodePort services |
-| 51871 | UDP | WireGuard (KubeSpan) |
+| 51820 | UDP | WireGuard (KubeSpan) |
 
 ## Control Plane Firewall Configuration
 
-Here is a more complete firewall configuration for control plane nodes:
+Here is a more complete firewall configuration for control plane nodes. Note that loopback, KubeSpan, and SideroLink interfaces are always allowed, and in `block` mode ICMP/ICMPv6 is already rate-limited to 5 packets per second, so you do not need explicit rules for those:
 
 ```yaml
 # Control plane node firewall
-machine:
-  network:
-    nftablesRules:
-      - name: cp-firewall-input
-        table: filter
-        chain: input
-        policy: drop
-        rules:
-          # Allow established connections
-          - match: ct state established,related
-            verdict: accept
-          # Allow loopback
-          - match: iifname "lo"
-            verdict: accept
-          # Allow ICMP and ICMPv6
-          - match: meta l4proto icmp
-            verdict: accept
-          - match: meta l4proto icmpv6
-            verdict: accept
-          # Talos API - restrict to management network
-          - match: tcp dport 50000 ip saddr 192.168.1.0/24
-            verdict: accept
-          # Talos trustd
-          - match: tcp dport 50001 ip saddr 192.168.1.0/24
-            verdict: accept
-          # Kubernetes API - allow from all (or restrict as needed)
-          - match: tcp dport 6443
-            verdict: accept
-          # etcd - only from other control plane nodes
-          - match: tcp dport 2379-2380 ip saddr {192.168.1.10, 192.168.1.11, 192.168.1.12}
-            verdict: accept
-          # Kubelet
-          - match: tcp dport 10250 ip saddr 192.168.1.0/24
-            verdict: accept
-          # kube-scheduler and kube-controller-manager
-          - match: tcp dport {10259, 10257} ip saddr 192.168.1.0/24
-            verdict: accept
-          # CNI traffic (VXLAN for Flannel)
-          - match: udp dport 8472 ip saddr 192.168.1.0/24
-            verdict: accept
-          # KubeSpan WireGuard
-          - match: udp dport 51871
-            verdict: accept
+apiVersion: v1alpha1
+kind: NetworkDefaultActionConfig
+ingress: block
+---
+# Talos API - restrict to management network
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: apid-ingress
+portSelector:
+  ports:
+    - 50000
+  protocol: tcp
+ingress:
+  - subnet: 192.168.1.0/24
+---
+# Talos trustd - restrict to management network
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: trustd-ingress
+portSelector:
+  ports:
+    - 50001
+  protocol: tcp
+ingress:
+  - subnet: 192.168.1.0/24
+---
+# Kubernetes API - allow from all (or restrict as needed)
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: kubernetes-api-ingress
+portSelector:
+  ports:
+    - 6443
+  protocol: tcp
+ingress:
+  - subnet: 0.0.0.0/0
+  - subnet: ::/0
+---
+# etcd - only from other control plane nodes
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: etcd-ingress
+portSelector:
+  ports:
+    - 2379-2380
+  protocol: tcp
+ingress:
+  - subnet: 192.168.1.10/32
+  - subnet: 192.168.1.11/32
+  - subnet: 192.168.1.12/32
+---
+# Kubelet
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: kubelet-ingress
+portSelector:
+  ports:
+    - 10250
+  protocol: tcp
+ingress:
+  - subnet: 192.168.1.0/24
+---
+# CNI VXLAN traffic (UDP 8472 for Cilium/Flannel VXLAN; Calico uses 4789)
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: cni-vxlan
+portSelector:
+  ports:
+    - 8472
+  protocol: udp
+ingress:
+  - subnet: 192.168.1.0/24
 ```
 
 ## Worker Node Firewall Configuration
@@ -156,139 +208,120 @@ Worker nodes need a slightly different set of rules:
 
 ```yaml
 # Worker node firewall
-machine:
-  network:
-    nftablesRules:
-      - name: worker-firewall-input
-        table: filter
-        chain: input
-        policy: drop
-        rules:
-          - match: ct state established,related
-            verdict: accept
-          - match: iifname "lo"
-            verdict: accept
-          - match: meta l4proto icmp
-            verdict: accept
-          # Talos API
-          - match: tcp dport 50000 ip saddr 192.168.1.0/24
-            verdict: accept
-          # Kubelet
-          - match: tcp dport 10250 ip saddr 192.168.1.0/24
-            verdict: accept
-          # NodePort range
-          - match: tcp dport 30000-32767
-            verdict: accept
-          - match: udp dport 30000-32767
-            verdict: accept
-          # CNI traffic
-          - match: udp dport 8472 ip saddr 192.168.1.0/24
-            verdict: accept
-          # KubeSpan WireGuard
-          - match: udp dport 51871
-            verdict: accept
+apiVersion: v1alpha1
+kind: NetworkDefaultActionConfig
+ingress: block
+---
+# Talos API
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: apid-ingress
+portSelector:
+  ports:
+    - 50000
+  protocol: tcp
+ingress:
+  - subnet: 192.168.1.0/24
+---
+# Kubelet
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: kubelet-ingress
+portSelector:
+  ports:
+    - 10250
+  protocol: tcp
+ingress:
+  - subnet: 192.168.1.0/24
+---
+# NodePort range (TCP)
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: nodeport-tcp-ingress
+portSelector:
+  ports:
+    - 30000-32767
+  protocol: tcp
+ingress:
+  - subnet: 0.0.0.0/0
+  - subnet: ::/0
+---
+# NodePort range (UDP)
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: nodeport-udp-ingress
+portSelector:
+  ports:
+    - 30000-32767
+  protocol: udp
+ingress:
+  - subnet: 0.0.0.0/0
+  - subnet: ::/0
+---
+# CNI VXLAN traffic
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: cni-vxlan
+portSelector:
+  ports:
+    - 8472
+  protocol: udp
+ingress:
+  - subnet: 192.168.1.0/24
 ```
 
-## Configuring Output Rules
+## What About Egress (Outbound) Filtering?
 
-By default, Talos does not restrict outgoing traffic. If you need to restrict egress from your nodes, add output chain rules:
+The Talos ingress firewall, as the name suggests, only filters inbound traffic to the host. There is no built-in mechanism to restrict outbound traffic from the node itself. If you need egress filtering you have a couple of options:
 
-```yaml
-# Restrict outbound traffic
-machine:
-  network:
-    nftablesRules:
-      - name: output-filter
-        table: filter
-        chain: output
-        policy: drop
-        rules:
-          - match: ct state established,related
-            verdict: accept
-          - match: oifname "lo"
-            verdict: accept
-          # Allow DNS
-          - match: udp dport 53
-            verdict: accept
-          - match: tcp dport 53
-            verdict: accept
-          # Allow HTTPS (for pulling container images)
-          - match: tcp dport 443
-            verdict: accept
-          # Allow HTTP
-          - match: tcp dport 80
-            verdict: accept
-          # Allow NTP
-          - match: udp dport 123
-            verdict: accept
-          # Allow cluster communication
-          - match: ip daddr 192.168.1.0/24
-            verdict: accept
-```
+- Apply policy at the network layer (e.g. cloud security groups, a router/firewall in front of the cluster) to restrict what nodes can reach.
+- For workloads in pods, use Kubernetes `NetworkPolicy` resources (with a CNI that supports egress policies such as Cilium or Calico) to restrict pod-level egress.
 
-Be careful with output rules. If you block something Talos or Kubernetes needs, you can break your cluster. Test output rules on a single node first before rolling them out broadly.
+Talos itself does not provide a `NetworkRuleConfig` equivalent for egress, so do not expect to filter outbound DNS/NTP/registry traffic with this feature.
 
 ## Verifying Firewall Rules
 
-After applying firewall rules, verify they are active and working:
+After applying firewall rules, verify they are rendered into the kernel's nftables ruleset:
 
 ```bash
-# List all nftables chains
+# List the rendered nftables chains
 talosctl -n <node-ip> get nftableschain
 
-# Check the full nftables ruleset
+# Inspect the full rendered ruleset
 talosctl -n <node-ip> get nftableschain -o yaml
 
 # Test that allowed ports are accessible
 nc -zv <node-ip> 6443    # Should succeed (Kubernetes API)
 nc -zv <node-ip> 22      # Should fail (SSH is not running anyway)
-
-# Check for dropped packets in kernel logs
-talosctl -n <node-ip> dmesg | grep -i "nft\|drop\|reject"
 ```
 
-## Logging Dropped Packets
+## Debugging Dropped Traffic
 
-For debugging purposes, you can add a logging rule before the drop policy catches traffic:
+The Talos `NetworkRuleConfig` schema does not currently expose an in-rule logging primitive — there is no `log` verdict you can attach to a rule. To debug what is being dropped, your options are:
 
-```yaml
-# Add logging for dropped packets
-machine:
-  network:
-    nftablesRules:
-      - name: firewall-with-logging
-        table: filter
-        chain: input
-        policy: drop
-        rules:
-          # ... your accept rules here ...
-          # Log packets that will be dropped (add this as the last rule)
-          - match: ct state new
-            verdict: log prefix "DROPPED: " level info
-```
+- Inspect the rendered nftables chains with `talosctl get nftableschain -o yaml` to confirm rules match what you expect.
+- Generate test traffic from a known source and observe whether it succeeds.
+- Temporarily flip `NetworkDefaultActionConfig` back to `ingress: accept` (with `--mode=try`) to isolate whether a missing rule is the cause.
 
-View the logged packets:
-
-```bash
-# Check kernel logs for dropped packet entries
-talosctl -n <node-ip> dmesg | grep "DROPPED:"
-```
+When iterating, always use `--mode=try` so a misconfigured rule does not lock you out of the node.
 
 ## Recovering from Firewall Lockout
 
-One risk with firewall rules is accidentally locking yourself out. Since Talos does not have SSH, you cannot fall back to a console login to fix things. Here are your recovery options:
+One risk with firewall rules is accidentally locking yourself out. Since Talos does not have SSH, you cannot fall back to a console login to fix things. Your best line of defense is `talosctl apply-config --mode=try`, which applies the config for a short window and automatically reverts it if you do not confirm — use it whenever you change firewall rules.
 
-1. **Use Talos maintenance mode**: If you have physical or IPMI access, reboot into maintenance mode where firewall rules are not applied
-2. **Use a different interface**: If you have a secondary management interface, connect through that
-3. **Serial console**: If available, use the serial console to apply a corrected config
+If you do end up locked out, here are your recovery options:
+
+1. **Use Talos maintenance mode**: If you have physical or IPMI access, boot the node into maintenance mode (which runs without the applied machine config) and apply a corrected config.
+2. **Use a different interface**: If you have a secondary management interface in an allowed subnet, connect through that.
+3. **Serial console**: If available, use the serial console to interact with the dashboard and apply a corrected config.
 
 ```bash
 # In maintenance mode, apply a fixed configuration
 talosctl -n <node-ip> apply-config --file fixed-config.yaml --insecure
 ```
 
-To avoid lockouts in the first place, always test new firewall rules on a single non-critical node before applying them cluster-wide.
+To avoid lockouts in the first place, always test new firewall rules on a single non-critical node first, using `--mode=try`, before applying them cluster-wide.
 
 ## Conclusion
 
-Firewall configuration in Talos Linux is clean and declarative. By defining your rules in the machine configuration, you get reproducible security that is applied consistently across your fleet. Start with the essential ports for Talos and Kubernetes, lock down etcd to only control plane nodes, and be cautious with output filtering. Always test on a single node first, and make sure you have a recovery path before applying restrictive rules to your entire cluster.
+The Talos Linux ingress firewall is clean and declarative. By appending `NetworkDefaultActionConfig` and `NetworkRuleConfig` documents to your machine configuration, you get reproducible host-level filtering that is applied consistently across your fleet. Start with the essential ports for Talos and Kubernetes, lock down etcd to only the control plane nodes, and remember that egress filtering is not part of this feature — handle that at the network or CNI layer. Always test on a single node with `--mode=try` first, and make sure you have a recovery path before applying restrictive rules to your entire cluster.
