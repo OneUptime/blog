@@ -30,11 +30,13 @@ The most reliable way to back up configurations is to pull them directly from ru
 
 ```bash
 # Extract machine config from a control plane node
+# talosctl get returns a COSI resource wrapper, so use yq to extract the spec
+# (the actual machine config) for a file that can be re-applied later
 
-talosctl get machineconfig --nodes <cp-node-ip> -o yaml > cp-node-1-config.yaml
+talosctl get machineconfig --nodes <cp-node-ip> -o yaml | yq eval '.spec' - > cp-node-1-config.yaml
 
 # Extract from a worker node
-talosctl get machineconfig --nodes <worker-node-ip> -o yaml > worker-node-1-config.yaml
+talosctl get machineconfig --nodes <worker-node-ip> -o yaml | yq eval '.spec' - > worker-node-1-config.yaml
 ```
 
 Do this for every node in your cluster. While control plane nodes typically share the same base config (with node-specific overrides), worker nodes might have different configurations based on their role or hardware.
@@ -59,7 +61,7 @@ for entry in "${NODES[@]}"; do
     NAME="${entry%%:*}"
     IP="${entry##*:}"
     echo "Extracting config from ${NAME} (${IP})..."
-    talosctl get machineconfig --nodes ${IP} -o yaml > ${BACKUP_DIR}/${NAME}.yaml
+    talosctl get machineconfig --nodes ${IP} -o yaml | yq eval '.spec' - > ${BACKUP_DIR}/${NAME}.yaml
 done
 
 echo "Configs saved to ${BACKUP_DIR}/"
@@ -67,7 +69,7 @@ echo "Configs saved to ${BACKUP_DIR}/"
 
 ## Backing Up the Secrets Bundle
 
-When you first create a Talos cluster, `talosctl gen config` produces a secrets bundle. This bundle contains the root CA certificates and keys used to generate all other certificates in the cluster. Without it, you cannot generate new machine configurations that are compatible with the existing cluster.
+When you first create a Talos cluster, the secrets bundle (created explicitly with `talosctl gen secrets -o secrets.yaml`, or generated implicitly by `talosctl gen config` and embedded in the resulting machine configs) contains the root CA certificates and keys used to generate all other certificates in the cluster. Without it, you cannot generate new machine configurations that are compatible with the existing cluster.
 
 ```bash
 # If you still have the original secrets bundle, back it up
@@ -173,7 +175,7 @@ cat > ${BACKUP_DIR}/generation-command.sh <<'SCRIPT'
 
 talosctl gen config production-cluster \
   https://api.production.example.com:6443 \
-  --output-dir ./generated \
+  --output ./generated \
   --with-secrets secrets.yaml \
   --config-patch @patches/all-nodes.yaml \
   --config-patch-control-plane @patches/control-plane-only.yaml \
@@ -201,15 +203,15 @@ WORKER_NODES="10.0.0.10 10.0.0.11 10.0.0.12"
 
 mkdir -p ${BACKUP_DIR}
 
-# Extract configs
+# Extract configs (use yq to strip the COSI resource wrapper)
 for node in ${CP_NODES}; do
-    talosctl get machineconfig --nodes ${node} -o yaml \
-      > ${BACKUP_DIR}/cp-${node}.yaml 2>/dev/null
+    talosctl get machineconfig --nodes ${node} -o yaml 2>/dev/null \
+      | yq eval '.spec' - > ${BACKUP_DIR}/cp-${node}.yaml
 done
 
 for node in ${WORKER_NODES}; do
-    talosctl get machineconfig --nodes ${node} -o yaml \
-      > ${BACKUP_DIR}/worker-${node}.yaml 2>/dev/null
+    talosctl get machineconfig --nodes ${node} -o yaml 2>/dev/null \
+      | yq eval '.spec' - > ${BACKUP_DIR}/worker-${node}.yaml
 done
 
 # Encrypt the backup directory
