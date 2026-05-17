@@ -32,27 +32,27 @@ For most use cases (save state before a change, revert if something breaks), int
 ## Creating Internal Snapshots
 
 ```bash
-# Create a snapshot of a running VM (disk only, no memory state)
+# Create a snapshot of a running VM (captures both disk and memory state by default)
+# VM is briefly paused while memory state is written to the qcow2 image
 
 virsh snapshot-create-as \
   --domain myvm \
   --name "before-nginx-upgrade" \
   --description "Before upgrading nginx from 1.18 to 1.24"
 
-# Create a snapshot including memory state (VM continues running)
+# Create an atomic snapshot (guarantees all-or-nothing semantics)
 virsh snapshot-create-as \
   --domain myvm \
   --name "pre-db-migration" \
   --description "Full state before database migration" \
-  --memspec snapshot=internal
+  --atomic
 
-# Create a snapshot while VM is running, including current memory
-virsh snapshot-create-as \
-  --domain myvm \
-  --name "live-snapshot-$(date +%Y%m%d-%H%M)" \
-  --live
+# Create a snapshot of a stopped VM (disk only - no memory to capture)
+virsh shutdown myvm
+virsh snapshot-create-as myvm --name "offline-snapshot-$(date +%Y%m%d-%H%M)"
+virsh start myvm
 
-# Create a snapshot while VM is paused (atomic)
+# Create a snapshot while VM is paused (consistent state)
 virsh suspend myvm
 virsh snapshot-create-as myvm --name "paused-snapshot"
 virsh resume myvm
@@ -132,11 +132,12 @@ qemu-img info /var/lib/libvirt/images/myvm.qcow2
 ### External Snapshot with Memory
 
 ```bash
-# Create external snapshot with memory state saved to separate file
+# Create external snapshot with memory state saved to a separate file
+# --live keeps the VM running while memory is dumped to the external file
 virsh snapshot-create-as \
   --domain myvm \
   --name "external-with-mem" \
-  --disk-only \
+  --live \
   --diskspec vda,snapshot=external,file=/var/lib/libvirt/images/myvm-disk.qcow2 \
   --memspec file=/var/lib/libvirt/images/myvm-mem.snap,snapshot=external
 ```
