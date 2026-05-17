@@ -250,13 +250,13 @@ sudo systemctl enable myapp.service
 If you need to temporarily change a service's resource limits or environment without modifying the unit file:
 
 ```bash
-# Set properties temporarily (until next restart)
+# Set properties (applied immediately and persisted to disk by default)
 sudo systemctl set-property nginx.service CPUQuota=50%
 sudo systemctl set-property nginx.service MemoryMax=512M
+# Creates a drop-in file automatically under /etc/systemd/system/
 
-# These can be made permanent with --permanent flag
-sudo systemctl set-property --permanent nginx.service CPUQuota=50%
-# Creates a drop-in file automatically
+# Use --runtime to apply only until the next reboot (not persisted)
+sudo systemctl set-property --runtime nginx.service CPUQuota=50%
 ```
 
 ## Checking System Boot and Target Status
@@ -319,11 +319,11 @@ systemctl show nginx.service
 # Show specific properties
 systemctl show nginx.service --property=ActiveState,SubState,MainPID
 
-# Show the unit file content (including drop-ins)
+# Show the unit file content (including any drop-in overrides)
 systemctl cat nginx.service
 
-# Show override drop-in files
-systemctl edit nginx.service --no-editor   # shows existing overrides
+# List drop-in override files directly on disk
+ls /etc/systemd/system/nginx.service.d/ 2>/dev/null
 ```
 
 ## Resetting Failed State
