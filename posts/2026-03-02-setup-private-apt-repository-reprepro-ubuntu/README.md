@@ -306,7 +306,7 @@ location /incoming/ {
 # Check all packages in the repository
 reprepro -b /var/packages list jammy
 
-# Verify GPG signatures are valid
+# Verify repository file integrity (checks pool files against index checksums)
 reprepro -b /var/packages check jammy
 
 # Show repository contents with detailed info
