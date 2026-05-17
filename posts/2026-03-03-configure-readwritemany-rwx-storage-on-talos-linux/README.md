@@ -14,11 +14,12 @@ Setting up RWX storage on Talos Linux requires some thought because the operatin
 
 ## What Is ReadWriteMany?
 
-Kubernetes defines three access modes for PersistentVolumes:
+Kubernetes defines four access modes for PersistentVolumes:
 
-- **ReadWriteOnce (RWO)** - The volume can be mounted as read-write by a single node.
+- **ReadWriteOnce (RWO)** - The volume can be mounted as read-write by a single node. Multiple pods on that same node can still access it.
 - **ReadOnlyMany (ROX)** - The volume can be mounted as read-only by many nodes.
 - **ReadWriteMany (RWX)** - The volume can be mounted as read-write by many nodes.
+- **ReadWriteOncePod (RWOP)** - The volume can be mounted as read-write by a single pod across the entire cluster. Available from Kubernetes 1.22 and GA in 1.29.
 
 RWX is the most flexible but also the most complex to implement. Not all storage backends support it, and those that do often have trade-offs in performance or consistency.
 
@@ -132,7 +133,6 @@ spec:
     targetPort: 2049
   selector:
     app: nfs-server
-  clusterIP: None
 ```
 
 ## Option 2: Longhorn RWX Volumes
@@ -141,13 +141,13 @@ Longhorn is a popular distributed storage solution for Kubernetes that supports 
 
 ### Installing Longhorn on Talos Linux
 
-Before installing Longhorn, make sure your Talos Linux nodes have the required kernel modules. You may need to add them to your machine configuration.
+Before installing Longhorn, make sure your Talos Linux nodes have the required system extensions. Longhorn needs iSCSI tools (which provide `iscsid`, `iscsiadm`, and the `iscsi_tcp` kernel module) and, on Longhorn v1.5+, the `util-linux-tools` extension for `nsenter` and `fstrim`. These are installed as Talos system extensions at image build time using the Image Factory.
+
+You also need to add a bind mount for the Longhorn data directory to your machine configuration.
 
 ```yaml
 # Talos machine config for Longhorn support
 machine:
-  sysctls:
-    vm.overcommit_memory: "1"
   kubelet:
     extraMounts:
       - destination: /var/lib/longhorn
