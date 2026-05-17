@@ -79,8 +79,9 @@ lsattr /etc/resolv.conf
 # ----i--------e-- /etc/resolv.conf
 
 # Try to modify - should fail even as root
-sudo echo "test" >> /etc/resolv.conf
-# bash: /etc/resolv.conf: Operation not permitted
+# (Use tee so the write itself runs as root, not just the echo)
+echo "test" | sudo tee -a /etc/resolv.conf
+# tee: /etc/resolv.conf: Operation not permitted
 
 sudo rm /etc/resolv.conf
 # rm: cannot remove '/etc/resolv.conf': Operation not permitted
