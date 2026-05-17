@@ -96,7 +96,7 @@ echo "Watching $WATCH_DIR for configuration changes..."
 
 inotifywait -m -r -e close_write,moved_to,create,delete \
     --format '%T %w %f %e' \
-    --timefmt '%Y-%m-%d %H:%M:%S' \
+    --timefmt '%Y-%m-%dT%H:%M:%S' \
     "$WATCH_DIR" | while read DATETIME DIRECTORY FILE EVENT; do
 
     echo "$DATETIME: Change detected - $DIRECTORY$FILE ($EVENT)" >> "$LOG"
