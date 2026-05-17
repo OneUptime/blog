@@ -18,32 +18,30 @@ Out of the box, Talos Linux allows traffic to the following ports:
 - **6443** - Kubernetes API server - Accessible from any source (control plane only)
 - **2379-2380** - etcd client and peer ports - Accessible from any source (control plane only)
 - **10250** - kubelet API - Accessible from any source
-- **51871** - KubeSpan (if enabled) - Accessible from any source
+- **51820** - KubeSpan (if enabled) - Accessible from any source
 
 For a production cluster, this is too permissive. You want to restrict access based on the source network and the purpose of each service.
 
 ## Firewall Configuration Structure
 
-The Talos firewall is configured through the `machine.network.kubespan` and the `machine.network.rules` sections of the machine configuration. Talos uses nftables under the hood to implement the rules.
+The Talos firewall is configured as additional machine configuration documents of kind `NetworkDefaultActionConfig` (to set the default ingress policy) and `NetworkRuleConfig` (one document per rule). Talos uses nftables under the hood to implement the rules. Traffic on the `lo`, `siderolink`, and `kubespan` interfaces is always allowed regardless of these rules.
 
 Here is the basic structure:
 
 ```yaml
-machine:
-  network:
-    rules:
-      # Default policy for inbound traffic
-      defaultAction: block
-
-      # Specific rules that allow traffic
-      rules:
-        - name: allow-talos-api
-          portSelector:
-            ports:
-              - 50000
-            protocol: tcp
-          ingress:
-            - subnet: 10.0.0.0/16
+apiVersion: v1alpha1
+kind: NetworkDefaultActionConfig
+ingress: block
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-talos-api
+portSelector:
+  ports:
+    - 50000
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/16
 ```
 
 ## Production Firewall Configuration
@@ -53,88 +51,103 @@ Here is a complete production firewall configuration that restricts access appro
 ```yaml
 # firewall-patch.yaml
 
-machine:
-  network:
-    rules:
-      defaultAction: block
-      rules:
-        # Allow Talos API from management network only
-        - name: allow-talos-api
-          portSelector:
-            ports:
-              - 50000
-            protocol: tcp
-          ingress:
-            - subnet: 10.0.1.0/24    # Management network
-            - subnet: 10.0.0.100/32   # CI/CD server
-
-        # Allow Kubernetes API from management and pod networks
-        - name: allow-kube-api
-          portSelector:
-            ports:
-              - 6443
-            protocol: tcp
-          ingress:
-            - subnet: 10.0.0.0/16     # Cluster network
-            - subnet: 10.244.0.0/16   # Pod network
-            - subnet: 10.0.1.0/24     # Management network
-
-        # Allow etcd only between control plane nodes
-        - name: allow-etcd
-          portSelector:
-            ports:
-              - 2379
-              - 2380
-            protocol: tcp
-          ingress:
-            - subnet: 10.0.1.10/32    # CP node 1
-            - subnet: 10.0.1.11/32    # CP node 2
-            - subnet: 10.0.1.12/32    # CP node 3
-
-        # Allow kubelet API from control plane and pod network
-        - name: allow-kubelet
-          portSelector:
-            ports:
-              - 10250
-            protocol: tcp
-          ingress:
-            - subnet: 10.0.1.0/24     # Control plane network
-            - subnet: 10.244.0.0/16   # Pod network
-
-        # Allow NodePort range from load balancer network
-        - name: allow-nodeports
-          portSelector:
-            ports:
-              - 30000-32767
-            protocol: tcp
-          ingress:
-            - subnet: 10.0.0.0/16     # Internal network
-            - subnet: 192.168.0.0/16  # Load balancer network
-
-        # Allow ICMP for network diagnostics
-        - name: allow-icmp
-          portSelector:
-            protocol: icmp
-          ingress:
-            - subnet: 10.0.0.0/8
-
-        # Allow CNI traffic (Flannel VXLAN)
-        - name: allow-vxlan
-          portSelector:
-            ports:
-              - 8472
-            protocol: udp
-          ingress:
-            - subnet: 10.0.0.0/16
-
-        # Allow Wireguard for KubeSpan (if used)
-        - name: allow-kubespan
-          portSelector:
-            ports:
-              - 51871
-            protocol: udp
-          ingress:
-            - subnet: 0.0.0.0/0
+# Default policy for inbound traffic
+apiVersion: v1alpha1
+kind: NetworkDefaultActionConfig
+ingress: block
+---
+# Allow Talos API from management network only
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-talos-api
+portSelector:
+  ports:
+    - 50000
+  protocol: tcp
+ingress:
+  - subnet: 10.0.1.0/24    # Management network
+  - subnet: 10.0.0.100/32   # CI/CD server
+---
+# Allow Kubernetes API from management and pod networks
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-kube-api
+portSelector:
+  ports:
+    - 6443
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/16     # Cluster network
+  - subnet: 10.244.0.0/16   # Pod network
+  - subnet: 10.0.1.0/24     # Management network
+---
+# Allow etcd only between control plane nodes
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-etcd
+portSelector:
+  ports:
+    - 2379-2380
+  protocol: tcp
+ingress:
+  - subnet: 10.0.1.10/32    # CP node 1
+  - subnet: 10.0.1.11/32    # CP node 2
+  - subnet: 10.0.1.12/32    # CP node 3
+---
+# Allow kubelet API from control plane and pod network
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-kubelet
+portSelector:
+  ports:
+    - 10250
+  protocol: tcp
+ingress:
+  - subnet: 10.0.1.0/24     # Control plane network
+  - subnet: 10.244.0.0/16   # Pod network
+---
+# Allow NodePort range from load balancer network
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-nodeports
+portSelector:
+  ports:
+    - 30000-32767
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/16     # Internal network
+  - subnet: 192.168.0.0/16  # Load balancer network
+---
+# Allow ICMP for network diagnostics
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-icmp
+portSelector:
+  protocol: icmp
+ingress:
+  - subnet: 10.0.0.0/8
+---
+# Allow CNI traffic (Flannel VXLAN)
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-vxlan
+portSelector:
+  ports:
+    - 8472
+  protocol: udp
+ingress:
+  - subnet: 10.0.0.0/16
+---
+# Allow Wireguard for KubeSpan (if used)
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-kubespan
+portSelector:
+  ports:
+    - 51820
+  protocol: udp
+ingress:
+  - subnet: 0.0.0.0/0
 ```
 
 ## Applying the Firewall Configuration
@@ -159,54 +172,63 @@ Worker nodes do not run etcd or the Kubernetes API server, so their firewall rul
 
 ```yaml
 # firewall-worker-patch.yaml
-machine:
-  network:
-    rules:
-      defaultAction: block
-      rules:
-        # Allow Talos API from management network
-        - name: allow-talos-api
-          portSelector:
-            ports:
-              - 50000
-            protocol: tcp
-          ingress:
-            - subnet: 10.0.1.0/24
-
-        # Allow kubelet API
-        - name: allow-kubelet
-          portSelector:
-            ports:
-              - 10250
-            protocol: tcp
-          ingress:
-            - subnet: 10.0.1.0/24
-            - subnet: 10.244.0.0/16
-
-        # Allow NodePort range
-        - name: allow-nodeports
-          portSelector:
-            ports:
-              - 30000-32767
-            protocol: tcp
-          ingress:
-            - subnet: 0.0.0.0/0  # Or restrict to load balancer IPs
-
-        # Allow CNI traffic
-        - name: allow-vxlan
-          portSelector:
-            ports:
-              - 8472
-            protocol: udp
-          ingress:
-            - subnet: 10.0.0.0/16
-
-        # Allow ICMP
-        - name: allow-icmp
-          portSelector:
-            protocol: icmp
-          ingress:
-            - subnet: 10.0.0.0/8
+apiVersion: v1alpha1
+kind: NetworkDefaultActionConfig
+ingress: block
+---
+# Allow Talos API from management network
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-talos-api
+portSelector:
+  ports:
+    - 50000
+  protocol: tcp
+ingress:
+  - subnet: 10.0.1.0/24
+---
+# Allow kubelet API
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-kubelet
+portSelector:
+  ports:
+    - 10250
+  protocol: tcp
+ingress:
+  - subnet: 10.0.1.0/24
+  - subnet: 10.244.0.0/16
+---
+# Allow NodePort range
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-nodeports
+portSelector:
+  ports:
+    - 30000-32767
+  protocol: tcp
+ingress:
+  - subnet: 0.0.0.0/0  # Or restrict to load balancer IPs
+---
+# Allow CNI traffic
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-vxlan
+portSelector:
+  ports:
+    - 8472
+  protocol: udp
+ingress:
+  - subnet: 10.0.0.0/16
+---
+# Allow ICMP
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-icmp
+portSelector:
+  protocol: icmp
+ingress:
+  - subnet: 10.0.0.0/8
 ```
 
 ## CNI-Specific Firewall Rules
@@ -216,62 +238,74 @@ Different CNI plugins require different ports. Here are the common ones:
 ### Flannel (VXLAN)
 
 ```yaml
-- name: allow-flannel-vxlan
-  portSelector:
-    ports:
-      - 8472
-    protocol: udp
-  ingress:
-    - subnet: 10.0.0.0/16
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-flannel-vxlan
+portSelector:
+  ports:
+    - 8472
+  protocol: udp
+ingress:
+  - subnet: 10.0.0.0/16
 ```
 
 ### Cilium
 
 ```yaml
 # Cilium uses VXLAN or Geneve
-- name: allow-cilium-vxlan
-  portSelector:
-    ports:
-      - 8472
-    protocol: udp
-  ingress:
-    - subnet: 10.0.0.0/16
-
-- name: allow-cilium-health
-  portSelector:
-    ports:
-      - 4240
-    protocol: tcp
-  ingress:
-    - subnet: 10.0.0.0/16
-
-- name: allow-cilium-hubble
-  portSelector:
-    ports:
-      - 4244
-    protocol: tcp
-  ingress:
-    - subnet: 10.0.0.0/16
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-cilium-vxlan
+portSelector:
+  ports:
+    - 8472
+  protocol: udp
+ingress:
+  - subnet: 10.0.0.0/16
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-cilium-health
+portSelector:
+  ports:
+    - 4240
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/16
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-cilium-hubble
+portSelector:
+  ports:
+    - 4244
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/16
 ```
 
 ### Calico (BGP)
 
 ```yaml
-- name: allow-calico-bgp
-  portSelector:
-    ports:
-      - 179
-    protocol: tcp
-  ingress:
-    - subnet: 10.0.0.0/16
-
-- name: allow-calico-typha
-  portSelector:
-    ports:
-      - 5473
-    protocol: tcp
-  ingress:
-    - subnet: 10.0.0.0/16
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-calico-bgp
+portSelector:
+  ports:
+    - 179
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/16
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-calico-typha
+portSelector:
+  ports:
+    - 5473
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/16
 ```
 
 ## Testing Firewall Rules
@@ -310,7 +344,7 @@ To troubleshoot firewall issues, you need visibility into what traffic is being 
 
 ```bash
 # View network connection information
-talosctl get netstat --nodes 10.0.1.10
+talosctl netstat --nodes 10.0.1.10 -lp
 
 # Check for connectivity issues in logs
 talosctl logs apid --nodes 10.0.1.10
@@ -323,23 +357,27 @@ If your workloads expose ports on the host network (using `hostPort` or `hostNet
 
 ```yaml
 # Allow Ingress Controller ports (if using hostNetwork)
-- name: allow-ingress-http
-  portSelector:
-    ports:
-      - 80
-      - 443
-    protocol: tcp
-  ingress:
-    - subnet: 0.0.0.0/0  # Public access for ingress
-
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-ingress-http
+portSelector:
+  ports:
+    - 80
+    - 443
+  protocol: tcp
+ingress:
+  - subnet: 0.0.0.0/0  # Public access for ingress
+---
 # Allow Prometheus node exporter
-- name: allow-node-exporter
-  portSelector:
-    ports:
-      - 9100
-    protocol: tcp
-  ingress:
-    - subnet: 10.0.0.0/16  # Internal monitoring only
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: allow-node-exporter
+portSelector:
+  ports:
+    - 9100
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/16  # Internal monitoring only
 ```
 
 ## Gradual Rollout Strategy
@@ -365,11 +403,9 @@ If firewall rules lock you out, you need a recovery path. If you can still reach
 
 ```yaml
 # emergency-open.yaml
-machine:
-  network:
-    rules:
-      defaultAction: accept
-      rules: []
+apiVersion: v1alpha1
+kind: NetworkDefaultActionConfig
+ingress: accept
 ```
 
 ```bash
