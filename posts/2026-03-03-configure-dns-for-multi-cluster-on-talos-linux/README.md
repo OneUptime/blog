@@ -59,7 +59,7 @@ data:
     cluster-a.local:53 {
         errors
         health {
-           lazystart
+           lameduck 5s
         }
         ready
         kubernetes cluster-a.local in-addr.arpa ip6.arpa {
@@ -87,7 +87,7 @@ data:
     cluster-c.local:53 {
         errors
         cache 30
-        forward . 10.300.0.10 {
+        forward . 10.30.0.10 {
             max_concurrent 100
         }
     }
@@ -347,7 +347,7 @@ spec:
     rules:
     - alert: CrossClusterDNSFailure
       expr: |
-        rate(coredns_forward_responses_total{rcode="SERVFAIL", to=~"10\\.(200|300).*"}[5m]) > 0.1
+        rate(coredns_forward_responses_total{rcode="SERVFAIL", to=~"10\\.(200|30).*"}[5m]) > 0.1
       for: 5m
       labels:
         severity: critical
