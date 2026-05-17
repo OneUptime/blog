@@ -135,14 +135,14 @@ The failover time depends on several factors:
 - ARP cache expiration on clients and switches (varies by device)
 - Gratuitous ARP processing by network equipment
 
-You can tune the speaker's memberlist settings for faster detection:
+MetalLB's speaker uses the [hashicorp/memberlist](https://github.com/hashicorp/memberlist) library with its defaults, which probe peers roughly once per second and declare a node dead after a few probe intervals. These memberlist timings are not exposed as Helm values, so the failover window is largely fixed unless you patch the speaker. The Helm chart does let you configure the memberlist bind port and secret:
 
 ```yaml
-# Helm values for faster failover
+# Helm values: memberlist transport settings
 speaker:
   memberlist:
-    # How often to probe other speakers
-    deadman-period: 5s
+    enabled: true
+    mlBindPort: 7946
 ```
 
 Test failover by draining the leader node:
