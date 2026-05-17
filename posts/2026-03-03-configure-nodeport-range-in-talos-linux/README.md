@@ -97,17 +97,23 @@ If you are using Talos NetworkRuleConfig for the firewall, update the port rules
 # Update firewall to match new NodePort range
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
-name: allow-nodeports
-spec:
-  ingress:
-    - subnet: 10.0.0.0/8
-      protocol: tcp
-      ports:
-        - 20000-40000     # Updated to match new range
-    - subnet: 10.0.0.0/8
-      protocol: udp
-      ports:
-        - 20000-40000
+name: ingress-nodeports-tcp
+portSelector:
+  ports:
+    - 20000-40000     # Updated to match new range
+  protocol: tcp
+ingress:
+  - subnet: 10.0.0.0/8
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: ingress-nodeports-udp
+portSelector:
+  ports:
+    - 20000-40000
+  protocol: udp
+ingress:
+  - subnet: 10.0.0.0/8
 ```
 
 **Step 3: Apply the configuration**
@@ -164,7 +170,7 @@ The `nodePort` value must be within your configured range. If you try to use a p
 
 ```bash
 # This will fail if 8080 is outside the NodePort range
-kubectl expose deployment my-app --type=NodePort --port=80 --node-port=8080
+kubectl create service nodeport my-app --tcp=80:80 --node-port=8080
 # Error: provided port is not in the valid range
 ```
 
