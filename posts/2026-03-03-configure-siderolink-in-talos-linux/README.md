@@ -41,25 +41,18 @@ The management server maintains the peer list and routes traffic to the correct 
 
 ## Configuring SideroLink in the Machine Config
 
-SideroLink configuration is embedded in the Talos machine configuration. When you use Sidero Metal to provision nodes, this configuration is typically injected automatically. However, you can also configure it manually.
+SideroLink is configured through a dedicated `SideroLinkConfig` machine configuration document (separate from the main `v1alpha1` machine config), or via the `siderolink.api` kernel command line argument. When you use Sidero Metal to provision nodes, this configuration is typically injected automatically. However, you can also supply it manually.
 
-Here is what the relevant section of the machine config looks like:
+Here is what the SideroLinkConfig document looks like:
 
 ```yaml
-# Machine configuration with SideroLink settings
-
-machine:
-  network:
-    interfaces:
-      - interface: siderolink
-        addresses:
-          - fd00:1234:5678::1/128  # Unique SideroLink IPv6 address
-  # SideroLink specific configuration
-  siderolink:
-    api: https://sidero-management.example.com:8099  # Management server endpoint
+# SideroLink connection configuration document
+apiVersion: v1alpha1
+kind: SideroLinkConfig
+apiUrl: https://sidero-management.example.com:8099?jointoken=secret-token
 ```
 
-The `api` field points to your Sidero management server's SideroLink endpoint. The address assigned to the interface is unique per node and is managed by the Sidero server.
+The `apiUrl` field points to your Sidero management server's SideroLink endpoint and includes the join token that authorizes the node. The SideroLink interface on the node and its IPv6 address (allocated from the `fdae::/32` overlay range) are created automatically by Talos once it processes this document — you do not declare the `siderolink` interface or its address yourself under `machine.network.interfaces`.
 
 ## Setting Up the Sidero Management Server
 
@@ -99,14 +92,14 @@ You should see an active WireGuard peer connection with recent handshake timesta
 One of the biggest advantages of SideroLink is that you can use the SideroLink IPv6 addresses to manage nodes through talosctl, even when the nodes are not directly reachable on your network:
 
 ```bash
-# Connect to a node using its SideroLink address
-talosctl -n fd00:1234:5678::1 version
+# Connect to a node using its SideroLink address (allocated from fdae::/32)
+talosctl -n fdae:41e4:649b:9303::1 version
 
 # Stream logs from a node via SideroLink
-talosctl -n fd00:1234:5678::1 logs kubelet
+talosctl -n fdae:41e4:649b:9303::1 logs kubelet
 
 # Apply configuration changes through the tunnel
-talosctl -n fd00:1234:5678::1 apply-config --file machine-config.yaml
+talosctl -n fdae:41e4:649b:9303::1 apply-config --file machine-config.yaml
 ```
 
 This works because your workstation connects to the Sidero management server, which then routes the traffic through the appropriate SideroLink tunnel to the target node.
@@ -154,16 +147,7 @@ kubectl exec -n sidero-system deploy/siderolink -c siderolink -- wg show
 
 ## Performance Tuning
 
-WireGuard is known for its low overhead, but there are a few things you can tune for better SideroLink performance in large clusters:
-
-```yaml
-# Adjust MTU if you are running inside a cloud provider or nested virtualization
-machine:
-  network:
-    interfaces:
-      - interface: siderolink
-        mtu: 1420  # Reduce MTU to account for WireGuard overhead
-```
+WireGuard is known for its low overhead, but there are a few things to keep in mind for SideroLink performance in large clusters. The `siderolink` interface itself is fully managed by Talos — its MTU and addressing are configured automatically (Talos accounts for the WireGuard encapsulation overhead on top of the underlying link MTU), so you do not tune it through `machine.network.interfaces`. Instead, focus on the underlying physical interface that carries the WireGuard traffic: if you are running inside a cloud provider or nested virtualization with a reduced path MTU, adjust the MTU on that interface so the WireGuard packets are not fragmented.
 
 For clusters with more than 100 nodes, consider monitoring the management server's CPU and memory usage, as maintaining many concurrent WireGuard tunnels does add some overhead.
 
