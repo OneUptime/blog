@@ -59,11 +59,11 @@ machine:
         ... (your CA certificate content) ...
         -----END CERTIFICATE-----
       permissions: 0o644
-      path: /etc/ssl/certs/my-custom-ca.pem
+      path: /etc/ssl/certs/ca-certificates
       op: append
 ```
 
-The `op: append` ensures the certificate is added to the existing trust store rather than replacing it.
+The path `/etc/ssl/certs/ca-certificates` is the system trust bundle on Talos, and `op: append` adds your CA to the end of that file rather than replacing it. Writing the certificate to any other path under `/etc/ssl/certs/` will not make it trusted by the system. On Talos v1.9+ you can alternatively use a `TrustedRootsConfig` document, which is the modern equivalent of this pattern.
 
 ### Using Config Patches
 
@@ -81,7 +81,7 @@ machine:
         ... (your CA certificate content) ...
         -----END CERTIFICATE-----
       permissions: 0o644
-      path: /etc/ssl/certs/my-custom-ca.pem
+      path: /etc/ssl/certs/ca-certificates
       op: append
 EOF
 
@@ -92,12 +92,12 @@ talosctl gen config my-cluster https://10.0.0.1:6443 \
 
 ### Adding Multiple CA Certificates
 
-If you have multiple CAs, you can bundle them into a single file or add them separately.
+If you have multiple CAs, concatenate them in a single `content` block and append them to the system trust bundle.
 
 ```yaml
 machine:
   files:
-    # Bundle multiple CAs in one file
+    # Bundle multiple CAs and append them to the system trust store
     - content: |
         -----BEGIN CERTIFICATE-----
         ... (First CA certificate) ...
@@ -109,7 +109,7 @@ machine:
         ... (Third CA certificate) ...
         -----END CERTIFICATE-----
       permissions: 0o644
-      path: /etc/ssl/certs/custom-ca-bundle.pem
+      path: /etc/ssl/certs/ca-certificates
       op: append
 ```
 
@@ -127,7 +127,7 @@ machine:
         ... (your CA certificate) ...
         -----END CERTIFICATE-----
       permissions: 0o644
-      path: /etc/ssl/certs/registry-ca.pem
+      path: /etc/ssl/certs/ca-certificates
       op: append
   registries:
     mirrors:
@@ -137,16 +137,13 @@ machine:
     config:
       registry.example.com:
         tls:
-          clientIdentity:
-            crt: ""
-            key: ""
           ca: |
             -----BEGIN CERTIFICATE-----
             ... (your CA certificate) ...
             -----END CERTIFICATE-----
 ```
 
-This configuration tells the container runtime to trust your CA specifically for the `registry.example.com` endpoint.
+This configuration tells the container runtime to trust your CA specifically for the `registry.example.com` endpoint. Appending the CA to `/etc/ssl/certs/ca-certificates` additionally makes the certificate trusted by other Talos components that rely on the system trust store.
 
 ### Registry with Authentication
 
@@ -181,7 +178,7 @@ machine:
         ... (your CA certificate) ...
         -----END CERTIFICATE-----
       permissions: 0o644
-      path: /etc/ssl/certs/my-custom-ca.pem
+      path: /etc/ssl/certs/ca-certificates
       op: append
 EOF
 
@@ -200,14 +197,10 @@ For changes to the registry TLS configuration specifically, a reboot may not alw
 After configuring your CA certificates, verify they are properly installed.
 
 ```bash
-# Check if the certificate file exists on the node
-talosctl -n 10.0.0.10 read /etc/ssl/certs/my-custom-ca.pem
-
-# Test TLS connectivity to your internal service
-talosctl -n 10.0.0.10 read /proc/net/tcp
+# Read the system trust bundle and confirm your CA is in it
+talosctl -n 10.0.0.10 read /etc/ssl/certs/ca-certificates | tail -n 40
 
 # Test by pulling an image from your private registry
-# Apply a test pod
 kubectl run test-pull --image=registry.example.com/myimage:latest
 kubectl get pods test-pull
 ```
@@ -241,14 +234,14 @@ data:
     -----END CERTIFICATE-----
 ```
 
-For Kubernetes API server CA configuration, you can use machine config patches.
+For Kubernetes API server CA configuration, you can mount the host trust bundle into the API server static pod.
 
 ```yaml
 cluster:
   apiServer:
     extraVolumes:
-      - hostPath: /etc/ssl/certs/my-custom-ca.pem
-        mountPath: /etc/ssl/certs/my-custom-ca.pem
+      - hostPath: /etc/ssl/certs/ca-certificates
+        mountPath: /etc/ssl/certs/ca-certificates
         readonly: true
 ```
 
@@ -257,7 +250,7 @@ cluster:
 When your CA certificate is being rotated, you need to plan for a transition period where both the old and new CA are trusted.
 
 ```bash
-# Create a bundle with both old and new CA
+# Append the new CA alongside the old one so both are trusted during the transition
 cat > ca-rotation-patch.yaml << 'EOF'
 machine:
   files:
@@ -265,12 +258,9 @@ machine:
         -----BEGIN CERTIFICATE-----
         ... (NEW CA certificate) ...
         -----END CERTIFICATE-----
-        -----BEGIN CERTIFICATE-----
-        ... (OLD CA certificate) ...
-        -----END CERTIFICATE-----
       permissions: 0o644
-      path: /etc/ssl/certs/custom-ca-bundle.pem
-      op: create
+      path: /etc/ssl/certs/ca-certificates
+      op: append
 EOF
 
 # Apply to all nodes
@@ -283,7 +273,7 @@ talosctl -n 10.0.0.10 reboot
 # Wait for the node to be ready, then proceed to the next
 ```
 
-After all services have been migrated to certificates signed by the new CA, remove the old CA from the bundle.
+The old CA stays trusted because it was already appended in a previous patch; the new patch adds the new CA next to it. Once all services have been migrated to certificates signed by the new CA, remove the old CA by editing the previously applied patch (or `TrustedRootsConfig` document on Talos v1.9+) and re-applying it, then rebooting the nodes.
 
 ## Troubleshooting Certificate Issues
 
