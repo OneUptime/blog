@@ -134,10 +134,10 @@ newman run /home/ubuntu/collections/my-api.json \
 For flaky APIs or rate-limited endpoints:
 
 ```bash
-# Set request timeout and add delay between requests
+# Set request timeout (10 seconds) and add delay between requests (500ms)
 newman run /home/ubuntu/collections/my-api.json \
-  --timeout-request 10000 \   # 10 second request timeout
-  --delay-request 500          # 500ms delay between requests
+  --timeout-request 10000 \
+  --delay-request 500
 ```
 
 ### Stopping on First Failure
