@@ -22,7 +22,7 @@ Extra arguments for the API server are configured under `cluster.apiServer.extra
 cluster:
   apiServer:
     extraArgs:
-      feature-gates: "GracefulNodeShutdown=true"
+      feature-gates: "WatchList=true"
       audit-log-path: "/var/log/audit/kube-apiserver-audit.log"
       audit-log-maxage: "30"
 ```
@@ -34,18 +34,14 @@ Each key-value pair in `extraArgs` becomes a command-line flag for the API serve
 Feature gates let you enable experimental or beta Kubernetes features. They are one of the most common reasons to use extra args:
 
 ```yaml
-# Enable specific feature gates
+# Enable specific feature gates on the API server
 cluster:
   apiServer:
     extraArgs:
-      feature-gates: >-
-        GracefulNodeShutdown=true,
-        TopologyAwareHints=true,
-        MinDomainsInPodTopologySpread=true,
-        NodeSwap=true
+      feature-gates: "WatchList=true,MutatingAdmissionPolicy=true,APIResponseCompression=true"
 ```
 
-Be careful with feature gates. Beta features are generally safe, but alpha features can have bugs or change behavior in future releases. Always check the Kubernetes release notes for the stability level of each feature gate.
+Be careful with feature gates. Beta features are generally safe, but alpha features can have bugs or change behavior in future releases. Always check the Kubernetes release notes for the stability level of each feature gate. Note that each component (API server, kubelet, scheduler, controller manager) has its own set of recognized feature gates - passing a gate that the API server does not know about (for example, a kubelet-only gate like `GracefulNodeShutdown` or `NodeSwap`) will cause the API server to fail to start.
 
 ## Configuring Audit Logging
 
@@ -98,10 +94,10 @@ cluster:
     extraVolumes:
       - hostPath: /var/etc/kubernetes
         mountPath: /etc/kubernetes
-        readOnly: true
+        readonly: true
       - hostPath: /var/log/audit
         mountPath: /var/log/audit
-        readOnly: false
+        readonly: false
 ```
 
 ## Configuring Admission Controllers
@@ -113,15 +109,7 @@ Admission controllers intercept requests to the API server before objects are pe
 cluster:
   apiServer:
     extraArgs:
-      enable-admission-plugins: >-
-        NodeRestriction,
-        PodSecurity,
-        ResourceQuota,
-        LimitRanger,
-        ServiceAccount,
-        DefaultStorageClass,
-        MutatingAdmissionWebhook,
-        ValidatingAdmissionWebhook
+      enable-admission-plugins: "NodeRestriction,PodSecurity,ResourceQuota,LimitRanger,ServiceAccount,DefaultStorageClass,MutatingAdmissionWebhook,ValidatingAdmissionWebhook"
       disable-admission-plugins: "AlwaysPullImages"
 ```
 
@@ -187,12 +175,8 @@ cluster:
       # Enable TLS 1.2 minimum
       tls-min-version: "VersionTLS12"
 
-      # Restrict cipher suites
-      tls-cipher-suites: >-
-        TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-        TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-        TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-        TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+      # Restrict cipher suites (comma-separated, no spaces)
+      tls-cipher-suites: "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
 
       # Profiling (disable in production)
       profiling: "false"
@@ -214,7 +198,7 @@ cluster:
     extraVolumes:
       - hostPath: /var/etc/kubernetes
         mountPath: /etc/kubernetes
-        readOnly: true
+        readonly: true
 ```
 
 Then place the required file using `machine.files`:
