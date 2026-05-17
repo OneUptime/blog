@@ -40,12 +40,10 @@ sudo ln -s /snap/bin/certbot /usr/bin/certbot
 certbot --version
 ```
 
-Alternatively, install from PPA for apt-managed installation:
+Alternatively, install from Ubuntu's standard apt repository (ships an older version, but works for apt-managed installations):
 
 ```bash
 sudo apt update
-sudo apt install software-properties-common
-sudo add-apt-repository ppa:certbot/certbot
 sudo apt install certbot
 ```
 
@@ -90,10 +88,13 @@ Certbot has official plugins for major DNS providers. These plugins use provider
 ### Cloudflare
 
 ```bash
-# Install the Cloudflare plugin
+# Install the Cloudflare plugin (snap)
 sudo snap install certbot-dns-cloudflare
 
-# Or via pip if using apt certbot
+# Allow the plugin to read root-owned credential files
+sudo snap set certbot trust-plugin-with-root=ok
+
+# Or via apt if using apt-installed certbot
 sudo apt install python3-certbot-dns-cloudflare
 ```
 
@@ -129,8 +130,10 @@ sudo certbot certonly \
 ### Route53 (AWS)
 
 ```bash
-# Install plugin
+# Install plugin (snap)
 sudo snap install certbot-dns-route53
+sudo snap set certbot trust-plugin-with-root=ok
+
 # Or: sudo apt install python3-certbot-dns-route53
 ```
 
@@ -185,6 +188,7 @@ sudo certbot certonly \
 
 ```bash
 sudo snap install certbot-dns-digitalocean
+sudo snap set certbot trust-plugin-with-root=ok
 # Or: sudo apt install python3-certbot-dns-digitalocean
 
 sudo nano /etc/letsencrypt/digitalocean.ini
