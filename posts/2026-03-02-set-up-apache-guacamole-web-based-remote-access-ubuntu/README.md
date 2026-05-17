@@ -113,10 +113,9 @@ sudo nano /etc/guacamole/guacamole.properties
 guacd-hostname: localhost
 guacd-port: 4822
 
-# Use basic file-based authentication
-auth-provider: net.sourceforge.guacamole.net.basic.BasicFileAuthenticationProvider
-
-# Path to the user-mapping file
+# Path to the user-mapping file (the file-based auth extension is
+# bundled by default and is loaded automatically when this file
+# is present in GUACAMOLE_HOME)
 basic-user-mapping: /etc/guacamole/user-mapping.xml
 ```
 
