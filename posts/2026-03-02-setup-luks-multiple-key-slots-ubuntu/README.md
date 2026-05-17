@@ -154,10 +154,11 @@ sudo cryptsetup luksAddKey --key-slot 7 /dev/sdb1
 Label the slot for documentation purposes (LUKS2 only):
 
 ```bash
-# LUKS2 supports token labels to describe key slots
-sudo cryptsetup token add --token-id 0 \
-  --json-string '{"type": "recovery-key", "description": "Offline recovery passphrase", "slot": 7}' \
-  /dev/sdb1
+# LUKS2 supports tokens (JSON metadata) attached to key slots for documentation.
+# Use 'token import' to store an arbitrary JSON token. The 'keyslots' field
+# must be an array of slot numbers as strings.
+echo '{"type":"recovery-key","keyslots":["7"],"description":"Offline recovery passphrase"}' \
+  | sudo cryptsetup token import --token-id 0 /dev/sdb1
 ```
 
 ## Revoking a Key Slot
