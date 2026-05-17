@@ -33,12 +33,12 @@ talosctl gen config my-cluster https://10.0.1.100:6443
 # Apply base config with a node-specific patch to worker-1
 talosctl apply-config --nodes 10.0.1.21 \
     --file worker.yaml \
-    --patch @patches/worker-1.yaml
+    --config-patch @patches/worker-1.yaml
 
 # Apply base config with a different patch to worker-2
 talosctl apply-config --nodes 10.0.1.22 \
     --file worker.yaml \
-    --patch @patches/worker-2.yaml
+    --config-patch @patches/worker-2.yaml
 ```
 
 A node-specific patch might set the hostname and network configuration:
@@ -83,7 +83,7 @@ talosctl gen secrets -o secrets.yaml
 
 # Generate config for worker-1 (GPU node)
 talosctl gen config my-cluster https://10.0.1.100:6443 \
-    --from-secrets secrets.yaml \
+    --with-secrets secrets.yaml \
     --config-patch @patches/common.yaml \
     --config-patch-worker @patches/worker-gpu.yaml \
     --output-types worker \
@@ -91,7 +91,7 @@ talosctl gen config my-cluster https://10.0.1.100:6443 \
 
 # Generate config for worker-2 (storage node)
 talosctl gen config my-cluster https://10.0.1.100:6443 \
-    --from-secrets secrets.yaml \
+    --with-secrets secrets.yaml \
     --config-patch @patches/common.yaml \
     --config-patch-worker @patches/worker-storage.yaml \
     --output-types worker \
@@ -201,7 +201,7 @@ EOF
 
     # Generate the config
     talosctl gen config "$CLUSTER_NAME" "$ENDPOINT" \
-        --from-secrets "$SECRETS" \
+        --with-secrets "$SECRETS" \
         --config-patch @"/tmp/patch-${node_name}.yaml" \
         --output-types "$role" \
         -o "configs/${node_name}.yaml"
@@ -252,7 +252,7 @@ machine:
       gpu-type: nvidia-a100
       topology.kubernetes.io/zone: zone-a
     nodeTaints:
-      nvidia.com/gpu:NoSchedule
+      nvidia.com/gpu: "true:NoSchedule"
 ```
 
 Labels and taints can be changed without rebooting the node:
@@ -260,7 +260,7 @@ Labels and taints can be changed without rebooting the node:
 ```bash
 # Apply updated labels to a running node
 talosctl apply-config --nodes 10.0.1.23 \
-    --patch @patches/nodes/worker-gpu-1.yaml \
+    --config-patch @patches/nodes/worker-gpu-1.yaml \
     --mode no-reboot
 ```
 
