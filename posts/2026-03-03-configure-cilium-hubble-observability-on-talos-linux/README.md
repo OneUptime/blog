@@ -86,7 +86,7 @@ The Hubble CLI lets you query network flows directly from your terminal:
 brew install hubble
 
 # Or download directly
-HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/master/stable.txt)
+HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/main/stable.txt)
 curl -L --remote-name-all https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-amd64.tar.gz
 tar xzvf hubble-linux-amd64.tar.gz
 sudo mv hubble /usr/local/bin/
@@ -222,7 +222,7 @@ spec:
     interval: 15s
   selector:
     matchLabels:
-      k8s-app: cilium
+      k8s-app: hubble
   namespaceSelector:
     matchNames:
     - kube-system
