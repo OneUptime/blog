@@ -183,7 +183,7 @@ Key settings for a development machine:
 ```ini
 # Connection settings
 listen_addresses = 'localhost'      # Only listen locally
-max_connections = 100               # Reduce from default 100 is fine
+max_connections = 100               # Default of 100 is fine for development
 
 # Memory settings (adjust to ~25% of system RAM)
 shared_buffers = 256MB
@@ -193,6 +193,7 @@ maintenance_work_mem = 128MB
 # Write performance (relaxed for dev - not suitable for production)
 synchronous_commit = off            # Faster writes, slight data loss risk on crash
 wal_level = minimal                 # Less WAL overhead
+max_wal_senders = 0                 # Required when wal_level = minimal
 
 # Query planning
 random_page_cost = 1.1             # Assumes SSD storage
