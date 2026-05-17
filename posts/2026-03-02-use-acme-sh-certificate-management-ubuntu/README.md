@@ -55,8 +55,8 @@ acme.sh --set-default-ca --server letsencrypt
 # Use ZeroSSL (default)
 acme.sh --set-default-ca --server zerossl
 
-# Use Buypass (90-day certs, ACME protocol)
-acme.sh --set-default-ca --server buypass
+# Use Buypass (pass the full ACME directory URL - no shortcut)
+acme.sh --set-default-ca --server https://api.buypass.com/acme/directory
 ```
 
 ## Obtaining Certificates
@@ -107,7 +107,8 @@ acme.sh --renew -d example.com \
 For fully automated wildcard certificates, use your DNS provider's API. Example with Cloudflare:
 
 ```bash
-# Export Cloudflare credentials
+# Export Cloudflare credentials (CF_Token is required;
+# CF_Account_ID is optional and only needed when scoping to a specific account)
 export CF_Token="your-cloudflare-api-token"
 export CF_Account_ID="your-account-id"
 
@@ -116,7 +117,7 @@ acme.sh --issue -d example.com -d '*.example.com' \
     --dns dns_cf
 ```
 
-acme.sh stores the API credentials encrypted and uses them for renewals. Other DNS providers use similar environment variable patterns - check the acme.sh wiki for the full list.
+acme.sh persists the API credentials in `~/.acme.sh/account.conf` (in plain text) and reuses them for renewals, so you do not need to re-export them every time. Other DNS providers use similar environment variable patterns - check the acme.sh wiki for the full list.
 
 Example with Route53:
 
@@ -218,7 +219,7 @@ crontab -l | grep acme
 You should see something like:
 
 ```text
-5 0 * * * "/root/.acme.sh"/acme.sh --cron --home "/root/.acme.sh" > /dev/null
+0 0 * * * "/root/.acme.sh"/acme.sh --cron --home "/root/.acme.sh" > /dev/null
 ```
 
 Modify to add logging:
@@ -230,7 +231,7 @@ crontab -e
 Replace the line with:
 
 ```text
-5 0 * * * "/root/.acme.sh"/acme.sh --cron --home "/root/.acme.sh" >> /var/log/acme-renew.log 2>&1
+0 0 * * * "/root/.acme.sh"/acme.sh --cron --home "/root/.acme.sh" >> /var/log/acme-renew.log 2>&1
 ```
 
 ## Revoking and Removing Certificates
@@ -258,44 +259,42 @@ Post-hook runs only on successful renewal. Use `--reloadcmd` when the action is 
 
 ## Deploying to Multiple Locations
 
-For certificates needed in multiple places (e.g., nginx and a Node.js app):
+For certificates needed in multiple places (e.g., nginx and a Node.js app), create a custom deploy hook. acme.sh sources the hook file and calls a function named `<hookname>_deploy`, so the file must live in `~/.acme.sh/deploy/<hookname>.sh` and define that function. The function receives five positional arguments: domain, key path, cert path, CA cert path, and fullchain path (in that order).
 
 ```bash
-# Create a custom deploy hook
-nano ~/.acme.sh/deploy/custom_deploy.sh
+# Create a custom deploy hook named "custom"
+nano ~/.acme.sh/deploy/custom.sh
 ```
 
 ```bash
-#!/bin/bash
+#!/usr/bin/env sh
 # Deploy certificate to multiple locations
 
-DOMAIN="$1"
-CERT="$2"
-KEY="$3"
-CHAIN="$4"
-FULLCHAIN="$5"
+custom_deploy() {
+  _cdomain="$1"
+  _ckey="$2"
+  _ccert="$3"
+  _cca="$4"
+  _cfullchain="$5"
 
-# Copy to nginx location
-cp "$FULLCHAIN" /etc/ssl/nginx/example.com.crt
-cp "$KEY" /etc/ssl/nginx/example.com.key
-systemctl reload nginx
+  # Copy to nginx location
+  cp "$_cfullchain" /etc/ssl/nginx/example.com.crt
+  cp "$_ckey"       /etc/ssl/nginx/example.com.key
+  systemctl reload nginx
 
-# Copy to application directory
-cp "$FULLCHAIN" /opt/myapp/ssl/cert.pem
-cp "$KEY" /opt/myapp/ssl/key.pem
-systemctl restart myapp
+  # Copy to application directory
+  cp "$_cfullchain" /opt/myapp/ssl/cert.pem
+  cp "$_ckey"       /opt/myapp/ssl/key.pem
+  systemctl restart myapp
 
-echo "Certificate deployed to nginx and myapp"
+  echo "Certificate deployed to nginx and myapp"
+}
 ```
 
-```bash
-chmod +x ~/.acme.sh/deploy/custom_deploy.sh
-```
-
-Reference in acme.sh:
+Reference the hook by its name (matching the file/function prefix):
 
 ```bash
-acme.sh --deploy -d example.com --deploy-hook custom_deploy
+acme.sh --deploy -d example.com --deploy-hook custom
 ```
 
 ## Troubleshooting
