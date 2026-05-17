@@ -178,7 +178,7 @@ For Hetzner Cloud (not dedicated), Ubuntu installation is through the cloud cons
 # Using hcloud CLI
 hcloud server create \
     --name my-server \
-    --type cx21 \
+    --type cx22 \
     --image ubuntu-24.04 \
     --ssh-key your-key-name \
     --location nbg1
@@ -186,7 +186,7 @@ hcloud server create \
 # With cloud-init user-data
 hcloud server create \
     --name my-server \
-    --type cx21 \
+    --type cx22 \
     --image ubuntu-24.04 \
     --ssh-key your-key-name \
     --user-data-from-file cloud-init.yaml
@@ -365,7 +365,7 @@ export HCLOUD_TOKEN="your-api-token"
 # Create server
 hcloud server create \
     --name prod-server-01 \
-    --type cx31 \
+    --type cx32 \
     --image ubuntu-24.04 \
     --datacenter nbg1-dc3 \
     --ssh-key your-key \
